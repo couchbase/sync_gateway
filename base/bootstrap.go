@@ -78,7 +78,10 @@ func (cc *CouchbaseCluster) GetConfigBuckets() ([]string, error) {
 		return nil, errors.New("nil CouchbaseCluster")
 	}
 
-	buckets, err := cc.c.Buckets().GetAllBuckets(nil)
+	buckets, err := cc.c.Buckets().GetAllBuckets(&gocb.GetAllBucketsOptions{
+		Timeout:       time.Second * 10,
+		RetryStrategy: gocb.NewBestEffortRetryStrategy(nil),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +133,10 @@ func (cc *CouchbaseCluster) InsertConfig(location, groupID string, value interfa
 	}
 
 	docID := PersistentConfigPrefix + groupID
-	res, err := b.DefaultCollection().Insert(docID, value, nil)
+	res, err := b.DefaultCollection().Insert(docID, value, &gocb.InsertOptions{
+		Timeout:       time.Second * 10,
+		RetryStrategy: gocb.NewBestEffortRetryStrategy(nil),
+	})
 	if err != nil {
 		if isKVError(err, memd.StatusKeyExists) {
 			return 0, ErrAlreadyExists
@@ -156,7 +162,9 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 	docID := PersistentConfigPrefix + groupID
 	for {
 		res, err := collection.Get(docID, &gocb.GetOptions{
-			Transcoder: gocb.NewRawJSONTranscoder(),
+			Transcoder:    gocb.NewRawJSONTranscoder(),
+			Timeout:       time.Second * 10,
+			RetryStrategy: gocb.NewBestEffortRetryStrategy(nil),
 		})
 		if err != nil {
 			return 0, err
@@ -175,7 +183,11 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 
 		// handle delete when updateCallback returns nil
 		if newConfig == nil {
-			deleteRes, err := collection.Remove(docID, &gocb.RemoveOptions{Cas: res.Cas()})
+			deleteRes, err := collection.Remove(docID, &gocb.RemoveOptions{
+				Cas:           res.Cas(),
+				Timeout:       time.Second * 10,
+				RetryStrategy: gocb.NewBestEffortRetryStrategy(nil),
+			})
 			if err != nil {
 				// retry on cas failure
 				if errors.Is(err, gocb.ErrCasMismatch) {
@@ -186,7 +198,12 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 			return uint64(deleteRes.Cas()), nil
 		}
 
-		replaceRes, err := collection.Replace(docID, newConfig, &gocb.ReplaceOptions{Transcoder: gocb.NewRawJSONTranscoder(), Cas: res.Cas()})
+		replaceRes, err := collection.Replace(docID, newConfig, &gocb.ReplaceOptions{
+			Transcoder:    gocb.NewRawJSONTranscoder(),
+			Cas:           res.Cas(),
+			Timeout:       time.Second * 10,
+			RetryStrategy: gocb.NewBestEffortRetryStrategy(nil),
+		})
 		if err != nil {
 			if errors.Is(err, gocb.ErrCasMismatch) {
 				// retry on cas failure
