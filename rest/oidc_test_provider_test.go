@@ -157,7 +157,7 @@ func TestProviderOIDCAuthWithTlsSkipVerifyEnabled(t *testing.T) {
 	restTesterConfig := restTesterConfigWithTestProviderEnabled()
 	restTesterConfig.DatabaseConfig.Unsupported.OidcTlsSkipVerify = true
 	restTester := NewRestTester(t, &restTesterConfig)
-	restTester.SetAdminParty(false)
+	require.NoError(t, restTester.SetAdminParty(false))
 	defer restTester.Close()
 	mockSyncGateway := httptest.NewTLSServer(restTester.TestPublicHandler())
 	defer mockSyncGateway.Close()
@@ -211,7 +211,7 @@ func TestProviderOIDCAuthWithTlsSkipVerifyDisabled(t *testing.T) {
 	restTesterConfig := restTesterConfigWithTestProviderEnabled()
 	restTesterConfig.DatabaseConfig.Unsupported.OidcTlsSkipVerify = false
 	restTester := NewRestTester(t, &restTesterConfig)
-	restTester.SetAdminParty(false)
+	require.NoError(t, restTester.SetAdminParty(false))
 	defer restTester.Close()
 	mockSyncGateway := httptest.NewTLSServer(restTester.TestPublicHandler())
 	defer mockSyncGateway.Close()
@@ -302,7 +302,7 @@ func TestOpenIDConnectTestProviderWithRealWorldToken(t *testing.T) {
 					},
 				}}}
 			restTester := NewRestTester(t, &restTesterConfig)
-			restTester.SetAdminParty(false)
+			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
 
 			mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())

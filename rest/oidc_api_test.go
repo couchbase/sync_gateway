@@ -887,7 +887,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			opts := auth.OIDCOptions{Providers: tc.providers, DefaultProvider: &tc.defaultProvider}
 			restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{OIDCConfig: &opts}}}
 			restTester := NewRestTester(t, &restTesterConfig)
-			restTester.SetAdminParty(false)
+			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
 
 			// Create the user first if the test requires a registered user.
@@ -1092,7 +1092,7 @@ func TestOpenIDConnectImplicitFlow(t *testing.T) {
 			opts := auth.OIDCOptions{Providers: tc.providers, DefaultProvider: &tc.defaultProvider}
 			restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{OIDCConfig: &opts}}}
 			restTester := NewRestTester(t, &restTesterConfig)
-			restTester.SetAdminParty(false)
+			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
 
 			// Create the user first if the test requires a registered user.
@@ -1162,7 +1162,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 	opts := auth.OIDCOptions{Providers: providers, DefaultProvider: &defaultProvider}
 	restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{OIDCConfig: &opts}}}
 	restTester := NewRestTester(t, &restTesterConfig)
-	restTester.SetAdminParty(false)
+	require.NoError(t, restTester.SetAdminParty(false))
 	defer restTester.Close()
 
 	mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
@@ -1807,7 +1807,7 @@ func TestCallbackStateClientCookies(t *testing.T) {
 		}},
 	}
 	restTester := NewRestTester(t, &restTesterConfig)
-	restTester.SetAdminParty(false)
+	require.NoError(t, restTester.SetAdminParty(false))
 	defer restTester.Close()
 
 	mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
@@ -2043,7 +2043,7 @@ func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
 				}},
 			}
 			restTester := NewRestTester(t, &restTesterConfig)
-			restTester.SetAdminParty(false)
+			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
 
 			// Create the user first if the test requires a registered user.
@@ -2139,7 +2139,7 @@ func TestEventuallyReachableOIDCClient(t *testing.T) {
 			opts := auth.OIDCOptions{Providers: tc.providers, DefaultProvider: &tc.defaultProvider}
 			restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{OIDCConfig: &opts}}}
 			restTester := NewRestTester(t, &restTesterConfig)
-			restTester.SetAdminParty(false)
+			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
 
 			// Create the user first if the test requires a registered user.
