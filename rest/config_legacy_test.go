@@ -99,7 +99,7 @@ func TestLegacyConfigToStartupConfig(t *testing.T) {
 		{
 			name:     "http:// to couchbase:// with args",
 			base:     StartupConfig{},
-			input:    LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("http://host1,host2:8091?p1=v1&p2=v2;p3=v3")}}}},
+			input:    LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("http://host1,host2:8091?p1=v1&p2=v2&p3=v3")}}}},
 			expected: StartupConfig{Bootstrap: BootstrapConfig{Server: "couchbase://host1,host2?p1=v1&p2=v2&p3=v3"}},
 		},
 	}
@@ -180,8 +180,8 @@ func TestLegacyServerAddressUpgrade(t *testing.T) {
 			expectedPassword: "",
 		},
 		{
-			name:             "Multi params with & and ; separators, alphabetical order",
-			server:           "http://foo:bar@localhost,127.0.0.2?c=3;a=1&b=2",
+			name:             "Multi params with & separators, alphabetical order",
+			server:           "http://foo:bar@localhost,127.0.0.2?c=3&a=1&b=2",
 			expectError:      false,
 			expectedServer:   "couchbase://localhost,127.0.0.2?a=1&b=2&c=3",
 			expectedUsername: "foo",
