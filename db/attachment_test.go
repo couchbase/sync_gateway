@@ -845,7 +845,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		} else {
 			newBody, err := base.InjectJSONPropertiesFromBytes([]byte(bodyPre25), base.KVPairBytes{Key: base.SyncPropertyName, Val: []byte(syncData)})
 			assert.NoError(t, err)
-			ok, err := bucket.AddRaw(docKey, 0, newBody)
+			ok, err := bucket.Add(docKey, 0, newBody)
 			assert.NoError(t, err)
 			assert.True(t, ok)
 		}
@@ -1144,7 +1144,7 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 	} else {
 		newBody, err := base.InjectJSONPropertiesFromBytes([]byte(bodyPre25), base.KVPairBytes{Key: base.SyncPropertyName, Val: []byte(syncData)})
 		assert.NoError(t, err)
-		ok, err := bucket.AddRaw(docKey, 0, newBody)
+		ok, err := bucket.Add(docKey, 0, newBody)
 		assert.NoError(t, err)
 		assert.True(t, ok)
 	}
@@ -1330,7 +1330,7 @@ func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
 	} else {
 		newBody, err := base.InjectJSONPropertiesFromBytes([]byte(bodyPre25), base.KVPairBytes{Key: base.SyncPropertyName, Val: []byte(syncData)})
 		assert.NoError(t, err)
-		ok, err := bucket.AddRaw(docKey, 0, newBody)
+		ok, err := bucket.Add(docKey, 0, newBody)
 		assert.NoError(t, err)
 		assert.True(t, ok)
 	}

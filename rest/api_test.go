@@ -4288,7 +4288,7 @@ func TestAttachmentRevposPre25Metadata(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	ok, err := rt.GetDatabase().Bucket.AddRaw("doc1", 0, []byte(`{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1,"stub":true}},"_sync":{"rev":"1-6e5a9ed9e2e8637d495ac5dd2fa90479","sequence":2,"recent_sequences":[2],"history":{"revs":["1-6e5a9ed9e2e8637d495ac5dd2fa90479"],"parents":[-1],"channels":[null]},"cas":"","time_saved":"2019-12-06T20:02:25.523013Z"},"test":true}`))
+	ok, err := rt.GetDatabase().Bucket.Add("doc1", 0, []byte(`{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1,"stub":true}},"_sync":{"rev":"1-6e5a9ed9e2e8637d495ac5dd2fa90479","sequence":2,"recent_sequences":[2],"history":{"revs":["1-6e5a9ed9e2e8637d495ac5dd2fa90479"],"parents":[-1],"channels":[null]},"cas":"","time_saved":"2019-12-06T20:02:25.523013Z"},"test":true}`))
 	require.NoError(t, err)
 	require.True(t, ok)
 
@@ -6318,7 +6318,7 @@ func TestChannelHistoryLegacyDoc(t *testing.T) {
 	}`
 
 	// Insert raw 'legacy' doc with no channel history info
-	err := rt.GetDatabase().Bucket.SetRaw("doc1", 0, []byte(docData))
+	err := rt.GetDatabase().Bucket.Set("doc1", 0, []byte(docData))
 	assert.NoError(t, err)
 
 	var body db.Body
@@ -8657,6 +8657,11 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		if base.UnitTestUrlIsWalrus() {
 			t.Skip("This import test won't work under walrus")
 		}
+
+		if !base.TestUseXattrs() {
+			t.Skip("Test requires xattrs")
+		}
+
 		// Create a document with inline attachment.
 		docID := "foo10"
 		attName := "foo.txt"
@@ -8705,6 +8710,11 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		if base.UnitTestUrlIsWalrus() {
 			t.Skip("This import test won't work under walrus")
 		}
+
+		if !base.TestUseXattrs() {
+			t.Skip("Test requires xattrs")
+		}
+
 		// Create a document with inline attachment.
 		docID := "foo11"
 		attName := "foo.txt"
