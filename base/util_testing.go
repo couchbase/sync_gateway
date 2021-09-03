@@ -170,15 +170,17 @@ func GetTestBucketForDriver(t testing.TB, driver CouchbaseDriver) *TestBucket {
 
 // Should Sync Gateway use XATTRS functionality when running unit tests?
 func TestUseXattrs() bool {
-	// First check if the SG_TEST_USE_XATTRS env variable is set
-	useXattrs := os.Getenv(TestEnvSyncGatewayUseXattrs)
-	if strings.ToLower(useXattrs) == strings.ToLower(TestEnvSyncGatewayTrue) {
-		return true
+	useXattrs, isSet := os.LookupEnv(TestEnvSyncGatewayUseXattrs)
+	if !isSet {
+		return !UnitTestUrlIsWalrus()
 	}
 
-	// Otherwise fallback to hardcoded default
-	return !UnitTestUrlIsWalrus()
+	val, err := strconv.ParseBool(useXattrs)
+	if err != nil {
+		panic(fmt.Sprintf("unable to parse %q value %q: %v", TestEnvSyncGatewayUseXattrs, useXattrs, err))
+	}
 
+	return val
 }
 
 // Should tests try to drop GSI indexes before flushing buckets?
