@@ -8019,23 +8019,19 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	createDocWithLegacyAttachment := func(docID string, rawDoc []byte, attKey string, attBody []byte) {
 		// Write attachment directly to the bucket.
 		_, err := rt.Bucket().Add(attKey, 0, attBody)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		body := db.Body{}
 		err = body.Unmarshal(rawDoc)
-		assert.NoError(t, err, "Error unmarshalling body")
+		require.NoError(t, err, "Error unmarshalling body")
 
 		// Write raw document to the bucket.
 		_, err = rt.Bucket().Add(docID, 0, rawDoc)
-		assert.NoError(t, err)
-
-		// Get the existing bucket doc.
-		_, existingDoc, err := rt.GetDatabase().GetDocWithXattr(docID, db.DocUnmarshalAll)
-		database := &db.Database{DatabaseContext: rt.GetDatabase()}
+		require.NoError(t, err)
 
 		// Migrate document metadata from document body to system xattr.
-		_, _, err = database.MigrateMetadata(docID, body, existingDoc)
-		assert.NoError(t, err)
+		attachments := retrieveAttachmentMeta(docID)
+		require.Len(t, attachments, 1)
 	}
 
 	t.Run("single attachment removal upon document update", func(t *testing.T) {
@@ -9047,7 +9043,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		rt.purgeDoc(attKey)
 	})
 
-	t.Run("legacy attachment persistence upon doc delete (multiple docs referencing same attachment)", func(t *testing.T) {
+	t.Run("legacy attachment persistence upon doc purge (multiple docs referencing same attachment)", func(t *testing.T) {
 		if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
 			t.Skip("Test only works with a Couchbase server and Xattrs")
 		}
