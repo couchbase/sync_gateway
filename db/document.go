@@ -722,24 +722,24 @@ func (doc *Document) pruneRevisions(maxDepth uint32, keepRev string) int {
 }
 
 // Adds a revision body (as Body) to a document.  Removes special properties first.
-func (doc *Document) setRevisionBody(revid string, newDoc *Document, storeInline, includeV2Att bool) {
+func (doc *Document) setRevisionBody(revid string, newDoc *Document, storeInline, hasAttachments bool) {
 	if revid == doc.CurrentRev {
 		doc._body = newDoc._body
 		doc._rawBody = newDoc._rawBody
 	} else {
 		bodyBytes, _ := newDoc.BodyBytes()
-		doc.setNonWinningRevisionBody(revid, bodyBytes, storeInline, includeV2Att)
+		doc.setNonWinningRevisionBody(revid, bodyBytes, storeInline, hasAttachments)
 	}
 }
 
 // Adds a revision body (as []byte) to a document.  Flags for external storage when appropriate
-func (doc *Document) setNonWinningRevisionBody(revid string, body []byte, storeInline bool, includeV2Att bool) {
+func (doc *Document) setNonWinningRevisionBody(revid string, body []byte, storeInline bool, hasAttachments bool) {
 	revBodyKey := ""
 	if !storeInline && len(body) > MaximumInlineBodySize {
 		revBodyKey = generateRevBodyKey(doc.ID, revid)
 		doc.addedRevisionBodies = append(doc.addedRevisionBodies, revid)
 	}
-	doc.History.setRevisionBody(revid, body, revBodyKey, includeV2Att)
+	doc.History.setRevisionBody(revid, body, revBodyKey, hasAttachments)
 }
 
 // persistModifiedRevisionBodies writes new non-inline revisions to the bucket.

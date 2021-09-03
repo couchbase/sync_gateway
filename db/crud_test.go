@@ -102,7 +102,7 @@ func TestRevisionCacheLoad(t *testing.T) {
 	assert.False(t, ok)
 }
 
-func TestIncludeV2Att(t *testing.T) {
+func TestHasAttachmentsFlag(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 	db := setupTestDB(t)
 	defer db.Close()
@@ -164,7 +164,7 @@ func TestIncludeV2Att(t *testing.T) {
 	assert.NoError(t, err, "Couldn't get revtree for raw document")
 	assert.Equal(t, 0, len(revTree.BodyMap))
 	assert.Equal(t, 1, len(revTree.BodyKeyMap))
-	assert.Equal(t, 1, len(revTree.Attachments))
+	assert.Equal(t, 1, len(revTree.HasAttachments))
 }
 
 // TestRevisionStorageConflictAndTombstones
