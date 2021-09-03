@@ -7974,6 +7974,66 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		return attachments
 	}
 
+	requireAttachmentFound := func(attKey string, attBodyExpected []byte) {
+		var attBodyActual []byte
+		_, err := rt.Bucket().Get(attKey, &attBodyActual)
+		require.NoError(t, err)
+		assert.Equal(t, attBodyExpected, attBodyActual)
+	}
+
+	rawDocWithAttachmentAndSyncMeta := func() []byte {
+		return []byte(`{
+   "_sync": {
+      "rev": "1-5fc93bd36377008f96fdae2719c174ed",
+      "sequence": 2,
+      "recent_sequences": [
+         2
+      ],
+      "history": {
+         "revs": [
+            "1-5fc93bd36377008f96fdae2719c174ed"
+         ],
+         "parents": [
+            -1
+         ],
+         "channels": [
+            null
+         ]
+      },
+      "cas": "",
+      "attachments": {
+         "hi.txt": {
+            "revpos": 1,
+            "content_type": "text/plain",
+            "length": 2,
+            "stub": true,
+            "digest": "sha1-witfkXg0JglCjW9RssWvTAveakI="
+         }
+      },
+      "time_saved": "2021-09-01T17:33:03.054227821Z"
+   },
+  "key": "value"
+}`)
+	}
+
+	createDocWithLegacyAttachment := func(docID string, rawDoc []byte, attKey string, attBody []byte) {
+		// Write attachment directly to the bucket.
+		_, err := rt.Bucket().Add(attKey, 0, attBody)
+		require.NoError(t, err)
+
+		body := db.Body{}
+		err = body.Unmarshal(rawDoc)
+		require.NoError(t, err, "Error unmarshalling body")
+
+		// Write raw document to the bucket.
+		_, err = rt.Bucket().Add(docID, 0, rawDoc)
+		require.NoError(t, err)
+
+		// Migrate document metadata from document body to system xattr.
+		attachments := retrieveAttachmentMeta(docID)
+		require.Len(t, attachments, 1)
+	}
+
 	t.Run("single attachment removal upon document update", func(t *testing.T) {
 		// Create a document.
 		docID := "foo"
@@ -8802,5 +8862,227 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 
 		// Perform cleanup after the test ends.
 		rt.purgeDoc(docID)
+	})
+
+	t.Run("legacy attachment persistence upon doc delete (single doc referencing an attachment)", func(t *testing.T) {
+		if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
+			t.Skip("Test only works with a Couchbase server and Xattrs")
+		}
+		docID := "foo15"
+		attBody := []byte(`hi`)
+		digest := db.Sha1DigestKey(attBody)
+		attKey := db.MakeAttachmentKey(db.AttVersion1, docID, digest)
+		rawDoc := rawDocWithAttachmentAndSyncMeta()
+
+		// Create a document with legacy attachment.
+		createDocWithLegacyAttachment(docID, rawDoc, attKey, attBody)
+
+		// Get the document and grab the revID.
+		responseBody := rt.getDoc(docID)
+		revID := responseBody["_rev"].(string)
+		require.NotEmpty(t, revID)
+
+		// Delete/tombstone the document.
+		rt.deleteDoc(docID, revID)
+
+		// Check whether legacy attachment is still persisted in the bucket.
+		requireAttachmentFound(attKey, attBody)
+
+		// Perform cleanup after the test ends.
+		rt.purgeDoc(attKey)
+		rt.purgeDoc(docID)
+	})
+
+	t.Run("legacy attachment persistence upon doc delete (multiple docs referencing same attachment)", func(t *testing.T) {
+		if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
+			t.Skip("Test only works with a Couchbase server and Xattrs")
+		}
+		docID1 := "foo16"
+		docID2 := "bar16"
+		attBody := []byte(`hi`)
+		digest := db.Sha1DigestKey(attBody)
+		attKey := db.MakeAttachmentKey(db.AttVersion1, docID1, digest)
+		rawDoc := rawDocWithAttachmentAndSyncMeta()
+
+		// Create a document with legacy attachment.
+		createDocWithLegacyAttachment(docID1, rawDoc, attKey, attBody)
+
+		// Create another document referencing the same legacy attachment.
+		createDocWithLegacyAttachment(docID2, rawDoc, attKey, attBody)
+
+		// Get revID of the first document.
+		responseBody := rt.getDoc(docID1)
+		revID1 := responseBody["_rev"].(string)
+		require.NotEmpty(t, revID1)
+
+		// Delete/tombstone the first document.
+		rt.deleteDoc(docID1, revID1)
+
+		// Check whether legacy attachment is still persisted in the bucket.
+		requireAttachmentFound(attKey, attBody)
+
+		// Get revID of the second document.
+		responseBody = rt.getDoc(docID2)
+		revID2 := responseBody["_rev"].(string)
+		require.NotEmpty(t, revID2)
+
+		// Delete/tombstone the second document.
+		rt.deleteDoc(docID2, revID2)
+
+		// Check whether legacy attachment is still persisted in the bucket.
+		requireAttachmentFound(attKey, attBody)
+
+		// Perform cleanup after the test ends.
+		rt.purgeDoc(attKey)
+		rt.purgeDoc(docID1)
+		rt.purgeDoc(docID2)
+	})
+
+	t.Run("legacy attachment persistence upon doc update (single doc referencing an attachment)", func(t *testing.T) {
+		if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
+			t.Skip("Test only works with a Couchbase server and Xattrs")
+		}
+		docID := "foo17"
+		attBody := []byte(`hi`)
+		digest := db.Sha1DigestKey(attBody)
+		attKey := db.MakeAttachmentKey(db.AttVersion1, docID, digest)
+		rawDoc := rawDocWithAttachmentAndSyncMeta()
+
+		// Create a document with legacy attachment.
+		createDocWithLegacyAttachment(docID, rawDoc, attKey, attBody)
+
+		// Get the document and grab the revID.
+		responseBody := rt.getDoc(docID)
+		revID := responseBody["_rev"].(string)
+		require.NotEmpty(t, revID)
+
+		// Remove attachment from the document via document update.
+		response := rt.updateDoc(docID, revID, `{"prop":true}`)
+		require.NotEmpty(t, response.Rev)
+
+		// Check whether legacy attachment is still persisted in the bucket.
+		requireAttachmentFound(attKey, attBody)
+
+		// Perform cleanup after the test ends.
+		rt.purgeDoc(attKey)
+		rt.purgeDoc(docID)
+	})
+
+	t.Run("legacy attachment persistence upon doc update (multiple docs referencing same attachment)", func(t *testing.T) {
+		if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
+			t.Skip("Test only works with a Couchbase server and Xattrs")
+		}
+		docID1 := "foo18"
+		docID2 := "bar18"
+		attBody := []byte(`hi`)
+		digest := db.Sha1DigestKey(attBody)
+		attKey := db.MakeAttachmentKey(db.AttVersion1, docID1, digest)
+		rawDoc := rawDocWithAttachmentAndSyncMeta()
+
+		// Create a document with legacy attachment.
+		createDocWithLegacyAttachment(docID1, rawDoc, attKey, attBody)
+
+		// Create another document referencing the same legacy attachment.
+		createDocWithLegacyAttachment(docID2, rawDoc, attKey, attBody)
+
+		// Get revID of the first document.
+		responseBody := rt.getDoc(docID1)
+		revID1 := responseBody["_rev"].(string)
+		require.NotEmpty(t, revID1)
+
+		// Remove attachment from the first document via document update.
+		response := rt.updateDoc(docID1, revID1, `{"prop":true}`)
+		require.NotEmpty(t, response.Rev)
+
+		// Check whether legacy attachment is still persisted in the bucket.
+		requireAttachmentFound(attKey, attBody)
+
+		// Get revID of the second document.
+		responseBody = rt.getDoc(docID2)
+		revID2 := responseBody["_rev"].(string)
+		require.NotEmpty(t, revID2)
+
+		// Remove attachment from the second document via document update.
+		response = rt.updateDoc(docID2, revID2, `{"prop":true}`)
+		require.NotEmpty(t, response.Rev)
+
+		// Check whether legacy attachment is still persisted in the bucket.
+		requireAttachmentFound(attKey, attBody)
+
+		// Perform cleanup after the test ends.
+		rt.purgeDoc(attKey)
+		rt.purgeDoc(docID1)
+		rt.purgeDoc(docID2)
+	})
+
+	t.Run("legacy attachment persistence upon doc purge (single doc referencing an attachment)", func(t *testing.T) {
+		if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
+			t.Skip("Test only works with a Couchbase server and Xattrs")
+		}
+		docID := "foo19"
+		attBody := []byte(`hi`)
+		digest := db.Sha1DigestKey(attBody)
+		attKey := db.MakeAttachmentKey(db.AttVersion1, docID, digest)
+		rawDoc := rawDocWithAttachmentAndSyncMeta()
+
+		// Create a document with legacy attachment.
+		createDocWithLegacyAttachment(docID, rawDoc, attKey, attBody)
+
+		// Get the document and grab the revID.
+		responseBody := rt.getDoc(docID)
+		revID := responseBody["_rev"].(string)
+		require.NotEmpty(t, revID)
+
+		// Purge the entire document.
+		rt.purgeDoc(docID)
+
+		// Check whether legacy attachment is still persisted in the bucket.
+		requireAttachmentFound(attKey, attBody)
+
+		// Perform cleanup after the test ends.
+		rt.purgeDoc(attKey)
+	})
+
+	t.Run("legacy attachment persistence upon doc purge (multiple docs referencing same attachment)", func(t *testing.T) {
+		if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
+			t.Skip("Test only works with a Couchbase server and Xattrs")
+		}
+		docID1 := "foo20"
+		docID2 := "bar20"
+		attBody := []byte(`hi`)
+		digest := db.Sha1DigestKey(attBody)
+		attKey := db.MakeAttachmentKey(db.AttVersion1, docID1, digest)
+		rawDoc := rawDocWithAttachmentAndSyncMeta()
+
+		// Create a document with legacy attachment.
+		createDocWithLegacyAttachment(docID1, rawDoc, attKey, attBody)
+
+		// Create another document referencing the same legacy attachment.
+		createDocWithLegacyAttachment(docID2, rawDoc, attKey, attBody)
+
+		// Get revID of the first document.
+		responseBody := rt.getDoc(docID1)
+		revID1 := responseBody["_rev"].(string)
+		require.NotEmpty(t, revID1)
+
+		// Purge the first document.
+		rt.purgeDoc(docID1)
+
+		// Check whether legacy attachment is still persisted in the bucket.
+		requireAttachmentFound(attKey, attBody)
+
+		// Get revID of the second document.
+		responseBody = rt.getDoc(docID2)
+		revID2 := responseBody["_rev"].(string)
+		require.NotEmpty(t, revID2)
+
+		// Purge the second document.
+		rt.purgeDoc(docID2)
+
+		// Check whether legacy attachment is still persisted in the bucket.
+		requireAttachmentFound(attKey, attBody)
+
+		// Perform cleanup after the test ends.
+		rt.purgeDoc(attKey)
 	})
 }
