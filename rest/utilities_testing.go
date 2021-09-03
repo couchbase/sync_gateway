@@ -207,7 +207,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 	// testBucket's closeFn
 	rt.testBucket.Bucket = rt.RestTesterServerContext.Database("db").Bucket
 
-	rt.SetAdminParty(rt.guestEnabled)
+	if err := rt.SetAdminParty(rt.guestEnabled); err != nil {
+		rt.tb.Fatalf("Error from SetAdminParty %v", err)
+	}
 
 	return rt.testBucket.Bucket
 }
@@ -269,16 +271,19 @@ func (rt *RestTester) WaitForPendingChanges() error {
 	return database.WaitForPendingChanges(context.TODO())
 }
 
-func (rt *RestTester) SetAdminParty(partyTime bool) {
+func (rt *RestTester) SetAdminParty(partyTime bool) error {
 	a := rt.ServerContext().Database("db").Authenticator()
-	guest, _ := a.GetUser("")
+	guest, err := a.GetUser("")
+	if err != nil {
+		return err
+	}
 	guest.SetDisabled(!partyTime)
 	var chans channels.TimedSet
 	if partyTime {
 		chans = channels.AtSequence(base.SetOf(channels.UserStarChannel), 1)
 	}
 	guest.SetExplicitChannels(chans, 1)
-	_ = a.Save(guest)
+	return a.Save(guest)
 }
 
 func (rt *RestTester) Close() {
