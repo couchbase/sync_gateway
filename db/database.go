@@ -125,7 +125,7 @@ type DatabaseContextOptions struct {
 	RevisionCacheOptions      *RevisionCacheOptions
 	OldRevExpirySeconds       uint32
 	AdminInterface            *string
-	UnsupportedOptions        UnsupportedOptions
+	UnsupportedOptions        *UnsupportedOptions
 	OIDCOptions               *auth.OIDCOptions
 	DBOnlineCallback          DBOnlineCallback // Callback function to take the DB back online
 	ImportOptions             ImportOptions
@@ -172,14 +172,14 @@ type APIEndpoints struct {
 }
 
 type UnsupportedOptions struct {
-	UserViews                 UserViewsOptions        `json:"user_views,omitempty"`                    // Config settings for user views
-	OidcTestProvider          OidcTestProviderOptions `json:"oidc_test_provider,omitempty"`            // Config settings for OIDC Provider
-	APIEndpoints              APIEndpoints            `json:"api_endpoints,omitempty"`                 // Config settings for API endpoints
-	WarningThresholds         WarningThresholds       `json:"warning_thresholds,omitempty"`            // Warning thresholds related to _sync size
-	DisableCleanSkippedQuery  bool                    `json:"disable_clean_skipped_query,omitempty"`   // Clean skipped sequence processing bypasses final check
-	OidcTlsSkipVerify         bool                    `json:"oidc_tls_skip_verify,omitempty"`          // Config option to enable self-signed certs for OIDC testing.
-	SgrTlsSkipVerify          bool                    `json:"sgr_tls_skip_verify,omitempty"`           // Config option to enable self-signed certs for SG-Replicate testing.
-	RemoteConfigTlsSkipVerify bool                    `json:"remote_config_tls_skip_verify,omitempty"` // Config option to enable self signed certificates for external JavaScript load.
+	UserViews                 *UserViewsOptions        `json:"user_views,omitempty"`                    // Config settings for user views
+	OidcTestProvider          *OidcTestProviderOptions `json:"oidc_test_provider,omitempty"`            // Config settings for OIDC Provider
+	APIEndpoints              *APIEndpoints            `json:"api_endpoints,omitempty"`                 // Config settings for API endpoints
+	WarningThresholds         *WarningThresholds       `json:"warning_thresholds,omitempty"`            // Warning thresholds related to _sync size
+	DisableCleanSkippedQuery  bool                     `json:"disable_clean_skipped_query,omitempty"`   // Clean skipped sequence processing bypasses final check
+	OidcTlsSkipVerify         bool                     `json:"oidc_tls_skip_verify,omitempty"`          // Config option to enable self-signed certs for OIDC testing.
+	SgrTlsSkipVerify          bool                     `json:"sgr_tls_skip_verify,omitempty"`           // Config option to enable self-signed certs for SG-Replicate testing.
+	RemoteConfigTlsSkipVerify bool                     `json:"remote_config_tls_skip_verify,omitempty"` // Config option to enable self signed certificates for external JavaScript load.
 }
 
 type WarningThresholds struct {
@@ -464,7 +464,11 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 				provider.IsDefault = true
 			}
 
-			provider.InsecureSkipVerify = options.UnsupportedOptions.OidcTlsSkipVerify
+			insecureSkipVerify := false
+			if options.UnsupportedOptions != nil {
+				insecureSkipVerify = options.UnsupportedOptions.OidcTlsSkipVerify
+			}
+			provider.InsecureSkipVerify = insecureSkipVerify
 
 			// If this isn't the default provider, add the provider to the callback URL (needed to identify provider to _oidc_callback)
 			if !provider.IsDefault && provider.CallbackURL != nil {
@@ -746,10 +750,15 @@ func (context *DatabaseContext) Authenticator() *auth.Authenticator {
 		sessionCookieName = context.Options.SessionCookieName
 	}
 
+	var channelsWarningThreshold *uint32
+	if context.Options.UnsupportedOptions != nil && context.Options.UnsupportedOptions.WarningThresholds != nil {
+		channelsWarningThreshold = context.Options.UnsupportedOptions.WarningThresholds.ChannelsPerUser
+	}
+
 	// Authenticators are lightweight & stateless, so it's OK to return a new one every time
 	authenticator := auth.NewAuthenticator(context.Bucket, context, auth.AuthenticatorOptions{
 		ClientPartitionWindow:    context.Options.ClientPartitionWindow,
-		ChannelsWarningThreshold: context.Options.UnsupportedOptions.WarningThresholds.ChannelsPerUser,
+		ChannelsWarningThreshold: channelsWarningThreshold,
 		SessionCookieName:        sessionCookieName,
 	})
 
@@ -1447,7 +1456,7 @@ func (context *DatabaseContext) ObtainManagementEndpointsAndHTTPClient() ([]stri
 }
 
 func (context *DatabaseContext) GetUserViewsEnabled() bool {
-	if context.Options.UnsupportedOptions.UserViews.Enabled != nil {
+	if context.Options.UnsupportedOptions != nil && context.Options.UnsupportedOptions.UserViews != nil && context.Options.UnsupportedOptions.UserViews.Enabled != nil {
 		return *context.Options.UnsupportedOptions.UserViews.Enabled
 	}
 	return false
@@ -1475,7 +1484,12 @@ func (context *DatabaseContext) AllowExternalRevBodyStorage() bool {
 }
 
 func (context *DatabaseContext) SetUserViewsEnabled(value bool) {
-
+	if context.Options.UnsupportedOptions == nil {
+		context.Options.UnsupportedOptions = &UnsupportedOptions{}
+	}
+	if context.Options.UnsupportedOptions.UserViews == nil {
+		context.Options.UnsupportedOptions.UserViews = &UserViewsOptions{}
+	}
 	context.Options.UnsupportedOptions.UserViews.Enabled = &value
 }
 
@@ -1541,7 +1555,10 @@ func (context *DatabaseContext) AllowConflicts() bool {
 }
 
 func (context *DatabaseContext) AllowFlushNonCouchbaseBuckets() bool {
-	return context.Options.UnsupportedOptions.APIEndpoints.EnableCouchbaseBucketFlush
+	if context.Options.UnsupportedOptions != nil && context.Options.UnsupportedOptions.APIEndpoints != nil {
+		return context.Options.UnsupportedOptions.APIEndpoints.EnableCouchbaseBucketFlush
+	}
+	return false
 }
 
 //////// SEQUENCE ALLOCATION:

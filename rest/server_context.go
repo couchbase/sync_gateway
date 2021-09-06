@@ -442,7 +442,14 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 		}
 	}
 
-	// Process unsupported config options
+	// Process unsupported config options or store runtime defaults if not set
+	if config.Unsupported == nil {
+		config.Unsupported = &db.UnsupportedOptions{}
+	}
+	if config.Unsupported.WarningThresholds == nil {
+		config.Unsupported.WarningThresholds = &db.WarningThresholds{}
+	}
+
 	if config.Unsupported.WarningThresholds.XattrSize == nil {
 		config.Unsupported.WarningThresholds.XattrSize = base.Uint32Ptr(uint32(base.DefaultWarnThresholdXattrSize))
 	} else {
@@ -862,7 +869,11 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 			}
 
 			// Load external webhook filter function
-			filter, err := loadJavaScript(conf.Filter, config.Unsupported.RemoteConfigTlsSkipVerify)
+			insecureSkipVerify := false
+			if config.Unsupported != nil {
+				insecureSkipVerify = config.Unsupported.RemoteConfigTlsSkipVerify
+			}
+			filter, err := loadJavaScript(conf.Filter, insecureSkipVerify)
 			if err != nil {
 				return &JavaScriptLoadError{
 					JSLoadType: WebhookFilter,

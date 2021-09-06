@@ -1828,11 +1828,13 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			docBytes = len(raw)
 
 			// Warn when sync data is larger than a configured threshold
-			if xattrBytesThreshold := db.Options.UnsupportedOptions.WarningThresholds.XattrSize; xattrBytesThreshold != nil {
-				xattrBytes = len(rawXattr)
-				if uint32(xattrBytes) >= *xattrBytesThreshold {
-					db.DbStats.Database().WarnXattrSizeCount.Add(1)
-					base.WarnfCtx(db.Ctx, "Doc id: %v sync metadata size: %d bytes exceeds %d bytes for sync metadata warning threshold", base.UD(doc.ID), xattrBytes, *xattrBytesThreshold)
+			if db.Options.UnsupportedOptions != nil && db.Options.UnsupportedOptions.WarningThresholds != nil {
+				if xattrBytesThreshold := db.Options.UnsupportedOptions.WarningThresholds.XattrSize; xattrBytesThreshold != nil {
+					xattrBytes = len(rawXattr)
+					if uint32(xattrBytes) >= *xattrBytesThreshold {
+						db.DbStats.Database().WarnXattrSizeCount.Add(1)
+						base.WarnfCtx(db.Ctx, "Doc id: %v sync metadata size: %d bytes exceeds %d bytes for sync metadata warning threshold", base.UD(doc.ID), xattrBytes, *xattrBytesThreshold)
+					}
 				}
 			}
 
@@ -1967,6 +1969,10 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 }
 
 func (db *Database) checkDocChannelsAndGrantsLimits(docID string, channels base.Set, accessGrants channels.AccessMap, roleGrants channels.AccessMap) {
+	if db.Options.UnsupportedOptions == nil || db.Options.UnsupportedOptions.WarningThresholds == nil {
+		return
+	}
+
 	// Warn when channel count is larger than a configured threshold
 	if channelCountThreshold := db.Options.UnsupportedOptions.WarningThresholds.ChannelsPerDoc; channelCountThreshold != nil {
 		channelCount := len(channels)

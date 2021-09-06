@@ -318,7 +318,7 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 	var foundEntries []*LogEntry
 	var pendingRemovals []uint64
 
-	if c.context.Options.UnsupportedOptions.DisableCleanSkippedQuery == true {
+	if c.context.Options.UnsupportedOptions != nil && c.context.Options.UnsupportedOptions.DisableCleanSkippedQuery {
 		pendingRemovals = append(pendingRemovals, oldSkippedSequences...)
 		oldSkippedSequences = nil
 	}

@@ -390,7 +390,8 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 		* and the username and password match those in the oidc default provider config
 		* then authorize this request
 		 */
-		if context.Options.UnsupportedOptions.OidcTestProvider.Enabled && strings.HasSuffix(h.rq.URL.Path, "/_oidc_testing/token") {
+		if strings.HasSuffix(h.rq.URL.Path, "/_oidc_testing/token") && context.Options.UnsupportedOptions != nil &&
+			context.Options.UnsupportedOptions.OidcTestProvider != nil && context.Options.UnsupportedOptions.OidcTestProvider.Enabled {
 			if username, password := h.getBasicAuth(); username != "" && password != "" {
 				provider := context.Options.OIDCOptions.Providers.GetProviderForIssuer(issuerUrlForDB(h, context.Name), testProviderAudiences)
 				if provider != nil && provider.ValidationKey != nil {

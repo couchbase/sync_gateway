@@ -2932,15 +2932,15 @@ func TestChannelNameSizeWarningBoundaries(t *testing.T) {
 
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			var thresholdConfig db.WarningThresholds
+			var thresholdConfig *db.WarningThresholds
 			// If threshold is not default then configure it
 			if test.warnThresholdLength != base.DefaultWarnThresholdChannelNameSize {
-				thresholdConfig = db.WarningThresholds{ChannelNameSize: &test.warnThresholdLength}
+				thresholdConfig = &db.WarningThresholds{ChannelNameSize: &test.warnThresholdLength}
 			}
 			rt = NewRestTester(t, &RestTesterConfig{
 				SyncFn: syncFn,
 				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-					Unsupported: db.UnsupportedOptions{
+					Unsupported: &db.UnsupportedOptions{
 						WarningThresholds: thresholdConfig,
 					}},
 				},

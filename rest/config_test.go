@@ -1581,7 +1581,7 @@ func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 				Sync: base.StringPtr(sync),
 			}
 			if test.insecureSkipVerify {
-				dbConfig.Unsupported = db.UnsupportedOptions{
+				dbConfig.Unsupported = &db.UnsupportedOptions{
 					RemoteConfigTlsSkipVerify: true,
 				}
 			}
@@ -1681,7 +1681,7 @@ func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
 				ImportFilter: base.StringPtr(importFilter),
 			}
 			if test.insecureSkipVerify {
-				dbConfig.Unsupported = db.UnsupportedOptions{
+				dbConfig.Unsupported = &db.UnsupportedOptions{
 					RemoteConfigTlsSkipVerify: true,
 				}
 			}
@@ -1793,7 +1793,7 @@ func TestSetupDbConfigWithConflictResolutionFunction(t *testing.T) {
 				},
 			}
 			if test.insecureSkipVerify {
-				dbConfig.Unsupported = db.UnsupportedOptions{
+				dbConfig.Unsupported = &db.UnsupportedOptions{
 					RemoteConfigTlsSkipVerify: true,
 				}
 			}
@@ -1897,7 +1897,7 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 				},
 			}
 			if test.insecureSkipVerify {
-				dbConfig.Unsupported = db.UnsupportedOptions{
+				dbConfig.Unsupported = &db.UnsupportedOptions{
 					RemoteConfigTlsSkipVerify: true,
 				}
 			}
