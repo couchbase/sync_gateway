@@ -477,10 +477,10 @@ func checkAdminAuth(bucketName, basicAuthUsername, basicAuthPassword string, att
 	if bucketName != "" {
 		requestRoles = BucketScopedEndpointRoles
 	} else {
-		if attemptedHTTPOperation == http.MethodPut || attemptedHTTPOperation == http.MethodPost {
-			requestRoles = ClusterScopedEndpointRolesWrite
-		} else {
+		if attemptedHTTPOperation == http.MethodGet || attemptedHTTPOperation == http.MethodHead {
 			requestRoles = ClusterScopedEndpointRolesRead
+		} else {
+			requestRoles = ClusterScopedEndpointRolesWrite
 		}
 	}
 
