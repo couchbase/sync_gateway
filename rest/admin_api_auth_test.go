@@ -943,7 +943,7 @@ func TestAdminAPIAuth(t *testing.T) {
 					assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
 				} else {
 					resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, body, "ROAdminUser", "password")
-					if endPoint.Method == http.MethodGet || endPoint.Method == http.MethodHead {
+					if endPoint.Method == http.MethodGet || endPoint.Method == http.MethodHead || endPoint.Method == http.MethodOptions {
 						assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
 					} else {
 						assertStatus(t, resp, http.StatusForbidden)
