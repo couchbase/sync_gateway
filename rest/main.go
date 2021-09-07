@@ -233,7 +233,12 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 			return nil, false, err
 		}
 
-		_, err = cluster.InsertConfig(*dbc.Bucket, startupConfig.Bootstrap.ConfigGroupID, dbc)
+		configGroupID := persistentConfigDefaultGroupID
+		if startupConfig.Bootstrap.ConfigGroupID != "" {
+			configGroupID = startupConfig.Bootstrap.ConfigGroupID
+		}
+
+		_, err = cluster.InsertConfig(*dbc.Bucket, configGroupID, dbc)
 		if err != nil {
 			// If key already exists just continue
 			if errors.Is(err, base.ErrAlreadyExists) {
