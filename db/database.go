@@ -887,11 +887,8 @@ func (db *Database) processForEachDocIDResults(callback ForEachDocIDFunc, limit 
 	// Have to iterate over any remaining results to clear the reader
 	// Otherwise we get "the result must be closed before accessing the meta-data" on close details on CBG-1666
 	if !endOfResultsReached && !db.UseViews() {
-		for {
-			found := results.Next(nil)
-			if !found {
-				break
-			}
+		for results.Next(nil) {
+			// noop to drain results
 		}
 	}
 
