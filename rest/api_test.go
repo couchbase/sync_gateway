@@ -6460,7 +6460,11 @@ func (tester *ChannelRevocationTester) fillToSeq(seq uint64) {
 func (tester *ChannelRevocationTester) getChanges(sinceSeq interface{}, expectedLength int) changesResults {
 	var changes changesResults
 
-	err := tester.restTester.WaitForCondition(func() bool {
+	// Ensure any previous mutations have caught up before issuing changes request
+	err := tester.restTester.WaitForPendingChanges()
+	assert.NoError(tester.test, err)
+
+	err = tester.restTester.WaitForCondition(func() bool {
 		resp := tester.restTester.SendUserRequestWithHeaders("GET", fmt.Sprintf("/db/_changes?since=%v&revocations=true", sinceSeq), "", nil, "user", "test")
 		require.Equal(tester.test, http.StatusOK, resp.Code)
 		err := json.Unmarshal(resp.BodyBytes(), &changes)
