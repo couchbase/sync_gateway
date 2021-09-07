@@ -195,7 +195,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 
 			if shouldCheckAdminAuth {
 				if httpError, ok := err.(*base.HTTPError); ok && httpError.Status == http.StatusNotFound {
-					authorized, err := h.checkAdminAuthorizationOnly()
+					authorized, err := h.checkAdminAuthenticationOnly()
 					if err != nil {
 						return err
 					}
@@ -454,9 +454,9 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 	return nil
 }
 
-// checkAdminAuthorizationOnly simply checks whether a username / password combination is authorized pulling the
+// checkAdminAuthenticationOnly simply checks whether a username / password combination is authenticated pulling the
 // credentials from the handler
-func (h *handler) checkAdminAuthorizationOnly() (bool, error) {
+func (h *handler) checkAdminAuthenticationOnly() (bool, error) {
 	managementEndpoints, httpClient, err := h.server.ObtainManagementEndpointsAndHTTPClient()
 	if err != nil {
 		return false, base.HTTPErrorf(http.StatusInternalServerError, "Error getting management endpoints: %v", err)
