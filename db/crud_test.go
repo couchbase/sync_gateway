@@ -167,6 +167,126 @@ func TestHasAttachmentsFlag(t *testing.T) {
 	assert.Equal(t, 1, len(revTree.HasAttachments))
 }
 
+func TestHasAttachmentsFlagForLegacyAttachments(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
+		t.Skip("Test only works with a Couchbase server and Xattrs")
+	}
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	db := setupTestDB(t)
+	defer db.Close()
+
+	base.TestExternalRevStorage = true
+	prop_1000_bytes := base.CreateProperty(1000)
+
+	rawDocWithAttachmentAndSyncMeta := func() []byte {
+		return []byte(`{
+   "_sync": {
+      "rev": "2-a",
+      "sequence": 2,
+      "recent_sequences": [
+         2
+      ],
+      "history": {
+         "revs": [
+            "1-a",
+            "2-a"
+         ],
+         "parents": [
+            -1,
+             0
+         ],
+         "channels": [
+            null
+         ]
+      },
+      "cas": "",
+      "attachments": {
+         "hi.txt": {
+            "revpos": 2,
+            "content_type": "text/plain",
+            "length": 2,
+            "stub": true,
+            "digest": "sha1-witfkXg0JglCjW9RssWvTAveakI="
+         }
+      },
+      "time_saved": "2021-09-01T17:33:03.054227821Z"
+   },
+  "key": "value"
+}`)
+	}
+
+	createDocWithLegacyAttachment := func(docID string, rawDoc []byte, attKey string, attBody []byte) {
+		// Write attachment directly to the bucket.
+		_, err := db.Bucket.Add(attKey, 0, attBody)
+		require.NoError(t, err)
+
+		body := Body{}
+		err = body.Unmarshal(rawDoc)
+		require.NoError(t, err, "Error unmarshalling body")
+
+		// Write raw document to the bucket.
+		_, err = db.Bucket.Add(docID, 0, rawDoc)
+		require.NoError(t, err)
+
+		// Get the existing bucket doc
+		_, existingBucketDoc, err := db.GetDocWithXattr(docID, DocUnmarshalAll)
+		require.NoError(t, err)
+
+		// Migrate document metadata from document body to system xattr.
+		_, _, err = db.migrateMetadata(docID, body, existingBucketDoc)
+		require.NoError(t, err)
+	}
+
+	// Create rev 1-a
+	log.Printf("Create rev 1-a")
+	body := Body{"key1": "value1", "version": "1a"}
+	_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
+	assert.NoError(t, err, "add 1-a")
+
+	// Create rev 2-a with legacy attachment.
+	// 1-a
+	//  |
+	// 2-a
+	docID := "doc1"
+	attBody := []byte(`hi`)
+	digest := Sha1DigestKey(attBody)
+	attKey := MakeAttachmentKey(AttVersion1, docID, digest)
+	rawDoc := rawDocWithAttachmentAndSyncMeta()
+	createDocWithLegacyAttachment(docID, rawDoc, attKey, attBody)
+
+	// Retrieve the document:
+	log.Printf("Retrieve doc 2-a...")
+	gotbody, err := db.Get1xBody("doc1")
+	assert.NoError(t, err, "Couldn't get document")
+	assert.Equal(t, Body{"_id": "doc1", "_rev": "1-a", "key1": "value1", "version": "1a"}, gotbody)
+
+	// Create rev 2-b
+	//    1-a
+	//   /  \
+	// 2-a  2-b
+	log.Printf("Create rev 2-b with a large body")
+	// rev2b_body := unjson(`{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`)
+	rev2b_body := Body{}
+	rev2b_body["key1"] = prop_1000_bytes
+	rev2b_body["version"] = "2b"
+	doc, newRev, err := db.PutExistingRevWithBody("doc1", rev2b_body, []string{"2-b", "1-a"}, false)
+	rev2b_body[BodyId] = doc.ID
+	rev2b_body[BodyRev] = newRev
+	assert.NoError(t, err, "add 2-b")
+
+	// Retrieve the document:
+	log.Printf("Retrieve doc, verify rev 2-b")
+	gotbody, err = db.Get1xBody("doc1")
+	assert.NoError(t, err, "Couldn't get document")
+	assert.Equal(t, rev2b_body, gotbody)
+
+	// Retrieve the raw document, and verify 2-a isn't stored inline
+	log.Printf("Retrieve doc, verify rev 2-a not inline")
+	revTree, err := getRevTreeList(db.Bucket, "doc1", db.UseXattrs())
+	assert.NoError(t, err, "Couldn't get revtree for raw document")
+	assert.Equal(t, 0, len(revTree.HasAttachments))
+}
+
 // TestRevisionStorageConflictAndTombstones
 // Tests permutations of inline and external storage of conflicts and tombstones
 func TestRevisionStorageConflictAndTombstones(t *testing.T) {
