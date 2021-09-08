@@ -194,6 +194,8 @@ func TestPostChanges(t *testing.T) {
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
+	// Generate RT config for skip TLS when running with couchbases:// protocol
+	rt.Bucket()
 
 	// Create user:
 	a := rt.ServerContext().Database("db").Authenticator()

@@ -3121,6 +3121,8 @@ func TestAddingAttachment(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	defer func() { walrus.MaxDocSize = 0 }()
+	// Generate RT config for skip TLS when running with couchbases:// protocol
+	rt.Bucket()
 
 	walrus.MaxDocSize = 20 * 1024 * 1024
 
@@ -3179,6 +3181,8 @@ func TestAddingLargeDoc(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	defer func() { walrus.MaxDocSize = 0 }()
+	// Generate RT config to skip TLS config (for testing iwth couchbases://)
+	rt.Bucket()
 
 	walrus.MaxDocSize = 20 * 1024 * 1024
 

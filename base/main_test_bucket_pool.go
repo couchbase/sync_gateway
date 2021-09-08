@@ -652,6 +652,7 @@ var tbpDefaultBucketSpec = BucketSpec{
 func getBucketSpec(testBucketName tbpBucketName) BucketSpec {
 	bucketSpec := tbpDefaultBucketSpec
 	bucketSpec.BucketName = string(testBucketName)
+	bucketSpec.TLSSkipVerify = true
 	return bucketSpec
 }
 

@@ -24,6 +24,7 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 
 	rawConfig := `
 	{
+		"server_tls_skip_verify": true,
 		"interface": ":4444",
 		"adminInterface": ":4445",
 		"databases": {
@@ -111,6 +112,7 @@ func TestAutomaticConfigUpgradeError(t *testing.T) {
 			"Multiple DBs different servers",
 			`
 				{
+					"server_tls_skip_verify": true,
 					"databases": {
 						"db": {
 							"server": "%s",
@@ -156,6 +158,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 
 	configRaw := `
 	{
+		"server_tls_skip_verify": true,
 		"databases": {
 			"db": {
 				"server": "%s",
@@ -183,6 +186,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 
 	updatedConfigRaw := `
 	{
+		"server_tls_skip_verify": true,
 		"databases": {
 			"db": {
 				"revs_limit": 20000,

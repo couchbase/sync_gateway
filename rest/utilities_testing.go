@@ -155,6 +155,10 @@ func (rt *RestTester) Bucket() base.Bucket {
 		sc.Bootstrap.X509CertPath = testBucket.BucketSpec.Certpath
 		sc.Bootstrap.X509KeyPath = testBucket.BucketSpec.Keypath
 
+		// CBG-1595
+		sc.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(true)
+		rt.testBucket.BucketSpec.TLSSkipVerify = true
+
 		gocbAgent, err := rt.RestTesterServerContext.initializeGoCBAgent()
 		require.NoError(rt.tb, err)
 		rt.RestTesterServerContext.GoCBAgent = gocbAgent

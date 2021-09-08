@@ -126,8 +126,6 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 func bootstrapStartupConfigForTest(t *testing.T) StartupConfig {
 	config := DefaultStartupConfig("")
 
-	config.Bootstrap.UseTLSServer = base.BoolPtr(false)
-
 	config.Logging.Console.LogLevel.Set(base.LevelInfo)
 	config.Logging.Console.LogKeys = []string{"*"}
 	config.API.AdminInterfaceAuthentication = base.BoolPtr(false)
@@ -139,6 +137,11 @@ func bootstrapStartupConfigForTest(t *testing.T) StartupConfig {
 	config.Bootstrap.Server = base.UnitTestUrl()
 	config.Bootstrap.Username = base.TestClusterUsername()
 	config.Bootstrap.Password = base.TestClusterPassword()
+	config.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(true)
+
+	if !base.ServerIsTLS(config.Bootstrap.Server) {
+		config.Bootstrap.UseTLSServer = base.BoolPtr(false)
+	}
 
 	// avoid loading existing configs by choosing a non-default config group
 	if !base.IsEnterpriseEdition() {
