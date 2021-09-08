@@ -97,6 +97,7 @@ type UnsupportedServerConfigLegacy struct {
 // The returned configs do not contain any default values - only a direct mapping of legacy config options as they were given.
 func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, error) {
 	// find a database's credentials for bootstrap (this isn't the first database config entry due to map iteration)
+	bootstrapConfigIsSet := false
 	bsc := &BootstrapConfig{}
 	for _, dbConfig := range lc.Databases {
 		if dbConfig.Server == nil || *dbConfig.Server == "" {
@@ -109,23 +110,27 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 			base.Errorf("Error upgrading server address: %v", err)
 		}
 
-		// Prioritise config fields over credentials in host
-		if dbConfig.Username != "" || dbConfig.Password != "" {
-			username = dbConfig.Username
-			password = dbConfig.Password
-		}
+		dbConfig.Server = base.StringPtr(server)
 
-		bsc = &BootstrapConfig{
-			Server:              server,
-			Username:            username,
-			Password:            password,
-			CACertPath:          dbConfig.CACertPath,
-			X509CertPath:        dbConfig.CertPath,
-			X509KeyPath:         dbConfig.KeyPath,
-			ServerTLSSkipVerify: lc.ServerTLSSkipVerify,
-			UseTLSServer:        lc.UseTLSServer,
+		if !bootstrapConfigIsSet {
+			// Prioritise config fields over credentials in host
+			if dbConfig.Username != "" || dbConfig.Password != "" {
+				username = dbConfig.Username
+				password = dbConfig.Password
+			}
+
+			bsc = &BootstrapConfig{
+				Server:              server,
+				Username:            username,
+				Password:            password,
+				CACertPath:          dbConfig.CACertPath,
+				X509CertPath:        dbConfig.CertPath,
+				X509KeyPath:         dbConfig.KeyPath,
+				ServerTLSSkipVerify: lc.ServerTLSSkipVerify,
+				UseTLSServer:        lc.UseTLSServer,
+			}
+			bootstrapConfigIsSet = true
 		}
-		break
 	}
 
 	sc := StartupConfig{
