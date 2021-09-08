@@ -324,6 +324,7 @@ func TestAdminAuth(t *testing.T) {
 		Name                string
 		Username            string
 		Password            string
+		Operation           string
 		CheckPermissions    []Permission
 		ResponsePermissions []Permission
 		ExpectedStatusCode  int
@@ -386,6 +387,7 @@ func TestAdminAuth(t *testing.T) {
 			Name:               "MissingPermissionHasRole",
 			Username:           "MissingPermissionHasRole",
 			Password:           "password",
+			Operation:          "GET",
 			CheckPermissions:   []Permission{clusterAdminPermission},
 			ExpectedStatusCode: http.StatusOK,
 			CreateUser:         "MissingPermissionHasRole",
@@ -437,7 +439,7 @@ func TestAdminAuth(t *testing.T) {
 				defer DeleteUser(t, managementEndpoints[0], testCase.CreateUser)
 			}
 
-			permResults, statusCode, err := checkAdminAuth(testCase.BucketName, testCase.Username, testCase.Password, "", httpClient, managementEndpoints, true, testCase.CheckPermissions, testCase.ResponsePermissions)
+			permResults, statusCode, err := checkAdminAuth(testCase.BucketName, testCase.Username, testCase.Password, testCase.Operation, httpClient, managementEndpoints, true, testCase.CheckPermissions, testCase.ResponsePermissions)
 
 			assert.NoError(t, err)
 			assert.Equal(t, testCase.ExpectedStatusCode, statusCode)
@@ -941,10 +943,10 @@ func TestAdminAPIAuth(t *testing.T) {
 					assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
 				} else {
 					resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, body, "ROAdminUser", "password")
-					if endPoint.Method == http.MethodPut || endPoint.Method == http.MethodPost {
-						assertStatus(t, resp, http.StatusForbidden)
-					} else {
+					if endPoint.Method == http.MethodGet || endPoint.Method == http.MethodHead || endPoint.Method == http.MethodOptions {
 						assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
+					} else {
+						assertStatus(t, resp, http.StatusForbidden)
 					}
 
 					resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, body, "ClusterAdminUser", "password")
