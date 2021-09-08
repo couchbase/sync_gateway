@@ -67,6 +67,8 @@ type StartupConfig struct {
 	Replicator  ReplicatorConfig   `json:"replicator,omitempty"`
 	Unsupported UnsupportedConfig  `json:"unsupported,omitempty"`
 
+	DatabaseCredentials map[string]*DatabaseCredentialsConfig `json:"database_credentials,omitempty" help:"A map of database name to credentials, that can be used instead of the bootstrap ones."`
+
 	MaxFileDescriptors uint64 `json:"max_file_descriptors,omitempty" help:"Max # of open file descriptors (RLIMIT_NOFILE)"`
 
 	DeprecatedConfig *DeprecatedConfig `json:"-,omitempty" help:"Deprecated options that can be set from a legacy config upgrade, but cannot be set from a 3.0 config."`
@@ -143,6 +145,13 @@ type HTTP2Config struct {
 	Enabled *bool `json:"enabled,omitempty" help:"Whether HTTP2 support is enabled"`
 }
 
+type DatabaseCredentialsConfig struct {
+	Username     string `json:"username,omitempty"       help:"Username for authenticating to the bucket"`
+	Password     string `json:"password,omitempty"       help:"Password for authenticating to the bucket"`
+	X509CertPath string `json:"x509_cert_path,omitempty" help:"Cert path (public key) for X.509 bucket auth"`
+	X509KeyPath  string `json:"x509_key_path,omitempty"  help:"Key path (private key) for X.509 bucket auth"`
+}
+
 type DeprecatedConfig struct {
 	Facebook *FacebookConfigLegacy `json:"-" help:""`
 	Google   *GoogleConfigLegacy   `json:"-" help:""`
@@ -157,6 +166,10 @@ func (sc *StartupConfig) Redacted() (*StartupConfig, error) {
 	}
 
 	config.Bootstrap.Password = "xxxxx"
+
+	for _, credentialsConfig := range config.DatabaseCredentials {
+		credentialsConfig.Password = "xxxxx"
+	}
 
 	return &config, nil
 }

@@ -252,10 +252,28 @@ func (dbc *DbConfig) inheritFromBootstrap(b BootstrapConfig) {
 	}
 }
 
+func (dbConfig *DbConfig) setPerDatabaseCredentials(dbCredentials DatabaseCredentialsConfig) {
+	// X.509 overrides username/password
+	if dbCredentials.X509CertPath != "" || dbCredentials.X509KeyPath != "" {
+		dbConfig.CertPath = dbCredentials.X509CertPath
+		dbConfig.KeyPath = dbCredentials.X509KeyPath
+		dbConfig.Username = ""
+		dbConfig.Password = ""
+	} else {
+		dbConfig.Username = dbCredentials.Username
+		dbConfig.Password = dbCredentials.Password
+		dbConfig.CertPath = ""
+		dbConfig.KeyPath = ""
+	}
+}
+
 // setup populates fields in the dbConfig
-func (dbConfig *DbConfig) setup(dbName string, bootstrapConfig BootstrapConfig) error {
+func (dbConfig *DbConfig) setup(dbName string, bootstrapConfig BootstrapConfig, dbCredentials *DatabaseCredentialsConfig) error {
 
 	dbConfig.inheritFromBootstrap(bootstrapConfig)
+	if dbCredentials != nil {
+		dbConfig.setPerDatabaseCredentials(*dbCredentials)
+	}
 
 	dbConfig.Name = dbName
 	if dbConfig.Bucket == nil {
@@ -1146,6 +1164,11 @@ func (sc *ServerContext) fetchConfigs() (dbNameConfigs map[string]DatabaseConfig
 
 		bucketCopy := bucket
 		cnf.Bucket = &bucketCopy
+
+		// stamp per-database credentials if set
+		if dbCredentials, ok := sc.config.DatabaseCredentials[cnf.Name]; ok && dbCredentials != nil {
+			cnf.setPerDatabaseCredentials(*dbCredentials)
+		}
 
 		// any authentication fields defined on the dbconfig take precedence over any in the bootstrap config
 		if cnf.Username == "" && cnf.Password == "" && cnf.CertPath == "" && cnf.KeyPath == "" {
