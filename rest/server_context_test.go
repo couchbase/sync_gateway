@@ -112,7 +112,7 @@ func TestAllDatabaseNames(t *testing.T) {
 	defer tb2.Close()
 
 	serverConfig := &StartupConfig{
-		Bootstrap: BootstrapConfig{UseTLSServer: base.BoolPtr(false)},
+		Bootstrap: BootstrapConfig{UseTLSServer: base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())), ServerTLSSkipVerify: base.BoolPtr(true)},
 		API:       APIConfig{CORS: &CORSConfig{}, AdminInterface: DefaultAdminInterface}}
 	serverContext := NewServerContext(serverConfig, false)
 	defer serverContext.Close()
@@ -310,6 +310,7 @@ func TestStartAndStopHTTPServers(t *testing.T) {
 
 	config.Bootstrap.Server = base.UnitTestUrl()
 	config.Bootstrap.UseTLSServer = base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl()))
+	config.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(true)
 	config.Bootstrap.Username = base.TestClusterUsername()
 	config.Bootstrap.Password = base.TestClusterPassword()
 
