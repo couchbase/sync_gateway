@@ -2536,7 +2536,9 @@ func TestGetStatsVbSeqNo(t *testing.T) {
 		for i := 0; i < 10; i++ {
 			key := fmt.Sprintf("doc%d", i)
 			value := map[string]interface{}{"k": "v"}
-			bucket.Add(key, 0, value)
+			ok, err := bucket.Add(key, 0, value)
+			require.NoError(t, err)
+			assert.True(t, ok)
 		}
 
 		uuids, highSeqNos, statsErr := store.GetStatsVbSeqno(maxVbNo, false)
