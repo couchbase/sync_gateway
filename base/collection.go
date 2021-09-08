@@ -426,8 +426,49 @@ func (c *Collection) Dump() {
 // CouchbaseStore
 
 func (c *Collection) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
-	return nil, nil, nil
+
+	agent, agentErr := c.Bucket().Internal().IORouter()
+	if agentErr != nil {
+		return nil, nil, agentErr
+	}
+
+	statsOptions := gocbcore.StatsOptions{
+		Key:      "vbucket-seqno",
+		Deadline: time.Now().Add(5 * time.Minute),
+	}
+
+	statsResult := &gocbcore.StatsResult{}
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	statsCallback := func(result *gocbcore.StatsResult, err error) {
+		defer wg.Done()
+		if err != nil {
+			seqErr = err
+			return
+		}
+		statsResult = result
+	}
+
+	_, err := agent.Stats(statsOptions, statsCallback)
+	if err != nil {
+		wg.Done()
+		return nil, nil, err
+	}
+	wg.Wait()
+
+	// Convert gocbcore StatsResult to generic map of maps for use by GetStatsVbSeqno
+	genericStats := make(map[string]map[string]string)
+	for server, serverStats := range statsResult.Servers {
+		genericServerStats := make(map[string]string)
+		for k, v := range serverStats.Stats {
+			genericServerStats[k] = v
+		}
+		genericStats[server] = genericServerStats
+	}
+
+	return GetStatsVbSeqno(genericStats, maxVbno, useAbsHighSeqNo)
 }
+
 func (c *Collection) GetMaxVbno() (uint16, error) {
 
 	config, configErr := c.getConfigSnapshot()
