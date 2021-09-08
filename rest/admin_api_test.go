@@ -3618,3 +3618,96 @@ func TestNotExistentDBRequest(t *testing.T) {
 	resp = rt.SendAdminRequestWithAuth("PUT", "/dbx/_config", "", "random", "passwordx")
 	assertStatus(t, resp, http.StatusUnauthorized)
 }
+
+func TestConfigsIncludeDefaults(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+
+	// Start SG with no databases in bucket(s)
+	config := bootstrapStartupConfigForTest(t)
+	sc, err := setupServerContext(&config, true)
+	require.NoError(t, err)
+	defer sc.Close()
+	serverErr := make(chan error, 0)
+	go func() {
+		serverErr <- startServer(&config, sc)
+	}()
+	require.NoError(t, sc.waitForRESTAPIs())
+
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer func() {
+		fmt.Println("closing test bucket")
+		tb.Close()
+	}()
+	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/",
+		`{"bucket": "`+tb.GetName()+`", "num_index_replicas": 0}`,
+	)
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	var dbConfig DatabaseConfig
+	resp = bootstrapAdminRequest(t, "GET", "/db/_config?include_runtime=true", "")
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, err := ioutil.ReadAll(resp.Body)
+	assert.NoError(t, err)
+	assert.NoError(t, resp.Body.Close())
+
+	err = base.JSONUnmarshal(body, &dbConfig)
+	assert.NoError(t, err)
+
+	// Validate a few default values to ensure they are set
+	assert.Equal(t, channels.DefaultSyncFunction, *dbConfig.Sync)
+	assert.Equal(t, db.DefaultChannelCacheMaxNumber, *dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber)
+	assert.Equal(t, base.DefaultOldRevExpirySeconds, *dbConfig.OldRevExpirySeconds)
+	assert.Equal(t, false, *dbConfig.StartOffline)
+	assert.Equal(t, db.DefaultCompactInterval, uint32(*dbConfig.CompactIntervalDays))
+
+	var runtimeServerConfigResponse RunTimeServerConfigResponse
+	resp = bootstrapAdminRequest(t, "GET", "/_config?include_runtime=true&redact=false", "")
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, err = ioutil.ReadAll(resp.Body)
+	assert.NoError(t, err)
+	assert.NoError(t, resp.Body.Close())
+
+	err = base.JSONUnmarshal(body, &runtimeServerConfigResponse)
+	assert.NoError(t, err)
+
+	require.Contains(t, runtimeServerConfigResponse.Databases, "db")
+	runtimeServerConfigDatabase := runtimeServerConfigResponse.Databases["db"]
+	assert.Equal(t, channels.DefaultSyncFunction, *runtimeServerConfigDatabase.Sync)
+	assert.Equal(t, db.DefaultChannelCacheMaxNumber, *runtimeServerConfigDatabase.CacheConfig.ChannelCacheConfig.MaxNumber)
+	assert.Equal(t, base.DefaultOldRevExpirySeconds, *runtimeServerConfigDatabase.OldRevExpirySeconds)
+	assert.Equal(t, false, *runtimeServerConfigDatabase.StartOffline)
+	assert.Equal(t, db.DefaultCompactInterval, uint32(*runtimeServerConfigDatabase.CompactIntervalDays))
+
+	// Test unsupported options
+	tb2 := base.GetTestBucket(t)
+	defer func() {
+		fmt.Println("closing test bucket 2")
+		tb2.Close()
+	}()
+	resp = bootstrapAdminRequest(t, http.MethodPut, "/db2/",
+		`{"bucket": "`+tb2.GetName()+`", "num_index_replicas": 0, "unsupported": {"disable_clean_skipped_query": true}}`,
+	)
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	resp = bootstrapAdminRequest(t, "GET", "/_config?include_runtime=true&redact=false", "")
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, err = ioutil.ReadAll(resp.Body)
+	assert.NoError(t, err)
+	assert.NoError(t, resp.Body.Close())
+
+	err = base.JSONUnmarshal(body, &runtimeServerConfigResponse)
+	assert.NoError(t, err)
+
+	require.Contains(t, runtimeServerConfigResponse.Databases, "db2")
+	runtimeServerConfigDatabase = runtimeServerConfigResponse.Databases["db2"]
+	assert.True(t, runtimeServerConfigDatabase.Unsupported.DisableCleanSkippedQuery)
+}

@@ -37,6 +37,8 @@ type AccessMap map[string]base.Set
 // Should be larger than sequence_allocator.maxBatchSize, to avoid pool overflow under some load scenarios (CBG-436)
 const kTaskCacheSize = 16
 
+const DefaultSyncFunction = `function(doc){channel(doc.channels);}`
+
 func NewChannelMapper(fnSource string) *ChannelMapper {
 	return &ChannelMapper{
 		JSServer: sgbucket.NewJSServer(fnSource, kTaskCacheSize,
@@ -47,7 +49,7 @@ func NewChannelMapper(fnSource string) *ChannelMapper {
 }
 
 func NewDefaultChannelMapper() *ChannelMapper {
-	return NewChannelMapper(`function(doc){channel(doc.channels);}`)
+	return NewChannelMapper(DefaultSyncFunction)
 }
 
 func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, metaMap map[string]interface{}, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {

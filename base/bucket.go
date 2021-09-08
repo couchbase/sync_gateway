@@ -51,6 +51,8 @@ const (
 	IndexBucket
 )
 
+const DefaultViewTimeoutSecs = 75 * 1000 // 75s
+
 // WrappingBucket interface used to identify buckets that wrap an underlying
 // bucket (leaky bucket, logging bucket)
 type WrappingBucket interface {
@@ -238,7 +240,7 @@ func (b BucketSpec) GetViewQueryTimeout() time.Duration {
 func (b BucketSpec) GetViewQueryTimeoutMs() uint64 {
 	// If the user doesn't specify any timeout, default to 75s
 	if b.ViewQueryTimeoutSecs == nil {
-		return 75 * 1000
+		return DefaultViewTimeoutSecs
 	}
 
 	// If the user specifies 0, then translate that to "No timeout"

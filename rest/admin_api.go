@@ -170,7 +170,12 @@ func (h *handler) handleGetDbConfig() error {
 	// include_runtime controls whether to return the raw bucketDbConfig, or the runtime version populated with default values, etc.
 	includeRuntime, _ := h.getOptBoolQuery("include_runtime", false)
 	if includeRuntime {
-		responseConfig = h.server.GetDbConfig(h.db.Name)
+
+		var err error
+		responseConfig, err = MergeDatabaseConfigWithDefaults(h.server.config, h.server.GetDbConfig(h.db.Name))
+		if err != nil {
+			return err
+		}
 	}
 
 	// defensive check - there could've been an in-flight request to remove the database between entering the handler and getting the config above.
@@ -243,6 +248,11 @@ func (h *handler) handleGetConfig() error {
 					continue
 				}
 
+				dbConfig, err := MergeDatabaseConfigWithDefaults(h.server.config, dbConfig)
+				if err != nil {
+					return err
+				}
+
 				databaseMap[dbName], err = dbConfig.Redacted()
 				if err != nil {
 					return err
@@ -263,7 +273,13 @@ func (h *handler) handleGetConfig() error {
 				if err != nil {
 					return err
 				}
-				databaseMap[dbName] = &dbConfigCopy
+
+				dbConfig, err := MergeDatabaseConfigWithDefaults(h.server.config, &dbConfigCopy)
+				if err != nil {
+					return err
+				}
+
+				databaseMap[dbName] = dbConfig
 			}
 		}
 
