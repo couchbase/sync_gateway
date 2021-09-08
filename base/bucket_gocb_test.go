@@ -2518,3 +2518,35 @@ func TestGetExpiry(t *testing.T) {
 
 	})
 }
+
+func TestGetStatsVbSeqNo(t *testing.T) {
+
+	if UnitTestUrlIsWalrus() {
+		t.Skip("Walrus doesn't support stats-vbseqno")
+	}
+
+	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+		maxVbNo, err := bucket.GetMaxVbno()
+		assert.NoError(t, err)
+
+		store, ok := AsCouchbaseStore(bucket)
+		assert.True(t, ok)
+
+		// Write docs to increment vbseq in at least one vbucket
+		for i := 0; i < 10; i++ {
+			key := fmt.Sprintf("doc%d", i)
+			value := map[string]interface{}{"k": "v"}
+			ok, err := bucket.Add(key, 0, value)
+			require.NoError(t, err)
+			assert.True(t, ok)
+		}
+
+		uuids, highSeqNos, statsErr := store.GetStatsVbSeqno(maxVbNo, false)
+		assert.NoError(t, statsErr)
+
+		assert.NotNil(t, uuids)
+		assert.NotNil(t, highSeqNos)
+		assert.True(t, len(uuids) > 0)
+		assert.True(t, len(highSeqNos) > 0)
+	})
+}
