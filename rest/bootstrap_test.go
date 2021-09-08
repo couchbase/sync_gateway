@@ -138,10 +138,7 @@ func bootstrapStartupConfigForTest(t *testing.T) StartupConfig {
 	config.Bootstrap.Username = base.TestClusterUsername()
 	config.Bootstrap.Password = base.TestClusterPassword()
 	config.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(true)
-
-	if !base.ServerIsTLS(config.Bootstrap.Server) {
-		config.Bootstrap.UseTLSServer = base.BoolPtr(false)
-	}
+	config.Bootstrap.UseTLSServer = base.BoolPtr(base.ServerIsTLS(config.Bootstrap.Server))
 
 	// avoid loading existing configs by choosing a non-default config group
 	if !base.IsEnterpriseEdition() {

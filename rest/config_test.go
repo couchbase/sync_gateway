@@ -820,7 +820,7 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 	xattrs := base.TestUseXattrs()
 	config := &StartupConfig{
 		Bootstrap: BootstrapConfig{
-			UseTLSServer:        base.BoolPtr(false),
+			UseTLSServer:        base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())),
 			ServerTLSSkipVerify: base.BoolPtr(true),
 		},
 	}
