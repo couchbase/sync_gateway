@@ -2,7 +2,6 @@ package rest
 
 import (
 	"flag"
-	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -37,6 +36,8 @@ func TestAllConfigFlags(t *testing.T) {
 				val = "partial"
 			case *base.LogLevel:
 				val = "trace"
+			case *PerDatabaseCredentialsConfig:
+				val = `{"db1":{"password":"foo"}}`
 			}
 			flags = append(flags, "-"+name, val)
 		case bool:
@@ -46,7 +47,7 @@ func TestAllConfigFlags(t *testing.T) {
 		case int:
 			flags = append(flags, "-"+name, "-5678")
 		default:
-			panic(fmt.Sprintf("Unknown flag type found %v for flag %v! Please add it to this test and config_flags.go if needed", rFlagVal.Type(), name))
+			assert.Failf(t, "Unknown flag type", "value type %v for flag %v", rFlagVal.Interface(), name)
 		}
 	}
 	err := fs.Parse(flags)
@@ -125,8 +126,9 @@ func TestAllConfigOptionsAsFlags(t *testing.T) {
 	cfg := NewEmptyStartupConfig()
 	cfgFieldsNum := countFields(cfg)
 	flagsNum := registerConfigFlags(&cfg, flag.NewFlagSet("test", flag.ContinueOnError))
-	assert.Equal(t, len(flagsNum), cfgFieldsNum)
+	assert.Equalf(t, len(flagsNum), cfgFieldsNum, "Number of cli flags and startup config properties did not match! Did you forget to add a new config option in registerConfigFlags?")
 }
+
 func countFields(cfg interface{}) (fields int) {
 	rField := reflect.ValueOf(cfg)
 	if rField.Kind() == reflect.Ptr {

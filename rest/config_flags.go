@@ -123,6 +123,8 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 
 		"unsupported.http2.enabled": {&config.Unsupported.HTTP2.Enabled, fs.Bool("unsupported.http2.enabled", false, "Whether HTTP2 support is enabled")},
 
+		"database_credentials": {&config.DatabaseCredentials, fs.String("database_credentials", "null", "JSON-encoded per-database credentials")},
+
 		"max_file_descriptors": {&config.MaxFileDescriptors, fs.Uint64("max_file_descriptors", 0, "Max # of open file descriptors (RLIMIT_NOFILE)")},
 	}
 }
@@ -189,6 +191,18 @@ func fillConfigWithFlags(fs *flag.FlagSet, flags map[string]configFlag) (errorMe
 					return
 				}
 				rval.Set(reflect.ValueOf(&ll))
+			case *PerDatabaseCredentialsConfig:
+				str := *val.flagValue.(*string)
+				var dbCredentials PerDatabaseCredentialsConfig
+				d := base.JSONDecoder(strings.NewReader(str))
+				d.DisallowUnknownFields()
+				err := d.Decode(&dbCredentials)
+				if err != nil {
+					err = fmt.Errorf("flag %s for value %q error: %w", f.Name, str, err)
+					errorMessages = multierror.Append(errorMessages, err)
+					return
+				}
+				*val.config.(*PerDatabaseCredentialsConfig) = dbCredentials
 			default:
 				errorMessages = multierror.Append(errorMessages, fmt.Errorf("Unknown type %v for flag %v\n", rval.Type(), f.Name))
 			}
