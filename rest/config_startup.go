@@ -67,7 +67,7 @@ type StartupConfig struct {
 	Replicator  ReplicatorConfig   `json:"replicator,omitempty"`
 	Unsupported UnsupportedConfig  `json:"unsupported,omitempty"`
 
-	DatabaseCredentials map[string]*DatabaseCredentialsConfig `json:"database_credentials,omitempty" help:"A map of database name to credentials, that can be used instead of the bootstrap ones."`
+	DatabaseCredentials PerDatabaseCredentialsConfig `json:"database_credentials,omitempty" help:"A map of database name to credentials, that can be used instead of the bootstrap ones."`
 
 	MaxFileDescriptors uint64 `json:"max_file_descriptors,omitempty" help:"Max # of open file descriptors (RLIMIT_NOFILE)"`
 
@@ -145,6 +145,8 @@ type HTTP2Config struct {
 	Enabled *bool `json:"enabled,omitempty" help:"Whether HTTP2 support is enabled"`
 }
 
+type PerDatabaseCredentialsConfig map[string]*DatabaseCredentialsConfig
+
 type DatabaseCredentialsConfig struct {
 	Username     string `json:"username,omitempty"       help:"Username for authenticating to the bucket"`
 	Password     string `json:"password,omitempty"       help:"Password for authenticating to the bucket"`
@@ -165,10 +167,14 @@ func (sc *StartupConfig) Redacted() (*StartupConfig, error) {
 		return nil, err
 	}
 
-	config.Bootstrap.Password = "xxxxx"
+	if config.Bootstrap.Password != "" {
+		config.Bootstrap.Password = "xxxxx"
+	}
 
 	for _, credentialsConfig := range config.DatabaseCredentials {
-		credentialsConfig.Password = "xxxxx"
+		if credentialsConfig != nil && credentialsConfig.Password != "" {
+			credentialsConfig.Password = "xxxxx"
+		}
 	}
 
 	return &config, nil
