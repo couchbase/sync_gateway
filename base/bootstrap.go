@@ -24,8 +24,9 @@ type BootstrapConnection interface {
 
 // CouchbaseCluster is a GoCBv2 implementation of BootstrapConnection
 type CouchbaseCluster struct {
-	server         string
-	clusterOptions gocb.ClusterOptions
+	server                 string
+	clusterOptions         gocb.ClusterOptions
+	defaultOpRetryStrategy gocb.RetryStrategy
 }
 
 var _ BootstrapConnection = &CouchbaseCluster{}
@@ -52,9 +53,16 @@ func NewCouchbaseCluster(server, username, password,
 		Authenticator:  authenticatorConfig,
 		SecurityConfig: securityConfig,
 		RetryStrategy:  &goCBv2FailFastRetryStrategy{},
+		TimeoutsConfig: gocb.TimeoutsConfig{
+			KVTimeout: time.Second * 10,
+		},
 	}
 
-	return &CouchbaseCluster{server: server, clusterOptions: clusterOptions}, nil
+	return &CouchbaseCluster{
+		server:                 server,
+		clusterOptions:         clusterOptions,
+		defaultOpRetryStrategy: gocb.NewBestEffortRetryStrategy(nil),
+	}, nil
 }
 
 // connect attempts to open a gocb.Cluster connection. Callers will be responsible for closing the connection.
@@ -91,7 +99,9 @@ func (cc *CouchbaseCluster) GetConfigBuckets() ([]string, error) {
 		_ = connection.Close(&gocb.ClusterCloseOptions{})
 	}()
 
-	buckets, err := connection.Buckets().GetAllBuckets(nil)
+	buckets, err := connection.Buckets().GetAllBuckets(&gocb.GetAllBucketsOptions{
+		RetryStrategy: cc.defaultOpRetryStrategy,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -117,9 +127,9 @@ func (cc *CouchbaseCluster) GetConfig(location, groupID string, valuePtr interfa
 	defer teardown()
 
 	res, err := b.DefaultCollection().Get(PersistentConfigPrefix+groupID, &gocb.GetOptions{
-		Timeout:       time.Second * 10,
-		RetryStrategy: gocb.NewBestEffortRetryStrategy(nil),
+		RetryStrategy: cc.defaultOpRetryStrategy,
 	})
+
 	if err != nil {
 		if errors.Is(err, gocb.ErrDocumentNotFound) {
 			return 0, ErrNotFound
@@ -146,7 +156,10 @@ func (cc *CouchbaseCluster) InsertConfig(location, groupID string, value interfa
 	defer teardown()
 
 	docID := PersistentConfigPrefix + groupID
-	res, err := b.DefaultCollection().Insert(docID, value, nil)
+
+	res, err := b.DefaultCollection().Insert(docID, value, &gocb.InsertOptions{
+		RetryStrategy: cc.defaultOpRetryStrategy,
+	})
 	if err != nil {
 		if isKVError(err, memd.StatusKeyExists) {
 			return 0, ErrAlreadyExists
@@ -173,7 +186,8 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 	docID := PersistentConfigPrefix + groupID
 	for {
 		res, err := collection.Get(docID, &gocb.GetOptions{
-			Transcoder: gocb.NewRawJSONTranscoder(),
+			Transcoder:    gocb.NewRawJSONTranscoder(),
+			RetryStrategy: cc.defaultOpRetryStrategy,
 		})
 		if err != nil {
 			return 0, err
@@ -192,7 +206,10 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 
 		// handle delete when updateCallback returns nil
 		if newConfig == nil {
-			deleteRes, err := collection.Remove(docID, &gocb.RemoveOptions{Cas: res.Cas()})
+			deleteRes, err := collection.Remove(docID, &gocb.RemoveOptions{
+				Cas:           res.Cas(),
+				RetryStrategy: cc.defaultOpRetryStrategy,
+			})
 			if err != nil {
 				// retry on cas failure
 				if errors.Is(err, gocb.ErrCasMismatch) {
@@ -203,7 +220,11 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 			return uint64(deleteRes.Cas()), nil
 		}
 
-		replaceRes, err := collection.Replace(docID, newConfig, &gocb.ReplaceOptions{Transcoder: gocb.NewRawJSONTranscoder(), Cas: res.Cas()})
+		replaceRes, err := collection.Replace(docID, newConfig, &gocb.ReplaceOptions{
+			Transcoder:    gocb.NewRawJSONTranscoder(),
+			Cas:           res.Cas(),
+			RetryStrategy: cc.defaultOpRetryStrategy,
+		})
 		if err != nil {
 			if errors.Is(err, gocb.ErrCasMismatch) {
 				// retry on cas failure
