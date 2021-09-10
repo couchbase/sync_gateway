@@ -1246,6 +1246,9 @@ func (sc *ServerContext) _applyConfig(cnf DatabaseConfig) (applied bool, err err
 
 	// TODO: Dynamic update instead of reload
 	if _, err := sc._reloadDatabaseFromConfig(cnf.Name); err != nil {
+		// remove these entries we just created above if the database hasn't loaded properly
+		delete(sc.dbConfigs, cnf.Name)
+		delete(sc.bucketDbName, *cnf.Bucket)
 		return false, fmt.Errorf("couldn't reload database: %w", err)
 	}
 

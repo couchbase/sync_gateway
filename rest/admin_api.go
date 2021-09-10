@@ -58,25 +58,39 @@ func (h *handler) handleCreateDB() error {
 			bucket = *config.Bucket
 		}
 
-		persistedConfig := DatabaseConfig{Version: version, DbConfig: *config}
+		// copy config before setup to persist the raw config the user supplied
+		var persistedConfig DbConfig
+		if err := base.DeepCopyInefficient(&persistedConfig, config); err != nil {
+			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't create copy of db config: %v", err)
+		}
 
-		persistedConfig.cas, err = h.server.bootstrapContext.connection.InsertConfig(bucket, h.server.config.Bootstrap.ConfigGroupID, persistedConfig)
+		dbCreds, _ := h.server.config.DatabaseCredentials[dbName]
+		if err := config.setup(dbName, h.server.config.Bootstrap, dbCreds); err != nil {
+			return err
+		}
+
+		loadedConfig := DatabaseConfig{Version: version, DbConfig: *config}
+
+		h.server.lock.Lock()
+		defer h.server.lock.Unlock()
+
+		_, err = h.server._applyConfig(loadedConfig)
 		if err != nil {
+			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
+		}
+
+		// now we've started the db successfully, we can persist it to the cluster
+		cas, err := h.server.bootstrapContext.connection.InsertConfig(bucket, h.server.config.Bootstrap.ConfigGroupID, persistedConfig)
+		if err != nil {
+			// unload the database to prevent the cluster being in an inconsistent state
+			h.server._removeDatabase(dbName)
 			if errors.Cause(err) == base.ErrAuthError {
 				return base.HTTPErrorf(http.StatusForbidden, "auth failure accessing provided bucket using bootstrap credentials: %s", bucket)
 			}
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't save database config: %v", err)
 		}
-
-		dbCreds, _ := h.server.config.DatabaseCredentials[dbName]
-		if err := persistedConfig.setup(dbName, h.server.config.Bootstrap, dbCreds); err != nil {
-			return err
-		}
-
-		_, err = h.server.applyConfig(persistedConfig)
-		if err != nil {
-			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
-		}
+		// store the cas in the loaded config after a successful insert
+		h.server.dbConfigs[dbName].cas = cas
 	} else {
 		if err := config.setup(dbName, h.server.config.Bootstrap, nil); err != nil {
 			return err
@@ -458,7 +472,6 @@ func (h *handler) handlePutDbConfig() (err error) {
 					bucketDbConfig.DbConfig = *dbConfig
 				}
 
-				// TODO: CBG-1619 We're validating but we're not actually starting up the database before we persist the update!
 				if err := dbConfig.validatePersistentDbConfig(); err != nil {
 					return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 				}
