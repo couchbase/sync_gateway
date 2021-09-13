@@ -683,6 +683,9 @@ func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID, de
 		// Something went wrong in the diffing library. We want to know about this!
 		base.WarnfCtx(bsc.loggingCtx, "Falling back to full body replication. Error generating delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
 		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
+	} else if err == base.ErrFromRevIsTombstone {
+		base.TracefCtx(bsc.loggingCtx, base.KeySync, "Falling back to full body replication. Delta source %s is tombstone and delta %s is resurrection for key %s", deltaSrcRevID, revID, base.UD(docID))
+		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
 	} else if err != nil {
 		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Falling back to full body replication. Couldn't get delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
 		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
