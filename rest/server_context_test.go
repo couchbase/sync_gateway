@@ -240,7 +240,12 @@ func TestObtainManagementEndpointsFromServerContext(t *testing.T) {
 outerLoop:
 	for _, httpHost := range spec.HttpHosts {
 		for _, ep := range eps {
-			formattedHttpHost := fmt.Sprintf("http://%s:%d", httpHost.Host, httpHost.Port)
+			protocol := "http"
+			if spec.UseSsl {
+				protocol = "https"
+			}
+			formattedHttpHost := fmt.Sprintf("%s://%s:%d", protocol, httpHost.Host, httpHost.Port)
+
 			if formattedHttpHost == ep {
 				existsOneMatchingEndpoint = true
 				break outerLoop
