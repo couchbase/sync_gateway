@@ -5709,17 +5709,17 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 		ActiveDB: &db.Database{
 			DatabaseContext: activeRT.GetDatabase(),
 		},
-		ChangesBatchSize:    200,
+		Continuous:          true,
+		ChangesBatchSize:    1,
 		DeltasEnabled:       true,
 		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), true, false, false).DBReplicatorStats(t.Name()),
 	})
 	assert.Equal(t, "", ar.GetStatus().LastSeqPush)
+	assert.NoError(t, ar.Start())
 
 	// Wait for active to replicate to passive
-	assert.NoError(t, ar.Start())
 	err = passiveRT.waitForRev("test", revID)
 	require.NoError(t, err)
-	assert.NoError(t, ar.Stop())
 
 	// Delete active document
 	resp = activeRT.SendAdminRequest(http.MethodDelete, "/db/test?rev="+revID, "")
@@ -5727,13 +5727,11 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	revID = respRevID(t, resp)
 
 	// Replicate tombstone to passive
-	assert.NoError(t, ar.Start())
 	err = passiveRT.WaitForCondition(func() bool {
-		rawResponse := passiveRT.SendAdminRequest("GET", "/db/test", "")
+		rawResponse := passiveRT.SendAdminRequest("GET", "/db/test?rev="+revID, "")
 		return rawResponse.Code == 404
 	})
 	require.NoError(t, err)
-	assert.NoError(t, ar.Stop())
 
 	// Resurrect tombstoned document
 	resp = activeRT.SendAdminRequest(http.MethodPut, "/db/test?rev="+revID, `{"field2":"f2_2"}`)
@@ -5741,10 +5739,8 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	revID = respRevID(t, resp)
 
 	// Replicate resurrection to passive
-	assert.NoError(t, ar.Start())
 	err = passiveRT.waitForRev("test", revID)
 	assert.NoError(t, err) // If error, problem not fixed
-	assert.NoError(t, ar.Stop())
 }
 
 func getTestRevpos(t *testing.T, doc db.Body, attachmentKey string) (revpos int) {
