@@ -42,14 +42,12 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 		return nil, err
 	}
 
-	var username, password string
-	if spec.Auth != nil {
-		username, password, _ = spec.Auth.GetCredentials()
-	}
-	authenticatorConfig, isX509, err := GoCBv2AuthenticatorConfig(username, password, spec.Certpath, spec.Keypath)
+	authenticator, err := spec.GocbAuthenticator()
 	if err != nil {
 		return nil, err
-	} else if isX509 {
+	}
+
+	if _, ok := authenticator.(gocb.CertificateAuthenticator); ok {
 		Infof(KeyAuth, "Using cert authentication for bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
 	} else {
 		Infof(KeyAuth, "Using credential authentication for bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
@@ -59,7 +57,7 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 	Infof(KeyAll, "Setting query timeouts for bucket %s to %v", spec.BucketName, timeoutsConfig.QueryTimeout)
 
 	clusterOptions := gocb.ClusterOptions{
-		Authenticator:  authenticatorConfig,
+		Authenticator:  authenticator,
 		SecurityConfig: securityConfig,
 		TimeoutsConfig: timeoutsConfig,
 		RetryStrategy:  &goCBv2FailFastRetryStrategy{},

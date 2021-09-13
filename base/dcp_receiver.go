@@ -255,7 +255,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 	}
 
 	// Initialize the feed based on the backfill type
-	feedInitErr := dcpReceiver.initFeed(args.Backfill)
+	_, feedInitErr := dcpReceiver.initFeed(args.Backfill)
 	if feedInitErr != nil {
 		return feedInitErr
 	}

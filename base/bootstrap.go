@@ -40,7 +40,7 @@ func NewCouchbaseCluster(server, username, password,
 		return nil, err
 	}
 
-	authenticatorConfig, _, err := GoCBv2AuthenticatorConfig(
+	authenticatorConfig, err := GoCBv2Authenticator(
 		username, password,
 		x509CertPath, x509KeyPath,
 	)

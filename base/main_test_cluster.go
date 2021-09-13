@@ -176,9 +176,9 @@ func getCluster(server string) *gocb.Cluster {
 		Fatalf("Couldn't initialize cluster security config: %v", err)
 	}
 
-	authenticatorConfig, _, err := GoCBv2AuthenticatorConfig(TestClusterUsername(), TestClusterPassword(), spec.Certpath, spec.Keypath)
-	if err != nil {
-		Fatalf("Couldn't initialize cluster authenticator config: %v", err)
+	authenticatorConfig, authErr := GoCBv2Authenticator(TestClusterUsername(), TestClusterPassword(), spec.Certpath, spec.Keypath)
+	if authErr != nil {
+		Fatalf("Couldn't initialize cluster authenticator config: %v", authErr)
 	}
 
 	timeoutsConfig := GoCBv2TimeoutsConfig(spec.BucketOpTimeout, StdlibDurationPtr(spec.GetViewQueryTimeout()))

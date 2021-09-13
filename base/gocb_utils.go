@@ -26,22 +26,22 @@ func GoCBv2SecurityConfig(tlsSkipVerify *bool, caCertPath string) (sc gocb.Secur
 	return sc, nil
 }
 
-// GoCBv2AuthenticatorConfig returns a gocb.Authenticator to use when connecting given a set of credentials.
-func GoCBv2AuthenticatorConfig(username, password, certPath, keyPath string) (a gocb.Authenticator, isX509 bool, err error) {
+// GoCBv2Authenticator returns a gocb.Authenticator to use when connecting given a set of credentials.
+func GoCBv2Authenticator(username, password, certPath, keyPath string) (a gocb.Authenticator, err error) {
 	if certPath != "" && keyPath != "" {
 		cert, certLoadErr := tls.LoadX509KeyPair(certPath, keyPath)
 		if certLoadErr != nil {
-			return nil, false, err
+			return nil, certLoadErr
 		}
 		return gocb.CertificateAuthenticator{
 			ClientCertificate: &cert,
-		}, true, nil
+		}, nil
 	}
 
 	return gocb.PasswordAuthenticator{
 		Username: username,
 		Password: password,
-	}, false, nil
+	}, nil
 }
 
 // GoCBv2TimeoutsConfig returns a gocb.TimeoutsConfig to use when connecting.
