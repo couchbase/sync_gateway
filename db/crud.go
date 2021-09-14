@@ -44,17 +44,21 @@ func realDocID(docid string) string {
 	return docid
 }
 
-// Lowest-level method that reads a document from the bucket
 func (db *DatabaseContext) GetDocument(docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
+	doc, _, err = db.GetDocumentWithRaw(docid, unmarshalLevel)
+	return doc, err
+}
+
+// Lowest-level method that reads a document from the bucket
+func (db *DatabaseContext) GetDocumentWithRaw(docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
 	key := realDocID(docid)
 	if key == "" {
-		return nil, base.HTTPErrorf(400, "Invalid doc ID")
+		return nil, nil, base.HTTPErrorf(400, "Invalid doc ID")
 	}
 	if db.UseXattrs() {
-		var rawBucketDoc *sgbucket.BucketDocument
 		doc, rawBucketDoc, err = db.GetDocWithXattr(key, unmarshalLevel)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		isSgWrite, crc32Match, _ := doc.IsSGWrite(rawBucketDoc.Body)
@@ -67,34 +71,39 @@ func (db *DatabaseContext) GetDocument(docid string, unmarshalLevel DocumentUnma
 			var importErr error
 			doc, importErr = db.OnDemandImportForGet(docid, rawBucketDoc.Body, rawBucketDoc.Xattr, rawBucketDoc.UserXattr, rawBucketDoc.Cas)
 			if importErr != nil {
-				return nil, importErr
+				return nil, nil, importErr
 			}
 		}
 		if !doc.HasValidSyncData() {
-			return nil, base.HTTPErrorf(404, "Not imported")
+			return nil, nil, base.HTTPErrorf(404, "Not imported")
 		}
 	} else {
-		rawDoc, _, getErr := db.Bucket.GetRaw(key)
+		rawDoc, cas, getErr := db.Bucket.GetRaw(key)
 		if getErr != nil {
-			return nil, getErr
+			return nil, nil, getErr
 		}
 
 		doc, err = unmarshalDocument(key, rawDoc)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		if !doc.HasValidSyncData() {
 			// Check whether doc has been upgraded to use xattrs
 			upgradeDoc, _ := db.checkForUpgrade(docid, unmarshalLevel)
 			if upgradeDoc == nil {
-				return nil, base.HTTPErrorf(404, "Not imported")
+				return nil, nil, base.HTTPErrorf(404, "Not imported")
 			}
 			doc = upgradeDoc
 		}
+
+		rawBucketDoc = &sgbucket.BucketDocument{
+			Body: rawDoc,
+			Cas:  cas,
+		}
 	}
 
-	return doc, nil
+	return doc, rawBucketDoc, nil
 }
 
 func (db *DatabaseContext) GetDocWithXattr(key string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
@@ -907,8 +916,8 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 }
 
 // Adds an existing revision to a document along with its history (list of rev IDs.)
-func (db *Database) PutExistingRev(newDoc *Document, docHistory []string, noConflicts bool, forceAllConflicts bool) (doc *Document, newRevID string, err error) {
-	return db.PutExistingRevWithConflictResolution(newDoc, docHistory, noConflicts, nil, forceAllConflicts)
+func (db *Database) PutExistingRev(newDoc *Document, docHistory []string, noConflicts bool, forceAllConflicts bool, existingDoc *sgbucket.BucketDocument) (doc *Document, newRevID string, err error) {
+	return db.PutExistingRevWithConflictResolution(newDoc, docHistory, noConflicts, nil, forceAllConflicts, existingDoc)
 }
 
 // Adds an existing revision to a document along with its history (list of rev IDs.)
@@ -916,7 +925,7 @@ func (db *Database) PutExistingRev(newDoc *Document, docHistory []string, noConf
 //     1. If noConflicts == false, the revision will be added to the rev tree as a conflict
 //     2. If noConflicts == true and a conflictResolverFunc is not provided, a 409 conflict error will be returned
 //     3. If noConflicts == true and a conflictResolverFunc is provided, conflicts will be resolved and the result added to the document.
-func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHistory []string, noConflicts bool, conflictResolver *ConflictResolver, forceAllowConflictingTombstone bool) (doc *Document, newRevID string, err error) {
+func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHistory []string, noConflicts bool, conflictResolver *ConflictResolver, forceAllowConflictingTombstone bool, existingDoc *sgbucket.BucketDocument) (doc *Document, newRevID string, err error) {
 	newRev := docHistory[0]
 	generation, _ := ParseRevID(newRev)
 	if generation < 0 {
@@ -924,7 +933,7 @@ func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHi
 	}
 
 	allowImport := db.UseXattrs()
-	doc, _, err = db.updateAndReturnDoc(newDoc.ID, allowImport, newDoc.DocExpiry, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	doc, _, err = db.updateAndReturnDoc(newDoc.ID, allowImport, newDoc.DocExpiry, existingDoc, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 
 		var isSgWrite bool
@@ -1043,7 +1052,7 @@ func (db *Database) PutExistingRevWithBody(docid string, body Body, docHistory [
 	delete(body, BodyAttachments)
 	newDoc.UpdateBody(body)
 
-	doc, newRevID, putExistingRevErr := db.PutExistingRev(newDoc, docHistory, noConflicts, false)
+	doc, newRevID, putExistingRevErr := db.PutExistingRev(newDoc, docHistory, noConflicts, false, nil)
 
 	if putExistingRevErr != nil {
 		return nil, "", putExistingRevErr

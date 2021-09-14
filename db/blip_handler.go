@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/couchbase/go-blip"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 )
@@ -872,15 +873,23 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 		history = append(history, strings.Split(historyStr, ",")...)
 	}
 
+	var rawBucketDoc *sgbucket.BucketDocument
+
 	// Look at attachments with revpos > the last common ancestor's
 	minRevpos := 1
 	if len(history) > 0 {
-		minRevpos, _ = ParseRevID(history[len(history)-1])
-		// TODO: we can't identify at this point whether the last entry in history represents a
-		// common ancestor, or is the oldest history for a newly inserted doc.  In the former case,
-		// we'd prefer to run with minRevpos++, but since we can't determine without an additional
-		// rev lookup, pay the cost for redundant attachment verification when
-		// the attachment revpos equals the common ancestor
+		currentDoc, rawDoc, err := bh.db.GetDocumentWithRaw(docID, DocUnmarshalSync)
+		// If we're able to obtain current doc data then we should use the common ancestor generation++ for min revpos
+		// as we will already have any attachments on the common ancestor so don't need to ask for them.
+		// Otherwise we'll have to go as far back as we can in the doc history and choose the last entry in there.
+		if err == nil {
+			commonAncestor := currentDoc.History.findAncestorFromSet(currentDoc.CurrentRev, history)
+			minRevpos, _ = ParseRevID(commonAncestor)
+			minRevpos++
+			rawBucketDoc = rawDoc
+		} else {
+			minRevpos, _ = ParseRevID(history[len(history)-1])
+		}
 	}
 
 	// Pull out attachments
@@ -905,9 +914,9 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 	// bh.conflictResolver != nil represents an active SGR2 and BLIPClientTypeSGR2 represents a passive SGR2
 	forceAllowConflictingTombstone := newDoc.Deleted && (bh.conflictResolver != nil || bh.clientType == BLIPClientTypeSGR2)
 	if bh.conflictResolver != nil {
-		_, _, err = bh.db.PutExistingRevWithConflictResolution(newDoc, history, true, bh.conflictResolver, forceAllowConflictingTombstone)
+		_, _, err = bh.db.PutExistingRevWithConflictResolution(newDoc, history, true, bh.conflictResolver, forceAllowConflictingTombstone, rawBucketDoc)
 	} else {
-		_, _, err = bh.db.PutExistingRev(newDoc, history, revNoConflicts, forceAllowConflictingTombstone)
+		_, _, err = bh.db.PutExistingRev(newDoc, history, revNoConflicts, forceAllowConflictingTombstone, rawBucketDoc)
 	}
 	if err != nil {
 		return err

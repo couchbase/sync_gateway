@@ -3509,7 +3509,7 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 	// Check the number of sendProveAttachment/sendGetAttachment calls.
 	require.NotNil(t, btc.pushReplication.replicationStats)
 	assert.Equal(t, int64(1), btc.pushReplication.replicationStats.GetAttachment.Value())
-	assert.Equal(t, int64(1), btc.pushReplication.replicationStats.ProveAttachment.Value())
+	assert.Equal(t, int64(0), btc.pushReplication.replicationStats.ProveAttachment.Value())
 }
 
 func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
@@ -3570,4 +3570,44 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 	require.NotNil(t, btc.pushReplication.replicationStats)
 	assert.Equal(t, int64(1), btc.pushReplication.replicationStats.GetAttachment.Value())
 	assert.Equal(t, int64(0), btc.pushReplication.replicationStats.ProveAttachment.Value())
+}
+
+func TestMinRevPosThing(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	rt := NewRestTester(t, &RestTesterConfig{
+		guestEnabled: true,
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				AllowConflicts: base.BoolPtr(true),
+			},
+		},
+	})
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	require.NoError(t, err)
+	defer btc.Close()
+
+	// Push an initial rev with attachment data
+	initialRevID := rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"_attachments": map[string]interface{}{"hello.txt": map[string]interface{}{"data": "aGVsbG8gd29ybGQ="}}})
+
+	// Replicate data to client and ensure doc arrives
+	err = btc.StartOneshotPull()
+	assert.NoError(t, err)
+	_, found := btc.WaitForRev("doc", initialRevID)
+	assert.True(t, found)
+
+	// Push a revision with a bunch of history simulating doc updated on mobile device
+	// Note this references revpos 1 and therefore SGW has it - Shouldn't need proveAttachment
+	proveAttachmentBefore := btc.pushReplication.replicationStats.ProveAttachment.Value()
+	revid, err := btc.PushRevWithHistory("doc", initialRevID, []byte(`{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`), 25, 5)
+	assert.NoError(t, err)
+	proveAttachmentAfter := btc.pushReplication.replicationStats.ProveAttachment.Value()
+	assert.Equal(t, proveAttachmentBefore, proveAttachmentAfter)
+
+	// Push another bunch of history
+	_, err = btc.PushRevWithHistory("doc", revid, []byte(`{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`), 25, 5)
+	assert.NoError(t, err)
+	proveAttachmentAfter = btc.pushReplication.replicationStats.ProveAttachment.Value()
+	assert.Equal(t, proveAttachmentBefore, proveAttachmentAfter)
 }
