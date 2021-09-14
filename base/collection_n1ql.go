@@ -40,7 +40,7 @@ func (c *Collection) Query(statement string, params map[string]interface{}, cons
 	waitTime := 10 * time.Millisecond
 	for i := 1; i <= MaxQueryRetries; i++ {
 		Tracef(KeyQuery, "Executing N1QL query: %v - %+v", UD(bucketStatement), UD(params))
-		queryResults, queryErr := c.cluster.Query(bucketStatement, n1qlOptions)
+		queryResults, queryErr := c.runQuery(bucketStatement, n1qlOptions)
 		if queryErr == nil {
 			resultsIterator := &gocbRawIterator{
 				rawResult: queryResults.Raw(),
@@ -101,16 +101,18 @@ func (c *Collection) BuildDeferredIndexes(indexSet []string) error {
 	return BuildDeferredIndexes(c, indexSet)
 }
 
-func (c *Collection) runQuery(statement string) (*gocb.QueryResult, error) {
+func (c *Collection) runQuery(statement string, n1qlOptions *gocb.QueryOptions) (*gocb.QueryResult, error) {
 	c.waitForAvailViewOp()
 	defer c.releaseViewOp()
 
-	n1qlOptions := &gocb.QueryOptions{}
+	if n1qlOptions == nil {
+		n1qlOptions = &gocb.QueryOptions{}
+	}
 	return c.cluster.Query(statement, n1qlOptions)
 }
 
 func (c *Collection) executeQuery(statement string) (sgbucket.QueryResultIterator, error) {
-	queryResults, queryErr := c.runQuery(statement)
+	queryResults, queryErr := c.runQuery(statement, nil)
 	if queryErr != nil {
 		return nil, queryErr
 	}
@@ -122,7 +124,7 @@ func (c *Collection) executeQuery(statement string) (sgbucket.QueryResultIterato
 }
 
 func (c *Collection) executeStatement(statement string) error {
-	queryResults, queryErr := c.runQuery(statement)
+	queryResults, queryErr := c.runQuery(statement, nil)
 	if queryErr != nil {
 		return queryErr
 	}

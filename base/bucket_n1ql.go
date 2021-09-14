@@ -63,7 +63,7 @@ func (bucket *CouchbaseBucketGoCB) Query(statement string, params map[string]int
 	for i := 1; i <= MaxQueryRetries; i++ {
 
 		Tracef(KeyQuery, "Executing N1QL query: %v", UD(n1qlQuery))
-		queryResults, queryErr := bucket.ExecuteN1qlQuery(n1qlQuery, params)
+		queryResults, queryErr := bucket.runQuery(n1qlQuery, params)
 
 		if queryErr == nil {
 			return queryResults, queryErr
@@ -105,12 +105,16 @@ func (bucket *CouchbaseBucketGoCB) BuildDeferredIndexes(indexSet []string) error
 	return BuildDeferredIndexes(bucket, indexSet)
 }
 
-func (bucket *CouchbaseBucketGoCB) executeQuery(statement string) (sgbucket.QueryResultIterator, error) {
+func (bucket *CouchbaseBucketGoCB) runQuery(n1qlQuery *gocb.N1qlQuery, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
 	bucket.waitForAvailViewOp()
 	defer bucket.releaseViewOp()
 
+	return bucket.ExecuteN1qlQuery(n1qlQuery, params)
+}
+
+func (bucket *CouchbaseBucketGoCB) executeQuery(statement string) (sgbucket.QueryResultIterator, error) {
 	n1qlQuery := gocb.NewN1qlQuery(statement)
-	results, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
+	results, err := bucket.runQuery(n1qlQuery, nil)
 	return results, err
 }
 
