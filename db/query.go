@@ -408,7 +408,7 @@ func (context *DatabaseContext) buildChannelsQuery(channelName string, startSeq 
 	if endSeq == 0 {
 		// If endSeq isn't defined, set to max uint64
 		endSeq = math.MaxUint64
-	} else {
+	} else if endSeq < math.MaxUint64 {
 		// channels query isn't based on inclusive end - add one to ensure complete result set
 		endSeq++
 	}

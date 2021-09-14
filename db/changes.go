@@ -179,7 +179,7 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *Documen
 // This is used in this function in 'wasDocInChannelAtSeq'.
 // revokeFrom: This is the point at which we should run the changes feed from to find the documents we should revoke. It
 // is calculated higher up based on whether we are resuming an interrupted feed or not.
-func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, options ChangesOptions, revokedAt, revocationSinceSeq, revokeFrom uint64, to string) <-chan *ChangeEntry {
+func (db *Database) buildRevokedFeed(channelName string, options ChangesOptions, revokedAt, revocationSinceSeq, revokeFrom uint64, to string) <-chan *ChangeEntry {
 	feed := make(chan *ChangeEntry, 1)
 	sinceVal := options.Since.Seq
 
@@ -193,6 +193,9 @@ func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, opti
 	// In the event that we have a interrupted replication we can restart part way through, otherwise we have to
 	// check from 0.
 	paginationOptions.Since.Seq = revokeFrom
+
+	// Use a bypass channel cache for revocations (CBG-1695)
+	singleChannelCache := db.changeCache.getChannelCache().getBypassChannelCache(channelName)
 
 	go func() {
 		defer base.FatalPanicHandler()
@@ -244,10 +247,12 @@ func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, opti
 							Err: base.ErrChannelFeed,
 						}
 						feed <- &change
+						base.WarnfCtx(db.Ctx, "Error checking document history during revocation, seq: %v in channel %s, ending revocation feed. Error: %v", seqID, base.UD(singleChannelCache.ChannelName()), err)
 						return
 					}
 
 					if !requiresRevocation {
+						base.DebugfCtx(db.Ctx, base.KeyChanges, "Channel feed processing revocation, seq: %v in channel %s does not require revocation", seqID, base.UD(singleChannelCache.ChannelName()))
 						continue
 					}
 				}
@@ -815,7 +820,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 						}
 					}
 
-					feed := db.buildRevokedFeed(db.changeCache.getChannelCache().getSingleChannelCache(channel), options, revokedSeq, revocationSinceSeq, revokeFrom, to)
+					feed := db.buildRevokedFeed(channel, options, revokedSeq, revocationSinceSeq, revokeFrom, to)
 					feeds = append(feeds, feed)
 				}
 			}
@@ -890,8 +895,10 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					}
 				}
 
-				// Don't send any entries later than the cached sequence at the start of this iteration
-				if currentCachedSequence < minEntry.Seq.Seq {
+				// Don't send any entries later than the cached sequence at the start of this iteration, unless they are part of a revocation triggered
+				// prior to the cached sequence
+				isValidRevocation := minEntry.Revoked == true && minEntry.Seq.TriggeredBy < currentCachedSequence
+				if currentCachedSequence < minEntry.Seq.Seq && !isValidRevocation {
 					base.DebugfCtx(db.Ctx, base.KeyChanges, "Found sequence later than stable sequence: stable:[%d] entry:[%d] (%s)", currentCachedSequence, minEntry.Seq.Seq, base.UD(minEntry.ID))
 					postStableSeqsFound = true
 					continue

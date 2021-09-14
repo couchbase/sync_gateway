@@ -66,6 +66,9 @@ type ChannelCache interface {
 	// Access to individual channel cache
 	getSingleChannelCache(channelName string) SingleChannelCache
 
+	// Access to individual bypass channel cache
+	getBypassChannelCache(channelName string) SingleChannelCache
+
 	// Stop stops the channel cache and it's background tasks.
 	Stop()
 }
@@ -309,6 +312,14 @@ func (c *channelCacheImpl) getChannelCache(channelName string) SingleChannelCach
 	c.cacheStats.ChannelCacheBypassCount.Add(1)
 	return bypassChannelCache
 
+}
+
+func (c *channelCacheImpl) getBypassChannelCache(channelName string) SingleChannelCache {
+	bypassChannelCache := &bypassChannelCache{
+		channelName:  channelName,
+		queryHandler: c.queryHandler,
+	}
+	return bypassChannelCache
 }
 
 // Converts an RangeSafeCollection value to a singleChannelCacheImpl.  On type
