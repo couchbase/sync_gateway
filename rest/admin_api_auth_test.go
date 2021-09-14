@@ -27,6 +27,7 @@ func MakeUser(t *testing.T, httpClient *http.Client, serverURL, username, passwo
 
 	resp, err := httpClient.Do(req)
 	require.NoError(t, err)
+	defer require.NoError(t, resp.Body.Close())
 
 	if resp.StatusCode != http.StatusOK {
 		bodyResp, err := ioutil.ReadAll(resp.Body)
@@ -45,6 +46,7 @@ func DeleteUser(t *testing.T, httpClient *http.Client, serverURL, username strin
 
 	resp, err := httpClient.Do(req)
 	require.NoError(t, err)
+	defer require.NoError(t, resp.Body.Close())
 
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 }
