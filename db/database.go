@@ -834,7 +834,6 @@ func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachD
 // Iterate over the results of an AllDocs query, performing ForEachDocID handling for each row
 func (db *Database) processForEachDocIDResults(callback ForEachDocIDFunc, limit uint64, results sgbucket.QueryResultIterator) error {
 
-	endOfResultsReached := false
 	count := uint64(0)
 	for {
 		var queryRow AllDocsIndexQueryRow
@@ -867,7 +866,6 @@ func (db *Database) processForEachDocIDResults(callback ForEachDocIDFunc, limit 
 			}
 		}
 		if !found {
-			endOfResultsReached = true
 			break
 		}
 
@@ -883,15 +881,6 @@ func (db *Database) processForEachDocIDResults(callback ForEachDocIDFunc, limit 
 		}
 
 	}
-
-	// Have to iterate over any remaining results to clear the reader
-	// Otherwise we get "the result must be closed before accessing the meta-data" on close details on CBG-1666
-	if !endOfResultsReached && !db.UseViews() {
-		for results.Next(nil) {
-			// noop to drain results
-		}
-	}
-
 	return nil
 }
 

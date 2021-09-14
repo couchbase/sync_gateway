@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/couchbase/gocb/v2"
-
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
 )
@@ -492,6 +491,11 @@ func (i *gocbRawIterator) NextBytes() []byte {
 
 // Closes the iterator.  Returns any row-level errors seen during iteration.
 func (i *gocbRawIterator) Close() error {
+	// Have to iterate over any remaining results to clear the reader
+	// Otherwise we get "the result must be closed before accessing the meta-data" on close details on CBG-1666
+	for i.rawResult.NextBytes() != nil {
+		// noop to drain results
+	}
 
 	// check for errors before closing?
 	closeErr := i.rawResult.Close()
