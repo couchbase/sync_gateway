@@ -37,7 +37,7 @@ func serverMain(ctx context.Context, osArgs []string) error {
 	fs := flag.NewFlagSet(osArgs[0], flag.ContinueOnError)
 
 	// used by service scripts as a way to specify a per-distro defaultLogFilePath
-	defaultLogFilePath = *fs.String("defaultLogFilePath", "", "Path to log files, if not overridden by --logFilePath, or the config")
+	defaultLogFilePathFlag := fs.String("defaultLogFilePath", "", "Path to log files, if not overridden by --logFilePath, or the config")
 
 	disablePersistentConfigFlag := fs.Bool("disable_persistent_config", false, "Can be set to false to disable persistent config handling, and read all configuration from a legacy config file.")
 
@@ -59,6 +59,8 @@ func serverMain(ctx context.Context, osArgs []string) error {
 		}
 		return err
 	}
+
+	defaultLogFilePath = *defaultLogFilePathFlag
 
 	err = fillConfigWithFlags(fs, configFlags)
 	if err != nil {
