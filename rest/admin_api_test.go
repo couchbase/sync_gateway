@@ -3486,7 +3486,58 @@ func TestDbConfigDoesNotIncludeCredentials(t *testing.T) {
 	assert.Equal(t, "", dbConfig.CACertPath)
 	assert.Equal(t, "", dbConfig.CertPath)
 	assert.Equal(t, "", dbConfig.KeyPath)
+}
 
+func TestInvalidDBConfig(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+
+	// Start SG with no databases in bucket(s)
+	config := bootstrapStartupConfigForTest(t)
+	sc, err := setupServerContext(&config, true)
+	require.NoError(t, err)
+	defer sc.Close()
+
+	serverErr := make(chan error, 0)
+	go func() {
+		serverErr <- startServer(&config, sc)
+	}()
+	require.NoError(t, sc.waitForRESTAPIs())
+
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer func() {
+		fmt.Println("closing test bucket")
+		tb.Close()
+	}()
+	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/",
+		`{"bucket": "`+tb.GetName()+`", "num_index_replicas": 0}`,
+	)
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	// Put db config with invalid sync fn
+	resp = bootstrapAdminRequest(t, "PUT", "/db/_config", `{"sync": "function(){"}`)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	body, err := ioutil.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.True(t, strings.Contains(string(body), "invalid javascript syntax"))
+
+	// Put invalid sync fn via sync specific endpoint
+	resp = bootstrapAdminRequest(t, "PUT", "/db/_config/sync", `function(){`)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	body, err = ioutil.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.True(t, strings.Contains(string(body), "invalid javascript syntax"))
+
+	// Put invalid import fn via import specific endpoint
+	resp = bootstrapAdminRequest(t, "PUT", "/db/_config/import_filter", `function(){`)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	body, err = ioutil.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.True(t, strings.Contains(string(body), "invalid javascript syntax"))
 }
 
 func TestCreateDbOnNonExistentBucket(t *testing.T) {

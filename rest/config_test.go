@@ -1961,3 +1961,86 @@ func TestUseXattrs(t *testing.T) {
 		})
 	}
 }
+
+func TestInvalidJavascriptFunctions(t *testing.T) {
+	testCases := []struct {
+		Name             string
+		SyncFunction     *string
+		ImportFilter     *string
+		ExpectErrorCount int
+	}{
+		{
+			"Both nil",
+			nil,
+			nil,
+			0,
+		},
+		{
+			"Valid Sync Fn No Import",
+			base.StringPtr(`function(){}`),
+			nil,
+			0,
+		},
+		{
+			"Valid Import Fn No Sync",
+			nil,
+			base.StringPtr(`function(){}`),
+			0,
+		},
+		{
+			"Invalid Sync Fn No Import",
+			base.StringPtr(`function(){`),
+			nil,
+			1,
+		},
+		{
+			"Invalid Sync Fn No Import #2",
+			base.StringPtr(`function(doc){
+				if (t )){}
+			}`),
+			nil,
+			1,
+		},
+		{
+			"Invalid Import Fn No Sync",
+			nil,
+			base.StringPtr(`function(){`),
+			1,
+		},
+		{
+			"Both invalid",
+			base.StringPtr(`function(){`),
+			base.StringPtr(`function(){`),
+			2,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.Name, func(t *testing.T) {
+			dbConfig := DbConfig{
+				Name: testCase.Name,
+			}
+
+			if testCase.SyncFunction != nil {
+				dbConfig.Sync = testCase.SyncFunction
+			}
+
+			if testCase.ImportFilter != nil {
+				dbConfig.ImportFilter = testCase.ImportFilter
+			}
+
+			err := dbConfig.validate()
+
+			if testCase.ExpectErrorCount == 0 {
+				assert.NoError(t, err)
+			} else {
+				assert.Error(t, err)
+				errorMessages, ok := err.(*multierror.Error)
+				require.True(t, ok)
+				assert.Len(t, errorMessages.Errors, testCase.ExpectErrorCount)
+			}
+
+		})
+	}
+
+}

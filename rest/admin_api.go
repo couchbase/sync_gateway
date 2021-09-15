@@ -478,6 +478,11 @@ func (h *handler) handlePutDbConfig() (err error) {
 			return err
 		}
 		updatedDbConfig.cas = cas
+	} else {
+		err = updatedDbConfig.validate()
+		if err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
+		}
 	}
 
 	if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap); err != nil {
@@ -613,7 +618,13 @@ func (h *handler) handlePutDbConfigSync() error {
 			}
 
 			bucketDbConfig.Sync = &js
+
+			if err := bucketDbConfig.validate(); err != nil {
+				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
+			}
+
 			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+
 			if err != nil {
 				return nil, err
 			}
@@ -757,6 +768,11 @@ func (h *handler) handlePutDbConfigImportFilter() error {
 			}
 
 			bucketDbConfig.ImportFilter = &js
+
+			if err := bucketDbConfig.validate(); err != nil {
+				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
+			}
+
 			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
 			if err != nil {
 				return nil, err

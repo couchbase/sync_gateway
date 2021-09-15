@@ -26,6 +26,7 @@ import (
 	"syscall"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/hashicorp/go-multierror"
 
 	"github.com/couchbase/sync_gateway/auth"
@@ -601,6 +602,20 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) (errorMessag
 
 	if dbConfig.DeprecatedPool != nil {
 		base.Warnf(`"pool" config option is not supported. The pool will be set to "default". The option should be removed from config file.`)
+	}
+
+	if dbConfig.Sync != nil {
+		_, err = sgbucket.NewJSRunner(*dbConfig.Sync)
+		if err != nil {
+			errorMessages = multierror.Append(errorMessages, fmt.Errorf("sync function contains invalid javascript syntax: %v", err))
+		}
+	}
+
+	if dbConfig.ImportFilter != nil {
+		_, err = sgbucket.NewJSRunner(*dbConfig.ImportFilter)
+		if err != nil {
+			errorMessages = multierror.Append(errorMessages, fmt.Errorf("import filter function contains invalid javascript syntax: %v", err))
+		}
 	}
 
 	return errorMessages
