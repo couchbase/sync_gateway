@@ -347,7 +347,7 @@ func parseFlags(args []string) (flagStartupConfig *StartupConfig, fs *flag.FlagS
 	fs = flag.NewFlagSet(args[0], flag.ContinueOnError)
 
 	// used by service scripts as a way to specify a per-distro defaultLogFilePath
-	defaultLogFilePath = *fs.String("defaultLogFilePath", "", "Path to log files, if not overridden by --logFilePath, or the config")
+	defaultLogFilePathFlag := fs.String("defaultLogFilePath", "", "Path to log files, if not overridden by --logFilePath, or the config")
 
 	disablePersistentConfig = fs.Bool("disable_persistent_config", false, "Can be set to false to disable persistent config handling, and read all configuration from a legacy config file.")
 
@@ -376,6 +376,8 @@ func parseFlags(args []string) (flagStartupConfig *StartupConfig, fs *flag.FlagS
 	if err != nil {
 		return nil, nil, nil, err
 	}
+
+	defaultLogFilePath = *defaultLogFilePathFlag
 
 	return &legacyStartupConfig, fs, disablePersistentConfig, nil
 }
