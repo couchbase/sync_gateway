@@ -237,6 +237,9 @@ func (dbc *DbConfig) inheritFromBootstrap(b BootstrapConfig) {
 	if dbc.Password == "" {
 		dbc.Password = b.Password
 	}
+	if dbc.CACertPath == "" {
+		dbc.CACertPath = b.CACertPath
+	}
 	if dbc.CertPath == "" {
 		dbc.CertPath = b.X509CertPath
 	}
