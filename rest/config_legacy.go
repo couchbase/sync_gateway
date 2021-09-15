@@ -484,15 +484,11 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*LegacyServer
 	keypath := flagSet.String("keypath", "", "Client certificate key path")
 
 	// used by service scripts as a way to specify a per-distro defaultLogFilePath
-	defaultLogFilePathFlag := flagSet.String("defaultLogFilePath", "", "Path to log files, if not overridden by --logFilePath, or the config")
+	flagSet.String("defaultLogFilePath", "", "Path to log files, if not overridden by --logFilePath, or the config")
 
 	_ = flagSet.Parse(args[1:])
 	var config *LegacyServerConfig
 	var err error
-
-	if defaultLogFilePathFlag != nil {
-		defaultLogFilePath = *defaultLogFilePathFlag
-	}
 
 	if flagSet.NArg() > 0 {
 		// Read the configuration file(s), if any:
