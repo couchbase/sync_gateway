@@ -3488,3 +3488,26 @@ func TestDbConfigDoesNotIncludeCredentials(t *testing.T) {
 	assert.Equal(t, "", dbConfig.KeyPath)
 
 }
+
+func TestCreateDbOnNonExistentBucket(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+
+	// Start SG with no databases in bucket(s)
+	config := bootstrapStartupConfigForTest(t)
+	sc, err := setupServerContext(&config, true)
+	require.NoError(t, err)
+	defer sc.Close()
+
+	serverErr := make(chan error, 0)
+	go func() {
+		serverErr <- startServer(&config, sc)
+	}()
+	require.NoError(t, sc.waitForRESTAPIs())
+
+	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/", `{"bucket": "nonExistentBucket"}`)
+	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+}
