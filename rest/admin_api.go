@@ -48,7 +48,7 @@ func (h *handler) handleCreateDB() error {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
 
-		config.Version, err = GenerateDatabaseConfigVersionID("", config)
+		version, err := GenerateDatabaseConfigVersionID("", config)
 		if err != nil {
 			return err
 		}
@@ -58,16 +58,18 @@ func (h *handler) handleCreateDB() error {
 			bucket = *config.Bucket
 		}
 
-		config.cas, err = h.server.bootstrapContext.connection.InsertConfig(bucket, h.server.config.Bootstrap.ConfigGroupID, config)
+		persistedConfig := DatabaseConfig{Version: version, DbConfig: *config}
+
+		persistedConfig.cas, err = h.server.bootstrapContext.connection.InsertConfig(bucket, h.server.config.Bootstrap.ConfigGroupID, persistedConfig)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't save database config: %v", err)
 		}
 
-		if err := config.setup(dbName, h.server.config.Bootstrap); err != nil {
+		if err := persistedConfig.setup(dbName, h.server.config.Bootstrap); err != nil {
 			return err
 		}
 
-		_, err := h.server.applyConfig(*config)
+		_, err = h.server.applyConfig(persistedConfig)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
 		}
@@ -77,7 +79,7 @@ func (h *handler) handleCreateDB() error {
 		}
 
 		// load database in-memory for non-persistent nodes
-		if _, err := h.server.AddDatabaseFromConfig(*config); err != nil {
+		if _, err := h.server.AddDatabaseFromConfig(DatabaseConfig{DbConfig: *config}); err != nil {
 			return err
 		}
 	}
@@ -139,40 +141,42 @@ func (h *handler) handleGetDbConfig() error {
 	// - Populate an up to date ETag header
 	// - Applying if refresh_config is set
 	// - Returning if include_runtime=false
-	var responseConfig *DatabaseConfig
+	var responseConfig *DbConfig
 	if h.server.bootstrapContext.connection != nil {
-		var found bool
-		var err error
-		found, responseConfig, err = h.server.fetchDatabase(h.db.Name)
+		found, dbConfig, err := h.server.fetchDatabase(h.db.Name)
 		if err != nil {
 			return err
 		}
 
-		if !found {
+		if !found || dbConfig == nil {
 			return base.HTTPErrorf(http.StatusNotFound, "database config not found")
 		}
 
-		h.response.Header().Set("ETag", responseConfig.Version)
+		h.response.Header().Set("ETag", dbConfig.Version)
 
 		// refresh_config=true forces the config loaded out of the bucket to be applied on the node
 		if h.getBoolQuery("refresh_config") && h.server.bootstrapContext.connection != nil {
 			// set cas=0 to force a refresh
-			responseConfig.cas = 0
-			h.server.applyConfigs(map[string]DatabaseConfig{h.db.Name: *responseConfig})
+			dbConfig.cas = 0
+			h.server.applyConfigs(map[string]DatabaseConfig{h.db.Name: *dbConfig})
 		}
+
+		responseConfig = &dbConfig.DbConfig
 	} else {
 		// non-persistent mode just returns running database config
-		responseConfig = h.server.GetDatabaseConfig(h.db.Name)
+		responseConfig = h.server.GetDbConfig(h.db.Name)
 	}
 
 	// include_runtime controls whether to return the raw bucketDbConfig, or the runtime version populated with default values, etc.
 	includeRuntime, _ := h.getOptBoolQuery("include_runtime", false)
 	if includeRuntime {
-		responseConfig = h.server.GetDatabaseConfig(h.db.Name)
+		responseConfig = h.server.GetDbConfig(h.db.Name)
 	}
 
-	// FIXME: CBG-1630 Use better approach for this (like wrapping in a PersistedDatabaseConfig struct)
-	responseConfig.Version = ""
+	// defensive check - there could've been an in-flight request to remove the database between entering the handler and getting the config above.
+	if responseConfig == nil {
+		return base.HTTPErrorf(http.StatusNotFound, "database config not found")
+	}
 
 	// redaction to sensitive config fields
 	redact, _ := h.getOptBoolQuery("redact", true)
@@ -233,7 +237,13 @@ func (h *handler) handleGetConfig() error {
 			}
 
 			for _, dbName := range allDbNames {
-				databaseMap[dbName], err = h.server.GetDatabaseConfig(dbName).DbConfig.Redacted()
+				// defensive check - in-flight requests could've removed this database since we got the name of it
+				dbConfig := h.server.GetDbConfig(dbName)
+				if dbConfig == nil {
+					continue
+				}
+
+				databaseMap[dbName], err = dbConfig.Redacted()
 				if err != nil {
 					return err
 				}
@@ -241,9 +251,15 @@ func (h *handler) handleGetConfig() error {
 		} else {
 			cfg.StartupConfig = h.server.config
 			for _, dbName := range allDbNames {
+				// defensive check - in-flight requests could've removed this database since we got the name of it
+				dbConfig := h.server.GetDbConfig(dbName)
+				if dbConfig == nil {
+					continue
+				}
+
 				// Copying struct here to avoid mutating the running dbconfig later on
 				var dbConfigCopy DbConfig
-				err = base.DeepCopyInefficient(&dbConfigCopy, h.server.GetDatabaseConfig(dbName).DbConfig)
+				err = base.DeepCopyInefficient(&dbConfigCopy, dbConfig)
 				if err != nil {
 					return err
 				}
@@ -373,7 +389,7 @@ func (h *handler) handlePutConfig() error {
 func (h *handler) handlePutDbConfig() (err error) {
 	h.assertAdminOnly()
 
-	var dbConfig *DatabaseConfig
+	var dbConfig *DbConfig
 
 	if h.permissionsResults[PermUpdateDb.PermissionName] {
 		// user authorized to change all fields
@@ -419,16 +435,11 @@ func (h *handler) handlePutDbConfig() (err error) {
 		bucket = *dbConfig.Bucket
 	}
 
-	if dbConfig.Version != "" {
-		return base.HTTPErrorf(http.StatusBadRequest, "version cannot be specified in the config body. If "+
-			"concurrency protection is required use the If-Match header to supply config version")
-	}
-
 	// Set dbName based on path value (since db doesn't necessarily exist), and update in incoming config in case of insert
 	dbName := h.PathVar("db")
 	dbConfig.Name = dbName
 
-	updatedDbConfig := dbConfig
+	var updatedDbConfig *DatabaseConfig
 	if h.server.persistentConfig {
 		cas, err := h.server.bootstrapContext.connection.UpdateConfig(
 			bucket, h.server.config.Bootstrap.ConfigGroupID,
@@ -443,7 +454,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 					return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 				}
 
-				if err := base.ConfigMerge(&bucketDbConfig, dbConfig); err != nil {
+				if err := base.ConfigMerge(&bucketDbConfig.DbConfig, dbConfig); err != nil {
 					return nil, err
 				}
 
@@ -455,7 +466,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 					return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 				}
 
-				bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig)
+				bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
 				if err != nil {
 					return nil, err
 				}
@@ -542,7 +553,7 @@ func (h *handler) handleDeleteDbConfigSync() error {
 			}
 
 			bucketDbConfig.Sync = nil
-			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig)
+			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
 			if err != nil {
 				return nil, err
 			}
@@ -602,7 +613,7 @@ func (h *handler) handlePutDbConfigSync() error {
 			}
 
 			bucketDbConfig.Sync = &js
-			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig)
+			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
 			if err != nil {
 				return nil, err
 			}
@@ -685,7 +696,7 @@ func (h *handler) handleDeleteDbConfigImportFilter() error {
 			}
 
 			bucketDbConfig.ImportFilter = nil
-			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig)
+			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
 			if err != nil {
 				return nil, err
 			}
@@ -746,7 +757,7 @@ func (h *handler) handlePutDbConfigImportFilter() error {
 			}
 
 			bucketDbConfig.ImportFilter = &js
-			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig)
+			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
 			if err != nil {
 				return nil, err
 			}

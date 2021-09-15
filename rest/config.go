@@ -150,6 +150,7 @@ type DbConfig struct {
 	QueryPaginationLimit             *int                             `json:"query_pagination_limit,omitempty"`               // Query limit to be used during pagination of large queries
 	UserXattrKey                     string                           `json:"user_xattr_key,omitempty"`                       // Key of user xattr that will be accessible from the Sync Function. If empty the feature will be disabled.
 	ClientPartitionWindowSecs        *int                             `json:"client_partition_window_secs,omitempty"`         // How long clients can remain offline for without losing replication metadata. Default 30 days (in seconds)
+	Guest                            *db.PrincipalConfig              `json:"guest,omitempty"`                                // Guest user settings
 }
 
 type DeltaSyncConfig struct {
