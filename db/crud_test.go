@@ -131,11 +131,16 @@ func TestHasAttachmentsFlag(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 2-a...")
-	gotbody, err := db.Get1xBody("doc1")
-	assert.NoError(t, err, "Couldn't get document")
-	rev2a_body["_attachments"] = AttachmentsMeta{"hello.txt": map[string]interface{}{
-		"digest": "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", "length": 11, "revpos": 2, "stub": true, "ver": 2}}
-	assert.Equal(t, rev2a_body, gotbody)
+	gotDoc, err := db.GetDocument("doc1", DocUnmarshalSync)
+	assert.NoError(t, err)
+	require.Contains(t, gotDoc.Attachments, "hello.txt")
+	attachmentData, ok := gotDoc.Attachments["hello.txt"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", attachmentData["digest"])
+	assert.Equal(t, float64(11), attachmentData["length"])
+	assert.Equal(t, float64(2), attachmentData["revpos"])
+	assert.True(t, attachmentData["stub"].(bool))
+	assert.Equal(t, float64(2), attachmentData["ver"])
 
 	// Create rev 2-b
 	//    1-a
@@ -152,11 +157,16 @@ func TestHasAttachmentsFlag(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc, verify rev 2-b")
-	gotbody, err = db.Get1xBody("doc1")
-	assert.NoError(t, err, "Couldn't get document")
-	rev2b_body["_attachments"] = AttachmentsMeta{"hello.txt": map[string]interface{}{
-		"digest": "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", "length": 11, "revpos": 2, "stub": true, "ver": 2}}
-	assert.Equal(t, rev2b_body, gotbody)
+	gotDoc, err = db.GetDocument("doc1", DocUnmarshalSync)
+	assert.NoError(t, err)
+	require.Contains(t, gotDoc.Attachments, "hello.txt")
+	attachmentData, ok = gotDoc.Attachments["hello.txt"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", attachmentData["digest"])
+	assert.Equal(t, float64(11), attachmentData["length"])
+	assert.Equal(t, float64(2), attachmentData["revpos"])
+	assert.True(t, attachmentData["stub"].(bool))
+	assert.Equal(t, float64(2), attachmentData["ver"])
 
 	// Retrieve the raw document, and verify 2-a isn't stored inline
 	log.Printf("Retrieve doc, verify rev 2-a not inline")
