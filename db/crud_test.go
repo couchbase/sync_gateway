@@ -981,7 +981,7 @@ func TestMalformedRevisionStorageRecovery(t *testing.T) {
 	//  |
 	// 6-a
 	log.Printf("Add doc1 w/ malformed body for rev 2-b included in revision tree")
-	ok, addErr := db.Bucket.AddRaw("doc1", 0, []byte(rawDocMalformedRevisionStorage))
+	ok, addErr := db.Bucket.Add("doc1", 0, []byte(rawDocMalformedRevisionStorage))
 	goassert.True(t, ok)
 	assert.NoError(t, addErr, "Error writing raw document")
 
