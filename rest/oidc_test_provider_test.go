@@ -143,8 +143,8 @@ func restTesterConfigWithTestProviderEnabled() RestTesterConfig {
 	restTesterConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			OIDCConfig: &opts,
-			Unsupported: db.UnsupportedOptions{
-				OidcTestProvider: db.OidcTestProviderOptions{
+			Unsupported: &db.UnsupportedOptions{
+				OidcTestProvider: &db.OidcTestProviderOptions{
 					Enabled: true,
 				},
 			},
@@ -295,8 +295,8 @@ func TestOpenIDConnectTestProviderWithRealWorldToken(t *testing.T) {
 			restTesterConfig := RestTesterConfig{
 				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 					OIDCConfig: &opts,
-					Unsupported: db.UnsupportedOptions{
-						OidcTestProvider: db.OidcTestProviderOptions{
+					Unsupported: &db.UnsupportedOptions{
+						OidcTestProvider: &db.OidcTestProviderOptions{
 							Enabled: true,
 						},
 					},

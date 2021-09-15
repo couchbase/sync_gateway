@@ -148,7 +148,8 @@ var authCodeTokenMap = make(map[string]AuthState)
  * Returns the OpenID provider configuration info
  */
 func (h *handler) handleOidcProviderConfiguration() error {
-	if !h.db.DatabaseContext.Options.UnsupportedOptions.OidcTestProvider.Enabled {
+	if h.db.DatabaseContext.Options.UnsupportedOptions != nil && h.db.DatabaseContext.Options.UnsupportedOptions.OidcTestProvider != nil &&
+		!h.db.DatabaseContext.Options.UnsupportedOptions.OidcTestProvider.Enabled {
 		return base.HTTPErrorf(http.StatusForbidden, "OIDC test provider is not enabled")
 	}
 
@@ -190,7 +191,8 @@ type AuthorizeParameters struct {
  * which is part of an internal authentication flow
  */
 func (h *handler) handleOidcTestProviderAuthorize() error {
-	if !h.db.DatabaseContext.Options.UnsupportedOptions.OidcTestProvider.Enabled {
+	if h.db.DatabaseContext.Options.UnsupportedOptions != nil && h.db.DatabaseContext.Options.UnsupportedOptions.OidcTestProvider != nil &&
+		!h.db.DatabaseContext.Options.UnsupportedOptions.OidcTestProvider.Enabled {
 		return base.HTTPErrorf(http.StatusForbidden, "OIDC test provider is not enabled")
 	}
 
@@ -252,7 +254,8 @@ type OidcTokenResponse struct {
  * Return tokens for Auth code flow
  */
 func (h *handler) handleOidcTestProviderToken() error {
-	if !h.db.DatabaseContext.Options.UnsupportedOptions.OidcTestProvider.Enabled {
+	if h.db.DatabaseContext.Options.UnsupportedOptions != nil && h.db.DatabaseContext.Options.UnsupportedOptions.OidcTestProvider != nil &&
+		!h.db.DatabaseContext.Options.UnsupportedOptions.OidcTestProvider.Enabled {
 		return base.HTTPErrorf(http.StatusForbidden, "OIDC test provider is not enabled")
 	}
 
@@ -274,7 +277,8 @@ func (h *handler) handleOidcTestProviderToken() error {
  * Return public certificates for signing keys
  */
 func (h *handler) handleOidcTestProviderCerts() error {
-	if !h.db.DatabaseContext.Options.UnsupportedOptions.OidcTestProvider.Enabled {
+	if h.db.DatabaseContext.Options.UnsupportedOptions != nil && h.db.DatabaseContext.Options.UnsupportedOptions.OidcTestProvider != nil &&
+		!h.db.DatabaseContext.Options.UnsupportedOptions.OidcTestProvider.Enabled {
 		return base.HTTPErrorf(http.StatusForbidden, "OIDC test provider is not enabled")
 	}
 
@@ -309,7 +313,8 @@ func (h *handler) handleOidcTestProviderCerts() error {
  * Return an OAuth 2.0 Authorization Response
  */
 func (h *handler) handleOidcTestProviderAuthenticate() error {
-	if !h.db.DatabaseContext.Options.UnsupportedOptions.OidcTestProvider.Enabled {
+	if h.db.DatabaseContext.Options.UnsupportedOptions != nil && h.db.DatabaseContext.Options.UnsupportedOptions.OidcTestProvider != nil &&
+		!h.db.DatabaseContext.Options.UnsupportedOptions.OidcTestProvider.Enabled {
 		return base.HTTPErrorf(http.StatusForbidden, "OIDC test provider is not enabled")
 	}
 

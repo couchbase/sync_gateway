@@ -127,7 +127,7 @@ type DbConfig struct {
 	CacheConfig                      *CacheConfig                     `json:"cache,omitempty"`                                // Cache settings
 	DeprecatedRevCacheSize           *uint32                          `json:"rev_cache_size,omitempty"`                       // Maximum number of revisions to store in the revision cache (deprecated, CBG-356)
 	StartOffline                     *bool                            `json:"offline,omitempty"`                              // start the DB in the offline state, defaults to false
-	Unsupported                      db.UnsupportedOptions            `json:"unsupported,omitempty"`                          // Config for unsupported features
+	Unsupported                      *db.UnsupportedOptions           `json:"unsupported,omitempty"`                          // Config for unsupported features
 	OIDCConfig                       *auth.OIDCOptions                `json:"oidc,omitempty"`                                 // Config properties for OpenID Connect authentication
 	OldRevExpirySeconds              *uint32                          `json:"old_rev_expiry_seconds,omitempty"`               // The number of seconds before old revs are removed from CBS bucket
 	ViewQueryTimeoutSecs             *uint32                          `json:"view_query_timeout_secs,omitempty"`              // The view query timeout in seconds
@@ -279,9 +279,14 @@ func (dbConfig *DbConfig) setup(dbName string, bootstrapConfig BootstrapConfig) 
 		}
 	}
 
+	insecureSkipVerify := false
+	if dbConfig.Unsupported != nil {
+		insecureSkipVerify = dbConfig.Unsupported.RemoteConfigTlsSkipVerify
+	}
+
 	// Load Sync Function.
 	if dbConfig.Sync != nil {
-		sync, err := loadJavaScript(*dbConfig.Sync, dbConfig.Unsupported.RemoteConfigTlsSkipVerify)
+		sync, err := loadJavaScript(*dbConfig.Sync, insecureSkipVerify)
 		if err != nil {
 			return &JavaScriptLoadError{
 				JSLoadType: SyncFunction,
@@ -294,7 +299,7 @@ func (dbConfig *DbConfig) setup(dbName string, bootstrapConfig BootstrapConfig) 
 
 	// Load Import Filter Function.
 	if dbConfig.ImportFilter != nil {
-		importFilter, err := loadJavaScript(*dbConfig.ImportFilter, dbConfig.Unsupported.RemoteConfigTlsSkipVerify)
+		importFilter, err := loadJavaScript(*dbConfig.ImportFilter, insecureSkipVerify)
 		if err != nil {
 			return &JavaScriptLoadError{
 				JSLoadType: ImportFilter,
@@ -308,7 +313,7 @@ func (dbConfig *DbConfig) setup(dbName string, bootstrapConfig BootstrapConfig) 
 	// Load Conflict Resolution Function.
 	for _, rc := range dbConfig.Replications {
 		if rc.ConflictResolutionFn != "" {
-			conflictResolutionFn, err := loadJavaScript(rc.ConflictResolutionFn, dbConfig.Unsupported.RemoteConfigTlsSkipVerify)
+			conflictResolutionFn, err := loadJavaScript(rc.ConflictResolutionFn, insecureSkipVerify)
 			if err != nil {
 				return &JavaScriptLoadError{
 					JSLoadType: ConflictResolver,

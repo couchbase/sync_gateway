@@ -477,13 +477,18 @@ func (m *sgReplicateManager) StartReplications() error {
 
 // NewActiveReplicatorConfig converts an incoming ReplicationCfg to an ActiveReplicatorConfig
 func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (rc *ActiveReplicatorConfig, err error) {
+	insecureSkipVerify := false
+	if m.dbContext.Options.UnsupportedOptions != nil {
+		insecureSkipVerify = m.dbContext.Options.UnsupportedOptions.SgrTlsSkipVerify
+	}
+
 	rc = &ActiveReplicatorConfig{
 		ID:                 config.ID,
 		Continuous:         config.Continuous,
 		ActiveDB:           &Database{DatabaseContext: m.dbContext}, // sg-replicate interacts with local as admin
 		PurgeOnRemoval:     config.PurgeOnRemoval,
 		DeltasEnabled:      config.DeltaSyncEnabled,
-		InsecureSkipVerify: m.dbContext.Options.UnsupportedOptions.SgrTlsSkipVerify,
+		InsecureSkipVerify: insecureSkipVerify,
 		CheckpointInterval: m.CheckpointInterval,
 	}
 
