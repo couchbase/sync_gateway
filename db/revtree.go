@@ -22,13 +22,14 @@ type RevKey string
 
 // Information about a single revision.
 type RevInfo struct {
-	ID       string
-	Parent   string
-	BodyKey  string // Used when revision body stored externally (doc key used for external storage)
-	Deleted  bool
-	depth    uint32
-	Body     []byte // Used when revision body stored inline (stores bodies)
-	Channels base.Set
+	ID             string
+	Parent         string
+	BodyKey        string // Used when revision body stored externally (doc key used for external storage)
+	Deleted        bool
+	depth          uint32
+	Body           []byte // Used when revision body stored inline (stores bodies)
+	Channels       base.Set
+	HasAttachments bool
 }
 
 func (rev RevInfo) IsRoot() bool {
@@ -42,13 +43,14 @@ type RevTree map[string]*RevInfo
 // rev IDs, with a parallel array of parent indexes. Ordering in the arrays doesn't matter.
 // So the parent of Revs[i] is Revs[Parents[i]] (unless Parents[i] == -1, which denotes a root.)
 type revTreeList struct {
-	Revs       []string          `json:"revs"`                 // The revision IDs
-	Parents    []int             `json:"parents"`              // Index of parent of each revision (-1 if root)
-	Deleted    []int             `json:"deleted,omitempty"`    // Indexes of revisions that are deletions
-	Bodies_Old []string          `json:"bodies,omitempty"`     // JSON of each revision (legacy)
-	BodyMap    map[string]string `json:"bodymap,omitempty"`    // JSON of each revision
-	BodyKeyMap map[string]string `json:"bodyKeyMap,omitempty"` // Keys of revision bodies stored in external documents
-	Channels   []base.Set        `json:"channels"`
+	Revs           []string          `json:"revs"`                 // The revision IDs
+	Parents        []int             `json:"parents"`              // Index of parent of each revision (-1 if root)
+	Deleted        []int             `json:"deleted,omitempty"`    // Indexes of revisions that are deletions
+	Bodies_Old     []string          `json:"bodies,omitempty"`     // JSON of each revision (legacy)
+	BodyMap        map[string]string `json:"bodymap,omitempty"`    // JSON of each revision
+	BodyKeyMap     map[string]string `json:"bodyKeyMap,omitempty"` // Keys of revision bodies stored in external documents
+	Channels       []base.Set        `json:"channels"`
+	HasAttachments []int             `json:"hasAttachments,omitempty"` // Indexes of revisions that has attachments
 }
 
 func (tree RevTree) MarshalJSON() ([]byte, error) {
@@ -84,6 +86,12 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 				rep.Deleted = make([]int, 0, 1)
 			}
 			rep.Deleted = append(rep.Deleted, i)
+		}
+		if info.HasAttachments {
+			if rep.HasAttachments == nil {
+				rep.HasAttachments = make([]int, 0, 1)
+			}
+			rep.HasAttachments = append(rep.HasAttachments, i)
 		}
 		i++
 	}
@@ -153,6 +161,13 @@ func (tree *RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 		for _, i := range rep.Deleted {
 			info := (*tree)[rep.Revs[i]]
 			info.Deleted = true //because tree[rep.Revs[i]].Deleted=true is a compile error
+			(*tree)[rep.Revs[i]] = info
+		}
+	}
+	if rep.HasAttachments != nil {
+		for _, i := range rep.HasAttachments {
+			info := (*tree)[rep.Revs[i]]
+			info.HasAttachments = true
 			(*tree)[rep.Revs[i]] = info
 		}
 	}
@@ -388,7 +403,7 @@ func (tree RevTree) getRevisionBody(revid string, loader RevLoaderFunc) ([]byte,
 	return info.Body, true
 }
 
-func (tree RevTree) setRevisionBody(revid string, body []byte, bodyKey string) {
+func (tree RevTree) setRevisionBody(revid string, body []byte, bodyKey string, hasAttachments bool) {
 	if revid == "" {
 		panic("Illegal empty revision ID")
 	}
@@ -399,6 +414,7 @@ func (tree RevTree) setRevisionBody(revid string, body []byte, bodyKey string) {
 
 	info.BodyKey = bodyKey
 	info.Body = body
+	info.HasAttachments = hasAttachments
 }
 
 func (tree RevTree) removeRevisionBody(revid string) (deletedBodyKey string) {
@@ -410,6 +426,7 @@ func (tree RevTree) removeRevisionBody(revid string) (deletedBodyKey string) {
 	deletedBodyKey = info.BodyKey
 	info.BodyKey = ""
 	info.Body = nil
+	info.HasAttachments = false
 	return deletedBodyKey
 }
 
