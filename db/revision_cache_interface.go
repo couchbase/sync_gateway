@@ -193,10 +193,12 @@ func (rev *DocumentRevision) Mutable1xBody(db *Database, requestedHistory Revisi
 			if err != nil {
 				return nil, err
 			}
+			DeleteAttachmentVersion(bodyAtts)
 			b[BodyAttachments] = bodyAtts
 		}
 	} else if rev.Attachments != nil {
 		// Stamp attachment metadata back into the body
+		DeleteAttachmentVersion(rev.Attachments)
 		b[BodyAttachments] = rev.Attachments
 	}
 

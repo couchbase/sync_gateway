@@ -8064,7 +8064,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, "sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=", meta["digest"].(string))
 		assert.Equal(t, float64(38), meta["length"].(float64))
 		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Equal(t, float64(2), meta["ver"].(float64))
+		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		attKey := retrieveAttachmentKey(docID, attName)
@@ -8108,7 +8108,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, "sha1-Av0dem1kCRIddzAlnK4A2Mgn6Uo=", meta["digest"].(string))
 		assert.Equal(t, float64(38), meta["length"].(float64))
 		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Equal(t, float64(2), meta["ver"].(float64))
+		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve attachment key used for internal attachment storage and retrieval.
 		attKey := retrieveAttachmentKey(docID, attName)
@@ -8151,7 +8151,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, "sha1-8i/O8CzFsxHmwT4SLoVI6PIKRDo=", meta["digest"].(string))
 		assert.Equal(t, float64(38), meta["length"].(float64))
 		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Equal(t, float64(2), meta["ver"].(float64))
+		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve attachment key used for internal attachment storage and retrieval.
 		attKey := retrieveAttachmentKey(docID, attName)
@@ -8191,7 +8191,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, "sha1-0naD6SgfLVDr+zakP8RkNlBYORw=", meta["digest"].(string))
 		assert.Equal(t, float64(38), meta["length"].(float64))
 		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Equal(t, float64(2), meta["ver"].(float64))
+		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve attachment key used for internal attachment storage and retrieval.
 		attKeyOld := retrieveAttachmentKey(docID, attName)
@@ -8216,7 +8216,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, "sha1-dDdppdY7RC4gq550G7eGJgQmk6g=", meta["digest"].(string))
 		assert.Equal(t, float64(46), meta["length"].(float64))
 		assert.Equal(t, float64(3), meta["revpos"].(float64))
-		assert.Equal(t, float64(2), meta["ver"].(float64))
+		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Check whether the old attachment blob is removed from the underlying storage.
 		rt.requireDocNotFound(attKeyOld)
@@ -8256,7 +8256,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=", meta["digest"].(string))
 		assert.Equal(t, float64(40), meta["length"].(float64))
 		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Equal(t, float64(2), meta["ver"].(float64))
+		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		att1Key := retrieveAttachmentKey(docID, att1Name)
@@ -8283,7 +8283,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=", meta["digest"].(string))
 		assert.Equal(t, float64(40), meta["length"].(float64))
 		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Equal(t, float64(2), meta["ver"].(float64))
+		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		meta, ok = attachments[att2Name].(map[string]interface{})
 		require.True(t, ok)
@@ -8292,7 +8292,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, "sha1-3oMVZvHjOQkkEK7K/xp0tqkuj1Q=", meta["digest"].(string))
 		assert.Equal(t, float64(38), meta["length"].(float64))
 		assert.Equal(t, float64(3), meta["revpos"].(float64))
-		assert.Equal(t, float64(2), meta["ver"].(float64))
+		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		att2Key := retrieveAttachmentKey(docID, att2Name)
@@ -8339,7 +8339,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=", meta["digest"].(string))
 		assert.Equal(t, float64(40), meta["length"].(float64))
 		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Equal(t, float64(2), meta["ver"].(float64))
+		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		att1Key := retrieveAttachmentKey(docID, att1Name)
@@ -8366,7 +8366,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=", meta["digest"].(string))
 		assert.Equal(t, float64(40), meta["length"].(float64))
 		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Equal(t, float64(2), meta["ver"].(float64))
+		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		meta, ok = attachments[att2Name].(map[string]interface{})
 		require.True(t, ok)
@@ -8375,7 +8375,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, "sha1-3oMVZvHjOQkkEK7K/xp0tqkuj1Q=", meta["digest"].(string))
 		assert.Equal(t, float64(38), meta["length"].(float64))
 		assert.Equal(t, float64(3), meta["revpos"].(float64))
-		assert.Equal(t, float64(2), meta["ver"].(float64))
+		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		att2Key := retrieveAttachmentKey(docID, att2Name)
@@ -8421,7 +8421,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=", meta["digest"].(string))
 		assert.Equal(t, float64(40), meta["length"].(float64))
 		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Equal(t, float64(2), meta["ver"].(float64))
+		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		att1Key := retrieveAttachmentKey(docID, att1Name)
@@ -8448,7 +8448,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=", meta["digest"].(string))
 		assert.Equal(t, float64(40), meta["length"].(float64))
 		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Equal(t, float64(2), meta["ver"].(float64))
+		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		meta, ok = attachments[att2Name].(map[string]interface{})
 		require.True(t, ok)
@@ -8457,7 +8457,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, "sha1-3oMVZvHjOQkkEK7K/xp0tqkuj1Q=", meta["digest"].(string))
 		assert.Equal(t, float64(38), meta["length"].(float64))
 		assert.Equal(t, float64(3), meta["revpos"].(float64))
-		assert.Equal(t, float64(2), meta["ver"].(float64))
+		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		att2Key := retrieveAttachmentKey(docID, att2Name)
@@ -8498,7 +8498,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, "sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=", meta["digest"].(string))
 		assert.Equal(t, float64(38), meta["length"].(float64))
 		assert.Equal(t, float64(1), meta["revpos"].(float64))
-		assert.Equal(t, float64(2), meta["ver"].(float64))
+		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		attKey := retrieveAttachmentKey(docID, attName)
@@ -8540,7 +8540,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, "sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=", meta["digest"].(string))
 		assert.Equal(t, float64(38), meta["length"].(float64))
 		assert.Equal(t, float64(1), meta["revpos"].(float64))
-		assert.Equal(t, float64(2), meta["ver"].(float64))
+		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		attKey := retrieveAttachmentKey(docID, attName)
@@ -8581,7 +8581,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, "sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=", meta["digest"].(string))
 		assert.Equal(t, float64(38), meta["length"].(float64))
 		assert.Equal(t, float64(1), meta["revpos"].(float64))
-		assert.Equal(t, float64(2), meta["ver"].(float64))
+		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		attKey := retrieveAttachmentKey(docID, attName)
@@ -8619,7 +8619,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, "sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=", meta["digest"].(string))
 		assert.Equal(t, float64(38), meta["length"].(float64))
 		assert.Equal(t, float64(1), meta["revpos"].(float64))
-		assert.Equal(t, float64(2), meta["ver"].(float64))
+		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve attachment key used for internal attachment storage and retrieval.
 		attKeyOld := retrieveAttachmentKey(docID, attName)
@@ -8643,7 +8643,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, "sha1-dDdppdY7RC4gq550G7eGJgQmk6g=", meta["digest"].(string))
 		assert.Equal(t, float64(46), meta["length"].(float64))
 		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Equal(t, float64(2), meta["ver"].(float64))
+		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Check whether the old attachment blob is removed from the underlying storage.
 		rt.requireDocNotFound(attKeyOld)
@@ -8689,7 +8689,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, "sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=", meta["digest"].(string))
 		assert.Equal(t, float64(38), meta["length"].(float64))
 		assert.Equal(t, float64(1), meta["revpos"].(float64))
-		assert.Equal(t, float64(2), meta["ver"].(float64))
+		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		attKey := retrieveAttachmentKey(docID, attName)
@@ -8742,7 +8742,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, "sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=", meta["digest"].(string))
 		assert.Equal(t, float64(38), meta["length"].(float64))
 		assert.Equal(t, float64(1), meta["revpos"].(float64))
-		assert.Equal(t, float64(2), meta["ver"].(float64))
+		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		attKey := retrieveAttachmentKey(docID, attName)
@@ -8776,7 +8776,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, "sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=", meta["digest"].(string))
 		assert.Equal(t, float64(38), meta["length"].(float64))
 		assert.Equal(t, float64(1), meta["revpos"].(float64))
-		assert.Equal(t, float64(2), meta["ver"].(float64))
+		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 	})
 
 	t.Run("doc with multiple attachments and removal of a single one upon document update", func(t *testing.T) {
@@ -8805,7 +8805,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=", meta["digest"].(string))
 		assert.Equal(t, float64(40), meta["length"].(float64))
 		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Equal(t, float64(2), meta["ver"].(float64))
+		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		att1Key := retrieveAttachmentKey(docID, att1Name)
@@ -8832,7 +8832,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=", meta["digest"].(string))
 		assert.Equal(t, float64(40), meta["length"].(float64))
 		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Equal(t, float64(2), meta["ver"].(float64))
+		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		meta, ok = attachments[att2Name].(map[string]interface{})
 		require.True(t, ok)
@@ -8841,7 +8841,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, "sha1-3oMVZvHjOQkkEK7K/xp0tqkuj1Q=", meta["digest"].(string))
 		assert.Equal(t, float64(38), meta["length"].(float64))
 		assert.Equal(t, float64(3), meta["revpos"].(float64))
-		assert.Equal(t, float64(2), meta["ver"].(float64))
+		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
 		att2Key := retrieveAttachmentKey(docID, att2Name)
@@ -8864,7 +8864,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=", meta["digest"].(string))
 		assert.Equal(t, float64(40), meta["length"].(float64))
 		assert.Equal(t, float64(2), meta["revpos"].(float64))
-		assert.Equal(t, float64(2), meta["ver"].(float64))
+		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Check whether removed attachment is also removed from the underlying storage.
 		requireAttachmentNotFound(docID, att2Name)
