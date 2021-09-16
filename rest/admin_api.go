@@ -437,7 +437,14 @@ func (h *handler) handlePutDbConfig() (err error) {
 
 	// Set dbName based on path value (since db doesn't necessarily exist), and update in incoming config in case of insert
 	dbName := h.PathVar("db")
-	dbConfig.Name = dbName
+	if dbConfig.Name != "" && dbName != dbConfig.Name {
+		return base.HTTPErrorf(http.StatusBadRequest, "Cannot update database name. "+
+			"This requires removing and re-creating the database with a new name")
+	}
+
+	if dbConfig.Name == "" {
+		dbConfig.Name = dbName
+	}
 
 	var updatedDbConfig *DatabaseConfig
 	if h.server.persistentConfig {
