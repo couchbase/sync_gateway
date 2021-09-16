@@ -1998,7 +1998,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(allDocsResult.Rows), 1)
+	require.Equal(t, 1, len(allDocsResult.Rows))
 	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
 	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
 
