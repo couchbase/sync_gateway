@@ -183,10 +183,30 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		h.setHeader("Server", base.ProductNameString)
 	}
 
+	// If an Admin Request and admin auth enabled or a metrics request with metrics auth enabled we need to check the
+	// user credentials
+	shouldCheckAdminAuth := (h.privs == adminPrivs && *h.server.config.API.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.config.API.MetricsInterfaceAuthentication)
+
 	// If there is a "db" path variable, look up the database context:
 	var dbContext *db.DatabaseContext
 	if dbname := h.PathVar("db"); dbname != "" {
 		if dbContext, err = h.server.GetDatabase(dbname); err != nil {
+			base.Infof(base.KeyHTTP, "Error trying to get db %s: %v", base.MD(dbname), err)
+
+			if shouldCheckAdminAuth {
+				if httpError, ok := err.(*base.HTTPError); ok && httpError.Status == http.StatusNotFound {
+					authorized, err := h.checkAdminAuthenticationOnly()
+					if err != nil {
+						return err
+					}
+
+					if authorized {
+						return base.HTTPErrorf(http.StatusForbidden, "")
+					}
+					return base.HTTPErrorf(http.StatusUnauthorized, "")
+				}
+			}
+
 			return err
 		}
 	}
@@ -223,11 +243,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		}
 	}
 
-	// If an Admin Request and admin auth enabled or a metrics request with metrics auth enabled we need to check the
-	// user credentials
-	shouldCheckAdminAuth := (h.privs == adminPrivs && *h.server.config.API.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.config.API.MetricsInterfaceAuthentication)
 	if shouldCheckAdminAuth {
-
 		// If server is walrus but auth is enabled we should just kick the user out as invalid as we have nothing to
 		// validate credentials against
 		if base.ServerIsWalrus(h.server.config.Bootstrap.Server) {
@@ -436,6 +452,33 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 	}
 
 	return nil
+}
+
+// checkAdminAuthenticationOnly simply checks whether a username / password combination is authenticated pulling the
+// credentials from the handler
+func (h *handler) checkAdminAuthenticationOnly() (bool, error) {
+	managementEndpoints, httpClient, err := h.server.ObtainManagementEndpointsAndHTTPClient()
+	if err != nil {
+		return false, base.HTTPErrorf(http.StatusInternalServerError, "Error getting management endpoints: %v", err)
+	}
+
+	username, password := h.getBasicAuth()
+	if username == "" {
+		h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
+
+		return false, base.HTTPErrorf(http.StatusUnauthorized, "Login required")
+	}
+
+	statusCode, _, err := doHTTPAuthRequest(httpClient, username, password, "POST", "/pools/default/checkPermissions", managementEndpoints, nil)
+	if err != nil {
+		return false, base.HTTPErrorf(http.StatusInternalServerError, "Error performing HTTP auth request: %v", err)
+	}
+
+	if statusCode == http.StatusUnauthorized {
+		return false, nil
+	}
+
+	return true, nil
 }
 
 func checkAdminAuth(bucketName, basicAuthUsername, basicAuthPassword string, attemptedHTTPOperation string, httpClient *http.Client, managementEndpoints []string, shouldCheckPermissions bool, accessPermissions []Permission, responsePermissions []Permission) (responsePermissionResults map[string]bool, statusCode int, err error) {
