@@ -836,6 +836,10 @@ func BoolDefault(b *bool, ifNil bool) bool {
 	return ifNil
 }
 
+func Float32Ptr(f float32) *float32 {
+	return &f
+}
+
 // Convert a Bucket, or a Couchbase URI (eg, couchbase://host1,host2) to a list of HTTP URLs with ports (eg, ["http://host1:8091", "http://host2:8091"])
 // connSpec can be optionally passed in if available, to prevent unnecessary double-parsing of connstr
 // Primary use case is for backwards compatibility with go-couchbase, cbdatasource, and CBGT. Supports secure URI's as well (couchbases://).
