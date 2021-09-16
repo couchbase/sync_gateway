@@ -48,6 +48,7 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 	startupConfig, _, err := automaticConfigUpgrade(configPath)
 	require.NoError(t, err)
 
+	assert.Equal(t, "", startupConfig.Bootstrap.ConfigGroupID)
 	assert.Equal(t, base.UnitTestUrl(), startupConfig.Bootstrap.Server)
 	assert.Equal(t, base.TestClusterUsername(), startupConfig.Bootstrap.Username)
 	assert.Equal(t, base.TestClusterPassword(), startupConfig.Bootstrap.Password)
@@ -61,6 +62,7 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 	err = json.Unmarshal(writtenNewFile, &writtenFileStartupConfig)
 	require.NoError(t, err)
 
+	assert.Equal(t, "", startupConfig.Bootstrap.ConfigGroupID)
 	assert.Equal(t, base.UnitTestUrl(), writtenFileStartupConfig.Bootstrap.Server)
 	assert.Equal(t, base.TestClusterUsername(), writtenFileStartupConfig.Bootstrap.Username)
 	assert.Equal(t, base.TestClusterPassword(), writtenFileStartupConfig.Bootstrap.Password)
@@ -147,7 +149,7 @@ func TestAutomaticConfigUpgradeError(t *testing.T) {
 	}
 }
 
-func TestAutomaticConfigUpgradeExistingConfig(t *testing.T) {
+func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("CBS required")
 	}
@@ -205,10 +207,56 @@ func TestAutomaticConfigUpgradeExistingConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	var dbConfig DbConfig
-	_, err = cbs.GetConfig(tb.GetName(), persistentConfigDefaultGroupID, &dbConfig)
+	originalDefaultDbConfigCAS, err := cbs.GetConfig(tb.GetName(), persistentConfigDefaultGroupID, &dbConfig)
 	assert.NoError(t, err)
 
 	// Ensure that revs limit hasn't actually been set
 	assert.Nil(t, dbConfig.RevsLimit)
 
+	// Now attempt an upgrade for a non-default group ID, and ensure it's written correctly, and separately from the default group.
+	const configUpgradeGroupID = "import"
+
+	importConfigRaw := `
+	{
+		"config_upgrade_group_id": "%s",
+		"databases": {
+			"db": {
+				"enable_shared_bucket_access": true,
+				"import_docs": true,
+				"server": "%s",
+				"username": "%s",
+				"password": "%s",
+				"bucket": "%s"
+			}
+		}
+	}`
+
+	importConfig := fmt.Sprintf(importConfigRaw, configUpgradeGroupID, base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), tb.GetName())
+	importConfigPath := filepath.Join(tmpDir, "config-import.json")
+	err = ioutil.WriteFile(importConfigPath, []byte(importConfig), os.FileMode(0644))
+	require.NoError(t, err)
+
+	startupConfig, _, err = automaticConfigUpgrade(importConfigPath)
+	// only supported in EE
+	if base.IsEnterpriseEdition() {
+		require.NoError(t, err)
+
+		// Ensure that startupConfig group ID has been set
+		assert.Equal(t, configUpgradeGroupID, startupConfig.Bootstrap.ConfigGroupID)
+
+		// Ensure dbConfig is saved as the specified config group ID
+		var dbConfig DbConfig
+		_, err = cbs.GetConfig(tb.GetName(), configUpgradeGroupID, &dbConfig)
+		assert.NoError(t, err)
+
+		// Ensure default has not changed
+		dbConfig = DbConfig{}
+		defaultDbConfigCAS, err := cbs.GetConfig(tb.GetName(), persistentConfigDefaultGroupID, &dbConfig)
+		assert.NoError(t, err)
+		assert.Equal(t, originalDefaultDbConfigCAS, defaultDbConfigCAS)
+	} else {
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "only supported in enterprise edition")
+		assert.Nil(t, startupConfig)
+	}
 }

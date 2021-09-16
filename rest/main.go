@@ -231,16 +231,21 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 			return nil, false, err
 		}
 
-		_, err = cluster.InsertConfig(*dbc.Bucket, persistentConfigDefaultGroupID, dbc)
+		configGroupID := persistentConfigDefaultGroupID
+		if startupConfig.Bootstrap.ConfigGroupID != "" {
+			configGroupID = startupConfig.Bootstrap.ConfigGroupID
+		}
+
+		_, err = cluster.InsertConfig(*dbc.Bucket, configGroupID, dbc)
 		if err != nil {
 			// If key already exists just continue
 			if errors.Is(err, base.ErrAlreadyExists) {
-				base.Infof(base.KeyAll, "Skipping Couchbase Server persistence for %s. Already exists.", base.UD(dbc.Name))
+				base.Infof(base.KeyAll, "Skipping Couchbase Server persistence for config group %q in %s. Already exists.", startupConfig.Bootstrap.ConfigGroupID, base.UD(dbc.Name))
 				continue
 			}
 			return nil, false, err
 		}
-		base.Infof(base.KeyAll, "Persisted database %s config to Couchbase Server bucket: %s", base.UD(dbc.Name), base.MD(*dbc.Bucket))
+		base.Infof(base.KeyAll, "Persisted database %s config for group %q to Couchbase Server bucket: %s", base.UD(dbc.Name), startupConfig.Bootstrap.ConfigGroupID, base.MD(*dbc.Bucket))
 	}
 
 	// Attempt to backup current config

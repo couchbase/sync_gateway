@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -57,7 +58,13 @@ type LegacyServerConfig struct {
 	AdminInterfaceAuthentication              *bool                          `json:"admin_interface_authentication,omitempty" help:"Whether the admin API requires authentication"`
 	MetricsInterfaceAuthentication            *bool                          `json:"metrics_interface_authentication,omitempty" help:"Whether the metrics API requires authentication"`
 	EnableAdminAuthenticationPermissionsCheck *bool                          `json:"enable_advanced_auth_dp,omitempty" help:"Whether to enable the permissions check feature of admin auth"`
-	Replications                              interface{}                    `json:"replications,omitempty"` // Functionality removed. Used to log message to user to switch to ISGR
+	ConfigUpgradeGroupID                      string                         `json:"config_upgrade_group_id,omitempty"` // If set, determines the config group ID used when this legacy config is upgraded to a persistent config.
+	RemovedLegacyServerConfig
+}
+
+// RemovedLegacyServerConfig are fields that used to be deprecated in a legacy config, but are now only present to log information about their removal.
+type RemovedLegacyServerConfig struct {
+	Replications interface{} `json:"replications,omitempty"` // Functionality removed. Used to log message to user to switch to ISGR
 }
 
 type FacebookConfigLegacy struct {
@@ -131,6 +138,13 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 			}
 			bootstrapConfigIsSet = true
 		}
+	}
+
+	if lc.ConfigUpgradeGroupID != "" {
+		if !base.IsEnterpriseEdition() {
+			return nil, nil, errors.New("customization of config_upgrade_group_id is only supported in enterprise edition")
+		}
+		bsc.ConfigGroupID = lc.ConfigUpgradeGroupID
 	}
 
 	sc := StartupConfig{
