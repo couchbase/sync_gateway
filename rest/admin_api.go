@@ -486,6 +486,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 		}
 		updatedDbConfig.cas = cas
 	} else {
+		updatedDbConfig = &DatabaseConfig{DbConfig: *dbConfig}
 		err = updatedDbConfig.validate()
 		if err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
