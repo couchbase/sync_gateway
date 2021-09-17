@@ -310,6 +310,11 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 		return nil, nil, base.HTTPErrorf(404, "missing")
 	}
 
+	// If the fromRevision was a tombstone, then return error to tell delta sync to send full body replication
+	if fromRevision.Deleted {
+		return nil, nil, base.ErrDeltaSourceIsTombstone
+	}
+
 	// If both body and delta are not available for fromRevId, the delta can't be generated
 	if fromRevision.BodyBytes == nil && fromRevision.Delta == nil {
 		return nil, nil, err

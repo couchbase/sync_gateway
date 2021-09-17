@@ -53,6 +53,10 @@ var (
 
 	// ErrEmptyDocument is returned when trying to insert a document with a null body.
 	ErrEmptyDocument = &sgError{"Document body is empty"}
+
+	// ErrDeltaSourceIsTombstone is returned to indicate delta sync should do a full body replication due to the
+	// delta source being a tombstone (therefore having an empty body)
+	ErrDeltaSourceIsTombstone = &sgError{"From rev is a tombstone"}
 )
 
 func (e *sgError) Error() string {
