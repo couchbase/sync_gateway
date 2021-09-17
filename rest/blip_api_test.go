@@ -3572,7 +3572,7 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 	assert.Equal(t, int64(0), btc.pushReplication.replicationStats.ProveAttachment.Value())
 }
 
-func TestMinRevPosThing(t *testing.T) {
+func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 	rt := NewRestTester(t, &RestTesterConfig{
 		guestEnabled: true,
@@ -3590,6 +3590,8 @@ func TestMinRevPosThing(t *testing.T) {
 
 	// Push an initial rev with attachment data
 	initialRevID := rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"_attachments": map[string]interface{}{"hello.txt": map[string]interface{}{"data": "aGVsbG8gd29ybGQ="}}})
+	err = rt.WaitForPendingChanges()
+	assert.NoError(t, err)
 
 	// Replicate data to client and ensure doc arrives
 	err = btc.StartOneshotPull()
