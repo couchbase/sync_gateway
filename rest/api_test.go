@@ -9100,3 +9100,77 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		rt.purgeDoc(attKey)
 	})
 }
+
+func TestAttachmentRemovalWithConflicts(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				AllowConflicts: base.BoolPtr(true),
+			},
+		},
+	})
+
+	defer rt.Close()
+
+	// Create doc rev 1
+	revid := rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"test": "x"})
+
+	// Create doc rev 2 with attachment
+	revid = rt.createDocReturnRev(t, "doc", revid, map[string]interface{}{"_attachments": map[string]interface{}{"hello.txt": map[string]interface{}{"data": "aGVsbG8gd29ybGQ="}}})
+	err := rt.WaitForPendingChanges()
+	assert.NoError(t, err)
+
+	// Create doc rev 3 referencing previous attachment
+	resp := rt.SendAdminRequest("PUT", "/db/doc?rev="+revid, `{"_attachments": {"hello.txt": {"revpos":2,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`)
+	assertStatus(t, resp, http.StatusCreated)
+	losingRev3 := respRevID(t, resp)
+
+	// Create doc conflicting with previous revid referencing previous attachment too
+	_, revIDHash := db.ParseRevID(revid)
+	resp = rt.SendAdminRequest("PUT", "/db/doc?new_edits=false", `{"_rev": "3-b", "_revisions": {"ids": ["b", "`+revIDHash+`"], "start": 3}, "_attachments": {"hello.txt": {"revpos":2,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}, "Winning Rev": true}`)
+	assertStatus(t, resp, http.StatusCreated)
+	winningRev3 := respRevID(t, resp)
+
+	// Update the winning rev 3 and ensure attachment remains around as the other leaf still references this attachment
+	resp = rt.SendAdminRequest("PUT", "/db/doc?rev="+winningRev3, `{"update": 2}`)
+	assertStatus(t, resp, http.StatusCreated)
+	finalRev4 := respRevID(t, resp)
+
+	type docResp struct {
+		Attachments db.AttachmentsMeta `json:"_attachments"`
+	}
+
+	var doc1 docResp
+	// Get losing rev and ensure attachment is still there and has not been deleted
+	resp = rt.SendAdminRequestWithHeaders("GET", "/db/doc?attachments=true&rev="+losingRev3, "", map[string]string{"Accept": "application/json"})
+	assertStatus(t, resp, http.StatusOK)
+
+	err = base.JSONUnmarshal(resp.BodyBytes(), &doc1)
+	assert.NoError(t, err)
+	require.Contains(t, doc1.Attachments, "hello.txt")
+	attachmentData, ok := doc1.Attachments["hello.txt"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", attachmentData["digest"])
+	assert.Equal(t, float64(11), attachmentData["length"])
+	assert.Equal(t, float64(2), attachmentData["revpos"])
+	assert.Equal(t, "aGVsbG8gd29ybGQ=", attachmentData["data"])
+
+	attachmentKey := db.MakeAttachmentKey(2, "doc", attachmentData["digest"].(string))
+
+	var doc2 docResp
+	// Get winning rev and ensure attachment is indeed removed from this rev
+	resp = rt.SendAdminRequestWithHeaders("GET", "/db/doc?attachments=true&rev="+finalRev4, "", map[string]string{"Accept": "application/json"})
+	assertStatus(t, resp, http.StatusOK)
+
+	err = base.JSONUnmarshal(resp.BodyBytes(), &doc2)
+	assert.NoError(t, err)
+	require.NotContains(t, doc2.Attachments, "hello.txt")
+
+	// Now remove the attachment in the losing rev by deleting the revision and ensure the attachment gets deleted
+	resp = rt.SendAdminRequest("DELETE", "/db/doc?rev="+losingRev3, "")
+	assertStatus(t, resp, http.StatusOK)
+
+	_, _, err = rt.GetDatabase().Bucket.GetRaw(attachmentKey)
+	assert.Error(t, err)
+	assert.True(t, base.IsDocNotFoundError(err))
+}
