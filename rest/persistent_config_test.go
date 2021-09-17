@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -24,7 +25,7 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 
 	rawConfig := `
 	{
-		"server_tls_skip_verify": true,
+		"server_tls_skip_verify": `+strconv.FormatBool(base.TestTLSSkipVerify())+`,
 		"interface": ":4444",
 		"adminInterface": ":4445",
 		"databases": {
@@ -112,7 +113,7 @@ func TestAutomaticConfigUpgradeError(t *testing.T) {
 			"Multiple DBs different servers",
 			`
 				{
-					"server_tls_skip_verify": true,
+					"server_tls_skip_verify": `+strconv.FormatBool(base.TestTLSSkipVerify())+`,
 					"databases": {
 						"db": {
 							"server": "%s",
@@ -158,7 +159,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 
 	configRaw := `
 	{
-		"server_tls_skip_verify": true,
+		"server_tls_skip_verify": `+strconv.FormatBool(base.TestTLSSkipVerify())+`,
 		"databases": {
 			"db": {
 				"server": "%s",
@@ -186,7 +187,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 
 	updatedConfigRaw := `
 	{
-		"server_tls_skip_verify": true,
+		"server_tls_skip_verify": `+strconv.FormatBool(base.TestTLSSkipVerify())+`,
 		"databases": {
 			"db": {
 				"revs_limit": 20000,

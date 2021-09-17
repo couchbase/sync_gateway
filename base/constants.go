@@ -47,6 +47,9 @@ const (
 	// Env variable to enable user to override the Couchbase Server URL used in tests
 	TestEnvCouchbaseServerUrl = "SG_TEST_COUCHBASE_SERVER_URL"
 
+	// Env variable to enable skipping of TLS certificate verification for client and server
+	TestEnvTLSSkipVerify = "SG_TEST_TLS_SKIP_VERIFY"
+
 	// Walrus by default, but can set to "Couchbase" to have it use http://localhost:8091
 	TestEnvSyncGatewayBackingStore = "SG_TEST_BACKING_STORE"
 	TestEnvBackingStoreCouchbase   = "Couchbase"

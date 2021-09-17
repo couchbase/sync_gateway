@@ -820,8 +820,8 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 	xattrs := base.TestUseXattrs()
 	config := &StartupConfig{
 		Bootstrap: BootstrapConfig{
-			UseTLSServer:        base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())),
-			ServerTLSSkipVerify: base.BoolPtr(true),
+			UseTLSServer:        base.BoolPtr(base.TestTLSSkipVerify()),
+			ServerTLSSkipVerify: base.BoolPtr(base.TestTLSSkipVerify()),
 		},
 	}
 	databases := DbConfigMap{
@@ -1200,8 +1200,8 @@ func TestSetupServerContext(t *testing.T) {
 	t.Run("Create server context with a valid configuration", func(t *testing.T) {
 		config := DefaultStartupConfig("")
 		config.Bootstrap.Server = base.UnitTestUrl() // Valid config requires server to be explicitly defined
-		config.Bootstrap.UseTLSServer = base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl()))
-		config.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(true)
+		config.Bootstrap.UseTLSServer = base.BoolPtr(base.TestTLSSkipVerify())
+		config.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
 		config.Bootstrap.Username = base.TestClusterUsername()
 		config.Bootstrap.Password = base.TestClusterPassword()
 		sc, err := setupServerContext(&config, false)

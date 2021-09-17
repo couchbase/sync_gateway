@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"crypto/tls"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -14,7 +15,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func MakeUser(t *testing.T, httpClient *http.Client, serverURL, username, password string, roles []string) {
+func MakeUser(t *testing.T, serverURL, username, password string, roles []string) {
+	// TODO: Make work with management HTTP client on Jenkins
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: base.TestTLSSkipVerify(),
+			},
+		},
+	}
+
 	form := url.Values{}
 	form.Add("password", password)
 	form.Add("roles", strings.Join(roles, ","))
@@ -38,7 +48,16 @@ func MakeUser(t *testing.T, httpClient *http.Client, serverURL, username, passwo
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
-func DeleteUser(t *testing.T, httpClient *http.Client, serverURL, username string) {
+func DeleteUser(t *testing.T, serverURL, username string) {
+	// TODO: Make work with management HTTP client on Jenkins
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: base.TestTLSSkipVerify(),
+			},
+		},
+	}
+
 	req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/settings/rbac/users/local/%s", serverURL, username), nil)
 	require.NoError(t, err)
 

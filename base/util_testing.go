@@ -183,6 +183,21 @@ func TestUseXattrs() bool {
 	return val
 }
 
+// Should Sync Gateway skip TLS verification. Default: false
+func TestTLSSkipVerify() bool {
+	tlsSkipVerify, isSet := os.LookupEnv(TestEnvTLSSkipVerify)
+	if !isSet {
+		return false
+	}
+
+	val, err := strconv.ParseBool(tlsSkipVerify)
+	if err != nil {
+		panic(fmt.Sprintf("unable to parse %q value %q: %v", TestEnvTLSSkipVerify, tlsSkipVerify, err))
+	}
+
+	return val
+}
+
 // Should tests try to drop GSI indexes before flushing buckets?
 // See SG #3422
 func TestsShouldDropIndexes() bool {
