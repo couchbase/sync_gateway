@@ -3615,11 +3615,11 @@ func TestNotExistentDBRequest(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{adminInterfaceAuthentication: true})
 	defer rt.Close()
 
-	eps, _, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
+	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
 
-	MakeUser(t, eps[0], "random", "password", nil)
-	defer DeleteUser(t, eps[0], "random")
+	MakeUser(t, *httpClient, eps[0], "random", "password", nil)
+	defer DeleteUser(t, *httpClient, eps[0], "random")
 
 	// Request to non-existent db with valid credentials
 	resp := rt.SendAdminRequestWithAuth("PUT", "/dbx/_config", "", "random", "password")
