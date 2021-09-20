@@ -5654,7 +5654,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 // CBG-1427 - ISGR should not try sending a delta when deltaSrc is a tombstone
 func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
-		t.Skipf("Requires EE for some delta sync")
+		t.Skipf("Requires EE for delta sync")
 	}
 	defer db.SuspendSequenceBatching()()
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
@@ -5741,6 +5741,10 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	// Replicate resurrection to passive
 	err = passiveRT.waitForRev("test", revID)
 	assert.NoError(t, err) // If error, problem not fixed
+
+	// Shutdown replicator to close out
+	require.NoError(t, ar.Stop())
+	activeRT.waitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 }
 
 func getTestRevpos(t *testing.T, doc db.Body, attachmentKey string) (revpos int) {
