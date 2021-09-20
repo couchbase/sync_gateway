@@ -62,6 +62,9 @@ func (h *handler) handleCreateDB() error {
 
 		persistedConfig.cas, err = h.server.bootstrapContext.connection.InsertConfig(bucket, h.server.config.Bootstrap.ConfigGroupID, persistedConfig)
 		if err != nil {
+			if errors.Cause(err) == base.ErrAuthError {
+				return base.HTTPErrorf(http.StatusForbidden, "auth failure accessing provided bucket using bootstrap credentials: %s", bucket)
+			}
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't save database config: %v", err)
 		}
 

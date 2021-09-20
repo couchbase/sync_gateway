@@ -3560,7 +3560,18 @@ func TestCreateDbOnNonExistentBucket(t *testing.T) {
 	require.NoError(t, sc.waitForRESTAPIs())
 
 	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/", `{"bucket": "nonExistentBucket"}`)
-	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	body, err := ioutil.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.NoError(t, resp.Body.Close())
+	assert.Contains(t, string(body), "auth failure accessing provided bucket nonExistentBucket")
+
+	resp = bootstrapAdminRequest(t, http.MethodPut, "/nonExistentBucket/", `{}`)
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	body, err = ioutil.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.NoError(t, resp.Body.Close())
+	assert.Contains(t, string(body), "auth failure accessing provided bucket nonExistentBucket")
 }
 
 func TestPutDbConfigChangeName(t *testing.T) {
