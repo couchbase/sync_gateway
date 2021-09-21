@@ -3564,14 +3564,14 @@ func TestCreateDbOnNonExistentBucket(t *testing.T) {
 	body, err := ioutil.ReadAll(resp.Body)
 	require.NoError(t, err)
 	assert.NoError(t, resp.Body.Close())
-	assert.Contains(t, string(body), "auth failure accessing provided bucket nonExistentBucket")
+	assert.Contains(t, string(body), "auth failure accessing provided bucket using bootstrap credentials: nonExistentBucket")
 
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/nonExistentBucket/", `{}`)
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 	body, err = ioutil.ReadAll(resp.Body)
 	require.NoError(t, err)
 	assert.NoError(t, resp.Body.Close())
-	assert.Contains(t, string(body), "auth failure accessing provided bucket nonExistentBucket")
+	assert.Contains(t, string(body), "auth failure accessing provided bucket using bootstrap credentials: nonExistentBucket")
 }
 
 func TestPutDbConfigChangeName(t *testing.T) {
