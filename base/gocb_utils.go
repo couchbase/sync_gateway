@@ -46,10 +46,16 @@ func GoCBv2AuthenticatorConfig(username, password, certPath, keyPath string) (a 
 
 // GoCBv2TimeoutsConfig returns a gocb.TimeoutsConfig to use when connecting.
 func GoCBv2TimeoutsConfig(bucketOpTimeout, viewQueryTimeout *time.Duration) (tc gocb.TimeoutsConfig) {
+
+	opTimeout := DefaultGocbV2OperationTimeout
 	if bucketOpTimeout != nil {
-		tc.KVTimeout = *bucketOpTimeout
-		tc.ManagementTimeout = *bucketOpTimeout
-		tc.ConnectTimeout = *bucketOpTimeout
+		opTimeout = *bucketOpTimeout
+	}
+
+	if bucketOpTimeout != nil {
+		tc.KVTimeout = opTimeout
+		tc.ManagementTimeout = opTimeout
+		tc.ConnectTimeout = opTimeout
 	}
 	if viewQueryTimeout != nil {
 		tc.QueryTimeout = *viewQueryTimeout
