@@ -2374,7 +2374,7 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 	return
 }
 
-// Status code returned by CheckProposedRev
+// State code returned by CheckProposedRev
 type ProposedRevStatus int
 
 const (

@@ -301,6 +301,8 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleAllDbs)).Methods("GET", "HEAD")
 	dbr.Handle("/_compact",
 		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleCompact)).Methods("POST")
+	dbr.Handle("/_compact",
+		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleGetCompact)).Methods("GET")
 
 	return r
 }

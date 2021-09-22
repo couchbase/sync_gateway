@@ -3890,6 +3890,14 @@ func TestTombstoneCompaction(t *testing.T) {
 
 		rt.SendAdminRequest("POST", "/db/_compact", "")
 
+		// Has a longer wait added here. A couple of the longer requests take longer than the 20s limit as part of the
+		// usual WaitForCondition func.
+		err := rt.WaitForCondition(func() bool {
+			time.Sleep(1 * time.Second)
+			return rt.GetDatabase().TombstoneCompactionManager.GetRunStatus() == db.BackgroundProcessStateStopped
+		})
+		assert.NoError(t, err)
+
 		compactionTotal += numDocs
 		assert.Equal(t, compactionTotal, int(rt.GetDatabase().DbStats.Database().NumTombstonesCompacted.Value()))
 

@@ -1227,10 +1227,10 @@ func TestDBOfflinePostResync(t *testing.T) {
 	assertStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 200)
 	err := rt.WaitForCondition(func() bool {
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")
-		var status db.ResyncStatus
+		var status db.BackgroundManagerStatus
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
-		return status.Status == db.ResyncStateStopped
+		return status.State == db.BackgroundProcessStateStopped
 	})
 	assert.NoError(t, err)
 }
@@ -1277,10 +1277,10 @@ func TestDBOfflineSingleResync(t *testing.T) {
 
 	err := rt.WaitForCondition(func() bool {
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")
-		var status db.ResyncStatus
+		var status db.BackgroundManagerStatus
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
-		return status.Status == db.ResyncStateStopped
+		return status.State == db.BackgroundProcessStateStopped
 	})
 	assert.NoError(t, err)
 
@@ -1356,10 +1356,10 @@ func TestResync(t *testing.T) {
 
 			err := rt.WaitForCondition(func() bool {
 				response := rt.SendAdminRequest("GET", "/db/_resync", "")
-				var status db.ResyncStatus
+				var status db.BackgroundManagerStatus
 				err := json.Unmarshal(response.BodyBytes(), &status)
 				assert.NoError(t, err)
-				return status.Status == db.ResyncStateStopped
+				return status.State == db.BackgroundProcessStateStopped
 			})
 			assert.NoError(t, err)
 
@@ -1456,10 +1456,10 @@ func TestResyncErrorScenarios(t *testing.T) {
 
 	err := rt.WaitForCondition(func() bool {
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")
-		var status db.ResyncStatus
+		var status db.BackgroundManagerStatus
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
-		return status.Status == db.ResyncStateStopped
+		return status.State == db.BackgroundProcessStateStopped
 	})
 	assert.NoError(t, err)
 
@@ -1475,10 +1475,10 @@ func TestResyncErrorScenarios(t *testing.T) {
 
 	err = rt.WaitForCondition(func() bool {
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")
-		var status db.ResyncStatus
+		var status db.BackgroundManagerStatus
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
-		return status.Status == db.ResyncStateStopped
+		return status.State == db.BackgroundProcessStateStopped
 	})
 	assert.NoError(t, err)
 
@@ -1561,10 +1561,10 @@ func TestResyncStop(t *testing.T) {
 
 	err = rt.WaitForCondition(func() bool {
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")
-		var status db.ResyncStatus
+		var status db.BackgroundManagerStatus
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
-		return status.Status == db.ResyncStateStopped
+		return status.State == db.BackgroundProcessStateStopped
 	})
 	assert.NoError(t, err)
 
@@ -1686,7 +1686,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	assertStatus(t, response, http.StatusOK)
 
 	err = rt.WaitForCondition(func() bool {
-		return rt.GetDatabase().ResyncManager.GetStatus().Status == db.ResyncStateStopped
+		return rt.GetDatabase().ResyncManager.GetStatus().State == db.BackgroundProcessStateStopped
 	})
 	assert.NoError(t, err)
 

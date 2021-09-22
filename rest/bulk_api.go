@@ -200,7 +200,7 @@ func (h *handler) handleAllDocs() error {
 	// Now it's time to actually write the response!
 	lastSeq, _ := h.db.LastSequence()
 	h.setHeader("Content-Type", "application/json")
-	//response.Write below would set Status OK implicitly. We manually do it here to ensure that our handler knows
+	//response.Write below would set State OK implicitly. We manually do it here to ensure that our handler knows
 	//that the header has been written to, meaning we can prevent it from attempting to set the header again later on.
 	h.writeStatus(http.StatusOK, http.StatusText(http.StatusOK))
 	_, _ = h.response.Write([]byte(`{"rows":[` + "\n"))
