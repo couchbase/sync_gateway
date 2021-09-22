@@ -1502,6 +1502,72 @@ func TestLoadJavaScript(t *testing.T) {
 	}
 }
 
+func TestSetupDbConfigCredentials(t *testing.T) {
+	const (
+		expectedUsername = "alice"
+		expectedPassword = "hunter2"
+		expectedX509Cert = "/tmp/x509cert"
+		expectedX509Key  = "/tmp/x509key"
+	)
+	var tests = []struct {
+		name              string
+		dbConfig          DbConfig
+		bootstrapConfig   BootstrapConfig
+		credentialsConfig *DatabaseCredentialsConfig
+		expectX509        bool
+	}{
+		{
+			name:              "bootstrap only",
+			dbConfig:          DbConfig{Name: "db"},
+			bootstrapConfig:   BootstrapConfig{Server: "couchbase://example.org", Username: expectedUsername, Password: expectedPassword},
+			credentialsConfig: nil,
+		},
+		{
+			name:              "db username/password override",
+			dbConfig:          DbConfig{Name: "db"},
+			bootstrapConfig:   BootstrapConfig{Server: "couchbase://example.org", Username: "bob", Password: "foobar"},
+			credentialsConfig: &DatabaseCredentialsConfig{Username: expectedUsername, Password: expectedPassword},
+		},
+		{
+			name:              "db username/password override from x509",
+			dbConfig:          DbConfig{Name: "db"},
+			bootstrapConfig:   BootstrapConfig{Server: "couchbase://example.org", X509CertPath: "/tmp/x509cert", X509KeyPath: "/tmp/x509key"},
+			credentialsConfig: &DatabaseCredentialsConfig{Username: expectedUsername, Password: expectedPassword},
+		},
+		{
+			name:              "db x509 override from username/password",
+			dbConfig:          DbConfig{Name: "db"},
+			bootstrapConfig:   BootstrapConfig{Server: "couchbase://example.org", Username: "bob", Password: "foobar"},
+			credentialsConfig: &DatabaseCredentialsConfig{X509CertPath: expectedX509Cert, X509KeyPath: expectedX509Key},
+			expectX509:        true,
+		},
+		{
+			name:              "db x509 override",
+			dbConfig:          DbConfig{Name: "db"},
+			bootstrapConfig:   BootstrapConfig{Server: "couchbase://example.org", X509CertPath: "/tmp/bs-x509cert", X509KeyPath: "/tmp/bs-x509key"},
+			credentialsConfig: &DatabaseCredentialsConfig{X509CertPath: expectedX509Cert, X509KeyPath: expectedX509Key},
+			expectX509:        true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := test.dbConfig.setup(test.dbConfig.Name, test.bootstrapConfig, test.credentialsConfig)
+			require.NoError(t, err)
+			if test.expectX509 {
+				assert.Equal(t, "", test.dbConfig.Username)
+				assert.Equal(t, "", test.dbConfig.Password)
+				assert.Equal(t, expectedX509Cert, test.dbConfig.CertPath)
+				assert.Equal(t, expectedX509Key, test.dbConfig.KeyPath)
+			} else {
+				assert.Equal(t, expectedUsername, test.dbConfig.Username)
+				assert.Equal(t, expectedPassword, test.dbConfig.Password)
+				assert.Equal(t, "", test.dbConfig.CertPath)
+				assert.Equal(t, "", test.dbConfig.KeyPath)
+			}
+		})
+	}
+}
+
 func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 	const jsSync = `function (doc, oldDoc) { if (doc.published) { channel("public"); } }`
 	var tests = []struct {
@@ -1592,7 +1658,7 @@ func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 					Err:        test.errExpected,
 				}
 			}
-			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{})
+			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil)
 			if test.errExpected != nil {
 				require.True(t, errors.As(err, &test.errExpected))
 			} else {
@@ -1692,7 +1758,7 @@ func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
 					Err:        test.errExpected,
 				}
 			}
-			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{})
+			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil)
 			if test.errExpected != nil {
 				require.True(t, errors.As(err, &test.errExpected))
 			} else {
@@ -1804,7 +1870,7 @@ func TestSetupDbConfigWithConflictResolutionFunction(t *testing.T) {
 					Err:        test.errExpected,
 				}
 			}
-			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{})
+			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil)
 			if test.errExpected != nil {
 				require.True(t, errors.As(err, &test.errExpected))
 			} else {
