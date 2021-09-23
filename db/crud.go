@@ -1992,34 +1992,30 @@ func getAttachmentIDsForLeafRevisions(db *Database, doc *Document, newRevID stri
 		leafAttachments[attachmentID] = struct{}{}
 	}
 
-	documentLeafRevisions := doc.History.GetLeaves()
-	if len(documentLeafRevisions) > 1 {
-		for _, leafRevision := range documentLeafRevisions {
-			if leafRevision == newRevID {
-				continue
-			}
+	// Grab leaf revisions that have attachments and aren't the currently being added rev
+	// Currently handled rev won't have information set properly on it yet so we handle this above
+	// Can safely ignore the getInfo error as the only event this should happen in is if there is no entry for the given
+	// rev, however, given we have just got that rev from GetLeavesFiltered we can be sure that rev exists in history
+	documentLeafRevisions := doc.History.GetLeavesFiltered(func(revId string) bool {
+		revInfo, _ := doc.History.getInfo(revId)
+		return revInfo.HasAttachments && revId != newRevID
+	})
 
-			revInfo, err := doc.History.getInfo(leafRevision)
-			if err != nil {
-				return nil, err
-			}
-
-			if revInfo.HasAttachments {
-				_, _, attachmentMeta, err := db.getRevision(doc, leafRevision)
-				if err != nil {
-					return nil, err
-				}
-
-				attachmentKeys, err := retrieveV2AttachmentKeys(doc.ID, attachmentMeta)
-				if err != nil {
-					return nil, err
-				}
-
-				for attachmentID, _ := range attachmentKeys {
-					leafAttachments[attachmentID] = struct{}{}
-				}
-			}
+	for _, leafRevision := range documentLeafRevisions {
+		_, _, attachmentMeta, err := db.getRevision(doc, leafRevision)
+		if err != nil {
+			return nil, err
 		}
+
+		attachmentKeys, err := retrieveV2AttachmentKeys(doc.ID, attachmentMeta)
+		if err != nil {
+			return nil, err
+		}
+
+		for attachmentID, _ := range attachmentKeys {
+			leafAttachments[attachmentID] = struct{}{}
+		}
+
 	}
 
 	return leafAttachments, nil
