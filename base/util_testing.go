@@ -183,11 +183,11 @@ func TestUseXattrs() bool {
 	return val
 }
 
-// Should Sync Gateway skip TLS verification. Default: false
+// Should Sync Gateway skip TLS verification. Default: DefaultTestTLSSkipVerify
 func TestTLSSkipVerify() bool {
 	tlsSkipVerify, isSet := os.LookupEnv(TestEnvTLSSkipVerify)
 	if !isSet {
-		return false
+		return DefaultTestTLSSkipVerify
 	}
 
 	val, err := strconv.ParseBool(tlsSkipVerify)
