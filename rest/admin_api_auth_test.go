@@ -36,15 +36,14 @@ func MakeUser(t *testing.T, httpClient *http.Client, serverURL, username, passwo
 	err, resp := base.RetryLoop("Admin Auth testing MakeUser", retryWorker, base.CreateSleeperFunc(10, 100))
 	require.NoError(t, err)
 
-	defer resp.(*http.Response).Body.Close()
-
 	if resp.(*http.Response).StatusCode != http.StatusOK {
 		bodyResp, err := ioutil.ReadAll(resp.(*http.Response).Body)
 		assert.NoError(t, err)
 		fmt.Println(string(bodyResp))
 	}
-
 	require.Equal(t, http.StatusOK, resp.(*http.Response).StatusCode)
+
+	require.NoError(t, resp.(*http.Response).Body.Close(), "Error closing response body")
 }
 
 func DeleteUser(t *testing.T, httpClient *http.Client, serverURL, username string) {
@@ -64,9 +63,9 @@ func DeleteUser(t *testing.T, httpClient *http.Client, serverURL, username strin
 	err, resp := base.RetryLoop("Admin Auth testing DeleteUser", retryWorker, base.CreateSleeperFunc(10, 100))
 	require.NoError(t, err)
 
-	defer resp.(*http.Response).Body.Close()
-
 	require.Equal(t, http.StatusOK, resp.(*http.Response).StatusCode)
+
+	require.NoError(t, resp.(*http.Response).Body.Close(), "Error closing response body")
 }
 
 func TestCheckPermissions(t *testing.T) {
