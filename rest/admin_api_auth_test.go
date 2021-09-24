@@ -19,36 +19,54 @@ func MakeUser(t *testing.T, httpClient http.Client, serverURL, username, passwor
 	form.Add("password", password)
 	form.Add("roles", strings.Join(roles, ","))
 
-	req, err := http.NewRequest("PUT", fmt.Sprintf("%s/settings/rbac/users/local/%s", serverURL, username), strings.NewReader(form.Encode()))
+	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
+		req, err := http.NewRequest("PUT", fmt.Sprintf("%s/settings/rbac/users/local/%s", serverURL, username), strings.NewReader(form.Encode()))
+		require.NoError(t, err)
+
+		req.SetBasicAuth(base.TestClusterUsername(), base.TestClusterPassword())
+		req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			return true, err, resp
+		}
+		return false, err, resp
+	}
+
+	err, resp := base.RetryLoop("Admin Auth testing MakeUser", retryWorker, base.CreateSleeperFunc(10, 100))
 	require.NoError(t, err)
 
-	req.SetBasicAuth(base.TestClusterUsername(), base.TestClusterPassword())
-	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+	defer resp.(*http.Response).Body.Close()
 
-	resp, err := httpClient.Do(req)
-	require.NoError(t, err)
-	defer require.NoError(t, resp.Body.Close())
-
-	if resp.StatusCode != http.StatusOK {
-		bodyResp, err := ioutil.ReadAll(resp.Body)
+	if resp.(*http.Response).StatusCode != http.StatusOK {
+		bodyResp, err := ioutil.ReadAll(resp.(*http.Response).Body)
 		assert.NoError(t, err)
 		fmt.Println(string(bodyResp))
 	}
 
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, http.StatusOK, resp.(*http.Response).StatusCode)
 }
 
 func DeleteUser(t *testing.T, httpClient http.Client, serverURL, username string) {
-	req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/settings/rbac/users/local/%s", serverURL, username), nil)
+	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
+		req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/settings/rbac/users/local/%s", serverURL, username), nil)
+		require.NoError(t, err)
+
+		req.SetBasicAuth(base.TestClusterUsername(), base.TestClusterPassword())
+
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			return true, err, resp
+		}
+		return false, err, resp
+	}
+
+	err, resp := base.RetryLoop("Admin Auth testing DeleteUser", retryWorker, base.CreateSleeperFunc(10, 100))
 	require.NoError(t, err)
 
-	req.SetBasicAuth(base.TestClusterUsername(), base.TestClusterPassword())
+	defer resp.(*http.Response).Body.Close()
 
-	resp, err := httpClient.Do(req)
-	require.NoError(t, err)
-	defer require.NoError(t, resp.Body.Close())
-
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, http.StatusOK, resp.(*http.Response).StatusCode)
 }
 
 func TestCheckPermissions(t *testing.T) {
