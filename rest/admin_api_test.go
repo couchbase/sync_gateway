@@ -3618,8 +3618,8 @@ func TestNotExistentDBRequest(t *testing.T) {
 	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
 
-	MakeUser(t, *httpClient, eps[0], "random", "password", nil)
-	defer DeleteUser(t, *httpClient, eps[0], "random")
+	MakeUser(t, httpClient, eps[0], "random", "password", nil)
+	defer DeleteUser(t, httpClient, eps[0], "random")
 
 	// Request to non-existent db with valid credentials
 	resp := rt.SendAdminRequestWithAuth("PUT", "/dbx/_config", "", "random", "password")
