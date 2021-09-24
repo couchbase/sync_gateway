@@ -43,7 +43,8 @@ func (c *Collection) Query(statement string, params map[string]interface{}, cons
 		queryResults, queryErr := c.runQuery(bucketStatement, n1qlOptions)
 		if queryErr == nil {
 			resultsIterator := &gocbRawIterator{
-				rawResult: queryResults.Raw(),
+				rawResult:                  queryResults.Raw(),
+				concurrentQueryOpLimitChan: c.viewOps,
 			}
 			return resultsIterator, queryErr
 		}
@@ -103,7 +104,6 @@ func (c *Collection) BuildDeferredIndexes(indexSet []string) error {
 
 func (c *Collection) runQuery(statement string, n1qlOptions *gocb.QueryOptions) (*gocb.QueryResult, error) {
 	c.waitForAvailViewOp()
-	defer c.releaseViewOp()
 
 	if n1qlOptions == nil {
 		n1qlOptions = &gocb.QueryOptions{}
@@ -118,7 +118,8 @@ func (c *Collection) executeQuery(statement string) (sgbucket.QueryResultIterato
 	}
 
 	resultsIterator := &gocbRawIterator{
-		rawResult: queryResults.Raw(),
+		rawResult:                  queryResults.Raw(),
+		concurrentQueryOpLimitChan: c.viewOps,
 	}
 	return resultsIterator, nil
 }

@@ -171,7 +171,8 @@ func (c *Collection) View(ddoc, name string, params map[string]interface{}) (sgb
 
 	if gocbViewResult != nil {
 		viewResultIterator := &gocbRawIterator{
-			rawResult: gocbViewResult,
+			rawResult:                  gocbViewResult,
+			concurrentQueryOpLimitChan: c.viewOps,
 		}
 		for {
 			viewRow := sgbucket.ViewRow{}
@@ -224,12 +225,11 @@ func (c *Collection) ViewQuery(ddoc, name string, params map[string]interface{})
 	if err != nil {
 		return nil, err
 	}
-	return &gocbRawIterator{rawResult: gocbViewResult}, nil
+	return &gocbRawIterator{rawResult: gocbViewResult, concurrentQueryOpLimitChan: c.viewOps}, nil
 }
 
 func (c *Collection) executeViewQuery(ddoc, name string, params map[string]interface{}) (*gocb.ViewResultRaw, error) {
 	c.waitForAvailViewOp()
-	defer c.releaseViewOp()
 	viewResult := sgbucket.ViewResult{}
 	viewResult.Rows = sgbucket.ViewRows{}
 

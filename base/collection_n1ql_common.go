@@ -443,13 +443,8 @@ type gocbResultRaw interface {
 
 // GoCBQueryIterator wraps a gocb v2 ViewResultRaw to implement sgbucket.QueryResultIterator
 type gocbRawIterator struct {
-	rawResult gocbResultRaw
-}
-
-func NewGoCBQueryIterator(viewResult *gocb.ViewResultRaw) *gocbRawIterator {
-	return &gocbRawIterator{
-		rawResult: viewResult,
-	}
+	rawResult                  gocbResultRaw
+	concurrentQueryOpLimitChan chan struct{}
 }
 
 // Unmarshal a single result row into valuePtr, and then close the iterator
@@ -497,11 +492,18 @@ func (i *gocbRawIterator) Close() error {
 		// noop to drain results
 	}
 
+	defer func() {
+		if i.concurrentQueryOpLimitChan != nil {
+			<-i.concurrentQueryOpLimitChan
+		}
+	}()
+
 	// check for errors before closing?
 	closeErr := i.rawResult.Close()
 	if closeErr != nil {
 		return closeErr
 	}
+
 	resultErr := i.rawResult.Err()
 	return resultErr
 }
