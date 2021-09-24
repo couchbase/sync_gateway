@@ -223,6 +223,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 
 	importConfigRaw := `
 	{
+		"server_tls_skip_verify": ` + strconv.FormatBool(base.TestTLSSkipVerify()) + `,
 		"config_upgrade_group_id": "%s",
 		"databases": {
 			"db": {
