@@ -180,11 +180,31 @@ func (tbp *TestBucketPool) markBucketClosed(t testing.TB, b Bucket) {
 	tbp.unclosedBucketsLock.Lock()
 	defer tbp.unclosedBucketsLock.Unlock()
 
+	// Check for unclosed view query operations. A fatal error will occur if queue is not cleared
+	testCtx := testCtx(t)
+	switch typedBucket := b.(type) {
+	case *Collection:
+		tbp.checkForViewOpsQueueEmptied(testCtx, b.GetName(), typedBucket.viewQueryOps)
+	case *CouchbaseBucketGoCB:
+		tbp.checkForViewOpsQueueEmptied(testCtx, b.GetName(), typedBucket.viewQueryOps)
+	}
+
 	if tMap, ok := tbp.unclosedBuckets[t.Name()]; ok {
 		delete(tMap, b.GetName())
 		if len(tMap) == 0 {
 			delete(tbp.unclosedBuckets, t.Name())
 		}
+	}
+}
+
+func (tbp *TestBucketPool) checkForViewOpsQueueEmptied(ctx context.Context, bucketName string, c chan struct{}) {
+	if err, _ := RetryLoop(bucketName+"-emptyViewOps", func() (bool, error, interface{}) {
+		if len(c) > 0 {
+			return true, fmt.Errorf("view op queue not cleared. remaining: %d", len(c)), nil
+		}
+		return false, nil, nil
+	}, CreateSleeperFunc(90, 1000)); err != nil {
+		FatalfCtx(ctx, "View op queue check failed: %v", err)
 	}
 }
 
@@ -456,9 +476,14 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, 
 			if !ok {
 				Fatalf("Couldn't remove old prepared statements: %v", err)
 			}
-			_, err = n1qlStore.Query(`DELETE FROM system:prepareds WHERE statement LIKE "%`+KeyspaceQueryToken+`%";`, nil, RequestPlus, true)
+			queryRes, err := n1qlStore.Query(`DELETE FROM system:prepareds WHERE statement LIKE "%`+KeyspaceQueryToken+`%";`, nil, RequestPlus, true)
 			if err != nil {
 				Fatalf("Couldn't remove old prepared statements: %v", err)
+			}
+
+			err = queryRes.Close()
+			if err != nil {
+				Fatalf("Failed to close query: %v", err)
 			}
 
 			wg.Done()

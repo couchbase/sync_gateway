@@ -315,8 +315,9 @@ func TestMalformedN1qlQuery(t *testing.T) {
 		// Specify params for non-parameterized query (no error expected, ensure doesn't break)
 		queryExpression = fmt.Sprintf("SELECT META().id, val FROM %s WHERE val > 5", KeyspaceQueryToken)
 		params = map[string]interface{}{"minvalue": 2}
-		_, queryErr = n1qlStore.Query(queryExpression, params, RequestPlus, false)
-		assert.True(t, queryErr == nil, "Unexpected error for malformed n1ql query (extra params)")
+		queryResults, queryErr := n1qlStore.Query(queryExpression, params, RequestPlus, false)
+		require.True(t, queryErr == nil, "Unexpected error for malformed n1ql query (extra params)")
+		assert.NoError(t, queryResults.Close())
 
 		// Omit params for parameterized query
 		queryExpression = fmt.Sprintf("SELECT META().id, val FROM %s WHERE val > $minvalue", KeyspaceQueryToken)
@@ -636,7 +637,7 @@ func TestWaitForBucketExistence(t *testing.T) {
 			assert.NoError(t, err, "Index should be created in the bucket")
 		}()
 
-		assert.NoError(t, waitForIndexExistence(n1qlStore, indexName, true))
+		assert.NoError(t, WaitForIndexOnline(n1qlStore, indexName))
 
 		// Drop the index;
 		err := n1qlStore.DropIndex(indexName)

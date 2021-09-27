@@ -172,7 +172,7 @@ func (c *Collection) View(ddoc, name string, params map[string]interface{}) (sgb
 	if gocbViewResult != nil {
 		viewResultIterator := &gocbRawIterator{
 			rawResult:                  gocbViewResult,
-			concurrentQueryOpLimitChan: c.viewOps,
+			concurrentQueryOpLimitChan: c.viewQueryOps,
 		}
 		for {
 			viewRow := sgbucket.ViewRow{}
@@ -197,7 +197,7 @@ func (c *Collection) View(ddoc, name string, params map[string]interface{}) (sgb
 		} else {
 			viewResult.TotalRows = viewMeta.TotalRows
 		}
-		_ = gocbViewResult.Close()
+		_ = viewResultIterator.Close()
 
 	}
 
@@ -225,7 +225,7 @@ func (c *Collection) ViewQuery(ddoc, name string, params map[string]interface{})
 	if err != nil {
 		return nil, err
 	}
-	return &gocbRawIterator{rawResult: gocbViewResult, concurrentQueryOpLimitChan: c.viewOps}, nil
+	return &gocbRawIterator{rawResult: gocbViewResult, concurrentQueryOpLimitChan: c.viewQueryOps}, nil
 }
 
 func (c *Collection) executeViewQuery(ddoc, name string, params map[string]interface{}) (*gocb.ViewResultRaw, error) {
@@ -242,8 +242,10 @@ func (c *Collection) executeViewQuery(ddoc, name string, params map[string]inter
 
 	// On timeout, return an typed error
 	if isGoCBQueryTimeoutError(err) {
+		c.releaseViewOp()
 		return nil, ErrViewTimeoutError
 	} else if err != nil {
+		c.releaseViewOp()
 		return nil, pkgerrors.WithStack(err)
 	}
 
@@ -253,11 +255,11 @@ func (c *Collection) executeViewQuery(ddoc, name string, params map[string]inter
 // waitForAvailableViewOp prevents Sync Gateway from having too many concurrent
 // view queries against Couchbase Server
 func (c *Collection) waitForAvailViewOp() {
-	c.viewOps <- struct{}{}
+	c.viewQueryOps <- struct{}{}
 }
 
 func (c *Collection) releaseViewOp() {
-	<-c.viewOps
+	<-c.viewQueryOps
 }
 
 // Applies the viewquery options as specified in the params map to the gocb.ViewOptions

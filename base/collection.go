@@ -100,10 +100,10 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 
 	viewOpsQueue := make(chan struct{}, MaxConcurrentQueryOps)
 	collection := &Collection{
-		Collection: bucket.DefaultCollection(),
-		Spec:       spec,
-		cluster:    cluster,
-		viewOps:    viewOpsQueue,
+		Collection:   bucket.DefaultCollection(),
+		Spec:         spec,
+		cluster:      cluster,
+		viewQueryOps: viewOpsQueue,
 	}
 
 	return collection, nil
@@ -113,7 +113,7 @@ type Collection struct {
 	*gocb.Collection               // underlying gocb Collection
 	Spec             BucketSpec    // keep a copy of the BucketSpec for DCP usage
 	cluster          *gocb.Cluster // Associated cluster - required for N1QL operations
-	viewOps          chan struct{} // Manages max concurrent view ops (per kv node)
+	viewQueryOps     chan struct{} // Manages max concurrent view ops (per kv node)
 }
 
 // DataStore

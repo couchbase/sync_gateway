@@ -363,18 +363,26 @@ func waitForIndex(bucket base.N1QLStore, indexName string, queryStatement string
 	retrySleeper := base.CreateMaxDoublingSleeperFunc(180, 100, 5000)
 	retryCount := 0
 	for {
-		_, err := bucket.Query(queryStatement, nil, base.RequestPlus, true)
-		if err == nil {
+		resultSet, resultsError := bucket.Query(queryStatement, nil, base.RequestPlus, true)
+
+		// Immediately close results. We don't need these
+		resultSetCloseError := resultSet.Close()
+		if resultSetCloseError != nil {
+			base.Infof(base.KeyAll, "Failed to close query results when verifying index %q availability for bucket %q", base.MD(indexName), base.MD(bucket.GetName()))
+		}
+
+		if resultsError == nil {
 			return nil
 		}
-		if err == base.ErrViewTimeoutError {
+
+		if resultsError == base.ErrViewTimeoutError {
 			base.Infof(base.KeyAll, "Timeout waiting for index %q to be ready for bucket %q - retrying...", base.MD(indexName), base.MD(bucket.GetName()))
 		} else {
 			base.Infof(base.KeyAll, "Error waiting for index %q to be ready for bucket %q - retrying...", base.MD(indexName), base.MD(bucket.GetName()))
 			retryCount++
 			shouldContinue, sleepMs := retrySleeper(retryCount)
 			if !shouldContinue {
-				return err
+				return resultsError
 			}
 			time.Sleep(time.Millisecond * time.Duration(sleepMs))
 		}

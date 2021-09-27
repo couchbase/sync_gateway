@@ -65,6 +65,11 @@ func ExplainQuery(store N1QLStore, statement string, params map[string]interface
 	}
 
 	firstRow := explainResults.NextBytes()
+	err = explainResults.Close()
+	if err != nil {
+		return nil, err
+	}
+
 	unmarshalErr := JSONUnmarshal(firstRow, &plan)
 	return plan, unmarshalErr
 }
@@ -75,7 +80,6 @@ func ExplainQuery(store N1QLStore, statement string, params map[string]interface
 //     CreateIndex("myIndex", "field1, field2, nested.field", "field1 > 0", N1qlIndexOptions{numReplica:1})
 //   CREATE INDEX myIndex on myBucket(field1, field2, nested.field) WHERE field1 > 0 WITH {"numReplica":1}
 func CreateIndex(store N1QLStore, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
-
 	createStatement := fmt.Sprintf("CREATE INDEX `%s` ON `%s`(%s)", indexName, store.Keyspace(), expression)
 
 	// Add filter expression, when present
@@ -503,7 +507,6 @@ func (i *gocbRawIterator) Close() error {
 	if closeErr != nil {
 		return closeErr
 	}
-
 	resultErr := i.rawResult.Err()
 	return resultErr
 }
