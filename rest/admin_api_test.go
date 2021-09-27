@@ -2615,8 +2615,8 @@ func TestConfigRedaction(t *testing.T) {
 	err := json.Unmarshal(response.BodyBytes(), &unmarshaledConfig)
 	require.NoError(t, err)
 
-	assert.Equal(t, "xxxxx", unmarshaledConfig.Password)
-	assert.Equal(t, "xxxxx", *unmarshaledConfig.Users["alice"].Password)
+	assert.Equal(t, base.RedactedStr, unmarshaledConfig.Password)
+	assert.Equal(t, base.RedactedStr, *unmarshaledConfig.Users["alice"].Password)
 
 	// Test default db config redaction when redaction disabled
 	response = rt.SendAdminRequest("GET", "/db/_config?include_runtime=true&redact=false", "")
@@ -2632,7 +2632,7 @@ func TestConfigRedaction(t *testing.T) {
 	err = json.Unmarshal(response.BodyBytes(), &unmarshaledServerConfig)
 	require.NoError(t, err)
 
-	assert.Equal(t, "xxxxx", unmarshaledServerConfig.Bootstrap.Password)
+	assert.Equal(t, base.RedactedStr, unmarshaledServerConfig.Bootstrap.Password)
 
 	// Test default server config redaction when redaction disabled
 	unmarshaledServerConfig = StartupConfig{}
@@ -3256,7 +3256,7 @@ func TestInitialStartupConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	// Assert value is redacted
-	assert.Equal(t, "xxxxx", initialStartupConfig.Bootstrap.Password)
+	assert.Equal(t, base.RedactedStr, initialStartupConfig.Bootstrap.Password)
 
 	// Assert error logging is nil
 	assert.Nil(t, initialStartupConfig.Logging.Error)
@@ -3344,7 +3344,7 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 	err = json.Unmarshal(resp.BodyBytes(), &runtimeServerConfigResponse)
 	require.NoError(t, err)
 
-	assert.Equal(t, "xxxxx", runtimeServerConfigResponse.Bootstrap.Password)
+	assert.Equal(t, base.RedactedStr, runtimeServerConfigResponse.Bootstrap.Password)
 
 	// Setup replication to ensure it is visible in returned config
 	replicationConfig := `{
@@ -3426,7 +3426,7 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 	assert.Equal(t, http.StatusPreconditionFailed, resp.StatusCode)
 }
 
-func TestDbConfigDoesNotIncludeCredentials(t *testing.T) {
+func TestDbConfigCredentials(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
@@ -3460,12 +3460,13 @@ func TestDbConfigDoesNotIncludeCredentials(t *testing.T) {
 	resp = bootstrapAdminRequest(t, "GET", "/db/_config?redact=false", "")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	body, err := ioutil.ReadAll(resp.Body)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NoError(t, resp.Body.Close())
 
 	err = base.JSONUnmarshal(body, &dbConfig)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
+	// non-runtime config, we don't expect to see any credentials present
 	assert.Equal(t, "", dbConfig.Username)
 	assert.Equal(t, "", dbConfig.Password)
 	assert.Equal(t, "", dbConfig.CACertPath)
@@ -3475,17 +3476,29 @@ func TestDbConfigDoesNotIncludeCredentials(t *testing.T) {
 	resp = bootstrapAdminRequest(t, "GET", "/db/_config?redact=false&include_runtime=true", "")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	body, err = ioutil.ReadAll(resp.Body)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NoError(t, resp.Body.Close())
 
 	err = base.JSONUnmarshal(body, &dbConfig)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	assert.Equal(t, "", dbConfig.Username)
-	assert.Equal(t, "", dbConfig.Password)
+	// runtime config, we expect to see the credentials used by the database (either bootstrap or per-db - but in this case, bootstrap)
+	assert.Equal(t, base.TestClusterUsername(), dbConfig.Username)
+	assert.Equal(t, base.TestClusterPassword(), dbConfig.Password)
 	assert.Equal(t, "", dbConfig.CACertPath)
 	assert.Equal(t, "", dbConfig.CertPath)
 	assert.Equal(t, "", dbConfig.KeyPath)
+
+	// try again without disabling redaction to ensure the password is not revealed
+	resp = bootstrapAdminRequest(t, "GET", "/db/_config?include_runtime=true", "")
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, err = ioutil.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.NoError(t, resp.Body.Close())
+
+	err = base.JSONUnmarshal(body, &dbConfig)
+	require.NoError(t, err)
+	assert.Equal(t, base.RedactedStr, dbConfig.Password)
 }
 
 func TestInvalidDBConfig(t *testing.T) {

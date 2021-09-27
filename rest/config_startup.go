@@ -168,12 +168,12 @@ func (sc *StartupConfig) Redacted() (*StartupConfig, error) {
 	}
 
 	if config.Bootstrap.Password != "" {
-		config.Bootstrap.Password = "xxxxx"
+		config.Bootstrap.Password = base.RedactedStr
 	}
 
 	for _, credentialsConfig := range config.DatabaseCredentials {
 		if credentialsConfig != nil && credentialsConfig.Password != "" {
-			credentialsConfig.Password = "xxxxx"
+			credentialsConfig.Password = base.RedactedStr
 		}
 	}
 

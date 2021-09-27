@@ -763,12 +763,12 @@ func (dbConfig *DbConfig) Redacted() (*DbConfig, error) {
 func (config *DbConfig) redactInPlace() error {
 
 	if config.Password != "" {
-		config.Password = "xxxxx"
+		config.Password = base.RedactedStr
 	}
 
 	for i := range config.Users {
 		if config.Users[i].Password != nil && *config.Users[i].Password != "" {
-			config.Users[i].Password = base.StringPtr("xxxxx")
+			config.Users[i].Password = base.StringPtr(base.RedactedStr)
 		}
 	}
 

@@ -1201,7 +1201,7 @@ func TestReplicationAPIWithAuthCredentials(t *testing.T) {
 		assert.Equal(t, expected.Username, actual.Username, "Couldn't redact username")
 		assert.Equal(t, expected.Password, actual.Password, "Couldn't redact password")
 	}
-	replication1Config.Password = "xxxxx"
+	replication1Config.Password = base.RedactedStr
 	checkReplicationConfig(&replication1Config, &configResponse)
 
 	// Create another replication with auth credentials defined in Remote URL
@@ -1514,7 +1514,7 @@ func TestGetStatusWithReplication(t *testing.T) {
 	// Check replication1 details in cluster response
 	repl, ok := database.SGRCluster.Replications[config1.ID]
 	assert.True(t, ok, "Error getting replication")
-	config1.Password = "xxxxx"
+	config1.Password = base.RedactedStr
 	assertReplication(config1, repl)
 
 	// Check replication2 details in cluster response
