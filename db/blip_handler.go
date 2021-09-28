@@ -814,17 +814,17 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 		//       revisions to malicious actors (in the scenario where that user has write but not read access).
 		deltaSrcRev, err := bh.db.GetRev(docID, deltaSrcRevID, false, nil)
 		if err != nil {
-			return base.HTTPErrorf(http.StatusNotFound, "Can't fetch doc %s for deltaSrc=%s %v", base.UD(docID), deltaSrcRevID, err)
+			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Can't fetch doc %s for deltaSrc=%s %v", base.UD(docID), deltaSrcRevID, err)
 		}
 
 		// Receiving a delta to be applied on top of a tombstone is not valid.
 		if deltaSrcRev.Deleted {
-			return base.HTTPErrorf(http.StatusNotFound, "Can't use delta. Found tombstone for doc %s deltaSrc=%s", base.UD(docID), deltaSrcRevID)
+			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Can't use delta. Found tombstone for doc %s deltaSrc=%s", base.UD(docID), deltaSrcRevID)
 		}
 
 		deltaSrcBody, err := deltaSrcRev.MutableBody()
 		if err != nil {
-			return base.HTTPErrorf(http.StatusInternalServerError, "Unable to unmarshal mutable body for doc %s deltaSrc=%s %v", base.UD(docID), deltaSrcRevID, err)
+			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Unable to unmarshal mutable body for doc %s deltaSrc=%s %v", base.UD(docID), deltaSrcRevID, err)
 		}
 
 		// Stamp attachments so we can patch them
@@ -839,7 +839,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 		if err != nil {
 			// Something went wrong in the diffing library. We want to know about this!
 			base.WarnfCtx(bh.loggingCtx, "Error patching deltaSrc %s with %s for doc %s with delta - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
-			return base.HTTPErrorf(http.StatusInternalServerError, "Error patching deltaSrc with delta: %s", err)
+			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Error patching deltaSrc with delta: %s", err)
 		}
 
 		newDoc.UpdateBody(deltaSrcMap)

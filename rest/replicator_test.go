@@ -5748,12 +5748,11 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 }
 
 // CBG-1672 - Return 422 status for unprocessible deltas instead of 404 to use non-delta retry handling
+// Should log "422 Unable to unmarshal mutable body for doc test deltaSrc=1-dbc7919edc9ec2576d527880186f8e8a"
+// then fall back to full body replication
 func TestUnprocessibleDeltas(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("Requires EE for some delta sync")
-	}
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
 	}
 
 	defer db.SuspendSequenceBatching()()
@@ -5765,10 +5764,6 @@ func TestUnprocessibleDeltas(t *testing.T) {
 		TestBucket: passiveBucket,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
-				CacheConfig: &CacheConfig{
-					RevCacheConfig:     &RevCacheConfig{Size: base.Uint32Ptr(0)},
-					ChannelCacheConfig: &ChannelCacheConfig{MaxNumber: base.IntPtr(0)},
-				},
 				DeltaSync: &DeltaSyncConfig{
 					Enabled: base.BoolPtr(true),
 				},
@@ -5787,10 +5782,6 @@ func TestUnprocessibleDeltas(t *testing.T) {
 		TestBucket: activeBucket,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
-				CacheConfig: &CacheConfig{
-					RevCacheConfig:     &RevCacheConfig{Size: base.Uint32Ptr(0)},
-					ChannelCacheConfig: &ChannelCacheConfig{MaxNumber: base.IntPtr(0)},
-				},
 				DeltaSync: &DeltaSyncConfig{
 					Enabled: base.BoolPtr(true),
 				},
@@ -5835,9 +5826,12 @@ func TestUnprocessibleDeltas(t *testing.T) {
 	err = activeRT.WaitForPendingChanges()
 	require.NoError(t, err)
 
-	// Delete first revision on active
-	err = activeRT.Bucket().Delete("_sync:rev:test:34:1-dbc7919edc9ec2576d527880186f8e8a")
+	rev, err := passiveRT.GetDatabase().GetRevisionCacheForTest().GetActive("test", true)
 	require.NoError(t, err)
+	// Making body invalid to trigger log "Unable to unmarshal mutable body for doc" in handleRev
+	// Which should give a HTTP 422
+	rev.BodyBytes = []byte("{invalid}")
+	passiveRT.GetDatabase().GetRevisionCacheForTest().Upsert(rev)
 
 	assert.NoError(t, ar.Start())
 	// Wait for active to replicate to passive
