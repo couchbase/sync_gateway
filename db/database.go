@@ -102,7 +102,7 @@ type DatabaseContext struct {
 	Options            DatabaseContextOptions  // Database Context Options
 	AccessLock         sync.RWMutex            // Allows DB offline to block until synchronous calls have completed
 	State              uint32                  // The runtime state of the DB from a service perspective
-	ResyncManager      ResyncManager
+	ResyncManager      *BackgroundManager
 	ExitChanges        chan struct{}            // Active _changes feeds on the DB will close when this channel is closed
 	OIDCProviders      auth.OIDCProviderMap     // OIDC clients
 	PurgeInterval      time.Duration            // Metadata purge interval
@@ -546,6 +546,8 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		}
 		// No cleanup necessary, stop heartbeater above will take care of it
 	}
+
+	dbContext.ResyncManager = NewResyncManager()
 
 	return dbContext, nil
 }
@@ -1125,7 +1127,9 @@ func (context *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err
 // Re-runs the sync function on every current document in the database (if doCurrentDocs==true)
 // and/or imports docs in the bucket not known to the gateway (if doImportDocs==true).
 // To be used when the JavaScript sync function changes.
-func (db *Database) UpdateAllDocChannels(regenerateSequences bool) (int, error) {
+type updateAllDocChannelsCallbackFunc func(docsProcessed, docsChanged int)
+
+func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback updateAllDocChannelsCallbackFunc, terminator chan struct{}) (int, error) {
 	base.Infof(base.KeyAll, "Recomputing document channels...")
 	base.Infof(base.KeyAll, "Re-running sync function on all documents...")
 
@@ -1136,16 +1140,13 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool) (int, error) 
 		return 0, err
 	}
 
-	// Reset these values now that a new run has begun
-	db.ResyncManager.ResetStatus()
-
 	docsChanged := 0
 	docsProcessed := 0
 
 	// In the event of an early exit we would like to ensure these values are up to date which they wouldn't be if they
 	// were unable to reach the end of the batch iteration.
 	defer func() {
-		db.ResyncManager.UpdateProcessedChanged(docsProcessed, docsChanged)
+		callback(docsProcessed, docsChanged)
 	}()
 
 	var unusedSequences []uint64
@@ -1161,7 +1162,9 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool) (int, error) 
 
 		var importRow QueryIdRow
 		for results.Next(&importRow) {
-			if db.ResyncManager.ShouldStop() {
+			select {
+
+			case <-terminator:
 				base.Infof(base.KeyAll, "Resync was stopped before the operation could be completed. System "+
 					"may be in an inconsistent state. Docs changed: %d Docs Processed: %d", docsChanged, docsProcessed)
 				closeErr := results.Close()
@@ -1169,139 +1172,141 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool) (int, error) 
 					return 0, closeErr
 				}
 				return docsChanged, nil
-			}
-			docid := importRow.Id
-			key := realDocID(docid)
-			queryRowCount++
-			docsProcessed++
-			documentUpdateFunc := func(doc *Document) (updatedDoc *Document, shouldUpdate bool, updatedExpiry *uint32, err error) {
-				highSeq = doc.Sequence
-				forceUpdate := false
-				if !doc.HasValidSyncData() {
-					// This is a document not known to the sync gateway. Ignore it:
-					return nil, false, nil, base.ErrUpdateCancel
-				} else {
-					base.Debugf(base.KeyCRUD, "\tRe-syncing document %q", base.UD(docid))
-				}
 
-				// Run the sync fn over each current/leaf revision, in case there are conflicts:
-				changed := 0
-				doc.History.forEachLeaf(func(rev *RevInfo) {
-					bodyBytes, _, err := db.get1xRevFromDoc(doc, rev.ID, false)
-					if err != nil {
-						base.Warnf("Error getting rev from doc %s/%s %s", base.UD(docid), rev.ID, err)
+			default:
+				docid := importRow.Id
+				key := realDocID(docid)
+				queryRowCount++
+				docsProcessed++
+				documentUpdateFunc := func(doc *Document) (updatedDoc *Document, shouldUpdate bool, updatedExpiry *uint32, err error) {
+					highSeq = doc.Sequence
+					forceUpdate := false
+					if !doc.HasValidSyncData() {
+						// This is a document not known to the sync gateway. Ignore it:
+						return nil, false, nil, base.ErrUpdateCancel
+					} else {
+						base.Debugf(base.KeyCRUD, "\tRe-syncing document %q", base.UD(docid))
 					}
-					var body Body
-					if err := body.Unmarshal(bodyBytes); err != nil {
-						base.Warnf("Error unmarshalling body %s/%s for sync function %s", base.UD(docid), rev.ID, err)
-						return
-					}
-					metaMap, err := doc.GetMetaMap(db.Options.UserXattrKey)
-					if err != nil {
-						return
-					}
-					channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(doc, body, metaMap, rev.ID)
-					if err != nil {
-						// Probably the validator rejected the doc
-						base.Warnf("Error calling sync() on doc %q: %v", base.UD(docid), err)
-						access = nil
-						channels = nil
-					}
-					rev.Channels = channels
 
-					if rev.ID == doc.CurrentRev {
-
-						if regenerateSequences {
-							unusedSequences, err = db.assignSequence(0, doc, unusedSequences)
-							if err != nil {
-								base.Warnf("Unable to assign a sequence number: %v", err)
-							}
-							forceUpdate = true
+					// Run the sync fn over each current/leaf revision, in case there are conflicts:
+					changed := 0
+					doc.History.forEachLeaf(func(rev *RevInfo) {
+						bodyBytes, _, err := db.get1xRevFromDoc(doc, rev.ID, false)
+						if err != nil {
+							base.Warnf("Error getting rev from doc %s/%s %s", base.UD(docid), rev.ID, err)
 						}
-
-						changedChannels, err := doc.updateChannels(channels)
-						changed = len(doc.Access.updateAccess(doc, access)) +
-							len(doc.RoleAccess.updateAccess(doc, roles)) +
-							len(changedChannels)
+						var body Body
+						if err := body.Unmarshal(bodyBytes); err != nil {
+							base.Warnf("Error unmarshalling body %s/%s for sync function %s", base.UD(docid), rev.ID, err)
+							return
+						}
+						metaMap, err := doc.GetMetaMap(db.Options.UserXattrKey)
 						if err != nil {
 							return
 						}
-						// Only update document expiry based on the current (active) rev
-						if syncExpiry != nil {
-							doc.UpdateExpiry(*syncExpiry)
-							updatedExpiry = syncExpiry
+						channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(doc, body, metaMap, rev.ID)
+						if err != nil {
+							// Probably the validator rejected the doc
+							base.Warnf("Error calling sync() on doc %q: %v", base.UD(docid), err)
+							access = nil
+							channels = nil
 						}
-					}
-				})
-				shouldUpdate = changed > 0 || forceUpdate
-				return doc, shouldUpdate, updatedExpiry, nil
-			}
-			var err error
-			if db.UseXattrs() {
-				writeUpdateFunc := func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (
-					raw []byte, rawXattr []byte, deleteDoc bool, expiry *uint32, err error) {
-					// There's no scenario where a doc should from non-deleted to deleted during UpdateAllDocChannels processing,
-					// so deleteDoc is always returned as false.
-					if currentValue == nil || len(currentValue) == 0 {
-						return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
-					}
-					doc, err := unmarshalDocumentWithXattr(docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll)
-					if err != nil {
-						return nil, nil, deleteDoc, nil, err
-					}
-					updatedDoc, shouldUpdate, updatedExpiry, err := documentUpdateFunc(doc)
-					if err != nil {
-						return nil, nil, deleteDoc, nil, err
-					}
-					if shouldUpdate {
-						base.Infof(base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
-						if updatedExpiry != nil {
-							updatedDoc.UpdateExpiry(*updatedExpiry)
-						}
+						rev.Channels = channels
 
-						doc.SetCrc32cUserXattrHash()
-						raw, rawXattr, err = updatedDoc.MarshalWithXattr()
-						return raw, rawXattr, deleteDoc, updatedExpiry, err
-					} else {
-						return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
-					}
+						if rev.ID == doc.CurrentRev {
+
+							if regenerateSequences {
+								unusedSequences, err = db.assignSequence(0, doc, unusedSequences)
+								if err != nil {
+									base.Warnf("Unable to assign a sequence number: %v", err)
+								}
+								forceUpdate = true
+							}
+
+							changedChannels, err := doc.updateChannels(channels)
+							changed = len(doc.Access.updateAccess(doc, access)) +
+								len(doc.RoleAccess.updateAccess(doc, roles)) +
+								len(changedChannels)
+							if err != nil {
+								return
+							}
+							// Only update document expiry based on the current (active) rev
+							if syncExpiry != nil {
+								doc.UpdateExpiry(*syncExpiry)
+								updatedExpiry = syncExpiry
+							}
+						}
+					})
+					shouldUpdate = changed > 0 || forceUpdate
+					return doc, shouldUpdate, updatedExpiry, nil
 				}
-				_, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, db.Options.UserXattrKey, 0, nil, writeUpdateFunc)
-			} else {
-				_, err = db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
-					// Be careful: this block can be invoked multiple times if there are races!
-					if currentValue == nil {
-						return nil, nil, false, base.ErrUpdateCancel // someone deleted it?!
-					}
-					doc, err := unmarshalDocument(docid, currentValue)
-					if err != nil {
-						return nil, nil, false, err
-					}
-					updatedDoc, shouldUpdate, updatedExpiry, err := documentUpdateFunc(doc)
-					if err != nil {
-						return nil, nil, false, err
-					}
-					if shouldUpdate {
-						base.Infof(base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
-						if updatedExpiry != nil {
-							updatedDoc.UpdateExpiry(*updatedExpiry)
+				var err error
+				if db.UseXattrs() {
+					writeUpdateFunc := func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (
+						raw []byte, rawXattr []byte, deleteDoc bool, expiry *uint32, err error) {
+						// There's no scenario where a doc should from non-deleted to deleted during UpdateAllDocChannels processing,
+						// so deleteDoc is always returned as false.
+						if currentValue == nil || len(currentValue) == 0 {
+							return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
 						}
+						doc, err := unmarshalDocumentWithXattr(docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll)
+						if err != nil {
+							return nil, nil, deleteDoc, nil, err
+						}
+						updatedDoc, shouldUpdate, updatedExpiry, err := documentUpdateFunc(doc)
+						if err != nil {
+							return nil, nil, deleteDoc, nil, err
+						}
+						if shouldUpdate {
+							base.Infof(base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
+							if updatedExpiry != nil {
+								updatedDoc.UpdateExpiry(*updatedExpiry)
+							}
 
-						updatedBytes, marshalErr := base.JSONMarshal(updatedDoc)
-						return updatedBytes, updatedExpiry, false, marshalErr
-					} else {
-						return nil, nil, false, base.ErrUpdateCancel
+							doc.SetCrc32cUserXattrHash()
+							raw, rawXattr, err = updatedDoc.MarshalWithXattr()
+							return raw, rawXattr, deleteDoc, updatedExpiry, err
+						} else {
+							return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
+						}
 					}
-				})
-			}
-			if err == nil {
-				docsChanged++
-			} else if err != base.ErrUpdateCancel {
-				base.Warnf("Error updating doc %q: %v", base.UD(docid), err)
+					_, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, db.Options.UserXattrKey, 0, nil, writeUpdateFunc)
+				} else {
+					_, err = db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
+						// Be careful: this block can be invoked multiple times if there are races!
+						if currentValue == nil {
+							return nil, nil, false, base.ErrUpdateCancel // someone deleted it?!
+						}
+						doc, err := unmarshalDocument(docid, currentValue)
+						if err != nil {
+							return nil, nil, false, err
+						}
+						updatedDoc, shouldUpdate, updatedExpiry, err := documentUpdateFunc(doc)
+						if err != nil {
+							return nil, nil, false, err
+						}
+						if shouldUpdate {
+							base.Infof(base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
+							if updatedExpiry != nil {
+								updatedDoc.UpdateExpiry(*updatedExpiry)
+							}
+
+							updatedBytes, marshalErr := base.JSONMarshal(updatedDoc)
+							return updatedBytes, updatedExpiry, false, marshalErr
+						} else {
+							return nil, nil, false, base.ErrUpdateCancel
+						}
+					})
+				}
+				if err == nil {
+					docsChanged++
+				} else if err != base.ErrUpdateCancel {
+					base.Warnf("Error updating doc %q: %v", base.UD(docid), err)
+				}
 			}
 		}
 
-		db.ResyncManager.UpdateProcessedChanged(docsProcessed, docsChanged)
+		callback(docsProcessed, docsChanged)
 
 		// Close query results
 		closeErr := results.Close()

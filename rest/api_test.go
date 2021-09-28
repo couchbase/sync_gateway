@@ -2308,7 +2308,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	changed, err := database.UpdateSyncFun(`function(doc) {access("alice", "beta");channel("beta");}`)
 	assert.NoError(t, err)
 	assert.True(t, changed)
-	changeCount, err := database.UpdateAllDocChannels(false)
+	changeCount, err := database.UpdateAllDocChannels(false, func(docsProcessed, docsChanged int) {}, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 9, changeCount)
 
