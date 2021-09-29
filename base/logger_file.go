@@ -60,8 +60,8 @@ type FileLogger struct {
 }
 
 type FileLoggerConfig struct {
-	Enabled  *bool             `json:"enabled,omitempty"`  // Toggle for this log output
-	Rotation logRotationConfig `json:"rotation,omitempty"` // Log rotation settings
+	Enabled        *bool              `json:"enabled,omitempty"`  // Toggle for this log output
+	ConfigRotation *logRotationConfig `json:"rotation,omitempty"` // Log rotation settings
 
 	CollationBufferSize *int      `json:"collation_buffer_size,omitempty"` // The size of the log collation buffer.
 	Output              io.Writer `json:"-"`                               // Logger output. Defaults to os.Stderr. Can be overridden for testing purposes.
@@ -173,6 +173,13 @@ func (l *FileLogger) getFileLoggerConfig() *FileLoggerConfig {
 	return &fileLoggerConfig
 }
 
+func (lfc *FileLoggerConfig) Rotation() logRotationConfig {
+	if lfc.ConfigRotation != nil {
+		return *lfc.ConfigRotation
+	}
+	return logRotationConfig{}
+}
+
 func (lfc *FileLoggerConfig) init(level LogLevel, name string, logFilePath string, minAge int) error {
 	if lfc == nil {
 		return errors.New("nil LogFileConfig")
@@ -190,8 +197,8 @@ func (lfc *FileLoggerConfig) init(level LogLevel, name string, logFilePath strin
 	if lfc.Output == nil {
 		lfc.Output = newLumberjackOutput(
 			filepath.Join(filepath.FromSlash(logFilePath), logFilePrefix+name+".log"),
-			*lfc.Rotation.MaxSize,
-			*lfc.Rotation.MaxAge,
+			*lfc.Rotation().MaxSize,
+			*lfc.Rotation().MaxAge,
 		)
 	}
 
@@ -214,7 +221,7 @@ func (lfc *FileLoggerConfig) init(level LogLevel, name string, logFilePath strin
 		for {
 			select {
 			case <-ticker.C:
-				err := runLogDeletion(logFilePath, level.String(), int(float64(*lfc.Rotation.RotatedLogsSizeLimit)*rotatedLogsLowWatermarkMultiplier), *lfc.Rotation.RotatedLogsSizeLimit)
+				err := runLogDeletion(logFilePath, level.String(), int(float64(*lfc.Rotation().RotatedLogsSizeLimit)*rotatedLogsLowWatermarkMultiplier), *lfc.Rotation().RotatedLogsSizeLimit)
 				if err != nil {
 					Warnf("%s", err)
 				}
@@ -226,29 +233,32 @@ func (lfc *FileLoggerConfig) init(level LogLevel, name string, logFilePath strin
 }
 
 func (lfc *FileLoggerConfig) initRotationConfig(name string, defaultMaxSize, minAge int) error {
-	if lfc.Rotation.MaxSize == nil {
-		lfc.Rotation.MaxSize = &defaultMaxSize
-	} else if *lfc.Rotation.MaxSize == 0 {
+	if lfc.ConfigRotation == nil {
+		lfc.ConfigRotation = &logRotationConfig{}
+	}
+	if lfc.Rotation().MaxSize == nil {
+		lfc.ConfigRotation.MaxSize = &defaultMaxSize
+	} else if *lfc.Rotation().MaxSize == 0 {
 		// A value of zero disables the log file rotation in Lumberjack.
-	} else if *lfc.Rotation.MaxSize < 0 {
-		return fmt.Errorf(belowMinValueFmt, "MaxSize", name, *lfc.Rotation.MaxSize, 0)
+	} else if *lfc.Rotation().MaxSize < 0 {
+		return fmt.Errorf(belowMinValueFmt, "MaxSize", name, *lfc.Rotation().MaxSize, 0)
 	}
 
-	if lfc.Rotation.MaxAge == nil {
+	if lfc.Rotation().MaxAge == nil {
 		defaultMaxAge := minAge * defaultMaxAgeMultiplier
-		lfc.Rotation.MaxAge = &defaultMaxAge
-	} else if *lfc.Rotation.MaxAge == 0 {
+		lfc.ConfigRotation.MaxAge = &defaultMaxAge
+	} else if *lfc.Rotation().MaxAge == 0 {
 		// A value of zero disables the age-based log cleanup in Lumberjack.
-	} else if *lfc.Rotation.MaxAge < minAge {
-		return fmt.Errorf(belowMinValueFmt, "MaxAge", name, *lfc.Rotation.MaxAge, minAge)
-	} else if *lfc.Rotation.MaxAge > maxAgeLimit {
-		return fmt.Errorf(aboveMaxValueFmt, "MaxAge", name, *lfc.Rotation.MaxAge, maxAgeLimit)
+	} else if *lfc.Rotation().MaxAge < minAge {
+		return fmt.Errorf(belowMinValueFmt, "MaxAge", name, *lfc.Rotation().MaxAge, minAge)
+	} else if *lfc.Rotation().MaxAge > maxAgeLimit {
+		return fmt.Errorf(aboveMaxValueFmt, "MaxAge", name, *lfc.Rotation().MaxAge, maxAgeLimit)
 	}
 
-	if lfc.Rotation.RotatedLogsSizeLimit == nil {
-		lfc.Rotation.RotatedLogsSizeLimit = &defaultCumulativeMaxSizeBeforeDeletion
-	} else if *lfc.Rotation.RotatedLogsSizeLimit < minRotatedLogsSizeLimit {
-		return fmt.Errorf(belowMinValueFmt, "RotatedLogsSizeLimit", name, *lfc.Rotation.RotatedLogsSizeLimit, minRotatedLogsSizeLimit)
+	if lfc.Rotation().RotatedLogsSizeLimit == nil {
+		lfc.ConfigRotation.RotatedLogsSizeLimit = &defaultCumulativeMaxSizeBeforeDeletion
+	} else if *lfc.Rotation().RotatedLogsSizeLimit < minRotatedLogsSizeLimit {
+		return fmt.Errorf(belowMinValueFmt, "RotatedLogsSizeLimit", name, *lfc.Rotation().RotatedLogsSizeLimit, minRotatedLogsSizeLimit)
 	}
 
 	return nil

@@ -165,8 +165,8 @@ func (lcc *ConsoleLoggerConfig) init() error {
 		}
 		lcc.Output = &lumberjack.Logger{
 			Filename: filepath.FromSlash(lcc.FileOutput),
-			MaxSize:  *lcc.Rotation.MaxSize,
-			MaxAge:   *lcc.Rotation.MaxAge,
+			MaxSize:  *lcc.Rotation().MaxSize,
+			MaxAge:   *lcc.Rotation().MaxAge,
 			Compress: false,
 		}
 	}

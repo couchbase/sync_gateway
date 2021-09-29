@@ -156,12 +156,16 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 			EnableAdminAuthenticationPermissionsCheck: lc.EnableAdminAuthenticationPermissionsCheck,
 		},
 		Logging: base.LoggingConfig{},
-		Auth: AuthConfig{
-			BcryptCost: lc.BcryptCost,
-		},
-		Replicator: ReplicatorConfig{
+	}
+
+	if lc.BcryptCost != 0 {
+		sc.Auth = &AuthConfig{BcryptCost: lc.BcryptCost}
+	}
+
+	if lc.ReplicatorCompression != nil {
+		sc.Replicator = &ReplicatorConfig{
 			BLIPCompression: lc.ReplicatorCompression,
-		},
+		}
 	}
 
 	if lc.Pretty {

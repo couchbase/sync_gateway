@@ -97,8 +97,8 @@ func TestStartupConfigMerge(t *testing.T) {
 		{
 			name:     "Override unset ConfigDuration",
 			config:   StartupConfig{},
-			override: StartupConfig{Replicator: ReplicatorConfig{MaxHeartbeat: base.NewConfigDuration(time.Second * 5)}},
-			expected: StartupConfig{Replicator: ReplicatorConfig{MaxHeartbeat: base.NewConfigDuration(time.Second * 5)}},
+			override: StartupConfig{Replicator: &ReplicatorConfig{MaxHeartbeat: base.NewConfigDuration(time.Second * 5)}},
+			expected: StartupConfig{Replicator: &ReplicatorConfig{MaxHeartbeat: base.NewConfigDuration(time.Second * 5)}},
 		},
 	}
 	for _, test := range tests {

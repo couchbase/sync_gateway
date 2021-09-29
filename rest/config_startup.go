@@ -48,10 +48,10 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 				LogLevel: base.LogLevelPtr(base.LevelNone),
 			},
 		},
-		Auth: AuthConfig{
+		Auth: &AuthConfig{
 			BcryptCost: auth.DefaultBcryptCost,
 		},
-		Unsupported: UnsupportedConfig{
+		Unsupported: &UnsupportedConfig{
 			StatsLogFrequency: base.NewConfigDuration(time.Minute),
 		},
 		MaxFileDescriptors: DefaultMaxFileDescriptors,
@@ -63,9 +63,9 @@ type StartupConfig struct {
 	Bootstrap   BootstrapConfig    `json:"bootstrap,omitempty"`
 	API         APIConfig          `json:"api,omitempty"`
 	Logging     base.LoggingConfig `json:"logging,omitempty"`
-	Auth        AuthConfig         `json:"auth,omitempty"`
-	Replicator  ReplicatorConfig   `json:"replicator,omitempty"`
-	Unsupported UnsupportedConfig  `json:"unsupported,omitempty"`
+	Auth        *AuthConfig        `json:"auth,omitempty"`
+	Replicator  *ReplicatorConfig  `json:"replicator,omitempty"`
+	Unsupported *UnsupportedConfig `json:"unsupported,omitempty"`
 
 	DatabaseCredentials PerDatabaseCredentialsConfig `json:"database_credentials,omitempty" help:"A map of database name to credentials, that can be used instead of the bootstrap ones."`
 
@@ -208,7 +208,9 @@ func NewEmptyStartupConfig() StartupConfig {
 			Trace:   &base.FileLoggerConfig{},
 			Stats:   &base.FileLoggerConfig{},
 		},
-		Unsupported: UnsupportedConfig{
+		Auth:       &AuthConfig{},
+		Replicator: &ReplicatorConfig{},
+		Unsupported: &UnsupportedConfig{
 			HTTP2: &HTTP2Config{},
 		},
 	}
