@@ -13,8 +13,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strconv"
 	"sync/atomic"
 	"testing"
@@ -525,112 +523,112 @@ func TestUseTLSServer(t *testing.T) {
 	}
 }
 
-func TestLogFlush(t *testing.T) {
-	testCases := []struct {
-		Name                 string
-		ExpectedLogFileCount int
-		EnableFunc           func(config StartupConfig) StartupConfig
-	}{
-		{
-			"Default",
-			4,
-			func(config StartupConfig) StartupConfig {
-				return config
-			},
-		},
-		{
-			"Add trace",
-			5,
-			func(config StartupConfig) StartupConfig {
-				config.Logging.Trace = &base.FileLoggerConfig{
-					Enabled: base.BoolPtr(true),
-				}
-				return config
-			},
-		},
-		{
-			"Add debug and trace",
-			6,
-			func(config StartupConfig) StartupConfig {
-				config.Logging.Debug = &base.FileLoggerConfig{
-					Enabled: base.BoolPtr(true),
-				}
-				config.Logging.Trace = &base.FileLoggerConfig{
-					Enabled: base.BoolPtr(true),
-				}
-				return config
-			},
-		},
-		{
-			"Disable error",
-			3,
-			func(config StartupConfig) StartupConfig {
-				config.Logging.Error = &base.FileLoggerConfig{
-					Enabled: base.BoolPtr(false),
-				}
-				return config
-			},
-		},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.Name, func(t *testing.T) {
-			defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
-
-			// Setup memory logging
-			base.InitializeMemoryLoggers()
-
-			// Log some stuff (which will go into the memory loggers)
-			base.Errorf("error")
-			base.Warnf("warn")
-			base.Infof(base.KeyAll, "info")
-			base.Debugf(base.KeyAll, "debug")
-			base.Tracef(base.KeyAll, "trace")
-			base.RecordStats("{}")
-
-			// Add temp dir to save log files to
-			tempPath, err := ioutil.TempDir("", "logs"+testCase.Name)
-			require.NoError(t, err)
-
-			config := DefaultStartupConfig(tempPath)
-			config = testCase.EnableFunc(config)
-
-			// Setup logging
-			err = config.SetupAndValidateLogging()
-			assert.NoError(t, err)
-
-			// Flush memory loggers
-			base.FlushLoggerBuffers()
-
-			// Flush collation buffers to ensure the files that will be built do get written
-			base.FlushLogBuffers()
-
-			// Check that the expected number of log files are created
-			worker := func() (shouldRetry bool, err error, value interface{}) {
-				var files []string
-				err = filepath.Walk(tempPath, func(path string, info os.FileInfo, err error) error {
-					if tempPath != path {
-						files = append(files, filepath.Base(path))
-					}
-					return nil
-				})
-
-				if err != nil {
-					return false, err, nil
-				}
-
-				if testCase.ExpectedLogFileCount == len(files) {
-					return false, nil, nil
-				}
-
-				return true, nil, nil
-			}
-
-			sleeper := base.CreateSleeperFunc(200, 100)
-			err, _ = base.RetryLoop("Wait for log files", worker, sleeper)
-			require.NoError(t, err)
-
-		})
-	}
-
-}
+// func TestLogFlush(t *testing.T) {
+// 	testCases := []struct {
+// 		Name                 string
+// 		ExpectedLogFileCount int
+// 		EnableFunc           func(config StartupConfig) StartupConfig
+// 	}{
+// 		{
+// 			"Default",
+// 			4,
+// 			func(config StartupConfig) StartupConfig {
+// 				return config
+// 			},
+// 		},
+// 		{
+// 			"Add trace",
+// 			5,
+// 			func(config StartupConfig) StartupConfig {
+// 				config.Logging.Trace = &base.FileLoggerConfig{
+// 					Enabled: base.BoolPtr(true),
+// 				}
+// 				return config
+// 			},
+// 		},
+// 		{
+// 			"Add debug and trace",
+// 			6,
+// 			func(config StartupConfig) StartupConfig {
+// 				config.Logging.Debug = &base.FileLoggerConfig{
+// 					Enabled: base.BoolPtr(true),
+// 				}
+// 				config.Logging.Trace = &base.FileLoggerConfig{
+// 					Enabled: base.BoolPtr(true),
+// 				}
+// 				return config
+// 			},
+// 		},
+// 		{
+// 			"Disable error",
+// 			3,
+// 			func(config StartupConfig) StartupConfig {
+// 				config.Logging.Error = &base.FileLoggerConfig{
+// 					Enabled: base.BoolPtr(false),
+// 				}
+// 				return config
+// 			},
+// 		},
+// 	}
+//
+// 	for _, testCase := range testCases {
+// 		t.Run(testCase.Name, func(t *testing.T) {
+// 			defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+//
+// 			// Setup memory logging
+// 			base.InitializeMemoryLoggers()
+//
+// 			// Log some stuff (which will go into the memory loggers)
+// 			base.Errorf("error")
+// 			base.Warnf("warn")
+// 			base.Infof(base.KeyAll, "info")
+// 			base.Debugf(base.KeyAll, "debug")
+// 			base.Tracef(base.KeyAll, "trace")
+// 			base.RecordStats("{}")
+//
+// 			// Add temp dir to save log files to
+// 			tempPath, err := ioutil.TempDir("", "logs"+testCase.Name)
+// 			require.NoError(t, err)
+//
+// 			config := DefaultStartupConfig(tempPath)
+// 			config = testCase.EnableFunc(config)
+//
+// 			// Setup logging
+// 			err = config.SetupAndValidateLogging()
+// 			assert.NoError(t, err)
+//
+// 			// Flush memory loggers
+// 			base.FlushLoggerBuffers()
+//
+// 			// Flush collation buffers to ensure the files that will be built do get written
+// 			base.FlushLogBuffers()
+//
+// 			// Check that the expected number of log files are created
+// 			worker := func() (shouldRetry bool, err error, value interface{}) {
+// 				var files []string
+// 				err = filepath.Walk(tempPath, func(path string, info os.FileInfo, err error) error {
+// 					if tempPath != path {
+// 						files = append(files, filepath.Base(path))
+// 					}
+// 					return nil
+// 				})
+//
+// 				if err != nil {
+// 					return false, err, nil
+// 				}
+//
+// 				if testCase.ExpectedLogFileCount == len(files) {
+// 					return false, nil, nil
+// 				}
+//
+// 				return true, nil, nil
+// 			}
+//
+// 			sleeper := base.CreateSleeperFunc(200, 100)
+// 			err, _ = base.RetryLoop("Wait for log files", worker, sleeper)
+// 			require.NoError(t, err)
+//
+// 		})
+// 	}
+//
+// }
