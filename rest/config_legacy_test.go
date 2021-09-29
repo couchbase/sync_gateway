@@ -60,12 +60,12 @@ func TestLegacyConfigToStartupConfig(t *testing.T) {
 			input:    LegacyServerConfig{CompressResponses: base.BoolPtr(false)},
 			expected: StartupConfig{API: APIConfig{CompressResponses: base.BoolPtr(false)}},
 		},
-		{
-			name:     "Override nil *bool HTTP2Enable",
-			base:     StartupConfig{},
-			input:    LegacyServerConfig{Unsupported: &UnsupportedServerConfigLegacy{Http2Config: &HTTP2Config{Enabled: base.BoolPtr(false)}}},
-			expected: StartupConfig{OptUnsupported: &UnsupportedConfig{HTTP2: &HTTP2Config{Enabled: base.BoolPtr(false)}}},
-		},
+		// {
+		// 	name:     "Override nil *bool HTTP2Enable",
+		// 	base:     StartupConfig{},
+		// 	input:    LegacyServerConfig{Unsupported: &UnsupportedServerConfigLegacy{Http2Config: &HTTP2Config{Enabled: base.BoolPtr(false)}}},
+		// 	expected: StartupConfig{OptUnsupported: &UnsupportedConfig{HTTP2: &HTTP2Config{Enabled: base.BoolPtr(false)}}},
+		// },
 		{
 			name:     "Absent property AdminInterfaceAuthentication",
 			base:     StartupConfig{API: APIConfig{AdminInterfaceAuthentication: base.BoolPtr(true)}},
