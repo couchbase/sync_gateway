@@ -140,6 +140,9 @@ func (h *handler) handleDbOffline() error {
 
 // Get admin database info
 func (h *handler) handleGetDbConfig() error {
+	if redact, _ := h.getOptBoolQuery("redact", true); !redact {
+		return base.HTTPErrorf(http.StatusBadRequest, "redact=false is no longer supported")
+	}
 
 	// load config from bucket once for:
 	// - Populate an up to date ETag header
@@ -194,14 +197,10 @@ func (h *handler) handleGetDbConfig() error {
 		return base.HTTPErrorf(http.StatusNotFound, "database config not found")
 	}
 
-	// redaction to sensitive config fields
-	redact, _ := h.getOptBoolQuery("redact", true)
-	if redact {
-		var err error
-		responseConfig, err = responseConfig.Redacted()
-		if err != nil {
-			return err
-		}
+	var err error
+	responseConfig, err = responseConfig.Redacted()
+	if err != nil {
+		return err
 	}
 
 	// include_javascript=false omits config fields that contain javascript code
@@ -230,60 +229,37 @@ type RunTimeServerConfigResponse struct {
 
 // Get admin config info
 func (h *handler) handleGetConfig() error {
-	includeRuntime, _ := h.getOptBoolQuery("include_runtime", false)
-	redact, _ := h.getOptBoolQuery("redact", true)
+	if redact, _ := h.getOptBoolQuery("redact", true); !redact {
+		return base.HTTPErrorf(http.StatusBadRequest, "redact=false is no longer supported")
+	}
 
+	includeRuntime, _ := h.getOptBoolQuery("include_runtime", false)
 	if includeRuntime {
 		cfg := RunTimeServerConfigResponse{}
 		var err error
 
 		allDbNames := h.server.AllDatabaseNames()
 		databaseMap := make(map[string]*DbConfig, len(allDbNames))
-		if redact {
-			cfg.StartupConfig, err = h.server.config.Redacted()
+		cfg.StartupConfig, err = h.server.config.Redacted()
+		if err != nil {
+			return err
+		}
+
+		for _, dbName := range allDbNames {
+			// defensive check - in-flight requests could've removed this database since we got the name of it
+			dbConfig := h.server.GetDbConfig(dbName)
+			if dbConfig == nil {
+				continue
+			}
+
+			dbConfig, err := MergeDatabaseConfigWithDefaults(h.server.config, dbConfig)
 			if err != nil {
 				return err
 			}
 
-			for _, dbName := range allDbNames {
-				// defensive check - in-flight requests could've removed this database since we got the name of it
-				dbConfig := h.server.GetDbConfig(dbName)
-				if dbConfig == nil {
-					continue
-				}
-
-				dbConfig, err := MergeDatabaseConfigWithDefaults(h.server.config, dbConfig)
-				if err != nil {
-					return err
-				}
-
-				databaseMap[dbName], err = dbConfig.Redacted()
-				if err != nil {
-					return err
-				}
-			}
-		} else {
-			cfg.StartupConfig = h.server.config
-			for _, dbName := range allDbNames {
-				// defensive check - in-flight requests could've removed this database since we got the name of it
-				dbConfig := h.server.GetDbConfig(dbName)
-				if dbConfig == nil {
-					continue
-				}
-
-				// Copying struct here to avoid mutating the running dbconfig later on
-				var dbConfigCopy DbConfig
-				err = base.DeepCopyInefficient(&dbConfigCopy, dbConfig)
-				if err != nil {
-					return err
-				}
-
-				dbConfig, err := MergeDatabaseConfigWithDefaults(h.server.config, &dbConfigCopy)
-				if err != nil {
-					return err
-				}
-
-				databaseMap[dbName] = dbConfig
+			databaseMap[dbName], err = dbConfig.Redacted()
+			if err != nil {
+				return err
 			}
 		}
 
@@ -301,11 +277,7 @@ func (h *handler) handleGetConfig() error {
 			dbConfig.Replications = make(map[string]*db.ReplicationConfig, len(replications))
 
 			for replicationName, replicationConfig := range replications {
-				if redact {
-					dbConfig.Replications[replicationName] = replicationConfig.ReplicationConfig.Redacted()
-				} else {
-					dbConfig.Replications[replicationName] = &replicationConfig.ReplicationConfig
-				}
+				dbConfig.Replications[replicationName] = replicationConfig.ReplicationConfig.Redacted()
 			}
 		}
 
@@ -313,19 +285,14 @@ func (h *handler) handleGetConfig() error {
 		cfg.Databases = databaseMap
 
 		h.writeJSON(cfg)
-		return nil
-	}
-
-	if redact {
+	} else {
 		cfg, err := h.server.initialStartupConfig.Redacted()
 		if err != nil {
 			return err
 		}
 		h.writeJSON(cfg)
-	} else {
-		h.writeJSON(h.server.initialStartupConfig)
-
 	}
+
 	return nil
 }
 
