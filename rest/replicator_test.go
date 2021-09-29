@@ -5841,8 +5841,9 @@ func TestUnprocessibleDeltas(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-// Check for regression of CBG-1428 - ISGR should ignore _removed:true bodies when purgeOnRemoval is disabled
-func TestReplicatorPullRemovedDocs(t *testing.T) {
+// CBG-1428 - check for regression of ISGR not ignoring _removed:true bodies when purgeOnRemoval is disabled
+func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
+	// Copies the behaviour of TestGetRemovedAsUser but with replication and no user
 	defer db.SuspendSequenceBatching()()
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
@@ -5850,27 +5851,12 @@ func TestReplicatorPullRemovedDocs(t *testing.T) {
 	passiveBucket := base.GetTestBucket(t)
 	passiveRT := NewRestTester(t, &RestTesterConfig{
 		TestBucket: passiveBucket,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
-				"test": {
-					Password:         base.StringPtr("pass"),
-					ExplicitChannels: base.SetOf("test"),
-				},
-			},
-		}},
 	})
 	defer passiveRT.Close()
 
-	// Make passive RT listen on an actual HTTP port, so it can receive the blipsync request from the active replicator.
-	srv := httptest.NewServer(passiveRT.TestPublicHandler())
+	// Make passive RT listen on an actual HTTP port, so it can receive the blipsync request from the active replicator
+	srv := httptest.NewServer(passiveRT.TestAdminHandler())
 	defer srv.Close()
-
-	// Create a document //
-	resp := passiveRT.SendAdminRequest(http.MethodPut, "/db/doc", `{"channels": ["test"]}`)
-	assertStatus(t, resp, http.StatusCreated)
-	revID := respRevID(t, resp)
-	err := passiveRT.waitForRev("doc", revID)
-	require.NoError(t, err)
 
 	// Active //
 	activeBucket := base.GetTestBucket(t)
@@ -5879,48 +5865,57 @@ func TestReplicatorPullRemovedDocs(t *testing.T) {
 	})
 	defer activeRT.Close()
 
+	// Create the docs //
+	// Doc rev 1
+	resp := activeRT.SendAdminRequest(http.MethodPut, "/db/doc", `{"key":"12","channels": ["rev1chan"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	rev1ID := respRevID(t, resp)
+	err := activeRT.waitForRev("doc", rev1ID)
+	require.NoError(t, err)
+
+	// doc rev 2
+	resp = activeRT.SendAdminRequest(http.MethodPut, "/db/doc?rev="+rev1ID, `{"key":"12","channels":["rev2+3chan"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	rev2ID := respRevID(t, resp)
+	err = activeRT.waitForRev("doc", rev2ID)
+	require.NoError(t, err)
+
+	// Doc rev 3
+	resp = activeRT.SendAdminRequest(http.MethodPut, "/db/doc?rev="+rev2ID, `{"key":"3","channels":["rev2+3chan"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	rev3ID := respRevID(t, resp)
+	err = activeRT.waitForRev("doc", rev3ID)
+	require.NoError(t, err)
+
+	activeRT.GetDatabase().FlushRevisionCacheForTest()
+	err = activeRT.Bucket().Delete("_sync:rev:doc:34:2-3abfb1b2a6c310167ee80910dd05d40d")
+	require.NoError(t, err)
+
 	// Set-up replicator //
 	passiveDBURL, err := url.Parse(srv.URL + "/db")
 	require.NoError(t, err)
 
-	// Add basic auth creds to target db URL
-	passiveDBURL.User = url.UserPassword("test", "pass")
-
 	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
 		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePull,
+		Direction:   db.ActiveReplicatorTypePush,
 		RemoteDBURL: passiveDBURL,
 		ActiveDB: &db.Database{
 			DatabaseContext: activeRT.GetDatabase(),
 		},
-		Continuous:          true,
-		ChangesBatchSize:    1,
+		Continuous:          false,
+		ChangesBatchSize:    200,
 		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 		PurgeOnRemoval:      false,
+		Filter:              base.ByChannelFilter,
+		FilterChannels:      []string{"rev1chan"},
 	})
+	docWriteFailuresBefore := ar.GetStatus().DocWriteFailures
+
 	assert.Equal(t, "", ar.GetStatus().LastSeqPush)
 	assert.NoError(t, ar.Start())
-
-	// Wait for passive to replicate to active
-	err = activeRT.waitForRev("doc", revID)
-	require.NoError(t, err)
-
-	rejectedLocal := ar.GetStatus().PullReplicationStatus.RejectedLocal
-
-	// Remove channel from passive doc
-	resp = passiveRT.SendAdminRequest(http.MethodPut, "/db/doc?rev="+revID, `{"channels": ["invalid"]}`)
-	assertStatus(t, resp, http.StatusCreated)
-	revID = respRevID(t, resp)
-
-	err = activeRT.waitForRev("doc", revID)
-	require.Error(t, err)
-
-	// Check that rejected local has not been incremented
-	assert.Equal(t, rejectedLocal, ar.GetStatus().PullReplicationStatus.RejectedLocal)
-
-	// Shutdown replicator to close out
-	require.NoError(t, ar.Stop())
 	activeRT.waitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+
+	assert.Equal(t, docWriteFailuresBefore, ar.GetStatus().DocWriteFailures, "ISGR should ignore _remove:true bodies when purgeOnRemoval is disabled. CBG-1428 regression.")
 }
 
 func getTestRevpos(t *testing.T, doc db.Body, attachmentKey string) (revpos int) {
