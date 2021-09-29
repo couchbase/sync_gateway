@@ -405,8 +405,10 @@ func (h *handler) handlePutConfig() error {
 	return base.HTTPErrorf(http.StatusOK, "Updated")
 }
 
-// handlePutDbConfig Upserts a new database config
-func (h *handler) handlePutDbConfig() (err error) {
+// handleUpdateDbConfig writes a new database config via either PUT or POST
+// - POST: upsert/patch on the existing in-bucket config
+// - PUT : full config replacement
+func (h *handler) handleUpdateDbConfig() (err error) {
 	h.assertAdminOnly()
 
 	var dbConfig *DbConfig
@@ -481,19 +483,24 @@ func (h *handler) handlePutDbConfig() (err error) {
 					return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 				}
 
-				if err := base.ConfigMerge(&bucketDbConfig.DbConfig, dbConfig); err != nil {
-					return nil, err
+				newDbConfig := dbConfig
+				// merge the request config on top of the one in the bucket to do an upsert
+				if h.rq.Method == http.MethodPost {
+					if err := base.ConfigMerge(&bucketDbConfig.DbConfig, dbConfig); err != nil {
+						return nil, err
+					}
+					newDbConfig = &bucketDbConfig.DbConfig
 				}
 
 				// TODO: CBG-1619 We're validating but we're not actually starting up the database before we persist the update!
-				if err := dbConfig.validatePersistentDbConfig(); err != nil {
+				if err := newDbConfig.validatePersistentDbConfig(); err != nil {
 					return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 				}
-				if err := bucketDbConfig.validate(); err != nil {
+				if err := newDbConfig.validate(); err != nil {
 					return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 				}
 
-				bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+				bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, newDbConfig)
 				if err != nil {
 					return nil, err
 				}
