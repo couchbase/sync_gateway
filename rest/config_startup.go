@@ -221,7 +221,7 @@ func NewEmptyStartupConfig() StartupConfig {
 			CORS: &CORSConfig{},
 		},
 		Logging: base.LoggingConfig{
-			Console: &base.ConsoleLoggerConfig{},
+			Console: &base.ConsoleLoggerConfig{FileLoggerConfig: base.FileLoggerConfig{ConfigRotation: &base.LogRotationConfig{}}},
 			Error:   &base.FileLoggerConfig{ConfigRotation: &base.LogRotationConfig{}},
 			Warn:    &base.FileLoggerConfig{ConfigRotation: &base.LogRotationConfig{}},
 			Info:    &base.FileLoggerConfig{ConfigRotation: &base.LogRotationConfig{}},
