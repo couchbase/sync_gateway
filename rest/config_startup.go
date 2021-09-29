@@ -48,24 +48,45 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 				LogLevel: base.LogLevelPtr(base.LevelNone),
 			},
 		},
-		Auth: &AuthConfig{
+		OptAuth: &AuthConfig{
 			BcryptCost: auth.DefaultBcryptCost,
 		},
-		Unsupported: &UnsupportedConfig{
+		OptUnsupported: &UnsupportedConfig{
 			StatsLogFrequency: base.NewConfigDuration(time.Minute),
 		},
 		MaxFileDescriptors: DefaultMaxFileDescriptors,
 	}
 }
 
+func (sc *StartupConfig) Replicator() ReplicatorConfig {
+	if sc.OptReplicator != nil {
+		return *sc.OptReplicator
+	}
+	return ReplicatorConfig{}
+}
+
+func (sc *StartupConfig) Auth() AuthConfig {
+	if sc.OptAuth != nil {
+		return *sc.OptAuth
+	}
+	return AuthConfig{}
+}
+
+func (sc *StartupConfig) Unsupported() UnsupportedConfig {
+	if sc.OptUnsupported != nil {
+		return *sc.OptUnsupported
+	}
+	return UnsupportedConfig{}
+}
+
 // StartupConfig is the config file used by Sync Gateway in 3.0+ to start up with node-specific settings, and then bootstrap databases via Couchbase Server.
 type StartupConfig struct {
-	Bootstrap   BootstrapConfig    `json:"bootstrap,omitempty"`
-	API         APIConfig          `json:"api,omitempty"`
-	Logging     base.LoggingConfig `json:"logging,omitempty"`
-	Auth        *AuthConfig        `json:"auth,omitempty"`
-	Replicator  *ReplicatorConfig  `json:"replicator,omitempty"`
-	Unsupported *UnsupportedConfig `json:"unsupported,omitempty"`
+	Bootstrap      BootstrapConfig    `json:"bootstrap,omitempty"`
+	API            APIConfig          `json:"api,omitempty"`
+	Logging        base.LoggingConfig `json:"logging,omitempty"`
+	OptAuth        *AuthConfig        `json:"auth,omitempty"`
+	OptReplicator  *ReplicatorConfig  `json:"replicator,omitempty"`
+	OptUnsupported *UnsupportedConfig `json:"unsupported,omitempty"`
 
 	DatabaseCredentials PerDatabaseCredentialsConfig `json:"database_credentials,omitempty" help:"A map of database name to credentials, that can be used instead of the bootstrap ones."`
 
@@ -201,16 +222,16 @@ func NewEmptyStartupConfig() StartupConfig {
 		},
 		Logging: base.LoggingConfig{
 			Console: &base.ConsoleLoggerConfig{},
-			Error:   &base.FileLoggerConfig{},
-			Warn:    &base.FileLoggerConfig{},
-			Info:    &base.FileLoggerConfig{},
-			Debug:   &base.FileLoggerConfig{},
-			Trace:   &base.FileLoggerConfig{},
-			Stats:   &base.FileLoggerConfig{},
+			Error:   &base.FileLoggerConfig{ConfigRotation: &base.LogRotationConfig{}},
+			Warn:    &base.FileLoggerConfig{ConfigRotation: &base.LogRotationConfig{}},
+			Info:    &base.FileLoggerConfig{ConfigRotation: &base.LogRotationConfig{}},
+			Debug:   &base.FileLoggerConfig{ConfigRotation: &base.LogRotationConfig{}},
+			Trace:   &base.FileLoggerConfig{ConfigRotation: &base.LogRotationConfig{}},
+			Stats:   &base.FileLoggerConfig{ConfigRotation: &base.LogRotationConfig{}},
 		},
-		Auth:       &AuthConfig{},
-		Replicator: &ReplicatorConfig{},
-		Unsupported: &UnsupportedConfig{
+		OptAuth:       &AuthConfig{},
+		OptReplicator: &ReplicatorConfig{},
+		OptUnsupported: &UnsupportedConfig{
 			HTTP2: &HTTP2Config{},
 		},
 	}
@@ -234,7 +255,7 @@ func setGlobalConfig(sc *StartupConfig) error {
 	}
 
 	// Given unscoped usage of base.JSON functions, this can't be scoped.
-	if base.BoolDefault(sc.Unsupported.UseStdlibJSON, false) {
+	if base.BoolDefault(sc.Unsupported().UseStdlibJSON, false) {
 		base.Infof(base.KeyAll, "Using the stdlib JSON package")
 		base.UseStdlibJSON = true
 	}

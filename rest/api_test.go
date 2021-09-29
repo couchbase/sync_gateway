@@ -1907,7 +1907,7 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 	goassert.Equals(t, options.TimeoutMs, uint64(kMaxTimeoutMS))
 
 	// Set max heartbeat in server context, attempt to set heartbeat greater than max
-	h.server.config.Replicator.MaxHeartbeat = base.NewConfigDuration(time.Minute)
+	h.server.config.OptReplicator = &ReplicatorConfig{MaxHeartbeat: base.NewConfigDuration(time.Minute)}
 	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":90000}`
 	feed, options, filter, channelsArray, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.NoError(t, err)

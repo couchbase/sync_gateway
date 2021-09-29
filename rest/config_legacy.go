@@ -159,11 +159,11 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 	}
 
 	if lc.BcryptCost != 0 {
-		sc.Auth = &AuthConfig{BcryptCost: lc.BcryptCost}
+		sc.OptAuth = &AuthConfig{BcryptCost: lc.BcryptCost}
 	}
 
 	if lc.ReplicatorCompression != nil {
-		sc.Replicator = &ReplicatorConfig{
+		sc.OptReplicator = &ReplicatorConfig{
 			BLIPCompression: lc.ReplicatorCompression,
 		}
 	}
@@ -185,14 +185,18 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 
 	if lc.Unsupported != nil {
 		if lc.Unsupported.Http2Config != nil {
-			sc.Unsupported.HTTP2 = &HTTP2Config{
-				Enabled: lc.Unsupported.Http2Config.Enabled,
+			sc.OptUnsupported = &UnsupportedConfig{
+				HTTP2: &HTTP2Config{
+					Enabled: lc.Unsupported.Http2Config.Enabled,
+				},
 			}
 		}
 	}
 
 	if lc.MaxHeartbeat != nil {
-		sc.Replicator.MaxHeartbeat = base.NewConfigDuration(time.Second * time.Duration(*lc.MaxHeartbeat))
+		sc.OptReplicator = &ReplicatorConfig{
+			MaxHeartbeat: base.NewConfigDuration(time.Second * time.Duration(*lc.MaxHeartbeat)),
+		}
 	}
 
 	if lc.Logging != nil {
@@ -253,11 +257,12 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 		sc.API.HTTPS.TLSKeyPath = *lc.SSLKey
 	}
 	if lc.Unsupported != nil {
+		sc.OptUnsupported = &UnsupportedConfig{}
 		if lc.Unsupported.StatsLogFrequencySecs != nil {
-			sc.Unsupported.StatsLogFrequency = base.NewConfigDuration(time.Second * time.Duration(*lc.Unsupported.StatsLogFrequencySecs))
+			sc.OptUnsupported.StatsLogFrequency = base.NewConfigDuration(time.Second * time.Duration(*lc.Unsupported.StatsLogFrequencySecs))
 		}
 		if lc.Unsupported.UseStdlibJSON != nil {
-			sc.Unsupported.UseStdlibJSON = lc.Unsupported.UseStdlibJSON
+			sc.OptUnsupported.UseStdlibJSON = lc.Unsupported.UseStdlibJSON
 		}
 	}
 	if lc.MaxFileDescriptors != nil {

@@ -61,13 +61,13 @@ type FileLogger struct {
 
 type FileLoggerConfig struct {
 	Enabled        *bool              `json:"enabled,omitempty"`  // Toggle for this log output
-	ConfigRotation *logRotationConfig `json:"rotation,omitempty"` // Log rotation settings
+	ConfigRotation *LogRotationConfig `json:"rotation,omitempty"` // Log rotation settings
 
 	CollationBufferSize *int      `json:"collation_buffer_size,omitempty"` // The size of the log collation buffer.
 	Output              io.Writer `json:"-"`                               // Logger output. Defaults to os.Stderr. Can be overridden for testing purposes.
 }
 
-type logRotationConfig struct {
+type LogRotationConfig struct {
 	MaxSize              *int  `json:"max_size,omitempty"`                // The maximum size in MB of the log file before it gets rotated.
 	MaxAge               *int  `json:"max_age,omitempty"`                 // The maximum number of days to retain old log files.
 	LocalTime            *bool `json:"localtime,omitempty"`               // If true, it uses the computer's local time to format the backup timestamp.
@@ -173,11 +173,11 @@ func (l *FileLogger) getFileLoggerConfig() *FileLoggerConfig {
 	return &fileLoggerConfig
 }
 
-func (lfc *FileLoggerConfig) Rotation() logRotationConfig {
+func (lfc *FileLoggerConfig) Rotation() LogRotationConfig {
 	if lfc.ConfigRotation != nil {
 		return *lfc.ConfigRotation
 	}
-	return logRotationConfig{}
+	return LogRotationConfig{}
 }
 
 func (lfc *FileLoggerConfig) init(level LogLevel, name string, logFilePath string, minAge int) error {
@@ -234,7 +234,7 @@ func (lfc *FileLoggerConfig) init(level LogLevel, name string, logFilePath strin
 
 func (lfc *FileLoggerConfig) initRotationConfig(name string, defaultMaxSize, minAge int) error {
 	if lfc.ConfigRotation == nil {
-		lfc.ConfigRotation = &logRotationConfig{}
+		lfc.ConfigRotation = &LogRotationConfig{}
 	}
 	if lfc.Rotation().MaxSize == nil {
 		lfc.ConfigRotation.MaxSize = &defaultMaxSize

@@ -89,7 +89,7 @@ func TestFillConfigWithFlagsValidVals(t *testing.T) {
 	assert.Equal(t, -5, config.API.CORS.MaxAge)
 	assert.Equal(t, "full", config.Logging.RedactionLevel.String())
 	assert.Equal(t, "warn", config.Logging.Console.LogLevel.String())
-	assert.Equal(t, base.NewConfigDuration(time.Hour*5+time.Minute*2+time.Second*33), config.Replicator.MaxHeartbeat)
+	assert.Equal(t, base.NewConfigDuration(time.Hour*5+time.Minute*2+time.Second*33), config.Replicator().MaxHeartbeat)
 	assert.Equal(t, uint64(12345), config.MaxFileDescriptors)
 }
 

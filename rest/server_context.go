@@ -1036,12 +1036,12 @@ type statsWrapper struct {
 
 func (sc *ServerContext) startStatsLogger() {
 
-	if sc.config.Unsupported.StatsLogFrequency == nil || sc.config.Unsupported.StatsLogFrequency.Value() == 0 {
+	if sc.config.Unsupported().StatsLogFrequency == nil || sc.config.Unsupported().StatsLogFrequency.Value() == 0 {
 		// don't start the stats logger when explicitly zero
 		return
 	}
 
-	interval := sc.config.Unsupported.StatsLogFrequency
+	interval := sc.config.Unsupported().StatsLogFrequency
 
 	sc.statsContext.statsLoggingTicker = time.NewTicker(interval.Value())
 	sc.statsContext.terminator = make(chan struct{})
