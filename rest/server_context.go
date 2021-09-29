@@ -786,6 +786,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		// FIXME?
 		// SlowQueryWarningThreshold: time.Duration(*sc.config.SlowQueryWarningThreshold) * time.Millisecond,
 		ClientPartitionWindow: clientPartitionWindow,
+		BcryptCost:            sc.config.Auth.BcryptCost,
 	}
 
 	return contextOptions, nil

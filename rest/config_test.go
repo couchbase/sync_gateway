@@ -26,6 +26,9 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/crypto/bcrypt"
+
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/hashicorp/go-multierror"
@@ -2109,4 +2112,66 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 		})
 	}
 
+}
+
+func TestStartupConfigBcryptCostValidation(t *testing.T) {
+	errContains := auth.ErrInvalidBcryptCost.Error()
+	testCases := []struct {
+		name        string
+		cost        int
+		expectError bool
+	}{
+		{
+			name:        "Valid bcrypt value",
+			cost:        20,
+			expectError: false,
+		},
+		{
+			name:        "Valid edge case max bcrypt value",
+			cost:        bcrypt.MaxCost,
+			expectError: false,
+		},
+		{
+			name:        "Invalid edge case max+1 bcrypt value",
+			cost:        bcrypt.MaxCost + 1,
+			expectError: true,
+		},
+		{
+			name:        "Invalid edge case min-1 bcrypt value",
+			cost:        auth.DefaultBcryptCost - 1,
+			expectError: true,
+		},
+		{
+			name:        "Valid edge case min bcrypt value",
+			cost:        auth.DefaultBcryptCost,
+			expectError: false,
+		},
+		{
+			name:        "Valid 0 bcrypt",
+			cost:        0,
+			expectError: false,
+		},
+		{
+			name:        "Valid below 0 bcrypt",
+			cost:        -1,
+			expectError: false,
+		},
+		{
+			name:        "Invalid above 0, below min bcrypt",
+			cost:        1,
+			expectError: true,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			sc := StartupConfig{Auth: AuthConfig{BcryptCost: test.cost}}
+			err := sc.validate()
+			if test.expectError {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), errContains)
+			} else if err != nil {
+				assert.NotContains(t, err.Error(), errContains)
+			}
+		})
+	}
 }

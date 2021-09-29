@@ -26,6 +26,8 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
+
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/hashicorp/go-multierror"
 
@@ -937,6 +939,10 @@ func (sc *StartupConfig) validate() (errorMessages error) {
 	// Make sure if a SSL key or cert is provided, they are both provided
 	if (sc.API.HTTPS.TLSKeyPath != "" || sc.API.HTTPS.TLSCertPath != "") && (sc.API.HTTPS.TLSKeyPath == "" || sc.API.HTTPS.TLSCertPath == "") {
 		errorMessages = multierror.Append(errorMessages, fmt.Errorf("both TLS Key Path and TLS Cert Path must be provided when using client TLS. Disable client TLS by not providing either of these options"))
+	}
+
+	if sc.Auth.BcryptCost > 0 && (sc.Auth.BcryptCost < auth.DefaultBcryptCost || sc.Auth.BcryptCost > bcrypt.MaxCost) {
+		errorMessages = multierror.Append(errorMessages, fmt.Errorf("%v: %d outside allowed range: %d-%d", auth.ErrInvalidBcryptCost, sc.Auth.BcryptCost, auth.DefaultBcryptCost, bcrypt.MaxCost))
 	}
 
 	// EE only features

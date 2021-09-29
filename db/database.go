@@ -144,6 +144,7 @@ type DatabaseContextOptions struct {
 	QueryPaginationLimit      int    // Limit used for pagination of queries. If not set defaults to DefaultQueryPaginationLimit
 	UserXattrKey              string // Key of user xattr that will be accessible from the Sync Function. If empty the feature will be disabled.
 	ClientPartitionWindow     time.Duration
+	BcryptCost                int
 }
 
 type SGReplicateOptions struct {
@@ -760,6 +761,7 @@ func (context *DatabaseContext) Authenticator() *auth.Authenticator {
 		ClientPartitionWindow:    context.Options.ClientPartitionWindow,
 		ChannelsWarningThreshold: channelsWarningThreshold,
 		SessionCookieName:        sessionCookieName,
+		BcryptCost:               context.Options.BcryptCost,
 	})
 
 	return authenticator
