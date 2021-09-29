@@ -366,9 +366,11 @@ func waitForIndex(bucket base.N1QLStore, indexName string, queryStatement string
 		resultSet, resultsError := bucket.Query(queryStatement, nil, base.RequestPlus, true)
 
 		// Immediately close results. We don't need these
-		resultSetCloseError := resultSet.Close()
-		if resultSetCloseError != nil {
-			base.Infof(base.KeyAll, "Failed to close query results when verifying index %q availability for bucket %q", base.MD(indexName), base.MD(bucket.GetName()))
+		if resultSet != nil {
+			resultSetCloseError := resultSet.Close()
+			if resultSetCloseError != nil {
+				base.Infof(base.KeyAll, "Failed to close query results when verifying index %q availability for bucket %q", base.MD(indexName), base.MD(bucket.GetName()))
+			}
 		}
 
 		if resultsError == nil {

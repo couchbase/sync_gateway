@@ -184,9 +184,9 @@ func (tbp *TestBucketPool) markBucketClosed(t testing.TB, b Bucket) {
 	testCtx := testCtx(t)
 	switch typedBucket := b.(type) {
 	case *Collection:
-		tbp.checkForViewOpsQueueEmptied(testCtx, b.GetName(), typedBucket.viewQueryOps)
+		tbp.checkForViewOpsQueueEmptied(testCtx, b.GetName(), typedBucket.queryOps)
 	case *CouchbaseBucketGoCB:
-		tbp.checkForViewOpsQueueEmptied(testCtx, b.GetName(), typedBucket.viewQueryOps)
+		tbp.checkForViewOpsQueueEmptied(testCtx, b.GetName(), typedBucket.queryOps)
 	}
 
 	if tMap, ok := tbp.unclosedBuckets[t.Name()]; ok {

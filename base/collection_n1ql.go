@@ -44,7 +44,7 @@ func (c *Collection) Query(statement string, params map[string]interface{}, cons
 		if queryErr == nil {
 			resultsIterator := &gocbRawIterator{
 				rawResult:                  queryResults.Raw(),
-				concurrentQueryOpLimitChan: c.viewQueryOps,
+				concurrentQueryOpLimitChan: c.queryOps,
 			}
 			return resultsIterator, queryErr
 		}
@@ -103,7 +103,7 @@ func (c *Collection) BuildDeferredIndexes(indexSet []string) error {
 }
 
 func (c *Collection) runQuery(statement string, n1qlOptions *gocb.QueryOptions) (*gocb.QueryResult, error) {
-	c.waitForAvailViewOp()
+	c.waitForAvailQueryOp()
 
 	if n1qlOptions == nil {
 		n1qlOptions = &gocb.QueryOptions{}
@@ -111,7 +111,7 @@ func (c *Collection) runQuery(statement string, n1qlOptions *gocb.QueryOptions) 
 	queryResults, err := c.cluster.Query(statement, n1qlOptions)
 	// In the event that we get an error during query we should release a view op as Close() will not be called.
 	if err != nil {
-		c.releaseViewOp()
+		c.releaseQueryOp()
 	}
 
 	return queryResults, err
@@ -125,7 +125,7 @@ func (c *Collection) executeQuery(statement string) (sgbucket.QueryResultIterato
 
 	resultsIterator := &gocbRawIterator{
 		rawResult:                  queryResults.Raw(),
-		concurrentQueryOpLimitChan: c.viewQueryOps,
+		concurrentQueryOpLimitChan: c.queryOps,
 	}
 	return resultsIterator, nil
 }
@@ -140,7 +140,7 @@ func (c *Collection) executeStatement(statement string) error {
 	for queryResults.Next() {
 	}
 	closeErr := queryResults.Close()
-	c.releaseViewOp()
+	c.releaseQueryOp()
 	if closeErr != nil {
 		return closeErr
 	}

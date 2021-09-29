@@ -106,8 +106,8 @@ func (bucket *CouchbaseBucketGoCB) BuildDeferredIndexes(indexSet []string) error
 }
 
 func (bucket *CouchbaseBucketGoCB) runQuery(n1qlQuery *gocb.N1qlQuery, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
-	bucket.waitForAvailViewOp()
-	defer bucket.releaseViewOp()
+	bucket.waitForAvailQueryOp()
+	defer bucket.releaseQueryOp()
 
 	return bucket.ExecuteN1qlQuery(n1qlQuery, params)
 }
