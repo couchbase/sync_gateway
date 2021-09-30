@@ -31,15 +31,6 @@ const (
 	BackgroundProcessActionStop  BackgroundProcessAction = "stop"
 )
 
-// BackgroundManagerI this is an interface satisfied by BackgroundManager
-// This is technically not needed, however, it allows easily visibility into exposed methods
-type BackgroundManagerI interface {
-	Start(options map[string]interface{})
-	GetStatus() []byte
-	ResetStatus()
-	Stop()
-}
-
 // BackgroundManager this is the over-arching type which is exposed in DatabaseContext
 type BackgroundManager struct {
 	BackgroundManagerStatus
@@ -59,15 +50,15 @@ type BackgroundManagerStatus struct {
 // Examples of this: ReSync, Compaction
 type BackgroundManagerProcessI interface {
 	Run(options map[string]interface{}, terminator chan struct{}) error
-	GetProcessStatus() []base.KVPair
+	GetProcessStatus(status BackgroundManagerStatus) ([]byte, error)
 	ResetStatus()
 }
 
-var _ BackgroundManagerI = &BackgroundManager{}
-
 func (b *BackgroundManager) Start(options map[string]interface{}) {
+	b.resetStatus()
+	b.setRunState(BackgroundProcessStateRunning)
 	go func() {
-		defer b.SetRunState(BackgroundProcessStateStopped)
+		defer b.setRunState(BackgroundProcessStateStopped)
 		err := b.Process.Run(options, b.terminator)
 		if err != nil {
 			base.Errorf("Error")
@@ -76,30 +67,20 @@ func (b *BackgroundManager) Start(options map[string]interface{}) {
 	}()
 }
 
-func (b *BackgroundManager) GetStatus() []byte {
+func (b *BackgroundManager) GetStatus() ([]byte, error) {
 	b.lock.Lock()
-	status, err := base.JSONMarshal(b.BackgroundManagerStatus)
-	if err != nil {
-		status = []byte("{}")
-	}
-	b.lock.Unlock()
+	defer b.lock.Unlock()
 
-	processPairs := b.Process.GetProcessStatus()
-
-	retStatus, err := base.InjectJSONProperties(status, processPairs...)
-	if err != nil {
-		return nil
-	}
-
-	return retStatus
+	return b.Process.GetProcessStatus(b.BackgroundManagerStatus)
 }
 
-func (b *BackgroundManager) ResetStatus() {
+func (b *BackgroundManager) resetStatus() {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
 	b.LastError = nil
 	b.terminator = make(chan struct{}, 1)
+	b.Process.ResetStatus()
 }
 
 func (b *BackgroundManager) Stop() {
@@ -108,11 +89,11 @@ func (b *BackgroundManager) Stop() {
 		return
 	}
 
-	b.SetRunState(BackgroundProcessStateStopping)
+	b.setRunState(BackgroundProcessStateStopping)
 	b.terminator <- struct{}{}
 }
 
-func (b *BackgroundManager) SetRunState(state BackgroundProcessState) {
+func (b *BackgroundManager) setRunState(state BackgroundProcessState) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
@@ -134,9 +115,9 @@ func (b *BackgroundManager) SetError(err error) {
 	b.State = BackgroundProcessStateError
 }
 
-// ==============================================
-// Resync Implementation of Background Manager
-// ==============================================
+// ======================================================
+// Resync Implementation of Background Manager Process
+// ======================================================
 
 type ResyncManager struct {
 	DocsProcessed int
@@ -181,20 +162,21 @@ func (r *ResyncManager) ResetStatus() {
 	r.DocsChanged = 0
 }
 
-func (r *ResyncManager) GetProcessStatus() []base.KVPair {
+type ResyncManagerResponse struct {
+	BackgroundManagerStatus
+	DocsChanged   int `json:"docs_changes"`
+	DocsProcessed int `json:"docs_processed"`
+}
+
+func (r *ResyncManager) GetProcessStatus(backgroundManagerStatus BackgroundManagerStatus) ([]byte, error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
-	return []base.KVPair{
-		{Key: "docs_processed", Val: r.DocsProcessed},
-		{Key: "docs_changed", Val: r.DocsChanged},
+	retStatus := ResyncManagerResponse{
+		BackgroundManagerStatus: backgroundManagerStatus,
+		DocsChanged:             r.DocsChanged,
+		DocsProcessed:           r.DocsProcessed,
 	}
-}
 
-// ResyncManagerResponse - This is not used in production. Only used in testing
-type ResyncManagerResponse struct {
-	Status        BackgroundProcessState `json:"status"`
-	DocsChanged   int                    `json:"docs_changed"`
-	DocsProcessed int                    `json:"docs_processed"`
-	LastError     error                  `json:"last_error"`
+	return base.JSONMarshal(retStatus)
 }

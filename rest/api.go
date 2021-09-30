@@ -156,7 +156,11 @@ func (h *handler) handleFlush() error {
 }
 
 func (h *handler) handleGetResync() error {
-	h.writeRawJSON(h.db.ResyncManager.GetStatus())
+	status, err := h.db.ResyncManager.GetStatus()
+	if err != nil {
+		return err
+	}
+	h.writeRawJSON(status)
 	return nil
 }
 
@@ -174,13 +178,15 @@ func (h *handler) handlePostResync() error {
 
 	if action == string(db.BackgroundProcessActionStart) {
 		if atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBResyncing) {
-			h.db.ResyncManager.ResetStatus()
-			h.db.ResyncManager.SetRunState(db.BackgroundProcessStateRunning)
-			h.writeRawJSON(h.db.ResyncManager.GetStatus())
 			h.db.ResyncManager.Start(map[string]interface{}{
 				"database":            h.db,
 				"regenerateSequences": regenerateSequences,
 			})
+			status, err := h.db.ResyncManager.GetStatus()
+			if err != nil {
+				return err
+			}
+			h.writeRawJSON(status)
 		} else {
 			dbState := atomic.LoadUint32(&h.db.State)
 			if dbState == db.DBResyncing {
@@ -199,7 +205,11 @@ func (h *handler) handlePostResync() error {
 		}
 
 		h.db.ResyncManager.Stop()
-		h.writeRawJSON(h.db.ResyncManager.GetStatus())
+		status, err := h.db.ResyncManager.GetStatus()
+		if err != nil {
+			return err
+		}
+		h.writeRawJSON(status)
 	}
 
 	return nil

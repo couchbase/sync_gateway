@@ -1230,7 +1230,7 @@ func TestDBOfflinePostResync(t *testing.T) {
 		var status db.ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
-		return status.Status == db.BackgroundProcessStateStopped
+		return status.State == db.BackgroundProcessStateStopped
 	})
 	assert.NoError(t, err)
 }
@@ -1280,7 +1280,7 @@ func TestDBOfflineSingleResync(t *testing.T) {
 		var status db.ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
-		return status.Status == db.BackgroundProcessStateStopped
+		return status.State == db.BackgroundProcessStateStopped
 	})
 	assert.NoError(t, err)
 
@@ -1360,7 +1360,7 @@ func TestResync(t *testing.T) {
 				var resyncManagerStatus db.ResyncManagerResponse
 				err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
 				assert.NoError(t, err)
-				return resyncManagerStatus.Status == db.BackgroundProcessStateStopped
+				return resyncManagerStatus.State == db.BackgroundProcessStateStopped
 			})
 			assert.NoError(t, err)
 
@@ -1460,7 +1460,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 		var status db.ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
-		return status.Status == db.BackgroundProcessStateStopped
+		return status.State == db.BackgroundProcessStateStopped
 	})
 	assert.NoError(t, err)
 
@@ -1479,7 +1479,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 		var status db.ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
-		return status.Status == db.BackgroundProcessStateStopped
+		return status.State == db.BackgroundProcessStateStopped
 	})
 	assert.NoError(t, err)
 
