@@ -700,9 +700,9 @@ func assertStatus(t testing.TB, response *TestResponse, expectedStatus int) {
 // gocb V2 accepts expiry as a duration and converts to a uint32 epoch time, then does the reverse on retrieval.
 // Sync Gateway's bucket interface uses uint32 expiry. The net result is that expiry values written and then read via SG's
 // bucket API go through a transformation based on time.Now (or time.Until) that can result in inexact matches.
-// assertExpiry validates that the two expiry values are within a 5 second window
+// assertExpiry validates that the two expiry values are within a 10 second window
 func assertExpiry(t testing.TB, expected uint32, actual uint32) {
-	assert.True(t, base.DiffUint32(expected, actual) < 5, fmt.Sprintf("Unexpected difference between expected: %v actual %v", expected, actual))
+	assert.True(t, base.DiffUint32(expected, actual) < 10, fmt.Sprintf("Unexpected difference between expected: %v actual %v", expected, actual))
 }
 
 func NewSlowResponseRecorder(responseDelay time.Duration, responseRecorder *httptest.ResponseRecorder) *SlowResponseRecorder {
