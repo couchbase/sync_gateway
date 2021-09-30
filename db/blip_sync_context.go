@@ -422,9 +422,10 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 						bsc.replicationStats.SendRevErrorConflictCount.Add(1)
 					case "403":
 						bsc.replicationStats.SendRevErrorRejectedCount.Add(1)
-					case "422":
+					case "422", "404":
 						// unprocessable entity, CBL has not been able to use the delta we sent, so we should re-send the revision in full
 						if resendFullRevisionFunc != nil {
+							base.DebugfCtx(bsc.loggingCtx, base.KeySync, "sending full body replication for doc %s/%s due to unprocessable entity", base.UD(docID), revID)
 							if err := resendFullRevisionFunc(); err != nil {
 								base.WarnfCtx(bsc.loggingCtx, "unable to resend revision: %v", err)
 							}

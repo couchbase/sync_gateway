@@ -5747,6 +5747,100 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	activeRT.waitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 }
 
+// CBG-1672 - Return 422 status for unprocessible deltas instead of 404 to use non-delta retry handling
+// Should log "422 Unable to unmarshal mutable body for doc test deltaSrc=1-dbc7919edc9ec2576d527880186f8e8a"
+// then fall back to full body replication
+func TestUnprocessibleDeltas(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("Requires EE for some delta sync")
+	}
+
+	defer db.SuspendSequenceBatching()()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+
+	// Passive //
+	passiveBucket := base.GetTestBucket(t)
+	passiveRT := NewRestTester(t, &RestTesterConfig{
+		TestBucket: passiveBucket,
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				DeltaSync: &DeltaSyncConfig{
+					Enabled: base.BoolPtr(true),
+				},
+			},
+		},
+	})
+	defer passiveRT.Close()
+
+	// Make passive RT listen on an actual HTTP port, so it can receive the blipsync request from the active replicator.
+	srv := httptest.NewServer(passiveRT.TestAdminHandler())
+	defer srv.Close()
+
+	// Active //
+	activeBucket := base.GetTestBucket(t)
+	activeRT := NewRestTester(t, &RestTesterConfig{
+		TestBucket: activeBucket,
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				DeltaSync: &DeltaSyncConfig{
+					Enabled: base.BoolPtr(true),
+				},
+			},
+		},
+	})
+	defer activeRT.Close()
+
+	// Create a document //
+	resp := activeRT.SendAdminRequest(http.MethodPut, "/db/test", `{"field1":"f1_1","field2":"f2_1"}`)
+	assertStatus(t, resp, http.StatusCreated)
+	revID := respRevID(t, resp)
+	err := activeRT.waitForRev("test", revID)
+	require.NoError(t, err)
+
+	// Set-up replicator //
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePush,
+		RemoteDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: activeRT.GetDatabase(),
+		},
+		Continuous:          false,
+		ChangesBatchSize:    1,
+		DeltasEnabled:       true,
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), true, false, false).DBReplicatorStats(t.Name()),
+	})
+	assert.Equal(t, "", ar.GetStatus().LastSeqPush)
+	assert.NoError(t, ar.Start())
+
+	// Wait for active to replicate to passive
+	activeRT.waitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
+
+	// Make 2nd revision
+	resp = activeRT.SendAdminRequest(http.MethodPut, "/db/test?rev="+revID, `{"field1":"f1_2","field2":"f2_2"}`)
+	assertStatus(t, resp, http.StatusCreated)
+	revID = respRevID(t, resp)
+	err = activeRT.WaitForPendingChanges()
+	require.NoError(t, err)
+
+	rev, err := passiveRT.GetDatabase().GetRevisionCacheForTest().GetActive("test", true)
+	require.NoError(t, err)
+	// Making body invalid to trigger log "Unable to unmarshal mutable body for doc" in handleRev
+	// Which should give a HTTP 422
+	rev.BodyBytes = []byte("{invalid}")
+	passiveRT.GetDatabase().GetRevisionCacheForTest().Upsert(rev)
+
+	assert.NoError(t, ar.Start())
+	// Wait for active to replicate to passive
+	activeRT.waitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
+	// Check if it managed to replicate
+	err = passiveRT.waitForRev("test", revID)
+	assert.NoError(t, err)
+}
+
 func getTestRevpos(t *testing.T, doc db.Body, attachmentKey string) (revpos int) {
 	attachments := db.GetBodyAttachments(doc)
 	if attachments == nil {
