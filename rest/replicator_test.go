@@ -5867,28 +5867,28 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 
 	// Create the docs //
 	// Doc rev 1
-	resp := activeRT.SendAdminRequest(http.MethodPut, "/db/doc", `{"key":"12","channels": ["rev1chan"]}`)
+	resp := activeRT.SendAdminRequest(http.MethodPut, "/db/"+t.Name(), `{"key":"12","channels": ["rev1chan"]}`)
 	assertStatus(t, resp, http.StatusCreated)
 	rev1ID := respRevID(t, resp)
-	err := activeRT.waitForRev("doc", rev1ID)
+	err := activeRT.waitForRev(t.Name(), rev1ID)
 	require.NoError(t, err)
 
 	// doc rev 2
-	resp = activeRT.SendAdminRequest(http.MethodPut, "/db/doc?rev="+rev1ID, `{"key":"12","channels":["rev2+3chan"]}`)
+	resp = activeRT.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s?rev=%s", t.Name(), rev1ID), `{"key":"12","channels":["rev2+3chan"]}`)
 	assertStatus(t, resp, http.StatusCreated)
 	rev2ID := respRevID(t, resp)
-	err = activeRT.waitForRev("doc", rev2ID)
+	err = activeRT.waitForRev(t.Name(), rev2ID)
 	require.NoError(t, err)
 
 	// Doc rev 3
-	resp = activeRT.SendAdminRequest(http.MethodPut, "/db/doc?rev="+rev2ID, `{"key":"3","channels":["rev2+3chan"]}`)
+	resp = activeRT.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s?rev=%s", t.Name(), rev2ID), `{"key":"3","channels":["rev2+3chan"]}`)
 	assertStatus(t, resp, http.StatusCreated)
 	rev3ID := respRevID(t, resp)
-	err = activeRT.waitForRev("doc", rev3ID)
+	err = activeRT.waitForRev(t.Name(), rev3ID)
 	require.NoError(t, err)
 
 	activeRT.GetDatabase().FlushRevisionCacheForTest()
-	err = activeRT.Bucket().Delete("_sync:rev:doc:34:2-3abfb1b2a6c310167ee80910dd05d40d")
+	err = activeRT.Bucket().Delete(fmt.Sprintf("_sync:rev:%s:%d:%s", t.Name(), len(rev2ID), rev2ID))
 	require.NoError(t, err)
 
 	// Set-up replicator //
@@ -5911,7 +5911,6 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	})
 	docWriteFailuresBefore := ar.GetStatus().DocWriteFailures
 
-	assert.Equal(t, "", ar.GetStatus().LastSeqPush)
 	assert.NoError(t, ar.Start())
 	activeRT.waitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
