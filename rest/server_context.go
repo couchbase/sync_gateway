@@ -25,6 +25,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/couchbase/sync_gateway/auth"
+
 	"github.com/couchbase/gocbcore/v10"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -759,6 +761,11 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		clientPartitionWindow = time.Duration(*config.ClientPartitionWindowSecs) * time.Second
 	}
 
+	bcryptCost := sc.config.Auth.BcryptCost
+	if bcryptCost <= 0 {
+		bcryptCost = auth.DefaultBcryptCost
+	}
+
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:              &cacheOptions,
 		RevisionCacheOptions:      revCacheOptions,
@@ -786,6 +793,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		// FIXME?
 		// SlowQueryWarningThreshold: time.Duration(*sc.config.SlowQueryWarningThreshold) * time.Millisecond,
 		ClientPartitionWindow: clientPartitionWindow,
+		BcryptCost:            bcryptCost,
 	}
 
 	return contextOptions, nil
