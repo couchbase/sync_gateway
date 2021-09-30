@@ -164,7 +164,7 @@ func (r *ResyncManager) ResetStatus() {
 
 type ResyncManagerResponse struct {
 	BackgroundManagerStatus
-	DocsChanged   int `json:"docs_changes"`
+	DocsChanged   int `json:"docs_changed"`
 	DocsProcessed int `json:"docs_processed"`
 }
 
@@ -179,4 +179,65 @@ func (r *ResyncManager) GetProcessStatus(backgroundManagerStatus BackgroundManag
 	}
 
 	return base.JSONMarshal(retStatus)
+}
+
+// =====================================================================
+// Tombstone Compaction Implementation of Background Manager Process
+// =====================================================================
+
+type TombstoneCompactionManager struct {
+	PurgedDocCount int
+	lock           sync.Mutex
+}
+
+var _ BackgroundManagerProcessI = &TombstoneCompactionManager{}
+
+func NewTombstoneCompactionManager() *BackgroundManager {
+	return &BackgroundManager{
+		Process:    &TombstoneCompactionManager{},
+		terminator: make(chan struct{}, 1),
+	}
+}
+
+func (t *TombstoneCompactionManager) Run(options map[string]interface{}, terminator chan struct{}) error {
+	database := options["database"].(*Database)
+
+	defer atomic.CompareAndSwapUint32(&database.CompactState, DBCompactRunning, DBCompactNotRunning)
+	callback := func(docsPurged int) {
+		t.lock.Lock()
+		defer t.lock.Unlock()
+
+		t.PurgedDocCount = docsPurged
+	}
+
+	_, err := database.Compact(true, callback, terminator)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+type TombstoneManagerResponse struct {
+	BackgroundManagerStatus
+	DocsPurged int `json:"docs_purged"`
+}
+
+func (t *TombstoneCompactionManager) GetProcessStatus(backgroundManagerStatus BackgroundManagerStatus) ([]byte, error) {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+
+	retStatus := TombstoneManagerResponse{
+		BackgroundManagerStatus: backgroundManagerStatus,
+		DocsPurged:              t.PurgedDocCount,
+	}
+
+	return base.JSONMarshal(retStatus)
+}
+
+func (t *TombstoneCompactionManager) ResetStatus() {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+
+	t.PurgedDocCount = 0
 }

@@ -3888,7 +3888,14 @@ func TestTombstoneCompaction(t *testing.T) {
 			assert.Equal(t, 200, response.Code)
 		}
 
-		rt.SendAdminRequest("POST", "/db/_compact", "")
+		resp := rt.SendAdminRequest("POST", "/db/_compact", "")
+		assertStatus(t, resp, http.StatusOK)
+
+		err := rt.WaitForCondition(func() bool {
+			time.Sleep(1 * time.Second)
+			return rt.GetDatabase().TombstoneCompactionManager.GetRunState() == db.BackgroundProcessStateStopped
+		})
+		assert.NoError(t, err)
 
 		compactionTotal += numDocs
 		assert.Equal(t, compactionTotal, int(rt.GetDatabase().DbStats.Database().NumTombstonesCompacted.Value()))

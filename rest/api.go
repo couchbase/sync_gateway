@@ -70,13 +70,54 @@ func (h *handler) handleAllDbs() error {
 	return nil
 }
 
-func (h *handler) handleCompact() error {
-	revsDeleted, err := h.db.Compact()
+func (h *handler) handleGetCompact() error {
+	status, err := h.db.TombstoneCompactionManager.GetStatus()
 	if err != nil {
 		return err
 	}
+	h.writeRawJSON(status)
+	return nil
+}
 
-	h.writeRawJSON([]byte(`{"revs":` + strconv.Itoa(revsDeleted) + `}`))
+func (h *handler) handleCompact() error {
+	action := h.getQuery("action")
+
+	if action != "" && action != string(db.BackgroundProcessActionStart) && action != string(db.BackgroundProcessActionStop) {
+		return base.HTTPErrorf(http.StatusBadRequest, "Unknown parameter for 'action'. Must be start or stop")
+	}
+
+	if action == "" {
+		action = string(db.BackgroundProcessActionStart)
+	}
+
+	if action == string(db.BackgroundProcessActionStart) {
+		if atomic.CompareAndSwapUint32(&h.db.CompactState, db.DBCompactNotRunning, db.DBCompactRunning) {
+			h.db.TombstoneCompactionManager.Start(map[string]interface{}{
+				"database": h.db,
+			})
+			status, err := h.db.TombstoneCompactionManager.GetStatus()
+			if err != nil {
+				return err
+			}
+			h.writeRawJSON(status)
+		} else {
+			return base.HTTPErrorf(http.StatusServiceUnavailable, "Database compact already in progress")
+
+		}
+	} else if action == string(db.BackgroundProcessActionStop) {
+		dbState := atomic.LoadUint32(&h.db.CompactState)
+		if dbState != db.DBCompactRunning {
+			return base.HTTPErrorf(http.StatusBadRequest, "Database compact is not running")
+		}
+
+		h.db.TombstoneCompactionManager.Stop()
+		status, err := h.db.TombstoneCompactionManager.GetStatus()
+		if err != nil {
+			return err
+		}
+		h.writeRawJSON(status)
+	}
+
 	return nil
 }
 

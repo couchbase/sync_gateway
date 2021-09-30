@@ -83,36 +83,37 @@ const BGTCompletionMaxWait = 30 * time.Second
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
-	Name               string                  // Database name
-	UUID               string                  // UUID for this database instance. Used by cbgt and sgr
-	Bucket             base.Bucket             // Storage
-	BucketSpec         base.BucketSpec         // The BucketSpec
-	BucketLock         sync.RWMutex            // Control Access to the underlying bucket object
-	mutationListener   changeListener          // Caching feed listener
-	ImportListener     *importListener         // Import feed listener
-	sequences          *sequenceAllocator      // Source of new sequence numbers
-	ChannelMapper      *channels.ChannelMapper // Runs JS 'sync' function
-	StartTime          time.Time               // Timestamp when context was instantiated
-	RevsLimit          uint32                  // Max depth a document's revision tree can grow to
-	autoImport         bool                    // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
-	revisionCache      RevisionCache           // Cache of recently-accessed doc revisions
-	changeCache        *changeCache            // Cache of recently-access channels
-	EventMgr           *EventManager           // Manages notification events
-	AllowEmptyPassword bool                    // Allow empty passwords?  Defaults to false
-	Options            DatabaseContextOptions  // Database Context Options
-	AccessLock         sync.RWMutex            // Allows DB offline to block until synchronous calls have completed
-	State              uint32                  // The runtime state of the DB from a service perspective
-	ResyncManager      *BackgroundManager
-	ExitChanges        chan struct{}            // Active _changes feeds on the DB will close when this channel is closed
-	OIDCProviders      auth.OIDCProviderMap     // OIDC clients
-	PurgeInterval      time.Duration            // Metadata purge interval
-	serverUUID         string                   // UUID of the server, if available
-	DbStats            *base.DbStats            // stats that correspond to this database context
-	CompactState       uint32                   // Status of database compaction
-	terminator         chan bool                // Signal termination of background goroutines
-	backgroundTasks    []BackgroundTask         // List of background tasks that are initiated.
-	activeChannels     *channels.ActiveChannels // Tracks active replications by channel
-	CfgSG              cbgt.Cfg                 // Sync Gateway cluster shared config
+	Name                       string                  // Database name
+	UUID                       string                  // UUID for this database instance. Used by cbgt and sgr
+	Bucket                     base.Bucket             // Storage
+	BucketSpec                 base.BucketSpec         // The BucketSpec
+	BucketLock                 sync.RWMutex            // Control Access to the underlying bucket object
+	mutationListener           changeListener          // Caching feed listener
+	ImportListener             *importListener         // Import feed listener
+	sequences                  *sequenceAllocator      // Source of new sequence numbers
+	ChannelMapper              *channels.ChannelMapper // Runs JS 'sync' function
+	StartTime                  time.Time               // Timestamp when context was instantiated
+	RevsLimit                  uint32                  // Max depth a document's revision tree can grow to
+	autoImport                 bool                    // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
+	revisionCache              RevisionCache           // Cache of recently-accessed doc revisions
+	changeCache                *changeCache            // Cache of recently-access channels
+	EventMgr                   *EventManager           // Manages notification events
+	AllowEmptyPassword         bool                    // Allow empty passwords?  Defaults to false
+	Options                    DatabaseContextOptions  // Database Context Options
+	AccessLock                 sync.RWMutex            // Allows DB offline to block until synchronous calls have completed
+	State                      uint32                  // The runtime state of the DB from a service perspective
+	ResyncManager              *BackgroundManager
+	TombstoneCompactionManager *BackgroundManager
+	ExitChanges                chan struct{}            // Active _changes feeds on the DB will close when this channel is closed
+	OIDCProviders              auth.OIDCProviderMap     // OIDC clients
+	PurgeInterval              time.Duration            // Metadata purge interval
+	serverUUID                 string                   // UUID of the server, if available
+	DbStats                    *base.DbStats            // stats that correspond to this database context
+	CompactState               uint32                   // Status of database compaction
+	terminator                 chan bool                // Signal termination of background goroutines
+	backgroundTasks            []BackgroundTask         // List of background tasks that are initiated.
+	activeChannels             *channels.ActiveChannels // Tracks active replications by channel
+	CfgSG                      cbgt.Cfg                 // Sync Gateway cluster shared config
 	//CfgSG                        *base.CfgSG              // Sync Gateway cluster shared config
 	SGReplicateMgr               *sgReplicateManager // Manages interactions with sg-replicate replications
 	Heartbeater                  base.Heartbeater    // Node heartbeater for SG cluster awareness
@@ -506,7 +507,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 			if autoImport {
 				db := Database{DatabaseContext: dbContext}
 				bgt, err := NewBackgroundTask("Compact", dbContext.Name, func(ctx context.Context) error {
-					_, err := db.Compact()
+					_, err := db.Compact(false, func(purgedDocCount int) {}, nil)
 					if err != nil {
 						base.WarnfCtx(ctx, "Error trying to compact tombstoned documents for %q with error: %v", dbContext.Name, err)
 					}
@@ -548,6 +549,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}
 
 	dbContext.ResyncManager = NewResyncManager()
+	dbContext.TombstoneCompactionManager = NewTombstoneCompactionManager()
 
 	return dbContext, nil
 }
@@ -1002,12 +1004,16 @@ func (db *DatabaseContext) DeleteUserSessions(userName string) error {
 // When compact is run, Sync Gateway initiates a normal delete operation for the document and xattr (a Sync Gateway purge).  This triggers
 // removal of the document from the index.  In the event that the document has already been purged by server, we need to recreate and delete
 // the document to accomplish the same result.
-func (db *Database) Compact() (int, error) {
-	if !atomic.CompareAndSwapUint32(&db.CompactState, DBCompactNotRunning, DBCompactRunning) {
-		return 0, base.HTTPErrorf(http.StatusServiceUnavailable, "Compaction already running")
-	}
+type compactCallbackFunc func(purgedDocCount int)
 
-	defer atomic.CompareAndSwapUint32(&db.CompactState, DBCompactRunning, DBCompactNotRunning)
+func (db *Database) Compact(skipRunningStateCheck bool, callback compactCallbackFunc, terminator chan struct{}) (int, error) {
+	if !skipRunningStateCheck {
+		if !atomic.CompareAndSwapUint32(&db.CompactState, DBCompactNotRunning, DBCompactRunning) {
+			return 0, base.HTTPErrorf(http.StatusServiceUnavailable, "Compaction already running")
+		}
+
+		defer atomic.CompareAndSwapUint32(&db.CompactState, DBCompactRunning, DBCompactNotRunning)
+	}
 
 	// Compact should be a no-op if not running w/ xattrs
 	if !db.UseXattrs() {
@@ -1019,6 +1025,8 @@ func (db *Database) Compact() (int, error) {
 	purgeOlderThan := startTime.Add(-db.PurgeInterval)
 
 	purgedDocCount := 0
+
+	defer callback(purgedDocCount)
 
 	ctx := db.Ctx
 
@@ -1033,6 +1041,16 @@ func (db *Database) Compact() (int, error) {
 		var tombstonesRow QueryIdRow
 		var resultCount int
 		for results.Next(&tombstonesRow) {
+			select {
+			case <-terminator:
+				closeErr := results.Close()
+				if closeErr != nil {
+					return 0, closeErr
+				}
+				return purgedDocCount, nil
+			default:
+			}
+
 			resultCount++
 			base.DebugfCtx(ctx, base.KeyCRUD, "\tDeleting %q", tombstonesRow.Id)
 			// First, attempt to purge.
@@ -1067,6 +1085,8 @@ func (db *Database) Compact() (int, error) {
 			db.DbStats.Database().NumTombstonesCompacted.Add(int64(count))
 		}
 		base.DebugfCtx(ctx, base.KeyAll, "Compacted %v tombstones", count)
+
+		callback(purgedDocCount)
 
 		if resultCount < QueryTombstoneBatch {
 			break
