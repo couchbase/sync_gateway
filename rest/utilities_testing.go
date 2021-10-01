@@ -144,6 +144,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.API.MetricsInterfaceAuthentication = &rt.metricsInterfaceAuthentication
 	sc.API.EnableAdminAuthenticationPermissionsCheck = &rt.enableAdminAuthPermissionsCheck
 	sc.Bootstrap.UseTLSServer = &rt.RestTesterConfig.useTLSServer
+	sc.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
 
 	rt.RestTesterServerContext = NewServerContext(&sc, false)
 
@@ -154,6 +155,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 		sc.Bootstrap.CACertPath = testBucket.BucketSpec.CACertPath
 		sc.Bootstrap.X509CertPath = testBucket.BucketSpec.Certpath
 		sc.Bootstrap.X509KeyPath = testBucket.BucketSpec.Keypath
+
+		rt.testBucket.BucketSpec.TLSSkipVerify = base.TestTLSSkipVerify()
 
 		gocbAgent, err := rt.RestTesterServerContext.initializeGoCBAgent()
 		require.NoError(rt.tb, err)

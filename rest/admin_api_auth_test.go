@@ -14,42 +14,58 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func MakeUser(t *testing.T, serverURL, username, password string, roles []string) {
-	httpClient := http.DefaultClient
-
+func MakeUser(t *testing.T, httpClient *http.Client, serverURL, username, password string, roles []string) {
 	form := url.Values{}
 	form.Add("password", password)
 	form.Add("roles", strings.Join(roles, ","))
 
-	req, err := http.NewRequest("PUT", fmt.Sprintf("%s/settings/rbac/users/local/%s", serverURL, username), strings.NewReader(form.Encode()))
+	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
+		req, err := http.NewRequest("PUT", fmt.Sprintf("%s/settings/rbac/users/local/%s", serverURL, username), strings.NewReader(form.Encode()))
+		require.NoError(t, err)
+
+		req.SetBasicAuth(base.TestClusterUsername(), base.TestClusterPassword())
+		req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			return true, err, resp
+		}
+		return false, err, resp
+	}
+
+	err, resp := base.RetryLoop("Admin Auth testing MakeUser", retryWorker, base.CreateSleeperFunc(10, 100))
 	require.NoError(t, err)
 
-	req.SetBasicAuth(base.TestClusterUsername(), base.TestClusterPassword())
-	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-
-	resp, err := httpClient.Do(req)
-	require.NoError(t, err)
-
-	if resp.StatusCode != http.StatusOK {
-		bodyResp, err := ioutil.ReadAll(resp.Body)
+	if resp.(*http.Response).StatusCode != http.StatusOK {
+		bodyResp, err := ioutil.ReadAll(resp.(*http.Response).Body)
 		assert.NoError(t, err)
 		fmt.Println(string(bodyResp))
 	}
+	require.Equal(t, http.StatusOK, resp.(*http.Response).StatusCode)
 
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.(*http.Response).Body.Close(), "Error closing response body")
 }
 
-func DeleteUser(t *testing.T, serverURL, username string) {
-	req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/settings/rbac/users/local/%s", serverURL, username), nil)
+func DeleteUser(t *testing.T, httpClient *http.Client, serverURL, username string) {
+	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
+		req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/settings/rbac/users/local/%s", serverURL, username), nil)
+		require.NoError(t, err)
+
+		req.SetBasicAuth(base.TestClusterUsername(), base.TestClusterPassword())
+
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			return true, err, resp
+		}
+		return false, err, resp
+	}
+
+	err, resp := base.RetryLoop("Admin Auth testing DeleteUser", retryWorker, base.CreateSleeperFunc(10, 100))
 	require.NoError(t, err)
 
-	req.SetBasicAuth(base.TestClusterUsername(), base.TestClusterPassword())
+	require.Equal(t, http.StatusOK, resp.(*http.Response).StatusCode)
 
-	httpClient := http.DefaultClient
-	resp, err := httpClient.Do(req)
-	require.NoError(t, err)
-
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.(*http.Response).Body.Close(), "Error closing response body")
 }
 
 func TestCheckPermissions(t *testing.T) {
@@ -156,8 +172,8 @@ func TestCheckPermissions(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
 			if testCase.CreateUser != "" {
-				MakeUser(t, eps[0], testCase.CreateUser, testCase.CreatePassword, testCase.CreateRoles)
-				defer DeleteUser(t, eps[0], testCase.CreateUser)
+				MakeUser(t, httpClient, eps[0], testCase.CreateUser, testCase.CreatePassword, testCase.CreateRoles)
+				defer DeleteUser(t, httpClient, eps[0], testCase.CreateUser)
 			}
 
 			statusCode, permResults, err := CheckPermissions(httpClient, eps, "", testCase.Username, testCase.Password, testCase.RequestPermissions, testCase.ResponsePermissions)
@@ -297,8 +313,8 @@ func TestCheckRoles(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
 			if testCase.CreateUser != "" {
-				MakeUser(t, eps[0], testCase.CreateUser, testCase.CreatePassword, testCase.CreateRoles)
-				defer DeleteUser(t, eps[0], testCase.CreateUser)
+				MakeUser(t, httpClient, eps[0], testCase.CreateUser, testCase.CreatePassword, testCase.CreateRoles)
+				defer DeleteUser(t, httpClient, eps[0], testCase.CreateUser)
 			}
 
 			statusCode, err := CheckRoles(httpClient, eps, testCase.Username, testCase.Password, testCase.RequestRoles, testCase.BucketName)
@@ -435,8 +451,8 @@ func TestAdminAuth(t *testing.T) {
 
 		t.Run(testCase.Name, func(t *testing.T) {
 			if testCase.CreateUser != "" {
-				MakeUser(t, managementEndpoints[0], testCase.CreateUser, testCase.CreatePassword, testCase.CreateRoles)
-				defer DeleteUser(t, managementEndpoints[0], testCase.CreateUser)
+				MakeUser(t, httpClient, managementEndpoints[0], testCase.CreateUser, testCase.CreatePassword, testCase.CreateRoles)
+				defer DeleteUser(t, httpClient, managementEndpoints[0], testCase.CreateUser)
 			}
 
 			permResults, statusCode, err := checkAdminAuth(testCase.BucketName, testCase.Username, testCase.Password, testCase.Operation, httpClient, managementEndpoints, true, testCase.CheckPermissions, testCase.ResponsePermissions)
@@ -902,20 +918,20 @@ func TestAdminAPIAuth(t *testing.T) {
 		},
 	}
 
-	eps, _, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
+	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
 
-	MakeUser(t, eps[0], "noaccess", "password", []string{})
-	defer DeleteUser(t, eps[0], "noaccess")
+	MakeUser(t, httpClient, eps[0], "noaccess", "password", []string{})
+	defer DeleteUser(t, httpClient, eps[0], "noaccess")
 
-	MakeUser(t, eps[0], "MobileSyncGatewayUser", "password", []string{fmt.Sprintf("%s[%s]", MobileSyncGatewayRole.RoleName, rt.Bucket().GetName())})
-	defer DeleteUser(t, eps[0], "MobileSyncGatewayUser")
+	MakeUser(t, httpClient, eps[0], "MobileSyncGatewayUser", "password", []string{fmt.Sprintf("%s[%s]", MobileSyncGatewayRole.RoleName, rt.Bucket().GetName())})
+	defer DeleteUser(t, httpClient, eps[0], "MobileSyncGatewayUser")
 
-	MakeUser(t, eps[0], "ROAdminUser", "password", []string{ReadOnlyAdminRole.RoleName})
-	defer DeleteUser(t, eps[0], "ROAdminUser")
+	MakeUser(t, httpClient, eps[0], "ROAdminUser", "password", []string{ReadOnlyAdminRole.RoleName})
+	defer DeleteUser(t, httpClient, eps[0], "ROAdminUser")
 
-	MakeUser(t, eps[0], "ClusterAdminUser", "password", []string{ClusterAdminRole.RoleName})
-	defer DeleteUser(t, eps[0], "ClusterAdminUser")
+	MakeUser(t, httpClient, eps[0], "ClusterAdminUser", "password", []string{ClusterAdminRole.RoleName})
+	defer DeleteUser(t, httpClient, eps[0], "ClusterAdminUser")
 
 	for _, endPoint := range endPoints {
 		body := `{}`
@@ -1015,11 +1031,11 @@ func TestDisablePermissionCheck(t *testing.T) {
 			require.NoError(t, err)
 
 			if testCase.CreateUserRole.DatabaseScoped {
-				MakeUser(t, eps[0], testCase.CreateUser, "password", []string{fmt.Sprintf("%s[%s]", testCase.CreateUserRole.RoleName, rt.Bucket().GetName())})
+				MakeUser(t, httpClient, eps[0], testCase.CreateUser, "password", []string{fmt.Sprintf("%s[%s]", testCase.CreateUserRole.RoleName, rt.Bucket().GetName())})
 			} else {
-				MakeUser(t, eps[0], testCase.CreateUser, "password", []string{fmt.Sprintf("%s", testCase.CreateUserRole.RoleName)})
+				MakeUser(t, httpClient, eps[0], testCase.CreateUser, "password", []string{fmt.Sprintf("%s", testCase.CreateUserRole.RoleName)})
 			}
-			defer DeleteUser(t, eps[0], testCase.CreateUser)
+			defer DeleteUser(t, httpClient, eps[0], testCase.CreateUser)
 
 			_, statusCode, err := checkAdminAuth(rt.Bucket().GetName(), testCase.CreateUser, "password", "", httpClient, eps, testCase.DoPermissionCheck, testCase.RequirePerms, nil)
 			assert.NoError(t, err)
@@ -1049,21 +1065,21 @@ func TestNewlyCreateSGWPermissions(t *testing.T) {
 	})
 	defer rt.Close()
 
-	eps, _, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
+	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
 
-	MakeUser(t, eps[0], mobileSyncGateway, "password", []string{fmt.Sprintf("%s[*]", mobileSyncGateway)})
-	defer DeleteUser(t, eps[0], mobileSyncGateway)
-	MakeUser(t, eps[0], syncGatewayDevOps, "password", []string{fmt.Sprintf("%s", syncGatewayDevOps)})
-	defer DeleteUser(t, eps[0], syncGatewayDevOps)
-	MakeUser(t, eps[0], syncGatewayApp, "password", []string{fmt.Sprintf("%s[*]", syncGatewayApp)})
-	defer DeleteUser(t, eps[0], syncGatewayApp)
-	MakeUser(t, eps[0], syncGatewayAppRo, "password", []string{fmt.Sprintf("%s[*]", syncGatewayAppRo)})
-	defer DeleteUser(t, eps[0], syncGatewayAppRo)
-	MakeUser(t, eps[0], syncGatewayConfigurator, "password", []string{fmt.Sprintf("%s[*]", syncGatewayConfigurator)})
-	defer DeleteUser(t, eps[0], syncGatewayConfigurator)
-	MakeUser(t, eps[0], syncGatewayReplicator, "password", []string{fmt.Sprintf("%s[*]", syncGatewayReplicator)})
-	defer DeleteUser(t, eps[0], syncGatewayReplicator)
+	MakeUser(t, httpClient, eps[0], mobileSyncGateway, "password", []string{fmt.Sprintf("%s[*]", mobileSyncGateway)})
+	defer DeleteUser(t, httpClient, eps[0], mobileSyncGateway)
+	MakeUser(t, httpClient, eps[0], syncGatewayDevOps, "password", []string{fmt.Sprintf("%s", syncGatewayDevOps)})
+	defer DeleteUser(t, httpClient, eps[0], syncGatewayDevOps)
+	MakeUser(t, httpClient, eps[0], syncGatewayApp, "password", []string{fmt.Sprintf("%s[*]", syncGatewayApp)})
+	defer DeleteUser(t, httpClient, eps[0], syncGatewayApp)
+	MakeUser(t, httpClient, eps[0], syncGatewayAppRo, "password", []string{fmt.Sprintf("%s[*]", syncGatewayAppRo)})
+	defer DeleteUser(t, httpClient, eps[0], syncGatewayAppRo)
+	MakeUser(t, httpClient, eps[0], syncGatewayConfigurator, "password", []string{fmt.Sprintf("%s[*]", syncGatewayConfigurator)})
+	defer DeleteUser(t, httpClient, eps[0], syncGatewayConfigurator)
+	MakeUser(t, httpClient, eps[0], syncGatewayReplicator, "password", []string{fmt.Sprintf("%s[*]", syncGatewayReplicator)})
+	defer DeleteUser(t, httpClient, eps[0], syncGatewayReplicator)
 
 	testUsers := []string{syncGatewayDevOps, syncGatewayApp, syncGatewayAppRo, syncGatewayReplicator, syncGatewayConfigurator}
 

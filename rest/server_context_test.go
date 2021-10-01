@@ -112,7 +112,7 @@ func TestAllDatabaseNames(t *testing.T) {
 	defer tb2.Close()
 
 	serverConfig := &StartupConfig{
-		Bootstrap: BootstrapConfig{UseTLSServer: base.BoolPtr(false)},
+		Bootstrap: BootstrapConfig{UseTLSServer: base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())), ServerTLSSkipVerify: base.BoolPtr(base.TestTLSSkipVerify())},
 		API:       APIConfig{CORS: &CORSConfig{}, AdminInterface: DefaultAdminInterface}}
 	serverContext := NewServerContext(serverConfig, false)
 	defer serverContext.Close()
@@ -240,7 +240,12 @@ func TestObtainManagementEndpointsFromServerContext(t *testing.T) {
 outerLoop:
 	for _, httpHost := range spec.HttpHosts {
 		for _, ep := range eps {
-			formattedHttpHost := fmt.Sprintf("http://%s:%d", httpHost.Host, httpHost.Port)
+			protocol := "http"
+			if spec.UseSsl {
+				protocol = "https"
+			}
+			formattedHttpHost := fmt.Sprintf("%s://%s:%d", protocol, httpHost.Host, httpHost.Port)
+
 			if formattedHttpHost == ep {
 				existsOneMatchingEndpoint = true
 				break outerLoop
@@ -310,6 +315,7 @@ func TestStartAndStopHTTPServers(t *testing.T) {
 
 	config.Bootstrap.Server = base.UnitTestUrl()
 	config.Bootstrap.UseTLSServer = base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl()))
+	config.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
 	config.Bootstrap.Username = base.TestClusterUsername()
 	config.Bootstrap.Password = base.TestClusterPassword()
 
