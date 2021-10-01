@@ -453,9 +453,9 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 	}
 
 	// Get client for issuer
-	client := provider.GetClient(callbackURLFunc)
-	if client == nil {
-		return nil, fmt.Errorf("OIDC client was not initialized")
+	client, err := provider.GetClient(callbackURLFunc)
+	if err != nil {
+		return nil, fmt.Errorf("OIDC initialization error: %w", err)
 	}
 
 	// verifyJWT validates the claims and signature on the JWT
