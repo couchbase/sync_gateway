@@ -35,6 +35,10 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey strin
 	return WriteUpdateWithXattr(bucket, k, xattrKey, userXattrKey, exp, previous, callback)
 }
 
+func (bucket *CouchbaseBucketGoCB) SetXattr(k string, xattrKey string, xv []byte) (casOut uint64, err error) {
+	return SetXattr(bucket, k, xattrKey, xv)
+}
+
 func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}, deleteBody bool, isDelete bool) (casOut uint64, err error) {
 	return UpdateTombstoneXattr(bucket, k, xattrKey, exp, cas, xv, deleteBody)
 }
@@ -334,6 +338,18 @@ func (bucket *CouchbaseBucketGoCB) SubdocUpdateBodyAndXattr(k string, xattrKey s
 		return 0, err
 	}
 	return uint64(docFragment.Cas()), nil
+}
+
+// SubdocSetXattr performs a set of the given xattr. Does a straight set with no cas.
+func (bucket *CouchbaseBucketGoCB) SubdocSetXattr(k string, xattrKey string, xv interface{}) (casOut uint64, err error) {
+	mutateInBuilder := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagAccessDeleted, 0, 0).
+		UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr)
+	docFragment, mutateErr := mutateInBuilder.Execute()
+	if mutateErr == nil || mutateErr == gocbcore.ErrSubDocSuccessDeleted {
+		return uint64(docFragment.Cas()), nil
+	}
+
+	return uint64(0), mutateErr
 }
 
 // SubdocUpdateithXattrOnly upserts an xattr, does not modify body

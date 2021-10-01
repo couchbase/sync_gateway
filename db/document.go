@@ -457,6 +457,22 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 	return result, body, rawUserXattr, nil, err
 }
 
+func UnmarshalDocumentFromFeed(docid string, cas uint64, data []byte, dataType uint8, userXattrKey string) (doc *Document, err error) {
+	var body []byte
+
+	if dataType&base.MemcachedDataTypeXattr != 0{
+		var syncXattr []byte
+		var userXattr []byte
+		body, syncXattr, userXattr, err = parseXattrStreamData(base.SyncXattrName, userXattrKey, data)
+		if err != nil{
+			return nil, err
+		}
+		return unmarshalDocumentWithXattr(docid, body, syncXattr, userXattr, cas, DocUnmarshalAll)
+	}
+
+	return unmarshalDocument(docid, data)
+}
+
 // parseXattrStreamData returns the raw bytes of the body and the requested xattr (when present) from the raw DCP data bytes.
 // Details on format (taken from https://docs.google.com/document/d/18UVa5j8KyufnLLy29VObbWRtoBn9vs8pcxttuMt6rz8/edit#heading=h.caqiui1pmmmb.):
 /*

@@ -247,6 +247,10 @@ func (b *LeakyBucket) WriteUpdateWithXattr(k string, xattr string, userXattrKey 
 	return b.bucket.WriteUpdateWithXattr(k, xattr, userXattrKey, exp, previous, callback)
 }
 
+func (b *LeakyBucket) SetXattr(k string, xattrKey string, xv []byte) (casOut uint64, err error) {
+	return b.bucket.SetXattr(k, xattrKey, xv)
+}
+
 func (b *LeakyBucket) SubdocInsert(docID string, fieldPath string, cas uint64, value interface{}) error {
 	return b.bucket.SubdocInsert(docID, fieldPath, cas, value)
 }

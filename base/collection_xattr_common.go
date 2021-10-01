@@ -18,6 +18,7 @@ type SubdocXattrStore interface {
 	SubdocGetBodyAndXattr(k string, xattrKey string, userXattrKey string, rv interface{}, xv interface{}, uxv interface{}) (cas uint64, err error)
 	SubdocInsertXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}) (casOut uint64, err error)
 	SubdocInsertBodyAndXattr(k string, xattrKey string, exp uint32, v interface{}, xv interface{}) (casOut uint64, err error)
+	SubdocSetXattr(k string, xattrKey string, xv interface{}) (casOut uint64, err error)
 	SubdocUpdateXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}) (casOut uint64, err error)
 	SubdocUpdateBodyAndXattr(k string, xattrKey string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error)
 	SubdocUpdateXattrDeleteBody(k, xattrKey string, exp uint32, cas uint64, xv interface{}) (casOut uint64, err error)
@@ -246,6 +247,32 @@ func WriteUpdateWithXattr(store SubdocXattrStore, k string, xattrKey string, use
 		cas = 0
 
 	}
+}
+
+// SetXattr performs a subdoc set on the supplied xattrKey. Implements a retry for recoverable failures.
+func SetXattr(store SubdocXattrStore, k string, xattrKey string, xv []byte) (casOut uint64, err error) {
+
+	worker := func() (shouldRetry bool, err error, value uint64) {
+		casOut, writeErr := store.SubdocSetXattr(k, xattrKey, xv)
+		if writeErr == nil {
+			return false, nil, casOut
+		}
+
+		shouldRetry = store.isRecoverableWriteError(writeErr)
+		if shouldRetry {
+			return shouldRetry, err, 0
+		}
+
+		return false, writeErr, 0
+	}
+
+	err, casOut = RetryLoopCas("SetXattr", worker, store.GetSpec().RetrySleeper())
+	if err != nil {
+		err = pkgerrors.Wrapf(err, "SetXattr with key %v", UD(k).Redact())
+	}
+
+	return casOut, err
+
 }
 
 // Delete a document and it's associated named xattr.  Couchbase server will preserve system xattrs as part of the (CBS)
