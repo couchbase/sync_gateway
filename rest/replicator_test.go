@@ -5841,6 +5841,82 @@ func TestUnprocessibleDeltas(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+// CBG-1428 - check for regression of ISGR not ignoring _removed:true bodies when purgeOnRemoval is disabled
+func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
+	// Copies the behaviour of TestGetRemovedAsUser but with replication and no user
+	defer db.SuspendSequenceBatching()()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+
+	// Passive //
+	passiveBucket := base.GetTestBucket(t)
+	passiveRT := NewRestTester(t, &RestTesterConfig{
+		TestBucket: passiveBucket,
+	})
+	defer passiveRT.Close()
+
+	// Make passive RT listen on an actual HTTP port, so it can receive the blipsync request from the active replicator
+	srv := httptest.NewServer(passiveRT.TestAdminHandler())
+	defer srv.Close()
+
+	// Active //
+	activeBucket := base.GetTestBucket(t)
+	activeRT := NewRestTester(t, &RestTesterConfig{
+		TestBucket: activeBucket,
+	})
+	defer activeRT.Close()
+
+	// Create the docs //
+	// Doc rev 1
+	resp := activeRT.SendAdminRequest(http.MethodPut, "/db/"+t.Name(), `{"key":"12","channels": ["rev1chan"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	rev1ID := respRevID(t, resp)
+	err := activeRT.waitForRev(t.Name(), rev1ID)
+	require.NoError(t, err)
+
+	// doc rev 2
+	resp = activeRT.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s?rev=%s", t.Name(), rev1ID), `{"key":"12","channels":["rev2+3chan"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	rev2ID := respRevID(t, resp)
+	err = activeRT.waitForRev(t.Name(), rev2ID)
+	require.NoError(t, err)
+
+	// Doc rev 3
+	resp = activeRT.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s?rev=%s", t.Name(), rev2ID), `{"key":"3","channels":["rev2+3chan"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	rev3ID := respRevID(t, resp)
+	err = activeRT.waitForRev(t.Name(), rev3ID)
+	require.NoError(t, err)
+
+	activeRT.GetDatabase().FlushRevisionCacheForTest()
+	err = activeRT.Bucket().Delete(fmt.Sprintf("_sync:rev:%s:%d:%s", t.Name(), len(rev2ID), rev2ID))
+	require.NoError(t, err)
+
+	// Set-up replicator //
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePush,
+		RemoteDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: activeRT.GetDatabase(),
+		},
+		Continuous:          false,
+		ChangesBatchSize:    200,
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		PurgeOnRemoval:      false,
+		Filter:              base.ByChannelFilter,
+		FilterChannels:      []string{"rev1chan"},
+	})
+	docWriteFailuresBefore := ar.GetStatus().DocWriteFailures
+
+	assert.NoError(t, ar.Start())
+	activeRT.waitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+
+	assert.Equal(t, docWriteFailuresBefore, ar.GetStatus().DocWriteFailures, "ISGR should ignore _remove:true bodies when purgeOnRemoval is disabled. CBG-1428 regression.")
+}
+
 func getTestRevpos(t *testing.T, doc db.Body, attachmentKey string) (revpos int) {
 	attachments := db.GetBodyAttachments(doc)
 	if attachments == nil {
