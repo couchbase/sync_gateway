@@ -221,6 +221,10 @@ func emptyAllDocsIndex(ctx context.Context, b base.Bucket, tbp *base.TestBucketP
 				tbp.Logf(ctx, "Error compacting key %s (purge) - will not be compacted.  %v", tombstonesRow.Id, purgeErr)
 			}
 		}
+		err = results.Close()
+		if err != nil {
+			return 0, err
+		}
 
 		tbp.Logf(ctx, "Compacted %v docs in batch", purgedDocCount)
 

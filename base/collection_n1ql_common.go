@@ -65,6 +65,11 @@ func ExplainQuery(store N1QLStore, statement string, params map[string]interface
 	}
 
 	firstRow := explainResults.NextBytes()
+	err = explainResults.Close()
+	if err != nil {
+		return nil, err
+	}
+
 	unmarshalErr := JSONUnmarshal(firstRow, &plan)
 	return plan, unmarshalErr
 }
@@ -75,7 +80,6 @@ func ExplainQuery(store N1QLStore, statement string, params map[string]interface
 //     CreateIndex("myIndex", "field1, field2, nested.field", "field1 > 0", N1qlIndexOptions{numReplica:1})
 //   CREATE INDEX myIndex on myBucket(field1, field2, nested.field) WHERE field1 > 0 WITH {"numReplica":1}
 func CreateIndex(store N1QLStore, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
-
 	createStatement := fmt.Sprintf("CREATE INDEX `%s` ON `%s`(%s)", indexName, store.Keyspace(), expression)
 
 	// Add filter expression, when present
@@ -443,13 +447,8 @@ type gocbResultRaw interface {
 
 // GoCBQueryIterator wraps a gocb v2 ViewResultRaw to implement sgbucket.QueryResultIterator
 type gocbRawIterator struct {
-	rawResult gocbResultRaw
-}
-
-func NewGoCBQueryIterator(viewResult *gocb.ViewResultRaw) *gocbRawIterator {
-	return &gocbRawIterator{
-		rawResult: viewResult,
-	}
+	rawResult                  gocbResultRaw
+	concurrentQueryOpLimitChan chan struct{}
 }
 
 // Unmarshal a single result row into valuePtr, and then close the iterator
@@ -496,6 +495,12 @@ func (i *gocbRawIterator) Close() error {
 	for i.rawResult.NextBytes() != nil {
 		// noop to drain results
 	}
+
+	defer func() {
+		if i.concurrentQueryOpLimitChan != nil {
+			<-i.concurrentQueryOpLimitChan
+		}
+	}()
 
 	// check for errors before closing?
 	closeErr := i.rawResult.Close()

@@ -384,6 +384,7 @@ func TestAllDocsQuery(t *testing.T) {
 		rowCount++
 	}
 	assert.Equal(t, 10, rowCount)
+	assert.NoError(t, results.Close())
 
 	// Attempt to invalidate standard query
 	startKey = "a' AND 1=0\x00"
@@ -395,6 +396,7 @@ func TestAllDocsQuery(t *testing.T) {
 		rowCount++
 	}
 	assert.Equal(t, 10, rowCount)
+	assert.NoError(t, results.Close())
 
 	// Attempt to invalidate statement to add row to resultset
 	startKey = `a' UNION ALL SELECT TOSTRING(BASE64_DECODE("SW52YWxpZERhdGE=")) as id;` + "\x00"
@@ -407,6 +409,7 @@ func TestAllDocsQuery(t *testing.T) {
 		rowCount++
 	}
 	assert.Equal(t, 10, rowCount)
+	assert.NoError(t, results.Close())
 
 	// Attempt to create syntax error
 	startKey = `a'1`
@@ -418,6 +421,7 @@ func TestAllDocsQuery(t *testing.T) {
 		rowCount++
 	}
 	assert.Equal(t, 10, rowCount)
+	assert.NoError(t, results.Close())
 
 }
 
@@ -448,6 +452,7 @@ func TestAccessQuery(t *testing.T) {
 		rowCount++
 	}
 	assert.Equal(t, 5, rowCount)
+	assert.NoError(t, results.Close())
 
 	// Attempt to introduce syntax error.  Should return zero rows for user `user1'`, and not return error
 	username = "user1'"
@@ -458,6 +463,7 @@ func TestAccessQuery(t *testing.T) {
 		rowCount++
 	}
 	assert.Equal(t, 0, rowCount)
+	assert.NoError(t, results.Close())
 
 	// Attempt to introduce syntax error.  Should return zero rows for user `user1`AND`, and not return error.
 	// Validates select clause protection
@@ -469,6 +475,7 @@ func TestAccessQuery(t *testing.T) {
 		rowCount++
 	}
 	assert.Equal(t, 0, rowCount)
+	assert.NoError(t, results.Close())
 }
 
 func TestRoleAccessQuery(t *testing.T) {
@@ -498,6 +505,7 @@ func TestRoleAccessQuery(t *testing.T) {
 		rowCount++
 	}
 	assert.Equal(t, 5, rowCount)
+	assert.NoError(t, results.Close())
 
 	// Attempt to introduce syntax error.  Should return zero rows for user `user1'`, and not return error
 	username = "user1'"
@@ -508,6 +516,7 @@ func TestRoleAccessQuery(t *testing.T) {
 		rowCount++
 	}
 	assert.Equal(t, 0, rowCount)
+	assert.NoError(t, results.Close())
 
 	// Attempt to introduce syntax error.  Should return zero rows for user `user1`AND`, and not return error
 	// Validates select clause protection
@@ -519,6 +528,7 @@ func TestRoleAccessQuery(t *testing.T) {
 		rowCount++
 	}
 	assert.Equal(t, 0, rowCount)
+	assert.NoError(t, results.Close())
 }
 
 // Parse the plan looking for use of the fetch operation (appears as the key/value pair "#operator":"Fetch")

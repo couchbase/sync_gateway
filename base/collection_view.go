@@ -171,7 +171,8 @@ func (c *Collection) View(ddoc, name string, params map[string]interface{}) (sgb
 
 	if gocbViewResult != nil {
 		viewResultIterator := &gocbRawIterator{
-			rawResult: gocbViewResult,
+			rawResult:                  gocbViewResult,
+			concurrentQueryOpLimitChan: c.queryOps,
 		}
 		for {
 			viewRow := sgbucket.ViewRow{}
@@ -196,7 +197,7 @@ func (c *Collection) View(ddoc, name string, params map[string]interface{}) (sgb
 		} else {
 			viewResult.TotalRows = viewMeta.TotalRows
 		}
-		_ = gocbViewResult.Close()
+		_ = viewResultIterator.Close()
 
 	}
 
@@ -224,12 +225,10 @@ func (c *Collection) ViewQuery(ddoc, name string, params map[string]interface{})
 	if err != nil {
 		return nil, err
 	}
-	return &gocbRawIterator{rawResult: gocbViewResult}, nil
+	return &gocbRawIterator{rawResult: gocbViewResult, concurrentQueryOpLimitChan: c.queryOps}, nil
 }
 
 func (c *Collection) executeViewQuery(ddoc, name string, params map[string]interface{}) (*gocb.ViewResultRaw, error) {
-	c.waitForAvailViewOp()
-	defer c.releaseViewOp()
 	viewResult := sgbucket.ViewResult{}
 	viewResult.Rows = sgbucket.ViewRows{}
 
@@ -238,26 +237,29 @@ func (c *Collection) executeViewQuery(ddoc, name string, params map[string]inter
 		return nil, optsErr
 	}
 
+	c.waitForAvailQueryOp()
 	goCbViewResult, err := c.Bucket().ViewQuery(ddoc, name, viewOpts)
 
 	// On timeout, return an typed error
 	if isGoCBQueryTimeoutError(err) {
+		c.releaseQueryOp()
 		return nil, ErrViewTimeoutError
 	} else if err != nil {
+		c.releaseQueryOp()
 		return nil, pkgerrors.WithStack(err)
 	}
 
 	return goCbViewResult.Raw(), nil
 }
 
-// waitForAvailableViewOp prevents Sync Gateway from having too many concurrent
-// view queries against Couchbase Server
-func (c *Collection) waitForAvailViewOp() {
-	c.viewOps <- struct{}{}
+// waitForAvailQueryOp prevents Sync Gateway from having too many concurrent
+// queries against Couchbase Server
+func (c *Collection) waitForAvailQueryOp() {
+	c.queryOps <- struct{}{}
 }
 
-func (c *Collection) releaseViewOp() {
-	<-c.viewOps
+func (c *Collection) releaseQueryOp() {
+	<-c.queryOps
 }
 
 // Applies the viewquery options as specified in the params map to the gocb.ViewOptions

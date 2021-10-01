@@ -65,7 +65,7 @@ type CouchbaseBucketGoCB struct {
 	Spec         BucketSpec    // keep a copy of the BucketSpec for DCP usage
 	singleOps    chan struct{} // Manages max concurrent single ops (per kv node)
 	bulkOps      chan struct{} // Manages max concurrent bulk ops (per kv node)
-	viewQueryOps chan struct{} // Manages max concurrent view / query ops (per kv node)
+	queryOps     chan struct{} // Manages max concurrent view / query ops (per kv node)
 
 	clusterCompatMajorVersion, clusterCompatMinorVersion uint64 // E.g: 6 and 0 for 6.0.3
 }
@@ -186,7 +186,7 @@ func GetCouchbaseBucketGoCBFromAuthenticatedCluster(cluster *gocb.Cluster, spec 
 		Spec:                      spec,
 		singleOps:                 singleOpsQueue,
 		bulkOps:                   bucketOpsQueue,
-		viewQueryOps:              viewOpsQueue,
+		queryOps:                  viewOpsQueue,
 		clusterCompatMajorVersion: uint64(clusterCompatMajor),
 		clusterCompatMinorVersion: uint64(clusterCompatMinor),
 	}
@@ -1327,8 +1327,8 @@ func (bucket *CouchbaseBucketGoCB) DeleteDDoc(docname string) error {
 func (bucket *CouchbaseBucketGoCB) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
 
 	// Block until there is an available concurrent view op, release on function exit
-	bucket.waitForAvailViewOp()
-	defer bucket.releaseViewOp()
+	bucket.waitForAvailQueryOp()
+	defer bucket.releaseQueryOp()
 
 	viewResult := sgbucket.ViewResult{}
 	viewResult.Rows = sgbucket.ViewRows{}
@@ -1403,8 +1403,8 @@ func (bucket *CouchbaseBucketGoCB) View(ddoc, name string, params map[string]int
 
 func (bucket CouchbaseBucketGoCB) ViewQuery(ddoc, name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
 
-	bucket.waitForAvailViewOp()
-	defer bucket.releaseViewOp()
+	bucket.waitForAvailQueryOp()
+	defer bucket.releaseQueryOp()
 
 	viewQuery := gocb.NewViewQuery(ddoc, name)
 
@@ -1935,13 +1935,13 @@ func asStale(value interface{}) gocb.StaleMode {
 
 }
 
-// This prevents Sync Gateway from having too many outstanding concurrent view queries against Couchbase Server
-func (bucket *CouchbaseBucketGoCB) waitForAvailViewOp() {
-	bucket.viewQueryOps <- struct{}{}
+// This prevents Sync Gateway from having too many outstanding concurrent queries against Couchbase Server
+func (bucket *CouchbaseBucketGoCB) waitForAvailQueryOp() {
+	bucket.queryOps <- struct{}{}
 }
 
-func (bucket *CouchbaseBucketGoCB) releaseViewOp() {
-	<-bucket.viewQueryOps
+func (bucket *CouchbaseBucketGoCB) releaseQueryOp() {
+	<-bucket.queryOps
 }
 
 func (bucket *CouchbaseBucketGoCB) OverrideClusterCompatVersion(clusterCompatMajorVersion, clusterCompatMinorVersion uint64) {

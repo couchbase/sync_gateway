@@ -259,7 +259,7 @@ func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilRea
 	collection := &Collection{
 		Collection: bucket.DefaultCollection(),
 		cluster:    cluster,
-		viewOps:    make(chan struct{}, MaxConcurrentQueryOps),
+		queryOps:   make(chan struct{}, MaxConcurrentQueryOps),
 		Spec:       bucketSpec,
 	}
 

@@ -155,6 +155,7 @@ func TestView(t *testing.T) {
 			rowCount++
 		}
 		assert.Equal(t, 3, rowCount)
+		assert.NoError(t, iterator.Close())
 
 		// ViewQuery, NextBytes
 		bytesIterator, viewQueryErr := bucket.ViewQuery(ddocName, viewName, viewQueryParams)
@@ -168,6 +169,6 @@ func TestView(t *testing.T) {
 			rowCount++
 		}
 		assert.Equal(t, 3, rowCount)
-
+		assert.NoError(t, iterator.Close())
 	})
 }
