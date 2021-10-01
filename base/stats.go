@@ -424,8 +424,11 @@ func (s *SgwIntStat) Set(newV int64) {
 func (s *SgwIntStat) SetIfMax(newV int64) {
 	for {
 		cur := atomic.LoadInt64(&s.Val)
-		nxtVal := cur + newV
-		if atomic.CompareAndSwapInt64(&s.Val, cur, nxtVal) {
+		if cur >= newV {
+			return
+		}
+
+		if atomic.CompareAndSwapInt64(&s.Val, cur, newV) {
 			return
 		}
 	}
@@ -472,8 +475,12 @@ func (s *SgwFloatStat) SetIfMax(newV float64) {
 	for {
 		cur := atomic.LoadUint64(&s.Val)
 		curVal := math.Float64frombits(cur)
-		nxtVal := curVal + newV
-		nxt := math.Float64bits(nxtVal)
+
+		if curVal >= newV {
+			return
+		}
+
+		nxt := math.Float64bits(newV)
 		if atomic.CompareAndSwapUint64(&s.Val, cur, nxt) {
 			return
 		}
