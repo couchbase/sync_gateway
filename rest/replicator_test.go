@@ -968,6 +968,128 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 	assert.Equal(t, strconv.FormatUint(remoteDoc.Sequence, 10), ar.GetStatus().LastSeqPull)
 }
 
+func TestISGRFilteredPushReplicationChannelRemoval(t *testing.T) {
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+	defer db.SuspendSequenceBatching()()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
+
+	testCases := []struct {
+		name           string
+		filterChannels []string // nil if no channel
+		channelsBefore []string
+		channelsAfter  []string
+		rev2Replicated bool // Should the second revision (after the channels have changed from channelsBefore to channelsAfter) have replicated
+	}{
+		{
+			name:           "Filter by channel, then change channel",
+			filterChannels: []string{"chanA"},
+			channelsBefore: []string{"chanA"},
+			channelsAfter:  []string{"chanB"},
+			rev2Replicated: false,
+		},
+		{
+			name:           "No channel filter, then change channel",
+			channelsBefore: []string{"chanA"},
+			channelsAfter:  []string{"chanB"},
+			rev2Replicated: true,
+		},
+		{
+			name:           "Channel filter is both channels, multiple channels, 1 removal",
+			filterChannels: []string{"chanA", "chanB"},
+			channelsBefore: []string{"chanA", "chanB"},
+			channelsAfter:  []string{"chanA"},
+			rev2Replicated: true,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			// Passive
+			passiveBucket := base.GetTestBucket(t)
+			passiveRT := NewRestTester(t, &RestTesterConfig{
+				TestBucket: passiveBucket,
+			})
+			defer passiveRT.Close()
+
+			// Active
+			activeBucket := base.GetTestBucket(t)
+			activeRT := NewRestTester(t, &RestTesterConfig{
+				TestBucket: activeBucket,
+			})
+			defer activeRT.Close()
+
+			channelsBefore, err := json.Marshal(test.channelsBefore)
+			require.NoError(t, err)
+			channelsAfter, err := json.Marshal(test.channelsAfter)
+			require.NoError(t, err)
+
+			// Create the active doc with chanA
+			resp := activeRT.SendAdminRequest(http.MethodPut, "/db/test", fmt.Sprintf(`{"channels":%s}`, channelsBefore))
+			assertStatus(t, resp, http.StatusCreated)
+			rev1ID := respRevID(t, resp)
+			err = activeRT.waitForRev("test", rev1ID)
+			require.NoError(t, err)
+
+			// Set-up replicator //
+			// Make passive RT listen on an actual HTTP port, so it can receive the blipsync request from rt1.
+			srv := httptest.NewServer(passiveRT.TestAdminHandler())
+			defer srv.Close()
+
+			passiveDBURL, err := url.Parse(srv.URL + "/db")
+			require.NoError(t, err)
+
+			filter := base.ByChannelFilter
+			if test.filterChannels == nil {
+				filter = ""
+			}
+
+			ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+				ID:          "repl",
+				Direction:   db.ActiveReplicatorTypePush,
+				RemoteDBURL: passiveDBURL,
+				ActiveDB: &db.Database{
+					DatabaseContext: activeRT.GetDatabase(),
+				},
+				ChangesBatchSize:    200,
+				ReplicationStatsMap: base.SyncGatewayStats.NewDBStats("repl").DBReplicatorStats("repl"),
+				Filter:              filter,
+				FilterChannels:      test.filterChannels,
+				Continuous:          true,
+			})
+			defer func() { assert.NoError(t, ar.Stop()) }()
+			assert.Equal(t, "", ar.GetStatus().LastSeqPush)
+			// Start the replicator
+			assert.NoError(t, ar.Start())
+			// Wait for active to replicate to passive
+			changesResults, err := passiveRT.WaitForChanges(1, "/db/_changes?since=0", "", true)
+			require.NoError(t, err)
+			require.Len(t, changesResults.Results, 1)
+			lastSeq := changesResults.Last_Seq
+
+			// Change channel from bucket
+			resp = activeRT.SendAdminRequest(http.MethodPut, "/db/test?rev="+rev1ID, fmt.Sprintf(`{"channels":%s}`, channelsAfter))
+			rev2ID := respRevID(t, resp)
+			assertStatus(t, resp, http.StatusCreated)
+
+			changesResults, err = passiveRT.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%v", lastSeq), "", true)
+			body := passiveRT.getDoc("test")
+			if !test.rev2Replicated {
+				// Rev 2 should not be replicated so therefore no changes msg
+				assert.Error(t, err)
+				assert.Equal(t, rev1ID, body.ExtractRev())
+				assert.Equal(t, fmt.Sprintf("%v", test.channelsBefore), fmt.Sprintf("%v", body["channels"]))
+				return
+			}
+			// Rev 2 should be replicated
+			assert.NoError(t, err)
+			require.Len(t, changesResults.Results, 1)
+			assert.Equal(t, rev2ID, body.ExtractRev())
+			assert.Equal(t, fmt.Sprintf("%v", test.channelsAfter), fmt.Sprintf("%v", body["channels"]))
+		})
+	}
+}
+
 // TestActiveReplicatorPushBasic:
 //   - Starts 2 RestTesters, one active, and one passive.
 //   - Creates a document on rt1 which can be pushed by the replicator.

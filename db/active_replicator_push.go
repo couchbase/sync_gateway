@@ -90,14 +90,15 @@ func (apr *ActivePushReplicator) _connect() error {
 
 	go func(s *blip.Sender) {
 		isComplete := bh.sendChanges(s, &sendChangesOptions{
-			docIDs:            apr.config.DocIDs,
-			since:             seq,
-			continuous:        apr.config.Continuous,
-			activeOnly:        apr.config.ActiveOnly,
-			batchSize:         int(apr.config.ChangesBatchSize),
-			channels:          channels,
-			clientType:        clientTypeSGR2,
-			ignoreNoConflicts: true, // force the passive side to accept a "changes" message, even in no conflicts mode.
+			docIDs:                 apr.config.DocIDs,
+			since:                  seq,
+			continuous:             apr.config.Continuous,
+			activeOnly:             apr.config.ActiveOnly,
+			batchSize:              int(apr.config.ChangesBatchSize),
+			channels:               channels,
+			disableRemovalMessages: true,
+			clientType:             clientTypeSGR2,
+			ignoreNoConflicts:      true, // force the passive side to accept a "changes" message, even in no conflicts mode.
 		})
 		// On a normal completion, call complete for the replication
 		if isComplete {
