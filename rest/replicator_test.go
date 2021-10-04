@@ -976,19 +976,31 @@ func TestISGRFilteredPushReplicationChannelRemoval(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
 
 	testCases := []struct {
-		name                 string
-		filterByChannel      bool
-		expectRemovalMessage bool
+		name           string
+		filterChannels []string // nil if no channel
+		channelsBefore []string
+		channelsAfter  []string
+		rev2Replicated bool // Should the second revision (after the channels have changed from channelsBefore to channelsAfter) have replicated
 	}{
 		{
-			name:                 "Filter channel, no removal message",
-			filterByChannel:      true,
-			expectRemovalMessage: false,
+			name:           "Filter by channel, then change channel",
+			filterChannels: []string{"chanA"},
+			channelsBefore: []string{"chanA"},
+			channelsAfter:  []string{"chanB"},
+			rev2Replicated: false,
 		},
 		{
-			name:                 "No channel filter, expect removal message",
-			filterByChannel:      false,
-			expectRemovalMessage: true,
+			name:           "No channel filter, then change channel",
+			channelsBefore: []string{"chanA"},
+			channelsAfter:  []string{"chanB"},
+			rev2Replicated: true,
+		},
+		{
+			name:           "Channel filter is both channels, multiple channels, 1 removal",
+			filterChannels: []string{"chanA", "chanB"},
+			channelsBefore: []string{"chanA", "chanB"},
+			channelsAfter:  []string{"chanA"},
+			rev2Replicated: true,
 		},
 	}
 	for _, test := range testCases {
@@ -1007,10 +1019,17 @@ func TestISGRFilteredPushReplicationChannelRemoval(t *testing.T) {
 			})
 			defer activeRT.Close()
 
+			channelsBefore, err := json.Marshal(test.channelsBefore)
+			require.NoError(t, err)
+			channelsAfter, err := json.Marshal(test.channelsAfter)
+			require.NoError(t, err)
+
 			// Create the active doc with chanA
-			resp := activeRT.SendAdminRequest(http.MethodPut, "/db/test", `{"channels":["chanA"]}`)
+			resp := activeRT.SendAdminRequest(http.MethodPut, "/db/test", fmt.Sprintf(`{"channels":%s}`, channelsBefore))
 			assertStatus(t, resp, http.StatusCreated)
-			revID := respRevID(t, resp)
+			rev1ID := respRevID(t, resp)
+			err = activeRT.waitForRev("test", rev1ID)
+			require.NoError(t, err)
 
 			// Set-up replicator //
 			// Make passive RT listen on an actual HTTP port, so it can receive the blipsync request from rt1.
@@ -1019,53 +1038,54 @@ func TestISGRFilteredPushReplicationChannelRemoval(t *testing.T) {
 
 			passiveDBURL, err := url.Parse(srv.URL + "/db")
 			require.NoError(t, err)
-			var filterChannels []string
-			if test.filterByChannel {
-				filterChannels = []string{"chanA"}
+
+			filter := base.ByChannelFilter
+			if test.filterChannels == nil {
+				filter = ""
 			}
 
 			ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
-				ID:          t.Name(),
+				ID:          "repl",
 				Direction:   db.ActiveReplicatorTypePush,
 				RemoteDBURL: passiveDBURL,
 				ActiveDB: &db.Database{
 					DatabaseContext: activeRT.GetDatabase(),
 				},
 				ChangesBatchSize:    200,
-				ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
-				FilterChannels:      filterChannels,
+				ReplicationStatsMap: base.SyncGatewayStats.NewDBStats("repl").DBReplicatorStats("repl"),
+				Filter:              filter,
+				FilterChannels:      test.filterChannels,
+				Continuous:          true,
 			})
 			defer func() { assert.NoError(t, ar.Stop()) }()
 			assert.Equal(t, "", ar.GetStatus().LastSeqPush)
-			// Start the replicator (implicit connect)
+			// Start the replicator
 			assert.NoError(t, ar.Start())
 			// Wait for active to replicate to passive
 			changesResults, err := passiveRT.WaitForChanges(1, "/db/_changes?since=0", "", true)
 			require.NoError(t, err)
 			require.Len(t, changesResults.Results, 1)
 			lastSeq := changesResults.Last_Seq
-			assert.NoError(t, ar.Stop())
 
 			// Change channel from bucket
-			resp = activeRT.SendAdminRequest(http.MethodPut, "/db/test?rev="+revID, `{"channels":["chanB"]}`)
+			resp = activeRT.SendAdminRequest(http.MethodPut, "/db/test?rev="+rev1ID, fmt.Sprintf(`{"channels":%s}`, channelsAfter))
+			rev2ID := respRevID(t, resp)
 			assertStatus(t, resp, http.StatusCreated)
 
-			expectDoc := "test"
-			if !test.expectRemovalMessage {
-				// Create document after to verify removal message was not sent on changes endpoint
-				resp = activeRT.SendAdminRequest(http.MethodPut, "/db/docAfter", `{"channels":["chanA"]}`)
-				assertStatus(t, resp, http.StatusCreated)
-				expectDoc = "docAfter"
+			changesResults, err = passiveRT.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%v", lastSeq), "", true)
+			body := passiveRT.getDoc("test")
+			if !test.rev2Replicated {
+				// Rev 2 should not be replicated so therefore no changes msg
+				assert.Error(t, err)
+				assert.Equal(t, rev1ID, body.ExtractRev())
+				assert.Equal(t, fmt.Sprintf("%v", test.channelsBefore), fmt.Sprintf("%v", body["channels"]))
+				return
 			}
-
-			assert.NoError(t, ar.Start())
-
-			// Wait for channel revocation to be issued to passive
-			changesURL := fmt.Sprintf("/db/_changes?since=%v", lastSeq)
-			changesResults, err = passiveRT.WaitForChanges(1, changesURL, "", true)
-			require.NoError(t, err)
-			assert.Len(t, changesResults.Results, 1)
-			assert.Equal(t, expectDoc, changesResults.Results[0].ID)
+			// Rev 2 should be replicated
+			assert.NoError(t, err)
+			require.Len(t, changesResults.Results, 1)
+			assert.Equal(t, rev2ID, body.ExtractRev())
+			assert.Equal(t, fmt.Sprintf("%v", test.channelsAfter), fmt.Sprintf("%v", body["channels"]))
 		})
 	}
 }
