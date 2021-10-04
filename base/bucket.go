@@ -369,10 +369,6 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 		}
 
 		if err != nil {
-			if pkgerrors.Cause(err) == ErrAuthError {
-				Warnf("Unable to authenticate as user %q: %v", UD(username), err)
-				return nil, ErrFatalBucketConnection
-			}
 			return nil, err
 		}
 

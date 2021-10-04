@@ -10,6 +10,7 @@ package rest
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -22,7 +23,6 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
-	"github.com/pkg/errors"
 )
 
 const kDefaultDBOnlineDelay = 0
@@ -59,8 +59,8 @@ func (h *handler) handleCreateDB() error {
 		}
 
 		// copy config before setup to persist the raw config the user supplied
-		var persistedConfig DbConfig
-		if err := base.DeepCopyInefficient(&persistedConfig, config); err != nil {
+		var persistedDbConfig DbConfig
+		if err := base.DeepCopyInefficient(&persistedDbConfig, config); err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't create copy of db config: %v", err)
 		}
 
@@ -70,12 +70,16 @@ func (h *handler) handleCreateDB() error {
 		}
 
 		loadedConfig := DatabaseConfig{Version: version, DbConfig: *config}
+		persistedConfig := DatabaseConfig{Version: version, DbConfig: persistedDbConfig}
 
 		h.server.lock.Lock()
 		defer h.server.lock.Unlock()
 
 		_, err = h.server._applyConfig(loadedConfig)
 		if err != nil {
+			if errors.Is(err, base.ErrAuthError) {
+				return base.HTTPErrorf(http.StatusForbidden, "auth failure accessing provided bucket: %s", bucket)
+			}
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
 		}
 
@@ -84,7 +88,7 @@ func (h *handler) handleCreateDB() error {
 		if err != nil {
 			// unload the database to prevent the cluster being in an inconsistent state
 			h.server._removeDatabase(dbName)
-			if errors.Cause(err) == base.ErrAuthError {
+			if errors.Is(err, base.ErrAuthError) {
 				return base.HTTPErrorf(http.StatusForbidden, "auth failure accessing provided bucket using bootstrap credentials: %s", bucket)
 			}
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't save database config: %v", err)
@@ -337,7 +341,7 @@ func (h *handler) handlePutConfig() error {
 	var config ServerPutConfig
 	err := base.WrapJSONUnknownFieldErr(ReadJSONFromMIMERawErr(h.rq.Header, h.requestBody, &config))
 	if err != nil {
-		if errors.Cause(err) == base.ErrUnknownField {
+		if errors.Is(err, base.ErrUnknownField) {
 			return base.HTTPErrorf(http.StatusBadRequest, "Unable to configure given options at runtime: %v", err)
 		}
 		return err

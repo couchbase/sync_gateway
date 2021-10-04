@@ -226,8 +226,12 @@ func ConnectToBucket(spec base.BucketSpec) (bucket base.Bucket, err error) {
 		// By default, if there was an error, retry
 		shouldRetry = err != nil
 
-		if err == base.ErrFatalBucketConnection {
+		if errors.Is(err, base.ErrFatalBucketConnection) {
 			base.Warnf("Fatal error connecting to bucket: %v.  Not retrying", err)
+			shouldRetry = false
+		} else if errors.Is(err, base.ErrAuthError) {
+			username, _, _ := spec.Auth.GetCredentials()
+			base.Warnf("Unable to authenticate as user %q: %v - Not retrying", base.UD(username), err)
 			shouldRetry = false
 		}
 
@@ -242,6 +246,10 @@ func ConnectToBucket(spec base.BucketSpec) (bucket base.Bucket, err error) {
 	description := fmt.Sprintf("Attempt to connect to bucket : %v", spec.BucketName)
 	err, ibucket := base.RetryLoop(description, worker, sleeper)
 	if err != nil {
+		// auth errors will be wrapped with HTTPError further up the stack where appropriate. For now we'll return the raw error that can be checked.
+		if errors.Is(err, base.ErrAuthError) {
+			return nil, err
+		}
 		return nil, base.HTTPErrorf(http.StatusBadGateway,
 			" Unable to connect to Couchbase Server (connection refused). Please ensure it is running and reachable at the configured host and port.  Detailed error: %s", err)
 	}
