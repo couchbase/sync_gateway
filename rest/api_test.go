@@ -579,7 +579,7 @@ func TestCORSLoginOriginOnSessionPost(t *testing.T) {
 	// This is to allow tests to be run offline/without third-party dependencies.
 	if response.Code == http.StatusInternalServerError {
 		respBody := response.Body.String()
-		if strings.Contains(respBody, "io/timeout") || strings.Contains(respBody, "no such host") {
+		if strings.Contains(respBody, "i/o timeout") || strings.Contains(respBody, "no such host") {
 			t.Skipf("WARNING: Facebook host could not be reached: %s", response.Body.String())
 		}
 	}
@@ -621,7 +621,7 @@ func TestNoCORSOriginOnSessionPost(t *testing.T) {
 	// This is to allow tests to be run offline/without third-party dependencies.
 	if response.Code == http.StatusInternalServerError {
 		respBody := response.Body.String()
-		if strings.Contains(respBody, "io/timeout") || strings.Contains(respBody, "no such host") {
+		if strings.Contains(respBody, "i/o timeout") || strings.Contains(respBody, "no such host") {
 			t.Skipf("WARNING: Facebook host could not be reached: %s", response.Body.String())
 		}
 	}
