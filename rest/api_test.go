@@ -2308,7 +2308,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	changed, err := database.UpdateSyncFun(`function(doc) {access("alice", "beta");channel("beta");}`)
 	assert.NoError(t, err)
 	assert.True(t, changed)
-	changeCount, err := database.UpdateAllDocChannels(false)
+	changeCount, err := database.UpdateAllDocChannels(false, func(docsProcessed, docsChanged *int) {}, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 9, changeCount)
 
@@ -9179,4 +9179,57 @@ func TestAttachmentRemovalWithConflicts(t *testing.T) {
 	_, _, err = rt.GetDatabase().Bucket.GetRaw(attachmentKey)
 	assert.Error(t, err)
 	assert.True(t, base.IsDocNotFoundError(err))
+}
+
+func TestTombstoneCompactionAPI(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	rt.GetDatabase().PurgeInterval = 0
+	defer rt.Close()
+
+	for i := 0; i < 100; i++ {
+		resp := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/doc%d", i), "{}")
+		assertStatus(t, resp, http.StatusCreated)
+		rev := respRevID(t, resp)
+		resp = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/doc%d?rev=%s", i, rev), "{}")
+		assertStatus(t, resp, http.StatusOK)
+	}
+
+	resp := rt.SendAdminRequest("GET", "/db/_compact", "")
+	assertStatus(t, resp, http.StatusOK)
+
+	var tombstoneCompactionStatus db.TombstoneManagerResponse
+	err := base.JSONUnmarshal(resp.BodyBytes(), &tombstoneCompactionStatus)
+	assert.NoError(t, err)
+
+	assert.Equal(t, db.BackgroundProcessStateStopped, tombstoneCompactionStatus.State)
+	assert.Equal(t, nil, tombstoneCompactionStatus.LastError)
+	assert.Equal(t, 0, int(tombstoneCompactionStatus.DocsPurged))
+
+	resp = rt.SendAdminRequest("POST", "/db/_compact", "")
+	assertStatus(t, resp, http.StatusOK)
+
+	err = rt.WaitForCondition(func() bool {
+		resp = rt.SendAdminRequest("GET", "/db/_compact", "")
+		assertStatus(t, resp, http.StatusOK)
+
+		err = base.JSONUnmarshal(resp.BodyBytes(), &tombstoneCompactionStatus)
+		assert.NoError(t, err)
+
+		return tombstoneCompactionStatus.State == db.BackgroundProcessStateStopped
+	})
+	assert.NoError(t, err)
+
+	resp = rt.SendAdminRequest("GET", "/db/_compact", "")
+	assertStatus(t, resp, http.StatusOK)
+	err = base.JSONUnmarshal(resp.BodyBytes(), &tombstoneCompactionStatus)
+	assert.NoError(t, err)
+
+	assert.Equal(t, db.BackgroundProcessStateStopped, tombstoneCompactionStatus.State)
+	assert.Equal(t, nil, tombstoneCompactionStatus.LastError)
+
+	if base.TestUseXattrs() {
+		assert.Equal(t, 100, int(tombstoneCompactionStatus.DocsPurged))
+	} else {
+		assert.Equal(t, 0, int(tombstoneCompactionStatus.DocsPurged))
+	}
 }

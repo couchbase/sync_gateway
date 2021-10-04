@@ -1227,10 +1227,10 @@ func TestDBOfflinePostResync(t *testing.T) {
 	assertStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 200)
 	err := rt.WaitForCondition(func() bool {
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")
-		var status db.ResyncStatus
+		var status db.ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
-		return status.Status == db.ResyncStateStopped
+		return status.State == db.BackgroundProcessStateStopped
 	})
 	assert.NoError(t, err)
 }
@@ -1277,10 +1277,10 @@ func TestDBOfflineSingleResync(t *testing.T) {
 
 	err := rt.WaitForCondition(func() bool {
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")
-		var status db.ResyncStatus
+		var status db.ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
-		return status.Status == db.ResyncStateStopped
+		return status.State == db.BackgroundProcessStateStopped
 	})
 	assert.NoError(t, err)
 
@@ -1288,6 +1288,7 @@ func TestDBOfflineSingleResync(t *testing.T) {
 }
 
 func TestResync(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 	testCases := []struct {
 		name               string
@@ -1354,12 +1355,12 @@ func TestResync(t *testing.T) {
 			response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 			assertStatus(t, response, http.StatusOK)
 
+			var resyncManagerStatus db.ResyncManagerResponse
 			err := rt.WaitForCondition(func() bool {
 				response := rt.SendAdminRequest("GET", "/db/_resync", "")
-				var status db.ResyncStatus
-				err := json.Unmarshal(response.BodyBytes(), &status)
+				err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
 				assert.NoError(t, err)
-				return status.Status == db.ResyncStateStopped
+				return resyncManagerStatus.State == db.BackgroundProcessStateStopped
 			})
 			assert.NoError(t, err)
 
@@ -1373,7 +1374,8 @@ func TestResync(t *testing.T) {
 			}
 
 			assert.Equal(t, testCase.expectedQueryCount, int(rt.GetDatabase().DbStats.Query(queryName).QueryCount.Value()))
-
+			assert.Equal(t, testCase.docsCreated, resyncManagerStatus.DocsProcessed)
+			assert.Equal(t, 0, resyncManagerStatus.DocsChanged)
 		})
 	}
 
@@ -1456,10 +1458,10 @@ func TestResyncErrorScenarios(t *testing.T) {
 
 	err := rt.WaitForCondition(func() bool {
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")
-		var status db.ResyncStatus
+		var status db.ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
-		return status.Status == db.ResyncStateStopped
+		return status.State == db.BackgroundProcessStateStopped
 	})
 	assert.NoError(t, err)
 
@@ -1475,10 +1477,10 @@ func TestResyncErrorScenarios(t *testing.T) {
 
 	err = rt.WaitForCondition(func() bool {
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")
-		var status db.ResyncStatus
+		var status db.ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
-		return status.Status == db.ResyncStateStopped
+		return status.State == db.BackgroundProcessStateStopped
 	})
 	assert.NoError(t, err)
 
@@ -1561,10 +1563,13 @@ func TestResyncStop(t *testing.T) {
 
 	err = rt.WaitForCondition(func() bool {
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")
-		var status db.ResyncStatus
-		err := json.Unmarshal(response.BodyBytes(), &status)
+		type ResyncManagerResponse struct {
+			Status db.BackgroundProcessState `json:"status"`
+		}
+		var resyncManagerStatus ResyncManagerResponse
+		err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
 		assert.NoError(t, err)
-		return status.Status == db.ResyncStateStopped
+		return resyncManagerStatus.Status == db.BackgroundProcessStateStopped
 	})
 	assert.NoError(t, err)
 
@@ -1577,11 +1582,7 @@ func TestResyncStop(t *testing.T) {
 func TestResyncRegenerateSequences(t *testing.T) {
 	syncFn := `
 	function(doc) {
-		channel("x")
-		console.log("====================")
-		console.log(JSON. stringify(doc))
 		if (doc.userdoc){
-			console.log("test")
 			channel("channel_1")
 		}
 	}`
@@ -1686,7 +1687,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	assertStatus(t, response, http.StatusOK)
 
 	err = rt.WaitForCondition(func() bool {
-		return rt.GetDatabase().ResyncManager.GetStatus().Status == db.ResyncStateStopped
+		return rt.GetDatabase().ResyncManager.GetRunState() == db.BackgroundProcessStateStopped
 	})
 	assert.NoError(t, err)
 
@@ -1710,6 +1711,14 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		assert.True(t, float64(doc.Sequence) > docSeqArr[i])
 	}
 
+	response = rt.SendAdminRequest("GET", "/db/_resync", "")
+	assertStatus(t, response, http.StatusOK)
+	var resyncStatus db.ResyncManagerResponse
+	err = base.JSONUnmarshal(response.BodyBytes(), &resyncStatus)
+	assert.NoError(t, err)
+	assert.Equal(t, 12, resyncStatus.DocsChanged)
+	assert.Equal(t, 12, resyncStatus.DocsProcessed)
+
 	response = rt.SendAdminRequest("POST", "/db/_online", "")
 	assertStatus(t, response, http.StatusOK)
 
@@ -1720,7 +1729,6 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Data is wiped from walrus when brought back online
-	// if !base.UnitTestUrlIsWalrus() {
 	request, _ = http.NewRequest("GET", "/db/_changes?since="+changesResp.LastSeq, nil)
 	request.SetBasicAuth("user1", "letmein")
 	response = rt.Send(request)
@@ -1729,8 +1737,6 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	assert.Len(t, changesResp.Results, 3)
 	assert.True(t, changesRespContains(changesResp, "userdoc"))
 	assert.True(t, changesRespContains(changesResp, "userdoc2"))
-	// }
-
 }
 
 // Single threaded bring DB online

@@ -70,13 +70,54 @@ func (h *handler) handleAllDbs() error {
 	return nil
 }
 
-func (h *handler) handleCompact() error {
-	revsDeleted, err := h.db.Compact()
+func (h *handler) handleGetCompact() error {
+	status, err := h.db.TombstoneCompactionManager.GetStatus()
 	if err != nil {
 		return err
 	}
+	h.writeRawJSON(status)
+	return nil
+}
 
-	h.writeRawJSON([]byte(`{"revs":` + strconv.Itoa(revsDeleted) + `}`))
+func (h *handler) handleCompact() error {
+	action := h.getQuery("action")
+
+	if action != "" && action != string(db.BackgroundProcessActionStart) && action != string(db.BackgroundProcessActionStop) {
+		return base.HTTPErrorf(http.StatusBadRequest, "Unknown parameter for 'action'. Must be start or stop")
+	}
+
+	if action == "" {
+		action = string(db.BackgroundProcessActionStart)
+	}
+
+	if action == string(db.BackgroundProcessActionStart) {
+		if atomic.CompareAndSwapUint32(&h.db.CompactState, db.DBCompactNotRunning, db.DBCompactRunning) {
+			h.db.TombstoneCompactionManager.Start(map[string]interface{}{
+				"database": h.db,
+			})
+			status, err := h.db.TombstoneCompactionManager.GetStatus()
+			if err != nil {
+				return err
+			}
+			h.writeRawJSON(status)
+		} else {
+			return base.HTTPErrorf(http.StatusServiceUnavailable, "Database compact already in progress")
+
+		}
+	} else if action == string(db.BackgroundProcessActionStop) {
+		dbState := atomic.LoadUint32(&h.db.CompactState)
+		if dbState != db.DBCompactRunning {
+			return base.HTTPErrorf(http.StatusBadRequest, "Database compact is not running")
+		}
+
+		h.db.TombstoneCompactionManager.Stop()
+		status, err := h.db.TombstoneCompactionManager.GetStatus()
+		if err != nil {
+			return err
+		}
+		h.writeRawJSON(status)
+	}
+
 	return nil
 }
 
@@ -156,7 +197,11 @@ func (h *handler) handleFlush() error {
 }
 
 func (h *handler) handleGetResync() error {
-	h.writeJSON(h.db.ResyncManager.GetStatus())
+	status, err := h.db.ResyncManager.GetStatus()
+	if err != nil {
+		return err
+	}
+	h.writeRawJSON(status)
 	return nil
 }
 
@@ -164,27 +209,25 @@ func (h *handler) handlePostResync() error {
 	action := h.getQuery("action")
 	regenerateSequences, _ := h.getOptBoolQuery("regenerate_sequences", false)
 
-	if action != "" && action != db.ResyncActionStart && action != db.ResyncActionStop {
+	if action != "" && action != string(db.BackgroundProcessActionStart) && action != string(db.BackgroundProcessActionStop) {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unknown parameter for 'action'. Must be start or stop")
 	}
 
 	if action == "" {
-		action = db.ResyncActionStart
+		action = string(db.BackgroundProcessActionStart)
 	}
 
-	if action == db.ResyncActionStart {
+	if action == string(db.BackgroundProcessActionStart) {
 		if atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBResyncing) {
-			h.db.ResyncManager.SetRunStatus(db.ResyncStateRunning)
-			h.writeJSON(h.db.ResyncManager.GetStatus())
-			go func() {
-				defer atomic.CompareAndSwapUint32(&h.db.State, db.DBResyncing, db.DBOffline)
-				defer h.db.ResyncManager.SetRunStatus(db.ResyncStateStopped)
-				_, err := h.db.UpdateAllDocChannels(regenerateSequences)
-				if err != nil {
-					base.Errorf("Error occurred running resync operation: %v", err)
-					h.db.ResyncManager.SetError(err)
-				}
-			}()
+			h.db.ResyncManager.Start(map[string]interface{}{
+				"database":            h.db,
+				"regenerateSequences": regenerateSequences,
+			})
+			status, err := h.db.ResyncManager.GetStatus()
+			if err != nil {
+				return err
+			}
+			h.writeRawJSON(status)
 		} else {
 			dbState := atomic.LoadUint32(&h.db.State)
 			if dbState == db.DBResyncing {
@@ -196,14 +239,18 @@ func (h *handler) handlePostResync() error {
 			}
 		}
 
-	} else if action == db.ResyncActionStop {
+	} else if action == string(db.BackgroundProcessActionStop) {
 		dbState := atomic.LoadUint32(&h.db.State)
 		if dbState != db.DBResyncing {
 			return base.HTTPErrorf(http.StatusBadRequest, "Database _resync is not running")
 		}
 
-		status := h.db.ResyncManager.Stop()
-		h.writeJSON(status)
+		h.db.ResyncManager.Stop()
+		status, err := h.db.ResyncManager.GetStatus()
+		if err != nil {
+			return err
+		}
+		h.writeRawJSON(status)
 	}
 
 	return nil
