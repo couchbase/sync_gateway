@@ -240,12 +240,12 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 		if err != nil {
 			// If key already exists just continue
 			if errors.Is(err, base.ErrAlreadyExists) {
-				base.Infof(base.KeyAll, "Skipping Couchbase Server persistence for config group %q in %s. Already exists.", startupConfig.Bootstrap.ConfigGroupID, base.UD(dbc.Name))
+				base.Infof(base.KeyAll, "Skipping Couchbase Server persistence for config group %q in %s. Already exists.", configGroupID, base.UD(dbc.Name))
 				continue
 			}
 			return nil, false, err
 		}
-		base.Infof(base.KeyAll, "Persisted database %s config for group %q to Couchbase Server bucket: %s", base.UD(dbc.Name), startupConfig.Bootstrap.ConfigGroupID, base.MD(*dbc.Bucket))
+		base.Infof(base.KeyAll, "Persisted database %s config for group %q to Couchbase Server bucket: %s", base.UD(dbc.Name), configGroupID, base.MD(*dbc.Bucket))
 	}
 
 	// Attempt to backup current config
