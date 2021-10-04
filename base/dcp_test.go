@@ -12,9 +12,13 @@ package base
 
 import (
 	"fmt"
+	"log"
+	"math/rand"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/couchbase/cbgt"
 	"github.com/stretchr/testify/assert"
@@ -376,6 +380,64 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	assert.False(t, ok)
 	_, ok = indexDefsMap[GenerateIndexName(unsafeTestDBName)]
 	assert.True(t, ok)
+}
+
+func TestConcurrentCBGTIndexCreation(t *testing.T) {
+
+	if UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server bucket")
+	}
+	bucket := GetTestBucket(t)
+	defer bucket.Close()
+
+	spec := bucket.BucketSpec
+	testDBName := "testDB"
+
+	// Use an bucket-backed cfg
+	cfg, err := NewCfgSG(bucket)
+	require.NoError(t, err)
+
+	// Define index type for db name
+	indexType := CBGTIndexTypeSyncGatewayImport + testDBName
+	cbgt.RegisterPIndexImplType(indexType,
+		&cbgt.PIndexImplType{})
+
+	terminator := make(chan struct{})
+
+	// Note: Would need to increase partition count if increasing test concurrency beyond 16
+	managerCount := 10
+
+	var managerWg sync.WaitGroup
+	managerWg.Add(managerCount)
+
+	for i := 0; i < managerCount; i++ {
+		go func(i int, terminatorChan chan struct{}) {
+			// random sleep to hit race conditions that depend on initial creation
+			time.Sleep(time.Duration(rand.Intn(100)) * time.Millisecond)
+
+			managerUUID := fmt.Sprintf("%s%d", t.Name(), i)
+			context, err := initCBGTManager(bucket, spec, cfg, managerUUID, testDBName)
+			assert.NoError(t, err)
+
+			// StartManager starts the manager and creates the index
+			log.Printf("Starting manager for %s", managerUUID)
+			startErr := context.StartManager(testDBName, bucket, spec, DefaultImportPartitions)
+			assert.NoError(t, startErr)
+
+			managerWg.Done()
+			// ensure all goroutines start the manager before we start closing them
+			select {
+			case <-terminatorChan:
+				context.Manager.Stop()
+			case <-time.After(20 * time.Second):
+				t.Fatalf("manager goroutine not terminated")
+			}
+
+		}(i, terminator)
+	}
+	managerWg.Wait()
+	close(terminator)
+
 }
 
 // Compare Atoi vs map lookup for partition conversion

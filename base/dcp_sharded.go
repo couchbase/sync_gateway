@@ -344,6 +344,8 @@ func (c *CbgtContext) StartManager(dbName string, bucket Bucket, spec BucketSpec
 	if err != nil {
 		if strings.Contains(err.Error(), "an index with the same name already exists") {
 			Infof(KeyCluster, "Duplicate cbgt index detected during index creation (concurrent creation), using existing")
+		} else if strings.Contains(err.Error(), "concurrent index definition update") {
+			Infof(KeyCluster, "Index update failed due to concurrent update, using existing")
 		} else {
 			Errorf("cbgt index creation failed: %v", err)
 			return err
