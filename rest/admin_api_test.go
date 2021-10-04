@@ -2293,7 +2293,7 @@ func TestHandleDBConfig(t *testing.T) {
 	assert.Equal(t, "Online", respBody["state"].(string))
 
 	// Put database config
-	resource = fmt.Sprintf("/%v/_config?redact=false", bucket)
+	resource = fmt.Sprintf("/%v/_config", bucket)
 
 	// change cache size so we can see the update being reflected in the API response
 	dbConfig := &DbConfig{
@@ -2342,13 +2342,13 @@ func TestHandleDBConfig(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, bucket, gotName)
 
-	un, pw, _ := tb.BucketSpec.Auth.GetCredentials()
+	un, _, _ := tb.BucketSpec.Auth.GetCredentials()
 	gotusername, ok := respBody["username"].(string)
 	require.True(t, ok)
 	assert.Equal(t, un, gotusername)
 	gotpassword, ok := respBody["password"].(string)
 	require.True(t, ok)
-	assert.Equal(t, pw, gotpassword)
+	assert.Equal(t, base.RedactedStr, gotpassword)
 
 	_, ok = respBody["certpath"]
 	require.False(t, ok)
@@ -2615,16 +2615,8 @@ func TestConfigRedaction(t *testing.T) {
 	err := json.Unmarshal(response.BodyBytes(), &unmarshaledConfig)
 	require.NoError(t, err)
 
-	assert.Equal(t, "xxxxx", unmarshaledConfig.Password)
-	assert.Equal(t, "xxxxx", *unmarshaledConfig.Users["alice"].Password)
-
-	// Test default db config redaction when redaction disabled
-	response = rt.SendAdminRequest("GET", "/db/_config?include_runtime=true&redact=false", "")
-	err = json.Unmarshal(response.BodyBytes(), &unmarshaledConfig)
-	require.NoError(t, err)
-
-	assert.Equal(t, "password", unmarshaledConfig.Password)
-	assert.Equal(t, "password", *unmarshaledConfig.Users["alice"].Password)
+	assert.Equal(t, base.RedactedStr, unmarshaledConfig.Password)
+	assert.Equal(t, base.RedactedStr, *unmarshaledConfig.Users["alice"].Password)
 
 	// Test default server config redaction
 	var unmarshaledServerConfig StartupConfig
@@ -2632,15 +2624,7 @@ func TestConfigRedaction(t *testing.T) {
 	err = json.Unmarshal(response.BodyBytes(), &unmarshaledServerConfig)
 	require.NoError(t, err)
 
-	assert.Equal(t, "xxxxx", unmarshaledServerConfig.Bootstrap.Password)
-
-	// Test default server config redaction when redaction disabled
-	unmarshaledServerConfig = StartupConfig{}
-	response = rt.SendAdminRequest("GET", "/_config?include_runtime=true&redact=false", "")
-	err = json.Unmarshal(response.BodyBytes(), &unmarshaledServerConfig)
-	require.NoError(t, err)
-
-	assert.Equal(t, base.TestClusterPassword(), unmarshaledServerConfig.Bootstrap.Password)
+	assert.Equal(t, base.RedactedStr, unmarshaledServerConfig.Bootstrap.Password)
 }
 
 // Reproduces panic seen in CBG-1053
@@ -3238,7 +3222,7 @@ func TestInitialStartupConfig(t *testing.T) {
 	defer rt.Close()
 
 	// Get config
-	resp := rt.SendAdminRequest("GET", "/_config?redact=false", "")
+	resp := rt.SendAdminRequest("GET", "/_config", "")
 	assertStatus(t, resp, http.StatusOK)
 
 	var initialStartupConfig StartupConfig
@@ -3247,16 +3231,7 @@ func TestInitialStartupConfig(t *testing.T) {
 
 	// Assert on a couple values to make sure they are set
 	assert.Equal(t, base.TestClusterUsername(), initialStartupConfig.Bootstrap.Username)
-	assert.Equal(t, base.TestClusterPassword(), initialStartupConfig.Bootstrap.Password)
-
-	// Get redacted / default config
-	resp = rt.SendAdminRequest("GET", "/_config", "")
-	assertStatus(t, resp, http.StatusOK)
-	err = json.Unmarshal(resp.BodyBytes(), &initialStartupConfig)
-	require.NoError(t, err)
-
-	// Assert value is redacted
-	assert.Equal(t, "xxxxx", initialStartupConfig.Bootstrap.Password)
+	assert.Equal(t, base.RedactedStr, initialStartupConfig.Bootstrap.Password)
 
 	// Assert error logging is nil
 	assert.Nil(t, initialStartupConfig.Logging.Error)
@@ -3295,7 +3270,7 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 	base.EnableStatsLogger(false)
 
 	// Get config
-	resp := rt.SendAdminRequest("GET", "/_config?include_runtime=true&redact=false", "")
+	resp := rt.SendAdminRequest("GET", "/_config?include_runtime=true", "")
 	assertStatus(t, resp, http.StatusOK)
 
 	var runtimeServerConfigResponse RunTimeServerConfigResponse
@@ -3305,7 +3280,7 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 	assert.Contains(t, runtimeServerConfigResponse.Databases, "db")
 	assert.Equal(t, base.UnitTestUrl(), runtimeServerConfigResponse.Bootstrap.Server)
 	assert.Equal(t, base.TestClusterUsername(), runtimeServerConfigResponse.Bootstrap.Username)
-	assert.Equal(t, base.TestClusterPassword(), runtimeServerConfigResponse.Bootstrap.Password)
+	assert.Equal(t, base.RedactedStr, runtimeServerConfigResponse.Bootstrap.Password)
 
 	// Make request to enable error logger
 	resp = rt.SendAdminRequest("PUT", "/_config", `
@@ -3327,7 +3302,7 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 	dbConfig := rt.ServerContext().GetDatabaseConfig("db")
 	dbConfig.RevsLimit = base.Uint32Ptr(100)
 
-	resp = rt.SendAdminRequest("GET", "/_config?include_runtime=true&redact=false", "")
+	resp = rt.SendAdminRequest("GET", "/_config?include_runtime=true", "")
 	assertStatus(t, resp, http.StatusOK)
 	err = json.Unmarshal(resp.BodyBytes(), &runtimeServerConfigResponse)
 	require.NoError(t, err)
@@ -3344,7 +3319,7 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 	err = json.Unmarshal(resp.BodyBytes(), &runtimeServerConfigResponse)
 	require.NoError(t, err)
 
-	assert.Equal(t, "xxxxx", runtimeServerConfigResponse.Bootstrap.Password)
+	assert.Equal(t, base.RedactedStr, runtimeServerConfigResponse.Bootstrap.Password)
 
 	// Setup replication to ensure it is visible in returned config
 	replicationConfig := `{
@@ -3358,7 +3333,7 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 	response := rt.SendAdminRequest("PUT", "/db/_replication/repl", string(replicationConfig))
 	assertStatus(t, response, http.StatusCreated)
 
-	resp = rt.SendAdminRequest("GET", "/_config?include_runtime=true&redact=false", "")
+	resp = rt.SendAdminRequest("GET", "/_config?include_runtime=true", "")
 	assertStatus(t, resp, http.StatusOK)
 	err = json.Unmarshal(resp.BodyBytes(), &runtimeServerConfigResponse)
 	require.NoError(t, err)
@@ -3403,7 +3378,7 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
 	// Get config
-	resp = bootstrapAdminRequest(t, "GET", "/db/_config?redact=false", "")
+	resp = bootstrapAdminRequest(t, "GET", "/db/_config", "")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	eTag := resp.Header.Get("ETag")
@@ -3417,7 +3392,7 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 	putETag := resp.Header.Get("ETag")
 	assert.NotEqual(t, "", putETag)
 
-	resp = bootstrapAdminRequest(t, "GET", "/db/_config?redact=false", "")
+	resp = bootstrapAdminRequest(t, "GET", "/db/_config", "")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	getETag := resp.Header.Get("ETag")
 	assert.Equal(t, putETag, getETag)
@@ -3426,7 +3401,7 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 	assert.Equal(t, http.StatusPreconditionFailed, resp.StatusCode)
 }
 
-func TestDbConfigDoesNotIncludeCredentials(t *testing.T) {
+func TestDbConfigCredentials(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
@@ -3457,32 +3432,34 @@ func TestDbConfigDoesNotIncludeCredentials(t *testing.T) {
 
 	var dbConfig DatabaseConfig
 
-	resp = bootstrapAdminRequest(t, "GET", "/db/_config?redact=false", "")
+	resp = bootstrapAdminRequest(t, "GET", "/db/_config", "")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	body, err := ioutil.ReadAll(resp.Body)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NoError(t, resp.Body.Close())
 
 	err = base.JSONUnmarshal(body, &dbConfig)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
+	// non-runtime config, we don't expect to see any credentials present
 	assert.Equal(t, "", dbConfig.Username)
 	assert.Equal(t, "", dbConfig.Password)
 	assert.Equal(t, "", dbConfig.CACertPath)
 	assert.Equal(t, "", dbConfig.CertPath)
 	assert.Equal(t, "", dbConfig.KeyPath)
 
-	resp = bootstrapAdminRequest(t, "GET", "/db/_config?redact=false&include_runtime=true", "")
+	resp = bootstrapAdminRequest(t, "GET", "/db/_config?include_runtime=true", "")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	body, err = ioutil.ReadAll(resp.Body)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NoError(t, resp.Body.Close())
 
 	err = base.JSONUnmarshal(body, &dbConfig)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	assert.Equal(t, "", dbConfig.Username)
-	assert.Equal(t, "", dbConfig.Password)
+	// runtime config, we expect to see the credentials used by the database (either bootstrap or per-db - but in this case, bootstrap)
+	assert.Equal(t, base.TestClusterUsername(), dbConfig.Username)
+	assert.Equal(t, base.RedactedStr, dbConfig.Password)
 	assert.Equal(t, "", dbConfig.CACertPath)
 	assert.Equal(t, "", dbConfig.CertPath)
 	assert.Equal(t, "", dbConfig.KeyPath)
@@ -3681,7 +3658,7 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	assert.Equal(t, db.DefaultCompactInterval, uint32(*dbConfig.CompactIntervalDays))
 
 	var runtimeServerConfigResponse RunTimeServerConfigResponse
-	resp = bootstrapAdminRequest(t, "GET", "/_config?include_runtime=true&redact=false", "")
+	resp = bootstrapAdminRequest(t, "GET", "/_config?include_runtime=true", "")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	body, err = ioutil.ReadAll(resp.Body)
 	assert.NoError(t, err)
@@ -3709,7 +3686,7 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
-	resp = bootstrapAdminRequest(t, "GET", "/_config?include_runtime=true&redact=false", "")
+	resp = bootstrapAdminRequest(t, "GET", "/_config?include_runtime=true", "")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	body, err = ioutil.ReadAll(resp.Body)
 	assert.NoError(t, err)

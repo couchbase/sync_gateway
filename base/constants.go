@@ -150,6 +150,9 @@ const (
 
 	// Increase default gocbv2 op timeout to match the standard SG backoff retry timing used for gocb v1
 	DefaultGocbV2OperationTimeout = 10 * time.Second
+
+	// RedactedStr can be substituted in place of any sensitive data being returned by an API. The 'xxxxx' pattern is the same used by Go's url.Redacted() method.
+	RedactedStr = "xxxxx"
 )
 
 const (

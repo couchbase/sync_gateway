@@ -76,9 +76,9 @@ func RedactBasicAuthURL(urlIn string, passwordOnly bool) (string, error) {
 	if urlParsed.User != nil {
 		user := urlParsed.User.Username()
 		if !passwordOnly {
-			user = "xxxxx"
+			user = RedactedStr
 		}
-		urlParsed.User = url.UserPassword(user, "xxxxx")
+		urlParsed.User = url.UserPassword(user, RedactedStr)
 	}
 
 	return urlParsed.String(), nil

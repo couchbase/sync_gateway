@@ -334,7 +334,7 @@ func (rc *ReplicationConfig) Equals(compareToCfg *ReplicationConfig) (bool, erro
 func (rc *ReplicationConfig) Redacted() *ReplicationConfig {
 	config := *rc
 	if config.Password != "" {
-		config.Password = "xxxxx"
+		config.Password = base.RedactedStr
 	}
 	config.Remote = base.RedactBasicAuthURLPassword(config.Remote)
 	return &config

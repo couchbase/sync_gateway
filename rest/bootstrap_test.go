@@ -60,7 +60,7 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	assert.Equal(t, db.RunStateString[db.DBOnline], dbRootResp.State)
 
 	// Inspect the config
-	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/_config?redact=false", ``)
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/_config", ``)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	var dbConfigResp DatabaseConfig
 	require.NoError(t, base.JSONDecoder(resp.Body).Decode(&dbConfigResp))
@@ -105,7 +105,7 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	assert.Equal(t, db.RunStateString[db.DBOnline], dbRootResp.State)
 
 	// Inspect config again, and ensure no changes since bootstrap
-	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/_config?redact=false", ``)
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/_config", ``)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	dbConfigResp = DatabaseConfig{}
 	require.NoError(t, base.JSONDecoder(resp.Body).Decode(&dbConfigResp))
