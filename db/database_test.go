@@ -2421,11 +2421,66 @@ func TestResyncUpdateAllDocChannels(t *testing.T) {
 		return state == DBOffline
 	})
 
-	_, err = db.UpdateAllDocChannels(false, func(docsProcessed, docsChanged int) {}, nil)
+	_, err = db.UpdateAllDocChannels(false, func(docsProcessed, docsChanged *int) {}, nil)
 	assert.NoError(t, err)
 
 	syncFnCount := int(db.DbStats.CBLReplicationPush().SyncFunctionCount.Value())
 	assert.Equal(t, 20, syncFnCount)
+}
+
+func TestTombstoneCompactionStopWithManager(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("Compaction requires xattrs")
+	}
+
+	bucket := base.NewLeakyBucket(base.GetTestBucket(t), base.LeakyBucketConfig{})
+	db := setupTestDBForBucketWithOptions(t, bucket, DatabaseContextOptions{})
+	db.PurgeInterval = 0
+	defer db.Close()
+
+	for i := 0; i < 300; i++ {
+		docID := fmt.Sprintf("doc%d", i)
+		rev, _, err := db.Put(docID, Body{})
+		assert.NoError(t, err)
+		_, err = db.DeleteDoc(docID, rev)
+		assert.NoError(t, err)
+	}
+
+	leakyBucket, ok := base.AsLeakyBucket(db.Bucket)
+	require.True(t, ok)
+
+	queryCount := 0
+	callbackFunc := func() {
+		queryCount++
+		if queryCount == 2 {
+			db.TombstoneCompactionManager.Stop()
+		}
+	}
+
+	if base.TestsDisableGSI() {
+		leakyBucket.SetPostQueryCallback(func(ddoc, viewName string, params map[string]interface{}) {
+			callbackFunc()
+		})
+	} else {
+		leakyBucket.SetPostN1QLQueryCallback(func() {
+			callbackFunc()
+		})
+	}
+
+	db.TombstoneCompactionManager.Start(map[string]interface{}{"database": db})
+
+	waitAndAssertCondition(t, func() bool {
+		return db.TombstoneCompactionManager.GetRunState() == BackgroundProcessStateStopped
+	})
+
+	var tombstoneCompactionStatus TombstoneManagerResponse
+	status, err := db.TombstoneCompactionManager.GetStatus()
+	assert.NoError(t, err)
+	err = base.JSONUnmarshal(status, &tombstoneCompactionStatus)
+	assert.NoError(t, err)
+
+	// Ensure only 250 docs have been purged which is one iteration of querying - Means stop did terminate the compaction
+	assert.Equal(t, QueryTombstoneBatch, int(tombstoneCompactionStatus.DocsPurged))
 }
 
 func waitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {

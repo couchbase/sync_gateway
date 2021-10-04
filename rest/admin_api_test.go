@@ -1355,9 +1355,9 @@ func TestResync(t *testing.T) {
 			response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 			assertStatus(t, response, http.StatusOK)
 
+			var resyncManagerStatus db.ResyncManagerResponse
 			err := rt.WaitForCondition(func() bool {
 				response := rt.SendAdminRequest("GET", "/db/_resync", "")
-				var resyncManagerStatus db.ResyncManagerResponse
 				err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
 				assert.NoError(t, err)
 				return resyncManagerStatus.State == db.BackgroundProcessStateStopped
@@ -1374,7 +1374,8 @@ func TestResync(t *testing.T) {
 			}
 
 			assert.Equal(t, testCase.expectedQueryCount, int(rt.GetDatabase().DbStats.Query(queryName).QueryCount.Value()))
-
+			assert.Equal(t, testCase.docsCreated, resyncManagerStatus.DocsProcessed)
+			assert.Equal(t, 0, resyncManagerStatus.DocsChanged)
 		})
 	}
 
@@ -1710,6 +1711,14 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		assert.True(t, float64(doc.Sequence) > docSeqArr[i])
 	}
 
+	response = rt.SendAdminRequest("GET", "/db/_resync", "")
+	assertStatus(t, response, http.StatusOK)
+	var resyncStatus db.ResyncManagerResponse
+	err = base.JSONUnmarshal(response.BodyBytes(), &resyncStatus)
+	assert.NoError(t, err)
+	assert.Equal(t, 12, resyncStatus.DocsChanged)
+	assert.Equal(t, 12, resyncStatus.DocsProcessed)
+
 	response = rt.SendAdminRequest("POST", "/db/_online", "")
 	assertStatus(t, response, http.StatusOK)
 
@@ -1720,7 +1729,6 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Data is wiped from walrus when brought back online
-	// if !base.UnitTestUrlIsWalrus() {
 	request, _ = http.NewRequest("GET", "/db/_changes?since="+changesResp.LastSeq, nil)
 	request.SetBasicAuth("user1", "letmein")
 	response = rt.Send(request)
@@ -1729,8 +1737,6 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	assert.Len(t, changesResp.Results, 3)
 	assert.True(t, changesRespContains(changesResp, "userdoc"))
 	assert.True(t, changesRespContains(changesResp, "userdoc2"))
-	// }
-
 }
 
 // Single threaded bring DB online

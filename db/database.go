@@ -507,7 +507,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 			if autoImport {
 				db := Database{DatabaseContext: dbContext}
 				bgt, err := NewBackgroundTask("Compact", dbContext.Name, func(ctx context.Context) error {
-					_, err := db.Compact(false, func(purgedDocCount int) {}, nil)
+					_, err := db.Compact(false, func(purgedDocCount *int) {}, nil)
 					if err != nil {
 						base.WarnfCtx(ctx, "Error trying to compact tombstoned documents for %q with error: %v", dbContext.Name, err)
 					}
@@ -1004,7 +1004,7 @@ func (db *DatabaseContext) DeleteUserSessions(userName string) error {
 // When compact is run, Sync Gateway initiates a normal delete operation for the document and xattr (a Sync Gateway purge).  This triggers
 // removal of the document from the index.  In the event that the document has already been purged by server, we need to recreate and delete
 // the document to accomplish the same result.
-type compactCallbackFunc func(purgedDocCount int)
+type compactCallbackFunc func(purgedDocCount *int)
 
 func (db *Database) Compact(skipRunningStateCheck bool, callback compactCallbackFunc, terminator chan struct{}) (int, error) {
 	if !skipRunningStateCheck {
@@ -1026,7 +1026,7 @@ func (db *Database) Compact(skipRunningStateCheck bool, callback compactCallback
 
 	purgedDocCount := 0
 
-	defer callback(purgedDocCount)
+	defer callback(&purgedDocCount)
 
 	ctx := db.Ctx
 
@@ -1086,7 +1086,7 @@ func (db *Database) Compact(skipRunningStateCheck bool, callback compactCallback
 		}
 		base.DebugfCtx(ctx, base.KeyAll, "Compacted %v tombstones", count)
 
-		callback(purgedDocCount)
+		callback(&purgedDocCount)
 
 		if resultCount < QueryTombstoneBatch {
 			break
@@ -1147,7 +1147,7 @@ func (context *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err
 // Re-runs the sync function on every current document in the database (if doCurrentDocs==true)
 // and/or imports docs in the bucket not known to the gateway (if doImportDocs==true).
 // To be used when the JavaScript sync function changes.
-type updateAllDocChannelsCallbackFunc func(docsProcessed, docsChanged int)
+type updateAllDocChannelsCallbackFunc func(docsProcessed, docsChanged *int)
 
 func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback updateAllDocChannelsCallbackFunc, terminator chan struct{}) (int, error) {
 	base.Infof(base.KeyAll, "Recomputing document channels...")
@@ -1166,7 +1166,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 	// In the event of an early exit we would like to ensure these values are up to date which they wouldn't be if they
 	// were unable to reach the end of the batch iteration.
 	defer func() {
-		callback(docsProcessed, docsChanged)
+		callback(&docsProcessed, &docsChanged)
 	}()
 
 	var unusedSequences []uint64
@@ -1325,7 +1325,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 			}
 		}
 
-		callback(docsProcessed, docsChanged)
+		callback(&docsProcessed, &docsChanged)
 
 		// Close query results
 		closeErr := results.Close()
