@@ -60,7 +60,7 @@ func verifyGoogle(idToken string, allowedAppID []string) (*GoogleResponse, error
 
 	res, err := http.Get(destUrl)
 	if err != nil {
-		return nil, err
+		return nil, base.HTTPErrorf(http.StatusGatewayTimeout, "Unable to send request to Google API: %v", err)
 	}
 	defer func() { _ = res.Body.Close() }()
 
