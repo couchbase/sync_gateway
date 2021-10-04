@@ -9220,5 +9220,10 @@ func TestTombstoneCompactionAPI(t *testing.T) {
 
 	assert.Equal(t, db.BackgroundProcessStateStopped, tombstoneCompactionStatus.State)
 	assert.Equal(t, nil, tombstoneCompactionStatus.LastError)
-	assert.Equal(t, 100, int(tombstoneCompactionStatus.DocsPurged))
+
+	if base.TestUseXattrs() {
+		assert.Equal(t, 100, int(tombstoneCompactionStatus.DocsPurged))
+	} else {
+		assert.Equal(t, 0, int(tombstoneCompactionStatus.DocsPurged))
+	}
 }
