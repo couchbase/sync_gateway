@@ -1165,9 +1165,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 
 	// In the event of an early exit we would like to ensure these values are up to date which they wouldn't be if they
 	// were unable to reach the end of the batch iteration.
-	defer func() {
-		callback(&docsProcessed, &docsChanged)
-	}()
+	defer callback(&docsProcessed, &docsChanged)
 
 	var unusedSequences []uint64
 
