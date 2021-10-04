@@ -557,6 +557,15 @@ func TestCORSOrigin(t *testing.T) {
 	goassert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "")
 }
 
+// assertGatewayStatus is like assertStatus but with StatusGatewayTimeout error checking for temporary network failures.
+func assertGatewayStatus(t *testing.T, response *TestResponse, expected int) {
+	if response.Code == http.StatusGatewayTimeout {
+		respBody := response.Body.String()
+		t.Skipf("WARNING: Host could not be reached: %s", respBody)
+	}
+	assertStatus(t, response, expected)
+}
+
 func TestCORSLoginOriginOnSessionPost(t *testing.T) {
 
 	if testing.Short() {
@@ -574,17 +583,7 @@ func TestCORSLoginOriginOnSessionPost(t *testing.T) {
 	assertStatus(t, response, 401)
 
 	response = rt.SendRequestWithHeaders("POST", "/db/_facebook", `{"access_token":"true"}`, reqHeaders)
-
-	// Skip test if dial tcp fails with no such host.
-	// This is to allow tests to be run offline/without third-party dependencies.
-	if response.Code == http.StatusInternalServerError {
-		respBody := response.Body.String()
-		if strings.Contains(respBody, "i/o timeout") || strings.Contains(respBody, "no such host") {
-			t.Skipf("WARNING: Facebook host could not be reached: %s", response.Body.String())
-		}
-	}
-
-	assertStatus(t, response, 401)
+	assertGatewayStatus(t, response, 401)
 }
 
 // #issue 991
@@ -616,17 +615,7 @@ func TestNoCORSOriginOnSessionPost(t *testing.T) {
 	assertStatus(t, response, 400)
 
 	response = rt.SendRequestWithHeaders("POST", "/db/_facebook", `{"access_token":"true"}`, reqHeaders)
-
-	// Skip test if dial tcp fails with no such host.
-	// This is to allow tests to be run offline/without third-party dependencies.
-	if response.Code == http.StatusInternalServerError {
-		respBody := response.Body.String()
-		if strings.Contains(respBody, "i/o timeout") || strings.Contains(respBody, "no such host") {
-			t.Skipf("WARNING: Facebook host could not be reached: %s", response.Body.String())
-		}
-	}
-
-	assertStatus(t, response, 400)
+	assertGatewayStatus(t, response, 400)
 }
 
 func TestCORSLogoutOriginOnSessionDelete(t *testing.T) {

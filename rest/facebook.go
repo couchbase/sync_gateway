@@ -58,7 +58,7 @@ func verifyFacebook(fbUrl, accessToken string) (*FacebookResponse, error) {
 
 	res, err := http.Get(destUrl)
 	if err != nil {
-		return nil, err
+		return nil, base.HTTPErrorf(http.StatusGatewayTimeout, "Unable to send request to Facebook API: %v", err)
 	}
 	defer func() { _ = res.Body.Close() }()
 
