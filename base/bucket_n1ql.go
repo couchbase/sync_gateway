@@ -59,7 +59,7 @@ func (bucket *CouchbaseBucketGoCB) Query(statement string, params interface{}, c
 	for i := 1; i <= MaxQueryRetries; i++ {
 
 		Tracef(KeyQuery, "Executing N1QL query: %v", UD(n1qlQuery))
-		queryResults, queryErr := bucket.ExecuteN1qlQuery(n1qlQuery, params)
+		queryResults, queryErr := bucket.executeN1qlQuery(n1qlQuery, params)
 
 		if queryErr == nil {
 			return queryResults, queryErr
@@ -138,7 +138,7 @@ func (bucket *CouchbaseBucketGoCB) buildIndexes(indexNames []string) error {
 
 	buildStatement := fmt.Sprintf("BUILD INDEX ON `%s`(%s)", bucket.GetName(), indexNameList)
 	n1qlQuery := gocb.NewN1qlQuery(buildStatement)
-	_, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
+	_, err := bucket.executeN1qlQuery(n1qlQuery, nil)
 
 	// If indexer reports build will be completed in the background, wait to validate build actually happens.
 	if IsIndexerRetryBuildError(err) {
@@ -169,7 +169,7 @@ func (bucket *CouchbaseBucketGoCB) BuildDeferredIndexes(indexSet []string) error
 		"AND indexes.name IN [%s]",
 		bucket.GetName(), StringSliceToN1QLArray(indexSet, "'"))
 	n1qlQuery := gocb.NewN1qlQuery(statement)
-	results, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
+	results, err := bucket.executeN1qlQuery(n1qlQuery, nil)
 	if err != nil {
 		return err
 	}
@@ -193,7 +193,15 @@ func (bucket *CouchbaseBucketGoCB) BuildDeferredIndexes(indexSet []string) error
 	Infof(KeyQuery, "Building deferred indexes: %v", deferredIndexes)
 	buildErr := bucket.buildIndexes(deferredIndexes)
 	return buildErr
+}
 
+// executeN1qlQuery acts as a simple wrapper around the gocb ExecuteN1qlQuery whilst providing a sync gateway imposed
+// concurrent query limit
+func (bucket *CouchbaseBucketGoCB) executeN1qlQuery(query *gocb.N1qlQuery, params interface{}) (gocb.QueryResults, error) {
+	bucket.waitForAvailViewOp()
+	defer bucket.releaseViewOp()
+
+	return bucket.ExecuteN1qlQuery(query, params)
 }
 
 // CreateIndex creates the specified index in the current bucket using on the specified index expression.
@@ -215,7 +223,7 @@ func (bucket *CouchbaseBucketGoCB) createIndex(indexName string, createStatement
 
 	Debugf(KeyQuery, "Attempting to create index using statement: [%s]", UD(createStatement))
 	n1qlQuery := gocb.NewN1qlQuery(createStatement)
-	results, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
+	results, err := bucket.executeN1qlQuery(n1qlQuery, nil)
 	if err != nil && !IsIndexerRetryIndexError(err) {
 		return pkgerrors.WithStack(RedactErrorf("Error creating index with statement: %s.  Error: %v", UD(createStatement), err))
 	}
@@ -318,7 +326,7 @@ func (bucket *CouchbaseBucketGoCB) GetIndexMeta(indexName string) (exists bool, 
 func (bucket *CouchbaseBucketGoCB) getIndexMetaWithoutRetry(indexName string) (exists bool, meta *gocb.IndexInfo, err error) {
 	statement := fmt.Sprintf("SELECT state from system:indexes WHERE indexes.name = '%s' AND indexes.keyspace_id = '%s'", indexName, bucket.GetName())
 	n1qlQuery := gocb.NewN1qlQuery(statement)
-	results, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
+	results, err := bucket.executeN1qlQuery(n1qlQuery, nil)
 	if err != nil {
 		return false, nil, err
 	}
@@ -340,7 +348,7 @@ func (bucket *CouchbaseBucketGoCB) DropIndex(indexName string) error {
 	statement := fmt.Sprintf("DROP INDEX `%s`.`%s`", bucket.GetName(), indexName)
 	n1qlQuery := gocb.NewN1qlQuery(statement)
 
-	results, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
+	results, err := bucket.executeN1qlQuery(n1qlQuery, nil)
 	if err != nil && !IsIndexerRetryIndexError(err) {
 		return err
 	}
