@@ -448,8 +448,14 @@ func (h *handler) handlePutDbConfig() (err error) {
 					return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 				}
 
-				if err := base.ConfigMerge(&bucketDbConfig.DbConfig, dbConfig); err != nil {
-					return nil, err
+				if h.rq.Method == http.MethodPost {
+					base.TracefCtx(h.rq.Context(), base.KeyConfig, "merging upserted config into bucket config")
+					if err := base.ConfigMerge(&bucketDbConfig.DbConfig, dbConfig); err != nil {
+						return nil, err
+					}
+				} else {
+					base.TracefCtx(h.rq.Context(), base.KeyConfig, "using config as-is without merge")
+					bucketDbConfig.DbConfig = *dbConfig
 				}
 
 				// TODO: CBG-1619 We're validating but we're not actually starting up the database before we persist the update!
