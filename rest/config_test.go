@@ -718,8 +718,8 @@ func TestParseCommandLineWithBadConfigContent(t *testing.T) {
 
 	args := []string{"sync_gateway", configFile.Name()}
 	config, err := ParseCommandLine(args, flag.ContinueOnError)
-	require.Error(t, err, "Parsing configuration file with an unknown field")
-	assert.NotNil(t, config)
+	assert.Error(t, err, "Parsing configuration file with an unknown field")
+	assert.Nil(t, config)
 }
 
 func TestParseCommandLineWithConfigContent(t *testing.T) {

@@ -515,10 +515,7 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*LegacyServer
 		for _, filename := range flagSet.Args() {
 			newConfig, newConfigErr := LoadLegacyServerConfig(filename)
 
-			if pkgerrors.Cause(newConfigErr) == base.ErrUnknownField {
-				// Delay returning this error so we can continue with other setup
-				err = pkgerrors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", filename))
-			} else if newConfigErr != nil {
+			if newConfigErr != nil {
 				return config, pkgerrors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", filename))
 			}
 
