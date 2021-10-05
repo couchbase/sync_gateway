@@ -34,7 +34,7 @@ import (
 const (
 	MaxConcurrentSingleOps = 1000 // Max 1000 concurrent single bucket ops
 	MaxConcurrentBulkOps   = 35   // Max 35 concurrent bulk ops
-	MaxConcurrentViewOps   = 100  // Max concurrent view ops
+	MaxConcurrentQueryOps  = 1000 // Max concurrent query ops
 	MaxBulkBatchSize       = 100  // Maximum number of ops per bulk call
 
 	// Causes the write op to block until the change has been replicated to numNodesReplicateTo many nodes.
@@ -68,7 +68,7 @@ type CouchbaseBucketGoCB struct {
 	Spec         BucketSpec    // keep a copy of the BucketSpec for DCP usage
 	singleOps    chan struct{} // Manages max concurrent single ops (per kv node)
 	bulkOps      chan struct{} // Manages max concurrent bulk ops (per kv node)
-	viewOps      chan struct{} // Manages max concurrent view ops (per kv node)
+	viewQueryOps chan struct{} // Manages max concurrent view / query ops (per kv node)
 
 	clusterCompatMajorVersion, clusterCompatMinorVersion uint64 // E.g: 6 and 0 for 6.0.3
 }
@@ -170,14 +170,15 @@ func GetCouchbaseBucketGoCBFromAuthenticatedCluster(cluster *gocb.Cluster, spec 
 	// to avoid gocb queue overflow issues
 	singleOpsQueue := make(chan struct{}, MaxConcurrentSingleOps*nodeCount*numPools)
 	bucketOpsQueue := make(chan struct{}, MaxConcurrentBulkOps*nodeCount*numPools)
-	viewOpsQueue := make(chan struct{}, MaxConcurrentViewOps*nodeCount)
+
+	viewOpsQueue := make(chan struct{}, spec.MaxConcurrentQueryOps)
 
 	bucket = &CouchbaseBucketGoCB{
 		Bucket:                    goCBBucket,
 		Spec:                      spec,
 		singleOps:                 singleOpsQueue,
 		bulkOps:                   bucketOpsQueue,
-		viewOps:                   viewOpsQueue,
+		viewQueryOps:              viewOpsQueue,
 		clusterCompatMajorVersion: uint64(clusterCompatMajor),
 		clusterCompatMinorVersion: uint64(clusterCompatMinor),
 	}
@@ -2734,11 +2735,11 @@ func asStale(value interface{}) gocb.StaleMode {
 
 // This prevents Sync Gateway from having too many outstanding concurrent view queries against Couchbase Server
 func (bucket *CouchbaseBucketGoCB) waitForAvailViewOp() {
-	bucket.viewOps <- struct{}{}
+	bucket.viewQueryOps <- struct{}{}
 }
 
 func (bucket *CouchbaseBucketGoCB) releaseViewOp() {
-	<-bucket.viewOps
+	<-bucket.viewQueryOps
 }
 
 func (bucket *CouchbaseBucketGoCB) OverrideClusterCompatVersion(clusterCompatMajorVersion, clusterCompatMinorVersion uint64) {

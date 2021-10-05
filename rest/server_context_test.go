@@ -272,3 +272,32 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 	assert.Equal(t, server, dbContext.BucketSpec.Server)
 	assert.Equal(t, bucketName, dbContext.BucketSpec.BucketName)
 }
+
+func TestViewQueryBucketOptionsOnBucketSpec(t *testing.T) {
+	testCases := []struct {
+		Name              string
+		OperationsPerNode *int
+		ExpectedValue     int
+	}{
+		{
+			Name:              "Set Value",
+			OperationsPerNode: base.IntPtr(10),
+			ExpectedValue:     10,
+		},
+		{
+			Name:              "Set Nil",
+			OperationsPerNode: nil,
+			ExpectedValue:     base.MaxConcurrentQueryOps,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.Name, func(t *testing.T) {
+			dbConfig := &DbConfig{BucketConfig: BucketConfig{MaxConcurrentQueryOps: testCase.OperationsPerNode}}
+			spec, err := GetBucketSpec(dbConfig)
+			assert.NoError(t, err)
+
+			assert.Equal(t, testCase.ExpectedValue, spec.MaxConcurrentQueryOps)
+		})
+	}
+}
