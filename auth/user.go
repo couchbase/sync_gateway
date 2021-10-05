@@ -42,17 +42,11 @@ type userImplBody struct {
 	OldExplicitRoles_ []string `json:"admin_roles,omitempty"` // obsolete; declared for migration
 }
 
-var kValidEmailRegexp *regexp.Regexp
+// Permissive email validation (accepts ALL valid emails, but does not reject all invalid emails)
+// Regexp in English: Allow one, and only one @ symbol between any two things
+var kValidEmailRegexp = regexp.MustCompile(`^[^@]+@[^@]+$`)
 
 type VBHashFunction func(string) uint32
-
-func init() {
-	var err error
-	kValidEmailRegexp, err = regexp.Compile(`^[-+.\w]+@\w[-.\w]+$`)
-	if err != nil {
-		panic("Bad kValidEmailRegexp")
-	}
-}
 
 func IsValidEmail(email string) bool {
 	return kValidEmailRegexp.MatchString(email)
