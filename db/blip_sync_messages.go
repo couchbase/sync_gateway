@@ -71,11 +71,12 @@ const (
 	RevMessageDeltaSrc    = "deltaSrc"
 
 	// norev message properties
-	NorevMessageId     = "id"
-	NorevMessageRev    = "rev"
-	NorevMessageSeq    = "seq"
-	NorevMessageError  = "error"
-	NorevMessageReason = "reason"
+	NorevMessageId       = "id"
+	NorevMessageRev      = "rev"
+	NorevMessageSeq      = "seq" // Use when protocol version 2 with client type ISGR
+	NorevMessageSequence = "sequence"
+	NorevMessageError    = "error"
+	NorevMessageReason   = "reason"
 
 	// changes message properties
 	ChangesMessageIgnoreNoConflicts = "ignoreNoConflicts"
@@ -415,6 +416,10 @@ func (nrm *noRevMessage) SetRev(rev string) {
 
 func (nrm *noRevMessage) SetSeq(seq SequenceID) {
 	nrm.Properties[NorevMessageSeq] = seq.String()
+}
+
+func (nrm *noRevMessage) SetSequence(sequence SequenceID) {
+	nrm.Properties[NorevMessageSequence] = sequence.String()
 }
 
 func (nrm *noRevMessage) SetReason(reason string) {
