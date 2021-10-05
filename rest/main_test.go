@@ -11,7 +11,6 @@ licenses/APL2.txt.
 package rest
 
 import (
-	"flag"
 	"os"
 	"testing"
 
@@ -67,35 +66,30 @@ func TestParseFlags(t *testing.T) {
 	testCases := []struct {
 		name                            string
 		osArgs                          []string
-		expectError                     bool
-		expectedError                   error // Leave blank to not check error text
+		expectedError                   *string // Text to check error contains
 		expectedDisablePersistentConfig *bool
 	}{
 		{
 			name:                            "Help error returned on -h",
 			osArgs:                          []string{"-h"},
-			expectError:                     true,
-			expectedError:                   flag.ErrHelp,
+			expectedError:                   base.StringPtr("help requested"),
 			expectedDisablePersistentConfig: nil,
 		},
 		{
 			name:                            "Unknown flag",
 			osArgs:                          []string{"-unknown-flag"},
-			expectError:                     true,
-			expectedError:                   nil,
+			expectedError:                   base.StringPtr("flag provided but not defined: -unknown-flag"),
 			expectedDisablePersistentConfig: nil,
 		},
 		{
 			name:                            "Disable persistent config",
 			osArgs:                          []string{"-disable_persistent_config"},
-			expectError:                     false,
 			expectedError:                   nil,
 			expectedDisablePersistentConfig: base.BoolPtr(true),
 		},
 		{
 			name:                            "Config flag",
 			osArgs:                          []string{"-bootstrap.server", "1.2.3.4"},
-			expectError:                     false,
 			expectedError:                   nil,
 			expectedDisablePersistentConfig: base.BoolPtr(false),
 		},
@@ -103,11 +97,11 @@ func TestParseFlags(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			_, _, disablePersistentConfig, err := parseFlags(append(osArgsPrefix, test.osArgs...))
-			if test.expectError {
-				assert.Error(t, err)
-				if test.expectedError != nil {
-					assert.EqualError(t, test.expectedError, err.Error())
-				}
+			if test.expectedError != nil {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), *test.expectedError)
+			} else {
+				assert.NoError(t, err)
 			}
 			assert.Equal(t, test.expectedDisablePersistentConfig, disablePersistentConfig)
 		})
