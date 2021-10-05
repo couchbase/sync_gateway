@@ -1079,6 +1079,11 @@ func (db *Database) Compact(skipRunningStateCheck bool, callback compactCallback
 			}
 		}
 
+		err = results.Close()
+		if err != nil {
+			return 0, err
+		}
+
 		// Now purge them from all channel caches
 		count := len(purgedDocs)
 		purgedDocCount += count
