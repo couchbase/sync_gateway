@@ -2770,6 +2770,7 @@ func TestBlipNorev(t *testing.T) {
 	norevMsg := db.NewNoRevMessage()
 	norevMsg.SetId("docid")
 	norevMsg.SetRev("1-a")
+	norevMsg.SetSequence(db.SequenceID{Seq: 50})
 	norevMsg.SetError("404")
 	norevMsg.SetReason("couldn't send xyz")
 
@@ -2786,6 +2787,20 @@ func TestBlipNorev(t *testing.T) {
 	resp := norevMsg.Response()
 	assert.NotNil(t, resp)
 	assert.Equal(t, "handleNoRev", resp.Properties[db.SGHandler])
+}
+
+// TestNoRevSetSeq makes sure the correct string is used with the corresponding function
+func TestNoRevSetSeq(t *testing.T) {
+	norevMsg := db.NewNoRevMessage()
+	assert.Equal(t, "", norevMsg.Properties[db.NorevMessageSeq])
+	assert.Equal(t, "", norevMsg.Properties[db.NorevMessageSequence])
+
+	norevMsg.SetSequence(db.SequenceID{Seq: 50})
+	assert.Equal(t, "50", norevMsg.Properties[db.NorevMessageSequence])
+
+	norevMsg.SetSeq(db.SequenceID{Seq: 60})
+	assert.Equal(t, "60", norevMsg.Properties[db.NorevMessageSeq])
+
 }
 
 // TestBlipDeltaSyncPushAttachment tests updating a doc that has an attachment with a delta that doesn't modify the attachment.

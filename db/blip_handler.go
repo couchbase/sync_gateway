@@ -722,7 +722,11 @@ func (bh *blipHandler) handleNoRev(rq *blip.Message) error {
 		rq.String(), base.UD(rq.Properties[NorevMessageId]), rq.Properties[NorevMessageRev], rq.Properties[NorevMessageError], rq.Properties[NorevMessageReason])
 
 	if bh.sgr2PullProcessedSeqCallback != nil {
-		bh.sgr2PullProcessedSeqCallback(rq.Properties[NorevMessageSeq], IDAndRev{DocID: rq.Properties[NorevMessageId], RevID: rq.Properties[NorevMessageRev]})
+		if bh.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV2 && bh.clientType == BLIPClientTypeSGR2 {
+			bh.sgr2PullProcessedSeqCallback(rq.Properties[NorevMessageSeq], IDAndRev{DocID: rq.Properties[NorevMessageId], RevID: rq.Properties[NorevMessageRev]})
+		} else {
+			bh.sgr2PullProcessedSeqCallback(rq.Properties[NorevMessageSequence], IDAndRev{DocID: rq.Properties[NorevMessageId], RevID: rq.Properties[NorevMessageRev]})
+		}
 	}
 
 	// Couchbase Lite always sends noreply=true for norev profiles
