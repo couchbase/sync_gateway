@@ -149,6 +149,7 @@ func (il *importListener) Stop() {
 			}
 			// ClosePIndex calls are synchronous, so can stop manager once they've completed
 			il.cbgtContext.Manager.Stop()
+			il.cbgtContext.RemoveFeedCredentials(il.database.Name)
 
 			// TODO: Shut down the cfg (when cfg supports)
 		}

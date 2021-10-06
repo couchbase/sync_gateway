@@ -7,14 +7,10 @@ import (
 	"fmt"
 	"io"
 	"strconv"
-	"strings"
 
 	"github.com/couchbase/cbgt"
-	"github.com/couchbase/go-couchbase"
-	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
-	pkgerrors "github.com/pkg/errors"
 )
 
 // vbucketIdStrings is a memorized array of 1024 entries for fast
@@ -246,6 +242,9 @@ func vbNoToPartition(vbNo uint16) string {
 	return vbucketIdStrings[vbNo]
 }
 
+/* Not in use, retaining as reference for future enhancement
+  TODO: remove auth from feedParams and use cbgtFeedParams before re-enabling
+
 // This starts a cbdatasource powered DCP Feed using an entirely separate connection to Couchbase Server than anything the existing
 // bucket is using, and it uses the go-couchbase cbdatasource DCP abstraction layer
 func StartCbgtDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
@@ -272,10 +271,7 @@ func StartCbgtGocbFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgumen
 		return err
 	}
 
-	feedParams, err := cbgtFeedParams(spec)
-	if err != nil {
-		return err
-	}
+	feedParams := cbgt.NewDCPFeedParams()
 
 	bucketUUID, err := bucket.UUID()
 	if err != nil {
@@ -356,6 +352,7 @@ func StartCbgtGocbFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgumen
 	return nil
 
 }
+
 
 // This starts a cbdatasource powered DCP Feed using an entirely separate connection to Couchbase Server than anything the existing
 // bucket is using, and it uses the go-couchbase cbdatasource DCP abstraction layer
@@ -502,6 +499,7 @@ func StartCbgtCbdatasourceFeed(bucket Bucket, spec BucketSpec, args sgbucket.Fee
 	return nil
 
 }
+*/
 
 func makeFeedEventForDest(key []byte, val []byte, cas uint64, vbNo uint16, expiry uint32, dataType uint8, opcode sgbucket.FeedOpcode) sgbucket.FeedEvent {
 	return makeFeedEvent(key, val, dataType, cas, expiry, vbNo, opcode)
