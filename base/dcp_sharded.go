@@ -113,8 +113,6 @@ func createCBGTIndex(c *CbgtContext, dbName string, bucket Bucket, spec BucketSp
 	if spec.Certpath != "" && spec.Keypath != "" {
 		couchbase.SetCertFile(spec.Certpath)
 		couchbase.SetKeyFile(spec.Keypath)
-	}
-	if spec.CACertPath != "" {
 		couchbase.SetRootFile(spec.CACertPath)
 		couchbase.SetSkipVerify(false)
 	}

@@ -286,8 +286,6 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		couchbase.SetCertFile(spec.Certpath)
 		couchbase.SetKeyFile(spec.Keypath)
 		auth = NoPasswordAuthHandler{Handler: spec.Auth}
-	}
-	if spec.CACertPath != "" {
 		couchbase.SetRootFile(spec.CACertPath)
 		couchbase.SetSkipVerify(false)
 	}
