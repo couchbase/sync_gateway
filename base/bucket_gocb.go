@@ -171,7 +171,11 @@ func GetCouchbaseBucketGoCBFromAuthenticatedCluster(cluster *gocb.Cluster, spec 
 	singleOpsQueue := make(chan struct{}, MaxConcurrentSingleOps*nodeCount*numPools)
 	bucketOpsQueue := make(chan struct{}, MaxConcurrentBulkOps*nodeCount*numPools)
 
-	viewOpsQueue := make(chan struct{}, spec.MaxConcurrentQueryOps)
+	maxConcurrentQueryOps := MaxConcurrentQueryOps
+	if spec.MaxConcurrentQueryOps != nil {
+		maxConcurrentQueryOps = *spec.MaxConcurrentQueryOps
+	}
+	viewOpsQueue := make(chan struct{}, maxConcurrentQueryOps)
 
 	bucket = &CouchbaseBucketGoCB{
 		Bucket:                    goCBBucket,
