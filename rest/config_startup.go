@@ -152,6 +152,7 @@ type DatabaseCredentialsConfig struct {
 	Password     string `json:"password,omitempty"       help:"Password for authenticating to the bucket"`
 	X509CertPath string `json:"x509_cert_path,omitempty" help:"Cert path (public key) for X.509 bucket auth"`
 	X509KeyPath  string `json:"x509_key_path,omitempty"  help:"Key path (private key) for X.509 bucket auth"`
+	CACertPath   string `json:"ca_cert_path,omitempty"   help:"CA cert path for database connections"`
 }
 
 type DeprecatedConfig struct {

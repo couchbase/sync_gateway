@@ -256,9 +256,10 @@ func (dbc *DbConfig) inheritFromBootstrap(b BootstrapConfig) {
 
 func (dbConfig *DbConfig) setPerDatabaseCredentials(dbCredentials DatabaseCredentialsConfig) {
 	// X.509 overrides username/password
-	if dbCredentials.X509CertPath != "" || dbCredentials.X509KeyPath != "" {
+	if dbCredentials.X509CertPath != "" || dbCredentials.X509KeyPath != "" || dbCredentials.CACertPath != "" {
 		dbConfig.CertPath = dbCredentials.X509CertPath
 		dbConfig.KeyPath = dbCredentials.X509KeyPath
+		dbConfig.CACertPath = dbCredentials.CACertPath
 		dbConfig.Username = ""
 		dbConfig.Password = ""
 	} else {
@@ -266,6 +267,7 @@ func (dbConfig *DbConfig) setPerDatabaseCredentials(dbCredentials DatabaseCreden
 		dbConfig.Password = dbCredentials.Password
 		dbConfig.CertPath = ""
 		dbConfig.KeyPath = ""
+		dbConfig.CACertPath = ""
 	}
 }
 
@@ -1119,19 +1121,16 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 		cnf.cas = cas
 
 		// TODO: This code is mostly copied from fetchConfigs, move into shared function with DbConfig REST API work?
-
-		// inherit properties the bootstrap config
-		cnf.CACertPath = sc.config.Bootstrap.CACertPath
-
 		bucketCopy := bucket
 		cnf.Bucket = &bucketCopy
 
 		// any authentication fields defined on the dbconfig take precedence over any in the bootstrap config
-		if cnf.Username == "" && cnf.Password == "" && cnf.CertPath == "" && cnf.KeyPath == "" {
+		if cnf.Username == "" && cnf.Password == "" && cnf.CertPath == "" && cnf.KeyPath == "" && cnf.CACertPath == "" {
 			cnf.Username = sc.config.Bootstrap.Username
 			cnf.Password = sc.config.Bootstrap.Password
 			cnf.CertPath = sc.config.Bootstrap.X509CertPath
 			cnf.KeyPath = sc.config.Bootstrap.X509KeyPath
+			cnf.CACertPath = sc.config.Bootstrap.CACertPath
 		}
 		base.Tracef(base.KeyConfig, "Got config for bucket %q with cas %d", bucket, cas)
 		return true, &cnf, nil
@@ -1165,9 +1164,6 @@ func (sc *ServerContext) fetchConfigs() (dbNameConfigs map[string]DatabaseConfig
 
 		cnf.cas = cas
 
-		// inherit properties the bootstrap config
-		cnf.CACertPath = sc.config.Bootstrap.CACertPath
-
 		bucketCopy := bucket
 		cnf.Bucket = &bucketCopy
 
@@ -1177,11 +1173,12 @@ func (sc *ServerContext) fetchConfigs() (dbNameConfigs map[string]DatabaseConfig
 		}
 
 		// any authentication fields defined on the dbconfig take precedence over any in the bootstrap config
-		if cnf.Username == "" && cnf.Password == "" && cnf.CertPath == "" && cnf.KeyPath == "" {
+		if cnf.Username == "" && cnf.Password == "" && cnf.CertPath == "" && cnf.KeyPath == "" && cnf.CACertPath == "" {
 			cnf.Username = sc.config.Bootstrap.Username
 			cnf.Password = sc.config.Bootstrap.Password
 			cnf.CertPath = sc.config.Bootstrap.X509CertPath
 			cnf.KeyPath = sc.config.Bootstrap.X509KeyPath
+			cnf.CACertPath = sc.config.Bootstrap.CACertPath
 		}
 
 		base.Debugf(base.KeyConfig, "Got config for group %q from bucket %q with cas %d", sc.config.Bootstrap.ConfigGroupID, bucket, cas)

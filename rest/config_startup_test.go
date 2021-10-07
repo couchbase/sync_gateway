@@ -1,6 +1,8 @@
 package rest
 
 import (
+	"fmt"
+	"net/http"
 	"testing"
 	"time"
 
@@ -109,4 +111,41 @@ func TestStartupConfigMerge(t *testing.T) {
 			assert.Equal(t, test.expected, test.config)
 		})
 	}
+}
+
+func TestDBLevelCACert(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+
+	config := bootstrapStartupConfigForTest(t)
+	config.DatabaseCredentials = map[string]*DatabaseCredentialsConfig{
+		"db": {
+			Username:   base.TestClusterUsername(),
+			Password:   base.TestClusterPassword(),
+			CACertPath: "non_existent_ca_cert.ca",
+		},
+	}
+	sc, err := setupServerContext(&config, true)
+	require.NoError(t, err)
+	defer sc.Close()
+
+	serverErr := make(chan error, 0)
+	go func() {
+		serverErr <- startServer(&config, sc)
+	}()
+	require.NoError(t, sc.waitForRESTAPIs())
+
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer func() {
+		fmt.Println("closing test bucket")
+		tb.Close()
+	}()
+	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/",
+		`{"bucket": "`+tb.GetName()+`", "num_index_replicas": 0}`,
+	)
+	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 }
