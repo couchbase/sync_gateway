@@ -98,13 +98,28 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 		return nil, err
 	}
 
-	queryOpsQueue := make(chan struct{}, MaxConcurrentQueryOps)
 	collection := &Collection{
 		Collection: bucket.DefaultCollection(),
 		Spec:       spec,
 		cluster:    cluster,
-		queryOps:   queryOpsQueue,
 	}
+
+	// Set limits for concurrent query and kv ops
+	collection.queryOps = make(chan struct{}, MaxConcurrentQueryOps)
+
+	// gocb v2 has a queue size of 2048 per pool per server node.
+	// SG conservatively limits to 1000 per pool per node, to handle imbalanced
+	// request distribution between server nodes.
+	nodeCount := 1
+	mgmtEps, mgmtEpsErr := collection.MgmtEps()
+	if mgmtEpsErr != nil && len(mgmtEps) > 0 {
+		nodeCount = len(mgmtEps)
+	}
+	numPools := 1
+	if spec.KvPoolSize > 0 {
+		numPools = spec.KvPoolSize
+	}
+	collection.kvOps = make(chan struct{}, MaxConcurrentSingleOps*nodeCount*numPools)
 
 	return collection, nil
 }
@@ -113,7 +128,8 @@ type Collection struct {
 	*gocb.Collection               // underlying gocb Collection
 	Spec             BucketSpec    // keep a copy of the BucketSpec for DCP usage
 	cluster          *gocb.Cluster // Associated cluster - required for N1QL operations
-	queryOps         chan struct{} // Manages max concurrent view ops (per kv node)
+	queryOps         chan struct{} // Manages max concurrent query ops
+	kvOps            chan struct{} // Manages max concurrent kv ops
 }
 
 // DataStore
@@ -165,6 +181,10 @@ func (c *Collection) IsSupported(feature sgbucket.DataStoreFeature) bool {
 // KV store
 
 func (c *Collection) Get(k string, rv interface{}) (cas uint64, err error) {
+
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
+
 	getOptions := &gocb.GetOptions{
 		Transcoder: NewSGJSONTranscoder(),
 	}
@@ -177,6 +197,9 @@ func (c *Collection) Get(k string, rv interface{}) (cas uint64, err error) {
 }
 
 func (c *Collection) GetRaw(k string) (rv []byte, cas uint64, err error) {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
+
 	getOptions := &gocb.GetOptions{
 		Transcoder: NewSGRawTranscoder(),
 	}
@@ -190,6 +213,9 @@ func (c *Collection) GetRaw(k string) (rv []byte, cas uint64, err error) {
 }
 
 func (c *Collection) GetAndTouchRaw(k string, exp uint32) (rv []byte, cas uint64, err error) {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
+
 	getAndTouchOptions := &gocb.GetAndTouchOptions{
 		Transcoder: NewSGRawTranscoder(),
 	}
@@ -203,6 +229,9 @@ func (c *Collection) GetAndTouchRaw(k string, exp uint32) (rv []byte, cas uint64
 }
 
 func (c *Collection) Touch(k string, exp uint32) (cas uint64, err error) {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
+
 	result, err := c.Collection.Touch(k, CbsExpiryToDuration(exp), nil)
 	if err != nil {
 		return 0, err
@@ -211,6 +240,9 @@ func (c *Collection) Touch(k string, exp uint32) (cas uint64, err error) {
 }
 
 func (c *Collection) Add(k string, exp uint32, v interface{}) (added bool, err error) {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
+
 	opts := &gocb.InsertOptions{
 		Expiry:     CbsExpiryToDuration(exp),
 		Transcoder: NewSGJSONTranscoder(),
@@ -227,6 +259,9 @@ func (c *Collection) Add(k string, exp uint32, v interface{}) (added bool, err e
 }
 
 func (c *Collection) AddRaw(k string, exp uint32, v []byte) (added bool, err error) {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
+
 	opts := &gocb.InsertOptions{
 		Expiry:     CbsExpiryToDuration(exp),
 		Transcoder: NewSGRawTranscoder(),
@@ -243,6 +278,9 @@ func (c *Collection) AddRaw(k string, exp uint32, v []byte) (added bool, err err
 }
 
 func (c *Collection) Set(k string, exp uint32, v interface{}) error {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
+
 	upsertOptions := &gocb.UpsertOptions{
 		Expiry:     CbsExpiryToDuration(exp),
 		Transcoder: NewSGJSONTranscoder(),
@@ -256,6 +294,9 @@ func (c *Collection) Set(k string, exp uint32, v interface{}) error {
 }
 
 func (c *Collection) SetRaw(k string, exp uint32, v []byte) error {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
+
 	upsertOptions := &gocb.UpsertOptions{
 		Expiry:     CbsExpiryToDuration(exp),
 		Transcoder: NewSGRawTranscoder(),
@@ -265,6 +306,9 @@ func (c *Collection) SetRaw(k string, exp uint32, v []byte) error {
 }
 
 func (c *Collection) WriteCas(k string, flags int, exp uint32, cas uint64, v interface{}, opt sgbucket.WriteOptions) (casOut uint64, err error) {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
+
 	var result *gocb.MutationResult
 	if cas == 0 {
 		insertOpts := &gocb.InsertOptions{
@@ -298,6 +342,9 @@ func (c *Collection) Delete(k string) error {
 }
 
 func (c *Collection) Remove(k string, cas uint64) (casOut uint64, err error) {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
+
 	result, errRemove := c.Collection.Remove(k, &gocb.RemoveOptions{Cas: gocb.Cas(cas)})
 	if errRemove == nil && result != nil {
 		casOut = uint64(result.Cas())
@@ -317,7 +364,11 @@ func (c *Collection) Update(k string, exp uint32, callback sgbucket.UpdateFunc) 
 		}
 
 		var cas uint64
+
+		c.waitForAvailKvOp()
 		getResult, err := c.Collection.Get(k, getOptions)
+		c.releaseKvOp()
+
 		if err != nil {
 			if !errors.Is(err, gocb.ErrDocumentNotFound) {
 				// Unexpected error, abort
@@ -346,6 +397,8 @@ func (c *Collection) Update(k string, exp uint32, callback sgbucket.UpdateFunc) 
 		var casGoCB gocb.Cas
 		var result *gocb.MutationResult
 		casRetry := false
+
+		c.waitForAvailKvOp()
 		if cas == 0 {
 			// If the Get fails, the cas will be 0 and so call Insert().
 			// If we get an error on the insert, due to a race, this will
@@ -387,6 +440,7 @@ func (c *Collection) Update(k string, exp uint32, callback sgbucket.UpdateFunc) 
 				}
 			}
 		}
+		c.releaseKvOp()
 
 		if casRetry {
 			// retry on cas failure
@@ -398,6 +452,8 @@ func (c *Collection) Update(k string, exp uint32, callback sgbucket.UpdateFunc) 
 }
 
 func (c *Collection) Incr(k string, amt, def uint64, exp uint32) (uint64, error) {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
 	if amt == 0 {
 		return 0, errors.New("amt passed to Incr must be non-zero")
 	}
@@ -712,6 +768,15 @@ func (c *Collection) mgmtRequest(method, uri, contentType string, body io.Reader
 	}
 
 	return c.HttpClient().Do(req)
+}
+
+// This prevents Sync Gateway from overflowing gocb's pipeline
+func (c *Collection) waitForAvailKvOp() {
+	c.kvOps <- struct{}{}
+}
+
+func (c *Collection) releaseKvOp() {
+	<-c.kvOps
 }
 
 // SGJsonTranscoder reads and writes JSON, with relaxed datatype restrictions on decode, and
