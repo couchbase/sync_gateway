@@ -496,7 +496,7 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 	noRevRq := NewNoRevMessage()
 	noRevRq.SetId(docID)
 	noRevRq.SetRev(revID)
-	if bsc.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV2 && bsc.clientType == BLIPClientTypeSGR2 {
+	if bsc.clientType == BLIPClientTypeSGR2 {
 		noRevRq.SetSeq(seq)
 	} else {
 		noRevRq.SetSequence(seq)
