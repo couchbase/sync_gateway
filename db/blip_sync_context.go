@@ -491,13 +491,16 @@ func (bsc *BlipSyncContext) sendBLIPMessage(sender *blip.Sender, msg *blip.Messa
 }
 
 func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, seq SequenceID, err error) error {
-
 	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending norev %q %s due to unavailable revision: %v", base.UD(docID), revID, err)
 
 	noRevRq := NewNoRevMessage()
 	noRevRq.SetId(docID)
 	noRevRq.SetRev(revID)
-	noRevRq.SetSeq(seq)
+	if bsc.clientType == BLIPClientTypeSGR2 {
+		noRevRq.SetSeq(seq)
+	} else {
+		noRevRq.SetSequence(seq)
+	}
 
 	status, reason := base.ErrorAsHTTPStatus(err)
 	noRevRq.SetError(strconv.Itoa(status))
