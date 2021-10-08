@@ -2084,7 +2084,7 @@ func TestCouchbaseServerIncorrectLogin(t *testing.T) {
 
 	// Attempt to open the bucket again using invalid creds. We should expect an error.
 	bucket, err := GetBucket(testBucket.BucketSpec)
-	assert.Equal(t, ErrFatalBucketConnection, err)
+	assert.Equal(t, ErrAuthError, err)
 	assert.Nil(t, bucket)
 }
 
