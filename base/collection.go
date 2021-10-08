@@ -88,10 +88,15 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 		return nil, err
 	}
 
+	return GetCollectionFromCluster(cluster, spec, 30)
+
+}
+
+func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilReadySeconds int) (*Collection, error) {
+
 	// Connect to bucket
 	bucket := cluster.Bucket(spec.BucketName)
-	// TODO: identify required services and add to WaitUntilReadyOptions
-	err = bucket.WaitUntilReady(30*time.Second, nil)
+	err := bucket.WaitUntilReady(time.Duration(waitUntilReadySeconds)*time.Second, nil)
 	if err != nil {
 		_ = cluster.Close(&gocb.ClusterCloseOptions{})
 		Warnf("Error waiting for bucket to be ready: %v", err)

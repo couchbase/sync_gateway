@@ -248,22 +248,9 @@ func (c *tbpClusterV2) removeBucket(name string) error {
 func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilReadySeconds int) (Bucket, error) {
 
 	cluster := getCluster(c.server)
-
 	bucketSpec := getBucketSpec(testBucketName)
-	bucket := cluster.Bucket(bucketSpec.BucketName)
-	err := bucket.WaitUntilReady(time.Duration(waitUntilReadySeconds)*time.Second, nil)
-	if err != nil {
-		return nil, fmt.Errorf("Error waiting for bucket to be ready: %w", err)
-	}
 
-	collection := &Collection{
-		Collection: bucket.DefaultCollection(),
-		cluster:    cluster,
-		queryOps:   make(chan struct{}, MaxConcurrentQueryOps),
-		Spec:       bucketSpec,
-	}
-
-	return collection, nil
+	return GetCollectionFromCluster(cluster, bucketSpec, waitUntilReadySeconds)
 }
 
 func (c *tbpClusterV2) close() error {
