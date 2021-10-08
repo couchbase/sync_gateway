@@ -23,6 +23,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	pkgerrors "github.com/pkg/errors"
 )
 
 const kDefaultDBOnlineDelay = 0
@@ -341,7 +342,7 @@ func (h *handler) handlePutConfig() error {
 	var config ServerPutConfig
 	err := base.WrapJSONUnknownFieldErr(ReadJSONFromMIMERawErr(h.rq.Header, h.requestBody, &config))
 	if err != nil {
-		if errors.Is(err, base.ErrUnknownField) {
+		if pkgerrors.Cause(err) == base.ErrUnknownField {
 			return base.HTTPErrorf(http.StatusBadRequest, "Unable to configure given options at runtime: %v", err)
 		}
 		return err

@@ -1051,13 +1051,13 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 // fetchAndLoadConfigs retrieves all database configs from the ServerContext's bootstrapConnection, and loads them into the ServerContext.
 // It will remove any databases currently running that are not found in the bucket.
 func (sc *ServerContext) fetchAndLoadConfigs() (count int, err error) {
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+
 	fetchedConfigs, bucketsNoConfig, err := sc.fetchConfigs()
 	if err != nil {
 		return 0, err
 	}
-
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
 
 	for _, bucket := range bucketsNoConfig {
 		dbName, ok := sc.bucketDbName[bucket]
