@@ -3,8 +3,8 @@ package db
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"testing"
-	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
@@ -40,8 +40,6 @@ func TestAttachmentMark(t *testing.T) {
 	err := testDb.Bucket.SetRaw("testDocx", 0, []byte("{}"))
 	assert.NoError(t, err)
 
-	time.Sleep(2 * time.Second)
-
 	terminator := make(chan bool)
 	attachmentsMarked, err := Mark(testDb, t.Name(), terminator)
 	assert.NoError(t, err)
@@ -56,6 +54,104 @@ func TestAttachmentMark(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, t.Name(), compactID)
 	}
+}
+
+func TestAttachmentSweep(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Requires CBS")
+	}
+
+	testDb := setupTestDB(t)
+	defer testDb.Close()
+
+	makeMarkedDoc := func(docid string, compactID string) {
+		err := testDb.Bucket.SetRaw(docid, 0, []byte("{}"))
+		assert.NoError(t, err)
+		_, err = testDb.Bucket.SetXattr(docid, base.SyncXattrName, []byte(`{"`+CompactionIDKey+`": "`+compactID+`"}`))
+		assert.NoError(t, err)
+	}
+
+	makeUnmarkedDoc := func(docid string) {
+		err := testDb.Bucket.SetRaw(docid, 0, []byte("{}"))
+		assert.NoError(t, err)
+	}
+
+	// Make docs that are marked - ie. They have a doc referencing them so don't purge
+	for i := 0; i < 4; i++ {
+		docID := fmt.Sprintf("%s%s%d", base.AttPrefix, "marked", i)
+		makeMarkedDoc(docID, t.Name())
+	}
+
+	// Make docs that are marked but with an old compact ID - ie. They have lost the doc that was referencing them so purge
+	for i := 0; i < 5; i++ {
+		docID := fmt.Sprintf("%s%s%d", base.AttPrefix, "oldMarked", i)
+		makeMarkedDoc(docID, "old")
+	}
+
+	// Make docs that are unmarked - ie. Never been marked so purge
+	for i := 0; i < 6; i++ {
+		docID := fmt.Sprintf("%s%s%d", base.AttPrefix, "unmarked", i)
+		makeUnmarkedDoc(docID)
+	}
+
+	terminator := make(chan bool)
+	purged, err := Sweep(testDb, t.Name(), terminator)
+	assert.NoError(t, err)
+
+	assert.Equal(t, 11, purged)
+}
+
+func TestAttachmentMarkAndSweep(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Requires CBS")
+	}
+
+	testDb := setupTestDB(t)
+	defer testDb.Close()
+
+	attKeys := make([]string, 0, 15)
+	for i := 0; i < 10; i++ {
+		docID := fmt.Sprintf("testDoc-%d", i)
+		attKey := fmt.Sprintf("att-%d", i)
+		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
+		attJSONBody, err := base.JSONMarshal(attBody)
+		assert.NoError(t, err)
+		attKeys = append(attKeys, createLegacyAttachmentDoc(t, testDb, docID, []byte("{}"), attKey, attJSONBody))
+	}
+
+	makeUnmarkedDoc := func(docid string) {
+		err := testDb.Bucket.SetRaw(docid, 0, []byte("{}"))
+		assert.NoError(t, err)
+		attKeys = append(attKeys, docid)
+	}
+
+	for i := 0; i < 5; i++ {
+		docID := fmt.Sprintf("%s%s%d", base.AttPrefix, "unmarked", i)
+		makeUnmarkedDoc(docID)
+	}
+
+	terminator := make(chan bool)
+	attachmentsMarked, err := Mark(testDb, t.Name(), terminator)
+	assert.NoError(t, err)
+	assert.Equal(t, 10, attachmentsMarked)
+
+	terminator = make(chan bool)
+	attachmentsPurged, err := Sweep(testDb, t.Name(), terminator)
+	assert.NoError(t, err)
+	assert.Equal(t, 5, attachmentsPurged)
+
+	for _, attDocKey := range attKeys {
+		var back interface{}
+		_, err = testDb.Bucket.Get(attDocKey, &back)
+		if strings.Contains(attDocKey, "unmarked") {
+			assert.Error(t, err)
+		} else {
+			assert.NoError(t, err)
+		}
+	}
+
 }
 
 func createLegacyAttachmentDoc(t *testing.T, db *Database, docID string, body []byte, attID string, attBody []byte) string {
