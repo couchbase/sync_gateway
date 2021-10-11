@@ -97,7 +97,6 @@ func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilR
 	// Connect to bucket
 	bucket := cluster.Bucket(spec.BucketName)
 	err := bucket.WaitUntilReady(time.Duration(waitUntilReadySeconds)*time.Second, &gocb.WaitUntilReadyOptions{
-		DesiredState:  gocb.ClusterStateOnline,
 		RetryStrategy: &goCBv2FailFastRetryStrategy{},
 	})
 	if err != nil {

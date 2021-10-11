@@ -87,10 +87,18 @@ func (h *handler) handleCreateDB() error {
 		// now we've started the db successfully, we can persist it to the cluster
 		cas, err := h.server.bootstrapContext.connection.InsertConfig(bucket, h.server.config.Bootstrap.ConfigGroupID, persistedConfig)
 		if err != nil {
-			// unload the database to prevent the cluster being in an inconsistent state
+			// unload the requested database config to prevent the cluster being in an inconsistent state
 			h.server._removeDatabase(dbName)
 			if errors.Is(err, base.ErrAuthError) {
 				return base.HTTPErrorf(http.StatusForbidden, "auth failure accessing provided bucket using bootstrap credentials: %s", bucket)
+			} else if errors.Is(err, base.ErrAlreadyExists) {
+				// on-demand config load if someone else beat us to db creation
+				go func() {
+					if _, err := h.server.fetchAndLoadDatabase(dbName); err != nil {
+						base.WarnfCtx(h.rq.Context(), "Couldn't load database after conflicting create: %v", err)
+					}
+				}()
+				return base.HTTPErrorf(http.StatusConflict, "Database %q already exists", dbName)
 			}
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't save database config: %v", err)
 		}
