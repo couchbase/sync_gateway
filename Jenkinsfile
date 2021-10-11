@@ -333,8 +333,9 @@ pipeline {
                             steps {
                                 gitStatusWrapper(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", description: 'Running LiteCore Tests', failureDescription: 'EE with LiteCore Test Failed', gitHubContext: 'sgw-pipeline-litecore-ee', successDescription: 'EE with LiteCore Test Passed') {
                                     sh 'touch litecore.out'
+                                    sh 'touch litecore-sg_debug.log'
                                     //sh 'docker pull couchbase/sg-test-litecore:latest'
-                                    sh 'docker run --net=host --rm -v /root/.ssh/id_rsa_ns-buildbot:/root/.ssh/id_rsa -v `pwd`/sync_gateway_ee-linux:/sync_gateway -v `pwd`/litecore.out:/output.out couchbase/sg-test-litecore:latest -legacy-config'
+                                    sh 'docker run --net=host --rm -v /root/.ssh/id_rsa_ns-buildbot:/root/.ssh/id_rsa -v `pwd`/sync_gateway_ee-linux:/sync_gateway -v `pwd`/litecore.out:/output.out -v `pwd`/litecore-sg_debug.log:/tmp/sglog/sg_debug.log couchbase/sg-test-litecore:latest -legacy-config'
                                 }
                             }
                         }
