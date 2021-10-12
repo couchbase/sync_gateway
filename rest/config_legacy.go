@@ -179,14 +179,6 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 		}
 	}
 
-	if lc.Unsupported != nil {
-		if lc.Unsupported.Http2Config != nil {
-			sc.Unsupported.HTTP2 = &HTTP2Config{
-				Enabled: lc.Unsupported.Http2Config.Enabled,
-			}
-		}
-	}
-
 	if lc.MaxHeartbeat != nil {
 		sc.Replicator.MaxHeartbeat = base.NewConfigDuration(time.Second * time.Duration(*lc.MaxHeartbeat))
 	}
@@ -249,11 +241,17 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 		sc.API.HTTPS.TLSKeyPath = *lc.SSLKey
 	}
 	if lc.Unsupported != nil {
+		sc.Unsupported = &UnsupportedConfig{}
 		if lc.Unsupported.StatsLogFrequencySecs != nil {
 			sc.Unsupported.StatsLogFrequency = base.NewConfigDuration(time.Second * time.Duration(*lc.Unsupported.StatsLogFrequencySecs))
 		}
 		if lc.Unsupported.UseStdlibJSON != nil {
 			sc.Unsupported.UseStdlibJSON = lc.Unsupported.UseStdlibJSON
+		}
+		if lc.Unsupported.Http2Config != nil {
+			sc.Unsupported.HTTP2 = &HTTP2Config{
+				Enabled: lc.Unsupported.Http2Config.Enabled,
+			}
 		}
 	}
 	if lc.MaxFileDescriptors != nil {

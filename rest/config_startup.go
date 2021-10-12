@@ -51,7 +51,7 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 		Auth: AuthConfig{
 			BcryptCost: auth.DefaultBcryptCost,
 		},
-		Unsupported: UnsupportedConfig{
+		Unsupported: &UnsupportedConfig{
 			StatsLogFrequency: base.NewConfigDuration(time.Minute),
 		},
 		MaxFileDescriptors: DefaultMaxFileDescriptors,
@@ -65,7 +65,7 @@ type StartupConfig struct {
 	Logging     base.LoggingConfig `json:"logging,omitempty"`
 	Auth        AuthConfig         `json:"auth,omitempty"`
 	Replicator  ReplicatorConfig   `json:"replicator,omitempty"`
-	Unsupported UnsupportedConfig  `json:"unsupported,omitempty"`
+	Unsupported *UnsupportedConfig `json:"unsupported,omitempty"`
 
 	DatabaseCredentials PerDatabaseCredentialsConfig `json:"database_credentials,omitempty" help:"A map of database name to credentials, that can be used instead of the bootstrap ones."`
 
@@ -208,7 +208,7 @@ func NewEmptyStartupConfig() StartupConfig {
 			Trace:   &base.FileLoggerConfig{},
 			Stats:   &base.FileLoggerConfig{},
 		},
-		Unsupported: UnsupportedConfig{
+		Unsupported: &UnsupportedConfig{
 			HTTP2: &HTTP2Config{},
 		},
 	}
@@ -232,7 +232,7 @@ func setGlobalConfig(sc *StartupConfig) error {
 	}
 
 	// Given unscoped usage of base.JSON functions, this can't be scoped.
-	if base.BoolDefault(sc.Unsupported.UseStdlibJSON, false) {
+	if sc.Unsupported != nil && base.BoolDefault(sc.Unsupported.UseStdlibJSON, false) {
 		base.Infof(base.KeyAll, "Using the stdlib JSON package")
 		base.UseStdlibJSON = true
 	}

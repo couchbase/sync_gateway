@@ -26,9 +26,9 @@ func TestLegacyConfigToStartupConfig(t *testing.T) {
 		},
 		{
 			name:     "Override *duration for StatsLogFrequency",
-			base:     StartupConfig{Unsupported: UnsupportedConfig{StatsLogFrequency: base.NewConfigDuration(time.Minute)}},
+			base:     StartupConfig{Unsupported: &UnsupportedConfig{StatsLogFrequency: base.NewConfigDuration(time.Minute)}},
 			input:    LegacyServerConfig{Unsupported: &UnsupportedServerConfigLegacy{StatsLogFrequencySecs: base.UintPtr(10)}},
-			expected: StartupConfig{Unsupported: UnsupportedConfig{StatsLogFrequency: base.NewConfigDuration(time.Second * 10)}},
+			expected: StartupConfig{Unsupported: &UnsupportedConfig{StatsLogFrequency: base.NewConfigDuration(time.Second * 10)}},
 		},
 		{
 			name:     "Override duration zero ServerReadTimeout",
@@ -64,7 +64,7 @@ func TestLegacyConfigToStartupConfig(t *testing.T) {
 			name:     "Override nil *bool HTTP2Enable",
 			base:     StartupConfig{},
 			input:    LegacyServerConfig{Unsupported: &UnsupportedServerConfigLegacy{Http2Config: &HTTP2Config{Enabled: base.BoolPtr(false)}}},
-			expected: StartupConfig{Unsupported: UnsupportedConfig{HTTP2: &HTTP2Config{Enabled: base.BoolPtr(false)}}},
+			expected: StartupConfig{Unsupported: &UnsupportedConfig{HTTP2: &HTTP2Config{Enabled: base.BoolPtr(false)}}},
 		},
 		{
 			name:     "Absent property AdminInterfaceAuthentication",

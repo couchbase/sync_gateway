@@ -882,7 +882,7 @@ func SetMaxFileDescriptors(maxP *uint64) error {
 
 func (sc *ServerContext) Serve(config *StartupConfig, addr string, handler http.Handler) error {
 	http2Enabled := false
-	if config.Unsupported.HTTP2 != nil && config.Unsupported.HTTP2.Enabled != nil {
+	if config.Unsupported != nil && config.Unsupported.HTTP2 != nil && config.Unsupported.HTTP2.Enabled != nil {
 		http2Enabled = *config.Unsupported.HTTP2.Enabled
 	}
 
