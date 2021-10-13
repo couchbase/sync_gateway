@@ -5808,7 +5808,7 @@ func TestUnprocessibleDeltas(t *testing.T) {
 		ActiveDB: &db.Database{
 			DatabaseContext: activeRT.GetDatabase(),
 		},
-		Continuous:          false,
+		Continuous:          true,
 		ChangesBatchSize:    1,
 		DeltasEnabled:       true,
 		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), true, false, false).DBReplicatorStats(t.Name()),
@@ -5816,8 +5816,10 @@ func TestUnprocessibleDeltas(t *testing.T) {
 	assert.Equal(t, "", ar.GetStatus().LastSeqPush)
 	assert.NoError(t, ar.Start())
 
-	// Wait for active to replicate to passive
-	activeRT.waitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
+	err = passiveRT.waitForRev("test", revID)
+	require.NoError(t, err)
+
+	assert.NoError(t, ar.Stop())
 
 	// Make 2nd revision
 	resp = activeRT.SendAdminRequest(http.MethodPut, "/db/test?rev="+revID, `{"field1":"f1_2","field2":"f2_2"}`)
@@ -5834,11 +5836,12 @@ func TestUnprocessibleDeltas(t *testing.T) {
 	passiveRT.GetDatabase().GetRevisionCacheForTest().Upsert(rev)
 
 	assert.NoError(t, ar.Start())
-	// Wait for active to replicate to passive
-	activeRT.waitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
-	// Check if it managed to replicate
+
+	// Check if it replicated
 	err = passiveRT.waitForRev("test", revID)
 	assert.NoError(t, err)
+
+	assert.NoError(t, ar.Stop())
 }
 
 // CBG-1428 - check for regression of ISGR not ignoring _removed:true bodies when purgeOnRemoval is disabled
