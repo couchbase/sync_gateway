@@ -281,7 +281,9 @@ func (h *handler) handleGetConfig() error {
 			}
 		}
 
-		cfg.Logging = *base.BuildLoggingConfigFromLoggers(h.server.config.Logging.RedactionLevel, h.server.config.Logging.LogFilePath)
+		if h.server.config.Logging != nil {
+			cfg.Logging = base.BuildLoggingConfigFromLoggers(h.server.config.Logging.RedactionLevel, h.server.config.Logging.LogFilePath)
+		}
 		cfg.Databases = databaseMap
 
 		h.writeJSON(cfg)
@@ -1072,7 +1074,10 @@ func (h *handler) handleSGCollect() error {
 
 	zipFilename := sgcollectFilename()
 
-	logFilePath := h.server.config.Logging.LogFilePath
+	logFilePath := ""
+	if h.server.config.Logging != nil {
+		logFilePath = h.server.config.Logging.LogFilePath
+	}
 
 	if err := sgcollectInstance.Start(logFilePath, h.serialNumber, zipFilename, params); err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Error running sgcollect_info: %v", err)

@@ -848,6 +848,9 @@ func envDefaultExpansion(key string, getEnvFn func(string) string) (value string
 
 // SetupAndValidateLogging validates logging config and initializes all logging.
 func (sc *StartupConfig) SetupAndValidateLogging() (err error) {
+	if sc.Logging == nil {
+		sc.Logging = &base.LoggingConfig{}
+	}
 
 	base.SetRedaction(sc.Logging.RedactionLevel)
 

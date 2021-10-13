@@ -73,14 +73,14 @@ func TestStartupConfigMerge(t *testing.T) {
 		},
 		{
 			name:     "Keep original *ConsoleLoggerConfig",
-			config:   StartupConfig{Logging: base.LoggingConfig{Console: &base.ConsoleLoggerConfig{LogKeys: []string{"HTTP", "Config", "CRUD", "DCP", "Sync"}}}},
-			override: StartupConfig{Logging: base.LoggingConfig{Console: &base.ConsoleLoggerConfig{}}},
-			expected: StartupConfig{Logging: base.LoggingConfig{Console: &base.ConsoleLoggerConfig{LogKeys: []string{"HTTP", "Config", "CRUD", "DCP", "Sync"}}}},
+			config:   StartupConfig{Logging: &base.LoggingConfig{Console: &base.ConsoleLoggerConfig{LogKeys: []string{"HTTP", "Config", "CRUD", "DCP", "Sync"}}}},
+			override: StartupConfig{Logging: &base.LoggingConfig{Console: &base.ConsoleLoggerConfig{}}},
+			expected: StartupConfig{Logging: &base.LoggingConfig{Console: &base.ConsoleLoggerConfig{LogKeys: []string{"HTTP", "Config", "CRUD", "DCP", "Sync"}}}},
 		}, {
 			name:     "Override empty logging",
-			config:   StartupConfig{Logging: base.LoggingConfig{Trace: &base.FileLoggerConfig{}}},
-			override: StartupConfig{Logging: base.LoggingConfig{Trace: &base.FileLoggerConfig{Enabled: base.BoolPtr(true)}}},
-			expected: StartupConfig{Logging: base.LoggingConfig{Trace: &base.FileLoggerConfig{Enabled: base.BoolPtr(true)}}},
+			config:   StartupConfig{Logging: &base.LoggingConfig{Trace: &base.FileLoggerConfig{}}},
+			override: StartupConfig{Logging: &base.LoggingConfig{Trace: &base.FileLoggerConfig{Enabled: base.BoolPtr(true)}}},
+			expected: StartupConfig{Logging: &base.LoggingConfig{Trace: &base.FileLoggerConfig{Enabled: base.BoolPtr(true)}}},
 		},
 		{
 			name:     "Keep original *CORSconfig",

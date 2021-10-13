@@ -3314,9 +3314,11 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check that db revs limit is there now and error logging config
+	require.NotNil(t, runtimeServerConfigResponse.Databases)
 	assert.Contains(t, runtimeServerConfigResponse.Databases, "db")
 	assert.Equal(t, base.Uint32Ptr(100), runtimeServerConfigResponse.Databases["db"].RevsLimit)
 
+	require.NotNil(t, runtimeServerConfigResponse.Logging)
 	assert.NotNil(t, runtimeServerConfigResponse.Logging.Error)
 	assert.Equal(t, "debug", runtimeServerConfigResponse.Logging.Console.LogLevel.String())
 

@@ -41,7 +41,7 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			// Post-DP this should be set to base.IsEnterpriseEdition as default
 			EnableAdminAuthenticationPermissionsCheck: base.BoolPtr(false),
 		},
-		Logging: base.LoggingConfig{
+		Logging: &base.LoggingConfig{
 			LogFilePath:    defaultLogFilePath,
 			RedactionLevel: base.DefaultRedactionLevel,
 			Console: &base.ConsoleLoggerConfig{
@@ -60,12 +60,12 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 
 // StartupConfig is the config file used by Sync Gateway in 3.0+ to start up with node-specific settings, and then bootstrap databases via Couchbase Server.
 type StartupConfig struct {
-	Bootstrap   BootstrapConfig    `json:"bootstrap,omitempty"`
-	API         APIConfig          `json:"api,omitempty"`
-	Logging     base.LoggingConfig `json:"logging,omitempty"`
-	Auth        AuthConfig         `json:"auth,omitempty"`
-	Replicator  ReplicatorConfig   `json:"replicator,omitempty"`
-	Unsupported *UnsupportedConfig `json:"unsupported,omitempty"`
+	Bootstrap   BootstrapConfig     `json:"bootstrap,omitempty"`
+	API         APIConfig           `json:"api,omitempty"`
+	Logging     *base.LoggingConfig `json:"logging,omitempty"`
+	Auth        AuthConfig          `json:"auth,omitempty"`
+	Replicator  ReplicatorConfig    `json:"replicator,omitempty"`
+	Unsupported *UnsupportedConfig  `json:"unsupported,omitempty"`
 
 	DatabaseCredentials PerDatabaseCredentialsConfig `json:"database_credentials,omitempty" help:"A map of database name to credentials, that can be used instead of the bootstrap ones."`
 
@@ -199,7 +199,7 @@ func NewEmptyStartupConfig() StartupConfig {
 		API: APIConfig{
 			CORS: &CORSConfig{},
 		},
-		Logging: base.LoggingConfig{
+		Logging: &base.LoggingConfig{
 			Console: &base.ConsoleLoggerConfig{},
 			Error:   &base.FileLoggerConfig{},
 			Warn:    &base.FileLoggerConfig{},

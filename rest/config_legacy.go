@@ -155,7 +155,6 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 			MetricsInterfaceAuthentication:            lc.MetricsInterfaceAuthentication,
 			EnableAdminAuthenticationPermissionsCheck: lc.EnableAdminAuthenticationPermissionsCheck,
 		},
-		Logging: base.LoggingConfig{},
 		Auth: AuthConfig{
 			BcryptCost: lc.BcryptCost,
 		},
@@ -184,6 +183,8 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 	}
 
 	if lc.Logging != nil {
+		sc.Logging = &base.LoggingConfig{}
+
 		sc.Logging.LogFilePath = lc.Logging.LogFilePath
 		sc.Logging.RedactionLevel = lc.Logging.RedactionLevel
 		sc.Logging.Console = &lc.Logging.Console
