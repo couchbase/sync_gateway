@@ -5809,23 +5809,15 @@ func TestUnprocessableDeltas(t *testing.T) {
 			DatabaseContext: activeRT.GetDatabase(),
 		},
 		Continuous:          true,
-		ChangesBatchSize:    1,
+		ChangesBatchSize:    200,
 		DeltasEnabled:       true,
 		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), true, false, false).DBReplicatorStats(t.Name()),
 	})
 	assert.Equal(t, "", ar.GetStatus().LastSeqPush)
 	assert.NoError(t, ar.Start())
+	defer func() { assert.NoError(t, ar.Stop()) }()
 
 	err = passiveRT.waitForRev("test", revID)
-	require.NoError(t, err)
-
-	assert.NoError(t, ar.Stop())
-
-	// Make 2nd revision
-	resp = activeRT.SendAdminRequest(http.MethodPut, "/db/test?rev="+revID, `{"field1":"f1_2","field2":"f2_2"}`)
-	assertStatus(t, resp, http.StatusCreated)
-	revID = respRevID(t, resp)
-	err = activeRT.WaitForPendingChanges()
 	require.NoError(t, err)
 
 	rev, err := passiveRT.GetDatabase().GetRevisionCacheForTest().GetActive("test", true)
@@ -5835,13 +5827,16 @@ func TestUnprocessableDeltas(t *testing.T) {
 	rev.BodyBytes = []byte("{invalid}")
 	passiveRT.GetDatabase().GetRevisionCacheForTest().Upsert(rev)
 
-	assert.NoError(t, ar.Start())
+	// Make 2nd revision
+	resp = activeRT.SendAdminRequest(http.MethodPut, "/db/test?rev="+revID, `{"field1":"f1_2","field2":"f2_2"}`)
+	assertStatus(t, resp, http.StatusCreated)
+	revID = respRevID(t, resp)
+	err = activeRT.WaitForPendingChanges()
+	require.NoError(t, err)
 
 	// Check if it replicated
 	err = passiveRT.waitForRev("test", revID)
 	assert.NoError(t, err)
-
-	assert.NoError(t, ar.Stop())
 }
 
 // CBG-1428 - check for regression of ISGR not ignoring _removed:true bodies when purgeOnRemoval is disabled
