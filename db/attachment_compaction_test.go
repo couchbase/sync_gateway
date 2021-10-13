@@ -34,14 +34,14 @@ func TestAttachmentMark(t *testing.T) {
 		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
 		assert.NoError(t, err)
-		attKeys = append(attKeys, createLegacyAttachmentDoc(t, testDb, docID, []byte("{}"), attKey, attJSONBody))
+		attKeys = append(attKeys, CreateLegacyAttachmentDoc(t, testDb, docID, []byte("{}"), attKey, attJSONBody))
 	}
 
 	err := testDb.Bucket.SetRaw("testDocx", 0, []byte("{}"))
 	assert.NoError(t, err)
 
-	terminator := make(chan bool)
-	attachmentsMarked, err := Mark(testDb, t.Name(), terminator)
+	terminator := make(chan struct{})
+	attachmentsMarked, err := Mark(testDb, t.Name(), terminator, func(markedAttachments *int) {})
 	assert.NoError(t, err)
 	assert.Equal(t, 10, attachmentsMarked)
 
@@ -95,8 +95,8 @@ func TestAttachmentSweep(t *testing.T) {
 		makeUnmarkedDoc(docID)
 	}
 
-	terminator := make(chan bool)
-	purged, err := Sweep(testDb, t.Name(), terminator)
+	terminator := make(chan struct{})
+	purged, err := Sweep(testDb, t.Name(), terminator, func(purgedAttachments *int) {})
 	assert.NoError(t, err)
 
 	assert.Equal(t, 11, purged)
@@ -118,7 +118,7 @@ func TestAttachmentMarkAndSweep(t *testing.T) {
 		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
 		assert.NoError(t, err)
-		attKeys = append(attKeys, createLegacyAttachmentDoc(t, testDb, docID, []byte("{}"), attKey, attJSONBody))
+		attKeys = append(attKeys, CreateLegacyAttachmentDoc(t, testDb, docID, []byte("{}"), attKey, attJSONBody))
 	}
 
 	makeUnmarkedDoc := func(docid string) {
@@ -132,13 +132,13 @@ func TestAttachmentMarkAndSweep(t *testing.T) {
 		makeUnmarkedDoc(docID)
 	}
 
-	terminator := make(chan bool)
-	attachmentsMarked, err := Mark(testDb, t.Name(), terminator)
+	terminator := make(chan struct{})
+	attachmentsMarked, err := Mark(testDb, t.Name(), terminator, func(markedAttachments *int) {})
 	assert.NoError(t, err)
 	assert.Equal(t, 10, attachmentsMarked)
 
-	terminator = make(chan bool)
-	attachmentsPurged, err := Sweep(testDb, t.Name(), terminator)
+	terminator = make(chan struct{})
+	attachmentsPurged, err := Sweep(testDb, t.Name(), terminator, func(markedAttachments *int) {})
 	assert.NoError(t, err)
 	assert.Equal(t, 5, attachmentsPurged)
 
@@ -154,7 +154,7 @@ func TestAttachmentMarkAndSweep(t *testing.T) {
 
 }
 
-func createLegacyAttachmentDoc(t *testing.T, db *Database, docID string, body []byte, attID string, attBody []byte) string {
+func CreateLegacyAttachmentDoc(t *testing.T, db *Database, docID string, body []byte, attID string, attBody []byte) string {
 	attDigest := Sha1DigestKey(attBody)
 
 	attDocID := MakeAttachmentKey(AttVersion1, docID, attDigest)
