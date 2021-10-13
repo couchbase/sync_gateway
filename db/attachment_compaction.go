@@ -215,8 +215,12 @@ func Sweep(db *Database, compactionID string, terminator chan bool) (int, error)
 		return 0, err
 	}
 
-	<-doneChan
-	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Sweep phase of attachment compaction completed. Deleted %d attachments", compactionLoggingID, attachmentsDeleted)
+	select {
+	case <-doneChan:
+		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Sweep phase of attachment compaction completed. Deleted %d attachments", compactionLoggingID, attachmentsDeleted)
+	case <-terminator:
+		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Sweep phase of attachment compaction was terminated. Deleted %d attachments", compactionLoggingID, attachmentsDeleted)
+	}
 
 	return attachmentsDeleted, nil
 }
