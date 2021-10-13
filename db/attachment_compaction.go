@@ -182,7 +182,7 @@ func Sweep(db *Database, compactionID string, terminator chan bool) (int, error)
 		// - Has a compactionID set in its xattr but it is from a previous run and therefore is not equal to the passed
 		// in compactionID
 		// Therefore, we want to purge the doc
-		err := db.Bucket.Delete(string(event.Key))
+		_, err := db.Bucket.Remove(string(event.Key), event.Cas)
 		if err != nil {
 			base.WarnfCtx(db.Ctx, "[%s] Unable to purge attachment %s: %v", compactionLoggingID, base.UD(string(event.Key)), err)
 			return true
@@ -200,8 +200,7 @@ func Sweep(db *Database, compactionID string, terminator chan bool) (int, error)
 	}
 
 	clientOptions := base.DCPClientOptions{
-		Terminator: terminator,
-		OneShot:    true,
+		OneShot: true,
 	}
 
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for sweep phase of attachment compaction", compactionLoggingID)
