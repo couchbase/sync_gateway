@@ -5747,10 +5747,10 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	activeRT.waitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 }
 
-// CBG-1672 - Return 422 status for unprocessible deltas instead of 404 to use non-delta retry handling
+// CBG-1672 - Return 422 status for unprocessable deltas instead of 404 to use non-delta retry handling
 // Should log "422 Unable to unmarshal mutable body for doc test deltaSrc=1-dbc7919edc9ec2576d527880186f8e8a"
 // then fall back to full body replication
-func TestUnprocessibleDeltas(t *testing.T) {
+func TestUnprocessableDeltas(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("Requires EE for some delta sync")
 	}
