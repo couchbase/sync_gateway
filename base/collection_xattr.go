@@ -64,6 +64,8 @@ func (c *Collection) UpdateXattr(k string, xattrKey string, exp uint32, cas uint
 //   - 'successful' error codes, like SucDocSuccessDeleted, aren't returned, and instead just set the internal.Deleted property on the
 //   response
 func (c *Collection) SubdocGetXattr(k string, xattrKey string, xv interface{}) (casOut uint64, err error) {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
 
 	ops := []gocb.LookupInSpec{
 		gocb.GetSpec(xattrKey, GetSpecXattr),
@@ -89,6 +91,9 @@ func (c *Collection) SubdocGetXattr(k string, xattrKey string, xv interface{}) (
 // SubdocGetBodyAndXattr retrieves the document body and xattr in a single LookupIn subdoc operation.  Does not require both to exist.
 func (c *Collection) SubdocGetBodyAndXattr(k string, xattrKey string, userXattrKey string, rv interface{}, xv interface{}, uxv interface{}) (cas uint64, err error) {
 	worker := func() (shouldRetry bool, err error, value uint64) {
+
+		c.waitForAvailKvOp()
+		defer c.releaseKvOp()
 
 		// First, attempt to get the document and xattr in one shot.
 		ops := []gocb.LookupInSpec{
@@ -175,6 +180,8 @@ func (c *Collection) SubdocGetBodyAndXattr(k string, xattrKey string, userXattrK
 // SubdocInsertXattr inserts a new server tombstone with an associated mobile xattr.  Writes cas and crc32c to the xattr using
 // macro expansion.
 func (c *Collection) SubdocInsertXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}) (casOut uint64, err error) {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
 
 	supportsTombstoneCreation := c.IsSupported(sgbucket.DataStoreFeatureCreateDeletedWithXattr)
 
@@ -206,6 +213,8 @@ func (c *Collection) SubdocInsertXattr(k string, xattrKey string, exp uint32, ca
 // SubdocInsertXattr inserts a document and associated mobile xattr in a single mutateIn operation.  Writes cas and crc32c to the xattr using
 // macro expansion.
 func (c *Collection) SubdocInsertBodyAndXattr(k string, xattrKey string, exp uint32, v interface{}, xv interface{}) (casOut uint64, err error) {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
 
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
@@ -227,6 +236,8 @@ func (c *Collection) SubdocInsertBodyAndXattr(k string, xattrKey string, exp uin
 
 // SubdocInsert performs a subdoc insert operation to the specified path in the document body.
 func (c *Collection) SubdocInsert(k string, fieldPath string, cas uint64, value interface{}) error {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
 
 	mutateOps := []gocb.MutateInSpec{
 		gocb.InsertSpec(fieldPath, value, nil),
@@ -251,6 +262,9 @@ func (c *Collection) SubdocInsert(k string, fieldPath string, cas uint64, value 
 // SubdocUpdateXattr updates the xattr on an existing document. Writes cas and crc32c to the xattr using
 // macro expansion.
 func (c *Collection) SubdocUpdateXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}) (casOut uint64, err error) {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
+
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
 		gocb.UpsertSpec(xattrCasPath(xattrKey), gocb.MutationMacroCAS, UpsertSpecXattr),
@@ -273,6 +287,9 @@ func (c *Collection) SubdocUpdateXattr(k string, xattrKey string, exp uint32, ca
 // SubdocUpdateBodyAndXattr updates the document body and xattr of an existing document. Writes cas and crc32c to the xattr using
 // macro expansion.
 func (c *Collection) SubdocUpdateBodyAndXattr(k string, xattrKey string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
+
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
 		gocb.UpsertSpec(xattrCasPath(xattrKey), gocb.MutationMacroCAS, UpsertSpecXattr),
@@ -294,6 +311,9 @@ func (c *Collection) SubdocUpdateBodyAndXattr(k string, xattrKey string, exp uin
 // SubdocUpdateBodyAndXattr deletes the document body and updates the xattr of an existing document. Writes cas and crc32c to the xattr using
 // macro expansion.
 func (c *Collection) SubdocUpdateXattrDeleteBody(k, xattrKey string, exp uint32, cas uint64, xv interface{}) (casOut uint64, err error) {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
+
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
 		gocb.UpsertSpec(xattrCasPath(xattrKey), gocb.MutationMacroCAS, UpsertSpecXattr),
@@ -314,6 +334,8 @@ func (c *Collection) SubdocUpdateXattrDeleteBody(k, xattrKey string, exp uint32,
 
 // SubdocDeleteXattr deletes an xattr of an existing document (or document tombstone)
 func (c *Collection) SubdocDeleteXattr(k string, xattrKey string, cas uint64) (err error) {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
 
 	mutateOps := []gocb.MutateInSpec{
 		gocb.RemoveSpec(xattrKey, RemoveSpecXattr),
@@ -329,6 +351,9 @@ func (c *Collection) SubdocDeleteXattr(k string, xattrKey string, cas uint64) (e
 
 // SubdocDeleteXattr deletes the document body and associated xattr of an existing document.
 func (c *Collection) SubdocDeleteBodyAndXattr(k string, xattrKey string) (err error) {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
+
 	mutateOps := []gocb.MutateInSpec{
 		gocb.RemoveSpec(xattrKey, RemoveSpecXattr),
 		gocb.RemoveSpec("", nil),
@@ -355,6 +380,9 @@ func (c *Collection) SubdocDeleteBodyAndXattr(k string, xattrKey string) (err er
 
 // SubdocDeleteXattr deletes the document body of an existing document, and updates cas and crc32c in the associated xattr.
 func (c *Collection) SubdocDeleteBody(k string, xattrKey string, exp uint32, cas uint64) (casOut uint64, err error) {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
+
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(xattrCasPath(xattrKey), gocb.MutationMacroCAS, UpsertSpecXattr),
 		gocb.UpsertSpec(xattrCrc32cPath(xattrKey), gocb.MutationMacroValueCRC32c, UpsertSpecXattr),
@@ -415,6 +443,9 @@ func bytesToRawMessage(v interface{}) interface{} {
 }
 
 func (c *Collection) WriteUserXattr(k string, xattrKey string, xattrVal interface{}) (uint64, error) {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
+
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xattrVal), UpsertSpecXattr),
 	}
@@ -430,6 +461,8 @@ func (c *Collection) WriteUserXattr(k string, xattrKey string, xattrVal interfac
 }
 
 func (c *Collection) DeleteUserXattr(k string, xattrKey string) (uint64, error) {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
 
 	mutateOps := []gocb.MutateInSpec{
 		gocb.RemoveSpec(xattrKey, RemoveSpecXattr),
