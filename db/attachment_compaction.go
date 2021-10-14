@@ -86,7 +86,7 @@ func Mark(db *Database, compactionID string, terminator chan bool) (int, error) 
 		for attachmentName, attachmentDocID := range attachmentKeys {
 			// Stamp the current compaction ID into the attachment xattr. This is performing the actual marking
 			xattrValue := []byte(`{"` + CompactionIDKey + `": "` + compactionID + `"}`)
-			_, err = db.Bucket.SetXattr(attachmentDocID, base.SyncXattrName, xattrValue)
+			_, err = db.Bucket.SetXattr(attachmentDocID, base.AttachmentCompactionXattrName, xattrValue)
 
 			// If an error occurs while stamping in that ID we need to fail this process and then the entire compaction
 			// process. Otherwise an attachment could end up getting erroneously deleted in the later sweep phase.

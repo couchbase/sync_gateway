@@ -134,6 +134,8 @@ const (
 
 	PersistentConfigPrefix = SyncPrefix + "dbconfig:"
 
+	AttachmentCompactionXattrName = SyncXattrName + "-compact"
+
 	SyncPropertyName = "_sync"
 	SyncXattrName    = "_sync"
 
