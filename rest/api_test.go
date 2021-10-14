@@ -9204,7 +9204,7 @@ func TestTombstoneCompactionAPI(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, db.BackgroundProcessStateStopped, tombstoneCompactionStatus.State)
-	assert.Equal(t, nil, tombstoneCompactionStatus.LastError)
+	assert.Empty(t, tombstoneCompactionStatus.LastErrorMessage)
 	assert.Equal(t, 0, int(tombstoneCompactionStatus.DocsPurged))
 
 	resp = rt.SendAdminRequest("POST", "/db/_compact", "")
@@ -9227,7 +9227,7 @@ func TestTombstoneCompactionAPI(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, db.BackgroundProcessStateStopped, tombstoneCompactionStatus.State)
-	assert.Equal(t, nil, tombstoneCompactionStatus.LastError)
+	assert.Empty(t, tombstoneCompactionStatus.LastErrorMessage)
 
 	if base.TestUseXattrs() {
 		assert.Equal(t, 100, int(tombstoneCompactionStatus.DocsPurged))

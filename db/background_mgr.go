@@ -36,6 +36,7 @@ const (
 // BackgroundManager this is the over-arching type which is exposed in DatabaseContext
 type BackgroundManager struct {
 	BackgroundManagerStatus
+	lastError  error
 	terminator chan struct{}
 	lock       sync.Mutex
 	Process    BackgroundManagerProcessI
@@ -44,8 +45,8 @@ type BackgroundManager struct {
 // BackgroundManagerStatus simply stores data used in BackgroundManager. This data can also be exposed to users over
 // REST. Splitting this out into an additional embedded struct allows easy JSON marshalling
 type BackgroundManagerStatus struct {
-	State     BackgroundProcessState `json:"status"`
-	LastError error                  `json:"last_error"`
+	State            BackgroundProcessState `json:"status"`
+	LastErrorMessage string                 `json:"last_error"`
 }
 
 // BackgroundManagerProcessI is an interface satisfied by any of the background processes
@@ -100,6 +101,10 @@ func (b *BackgroundManager) GetStatus() ([]byte, error) {
 		backgroundStatus.State = BackgroundProcessStateStopped
 	}
 
+	if b.lastError != nil {
+		backgroundStatus.LastErrorMessage = b.lastError.Error()
+	}
+
 	return b.Process.GetProcessStatus(backgroundStatus)
 }
 
@@ -107,7 +112,8 @@ func (b *BackgroundManager) resetStatus() {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	b.LastError = nil
+	b.lastError = nil
+	b.LastErrorMessage = ""
 	b.terminator = make(chan struct{}, 1)
 	b.Process.ResetStatus()
 }
@@ -156,7 +162,7 @@ func (b *BackgroundManager) SetError(err error) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	b.LastError = err
+	b.lastError = err
 	b.State = BackgroundProcessStateError
 }
 

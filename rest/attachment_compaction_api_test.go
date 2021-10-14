@@ -14,7 +14,10 @@ import (
 )
 
 func TestAttachmentCompactionAPI(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -29,7 +32,7 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 	assert.Equal(t, db.BackgroundProcessStateStopped, response.State)
 	assert.Equal(t, int64(0), response.MarkedAttachments)
 	assert.Equal(t, int64(0), response.PurgedAttachments)
-	assert.Nil(t, response.LastError)
+	assert.Empty(t, response.LastErrorMessage)
 
 	// Kick off compact
 	resp = rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
@@ -103,7 +106,7 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 	assert.Equal(t, db.BackgroundProcessStateStopped, response.State)
 	assert.Equal(t, int64(20), response.MarkedAttachments)
 	assert.Equal(t, int64(5), response.PurgedAttachments)
-	assert.Nil(t, response.LastError)
+	assert.Empty(t, response.LastErrorMessage)
 
 	// Start another run
 	resp = rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
