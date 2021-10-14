@@ -68,7 +68,7 @@ func TestAttachmentSweep(t *testing.T) {
 	makeMarkedDoc := func(docid string, compactID string) {
 		err := testDb.Bucket.SetRaw(docid, 0, []byte("{}"))
 		assert.NoError(t, err)
-		_, err = testDb.Bucket.SetXattr(docid, base.SyncXattrName, []byte(`{"`+CompactionIDKey+`": "`+compactID+`"}`))
+		_, err = testDb.Bucket.SetXattr(docid, base.AttachmentCompactionXattrName, []byte(`{"`+CompactionIDKey+`": "`+compactID+`"}`))
 		assert.NoError(t, err)
 	}
 

@@ -154,7 +154,7 @@ func Sweep(db *Database, compactionID string, terminator chan bool) (int, error)
 
 		// If the data contains an xattr then the attachment likely has a compaction ID, need to check this value
 		if event.DataType&base.MemcachedDataTypeXattr != 0 {
-			_, xattr, _, err := parseXattrStreamData(base.SyncXattrName, "", event.Value)
+			_, xattr, _, err := parseXattrStreamData(base.AttachmentCompactionXattrName, "", event.Value)
 			if err != nil && !errors.Is(err, base.ErrXattrNotFound) {
 				base.WarnfCtx(db.Ctx, "[%s] Unexpected error occurred attempting to parse attachment xattr: %v", compactionLoggingID, err)
 				return true
