@@ -94,9 +94,7 @@ func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilR
 
 	// Connect to bucket
 	bucket := cluster.Bucket(spec.BucketName)
-	err := bucket.WaitUntilReady(time.Duration(waitUntilReadySeconds)*time.Second, &gocb.WaitUntilReadyOptions{
-		RetryStrategy: &goCBv2FailFastRetryStrategy{},
-	})
+	err := bucket.WaitUntilReady(time.Duration(waitUntilReadySeconds)*time.Second, nil)
 	if err != nil {
 		_ = cluster.Close(&gocb.ClusterCloseOptions{})
 		if errors.Is(err, gocb.ErrAuthenticationFailure) {
