@@ -318,9 +318,6 @@ func (a *AttachmentCompactionManager) Run(options map[string]interface{}, termin
 		return err
 	}
 
-	a.lock.Lock()
-	defer a.lock.Unlock()
-
 	return nil
 }
 
