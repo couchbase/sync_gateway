@@ -460,11 +460,11 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 func UnmarshalDocumentFromFeed(docid string, cas uint64, data []byte, dataType uint8, userXattrKey string) (doc *Document, err error) {
 	var body []byte
 
-	if dataType&base.MemcachedDataTypeXattr != 0{
+	if dataType&base.MemcachedDataTypeXattr != 0 {
 		var syncXattr []byte
 		var userXattr []byte
 		body, syncXattr, userXattr, err = parseXattrStreamData(base.SyncXattrName, userXattrKey, data)
-		if err != nil{
+		if err != nil {
 			return nil, err
 		}
 		return unmarshalDocumentWithXattr(docid, body, syncXattr, userXattr, cas, DocUnmarshalAll)
