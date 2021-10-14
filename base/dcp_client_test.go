@@ -2,8 +2,8 @@ package base
 
 import (
 	"fmt"
-	"log"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -31,9 +31,9 @@ func TestOneShotDCP(t *testing.T) {
 	}
 
 	// create callback
-	mutationCount := 0
+	mutationCount := uint64(0)
 	counterCallback := func(event sgbucket.FeedEvent) bool {
-		mutationCount++
+		atomic.AddUint64(&mutationCount, 1)
 		return false
 	}
 
@@ -72,7 +72,7 @@ func TestOneShotDCP(t *testing.T) {
 	timeout := time.After(3 * time.Second)
 	select {
 	case err := <-doneChan:
-		assert.Equal(t, num_docs, mutationCount)
+		assert.Equal(t, uint64(num_docs), mutationCount)
 		assert.NoError(t, err)
 	case <-timeout:
 		t.Errorf("timeout waiting for one-shot feed to complete")
@@ -91,10 +91,9 @@ func TestTerminateDCPFeed(t *testing.T) {
 	defer bucket.Close()
 
 	// create callback
-	mutationCount := 0
+	mutationCount := uint64(0)
 	counterCallback := func(event sgbucket.FeedEvent) bool {
-		log.Printf("got mutation for: %s (vb: %d)", event.Key, event.VbNo)
-		mutationCount++
+		atomic.AddUint64(&mutationCount, 1)
 		return false
 	}
 
@@ -107,13 +106,13 @@ func TestTerminateDCPFeed(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Add documents in a separate goroutine
-	feedClosed := false
+	var feedClosed AtomicBool
 	var additionalDocsWg sync.WaitGroup
 	additionalDocsWg.Add(1)
 	go func() {
 		updatedBody := map[string]interface{}{"foo": "bar"}
 		for i := 0; i < 10000; i++ {
-			if feedClosed {
+			if feedClosed.IsTrue() {
 				break
 			}
 			key := fmt.Sprintf("%s_%d", t.Name(), i)
@@ -135,7 +134,7 @@ func TestTerminateDCPFeed(t *testing.T) {
 	timeout := time.After(3 * time.Second)
 	select {
 	case <-doneChan:
-		feedClosed = true
+		feedClosed.Set(true)
 	case <-timeout:
 		t.Errorf("timeout waiting for one-shot feed to complete")
 	}

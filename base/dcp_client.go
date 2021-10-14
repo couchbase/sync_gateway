@@ -122,15 +122,17 @@ func (dc *DCPClient) close() {
 
 	// set dc.closing to true, avoid retriggering close if it's already in progress
 	if !dc.closing.CompareAndSwap(false, true) {
+		Infof(KeyDCP, "DCP Client close called - client is already closing")
 		return
 	}
 
 	// Stop workers
 	close(dc.terminator)
 	if dc.agent != nil {
+
 		agentErr := dc.agent.Close()
 		if agentErr != nil {
-			Infof(KeyDCP, "Error closing DCP agent in client close: %v", agentErr)
+			Warnf("Error closing DCP agent in client close: %v", agentErr)
 		}
 	}
 	closeErr := dc.getCloseError()
