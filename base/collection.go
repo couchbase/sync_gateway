@@ -110,7 +110,11 @@ func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilR
 	}
 
 	// Set limits for concurrent query and kv ops
-	collection.queryOps = make(chan struct{}, MaxConcurrentQueryOps)
+	maxConcurrentQueryOps := MaxConcurrentQueryOps
+	if spec.MaxConcurrentQueryOps != nil {
+		maxConcurrentQueryOps = *spec.MaxConcurrentQueryOps
+	}
+	collection.queryOps = make(chan struct{}, maxConcurrentQueryOps)
 
 	// gocb v2 has a queue size of 2048 per pool per server node.
 	// SG conservatively limits to 1000 per pool per node, to handle imbalanced
