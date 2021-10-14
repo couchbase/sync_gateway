@@ -208,10 +208,10 @@ func Sweep(db *Database, compactionID string, terminator chan bool) (int, error)
 	if err != nil {
 		return 0, err
 	}
-	defer dcpClient.Close()
 
 	doneChan, err := dcpClient.Start()
 	if err != nil {
+		_ = dcpClient.Close()
 		return 0, err
 	}
 
@@ -222,5 +222,5 @@ func Sweep(db *Database, compactionID string, terminator chan bool) (int, error)
 		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Sweep phase of attachment compaction was terminated. Deleted %d attachments", compactionLoggingID, attachmentsDeleted)
 	}
 
-	return attachmentsDeleted, nil
+	return attachmentsDeleted, dcpClient.Close()
 }
