@@ -323,19 +323,25 @@ pipeline {
                             // TODO: Remove skip
                             when { expression { return false } }
                             steps {
-                                echo 'Example of where we could run lite-core unit tests against a running SG CE'
-                                gitStatusWrapper(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", description: 'Running LiteCore Tests', failureDescription: 'CE with LiteCore Test Failed', gitHubContext: 'sgw-pipeline-litecore-ce', successDescription: 'CE with LiteCore Test Passed') {
-                                    echo "..."
-                                }
+                                echo 'Example of where we could run an alternate version of lite-core unit tests, or against a running SG CE'
                             }
                         }
                         stage('against EE') {
                             steps {
-                                gitStatusWrapper(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", description: 'Running LiteCore Tests', failureDescription: 'EE with LiteCore Test Failed', gitHubContext: 'sgw-pipeline-litecore-ee', successDescription: 'EE with LiteCore Test Passed') {
-                                    sh 'touch litecore.out'
-                                    sh 'touch litecore-sg_debug.out'
-                                    //sh 'docker pull couchbase/sg-test-litecore:latest'
-                                    sh 'docker run --net=host --rm -v /root/.ssh/id_rsa_ns-buildbot:/root/.ssh/id_rsa -v `pwd`/sync_gateway_ee-linux:/sync_gateway -v `pwd`/litecore.out:/output.out -v `pwd`/litecore-sg_debug.out:/tmp/sglog/sg_debug.log couchbase/sg-test-litecore:latest -legacy-config'
+                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'Running LiteCore Tests', status: 'PENDING')
+                                sh 'touch verbose_litecore.out'
+                                sh 'touch verbose_litecore-sg_debug.out'
+
+                                script {
+                                    try {
+                                        sh 'docker run --net=host --rm -v /root/.ssh/id_rsa_ns-buildbot:/root/.ssh/id_rsa -v `pwd`/sync_gateway_ee-linux:/sync_gateway -v `pwd`/verbose_litecore.out:/output.out -v `pwd`/verbose_litecore-sg_debug.out:/tmp/sglog/sg_debug.log couchbase/sg-test-litecore:latest -legacy-config'
+                                        githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'EE with LiteCore Test Passed', status: 'SUCCESS')
+                                    } catch (Exception e) {
+                                        githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'EE with LiteCore Test Failed', status: 'FAILURE')
+                                        // archive verbose test logs in the event of a test failure
+                                        archiveArtifacts artifacts: 'verbose_litecore*.out', fingerprint: false
+                                        unstable("EE LIteCore Test Failed")
+                                    }
                                 }
                             }
                         }
@@ -384,23 +390,20 @@ pipeline {
 
     post {
         always {
-            // archive all other build outputs now
-            archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false
-
             // Publish the cobertura formatted test coverage reports into Jenkins
             cobertura autoUpdateHealth: false, onlyStable: false, autoUpdateStability: false, coberturaReportFile: 'reports/coverage-*.xml', conditionalCoverageTargets: '70, 0, 0', failNoReports: false, failUnhealthy: false, failUnstable: false, lineCoverageTargets: '80, 0, 0', maxNumberOfBuilds: 0, methodCoverageTargets: '80, 0, 0', sourceEncoding: 'ASCII', zoomCoverageChart: false
 
             // Publish the junit test reports
             junit allowEmptyResults: true, testResults: 'reports/test-*.xml'
 
-            // TODO: Might be better to clean the workspace to before a job runs instead
             step([$class: 'WsCleanup'])
-
             withEnv(["PATH+=${GO}", "GOPATH=${GOPATH}"]) {
                 sh "go clean -cache"
             }
         }
         unstable {
+            // archive non-verbose outputs upon failure for inspection (each verbose output is conditionally archived on stage failure)
+            archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false
             script {
                 if ("${env.BRANCH_NAME}" == 'master') {
                     mail to: 'mobile_dev_sg@couchbase.com',
@@ -410,6 +413,8 @@ pipeline {
             }
         }
         failure {
+            // archive non-verbose outputs upon failure for inspection (each verbose output is conditionally archived on stage failure)
+            archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false
             script {
                 if ("${env.BRANCH_NAME}" == 'master') {
                     mail to: 'mobile_dev_sg@couchbase.com',
