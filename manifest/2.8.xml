@@ -49,7 +49,7 @@ licenses/APL2.txt.
     <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="a6e1124eba0e2910e0e4a20cce8dc84e272efea8" />
     <project name="gocb" path="godeps/src/gopkg.in/couchbase/gocb.v1" remote="couchbase" revision="a6e1124eba0e2910e0e4a20cce8dc84e272efea8" />
 
-    <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v7" remote="couchbase" revision="f3290c5cd250f766251019f542c5041f286ff701"/>
+    <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v7" remote="couchbase" revision="a01296b76db4c54811679634f70ce6a5683dbda2"/>
 
     <project name="jsonx" path="godeps/src/gopkg.in/couchbaselabs/jsonx.v1" remote="couchbaselabs" revision="5b7baa20429a46a5543ee259664cc86502738cad"/>
 
