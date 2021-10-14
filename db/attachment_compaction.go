@@ -1,6 +1,7 @@
 package db
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -12,7 +13,7 @@ const CompactionIDKey = "compactID"
 
 func Mark(db *Database, compactionID string, terminator chan bool) (int, error) {
 	base.InfofCtx(db.Ctx, base.KeyAll, "Starting first phase of attachment compaction (mark phase) with compactionID: %q", compactionID)
-	compactionLoggingID := "compaction: " + compactionID
+	compactionLoggingID := "Compaction Mark: " + compactionID
 
 	var markProcessFailureErr error
 	var attachmentsMarked int
@@ -134,4 +135,92 @@ func Mark(db *Database, compactionID string, terminator chan bool) (int, error) 
 	}
 
 	return attachmentsMarked, dcpClient.Close()
+}
+
+func Sweep(db *Database, compactionID string, terminator chan bool) (int, error) {
+	base.InfofCtx(db.Ctx, base.KeyAll, "Starting second phase of attachment compaction (sweep phase) with compactionID: %q", compactionID)
+	compactionLoggingID := "Compaction Sweep: " + compactionID
+
+	var attachmentsDeleted int
+
+	// Iterate over v1 attachments and if not marked with supplied compactionID we can purge the attachments.
+	// In the event of an error we can return but continue - Worst case is an attachment which should be deleted won't
+	// be deleted.
+	callback := func(event sgbucket.FeedEvent) bool {
+		// We only want to look over v1 attachment docs, skip otherwise
+		if !strings.HasPrefix(string(event.Key), base.AttPrefix) {
+			return true
+		}
+
+		// If the data contains an xattr then the attachment likely has a compaction ID, need to check this value
+		if event.DataType&base.MemcachedDataTypeXattr != 0 {
+			_, xattr, _, err := parseXattrStreamData(base.AttachmentCompactionXattrName, "", event.Value)
+			if err != nil && !errors.Is(err, base.ErrXattrNotFound) {
+				base.WarnfCtx(db.Ctx, "[%s] Unexpected error occurred attempting to parse attachment xattr: %v", compactionLoggingID, err)
+				return true
+			}
+
+			// If the document did indeed have an xattr then check the compactID. If it is the same as the current
+			// running compaction ID we don't want to purge this doc and can continue to the next doc.
+			if xattr != nil {
+				var syncData map[string]interface{}
+				err = base.JSONUnmarshal(xattr, &syncData)
+				if err != nil {
+					base.WarnfCtx(db.Ctx, "[%s] Failed to unmarshal xattr data: %v", compactionLoggingID, err)
+					return true
+				}
+
+				docCompactID, ok := syncData[CompactionIDKey]
+				if ok && docCompactID == compactionID {
+					return true
+				}
+			}
+		}
+
+		// If we've reached this point the current v1 attachment being processed either:
+		// - Has no compactionID set in its xattr
+		// - Has a compactionID set in its xattr but it is from a previous run and therefore is not equal to the passed
+		// in compactionID
+		// Therefore, we want to purge the doc
+		_, err := db.Bucket.Remove(string(event.Key), event.Cas)
+		if err != nil {
+			base.WarnfCtx(db.Ctx, "[%s] Unable to purge attachment %s: %v", compactionLoggingID, base.UD(string(event.Key)), err)
+			return true
+		}
+
+		base.DebugfCtx(db.Ctx, base.KeyAll, "[%s] Purged attachment %s", compactionLoggingID, base.UD(string(event.Key)))
+		attachmentsDeleted++
+
+		return true
+	}
+
+	cbStore, ok := base.AsCouchbaseStore(db.Bucket)
+	if !ok {
+		return 0, fmt.Errorf("bucket is not a Couchbase Store")
+	}
+
+	clientOptions := base.DCPClientOptions{
+		OneShot: true,
+	}
+
+	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for sweep phase of attachment compaction", compactionLoggingID)
+	dcpClient, err := base.NewDCPClient(compactionID, callback, clientOptions, cbStore)
+	if err != nil {
+		return 0, err
+	}
+
+	doneChan, err := dcpClient.Start()
+	if err != nil {
+		_ = dcpClient.Close()
+		return 0, err
+	}
+
+	select {
+	case <-doneChan:
+		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Sweep phase of attachment compaction completed. Deleted %d attachments", compactionLoggingID, attachmentsDeleted)
+	case <-terminator:
+		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Sweep phase of attachment compaction was terminated. Deleted %d attachments", compactionLoggingID, attachmentsDeleted)
+	}
+
+	return attachmentsDeleted, dcpClient.Close()
 }
