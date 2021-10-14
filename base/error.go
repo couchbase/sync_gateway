@@ -46,6 +46,7 @@ var (
 	ErrImportCancelledPurged = &sgError{"Import Cancelled Due to Purge"}
 	ErrChannelFeed           = &sgError{"Error while building channel feed"}
 	ErrXattrNotFound         = &sgError{"Xattr Not Found"}
+	ErrTimeout               = &sgError{"Operation timed out"}
 
 	// ErrPartialViewErrors is returned if the view call contains any partial errors.
 	// This is more of a warning, and inspecting ViewResult.Errors is required for detail.

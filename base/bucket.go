@@ -22,6 +22,8 @@ import (
 	"time"
 
 	"github.com/couchbase/go-couchbase"
+	"github.com/couchbase/gocb/v2"
+	"github.com/couchbase/gocbcore/v10"
 	"github.com/couchbase/gocbcore/v10/memd"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -69,6 +71,7 @@ type CouchbaseStore interface {
 	HttpClient() *http.Client
 	GetExpiry(k string) (expiry uint32, getMetaError error)
 	GetSpec() BucketSpec
+	GetMaxVbno() (uint16, error)
 
 	// GetStatsVbSeqno retrieves the high sequence number for all vbuckets and returns
 	// a map of UUIDS and a map of high sequence numbers (map from vbno -> seq)
@@ -280,6 +283,22 @@ func (b BucketSpec) TLSConfig() *tls.Config {
 	}
 
 	return tlsConfig
+}
+
+func (b BucketSpec) GocbAuthenticator() (gocb.Authenticator, error) {
+	var username, password string
+	if b.Auth != nil {
+		username, password, _ = b.Auth.GetCredentials()
+	}
+	return GoCBv2Authenticator(username, password, b.Certpath, b.Keypath)
+}
+
+func (b BucketSpec) GocbcoreAuthProvider() (gocbcore.AuthProvider, error) {
+	var username, password string
+	if b.Auth != nil {
+		username, password, _ = b.Auth.GetCredentials()
+	}
+	return GoCBCoreAuthConfig(username, password, b.Certpath, b.Keypath)
 }
 
 type couchbaseFeedImpl struct {

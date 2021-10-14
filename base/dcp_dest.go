@@ -54,7 +54,7 @@ func init() {
 
 type SGDest interface {
 	cbgt.Dest
-	initFeed(backfillType uint64) error
+	initFeed(backfillType uint64) (map[uint16]uint64, error)
 }
 
 // DCPDest implements SGDest (superset of cbgt.Dest) interface to manage updates coming from a
@@ -600,6 +600,6 @@ func (d *DCPLoggingDest) Stats(w io.Writer) error {
 	return d.dest.Stats(w)
 }
 
-func (d *DCPLoggingDest) initFeed(backfillType uint64) error {
+func (d *DCPLoggingDest) initFeed(backfillType uint64) (map[uint16]uint64, error) {
 	return d.dest.initFeed(backfillType)
 }

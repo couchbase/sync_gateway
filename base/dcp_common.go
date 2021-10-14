@@ -125,7 +125,7 @@ func (c *DCPCommon) snapshotStart(vbNo uint16, snapStart, snapEnd uint64) {
 	}
 }
 
-// setMetaData and getMetaData may used internally by dcp clients.  Expects send/recieve of opaque
+// setMetaData and getMetaData may used internally by dcp clients.  Expects send/receive of opaque
 // []byte data.  May be invoked from multiple goroutines, so need to manage synchronization
 func (c *DCPCommon) setMetaData(vbucketId uint16, value []byte) {
 
@@ -312,16 +312,17 @@ func (c *DCPCommon) updateSeq(vbucketId uint16, seq uint64, warnOnLowerSeqNo boo
 }
 
 // Initializes DCP Feed.  Determines starting position based on feed type.
-func (c *DCPCommon) initFeed(backfillType uint64) error {
+func (c *DCPCommon) initFeed(backfillType uint64) (highSeqnos map[uint16]uint64, err error) {
 
 	couchbaseBucket, ok := AsCouchbaseStore(c.bucket)
 	if !ok {
-		return errors.New("DCP not supported for non-Couchbase data source")
+		return nil, errors.New("DCP not supported for non-Couchbase data source")
 	}
 
-	statsUuids, highSeqnos, err := couchbaseBucket.GetStatsVbSeqno(c.maxVbNo, false)
+	var statsUuids map[uint16]uint64
+	statsUuids, highSeqnos, err = couchbaseBucket.GetStatsVbSeqno(c.maxVbNo, false)
 	if err != nil {
-		return pkgerrors.Wrap(err, "Error retrieving stats-vbseqno - DCP not supported")
+		return nil, pkgerrors.Wrap(err, "Error retrieving stats-vbseqno - DCP not supported")
 	}
 
 	c.vbuuids = statsUuids
@@ -346,7 +347,8 @@ func (c *DCPCommon) initFeed(backfillType uint64) error {
 		c.backfill.init(c.seqs, highSeqnos, c.maxVbNo, c.dbStatsExpvars)
 		Debugf(KeyDCP, "Initializing DCP feed to start from zero")
 	}
-	return nil
+
+	return highSeqnos, nil
 }
 
 // Seeds the sequence numbers returned by GetMetadata to support starting DCP from a particular
@@ -740,7 +742,7 @@ func alternateAddressShims(loggingCtx context.Context, bucketSpecTLS bool, connS
 
 	// Copy of cbdatasource's default Connect function, which swaps the given destination, with alternate addresses we found in ConnectBucket.
 	connectShim = func(protocol, dest string) (client *memcached.Client, err error) {
-		TracefCtx(loggingCtx, KeyDCP, "Connect callback: %s %s", protocol, MD(dest))
+		TracefCtx(loggingCtx, KeyDCP, "Connect mutationCallback: %s %s", protocol, MD(dest))
 
 		dest, err = getExternalAlternateAddress(loggingCtx, externalAlternateAddresses, dest)
 		if err != nil {
@@ -752,7 +754,7 @@ func alternateAddressShims(loggingCtx context.Context, bucketSpecTLS bool, connS
 
 	// Copy of cbdatasource's default ConnectTLS function, which swaps the given destination, with alternate addresses we found in ConnectBucket.
 	connectTLSShim = func(protocol, dest string, tlsConfig *tls.Config) (client *memcached.Client, err error) {
-		TracefCtx(loggingCtx, KeyDCP, "ConnectTLS callback: %s %s", protocol, MD(dest))
+		TracefCtx(loggingCtx, KeyDCP, "ConnectTLS mutationCallback: %s %s", protocol, MD(dest))
 
 		newDest, err := getExternalAlternateAddress(loggingCtx, externalAlternateAddresses, dest)
 		if err != nil {
