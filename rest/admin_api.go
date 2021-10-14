@@ -10,6 +10,7 @@ package rest
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -22,7 +23,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
-	"github.com/pkg/errors"
+	pkgerrors "github.com/pkg/errors"
 )
 
 const kDefaultDBOnlineDelay = 0
@@ -58,25 +59,51 @@ func (h *handler) handleCreateDB() error {
 			bucket = *config.Bucket
 		}
 
-		persistedConfig := DatabaseConfig{Version: version, DbConfig: *config}
-
-		persistedConfig.cas, err = h.server.bootstrapContext.connection.InsertConfig(bucket, h.server.config.Bootstrap.ConfigGroupID, persistedConfig)
-		if err != nil {
-			if errors.Cause(err) == base.ErrAuthError {
-				return base.HTTPErrorf(http.StatusForbidden, "auth failure accessing provided bucket using bootstrap credentials: %s", bucket)
-			}
-			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't save database config: %v", err)
+		// copy config before setup to persist the raw config the user supplied
+		var persistedDbConfig DbConfig
+		if err := base.DeepCopyInefficient(&persistedDbConfig, config); err != nil {
+			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't create copy of db config: %v", err)
 		}
 
 		dbCreds, _ := h.server.config.DatabaseCredentials[dbName]
-		if err := persistedConfig.setup(dbName, h.server.config.Bootstrap, dbCreds); err != nil {
+		if err := config.setup(dbName, h.server.config.Bootstrap, dbCreds); err != nil {
 			return err
 		}
 
-		_, err = h.server.applyConfig(persistedConfig)
+		loadedConfig := DatabaseConfig{Version: version, DbConfig: *config}
+		persistedConfig := DatabaseConfig{Version: version, DbConfig: persistedDbConfig}
+
+		h.server.lock.Lock()
+		defer h.server.lock.Unlock()
+
+		_, err = h.server._applyConfig(loadedConfig)
 		if err != nil {
+			if errors.Is(err, base.ErrAuthError) {
+				return base.HTTPErrorf(http.StatusForbidden, "auth failure accessing provided bucket: %s", bucket)
+			}
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
 		}
+
+		// now we've started the db successfully, we can persist it to the cluster
+		cas, err := h.server.bootstrapContext.connection.InsertConfig(bucket, h.server.config.Bootstrap.ConfigGroupID, persistedConfig)
+		if err != nil {
+			// unload the requested database config to prevent the cluster being in an inconsistent state
+			h.server._removeDatabase(dbName)
+			if errors.Is(err, base.ErrAuthError) {
+				return base.HTTPErrorf(http.StatusForbidden, "auth failure accessing provided bucket using bootstrap credentials: %s", bucket)
+			} else if errors.Is(err, base.ErrAlreadyExists) {
+				// on-demand config load if someone else beat us to db creation
+				go func() {
+					if _, err := h.server.fetchAndLoadDatabase(dbName); err != nil {
+						base.WarnfCtx(h.rq.Context(), "Couldn't load database after conflicting create: %v", err)
+					}
+				}()
+				return base.HTTPErrorf(http.StatusConflict, "Database %q already exists", dbName)
+			}
+			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't save database config: %v", err)
+		}
+		// store the cas in the loaded config after a successful insert
+		h.server.dbConfigs[dbName].cas = cas
 	} else {
 		if err := config.setup(dbName, h.server.config.Bootstrap, nil); err != nil {
 			return err
@@ -323,7 +350,7 @@ func (h *handler) handlePutConfig() error {
 	var config ServerPutConfig
 	err := base.WrapJSONUnknownFieldErr(ReadJSONFromMIMERawErr(h.rq.Header, h.requestBody, &config))
 	if err != nil {
-		if errors.Cause(err) == base.ErrUnknownField {
+		if pkgerrors.Cause(err) == base.ErrUnknownField {
 			return base.HTTPErrorf(http.StatusBadRequest, "Unable to configure given options at runtime: %v", err)
 		}
 		return err
@@ -458,7 +485,6 @@ func (h *handler) handlePutDbConfig() (err error) {
 					bucketDbConfig.DbConfig = *dbConfig
 				}
 
-				// TODO: CBG-1619 We're validating but we're not actually starting up the database before we persist the update!
 				if err := dbConfig.validatePersistentDbConfig(); err != nil {
 					return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 				}
