@@ -71,51 +71,115 @@ func (h *handler) handleAllDbs() error {
 }
 
 func (h *handler) handleGetCompact() error {
-	status, err := h.db.TombstoneCompactionManager.GetStatus()
+	compactionType := h.getQuery("type")
+	if compactionType == "" {
+		compactionType = "tombstone"
+	}
+
+	if compactionType != "tombstone" && compactionType != "attachment" {
+		return base.HTTPErrorf(http.StatusBadRequest, "Unknown parameter for 'type'. Must be 'tombstone' or 'attachment'")
+	}
+
+	var status []byte
+	var err error
+	if compactionType == "tombstone" {
+		status, err = h.db.TombstoneCompactionManager.GetStatus()
+	}
+
+	if compactionType == "attachment" {
+		status, err = h.db.AttachmentCompactionManager.GetStatus()
+	}
+
 	if err != nil {
 		return err
 	}
 	h.writeRawJSON(status)
+
 	return nil
 }
 
 func (h *handler) handleCompact() error {
 	action := h.getQuery("action")
-
-	if action != "" && action != string(db.BackgroundProcessActionStart) && action != string(db.BackgroundProcessActionStop) {
-		return base.HTTPErrorf(http.StatusBadRequest, "Unknown parameter for 'action'. Must be start or stop")
-	}
-
 	if action == "" {
 		action = string(db.BackgroundProcessActionStart)
 	}
 
-	if action == string(db.BackgroundProcessActionStart) {
-		if atomic.CompareAndSwapUint32(&h.db.CompactState, db.DBCompactNotRunning, db.DBCompactRunning) {
-			h.db.TombstoneCompactionManager.Start(map[string]interface{}{
-				"database": h.db,
-			})
+	if action != string(db.BackgroundProcessActionStart) && action != string(db.BackgroundProcessActionStop) {
+		return base.HTTPErrorf(http.StatusBadRequest, "Unknown parameter for 'action'. Must be start or stop")
+	}
+
+	compactionType := h.getQuery("type")
+	if compactionType == "" {
+		compactionType = "tombstone"
+	}
+
+	if compactionType != "tombstone" && compactionType != "attachment" {
+		return base.HTTPErrorf(http.StatusBadRequest, "Unknown parameter for 'type'. Must be 'tombstone' or 'attachment'")
+	}
+
+	if compactionType == "tombstone" {
+		if action == string(db.BackgroundProcessActionStart) {
+			if atomic.CompareAndSwapUint32(&h.db.CompactState, db.DBCompactNotRunning, db.DBCompactRunning) {
+				err := h.db.TombstoneCompactionManager.Start(map[string]interface{}{
+					"database": h.db,
+				})
+				if err != nil {
+					return err
+				}
+
+				status, err := h.db.TombstoneCompactionManager.GetStatus()
+				if err != nil {
+					return err
+				}
+				h.writeRawJSON(status)
+			} else {
+				return base.HTTPErrorf(http.StatusServiceUnavailable, "Database compact already in progress")
+
+			}
+		} else if action == string(db.BackgroundProcessActionStop) {
+			dbState := atomic.LoadUint32(&h.db.CompactState)
+			if dbState != db.DBCompactRunning {
+				return base.HTTPErrorf(http.StatusBadRequest, "Database compact is not running")
+			}
+
+			err := h.db.TombstoneCompactionManager.Stop()
+			if err != nil {
+				return err
+			}
 			status, err := h.db.TombstoneCompactionManager.GetStatus()
 			if err != nil {
 				return err
 			}
 			h.writeRawJSON(status)
-		} else {
-			return base.HTTPErrorf(http.StatusServiceUnavailable, "Database compact already in progress")
+		}
+	}
 
-		}
-	} else if action == string(db.BackgroundProcessActionStop) {
-		dbState := atomic.LoadUint32(&h.db.CompactState)
-		if dbState != db.DBCompactRunning {
-			return base.HTTPErrorf(http.StatusBadRequest, "Database compact is not running")
-		}
+	if compactionType == "attachment" {
+		if action == string(db.BackgroundProcessActionStart) {
+			err := h.db.AttachmentCompactionManager.Start(map[string]interface{}{
+				"database": h.db,
+			})
+			if err != nil {
+				return err
+			}
 
-		h.db.TombstoneCompactionManager.Stop()
-		status, err := h.db.TombstoneCompactionManager.GetStatus()
-		if err != nil {
-			return err
+			status, err := h.db.AttachmentCompactionManager.GetStatus()
+			if err != nil {
+				return err
+			}
+			h.writeRawJSON(status)
+		} else if action == string(db.BackgroundProcessActionStop) {
+			err := h.db.AttachmentCompactionManager.Stop()
+			if err != nil {
+				return err
+			}
+
+			status, err := h.db.AttachmentCompactionManager.GetStatus()
+			if err != nil {
+				return err
+			}
+			h.writeRawJSON(status)
 		}
-		h.writeRawJSON(status)
 	}
 
 	return nil
@@ -219,10 +283,14 @@ func (h *handler) handlePostResync() error {
 
 	if action == string(db.BackgroundProcessActionStart) {
 		if atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBResyncing) {
-			h.db.ResyncManager.Start(map[string]interface{}{
+			err := h.db.ResyncManager.Start(map[string]interface{}{
 				"database":            h.db,
 				"regenerateSequences": regenerateSequences,
 			})
+			if err != nil {
+				return err
+			}
+
 			status, err := h.db.ResyncManager.GetStatus()
 			if err != nil {
 				return err
@@ -245,7 +313,11 @@ func (h *handler) handlePostResync() error {
 			return base.HTTPErrorf(http.StatusBadRequest, "Database _resync is not running")
 		}
 
-		h.db.ResyncManager.Stop()
+		err := h.db.ResyncManager.Stop()
+		if err != nil {
+			return err
+		}
+
 		status, err := h.db.ResyncManager.GetStatus()
 		if err != nil {
 			return err

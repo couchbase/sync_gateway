@@ -9,10 +9,12 @@
 package db
 
 import (
+	"net/http"
 	"sync"
 	"sync/atomic"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/google/uuid"
 )
 
 type BackgroundProcessState string
@@ -34,6 +36,7 @@ const (
 // BackgroundManager this is the over-arching type which is exposed in DatabaseContext
 type BackgroundManager struct {
 	BackgroundManagerStatus
+	lastError  error
 	terminator chan struct{}
 	lock       sync.Mutex
 	Process    BackgroundManagerProcessI
@@ -42,8 +45,8 @@ type BackgroundManager struct {
 // BackgroundManagerStatus simply stores data used in BackgroundManager. This data can also be exposed to users over
 // REST. Splitting this out into an additional embedded struct allows easy JSON marshalling
 type BackgroundManagerStatus struct {
-	State     BackgroundProcessState `json:"status"`
-	LastError error                  `json:"last_error"`
+	State            BackgroundProcessState `json:"status"`
+	LastErrorMessage string                 `json:"last_error"`
 }
 
 // BackgroundManagerProcessI is an interface satisfied by any of the background processes
@@ -54,17 +57,39 @@ type BackgroundManagerProcessI interface {
 	ResetStatus()
 }
 
-func (b *BackgroundManager) Start(options map[string]interface{}) {
+func (b *BackgroundManager) Start(options map[string]interface{}) error {
+	err := b.markStart()
+	if err != nil {
+		return err
+	}
+
 	b.resetStatus()
-	b.setRunState(BackgroundProcessStateRunning)
 	go func() {
 		defer b.setRunState(BackgroundProcessStateStopped)
 		err := b.Process.Run(options, b.terminator)
 		if err != nil {
-			base.Errorf("Error")
+			base.Errorf("Error: %v", err)
 			b.SetError(err)
 		}
 	}()
+	return nil
+}
+
+func (b *BackgroundManager) markStart() error {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	if b.State == BackgroundProcessStateRunning {
+		return base.HTTPErrorf(http.StatusServiceUnavailable, "Process already running")
+	}
+
+	if b.State == BackgroundProcessStateStopping {
+		return base.HTTPErrorf(http.StatusServiceUnavailable, "Process currently stopping. Wait until stopped to retry")
+	}
+
+	b.State = BackgroundProcessStateRunning
+
+	return nil
 }
 
 func (b *BackgroundManager) GetStatus() ([]byte, error) {
@@ -76,6 +101,10 @@ func (b *BackgroundManager) GetStatus() ([]byte, error) {
 		backgroundStatus.State = BackgroundProcessStateStopped
 	}
 
+	if b.lastError != nil {
+		backgroundStatus.LastErrorMessage = b.lastError.Error()
+	}
+
 	return b.Process.GetProcessStatus(backgroundStatus)
 }
 
@@ -83,19 +112,36 @@ func (b *BackgroundManager) resetStatus() {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	b.LastError = nil
+	b.lastError = nil
+	b.LastErrorMessage = ""
 	b.terminator = make(chan struct{}, 1)
 	b.Process.ResetStatus()
 }
 
-func (b *BackgroundManager) Stop() {
-	// If we're already in the process of stopping don't do anything
-	if b.State == BackgroundProcessStateStopping {
-		return
+func (b *BackgroundManager) Stop() error {
+	err := b.markStop()
+	if err != nil {
+		return err
 	}
 
-	b.setRunState(BackgroundProcessStateStopping)
 	b.terminator <- struct{}{}
+	return nil
+}
+
+func (b *BackgroundManager) markStop() error {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	if b.State == BackgroundProcessStateStopping {
+		return base.HTTPErrorf(http.StatusServiceUnavailable, "Process already stopping")
+	}
+
+	if b.State == BackgroundProcessStateStopped {
+		return base.HTTPErrorf(http.StatusServiceUnavailable, "Process already stopped")
+	}
+
+	b.State = BackgroundProcessStateStopping
+	return nil
 }
 
 func (b *BackgroundManager) setRunState(state BackgroundProcessState) {
@@ -116,7 +162,7 @@ func (b *BackgroundManager) SetError(err error) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	b.LastError = err
+	b.lastError = err
 	b.State = BackgroundProcessStateError
 }
 
@@ -235,4 +281,75 @@ func (t *TombstoneCompactionManager) GetProcessStatus(backgroundManagerStatus Ba
 
 func (t *TombstoneCompactionManager) ResetStatus() {
 	atomic.StoreInt64(&t.PurgedDocCount, 0)
+}
+
+// =====================================================================
+// Attachment Compaction Implementation of Background Manager Process
+// =====================================================================
+
+type AttachmentCompactionManager struct {
+	MarkedAttachments int64
+	PurgedAttachments int64
+	lock              sync.Mutex
+}
+
+var _ BackgroundManagerProcessI = &AttachmentCompactionManager{}
+
+func NewAttachmentCompactionManager() *BackgroundManager {
+	return &BackgroundManager{
+		Process:    &AttachmentCompactionManager{},
+		terminator: make(chan struct{}, 1),
+	}
+}
+
+func (a *AttachmentCompactionManager) Run(options map[string]interface{}, terminator chan struct{}) error {
+	database := options["database"].(*Database)
+
+	uniqueUUID, err := uuid.NewRandom()
+	if err != nil {
+		return err
+	}
+
+	_, err = Mark(database, uniqueUUID.String(), terminator, func(markedAttachments *int) {
+		atomic.StoreInt64(&a.MarkedAttachments, int64(*markedAttachments))
+	})
+	if err != nil {
+		return err
+	}
+
+	_, err = Sweep(database, uniqueUUID.String(), terminator, func(purgedAttachments *int) {
+		atomic.StoreInt64(&a.PurgedAttachments, int64(*purgedAttachments))
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+type AttachmentManagerResponse struct {
+	BackgroundManagerStatus
+	MarkedAttachments int64 `json:"marked_attachments"`
+	PurgedAttachments int64 `json:"purged_attachments"`
+}
+
+func (a *AttachmentCompactionManager) GetProcessStatus(status BackgroundManagerStatus) ([]byte, error) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	retStatus := AttachmentManagerResponse{
+		BackgroundManagerStatus: status,
+		MarkedAttachments:       atomic.LoadInt64(&a.MarkedAttachments),
+		PurgedAttachments:       atomic.LoadInt64(&a.PurgedAttachments),
+	}
+
+	return base.JSONMarshal(retStatus)
+}
+
+func (a *AttachmentCompactionManager) ResetStatus() {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	atomic.StoreInt64(&a.MarkedAttachments, 0)
+	atomic.StoreInt64(&a.PurgedAttachments, 0)
 }

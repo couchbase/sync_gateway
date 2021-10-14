@@ -11,7 +11,7 @@ import (
 
 const CompactionIDKey = "compactID"
 
-func Mark(db *Database, compactionID string, terminator chan bool) (int, error) {
+func Mark(db *Database, compactionID string, terminator chan struct{}, markedAttachmentCallback func(markedAttachments *int)) (int, error) {
 	base.InfofCtx(db.Ctx, base.KeyAll, "Starting first phase of attachment compaction (mark phase) with compactionID: %q", compactionID)
 	compactionLoggingID := "Compaction Mark: " + compactionID
 
@@ -27,6 +27,8 @@ func Mark(db *Database, compactionID string, terminator chan bool) (int, error) 
 	}
 
 	callback := func(event sgbucket.FeedEvent) bool {
+		defer markedAttachmentCallback(&attachmentsMarked)
+
 		// We've had an error previously so no point doing work for any remaining items
 		if markProcessFailureErr != nil {
 			return false
@@ -137,7 +139,7 @@ func Mark(db *Database, compactionID string, terminator chan bool) (int, error) 
 	return attachmentsMarked, dcpClient.Close()
 }
 
-func Sweep(db *Database, compactionID string, terminator chan bool) (int, error) {
+func Sweep(db *Database, compactionID string, terminator chan struct{}, purgedAttachmentCallback func(purgedAttachments *int)) (int, error) {
 	base.InfofCtx(db.Ctx, base.KeyAll, "Starting second phase of attachment compaction (sweep phase) with compactionID: %q", compactionID)
 	compactionLoggingID := "Compaction Sweep: " + compactionID
 
@@ -147,6 +149,8 @@ func Sweep(db *Database, compactionID string, terminator chan bool) (int, error)
 	// In the event of an error we can return but continue - Worst case is an attachment which should be deleted won't
 	// be deleted.
 	callback := func(event sgbucket.FeedEvent) bool {
+		defer purgedAttachmentCallback(&attachmentsDeleted)
+
 		// We only want to look over v1 attachment docs, skip otherwise
 		if !strings.HasPrefix(string(event.Key), base.AttPrefix) {
 			return true

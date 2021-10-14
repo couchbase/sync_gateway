@@ -2457,7 +2457,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 	callbackFunc := func() {
 		queryCount++
 		if queryCount == 2 {
-			db.TombstoneCompactionManager.Stop()
+			assert.NoError(t, db.TombstoneCompactionManager.Stop())
 		}
 	}
 
@@ -2471,7 +2471,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 		})
 	}
 
-	db.TombstoneCompactionManager.Start(map[string]interface{}{"database": db})
+	assert.NoError(t, db.TombstoneCompactionManager.Start(map[string]interface{}{"database": db}))
 
 	waitAndAssertCondition(t, func() bool {
 		return db.TombstoneCompactionManager.GetRunState() == BackgroundProcessStateStopped
