@@ -14,6 +14,10 @@ import (
 
 func TestOneShotDCP(t *testing.T) {
 
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
@@ -78,6 +82,10 @@ func TestOneShotDCP(t *testing.T) {
 }
 
 func TestTerminateDCPFeed(t *testing.T) {
+
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()

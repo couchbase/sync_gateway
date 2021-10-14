@@ -147,7 +147,10 @@ func (dc *DCPClient) initAgent(spec BucketSpec) error {
 	}
 
 	agentConfig := gocbcore.DCPAgentConfig{}
-	agentConfig.FromConnStr(connStr)
+	connStrError := agentConfig.FromConnStr(connStr)
+	if connStrError != nil {
+		return fmt.Errorf("Unable to start DCP Client - error building conn str: %v", connStrError)
+	}
 
 	auth, authErr := spec.GocbcoreAuthProvider()
 	if authErr != nil {
