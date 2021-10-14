@@ -54,6 +54,10 @@ func (c *Collection) WriteUpdateWithXattr(k string, xattrKey string, userXattrKe
 	return WriteUpdateWithXattr(c, k, xattrKey, userXattrKey, exp, previous, callback)
 }
 
+func (c *Collection) SetXattr(k string, xattrKey string, xv []byte) (casOut uint64, err error) {
+	return SetXattr(c, k, xattrKey, xv)
+}
+
 func (c *Collection) UpdateXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}, deleteBody bool, isDelete bool) (casOut uint64, err error) {
 	return UpdateTombstoneXattr(c, k, xattrKey, exp, cas, xv, deleteBody)
 }
@@ -257,6 +261,24 @@ func (c *Collection) SubdocInsert(k string, fieldPath string, cas uint64, value 
 
 	return mutateErr
 
+}
+
+// SubdocSetXattr performs a set of the given xattr. Does a straight set with no cas.
+func (c *Collection) SubdocSetXattr(k string, xattrKey string, xv interface{}) (casOut uint64, err error) {
+	mutateOps := []gocb.MutateInSpec{
+		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
+	}
+	options := &gocb.MutateInOptions{
+		StoreSemantic: gocb.StoreSemanticsUpsert,
+	}
+	options.Internal.DocFlags = gocb.SubdocDocFlagAccessDeleted
+
+	result, mutateErr := c.MutateIn(k, mutateOps, options)
+	if mutateErr != nil {
+		return 0, mutateErr
+	}
+
+	return uint64(result.Cas()), nil
 }
 
 // SubdocUpdateXattr updates the xattr on an existing document. Writes cas and crc32c to the xattr using
