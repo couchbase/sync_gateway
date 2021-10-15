@@ -118,12 +118,11 @@ func createCBGTIndex(c *CbgtContext, dbName string, bucket Bucket, spec BucketSp
 	//       how this can be optimized if we're not actually using it in the indexImpl
 	indexParams := `{"name": "` + dbName + `"}`
 
-	// Required for initial pools request, before BucketDataSourceOptions kick in
+	// Required for initial pools request, before BucketDataSourceOptions kick in.
+	// go-couchbase doesn't support handling x509 auth and root ca verification as separate concerns.
 	if spec.Certpath != "" && spec.Keypath != "" {
 		couchbase.SetCertFile(spec.Certpath)
 		couchbase.SetKeyFile(spec.Keypath)
-	}
-	if spec.CACertPath != "" {
 		couchbase.SetRootFile(spec.CACertPath)
 		couchbase.SetSkipVerify(false)
 	}
