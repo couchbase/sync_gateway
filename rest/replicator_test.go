@@ -3968,7 +3968,20 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			assert.Equal(t, 1, activeCount)
 		})
 	}
+}
 
+func checkRevExists(rt *RestTester, docid string, rev string) error {
+	err := rt.WaitForCondition(func() bool {
+		doc, err := rt.GetDatabase().GetDocument(docid, db.DocUnmarshalSync)
+		if err != nil {
+			return false
+		}
+		if doc.SyncData.CurrentRev == rev {
+			return true
+		}
+		return false
+	})
+	return err
 }
 
 func TestSGR2TombstoneConflictHandling(t *testing.T) {
@@ -4223,6 +4236,10 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			})
 			assert.NoError(t, err)
 
+			// Stop the replication
+			resp = localActiveRT.SendAdminRequest("PUT", "/db/_replicationStatus/replication?action=stop", "")
+			localActiveRT.waitForReplicationStatus("replication", db.ReplicationStateStopped)
+
 			// Resurrect Doc
 			updatedBody := make(map[string]interface{})
 			updatedBody["resurrection"] = true
@@ -4259,29 +4276,25 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 				expectedRevID = "1-e5d43a9cdc4a2d4e258800dfc37e9d77"
 			}
 
-			// Wait for resurrected doc to show up on both sides
-			err = localActiveRT.WaitForCondition(func() bool {
-				doc, err := localActiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
-				if err != nil {
-					return false
-				}
-				if doc.SyncData.CurrentRev == expectedRevID {
-					return true
-				}
-				return false
-			})
+			// Wait for doc to show up on side that the resurrection was done
+			if test.resurrectLocal {
+				err = checkRevExists(localActiveRT, "docid2", expectedRevID)
+			} else {
+				err = checkRevExists(remotePassiveRT, "docid2", expectedRevID)
+			}
 			require.NoError(t, err)
 
-			err = remotePassiveRT.WaitForCondition(func() bool {
-				doc, err := remotePassiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
-				assert.NoError(t, err)
-				if doc.SyncData.CurrentRev == expectedRevID {
-					return true
-				}
-				return false
-			})
-			require.NoError(t, err)
+			// Start the replication
+			resp = localActiveRT.SendAdminRequest("PUT", "/db/_replicationStatus/replication?action=start", "")
+			localActiveRT.waitForReplicationStatus("replication", db.ReplicationStateRunning)
 
+			// Wait for doc to replicate from side resurrection was done on to the other side
+			if test.resurrectLocal {
+				err = checkRevExists(remotePassiveRT, "docid2", expectedRevID)
+			} else {
+				err = checkRevExists(localActiveRT, "docid2", expectedRevID)
+			}
+			assert.NoError(t, err)
 		})
 	}
 }
