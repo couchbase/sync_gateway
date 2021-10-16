@@ -3970,20 +3970,6 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 	}
 }
 
-func checkRevExists(rt *RestTester, docid string, rev string) error {
-	err := rt.WaitForCondition(func() bool {
-		doc, err := rt.GetDatabase().GetDocument(docid, db.DocUnmarshalSync)
-		if err != nil {
-			return false
-		}
-		if doc.SyncData.CurrentRev == rev {
-			return true
-		}
-		return false
-	})
-	return err
-}
-
 func TestSGR2TombstoneConflictHandling(t *testing.T) {
 	if base.GTestBucketPool.NumUsableBuckets() < 2 {
 		t.Skipf("test requires at least 2 usable test buckets")
@@ -4278,9 +4264,9 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Wait for doc to show up on side that the resurrection was done
 			if test.resurrectLocal {
-				err = checkRevExists(localActiveRT, "docid2", expectedRevID)
+				err = localActiveRT.waitForRev("docid2", expectedRevID)
 			} else {
-				err = checkRevExists(remotePassiveRT, "docid2", expectedRevID)
+				err = remotePassiveRT.waitForRev("docid2", expectedRevID)
 			}
 			require.NoError(t, err)
 
@@ -4290,9 +4276,9 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Wait for doc to replicate from side resurrection was done on to the other side
 			if test.resurrectLocal {
-				err = checkRevExists(remotePassiveRT, "docid2", expectedRevID)
+				err = remotePassiveRT.waitForRev("docid2", expectedRevID)
 			} else {
-				err = checkRevExists(localActiveRT, "docid2", expectedRevID)
+				err = localActiveRT.waitForRev("docid2", expectedRevID)
 			}
 			assert.NoError(t, err)
 		})
