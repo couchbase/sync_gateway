@@ -1194,7 +1194,7 @@ func (sc *ServerContext) fetchConfigs() (dbNameConfigs map[string]DatabaseConfig
 // _applyConfigs takes a map of dbName->DatabaseConfig and loads them into the ServerContext where necessary.
 func (sc *ServerContext) _applyConfigs(dbNameConfigs map[string]DatabaseConfig) (count int) {
 	for dbName, cnf := range dbNameConfigs {
-		applied, err := sc._applyConfig(cnf)
+		applied, err := sc._applyConfig(cnf, false)
 		if err != nil {
 			base.Errorf("Couldn't apply config for database %q: %v", base.MD(dbName), err)
 			continue
@@ -1213,7 +1213,8 @@ func (sc *ServerContext) applyConfigs(dbNameConfigs map[string]DatabaseConfig) (
 	return sc._applyConfigs(dbNameConfigs)
 }
 
-func (sc *ServerContext) _applyConfig(cnf DatabaseConfig) (applied bool, err error) {
+// _applyConfig loads the given database, failFast=true will not attempt to retry connecting/loading
+func (sc *ServerContext) _applyConfig(cnf DatabaseConfig, failFast bool) (applied bool, err error) {
 	// skip if we already have this config loaded, and we've got a cas value to compare with
 	foundDbName, ok := sc.bucketDbName[*cnf.Bucket]
 	if ok {
@@ -1245,7 +1246,7 @@ func (sc *ServerContext) _applyConfig(cnf DatabaseConfig) (applied bool, err err
 	sc.dbConfigs[cnf.Name] = &cnf
 
 	// TODO: Dynamic update instead of reload
-	if _, err := sc._reloadDatabaseFromConfig(cnf.Name); err != nil {
+	if _, err := sc._reloadDatabaseFromConfig(cnf.Name, failFast); err != nil {
 		// remove these entries we just created above if the database hasn't loaded properly
 		delete(sc.dbConfigs, cnf.Name)
 		delete(sc.bucketDbName, *cnf.Bucket)
@@ -1259,7 +1260,7 @@ func (sc *ServerContext) _applyConfig(cnf DatabaseConfig) (applied bool, err err
 func (sc *ServerContext) applyConfig(cnf DatabaseConfig) (applied bool, err error) {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
-	return sc._applyConfig(cnf)
+	return sc._applyConfig(cnf, false)
 }
 
 // startServer starts and runs the server with the given configuration. (This function never returns.)

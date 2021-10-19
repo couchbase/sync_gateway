@@ -70,7 +70,7 @@ type bootstrapContext struct {
 func (sc *ServerContext) CreateLocalDatabase(dbs DbConfigMap) error {
 	for _, dbConfig := range dbs {
 		dbc := dbConfig.ToDatabaseConfig()
-		_, err := sc._getOrAddDatabaseFromConfig(*dbc, false)
+		_, err := sc._getOrAddDatabaseFromConfig(*dbc, false, false)
 		if err != nil {
 			return err
 		}
@@ -311,17 +311,17 @@ func (sc *ServerContext) PostUpgrade(preview bool) (postUpgradeResults PostUpgra
 }
 
 // Removes and re-adds a database to the ServerContext.
-func (sc *ServerContext) _reloadDatabaseFromConfig(reloadDbName string) (*db.DatabaseContext, error) {
+func (sc *ServerContext) _reloadDatabaseFromConfig(reloadDbName string, failFast bool) (*db.DatabaseContext, error) {
 	sc._unloadDatabase(reloadDbName)
 	config := sc.dbConfigs[reloadDbName]
-	return sc._getOrAddDatabaseFromConfig(*config, true)
+	return sc._getOrAddDatabaseFromConfig(*config, true, failFast)
 }
 
 // Removes and re-adds a database to the ServerContext.
 func (sc *ServerContext) ReloadDatabaseFromConfig(reloadDbName string) (*db.DatabaseContext, error) {
 	// Obtain write lock during add database, to avoid race condition when creating based on ConfigServer
 	sc.lock.Lock()
-	dbContext, err := sc._reloadDatabaseFromConfig(reloadDbName)
+	dbContext, err := sc._reloadDatabaseFromConfig(reloadDbName, false)
 	sc.lock.Unlock()
 
 	return dbContext, err
@@ -333,7 +333,7 @@ func (sc *ServerContext) ReloadDatabaseFromConfig(reloadDbName string) (*db.Data
 func (sc *ServerContext) getOrAddDatabaseFromConfig(config DatabaseConfig, useExisting bool) (*db.DatabaseContext, error) {
 	// Obtain write lock during add database, to avoid race condition when creating based on ConfigServer
 	sc.lock.Lock()
-	dbContext, err := sc._getOrAddDatabaseFromConfig(config, useExisting)
+	dbContext, err := sc._getOrAddDatabaseFromConfig(config, useExisting, false)
 	sc.lock.Unlock()
 
 	return dbContext, err
@@ -374,7 +374,7 @@ func GetBucketSpec(config *DatabaseConfig, serverConfig *StartupConfig) (spec ba
 // Adds a database to the ServerContext.  Attempts a read after it gets the write
 // lock to see if it's already been added by another process. If so, returns either the
 // existing DatabaseContext or an error based on the useExisting flag.
-func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useExisting bool) (context *db.DatabaseContext, err error) {
+func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useExisting, failFast bool) (context *db.DatabaseContext, err error) {
 
 	// Generate bucket spec and validate whether db already exists
 	spec, err := GetBucketSpec(&config, sc.config)
@@ -406,7 +406,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	// Connect to bucket
 	base.Infof(base.KeyAll, "Opening db /%s as bucket %q, pool %q, server <%s>",
 		base.MD(dbName), base.MD(spec.BucketName), base.SD(base.DefaultPool), base.SD(spec.Server))
-	bucket, err := db.ConnectToBucket(spec)
+	connectToBucketFn := db.ConnectToBucket
+	if failFast {
+		connectToBucketFn = db.ConnectToBucketFailFast
+	}
+	bucket, err := connectToBucketFn(spec)
 	if err != nil {
 		return nil, err
 	}
