@@ -403,7 +403,7 @@ pipeline {
         }
         unstable {
             // archive non-verbose outputs upon failure for inspection (each verbose output is conditionally archived on stage failure)
-            archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false
+            archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
                 if ("${env.BRANCH_NAME}" == 'master') {
                     mail to: 'mobile_dev_sg@couchbase.com',
@@ -414,7 +414,7 @@ pipeline {
         }
         failure {
             // archive non-verbose outputs upon failure for inspection (each verbose output is conditionally archived on stage failure)
-            archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false
+            archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
                 if ("${env.BRANCH_NAME}" == 'master') {
                     mail to: 'mobile_dev_sg@couchbase.com',
