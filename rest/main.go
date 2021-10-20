@@ -284,8 +284,11 @@ func sanitizeDbConfigs(configMap DbConfigMap) (DbConfigMap, error) {
 		dbConfig.CertPath = ""
 		dbConfig.KeyPath = ""
 		dbConfig.CACertPath = ""
-		dbConfig.Users = nil
 		dbConfig.Roles = nil
+		// Keep guest user only
+		guestUser := dbConfig.Users["GUEST"]
+		dbConfig.Users = nil
+		dbConfig.Guest = guestUser
 
 		// Make sure any updates are written back to the config
 		configMap[dbName] = dbConfig
