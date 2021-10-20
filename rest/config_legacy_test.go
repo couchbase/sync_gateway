@@ -10,11 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 
-	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
-
 	"github.com/stretchr/testify/require"
 )
 
