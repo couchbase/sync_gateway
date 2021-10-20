@@ -626,16 +626,16 @@ func TestLogFlush(t *testing.T) {
 				}
 
 				if testCase.ExpectedLogFileCount == len(files) {
-					return false, nil, nil
+					return false, nil, files
 				}
 
-				return true, nil, nil
+				return true, nil, files
 			}
 
 			sleeper := base.CreateSleeperFunc(200, 100)
-			err, _ = base.RetryLoop("Wait for log files", worker, sleeper)
-			require.NoError(t, err)
-
+			err, files := base.RetryLoop("Wait for log files", worker, sleeper)
+			assert.NoError(t, err)
+			assert.Len(t, files, testCase.ExpectedLogFileCount)
 		})
 	}
 
