@@ -207,6 +207,12 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 			return nil, false, err
 		}
 
+		// Return users and roles separate from config
+		_ = dbc.Users // TODO: CBG-1751
+		_ = dbc.Roles
+		dbc.Roles = nil
+		dbc.Users = nil
+
 		configGroupID := persistentConfigDefaultGroupID
 		if startupConfig.Bootstrap.ConfigGroupID != "" {
 			configGroupID = startupConfig.Bootstrap.ConfigGroupID
@@ -284,8 +290,6 @@ func sanitizeDbConfigs(configMap DbConfigMap) (DbConfigMap, error) {
 		dbConfig.CertPath = ""
 		dbConfig.KeyPath = ""
 		dbConfig.CACertPath = ""
-		dbConfig.Users = nil
-		dbConfig.Roles = nil
 
 		// Make sure any updates are written back to the config
 		configMap[dbName] = dbConfig

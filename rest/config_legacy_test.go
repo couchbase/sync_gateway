@@ -1,13 +1,19 @@
 package rest
 
 import (
+	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/assert"
+	"github.com/couchbase/sync_gateway/db"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -266,4 +272,62 @@ func TestSGReplicateValidation(t *testing.T) {
 	_, err := readLegacyServerConfig(configReader)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), errText)
+}
+
+// CBG-1754 - Guest user not enabled during legacy config migration
+func TestLegacyGuestUserMigration(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("CBS required")
+	}
+
+	expected := db.PrincipalConfig{
+		ExplicitChannels: base.SetFromArray([]string{"*"}),
+		Disabled:         base.BoolPtr(false),
+	}
+
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
+	config := `
+	{
+		"server_tls_skip_verify": ` + strconv.FormatBool(base.TestTLSSkipVerify()) + `,
+		"interface": ":4444",
+		"adminInterface": ":4445",
+		"databases": {
+			"db": {
+				"server": "%s",
+				"username": "%s",
+				"password": "%s",
+				"bucket": "%s",
+				"users": {
+					"GUEST": {
+						"disabled": false,
+						"admin_channels": ["*"]
+					}
+				}
+			}
+		}
+	}`
+
+	config = fmt.Sprintf(config, base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), tb.GetName())
+
+	tmpDir, err := ioutil.TempDir("", t.Name())
+	require.NoError(t, err)
+	defer func() { require.NoError(t, os.RemoveAll(tmpDir)) }()
+
+	configPath := filepath.Join(tmpDir, "config.json")
+	err = ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
+	require.NoError(t, err)
+
+	sc, _, err := automaticConfigUpgrade(configPath)
+	require.NoError(t, err)
+
+	cluster, err := createCouchbaseClusterFromStartupConfig(sc)
+	require.NoError(t, err)
+
+	var dbConfig DbConfig
+	_, err = cluster.GetConfig(tb.GetName(), persistentConfigDefaultGroupID, &dbConfig)
+	require.NoError(t, err)
+
+	assert.Equal(t, &expected, dbConfig.Guest)
 }
