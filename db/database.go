@@ -217,26 +217,49 @@ func ValidateDatabaseName(dbName string) error {
 	return nil
 }
 
-// Helper function to open a Couchbase connection and return a specific bucket.
-func ConnectToBucket(spec base.BucketSpec) (bucket base.Bucket, err error) {
-
-	//start a retry loop to connect to the bucket backing off double the delay each time
-	worker := func() (shouldRetry bool, err error, value interface{}) {
-		bucket, err = base.GetBucket(spec)
-
-		// By default, if there was an error, retry
-		shouldRetry = err != nil
-
-		if errors.Is(err, base.ErrFatalBucketConnection) {
-			base.Warnf("Fatal error connecting to bucket: %v.  Not retrying", err)
-			shouldRetry = false
-		} else if errors.Is(err, base.ErrAuthError) {
+// connectToBucketErrorHandling takes the given spec and error and returns a formatted error, along with whether it was a fatal error.
+func connectToBucketErrorHandling(spec base.BucketSpec, gotErr error) (fatalError bool, err error) {
+	if gotErr != nil {
+		if errors.Is(gotErr, base.ErrAuthError) {
 			username, _, _ := spec.Auth.GetCredentials()
-			base.Warnf("Unable to authenticate as user %q: %v - Not retrying", base.UD(username), err)
-			shouldRetry = false
+			base.Warnf("Unable to authenticate as user %q: %v", base.UD(username), gotErr)
+			// auth errors will be wrapped with HTTPError further up the stack where appropriate. Return the raw error that can still be checked.
+			return false, gotErr
 		}
 
-		return shouldRetry, err, bucket
+		// Fatal errors get an additional log message, but are otherwise still transformed below.
+		if errors.Is(gotErr, base.ErrFatalBucketConnection) {
+			base.Warnf("Fatal error connecting to bucket: %v", gotErr)
+			fatalError = true
+		}
+
+		// Remaining errors are appended to the end of a more helpful error message.
+		return fatalError, base.HTTPErrorf(http.StatusBadGateway,
+			" Unable to connect to Couchbase Server (connection refused). Please ensure it is running and reachable at the configured host and port.  Detailed error: %s", gotErr)
+	}
+
+	return false, nil
+}
+
+// ConnectToBucketFailFast opens a Couchbase connect and return a specific bucket without retrying on failure.
+func ConnectToBucketFailFast(spec base.BucketSpec) (bucket base.Bucket, err error) {
+	bucket, err = base.GetBucket(spec)
+	_, err = connectToBucketErrorHandling(spec, err)
+	return bucket, err
+}
+
+// ConnectToBucket opens a Couchbase connection and return a specific bucket.
+func ConnectToBucket(spec base.BucketSpec) (base.Bucket, error) {
+
+	//start a retry loop to connect to the bucket backing off double the delay each time
+	worker := func() (bool, error, interface{}) {
+		bucket, err := base.GetBucket(spec)
+
+		// Retry if there was a non-fatal error
+		fatalError, newErr := connectToBucketErrorHandling(spec, err)
+		shouldRetry := newErr != nil && !fatalError
+
+		return shouldRetry, newErr, bucket
 	}
 
 	sleeper := base.CreateDoublingSleeperFunc(
@@ -247,12 +270,7 @@ func ConnectToBucket(spec base.BucketSpec) (bucket base.Bucket, err error) {
 	description := fmt.Sprintf("Attempt to connect to bucket : %v", spec.BucketName)
 	err, ibucket := base.RetryLoop(description, worker, sleeper)
 	if err != nil {
-		// auth errors will be wrapped with HTTPError further up the stack where appropriate. For now we'll return the raw error that can be checked.
-		if errors.Is(err, base.ErrAuthError) {
-			return nil, err
-		}
-		return nil, base.HTTPErrorf(http.StatusBadGateway,
-			" Unable to connect to Couchbase Server (connection refused). Please ensure it is running and reachable at the configured host and port.  Detailed error: %s", err)
+		return nil, err
 	}
 
 	return ibucket.(base.Bucket), nil

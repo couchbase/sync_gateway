@@ -76,7 +76,7 @@ func (h *handler) handleCreateDB() error {
 		h.server.lock.Lock()
 		defer h.server.lock.Unlock()
 
-		_, err = h.server._applyConfig(loadedConfig)
+		_, err = h.server._applyConfig(loadedConfig, true)
 		if err != nil {
 			if errors.Is(err, base.ErrAuthError) {
 				return base.HTTPErrorf(http.StatusForbidden, "auth failure accessing provided bucket: %s", bucket)
@@ -525,7 +525,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 	h.server.dbConfigs[dbName] = updatedDbConfig
 
 	// TODO: Dynamic update instead of reload
-	if _, err := h.server._reloadDatabaseFromConfig(dbName); err != nil {
+	if _, err := h.server._reloadDatabaseFromConfig(dbName, false); err != nil {
 		return err
 	}
 
@@ -611,7 +611,7 @@ func (h *handler) handleDeleteDbConfigSync() error {
 	h.server.dbConfigs[dbName] = updatedDbConfig
 
 	// TODO: Dynamic update instead of reload
-	if _, err := h.server._reloadDatabaseFromConfig(dbName); err != nil {
+	if _, err := h.server._reloadDatabaseFromConfig(dbName, false); err != nil {
 		return err
 	}
 
@@ -678,7 +678,7 @@ func (h *handler) handlePutDbConfigSync() error {
 	h.server.dbConfigs[dbName] = updatedDbConfig
 
 	// TODO: Dynamic update instead of reload
-	if _, err := h.server._reloadDatabaseFromConfig(dbName); err != nil {
+	if _, err := h.server._reloadDatabaseFromConfig(dbName, false); err != nil {
 		return err
 	}
 
@@ -762,7 +762,7 @@ func (h *handler) handleDeleteDbConfigImportFilter() error {
 	h.server.dbConfigs[dbName] = updatedDbConfig
 
 	// TODO: Dynamic update instead of reload
-	if _, err := h.server._reloadDatabaseFromConfig(dbName); err != nil {
+	if _, err := h.server._reloadDatabaseFromConfig(dbName, false); err != nil {
 		return err
 	}
 
@@ -829,7 +829,7 @@ func (h *handler) handlePutDbConfigImportFilter() error {
 	h.server.dbConfigs[dbName] = updatedDbConfig
 
 	// TODO: Dynamic update instead of reload
-	if _, err := h.server._reloadDatabaseFromConfig(dbName); err != nil {
+	if _, err := h.server._reloadDatabaseFromConfig(dbName, false); err != nil {
 		return err
 	}
 
