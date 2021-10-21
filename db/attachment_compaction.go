@@ -1,6 +1,7 @@
 package db
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"strings"
@@ -214,7 +215,7 @@ func getAttachmentSyncData(dataType uint8, data []byte) (*AttachmentCompactionDa
 // checkForInlineAttachments will scan a body for "_attachments" for pre-2.5 attachments and will return any attachments
 // found
 func checkForInlineAttachments(body []byte) (*AttachmentsMetaMap, error) {
-	if strings.Contains(string(body), BodyAttachments) {
+	if bytes.Contains(body, []byte(BodyAttachments)) {
 		var attachmentBody AttachmentsMetaMap
 		err := base.JSONUnmarshal(body, &attachmentBody)
 		if err != nil {
