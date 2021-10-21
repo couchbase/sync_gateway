@@ -60,11 +60,6 @@ func Mark(db *Database, compactionID string, terminator chan struct{}, markedAtt
 
 		// If we're in a conflict state we need to go and check and mark attachments from other leaves, not just winning
 		if attachmentData.Flags&channels.Conflict != 0 {
-
-			type AttachmentsMetaMap struct {
-				Attachments map[string]AttachmentsMeta `json:"_attachments"`
-			}
-
 			// Iterate over body map
 			// These are strings containing conflicting bodies, need to scan these for attachments
 			for _, bodyMap := range attachmentData.History.BodyMap {
@@ -151,6 +146,11 @@ func Mark(db *Database, compactionID string, terminator chan struct{}, markedAtt
 	return attachmentsMarked, dcpClient.Close()
 }
 
+// AttachmentsMetaMap struct is a very minimal struct to unmarshal into when getting attachments from bodies
+type AttachmentsMetaMap struct {
+	Attachments map[string]AttachmentsMeta `json:"_attachments"`
+}
+
 // AttachmentCompactionData struct to unmarshal a document sync data into in order to process attachments during mark
 // phase. Contains only what is necessary
 type AttachmentCompactionData struct {
@@ -165,8 +165,11 @@ type AttachmentCompactionData struct {
 // getAttachmentSyncData takes the data type and data from the DCP feed and will return a AttachmentCompactionData
 // struct containing data needed to process attachments on a document.
 func getAttachmentSyncData(dataType uint8, data []byte) (*AttachmentCompactionData, error) {
+	var attachmentData *AttachmentCompactionData
+	var documentBody []byte
+
 	if dataType&base.MemcachedDataTypeXattr != 0 {
-		_, xattr, _, err := parseXattrStreamData(base.SyncXattrName, "", data)
+		body, xattr, _, err := parseXattrStreamData(base.SyncXattrName, "", data)
 		if err != nil {
 			if errors.Is(err, base.ErrXattrNotFound) {
 				return nil, nil
@@ -174,25 +177,53 @@ func getAttachmentSyncData(dataType uint8, data []byte) (*AttachmentCompactionDa
 			return nil, err
 		}
 
-		var attachmentData *AttachmentCompactionData
 		err = base.JSONUnmarshal(xattr, &attachmentData)
 		if err != nil {
 			return nil, err
 		}
+		documentBody = body
 
-		return attachmentData, nil
+	} else {
+		type AttachmentDataSync struct {
+			AttachmentData AttachmentCompactionData `json:"_sync"`
+		}
+		var attachmentDataSync AttachmentDataSync
+		err := base.JSONUnmarshal(data, &attachmentDataSync)
+		if err != nil {
+			return nil, err
+		}
+
+		documentBody = data
+		attachmentData = &attachmentDataSync.AttachmentData
 	}
 
-	type AttachmentDataSync struct {
-		AttachmentData AttachmentCompactionData `json:"_sync"`
-	}
-	var attachmentDataSync AttachmentDataSync
-	err := base.JSONUnmarshal(data, &attachmentDataSync)
-	if err != nil {
-		return nil, err
+	// If we've not yet found any attachments have a last effort attempt to grab it from the body for pre-2.5 documents
+	if len(attachmentData.Attachments) == 0 {
+		attachmentMetaMap, err := checkForInlineAttachments(documentBody)
+		if err != nil {
+			return nil, err
+		}
+		if attachmentMetaMap != nil {
+			attachmentData.Attachments = attachmentMetaMap.Attachments
+		}
 	}
 
-	return &attachmentDataSync.AttachmentData, nil
+	return attachmentData, nil
+}
+
+// checkForInlineAttachments will scan a body for "_attachments" for pre-2.5 attachments and will return any attachments
+// found
+func checkForInlineAttachments(body []byte) (*AttachmentsMetaMap, error) {
+	if strings.Contains(string(body), BodyAttachments) {
+		var attachmentBody AttachmentsMetaMap
+		err := base.JSONUnmarshal(body, &attachmentBody)
+		if err != nil {
+			return nil, err
+		}
+		return &attachmentBody, nil
+	}
+
+	return nil, nil
 }
 
 // handleAttachments will iterate over the provided attachments and add any attachment doc IDs to the provided map

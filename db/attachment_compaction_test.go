@@ -42,11 +42,12 @@ func TestAttachmentMark(t *testing.T) {
 
 	attKeys = append(attKeys, createConflictingDocOneLeafHasAttachmentBodyMap(t, "conflictAtt", "attForConflict", []byte(`{"value": "att"}`), testDb))
 	attKeys = append(attKeys, createConflictingDocOneLeafHasAttachmentBodyKey(t, "conflictAttBodyKey", "attForConflict2", []byte(`{"val": "bodyKeyAtt"}`), testDb))
+	attKeys = append(attKeys, createDocWithInBodyAttachment(t, "inBodyDoc", []byte(`{}`), "attForInBodyRef", []byte(`{"val": "inBodyAtt"}`), testDb))
 
 	terminator := make(chan struct{})
 	attachmentsMarked, err := Mark(testDb, t.Name(), terminator, func(markedAttachments *int) {})
 	assert.NoError(t, err)
-	assert.Equal(t, 12, attachmentsMarked)
+	assert.Equal(t, 13, attachmentsMarked)
 
 	for _, attDocKey := range attKeys {
 		var attachmentData Body
@@ -176,7 +177,7 @@ func CreateLegacyAttachmentDoc(t *testing.T, db *Database, docID string, body []
 			attID: map[string]interface{}{
 				"content_type": "application/json",
 				"digest":       attDigest,
-				"length":       2,
+				"length":       len(attBody),
 				"revpos":       2,
 				"stub":         true,
 			},
@@ -307,6 +308,50 @@ func createConflictingDocOneLeafHasAttachmentBodyKey(t *testing.T, docID string,
 
 	err = db.Bucket.SetRaw(backupKey, 0, []byte(bodyBackup))
 	assert.NoError(t, err)
+
+	return attDocID
+}
+
+func createDocWithInBodyAttachment(t *testing.T, docID string, docBody []byte, attID string, attBody []byte, db *Database) string {
+	var body Body
+	err := base.JSONUnmarshal(docBody, &body)
+	assert.NoError(t, err)
+
+	_, _, err = db.Put(docID, body)
+	assert.NoError(t, err)
+
+	attDigest := Sha1DigestKey(attBody)
+	attDocID := MakeAttachmentKey(AttVersion1, docID, attDigest)
+	_, err = db.Bucket.AddRaw(attDocID, 0, attBody)
+	require.NoError(t, err)
+
+	_, err = db.Bucket.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+		attachmentSyncData := map[string]interface{}{
+			attID: map[string]interface{}{
+				"content_type": "application/json",
+				"digest":       attDigest,
+				"length":       len(attBody),
+				"revpos":       2,
+				"stub":         true,
+			},
+		}
+
+		attachmentSyncDataBytes, err := base.JSONMarshal(attachmentSyncData)
+		if err != nil {
+			return nil, base.Uint32Ptr(0), false, err
+		}
+
+		updated, err = base.InjectJSONPropertiesFromBytes(current, base.KVPairBytes{
+			Key: "_attachments",
+			Val: attachmentSyncDataBytes,
+		})
+		if err != nil {
+			return nil, base.Uint32Ptr(0), false, err
+		}
+
+		return updated, base.Uint32Ptr(0), false, nil
+	})
+	require.NoError(t, err)
 
 	return attDocID
 }
