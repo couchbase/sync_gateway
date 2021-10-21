@@ -268,15 +268,18 @@ func sanitizeDbConfigs(configMap DbConfigMap) (DbConfigMap, error) {
 	var databaseServerAddress string
 
 	for dbName, dbConfig := range configMap {
-		if dbConfig.Server != nil {
-			if databaseServerAddress == "" {
-				databaseServerAddress = *dbConfig.Server
-			}
+		if dbConfig.Server == nil || *dbConfig.Server == "" {
+			return nil, fmt.Errorf("automatic upgrade to persistent config requires each database config to have a server " +
+				"address specified that are all matching in the 2.x config")
+		}
 
-			if *dbConfig.Server != databaseServerAddress {
-				return nil, fmt.Errorf("automatic upgrade to persistent config requires matching server addresses in " +
-					"2.x config")
-			}
+		if databaseServerAddress == "" {
+			databaseServerAddress = *dbConfig.Server
+		}
+
+		if *dbConfig.Server != databaseServerAddress {
+			return nil, fmt.Errorf("automatic upgrade to persistent config requires matching server addresses in " +
+				"2.x config")
 		}
 
 		if dbConfig.Bucket == nil || *dbConfig.Bucket == "" {
@@ -296,11 +299,6 @@ func sanitizeDbConfigs(configMap DbConfigMap) (DbConfigMap, error) {
 
 		// Make sure any updates are written back to the config
 		configMap[dbName] = dbConfig
-	}
-
-	if databaseServerAddress == "" {
-		return nil, fmt.Errorf("automatic upgrade to persistent config requires at least 1 database config to have a " +
-			"server address specified in the 2.x config")
 	}
 	return configMap, nil
 }

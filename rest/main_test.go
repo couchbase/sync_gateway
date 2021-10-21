@@ -109,7 +109,7 @@ func TestParseFlags(t *testing.T) {
 }
 
 func TestSanitizeDbConfigs(t *testing.T) {
-	expectedError := "automatic upgrade to persistent config requires at least 1 database config to have a server address specified in the 2.x config"
+	expectedError := "automatic upgrade to persistent config requires each database config to have a server address specified that are all matching in the 2.x config"
 	testCases := []struct {
 		name  string
 		input DbConfigMap
@@ -129,6 +129,18 @@ func TestSanitizeDbConfigs(t *testing.T) {
 			name: "Filled in server, and nil server",
 			input: DbConfigMap{"1": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("1.2.3.4")}},
 				"2": &DbConfig{}},
+			error: true,
+		},
+		{
+			name: "Filled in server, and empty server",
+			input: DbConfigMap{"1": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("")}},
+				"2": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("1.2.3.4")}}},
+			error: true,
+		},
+		{
+			name: "Filled in matching servers",
+			input: DbConfigMap{"1": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("1.2.3.4")}},
+				"2": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("1.2.3.4")}}},
 			error: false,
 		},
 	}
