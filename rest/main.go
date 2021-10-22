@@ -262,8 +262,7 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 
 // validate / sanitize db configs
 // - remove fields no longer valid for persisted db configs
-// - ensure servers are the same
-// - ensure a server is provided in at least one db config
+// - ensure matching servers are provided in all db configs
 func sanitizeDbConfigs(configMap DbConfigMap) (DbConfigMap, error) {
 	var databaseServerAddress string
 
