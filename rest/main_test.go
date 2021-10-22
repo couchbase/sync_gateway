@@ -107,3 +107,53 @@ func TestParseFlags(t *testing.T) {
 		})
 	}
 }
+
+func TestSanitizeDbConfigs(t *testing.T) {
+	expectedError := "automatic upgrade to persistent config requires each database config to have a server address specified that are all matching in the 2.x config"
+	testCases := []struct {
+		name  string
+		input DbConfigMap
+		error bool
+	}{
+		{
+			name:  "Nil server",
+			input: DbConfigMap{"1": &DbConfig{}},
+			error: true,
+		},
+		{
+			name:  "Empty server",
+			input: DbConfigMap{"1": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("")}}},
+			error: true,
+		},
+		{
+			name: "Filled in server, and nil server",
+			input: DbConfigMap{"1": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("1.2.3.4")}},
+				"2": &DbConfig{}},
+			error: true,
+		},
+		{
+			name: "Filled in server, and empty server",
+			input: DbConfigMap{"1": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("")}},
+				"2": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("1.2.3.4")}}},
+			error: true,
+		},
+		{
+			name: "Filled in matching servers",
+			input: DbConfigMap{"1": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("1.2.3.4")}},
+				"2": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("1.2.3.4")}}},
+			error: false,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			dbConfigMap, err := sanitizeDbConfigs(test.input)
+			if test.error {
+				assert.Nil(t, dbConfigMap)
+				require.Error(t, err)
+				assert.EqualError(t, err, expectedError)
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}

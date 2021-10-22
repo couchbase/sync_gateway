@@ -262,11 +262,16 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 
 // validate / sanitize db configs
 // - remove fields no longer valid for persisted db configs
-// - ensure servers are the same
+// - ensure matching servers are provided in all db configs
 func sanitizeDbConfigs(configMap DbConfigMap) (DbConfigMap, error) {
 	var databaseServerAddress string
 
 	for dbName, dbConfig := range configMap {
+		if dbConfig.Server == nil || *dbConfig.Server == "" {
+			return nil, fmt.Errorf("automatic upgrade to persistent config requires each database config to have a server " +
+				"address specified that are all matching in the 2.x config")
+		}
+
 		if databaseServerAddress == "" {
 			databaseServerAddress = *dbConfig.Server
 		}
