@@ -39,6 +39,14 @@ func (bucket *CouchbaseBucketGoCB) SetXattr(k string, xattrKey string, xv []byte
 	return SetXattr(bucket, k, xattrKey, xv)
 }
 
+func (bucket *CouchbaseBucketGoCB) RemoveXattr(k string, xattrKey string, cas uint64) (err error) {
+	return RemoveXattr(bucket, k, xattrKey, cas)
+}
+
+func (bucket *CouchbaseBucketGoCB) DeleteXattr(k string, xattrKey string) (err error) {
+	return DeleteXattr(bucket, k, xattrKey)
+}
+
 func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}, deleteBody bool, isDelete bool) (casOut uint64, err error) {
 	return UpdateTombstoneXattr(bucket, k, xattrKey, exp, cas, xv, deleteBody)
 }

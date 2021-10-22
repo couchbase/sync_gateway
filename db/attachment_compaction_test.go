@@ -1,10 +1,12 @@
 package db
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
@@ -12,7 +14,6 @@ import (
 )
 
 func TestAttachmentMark(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Requires CBS")
 	}
@@ -54,14 +55,15 @@ func TestAttachmentMark(t *testing.T) {
 		_, err = testDb.Bucket.GetXattr(attDocKey, base.AttachmentCompactionXattrName, &attachmentData)
 		assert.NoError(t, err)
 
-		compactID, ok := attachmentData[CompactionIDKey]
+		compactIDSection, ok := attachmentData[CompactionIDKey]
 		assert.True(t, ok)
-		assert.Equal(t, t.Name(), compactID)
+
+		_, ok = compactIDSection.(map[string]interface{})[t.Name()]
+		assert.True(t, ok)
 	}
 }
 
 func TestAttachmentSweep(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Requires CBS")
 	}
@@ -72,7 +74,7 @@ func TestAttachmentSweep(t *testing.T) {
 	makeMarkedDoc := func(docid string, compactID string) {
 		err := testDb.Bucket.SetRaw(docid, 0, []byte("{}"))
 		assert.NoError(t, err)
-		_, err = testDb.Bucket.SetXattr(docid, base.AttachmentCompactionXattrName, []byte(`{"`+CompactionIDKey+`": "`+compactID+`"}`))
+		_, err = testDb.Bucket.SetXattr(docid, getCompactionIDSubDocPath(compactID), []byte(strconv.Itoa(int(time.Now().Unix()))))
 		assert.NoError(t, err)
 	}
 
@@ -106,7 +108,110 @@ func TestAttachmentSweep(t *testing.T) {
 	assert.Equal(t, 11, purged)
 }
 
-func TestAttachmentMarkAndSweep(t *testing.T) {
+func TestAttachmentCleanup(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Requires CBS")
+	}
+
+	testDb := setupTestDB(t)
+	defer testDb.Close()
+
+	makeMarkedDoc := func(docid string, compactID string) {
+		err := testDb.Bucket.SetRaw(docid, 0, []byte("{}"))
+		assert.NoError(t, err)
+		_, err = testDb.Bucket.SetXattr(docid, getCompactionIDSubDocPath(compactID), []byte(strconv.Itoa(int(time.Now().Unix()))))
+		assert.NoError(t, err)
+	}
+
+	makeMultiMarkedDoc := func(docid string, compactIDs map[string]interface{}) {
+		err := testDb.Bucket.SetRaw(docid, 0, []byte("{}"))
+		assert.NoError(t, err)
+		compactIDsJSON, err := base.JSONMarshal(compactIDs)
+		assert.NoError(t, err)
+		_, err = testDb.Bucket.SetXattr(docid, base.AttachmentCompactionXattrName+"."+CompactionIDKey, compactIDsJSON)
+		assert.NoError(t, err)
+	}
+
+	singleMarkedAttIDs := make([]string, 0, 5)
+	for i := 0; i < 5; i++ {
+		docID := fmt.Sprintf("%s%s%d", base.AttPrefix, "marked", i)
+		makeMarkedDoc(docID, t.Name())
+		singleMarkedAttIDs = append(singleMarkedAttIDs, docID)
+	}
+
+	// Make multi-mark where all are recent - should result in only current compactID being purged
+	recentMultiMarkedAttIDs := make([]string, 0, 10)
+	for i := 0; i < 10; i++ {
+		docID := fmt.Sprintf("%s%s%d", base.AttPrefix, "recentMultiMarked", i)
+		makeMultiMarkedDoc(docID, map[string]interface{}{
+			t.Name(): int(time.Now().Unix()),
+			"rand":   int(time.Now().Unix()),
+		})
+		recentMultiMarkedAttIDs = append(recentMultiMarkedAttIDs, docID)
+	}
+
+	// Make multi-mark where there is an old entry - should result in all compactionIDs being purged
+	oldMultiMarkedAttIDs := make([]string, 0, 10)
+	for i := 0; i < 10; i++ {
+		docID := fmt.Sprintf("%s%s%d", base.AttPrefix, "oldMultiMarked", i)
+		makeMultiMarkedDoc(docID, map[string]interface{}{
+			t.Name(): int(time.Now().Unix()),
+			"rand":   int(time.Now().UTC().Add(-1 * time.Hour * 24 * 30).Unix()),
+		})
+		oldMultiMarkedAttIDs = append(oldMultiMarkedAttIDs, docID)
+	}
+
+	oneRecentOneOldMultiMarkedAttIDs := make([]string, 0, 10)
+	for i := 0; i < 10; i++ {
+		docID := fmt.Sprintf("%s%s%d", base.AttPrefix, "oneRecentOldOldMultiMarked", i)
+		makeMultiMarkedDoc(docID, map[string]interface{}{
+			t.Name(): int(time.Now().Unix()),
+			"recent": int(time.Now().Unix()),
+			"old":    int(time.Now().UTC().Add(-1 * time.Hour * 24 * 30).Unix()),
+		})
+		oneRecentOneOldMultiMarkedAttIDs = append(oneRecentOneOldMultiMarkedAttIDs, docID)
+	}
+
+	terminator := make(chan struct{})
+	err := Cleanup(testDb, t.Name(), terminator)
+	assert.NoError(t, err)
+
+	for _, docID := range singleMarkedAttIDs {
+		var xattr map[string]interface{}
+		_, err := testDb.Bucket.GetXattr(docID, base.AttachmentCompactionXattrName, &xattr)
+		assert.Error(t, err)
+		assert.True(t, errors.Is(err, base.ErrXattrNotFound))
+	}
+
+	for _, docID := range recentMultiMarkedAttIDs {
+		var xattr map[string]interface{}
+		_, err := testDb.Bucket.GetXattr(docID, base.AttachmentCompactionXattrName+"."+CompactionIDKey, &xattr)
+		assert.NoError(t, err)
+
+		assert.NotContains(t, xattr, t.Name())
+		assert.Contains(t, xattr, "rand")
+	}
+
+	for _, docID := range oldMultiMarkedAttIDs {
+		var xattr map[string]interface{}
+		_, err := testDb.Bucket.GetXattr(docID, CompactionIDKey, &xattr)
+		assert.Error(t, err)
+		assert.True(t, errors.Is(err, base.ErrXattrNotFound))
+	}
+
+	for _, docID := range oneRecentOneOldMultiMarkedAttIDs {
+		var xattr map[string]interface{}
+		_, err := testDb.Bucket.GetXattr(docID, base.AttachmentCompactionXattrName+"."+CompactionIDKey, &xattr)
+		assert.NoError(t, err)
+
+		assert.NotContains(t, xattr, t.Name())
+		assert.NotContains(t, xattr, "old")
+		assert.Contains(t, xattr, "recent")
+	}
+
+}
+
+func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Requires CBS")
@@ -141,8 +246,7 @@ func TestAttachmentMarkAndSweep(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 10, attachmentsMarked)
 
-	terminator = make(chan struct{})
-	attachmentsPurged, err := Sweep(testDb, t.Name(), terminator, func(markedAttachments *int) {})
+	attachmentsPurged, err := Sweep(testDb, t.Name(), terminator, func(purgedAttachments *int) {})
 	assert.NoError(t, err)
 	assert.Equal(t, 5, attachmentsPurged)
 
@@ -153,9 +257,27 @@ func TestAttachmentMarkAndSweep(t *testing.T) {
 			assert.Error(t, err)
 		} else {
 			assert.NoError(t, err)
+			var xattr map[string]interface{}
+			_, err = testDb.Bucket.GetXattr(attDocKey, base.AttachmentCompactionXattrName+"."+CompactionIDKey, &xattr)
+			assert.NoError(t, err)
+			assert.Contains(t, xattr, t.Name())
 		}
 	}
 
+	err = Cleanup(testDb, t.Name(), terminator)
+	assert.NoError(t, err)
+
+	for _, attDocKey := range attKeys {
+		var back interface{}
+		_, err = testDb.Bucket.Get(attDocKey, &back)
+		if !strings.Contains(attDocKey, "unmarked") {
+			assert.NoError(t, err)
+			var xattr map[string]interface{}
+			_, err = testDb.Bucket.GetXattr(attDocKey, base.AttachmentCompactionXattrName+"."+CompactionIDKey, &xattr)
+			assert.Error(t, err)
+			assert.True(t, errors.Is(err, base.ErrXattrNotFound))
+		}
+	}
 }
 
 func CreateLegacyAttachmentDoc(t *testing.T, db *Database, docID string, body []byte, attID string, attBody []byte) string {

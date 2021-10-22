@@ -251,6 +251,14 @@ func (b *LeakyBucket) SetXattr(k string, xattrKey string, xv []byte) (casOut uin
 	return b.bucket.SetXattr(k, xattrKey, xv)
 }
 
+func (b *LeakyBucket) RemoveXattr(k string, xattrKey string, cas uint64) (err error) {
+	return b.bucket.RemoveXattr(k, xattrKey, cas)
+}
+
+func (b *LeakyBucket) DeleteXattr(k string, xattrKey string) (err error) {
+	return b.bucket.DeleteXattr(k, xattrKey)
+}
+
 func (b *LeakyBucket) SubdocInsert(docID string, fieldPath string, cas uint64, value interface{}) error {
 	return b.bucket.SubdocInsert(docID, fieldPath, cas, value)
 }

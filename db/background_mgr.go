@@ -324,7 +324,7 @@ func (a *AttachmentCompactionManager) Run(options map[string]interface{}, termin
 		return err
 	}
 
-	return nil
+	return Cleanup(database, uniqueUUID.String(), terminator)
 }
 
 type AttachmentManagerResponse struct {

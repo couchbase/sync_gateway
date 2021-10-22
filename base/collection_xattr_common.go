@@ -1,6 +1,7 @@
 package base
 
 import (
+	"errors"
 	"fmt"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -273,6 +274,56 @@ func SetXattr(store SubdocXattrStore, k string, xattrKey string, xv []byte) (cas
 
 	return casOut, err
 
+}
+
+func RemoveXattr(store SubdocXattrStore, k string, xattrKey string, cas uint64) error {
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+		writeErr := store.SubdocDeleteXattr(k, xattrKey, cas)
+		if writeErr == nil {
+			return false, nil, nil
+		}
+
+		if errors.Is(err, ErrCasFailureShouldRetry) {
+			return false, err, nil
+		}
+
+		shouldRetry = store.isRecoverableWriteError(writeErr)
+		if shouldRetry {
+			return shouldRetry, err, nil
+		}
+
+		return false, err, nil
+	}
+
+	err, _ := RetryLoop("RemoveXattr", worker, store.GetSpec().RetrySleeper())
+	if err != nil {
+		err = pkgerrors.Wrapf(err, "RemoveXattr with key %v xattr %v", UD(k).Redact(), UD(xattrKey).Redact())
+	}
+
+	return err
+}
+
+func DeleteXattr(store SubdocXattrStore, k string, xattrKey string) error {
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+		writeErr := store.SubdocDeleteXattr(k, xattrKey, 0)
+		if writeErr == nil {
+			return false, nil, nil
+		}
+
+		shouldRetry = store.isRecoverableWriteError(writeErr)
+		if shouldRetry {
+			return shouldRetry, err, nil
+		}
+
+		return false, err, nil
+	}
+
+	err, _ := RetryLoop("DeleteXattr", worker, store.GetSpec().RetrySleeper())
+	if err != nil {
+		err = pkgerrors.Wrapf(err, "DeleteXattr with key %v xattr %v", UD(k).Redact(), UD(xattrKey).Redact())
+	}
+
+	return err
 }
 
 // Delete a document and it's associated named xattr.  Couchbase server will preserve system xattrs as part of the (CBS)

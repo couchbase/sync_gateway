@@ -58,6 +58,14 @@ func (c *Collection) SetXattr(k string, xattrKey string, xv []byte) (casOut uint
 	return SetXattr(c, k, xattrKey, xv)
 }
 
+func (c *Collection) RemoveXattr(k string, xattrKey string, cas uint64) (err error) {
+	return RemoveXattr(c, k, xattrKey, cas)
+}
+
+func (c *Collection) DeleteXattr(k string, xattrKey string) (err error) {
+	return DeleteXattr(c, k, xattrKey)
+}
+
 func (c *Collection) UpdateXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}, deleteBody bool, isDelete bool) (casOut uint64, err error) {
 	return UpdateTombstoneXattr(c, k, xattrKey, exp, cas, xv, deleteBody)
 }
