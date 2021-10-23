@@ -27,7 +27,7 @@ func TestAttachmentMark(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	attKeys := make([]string, 0, 10)
+	attKeys := make([]string, 0, 11)
 	for i := 0; i < 10; i++ {
 		docID := fmt.Sprintf("testDoc-%d", i)
 		attKey := fmt.Sprintf("att-%d", i)
@@ -40,10 +40,14 @@ func TestAttachmentMark(t *testing.T) {
 	err := testDb.Bucket.SetRaw("testDocx", 0, []byte("{}"))
 	assert.NoError(t, err)
 
+	attKeys = append(attKeys, createConflictingDocOneLeafHasAttachmentBodyMap(t, "conflictAtt", "attForConflict", []byte(`{"value": "att"}`), testDb))
+	attKeys = append(attKeys, createConflictingDocOneLeafHasAttachmentBodyKey(t, "conflictAttBodyKey", "attForConflict2", []byte(`{"val": "bodyKeyAtt"}`), testDb))
+	attKeys = append(attKeys, createDocWithInBodyAttachment(t, "inBodyDoc", []byte(`{}`), "attForInBodyRef", []byte(`{"val": "inBodyAtt"}`), testDb))
+
 	terminator := make(chan struct{})
 	attachmentsMarked, err := Mark(testDb, t.Name(), terminator, func(markedAttachments *int) {})
 	assert.NoError(t, err)
-	assert.Equal(t, 10, attachmentsMarked)
+	assert.Equal(t, 13, attachmentsMarked)
 
 	for _, attDocKey := range attKeys {
 		var attachmentData Body
@@ -173,7 +177,7 @@ func CreateLegacyAttachmentDoc(t *testing.T, db *Database, docID string, body []
 			attID: map[string]interface{}{
 				"content_type": "application/json",
 				"digest":       attDigest,
-				"length":       2,
+				"length":       len(attBody),
 				"revpos":       2,
 				"stub":         true,
 			},
@@ -189,6 +193,163 @@ func CreateLegacyAttachmentDoc(t *testing.T, db *Database, docID string, body []
 		require.NoError(t, err)
 
 		return doc, xattr, false, nil, nil
+	})
+	require.NoError(t, err)
+
+	return attDocID
+}
+
+func createConflictingDocOneLeafHasAttachmentBodyMap(t *testing.T, docID string, attID string, attBody []byte, db *Database) string {
+	attDigest := Sha1DigestKey(attBody)
+	attLength := len(attBody)
+
+	syncData := `{
+      "rev": "2-b",
+      "flags": 24,
+      "sequence": 3,
+      "recent_sequences": [
+        1,
+        2,
+        3
+      ],
+      "history": {
+        "revs": [
+          "2-5d3308aae9930225ed7f6614cf115366",
+          "2-b",
+		  "1-ca9ad22802b66f662ff171f226211d5c"
+        ],
+        "parents": [
+          2,
+          2,
+          -1
+        ],
+        "bodymap": {
+          "0": "{\"_attachments\":{\"` + attID + `\":{\"digest\":\"` + attDigest + `\",\"length\":` + strconv.Itoa(attLength) + `,\"revpos\":1,\"stub\":true}}}"
+        },
+        "channels": [
+          null,
+          null,
+          null
+        ]
+      },
+      "cas": "0x0000502dcaefad16",
+      "value_crc32c": "0x5a0a8886",
+      "time_saved": "2021-10-14T16:38:11.359443+01:00"
+    }`
+
+	_, err := db.Bucket.WriteWithXattr(docID, base.SyncXattrName, 0, 0, []byte(`{"Winning Rev": true}`), []byte(syncData), false, false)
+	assert.NoError(t, err)
+
+	attDocID := MakeAttachmentKey(AttVersion1, docID, attDigest)
+	_, err = db.Bucket.AddRaw(attDocID, 0, attBody)
+	require.NoError(t, err)
+
+	return attDocID
+}
+
+func createConflictingDocOneLeafHasAttachmentBodyKey(t *testing.T, docID string, attID string, attBody []byte, db *Database) string {
+	attDigest := Sha1DigestKey(attBody)
+
+	syncData := `{
+      "rev": "2-b",
+      "flags": 24,
+      "sequence": 3,
+      "recent_sequences": [
+        1,
+        2,
+        3
+      ],
+      "history": {
+        "revs": [
+          "1-ca9ad22802b66f662ff171f226211d5c",
+          "2-01b555fc7738f62c68dd16da92009740",
+          "2-b"
+        ],
+        "parents": [
+          -1,
+          0,
+          0
+        ],
+        "bodyKeyMap": {
+          "1": "_sync:rb:PVLZc9dMcSQWX9uiA9tvlMDcs/PXoFIowRvfjcSurvU="
+        },
+        "channels": [
+          null,
+          null,
+          null
+        ]
+      },
+      "cas": "0x000013a35309b016",
+      "value_crc32c": "0x5a0a8886",
+      "channel_set": null,
+      "channel_set_history": null,
+      "time_saved": "2021-10-21T12:48:39.549095+01:00"
+    }`
+
+	_, err := db.Bucket.WriteWithXattr(docID, base.SyncXattrName, 0, 0, []byte(`{"Winning Rev": true}`), []byte(syncData), false, false)
+	assert.NoError(t, err)
+
+	attDocID := MakeAttachmentKey(AttVersion1, docID, attDigest)
+	_, err = db.Bucket.AddRaw(attDocID, 0, attBody)
+	require.NoError(t, err)
+
+	backupKey := "_sync:rb:PVLZc9dMcSQWX9uiA9tvlMDcs/PXoFIowRvfjcSurvU="
+	bodyBackup := `
+	{
+	  "_attachments": {
+		"` + attID + `": {
+		  "revpos": 1,
+		  "stub": true,
+		  "digest": "` + attDigest + `"
+		}
+	  },
+	  "testval": "val"
+	}`
+
+	err = db.Bucket.SetRaw(backupKey, 0, []byte(bodyBackup))
+	assert.NoError(t, err)
+
+	return attDocID
+}
+
+func createDocWithInBodyAttachment(t *testing.T, docID string, docBody []byte, attID string, attBody []byte, db *Database) string {
+	var body Body
+	err := base.JSONUnmarshal(docBody, &body)
+	assert.NoError(t, err)
+
+	_, _, err = db.Put(docID, body)
+	assert.NoError(t, err)
+
+	attDigest := Sha1DigestKey(attBody)
+	attDocID := MakeAttachmentKey(AttVersion1, docID, attDigest)
+	_, err = db.Bucket.AddRaw(attDocID, 0, attBody)
+	require.NoError(t, err)
+
+	_, err = db.Bucket.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+		attachmentSyncData := map[string]interface{}{
+			attID: map[string]interface{}{
+				"content_type": "application/json",
+				"digest":       attDigest,
+				"length":       len(attBody),
+				"revpos":       2,
+				"stub":         true,
+			},
+		}
+
+		attachmentSyncDataBytes, err := base.JSONMarshal(attachmentSyncData)
+		if err != nil {
+			return nil, base.Uint32Ptr(0), false, err
+		}
+
+		updated, err = base.InjectJSONPropertiesFromBytes(current, base.KVPairBytes{
+			Key: "_attachments",
+			Val: attachmentSyncDataBytes,
+		})
+		if err != nil {
+			return nil, base.Uint32Ptr(0), false, err
+		}
+
+		return updated, base.Uint32Ptr(0), false, nil
 	})
 	require.NoError(t, err)
 
