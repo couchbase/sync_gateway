@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
 )
@@ -283,8 +284,8 @@ func RemoveXattr(store SubdocXattrStore, k string, xattrKey string, cas uint64) 
 			return false, nil, nil
 		}
 
-		if errors.Is(err, ErrCasFailureShouldRetry) {
-			return false, err, nil
+		if errors.Is(err, gocb.ErrCasMismatch) {
+			return false, ErrCasFailureShouldRetry, nil
 		}
 
 		shouldRetry = store.isRecoverableWriteError(writeErr)
