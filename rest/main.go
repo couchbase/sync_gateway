@@ -13,9 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/couchbase/sync_gateway/db"
-
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	pkgerrors "github.com/pkg/errors"
 )
 
