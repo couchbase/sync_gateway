@@ -142,6 +142,10 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 }
 
 func CreateLegacyAttachmentDoc(t *testing.T, testDB *db.Database, docID string, body []byte, attID string, attBody []byte) string {
+	if !base.TestUseXattrs() {
+		t.Skip("Requires xattrs")
+	}
+
 	attDigest := db.Sha1DigestKey(attBody)
 
 	attDocID := db.MakeAttachmentKey(db.AttVersion1, docID, attDigest)

@@ -281,6 +281,10 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 }
 
 func CreateLegacyAttachmentDoc(t *testing.T, db *Database, docID string, body []byte, attID string, attBody []byte) string {
+	if !base.TestUseXattrs() {
+		t.Skip("Requires xattrs")
+	}
+
 	attDigest := Sha1DigestKey(attBody)
 
 	attDocID := MakeAttachmentKey(AttVersion1, docID, attDigest)
