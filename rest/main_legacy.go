@@ -49,7 +49,7 @@ func legacyServerMain(osArgs []string, flagStartupConfig *StartupConfig) error {
 		return err
 	}
 
-	ctx, err := setupServerContext(&sc, false)
+	ctx, err := setupServerContext(&sc, false, nil, nil)
 	if err != nil {
 		return err
 	}

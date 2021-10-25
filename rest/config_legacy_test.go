@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/sync_gateway/auth"
+
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 
@@ -319,7 +321,7 @@ func TestLegacyGuestUserMigration(t *testing.T) {
 	err = ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
 	require.NoError(t, err)
 
-	sc, _, err := automaticConfigUpgrade(configPath)
+	sc, _, _, _, err := automaticConfigUpgrade(configPath)
 	require.NoError(t, err)
 
 	cluster, err := createCouchbaseClusterFromStartupConfig(sc)
@@ -330,4 +332,112 @@ func TestLegacyGuestUserMigration(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, &expected, dbConfig.Guest)
+}
+
+// CBG-1751: Install legacy config principals prior to upgrade
+func TestLegacyConfigPrinciplesMigration(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("CBS required")
+	}
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	bucket := rt.Bucket()
+	rt.GetDatabase().AllowEmptyPassword = true // So users don't have to have password set
+
+	// Expected principle names that should exist on bucket after migration
+	expectedUsers := []string{
+		"NewUserStatic",      // Only in config
+		"ExistingUserStatic", // Defined in bucket and config
+		"ExistingUser",       // Already in bucket, not config
+	}
+	expectedRoles := []string{
+		"NewRoleStatic",      // Only in config
+		"ExistingRoleStatic", // Defined in bucket and config
+		"ExistingRole",       // Already in bucket, not config
+	}
+
+	// Add principles already on bucket before migration
+	existingUsers := map[string]*db.PrincipalConfig{
+		"ExistingUserStatic": {
+			Name:             base.StringPtr("ExistingUserStatic"),
+			ExplicitChannels: base.SetOf("*"),
+		},
+		"ExistingUser": {
+			Name:             base.StringPtr("ExistingUser"),
+			ExplicitChannels: base.SetOf("*"),
+		},
+	}
+	err := rt.ServerContext().installPrincipals(rt.GetDatabase(), existingUsers, "user")
+	require.NoError(t, err)
+
+	existingRoles := map[string]*db.PrincipalConfig{
+		"ExistingRoleStatic": {
+			Name:             base.StringPtr("ExistingRoleStatic"),
+			ExplicitChannels: base.SetOf("*"),
+		},
+		"ExistingRole": {
+			Name:             base.StringPtr("ExistingRole"),
+			ExplicitChannels: base.SetOf("*"),
+		},
+	}
+	err = rt.ServerContext().installPrincipals(rt.GetDatabase(), existingRoles, "role")
+	require.NoError(t, err)
+
+	// Config to migrate to persistent config on bucket
+	config := `
+	{
+		"databases": {
+			"db": {
+				"server": "%s",
+				"username": "%s",
+				"password": "%s",
+				"bucket": "%s",
+				"num_index_replicas": 0,
+				"users": {
+					"NewUserStatic": {
+						"admin_channels": ["*"]
+					},
+					"ExistingUserStatic": {
+						"admin_channels": ["*"]
+					}
+				},
+				"roles": {
+					"NewRoleStatic": {
+						"admin_channels": ["*"]
+					},
+					"ExistingRoleStatic": {
+						"admin_channels": ["*"]
+					}
+				}
+			}
+		}
+	}`
+	config = fmt.Sprintf(config, base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), rt.Bucket().GetName())
+
+	tmpDir, err := ioutil.TempDir("", t.Name())
+	require.NoError(t, err)
+	defer func() { require.NoError(t, os.RemoveAll(tmpDir)) }()
+
+	configPath := filepath.Join(tmpDir, "config.json")
+	err = ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
+	require.NoError(t, err)
+
+	// Copy behaviour of serverMainPersistentConfig - upgrade config, pass legacy users and roles in to set up server context
+	// then add legacy principles when server context is set up
+	_, _, users, roles, err := automaticConfigUpgrade(configPath)
+	require.NoError(t, err)
+	rt.ServerContext().addLegacyPrincipals(users, roles)
+
+	// Check that principles all exist on bucket
+	authenticator := auth.NewAuthenticator(bucket, nil, auth.DefaultAuthenticatorOptions())
+	for _, name := range expectedUsers {
+		user, err := authenticator.GetUser(name)
+		assert.NoError(t, err)
+		assert.NotNil(t, user)
+	}
+	for _, name := range expectedRoles {
+		role, err := authenticator.GetRole(name)
+		assert.NoError(t, err)
+		assert.NotNil(t, role)
+	}
 }

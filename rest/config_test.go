@@ -1207,7 +1207,7 @@ func TestSetupServerContext(t *testing.T) {
 		config.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
 		config.Bootstrap.Username = base.TestClusterUsername()
 		config.Bootstrap.Password = base.TestClusterPassword()
-		sc, err := setupServerContext(&config, false)
+		sc, err := setupServerContext(&config, false, nil, nil)
 		require.NoError(t, err)
 		require.NotNil(t, sc)
 		sc.Close()

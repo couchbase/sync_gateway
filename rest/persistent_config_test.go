@@ -47,7 +47,7 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 	err = ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
 	require.NoError(t, err)
 
-	startupConfig, _, err := automaticConfigUpgrade(configPath)
+	startupConfig, _, _, _, err := automaticConfigUpgrade(configPath)
 	require.NoError(t, err)
 
 	assert.Equal(t, "", startupConfig.Bootstrap.ConfigGroupID)
@@ -146,7 +146,7 @@ func TestAutomaticConfigUpgradeError(t *testing.T) {
 			err = ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
 			require.NoError(t, err)
 
-			_, _, err = automaticConfigUpgrade(configPath)
+			_, _, _, _, err = automaticConfigUpgrade(configPath)
 			assert.Error(t, err)
 		})
 	}
@@ -182,7 +182,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 	require.NoError(t, err)
 
 	// Run migration once
-	_, _, err = automaticConfigUpgrade(configPath)
+	_, _, _, _, err = automaticConfigUpgrade(configPath)
 	require.NoError(t, err)
 
 	updatedConfigRaw := `
@@ -205,7 +205,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 	require.NoError(t, err)
 
 	// Run migration again to ensure no error and validate it doesn't actually update db
-	startupConfig, _, err := automaticConfigUpgrade(updatedConfigPath)
+	startupConfig, _, _, _, err := automaticConfigUpgrade(updatedConfigPath)
 	require.NoError(t, err)
 
 	cbs, err := createCouchbaseClusterFromStartupConfig(startupConfig)
@@ -242,7 +242,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 	err = ioutil.WriteFile(importConfigPath, []byte(importConfig), os.FileMode(0644))
 	require.NoError(t, err)
 
-	startupConfig, _, err = automaticConfigUpgrade(importConfigPath)
+	startupConfig, _, _, _, err = automaticConfigUpgrade(importConfigPath)
 	// only supported in EE
 	if base.IsEnterpriseEdition() {
 		require.NoError(t, err)
