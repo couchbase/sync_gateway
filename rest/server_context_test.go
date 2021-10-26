@@ -118,13 +118,28 @@ func TestAllDatabaseNames(t *testing.T) {
 	defer serverContext.Close()
 
 	xattrs := base.TestUseXattrs()
-	dbConfig := DbConfig{BucketConfig: bucketConfigFromTestBucket(tb1), Name: "imdb1", AllowEmptyPassword: base.BoolPtr(true), NumIndexReplicas: base.UintPtr(0), EnableXattrs: &xattrs}
+	useViews := base.TestsDisableGSI()
+	dbConfig := DbConfig{
+		BucketConfig:       bucketConfigFromTestBucket(tb1),
+		Name:               "imdb1",
+		AllowEmptyPassword: base.BoolPtr(true),
+		NumIndexReplicas:   base.UintPtr(0),
+		EnableXattrs:       &xattrs,
+		UseViews:           &useViews,
+	}
 	_, err := serverContext.AddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig})
 	assert.NoError(t, err, "No error while adding database to server context")
 	assert.Len(t, serverContext.AllDatabaseNames(), 1)
 	assert.Contains(t, serverContext.AllDatabaseNames(), "imdb1")
 
-	dbConfig = DbConfig{BucketConfig: bucketConfigFromTestBucket(tb2), Name: "imdb2", AllowEmptyPassword: base.BoolPtr(true), NumIndexReplicas: base.UintPtr(0), EnableXattrs: &xattrs}
+	dbConfig = DbConfig{
+		BucketConfig:       bucketConfigFromTestBucket(tb2),
+		Name:               "imdb2",
+		AllowEmptyPassword: base.BoolPtr(true),
+		NumIndexReplicas:   base.UintPtr(0),
+		EnableXattrs:       &xattrs,
+		UseViews:           &useViews,
+	}
 	_, err = serverContext.AddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig})
 	assert.NoError(t, err, "No error while adding database to server context")
 	assert.Len(t, serverContext.AllDatabaseNames(), 2)
@@ -171,11 +186,19 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 	assert.Nil(t, dbContext, "Can't create database context from config with unrecognized value for import_docs")
 	assert.Error(t, err, "It should throw Unrecognized value for import_docs")
 
+	xattrs := base.TestUseXattrs()
+	useViews := base.TestsDisableGSI()
 	bucketConfig := BucketConfig{Server: &server, Bucket: &bucketName}
-	dbConfig = DbConfig{BucketConfig: bucketConfig, Name: databaseName, AllowEmptyPassword: base.BoolPtr(true)}
+	dbConfig = DbConfig{
+		BucketConfig:       bucketConfig,
+		Name:               databaseName,
+		AllowEmptyPassword: base.BoolPtr(true),
+		EnableXattrs:       &xattrs,
+		UseViews:           &useViews,
+	}
 	dbContext, err = serverContext.AddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig})
 
-	assert.NoError(t, err, "No error while adding database to server context")
+	assert.NoError(t, err, "Unexpected error while adding database to server context")
 	assert.Equal(t, server, dbContext.BucketSpec.Server)
 	assert.Equal(t, bucketName, dbContext.BucketSpec.BucketName)
 
@@ -183,7 +206,8 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 		Name:                databaseName,
 		OldRevExpirySeconds: &oldRevExpirySeconds,
 		LocalDocExpirySecs:  &localDocExpirySecs,
-		AutoImport:          false}
+		AutoImport:          false,
+	}
 
 	dbContext, err = serverContext._getOrAddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig}, false, false)
 	assert.Nil(t, dbContext, "Can't create database context with duplicate database name")
