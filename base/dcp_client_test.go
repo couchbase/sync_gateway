@@ -82,6 +82,7 @@ func TestOneShotDCP(t *testing.T) {
 }
 
 func TestTerminateDCPFeed(t *testing.T) {
+	t.Skip("Temporarily skipping test. CBG-1767")
 
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
