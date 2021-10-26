@@ -62,7 +62,7 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 		ID:          ID,
 		spec:        store.GetSpec(),
 		terminator:  make(chan bool),
-		doneChannel: make(chan error),
+		doneChannel: make(chan error, 1),
 	}
 
 	// Initialize active vbuckets
