@@ -32,7 +32,7 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 
 	// Start SG with no databases in bucket(s)
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true, nil, nil)
+	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
 	serverErr := make(chan error, 0)
 	go func() {
@@ -90,7 +90,7 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	sc.Close()
 	require.NoError(t, <-serverErr)
 
-	sc, err = setupServerContext(&config, true, nil, nil)
+	sc, err = setupServerContext(&config, true)
 	require.NoError(t, err)
 	serverErr = make(chan error, 0)
 	go func() {

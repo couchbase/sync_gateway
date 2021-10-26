@@ -135,12 +135,14 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 	}
 
 	base.Infof(base.KeyAll, "Config: Starting in persistent mode using config group %q", sc.Bootstrap.ConfigGroupID)
-	ctx, err := setupServerContext(&sc, true, legacyDbUsers, legacyDbRoles)
+	ctx, err := setupServerContext(&sc, true)
 	if err != nil {
 		return false, err
 	}
 
 	ctx.initialStartupConfig = initialStartupConfig
+
+	ctx.addLegacyPrincipals(legacyDbUsers, legacyDbRoles)
 
 	return false, startServer(&sc, ctx)
 }

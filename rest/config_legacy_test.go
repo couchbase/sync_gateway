@@ -421,8 +421,7 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 	err = ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
 	require.NoError(t, err)
 
-	// Copy behaviour of serverMainPersistentConfig - upgrade config, pass legacy users and roles in to set up server context
-	// then add legacy principles when server context is set up
+	// Copy behaviour of serverMainPersistentConfig - upgrade config, pass legacy users and roles in to addLegacyPrinciples (after server context is created)
 	_, _, users, roles, err := automaticConfigUpgrade(configPath)
 	require.NoError(t, err)
 	rt.ServerContext().addLegacyPrincipals(users, roles)

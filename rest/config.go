@@ -960,7 +960,7 @@ func (sc *StartupConfig) validate() (errorMessages error) {
 }
 
 // setupServerContext creates a new ServerContext given its configuration and performs the context validation.
-func setupServerContext(config *StartupConfig, persistentConfig bool, legacyDbUsers, legacyDbRoles map[string]map[string]*db.PrincipalConfig) (*ServerContext, error) {
+func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerContext, error) {
 	// Logging config will now have been loaded from command line
 	// or from a sync_gateway config file so we can validate the
 	// configuration and setup logging now
@@ -1044,7 +1044,6 @@ func setupServerContext(config *StartupConfig, persistentConfig bool, legacyDbUs
 			base.Infof(base.KeyConfig, "Disabled background polling for new configs/buckets")
 		}
 	}
-	sc.addLegacyPrincipals(legacyDbUsers, legacyDbRoles)
 	return sc, nil
 }
 
@@ -1263,8 +1262,9 @@ func (sc *ServerContext) applyConfig(cnf DatabaseConfig) (applied bool, err erro
 	return sc._applyConfig(cnf, false)
 }
 
-// addLegacyPrincipals is used to install the legacy principles to the upgraded database that use a persistent config.
-// It takes a map of databases that each have a map of names with principle configs.
+// addLegacyPrincipals takes a map of databases that each have a map of names with principle configs.
+// Call this function to install the legacy principles to the upgraded database that use a persistent config.
+// Only call this function after the databases have been initalised via setupServerContext.
 func (sc *ServerContext) addLegacyPrincipals(legacyDbUsers, legacyDbRoles map[string]map[string]*db.PrincipalConfig) {
 	for dbName, dbUser := range legacyDbUsers {
 		dbCtx, err := sc.GetDatabase(dbName)

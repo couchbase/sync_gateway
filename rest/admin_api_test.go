@@ -3362,7 +3362,7 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 
 	// Start SG with no databases in bucket(s)
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true, nil, nil)
+	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
 	defer sc.Close()
 
@@ -3416,7 +3416,7 @@ func TestDbConfigCredentials(t *testing.T) {
 
 	// Start SG with no databases in bucket(s)
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true, nil, nil)
+	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
 	defer sc.Close()
 	serverErr := make(chan error, 0)
@@ -3480,7 +3480,7 @@ func TestInvalidDBConfig(t *testing.T) {
 
 	// Start SG with no databases in bucket(s)
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true, nil, nil)
+	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
 	defer sc.Close()
 
@@ -3532,7 +3532,7 @@ func TestCreateDbOnNonExistentBucket(t *testing.T) {
 
 	// Start SG with no databases in bucket(s)
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true, nil, nil)
+	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
 	defer sc.Close()
 
@@ -3566,7 +3566,7 @@ func TestPutDbConfigChangeName(t *testing.T) {
 
 	// Start SG with no databases in bucket(s)
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true, nil, nil)
+	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
 	defer sc.Close()
 	serverErr := make(chan error, 0)
@@ -3626,7 +3626,7 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 
 	// Start SG with no databases in bucket(s)
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true, nil, nil)
+	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
 	defer sc.Close()
 	serverErr := make(chan error, 0)
