@@ -194,46 +194,74 @@ func (spec BucketSpec) UseClientCert() bool {
 	return true
 }
 
-// Builds a gocb connection string based on BucketSpec.Server.
-// Adds idle connection configuration, and X.509 auth settings when
-// certpath/keypath/cacertpath specified.
+// GetGoCBConnString builds a gocb (v1 or v2 depending on the BucketSpec.CouchbaseDriver) connection string based on BucketSpec.Server.
 func (spec *BucketSpec) GetGoCBConnString() (string, error) {
-
 	connSpec, err := gocbconnstr.Parse(spec.Server)
 	if err != nil {
 		return "", err
 	}
 
-	// Increase the number of idle connections per-host to fix SG #3534
 	if connSpec.Options == nil {
 		connSpec.Options = map[string][]string{}
 	}
+
 	asValues := url.Values(connSpec.Options)
-	asValues.Set("http_max_idle_conns_per_host", DefaultHttpMaxIdleConnsPerHost)
-	asValues.Set("http_max_idle_conns", DefaultHttpMaxIdleConns)
-	asValues.Set("http_idle_conn_timeout", DefaultHttpIdleConnTimeoutMilliseconds)
-	asValues.Set("n1ql_timeout", fmt.Sprintf("%d", spec.GetViewQueryTimeoutMs()))
-
-	poolSizeFromConnStr := asValues.Get("kv_pool_size")
-	if poolSizeFromConnStr == "" {
-		asValues.Set("kv_pool_size", DefaultGocbKvPoolSize)
-		spec.KvPoolSize, _ = strconv.Atoi(DefaultGocbKvPoolSize)
+	if spec.CouchbaseDriver == GoCBv2 {
+		asValues = buildGoCBv2ConnValues(spec, asValues)
 	} else {
-		spec.KvPoolSize, _ = strconv.Atoi(poolSizeFromConnStr)
-	}
-	asValues.Set("operation_tracing", "false")
-
-	if spec.Certpath != "" && spec.Keypath != "" {
-		asValues.Set("certpath", spec.Certpath)
-		asValues.Set("keypath", spec.Keypath)
-	}
-	if spec.CACertPath != "" {
-		asValues.Set("cacertpath", spec.CACertPath)
+		asValues = buildGoCBv1ConnValues(spec, asValues)
 	}
 
 	connSpec.Options = asValues
 	return connSpec.String(), nil
+}
 
+// buildGoCBv2ConnValues adds idle connection configuration, and ca_cert_path if specified to the connection values based on
+// what gocb v2 is expecting.
+func buildGoCBv2ConnValues(spec *BucketSpec, connValues url.Values) url.Values {
+	connValues.Set("max_perhost_idle_http_connections", DefaultHttpMaxIdleConnsPerHost)
+	connValues.Set("max_idle_http_connections", DefaultHttpMaxIdleConns)
+	connValues.Set("idle_http_connection_timeout", DefaultHttpIdleConnTimeoutMilliseconds)
+
+	poolSizeFromConnStr := connValues.Get("kv_pool_size")
+	if poolSizeFromConnStr == "" {
+		connValues.Set("kv_pool_size", DefaultGocbKvPoolSize)
+		spec.KvPoolSize, _ = strconv.Atoi(DefaultGocbKvPoolSize)
+	} else {
+		spec.KvPoolSize, _ = strconv.Atoi(poolSizeFromConnStr)
+	}
+
+	if spec.CACertPath != "" {
+		connValues.Set("ca_cert_path", spec.CACertPath)
+	}
+	return connValues
+}
+
+// buildGoCBv1ConnValues adds idle connection configuration, and X.509 auth settings (cacertpath, certpath, keypath) if specified
+// to the connection values based on what gocb v1 is expecting.
+func buildGoCBv1ConnValues(spec *BucketSpec, connValues url.Values) url.Values {
+	connValues.Set("http_max_idle_conns_per_host", DefaultHttpMaxIdleConnsPerHost)
+	connValues.Set("http_max_idle_conns", DefaultHttpMaxIdleConns)
+	connValues.Set("http_idle_conn_timeout", DefaultHttpIdleConnTimeoutMilliseconds)
+	connValues.Set("n1ql_timeout", fmt.Sprintf("%d", spec.GetViewQueryTimeoutMs()))
+
+	poolSizeFromConnStr := connValues.Get("kv_pool_size")
+	if poolSizeFromConnStr == "" {
+		connValues.Set("kv_pool_size", DefaultGocbKvPoolSize)
+		spec.KvPoolSize, _ = strconv.Atoi(DefaultGocbKvPoolSize)
+	} else {
+		spec.KvPoolSize, _ = strconv.Atoi(poolSizeFromConnStr)
+	}
+	connValues.Set("operation_tracing", "false")
+
+	if spec.Certpath != "" && spec.Keypath != "" {
+		connValues.Set("certpath", spec.Certpath)
+		connValues.Set("keypath", spec.Keypath)
+	}
+	if spec.CACertPath != "" {
+		connValues.Set("cacertpath", spec.CACertPath)
+	}
+	return connValues
 }
 
 func (b BucketSpec) GetViewQueryTimeout() time.Duration {

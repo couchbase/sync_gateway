@@ -30,10 +30,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBucketSpec(t *testing.T) {
+func TestGoCBv1ConnString(t *testing.T) {
 	queryTimeout := uint32(30)
 	bucketSpec := BucketSpec{
 		Server:               "http://localhost:8091",
+		CouchbaseDriver:      GoCB,
 		Certpath:             "/myCertPath",
 		Keypath:              "/my/key/path",
 		CACertPath:           "./myCACertPath",
@@ -67,6 +68,44 @@ func TestBucketSpec(t *testing.T) {
 	bucketSpec.CACertPath = ""
 	bucketSpec.Certpath = ""
 	bucketSpec.Keypath = ""
+	connStr, err = bucketSpec.GetGoCBConnString()
+	assert.NoError(t, err, "Error creating connection string for bucket spec")
+}
+
+func TestGoCBv2ConnString(t *testing.T) {
+	queryTimeout := uint32(30)
+	bucketSpec := BucketSpec{
+		Server:               "http://localhost:8091",
+		CouchbaseDriver:      GoCBv2,
+		CACertPath:           "./myCACertPath",
+		ViewQueryTimeoutSecs: &queryTimeout,
+	}
+
+	connStr, err := bucketSpec.GetGoCBConnString()
+	assert.NoError(t, err, "Error creating connection string for bucket spec")
+	assert.Equal(t, "http://localhost:8091?ca_cert_path=.%2FmyCACertPath&idle_http_connection_timeout=90000&kv_pool_size="+DefaultGocbKvPoolSize+"&max_idle_http_connections=64000&max_perhost_idle_http_connections=256", connStr)
+
+	// CACertPath not required
+	bucketSpec.CACertPath = ""
+	connStr, err = bucketSpec.GetGoCBConnString()
+	assert.NoError(t, err, "Error creating connection string for bucket spec")
+	assert.Equal(t, "http://localhost:8091?idle_http_connection_timeout=90000&kv_pool_size="+DefaultGocbKvPoolSize+"&max_idle_http_connections=64000&max_perhost_idle_http_connections=256", connStr)
+
+	// Certpath and keypath must both be defined - if either are missing, they shouldn't be included in connection string
+	bucketSpec.CACertPath = "./myCACertPath"
+	bucketSpec.Certpath = ""
+	connStr, err = bucketSpec.GetGoCBConnString()
+	assert.NoError(t, err, "Error creating connection string for bucket spec")
+	assert.Equal(t, "http://localhost:8091?ca_cert_path=.%2FmyCACertPath&idle_http_connection_timeout=90000&kv_pool_size="+DefaultGocbKvPoolSize+"&max_idle_http_connections=64000&max_perhost_idle_http_connections=256", connStr)
+
+	// Specify kv_pool_size in server
+	bucketSpec.Server = "http://localhost:8091?kv_pool_size=2"
+	connStr, err = bucketSpec.GetGoCBConnString()
+	assert.NoError(t, err, "Error creating connection string for bucket spec")
+	assert.Equal(t, "http://localhost:8091?ca_cert_path=.%2FmyCACertPath&idle_http_connection_timeout=90000&kv_pool_size=2&max_idle_http_connections=64000&max_perhost_idle_http_connections=256", connStr)
+
+	// Standard no-cert
+	bucketSpec.CACertPath = ""
 	connStr, err = bucketSpec.GetGoCBConnString()
 	assert.NoError(t, err, "Error creating connection string for bucket spec")
 }
