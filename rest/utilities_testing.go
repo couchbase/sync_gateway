@@ -444,7 +444,10 @@ func (rt *RestTester) WaitForChanges(numChangesExpected int, changesUrl, usernam
 // WaitForCondition runs a retry loop that evaluates the provided function, and terminates
 // when the function returns true.
 func (rt *RestTester) WaitForCondition(successFunc func() bool) error {
+	return rt.WaitForConditionWithOptions(successFunc, 200, 100)
+}
 
+func (rt *RestTester) WaitForConditionWithOptions(successFunc func() bool, maxNumAttempts, timeToSleepMs int) error {
 	waitForSuccess := func() (shouldRetry bool, err error, value interface{}) {
 		if successFunc() {
 			return false, nil, nil
@@ -452,15 +455,13 @@ func (rt *RestTester) WaitForCondition(successFunc func() bool) error {
 		return true, nil, nil
 	}
 
-	sleeper := base.CreateSleeperFunc(200, 100)
-
-	err, _ := base.RetryLoop("Wait for condition", waitForSuccess, sleeper)
+	sleeper := base.CreateSleeperFunc(maxNumAttempts, timeToSleepMs)
+	err, _ := base.RetryLoop("Wait for condition options", waitForSuccess, sleeper)
 	if err != nil {
 		return err
 	}
 
 	return nil
-
 }
 
 func (rt *RestTester) SendAdminRequest(method, resource string, body string) *TestResponse {
