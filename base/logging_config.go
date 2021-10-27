@@ -275,15 +275,12 @@ func validateLogFilePath(logFilePath string) error {
 	}
 
 	// Make temporary file to check if the log file path is writable
-	writeCheckFilePath := logFilePath + "/WritableCheck"
-	_, err = os.Create(writeCheckFilePath)
+	writeCheckFilePath := filepath.Join(logFilePath, ".SG_write_check")
+	err = os.WriteFile(writeCheckFilePath, nil, 0666)
 	if err != nil {
 		return errors.Wrap(err, ErrUnwritableLogFilePath.Error())
 	}
-	err = os.Remove(writeCheckFilePath)
-	if err != nil {
-		return fmt.Errorf("cannot clean-up temporary folder for write check: %w", err)
-	}
+	_ = os.Remove(writeCheckFilePath)
 
 	return nil
 }
