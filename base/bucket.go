@@ -206,6 +206,16 @@ func (spec *BucketSpec) GetGoCBConnString() (string, error) {
 	}
 
 	asValues := url.Values(connSpec.Options)
+
+	// Add kv_pool_size as used in both GoCB versions
+	poolSizeFromConnStr := asValues.Get("kv_pool_size")
+	if poolSizeFromConnStr == "" {
+		asValues.Set("kv_pool_size", DefaultGocbKvPoolSize)
+		spec.KvPoolSize, _ = strconv.Atoi(DefaultGocbKvPoolSize)
+	} else {
+		spec.KvPoolSize, _ = strconv.Atoi(poolSizeFromConnStr)
+	}
+
 	if spec.CouchbaseDriver == GoCBv2 {
 		asValues = buildGoCBv2ConnValues(spec, asValues)
 	} else {
@@ -223,14 +233,6 @@ func buildGoCBv2ConnValues(spec *BucketSpec, connValues url.Values) url.Values {
 	connValues.Set("max_idle_http_connections", DefaultHttpMaxIdleConns)
 	connValues.Set("idle_http_connection_timeout", DefaultHttpIdleConnTimeoutMilliseconds)
 
-	poolSizeFromConnStr := connValues.Get("kv_pool_size")
-	if poolSizeFromConnStr == "" {
-		connValues.Set("kv_pool_size", DefaultGocbKvPoolSize)
-		spec.KvPoolSize, _ = strconv.Atoi(DefaultGocbKvPoolSize)
-	} else {
-		spec.KvPoolSize, _ = strconv.Atoi(poolSizeFromConnStr)
-	}
-
 	if spec.CACertPath != "" {
 		connValues.Set("ca_cert_path", spec.CACertPath)
 	}
@@ -244,14 +246,6 @@ func buildGoCBv1ConnValues(spec *BucketSpec, connValues url.Values) url.Values {
 	connValues.Set("http_max_idle_conns", DefaultHttpMaxIdleConns)
 	connValues.Set("http_idle_conn_timeout", DefaultHttpIdleConnTimeoutMilliseconds)
 	connValues.Set("n1ql_timeout", fmt.Sprintf("%d", spec.GetViewQueryTimeoutMs()))
-
-	poolSizeFromConnStr := connValues.Get("kv_pool_size")
-	if poolSizeFromConnStr == "" {
-		connValues.Set("kv_pool_size", DefaultGocbKvPoolSize)
-		spec.KvPoolSize, _ = strconv.Atoi(DefaultGocbKvPoolSize)
-	} else {
-		spec.KvPoolSize, _ = strconv.Atoi(poolSizeFromConnStr)
-	}
 	connValues.Set("operation_tracing", "false")
 
 	if spec.Certpath != "" && spec.Keypath != "" {
