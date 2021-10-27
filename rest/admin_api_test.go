@@ -1569,7 +1569,7 @@ func TestResyncStop(t *testing.T) {
 		var resyncManagerStatus ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
 		assert.NoError(t, err)
-		return resyncManagerStatus.Status == db.BackgroundProcessStateStopped
+		return resyncManagerStatus.Status == db.BackgroundProcessStateAborted
 	})
 	assert.NoError(t, err)
 
