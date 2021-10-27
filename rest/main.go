@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	pkgerrors "github.com/pkg/errors"
 )
 
@@ -67,6 +68,8 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 	}
 
 	var fileStartupConfig *StartupConfig
+	var legacyDbUsers map[string]map[string]*db.PrincipalConfig // [db][user]PrincipleConfig
+	var legacyDbRoles map[string]map[string]*db.PrincipalConfig // [db][roles]PrincipleConfig
 	if len(configPath) == 1 {
 		fileStartupConfig, err = LoadStartupConfigFromPath(configPath[0])
 		if pkgerrors.Cause(err) == base.ErrUnknownField {
@@ -76,7 +79,7 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 			base.Infof(base.KeyAll, "Found unknown fields in startup config. Attempting to read as legacy config.")
 
 			var upgradeError error
-			fileStartupConfig, disablePersistentConfigFallback, upgradeError = automaticConfigUpgrade(configPath[0])
+			fileStartupConfig, disablePersistentConfigFallback, legacyDbUsers, legacyDbRoles, upgradeError = automaticConfigUpgrade(configPath[0])
 			if upgradeError != nil {
 
 				// We need to validate if the error was again, an unknown field error. If this is the case its possible
@@ -139,6 +142,8 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 
 	ctx.initialStartupConfig = initialStartupConfig
 
+	ctx.addLegacyPrincipals(legacyDbUsers, legacyDbRoles)
+
 	return false, startServer(&sc, ctx)
 }
 
@@ -169,33 +174,33 @@ func getInitialStartupConfig(fileStartupConfig *StartupConfig, flagStartupConfig
 
 // automaticConfigUpgrade takes the config path of the current 2.x config and attempts to perform the update steps to
 // update it to a 3.x config
-// Returns the new startup config, a bool of whether to fallback to legacy config and an error
-func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersistentConfig bool, err error) {
+// Returns the new startup config, a bool of whether to fallback to legacy config, map of users per database, map of roles per database, and an error
+func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersistentConfig bool, users map[string]map[string]*db.PrincipalConfig, roles map[string]map[string]*db.PrincipalConfig, err error) {
 	legacyServerConfig, err := LoadLegacyServerConfig(configPath)
 	if err != nil {
-		return nil, false, err
+		return nil, false, nil, nil, err
 	}
 
 	if legacyServerConfig.DisablePersistentConfig != nil && *legacyServerConfig.DisablePersistentConfig {
-		return nil, true, nil
+		return nil, true, users, roles, nil
 	}
 
 	base.Infof(base.KeyAll, "Config is a legacy config, and disable_persistent_config was not requested. Attempting automatic config upgrade.")
 
 	startupConfig, dbConfigs, err := legacyServerConfig.ToStartupConfig()
 	if err != nil {
-		return nil, false, err
+		return nil, false, nil, nil, err
 	}
 
 	dbConfigs, err = sanitizeDbConfigs(dbConfigs)
 	if err != nil {
-		return nil, false, err
+		return nil, false, nil, nil, err
 	}
 
 	// Attempt to establish connection to server
 	cluster, err := createCouchbaseClusterFromStartupConfig(startupConfig)
 	if err != nil {
-		return nil, false, err
+		return nil, false, nil, nil, err
 	}
 
 	// Write database configs to CBS with groupID "default"
@@ -204,12 +209,14 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 
 		dbc.Version, err = GenerateDatabaseConfigVersionID("", &dbc.DbConfig)
 		if err != nil {
-			return nil, false, err
+			return nil, false, nil, nil, err
 		}
 
 		// Return users and roles separate from config
-		_ = dbc.Users // TODO: CBG-1751
-		_ = dbc.Roles
+		users = make(map[string]map[string]*db.PrincipalConfig)
+		roles = make(map[string]map[string]*db.PrincipalConfig)
+		users[dbc.Name] = dbc.Users
+		roles[dbc.Name] = dbc.Roles
 		dbc.Roles = nil
 		dbc.Users = nil
 
@@ -225,7 +232,7 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 				base.Infof(base.KeyAll, "Skipping Couchbase Server persistence for config group %q in %s. Already exists.", configGroupID, base.UD(dbc.Name))
 				continue
 			}
-			return nil, false, err
+			return nil, false, nil, nil, err
 		}
 		base.Infof(base.KeyAll, "Persisted database %s config for group %q to Couchbase Server bucket: %s", base.UD(dbc.Name), configGroupID, base.MD(*dbc.Bucket))
 	}
@@ -236,7 +243,7 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 	backupLocation, err := backupCurrentConfigFile(configPath)
 	if err != nil {
 		base.Warnf("Unable to write config file backup: %v. Won't write backup or updated config but will continue with startup.", err)
-		return startupConfig, false, nil
+		return startupConfig, false, users, roles, nil
 	}
 
 	base.Infof(base.KeyAll, "Current config backed up to %s", base.MD(backupLocation))
@@ -244,7 +251,7 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 	// Overwrite old config with new migrated startup config
 	jsonStartupConfig, err := json.MarshalIndent(startupConfig, "", "  ")
 	if err != nil {
-		return nil, false, err
+		return nil, false, nil, nil, err
 	}
 
 	// Attempt to write over the old config with the new migrated config
@@ -253,11 +260,11 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 	err = ioutil.WriteFile(configPath, jsonStartupConfig, 0644)
 	if err != nil {
 		base.Warnf("Unable to write updated config file: %v -  but will continue with startup.", err)
-		return startupConfig, false, nil
+		return startupConfig, false, users, roles, nil
 	}
 
 	base.Infof(base.KeyAll, "Current config file overwritten by upgraded config at %s", base.MD(configPath))
-	return startupConfig, false, nil
+	return startupConfig, false, users, roles, nil
 }
 
 // validate / sanitize db configs

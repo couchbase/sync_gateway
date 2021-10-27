@@ -1044,7 +1044,6 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 			base.Infof(base.KeyConfig, "Disabled background polling for new configs/buckets")
 		}
 	}
-
 	return sc, nil
 }
 
@@ -1261,6 +1260,35 @@ func (sc *ServerContext) applyConfig(cnf DatabaseConfig) (applied bool, err erro
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
 	return sc._applyConfig(cnf, false)
+}
+
+// addLegacyPrincipals takes a map of databases that each have a map of names with principle configs.
+// Call this function to install the legacy principles to the upgraded database that use a persistent config.
+// Only call this function after the databases have been initalised via setupServerContext.
+func (sc *ServerContext) addLegacyPrincipals(legacyDbUsers, legacyDbRoles map[string]map[string]*db.PrincipalConfig) {
+	for dbName, dbUser := range legacyDbUsers {
+		dbCtx, err := sc.GetDatabase(dbName)
+		if err != nil {
+			base.Errorf("Couldn't get database context to install user principles: %v", err)
+			continue
+		}
+		err = sc.installPrincipals(dbCtx, dbUser, "user")
+		if err != nil {
+			base.Errorf("Couldn't install user principles: %v", err)
+		}
+	}
+
+	for dbName, dbRole := range legacyDbRoles {
+		dbCtx, err := sc.GetDatabase(dbName)
+		if err != nil {
+			base.Errorf("Couldn't get database context to install role principles: %v", err)
+			continue
+		}
+		err = sc.installPrincipals(dbCtx, dbRole, "role")
+		if err != nil {
+			base.Errorf("Couldn't install role principles: %v", err)
+		}
+	}
 }
 
 // startServer starts and runs the server with the given configuration. (This function never returns.)
