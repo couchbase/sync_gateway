@@ -13,6 +13,7 @@ package base
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -32,6 +33,11 @@ func TestValidateLogFileOutput(t *testing.T) {
 
 // CBG-1760: Error upfront when the configured logFilePath is not writable
 func TestLogFilePathWritable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Cannot make folder inaccessible to writes or make read-only: https://github.com/golang/go/issues/35042
+		t.Skip("Test not compatible with Windows")
+	}
+
 	testCases := []struct {
 		name             string
 		logFilePathPerms os.FileMode
@@ -39,7 +45,7 @@ func TestLogFilePathWritable(t *testing.T) {
 	}{
 		{
 			name:             "Unwritable",
-			logFilePathPerms: 0444, // Only reads allowed
+			logFilePathPerms: 0444, // Read-only perms
 			error:            true,
 		},
 		{
