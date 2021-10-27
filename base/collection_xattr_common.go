@@ -1,10 +1,9 @@
 package base
 
 import (
-	"errors"
 	"fmt"
+	"strings"
 
-	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
 )
@@ -25,6 +24,7 @@ type SubdocXattrStore interface {
 	SubdocUpdateBodyAndXattr(k string, xattrKey string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error)
 	SubdocUpdateXattrDeleteBody(k, xattrKey string, exp uint32, cas uint64, xv interface{}) (casOut uint64, err error)
 	SubdocDeleteXattr(k string, xattrKey string, cas uint64) error
+	SubdocDeleteXattrs(k string, xattrKeys ...string) error
 	SubdocDeleteBodyAndXattr(k string, xattrKey string) error
 	SubdocDeleteBody(k string, xattrKey string, exp uint32, cas uint64) (casOut uint64, err error)
 	GetSpec() BucketSpec
@@ -277,15 +277,12 @@ func SetXattr(store SubdocXattrStore, k string, xattrKey string, xv []byte) (cas
 
 }
 
+// RemoveXattr performs a cas safe subdoc delete of the provided key. Will retry if a recoverable failure occurs.
 func RemoveXattr(store SubdocXattrStore, k string, xattrKey string, cas uint64) error {
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		writeErr := store.SubdocDeleteXattr(k, xattrKey, cas)
 		if writeErr == nil {
 			return false, nil, nil
-		}
-
-		if errors.Is(err, gocb.ErrCasMismatch) {
-			return false, ErrCasFailureShouldRetry, nil
 		}
 
 		shouldRetry = store.isRecoverableWriteError(writeErr)
@@ -304,9 +301,11 @@ func RemoveXattr(store SubdocXattrStore, k string, xattrKey string, cas uint64) 
 	return err
 }
 
-func DeleteXattr(store SubdocXattrStore, k string, xattrKey string) error {
+// DeleteXattrs performs a subdoc delete of the provided keys. Retries any recoverable failures. Not cas safe does a
+// straight delete.
+func DeleteXattrs(store SubdocXattrStore, k string, xattrKeys ...string) error {
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-		writeErr := store.SubdocDeleteXattr(k, xattrKey, 0)
+		writeErr := store.SubdocDeleteXattrs(k, xattrKeys...)
 		if writeErr == nil {
 			return false, nil, nil
 		}
@@ -319,9 +318,9 @@ func DeleteXattr(store SubdocXattrStore, k string, xattrKey string) error {
 		return false, err, nil
 	}
 
-	err, _ := RetryLoop("DeleteXattr", worker, store.GetSpec().RetrySleeper())
+	err, _ := RetryLoop("DeleteXattrs", worker, store.GetSpec().RetrySleeper())
 	if err != nil {
-		err = pkgerrors.Wrapf(err, "DeleteXattr with key %v xattr %v", UD(k).Redact(), UD(xattrKey).Redact())
+		err = pkgerrors.Wrapf(err, "DeleteXattrs with keys %q xattr %v", UD(k).Redact(), UD(strings.Join(xattrKeys, ",")).Redact())
 	}
 
 	return err

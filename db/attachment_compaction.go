@@ -358,77 +358,73 @@ func Cleanup(db *Database, compactionID string, terminator chan struct{}) error 
 			return true
 		}
 
-		if event.DataType&base.MemcachedDataTypeXattr != 0 {
-			_, xattr, _, err := parseXattrStreamData(base.AttachmentCompactionXattrName, "", event.Value)
-			if err != nil && !errors.Is(err, base.ErrXattrNotFound) {
-				base.WarnfCtx(db.Ctx, "[%s] Unexpected error occurred attempting to parse attachment xattr: %v", compactionLoggingID, err)
+		if event.DataType&base.MemcachedDataTypeXattr == 0 {
+			return true
+		}
+
+		_, xattr, _, err := parseXattrStreamData(base.AttachmentCompactionXattrName, "", event.Value)
+		if err != nil && !errors.Is(err, base.ErrXattrNotFound) {
+			base.WarnfCtx(db.Ctx, "[%s] Unexpected error occurred attempting to parse attachment xattr: %v", compactionLoggingID, err)
+			return true
+		}
+
+		if xattr != nil {
+			// TODO: Struct map
+			var attachmentCompactionMetadata map[string]map[string]interface{}
+			err = base.JSONUnmarshal(xattr, &attachmentCompactionMetadata)
+			if err != nil {
+				base.WarnfCtx(db.Ctx, "[%s] Failed to unmarshal attachment compaction xattr: %v", compactionLoggingID, err)
 				return true
 			}
 
-			if xattr != nil {
-				var syncData map[string]interface{}
-				err = base.JSONUnmarshal(xattr, &syncData)
-				if err != nil {
-					base.WarnfCtx(db.Ctx, "[%s] Failed to unmarshal xattr data: %v", compactionLoggingID, err)
-					return true
+			// Get compactID map containing all compactIDs on the document, if one is not present for some reason we can
+			// skip this
+			compactIDSyncMap, compactIDSyncPresent := attachmentCompactionMetadata[CompactionIDKey]
+			if !compactIDSyncPresent {
+				return true
+			}
+
+			// Build up a set of compactionIDs that we can remove from the xattr. We always add the current
+			// compaction ID as we're now done with it. Also check if any other compaction IDs are present. If any are
+			// older than 30 days we can remove them.
+			toDeleteCompactIDPaths := []string{getCompactionIDSubDocPath(compactionID)}
+			for compactID, compactIDTimestampI := range compactIDSyncMap {
+				if compactID == compactionID {
+					continue
 				}
 
-				// Get compactID map containing all compactIDs on the document, if one is not present for some reason we
-				// can skip this
-				compactIDSync, compactIDSyncPresent := syncData[CompactionIDKey]
-				if !compactIDSyncPresent {
-					return true
-				}
-
-				// Attempt to type assert compaction ID a map, so we can iterate over the compact IDs
-				compactIDSyncMap, ok := compactIDSync.(map[string]interface{})
+				compactIDTimestampFloat, ok := compactIDTimestampI.(float64)
 				if !ok {
+					continue
+				}
+
+				compactIDTimestamp := time.Unix(int64(compactIDTimestampFloat), 0)
+				diff := time.Now().UTC().Sub(compactIDTimestamp.UTC())
+				if diff > time.Hour*24*30 {
+					toDeleteCompactIDPaths = append(toDeleteCompactIDPaths, getCompactionIDSubDocPath(compactID))
+				}
+			}
+
+			// If all the current compact IDs are to be deleted we can remove the entire attachment compaction xattr.
+			// Note that if this operation fails with a cas mismatch we will fall through to the following per ID
+			// delete. This can occur if another compact process ends up mutating / deleting the xattr.
+			if len(compactIDSyncMap) == len(toDeleteCompactIDPaths) {
+				err = db.Bucket.RemoveXattr(docID, base.AttachmentCompactionXattrName, event.Cas)
+				if err == nil {
+					return true
+				}
+				if err != nil && !base.IsCasMismatch(err) {
+					base.WarnfCtx(db.Ctx, "[%s] Failed to remove compaction ID xattr for doc %s: %v", compactionLoggingID, base.UD(docID), err)
 					return true
 				}
 
-				// Build up a unique set of compactionIDs that we can remove from the xattr. We always add the current
-				// compaction ID as we're now done with it. Also check if any other compaction IDs are present. If any
-				// are older than 30 days we can remove them.
-				toDelete := map[string]struct{}{
-					compactionID: {},
-				}
-				for compactID, compactIDTimestampI := range compactIDSyncMap {
-					compactIDTimestampFloat, ok := compactIDTimestampI.(float64)
-					if !ok {
-						continue
-					}
+			}
 
-					compactIDTimestamp := time.Unix(int64(compactIDTimestampFloat), 0)
-					diff := time.Now().UTC().Sub(compactIDTimestamp.UTC())
-					if diff > time.Hour*24*30 {
-						toDelete[compactID] = struct{}{}
-					}
-				}
-
-				// If all the current compact IDs are to be deleted we can remove the entire attachment compaction
-				// xattr.
-				// Note that if this operation fails with a cas mismatch we will fall through to the following per ID
-				// delete. This can occur if another compact process ends up mutating / deleting the xattr.
-				if len(compactIDSyncMap) == len(toDelete) {
-					err = db.Bucket.RemoveXattr(docID, base.AttachmentCompactionXattrName, event.Cas)
-					if err == nil {
-						return true
-					}
-					if err != nil && !errors.Is(err, base.ErrCasFailureShouldRetry) {
-						base.WarnfCtx(db.Ctx, "[%s] Failed to remove compaction ID xattr for doc %s: %v", compactionLoggingID, base.UD(docID), err)
-						return true
-					}
-
-				}
-
-				// If we only want to remove select compact IDs iterate over them and delete each one
-				for compactID, _ := range toDelete {
-					err = db.Bucket.DeleteXattr(docID, getCompactionIDSubDocPath(compactID))
-					if err != nil && !errors.Is(err, base.ErrXattrNotFound) {
-						base.WarnfCtx(db.Ctx, "[%s] Failed to delete compaction ID xattr key %s for doc %s: %v", compactionLoggingID, compactID, base.UD(docID), err)
-						return true
-					}
-				}
+			// If we only want to remove select compact IDs delete each one through a subdoc operation
+			err = db.Bucket.DeleteXattrs(docID, toDeleteCompactIDPaths...)
+			if err != nil && !errors.Is(err, base.ErrXattrNotFound) {
+				base.WarnfCtx(db.Ctx, "[%s] Failed to delete compaction IDs %s for doc %s: %v", compactionLoggingID, strings.Join(toDeleteCompactIDPaths, ","), base.UD(docID), err)
+				return true
 			}
 		}
 

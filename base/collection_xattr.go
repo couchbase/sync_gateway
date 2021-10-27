@@ -62,8 +62,8 @@ func (c *Collection) RemoveXattr(k string, xattrKey string, cas uint64) (err err
 	return RemoveXattr(c, k, xattrKey, cas)
 }
 
-func (c *Collection) DeleteXattr(k string, xattrKey string) (err error) {
-	return DeleteXattr(c, k, xattrKey)
+func (c *Collection) DeleteXattrs(k string, xattrKeys ...string) (err error) {
+	return DeleteXattrs(c, k, xattrKeys...)
 }
 
 func (c *Collection) UpdateXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}, deleteBody bool, isDelete bool) (casOut uint64, err error) {
@@ -376,6 +376,21 @@ func (c *Collection) SubdocDeleteXattr(k string, xattrKey string, cas uint64) (e
 	options.Internal.DocFlags = gocb.SubdocDocFlagAccessDeleted
 
 	_, mutateErr := c.MutateIn(k, mutateOps, options)
+	return mutateErr
+}
+
+// SubdocDeleteXattrs will delete the supplied xattr keys from a document. Not a cas safe operation.
+func (c *Collection) SubdocDeleteXattrs(k string, xattrKeys ...string) error {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
+
+	mutateOps := make([]gocb.MutateInSpec, 0, len(xattrKeys))
+	for _, xattrKey := range xattrKeys {
+		mutateOps = append(mutateOps, gocb.RemoveSpec(xattrKey, RemoveSpecXattr))
+	}
+
+	_, mutateErr := c.MutateIn(k, mutateOps, &gocb.MutateInOptions{})
+
 	return mutateErr
 }
 
