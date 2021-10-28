@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package base
 
 import (
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -45,18 +46,18 @@ func TestLogFilePathWritable(t *testing.T) {
 	}{
 		{
 			name:             "Unwritable",
-			logFilePathPerms: 0444, // Read-only perms
+			logFilePathPerms: os.ModeDir | 0444, // Read-only perms
 			error:            true,
 		},
 		{
 			name:             "Writeable",
-			logFilePathPerms: 0777, // Full perms
+			logFilePathPerms: os.ModeDir | 0777, // Full perms
 			error:            false,
 		},
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			tmpPath, err := os.MkdirTemp("", "TestLogFilePathWritable*") // Cannot use t.Name() due to slash separator
+			tmpPath, err := ioutil.TempDir("", "TestLogFilePathWritable*") // Cannot use t.Name() due to slash separator
 			require.NoError(t, err)
 			defer func() { require.NoError(t, os.RemoveAll(tmpPath)) }()
 
