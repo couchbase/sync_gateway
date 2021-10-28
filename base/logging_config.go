@@ -274,12 +274,13 @@ func validateLogFilePath(logFilePath string) error {
 		return errors.Wrap(ErrInvalidLogFilePath, "not a directory")
 	}
 
-	// Make temporary file to check if the log file path is writable
+	// Make temporary empty file to check if the log file path is writable
 	writeCheckFilePath := filepath.Join(logFilePath, ".SG_write_check")
 	err = os.WriteFile(writeCheckFilePath, nil, 0666)
 	if err != nil {
 		return errors.Wrap(err, ErrUnwritableLogFilePath.Error())
 	}
+	// best effort cleanup, but if we don't manage to remove it, WriteFile will overwrite on the next startup and try to remove again
 	_ = os.Remove(writeCheckFilePath)
 
 	return nil
