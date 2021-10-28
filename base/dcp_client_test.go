@@ -2,6 +2,7 @@ package base
 
 import (
 	"fmt"
+	"log"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -82,7 +83,6 @@ func TestOneShotDCP(t *testing.T) {
 }
 
 func TestTerminateDCPFeed(t *testing.T) {
-	t.Skip("Temporarily skipping test. CBG-1767")
 
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
@@ -111,6 +111,7 @@ func TestTerminateDCPFeed(t *testing.T) {
 	var additionalDocsWg sync.WaitGroup
 	additionalDocsWg.Add(1)
 	go func() {
+		defer additionalDocsWg.Done()
 		updatedBody := map[string]interface{}{"foo": "bar"}
 		for i := 0; i < 10000; i++ {
 			if feedClosed.IsTrue() {
@@ -120,7 +121,6 @@ func TestTerminateDCPFeed(t *testing.T) {
 			err := bucket.Set(key, 0, updatedBody)
 			assert.NoError(t, err)
 		}
-		additionalDocsWg.Done()
 	}()
 
 	doneChan, startErr := dcpClient.Start()
@@ -128,7 +128,9 @@ func TestTerminateDCPFeed(t *testing.T) {
 
 	// Wait for some processing to complete, then close the feed
 	time.Sleep(10 * time.Millisecond)
+	log.Printf("Closing DCP Client")
 	err = dcpClient.Close()
+	log.Printf("DCP Client closed, waiting for feed close notification")
 	assert.NoError(t, err)
 
 	// wait for done
@@ -140,5 +142,7 @@ func TestTerminateDCPFeed(t *testing.T) {
 		t.Errorf("timeout waiting for one-shot feed to complete")
 	}
 
+	log.Printf("Waiting for docs generation goroutine to exit")
 	additionalDocsWg.Wait()
+	log.Printf("additionalDocs wait completed")
 }
