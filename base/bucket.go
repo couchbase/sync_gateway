@@ -217,18 +217,17 @@ func (spec *BucketSpec) GetGoCBConnString() (string, error) {
 	}
 
 	if spec.CouchbaseDriver == GoCBv2 {
-		asValues = buildGoCBv2ConnValues(spec, asValues)
+		addGoCBv2ConnValues(spec, &asValues)
 	} else {
-		asValues = buildGoCBv1ConnValues(spec, asValues)
+		addGoCBv1ConnValues(spec, &asValues)
 	}
 
 	connSpec.Options = asValues
 	return connSpec.String(), nil
 }
 
-// buildGoCBv2ConnValues adds idle connection configuration, and ca_cert_path if specified to the connection values based on
-// what gocb v2 is expecting.
-func buildGoCBv2ConnValues(spec *BucketSpec, connValues url.Values) url.Values {
+// addGoCBv2ConnValues adds URL values for GoCBv2 based on the bucket spec and default SG values.
+func addGoCBv2ConnValues(spec *BucketSpec, connValues *url.Values) {
 	connValues.Set("max_perhost_idle_http_connections", DefaultHttpMaxIdleConnsPerHost)
 	connValues.Set("max_idle_http_connections", DefaultHttpMaxIdleConns)
 	connValues.Set("idle_http_connection_timeout", DefaultHttpIdleConnTimeoutMilliseconds)
@@ -236,16 +235,16 @@ func buildGoCBv2ConnValues(spec *BucketSpec, connValues url.Values) url.Values {
 	if spec.CACertPath != "" {
 		connValues.Set("ca_cert_path", spec.CACertPath)
 	}
-	return connValues
 }
 
-// buildGoCBv1ConnValues adds idle connection configuration, and X.509 auth settings (cacertpath, certpath, keypath) if specified
-// to the connection values based on what gocb v1 is expecting.
-func buildGoCBv1ConnValues(spec *BucketSpec, connValues url.Values) url.Values {
+// addGoCBv1ConnValues adds URL values for GoCBv1 based on the bucket spec and default SG values.
+func addGoCBv1ConnValues(spec *BucketSpec, connValues *url.Values) {
 	connValues.Set("http_max_idle_conns_per_host", DefaultHttpMaxIdleConnsPerHost)
 	connValues.Set("http_max_idle_conns", DefaultHttpMaxIdleConns)
 	connValues.Set("http_idle_conn_timeout", DefaultHttpIdleConnTimeoutMilliseconds)
+
 	connValues.Set("n1ql_timeout", fmt.Sprintf("%d", spec.GetViewQueryTimeoutMs()))
+
 	connValues.Set("operation_tracing", "false")
 
 	if spec.Certpath != "" && spec.Keypath != "" {
@@ -255,7 +254,6 @@ func buildGoCBv1ConnValues(spec *BucketSpec, connValues url.Values) url.Values {
 	if spec.CACertPath != "" {
 		connValues.Set("cacertpath", spec.CACertPath)
 	}
-	return connValues
 }
 
 func (b BucketSpec) GetViewQueryTimeout() time.Duration {
