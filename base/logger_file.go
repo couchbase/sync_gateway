@@ -27,7 +27,8 @@ import (
 )
 
 var (
-	ErrInvalidLogFilePath = errors.New("invalid log file path")
+	ErrInvalidLogFilePath    = errors.New("invalid log file path")
+	ErrUnwritableLogFilePath = errors.New("cannot write to log file path directory")
 
 	maxAgeLimit                            = 9999 // days
 	defaultMaxSize                         = 100  // 100 MB

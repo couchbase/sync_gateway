@@ -13,9 +13,11 @@ package base
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestValidateLogFileOutput(t *testing.T) {
@@ -27,4 +29,47 @@ func TestValidateLogFileOutput(t *testing.T) {
 	logFileOutput = filepath.Join(os.TempDir(), "sglogfile.log")
 	err = validateLogFileOutput(logFileOutput)
 	assert.NoError(t, err, "log file output path should be validated")
+}
+
+// CBG-1760: Error upfront when the configured logFilePath is not writable
+func TestLogFilePathWritable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Cannot make folder inaccessible to writes or make read-only: https://github.com/golang/go/issues/35042
+		t.Skip("Test not compatible with Windows")
+	}
+
+	testCases := []struct {
+		name             string
+		logFilePathPerms os.FileMode
+		error            bool
+	}{
+		{
+			name:             "Unwritable",
+			logFilePathPerms: 0444, // Read-only perms
+			error:            true,
+		},
+		{
+			name:             "Writeable",
+			logFilePathPerms: 0777, // Full perms
+			error:            false,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			tmpPath, err := os.MkdirTemp("", "TestLogFilePathWritable*") // Cannot use t.Name() due to slash separator
+			require.NoError(t, err)
+			defer func() { require.NoError(t, os.RemoveAll(tmpPath)) }()
+
+			logFilePath := filepath.Join(tmpPath, "logs")
+			err = os.Mkdir(logFilePath, test.logFilePathPerms)
+			require.NoError(t, err)
+
+			err = validateLogFilePath(logFilePath)
+			if test.error {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
 }
