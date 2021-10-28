@@ -34,6 +34,9 @@ func TestValidateLogFileOutput(t *testing.T) {
 
 // CBG-1760: Error upfront when the configured logFilePath is not writable
 func TestLogFilePathWritable(t *testing.T) {
+	// FIXME: CBG-1770
+	t.Skip("CBG-1770 Test not working on Jenkins (is it to do with umask in /tmp??)")
+
 	if runtime.GOOS == "windows" {
 		// Cannot make folder inaccessible to writes or make read-only: https://github.com/golang/go/issues/35042
 		t.Skip("Test not compatible with Windows")
@@ -46,12 +49,12 @@ func TestLogFilePathWritable(t *testing.T) {
 	}{
 		{
 			name:             "Unwritable",
-			logFilePathPerms: os.ModeDir | 0444, // Read-only perms
+			logFilePathPerms: 0444, // Read-only perms
 			error:            true,
 		},
 		{
 			name:             "Writeable",
-			logFilePathPerms: os.ModeDir | 0777, // Full perms
+			logFilePathPerms: 0777, // Full perms
 			error:            false,
 		},
 	}
