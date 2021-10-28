@@ -357,6 +357,12 @@ func (dc *DCPClient) fatalError(err error) {
 func (dc *DCPClient) setCloseError(err error) {
 	dc.closeErrorLock.Lock()
 	defer dc.closeErrorLock.Unlock()
+	// If the DCPClient is already closing, don't update the error.  If an initial error triggered the close,
+	// then closeError will already be set.  In the event of a requested close, we want to ignore EOF errors associated
+	// with stream close
+	if dc.closing.IsTrue() {
+		return
+	}
 	if dc.closeError == nil {
 		dc.closeError = err
 	}
