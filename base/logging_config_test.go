@@ -61,6 +61,8 @@ func TestLogFilePathWritable(t *testing.T) {
 			require.NoError(t, err)
 			defer func() { require.NoError(t, os.RemoveAll(tmpPath)) }()
 
+			t.Logf("created tmpPath: %q", tmpPath)
+
 			logFilePath := filepath.Join(tmpPath, "logs")
 			err = os.Mkdir(logFilePath, test.logFilePathPerms)
 			require.NoError(t, err)
