@@ -240,6 +240,10 @@ func (h *handler) handleFlush() error {
 	} else if bucket, ok := baseBucket.(sgbucket.DeleteableStore); ok {
 		base.DebugfCtx(h.rq.Context(), base.KeyHTTP, "Handling flush with DeleteableStore")
 
+		if h.db.BucketSpec.IsWalrusBucket() {
+			time.Sleep(time.Second * 5)
+		}
+
 		// If it's not flushable, but it's deletable, then delete it
 
 		name := h.db.Name
