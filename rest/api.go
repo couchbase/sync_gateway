@@ -191,6 +191,7 @@ func (h *handler) handleFlush() error {
 
 	// If it can be flushed, then flush it
 	if _, ok := baseBucket.(sgbucket.FlushableStore); ok {
+		base.DebugfCtx(h.rq.Context(), base.KeyHTTP, "Handling flush with FlushableStore")
 
 		// If it's not a walrus bucket, don't allow flush unless the unsupported config is set
 		if !h.db.BucketSpec.IsWalrusBucket() {
@@ -219,7 +220,7 @@ func (h *handler) handleFlush() error {
 		}
 		defer tempBucketForFlush.Close() // Close the temporary connection to the bucket that was just for purposes of flushing it
 
-		// Flush the bucket (assuming it conforms to sgbucket.DeleteableStore interface
+		// Flush the bucket (assuming it conforms to sgbucket.FlushableStore interface
 		if tempBucketForFlush, ok := tempBucketForFlush.(sgbucket.FlushableStore); ok {
 
 			// Flush
@@ -237,6 +238,7 @@ func (h *handler) handleFlush() error {
 		}
 
 	} else if bucket, ok := baseBucket.(sgbucket.DeleteableStore); ok {
+		base.DebugfCtx(h.rq.Context(), base.KeyHTTP, "Handling flush with DeleteableStore")
 
 		// If it's not flushable, but it's deletable, then delete it
 
