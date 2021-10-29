@@ -39,6 +39,14 @@ func (bucket *CouchbaseBucketGoCB) SetXattr(k string, xattrKey string, xv []byte
 	return SetXattr(bucket, k, xattrKey, xv)
 }
 
+func (bucket *CouchbaseBucketGoCB) RemoveXattr(k string, xattrKey string, cas uint64) (err error) {
+	return RemoveXattr(bucket, k, xattrKey, cas)
+}
+
+func (bucket *CouchbaseBucketGoCB) DeleteXattrs(k string, xattrKeys ...string) (err error) {
+	return DeleteXattrs(bucket, k, xattrKeys...)
+}
+
 func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}, deleteBody bool, isDelete bool) (casOut uint64, err error) {
 	return UpdateTombstoneXattr(bucket, k, xattrKey, exp, cas, xv, deleteBody)
 }
@@ -199,6 +207,24 @@ func (bucket *CouchbaseBucketGoCB) SubdocDeleteXattr(k string, xattrKey string, 
 		return nil
 	}
 	return mutateErrDeleteXattr
+}
+
+// SubdocDeleteXattrs will delete the supplied xattr keys from a document. Not a cas safe operation.
+func (bucket *CouchbaseBucketGoCB) SubdocDeleteXattrs(k string, xattrKeys ...string) error {
+	bucket.singleOps <- struct{}{}
+	defer func() {
+		<-bucket.singleOps
+	}()
+
+	builder := bucket.Bucket.MutateIn(k, 0, 0)
+
+	for _, xattrKey := range xattrKeys {
+		builder.RemoveEx(xattrKey, gocb.SubdocFlagXattr)
+	}
+
+	_, mutateErr := builder.Execute()
+
+	return mutateErr
 }
 
 // SubdocDeleteBodyAndXattr removes the body and specified xattr for a document.  Used

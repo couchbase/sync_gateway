@@ -2,6 +2,7 @@ package base
 
 import (
 	"fmt"
+	"strings"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
@@ -23,6 +24,7 @@ type SubdocXattrStore interface {
 	SubdocUpdateBodyAndXattr(k string, xattrKey string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error)
 	SubdocUpdateXattrDeleteBody(k, xattrKey string, exp uint32, cas uint64, xv interface{}) (casOut uint64, err error)
 	SubdocDeleteXattr(k string, xattrKey string, cas uint64) error
+	SubdocDeleteXattrs(k string, xattrKeys ...string) error
 	SubdocDeleteBodyAndXattr(k string, xattrKey string) error
 	SubdocDeleteBody(k string, xattrKey string, exp uint32, cas uint64) (casOut uint64, err error)
 	GetSpec() BucketSpec
@@ -273,6 +275,55 @@ func SetXattr(store SubdocXattrStore, k string, xattrKey string, xv []byte) (cas
 
 	return casOut, err
 
+}
+
+// RemoveXattr performs a cas safe subdoc delete of the provided key. Will retry if a recoverable failure occurs.
+func RemoveXattr(store SubdocXattrStore, k string, xattrKey string, cas uint64) error {
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+		writeErr := store.SubdocDeleteXattr(k, xattrKey, cas)
+		if writeErr == nil {
+			return false, nil, nil
+		}
+
+		shouldRetry = store.isRecoverableWriteError(writeErr)
+		if shouldRetry {
+			return shouldRetry, err, nil
+		}
+
+		return false, err, nil
+	}
+
+	err, _ := RetryLoop("RemoveXattr", worker, store.GetSpec().RetrySleeper())
+	if err != nil {
+		err = pkgerrors.Wrapf(err, "RemoveXattr with key %v xattr %v", UD(k).Redact(), UD(xattrKey).Redact())
+	}
+
+	return err
+}
+
+// DeleteXattrs performs a subdoc delete of the provided keys. Retries any recoverable failures. Not cas safe does a
+// straight delete.
+func DeleteXattrs(store SubdocXattrStore, k string, xattrKeys ...string) error {
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+		writeErr := store.SubdocDeleteXattrs(k, xattrKeys...)
+		if writeErr == nil {
+			return false, nil, nil
+		}
+
+		shouldRetry = store.isRecoverableWriteError(writeErr)
+		if shouldRetry {
+			return shouldRetry, err, nil
+		}
+
+		return false, err, nil
+	}
+
+	err, _ := RetryLoop("DeleteXattrs", worker, store.GetSpec().RetrySleeper())
+	if err != nil {
+		err = pkgerrors.Wrapf(err, "DeleteXattrs with keys %q xattr %v", UD(k).Redact(), UD(strings.Join(xattrKeys, ",")).Redact())
+	}
+
+	return err
 }
 
 // Delete a document and it's associated named xattr.  Couchbase server will preserve system xattrs as part of the (CBS)

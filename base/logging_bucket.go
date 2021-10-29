@@ -116,6 +116,16 @@ func (b *LoggingBucket) SetXattr(k string, xattrKey string, xv []byte) (casOut u
 	return b.bucket.SetXattr(k, xattrKey, xv)
 }
 
+func (b *LoggingBucket) RemoveXattr(k string, xattrKey string, cas uint64) (err error) {
+	defer b.log(time.Now(), k, xattrKey)
+	return b.bucket.RemoveXattr(k, xattrKey, cas)
+}
+
+func (b *LoggingBucket) DeleteXattrs(k string, xattrKey ...string) (err error) {
+	defer b.log(time.Now(), k, xattrKey)
+	return b.bucket.DeleteXattrs(k, xattrKey...)
+}
+
 func (b *LoggingBucket) SubdocInsert(docID string, fieldPath string, cas uint64, value interface{}) error {
 	defer b.log(time.Now(), docID, fieldPath)
 	return b.bucket.SubdocInsert(docID, fieldPath, cas, value)

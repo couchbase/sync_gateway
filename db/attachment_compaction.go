@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -96,8 +98,7 @@ func Mark(db *Database, compactionID string, terminator chan struct{}, markedAtt
 
 		for attachmentName, attachmentDocID := range attachmentKeys {
 			// Stamp the current compaction ID into the attachment xattr. This is performing the actual marking
-			xattrValue := []byte(`{"` + CompactionIDKey + `": "` + compactionID + `"}`)
-			_, err = db.Bucket.SetXattr(attachmentDocID, base.AttachmentCompactionXattrName, xattrValue)
+			_, err = db.Bucket.SetXattr(attachmentDocID, getCompactionIDSubDocPath(compactionID), []byte(strconv.Itoa(int(time.Now().Unix()))))
 
 			// If an error occurs while stamping in that ID we need to fail this process and then the entire compaction
 			// process. Otherwise, an attachment could end up getting erroneously deleted in the later sweep phase.
@@ -290,8 +291,8 @@ func Sweep(db *Database, compactionID string, terminator chan struct{}, purgedAt
 					return true
 				}
 
-				docCompactID, ok := syncData[CompactionIDKey]
-				if ok && docCompactID == compactionID {
+				compactIDSync, compactIDSyncPresent := syncData[CompactionIDKey]
+				if _, compactionIDPresent := compactIDSync.(map[string]interface{})[compactionID]; compactIDSyncPresent && compactionIDPresent {
 					return true
 				}
 			}
@@ -343,4 +344,126 @@ func Sweep(db *Database, compactionID string, terminator chan struct{}, purgedAt
 	}
 
 	return attachmentsDeleted, dcpClient.Close()
+}
+
+func Cleanup(db *Database, compactionID string, terminator chan struct{}) error {
+	base.InfofCtx(db.Ctx, base.KeyAll, "Starting third phase of attachment compaction (cleanup phase) with compactionID: %q", compactionID)
+	compactionLoggingID := "Compaction Cleanup: " + compactionID
+
+	callback := func(event sgbucket.FeedEvent) bool {
+
+		docID := string(event.Key)
+
+		if !strings.HasPrefix(docID, base.AttPrefix) {
+			return true
+		}
+
+		if event.DataType&base.MemcachedDataTypeXattr == 0 {
+			return true
+		}
+
+		_, xattr, _, err := parseXattrStreamData(base.AttachmentCompactionXattrName, "", event.Value)
+		if err != nil && !errors.Is(err, base.ErrXattrNotFound) {
+			base.WarnfCtx(db.Ctx, "[%s] Unexpected error occurred attempting to parse attachment xattr: %v", compactionLoggingID, err)
+			return true
+		}
+
+		if xattr != nil {
+			// TODO: Struct map
+			var attachmentCompactionMetadata map[string]map[string]interface{}
+			err = base.JSONUnmarshal(xattr, &attachmentCompactionMetadata)
+			if err != nil {
+				base.WarnfCtx(db.Ctx, "[%s] Failed to unmarshal attachment compaction xattr: %v", compactionLoggingID, err)
+				return true
+			}
+
+			// Get compactID map containing all compactIDs on the document, if one is not present for some reason we can
+			// skip this
+			compactIDSyncMap, compactIDSyncPresent := attachmentCompactionMetadata[CompactionIDKey]
+			if !compactIDSyncPresent {
+				return true
+			}
+
+			// Build up a set of compactionIDs that we can remove from the xattr. We always add the current
+			// compaction ID as we're now done with it. Also check if any other compaction IDs are present. If any are
+			// older than 30 days we can remove them.
+			toDeleteCompactIDPaths := []string{getCompactionIDSubDocPath(compactionID)}
+			for compactID, compactIDTimestampI := range compactIDSyncMap {
+				if compactID == compactionID {
+					continue
+				}
+
+				compactIDTimestampFloat, ok := compactIDTimestampI.(float64)
+				if !ok {
+					continue
+				}
+
+				compactIDTimestamp := time.Unix(int64(compactIDTimestampFloat), 0)
+				diff := time.Now().UTC().Sub(compactIDTimestamp.UTC())
+				if diff > time.Hour*24*30 {
+					toDeleteCompactIDPaths = append(toDeleteCompactIDPaths, getCompactionIDSubDocPath(compactID))
+				}
+			}
+
+			// If all the current compact IDs are to be deleted we can remove the entire attachment compaction xattr.
+			// Note that if this operation fails with a cas mismatch we will fall through to the following per ID
+			// delete. This can occur if another compact process ends up mutating / deleting the xattr.
+			if len(compactIDSyncMap) == len(toDeleteCompactIDPaths) {
+				err = db.Bucket.RemoveXattr(docID, base.AttachmentCompactionXattrName, event.Cas)
+				if err == nil {
+					return true
+				}
+				if err != nil && !base.IsCasMismatch(err) {
+					base.WarnfCtx(db.Ctx, "[%s] Failed to remove compaction ID xattr for doc %s: %v", compactionLoggingID, base.UD(docID), err)
+					return true
+				}
+
+			}
+
+			// If we only want to remove select compact IDs delete each one through a subdoc operation
+			err = db.Bucket.DeleteXattrs(docID, toDeleteCompactIDPaths...)
+			if err != nil && !errors.Is(err, base.ErrXattrNotFound) {
+				base.WarnfCtx(db.Ctx, "[%s] Failed to delete compaction IDs %s for doc %s: %v", compactionLoggingID, strings.Join(toDeleteCompactIDPaths, ","), base.UD(docID), err)
+				return true
+			}
+		}
+
+		return true
+	}
+
+	cbStore, ok := base.AsCouchbaseStore(db.Bucket)
+	if !ok {
+		return fmt.Errorf("bucket is not a Couchbase Store")
+	}
+
+	clientOptions := base.DCPClientOptions{
+		OneShot: true,
+	}
+
+	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for cleanup phase of attachment compaction", compactionLoggingID)
+	dcpClient, err := base.NewDCPClient(compactionID, callback, clientOptions, cbStore)
+	if err != nil {
+		return err
+	}
+
+	doneChan, err := dcpClient.Start()
+	if err != nil {
+		_ = dcpClient.Close()
+		return err
+	}
+
+	select {
+	case <-doneChan:
+		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Cleanup phase of attachment compaction completed", compactionLoggingID)
+	case <-terminator:
+		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Cleanup phase of attachment compaction was terminated", compactionLoggingID)
+	}
+
+	return dcpClient.Close()
+}
+
+// getCompactionIDSubDocPath is just a tiny helper func that just concatenates the subdoc path we're using to store
+// compactionIDs
+func getCompactionIDSubDocPath(compactionID string) string {
+	return base.AttachmentCompactionXattrName + "." + CompactionIDKey + "." + compactionID
 }
