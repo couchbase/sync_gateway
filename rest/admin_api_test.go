@@ -3705,3 +3705,42 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	runtimeServerConfigDatabase = runtimeServerConfigResponse.Databases["db2"]
 	assert.True(t, runtimeServerConfigDatabase.Unsupported.DisableCleanSkippedQuery)
 }
+
+func TestLegacyCredentialInheritance(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+
+	// Start SG with bootstrap credentials filled
+	config := bootstrapStartupConfigForTest(t)
+	sc, err := setupServerContext(&config, false)
+	require.NoError(t, err)
+	serverErr := make(chan error, 0)
+	go func() {
+		serverErr <- startServer(&config, sc)
+	}()
+	require.NoError(t, sc.waitForRESTAPIs())
+
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer func() { tb.Close() }()
+
+	// No credentials should fail
+	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/",
+		`{"bucket": "`+tb.GetName()+`", "num_index_replicas": 0}`,
+	)
+	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+
+	// Wrong credentials should fail
+	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/",
+		`{"bucket": "`+tb.GetName()+`", "num_index_replicas": 0, "username": "test", "password": "invalid_password"}`,
+	)
+	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+
+	// Proper credentials should pass
+	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/",
+		`{"bucket": "`+tb.GetName()+`", "num_index_replicas": 0, "username": "`+base.TestClusterUsername()+`", "password": "`+base.TestClusterUsername()+`"}`,
+	)
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+}
