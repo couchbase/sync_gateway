@@ -46,9 +46,9 @@ func TestAttachmentMark(t *testing.T) {
 	attKeys = append(attKeys, createDocWithInBodyAttachment(t, "inBodyDoc", []byte(`{}`), "attForInBodyRef", []byte(`{"val": "inBodyAtt"}`), testDb))
 
 	terminator := make(chan struct{})
-	attachmentsMarked, err := Mark(testDb, t.Name(), terminator, func(markedAttachments *int) {})
+	attachmentsMarked, err := Mark(testDb, t.Name(), terminator, base.Uint64Ptr(0))
 	assert.NoError(t, err)
-	assert.Equal(t, 13, attachmentsMarked)
+	assert.Equal(t, uint64(13), attachmentsMarked)
 
 	for _, attDocKey := range attKeys {
 		var attachmentData Body
@@ -102,10 +102,10 @@ func TestAttachmentSweep(t *testing.T) {
 	}
 
 	terminator := make(chan struct{})
-	purged, err := Sweep(testDb, t.Name(), terminator, func(purgedAttachments *int) {})
+	purged, err := Sweep(testDb, t.Name(), terminator, base.Uint64Ptr(0))
 	assert.NoError(t, err)
 
-	assert.Equal(t, 11, purged)
+	assert.Equal(t, uint64(11), purged)
 }
 
 func TestAttachmentCleanup(t *testing.T) {
@@ -242,13 +242,13 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 	}
 
 	terminator := make(chan struct{})
-	attachmentsMarked, err := Mark(testDb, t.Name(), terminator, func(markedAttachments *int) {})
+	attachmentsMarked, err := Mark(testDb, t.Name(), terminator, base.Uint64Ptr(0))
 	assert.NoError(t, err)
-	assert.Equal(t, 10, attachmentsMarked)
+	assert.Equal(t, uint64(10), attachmentsMarked)
 
-	attachmentsPurged, err := Sweep(testDb, t.Name(), terminator, func(purgedAttachments *int) {})
+	attachmentsPurged, err := Sweep(testDb, t.Name(), terminator, base.Uint64Ptr(0))
 	assert.NoError(t, err)
-	assert.Equal(t, 5, attachmentsPurged)
+	assert.Equal(t, uint64(5), attachmentsPurged)
 
 	for _, attDocKey := range attKeys {
 		var back interface{}

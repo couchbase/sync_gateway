@@ -288,8 +288,8 @@ func (t *TombstoneCompactionManager) ResetStatus() {
 // =====================================================================
 
 type AttachmentCompactionManager struct {
-	MarkedAttachments int64
-	PurgedAttachments int64
+	MarkedAttachments uint64
+	PurgedAttachments uint64
 	lock              sync.Mutex
 }
 
@@ -310,16 +310,12 @@ func (a *AttachmentCompactionManager) Run(options map[string]interface{}, termin
 		return err
 	}
 
-	_, err = Mark(database, uniqueUUID.String(), terminator, func(markedAttachments *int) {
-		atomic.StoreInt64(&a.MarkedAttachments, int64(*markedAttachments))
-	})
+	_, err = Mark(database, uniqueUUID.String(), terminator, &a.MarkedAttachments)
 	if err != nil {
 		return err
 	}
 
-	_, err = Sweep(database, uniqueUUID.String(), terminator, func(purgedAttachments *int) {
-		atomic.StoreInt64(&a.PurgedAttachments, int64(*purgedAttachments))
-	})
+	_, err = Sweep(database, uniqueUUID.String(), terminator, &a.PurgedAttachments)
 	if err != nil {
 		return err
 	}
@@ -329,8 +325,8 @@ func (a *AttachmentCompactionManager) Run(options map[string]interface{}, termin
 
 type AttachmentManagerResponse struct {
 	BackgroundManagerStatus
-	MarkedAttachments int64 `json:"marked_attachments"`
-	PurgedAttachments int64 `json:"purged_attachments"`
+	MarkedAttachments uint64 `json:"marked_attachments"`
+	PurgedAttachments uint64 `json:"purged_attachments"`
 }
 
 func (a *AttachmentCompactionManager) GetProcessStatus(status BackgroundManagerStatus) ([]byte, error) {
@@ -339,8 +335,8 @@ func (a *AttachmentCompactionManager) GetProcessStatus(status BackgroundManagerS
 
 	retStatus := AttachmentManagerResponse{
 		BackgroundManagerStatus: status,
-		MarkedAttachments:       atomic.LoadInt64(&a.MarkedAttachments),
-		PurgedAttachments:       atomic.LoadInt64(&a.PurgedAttachments),
+		MarkedAttachments:       atomic.LoadUint64(&a.MarkedAttachments),
+		PurgedAttachments:       atomic.LoadUint64(&a.PurgedAttachments),
 	}
 
 	return base.JSONMarshal(retStatus)
@@ -350,6 +346,6 @@ func (a *AttachmentCompactionManager) ResetStatus() {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
-	atomic.StoreInt64(&a.MarkedAttachments, 0)
-	atomic.StoreInt64(&a.PurgedAttachments, 0)
+	atomic.StoreUint64(&a.MarkedAttachments, 0)
+	atomic.StoreUint64(&a.PurgedAttachments, 0)
 }
