@@ -228,7 +228,7 @@ func (spec *BucketSpec) GetGoCBConnString() (string, error) {
 
 // addGoCBv2ConnValues adds URL values for GoCBv2 based on the bucket spec and default SG values.
 func addGoCBv2ConnValues(spec *BucketSpec, connValues *url.Values) {
-	connValues.Set("max_perhost_idle_http_connections", DefaultHttpMaxIdleConnsPerHost)
+	connValues.Set("max_perhost_idle_http_connections", strconv.Itoa(DefaultHttpMaxIdleConnsPerHost))
 	connValues.Set("max_idle_http_connections", DefaultHttpMaxIdleConns)
 	connValues.Set("idle_http_connection_timeout", DefaultHttpIdleConnTimeoutMilliseconds)
 
@@ -239,7 +239,7 @@ func addGoCBv2ConnValues(spec *BucketSpec, connValues *url.Values) {
 
 // addGoCBv1ConnValues adds URL values for GoCBv1 based on the bucket spec and default SG values.
 func addGoCBv1ConnValues(spec *BucketSpec, connValues *url.Values) {
-	connValues.Set("http_max_idle_conns_per_host", DefaultHttpMaxIdleConnsPerHost)
+	connValues.Set("http_max_idle_conns_per_host", strconv.Itoa(DefaultHttpMaxIdleConnsPerHost))
 	connValues.Set("http_max_idle_conns", DefaultHttpMaxIdleConns)
 	connValues.Set("http_idle_conn_timeout", DefaultHttpIdleConnTimeoutMilliseconds)
 
