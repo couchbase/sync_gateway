@@ -45,26 +45,24 @@ const (
 // BackgroundManager this is the over-arching type which is exposed in DatabaseContext
 type BackgroundManager struct {
 	BackgroundManagerStatus
-	lastError        error
-	terminator       chan struct{}
-	terminatorClosed bool
-	clusterAware     *ClusterAwareBackgroundManager
-	lock             sync.Mutex
-	Process          BackgroundManagerProcessI
+	lastError           error
+	terminator          chan struct{}
+	terminatorClosed    bool
+	clusterAwareOptions *ClusterAwareBackgroundManagerOptions
+	lock                sync.Mutex
+	Process             BackgroundManagerProcessI
 }
 
-// TODO: See if I can integrate more work into this struct currently we have a lot of work spread out accross this file
-// for the cluster work
-type ClusterAwareBackgroundManager struct {
+type ClusterAwareBackgroundManagerOptions struct {
 	bucket        base.Bucket
 	processSuffix string
 }
 
-func (b *ClusterAwareBackgroundManager) HeartbeatDocID() string {
+func (b *ClusterAwareBackgroundManagerOptions) HeartbeatDocID() string {
 	return base.SyncPrefix + ":background_process:heartbeat:" + b.processSuffix
 }
 
-func (b *ClusterAwareBackgroundManager) StatusDocID() string {
+func (b *ClusterAwareBackgroundManagerOptions) StatusDocID() string {
 	return base.SyncPrefix + ":background_process:status:" + b.processSuffix
 }
 
@@ -86,6 +84,7 @@ type BackgroundManagerProcessI interface {
 
 func (b *BackgroundManager) Start(options map[string]interface{}) error {
 	b.terminator = make(chan struct{}, 1)
+	b.terminatorClosed = false
 
 	err := b.markStart()
 	if err != nil {
@@ -93,34 +92,33 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 	}
 
 	var processClusterStatus []byte
-	if b.clusterAware != nil {
-		processClusterStatus, _, err = b.clusterAware.bucket.GetRaw(b.clusterAware.StatusDocID())
+	if b.clusterAwareOptions != nil {
+		processClusterStatus, _, err = b.clusterAwareOptions.bucket.GetRaw(b.clusterAwareOptions.StatusDocID())
 		if err != nil && !base.IsDocNotFoundError(err) {
 			return err
 		}
 	}
+
+	b.resetStatus()
 
 	err = b.Process.Init(processClusterStatus)
 	if err != nil {
 		return err
 	}
 
-	if b.clusterAware != nil {
+	if b.clusterAwareOptions != nil {
 		go func() {
 			ticker := time.NewTicker(time.Second)
-			lastStatusCas := uint64(0)
 			for {
 				select {
 				case <-ticker.C:
-					status, err := b.getStatusLocal()
+					// Implement a retry on here. It's not the end of the world if we miss a couple of these, but we
+					// want to give it a best attempt
+					err = b.UpdateStatusClusterAware()
 					if err != nil {
-						// TODO: Handle error
+						base.Errorf("Failed to update background manager status: %v", err)
 					}
 
-					lastStatusCas, err = b.clusterAware.bucket.WriteCas(b.clusterAware.StatusDocID(), 0, 0, lastStatusCas, status, sgbucket.Raw)
-					if err != nil {
-						// TODO: Handle error
-					}
 				case <-b.terminator:
 					return
 				}
@@ -137,37 +135,29 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 
 		if b.GetRunState() == BackgroundProcessStateAborting {
 			b.setRunState(BackgroundProcessStateAborted)
-		} else {
+		} else if b.GetRunState() != BackgroundProcessStateError {
 			b.setRunState(BackgroundProcessStateStopped)
 		}
 
-		if b.clusterAware != nil {
-			status, err := b.getStatusLocal()
+		// Once our background process run has completed we should update the completed status and delete the heartbeat
+		// doc
+		if b.clusterAwareOptions != nil {
+			err = b.UpdateStatusClusterAware()
 			if err != nil {
-				// TODO: Handle error
+				base.Errorf("Failed to update background manager status: %v", err)
 			}
 
-			err = b.clusterAware.bucket.SetRaw(b.clusterAware.StatusDocID(), 0, status)
-			if err != nil {
-				// TODO: Handle error
-			}
-
-			// Delete the heartbeat doc to allow another process to run
-			// Note: We can ignore the error, worst case is the user has toW wait until the heartbeat doc expires
-			_ = b.clusterAware.bucket.Delete(b.clusterAware.HeartbeatDocID())
 			b.Terminate()
+			// Delete the heartbeat doc to allow another process to run
+			// Note: We can ignore the error, worst case is the user has to wait until the heartbeat doc expires
+			_ = b.clusterAwareOptions.bucket.Delete(b.clusterAwareOptions.HeartbeatDocID())
 		}
 	}()
 
-	if b.clusterAware != nil {
-		status, err := b.getStatusLocal()
+	if b.clusterAwareOptions != nil {
+		err = b.UpdateStatusClusterAware()
 		if err != nil {
-			// TODO: Handle error
-		}
-
-		err = b.clusterAware.bucket.SetRaw(b.clusterAware.StatusDocID(), 0, status)
-		if err != nil {
-			// TODO: Handle error
+			base.Errorf("Failed to update background manager status: %v", err)
 		}
 	}
 
@@ -181,8 +171,8 @@ func (b *BackgroundManager) markStart() error {
 	processAlreadyRunningErr := base.HTTPErrorf(http.StatusServiceUnavailable, "Process already running")
 
 	// If we're running in cluster aware 'mode' base the check off of a heartbeat doc
-	if b.clusterAware != nil {
-		_, err := b.clusterAware.bucket.WriteCas(b.clusterAware.HeartbeatDocID(), 0, 30, 0, []byte("{}"), sgbucket.Raw)
+	if b.clusterAwareOptions != nil {
+		_, err := b.clusterAwareOptions.bucket.WriteCas(b.clusterAwareOptions.HeartbeatDocID(), 0, 30, 0, []byte("{}"), sgbucket.Raw)
 		if base.IsCasMismatch(err) {
 			return processAlreadyRunningErr
 		}
@@ -192,9 +182,9 @@ func (b *BackgroundManager) markStart() error {
 			for {
 				select {
 				case <-ticker.C:
-					// TODO: Add a couple retries
-					_, err := b.clusterAware.bucket.Touch(b.clusterAware.HeartbeatDocID(), 30)
+					err = b.UpdateHeartbeatDocClusterAware()
 					if err != nil {
+						base.Errorf("Failed to update expiry on heartbeat doc: %v", err)
 						b.SetError(err)
 					}
 				case <-b.terminator:
@@ -221,7 +211,7 @@ func (b *BackgroundManager) markStart() error {
 }
 
 func (b *BackgroundManager) GetStatus() ([]byte, error) {
-	if b.clusterAware != nil {
+	if b.clusterAwareOptions != nil {
 		status, err := b.getStatusFromCluster()
 		if err != nil {
 			return nil, err
@@ -256,7 +246,7 @@ func (b *BackgroundManager) getStatusLocal() ([]byte, error) {
 }
 
 func (b *BackgroundManager) getStatusFromCluster() ([]byte, error) {
-	status, _, err := b.clusterAware.bucket.GetRaw(b.clusterAware.StatusDocID())
+	status, _, err := b.clusterAwareOptions.bucket.GetRaw(b.clusterAwareOptions.StatusDocID())
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			return nil, nil
@@ -274,8 +264,11 @@ func (b *BackgroundManager) getStatusFromCluster() ([]byte, error) {
 	// Work here is required because if the process crashes we'd end up in a state where a GET would return 'running'
 	// when in-fact it crashed. We COULD potentially have a different status to represent rather than use aborted.
 	// Worst case we should do this once if we have to do this and update the cluster status doc
-	if clusterState, ok := clusterStatus["status"].(string); ok && clusterState != string(BackgroundProcessStateStopped) && clusterState != string(BackgroundProcessStateAborted) {
-		_, _, err = b.clusterAware.bucket.GetRaw(b.clusterAware.HeartbeatDocID())
+	if clusterState, ok := clusterStatus["status"].(string); ok &&
+		clusterState != string(BackgroundProcessStateStopped) &&
+		clusterState != string(BackgroundProcessStateAborted) &&
+		clusterState != string(BackgroundProcessStateError) {
+		_, _, err = b.clusterAwareOptions.bucket.GetRaw(b.clusterAwareOptions.HeartbeatDocID())
 		if err != nil {
 			if base.IsDocNotFoundError(err) {
 				clusterStatus["status"] = BackgroundProcessStateAborted
@@ -296,7 +289,6 @@ func (b *BackgroundManager) resetStatus() {
 
 	b.lastError = nil
 	b.LastErrorMessage = ""
-	b.terminator = make(chan struct{}, 1)
 	b.Process.ResetStatus()
 }
 
@@ -358,6 +350,39 @@ func (b *BackgroundManager) SetError(err error) {
 	b.Terminate()
 }
 
+// UpdateStatusClusterAware gets the current local status from the running process and updates the status document in
+// the bucket. Implements a retry. Used for Cluster Aware operations
+func (b *BackgroundManager) UpdateStatusClusterAware() error {
+	err, _ := base.RetryLoop("UpdateStatusClusterAware", func() (shouldRetry bool, err error, value interface{}) {
+		status, err := b.getStatusLocal()
+		if err != nil {
+			return true, err, nil
+		}
+
+		err = b.clusterAwareOptions.bucket.SetRaw(b.clusterAwareOptions.StatusDocID(), 0, status)
+		if err != nil {
+			return true, err, nil
+		}
+
+		return false, nil, nil
+	}, base.CreateSleeperFunc(5, 100))
+	return err
+}
+
+// UpdateHeartbeatDocClusterAware simply performs a touch operation on the heartbeat document to update its expiry.
+// Implements a retry. Used for Cluster Aware operations
+func (b *BackgroundManager) UpdateHeartbeatDocClusterAware() error {
+	err, _ := base.RetryLoop("", func() (shouldRetry bool, err error, value interface{}) {
+		_, err = b.clusterAwareOptions.bucket.Touch(b.clusterAwareOptions.HeartbeatDocID(), 30)
+		if err != nil {
+			return true, err, nil
+		}
+
+		return false, err, nil
+	}, base.CreateSleeperFunc(5, 100))
+	return err
+}
+
 // ======================================================
 // Resync Implementation of Background Manager Process
 // ======================================================
@@ -377,7 +402,6 @@ func NewResyncManager() *BackgroundManager {
 }
 
 func (r *ResyncManager) Init(clusterStatus []byte) error {
-	r.ResetStatus()
 	return nil
 }
 
@@ -445,7 +469,6 @@ func NewTombstoneCompactionManager() *BackgroundManager {
 }
 
 func (t *TombstoneCompactionManager) Init(clusterStatus []byte) error {
-	t.ResetStatus()
 	return nil
 }
 
@@ -500,7 +523,7 @@ var _ BackgroundManagerProcessI = &AttachmentCompactionManager{}
 func NewAttachmentCompactionManager(bucket base.Bucket) *BackgroundManager {
 	return &BackgroundManager{
 		Process: &AttachmentCompactionManager{},
-		clusterAware: &ClusterAwareBackgroundManager{
+		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
 			bucket:        bucket,
 			processSuffix: "compact",
 		},
@@ -508,8 +531,6 @@ func NewAttachmentCompactionManager(bucket base.Bucket) *BackgroundManager {
 }
 
 func (a *AttachmentCompactionManager) Init(clusterStatus []byte) error {
-	a.ResetStatus()
-
 	if clusterStatus != nil {
 		var attachmentResponseStatus AttachmentManagerResponse
 		err := base.JSONUnmarshal(clusterStatus, &attachmentResponseStatus)
@@ -529,14 +550,16 @@ func (a *AttachmentCompactionManager) Init(clusterStatus []byte) error {
 			a.Phase = attachmentResponseStatus.Phase
 		}
 
-	} else {
-		uniqueUUID, err := uuid.NewRandom()
-		if err != nil {
-			return err
-		}
+		return nil
 
-		a.CompactID = uniqueUUID.String()
 	}
+
+	uniqueUUID, err := uuid.NewRandom()
+	if err != nil {
+		return err
+	}
+
+	a.CompactID = uniqueUUID.String()
 
 	return nil
 }
