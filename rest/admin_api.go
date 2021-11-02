@@ -105,10 +105,6 @@ func (h *handler) handleCreateDB() error {
 		// store the cas in the loaded config after a successful insert
 		h.server.dbConfigs[dbName].cas = cas
 	} else {
-		if config.BucketConfig.Username == "" || config.BucketConfig.Password == "" {
-			return fmt.Errorf("bucket credentials must be provided")
-		}
-
 		// Check credentials are correct
 		_, err := db.ConnectToBucket(config.MakeBucketSpec())
 		if err != nil {
