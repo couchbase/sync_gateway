@@ -3727,20 +3727,20 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 	defer func() { tb.Close() }()
 
 	// No credentials should fail
-	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/",
+	resp := bootstrapAdminRequest(t, http.MethodPut, "/db1/",
 		`{"bucket": "`+tb.GetName()+`", "num_index_replicas": 0}`,
 	)
-	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 
 	// Wrong credentials should fail
-	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/",
+	resp = bootstrapAdminRequest(t, http.MethodPut, "/db2/",
 		`{"bucket": "`+tb.GetName()+`", "num_index_replicas": 0, "username": "test", "password": "invalid_password"}`,
 	)
-	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 
 	// Proper credentials should pass
-	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/",
-		`{"bucket": "`+tb.GetName()+`", "num_index_replicas": 0, "username": "`+base.TestClusterUsername()+`", "password": "`+base.TestClusterUsername()+`"}`,
+	resp = bootstrapAdminRequest(t, http.MethodPut, "/db3/",
+		`{"bucket": "`+tb.GetName()+`", "num_index_replicas": 0, "username": "`+base.TestClusterUsername()+`", "password": "`+base.TestClusterPassword()+`"}`,
 	)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 }
