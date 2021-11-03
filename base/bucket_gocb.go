@@ -186,7 +186,7 @@ func GetCouchbaseBucketGoCBFromAuthenticatedCluster(cluster *gocb.Cluster, spec 
 
 	if maxConcurrentQueryOps > DefaultHttpMaxIdleConnsPerHost*queryNodeCount {
 		maxConcurrentQueryOps = DefaultHttpMaxIdleConnsPerHost * queryNodeCount
-		Warnf("Limited max concurrent query ops to %d to be in line with number of query nodes", maxConcurrentQueryOps)
+		Infof(KeyAll, "Setting max_concurrent_query_ops to %d based on query node count (%d)", maxConcurrentQueryOps, queryNodeCount)
 	}
 
 	viewOpsQueue := make(chan struct{}, maxConcurrentQueryOps)

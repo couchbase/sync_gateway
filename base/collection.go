@@ -123,7 +123,7 @@ func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilR
 
 	if maxConcurrentQueryOps > DefaultHttpMaxIdleConnsPerHost*queryNodeCount {
 		maxConcurrentQueryOps = DefaultHttpMaxIdleConnsPerHost * queryNodeCount
-		Warnf("Limited max concurrent query ops to %d to be in line with number of query nodes", maxConcurrentQueryOps)
+		Infof(KeyAll, "Setting max_concurrent_query_ops to %d based on query node count (%d)", maxConcurrentQueryOps, queryNodeCount)
 	}
 
 	collection.queryOps = make(chan struct{}, maxConcurrentQueryOps)
