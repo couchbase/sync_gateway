@@ -131,13 +131,13 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 			b.SetError(err)
 		}
 
+		b.Terminate()
+
 		if b.GetRunState() == BackgroundProcessStateStopping {
 			b.setRunState(BackgroundProcessStateStopped)
 		} else if b.GetRunState() != BackgroundProcessStateError {
 			b.setRunState(BackgroundProcessStateCompleted)
 		}
-
-		b.Terminate()
 
 		// Once our background process run has completed we should update the completed status and delete the heartbeat
 		// doc
