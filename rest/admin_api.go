@@ -40,11 +40,6 @@ func (h *handler) handleCreateDB() error {
 	}
 	config.Name = dbName
 
-	bucket := dbName
-	if config.Bucket != nil {
-		bucket = *config.Bucket
-	}
-
 	if h.server.persistentConfig {
 		if err := config.validatePersistentDbConfig(); err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
@@ -57,6 +52,11 @@ func (h *handler) handleCreateDB() error {
 		version, err := GenerateDatabaseConfigVersionID("", config)
 		if err != nil {
 			return err
+		}
+
+		bucket := dbName
+		if config.Bucket != nil {
+			bucket = *config.Bucket
 		}
 
 		// copy config before setup to persist the raw config the user supplied
@@ -112,7 +112,7 @@ func (h *handler) handleCreateDB() error {
 		// load database in-memory for non-persistent nodes
 		if _, err := h.server.AddDatabaseFromConfigFailFast(DatabaseConfig{DbConfig: *config}); err != nil {
 			if errors.Is(err, base.ErrAuthError) {
-				return base.HTTPErrorf(http.StatusForbidden, "auth failure accessing provided bucket using database credentials: %s", base.Metadata(bucket))
+				return base.HTTPErrorf(http.StatusForbidden, "auth failure using provided bucket credentials for database %s", base.Metadata(config.Name))
 			}
 			return err
 		}
