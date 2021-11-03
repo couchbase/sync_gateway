@@ -17,22 +17,23 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/google/uuid"
+	pkgerrors "github.com/pkg/errors"
 )
 
 type BackgroundProcessState string
 
 // These states are used for background tasks
 // Running = The process is currently doing work
-// Stopped = The process stopped following completion of its task
-// Aborting = A user has requested that the process be stopped and therefore will stop shortly (usually after completing its current 'iteration')
-// Aborted = The process has stopped either by user request or the process 'crashed' midway through --> Essentially means the process is not running and the previous run had not completed
+// Completed = The process stopped following completion of its task
+// Stopping = A user has requested that the process be stopped and therefore will stop shortly (usually after completing its current 'iteration')
+// Stopped = The process has stopped either by user request or the process 'crashed' midway through --> Essentially means the process is not running and the previous run had not completed
 // Error = The process errored and had to stop
 const (
-	BackgroundProcessStateRunning  BackgroundProcessState = "running"
-	BackgroundProcessStateStopped  BackgroundProcessState = "stopped"
-	BackgroundProcessStateAborting BackgroundProcessState = "aborting"
-	BackgroundProcessStateAborted  BackgroundProcessState = "aborted"
-	BackgroundProcessStateError    BackgroundProcessState = "error"
+	BackgroundProcessStateRunning   BackgroundProcessState = "running"
+	BackgroundProcessStateCompleted BackgroundProcessState = "completed"
+	BackgroundProcessStateStopping  BackgroundProcessState = "stopping"
+	BackgroundProcessStateStopped   BackgroundProcessState = "stopped"
+	BackgroundProcessStateError     BackgroundProcessState = "error"
 )
 
 type BackgroundProcessAction string
@@ -47,7 +48,7 @@ type BackgroundManager struct {
 	BackgroundManagerStatus
 	lastError           error
 	terminator          chan struct{}
-	terminatorClosed    bool
+	terminatorClosed    base.AtomicBool
 	clusterAwareOptions *ClusterAwareBackgroundManagerOptions
 	lock                sync.Mutex
 	Process             BackgroundManagerProcessI
@@ -83,9 +84,6 @@ type BackgroundManagerProcessI interface {
 }
 
 func (b *BackgroundManager) Start(options map[string]interface{}) error {
-	b.terminator = make(chan struct{}, 1)
-	b.terminatorClosed = false
-
 	err := b.markStart()
 	if err != nil {
 		return err
@@ -95,7 +93,7 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 	if b.clusterAwareOptions != nil {
 		processClusterStatus, _, err = b.clusterAwareOptions.bucket.GetRaw(b.clusterAwareOptions.StatusDocID())
 		if err != nil && !base.IsDocNotFoundError(err) {
-			return err
+			return pkgerrors.Wrap(err, "Failed to get current process status")
 		}
 	}
 
@@ -116,7 +114,7 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 					// want to give it a best attempt
 					err = b.UpdateStatusClusterAware()
 					if err != nil {
-						base.Errorf("Failed to update background manager status: %v", err)
+						base.Warnf("Failed to update background manager status: %v", err)
 					}
 
 				case <-b.terminator:
@@ -133,21 +131,22 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 			b.SetError(err)
 		}
 
-		if b.GetRunState() == BackgroundProcessStateAborting {
-			b.setRunState(BackgroundProcessStateAborted)
-		} else if b.GetRunState() != BackgroundProcessStateError {
+		if b.GetRunState() == BackgroundProcessStateStopping {
 			b.setRunState(BackgroundProcessStateStopped)
+		} else if b.GetRunState() != BackgroundProcessStateError {
+			b.setRunState(BackgroundProcessStateCompleted)
 		}
+
+		b.Terminate()
 
 		// Once our background process run has completed we should update the completed status and delete the heartbeat
 		// doc
 		if b.clusterAwareOptions != nil {
 			err = b.UpdateStatusClusterAware()
 			if err != nil {
-				base.Errorf("Failed to update background manager status: %v", err)
+				base.Warnf("Failed to update background manager status: %v", err)
 			}
 
-			b.Terminate()
 			// Delete the heartbeat doc to allow another process to run
 			// Note: We can ignore the error, worst case is the user has to wait until the heartbeat doc expires
 			_ = b.clusterAwareOptions.bucket.Delete(b.clusterAwareOptions.HeartbeatDocID())
@@ -172,10 +171,15 @@ func (b *BackgroundManager) markStart() error {
 
 	// If we're running in cluster aware 'mode' base the check off of a heartbeat doc
 	if b.clusterAwareOptions != nil {
-		_, err := b.clusterAwareOptions.bucket.WriteCas(b.clusterAwareOptions.HeartbeatDocID(), 0, 30, 0, []byte("{}"), sgbucket.Raw)
+		_, err := b.clusterAwareOptions.bucket.WriteCas(b.clusterAwareOptions.HeartbeatDocID(), 0, 10, 0, []byte("{}"), sgbucket.Raw)
 		if base.IsCasMismatch(err) {
 			return processAlreadyRunningErr
 		}
+
+		// Now we know that we're the only running process we should instantiate these values
+		// We need to instantiate these before we setup the below goroutine as it relies upon the terminator
+		b.terminator = make(chan struct{}, 1)
+		b.terminatorClosed.Set(false)
 
 		go func() {
 			ticker := time.NewTicker(1 * time.Second)
@@ -202,9 +206,13 @@ func (b *BackgroundManager) markStart() error {
 		return processAlreadyRunningErr
 	}
 
-	if b.State == BackgroundProcessStateAborting {
+	if b.State == BackgroundProcessStateStopping {
 		return base.HTTPErrorf(http.StatusServiceUnavailable, "Process currently stopping. Wait until stopped to retry")
 	}
+
+	// Now we know that we're the only running process we should instantiate these values
+	b.terminator = make(chan struct{}, 1)
+	b.terminatorClosed.Set(false)
 
 	b.State = BackgroundProcessStateRunning
 	return nil
@@ -235,7 +243,7 @@ func (b *BackgroundManager) getStatusLocal() ([]byte, error) {
 
 	backgroundStatus := b.BackgroundManagerStatus
 	if string(backgroundStatus.State) == "" {
-		backgroundStatus.State = BackgroundProcessStateStopped
+		backgroundStatus.State = BackgroundProcessStateCompleted
 	}
 
 	if b.lastError != nil {
@@ -260,18 +268,17 @@ func (b *BackgroundManager) getStatusFromCluster() ([]byte, error) {
 		return nil, err
 	}
 
-	// TODO: Would be nice if we can improve this somehow
 	// Work here is required because if the process crashes we'd end up in a state where a GET would return 'running'
 	// when in-fact it crashed. We COULD potentially have a different status to represent rather than use aborted.
 	// Worst case we should do this once if we have to do this and update the cluster status doc
 	if clusterState, ok := clusterStatus["status"].(string); ok &&
+		clusterState != string(BackgroundProcessStateCompleted) &&
 		clusterState != string(BackgroundProcessStateStopped) &&
-		clusterState != string(BackgroundProcessStateAborted) &&
 		clusterState != string(BackgroundProcessStateError) {
 		_, _, err = b.clusterAwareOptions.bucket.GetRaw(b.clusterAwareOptions.HeartbeatDocID())
 		if err != nil {
 			if base.IsDocNotFoundError(err) {
-				clusterStatus["status"] = BackgroundProcessStateAborted
+				clusterStatus["status"] = BackgroundProcessStateStopped
 				status, err = base.JSONMarshal(clusterStatus)
 				if err != nil {
 					return nil, err
@@ -305,9 +312,8 @@ func (b *BackgroundManager) Stop() error {
 // Terminate stops the process via terminator channel
 // Only to be used internally to this file and by tests.
 func (b *BackgroundManager) Terminate() {
-	if !b.terminatorClosed {
+	if b.terminatorClosed.CompareAndSwap(false, true) {
 		close(b.terminator)
-		b.terminatorClosed = true
 	}
 }
 
@@ -315,15 +321,15 @@ func (b *BackgroundManager) markStop() error {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	if b.State == BackgroundProcessStateAborting {
+	if b.State == BackgroundProcessStateStopping {
 		return base.HTTPErrorf(http.StatusServiceUnavailable, "Process already stopping")
 	}
 
-	if b.State == BackgroundProcessStateStopped {
+	if b.State == BackgroundProcessStateCompleted {
 		return base.HTTPErrorf(http.StatusServiceUnavailable, "Process already stopped")
 	}
 
-	b.State = BackgroundProcessStateAborting
+	b.State = BackgroundProcessStateStopping
 	return nil
 }
 
@@ -372,15 +378,18 @@ func (b *BackgroundManager) UpdateStatusClusterAware() error {
 // UpdateHeartbeatDocClusterAware simply performs a touch operation on the heartbeat document to update its expiry.
 // Implements a retry. Used for Cluster Aware operations
 func (b *BackgroundManager) UpdateHeartbeatDocClusterAware() error {
-	err, _ := base.RetryLoop("", func() (shouldRetry bool, err error, value interface{}) {
-		_, err = b.clusterAwareOptions.bucket.Touch(b.clusterAwareOptions.HeartbeatDocID(), 30)
-		if err != nil {
-			return true, err, nil
+	_, err := b.clusterAwareOptions.bucket.Touch(b.clusterAwareOptions.HeartbeatDocID(), 10)
+	if err != nil {
+		// If we get an error but the error is doc not found and terminator closed it means we have terminated the
+		// goroutine which intermittently runs this but this snuck in before it was stopped. This may result in the doc
+		// being deleted before this runs. We can ignore that error is that is the case.
+		if base.IsDocNotFoundError(err) && b.terminatorClosed.IsTrue() {
+			return nil
 		}
+		return err
+	}
 
-		return false, err, nil
-	}, base.CreateSleeperFunc(5, 100))
-	return err
+	return nil
 }
 
 // ======================================================
@@ -534,11 +543,11 @@ func (a *AttachmentCompactionManager) Init(clusterStatus []byte) error {
 	if clusterStatus != nil {
 		var attachmentResponseStatus AttachmentManagerResponse
 		err := base.JSONUnmarshal(clusterStatus, &attachmentResponseStatus)
-		if err != nil {
-			return err
-		}
 
-		if attachmentResponseStatus.State == BackgroundProcessStateStopped {
+		// If the previous run completed, or there was an error during unmarshalling the status we will start the
+		// process from scratch with a new compaction ID. Otherwise, we should resume with the compact ID and phase
+		// specified in the doc.
+		if attachmentResponseStatus.State == BackgroundProcessStateCompleted || err != nil {
 			uniqueUUID, err := uuid.NewRandom()
 			if err != nil {
 				return err

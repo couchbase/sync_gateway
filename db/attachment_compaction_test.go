@@ -320,7 +320,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 		err = base.JSONUnmarshal(rawStatus, &status)
 		assert.NoError(t, err)
 
-		if status.State == BackgroundProcessStateStopped {
+		if status.State == BackgroundProcessStateCompleted {
 			return true
 		}
 
@@ -341,8 +341,8 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	err = base.JSONUnmarshal(testDB2RawStatus, &testDB2Status)
 	assert.NoError(t, err)
 
-	assert.Equal(t, BackgroundProcessStateStopped, testDB1Status.State)
-	assert.Equal(t, BackgroundProcessStateStopped, testDB2Status.State)
+	assert.Equal(t, BackgroundProcessStateCompleted, testDB1Status.State)
+	assert.Equal(t, BackgroundProcessStateCompleted, testDB2Status.State)
 	assert.Equal(t, testDB1Status.CompactID, testDB2Status.CompactID)
 
 }
