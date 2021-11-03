@@ -28,6 +28,8 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 		t.Skip("Bootstrap works with Couchbase Server only")
 	}
 
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+
 	// Start SG with no databases in bucket(s)
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(&config, true)

@@ -3710,7 +3710,6 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
 
 	// Start SG with bootstrap credentials filled
 	config := bootstrapStartupConfigForTest(t)
