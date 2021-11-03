@@ -3749,3 +3749,32 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 	)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 }
+
+func TestDatabaseOfflineConfig(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	bucket := rt.Bucket()
+	defer rt.Close()
+
+	dbConfig := `{
+    "bucket": "` + bucket.GetName() + `",
+    "name": "db",
+    "sync": "function(doc){ channel(doc.channels); }",
+    "import_docs": true,
+    "offline": false,
+    "enable_shared_bucket_access": true,
+    "num_index_replicas": 0 }`
+
+	resp := rt.SendAdminRequest("PUT", "/db/_config", dbConfig)
+	require.Equal(t, http.StatusCreated, resp.Code)
+
+	resp = rt.SendAdminRequest("GET", "/db/_config", "")
+	require.Equal(t, http.StatusOK, resp.Code)
+	dbConfigBeforeOffline := string(resp.BodyBytes())
+
+	resp = rt.SendAdminRequest("POST", "/db/_offline", "")
+	require.Equal(t, http.StatusOK, resp.Code)
+
+	resp = rt.SendAdminRequest("GET", "/db/_config", "")
+	assert.Equal(t, http.StatusOK, resp.Code)
+	assert.Equal(t, dbConfigBeforeOffline, string(resp.BodyBytes()))
+}
