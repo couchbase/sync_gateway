@@ -92,7 +92,7 @@ const (
 	// a high number of connections to end up in the TIME_WAIT state and exhaust system resources.  Since
 	// GoCB is only connecting to a fixed set of Couchbase nodes, this number can be set relatively high and
 	// still stay within a reasonable value.
-	DefaultHttpMaxIdleConnsPerHost = "256"
+	DefaultHttpMaxIdleConnsPerHost = 256
 
 	// This primarily depends on MaxIdleConnsPerHost as the limiting factor, but sets some upper limit just to avoid
 	// being completely unlimited

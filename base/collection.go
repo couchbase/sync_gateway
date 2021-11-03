@@ -115,6 +115,17 @@ func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilR
 	if spec.MaxConcurrentQueryOps != nil {
 		maxConcurrentQueryOps = *spec.MaxConcurrentQueryOps
 	}
+
+	queryNodeCount, err := collection.QueryEpsCount()
+	if err != nil || queryNodeCount == 0 {
+		queryNodeCount = 1
+	}
+
+	if maxConcurrentQueryOps > DefaultHttpMaxIdleConnsPerHost*queryNodeCount {
+		maxConcurrentQueryOps = DefaultHttpMaxIdleConnsPerHost * queryNodeCount
+		Infof(KeyAll, "Setting max_concurrent_query_ops to %d based on query node count (%d)", maxConcurrentQueryOps, queryNodeCount)
+	}
+
 	collection.queryOps = make(chan struct{}, maxConcurrentQueryOps)
 
 	// gocb v2 has a queue size of 2048 per pool per server node.
@@ -679,6 +690,15 @@ func (c *Collection) MgmtEps() (url []string, err error) {
 		return nil, fmt.Errorf("No available Couchbase Server nodes")
 	}
 	return mgmtEps, nil
+}
+
+func (c *Collection) QueryEpsCount() (int, error) {
+	router, err := c.Bucket().Internal().IORouter()
+	if err != nil {
+		return 0, err
+	}
+
+	return len(router.N1qlEps()), nil
 }
 
 // Gets the metadata purge interval for the bucket.  First checks for a bucket-specific value.  If not
