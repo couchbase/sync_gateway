@@ -105,7 +105,7 @@ func (h *handler) handleCreateDB() error {
 		// store the cas in the loaded config after a successful insert
 		h.server.dbConfigs[dbName].cas = cas
 	} else {
-		// Intentionally do not pass bootstrap config in so it's credentials or server is not inherited (CBG-1764)
+		// Intentionally pass in an empty BootstrapConfig to avoid inheriting any credentials or server when running with a legacy config (CBG-1764)
 		if err := config.setup(dbName, BootstrapConfig{}, nil); err != nil {
 			return err
 		}
