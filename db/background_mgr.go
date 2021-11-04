@@ -54,9 +54,17 @@ type BackgroundManager struct {
 	Process             BackgroundManagerProcessI
 }
 
+const (
+	BackgroundManagerHeartbeatExpirySecs      = 30
+	BackgroundManagerHeartbeatIntervalSecs    = 1
+	BackgroundManagerStatusUpdateIntervalSecs = 1
+)
+
 type ClusterAwareBackgroundManagerOptions struct {
 	bucket        base.Bucket
 	processSuffix string
+
+	lastSuccessfulHeartbeat time.Time
 }
 
 func (b *ClusterAwareBackgroundManagerOptions) HeartbeatDocID() string {
@@ -106,7 +114,7 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 
 	if b.clusterAwareOptions != nil {
 		go func() {
-			ticker := time.NewTicker(time.Second)
+			ticker := time.NewTicker(BackgroundManagerStatusUpdateIntervalSecs * time.Second)
 			for {
 				select {
 				case <-ticker.C:
@@ -171,7 +179,7 @@ func (b *BackgroundManager) markStart() error {
 
 	// If we're running in cluster aware 'mode' base the check off of a heartbeat doc
 	if b.clusterAwareOptions != nil {
-		_, err := b.clusterAwareOptions.bucket.WriteCas(b.clusterAwareOptions.HeartbeatDocID(), 0, 10, 0, []byte("{}"), sgbucket.Raw)
+		_, err := b.clusterAwareOptions.bucket.WriteCas(b.clusterAwareOptions.HeartbeatDocID(), 0, BackgroundManagerHeartbeatExpirySecs, 0, []byte("{}"), sgbucket.Raw)
 		if base.IsCasMismatch(err) {
 			return processAlreadyRunningErr
 		}
@@ -182,7 +190,7 @@ func (b *BackgroundManager) markStart() error {
 		b.terminatorClosed.Set(false)
 
 		go func() {
-			ticker := time.NewTicker(1 * time.Second)
+			ticker := time.NewTicker(BackgroundManagerHeartbeatIntervalSecs * time.Second)
 			for {
 				select {
 				case <-ticker.C:
@@ -378,7 +386,7 @@ func (b *BackgroundManager) UpdateStatusClusterAware() error {
 // UpdateHeartbeatDocClusterAware simply performs a touch operation on the heartbeat document to update its expiry.
 // Implements a retry. Used for Cluster Aware operations
 func (b *BackgroundManager) UpdateHeartbeatDocClusterAware() error {
-	_, err := b.clusterAwareOptions.bucket.Touch(b.clusterAwareOptions.HeartbeatDocID(), 10)
+	_, err := b.clusterAwareOptions.bucket.Touch(b.clusterAwareOptions.HeartbeatDocID(), BackgroundManagerHeartbeatExpirySecs)
 	if err != nil {
 		// If we get an error but the error is doc not found and terminator closed it means we have terminated the
 		// goroutine which intermittently runs this but this snuck in before it was stopped. This may result in the doc
@@ -386,9 +394,17 @@ func (b *BackgroundManager) UpdateHeartbeatDocClusterAware() error {
 		if base.IsDocNotFoundError(err) && b.terminatorClosed.IsTrue() {
 			return nil
 		}
-		return err
+
+		// If we've hit an error, and we haven't had a successful heartbeat in just under its TTL then we need to quit
+		// out. If we fail to write heartbeat for this time we can no longer ensure that this would be the only process
+		// running and another could end up starting.
+		if time.Now().Sub(b.clusterAwareOptions.lastSuccessfulHeartbeat) > (BackgroundManagerHeartbeatExpirySecs - BackgroundManagerHeartbeatIntervalSecs) {
+			return err
+		}
+		return nil
 	}
 
+	b.clusterAwareOptions.lastSuccessfulHeartbeat = time.Now()
 	return nil
 }
 
