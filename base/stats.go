@@ -425,7 +425,7 @@ type SgwStat struct {
 
 type SgwIntStat struct {
 	SgwStat
-	Val int64
+	AtomicInt
 }
 
 // uint64 is used here because atomic ints do not support floats. Floats are encoded to uint64
@@ -460,8 +460,9 @@ func newSGWStat(subsystem string, key string, labelKeys []string, labelVals []st
 func NewIntStat(subsystem string, key string, labelKeys []string, labelVals []string, statValueType prometheus.ValueType, initialValue int64) *SgwIntStat {
 	stat := &SgwIntStat{
 		SgwStat: *newSGWStat(subsystem, key, labelKeys, labelVals, statValueType),
-		Val:     initialValue,
 	}
+
+	stat.Set(initialValue)
 
 	if !SkipPrometheusStatsRegistration {
 		prometheus.MustRegister(stat)
@@ -475,40 +476,15 @@ func (s *SgwIntStat) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (s *SgwIntStat) Collect(ch chan<- prometheus.Metric) {
-	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, float64(atomic.LoadInt64(&s.Val)))
-}
-
-func (s *SgwIntStat) Set(newV int64) {
-	atomic.StoreInt64(&s.Val, newV)
-}
-
-func (s *SgwIntStat) SetIfMax(newV int64) {
-	for {
-		cur := atomic.LoadInt64(&s.Val)
-		if cur >= newV {
-			return
-		}
-
-		if atomic.CompareAndSwapInt64(&s.Val, cur, newV) {
-			return
-		}
-	}
-}
-
-func (s *SgwIntStat) Add(newV int64) {
-	atomic.AddInt64(&s.Val, newV)
+	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, float64(s.Value()))
 }
 
 func (s *SgwIntStat) MarshalJSON() ([]byte, error) {
-	return []byte(strconv.FormatInt(atomic.LoadInt64(&s.Val), 10)), nil
+	return []byte(strconv.FormatInt(s.Value(), 10)), nil
 }
 
 func (s *SgwIntStat) String() string {
-	return strconv.FormatInt(atomic.LoadInt64(&s.Val), 10)
-}
-
-func (s *SgwIntStat) Value() int64 {
-	return atomic.LoadInt64(&s.Val)
+	return strconv.FormatInt(s.Value(), 10)
 }
 
 func NewFloatStat(subsystem string, key string, labelKeys []string, labelVals []string, statValueType prometheus.ValueType, initialValue float64) *SgwFloatStat {
