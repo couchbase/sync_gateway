@@ -3722,6 +3722,10 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 		serverErr <- startServer(&config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
+	defer func() {
+		sc.Close()
+		require.NoError(t, <-serverErr)
+	}()
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
