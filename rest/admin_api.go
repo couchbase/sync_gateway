@@ -112,7 +112,7 @@ func (h *handler) handleCreateDB() error {
 		// load database in-memory for non-persistent nodes
 		if _, err := h.server.AddDatabaseFromConfigFailFast(DatabaseConfig{DbConfig: *config}); err != nil {
 			if errors.Is(err, base.ErrAuthError) {
-				return base.HTTPErrorf(http.StatusForbidden, "auth failure using provided bucket credentials for database %s", base.Metadata(config.Name))
+				return base.HTTPErrorf(http.StatusForbidden, "auth failure using provided bucket credentials for database %s", base.MD(config.Name))
 			}
 			return err
 		}
