@@ -105,12 +105,16 @@ func (h *handler) handleCreateDB() error {
 		// store the cas in the loaded config after a successful insert
 		h.server.dbConfigs[dbName].cas = cas
 	} else {
-		if err := config.setup(dbName, h.server.config.Bootstrap, nil); err != nil {
+		// Intentionally pass in an empty BootstrapConfig to avoid inheriting any credentials or server when running with a legacy config (CBG-1764)
+		if err := config.setup(dbName, BootstrapConfig{}, nil); err != nil {
 			return err
 		}
 
 		// load database in-memory for non-persistent nodes
-		if _, err := h.server.AddDatabaseFromConfig(DatabaseConfig{DbConfig: *config}); err != nil {
+		if _, err := h.server.AddDatabaseFromConfigFailFast(DatabaseConfig{DbConfig: *config}); err != nil {
+			if errors.Is(err, base.ErrAuthError) {
+				return base.HTTPErrorf(http.StatusForbidden, "auth failure using provided bucket credentials for database %s", base.MD(config.Name))
+			}
 			return err
 		}
 	}

@@ -330,10 +330,10 @@ func (sc *ServerContext) ReloadDatabaseFromConfig(reloadDbName string) (*db.Data
 // Adds a database to the ServerContext.  Attempts a read after it gets the write
 // lock to see if it's already been added by another process. If so, returns either the
 // existing DatabaseContext or an error based on the useExisting flag.
-func (sc *ServerContext) getOrAddDatabaseFromConfig(config DatabaseConfig, useExisting bool) (*db.DatabaseContext, error) {
+func (sc *ServerContext) getOrAddDatabaseFromConfig(config DatabaseConfig, useExisting bool, failFast bool) (*db.DatabaseContext, error) {
 	// Obtain write lock during add database, to avoid race condition when creating based on ConfigServer
 	sc.lock.Lock()
-	dbContext, err := sc._getOrAddDatabaseFromConfig(config, useExisting, false)
+	dbContext, err := sc._getOrAddDatabaseFromConfig(config, useExisting, failFast)
 	sc.lock.Unlock()
 
 	return dbContext, err
@@ -920,7 +920,13 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 // Adds a database to the ServerContext given its configuration.  If an existing config is found
 // for the name, returns an error.
 func (sc *ServerContext) AddDatabaseFromConfig(config DatabaseConfig) (*db.DatabaseContext, error) {
-	return sc.getOrAddDatabaseFromConfig(config, false)
+	return sc.getOrAddDatabaseFromConfig(config, false, false)
+}
+
+// AddDatabaseFromConfigFailFast adds a database to the ServerContext given its configuration and fails fast.
+// If an existing config is found for the name, returns an error.
+func (sc *ServerContext) AddDatabaseFromConfigFailFast(config DatabaseConfig) (*db.DatabaseContext, error) {
+	return sc.getOrAddDatabaseFromConfig(config, false, true)
 }
 
 func (sc *ServerContext) processEventHandlersForEvent(events []*EventConfig, eventType db.EventType, dbcontext *db.DatabaseContext) error {

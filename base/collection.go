@@ -79,6 +79,7 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 		RetryStrategy: &goCBv2FailFastRetryStrategy{},
 	})
 	if err != nil {
+		_ = cluster.Close(nil)
 		if errors.Is(err, gocb.ErrAuthenticationFailure) {
 			return nil, ErrAuthError
 		}
