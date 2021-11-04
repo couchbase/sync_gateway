@@ -288,8 +288,8 @@ func (t *TombstoneCompactionManager) ResetStatus() {
 // =====================================================================
 
 type AttachmentCompactionManager struct {
-	MarkedAttachments uint64
-	PurgedAttachments uint64
+	MarkedAttachments base.AtomicInt
+	PurgedAttachments base.AtomicInt
 	lock              sync.Mutex
 }
 
@@ -325,8 +325,8 @@ func (a *AttachmentCompactionManager) Run(options map[string]interface{}, termin
 
 type AttachmentManagerResponse struct {
 	BackgroundManagerStatus
-	MarkedAttachments uint64 `json:"marked_attachments"`
-	PurgedAttachments uint64 `json:"purged_attachments"`
+	MarkedAttachments int64 `json:"marked_attachments"`
+	PurgedAttachments int64 `json:"purged_attachments"`
 }
 
 func (a *AttachmentCompactionManager) GetProcessStatus(status BackgroundManagerStatus) ([]byte, error) {
@@ -335,8 +335,8 @@ func (a *AttachmentCompactionManager) GetProcessStatus(status BackgroundManagerS
 
 	retStatus := AttachmentManagerResponse{
 		BackgroundManagerStatus: status,
-		MarkedAttachments:       atomic.LoadUint64(&a.MarkedAttachments),
-		PurgedAttachments:       atomic.LoadUint64(&a.PurgedAttachments),
+		MarkedAttachments:       a.MarkedAttachments.Value(),
+		PurgedAttachments:       a.PurgedAttachments.Value(),
 	}
 
 	return base.JSONMarshal(retStatus)
@@ -346,6 +346,6 @@ func (a *AttachmentCompactionManager) ResetStatus() {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
-	atomic.StoreUint64(&a.MarkedAttachments, 0)
-	atomic.StoreUint64(&a.PurgedAttachments, 0)
+	a.MarkedAttachments.Set(0)
+	a.PurgedAttachments.Set(0)
 }

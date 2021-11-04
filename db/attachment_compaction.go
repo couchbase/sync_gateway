@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -16,7 +15,7 @@ import (
 
 const CompactionIDKey = "compactID"
 
-func Mark(db *Database, compactionID string, terminator chan struct{}, markedAttachmentCountPtr *uint64) (uint64, error) {
+func Mark(db *Database, compactionID string, terminator chan struct{}, markedAttachmentCount *base.AtomicInt) (int64, error) {
 	base.InfofCtx(db.Ctx, base.KeyAll, "Starting first phase of attachment compaction (mark phase) with compactionID: %q", compactionID)
 	compactionLoggingID := "Compaction Mark: " + compactionID
 
@@ -105,7 +104,7 @@ func Mark(db *Database, compactionID string, terminator chan struct{}, markedAtt
 			}
 
 			base.DebugfCtx(db.Ctx, base.KeyAll, "[%s] Marked attachment %s from doc %s with attachment docID %s", compactionLoggingID, base.UD(attachmentName), base.UD(docID), base.UD(attachmentDocID))
-			atomic.AddUint64(markedAttachmentCountPtr, 1)
+			markedAttachmentCount.Add(1)
 		}
 		return true
 	}
@@ -133,17 +132,17 @@ func Mark(db *Database, compactionID string, terminator chan struct{}, markedAtt
 
 	select {
 	case <-doneChan:
-		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Mark phase of attachment compaction completed. Marked %d attachments", compactionLoggingID, atomic.LoadUint64(markedAttachmentCountPtr))
+		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Mark phase of attachment compaction completed. Marked %d attachments", compactionLoggingID, markedAttachmentCount.Value())
 	case <-terminator:
-		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Mark phase of attachment compaction was terminated. Marked %d attachments", compactionLoggingID, atomic.LoadUint64(markedAttachmentCountPtr))
+		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Mark phase of attachment compaction was terminated. Marked %d attachments", compactionLoggingID, markedAttachmentCount.Value())
 	}
 
 	if markProcessFailureErr != nil {
 		_ = dcpClient.Close()
-		return atomic.LoadUint64(markedAttachmentCountPtr), markProcessFailureErr
+		return markedAttachmentCount.Value(), markProcessFailureErr
 	}
 
-	return atomic.LoadUint64(markedAttachmentCountPtr), dcpClient.Close()
+	return markedAttachmentCount.Value(), dcpClient.Close()
 }
 
 // AttachmentsMetaMap struct is a very minimal struct to unmarshal into when getting attachments from bodies
@@ -252,7 +251,7 @@ func handleAttachments(attachmentKeyMap map[string]string, docKey string, attach
 	}
 }
 
-func Sweep(db *Database, compactionID string, terminator chan struct{}, purgedAttachmentCountPtr *uint64) (uint64, error) {
+func Sweep(db *Database, compactionID string, terminator chan struct{}, purgedAttachmentCount *base.AtomicInt) (int64, error) {
 	base.InfofCtx(db.Ctx, base.KeyAll, "Starting second phase of attachment compaction (sweep phase) with compactionID: %q", compactionID)
 	compactionLoggingID := "Compaction Sweep: " + compactionID
 
@@ -304,7 +303,7 @@ func Sweep(db *Database, compactionID string, terminator chan struct{}, purgedAt
 		}
 
 		base.DebugfCtx(db.Ctx, base.KeyAll, "[%s] Purged attachment %s", compactionLoggingID, base.UD(docID))
-		atomic.AddUint64(purgedAttachmentCountPtr, 1)
+		purgedAttachmentCount.Add(1)
 
 		return true
 	}
@@ -332,12 +331,12 @@ func Sweep(db *Database, compactionID string, terminator chan struct{}, purgedAt
 
 	select {
 	case <-doneChan:
-		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Sweep phase of attachment compaction completed. Deleted %d attachments", compactionLoggingID, atomic.LoadUint64(purgedAttachmentCountPtr))
+		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Sweep phase of attachment compaction completed. Deleted %d attachments", compactionLoggingID, purgedAttachmentCount.Value())
 	case <-terminator:
-		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Sweep phase of attachment compaction was terminated. Deleted %d attachments", compactionLoggingID, atomic.LoadUint64(purgedAttachmentCountPtr))
+		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Sweep phase of attachment compaction was terminated. Deleted %d attachments", compactionLoggingID, purgedAttachmentCount.Value())
 	}
 
-	return atomic.LoadUint64(purgedAttachmentCountPtr), dcpClient.Close()
+	return purgedAttachmentCount.Value(), dcpClient.Close()
 }
 
 func Cleanup(db *Database, compactionID string, terminator chan struct{}) error {

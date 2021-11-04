@@ -1224,6 +1224,35 @@ func (ab *AtomicBool) CASRetry(old bool, new bool) bool {
 	return false
 }
 
+type AtomicInt struct {
+	val int64
+}
+
+func (ai *AtomicInt) Set(value int64) {
+	atomic.StoreInt64(&ai.val, value)
+}
+
+func (ai *AtomicInt) SetIfMax(value int64) {
+	for {
+		cur := atomic.LoadInt64(&ai.val)
+		if cur >= value {
+			return
+		}
+
+		if atomic.CompareAndSwapInt64(&ai.val, cur, value) {
+			return
+		}
+	}
+}
+
+func (ai *AtomicInt) Add(value int64) {
+	atomic.AddInt64(&ai.val, value)
+}
+
+func (ai *AtomicInt) Value() int64 {
+	return atomic.LoadInt64(&ai.val)
+}
+
 func Sha1HashString(str string, salt string) string {
 	h := sha1.New()
 	h.Write([]byte(salt + str))

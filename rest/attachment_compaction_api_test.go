@@ -30,8 +30,8 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 	err := base.JSONUnmarshal(resp.BodyBytes(), &response)
 	assert.NoError(t, err)
 	assert.Equal(t, db.BackgroundProcessStateStopped, response.State)
-	assert.Equal(t, uint64(0), response.MarkedAttachments)
-	assert.Equal(t, uint64(0), response.PurgedAttachments)
+	assert.Equal(t, int64(0), response.MarkedAttachments)
+	assert.Equal(t, int64(0), response.PurgedAttachments)
 	assert.Empty(t, response.LastErrorMessage)
 
 	// Kick off compact
@@ -104,8 +104,8 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 	err = base.JSONUnmarshal(resp.BodyBytes(), &response)
 	assert.NoError(t, err)
 	assert.Equal(t, db.BackgroundProcessStateStopped, response.State)
-	assert.Equal(t, uint64(20), response.MarkedAttachments)
-	assert.Equal(t, uint64(5), response.PurgedAttachments)
+	assert.Equal(t, int64(20), response.MarkedAttachments)
+	assert.Equal(t, int64(5), response.PurgedAttachments)
 	assert.Empty(t, response.LastErrorMessage)
 
 	// Start another run
