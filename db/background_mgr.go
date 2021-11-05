@@ -141,11 +141,13 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 
 		b.Terminate()
 
-		if b.GetRunState() == BackgroundProcessStateStopping {
-			b.setRunState(BackgroundProcessStateStopped)
-		} else if b.GetRunState() != BackgroundProcessStateError {
-			b.setRunState(BackgroundProcessStateCompleted)
+		b.lock.Lock()
+		if b.State == BackgroundProcessStateStopping {
+			b.State = BackgroundProcessStateStopped
+		} else if b.State != BackgroundProcessStateError {
+			b.State = BackgroundProcessStateCompleted
 		}
+		b.lock.Unlock()
 
 		// Once our background process run has completed we should update the completed status and delete the heartbeat
 		// doc
@@ -277,7 +279,7 @@ func (b *BackgroundManager) getStatusFromCluster() ([]byte, error) {
 	}
 
 	// Work here is required because if the process crashes we'd end up in a state where a GET would return 'running'
-	// when in-fact it crashed. We COULD potentially have a different status to represent rather than use aborted.
+	// when in-fact it crashed.
 	// Worst case we should do this once if we have to do this and update the cluster status doc
 	if clusterState, ok := clusterStatus["status"].(string); ok &&
 		clusterState != string(BackgroundProcessStateCompleted) &&
