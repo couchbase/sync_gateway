@@ -264,7 +264,7 @@ func (b *BackgroundManager) getStatusLocal() ([]byte, error) {
 }
 
 func (b *BackgroundManager) getStatusFromCluster() ([]byte, error) {
-	status, _, err := b.clusterAwareOptions.bucket.GetRaw(b.clusterAwareOptions.StatusDocID())
+	status, statusCas, err := b.clusterAwareOptions.bucket.GetRaw(b.clusterAwareOptions.StatusDocID())
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			return nil, nil
@@ -293,6 +293,12 @@ func (b *BackgroundManager) getStatusFromCluster() ([]byte, error) {
 				if err != nil {
 					return nil, err
 				}
+
+				// In the event there is a crash and need to update the status we should attempt to update the doc to
+				// avoid this unmarshal / marshal work from having to happen again, next time GET is called.
+				// If there is an error we can just ignore it as worst case we run this unmarshal / marshal again on
+				// next request
+				_, _ = b.clusterAwareOptions.bucket.WriteCas(b.clusterAwareOptions.StatusDocID(), 0, 0, statusCas, status, sgbucket.Raw)
 			}
 		}
 	}
