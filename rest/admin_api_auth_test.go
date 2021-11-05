@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
@@ -1514,4 +1516,34 @@ func TestNewlyCreateSGWPermissions(t *testing.T) {
 
 	}
 
+}
+
+func TestCreateDBSpecificBucketPerm(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		adminInterfaceAuthentication: true,
+	})
+	defer rt.Close()
+
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
+	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
+	require.NoError(t, err)
+
+	mobileSyncGateway := "mobile_sync_gateway"
+	MakeUser(t, httpClient, eps[0], mobileSyncGateway, "password", []string{fmt.Sprintf("%s[%s]", mobileSyncGateway, tb.GetName())})
+	defer DeleteUser(t, httpClient, eps[0], mobileSyncGateway)
+
+	time.Sleep(2 * time.Second)
+
+	resp := rt.SendAdminRequestWithAuth("PUT", "/db2/", `{"bucket": "`+tb.GetName()+`", "username": "`+base.TestClusterUsername()+`", "password": "`+base.TestClusterPassword()+`", "num_index_replicas": 0, "use_views": `+strconv.FormatBool(base.TestsDisableGSI())+`}`, mobileSyncGateway, "password")
+	assertStatus(t, resp, http.StatusCreated)
 }
