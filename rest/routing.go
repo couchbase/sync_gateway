@@ -14,8 +14,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
 	"github.com/gorilla/mux"
 )
 
@@ -295,18 +293,7 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	// The routes below are part of the CouchDB REST API but should only be available to admins,
 	// so the handlers are moved to the admin port.
 	r.Handle("/{newdb:"+dbRegex+"}/",
-		makeHandlerSpecificAuthScope(sc, adminPrivs, []Permission{PermCreateDb}, nil, (*handler).handleCreateDB, func(bodyJSON []byte) (string, error) {
-			var body db.Body
-			err := base.JSONUnmarshal(bodyJSON, &body)
-			if err != nil {
-				return "", err
-			}
-			authScope, ok := body["bucket"].(string)
-			if !ok {
-				return "", nil
-			}
-			return authScope, nil
-		})).Methods("PUT")
+		makeHandlerSpecificAuthScope(sc, adminPrivs, []Permission{PermCreateDb}, nil, (*handler).handleCreateDB, getAuthScopeHandleCreateDB)).Methods("PUT")
 	r.Handle("/{db:"+dbRegex+"}/",
 		makeOfflineHandler(sc, adminPrivs, []Permission{PermDeleteDb}, nil, (*handler).handleDeleteDB)).Methods("DELETE")
 

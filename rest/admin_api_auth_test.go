@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
@@ -1541,8 +1540,6 @@ func TestCreateDBSpecificBucketPerm(t *testing.T) {
 	mobileSyncGateway := "mobile_sync_gateway"
 	MakeUser(t, httpClient, eps[0], mobileSyncGateway, "password", []string{fmt.Sprintf("%s[%s]", mobileSyncGateway, tb.GetName())})
 	defer DeleteUser(t, httpClient, eps[0], mobileSyncGateway)
-
-	time.Sleep(2 * time.Second)
 
 	resp := rt.SendAdminRequestWithAuth("PUT", "/db2/", `{"bucket": "`+tb.GetName()+`", "username": "`+base.TestClusterUsername()+`", "password": "`+base.TestClusterPassword()+`", "num_index_replicas": 0, "use_views": `+strconv.FormatBool(base.TestsDisableGSI())+`}`, mobileSyncGateway, "password")
 	assertStatus(t, resp, http.StatusCreated)

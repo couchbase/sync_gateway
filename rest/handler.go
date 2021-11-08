@@ -99,8 +99,10 @@ type handler struct {
 	runOffline            bool
 	queryValues           url.Values // Copy of results of rq.URL.Query()
 	permissionsResults    map[string]bool
-	dbAuthStringFunc      func(bodyJSON []byte) (string, error)
+	authScopeFunc         authScopeFunc
 }
+
+type authScopeFunc func(bodyJSON []byte) (string, error)
 
 type handlerPrivs int
 
@@ -113,7 +115,7 @@ const (
 
 type handlerMethod func(*handler) error
 
-// Creates a http.Handler that will run a handler with the given method
+// Creates an http.Handler that will run a handler with the given method
 func makeHandler(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
 		runOffline := false
@@ -124,7 +126,7 @@ func makeHandler(server *ServerContext, privs handlerPrivs, accessPermissions []
 	})
 }
 
-// Creates a http.Handler that will run a handler with the given method even if the target DB is offline
+// Creates an http.Handler that will run a handler with the given method even if the target DB is offline
 func makeOfflineHandler(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
 		runOffline := true
@@ -135,14 +137,13 @@ func makeOfflineHandler(server *ServerContext, privs handlerPrivs, accessPermiss
 	})
 }
 
-// Create a http.Handler that will run a handler with the given method. It also takes in a callback function which when
-// given the endpoint payload returns an auth scope. Currently, used for create db where we need to read bucket from the
-// payload as there is no created database yet.
+// Create an http.Handler that will run a handler with the given method. It also takes in a callback function which when
+// given the endpoint payload returns an auth scope.
 func makeHandlerSpecificAuthScope(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod, dbAuthStringFunc func([]byte) (string, error)) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
 		runOffline := false
 		h := newHandler(server, privs, r, rq, runOffline)
-		h.dbAuthStringFunc = dbAuthStringFunc
+		h.authScopeFunc = dbAuthStringFunc
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
 		h.logDuration(true)
@@ -290,7 +291,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 			return base.HTTPErrorf(http.StatusInternalServerError, "")
 		}
 
-		if h.dbAuthStringFunc != nil {
+		if h.authScopeFunc != nil {
 			body, err := h.readBody()
 			if err != nil {
 				return base.HTTPErrorf(http.StatusInternalServerError, "Unable to read body: %v", err)
@@ -298,12 +299,12 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 			// The above readBody() will end up clearing the body which the later handler will require. Re-populate this
 			// for the later handler.
 			h.requestBody = ioutil.NopCloser(bytes.NewReader(body))
-			authScope, err = h.dbAuthStringFunc(body)
+			authScope, err = h.authScopeFunc(body)
 			if err != nil {
 				return base.HTTPErrorf(http.StatusInternalServerError, "Unable to read body: %v", err)
 			}
 			if authScope == "" {
-				return base.HTTPErrorf(http.StatusBadRequest, "Must supply bucket in database config")
+				return base.HTTPErrorf(http.StatusBadRequest, "Unable to determine auth scope for endpoint")
 			}
 		}
 

@@ -122,6 +122,24 @@ func (h *handler) handleCreateDB() error {
 	return base.HTTPErrorf(http.StatusCreated, "created")
 }
 
+// getAuthScopeHandleCreateDB is used in the router to supply an auth scope for the admin api auth. Takes the JSON body
+// from the payload, pulls out bucket and returns this as the auth scope.
+func getAuthScopeHandleCreateDB(bodyJSON []byte) (string, error) {
+	var body struct {
+		Bucket string `json:"bucket"`
+	}
+	err := base.JSONUnmarshal(bodyJSON, &body)
+	if err != nil {
+		return "", err
+	}
+
+	if body.Bucket == "" {
+		return "", nil
+	}
+
+	return body.Bucket, nil
+}
+
 // Take a DB online, first reload the DB config
 func (h *handler) handleDbOnline() error {
 	h.assertAdminOnly()
