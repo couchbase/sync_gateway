@@ -131,6 +131,46 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	assertResp(t, resp, http.StatusOK, `{"_id":"doc1","_rev":"1-cd809becc169215072fd567eebd8b8de","foo":"bar"}`)
 }
 
+// TestBootstrapDuplicateBucket will attempt to create two databases sharing the same bucket and ensure this isn't allowed.
+func TestBootstrapDuplicateBucket(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Bootstrap works with Couchbase Server only")
+	}
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+
+	// Start SG with no databases in bucket(s)
+	config := bootstrapStartupConfigForTest(t)
+	sc, err := setupServerContext(&config, true)
+	require.NoError(t, err)
+	serverErr := make(chan error, 0)
+	go func() {
+		serverErr <- startServer(&config, sc)
+	}()
+	require.NoError(t, sc.waitForRESTAPIs())
+
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer func() { tb.Close() }()
+	resp := bootstrapAdminRequest(t, http.MethodPut, "/db1/",
+		`{"bucket": "`+tb.GetName()+`", "num_index_replicas": 0}`,
+	)
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	// Create db2 using the same bucket and expect it to fail
+	resp = bootstrapAdminRequest(t, http.MethodPut, "/db2/",
+		`{"bucket": "`+tb.GetName()+`", "num_index_replicas": 0}`,
+	)
+	assert.Equal(t, http.StatusConflict, resp.StatusCode)
+
+	// CBG-1785 - Check the error has been changed from the original misleading error to a more informative one.
+	respBody, err := ioutil.ReadAll(resp.Body)
+	assert.NoError(t, err)
+	_ = resp.Body.Close()
+	assert.NotContains(t, string(respBody), fmt.Sprintf(`Database \"%s\" already exists`, "db2"))
+	assert.Contains(t, string(respBody), fmt.Sprintf(`Bucket \"%s\" already in use by database \"%s\"`, tb.GetName(), "db1"))
+}
+
 func bootstrapStartupConfigForTest(t *testing.T) StartupConfig {
 	config := DefaultStartupConfig("")
 
