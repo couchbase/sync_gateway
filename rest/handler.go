@@ -99,7 +99,10 @@ type handler struct {
 	runOffline            bool
 	queryValues           url.Values // Copy of results of rq.URL.Query()
 	permissionsResults    map[string]bool
+	authScopeFunc         authScopeFunc
 }
+
+type authScopeFunc func(bodyJSON []byte) (string, error)
 
 type handlerPrivs int
 
@@ -128,6 +131,19 @@ func makeOfflineHandler(server *ServerContext, privs handlerPrivs, accessPermiss
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
 		runOffline := true
 		h := newHandler(server, privs, r, rq, runOffline)
+		err := h.invoke(method, accessPermissions, responsePermissions)
+		h.writeError(err)
+		h.logDuration(true)
+	})
+}
+
+// Create an http.Handler that will run a handler with the given method. It also takes in a callback function which when
+// given the endpoint payload returns an auth scope.
+func makeHandlerSpecificAuthScope(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod, dbAuthStringFunc func([]byte) (string, error)) http.Handler {
+	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
+		runOffline := false
+		h := newHandler(server, privs, r, rq, runOffline)
+		h.authScopeFunc = dbAuthStringFunc
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
 		h.logDuration(true)
@@ -273,6 +289,23 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		if err != nil {
 			base.Warnf("An error occurred whilst obtaining management endpoints: %v", err)
 			return base.HTTPErrorf(http.StatusInternalServerError, "")
+		}
+
+		if h.authScopeFunc != nil {
+			body, err := h.readBody()
+			if err != nil {
+				return base.HTTPErrorf(http.StatusInternalServerError, "Unable to read body: %v", err)
+			}
+			// The above readBody() will end up clearing the body which the later handler will require. Re-populate this
+			// for the later handler.
+			h.requestBody = ioutil.NopCloser(bytes.NewReader(body))
+			authScope, err = h.authScopeFunc(body)
+			if err != nil {
+				return base.HTTPErrorf(http.StatusInternalServerError, "Unable to read body: %v", err)
+			}
+			if authScope == "" {
+				return base.HTTPErrorf(http.StatusBadRequest, "Unable to determine auth scope for endpoint")
+			}
 		}
 
 		permissions, statusCode, err := checkAdminAuth(authScope, username, password, h.rq.Method, httpClient,
