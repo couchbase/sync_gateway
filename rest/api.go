@@ -156,8 +156,10 @@ func (h *handler) handleCompact() error {
 
 	if compactionType == "attachment" {
 		if action == string(db.BackgroundProcessActionStart) {
+			dryRun := h.getBoolQuery("dry_run")
 			err := h.db.AttachmentCompactionManager.Start(map[string]interface{}{
 				"database": h.db,
+				"dry_run":  dryRun,
 			})
 			if err != nil {
 				return err

@@ -251,7 +251,7 @@ func handleAttachments(attachmentKeyMap map[string]string, docKey string, attach
 	}
 }
 
-func Sweep(db *Database, compactionID string, terminator chan struct{}, purgedAttachmentCount *base.AtomicInt) (int64, error) {
+func Sweep(db *Database, compactionID string, dryRun bool, terminator chan struct{}, purgedAttachmentCount *base.AtomicInt) (int64, error) {
 	base.InfofCtx(db.Ctx, base.KeyAll, "Starting second phase of attachment compaction (sweep phase) with compactionID: %q", compactionID)
 	compactionLoggingID := "Compaction Sweep: " + compactionID
 
@@ -296,13 +296,17 @@ func Sweep(db *Database, compactionID string, terminator chan struct{}, purgedAt
 		// - Has a compactionID set in its xattr but it is from a previous run and therefore is not equal to the passed
 		// in compactionID
 		// Therefore, we want to purge the doc
-		_, err := db.Bucket.Remove(docID, event.Cas)
-		if err != nil {
-			base.WarnfCtx(db.Ctx, "[%s] Unable to purge attachment %s: %v", compactionLoggingID, base.UD(docID), err)
-			return true
+		if !dryRun {
+			_, err := db.Bucket.Remove(docID, event.Cas)
+			if err != nil {
+				base.WarnfCtx(db.Ctx, "[%s] Unable to purge attachment %s: %v", compactionLoggingID, base.UD(docID), err)
+				return true
+			}
+
+			base.DebugfCtx(db.Ctx, base.KeyAll, "[%s] Purged attachment %s", compactionLoggingID, base.UD(docID))
 		}
 
-		base.DebugfCtx(db.Ctx, base.KeyAll, "[%s] Purged attachment %s", compactionLoggingID, base.UD(docID))
+		base.DebugfCtx(db.Ctx, base.KeyAll, "[%s] Would have purged attachment %s (not purged, running with dry run)", compactionLoggingID, base.UD(docID))
 		purgedAttachmentCount.Add(1)
 
 		return true

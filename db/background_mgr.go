@@ -9,6 +9,7 @@
 package db
 
 import (
+	"fmt"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -85,7 +86,7 @@ type BackgroundManagerStatus struct {
 // BackgroundManagerProcessI is an interface satisfied by any of the background processes
 // Examples of this: ReSync, Compaction
 type BackgroundManagerProcessI interface {
-	Init(clusterStatus []byte) error
+	Init(options map[string]interface{}, clusterStatus []byte) error
 	Run(options map[string]interface{}, terminator chan struct{}) error
 	GetProcessStatus(status BackgroundManagerStatus) ([]byte, error)
 	ResetStatus()
@@ -107,7 +108,7 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 
 	b.resetStatus()
 
-	err = b.Process.Init(processClusterStatus)
+	err = b.Process.Init(options, processClusterStatus)
 	if err != nil {
 		return err
 	}
@@ -137,6 +138,8 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 		if err != nil {
 			base.Errorf("Error: %v", err)
 			b.SetError(err)
+			fmt.Println(err)
+			fmt.Println("=============================================")
 		}
 
 		b.Terminate()
@@ -473,7 +476,7 @@ func NewResyncManager() *BackgroundManager {
 	}
 }
 
-func (r *ResyncManager) Init(clusterStatus []byte) error {
+func (r *ResyncManager) Init(options map[string]interface{}, clusterStatus []byte) error {
 	return nil
 }
 
@@ -541,7 +544,7 @@ func NewTombstoneCompactionManager() *BackgroundManager {
 	}
 }
 
-func (t *TombstoneCompactionManager) Init(clusterStatus []byte) error {
+func (t *TombstoneCompactionManager) Init(options map[string]interface{}, clusterStatus []byte) error {
 	return nil
 }
 
@@ -588,6 +591,7 @@ type AttachmentCompactionManager struct {
 	PurgedAttachments base.AtomicInt
 	CompactID         string
 	Phase             string
+	dryRun            bool
 	lock              sync.Mutex
 }
 
@@ -604,7 +608,7 @@ func NewAttachmentCompactionManager(bucket base.Bucket) *BackgroundManager {
 	}
 }
 
-func (a *AttachmentCompactionManager) Init(clusterStatus []byte) error {
+func (a *AttachmentCompactionManager) Init(options map[string]interface{}, clusterStatus []byte) error {
 	if clusterStatus != nil {
 		var attachmentResponseStatus AttachmentManagerResponse
 		err := base.JSONUnmarshal(clusterStatus, &attachmentResponseStatus)
@@ -619,9 +623,11 @@ func (a *AttachmentCompactionManager) Init(clusterStatus []byte) error {
 			}
 
 			a.CompactID = uniqueUUID.String()
+			a.dryRun = options["dry_run"].(bool)
 		} else {
 			a.CompactID = attachmentResponseStatus.CompactID
 			a.Phase = attachmentResponseStatus.Phase
+			a.dryRun = attachmentResponseStatus.DryRun
 		}
 
 		return nil
@@ -640,6 +646,9 @@ func (a *AttachmentCompactionManager) Init(clusterStatus []byte) error {
 
 func (a *AttachmentCompactionManager) Run(options map[string]interface{}, terminator chan struct{}) error {
 	database := options["database"].(*Database)
+	dryRun := options["dry_run"].(bool)
+
+	a.dryRun = dryRun
 
 	// Need to check the current phase in the event we are resuming - No need to run mark again if we got as far as
 	// cleanup last time...
@@ -653,7 +662,7 @@ func (a *AttachmentCompactionManager) Run(options map[string]interface{}, termin
 		fallthrough
 	case "sweep":
 		a.SetPhase("sweep")
-		_, err := Sweep(database, a.CompactID, terminator, &a.PurgedAttachments)
+		_, err := Sweep(database, a.CompactID, dryRun, terminator, &a.PurgedAttachments)
 		if err != nil {
 			return err
 		}
@@ -679,6 +688,7 @@ func (a *AttachmentCompactionManager) SetPhase(phase string) {
 
 type AttachmentManagerResponse struct {
 	BackgroundManagerStatus
+	DryRun            bool   `json:"dry_run,omitempty"`
 	MarkedAttachments int64  `json:"marked_attachments"`
 	PurgedAttachments int64  `json:"purged_attachments"`
 	CompactID         string `json:"compact_id"`
@@ -695,6 +705,7 @@ func (a *AttachmentCompactionManager) GetProcessStatus(status BackgroundManagerS
 		PurgedAttachments:       a.PurgedAttachments.Value(),
 		CompactID:               a.CompactID,
 		Phase:                   a.Phase,
+		DryRun:                  a.dryRun,
 	}
 
 	return base.JSONMarshal(retStatus)
@@ -706,4 +717,5 @@ func (a *AttachmentCompactionManager) ResetStatus() {
 
 	a.MarkedAttachments.Set(0)
 	a.PurgedAttachments.Set(0)
+	a.dryRun = false
 }

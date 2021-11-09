@@ -102,7 +102,7 @@ func TestAttachmentSweep(t *testing.T) {
 	}
 
 	terminator := make(chan struct{})
-	purged, err := Sweep(testDb, t.Name(), terminator, &base.AtomicInt{})
+	purged, err := Sweep(testDb, t.Name(), false, terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 
 	assert.Equal(t, int64(11), purged)
@@ -246,7 +246,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, int64(10), attachmentsMarked)
 
-	attachmentsPurged, err := Sweep(testDb, t.Name(), terminator, &base.AtomicInt{})
+	attachmentsPurged, err := Sweep(testDb, t.Name(), false, terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(5), attachmentsPurged)
 
@@ -281,6 +281,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 }
 
 func TestAttachmentCompactionRunTwice(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
@@ -303,7 +304,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	triggerStopCallback := false
 	leakyBucket.SetGetRawCallback(func(s string) {
 		if triggerCallback {
-			err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2})
+			err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2, "dry_run": false})
 			assert.Error(t, err)
 			assert.Contains(t, err.Error(), "Process already running")
 			triggerCallback = false
@@ -317,7 +318,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 
 	// Trigger start with immediate stop (stopped from db2)
 	triggerStopCallback = true
-	err = testDB1.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB1})
+	err = testDB1.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB1, "dry_run": false})
 	assert.NoError(t, err)
 
 	err = WaitForConditionWithOptions(func() bool {
@@ -334,9 +335,56 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 		return false
 	}, 200, 1000)
 
+	// Start compaction with an immediate abort. Then resume, ensure that dry run is resumed
+	triggerStopCallback = true
+	err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2, "dry_run": true})
+	assert.NoError(t, err)
+
+	err = WaitForConditionWithOptions(func() bool {
+		var status AttachmentManagerResponse
+		rawStatus, err := testDB2.AttachmentCompactionManager.GetStatus()
+		assert.NoError(t, err)
+		err = base.JSONUnmarshal(rawStatus, &status)
+		assert.NoError(t, err)
+
+		if status.State == BackgroundProcessStateStopped {
+			return true
+		}
+
+		return false
+	}, 200, 1000)
+	assert.NoError(t, err)
+
+	err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2, "dry_run": false})
+	assert.NoError(t, err)
+
+	var testStatus AttachmentManagerResponse
+
+	testRawStatus, err := testDB1.AttachmentCompactionManager.GetStatus()
+	assert.NoError(t, err)
+	err = base.JSONUnmarshal(testRawStatus, &testStatus)
+	assert.NoError(t, err)
+
+	assert.True(t, testStatus.DryRun)
+
+	err = WaitForConditionWithOptions(func() bool {
+		var status AttachmentManagerResponse
+		rawStatus, err := testDB2.AttachmentCompactionManager.GetStatus()
+		assert.NoError(t, err)
+		err = base.JSONUnmarshal(rawStatus, &status)
+		assert.NoError(t, err)
+
+		if status.State == BackgroundProcessStateCompleted {
+			return true
+		}
+
+		return false
+	}, 200, 1000)
+	assert.NoError(t, err)
+
 	// Kick off another run with an attempted start from the other node, checks for error on other node
 	triggerCallback = true
-	err = testDB1.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB1})
+	err = testDB1.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB1, "dry_run": false})
 	assert.NoError(t, err)
 
 	err = WaitForConditionWithOptions(func() bool {
@@ -371,6 +419,49 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	assert.Equal(t, BackgroundProcessStateCompleted, testDB2Status.State)
 	assert.Equal(t, testDB1Status.CompactID, testDB2Status.CompactID)
 
+}
+
+func TestAttachmentDryRun(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Requires CBS")
+	}
+
+	testDb := setupTestDB(t)
+	defer testDb.Close()
+
+	attKeys := make([]string, 0, 5)
+	makeUnmarkedDoc := func(docid string) {
+		err := testDb.Bucket.SetRaw(docid, 0, []byte("{}"))
+		assert.NoError(t, err)
+		attKeys = append(attKeys, docid)
+	}
+
+	for i := 0; i < 5; i++ {
+		docID := fmt.Sprintf("%s%s%d", base.AttPrefix, "unmarked", i)
+		makeUnmarkedDoc(docID)
+	}
+
+	terminator := make(chan struct{})
+	attachmentsPurged, err := Sweep(testDb, t.Name(), true, terminator, &base.AtomicInt{})
+	assert.NoError(t, err)
+	assert.Equal(t, int64(5), attachmentsPurged)
+
+	for _, attDocKey := range attKeys {
+		var body interface{}
+		_, err = testDb.Bucket.Get(attDocKey, &body)
+		assert.NoError(t, err)
+	}
+
+	attachmentsPurged, err = Sweep(testDb, t.Name(), false, terminator, &base.AtomicInt{})
+	assert.NoError(t, err)
+	assert.Equal(t, int64(5), attachmentsPurged)
+
+	for _, attDocKey := range attKeys {
+		var body interface{}
+		_, err = testDb.Bucket.Get(attDocKey, &body)
+		assert.Error(t, err)
+		assert.True(t, base.IsDocNotFoundError(err))
+	}
 }
 
 func WaitForConditionWithOptions(successFunc func() bool, maxNumAttempts, timeToSleepMs int) error {

@@ -195,6 +195,55 @@ func TestAttachmentCompactionPersistence(t *testing.T) {
 	_ = rt1.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
 }
 
+func TestAttachmentCompactionDryRunAPI(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Create some 'unmarked' attachments
+	makeUnmarkedDoc := func(docid string) {
+		err := rt.GetDatabase().Bucket.SetRaw(docid, 0, []byte("{}"))
+		assert.NoError(t, err)
+	}
+
+	attDocKeys := make([]string, 0, 5)
+	for i := 0; i < 5; i++ {
+		docID := fmt.Sprintf("%s%s%d", base.AttPrefix, "unmarked", i)
+		makeUnmarkedDoc(docID)
+		attDocKeys = append(attDocKeys, docID)
+	}
+
+	resp := rt.SendAdminRequest("POST", "/db/_compact?type=attachment&dry_run=true", "")
+	assertStatus(t, resp, http.StatusOK)
+
+	status := rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
+	assert.True(t, status.DryRun)
+	assert.Equal(t, int64(5), status.PurgedAttachments)
+
+	for _, attKey := range attDocKeys {
+		var body interface{}
+		_, err := rt.GetDatabase().Bucket.Get(attKey, &body)
+		assert.NoError(t, err)
+	}
+
+	resp = rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
+	assertStatus(t, resp, http.StatusOK)
+
+	status = rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
+	assert.False(t, status.DryRun)
+	assert.Equal(t, int64(5), status.PurgedAttachments)
+
+	for _, attKey := range attDocKeys {
+		var body interface{}
+		_, err := rt.GetDatabase().Bucket.Get(attKey, &body)
+		assert.Error(t, err)
+		assert.True(t, base.IsDocNotFoundError(err))
+	}
+}
+
 func (rt *RestTester) WaitForAttachmentCompactionStatus(t *testing.T, state db.BackgroundProcessState) db.AttachmentManagerResponse {
 	var response db.AttachmentManagerResponse
 	err := rt.WaitForConditionWithOptions(func() bool {
