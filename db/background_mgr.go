@@ -64,7 +64,7 @@ type ClusterAwareBackgroundManagerOptions struct {
 	bucket        base.Bucket
 	processSuffix string
 
-	lastSuccessfulHeartbeat time.Time
+	lastSuccessfulHeartbeatUnix base.AtomicInt
 }
 
 func (b *ClusterAwareBackgroundManagerOptions) HeartbeatDocID() string {
@@ -337,12 +337,36 @@ func (b *BackgroundManager) markStop() error {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
+	processAlreadyStoppedErr := base.HTTPErrorf(http.StatusServiceUnavailable, "Process already stopped")
+
+	if b.clusterAwareOptions != nil {
+		_, _, err := b.clusterAwareOptions.bucket.GetRaw(b.clusterAwareOptions.HeartbeatDocID())
+		if err != nil {
+			if base.IsDocNotFoundError(err) {
+				return processAlreadyStoppedErr
+			}
+			return base.HTTPErrorf(http.StatusInternalServerError, "Unable to verify whether a process is running: %v", err)
+		}
+
+		err = b.clusterAwareOptions.bucket.Set(b.clusterAwareOptions.HeartbeatDocID(), BackgroundManagerHeartbeatExpirySecs, HeartbeatDoc{ShouldStop: true})
+		if err != nil {
+			return base.HTTPErrorf(http.StatusInternalServerError, "Failed to mark process as stopping: %v", err)
+		}
+
+		// If this is the node running the service
+		if b.State == BackgroundProcessStateRunning {
+			b.State = BackgroundProcessStateStopping
+		}
+
+		return nil
+	}
+
 	if b.State == BackgroundProcessStateStopping {
 		return base.HTTPErrorf(http.StatusServiceUnavailable, "Process already stopping")
 	}
 
-	if b.State == BackgroundProcessStateCompleted {
-		return base.HTTPErrorf(http.StatusServiceUnavailable, "Process already stopped")
+	if b.State == BackgroundProcessStateCompleted || b.State == BackgroundProcessStateStopped {
+		return processAlreadyStoppedErr
 	}
 
 	b.State = BackgroundProcessStateStopping
@@ -391,10 +415,14 @@ func (b *BackgroundManager) UpdateStatusClusterAware() error {
 	return err
 }
 
+type HeartbeatDoc struct {
+	ShouldStop bool `json:"should_stop"`
+}
+
 // UpdateHeartbeatDocClusterAware simply performs a touch operation on the heartbeat document to update its expiry.
 // Implements a retry. Used for Cluster Aware operations
 func (b *BackgroundManager) UpdateHeartbeatDocClusterAware() error {
-	_, err := b.clusterAwareOptions.bucket.Touch(b.clusterAwareOptions.HeartbeatDocID(), BackgroundManagerHeartbeatExpirySecs)
+	statusRaw, _, err := b.clusterAwareOptions.bucket.GetAndTouchRaw(b.clusterAwareOptions.HeartbeatDocID(), BackgroundManagerHeartbeatExpirySecs)
 	if err != nil {
 		// If we get an error but the error is doc not found and terminator closed it means we have terminated the
 		// goroutine which intermittently runs this but this snuck in before it was stopped. This may result in the doc
@@ -406,13 +434,23 @@ func (b *BackgroundManager) UpdateHeartbeatDocClusterAware() error {
 		// If we've hit an error, and we haven't had a successful heartbeat in just under its TTL then we need to quit
 		// out. If we fail to write heartbeat for this time we can no longer ensure that this would be the only process
 		// running and another could end up starting.
-		if time.Now().Sub(b.clusterAwareOptions.lastSuccessfulHeartbeat) > (BackgroundManagerHeartbeatExpirySecs - BackgroundManagerHeartbeatIntervalSecs) {
+		if time.Now().Sub(time.Unix(b.clusterAwareOptions.lastSuccessfulHeartbeatUnix.Value(), 0)) > (BackgroundManagerHeartbeatExpirySecs - BackgroundManagerHeartbeatIntervalSecs) {
 			return err
 		}
 		return nil
 	}
 
-	b.clusterAwareOptions.lastSuccessfulHeartbeat = time.Now()
+	var status HeartbeatDoc
+	err = base.JSONUnmarshal(statusRaw, &status)
+	if err != nil {
+		return err
+	}
+
+	if status.ShouldStop {
+		_ = b.Stop()
+	}
+
+	b.clusterAwareOptions.lastSuccessfulHeartbeatUnix.Set(time.Now().Unix())
 	return nil
 }
 
@@ -430,7 +468,8 @@ var _ BackgroundManagerProcessI = &ResyncManager{}
 
 func NewResyncManager() *BackgroundManager {
 	return &BackgroundManager{
-		Process: &ResyncManager{},
+		Process:    &ResyncManager{},
+		terminator: make(chan struct{}, 1),
 	}
 }
 
@@ -497,7 +536,8 @@ var _ BackgroundManagerProcessI = &TombstoneCompactionManager{}
 
 func NewTombstoneCompactionManager() *BackgroundManager {
 	return &BackgroundManager{
-		Process: &TombstoneCompactionManager{},
+		Process:    &TombstoneCompactionManager{},
+		terminator: make(chan struct{}, 1),
 	}
 }
 
@@ -560,6 +600,7 @@ func NewAttachmentCompactionManager(bucket base.Bucket) *BackgroundManager {
 			bucket:        bucket,
 			processSuffix: "compact",
 		},
+		terminator: make(chan struct{}, 1),
 	}
 }
 
@@ -604,29 +645,36 @@ func (a *AttachmentCompactionManager) Run(options map[string]interface{}, termin
 	// cleanup last time...
 	switch a.Phase {
 	case "mark", "":
-		a.Phase = "mark"
+		a.SetPhase("mark")
 		_, err := Mark(database, a.CompactID, terminator, &a.MarkedAttachments)
 		if err != nil {
 			return err
 		}
 		fallthrough
 	case "sweep":
-		a.Phase = "sweep"
+		a.SetPhase("sweep")
 		_, err := Sweep(database, a.CompactID, terminator, &a.PurgedAttachments)
 		if err != nil {
 			return err
 		}
 		fallthrough
 	case "cleanup":
-		a.Phase = "cleanup"
+		a.SetPhase("cleanup")
 		err := Cleanup(database, a.CompactID, terminator)
 		if err != nil {
 			return err
 		}
 	}
 
-	a.Phase = ""
+	a.SetPhase("")
 	return nil
+}
+
+func (a *AttachmentCompactionManager) SetPhase(phase string) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	a.Phase = phase
 }
 
 type AttachmentManagerResponse struct {

@@ -300,6 +300,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	require.True(t, ok)
 
 	triggerCallback := false
+	triggerStopCallback := false
 	leakyBucket.SetGetRawCallback(func(s string) {
 		if triggerCallback {
 			err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2})
@@ -307,8 +308,33 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 			assert.Contains(t, err.Error(), "Process already running")
 			triggerCallback = false
 		}
+		if triggerStopCallback {
+			triggerStopCallback = false
+			err = testDB2.AttachmentCompactionManager.Stop()
+			assert.NoError(t, err)
+		}
 	})
 
+	// Trigger start with immediate stop (stopped from db2)
+	triggerStopCallback = true
+	err = testDB1.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB1})
+	assert.NoError(t, err)
+
+	err = WaitForConditionWithOptions(func() bool {
+		var status AttachmentManagerResponse
+		rawStatus, err := testDB1.AttachmentCompactionManager.GetStatus()
+		assert.NoError(t, err)
+		err = base.JSONUnmarshal(rawStatus, &status)
+		assert.NoError(t, err)
+
+		if status.State == BackgroundProcessStateStopped {
+			return true
+		}
+
+		return false
+	}, 200, 1000)
+
+	// Kick off another run with an attempted start from the other node, checks for error on other node
 	triggerCallback = true
 	err = testDB1.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB1})
 	assert.NoError(t, err)
