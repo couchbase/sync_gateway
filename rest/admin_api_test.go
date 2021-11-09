@@ -3757,14 +3757,14 @@ func TestDatabaseOfflineConfigLegacy(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := `{
-    "bucket": "` + bucket.GetName() + `",
-    "name": "db",
-    "sync": "function(doc){ channel(doc.channels); }",
-    "import_docs": false,
-    "offline": false,
-    "enable_shared_bucket_access": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
+	"bucket": "` + bucket.GetName() + `",
+	"name": "db",
+	"sync": "function(doc){ channel(doc.channels); }",
+	"import_docs": false,
+	"offline": false,
+	"enable_shared_bucket_access": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
 	"use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
-    "num_index_replicas": 0 }`
+	"num_index_replicas": 0 }`
 
 	resp := rt.SendAdminRequest("PUT", "/db/_config", dbConfig)
 	require.Equal(t, http.StatusCreated, resp.Code)
@@ -3807,14 +3807,14 @@ func TestDatabaseOfflineConfigPersistent(t *testing.T) {
 	defer func() { tb.Close() }()
 
 	dbConfig := `{
-    "bucket": "` + tb.GetName() + `",
-    "name": "db",
-    "sync": "function(doc){ channel(doc.channels); }",
-    "import_docs": false,
-    "offline": false,
-    "enable_shared_bucket_access": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
+	"bucket": "` + tb.GetName() + `",
+	"name": "db",
+	"sync": "function(doc){ channel(doc.channels); }",
+	"import_docs": false,
+	"offline": false,
+	"enable_shared_bucket_access": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
 	"use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
-    "num_index_replicas": 0 }`
+	"num_index_replicas": 0 }`
 	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 
