@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -3759,9 +3760,10 @@ func TestDatabaseOfflineConfigLegacy(t *testing.T) {
     "bucket": "` + bucket.GetName() + `",
     "name": "db",
     "sync": "function(doc){ channel(doc.channels); }",
-    "import_docs": true,
+    "import_docs": false,
     "offline": false,
-    "enable_shared_bucket_access": true,
+    "enable_shared_bucket_access": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
+	"use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
     "num_index_replicas": 0 }`
 
 	resp := rt.SendAdminRequest("PUT", "/db/_config", dbConfig)
@@ -3808,9 +3810,10 @@ func TestDatabaseOfflineConfigPersistent(t *testing.T) {
     "bucket": "` + tb.GetName() + `",
     "name": "db",
     "sync": "function(doc){ channel(doc.channels); }",
-    "import_docs": true,
+    "import_docs": false,
     "offline": false,
-    "enable_shared_bucket_access": true,
+    "enable_shared_bucket_access": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
+	"use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
     "num_index_replicas": 0 }`
 	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
