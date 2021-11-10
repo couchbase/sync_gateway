@@ -195,6 +195,43 @@ func TestAttachmentCompactionPersistence(t *testing.T) {
 	_ = rt1.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
 }
 
+func TestAttachmentCompactionReset(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Start compaction
+	resp := rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
+	assertStatus(t, resp, http.StatusOK)
+	status := rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateRunning)
+	compactID := status.CompactID
+
+	// Stop compaction before complete -- enters aborted state
+	resp = rt.SendAdminRequest("POST", "/db/_compact?type=attachment&action=stop", "")
+	assertStatus(t, resp, http.StatusOK)
+	status = rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateStopped)
+
+	// Ensure status is aborted
+	resp = rt.SendAdminRequest("GET", "/db/_compact?type=attachment", "")
+	assertStatus(t, resp, http.StatusOK)
+	var attachmentStatus db.AttachmentManagerResponse
+	err := base.JSONUnmarshal(resp.BodyBytes(), &attachmentStatus)
+	assert.NoError(t, err)
+	assert.Equal(t, db.BackgroundProcessStateStopped, attachmentStatus.State)
+
+	// Start compaction again but with reset=true --> meaning it shouldn't try to resume
+	resp = rt.SendAdminRequest("POST", "/db/_compact?type=attachment&reset=true", "")
+	assertStatus(t, resp, http.StatusOK)
+	status = rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateRunning)
+	assert.NotEqual(t, compactID, status.CompactID)
+
+	// Wait for completion before closing test
+	_ = rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
+}
+
 func (rt *RestTester) WaitForAttachmentCompactionStatus(t *testing.T, state db.BackgroundProcessState) db.AttachmentManagerResponse {
 	var response db.AttachmentManagerResponse
 	err := rt.WaitForConditionWithOptions(func() bool {

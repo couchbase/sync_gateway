@@ -85,11 +85,13 @@ type BackgroundManagerStatus struct {
 // BackgroundManagerProcessI is an interface satisfied by any of the background processes
 // Examples of this: ReSync, Compaction
 type BackgroundManagerProcessI interface {
-	Init(clusterStatus []byte) error
-	Run(options map[string]interface{}, terminator chan struct{}) error
+	Init(options map[string]interface{}, clusterStatus []byte) error
+	Run(options map[string]interface{}, persistClusterStatusCallback updateStatusClusterAwareCallback, terminator chan struct{}) error
 	GetProcessStatus(status BackgroundManagerStatus) ([]byte, error)
 	ResetStatus()
 }
+
+type updateStatusClusterAwareCallback func() error
 
 func (b *BackgroundManager) Start(options map[string]interface{}) error {
 	err := b.markStart()
@@ -107,7 +109,7 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 
 	b.resetStatus()
 
-	err = b.Process.Init(processClusterStatus)
+	err = b.Process.Init(options, processClusterStatus)
 	if err != nil {
 		return err
 	}
@@ -118,8 +120,6 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 			for {
 				select {
 				case <-ticker.C:
-					// Implement a retry on here. It's not the end of the world if we miss a couple of these, but we
-					// want to give it a best attempt
 					err = b.UpdateStatusClusterAware()
 					if err != nil {
 						base.Warnf("Failed to update background manager status: %v", err)
@@ -133,7 +133,13 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 	}
 
 	go func() {
-		err := b.Process.Run(options, b.terminator)
+		updateStatusClusterAwareCallback := func() error {
+			if b.clusterAwareOptions != nil {
+				return b.UpdateHeartbeatDocClusterAware()
+			}
+			return nil
+		}
+		err := b.Process.Run(options, updateStatusClusterAwareCallback, b.terminator)
 		if err != nil {
 			base.Errorf("Error: %v", err)
 			b.SetError(err)
@@ -447,7 +453,10 @@ func (b *BackgroundManager) UpdateHeartbeatDocClusterAware() error {
 	}
 
 	if status.ShouldStop {
-		_ = b.Stop()
+		err = b.Stop()
+		if err != nil {
+			base.Warnf("Failed to stop process %q: %v", b.clusterAwareOptions.processSuffix, err)
+		}
 	}
 
 	b.clusterAwareOptions.lastSuccessfulHeartbeatUnix.Set(time.Now().Unix())
@@ -473,11 +482,11 @@ func NewResyncManager() *BackgroundManager {
 	}
 }
 
-func (r *ResyncManager) Init(clusterStatus []byte) error {
+func (r *ResyncManager) Init(options map[string]interface{}, clusterStatus []byte) error {
 	return nil
 }
 
-func (r *ResyncManager) Run(options map[string]interface{}, terminator chan struct{}) error {
+func (r *ResyncManager) Run(options map[string]interface{}, persistClusterStatusCallback updateStatusClusterAwareCallback, terminator chan struct{}) error {
 	database := options["database"].(*Database)
 	regenerateSequences := options["regenerateSequences"].(bool)
 
@@ -541,11 +550,11 @@ func NewTombstoneCompactionManager() *BackgroundManager {
 	}
 }
 
-func (t *TombstoneCompactionManager) Init(clusterStatus []byte) error {
+func (t *TombstoneCompactionManager) Init(options map[string]interface{}, clusterStatus []byte) error {
 	return nil
 }
 
-func (t *TombstoneCompactionManager) Run(options map[string]interface{}, terminator chan struct{}) error {
+func (t *TombstoneCompactionManager) Run(options map[string]interface{}, persistClusterStatusCallback updateStatusClusterAwareCallback, terminator chan struct{}) error {
 	database := options["database"].(*Database)
 
 	defer atomic.CompareAndSwapUint32(&database.CompactState, DBCompactRunning, DBCompactNotRunning)
@@ -604,24 +613,33 @@ func NewAttachmentCompactionManager(bucket base.Bucket) *BackgroundManager {
 	}
 }
 
-func (a *AttachmentCompactionManager) Init(clusterStatus []byte) error {
+func (a *AttachmentCompactionManager) Init(options map[string]interface{}, clusterStatus []byte) error {
 	if clusterStatus != nil {
 		var attachmentResponseStatus AttachmentManagerResponse
 		err := base.JSONUnmarshal(clusterStatus, &attachmentResponseStatus)
 
+		reset, ok := options["reset"].(bool)
+
+		if reset && ok {
+			base.Infof(base.KeyAll, "Attachment Compaction: Resetting compaction process. Will not  resume any "+
+				"partially completed process")
+		}
+
 		// If the previous run completed, or there was an error during unmarshalling the status we will start the
 		// process from scratch with a new compaction ID. Otherwise, we should resume with the compact ID and phase
 		// specified in the doc.
-		if attachmentResponseStatus.State == BackgroundProcessStateCompleted || err != nil {
+		if attachmentResponseStatus.State == BackgroundProcessStateCompleted || err != nil || (reset && ok) {
 			uniqueUUID, err := uuid.NewRandom()
 			if err != nil {
 				return err
 			}
 
 			a.CompactID = uniqueUUID.String()
+			base.Infof(base.KeyAll, "Attachment Compaction: Starting new compaction run with compact ID: %q", a.CompactID)
 		} else {
 			a.CompactID = attachmentResponseStatus.CompactID
 			a.Phase = attachmentResponseStatus.Phase
+			base.Infof(base.KeyAll, "Attachment Compaction: Attempting to resume compaction with compact ID: %q phase %q", a.CompactID, a.Phase)
 		}
 
 		return nil
@@ -638,14 +656,22 @@ func (a *AttachmentCompactionManager) Init(clusterStatus []byte) error {
 	return nil
 }
 
-func (a *AttachmentCompactionManager) Run(options map[string]interface{}, terminator chan struct{}) error {
+func (a *AttachmentCompactionManager) Run(options map[string]interface{}, persistClusterStatusCallback updateStatusClusterAwareCallback, terminator chan struct{}) error {
 	database := options["database"].(*Database)
+
+	persistClusterStatus := func() {
+		err := persistClusterStatusCallback()
+		if err != nil {
+			base.Warnf("Failed to persist cluster status on-demand following completion of phase: %v", err)
+		}
+	}
 
 	// Need to check the current phase in the event we are resuming - No need to run mark again if we got as far as
 	// cleanup last time...
 	switch a.Phase {
 	case "mark", "":
 		a.SetPhase("mark")
+		persistClusterStatus()
 		_, err := Mark(database, a.CompactID, terminator, &a.MarkedAttachments)
 		if err != nil {
 			return err
@@ -653,6 +679,7 @@ func (a *AttachmentCompactionManager) Run(options map[string]interface{}, termin
 		fallthrough
 	case "sweep":
 		a.SetPhase("sweep")
+		persistClusterStatus()
 		_, err := Sweep(database, a.CompactID, terminator, &a.PurgedAttachments)
 		if err != nil {
 			return err
@@ -660,6 +687,7 @@ func (a *AttachmentCompactionManager) Run(options map[string]interface{}, termin
 		fallthrough
 	case "cleanup":
 		a.SetPhase("cleanup")
+		persistClusterStatus()
 		err := Cleanup(database, a.CompactID, terminator)
 		if err != nil {
 			return err
@@ -667,6 +695,7 @@ func (a *AttachmentCompactionManager) Run(options map[string]interface{}, termin
 	}
 
 	a.SetPhase("")
+	persistClusterStatus()
 	return nil
 }
 
