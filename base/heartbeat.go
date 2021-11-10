@@ -65,8 +65,9 @@ type HeartbeatListener interface {
 //       e.g  Default for a 4 node cluster: 12 ops/second
 type couchbaseHeartBeater struct {
 	bucket                  Bucket
-	nodeUUID                string
 	keyPrefix               string
+	groupID                 *string
+	nodeUUID                string
 	heartbeatSendInterval   time.Duration                // Heartbeat send interval
 	heartbeatExpirySeconds  uint32                       // Heartbeat expiry time (seconds)
 	heartbeatPollInterval   time.Duration                // Frequency of polling for other nodes' heartbeat documents
@@ -83,12 +84,13 @@ type couchbaseHeartBeater struct {
 // the keyPrefix which will be prepended to the heartbeat doc keys,
 // and the nodeUUID, which is an opaque identifier for the "thing" that is using this
 // library.  nodeUUID will be passed to listeners on stale node detection.
-func NewCouchbaseHeartbeater(bucket Bucket, keyPrefix, nodeUUID string) (heartbeater *couchbaseHeartBeater, err error) {
+func NewCouchbaseHeartbeater(bucket Bucket, keyPrefix, nodeUUID string, groupID *string) (heartbeater *couchbaseHeartBeater, err error) {
 
 	heartbeater = &couchbaseHeartBeater{
 		bucket:                 bucket,
-		nodeUUID:               nodeUUID,
 		keyPrefix:              keyPrefix,
+		groupID:                groupID,
+		nodeUUID:               nodeUUID,
 		terminator:             make(chan struct{}),
 		heartbeatListeners:     make(map[string]HeartbeatListener),
 		heartbeatSendInterval:  defaultHeartbeatSendInterval,
@@ -280,7 +282,7 @@ func (h *couchbaseHeartBeater) checkStaleHeartbeats() error {
 			continue
 		}
 
-		timeoutDocID := heartbeatTimeoutDocID(heartbeatNodeUUID, h.keyPrefix)
+		timeoutDocID := heartbeatTimeoutDocID(heartbeatNodeUUID, h.keyPrefix, h.groupID)
 		_, _, err := h.bucket.GetRaw(timeoutDocID)
 		if err != nil {
 			if !IsKeyNotFoundError(h.bucket, err) {
@@ -299,13 +301,16 @@ func (h *couchbaseHeartBeater) checkStaleHeartbeats() error {
 	return nil
 }
 
-func heartbeatTimeoutDocID(nodeUuid, keyPrefix string) string {
+func heartbeatTimeoutDocID(nodeUuid, keyPrefix string, groupID *string) string {
+	if groupID != nil {
+		return keyPrefix + "heartbeat_timeout:" + *groupID + ":" + nodeUuid
+	}
 	return keyPrefix + "heartbeat_timeout:" + nodeUuid
 }
 
 func (h *couchbaseHeartBeater) sendHeartbeat() error {
 
-	docID := heartbeatTimeoutDocID(h.nodeUUID, h.keyPrefix)
+	docID := heartbeatTimeoutDocID(h.nodeUUID, h.keyPrefix, h.groupID)
 
 	_, touchErr := h.bucket.Touch(docID, h.heartbeatExpirySeconds)
 	if touchErr == nil {

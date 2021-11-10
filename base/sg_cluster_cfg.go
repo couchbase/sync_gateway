@@ -28,6 +28,7 @@ type CfgSG struct {
 	loggingCtx    context.Context
 	subscriptions map[string][]chan<- cbgt.CfgEvent // Keyed by key
 	lock          sync.Mutex                        // mutex for subscriptions
+	groupID       *string
 }
 
 type CfgEventNotifyFunc func(docID string, cas uint64, err error)
@@ -40,7 +41,7 @@ var ErrCfgCasError = &cbgt.CfgCASError{}
 //
 // urlStr: single URL or multiple URLs delimited by ';'
 // bucket: couchbase bucket name
-func NewCfgSG(bucket Bucket) (*CfgSG, error) {
+func NewCfgSG(bucket Bucket, groupID *string) (*CfgSG, error) {
 
 	cfgContextID := MD(bucket.GetName()).Redact() + "-cfgSG"
 	loggingCtx := context.WithValue(context.Background(), LogContextKey{},
@@ -51,11 +52,15 @@ func NewCfgSG(bucket Bucket) (*CfgSG, error) {
 		bucket:        bucket,
 		loggingCtx:    loggingCtx,
 		subscriptions: make(map[string][]chan<- cbgt.CfgEvent),
+		groupID:       groupID,
 	}
 	return c, nil
 }
 
-func sgCfgBucketKey(cfgKey string) string {
+func (c *CfgSG) sgCfgBucketKey(cfgKey string) string {
+	if c.groupID != nil {
+		return SGCfgPrefix + ":" + *c.groupID + ":" + cfgKey
+	}
 	return SGCfgPrefix + cfgKey
 }
 
@@ -63,7 +68,7 @@ func (c *CfgSG) Get(cfgKey string, cas uint64) (
 	[]byte, uint64, error) {
 
 	DebugfCtx(c.loggingCtx, KeyCluster, "cfg_sg: Get, key: %s, cas: %d", cfgKey, cas)
-	bucketKey := sgCfgBucketKey(cfgKey)
+	bucketKey := c.sgCfgBucketKey(cfgKey)
 	var value []byte
 	casOut, err := c.bucket.Get(bucketKey, &value)
 	if err != nil && !IsKeyNotFoundError(c.bucket, err) {
@@ -83,7 +88,7 @@ func (c *CfgSG) Set(cfgKey string, val []byte, cas uint64) (uint64, error) {
 
 	DebugfCtx(c.loggingCtx, KeyCluster, "cfg_sg: Set, key: %s, cas: %d", cfgKey, cas)
 	var err error
-	bucketKey := sgCfgBucketKey(cfgKey)
+	bucketKey := c.sgCfgBucketKey(cfgKey)
 
 	casOut, err := c.bucket.WriteCas(bucketKey, 0, 0, cas, val, 0)
 
@@ -101,7 +106,7 @@ func (c *CfgSG) Set(cfgKey string, val []byte, cas uint64) (uint64, error) {
 func (c *CfgSG) Del(cfgKey string, cas uint64) error {
 
 	DebugfCtx(c.loggingCtx, KeyCluster, "cfg_sg: Del, key: %s, cas: %d", cfgKey, cas)
-	bucketKey := sgCfgBucketKey(cfgKey)
+	bucketKey := c.sgCfgBucketKey(cfgKey)
 	_, err := c.bucket.Remove(bucketKey, cas)
 	if IsCasMismatch(err) {
 		return ErrCfgCasError
@@ -128,7 +133,10 @@ func (c *CfgSG) Subscribe(cfgKey string, ch chan cbgt.CfgEvent) error {
 }
 
 func (c *CfgSG) FireEvent(docID string, cas uint64, err error) {
-
+	if c.groupID != nil {
+		// Remove first instance of group ID
+		docID = strings.Replace(docID, *c.groupID, "", 1)
+	}
 	cfgKey := strings.TrimPrefix(docID, SGCfgPrefix)
 	c.lock.Lock()
 	DebugfCtx(c.loggingCtx, KeyCluster, "cfg_sg: FireEvent, key: %s, cas %d", cfgKey, cas)

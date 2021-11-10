@@ -765,6 +765,11 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		slowQueryWarningThreshold = time.Duration(*config.SlowQueryWarningThresholdMs) * time.Millisecond
 	}
 
+	groupID := base.StringPtr(sc.config.Bootstrap.ConfigGroupID)
+	if *groupID == persistentConfigDefaultGroupID {
+		groupID = nil
+	}
+
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:              &cacheOptions,
 		RevisionCacheOptions:      revCacheOptions,
@@ -792,6 +797,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		SlowQueryWarningThreshold: slowQueryWarningThreshold,
 		ClientPartitionWindow:     clientPartitionWindow,
 		BcryptCost:                bcryptCost,
+		GroupID:                   groupID,
 	}
 
 	return contextOptions, nil
