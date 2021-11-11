@@ -601,6 +601,7 @@ type AttachmentCompactionManager struct {
 	PurgedAttachments base.AtomicInt
 	CompactID         string
 	Phase             string
+	dryRun            bool
 	lock              sync.Mutex
 }
 
@@ -625,6 +626,12 @@ func (a *AttachmentCompactionManager) Init(options map[string]interface{}, clust
 			return err
 		}
 
+		dryRun, _ := options["dryRun"].(bool)
+		if dryRun {
+			base.Infof(base.KeyAll, "Attachment Compaction: Running as dry run. No attachments will be purged")
+		}
+
+		a.dryRun = dryRun
 		a.CompactID = uniqueUUID.String()
 		base.Infof(base.KeyAll, "Attachment Compaction: Starting new compaction run with compact ID: %q", a.CompactID)
 		return nil
@@ -635,7 +642,6 @@ func (a *AttachmentCompactionManager) Init(options map[string]interface{}, clust
 		err := base.JSONUnmarshal(clusterStatus, &attachmentResponseStatus)
 
 		reset, ok := options["reset"].(bool)
-
 		if reset && ok {
 			base.Infof(base.KeyAll, "Attachment Compaction: Resetting compaction process. Will not  resume any "+
 				"partially completed process")
@@ -649,6 +655,8 @@ func (a *AttachmentCompactionManager) Init(options map[string]interface{}, clust
 		} else {
 			a.CompactID = attachmentResponseStatus.CompactID
 			a.Phase = attachmentResponseStatus.Phase
+			a.dryRun = attachmentResponseStatus.DryRun
+
 			base.Infof(base.KeyAll, "Attachment Compaction: Attempting to resume compaction with compact ID: %q phase %q", a.CompactID, a.Phase)
 		}
 
@@ -683,7 +691,7 @@ func (a *AttachmentCompactionManager) Run(options map[string]interface{}, persis
 	case "sweep":
 		a.SetPhase("sweep")
 		persistClusterStatus()
-		_, err := Sweep(database, a.CompactID, terminator, &a.PurgedAttachments)
+		_, err := Sweep(database, a.CompactID, a.dryRun, terminator, &a.PurgedAttachments)
 		if err != nil {
 			return err
 		}
@@ -715,6 +723,7 @@ type AttachmentManagerResponse struct {
 	PurgedAttachments int64  `json:"purged_attachments"`
 	CompactID         string `json:"compact_id"`
 	Phase             string `json:"phase,omitempty"`
+	DryRun            bool   `json:"dry_run,omitempty"`
 }
 
 func (a *AttachmentCompactionManager) GetProcessStatus(status BackgroundManagerStatus) ([]byte, error) {
@@ -727,6 +736,7 @@ func (a *AttachmentCompactionManager) GetProcessStatus(status BackgroundManagerS
 		PurgedAttachments:       a.PurgedAttachments.Value(),
 		CompactID:               a.CompactID,
 		Phase:                   a.Phase,
+		DryRun:                  a.dryRun,
 	}
 
 	return base.JSONMarshal(retStatus)
@@ -738,4 +748,5 @@ func (a *AttachmentCompactionManager) ResetStatus() {
 
 	a.MarkedAttachments.Set(0)
 	a.PurgedAttachments.Set(0)
+	a.dryRun = false
 }
