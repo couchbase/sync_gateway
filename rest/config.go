@@ -629,12 +629,20 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) (errorMessag
 		if err != nil {
 			errorMessages = multierror.Append(errorMessages, fmt.Errorf("sync function contains invalid javascript syntax: %v", err))
 		}
+
+		if *dbConfig.Sync == "" {
+			errorMessages = multierror.Append(errorMessages, fmt.Errorf("sync function cannot be empty string"))
+		}
 	}
 
 	if dbConfig.ImportFilter != nil {
 		_, err = sgbucket.NewJSRunner(*dbConfig.ImportFilter)
 		if err != nil {
 			errorMessages = multierror.Append(errorMessages, fmt.Errorf("import filter function contains invalid javascript syntax: %v", err))
+		}
+
+		if *dbConfig.ImportFilter == "" {
+			errorMessages = multierror.Append(errorMessages, fmt.Errorf("import filter function cannot be empty string"))
 		}
 	}
 
