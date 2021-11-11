@@ -1216,36 +1216,43 @@ func TestSetupServerContext(t *testing.T) {
 
 // CBG-1583 - config group ID EE-only
 func TestConfigGroupIDValidation(t *testing.T) {
-	error := "customization of group_id is only supported in enterprise edition"
 	testCases := []struct {
-		name        string
-		cfgGroupID  string
-		eeMode      bool
-		expectError bool
+		name          string
+		cfgGroupID    string
+		eeMode        bool
+		expectedError string
 	}{
 		{
-			name:        "No change, CE mode",
-			cfgGroupID:  persistentConfigDefaultGroupID,
-			eeMode:      false,
-			expectError: false,
+			name:       "No change, CE mode",
+			cfgGroupID: persistentConfigDefaultGroupID,
+			eeMode:     false,
 		},
 		{
-			name:        "No change, EE mode",
-			cfgGroupID:  persistentConfigDefaultGroupID,
-			eeMode:      true,
-			expectError: false,
+			name:       "No change, EE mode",
+			cfgGroupID: persistentConfigDefaultGroupID,
+			eeMode:     true,
 		},
 		{
-			name:        "Changed, EE mode",
-			cfgGroupID:  "testGroup",
-			eeMode:      true,
-			expectError: false,
+			name:       "Changed, EE mode",
+			cfgGroupID: "testGroup",
+			eeMode:     true,
 		},
 		{
-			name:        "Changed, CE mode",
-			cfgGroupID:  "testGroup",
-			eeMode:      false,
-			expectError: true,
+			name:          "Changed, CE mode",
+			cfgGroupID:    "testGroup",
+			eeMode:        false,
+			expectedError: "customization of group_id is only supported in enterprise edition",
+		},
+		{
+			name:       "Changed, EE mode, at max length",
+			cfgGroupID: strings.Repeat("a", persistentConfigGroupIDMaxLength),
+			eeMode:     true,
+		},
+		{
+			name:          "Changed, EE mode, over max length",
+			cfgGroupID:    strings.Repeat("a", persistentConfigGroupIDMaxLength+1),
+			eeMode:        true,
+			expectedError: "group_id must be at most",
 		},
 	}
 	for _, test := range testCases {
@@ -1257,13 +1264,19 @@ func TestConfigGroupIDValidation(t *testing.T) {
 				t.Skip("CE mode only test case")
 			}
 
-			sc := StartupConfig{Bootstrap: BootstrapConfig{ConfigGroupID: test.cfgGroupID}}
+			sc := StartupConfig{
+				Bootstrap: BootstrapConfig{
+					ConfigGroupID: test.cfgGroupID,
+					Server:        base.UnitTestUrl(),
+					UseTLSServer:  base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())),
+				},
+			}
 			err := sc.validate()
-			if test.expectError {
+			if test.expectedError != "" {
 				require.Error(t, err)
-				assert.Contains(t, err.Error(), error)
-			} else if err != nil {
-				assert.NotContains(t, err.Error(), error)
+				assert.Contains(t, err.Error(), test.expectedError)
+			} else {
+				require.NoError(t, err)
 			}
 		})
 	}
