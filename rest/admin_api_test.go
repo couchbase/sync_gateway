@@ -3380,31 +3380,34 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 		tb.Close()
 	}()
 	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/",
-		`{"bucket": "`+tb.GetName()+`", "num_index_replicas": 0}`,
+		fmt.Sprintf(
+			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
+			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+		),
 	)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
 	// Get config
-	resp = bootstrapAdminRequest(t, "GET", "/db/_config", "")
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	eTag := resp.Header.Get("ETag")
 	assert.NotEqual(t, "", eTag)
 
-	resp = bootstrapAdminRequestWithHeaders(t, "POST", "/db/_config", "{}", map[string]string{"If-Match": eTag})
+	resp = bootstrapAdminRequestWithHeaders(t, http.MethodPost, "/db/_config", "{}", map[string]string{"If-Match": eTag})
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
-	resp = bootstrapAdminRequest(t, "POST", "/db/_config", "{}")
+	resp = bootstrapAdminRequest(t, http.MethodPost, "/db/_config", "{}")
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 	putETag := resp.Header.Get("ETag")
 	assert.NotEqual(t, "", putETag)
 
-	resp = bootstrapAdminRequest(t, "GET", "/db/_config", "")
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	getETag := resp.Header.Get("ETag")
 	assert.Equal(t, putETag, getETag)
 
-	resp = bootstrapAdminRequestWithHeaders(t, "POST", "/db/_config", "{}", map[string]string{"If-Match": "x"})
+	resp = bootstrapAdminRequestWithHeaders(t, http.MethodPost, "/db/_config", "{}", map[string]string{"If-Match": "x"})
 	assert.Equal(t, http.StatusPreconditionFailed, resp.StatusCode)
 }
 
@@ -3433,13 +3436,16 @@ func TestDbConfigCredentials(t *testing.T) {
 		tb.Close()
 	}()
 	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/",
-		`{"bucket": "`+tb.GetName()+`", "num_index_replicas": 0}`,
+		fmt.Sprintf(
+			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
+			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+		),
 	)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
 	var dbConfig DatabaseConfig
 
-	resp = bootstrapAdminRequest(t, "GET", "/db/_config", "")
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	body, err := ioutil.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -3455,7 +3461,7 @@ func TestDbConfigCredentials(t *testing.T) {
 	assert.Equal(t, "", dbConfig.CertPath)
 	assert.Equal(t, "", dbConfig.KeyPath)
 
-	resp = bootstrapAdminRequest(t, "GET", "/db/_config?include_runtime=true", "")
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config?include_runtime=true", "")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	body, err = ioutil.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -3498,26 +3504,29 @@ func TestInvalidDBConfig(t *testing.T) {
 		tb.Close()
 	}()
 	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/",
-		`{"bucket": "`+tb.GetName()+`", "num_index_replicas": 0}`,
+		fmt.Sprintf(
+			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
+			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+		),
 	)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
 	// Put db config with invalid sync fn
-	resp = bootstrapAdminRequest(t, "PUT", "/db/_config", `{"sync": "function(){"}`)
+	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config", `{"sync": "function(){"}`)
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	body, err := ioutil.ReadAll(resp.Body)
 	require.NoError(t, err)
 	assert.True(t, strings.Contains(string(body), "invalid javascript syntax"))
 
 	// Put invalid sync fn via sync specific endpoint
-	resp = bootstrapAdminRequest(t, "PUT", "/db/_config/sync", `function(){`)
+	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config/sync", `function(){`)
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	body, err = ioutil.ReadAll(resp.Body)
 	require.NoError(t, err)
 	assert.True(t, strings.Contains(string(body), "invalid javascript syntax"))
 
 	// Put invalid import fn via import specific endpoint
-	resp = bootstrapAdminRequest(t, "PUT", "/db/_config/import_filter", `function(){`)
+	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config/import_filter", `function(){`)
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	body, err = ioutil.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -3583,7 +3592,10 @@ func TestPutDbConfigChangeName(t *testing.T) {
 		tb.Close()
 	}()
 	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/",
-		`{"bucket": "`+tb.GetName()+`", "num_index_replicas": 0}`,
+		fmt.Sprintf(
+			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
+			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+		),
 	)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
@@ -3643,12 +3655,15 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 		tb.Close()
 	}()
 	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/",
-		`{"bucket": "`+tb.GetName()+`", "num_index_replicas": 0}`,
+		fmt.Sprintf(
+			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
+			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+		),
 	)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
 	var dbConfig DatabaseConfig
-	resp = bootstrapAdminRequest(t, "GET", "/db/_config?include_runtime=true", "")
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config?include_runtime=true", "")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	body, err := ioutil.ReadAll(resp.Body)
 	assert.NoError(t, err)
@@ -3665,7 +3680,7 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	assert.Equal(t, db.DefaultCompactInterval, uint32(*dbConfig.CompactIntervalDays))
 
 	var runtimeServerConfigResponse RunTimeServerConfigResponse
-	resp = bootstrapAdminRequest(t, "GET", "/_config?include_runtime=true", "")
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/_config?include_runtime=true", "")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	body, err = ioutil.ReadAll(resp.Body)
 	assert.NoError(t, err)
@@ -3693,7 +3708,7 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
-	resp = bootstrapAdminRequest(t, "GET", "/_config?include_runtime=true", "")
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/_config?include_runtime=true", "")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	body, err = ioutil.ReadAll(resp.Body)
 	assert.NoError(t, err)
@@ -3734,19 +3749,25 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 
 	// No credentials should fail
 	resp := bootstrapAdminRequest(t, http.MethodPut, "/db1/",
-		`{"bucket": "`+tb.GetName()+`", "num_index_replicas": 0}`,
+		fmt.Sprintf(
+			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
+			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+		),
 	)
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 
 	// Wrong credentials should fail
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db2/",
-		`{"bucket": "`+tb.GetName()+`", "num_index_replicas": 0, "username": "test", "password": "invalid_password"}`,
+		`{"bucket": "`+tb.GetName()+`", "username": "test", "password": "invalid_password"}`,
 	)
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 
 	// Proper credentials should pass
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db3/",
-		`{"bucket": "`+tb.GetName()+`", "num_index_replicas": 0, "username": "`+base.TestClusterUsername()+`", "password": "`+base.TestClusterPassword()+`"}`,
+		fmt.Sprintf(
+			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "username": "%s", "password": "%s"}`,
+			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(), base.TestClusterUsername(), base.TestClusterPassword(),
+		),
 	)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 }

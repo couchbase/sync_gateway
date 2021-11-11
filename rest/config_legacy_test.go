@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -289,28 +288,31 @@ func TestLegacyGuestUserMigration(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	config := `
-	{
-		"server_tls_skip_verify": ` + strconv.FormatBool(base.TestTLSSkipVerify()) + `,
-		"interface": ":4444",
-		"adminInterface": ":4445",
-		"databases": {
-			"db": {
-				"server": "%s",
-				"username": "%s",
-				"password": "%s",
-				"bucket": "%s",
-				"users": {
-					"GUEST": {
-						"disabled": false,
-						"admin_channels": ["*"]
-					}
+	config := fmt.Sprintf(`{
+	"server_tls_skip_verify": %t,
+	"interface": ":4444",
+	"adminInterface": ":4445",
+	"databases": {
+		"db": {
+			"server": "%s",
+			"username": "%s",
+			"password": "%s",
+			"bucket": "%s",
+			"users": {
+				"GUEST": {
+					"disabled": false,
+					"admin_channels": ["*"]
 				}
 			}
 		}
-	}`
-
-	config = fmt.Sprintf(config, base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), tb.GetName())
+	}
+}`,
+		base.TestTLSSkipVerify(),
+		base.UnitTestUrl(),
+		base.TestClusterUsername(),
+		base.TestClusterPassword(),
+		tb.GetName(),
+	)
 
 	tmpDir, err := ioutil.TempDir("", t.Name())
 	require.NoError(t, err)

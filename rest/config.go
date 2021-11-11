@@ -1217,6 +1217,11 @@ func (sc *ServerContext) _applyConfig(cnf DatabaseConfig, failFast bool) (applie
 	// skip if we already have this config loaded, and we've got a cas value to compare with
 	foundDbName, ok := sc.bucketDbName[*cnf.Bucket]
 	if ok {
+		// Somebody is trying to create a new database with a duplicate bucket. Changing db name is not supported and is rejected earlier in the update handler.
+		if foundDbName != cnf.Name {
+			return false, fmt.Errorf("%w: Bucket %q already in use by database %q", base.ErrAlreadyExists, *cnf.Bucket, foundDbName)
+		}
+
 		if cnf.cas == 0 {
 			// force an update when the new config's cas was set to zero prior to load
 			base.Infof(base.KeyConfig, "Forcing update of config for database %q bucket %q", cnf.Name, *cnf.Bucket)

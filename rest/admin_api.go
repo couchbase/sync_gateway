@@ -80,6 +80,8 @@ func (h *handler) handleCreateDB() error {
 		if err != nil {
 			if errors.Is(err, base.ErrAuthError) {
 				return base.HTTPErrorf(http.StatusForbidden, "auth failure accessing provided bucket: %s", bucket)
+			} else if errors.Is(err, base.ErrAlreadyExists) {
+				return base.HTTPErrorf(http.StatusConflict, "couldn't load database: %s", err)
 			}
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
 		}
