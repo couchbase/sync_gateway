@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -23,22 +22,25 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	rawConfig := `
-	{
-		"server_tls_skip_verify": ` + strconv.FormatBool(base.TestTLSSkipVerify()) + `,
-		"interface": ":4444",
-		"adminInterface": ":4445",
-		"databases": {
-			"db": {
-				"server": "%s",
-				"username": "%s",
-				"password": "%s",
-				"bucket": "%s"
-			}
+	config := fmt.Sprintf(`{
+	"server_tls_skip_verify": %t,
+	"interface": ":4444",
+	"adminInterface": ":4445",
+	"databases": {
+		"db": {
+			"server": "%s",
+			"username": "%s",
+			"password": "%s",
+			"bucket": "%s"
 		}
-	}`
-
-	config := fmt.Sprintf(rawConfig, base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), tb.GetName())
+	}
+}`,
+		base.TestTLSSkipVerify(),
+		base.UnitTestUrl(),
+		base.TestClusterUsername(),
+		base.TestClusterPassword(),
+		tb.GetName(),
+	)
 
 	tmpDir, err := ioutil.TempDir("", t.Name())
 	require.NoError(t, err)
@@ -113,7 +115,7 @@ func TestAutomaticConfigUpgradeError(t *testing.T) {
 			"Multiple DBs different servers",
 			`
 				{
-					"server_tls_skip_verify": ` + strconv.FormatBool(base.TestTLSSkipVerify()) + `,
+					"server_tls_skip_verify": %t,
 					"databases": {
 						"db": {
 							"server": "%s",
@@ -137,7 +139,7 @@ func TestAutomaticConfigUpgradeError(t *testing.T) {
 			tb := base.GetTestBucket(t)
 			defer tb.Close()
 
-			config := fmt.Sprintf(testCase.Config, base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), tb.GetName())
+			config := fmt.Sprintf(testCase.Config, base.TestTLSSkipVerify(), base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), tb.GetName())
 
 			tmpDir, err := ioutil.TempDir("", strings.ReplaceAll(t.Name(), "/", ""))
 			require.NoError(t, err)
@@ -157,26 +159,29 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 		t.Skip("CBS required")
 	}
 
-	configRaw := `
-	{
-		"server_tls_skip_verify": ` + strconv.FormatBool(base.TestTLSSkipVerify()) + `,
-		"databases": {
-			"db": {
-				"server": "%s",
-				"username": "%s",
-				"password": "%s",
-				"bucket": "%s"
-			}
-		}
-	}`
-
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
 	tmpDir, err := ioutil.TempDir("", t.Name())
 	require.NoError(t, err)
 
-	config := fmt.Sprintf(configRaw, base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), tb.GetName())
+	config := fmt.Sprintf(`{
+	"server_tls_skip_verify": %t,
+	"databases": {
+		"db": {
+			"server": "%s",
+			"username": "%s",
+			"password": "%s",
+			"bucket": "%s"
+		}
+	}
+}`,
+		base.TestTLSSkipVerify(),
+		base.UnitTestUrl(),
+		base.TestClusterUsername(),
+		base.TestClusterPassword(),
+		tb.GetName(),
+	)
 	configPath := filepath.Join(tmpDir, "config.json")
 	err = ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
 	require.NoError(t, err)
@@ -185,21 +190,24 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 	_, _, _, _, err = automaticConfigUpgrade(configPath)
 	require.NoError(t, err)
 
-	updatedConfigRaw := `
-	{
-		"server_tls_skip_verify": ` + strconv.FormatBool(base.TestTLSSkipVerify()) + `,
-		"databases": {
-			"db": {
-				"revs_limit": 20000,
-				"server": "%s",
-				"username": "%s",
-				"password": "%s",
-				"bucket": "%s"
-			}
+	updatedConfig := fmt.Sprintf(`{
+	"server_tls_skip_verify": %t,
+	"databases": {
+		"db": {
+			"revs_limit": 20000,
+			"server": "%s",
+			"username": "%s",
+			"password": "%s",
+			"bucket": "%s"
 		}
-	}`
-
-	updatedConfig := fmt.Sprintf(updatedConfigRaw, base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), tb.GetName())
+	}
+}`,
+		base.TestTLSSkipVerify(),
+		base.UnitTestUrl(),
+		base.TestClusterUsername(),
+		base.TestClusterPassword(),
+		tb.GetName(),
+	)
 	updatedConfigPath := filepath.Join(tmpDir, "config-updated.json")
 	err = ioutil.WriteFile(updatedConfigPath, []byte(updatedConfig), os.FileMode(0644))
 	require.NoError(t, err)
@@ -221,9 +229,8 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 	// Now attempt an upgrade for a non-default group ID, and ensure it's written correctly, and separately from the default group.
 	const configUpgradeGroupID = "import"
 
-	importConfigRaw := `
-	{
-		"server_tls_skip_verify": ` + strconv.FormatBool(base.TestTLSSkipVerify()) + `,
+	importConfig := fmt.Sprintf(`{
+		"server_tls_skip_verify": %t,
 		"config_upgrade_group_id": "%s",
 		"databases": {
 			"db": {
@@ -235,9 +242,14 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 				"bucket": "%s"
 			}
 		}
-	}`
-
-	importConfig := fmt.Sprintf(importConfigRaw, configUpgradeGroupID, base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), tb.GetName())
+	}`,
+		base.TestTLSSkipVerify(),
+		configUpgradeGroupID,
+		base.UnitTestUrl(),
+		base.TestClusterUsername(),
+		base.TestClusterPassword(),
+		tb.GetName(),
+	)
 	importConfigPath := filepath.Join(tmpDir, "config-import.json")
 	err = ioutil.WriteFile(importConfigPath, []byte(importConfig), os.FileMode(0644))
 	require.NoError(t, err)

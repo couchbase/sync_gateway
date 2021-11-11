@@ -47,7 +47,10 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 		tb.Close()
 	}()
 	resp := bootstrapAdminRequest(t, http.MethodPut, "/db1/",
-		`{"bucket": "`+tb.GetName()+`", "num_index_replicas": 0}`,
+		fmt.Sprintf(
+			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
+			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+		),
 	)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
@@ -153,13 +156,19 @@ func TestBootstrapDuplicateBucket(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer func() { tb.Close() }()
 	resp := bootstrapAdminRequest(t, http.MethodPut, "/db1/",
-		`{"bucket": "`+tb.GetName()+`", "num_index_replicas": 0}`,
+		fmt.Sprintf(
+			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
+			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+		),
 	)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
 	// Create db2 using the same bucket and expect it to fail
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db2/",
-		`{"bucket": "`+tb.GetName()+`", "num_index_replicas": 0}`,
+		fmt.Sprintf(
+			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
+			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+		),
 	)
 	assert.Equal(t, http.StatusConflict, resp.StatusCode)
 
