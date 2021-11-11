@@ -28,7 +28,7 @@ type CfgSG struct {
 	loggingCtx    context.Context
 	subscriptions map[string][]chan<- cbgt.CfgEvent // Keyed by key
 	lock          sync.Mutex                        // mutex for subscriptions
-	groupID       *string
+	groupID       string
 }
 
 type CfgEventNotifyFunc func(docID string, cas uint64, err error)
@@ -41,7 +41,7 @@ var ErrCfgCasError = &cbgt.CfgCASError{}
 //
 // urlStr: single URL or multiple URLs delimited by ';'
 // bucket: couchbase bucket name
-func NewCfgSG(bucket Bucket, groupID *string) (*CfgSG, error) {
+func NewCfgSG(bucket Bucket, groupID string) (*CfgSG, error) {
 
 	cfgContextID := MD(bucket.GetName()).Redact() + "-cfgSG"
 	loggingCtx := context.WithValue(context.Background(), LogContextKey{},
@@ -58,10 +58,7 @@ func NewCfgSG(bucket Bucket, groupID *string) (*CfgSG, error) {
 }
 
 func (c *CfgSG) sgCfgBucketKey(cfgKey string) string {
-	if c.groupID != nil {
-		return SGCfgPrefix + ":" + *c.groupID + ":" + cfgKey
-	}
-	return SGCfgPrefix + cfgKey
+	return SGCfgPrefix(c.groupID) + cfgKey
 }
 
 func (c *CfgSG) Get(cfgKey string, cas uint64) (
@@ -132,12 +129,9 @@ func (c *CfgSG) Subscribe(cfgKey string, ch chan cbgt.CfgEvent) error {
 	return nil
 }
 
+// TODO: Write test targetting FireEvent to check colon is being removed correctly
 func (c *CfgSG) FireEvent(docID string, cas uint64, err error) {
-	if c.groupID != nil {
-		// Remove first instance of group ID
-		docID = strings.Replace(docID, *c.groupID, "", 1)
-	}
-	cfgKey := strings.TrimPrefix(docID, SGCfgPrefix)
+	cfgKey := strings.TrimPrefix(docID, SGCfgPrefix(c.groupID))
 	c.lock.Lock()
 	DebugfCtx(c.loggingCtx, KeyCluster, "cfg_sg: FireEvent, key: %s, cas %d", cfgKey, cas)
 	for _, ch := range c.subscriptions[cfgKey] {

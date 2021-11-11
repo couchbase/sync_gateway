@@ -127,7 +127,7 @@ func Mark(db *Database, compactionID string, terminator *base.SafeTerminator, ma
 
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for mark phase of attachment compaction", compactionLoggingID)
 	dcpFeedKey := compactionID + "_mark"
-	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, cbStore)
+	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, cbStore, db.Options.GroupID)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -333,7 +333,7 @@ func Sweep(db *Database, compactionID string, vbUUIDs []uint64, dryRun bool, ter
 
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for sweep phase of attachment compaction", compactionLoggingID)
 	dcpFeedKey := compactionID + "_sweep"
-	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, cbStore)
+	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, cbStore, db.Options.GroupID)
 	if err != nil {
 		return 0, err
 	}
@@ -452,7 +452,7 @@ func Cleanup(db *Database, compactionID string, vbUUIDs []uint64, terminator *ba
 
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for cleanup phase of attachment compaction", compactionLoggingID)
 	dcpFeedKey := compactionID + "_cleanup"
-	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, cbStore)
+	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, cbStore, db.Options.GroupID)
 	if err != nil {
 		return err
 	}

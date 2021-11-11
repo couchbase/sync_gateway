@@ -59,17 +59,23 @@ func TestTransformBucketCredentials(t *testing.T) {
 }
 
 func TestDCPKeyFilter(t *testing.T) {
+	assert.True(t, dcpKeyFilter([]byte("doc123"), ""))
+	assert.True(t, dcpKeyFilter([]byte(UserPrefix+"user1"), ""))
+	assert.True(t, dcpKeyFilter([]byte(RolePrefix+"role2"), ""))
+	assert.True(t, dcpKeyFilter([]byte(UnusedSeqPrefix+"1234"), ""))
+	assert.True(t, dcpKeyFilter([]byte(SGCfgPrefix("")), ""))
+	assert.True(t, dcpKeyFilter([]byte(SGCfgPrefix("group")), "group"))
 
-	assert.True(t, dcpKeyFilter([]byte("doc123")))
-	assert.True(t, dcpKeyFilter([]byte(UserPrefix+"user1")))
-	assert.True(t, dcpKeyFilter([]byte(RolePrefix+"role2")))
-	assert.True(t, dcpKeyFilter([]byte(UnusedSeqPrefix+"1234")))
-
-	assert.False(t, dcpKeyFilter([]byte(SyncSeqKey)))
-	assert.False(t, dcpKeyFilter([]byte(SyncPrefix+"unusualSeq")))
-	assert.False(t, dcpKeyFilter([]byte(SyncDataKey)))
-	assert.False(t, dcpKeyFilter([]byte(DCPCheckpointPrefix+"12")))
-	assert.False(t, dcpKeyFilter([]byte(TxnPrefix+"atrData")))
+	assert.False(t, dcpKeyFilter([]byte(SGCfgPrefix("group1")), "group2"))
+	assert.False(t, dcpKeyFilter([]byte(SyncSeqKey), ""))
+	assert.False(t, dcpKeyFilter([]byte(SyncPrefix+"unusualSeq"), ""))
+	assert.False(t, dcpKeyFilter([]byte(SyncDataKey("")), ""))
+	assert.False(t, dcpKeyFilter([]byte(SyncDataKey("group")), "group"))
+	assert.False(t, dcpKeyFilter([]byte(SyncDataKey("group1")), "group2"))
+	assert.False(t, dcpKeyFilter([]byte(DCPCheckpointPrefix("")+"12"), ""))
+	assert.False(t, dcpKeyFilter([]byte(DCPCheckpointPrefix("group")+"12"), "group"))
+	assert.False(t, dcpKeyFilter([]byte(DCPCheckpointPrefix("group1")+"12"), "group2"))
+	assert.False(t, dcpKeyFilter([]byte(TxnPrefix+"atrData"), ""))
 }
 
 func TestCBGTIndexCreation(t *testing.T) {
@@ -394,7 +400,7 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 	testDBName := "testDB"
 
 	// Use an bucket-backed cfg
-	cfg, err := NewCfgSG(bucket, nil)
+	cfg, err := NewCfgSG(bucket, "")
 	require.NoError(t, err)
 
 	// Define index type for db name

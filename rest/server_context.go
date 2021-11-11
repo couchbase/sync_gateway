@@ -765,9 +765,9 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		slowQueryWarningThreshold = time.Duration(*config.SlowQueryWarningThresholdMs) * time.Millisecond
 	}
 
-	groupID := base.StringPtr(sc.config.Bootstrap.ConfigGroupID)
-	if *groupID == persistentConfigDefaultGroupID {
-		groupID = nil
+	groupID := sc.config.Bootstrap.ConfigGroupID
+	if groupID == persistentConfigDefaultGroupID {
+		groupID = ""
 	}
 
 	contextOptions := db.DatabaseContextOptions{

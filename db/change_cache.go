@@ -422,7 +422,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		return
 	}
 
-	if strings.HasPrefix(docID, base.SGCfgPrefix) {
+	if strings.HasPrefix(docID, base.SGCfgPrefix(c.context.Options.GroupID)) {
 		if c.cfgEventCallback != nil {
 			c.cfgEventCallback(docID, event.Cas, nil)
 		}

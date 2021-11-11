@@ -37,6 +37,7 @@ type DCPClient struct {
 	closeError        error                          // Will be set to a non-nil value for unexpected error
 	closeErrorLock    sync.Mutex                     // Synchronization on close error
 	failOnRollback    bool                           // When true, close when rollback detected
+	groupID           string                         // Used for adding config group ID to keys that use DCPCheckpointPrefix (Mark, Sweep, Cleanup)
 }
 
 type DCPClientOptions struct {
@@ -46,7 +47,7 @@ type DCPClientOptions struct {
 	InitialMetadata []DCPMetadata // When set, will be used as initial metadata for the DCP feed.  Will override any persisted metadata
 }
 
-func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, store CouchbaseStore) (*DCPClient, error) {
+func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, store CouchbaseStore, groupID string) (*DCPClient, error) {
 
 	numWorkers := defaultNumWorkers
 	if options.NumWorkers > 0 {
@@ -66,6 +67,7 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 		terminator:     make(chan bool),
 		doneChannel:    make(chan error, 1),
 		failOnRollback: options.FailOnRollback,
+		groupID:        groupID,
 	}
 
 	// Initialize active vbuckets
@@ -249,7 +251,7 @@ func (dc *DCPClient) startWorkers() {
 
 	//
 	for index, _ := range dc.workers {
-		dc.workers[index] = NewDCPWorker(dc.metadata, dc.callback, dc.onStreamEnd, dc.terminator, nil, nil)
+		dc.workers[index] = NewDCPWorker(dc.metadata, dc.callback, dc.onStreamEnd, dc.terminator, nil, dc.groupID, nil)
 		dc.workers[index].Start()
 	}
 }

@@ -147,7 +147,7 @@ type DatabaseContextOptions struct {
 	UserXattrKey              string // Key of user xattr that will be accessible from the Sync Function. If empty the feature will be disabled.
 	ClientPartitionWindow     time.Duration
 	BcryptCost                int
-	GroupID                   *string
+	GroupID                   string
 }
 
 type SGReplicateOptions struct {
@@ -369,7 +369,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	dbContext.SetOnChangeCallback(dbContext.changeCache.DocChanged)
 
 	// Initialize the tap Listener for notify handling
-	dbContext.mutationListener.Init(bucket.GetName())
+	dbContext.mutationListener.Init(bucket.GetName(), options.GroupID)
 
 	// Initialize sg cluster config.  Required even if import and sgreplicate are disabled
 	// on this node, to support replication REST API calls
@@ -696,7 +696,7 @@ func (context *DatabaseContext) RestartListener() error {
 	context.mutationListener.Stop()
 	// Delay needed to properly stop
 	time.Sleep(2 * time.Second)
-	context.mutationListener.Init(context.Bucket.GetName())
+	context.mutationListener.Init(context.Bucket.GetName(), context.Options.GroupID)
 	cacheFeedStatsMap := context.DbStats.Database().CacheFeedMapStats
 	if err := context.mutationListener.Start(context.Bucket, cacheFeedStatsMap.Map); err != nil {
 		return err
@@ -1157,12 +1157,7 @@ func (context *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err
 		Sync string
 	}
 
-	syncDataKey := base.SyncDataKey
-	if context.Options.GroupID != nil {
-		syncDataKey = syncDataKey + ":" + *context.Options.GroupID
-	}
-
-	_, err = context.Bucket.Update(syncDataKey, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
+	_, err = context.Bucket.Update(base.SyncDataKey(context.Options.GroupID), 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
 		// The first time opening a new db, currentValue will be nil. Don't treat this as a change.
 		if currentValue != nil {
 			parseErr := base.JSONUnmarshal(currentValue, &syncData)

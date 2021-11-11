@@ -66,7 +66,7 @@ type HeartbeatListener interface {
 type couchbaseHeartBeater struct {
 	bucket                  Bucket
 	keyPrefix               string
-	groupID                 *string
+	groupID                 string
 	nodeUUID                string
 	heartbeatSendInterval   time.Duration                // Heartbeat send interval
 	heartbeatExpirySeconds  uint32                       // Heartbeat expiry time (seconds)
@@ -84,7 +84,7 @@ type couchbaseHeartBeater struct {
 // the keyPrefix which will be prepended to the heartbeat doc keys,
 // and the nodeUUID, which is an opaque identifier for the "thing" that is using this
 // library.  nodeUUID will be passed to listeners on stale node detection.
-func NewCouchbaseHeartbeater(bucket Bucket, keyPrefix, nodeUUID string, groupID *string) (heartbeater *couchbaseHeartBeater, err error) {
+func NewCouchbaseHeartbeater(bucket Bucket, keyPrefix, nodeUUID, groupID string) (heartbeater *couchbaseHeartBeater, err error) {
 
 	heartbeater = &couchbaseHeartBeater{
 		bucket:                 bucket,
@@ -301,9 +301,9 @@ func (h *couchbaseHeartBeater) checkStaleHeartbeats() error {
 	return nil
 }
 
-func heartbeatTimeoutDocID(nodeUuid, keyPrefix string, groupID *string) string {
-	if groupID != nil {
-		return keyPrefix + "heartbeat_timeout:" + *groupID + ":" + nodeUuid
+func heartbeatTimeoutDocID(nodeUuid, keyPrefix, groupID string) string {
+	if groupID != "" {
+		return keyPrefix + groupID + ":heartbeat_timeout:" + nodeUuid
 	}
 	return keyPrefix + "heartbeat_timeout:" + nodeUuid
 }

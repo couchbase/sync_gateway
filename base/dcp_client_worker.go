@@ -33,7 +33,7 @@ type DCPWorkerOptions struct {
 	ignoreDeletes    bool
 }
 
-func NewDCPWorker(metadata DCPMetadataStore, mutationCallback sgbucket.FeedEventCallbackFunc, endCallback endStreamCallbackFunc, terminator chan bool, endSeqNos []uint64, options *DCPWorkerOptions) *DCPWorker {
+func NewDCPWorker(metadata DCPMetadataStore, mutationCallback sgbucket.FeedEventCallbackFunc, endCallback endStreamCallbackFunc, terminator chan bool, endSeqNos []uint64, groupID string, options *DCPWorkerOptions) *DCPWorker {
 
 	// Create a buffered channel for queueing incoming DCP events
 	queueLength := defaultQueueLength
@@ -46,7 +46,7 @@ func NewDCPWorker(metadata DCPMetadataStore, mutationCallback sgbucket.FeedEvent
 		eventFeed:             eventQueue,
 		terminator:            terminator,
 		endSeqNos:             endSeqNos,
-		checkpointPrefixBytes: []byte(DCPCheckpointPrefix),
+		checkpointPrefixBytes: []byte(DCPCheckpointPrefix(groupID)),
 		mutationCallback:      mutationCallback,
 		endStreamCallback:     endCallback,
 		ignoreDeletes:         options != nil && options.ignoreDeletes,

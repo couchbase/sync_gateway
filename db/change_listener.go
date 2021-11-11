@@ -36,16 +36,18 @@ type changeListener struct {
 	keyCounts             map[string]uint64      // Latest count at which each doc key was updated
 	OnDocChanged          DocChangedFunc         // Called when change arrives on feed
 	terminator            chan bool              // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
+	groupID               string
 }
 
 type DocChangedFunc func(event sgbucket.FeedEvent)
 
-func (listener *changeListener) Init(name string) {
+func (listener *changeListener) Init(name string, groupID string) {
 	listener.bucketName = name
 	listener.counter = 1
 	listener.terminateCheckCounter = 0
 	listener.keyCounts = map[string]uint64{}
 	listener.tapNotifier = sync.NewCond(&sync.Mutex{})
+	listener.groupID = groupID
 }
 
 // Starts a changeListener on a given Bucket.
@@ -59,6 +61,7 @@ func (listener *changeListener) Start(bucket base.Bucket, dbStats *expvar.Map) e
 		Backfill:   sgbucket.FeedNoBackfill,
 		Terminator: listener.terminator,
 		DoneChan:   make(chan struct{}),
+		GroupID:    listener.groupID,
 	}
 
 	return listener.StartMutationFeed(bucket, dbStats)
@@ -120,13 +123,13 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 			if listener.OnDocChanged != nil && event.Opcode == sgbucket.FeedOpMutation {
 				listener.OnDocChanged(event)
 			}
-		} else if strings.HasPrefix(key, base.DCPCheckpointPrefix) { // SG DCP checkpoint docs
+		} else if strings.HasPrefix(key, base.DCPCheckpointPrefix(listener.groupID)) { // SG DCP checkpoint docs
 			// Do not require checkpoint persistence when DCP checkpoint docs come back over DCP - otherwise
 			// we'll end up in a feedback loop for their vbucket if persistence is enabled
 			// NOTE: checkpoint persistence is disabled altogether for the caching feed.  Leaving this check in place
 			// defensively.
 			requiresCheckpointPersistence = false
-		} else if strings.HasPrefix(key, base.SGCfgPrefix) {
+		} else if strings.HasPrefix(key, base.SGCfgPrefix(listener.groupID)) {
 			if listener.OnDocChanged != nil {
 				listener.OnDocChanged(event)
 			}

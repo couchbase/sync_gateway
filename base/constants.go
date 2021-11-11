@@ -114,14 +114,12 @@ const (
 	Att2Prefix             = SyncPrefix + "att2:"
 	BackfillCompletePrefix = SyncPrefix + "backfill:complete:"
 	BackfillPendingPrefix  = SyncPrefix + "backfill:pending:"
-	DCPCheckpointPrefix    = SyncPrefix + "dcp_ck:"
 	RepairBackup           = SyncPrefix + "repair:backup:"
 	RepairDryRun           = SyncPrefix + "repair:dryrun:"
 	RevBodyPrefix          = SyncPrefix + "rb:"
 	RevPrefix              = SyncPrefix + "rev:"
 	RolePrefix             = SyncPrefix + "role:"
 	SessionPrefix          = SyncPrefix + "session:"
-	SGCfgPrefix            = SyncPrefix + "cfg"
 	SyncSeqPrefix          = SyncPrefix + "seq:"
 	UserEmailPrefix        = SyncPrefix + "useremail:"
 	UserPrefix             = SyncPrefix + "user:"
@@ -129,7 +127,6 @@ const (
 	UnusedSeqRangePrefix   = SyncPrefix + "unusedSeqs:"
 
 	DCPBackfillSeqKey = SyncPrefix + "dcp_backfill"
-	SyncDataKey       = SyncPrefix + "syncdata"
 	SyncSeqKey        = SyncPrefix + "seq"
 
 	PersistentConfigPrefix = SyncPrefix + "dbconfig:"
@@ -188,6 +185,27 @@ var (
 	// ErrUnknownField is marked as the cause of the error when trying to decode a JSON snippet with unknown fields
 	ErrUnknownField = errors.New("unrecognized JSON field")
 )
+
+func DCPCheckpointPrefix(groupID string) string {
+	if groupID != "" {
+		return SyncPrefix + groupID + ":dcp_ck:"
+	}
+	return SyncPrefix + "dcp_ck:"
+}
+
+func SGCfgPrefix(groupID string) string {
+	if groupID != "" {
+		return SyncPrefix + groupID + ":cfg:"
+	}
+	return SyncPrefix + "cfg"
+}
+
+func SyncDataKey(groupID string) string {
+	if groupID != "" {
+		return SyncPrefix + groupID + ":syncdata"
+	}
+	return SyncPrefix + "syncdata"
+}
 
 // UnitTestUrl returns the configured test URL.
 func UnitTestUrl() string {

@@ -47,7 +47,7 @@ func TestOneShotDCP(t *testing.T) {
 		OneShot: true,
 	}
 
-	dcpClient, err := NewDCPClient(feedID, counterCallback, clientOptions, store)
+	dcpClient, err := NewDCPClient(feedID, counterCallback, clientOptions, store, "")
 	assert.NoError(t, err)
 
 	// Add additional documents in a separate goroutine, to verify afterEndSeq handling
@@ -104,7 +104,7 @@ func TestTerminateDCPFeed(t *testing.T) {
 	assert.True(t, ok)
 	feedID := t.Name()
 
-	dcpClient, err := NewDCPClient(feedID, counterCallback, DCPClientOptions{}, store)
+	dcpClient, err := NewDCPClient(feedID, counterCallback, DCPClientOptions{}, store, "")
 	assert.NoError(t, err)
 
 	// Add documents in a separate goroutine
