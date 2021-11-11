@@ -2473,9 +2473,9 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 
 	assert.NoError(t, db.TombstoneCompactionManager.Start(map[string]interface{}{"database": db}))
 
-	waitAndAssertCondition(t, func() bool {
+	waitAndAssertConditionWithOptions(t, func() bool {
 		return db.TombstoneCompactionManager.GetRunState() == BackgroundProcessStateStopped
-	})
+	}, 60, 1000)
 
 	var tombstoneCompactionStatus TombstoneManagerResponse
 	status, err := db.TombstoneCompactionManager.GetStatus()
@@ -2487,14 +2487,18 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 	assert.Equal(t, QueryTombstoneBatch, int(tombstoneCompactionStatus.DocsPurged))
 }
 
-func waitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
-	for i := 0; i <= 20; i++ {
-		if i == 20 {
+func waitAndAssertConditionWithOptions(t *testing.T, fn func() bool, retryCount, msSleepTime int, failureMsgAndArgs ...interface{}) {
+	for i := 0; i <= retryCount; i++ {
+		if i == retryCount {
 			assert.Fail(t, "Condition failed to be satisfied", failureMsgAndArgs...)
 		}
 		if fn() {
 			break
 		}
-		time.Sleep(time.Millisecond * 100)
+		time.Sleep(time.Millisecond * time.Duration(msSleepTime))
 	}
+}
+
+func waitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
+	waitAndAssertConditionWithOptions(t, fn, 20, 100, failureMsgAndArgs...)
 }
