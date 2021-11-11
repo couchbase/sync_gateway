@@ -614,6 +614,18 @@ func NewAttachmentCompactionManager(bucket base.Bucket) *BackgroundManager {
 }
 
 func (a *AttachmentCompactionManager) Init(options map[string]interface{}, clusterStatus []byte) error {
+
+	newRunInit := func() error {
+		uniqueUUID, err := uuid.NewRandom()
+		if err != nil {
+			return err
+		}
+
+		a.CompactID = uniqueUUID.String()
+		base.Infof(base.KeyAll, "Attachment Compaction: Starting new compaction run with compact ID: %q", a.CompactID)
+		return nil
+	}
+
 	if clusterStatus != nil {
 		var attachmentResponseStatus AttachmentManagerResponse
 		err := base.JSONUnmarshal(clusterStatus, &attachmentResponseStatus)
@@ -629,13 +641,7 @@ func (a *AttachmentCompactionManager) Init(options map[string]interface{}, clust
 		// process from scratch with a new compaction ID. Otherwise, we should resume with the compact ID and phase
 		// specified in the doc.
 		if attachmentResponseStatus.State == BackgroundProcessStateCompleted || err != nil || (reset && ok) {
-			uniqueUUID, err := uuid.NewRandom()
-			if err != nil {
-				return err
-			}
-
-			a.CompactID = uniqueUUID.String()
-			base.Infof(base.KeyAll, "Attachment Compaction: Starting new compaction run with compact ID: %q", a.CompactID)
+			return newRunInit()
 		} else {
 			a.CompactID = attachmentResponseStatus.CompactID
 			a.Phase = attachmentResponseStatus.Phase
@@ -646,14 +652,7 @@ func (a *AttachmentCompactionManager) Init(options map[string]interface{}, clust
 
 	}
 
-	uniqueUUID, err := uuid.NewRandom()
-	if err != nil {
-		return err
-	}
-
-	a.CompactID = uniqueUUID.String()
-
-	return nil
+	return newRunInit()
 }
 
 func (a *AttachmentCompactionManager) Run(options map[string]interface{}, persistClusterStatusCallback updateStatusClusterAwareCallback, terminator chan struct{}) error {
