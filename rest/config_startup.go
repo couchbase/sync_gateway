@@ -11,7 +11,8 @@ import (
 
 const (
 	// persistentConfigDefaultGroupID is used when no explicit config Group ID is defined.
-	persistentConfigDefaultGroupID = "default"
+	persistentConfigDefaultGroupID   = "default"
+	persistentConfigGroupIDMaxLength = 100
 	// persistentConfigDefaultUpdateFrequency is a duration that defines how frequent configs are refreshed from Couchbase Server.
 	persistentConfigDefaultUpdateFrequency = time.Second * 10
 )

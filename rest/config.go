@@ -964,6 +964,10 @@ func (sc *StartupConfig) validate() (errorMessages error) {
 		}
 	}
 
+	if len(sc.Bootstrap.ConfigGroupID) > persistentConfigGroupIDMaxLength {
+		errorMessages = multierror.Append(errorMessages, fmt.Errorf("group_id must be at most %d characters in length", persistentConfigGroupIDMaxLength))
+	}
+
 	return errorMessages
 }
 
