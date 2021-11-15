@@ -3893,7 +3893,7 @@ func TestTombstoneCompaction(t *testing.T) {
 
 		err := rt.WaitForCondition(func() bool {
 			time.Sleep(1 * time.Second)
-			return rt.GetDatabase().TombstoneCompactionManager.GetRunState() == db.BackgroundProcessStateStopped
+			return rt.GetDatabase().TombstoneCompactionManager.GetRunState() == db.BackgroundProcessStateCompleted
 		})
 		assert.NoError(t, err)
 

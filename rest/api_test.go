@@ -9203,7 +9203,7 @@ func TestTombstoneCompactionAPI(t *testing.T) {
 	err := base.JSONUnmarshal(resp.BodyBytes(), &tombstoneCompactionStatus)
 	assert.NoError(t, err)
 
-	assert.Equal(t, db.BackgroundProcessStateStopped, tombstoneCompactionStatus.State)
+	assert.Equal(t, db.BackgroundProcessStateCompleted, tombstoneCompactionStatus.State)
 	assert.Empty(t, tombstoneCompactionStatus.LastErrorMessage)
 	assert.Equal(t, 0, int(tombstoneCompactionStatus.DocsPurged))
 
@@ -9217,7 +9217,7 @@ func TestTombstoneCompactionAPI(t *testing.T) {
 		err = base.JSONUnmarshal(resp.BodyBytes(), &tombstoneCompactionStatus)
 		assert.NoError(t, err)
 
-		return tombstoneCompactionStatus.State == db.BackgroundProcessStateStopped
+		return tombstoneCompactionStatus.State == db.BackgroundProcessStateCompleted
 	})
 	assert.NoError(t, err)
 
@@ -9226,7 +9226,7 @@ func TestTombstoneCompactionAPI(t *testing.T) {
 	err = base.JSONUnmarshal(resp.BodyBytes(), &tombstoneCompactionStatus)
 	assert.NoError(t, err)
 
-	assert.Equal(t, db.BackgroundProcessStateStopped, tombstoneCompactionStatus.State)
+	assert.Equal(t, db.BackgroundProcessStateCompleted, tombstoneCompactionStatus.State)
 	assert.Empty(t, tombstoneCompactionStatus.LastErrorMessage)
 
 	if base.TestUseXattrs() {

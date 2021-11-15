@@ -578,7 +578,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	dbContext.ResyncManager = NewResyncManager()
 	dbContext.TombstoneCompactionManager = NewTombstoneCompactionManager()
-	dbContext.AttachmentCompactionManager = NewAttachmentCompactionManager()
+	dbContext.AttachmentCompactionManager = NewAttachmentCompactionManager(bucket)
 
 	return dbContext, nil
 }

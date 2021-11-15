@@ -119,7 +119,8 @@ func Mark(db *Database, compactionID string, terminator chan struct{}, markedAtt
 	}
 
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for mark phase of attachment compaction", compactionLoggingID)
-	dcpClient, err := base.NewDCPClient(compactionID, callback, clientOptions, cbStore)
+	dcpFeedKey := compactionID + "_mark"
+	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, cbStore)
 	if err != nil {
 		return 0, err
 	}
@@ -318,7 +319,8 @@ func Sweep(db *Database, compactionID string, terminator chan struct{}, purgedAt
 	}
 
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for sweep phase of attachment compaction", compactionLoggingID)
-	dcpClient, err := base.NewDCPClient(compactionID, callback, clientOptions, cbStore)
+	dcpFeedKey := compactionID + "_sweep"
+	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, cbStore)
 	if err != nil {
 		return 0, err
 	}
@@ -434,7 +436,8 @@ func Cleanup(db *Database, compactionID string, terminator chan struct{}) error 
 	}
 
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for cleanup phase of attachment compaction", compactionLoggingID)
-	dcpClient, err := base.NewDCPClient(compactionID, callback, clientOptions, cbStore)
+	dcpFeedKey := compactionID + "_cleanup"
+	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, cbStore)
 	if err != nil {
 		return err
 	}

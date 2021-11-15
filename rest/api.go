@@ -158,6 +158,7 @@ func (h *handler) handleCompact() error {
 		if action == string(db.BackgroundProcessActionStart) {
 			err := h.db.AttachmentCompactionManager.Start(map[string]interface{}{
 				"database": h.db,
+				"reset":    h.getBoolQuery("reset"),
 			})
 			if err != nil {
 				return err

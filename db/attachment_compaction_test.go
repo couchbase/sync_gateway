@@ -280,6 +280,116 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 	}
 }
 
+func TestAttachmentCompactionRunTwice(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
+	defer b.Close()
+
+	testDB1 := setupTestDBForBucket(t, b)
+	defer testDB1.Close()
+
+	testDB2 := setupTestDBForBucket(t, b.NoCloseClone())
+	defer testDB2.Close()
+
+	var err error
+
+	leakyBucket, ok := base.AsLeakyBucket(testDB1.Bucket)
+	require.True(t, ok)
+
+	triggerCallback := false
+	triggerStopCallback := false
+	leakyBucket.SetGetRawCallback(func(s string) {
+		if triggerCallback {
+			err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2})
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "Process already running")
+			triggerCallback = false
+		}
+		if triggerStopCallback {
+			triggerStopCallback = false
+			err = testDB2.AttachmentCompactionManager.Stop()
+			assert.NoError(t, err)
+		}
+	})
+
+	// Trigger start with immediate stop (stopped from db2)
+	triggerStopCallback = true
+	err = testDB1.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB1})
+	assert.NoError(t, err)
+
+	err = WaitForConditionWithOptions(func() bool {
+		var status AttachmentManagerResponse
+		rawStatus, err := testDB1.AttachmentCompactionManager.GetStatus()
+		assert.NoError(t, err)
+		err = base.JSONUnmarshal(rawStatus, &status)
+		assert.NoError(t, err)
+
+		if status.State == BackgroundProcessStateStopped {
+			return true
+		}
+
+		return false
+	}, 200, 1000)
+
+	// Kick off another run with an attempted start from the other node, checks for error on other node
+	triggerCallback = true
+	err = testDB1.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB1})
+	assert.NoError(t, err)
+
+	err = WaitForConditionWithOptions(func() bool {
+		var status AttachmentManagerResponse
+		rawStatus, err := testDB1.AttachmentCompactionManager.GetStatus()
+		assert.NoError(t, err)
+		err = base.JSONUnmarshal(rawStatus, &status)
+		assert.NoError(t, err)
+
+		if status.State == BackgroundProcessStateCompleted {
+			return true
+		}
+
+		return false
+	}, 200, 1000)
+	assert.NoError(t, err)
+
+	var testDB1Status AttachmentManagerResponse
+	var testDB2Status AttachmentManagerResponse
+
+	testDB1RawStatus, err := testDB1.AttachmentCompactionManager.GetStatus()
+	assert.NoError(t, err)
+	testDB2RawStatus, err := testDB2.AttachmentCompactionManager.GetStatus()
+	assert.NoError(t, err)
+
+	err = base.JSONUnmarshal(testDB1RawStatus, &testDB1Status)
+	assert.NoError(t, err)
+	err = base.JSONUnmarshal(testDB2RawStatus, &testDB2Status)
+	assert.NoError(t, err)
+
+	assert.Equal(t, BackgroundProcessStateCompleted, testDB1Status.State)
+	assert.Equal(t, BackgroundProcessStateCompleted, testDB2Status.State)
+	assert.Equal(t, testDB1Status.CompactID, testDB2Status.CompactID)
+
+}
+
+func WaitForConditionWithOptions(successFunc func() bool, maxNumAttempts, timeToSleepMs int) error {
+	waitForSuccess := func() (shouldRetry bool, err error, value interface{}) {
+		if successFunc() {
+			return false, nil, nil
+		}
+		return true, nil, nil
+	}
+
+	sleeper := base.CreateSleeperFunc(maxNumAttempts, timeToSleepMs)
+	err, _ := base.RetryLoop("Wait for condition options", waitForSuccess, sleeper)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func CreateLegacyAttachmentDoc(t *testing.T, db *Database, docID string, body []byte, attID string, attBody []byte) string {
 	if !base.TestUseXattrs() {
 		t.Skip("Requires xattrs")

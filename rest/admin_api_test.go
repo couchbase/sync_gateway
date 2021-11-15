@@ -1231,7 +1231,7 @@ func TestDBOfflinePostResync(t *testing.T) {
 		var status db.ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
-		return status.State == db.BackgroundProcessStateStopped
+		return status.State == db.BackgroundProcessStateCompleted
 	})
 	assert.NoError(t, err)
 }
@@ -1281,7 +1281,7 @@ func TestDBOfflineSingleResync(t *testing.T) {
 		var status db.ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
-		return status.State == db.BackgroundProcessStateStopped
+		return status.State == db.BackgroundProcessStateCompleted
 	})
 	assert.NoError(t, err)
 
@@ -1361,7 +1361,7 @@ func TestResync(t *testing.T) {
 				response := rt.SendAdminRequest("GET", "/db/_resync", "")
 				err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
 				assert.NoError(t, err)
-				return resyncManagerStatus.State == db.BackgroundProcessStateStopped
+				return resyncManagerStatus.State == db.BackgroundProcessStateCompleted
 			})
 			assert.NoError(t, err)
 
@@ -1462,7 +1462,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 		var status db.ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
-		return status.State == db.BackgroundProcessStateStopped
+		return status.State == db.BackgroundProcessStateCompleted
 	})
 	assert.NoError(t, err)
 
@@ -1481,7 +1481,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 		var status db.ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
-		return status.State == db.BackgroundProcessStateStopped
+		return status.State == db.BackgroundProcessStateCompleted
 	})
 	assert.NoError(t, err)
 
@@ -1688,7 +1688,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	assertStatus(t, response, http.StatusOK)
 
 	err = rt.WaitForCondition(func() bool {
-		return rt.GetDatabase().ResyncManager.GetRunState() == db.BackgroundProcessStateStopped
+		return rt.GetDatabase().ResyncManager.GetRunState() == db.BackgroundProcessStateCompleted
 	})
 	assert.NoError(t, err)
 
