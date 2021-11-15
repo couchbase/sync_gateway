@@ -109,51 +109,66 @@ func TestParseFlags(t *testing.T) {
 }
 
 func TestSanitizeDbConfigs(t *testing.T) {
-	expectedError := "automatic upgrade to persistent config requires each database config to have a server address specified that are all matching in the 2.x config"
+	serverAddressErrorString := "automatic upgrade to persistent config requires each database config to have a server address specified that are all matching in the 2.x config"
 	testCases := []struct {
-		name  string
-		input DbConfigMap
-		error bool
+		name          string
+		input         DbConfigMap
+		expectedError string
 	}{
 		{
-			name:  "Nil server",
-			input: DbConfigMap{"1": &DbConfig{}},
-			error: true,
+			name:          "Nil server",
+			input:         DbConfigMap{"1": &DbConfig{}},
+			expectedError: serverAddressErrorString,
 		},
 		{
-			name:  "Empty server",
-			input: DbConfigMap{"1": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("")}}},
-			error: true,
+			name:          "Empty server",
+			input:         DbConfigMap{"1": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("")}}},
+			expectedError: serverAddressErrorString,
 		},
 		{
 			name: "Filled in server, and nil server",
 			input: DbConfigMap{"1": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("1.2.3.4")}},
 				"2": &DbConfig{}},
-			error: true,
+			expectedError: serverAddressErrorString,
 		},
 		{
 			name: "Filled in server, and empty server",
 			input: DbConfigMap{"1": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("")}},
 				"2": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("1.2.3.4")}}},
-			error: true,
+			expectedError: serverAddressErrorString,
 		},
 		{
 			name: "Filled in matching servers",
 			input: DbConfigMap{"1": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("1.2.3.4")}},
 				"2": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("1.2.3.4")}}},
-			error: false,
+		},
+		{
+			name: "Multiple buckets with same db",
+			input: DbConfigMap{
+				"db": &DbConfig{
+					BucketConfig: BucketConfig{Server: base.StringPtr("1.2.3.4"), Bucket: base.StringPtr("bucket")},
+				},
+				"db2": &DbConfig{
+					BucketConfig: BucketConfig{Server: base.StringPtr("1.2.3.4"), Bucket: base.StringPtr("bucket")},
+				},
+			},
+			expectedError: "automatic upgrade to persistent config failed. Only one database can target any given bucket",
 		},
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			dbConfigMap, err := sanitizeDbConfigs(test.input)
-			if test.error {
-				assert.Nil(t, dbConfigMap)
-				require.Error(t, err)
-				assert.EqualError(t, err, expectedError)
+
+			if test.expectedError == "" {
+				assert.NoError(t, err)
 				return
 			}
-			assert.NoError(t, err)
+
+			assert.Nil(t, dbConfigMap)
+			require.Error(t, err)
+			assert.EqualError(t, err, test.expectedError)
+			return
+
 		})
 	}
 }
