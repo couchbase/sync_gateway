@@ -152,7 +152,8 @@ func TestSanitizeDbConfigs(t *testing.T) {
 					BucketConfig: BucketConfig{Server: base.StringPtr("1.2.3.4"), Bucket: base.StringPtr("bucket")},
 				},
 			},
-			expectedError: "automatic upgrade to persistent config failed. Only one database can target any given bucket",
+			// Cannot specify bucket names exactly due to un-deterministic iteration over map
+			expectedError: "automatic upgrade to persistent config failed. Only one database can target any given bucket. bucket used by",
 		},
 	}
 	for _, test := range testCases {
@@ -172,7 +173,7 @@ func TestSanitizeDbConfigs(t *testing.T) {
 
 			assert.Nil(t, dbConfigMap)
 			require.Error(t, err)
-			assert.EqualError(t, err, test.expectedError)
+			assert.Contains(t, err.Error(), test.expectedError)
 			return
 
 		})
