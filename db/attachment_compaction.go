@@ -3,7 +3,6 @@ package db
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -115,11 +114,6 @@ func Mark(db *Database, compactionID string, terminator *base.SafeTerminator, ma
 		return true
 	}
 
-	cbStore, ok := base.AsCouchbaseStore(db.Bucket)
-	if !ok {
-		return 0, nil, fmt.Errorf("bucket is not a Couchbase Store")
-	}
-
 	clientOptions := base.DCPClientOptions{
 		OneShot:        true,
 		FailOnRollback: true,
@@ -127,7 +121,7 @@ func Mark(db *Database, compactionID string, terminator *base.SafeTerminator, ma
 
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for mark phase of attachment compaction", compactionLoggingID)
 	dcpFeedKey := compactionID + "_mark"
-	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, cbStore, db.Options.GroupID)
+	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, db.Bucket, db.Options.GroupID)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -320,11 +314,6 @@ func Sweep(db *Database, compactionID string, vbUUIDs []uint64, dryRun bool, ter
 		return true
 	}
 
-	cbStore, ok := base.AsCouchbaseStore(db.Bucket)
-	if !ok {
-		return 0, fmt.Errorf("bucket is not a Couchbase Store")
-	}
-
 	clientOptions := base.DCPClientOptions{
 		OneShot:         true,
 		FailOnRollback:  true,
@@ -333,7 +322,7 @@ func Sweep(db *Database, compactionID string, vbUUIDs []uint64, dryRun bool, ter
 
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for sweep phase of attachment compaction", compactionLoggingID)
 	dcpFeedKey := compactionID + "_sweep"
-	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, cbStore, db.Options.GroupID)
+	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, db.Bucket, db.Options.GroupID)
 	if err != nil {
 		return 0, err
 	}
@@ -439,11 +428,6 @@ func Cleanup(db *Database, compactionID string, vbUUIDs []uint64, terminator *ba
 		return true
 	}
 
-	cbStore, ok := base.AsCouchbaseStore(db.Bucket)
-	if !ok {
-		return fmt.Errorf("bucket is not a Couchbase Store")
-	}
-
 	clientOptions := base.DCPClientOptions{
 		OneShot:         true,
 		FailOnRollback:  true,
@@ -452,7 +436,7 @@ func Cleanup(db *Database, compactionID string, vbUUIDs []uint64, terminator *ba
 
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for cleanup phase of attachment compaction", compactionLoggingID)
 	dcpFeedKey := compactionID + "_cleanup"
-	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, cbStore, db.Options.GroupID)
+	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, db.Bucket, db.Options.GroupID)
 	if err != nil {
 		return err
 	}

@@ -20,39 +20,47 @@ const defaultNumWorkers = 8
 type endStreamCallbackFunc func(e endStreamEvent)
 
 type DCPClient struct {
-	ID                string                         // unique ID for DCPClient - used for DCP stream name, must be unique
-	agent             *gocbcore.DCPAgent             // SDK DCP agent, manages connections and calls back to DCPClient stream observer implementation
-	callback          sgbucket.FeedEventCallbackFunc // Callback invoked on DCP mutations/deletions
-	workers           []*DCPWorker                   // Workers for concurrent processing of incoming mutations and callback.  vbuckets are partitioned across workers
-	spec              BucketSpec                     // Bucket spec for the target data store
-	numVbuckets       uint16                         // number of vbuckets on target data store
-	terminator        chan bool                      // Used to close worker goroutines spawned by the DCPClient
-	doneChannel       chan error                     // Returns nil on successful completion of one-shot feed or external close of feed, error otherwise
-	metadata          DCPMetadataStore               // Implementation of DCPMetadataStore for metadata persistence
-	activeVbuckets    map[uint16]struct{}            // vbuckets that have an open stream
-	activeVbucketLock sync.Mutex                     // Synchronization for activeVbuckets
-	oneShot           bool                           // Whether DCP feed should be one-shot
-	endSeqNos         []uint64                       // endSeqNos for one-shot DCP feeds
-	closing           AtomicBool                     // Set when the client is closing (either due to internal or external request)
-	closeError        error                          // Will be set to a non-nil value for unexpected error
-	closeErrorLock    sync.Mutex                     // Synchronization on close error
-	failOnRollback    bool                           // When true, close when rollback detected
-	checkpointPrefix  string                         // DCP checkpoint key prefix
+	ID                         string                         // unique ID for DCPClient - used for DCP stream name, must be unique
+	agent                      *gocbcore.DCPAgent             // SDK DCP agent, manages connections and calls back to DCPClient stream observer implementation
+	callback                   sgbucket.FeedEventCallbackFunc // Callback invoked on DCP mutations/deletions
+	workers                    []*DCPWorker                   // Workers for concurrent processing of incoming mutations and callback.  vbuckets are partitioned across workers
+	spec                       BucketSpec                     // Bucket spec for the target data store
+	numVbuckets                uint16                         // number of vbuckets on target data store
+	terminator                 chan bool                      // Used to close worker goroutines spawned by the DCPClient
+	doneChannel                chan error                     // Returns nil on successful completion of one-shot feed or external close of feed, error otherwise
+	metadata                   DCPMetadataStore               // Implementation of DCPMetadataStore for metadata persistence
+	activeVbuckets             map[uint16]struct{}            // vbuckets that have an open stream
+	activeVbucketLock          sync.Mutex                     // Synchronization for activeVbuckets
+	oneShot                    bool                           // Whether DCP feed should be one-shot
+	endSeqNos                  []uint64                       // endSeqNos for one-shot DCP feeds
+	closing                    AtomicBool                     // Set when the client is closing (either due to internal or external request)
+	closeError                 error                          // Will be set to a non-nil value for unexpected error
+	closeErrorLock             sync.Mutex                     // Synchronization on close error
+	failOnRollback             bool                           // When true, close when rollback detected
+	checkpointPrefix           string                         // DCP checkpoint key prefix
+	checkpointPersistFrequency *time.Duration                 // Used to override the default checkpoint persistence frequency
 }
 
 type DCPClientOptions struct {
-	NumWorkers      int
-	OneShot         bool
-	FailOnRollback  bool          // When true, the DCP client will terminate on DCP rollback
-	InitialMetadata []DCPMetadata // When set, will be used as initial metadata for the DCP feed.  Will override any persisted metadata
+	NumWorkers                 int
+	OneShot                    bool
+	FailOnRollback             bool           // When true, the DCP client will terminate on DCP rollback
+	InitialMetadata            []DCPMetadata  // When set, will be used as initial metadata for the DCP feed.  Will override any persisted metadata
+	CheckpointPersistFrequency *time.Duration // Overrides metadata persistence frequency - intended for test use
 }
 
-func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, store CouchbaseStore, groupID string) (*DCPClient, error) {
+func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket Bucket, groupID string) (*DCPClient, error) {
 
 	numWorkers := defaultNumWorkers
 	if options.NumWorkers > 0 {
 		numWorkers = options.NumWorkers
 	}
+
+	store, ok := AsCouchbaseStore(bucket)
+	if !ok {
+		return nil, errors.New("DCP Client requires bucket to be CouchbaseStore")
+	}
+
 	numVbuckets, err := store.GetMaxVbno()
 	if err != nil {
 		return nil, fmt.Errorf("Unable to determine maxVbNo when creating DCP client: %w", err)
@@ -76,7 +84,9 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 		client.activeVbuckets[vbNo] = struct{}{}
 	}
 
-	client.metadata = NewDCPMetadataMem(numVbuckets)
+	checkpointPrefix := fmt.Sprintf("%s:%v", client.checkpointPrefix, ID)
+	client.metadata = NewDCPMetadataCS(bucket, numVbuckets, numWorkers, checkpointPrefix)
+
 	if options.InitialMetadata != nil {
 		for vbID, meta := range options.InitialMetadata {
 			client.metadata.SetMeta(uint16(vbID), meta)
@@ -97,6 +107,7 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 
 		// Set endSeqNos on client metadata for use when opening streams
 		client.metadata.SetEndSeqNos(highSeqnos)
+		client.oneShot = true
 	}
 
 	return client, nil
@@ -138,7 +149,7 @@ func (dc *DCPClient) GetMetadata() []DCPMetadata {
 // closes that channel.
 func (dc *DCPClient) close() {
 
-	// set dc.closing to true, avoid retriggering close if it's already in progress
+	// set dc.closing to true, avoid re-triggering close if it's already in progress
 	if !dc.closing.CompareAndSwap(false, true) {
 		Infof(KeyDCP, "DCP Client close called - client is already closing")
 		return
@@ -251,7 +262,10 @@ func (dc *DCPClient) startWorkers() {
 
 	//
 	for index, _ := range dc.workers {
-		dc.workers[index] = NewDCPWorker(dc.metadata, dc.callback, dc.onStreamEnd, dc.terminator, nil, dc.checkpointPrefix, nil)
+		options := &DCPWorkerOptions{
+			metaPersistFrequency: dc.checkpointPersistFrequency,
+		}
+		dc.workers[index] = NewDCPWorker(index, dc.metadata, dc.callback, dc.onStreamEnd, dc.terminator, nil, dc.checkpointPrefix, assignedVbs[index], options)
 		dc.workers[index].Start()
 	}
 }
@@ -320,11 +334,11 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 	}
 	_, openErr := dc.agent.OpenStream(vbID,
 		memd.DcpStreamAddFlagActiveOnly,
-		vbMeta.vbUUID,
-		vbMeta.startSeqNo,
-		vbMeta.endSeqNo,
-		vbMeta.snapStartSeqNo,
-		vbMeta.snapEndSeqNo,
+		vbMeta.VbUUID,
+		vbMeta.StartSeqNo,
+		vbMeta.EndSeqNo,
+		vbMeta.SnapStartSeqNo,
+		vbMeta.SnapEndSeqNo,
 		dc,
 		options,
 		openStreamCallback)
@@ -341,23 +355,23 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 	}
 }
 
-// verifyAndUpdateFailoverLog checks for vbUUID changes when failOnRollback is set, and
-// writes the failover log to the client metadata store.  If previous vbUUID is zero, it's
+// verifyAndUpdateFailoverLog checks for VbUUID changes when failOnRollback is set, and
+// writes the failover log to the client metadata store.  If previous VbUUID is zero, it's
 // not considered a rollback - it's not required to initialize vbUUIDs into meta.
 func (dc *DCPClient) verifyAndUpdateFailoverLog(vbID uint16, f []gocbcore.FailoverEntry) error {
 
 	if dc.failOnRollback {
 		previousMeta := dc.metadata.GetMeta(vbID)
-		// Cases where vbUUID and startSeqNo aren't set aren't considered rollback
-		if previousMeta.vbUUID == 0 && previousMeta.startSeqNo == 0 {
+		// Cases where VbUUID and StartSeqNo aren't set aren't considered rollback
+		if previousMeta.VbUUID == 0 && previousMeta.StartSeqNo == 0 {
 			dc.metadata.SetFailoverEntries(vbID, f)
 			return nil
 		}
 
 		currentVbUUID := getLatestVbUUID(f)
 		// if previousVbUUID hasn't been set yet (is zero), don't treat as rollback.
-		if previousMeta.vbUUID != currentVbUUID {
-			return errors.New("vbUUID mismatch when failOnRollback set")
+		if previousMeta.VbUUID != currentVbUUID {
+			return errors.New("VbUUID mismatch when failOnRollback set")
 		}
 	}
 	dc.metadata.SetFailoverEntries(vbID, f)
@@ -371,6 +385,10 @@ func (dc *DCPClient) deactivateVbucket(vbID uint16) {
 	dc.activeVbucketLock.Unlock()
 	if activeCount == 0 {
 		dc.close()
+		// On successful one-shot feed completion, purge persisted checkpoints
+		if dc.oneShot {
+			dc.metadata.Purge(len(dc.workers))
+		}
 	}
 }
 
@@ -400,7 +418,6 @@ func (dc *DCPClient) onStreamEnd(e endStreamEvent) {
 }
 
 func (dc *DCPClient) fatalError(err error) {
-	Errorf("DCP client failed with error, closing: %v", err)
 	dc.setCloseError(err)
 	dc.close()
 }
@@ -425,7 +442,7 @@ func (dc *DCPClient) getCloseError() error {
 	return dc.closeError
 }
 
-// getVbUUID returns the vbUUID for the given sequence in the failover log. (the most
+// getVbUUID returns the VbUUID for the given sequence in the failover log. (the most
 // recent failover log entry where log.SeqNo is less than the given sequence)
 func getVbUUID(failoverLog []gocbcore.FailoverEntry, seq gocbcore.SeqNo) (vbUUID gocbcore.VbUUID) {
 	for i := len(failoverLog) - 1; i >= 0; i-- {
@@ -436,7 +453,7 @@ func getVbUUID(failoverLog []gocbcore.FailoverEntry, seq gocbcore.SeqNo) (vbUUID
 	return 0
 }
 
-// getLatestVbUUID returns the vbUUID associated with the highest sequence in the failover log
+// getLatestVbUUID returns the VbUUID associated with the highest sequence in the failover log
 func getLatestVbUUID(failoverLog []gocbcore.FailoverEntry) (vbUUID gocbcore.VbUUID) {
 	if len(failoverLog) == 0 {
 		return 0
