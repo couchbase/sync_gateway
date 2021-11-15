@@ -3938,7 +3938,7 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 	"use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
 	"num_index_replicas": 0 }`
 
-	add, err := tb.Add("TestImportDocBeforeOffline", 0, db.Document{ID: "TestImportDocBeforeOffline", RevID: "1-abc"})
+	add, err := tb.Add("TestImportDoc", 0, db.Document{ID: "TestImportDoc", RevID: "1-abc"})
 	require.NoError(t, err)
 	require.Equal(t, true, add)
 
@@ -3990,19 +3990,8 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/TestSyncDoc", "{}")
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
-	add, err = tb.Add("TestImportDocAfterOffline", 0, db.Document{ID: "TestImportDocAfterOffline", RevID: "1-abc"})
-	require.NoError(t, err)
-	require.Equal(t, true, add)
-
-	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
-		resp = bootstrapAdminRequest(t, http.MethodGet, "/db/TestImportDocAfterOffline", "")
-		if resp.StatusCode != http.StatusOK {
-			return true, nil, resp
-		}
-		return false, nil, resp
-	}
-	err, _ = base.RetryLoop("wait for doc import", retryWorker, base.CreateSleeperFunc(10, 100))
-	assert.NoError(t, err)
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/TestImportDoc", "")
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
 func TestSetFunctionsWhileDbOffline(t *testing.T) {
