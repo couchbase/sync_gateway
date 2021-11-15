@@ -3797,14 +3797,6 @@ func TestDbOfflineConfigLegacy(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.Code)
 	dbConfigBeforeOffline := string(resp.BodyBytes())
 
-	resp = rt.SendAdminRequest("GET", "/db/_config/import_filter", "")
-	require.Equal(t, http.StatusOK, resp.Code)
-	importFilterBeforeOffline := string(resp.BodyBytes())
-
-	resp = rt.SendAdminRequest("GET", "/db/_config/sync", "")
-	require.Equal(t, http.StatusOK, resp.Code)
-	syncFuncBeforeOffline := string(resp.BodyBytes())
-
 	// Take DB offline
 	resp = rt.SendAdminRequest("POST", "/db/_offline", "")
 	require.Equal(t, http.StatusOK, resp.Code)
@@ -3813,14 +3805,6 @@ func TestDbOfflineConfigLegacy(t *testing.T) {
 	resp = rt.SendAdminRequest("GET", "/db/_config", "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 	assert.Equal(t, dbConfigBeforeOffline, string(resp.BodyBytes()))
-
-	resp = rt.SendAdminRequest("GET", "/db/_config/import_filter", "")
-	assert.Equal(t, http.StatusOK, resp.Code)
-	assert.Equal(t, importFilterBeforeOffline, string(resp.BodyBytes()))
-
-	resp = rt.SendAdminRequest("GET", "/db/_config/sync", "")
-	assert.Equal(t, http.StatusOK, resp.Code)
-	assert.Equal(t, syncFuncBeforeOffline, string(resp.BodyBytes()))
 }
 
 func TestDbOfflineConfigPersistent(t *testing.T) {
@@ -3946,17 +3930,28 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 	dbConfig := `{
 	"bucket": "` + tb.GetName() + `",
 	"name": "db",
-	"sync": "function(doc){ channel(doc.channels); }",
-	"import_filter": "function(doc) { return true }",
-	"import_docs": false,
+	"sync": "function(doc){ throw({forbidden : \"Rejected document\"}) }",
+	"import_filter": "function(doc) { return false }",
+	"import_docs": true,
 	"offline": false,
 	"enable_shared_bucket_access": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
 	"use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
 	"num_index_replicas": 0 }`
 
+	add, err := tb.Add("TestImportDocBeforeOffline", 0, db.Document{ID: "TestImportDocBeforeOffline", RevID: "1-abc"})
+	require.NoError(t, err)
+	require.Equal(t, true, add)
+
 	// Create initial database
 	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	// Make sure import and sync fail
+	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/TestSyncDoc", "{}")
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/TestImportDoc", "")
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 
 	// Take DB offline
 	resp = bootstrapAdminRequest(t, http.MethodPost, "/db/_offline", "")
@@ -3991,6 +3986,23 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 	syncFuncAfterOnline := respBuf.String()
 	require.NoError(t, resp.Body.Close())
 	assert.Equal(t, "", syncFuncAfterOnline)
+
+	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/TestSyncDoc", "{}")
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	add, err = tb.Add("TestImportDocAfterOffline", 0, db.Document{ID: "TestImportDocAfterOffline", RevID: "1-abc"})
+	require.NoError(t, err)
+	require.Equal(t, true, add)
+
+	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
+		resp = bootstrapAdminRequest(t, http.MethodGet, "/db/TestImportDocAfterOffline", "")
+		if resp.StatusCode != http.StatusOK {
+			return true, nil, resp
+		}
+		return false, nil, resp
+	}
+	err, _ = base.RetryLoop("wait for doc import", retryWorker, base.CreateSleeperFunc(10, 100))
+	assert.NoError(t, err)
 }
 
 func TestSetFunctionsWhileDbOffline(t *testing.T) {
