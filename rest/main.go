@@ -273,6 +273,8 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 func sanitizeDbConfigs(configMap DbConfigMap) (DbConfigMap, error) {
 	var databaseServerAddress string
 
+	processedBucketDbNames := make(map[string]string, len(configMap))
+
 	for dbName, dbConfig := range configMap {
 		if dbConfig.Server == nil || *dbConfig.Server == "" {
 			return nil, fmt.Errorf("automatic upgrade to persistent config requires each database config to have a server " +
@@ -302,6 +304,13 @@ func sanitizeDbConfigs(configMap DbConfigMap) (DbConfigMap, error) {
 		dbConfig.CertPath = ""
 		dbConfig.KeyPath = ""
 		dbConfig.CACertPath = ""
+
+		if dbNameConflicting, ok := processedBucketDbNames[*dbConfig.Bucket]; ok {
+			return nil, fmt.Errorf("automatic upgrade to persistent config failed. Only one database can "+
+				"target any given bucket. %s used by %s and %s", *dbConfig.Bucket, dbName, dbNameConflicting)
+		}
+
+		processedBucketDbNames[*dbConfig.Bucket] = dbName
 
 		// Make sure any updates are written back to the config
 		configMap[dbName] = dbConfig
