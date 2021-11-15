@@ -38,7 +38,7 @@ func (il *importListener) RegisterImportPindexImpl() {
 // NewImportPIndexImpl is called when the node is first added to the cbgt cfg.  On a node restart,
 // OpenImportPindexImpl is called, and indexParams aren't included.
 func (il *importListener) NewImportPIndexImpl(indexType, indexParams, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
-
+	defer base.FatalPanicHandler()
 	importDest, err := il.NewImportDest()
 	if err != nil {
 		base.Errorf("Error creating NewImportDest during NewImportPIndexImpl: %v", err)
