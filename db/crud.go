@@ -910,7 +910,6 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 		}
 
 		// move _attachment metadata to syncdata of doc after rev-id generation
-		//doc.SyncData.Attachments = newDoc.DocAttachments
 		newDoc.RevID = newRev
 		newDoc.Deleted = deleted
 
@@ -1029,7 +1028,6 @@ func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHi
 			return nil, nil, false, nil, err
 		}
 
-		//doc.SyncData.Attachments = newDoc.DocAttachments
 		newDoc.RevID = newRev
 
 		return newDoc, newAttachments, false, nil, nil

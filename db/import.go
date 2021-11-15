@@ -320,6 +320,8 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		// to ensure obsolete attachments are removed from the bucket.
 		if isDelete {
 			doc.SyncData.Attachments = nil
+		} else {
+			newDoc.DocAttachments = doc.SyncData.Attachments
 		}
 
 		return newDoc, nil, !shouldGenerateNewRev, updatedExpiry, nil
