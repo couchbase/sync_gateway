@@ -161,6 +161,12 @@ func TestSanitizeDbConfigs(t *testing.T) {
 
 			if test.expectedError == "" {
 				assert.NoError(t, err)
+
+				for cfgIdx, dbConfig := range dbConfigMap {
+					assert.Nil(t, dbConfig.Server)
+					assert.Nil(t, test.input[cfgIdx].Server)
+				}
+
 				return
 			}
 

@@ -305,9 +305,6 @@ func sanitizeDbConfigs(configMap DbConfigMap) (DbConfigMap, error) {
 		dbConfig.KeyPath = ""
 		dbConfig.CACertPath = ""
 
-		// Make sure any updates are written back to the config
-		configMap[dbName] = dbConfig
-
 		if _, ok := processedBucketNames[*dbConfig.Bucket]; ok {
 			return nil, fmt.Errorf("automatic upgrade to persistent config failed. Only one database can " +
 				"target any given bucket")
@@ -315,6 +312,8 @@ func sanitizeDbConfigs(configMap DbConfigMap) (DbConfigMap, error) {
 
 		processedBucketNames[*dbConfig.Bucket] = struct{}{}
 
+		// Make sure any updates are written back to the config
+		configMap[dbName] = dbConfig
 	}
 	return configMap, nil
 }
