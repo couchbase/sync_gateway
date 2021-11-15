@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -277,4 +278,82 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 		assert.Contains(t, err.Error(), "only supported in enterprise edition")
 		assert.Nil(t, startupConfig)
 	}
+}
+
+func TestImportFilterEndpoint(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Bootstrap works with Couchbase Server only")
+	}
+
+	if !base.TestUseXattrs() {
+		t.Skip("Test requires xattrs")
+	}
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+
+	// Start SG with no databases in bucket(s)
+	config := bootstrapStartupConfigForTest(t)
+	sc, err := setupServerContext(&config, true)
+	require.NoError(t, err)
+	defer sc.Close()
+	serverErr := make(chan error, 0)
+	go func() {
+		serverErr <- startServer(&config, sc)
+	}()
+	require.NoError(t, sc.waitForRESTAPIs())
+
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer func() {
+		fmt.Println("closing test bucket")
+		tb.Close()
+	}()
+	resp := bootstrapAdminRequest(t, http.MethodPut, "/db1/",
+		fmt.Sprintf(
+			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": %t}`,
+			tb.GetName(), base.TestsDisableGSI(),
+		),
+	)
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	// Ensure we cannot set an empty import filter
+	resp = bootstrapAdminRequest(t, http.MethodPut, "/db1/_config/import_filter", "")
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	responseBody, err := ioutil.ReadAll(resp.Body)
+	assert.NoError(t, err)
+	assert.Contains(t, string(responseBody), "import filter function cannot be empty string")
+
+	// Add a document
+	err = tb.Bucket.Set("importDoc1", 0, []byte("{}"))
+	assert.NoError(t, err)
+
+	// Ensure document is imported based on default import filter
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/importDoc1", "")
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// Modify the import filter to always reject import
+	resp = bootstrapAdminRequest(t, http.MethodPut, "/db1/_config/import_filter", `function(){return false}`)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// Add a document
+	err = tb.Bucket.Set("importDoc2", 0, []byte("{}"))
+	assert.NoError(t, err)
+
+	// Ensure document is not imported and is rejected based on updated filter
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/importDoc2", "")
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	responseBody, err = ioutil.ReadAll(resp.Body)
+	assert.NoError(t, err)
+	assert.Contains(t, string(responseBody), "Not imported")
+
+	resp = bootstrapAdminRequest(t, http.MethodDelete, "/db1/_config/import_filter", "")
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// Add a document
+	err = tb.Bucket.Set("importDoc3", 0, []byte("{}"))
+	assert.NoError(t, err)
+
+	// Ensure document is imported based on default import filter
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/importDoc3", "")
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
