@@ -86,12 +86,12 @@ type BackgroundManagerStatus struct {
 // Examples of this: ReSync, Compaction
 type BackgroundManagerProcessI interface {
 	Init(options map[string]interface{}, clusterStatus []byte) error
-	Run(options map[string]interface{}, persistClusterStatusCallback updateStatusClusterAwareCallback, terminator chan struct{}) error
+	Run(options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator chan struct{}) error
 	GetProcessStatus(status BackgroundManagerStatus) ([]byte, error)
 	ResetStatus()
 }
 
-type updateStatusClusterAwareCallback func() error
+type updateStatusCallbackFunc func() error
 
 func (b *BackgroundManager) Start(options map[string]interface{}) error {
 	err := b.markStart()
@@ -100,7 +100,7 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 	}
 
 	var processClusterStatus []byte
-	if b.clusterAwareOptions != nil {
+	if b.isClusterAware() {
 		processClusterStatus, _, err = b.clusterAwareOptions.bucket.GetRaw(b.clusterAwareOptions.StatusDocID())
 		if err != nil && !base.IsDocNotFoundError(err) {
 			return pkgerrors.Wrap(err, "Failed to get current process status")
@@ -114,7 +114,7 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 		return err
 	}
 
-	if b.clusterAwareOptions != nil {
+	if b.isClusterAware() {
 		go func() {
 			ticker := time.NewTicker(BackgroundManagerStatusUpdateIntervalSecs * time.Second)
 			for {
@@ -134,10 +134,7 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 
 	go func() {
 		updateStatusClusterAwareCallback := func() error {
-			if b.clusterAwareOptions != nil {
-				return b.UpdateHeartbeatDocClusterAware()
-			}
-			return nil
+			return b.UpdateStatusClusterAware()
 		}
 		err := b.Process.Run(options, updateStatusClusterAwareCallback, b.terminator)
 		if err != nil {
@@ -157,7 +154,7 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 
 		// Once our background process run has completed we should update the completed status and delete the heartbeat
 		// doc
-		if b.clusterAwareOptions != nil {
+		if b.isClusterAware() {
 			err = b.UpdateStatusClusterAware()
 			if err != nil {
 				base.Warnf("Failed to update background manager status: %v", err)
@@ -169,7 +166,7 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 		}
 	}()
 
-	if b.clusterAwareOptions != nil {
+	if b.isClusterAware() {
 		err = b.UpdateStatusClusterAware()
 		if err != nil {
 			base.Errorf("Failed to update background manager status: %v", err)
@@ -186,7 +183,7 @@ func (b *BackgroundManager) markStart() error {
 	processAlreadyRunningErr := base.HTTPErrorf(http.StatusServiceUnavailable, "Process already running")
 
 	// If we're running in cluster aware 'mode' base the check off of a heartbeat doc
-	if b.clusterAwareOptions != nil {
+	if b.isClusterAware() {
 		_, err := b.clusterAwareOptions.bucket.WriteCas(b.clusterAwareOptions.HeartbeatDocID(), 0, BackgroundManagerHeartbeatExpirySecs, 0, []byte("{}"), sgbucket.Raw)
 		if base.IsCasMismatch(err) {
 			return processAlreadyRunningErr
@@ -235,7 +232,7 @@ func (b *BackgroundManager) markStart() error {
 }
 
 func (b *BackgroundManager) GetStatus() ([]byte, error) {
-	if b.clusterAwareOptions != nil {
+	if b.isClusterAware() {
 		status, err := b.getStatusFromCluster()
 		if err != nil {
 			return nil, err
@@ -345,7 +342,7 @@ func (b *BackgroundManager) markStop() error {
 
 	processAlreadyStoppedErr := base.HTTPErrorf(http.StatusServiceUnavailable, "Process already stopped")
 
-	if b.clusterAwareOptions != nil {
+	if b.isClusterAware() {
 		_, _, err := b.clusterAwareOptions.bucket.GetRaw(b.clusterAwareOptions.HeartbeatDocID())
 		if err != nil {
 			if base.IsDocNotFoundError(err) {
@@ -405,6 +402,9 @@ func (b *BackgroundManager) SetError(err error) {
 // UpdateStatusClusterAware gets the current local status from the running process and updates the status document in
 // the bucket. Implements a retry. Used for Cluster Aware operations
 func (b *BackgroundManager) UpdateStatusClusterAware() error {
+	if b.clusterAwareOptions == nil {
+		return nil
+	}
 	err, _ := base.RetryLoop("UpdateStatusClusterAware", func() (shouldRetry bool, err error, value interface{}) {
 		status, err := b.getStatusLocal()
 		if err != nil {
@@ -463,6 +463,10 @@ func (b *BackgroundManager) UpdateHeartbeatDocClusterAware() error {
 	return nil
 }
 
+func (b *BackgroundManager) isClusterAware() bool {
+	return b.clusterAwareOptions != nil
+}
+
 // ======================================================
 // Resync Implementation of Background Manager Process
 // ======================================================
@@ -486,7 +490,7 @@ func (r *ResyncManager) Init(options map[string]interface{}, clusterStatus []byt
 	return nil
 }
 
-func (r *ResyncManager) Run(options map[string]interface{}, persistClusterStatusCallback updateStatusClusterAwareCallback, terminator chan struct{}) error {
+func (r *ResyncManager) Run(options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator chan struct{}) error {
 	database := options["database"].(*Database)
 	regenerateSequences := options["regenerateSequences"].(bool)
 
@@ -554,7 +558,7 @@ func (t *TombstoneCompactionManager) Init(options map[string]interface{}, cluste
 	return nil
 }
 
-func (t *TombstoneCompactionManager) Run(options map[string]interface{}, persistClusterStatusCallback updateStatusClusterAwareCallback, terminator chan struct{}) error {
+func (t *TombstoneCompactionManager) Run(options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator chan struct{}) error {
 	database := options["database"].(*Database)
 
 	defer atomic.CompareAndSwapUint32(&database.CompactState, DBCompactRunning, DBCompactNotRunning)
@@ -655,7 +659,7 @@ func (a *AttachmentCompactionManager) Init(options map[string]interface{}, clust
 	return newRunInit()
 }
 
-func (a *AttachmentCompactionManager) Run(options map[string]interface{}, persistClusterStatusCallback updateStatusClusterAwareCallback, terminator chan struct{}) error {
+func (a *AttachmentCompactionManager) Run(options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator chan struct{}) error {
 	database := options["database"].(*Database)
 
 	persistClusterStatus := func() {
