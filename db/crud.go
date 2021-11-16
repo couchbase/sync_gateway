@@ -2437,7 +2437,14 @@ func (db *Database) CheckProposedRev(docid string, revid string, parentRevID str
 		// Proposed rev has no parent and doc is currently deleted; OK to add:
 		return ProposedRev_OK
 	} else {
-		// Parent revision mismatch, so this is a conflict:
+		// If the proposed rev's generation is greater than the current revision's generation, and parentRevID is an ancestor,
+		// this may be a non-conflicting revision.  Allow peer to push rev message to perform full history comparison
+		currentGen, _ := ParseRevID(doc.CurrentRev)
+		proposedGen, _ := ParseRevID(revid)
+		if proposedGen > currentGen && doc.History.isAncestor(doc.CurrentRev, parentRevID) {
+			return ProposedRev_OK
+		}
+		// Otherwise Parent revision mismatch, so this is a conflict:
 		return ProposedRev_Conflict
 	}
 }

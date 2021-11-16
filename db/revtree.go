@@ -350,6 +350,24 @@ func (tree RevTree) findAncestorFromSet(revid string, ancestors []string) string
 	return ""
 }
 
+// Checks whether the provided ancestorRevID is an ancestor of the revid
+// ancestor of the revision; if none are ancestors, returns "".
+func (tree RevTree) isAncestor(revID string, ancestorRevID string) bool {
+
+	for revID != "" {
+		if revID == ancestorRevID {
+			return true
+		}
+
+		info, err := tree.getInfo(revID)
+		if err != nil {
+			break
+		}
+		revID = info.Parent
+	}
+	return false
+}
+
 // Records a revision in a RevTree.
 func (tree RevTree) addRevision(docid string, info RevInfo) (err error) {
 	revid := info.ID
