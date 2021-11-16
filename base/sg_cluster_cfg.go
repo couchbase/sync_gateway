@@ -12,6 +12,7 @@ package base
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -84,7 +85,10 @@ func (c *CfgSG) Get(cfgKey string, cas uint64) (
 func (c *CfgSG) Set(cfgKey string, val []byte, cas uint64) (uint64, error) {
 
 	DebugfCtx(c.loggingCtx, KeyCluster, "cfg_sg: Set, key: %s, cas: %d", cfgKey, cas)
-	var err error
+	if strings.HasPrefix(cfgKey, ":") {
+		return 0, fmt.Errorf("cfg_sg: key cannot start with a colon")
+	}
+
 	bucketKey := c.sgCfgBucketKey(cfgKey)
 
 	casOut, err := c.bucket.WriteCas(bucketKey, 0, 0, cas, val, 0)

@@ -397,7 +397,11 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	// sending heartbeats before registering itself to the cfg, to avoid triggering immediate removal by other active nodes.
 	if base.IsEnterpriseEdition() && (importEnabled || sgReplicateEnabled) {
 		// Create heartbeater
-		heartbeater, err := base.NewCouchbaseHeartbeater(bucket, base.SyncPrefix, dbContext.UUID, dbContext.Options.GroupID)
+		heartbeaterPrefix := base.SyncPrefix
+		if dbContext.Options.GroupID != "" {
+			heartbeaterPrefix = heartbeaterPrefix + dbContext.Options.GroupID + ":"
+		}
+		heartbeater, err := base.NewCouchbaseHeartbeater(bucket, heartbeaterPrefix, dbContext.UUID)
 		if err != nil {
 			return nil, pkgerrors.Wrapf(err, "Error starting heartbeater for bucket %s", base.MD(bucket.GetName()).Redact())
 		}

@@ -188,7 +188,7 @@ var (
 
 func DCPCheckpointPrefix(groupID string) string {
 	if groupID != "" {
-		return SyncPrefix + groupID + ":dcp_ck:"
+		return SyncPrefix + "dcp_ck:" + groupID + ":"
 	}
 	return SyncPrefix + "dcp_ck:"
 }
