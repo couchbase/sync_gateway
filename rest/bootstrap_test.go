@@ -148,6 +148,7 @@ func TestBootstrapDuplicateBucket(t *testing.T) {
 	require.NoError(t, err)
 	serverErr := make(chan error, 0)
 	go func() {
+		sc.Close()
 		serverErr <- startServer(&config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
