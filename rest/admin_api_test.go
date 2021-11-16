@@ -3940,6 +3940,9 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 
 // CBG-1790: Deleting a database that targets the same bucket as another causes a panic in legacy
 func TestDeleteDatabasePointingAtSameBucket(t *testing.T) {
+	// Panic found in CBG-1741
+	t.Skip("CBG-1790: skipping due to not being a supported use case")
+
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
