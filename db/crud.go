@@ -909,7 +909,6 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 			return nil, nil, false, nil, base.ErrRevTreeAddRevFailure
 		}
 
-		// move _attachment metadata to syncdata of doc after rev-id generation
 		newDoc.RevID = newRev
 		newDoc.Deleted = deleted
 
