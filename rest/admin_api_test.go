@@ -3832,16 +3832,20 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer func() { tb.Close() }()
 
+	importFilter := "function(doc) { return true }"
+	syncFunc := "function(doc){ channel(doc.channels); }"
+
 	dbConfig := `{
-	"bucket": "` + tb.GetName() + `",
+	"bucket": "%s",
 	"name": "db",
-	"sync": "function(doc){ channel(doc.channels); }",
-	"import_filter": "function(doc) { return true }",
+	"sync": "%s",
+	"import_filter": "%s",
 	"import_docs": false,
 	"offline": false,
-	"enable_shared_bucket_access": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
-	"use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
+	"enable_shared_bucket_access": %t,
+	"use_views": %t,
 	"num_index_replicas": 0 }`
+	dbConfig = fmt.Sprintf(dbConfig, tb.GetName(), syncFunc, importFilter, base.TestUseXattrs(), base.TestsDisableGSI())
 
 	// Persist config
 	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
@@ -3850,24 +3854,16 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 	// Get config values before taking db offline
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	dbConfigBeforeOffline := DatabaseConfig{}
-	require.NoError(t, base.JSONDecoder(resp.Body).Decode(&dbConfigBeforeOffline))
+	dbConfigBeforeOffline, err := ioutil.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
 
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	respBuf := new(bytes.Buffer)
-	_, err = respBuf.ReadFrom(resp.Body)
-	require.NoError(t, err)
-	importFilterBeforeOffline := respBuf.String()
+	assertResp(t, resp, http.StatusOK, importFilter)
 	require.NoError(t, resp.Body.Close())
 
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/sync", "")
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	respBuf = new(bytes.Buffer)
-	_, err = respBuf.ReadFrom(resp.Body)
-	require.NoError(t, err)
-	syncFuncBeforeOffline := respBuf.String()
+	assertResp(t, resp, http.StatusOK, syncFunc)
 	require.NoError(t, resp.Body.Close())
 
 	// Take DB offline
@@ -3876,29 +3872,16 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 
 	// Check offline config matches online config
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	dbConfigAfterOffline := DatabaseConfig{}
-	require.NoError(t, base.JSONDecoder(resp.Body).Decode(&dbConfigAfterOffline))
+	assertResp(t, resp, http.StatusOK, string(dbConfigBeforeOffline))
 	require.NoError(t, resp.Body.Close())
-	assert.Equal(t, dbConfigBeforeOffline, dbConfigAfterOffline)
 
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	respBuf = new(bytes.Buffer)
-	_, err = respBuf.ReadFrom(resp.Body)
-	require.NoError(t, err)
-	importFilterAfterOffline := respBuf.String()
+	assertResp(t, resp, http.StatusOK, importFilter)
 	require.NoError(t, resp.Body.Close())
-	assert.Equal(t, importFilterBeforeOffline, importFilterAfterOffline)
 
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/sync", "")
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	respBuf = new(bytes.Buffer)
-	_, err = respBuf.ReadFrom(resp.Body)
-	require.NoError(t, err)
-	syncFuncAfterOffline := respBuf.String()
+	assertResp(t, resp, http.StatusOK, syncFunc)
 	require.NoError(t, resp.Body.Close())
-	assert.Equal(t, syncFuncBeforeOffline, syncFuncAfterOffline)
 }
 
 func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
@@ -3970,22 +3953,12 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 
 	// Check configs match
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	respBuf := new(bytes.Buffer)
-	_, err = respBuf.ReadFrom(resp.Body)
-	require.NoError(t, err)
-	importFilterAfterOnline := respBuf.String()
+	assertResp(t, resp, http.StatusOK, "")
 	require.NoError(t, resp.Body.Close())
-	assert.Equal(t, "", importFilterAfterOnline)
 
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/sync", "")
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	respBuf = new(bytes.Buffer)
-	_, err = respBuf.ReadFrom(resp.Body)
-	require.NoError(t, err)
-	syncFuncAfterOnline := respBuf.String()
+	assertResp(t, resp, http.StatusOK, "")
 	require.NoError(t, resp.Body.Close())
-	assert.Equal(t, "", syncFuncAfterOnline)
 
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/TestSyncDoc", "{}")
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
@@ -4052,20 +4025,10 @@ func TestSetFunctionsWhileDbOffline(t *testing.T) {
 
 	// Check configs match
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	respBuf := new(bytes.Buffer)
-	_, err = respBuf.ReadFrom(resp.Body)
-	require.NoError(t, err)
-	importFilterAfterOnline := respBuf.String()
+	assertResp(t, resp, http.StatusOK, importFilter)
 	require.NoError(t, resp.Body.Close())
-	assert.Equal(t, importFilter, importFilterAfterOnline)
 
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/sync", "")
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	respBuf = new(bytes.Buffer)
-	_, err = respBuf.ReadFrom(resp.Body)
-	require.NoError(t, err)
-	syncFuncAfterOnline := respBuf.String()
+	assertResp(t, resp, http.StatusOK, syncFunc)
 	require.NoError(t, resp.Body.Close())
-	assert.Equal(t, syncFunc, syncFuncAfterOnline)
 }
