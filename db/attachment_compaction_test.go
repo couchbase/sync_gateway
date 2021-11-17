@@ -325,7 +325,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 		rawStatus, err := testDB2.AttachmentCompactionManager.GetStatus()
 		assert.NoError(t, err)
 		err = base.JSONUnmarshal(rawStatus, &status)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		if status.State == BackgroundProcessStateStopped {
 			return true
@@ -339,7 +339,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	testRawStatus, err := testDB2.AttachmentCompactionManager.GetStatus()
 	assert.NoError(t, err)
 	err = base.JSONUnmarshal(testRawStatus, &testStatus)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.True(t, testStatus.DryRun)
 
 	err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2, "dryRun": false})
@@ -350,7 +350,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 		rawStatus, err := testDB2.AttachmentCompactionManager.GetStatus()
 		assert.NoError(t, err)
 		err = base.JSONUnmarshal(rawStatus, &status)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		if status.State == BackgroundProcessStateCompleted {
 			return true
@@ -363,7 +363,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	testRawStatus, err = testDB2.AttachmentCompactionManager.GetStatus()
 	assert.NoError(t, err)
 	err = base.JSONUnmarshal(testRawStatus, &testStatus)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.True(t, testStatus.DryRun)
 
 	// Trigger start with immediate stop (stopped from db2)
@@ -376,7 +376,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 		rawStatus, err := testDB1.AttachmentCompactionManager.GetStatus()
 		assert.NoError(t, err)
 		err = base.JSONUnmarshal(rawStatus, &status)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		if status.State == BackgroundProcessStateStopped {
 			return true
@@ -395,7 +395,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 		rawStatus, err := testDB1.AttachmentCompactionManager.GetStatus()
 		assert.NoError(t, err)
 		err = base.JSONUnmarshal(rawStatus, &status)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		if status.State == BackgroundProcessStateCompleted {
 			return true
@@ -414,9 +414,9 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	assert.NoError(t, err)
 
 	err = base.JSONUnmarshal(testDB1RawStatus, &testDB1Status)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	err = base.JSONUnmarshal(testDB2RawStatus, &testDB2Status)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assert.Equal(t, BackgroundProcessStateCompleted, testDB1Status.State)
 	assert.Equal(t, BackgroundProcessStateCompleted, testDB2Status.State)

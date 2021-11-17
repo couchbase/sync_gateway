@@ -304,11 +304,11 @@ func Sweep(db *Database, compactionID string, dryRun bool, terminator chan struc
 				return true
 			}
 			base.DebugfCtx(db.Ctx, base.KeyAll, "[%s] Purged attachment %s", compactionLoggingID, base.UD(docID))
+		} else {
+			base.DebugfCtx(db.Ctx, base.KeyAll, "[%s] Would have purged attachment %s (not purged, running with dry run)", compactionLoggingID, base.UD(docID))
 		}
 
-		base.DebugfCtx(db.Ctx, base.KeyAll, "[%s] Would have purged attachment %s (not purged, running with dry run)", compactionLoggingID, base.UD(docID))
 		purgedAttachmentCount.Add(1)
-
 		return true
 	}
 
