@@ -3960,3 +3960,47 @@ func TestDeleteDatabasePointingAtSameBucket(t *testing.T) {
 		"num_index_replicas": 0
 	}`, tb.GetName(), base.TestClusterUsername(), base.TestClusterPassword(), base.TestsDisableGSI()))
 }
+
+func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
+	// Panic found in CBG-1741
+	//t.Skip("CBG-1790: skipping due to not being a supported use case")
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+	// Start SG with no databases in bucket(s)
+	config := bootstrapStartupConfigForTest(t)
+	sc, err := setupServerContext(&config, true)
+	require.NoError(t, err)
+	defer sc.Close()
+	serverErr := make(chan error, 0)
+	go func() {
+		serverErr <- startServer(&config, sc)
+	}()
+	require.NoError(t, sc.waitForRESTAPIs())
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer func() {
+		fmt.Println("closing test bucket")
+		tb.Close()
+	}()
+
+	dbConfig := `{
+   "bucket": "` + tb.GetName() + `",
+   "name": "%s",
+   "import_docs": true,
+   "enable_shared_bucket_access": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
+   "use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
+   "num_index_replicas": 0 }`
+
+	resp := bootstrapAdminRequest(t, http.MethodPut, "/db1/", fmt.Sprintf(dbConfig, "db1"))
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	resp = bootstrapAdminRequest(t, http.MethodDelete, "/db1/", "")
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// Make another database that uses import in-order to trigger the panic instantly instead of having to time.Sleep
+	resp = bootstrapAdminRequest(t, http.MethodPut, "/db2/", fmt.Sprintf(dbConfig, "db2"))
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+}
