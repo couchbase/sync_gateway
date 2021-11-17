@@ -9235,3 +9235,53 @@ func TestTombstoneCompactionAPI(t *testing.T) {
 		assert.Equal(t, 0, int(tombstoneCompactionStatus.DocsPurged))
 	}
 }
+
+func TestAttachmentsMissing(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	_ = rt.Bucket()
+
+	resp := rt.SendAdminRequest("PUT", "/db/"+t.Name(), `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
+	assertStatus(t, resp, http.StatusCreated)
+	rev1ID := respRevID(t, resp)
+
+	resp = rt.SendAdminRequest("PUT", "/db/"+t.Name()+"?rev="+rev1ID, `{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}, "testval": ["xxx","xxx"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	rev2ID := respRevID(t, resp)
+
+	resp = rt.SendAdminRequest("PUT", "/db/"+t.Name()+"?new_edits=false", `{"_rev": "2-b", "_revisions": {"ids": ["b", "ca9ad22802b66f662ff171f226211d5c"], "start": 2}, "Winning Rev": true}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	rt.GetDatabase().FlushRevisionCacheForTest()
+
+	resp = rt.SendAdminRequest("GET", "/db/"+t.Name()+"?rev="+rev2ID, ``)
+	assertStatus(t, resp, http.StatusOK)
+	assert.Contains(t, string(resp.BodyBytes()), "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=")
+}
+
+func TestAttachmentsMissingNoBody(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	_ = rt.Bucket()
+
+	resp := rt.SendAdminRequest("PUT", "/db/"+t.Name(), `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
+	assertStatus(t, resp, http.StatusCreated)
+	rev1ID := respRevID(t, resp)
+
+	resp = rt.SendAdminRequest("PUT", "/db/"+t.Name()+"?rev="+rev1ID, `{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`)
+	assertStatus(t, resp, http.StatusCreated)
+	rev2ID := respRevID(t, resp)
+
+	resp = rt.SendAdminRequest("PUT", "/db/"+t.Name()+"?new_edits=false", `{"_rev": "2-b", "_revisions": {"ids": ["b", "ca9ad22802b66f662ff171f226211d5c"], "start": 2}}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	rt.GetDatabase().FlushRevisionCacheForTest()
+
+	resp = rt.SendAdminRequest("GET", "/db/"+t.Name()+"?rev="+rev2ID, ``)
+	assertStatus(t, resp, http.StatusOK)
+	assert.Contains(t, string(resp.BodyBytes()), "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=")
+}

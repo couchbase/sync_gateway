@@ -909,8 +909,6 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 			return nil, nil, false, nil, base.ErrRevTreeAddRevFailure
 		}
 
-		// move _attachment metadata to syncdata of doc after rev-id generation
-		doc.SyncData.Attachments = newDoc.DocAttachments
 		newDoc.RevID = newRev
 		newDoc.Deleted = deleted
 
@@ -1029,7 +1027,6 @@ func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHi
 			return nil, nil, false, nil, err
 		}
 
-		doc.SyncData.Attachments = newDoc.DocAttachments
 		newDoc.RevID = newRev
 
 		return newDoc, newAttachments, false, nil, nil
@@ -1405,6 +1402,7 @@ func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCur
 	}
 	// Store the new revision body into the doc:
 	doc.setRevisionBody(newRevID, newDoc, db.AllowExternalRevBodyStorage(), newDocHasAttachments)
+	doc.SyncData.Attachments = newDoc.DocAttachments
 
 	if doc.CurrentRev == newRevID {
 		doc.NewestRev = ""
