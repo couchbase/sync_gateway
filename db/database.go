@@ -1161,7 +1161,7 @@ func (context *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err
 		Sync string
 	}
 
-	_, err = context.Bucket.Update(base.SyncDataKey(context.Options.GroupID), 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
+	_, err = context.Bucket.Update(base.SyncDataKeyWithGroupID(context.Options.GroupID), 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
 		// The first time opening a new db, currentValue will be nil. Don't treat this as a change.
 		if currentValue != nil {
 			parseErr := base.JSONUnmarshal(currentValue, &syncData)

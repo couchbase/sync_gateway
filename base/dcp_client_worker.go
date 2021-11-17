@@ -46,7 +46,7 @@ func NewDCPWorker(metadata DCPMetadataStore, mutationCallback sgbucket.FeedEvent
 		eventFeed:             eventQueue,
 		terminator:            terminator,
 		endSeqNos:             endSeqNos,
-		checkpointPrefixBytes: []byte(DCPCheckpointPrefix(groupID)),
+		checkpointPrefixBytes: []byte(DCPCheckpointPrefixWithGroupID(groupID)),
 		mutationCallback:      mutationCallback,
 		endStreamCallback:     endCallback,
 		ignoreDeletes:         options != nil && options.ignoreDeletes,

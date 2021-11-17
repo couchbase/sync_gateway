@@ -37,7 +37,7 @@ type DCPClient struct {
 	closeError        error                          // Will be set to a non-nil value for unexpected error
 	closeErrorLock    sync.Mutex                     // Synchronization on close error
 	failOnRollback    bool                           // When true, close when rollback detected
-	groupID           string                         // Used for adding config group ID to keys that use DCPCheckpointPrefix (Mark, Sweep, Cleanup)
+	groupID           string                         // Used for adding config group ID to keys that use DCPCheckpointPrefixWithGroupID (Mark, Sweep, Cleanup)
 }
 
 type DCPClientOptions struct {

@@ -69,12 +69,12 @@ func TestDCPKeyFilter(t *testing.T) {
 	assert.False(t, dcpKeyFilter([]byte(SGCfgPrefix("group1")), "group2"))
 	assert.False(t, dcpKeyFilter([]byte(SyncSeqKey), ""))
 	assert.False(t, dcpKeyFilter([]byte(SyncPrefix+"unusualSeq"), ""))
-	assert.False(t, dcpKeyFilter([]byte(SyncDataKey("")), ""))
-	assert.False(t, dcpKeyFilter([]byte(SyncDataKey("group")), "group"))
-	assert.False(t, dcpKeyFilter([]byte(SyncDataKey("group1")), "group2"))
-	assert.False(t, dcpKeyFilter([]byte(DCPCheckpointPrefix("")+"12"), ""))
-	assert.False(t, dcpKeyFilter([]byte(DCPCheckpointPrefix("group")+"12"), "group"))
-	assert.False(t, dcpKeyFilter([]byte(DCPCheckpointPrefix("group1")+"12"), "group2"))
+	assert.False(t, dcpKeyFilter([]byte(SyncDataKeyWithGroupID("")), ""))
+	assert.False(t, dcpKeyFilter([]byte(SyncDataKeyWithGroupID("group")), "group"))
+	assert.False(t, dcpKeyFilter([]byte(SyncDataKeyWithGroupID("group1")), "group2"))
+	assert.False(t, dcpKeyFilter([]byte(DCPCheckpointPrefixWithGroupID("")+"12"), ""))
+	assert.False(t, dcpKeyFilter([]byte(DCPCheckpointPrefixWithGroupID("group")+"12"), "group"))
+	assert.False(t, dcpKeyFilter([]byte(DCPCheckpointPrefixWithGroupID("group1")+"12"), "group2"))
 	assert.False(t, dcpKeyFilter([]byte(TxnPrefix+"atrData"), ""))
 }
 

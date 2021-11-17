@@ -114,6 +114,7 @@ const (
 	Att2Prefix             = SyncPrefix + "att2:"
 	BackfillCompletePrefix = SyncPrefix + "backfill:complete:"
 	BackfillPendingPrefix  = SyncPrefix + "backfill:pending:"
+	DCPCheckpointPrefix    = SyncPrefix + "dcp_ck:"
 	RepairBackup           = SyncPrefix + "repair:backup:"
 	RepairDryRun           = SyncPrefix + "repair:dryrun:"
 	RevBodyPrefix          = SyncPrefix + "rb:"
@@ -127,6 +128,7 @@ const (
 	UnusedSeqRangePrefix   = SyncPrefix + "unusedSeqs:"
 
 	DCPBackfillSeqKey = SyncPrefix + "dcp_backfill"
+	SyncDataKey       = SyncPrefix + "syncdata"
 	SyncSeqKey        = SyncPrefix + "seq"
 
 	PersistentConfigPrefix = SyncPrefix + "dbconfig:"
@@ -186,11 +188,11 @@ var (
 	ErrUnknownField = errors.New("unrecognized JSON field")
 )
 
-func DCPCheckpointPrefix(groupID string) string {
+func DCPCheckpointPrefixWithGroupID(groupID string) string {
 	if groupID != "" {
-		return SyncPrefix + "dcp_ck:" + groupID + ":"
+		return DCPCheckpointPrefix + groupID + ":"
 	}
-	return SyncPrefix + "dcp_ck:"
+	return DCPCheckpointPrefix
 }
 
 func SGCfgPrefix(groupID string) string {
@@ -200,11 +202,11 @@ func SGCfgPrefix(groupID string) string {
 	return SyncPrefix + "cfg"
 }
 
-func SyncDataKey(groupID string) string {
+func SyncDataKeyWithGroupID(groupID string) string {
 	if groupID != "" {
-		return SyncPrefix + groupID + ":syncdata"
+		return SyncDataKey + ":" + groupID
 	}
-	return SyncPrefix + "syncdata"
+	return SyncDataKey
 }
 
 // UnitTestUrl returns the configured test URL.

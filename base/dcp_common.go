@@ -205,7 +205,7 @@ func (c *DCPCommon) incrementCheckpointCount(vbucketId uint16) {
 //   - The ongoing performance overhead of persisting last sequence outweighs the minor performance benefit of not reprocessing a few
 //    sequences in a checkpoint on startup
 func (c *DCPCommon) loadCheckpoint(vbNo uint16) (vbMetadata []byte, snapshotStartSeq uint64, snapshotEndSeq uint64, err error) {
-	rawValue, _, err := c.bucket.GetRaw(fmt.Sprintf("%s%d", DCPCheckpointPrefix(c.groupID), vbNo))
+	rawValue, _, err := c.bucket.GetRaw(fmt.Sprintf("%s%d", DCPCheckpointPrefixWithGroupID(c.groupID), vbNo))
 	if err != nil {
 		// On a key not found error, metadata hasn't been persisted for this vbucket
 		if IsKeyNotFoundError(c.bucket, err) {
@@ -285,7 +285,7 @@ func (c *DCPCommon) initMetadata(maxVbNo uint16) {
 //         - Is a relatively infrequent operation
 func (c *DCPCommon) persistCheckpoint(vbNo uint16, value []byte) error {
 	TracefCtx(c.loggingCtx, KeyDCP, "Persisting checkpoint for vbno %d", vbNo)
-	return c.bucket.SetRaw(fmt.Sprintf("%s%d", DCPCheckpointPrefix(c.groupID), vbNo), 0, value)
+	return c.bucket.SetRaw(fmt.Sprintf("%s%d", DCPCheckpointPrefixWithGroupID(c.groupID), vbNo), 0, value)
 }
 
 // This updates the value stored in r.seqs with the given seq number for the given partition

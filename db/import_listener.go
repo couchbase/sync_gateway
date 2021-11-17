@@ -84,7 +84,7 @@ func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPers
 	// Ignore internal documents
 	if strings.HasPrefix(key, base.SyncPrefix) {
 		// Ignore all DCP checkpoints no matter config group ID
-		if strings.HasPrefix(key, base.DCPCheckpointPrefix("")) {
+		if strings.HasPrefix(key, base.DCPCheckpointPrefix) {
 			return false
 		}
 		return true
