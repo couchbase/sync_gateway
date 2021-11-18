@@ -37,8 +37,11 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
 
-	// sc closed later in the test, so don't need to defer it here like the other bootstrap tests
-	defer require.NoError(t, <-serverErr)
+	// defer a function so <-serverErr doesn't block here
+	defer func() {
+		// sc closed later in the test, so don't need to defer it here like the other bootstrap tests
+		require.NoError(t, <-serverErr)
+	}()
 
 	go func() {
 		serverErr <- startServer(&config, sc)
