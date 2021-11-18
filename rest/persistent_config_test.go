@@ -291,12 +291,17 @@ func TestImportFilterEndpoint(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
 
-	// Start SG with no databases in bucket(s)
+	serverErr := make(chan error, 0)
+
+	// Start SG with no databases
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
-	defer sc.Close()
-	serverErr := make(chan error, 0)
+	defer func() {
+		sc.Close()
+		require.NoError(t, <-serverErr)
+	}()
+
 	go func() {
 		serverErr <- startServer(&config, sc)
 	}()
