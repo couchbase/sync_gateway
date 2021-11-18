@@ -4572,6 +4572,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			rt1RevID := rt1RevIDCreated
 			for _, bodyValue := range test.localBodyValues {
 				rt1RevID = createOrUpdateDoc(t, rt1, docID, rt1RevID, bodyValue)
+				require.NoError(tt, rt1.waitForRev(docID, rt1RevID))
 			}
 
 			// Start replication.
