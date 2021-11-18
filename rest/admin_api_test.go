@@ -3760,7 +3760,7 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 
 	// Start SG with no databases
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true)
+	sc, err := setupServerContext(&config, false)
 	require.NoError(t, err)
 	defer func() {
 		sc.Close()
