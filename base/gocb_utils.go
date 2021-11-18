@@ -51,12 +51,10 @@ func GoCBv2TimeoutsConfig(bucketOpTimeout, viewQueryTimeout *time.Duration) (tc 
 	if bucketOpTimeout != nil {
 		opTimeout = *bucketOpTimeout
 	}
+	tc.KVTimeout = opTimeout
+	tc.ManagementTimeout = opTimeout
+	tc.ConnectTimeout = opTimeout
 
-	if bucketOpTimeout != nil {
-		tc.KVTimeout = opTimeout
-		tc.ManagementTimeout = opTimeout
-		tc.ConnectTimeout = opTimeout
-	}
 	if viewQueryTimeout != nil {
 		tc.QueryTimeout = *viewQueryTimeout
 		tc.ViewTimeout = *viewQueryTimeout
