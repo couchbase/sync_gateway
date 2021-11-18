@@ -3772,7 +3772,7 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 }
 
-func TestDatabaseOfflineConfigLegacy(t *testing.T) {
+func TestDbOfflineConfigLegacy(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{persistentConfig: false})
 	bucket := rt.Bucket()
 	defer rt.Close()
@@ -3781,28 +3781,33 @@ func TestDatabaseOfflineConfigLegacy(t *testing.T) {
 	"bucket": "` + bucket.GetName() + `",
 	"name": "db",
 	"sync": "function(doc){ channel(doc.channels); }",
+	"import_filter": "function(doc) { return true }",
 	"import_docs": false,
 	"offline": false,
 	"enable_shared_bucket_access": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
 	"use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
 	"num_index_replicas": 0 }`
 
+	// Persist config
 	resp := rt.SendAdminRequest("PUT", "/db/_config", dbConfig)
 	require.Equal(t, http.StatusCreated, resp.Code)
 
+	// Get config values before taking db offline
 	resp = rt.SendAdminRequest("GET", "/db/_config", "")
 	require.Equal(t, http.StatusOK, resp.Code)
 	dbConfigBeforeOffline := string(resp.BodyBytes())
 
+	// Take DB offline
 	resp = rt.SendAdminRequest("POST", "/db/_offline", "")
 	require.Equal(t, http.StatusOK, resp.Code)
 
+	// Check offline config matches online config
 	resp = rt.SendAdminRequest("GET", "/db/_config", "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 	assert.Equal(t, dbConfigBeforeOffline, string(resp.BodyBytes()))
 }
 
-func TestDatabaseOfflineConfigPersistent(t *testing.T) {
+func TestDbOfflineConfigPersistent(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
@@ -3827,34 +3832,205 @@ func TestDatabaseOfflineConfigPersistent(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer func() { tb.Close() }()
 
+	importFilter := "function(doc) { return true }"
+	syncFunc := "function(doc){ channel(doc.channels); }"
+
+	dbConfig := `{
+	"bucket": "%s",
+	"name": "db",
+	"sync": "%s",
+	"import_filter": "%s",
+	"import_docs": false,
+	"offline": false,
+	"enable_shared_bucket_access": %t,
+	"use_views": %t,
+	"num_index_replicas": 0 }`
+	dbConfig = fmt.Sprintf(dbConfig, tb.GetName(), syncFunc, importFilter, base.TestUseXattrs(), base.TestsDisableGSI())
+
+	// Persist config
+	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	// Get config values before taking db offline
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	dbConfigBeforeOffline, err := ioutil.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
+	assertResp(t, resp, http.StatusOK, importFilter)
+	require.NoError(t, resp.Body.Close())
+
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/sync", "")
+	assertResp(t, resp, http.StatusOK, syncFunc)
+	require.NoError(t, resp.Body.Close())
+
+	// Take DB offline
+	resp = bootstrapAdminRequest(t, http.MethodPost, "/db/_offline", "")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// Check offline config matches online config
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
+	assertResp(t, resp, http.StatusOK, string(dbConfigBeforeOffline))
+	require.NoError(t, resp.Body.Close())
+
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
+	assertResp(t, resp, http.StatusOK, importFilter)
+	require.NoError(t, resp.Body.Close())
+
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/sync", "")
+	assertResp(t, resp, http.StatusOK, syncFunc)
+	require.NoError(t, resp.Body.Close())
+}
+
+func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+
+	// Start SG with bootstrap credentials filled
+	config := bootstrapStartupConfigForTest(t)
+	sc, err := setupServerContext(&config, true)
+	require.NoError(t, err)
+	serverErr := make(chan error, 0)
+	go func() {
+		serverErr <- startServer(&config, sc)
+	}()
+	require.NoError(t, sc.waitForRESTAPIs())
+	defer func() {
+		sc.Close()
+		require.NoError(t, <-serverErr)
+	}()
+
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer func() { tb.Close() }()
+
+	// Initial DB config
 	dbConfig := `{
 	"bucket": "` + tb.GetName() + `",
 	"name": "db",
-	"sync": "function(doc){ channel(doc.channels); }",
-	"import_docs": false,
+	"sync": "function(doc){ throw({forbidden : \"Rejected document\"}) }",
+	"import_filter": "function(doc) { return false }",
+	"import_docs": true,
 	"offline": false,
 	"enable_shared_bucket_access": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
 	"use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
 	"num_index_replicas": 0 }`
+
+	add, err := tb.Add("TestImportDoc", 0, db.Document{ID: "TestImportDoc", RevID: "1-abc"})
+	require.NoError(t, err)
+	require.Equal(t, true, add)
+
+	// Create initial database
 	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 
-	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	dbConfigBeforeOffline := DatabaseConfig{}
-	require.NoError(t, base.JSONDecoder(resp.Body).Decode(&dbConfigBeforeOffline))
-	require.NoError(t, resp.Body.Close())
+	// Make sure import and sync fail
+	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/TestSyncDoc", "{}")
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/TestImportDoc", "")
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+
+	// Take DB offline
 	resp = bootstrapAdminRequest(t, http.MethodPost, "/db/_offline", "")
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
-	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	dbConfigAfterOffline := DatabaseConfig{}
-	require.NoError(t, base.JSONDecoder(resp.Body).Decode(&dbConfigAfterOffline))
+	// Persist configs
+	resp = bootstrapAdminRequest(t, http.MethodDelete, "/db/_config/import_filter", "")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	resp = bootstrapAdminRequest(t, http.MethodDelete, "/db/_config/sync", "")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// Take DB online
+	resp = bootstrapAdminRequest(t, http.MethodPost, "/db/_online", "")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// Check configs match
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
+	assertResp(t, resp, http.StatusOK, "")
 	require.NoError(t, resp.Body.Close())
 
-	assert.Equal(t, dbConfigBeforeOffline, dbConfigAfterOffline)
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/sync", "")
+	assertResp(t, resp, http.StatusOK, "")
+	require.NoError(t, resp.Body.Close())
+
+	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/TestSyncDoc", "{}")
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/TestImportDoc", "")
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestSetFunctionsWhileDbOffline(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+
+	// Start SG with bootstrap credentials filled
+	config := bootstrapStartupConfigForTest(t)
+	sc, err := setupServerContext(&config, true)
+	require.NoError(t, err)
+	serverErr := make(chan error, 0)
+	go func() {
+		serverErr <- startServer(&config, sc)
+	}()
+	require.NoError(t, sc.waitForRESTAPIs())
+	defer func() {
+		sc.Close()
+		require.NoError(t, <-serverErr)
+	}()
+
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer func() { tb.Close() }()
+
+	importFilter := "function(doc){ return true; }"
+	syncFunc := "function(doc){ channel(doc.channels); }"
+
+	// Initial DB config
+	dbConfig := `{
+	"bucket": "` + tb.GetName() + `",
+	"name": "db",
+	"offline": false,
+	"enable_shared_bucket_access": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
+	"use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
+	"num_index_replicas": 0 }`
+
+	// Create initial database
+	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	// Take DB offline
+	resp = bootstrapAdminRequest(t, http.MethodPost, "/db/_offline", "")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// Persist configs
+	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config/import_filter", importFilter)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config/sync", syncFunc)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// Take DB online
+	resp = bootstrapAdminRequest(t, http.MethodPost, "/db/_online", "")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// Check configs match
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
+	assertResp(t, resp, http.StatusOK, importFilter)
+	require.NoError(t, resp.Body.Close())
+
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/sync", "")
+	assertResp(t, resp, http.StatusOK, syncFunc)
+	require.NoError(t, resp.Body.Close())
 }
 
 func TestEmptyStringJavascriptFunctions(t *testing.T) {
