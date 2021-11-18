@@ -4572,7 +4572,6 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			rt1RevID := rt1RevIDCreated
 			for _, bodyValue := range test.localBodyValues {
 				rt1RevID = createOrUpdateDoc(t, rt1, docID, rt1RevID, bodyValue)
-				require.NoError(tt, rt1.waitForRev(docID, rt1RevID))
 			}
 
 			// Start replication.
@@ -4585,7 +4584,12 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			waitForTombstone(t, rt2, docID)
 
 			requireRevID(t, rt1, docID, test.expectedRevID)
-			requireRevID(t, rt2, docID, test.expectedRevID)
+			// Wait for conflict resolved doc (tombstone) to be pulled to passive bucket
+			// Then require it is the expected rev
+			require.NoError(t, rt2.WaitForCondition(func() bool {
+				doc, _ := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+				return doc != nil && doc.SyncData.CurrentRev == test.expectedRevID
+			}))
 
 			// Ensure that the document body of the winning tombstone revision written to both
 			// rt1 and rt2 is empty, i.e., An attempt to read the document body of a tombstone
