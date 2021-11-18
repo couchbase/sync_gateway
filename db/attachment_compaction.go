@@ -25,7 +25,7 @@ func Mark(db *Database, compactionID string, terminator chan struct{}, markedAtt
 	failProcess := func(err error, format string, args ...interface{}) bool {
 		markProcessFailureErr = err
 		close(terminator)
-		base.WarnfCtx(db.Ctx, format, args)
+		base.WarnfCtx(db.Ctx, format, args...)
 		return false
 	}
 
