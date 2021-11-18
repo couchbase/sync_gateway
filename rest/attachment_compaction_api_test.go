@@ -232,6 +232,47 @@ func TestAttachmentCompactionReset(t *testing.T) {
 	_ = rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
 }
 
+func TestAttachmentCompactionInvalidDocs(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Create a raw binary doc
+	_, err := rt.Bucket().AddRaw("binary", 0, []byte("binary doc"))
+	assert.NoError(t, err)
+
+	// Create a CBS tombstone
+	_, err = rt.Bucket().AddRaw("deleted", 0, []byte("{}"))
+	assert.NoError(t, err)
+	err = rt.Bucket().Delete("deleted")
+	assert.NoError(t, err)
+
+	// Also create an actual legacy attachment to ensure they are still processed
+	CreateLegacyAttachmentDoc(t, &db.Database{DatabaseContext: rt.GetDatabase()}, "docID", []byte("{}"), "attKey", []byte("{}"))
+
+	// Create attachment with no doc reference
+	err = rt.GetDatabase().Bucket.SetRaw(base.AttPrefix+"test", 0, []byte("{}"))
+	assert.NoError(t, err)
+	err = rt.GetDatabase().Bucket.SetRaw(base.AttPrefix+"test2", 0, []byte("{}"))
+	assert.NoError(t, err)
+
+	// Write a normal doc to ensure this passes through fine
+	resp := rt.SendAdminRequest("PUT", "/db/normal-doc", "{}")
+	assertStatus(t, resp, http.StatusCreated)
+
+	// Start compaction
+	resp = rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
+	assertStatus(t, resp, http.StatusOK)
+	status := rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
+
+	assert.Equal(t, int64(2), status.PurgedAttachments)
+	assert.Equal(t, int64(1), status.MarkedAttachments)
+	assert.Equal(t, db.BackgroundProcessStateCompleted, status.State)
+}
+
 func (rt *RestTester) WaitForAttachmentCompactionStatus(t *testing.T, state db.BackgroundProcessState) db.AttachmentManagerResponse {
 	var response db.AttachmentManagerResponse
 	err := rt.WaitForConditionWithOptions(func() bool {
