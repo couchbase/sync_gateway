@@ -47,8 +47,7 @@ const (
 type BackgroundManager struct {
 	BackgroundManagerStatus
 	lastError           error
-	terminator          chan struct{}
-	terminatorClosed    base.AtomicBool
+	terminator          *base.SafeTerminator
 	clusterAwareOptions *ClusterAwareBackgroundManagerOptions
 	lock                sync.Mutex
 	Process             BackgroundManagerProcessI
@@ -86,7 +85,7 @@ type BackgroundManagerStatus struct {
 // Examples of this: ReSync, Compaction
 type BackgroundManagerProcessI interface {
 	Init(options map[string]interface{}, clusterStatus []byte) error
-	Run(options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator chan struct{}) error
+	Run(options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error
 	GetProcessStatus(status BackgroundManagerStatus) ([]byte, error)
 	ResetStatus()
 }
@@ -125,7 +124,7 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 						base.Warnf("Failed to update background manager status: %v", err)
 					}
 
-				case <-b.terminator:
+				case <-b.terminator.Done():
 					return
 				}
 			}
@@ -191,8 +190,7 @@ func (b *BackgroundManager) markStart() error {
 
 		// Now we know that we're the only running process we should instantiate these values
 		// We need to instantiate these before we setup the below goroutine as it relies upon the terminator
-		b.terminator = make(chan struct{}, 1)
-		b.terminatorClosed.Set(false)
+		b.terminator = base.NewSafeTerminator()
 
 		go func() {
 			ticker := time.NewTicker(BackgroundManagerHeartbeatIntervalSecs * time.Second)
@@ -204,7 +202,7 @@ func (b *BackgroundManager) markStart() error {
 						base.Errorf("Failed to update expiry on heartbeat doc: %v", err)
 						b.SetError(err)
 					}
-				case <-b.terminator:
+				case <-b.terminator.Done():
 					return
 				}
 			}
@@ -224,8 +222,7 @@ func (b *BackgroundManager) markStart() error {
 	}
 
 	// Now we know that we're the only running process we should instantiate these values
-	b.terminator = make(chan struct{}, 1)
-	b.terminatorClosed.Set(false)
+	b.terminator = base.NewSafeTerminator()
 
 	b.State = BackgroundProcessStateRunning
 	return nil
@@ -331,9 +328,7 @@ func (b *BackgroundManager) Stop() error {
 // Terminate stops the process via terminator channel
 // Only to be used internally to this file and by tests.
 func (b *BackgroundManager) Terminate() {
-	if b.terminatorClosed.CompareAndSwap(false, true) {
-		close(b.terminator)
-	}
+	b.terminator.Close()
 }
 
 func (b *BackgroundManager) markStop() error {
@@ -433,7 +428,7 @@ func (b *BackgroundManager) UpdateHeartbeatDocClusterAware() error {
 		// If we get an error but the error is doc not found and terminator closed it means we have terminated the
 		// goroutine which intermittently runs this but this snuck in before it was stopped. This may result in the doc
 		// being deleted before this runs. We can ignore that error is that is the case.
-		if base.IsDocNotFoundError(err) && b.terminatorClosed.IsTrue() {
+		if base.IsDocNotFoundError(err) && b.terminator.IsClosed() {
 			return nil
 		}
 
@@ -482,7 +477,7 @@ var _ BackgroundManagerProcessI = &ResyncManager{}
 func NewResyncManager() *BackgroundManager {
 	return &BackgroundManager{
 		Process:    &ResyncManager{},
-		terminator: make(chan struct{}, 1),
+		terminator: base.NewSafeTerminator(),
 	}
 }
 
@@ -490,7 +485,7 @@ func (r *ResyncManager) Init(options map[string]interface{}, clusterStatus []byt
 	return nil
 }
 
-func (r *ResyncManager) Run(options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator chan struct{}) error {
+func (r *ResyncManager) Run(options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	database := options["database"].(*Database)
 	regenerateSequences := options["regenerateSequences"].(bool)
 
@@ -550,7 +545,7 @@ var _ BackgroundManagerProcessI = &TombstoneCompactionManager{}
 func NewTombstoneCompactionManager() *BackgroundManager {
 	return &BackgroundManager{
 		Process:    &TombstoneCompactionManager{},
-		terminator: make(chan struct{}, 1),
+		terminator: base.NewSafeTerminator(),
 	}
 }
 
@@ -558,7 +553,7 @@ func (t *TombstoneCompactionManager) Init(options map[string]interface{}, cluste
 	return nil
 }
 
-func (t *TombstoneCompactionManager) Run(options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator chan struct{}) error {
+func (t *TombstoneCompactionManager) Run(options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	database := options["database"].(*Database)
 
 	defer atomic.CompareAndSwapUint32(&database.CompactState, DBCompactRunning, DBCompactNotRunning)
@@ -614,7 +609,7 @@ func NewAttachmentCompactionManager(bucket base.Bucket) *BackgroundManager {
 			bucket:        bucket,
 			processSuffix: "compact",
 		},
-		terminator: make(chan struct{}, 1),
+		terminator: base.NewSafeTerminator(),
 	}
 }
 
@@ -667,7 +662,7 @@ func (a *AttachmentCompactionManager) Init(options map[string]interface{}, clust
 	return newRunInit()
 }
 
-func (a *AttachmentCompactionManager) Run(options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator chan struct{}) error {
+func (a *AttachmentCompactionManager) Run(options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	database := options["database"].(*Database)
 
 	persistClusterStatus := func() {

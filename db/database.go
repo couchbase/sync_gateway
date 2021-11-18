@@ -1036,7 +1036,7 @@ func (db *DatabaseContext) DeleteUserSessions(userName string) error {
 // the document to accomplish the same result.
 type compactCallbackFunc func(purgedDocCount *int)
 
-func (db *Database) Compact(skipRunningStateCheck bool, callback compactCallbackFunc, terminator chan struct{}) (int, error) {
+func (db *Database) Compact(skipRunningStateCheck bool, callback compactCallbackFunc, terminator *base.SafeTerminator) (int, error) {
 	if !skipRunningStateCheck {
 		if !atomic.CompareAndSwapUint32(&db.CompactState, DBCompactNotRunning, DBCompactRunning) {
 			return 0, base.HTTPErrorf(http.StatusServiceUnavailable, "Compaction already running")
@@ -1072,7 +1072,7 @@ func (db *Database) Compact(skipRunningStateCheck bool, callback compactCallback
 		var resultCount int
 		for results.Next(&tombstonesRow) {
 			select {
-			case <-terminator:
+			case <-terminator.Done():
 				closeErr := results.Close()
 				if closeErr != nil {
 					return 0, closeErr
@@ -1184,7 +1184,7 @@ func (context *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err
 // To be used when the JavaScript sync function changes.
 type updateAllDocChannelsCallbackFunc func(docsProcessed, docsChanged *int)
 
-func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback updateAllDocChannelsCallbackFunc, terminator chan struct{}) (int, error) {
+func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback updateAllDocChannelsCallbackFunc, terminator *base.SafeTerminator) (int, error) {
 	base.Infof(base.KeyAll, "Recomputing document channels...")
 	base.Infof(base.KeyAll, "Re-running sync function on all documents...")
 
@@ -1216,7 +1216,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 		var importRow QueryIdRow
 		for results.Next(&importRow) {
 			select {
-			case <-terminator:
+			case <-terminator.Done():
 				base.Infof(base.KeyAll, "Resync was stopped before the operation could be completed. System "+
 					"may be in an inconsistent state. Docs changed: %d Docs Processed: %d", docsChanged, docsProcessed)
 				closeErr := results.Close()

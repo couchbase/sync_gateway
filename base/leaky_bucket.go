@@ -68,6 +68,8 @@ type LeakyBucketConfig struct {
 
 	PostUpdateCallback func(key string)
 
+	SetXattrCallback func(key string) error
+
 	// WriteWithXattrCallback is ran before WriteWithXattr is called. This can be used to trigger a CAS retry
 	WriteWithXattrCallback func(key string)
 
@@ -248,6 +250,11 @@ func (b *LeakyBucket) WriteUpdateWithXattr(k string, xattr string, userXattrKey 
 }
 
 func (b *LeakyBucket) SetXattr(k string, xattrKey string, xv []byte) (casOut uint64, err error) {
+	if b.config.SetXattrCallback != nil {
+		if err := b.config.SetXattrCallback(k); err != nil {
+			return 0, err
+		}
+	}
 	return b.bucket.SetXattr(k, xattrKey, xv)
 }
 

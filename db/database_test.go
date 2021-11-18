@@ -2425,7 +2425,7 @@ func TestResyncUpdateAllDocChannels(t *testing.T) {
 		return state == DBOffline
 	})
 
-	_, err = db.UpdateAllDocChannels(false, func(docsProcessed, docsChanged *int) {}, nil)
+	_, err = db.UpdateAllDocChannels(false, func(docsProcessed, docsChanged *int) {}, base.NewSafeTerminator())
 	assert.NoError(t, err)
 
 	syncFnCount := int(db.DbStats.CBLReplicationPush().SyncFunctionCount.Value())
