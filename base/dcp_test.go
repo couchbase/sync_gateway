@@ -63,10 +63,10 @@ func TestDCPKeyFilter(t *testing.T) {
 	assert.True(t, dcpKeyFilter([]byte(UserPrefix+"user1"), ""))
 	assert.True(t, dcpKeyFilter([]byte(RolePrefix+"role2"), ""))
 	assert.True(t, dcpKeyFilter([]byte(UnusedSeqPrefix+"1234"), ""))
-	assert.True(t, dcpKeyFilter([]byte(SGCfgPrefix("")), ""))
-	assert.True(t, dcpKeyFilter([]byte(SGCfgPrefix("group")), "group"))
+	assert.True(t, dcpKeyFilter([]byte(SGCfgPrefixWithGroupID("")), ""))
+	assert.True(t, dcpKeyFilter([]byte(SGCfgPrefixWithGroupID("group")), "group"))
 
-	assert.False(t, dcpKeyFilter([]byte(SGCfgPrefix("group1")), "group2"))
+	assert.False(t, dcpKeyFilter([]byte(SGCfgPrefixWithGroupID("group1")), "group2"))
 	assert.False(t, dcpKeyFilter([]byte(SyncSeqKey), ""))
 	assert.False(t, dcpKeyFilter([]byte(SyncPrefix+"unusualSeq"), ""))
 	assert.False(t, dcpKeyFilter([]byte(SyncDataKeyWithGroupID("")), ""))

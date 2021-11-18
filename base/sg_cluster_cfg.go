@@ -59,7 +59,7 @@ func NewCfgSG(bucket Bucket, groupID string) (*CfgSG, error) {
 }
 
 func (c *CfgSG) sgCfgBucketKey(cfgKey string) string {
-	return SGCfgPrefix(c.groupID) + cfgKey
+	return SGCfgPrefixWithGroupID(c.groupID) + cfgKey
 }
 
 func (c *CfgSG) Get(cfgKey string, cas uint64) (
@@ -133,9 +133,8 @@ func (c *CfgSG) Subscribe(cfgKey string, ch chan cbgt.CfgEvent) error {
 	return nil
 }
 
-// TODO: Write test targetting FireEvent to check colon is being removed correctly
 func (c *CfgSG) FireEvent(docID string, cas uint64, err error) {
-	cfgKey := strings.TrimPrefix(docID, SGCfgPrefix(c.groupID))
+	cfgKey := strings.TrimPrefix(docID, SGCfgPrefixWithGroupID(c.groupID))
 	c.lock.Lock()
 	DebugfCtx(c.loggingCtx, KeyCluster, "cfg_sg: FireEvent, key: %s, cas %d", cfgKey, cas)
 	for _, ch := range c.subscriptions[cfgKey] {

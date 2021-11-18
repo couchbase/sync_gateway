@@ -535,7 +535,7 @@ func dcpKeyFilter(key []byte, groupID string) bool {
 		bytes.HasPrefix(key, []byte(UnusedSeqRangePrefix)) ||
 		bytes.HasPrefix(key, []byte(UserPrefix)) ||
 		bytes.HasPrefix(key, []byte(RolePrefix)) ||
-		bytes.HasPrefix(key, []byte(SGCfgPrefix(groupID))) {
+		bytes.HasPrefix(key, []byte(SGCfgPrefixWithGroupID(groupID))) {
 		return true
 	}
 

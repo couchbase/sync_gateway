@@ -121,6 +121,7 @@ const (
 	RevPrefix              = SyncPrefix + "rev:"
 	RolePrefix             = SyncPrefix + "role:"
 	SessionPrefix          = SyncPrefix + "session:"
+	SGCfgPrefix            = SyncPrefix + "cfg"
 	SyncSeqPrefix          = SyncPrefix + "seq:"
 	UserEmailPrefix        = SyncPrefix + "useremail:"
 	UserPrefix             = SyncPrefix + "user:"
@@ -195,11 +196,11 @@ func DCPCheckpointPrefixWithGroupID(groupID string) string {
 	return DCPCheckpointPrefix
 }
 
-func SGCfgPrefix(groupID string) string {
+func SGCfgPrefixWithGroupID(groupID string) string {
 	if groupID != "" {
 		return SyncPrefix + groupID + ":cfg:"
 	}
-	return SyncPrefix + "cfg"
+	return SGCfgPrefix
 }
 
 func SyncDataKeyWithGroupID(groupID string) string {
