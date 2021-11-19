@@ -318,6 +318,44 @@ func TestAttachmentCompactionInvalidDocs(t *testing.T) {
 	assert.Equal(t, db.BackgroundProcessStateCompleted, status.State)
 }
 
+func TestAttachmentCompactionStartTimeAndStats(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Create attachment with no doc reference
+	err := rt.GetDatabase().Bucket.SetRaw(base.AttPrefix+"test", 0, []byte("{}"))
+	assert.NoError(t, err)
+
+	databaseStats := rt.GetDatabase().DbStats.Database()
+
+	// Start compaction
+	resp := rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
+	assertStatus(t, resp, http.StatusOK)
+	status := rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
+
+	// Check stats and start time response is correct
+	firstStartTime := status.StartTime
+	firstStartTimeStat := databaseStats.CompactionAttachmentStartTime.Value()
+	assert.False(t, firstStartTime.IsZero())
+	assert.NotEqual(t, 0, firstStartTimeStat)
+	assert.Equal(t, int64(1), databaseStats.NumAttachmentsCompacted.Value())
+
+	// Start compaction again
+	resp = rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
+	assertStatus(t, resp, http.StatusOK)
+	status = rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
+
+	// Check that stats have been updated to new run and previous attachment count stat remains
+	assert.True(t, status.StartTime.After(firstStartTime))
+	assert.True(t, databaseStats.CompactionAttachmentStartTime.Value() > firstStartTimeStat)
+	assert.Equal(t, int64(1), databaseStats.NumAttachmentsCompacted.Value())
+
+}
+
 func (rt *RestTester) WaitForAttachmentCompactionStatus(t *testing.T, state db.BackgroundProcessState) db.AttachmentManagerResponse {
 	var response db.AttachmentManagerResponse
 	err := rt.WaitForConditionWithOptions(func() bool {
