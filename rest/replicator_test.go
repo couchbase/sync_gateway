@@ -4490,7 +4490,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 	}
 
 	for _, test := range defaultConflictResolverWithTombstoneTests {
-		t.Run(test.name, func(tt *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
 			// Passive
 			rt2 := NewRestTester(t, &RestTesterConfig{
 				TestBucket: base.GetTestBucket(t),
@@ -4537,7 +4537,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			}
 
 			// Create the first revision of the document on rt2.
-			docID := t.Name() + "foo"
+			docID := test.name + "foo"
 			rt2RevIDCreated := createOrUpdateDoc(t, rt2, docID, "", "foo")
 
 			// Create active replicator and start replication.
