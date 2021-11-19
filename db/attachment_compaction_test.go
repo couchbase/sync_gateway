@@ -45,7 +45,7 @@ func TestAttachmentMark(t *testing.T) {
 	attKeys = append(attKeys, createConflictingDocOneLeafHasAttachmentBodyKey(t, "conflictAttBodyKey", "attForConflict2", []byte(`{"val": "bodyKeyAtt"}`), testDb))
 	attKeys = append(attKeys, createDocWithInBodyAttachment(t, "inBodyDoc", []byte(`{}`), "attForInBodyRef", []byte(`{"val": "inBodyAtt"}`), testDb))
 
-	terminator := make(chan struct{})
+	terminator := base.NewSafeTerminator()
 	attachmentsMarked, err := Mark(testDb, t.Name(), terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(13), attachmentsMarked)
@@ -101,7 +101,7 @@ func TestAttachmentSweep(t *testing.T) {
 		makeUnmarkedDoc(docID)
 	}
 
-	terminator := make(chan struct{})
+	terminator := base.NewSafeTerminator()
 	purged, err := Sweep(testDb, t.Name(), false, terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 
@@ -172,7 +172,7 @@ func TestAttachmentCleanup(t *testing.T) {
 		oneRecentOneOldMultiMarkedAttIDs = append(oneRecentOneOldMultiMarkedAttIDs, docID)
 	}
 
-	terminator := make(chan struct{})
+	terminator := base.NewSafeTerminator()
 	err := Cleanup(testDb, t.Name(), terminator)
 	assert.NoError(t, err)
 
@@ -241,7 +241,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 		makeUnmarkedDoc(docID)
 	}
 
-	terminator := make(chan struct{})
+	terminator := base.NewSafeTerminator()
 	attachmentsMarked, err := Mark(testDb, t.Name(), terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(10), attachmentsMarked)
@@ -422,6 +422,44 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	assert.Equal(t, BackgroundProcessStateCompleted, testDB2Status.State)
 	assert.Equal(t, testDB1Status.CompactID, testDB2Status.CompactID)
 
+}
+
+func TestAttachmentProcessError(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{
+		SetXattrCallback: func(key string) error {
+			return fmt.Errorf("some error")
+		},
+	})
+	defer b.Close()
+
+	testDB1 := setupTestDBForBucket(t, b)
+	defer testDB1.Close()
+
+	CreateLegacyAttachmentDoc(t, testDB1, "docID", []byte("{}"), "attKey", []byte("{}"))
+
+	err := testDB1.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB1})
+	assert.NoError(t, err)
+
+	var status AttachmentManagerResponse
+	err = WaitForConditionWithOptions(func() bool {
+		rawStatus, err := testDB1.AttachmentCompactionManager.GetStatus()
+		assert.NoError(t, err)
+		err = base.JSONUnmarshal(rawStatus, &status)
+		assert.NoError(t, err)
+
+		if status.State == BackgroundProcessStateError {
+			return true
+		}
+
+		return false
+	}, 200, 1000)
+	require.NoError(t, err)
+
+	assert.Equal(t, status.State, BackgroundProcessStateError)
 }
 
 func WaitForConditionWithOptions(successFunc func() bool, maxNumAttempts, timeToSleepMs int) error {

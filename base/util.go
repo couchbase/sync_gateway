@@ -1253,6 +1253,31 @@ func (ai *AtomicInt) Value() int64 {
 	return atomic.LoadInt64(&ai.val)
 }
 
+type SafeTerminator struct {
+	terminator       chan struct{}
+	terminatorClosed AtomicBool
+}
+
+func NewSafeTerminator() *SafeTerminator {
+	return &SafeTerminator{
+		terminator: make(chan struct{}),
+	}
+}
+
+func (t *SafeTerminator) IsClosed() bool {
+	return t.terminatorClosed.IsTrue()
+}
+
+func (t *SafeTerminator) Done() <-chan struct{} {
+	return t.terminator
+}
+
+func (t *SafeTerminator) Close() {
+	if t.terminatorClosed.CompareAndSwap(false, true) {
+		close(t.terminator)
+	}
+}
+
 func Sha1HashString(str string, salt string) string {
 	h := sha1.New()
 	h.Write([]byte(salt + str))

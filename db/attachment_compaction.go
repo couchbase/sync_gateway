@@ -15,7 +15,7 @@ import (
 
 const CompactionIDKey = "compactID"
 
-func Mark(db *Database, compactionID string, terminator chan struct{}, markedAttachmentCount *base.AtomicInt) (int64, error) {
+func Mark(db *Database, compactionID string, terminator *base.SafeTerminator, markedAttachmentCount *base.AtomicInt) (int64, error) {
 	base.InfofCtx(db.Ctx, base.KeyAll, "Starting first phase of attachment compaction (mark phase) with compactionID: %q", compactionID)
 	compactionLoggingID := "Compaction Mark: " + compactionID
 
@@ -24,7 +24,7 @@ func Mark(db *Database, compactionID string, terminator chan struct{}, markedAtt
 	// failProcess used when a failure is deemed as 'un-recoverable' and we need to abort the compaction process.
 	failProcess := func(err error, format string, args ...interface{}) bool {
 		markProcessFailureErr = err
-		close(terminator)
+		terminator.Close()
 		base.WarnfCtx(db.Ctx, format, args...)
 		return false
 	}
@@ -47,6 +47,11 @@ func Mark(db *Database, compactionID string, terminator chan struct{}, markedAtt
 		if strings.HasPrefix(docID, base.SyncPrefix) {
 			return true
 		}
+
+		// // Skip any binary docs
+		// if event.DataType == base.MemcachedDataTypeRaw {
+		// 	return true
+		// }
 
 		// We need to mark attachments in every leaf revision of the current doc
 		// We will build up a list of attachment names which map to attachment doc IDs. Avoids doing multiple KV ops
@@ -140,7 +145,7 @@ func Mark(db *Database, compactionID string, terminator chan struct{}, markedAtt
 	select {
 	case <-doneChan:
 		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Mark phase of attachment compaction completed. Marked %d attachments", compactionLoggingID, markedAttachmentCount.Value())
-	case <-terminator:
+	case <-terminator.Done():
 		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Mark phase of attachment compaction was terminated. Marked %d attachments", compactionLoggingID, markedAttachmentCount.Value())
 	}
 
@@ -258,7 +263,7 @@ func handleAttachments(attachmentKeyMap map[string]string, docKey string, attach
 	}
 }
 
-func Sweep(db *Database, compactionID string, dryRun bool, terminator chan struct{}, purgedAttachmentCount *base.AtomicInt) (int64, error) {
+func Sweep(db *Database, compactionID string, dryRun bool, terminator *base.SafeTerminator, purgedAttachmentCount *base.AtomicInt) (int64, error) {
 	base.InfofCtx(db.Ctx, base.KeyAll, "Starting second phase of attachment compaction (sweep phase) with compactionID: %q", compactionID)
 	compactionLoggingID := "Compaction Sweep: " + compactionID
 
@@ -343,14 +348,14 @@ func Sweep(db *Database, compactionID string, dryRun bool, terminator chan struc
 	select {
 	case <-doneChan:
 		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Sweep phase of attachment compaction completed. Deleted %d attachments", compactionLoggingID, purgedAttachmentCount.Value())
-	case <-terminator:
+	case <-terminator.Done():
 		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Sweep phase of attachment compaction was terminated. Deleted %d attachments", compactionLoggingID, purgedAttachmentCount.Value())
 	}
 
 	return purgedAttachmentCount.Value(), dcpClient.Close()
 }
 
-func Cleanup(db *Database, compactionID string, terminator chan struct{}) error {
+func Cleanup(db *Database, compactionID string, terminator *base.SafeTerminator) error {
 	base.InfofCtx(db.Ctx, base.KeyAll, "Starting third phase of attachment compaction (cleanup phase) with compactionID: %q", compactionID)
 	compactionLoggingID := "Compaction Cleanup: " + compactionID
 
@@ -460,7 +465,7 @@ func Cleanup(db *Database, compactionID string, terminator chan struct{}) error 
 	select {
 	case <-doneChan:
 		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Cleanup phase of attachment compaction completed", compactionLoggingID)
-	case <-terminator:
+	case <-terminator.Done():
 		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Cleanup phase of attachment compaction was terminated", compactionLoggingID)
 	}
 
