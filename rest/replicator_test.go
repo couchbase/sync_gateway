@@ -5956,6 +5956,7 @@ func createOrUpdateDoc(t *testing.T, rt *RestTester, docID, revID, bodyValue str
 // waitForTombstone waits until the specified tombstone revision is available
 // in the bucket backed by the specified RestTester instance.
 func waitForTombstone(t *testing.T, rt *RestTester, docID string) {
+	require.NoError(t, rt.WaitForPendingChanges())
 	require.NoError(t, rt.WaitForCondition(func() bool {
 		doc, _ := rt.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 		return doc.IsDeleted() && len(doc.Body()) == 0
