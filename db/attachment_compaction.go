@@ -37,6 +37,12 @@ func Mark(db *Database, compactionID string, terminator chan struct{}, markedAtt
 			return false
 		}
 
+		// Don't want to process raw binary docs
+		// The binary check should suffice but for additional safety also check for empty bodies
+		if event.DataType == base.MemcachedDataTypeRaw || len(event.Value) == 0 {
+			return true
+		}
+
 		// We only want to process full docs. Not any sync docs.
 		if strings.HasPrefix(docID, base.SyncPrefix) {
 			return true
