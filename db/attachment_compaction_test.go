@@ -102,7 +102,7 @@ func TestAttachmentSweep(t *testing.T) {
 	}
 
 	terminator := make(chan struct{})
-	purged, err := Sweep(testDb, t.Name(), terminator, &base.AtomicInt{})
+	purged, err := Sweep(testDb, t.Name(), false, terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 
 	assert.Equal(t, int64(11), purged)
@@ -246,7 +246,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, int64(10), attachmentsMarked)
 
-	attachmentsPurged, err := Sweep(testDb, t.Name(), terminator, &base.AtomicInt{})
+	attachmentsPurged, err := Sweep(testDb, t.Name(), false, terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(5), attachmentsPurged)
 
@@ -315,6 +315,57 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 		}
 	})
 
+	// Trigger start with immediate abort. Then resume, ensure that dry run is resumed
+	triggerStopCallback = true
+	err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2, "dryRun": true})
+	assert.NoError(t, err)
+
+	err = WaitForConditionWithOptions(func() bool {
+		var status AttachmentManagerResponse
+		rawStatus, err := testDB2.AttachmentCompactionManager.GetStatus()
+		assert.NoError(t, err)
+		err = base.JSONUnmarshal(rawStatus, &status)
+		require.NoError(t, err)
+
+		if status.State == BackgroundProcessStateStopped {
+			return true
+		}
+
+		return false
+	}, 200, 1000)
+	assert.NoError(t, err)
+
+	var testStatus AttachmentManagerResponse
+	testRawStatus, err := testDB2.AttachmentCompactionManager.GetStatus()
+	assert.NoError(t, err)
+	err = base.JSONUnmarshal(testRawStatus, &testStatus)
+	require.NoError(t, err)
+	assert.True(t, testStatus.DryRun)
+
+	err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2, "dryRun": false})
+	assert.NoError(t, err)
+
+	err = WaitForConditionWithOptions(func() bool {
+		var status AttachmentManagerResponse
+		rawStatus, err := testDB2.AttachmentCompactionManager.GetStatus()
+		assert.NoError(t, err)
+		err = base.JSONUnmarshal(rawStatus, &status)
+		require.NoError(t, err)
+
+		if status.State == BackgroundProcessStateCompleted {
+			return true
+		}
+
+		return false
+	}, 200, 1000)
+	assert.NoError(t, err)
+
+	testRawStatus, err = testDB2.AttachmentCompactionManager.GetStatus()
+	assert.NoError(t, err)
+	err = base.JSONUnmarshal(testRawStatus, &testStatus)
+	require.NoError(t, err)
+	assert.True(t, testStatus.DryRun)
+
 	// Trigger start with immediate stop (stopped from db2)
 	triggerStopCallback = true
 	err = testDB1.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB1})
@@ -325,7 +376,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 		rawStatus, err := testDB1.AttachmentCompactionManager.GetStatus()
 		assert.NoError(t, err)
 		err = base.JSONUnmarshal(rawStatus, &status)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		if status.State == BackgroundProcessStateStopped {
 			return true
@@ -344,7 +395,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 		rawStatus, err := testDB1.AttachmentCompactionManager.GetStatus()
 		assert.NoError(t, err)
 		err = base.JSONUnmarshal(rawStatus, &status)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		if status.State == BackgroundProcessStateCompleted {
 			return true
@@ -363,9 +414,9 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	assert.NoError(t, err)
 
 	err = base.JSONUnmarshal(testDB1RawStatus, &testDB1Status)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	err = base.JSONUnmarshal(testDB2RawStatus, &testDB2Status)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assert.Equal(t, BackgroundProcessStateCompleted, testDB1Status.State)
 	assert.Equal(t, BackgroundProcessStateCompleted, testDB2Status.State)
