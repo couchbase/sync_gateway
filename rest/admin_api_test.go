@@ -3361,13 +3361,17 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
 
-	// Start SG with no databases in bucket(s)
+	serverErr := make(chan error, 0)
+
+	// Start SG with no databases
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
-	defer sc.Close()
+	defer func() {
+		sc.Close()
+		require.NoError(t, <-serverErr)
+	}()
 
-	serverErr := make(chan error, 0)
 	go func() {
 		serverErr <- startServer(&config, sc)
 	}()
@@ -3418,12 +3422,17 @@ func TestDbConfigCredentials(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
 
-	// Start SG with no databases in bucket(s)
+	serverErr := make(chan error, 0)
+
+	// Start SG with no databases
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
-	defer sc.Close()
-	serverErr := make(chan error, 0)
+	defer func() {
+		sc.Close()
+		require.NoError(t, <-serverErr)
+	}()
+
 	go func() {
 		serverErr <- startServer(&config, sc)
 	}()
@@ -3485,13 +3494,17 @@ func TestInvalidDBConfig(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
 
-	// Start SG with no databases in bucket(s)
+	serverErr := make(chan error, 0)
+
+	// Start SG with no databases
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
-	defer sc.Close()
+	defer func() {
+		sc.Close()
+		require.NoError(t, <-serverErr)
+	}()
 
-	serverErr := make(chan error, 0)
 	go func() {
 		serverErr <- startServer(&config, sc)
 	}()
@@ -3540,13 +3553,17 @@ func TestCreateDbOnNonExistentBucket(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
 
-	// Start SG with no databases in bucket(s)
+	serverErr := make(chan error, 0)
+
+	// Start SG with no databases
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
-	defer sc.Close()
+	defer func() {
+		sc.Close()
+		require.NoError(t, <-serverErr)
+	}()
 
-	serverErr := make(chan error, 0)
 	go func() {
 		serverErr <- startServer(&config, sc)
 	}()
@@ -3574,12 +3591,17 @@ func TestPutDbConfigChangeName(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
 
-	// Start SG with no databases in bucket(s)
+	serverErr := make(chan error, 0)
+
+	// Start SG with no databases
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
-	defer sc.Close()
-	serverErr := make(chan error, 0)
+	defer func() {
+		sc.Close()
+		require.NoError(t, <-serverErr)
+	}()
+
 	go func() {
 		serverErr <- startServer(&config, sc)
 	}()
@@ -3637,12 +3659,17 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
 
-	// Start SG with no databases in bucket(s)
+	serverErr := make(chan error, 0)
+
+	// Start SG with no databases
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
-	defer sc.Close()
-	serverErr := make(chan error, 0)
+	defer func() {
+		sc.Close()
+		require.NoError(t, <-serverErr)
+	}()
+
 	go func() {
 		serverErr <- startServer(&config, sc)
 	}()
@@ -3729,19 +3756,21 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
 
-	// Start SG with bootstrap credentials filled
+	serverErr := make(chan error, 0)
+
+	// Start SG with no databases
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(&config, false)
 	require.NoError(t, err)
-	serverErr := make(chan error, 0)
-	go func() {
-		serverErr <- startServer(&config, sc)
-	}()
-	require.NoError(t, sc.waitForRESTAPIs())
 	defer func() {
 		sc.Close()
 		require.NoError(t, <-serverErr)
 	}()
+
+	go func() {
+		serverErr <- startServer(&config, sc)
+	}()
+	require.NoError(t, sc.waitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -3814,19 +3843,21 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
 
-	// Start SG with bootstrap credentials filled
+	serverErr := make(chan error, 0)
+
+	// Start SG with no databases
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
-	serverErr := make(chan error, 0)
-	go func() {
-		serverErr <- startServer(&config, sc)
-	}()
-	require.NoError(t, sc.waitForRESTAPIs())
 	defer func() {
 		sc.Close()
 		require.NoError(t, <-serverErr)
 	}()
+
+	go func() {
+		serverErr <- startServer(&config, sc)
+	}()
+	require.NoError(t, sc.waitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -4038,16 +4069,23 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
-	// Start SG with no databases in bucket(s)
+
+	serverErr := make(chan error, 0)
+
+	// Start SG with no databases
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
-	defer sc.Close()
-	serverErr := make(chan error, 0)
+	defer func() {
+		sc.Close()
+		require.NoError(t, <-serverErr)
+	}()
+
 	go func() {
 		serverErr <- startServer(&config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
+
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
 	defer func() {

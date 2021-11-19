@@ -30,10 +30,12 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
 
-	// Start SG with no databases in bucket(s)
+	// Start SG with no databases
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
+
+	// sc closed and serverErr read later in the test
 	serverErr := make(chan error, 0)
 	go func() {
 		serverErr <- startServer(&config, sc)
@@ -142,11 +144,17 @@ func TestBootstrapDuplicateBucket(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
 
-	// Start SG with no databases in bucket(s)
+	serverErr := make(chan error, 0)
+
+	// Start SG with no databases
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
-	serverErr := make(chan error, 0)
+	defer func() {
+		sc.Close()
+		require.NoError(t, <-serverErr)
+	}()
+
 	go func() {
 		serverErr <- startServer(&config, sc)
 	}()
