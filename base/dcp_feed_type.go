@@ -52,6 +52,11 @@ type SGFeedSourceParams struct {
 	DbName string `json:"sg_dbname,omitempty"`
 }
 
+type SGFeedIndexParams struct {
+	// Used to retrieve the dest implementation (importListener))
+	DestKey string `json:"destKey,omitempty"`
+}
+
 // cbgtFeedParams returns marshalled cbgt.DCPFeedParams as string, to be passed as feedparams during cbgt.Manager init.
 // Used to pass basic auth credentials and xattr flag to cbgt.
 func cbgtFeedParams(spec BucketSpec, dbName string) (string, error) {
@@ -63,6 +68,19 @@ func cbgtFeedParams(spec BucketSpec, dbName string) (string, error) {
 	}
 
 	paramBytes, err := JSONMarshal(feedParams)
+	if err != nil {
+		return "", err
+	}
+	return string(paramBytes), nil
+}
+
+// cbgtIndexParams returns marshalled indexParams as string, to be passed as indexParams during cbgt index creation.
+// Used to retrieve the dest implementation for a given feed
+func cbgtIndexParams(destKey string) (string, error) {
+	indexParams := &SGFeedIndexParams{}
+	indexParams.DestKey = destKey
+
+	paramBytes, err := JSONMarshal(indexParams)
 	if err != nil {
 		return "", err
 	}

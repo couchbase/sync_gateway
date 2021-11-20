@@ -770,6 +770,14 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		bcryptCost = auth.DefaultBcryptCost
 	}
 
+	configGroup := ""
+	if sc.config.Bootstrap.ConfigGroupID != persistentConfigDefaultGroupID {
+		configGroup = sc.config.Bootstrap.ConfigGroupID
+	}
+
+	// Register the cbgt pindex type for the configGroup
+	db.RegisterImportPindexImpl(configGroup)
+
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:              &cacheOptions,
 		RevisionCacheOptions:      revCacheOptions,
@@ -798,6 +806,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		// SlowQueryWarningThreshold: time.Duration(*sc.config.SlowQueryWarningThreshold) * time.Millisecond,
 		ClientPartitionWindow: clientPartitionWindow,
 		BcryptCost:            bcryptCost,
+		ConfigGroup:           configGroup,
 	}
 
 	return contextOptions, nil

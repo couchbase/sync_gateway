@@ -4003,4 +4003,10 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	// Make another database that uses import in-order to trigger the panic instantly instead of having to time.Sleep
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db2/", fmt.Sprintf(dbConfig, "db2"))
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	// Validate that deleted database is no longer in dest factory set
+	_, fetchDb1DestErr := base.FetchDestFactory(base.ImportDestKey("db1"))
+	assert.Equal(t, base.ErrNotFound, fetchDb1DestErr)
+	_, fetchDb2DestErr := base.FetchDestFactory(base.ImportDestKey("db2"))
+	assert.NoError(t, fetchDb2DestErr)
 }

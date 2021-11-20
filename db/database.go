@@ -147,6 +147,7 @@ type DatabaseContextOptions struct {
 	UserXattrKey              string // Key of user xattr that will be accessible from the Sync Function. If empty the feature will be disabled.
 	ClientPartitionWindow     time.Duration
 	BcryptCost                int
+	ConfigGroup               string // configuration group
 }
 
 type SGReplicateOptions struct {
