@@ -158,7 +158,8 @@ func TestCBGTIndexCreation(t *testing.T) {
 			require.NoError(t, err)
 
 			// Define index type
-			indexType := CBGTIndexTypeSyncGatewayImport + tc.dbName
+			configGroup := "configGroup" + t.Name()
+			indexType := CBGTIndexTypeSyncGatewayImport + configGroup
 			cbgt.RegisterPIndexImplType(indexType,
 				&cbgt.PIndexImplType{})
 
@@ -216,7 +217,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 			}
 
 			// Create cbgt index via SG handling
-			err = createCBGTIndex(context, tc.dbName, "configGroup1", bucket, spec, 16)
+			err = createCBGTIndex(context, tc.dbName, configGroup, bucket, spec, 16)
 			require.NoError(t, err)
 
 			// Verify single index exists, and matches expected naming
@@ -256,7 +257,8 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 	require.NoError(t, err)
 
 	// Define index type
-	indexType := CBGTIndexTypeSyncGatewayImport + testDbName
+	configGroup := "configGroup" + t.Name()
+	indexType := CBGTIndexTypeSyncGatewayImport + configGroup
 	cbgt.RegisterPIndexImplType(indexType,
 		&cbgt.PIndexImplType{})
 
@@ -285,7 +287,7 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 	require.NoError(t, err, "Unable to create legacy-style index")
 
 	// Create cbgt index
-	err = createCBGTIndex(context, testDbName, "configGroup1", bucket, spec, 16)
+	err = createCBGTIndex(context, testDbName, configGroup, bucket, spec, 16)
 	require.NoError(t, err)
 
 	// Verify single index created
@@ -294,7 +296,7 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 	assert.Equal(t, 1, len(indexDefsMap))
 
 	// Attempt to recreate index
-	err = createCBGTIndex(context, testDbName, "configGroup1", bucket, spec, 16)
+	err = createCBGTIndex(context, testDbName, configGroup, bucket, spec, 16)
 	require.NoError(t, err)
 
 	// Verify single index defined (acts as upsert to existing)
@@ -331,7 +333,8 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	require.NoError(t, err)
 
 	// Define index type
-	indexType := CBGTIndexTypeSyncGatewayImport + unsafeTestDBName
+	configGroup := "configGroup" + t.Name()
+	indexType := CBGTIndexTypeSyncGatewayImport + configGroup
 	cbgt.RegisterPIndexImplType(indexType,
 		&cbgt.PIndexImplType{})
 
@@ -360,7 +363,7 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	require.NoError(t, err, "Unable to create legacy-style index")
 
 	// Create cbgt index
-	err = createCBGTIndex(context, unsafeTestDBName, "configGroup1", bucket, spec, 16)
+	err = createCBGTIndex(context, unsafeTestDBName, configGroup, bucket, spec, 16)
 	require.NoError(t, err)
 
 	// Verify single index created
@@ -369,7 +372,7 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	assert.Equal(t, 1, len(indexDefsMap))
 
 	// Attempt to recreate index
-	err = createCBGTIndex(context, unsafeTestDBName, "configGroup1", bucket, spec, 16)
+	err = createCBGTIndex(context, unsafeTestDBName, configGroup, bucket, spec, 16)
 	require.NoError(t, err)
 
 	// Verify single index defined (acts as upsert to existing)
@@ -398,7 +401,8 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Define index type for db name
-	indexType := CBGTIndexTypeSyncGatewayImport + testDBName
+	configGroup := "configGroup" + t.Name()
+	indexType := CBGTIndexTypeSyncGatewayImport + configGroup
 	cbgt.RegisterPIndexImplType(indexType,
 		&cbgt.PIndexImplType{})
 
@@ -421,7 +425,7 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 
 			// StartManager starts the manager and creates the index
 			log.Printf("Starting manager for %s", managerUUID)
-			startErr := context.StartManager(testDBName, "", bucket, spec, DefaultImportPartitions)
+			startErr := context.StartManager(testDBName, configGroup, bucket, spec, DefaultImportPartitions)
 			assert.NoError(t, startErr)
 
 			managerWg.Done()
