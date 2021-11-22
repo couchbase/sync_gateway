@@ -856,6 +856,8 @@ func (d *DbStats) initDatabaseStats() {
 }
 
 func (d *DbStats) unregisterDatabaseStats() {
+	prometheus.Unregister(d.DatabaseStats.CompactionAttachmentStartTime)
+	prometheus.Unregister(d.DatabaseStats.CompactionTombstoneStartTime)
 	prometheus.Unregister(d.DatabaseStats.ConflictWriteCount)
 	prometheus.Unregister(d.DatabaseStats.Crc32MatchCount)
 	prometheus.Unregister(d.DatabaseStats.DCPCachingCount)
@@ -867,6 +869,7 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.DocWritesXattrBytes)
 	prometheus.Unregister(d.DatabaseStats.HighSeqFeed)
 	prometheus.Unregister(d.DatabaseStats.DocWritesBytesBlip)
+	prometheus.Unregister(d.DatabaseStats.NumAttachmentsCompacted)
 	prometheus.Unregister(d.DatabaseStats.NumDocReadsBlip)
 	prometheus.Unregister(d.DatabaseStats.NumDocReadsRest)
 	prometheus.Unregister(d.DatabaseStats.NumDocWrites)
