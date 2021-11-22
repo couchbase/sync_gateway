@@ -74,7 +74,7 @@ func (r *DCPReceiver) OnError(err error) {
 
 func (r *DCPReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
-	if !dcpKeyFilter(key, r.groupID) {
+	if !r.dcpKeyFilter(key) {
 		return nil
 	}
 	event := makeFeedEventForMCRequest(req, sgbucket.FeedOpMutation)
@@ -84,7 +84,7 @@ func (r *DCPReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 
 func (r *DCPReceiver) DataDelete(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
-	if !dcpKeyFilter(key, r.groupID) {
+	if !r.dcpKeyFilter(key) {
 		return nil
 	}
 	event := makeFeedEventForMCRequest(req, sgbucket.FeedOpDeletion)

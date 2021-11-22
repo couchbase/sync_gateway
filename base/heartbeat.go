@@ -65,9 +65,9 @@ type HeartbeatListener interface {
 //       e.g  Default for a 4 node cluster: 12 ops/second
 type couchbaseHeartBeater struct {
 	bucket                  Bucket
+	nodeUUID                string
 	keyPrefix               string
 	groupID                 string
-	nodeUUID                string
 	heartbeatSendInterval   time.Duration                // Heartbeat send interval
 	heartbeatExpirySeconds  uint32                       // Heartbeat expiry time (seconds)
 	heartbeatPollInterval   time.Duration                // Frequency of polling for other nodes' heartbeat documents

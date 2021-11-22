@@ -105,7 +105,7 @@ func (d *DCPDest) Close() error {
 func (d *DCPDest) DataUpdate(partition string, key []byte, seq uint64,
 	val []byte, cas uint64, extrasType cbgt.DestExtrasType, extras []byte) error {
 
-	if !dcpKeyFilter(key, d.groupID) {
+	if !d.dcpKeyFilter(key) {
 		return nil
 	}
 	event := makeFeedEventForDest(key, val, cas, partitionToVbNo(partition), 0, 0, sgbucket.FeedOpMutation)
@@ -116,7 +116,7 @@ func (d *DCPDest) DataUpdate(partition string, key []byte, seq uint64,
 func (d *DCPDest) DataUpdateEx(partition string, key []byte, seq uint64, val []byte,
 	cas uint64, extrasType cbgt.DestExtrasType, req interface{}) error {
 
-	if !dcpKeyFilter(key, d.groupID) {
+	if !d.dcpKeyFilter(key) {
 		return nil
 	}
 
@@ -143,7 +143,7 @@ func (d *DCPDest) DataUpdateEx(partition string, key []byte, seq uint64, val []b
 func (d *DCPDest) DataDelete(partition string, key []byte, seq uint64,
 	cas uint64,
 	extrasType cbgt.DestExtrasType, extras []byte) error {
-	if !dcpKeyFilter(key, d.groupID) {
+	if !d.dcpKeyFilter(key) {
 		return nil
 	}
 
@@ -154,7 +154,7 @@ func (d *DCPDest) DataDelete(partition string, key []byte, seq uint64,
 
 func (d *DCPDest) DataDeleteEx(partition string, key []byte, seq uint64,
 	cas uint64, extrasType cbgt.DestExtrasType, req interface{}) error {
-	if !dcpKeyFilter(key, d.groupID) {
+	if !d.dcpKeyFilter(key) {
 		return nil
 	}
 

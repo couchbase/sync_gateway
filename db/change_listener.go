@@ -36,7 +36,7 @@ type changeListener struct {
 	keyCounts             map[string]uint64      // Latest count at which each doc key was updated
 	OnDocChanged          DocChangedFunc         // Called when change arrives on feed
 	terminator            chan bool              // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
-	groupID               string
+	checkpointPrefix      string                 // DCP checkpoint key prefix
 }
 
 type DocChangedFunc func(event sgbucket.FeedEvent)
@@ -47,7 +47,7 @@ func (listener *changeListener) Init(name string, groupID string) {
 	listener.terminateCheckCounter = 0
 	listener.keyCounts = map[string]uint64{}
 	listener.tapNotifier = sync.NewCond(&sync.Mutex{})
-	listener.groupID = groupID
+	listener.checkpointPrefix = base.DCPCheckpointPrefixWithGroupID(groupID)
 }
 
 // Starts a changeListener on a given Bucket.
@@ -61,7 +61,6 @@ func (listener *changeListener) Start(bucket base.Bucket, dbStats *expvar.Map) e
 		Backfill:   sgbucket.FeedNoBackfill,
 		Terminator: listener.terminator,
 		DoneChan:   make(chan struct{}),
-		GroupID:    listener.groupID,
 	}
 
 	return listener.StartMutationFeed(bucket, dbStats)
@@ -129,7 +128,7 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 			// NOTE: checkpoint persistence is disabled altogether for the caching feed.  Leaving this check in place
 			// defensively.
 			requiresCheckpointPersistence = false
-		} else if strings.HasPrefix(key, base.SGCfgPrefixWithGroupID(listener.groupID)) {
+		} else if strings.HasPrefix(key, listener.checkpointPrefix) {
 			if listener.OnDocChanged != nil {
 				listener.OnDocChanged(event)
 			}

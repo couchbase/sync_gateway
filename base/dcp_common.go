@@ -79,7 +79,8 @@ type DCPCommon struct {
 	backfill               *backfillStatus                // Backfill state and stats
 	feedID                 string                         // Unique feed ID, used for logging
 	loggingCtx             context.Context                // Logging context, prefixes feedID
-	groupID                string
+	sgCfgPrefix            string                         // Prefix for SG Cfg doc keys
+	checkpointPrefix       string                         // DCP checkpoint key prefix
 }
 
 func NewDCPCommon(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID string, groupID string) *DCPCommon {
@@ -98,7 +99,8 @@ func NewDCPCommon(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbN
 		lastCheckpointTime:     make([]time.Time, maxVbNo),
 		backfill:               &newBackfillStatus,
 		feedID:                 feedID,
-		groupID:                groupID,
+		checkpointPrefix:       DCPCheckpointPrefixWithGroupID(groupID),
+		sgCfgPrefix:            SGCfgPrefixWithGroupID(groupID),
 	}
 
 	dcpContextID := fmt.Sprintf("%s-%s", MD(bucket.GetName()).Redact(), feedID)
@@ -205,7 +207,7 @@ func (c *DCPCommon) incrementCheckpointCount(vbucketId uint16) {
 //   - The ongoing performance overhead of persisting last sequence outweighs the minor performance benefit of not reprocessing a few
 //    sequences in a checkpoint on startup
 func (c *DCPCommon) loadCheckpoint(vbNo uint16) (vbMetadata []byte, snapshotStartSeq uint64, snapshotEndSeq uint64, err error) {
-	rawValue, _, err := c.bucket.GetRaw(fmt.Sprintf("%s%d", DCPCheckpointPrefixWithGroupID(c.groupID), vbNo))
+	rawValue, _, err := c.bucket.GetRaw(fmt.Sprintf("%s%d", c.checkpointPrefix, vbNo))
 	if err != nil {
 		// On a key not found error, metadata hasn't been persisted for this vbucket
 		if IsKeyNotFoundError(c.bucket, err) {
@@ -285,7 +287,7 @@ func (c *DCPCommon) initMetadata(maxVbNo uint16) {
 //         - Is a relatively infrequent operation
 func (c *DCPCommon) persistCheckpoint(vbNo uint16, value []byte) error {
 	TracefCtx(c.loggingCtx, KeyDCP, "Persisting checkpoint for vbno %d", vbNo)
-	return c.bucket.SetRaw(fmt.Sprintf("%s%d", DCPCheckpointPrefixWithGroupID(c.groupID), vbNo), 0, value)
+	return c.bucket.SetRaw(fmt.Sprintf("%s%d", c.checkpointPrefix, vbNo), 0, value)
 }
 
 // This updates the value stored in r.seqs with the given seq number for the given partition
@@ -518,7 +520,8 @@ func (b *backfillStatus) purgeBackfillSequences(bucket Bucket) error {
 // Only a subset of Sync Gateway's internal documents need to be included during DCP processing: user, role, and
 // unused sequence documents.  Any other documents with the leading '_sync' prefix can be ignored.
 // dcpKeyFilter returns true for documents that should be processed, false for those that do not need processing.
-func dcpKeyFilter(key []byte, groupID string) bool {
+// c is used to get the SG Cfg prefix
+func (c *DCPCommon) dcpKeyFilter(key []byte) bool { // group id
 
 	// If it's a _txn doc, don't process
 	if bytes.HasPrefix(key, []byte(TxnPrefix)) {
@@ -535,7 +538,7 @@ func dcpKeyFilter(key []byte, groupID string) bool {
 		bytes.HasPrefix(key, []byte(UnusedSeqRangePrefix)) ||
 		bytes.HasPrefix(key, []byte(UserPrefix)) ||
 		bytes.HasPrefix(key, []byte(RolePrefix)) ||
-		bytes.HasPrefix(key, []byte(SGCfgPrefixWithGroupID(groupID))) {
+		bytes.HasPrefix(key, []byte(c.sgCfgPrefix)) { //	bytes.HasPrefix(key, []byte(SGCfgPrefixWithGroupID(groupID))) {
 		return true
 	}
 

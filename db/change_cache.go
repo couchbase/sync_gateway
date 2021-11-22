@@ -67,6 +67,7 @@ type changeCache struct {
 	lastAddPendingTime int64                   // The most recent time _addPendingLogs was run, as epoch time
 	internalStats      changeCacheStats        // Running stats for the change cache.  Only applied to expvars on a call to changeCache.updateStats
 	cfgEventCallback   base.CfgEventNotifyFunc // Callback for Cfg updates recieved over the caching feed
+	sgCfgPrefix        string                  // Prefix for SG Cfg doc keys
 }
 
 type changeCacheStats struct {
@@ -164,6 +165,7 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 	c.initTime = time.Now()
 	c.skippedSeqs = NewSkippedSequenceList()
 	c.lastAddPendingTime = time.Now().UnixNano()
+	c.sgCfgPrefix = base.SGCfgPrefixWithGroupID(dbcontext.Options.GroupID)
 
 	// init cache options
 	if options != nil {
@@ -422,7 +424,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		return
 	}
 
-	if strings.HasPrefix(docID, base.SGCfgPrefixWithGroupID(c.context.Options.GroupID)) {
+	if strings.HasPrefix(docID, c.sgCfgPrefix) {
 		if c.cfgEventCallback != nil {
 			c.cfgEventCallback(docID, event.Cas, nil)
 		}

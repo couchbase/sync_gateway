@@ -29,7 +29,7 @@ type CfgSG struct {
 	loggingCtx    context.Context
 	subscriptions map[string][]chan<- cbgt.CfgEvent // Keyed by key
 	lock          sync.Mutex                        // mutex for subscriptions
-	groupID       string
+	keyPrefix     string                            // Config doc key prefix
 }
 
 type CfgEventNotifyFunc func(docID string, cas uint64, err error)
@@ -53,13 +53,13 @@ func NewCfgSG(bucket Bucket, groupID string) (*CfgSG, error) {
 		bucket:        bucket,
 		loggingCtx:    loggingCtx,
 		subscriptions: make(map[string][]chan<- cbgt.CfgEvent),
-		groupID:       groupID,
+		keyPrefix:     SGCfgPrefixWithGroupID(groupID),
 	}
 	return c, nil
 }
 
 func (c *CfgSG) sgCfgBucketKey(cfgKey string) string {
-	return SGCfgPrefixWithGroupID(c.groupID) + cfgKey
+	return c.keyPrefix + cfgKey
 }
 
 func (c *CfgSG) Get(cfgKey string, cas uint64) (
@@ -134,7 +134,7 @@ func (c *CfgSG) Subscribe(cfgKey string, ch chan cbgt.CfgEvent) error {
 }
 
 func (c *CfgSG) FireEvent(docID string, cas uint64, err error) {
-	cfgKey := strings.TrimPrefix(docID, SGCfgPrefixWithGroupID(c.groupID))
+	cfgKey := strings.TrimPrefix(docID, c.keyPrefix)
 	c.lock.Lock()
 	DebugfCtx(c.loggingCtx, KeyCluster, "cfg_sg: FireEvent, key: %s, cas %d", cfgKey, cas)
 	for _, ch := range c.subscriptions[cfgKey] {
