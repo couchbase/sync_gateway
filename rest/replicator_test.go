@@ -4448,7 +4448,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	defaultConflictResolverWithTombstoneTests := []struct {
 		name            string   // A unique name to identify the unit test.
@@ -4490,7 +4490,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 	}
 
 	for _, test := range defaultConflictResolverWithTombstoneTests {
-		t.Run(test.name, func(tt *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
 			// Passive
 			rt2 := NewRestTester(t, &RestTesterConfig{
 				TestBucket: base.GetTestBucket(t),
@@ -4537,7 +4537,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			}
 
 			// Create the first revision of the document on rt2.
-			docID := t.Name() + "foo"
+			docID := test.name + "foo"
 			rt2RevIDCreated := createOrUpdateDoc(t, rt2, docID, "", "foo")
 
 			// Create active replicator and start replication.
@@ -4584,7 +4584,12 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			waitForTombstone(t, rt2, docID)
 
 			requireRevID(t, rt1, docID, test.expectedRevID)
-			requireRevID(t, rt2, docID, test.expectedRevID)
+			// Wait for conflict resolved doc (tombstone) to be pulled to passive bucket
+			// Then require it is the expected rev
+			require.NoError(t, rt2.WaitForCondition(func() bool {
+				doc, _ := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+				return doc != nil && doc.SyncData.CurrentRev == test.expectedRevID
+			}))
 
 			// Ensure that the document body of the winning tombstone revision written to both
 			// rt1 and rt2 is empty, i.e., An attempt to read the document body of a tombstone
@@ -5951,6 +5956,7 @@ func createOrUpdateDoc(t *testing.T, rt *RestTester, docID, revID, bodyValue str
 // waitForTombstone waits until the specified tombstone revision is available
 // in the bucket backed by the specified RestTester instance.
 func waitForTombstone(t *testing.T, rt *RestTester, docID string) {
+	require.NoError(t, rt.WaitForPendingChanges())
 	require.NoError(t, rt.WaitForCondition(func() bool {
 		doc, _ := rt.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 		return doc.IsDeleted() && len(doc.Body()) == 0
