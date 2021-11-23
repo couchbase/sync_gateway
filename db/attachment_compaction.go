@@ -315,6 +315,7 @@ func Sweep(db *Database, compactionID string, dryRun bool, terminator *base.Safe
 				return true
 			}
 			base.DebugfCtx(db.Ctx, base.KeyAll, "[%s] Purged attachment %s", compactionLoggingID, base.UD(docID))
+			db.DbStats.Database().NumAttachmentsCompacted.Add(1)
 		} else {
 			base.DebugfCtx(db.Ctx, base.KeyAll, "[%s] Would have purged attachment %s (not purged, running with dry run)", compactionLoggingID, base.UD(docID))
 		}

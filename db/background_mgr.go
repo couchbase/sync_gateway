@@ -78,6 +78,7 @@ func (b *ClusterAwareBackgroundManagerOptions) StatusDocID() string {
 // REST. Splitting this out into an additional embedded struct allows easy JSON marshalling
 type BackgroundManagerStatus struct {
 	State            BackgroundProcessState `json:"status"`
+	StartTime        time.Time              `json:"start_time"`
 	LastErrorMessage string                 `json:"last_error"`
 }
 
@@ -107,6 +108,7 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 	}
 
 	b.resetStatus()
+	b.StartTime = time.Now().UTC()
 
 	err = b.Process.Init(options, processClusterStatus)
 	if err != nil {
@@ -550,6 +552,9 @@ func NewTombstoneCompactionManager() *BackgroundManager {
 }
 
 func (t *TombstoneCompactionManager) Init(options map[string]interface{}, clusterStatus []byte) error {
+	database := options["database"].(*Database)
+	database.DbStats.Database().CompactionAttachmentStartTime.Set(time.Now().UTC().Unix())
+
 	return nil
 }
 
@@ -614,6 +619,9 @@ func NewAttachmentCompactionManager(bucket base.Bucket) *BackgroundManager {
 }
 
 func (a *AttachmentCompactionManager) Init(options map[string]interface{}, clusterStatus []byte) error {
+
+	database := options["database"].(*Database)
+	database.DbStats.Database().CompactionAttachmentStartTime.Set(time.Now().UTC().Unix())
 
 	newRunInit := func() error {
 		uniqueUUID, err := uuid.NewRandom()
