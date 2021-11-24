@@ -2098,14 +2098,6 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 			nil,
 		},
 		{
-			"Both blank encoded",
-			base.StringPtr("\" \""),
-			base.StringPtr("\" \""),
-			0,
-			nil,
-			nil,
-		},
-		{
 			"Invalid Sync Fn No Import",
 			base.StringPtr(`function(){`),
 			nil,
