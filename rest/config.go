@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -625,7 +626,9 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) (errorMessag
 	}
 
 	if dbConfig.Sync != nil {
-		if strings.TrimSpace(*dbConfig.Sync) != "" {
+		var decodedSync string
+		err = json.Unmarshal([]byte(*dbConfig.Sync), &decodedSync)
+		if (err != nil && strings.TrimSpace(*dbConfig.Sync) != "") || (err == nil && strings.TrimSpace(decodedSync) != "") {
 			_, err = sgbucket.NewJSRunner(*dbConfig.Sync)
 			if err != nil {
 				errorMessages = multierror.Append(errorMessages, fmt.Errorf("sync function contains invalid javascript syntax: %v", err))
@@ -640,7 +643,9 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) (errorMessag
 	}
 
 	if dbConfig.ImportFilter != nil {
-		if strings.TrimSpace(*dbConfig.ImportFilter) != "" {
+		var decodedFilter string
+		err = json.Unmarshal([]byte(*dbConfig.ImportFilter), &decodedFilter)
+		if (err != nil && strings.TrimSpace(*dbConfig.ImportFilter) != "") || (err == nil && strings.TrimSpace(decodedFilter) != "") {
 			_, err = sgbucket.NewJSRunner(*dbConfig.ImportFilter)
 			if err != nil {
 				errorMessages = multierror.Append(errorMessages, fmt.Errorf("import filter function contains invalid javascript syntax: %v", err))
