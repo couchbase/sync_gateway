@@ -4093,61 +4093,33 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 		tb.Close()
 	}()
 
+	// db put with empty sync func and import filter
 	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/",
 		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "import_filter": ""}`,
+			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "sync": "", "import_filter": ""}`,
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-	respBody, err := ioutil.ReadAll(resp.Body)
-	assert.NoError(t, err)
-	_ = resp.Body.Close()
-	assert.Contains(t, string(respBody), "import filter function cannot be empty string")
-
-	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/",
-		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "sync": ""}`,
-			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
-		),
-	)
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-	respBody, err = ioutil.ReadAll(resp.Body)
-	assert.NoError(t, err)
-	_ = resp.Body.Close()
-	assert.Contains(t, string(respBody), "sync function cannot be empty string")
-
-	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/",
-		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
-			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
-		),
-	)
+	resp.Body.Close()
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
+	// db config put with empty sync func and import filter
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "sync": "", "import_filter": ""}`,
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-	respBody, err = ioutil.ReadAll(resp.Body)
-	assert.NoError(t, err)
-	_ = resp.Body.Close()
-	assert.Contains(t, string(respBody), "sync function cannot be empty string")
-	assert.Contains(t, string(respBody), "import filter function cannot be empty string")
+	resp.Body.Close()
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
+	// db config post, with empty sync func and import filter
 	resp = bootstrapAdminRequest(t, http.MethodPost, "/db/_config",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "sync": "", "import_filter": ""}`,
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-	respBody, err = ioutil.ReadAll(resp.Body)
-	assert.NoError(t, err)
-	_ = resp.Body.Close()
-	assert.Contains(t, string(respBody), "sync function cannot be empty string")
-	assert.Contains(t, string(respBody), "import filter function cannot be empty string")
+	resp.Body.Close()
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 }
