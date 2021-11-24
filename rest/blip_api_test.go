@@ -3672,6 +3672,7 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "", errorCode, "resp: %s", respBody)
 
+	// Might need to expect 0 after CBG-1824 depending on fix implementation
 	assert.EqualValues(t, 1, pullStats.NumPullReplActiveOneShot.Value())
 
 	// Send continous subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
@@ -3689,7 +3690,6 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "", errorCode, "resp: %s", respBody)
 
-	// Might need to expect 0 after CBG-1824 depending on fix implementation
 	assert.EqualValues(t, 1, pullStats.NumPullReplActiveContinuous.Value())
 
 	// Send a second continuous subchanges request, expect an error
