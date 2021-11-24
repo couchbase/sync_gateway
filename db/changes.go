@@ -678,6 +678,13 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 		// This loop is used to re-run the fetch after every database change, in Wait mode
 	outer:
 		for {
+			// Check if feed has been terminated regardless of if any changes have happened
+			select {
+			case <-options.Terminator:
+				return
+			default:
+				// Continue if not terminated
+			}
 
 			// Updates the ChangeWaiter to the current set of available channels
 			if changeWaiter != nil {
