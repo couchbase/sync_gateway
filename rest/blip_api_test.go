@@ -3672,7 +3672,6 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "", errorCode, "resp: %s", respBody)
 
-	pullStats = bt.restTester.GetDatabase().DbStats.CBLReplicationPull()
 	assert.EqualValues(t, 1, pullStats.NumPullReplActiveOneShot.Value())
 
 	// Send continous subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
@@ -3690,8 +3689,7 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "", errorCode, "resp: %s", respBody)
 
-	pullStats = bt.restTester.GetDatabase().DbStats.CBLReplicationPull()
-	// Might need to expect 0 after CBG-1824
+	// Might need to expect 0 after CBG-1824 depending on fix implementation
 	assert.EqualValues(t, 1, pullStats.NumPullReplActiveContinuous.Value())
 
 	// Send a second continuous subchanges request, expect an error
@@ -3707,7 +3705,6 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	log.Printf("errorCode2: %v", errorCode)
 	assert.Equal(t, "500", errorCode)
 
-	pullStats = bt.restTester.GetDatabase().DbStats.CBLReplicationPull()
 	assert.EqualValues(t, 1, pullStats.NumPullReplActiveContinuous.Value())
 
 	// Even a subsequent continuous = false subChanges request should return an error. This isn't restricted to only continuous changes.
@@ -3725,12 +3722,10 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "500", errorCode, "resp: %s", respBody)
 
-	pullStats = bt.restTester.GetDatabase().DbStats.CBLReplicationPull()
 	assert.EqualValues(t, 1, pullStats.NumPullReplActiveOneShot.Value())
 
 	bt.sender.Close() // Close continuous sub changes feed
 
-	pullStats = bt.restTester.GetDatabase().DbStats.CBLReplicationPull()
 	activeContStat, activeContStatIsExpected := base.WaitForStat(pullStats.NumPullReplActiveContinuous.Value, 0)
 	assert.True(t, activeContStatIsExpected, "NumPullReplActiveContinuous=%d instead of expected value of 0", activeContStat)
 
