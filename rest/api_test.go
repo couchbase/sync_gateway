@@ -8911,7 +8911,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		requireAttachmentFound(attKey, attBody)
 
 		// Perform cleanup after the test ends.
-		rt.purgeDoc(attKey)
 		rt.purgeDoc(docID)
 	})
 
@@ -8955,7 +8954,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		requireAttachmentFound(attKey, attBody)
 
 		// Perform cleanup after the test ends.
-		rt.purgeDoc(attKey)
 		rt.purgeDoc(docID1)
 		rt.purgeDoc(docID2)
 	})
@@ -8986,7 +8984,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		requireAttachmentFound(attKey, attBody)
 
 		// Perform cleanup after the test ends.
-		rt.purgeDoc(attKey)
 		rt.purgeDoc(docID)
 	})
 
@@ -9032,7 +9029,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		requireAttachmentFound(attKey, attBody)
 
 		// Perform cleanup after the test ends.
-		rt.purgeDoc(attKey)
 		rt.purgeDoc(docID1)
 		rt.purgeDoc(docID2)
 	})
@@ -9060,9 +9056,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 
 		// Check whether legacy attachment is still persisted in the bucket.
 		requireAttachmentFound(attKey, attBody)
-
-		// Perform cleanup after the test ends.
-		rt.purgeDoc(attKey)
 	})
 
 	t.Run("legacy attachment persistence upon doc purge (multiple docs referencing same attachment)", func(t *testing.T) {
@@ -9103,9 +9096,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 
 		// Check whether legacy attachment is still persisted in the bucket.
 		requireAttachmentFound(attKey, attBody)
-
-		// Perform cleanup after the test ends.
-		rt.purgeDoc(attKey)
 	})
 }
 
