@@ -2137,6 +2137,23 @@ func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
 
 // Purges a document from the bucket (no tombstone)
 func (db *Database) Purge(key string) error {
+	doc, err := db.GetDocument(key, DocUnmarshalAll)
+	if err != nil {
+		return err
+	}
+
+	attachments, err := getAttachmentIDsForLeafRevisions(db, doc, "")
+	if err != nil {
+		return err
+	}
+
+	for attachmentID := range attachments {
+		err = db.Bucket.Delete(attachmentID)
+		if err != nil {
+			base.WarnfCtx(db.Ctx, "Unable to delete attachment %q. Error: %v", attachmentID, err)
+		}
+	}
+
 	if db.UseXattrs() {
 		return db.Bucket.DeleteWithXattr(key, base.SyncXattrName)
 	} else {

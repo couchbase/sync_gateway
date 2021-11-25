@@ -48,11 +48,6 @@ func Mark(db *Database, compactionID string, terminator *base.SafeTerminator, ma
 			return true
 		}
 
-		// // Skip any binary docs
-		// if event.DataType == base.MemcachedDataTypeRaw {
-		// 	return true
-		// }
-
 		// We need to mark attachments in every leaf revision of the current doc
 		// We will build up a list of attachment names which map to attachment doc IDs. Avoids doing multiple KV ops
 		// when marking if multiple leaves are referencing the same attachment.

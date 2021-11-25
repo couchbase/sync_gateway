@@ -8911,7 +8911,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		requireAttachmentFound(attKey, attBody)
 
 		// Perform cleanup after the test ends.
-		rt.purgeDoc(attKey)
 		rt.purgeDoc(docID)
 	})
 
@@ -8955,7 +8954,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		requireAttachmentFound(attKey, attBody)
 
 		// Perform cleanup after the test ends.
-		rt.purgeDoc(attKey)
 		rt.purgeDoc(docID1)
 		rt.purgeDoc(docID2)
 	})
@@ -8986,7 +8984,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		requireAttachmentFound(attKey, attBody)
 
 		// Perform cleanup after the test ends.
-		rt.purgeDoc(attKey)
 		rt.purgeDoc(docID)
 	})
 
@@ -9032,7 +9029,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		requireAttachmentFound(attKey, attBody)
 
 		// Perform cleanup after the test ends.
-		rt.purgeDoc(attKey)
 		rt.purgeDoc(docID1)
 		rt.purgeDoc(docID2)
 	})
@@ -9060,9 +9056,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 
 		// Check whether legacy attachment is still persisted in the bucket.
 		requireAttachmentFound(attKey, attBody)
-
-		// Perform cleanup after the test ends.
-		rt.purgeDoc(attKey)
 	})
 
 	t.Run("legacy attachment persistence upon doc purge (multiple docs referencing same attachment)", func(t *testing.T) {
@@ -9103,9 +9096,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 
 		// Check whether legacy attachment is still persisted in the bucket.
 		requireAttachmentFound(attKey, attBody)
-
-		// Perform cleanup after the test ends.
-		rt.purgeDoc(attKey)
 	})
 }
 
@@ -9287,4 +9277,78 @@ func TestAttachmentsMissingNoBody(t *testing.T) {
 	resp = rt.SendAdminRequest("GET", "/db/"+t.Name()+"?rev="+rev2ID, ``)
 	assertStatus(t, resp, http.StatusOK)
 	assert.Contains(t, string(resp.BodyBytes()), "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=")
+}
+
+func TestAttachmentDeleteOnPurge(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Create doc with attachment
+	resp := rt.SendAdminRequest("PUT", "/db/"+t.Name(), `{"_attachments": {"hello": {"data": "aGVsbG8gd29ybGQ="}}}`)
+	assertStatus(t, resp, http.StatusCreated)
+	err := rt.WaitForPendingChanges()
+	assert.NoError(t, err)
+
+	// Ensure attachment is uploaded and key the attachment doc key
+	resp = rt.SendAdminRequest("GET", "/db/"+t.Name()+"/hello?meta=true", "")
+	assertStatus(t, resp, http.StatusOK)
+
+	var body db.Body
+	err = base.JSONUnmarshal(resp.BodyBytes(), &body)
+	require.NoError(t, err)
+
+	key, ok := body["key"].(string)
+	assert.True(t, ok)
+
+	// Ensure we can get the attachment doc
+	_, _, err = rt.GetDatabase().Bucket.GetRaw(key)
+	assert.NoError(t, err)
+
+	// Purge the document
+	resp = rt.SendAdminRequest("POST", "/db/_purge", `{"`+t.Name()+`": ["*"]}`)
+	assertStatus(t, resp, http.StatusOK)
+
+	// Ensure that the attachment has now been deleted
+	_, _, err = rt.GetDatabase().Bucket.GetRaw(key)
+	assert.Error(t, err)
+	assert.True(t, base.IsDocNotFoundError(err))
+}
+
+func TestAttachmentDeleteOnExpiry(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Expiry only supported by Couchbase Server")
+	}
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Create doc with attachment and expiry
+	resp := rt.SendAdminRequest("PUT", "/db/"+t.Name(), `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}, "_exp": 2}`)
+	assertStatus(t, resp, http.StatusCreated)
+	err := rt.WaitForPendingChanges()
+	assert.NoError(t, err)
+
+	// Wait for document to be expired - this bucket get should also trigger the expiry purge interval
+	err = rt.WaitForCondition(func() bool {
+		_, _, err = rt.GetDatabase().Bucket.GetRaw(t.Name())
+		return base.IsDocNotFoundError(err)
+	})
+	assert.NoError(t, err)
+
+	// Trigger OnDemand Import for that doc to trigger tombstone
+	resp = rt.SendAdminRequest("GET", "/db/"+t.Name(), "")
+	assertStatus(t, resp, http.StatusNotFound)
+
+	att2Key := db.MakeAttachmentKey(db.AttVersion2, t.Name(), "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=")
+
+	// With xattrs doc will be imported and will be captured as tombstone and therefore purge attachments
+	// Otherwise attachment will not be purged
+	_, _, err = rt.GetDatabase().Bucket.GetRaw(att2Key)
+	if base.TestUseXattrs() {
+		assert.Error(t, err)
+		assert.True(t, base.IsDocNotFoundError(err))
+	} else {
+		assert.NoError(t, err)
+	}
+
 }
