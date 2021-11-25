@@ -3945,9 +3945,9 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 	"bucket": "` + tb.GetName() + `",
 	"name": "db",
 	"sync": "function(doc){ throw({forbidden : \"Rejected document\"}) }",
-	"import_filter": "function(doc) { return false }",
-	"import_docs": true,
 	"offline": false,
+	"import_filter": "function(doc) { return false }",
+	"import_docs": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
 	"enable_shared_bucket_access": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
 	"use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
 	"num_index_replicas": 0 }`
