@@ -37,7 +37,7 @@ type DCPClient struct {
 	closeError        error                          // Will be set to a non-nil value for unexpected error
 	closeErrorLock    sync.Mutex                     // Synchronization on close error
 	failOnRollback    bool                           // When true, close when rollback detected
-	groupID           string                         // Used for adding config group ID to keys that use DCPCheckpointPrefixWithGroupID (Mark, Sweep, Cleanup)
+	checkpointPrefix  string                         // DCP checkpoint key prefix
 }
 
 type DCPClientOptions struct {
@@ -59,15 +59,15 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 	}
 
 	client := &DCPClient{
-		workers:        make([]*DCPWorker, numWorkers),
-		numVbuckets:    numVbuckets,
-		callback:       callback,
-		ID:             ID,
-		spec:           store.GetSpec(),
-		terminator:     make(chan bool),
-		doneChannel:    make(chan error, 1),
-		failOnRollback: options.FailOnRollback,
-		groupID:        groupID,
+		workers:          make([]*DCPWorker, numWorkers),
+		numVbuckets:      numVbuckets,
+		callback:         callback,
+		ID:               ID,
+		spec:             store.GetSpec(),
+		terminator:       make(chan bool),
+		doneChannel:      make(chan error, 1),
+		failOnRollback:   options.FailOnRollback,
+		checkpointPrefix: DCPCheckpointPrefixWithGroupID(groupID),
 	}
 
 	// Initialize active vbuckets
@@ -251,7 +251,7 @@ func (dc *DCPClient) startWorkers() {
 
 	//
 	for index, _ := range dc.workers {
-		dc.workers[index] = NewDCPWorker(dc.metadata, dc.callback, dc.onStreamEnd, dc.terminator, nil, dc.groupID, nil)
+		dc.workers[index] = NewDCPWorker(dc.metadata, dc.callback, dc.onStreamEnd, dc.terminator, nil, dc.checkpointPrefix, nil)
 		dc.workers[index].Start()
 	}
 }
