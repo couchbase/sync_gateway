@@ -132,7 +132,7 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 			// NOTE: checkpoint persistence is disabled altogether for the caching feed.  Leaving this check in place
 			// defensively.
 			requiresCheckpointPersistence = false
-		} else if strings.HasPrefix(key, listener.checkpointPrefix) {
+		} else if strings.HasPrefix(key, listener.sgCfgPrefix) {
 			if listener.OnDocChanged != nil {
 				listener.OnDocChanged(event)
 			}
