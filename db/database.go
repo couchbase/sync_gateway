@@ -461,7 +461,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	// If this is an xattr import node, start import feed.  Must be started after the caching DCP feed, as import cfg
 	// subscription relies on the caching feed.
 	if importEnabled {
-		dbContext.ImportListener = NewImportListener()
+		dbContext.ImportListener = NewImportListener(dbContext.Options.GroupID)
 		if importFeedErr := dbContext.ImportListener.StartImportFeed(bucket, dbContext.DbStats, dbContext); importFeedErr != nil {
 			return nil, importFeedErr
 		}

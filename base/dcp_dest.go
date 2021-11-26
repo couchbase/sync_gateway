@@ -68,9 +68,9 @@ type DCPDest struct {
 	metaInitComplete   []bool      // Whether metadata initialization has been completed, per vbNo
 }
 
-func NewDCPDest(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dcpStats *expvar.Map, feedID string, importPartitionStat *SgwIntStat, groupID string) (SGDest, context.Context) {
+func NewDCPDest(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dcpStats *expvar.Map, feedID string, importPartitionStat *SgwIntStat, checkpointPrefix, sgCfgPrefix string) (SGDest, context.Context) {
 
-	dcpCommon := NewDCPCommon(callback, bucket, maxVbNo, persistCheckpoints, dcpStats, feedID, groupID)
+	dcpCommon := NewDCPCommon(callback, bucket, maxVbNo, persistCheckpoints, dcpStats, feedID, checkpointPrefix, sgCfgPrefix)
 
 	d := &DCPDest{
 		DCPCommon:          dcpCommon,

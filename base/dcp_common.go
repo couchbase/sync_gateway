@@ -83,7 +83,7 @@ type DCPCommon struct {
 	checkpointPrefix       string                         // DCP checkpoint key prefix
 }
 
-func NewDCPCommon(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID string, groupID string) *DCPCommon {
+func NewDCPCommon(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID, checkpointPrefix, sgCfgPrefix string) *DCPCommon {
 	newBackfillStatus := backfillStatus{}
 
 	c := &DCPCommon{
@@ -99,8 +99,8 @@ func NewDCPCommon(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbN
 		lastCheckpointTime:     make([]time.Time, maxVbNo),
 		backfill:               &newBackfillStatus,
 		feedID:                 feedID,
-		checkpointPrefix:       DCPCheckpointPrefixWithGroupID(groupID),
-		sgCfgPrefix:            SGCfgPrefixWithGroupID(groupID),
+		checkpointPrefix:       checkpointPrefix,
+		sgCfgPrefix:            sgCfgPrefix,
 	}
 
 	dcpContextID := fmt.Sprintf("%s-%s", MD(bucket.GetName()).Redact(), feedID)
@@ -521,7 +521,7 @@ func (b *backfillStatus) purgeBackfillSequences(bucket Bucket) error {
 // unused sequence documents.  Any other documents with the leading '_sync' prefix can be ignored.
 // dcpKeyFilter returns true for documents that should be processed, false for those that do not need processing.
 // c is used to get the SG Cfg prefix
-func (c *DCPCommon) dcpKeyFilter(key []byte) bool { // group id
+func (c *DCPCommon) dcpKeyFilter(key []byte) bool {
 
 	// If it's a _txn doc, don't process
 	if bytes.HasPrefix(key, []byte(TxnPrefix)) {
@@ -538,7 +538,7 @@ func (c *DCPCommon) dcpKeyFilter(key []byte) bool { // group id
 		bytes.HasPrefix(key, []byte(UnusedSeqRangePrefix)) ||
 		bytes.HasPrefix(key, []byte(UserPrefix)) ||
 		bytes.HasPrefix(key, []byte(RolePrefix)) ||
-		bytes.HasPrefix(key, []byte(c.sgCfgPrefix)) { //	bytes.HasPrefix(key, []byte(SGCfgPrefixWithGroupID(groupID))) {
+		bytes.HasPrefix(key, []byte(c.sgCfgPrefix)) {
 		return true
 	}
 

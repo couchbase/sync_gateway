@@ -40,9 +40,9 @@ type DCPReceiver struct {
 	*DCPCommon
 }
 
-func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID string, groupID string) (cbdatasource.Receiver, context.Context) {
+func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID string, checkpointPrefix, sgCfgPrefix string) (cbdatasource.Receiver, context.Context) {
 
-	dcpCommon := NewDCPCommon(callback, bucket, maxVbNo, persistCheckpoints, dbStats, feedID, groupID)
+	dcpCommon := NewDCPCommon(callback, bucket, maxVbNo, persistCheckpoints, dbStats, feedID, checkpointPrefix, sgCfgPrefix)
 	r := &DCPReceiver{
 		DCPCommon: dcpCommon,
 	}
@@ -242,7 +242,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		Infof(KeyDCP, "DCP feed started without feedID specified - defaulting to %s", DCPCachingFeedID)
 		feedID = DCPCachingFeedID
 	}
-	receiver, loggingCtx := NewDCPReceiver(callback, bucket, maxVbno, persistCheckpoints, dbStats, feedID, args.GroupID)
+	receiver, loggingCtx := NewDCPReceiver(callback, bucket, maxVbno, persistCheckpoints, dbStats, feedID, args.CheckpointPrefix, args.SGCfgPrefix)
 
 	var dcpReceiver *DCPReceiver
 	switch v := receiver.(type) {
