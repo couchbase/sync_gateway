@@ -680,6 +680,8 @@ func (a *AttachmentCompactionManager) Run(options map[string]interface{}, persis
 		}
 	}
 
+	defer persistClusterStatus()
+
 	// Need to check the current phase in the event we are resuming - No need to run mark again if we got as far as
 	// cleanup last time...
 	switch a.Phase {
@@ -687,7 +689,7 @@ func (a *AttachmentCompactionManager) Run(options map[string]interface{}, persis
 		a.SetPhase("mark")
 		persistClusterStatus()
 		_, err := Mark(database, a.CompactID, terminator, &a.MarkedAttachments)
-		if err != nil {
+		if err != nil || terminator.IsClosed() {
 			return err
 		}
 		fallthrough
@@ -695,7 +697,7 @@ func (a *AttachmentCompactionManager) Run(options map[string]interface{}, persis
 		a.SetPhase("sweep")
 		persistClusterStatus()
 		_, err := Sweep(database, a.CompactID, a.dryRun, terminator, &a.PurgedAttachments)
-		if err != nil {
+		if err != nil || terminator.IsClosed() {
 			return err
 		}
 		fallthrough
@@ -703,13 +705,12 @@ func (a *AttachmentCompactionManager) Run(options map[string]interface{}, persis
 		a.SetPhase("cleanup")
 		persistClusterStatus()
 		err := Cleanup(database, a.CompactID, terminator)
-		if err != nil {
+		if err != nil || terminator.IsClosed() {
 			return err
 		}
 	}
 
 	a.SetPhase("")
-	persistClusterStatus()
 	return nil
 }
 
