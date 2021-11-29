@@ -1190,7 +1190,7 @@ func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPat
 	}
 
 	if err := <-agentReadyErr; err != nil {
-		if _, ok := err.(x509.UnknownAuthorityError); ok {
+		if _, ok := errors.Unwrap(err).(x509.UnknownAuthorityError); ok {
 			err = fmt.Errorf("%w - Provide a CA cert, or set tls_skip_verify to true in config", err)
 		}
 
