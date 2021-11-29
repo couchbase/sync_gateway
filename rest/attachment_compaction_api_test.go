@@ -353,7 +353,33 @@ func TestAttachmentCompactionStartTimeAndStats(t *testing.T) {
 	assert.True(t, status.StartTime.After(firstStartTime))
 	assert.True(t, databaseStats.CompactionAttachmentStartTime.Value() > firstStartTimeStat)
 	assert.Equal(t, int64(1), databaseStats.NumAttachmentsCompacted.Value())
+}
 
+func TestAttachmentCompactionAbort(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	for i := 0; i < 1000; i++ {
+		docID := fmt.Sprintf("testDoc-%d", i)
+		attID := fmt.Sprintf("testAtt-%d", i)
+		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
+		attJSONBody, err := base.JSONMarshal(attBody)
+		assert.NoError(t, err)
+		CreateLegacyAttachmentDoc(t, &db.Database{DatabaseContext: rt.GetDatabase()}, docID, []byte("{}"), attID, attJSONBody)
+	}
+
+	resp := rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
+	assertStatus(t, resp, http.StatusOK)
+
+	resp = rt.SendAdminRequest("POST", "/db/_compact?type=attachment&action=stop", "")
+	assertStatus(t, resp, http.StatusOK)
+
+	status := rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateStopped)
+	assert.Equal(t, int64(0), status.PurgedAttachments)
 }
 
 func (rt *RestTester) WaitForAttachmentCompactionStatus(t *testing.T, state db.BackgroundProcessState) db.AttachmentManagerResponse {
