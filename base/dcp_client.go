@@ -159,11 +159,17 @@ func (dc *DCPClient) initAgent(spec BucketSpec) error {
 		return fmt.Errorf("Unable to start DCP Client - error creating authenticator: %w", authErr)
 	}
 
+	tlsRootCAProvider, err := GoCBCoreTLSRootCAProvider(&spec.TLSSkipVerify, spec.CACertPath)
+	if err != nil {
+		return err
+	}
+
 	// Force poolsize to 1, multiple clients results in DCP naming collision
 	agentConfig.KVConfig.PoolSize = 1
 	agentConfig.BucketName = spec.BucketName
 	agentConfig.DCPConfig.AgentPriority = gocbcore.DcpAgentPriorityLow
 	agentConfig.SecurityConfig.Auth = auth
+	agentConfig.SecurityConfig.TLSRootCAProvider = tlsRootCAProvider
 	agentConfig.UserAgent = "SyncGatewayDCP"
 
 	flags := memd.DcpOpenFlagProducer

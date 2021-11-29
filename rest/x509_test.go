@@ -11,13 +11,16 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"fmt"
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -86,6 +89,33 @@ func TestX509UnknownAuthorityWrap(t *testing.T) {
 	assert.Error(t, err)
 
 	assert.Contains(t, err.Error(), "Provide a CA cert, or set tls_skip_verify to true in config")
+}
+
+func TestAttachmentCompactionRun(t *testing.T) {
+	tb, teardownFn, _, _, _ := setupX509Tests(t, true)
+	defer tb.Close()
+	defer teardownFn()
+
+	tb.BucketSpec.CACertPath = ""
+	tb.BucketSpec.TLSSkipVerify = true
+
+	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb, useTLSServer: true})
+	defer rt.Close()
+
+	for i := 0; i < 20; i++ {
+		docID := fmt.Sprintf("testDoc-%d", i)
+		attID := fmt.Sprintf("testAtt-%d", i)
+		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
+		attJSONBody, err := base.JSONMarshal(attBody)
+		assert.NoError(t, err)
+		CreateLegacyAttachmentDoc(t, &db.Database{DatabaseContext: rt.GetDatabase()}, docID, []byte("{}"), attID, attJSONBody)
+	}
+
+	resp := rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
+	assertStatus(t, resp, http.StatusOK)
+
+	status := rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
+	assert.Equal(t, int64(20), status.MarkedAttachments)
 }
 
 func setupX509Tests(t *testing.T, useIPAddress bool) (testBucket *base.TestBucket, teardownFunc func(), caCertPath string, certPath string, keyPath string) {
