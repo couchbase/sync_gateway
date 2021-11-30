@@ -2270,16 +2270,13 @@ func TestHandlePutDbConfigWithBackticks(t *testing.T) {
 }
 
 func TestHandleDBConfig(t *testing.T) {
-	t.Skip("disabled pending CBG-1566")
 	if base.GTestBucketPool.NumUsableBuckets() < 2 {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
 
-	rt := NewRestTester(t, nil)
-
 	tb := base.GetTestBucket(t)
 
-	defer tb.Close()
+	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb})
 	defer rt.Close()
 
 	bucket := tb.GetName()
