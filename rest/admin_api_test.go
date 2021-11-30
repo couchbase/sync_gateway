@@ -4100,7 +4100,7 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	_ = resp.Body.Close()
+	assert.NoError(t, resp.Body.Close())
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
 	// db config put with empty sync func and import filter
@@ -4110,7 +4110,7 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	_ = resp.Body.Close()
+	assert.NoError(t, resp.Body.Close())
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
 	// db config post, with empty sync func and import filter
@@ -4120,6 +4120,6 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	_ = resp.Body.Close()
+	assert.NoError(t, resp.Body.Close())
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 }
