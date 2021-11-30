@@ -26,14 +26,12 @@ type importListener struct {
 	stats            *base.DatabaseStats // Database stats group
 	cbgtContext      *base.CbgtContext   // Handle to cbgt manager,cfg
 	checkpointPrefix string              // DCP checkpoint key prefix
-	sgCfgPrefix      string              // SG config key prefix
 }
 
 func NewImportListener(groupID string) *importListener {
 	importListener := &importListener{
 		terminator:       make(chan bool),
 		checkpointPrefix: base.DCPCheckpointPrefixWithGroupID(groupID),
-		sgCfgPrefix:      base.SGCfgPrefixWithGroupID(groupID),
 	}
 	return importListener
 }

@@ -40,9 +40,9 @@ type DCPReceiver struct {
 	*DCPCommon
 }
 
-func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID string, checkpointPrefix, sgCfgPrefix string) (cbdatasource.Receiver, context.Context) {
+func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID string, checkpointPrefix string) (cbdatasource.Receiver, context.Context) {
 
-	dcpCommon := NewDCPCommon(callback, bucket, maxVbNo, persistCheckpoints, dbStats, feedID, checkpointPrefix, sgCfgPrefix)
+	dcpCommon := NewDCPCommon(callback, bucket, maxVbNo, persistCheckpoints, dbStats, feedID, checkpointPrefix)
 	r := &DCPReceiver{
 		DCPCommon: dcpCommon,
 	}
@@ -74,7 +74,7 @@ func (r *DCPReceiver) OnError(err error) {
 
 func (r *DCPReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
-	if !r.dcpKeyFilter(key) {
+	if !dcpKeyFilter(key) {
 		return nil
 	}
 	event := makeFeedEventForMCRequest(req, sgbucket.FeedOpMutation)
@@ -84,7 +84,7 @@ func (r *DCPReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 
 func (r *DCPReceiver) DataDelete(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
-	if !r.dcpKeyFilter(key) {
+	if !dcpKeyFilter(key) {
 		return nil
 	}
 	event := makeFeedEventForMCRequest(req, sgbucket.FeedOpDeletion)
@@ -242,7 +242,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		Infof(KeyDCP, "DCP feed started without feedID specified - defaulting to %s", DCPCachingFeedID)
 		feedID = DCPCachingFeedID
 	}
-	receiver, loggingCtx := NewDCPReceiver(callback, bucket, maxVbno, persistCheckpoints, dbStats, feedID, args.CheckpointPrefix, args.SGCfgPrefix)
+	receiver, loggingCtx := NewDCPReceiver(callback, bucket, maxVbno, persistCheckpoints, dbStats, feedID, args.CheckpointPrefix)
 
 	var dcpReceiver *DCPReceiver
 	switch v := receiver.(type) {

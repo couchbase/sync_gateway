@@ -68,9 +68,9 @@ type DCPDest struct {
 	metaInitComplete   []bool      // Whether metadata initialization has been completed, per vbNo
 }
 
-func NewDCPDest(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dcpStats *expvar.Map, feedID string, importPartitionStat *SgwIntStat, checkpointPrefix, sgCfgPrefix string) (SGDest, context.Context) {
+func NewDCPDest(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dcpStats *expvar.Map, feedID string, importPartitionStat *SgwIntStat, checkpointPrefix string) (SGDest, context.Context) {
 
-	dcpCommon := NewDCPCommon(callback, bucket, maxVbNo, persistCheckpoints, dcpStats, feedID, checkpointPrefix, sgCfgPrefix)
+	dcpCommon := NewDCPCommon(callback, bucket, maxVbNo, persistCheckpoints, dcpStats, feedID, checkpointPrefix)
 
 	d := &DCPDest{
 		DCPCommon:          dcpCommon,
@@ -105,7 +105,7 @@ func (d *DCPDest) Close() error {
 func (d *DCPDest) DataUpdate(partition string, key []byte, seq uint64,
 	val []byte, cas uint64, extrasType cbgt.DestExtrasType, extras []byte) error {
 
-	if !d.dcpKeyFilter(key) {
+	if !dcpKeyFilter(key) {
 		return nil
 	}
 	event := makeFeedEventForDest(key, val, cas, partitionToVbNo(partition), 0, 0, sgbucket.FeedOpMutation)
@@ -116,7 +116,7 @@ func (d *DCPDest) DataUpdate(partition string, key []byte, seq uint64,
 func (d *DCPDest) DataUpdateEx(partition string, key []byte, seq uint64, val []byte,
 	cas uint64, extrasType cbgt.DestExtrasType, req interface{}) error {
 
-	if !d.dcpKeyFilter(key) {
+	if !dcpKeyFilter(key) {
 		return nil
 	}
 
@@ -143,7 +143,7 @@ func (d *DCPDest) DataUpdateEx(partition string, key []byte, seq uint64, val []b
 func (d *DCPDest) DataDelete(partition string, key []byte, seq uint64,
 	cas uint64,
 	extrasType cbgt.DestExtrasType, extras []byte) error {
-	if !d.dcpKeyFilter(key) {
+	if !dcpKeyFilter(key) {
 		return nil
 	}
 
@@ -154,7 +154,7 @@ func (d *DCPDest) DataDelete(partition string, key []byte, seq uint64,
 
 func (d *DCPDest) DataDeleteEx(partition string, key []byte, seq uint64,
 	cas uint64, extrasType cbgt.DestExtrasType, req interface{}) error {
-	if !d.dcpKeyFilter(key) {
+	if !dcpKeyFilter(key) {
 		return nil
 	}
 

@@ -64,7 +64,6 @@ func (listener *changeListener) Start(bucket base.Bucket, dbStats *expvar.Map) e
 		Terminator:       listener.terminator,
 		DoneChan:         make(chan struct{}),
 		CheckpointPrefix: listener.checkpointPrefix,
-		SGCfgPrefix:      listener.sgCfgPrefix,
 	}
 
 	return listener.StartMutationFeed(bucket, dbStats)

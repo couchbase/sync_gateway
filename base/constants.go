@@ -198,7 +198,7 @@ func DCPCheckpointPrefixWithGroupID(groupID string) string {
 
 func SGCfgPrefixWithGroupID(groupID string) string {
 	if groupID != "" {
-		return SyncPrefix + groupID + ":cfg:"
+		return SGCfgPrefix + ":" + groupID + ":"
 	}
 	return SGCfgPrefix
 }

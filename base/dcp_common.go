@@ -79,11 +79,10 @@ type DCPCommon struct {
 	backfill               *backfillStatus                // Backfill state and stats
 	feedID                 string                         // Unique feed ID, used for logging
 	loggingCtx             context.Context                // Logging context, prefixes feedID
-	sgCfgPrefix            string                         // Prefix for SG Cfg doc keys
 	checkpointPrefix       string                         // DCP checkpoint key prefix
 }
 
-func NewDCPCommon(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID, checkpointPrefix, sgCfgPrefix string) *DCPCommon {
+func NewDCPCommon(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID, checkpointPrefix string) *DCPCommon {
 	newBackfillStatus := backfillStatus{}
 
 	c := &DCPCommon{
@@ -100,7 +99,6 @@ func NewDCPCommon(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbN
 		backfill:               &newBackfillStatus,
 		feedID:                 feedID,
 		checkpointPrefix:       checkpointPrefix,
-		sgCfgPrefix:            sgCfgPrefix,
 	}
 
 	dcpContextID := fmt.Sprintf("%s-%s", MD(bucket.GetName()).Redact(), feedID)
@@ -521,7 +519,7 @@ func (b *backfillStatus) purgeBackfillSequences(bucket Bucket) error {
 // unused sequence documents.  Any other documents with the leading '_sync' prefix can be ignored.
 // dcpKeyFilter returns true for documents that should be processed, false for those that do not need processing.
 // c is used to get the SG Cfg prefix
-func (c *DCPCommon) dcpKeyFilter(key []byte) bool {
+func dcpKeyFilter(key []byte) bool {
 
 	// If it's a _txn doc, don't process
 	if bytes.HasPrefix(key, []byte(TxnPrefix)) {
@@ -533,12 +531,12 @@ func (c *DCPCommon) dcpKeyFilter(key []byte) bool {
 		return true
 	}
 
-	// User, role, unused sequence markers and cbgt cfg docs should be processed
+	// User, role, unused sequence markers and cbgt cfg (regardless of group ID) docs should be processed
 	if bytes.HasPrefix(key, []byte(UnusedSeqPrefix)) ||
 		bytes.HasPrefix(key, []byte(UnusedSeqRangePrefix)) ||
 		bytes.HasPrefix(key, []byte(UserPrefix)) ||
 		bytes.HasPrefix(key, []byte(RolePrefix)) ||
-		bytes.HasPrefix(key, []byte(c.sgCfgPrefix)) {
+		bytes.HasPrefix(key, []byte(SGCfgPrefix)) {
 		return true
 	}
 

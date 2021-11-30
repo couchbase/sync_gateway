@@ -72,6 +72,6 @@ func (il *importListener) NewImportDest() (cbgt.Dest, error) {
 	importFeedStatsMap := il.database.DbStats.Database().ImportFeedMapStats
 	importPartitionStat := il.database.DbStats.SharedBucketImport().ImportPartitions
 
-	importDest, _ := base.NewDCPDest(callback, bucket, maxVbNo, true, importFeedStatsMap.Map, base.DCPImportFeedID, importPartitionStat, il.checkpointPrefix, il.sgCfgPrefix)
+	importDest, _ := base.NewDCPDest(callback, bucket, maxVbNo, true, importFeedStatsMap.Map, base.DCPImportFeedID, importPartitionStat, il.checkpointPrefix)
 	return importDest, nil
 }

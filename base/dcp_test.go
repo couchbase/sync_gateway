@@ -59,31 +59,19 @@ func TestTransformBucketCredentials(t *testing.T) {
 }
 
 func TestDCPKeyFilter(t *testing.T) {
-	c := DCPCommon{
-		checkpointPrefix: DCPCheckpointPrefix,
-		sgCfgPrefix:      SGCfgPrefix,
-	}
-	assert.True(t, c.dcpKeyFilter([]byte("doc123")))
-	assert.True(t, c.dcpKeyFilter([]byte(UserPrefix+"user1")))
-	assert.True(t, c.dcpKeyFilter([]byte(RolePrefix+"role2")))
-	assert.True(t, c.dcpKeyFilter([]byte(UnusedSeqPrefix+"1234")))
-	assert.True(t, c.dcpKeyFilter([]byte(SGCfgPrefixWithGroupID(""))))
+	assert.True(t, dcpKeyFilter([]byte("doc123")))
+	assert.True(t, dcpKeyFilter([]byte(UserPrefix+"user1")))
+	assert.True(t, dcpKeyFilter([]byte(RolePrefix+"role2")))
+	assert.True(t, dcpKeyFilter([]byte(UnusedSeqPrefix+"1234")))
+	assert.True(t, dcpKeyFilter([]byte(SGCfgPrefixWithGroupID("")+"123")))
+	assert.True(t, dcpKeyFilter([]byte(SGCfgPrefixWithGroupID("group")+"123")))
 
-	assert.False(t, c.dcpKeyFilter([]byte(SyncSeqKey)))
-	assert.False(t, c.dcpKeyFilter([]byte(SyncPrefix+"unusualSeq")))
-	assert.False(t, c.dcpKeyFilter([]byte(SyncDataKey)))
-	assert.False(t, c.dcpKeyFilter([]byte(DCPCheckpointPrefix+"12")))
-	assert.False(t, c.dcpKeyFilter([]byte(TxnPrefix+"atrData")))
-
-	c = DCPCommon{
-		checkpointPrefix: DCPCheckpointPrefixWithGroupID("group"),
-		sgCfgPrefix:      SGCfgPrefixWithGroupID("group"),
-	}
-	assert.True(t, c.dcpKeyFilter([]byte(SGCfgPrefixWithGroupID("group"))))
-
-	assert.False(t, c.dcpKeyFilter([]byte(SGCfgPrefixWithGroupID("group1"))))
-	assert.False(t, c.dcpKeyFilter([]byte(SyncDataKeyWithGroupID("group"))))
-	assert.False(t, c.dcpKeyFilter([]byte(DCPCheckpointPrefixWithGroupID("group")+"12")))
+	assert.False(t, dcpKeyFilter([]byte(SyncSeqKey)))
+	assert.False(t, dcpKeyFilter([]byte(SyncPrefix+"unusualSeq")))
+	assert.False(t, dcpKeyFilter([]byte(SyncDataKey)))
+	assert.False(t, dcpKeyFilter([]byte(DCPCheckpointPrefix+"12")))
+	assert.False(t, dcpKeyFilter([]byte(TxnPrefix+"atrData")))
+	assert.False(t, dcpKeyFilter([]byte(DCPCheckpointPrefixWithGroupID("group")+"12")))
 
 }
 
