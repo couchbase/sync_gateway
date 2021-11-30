@@ -625,24 +625,24 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) (errorMessag
 	}
 
 	if dbConfig.Sync != nil {
-		_, err = sgbucket.NewJSRunner(*dbConfig.Sync)
-		if err != nil {
-			errorMessages = multierror.Append(errorMessages, fmt.Errorf("sync function contains invalid javascript syntax: %v", err))
-		}
-
-		if *dbConfig.Sync == "" {
-			errorMessages = multierror.Append(errorMessages, fmt.Errorf("sync function cannot be empty string"))
+		if strings.TrimSpace(*dbConfig.Sync) != "" {
+			_, err = sgbucket.NewJSRunner(*dbConfig.Sync)
+			if err != nil {
+				errorMessages = multierror.Append(errorMessages, fmt.Errorf("sync function contains invalid javascript syntax: %v", err))
+			}
+		} else {
+			dbConfig.Sync = nil
 		}
 	}
 
 	if dbConfig.ImportFilter != nil {
-		_, err = sgbucket.NewJSRunner(*dbConfig.ImportFilter)
-		if err != nil {
-			errorMessages = multierror.Append(errorMessages, fmt.Errorf("import filter function contains invalid javascript syntax: %v", err))
-		}
-
-		if *dbConfig.ImportFilter == "" {
-			errorMessages = multierror.Append(errorMessages, fmt.Errorf("import filter function cannot be empty string"))
+		if strings.TrimSpace(*dbConfig.ImportFilter) != "" {
+			_, err = sgbucket.NewJSRunner(*dbConfig.ImportFilter)
+			if err != nil {
+				errorMessages = multierror.Append(errorMessages, fmt.Errorf("import filter function contains invalid javascript syntax: %v", err))
+			}
+		} else {
+			dbConfig.ImportFilter = nil
 		}
 	}
 

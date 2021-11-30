@@ -2050,34 +2050,60 @@ func TestUseXattrs(t *testing.T) {
 
 func TestInvalidJavascriptFunctions(t *testing.T) {
 	testCases := []struct {
-		Name             string
-		SyncFunction     *string
-		ImportFilter     *string
-		ExpectErrorCount int
+		Name               string
+		SyncFunction       *string
+		ImportFilter       *string
+		ExpectErrorCount   int
+		ExpectSyncFunction *string
+		ExpectImportFilter *string
 	}{
 		{
 			"Both nil",
 			nil,
 			nil,
 			0,
+			nil,
+			nil,
 		},
 		{
 			"Valid Sync Fn No Import",
 			base.StringPtr(`function(){}`),
 			nil,
 			0,
+			base.StringPtr(`function(){}`),
+			nil,
 		},
 		{
 			"Valid Import Fn No Sync",
 			nil,
 			base.StringPtr(`function(){}`),
 			0,
+			nil,
+			base.StringPtr(`function(){}`),
+		},
+		{
+			"Both empty",
+			base.StringPtr(``),
+			base.StringPtr(``),
+			0,
+			nil,
+			nil,
+		},
+		{
+			"Both blank",
+			base.StringPtr(` `),
+			base.StringPtr(` `),
+			0,
+			nil,
+			nil,
 		},
 		{
 			"Invalid Sync Fn No Import",
 			base.StringPtr(`function(){`),
 			nil,
 			1,
+			nil,
+			nil,
 		},
 		{
 			"Invalid Sync Fn No Import #2",
@@ -2086,18 +2112,24 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 			}`),
 			nil,
 			1,
+			nil,
+			nil,
 		},
 		{
 			"Invalid Import Fn No Sync",
 			nil,
 			base.StringPtr(`function(){`),
 			1,
+			nil,
+			nil,
 		},
 		{
 			"Both invalid",
 			base.StringPtr(`function(){`),
 			base.StringPtr(`function(){`),
 			2,
+			nil,
+			nil,
 		},
 	}
 
@@ -2119,6 +2151,8 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 
 			if testCase.ExpectErrorCount == 0 {
 				assert.NoError(t, err)
+				assert.Equal(t, testCase.ExpectSyncFunction, dbConfig.Sync)
+				assert.Equal(t, testCase.ExpectImportFilter, dbConfig.ImportFilter)
 			} else {
 				assert.Error(t, err)
 				errorMessages, ok := err.(*multierror.Error)

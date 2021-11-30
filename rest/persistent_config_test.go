@@ -319,14 +319,13 @@ func TestImportFilterEndpoint(t *testing.T) {
 			tb.GetName(), base.TestsDisableGSI(),
 		),
 	)
+	assert.NoError(t, resp.Body.Close())
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
-	// Ensure we cannot set an empty import filter
+	// Ensure we won't fail with an empty import filter
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db1/_config/import_filter", "")
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-	responseBody, err := ioutil.ReadAll(resp.Body)
-	assert.NoError(t, err)
-	assert.Contains(t, string(responseBody), "import filter function cannot be empty string")
+	assert.NoError(t, resp.Body.Close())
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	// Add a document
 	err = tb.Bucket.Set("importDoc1", 0, []byte("{}"))
@@ -334,10 +333,12 @@ func TestImportFilterEndpoint(t *testing.T) {
 
 	// Ensure document is imported based on default import filter
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/importDoc1", "")
+	assert.NoError(t, resp.Body.Close())
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	// Modify the import filter to always reject import
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db1/_config/import_filter", `function(){return false}`)
+	assert.NoError(t, resp.Body.Close())
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	// Add a document
@@ -346,12 +347,14 @@ func TestImportFilterEndpoint(t *testing.T) {
 
 	// Ensure document is not imported and is rejected based on updated filter
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/importDoc2", "")
-	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
-	responseBody, err = ioutil.ReadAll(resp.Body)
+	responseBody, err := ioutil.ReadAll(resp.Body)
+	assert.NoError(t, resp.Body.Close())
 	assert.NoError(t, err)
 	assert.Contains(t, string(responseBody), "Not imported")
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 
 	resp = bootstrapAdminRequest(t, http.MethodDelete, "/db1/_config/import_filter", "")
+	assert.NoError(t, resp.Body.Close())
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	// Add a document
@@ -360,5 +363,6 @@ func TestImportFilterEndpoint(t *testing.T) {
 
 	// Ensure document is imported based on default import filter
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/importDoc3", "")
+	assert.NoError(t, resp.Body.Close())
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
