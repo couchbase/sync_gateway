@@ -678,14 +678,6 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 		// This loop is used to re-run the fetch after every database change, in Wait mode
 	outer:
 		for {
-			// Check if feed has been terminated regardless of if any changes have happened
-			select {
-			case <-options.Terminator:
-				return
-			default:
-				// Continue if not terminated
-			}
-
 			// Updates the ChangeWaiter to the current set of available channels
 			if changeWaiter != nil {
 				changeWaiter.UpdateChannels(channelsSince)
@@ -975,11 +967,9 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				// visible to the user), and so ChangeWaiter.Wait() would block until the next user-visible doc arrives.  Use a hardcoded wait instead
 				// Similar handling for when we see sequences later than the stable sequence.
 				if deferredBackfill || postStableSeqsFound {
-					for retry := 0; retry <= 50; retry++ {
-						time.Sleep(100 * time.Millisecond)
-						if db.changeCache.getChannelCache().GetHighCacheSequence() != currentCachedSequence {
-							break waitForChanges
-						}
+					terminate := db.waitForCacheUpdate(options.Terminator, currentCachedSequence)
+					if terminate {
+						return
 					}
 					break waitForChanges
 				}
@@ -1042,6 +1032,24 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 	}()
 
 	return output, nil
+}
+
+func (db *Database) waitForCacheUpdate(terminator chan bool, currentCachedSequence uint64) (terminated bool) {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for retry := 0; retry <= 50; retry++ {
+		select {
+		// Check if feed has been terminated regardless of if any changes have happened
+		case <-terminator:
+			return true
+		case <-ticker.C:
+			// Continue after ticker completed
+		}
+		if db.changeCache.getChannelCache().GetHighCacheSequence() != currentCachedSequence {
+			return false
+		}
+	}
+	return false
 }
 
 // Synchronous convenience function that returns all changes as a simple array, FOR TEST USE ONLY
