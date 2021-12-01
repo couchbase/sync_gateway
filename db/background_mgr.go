@@ -651,14 +651,16 @@ func (a *AttachmentCompactionManager) Init(options map[string]interface{}, clust
 		}
 
 		// If the previous run completed, or there was an error during unmarshalling the status we will start the
-		// process from scratch with a new compaction ID. Otherwise, we should resume with the compact ID and phase
-		// specified in the doc.
+		// process from scratch with a new compaction ID. Otherwise, we should resume with the compact ID, phase and
+		// stats specified in the doc.
 		if attachmentResponseStatus.State == BackgroundProcessStateCompleted || err != nil || (reset && ok) {
 			return newRunInit()
 		} else {
 			a.CompactID = attachmentResponseStatus.CompactID
 			a.Phase = attachmentResponseStatus.Phase
 			a.dryRun = attachmentResponseStatus.DryRun
+			a.MarkedAttachments.Set(attachmentResponseStatus.MarkedAttachments)
+			a.PurgedAttachments.Set(attachmentResponseStatus.PurgedAttachments)
 
 			base.Infof(base.KeyAll, "Attachment Compaction: Attempting to resume compaction with compact ID: %q phase %q", a.CompactID, a.Phase)
 		}
