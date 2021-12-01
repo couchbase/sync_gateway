@@ -36,12 +36,14 @@ type DCPClient struct {
 	closing           AtomicBool                     // Set when the client is closing (either due to internal or external request)
 	closeError        error                          // Will be set to a non-nil value for unexpected error
 	closeErrorLock    sync.Mutex                     // Synchronization on close error
+	failOnRollback    bool                           // When true, close when rollback detected
 }
 
 type DCPClientOptions struct {
-	NumWorkers  int
-	OneShot     bool
-	OneShotDone chan struct{}
+	NumWorkers      int
+	OneShot         bool
+	FailOnRollback  bool          // When true, the DCP client will terminate on DCP rollback
+	InitialMetadata []DCPMetadata // When set, will be used as initial metadata for the DCP feed.  Will override any persisted metadata
 }
 
 func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, store CouchbaseStore) (*DCPClient, error) {
@@ -56,13 +58,14 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 	}
 
 	client := &DCPClient{
-		workers:     make([]*DCPWorker, numWorkers),
-		numVbuckets: numVbuckets,
-		callback:    callback,
-		ID:          ID,
-		spec:        store.GetSpec(),
-		terminator:  make(chan bool),
-		doneChannel: make(chan error, 1),
+		workers:        make([]*DCPWorker, numWorkers),
+		numVbuckets:    numVbuckets,
+		callback:       callback,
+		ID:             ID,
+		spec:           store.GetSpec(),
+		terminator:     make(chan bool),
+		doneChannel:    make(chan error, 1),
+		failOnRollback: options.FailOnRollback,
 	}
 
 	// Initialize active vbuckets
@@ -71,8 +74,12 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 		client.activeVbuckets[vbNo] = struct{}{}
 	}
 
-	// TODO: option to specify metadata implementation in DCPClientOptions
 	client.metadata = NewDCPMetadataMem(numVbuckets)
+	if options.InitialMetadata != nil {
+		for vbID, meta := range options.InitialMetadata {
+			client.metadata.SetMeta(uint16(vbID), meta)
+		}
+	}
 
 	if options.OneShot {
 		_, highSeqnos, statsErr := store.GetStatsVbSeqno(numVbuckets, true)
@@ -103,7 +110,7 @@ func (dc *DCPClient) Start() (doneChan chan error, err error) {
 
 	for i := uint16(0); i < dc.numVbuckets; i++ {
 		openErr := dc.openStream(i)
-		if err != nil {
+		if openErr != nil {
 			return nil, fmt.Errorf("Unable to start DCP client, error opening stream for vb %d: %w", i, openErr)
 		}
 	}
@@ -114,6 +121,15 @@ func (dc *DCPClient) Start() (doneChan chan error, err error) {
 func (dc *DCPClient) Close() error {
 	dc.close()
 	return dc.getCloseError()
+}
+
+// GetMetadata returns metadata for all vbuckets
+func (dc *DCPClient) GetMetadata() []DCPMetadata {
+	metadata := make([]DCPMetadata, dc.numVbuckets)
+	for i := uint16(0); i < dc.numVbuckets; i++ {
+		metadata[i] = dc.metadata.GetMeta(i)
+	}
+	return metadata
 }
 
 // close is used internally to stop the DCP client.  Sends any fatal errors to the client's done channel, and
@@ -240,6 +256,7 @@ func (dc *DCPClient) startWorkers() {
 
 func (dc *DCPClient) openStream(vbID uint16) (err error) {
 
+	var openStreamErr error
 	for i := 0; i < openRetryCount; i++ {
 		// Cancel open for stopped client
 		select {
@@ -248,35 +265,38 @@ func (dc *DCPClient) openStream(vbID uint16) (err error) {
 		default:
 		}
 
-		err = dc.openStreamRequest(vbID)
-		if err == nil {
+		openStreamErr = dc.openStreamRequest(vbID)
+		if openStreamErr == nil {
 			return nil
 		}
 
 		switch {
-		case errors.Is(err, gocbcore.ErrMemdRollback):
-			Infof(KeyDCP, "Open stream for vbID %d failed due to rollback since last open, will rollback metadata and retry", vbID)
+		case (errors.Is(openStreamErr, gocbcore.ErrMemdRollback) || errors.Is(openStreamErr, gocbcore.ErrMemdRangeError)):
+			if dc.failOnRollback {
+				Infof(KeyDCP, "Open stream for vbID %d failed due to rollback or range error, closing client based on failOnRollback=true", vbID)
+				return fmt.Errorf("%s, failOnRollback requested", openStreamErr)
+			}
+			Infof(KeyDCP, "Open stream for vbID %d failed due to rollback or range error, will roll back metadata and retry: %v", vbID, openStreamErr)
 			err := dc.rollback(vbID)
 			if err != nil {
 				return fmt.Errorf("metadata rollback failed for vb %d: %v", vbID, err)
 			}
-		case errors.Is(err, gocbcore.ErrShutdown):
+		case errors.Is(openStreamErr, gocbcore.ErrShutdown):
 			Warnf("Closing stream for vbID %d, agent has been shut down", vbID)
-			return err
-		case errors.Is(err, ErrTimeout):
+			return openStreamErr
+		case errors.Is(openStreamErr, ErrTimeout):
 			Debugf(KeyDCP, "Timeout attempting to open stream for vb %d, will retry", vbID)
 		default:
-			Warnf("Unexpected error opening stream for vbID %d: %v", vbID, err)
-			return err
+			Warnf("Error opening stream for vbID %d: %v", vbID, openStreamErr)
+			return openStreamErr
 		}
 	}
 
-	return fmt.Errorf("openStream failed to complete after %d attempts, last error: %w", openRetryCount, err)
+	return fmt.Errorf("openStream failed to complete after %d attempts, last error: %w", openRetryCount, openStreamErr)
 }
 
 func (dc *DCPClient) rollback(vbID uint16) (err error) {
-	// retrieve new vbuuid
-	// reset meta
+	dc.metadata.Rollback(vbID)
 	return nil
 }
 
@@ -292,7 +312,7 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 	openStreamError := make(chan error)
 	openStreamCallback := func(f []gocbcore.FailoverEntry, err error) {
 		if err == nil {
-			dc.metadata.SetFailoverEntries(vbID, f)
+			err = dc.verifyAndUpdateFailoverLog(vbID, f)
 		}
 		openStreamError <- err
 	}
@@ -317,6 +337,29 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 	case <-time.After(openStreamTimeout):
 		return ErrTimeout
 	}
+}
+
+// verifyAndUpdateFailoverLog checks for vbUUID changes when failOnRollback is set, and
+// writes the failover log to the client metadata store.  If previous vbUUID is zero, it's
+// not considered a rollback - it's not required to initialize vbUUIDs into meta.
+func (dc *DCPClient) verifyAndUpdateFailoverLog(vbID uint16, f []gocbcore.FailoverEntry) error {
+
+	if dc.failOnRollback {
+		previousMeta := dc.metadata.GetMeta(vbID)
+		// Cases where vbUUID and startSeqNo aren't set aren't considered rollback
+		if previousMeta.vbUUID == 0 && previousMeta.startSeqNo == 0 {
+			dc.metadata.SetFailoverEntries(vbID, f)
+			return nil
+		}
+
+		currentVbUUID := getLatestVbUUID(f)
+		// if previousVbUUID hasn't been set yet (is zero), don't treat as rollback.
+		if previousMeta.vbUUID != currentVbUUID {
+			return errors.New("vbUUID mismatch when failOnRollback set")
+		}
+	}
+	dc.metadata.SetFailoverEntries(vbID, f)
+	return nil
 }
 
 func (dc *DCPClient) deactivateVbucket(vbID uint16) {
@@ -378,4 +421,24 @@ func (dc *DCPClient) getCloseError() error {
 	dc.closeErrorLock.Lock()
 	defer dc.closeErrorLock.Unlock()
 	return dc.closeError
+}
+
+// getVbUUID returns the vbUUID for the given sequence in the failover log. (the most
+// recent failover log entry where log.SeqNo is less than the given sequence)
+func getVbUUID(failoverLog []gocbcore.FailoverEntry, seq gocbcore.SeqNo) (vbUUID gocbcore.VbUUID) {
+	for i := len(failoverLog) - 1; i >= 0; i-- {
+		if failoverLog[i].SeqNo <= seq {
+			return failoverLog[i].VbUUID
+		}
+	}
+	return 0
+}
+
+// getLatestVbUUID returns the vbUUID associated with the highest sequence in the failover log
+func getLatestVbUUID(failoverLog []gocbcore.FailoverEntry) (vbUUID gocbcore.VbUUID) {
+	if len(failoverLog) == 0 {
+		return 0
+	}
+	entry := failoverLog[len(failoverLog)-1]
+	return entry.VbUUID
 }

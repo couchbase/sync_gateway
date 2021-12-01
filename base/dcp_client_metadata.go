@@ -17,11 +17,12 @@ type DCPMetadata struct {
 
 type DCPMetadataStore interface {
 	Rollback(vbID uint16)
+	SetMeta(vbID uint16, meta DCPMetadata)
 	GetMeta(vbID uint16) DCPMetadata
 	SetEndSeqNos(map[uint16]uint64)
 	SetSnapshot(e snapshotEvent)
-	UpdateSeq(vbNo uint16, seq uint64)
-	SetFailoverEntries(vbNo uint16, entries []gocbcore.FailoverEntry)
+	UpdateSeq(vbID uint16, seq uint64)
+	SetFailoverEntries(vbID uint16, entries []gocbcore.FailoverEntry)
 }
 
 type DCPMetadataMem struct {
@@ -43,6 +44,7 @@ func NewDCPMetadataMem(numVbuckets uint16) *DCPMetadataMem {
 	return m
 }
 
+// Rollback resets the metadata, preserving endSeqNo if set
 func (m *DCPMetadataMem) Rollback(vbID uint16) {
 	m.metadata[vbID] = DCPMetadata{
 		vbUUID:          0,
@@ -54,8 +56,12 @@ func (m *DCPMetadataMem) Rollback(vbID uint16) {
 	}
 }
 
-func (m *DCPMetadataMem) GetMeta(vbNo uint16) DCPMetadata {
-	return m.metadata[vbNo]
+func (m *DCPMetadataMem) SetMeta(vbID uint16, meta DCPMetadata) {
+	m.metadata[vbID] = meta
+}
+
+func (m *DCPMetadataMem) GetMeta(vbID uint16) DCPMetadata {
+	return m.metadata[vbID]
 }
 
 func (m *DCPMetadataMem) SetSnapshot(e snapshotEvent) {
@@ -63,12 +69,13 @@ func (m *DCPMetadataMem) SetSnapshot(e snapshotEvent) {
 	m.metadata[e.vbID].snapEndSeqNo = gocbcore.SeqNo(e.endSeq)
 }
 
-func (m *DCPMetadataMem) UpdateSeq(vbNo uint16, seq uint64) {
-	m.metadata[vbNo].startSeqNo = gocbcore.SeqNo(seq)
+func (m *DCPMetadataMem) UpdateSeq(vbID uint16, seq uint64) {
+	m.metadata[vbID].startSeqNo = gocbcore.SeqNo(seq)
 }
 
-func (m *DCPMetadataMem) SetFailoverEntries(vbNo uint16, fe []gocbcore.FailoverEntry) {
-	m.metadata[vbNo].failoverEntries = fe
+func (m *DCPMetadataMem) SetFailoverEntries(vbID uint16, fe []gocbcore.FailoverEntry) {
+	m.metadata[vbID].failoverEntries = fe
+	m.metadata[vbID].vbUUID = getVbUUID(fe, m.metadata[vbID].startSeqNo)
 }
 
 // SetEndSeqNos will update the metadata endSeqNos to the values provided.  Vbuckets not
@@ -77,5 +84,15 @@ func (m *DCPMetadataMem) SetEndSeqNos(endSeqNos map[uint16]uint64) {
 	for i := 0; i < len(m.metadata); i++ {
 		endSeqNo, _ := endSeqNos[uint16(i)]
 		m.metadata[i].endSeqNo = gocbcore.SeqNo(endSeqNo)
+		m.endSeqNos[i] = gocbcore.SeqNo(endSeqNo)
 	}
+}
+
+// Reset sets metadata sequences to zero, but maintains vbucket UUID and failover entries.  Used for scenarios
+// that want to restart a feed from zero, but detect failover
+func (md *DCPMetadata) Reset() {
+	md.snapStartSeqNo = 0
+	md.snapEndSeqNo = 0
+	md.startSeqNo = 0
+	md.endSeqNo = 0
 }
