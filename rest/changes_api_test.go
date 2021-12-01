@@ -1737,6 +1737,8 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyNone)()
 
+	defer db.SuspendSequenceBatching()()
+
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channels)}`}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
