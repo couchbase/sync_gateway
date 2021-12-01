@@ -9,8 +9,8 @@ Dev setup:
 ```
 make grafana-dev
 ```
-This command will run the above command in order to generate the dashboard.json file and will then attempt to upload the dashboard to a Grafana instance which is expected to be running on localhost:3000
+The above command will attempt to upload the dashboard.json file to a Grafana instance which is expected to be running on localhost:3000
 
 ---
 
-If one is unable to run the makefile, the steps can be performed manually. `make grafana dev` simply uploads the dashboard.json file to localhost:3000 (requires Grafana instance to be active over that address) - This requires a couple of operations to be performed which can be found in `install_grafana.sh`
+If one is unable to run the makefile, the steps can be performed manually. `make grafana-dev` simply uploads the dashboard.json file to localhost:3000 (requires Grafana instance to be active over that address) - This requires a couple of operations to be performed which can be found in `install_grafana.sh`
