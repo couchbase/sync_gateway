@@ -2303,6 +2303,7 @@ func TestHandleDBConfig(t *testing.T) {
 				Size: base.Uint32Ptr(1337), ShardCount: base.Uint16Ptr(7),
 			},
 		},
+		NumIndexReplicas:   base.UintPtr(0),
 		SGReplicateEnabled: base.BoolPtr(false),
 	}
 	reqBody, err := base.JSONMarshal(dbConfig)
