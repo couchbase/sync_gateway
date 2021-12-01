@@ -2269,45 +2269,38 @@ func TestHandlePutDbConfigWithBackticks(t *testing.T) {
 }
 
 func TestHandleDBConfig(t *testing.T) {
-	t.Skip("disabled pending CBG-1566")
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
-
-	rt := NewRestTester(t, nil)
-
 	tb := base.GetTestBucket(t)
 
-	defer tb.Close()
+	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb})
 	defer rt.Close()
 
 	bucket := tb.GetName()
-	resource := fmt.Sprintf("/%s/", bucket)
-
-	// Create a database with no config
-	resp := rt.SendAdminRequest(http.MethodPut, resource, `{"num_index_replicas":0}`)
-	assertStatus(t, resp, http.StatusCreated)
-	assert.Empty(t, resp.Body.String())
+	dbname := "db"
+	resource := fmt.Sprintf("/%s/", dbname)
 
 	// Get database config before putting any config.
-	resp = rt.SendAdminRequest(http.MethodGet, resource, "")
+	resp := rt.SendAdminRequest(http.MethodGet, resource, "")
 	assertStatus(t, resp, http.StatusOK)
 	var respBody db.Body
-	assert.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
+	assert.NoError(t, respBody.Unmarshal(resp.Body.Bytes()))
 	assert.Nil(t, respBody["bucket"])
-	assert.Equal(t, bucket, respBody["db_name"].(string))
+	assert.Equal(t, dbname, respBody["db_name"].(string))
 	assert.Equal(t, "Online", respBody["state"].(string))
 
 	// Put database config
-	resource = fmt.Sprintf("/%v/_config", bucket)
+	resource = resource + "_config"
 
 	// change cache size so we can see the update being reflected in the API response
 	dbConfig := &DbConfig{
+		BucketConfig: BucketConfig{Bucket: &bucket},
 		CacheConfig: &CacheConfig{
 			RevCacheConfig: &RevCacheConfig{
 				Size: base.Uint32Ptr(1337), ShardCount: base.Uint16Ptr(7),
 			},
 		},
+		NumIndexReplicas:   base.UintPtr(0),
+		EnableXattrs:       base.BoolPtr(base.TestUseXattrs()),
+		UseViews:           base.BoolPtr(base.TestsDisableGSI()),
 		SGReplicateEnabled: base.BoolPtr(false),
 	}
 	reqBody, err := base.JSONMarshal(dbConfig)
@@ -2320,7 +2313,7 @@ func TestHandleDBConfig(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodGet, resource, "")
 	assertStatus(t, resp, http.StatusOK)
 	respBody = nil
-	assert.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
+	assert.NoError(t, respBody.Unmarshal(resp.Body.Bytes()))
 
 	gotcache, ok := respBody["cache"].(map[string]interface{})
 	require.True(t, ok)
@@ -2346,7 +2339,7 @@ func TestHandleDBConfig(t *testing.T) {
 
 	gotName, ok := respBody["name"].(string)
 	require.True(t, ok)
-	assert.Equal(t, bucket, gotName)
+	assert.Equal(t, dbname, gotName)
 
 	un, _, _ := tb.BucketSpec.Auth.GetCredentials()
 	gotusername, ok := respBody["username"].(string)
