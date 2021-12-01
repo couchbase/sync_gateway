@@ -46,10 +46,11 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 	il.database = Database{DatabaseContext: dbContext, user: nil}
 	il.stats = dbStats.Database()
 	feedArgs := sgbucket.FeedArguments{
-		ID:         base.DCPImportFeedID,
-		Backfill:   sgbucket.FeedResume,
-		Terminator: il.terminator,
-		DoneChan:   make(chan struct{}),
+		ID:               base.DCPImportFeedID,
+		Backfill:         sgbucket.FeedResume,
+		Terminator:       il.terminator,
+		DoneChan:         make(chan struct{}),
+		CheckpointPrefix: il.checkpointPrefix,
 	}
 
 	importFeedStatsMap := dbContext.DbStats.Database().ImportFeedMapStats
