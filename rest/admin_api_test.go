@@ -2270,10 +2270,6 @@ func TestHandlePutDbConfigWithBackticks(t *testing.T) {
 }
 
 func TestHandleDBConfig(t *testing.T) {
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
-
 	tb := base.GetTestBucket(t)
 
 	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb})
@@ -2304,6 +2300,8 @@ func TestHandleDBConfig(t *testing.T) {
 			},
 		},
 		NumIndexReplicas:   base.UintPtr(0),
+		EnableXattrs:       base.BoolPtr(base.TestUseXattrs()),
+		UseViews:           base.BoolPtr(base.TestsDisableGSI()),
 		SGReplicateEnabled: base.BoolPtr(false),
 	}
 	reqBody, err := base.JSONMarshal(dbConfig)
