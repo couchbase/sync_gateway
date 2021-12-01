@@ -1588,7 +1588,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		}
 	}`
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	var testBucket *base.TestBucket
 
@@ -1610,21 +1610,17 @@ func TestResyncRegenerateSequences(t *testing.T) {
 
 	var response *TestResponse
 	var docSeqArr []float64
-	// var err error
 	var body db.Body
 
 	for i := 0; i < 10; i++ {
 		docID := fmt.Sprintf("doc%d", i)
 		rt.createDoc(t, docID)
 
-		err := rt.WaitForCondition(func() bool {
-			response = rt.SendAdminRequest("GET", "/db/_raw/"+docID, "")
-			return response.Code == http.StatusOK
-		})
-		require.NoError(t, err)
+		response = rt.SendAdminRequest("GET", "/db/_raw/"+docID, "")
+		require.Equal(t, http.StatusOK, response.Code)
 
-		err = json.Unmarshal(response.BodyBytes(), &body)
-		assert.NoError(t, err)
+		err := json.Unmarshal(response.BodyBytes(), &body)
+		require.NoError(t, err)
 
 		docSeqArr = append(docSeqArr, body["_sync"].(map[string]interface{})["sequence"].(float64))
 	}
@@ -1650,6 +1646,9 @@ func TestResyncRegenerateSequences(t *testing.T) {
 
 	response = rt.SendAdminRequest("PUT", "/db/userdoc2", `{"userdoc": true}`)
 	assertStatus(t, response, http.StatusCreated)
+
+	// Let everything catch up before opening changes feed
+	require.NoError(t, rt.WaitForPendingChanges())
 
 	type ChangesResp struct {
 		Results []struct {
