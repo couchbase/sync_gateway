@@ -76,6 +76,11 @@ func (h *handler) handleCreateDB() error {
 		h.server.lock.Lock()
 		defer h.server.lock.Unlock()
 
+		if _, exists := h.server.databases_[dbName]; exists {
+			return base.HTTPErrorf(http.StatusPreconditionFailed, // what CouchDB returns
+				"Duplicate database name %q", dbName)
+		}
+
 		_, err = h.server._applyConfig(loadedConfig, true)
 		if err != nil {
 			if errors.Is(err, base.ErrAuthError) {
