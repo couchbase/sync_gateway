@@ -166,7 +166,7 @@ func (bucket *CouchbaseBucketGoCB) SubdocGetRaw(k string, subdocKey string) ([]b
 		err = pkgerrors.Wrapf(err, "SubdocGetRaw with key %s and subdocKey %s", UD(k).Redact(), UD(subdocKey).Redact())
 	}
 
-	return rawValue, casOut, nil
+	return rawValue, casOut, err
 }
 
 // Retrieve a document and it's associated named xattr

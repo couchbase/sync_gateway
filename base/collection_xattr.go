@@ -125,6 +125,11 @@ func (c *Collection) SubdocGetRaw(k string, subdocKey string) ([]byte, uint64, e
 			if isRecoverable {
 				return isRecoverable, lookupErr, 0
 			}
+
+			if isKVError(lookupErr, memd.StatusKeyNotFound) {
+				return false, ErrNotFound, 0
+			}
+
 			return false, lookupErr, 0
 		}
 
@@ -141,7 +146,7 @@ func (c *Collection) SubdocGetRaw(k string, subdocKey string) ([]byte, uint64, e
 		err = pkgerrors.Wrapf(err, "SubdocGetRaw with key %s and subdocKey %s", UD(k).Redact(), UD(subdocKey).Redact())
 	}
 
-	return rawValue, casOut, nil
+	return rawValue, casOut, err
 }
 
 func (c *Collection) SubdocWrite(k string, subdocKey string, cas uint64, value []byte) (uint64, error) {
