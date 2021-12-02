@@ -1697,9 +1697,6 @@ func TestImportZeroValueDecimalPlaces(t *testing.T) {
 // TestImportZeroValueDecimalPlacesScientificNotation tests that docs containing numbers of the form 0e10 are imported correctly.
 func TestImportZeroValueDecimalPlacesScientificNotation(t *testing.T) {
 
-	// FIXME: Fails because of MB-38034
-	t.Skipf("Fails because of MB-38034")
-
 	SkipImportTestsIfNotEnabled(t)
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport)()
