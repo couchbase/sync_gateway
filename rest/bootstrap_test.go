@@ -188,6 +188,71 @@ func TestBootstrapDuplicateBucket(t *testing.T) {
 	assert.Contains(t, string(respBody), fmt.Sprintf(`Bucket \"%s\" already in use by database \"%s\"`, tb.GetName(), "db1"))
 }
 
+// TestBootstrapDuplicateDatabase will attempt to create a second database and ensure this isn't allowed.
+func TestBootstrapDuplicateDatabase(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Bootstrap works with Couchbase Server only")
+	}
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+
+	serverErr := make(chan error, 0)
+
+	// Start SG with no databases
+	config := bootstrapStartupConfigForTest(t)
+	sc, err := setupServerContext(&config, true)
+	require.NoError(t, err)
+	defer func() {
+		sc.Close()
+		require.NoError(t, <-serverErr)
+	}()
+
+	go func() {
+		serverErr <- startServer(&config, sc)
+	}()
+	require.NoError(t, sc.waitForRESTAPIs())
+
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer func() { tb.Close() }()
+
+	dbConfig := fmt.Sprintf(
+		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
+		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+	)
+
+	resp := bootstrapAdminRequest(t, http.MethodPut, "/db1/", dbConfig)
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	// Write a doc, we'll rely on it for later stat assertions to ensure the database isn't being reloaded.
+	resp = bootstrapAdminRequest(t, http.MethodPut, "/db1/doc1", `{"test": true}`)
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	// check to see we have a doc written stat
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/_expvar", "")
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	respBody, err := ioutil.ReadAll(resp.Body)
+	assert.NoError(t, err)
+	_ = resp.Body.Close()
+	assert.Contains(t, string(respBody), `"num_doc_writes":1`)
+
+	// Create db1 again and expect it to fail
+	resp = bootstrapAdminRequest(t, http.MethodPut, "/db1/", dbConfig)
+	assert.Equal(t, http.StatusPreconditionFailed, resp.StatusCode)
+	respBody, err = ioutil.ReadAll(resp.Body)
+	assert.NoError(t, err)
+	_ = resp.Body.Close()
+	assert.Contains(t, string(respBody), fmt.Sprintf(`Duplicate database name \"%s\"`, "db1"))
+
+	// check to see we still have a doc written stat (as a proxy to determine if the database restarted)
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/_expvar", "")
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	respBody, err = ioutil.ReadAll(resp.Body)
+	assert.NoError(t, err)
+	_ = resp.Body.Close()
+	assert.Contains(t, string(respBody), `"num_doc_writes":1`)
+}
+
 func bootstrapStartupConfigForTest(t *testing.T) StartupConfig {
 	config := DefaultStartupConfig("")
 
