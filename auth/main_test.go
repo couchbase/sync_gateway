@@ -18,16 +18,11 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	defer base.SetUpGlobalTestLogging(m)()
-	defer base.SetUpGlobalTestProfiling(m)()
-
-	base.SkipPrometheusStatsRegistration = true
-
-	base.GTestBucketPool = base.NewTestBucketPool(base.FlushBucketEmptierFunc, base.NoopInitFunc)
+	// Can't defer teardown due to os.Exit
+	teardownFn := base.SetupTest(m, base.FlushBucketEmptierFunc, base.NoopInitFunc)
 
 	status := m.Run()
 
-	base.GTestBucketPool.Close()
-
+	teardownFn()
 	os.Exit(status)
 }

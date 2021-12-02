@@ -32,6 +32,9 @@ import (
 // Code that is test-related that needs to be accessible from non-base packages, and therefore can't live in
 // util_test.go, which is only accessible from the base package.
 
+// isTest is set by TestMain for IsTest() to return whether we're running in a test context or not.
+var isTest = false
+
 var TestExternalRevStorage = false
 var numOpenBucketsByName map[string]int32
 var mutexNumOpenBucketsByName sync.Mutex
@@ -43,6 +46,11 @@ func init() {
 
 	numOpenBucketsByName = map[string]int32{}
 
+}
+
+// IsTest returns true if running in a Go test context.
+func IsTest() bool {
+	return isTest
 }
 
 type TestBucket struct {

@@ -89,7 +89,7 @@ type TestBucketPool struct {
 	unclosedBucketsLock sync.Mutex
 }
 
-// NewTestBucketPool initializes a new TestBucketPool. To be called from TestMain for packages requiring test buckets.
+// NewTestBucketPool initializes a new TestBucketPool. Called from SetupTest for packages requiring use of test buckets.
 func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TBPBucketInitFunc) *TestBucketPool {
 	// We can safely skip setup when we want Walrus buckets to be used. They'll be created on-demand via GetTestBucketAndSpec.
 	if !TestUseCouchbaseServer() {

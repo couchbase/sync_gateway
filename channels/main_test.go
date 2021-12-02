@@ -18,12 +18,11 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	defer base.SetUpGlobalTestLogging(m)()
-	defer base.SetUpGlobalTestProfiling(m)()
-
-	base.SkipPrometheusStatsRegistration = true
+	// Can't defer teardown due to os.Exit
+	teardownFn := base.SetupTest(m, nil, nil)
 
 	status := m.Run()
 
+	teardownFn()
 	os.Exit(status)
 }
