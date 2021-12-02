@@ -46,6 +46,14 @@ func (c *Collection) GetXattr(k string, xattrKey string, xv interface{}) (casOut
 	return c.SubdocGetXattr(k, xattrKey, xv)
 }
 
+func (c *Collection) GetSubDocRaw(k string, subdocKey string) ([]byte, uint64, error) {
+	return c.SubdocGetRaw(k, subdocKey)
+}
+
+func (c *Collection) WriteSubDoc(k string, subdocKey string, value []byte) (uint64, error) {
+	return c.SubdocWrite(k, subdocKey, value)
+}
+
 func (c *Collection) GetWithXattr(k string, xattrKey string, userXattrKey string, rv interface{}, xv interface{}, uxv interface{}) (cas uint64, err error) {
 	return c.SubdocGetBodyAndXattr(k, xattrKey, userXattrKey, rv, xv, uxv)
 }
@@ -98,6 +106,44 @@ func (c *Collection) SubdocGetXattr(k string, xattrKey string, xv interface{}) (
 	} else {
 		return 0, lookupErr
 	}
+}
+
+func (c *Collection) SubdocGetRaw(k string, subdocKey string) ([]byte, uint64, error) {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
+
+	ops := []gocb.LookupInSpec{
+		gocb.GetSpec(subdocKey, &gocb.GetSpecOptions{}),
+	}
+
+	res, lookupErr := c.LookupIn(k, ops, &gocb.LookupInOptions{})
+	if lookupErr != nil {
+		return nil, 0, lookupErr
+	}
+
+	var value []byte
+	err := res.ContentAt(0, &value)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return value, uint64(res.Cas()), nil
+}
+
+func (c *Collection) SubdocWrite(k string, subdocKey string, value []byte) (uint64, error) {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
+
+	mutateOps := []gocb.MutateInSpec{
+		gocb.UpsertSpec(subdocKey, bytesToRawMessage(value), &gocb.UpsertSpecOptions{CreatePath: true}),
+	}
+
+	result, err := c.MutateIn(k, mutateOps, &gocb.MutateInOptions{StoreSemantic: gocb.StoreSemanticsUpsert})
+	if err != nil {
+		return 0, err
+	}
+
+	return uint64(result.Cas()), nil
 }
 
 // SubdocGetBodyAndXattr retrieves the document body and xattr in a single LookupIn subdoc operation.  Does not require both to exist.

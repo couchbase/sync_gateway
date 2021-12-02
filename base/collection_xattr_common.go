@@ -15,7 +15,7 @@ const (
 
 // SubdocXattrStore interface defines the set of operations Sync Gateway uses to manage and interact with xattrs
 type SubdocXattrStore interface {
-	SubdocGetXattr(k string, xattrKey string, xv interface{}) (casOut uint64, err error)
+	SubdocGetXattr(k string, subdocKey string, xv interface{}) (casOut uint64, err error)
 	SubdocGetBodyAndXattr(k string, xattrKey string, userXattrKey string, rv interface{}, xv interface{}, uxv interface{}) (cas uint64, err error)
 	SubdocInsertXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}) (casOut uint64, err error)
 	SubdocInsertBodyAndXattr(k string, xattrKey string, exp uint32, v interface{}, xv interface{}) (casOut uint64, err error)
@@ -27,6 +27,8 @@ type SubdocXattrStore interface {
 	SubdocDeleteXattrs(k string, xattrKeys ...string) error
 	SubdocDeleteBodyAndXattr(k string, xattrKey string) error
 	SubdocDeleteBody(k string, xattrKey string, exp uint32, cas uint64) (casOut uint64, err error)
+	SubdocGetRaw(k string, xattrKey string) (value []byte, casOut uint64, err error)
+	WriteSubDoc(k string, subdocKey string, value []byte) (uint64, error)
 	GetSpec() BucketSpec
 	IsSupported(feature sgbucket.DataStoreFeature) bool
 	isRecoverableReadError(err error) bool

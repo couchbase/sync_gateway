@@ -25,6 +25,7 @@ type AttachmentCompactionManager struct {
 	PurgedAttachments base.AtomicInt
 	CompactID         string
 	Phase             string
+	VBUUIDs           []string
 	dryRun            bool
 	lock              sync.Mutex
 }
@@ -43,7 +44,6 @@ func NewAttachmentCompactionManager(bucket base.Bucket) *BackgroundManager {
 }
 
 func (a *AttachmentCompactionManager) Init(options map[string]interface{}, clusterStatus []byte) error {
-
 	database := options["database"].(*Database)
 	database.DbStats.Database().CompactionAttachmentStartTime.Set(time.Now().UTC().Unix())
 
@@ -65,8 +65,8 @@ func (a *AttachmentCompactionManager) Init(options map[string]interface{}, clust
 	}
 
 	if clusterStatus != nil {
-		var attachmentResponseStatus AttachmentManagerResponse
-		err := base.JSONUnmarshal(clusterStatus, &attachmentResponseStatus)
+		var statusDoc AttachmentManagerStatusDoc
+		err := base.JSONUnmarshal(clusterStatus, &statusDoc)
 
 		reset, ok := options["reset"].(bool)
 		if reset && ok {
@@ -77,14 +77,15 @@ func (a *AttachmentCompactionManager) Init(options map[string]interface{}, clust
 		// If the previous run completed, or there was an error during unmarshalling the status we will start the
 		// process from scratch with a new compaction ID. Otherwise, we should resume with the compact ID, phase and
 		// stats specified in the doc.
-		if attachmentResponseStatus.State == BackgroundProcessStateCompleted || err != nil || (reset && ok) {
+		if statusDoc.State == BackgroundProcessStateCompleted || err != nil || (reset && ok) {
 			return newRunInit()
 		} else {
-			a.CompactID = attachmentResponseStatus.CompactID
-			a.Phase = attachmentResponseStatus.Phase
-			a.dryRun = attachmentResponseStatus.DryRun
-			a.MarkedAttachments.Set(attachmentResponseStatus.MarkedAttachments)
-			a.PurgedAttachments.Set(attachmentResponseStatus.PurgedAttachments)
+			a.CompactID = statusDoc.CompactID
+			a.Phase = statusDoc.Phase
+			a.dryRun = statusDoc.DryRun
+			a.MarkedAttachments.Set(statusDoc.MarkedAttachments)
+			a.PurgedAttachments.Set(statusDoc.PurgedAttachments)
+			a.VBUUIDs = statusDoc.VBUUIDs
 
 			base.Infof(base.KeyAll, "Attachment Compaction: Attempting to resume compaction with compact ID: %q phase %q", a.CompactID, a.Phase)
 		}
@@ -107,6 +108,8 @@ func (a *AttachmentCompactionManager) Run(options map[string]interface{}, persis
 	}
 
 	defer persistClusterStatus()
+
+	a.VBUUIDs = []string{"x", "y", "z"}
 
 	// Need to check the current phase in the event we are resuming - No need to run mark again if we got as far as
 	// cleanup last time...
@@ -156,11 +159,20 @@ type AttachmentManagerResponse struct {
 	DryRun            bool   `json:"dry_run,omitempty"`
 }
 
-func (a *AttachmentCompactionManager) GetProcessStatus(status BackgroundManagerStatus) ([]byte, error) {
+type AttachmentManagerMeta struct {
+	VBUUIDs []string `json:"vbuuids"`
+}
+
+type AttachmentManagerStatusDoc struct {
+	AttachmentManagerResponse `json:"status"`
+	AttachmentManagerMeta     `json:"meta"`
+}
+
+func (a *AttachmentCompactionManager) GetProcessStatus(status BackgroundManagerStatus) ([]byte, []byte, error) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
-	retStatus := AttachmentManagerResponse{
+	response := AttachmentManagerResponse{
 		BackgroundManagerStatus: status,
 		MarkedAttachments:       a.MarkedAttachments.Value(),
 		PurgedAttachments:       a.PurgedAttachments.Value(),
@@ -169,7 +181,21 @@ func (a *AttachmentCompactionManager) GetProcessStatus(status BackgroundManagerS
 		DryRun:                  a.dryRun,
 	}
 
-	return base.JSONMarshal(retStatus)
+	meta := AttachmentManagerMeta{
+		VBUUIDs: a.VBUUIDs,
+	}
+
+	statusJSON, err := base.JSONMarshal(response)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	metaJSON, err := base.JSONMarshal(meta)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return statusJSON, metaJSON, err
 }
 
 func (a *AttachmentCompactionManager) ResetStatus() {

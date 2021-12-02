@@ -144,6 +144,16 @@ func (b *LoggingBucket) GetXattr(k string, xattr string, xv interface{}) (cas ui
 	return b.bucket.GetXattr(k, xattr, xv)
 }
 
+func (b *LoggingBucket) GetSubDocRaw(k string, subdocKey string) ([]byte, uint64, error) {
+	defer b.log(time.Now(), k, subdocKey)
+	return b.bucket.GetSubDocRaw(k, subdocKey)
+}
+
+func (b *LoggingBucket) WriteSubDoc(k string, subdocKey string, value []byte) (uint64, error) {
+	defer b.log(time.Now(), k, subdocKey)
+	return b.bucket.WriteSubDoc(k, subdocKey, value)
+}
+
 func (b *LoggingBucket) GetDDocs() (map[string]sgbucket.DesignDoc, error) {
 	defer b.log(time.Now())
 	return b.bucket.GetDDocs()

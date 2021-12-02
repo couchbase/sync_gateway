@@ -27,6 +27,14 @@ func (bucket *CouchbaseBucketGoCB) GetXattr(k string, xattrKey string, xv interf
 	return bucket.SubdocGetXattr(k, xattrKey, xv)
 }
 
+func (bucket *CouchbaseBucketGoCB) GetSubDocRaw(k string, subdocKey string) ([]byte, uint64, error) {
+	return bucket.SubdocGetRaw(k, subdocKey)
+}
+
+func (bucket *CouchbaseBucketGoCB) WriteSubDoc(k string, subdocKey string, value []byte) (uint64, error) {
+	return bucket.SubdocWrite(k, subdocKey, value)
+}
+
 func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, userXattrKey string, rv interface{}, xv interface{}, uxv interface{}) (cas uint64, err error) {
 	return bucket.SubdocGetBodyAndXattr(k, xattrKey, userXattrKey, rv, xv, uxv)
 }
@@ -102,6 +110,35 @@ func (bucket *CouchbaseBucketGoCB) SubdocGetXattr(k string, xattrKey string, xv 
 	}
 
 	return cas, err
+}
+
+func (bucket *CouchbaseBucketGoCB) SubdocWrite(k string, subdocKey string, value []byte) (uint64, error) {
+	mutateInBuilder := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagMkDoc, 0, 0).
+		UpsertEx(subdocKey, value, gocb.SubdocFlagNone)
+	docFragment, err := mutateInBuilder.Execute()
+	if err != nil {
+		return 0, err
+	}
+
+	return uint64(docFragment.Cas()), nil
+}
+
+func (bucket *CouchbaseBucketGoCB) SubdocGetRaw(k string, subdocKey string) ([]byte, uint64, error) {
+	res, lookupErr := bucket.Bucket.LookupInEx(k, gocb.SubdocDocFlagNone).
+		GetEx(subdocKey, gocb.SubdocFlagNone).
+		Execute()
+
+	if lookupErr != nil {
+		return nil, 0, lookupErr
+	}
+
+	var value []byte
+	err := res.Content(subdocKey, &value)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return value, uint64(res.Cas()), nil
 }
 
 // Retrieve a document and it's associated named xattr
