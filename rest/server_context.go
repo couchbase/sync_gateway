@@ -116,16 +116,6 @@ func NewServerContext(config *StartupConfig, persistentConfig bool) *ServerConte
 		}
 	}
 
-	// TODO: Remove with GoCB DCP switch
-	// if config.CouchbaseKeepaliveInterval != nil {
-	// 	couchbase.SetTcpKeepalive(true, *config.CouchbaseKeepaliveInterval)
-	// }
-
-	// TODO: Moved to dbConfig?
-	// if config.SlowQueryWarningThreshold == nil {
-	// 	config.SlowQueryWarningThreshold = base.IntPtr(kDefaultSlowQueryWarningThreshold)
-	// }
-
 	sc.startStatsLogger()
 
 	return sc

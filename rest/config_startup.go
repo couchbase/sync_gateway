@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -70,7 +71,8 @@ type StartupConfig struct {
 
 	DatabaseCredentials PerDatabaseCredentialsConfig `json:"database_credentials,omitempty" help:"A map of database name to credentials, that can be used instead of the bootstrap ones."`
 
-	MaxFileDescriptors uint64 `json:"max_file_descriptors,omitempty" help:"Max # of open file descriptors (RLIMIT_NOFILE)"`
+	MaxFileDescriptors         uint64 `json:"max_file_descriptors,omitempty" help:"Max # of open file descriptors (RLIMIT_NOFILE)"`
+	CouchbaseKeepaliveInterval *int   `json:"couchbase_keepalive_interval,omitempty" help:"TCP keep-alive interval between SG and Couchbase server"`
 
 	DeprecatedConfig *DeprecatedConfig `json:"-,omitempty" help:"Deprecated options that can be set from a legacy config upgrade, but cannot be set from a 3.0 config."`
 }
@@ -228,8 +230,14 @@ func setGlobalConfig(sc *StartupConfig) error {
 			base.Infof(base.KeyAll, "Configured Go to use all %d CPUs; setenv GOMAXPROCS to override this", cpus)
 		}
 	}
+
 	if _, err := base.SetMaxFileDescriptors(sc.MaxFileDescriptors); err != nil {
 		base.Errorf("Error setting MaxFileDescriptors to %d: %v", sc.MaxFileDescriptors, err)
+	}
+
+	// TODO: Remove with GoCB DCP switch
+	if sc.CouchbaseKeepaliveInterval != nil {
+		couchbase.SetTcpKeepalive(true, *sc.CouchbaseKeepaliveInterval)
 	}
 
 	// Given unscoped usage of base.JSON functions, this can't be scoped.
