@@ -770,6 +770,11 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		bcryptCost = auth.DefaultBcryptCost
 	}
 
+	slowQueryWarningThreshold := kDefaultSlowQueryWarningThreshold * time.Millisecond
+	if config.SlowQueryWarningThresholdMs != nil {
+		slowQueryWarningThreshold = time.Duration(*config.SlowQueryWarningThresholdMs) * time.Millisecond
+	}
+
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:              &cacheOptions,
 		RevisionCacheOptions:      revCacheOptions,
@@ -794,10 +799,9 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 			Enabled:               sgReplicateEnabled,
 			WebsocketPingInterval: sgReplicateWebsocketPingInterval,
 		},
-		// FIXME?
-		// SlowQueryWarningThreshold: time.Duration(*sc.config.SlowQueryWarningThreshold) * time.Millisecond,
-		ClientPartitionWindow: clientPartitionWindow,
-		BcryptCost:            bcryptCost,
+		SlowQueryWarningThreshold: slowQueryWarningThreshold,
+		ClientPartitionWindow:     clientPartitionWindow,
+		BcryptCost:                bcryptCost,
 	}
 
 	return contextOptions, nil

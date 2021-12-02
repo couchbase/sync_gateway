@@ -107,6 +107,11 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 	bootstrapConfigIsSet := false
 	bsc := &BootstrapConfig{}
 	for _, dbConfig := range lc.Databases {
+		// set SlowQueryWarningThreshold on each DbConfig from the legacy server config.
+		if lc.SlowQueryWarningThreshold != nil {
+			dbConfig.SlowQueryWarningThresholdMs = base.Uint32Ptr(uint32(*lc.SlowQueryWarningThreshold))
+		}
+
 		if dbConfig.Server == nil || *dbConfig.Server == "" {
 			continue
 		}
