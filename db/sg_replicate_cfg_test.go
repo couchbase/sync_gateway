@@ -626,3 +626,85 @@ func TestIsCfgChanged(t *testing.T) {
 	}
 
 }
+
+// Test replicators assigned nodes with different group IDs
+func TestReplicateGroupIDAssignedNodes(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
+	// Set up SG Configs
+	cfgDefault, err := base.NewCfgSG(tb, "")
+	require.NoError(t, err)
+
+	cfgGroupA, err := base.NewCfgSG(tb, "GroupA")
+	require.NoError(t, err)
+
+	cfgGGroupB, err := base.NewCfgSG(tb, "GroupB")
+	require.NoError(t, err)
+
+	// Set up replicators
+	dbDefault, err := NewDatabaseContext("default", tb, false, DatabaseContextOptions{GroupID: ""})
+	require.NoError(t, err)
+	managerDefault, err := NewSGReplicateManager(dbDefault, cfgDefault)
+	require.NoError(t, err)
+	err = managerDefault.RegisterNode("nodeDefault")
+	require.NoError(t, err)
+	err = managerDefault.AddReplication(&ReplicationCfg{
+		ReplicationConfig: ReplicationConfig{
+			ID:           "replicator",
+			InitialState: ReplicationStateStopped,
+		},
+	})
+	require.NoError(t, err)
+
+	dbGroupA, err := NewDatabaseContext("groupa", tb, false, DatabaseContextOptions{GroupID: "GroupA"})
+	require.NoError(t, err)
+	managerGroupA, err := NewSGReplicateManager(dbGroupA, cfgGroupA)
+	require.NoError(t, err)
+	err = managerGroupA.RegisterNode("nodeGroupA")
+	require.NoError(t, err)
+	err = managerGroupA.AddReplication(&ReplicationCfg{
+		ReplicationConfig: ReplicationConfig{
+			ID:           "replicatorGroupA",
+			InitialState: ReplicationStateStopped,
+		},
+	})
+	require.NoError(t, err)
+
+	dbGroupB, err := NewDatabaseContext("groupb", tb, false, DatabaseContextOptions{GroupID: "GroupB"})
+	require.NoError(t, err)
+	managerGroupB, err := NewSGReplicateManager(dbGroupB, cfgGGroupB)
+	require.NoError(t, err)
+	err = managerGroupB.RegisterNode("nodeGroupB")
+	require.NoError(t, err)
+	err = managerGroupB.AddReplication(&ReplicationCfg{
+		ReplicationConfig: ReplicationConfig{
+			ID:           "replicatorGroupB",
+			InitialState: ReplicationStateStopped,
+		},
+	})
+	require.NoError(t, err)
+
+	// Check replications are assigned to correct nodes
+	replications, err := managerDefault.GetReplications()
+	require.NoError(t, err)
+	assert.Len(t, replications, 1)
+	cfg, exists := replications["replicator"]
+	require.True(t, exists, "Replicator not found")
+	assert.Equal(t, "nodeDefault", cfg.AssignedNode)
+
+	replications, err = managerGroupA.GetReplications()
+	require.NoError(t, err)
+	assert.Len(t, replications, 1)
+	cfg, exists = replications["replicatorGroupA"]
+	require.True(t, exists, "Replicator not found")
+	assert.Equal(t, "nodeGroupA", cfg.AssignedNode)
+
+	replications, err = managerGroupB.GetReplications()
+	require.NoError(t, err)
+	assert.Len(t, replications, 1)
+	cfg, exists = replications["replicatorGroupB"]
+	require.True(t, exists, "Replicator not found")
+	assert.Equal(t, "nodeGroupB", cfg.AssignedNode)
+}
