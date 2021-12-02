@@ -46,7 +46,7 @@ func TestAttachmentMark(t *testing.T) {
 	attKeys = append(attKeys, createDocWithInBodyAttachment(t, "inBodyDoc", []byte(`{}`), "attForInBodyRef", []byte(`{"val": "inBodyAtt"}`), testDb))
 
 	terminator := base.NewSafeTerminator()
-	attachmentsMarked, err := Mark(testDb, t.Name(), terminator, &base.AtomicInt{})
+	attachmentsMarked, _, err := Mark(testDb, t.Name(), terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(13), attachmentsMarked)
 
@@ -102,7 +102,7 @@ func TestAttachmentSweep(t *testing.T) {
 	}
 
 	terminator := base.NewSafeTerminator()
-	purged, err := Sweep(testDb, t.Name(), false, terminator, &base.AtomicInt{})
+	purged, err := Sweep(testDb, t.Name(), nil, false, terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 
 	assert.Equal(t, int64(11), purged)
@@ -173,7 +173,7 @@ func TestAttachmentCleanup(t *testing.T) {
 	}
 
 	terminator := base.NewSafeTerminator()
-	err := Cleanup(testDb, t.Name(), terminator)
+	err := Cleanup(testDb, t.Name(), nil, terminator)
 	assert.NoError(t, err)
 
 	for _, docID := range singleMarkedAttIDs {
@@ -242,11 +242,11 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 	}
 
 	terminator := base.NewSafeTerminator()
-	attachmentsMarked, err := Mark(testDb, t.Name(), terminator, &base.AtomicInt{})
+	attachmentsMarked, vbUUIDS, err := Mark(testDb, t.Name(), terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(10), attachmentsMarked)
 
-	attachmentsPurged, err := Sweep(testDb, t.Name(), false, terminator, &base.AtomicInt{})
+	attachmentsPurged, err := Sweep(testDb, t.Name(), vbUUIDS, false, terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(5), attachmentsPurged)
 
@@ -264,7 +264,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 		}
 	}
 
-	err = Cleanup(testDb, t.Name(), terminator)
+	err = Cleanup(testDb, t.Name(), vbUUIDS, terminator)
 	assert.NoError(t, err)
 
 	for _, attDocKey := range attKeys {

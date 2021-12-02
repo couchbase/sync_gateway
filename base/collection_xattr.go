@@ -50,8 +50,8 @@ func (c *Collection) GetSubDocRaw(k string, subdocKey string) ([]byte, uint64, e
 	return c.SubdocGetRaw(k, subdocKey)
 }
 
-func (c *Collection) WriteSubDoc(k string, subdocKey string, value []byte) (uint64, error) {
-	return c.SubdocWrite(k, subdocKey, value)
+func (c *Collection) WriteSubDoc(k string, subdocKey string, cas uint64, value []byte) (uint64, error) {
+	return c.SubdocWrite(k, subdocKey, cas, value)
 }
 
 func (c *Collection) GetWithXattr(k string, xattrKey string, userXattrKey string, rv interface{}, xv interface{}, uxv interface{}) (cas uint64, err error) {
@@ -130,7 +130,7 @@ func (c *Collection) SubdocGetRaw(k string, subdocKey string) ([]byte, uint64, e
 	return value, uint64(res.Cas()), nil
 }
 
-func (c *Collection) SubdocWrite(k string, subdocKey string, value []byte) (uint64, error) {
+func (c *Collection) SubdocWrite(k string, subdocKey string, cas uint64, value []byte) (uint64, error) {
 	c.waitForAvailKvOp()
 	defer c.releaseKvOp()
 
@@ -138,7 +138,10 @@ func (c *Collection) SubdocWrite(k string, subdocKey string, value []byte) (uint
 		gocb.UpsertSpec(subdocKey, bytesToRawMessage(value), &gocb.UpsertSpecOptions{CreatePath: true}),
 	}
 
-	result, err := c.MutateIn(k, mutateOps, &gocb.MutateInOptions{StoreSemantic: gocb.StoreSemanticsUpsert})
+	result, err := c.MutateIn(k, mutateOps, &gocb.MutateInOptions{
+		Cas:           gocb.Cas(cas),
+		StoreSemantic: gocb.StoreSemanticsUpsert,
+	})
 	if err != nil {
 		return 0, err
 	}

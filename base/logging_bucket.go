@@ -149,9 +149,9 @@ func (b *LoggingBucket) GetSubDocRaw(k string, subdocKey string) ([]byte, uint64
 	return b.bucket.GetSubDocRaw(k, subdocKey)
 }
 
-func (b *LoggingBucket) WriteSubDoc(k string, subdocKey string, value []byte) (uint64, error) {
+func (b *LoggingBucket) WriteSubDoc(k string, subdocKey string, cas uint64, value []byte) (uint64, error) {
 	defer b.log(time.Now(), k, subdocKey)
-	return b.bucket.WriteSubDoc(k, subdocKey, value)
+	return b.bucket.WriteSubDoc(k, subdocKey, cas, value)
 }
 
 func (b *LoggingBucket) GetDDocs() (map[string]sgbucket.DesignDoc, error) {

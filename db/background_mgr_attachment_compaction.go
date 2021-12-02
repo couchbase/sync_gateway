@@ -25,7 +25,7 @@ type AttachmentCompactionManager struct {
 	PurgedAttachments base.AtomicInt
 	CompactID         string
 	Phase             string
-	VBUUIDs           []string
+	VBUUIDs           []uint64
 	dryRun            bool
 	lock              sync.Mutex
 }
@@ -109,15 +109,14 @@ func (a *AttachmentCompactionManager) Run(options map[string]interface{}, persis
 
 	defer persistClusterStatus()
 
-	a.VBUUIDs = []string{"x", "y", "z"}
-
 	// Need to check the current phase in the event we are resuming - No need to run mark again if we got as far as
 	// cleanup last time...
+	var err error
 	switch a.Phase {
 	case "mark", "":
 		a.SetPhase("mark")
 		persistClusterStatus()
-		_, err := Mark(database, a.CompactID, terminator, &a.MarkedAttachments)
+		_, a.VBUUIDs, err = Mark(database, a.CompactID, terminator, &a.MarkedAttachments)
 		if err != nil || terminator.IsClosed() {
 			return err
 		}
@@ -125,7 +124,7 @@ func (a *AttachmentCompactionManager) Run(options map[string]interface{}, persis
 	case "sweep":
 		a.SetPhase("sweep")
 		persistClusterStatus()
-		_, err := Sweep(database, a.CompactID, a.dryRun, terminator, &a.PurgedAttachments)
+		_, err := Sweep(database, a.CompactID, a.VBUUIDs, a.dryRun, terminator, &a.PurgedAttachments)
 		if err != nil || terminator.IsClosed() {
 			return err
 		}
@@ -133,7 +132,7 @@ func (a *AttachmentCompactionManager) Run(options map[string]interface{}, persis
 	case "cleanup":
 		a.SetPhase("cleanup")
 		persistClusterStatus()
-		err := Cleanup(database, a.CompactID, terminator)
+		err := Cleanup(database, a.CompactID, a.VBUUIDs, terminator)
 		if err != nil || terminator.IsClosed() {
 			return err
 		}
@@ -160,7 +159,7 @@ type AttachmentManagerResponse struct {
 }
 
 type AttachmentManagerMeta struct {
-	VBUUIDs []string `json:"vbuuids"`
+	VBUUIDs []uint64 `json:"vbuuids"`
 }
 
 type AttachmentManagerStatusDoc struct {

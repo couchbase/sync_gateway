@@ -286,8 +286,8 @@ func (b *LeakyBucket) GetSubDocRaw(k string, subdocKey string) ([]byte, uint64, 
 	return b.bucket.GetSubDocRaw(k, subdocKey)
 }
 
-func (b *LeakyBucket) WriteSubDoc(k string, subdocKey string, value []byte) (uint64, error) {
-	return b.bucket.WriteSubDoc(k, subdocKey, value)
+func (b *LeakyBucket) WriteSubDoc(k string, subdocKey string, cas uint64, value []byte) (uint64, error) {
+	return b.bucket.WriteSubDoc(k, subdocKey, cas, value)
 }
 
 func (b *LeakyBucket) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {

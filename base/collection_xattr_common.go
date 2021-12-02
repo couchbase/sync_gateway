@@ -28,7 +28,7 @@ type SubdocXattrStore interface {
 	SubdocDeleteBodyAndXattr(k string, xattrKey string) error
 	SubdocDeleteBody(k string, xattrKey string, exp uint32, cas uint64) (casOut uint64, err error)
 	SubdocGetRaw(k string, xattrKey string) (value []byte, casOut uint64, err error)
-	WriteSubDoc(k string, subdocKey string, value []byte) (uint64, error)
+	WriteSubDoc(k string, subdocKey string, cas uint64, value []byte) (uint64, error)
 	GetSpec() BucketSpec
 	IsSupported(feature sgbucket.DataStoreFeature) bool
 	isRecoverableReadError(err error) bool

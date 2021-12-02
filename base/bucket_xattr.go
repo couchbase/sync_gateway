@@ -31,8 +31,8 @@ func (bucket *CouchbaseBucketGoCB) GetSubDocRaw(k string, subdocKey string) ([]b
 	return bucket.SubdocGetRaw(k, subdocKey)
 }
 
-func (bucket *CouchbaseBucketGoCB) WriteSubDoc(k string, subdocKey string, value []byte) (uint64, error) {
-	return bucket.SubdocWrite(k, subdocKey, value)
+func (bucket *CouchbaseBucketGoCB) WriteSubDoc(k string, subdocKey string, cas uint64, value []byte) (uint64, error) {
+	return bucket.SubdocWrite(k, subdocKey, cas, value)
 }
 
 func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, userXattrKey string, rv interface{}, xv interface{}, uxv interface{}) (cas uint64, err error) {
@@ -112,8 +112,8 @@ func (bucket *CouchbaseBucketGoCB) SubdocGetXattr(k string, xattrKey string, xv 
 	return cas, err
 }
 
-func (bucket *CouchbaseBucketGoCB) SubdocWrite(k string, subdocKey string, value []byte) (uint64, error) {
-	mutateInBuilder := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagMkDoc, 0, 0).
+func (bucket *CouchbaseBucketGoCB) SubdocWrite(k string, subdocKey string, cas uint64, value []byte) (uint64, error) {
+	mutateInBuilder := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagMkDoc, gocb.Cas(cas), 0).
 		UpsertEx(subdocKey, value, gocb.SubdocFlagNone)
 	docFragment, err := mutateInBuilder.Execute()
 	if err != nil {

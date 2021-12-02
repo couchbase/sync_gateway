@@ -301,9 +301,7 @@ func (b *BackgroundManager) getStatusFromCluster() ([]byte, error) {
 				// avoid this unmarshal / marshal work from having to happen again, next time GET is called.
 				// If there is an error we can just ignore it as worst case we run this unmarshal / marshal again on
 				// next request
-				// TODO: status subdoc - Make WriteSubDoc take cas
-				_ = statusCas
-				_, err := b.clusterAwareOptions.bucket.WriteSubDoc(b.clusterAwareOptions.StatusDocID(), "status", status)
+				_, err := b.clusterAwareOptions.bucket.WriteSubDoc(b.clusterAwareOptions.StatusDocID(), "status", statusCas, status)
 				fmt.Println(err)
 				// _, _ = b.clusterAwareOptions.bucket.WriteCas(b.clusterAwareOptions.StatusDocID()+".status", 0, 0, statusCas, status, sgbucket.Raw)
 			}
@@ -339,10 +337,9 @@ func (b *BackgroundManager) Terminate() {
 }
 
 func (b *BackgroundManager) markStop() error {
+	processAlreadyStoppedErr := base.HTTPErrorf(http.StatusServiceUnavailable, "Process already stopped")
 	b.lock.Lock()
 	defer b.lock.Unlock()
-
-	processAlreadyStoppedErr := base.HTTPErrorf(http.StatusServiceUnavailable, "Process already stopped")
 
 	if b.isClusterAware() {
 		_, _, err := b.clusterAwareOptions.bucket.GetRaw(b.clusterAwareOptions.HeartbeatDocID())
@@ -414,12 +411,12 @@ func (b *BackgroundManager) UpdateStatusClusterAware() error {
 		}
 
 		// TODO: Handle two operations occurring here, maybe two retries for each op?
-		_, err = b.clusterAwareOptions.bucket.WriteSubDoc(b.clusterAwareOptions.StatusDocID(), "status", status)
+		_, err = b.clusterAwareOptions.bucket.WriteSubDoc(b.clusterAwareOptions.StatusDocID(), "status", 0, status)
 		if err != nil {
 			return true, err, nil
 		}
 
-		_, err = b.clusterAwareOptions.bucket.WriteSubDoc(b.clusterAwareOptions.StatusDocID(), "meta", metadata)
+		_, err = b.clusterAwareOptions.bucket.WriteSubDoc(b.clusterAwareOptions.StatusDocID(), "meta", 0, metadata)
 		if err != nil {
 			return true, err, nil
 		}
