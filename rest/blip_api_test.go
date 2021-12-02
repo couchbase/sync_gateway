@@ -3672,6 +3672,7 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "", errorCode, "resp: %s", respBody)
 
+	base.WaitForStat(pullStats.NumPullReplTotalOneShot.Value, 1)
 	// Might need to expect 0 after CBG-1824 depending on fix implementation
 	assert.EqualValues(t, 1, pullStats.NumPullReplActiveOneShot.Value())
 
@@ -3690,6 +3691,7 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "", errorCode, "resp: %s", respBody)
 
+	base.WaitForStat(pullStats.NumPullReplTotalContinuous.Value, 1)
 	assert.EqualValues(t, 1, pullStats.NumPullReplActiveContinuous.Value())
 
 	// Send a second continuous subchanges request, expect an error
