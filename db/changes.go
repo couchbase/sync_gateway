@@ -1043,10 +1043,9 @@ func (db *Database) waitForCacheUpdate(terminator chan bool, currentCachedSequen
 		case <-terminator:
 			return true
 		case <-ticker.C:
-			// Continue after ticker completed
-		}
-		if db.changeCache.getChannelCache().GetHighCacheSequence() != currentCachedSequence {
-			return false
+			if db.changeCache.getChannelCache().GetHighCacheSequence() != currentCachedSequence {
+				return false
+			}
 		}
 	}
 	return false
