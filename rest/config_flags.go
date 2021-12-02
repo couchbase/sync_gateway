@@ -126,6 +126,8 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"database_credentials": {&config.DatabaseCredentials, fs.String("database_credentials", "null", "JSON-encoded per-database credentials")},
 
 		"max_file_descriptors": {&config.MaxFileDescriptors, fs.Uint64("max_file_descriptors", 0, "Max # of open file descriptors (RLIMIT_NOFILE)")},
+
+		"couchbase_keepalive_interval": {&config.CouchbaseKeepaliveInterval, fs.Int("couchbase_keepalive_interval", 0, "TCP keep-alive interval between SG and Couchbase server")},
 	}
 }
 

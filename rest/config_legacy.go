@@ -107,6 +107,11 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 	bootstrapConfigIsSet := false
 	bsc := &BootstrapConfig{}
 	for _, dbConfig := range lc.Databases {
+		// Move non-db scoped LegacyServerConfig properties to each DbConfig
+		if lc.SlowQueryWarningThreshold != nil {
+			dbConfig.SlowQueryWarningThresholdMs = base.Uint32Ptr(uint32(*lc.SlowQueryWarningThreshold))
+		}
+
 		if dbConfig.Server == nil || *dbConfig.Server == "" {
 			continue
 		}
@@ -162,6 +167,7 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 		Replicator: ReplicatorConfig{
 			BLIPCompression: lc.ReplicatorCompression,
 		},
+		CouchbaseKeepaliveInterval: lc.CouchbaseKeepaliveInterval,
 	}
 
 	if lc.Pretty {
