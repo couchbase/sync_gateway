@@ -462,6 +462,27 @@ func TestAttachmentProcessError(t *testing.T) {
 	assert.Equal(t, status.State, BackgroundProcessStateError)
 }
 
+func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	testDB := setupTestDB(t)
+	defer testDB.Close()
+
+	// Run mark phase as usual
+	terminator := base.NewSafeTerminator()
+	_, vbUUIDs, err := Mark(testDB, t.Name(), terminator, &base.AtomicInt{})
+	assert.NoError(t, err)
+
+	// Manually modify a vbUUID and ensure the Sweep phase errors
+	vbUUIDs[0] = 1
+
+	_, err = Sweep(testDB, t.Name(), vbUUIDs, false, terminator, &base.AtomicInt{})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error opening stream for vb 0: vbUUID mismatch when failOnRollback set")
+}
+
 func WaitForConditionWithOptions(successFunc func() bool, maxNumAttempts, timeToSleepMs int) error {
 	waitForSuccess := func() (shouldRetry bool, err error, value interface{}) {
 		if successFunc() {

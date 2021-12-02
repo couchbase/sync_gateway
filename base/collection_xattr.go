@@ -112,41 +112,69 @@ func (c *Collection) SubdocGetRaw(k string, subdocKey string) ([]byte, uint64, e
 	c.waitForAvailKvOp()
 	defer c.releaseKvOp()
 
-	ops := []gocb.LookupInSpec{
-		gocb.GetSpec(subdocKey, &gocb.GetSpecOptions{}),
+	var rawValue []byte
+
+	worker := func() (shouldRetry bool, err error, casOut uint64) {
+		ops := []gocb.LookupInSpec{
+			gocb.GetSpec(subdocKey, &gocb.GetSpecOptions{}),
+		}
+
+		res, lookupErr := c.LookupIn(k, ops, &gocb.LookupInOptions{})
+		if lookupErr != nil {
+			isRecoverable := c.isRecoverableWriteError(lookupErr)
+			if isRecoverable {
+				return isRecoverable, lookupErr, 0
+			}
+			return false, lookupErr, 0
+		}
+
+		err = res.ContentAt(0, &rawValue)
+		if err != nil {
+			return false, err, 0
+		}
+
+		return false, nil, uint64(res.Cas())
 	}
 
-	res, lookupErr := c.LookupIn(k, ops, &gocb.LookupInOptions{})
-	if lookupErr != nil {
-		return nil, 0, lookupErr
-	}
-
-	var value []byte
-	err := res.ContentAt(0, &value)
+	err, casOut := RetryLoopCas("SubdocGetRaw", worker, c.Spec.RetrySleeper())
 	if err != nil {
-		return nil, 0, err
+		err = pkgerrors.Wrapf(err, "SubdocGetRaw with key %s and subdocKey %s", UD(k).Redact(), UD(subdocKey).Redact())
 	}
 
-	return value, uint64(res.Cas()), nil
+	return rawValue, casOut, nil
 }
 
 func (c *Collection) SubdocWrite(k string, subdocKey string, cas uint64, value []byte) (uint64, error) {
 	c.waitForAvailKvOp()
 	defer c.releaseKvOp()
 
-	mutateOps := []gocb.MutateInSpec{
-		gocb.UpsertSpec(subdocKey, bytesToRawMessage(value), &gocb.UpsertSpecOptions{CreatePath: true}),
+	worker := func() (shouldRetry bool, err error, casOut uint64) {
+		mutateOps := []gocb.MutateInSpec{
+			gocb.UpsertSpec(subdocKey, bytesToRawMessage(value), &gocb.UpsertSpecOptions{CreatePath: true}),
+		}
+
+		result, err := c.MutateIn(k, mutateOps, &gocb.MutateInOptions{
+			Cas:           gocb.Cas(cas),
+			StoreSemantic: gocb.StoreSemanticsUpsert,
+		})
+		if err == nil {
+			return false, nil, uint64(result.Cas())
+		}
+
+		shouldRetry = c.isRecoverableWriteError(err)
+		if shouldRetry {
+			return shouldRetry, err, 0
+		}
+
+		return false, err, 0
 	}
 
-	result, err := c.MutateIn(k, mutateOps, &gocb.MutateInOptions{
-		Cas:           gocb.Cas(cas),
-		StoreSemantic: gocb.StoreSemanticsUpsert,
-	})
+	err, casOut := RetryLoopCas("SubdocWrite", worker, c.Spec.RetrySleeper())
 	if err != nil {
-		return 0, err
+		err = pkgerrors.Wrapf(err, "SubdocWrite with key %s and subdocKey %s", UD(k).Redact(), UD(subdocKey).Redact())
 	}
 
-	return uint64(result.Cas()), nil
+	return casOut, err
 }
 
 // SubdocGetBodyAndXattr retrieves the document body and xattr in a single LookupIn subdoc operation.  Does not require both to exist.

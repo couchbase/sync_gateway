@@ -9,7 +9,6 @@
 package db
 
 import (
-	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -301,9 +300,7 @@ func (b *BackgroundManager) getStatusFromCluster() ([]byte, error) {
 				// avoid this unmarshal / marshal work from having to happen again, next time GET is called.
 				// If there is an error we can just ignore it as worst case we run this unmarshal / marshal again on
 				// next request
-				_, err := b.clusterAwareOptions.bucket.WriteSubDoc(b.clusterAwareOptions.StatusDocID(), "status", statusCas, status)
-				fmt.Println(err)
-				// _, _ = b.clusterAwareOptions.bucket.WriteCas(b.clusterAwareOptions.StatusDocID()+".status", 0, 0, statusCas, status, sgbucket.Raw)
+				_, _ = b.clusterAwareOptions.bucket.WriteSubDoc(b.clusterAwareOptions.StatusDocID(), "status", statusCas, status)
 			}
 		}
 	}
@@ -410,7 +407,6 @@ func (b *BackgroundManager) UpdateStatusClusterAware() error {
 			return true, err, nil
 		}
 
-		// TODO: Handle two operations occurring here, maybe two retries for each op?
 		_, err = b.clusterAwareOptions.bucket.WriteSubDoc(b.clusterAwareOptions.StatusDocID(), "status", 0, status)
 		if err != nil {
 			return true, err, nil
