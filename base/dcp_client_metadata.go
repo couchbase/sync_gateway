@@ -96,3 +96,21 @@ func (md *DCPMetadata) Reset() {
 	md.startSeqNo = 0
 	md.endSeqNo = 0
 }
+
+func GetVBUUIDs(metadata []DCPMetadata) []uint64 {
+	uuids := make([]uint64, 0, len(metadata))
+	for _, meta := range metadata {
+		uuids = append(uuids, uint64(meta.vbUUID))
+	}
+	return uuids
+}
+
+func BuildDCPMetadataSliceFromVBUUIDs(vbUUIDS []uint64) []DCPMetadata {
+	metadata := make([]DCPMetadata, 0, len(vbUUIDS))
+	for _, vbUUID := range vbUUIDS {
+		metadata = append(metadata, DCPMetadata{
+			vbUUID: gocbcore.VbUUID(vbUUID),
+		})
+	}
+	return metadata
+}

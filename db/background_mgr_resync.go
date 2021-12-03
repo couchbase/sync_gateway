@@ -72,7 +72,7 @@ type ResyncManagerResponse struct {
 	DocsProcessed int `json:"docs_processed"`
 }
 
-func (r *ResyncManager) GetProcessStatus(backgroundManagerStatus BackgroundManagerStatus) ([]byte, error) {
+func (r *ResyncManager) GetProcessStatus(backgroundManagerStatus BackgroundManagerStatus) ([]byte, []byte, error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
@@ -82,5 +82,6 @@ func (r *ResyncManager) GetProcessStatus(backgroundManagerStatus BackgroundManag
 		DocsProcessed:           r.DocsProcessed,
 	}
 
-	return base.JSONMarshal(retStatus)
+	statusJSON, err := base.JSONMarshal(retStatus)
+	return statusJSON, nil, err
 }

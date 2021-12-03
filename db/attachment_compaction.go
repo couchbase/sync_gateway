@@ -15,7 +15,7 @@ import (
 
 const CompactionIDKey = "compactID"
 
-func Mark(db *Database, compactionID string, terminator *base.SafeTerminator, markedAttachmentCount *base.AtomicInt) (int64, error) {
+func Mark(db *Database, compactionID string, terminator *base.SafeTerminator, markedAttachmentCount *base.AtomicInt) (count int64, vbUUIDs []uint64, err error) {
 	base.InfofCtx(db.Ctx, base.KeyAll, "Starting first phase of attachment compaction (mark phase) with compactionID: %q", compactionID)
 	compactionLoggingID := "Compaction Mark: " + compactionID
 
@@ -117,24 +117,25 @@ func Mark(db *Database, compactionID string, terminator *base.SafeTerminator, ma
 
 	cbStore, ok := base.AsCouchbaseStore(db.Bucket)
 	if !ok {
-		return 0, fmt.Errorf("bucket is not a Couchbase Store")
+		return 0, nil, fmt.Errorf("bucket is not a Couchbase Store")
 	}
 
 	clientOptions := base.DCPClientOptions{
-		OneShot: true,
+		OneShot:        true,
+		FailOnRollback: true,
 	}
 
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for mark phase of attachment compaction", compactionLoggingID)
 	dcpFeedKey := compactionID + "_mark"
 	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, cbStore)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 
 	doneChan, err := dcpClient.Start()
 	if err != nil {
 		_ = dcpClient.Close()
-		return 0, err
+		return 0, nil, err
 	}
 
 	select {
@@ -146,10 +147,10 @@ func Mark(db *Database, compactionID string, terminator *base.SafeTerminator, ma
 
 	if markProcessFailureErr != nil {
 		_ = dcpClient.Close()
-		return markedAttachmentCount.Value(), markProcessFailureErr
+		return markedAttachmentCount.Value(), nil, markProcessFailureErr
 	}
 
-	return markedAttachmentCount.Value(), dcpClient.Close()
+	return markedAttachmentCount.Value(), base.GetVBUUIDs(dcpClient.GetMetadata()), dcpClient.Close()
 }
 
 // AttachmentsMetaMap struct is a very minimal struct to unmarshal into when getting attachments from bodies
@@ -258,7 +259,7 @@ func handleAttachments(attachmentKeyMap map[string]string, docKey string, attach
 	}
 }
 
-func Sweep(db *Database, compactionID string, dryRun bool, terminator *base.SafeTerminator, purgedAttachmentCount *base.AtomicInt) (int64, error) {
+func Sweep(db *Database, compactionID string, vbUUIDs []uint64, dryRun bool, terminator *base.SafeTerminator, purgedAttachmentCount *base.AtomicInt) (int64, error) {
 	base.InfofCtx(db.Ctx, base.KeyAll, "Starting second phase of attachment compaction (sweep phase) with compactionID: %q", compactionID)
 	compactionLoggingID := "Compaction Sweep: " + compactionID
 
@@ -325,7 +326,9 @@ func Sweep(db *Database, compactionID string, dryRun bool, terminator *base.Safe
 	}
 
 	clientOptions := base.DCPClientOptions{
-		OneShot: true,
+		OneShot:         true,
+		FailOnRollback:  true,
+		InitialMetadata: base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs),
 	}
 
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for sweep phase of attachment compaction", compactionLoggingID)
@@ -351,7 +354,7 @@ func Sweep(db *Database, compactionID string, dryRun bool, terminator *base.Safe
 	return purgedAttachmentCount.Value(), dcpClient.Close()
 }
 
-func Cleanup(db *Database, compactionID string, terminator *base.SafeTerminator) error {
+func Cleanup(db *Database, compactionID string, vbUUIDs []uint64, terminator *base.SafeTerminator) error {
 	base.InfofCtx(db.Ctx, base.KeyAll, "Starting third phase of attachment compaction (cleanup phase) with compactionID: %q", compactionID)
 	compactionLoggingID := "Compaction Cleanup: " + compactionID
 
@@ -442,7 +445,9 @@ func Cleanup(db *Database, compactionID string, terminator *base.SafeTerminator)
 	}
 
 	clientOptions := base.DCPClientOptions{
-		OneShot: true,
+		OneShot:         true,
+		FailOnRollback:  true,
+		InitialMetadata: base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs),
 	}
 
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for cleanup phase of attachment compaction", compactionLoggingID)

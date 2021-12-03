@@ -282,6 +282,14 @@ func (b *LeakyBucket) GetXattr(k string, xattr string, xv interface{}) (cas uint
 	return b.bucket.GetXattr(k, xattr, xv)
 }
 
+func (b *LeakyBucket) GetSubDocRaw(k string, subdocKey string) ([]byte, uint64, error) {
+	return b.bucket.GetSubDocRaw(k, subdocKey)
+}
+
+func (b *LeakyBucket) WriteSubDoc(k string, subdocKey string, cas uint64, value []byte) (uint64, error) {
+	return b.bucket.WriteSubDoc(k, subdocKey, cas, value)
+}
+
 func (b *LeakyBucket) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
 
 	if b.config.TapFeedDeDuplication {

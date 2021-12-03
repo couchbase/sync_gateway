@@ -85,7 +85,7 @@ type BackgroundManagerStatus struct {
 type BackgroundManagerProcessI interface {
 	Init(options map[string]interface{}, clusterStatus []byte) error
 	Run(options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error
-	GetProcessStatus(status BackgroundManagerStatus) ([]byte, error)
+	GetProcessStatus(status BackgroundManagerStatus) (statusOut []byte, meta []byte, err error)
 	ResetStatus()
 }
 
@@ -238,16 +238,18 @@ func (b *BackgroundManager) GetStatus() ([]byte, error) {
 		// If we're running cluster mode, but we have no status it means we haven't run it yet.
 		// Get local status which will construct a 'initial' status
 		if status == nil {
-			return b.getStatusLocal()
+			status, _, err = b.getStatusLocal()
+			return status, err
 		}
 
 		return status, err
 	}
 
-	return b.getStatusLocal()
+	status, _, err := b.getStatusLocal()
+	return status, err
 }
 
-func (b *BackgroundManager) getStatusLocal() ([]byte, error) {
+func (b *BackgroundManager) getStatusLocal() ([]byte, []byte, error) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
@@ -264,7 +266,7 @@ func (b *BackgroundManager) getStatusLocal() ([]byte, error) {
 }
 
 func (b *BackgroundManager) getStatusFromCluster() ([]byte, error) {
-	status, statusCas, err := b.clusterAwareOptions.bucket.GetRaw(b.clusterAwareOptions.StatusDocID())
+	status, statusCas, err := b.clusterAwareOptions.bucket.GetSubDocRaw(b.clusterAwareOptions.StatusDocID(), "status")
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			return nil, nil
@@ -298,7 +300,7 @@ func (b *BackgroundManager) getStatusFromCluster() ([]byte, error) {
 				// avoid this unmarshal / marshal work from having to happen again, next time GET is called.
 				// If there is an error we can just ignore it as worst case we run this unmarshal / marshal again on
 				// next request
-				_, _ = b.clusterAwareOptions.bucket.WriteCas(b.clusterAwareOptions.StatusDocID(), 0, 0, statusCas, status, sgbucket.Raw)
+				_, _ = b.clusterAwareOptions.bucket.WriteSubDoc(b.clusterAwareOptions.StatusDocID(), "status", statusCas, status)
 			}
 		}
 	}
@@ -332,10 +334,9 @@ func (b *BackgroundManager) Terminate() {
 }
 
 func (b *BackgroundManager) markStop() error {
+	processAlreadyStoppedErr := base.HTTPErrorf(http.StatusServiceUnavailable, "Process already stopped")
 	b.lock.Lock()
 	defer b.lock.Unlock()
-
-	processAlreadyStoppedErr := base.HTTPErrorf(http.StatusServiceUnavailable, "Process already stopped")
 
 	if b.isClusterAware() {
 		_, _, err := b.clusterAwareOptions.bucket.GetRaw(b.clusterAwareOptions.HeartbeatDocID())
@@ -401,12 +402,17 @@ func (b *BackgroundManager) UpdateStatusClusterAware() error {
 		return nil
 	}
 	err, _ := base.RetryLoop("UpdateStatusClusterAware", func() (shouldRetry bool, err error, value interface{}) {
-		status, err := b.getStatusLocal()
+		status, metadata, err := b.getStatusLocal()
 		if err != nil {
 			return true, err, nil
 		}
 
-		err = b.clusterAwareOptions.bucket.SetRaw(b.clusterAwareOptions.StatusDocID(), 0, status)
+		_, err = b.clusterAwareOptions.bucket.WriteSubDoc(b.clusterAwareOptions.StatusDocID(), "status", 0, status)
+		if err != nil {
+			return true, err, nil
+		}
+
+		_, err = b.clusterAwareOptions.bucket.WriteSubDoc(b.clusterAwareOptions.StatusDocID(), "meta", 0, metadata)
 		if err != nil {
 			return true, err, nil
 		}

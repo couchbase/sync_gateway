@@ -27,6 +27,14 @@ func (bucket *CouchbaseBucketGoCB) GetXattr(k string, xattrKey string, xv interf
 	return bucket.SubdocGetXattr(k, xattrKey, xv)
 }
 
+func (bucket *CouchbaseBucketGoCB) GetSubDocRaw(k string, subdocKey string) ([]byte, uint64, error) {
+	return bucket.SubdocGetRaw(k, subdocKey)
+}
+
+func (bucket *CouchbaseBucketGoCB) WriteSubDoc(k string, subdocKey string, cas uint64, value []byte) (uint64, error) {
+	return bucket.SubdocWrite(k, subdocKey, cas, value)
+}
+
 func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, userXattrKey string, rv interface{}, xv interface{}, uxv interface{}) (cas uint64, err error) {
 	return bucket.SubdocGetBodyAndXattr(k, xattrKey, userXattrKey, rv, xv, uxv)
 }
@@ -102,6 +110,63 @@ func (bucket *CouchbaseBucketGoCB) SubdocGetXattr(k string, xattrKey string, xv 
 	}
 
 	return cas, err
+}
+
+func (bucket *CouchbaseBucketGoCB) SubdocWrite(k string, subdocKey string, cas uint64, value []byte) (uint64, error) {
+	worker := func() (shouldRetry bool, err error, casOut uint64) {
+		mutateInBuilder := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagMkDoc, gocb.Cas(cas), 0).
+			UpsertEx(subdocKey, value, gocb.SubdocFlagNone)
+		docFragment, err := mutateInBuilder.Execute()
+		if err == nil {
+			return false, nil, uint64(docFragment.Cas())
+		}
+
+		shouldRetry = bucket.isRecoverableWriteError(err)
+		if shouldRetry {
+			return shouldRetry, err, 0
+		}
+
+		return false, err, 0
+	}
+
+	err, casOut := RetryLoopCas("SubdocWrite", worker, bucket.Spec.RetrySleeper())
+	if err != nil {
+		err = pkgerrors.Wrapf(err, "SubdocWrite with key %s and subdocKey %s", UD(k).Redact(), UD(subdocKey).Redact())
+	}
+
+	return casOut, err
+}
+
+func (bucket *CouchbaseBucketGoCB) SubdocGetRaw(k string, subdocKey string) ([]byte, uint64, error) {
+
+	var rawValue []byte
+	worker := func() (shouldRetry bool, err error, casOut uint64) {
+		res, lookupErr := bucket.Bucket.LookupInEx(k, gocb.SubdocDocFlagNone).
+			GetEx(subdocKey, gocb.SubdocFlagNone).
+			Execute()
+
+		if lookupErr != nil {
+			isRecoverable := bucket.isRecoverableReadError(lookupErr)
+			if isRecoverable {
+				return isRecoverable, lookupErr, 0
+			}
+			return false, lookupErr, 0
+		}
+
+		err = res.Content(subdocKey, &rawValue)
+		if err != nil {
+			return false, err, 0
+		}
+
+		return false, nil, uint64(res.Cas())
+	}
+
+	err, casOut := RetryLoopCas("SubdocGetRaw", worker, bucket.Spec.RetrySleeper())
+	if err != nil {
+		err = pkgerrors.Wrapf(err, "SubdocGetRaw with key %s and subdocKey %s", UD(k).Redact(), UD(subdocKey).Redact())
+	}
+
+	return rawValue, casOut, err
 }
 
 // Retrieve a document and it's associated named xattr

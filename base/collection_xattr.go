@@ -46,6 +46,14 @@ func (c *Collection) GetXattr(k string, xattrKey string, xv interface{}) (casOut
 	return c.SubdocGetXattr(k, xattrKey, xv)
 }
 
+func (c *Collection) GetSubDocRaw(k string, subdocKey string) ([]byte, uint64, error) {
+	return c.SubdocGetRaw(k, subdocKey)
+}
+
+func (c *Collection) WriteSubDoc(k string, subdocKey string, cas uint64, value []byte) (uint64, error) {
+	return c.SubdocWrite(k, subdocKey, cas, value)
+}
+
 func (c *Collection) GetWithXattr(k string, xattrKey string, userXattrKey string, rv interface{}, xv interface{}, uxv interface{}) (cas uint64, err error) {
 	return c.SubdocGetBodyAndXattr(k, xattrKey, userXattrKey, rv, xv, uxv)
 }
@@ -98,6 +106,80 @@ func (c *Collection) SubdocGetXattr(k string, xattrKey string, xv interface{}) (
 	} else {
 		return 0, lookupErr
 	}
+}
+
+func (c *Collection) SubdocGetRaw(k string, subdocKey string) ([]byte, uint64, error) {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
+
+	var rawValue []byte
+
+	worker := func() (shouldRetry bool, err error, casOut uint64) {
+		ops := []gocb.LookupInSpec{
+			gocb.GetSpec(subdocKey, &gocb.GetSpecOptions{}),
+		}
+
+		res, lookupErr := c.LookupIn(k, ops, &gocb.LookupInOptions{})
+		if lookupErr != nil {
+			isRecoverable := c.isRecoverableReadError(lookupErr)
+			if isRecoverable {
+				return isRecoverable, lookupErr, 0
+			}
+
+			if isKVError(lookupErr, memd.StatusKeyNotFound) {
+				return false, ErrNotFound, 0
+			}
+
+			return false, lookupErr, 0
+		}
+
+		err = res.ContentAt(0, &rawValue)
+		if err != nil {
+			return false, err, 0
+		}
+
+		return false, nil, uint64(res.Cas())
+	}
+
+	err, casOut := RetryLoopCas("SubdocGetRaw", worker, c.Spec.RetrySleeper())
+	if err != nil {
+		err = pkgerrors.Wrapf(err, "SubdocGetRaw with key %s and subdocKey %s", UD(k).Redact(), UD(subdocKey).Redact())
+	}
+
+	return rawValue, casOut, err
+}
+
+func (c *Collection) SubdocWrite(k string, subdocKey string, cas uint64, value []byte) (uint64, error) {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
+
+	worker := func() (shouldRetry bool, err error, casOut uint64) {
+		mutateOps := []gocb.MutateInSpec{
+			gocb.UpsertSpec(subdocKey, bytesToRawMessage(value), &gocb.UpsertSpecOptions{CreatePath: true}),
+		}
+
+		result, err := c.MutateIn(k, mutateOps, &gocb.MutateInOptions{
+			Cas:           gocb.Cas(cas),
+			StoreSemantic: gocb.StoreSemanticsUpsert,
+		})
+		if err == nil {
+			return false, nil, uint64(result.Cas())
+		}
+
+		shouldRetry = c.isRecoverableWriteError(err)
+		if shouldRetry {
+			return shouldRetry, err, 0
+		}
+
+		return false, err, 0
+	}
+
+	err, casOut := RetryLoopCas("SubdocWrite", worker, c.Spec.RetrySleeper())
+	if err != nil {
+		err = pkgerrors.Wrapf(err, "SubdocWrite with key %s and subdocKey %s", UD(k).Redact(), UD(subdocKey).Redact())
+	}
+
+	return casOut, err
 }
 
 // SubdocGetBodyAndXattr retrieves the document body and xattr in a single LookupIn subdoc operation.  Does not require both to exist.

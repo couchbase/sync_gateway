@@ -60,13 +60,14 @@ type TombstoneManagerResponse struct {
 	DocsPurged int64 `json:"docs_purged"`
 }
 
-func (t *TombstoneCompactionManager) GetProcessStatus(backgroundManagerStatus BackgroundManagerStatus) ([]byte, error) {
+func (t *TombstoneCompactionManager) GetProcessStatus(backgroundManagerStatus BackgroundManagerStatus) ([]byte, []byte, error) {
 	retStatus := TombstoneManagerResponse{
 		BackgroundManagerStatus: backgroundManagerStatus,
 		DocsPurged:              atomic.LoadInt64(&t.PurgedDocCount),
 	}
 
-	return base.JSONMarshal(retStatus)
+	statusJSON, err := base.JSONMarshal(retStatus)
+	return statusJSON, nil, err
 }
 
 func (t *TombstoneCompactionManager) ResetStatus() {
