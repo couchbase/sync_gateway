@@ -579,6 +579,10 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 		return nil, cfgErr
 	}
 
+	if m.dbContext.Options.GroupID != "" {
+		rc.checkpointPrefix = m.dbContext.Options.GroupID + ":"
+	}
+
 	// Retrieve or create an entry in db.replications expvar for this replication
 	allReplicationsStatsMap := m.dbContext.DbStats.DBReplicatorStats(rc.ID)
 	rc.ReplicationStatsMap = allReplicationsStatsMap
