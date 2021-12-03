@@ -146,7 +146,7 @@ func (bucket *CouchbaseBucketGoCB) SubdocGetRaw(k string, subdocKey string) ([]b
 			Execute()
 
 		if lookupErr != nil {
-			isRecoverable := bucket.isRecoverableWriteError(lookupErr)
+			isRecoverable := bucket.isRecoverableReadError(lookupErr)
 			if isRecoverable {
 				return isRecoverable, lookupErr, 0
 			}

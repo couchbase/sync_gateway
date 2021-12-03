@@ -85,7 +85,7 @@ type BackgroundManagerStatus struct {
 type BackgroundManagerProcessI interface {
 	Init(options map[string]interface{}, clusterStatus []byte) error
 	Run(options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error
-	GetProcessStatus(status BackgroundManagerStatus) ([]byte, []byte, error)
+	GetProcessStatus(status BackgroundManagerStatus) (statusOut []byte, meta []byte, err error)
 	ResetStatus()
 }
 

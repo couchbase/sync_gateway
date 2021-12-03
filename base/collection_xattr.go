@@ -121,7 +121,7 @@ func (c *Collection) SubdocGetRaw(k string, subdocKey string) ([]byte, uint64, e
 
 		res, lookupErr := c.LookupIn(k, ops, &gocb.LookupInOptions{})
 		if lookupErr != nil {
-			isRecoverable := c.isRecoverableWriteError(lookupErr)
+			isRecoverable := c.isRecoverableReadError(lookupErr)
 			if isRecoverable {
 				return isRecoverable, lookupErr, 0
 			}
