@@ -18,6 +18,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -4118,4 +4119,109 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 	)
 	assert.NoError(t, resp.Body.Close())
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+}
+
+func TestGroupIDReplications(t *testing.T) {
+	t.Skip("Disabled until finished") // TODO: Finish test
+	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
+		t.Skip("This test only works against Couchbase Server with xattrs enabled")
+	}
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+
+	// Create test buckets to replicate between
+	passiveBucket := base.GetTestBucket(t)
+	defer passiveBucket.Close()
+
+	activeBucket := base.GetTestBucket(t)
+	defer activeBucket.Close()
+
+	// Set up passive bucket RT
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Make rt listen on an actual HTTP port, so it can receive replications
+	srv := httptest.NewServer(rt.TestAdminHandler())
+	defer srv.Close()
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	// Start SG nodes for default group, group A and group B
+	groupIDs := []string{"", "GroupA", "GroupB"}
+	var adminHosts []string
+	var serverContexts []*ServerContext
+	for i, group := range groupIDs {
+		serverErr := make(chan error, 0)
+
+		config := bootstrapStartupConfigForTest(t)
+		portOffset := i * 10
+		adminInterface := fmt.Sprintf("127.0.0.1:%d", 4985+bootstrapTestPortOffset+portOffset)
+		adminHosts = append(adminHosts, "http://"+adminInterface)
+		config.API.PublicInterface = fmt.Sprintf("127.0.0.1:%d", 4984+bootstrapTestPortOffset+portOffset)
+		config.API.AdminInterface = adminInterface
+		config.API.MetricsInterface = fmt.Sprintf("127.0.0.1:%d", 4986+bootstrapTestPortOffset+portOffset)
+		config.Bootstrap.ConfigGroupID = group
+
+		sc, err := setupServerContext(&config, true)
+		require.NoError(t, err)
+		serverContexts = append(serverContexts, sc)
+		defer func() {
+			sc.Close()
+			require.NoError(t, <-serverErr)
+		}()
+		go func() {
+			serverErr <- startServer(&config, sc)
+		}()
+		require.NoError(t, sc.waitForRESTAPIs())
+
+		// Set up db config
+		resp := bootstrapAdminRequestCustomHost(t, http.MethodPut, adminHosts[i], "/db/",
+			fmt.Sprintf(
+				`{"bucket": "%s", "num_index_replicas": 0, "use_views": %t, "import_docs": true, "sync":"%s"}`,
+				passiveBucket.GetName(), base.TestsDisableGSI(), channels.DefaultSyncFunction,
+			),
+		)
+		assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	}
+
+	// Start replicators
+	for i, group := range groupIDs {
+		channel := "chan" + group
+		replicationID := "repl" + group
+		replicationConfig := db.ReplicationConfig{
+			ID:           replicationID,
+			Remote:       passiveDBURL.String(),
+			Direction:    "pull",
+			Filter:       base.ByChannelFilter,
+			QueryParams:  []interface{}{channel},
+			InitialState: db.ReplicationStateRunning,
+		}
+		resp := bootstrapAdminRequestCustomHost(t, http.MethodPut, adminHosts[i], "/db/_replication/"+replicationID, marshalConfig(t, replicationConfig))
+		require.Equal(t, http.StatusCreated, resp.StatusCode)
+	}
+
+	for i, group := range groupIDs {
+		channel := "chan" + group
+		key := "doc" + group
+		body := fmt.Sprintf(`{"channels": ["%s"]}`, channel)
+		added, err := passiveBucket.Add(key, 0, []byte(body))
+		require.NoError(t, err)
+		require.True(t, added)
+
+		// Force on-demand import
+		for _, host := range adminHosts {
+			resp := bootstrapAdminRequestCustomHost(t, http.MethodGet, host, "/db/"+key, "")
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+		}
+
+		err = rt.WaitForDoc(key)
+		//rt.getDoc(key)
+
+		require.NoError(t, err)
+		dbContext, err := serverContexts[i].GetDatabase("db")
+		require.NoError(t, err)
+		_, expected := base.WaitForStat(dbContext.DbStats.CBLReplicationPull().NumPullReplSinceZero.Value, 1)
+		assert.True(t, expected)
+
+		// Assert others have not changed
+	}
 }
