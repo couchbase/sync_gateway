@@ -652,7 +652,7 @@ func TestReplicateGroupIDAssignedNodes(t *testing.T) {
 	require.NoError(t, err)
 	err = managerDefault.AddReplication(&ReplicationCfg{
 		ReplicationConfig: ReplicationConfig{
-			ID:           "replicator",
+			ID:           "repl",
 			InitialState: ReplicationStateStopped,
 		},
 	})
@@ -666,7 +666,7 @@ func TestReplicateGroupIDAssignedNodes(t *testing.T) {
 	require.NoError(t, err)
 	err = managerGroupA.AddReplication(&ReplicationCfg{
 		ReplicationConfig: ReplicationConfig{
-			ID:           "replicatorGroupA",
+			ID:           "repl",
 			InitialState: ReplicationStateStopped,
 		},
 	})
@@ -680,7 +680,7 @@ func TestReplicateGroupIDAssignedNodes(t *testing.T) {
 	require.NoError(t, err)
 	err = managerGroupB.AddReplication(&ReplicationCfg{
 		ReplicationConfig: ReplicationConfig{
-			ID:           "replicatorGroupB",
+			ID:           "repl",
 			InitialState: ReplicationStateStopped,
 		},
 	})
@@ -690,21 +690,21 @@ func TestReplicateGroupIDAssignedNodes(t *testing.T) {
 	replications, err := managerDefault.GetReplications()
 	require.NoError(t, err)
 	assert.Len(t, replications, 1)
-	cfg, exists := replications["replicator"]
+	cfg, exists := replications["repl"]
 	require.True(t, exists, "Replicator not found")
 	assert.Equal(t, "nodeDefault", cfg.AssignedNode)
 
 	replications, err = managerGroupA.GetReplications()
 	require.NoError(t, err)
 	assert.Len(t, replications, 1)
-	cfg, exists = replications["replicatorGroupA"]
+	cfg, exists = replications["repl"]
 	require.True(t, exists, "Replicator not found")
 	assert.Equal(t, "nodeGroupA", cfg.AssignedNode)
 
 	replications, err = managerGroupB.GetReplications()
 	require.NoError(t, err)
 	assert.Len(t, replications, 1)
-	cfg, exists = replications["replicatorGroupB"]
+	cfg, exists = replications["repl"]
 	require.True(t, exists, "Replicator not found")
 	assert.Equal(t, "nodeGroupB", cfg.AssignedNode)
 }

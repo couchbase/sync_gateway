@@ -4121,8 +4121,8 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 }
 
+// Tests replications to make sure they are namespaced by group ID
 func TestGroupIDReplications(t *testing.T) {
-	t.Skip("Disabled until finished") // TODO: Finish test
 	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
 		t.Skip("This test only works against Couchbase Server with xattrs enabled")
 	}
@@ -4136,7 +4136,7 @@ func TestGroupIDReplications(t *testing.T) {
 	defer activeBucket.Close()
 
 	// Set up passive bucket RT
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{TestBucket: passiveBucket})
 	defer rt.Close()
 
 	// Make rt listen on an actual HTTP port, so it can receive replications
@@ -4160,6 +4160,9 @@ func TestGroupIDReplications(t *testing.T) {
 		config.API.AdminInterface = adminInterface
 		config.API.MetricsInterface = fmt.Sprintf("127.0.0.1:%d", 4986+bootstrapTestPortOffset+portOffset)
 		config.Bootstrap.ConfigGroupID = group
+		if group == "" {
+			config.Bootstrap.ConfigGroupID = persistentConfigDefaultGroupID
+		}
 
 		sc, err := setupServerContext(&config, true)
 		require.NoError(t, err)
@@ -4177,51 +4180,54 @@ func TestGroupIDReplications(t *testing.T) {
 		resp := bootstrapAdminRequestCustomHost(t, http.MethodPut, adminHosts[i], "/db/",
 			fmt.Sprintf(
 				`{"bucket": "%s", "num_index_replicas": 0, "use_views": %t, "import_docs": true, "sync":"%s"}`,
-				passiveBucket.GetName(), base.TestsDisableGSI(), channels.DefaultSyncFunction,
+				activeBucket.GetName(), base.TestsDisableGSI(), channels.DefaultSyncFunction,
 			),
 		)
-		assert.Equal(t, http.StatusCreated, resp.StatusCode)
+		require.Equal(t, http.StatusCreated, resp.StatusCode)
 	}
 
 	// Start replicators
 	for i, group := range groupIDs {
-		channel := "chan" + group
-		replicationID := "repl" + group
+		channelFilter := []string{"chan" + group}
 		replicationConfig := db.ReplicationConfig{
-			ID:           replicationID,
-			Remote:       passiveDBURL.String(),
-			Direction:    "pull",
-			Filter:       base.ByChannelFilter,
-			QueryParams:  []interface{}{channel},
-			InitialState: db.ReplicationStateRunning,
+			ID:                     "repl",
+			Remote:                 passiveDBURL.String(),
+			Direction:              db.ActiveReplicatorTypePush,
+			Filter:                 base.ByChannelFilter,
+			QueryParams:            map[string]interface{}{"channels": channelFilter},
+			Continuous:             true,
+			InitialState:           db.ReplicationStateRunning,
+			ConflictResolutionType: db.ConflictResolverDefault,
 		}
-		resp := bootstrapAdminRequestCustomHost(t, http.MethodPut, adminHosts[i], "/db/_replication/"+replicationID, marshalConfig(t, replicationConfig))
+		resp := bootstrapAdminRequestCustomHost(t, http.MethodPost, adminHosts[i], "/db/_replication/", marshalConfig(t, replicationConfig))
 		require.Equal(t, http.StatusCreated, resp.StatusCode)
 	}
 
-	for i, group := range groupIDs {
+	for groupNum, group := range groupIDs {
 		channel := "chan" + group
 		key := "doc" + group
-		body := fmt.Sprintf(`{"channels": ["%s"]}`, channel)
-		added, err := passiveBucket.Add(key, 0, []byte(body))
+		body := fmt.Sprintf(`{"channels":["%s"]}`, channel)
+		added, err := activeBucket.Add(key, 0, []byte(body))
 		require.NoError(t, err)
 		require.True(t, added)
 
-		// Force on-demand import
+		// Force on-demand import and cache
 		for _, host := range adminHosts {
 			resp := bootstrapAdminRequestCustomHost(t, http.MethodGet, host, "/db/"+key, "")
 			require.Equal(t, http.StatusOK, resp.StatusCode)
 		}
 
-		err = rt.WaitForDoc(key)
-		//rt.getDoc(key)
+		for scNum, sc := range serverContexts {
+			var expectedPushed int64 = 0
+			// If replicated doc to db already (including this loop iteration) then expect 1
+			if scNum <= groupNum {
+				expectedPushed = 1
+			}
 
-		require.NoError(t, err)
-		dbContext, err := serverContexts[i].GetDatabase("db")
-		require.NoError(t, err)
-		_, expected := base.WaitForStat(dbContext.DbStats.CBLReplicationPull().NumPullReplSinceZero.Value, 1)
-		assert.True(t, expected)
-
-		// Assert others have not changed
+			dbContext, err := sc.GetDatabase("db")
+			require.NoError(t, err)
+			actualPushed, _ := base.WaitForStat(dbContext.DbStats.DBReplicatorStats("repl").NumDocPushed.Value, expectedPushed)
+			assert.Equal(t, expectedPushed, actualPushed)
+		}
 	}
 }
