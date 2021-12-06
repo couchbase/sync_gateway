@@ -90,6 +90,9 @@ type ActiveReplicatorConfig struct {
 	// Callback to be invoked on replication completion
 	onComplete OnCompleteFunc
 
+	// checkpointPrefix is the prefix for checkpoint ID on activeReplicatorCommon which is used for replication checkpoints
+	checkpointPrefix string
+
 	// Map corresponding to db.replications.[replicationID] in Sync Gateway's expvars.  Populated with
 	// replication stats in blip_sync_stats.go
 	ReplicationStatsMap *base.DbReplicatorStats

@@ -66,7 +66,7 @@ func newActiveReplicatorCommon(config *ActiveReplicatorConfig, direction ActiveR
 		config:           config,
 		state:            ReplicationStateStopped,
 		replicationStats: replicationStats,
-		CheckpointID:     checkpointID,
+		CheckpointID:     config.checkpointPrefix + checkpointID,
 	}
 }
 

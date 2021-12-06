@@ -20,16 +20,18 @@ import (
 // ImportListener manages the import DCP feed.  ProcessFeedEvent is triggered for each feed events,
 // and invokes ImportFeedEvent for any event that's eligible for import handling.
 type importListener struct {
-	bucketName  string              // Used for logging
-	terminator  chan bool           // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
-	database    Database            // Admin database instance to be used for import
-	stats       *base.DatabaseStats // Database stats group
-	cbgtContext *base.CbgtContext   // Handle to cbgt manager,cfg
+	bucketName       string              // Used for logging
+	terminator       chan bool           // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
+	database         Database            // Admin database instance to be used for import
+	stats            *base.DatabaseStats // Database stats group
+	cbgtContext      *base.CbgtContext   // Handle to cbgt manager,cfg
+	checkpointPrefix string              // DCP checkpoint key prefix
 }
 
-func NewImportListener() *importListener {
+func NewImportListener(groupID string) *importListener {
 	importListener := &importListener{
-		terminator: make(chan bool),
+		terminator:       make(chan bool),
+		checkpointPrefix: base.DCPCheckpointPrefixWithGroupID(groupID),
 	}
 	return importListener
 }
@@ -44,10 +46,11 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 	il.database = Database{DatabaseContext: dbContext, user: nil}
 	il.stats = dbStats.Database()
 	feedArgs := sgbucket.FeedArguments{
-		ID:         base.DCPImportFeedID,
-		Backfill:   sgbucket.FeedResume,
-		Terminator: il.terminator,
-		DoneChan:   make(chan struct{}),
+		ID:               base.DCPImportFeedID,
+		Backfill:         sgbucket.FeedResume,
+		Terminator:       il.terminator,
+		DoneChan:         make(chan struct{}),
+		CheckpointPrefix: il.checkpointPrefix,
 	}
 
 	importFeedStatsMap := dbContext.DbStats.Database().ImportFeedMapStats
@@ -83,6 +86,7 @@ func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPers
 
 	// Ignore internal documents
 	if strings.HasPrefix(key, base.SyncPrefix) {
+		// Ignore all DCP checkpoints no matter config group ID
 		if strings.HasPrefix(key, base.DCPCheckpointPrefix) {
 			return false
 		}

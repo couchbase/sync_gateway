@@ -67,6 +67,7 @@ type couchbaseHeartBeater struct {
 	bucket                  Bucket
 	nodeUUID                string
 	keyPrefix               string
+	groupID                 string
 	heartbeatSendInterval   time.Duration                // Heartbeat send interval
 	heartbeatExpirySeconds  uint32                       // Heartbeat expiry time (seconds)
 	heartbeatPollInterval   time.Duration                // Frequency of polling for other nodes' heartbeat documents
@@ -87,8 +88,8 @@ func NewCouchbaseHeartbeater(bucket Bucket, keyPrefix, nodeUUID string) (heartbe
 
 	heartbeater = &couchbaseHeartBeater{
 		bucket:                 bucket,
-		nodeUUID:               nodeUUID,
 		keyPrefix:              keyPrefix,
+		nodeUUID:               nodeUUID,
 		terminator:             make(chan struct{}),
 		heartbeatListeners:     make(map[string]HeartbeatListener),
 		heartbeatSendInterval:  defaultHeartbeatSendInterval,

@@ -292,6 +292,19 @@ func bootstrapAdminRequest(t *testing.T, method, path, body string) *http.Respon
 	return resp
 }
 
+func bootstrapAdminRequestCustomHost(t *testing.T, method, host, path, body string) *http.Response {
+	url := host + path
+
+	buf := bytes.NewBufferString(body)
+	req, err := http.NewRequest(method, url, buf)
+	require.NoError(t, err)
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+
+	return resp
+}
+
 func bootstrapAdminRequestWithHeaders(t *testing.T, method, path, body string, headers map[string]string) *http.Response {
 	url := "http://localhost:" + strconv.FormatInt(4985+bootstrapTestPortOffset, 10) + path
 

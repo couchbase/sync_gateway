@@ -18,6 +18,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -4118,4 +4119,115 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 	)
 	assert.NoError(t, resp.Body.Close())
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+}
+
+// Tests replications to make sure they are namespaced by group ID
+func TestGroupIDReplications(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
+		t.Skip("This test only works against Couchbase Server with xattrs enabled")
+	}
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+
+	// Create test buckets to replicate between
+	passiveBucket := base.GetTestBucket(t)
+	defer passiveBucket.Close()
+
+	activeBucket := base.GetTestBucket(t)
+	defer activeBucket.Close()
+
+	// Set up passive bucket RT
+	rt := NewRestTester(t, &RestTesterConfig{TestBucket: passiveBucket})
+	defer rt.Close()
+
+	// Make rt listen on an actual HTTP port, so it can receive replications
+	srv := httptest.NewServer(rt.TestAdminHandler())
+	defer srv.Close()
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	// Start SG nodes for default group, group A and group B
+	groupIDs := []string{"", "GroupA", "GroupB"}
+	var adminHosts []string
+	var serverContexts []*ServerContext
+	for i, group := range groupIDs {
+		serverErr := make(chan error, 0)
+
+		config := bootstrapStartupConfigForTest(t)
+		portOffset := i * 10
+		adminInterface := fmt.Sprintf("127.0.0.1:%d", 4985+bootstrapTestPortOffset+portOffset)
+		adminHosts = append(adminHosts, "http://"+adminInterface)
+		config.API.PublicInterface = fmt.Sprintf("127.0.0.1:%d", 4984+bootstrapTestPortOffset+portOffset)
+		config.API.AdminInterface = adminInterface
+		config.API.MetricsInterface = fmt.Sprintf("127.0.0.1:%d", 4986+bootstrapTestPortOffset+portOffset)
+		config.Bootstrap.ConfigGroupID = group
+		if group == "" {
+			config.Bootstrap.ConfigGroupID = persistentConfigDefaultGroupID
+		}
+
+		sc, err := setupServerContext(&config, true)
+		require.NoError(t, err)
+		serverContexts = append(serverContexts, sc)
+		defer func() {
+			sc.Close()
+			require.NoError(t, <-serverErr)
+		}()
+		go func() {
+			serverErr <- startServer(&config, sc)
+		}()
+		require.NoError(t, sc.waitForRESTAPIs())
+
+		// Set up db config
+		resp := bootstrapAdminRequestCustomHost(t, http.MethodPut, adminHosts[i], "/db/",
+			fmt.Sprintf(
+				`{"bucket": "%s", "num_index_replicas": 0, "use_views": %t, "import_docs": true, "sync":"%s"}`,
+				activeBucket.GetName(), base.TestsDisableGSI(), channels.DefaultSyncFunction,
+			),
+		)
+		require.Equal(t, http.StatusCreated, resp.StatusCode)
+	}
+
+	// Start replicators
+	for i, group := range groupIDs {
+		channelFilter := []string{"chan" + group}
+		replicationConfig := db.ReplicationConfig{
+			ID:                     "repl",
+			Remote:                 passiveDBURL.String(),
+			Direction:              db.ActiveReplicatorTypePush,
+			Filter:                 base.ByChannelFilter,
+			QueryParams:            map[string]interface{}{"channels": channelFilter},
+			Continuous:             true,
+			InitialState:           db.ReplicationStateRunning,
+			ConflictResolutionType: db.ConflictResolverDefault,
+		}
+		resp := bootstrapAdminRequestCustomHost(t, http.MethodPost, adminHosts[i], "/db/_replication/", marshalConfig(t, replicationConfig))
+		require.Equal(t, http.StatusCreated, resp.StatusCode)
+	}
+
+	for groupNum, group := range groupIDs {
+		channel := "chan" + group
+		key := "doc" + group
+		body := fmt.Sprintf(`{"channels":["%s"]}`, channel)
+		added, err := activeBucket.Add(key, 0, []byte(body))
+		require.NoError(t, err)
+		require.True(t, added)
+
+		// Force on-demand import and cache
+		for _, host := range adminHosts {
+			resp := bootstrapAdminRequestCustomHost(t, http.MethodGet, host, "/db/"+key, "")
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+		}
+
+		for scNum, sc := range serverContexts {
+			var expectedPushed int64 = 0
+			// If replicated doc to db already (including this loop iteration) then expect 1
+			if scNum <= groupNum {
+				expectedPushed = 1
+			}
+
+			dbContext, err := sc.GetDatabase("db")
+			require.NoError(t, err)
+			actualPushed, _ := base.WaitForStat(dbContext.DbStats.DBReplicatorStats("repl").NumDocPushed.Value, expectedPushed)
+			assert.Equal(t, expectedPushed, actualPushed)
+		}
+	}
 }

@@ -59,17 +59,20 @@ func TestTransformBucketCredentials(t *testing.T) {
 }
 
 func TestDCPKeyFilter(t *testing.T) {
-
 	assert.True(t, dcpKeyFilter([]byte("doc123")))
 	assert.True(t, dcpKeyFilter([]byte(UserPrefix+"user1")))
 	assert.True(t, dcpKeyFilter([]byte(RolePrefix+"role2")))
 	assert.True(t, dcpKeyFilter([]byte(UnusedSeqPrefix+"1234")))
+	assert.True(t, dcpKeyFilter([]byte(SGCfgPrefixWithGroupID("")+"123")))
+	assert.True(t, dcpKeyFilter([]byte(SGCfgPrefixWithGroupID("group")+"123")))
 
 	assert.False(t, dcpKeyFilter([]byte(SyncSeqKey)))
 	assert.False(t, dcpKeyFilter([]byte(SyncPrefix+"unusualSeq")))
 	assert.False(t, dcpKeyFilter([]byte(SyncDataKey)))
 	assert.False(t, dcpKeyFilter([]byte(DCPCheckpointPrefix+"12")))
 	assert.False(t, dcpKeyFilter([]byte(TxnPrefix+"atrData")))
+	assert.False(t, dcpKeyFilter([]byte(DCPCheckpointPrefixWithGroupID("group")+"12")))
+
 }
 
 func TestCBGTIndexCreation(t *testing.T) {
@@ -394,7 +397,7 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 	testDBName := "testDB"
 
 	// Use an bucket-backed cfg
-	cfg, err := NewCfgSG(bucket)
+	cfg, err := NewCfgSG(bucket, "")
 	require.NoError(t, err)
 
 	// Define index type for db name

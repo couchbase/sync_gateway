@@ -47,7 +47,7 @@ func TestOneShotDCP(t *testing.T) {
 		OneShot: true,
 	}
 
-	dcpClient, err := NewDCPClient(feedID, counterCallback, clientOptions, store)
+	dcpClient, err := NewDCPClient(feedID, counterCallback, clientOptions, store, "")
 	assert.NoError(t, err)
 
 	// Add additional documents in a separate goroutine, to verify afterEndSeq handling
@@ -104,7 +104,7 @@ func TestTerminateDCPFeed(t *testing.T) {
 	assert.True(t, ok)
 	feedID := t.Name()
 
-	dcpClient, err := NewDCPClient(feedID, counterCallback, DCPClientOptions{}, store)
+	dcpClient, err := NewDCPClient(feedID, counterCallback, DCPClientOptions{}, store, "")
 	assert.NoError(t, err)
 
 	// Add documents in a separate goroutine
@@ -189,7 +189,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 		OneShot:        true,
 		FailOnRollback: true,
 	}
-	dcpClient, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, store)
+	dcpClient, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, store, "")
 	assert.NoError(t, err)
 
 	doneChan, startErr := dcpClient.Start()
@@ -218,7 +218,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 		FailOnRollback:  true,
 		OneShot:         true,
 	}
-	dcpClient2, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, store)
+	dcpClient2, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, store, "")
 	assert.NoError(t, err)
 
 	_, startErr2 := dcpClient2.Start()
@@ -231,7 +231,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 		FailOnRollback:  false,
 		OneShot:         true,
 	}
-	dcpClient3, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, store)
+	dcpClient3, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, store, "")
 	assert.NoError(t, err)
 
 	doneChan3, startErr3 := dcpClient3.Start()

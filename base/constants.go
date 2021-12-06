@@ -189,6 +189,27 @@ var (
 	ErrUnknownField = errors.New("unrecognized JSON field")
 )
 
+func DCPCheckpointPrefixWithGroupID(groupID string) string {
+	if groupID != "" {
+		return DCPCheckpointPrefix + groupID + ":"
+	}
+	return DCPCheckpointPrefix
+}
+
+func SGCfgPrefixWithGroupID(groupID string) string {
+	if groupID != "" {
+		return SGCfgPrefix + ":" + groupID + ":"
+	}
+	return SGCfgPrefix
+}
+
+func SyncDataKeyWithGroupID(groupID string) string {
+	if groupID != "" {
+		return SyncDataKey + ":" + groupID
+	}
+	return SyncDataKey
+}
+
 // UnitTestUrl returns the configured test URL.
 func UnitTestUrl() string {
 	if TestUseCouchbaseServer() {

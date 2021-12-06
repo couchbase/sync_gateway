@@ -147,6 +147,7 @@ type DatabaseContextOptions struct {
 	UserXattrKey              string // Key of user xattr that will be accessible from the Sync Function. If empty the feature will be disabled.
 	ClientPartitionWindow     time.Duration
 	BcryptCost                int
+	GroupID                   string
 }
 
 type SGReplicateOptions struct {
@@ -368,12 +369,12 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	dbContext.SetOnChangeCallback(dbContext.changeCache.DocChanged)
 
 	// Initialize the tap Listener for notify handling
-	dbContext.mutationListener.Init(bucket.GetName())
+	dbContext.mutationListener.Init(bucket.GetName(), options.GroupID)
 
 	// Initialize sg cluster config.  Required even if import and sgreplicate are disabled
 	// on this node, to support replication REST API calls
 	if base.IsEnterpriseEdition() {
-		sgCfg, err := base.NewCfgSG(dbContext.Bucket)
+		sgCfg, err := base.NewCfgSG(dbContext.Bucket, dbContext.Options.GroupID)
 		if err != nil {
 			return nil, err
 		}
@@ -396,7 +397,11 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	// sending heartbeats before registering itself to the cfg, to avoid triggering immediate removal by other active nodes.
 	if base.IsEnterpriseEdition() && (importEnabled || sgReplicateEnabled) {
 		// Create heartbeater
-		heartbeater, err := base.NewCouchbaseHeartbeater(bucket, base.SyncPrefix, dbContext.UUID)
+		heartbeaterPrefix := base.SyncPrefix
+		if dbContext.Options.GroupID != "" {
+			heartbeaterPrefix = heartbeaterPrefix + dbContext.Options.GroupID + ":"
+		}
+		heartbeater, err := base.NewCouchbaseHeartbeater(bucket, heartbeaterPrefix, dbContext.UUID)
 		if err != nil {
 			return nil, pkgerrors.Wrapf(err, "Error starting heartbeater for bucket %s", base.MD(bucket.GetName()).Redact())
 		}
@@ -456,7 +461,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	// If this is an xattr import node, start import feed.  Must be started after the caching DCP feed, as import cfg
 	// subscription relies on the caching feed.
 	if importEnabled {
-		dbContext.ImportListener = NewImportListener()
+		dbContext.ImportListener = NewImportListener(dbContext.Options.GroupID)
 		if importFeedErr := dbContext.ImportListener.StartImportFeed(bucket, dbContext.DbStats, dbContext); importFeedErr != nil {
 			return nil, importFeedErr
 		}
@@ -695,7 +700,7 @@ func (context *DatabaseContext) RestartListener() error {
 	context.mutationListener.Stop()
 	// Delay needed to properly stop
 	time.Sleep(2 * time.Second)
-	context.mutationListener.Init(context.Bucket.GetName())
+	context.mutationListener.Init(context.Bucket.GetName(), context.Options.GroupID)
 	cacheFeedStatsMap := context.DbStats.Database().CacheFeedMapStats
 	if err := context.mutationListener.Start(context.Bucket, cacheFeedStatsMap.Map); err != nil {
 		return err
@@ -1156,7 +1161,7 @@ func (context *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err
 		Sync string
 	}
 
-	_, err = context.Bucket.Update(base.SyncDataKey, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
+	_, err = context.Bucket.Update(base.SyncDataKeyWithGroupID(context.Options.GroupID), 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
 		// The first time opening a new db, currentValue will be nil. Don't treat this as a change.
 		if currentValue != nil {
 			parseErr := base.JSONUnmarshal(currentValue, &syncData)
