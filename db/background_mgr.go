@@ -125,6 +125,7 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 					}
 
 				case <-b.terminator.Done():
+					ticker.Stop()
 					return
 				}
 			}
@@ -203,6 +204,7 @@ func (b *BackgroundManager) markStart() error {
 						b.SetError(err)
 					}
 				case <-b.terminator.Done():
+					ticker.Stop()
 					return
 				}
 			}
