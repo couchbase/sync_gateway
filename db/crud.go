@@ -2184,13 +2184,13 @@ func (db *Database) getChannelsAndAccess(doc *Document, body Body, metaMap map[s
 	if db.ChannelMapper != nil {
 		// Call the ChannelMapper:
 		startTime := time.Now()
-		db.DbStats.CBLReplicationPush().SyncFunctionCount.Add(1)
+		db.DbStats.Database().SyncFunctionCount.Add(1)
 
 		var output *channels.ChannelMapperOutput
 		output, err = db.ChannelMapper.MapToChannelsAndAccess(body, oldJson, metaMap,
 			makeUserCtx(db.user))
 
-		db.DbStats.CBLReplicationPush().SyncFunctionTime.Add(time.Since(startTime).Nanoseconds())
+		db.DbStats.Database().SyncFunctionTime.Add(time.Since(startTime).Nanoseconds())
 
 		if err == nil {
 			result = output.Channels
