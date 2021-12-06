@@ -19,9 +19,13 @@ import (
 )
 
 var flushLogBuffersWaitGroup sync.WaitGroup
+var flushLogMutex sync.Mutex
 
 // FlushLogBuffers will cause all log collation buffers to be flushed to the output before returning.
 func FlushLogBuffers() {
+	flushLogMutex.Lock()
+	defer flushLogMutex.Unlock()
+
 	loggers := []*FileLogger{
 		traceLogger,
 		debugLogger,

@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -632,8 +633,20 @@ func TestLogFlush(t *testing.T) {
 			// Flush memory loggers
 			base.FlushLoggerBuffers()
 
+			// Concurrent calls to FlushLogBuffers should not cause data race or wait group reuse issues
+			// Wait for concurrent calls so they don't cause issues with SetupAndValidateLogging of next t.Run
+			var flushCallsWg = sync.WaitGroup{}
+			for i := 0; i < 5; i++ {
+				flushCallsWg.Add(1)
+				go func() {
+					base.FlushLogBuffers()
+					flushCallsWg.Done()
+				}()
+			}
+
 			// Flush collation buffers to ensure the files that will be built do get written
 			base.FlushLogBuffers()
+			flushCallsWg.Wait()
 
 			// Check that the expected number of log files are created
 			worker := func() (shouldRetry bool, err error, value interface{}) {
