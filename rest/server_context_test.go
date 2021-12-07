@@ -634,18 +634,16 @@ func TestLogFlush(t *testing.T) {
 			base.FlushLoggerBuffers()
 
 			// Concurrent calls to FlushLogBuffers should not cause data race or wait group reuse issues
-			// Wait for concurrent calls so they don't cause issues with SetupAndValidateLogging of next t.Run
+			// Wait for concurrent calls so they don't cause issues with SetupAndValidateLogging from next t.Run
 			var flushCallsWg = sync.WaitGroup{}
-			for i := 0; i < 5; i++ {
+			for i := 0; i < 10; i++ {
 				flushCallsWg.Add(1)
 				go func() {
+					// Flush collation buffers to ensure the files that will be built do get written
 					base.FlushLogBuffers()
 					flushCallsWg.Done()
 				}()
 			}
-
-			// Flush collation buffers to ensure the files that will be built do get written
-			base.FlushLogBuffers()
 			flushCallsWg.Wait()
 
 			// Check that the expected number of log files are created
