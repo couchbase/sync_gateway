@@ -186,6 +186,12 @@ func (b *BackgroundManager) markStart() error {
 	if b.isClusterAware() {
 		_, err := b.clusterAwareOptions.bucket.WriteCas(b.clusterAwareOptions.HeartbeatDocID(), 0, BackgroundManagerHeartbeatExpirySecs, 0, []byte("{}"), sgbucket.Raw)
 		if base.IsCasMismatch(err) {
+			// Check if markStop has been called but not yet processed
+			var status HeartbeatDoc
+			_, err := b.clusterAwareOptions.bucket.Get(b.clusterAwareOptions.HeartbeatDocID(), &status)
+			if err == nil && status.ShouldStop {
+				return base.HTTPErrorf(http.StatusServiceUnavailable, "Process stop still in progress - please wait before restarting")
+			}
 			return processAlreadyRunningErr
 		}
 
