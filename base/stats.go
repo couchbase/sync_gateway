@@ -245,8 +245,6 @@ type CBLReplicationPushStats struct {
 	DocPushCount        *SgwIntStat `json:"doc_push_count"`
 	ProposeChangeCount  *SgwIntStat `json:"propose_change_count"`
 	ProposeChangeTime   *SgwIntStat `json:"propose_change_time"`
-	SyncFunctionCount   *SgwIntStat `json:"sync_function_count"`
-	SyncFunctionTime    *SgwIntStat `json:"sync_function_time"`
 	WriteProcessingTime *SgwIntStat `json:"write_processing_time"`
 }
 
@@ -280,6 +278,8 @@ type DatabaseStats struct {
 	WarnChannelsPerDocCount       *SgwIntStat `json:"warn_channels_per_doc_count"`
 	WarnGrantsPerDocCount         *SgwIntStat `json:"warn_grants_per_doc_count"`
 	WarnXattrSizeCount            *SgwIntStat `json:"warn_xattr_size_count"`
+	SyncFunctionCount             *SgwIntStat `json:"sync_function_count"`
+	SyncFunctionTime              *SgwIntStat `json:"sync_function_time"`
 
 	// These can be cleaned up in future versions of SGW, implemented as maps to reduce amount of potential risk
 	// prior to Hydrogen release. These are not exported as part of prometheus and only exposed through expvars
@@ -796,8 +796,6 @@ func (d *DbStats) initCBLReplicationPushStats() {
 		DocPushCount:        NewIntStat(SubsystemReplicationPush, "doc_push_count", labelKeys, labelVals, prometheus.GaugeValue, 0),
 		ProposeChangeCount:  NewIntStat(SubsystemReplicationPush, "propose_change_count", labelKeys, labelVals, prometheus.CounterValue, 0),
 		ProposeChangeTime:   NewIntStat(SubsystemReplicationPush, "propose_change_time", labelKeys, labelVals, prometheus.CounterValue, 0),
-		SyncFunctionCount:   NewIntStat(SubsystemReplicationPush, "sync_function_count", labelKeys, labelVals, prometheus.CounterValue, 0),
-		SyncFunctionTime:    NewIntStat(SubsystemReplicationPush, "sync_function_time", labelKeys, labelVals, prometheus.CounterValue, 0),
 		WriteProcessingTime: NewIntStat(SubsystemReplicationPush, "write_processing_time", labelKeys, labelVals, prometheus.GaugeValue, 0),
 	}
 }
@@ -808,8 +806,6 @@ func (d *DbStats) unregisterCBLReplicationPushStats() {
 	prometheus.Unregister(d.CBLReplicationPushStats.DocPushCount)
 	prometheus.Unregister(d.CBLReplicationPushStats.ProposeChangeCount)
 	prometheus.Unregister(d.CBLReplicationPushStats.ProposeChangeTime)
-	prometheus.Unregister(d.CBLReplicationPushStats.SyncFunctionCount)
-	prometheus.Unregister(d.CBLReplicationPushStats.SyncFunctionTime)
 	prometheus.Unregister(d.CBLReplicationPushStats.WriteProcessingTime)
 }
 
@@ -850,6 +846,8 @@ func (d *DbStats) initDatabaseStats() {
 		WarnChannelsPerDocCount:       NewIntStat(SubsystemDatabaseKey, "warn_channels_per_doc_count", labelKeys, labelVals, prometheus.CounterValue, 0),
 		WarnGrantsPerDocCount:         NewIntStat(SubsystemDatabaseKey, "warn_grants_per_doc_count", labelKeys, labelVals, prometheus.CounterValue, 0),
 		WarnXattrSizeCount:            NewIntStat(SubsystemDatabaseKey, "warn_xattr_size_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		SyncFunctionCount:             NewIntStat(SubsystemDatabaseKey, "sync_function_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		SyncFunctionTime:              NewIntStat(SubsystemDatabaseKey, "sync_function_time", labelKeys, labelVals, prometheus.CounterValue, 0),
 		ImportFeedMapStats:            &ExpVarMapWrapper{new(expvar.Map).Init()},
 		CacheFeedMapStats:             &ExpVarMapWrapper{new(expvar.Map).Init()},
 	}
@@ -885,6 +883,8 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.WarnChannelsPerDocCount)
 	prometheus.Unregister(d.DatabaseStats.WarnGrantsPerDocCount)
 	prometheus.Unregister(d.DatabaseStats.WarnXattrSizeCount)
+	prometheus.Unregister(d.DatabaseStats.SyncFunctionCount)
+	prometheus.Unregister(d.DatabaseStats.SyncFunctionTime)
 }
 
 func (d *DbStats) Database() *DatabaseStats {

@@ -5758,7 +5758,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Ensure sync function has ran twice (once for PUT and once for xattr addition)
-	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
+	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
 	// Get Xattr and ensure channel value set correctly
 	var syncData db.SyncData
@@ -5784,7 +5784,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 
 	assert.Equal(t, syncData.Crc32c, syncData2.Crc32c)
 	assert.Equal(t, syncData.Crc32cUserXattr, syncData2.Crc32cUserXattr)
-	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
+	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
 
 	// Update body but same value and ensure it isn't imported again (crc32 hash should match)
@@ -5802,7 +5802,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 
 	assert.Equal(t, syncData2.Crc32c, syncData3.Crc32c)
 	assert.Equal(t, syncData2.Crc32cUserXattr, syncData3.Crc32cUserXattr)
-	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
+	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
 
 	// Update body and ensure import occurs
@@ -5815,7 +5815,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	assert.Equal(t, int64(3), rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
+	assert.Equal(t, int64(3), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
 	var syncData4 db.SyncData
 	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData4)
@@ -5882,7 +5882,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Ensure sync function has been ran on import
-	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
+	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
 	// Write user xattr
 	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, channelName)
@@ -5899,7 +5899,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Ensure sync function has ran on import
-	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
+	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
 	// Get sync data for doc and ensure user xattr has been used correctly to set channel
 	var syncData db.SyncData
@@ -5922,7 +5922,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 
 	assert.Equal(t, syncData.Crc32c, syncData2.Crc32c)
 	assert.Equal(t, syncData.Crc32cUserXattr, syncData2.Crc32cUserXattr)
-	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
+	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 }
 
 func TestUserXattrOnDemandImportWrite(t *testing.T) {
@@ -5984,7 +5984,7 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Ensure sync function has ran on import
-	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
+	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
 	// Write user xattr
 	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, channelName)
@@ -6001,7 +6001,7 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Ensure sync function has ran on import
-	assert.Equal(t, int64(3), rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
+	assert.Equal(t, int64(3), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
 	subdocXattrStore, ok := base.AsSubdocXattrStore(rt.Bucket())
 	require.True(t, ok)

@@ -1255,7 +1255,7 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		rt.createDoc(t, fmt.Sprintf("doc%v", i))
 	}
-	assert.Equal(t, int64(1000), rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
+	assert.Equal(t, int64(1000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
 	log.Printf("Taking DB offline")
 	response := rt.SendAdminRequest("GET", "/db/", "")
@@ -1286,7 +1286,7 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	assert.Equal(t, int64(2000), rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
+	assert.Equal(t, int64(2000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 }
 
 func TestResync(t *testing.T) {
@@ -1366,7 +1366,7 @@ func TestResync(t *testing.T) {
 			})
 			assert.NoError(t, err)
 
-			assert.Equal(t, testCase.expectedSyncFnRuns, int(rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value()))
+			assert.Equal(t, testCase.expectedSyncFnRuns, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
 
 			var queryName string
 			if base.TestsDisableGSI() {
@@ -1547,7 +1547,7 @@ func TestResyncStop(t *testing.T) {
 	}
 
 	err := rt.WaitForCondition(func() bool {
-		return int(rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value()) == 1000
+		return int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()) == 1000
 	})
 	assert.NoError(t, err)
 
@@ -1577,7 +1577,7 @@ func TestResyncStop(t *testing.T) {
 
 	assert.True(t, callbackFired, "expecting callback to be fired")
 
-	syncFnCount := int(rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
+	syncFnCount := int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 	assert.True(t, syncFnCount < 2000, "Expected syncFnCount < 2000 but syncFnCount=%d", syncFnCount)
 }
 

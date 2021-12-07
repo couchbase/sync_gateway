@@ -2428,7 +2428,7 @@ func TestResyncUpdateAllDocChannels(t *testing.T) {
 	_, err = db.UpdateAllDocChannels(false, func(docsProcessed, docsChanged *int) {}, base.NewSafeTerminator())
 	assert.NoError(t, err)
 
-	syncFnCount := int(db.DbStats.CBLReplicationPush().SyncFunctionCount.Value())
+	syncFnCount := int(db.DbStats.Database().SyncFunctionCount.Value())
 	assert.Equal(t, 20, syncFnCount)
 }
 
