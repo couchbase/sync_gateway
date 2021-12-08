@@ -1872,14 +1872,10 @@ func mockOIDCOptionsWithBadName() *auth.OIDCOptions {
 
 func TestNewDatabaseContextWithOIDCProviderOptionErrors(t *testing.T) {
 	// Enable prometheus stats. Ensures that we recover / cleanup stats if we fail to initialize a DatabaseContext
-	// TODO: Currently disabled this Prometheus check when running with GSI. No idea why it fails but it hits the
-	// duplicate registration panic.
-	if base.TestsDisableGSI() {
-		base.SkipPrometheusStatsRegistration = false
-		defer func() {
-			base.SkipPrometheusStatsRegistration = true
-		}()
-	}
+	base.SkipPrometheusStatsRegistration = false
+	defer func() {
+		base.SkipPrometheusStatsRegistration = true
+	}()
 
 	testBucket := base.GetTestBucket(t)
 	tests := []struct {
