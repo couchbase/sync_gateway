@@ -501,6 +501,12 @@ func seqStr(seq interface{}) string {
 
 // Handles a "proposeChanges" request, similar to "changes" but in no-conflicts mode
 func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
+
+	includeConflictRev := false
+	if val := rq.Properties[ProposeChangesConflictsIncludeRev]; val != "" {
+		includeConflictRev = val == "true"
+	}
+
 	var changeList [][]interface{}
 	if err := rq.ReadJSONBody(&changeList); err != nil {
 		return err
@@ -527,7 +533,7 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 		if len(change) > 2 {
 			parentRevID = change[2].(string)
 		}
-		status := bh.db.CheckProposedRev(docID, revID, parentRevID)
+		status, currentRev := bh.db.CheckProposedRev(docID, revID, parentRevID)
 		if status != 0 {
 			// Skip writing trailing zeroes; but if we write a number afterwards we have to catch up
 			if nWritten > 0 {
@@ -536,7 +542,18 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 			for ; nWritten < i; nWritten++ {
 				output.Write([]byte("0,"))
 			}
-			output.Write([]byte(strconv.FormatInt(int64(status), 10)))
+			if includeConflictRev && status == ProposedRev_Conflict {
+				revEntry := IncludeConflictRevEntry{Status: status, Rev: currentRev}
+				entryBytes, marshalErr := base.JSONMarshal(revEntry)
+				if marshalErr != nil {
+					base.Warnf("Unable to marshal proposeChangesEntry as includeConflictRev - falling back to status-only entry.  Error: %v", marshalErr)
+					output.Write([]byte(strconv.FormatInt(int64(status), 10)))
+				}
+				output.Write(entryBytes)
+
+			} else {
+				output.Write([]byte(strconv.FormatInt(int64(status), 10)))
+			}
 			nWritten++
 		}
 	}

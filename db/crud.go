@@ -2253,26 +2253,26 @@ const (
 
 // Given a docID/revID to be pushed by a client, check whether it can be added _without conflict_.
 // This is used by the BLIP replication code in "allow_conflicts=false" mode.
-func (db *Database) CheckProposedRev(docid string, revid string, parentRevID string) ProposedRevStatus {
+func (db *Database) CheckProposedRev(docid string, revid string, parentRevID string) (status ProposedRevStatus, currentRev string) {
 	doc, err := db.GetDocument(docid, DocUnmarshalAll)
 	if err != nil {
 		if !base.IsDocNotFoundError(err) {
 			base.WarnfCtx(db.Ctx, "CheckProposedRev(%q) --> %T %v", base.UD(docid), err, err)
-			return ProposedRev_Error
+			return ProposedRev_Error, ""
 		}
 		// Doc doesn't exist locally; adding it is OK (even if it has a history)
-		return ProposedRev_OK
+		return ProposedRev_OK, ""
 	} else if doc.CurrentRev == revid {
 		// Proposed rev already exists here:
-		return ProposedRev_Exists
+		return ProposedRev_Exists, ""
 	} else if doc.CurrentRev == parentRevID {
 		// Proposed rev's parent is my current revision; OK to add:
-		return ProposedRev_OK
+		return ProposedRev_OK, ""
 	} else if parentRevID == "" && doc.History[doc.CurrentRev].Deleted {
 		// Proposed rev has no parent and doc is currently deleted; OK to add:
-		return ProposedRev_OK
+		return ProposedRev_OK, ""
 	} else {
 		// Parent revision mismatch, so this is a conflict:
-		return ProposedRev_Conflict
+		return ProposedRev_Conflict, doc.CurrentRev
 	}
 }

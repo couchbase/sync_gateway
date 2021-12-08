@@ -75,6 +75,9 @@ const (
 	ChangesResponseDeltas     = "deltas"
 
 	// proposeChanges message properties
+	ProposeChangesConflictsIncludeRev = "conflictIncludesRev"
+
+	// proposeChanges response message properties
 	ProposeChangesResponseDeltas = "deltas"
 
 	// getAttachment message properties
@@ -436,4 +439,9 @@ func (g *getAttachmentParams) String() string {
 
 	return buffer.String()
 
+}
+
+type IncludeConflictRevEntry struct {
+	Status ProposedRevStatus `json:"status"`
+	Rev    string            `json:"rev"`
 }
