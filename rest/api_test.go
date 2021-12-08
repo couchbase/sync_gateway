@@ -7431,12 +7431,6 @@ func TestRevocationResumeSameRoleAndLowSeqCheck(t *testing.T) {
 }
 
 func TestMetricsHandler(t *testing.T) {
-	// TODO: Currently disabled this Prometheus check when running with GSI. No idea why it fails but it hits the
-	// duplicate registration panic.
-	if !base.TestsDisableGSI() {
-		t.Skip("Temporary error")
-	}
-
 	base.SkipPrometheusStatsRegistration = false
 	defer func() {
 		base.SkipPrometheusStatsRegistration = true
