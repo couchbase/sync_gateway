@@ -765,10 +765,13 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		slowQueryWarningThreshold = time.Duration(*config.SlowQueryWarningThresholdMs) * time.Millisecond
 	}
 
-	groupID := sc.config.Bootstrap.ConfigGroupID
-	if groupID == persistentConfigDefaultGroupID {
-		groupID = ""
+	groupID := ""
+	if sc.config.Bootstrap.ConfigGroupID != persistentConfigDefaultGroupID {
+		groupID = sc.config.Bootstrap.ConfigGroupID
 	}
+
+	// Register the cbgt pindex type for the configGroup
+	db.RegisterImportPindexImpl(groupID)
 
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:              &cacheOptions,

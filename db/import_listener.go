@@ -55,8 +55,8 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 
 	importFeedStatsMap := dbContext.DbStats.Database().ImportFeedMapStats
 
-	// Register cbgt PIndex to support sharded import.
-	il.RegisterImportPindexImpl()
+	// Store the listener in global map for dbname-based retrieval by cbgt prior to index registration
+	base.StoreDestFactory(base.ImportDestKey(il.database.Name), il.NewImportDest)
 
 	// Start DCP mutation feed
 	base.Infof(base.KeyDCP, "Starting DCP import feed for bucket: %q ", base.UD(bucket.GetName()))
@@ -67,7 +67,7 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 		// Non-couchbase bucket or CE, start a non-sharded feed
 		return bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
 	} else {
-		il.cbgtContext, err = base.StartShardedDCPFeed(dbContext.Name, dbContext.UUID, dbContext.Heartbeater, bucket, cbStore.GetSpec(), dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
+		il.cbgtContext, err = base.StartShardedDCPFeed(dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater, bucket, cbStore.GetSpec(), dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
 		return err
 	}
 
@@ -174,6 +174,9 @@ func (il *importListener) Stop() {
 			// ClosePIndex calls are synchronous, so can stop manager once they've completed
 			il.cbgtContext.Manager.Stop()
 			il.cbgtContext.RemoveFeedCredentials(il.database.Name)
+
+			// Remove entry from global listener directory
+			base.RemoveDestFactory(base.ImportDestKey(il.database.Name))
 
 			// TODO: Shut down the cfg (when cfg supports)
 		}

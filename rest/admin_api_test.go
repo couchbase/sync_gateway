@@ -4231,3 +4231,71 @@ func TestGroupIDReplications(t *testing.T) {
 		}
 	}
 }
+
+// CBG-1790: Deleting a database that targets the same bucket as another causes a panic in legacy
+func TestDeleteDatabasePointingAtSameBucket(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
+		t.Skip("This test only works against Couchbase Server with xattrs")
+	}
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+	tb := base.GetTestBucket(t)
+	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb})
+	defer rt.Close()
+	resp := rt.SendAdminRequest(http.MethodDelete, "/db/", "")
+	assertStatus(t, resp, http.StatusOK)
+	// Make another database that uses import in-order to trigger the panic instantly instead of having to time.Sleep
+	resp = rt.SendAdminRequest(http.MethodPut, "/db1/", fmt.Sprintf(`{
+		"bucket": "%s",
+		"username": "%s",
+		"password": "%s",
+		"use_views": %t,
+		"num_index_replicas": 0
+	}`, tb.GetName(), base.TestClusterUsername(), base.TestClusterPassword(), base.TestsDisableGSI()))
+}
+
+func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+	// Start SG with no databases in bucket(s)
+	config := bootstrapStartupConfigForTest(t)
+	sc, err := setupServerContext(&config, true)
+	require.NoError(t, err)
+	defer sc.Close()
+	serverErr := make(chan error, 0)
+	go func() {
+		serverErr <- startServer(&config, sc)
+	}()
+	require.NoError(t, sc.waitForRESTAPIs())
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer func() {
+		fmt.Println("closing test bucket")
+		tb.Close()
+	}()
+
+	dbConfig := `{
+   "bucket": "` + tb.GetName() + `",
+   "name": "%s",
+   "import_docs": true,
+   "enable_shared_bucket_access": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
+   "use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
+   "num_index_replicas": 0 }`
+
+	resp := bootstrapAdminRequest(t, http.MethodPut, "/db1/", fmt.Sprintf(dbConfig, "db1"))
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	resp = bootstrapAdminRequest(t, http.MethodDelete, "/db1/", "")
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// Make another database that uses import in-order to trigger the panic instantly instead of having to time.Sleep
+	resp = bootstrapAdminRequest(t, http.MethodPut, "/db2/", fmt.Sprintf(dbConfig, "db2"))
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	// Validate that deleted database is no longer in dest factory set
+	_, fetchDb1DestErr := base.FetchDestFactory(base.ImportDestKey("db1"))
+	assert.Equal(t, base.ErrNotFound, fetchDb1DestErr)
+	_, fetchDb2DestErr := base.FetchDestFactory(base.ImportDestKey("db2"))
+	assert.NoError(t, fetchDb2DestErr)
+}

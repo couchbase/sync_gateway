@@ -37,7 +37,7 @@ type CbgtContext struct {
 
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
 // dbName is used to define a unique path name for local file storage of pindex files
-func StartShardedDCPFeed(dbName string, uuid string, heartbeater Heartbeater, bucket Bucket, spec BucketSpec, numPartitions uint16, cfg cbgt.Cfg) (*CbgtContext, error) {
+func StartShardedDCPFeed(dbName string, configGroup string, uuid string, heartbeater Heartbeater, bucket Bucket, spec BucketSpec, numPartitions uint16, cfg cbgt.Cfg) (*CbgtContext, error) {
 
 	cbgtContext, err := initCBGTManager(bucket, spec, cfg, uuid, dbName)
 	if err != nil {
@@ -50,7 +50,7 @@ func StartShardedDCPFeed(dbName string, uuid string, heartbeater Heartbeater, bu
 	)
 
 	// Start Manager.  Registers this node in the cfg
-	err = cbgtContext.StartManager(dbName, bucket, spec, numPartitions)
+	err = cbgtContext.StartManager(dbName, configGroup, bucket, spec, numPartitions)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func GenerateLegacyIndexName(dbName string) string {
 // to the manager's cbgt cfg.  Nodes that have registered for this indexType with the manager via
 // RegisterPIndexImplType (see importListener.RegisterImportPindexImpl)
 // will receive PIndexImpl callbacks (New, Open) for assigned PIndex to initiate DCP processing.
-func createCBGTIndex(c *CbgtContext, dbName string, bucket Bucket, spec BucketSpec, numPartitions uint16) error {
+func createCBGTIndex(c *CbgtContext, dbName string, configGroupID string, bucket Bucket, spec BucketSpec, numPartitions uint16) error {
 
 	sourceType := SOURCE_GOCOUCHBASE_DCP_SG
 
@@ -93,6 +93,11 @@ func createCBGTIndex(c *CbgtContext, dbName string, bucket Bucket, spec BucketSp
 	}
 
 	sourceParams, err := cbgtFeedParams(spec, dbName)
+	if err != nil {
+		return err
+	}
+
+	indexParams, err := cbgtIndexParams(ImportDestKey(dbName))
 	if err != nil {
 		return err
 	}
@@ -113,10 +118,6 @@ func createCBGTIndex(c *CbgtContext, dbName string, bucket Bucket, spec BucketSp
 		MaxPartitionsPerPIndex: int(partitionsPerPIndex), // num vbuckets per Pindex.  Multiple Pindexes could be assigned per node.
 		NumReplicas:            0,                        // No replicas required for SG sharded feed
 	}
-
-	// TODO: If this isn't well-formed JSON, cbgt emits errors when opening locally persisted pindex files.  Review
-	//       how this can be optimized if we're not actually using it in the indexImpl
-	indexParams := `{"name": "` + dbName + `"}`
 
 	// Required for initial pools request, before BucketDataSourceOptions kick in.
 	// go-couchbase doesn't support handling x509 auth and root ca verification as separate concerns.
@@ -156,7 +157,9 @@ func createCBGTIndex(c *CbgtContext, dbName string, bucket Bucket, spec BucketSp
 		return options
 	})
 
-	indexType := CBGTIndexTypeSyncGatewayImport + dbName
+	// Index types are namespaced by configGroupID to support delete and create of a database targeting the
+	// same bucket in a config group
+	indexType := CBGTIndexTypeSyncGatewayImport + configGroupID
 	err = c.Manager.CreateIndex(
 		sourceType,        // sourceType
 		bucket.GetName(),  // sourceName
@@ -329,7 +332,7 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 }
 
 // StartManager registers this node with cbgt, and the janitor will start feeds on this node.
-func (c *CbgtContext) StartManager(dbName string, bucket Bucket, spec BucketSpec, numPartitions uint16) (err error) {
+func (c *CbgtContext) StartManager(dbName string, configGroup string, bucket Bucket, spec BucketSpec, numPartitions uint16) (err error) {
 
 	// TODO: Clarify the functional difference between registering the manager as 'wanted' vs 'known'.
 	registerType := cbgt.NODE_DEFS_WANTED
@@ -339,7 +342,7 @@ func (c *CbgtContext) StartManager(dbName string, bucket Bucket, spec BucketSpec
 	}
 
 	// Add the index definition for this feed to the cbgt cfg, in case it's not already present.
-	err = createCBGTIndex(c, dbName, bucket, spec, numPartitions)
+	err = createCBGTIndex(c, dbName, configGroup, bucket, spec, numPartitions)
 	if err != nil {
 		if strings.Contains(err.Error(), "an index with the same name already exists") {
 			Infof(KeyCluster, "Duplicate cbgt index detected during index creation (concurrent creation), using existing")
@@ -365,6 +368,11 @@ func (c *CbgtContext) StopHeartbeatListener() {
 
 func (c *CbgtContext) RemoveFeedCredentials(dbName string) {
 	removeCbgtCredentials(dbName)
+}
+
+// Format of dest key for retrieval of import dest from cbgtDestFactories
+func ImportDestKey(dbName string) string {
+	return dbName + "_import"
 }
 
 func initCfgCB(bucket Bucket, spec BucketSpec) (*cbgt.CfgCB, error) {
@@ -543,4 +551,40 @@ func (l *importHeartbeatListener) GetNodes() ([]string, error) {
 
 func (l *importHeartbeatListener) Stop() {
 	close(l.terminator)
+}
+
+// cbgtDestFactories map DCP feed keys (destKey) to a function that will generate cbgt.Dest.  Need to be stored in a
+// global map to avoid races between db creation and db addition to the server context database set
+
+type CbgtDestFactoryFunc = func() (cbgt.Dest, error)
+
+var cbgtDestFactories = make(map[string]CbgtDestFactoryFunc)
+var cbgtDestFactoriesLock sync.Mutex
+
+func StoreDestFactory(destKey string, dest CbgtDestFactoryFunc) {
+	cbgtDestFactoriesLock.Lock()
+	_, ok := cbgtDestFactories[destKey]
+
+	// We don't expect duplicate destKey registration - log a warning if it already exists
+	if ok {
+		Warnf("destKey %s already exists in cbgtDestFactories - new value will replace the existing dest")
+	}
+	cbgtDestFactories[destKey] = dest
+	cbgtDestFactoriesLock.Unlock()
+}
+
+func FetchDestFactory(destKey string) (CbgtDestFactoryFunc, error) {
+	cbgtDestFactoriesLock.Lock()
+	defer cbgtDestFactoriesLock.Unlock()
+	listener, ok := cbgtDestFactories[destKey]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return listener, nil
+}
+
+func RemoveDestFactory(destKey string) {
+	cbgtDestFactoriesLock.Lock()
+	delete(cbgtDestFactories, destKey)
+	cbgtDestFactoriesLock.Unlock()
 }
