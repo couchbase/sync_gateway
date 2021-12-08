@@ -117,6 +117,8 @@ func TestDocLifecycle(t *testing.T) {
 
 //Validate that Etag header value is surrounded with double quotes, see issue #808
 func TestDocEtag(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAccess)()
+
 	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
 	defer rt.Close()
 
