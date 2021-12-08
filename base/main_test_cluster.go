@@ -161,9 +161,13 @@ func newTestClusterV2(server string, logger clusterLogFunc) *tbpClusterV2 {
 
 // getCluster makes cluster connection.  Callers must close.
 func getCluster(server string) *gocb.Cluster {
+
+	testClusterTimeout := 10 * time.Second
 	spec := BucketSpec{
-		Server:        server,
-		TLSSkipVerify: true,
+		Server:          server,
+		TLSSkipVerify:   true,
+		BucketOpTimeout: &testClusterTimeout,
+		CouchbaseDriver: TestClusterDriver(),
 	}
 
 	connStr, err := spec.GetGoCBConnString()
@@ -234,7 +238,11 @@ func (c *tbpClusterV2) insertBucket(name string, quotaMB int) error {
 			NumReplicas:  0,
 		},
 	}
-	return cluster.Buckets().CreateBucket(settings, nil)
+
+	options := &gocb.CreateBucketOptions{
+		Timeout: 10 * time.Second,
+	}
+	return cluster.Buckets().CreateBucket(settings, options)
 }
 
 func (c *tbpClusterV2) removeBucket(name string) error {
