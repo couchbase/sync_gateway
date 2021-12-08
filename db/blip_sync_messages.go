@@ -86,6 +86,9 @@ const (
 	ChangesResponseDeltas     = "deltas"
 
 	// proposeChanges message properties
+	ProposeChangesConflictsIncludeRev = "conflictIncludesRev"
+
+	// proposeChanges response message properties
 	ProposeChangesResponseDeltas = "deltas"
 
 	// getAttachment message properties
@@ -450,4 +453,9 @@ func (g *getAttachmentParams) docID() string {
 
 func (g *getAttachmentParams) String() string {
 	return fmt.Sprintf("Digest:%v, DocID: %v ", g.digest(), base.UD(g.docID()))
+}
+
+type IncludeConflictRevEntry struct {
+	Status ProposedRevStatus `json:"status"`
+	Rev    string            `json:"rev"`
 }
