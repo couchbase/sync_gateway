@@ -58,9 +58,6 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 	// Store the listener in global map for dbname-based retrieval by cbgt prior to index registration
 	base.StoreDestFactory(base.ImportDestKey(il.database.Name), il.NewImportDest)
 
-	// Register cbgt PIndex to support sharded import, if not already defined
-	//il.RegisterImportPindexImpl()
-
 	// Start DCP mutation feed
 	base.Infof(base.KeyDCP, "Starting DCP import feed for bucket: %q ", base.UD(bucket.GetName()))
 

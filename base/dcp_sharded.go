@@ -98,6 +98,9 @@ func createCBGTIndex(c *CbgtContext, dbName string, configGroupID string, bucket
 	}
 
 	indexParams, err := cbgtIndexParams(ImportDestKey(dbName))
+	if err != nil {
+		return err
+	}
 
 	vbNo, err := bucket.GetMaxVbno()
 	if err != nil {
@@ -560,6 +563,12 @@ var cbgtDestFactoriesLock sync.Mutex
 
 func StoreDestFactory(destKey string, dest CbgtDestFactoryFunc) {
 	cbgtDestFactoriesLock.Lock()
+	_, ok := cbgtDestFactories[destKey]
+
+	// We don't expect duplicate destKey registration - log a warning if it already exists
+	if ok {
+		Warnf("destKey %s already exists in cbgtDestFactories - new value will replace the existing dest")
+	}
 	cbgtDestFactories[destKey] = dest
 	cbgtDestFactoriesLock.Unlock()
 }
