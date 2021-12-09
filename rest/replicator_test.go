@@ -4705,7 +4705,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 			if base.GTestBucketPool.NumUsableBuckets() < 2 {
 				t.Skipf("test requires at least 2 usable test buckets")
 			}
-			defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+			defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 			activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
 			defer teardown()

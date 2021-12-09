@@ -109,6 +109,8 @@ func (rt *RestTester) putNewEditsFalse(docID string, newRevID string, parentRevI
 	require.True(rt.tb, response.Ok)
 	require.NotEmpty(rt.tb, response.Rev)
 
+	require.NoError(rt.tb, rt.WaitForPendingChanges())
+
 	return response
 }
 
