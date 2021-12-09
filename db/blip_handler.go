@@ -222,14 +222,12 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 			bh.replicationStats.SubChangesContinuousTotal.Add(1)
 		} else {
 			bh.replicationStats.SubChangesOneShotActive.Add(1)
+			defer bh.replicationStats.SubChangesOneShotActive.Add(-1)
 			bh.replicationStats.SubChangesOneShotTotal.Add(1)
 		}
 
 		defer func() {
 			bh.activeSubChanges.Set(false)
-			if !bh.continuous {
-				bh.replicationStats.SubChangesOneShotActive.Add(-1)
-			}
 		}()
 		// sendChanges runs until blip context closes, or fails due to error
 		startTime := time.Now()
