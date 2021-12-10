@@ -154,7 +154,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		sc.Bootstrap.ConfigGroupID = *rt.RestTesterConfig.groupID
 	}
 
-	// Allow EE-only config even in CE for testing.
+	// Allow EE-only config even in CE for testing using group IDs.
 	if err := sc.validate(true); err != nil {
 		panic("invalid RestTester StartupConfig: " + err.Error())
 	}
