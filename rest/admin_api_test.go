@@ -3795,7 +3795,7 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 }
 
 func TestDbOfflineConfigLegacy(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{persistentConfig: false})
+	rt := NewRestTester(t, nil)
 	bucket := rt.Bucket()
 	defer rt.Close()
 

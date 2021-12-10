@@ -24,7 +24,6 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -470,6 +469,7 @@ func (dbConfig *DbConfig) AutoImportEnabled() (bool, error) {
 
 const dbConfigFieldNotAllowedErrorMsg = "Persisted database config does not support customization of the %q field"
 
+// validatePersistentDbConfig checks for fields that are only allowed in non-persistent mode.
 func (dbConfig *DbConfig) validatePersistentDbConfig() (errorMessages error) {
 	if dbConfig.Server != nil {
 		errorMessages = multierror.Append(errorMessages, fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "server"))
@@ -647,14 +647,53 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) (errorMessag
 		}
 	}
 
-	return errorMessages
-
-}
-
-func (dbConfig *DbConfig) validateSgDbConfig() (errorMessages error) {
-	if err := dbConfig.validate(); err != nil {
+	if err := db.ValidateDatabaseName(dbConfig.Name); err != nil {
 		errorMessages = multierror.Append(errorMessages, err)
 	}
+
+	if dbConfig.Unsupported != nil && dbConfig.Unsupported.WarningThresholds != nil {
+		warningThresholdXattrSize := dbConfig.Unsupported.WarningThresholds.XattrSize
+		if warningThresholdXattrSize != nil {
+			lowerLimit := 0.1 * 1024 * 1024 // 0.1 MB
+			upperLimit := 1 * 1024 * 1024   // 1 MB
+			if *warningThresholdXattrSize < uint32(lowerLimit) {
+				errorMessages = multierror.Append(errorMessages, fmt.Errorf("xattr_size warning threshold cannot be lower than %d bytes", uint32(lowerLimit)))
+			} else if *warningThresholdXattrSize > uint32(upperLimit) {
+				errorMessages = multierror.Append(errorMessages, fmt.Errorf("xattr_size warning threshold cannot be higher than %d bytes", uint32(upperLimit)))
+			}
+		}
+
+		warningThresholdChannelsPerDoc := dbConfig.Unsupported.WarningThresholds.ChannelsPerDoc
+		if warningThresholdChannelsPerDoc != nil {
+			lowerLimit := 5
+			if *warningThresholdChannelsPerDoc < uint32(lowerLimit) {
+				errorMessages = multierror.Append(errorMessages, fmt.Errorf("channels_per_doc warning threshold cannot be lower than %d", lowerLimit))
+			}
+		}
+
+		warningThresholdGrantsPerDoc := dbConfig.Unsupported.WarningThresholds.GrantsPerDoc
+		if warningThresholdGrantsPerDoc != nil {
+			lowerLimit := 5
+			if *warningThresholdGrantsPerDoc < uint32(lowerLimit) {
+				errorMessages = multierror.Append(errorMessages, fmt.Errorf("access_and_role_grants_per_doc warning threshold cannot be lower than %d", lowerLimit))
+			}
+		}
+	}
+
+	// TODO: Add upfront validation of RevsLimit after proving TestPersistentDbConfigWithInvalidUpsert correctly rolls back database.
+	// revsLimit := dbConfig.RevsLimit
+	// if revsLimit != nil {
+	// 	if *dbConfig.ConflictsAllowed() {
+	// 		if *revsLimit < 20 {
+	// 			errorMessages = multierror.Append(errorMessages, fmt.Errorf("The revs_limit (%v) value in your Sync Gateway configuration cannot be set lower than 20.", *revsLimit))
+	// 		}
+	// 	} else {
+	// 		if *revsLimit <= 0 {
+	// 			errorMessages = multierror.Append(errorMessages, fmt.Errorf("The revs_limit (%v) value in your Sync Gateway configuration must be greater than zero.", *revsLimit))
+	// 		}
+	// 	}
+	// }
+
 	return errorMessages
 }
 
@@ -925,7 +964,7 @@ func (sc *ServerContext) addHTTPServer(s *http.Server) {
 	sc._httpServers = append(sc._httpServers, s)
 }
 
-func (sc *StartupConfig) validate() (errorMessages error) {
+func (sc *StartupConfig) validate(isEnterpriseEdition bool) (errorMessages error) {
 	if sc.Bootstrap.Server == "" {
 		errorMessages = multierror.Append(errorMessages, fmt.Errorf("a server must be provided in the Bootstrap configuration"))
 	}
@@ -955,7 +994,7 @@ func (sc *StartupConfig) validate() (errorMessages error) {
 	}
 
 	// EE only features
-	if !base.IsEnterpriseEdition() {
+	if !isEnterpriseEdition {
 		if sc.API.EnableAdminAuthenticationPermissionsCheck != nil && *sc.API.EnableAdminAuthenticationPermissionsCheck {
 			errorMessages = multierror.Append(errorMessages, fmt.Errorf("enable_advanced_auth_dp is only supported in enterprise edition"))
 		}
@@ -994,67 +1033,14 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 		return nil, err
 	}
 
-	if err := config.validate(); err != nil {
+	if err := config.validate(base.IsEnterpriseEdition()); err != nil {
 		return nil, err
 	}
 
 	sc := NewServerContext(config, persistentConfig)
 	if !base.ServerIsWalrus(config.Bootstrap.Server) {
-		goCBAgent, err := sc.initializeGoCBAgent()
-		if err != nil {
+		if err := sc.initializeCouchbaseServerConnections(); err != nil {
 			return nil, err
-		}
-		sc.GoCBAgent = goCBAgent
-	}
-
-	// Fetch database configs from bucket and start polling for new buckets and config updates.
-	if sc.persistentConfig {
-		couchbaseCluster, err := createCouchbaseClusterFromStartupConfig(sc.config)
-		if err != nil {
-			return nil, err
-		}
-
-		sc.bootstrapContext.connection = couchbaseCluster
-
-		count, err := sc.fetchAndLoadConfigs()
-		if err != nil {
-			return nil, err
-		}
-
-		if count > 0 {
-			base.Infof(base.KeyConfig, "Successfully fetched %d database configs from buckets in cluster", count)
-		} else {
-			base.Warnf("Config: No database configs for group %q. Continuing startup to allow REST API database creation", sc.config.Bootstrap.ConfigGroupID)
-		}
-
-		if sc.config.Bootstrap.ConfigUpdateFrequency.Value() > 0 {
-			sc.bootstrapContext.terminator = make(chan struct{})
-			sc.bootstrapContext.doneChan = make(chan struct{})
-
-			base.Infof(base.KeyConfig, "Starting background polling for new configs/buckets: %s", sc.config.Bootstrap.ConfigUpdateFrequency.Value().String())
-			go func() {
-				defer close(sc.bootstrapContext.doneChan)
-				t := time.NewTicker(sc.config.Bootstrap.ConfigUpdateFrequency.Value())
-				for {
-					select {
-					case <-sc.bootstrapContext.terminator:
-						base.Infof(base.KeyConfig, "Stopping background config polling loop")
-						t.Stop()
-						return
-					case <-t.C:
-						base.Debugf(base.KeyConfig, "Fetching configs from buckets in cluster for group %q", sc.config.Bootstrap.ConfigGroupID)
-						count, err := sc.fetchAndLoadConfigs()
-						if err != nil {
-							base.Warnf("Couldn't load configs from bucket when polled: %v", err)
-						}
-						if count > 0 {
-							base.Infof(base.KeyConfig, "Successfully fetched %d database configs from buckets in cluster", count)
-						}
-					}
-				}
-			}()
-		} else {
-			base.Infof(base.KeyConfig, "Disabled background polling for new configs/buckets")
 		}
 	}
 	return sc, nil
@@ -1082,19 +1068,31 @@ func (sc *ServerContext) fetchAndLoadConfigs() (count int, err error) {
 	return sc._applyConfigs(fetchedConfigs), nil
 }
 
-// fetchAndLoadDatabase will attempt to find the given database name first in a matching bucket name,
-// but then fall back to searching through configs in each bucket to try and find a config.
 func (sc *ServerContext) fetchAndLoadDatabase(dbName string) (found bool, err error) {
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+	return sc._fetchAndLoadDatabase(dbName)
+}
+
+// _fetchAndLoadDatabase will attempt to find the given database name first in a matching bucket name,
+// but then fall back to searching through configs in each bucket to try and find a config.
+func (sc *ServerContext) _fetchAndLoadDatabase(dbName string) (found bool, err error) {
 	found, dbConfig, err := sc.fetchDatabase(dbName)
 	if err != nil || !found {
 		return false, err
 	}
-	sc.applyConfigs(map[string]DatabaseConfig{dbName: *dbConfig})
+	sc._applyConfigs(map[string]DatabaseConfig{dbName: *dbConfig})
 
 	return true, nil
 }
 
 func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *DatabaseConfig, err error) {
+	select {
+	case <-sc.bootstrapContext.terminator:
+		return false, nil, fmt.Errorf("bootstrapContext closed")
+	default:
+	}
+
 	buckets, err := sc.bootstrapContext.connection.GetConfigBuckets()
 	if err != nil {
 		return false, nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
@@ -1228,8 +1226,8 @@ func (sc *ServerContext) applyConfigs(dbNameConfigs map[string]DatabaseConfig) (
 // _applyConfig loads the given database, failFast=true will not attempt to retry connecting/loading
 func (sc *ServerContext) _applyConfig(cnf DatabaseConfig, failFast bool) (applied bool, err error) {
 	// skip if we already have this config loaded, and we've got a cas value to compare with
-	foundDbName, ok := sc.bucketDbName[*cnf.Bucket]
-	if ok {
+	foundDbName, exists := sc.bucketDbName[*cnf.Bucket]
+	if exists {
 		// Somebody is trying to create a new database with a duplicate bucket. Changing db name is not supported and is rejected earlier in the update handler.
 		if foundDbName != cnf.Name {
 			return false, fmt.Errorf("%w: Bucket %q already in use by database %q", base.ErrAlreadyExists, *cnf.Bucket, foundDbName)
@@ -1259,14 +1257,9 @@ func (sc *ServerContext) _applyConfig(cnf DatabaseConfig, failFast bool) (applie
 	// by any output
 	cnf.Version = ""
 
-	sc.bucketDbName[*cnf.Bucket] = cnf.Name
-	sc.dbConfigs[cnf.Name] = &cnf
-
 	// TODO: Dynamic update instead of reload
-	if _, err := sc._reloadDatabaseFromConfig(cnf.Name, failFast); err != nil {
+	if err := sc._reloadDatabaseWithConfig(cnf, failFast); err != nil {
 		// remove these entries we just created above if the database hasn't loaded properly
-		delete(sc.dbConfigs, cnf.Name)
-		delete(sc.bucketDbName, *cnf.Bucket)
 		return false, fmt.Errorf("couldn't reload database: %w", err)
 	}
 

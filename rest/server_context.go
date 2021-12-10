@@ -209,15 +209,15 @@ func (sc *ServerContext) GetDatabase(name string) (*db.DatabaseContext, error) {
 	}
 
 	if sc.bootstrapContext.connection != nil {
+		sc.lock.Lock()
+		defer sc.lock.Unlock()
 		// database not loaded, go look for it in the cluster
-		found, err := sc.fetchAndLoadDatabase(name)
+		found, err := sc._fetchAndLoadDatabase(name)
 		if err != nil {
 			return nil, base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
 		}
 		if found {
-			sc.lock.RLock()
 			dbc := sc.databases_[name]
-			sc.lock.RUnlock()
 			if dbc != nil {
 				return dbc, nil
 			}
@@ -301,20 +301,32 @@ func (sc *ServerContext) PostUpgrade(preview bool) (postUpgradeResults PostUpgra
 }
 
 // Removes and re-adds a database to the ServerContext.
-func (sc *ServerContext) _reloadDatabaseFromConfig(reloadDbName string, failFast bool) (*db.DatabaseContext, error) {
+func (sc *ServerContext) _reloadDatabase(reloadDbName string, failFast bool) (*db.DatabaseContext, error) {
 	sc._unloadDatabase(reloadDbName)
 	config := sc.dbConfigs[reloadDbName]
 	return sc._getOrAddDatabaseFromConfig(*config, true, failFast)
 }
 
 // Removes and re-adds a database to the ServerContext.
-func (sc *ServerContext) ReloadDatabaseFromConfig(reloadDbName string) (*db.DatabaseContext, error) {
+func (sc *ServerContext) ReloadDatabase(reloadDbName string) (*db.DatabaseContext, error) {
 	// Obtain write lock during add database, to avoid race condition when creating based on ConfigServer
 	sc.lock.Lock()
-	dbContext, err := sc._reloadDatabaseFromConfig(reloadDbName, false)
+	dbContext, err := sc._reloadDatabase(reloadDbName, false)
 	sc.lock.Unlock()
 
 	return dbContext, err
+}
+
+func (sc *ServerContext) ReloadDatabaseWithConfig(config DatabaseConfig) error {
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+	return sc._reloadDatabaseWithConfig(config, true)
+}
+
+func (sc *ServerContext) _reloadDatabaseWithConfig(config DatabaseConfig, failFast bool) error {
+	sc._removeDatabase(config.Name)
+	_, err := sc._getOrAddDatabaseFromConfig(config, false, failFast)
+	return err
 }
 
 // Adds a database to the ServerContext.  Attempts a read after it gets the write
@@ -323,10 +335,8 @@ func (sc *ServerContext) ReloadDatabaseFromConfig(reloadDbName string) (*db.Data
 func (sc *ServerContext) getOrAddDatabaseFromConfig(config DatabaseConfig, useExisting bool, failFast bool) (*db.DatabaseContext, error) {
 	// Obtain write lock during add database, to avoid race condition when creating based on ConfigServer
 	sc.lock.Lock()
-	dbContext, err := sc._getOrAddDatabaseFromConfig(config, useExisting, failFast)
-	sc.lock.Unlock()
-
-	return dbContext, err
+	defer sc.lock.Unlock()
+	return sc._getOrAddDatabaseFromConfig(config, useExisting, failFast)
 }
 
 func GetBucketSpec(config *DatabaseConfig, serverConfig *StartupConfig) (spec base.BucketSpec, err error) {
@@ -572,9 +582,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 
 	// Register it so HTTP handlers can find it:
 	sc.databases_[dbcontext.Name] = dbcontext
-
-	// Save the config
 	sc.dbConfigs[dbcontext.Name] = &config
+	sc.bucketDbName[spec.BucketName] = dbName
 
 	if base.BoolDefault(config.StartOffline, false) {
 		atomic.StoreUint32(&dbcontext.State, db.DBOffline)
@@ -815,7 +824,7 @@ func (sc *ServerContext) TakeDbOnline(database *db.DatabaseContext) {
 
 	//We can only transition to Online from Offline state
 	if atomic.CompareAndSwapUint32(&database.State, db.DBOffline, db.DBStarting) {
-		reloadedDb, err := sc.ReloadDatabaseFromConfig(database.Name)
+		reloadedDb, err := sc.ReloadDatabase(database.Name)
 		if err != nil {
 			base.Errorf("Error reloading database from config: %v", err)
 			return
@@ -1386,4 +1395,65 @@ func (sc *ServerContext) Database(name string) *db.DatabaseContext {
 		panic(fmt.Sprintf("Unexpected error getting db %q: %v", name, err))
 	}
 	return db
+}
+
+func (sc *ServerContext) initializeCouchbaseServerConnections() error {
+	goCBAgent, err := sc.initializeGoCBAgent()
+	if err != nil {
+		return err
+	}
+	sc.GoCBAgent = goCBAgent
+
+	// Fetch database configs from bucket and start polling for new buckets and config updates.
+	if sc.persistentConfig {
+		couchbaseCluster, err := createCouchbaseClusterFromStartupConfig(sc.config)
+		if err != nil {
+			return err
+		}
+
+		sc.bootstrapContext.connection = couchbaseCluster
+
+		count, err := sc.fetchAndLoadConfigs()
+		if err != nil {
+			return err
+		}
+
+		if count > 0 {
+			base.Infof(base.KeyConfig, "Successfully fetched %d database configs from buckets in cluster", count)
+		} else {
+			base.Warnf("Config: No database configs for group %q. Continuing startup to allow REST API database creation", sc.config.Bootstrap.ConfigGroupID)
+		}
+
+		if sc.config.Bootstrap.ConfigUpdateFrequency.Value() > 0 {
+			sc.bootstrapContext.terminator = make(chan struct{})
+			sc.bootstrapContext.doneChan = make(chan struct{})
+
+			base.Infof(base.KeyConfig, "Starting background polling for new configs/buckets: %s", sc.config.Bootstrap.ConfigUpdateFrequency.Value().String())
+			go func() {
+				defer close(sc.bootstrapContext.doneChan)
+				t := time.NewTicker(sc.config.Bootstrap.ConfigUpdateFrequency.Value())
+				for {
+					select {
+					case <-sc.bootstrapContext.terminator:
+						base.Infof(base.KeyConfig, "Stopping background config polling loop")
+						t.Stop()
+						return
+					case <-t.C:
+						base.Debugf(base.KeyConfig, "Fetching configs from buckets in cluster for group %q", sc.config.Bootstrap.ConfigGroupID)
+						count, err := sc.fetchAndLoadConfigs()
+						if err != nil {
+							base.Warnf("Couldn't load configs from bucket when polled: %v", err)
+						}
+						if count > 0 {
+							base.Infof(base.KeyConfig, "Successfully fetched %d database configs from buckets in cluster", count)
+						}
+					}
+				}
+			}()
+		} else {
+			base.Infof(base.KeyConfig, "Disabled background polling for new configs/buckets")
+		}
+	}
+
+	return nil
 }
