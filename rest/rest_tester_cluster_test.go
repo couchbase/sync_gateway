@@ -179,9 +179,7 @@ func TestPersistentDbConfigWithInvalidUpsert(t *testing.T) {
 	// upsert with an invalid config option
 	resp, err = rtNode.UpsertDbConfig(db, DbConfig{RevsLimit: base.Uint32Ptr(0)})
 	require.NoError(t, err)
-	// If this is being caught by upfront validation, it should be 400
-	// assertStatus(t, resp, http.StatusBadRequest)
-	assertStatus(t, resp, http.StatusInternalServerError)
+	assertStatus(t, resp, http.StatusBadRequest)
 
 	// On the same node, make sure the database is still running.
 	resp = rtNode.SendAdminRequest(http.MethodGet, "/"+db+"/", "")

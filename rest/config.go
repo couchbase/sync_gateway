@@ -680,19 +680,18 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) (errorMessag
 		}
 	}
 
-	// TODO: Add upfront validation of RevsLimit after proving TestPersistentDbConfigWithInvalidUpsert correctly rolls back database.
-	// revsLimit := dbConfig.RevsLimit
-	// if revsLimit != nil {
-	// 	if *dbConfig.ConflictsAllowed() {
-	// 		if *revsLimit < 20 {
-	// 			errorMessages = multierror.Append(errorMessages, fmt.Errorf("The revs_limit (%v) value in your Sync Gateway configuration cannot be set lower than 20.", *revsLimit))
-	// 		}
-	// 	} else {
-	// 		if *revsLimit <= 0 {
-	// 			errorMessages = multierror.Append(errorMessages, fmt.Errorf("The revs_limit (%v) value in your Sync Gateway configuration must be greater than zero.", *revsLimit))
-	// 		}
-	// 	}
-	// }
+	revsLimit := dbConfig.RevsLimit
+	if revsLimit != nil {
+		if *dbConfig.ConflictsAllowed() {
+			if *revsLimit < 20 {
+				errorMessages = multierror.Append(errorMessages, fmt.Errorf("The revs_limit (%v) value in your Sync Gateway configuration cannot be set lower than 20.", *revsLimit))
+			}
+		} else {
+			if *revsLimit <= 0 {
+				errorMessages = multierror.Append(errorMessages, fmt.Errorf("The revs_limit (%v) value in your Sync Gateway configuration must be greater than zero.", *revsLimit))
+			}
+		}
+	}
 
 	return errorMessages
 }
