@@ -107,6 +107,7 @@ type ReplicationConfig struct {
 	Cancel                 bool                      `json:"cancel,omitempty"`
 	Adhoc                  bool                      `json:"adhoc,omitempty"`
 	BatchSize              int                       `json:"batch_size,omitempty"`
+	RunAsAdminUser         bool                      `json:"run_as_admin_user,omitempty"`
 }
 
 func DefaultReplicationConfig() ReplicationConfig {
@@ -119,6 +120,7 @@ func DefaultReplicationConfig() ReplicationConfig {
 		Continuous:             false,
 		Adhoc:                  false,
 		BatchSize:              defaultChangesBatchSize,
+		RunAsAdminUser:         true,
 	}
 }
 
@@ -148,6 +150,7 @@ type ReplicationUpsertConfig struct {
 	Cancel                 *bool       `json:"cancel,omitempty"`
 	Adhoc                  *bool       `json:"adhoc,omitempty"`
 	BatchSize              *int        `json:"batch_size,omitempty"`
+	RunAsAdminUser         *bool       `json:"run_as_admin_user,omitempty"`
 }
 
 func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
@@ -248,7 +251,7 @@ func (rc *ReplicationConfig) Upsert(c *ReplicationUpsertConfig) {
 		rc.Username = *c.Username
 	}
 
-	if c.Username != nil {
+	if c.Username != nil && c.Password != nil {
 		rc.Password = *c.Password
 	}
 
@@ -293,6 +296,10 @@ func (rc *ReplicationConfig) Upsert(c *ReplicationUpsertConfig) {
 
 	if c.BatchSize != nil {
 		rc.BatchSize = *c.BatchSize
+	}
+
+	if c.RunAsAdminUser != nil {
+		rc.RunAsAdminUser = *c.RunAsAdminUser
 	}
 
 	if c.QueryParams != nil {
@@ -482,10 +489,19 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 		insecureSkipVerify = m.dbContext.Options.UnsupportedOptions.SgrTlsSkipVerify
 	}
 
+	activeDB := &Database{DatabaseContext: m.dbContext}
+	if !config.RunAsAdminUser {
+		user, err := m.dbContext.Authenticator().GetUser(config.Username)
+		if err != nil {
+			return nil, err
+		}
+		activeDB.SetUser(user)
+	}
+
 	rc = &ActiveReplicatorConfig{
 		ID:                 config.ID,
 		Continuous:         config.Continuous,
-		ActiveDB:           &Database{DatabaseContext: m.dbContext}, // sg-replicate interacts with local as admin
+		ActiveDB:           activeDB, // sg-replicate interacts with local as admin
 		PurgeOnRemoval:     config.PurgeOnRemoval,
 		DeltasEnabled:      config.DeltaSyncEnabled,
 		InsecureSkipVerify: insecureSkipVerify,
