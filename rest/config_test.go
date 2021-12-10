@@ -2107,7 +2107,7 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 			nil,
 		},
 		{
-			"Invalid Sync Fn No Import #2",
+			"Invalid Sync Fn No Import 2",
 			base.StringPtr(`function(doc){
 				if (t )){}
 			}`),
@@ -2136,8 +2136,9 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
+			safeDbName := strings.ToLower(strings.ReplaceAll(testCase.Name, " ", "-"))
 			dbConfig := DbConfig{
-				Name: testCase.Name,
+				Name: safeDbName,
 			}
 
 			if testCase.SyncFunction != nil {
