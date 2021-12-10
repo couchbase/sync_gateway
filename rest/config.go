@@ -1086,12 +1086,6 @@ func (sc *ServerContext) _fetchAndLoadDatabase(dbName string) (found bool, err e
 }
 
 func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *DatabaseConfig, err error) {
-	select {
-	case <-sc.bootstrapContext.terminator:
-		return false, nil, fmt.Errorf("bootstrapContext closed")
-	default:
-	}
-
 	buckets, err := sc.bootstrapContext.connection.GetConfigBuckets()
 	if err != nil {
 		return false, nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
