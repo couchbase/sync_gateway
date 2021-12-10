@@ -260,8 +260,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 	mutationCount := uint64(0)
 	counterCallback := func(event sgbucket.FeedEvent) bool {
 		if bytes.HasPrefix(event.Key, []byte(t.Name())) {
-			atomic.AddUint64(&mutationCount, 1)
-			count := atomic.LoadUint64(&mutationCount)
+			count := atomic.AddUint64(&mutationCount, 1)
 			if count > 5000 {
 				err := dcpClient.Close()
 				assert.NoError(t, err)

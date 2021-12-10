@@ -523,8 +523,6 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 		err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2})
 		assert.NotContains(t, err.Error(), "Process already running")
 	}
-	assert.NoError(t, err)
-
 }
 
 func TestAttachmentProcessError(t *testing.T) {
@@ -583,7 +581,7 @@ func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 
 	_, err = Sweep(testDB, t.Name(), vbUUIDs, false, terminator, &base.AtomicInt{})
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "error opening stream for vb 0: vbUUID mismatch when failOnRollback set")
+	assert.Contains(t, err.Error(), "error opening stream for vb 0: VbUUID mismatch when failOnRollback set")
 }
 
 func WaitForConditionWithOptions(successFunc func() bool, maxNumAttempts, timeToSleepMs int) error {
