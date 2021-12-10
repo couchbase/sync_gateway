@@ -2,6 +2,7 @@ package base
 
 import (
 	"bytes"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 )
@@ -15,6 +16,7 @@ import (
 // DCPWorker queues incoming mutations in a buffered channel (eventFeed).  The main worker goroutine
 // works this channel and synchronously invokes the mutationCallback for mutations or deletions.
 type DCPWorker struct {
+	ID                    int
 	endSeqNos             []uint64
 	eventFeed             chan streamEvent
 	terminator            chan bool
@@ -24,25 +26,39 @@ type DCPWorker struct {
 	ignoreDeletes         bool
 	metadata              DCPMetadataStore
 	pendingSnapshot       map[uint16]snapshotEvent
+	lastMetaPersistTime   time.Time
+	metaPersistFrequency  time.Duration
+	assignedVbs           []uint16
 }
 
 const defaultQueueLength = 10
+const defaultMetadataPersistFrequency = 1 * time.Minute
 
 type DCPWorkerOptions struct {
-	eventQueueLength int
-	ignoreDeletes    bool
+	eventQueueLength     int
+	ignoreDeletes        bool
+	metaPersistFrequency *time.Duration
 }
 
-func NewDCPWorker(metadata DCPMetadataStore, mutationCallback sgbucket.FeedEventCallbackFunc, endCallback endStreamCallbackFunc, terminator chan bool, endSeqNos []uint64, checkpointPrefix string, options *DCPWorkerOptions) *DCPWorker {
+func NewDCPWorker(workerID int, metadata DCPMetadataStore, mutationCallback sgbucket.FeedEventCallbackFunc,
+	endCallback endStreamCallbackFunc, terminator chan bool, endSeqNos []uint64, checkpointPrefix string,
+	assignedVbs []uint16, options *DCPWorkerOptions) *DCPWorker {
 
 	// Create a buffered channel for queueing incoming DCP events
 	queueLength := defaultQueueLength
 	if options != nil && options.eventQueueLength > 0 {
 		queueLength = options.eventQueueLength
 	}
+
+	metadataPersistFrequency := defaultMetadataPersistFrequency
+	if options != nil && options.metaPersistFrequency != nil {
+		metadataPersistFrequency = *options.metaPersistFrequency
+	}
+
 	eventQueue := make(chan streamEvent, queueLength)
 
 	return &DCPWorker{
+		ID:                    workerID,
 		eventFeed:             eventQueue,
 		terminator:            terminator,
 		endSeqNos:             endSeqNos,
@@ -52,6 +68,8 @@ func NewDCPWorker(metadata DCPMetadataStore, mutationCallback sgbucket.FeedEvent
 		ignoreDeletes:         options != nil && options.ignoreDeletes,
 		metadata:              metadata,
 		pendingSnapshot:       make(map[uint16]snapshotEvent),
+		metaPersistFrequency:  metadataPersistFrequency,
+		assignedVbs:           assignedVbs,
 	}
 }
 
@@ -113,6 +131,10 @@ func (w *DCPWorker) updateSeq(key []byte, vbID uint16, seq uint64) {
 	// TODO: update snapshot and seq in a single atomic update
 	w.checkPendingSnapshot(vbID)
 	w.metadata.UpdateSeq(vbID, seq)
+
+	if time.Since(w.lastMetaPersistTime) > w.metaPersistFrequency {
+		w.metadata.Persist(w.ID, w.assignedVbs)
+	}
 
 }
 
