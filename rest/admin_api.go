@@ -100,12 +100,11 @@ func (h *handler) handleCreateDB() error {
 				return base.HTTPErrorf(http.StatusForbidden, "auth failure accessing provided bucket using bootstrap credentials: %s", bucket)
 			} else if errors.Is(err, base.ErrAlreadyExists) {
 				// on-demand config load if someone else beat us to db creation
-				go func() {
-					if _, err := h.server.fetchAndLoadDatabase(dbName); err != nil {
-						base.WarnfCtx(h.rq.Context(), "Couldn't load database after conflicting create: %v", err)
-					}
-				}()
-				return base.HTTPErrorf(http.StatusConflict, "Database %q already exists", dbName)
+				if _, err := h.server._fetchAndLoadDatabase(dbName); err != nil {
+					base.WarnfCtx(h.rq.Context(), "Couldn't load database after conflicting create: %v", err)
+				}
+				return base.HTTPErrorf(http.StatusPreconditionFailed, // what CouchDB returns
+					"Duplicate database name %q", dbName)
 			}
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't save database config: %v", err)
 		}
@@ -489,76 +488,92 @@ func (h *handler) handlePutDbConfig() (err error) {
 		dbConfig.Name = dbName
 	}
 
-	var updatedDbConfig *DatabaseConfig
-	if h.server.persistentConfig {
-		cas, err := h.server.bootstrapContext.connection.UpdateConfig(
-			bucket, h.server.config.Bootstrap.ConfigGroupID,
-			func(rawBucketConfig []byte) (newConfig []byte, err error) {
-				var bucketDbConfig DatabaseConfig
-				if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
-					return nil, err
-				}
-
-				headerVersion := h.rq.Header.Get("If-Match")
-				if headerVersion != "" && headerVersion != bucketDbConfig.Version {
-					return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
-				}
-
-				if h.rq.Method == http.MethodPost {
-					base.TracefCtx(h.rq.Context(), base.KeyConfig, "merging upserted config into bucket config")
-					if err := base.ConfigMerge(&bucketDbConfig.DbConfig, dbConfig); err != nil {
-						return nil, err
-					}
-				} else {
-					base.TracefCtx(h.rq.Context(), base.KeyConfig, "using config as-is without merge")
-					bucketDbConfig.DbConfig = *dbConfig
-				}
-
-				if err := dbConfig.validatePersistentDbConfig(); err != nil {
-					return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
-				}
-				if err := bucketDbConfig.validate(); err != nil {
-					return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
-				}
-
-				bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
-				if err != nil {
-					return nil, err
-				}
-
-				updatedDbConfig = &bucketDbConfig
-				return base.JSONMarshal(bucketDbConfig)
-			})
-		if err != nil {
-			return err
-		}
-		updatedDbConfig.cas = cas
-	} else {
-		updatedDbConfig = &DatabaseConfig{DbConfig: *dbConfig}
+	if !h.server.persistentConfig {
+		updatedDbConfig := &DatabaseConfig{DbConfig: *dbConfig}
 		err = updatedDbConfig.validate()
 		if err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
+
+		dbCreds, _ := h.server.config.DatabaseCredentials[dbName]
+		if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap, dbCreds); err != nil {
+			return err
+		}
+		if err := h.server.ReloadDatabaseWithConfig(*updatedDbConfig); err != nil {
+			return err
+		}
+		return base.HTTPErrorf(http.StatusCreated, "updated")
 	}
 
-	dbCreds, _ := h.server.config.DatabaseCredentials[dbName]
-	if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap, dbCreds); err != nil {
+	var updatedDbConfig *DatabaseConfig
+	cas, err := h.server.bootstrapContext.connection.UpdateConfig(
+		bucket, h.server.config.Bootstrap.ConfigGroupID,
+		func(rawBucketConfig []byte) (newConfig []byte, err error) {
+			var bucketDbConfig DatabaseConfig
+			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
+				return nil, err
+			}
+
+			headerVersion := h.rq.Header.Get("If-Match")
+			if headerVersion != "" && headerVersion != bucketDbConfig.Version {
+				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
+			}
+
+			if h.rq.Method == http.MethodPost {
+				base.TracefCtx(h.rq.Context(), base.KeyConfig, "merging upserted config into bucket config")
+				if err := base.ConfigMerge(&bucketDbConfig.DbConfig, dbConfig); err != nil {
+					return nil, err
+				}
+			} else {
+				base.TracefCtx(h.rq.Context(), base.KeyConfig, "using config as-is without merge")
+				bucketDbConfig.DbConfig = *dbConfig
+			}
+
+			if err := dbConfig.validatePersistentDbConfig(); err != nil {
+				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
+			}
+			if err := bucketDbConfig.validate(); err != nil {
+				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
+			}
+
+			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+			if err != nil {
+				return nil, err
+			}
+
+			updatedDbConfig = &bucketDbConfig
+
+			// take a copy to stamp credentials and load before we persist
+			var tmpConfig DatabaseConfig
+			if err = base.DeepCopyInefficient(&tmpConfig, bucketDbConfig); err != nil {
+				return nil, err
+			}
+			dbCreds, _ := h.server.config.DatabaseCredentials[dbName]
+			if err := tmpConfig.setup(dbName, h.server.config.Bootstrap, dbCreds); err != nil {
+				return nil, err
+			}
+
+			// Load the new dbConfig before we persist the update.
+			err = h.server.ReloadDatabaseWithConfig(tmpConfig)
+			if err != nil {
+				return nil, err
+			}
+
+			return base.JSONMarshal(bucketDbConfig)
+		})
+	if err != nil {
+		base.WarnfCtx(h.rq.Context(), "Couldn't update config for database - rolling back: %v", err)
+		// failed to start the new database config - rollback and return the original error for the user
+		if _, err := h.server.fetchAndLoadDatabase(dbName); err != nil {
+			base.WarnfCtx(h.rq.Context(), "got error rolling back database %q after failed update: %v", base.UD(dbName), err)
+		}
 		return err
 	}
-
+	// store the cas in the loaded config after a successful update
+	h.server.dbConfigs[dbName].cas = cas
 	h.response.Header().Set("ETag", updatedDbConfig.Version)
-
-	h.server.lock.Lock()
-	defer h.server.lock.Unlock()
-	h.server.bucketDbName[bucket] = dbName
-	h.server.dbConfigs[dbName] = updatedDbConfig
-
-	// TODO: Dynamic update instead of reload
-	if _, err := h.server._reloadDatabaseFromConfig(dbName, false); err != nil {
-		return err
-	}
-
 	return base.HTTPErrorf(http.StatusCreated, "updated")
+
 }
 
 // GET database config sync function
@@ -636,11 +651,9 @@ func (h *handler) handleDeleteDbConfigSync() error {
 
 	h.server.lock.Lock()
 	defer h.server.lock.Unlock()
-	h.server.bucketDbName[bucket] = dbName
-	h.server.dbConfigs[dbName] = updatedDbConfig
 
 	// TODO: Dynamic update instead of reload
-	if _, err := h.server._reloadDatabaseFromConfig(dbName, false); err != nil {
+	if err := h.server._reloadDatabaseWithConfig(*updatedDbConfig, false); err != nil {
 		return err
 	}
 
@@ -703,11 +716,9 @@ func (h *handler) handlePutDbConfigSync() error {
 
 	h.server.lock.Lock()
 	defer h.server.lock.Unlock()
-	h.server.bucketDbName[bucket] = dbName
-	h.server.dbConfigs[dbName] = updatedDbConfig
 
 	// TODO: Dynamic update instead of reload
-	if _, err := h.server._reloadDatabaseFromConfig(dbName, false); err != nil {
+	if err := h.server._reloadDatabaseWithConfig(*updatedDbConfig, false); err != nil {
 		return err
 	}
 
@@ -787,11 +798,9 @@ func (h *handler) handleDeleteDbConfigImportFilter() error {
 
 	h.server.lock.Lock()
 	defer h.server.lock.Unlock()
-	h.server.bucketDbName[bucket] = dbName
-	h.server.dbConfigs[dbName] = updatedDbConfig
 
 	// TODO: Dynamic update instead of reload
-	if _, err := h.server._reloadDatabaseFromConfig(dbName, false); err != nil {
+	if err := h.server._reloadDatabaseWithConfig(*updatedDbConfig, false); err != nil {
 		return err
 	}
 
@@ -854,11 +863,9 @@ func (h *handler) handlePutDbConfigImportFilter() error {
 
 	h.server.lock.Lock()
 	defer h.server.lock.Unlock()
-	h.server.bucketDbName[bucket] = dbName
-	h.server.dbConfigs[dbName] = updatedDbConfig
 
 	// TODO: Dynamic update instead of reload
-	if _, err := h.server._reloadDatabaseFromConfig(dbName, false); err != nil {
+	if err := h.server._reloadDatabaseWithConfig(*updatedDbConfig, false); err != nil {
 		return err
 	}
 

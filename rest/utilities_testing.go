@@ -58,6 +58,7 @@ type RestTesterConfig struct {
 	enableAdminAuthPermissionsCheck bool
 	useTLSServer                    bool // If true, TLS will be required for communications with CBS. Default: false
 	persistentConfig                bool
+	groupID                         *string
 }
 
 type RestTester struct {
@@ -133,6 +134,10 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	username, password, _ := testBucket.BucketSpec.Auth.GetCredentials()
 
+	// Disable config polling to avoid test flakiness and increase control of timing.
+	// Rely on on-demand config fetching for consistency.
+	sc.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
+
 	sc.Bootstrap.Server = testBucket.BucketSpec.Server
 	sc.Bootstrap.Username = username
 	sc.Bootstrap.Password = password
@@ -145,8 +150,22 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.API.EnableAdminAuthenticationPermissionsCheck = &rt.enableAdminAuthPermissionsCheck
 	sc.Bootstrap.UseTLSServer = &rt.RestTesterConfig.useTLSServer
 	sc.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
+	if rt.RestTesterConfig.groupID != nil {
+		sc.Bootstrap.ConfigGroupID = *rt.RestTesterConfig.groupID
+	}
 
-	rt.RestTesterServerContext = NewServerContext(&sc, false)
+	// Allow EE-only config even in CE for testing using group IDs.
+	if err := sc.validate(true); err != nil {
+		panic("invalid RestTester StartupConfig: " + err.Error())
+	}
+
+	rt.RestTesterServerContext = NewServerContext(&sc, rt.RestTesterConfig.persistentConfig)
+
+	if !base.ServerIsWalrus(sc.Bootstrap.Server) {
+		if err := rt.RestTesterServerContext.initializeCouchbaseServerConnections(); err != nil {
+			panic("Couldn't initialize Couchbase Server connection: " + err.Error())
+		}
+	}
 
 	if !base.UnitTestUrlIsWalrus() {
 		// Copy any testbucket cert info into boostrap server config
@@ -169,49 +188,52 @@ func (rt *RestTester) Bucket() base.Bucket {
 		rt.tb.Fatalf("Unable to copy initial startup config: %v", err)
 	}
 
-	useXattrs := base.TestUseXattrs()
+	// tests must create their own databases in persistent mode
+	if !rt.persistentConfig {
+		useXattrs := base.TestUseXattrs()
 
-	if rt.DatabaseConfig == nil {
-		// If no db config was passed in, create one
-		rt.DatabaseConfig = &DatabaseConfig{}
-	}
+		if rt.DatabaseConfig == nil {
+			// If no db config was passed in, create one
+			rt.DatabaseConfig = &DatabaseConfig{}
+		}
 
-	if base.TestsDisableGSI() {
-		rt.DatabaseConfig.UseViews = base.BoolPtr(true)
-	}
+		if base.TestsDisableGSI() {
+			rt.DatabaseConfig.UseViews = base.BoolPtr(true)
+		}
 
-	// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
-	numReplicas := uint(0)
-	rt.DatabaseConfig.NumIndexReplicas = &numReplicas
+		// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
+		numReplicas := uint(0)
+		rt.DatabaseConfig.NumIndexReplicas = &numReplicas
 
-	rt.DatabaseConfig.Bucket = &testBucket.BucketSpec.BucketName
-	rt.DatabaseConfig.Username = username
-	rt.DatabaseConfig.Password = password
-	rt.DatabaseConfig.CACertPath = testBucket.BucketSpec.CACertPath
-	rt.DatabaseConfig.CertPath = testBucket.BucketSpec.Certpath
-	rt.DatabaseConfig.KeyPath = testBucket.BucketSpec.Keypath
-	rt.DatabaseConfig.Name = "db"
-	rt.DatabaseConfig.Sync = &rt.SyncFn
-	rt.DatabaseConfig.EnableXattrs = &useXattrs
-	if rt.EnableNoConflictsMode {
-		boolVal := false
-		rt.DatabaseConfig.AllowConflicts = &boolVal
-	}
+		rt.DatabaseConfig.Bucket = &testBucket.BucketSpec.BucketName
+		rt.DatabaseConfig.Username = username
+		rt.DatabaseConfig.Password = password
+		rt.DatabaseConfig.CACertPath = testBucket.BucketSpec.CACertPath
+		rt.DatabaseConfig.CertPath = testBucket.BucketSpec.Certpath
+		rt.DatabaseConfig.KeyPath = testBucket.BucketSpec.Keypath
+		rt.DatabaseConfig.Name = "db"
+		rt.DatabaseConfig.Sync = &rt.SyncFn
+		rt.DatabaseConfig.EnableXattrs = &useXattrs
+		if rt.EnableNoConflictsMode {
+			boolVal := false
+			rt.DatabaseConfig.AllowConflicts = &boolVal
+		}
 
-	rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(rt.RestTesterConfig.sgReplicateEnabled)
+		rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(rt.RestTesterConfig.sgReplicateEnabled)
 
-	_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(*rt.DatabaseConfig)
-	if err != nil {
-		rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)
-	}
+		_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(*rt.DatabaseConfig)
+		if err != nil {
+			rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)
+		}
 
-	// Update the testBucket Bucket to the one associated with the database context.  The new (dbContext) bucket
-	// will be closed when the rest tester closes the server context. The original bucket will be closed using the
-	// testBucket's closeFn
-	rt.testBucket.Bucket = rt.RestTesterServerContext.Database("db").Bucket
+		// Update the testBucket Bucket to the one associated with the database context.  The new (dbContext) bucket
+		// will be closed when the rest tester closes the server context. The original bucket will be closed using the
+		// testBucket's closeFn
+		rt.testBucket.Bucket = rt.RestTesterServerContext.Database("db").Bucket
 
-	if err := rt.SetAdminParty(rt.guestEnabled); err != nil {
-		rt.tb.Fatalf("Error from SetAdminParty %v", err)
+		if err := rt.SetAdminParty(rt.guestEnabled); err != nil {
+			rt.tb.Fatalf("Error from SetAdminParty %v", err)
+		}
 	}
 
 	return rt.testBucket.Bucket
@@ -220,6 +242,36 @@ func (rt *RestTester) Bucket() base.Bucket {
 func (rt *RestTester) ServerContext() *ServerContext {
 	rt.Bucket()
 	return rt.RestTesterServerContext
+}
+
+// CreateDatabase is a utility function to create a database through the REST API
+func (rt *RestTester) CreateDatabase(dbName string, config DbConfig) (*TestResponse, error) {
+	dbcJSON, err := base.JSONMarshal(config)
+	if err != nil {
+		return nil, err
+	}
+	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/", dbName), string(dbcJSON))
+	return resp, nil
+}
+
+// ReplaceDbConfig is a utility function to replace a database config through the REST API
+func (rt *RestTester) ReplaceDbConfig(dbName string, config DbConfig) (*TestResponse, error) {
+	dbcJSON, err := base.JSONMarshal(config)
+	if err != nil {
+		return nil, err
+	}
+	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/_config", dbName), string(dbcJSON))
+	return resp, nil
+}
+
+// UpsertDbConfig is a utility function to upsert a database through the REST API
+func (rt *RestTester) UpsertDbConfig(dbName string, config DbConfig) (*TestResponse, error) {
+	dbcJSON, err := base.JSONMarshal(config)
+	if err != nil {
+		return nil, err
+	}
+	resp := rt.SendAdminRequest(http.MethodPost, fmt.Sprintf("/%s/_config", dbName), string(dbcJSON))
+	return resp, nil
 }
 
 // Returns first database found for server context.

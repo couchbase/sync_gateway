@@ -1257,10 +1257,11 @@ func TestConfigGroupIDValidation(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			if test.eeMode && !base.IsEnterpriseEdition() {
+			isEnterpriseEdition := base.IsEnterpriseEdition()
+			if test.eeMode && !isEnterpriseEdition {
 				t.Skip("EE mode only test case")
 			}
-			if !test.eeMode && base.IsEnterpriseEdition() {
+			if !test.eeMode && isEnterpriseEdition {
 				t.Skip("CE mode only test case")
 			}
 
@@ -1271,7 +1272,7 @@ func TestConfigGroupIDValidation(t *testing.T) {
 					UseTLSServer:  base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())),
 				},
 			}
-			err := sc.validate()
+			err := sc.validate(isEnterpriseEdition)
 			if test.expectedError != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), test.expectedError)
@@ -1322,7 +1323,7 @@ func TestClientTLSMissing(t *testing.T) {
 			if test.tlsCert {
 				config.API.HTTPS.TLSCertPath = "test.cert"
 			}
-			err := config.validate()
+			err := config.validate(base.IsEnterpriseEdition())
 			if test.expectError {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), errorTLSOneMissing)
@@ -2106,7 +2107,7 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 			nil,
 		},
 		{
-			"Invalid Sync Fn No Import #2",
+			"Invalid Sync Fn No Import 2",
 			base.StringPtr(`function(doc){
 				if (t )){}
 			}`),
@@ -2135,8 +2136,9 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
+			safeDbName := strings.ToLower(strings.ReplaceAll(testCase.Name, " ", "-"))
 			dbConfig := DbConfig{
-				Name: testCase.Name,
+				Name: safeDbName,
 			}
 
 			if testCase.SyncFunction != nil {
@@ -2216,7 +2218,7 @@ func TestStartupConfigBcryptCostValidation(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			sc := StartupConfig{Auth: AuthConfig{BcryptCost: test.cost}}
-			err := sc.validate()
+			err := sc.validate(base.IsEnterpriseEdition())
 			if test.expectError {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), errContains)
