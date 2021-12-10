@@ -99,9 +99,9 @@ func ClogCallback(level, format string, v ...interface{}) string {
 		logTo(context.TODO(), LevelInfo, KeyDCP, format, v...)
 	case "INFO":
 		// TODO: cbgt currently logs a lot of what we'd consider debug as INFO,
-		//    (i.e. diagnostic information that's not actionable by users), so
-		//    routing to Info pending potential enhancements on cbgt side.
-		logTo(context.TODO(), LevelInfo, KeyDCP, format, v...)
+		//    (i.e. janitor work and partition status), so
+		//    routing to Debug pending potential enhancements on cbgt side.
+		logTo(context.TODO(), LevelDebug, KeyDCP, format, v...)
 	case "DEBU":
 		logTo(context.TODO(), LevelDebug, KeyDCP, format, v...)
 	case "TRAC":
