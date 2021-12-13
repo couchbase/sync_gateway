@@ -520,9 +520,7 @@ func TestReplicationsFromConfig(t *testing.T) {
 //   - Validates documents are replicated to rt2
 func TestPushReplicationAPI(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	rt1, rt2, remoteURLString, teardown := setupSGRPeers(t)
@@ -565,9 +563,7 @@ func TestPushReplicationAPI(t *testing.T) {
 //   - Validates documents are replicated to rt1
 func TestPullReplicationAPI(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	rt1, rt2, remoteURLString, teardown := setupSGRPeers(t)
@@ -609,9 +605,7 @@ func TestPullReplicationAPI(t *testing.T) {
 //   - Validates stop/start/reset actions on the replicationStatus endpoint
 func TestReplicationStatusActions(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	rt1, rt2, remoteURLString, teardown := setupSGRPeers(t)
@@ -713,9 +707,7 @@ func TestReplicationRebalancePull(t *testing.T) {
 		t.Skipf("test is EE only (replication rebalance)")
 	}
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
@@ -811,9 +803,7 @@ func TestReplicationRebalancePush(t *testing.T) {
 		t.Skipf("test is EE only (replication rebalance)")
 	}
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
@@ -906,9 +896,7 @@ func TestReplicationRebalancePush(t *testing.T) {
 //   - Validates replication status count when replication is local and non-local
 func TestPullOneshotReplicationAPI(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
@@ -963,9 +951,7 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 //   WriteUpdateWithXattr.  Have been unable to reproduce the same with a leaky bucket UpdateCallback.
 func TestReplicationConcurrentPush(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyCRUD, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
@@ -1593,9 +1579,7 @@ func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 
 func TestReplicationConfigChange(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
@@ -1683,9 +1667,7 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 		t.Skipf("test is EE only (replication rebalance)")
 	}
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)

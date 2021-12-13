@@ -681,8 +681,16 @@ func getBucketSpec(testBucketName tbpBucketName) BucketSpec {
 	return bucketSpec
 }
 
-// NumUsableBuckets returns the total number of buckets in the pool that can be used by a test.
-func (tbp *TestBucketPool) NumUsableBuckets() int {
+// RequireNumTestBuckets skips the given test if there are not enough test buckets available to use.
+func RequireNumTestBuckets(t *testing.T, numRequired int) {
+	usable := GTestBucketPool.numUsableBuckets()
+	if usable < numRequired {
+		t.Skipf("Only had %d usable test buckets available (test requires %d)", usable, numRequired)
+	}
+}
+
+// numUsableBuckets returns the total number of buckets in the pool that can be used by a test.
+func (tbp *TestBucketPool) numUsableBuckets() int {
 	if !tbp.integrationMode {
 		// we can create virtually endless walrus buckets,
 		// so report back 10 to match a fully available CBS bucket pool.
