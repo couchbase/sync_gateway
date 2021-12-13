@@ -31,7 +31,6 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/hashicorp/go-multierror"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -136,8 +135,8 @@ func TestConfigValidation(t *testing.T) {
 			errorMessages := config.setupAndValidateDatabases()
 			if test.err != "" {
 				require.NotNil(t, errorMessages)
-				multiError, ok := errorMessages.(*multierror.Error)
-				require.Truef(t, ok, "expected multierror but got: %v", errorMessages)
+				multiError, ok := errorMessages.(*base.MultiError)
+				require.Truef(t, ok, "expected multiError but got: %v", errorMessages)
 				require.Equal(t, multiError.Len(), 1)
 				assert.EqualError(t, multiError.Errors[0], test.err)
 			} else {
@@ -290,7 +289,7 @@ func TestConfigValidationImportPartitions(t *testing.T) {
 			errorMessages := config.setupAndValidateDatabases()
 			if test.err != "" {
 				require.NotNil(t, errorMessages)
-				multiError, ok := errorMessages.(*multierror.Error)
+				multiError, ok := errorMessages.(*base.MultiError)
 				require.True(t, ok)
 				require.Equal(t, multiError.Len(), 1)
 				assert.EqualError(t, multiError.Errors[0], test.err)
@@ -571,7 +570,7 @@ func TestServerConfigValidate(t *testing.T) {
 	sc := &LegacyServerConfig{Unsupported: unsupported}
 	validationErrors := sc.validate()
 	require.NotNil(t, validationErrors)
-	multiError, ok := validationErrors.(*multierror.Error)
+	multiError, ok := validationErrors.(*base.MultiError)
 	require.True(t, ok)
 	require.Equal(t, multiError.Len(), 1)
 	assert.Contains(t, multiError.Errors[0].Error(), "minimum value for unsupported.stats_log_freq_secs")
@@ -874,7 +873,7 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 
 	sharedBucketErrors := sharedBucketDatabaseCheck(sc)
 	require.NotNil(t, sharedBucketErrors)
-	multiError, ok := sharedBucketErrors.(*multierror.Error)
+	multiError, ok := sharedBucketErrors.(*base.MultiError)
 	require.NotNil(t, ok)
 	require.Equal(t, multiError.Len(), 1)
 	var sharedBucketError *SharedBucketError
@@ -956,9 +955,9 @@ func TestEnvDefaultExpansion(t *testing.T) {
 }
 
 func TestExpandEnv(t *testing.T) {
-	makeEnvVarError := func(keys ...string) (errs *multierror.Error) {
+	makeEnvVarError := func(keys ...string) (errs *base.MultiError) {
 		for _, key := range keys {
-			errs = multierror.Append(errs, ErrEnvVarUndefined{key: key})
+			errs = errs.Append(ErrEnvVarUndefined{key: key})
 		}
 		return errs
 	}
@@ -968,7 +967,7 @@ func TestExpandEnv(t *testing.T) {
 		inputConfig    []byte
 		varsEnv        map[string]string
 		expectedConfig []byte
-		expectedError  *multierror.Error
+		expectedError  *base.MultiError
 	}{
 		{
 			name: "environment variable substitution with $var and ${var} syntax",
@@ -1154,7 +1153,7 @@ func TestExpandEnv(t *testing.T) {
 			// Check environment variable substitutions.
 			actualConfig, err := expandEnv(test.inputConfig)
 			if test.expectedError != nil {
-				errs, ok := err.(*multierror.Error)
+				errs, ok := err.(*base.MultiError)
 				require.True(t, ok)
 				require.Equal(t, test.expectedError.Len(), errs.Len())
 				require.Equal(t, test.expectedError, errs)
@@ -2157,7 +2156,7 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 				assert.Equal(t, testCase.ExpectImportFilter, dbConfig.ImportFilter)
 			} else {
 				assert.Error(t, err)
-				errorMessages, ok := err.(*multierror.Error)
+				errorMessages, ok := err.(*base.MultiError)
 				require.True(t, ok)
 				assert.Len(t, errorMessages.Errors, testCase.ExpectErrorCount)
 			}

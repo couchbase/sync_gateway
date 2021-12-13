@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/hashicorp/go-multierror"
 )
 
 // configFlag stores the config value, and the corresponding flag value
@@ -133,7 +132,8 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 
 // fillConfigWithFlags fills in the config values from registerConfigFlags if the user
 // has explicitly set the flags
-func fillConfigWithFlags(fs *flag.FlagSet, flags map[string]configFlag) (errorMessages error) {
+func fillConfigWithFlags(fs *flag.FlagSet, flags map[string]configFlag) error {
+	var errorMessages *base.MultiError
 	fs.Visit(func(f *flag.Flag) {
 		if val, exists := flags[f.Name]; exists {
 			rval := reflect.ValueOf(val.config).Elem()
@@ -167,7 +167,7 @@ func fillConfigWithFlags(fs *flag.FlagSet, flags map[string]configFlag) (errorMe
 				duration, err := time.ParseDuration(*val.flagValue.(*string))
 				if err != nil {
 					err = fmt.Errorf("flag %s error: %w", f.Name, err)
-					errorMessages = multierror.Append(errorMessages, err)
+					errorMessages = errorMessages.Append(err)
 					return
 				}
 				if pointer {
@@ -180,7 +180,7 @@ func fillConfigWithFlags(fs *flag.FlagSet, flags map[string]configFlag) (errorMe
 				err := rl.UnmarshalText([]byte(*val.flagValue.(*string)))
 				if err != nil {
 					err = fmt.Errorf("flag %s error: %w", f.Name, err)
-					errorMessages = multierror.Append(errorMessages, err)
+					errorMessages = errorMessages.Append(err)
 					return
 				}
 				*val.config.(*base.RedactionLevel) = rl
@@ -189,7 +189,7 @@ func fillConfigWithFlags(fs *flag.FlagSet, flags map[string]configFlag) (errorMe
 				err := ll.UnmarshalText([]byte(*val.flagValue.(*string)))
 				if err != nil {
 					err = fmt.Errorf("flag %s error: %w", f.Name, err)
-					errorMessages = multierror.Append(errorMessages, err)
+					errorMessages = errorMessages.Append(err)
 					return
 				}
 				rval.Set(reflect.ValueOf(&ll))
@@ -201,14 +201,14 @@ func fillConfigWithFlags(fs *flag.FlagSet, flags map[string]configFlag) (errorMe
 				err := d.Decode(&dbCredentials)
 				if err != nil {
 					err = fmt.Errorf("flag %s for value %q error: %w", f.Name, str, err)
-					errorMessages = multierror.Append(errorMessages, err)
+					errorMessages = errorMessages.Append(err)
 					return
 				}
 				*val.config.(*PerDatabaseCredentialsConfig) = dbCredentials
 			default:
-				errorMessages = multierror.Append(errorMessages, fmt.Errorf("Unknown type %v for flag %v\n", rval.Type(), f.Name))
+				errorMessages = errorMessages.Append(fmt.Errorf("Unknown type %v for flag %v\n", rval.Type(), f.Name))
 			}
 		}
 	})
-	return errorMessages
+	return errorMessages.ErrorOrNil()
 }

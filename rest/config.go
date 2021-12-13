@@ -28,8 +28,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/hashicorp/go-multierror"
-
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -471,42 +469,45 @@ const dbConfigFieldNotAllowedErrorMsg = "Persisted database config does not supp
 
 // validatePersistentDbConfig checks for fields that are only allowed in non-persistent mode.
 func (dbConfig *DbConfig) validatePersistentDbConfig() (errorMessages error) {
+	var multiError *base.MultiError
 	if dbConfig.Server != nil {
-		errorMessages = multierror.Append(errorMessages, fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "server"))
+		multiError = multiError.Append(fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "server"))
 	}
 	if dbConfig.Username != "" {
-		errorMessages = multierror.Append(errorMessages, fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "username"))
+		multiError = multiError.Append(fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "username"))
 	}
 	if dbConfig.Password != "" {
-		errorMessages = multierror.Append(errorMessages, fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "password"))
+		multiError = multiError.Append(fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "password"))
 	}
 	if dbConfig.CertPath != "" {
-		errorMessages = multierror.Append(errorMessages, fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "certpath"))
+		multiError = multiError.Append(fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "certpath"))
 	}
 	if dbConfig.KeyPath != "" {
-		errorMessages = multierror.Append(errorMessages, fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "keypath"))
+		multiError = multiError.Append(fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "keypath"))
 	}
 	if dbConfig.CACertPath != "" {
-		errorMessages = multierror.Append(errorMessages, fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "cacertpath"))
+		multiError = multiError.Append(fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "cacertpath"))
 	}
 	if dbConfig.Users != nil {
-		errorMessages = multierror.Append(errorMessages, fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "users"))
+		multiError = multiError.Append(fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "users"))
 	}
 	if dbConfig.Roles != nil {
-		errorMessages = multierror.Append(errorMessages, fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "roles"))
+		multiError = multiError.Append(fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "roles"))
 	}
-	return errorMessages
+	return multiError.ErrorOrNil()
 }
 
 func (dbConfig *DbConfig) validate() error {
 	return dbConfig.validateVersion(base.IsEnterpriseEdition())
 }
 
-func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) (errorMessages error) {
+func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) error {
+
+	var multiError *base.MultiError
 	// Make sure a non-zero compact_interval_days config is within the valid range
 	if val := dbConfig.CompactIntervalDays; val != nil && *val != 0 &&
 		(*val < db.CompactIntervalMinDays || *val > db.CompactIntervalMaxDays) {
-		errorMessages = multierror.Append(errorMessages, fmt.Errorf(rangeValueErrorMsg, "compact_interval_days",
+		multiError = multiError.Append(fmt.Errorf(rangeValueErrorMsg, "compact_interval_days",
 			fmt.Sprintf("%g-%g", db.CompactIntervalMinDays, db.CompactIntervalMaxDays)))
 	}
 
@@ -531,25 +532,25 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) (errorMessag
 			}
 
 			if dbConfig.CacheConfig.ChannelCacheConfig.MaxNumPending != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxNumPending < 1 {
-				errorMessages = multierror.Append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.max_num_pending", 1))
+				multiError = multiError.Append(fmt.Errorf(minValueErrorMsg, "cache.channel_cache.max_num_pending", 1))
 			}
 			if dbConfig.CacheConfig.ChannelCacheConfig.MaxWaitPending != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxWaitPending < 1 {
-				errorMessages = multierror.Append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.max_wait_pending", 1))
+				multiError = multiError.Append(fmt.Errorf(minValueErrorMsg, "cache.channel_cache.max_wait_pending", 1))
 			}
 			if dbConfig.CacheConfig.ChannelCacheConfig.MaxWaitSkipped != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxWaitSkipped < 1 {
-				errorMessages = multierror.Append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.max_wait_skipped", 1))
+				multiError = multiError.Append(fmt.Errorf(minValueErrorMsg, "cache.channel_cache.max_wait_skipped", 1))
 			}
 			if dbConfig.CacheConfig.ChannelCacheConfig.MaxLength != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxLength < 1 {
-				errorMessages = multierror.Append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.max_length", 1))
+				multiError = multiError.Append(fmt.Errorf(minValueErrorMsg, "cache.channel_cache.max_length", 1))
 			}
 			if dbConfig.CacheConfig.ChannelCacheConfig.MinLength != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MinLength < 1 {
-				errorMessages = multierror.Append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.min_length", 1))
+				multiError = multiError.Append(fmt.Errorf(minValueErrorMsg, "cache.channel_cache.min_length", 1))
 			}
 			if dbConfig.CacheConfig.ChannelCacheConfig.ExpirySeconds != nil && *dbConfig.CacheConfig.ChannelCacheConfig.ExpirySeconds < 1 {
-				errorMessages = multierror.Append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.expiry_seconds", 1))
+				multiError = multiError.Append(fmt.Errorf(minValueErrorMsg, "cache.channel_cache.expiry_seconds", 1))
 			}
 			if dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber < db.MinimumChannelCacheMaxNumber {
-				errorMessages = multierror.Append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.max_number", db.MinimumChannelCacheMaxNumber))
+				multiError = multiError.Append(fmt.Errorf(minValueErrorMsg, "cache.channel_cache.max_number", db.MinimumChannelCacheMaxNumber))
 			}
 
 			// Compact watermark validation
@@ -557,18 +558,18 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) (errorMessag
 			lwm := db.DefaultCompactLowWatermarkPercent
 			if dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent != nil {
 				if *dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent < 1 || *dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent > 100 {
-					errorMessages = multierror.Append(errorMessages, fmt.Errorf(rangeValueErrorMsg, "cache.channel_cache.compact_high_watermark_pct", "0-100"))
+					multiError = multiError.Append(fmt.Errorf(rangeValueErrorMsg, "cache.channel_cache.compact_high_watermark_pct", "0-100"))
 				}
 				hwm = *dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent
 			}
 			if dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent != nil {
 				if *dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent < 1 || *dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent > 100 {
-					errorMessages = multierror.Append(errorMessages, fmt.Errorf(rangeValueErrorMsg, "cache.channel_cache.compact_low_watermark_pct", "0-100"))
+					multiError = multiError.Append(fmt.Errorf(rangeValueErrorMsg, "cache.channel_cache.compact_low_watermark_pct", "0-100"))
 				}
 				lwm = *dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent
 			}
 			if lwm >= hwm {
-				errorMessages = multierror.Append(errorMessages, fmt.Errorf("cache.channel_cache.compact_high_watermark_pct (%v) must be greater than cache.channel_cache.compact_low_watermark_pct (%v)", hwm, lwm))
+				multiError = multiError.Append(fmt.Errorf("cache.channel_cache.compact_high_watermark_pct (%v) must be greater than cache.channel_cache.compact_low_watermark_pct (%v)", hwm, lwm))
 			}
 
 		}
@@ -583,7 +584,7 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) (errorMessag
 
 			if dbConfig.CacheConfig.RevCacheConfig.ShardCount != nil {
 				if *dbConfig.CacheConfig.RevCacheConfig.ShardCount < 1 {
-					errorMessages = multierror.Append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.rev_cache.shard_count", 1))
+					multiError = multiError.Append(fmt.Errorf(minValueErrorMsg, "cache.rev_cache.shard_count", 1))
 				}
 			}
 		}
@@ -598,14 +599,14 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) (errorMessag
 	// Import validation
 	autoImportEnabled, err := dbConfig.AutoImportEnabled()
 	if err != nil {
-		errorMessages = multierror.Append(errorMessages, err)
+		multiError = multiError.Append(err)
 	}
 	if dbConfig.FeedType == base.TapFeedType && autoImportEnabled == true {
-		errorMessages = multierror.Append(errorMessages, fmt.Errorf("Invalid configuration for Sync Gw. TAP feed type can not be used with auto-import"))
+		multiError = multiError.Append(fmt.Errorf("Invalid configuration for Sync Gw. TAP feed type can not be used with auto-import"))
 	}
 
 	if dbConfig.AutoImport != nil && autoImportEnabled && !dbConfig.UseXattrs() {
-		errorMessages = multierror.Append(errorMessages, fmt.Errorf("Invalid configuration - import_docs enabled, but enable_shared_bucket_access not enabled"))
+		multiError = multiError.Append(fmt.Errorf("Invalid configuration - import_docs enabled, but enable_shared_bucket_access not enabled"))
 	}
 
 	if dbConfig.ImportPartitions != nil {
@@ -613,11 +614,11 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) (errorMessag
 			base.Warnf(eeOnlyWarningMsg, "import_partitions", *dbConfig.ImportPartitions, nil)
 			dbConfig.ImportPartitions = nil
 		} else if !dbConfig.UseXattrs() {
-			errorMessages = multierror.Append(errorMessages, fmt.Errorf("Invalid configuration - import_partitions set, but enable_shared_bucket_access not enabled"))
+			multiError = multiError.Append(fmt.Errorf("Invalid configuration - import_partitions set, but enable_shared_bucket_access not enabled"))
 		} else if !autoImportEnabled {
-			errorMessages = multierror.Append(errorMessages, fmt.Errorf("Invalid configuration - import_partitions set, but import_docs disabled"))
+			multiError = multiError.Append(fmt.Errorf("Invalid configuration - import_partitions set, but import_docs disabled"))
 		} else if *dbConfig.ImportPartitions < 1 || *dbConfig.ImportPartitions > 1024 {
-			errorMessages = multierror.Append(errorMessages, fmt.Errorf(rangeValueErrorMsg, "import_partitions", "1-1024"))
+			multiError = multiError.Append(fmt.Errorf(rangeValueErrorMsg, "import_partitions", "1-1024"))
 		}
 	}
 
@@ -629,7 +630,7 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) (errorMessag
 		if strings.TrimSpace(*dbConfig.Sync) != "" {
 			_, err = sgbucket.NewJSRunner(*dbConfig.Sync)
 			if err != nil {
-				errorMessages = multierror.Append(errorMessages, fmt.Errorf("sync function contains invalid javascript syntax: %v", err))
+				multiError = multiError.Append(fmt.Errorf("sync function contains invalid javascript syntax: %v", err))
 			}
 		} else {
 			dbConfig.Sync = nil
@@ -640,7 +641,7 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) (errorMessag
 		if strings.TrimSpace(*dbConfig.ImportFilter) != "" {
 			_, err = sgbucket.NewJSRunner(*dbConfig.ImportFilter)
 			if err != nil {
-				errorMessages = multierror.Append(errorMessages, fmt.Errorf("import filter function contains invalid javascript syntax: %v", err))
+				multiError = multiError.Append(fmt.Errorf("import filter function contains invalid javascript syntax: %v", err))
 			}
 		} else {
 			dbConfig.ImportFilter = nil
@@ -648,7 +649,7 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) (errorMessag
 	}
 
 	if err := db.ValidateDatabaseName(dbConfig.Name); err != nil {
-		errorMessages = multierror.Append(errorMessages, err)
+		multiError = multiError.Append(err)
 	}
 
 	if dbConfig.Unsupported != nil && dbConfig.Unsupported.WarningThresholds != nil {
@@ -657,9 +658,9 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) (errorMessag
 			lowerLimit := 0.1 * 1024 * 1024 // 0.1 MB
 			upperLimit := 1 * 1024 * 1024   // 1 MB
 			if *warningThresholdXattrSize < uint32(lowerLimit) {
-				errorMessages = multierror.Append(errorMessages, fmt.Errorf("xattr_size warning threshold cannot be lower than %d bytes", uint32(lowerLimit)))
+				multiError = multiError.Append(fmt.Errorf("xattr_size warning threshold cannot be lower than %d bytes", uint32(lowerLimit)))
 			} else if *warningThresholdXattrSize > uint32(upperLimit) {
-				errorMessages = multierror.Append(errorMessages, fmt.Errorf("xattr_size warning threshold cannot be higher than %d bytes", uint32(upperLimit)))
+				multiError = multiError.Append(fmt.Errorf("xattr_size warning threshold cannot be higher than %d bytes", uint32(upperLimit)))
 			}
 		}
 
@@ -667,7 +668,7 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) (errorMessag
 		if warningThresholdChannelsPerDoc != nil {
 			lowerLimit := 5
 			if *warningThresholdChannelsPerDoc < uint32(lowerLimit) {
-				errorMessages = multierror.Append(errorMessages, fmt.Errorf("channels_per_doc warning threshold cannot be lower than %d", lowerLimit))
+				multiError = multiError.Append(fmt.Errorf("channels_per_doc warning threshold cannot be lower than %d", lowerLimit))
 			}
 		}
 
@@ -675,7 +676,7 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) (errorMessag
 		if warningThresholdGrantsPerDoc != nil {
 			lowerLimit := 5
 			if *warningThresholdGrantsPerDoc < uint32(lowerLimit) {
-				errorMessages = multierror.Append(errorMessages, fmt.Errorf("access_and_role_grants_per_doc warning threshold cannot be lower than %d", lowerLimit))
+				multiError = multiError.Append(fmt.Errorf("access_and_role_grants_per_doc warning threshold cannot be lower than %d", lowerLimit))
 			}
 		}
 	}
@@ -684,16 +685,16 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) (errorMessag
 	if revsLimit != nil {
 		if *dbConfig.ConflictsAllowed() {
 			if *revsLimit < 20 {
-				errorMessages = multierror.Append(errorMessages, fmt.Errorf("The revs_limit (%v) value in your Sync Gateway configuration cannot be set lower than 20.", *revsLimit))
+				multiError = multiError.Append(fmt.Errorf("The revs_limit (%v) value in your Sync Gateway configuration cannot be set lower than 20.", *revsLimit))
 			}
 		} else {
 			if *revsLimit <= 0 {
-				errorMessages = multierror.Append(errorMessages, fmt.Errorf("The revs_limit (%v) value in your Sync Gateway configuration must be greater than zero.", *revsLimit))
+				multiError = multiError.Append(fmt.Errorf("The revs_limit (%v) value in your Sync Gateway configuration must be greater than zero.", *revsLimit))
 			}
 		}
 	}
 
-	return errorMessages
+	return multiError.ErrorOrNil()
 }
 
 // Checks for deprecated cache config options and if they are set it will return a warning. If the old one is set and
@@ -850,18 +851,20 @@ func decodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
 // current environment variables. The replacement is case-sensitive. References
 // to undefined variables will result in an error. A default value can
 // be given by using the form ${var:-default value}.
-func expandEnv(config []byte) (value []byte, errs error) {
-	return []byte(os.Expand(string(config), func(key string) string {
+func expandEnv(config []byte) (value []byte, err error) {
+	var multiError *base.MultiError
+	val := []byte(os.Expand(string(config), func(key string) string {
 		if key == "$" {
 			base.Debugf(base.KeyConfig, "Skipping environment variable expansion: %s", key)
 			return key
 		}
 		val, err := envDefaultExpansion(key, os.Getenv)
 		if err != nil {
-			errs = multierror.Append(errs, err)
+			multiError = multiError.Append(err)
 		}
 		return val
-	})), errs
+	}))
+	return val, multiError.ErrorOrNil()
 }
 
 // ErrEnvVarUndefined is returned when a specified variable can’t be resolved from
@@ -964,50 +967,51 @@ func (sc *ServerContext) addHTTPServer(s *http.Server) {
 }
 
 func (sc *StartupConfig) validate(isEnterpriseEdition bool) (errorMessages error) {
+	var multiError *base.MultiError
 	if sc.Bootstrap.Server == "" {
-		errorMessages = multierror.Append(errorMessages, fmt.Errorf("a server must be provided in the Bootstrap configuration"))
+		multiError = multiError.Append(fmt.Errorf("a server must be provided in the Bootstrap configuration"))
 	}
 
 	secureServer := base.ServerIsTLS(sc.Bootstrap.Server)
 	if base.BoolDefault(sc.Bootstrap.UseTLSServer, DefaultUseTLSServer) {
 		if !secureServer && !base.ServerIsWalrus(sc.Bootstrap.Server) {
-			errorMessages = multierror.Append(errorMessages, fmt.Errorf("Must use secure scheme in Couchbase Server URL, or opt out by setting bootstrap.use_tls_server to false. Current URL: %s", base.SD(sc.Bootstrap.Server)))
+			multiError = multiError.Append(fmt.Errorf("Must use secure scheme in Couchbase Server URL, or opt out by setting bootstrap.use_tls_server to false. Current URL: %s", base.SD(sc.Bootstrap.Server)))
 		}
 	} else {
 		if secureServer {
-			errorMessages = multierror.Append(errorMessages, fmt.Errorf("Couchbase server URL cannot use secure protocol when bootstrap.use_tls_server is false. Current URL: %s", base.SD(sc.Bootstrap.Server)))
+			multiError = multiError.Append(fmt.Errorf("Couchbase server URL cannot use secure protocol when bootstrap.use_tls_server is false. Current URL: %s", base.SD(sc.Bootstrap.Server)))
 		}
 	}
 
 	if sc.Bootstrap.ServerTLSSkipVerify != nil && *sc.Bootstrap.ServerTLSSkipVerify && sc.Bootstrap.CACertPath != "" {
-		errorMessages = multierror.Append(errorMessages, fmt.Errorf("cannot skip server TLS validation and use CA Cert"))
+		multiError = multiError.Append(fmt.Errorf("cannot skip server TLS validation and use CA Cert"))
 	}
 
 	// Make sure if a SSL key or cert is provided, they are both provided
 	if (sc.API.HTTPS.TLSKeyPath != "" || sc.API.HTTPS.TLSCertPath != "") && (sc.API.HTTPS.TLSKeyPath == "" || sc.API.HTTPS.TLSCertPath == "") {
-		errorMessages = multierror.Append(errorMessages, fmt.Errorf("both TLS Key Path and TLS Cert Path must be provided when using client TLS. Disable client TLS by not providing either of these options"))
+		multiError = multiError.Append(fmt.Errorf("both TLS Key Path and TLS Cert Path must be provided when using client TLS. Disable client TLS by not providing either of these options"))
 	}
 
 	if sc.Auth.BcryptCost > 0 && (sc.Auth.BcryptCost < auth.DefaultBcryptCost || sc.Auth.BcryptCost > bcrypt.MaxCost) {
-		errorMessages = multierror.Append(errorMessages, fmt.Errorf("%v: %d outside allowed range: %d-%d", auth.ErrInvalidBcryptCost, sc.Auth.BcryptCost, auth.DefaultBcryptCost, bcrypt.MaxCost))
+		multiError = multiError.Append(fmt.Errorf("%v: %d outside allowed range: %d-%d", auth.ErrInvalidBcryptCost, sc.Auth.BcryptCost, auth.DefaultBcryptCost, bcrypt.MaxCost))
 	}
 
 	// EE only features
 	if !isEnterpriseEdition {
 		if sc.API.EnableAdminAuthenticationPermissionsCheck != nil && *sc.API.EnableAdminAuthenticationPermissionsCheck {
-			errorMessages = multierror.Append(errorMessages, fmt.Errorf("enable_advanced_auth_dp is only supported in enterprise edition"))
+			multiError = multiError.Append(fmt.Errorf("enable_advanced_auth_dp is only supported in enterprise edition"))
 		}
 
 		if sc.Bootstrap.ConfigGroupID != persistentConfigDefaultGroupID {
-			errorMessages = multierror.Append(errorMessages, fmt.Errorf("customization of group_id is only supported in enterprise edition"))
+			multiError = multiError.Append(fmt.Errorf("customization of group_id is only supported in enterprise edition"))
 		}
 	}
 
 	if len(sc.Bootstrap.ConfigGroupID) > persistentConfigGroupIDMaxLength {
-		errorMessages = multierror.Append(errorMessages, fmt.Errorf("group_id must be at most %d characters in length", persistentConfigGroupIDMaxLength))
+		multiError = multiError.Append(fmt.Errorf("group_id must be at most %d characters in length", persistentConfigGroupIDMaxLength))
 	}
 
-	return errorMessages
+	return multiError.ErrorOrNil()
 }
 
 // setupServerContext creates a new ServerContext given its configuration and performs the context validation.
@@ -1333,14 +1337,16 @@ func sharedBucketDatabaseCheck(sc *ServerContext) (errors error) {
 		}
 	}
 	sharedBuckets := sharedBuckets(bucketUUIDToDBContext)
+
+	var multiError *base.MultiError
 	for _, sharedBucket := range sharedBuckets {
 		sharedBucketError := &SharedBucketError{sharedBucket}
-		errors = multierror.Append(errors, sharedBucketError)
+		multiError = multiError.Append(sharedBucketError)
 		messageFormat := "Bucket %q is shared among databases %s. " +
 			"This may result in unexpected behaviour if security is not defined consistently."
 		base.Warnf(messageFormat, base.MD(sharedBucket.bucketName), base.MD(sharedBucket.dbNames))
 	}
-	return errors
+	return multiError.ErrorOrNil()
 }
 
 type sharedBucket struct {

@@ -31,7 +31,6 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/hashicorp/go-multierror"
 )
 
 // The URL that stats will be reported to if deployment_id is set in the config
@@ -846,7 +845,7 @@ func validateEventConfigOptions(eventType db.EventType, eventConfig *EventConfig
 		return nil
 	}
 
-	var errs *multierror.Error
+	var errs *base.MultiError
 
 	switch eventType {
 	case db.DocumentChange:
@@ -854,18 +853,18 @@ func validateEventConfigOptions(eventType db.EventType, eventConfig *EventConfig
 			switch k {
 			case db.EventOptionDocumentChangedWinningRevOnly:
 				if _, ok := v.(bool); !ok {
-					errs = multierror.Append(errs, fmt.Errorf("Event option %q must be of type bool", db.EventOptionDocumentChangedWinningRevOnly))
+					errs = errs.Append(fmt.Errorf("Event option %q must be of type bool", db.EventOptionDocumentChangedWinningRevOnly))
 				}
 			default:
-				errs = multierror.Append(errs, fmt.Errorf("unknown option %q found for event type %q", k, eventType))
+				errs = errs.Append(fmt.Errorf("unknown option %q found for event type %q", k, eventType))
 			}
 		}
 	default:
-		errs = multierror.Append(errs, fmt.Errorf("unknown options %v found for event type %q", eventConfig.Options, eventType))
+		errs = errs.Append(fmt.Errorf("unknown options %v found for event type %q", eventConfig.Options, eventType))
 	}
 
 	// If we only have 1 error, return it as-is for clarity in the logs.
-	if errs != nil {
+	if errs.ErrorOrNil() != nil {
 		if errs.Len() == 1 {
 			return errs.Errors[0]
 		}
