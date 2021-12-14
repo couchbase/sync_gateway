@@ -103,9 +103,7 @@ func bucketConfigFromTestBucket(tb *base.TestBucket) BucketConfig {
 }
 
 func TestAllDatabaseNames(t *testing.T) {
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	tb1 := base.GetTestBucket(t)
 	defer tb1.Close()

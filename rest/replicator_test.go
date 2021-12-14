@@ -150,9 +150,7 @@ func TestActiveReplicatorHeartbeats(t *testing.T) {
 //   - Uses an ActiveReplicator configured for pull to start pulling changes from rt2.
 func TestActiveReplicatorPullBasic(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
 
@@ -246,9 +244,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 //   - Creates a second doc which references the same attachment.
 func TestActiveReplicatorPullAttachments(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
 
@@ -365,9 +361,7 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 		t.Skip("Test uses EE-only features for custom conflict resolution")
 	}
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	tests := []struct {
 		name                     string
@@ -568,9 +562,7 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 //   - Starts the pull replication again and asserts that the checkpoint is used.
 func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
@@ -735,9 +727,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 //   - Starts a pull replication to ensure that even ignored revisions are checkpointed.
 func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
@@ -896,9 +886,7 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 //   - Uses an ActiveReplicator configured for pull to start pulling changes from rt2.
 func TestActiveReplicatorPullOneshot(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyReplicate)()
 
@@ -991,9 +979,7 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 //   - Uses an ActiveReplicator configured for push to start pushing changes to rt2.
 func TestActiveReplicatorPushBasic(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
 
@@ -1082,9 +1068,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 //   - Creates a second doc which references the same attachment.
 func TestActiveReplicatorPushAttachments(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
 
@@ -1197,9 +1181,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 //   - Starts the push replication again and asserts that the checkpoint is used.
 func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
@@ -1363,9 +1345,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 //   - Starts the push replication again and asserts that the checkpoint is used.
 func TestActiveReplicatorPushFromCheckpointIgnored(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
@@ -1505,9 +1485,7 @@ func TestActiveReplicatorPushFromCheckpointIgnored(t *testing.T) {
 //   - Uses an ActiveReplicator configured for push to start pushing changes to rt2.
 func TestActiveReplicatorPushOneshot(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
 
@@ -1602,9 +1580,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 //   - Deletes the document in rt2, and waits for the tombstone to get to rt1.
 func TestActiveReplicatorPullTombstone(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
@@ -1704,9 +1680,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 //   - Drops the document out of the channel so the replicator in rt1 pulls a _removed revision.
 func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyReplicate)()
 
@@ -1883,9 +1857,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 
 	for _, test := range conflictResolutionTests {
 		t.Run(test.name, func(t *testing.T) {
-			if base.GTestBucketPool.NumUsableBuckets() < 2 {
-				t.Skipf("test requires at least 2 usable test buckets")
-			}
+			base.RequireNumTestBuckets(t, 2)
 			defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD)()
 
 			// Passive
@@ -2092,9 +2064,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 
 	for _, test := range conflictResolutionTests {
 		t.Run(test.name, func(t *testing.T) {
-			if base.GTestBucketPool.NumUsableBuckets() < 2 {
-				t.Skipf("test requires at least 2 usable test buckets")
-			}
+			base.RequireNumTestBuckets(t, 2)
 			defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD)()
 
 			// Passive
@@ -2288,9 +2258,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 //   - rt2 served using a self-signed TLS cert (via httptest)
 //   - Uses an ActiveReplicator configured for push to start pushing changes to rt2.
 func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
 
 	// Passive
@@ -2367,9 +2335,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 //   - rt2 served using a self-signed TLS cert (via httptest)
 //   - Uses an ActiveReplicator configured for push to start pushing changes to rt2.
 func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
 
 	// Passive
@@ -2432,9 +2398,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 //   - Starts the replication again, and ensures that documents are re-replicated to it.
 func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 3 {
-		t.Skipf("test requires at least 3 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 3)
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
@@ -2588,9 +2552,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 //   - Starts the replication again, and ensures that post-flush, documents are re-replicated to it.
 func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 3 {
-		t.Skipf("test requires at least 3 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 3)
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
@@ -2763,9 +2725,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 //   - Starts the replication again, and ensures that documents are re-replicated to it.
 func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
@@ -2921,9 +2881,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 //   - Checkpoints again to ensure it is retried on error.
 func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
@@ -3022,9 +2980,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 // TestActiveReplicatorIgnoreNoConflicts ensures the IgnoreNoConflicts flag allows Hydrogen<-->Hydrogen replication with no_conflicts set.
 func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
 
@@ -3130,9 +3086,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 //   - Starts the pull replication again with a config change, validate checkpoint is reset
 func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
@@ -3299,9 +3253,7 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 // - Unroutable remote address
 // Will test both indefinite retry, and a timeout.
 func TestActiveReplicatorReconnectOnStart(t *testing.T) {
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	if testing.Short() {
 		t.Skipf("Test skipped in short mode")
@@ -3441,9 +3393,7 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 // but succeeds once the user is created on the remote.
 func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp)()
 
@@ -3515,9 +3465,7 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 // TestActiveReplicatorReconnectSendActions ensures ActiveReplicator reconnect retry loops exit when the replicator is stopped
 func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp)()
 
@@ -3847,9 +3795,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 
 	for _, test := range conflictResolutionTests {
 		t.Run(test.name, func(t *testing.T) {
-			if base.GTestBucketPool.NumUsableBuckets() < 2 {
-				t.Skipf("test requires at least 2 usable test buckets")
-			}
+			base.RequireNumTestBuckets(t, 2)
 			defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 			// Passive
@@ -3971,9 +3917,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 }
 
 func TestSGR2TombstoneConflictHandling(t *testing.T) {
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	tombstoneTests := []struct {
 		name               string
@@ -4288,9 +4232,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 // This test ensures that the local tombstone revision wins over non-tombstone revision
 // whilst applying default conflict resolution policy through pushAndPull replication.
 func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}
@@ -4442,9 +4384,7 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 // This test ensures that the remote tombstone revision wins over non-tombstone revision
 // whilst applying default conflict resolution policy through pushAndPull replication.
 func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}
@@ -4702,9 +4642,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 
 	for _, test := range conflictResolutionTests {
 		t.Run(test.name, func(t *testing.T) {
-			if base.GTestBucketPool.NumUsableBuckets() < 2 {
-				t.Skipf("test requires at least 2 usable test buckets")
-			}
+			base.RequireNumTestBuckets(t, 2)
 			defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 			activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
@@ -4831,9 +4769,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 	t.Skip("Test is only for development purposes")
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	errorCountBefore := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value()
 
@@ -4894,9 +4830,7 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 }
 
 func TestReplicatorConflictAttachment(t *testing.T) {
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("requires enterprise edition")
@@ -5000,9 +4934,7 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 }
 
 func TestReplicatorRevocations(t *testing.T) {
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	// Passive
 	revocationTester, rt2 := initScenario(t, nil)
@@ -5056,9 +4988,7 @@ func TestReplicatorRevocations(t *testing.T) {
 }
 
 func TestReplicatorRevocationsNoRev(t *testing.T) {
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	// Passive
 	revocationTester, rt2 := initScenario(t, nil)
@@ -5113,9 +5043,7 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 }
 
 func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	// Passive
 	revocationTester, rt2 := initScenario(t, nil)
@@ -5176,9 +5104,7 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 }
 
 func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	// Passive
 	revocationTester, rt2 := initScenario(t, nil)
@@ -5278,9 +5204,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	// Passive
 	rt2 := NewRestTester(t, nil)
@@ -5342,9 +5266,7 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	// Passive
 	_, rt2 := initScenario(t, nil)
@@ -5428,9 +5350,7 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 func TestReplicatorRevocationsFromZero(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	// Passive
 	_, rt2 := initScenario(t, nil)
@@ -5533,9 +5453,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 
 	defer db.SuspendSequenceBatching()()
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	// Passive
 	_, rt2 := initScenario(t, nil)

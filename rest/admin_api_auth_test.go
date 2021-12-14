@@ -1522,9 +1522,7 @@ func TestCreateDBSpecificBucketPerm(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		adminInterfaceAuthentication: true,

@@ -801,9 +801,7 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 }
 
 func TestValidateServerContextSharedBuckets(t *testing.T) {
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Skipping this test; requires Couchbase Bucket")
