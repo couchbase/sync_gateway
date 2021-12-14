@@ -6,8 +6,6 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/hashicorp/go-multierror"
-
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -91,7 +89,8 @@ func registerLegacyFlags(config *StartupConfig, fs *flag.FlagSet) map[string]leg
 	}
 }
 
-func fillConfigWithLegacyFlags(flags map[string]legacyConfigFlag, fs *flag.FlagSet, consoleLogLevelSet bool) (errorMessages error) {
+func fillConfigWithLegacyFlags(flags map[string]legacyConfigFlag, fs *flag.FlagSet, consoleLogLevelSet bool) error {
+	var errors *base.MultiError
 	fs.Visit(func(f *flag.Flag) {
 		cfgFlag, legacyFlag := flags[f.Name]
 		if !legacyFlag {
@@ -121,10 +120,10 @@ func fillConfigWithLegacyFlags(flags map[string]legacyConfigFlag, fs *flag.FlagS
 			base.Warnf(flagDeprecated, "-"+f.Name, "-"+cfgFlag.supersededFlag)
 		case "configServer":
 			err := fmt.Errorf(`flag "-%s" is no longer supported and has been removed`, f.Name)
-			errorMessages = multierror.Append(errorMessages, err)
+			errors = errors.Append(err)
 		case "dbname", "deploymentID":
 			base.Warnf(`Flag "-%s" is no longer supported and has been removed.`, f.Name)
 		}
 	})
-	return errorMessages
+	return errors.ErrorOrNil()
 }

@@ -12,7 +12,6 @@ import (
 	"github.com/couchbase/gocbcore/v10/connstr"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/hashicorp/go-multierror"
 	pkgerrors "github.com/pkg/errors"
 )
 
@@ -379,9 +378,9 @@ func setupServerConfig(args []string) (config *LegacyServerConfig, err error) {
 	}
 
 	// Validation
-	var multiError *multierror.Error
-	multiError = multierror.Append(multiError, config.validate())
-	multiError = multierror.Append(multiError, config.setupAndValidateDatabases())
+	var multiError *base.MultiError
+	multiError = multiError.Append(config.validate())
+	multiError = multiError.Append(config.setupAndValidateDatabases())
 	if multiError.ErrorOrNil() != nil {
 		base.Errorf("Error during config validation: %v", multiError)
 		return nil, fmt.Errorf("error(s) during config validation: %v", multiError)
@@ -411,16 +410,17 @@ func (config *LegacyServerConfig) setupAndValidateDatabases() error {
 
 // validate validates the given server config and returns all invalid options as a slice of errors
 func (config *LegacyServerConfig) validate() (errorMessages error) {
+	var multiError *base.MultiError
 	if config.Unsupported != nil && config.Unsupported.StatsLogFrequencySecs != nil {
 		if *config.Unsupported.StatsLogFrequencySecs == 0 {
 			// explicitly disabled
 		} else if *config.Unsupported.StatsLogFrequencySecs < 10 {
-			errorMessages = multierror.Append(errorMessages, fmt.Errorf(minValueErrorMsg,
+			multiError = multiError.Append(fmt.Errorf(minValueErrorMsg,
 				"unsupported.stats_log_freq_secs", 10))
 		}
 	}
 
-	return errorMessages
+	return multiError.ErrorOrNil()
 }
 
 func (self *LegacyServerConfig) MergeWith(other *LegacyServerConfig) error {

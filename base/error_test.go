@@ -13,6 +13,7 @@ package base
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"reflect"
 	"testing"
@@ -181,4 +182,28 @@ func TestIsDocNotFoundError(t *testing.T) {
 
 	fakeSyntaxError := &json.SyntaxError{}
 	assert.False(t, IsDocNotFoundError(fakeSyntaxError))
+}
+
+func TestMultiError(t *testing.T) {
+	var m *MultiError
+	m = m.Append(fmt.Errorf("first error"))
+	m = m.Append(fmt.Errorf("second error"))
+	assert.Equal(t, 2, m.Len())
+	assert.NotNil(t, m.ErrorOrNil())
+
+	var moreErrors *MultiError
+	moreErrors = moreErrors.Append(m)
+	assert.Equal(t, 2, moreErrors.Len())
+	assert.NotNil(t, moreErrors.ErrorOrNil())
+
+	var moreNonEmptyErrors *MultiError
+	moreNonEmptyErrors = moreNonEmptyErrors.Append(fmt.Errorf("another error"))
+	moreNonEmptyErrors = moreNonEmptyErrors.Append(moreErrors)
+	assert.Equal(t, 3, moreNonEmptyErrors.Len())
+	assert.NotNil(t, moreNonEmptyErrors.ErrorOrNil())
+	log.Printf("%s", moreNonEmptyErrors)
+
+	var nilError *MultiError
+	assert.Nil(t, nilError.ErrorOrNil())
+
 }

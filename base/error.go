@@ -213,3 +213,68 @@ func IsDocNotFoundError(err error) bool {
 		return false
 	}
 }
+
+// MultiError manages a set of errors.  Callers must use ErrorOrNil when returning MultiError to callers
+// in order to properly handle nil checks on the returned MultiError
+//  Sample usage:
+//    func ErrorSet(error1, error2 err) err {
+//      var myErrors *MultiError
+//      myErrors.Append(error1)
+//      myErrors.Append(error2)
+//      return myErrors.ErrorOrNil()
+//    }
+
+type MultiError struct {
+	Errors []error
+}
+
+// Append adds an error to the set.  If err is a *MultiError, the inner errors are added to
+// the set individually
+func (me *MultiError) Append(err error) *MultiError {
+	if me == nil {
+		me = &MultiError{
+			Errors: make([]error, 0),
+		}
+	}
+	switch typedErr := err.(type) {
+	case nil:
+		return me
+	case *MultiError:
+		for _, e := range typedErr.Errors {
+			me.Errors = append(me.Errors, e)
+		}
+	default:
+		me.Errors = append(me.Errors, err)
+	}
+	return me
+}
+
+// Error implements the error interface, and formats the errors one per line
+func (me *MultiError) Error() string {
+	if me == nil {
+		return ""
+	}
+	message := fmt.Sprintf("%d errors:\n", len(me.Errors))
+	delimiter := ""
+	for _, err := range me.Errors {
+		message += delimiter + err.Error()
+		delimiter = "\n"
+	}
+	return message
+}
+
+// Len returns length of the inner error slice
+func (me *MultiError) Len() int {
+	if me == nil {
+		return 0
+	}
+	return len(me.Errors)
+}
+
+// ErrorOrNil
+func (me *MultiError) ErrorOrNil() error {
+	if me == nil || len(me.Errors) == 0 {
+		return nil
+	}
+	return me
+}

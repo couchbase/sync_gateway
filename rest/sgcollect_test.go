@@ -17,8 +17,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
+
 	goassert "github.com/couchbaselabs/go.assert"
-	"github.com/hashicorp/go-multierror"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -129,7 +130,7 @@ func TestSgcollectOptionsValidateInvalid(t *testing.T) {
 		t.Run(test.name, func(ts *testing.T) {
 			errs := test.options.Validate()
 			require.NotNil(t, errs)
-			multiError, ok := errs.(*multierror.Error)
+			multiError, ok := errs.(*base.MultiError)
 			require.True(t, ok)
 
 			// make sure we get at least one error for the given invalid options.
