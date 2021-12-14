@@ -165,9 +165,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		if err := rt.RestTesterServerContext.initializeCouchbaseServerConnections(); err != nil {
 			panic("Couldn't initialize Couchbase Server connection: " + err.Error())
 		}
-	}
 
-	if !base.UnitTestUrlIsWalrus() {
 		// Copy any testbucket cert info into boostrap server config
 		// Required as present for X509 tests there is no way to pass this info to the bootstrap server context with a
 		// RestTester directly - Should hopefully be alleviated by CBG-1460
@@ -176,10 +174,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 		sc.Bootstrap.X509KeyPath = testBucket.BucketSpec.Keypath
 
 		rt.testBucket.BucketSpec.TLSSkipVerify = base.TestTLSSkipVerify()
-
-		gocbAgent, err := rt.RestTesterServerContext.initializeGoCBAgent()
-		require.NoError(rt.tb, err)
-		rt.RestTesterServerContext.GoCBAgent = gocbAgent
 	}
 
 	// Copy this startup config at this point into initial startup config
