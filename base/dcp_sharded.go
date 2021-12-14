@@ -567,7 +567,7 @@ func StoreDestFactory(destKey string, dest CbgtDestFactoryFunc) {
 
 	// We don't expect duplicate destKey registration - log a warning if it already exists
 	if ok {
-		Warnf("destKey %s already exists in cbgtDestFactories - new value will replace the existing dest")
+		Warnf("destKey %s already exists in cbgtDestFactories - new value will replace the existing dest", destKey)
 	}
 	cbgtDestFactories[destKey] = dest
 	cbgtDestFactoriesLock.Unlock()
