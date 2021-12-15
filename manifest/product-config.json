@@ -264,10 +264,11 @@
             "start_build": 10
         },
         "manifest/2.8.xml": {
+            "do-build": false,
             "release": "2.8.3",
             "release_name": "Couchbase Sync Gateway 2.8.3",
             "production": true,
-            "interval": 120,
+            "interval": 1440,
             "go_version": "1.13.4",
             "trigger_blackduck": true,
             "start_build": 1
