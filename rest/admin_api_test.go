@@ -4291,9 +4291,7 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 
 // CBG-1046: Add ability to specify user for active peer in sg-replicate2
 func TestSpecifyUserDocsToReplicate(t *testing.T) {
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
+	base.RequireNumTestBuckets(t, 2)
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	testCases := []struct {
