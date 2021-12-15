@@ -4334,14 +4334,15 @@ function (doc) {
 			passiveRT := NewRestTester(t, rtConfig)
 			defer passiveRT.Close()
 
-			activeRT := NewRestTester(t, rtConfig)
-			defer activeRT.Close()
-
 			publicSrv := httptest.NewServer(passiveRT.TestPublicHandler())
 			defer publicSrv.Close()
 
 			adminSrv := httptest.NewServer(passiveRT.TestAdminHandler())
 			defer adminSrv.Close()
+
+			activeRT := NewRestTester(t, rtConfig)
+			defer activeRT.Close()
+			activeRT.GetDatabase().SGReplicateMgr.CheckpointInterval = 0 // Stop ISGR checkpoints due to causing panic after teardown
 
 			// Change RT depending on direction
 			var senderRT *RestTester   // RT that has the initial docs that get replicated to the other bucket
@@ -4433,6 +4434,10 @@ function (doc) {
 
 			value, _ = base.WaitForStat(receiverRT.GetDatabase().DbStats.Database().NumDocWrites.Value, 10)
 			assert.EqualValues(t, 10, value)
+
+			// explicitly stop the SGReplicateMgrs on the active nodes, to prevent a node rebalance during test teardown.
+			activeRT.GetDatabase().SGReplicateMgr.Stop()
+			activeRT.GetDatabase().SGReplicateMgr = nil
 		})
 	}
 }

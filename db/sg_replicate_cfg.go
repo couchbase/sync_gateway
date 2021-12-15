@@ -251,7 +251,7 @@ func (rc *ReplicationConfig) Upsert(c *ReplicationUpsertConfig) {
 		rc.Username = *c.Username
 	}
 
-	if c.Username != nil && c.Password != nil {
+	if c.Username != nil {
 		rc.Password = *c.Password
 	}
 
@@ -501,7 +501,7 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 	rc = &ActiveReplicatorConfig{
 		ID:                 config.ID,
 		Continuous:         config.Continuous,
-		ActiveDB:           activeDB, // sg-replicate interacts with local as admin
+		ActiveDB:           activeDB,
 		PurgeOnRemoval:     config.PurgeOnRemoval,
 		DeltasEnabled:      config.DeltaSyncEnabled,
 		InsecureSkipVerify: insecureSkipVerify,
