@@ -92,8 +92,10 @@ func NewSGNode(uuid string, host string) *SGNode {
 type ReplicationConfig struct {
 	ID                     string                    `json:"replication_id"`
 	Remote                 string                    `json:"remote"`
-	Username               string                    `json:"username,omitempty"`
-	Password               string                    `json:"password,omitempty"`
+	Username               string                    `json:"username,omitempty"` // Deprecated
+	Password               string                    `json:"password,omitempty"` // Deprecated
+	RemoteUsername         string                    `json:"remote_username,omitempty"`
+	RemotePassword         string                    `json:"remote_password,omitempty"`
 	Direction              ActiveReplicatorDirection `json:"direction"`
 	ConflictResolutionType ConflictResolverType      `json:"conflict_resolution_type,omitempty"`
 	ConflictResolutionFn   string                    `json:"custom_conflict_resolver,omitempty"`
@@ -107,7 +109,7 @@ type ReplicationConfig struct {
 	Cancel                 bool                      `json:"cancel,omitempty"`
 	Adhoc                  bool                      `json:"adhoc,omitempty"`
 	BatchSize              int                       `json:"batch_size,omitempty"`
-	RunAsAdminUser         bool                      `json:"run_as_admin_user,omitempty"`
+	RunAs                  string                    `json:"run_as,omitempty"`
 }
 
 func DefaultReplicationConfig() ReplicationConfig {
@@ -120,7 +122,6 @@ func DefaultReplicationConfig() ReplicationConfig {
 		Continuous:             false,
 		Adhoc:                  false,
 		BatchSize:              defaultChangesBatchSize,
-		RunAsAdminUser:         true,
 	}
 }
 
@@ -135,8 +136,10 @@ type ReplicationCfg struct {
 type ReplicationUpsertConfig struct {
 	ID                     string      `json:"replication_id"`
 	Remote                 *string     `json:"remote"`
-	Username               *string     `json:"username,omitempty"`
-	Password               *string     `json:"password,omitempty"`
+	Username               *string     `json:"username,omitempty"` // Deprecated
+	Password               *string     `json:"password,omitempty"` // Deprecated
+	RemoteUsername         *string     `json:"remote_username,omitempty"`
+	RemotePassword         *string     `json:"remote_password,omitempty"`
 	Direction              *string     `json:"direction"`
 	ConflictResolutionType *string     `json:"conflict_resolution_type,omitempty"`
 	ConflictResolutionFn   *string     `json:"custom_conflict_resolver,omitempty"`
@@ -150,7 +153,7 @@ type ReplicationUpsertConfig struct {
 	Cancel                 *bool       `json:"cancel,omitempty"`
 	Adhoc                  *bool       `json:"adhoc,omitempty"`
 	BatchSize              *int        `json:"batch_size,omitempty"`
-	RunAsAdminUser         *bool       `json:"run_as_admin_user,omitempty"`
+	RunAs                  *string     `json:"run_as,omitempty"`
 }
 
 func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
@@ -209,7 +212,7 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 		return base.HTTPErrorf(http.StatusBadRequest, "Replication remote URL is invalid")
 	}
 
-	if (remoteURL != nil && remoteURL.User.Username() != "") && rc.Username != "" {
+	if (remoteURL != nil && remoteURL.User.Username() != "") && rc.RemoteUsername != "" {
 		return base.HTTPErrorf(http.StatusBadRequest,
 			ConfigErrorDuplicateCredentials)
 	}
@@ -247,12 +250,24 @@ func (rc *ReplicationConfig) Upsert(c *ReplicationUpsertConfig) {
 		rc.Remote = *c.Remote
 	}
 
-	if c.Username != nil {
-		rc.Username = *c.Username
+	if c.Username != nil || c.Password != nil {
+		base.Warnf(`Deprecation notice: replication config fields "username" and "password" are now "remote_username" and "remote_password" respectively`)
+		if c.Username != nil {
+			rc.RemoteUsername = *c.Username
+		}
+
+		if c.Username != nil { // Causes bug CBG-1858
+			rc.RemotePassword = *c.Password
+		}
 	}
 
-	if c.Username != nil {
-		rc.Password = *c.Password
+	// Remote credential fields take priority over deprecated credential fields
+	if c.RemoteUsername != nil {
+		rc.RemoteUsername = *c.RemoteUsername
+	}
+
+	if c.RemotePassword != nil {
+		rc.RemotePassword = *c.RemotePassword
 	}
 
 	if c.Direction != nil {
@@ -298,8 +313,8 @@ func (rc *ReplicationConfig) Upsert(c *ReplicationUpsertConfig) {
 		rc.BatchSize = *c.BatchSize
 	}
 
-	if c.RunAsAdminUser != nil {
-		rc.RunAsAdminUser = *c.RunAsAdminUser
+	if c.RunAs != nil {
+		rc.RunAs = *c.RunAs
 	}
 
 	if c.QueryParams != nil {
@@ -340,8 +355,8 @@ func (rc *ReplicationConfig) Equals(compareToCfg *ReplicationConfig) (bool, erro
 // both replication config and remote URL, i.e., any password will be replaced with xxxxx.
 func (rc *ReplicationConfig) Redacted() *ReplicationConfig {
 	config := *rc
-	if config.Password != "" {
-		config.Password = base.RedactedStr
+	if config.RemotePassword != "" {
+		config.RemotePassword = base.RedactedStr
 	}
 	config.Remote = base.RedactBasicAuthURLPassword(config.Remote)
 	return &config
@@ -490,8 +505,8 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 	}
 
 	activeDB := &Database{DatabaseContext: m.dbContext}
-	if !config.RunAsAdminUser {
-		user, err := m.dbContext.Authenticator().GetUser(config.Username)
+	if config.RunAs != "" {
+		user, err := m.dbContext.Authenticator().GetUser(config.RunAs)
 		if err != nil {
 			return nil, err
 		}
@@ -560,8 +575,8 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 
 	// If auth credentials are explicitly defined in the replication configuration,
 	// enrich remote database URL connection string with the supplied auth credentials.
-	if config.Username != "" {
-		rc.RemoteDBURL.User = url.UserPassword(config.Username, config.Password)
+	if config.RemoteUsername != "" {
+		rc.RemoteDBURL.User = url.UserPassword(config.RemoteUsername, config.RemotePassword)
 	}
 
 	rc.WebsocketPingInterval = m.dbContext.Options.SGReplicateOptions.WebsocketPingInterval

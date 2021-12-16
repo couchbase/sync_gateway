@@ -555,7 +555,6 @@ func TestIsCfgChanged(t *testing.T) {
 				Filter:                 "a",
 				QueryParams:            []interface{}{"ABC"},
 				Cancel:                 true,
-				RunAsAdminUser:         true,
 			},
 		}
 	}

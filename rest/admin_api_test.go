@@ -4342,7 +4342,6 @@ function (doc) {
 
 			activeRT := NewRestTester(t, rtConfig)
 			defer activeRT.Close()
-			activeRT.GetDatabase().SGReplicateMgr.CheckpointInterval = 0 // Stop ISGR checkpoints due to causing panic after teardown
 
 			// Change RT depending on direction
 			var senderRT *RestTester   // RT that has the initial docs that get replicated to the other bucket
@@ -4386,9 +4385,9 @@ function (doc) {
 					"direction": "` + test.direction + `",
 					"continuous": true,
 					"batch": 200,
-					"run_as_admin_user": false,
-					"username": "alice",
-					"password": "pass"
+					"run_as": "alice",
+					"remote_username": "alice",
+					"remote_password": "pass"
 				}`
 
 			resp = activeRT.SendAdminRequest("PUT", "/db/_replication/"+replName, replConf)
@@ -4411,6 +4410,13 @@ function (doc) {
 				assert.Contains(t, string(body), "alice")
 			}
 
+			// Stop and remove replicator (to stop checkpointing after teardown causing panic)
+			_, err = activeRT.GetDatabase().SGReplicateMgr.PutReplicationStatus(replName, "stop")
+			require.NoError(t, err)
+			activeRT.waitForReplicationStatus(replName, db.ReplicationStateStopped)
+			err = activeRT.GetDatabase().SGReplicateMgr.DeleteReplication(replName)
+			require.NoError(t, err)
+
 			// Replicate all docs
 			// Run as admin should default to true
 			replConf = `
@@ -4422,24 +4428,52 @@ function (doc) {
 						"batch": 200
 					}`
 
-			err = activeRT.GetDatabase().SGReplicateMgr.DeleteReplication(replName)
-			require.NoError(t, err)
-
 			resp = activeRT.SendAdminRequest("PUT", "/db/_replication/"+replName, replConf)
 			assertStatus(t, resp, http.StatusCreated)
-
-			err = activeRT.GetDatabase().SGReplicateMgr.StartReplications()
-			require.NoError(t, err)
 			activeRT.waitForReplicationStatus(replName, db.ReplicationStateRunning)
 
 			value, _ = base.WaitForStat(receiverRT.GetDatabase().DbStats.Database().NumDocWrites.Value, 10)
 			assert.EqualValues(t, 10, value)
 
-			// explicitly stop the SGReplicateMgrs on the active nodes, to prevent a node rebalance during test teardown.
-			activeRT.GetDatabase().SGReplicateMgr.Stop()
-			activeRT.GetDatabase().SGReplicateMgr = nil
+			// Stop and remove replicator
+			_, err = activeRT.GetDatabase().SGReplicateMgr.PutReplicationStatus(replName, "stop")
+			require.NoError(t, err)
+			activeRT.waitForReplicationStatus(replName, db.ReplicationStateStopped)
+			err = activeRT.GetDatabase().SGReplicateMgr.DeleteReplication(replName)
+			require.NoError(t, err)
 		})
 	}
+}
+
+// Test that the username and password fields in the replicator get duplicated to remote_username and remote_password
+// then blanked, then check remote_password is redacted
+func TestReplicatorDeprecatedCredentials(t *testing.T) {
+	activeRT := NewRestTester(t, nil)
+	defer activeRT.Close()
+
+	replConfig := `
+{
+	"replication_id": "repl",
+	"remote": "localhost:123/db",
+	"direction": "push",
+	"continuous": false,
+	"username": "alice",
+	"password": "pass"
+}
+`
+	resp := activeRT.SendAdminRequest("POST", "/db/_replication/", replConfig)
+	assertStatus(t, resp, 201)
+
+	resp = activeRT.SendAdminRequest("GET", "/db/_replication/repl", "")
+	assertStatus(t, resp, 200)
+
+	var config db.ReplicationConfig
+	err := json.Unmarshal(resp.BodyBytes(), &config)
+	require.NoError(t, err)
+	assert.Equal(t, "", config.Username)
+	assert.Equal(t, "", config.Password)
+	assert.Equal(t, "alice", config.RemoteUsername)
+	assert.Equal(t, base.RedactedStr, config.RemotePassword)
 }
 
 // CBG-1581: Ensure activeReplicatorCommon does final checkpoint on stop/disconnect
