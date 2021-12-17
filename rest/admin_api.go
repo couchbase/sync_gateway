@@ -1132,6 +1132,9 @@ func (h *handler) handleSGCollect() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid options used for sgcollect_info: %v", multiError)
 	}
 
+	// Populate username and password used by sgcollect_info script for talking to Sync Gateway.
+	params.syncGatewayUsername, params.syncGatewayPassword = h.getBasicAuth()
+
 	zipFilename := sgcollectFilename()
 
 	logFilePath := h.server.config.Logging.LogFilePath

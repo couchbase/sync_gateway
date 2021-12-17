@@ -184,6 +184,11 @@ type sgCollectOptions struct {
 	UploadProxy     string `json:"upload_proxy,omitempty"`
 	Customer        string `json:"customer,omitempty"`
 	Ticket          string `json:"ticket,omitempty"`
+
+	// Unexported - Don't allow these to be set via the JSON body.
+	// We'll set them from the request's basic auth.
+	syncGatewayUsername string
+	syncGatewayPassword string
 }
 
 // validateOutputDirectory will check that the given path exists, and is a directory.
@@ -278,6 +283,14 @@ func (c *sgCollectOptions) Args() []string {
 
 	if c.RedactSalt != "" {
 		args = append(args, "--log-redaction-salt", c.RedactSalt)
+	}
+
+	if c.syncGatewayUsername != "" {
+		args = append(args, "--sync-gateway-username", c.syncGatewayUsername)
+	}
+
+	if c.syncGatewayPassword != "" {
+		args = append(args, "--sync-gateway-password", c.syncGatewayPassword)
 	}
 
 	return args
