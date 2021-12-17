@@ -3995,6 +3995,28 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 		}
 	}
 
+	compareDocRev := func(docRev, cmpRev string) (shouldRetry bool, err error, value interface{}) {
+		var gen, hash bool
+		docArr := strings.Split(docRev, "-")
+		cmpArr := strings.Split(cmpRev, "-")
+		if len(docArr) > 0 && len(cmpArr) > 0 {
+			gen = (docArr[0] == cmpArr[0])
+		}
+		if len(docArr) > 1 && len(cmpArr) > 1 {
+			hash = (docArr[1] == cmpArr[1])
+		}
+		if gen {
+			if !hash {
+				return false, fmt.Errorf("rev generation numbers match but hashes are different: %v, %v", docRev, cmpRev), nil
+			}
+			return false, nil, docRev
+		}
+		return true, nil, nil
+	}
+
+	maxAttempts := 200
+	attemptSleepMs := 100
+
 	for _, test := range tombstoneTests {
 
 		t.Run(test.name, func(t *testing.T) {
@@ -4054,29 +4076,43 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			localActiveRT.waitForReplicationStatus("replication", db.ReplicationStateRunning)
 
 			// Wait for document to arrive on the doc is was put on
-			err = localActiveRT.WaitForCondition(func() bool {
+			// err = localActiveRT.WaitForCondition(func() bool {
+			// 	doc, _ := localActiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
+			// 	if doc == nil {
+			// 		return false
+			// 	}
+			// 	if doc.SyncData.CurrentRev == "3-abc" {
+			// 		return true
+			// 	}
+			// 	return false
+			// })
+			err = localActiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
 				doc, _ := localActiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
-				if doc == nil {
-					return false
+				if doc != nil {
+					return compareDocRev(doc.SyncData.CurrentRev, "3-abc")
 				}
-				if doc.SyncData.CurrentRev == "3-abc" {
-					return true
-				}
-				return false
-			})
+				return true, nil, nil
+			}, maxAttempts, attemptSleepMs)
 			assert.NoError(t, err)
 
 			// Wait for document to be replicated
-			err = remotePassiveRT.WaitForCondition(func() bool {
+			// err = remotePassiveRT.WaitForCondition(func() bool {
+			// 	doc, _ := remotePassiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
+			// 	if doc == nil {
+			// 		return false
+			// 	}
+			// 	if doc.SyncData.CurrentRev == "3-abc" {
+			// 		return true
+			// 	}
+			// 	return false
+			// })
+			err = remotePassiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
 				doc, _ := remotePassiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
-				if doc == nil {
-					return false
+				if doc != nil {
+					return compareDocRev(doc.SyncData.CurrentRev, "3-abc")
 				}
-				if doc.SyncData.CurrentRev == "3-abc" {
-					return true
-				}
-				return false
-			})
+				return true, nil, nil
+			}, maxAttempts, attemptSleepMs)
 			assert.NoError(t, err)
 
 			// Stop the replication
