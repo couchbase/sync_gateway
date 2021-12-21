@@ -510,6 +510,16 @@ func (rt *RestTester) WaitForConditionWithOptions(successFunc func() bool, maxNu
 	return nil
 }
 
+func (rt *RestTester) WaitForConditionShouldRetry(conditionFunc func() (shouldRetry bool, err error, value interface{}), maxNumAttempts, timeToSleepMs int) error {
+	sleeper := base.CreateSleeperFunc(maxNumAttempts, timeToSleepMs)
+	err, _ := base.RetryLoop("Wait for condition options", conditionFunc, sleeper)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (rt *RestTester) SendAdminRequest(method, resource string, body string) *TestResponse {
 	input := bytes.NewBufferString(body)
 	request, err := http.NewRequest(method, "http://localhost"+resource, input)
