@@ -3997,8 +3997,8 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 	compareDocRev := func(docRev, cmpRev string) (shouldRetry bool, err error, value interface{}) {
 		docGen, docHash := db.ParseRevID(docRev)
-		cmpGen, cmpHash := db.ParseRevID(docRev)
-		if docGen ==  cmpGen {
+		cmpGen, cmpHash := db.ParseRevID(cmpRev)
+		if docGen == cmpGen {
 			if docHash != cmpHash {
 				return false, fmt.Errorf("rev generations match but hashes are different: %v, %v", docRev, cmpRev), nil
 			}
