@@ -4445,18 +4445,38 @@ function (doc) {
 	}
 }
 
-// Test that the username and password fields in the replicator get duplicated to remote_username and remote_password
-// then blanked, then check remote_password is redacted
+// Test that the username and password fields in the replicator still work and get redacted appropriately.
+// This should log a deprecation notice.
 func TestReplicatorDeprecatedCredentials(t *testing.T) {
+	passiveRT := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{
+		DbConfig: DbConfig{
+			Users: map[string]*db.PrincipalConfig{
+				"alice": {
+					Password: base.StringPtr("pass"),
+				},
+			},
+		},
+	},
+	})
+	defer passiveRT.Close()
+
+	adminSrv := httptest.NewServer(passiveRT.TestPublicHandler())
+	defer adminSrv.Close()
+
 	activeRT := NewRestTester(t, nil)
 	defer activeRT.Close()
 
+	err := activeRT.GetDatabase().SGReplicateMgr.StartReplications()
+	require.NoError(t, err)
+
+	rev := activeRT.createDoc(t, "test")
+
 	replConfig := `
 {
-	"replication_id": "repl",
-	"remote": "localhost:123/db",
+	"replication_id": "` + t.Name() + `",
+	"remote": "` + adminSrv.URL + `/db",
 	"direction": "push",
-	"continuous": false,
+	"continuous": true,
 	"username": "alice",
 	"password": "pass"
 }
@@ -4464,16 +4484,27 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 	resp := activeRT.SendAdminRequest("POST", "/db/_replication/", replConfig)
 	assertStatus(t, resp, 201)
 
-	resp = activeRT.SendAdminRequest("GET", "/db/_replication/repl", "")
+	activeRT.waitForReplicationStatus(t.Name(), db.ReplicationStateRunning)
+
+	err = passiveRT.waitForRev("test", rev)
+	require.NoError(t, err)
+
+	resp = activeRT.SendAdminRequest("GET", "/db/_replication/"+t.Name(), "")
 	assertStatus(t, resp, 200)
 
 	var config db.ReplicationConfig
-	err := json.Unmarshal(resp.BodyBytes(), &config)
+	err = json.Unmarshal(resp.BodyBytes(), &config)
 	require.NoError(t, err)
-	assert.Equal(t, "", config.Username)
-	assert.Equal(t, "", config.Password)
-	assert.Equal(t, "alice", config.RemoteUsername)
-	assert.Equal(t, base.RedactedStr, config.RemotePassword)
+	assert.Equal(t, "alice", config.Username)
+	assert.Equal(t, base.RedactedStr, config.Password)
+	assert.Equal(t, "", config.RemoteUsername)
+	assert.Equal(t, "", config.RemotePassword)
+
+	_, err = activeRT.GetDatabase().SGReplicateMgr.PutReplicationStatus(t.Name(), "stop")
+	require.NoError(t, err)
+	activeRT.waitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
+	err = activeRT.GetDatabase().SGReplicateMgr.DeleteReplication(t.Name())
+	require.NoError(t, err)
 }
 
 // CBG-1581: Ensure activeReplicatorCommon does final checkpoint on stop/disconnect

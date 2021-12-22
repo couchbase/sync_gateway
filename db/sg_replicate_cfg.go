@@ -250,18 +250,14 @@ func (rc *ReplicationConfig) Upsert(c *ReplicationUpsertConfig) {
 		rc.Remote = *c.Remote
 	}
 
-	if c.Username != nil || c.Password != nil {
-		base.Warnf(`Deprecation notice: replication config fields "username" and "password" are now "remote_username" and "remote_password" respectively`)
-		if c.Username != nil {
-			rc.RemoteUsername = *c.Username
-		}
-
-		if c.Username != nil { // Causes bug CBG-1858
-			rc.RemotePassword = *c.Password
-		}
+	if c.Username != nil {
+		rc.Username = *c.Username
 	}
 
-	// Remote credential fields take priority over deprecated credential fields
+	if c.Username != nil {
+		rc.Password = *c.Password
+	}
+
 	if c.RemoteUsername != nil {
 		rc.RemoteUsername = *c.RemoteUsername
 	}
@@ -355,6 +351,9 @@ func (rc *ReplicationConfig) Equals(compareToCfg *ReplicationConfig) (bool, erro
 // both replication config and remote URL, i.e., any password will be replaced with xxxxx.
 func (rc *ReplicationConfig) Redacted() *ReplicationConfig {
 	config := *rc
+	if config.Password != "" {
+		config.Password = base.RedactedStr
+	}
 	if config.RemotePassword != "" {
 		config.RemotePassword = base.RedactedStr
 	}
@@ -575,8 +574,17 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 
 	// If auth credentials are explicitly defined in the replication configuration,
 	// enrich remote database URL connection string with the supplied auth credentials.
+	username := config.Username
+	password := config.Password
+	if username != "" || password != "" {
+		base.Warnf(`Deprecation notice: replication config fields "username" and "password" are now "remote_username" and "remote_password" respectively`)
+	}
 	if config.RemoteUsername != "" {
-		rc.RemoteDBURL.User = url.UserPassword(config.RemoteUsername, config.RemotePassword)
+		username = config.RemoteUsername
+		password = config.RemotePassword
+	}
+	if username != "" {
+		rc.RemoteDBURL.User = url.UserPassword(username, password)
 	}
 
 	rc.WebsocketPingInterval = m.dbContext.Options.SGReplicateOptions.WebsocketPingInterval
