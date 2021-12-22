@@ -4297,3 +4297,58 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	_, fetchDb2DestErr := base.FetchDestFactory(base.ImportDestKey("db2"))
 	assert.NoError(t, fetchDb2DestErr)
 }
+
+// CBG-1581: Ensure activeReplicatorCommon does final checkpoint on stop/disconnect
+func TestReplicatorCheckpointOnStop(t *testing.T) {
+	passiveRT := NewRestTester(t, nil)
+	defer passiveRT.Close()
+
+	adminSrv := httptest.NewServer(passiveRT.TestAdminHandler())
+	defer adminSrv.Close()
+
+	activeRT := NewRestTester(t, nil)
+	defer activeRT.Close()
+
+	// Disable checkpointing at an interval
+	activeRT.GetDatabase().SGReplicateMgr.CheckpointInterval = 0
+	err := activeRT.GetDatabase().SGReplicateMgr.StartReplications()
+	require.NoError(t, err)
+
+	rev := activeRT.createDoc(t, "test")
+
+	replConfig := `
+{
+	"replication_id": "` + t.Name() + `",
+	"remote": "` + adminSrv.URL + `/db",
+	"direction": "push",
+	"continuous": true
+}
+`
+	resp := activeRT.SendAdminRequest("POST", "/db/_replication/", replConfig)
+	assertStatus(t, resp, 201)
+
+	activeRT.waitForReplicationStatus(t.Name(), db.ReplicationStateRunning)
+
+	err = passiveRT.waitForRev("test", rev)
+	require.NoError(t, err)
+
+	_, err = activeRT.GetDatabase().SGReplicateMgr.PutReplicationStatus(t.Name(), "stop")
+	require.NoError(t, err)
+	activeRT.waitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
+	err = activeRT.GetDatabase().SGReplicateMgr.DeleteReplication(t.Name())
+	require.NoError(t, err)
+
+	// Check checkpoint document was wrote to bucket with correct status
+	// _sync:local:checkpoint/sgr2cp:push:TestReplicatorCheckpointOnStop
+	expectedCheckpointName := base.SyncPrefix + "local:checkpoint/" + db.PushCheckpointID(t.Name())
+	val, _, err := activeRT.Bucket().GetRaw(expectedCheckpointName)
+	require.NoError(t, err)
+	var config struct {
+		Status struct {
+			Status string
+		}
+	}
+	err = json.Unmarshal(val, &config)
+	require.NoError(t, err)
+	assert.Equal(t, "stopped", config.Status.Status)
+}
