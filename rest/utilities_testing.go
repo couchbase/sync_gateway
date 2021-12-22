@@ -618,30 +618,33 @@ func (rt *RestTester) WaitForViewAvailable(viewURLPath string) (err error) {
 
 }
 
-func (rt *RestTester) WaitForDBOnline() (err error) {
+func (rt *RestTester) GetDBState() string {
+	var body db.Body
+	resp := rt.SendAdminRequest("GET", "/db/", "")
+	assertStatus(rt.tb, resp, 200)
+	require.NoError(rt.tb, base.JSONUnmarshal(resp.Body.Bytes(), &body))
+	return body["state"].(string)
+}
 
+func (rt *RestTester) WaitForDBOnline() (err error) {
+	return rt.waitForDBState("Online")
+}
+
+func (rt *RestTester) WaitForDBOffline() (err error) {
+	return rt.waitForDBState("Offline")
+}
+
+func (rt *RestTester) waitForDBState(stateWant string) (err error) {
+	var stateCurr string
 	maxTries := 20
 
 	for i := 0; i < maxTries; i++ {
-
-		response := rt.SendAdminRequest("GET", "/db/", "")
-		var body db.Body
-		err := base.JSONUnmarshal(response.Body.Bytes(), &body)
-		if err != nil {
-			return err
-		}
-
-		if body["state"].(string) == "Online" {
+		if stateCurr = rt.GetDBState(); stateCurr == stateWant {
 			return nil
 		}
-
-		// Otherwise, sleep and try again
 		time.Sleep(500 * time.Millisecond)
-
 	}
-
-	return fmt.Errorf("Give up waiting for DB to come online after %d attempts", maxTries)
-
+	return fmt.Errorf("given up waiting for DB state, want: %s, current: %s, attempts: %d", stateWant, stateCurr, maxTries)
 }
 
 func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
