@@ -1872,12 +1872,6 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	assertNow := func(t *testing.T, expected interface{}, actual interface{}) {
-		if !assert.Equal(t, expected, actual) {
-			t.FailNow()
-		}
-	}
-
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -1885,12 +1879,12 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 	var errDBState error
 
 	log.Printf("Taking DB offline")
-	assertNow(t, "Online", rt.GetDBState())
+	require.Equal(t, "Online", rt.GetDBState())
 
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
 	assertStatus(t, response, 200)
 
-	assertNow(t, "Offline", rt.GetDBState())
+	require.Equal(t, "Offline", rt.GetDBState())
 
 	//Bring DB online with delay of two seconds
 	response = rt.SendAdminRequest("POST", "/db/_online", "{\"delay\":1}")
