@@ -245,8 +245,8 @@ func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string,
 	// Prepend timestamp, level, log key.
 	format = addPrefixes(format, ctx, logLevel, logKey)
 
-	// Warn and error logs also append caller name/line numbers.
-	if logLevel <= LevelWarn && logLevel > LevelNone {
+	// Error, warn and trace logs also append caller name/line numbers.
+	if logLevel <= LevelWarn || logLevel == LevelTrace {
 		format += " -- " + GetCallersName(2, true)
 	}
 
