@@ -1884,14 +1884,11 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
 	assertStatus(t, response, 200)
 
-	require.Equal(t, "Offline", rt.GetDBState())
-
 	//Bring DB online with delay of two seconds
 	response = rt.SendAdminRequest("POST", "/db/_online", "{\"delay\":1}")
 	assertStatus(t, response, 200)
 
-	errDBState = rt.WaitForDBOffline()
-	assert.NoError(t, errDBState)
+	require.Equal(t, "Offline", rt.GetDBState())
 
 	// Bring DB online immediately
 	response = rt.SendAdminRequest("POST", "/db/_online", "")

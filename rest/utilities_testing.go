@@ -630,10 +630,6 @@ func (rt *RestTester) WaitForDBOnline() (err error) {
 	return rt.waitForDBState("Online")
 }
 
-func (rt *RestTester) WaitForDBOffline() (err error) {
-	return rt.waitForDBState("Offline")
-}
-
 func (rt *RestTester) waitForDBState(stateWant string) (err error) {
 	var stateCurr string
 	maxTries := 20
