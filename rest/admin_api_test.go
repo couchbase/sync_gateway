@@ -4314,7 +4314,11 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 	err := activeRT.GetDatabase().SGReplicateMgr.StartReplications()
 	require.NoError(t, err)
 
-	rev := activeRT.createDoc(t, "test")
+	database, err := db.CreateDatabase(activeRT.GetDatabase())
+	require.NoError(t, err)
+	rev, doc, err := database.Put("test", db.Body{})
+	require.NoError(t, err)
+	seq := strconv.FormatUint(doc.Sequence, 10)
 
 	replConfig := `
 {
@@ -4343,12 +4347,10 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 	expectedCheckpointName := base.SyncPrefix + "local:checkpoint/" + db.PushCheckpointID(t.Name())
 	val, _, err := activeRT.Bucket().GetRaw(expectedCheckpointName)
 	require.NoError(t, err)
-	var config struct {
-		Status struct {
-			Status string
-		}
+	var config struct { // db.replicationCheckpoint
+		LastSeq string `json:"last_sequence"`
 	}
 	err = json.Unmarshal(val, &config)
 	require.NoError(t, err)
-	assert.Equal(t, "stopped", config.Status.Status)
+	assert.Equal(t, seq, config.LastSeq)
 }
