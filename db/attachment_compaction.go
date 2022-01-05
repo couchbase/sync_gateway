@@ -14,7 +14,7 @@ import (
 
 const CompactionIDKey = "compactID"
 
-func Mark(db *Database, compactionID string, terminator *base.SafeTerminator, markedAttachmentCount *base.AtomicInt) (count int64, vbUUIDs []uint64, err error) {
+func attachmentCompactMarkPhase(db *Database, compactionID string, terminator *base.SafeTerminator, markedAttachmentCount *base.AtomicInt) (count int64, vbUUIDs []uint64, err error) {
 	base.InfofCtx(db.Ctx, base.KeyAll, "Starting first phase of attachment compaction (mark phase) with compactionID: %q", compactionID)
 	compactionLoggingID := "Compaction Mark: " + compactionID
 
@@ -253,7 +253,7 @@ func handleAttachments(attachmentKeyMap map[string]string, docKey string, attach
 	}
 }
 
-func Sweep(db *Database, compactionID string, vbUUIDs []uint64, dryRun bool, terminator *base.SafeTerminator, purgedAttachmentCount *base.AtomicInt) (int64, error) {
+func attachmentCompactSweepPhase(db *Database, compactionID string, vbUUIDs []uint64, dryRun bool, terminator *base.SafeTerminator, purgedAttachmentCount *base.AtomicInt) (int64, error) {
 	base.InfofCtx(db.Ctx, base.KeyAll, "Starting second phase of attachment compaction (sweep phase) with compactionID: %q", compactionID)
 	compactionLoggingID := "Compaction Sweep: " + compactionID
 
@@ -343,7 +343,7 @@ func Sweep(db *Database, compactionID string, vbUUIDs []uint64, dryRun bool, ter
 	return purgedAttachmentCount.Value(), dcpClient.Close()
 }
 
-func Cleanup(db *Database, compactionID string, vbUUIDs []uint64, terminator *base.SafeTerminator) error {
+func attachmentCompactCleanupPhase(db *Database, compactionID string, vbUUIDs []uint64, terminator *base.SafeTerminator) error {
 	base.InfofCtx(db.Ctx, base.KeyAll, "Starting third phase of attachment compaction (cleanup phase) with compactionID: %q", compactionID)
 	compactionLoggingID := "Compaction Cleanup: " + compactionID
 

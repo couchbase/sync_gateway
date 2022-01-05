@@ -116,7 +116,7 @@ func (a *AttachmentCompactionManager) Run(options map[string]interface{}, persis
 	case "mark", "":
 		a.SetPhase("mark")
 		persistClusterStatus()
-		_, a.VBUUIDs, err = Mark(database, a.CompactID, terminator, &a.MarkedAttachments)
+		_, a.VBUUIDs, err = attachmentCompactMarkPhase(database, a.CompactID, terminator, &a.MarkedAttachments)
 		if err != nil || terminator.IsClosed() {
 			return err
 		}
@@ -124,7 +124,7 @@ func (a *AttachmentCompactionManager) Run(options map[string]interface{}, persis
 	case "sweep":
 		a.SetPhase("sweep")
 		persistClusterStatus()
-		_, err := Sweep(database, a.CompactID, a.VBUUIDs, a.dryRun, terminator, &a.PurgedAttachments)
+		_, err := attachmentCompactSweepPhase(database, a.CompactID, a.VBUUIDs, a.dryRun, terminator, &a.PurgedAttachments)
 		if err != nil || terminator.IsClosed() {
 			return err
 		}
@@ -132,7 +132,7 @@ func (a *AttachmentCompactionManager) Run(options map[string]interface{}, persis
 	case "cleanup":
 		a.SetPhase("cleanup")
 		persistClusterStatus()
-		err := Cleanup(database, a.CompactID, a.VBUUIDs, terminator)
+		err := attachmentCompactCleanupPhase(database, a.CompactID, a.VBUUIDs, terminator)
 		if err != nil || terminator.IsClosed() {
 			return err
 		}
