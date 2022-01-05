@@ -36,12 +36,11 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			HTTPS: HTTPSConfig{
 				TLSMinimumVersion: "tlsv1.2",
 			},
-			ReadHeaderTimeout:              base.NewConfigDuration(base.DefaultReadHeaderTimeout),
-			IdleTimeout:                    base.NewConfigDuration(base.DefaultIdleTimeout),
-			AdminInterfaceAuthentication:   base.BoolPtr(true),
-			MetricsInterfaceAuthentication: base.BoolPtr(true),
-			// Post-DP this should be set to base.IsEnterpriseEdition as default
-			EnableAdminAuthenticationPermissionsCheck: base.BoolPtr(false),
+			ReadHeaderTimeout:                         base.NewConfigDuration(base.DefaultReadHeaderTimeout),
+			IdleTimeout:                               base.NewConfigDuration(base.DefaultIdleTimeout),
+			AdminInterfaceAuthentication:              base.BoolPtr(true),
+			MetricsInterfaceAuthentication:            base.BoolPtr(true),
+			EnableAdminAuthenticationPermissionsCheck: base.BoolPtr(base.IsEnterpriseEdition()),
 		},
 		Logging: base.LoggingConfig{
 			LogFilePath:    defaultLogFilePath,
