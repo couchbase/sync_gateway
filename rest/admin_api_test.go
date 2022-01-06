@@ -1864,7 +1864,7 @@ func TestSingleDBOnlineWithDelay(t *testing.T) {
 
 // Test bring DB online with delay of 2 seconds
 // But bring DB online immediately in separate call
-// BD should should only be brought online once
+// DB should should only be brought online once
 // there should be no errors
 func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 
@@ -1875,44 +1875,35 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
+	var response *TestResponse
+	var errDBState error
+
 	log.Printf("Taking DB offline")
-	response := rt.SendAdminRequest("GET", "/db/", "")
-	var body db.Body
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.True(t, body["state"].(string) == "Online")
+	require.Equal(t, "Online", rt.GetDBState())
 
-	rt.SendAdminRequest("POST", "/db/_offline", "")
+	response = rt.SendAdminRequest("POST", "/db/_offline", "")
 	assertStatus(t, response, 200)
-
-	response = rt.SendAdminRequest("GET", "/db/", "")
-	body = nil
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.True(t, body["state"].(string) == "Offline")
 
 	//Bring DB online with delay of two seconds
-	rt.SendAdminRequest("POST", "/db/_online", "{\"delay\":1}")
+	response = rt.SendAdminRequest("POST", "/db/_online", "{\"delay\":1}")
 	assertStatus(t, response, 200)
 
+	require.Equal(t, "Offline", rt.GetDBState())
+
 	// Bring DB online immediately
-	rt.SendAdminRequest("POST", "/db/_online", "")
+	response = rt.SendAdminRequest("POST", "/db/_online", "")
 	assertStatus(t, response, 200)
 
 	// Wait for DB to come online (retry loop)
-	errDbOnline := rt.WaitForDBOnline()
-	assert.NoError(t, errDbOnline, "Error waiting for db to come online")
-
-	response = rt.SendAdminRequest("GET", "/db/", "")
-	body = nil
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.True(t, body["state"].(string) == "Online")
+	errDBState = rt.WaitForDBOnline()
+	assert.NoError(t, errDBState)
 
 	// Wait until after the 1 second delay, since the online request explicitly asked for a delay
 	time.Sleep(1500 * time.Millisecond)
 
 	// Wait for DB to come online (retry loop)
-	errDbOnline = rt.WaitForDBOnline()
-	assert.NoError(t, errDbOnline, "Error waiting for db to come online")
-
+	errDBState = rt.WaitForDBOnline()
+	assert.NoError(t, errDBState)
 }
 
 // Test bring DB online concurrently with delay of 1 second
