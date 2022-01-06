@@ -991,6 +991,7 @@ function(doc, oldDoc) {
 	revsFinishedWg.Add(1)
 	response := rt.SendAdminRequest("PUT", "/db/grantDoc", `{"accessUser":"user1", "accessChannel":"ABC", "channels":["ABC"]}`)
 	assertStatus(t, response, 201)
+	require.NoError(t, rt.WaitForPendingChanges())
 
 	// Wait until all expected changes are received by change handler
 	// receivedChangesWg.Wait()
