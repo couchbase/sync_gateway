@@ -117,6 +117,9 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 	if errors.Is(unwrappedErr, gocb.ErrDocumentExists) {
 		return http.StatusConflict, "Conflict"
 	}
+	if errors.Is(unwrappedErr, gocb.ErrTimeout) {
+		return http.StatusServiceUnavailable, "Database timeout error (gocb.ErrTimeout)"
+	}
 	if isKVError(unwrappedErr, memd.StatusTooBig) {
 		return http.StatusRequestEntityTooLarge, "Document too large!"
 	}
