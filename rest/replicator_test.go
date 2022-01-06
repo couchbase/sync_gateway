@@ -3442,9 +3442,13 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 
 	assert.Equal(t, int64(0), ar.Push.GetStats().NumConnectAttempts.Value())
 
+	// expected error
+	msg401 := "unexpected status code 401 from target database"
+
 	err = ar.Start()
+	defer ar.Stop() // prevents panic if waiting for ar state running fails
 	assert.Error(t, err)
-	assert.True(t, strings.Contains(err.Error(), "unexpected status code 401 from target database"))
+	assert.True(t, strings.Contains(err.Error(), msg401))
 
 	// wait for an arbitrary number of reconnect attempts
 	waitAndRequireCondition(t, func() bool {
@@ -3455,7 +3459,10 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 	assertStatus(t, resp, http.StatusCreated)
 
 	waitAndRequireCondition(t, func() bool {
-		state, _ := ar.State()
+		state, errMsg := ar.State()
+		if strings.TrimSpace(errMsg) != "" {
+			require.True(t, strings.Contains(errMsg, msg401), "expected: %s, got: %s", msg401, errMsg)
+		}
 		return state == db.ReplicationStateRunning
 	}, "Expecting replication state to be running")
 
