@@ -3446,7 +3446,7 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 	msg401 := "unexpected status code 401 from target database"
 
 	err = ar.Start()
-	defer ar.Stop() // prevents panic if waiting for ar state running fails
+	defer func() { assert.NoError(t, ar.Stop()) }() // prevents panic if waiting for ar state running fails
 	assert.Error(t, err)
 	assert.True(t, strings.Contains(err.Error(), msg401))
 
@@ -3465,8 +3465,6 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 		}
 		return state == db.ReplicationStateRunning
 	}, "Expecting replication state to be running")
-
-	assert.NoError(t, ar.Stop())
 }
 
 // TestActiveReplicatorReconnectSendActions ensures ActiveReplicator reconnect retry loops exit when the replicator is stopped
