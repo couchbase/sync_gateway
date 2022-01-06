@@ -5573,6 +5573,7 @@ func TestTombstonedBulkDocsWithPriorPurge(t *testing.T) {
 			console.log("doc:"+JSON.stringify(doc))
 			console.log("oldDoc:"+JSON.stringify(oldDoc))
 		}`,
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{AutoImport: false}}, // prevent importing the doc before the purge
 	})
 	defer rt.Close()
 
