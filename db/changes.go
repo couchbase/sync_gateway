@@ -895,8 +895,8 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				}
 
 				// Don't send any entries later than the cached sequence at the start of this iteration, unless they are part of a revocation triggered
-				// prior to the cached sequence
-				isValidRevocation := minEntry.Revoked == true && minEntry.Seq.TriggeredBy < currentCachedSequence
+				// at or before the cached sequence
+				isValidRevocation := minEntry.Revoked == true && minEntry.Seq.TriggeredBy <= currentCachedSequence
 				if currentCachedSequence < minEntry.Seq.Seq && !isValidRevocation {
 					base.DebugfCtx(db.Ctx, base.KeyChanges, "Found sequence later than stable sequence: stable:[%d] entry:[%d] (%s)", currentCachedSequence, minEntry.Seq.Seq, base.UD(minEntry.ID))
 					postStableSeqsFound = true
