@@ -908,7 +908,7 @@ func TestSessionExtension(t *testing.T) {
 		Ttl:        24 * time.Hour,
 	}
 
-	assert.NoError(t, rt.Bucket().Set(auth.DocIDForSession(fakeSession.ID), 0, fakeSession))
+	assert.NoError(t, rt.Bucket().Set(auth.DocIDForSession(fakeSession.ID), 0, nil, fakeSession))
 	reqHeaders := map[string]string{
 		"Cookie": auth.DefaultCookieName + "=" + fakeSession.ID,
 	}

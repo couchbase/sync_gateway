@@ -38,7 +38,7 @@ func TestAttachmentMark(t *testing.T) {
 		attKeys = append(attKeys, CreateLegacyAttachmentDoc(t, testDb, docID, []byte("{}"), attKey, attJSONBody))
 	}
 
-	err := testDb.Bucket.SetRaw("testDocx", 0, []byte("{}"))
+	err := testDb.Bucket.SetRaw("testDocx", 0, nil, []byte("{}"))
 	assert.NoError(t, err)
 
 	attKeys = append(attKeys, createConflictingDocOneLeafHasAttachmentBodyMap(t, "conflictAtt", "attForConflict", []byte(`{"value": "att"}`), testDb))
@@ -72,14 +72,14 @@ func TestAttachmentSweep(t *testing.T) {
 	defer testDb.Close()
 
 	makeMarkedDoc := func(docid string, compactID string) {
-		err := testDb.Bucket.SetRaw(docid, 0, []byte("{}"))
+		err := testDb.Bucket.SetRaw(docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
 		_, err = testDb.Bucket.SetXattr(docid, getCompactionIDSubDocPath(compactID), []byte(strconv.Itoa(int(time.Now().Unix()))))
 		assert.NoError(t, err)
 	}
 
 	makeUnmarkedDoc := func(docid string) {
-		err := testDb.Bucket.SetRaw(docid, 0, []byte("{}"))
+		err := testDb.Bucket.SetRaw(docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
 	}
 
@@ -117,14 +117,14 @@ func TestAttachmentCleanup(t *testing.T) {
 	defer testDb.Close()
 
 	makeMarkedDoc := func(docid string, compactID string) {
-		err := testDb.Bucket.SetRaw(docid, 0, []byte("{}"))
+		err := testDb.Bucket.SetRaw(docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
 		_, err = testDb.Bucket.SetXattr(docid, getCompactionIDSubDocPath(compactID), []byte(strconv.Itoa(int(time.Now().Unix()))))
 		assert.NoError(t, err)
 	}
 
 	makeMultiMarkedDoc := func(docid string, compactIDs map[string]interface{}) {
-		err := testDb.Bucket.SetRaw(docid, 0, []byte("{}"))
+		err := testDb.Bucket.SetRaw(docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
 		compactIDsJSON, err := base.JSONMarshal(compactIDs)
 		assert.NoError(t, err)
@@ -231,7 +231,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 	}
 
 	makeUnmarkedDoc := func(docid string) {
-		err := testDb.Bucket.SetRaw(docid, 0, []byte("{}"))
+		err := testDb.Bucket.SetRaw(docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
 		attKeys = append(attKeys, docid)
 	}
@@ -753,7 +753,7 @@ func createConflictingDocOneLeafHasAttachmentBodyKey(t *testing.T, docID string,
 	  "testval": "val"
 	}`
 
-	err = db.Bucket.SetRaw(backupKey, 0, []byte(bodyBackup))
+	err = db.Bucket.SetRaw(backupKey, 0, nil, []byte(bodyBackup))
 	assert.NoError(t, err)
 
 	return attDocID

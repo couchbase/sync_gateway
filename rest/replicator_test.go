@@ -2840,7 +2840,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	assert.NoError(t, ar.Stop())
 
 	// roll back checkpoint value to first one and remove the associated doc
-	err = rt2.Bucket().Set(checkpointDocID, 0, firstCheckpoint)
+	err = rt2.Bucket().Set(checkpointDocID, 0, nil, firstCheckpoint)
 	assert.NoError(t, err)
 
 	rt2db, err := db.GetDatabase(rt2.GetDatabase(), nil)
@@ -2931,13 +2931,13 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 
 	pushCheckpointID := ar.Push.CheckpointID
 	pushCheckpointDocID := base.SyncPrefix + "local:checkpoint/" + pushCheckpointID
-	err = rt2.Bucket().Set(pushCheckpointDocID, 0, map[string]interface{}{"last_sequence": "0", "_rev": "abc"})
+	err = rt2.Bucket().Set(pushCheckpointDocID, 0, nil, map[string]interface{}{"last_sequence": "0", "_rev": "abc"})
 	require.NoError(t, err)
 
 	pullCheckpointID := ar.Pull.CheckpointID
 	require.NoError(t, err)
 	pullCheckpointDocID := base.SyncPrefix + "local:checkpoint/" + pullCheckpointID
-	err = rt1.Bucket().Set(pullCheckpointDocID, 0, map[string]interface{}{"last_sequence": "0", "_rev": "abc"})
+	err = rt1.Bucket().Set(pullCheckpointDocID, 0, nil, map[string]interface{}{"last_sequence": "0", "_rev": "abc"})
 	require.NoError(t, err)
 
 	// Create doc1 on rt1
@@ -4198,7 +4198,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			if test.resurrectLocal {
 				if test.sdkResurrect {
 					// resurrect doc via SDK on local
-					err = activeBucket.Set("docid2", 0, updatedBody)
+					err = activeBucket.Set("docid2", 0, nil, updatedBody)
 					assert.NoError(t, err, "Unable to resurrect doc docid2")
 					// force on-demand import
 					_, getErr := localActiveRT.GetDatabase().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
@@ -4210,7 +4210,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			} else {
 				if test.sdkResurrect {
 					// resurrect doc via SDK on remote
-					err = passiveBucket.Set("docid2", 0, updatedBody)
+					err = passiveBucket.Set("docid2", 0, nil, updatedBody)
 					assert.NoError(t, err, "Unable to resurrect doc docid2")
 					// force on-demand import
 					_, getErr := remotePassiveRT.GetDatabase().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)

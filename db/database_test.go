@@ -2318,7 +2318,7 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 	rawSyncData, ok := rawBody["_sync"].(map[string]interface{})
 	require.True(t, ok)
 	rawSyncData["recent_sequences"] = []uint64{3, 5, 9, 11, 1, 2, 4, 8, 7, 10, 5}
-	assert.NoError(t, db.Bucket.Set("doc1", 0, rawBody))
+	assert.NoError(t, db.Bucket.Set("doc1", 0, nil, rawBody))
 
 	// Validate non-ordered
 	var rawBodyCheck Body

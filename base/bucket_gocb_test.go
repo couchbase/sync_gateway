@@ -66,7 +66,7 @@ func TestSetGet(t *testing.T) {
 		_, err := bucket.Get(key, &rVal)
 		assert.Error(t, err, "Key should not exist yet, expected error but got nil")
 
-		err = bucket.Set(key, 0, val)
+		err = bucket.Set(key, 0, nil, val)
 		assert.NoError(t, err, "Error calling Set()")
 
 		_, err = bucket.Get(key, &rVal)
@@ -93,7 +93,7 @@ func TestSetGetRaw(t *testing.T) {
 			t.Errorf("Key should not exist yet, expected error but got nil")
 		}
 
-		if err := bucket.SetRaw(key, 0, val); err != nil {
+		if err := bucket.SetRaw(key, 0, nil, val); err != nil {
 			t.Errorf("Error calling SetRaw(): %v", err)
 		}
 
@@ -317,14 +317,14 @@ func TestUpdateCASFailure(t *testing.T) {
 		}
 
 		// Initialize document
-		setErr := bucket.Set(key, 0, valInitial)
+		setErr := bucket.Set(key, 0, nil, valInitial)
 		assert.NoError(t, setErr)
 
 		triggerCasFail := true
 		updateFunc := func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
 			if triggerCasFail == true {
 				// mutate the document to trigger cas failure
-				setErr := bucket.Set(key, 0, valCasMismatch)
+				setErr := bucket.Set(key, 0, nil, valCasMismatch)
 				assert.NoError(t, setErr)
 				triggerCasFail = false
 			}
@@ -367,7 +367,7 @@ func TestUpdateCASFailureOnInsert(t *testing.T) {
 		updateFunc := func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
 			if triggerCasFail == true {
 				// mutate the document to trigger cas failure
-				setErr := bucket.Set(key, 0, valCasMismatch)
+				setErr := bucket.Set(key, 0, nil, valCasMismatch)
 				assert.NoError(t, setErr)
 				triggerCasFail = false
 			}
@@ -443,7 +443,7 @@ func TestGetAndTouchRaw(t *testing.T) {
 		_, _, err := bucket.GetRaw(key)
 		assert.Error(t, err, "Key should not exist yet, expected error but got nil")
 
-		err = bucket.SetRaw(key, 0, val)
+		err = bucket.SetRaw(key, 0, nil, val)
 		assert.NoError(t, err, "Error calling SetRaw()")
 
 		rv, _, err := bucket.GetRaw(key)
@@ -697,7 +697,7 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 		// Simulate an SDK update
 		updatedVal := make(map[string]interface{})
 		updatedVal["sdk_field"] = "abc"
-		require.NoError(t, bucket.Set(key, 0, updatedVal))
+		require.NoError(t, bucket.Set(key, 0, nil, updatedVal))
 
 		// Attempt to update with the previous CAS
 		val["sg_field"] = "sg_value_mod"
@@ -1404,7 +1404,7 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 		// 2. Create document with no XATTR
 		val = make(map[string]interface{})
 		val["type"] = key2
-		err = bucket.Set(key2, uint32(0), val)
+		err = bucket.Set(key2, uint32(0), nil, val)
 		assert.NoError(t, err)
 
 		// 3. Xattr, no document
@@ -2314,7 +2314,7 @@ func TestUserXattrGetWithXattr(t *testing.T) {
 		syncXattrVal := map[string]interface{}{"val": "syncVal"}
 		userXattrVal := map[string]interface{}{"val": "userXattrVal"}
 
-		err := bucket.Set(docKey, 0, docVal)
+		err := bucket.Set(docKey, 0, nil, docVal)
 		assert.NoError(t, err)
 
 		_, err = userXattrStore.WriteUserXattr(docKey, "_sync", syncXattrVal)
@@ -2343,7 +2343,7 @@ func TestUserXattrGetWithXattrNil(t *testing.T) {
 		docVal := map[string]interface{}{"val": "docVal"}
 		syncXattrVal := map[string]interface{}{"val": "syncVal"}
 
-		err := bucket.Set(docKey, 0, docVal)
+		err := bucket.Set(docKey, 0, nil, docVal)
 		assert.NoError(t, err)
 
 		userXattrStore, ok := AsUserXattrStore(bucket)
@@ -2416,7 +2416,7 @@ func TestRawBackwardCompatibilityFromJSON(t *testing.T) {
 		}
 
 		// Write as JSON
-		setErr := bucket.Set(key, 0, val)
+		setErr := bucket.Set(key, 0, nil, val)
 		assert.NoError(t, setErr)
 
 		// Read as binary
@@ -2427,7 +2427,7 @@ func TestRawBackwardCompatibilityFromJSON(t *testing.T) {
 		}
 
 		// Write as binary
-		setRawErr := bucket.SetRaw(key, 0, updatedVal)
+		setRawErr := bucket.SetRaw(key, 0, nil, updatedVal)
 		assert.NoError(t, setRawErr)
 
 	})
@@ -2455,7 +2455,7 @@ func TestRawBackwardCompatibilityFromBinary(t *testing.T) {
 		}
 
 		// Write as binary
-		err = bucket.SetRaw(key, 0, val)
+		err = bucket.SetRaw(key, 0, nil, val)
 		assert.NoError(t, err)
 
 		// Read as raw JSON
@@ -2467,7 +2467,7 @@ func TestRawBackwardCompatibilityFromBinary(t *testing.T) {
 		}
 
 		// Write as raw JSON
-		setErr := bucket.Set(key, 0, updatedVal)
+		setErr := bucket.Set(key, 0, nil, updatedVal)
 		assert.NoError(t, setErr)
 
 	})
@@ -2489,7 +2489,7 @@ func TestGetExpiry(t *testing.T) {
 		val["foo"] = "bar"
 
 		expiryValue := uint32(time.Now().Add(1 * time.Minute).Unix())
-		err := bucket.Set(key, expiryValue, val)
+		err := bucket.Set(key, expiryValue, nil, val)
 		assert.NoError(t, err, "Error calling Set()")
 
 		expiry, expiryErr := store.GetExpiry(key)
@@ -2549,4 +2549,70 @@ func TestGetStatsVbSeqNo(t *testing.T) {
 		assert.True(t, len(uuids) > 0)
 		assert.True(t, len(highSeqNos) > 0)
 	})
+}
+
+// Confirm that GoCBv2 preserveExpiry option works correctly for bucket Set function
+func TestUpsertOptionPreserveExpiry(t *testing.T) {
+	if UnitTestUrlIsWalrus() {
+		t.Skip("Walrus doesn't support expiry or preserveExpiry")
+	}
+
+	testCases := []struct {
+		name          string
+		upsertOptions *sgbucket.UpsertOptions
+		expectMatch   bool
+	}{
+		{
+			name:          "Expect matching expiry - preserveExpiry",
+			upsertOptions: &sgbucket.UpsertOptions{PreserveExpiry: true},
+			expectMatch:   true,
+		},
+		{
+			name:          "Expect updated expiry - false preserveExpiry",
+			upsertOptions: &sgbucket.UpsertOptions{PreserveExpiry: false},
+			expectMatch:   false,
+		},
+		{
+			name:          "Expect updated expiry - nil upsert options",
+			upsertOptions: nil,
+			expectMatch:   false,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			bucket := GetTestBucketForDriver(t, GoCBv2)
+			defer bucket.Close()
+			cbStore, _ := AsCouchbaseStore(bucket)
+
+			key := t.Name()
+			val := make(map[string]interface{}, 0)
+			val["foo"] = "bar"
+
+			var rVal map[string]interface{}
+			_, err := bucket.Get(key, &rVal)
+			assert.Error(t, err, "Key should not exist yet, expected error but got nil")
+
+			err = bucket.Set(key, DurationToCbsExpiry(time.Hour*24), nil, val)
+			assert.NoError(t, err, "Error calling Set()")
+
+			beforeExp, err := cbStore.GetExpiry(key)
+			require.NoError(t, err)
+			require.NotEqual(t, 0, beforeExp)
+
+			val["foo"] = "baz"
+			err = bucket.Set(key, 0, test.upsertOptions, val)
+			assert.NoError(t, err, "Error calling Set()")
+
+			afterExp, err := cbStore.GetExpiry(key)
+			assert.NoError(t, err)
+			if test.expectMatch {
+				assert.Equal(t, beforeExp, afterExp) // Make sure both expiry timestamps match
+			} else {
+				assert.NotEqual(t, beforeExp, afterExp) // Make sure both expiry timestamps do not match
+			}
+
+			err = bucket.Delete(key)
+			require.NoError(t, err)
+		})
+	}
 }

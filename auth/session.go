@@ -56,7 +56,7 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 	tenPercentOfTtl := int(duration.Nanoseconds()) / 10
 	if sessionTimeElapsed > tenPercentOfTtl {
 		session.Expiration = time.Now().Add(duration)
-		if err = auth.bucket.Set(DocIDForSession(session.ID), base.DurationToCbsExpiry(duration), session); err != nil {
+		if err = auth.bucket.Set(DocIDForSession(session.ID), base.DurationToCbsExpiry(duration), nil, session); err != nil {
 			return nil, err
 		}
 		base.AddDbPathToCookie(rq, cookie)
@@ -88,7 +88,7 @@ func (auth *Authenticator) CreateSession(username string, ttl time.Duration) (*L
 		Expiration: time.Now().Add(ttl),
 		Ttl:        ttl,
 	}
-	if err := auth.bucket.Set(DocIDForSession(session.ID), base.DurationToCbsExpiry(ttl), session); err != nil {
+	if err := auth.bucket.Set(DocIDForSession(session.ID), base.DurationToCbsExpiry(ttl), nil, session); err != nil {
 		return nil, err
 	}
 	return session, nil

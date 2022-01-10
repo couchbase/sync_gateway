@@ -285,7 +285,7 @@ func (c *DCPCommon) initMetadata(maxVbNo uint16) {
 //         - Is a relatively infrequent operation
 func (c *DCPCommon) persistCheckpoint(vbNo uint16, value []byte) error {
 	TracefCtx(c.loggingCtx, KeyDCP, "Persisting checkpoint for vbno %d", vbNo)
-	return c.bucket.SetRaw(fmt.Sprintf("%s%d", c.checkpointPrefix, vbNo), 0, value)
+	return c.bucket.SetRaw(fmt.Sprintf("%s%d", c.checkpointPrefix, vbNo), 0, nil, value)
 }
 
 // This updates the value stored in r.seqs with the given seq number for the given partition
@@ -497,7 +497,7 @@ func (b *backfillStatus) persistBackfillSequences(bucket Bucket, currentSeqs []u
 		SnapStart: b.snapStart,
 		SnapEnd:   b.snapEnd,
 	}
-	return bucket.Set(DCPBackfillSeqKey, 0, backfillSeqs)
+	return bucket.Set(DCPBackfillSeqKey, 0, nil, backfillSeqs)
 }
 
 func (b *backfillStatus) loadBackfillSequences(bucket Bucket) (*BackfillSequences, error) {

@@ -336,7 +336,7 @@ func (auth *Authenticator) Save(p Principal) error {
 	if user, ok := p.(User); ok {
 		if user.Email() != "" {
 			info := userByEmailInfo{user.Name()}
-			if err := auth.bucket.Set(docIDForUserEmail(user.Email()), 0, info); err != nil {
+			if err := auth.bucket.Set(docIDForUserEmail(user.Email()), 0, nil, info); err != nil {
 				return err
 			}
 			// FIX: Fail if email address is already registered to another user

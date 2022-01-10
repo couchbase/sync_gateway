@@ -252,7 +252,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	b, err := base.JSONMarshal(x)
 
 	// Update raw document in the bucket
-	assert.NoError(t, db.Bucket.SetRaw("alpha", 0, b))
+	assert.NoError(t, db.Bucket.SetRaw("alpha", 0, nil, b))
 
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 3 and isn't stuck waiting for it.
@@ -333,7 +333,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	b, err := base.JSONMarshal(x)
 
 	// Update raw document in the bucket
-	require.NoError(t, db.Bucket.SetRaw("alpha", 0, b))
+	require.NoError(t, db.Bucket.SetRaw("alpha", 0, nil, b))
 
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 3 (the modified document) and isn't stuck waiting for it.

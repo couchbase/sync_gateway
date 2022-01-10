@@ -100,7 +100,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 	updatedBody["test"] = "TestImportDelete"
 	updatedBody["channels"] = "HBO"
 
-	err = bucket.Set(key, 0, updatedBody)
+	err = bucket.Set(key, 0, nil, updatedBody)
 	assert.NoError(t, err, "Unable to update doc TestImportDelete")
 
 	// Attempt to get the document via Sync Gateway, to trigger import.  On import of a create, oldDoc should be nil.
@@ -281,7 +281,7 @@ func TestXattrImportOnCasFailure(t *testing.T) {
 		sdkBody := make(map[string]interface{})
 		sdkBody["test"] = "TestCasFailureImport"
 		sdkBody["SDK_write_count"] = i
-		err := bucket.Set(key, 0, sdkBody)
+		err := bucket.Set(key, 0, nil, sdkBody)
 		assert.NoError(t, err, "Unexpected error doing SDK write")
 	}
 
@@ -397,7 +397,7 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 	updatedBody["test"] = key
 	updatedBody["channels"] = "HBO"
 
-	err = bucket.Set(key, 0, updatedBody)
+	err = bucket.Set(key, 0, nil, updatedBody)
 	assert.NoError(t, err, "Unable to update doc TestResurrectViaSDK")
 
 	// Attempt to get the document via Sync Gateway, to trigger import.
@@ -1642,7 +1642,7 @@ func TestXattrSGWriteOfNonImportedDoc(t *testing.T) {
 	nonMobileBody := make(map[string]interface{})
 	nonMobileBody["type"] = "non-mobile"
 	nonMobileBody["channels"] = "ABC"
-	err := bucket.Set(sgWriteKey, 0, nonMobileBody)
+	err := bucket.Set(sgWriteKey, 0, nil, nonMobileBody)
 	assert.NoError(t, err, "Error updating SG doc from SDK ")
 
 	// Attempt to get the documents via Sync Gateway.  Will trigger on-demand import.
@@ -1680,7 +1680,7 @@ func TestImportBinaryDoc(t *testing.T) {
 
 	// 1. Write a binary doc through the SDK
 	rawBytes := []byte("some bytes")
-	err := bucket.SetRaw("binaryDoc", 0, rawBytes)
+	err := bucket.SetRaw("binaryDoc", 0, nil, rawBytes)
 	assert.NoError(t, err, "Error writing binary doc through the SDK")
 
 	// 2. Ensure we can't retrieve the document via SG
@@ -1851,7 +1851,7 @@ func TestImportRevisionCopy(t *testing.T) {
 	updatedBody := make(map[string]interface{})
 	updatedBody["test"] = "TestImportRevisionCopyModified"
 	updatedBody["channels"] = "DEF"
-	err = bucket.Set(key, 0, updatedBody)
+	err = bucket.Set(key, 0, nil, updatedBody)
 	assert.NoError(t, err, fmt.Sprintf("Unable to update doc %s", key))
 
 	// 4. Trigger import of update via SG retrieval
@@ -1916,7 +1916,7 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 	updatedBody := make(map[string]interface{})
 	updatedBody["test"] = "TestImportRevisionCopyModified"
 	updatedBody["channels"] = "DEF"
-	err = bucket.Set(key, 0, updatedBody)
+	err = bucket.Set(key, 0, nil, updatedBody)
 	assert.NoError(t, err, fmt.Sprintf("Unable to update doc %s", key))
 
 	// 5. Trigger import of update via SG retrieval
@@ -1973,7 +1973,7 @@ func TestImportRevisionCopyDisabled(t *testing.T) {
 	updatedBody := make(map[string]interface{})
 	updatedBody["test"] = "TestImportRevisionCopyModified"
 	updatedBody["channels"] = "DEF"
-	err = bucket.Set(key, 0, updatedBody)
+	err = bucket.Set(key, 0, nil, updatedBody)
 	assert.NoError(t, err, fmt.Sprintf("Unable to update doc %s", key))
 
 	// 4. Trigger import of update via SG retrieval
@@ -2008,7 +2008,7 @@ func TestDcpBackfill(t *testing.T) {
 	docBody := make(map[string]interface{})
 	docBody["type"] = "sdk_write"
 	for i := 0; i < 2500; i++ {
-		err := bucket.Set(fmt.Sprintf("doc_%d", i), 0, docBody)
+		err := bucket.Set(fmt.Sprintf("doc_%d", i), 0, nil, docBody)
 		assert.NoError(t, err, fmt.Sprintf("error setting doc_%d", i))
 	}
 

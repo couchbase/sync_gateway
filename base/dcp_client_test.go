@@ -28,7 +28,7 @@ func TestOneShotDCP(t *testing.T) {
 	body := map[string]interface{}{"foo": "bar"}
 	for i := 0; i < num_docs; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		err := bucket.Set(key, 0, body)
+		err := bucket.Set(key, 0, nil, body)
 		assert.NoError(t, err)
 	}
 
@@ -55,7 +55,7 @@ func TestOneShotDCP(t *testing.T) {
 		updatedBody := map[string]interface{}{"foo": "bar"}
 		for i := num_docs; i < num_docs*2; i++ {
 			key := fmt.Sprintf("%s_%d", t.Name(), i)
-			err := bucket.Set(key, 0, updatedBody)
+			err := bucket.Set(key, 0, nil, updatedBody)
 			assert.NoError(t, err)
 		}
 		additionalDocsWg.Done()
@@ -115,7 +115,7 @@ func TestTerminateDCPFeed(t *testing.T) {
 				break
 			}
 			key := fmt.Sprintf("%s_%d", t.Name(), i)
-			err := bucket.Set(key, 0, updatedBody)
+			err := bucket.Set(key, 0, nil, updatedBody)
 			assert.NoError(t, err)
 		}
 	}()
@@ -174,7 +174,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 	updatedBody := map[string]interface{}{"foo": "bar"}
 	for i := 0; i < 10000; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		err := bucket.Set(key, 0, updatedBody)
+		err := bucket.Set(key, 0, nil, updatedBody)
 		assert.NoError(t, err)
 	}
 
@@ -277,7 +277,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 	updatedBody := map[string]interface{}{"foo": "bar"}
 	for i := 0; i < 10000; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		err := bucket.Set(key, 0, updatedBody)
+		err := bucket.Set(key, 0, nil, updatedBody)
 		assert.NoError(t, err)
 	}
 

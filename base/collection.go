@@ -301,31 +301,35 @@ func (c *Collection) AddRaw(k string, exp uint32, v []byte) (added bool, err err
 	return err == nil, err
 }
 
-func (c *Collection) Set(k string, exp uint32, v interface{}) error {
+func (c *Collection) Set(k string, exp uint32, upsertOptions *sgbucket.UpsertOptions, v interface{}) error {
 	c.waitForAvailKvOp()
 	defer c.releaseKvOp()
 
-	upsertOptions := &gocb.UpsertOptions{
+	goCBUpsertOptions := &gocb.UpsertOptions{
 		Expiry:     CbsExpiryToDuration(exp),
 		Transcoder: NewSGJSONTranscoder(),
 	}
+	fillUpsertOptions(goCBUpsertOptions, upsertOptions)
+
 	if _, ok := v.([]byte); ok {
-		upsertOptions.Transcoder = gocb.NewRawJSONTranscoder()
+		goCBUpsertOptions.Transcoder = gocb.NewRawJSONTranscoder()
 	}
 
-	_, err := c.Collection.Upsert(k, v, upsertOptions)
+	_, err := c.Collection.Upsert(k, v, goCBUpsertOptions)
 	return err
 }
 
-func (c *Collection) SetRaw(k string, exp uint32, v []byte) error {
+func (c *Collection) SetRaw(k string, exp uint32, upsertOptions *sgbucket.UpsertOptions, v []byte) error {
 	c.waitForAvailKvOp()
 	defer c.releaseKvOp()
 
-	upsertOptions := &gocb.UpsertOptions{
+	goCBUpsertOptions := &gocb.UpsertOptions{
 		Expiry:     CbsExpiryToDuration(exp),
 		Transcoder: NewSGRawTranscoder(),
 	}
-	_, err := c.Collection.Upsert(k, v, upsertOptions)
+	fillUpsertOptions(goCBUpsertOptions, upsertOptions)
+
+	_, err := c.Collection.Upsert(k, v, goCBUpsertOptions)
 	return err
 }
 
