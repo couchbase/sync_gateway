@@ -642,8 +642,16 @@ func (btc *BlipTesterClient) PushRevWithHistory(docID, parentRev string, body []
 
 	proposeChangesResponse := proposeChangesRequest.Response()
 	rspBody, err := proposeChangesResponse.Body()
-	if err != nil || string(rspBody) != `[]` {
-		return "", fmt.Errorf("error from proposeChangesResponse: %v %s\n", err, string(rspBody))
+	if err != nil {
+		return "", err
+	}
+	errorDomain := proposeChangesResponse.Properties["Error-Domain"]
+	errorCode := proposeChangesResponse.Properties["Error-Code"]
+	if errorDomain != "" && errorCode != "" {
+		return "", fmt.Errorf("error %s %s from proposeChanges with body: %s", errorDomain, errorCode, string(rspBody))
+	}
+	if string(rspBody) != `[]` {
+		return "", fmt.Errorf("unexpected body in proposeChangesResponse: %s", string(rspBody))
 	}
 
 	// send msg rev with new doc
