@@ -5,10 +5,6 @@
 //  in that file, in accordance with the Business Source License, use of this
 //  software will be governed by the Apache License, Version 2.0, included in
 //  the file licenses/APL2.txt.
-
-// This file contains tests which depend on the race detector being disabled.  Contains changes tests
-// that have unpredictable timing when running w/ race detector due to longpoll/continuous changes request
-// processing.
 // +build !race
 
 package rest
@@ -16,6 +12,7 @@ package rest
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -23,11 +20,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/assert"
 )
 
 // TestBlipPusherUpdateDatabase starts a push replication and updates the database underneath the replication.
 // Expect to see the connection closed with an error, instead of continuously panicking.
+//
+// This test causes the race detector to flag the bucket=nil operation and any in-flight requests being made using that bucket, prior to the replication being reset.
+// TODO CBG-1903: Can be fixed by draining in-flight requests before fully closing the database.
 func TestBlipPusherUpdateDatabase(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeyHTTPResp, base.KeySync)()
@@ -78,10 +77,22 @@ func TestBlipPusherUpdateDatabase(t *testing.T) {
 
 	// Did we tell the client to close the connection (via HTTP/503)?
 	// The BlipTesterClient doesn't implement reconnect - but CBL resets the replication connection.
-	lastErr, ok := lastPushRevErr.Load().(error)
-	require.True(t, ok)
-	require.Error(t, lastErr)
-	lastErrMsg := lastErr.Error()
-	assert.Contains(t, lastErrMsg, "HTTP 503")
-	assert.Contains(t, lastErrMsg, "Sync Gateway database went away - asking client to reconnect")
+	waitAndAssertCondition(t, func() bool {
+		lastErr, ok := lastPushRevErr.Load().(error)
+		if !ok {
+			return false
+		}
+		if lastErr == nil {
+			return false
+		}
+		lastErrMsg := lastErr.Error()
+		if !strings.Contains(lastErrMsg, "HTTP 503") {
+			return false
+		}
+		if !strings.Contains(lastErrMsg, "Sync Gateway database went away - asking client to reconnect") {
+			return false
+		}
+		return true
+	}, "expected HTTP 503 error")
+
 }
