@@ -3870,22 +3870,25 @@ func TestBlipPusherUpdateDatabase(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	var lastPushRevErr error
+	var lastPushRevErr atomic.Value
 
 	// Wait for the background updates to finish at the end of the test
-	shouldCreateDocs := true
+	shouldCreateDocs := base.NewAtomicBool(true)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	defer func() {
-		shouldCreateDocs = false
+		shouldCreateDocs.Set(false)
 		wg.Wait()
 	}()
 
 	// Start the test client creating and pushing documents in the background
 	go func() {
-		for i := 0; shouldCreateDocs; i++ {
+		for i := 0; shouldCreateDocs.IsTrue(); i++ {
 			// this will begin to error when the database is reloaded underneath the replication
-			_, lastPushRevErr = client.PushRev(fmt.Sprintf("doc%d", i), "", []byte(fmt.Sprintf(`{"i":%d}`, i)))
+			_, err := client.PushRev(fmt.Sprintf("doc%d", i), "", []byte(fmt.Sprintf(`{"i":%d}`, i)))
+			if err != nil {
+				lastPushRevErr.Store(err)
+			}
 		}
 		wg.Done()
 	}()
@@ -3901,7 +3904,8 @@ func TestBlipPusherUpdateDatabase(t *testing.T) {
 
 	// Did we tell the client to close the connection (via HTTP/503)?
 	// The BlipTesterClient doesn't implement reconnect - but CBL resets the replication connection.
-	lastErr := lastPushRevErr
+	lastErr, ok := lastPushRevErr.Load().(error)
+	require.True(t, ok)
 	require.Error(t, lastErr)
 	lastErrMsg := lastErr.Error()
 	assert.Contains(t, lastErrMsg, "BlipTesterClient got proposeChanges error HTTP/503")
