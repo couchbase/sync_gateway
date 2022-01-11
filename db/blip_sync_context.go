@@ -195,10 +195,6 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 }
 
 func (bsc *BlipSyncContext) Close() {
-	if bsc.gotSubChanges && bsc.continuous {
-		bsc.replicationStats.SubChangesContinuousActive.Add(-1)
-	}
-
 	bsc.terminatorOnce.Do(func() {
 		close(bsc.terminator)
 	})

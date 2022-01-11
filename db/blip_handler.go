@@ -219,6 +219,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		// Pull replication stats by type - Active continuous stats decremented in Close(), one shot after changes sent
 		if bh.continuous {
 			bh.replicationStats.SubChangesContinuousActive.Add(1)
+			defer bh.replicationStats.SubChangesContinuousActive.Add(-1)
 			bh.replicationStats.SubChangesContinuousTotal.Add(1)
 		} else {
 			bh.replicationStats.SubChangesOneShotActive.Add(1)
