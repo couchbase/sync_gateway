@@ -148,6 +148,18 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 		// Recover to log panic from handlers and repanic for go-blip response handling
 		defer func() {
 			if err := recover(); err != nil {
+
+				// If we recover from a panic and the database bucket has gone - we likely paniced due to a config update causing a db reload.
+				// Until we have a better way of telling a client this has happened and to reconnect, returning a 503 will cause the client to reconnect.
+				if bsc.blipContextDb.DatabaseContext.Bucket == nil {
+					base.InfofCtx(bsc.loggingCtx, base.KeySync, "Database bucket closed underneath request %v - asking client to reconnect", rq)
+					base.DebugfCtx(bsc.loggingCtx, base.KeySync, "PANIC handling BLIP request %v: %v\n%s", rq, err, debug.Stack())
+					// HTTP 503 asks CBL to disconnect and retry.
+					rq.Response().SetError("HTTP", 503, "Sync Gateway database went away - asking client to reconnect")
+					return
+				}
+
+				// This is a panic we don't know about - so continue to log at warn with a generic 500 response via go-blip
 				base.WarnfCtx(bsc.loggingCtx, "PANIC handling BLIP request %v: %v\n%s", rq, err, debug.Stack())
 				panic(err)
 			}
