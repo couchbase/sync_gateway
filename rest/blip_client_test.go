@@ -645,8 +645,10 @@ func (btc *BlipTesterClient) PushRevWithHistory(docID, parentRev string, body []
 	if err != nil {
 		return "", err
 	}
-	if proposeChangesResponse.Properties["Error-Domain"] == "HTTP" && proposeChangesResponse.Properties["Error-Code"] == "503" {
-		return "", fmt.Errorf("BlipTesterClient got proposeChanges error HTTP/503 with body: %s", string(rspBody))
+	errorDomain := proposeChangesResponse.Properties["Error-Domain"]
+	errorCode := proposeChangesResponse.Properties["Error-Code"]
+	if errorDomain != "" && errorCode != "" {
+		return "", fmt.Errorf("error %s %s from proposeChanges with body: %s", errorDomain, errorCode, string(rspBody))
 	}
 	if string(rspBody) != `[]` {
 		return "", fmt.Errorf("unexpected body in proposeChangesResponse: %s", string(rspBody))

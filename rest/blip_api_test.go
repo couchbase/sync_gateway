@@ -3909,6 +3909,6 @@ func TestBlipPusherUpdateDatabase(t *testing.T) {
 	require.True(t, ok)
 	require.Error(t, lastErr)
 	lastErrMsg := lastErr.Error()
-	assert.Contains(t, lastErrMsg, "BlipTesterClient got proposeChanges error HTTP/503")
+	assert.Contains(t, lastErrMsg, "HTTP 503")
 	assert.Contains(t, lastErrMsg, "Sync Gateway database went away - asking client to reconnect")
 }
