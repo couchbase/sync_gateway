@@ -3857,7 +3857,7 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 // Expect to see the connection closed with an error, instead of continuously panicking.
 func TestBlipPusherUpdateDatabase(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeyHTTPResp, base.KeySync)()
 
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{},
@@ -3890,6 +3890,7 @@ func TestBlipPusherUpdateDatabase(t *testing.T) {
 				lastPushRevErr.Store(err)
 			}
 		}
+		_ = rt.WaitForPendingChanges()
 		wg.Done()
 	}()
 
