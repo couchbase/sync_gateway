@@ -24,6 +24,7 @@ import (
 
 // TestBlipPusherUpdateDatabase starts a push replication and updates the database underneath the replication.
 // Expect to see the connection closed with an error, instead of continuously panicking.
+// This is the CBL version of TestPushReplicationAPIUpdateDatabase
 //
 // This test causes the race detector to flag the bucket=nil operation and any in-flight requests being made using that bucket, prior to the replication being reset.
 // TODO CBG-1903: Can be fixed by draining in-flight requests before fully closing the database.
