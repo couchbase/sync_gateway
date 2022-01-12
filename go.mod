@@ -75,6 +75,5 @@ require (
 )
 
 replace (
-	github.com/couchbase/goutils v0.1.2 => ../goutils
 	github.com/couchbase/sync_gateway => ./
 )

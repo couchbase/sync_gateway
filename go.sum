@@ -71,6 +71,8 @@ github.com/couchbase/gocbcore/v10 v10.0.6 h1:pKPhJWM9TBBMa755ARm25ZoBO6Fo6C4vVKv
 github.com/couchbase/gocbcore/v10 v10.0.6/go.mod h1:s6dwBFs4c3+cAzZbo1q0VW+QasudhHJuehE8b8U2YNg=
 github.com/couchbase/gomemcached v0.1.4 h1:5n5wmr4dBu+X7XteP8QHP5S9inK9MBjNpN9b7WSQfuA=
 github.com/couchbase/gomemcached v0.1.4/go.mod h1:mxliKQxOv84gQ0bJWbI+w9Wxdpt9HjDvgW9MjCym5Vo=
+github.com/couchbase/goutils v0.1.2 h1:gWr8B6XNWPIhfalHNog3qQKfGiYyh4K4VhO3P2o9BCs=
+github.com/couchbase/goutils v0.1.2/go.mod h1:h89Ek/tiOxxqjz30nPPlwZdQbdB8BwgnuBxeoUe/ViE=
 github.com/couchbase/sg-bucket v0.0.0-20211203000713-178bb7ca1abb h1:qaLZj8LDnhn3qNRk7Rq18ZcYYH/wMszvCXU1D2DOsgI=
 github.com/couchbase/sg-bucket v0.0.0-20211203000713-178bb7ca1abb/go.mod h1:TbsZS/X8bc/ZdojThFt87VZmOfDBhD9IVK3tpAwxSNo=
 github.com/couchbase/sync_gateway v0.0.0-20220110182909-779f11a7c919 h1:hAkO9hGOkghi5FwCyHHQpsdr//7CB1Ym9LL5EbNCpJk=
