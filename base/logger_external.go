@@ -118,7 +118,7 @@ type CBGoUtilsLogger struct{}
 var _ logging.Logger = CBGoUtilsLogger{}
 
 func (CBGoUtilsLogger) SetLevel(l logging.Level) {
-	return // no-op
+	// no-op
 }
 
 // CBGoUtilsLogger.Level returns a compatible go-couchbase/golog Log Level for
@@ -184,6 +184,7 @@ func (CBGoUtilsLogger) Logf(level logging.Level, fmt string, args ...interface{}
 }
 
 // go-couchbase/gomemcached don't use Pair/Map logs, so these are all stubs
+/*
 func (CBGoUtilsLogger) Fatalm(msg string, kv logging.Map) {
 	Warnf("CBGoUtilsLogger: Fatalm not implemented! " + msg)
 }
@@ -255,3 +256,18 @@ func (CBGoUtilsLogger) Logm(level logging.Level, msg string, kv logging.Map) {
 func (CBGoUtilsLogger) Logp(level logging.Level, msg string, kv ...logging.Pair) {
 	Warnf("CBGoUtilsLogger: Logp not implemented! " + msg)
 }
+*/
+
+func (CBGoUtilsLogger) Loga(level logging.Level, f func() string) {
+	Warnf("CBGoUtilsLogger: Loga not implemented! ")
+}
+func (CBGoUtilsLogger) Debuga(f func() string) { Warnf("CBGoUtilsLogger: Debuga not implemented! ") }
+func (CBGoUtilsLogger) Tracea(f func() string) { Warnf("CBGoUtilsLogger: Tracea not implemented! ") }
+func (CBGoUtilsLogger) Requesta(rlevel logging.Level, f func() string) {
+	Warnf("CBGoUtilsLogger: Requesta not implemented! ")
+}
+func (CBGoUtilsLogger) Infoa(f func() string)   { Warnf("CBGoUtilsLogger: Infoa not implemented! ") }
+func (CBGoUtilsLogger) Warna(f func() string)   { Warnf("CBGoUtilsLogger: Warna not implemented! ") }
+func (CBGoUtilsLogger) Errora(f func() string)  { Warnf("CBGoUtilsLogger: Errora not implemented! ") }
+func (CBGoUtilsLogger) Severea(f func() string) { Warnf("CBGoUtilsLogger: Severea not implemented! ") }
+func (CBGoUtilsLogger) Fatala(f func() string)  { Warnf("CBGoUtilsLogger: Fatala not implemented! ") }
