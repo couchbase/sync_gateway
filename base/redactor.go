@@ -76,6 +76,44 @@ func (redactorSlice RedactorSlice) String() string {
 	return "[ " + string(tmp) + "]"
 }
 
+func (set Set) buildRedactorSet(function func(interface{}) RedactorFunc) RedactorSet {
+	return RedactorSet{
+		set:          set,
+		redactorFunc: function,
+	}
+}
+
+type RedactorSet struct {
+	set          Set
+	redactorFunc func(interface{}) RedactorFunc
+}
+
+func (redactorSet RedactorSet) Redact() string {
+	return redactorSet.GetRedactionString(true)
+}
+
+func (redactorSet RedactorSet) String() string {
+	return redactorSet.GetRedactionString(false)
+}
+
+func (redactorSet RedactorSet) GetRedactionString(shouldRedact bool) string {
+	tmp := []byte("{")
+	iterationCount := 0
+	for setItem, _ := range redactorSet.set {
+		if shouldRedact {
+			tmp = append(tmp, redactorSet.redactorFunc(setItem).Redact()...)
+		} else {
+			tmp = append(tmp, redactorSet.redactorFunc(setItem).String()...)
+		}
+		iterationCount++
+		if iterationCount != len(redactorSet.set) {
+			tmp = append(tmp, ", "...)
+		}
+	}
+
+	return string(append(tmp, "}"...))
+}
+
 func buildRedactorFuncSlice(valueOf reflect.Value, function func(interface{}) RedactorFunc) RedactorSlice {
 	length := valueOf.Len()
 	retVal := make([]Redactor, 0, length)

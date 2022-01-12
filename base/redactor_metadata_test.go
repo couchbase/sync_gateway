@@ -32,19 +32,28 @@ func TestMD(t *testing.T) {
 	RedactMetadata = true
 	defer func() { RedactMetadata = false }()
 
-	//Base string test
+	// Base string test
 	md := MD("hello world")
 	assert.Equal(t, metaDataPrefix+"hello world"+metaDataSuffix, md.Redact())
 
-	//Big Int
+	// Big Int
 	md = MD(big.NewInt(1234))
 	assert.Equal(t, metaDataPrefix+"1234"+metaDataSuffix, md.Redact())
 
-	//Struct
+	// Struct
 	md = MD(struct{}{})
 	assert.Equal(t, metaDataPrefix+"{}"+metaDataSuffix, md.Redact())
 
-	//String slict
+	// String slice
 	md = MD([]string{"hello", "world", "o/"})
 	assert.Equal(t, "[ "+metaDataPrefix+"hello"+metaDataSuffix+" "+metaDataPrefix+"world"+metaDataSuffix+" "+metaDataPrefix+"o/"+metaDataSuffix+" ]", md.Redact())
+
+	// Set
+	md = MD(SetOf("hello", "world"))
+	// As a set comes from a map we can't be sure which order it'll end up with so should check both permutations
+	redactedPerm1 := "{" + metaDataPrefix + "hello" + metaDataSuffix + ", " + metaDataPrefix + "world" + metaDataSuffix + "}"
+	redactedPerm2 := "{" + metaDataPrefix + "world" + metaDataSuffix + ", " + metaDataPrefix + "hello" + metaDataSuffix + "}"
+	redactedSet := md.Redact()
+	redactedCorrectly := redactedPerm1 == redactedSet || redactedPerm2 == redactedSet
+	assert.True(t, redactedCorrectly, "Unexpected redact got %v", redactedSet)
 }

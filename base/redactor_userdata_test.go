@@ -16,6 +16,7 @@ import (
 	"time"
 
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestUserDataRedact(t *testing.T) {
@@ -48,6 +49,15 @@ func TestUD(t *testing.T) {
 	// String slice test.
 	ud = UD([]string{"hello", "world", "o/"})
 	goassert.Equals(t, ud.Redact(), "[ "+userDataPrefix+"hello"+userDataSuffix+" "+userDataPrefix+"world"+userDataSuffix+" "+userDataPrefix+"o/"+userDataSuffix+" ]")
+
+	// Set
+	ud = UD(SetOf("hello", "world"))
+	// As a set comes from a map we can't be sure which order it'll end up with so should check both permutations
+	redactedPerm1 := "{" + userDataPrefix + "hello" + userDataSuffix + ", " + userDataPrefix + "world" + userDataSuffix + "}"
+	redactedPerm2 := "{" + userDataPrefix + "world" + userDataSuffix + ", " + userDataPrefix + "hello" + userDataSuffix + "}"
+	redactedSet := ud.Redact()
+	redactedCorrectly := redactedPerm1 == redactedSet || redactedPerm2 == redactedSet
+	assert.True(t, redactedCorrectly, "Unexpected redact got %v", redactedSet)
 }
 
 func BenchmarkUserDataRedact(b *testing.B) {
