@@ -32,9 +32,13 @@ func TestBlipPusherUpdateDatabase(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeyHTTPResp, base.KeySync)()
 
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{},
 		guestEnabled:   true,
+		TestBucket:     tb.NoCloseClone(),
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -72,7 +76,9 @@ func TestBlipPusherUpdateDatabase(t *testing.T) {
 	require.NoError(t, err)
 
 	// just change the sync function to cause the database to reload
-	resp, err := rt.UpsertDbConfig("db", DbConfig{Sync: base.StringPtr(`function(doc){console.log("update");}`)})
+	dbConfig := *rt.ServerContext().GetDbConfig("db")
+	dbConfig.Sync = base.StringPtr(`function(doc){console.log("update");}`)
+	resp, err := rt.ReplaceDbConfig("db", dbConfig)
 	require.NoError(t, err)
 	assertStatus(t, resp, http.StatusCreated)
 
