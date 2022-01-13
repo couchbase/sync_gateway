@@ -30,6 +30,8 @@ import (
 // TODO CBG-1903: Can be fixed by draining in-flight requests before fully closing the database.
 func TestBlipPusherUpdateDatabase(t *testing.T) {
 
+	t.Skip("Skipping test - revisit in CBG-1908")
+
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeyHTTPResp, base.KeySync)()
 
 	tb := base.GetTestBucket(t)
