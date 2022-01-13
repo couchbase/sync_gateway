@@ -1025,8 +1025,9 @@ func TestReplicationConcurrentPush(t *testing.T) {
 //   returned teardown function closes activeRT, passiveRT and the http server, should be invoked with defer
 func setupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, remoteDBURLString string, teardown func()) {
 	// Set up passive RestTester (rt2)
+	passiveTestBucket := base.GetTestBucket(t)
 	passiveRT = NewRestTester(t, &RestTesterConfig{
-		TestBucket: base.GetTestBucket(t),
+		TestBucket: passiveTestBucket.NoCloseClone(),
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
@@ -1045,8 +1046,9 @@ func setupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	// Set up active RestTester (rt1)
+	activeTestBucket := base.GetTestBucket(t)
 	activeRT = NewRestTester(t, &RestTesterConfig{
-		TestBucket:         base.GetTestBucket(t),
+		TestBucket:         activeTestBucket.NoCloseClone(),
 		sgReplicateEnabled: true,
 	})
 
@@ -1056,8 +1058,10 @@ func setupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 
 	teardown = func() {
 		activeRT.Close()
+		activeTestBucket.Close()
 		srv.Close()
 		passiveRT.Close()
+		passiveTestBucket.Close()
 	}
 	return activeRT, passiveRT, passiveDBURL.String(), teardown
 }
