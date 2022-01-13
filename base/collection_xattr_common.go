@@ -22,7 +22,7 @@ type SubdocXattrStore interface {
 	SubdocInsertBodyAndXattr(k string, xattrKey string, exp uint32, v interface{}, xv interface{}) (casOut uint64, err error)
 	SubdocSetXattr(k string, xattrKey string, xv interface{}) (casOut uint64, err error)
 	SubdocUpdateXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}) (casOut uint64, err error)
-	SubdocUpdateBodyAndXattr(k string, xattrKey string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error)
+	SubdocUpdateBodyAndXattr(k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v interface{}, xv interface{}) (casOut uint64, err error)
 	SubdocUpdateXattrDeleteBody(k, xattrKey string, exp uint32, cas uint64, xv interface{}) (casOut uint64, err error)
 	SubdocDeleteXattr(k string, xattrKey string, cas uint64) error
 	SubdocDeleteXattrs(k string, xattrKeys ...string) error
@@ -47,7 +47,7 @@ type KvXattrStore interface {
 }
 
 // CAS-safe write of a document and it's associated named xattr
-func WriteCasWithXattr(store SubdocXattrStore, k string, xattrKey string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
+func WriteCasWithXattr(store SubdocXattrStore, k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v interface{}, xv interface{}) (casOut uint64, err error) {
 
 	worker := func() (shouldRetry bool, err error, value uint64) {
 
@@ -64,7 +64,7 @@ func WriteCasWithXattr(store SubdocXattrStore, k string, xattrKey string, exp ui
 		// Otherwise, replace existing value
 		if v != nil {
 			// Have value and xattr value - update both
-			casOut, err = store.SubdocUpdateBodyAndXattr(k, xattrKey, exp, cas, v, xv)
+			casOut, err = store.SubdocUpdateBodyAndXattr(k, xattrKey, exp, cas, opts, v, xv)
 			if err != nil {
 				shouldRetry = store.isRecoverableWriteError(err)
 				return shouldRetry, err, uint64(0)
@@ -91,12 +91,12 @@ func WriteCasWithXattr(store SubdocXattrStore, k string, xattrKey string, exp ui
 
 // Single attempt to update a document and xattr.  Setting isDelete=true and value=nil will delete the document body.  Both
 // update types (UpdateTombstoneXattr, WriteCasWithXattr) include recoverable error retry.
-func WriteWithXattr(store SubdocXattrStore, k string, xattrKey string, exp uint32, cas uint64, value []byte, xattrValue []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) { // If this is a tombstone, we want to delete the document and update the xattr
+func WriteWithXattr(store SubdocXattrStore, k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, value []byte, xattrValue []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) { // If this is a tombstone, we want to delete the document and update the xattr
 	if isDelete {
 		return UpdateTombstoneXattr(store, k, xattrKey, exp, cas, xattrValue, deleteBody)
 	} else {
 		// Not a delete - update the body and xattr
-		return WriteCasWithXattr(store, k, xattrKey, exp, cas, value, xattrValue)
+		return WriteCasWithXattr(store, k, xattrKey, exp, cas, opts, value, xattrValue)
 	}
 }
 
@@ -174,7 +174,7 @@ func UpdateTombstoneXattr(store SubdocXattrStore, k string, xattrKey string, exp
 
 // WriteUpdateWithXattr retrieves the existing doc from the bucket, invokes the callback to update the document, then writes the new document to the bucket.  Will repeat this process on cas
 // failure.  If previousValue/xattr/cas are provided, will use those on the first iteration instead of retrieving from the bucket.
-func WriteUpdateWithXattr(store SubdocXattrStore, k string, xattrKey string, userXattrKey string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+func WriteUpdateWithXattr(store SubdocXattrStore, k string, xattrKey string, userXattrKey string, exp uint32, opts *sgbucket.MutateInOptions, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 
 	var value []byte
 	var xattrValue []byte
@@ -228,7 +228,7 @@ func WriteUpdateWithXattr(store SubdocXattrStore, k string, xattrKey string, use
 
 		// Attempt to write the updated document to the bucket.  Mark body for deletion if previous body was non-empty
 		deleteBody := value != nil
-		casOut, writeErr := WriteWithXattr(store, k, xattrKey, exp, cas, updatedValue, updatedXattrValue, isDelete, deleteBody)
+		casOut, writeErr := WriteWithXattr(store, k, xattrKey, exp, cas, opts, updatedValue, updatedXattrValue, isDelete, deleteBody)
 
 		if writeErr == nil {
 			return casOut, nil

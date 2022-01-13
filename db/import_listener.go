@@ -147,7 +147,7 @@ func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 		default:
 		}
 
-		_, err := il.database.ImportDocRaw(docID, rawBody, rawXattr, rawUserXattr, isDelete, event.Cas, &event.Expiry, ImportFromFeed)
+		_, err := il.database.ImportDocRaw(docID, rawBody, rawXattr, rawUserXattr, isDelete, event.Cas, ImportFromFeed)
 		if err != nil {
 			if err == base.ErrImportCasFailure {
 				base.DebugfCtx(logCtx, base.KeyImport, "Not importing mutation - document %s has been subsequently updated and will be imported based on that mutation.", base.UD(docID))

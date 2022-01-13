@@ -404,8 +404,7 @@ func TestImportNullDocRaw(t *testing.T) {
 	defer db.Close()
 
 	// Feed import of null doc
-	exp := uint32(0)
-	importedDoc, err := db.ImportDocRaw("TestImportNullDoc", []byte("null"), []byte("{}"), nil, false, 1, &exp, ImportFromFeed)
+	importedDoc, err := db.ImportDocRaw("TestImportNullDoc", []byte("null"), []byte("{}"), nil, false, 1, ImportFromFeed)
 	goassert.Equals(t, err, base.ErrEmptyDocument)
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
 }

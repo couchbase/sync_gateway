@@ -2237,3 +2237,38 @@ func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 	syncMeta = respBody[base.SyncPropertyName].(map[string]interface{})
 	assert.NotEmpty(t, syncMeta["rev"].(string))
 }
+
+// CBG-1862 - support GoCBv2 'preserveExpiry' option for on-demand import
+// Similar to TestXattrOnDemandImportPreservesExpiry but checks expiry is an exact match of when the document was first stored
+func TestImportPreserveExpiry(t *testing.T) {
+	SkipImportTestsIfNotEnabled(t)
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	bucket := rt.Bucket()
+
+	key := t.Name()
+	val := make(map[string]interface{}, 0)
+	val["foo"] = "bar"
+
+	var rVal map[string]interface{}
+	_, err := bucket.Get(key, &rVal)
+	assert.Error(t, err, "Key should not exist yet, expected error but got nil")
+
+	err = bucket.Set(key, base.DurationToCbsExpiry(time.Hour*24), nil, val)
+	assert.NoError(t, err, "Error calling Set()")
+
+	cbStore, _ := base.AsCouchbaseStore(bucket)
+	// Get expiry that was set on doc before import
+	beforeExp, err := cbStore.GetExpiry(key)
+	require.NoError(t, err)
+	require.NotEqual(t, 0, beforeExp)
+
+	resp := rt.SendAdminRequest("GET", "/db/"+key, "")
+	assert.Equal(t, resp.Code, 200)
+	// Check expiry is same as when doc was set
+	afterExp, err := cbStore.GetExpiry(key)
+	assert.Equal(t, beforeExp, afterExp)
+}

@@ -1002,7 +1002,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 		}
 
 		// Insert
-		_, err = bucket.WriteUpdateWithXattr(key, xattrName, "", 0, nil, writeUpdateFunc)
+		_, err = bucket.WriteUpdateWithXattr(key, xattrName, "", 0, nil, nil, writeUpdateFunc)
 		if err != nil {
 			t.Errorf("Error doing WriteUpdateWithXattr: %+v", err)
 		}
@@ -1018,7 +1018,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 		goassert.Equals(t, retrievedXattr["seq"], float64(1))
 
 		// Update
-		_, err = bucket.WriteUpdateWithXattr(key, xattrName, "", 0, nil, writeUpdateFunc)
+		_, err = bucket.WriteUpdateWithXattr(key, xattrName, "", 0, nil, nil, writeUpdateFunc)
 		if err != nil {
 			t.Errorf("Error doing WriteUpdateWithXattr: %+v", err)
 		}
@@ -1084,7 +1084,7 @@ func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
 			return updatedDoc, updatedXattr, false, nil, nil
 		}
 
-		_, err := bucket.WriteUpdateWithXattr(key, xattrKey, userXattrKey, 0, nil, writeUpdateFunc)
+		_, err := bucket.WriteUpdateWithXattr(key, xattrKey, userXattrKey, 0, nil, nil, writeUpdateFunc)
 		assert.NoError(t, err)
 
 		var gotBody map[string]interface{}
@@ -1099,7 +1099,7 @@ func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
 		_, err = userXattrStore.WriteUserXattr(key, userXattrKey, userXattrVal)
 		assert.NoError(t, err)
 
-		_, err = bucket.WriteUpdateWithXattr(key, xattrKey, userXattrKey, 0, nil, writeUpdateFunc)
+		_, err = bucket.WriteUpdateWithXattr(key, xattrKey, userXattrKey, 0, nil, nil, writeUpdateFunc)
 		assert.NoError(t, err)
 
 		_, err = bucket.Get(key, &gotBody)

@@ -13,11 +13,11 @@ import (
 var _ SubdocXattrStore = &CouchbaseBucketGoCB{}
 
 func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
-	return WriteCasWithXattr(bucket, k, xattrKey, exp, cas, v, xv)
+	return WriteCasWithXattr(bucket, k, xattrKey, exp, cas, nil, v, xv)
 }
 
 func (bucket *CouchbaseBucketGoCB) WriteWithXattr(k string, xattrKey string, exp uint32, cas uint64, v []byte, xv []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) { // If this is a tombstone, we want to delete the document and update the xattr
-	return WriteWithXattr(bucket, k, xattrKey, exp, cas, v, xv, isDelete, deleteBody)
+	return WriteWithXattr(bucket, k, xattrKey, exp, cas, nil, v, xv, isDelete, deleteBody)
 }
 
 func (bucket *CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) error {
@@ -40,8 +40,8 @@ func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, userX
 	return bucket.SubdocGetBodyAndXattr(k, xattrKey, userXattrKey, rv, xv, uxv)
 }
 
-func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string, userXattrKey string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
-	return WriteUpdateWithXattr(bucket, k, xattrKey, userXattrKey, exp, previous, callback)
+func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string, userXattrKey string, exp uint32, opts *sgbucket.MutateInOptions, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+	return WriteUpdateWithXattr(bucket, k, xattrKey, userXattrKey, exp, opts, previous, callback)
 }
 
 func (bucket *CouchbaseBucketGoCB) SetXattr(k string, xattrKey string, xv []byte) (casOut uint64, err error) {
@@ -415,7 +415,7 @@ func (bucket *CouchbaseBucketGoCB) SubdocInsertBodyAndXattr(k string, xattrKey s
 }
 
 // SubdocUpdateithXattr updates the document body and specified xattr.
-func (bucket *CouchbaseBucketGoCB) SubdocUpdateBodyAndXattr(k string, xattrKey string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
+func (bucket *CouchbaseBucketGoCB) SubdocUpdateBodyAndXattr(k string, xattrKey string, exp uint32, cas uint64, _ *sgbucket.MutateInOptions, v interface{}, xv interface{}) (casOut uint64, err error) {
 
 	// Have value and xattr value - update both
 	mutateInBuilder := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagMkDoc, gocb.Cas(cas), exp).

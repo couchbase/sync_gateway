@@ -12,3 +12,11 @@ func fillUpsertOptions(goCBUpsertOptions *gocb.UpsertOptions, upsertOptions *sgb
 	}
 	goCBUpsertOptions.PreserveExpiry = upsertOptions.PreserveExpiry
 }
+
+// Fills in the GoCB MutateInOptions based on the passed in MutateInOptions
+func fillMutateInOptions(goCBMutateInOptions *gocb.MutateInOptions, mutateInOptions *sgbucket.MutateInOptions) {
+	if mutateInOptions == nil {
+		return
+	}
+	goCBMutateInOptions.PreserveExpiry = mutateInOptions.PreserveExpiry
+}
