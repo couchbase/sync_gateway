@@ -2,7 +2,7 @@
 
 [![Sync Gateway Documentation](https://img.shields.io/badge/documentation-current-blue.svg)][SG_DOCS]
 [![GoDoc](https://godoc.org/github.com/cbbruno/sync_gateway_mod?status.svg)](https://godoc.org/github.com/cbbruno/sync_gateway_mod)
-[![dev-ci](https://github.com/cbbruno/sync_gateway_mod/actions/workflows/dev-ci.yml/badge.svg?branch=develop)](https://github.com/cbbruno/sync_gateway_mod/actions/workflows/dev-ci.yml)
+[![build](https://github.com/cbbruno/sync_gateway_mod/actions/workflows/ci.yml/badge.svg)](https://github.com/cbbruno/sync_gateway_mod/actions/workflows/ci.yml)
 [![Coverage Status](https://coveralls.io/repos/github/cbbruno/sync_gateway_mod/badge.svg?branch=develop)](https://coveralls.io/github/cbbruno/sync_gateway_mod?branch=develop)
 [![License](https://img.shields.io/badge/license-BSL%201.1-lightgrey)](https://github.com/couchbase/sync_gateway/blob/master/LICENSE)
 
