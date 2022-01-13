@@ -109,7 +109,13 @@ func (apr *ActivePushReplicator) _connect() error {
 			if err != nil {
 				base.Errorf("Failed to stop and disconnect replication: %v", err)
 			}
+		} else if strings.Contains(err.Error(), ErrDatabaseWentAway.Message) {
+			err = apr.reconnect()
+			if err != nil {
+				base.Errorf("Failed to reconnect replication: %v", err)
+			}
 		}
+		// No special handling for error
 	}
 
 	apr.activeSendChanges.Set(true)

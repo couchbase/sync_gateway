@@ -24,16 +24,23 @@ import (
 
 // TestBlipPusherUpdateDatabase starts a push replication and updates the database underneath the replication.
 // Expect to see the connection closed with an error, instead of continuously panicking.
+// This is the CBL version of TestPushReplicationAPIUpdateDatabase
 //
 // This test causes the race detector to flag the bucket=nil operation and any in-flight requests being made using that bucket, prior to the replication being reset.
 // TODO CBG-1903: Can be fixed by draining in-flight requests before fully closing the database.
 func TestBlipPusherUpdateDatabase(t *testing.T) {
 
+	t.Skip("Skipping test - revisit in CBG-1908")
+
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeyHTTPResp, base.KeySync)()
+
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
 
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{},
 		guestEnabled:   true,
+		TestBucket:     tb.NoCloseClone(),
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -71,7 +78,9 @@ func TestBlipPusherUpdateDatabase(t *testing.T) {
 	require.NoError(t, err)
 
 	// just change the sync function to cause the database to reload
-	resp, err := rt.UpsertDbConfig("db", DbConfig{Sync: base.StringPtr(`function(doc){console.log("update");}`)})
+	dbConfig := *rt.ServerContext().GetDbConfig("db")
+	dbConfig.Sync = base.StringPtr(`function(doc){console.log("update");}`)
+	resp, err := rt.ReplaceDbConfig("db", dbConfig)
 	require.NoError(t, err)
 	assertStatus(t, resp, http.StatusCreated)
 
