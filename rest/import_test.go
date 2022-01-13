@@ -1330,6 +1330,12 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 	_, err := bucket.Add(mobileKey, uint32(expiryUnixEpoch), mobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
 
+	// Verify the expiry is as expected
+	cbStore, _ := base.AsCouchbaseStore(bucket)
+	beforeExpiry, err := cbStore.GetExpiry(mobileKey)
+	require.NoError(t, err, "Error calling GetExpiry()")
+	assertExpiry(t, uint32(expiryUnixEpoch), beforeExpiry)
+
 	// Negative test case -- no expiry
 	_, err = bucket.Add(mobileKeyNoExpiry, 0, mobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
@@ -1340,23 +1346,21 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 
 	log.Printf("changes: %+v", changes)
 	changeEntry := changes.Results[0]
-	goassert.True(t, changeEntry.ID == mobileKey || changeEntry.ID == mobileKeyNoExpiry)
+	assert.True(t, changeEntry.ID == mobileKey || changeEntry.ID == mobileKeyNoExpiry)
 
 	// Double-check to make sure that it's been imported by checking the Sync Metadata in the xattr
 	assertXattrSyncMetaRevGeneration(t, bucket, mobileKey, 1)
 	assertXattrSyncMetaRevGeneration(t, bucket, mobileKeyNoExpiry, 1)
 
 	// Verify the expiry has been preserved after the import
-	cbStore, _ := base.AsCouchbaseStore(bucket)
-	expiry, err := cbStore.GetExpiry(mobileKey)
+	afterExpiry, err := cbStore.GetExpiry(mobileKey)
 	assert.NoError(t, err, "Error calling GetExpiry()")
-	assertExpiry(t, uint32(expiryUnixEpoch), expiry)
+	assertExpiry(t, beforeExpiry, afterExpiry)
 
-	// Negative test case -- make sure no expiry was erroneously added by the the import
-	expiry, err = cbStore.GetExpiry(mobileKeyNoExpiry)
+	// Negative test case -- make sure no expiry was erroneously added by the import
+	expiry, err := cbStore.GetExpiry(mobileKeyNoExpiry)
 	assert.NoError(t, err, "Error calling GetExpiry()")
-	goassert.True(t, expiry == 0)
-
+	assert.True(t, expiry == 0)
 }
 
 // Test migration of a 1.5 doc that has an expiry value.
@@ -1505,11 +1509,11 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 			_, err := bucket.Add(key, uint32(expiryUnixEpoch), mobileBody)
 			require.NoError(t, err, "Error writing SDK doc")
 
-			// Verify the expiry before the on-demand import is triggered
+			// Verify the expiry is as expected
 			cbStore, _ := base.AsCouchbaseStore(bucket)
-			expiry, err := cbStore.GetExpiry(key)
+			beforeExpiry, err := cbStore.GetExpiry(key)
 			require.NoError(t, err, "Error calling GetExpiry()")
-			assertExpiry(t, uint32(expiryUnixEpoch), expiry)
+			assertExpiry(t, uint32(expiryUnixEpoch), beforeExpiry)
 
 			testCase.onDemandCallback(rt, key)
 
@@ -1524,9 +1528,9 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 			assertXattrSyncMetaRevGeneration(t, bucket, key, testCase.expectedRevGeneration)
 
 			// Verify the expiry has not been changed from the original expiry value
-			expiry, err = cbStore.GetExpiry(key)
+			afterExpiry, err := cbStore.GetExpiry(key)
 			require.NoError(t, err, "Error calling GetExpiry()")
-			assertExpiry(t, uint32(expiryUnixEpoch), expiry)
+			assertExpiry(t, beforeExpiry, afterExpiry)
 		})
 	}
 
@@ -2236,39 +2240,4 @@ func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 	assert.True(t, respBody[db.BodyDeleted].(bool))
 	syncMeta = respBody[base.SyncPropertyName].(map[string]interface{})
 	assert.NotEmpty(t, syncMeta["rev"].(string))
-}
-
-// CBG-1862 - support GoCBv2 'preserveExpiry' option for on-demand import
-// Similar to TestXattrOnDemandImportPreservesExpiry but checks expiry is an exact match of when the document was first stored
-func TestImportPreserveExpiry(t *testing.T) {
-	SkipImportTestsIfNotEnabled(t)
-
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
-
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-	bucket := rt.Bucket()
-
-	key := t.Name()
-	val := make(map[string]interface{}, 0)
-	val["foo"] = "bar"
-
-	var rVal map[string]interface{}
-	_, err := bucket.Get(key, &rVal)
-	assert.Error(t, err, "Key should not exist yet, expected error but got nil")
-
-	err = bucket.Set(key, base.DurationToCbsExpiry(time.Hour*24), nil, val)
-	assert.NoError(t, err, "Error calling Set()")
-
-	cbStore, _ := base.AsCouchbaseStore(bucket)
-	// Get expiry that was set on doc before import
-	beforeExp, err := cbStore.GetExpiry(key)
-	require.NoError(t, err)
-	require.NotEqual(t, 0, beforeExp)
-
-	resp := rt.SendAdminRequest("GET", "/db/"+key, "")
-	assert.Equal(t, resp.Code, 200)
-	// Check expiry is same as when doc was set
-	afterExp, err := cbStore.GetExpiry(key)
-	assert.Equal(t, beforeExp, afterExp)
 }
