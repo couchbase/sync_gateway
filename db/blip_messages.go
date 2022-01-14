@@ -137,7 +137,7 @@ func (rq *SetSGR2CheckpointRequest) Response() (*SetSGR2CheckpointResponse, erro
 			// conflict writing checkpoint
 			return nil, base.HTTPErrorf(http.StatusConflict, "Document update conflict")
 		}
-		return nil, fmt.Errorf("unknown response type: %v - %s", msgType, respBody)
+		return nil, fmt.Errorf("unexpected error response: %s", respBody)
 	}
 
 	return &SetSGR2CheckpointResponse{
@@ -199,7 +199,7 @@ func (rq *GetSGR2CheckpointRequest) Response() (*SGR2Checkpoint, error) {
 			// no checkpoint found
 			return nil, nil
 		}
-		return nil, fmt.Errorf("unknown response type: %v - %s", msgType, respBody)
+		return nil, fmt.Errorf("unexpected error response: %s", respBody)
 	}
 
 	bodyBytes, err := respMsg.Body()

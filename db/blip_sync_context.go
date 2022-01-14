@@ -155,7 +155,7 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 					base.InfofCtx(bsc.loggingCtx, base.KeySync, "Database bucket closed underneath request %v - asking client to reconnect", rq)
 					base.DebugfCtx(bsc.loggingCtx, base.KeySync, "PANIC handling BLIP request %v: %v\n%s", rq, err, debug.Stack())
 					// HTTP 503 asks CBL to disconnect and retry.
-					rq.Response().SetError("HTTP", 503, "Sync Gateway database went away - asking client to reconnect")
+					rq.Response().SetError("HTTP", ErrDatabaseWentAway.Status, ErrDatabaseWentAway.Message)
 					return
 				}
 
