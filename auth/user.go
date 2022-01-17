@@ -471,7 +471,7 @@ func (user *userImpl) GetRoles() []Role {
 	return user.roles
 }
 
-func (user *userImpl) PreloadRoles() {
+func (user *userImpl) InitializeRoles() {
 	_ = user.GetRoles()
 }
 

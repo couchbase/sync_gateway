@@ -66,7 +66,7 @@ func NewBlipSyncContext(bc *blip.Context, db *Database, contextID string, replic
 
 	if u := db.User(); u != nil {
 		bsc.userName = u.Name()
-		u.PreloadRoles()
+		u.InitializeRoles()
 	}
 
 	// Register default handlers

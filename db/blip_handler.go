@@ -105,7 +105,7 @@ func (bh *blipHandler) refreshUser() error {
 				bc.dbUserLock.Unlock()
 				return err
 			}
-			newUser.PreloadRoles()
+			newUser.InitializeRoles()
 			bc.userChangeWaiter.RefreshUserKeys(newUser)
 			bc.blipContextDb.SetUser(newUser)
 

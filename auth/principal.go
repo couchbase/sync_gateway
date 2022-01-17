@@ -123,7 +123,7 @@ type User interface {
 
 	RoleHistory() TimedSetHistory
 
-	PreloadRoles()
+	InitializeRoles()
 
 	RevokedChannels(since uint64, lowSeq uint64, triggeredBy uint64) RevokedChannels
 
