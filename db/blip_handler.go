@@ -216,7 +216,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	bh.continuous = continuous
 	// Start asynchronous changes goroutine
 	go func() {
-		// Pull replication stats by type - Active continuous stats decremented in Close(), one shot after changes sent
+		// Pull replication stats by type
 		if bh.continuous {
 			bh.replicationStats.SubChangesContinuousActive.Add(1)
 			defer bh.replicationStats.SubChangesContinuousActive.Add(-1)
