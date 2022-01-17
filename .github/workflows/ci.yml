@@ -7,21 +7,30 @@ on:
     branches: [ develop ]
 
 jobs:
-
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+        include:
+        - os: macos-latest
+          MallocNanoZone: 0
     env:
       GOPRIVATE: github.com/couchbaselabs
     steps:
     - uses: actions/checkout@v2
-
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
         go-version: 1.17
-
+    - name: gofmt
+      run: |
+        gofmt -d -e . | tee gofmt.out
+        test -z "$(cat gofmt.out)"
+    - name: vet
+      run: go vet ./...
     - name: Build
       run: go build -v ./...
-
-    - name: Test
-      run: go test -v ./...
+    - name: Test 
+      run: go test -race -timeout=30m -count=1 -v ./...
