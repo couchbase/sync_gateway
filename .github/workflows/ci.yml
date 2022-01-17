@@ -12,12 +12,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-latest, macos-latest, windows-latest ]
-        include:
-        - os: macos-latest
-          MallocNanoZone: 0
+        # os: [ ubuntu-latest, macos-latest, windows-latest ]
+        os: [ ubuntu-latest, macos-latest ]
     env:
       GOPRIVATE: github.com/couchbaselabs
+      MallocNanoZone: 0
     steps:
     - uses: actions/checkout@v2
     - name: Set up Go
@@ -26,7 +25,7 @@ jobs:
         go-version: 1.17
     - name: gofmt
       run: |
-        gofmt -d -e . | tee gofmt.out
+        gofmt -d -e ... | tee gofmt.out
         test -z "$(cat gofmt.out)"
     - name: vet
       run: go vet ./...
