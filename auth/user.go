@@ -29,9 +29,6 @@ type userImpl struct {
 	auth  *Authenticator
 	roles []Role
 
-	// getRolesLock ensures there is no race condition when checking if the roles have been set, and when setting
-	getRolesLock sync.RWMutex
-
 	// warnChanThresholdOnce ensures that the check for channels
 	// per user threshold is only performed exactly once.
 	warnChanThresholdOnce sync.Once
@@ -456,30 +453,26 @@ func (user *userImpl) SetPassword(password string) {
 }
 
 //////// CHANNEL ACCESS:
+
 func (user *userImpl) GetRoles() []Role {
-	user.getRolesLock.RLock()
 	if user.roles == nil {
-		// Upgrade lock
-		user.getRolesLock.RUnlock()
-		user.getRolesLock.Lock()
-		defer user.getRolesLock.Unlock()
-		if user.roles == nil {
-			roles := make([]Role, 0, len(user.RoleNames()))
-			for name := range user.RoleNames() {
-				role, err := user.auth.GetRole(name)
-				//base.Infof(base.KeyAccess, "User %s role %q = %v", base.UD(user.Name_), base.UD(name), base.UD(role))
-				if err != nil {
-					panic(fmt.Sprintf("Error getting user role %q: %v", name, err))
-				} else if role != nil {
-					roles = append(roles, role)
-				}
+		roles := make([]Role, 0, len(user.RoleNames()))
+		for name := range user.RoleNames() {
+			role, err := user.auth.GetRole(name)
+			//base.Infof(base.KeyAccess, "User %s role %q = %v", base.UD(user.Name_), base.UD(name), base.UD(role))
+			if err != nil {
+				panic(fmt.Sprintf("Error getting user role %q: %v", name, err))
+			} else if role != nil {
+				roles = append(roles, role)
 			}
-			user.roles = roles
 		}
-	} else {
-		defer user.getRolesLock.RUnlock()
+		user.roles = roles
 	}
 	return user.roles
+}
+
+func (user *userImpl) PreloadRoles() {
+	_ = user.GetRoles()
 }
 
 func (user *userImpl) CanSeeChannel(channel string) bool {
