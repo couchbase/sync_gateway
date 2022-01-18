@@ -1,0 +1,1189 @@
+openapi: 3.0.0
+info:
+  title: Sync Gateway API
+  version: '3.0'
+  license:
+    name: Business Source License 1.1 (BSL)
+    url: 'https://github.com/couchbase/sync_gateway/blob/master/LICENSE'
+  description: ''
+servers:
+  - url: 'http://localhost:4984'
+    description: Public API
+  - url: 'http://localhost:4985'
+    description: Admin API
+  - url: 'http://localhost:4986'
+    description: Metric API
+paths:
+  /:
+    get:
+      summary: Abc
+      responses: {}
+      operationId: get
+      x-internal: false
+      description: ''
+    head:
+      summary: ''
+      operationId: head
+      responses:
+        '200':
+          description: OK
+  '/{db}/':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    get:
+      summary: aaa
+      responses: {}
+      operationId: get-db
+    post:
+      summary: a
+      responses: {}
+      operationId: post-db
+    delete:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: delete-db
+    head:
+      summary: ''
+      operationId: head-db
+      responses:
+        '200':
+          description: OK
+  '/{db}/_all_docs':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_all_docs
+    post:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: post-db-_all_docs
+    head:
+      summary: ''
+      operationId: head-db-_all_docs
+      responses:
+        '200':
+          description: OK
+  '/{db}/_bulk_docs':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    post:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: post-db-_bulk_docs
+  '/{db}/_bulk_get':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    post:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: post-db-_bulk_get
+  '/{db}/_changes':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_changes
+    post:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: post-db-_changes
+    head:
+      summary: ''
+      operationId: head-db-_changes
+      responses:
+        '200':
+          description: OK
+  '/{db}/_design/{ddoc}':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: ddoc
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_design-ddoc
+    put:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: put-db-_design-ddoc
+    delete:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: delete-db-_design-ddoc
+    head:
+      summary: ''
+      operationId: head-db-_design-ddoc
+      responses:
+        '200':
+          description: OK
+  '/{db}/_design/{ddoc}/_view/{view}':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: ddoc
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: view
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_design-ddoc-_view-view
+  '/{db}/_ensure_full_commit':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    post:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: post-db-_ensure_full_commit
+  '/{db}/_revs_diff':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    post:
+      summary: s
+      tags: []
+      responses: {}
+      operationId: post-db-_revs_diff
+  '/{db}/_local/{docid}':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: docid
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_local-docid
+    put:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: put-db-_local-docid
+    delete:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: delete-db-_local-docid
+  '/{db}/{docid}':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: docid
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-docid
+    head:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: head-db-docid
+    put:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: put-db-docid
+    delete:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: delete-db-docid
+  '/{db}/{docid}/{attach}':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: docid
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: attach
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-docid-attach
+    put:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: put-db-docid-attach
+    head:
+      summary: ''
+      operationId: head-db-docid-attach
+      responses:
+        '200':
+          description: OK
+  '/{db}/_session':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_session
+    post:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: post-db-_session
+    delete:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: delete-db-_session
+    head:
+      summary: ''
+      operationId: head-db-_session
+      responses:
+        '200':
+          description: OK
+  '/{db}/_facebook':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    post:
+      summary: a
+      tags: []
+      operationId: post-db-_facebook
+  '/{db}/_google':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    post:
+      summary: as
+      tags: []
+      responses: {}
+      operationId: post-db-_google
+  '/{db}/_oidc':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_oidc
+  '/{db}/_oidc_callback':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_oidc_callback
+  '/{db}/_oidc_refresh':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_oidc_refresh
+  '/{db}/_oidc_challenge':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_oidc_challenge
+  '/{db}/_oidc_testing/.well-known/openid-configuration':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_oidc_testing-.well-known-openid-configuration
+  '/{db}/_oidc_testing/authorize':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_oidc_testing-authorize
+    post:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: post-db-_oidc_testing-authorize
+  '/{db}/_oidc_testing/token':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    post:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: post-db-_oidc_testing-token
+  '/{db}/_oidc_testing/certs':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_oidc_testing-certs
+  '/{db}/_oidc_testing/authenticate':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_oidc_testing-authenticate
+    post:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: post-db-_oidc_testing-authenticate
+  '/{db}/_blipsync':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_blipsync
+  '/{targetdb}/':
+    parameters:
+      - schema:
+          type: string
+        name: targetdb
+        in: path
+        required: true
+    put:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: put-targetdb
+  '/{db}/_session/{sessionid}':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: sessionid
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_session-sessionid
+    delete:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: delete-db-_session-sessionid
+  '/{db}/_raw/{docid}':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: docid
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_raw-docid
+    head:
+      summary: ''
+      operationId: head-db-_raw-docid
+      responses:
+        '200':
+          description: OK
+  '/{db}/_revtree/{docid}':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: docid
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_revtree-docid
+  '/{db}/_user/':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_user
+    post:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: post-db-_user
+    head:
+      summary: ''
+      operationId: head-db-_user
+      responses:
+        '200':
+          description: OK
+  '/{db}/_user/{name}':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: name
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_user-name
+    put:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: put-db-_user-name
+    delete:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: delete-db-_user-name
+    head:
+      summary: ''
+      operationId: head-db-_user-name
+      responses:
+        '200':
+          description: OK
+  '/{db}/_user/{name}/_session':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: name
+        in: path
+        required: true
+    delete:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: delete-db-_user-name-_session
+  '/{db}/_user/{name}/_session/{sessionid}':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: name
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: sessionid
+        in: path
+        required: true
+    delete:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: delete-db-_user-name-_session-sessionid
+  '/{db}/_role/':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_role
+    post:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: post-db-_role
+    head:
+      summary: ''
+      operationId: head-db-_role
+      responses:
+        '200':
+          description: OK
+  '/{db}/_role/{name}':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: name
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_role-name
+    put:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: put-db-_role-name
+    delete:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: delete-db-_role-name
+    head:
+      summary: ''
+      operationId: head-db-_role-name
+      responses:
+        '200':
+          description: OK
+  '/{db}/_replication/':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_replication
+    post:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: post-db-_replication
+    head:
+      summary: ''
+      operationId: head-db-_replication
+      responses:
+        '200':
+          description: OK
+  '/{db}/_replication/{replicationid}':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: replicationid
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_replication-replicationid
+    put:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: put-db-_replication-replicationid
+    delete:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: delete-db-_replication-replicationid
+    head:
+      summary: ''
+      operationId: head-db-_replication-replicationid
+      responses:
+        '200':
+          description: OK
+  /_replicationStatus/:
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-_replicationStatus
+    head:
+      summary: ''
+      operationId: head-_replicationStatus
+      responses:
+        '200':
+          description: OK
+  '/_replicationStatus/{replicationid}':
+    parameters:
+      - schema:
+          type: string
+        name: replicationid
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-_replicationStatus-replicationid
+    put:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: put-_replicationStatus-replicationid
+    head:
+      summary: ''
+      operationId: head-_replicationStatus-replicationid
+      responses:
+        '200':
+          description: OK
+  /_logging:
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-_logging
+    put:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: put-_logging
+    post:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: post-_logging
+  '/_profile/{profilename}':
+    parameters:
+      - schema:
+          type: string
+        name: profilename
+        in: path
+        required: true
+    post:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: post-_profile-profilename
+  /_profile:
+    post:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: post-_profile
+  /_heap:
+    post:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: post-_heap
+  /_stats:
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-_stats
+  /_config:
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-_config
+    put:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: put-_config
+  /_status:
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-_status
+  /_sgcollect_info:
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-_sgcollect_info
+    post:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: post-_sgcollect_info
+    delete:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: delete-_sgcollect_info
+  /_debug/pprof/goroutine:
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-_debug-pprof-goroutine
+  /_debug/pprof/cmdline:
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-_debug-pprof-cmdline
+  /_debug/pprof/symbol:
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-_debug-pprof-symbol
+  /_debug/pprof/heap:
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-_debug-pprof-heap
+  /_debug/pprof/profile:
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-_debug-pprof-profile
+  /_debug/pprof/block:
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-_debug-pprof-block
+  /_debug/pprof/threadcreate:
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-_debug-pprof-threadcreate
+  /_debug/pprof/mutex:
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-_debug-pprof-mutex
+  /_debug/pprof/trace:
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-_debug-pprof-trace
+  /_debug/fgprof:
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-_debug-fgprof
+  /_post_upgrade:
+    post:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: post-_post_upgrade
+  '/{db}/_config':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_config
+    put:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: put-db-_config
+    post:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: post-db-_config
+  '/{db}/_config/sync':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_config-sync
+    put:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: put-db-_config-sync
+    delete:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: delete-db-_config-sync
+  '/{db}/_config/import_filter':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_config-import_filter
+    put:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: put-db-_config-import_filter
+    delete:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: delete-db-_config-import_filter
+  '/{db}/_resync':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_resync
+    post:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: post-db-_resync
+  '/{db}/_purge':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    post:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: post-db-_purge
+  '/{db}/_flush':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    post:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: post-db-_flush
+  '/{db}/_online':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    post:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: post-db-_online
+  '/{db}/_offline':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    post:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: post-db-_offline
+  '/{db}/_dump/{view}':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: view
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_dump-view
+  '/{db}/_view/{view}':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: view
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_view-view
+  '/{db}/_dumpchannel/{channel}':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: channel
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_dumpchannel-channel
+  '/{db}/_repair':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    post:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: post-db-_repair
+  '/{newdb}/':
+    parameters:
+      - schema:
+          type: string
+        name: newdb
+        in: path
+        required: true
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-newdb
+  /_all_dbs:
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-_all_dbs
+    head:
+      summary: ''
+      operationId: head-_all_dbs
+      responses:
+        '200':
+          description: OK
+  '/{db}/_compact':
+    parameters:
+      - schema:
+          type: string
+        name: db
+        in: path
+        required: true
+    post:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: post-db-_compact
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-db-_compact
+  /_metrics:
+    get:
+      summary: a
+      tags:
+        - Metrics
+      responses: {}
+      operationId: get-_metrics
+  /_expvar:
+    get:
+      summary: a
+      tags: []
+      responses: {}
+      operationId: get-_expvar
+components:
+  schemas: {}
+  securitySchemes: {}
