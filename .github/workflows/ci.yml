@@ -7,29 +7,76 @@ on:
     branches: [ develop ]
 
 jobs:
-  build:
+  go-pkgs:
+    runs-on: ubuntu-latest
+    env:
+      GOPRIVATE: github.com/couchbaselabs
+    steps:
+      - name: setup-go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.17
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: setup-cache
+        uses: actions/cache@v1
+        with:
+          path: ~/go/pkg/mod
+          key: sgw-gocache-${{ hashFiles('**/go.sum') }}
+      - name: go-get
+        run: go get "./..."
+      - name: gofmt
+        run: |
+          gofmt -d -e "..." | tee gofmt.out
+          test -z "$(cat gofmt.out)"
+      - name: vet
+        run: go vet "./..."
+
+  test:
+    needs: go-pkgs
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        # os: [ ubuntu-latest, macos-latest, windows-latest ]
-        os: [ ubuntu-latest, macos-latest ]
+        os: [macos-latest, windows-latest, ubuntu-latest]
     env:
       GOPRIVATE: github.com/couchbaselabs
       MallocNanoZone: 0
     steps:
-    - uses: actions/checkout@v2
-    - name: Set up Go
-      uses: actions/setup-go@v2
-      with:
-        go-version: 1.17
-    - name: gofmt
-      run: |
-        gofmt -d -e ... | tee gofmt.out
-        test -z "$(cat gofmt.out)"
-    - name: vet
-      run: go vet ./...
-    - name: Build
-      run: go build -v ./...
-    - name: Test 
-      run: go test -race -timeout=30m -count=1 -v ./...
+      - name: setup-go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.17
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: uses-cache
+        uses: actions/cache@v1
+        with:
+          path: ~/go/pkg/mod
+          key: sgw-gocache-${{ hashFiles('**/go.sum') }}
+      - name: Build
+        run: go build -v "./..."
+      - name: Test 
+        run: go test -timeout=30m -count=1 -v "./..."
+
+  test-race:
+    needs: go-pkgs
+    runs-on: ubuntu-latest
+    env:
+      GOPRIVATE: github.com/couchbaselabs
+    steps:
+      - name: setup-go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.17
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: uses-cache
+        uses: actions/cache@v1
+        with:
+          path: ~/go/pkg/mod
+          key: sgw-gocache-${{ hashFiles('**/go.sum') }}
+      - name: Build
+        run: go build -v "./..."
+      - name: Test 
+        run: go test -race -timeout=30m -count=1 -v "./..."
