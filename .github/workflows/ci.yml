@@ -24,7 +24,7 @@ jobs:
           path: ~/go/pkg/mod
           key: sgw-gocache-${{ hashFiles('**/go.sum') }}
       - name: go-get
-        run: go get "./..."
+        run: GOPRIVATE=github.com/couchbaselabs go get "./..."
       - name: gofmt
         run: |
           gofmt -d -e "..." | tee gofmt.out
