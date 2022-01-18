@@ -471,6 +471,10 @@ func (user *userImpl) GetRoles() []Role {
 	return user.roles
 }
 
+func (user *userImpl) InitializeRoles() {
+	_ = user.GetRoles()
+}
+
 func (user *userImpl) CanSeeChannel(channel string) bool {
 	if user.roleImpl.CanSeeChannel(channel) {
 		return true
