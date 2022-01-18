@@ -23,7 +23,7 @@ jobs:
           key: sgw-gocache-${{ hashFiles('**/go.sum') }}
       - name: gofmt
         run: |
-          gofmt -d -e "..." | tee gofmt.out
+          gofmt -d -e ... | tee gofmt.out
           test -z "$(cat gofmt.out)"
       - name: vet
         run: go vet "./..."
