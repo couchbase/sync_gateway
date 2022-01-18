@@ -9,8 +9,6 @@ on:
 jobs:
   go-pkgs:
     runs-on: ubuntu-latest
-    env:
-      GOPRIVATE: github.com/couchbaselabs
     steps:
       - name: setup-go
         uses: actions/setup-go@v2
@@ -23,14 +21,14 @@ jobs:
         with:
           path: ~/go/pkg/mod
           key: sgw-gocache-${{ hashFiles('**/go.sum') }}
-      - name: go-get
-        run: GOPRIVATE=github.com/couchbaselabs go get "./..."
       - name: gofmt
         run: |
           gofmt -d -e "..." | tee gofmt.out
           test -z "$(cat gofmt.out)"
       - name: vet
         run: go vet "./..."
+      - name: go-build
+        run: go build "./..."
 
   test:
     needs: go-pkgs
