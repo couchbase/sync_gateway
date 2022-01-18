@@ -50,7 +50,7 @@ const (
 	ConfigErrorMissingQueryParams               = "Replication specifies sync_gateway/bychannel filter but is missing query_params"
 	ConfigErrorMissingRemote                    = "Replication remote must be specified"
 	ConfigErrorMissingDirection                 = "Replication direction must be specified"
-	ConfigErrorDuplicateCredentials             = "Auth credentials can be specified using username/password config properties or remote URL, but not both"
+	ConfigErrorDuplicateCredentials             = "Auth credentials can be specified using remote_username/remote_password config properties or remote URL, but not both"
 	ConfigErrorConfigBasedAdhoc                 = "adhoc=true is invalid for replication in Sync Gateway configuration"
 	ConfigErrorConfigBasedCancel                = "cancel=true is invalid for replication in Sync Gateway configuration"
 	ConfigErrorInvalidConflictResolutionTypeFmt = "Conflict resolution type is invalid, valid values are %s/%s/%s/%s"
@@ -212,7 +212,7 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 		return base.HTTPErrorf(http.StatusBadRequest, "Replication remote URL is invalid")
 	}
 
-	if (remoteURL != nil && remoteURL.User.Username() != "") && rc.RemoteUsername != "" {
+	if (remoteURL != nil && remoteURL.User.Username() != "") && (rc.RemoteUsername != "" || rc.Username != "") {
 		return base.HTTPErrorf(http.StatusBadRequest,
 			ConfigErrorDuplicateCredentials)
 	}
@@ -520,6 +520,7 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 		DeltasEnabled:      config.DeltaSyncEnabled,
 		InsecureSkipVerify: insecureSkipVerify,
 		CheckpointInterval: m.CheckpointInterval,
+		RunAs:              config.RunAs,
 	}
 
 	rc.MaxReconnectInterval = defaultMaxReconnectInterval

@@ -61,6 +61,8 @@ type ActiveReplicatorConfig struct {
 	Continuous bool
 	// RemoteDBURL represents the full Sync Gateway URL, including database path, and basic auth credentials of the target.
 	RemoteDBURL *url.URL
+	// RunAs is the user to run the replication under
+	RunAs string
 	// PurgeOnRemoval will purge the document on the active side if we pull a removal from the remote.
 	PurgeOnRemoval bool
 	// ActiveDB is a reference to the active database context.
@@ -130,6 +132,9 @@ func (arc ActiveReplicatorConfig) CheckpointHash() (string, error) {
 		return "", err
 	}
 	if _, err := hash.Write([]byte(arc.RemoteDBURL.String())); err != nil {
+		return "", err
+	}
+	if _, err := hash.Write([]byte(arc.RunAs)); err != nil {
 		return "", err
 	}
 	bucketUUID, err := arc.ActiveDB.Bucket.UUID()
