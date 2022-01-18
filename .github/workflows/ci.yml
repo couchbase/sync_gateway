@@ -7,7 +7,7 @@ on:
     branches: [ develop ]
 
 jobs:
-  go-pkgs:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: setup-go
@@ -31,7 +31,7 @@ jobs:
         run: go build "./..."
 
   test:
-    needs: go-pkgs
+    needs: build
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -58,7 +58,7 @@ jobs:
         run: go test -timeout=30m -count=1 -v "./..."
 
   test-race:
-    needs: go-pkgs
+    needs: build
     runs-on: ubuntu-latest
     env:
       GOPRIVATE: github.com/couchbaselabs
