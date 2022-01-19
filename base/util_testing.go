@@ -529,6 +529,13 @@ func WaitForStat(getStatFunc func() int64, expected int64) (int64, bool) {
 	return valInt64, err == nil && ok
 }
 
+// RequireWaitForStat will retry for up to 20 seconds until the result of getStatFunc is equal to the expected value.
+func RequireWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) {
+	val, ok := WaitForStat(getStatFunc, expected)
+	require.True(t, ok)
+	require.Equal(t, expected, val)
+}
+
 type dataStore struct {
 	name   string
 	driver CouchbaseDriver
