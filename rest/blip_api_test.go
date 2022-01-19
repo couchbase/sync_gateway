@@ -3774,10 +3774,10 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	}
 
 	pullStats := bt.restTester.GetDatabase().DbStats.CBLReplicationPull()
-	require.EqualValues(t, 0, pullStats.NumPullReplActiveContinuous.Value())
 	require.EqualValues(t, 0, pullStats.NumPullReplTotalContinuous.Value())
-	require.EqualValues(t, 0, pullStats.NumPullReplActiveOneShot.Value())
+	require.EqualValues(t, 0, pullStats.NumPullReplActiveContinuous.Value())
 	require.EqualValues(t, 0, pullStats.NumPullReplTotalOneShot.Value())
+	require.EqualValues(t, 0, pullStats.NumPullReplActiveOneShot.Value())
 	require.EqualValues(t, 0, pullStats.NumPullReplSinceZero.Value())
 
 	// Open an initial continuous = false subChanges request, which we'd expect to release the lock after it's "caught up".
@@ -3795,10 +3795,10 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "", errorCode, "resp: %s", respBody)
 
-	base.RequireWaitForStat(t, pullStats.NumPullReplActiveOneShot.Value, 0)
 	base.RequireWaitForStat(t, pullStats.NumPullReplTotalOneShot.Value, 1)
-	base.RequireWaitForStat(t, pullStats.NumPullReplActiveContinuous.Value, 0)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveOneShot.Value, 0)
 	base.RequireWaitForStat(t, pullStats.NumPullReplTotalContinuous.Value, 0)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveContinuous.Value, 0)
 	base.RequireWaitForStat(t, pullStats.NumPullReplSinceZero.Value, 1)
 
 	// Send continous subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
@@ -3816,10 +3816,10 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "", errorCode, "resp: %s", respBody)
 
-	base.RequireWaitForStat(t, pullStats.NumPullReplActiveOneShot.Value, 0)
 	base.RequireWaitForStat(t, pullStats.NumPullReplTotalOneShot.Value, 1)
-	base.RequireWaitForStat(t, pullStats.NumPullReplActiveContinuous.Value, 1)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveOneShot.Value, 0)
 	base.RequireWaitForStat(t, pullStats.NumPullReplTotalContinuous.Value, 1)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveContinuous.Value, 1)
 	base.RequireWaitForStat(t, pullStats.NumPullReplSinceZero.Value, 2)
 
 	// Send a second continuous subchanges request, expect an error
@@ -3835,10 +3835,10 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	log.Printf("errorCode2: %v", errorCode)
 	assert.Equal(t, "500", errorCode)
 
-	base.RequireWaitForStat(t, pullStats.NumPullReplActiveOneShot.Value, 0)
 	base.RequireWaitForStat(t, pullStats.NumPullReplTotalOneShot.Value, 1)
-	base.RequireWaitForStat(t, pullStats.NumPullReplActiveContinuous.Value, 1)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveOneShot.Value, 0)
 	base.RequireWaitForStat(t, pullStats.NumPullReplTotalContinuous.Value, 1)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveContinuous.Value, 1)
 	base.RequireWaitForStat(t, pullStats.NumPullReplSinceZero.Value, 2)
 
 	// Even a subsequent continuous = false subChanges request should return an error. This isn't restricted to only continuous changes.
@@ -3856,14 +3856,14 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "500", errorCode, "resp: %s", respBody)
 
-	base.RequireWaitForStat(t, pullStats.NumPullReplActiveOneShot.Value, 0)
 	base.RequireWaitForStat(t, pullStats.NumPullReplTotalOneShot.Value, 1)
-	base.RequireWaitForStat(t, pullStats.NumPullReplActiveContinuous.Value, 1)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveOneShot.Value, 0)
 	base.RequireWaitForStat(t, pullStats.NumPullReplTotalContinuous.Value, 1)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveContinuous.Value, 1)
 	base.RequireWaitForStat(t, pullStats.NumPullReplSinceZero.Value, 2)
 
 	bt.sender.Close() // Close continuous sub changes feed
 
-	base.RequireWaitForStat(t, pullStats.NumPullReplActiveContinuous.Value, 0)
 	base.RequireWaitForStat(t, pullStats.NumPullReplActiveOneShot.Value, 0)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveContinuous.Value, 0)
 }
