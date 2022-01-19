@@ -1164,12 +1164,12 @@ func TestReplicationAPIWithAuthCredentials(t *testing.T) {
 
 	// Create replication with explicitly defined auth credentials in replication config
 	replication1Config := db.ReplicationConfig{
-		ID:        "replication1",
-		Remote:    "http://remote:4984/db",
-		Username:  "alice",
-		Password:  "pass",
-		Direction: db.ActiveReplicatorTypePull,
-		Adhoc:     true,
+		ID:             "replication1",
+		Remote:         "http://remote:4984/db",
+		RemoteUsername: "alice",
+		RemotePassword: "pass",
+		Direction:      db.ActiveReplicatorTypePull,
+		Adhoc:          true,
 	}
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_replication/replication1", marshalConfig(t, replication1Config))
 	assertStatus(t, response, http.StatusCreated)
@@ -1188,10 +1188,10 @@ func TestReplicationAPIWithAuthCredentials(t *testing.T) {
 		assert.Equal(t, expected.Adhoc, actual.Adhoc, "Replication type mismatch")
 		assert.Equal(t, expected.Direction, actual.Direction, "Replication direction mismatch")
 		assert.Equal(t, expected.Remote, actual.Remote, "Couldn't redact auth credentials")
-		assert.Equal(t, expected.Username, actual.Username, "Couldn't redact username")
-		assert.Equal(t, expected.Password, actual.Password, "Couldn't redact password")
+		assert.Equal(t, expected.RemoteUsername, actual.RemoteUsername, "Couldn't redact username")
+		assert.Equal(t, expected.RemotePassword, actual.RemotePassword, "Couldn't redact password")
 	}
-	replication1Config.Password = base.RedactedStr
+	replication1Config.RemotePassword = base.RedactedStr
 	checkReplicationConfig(&replication1Config, &configResponse)
 
 	// Create another replication with auth credentials defined in Remote URL
@@ -1292,21 +1292,21 @@ func TestValidateReplication(t *testing.T) {
 		{
 			name: "auth credentials specified in both replication config and remote URL",
 			replicationConfig: db.ReplicationConfig{
-				Remote:   "http://bob:pass@remote:4984/db",
-				Username: "alice",
-				Password: "pass",
+				Remote:         "http://bob:pass@remote:4984/db",
+				RemoteUsername: "alice",
+				RemotePassword: "pass",
 			},
 			expectedErrorMsg: db.ConfigErrorDuplicateCredentials,
 		},
 		{
 			name: "auth credentials specified in replication config",
 			replicationConfig: db.ReplicationConfig{
-				Remote:      "http://remote:4984/db",
-				Username:    "alice",
-				Password:    "pass",
-				Filter:      base.ByChannelFilter,
-				QueryParams: map[string]interface{}{"channels": []interface{}{"E", "A", "D", "G", "B", "e"}},
-				Direction:   db.ActiveReplicatorTypePull,
+				Remote:         "http://remote:4984/db",
+				RemoteUsername: "alice",
+				RemotePassword: "pass",
+				Filter:         base.ByChannelFilter,
+				QueryParams:    map[string]interface{}{"channels": []interface{}{"E", "A", "D", "G", "B", "e"}},
+				Direction:      db.ActiveReplicatorTypePull,
 			},
 		},
 		{
@@ -1452,12 +1452,12 @@ func TestGetStatusWithReplication(t *testing.T) {
 
 	// Create a replication
 	config1 := db.ReplicationConfig{
-		ID:        "replication1",
-		Remote:    "http://remote:4984/db",
-		Username:  "alice",
-		Password:  "pass",
-		Direction: db.ActiveReplicatorTypePull,
-		Adhoc:     true,
+		ID:             "replication1",
+		Remote:         "http://remote:4984/db",
+		RemoteUsername: "alice",
+		RemotePassword: "pass",
+		Direction:      db.ActiveReplicatorTypePull,
+		Adhoc:          true,
 	}
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_replication/replication1", marshalConfig(t, config1))
 	assertStatus(t, response, http.StatusCreated)
@@ -1495,8 +1495,8 @@ func TestGetStatusWithReplication(t *testing.T) {
 	assertReplication := func(expected db.ReplicationConfig, actual *db.ReplicationCfg) {
 		assert.Equal(t, expected.ID, actual.ID)
 		assert.Equal(t, expected.Remote, actual.Remote)
-		assert.Equal(t, expected.Username, actual.Username)
-		assert.Equal(t, expected.Password, actual.Password)
+		assert.Equal(t, expected.RemoteUsername, actual.RemoteUsername)
+		assert.Equal(t, expected.RemotePassword, actual.RemotePassword)
 		assert.Equal(t, expected.Direction, actual.Direction)
 		assert.Equal(t, expected.Adhoc, actual.Adhoc)
 	}
@@ -1504,7 +1504,7 @@ func TestGetStatusWithReplication(t *testing.T) {
 	// Check replication1 details in cluster response
 	repl, ok := database.SGRCluster.Replications[config1.ID]
 	assert.True(t, ok, "Error getting replication")
-	config1.Password = base.RedactedStr
+	config1.RemotePassword = base.RedactedStr
 	assertReplication(config1, repl)
 
 	// Check replication2 details in cluster response

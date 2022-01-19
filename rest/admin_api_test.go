@@ -4289,6 +4289,224 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	assert.NoError(t, fetchDb2DestErr)
 }
 
+// CBG-1046: Add ability to specify user for active peer in sg-replicate2
+func TestSpecifyUserDocsToReplicate(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+
+	testCases := []struct {
+		direction string
+	}{
+		{
+			direction: "push",
+		},
+		{
+			direction: "pull",
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.direction, func(t *testing.T) {
+			replName := test.direction
+			syncFunc := `
+function (doc) {
+	if (doc.owner) {
+		requireUser(doc.owner);
+	}
+	channel(doc.channels);
+	requireAccess(doc.channels);
+}`
+			rtConfig := &RestTesterConfig{
+				SyncFn: syncFunc,
+				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+					Users: map[string]*db.PrincipalConfig{
+						"alice": {
+							Password:         base.StringPtr("pass"),
+							ExplicitChannels: base.SetOf("chanAlpha", "chanBeta", "chanCharlie", "chanHotel", "chanIndia"),
+						},
+						"bob": {
+							Password:         base.StringPtr("pass"),
+							ExplicitChannels: base.SetOf("chanDelta", "chanEcho"),
+						},
+					},
+				}},
+			}
+			// Set up buckets, rest testers, and set up servers
+			passiveRT := NewRestTester(t, rtConfig)
+			defer passiveRT.Close()
+
+			publicSrv := httptest.NewServer(passiveRT.TestPublicHandler())
+			defer publicSrv.Close()
+
+			adminSrv := httptest.NewServer(passiveRT.TestAdminHandler())
+			defer adminSrv.Close()
+
+			activeRT := NewRestTester(t, rtConfig)
+			defer activeRT.Close()
+
+			// Change RT depending on direction
+			var senderRT *RestTester   // RT that has the initial docs that get replicated to the other bucket
+			var receiverRT *RestTester // RT that gets the docs replicated to it
+			if test.direction == "push" {
+				senderRT = activeRT
+				receiverRT = passiveRT
+			} else if test.direction == "pull" {
+				senderRT = passiveRT
+				receiverRT = activeRT
+			}
+
+			// Create docs to replicate
+			bulkDocsBody := `
+{
+  "docs": [
+  	{"channels":["chanAlpha"], "access":"alice"},
+  	{"channels":["chanBeta","chanFoxtrot"], "access":"alice"},
+  	{"channels":["chanCharlie","chanEcho"], "access":"alice,bob"},
+  	{"channels":["chanDelta"], "access":"bob"},
+  	{"channels":["chanGolf"], "access":""},
+  	{"channels":["!"], "access":"alice,bob"},
+  	{"channels":["!"], "access":"bob", "owner":"bob"},
+  	{"channels":["!"], "access":"alice", "owner":"alice"},
+	{"channels":["chanHotel"], "access":"", "owner":"mike"},
+	{"channels":["chanIndia"], "access":"alice", "owner":"alice"}
+  ]
+}
+`
+			resp := senderRT.SendAdminRequest("POST", "/db/_bulk_docs", bulkDocsBody)
+			assertStatus(t, resp, http.StatusCreated)
+
+			err := senderRT.WaitForPendingChanges()
+			require.NoError(t, err)
+
+			// Replicate just alices docs
+			replConf := `
+				{
+					"replication_id": "` + replName + `",
+					"remote": "` + publicSrv.URL + `/db",
+					"direction": "` + test.direction + `",
+					"continuous": true,
+					"batch": 200,
+					"run_as": "alice",
+					"remote_username": "alice",
+					"remote_password": "pass"
+				}`
+
+			resp = activeRT.SendAdminRequest("PUT", "/db/_replication/"+replName, replConf)
+			assertStatus(t, resp, http.StatusCreated)
+
+			err = activeRT.GetDatabase().SGReplicateMgr.StartReplications()
+			require.NoError(t, err)
+			activeRT.waitForReplicationStatus(replName, db.ReplicationStateRunning)
+
+			value, _ := base.WaitForStat(receiverRT.GetDatabase().DbStats.Database().NumDocWrites.Value, 6)
+			assert.EqualValues(t, 6, value)
+
+			changesResults, err := receiverRT.WaitForChanges(6, "/db/_changes?since=0&include_docs=true", "", true)
+			assert.NoError(t, err)
+			assert.Len(t, changesResults.Results, 6)
+			// Check the docs are alices docs
+			for _, result := range changesResults.Results {
+				body, err := result.Doc.MarshalJSON()
+				require.NoError(t, err)
+				assert.Contains(t, string(body), "alice")
+			}
+
+			// Stop and remove replicator (to stop checkpointing after teardown causing panic)
+			_, err = activeRT.GetDatabase().SGReplicateMgr.PutReplicationStatus(replName, "stop")
+			require.NoError(t, err)
+			activeRT.waitForReplicationStatus(replName, db.ReplicationStateStopped)
+			err = activeRT.GetDatabase().SGReplicateMgr.DeleteReplication(replName)
+			require.NoError(t, err)
+
+			// Replicate all docs
+			// Run as admin should default to true
+			replConf = `
+					{
+						"replication_id": "` + replName + `",
+						"remote": "` + adminSrv.URL + `/db",
+						"direction": "` + test.direction + `",
+						"continuous": true,
+						"batch": 200
+					}`
+
+			resp = activeRT.SendAdminRequest("PUT", "/db/_replication/"+replName, replConf)
+			assertStatus(t, resp, http.StatusCreated)
+			activeRT.waitForReplicationStatus(replName, db.ReplicationStateRunning)
+
+			value, _ = base.WaitForStat(receiverRT.GetDatabase().DbStats.Database().NumDocWrites.Value, 10)
+			assert.EqualValues(t, 10, value)
+
+			// Stop and remove replicator
+			_, err = activeRT.GetDatabase().SGReplicateMgr.PutReplicationStatus(replName, "stop")
+			require.NoError(t, err)
+			activeRT.waitForReplicationStatus(replName, db.ReplicationStateStopped)
+			err = activeRT.GetDatabase().SGReplicateMgr.DeleteReplication(replName)
+			require.NoError(t, err)
+		})
+	}
+}
+
+// Test that the username and password fields in the replicator still work and get redacted appropriately.
+// This should log a deprecation notice.
+func TestReplicatorDeprecatedCredentials(t *testing.T) {
+	passiveRT := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{
+		DbConfig: DbConfig{
+			Users: map[string]*db.PrincipalConfig{
+				"alice": {
+					Password: base.StringPtr("pass"),
+				},
+			},
+		},
+	},
+	})
+	defer passiveRT.Close()
+
+	adminSrv := httptest.NewServer(passiveRT.TestPublicHandler())
+	defer adminSrv.Close()
+
+	activeRT := NewRestTester(t, nil)
+	defer activeRT.Close()
+
+	err := activeRT.GetDatabase().SGReplicateMgr.StartReplications()
+	require.NoError(t, err)
+
+	rev := activeRT.createDoc(t, "test")
+
+	replConfig := `
+{
+	"replication_id": "` + t.Name() + `",
+	"remote": "` + adminSrv.URL + `/db",
+	"direction": "push",
+	"continuous": true,
+	"username": "alice",
+	"password": "pass"
+}
+`
+	resp := activeRT.SendAdminRequest("POST", "/db/_replication/", replConfig)
+	assertStatus(t, resp, 201)
+
+	activeRT.waitForReplicationStatus(t.Name(), db.ReplicationStateRunning)
+
+	err = passiveRT.waitForRev("test", rev)
+	require.NoError(t, err)
+
+	resp = activeRT.SendAdminRequest("GET", "/db/_replication/"+t.Name(), "")
+	assertStatus(t, resp, 200)
+
+	var config db.ReplicationConfig
+	err = json.Unmarshal(resp.BodyBytes(), &config)
+	require.NoError(t, err)
+	assert.Equal(t, "alice", config.Username)
+	assert.Equal(t, base.RedactedStr, config.Password)
+	assert.Equal(t, "", config.RemoteUsername)
+	assert.Equal(t, "", config.RemotePassword)
+
+	_, err = activeRT.GetDatabase().SGReplicateMgr.PutReplicationStatus(t.Name(), "stop")
+	require.NoError(t, err)
+	activeRT.waitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
+	err = activeRT.GetDatabase().SGReplicateMgr.DeleteReplication(t.Name())
+	require.NoError(t, err)
+}
+
 // CBG-1581: Ensure activeReplicatorCommon does final checkpoint on stop/disconnect
 func TestReplicatorCheckpointOnStop(t *testing.T) {
 	passiveRT := NewRestTester(t, nil)
