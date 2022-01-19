@@ -29,14 +29,16 @@ curl --fail http://Administrator:password@$COUCHBASE_SERVER_ADDR:8091/pools/defa
 
 
 # Set up Go paths and check install
-export PATH=$PATH:`go env GOPATH`/bin
+ if [ -z $(echo :$PATH: | grep ":$(go env GOPATH)/bin:") ]; then
+    export PATH=$PATH:$(go env GOPATH)/bin
+fi
 echo "PATH: $PATH"
 
 go version
 go env
 
 # strip spaces from $SG_COMMIT variable
-SG_COMMIT="$(echo -e "${SG_COMMIT}" | tr -d '[:space:]')"
+# SG_COMMIT="$(echo -e "${SG_COMMIT}" | tr -d '[:space:]')"
 
 # Get bootstrap script
 # wget https://raw.githubusercontent.com/couchbase/sync_gateway/$SG_COMMIT/bootstrap.sh
@@ -49,10 +51,10 @@ SG_COMMIT="$(echo -e "${SG_COMMIT}" | tr -d '[:space:]')"
 # because knowing branch names isn't enough for comparing two identical builds
 # cd "$WORKSPACE/godeps/src/github.com/couchbase/sync_gateway"
 cd $WORKSPACE
-SG_COMMIT_HASH=$(git rev-parse HEAD)
-echo "sync_gateway git commit hash: $SG_COMMIT_HASH"
+# SG_COMMIT_HASH=$(git rev-parse HEAD)
+# echo "sync_gateway git commit hash: $SG_COMMIT_HASH"
 # cd $WORKSPACE
-echo "$SG_COMMIT_HASH" > sg_commit.sha
+# echo "$SG_COMMIT_HASH" > sg_commit.sha
 
 
 
