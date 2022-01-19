@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
-# These are required if running locally
+# Uncomment these if running locally
 # export COUCHBASE_SERVER_ADDR=127.0.0.1
 # export WORKSPACE=.
-# export TARGET_PACKAGE=...
+# export TARGET_PACKAGE="..."
 # export RUN_COUNT=1
 # export XATTRS=true
 # export GSI=false
@@ -12,7 +12,10 @@
 # export COUCHBASE_SERVER_PROTOCOL=couchbase
 # export TLS_SKIP_VERIFY=true
 # export SG_TEST_BUCKET_POOL_SIZE=3
-# export SG_TEST_PROFILE_FREQUENCY=1m
+# export PACKAGE_TIMEOUT=120m
+# export DETECT_RACES=false
+# export TEST_DEBUG=true
+# export SG_TEST_PROFILE_FREQUENCY=""
 
 # Abort on errors
 set -e
@@ -95,7 +98,7 @@ fi
 
 if [ "$REPORT_COVERAGE" == "true" ]; then
 	# GO_TEST_FLAGS="$GO_TEST_FLAGS -coverpkg=github.com/couchbase/sync_gateway/..."
-	GO_TEST_FLAGS="$GO_TEST_FLAGS -coverpkg=./..."
+	GO_TEST_FLAGS="$GO_TEST_FLAGS -coverprofile=cover_int.out"
 fi
 
 
@@ -108,9 +111,11 @@ fi
 
 # Run EE/CE walrus tests first (for aggregate coverage purposes)
 # EE
-go test -coverprofile=cover_unit_ee.out -coverpkg=./... -tags cb_sg_enterprise $GO_TEST_FLAGS ./$TARGET_PACKAGE >verbose_unit_ee.out.raw 2>&1 | true
+# go test -coverprofile=cover_unit_ee.out -coverpkg=github.com/couchbase/sync_gateway/... -tags cb_sg_enterprise $GO_TEST_FLAGS github.com/couchbase/sync_gateway/$TARGET_PACKAGE >verbose_unit_ee.out.raw 2>&1 | true
+go test -coverprofile=cover_unit_ee.out -coverpkg=./$TARGET_PACKAGE -tags cb_sg_enterprise $GO_TEST_FLAGS ./$TARGET_PACKAGE >verbose_unit_ee.out.raw 2>&1 | true
 # CE
-go test -coverprofile=cover_unit_ce.out -coverpkg=./... $GO_TEST_FLAGS ./$TARGET_PACKAGE >verbose_unit_ce.out.raw 2>&1 | true
+# go test -coverprofile=cover_unit_ce.out -coverpkg=github.com/couchbase/sync_gateway/... $GO_TEST_FLAGS github.com/couchbase/sync_gateway/$TARGET_PACKAGE >verbose_unit_ce.out.raw 2>&1 | true
+go test -coverprofile=cover_unit_ce.out -coverpkg=./$TARGET_PACKAGE $GO_TEST_FLAGS ./$TARGET_PACKAGE >verbose_unit_ce.out.raw 2>&1 | true
 
 
 
@@ -126,7 +131,8 @@ if [ "$SG_EDITION" == "EE" ]; then
 fi
 
 # Should we get code coverage reports?
-GO_TEST_FLAGS="$GO_TEST_FLAGS -coverprofile=cover_int.out -coverpkg=./..."
+#GO_TEST_FLAGS="$GO_TEST_FLAGS -coverprofile=cover_int.out -coverpkg=github.com/couchbase/sync_gateway/..."
+# repeat GO_TEST_FLAGS="$GO_TEST_FLAGS -coverprofile=cover_int.out"
 
 # Set run count
 GO_TEST_FLAGS="$GO_TEST_FLAGS -count=$RUN_COUNT"
@@ -142,10 +148,11 @@ export SG_TEST_BACKING_STORE_RECREATE="false"
 export SG_TEST_BUCKET_POOL_SIZE="$SG_TEST_BUCKET_POOL_SIZE"
 export SG_TEST_PROFILE_FREQUENCY="$SG_TEST_PROFILE_FREQUENCY"
 
+# SG vars summary
+(set | grep "SG_")
 
 # Now finally run the integration tests (using the exit code whilst still piping into tee)
-# go test $GO_TEST_FLAGS -p 1 ./$TARGET_PACKAGE 2>&1 | tee verbose_int.out.raw
-go test $GO_TEST_FLAGS ./$TARGET_PACKAGE 2>&1 | tee verbose_int.out.raw
+go test -p 1 $GO_TEST_FLAGS ./$TARGET_PACKAGE 2>&1 | tee verbose_int.out.raw
 if [ "${PIPESTATUS[0]}" -ne "0" ]; then
   # the go test command failed, but we want to continue enough to grab test outputs/reports and then fail at the end of the job
   echo "go test failed! Will fail job after grabbing test reports"
