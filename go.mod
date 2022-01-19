@@ -73,3 +73,5 @@ require (
 )
 
 replace github.com/couchbase/sync_gateway => ./
+
+replace github.com/couchbase/sync_gateway v0.0.0-20220110182909-779f11a7c919 => ./
