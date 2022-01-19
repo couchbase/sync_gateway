@@ -1,0 +1,1155 @@
+openapi: 3.0.0
+info:
+  title: Sync Gateway API
+  version: '3.0'
+  license:
+    name: Business Source License 1.1 (BSL)
+    url: 'https://github.com/couchbase/sync_gateway/blob/master/LICENSE'
+servers:
+  - url: 'http://localhost:4984'
+    description: Public API
+  - url: 'http://localhost:4985'
+    description: Admin API
+  - url: 'http://localhost:4986'
+    description: Metric API
+paths:
+  /:
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+    head:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+  '/{db}/':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+    delete:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    head:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+  '/{db}/_all_docs':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+    head:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+  '/{db}/_bulk_docs':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+  '/{db}/_bulk_get':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+  '/{db}/_changes':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+    head:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+  '/{db}/_design/{ddoc}':
+    parameters:
+      - $ref: '#/components/parameters/db'
+      - name: ddoc
+        schema:
+          type: string
+        in: path
+        required: true
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+    put:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+    delete:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+    head:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+  '/{db}/_design/{ddoc}/_view/{view}':
+    parameters:
+      - $ref: '#/components/parameters/db'
+      - name: ddoc
+        schema:
+          type: string
+        in: path
+        required: true
+      - name: view
+        schema:
+          type: string
+        in: path
+        required: true
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+  '/{db}/_ensure_full_commit':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+  '/{db}/_revs_diff':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+  '/{db}/_local/{docid}':
+    parameters:
+      - $ref: '#/components/parameters/db'
+      - $ref: '#/components/parameters/docid'
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+    put:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+    delete:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+  '/{db}/{docid}':
+    parameters:
+      - $ref: '#/components/parameters/db'
+      - $ref: '#/components/parameters/docid'
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+    head:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+    put:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+    delete:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+  '/{db}/{docid}/{attach}':
+    parameters:
+      - $ref: '#/components/parameters/db'
+      - $ref: '#/components/parameters/docid'
+      - name: attach
+        schema:
+          type: string
+        in: path
+        required: true
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+    put:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+    head:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+  '/{db}/_session':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+    delete:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Public
+    head:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+  '/{db}/_facebook':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    post:
+      deprecated: true
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+  '/{db}/_google':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    post:
+      deprecated: true
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+  '/{db}/_oidc':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+  '/{db}/_oidc_callback':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+  '/{db}/_oidc_refresh':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+  '/{db}/_oidc_challenge':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+  '/{db}/_oidc_testing/.well-known/openid-configuration':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+  '/{db}/_oidc_testing/authorize':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+  '/{db}/_oidc_testing/token':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+  '/{db}/_oidc_testing/certs':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+  '/{db}/_oidc_testing/authenticate':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+  '/{db}/_blipsync':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Public
+  '/{targetdb}/':
+    parameters:
+      - name: targetdb
+        schema:
+          type: string
+        in: path
+        required: true
+    put:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Public
+  '/{db}/_session/{sessionid}':
+    parameters:
+      - $ref: '#/components/parameters/db'
+      - name: sessionid
+        schema:
+          type: string
+        in: path
+        required: true
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    delete:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  '/{db}/_raw/{docid}':
+    parameters:
+      - $ref: '#/components/parameters/db'
+      - $ref: '#/components/parameters/docid'
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    head:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  '/{db}/_revtree/{docid}':
+    parameters:
+      - $ref: '#/components/parameters/db'
+      - $ref: '#/components/parameters/docid'
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  '/{db}/_user/':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    head:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  '/{db}/_user/{name}':
+    parameters:
+      - $ref: '#/components/parameters/db'
+      - name: name
+        schema:
+          type: string
+        in: path
+        required: true
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    put:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    delete:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    head:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  '/{db}/_user/{name}/_session':
+    parameters:
+      - $ref: '#/components/parameters/db'
+      - name: name
+        schema:
+          type: string
+        in: path
+        required: true
+    delete:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  '/{db}/_user/{name}/_session/{sessionid}':
+    parameters:
+      - $ref: '#/components/parameters/db'
+      - name: name
+        schema:
+          type: string
+        in: path
+        required: true
+      - name: sessionid
+        schema:
+          type: string
+        in: path
+        required: true
+    delete:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  '/{db}/_role/':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    head:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  '/{db}/_role/{name}':
+    parameters:
+      - $ref: '#/components/parameters/db'
+      - name: name
+        schema:
+          type: string
+        in: path
+        required: true
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    put:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    delete:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    head:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+
+  '/{db}/_replication/':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    head:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  '/{db}/_replication/{replicationid}':
+    parameters:
+      - $ref: '#/components/parameters/db'
+      - name: replicationid
+        schema:
+          type: string
+        in: path
+        required: true
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    put:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    delete:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    head:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  /_replicationStatus/:
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    head:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  '/_replicationStatus/{replicationid}':
+    parameters:
+      - name: replicationid
+        schema:
+          type: string
+        in: path
+        required: true
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    put:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    head:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  /_logging:
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    put:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  '/_profile/{profilename}':
+    parameters:
+      - name: profilename
+        schema:
+          type: string
+        in: path
+        required: true
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  /_profile:
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  /_heap:
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  /_stats:
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  /_config:
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    put:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  /_status:
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  /_sgcollect_info:
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    delete:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  /_debug/pprof/goroutine:
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  /_debug/pprof/cmdline:
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  /_debug/pprof/symbol:
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  /_debug/pprof/heap:
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  /_debug/pprof/profile:
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  /_debug/pprof/block:
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  /_debug/pprof/threadcreate:
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  /_debug/pprof/mutex:
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  /_debug/pprof/trace:
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  /_debug/fgprof:
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  /_post_upgrade:
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  '/{db}/_config':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    put:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  '/{db}/_config/sync':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    put:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    delete:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  '/{db}/_config/import_filter':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    put:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    delete:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  '/{db}/_resync':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  '/{db}/_purge':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  '/{db}/_flush':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  '/{db}/_online':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  '/{db}/_offline':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  '/{db}/_dump/{view}':
+    parameters:
+      - $ref: '#/components/parameters/db'
+      - name: view
+        schema:
+          type: string
+        in: path
+        required: true
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  '/{db}/_view/{view}':
+    parameters:
+      - $ref: '#/components/parameters/db'
+      - name: view
+        schema:
+          type: string
+        in: path
+        required: true
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  '/{db}/_dumpchannel/{channel}':
+    parameters:
+      - $ref: '#/components/parameters/db'
+      - name: channel
+        schema:
+          type: string
+        in: path
+        required: true
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  '/{db}/_repair':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  '/{newdb}/':
+    parameters:
+      - $ref: '#/components/parameters/newdb'
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  /_all_dbs:
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    head:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  '/{db}/_compact':
+    parameters:
+      - $ref: '#/components/parameters/db'
+    post:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+  /_metrics:
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Metric
+  /_expvar:
+    get:
+      responses:
+        '200':
+          description: OK
+      tags:
+        - Admin
+        - Metric
+components:
+  parameters:
+    db:
+      name: db
+      in: path
+      required: true
+      schema:
+        type: string
+      description: The name of the database to run the operation against.
+    newdb:
+      name: newdb
+      in: path
+      required: true
+      schema:
+        type: string
+      description: The name of the new database.
+    docid:
+      name: docid
+      in: path
+      required: true
+      schema:
+        type: string
