@@ -212,6 +212,11 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 		return base.HTTPErrorf(http.StatusBadRequest, "Replication remote URL is invalid")
 	}
 
+	if rc.RemoteUsername != "" && rc.Username != "" {
+		return base.HTTPErrorf(http.StatusBadRequest,
+			"Cannot set both remote_username and username config options. Please only use the remote_username and remote_password config options")
+	}
+
 	if (remoteURL != nil && remoteURL.User.Username() != "") && (rc.RemoteUsername != "" || rc.Username != "") {
 		return base.HTTPErrorf(http.StatusBadRequest,
 			ConfigErrorDuplicateCredentials)
