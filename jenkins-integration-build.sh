@@ -1,5 +1,19 @@
 #!/usr/bin/env bash
 
+# These are required if running locally
+# export COUCHBASE_SERVER_ADDR=127.0.0.1
+# export WORKSPACE=.
+# export TARGET_PACKAGE=...
+# export RUN_COUNT=1
+# export XATTRS=true
+# export GSI=false
+# export TARGET_TEST=ALL
+# export SG_EDITION=EE
+# export COUCHBASE_SERVER_PROTOCOL=couchbase
+# export TLS_SKIP_VERIFY=true
+# export SG_TEST_BUCKET_POOL_SIZE=3
+# export SG_TEST_PROFILE_FREQUENCY=1m
+
 # Abort on errors
 set -e
 
@@ -128,7 +142,8 @@ export SG_TEST_PROFILE_FREQUENCY="$SG_TEST_PROFILE_FREQUENCY"
 
 
 # Now finally run the integration tests (using the exit code whilst still piping into tee)
-go test $GO_TEST_FLAGS -p 1 ./$TARGET_PACKAGE 2>&1 | tee verbose_int.out.raw
+# go test $GO_TEST_FLAGS -p 1 ./$TARGET_PACKAGE 2>&1 | tee verbose_int.out.raw
+go test $GO_TEST_FLAGS ./$TARGET_PACKAGE 2>&1 | tee verbose_int.out.raw
 if [ "${PIPESTATUS[0]}" -ne "0" ]; then
   # the go test command failed, but we want to continue enough to grab test outputs/reports and then fail at the end of the job
   echo "go test failed! Will fail job after grabbing test reports"
