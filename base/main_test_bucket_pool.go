@@ -472,18 +472,20 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, 
 			openBuckets[bucketName] = b
 			openBucketsLock.Unlock()
 
-			n1qlStore, ok := AsN1QLStore(b)
-			if !ok {
-				Fatalf("Couldn't remove old prepared statements: %v", err)
-			}
-			queryRes, err := n1qlStore.Query(`DELETE FROM system:prepareds WHERE statement LIKE "%`+KeyspaceQueryToken+`%";`, nil, RequestPlus, true)
-			if err != nil {
-				Fatalf("Couldn't remove old prepared statements: %v", err)
-			}
+			if !TestsDisableGSI() {
+				n1qlStore, ok := AsN1QLStore(b)
+				if !ok {
+					Fatalf("Couldn't remove old prepared statements: %v", err)
+				}
+				queryRes, err := n1qlStore.Query(`DELETE FROM system:prepareds WHERE statement LIKE "%`+KeyspaceQueryToken+`%";`, nil, RequestPlus, true)
+				if err != nil {
+					Fatalf("Couldn't remove old prepared statements: %v", err)
+				}
 
-			err = queryRes.Close()
-			if err != nil {
-				Fatalf("Failed to close query: %v", err)
+				err = queryRes.Close()
+				if err != nil {
+					Fatalf("Failed to close query: %v", err)
+				}
 			}
 
 			wg.Done()
@@ -611,7 +613,8 @@ var FlushBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b Bu
 	if !ok {
 		return errors.New("FlushBucketEmptierFunc used with non-flushable bucket")
 	}
-	return flushableBucket.Flush()
+	err := flushableBucket.Flush()
+	return err
 }
 
 // N1QLBucketEmptierFunc ensures the bucket is empty by using N1QL deletes. This is the preferred approach when using GSI.

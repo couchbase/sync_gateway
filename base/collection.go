@@ -669,15 +669,22 @@ func (c *Collection) Flush() error {
 // BucketItemCount first tries to retrieve an accurate bucket count via N1QL,
 // but falls back to the REST API if that cannot be done (when there's no index to count all items in a bucket)
 func (c *Collection) BucketItemCount() (itemCount int, err error) {
-	itemCount, err = QueryBucketItemCount(c)
-	if err == nil {
-		return itemCount, nil
+	if c.IsSupported(sgbucket.DataStoreFeatureN1ql) {
+		itemCount, err = QueryBucketItemCount(c)
+		if err == nil {
+			return itemCount, nil
+		}
 	}
 
 	// TODO: implement APIBucketItemCount for collections as part of CouchbaseStore refactoring.  Until then, give flush a moment to finish
 	time.Sleep(1 * time.Second)
-	//itemCount, err = bucket.APIBucketItemCount()
-	return 0, err
+	itemCount, err = c.APIBucketItemCount()
+	return itemCount, err
+}
+
+// APIBucketItemCount TODO: Implement
+func (c *Collection) APIBucketItemCount() (itemCount int, err error) {
+	return 0, nil
 }
 
 func (c *Collection) MgmtEps() (url []string, err error) {
