@@ -540,7 +540,7 @@ paths:
       tags:
         - Admin
       summary: Get all the names of the users
-      description: Retrieves all the names of the users that are in the database. The result length is limited by the query pagination limit that's set in the database config.
+      description: Retrieves all the names of the users that are in the database.
     post:
       responses:
         '201':
@@ -670,7 +670,7 @@ paths:
       tags:
         - Admin
       summary: Get all names of the roles
-      description: Retrieves all the roles that are in the database. The result length is limited by the query pagination limit that's set in the database config.
+      description: Retrieves all the roles that are in the database.
     post:
       responses:
         '201':
