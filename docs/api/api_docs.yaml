@@ -520,53 +520,97 @@ paths:
     get:
       responses:
         '200':
-          description: OK
+          description: Users retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                minItems: 0
+                uniqueItems: true
+                description: List of all user names
+                items:
+                  type: string
+              examples:
+                Example:
+                  value:
+                    - Alice
+                    - Bob
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      summary: Get all the names of the users
+      description: Retrieves all the names of the users that are in the database.
     post:
       responses:
-        '200':
-          description: OK
+        '201':
+          description: New user created successfully
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '409':
+          $ref: '#/components/responses/Conflict'
       tags:
         - Admin
+      summary: Create a new user
+      requestBody:
+        $ref: '#/components/requestBodies/User'
+      description: Create a new user using the request body to specify the properties on the user.
     head:
       responses:
         '200':
           description: OK
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
   '/{db}/_user/{name}':
     parameters:
       - $ref: '#/components/parameters/db'
-      - name: name
-        schema:
-          type: string
-        in: path
-        required: true
+      - $ref: '#/components/parameters/user-name'
     get:
       responses:
         '200':
-          description: OK
+          $ref: '#/components/responses/User'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      summary: Get a user
+      description: Retrieve a single users information.
     put:
       responses:
         '200':
-          description: OK
+          description: Existing user modified successfully
+        '201':
+          description: New user created
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      description: 'If the user does not exist, create a new user otherwise update the existing user.'
+      summary: Upsert a user
+      requestBody:
+        $ref: '#/components/requestBodies/User'
     delete:
       responses:
         '200':
-          description: OK
+          description: User deleted successfully
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      description: Delete a user from the database.
+      summary: Delete a user
     head:
       responses:
         '200':
-          description: OK
+          description: User exists
+        '404':
+          description: Not Found
       tags:
         - Admin
+      summary: Check if user exists
+      description: Check if the user exists by checking the status code.
   '/{db}/_user/{name}/_session':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -606,54 +650,97 @@ paths:
     get:
       responses:
         '200':
-          description: OK
+          description: Roles retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                minItems: 0
+                uniqueItems: true
+                description: List of all role names
+                items:
+                  type: string
+              examples:
+                Example:
+                  value:
+                    - Administrator
+                    - Moderator
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      summary: Get all names of the roles
+      description: Retrieves all the roles that are in the database.
     post:
       responses:
-        '200':
-          description: OK
+        '201':
+          description: New role created successfully
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '409':
+          $ref: '#/components/responses/Conflict'
       tags:
         - Admin
+      summary: Create a new role
+      description: Create a new role using the request body to specify the properties on the role.
+      requestBody:
+        $ref: '#/components/requestBodies/Role'
     head:
       responses:
         '200':
           description: OK
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
   '/{db}/_role/{name}':
     parameters:
       - $ref: '#/components/parameters/db'
-      - name: name
-        schema:
-          type: string
-        in: path
-        required: true
+      - $ref: '#/components/parameters/role-name'
     get:
       responses:
         '200':
-          description: OK
+          $ref: '#/components/responses/Role'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      summary: Get a role
+      description: Retrieve a single roles properties.
     put:
       responses:
         '200':
           description: OK
+        '201':
+          description: Created
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      summary: Upsert a role
+      description: 'If the role does not exist, create a new role otherwise update the existing role.'
+      requestBody:
+        $ref: '#/components/requestBodies/Role'
     delete:
       responses:
         '200':
           description: OK
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      description: Delete a role from the database.
+      summary: Delete a role
     head:
       responses:
         '200':
-          description: OK
+          description: Role exists
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
-
+      description: Check if the role exists by checking the status code.
+      summary: Check if role exists
   '/{db}/_replication/':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -1153,3 +1240,152 @@ components:
       required: true
       schema:
         type: string
+    user-name:
+      name: name
+      in: path
+      required: true
+      schema:
+        type: string
+      description: The name of the user.
+    role-name:
+      name: name
+      in: path
+      required: true
+      schema:
+        type: string
+      description: The name of the role.
+  responses:
+    Not-found:
+      description: Resource could not be found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              reason:
+                type: string
+                description: The resource that could not be found and reason it could not be found.
+            required:
+              - error
+              - reason
+          examples:
+            Database not found:
+              value:
+                error: not_found
+                reason: no such database "invalid-db"
+    Conflict:
+      description: Resource already exists under that name
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              reason:
+                type: string
+                description: The error description.
+            required:
+              - error
+              - reason
+    User:
+      description: Properties associated with a user
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/User'
+    Role:
+      description: Properties associated with a role
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Role'
+  schemas:
+    User:
+      description: Properties associated with a user
+      type: object
+      title: User
+      properties:
+        name:
+          type: string
+          description: |-
+            The name of the user.
+
+            User names can only have alphanumeric ASCII characters and underscores.
+        password:
+          type: string
+          description: |-
+            The password of the user.
+
+            Mandatory. unless `allow_empty_password` is `true` in the database configs.
+        admin_channels:
+          type: array
+          description: The channels that user is able to access.
+          items:
+            type: string
+        all_channels:
+          type: array
+          description: |-
+            All the channels that the user has been granted access to.
+
+            Access could have been granted through the sync function, roles, or explicitly on the user under the `admin_channels` property.
+          items:
+            type: string
+            readOnly: true
+        email:
+          type: string
+          description: The email address of the user.
+        disabled:
+          type: boolean
+          description: 'If true, the user will not be able to login to the account as it is disabled.'
+        admin_roles:
+          type: array
+          description: The roles the user is assigned to.
+          items:
+            type: string
+        roles:
+          type: array
+          description: The roles that the user is assigned to by the Sync function.
+          items:
+            type: string
+          readOnly: true
+    Role:
+      description: Properties associated with a role
+      type: object
+      title: Role
+      properties:
+        name:
+          type: string
+          description: |-
+            The name of the role.
+
+            Role names can only have alphanumeric ASCII characters and underscores.
+        admin_channels:
+          type: array
+          description: The channels that users in the role are able to access.
+          items:
+            type: string
+        all_channels:
+          type: array
+          description: |-
+            The channels that the role grants access to.
+
+            These channels could have been assigned by the Sync function or using the `admin_channels` property.
+          items:
+            type: string
+            readOnly: true
+  requestBodies:
+    User:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/User'
+      description: Properties associated with a user
+    Role:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Role'
+      description: Properties associated with a role
