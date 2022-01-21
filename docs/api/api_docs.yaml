@@ -688,8 +688,6 @@ paths:
         - Public
       summary: OpenID Connect mock provider
       description: |-
-        This endpoint is unsupported and not enabled by default. To enable it, `oidc_test_provider` must be set in the database unsupported config options.
-
         Mock an OpenID Connect provider response for testing purposes. This returns a response that is the same structure as what Sync Gateway expects from an OIDC provider after initiating OIDC authentication.
   '/{db}/_oidc_testing/authorize':
     parameters:
@@ -711,8 +709,6 @@ paths:
         - Public
       summary: OpenID Connect mock login page
       description: |-
-        This endpoint is unsupported and not enabled by default. To enable it, `oidc_test_provider` must be set in the database unsupported config options.
-
         Show a mock OpenID Connect login page for the client to log in to.
       parameters:
         - $ref: '#/components/parameters/oidc-scope'
@@ -724,8 +720,6 @@ paths:
         - Admin
         - Public
       description: |-
-        This endpoint is unsupported and not enabled by default. To enable it, `oidc_test_provider` must be set in the database unsupported config options.
-
         Show a mock OpenID Connect login page for the client to log in to.
       parameters:
         - $ref: '#/components/parameters/oidc-scope'
@@ -747,8 +741,6 @@ paths:
         - Public
       summary: OpenID Connect mock token
       description: |-
-        This endpoint is unsupported and not enabled by default. To enable it, `oidc_test_provider` must be set in the database unsupported config options.
-
         Return a mock OpenID Connect token for the OIDC authentication flow.
       requestBody:
         content:
@@ -823,8 +815,6 @@ paths:
         - Public
       summary: OpenID Connect public certificates for signing keys
       description: |-
-        This endpoint is unsupported and not enabled by default. To enable it, `oidc_test_provider` must be set in the database unsupported config options.
-
         Return a mock OpenID Connect public key to be used as signing keys.
   '/{db}/_oidc_testing/authenticate':
     parameters:
@@ -844,8 +834,6 @@ paths:
         - $ref: '#/components/parameters/oidc-redirect_uri'
         - $ref: '#/components/parameters/oidc-scope'
       description: |-
-        This endpoint is unsupported and not enabled by default. To enable it, `oidc_test_provider` must be set in the database unsupported config options.
-
         Used to handle the login page displayed for the `GET /{db}/_oidc_testing/authorize` endpoint.
       summary: OpenID Connect mock login page handler
       requestBody:
@@ -862,8 +850,6 @@ paths:
         - Admin
         - Public
       description: |-
-        This endpoint is unsupported and not enabled by default. To enable it, `oidc_test_provider` must be set in the database unsupported config options.
-
         Used to handle the login page displayed for the `GET /{db}/_oidc_testing/authorize` endpoint.
       parameters:
         - $ref: '#/components/parameters/oidc-redirect_uri'
@@ -1820,7 +1806,7 @@ components:
     OIDC-connection:
       description: Unable to connect and validate with the OpenID Connect provider requested
     OIDC-test-provider-disabled:
-      description: The OpenID Connect test provider config option is not enabled.
+      description: The OpenID Connect unsupported config option `oidc_test_provider` is not enabled. To use this endpoint, this option must be enabled.
     OIDC-invalid-scope:
       description: A validation error occurred with the scope.
       content:
