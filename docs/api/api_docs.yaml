@@ -349,7 +349,7 @@ paths:
         # Admin API
         Generates a login session for a user and returns the session ID and cookie name for that session. If no TTL is provided, then the default of 24 hours will be used.
 
-        A session cannot be generated for an non-existant user or the `GUEST` user.
+        A session cannot be generated for an non-existent user or the `GUEST` user.
 
         # Public API
         Generates a login session for the user based on the credentials provided in the request body or if that fails (due to invalid credentials or none provided at all), generates the new session for the currently authenticated user instead. On a successful session creation, a session cookie is stored to keep the user authenticated for future API calls.
@@ -716,9 +716,18 @@ paths:
       responses:
         '200':
           description: OK
+        '400':
+          $ref: '#/components/responses/OIDC-invalid-scope'
+        '403':
+          $ref: '#/components/responses/OIDC-test-provider-disabled'
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '500':
+          $ref: '#/components/responses/OIDC-testing-internal-error'
       tags:
         - Admin
         - Public
+      summary: OpenID Connect mock login page
       description: |-
         Show a mock OpenID Connect login page for the client to log in to.
       parameters:
@@ -833,11 +842,29 @@ paths:
       parameters:
         - $ref: '#/components/parameters/oidc-redirect_uri'
         - $ref: '#/components/parameters/oidc-scope'
+        - name: username
+          in: query
+          schema:
+            type: string
+          required: true
+        - name: tokenttl
+          in: query
+          schema:
+            type: integer
+          required: true
+        - name: identity-token-formats
+          in: query
+          schema:
+            type: string
+          required: true
+        - name: authenticated
+          in: query
+          schema:
+            type: string
+          required: true
       description: |-
         Used to handle the login page displayed for the `GET /{db}/_oidc_testing/authorize` endpoint.
       summary: OpenID Connect mock login page handler
-      requestBody:
-        $ref: '#/components/requestBodies/OIDC-login-page-handler'
     post:
       responses:
         '302':
