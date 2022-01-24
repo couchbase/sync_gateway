@@ -70,7 +70,7 @@ cd $WORKSPACE
 # echo "PATH: $PATH"
 
 
-
+export GOPRIVATE="github.com/couchbaselabs/go-fleecedelta"
 GO_TEST_FLAGS="-v"
 
 
@@ -96,10 +96,9 @@ else
 	GO_TEST_FLAGS="$GO_TEST_FLAGS -timeout=20m"
 fi
 
-if [ "$REPORT_COVERAGE" == "true" ]; then
-	# GO_TEST_FLAGS="$GO_TEST_FLAGS -coverpkg=github.com/couchbase/sync_gateway/..."
-	GO_TEST_FLAGS="$GO_TEST_FLAGS -coverprofile=cover_int.out"
-fi
+# if [ "$REPORT_COVERAGE" == "true" ]; then
+# 	GO_TEST_FLAGS="$GO_TEST_FLAGS -coverpkg=github.com/couchbase/sync_gateway/..."
+# fi
 
 
 ## Test debug
@@ -112,7 +111,9 @@ fi
 # Run EE/CE walrus tests first (for aggregate coverage purposes)
 # EE
 # go test -coverprofile=cover_unit_ee.out -coverpkg=github.com/couchbase/sync_gateway/... -tags cb_sg_enterprise $GO_TEST_FLAGS github.com/couchbase/sync_gateway/$TARGET_PACKAGE >verbose_unit_ee.out.raw 2>&1 | true
-go test -coverprofile=cover_unit_ee.out -coverpkg=./$TARGET_PACKAGE -tags cb_sg_enterprise $GO_TEST_FLAGS ./$TARGET_PACKAGE >verbose_unit_ee.out.raw 2>&1 | true
+if [ "$SG_EDITION" == "EE" ]; then
+  go test -coverprofile=cover_unit_ee.out -coverpkg=./$TARGET_PACKAGE -tags cb_sg_enterprise $GO_TEST_FLAGS ./$TARGET_PACKAGE >verbose_unit_ee.out.raw 2>&1 | true
+fi
 # CE
 # go test -coverprofile=cover_unit_ce.out -coverpkg=github.com/couchbase/sync_gateway/... $GO_TEST_FLAGS github.com/couchbase/sync_gateway/$TARGET_PACKAGE >verbose_unit_ce.out.raw 2>&1 | true
 go test -coverprofile=cover_unit_ce.out -coverpkg=./$TARGET_PACKAGE $GO_TEST_FLAGS ./$TARGET_PACKAGE >verbose_unit_ce.out.raw 2>&1 | true
@@ -132,7 +133,7 @@ fi
 
 # Should we get code coverage reports?
 #GO_TEST_FLAGS="$GO_TEST_FLAGS -coverprofile=cover_int.out -coverpkg=github.com/couchbase/sync_gateway/..."
-# repeat GO_TEST_FLAGS="$GO_TEST_FLAGS -coverprofile=cover_int.out"
+GO_TEST_FLAGS="$GO_TEST_FLAGS -coverprofile=cover_int.out"
 
 # Set run count
 GO_TEST_FLAGS="$GO_TEST_FLAGS -count=$RUN_COUNT"
@@ -162,7 +163,9 @@ fi
 
 
 # Strip non-printable characters
-LC_CTYPE=C tr -dc [:print:][:space:] < verbose_unit_ee.out.raw > verbose_unit_ee.out
+if [ "$SG_EDITION" == "EE" ]; then
+  LC_CTYPE=C tr -dc [:print:][:space:] < verbose_unit_ee.out.raw > verbose_unit_ee.out
+fi
 LC_CTYPE=C tr -dc [:print:][:space:] < verbose_unit_ce.out.raw > verbose_unit_ce.out
 LC_CTYPE=C tr -dc [:print:][:space:] < verbose_int.out.raw > verbose_int.out
 
@@ -172,7 +175,9 @@ LC_CTYPE=C tr -dc [:print:][:space:] < verbose_int.out.raw > verbose_int.out
 # Generate xunit test report that can be parsed by the Jenkins JUnit Plugin
 mkdir -p reports
 go get -v -u github.com/tebeka/go2xunit
-go2xunit -suite-name-prefix="UNIT-EE-" -input verbose_unit_ee.out -output reports/test-unit-ee.xml
+if [ "$SG_EDITION" == "EE" ]; then
+  go2xunit -suite-name-prefix="UNIT-EE-" -input verbose_unit_ee.out -output reports/test-unit-ee.xml
+fi
 go2xunit -suite-name-prefix="UNIT-CE-" -input verbose_unit_ce.out -output reports/test-unit-ce.xml
 go2xunit -suite-name-prefix="INT-" -input verbose_int.out -output reports/test-int.xml
 
@@ -186,7 +191,9 @@ go2xunit -suite-name-prefix="INT-" -input verbose_int.out -output reports/test-i
 go tool cover -func=cover_int.out | awk 'END{print "Total SG Integration Coverage: " $3}'
 
 # Generate Go HTML coverage report
-go tool cover -html=cover_unit_ee.out -o reports/coverage-unit-ee.html
+if [ "$SG_EDITION" == "EE" ]; then
+  go tool cover -html=cover_unit_ee.out -o reports/coverage-unit-ee.html
+fi
 go tool cover -html=cover_unit_ce.out -o reports/coverage-unit-ce.html
 go tool cover -html=cover_int.out -o reports/coverage-int.html
 	
@@ -195,7 +202,9 @@ go get -v -u github.com/axw/gocov/...
 go get -v -u github.com/AlekSi/gocov-xml
 
 # Generate Cobertura XML report that can be parsed by the Jenkins Cobertura Plugin
-gocov convert cover_unit_ee.out | gocov-xml > reports/coverage-unit-ee.xml
+if [ "$SG_EDITION" == "EE" ]; then
+  gocov convert cover_unit_ee.out | gocov-xml > reports/coverage-unit-ee.xml
+fi
 gocov convert cover_unit_ce.out | gocov-xml > reports/coverage-unit-ce.xml
 gocov convert cover_int.out | gocov-xml > reports/coverage-int.xml
 
