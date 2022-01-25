@@ -295,27 +295,103 @@ paths:
     get:
       responses:
         '200':
-          description: OK
+          $ref: '#/components/responses/User-session-information'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
         - Public
+      summary: Get information about the current user
+      description: This will get the information about the current user.
     post:
       responses:
         '200':
-          description: OK
+          description: Session created successfully. Returned body is dependant on if using Public or Admin APIs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id:
+                    type: string
+                    description: '**Admin API only**: The ID of the session. This is the value that would be put in to the cookie to keep the user authenticated.'
+                  expires:
+                    type: string
+                    description: '**Admin API only**: The date and time the cookie expires.'
+                  cookie_name:
+                    type: string
+                    description: '**Admin API only**: The name of the cookie that would be used to store the users session.'
+              examples:
+                Admin API response:
+                  value:
+                    session_id: c5af80a039db4ed9d2b6865576b6999935282689
+                    expires: '2022-01-21T15:24:44Z'
+                    cookie_name: SyncGatewaySession
+                Public API response:
+                  value:
+                    authentication_handlers:
+                      - default
+                      - cookie
+                    ok: true
+                    userCtx:
+                      channels:
+                        '!': 1
+                      name: Bob
+        '400':
+          $ref: '#/components/responses/Invalid-CORS'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
         - Public
+      summary: Create a new user session
+      description: |-
+        # Admin API
+        Generates a login session for a user and returns the session ID and cookie name for that session. If no TTL is provided, then the default of 24 hours will be used.
+
+        A session cannot be generated for an non-existent user or the `GUEST` user.
+
+        # Public API
+        Generates a login session for the user based on the credentials provided in the request body or if that fails (due to invalid credentials or none provided at all), generates the new session for the currently authenticated user instead. On a successful session creation, a session cookie is stored to keep the user authenticated for future API calls.
+
+        If CORS is enabled, the origin must match an allowed login origin otherwise an error will be returned.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: User name to generate the session for.
+                ttl:
+                  type: integer
+                  description: '**Admin API only**: Time until the session expires. Uses default value of 24 hours if left blank.'
+                password:
+                  type: string
+                  description: '**Public API only**: Password of the user to generate the session for.'
+        description: The body can depend on if using the Public or Admin APIs.
     delete:
       responses:
         '200':
-          description: OK
+          description: Successfully removed session (logged out)
+        '400':
+          description: Bad Request
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Public
+      description: |-
+        Invalidates the session for the currently authenticated user and removes their session cookie.
+
+        If CORS is enabled, the origin must match an allowed login origin otherwise an error will be returned.
+      summary: Log out
     head:
       responses:
         '200':
           description: OK
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
         - Public
@@ -326,71 +402,293 @@ paths:
       deprecated: true
       responses:
         '200':
-          description: OK
+          description: Session created successfully
+        '400':
+          $ref: '#/components/responses/Invalid-CORS'
+        '401':
+          description: Recieved error from Facebook verifier
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  reason:
+                    type: string
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '502':
+          description: Recieved invalid response from the Facebook verifier
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  reason:
+                    type: string
+        '504':
+          description: Unable to send request to Facebook API
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  reason:
+                    type: string
       tags:
         - Admin
         - Public
+      summary: Create a new Facebook-based session
+      description: |-
+        Creates a new session based on a Facebook user. On a successful session creation, a session cookie is stored to keep the user authenticated for future API calls.
+
+        If CORS is enabled, the origin must match an allowed login origin otherwise an error will be returned.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                access_token:
+                  type: string
+                  description: Facebook access token to base the new session on.
+              required:
+                - access_token
   '/{db}/_google':
     parameters:
-      - $ref: '#/components/parameters/db'
+      - name: db
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The name of the database to run the operation against.
     post:
       deprecated: true
       responses:
         '200':
-          description: OK
+          description: Session created successfully
+        '400':
+          $ref: '#/components/responses/Invalid-CORS'
+        '401':
+          description: Recieved error from Google token verifier or invalid application ID in the config
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  reason:
+                    type: string
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '502':
+          description: Recieved invalid response from the Google token verifier
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  reason:
+                    type: string
+        '504':
+          description: Unable to send request to the Google token verifier
       tags:
         - Admin
         - Public
+      summary: Create a new Google-based session
+      description: |-
+        Creates a new session based on a Google user. On a successful session creation, a session cookie is stored to keep the user authenticated for future API calls.
+
+        If CORS is enabled, the origin must match an allowed login origin otherwise an error will be returned.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id_token:
+                  type: string
+                  description: Google ID token to base the new session on.
+              required:
+                - id_token
   '/{db}/_oidc':
     parameters:
       - $ref: '#/components/parameters/db'
     get:
       responses:
-        '200':
-          description: OK
+        '302':
+          description: Successfully connected with the OpenID Connect provider so now redirecting to the requested OIDC provider for authentication.
+          headers:
+            Location:
+              schema:
+                type: string
+              description: The link to redirect to so the client can authenticate.
+        '400':
+          $ref: '#/components/responses/OIDC-invalid-provider'
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '500':
+          $ref: '#/components/responses/OIDC-connection'
       tags:
         - Admin
         - Public
+      summary: OpenID Connect authentication initiation via Location header redirect
+      description: 'Called by clients to initiate the OpenID Connect Authorization Code Flow. Redirects to the OpenID Connect provider if successful. '
+      parameters:
+        - $ref: '#/components/parameters/provider'
+        - $ref: '#/components/parameters/offline'
+  '/{db}/_oidc_challenge':
+    parameters:
+      - name: db
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The name of the database to run the operation against.
+    get:
+      responses:
+        '400':
+          description: 'The provider provided is not defined in the Sync Gateway config. If no provided was specified then there is no default provider set. '
+        '401':
+          description: Successfully connected with the OpenID Connect provider so now the client can login.
+          headers:
+            WWW-Authenticate:
+              schema:
+                type: string
+              description: The OpenID Connect authentication URL.
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '500':
+          description: Unable to connect and validate with the OpenID Connect provider requested
+      tags:
+        - Admin
+        - Public
+      summary: OpenID Connect authentication initiation via WWW-Authenticate header
+      description: 'Called by clients to initiate the OpenID Connect Authorization Code Flow. This will establish a connection with the provider, then put the redirect URL in the `WWW-Authenticate` header.'
+      parameters:
+        - $ref: '#/components/parameters/provider'
+        - $ref: '#/components/parameters/offline'
   '/{db}/_oidc_callback':
     parameters:
       - $ref: '#/components/parameters/db'
     get:
       responses:
         '200':
-          description: OK
+          $ref: '#/components/responses/OIDC-callback'
+        '400':
+          description: A problem occurred when reading the callback request body
+        '401':
+          description: An error was receieved from the OpenID Connect provider. This means the error query parameter was filled.
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '500':
+          description: A problem occurred in regards to the token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  reason:
+                    type: string
       tags:
         - Admin
         - Public
+      summary: OpenID Connect authentication callback
+      parameters:
+        - name: error
+          schema:
+            type: string
+          in: query
+          description: 'The OpenID Connect error, if any occurred.'
+        - $ref: '#/components/parameters/oidc-code'
+        - $ref: '#/components/parameters/provider'
+        - $ref: '#/components/parameters/oidc-state'
+      description: The callback URL that the client is redirected to after authenticating with the OpenID Connect provider.
   '/{db}/_oidc_refresh':
     parameters:
       - $ref: '#/components/parameters/db'
     get:
       responses:
         '200':
-          description: OK
+          $ref: '#/components/responses/OIDC-callback'
+        '400':
+          $ref: '#/components/responses/OIDC-invalid-provider'
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '500':
+          $ref: '#/components/responses/OIDC-connection'
       tags:
         - Admin
         - Public
-  '/{db}/_oidc_challenge':
-    parameters:
-      - $ref: '#/components/parameters/db'
-    get:
-      responses:
-        '200':
-          description: OK
-      tags:
-        - Admin
-        - Public
+      summary: OpenID Connect token refresh
+      parameters:
+        - name: refresh_token
+          schema:
+            type: string
+          in: query
+          description: The OpenID Connect refresh token.
+          required: true
+        - $ref: '#/components/parameters/provider'
+      description: Refresh the OpenID Connect token based on the provided refresh token.
   '/{db}/_oidc_testing/.well-known/openid-configuration':
     parameters:
       - $ref: '#/components/parameters/db'
     get:
       responses:
         '200':
-          description: OK
+          description: 'Sucessfully generated OpenID Connect provider mock response. '
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  issuer:
+                    type: string
+                  authorization_endpoint:
+                    type: string
+                  token_endpoint:
+                    type: string
+                  jwks_uri:
+                    type: string
+                  userinfo_endpoint:
+                    type: string
+                  id_token_signing_alg_values_supported:
+                    type: string
+                  response_types_supported:
+                    type: string
+                  subject_types_supported:
+                    type: string
+                  scopes_supported:
+                    type: string
+                  claims_supported:
+                    type: string
+                  token_endpoint_auth_methods_supported:
+                    type: string
+          headers:
+            Expiry:
+              schema:
+                type: string
+              description: the time until the response expires.
+        '403':
+          $ref: '#/components/responses/OIDC-test-provider-disabled'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
         - Public
+      summary: OpenID Connect mock provider
+      description: |-
+        Mock an OpenID Connect provider response for testing purposes. This returns a response that is the same structure as what Sync Gateway expects from an OIDC provider after initiating OIDC authentication.
   '/{db}/_oidc_testing/authorize':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -398,53 +696,194 @@ paths:
       responses:
         '200':
           description: OK
+        '400':
+          $ref: '#/components/responses/OIDC-invalid-scope'
+        '403':
+          $ref: '#/components/responses/OIDC-test-provider-disabled'
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '500':
+          $ref: '#/components/responses/OIDC-testing-internal-error'
       tags:
         - Admin
         - Public
+      summary: OpenID Connect mock login page
+      description: |-
+        Show a mock OpenID Connect login page for the client to log in to.
+      parameters:
+        - $ref: '#/components/parameters/oidc-scope'
     post:
       responses:
         '200':
           description: OK
+        '400':
+          $ref: '#/components/responses/OIDC-invalid-scope'
+        '403':
+          $ref: '#/components/responses/OIDC-test-provider-disabled'
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '500':
+          $ref: '#/components/responses/OIDC-testing-internal-error'
       tags:
         - Admin
         - Public
+      summary: OpenID Connect mock login page
+      description: |-
+        Show a mock OpenID Connect login page for the client to log in to.
+      parameters:
+        - $ref: '#/components/parameters/oidc-scope'
   '/{db}/_oidc_testing/token':
     parameters:
       - $ref: '#/components/parameters/db'
     post:
       responses:
         '200':
-          description: OK
+          $ref: '#/components/responses/OIDC-token'
+        '400':
+          description: Invalid token provided
+        '403':
+          $ref: '#/components/responses/OIDC-test-provider-disabled'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
         - Public
+      summary: OpenID Connect mock token
+      description: |-
+        Return a mock OpenID Connect token for the OIDC authentication flow.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                grant_type:
+                  type: string
+                  description: The grant type of the token to request. Can either be an `authorization_code` or `refresh_token`.
+                code:
+                  type: string
+                  description: '**`grant_type=authorization_code` only**: The OpenID Connect authentication token.'
+                refresh_token:
+                  type: string
+                  description: '**`grant_type=refresh_token` only**: The OpenID Connect refresh token.'
+              required:
+                - grant_type
+        description: ''
   '/{db}/_oidc_testing/certs':
     parameters:
       - $ref: '#/components/parameters/db'
     get:
       responses:
         '200':
-          description: OK
+          description: Returned public key sucessfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  keys:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        Key:
+                          type: object
+                        KeyID:
+                          type: string
+                        Use:
+                          type: string
+                        Certificates:
+                          type: array
+                          items:
+                            type: object
+                        Algorithm:
+                          type: string
+                      required:
+                        - Key
+                        - KeyID
+                        - Use
+                required:
+                  - keys
+        '403':
+          $ref: '#/components/responses/OIDC-test-provider-disabled'
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '500':
+          description: An error occurred while getting the private RSA key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  reason:
+                    type: string
       tags:
         - Admin
         - Public
+      summary: OpenID Connect public certificates for signing keys
+      description: |-
+        Return a mock OpenID Connect public key to be used as signing keys.
   '/{db}/_oidc_testing/authenticate':
     parameters:
       - $ref: '#/components/parameters/db'
     get:
       responses:
-        '200':
-          description: OK
+        '302':
+          $ref: '#/components/responses/OIDC-testing-redirect'
+        '403':
+          $ref: '#/components/responses/OIDC-test-provider-disabled'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
         - Public
+      parameters:
+        - $ref: '#/components/parameters/oidc-redirect_uri'
+        - $ref: '#/components/parameters/oidc-scope'
+        - name: username
+          in: query
+          schema:
+            type: string
+          required: true
+        - name: tokenttl
+          in: query
+          schema:
+            type: integer
+          required: true
+        - name: identity-token-formats
+          in: query
+          schema:
+            type: string
+          required: true
+        - name: authenticated
+          in: query
+          schema:
+            type: string
+          required: true
+      description: |-
+        Used to handle the login page displayed for the `GET /{db}/_oidc_testing/authorize` endpoint.
+      summary: OpenID Connect mock login page handler
     post:
       responses:
-        '200':
-          description: OK
+        '302':
+          $ref: '#/components/responses/OIDC-testing-redirect'
+        '403':
+          $ref: '#/components/responses/OIDC-test-provider-disabled'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
         - Public
+      description: |-
+        Used to handle the login page displayed for the `GET /{db}/_oidc_testing/authorize` endpoint.
+      parameters:
+        - $ref: '#/components/parameters/oidc-redirect_uri'
+        - $ref: '#/components/parameters/oidc-scope'
+      summary: OpenID Connect mock login page handler
+      requestBody:
+        $ref: '#/components/requestBodies/OIDC-login-page-handler'
   '/{db}/_blipsync':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -479,15 +918,23 @@ paths:
     get:
       responses:
         '200':
-          description: OK
+          $ref: '#/components/responses/User-session-information'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      summary: Get session information
+      description: Retrieve session information such as the user the session belongs too and what channels that user can access.
     delete:
       responses:
         '200':
-          description: OK
+          description: Successfully removed the user session
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      summary: Remove session
+      description: Invalidates the session provided so that anyone using it is logged out and is prevented from future use.
   '/{db}/_raw/{docid}':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -622,9 +1069,16 @@ paths:
     delete:
       responses:
         '200':
-          description: OK
+          description: User now has no sessions
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      summary: Remove all of a users sessions
+      description: |-
+        Invalidates all the sessions that a user has.
+
+        Will still return a `200` status code if the user has no sessions.
   '/{db}/_user/{name}/_session/{sessionid}':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -641,9 +1095,13 @@ paths:
     delete:
       responses:
         '200':
-          description: OK
+          description: Session has been sucessfully removed as the user was associated with the session
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      summary: Remove session with user validation
+      description: Invalidates the session only if it belongs to the user.
   '/{db}/_role/':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -1254,6 +1712,48 @@ components:
       schema:
         type: string
       description: The name of the role.
+    provider:
+      name: provider
+      in: query
+      required: false
+      schema:
+        type: string
+      description: 'The OpenID Connect provider to use for authentication.  The list of providers are defined in the Sync Gateway config. If left empty, the default provider will be used.'
+    offline:
+      name: offline
+      in: query
+      required: false
+      schema:
+        type: string
+      description: 'If true, the OpenID Connect provider is requested to confirm with the user the permissions requested and refresh the OIDC token. To do this, access_type=offline and prompt=consent is set on the redirection link.'
+    oidc-code:
+      name: code
+      in: query
+      required: true
+      schema:
+        type: string
+      description: The OpenID Connect authentication code.
+    oidc-state:
+      name: state
+      in: query
+      required: false
+      schema:
+        type: string
+      description: The OpenID Connect state to verify against the state cookie. This is used to prevent cross-site request forgery (CSRF). This is not required if `disable_callback_state=true` for the provider config (NOT recommended).
+    oidc-scope:
+      name: scope
+      in: query
+      required: true
+      schema:
+        type: string
+      description: The OpenID Connect authentication scope.
+    oidc-redirect_uri:
+      name: redirect_uri
+      in: query
+      required: false
+      schema:
+        type: string
+      description: The Sync Gateway OpenID Connect callback URL.
   responses:
     Not-found:
       description: Resource could not be found
@@ -1302,6 +1802,73 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Role'
+    Invalid-CORS:
+      description: Origin is not in the approved list of allowed origins
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              reason:
+                type: string
+            required:
+              - error
+              - reason
+    User-session-information:
+      description: Properties associated with a user session
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/User-session-information'
+    OIDC-callback:
+      description: Successfully authenticated with OpenID Connect.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OIDC-callback'
+    OIDC-invalid-provider:
+      description: 'The provider provided is not defined in the Sync Gateway config. If no provided was specified then there is no default provider set. '
+    OIDC-connection:
+      description: Unable to connect and validate with the OpenID Connect provider requested
+    OIDC-test-provider-disabled:
+      description: The OpenID Connect unsupported config option `oidc_test_provider` is not enabled. To use this endpoint, this option must be enabled.
+    OIDC-invalid-scope:
+      description: A validation error occurred with the scope.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              reason:
+                type: string
+    OIDC-testing-internal-error:
+      description: An error occurred.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              reason:
+                type: string
+    OIDC-token:
+      description: Properties expected back from an OpenID Connect provider after successful authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OIDC-token'
+    OIDC-testing-redirect:
+      description: Redirecting to Sync Gateway OpenID Connect callback URL
+      headers:
+        Location:
+          schema:
+            type: string
+          description: The location to the Sync Gateway OpenID Connect callback URL.
   schemas:
     User:
       description: Properties associated with a user
@@ -1376,6 +1943,87 @@ components:
           items:
             type: string
             readOnly: true
+    User-session-information:
+      type: object
+      properties:
+        authentication_handlers:
+          type: array
+          description: The ways authentication can be established to authenticate as the user.
+          items:
+            type: string
+        ok:
+          type: boolean
+        userCtx:
+          type: object
+          properties:
+            channels:
+              type: object
+              description: |
+                A map of the channels the user has access to and the sequence number each channel was created at.
+
+                The key is the channel name and the value is the sequence number.
+            name:
+              type: string
+              description: The name of the user.
+              nullable: true
+      title: User Session Information
+    OIDC-callback:
+      type: object
+      title: OpenID Connect callback properties
+      properties:
+        id_token:
+          type: string
+          description: The OpenID Connect ID token
+        refresh_token:
+          type: string
+          description: The OpenID Connect ID refresh token
+        session_id:
+          type: string
+          description: The Sync Gateway session token
+        name:
+          type: string
+          description: The Sync Gateway user
+        access_token:
+          type: string
+          description: The OpenID Connect access token
+        token_type:
+          type: string
+          description: The OpenID Connect ID token type
+        expires_in:
+          type: number
+          description: The time until the id_token expires (TTL).
+    OIDC-token:
+      title: OIDC-token
+      type: object
+      description: Properties expected back from an OpenID Connect provider after successful authentication
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: string
+        id_token:
+          type: string
+    OIDC-login-page-handler:
+      description: Properties passed from the OpenID Connect mock login page to the handler
+      type: object
+      properties:
+        username:
+          type: string
+        tokenttl:
+          type: string
+        identity-token-formats:
+          type: string
+        authenticated:
+          type: string
+      required:
+        - username
+        - tokenttl
+        - identity-token-formats
+        - authenticated
   requestBodies:
     User:
       content:
@@ -1389,3 +2037,9 @@ components:
           schema:
             $ref: '#/components/schemas/Role'
       description: Properties associated with a role
+    OIDC-login-page-handler:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OIDC-login-page-handler'
+      description: Properties passed from the OpenID Connect mock login page to the handler
