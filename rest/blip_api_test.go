@@ -3748,11 +3748,13 @@ func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
 }
 
 // Make sure that a client cannot open multiple subChanges subscriptions on a single blip context (SG #3222)
-//
 // - Open a one-off subChanges request, ensure it works.
 // - Open a subsequent continuous request, and ensure it works.
 // - Open another continuous subChanges, and asserts that it gets an error on the 2nd one, because the first is still running.
 // - Open another one-off subChanges request, assert we still get an error.
+//
+// Asserts on stats to test for regression of CBG-1824: Make sure SubChangesOneShotActive gets decremented when one shot
+// sub changes request has completed
 func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
@@ -3772,8 +3774,11 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	}
 
 	pullStats := bt.restTester.GetDatabase().DbStats.CBLReplicationPull()
-	assert.EqualValues(t, 0, pullStats.NumPullReplActiveContinuous.Value())
-	assert.EqualValues(t, 0, pullStats.NumPullReplActiveOneShot.Value())
+	require.EqualValues(t, 0, pullStats.NumPullReplTotalContinuous.Value())
+	require.EqualValues(t, 0, pullStats.NumPullReplActiveContinuous.Value())
+	require.EqualValues(t, 0, pullStats.NumPullReplTotalOneShot.Value())
+	require.EqualValues(t, 0, pullStats.NumPullReplActiveOneShot.Value())
+	require.EqualValues(t, 0, pullStats.NumPullReplSinceZero.Value())
 
 	// Open an initial continuous = false subChanges request, which we'd expect to release the lock after it's "caught up".
 	subChangesRequest := blip.NewRequest()
@@ -3781,18 +3786,20 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	subChangesRequest.Properties["continuous"] = "false"
 	subChangesRequest.SetCompressed(false)
 	sent := bt.sender.Send(subChangesRequest)
-	goassert.True(t, sent)
+	require.True(t, sent)
 	subChangesResponse := subChangesRequest.Response()
-	goassert.Equals(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
+	require.Equal(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
 	errorCode := subChangesResponse.Properties["Error-Code"]
 	log.Printf("errorCode: %v", errorCode)
 	respBody, err := subChangesResponse.Body()
 	require.NoError(t, err)
-	assert.Equal(t, "", errorCode, "resp: %s", respBody)
+	require.Equal(t, "", errorCode, "resp: %s", respBody)
 
-	base.WaitForStat(pullStats.NumPullReplTotalOneShot.Value, 1)
-	// Might need to expect 0 after CBG-1824 depending on fix implementation
-	assert.EqualValues(t, 1, pullStats.NumPullReplActiveOneShot.Value())
+	base.RequireWaitForStat(t, pullStats.NumPullReplTotalOneShot.Value, 1)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveOneShot.Value, 0)
+	base.RequireWaitForStat(t, pullStats.NumPullReplTotalContinuous.Value, 0)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveContinuous.Value, 0)
+	base.RequireWaitForStat(t, pullStats.NumPullReplSinceZero.Value, 1)
 
 	// Send continous subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
 	subChangesRequest = blip.NewRequest()
@@ -3800,17 +3807,20 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	subChangesRequest.Properties["continuous"] = "true"
 	subChangesRequest.SetCompressed(false)
 	sent = bt.sender.Send(subChangesRequest)
-	goassert.True(t, sent)
+	require.True(t, sent)
 	subChangesResponse = subChangesRequest.Response()
-	goassert.Equals(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
+	require.Equal(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
 	errorCode = subChangesResponse.Properties["Error-Code"]
 	log.Printf("errorCode: %v", errorCode)
 	respBody, err = subChangesResponse.Body()
 	require.NoError(t, err)
-	assert.Equal(t, "", errorCode, "resp: %s", respBody)
+	require.Equal(t, "", errorCode, "resp: %s", respBody)
 
-	base.WaitForStat(pullStats.NumPullReplTotalContinuous.Value, 1)
-	assert.EqualValues(t, 1, pullStats.NumPullReplActiveContinuous.Value())
+	base.RequireWaitForStat(t, pullStats.NumPullReplTotalOneShot.Value, 1)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveOneShot.Value, 0)
+	base.RequireWaitForStat(t, pullStats.NumPullReplTotalContinuous.Value, 1)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveContinuous.Value, 1)
+	base.RequireWaitForStat(t, pullStats.NumPullReplSinceZero.Value, 2)
 
 	// Send a second continuous subchanges request, expect an error
 	subChangesRequest = blip.NewRequest()
@@ -3818,14 +3828,18 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	subChangesRequest.Properties["continuous"] = "true"
 	subChangesRequest.SetCompressed(false)
 	sent = bt.sender.Send(subChangesRequest)
-	goassert.True(t, sent)
+	require.True(t, sent)
 	subChangesResponse = subChangesRequest.Response()
-	goassert.Equals(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
+	require.Equal(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
 	errorCode = subChangesResponse.Properties["Error-Code"]
 	log.Printf("errorCode2: %v", errorCode)
 	assert.Equal(t, "500", errorCode)
 
-	assert.EqualValues(t, 1, pullStats.NumPullReplActiveContinuous.Value())
+	base.RequireWaitForStat(t, pullStats.NumPullReplTotalOneShot.Value, 1)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveOneShot.Value, 0)
+	base.RequireWaitForStat(t, pullStats.NumPullReplTotalContinuous.Value, 1)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveContinuous.Value, 1)
+	base.RequireWaitForStat(t, pullStats.NumPullReplSinceZero.Value, 2)
 
 	// Even a subsequent continuous = false subChanges request should return an error. This isn't restricted to only continuous changes.
 	subChangesRequest = blip.NewRequest()
@@ -3833,23 +3847,23 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	subChangesRequest.Properties["continuous"] = "false"
 	subChangesRequest.SetCompressed(false)
 	sent = bt.sender.Send(subChangesRequest)
-	goassert.True(t, sent)
+	require.True(t, sent)
 	subChangesResponse = subChangesRequest.Response()
-	goassert.Equals(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
+	require.Equal(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
 	errorCode = subChangesResponse.Properties["Error-Code"]
 	log.Printf("errorCode: %v", errorCode)
 	respBody, err = subChangesResponse.Body()
 	require.NoError(t, err)
 	assert.Equal(t, "500", errorCode, "resp: %s", respBody)
 
-	assert.EqualValues(t, 1, pullStats.NumPullReplActiveOneShot.Value())
+	base.RequireWaitForStat(t, pullStats.NumPullReplTotalOneShot.Value, 1)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveOneShot.Value, 0)
+	base.RequireWaitForStat(t, pullStats.NumPullReplTotalContinuous.Value, 1)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveContinuous.Value, 1)
+	base.RequireWaitForStat(t, pullStats.NumPullReplSinceZero.Value, 2)
 
 	bt.sender.Close() // Close continuous sub changes feed
 
-	activeContStat, activeContStatIsExpected := base.WaitForStat(pullStats.NumPullReplActiveContinuous.Value, 0)
-	assert.True(t, activeContStatIsExpected, "NumPullReplActiveContinuous=%d instead of expected value of 0", activeContStat)
-
-	// Skipping assertions on one shot stat due to stat not being decremented after one shot has completed - CBG-1824
-	// activeOneShotStat, activeOneShotStatIsExpected := base.WaitForStat(pullStats.NumPullReplActiveOneShot.Value, 0)
-	// assert.True(t, activeOneShotStatIsExpected, "NumPullReplActiveOneShot=%d instead of expected value of 0", activeOneShotStat)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveOneShot.Value, 0)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveContinuous.Value, 0)
 }

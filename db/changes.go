@@ -1464,6 +1464,7 @@ loop:
 			break loop
 		}
 		if sendErr != nil {
+			forceClose = true
 			return &ChangesSendErr{sendErr}, forceClose
 		}
 	}

@@ -590,12 +590,16 @@ func (auth *Authenticator) DeleteRole(role Role, purge bool, deleteSeq uint64) e
 
 // Authenticates a user given the username and password.
 // If the username and password are both "", it will return a default empty User object, not nil.
-func (auth *Authenticator) AuthenticateUser(username string, password string) User {
-	user, _ := auth.GetUser(username)
-	if user == nil || !user.Authenticate(password) {
-		return nil
+func (auth *Authenticator) AuthenticateUser(username string, password string) (User, error) {
+	user, err := auth.GetUser(username)
+	if err != nil && !base.IsDocNotFoundError(err) {
+		return nil, err
 	}
-	return user
+
+	if user == nil || !user.Authenticate(password) {
+		return nil, nil
+	}
+	return user, nil
 }
 
 // Authenticates a user based on a JWT token string and a set of providers.  Attempts to match the

@@ -63,6 +63,10 @@ type blipHandlerFunc func(*blipHandler, *blip.Message) error
 var (
 	ErrUseProposeChanges = base.HTTPErrorf(http.StatusConflict, "Use 'proposeChanges' instead")
 
+	// ErrDatabaseWentAway is returned when a replication tries to use a closed database.
+	// HTTP 503 tells the client to reconnect and try again.
+	ErrDatabaseWentAway = base.HTTPErrorf(http.StatusServiceUnavailable, "Sync Gateway database went away - asking client to reconnect")
+
 	// ErrAttachmentNotFound is returned when the attachment that is asked by one of the peers does
 	// not exist in another to prove that it has the attachment during Inter-Sync Gateway Replication.
 	ErrAttachmentNotFound = base.HTTPErrorf(http.StatusNotFound, "attachment not found")
@@ -101,6 +105,7 @@ func (bh *blipHandler) refreshUser() error {
 				bc.dbUserLock.Unlock()
 				return err
 			}
+			newUser.InitializeRoles()
 			bc.userChangeWaiter.RefreshUserKeys(newUser)
 			bc.blipContextDb.SetUser(newUser)
 
@@ -216,12 +221,14 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	bh.continuous = continuous
 	// Start asynchronous changes goroutine
 	go func() {
-		// Pull replication stats by type - Active stats decremented in Close()
+		// Pull replication stats by type
 		if bh.continuous {
 			bh.replicationStats.SubChangesContinuousActive.Add(1)
+			defer bh.replicationStats.SubChangesContinuousActive.Add(-1)
 			bh.replicationStats.SubChangesContinuousTotal.Add(1)
 		} else {
 			bh.replicationStats.SubChangesOneShotActive.Add(1)
+			defer bh.replicationStats.SubChangesOneShotActive.Add(-1)
 			bh.replicationStats.SubChangesOneShotTotal.Add(1)
 		}
 
@@ -449,7 +456,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 		// Spawn a goroutine to await the client's response:
 		go func(bh *blipHandler, sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, sendTime time.Time, database *Database) {
 			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, database); err != nil {
-				base.ErrorfCtx(bh.loggingCtx, "Error from bh.handleChangesResponse: %v", err)
+				base.WarnfCtx(bh.loggingCtx, "Error from bh.handleChangesResponse: %v", err)
 				if bh.fatalErrorCallback != nil {
 					bh.fatalErrorCallback(err)
 				}

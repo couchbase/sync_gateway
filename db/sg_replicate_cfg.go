@@ -50,7 +50,7 @@ const (
 	ConfigErrorMissingQueryParams               = "Replication specifies sync_gateway/bychannel filter but is missing query_params"
 	ConfigErrorMissingRemote                    = "Replication remote must be specified"
 	ConfigErrorMissingDirection                 = "Replication direction must be specified"
-	ConfigErrorDuplicateCredentials             = "Auth credentials can be specified using username/password config properties or remote URL, but not both"
+	ConfigErrorDuplicateCredentials             = "Auth credentials can be specified using remote_username/remote_password config properties or remote URL, but not both"
 	ConfigErrorConfigBasedAdhoc                 = "adhoc=true is invalid for replication in Sync Gateway configuration"
 	ConfigErrorConfigBasedCancel                = "cancel=true is invalid for replication in Sync Gateway configuration"
 	ConfigErrorInvalidConflictResolutionTypeFmt = "Conflict resolution type is invalid, valid values are %s/%s/%s/%s"
@@ -92,8 +92,10 @@ func NewSGNode(uuid string, host string) *SGNode {
 type ReplicationConfig struct {
 	ID                     string                    `json:"replication_id"`
 	Remote                 string                    `json:"remote"`
-	Username               string                    `json:"username,omitempty"`
-	Password               string                    `json:"password,omitempty"`
+	Username               string                    `json:"username,omitempty"` // Deprecated
+	Password               string                    `json:"password,omitempty"` // Deprecated
+	RemoteUsername         string                    `json:"remote_username,omitempty"`
+	RemotePassword         string                    `json:"remote_password,omitempty"`
 	Direction              ActiveReplicatorDirection `json:"direction"`
 	ConflictResolutionType ConflictResolverType      `json:"conflict_resolution_type,omitempty"`
 	ConflictResolutionFn   string                    `json:"custom_conflict_resolver,omitempty"`
@@ -107,6 +109,7 @@ type ReplicationConfig struct {
 	Cancel                 bool                      `json:"cancel,omitempty"`
 	Adhoc                  bool                      `json:"adhoc,omitempty"`
 	BatchSize              int                       `json:"batch_size,omitempty"`
+	RunAs                  string                    `json:"run_as,omitempty"`
 }
 
 func DefaultReplicationConfig() ReplicationConfig {
@@ -133,8 +136,10 @@ type ReplicationCfg struct {
 type ReplicationUpsertConfig struct {
 	ID                     string      `json:"replication_id"`
 	Remote                 *string     `json:"remote"`
-	Username               *string     `json:"username,omitempty"`
-	Password               *string     `json:"password,omitempty"`
+	Username               *string     `json:"username,omitempty"` // Deprecated
+	Password               *string     `json:"password,omitempty"` // Deprecated
+	RemoteUsername         *string     `json:"remote_username,omitempty"`
+	RemotePassword         *string     `json:"remote_password,omitempty"`
 	Direction              *string     `json:"direction"`
 	ConflictResolutionType *string     `json:"conflict_resolution_type,omitempty"`
 	ConflictResolutionFn   *string     `json:"custom_conflict_resolver,omitempty"`
@@ -148,6 +153,7 @@ type ReplicationUpsertConfig struct {
 	Cancel                 *bool       `json:"cancel,omitempty"`
 	Adhoc                  *bool       `json:"adhoc,omitempty"`
 	BatchSize              *int        `json:"batch_size,omitempty"`
+	RunAs                  *string     `json:"run_as,omitempty"`
 }
 
 func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
@@ -206,7 +212,12 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 		return base.HTTPErrorf(http.StatusBadRequest, "Replication remote URL is invalid")
 	}
 
-	if (remoteURL != nil && remoteURL.User.Username() != "") && rc.Username != "" {
+	if rc.RemoteUsername != "" && rc.Username != "" {
+		return base.HTTPErrorf(http.StatusBadRequest,
+			"Cannot set both remote_username and username config options. Please only use the remote_username and remote_password config options")
+	}
+
+	if (remoteURL != nil && remoteURL.User.Username() != "") && (rc.RemoteUsername != "" || rc.Username != "") {
 		return base.HTTPErrorf(http.StatusBadRequest,
 			ConfigErrorDuplicateCredentials)
 	}
@@ -252,6 +263,14 @@ func (rc *ReplicationConfig) Upsert(c *ReplicationUpsertConfig) {
 		rc.Password = *c.Password
 	}
 
+	if c.RemoteUsername != nil {
+		rc.RemoteUsername = *c.RemoteUsername
+	}
+
+	if c.RemotePassword != nil {
+		rc.RemotePassword = *c.RemotePassword
+	}
+
 	if c.Direction != nil {
 		rc.Direction = ActiveReplicatorDirection(*c.Direction)
 	}
@@ -295,6 +314,10 @@ func (rc *ReplicationConfig) Upsert(c *ReplicationUpsertConfig) {
 		rc.BatchSize = *c.BatchSize
 	}
 
+	if c.RunAs != nil {
+		rc.RunAs = *c.RunAs
+	}
+
 	if c.QueryParams != nil {
 		// QueryParams can be either []interface{} or map[string]interface{}, so requires type-specific copying
 		// avoid later mutating c.QueryParams
@@ -335,6 +358,9 @@ func (rc *ReplicationConfig) Redacted() *ReplicationConfig {
 	config := *rc
 	if config.Password != "" {
 		config.Password = base.RedactedStr
+	}
+	if config.RemotePassword != "" {
+		config.RemotePassword = base.RedactedStr
 	}
 	config.Remote = base.RedactBasicAuthURLPassword(config.Remote)
 	return &config
@@ -482,14 +508,24 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 		insecureSkipVerify = m.dbContext.Options.UnsupportedOptions.SgrTlsSkipVerify
 	}
 
+	activeDB := &Database{DatabaseContext: m.dbContext}
+	if config.RunAs != "" {
+		user, err := m.dbContext.Authenticator().GetUser(config.RunAs)
+		if err != nil {
+			return nil, err
+		}
+		activeDB.SetUser(user)
+	}
+
 	rc = &ActiveReplicatorConfig{
 		ID:                 config.ID,
 		Continuous:         config.Continuous,
-		ActiveDB:           &Database{DatabaseContext: m.dbContext}, // sg-replicate interacts with local as admin
+		ActiveDB:           activeDB,
 		PurgeOnRemoval:     config.PurgeOnRemoval,
 		DeltasEnabled:      config.DeltaSyncEnabled,
 		InsecureSkipVerify: insecureSkipVerify,
 		CheckpointInterval: m.CheckpointInterval,
+		RunAs:              config.RunAs,
 	}
 
 	rc.MaxReconnectInterval = defaultMaxReconnectInterval
@@ -544,8 +580,17 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 
 	// If auth credentials are explicitly defined in the replication configuration,
 	// enrich remote database URL connection string with the supplied auth credentials.
-	if config.Username != "" {
-		rc.RemoteDBURL.User = url.UserPassword(config.Username, config.Password)
+	username := config.Username
+	password := config.Password
+	if username != "" || password != "" {
+		base.Warnf(`Deprecation notice: replication config fields "username" and "password" are now "remote_username" and "remote_password" respectively`)
+	}
+	if config.RemoteUsername != "" {
+		username = config.RemoteUsername
+		password = config.RemotePassword
+	}
+	if username != "" {
+		rc.RemoteDBURL.User = url.UserPassword(username, password)
 	}
 
 	rc.WebsocketPingInterval = m.dbContext.Options.SGReplicateOptions.WebsocketPingInterval

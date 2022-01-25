@@ -1189,6 +1189,14 @@ type AtomicBool struct {
 	value int32
 }
 
+func NewAtomicBool(val bool) *AtomicBool {
+	v := int32(0)
+	if val {
+		v = 1
+	}
+	return &AtomicBool{value: v}
+}
+
 func (ab *AtomicBool) Set(flag bool) {
 	if flag {
 		atomic.StoreInt32(&ab.value, 1)

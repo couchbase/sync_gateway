@@ -58,6 +58,10 @@ func MD(i interface{}) RedactorFunc {
 		return func() Redactor {
 			return Metadata(v)
 		}
+	case Set:
+		return func() Redactor {
+			return v.buildRedactorSet(MD)
+		}
 	case fmt.Stringer:
 		return func() Redactor {
 			return Metadata(v.String())
