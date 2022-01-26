@@ -469,7 +469,7 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 
 	// Attempt to retrieve via view.  Above operations were all synchronous (on-demand import of SDK delete, SG delete), so
 	// stale=false view results should be immediately updated.
-	results, err := rt.GetDatabase().ChannelViewTest("ABC", 0, 1000)
+	results, err := rt.GetDatabase().ChannelViewForTest(t, "ABC", 0, 1000)
 	assert.NoError(t, err, "Error issuing channel view query")
 	for _, entry := range results {
 		log.Printf("Got view result: %v", entry)
@@ -544,7 +544,7 @@ func TestImportFilterLogging(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	//Add document to bucket
+	// Add document to bucket
 	key := "ValidImport"
 	body := make(map[string]interface{})
 	body["type"] = "mobile"
@@ -553,19 +553,19 @@ func TestImportFilterLogging(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, ok)
 
-	//Get number of errors before
+	// Get number of errors before
 	numErrors, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)
 
-	//Attempt to get doc will trigger import
+	// Attempt to get doc will trigger import
 	response := rt.SendAdminRequest("GET", "/db/"+key, "")
 	assert.Equal(t, http.StatusOK, response.Code)
 
-	//Get number of errors after
+	// Get number of errors after
 	numErrorsAfter, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)
 
-	//Make sure an error was logged
+	// Make sure an error was logged
 	assert.Equal(t, numErrors+1, numErrorsAfter)
 
 }

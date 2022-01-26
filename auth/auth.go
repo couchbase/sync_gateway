@@ -9,6 +9,7 @@
 package auth
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -34,13 +35,14 @@ type AuthenticatorOptions struct {
 	ChannelsWarningThreshold *uint32
 	SessionCookieName        string
 	BcryptCost               int
+	LogCtx                   context.Context
 }
 
 // Interface for deriving the set of channels and roles a User/Role has access to.
 // The instantiator of an Authenticator must provide an implementation.
 type ChannelComputer interface {
-	ComputeChannelsForPrincipal(Principal) (ch.TimedSet, error)
-	ComputeRolesForUser(User) (ch.TimedSet, error)
+	ComputeChannelsForPrincipal(context.Context, Principal) (ch.TimedSet, error)
+	ComputeRolesForUser(context.Context, User) (ch.TimedSet, error)
 }
 
 type userByEmailInfo struct {
@@ -75,6 +77,7 @@ func DefaultAuthenticatorOptions() AuthenticatorOptions {
 		ClientPartitionWindow: base.DefaultClientPartitionWindow,
 		SessionCookieName:     DefaultCookieName,
 		BcryptCost:            DefaultBcryptCost,
+		LogCtx:                context.Background(),
 	}
 }
 
@@ -142,7 +145,7 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 		if princ.Channels() == nil && !princ.IsDeleted() {
 			// Channel list has been invalidated by a doc update -- rebuild it:
 			if err := auth.rebuildChannels(princ); err != nil {
-				base.Warnf("RebuildChannels returned error: %v", err)
+				base.WarnfCtx(auth.LogCtx, "RebuildChannels returned error: %v", err)
 				return nil, nil, false, err
 			}
 			changed = true
@@ -150,7 +153,7 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 		if user, ok := princ.(User); ok {
 			if user.RoleNames() == nil {
 				if err := auth.rebuildRoles(user); err != nil {
-					base.Warnf("RebuildRoles returned error: %v", err)
+					base.WarnfCtx(auth.LogCtx, "RebuildRoles returned error: %v", err)
 					return nil, nil, false, err
 				}
 				changed = true
@@ -186,9 +189,9 @@ func (auth *Authenticator) rebuildChannels(princ Principal) error {
 	channels := princ.ExplicitChannels().Copy()
 
 	if auth.channelComputer != nil {
-		viewChannels, err := auth.channelComputer.ComputeChannelsForPrincipal(princ)
+		viewChannels, err := auth.channelComputer.ComputeChannelsForPrincipal(auth.LogCtx, princ)
 		if err != nil {
-			base.Warnf("channelComputer.ComputeChannelsForPrincipal returned error for %v: %v", base.UD(princ), err)
+			base.WarnfCtx(auth.LogCtx, "channelComputer.ComputeChannelsForPrincipal returned error for %v: %v", base.UD(princ), err)
 			return err
 		}
 		channels.Add(viewChannels)
@@ -202,7 +205,7 @@ func (auth *Authenticator) rebuildChannels(princ Principal) error {
 		princ.SetChannelHistory(channelHistory)
 	}
 
-	base.Infof(base.KeyAccess, "Recomputed channels for %q: %s", base.UD(princ.Name()), base.UD(channels))
+	base.InfofCtx(auth.LogCtx, base.KeyAccess, "Recomputed channels for %q: %s", base.UD(princ.Name()), base.UD(channels))
 	princ.SetChannelInvalSeq(0)
 	princ.setChannels(channels)
 
@@ -243,7 +246,7 @@ func (auth *Authenticator) calculateHistory(princName string, invalSeq uint64, i
 	}
 
 	if prunedHistory := currentHistory.PruneHistory(auth.ClientPartitionWindow); len(prunedHistory) > 0 {
-		base.Debugf(base.KeyCRUD, "rebuildChannels: Pruned principal history on %s for %s", base.UD(princName), base.UD(prunedHistory))
+		base.DebugfCtx(auth.LogCtx, base.KeyCRUD, "rebuildChannels: Pruned principal history on %s for %s", base.UD(princName), base.UD(prunedHistory))
 	}
 
 	// Ensure no entries are larger than the allowed threshold
@@ -279,7 +282,7 @@ func (auth *Authenticator) rebuildRoles(user User) error {
 	var roles ch.TimedSet
 	if auth.channelComputer != nil {
 		var err error
-		roles, err = auth.channelComputer.ComputeRolesForUser(user)
+		roles, err = auth.channelComputer.ComputeRolesForUser(auth.LogCtx, user)
 		if err != nil {
 			base.Warnf("channelComputer.ComputeRolesForUser failed on user %s: %v", base.UD(user.Name()), err)
 			return err
@@ -299,7 +302,7 @@ func (auth *Authenticator) rebuildRoles(user User) error {
 		user.SetRoleHistory(roleHistory)
 	}
 
-	base.Infof(base.KeyAccess, "Computed roles for %q: %s", base.UD(user.Name()), base.UD(roles))
+	base.InfofCtx(auth.LogCtx, base.KeyAccess, "Computed roles for %q: %s", base.UD(user.Name()), base.UD(roles))
 	user.SetRoleInvalSeq(0)
 	user.setRolesSince(roles)
 	return nil
@@ -336,11 +339,11 @@ func (auth *Authenticator) Save(p Principal) error {
 			if err := auth.bucket.Set(docIDForUserEmail(user.Email()), 0, info); err != nil {
 				return err
 			}
-			//FIX: Fail if email address is already registered to another user
-			//FIX: Unregister old email address if any
+			// FIX: Fail if email address is already registered to another user
+			// FIX: Unregister old email address if any
 		}
 	}
-	base.Infof(base.KeyAuth, "Saved principal w/ name:%s, seq: #%d", base.UD(p.Name()), p.Sequence())
+	base.InfofCtx(auth.LogCtx, base.KeyAuth, "Saved principal w/ name:%s, seq: #%d", base.UD(p.Name()), p.Sequence())
 	return nil
 }
 
@@ -412,7 +415,7 @@ func (auth *Authenticator) InvalidateChannels(name string, isUser bool, invalSeq
 func (auth *Authenticator) InvalidateRoles(username string, invalSeq uint64) error {
 	docID := docIDForUser(username)
 
-	base.Infof(base.KeyAccess, "Invalidate roles of %q", base.UD(username))
+	base.InfofCtx(auth.LogCtx, base.KeyAccess, "Invalidate roles of %q", base.UD(username))
 
 	if auth.bucket.IsSupported(sgbucket.DataStoreFeatureSubdocOperations) {
 		err := auth.bucket.SubdocInsert(docID, "role_inval_seq", 0, invalSeq)
@@ -465,7 +468,7 @@ func (auth *Authenticator) UpdateUserEmail(u User, email string) error {
 			return currentUser, base.ErrUpdateCancel
 		}
 
-		base.Debugf(base.KeyAuth, "Updating user %s email to: %v", base.UD(u.Name()), base.UD(email))
+		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Updating user %s email to: %v", base.UD(u.Name()), base.UD(email))
 		err = currentUser.SetEmail(email)
 		if err != nil {
 			return nil, err
@@ -508,7 +511,7 @@ func (auth *Authenticator) rehashPassword(user User, password string) error {
 		return err
 	}
 
-	base.Debugf(base.KeyAuth, "User account %q changed password hash cost from %d to %d",
+	base.DebugfCtx(auth.LogCtx, base.KeyAuth, "User account %q changed password hash cost from %d to %d",
 		base.UD(user.Name()), hashCost, auth.BcryptCost)
 	return nil
 }
@@ -553,14 +556,14 @@ func (auth *Authenticator) casUpdatePrincipal(p Principal, callback casUpdatePri
 			return fmt.Errorf("Error reloading principal after CAS failure: %w", err)
 		}
 	}
-	base.Infof(base.KeyAuth, "Unable to update principal after %d attempts.  Principal:%s Error:%v", PrincipalUpdateMaxCasRetries, base.UD(p.Name()), err)
+	base.InfofCtx(auth.LogCtx, base.KeyAuth, "Unable to update principal after %d attempts.  Principal:%s Error:%v", PrincipalUpdateMaxCasRetries, base.UD(p.Name()), err)
 	return err
 }
 
 func (auth *Authenticator) DeleteUser(user User) error {
 	if user.Email() != "" {
 		if err := auth.bucket.Delete(docIDForUserEmail(user.Email())); err != nil {
-			base.Debugf(base.KeyAuth, "Error deleting document ID for user email %s. Error: %v", base.UD(user.Email()), err)
+			base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error deleting document ID for user email %s. Error: %v", base.UD(user.Email()), err)
 		}
 	}
 	return auth.bucket.Delete(user.DocID())
@@ -609,7 +612,7 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) (U
 // creates the user when autoRegister=true.
 func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDCProviderMap, callbackURLFunc OIDCCallbackURLFunc) (User, error) {
 
-	base.Debugf(base.KeyAuth, "AuthenticateUntrustedJWT called with token: %s", base.UD(token))
+	base.DebugfCtx(auth.LogCtx, base.KeyAuth, "AuthenticateUntrustedJWT called with token: %s", base.UD(token))
 	var provider *OIDCProvider
 	var issuer string
 
@@ -619,29 +622,29 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 		// Parse JWT (needed to determine issuer/provider)
 		jwt, err := jwt.ParseSigned(token)
 		if err != nil {
-			base.Debugf(base.KeyAuth, "Error parsing JWT in AuthenticateUntrustedJWT: %v", err)
+			base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error parsing JWT in AuthenticateUntrustedJWT: %v", err)
 			return nil, err
 		}
 
 		// Extract issuer and audience(s) from JSON Web Token.
 		var audiences []string
 		issuer, audiences, err = getIssuerWithAudience(jwt)
-		base.Debugf(base.KeyAuth, "JWT issuer: %v, audiences: %v", base.UD(issuer), base.UD(audiences))
+		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "JWT issuer: %v, audiences: %v", base.UD(issuer), base.UD(audiences))
 		if err != nil {
-			base.Debugf(base.KeyAuth, "Error getting issuer and audience from token: %v", err)
+			base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error getting issuer and audience from token: %v", err)
 			return nil, err
 		}
 
-		base.Debugf(base.KeyAuth, "Call GetProviderForIssuer w/ providers: %+v", base.UD(providers))
-		provider = providers.GetProviderForIssuer(issuer, audiences)
-		base.Debugf(base.KeyAuth, "Provider for issuer: %+v", base.UD(provider))
+		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Call GetProviderForIssuer w/ providers: %+v", base.UD(providers))
+		provider = providers.GetProviderForIssuer(auth.LogCtx, issuer, audiences)
+		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Provider for issuer: %+v", base.UD(provider))
 	}
 
 	if provider == nil {
 		return nil, base.RedactErrorf("No provider found for issuer %v", base.UD(issuer))
 	}
 
-	identity, verifyErr := verifyToken(token, provider, callbackURLFunc)
+	identity, verifyErr := verifyToken(auth.LogCtx, token, provider, callbackURLFunc)
 	if verifyErr != nil {
 		return nil, verifyErr
 	}
@@ -651,9 +654,9 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 
 // verifyToken verifies claims and signature on the token; ensure that it's been signed by the provider.
 // Returns identity claims extracted from the token if the verification is successful and an identity error if not.
-func verifyToken(token string, provider *OIDCProvider, callbackURLFunc OIDCCallbackURLFunc) (identity *Identity, err error) {
+func verifyToken(ctx context.Context, token string, provider *OIDCProvider, callbackURLFunc OIDCCallbackURLFunc) (identity *Identity, err error) {
 	// Get client for issuer
-	client, err := provider.GetClient(callbackURLFunc)
+	client, err := provider.GetClient(ctx, callbackURLFunc)
 	if err != nil {
 		return nil, fmt.Errorf("OIDC initialization error: %w", err)
 	}
@@ -661,13 +664,13 @@ func verifyToken(token string, provider *OIDCProvider, callbackURLFunc OIDCCallb
 	// Verify claims and signature on the JWT; ensure that it's been signed by the provider.
 	idToken, err := client.verifyJWT(token)
 	if err != nil {
-		base.Debugf(base.KeyAuth, "Client %v could not verify JWT. Error: %v", base.UD(client), err)
+		base.DebugfCtx(ctx, base.KeyAuth, "Client %v could not verify JWT. Error: %v", base.UD(client), err)
 		return nil, err
 	}
 
 	identity, ok, err := getIdentity(idToken)
 	if err != nil {
-		base.Debugf(base.KeyAuth, "Error getting identity from token (Identity: %v, Error: %v)", base.UD(identity), err)
+		base.DebugfCtx(ctx, base.KeyAuth, "Error getting identity from token (Identity: %v, Error: %v)", base.UD(identity), err)
 	}
 	if !ok {
 		return nil, err
@@ -689,13 +692,13 @@ func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCPr
 		// Verify claims - ensures that the token we received from the provider is valid for Sync Gateway
 		identity, err = VerifyClaims(token, provider.ClientID, provider.Issuer)
 		if err != nil {
-			base.Debugf(base.KeyAuth, "Error verifying raw token in AuthenticateTrustedJWT: %v", err)
+			base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error verifying raw token in AuthenticateTrustedJWT: %v", err)
 			return nil, time.Time{}, err
 		}
 	} else {
 		// Verify claims and signature on the JWT.
 		var verifyErr error
-		identity, verifyErr = verifyToken(token, provider, callbackURLFunc)
+		identity, verifyErr = verifyToken(auth.LogCtx, token, provider, callbackURLFunc)
 		if verifyErr != nil {
 			return nil, time.Time{}, verifyErr
 		}
@@ -707,19 +710,19 @@ func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCPr
 // Obtains a Sync Gateway User for the JWT. Expects that the JWT has already been verified for OIDC compliance.
 func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider *OIDCProvider) (user User, tokenExpiry time.Time, err error) {
 	if identity == nil || identity.Subject == "" {
-		base.Debugf(base.KeyAuth, "Empty subject found in OIDC identity: %v", base.UD(identity))
+		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Empty subject found in OIDC identity: %v", base.UD(identity))
 		return nil, time.Time{}, errors.New("subject not found in OIDC identity")
 	}
 	username, err := getOIDCUsername(provider, identity)
 	if err != nil {
-		base.Debugf(base.KeyAuth, "Error retrieving OIDCUsername: %v", err)
+		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error retrieving OIDCUsername: %v", err)
 		return nil, time.Time{}, err
 	}
-	base.Debugf(base.KeyAuth, "OIDCUsername: %v", base.UD(username))
+	base.DebugfCtx(auth.LogCtx, base.KeyAuth, "OIDCUsername: %v", base.UD(username))
 
 	user, err = auth.GetUser(username)
 	if err != nil {
-		base.Debugf(base.KeyAuth, "Error retrieving user for username %q: %v", base.UD(username), err)
+		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error retrieving user for username %q: %v", base.UD(username), err)
 		return nil, time.Time{}, err
 	}
 
@@ -727,18 +730,18 @@ func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider
 	if user != nil && identity.Email != "" && user.Email() != identity.Email {
 		err = auth.UpdateUserEmail(user, identity.Email)
 		if err != nil {
-			base.Warnf("Unable to set user email to %v for OIDC", base.UD(identity.Email))
+			base.WarnfCtx(auth.LogCtx, "Unable to set user email to %v for OIDC", base.UD(identity.Email))
 		}
 	}
 
 	// Auto-registration. This will normally be done when token is originally returned
 	// to client by oidc callback, but also needed here to handle clients obtaining their own tokens.
 	if user == nil && provider.Register {
-		base.Debugf(base.KeyAuth, "Registering new user: %v with email: %v", base.UD(username), base.UD(identity.Email))
+		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Registering new user: %v with email: %v", base.UD(username), base.UD(identity.Email))
 		var err error
 		user, err = auth.RegisterNewUser(username, identity.Email)
 		if err != nil && !base.IsCasMismatch(err) {
-			base.Debugf(base.KeyAuth, "Error registering new user: %v", err)
+			base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error registering new user: %v", err)
 			return nil, time.Time{}, err
 		}
 	}
@@ -757,7 +760,7 @@ func (auth *Authenticator) RegisterNewUser(username, email string) (User, error)
 
 	if len(email) > 0 {
 		if err := user.SetEmail(email); err != nil {
-			base.Warnf("Skipping SetEmail for user %q - Invalid email address provided: %q", base.UD(username), base.UD(email))
+			base.WarnfCtx(auth.LogCtx, "Skipping SetEmail for user %q - Invalid email address provided: %q", base.UD(username), base.UD(email))
 		}
 	}
 

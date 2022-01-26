@@ -541,7 +541,7 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 
 	activeDB := &Database{DatabaseContext: m.dbContext}
 	if config.RunAs != "" {
-		user, err := m.dbContext.Authenticator().GetUser(config.RunAs)
+		user, err := m.dbContext.Authenticator(m.loggingCtx).GetUser(config.RunAs)
 		if err != nil {
 			return nil, err
 		}

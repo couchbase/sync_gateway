@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"strconv"
@@ -31,7 +32,7 @@ type testBackingStore struct {
 	getRevisionCounter *base.SgwIntStat
 }
 
-func (t *testBackingStore) GetDocument(docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
+func (t *testBackingStore) GetDocument(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
 	t.getDocumentCounter.Add(1)
 
 	for _, d := range t.notFoundDocIDs {
@@ -53,7 +54,7 @@ func (t *testBackingStore) GetDocument(docid string, unmarshalLevel DocumentUnma
 	return doc, nil
 }
 
-func (t *testBackingStore) getRevision(doc *Document, revid string) ([]byte, Body, AttachmentsMeta, error) {
+func (t *testBackingStore) getRevision(ctx context.Context, doc *Document, revid string) ([]byte, Body, AttachmentsMeta, error) {
 	t.getRevisionCounter.Add(1)
 
 	b := Body{
@@ -68,11 +69,11 @@ func (t *testBackingStore) getRevision(doc *Document, revid string) ([]byte, Bod
 
 type noopBackingStore struct{}
 
-func (*noopBackingStore) GetDocument(docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
+func (*noopBackingStore) GetDocument(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
 	return nil, nil
 }
 
-func (*noopBackingStore) getRevision(doc *Document, revid string) ([]byte, Body, AttachmentsMeta, error) {
+func (*noopBackingStore) getRevision(ctx context.Context, doc *Document, revid string) ([]byte, Body, AttachmentsMeta, error) {
 	return nil, nil, nil, nil
 }
 
@@ -81,16 +82,18 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 	cacheHitCounter, cacheMissCounter := base.SgwIntStat{}, base.SgwIntStat{}
 	cache := NewLRURevisionCache(10, &noopBackingStore{}, &cacheHitCounter, &cacheMissCounter)
 
+	ctx := base.TestCtx(t)
+
 	// Fill up the rev cache with the first 10 docs
 	for docID := 0; docID < 10; docID++ {
 		id := strconv.Itoa(docID)
-		cache.Put(DocumentRevision{BodyBytes: []byte(`{}`), DocID: id, RevID: "1-abc", History: Revisions{"start": 1}})
+		cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{}`), DocID: id, RevID: "1-abc", History: Revisions{"start": 1}})
 	}
 
 	// Get them back out
 	for i := 0; i < 10; i++ {
 		docID := strconv.Itoa(i)
-		docRev, err := cache.Get(docID, "1-abc", RevCacheOmitBody, RevCacheOmitDelta)
+		docRev, err := cache.Get(ctx, docID, "1-abc", RevCacheOmitBody, RevCacheOmitDelta)
 		assert.NoError(t, err)
 		assert.NotNil(t, docRev.BodyBytes, "nil body for %s", docID)
 		assert.Equal(t, docID, docRev.DocID)
@@ -101,14 +104,14 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 	// Add 3 more docs to the now full revcache
 	for i := 10; i < 13; i++ {
 		docID := strconv.Itoa(i)
-		cache.Put(DocumentRevision{BodyBytes: []byte(`{}`), DocID: docID, RevID: "1-abc", History: Revisions{"start": 1}})
+		cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{}`), DocID: docID, RevID: "1-abc", History: Revisions{"start": 1}})
 	}
 
 	// Check that the first 3 docs were evicted
 	prevCacheHitCount := cacheHitCounter.Value()
 	for i := 0; i < 3; i++ {
 		docID := strconv.Itoa(i)
-		docRev, ok := cache.Peek(docID, "1-abc")
+		docRev, ok := cache.Peek(ctx, docID, "1-abc")
 		assert.False(t, ok)
 		assert.Nil(t, docRev.BodyBytes)
 		assert.Equal(t, int64(0), cacheMissCounter.Value()) // peek incurs no cache miss if not found
@@ -118,7 +121,7 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 	// and check we can Get up to and including the last 3 we put in
 	for i := 0; i < 10; i++ {
 		id := strconv.Itoa(i + 3)
-		docRev, err := cache.Get(id, "1-abc", RevCacheOmitBody, RevCacheOmitDelta)
+		docRev, err := cache.Get(ctx, id, "1-abc", RevCacheOmitBody, RevCacheOmitDelta)
 		assert.NoError(t, err)
 		assert.NotNil(t, docRev.BodyBytes, "nil body for %s", id)
 		assert.Equal(t, id, docRev.DocID)
@@ -133,7 +136,7 @@ func TestBackingStore(t *testing.T) {
 	cache := NewLRURevisionCache(10, &testBackingStore{[]string{"Peter"}, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
 	// Get Rev for the first time - miss cache, but fetch the doc and revision to store
-	docRev, err := cache.Get("Jens", "1-abc", RevCacheOmitBody, RevCacheOmitDelta)
+	docRev, err := cache.Get(base.TestCtx(t), "Jens", "1-abc", RevCacheOmitBody, RevCacheOmitDelta)
 	assert.NoError(t, err)
 	assert.Equal(t, "Jens", docRev.DocID)
 	assert.NotNil(t, docRev.History)
@@ -144,7 +147,7 @@ func TestBackingStore(t *testing.T) {
 	assert.Equal(t, int64(1), getRevisionCounter.Value())
 
 	// Doc doesn't exist, so miss the cache, and fail when getting the doc
-	docRev, err = cache.Get("Peter", "1-abc", RevCacheOmitBody, RevCacheOmitDelta)
+	docRev, err = cache.Get(base.TestCtx(t), "Peter", "1-abc", RevCacheOmitBody, RevCacheOmitDelta)
 	assertHTTPError(t, err, 404)
 	assert.Nil(t, docRev.BodyBytes)
 	assert.Equal(t, int64(0), cacheHitCounter.Value())
@@ -153,7 +156,7 @@ func TestBackingStore(t *testing.T) {
 	assert.Equal(t, int64(1), getRevisionCounter.Value())
 
 	// Rev is already resident, but still issue GetDocument to check for later revisions
-	docRev, err = cache.Get("Jens", "1-abc", RevCacheOmitBody, RevCacheOmitDelta)
+	docRev, err = cache.Get(base.TestCtx(t), "Jens", "1-abc", RevCacheOmitBody, RevCacheOmitDelta)
 	assert.NoError(t, err)
 	assert.Equal(t, "Jens", docRev.DocID)
 	assert.NotNil(t, docRev.History)
@@ -164,7 +167,7 @@ func TestBackingStore(t *testing.T) {
 	assert.Equal(t, int64(1), getRevisionCounter.Value())
 
 	// Rev still doesn't exist, make sure it wasn't cached
-	docRev, err = cache.Get("Peter", "1-abc", RevCacheOmitBody, RevCacheOmitDelta)
+	docRev, err = cache.Get(base.TestCtx(t), "Peter", "1-abc", RevCacheOmitBody, RevCacheOmitDelta)
 	assertHTTPError(t, err, 404)
 	assert.Nil(t, docRev.BodyBytes)
 	assert.Equal(t, int64(1), cacheHitCounter.Value())
@@ -243,38 +246,38 @@ func TestBypassRevisionCache(t *testing.T) {
 	rc := NewBypassRevisionCache(db.DatabaseContext, &bypassStat)
 
 	// Peek always returns false for BypassRevisionCache
-	_, ok := rc.Peek(key, rev1)
+	_, ok := rc.Peek(base.TestCtx(t), key, rev1)
 	assert.False(t, ok)
-	_, ok = rc.Peek(key, rev2)
+	_, ok = rc.Peek(base.TestCtx(t), key, rev2)
 	assert.False(t, ok)
 
 	// Get non-existing doc
-	doc, err := rc.Get("invalid", rev1, RevCacheOmitBody, RevCacheOmitDelta)
+	doc, err := rc.Get(base.TestCtx(t), "invalid", rev1, RevCacheOmitBody, RevCacheOmitDelta)
 	assert.True(t, base.IsDocNotFoundError(err))
 
 	// Get non-existing revision
-	doc, err = rc.Get(key, "3-abc", RevCacheOmitBody, RevCacheOmitDelta)
+	doc, err = rc.Get(base.TestCtx(t), key, "3-abc", RevCacheOmitBody, RevCacheOmitDelta)
 	assertHTTPError(t, err, 404)
 
 	// Get specific revision
-	doc, err = rc.Get(key, rev1, RevCacheOmitBody, RevCacheOmitDelta)
+	doc, err = rc.Get(base.TestCtx(t), key, rev1, RevCacheOmitBody, RevCacheOmitDelta)
 	assert.NoError(t, err)
 	require.NotNil(t, doc)
 	assert.Equal(t, `{"value":1234}`, string(doc.BodyBytes))
 
 	// Check peek is still returning false for "Get"
-	_, ok = rc.Peek(key, rev1)
+	_, ok = rc.Peek(base.TestCtx(t), key, rev1)
 	assert.False(t, ok)
 
 	// Put no-ops
-	rc.Put(doc)
+	rc.Put(base.TestCtx(t), doc)
 
 	// Check peek is still returning false for "Put"
-	_, ok = rc.Peek(key, rev1)
+	_, ok = rc.Peek(base.TestCtx(t), key, rev1)
 	assert.False(t, ok)
 
 	// Get active revision
-	doc, err = rc.GetActive(key, false)
+	doc, err = rc.GetActive(base.TestCtx(t), key, false)
 	assert.NoError(t, err)
 	assert.Equal(t, `{"value":5678}`, string(doc.BodyBytes))
 
@@ -304,7 +307,7 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 	assert.False(t, ok, "_attachments property still present in document body retrieved from bucket: %#v", bucketBody)
 
 	// Get the raw document directly from the revcache, validate _attachments property isn't found
-	docRevision, ok := db.revisionCache.Peek(rev1key, rev1id)
+	docRevision, ok := db.revisionCache.Peek(base.TestCtx(t), rev1key, rev1id)
 	assert.True(t, ok)
 	assert.NotContains(t, docRevision.BodyBytes, BodyAttachments, "_attachments property still present in document body retrieved from rev cache: %#v", bucketBody)
 	_, ok = docRevision.Attachments["myatt"]
@@ -352,7 +355,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 	assert.False(t, ok, "_attachments property still present in document body retrieved from bucket: %#v", bucketBody)
 
 	// Get the raw document directly from the revcache, validate _attachments property isn't found
-	docRevision, err := db.revisionCache.Get(docKey, rev2id, RevCacheOmitBody, RevCacheOmitDelta)
+	docRevision, err := db.revisionCache.Get(base.TestCtx(t), docKey, rev2id, RevCacheOmitBody, RevCacheOmitDelta)
 	assert.NoError(t, err, "Unexpected error calling db.revisionCache.Get")
 	assert.NotContains(t, docRevision.BodyBytes, BodyAttachments, "_attachments property still present in document body retrieved from rev cache: %#v", bucketBody)
 	_, ok = docRevision.Attachments["myatt"]
@@ -378,23 +381,23 @@ func TestRevisionImmutableDelta(t *testing.T) {
 	secondDelta := []byte("modified delta")
 
 	// Trigger load into cache
-	_, err := cache.Get("doc1", "1-abc", RevCacheOmitBody, RevCacheIncludeDelta)
+	_, err := cache.Get(base.TestCtx(t), "doc1", "1-abc", RevCacheOmitBody, RevCacheIncludeDelta)
 	assert.NoError(t, err, "Error adding to cache")
-	cache.UpdateDelta("doc1", "1-abc", RevisionDelta{ToRevID: "rev2", DeltaBytes: firstDelta})
+	cache.UpdateDelta(base.TestCtx(t), "doc1", "1-abc", RevisionDelta{ToRevID: "rev2", DeltaBytes: firstDelta})
 
 	// Retrieve from cache
-	retrievedRev, err := cache.Get("doc1", "1-abc", RevCacheOmitBody, RevCacheIncludeDelta)
+	retrievedRev, err := cache.Get(base.TestCtx(t), "doc1", "1-abc", RevCacheOmitBody, RevCacheIncludeDelta)
 	assert.NoError(t, err, "Error retrieving from cache")
 	assert.Equal(t, "rev2", retrievedRev.Delta.ToRevID)
 	assert.Equal(t, firstDelta, retrievedRev.Delta.DeltaBytes)
 
 	// Update delta again, validate data in retrievedRev isn't mutated
-	cache.UpdateDelta("doc1", "1-abc", RevisionDelta{ToRevID: "rev3", DeltaBytes: secondDelta})
+	cache.UpdateDelta(base.TestCtx(t), "doc1", "1-abc", RevisionDelta{ToRevID: "rev3", DeltaBytes: secondDelta})
 	assert.Equal(t, "rev2", retrievedRev.Delta.ToRevID)
 	assert.Equal(t, firstDelta, retrievedRev.Delta.DeltaBytes)
 
 	// Retrieve again, validate delta is correct
-	updatedRev, err := cache.Get("doc1", "1-abc", RevCacheOmitBody, RevCacheIncludeDelta)
+	updatedRev, err := cache.Get(base.TestCtx(t), "doc1", "1-abc", RevCacheOmitBody, RevCacheIncludeDelta)
 	assert.NoError(t, err, "Error retrieving from cache")
 	assert.Equal(t, "rev3", updatedRev.Delta.ToRevID)
 	assert.Equal(t, secondDelta, updatedRev.Delta.DeltaBytes)
@@ -409,8 +412,8 @@ func TestSingleLoad(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 	cache := NewLRURevisionCache(10, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
-	cache.Put(DocumentRevision{BodyBytes: []byte(`{"test":"1234"}`), DocID: "doc123", RevID: "1-abc", History: Revisions{"start": 1}})
-	_, err := cache.Get("doc123", "1-abc", true, false)
+	cache.Put(base.TestCtx(t), DocumentRevision{BodyBytes: []byte(`{"test":"1234"}`), DocID: "doc123", RevID: "1-abc", History: Revisions{"start": 1}})
+	_, err := cache.Get(base.TestCtx(t), "doc123", "1-abc", true, false)
 	assert.NoError(t, err)
 }
 
@@ -419,14 +422,14 @@ func TestConcurrentLoad(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 	cache := NewLRURevisionCache(10, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
-	cache.Put(DocumentRevision{BodyBytes: []byte(`{"test":"1234"}`), DocID: "doc1", RevID: "1-abc", History: Revisions{"start": 1}})
+	cache.Put(base.TestCtx(t), DocumentRevision{BodyBytes: []byte(`{"test":"1234"}`), DocID: "doc1", RevID: "1-abc", History: Revisions{"start": 1}})
 
 	// Trigger load into cache
 	var wg sync.WaitGroup
 	wg.Add(20)
 	for i := 0; i < 20; i++ {
 		go func() {
-			_, err := cache.Get("doc1", "1-abc", true, false)
+			_, err := cache.Get(base.TestCtx(t), "doc1", "1-abc", true, false)
 			assert.NoError(t, err)
 			wg.Done()
 		}()
@@ -443,21 +446,21 @@ func TestInvalidate(t *testing.T) {
 	rev1id, _, err := db.Put("doc", Body{"val": 123})
 	assert.NoError(t, err)
 
-	docRev, err := db.revisionCache.Get("doc", rev1id, true, true)
+	docRev, err := db.revisionCache.Get(base.TestCtx(t), "doc", rev1id, true, true)
 	assert.NoError(t, err)
 	assert.Equal(t, rev1id, docRev.RevID)
 	assert.False(t, docRev.Invalid)
 	assert.Equal(t, int64(0), db.DbStats.Cache().RevisionCacheMisses.Value())
 
-	db.revisionCache.Invalidate("doc", rev1id)
+	db.revisionCache.Invalidate(base.TestCtx(t), "doc", rev1id)
 
-	docRev, err = db.revisionCache.Get("doc", rev1id, true, true)
+	docRev, err = db.revisionCache.Get(base.TestCtx(t), "doc", rev1id, true, true)
 	assert.NoError(t, err)
 	assert.Equal(t, rev1id, docRev.RevID)
 	assert.True(t, docRev.Invalid)
 	assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheMisses.Value())
 
-	docRev, err = db.revisionCache.GetActive("doc", true)
+	docRev, err = db.revisionCache.GetActive(base.TestCtx(t), "doc", true)
 	assert.NoError(t, err)
 	assert.Equal(t, rev1id, docRev.RevID)
 	assert.True(t, docRev.Invalid)
@@ -482,17 +485,19 @@ func BenchmarkRevisionCacheRead(b *testing.B) {
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 	cache := NewLRURevisionCache(5000, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
+	ctx := base.TestCtx(b)
+
 	// trigger load into cache
 	for i := 0; i < 5000; i++ {
-		_, _ = cache.Get(fmt.Sprintf("doc%d", i), "1-abc", RevCacheOmitBody, RevCacheOmitDelta)
+		_, _ = cache.Get(ctx, fmt.Sprintf("doc%d", i), "1-abc", RevCacheOmitBody, RevCacheOmitDelta)
 	}
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
-		//GET the document until test run has completed
+		// GET the document until test run has completed
 		for pb.Next() {
 			docId := fmt.Sprintf("doc%d", rand.Intn(5000))
-			_, _ = cache.Get(docId, "1-abc", RevCacheOmitBody, RevCacheOmitDelta)
+			_, _ = cache.Get(ctx, docId, "1-abc", RevCacheOmitBody, RevCacheOmitDelta)
 		}
 	})
 }

@@ -46,7 +46,7 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	xattrsEnabled := base.TestUseXattrs()
 
 	bucket := base.GetTestBucket(t)
-	context, err := NewDatabaseContext(
+	dbCtx, err := NewDatabaseContext(
 		"db",
 		bucket,
 		false,
@@ -59,8 +59,8 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 		},
 	)
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
-	defer context.Close()
-	db, err := CreateDatabase(context)
+	defer dbCtx.Close()
+	db, err := CreateDatabase(dbCtx)
 	assert.NoError(t, err, "Couldn't create database 'db'")
 
 	docID := "doc1"
@@ -71,7 +71,7 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "1-12ff9ce1dd501524378fe092ce9aee8f", rev1ID)
 
-	rev1OldBody, err := db.getOldRevisionJSON(docID, rev1ID)
+	rev1OldBody, err := db.getOldRevisionJSON(base.TestCtx(t), docID, rev1ID)
 	if deltasEnabled && xattrsEnabled {
 		require.NoError(t, err)
 		assert.Contains(t, string(rev1OldBody), "hello.txt")
@@ -90,12 +90,12 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	rev2ID := "2-abc"
 
 	// now in any case - we'll have rev 1 backed up
-	rev1OldBody, err = db.getOldRevisionJSON(docID, rev1ID)
+	rev1OldBody, err = db.getOldRevisionJSON(base.TestCtx(t), docID, rev1ID)
 	require.NoError(t, err)
 	assert.Contains(t, string(rev1OldBody), "hello.txt")
 
 	// and rev 2 should be present only for the xattrs and deltas case
-	rev2OldBody, err := db.getOldRevisionJSON(docID, rev2ID)
+	rev2OldBody, err := db.getOldRevisionJSON(base.TestCtx(t), docID, rev2ID)
 	if deltasEnabled && xattrsEnabled {
 		require.NoError(t, err)
 		assert.Contains(t, string(rev2OldBody), "hello.txt")
@@ -754,12 +754,12 @@ func TestMigrateBodyAttachments(t *testing.T) {
 
 	setupFn := func(t *testing.T) (db *Database, teardownFn func()) {
 		bucket := base.GetTestBucket(t)
-		context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{
+		dbCtx, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{
 			EnableXattr: base.TestUseXattrs(),
 		})
 
 		assert.NoError(t, err, "The database context should be created for database 'db'")
-		db, err = CreateDatabase(context)
+		db, err = CreateDatabase(dbCtx)
 		assert.NoError(t, err, "The database 'db' should be created")
 
 		// Put a document with hello.txt attachment, to write attachment to the bucket
@@ -851,12 +851,12 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		}
 
 		// Fetch the raw doc sync data from the bucket to make sure we didn't store pre-2.5 attachments in syncData.
-		docSyncData, err := db.GetDocSyncData(docKey)
+		docSyncData, err := db.GetDocSyncData(base.TestCtx(t), docKey)
 		assert.NoError(t, err)
 		assert.Empty(t, docSyncData.Attachments)
 
 		return db, func() {
-			context.Close()
+			dbCtx.Close()
 		}
 	}
 
@@ -884,7 +884,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		assert.False(t, foundBodyAtts, "not expecting '_attachments' in body but found them: %v", bodyAtts)
 
 		// Fetch the raw doc sync data from the bucket to see if this read-only op unintentionally persisted the migrated meta.
-		syncData, err := db.GetDocSyncData(docKey)
+		syncData, err := db.GetDocSyncData(base.TestCtx(t), docKey)
 		assert.NoError(t, err)
 		assert.Empty(t, syncData.Attachments)
 	})
@@ -913,7 +913,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		assert.False(t, foundBodyAtts, "not expecting '_attachments' in body but found them: %v", bodyAtts)
 
 		// Fetch the raw doc sync data from the bucket to see if this read-only op unintentionally persisted the migrated meta.
-		syncData, err := db.GetDocSyncData(docKey)
+		syncData, err := db.GetDocSyncData(base.TestCtx(t), docKey)
 		assert.NoError(t, err)
 		assert.Empty(t, syncData.Attachments)
 	})
@@ -956,7 +956,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		assert.False(t, foundBodyAtts, "not expecting '_attachments' in body but found them: %v", bodyAtts)
 
 		// Fetch the raw doc sync data from the bucket to make sure we actually moved attachments on write.
-		syncData, err := db.GetDocSyncData(docKey)
+		syncData, err := db.GetDocSyncData(base.TestCtx(t), docKey)
 		assert.NoError(t, err)
 		assert.Len(t, syncData.Attachments, 1)
 	})
@@ -973,7 +973,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		require.Len(t, rev.Attachments, 1)
 
 		// Fetch the raw doc sync data from the bucket to see if this read-only op unintentionally persisted the migrated meta.
-		syncData, err := db.GetDocSyncData(docKey)
+		syncData, err := db.GetDocSyncData(base.TestCtx(t), docKey)
 		assert.NoError(t, err)
 		assert.Empty(t, syncData.Attachments)
 
@@ -1015,7 +1015,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		assert.False(t, foundBodyAtts, "not expecting '_attachments' in body but found them: %v", bodyAtts)
 
 		// Fetch the raw doc sync data from the bucket to make sure we actually moved attachments on write.
-		syncData, err = db.GetDocSyncData(docKey)
+		syncData, err = db.GetDocSyncData(base.TestCtx(t), docKey)
 		assert.NoError(t, err)
 		assert.Len(t, syncData.Attachments, 2)
 	})
@@ -1033,13 +1033,13 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 	const docKey = "TestAttachmentMigrate"
 
 	bucket := base.GetTestBucket(t)
-	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{
+	dbCtx, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{
 		EnableXattr: base.TestUseXattrs(),
 	})
 	require.NoError(t, err, "The database context should be created for database 'db'")
-	defer context.Close()
+	defer dbCtx.Close()
 
-	db, err := CreateDatabase(context)
+	db, err := CreateDatabase(dbCtx)
 	require.NoError(t, err, "The database 'db' should be created")
 
 	// Put a document 2 attachments, to write attachment to the bucket
@@ -1150,7 +1150,7 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 	}
 
 	// Fetch the raw doc sync data from the bucket to make sure we didn't store pre-2.5 attachments in syncData.
-	docSyncData, err := db.GetDocSyncData(docKey)
+	docSyncData, err := db.GetDocSyncData(base.TestCtx(t), docKey)
 	assert.NoError(t, err)
 	assert.Len(t, docSyncData.Attachments, 1)
 	_, ok = docSyncData.Attachments["hello.txt"]
@@ -1176,7 +1176,7 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 	assert.False(t, foundBodyAtts, "not expecting '_attachments' in body but found them: %v", bodyAtts)
 
 	// Fetch the raw doc sync data from the bucket to see if this read-only op unintentionally persisted the migrated meta.
-	docSyncData, err = db.GetDocSyncData(docKey)
+	docSyncData, err = db.GetDocSyncData(base.TestCtx(t), docKey)
 	assert.NoError(t, err)
 	_, ok = docSyncData.Attachments["hello.txt"]
 	assert.False(t, ok)

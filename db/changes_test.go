@@ -10,7 +10,6 @@ package db
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"log"
 	"testing"
@@ -56,7 +55,7 @@ func TestFilterToAvailableChannels(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			db := setupTestDB(t)
 
-			auth := db.Authenticator()
+			auth := db.Authenticator(base.TestCtx(t))
 			user, err := auth.NewUser("test", "pass", testCase.userChans)
 			require.NoError(t, err)
 			require.NoError(t, auth.Save(user))
@@ -66,7 +65,7 @@ func TestFilterToAvailableChannels(t *testing.T) {
 				_, _, err = db.Put("doc"+id, Body{"channels": []string{"ch" + id}})
 				require.NoError(t, err)
 			}
-			err = db.WaitForPendingChanges(context.Background())
+			err = db.WaitForPendingChanges(base.TestCtx(t))
 			require.NoError(t, err)
 
 			db.user, err = auth.GetUser("test")
@@ -104,7 +103,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channel ABC
-	authenticator := db.Authenticator()
+	authenticator := db.Authenticator(base.TestCtx(t))
 	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC"))
 	require.NoError(t, authenticator.Save(user))
 
@@ -116,13 +115,13 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	cacheWaiter.AddAndWait(1)
 
 	// Modify user to have access to both channels (sequence 2):
-	userInfo, err := db.GetPrincipal("naomi", true)
+	userInfo, err := db.GetPrincipalForTest(t, "naomi", true)
 	goassert.True(t, userInfo != nil)
 	userInfo.ExplicitChannels = base.SetOf("ABC", "PBS")
-	_, err = db.UpdatePrincipal(*userInfo, true, true)
+	_, err = db.UpdatePrincipal(base.TestCtx(t), *userInfo, true, true)
 	assert.NoError(t, err, "UpdatePrincipal failed")
 
-	err = db.WaitForPendingChanges(context.Background())
+	err = db.WaitForPendingChanges(base.TestCtx(t))
 	assert.NoError(t, err)
 
 	// Check the _changes feed:
@@ -205,7 +204,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channel A
-	authenticator := db.Authenticator()
+	authenticator := db.Authenticator(base.TestCtx(t))
 	user, _ := authenticator.NewUser("alice", "letmein", channels.SetOf(t, "A"))
 	require.NoError(t, authenticator.Save(user))
 
@@ -231,7 +230,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	// Get raw document from the bucket
 	rv, _, _ := db.Bucket.GetRaw("alpha") // cas, err
 
-	//Unmarshall into nested maps
+	// Unmarshall into nested maps
 	var x map[string]interface{}
 	assert.NoError(t, base.JSONUnmarshal(rv, &x))
 
@@ -249,7 +248,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	history["parents"] = []int{-1, 0, 1}
 	history["channels"] = []base.Set{base.SetOf("A", "B"), base.SetOf("B"), base.SetOf("B")}
 
-	//Marshall back to JSON
+	// Marshall back to JSON
 	b, err := base.JSONMarshal(x)
 
 	// Update raw document in the bucket
@@ -289,7 +288,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channel A
-	authenticator := db.Authenticator()
+	authenticator := db.Authenticator(base.TestCtx(t))
 	user, _ := authenticator.NewUser("alice", "letmein", channels.SetOf(t, "A"))
 	require.NoError(t, authenticator.Save(user))
 
@@ -316,7 +315,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	// Get raw document from the bucket
 	rv, _, _ := db.Bucket.GetRaw("alpha") // cas, err
 
-	//Unmarshall into nested maps
+	// Unmarshall into nested maps
 	var x map[string]interface{}
 	assert.NoError(t, base.JSONUnmarshal(rv, &x))
 
@@ -330,7 +329,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	history["parents"] = []int{-1, 0, 1}
 	history["channels"] = []base.Set{base.SetOf("A", "B"), base.SetOf("A", "B"), base.SetOf("A", "B")}
 
-	//Marshall back to JSON
+	// Marshall back to JSON
 	b, err := base.JSONMarshal(x)
 
 	// Update raw document in the bucket
@@ -376,7 +375,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 		require.NoError(t, err, "Couldn't delete document")
 	}
 
-	waitErr := db.WaitForPendingChanges(context.Background())
+	waitErr := db.WaitForPendingChanges(base.TestCtx(t))
 	assert.NoError(t, waitErr)
 
 	changesOptions := ChangesOptions{
@@ -487,7 +486,7 @@ func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 			b.Fatalf("Error getting changes feed: %v", err)
 		}
 		for changeEntry := range feed {
-			//log.Printf("changeEntry: %v", changeEntry)
+			// log.Printf("changeEntry: %v", changeEntry)
 			if changeEntry == nil {
 				break
 			}

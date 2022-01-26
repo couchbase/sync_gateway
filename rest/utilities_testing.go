@@ -12,7 +12,6 @@ package rest
 
 import (
 	"bytes"
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -299,7 +298,7 @@ func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
 	if database == nil {
 		return 0, fmt.Errorf("No database found")
 	}
-	doc, err := database.GetDocument(docid, db.DocUnmarshalAll)
+	doc, err := database.GetDocument(base.TestCtx(rt.tb), docid, db.DocUnmarshalAll)
 	if err != nil {
 		return 0, err
 	}
@@ -312,7 +311,7 @@ func (rt *RestTester) WaitForSequence(seq uint64) error {
 	if database == nil {
 		return fmt.Errorf("No database found")
 	}
-	return database.WaitForSequence(context.TODO(), seq)
+	return database.WaitForSequence(base.TestCtx(rt.tb), seq)
 }
 
 func (rt *RestTester) WaitForPendingChanges() error {
@@ -320,11 +319,11 @@ func (rt *RestTester) WaitForPendingChanges() error {
 	if database == nil {
 		return fmt.Errorf("No database found")
 	}
-	return database.WaitForPendingChanges(context.TODO())
+	return database.WaitForPendingChanges(base.TestCtx(rt.tb))
 }
 
 func (rt *RestTester) SetAdminParty(partyTime bool) error {
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(rt.tb))
 	guest, err := a.GetUser("")
 	if err != nil {
 		return err
@@ -978,7 +977,7 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 	}
 
 	// Make BLIP/Websocket connection
-	bt.blipContext, err = db.NewSGBlipContextWithProtocols(context.Background(), "", protocols...)
+	bt.blipContext, err = db.NewSGBlipContextWithProtocols(base.TestCtx(tb), "", protocols...)
 	if err != nil {
 		return nil, err
 	}
@@ -1565,9 +1564,9 @@ func (e ExpectedChange) Equals(change []interface{}) error {
 	}
 
 	// TODO: commented due to reasons given above
-	//if e.sequence != "*" && changeSequence != e.sequence {
+	// if e.sequence != "*" && changeSequence != e.sequence {
 	//	return fmt.Errorf("changeSequence (%s) != expectedChangeSequence (%s)", changeSequence, e.sequence)
-	//}
+	// }
 
 	if changeDeleted != nil && e.deleted != nil && *changeDeleted != *e.deleted {
 		return fmt.Errorf("changeDeleted (%v) != expectedChangeDeleted (%v)", *changeDeleted, *e.deleted)

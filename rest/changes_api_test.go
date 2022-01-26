@@ -10,7 +10,6 @@ package rest
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -41,7 +40,7 @@ func TestReproduce2383(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	user, err := a.NewUser("ben", "letmein", channels.SetOf(t, "PBS"))
 	assert.NoError(t, err, "Error creating new user")
 	assert.NoError(t, a.Save(user))
@@ -126,7 +125,7 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 
 	// Create user:
 	alice, _ := a.NewUser("alice", "letmein", channels.SetOf(t, "zero"))
@@ -196,7 +195,7 @@ func TestPostChanges(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -237,7 +236,7 @@ func TestPostChangesUserTiming(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "bernard"))
 	assert.True(t, err == nil)
 	assert.NoError(t, a.Save(bernard))
@@ -410,7 +409,7 @@ func TestPostChangesChannelFilterInteger(t *testing.T) {
 func postChangesChannelFilter(t *testing.T, rt *RestTester) {
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -473,7 +472,7 @@ func TestPostChangesAdminChannelGrant(t *testing.T) {
 	defer rt.Close()
 
 	// Create user with access to channel ABC:
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -558,7 +557,7 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	defer rt.Close()
 
 	// Create user with access to channel ABC:
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -712,7 +711,7 @@ func TestPostChangesAdminChannelGrantRemovalWithLimit(t *testing.T) {
 	defer rt.Close()
 
 	// Create user with access to channel ABC:
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -782,7 +781,7 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 	defer rt.Close()
 
 	// Create user with access to channel NBC:
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	alice, err := a.NewUser("alice", "letmein", channels.SetOf(t, "NBC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(alice))
@@ -924,7 +923,7 @@ func TestChangeWaiterExitOnChangesTermination(t *testing.T) {
 			totalCaughtUpStatWaiter := rt.GetDatabase().NewStatWaiter(rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp, t)
 
 			if test.username != "" {
-				a := rt.GetDatabase().Authenticator()
+				a := rt.GetDatabase().Authenticator(base.TestCtx(t))
 				bernard, err := a.NewUser(username, "letmein", base.Set{})
 				require.NoError(t, err)
 				require.NoError(t, a.Save(bernard))
@@ -1001,7 +1000,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 2)
 	WriteDirect(testDb, []string{"PBS"}, 5)
 	WriteDirect(testDb, []string{"PBS"}, 6)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(context.TODO(), 6))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(base.TestCtx(t), 6))
 
 	// Check the _changes feed:
 	var changes struct {
@@ -1040,7 +1039,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 
 	// Send a later doc - low sequence still 3, high sequence goes to 7
 	WriteDirect(testDb, []string{"PBS"}, 7)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(context.TODO(), 7))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(base.TestCtx(t), 7))
 
 	// Send another changes request with the same since ("2::6") to ensure we see data once there are changes
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1093,7 +1092,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 3)
 	WriteDirect(testDb, []string{"PBS"}, 4)
 	WriteDirect(testDb, []string{"PBS"}, 5)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(context.TODO(), 5))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(base.TestCtx(t), 5))
 
 	// Check the _changes feed:
 	var changes struct {
@@ -1113,7 +1112,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 8)
 	WriteDirect(testDb, []string{"PBS"}, 9)
 	WriteDirect(testDb, []string{"PBS"}, 10)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(context.TODO(), 10))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(base.TestCtx(t), 10))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1127,7 +1126,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	// Write a few more docs
 	WriteDirect(testDb, []string{"PBS"}, 11)
 	WriteDirect(testDb, []string{"PBS"}, 12)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(context.TODO(), 12))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(base.TestCtx(t), 12))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1223,7 +1222,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 3)
 	WriteDirect(testDb, []string{"PBS"}, 4)
 	WriteDirect(testDb, []string{"PBS"}, 5)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(context.TODO(), 5))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(base.TestCtx(t), 5))
 
 	// Check the _changes feed:
 	var changes struct {
@@ -1243,7 +1242,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 8)
 	WriteDirect(testDb, []string{"PBS"}, 9)
 	WriteDirect(testDb, []string{"PBS"}, 10)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(context.TODO(), 10))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(base.TestCtx(t), 10))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1257,7 +1256,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	// Write a few more docs
 	WriteDirect(testDb, []string{"PBS"}, 11)
 	WriteDirect(testDb, []string{"PBS"}, 12)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(context.TODO(), 12))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(base.TestCtx(t), 12))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1358,7 +1357,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 3)
 	WriteDirect(testDb, []string{"PBS"}, 4)
 	WriteDirect(testDb, []string{"PBS"}, 5)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(context.TODO(), 5))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(base.TestCtx(t), 5))
 
 	// Check the _changes feed:
 	var changes struct {
@@ -1378,7 +1377,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 8)
 	WriteDirect(testDb, []string{"PBS"}, 9)
 	WriteDirect(testDb, []string{"PBS"}, 10)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(context.TODO(), 10))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(base.TestCtx(t), 10))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1392,7 +1391,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	// Write a few more docs
 	WriteDirect(testDb, []string{"PBS"}, 11)
 	WriteDirect(testDb, []string{"PBS"}, 12)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(context.TODO(), 12))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(base.TestCtx(t), 12))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1424,7 +1423,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 
 	// Write the skipped doc, wait for longpoll to return
 	WriteDirect(testDb, []string{"PBS"}, 6)
-	//WriteDirect(testDb, []string{"PBS"}, 13)
+	// WriteDirect(testDb, []string{"PBS"}, 13)
 	longpollWg.Wait()
 
 }
@@ -1618,7 +1617,7 @@ func TestChangesActiveOnlyInteger(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS", "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -1763,7 +1762,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/_user/user5", `{"email":"user5@couchbase.com", "password":"letmein", "admin_channels":["*"]}`)
 	assertStatus(t, response, 201)
 
-	//Create docs
+	// Create docs
 	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"channels":["alpha"]}`), 201)
 	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"channels":["alpha"]}`), 201)
 	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc3", `{"channels":["alpha"]}`), 201)
@@ -1780,7 +1779,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 		Results []db.ChangeEntry
 	}
 
-	//User has access to single channel
+	// User has access to single channel
 	body := `{"filter":"_doc_ids", "doc_ids":["doc4", "doc1", "docA", "b0gus"]}`
 	request, err := http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
 	require.NoError(t, err)
@@ -1791,7 +1790,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	require.Len(t, changes.Results, 2)
 	assert.Equal(t, "doc4", changes.Results[1].ID)
 
-	//User has access to different single channel
+	// User has access to different single channel
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "docB", "docD", "doc1"]}`
 	request, err = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
 	require.NoError(t, err)
@@ -1802,7 +1801,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	require.Len(t, changes.Results, 3)
 	assert.Equal(t, "docD", changes.Results[2].ID)
 
-	//User has access to multiple channels
+	// User has access to multiple channels
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"]}`
 	request, err = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
 	require.NoError(t, err)
@@ -1813,7 +1812,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	require.Len(t, changes.Results, 4)
 	assert.Equal(t, "docD", changes.Results[3].ID)
 
-	//User has no channel access
+	// User has no channel access
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"]}`
 	request, err = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
 	require.NoError(t, err)
@@ -1823,7 +1822,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 0)
 
-	//User has "*" channel access
+	// User has "*" channel access
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1", "docA"]}`
 	request, err = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
 	require.NoError(t, err)
@@ -1833,7 +1832,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 5)
 
-	//User has "*" channel access, override POST with GET params
+	// User has "*" channel access, override POST with GET params
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1", "docA"]}`
 	request, err = http.NewRequest("POST", `/db/_changes?doc_ids=["docC","doc1"]`, bytes.NewBufferString(body))
 	require.NoError(t, err)
@@ -1843,7 +1842,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 2)
 
-	//User has "*" channel access, use GET
+	// User has "*" channel access, use GET
 	request, err = http.NewRequest("GET", `/db/_changes?filter=_doc_ids&doc_ids=["docC","doc1","docD"]`, nil)
 	require.NoError(t, err)
 	request.SetBasicAuth("user5", "letmein")
@@ -1852,7 +1851,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 3)
 
-	//User has "*" channel access, use GET with doc_ids plain comma separated list
+	// User has "*" channel access, use GET with doc_ids plain comma separated list
 	request, err = http.NewRequest("GET", `/db/_changes?filter=_doc_ids&doc_ids=docC,doc1,doc2,docD`, nil)
 	require.NoError(t, err)
 	request.SetBasicAuth("user5", "letmein")
@@ -1861,14 +1860,14 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 4)
 
-	//Admin User
+	// Admin User
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "docA"]}`
 	response = rt.SendAdminRequest("POST", "/db/_changes", body)
 	assertStatus(t, response, 200)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 4)
 
-	//Use since value to restrict results
+	// Use since value to restrict results
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"], "since":6}`
 	request, err = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
 	require.NoError(t, err)
@@ -1879,7 +1878,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	require.Len(t, changes.Results, 3)
 	assert.Equal(t, "docD", changes.Results[2].ID)
 
-	//Use since value and limit value to restrict results
+	// Use since value and limit value to restrict results
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"], "since":6, "limit":1}`
 	request, err = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
 	require.NoError(t, err)
@@ -1890,7 +1889,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	require.Len(t, changes.Results, 1)
 	assert.Equal(t, "doc4", changes.Results[0].ID)
 
-	//test parameter include_docs=true
+	// test parameter include_docs=true
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"], "include_docs":true }`
 	request, err = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
 	require.NoError(t, err)
@@ -1904,8 +1903,8 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal(changes.Results[3].Doc, &docBody))
 	assert.Equal(t, "docD", docBody[db.BodyId])
 
-	//test parameter style=all_docs
-	//Create a conflict revision on docC
+	// test parameter style=all_docs
+	// Create a conflict revision on docC
 	assertStatus(t, rt.SendAdminRequest("POST", "/db/_bulk_docs", `{"new_edits":false, "docs": [{"_id": "docC","_rev": "2-b4afc58d8e61a6b03390e19a89d26643","foo": "bat", "channels":["beta"]}]}`), 201)
 
 	require.NoError(t, rt.WaitForPendingChanges())
@@ -1952,7 +1951,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{"email":"user1@couchbase.com", "password":"letmein", "admin_channels":["alpha", "beta"]}`)
 	assertStatus(t, response, 201)
 
-	//Create docs for each scenario
+	// Create docs for each scenario
 	// Active
 	_, err := updateTestDoc(rt, "doc_active", "", `{"type": "active", "channels":["alpha"]}`)
 	assert.NoError(t, err, "Error updating doc")
@@ -2176,7 +2175,7 @@ func TestChangesViewBackfillFromQueryOnly(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -2248,7 +2247,7 @@ func TestChangesViewBackfillNonContiguousQueryResults(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -2347,7 +2346,7 @@ func TestChangesViewBackfillFromPartialQueryOnly(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -2431,7 +2430,7 @@ func TestChangesViewBackfillNoOverlap(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -2517,7 +2516,7 @@ func TestChangesViewBackfill(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS", "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -2588,7 +2587,7 @@ func TestChangesViewBackfillStarChannel(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "*"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -2777,7 +2776,7 @@ func TestChangesQueryBackfillWithLimit(t *testing.T) {
 
 			// Create user
 			username := "user_" + test.name
-			a := testDb.Authenticator()
+			a := testDb.Authenticator(base.TestCtx(t))
 			testUser, err := a.NewUser(username, "letmein", channels.SetOf(t, test.name))
 			assert.NoError(t, err)
 			assert.NoError(t, a.Save(testUser))
@@ -2832,7 +2831,7 @@ func TestMultichannelChangesQueryBackfillWithLimit(t *testing.T) {
 
 	// Create user with access to three channels
 	username := "user_" + t.Name()
-	a := testDb.Authenticator()
+	a := testDb.Authenticator(base.TestCtx(t))
 	testUser, err := a.NewUser(username, "letmein", channels.SetOf(t, "ch1", "ch2", "ch3"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(testUser))
@@ -2905,7 +2904,7 @@ func TestChangesQueryStarChannelBackfillLimit(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "*"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -2956,7 +2955,7 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -3063,7 +3062,7 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 	testDb := rt.ServerContext().Database("db")
 
 	// Create user:
-	a := testDb.Authenticator()
+	a := testDb.Authenticator(base.TestCtx(t))
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS", "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -3140,7 +3139,7 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 	assertStatus(t, response, 201)
 	cacheWaiter.AddAndWait(1)
 
-	//Create additional active docs
+	// Create additional active docs
 	response = rt.SendAdminRequest("PUT", "/db/activeDoc1", `{"channel":["PBS"]}`)
 	assertStatus(t, response, 201)
 	cacheWaiter.AddAndWait(1)
@@ -3243,7 +3242,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS", "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -3308,7 +3307,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/partialRemovalDoc", fmt.Sprintf(`{"_rev":%q, "channel":["PBS"]}`, partialRemovalRev))
 	assertStatus(t, response, 201)
 
-	//Create additional active docs
+	// Create additional active docs
 	response = rt.SendAdminRequest("PUT", "/db/activeDoc1", `{"channel":["PBS"]}`)
 	assertStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/db/activeDoc2", `{"channel":["PBS"]}`)
@@ -3442,11 +3441,11 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	///it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
-	//defer it.Close()
+	// /it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
+	// defer it.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS", "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -3732,7 +3731,7 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 	defer rt.Close()
 
 	// Create user with access to channel ABC:
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -3936,7 +3935,7 @@ func waitForCompactStopped(dbc *db.DatabaseContext) error {
 	return errors.New("waitForCompactStopped didn't stop")
 }
 
-//////// HELPERS:
+// ////// HELPERS:
 
 func WriteDirect(testDb *db.DatabaseContext, channelArray []string, sequence uint64) {
 	docId := fmt.Sprintf("doc-%v", sequence)
@@ -3965,7 +3964,7 @@ func WriteDirectWithKey(testDb *db.DatabaseContext, key string, channelArray []s
 	syncData.Sequence = sequence
 	syncData.Channels = chanMap
 	syncData.TimeSaved = time.Now()
-	//syncData := fmt.Sprintf(`{"rev":"%s", "sequence":%d, "channels":%s, "TimeSaved":"%s"}`, rev, sequence, chanMap, time.Now())
+	// syncData := fmt.Sprintf(`{"rev":"%s", "sequence":%d, "channels":%s, "TimeSaved":"%s"}`, rev, sequence, chanMap, time.Now())
 
 	_, err := testDb.Bucket.Add(key, 0, db.Body{base.SyncPropertyName: syncData, "key": key})
 	if err != nil {

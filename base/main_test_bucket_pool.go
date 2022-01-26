@@ -181,7 +181,7 @@ func (tbp *TestBucketPool) markBucketClosed(t testing.TB, b Bucket) {
 	defer tbp.unclosedBucketsLock.Unlock()
 
 	// Check for unclosed view query operations. A fatal error will occur if queue is not cleared
-	testCtx := testCtx(t)
+	testCtx := TestCtx(t)
 	switch typedBucket := b.(type) {
 	case *Collection:
 		tbp.checkForViewOpsQueueEmptied(testCtx, b.GetName(), typedBucket.queryOps)
@@ -209,7 +209,7 @@ func (tbp *TestBucketPool) checkForViewOpsQueueEmptied(ctx context.Context, buck
 }
 
 func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Bucket, s BucketSpec, teardown func()) {
-	testCtx := testCtx(t)
+	testCtx := TestCtx(t)
 	if !UnitTestUrlIsWalrus() {
 		FatalfCtx(testCtx, "nil TestBucketPool, but not using a Walrus test URL")
 	}
@@ -260,7 +260,7 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 // which closes the bucket, readies it for a new test, and releases back into the pool.
 func (tbp *TestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s BucketSpec, teardownFn func()) {
 
-	ctx := testCtx(t)
+	ctx := TestCtx(t)
 
 	// Return a new Walrus bucket when tbp has not been initialized
 	if !tbp.integrationMode {

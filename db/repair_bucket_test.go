@@ -12,7 +12,6 @@ package db
 
 import (
 	"fmt"
-	"log"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -75,7 +74,6 @@ func TestRepairBucket(t *testing.T) {
 	defer bucket.Close()
 
 	repairJob := func(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error) {
-		log.Printf("repairJob called back")
 		return nil, true, nil
 	}
 	repairBucket := NewRepairBucket(bucket).

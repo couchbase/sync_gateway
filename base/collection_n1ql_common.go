@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package base
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -410,9 +411,9 @@ func isTransientIndexerError(err error) bool {
 	return false
 }
 
-func SlowQueryLog(startTime time.Time, threshold time.Duration, messageFormat string, args ...interface{}) {
+func SlowQueryLog(ctx context.Context, startTime time.Time, threshold time.Duration, messageFormat string, args ...interface{}) {
 	if elapsed := time.Now().Sub(startTime); elapsed > threshold {
-		Infof(KeyQuery, messageFormat+" took "+elapsed.String(), args...)
+		InfofCtx(ctx, KeyQuery, messageFormat+" took "+elapsed.String(), args...)
 	}
 }
 

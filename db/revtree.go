@@ -10,6 +10,7 @@ package db
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -125,7 +126,7 @@ func (tree *RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 		return
 	}
 
-	//validate revTreeList revs, parents and channels lists are of equal length
+	// validate revTreeList revs, parents and channels lists are of equal length
 	if !(len(rep.Revs) == len(rep.Parents) && len(rep.Revs) == len(rep.Channels)) {
 		return errors.New("revtreelist data is invalid, revs/parents/channels counts are inconsistent")
 	}
@@ -160,7 +161,7 @@ func (tree *RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 	if rep.Deleted != nil {
 		for _, i := range rep.Deleted {
 			info := (*tree)[rep.Revs[i]]
-			info.Deleted = true //because tree[rep.Revs[i]].Deleted=true is a compile error
+			info.Deleted = true // because tree[rep.Revs[i]].Deleted=true is a compile error
 			(*tree)[rep.Revs[i]] = info
 		}
 	}
@@ -334,7 +335,7 @@ func (tree RevTree) winningRevision() (winner string, branched bool, inConflict 
 // Given a revision and a set of possible ancestors, finds the one that is the most recent
 // ancestor of the revision; if none are ancestors, returns "".
 func (tree RevTree) findAncestorFromSet(revid string, ancestors []string) string {
-	//OPT: This is slow...
+	// OPT: This is slow...
 	for revid != "" {
 		for _, a := range ancestors {
 			if a == revid {
@@ -727,7 +728,7 @@ func (tree RevTree) getHistory(revid string) ([]string, error) {
 	return history, nil
 }
 
-//////// ENCODED REVISION LISTS (_revisions):
+// ////// ENCODED REVISION LISTS (_revisions):
 
 // Parses a CouchDB _rev or _revisions property into a list of revision IDs
 func ParseRevisions(body Body) []string {
@@ -774,7 +775,7 @@ func splitRevisionList(revisions Revisions) (int, []string) {
 
 // Standard CouchDB encoding of a revision list: digests without numeric generation prefixes go in
 // the "ids" property, and the first (largest) generation number in the "start" property.
-func encodeRevisions(revs []string) Revisions {
+func encodeRevisions(ctx context.Context, revs []string) Revisions {
 	ids := make([]string, len(revs))
 	var start int
 	for i, revid := range revs {
@@ -783,7 +784,7 @@ func encodeRevisions(revs []string) Revisions {
 		if i == 0 {
 			start = gen
 		} else if gen != start-i {
-			base.Warnf("Found gap in revision list. Expecting gen %v but got %v in %v", start-i, gen, revs)
+			base.WarnfCtx(ctx, "Found gap in revision list. Expecting gen %v but got %v in %v", start-i, gen, revs)
 		}
 	}
 	return Revisions{RevisionsStart: start, RevisionsIds: ids}

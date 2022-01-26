@@ -809,12 +809,12 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 
 func (sc *ServerContext) TakeDbOnline(database *db.DatabaseContext) {
 
-	//Take a write lock on the Database context, so that we can cycle the underlying Database
+	// Take a write lock on the Database context, so that we can cycle the underlying Database
 	// without any other call running concurrently
 	database.AccessLock.Lock()
 	defer database.AccessLock.Unlock()
 
-	//We can only transition to Online from Offline state
+	// We can only transition to Online from Offline state
 	if atomic.CompareAndSwapUint32(&database.State, db.DBOffline, db.DBStarting) {
 		reloadedDb, err := sc.ReloadDatabase(database.Name)
 		if err != nil {
@@ -996,7 +996,7 @@ func (sc *ServerContext) _removeDatabase(dbName string) bool {
 	return true
 }
 
-func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map[string]*db.PrincipalConfig, what string) error {
+func (sc *ServerContext) installPrincipals(dbc *db.DatabaseContext, spec map[string]*db.PrincipalConfig, what string) error {
 	for name, princ := range spec {
 		isGuest := name == base.GuestUsername
 		if isGuest {
@@ -1009,7 +1009,7 @@ func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map
 
 		createdPrincipal := true
 		worker := func() (shouldRetry bool, err error, value interface{}) {
-			_, err = context.UpdatePrincipal(*princ, (what == "user"), isGuest)
+			_, err = dbc.UpdatePrincipal(context.Background(), *princ, (what == "user"), isGuest)
 			if err != nil {
 				if status, _ := base.ErrorAsHTTPStatus(err); status == http.StatusConflict {
 					// Ignore and absorb this error if it's a conflict error, which just means that updatePrincipal didn't overwrite an existing user.
@@ -1048,7 +1048,7 @@ func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map
 	return nil
 }
 
-//////// STATS LOGGING
+// ////// STATS LOGGING
 
 type statsWrapper struct {
 	Stats              json.RawMessage `json:"stats"`

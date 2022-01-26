@@ -95,7 +95,7 @@ func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
 		return redirectURLString, err
 	}
 
-	client, err := provider.GetClient(h.getOIDCCallbackURL)
+	client, err := provider.GetClient(h.db.Ctx, h.getOIDCCallbackURL)
 	if err != nil {
 		return redirectURLString, base.HTTPErrorf(
 			http.StatusInternalServerError, fmt.Sprintf("Unable to obtain client for provider: %s - %v", providerName, err))
@@ -168,7 +168,7 @@ func (h *handler) handleOIDCCallback() error {
 		http.SetCookie(h.response, stateCookie)
 	}
 
-	client, err := provider.GetClient(h.getOIDCCallbackURL)
+	client, err := provider.GetClient(h.db.Ctx, h.getOIDCCallbackURL)
 	if err != nil {
 		return fmt.Errorf("OIDC initialization error: %w", err)
 	}
@@ -221,7 +221,7 @@ func (h *handler) handleOIDCRefresh() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unable to identify provider for callback request")
 	}
 
-	client, err := provider.GetClient(h.getOIDCCallbackURL)
+	client, err := provider.GetClient(h.db.Ctx, h.getOIDCCallbackURL)
 	if err != nil {
 		return fmt.Errorf("OIDC initialization error: %w", err)
 	}
@@ -261,7 +261,7 @@ func (h *handler) handleOIDCRefresh() error {
 }
 
 func (h *handler) createSessionForTrustedIdToken(rawIDToken string, provider *auth.OIDCProvider) (username string, sessionID string, err error) {
-	user, tokenExpiryTime, err := h.db.Authenticator().AuthenticateTrustedJWT(rawIDToken, provider, h.getOIDCCallbackURL)
+	user, tokenExpiryTime, err := h.db.Authenticator(h.db.Ctx).AuthenticateTrustedJWT(rawIDToken, provider, h.getOIDCCallbackURL)
 	if err != nil {
 		return "", "", err
 	}

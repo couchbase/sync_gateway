@@ -9,7 +9,6 @@
 package auth
 
 import (
-	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
@@ -165,7 +164,7 @@ func TestOIDCProviderMap_GetProviderForIssuer(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.Name, func(tt *testing.T) {
-			provider := providerMap.GetProviderForIssuer(test.Issuer, test.Audiences)
+			provider := providerMap.GetProviderForIssuer(base.TestCtx(t), test.Issuer, test.Audiences)
 			assert.Equal(tt, test.ExpectedProvider, provider)
 		})
 	}
@@ -177,7 +176,9 @@ func TestOIDCUsername(t *testing.T) {
 		Issuer: "http://www.someprovider.com",
 	}
 
-	err := provider.InitUserPrefix()
+	ctx := base.TestCtx(t)
+
+	err := provider.InitUserPrefix(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, "www.someprovider.com", provider.UserPrefix)
 
@@ -198,14 +199,14 @@ func TestOIDCUsername(t *testing.T) {
 	// test URL with paths
 	provider.UserPrefix = ""
 	provider.Issuer = "http://www.someprovider.com/extra"
-	err = provider.InitUserPrefix()
+	err = provider.InitUserPrefix(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, "www.someprovider.com%2Fextra", provider.UserPrefix)
 
 	// test invalid URL
 	provider.UserPrefix = ""
 	provider.Issuer = "http//www.someprovider.com"
-	err = provider.InitUserPrefix()
+	err = provider.InitUserPrefix(ctx)
 	assert.NoError(t, err)
 	// falls back to provider name:
 	assert.Equal(t, "Some_Provider", provider.UserPrefix)
@@ -216,9 +217,11 @@ func TestInitOIDCClient(t *testing.T) {
 	OIDCDiscoveryRetryWait = 10 * time.Millisecond
 	defer func() { OIDCDiscoveryRetryWait = defaultWait }()
 
+	ctx := base.TestCtx(t)
+
 	t.Run("initialize openid connect client with nil provider", func(t *testing.T) {
 		provider := &OIDCProvider{}
-		err := provider.initOIDCClient()
+		err := provider.initOIDCClient(ctx)
 		require.Error(t, err, "initialized openid connect client with nil provider")
 		assert.Contains(t, err.Error(), "Issuer not defined")
 	})
@@ -228,7 +231,7 @@ func TestInitOIDCClient(t *testing.T) {
 			Issuer:      "http://127.0.0.1:12345/auth",
 			CallbackURL: base.StringPtr("http://127.0.0.1:12345/callback"),
 		}
-		err := provider.initOIDCClient()
+		err := provider.initOIDCClient(ctx)
 		require.Error(t, err, "openid connect client with unavailable issuer")
 		assert.Contains(t, err.Error(), ErrMsgUnableToDiscoverConfig)
 	})
@@ -239,7 +242,7 @@ func TestInitOIDCClient(t *testing.T) {
 			Issuer:      "https://accounts.google.com",
 			CallbackURL: base.StringPtr("http://sgw-test:4984/_callback"),
 		}
-		err := provider.initOIDCClient()
+		err := provider.initOIDCClient(ctx)
 		require.NoError(t, err, "openid connect client with unavailable issuer")
 		provider.stopDiscoverySync()
 	})
@@ -252,9 +255,12 @@ func TestConcurrentSetConfig(t *testing.T) {
 		Issuer:      "https://accounts.google.com",
 		CallbackURL: base.StringPtr("http://sgw-test:4984/_callback"),
 	}
-	err := provider.initOIDCClient()
+
+	ctx := base.TestCtx(t)
+
+	err := provider.initOIDCClient(ctx)
 	require.NoError(t, err, "openid connect client initialization failure")
-	metadata, verifier, err := provider.discoverConfig()
+	metadata, verifier, err := provider.discoverConfig(ctx)
 	require.NoError(t, err, "error discovering provider metadata")
 
 	expectedAuthURL := []string{
@@ -273,7 +279,7 @@ func TestConcurrentSetConfig(t *testing.T) {
 		fooMetadata.AuthorizationEndpoint = expectedAuthURL[0]
 		fooMetadata.TokenEndpoint = expectedTokenURL[0]
 		providerLock.Lock()
-		verifier = provider.generateVerifier(&fooMetadata, context.Background())
+		verifier = provider.generateVerifier(&fooMetadata, base.TestCtx(t))
 		require.NotNil(t, verifier, "error generating id token verifier")
 		provider.client.SetConfig(verifier, fooMetadata.endpoint())
 		providerLock.Unlock()
@@ -284,7 +290,7 @@ func TestConcurrentSetConfig(t *testing.T) {
 		barMetadata.AuthorizationEndpoint = expectedAuthURL[1]
 		barMetadata.TokenEndpoint = expectedTokenURL[1]
 		providerLock.Lock()
-		verifier = provider.generateVerifier(&barMetadata, context.Background())
+		verifier = provider.generateVerifier(&barMetadata, base.TestCtx(t))
 		require.NotNil(t, verifier, "error generating id token verifier")
 		provider.client.SetConfig(verifier, barMetadata.endpoint())
 		providerLock.Unlock()
@@ -405,7 +411,7 @@ func TestFetchCustomProviderConfig(t *testing.T) {
 			}
 			discoveryURL := GetStandardDiscoveryEndpoint(issuer)
 			op := &OIDCProvider{Issuer: issuer}
-			metadata, _, _, err := op.fetchCustomProviderConfig(discoveryURL)
+			metadata, _, _, err := op.fetchCustomProviderConfig(base.TestCtx(t), discoveryURL)
 			if err != nil {
 				assert.True(t, test.wantErr, "Unexpected Error!")
 				return

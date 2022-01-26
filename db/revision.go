@@ -10,6 +10,7 @@ package db
 
 import (
 	"bytes"
+	"context"
 	"crypto/md5"
 	"errors"
 	"fmt"
@@ -211,7 +212,7 @@ func (body Body) ExtractRev() string {
 func (body Body) getExpiry() (uint32, bool, error) {
 	rawExpiry, ok := body["_exp"]
 	if !ok {
-		return 0, false, nil //_exp not present
+		return 0, false, nil // _exp not present
 	}
 	expiry, err := base.ReflectExpiry(rawExpiry)
 	if err != nil || expiry == nil {
@@ -225,10 +226,10 @@ const nonJSONPrefix = byte(1)
 
 // Looks up the raw JSON data of a revision that's been archived to a separate doc.
 // If the revision isn't found (e.g. has been deleted by compaction) returns 404 error.
-func (db *DatabaseContext) getOldRevisionJSON(docid string, revid string) ([]byte, error) {
+func (db *DatabaseContext) getOldRevisionJSON(ctx context.Context, docid string, revid string) ([]byte, error) {
 	data, _, err := db.Bucket.GetRaw(oldRevisionKey(docid, revid))
 	if base.IsDocNotFoundError(err) {
-		base.Debugf(base.KeyCRUD, "No old revision %q / %q", base.UD(docid), revid)
+		base.DebugfCtx(ctx, base.KeyCRUD, "No old revision %q / %q", base.UD(docid), revid)
 		err = base.HTTPErrorf(404, "missing")
 	}
 	if data != nil {
@@ -236,7 +237,7 @@ func (db *DatabaseContext) getOldRevisionJSON(docid string, revid string) ([]byt
 		if len(data) > 0 && data[0] == nonJSONPrefix {
 			data = data[1:]
 		}
-		base.Debugf(base.KeyCRUD, "Got old revision %q / %q --> %d bytes", base.UD(docid), revid, len(data))
+		base.DebugfCtx(ctx, base.KeyCRUD, "Got old revision %q / %q --> %d bytes", base.UD(docid), revid, len(data))
 	}
 	return data, err
 }
@@ -272,7 +273,7 @@ func (db *Database) backupRevisionJSON(docId, newRevId, oldRevId string, newBody
 				Val: newAtts,
 			})
 			if err != nil {
-				base.Warnf("Unable to marshal new revision body during backupRevisionJSON: doc=%q rev=%q err=%v ", base.UD(docId), newRevId, err)
+				base.WarnfCtx(db.Ctx, "Unable to marshal new revision body during backupRevisionJSON: doc=%q rev=%q err=%v ", base.UD(docId), newRevId, err)
 				return
 			}
 		}
@@ -299,9 +300,9 @@ func (db *Database) setOldRevisionJSON(docid string, revid string, body []byte, 
 	nonJSONBytes = append(nonJSONBytes, body...)
 	err := db.Bucket.SetRaw(oldRevisionKey(docid, revid), expiry, base.BinaryDocument(nonJSONBytes))
 	if err == nil {
-		base.Debugf(base.KeyCRUD, "Backed up revision body %q/%q (%d bytes, ttl:%d)", base.UD(docid), revid, len(body), expiry)
+		base.DebugfCtx(db.Ctx, base.KeyCRUD, "Backed up revision body %q/%q (%d bytes, ttl:%d)", base.UD(docid), revid, len(body), expiry)
 	} else {
-		base.Warnf("setOldRevisionJSON failed: doc=%q rev=%q err=%v", base.UD(docid), revid, err)
+		base.WarnfCtx(db.Ctx, "setOldRevisionJSON failed: doc=%q rev=%q err=%v", base.UD(docid), revid, err)
 	}
 	return err
 }
@@ -319,11 +320,11 @@ func (db *Database) refreshPreviousRevisionBackup(docid string, revid string, bo
 
 // Currently only used by unit tests - deletes an archived old revision from the database
 func (db *Database) PurgeOldRevisionJSON(docid string, revid string) error {
-	base.Debugf(base.KeyCRUD, "Purging old revision backup %q / %q ", base.UD(docid), revid)
+	base.DebugfCtx(db.Ctx, base.KeyCRUD, "Purging old revision backup %q / %q ", base.UD(docid), revid)
 	return db.Bucket.Delete(oldRevisionKey(docid, revid))
 }
 
-//////// UTILITY FUNCTIONS:
+// ////// UTILITY FUNCTIONS:
 
 func oldRevisionKey(docid string, revid string) string {
 	return fmt.Sprintf("%s%s:%d:%s", base.RevPrefix, docid, len(revid), revid)
