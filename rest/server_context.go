@@ -146,12 +146,8 @@ func (sc *ServerContext) PostStartup() {
 	time.Sleep(5 * time.Second)
 
 	sc.lock.RLock()
-	for dbName, dbContext := range sc.databases_ {
-		base.Infof(base.KeyReplicate, "Starting Inter-Sync Gateway Replications for database %q", dbName)
-		err := dbContext.SGReplicateMgr.StartReplications()
-		if err != nil {
-			base.Errorf("Error starting sg-replicate replications: %v", err)
-		}
+	for _, dbContext := range sc.databases_ {
+		dbContext.StartReplications()
 	}
 	sc.lock.RUnlock()
 
@@ -591,6 +587,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 		atomic.StoreUint32(&dbcontext.State, db.DBOnline)
 		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", &sc.config.API.AdminInterface)
 	}
+
+	dbcontext.StartReplications()
 
 	return dbcontext, nil
 }

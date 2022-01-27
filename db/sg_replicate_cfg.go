@@ -403,6 +403,14 @@ func (ar *ActiveReplicator) alignState(targetState string) error {
 
 }
 
+func (dbc *DatabaseContext) StartReplications() {
+	base.Infof(base.KeyReplicate, "Starting Inter-Sync Gateway Replications for database %q", dbc.Name)
+	err := dbc.SGReplicateMgr.StartReplications()
+	if err != nil {
+		base.Errorf("Error starting %q Inter-Sync Gateway Replications: %v", dbc.Name, err)
+	}
+}
+
 func NewSGReplicateManager(dbContext *DatabaseContext, cfg cbgt.Cfg) (*sgReplicateManager, error) {
 	if cfg == nil {
 		return nil, errors.New("Cfg must be provided for SGReplicateManager")
