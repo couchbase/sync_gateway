@@ -117,8 +117,8 @@ paths:
         - $ref: '#/components/parameters/startkey'
         - $ref: '#/components/parameters/endkey'
         - $ref: '#/components/parameters/limit'
-      summary: Get all the documents in the database using a built-in view
-      description: Get a built-in view of all the documents in the database.
+      summary: Gets all the documents in the database with the given parameters
+      description: Returns all documents in the databased based on the specified parameters.
     post:
       responses:
         '200':
@@ -219,16 +219,14 @@ paths:
                       rev: 6-b3e8dcf825b71ccee112f3572ec4323c
                     - id: BobSettings
                       rev: 2-5145e1086bb8d1d71a531e9f6b543c58
-                All operations fail due to conflict:
+                Partial success:
                   value:
                     - error: conflict
                       id: FooBar
                       reason: Document exists
                       status: 409
-                    - error: conflict
-                      id: AliceSettings
-                      reason: Document revision conflict
-                      status: 409
+                    - id: AliceSettings
+                      rev: 6-b3e8dcf825b71ccee112f3572ec4323c
                     - error: conflict
                       id: BobSettings
                       reason: Document revision conflict
@@ -913,7 +911,7 @@ paths:
 
         A document ID must be specified for this endpoint. To let Sync Gateway generate the ID, use the `POST /{db}/` endpoint. 
 
-        If a document does exist, then only the fields specified in the body will be changed. This means unspecified fields will not be mutated but will be in the new revision.
+        If a document does exist, then replace the document content with the request body. This means unspecified fields will be removed in the new revision.
 
         The maximum size for a document is 20MB.
       parameters:
@@ -2368,7 +2366,7 @@ paths:
     post:
       responses:
         '200':
-          description: 'Attempted documents purge. Check output to verify they where purge. The document IDs will not be listed if they have not been purged (for example, due to no existing).'
+          description: 'Attempted documents purge. Check output to verify the documents that were purged. The document IDs will not be listed if they have not been purged (for example, due to no existing).'
           content:
             application/json:
               schema:
