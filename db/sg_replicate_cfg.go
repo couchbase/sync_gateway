@@ -406,7 +406,10 @@ func (ar *ActiveReplicator) alignState(targetState string) error {
 func (dbc *DatabaseContext) StartReplications() {
 	if dbc.Options.SGReplicateOptions.Enabled {
 		base.Debugf(base.KeyReplicate, "Will start Inter-Sync Gateway Replications for database %q", dbc.Name)
+		dbc.SGReplicateMgr.closeWg.Add(1)
 		go func() {
+			defer dbc.SGReplicateMgr.closeWg.Done()
+
 			// Wait for the server context to be started
 			t := time.NewTimer(time.Second * 10)
 			defer t.Stop()
