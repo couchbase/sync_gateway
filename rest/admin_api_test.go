@@ -2621,7 +2621,7 @@ func TestConfigRedaction(t *testing.T) {
 // Reproduces panic seen in CBG-1053
 func TestAdhocReplicationStatus(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll, base.KeyReplicate)()
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{sgReplicateEnabled: true})
 	defer rt.Close()
 
 	srv := httptest.NewServer(rt.TestAdminHandler())
@@ -2637,9 +2637,6 @@ func TestAdhocReplicationStatus(t *testing.T) {
 
 	resp := rt.SendAdminRequest("PUT", "/db/_replication/pushandpull-with-target-oneshot-adhoc", replConf)
 	assertStatus(t, resp, http.StatusCreated)
-
-	err := rt.GetDatabase().SGReplicateMgr.StartReplications()
-	require.NoError(t, err)
 
 	// With the error hitting the replicationStatus endpoint will either return running, if not completed, and once
 	// completed panics. With the fix after running it'll return a 404 as replication no longer exists.

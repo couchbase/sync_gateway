@@ -4059,6 +4059,9 @@ func TestUnsupportedConfig(t *testing.T) {
 	testProviderOnlyJSON := `{"name": "test_provider_only",
         			"server": "walrus:",
         			"bucket": "test_provider_only",
+					"sgreplicate": {
+						"enabled": false
+					},
 			        "unsupported": {
 			          "oidc_test_provider": {
 			            "enabled":true,
@@ -4077,6 +4080,9 @@ func TestUnsupportedConfig(t *testing.T) {
 	viewsOnlyJSON := `{"name": "views_only",
         			"server": "walrus:",
         			"bucket": "views_only",
+					"sgreplicate": {
+						"enabled": false
+					},
 			        "unsupported": {
 			          "user_views": {
 			            "enabled":true
@@ -4094,6 +4100,9 @@ func TestUnsupportedConfig(t *testing.T) {
 	viewsAndTestJSON := `{"name": "views_and_test",
         			"server": "walrus:",
         			"bucket": "views_and_test",
+					"sgreplicate": {
+						"enabled": false
+					},
 			        "unsupported": {
 			          "oidc_test_provider": {
 			            "enabled":true,
