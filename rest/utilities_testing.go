@@ -230,6 +230,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 		}
 	}
 
+	// PostStartup (without actually waiting 5 seconds)
+	close(rt.RestTesterServerContext.hasStarted)
+
 	return rt.testBucket.Bucket
 }
 

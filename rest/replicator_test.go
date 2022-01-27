@@ -483,14 +483,12 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 					}`},
 					},
 				}},
+				sgReplicateEnabled: true,
 			})
 			defer rt1.Close()
 
 			// Increase checkpoint persistence frequency for cross-node status verification
 			rt1.GetDatabase().SGReplicateMgr.CheckpointInterval = 50 * time.Millisecond
-
-			err = rt1.GetDatabase().SGReplicateMgr.StartReplications()
-			require.NoError(t, err)
 
 			rt1.waitForAssignedReplications(1)
 
@@ -4026,7 +4024,8 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			// Active
 			activeBucket := base.GetTestBucket(t)
 			localActiveRT := NewRestTester(t, &RestTesterConfig{
-				TestBucket: activeBucket,
+				TestBucket:         activeBucket,
+				sgReplicateEnabled: true,
 			})
 			defer localActiveRT.Close()
 
@@ -4046,15 +4045,11 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			resp = localActiveRT.SendAdminRequest("POST", "/db/_bulk_docs", `{"docs":[{"_id": "docid2", "_rev": "1-abc"}, {"_id": "docid2", "_rev": "2-abc", "_revisions": {"start": 2, "ids": ["abc", "abc"]}}, {"_id": "docid2", "_rev": "3-abc", "val":"test", "_revisions": {"start": 3, "ids": ["abc", "abc", "abc"]}}], "new_edits":false}`)
 			assertStatus(t, resp, http.StatusCreated)
 
-			// Start the replication
-			err := localActiveRT.GetDatabase().SGReplicateMgr.StartReplications()
-			assert.NoError(t, err)
-
 			// Wait for the replication to be started
 			localActiveRT.waitForReplicationStatus("replication", db.ReplicationStateRunning)
 
 			// Wait for document to arrive on the doc is was put on
-			err = localActiveRT.WaitForCondition(func() bool {
+			err := localActiveRT.WaitForCondition(func() bool {
 				doc, _ := localActiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
 				if doc == nil {
 					return false

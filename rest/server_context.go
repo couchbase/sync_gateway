@@ -58,6 +58,7 @@ type ServerContext struct {
 	cpuPprofFile         *os.File        // An open file descriptor holds the reference during CPU profiling
 	_httpServers         []*http.Server  // A list of HTTP servers running under the ServerContext
 	GoCBAgent            *gocbcore.Agent // GoCB Agent to use when obtaining management endpoints
+	hasStarted           chan struct{}   // A channel that is closed via PostStartup once the ServerContext has fully started
 }
 
 type bootstrapContext struct {
@@ -102,6 +103,7 @@ func NewServerContext(config *StartupConfig, persistentConfig bool) *ServerConte
 		HTTPClient:       http.DefaultClient,
 		statsContext:     &statsContext{},
 		bootstrapContext: &bootstrapContext{},
+		hasStarted:       make(chan struct{}),
 	}
 
 	if base.ServerIsWalrus(sc.config.Bootstrap.Server) {
@@ -139,22 +141,10 @@ func (sc *ServerContext) waitForRESTAPIs() error {
 
 // PostStartup runs anything that relies on SG being fully started (i.e. sgreplicate)
 func (sc *ServerContext) PostStartup() {
-	// Start sg-replicate2 replications per-database.  sg-replicate2 replications aren't
-	// started until at least 5 seconds after SG node start, to avoid replication reassignment churn
-	// when a Sync Gateway Cluster is being initialized
-	// TODO: Consider sc.waitForRESTAPIs for faster startup
+	// Delay DatabaseContext processes starting up, e.g. to avoid replication reassignment churn when a Sync Gateway Cluster is being initialized
+	// TODO: Consider sc.waitForRESTAPIs for faster startup?
 	time.Sleep(5 * time.Second)
-
-	sc.lock.RLock()
-	for dbName, dbContext := range sc.databases_ {
-		base.Infof(base.KeyReplicate, "Starting Inter-Sync Gateway Replications for database %q", dbName)
-		err := dbContext.SGReplicateMgr.StartReplications()
-		if err != nil {
-			base.Errorf("Error starting sg-replicate replications: %v", err)
-		}
-	}
-	sc.lock.RUnlock()
-
+	close(sc.hasStarted)
 }
 
 // serverContextStopMaxWait is the maximum amount of time to wait for
@@ -512,6 +502,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 		return nil, err
 	}
 	dbcontext.BucketSpec = spec
+	dbcontext.ServerContextHasStarted = sc.hasStarted
 
 	if !dbcontext.BucketSpec.IsWalrusBucket() {
 		gocbHttpClient, err := dbcontext.InitializeGoCBHttpClient()
@@ -591,6 +582,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 		atomic.StoreUint32(&dbcontext.State, db.DBOnline)
 		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", &sc.config.API.AdminInterface)
 	}
+
+	dbcontext.StartReplications()
 
 	return dbcontext, nil
 }
