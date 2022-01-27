@@ -605,29 +605,14 @@ func extractInlineAttachments(bodyBytes []byte) (attachments AttachmentsMeta, cl
 	return attsMap, bodyBytes, body, nil
 }
 
-// Gets a revision of a document as raw JSON.
-// If it's obsolete it will be loaded from the database if possible.
-// Does not add _id or _rev properties.
-func (db *Database) getRevisionBodyJSON(doc *Document, revid string) ([]byte, error) {
-	if body := doc.getRevisionBodyJSON(db.Ctx, revid, db.RevisionBodyLoader); body != nil {
-		return body, nil
-	} else if !doc.History.contains(revid) {
-		return nil, base.HTTPErrorf(404, "missing")
-	} else {
-		return db.getOldRevisionJSON(db.Ctx, doc.ID, revid)
-	}
-}
-
 // Gets the body of a revision's nearest ancestor, as raw JSON (without _id or _rev.)
 // If no ancestor has any JSON, returns nil but no error.
 func (db *Database) getAncestorJSON(doc *Document, revid string) ([]byte, error) {
 	for {
 		if revid = doc.History.getParent(revid); revid == "" {
 			return nil, nil
-		} else if body, err := db.getRevisionBodyJSON(doc, revid); body != nil {
+		} else if body := doc.getRevisionBodyJSON(db.Ctx, revid, db.RevisionBodyLoader); body != nil {
 			return body, nil
-		} else if !base.IsDocNotFoundError(err) {
-			return nil, err
 		}
 	}
 }
