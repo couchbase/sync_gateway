@@ -41,7 +41,7 @@ paths:
     post:
       responses:
         '200':
-          description: OK
+          description: New revision created sucessfully.
           content:
             application/json:
               schema:
@@ -409,7 +409,7 @@ paths:
         - name: doc_ids
           schema:
             type: array
-            items: 
+            items:
               type: string
           in: query
           description: 'A valid JSON array of document IDs to filter the documents in the response to only the documents specified. To use this option, the `filter` query option must be set to `_doc_ids` and the `feed` parameter must be `normal`. Also accepts a comma separated list of document IDs instead.'
@@ -450,7 +450,7 @@ paths:
       tags:
         - Admin
         - Public
-      summary: 'Get changes list'
+      summary: Get changes list
       description: |-
         This request retrieves a sorted list of changes made to documents in the database, in time order of application. Each document appears at most once, ordered by its most recent change, regardless of how many times it’s been changed.
 
@@ -1686,9 +1686,8 @@ paths:
                             description: The past channel history. Can contain string arrays, strings, or be null depending on if and how the channels where set. 
                             type: array
                             items:
-                              type:
-                                array
-                              items: 
+                              type: array
+                              items:
                                 type: string
                               nullable: true
                       cas:
@@ -2642,7 +2641,7 @@ components:
       required: false
       schema:
         type: array
-        items: 
+        items:
           type: string
       description: An array of document ID strings to filter by.
     provider:
@@ -2707,7 +2706,7 @@ components:
       required: false
       schema:
         type: array
-        items: 
+        items:
           type: string
       description: 'Trim the revision history to stop at the first revision in the provided list. If no match is found, the revisions will be trimmed to the `revs_limit`.'
     atts_since:
@@ -2803,7 +2802,7 @@ components:
       required: false
       schema:
         type: array
-        items: 
+        items:
           type: string
       description: 'Option to fetch specified revisions of the document. The value can be all to fetch all leaf revisions or an array of revision numbers (i.e. open_revs=["rev1", “rev2”]). Only leaf revision bodies that haven’t been pruned are guaranteed to be returned. If this option is specified the response will be in multipart format. Use the `Accept: application/json` request header to get the result as a JSON object.'
   responses:
