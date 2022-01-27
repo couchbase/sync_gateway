@@ -1034,25 +1034,27 @@ paths:
       description: |-
         This request adds or updates an attachment associated with the document. If the document does not exist, it will be created and the attachment will be added to it.
 
-        The maximum content size of an attachment is 20MB. 
+        The maximum content size of an attachment is 20MB. The `Content-Type` header of the request should be what the content type of the attachment is otherwise this will default to `application/octet-stream`.
 
         If the attachment already exists, the data of the existing attachment will be replaced in the new revision. The revisions are for tracking document changes, not attachment changes.
 
         To remove an attachment from a document, simply update the `_attachments` dictionary of the document in the `PUT /{db}/{docid}` request.
       parameters:
-        - schema:
+        - name: Content-Type
+          schema:
             type: string
             default: application/octet-stream
           in: header
-          name: Content-Type
           description: The content type of the attachment.
-        - in: query
-          name: rev
+        - name: rev
+          schema:
+            type: string
+          in: query
           description: The document revision to add/modify the attachment on. Required only when modifying an existing document. This falls back on the `If-Match` header if not set.
-        - schema:
+        - name: If-Match
+          schema:
             type: string
           in: header
-          name: If-Match
           description: Used as the `rev` query parameter if it is not set.
       requestBody:
         content:
@@ -1554,7 +1556,6 @@ paths:
                   description: '**`grant_type=refresh_token` only**: The OpenID Connect refresh token.'
               required:
                 - grant_type
-        description: ''
   '/{db}/_oidc_testing/certs':
     parameters:
       - $ref: '#/components/parameters/db'
