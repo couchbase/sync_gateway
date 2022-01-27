@@ -749,9 +749,6 @@ func TestReplicationRebalancePull(t *testing.T) {
 	// Increase checkpoint persistence frequency for cross-node status verification
 	activeRT2.GetDatabase().SGReplicateMgr.CheckpointInterval = 50 * time.Millisecond
 
-	err := activeRT2.GetDatabase().SGReplicateMgr.StartReplications()
-	require.NoError(t, err)
-
 	// Wait for replication to be rebalanced to activeRT2
 	activeRT.waitForAssignedReplications(1)
 	activeRT2.waitForAssignedReplications(1)
@@ -843,9 +840,6 @@ func TestReplicationRebalancePush(t *testing.T) {
 
 	// Increase checkpoint persistence frequency for cross-node status verification
 	activeRT2.GetDatabase().SGReplicateMgr.CheckpointInterval = 50 * time.Millisecond
-
-	err := activeRT2.GetDatabase().SGReplicateMgr.StartReplications()
-	require.NoError(t, err)
 
 	// Wait for replication to be rebalanced to activeRT2
 	activeRT.waitForAssignedReplications(1)
@@ -1017,7 +1011,7 @@ func TestReplicationConcurrentPush(t *testing.T) {
 // setupSGRPeers sets up two rest testers to be used for sg-replicate testing with the following configuration:
 //   activeRT:
 //     - backed by test bucket
-//     - SGReplicationMgr.StartReplications() has been called
+//     - has sgreplicate enabled
 //   passiveRT:
 //     - backed by different test bucket
 //     - user 'alice' created with star channel access
@@ -1707,9 +1701,6 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 	// Increase checkpoint persistence frequency for cross-node status verification
 	activeRT2.GetDatabase().SGReplicateMgr.CheckpointInterval = 50 * time.Millisecond
 
-	err := activeRT2.GetDatabase().SGReplicateMgr.StartReplications()
-	require.NoError(t, err)
-
 	// Wait for replication to be rebalanced to activeRT2
 	activeRT.waitForAssignedReplications(1)
 	activeRT2.waitForAssignedReplications(1)
@@ -1740,7 +1731,7 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 	assert.NoError(t, activeRT2Mgr.RemoveNode(activeRTUUID))
 
 	// Wait for nodes to add themselves back to cluster
-	err = activeRT.WaitForCondition(func() bool {
+	err := activeRT.WaitForCondition(func() bool {
 		clusterDef, err := activeRTMgr.GetSGRCluster()
 		if err != nil {
 			return false
