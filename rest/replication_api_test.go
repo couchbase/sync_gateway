@@ -1052,10 +1052,6 @@ func setupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 		sgReplicateEnabled: true,
 	})
 
-	// Start replication manager on rt1
-	err := activeRT.GetDatabase().SGReplicateMgr.StartReplications()
-	require.NoError(t, err)
-
 	teardown = func() {
 		activeRT.Close()
 		activeTestBucket.Close()
