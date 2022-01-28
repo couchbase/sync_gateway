@@ -426,6 +426,9 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 
 			defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
+			// Increase checkpoint persistence frequency for cross-node status verification
+			defer reduceTestCheckpointInterval(50 * time.Millisecond)()
+
 			// Disable sequence batching for multi-RT tests (pending CBG-1000)
 			defer db.SuspendSequenceBatching()()
 
@@ -486,9 +489,6 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 				sgReplicateEnabled: true,
 			})
 			defer rt1.Close()
-
-			// Increase checkpoint persistence frequency for cross-node status verification
-			rt1.GetDatabase().SGReplicateMgr.CheckpointInterval = 50 * time.Millisecond
 
 			rt1.waitForAssignedReplications(1)
 

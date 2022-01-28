@@ -27,12 +27,13 @@ import (
 )
 
 const (
-	cfgKeySGRCluster          = "sgrCluster"    // key used for sgrCluster information in a cbgt.Cfg-based key value store
-	maxSGRClusterCasRetries   = 100             // Maximum number of CAS retries when attempting to update the sgr cluster configuration
-	sgrClusterMgrContextID    = "sgr-mgr-"      // logging context ID prefix for sgreplicate manager
-	defaultChangesBatchSize   = 200             // default changes batch size if replication batch_size is unset
-	defaultCheckpointInterval = time.Second * 5 // default value used for time-based checkpointing
+	cfgKeySGRCluster        = "sgrCluster" // key used for sgrCluster information in a cbgt.Cfg-based key value store
+	maxSGRClusterCasRetries = 100          // Maximum number of CAS retries when attempting to update the sgr cluster configuration
+	sgrClusterMgrContextID  = "sgr-mgr-"   // logging context ID prefix for sgreplicate manager
+	defaultChangesBatchSize = 200          // default changes batch size if replication batch_size is unset
 )
+
+var DefaultCheckpointInterval = time.Second * 5 // default value used for time-based checkpointing
 
 const (
 	ReplicationStateStopped      = "stopped"
@@ -446,7 +447,7 @@ func NewSGReplicateManager(dbContext *DatabaseContext, cfg cbgt.Cfg) (*sgReplica
 		clusterSubscribeTerminator: make(chan struct{}),
 		dbContext:                  dbContext,
 		activeReplicators:          make(map[string]*ActiveReplicator),
-		CheckpointInterval:         defaultCheckpointInterval,
+		CheckpointInterval:         DefaultCheckpointInterval,
 	}, nil
 
 }
