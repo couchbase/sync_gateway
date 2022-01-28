@@ -1,9 +1,9 @@
 # Sync Gateway
 
 [![Sync Gateway Documentation](https://img.shields.io/badge/documentation-current-blue.svg)][SG_DOCS]
-[![GoDoc](https://godoc.org/github.com/cbbruno/sync_gateway_mod?status.svg)](https://godoc.org/github.com/cbbruno/sync_gateway_mod)
-[![build](https://github.com/cbbruno/sync_gateway_mod/actions/workflows/ci.yml/badge.svg)](https://github.com/cbbruno/sync_gateway_mod/actions/workflows/ci.yml)
-[![Coverage Status](https://coveralls.io/repos/github/cbbruno/sync_gateway_mod/badge.svg?branch=develop)](https://coveralls.io/github/cbbruno/sync_gateway_mod?branch=develop)
+[![GoDoc](https://godoc.org/github.com/couchbase/sync_gateway?status.svg)](https://godoc.org/github.com/couchbase/sync_gateway)
+[![Go Report Card](https://goreportcard.com/badge/github.com/couchbase/sync_gateway)](https://goreportcard.com/report/github.com/couchbase/sync_gateway)
+[![Code Coverage](https://img.shields.io/coveralls/github/couchbase/sync_gateway.svg)](https://coveralls.io/github/couchbase/sync_gateway)
 [![License](https://img.shields.io/badge/license-BSL%201.1-lightgrey)](https://github.com/couchbase/sync_gateway/blob/master/LICENSE)
 
 Sync Gateway is a horizontally scalable web server that securely manages the access control and
@@ -45,7 +45,7 @@ See the [Extended Build Instructions](docs/BUILD.md) to build with dependency pi
 
 ## License
 
-[Business Source License 1.1](https://github.com/couchbase/sync_gateway/blob/master/LICENSE)
+[Apache License 2.0](https://github.com/couchbase/sync_gateway/blob/master/LICENSE)
 
 [CB_MOBILE]: https://www.couchbase.com/products/mobile
 [CB_GATEWAY]: https://www.couchbase.com/products/sync-gateway
