@@ -4661,7 +4661,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 	for _, test := range conflictResolutionTests {
 		t.Run(test.name, func(t *testing.T) {
 			base.RequireNumTestBuckets(t, 2)
-			defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+			defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
 			activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
 			defer teardown()
