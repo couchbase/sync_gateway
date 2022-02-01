@@ -1617,7 +1617,7 @@ paths:
               - cbl2
               - sgr2
           in: query
-          description: This is the client that is making the BLIP Sync request.
+          description: This is the client type that is making the BLIP Sync request. Used to control client-type specific replication behaviour.
   '/{targetdb}/':
     parameters:
       - name: targetdb
@@ -2043,7 +2043,9 @@ paths:
     get:
       responses:
         '200':
-          description: Retrieved replication configurations successfully
+          description: |-
+            Retrieved replication configurations successfully.
+            The `assigned_node` fields will end with `(local)` or `(non-local)` depending on if the replication is running on this Sync Gateway node.
           content:
             application/json:
               schema:
@@ -2054,9 +2056,7 @@ paths:
         - Admin
       summary: Get all replication configurations
       description: |-
-        This will retrieve all the defined replication configs as a key map.
-
-        The `assigned_node` fields will end with `(local)` or `(non-local)` depending on if the replication is local or not.
+        This will retrieve all database replication definitions.
     post:
       responses:
         '200':
@@ -2064,7 +2064,7 @@ paths:
         '201':
           $ref: '#/components/responses/Replicator-created'
         '400':
-          description: Bad Request. Likely cause is that replicator was not stopped before attempting update.
+          $ref: '#/components/responses/request-problem'
         '404':
           $ref: '#/components/responses/Not-found'
       tags:
@@ -2128,7 +2128,7 @@ paths:
         '200':
           description: Replication successfully deleted
         '400':
-          description: Bad Request
+          $ref: '#/components/responses/request-problem'
         '404':
           $ref: '#/components/responses/Not-found'
       tags:
@@ -2227,7 +2227,7 @@ paths:
         This is done through the action query parameter, which has 3 valid values:
         * `start` - starts a stopped replication
         * `stop` - stops an active replication
-        * `reset` - resets the replication checkpoint to 0. For bidirection replication, both push and pull checpoints are reset to 0. The replication must be stopped to use this.
+        * `reset` - resets the replication checkpoint to 0. For bidirectional replication, both push and pull checkpoints are reset to 0. The replication must be stopped to use this.
       summary: Modify a replication status
       parameters:
         - name: action
@@ -2238,14 +2238,14 @@ paths:
               - stop
               - reset
           in: query
-          description: The target state to put the replicator in too.
+          description: The target state to put the replicator into.
           required: true
     head:
       responses:
         '200':
           description: Replication exists
         '400':
-          description: Bad Request
+          $ref: '#/components/responses/request-problem'
         '404':
           $ref: '#/components/responses/Not-found'
       tags:
