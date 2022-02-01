@@ -710,14 +710,14 @@ func TestReplicationRebalancePull(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
+	// Increase checkpoint persistence frequency for cross-node status verification
+	defer reduceTestCheckpointInterval(50 * time.Millisecond)()
+
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
 
 	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()
-
-	// Increase checkpoint persistence frequency for cross-node status verification
-	activeRT.GetDatabase().SGReplicateMgr.CheckpointInterval = 50 * time.Millisecond
 
 	// Create docs on remote
 	docABC1 := t.Name() + "ABC1"
@@ -745,12 +745,6 @@ func TestReplicationRebalancePull(t *testing.T) {
 	// Add another node to the active cluster
 	activeRT2 := addActiveRT(t, activeRT.TestBucket)
 	defer activeRT2.Close()
-
-	// Increase checkpoint persistence frequency for cross-node status verification
-	activeRT2.GetDatabase().SGReplicateMgr.CheckpointInterval = 50 * time.Millisecond
-
-	err := activeRT2.GetDatabase().SGReplicateMgr.StartReplications()
-	require.NoError(t, err)
 
 	// Wait for replication to be rebalanced to activeRT2
 	activeRT.waitForAssignedReplications(1)
@@ -806,14 +800,14 @@ func TestReplicationRebalancePush(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
+	// Increase checkpoint persistence frequency for cross-node status verification
+	defer reduceTestCheckpointInterval(50 * time.Millisecond)()
+
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
 
 	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()
-
-	// Increase checkpoint persistence frequency for cross-node status verification
-	activeRT.GetDatabase().SGReplicateMgr.CheckpointInterval = 50 * time.Millisecond
 
 	// Create docs on active
 	docABC1 := t.Name() + "ABC1"
@@ -840,12 +834,6 @@ func TestReplicationRebalancePush(t *testing.T) {
 	// Add another node to the active cluster
 	activeRT2 := addActiveRT(t, activeRT.TestBucket)
 	defer activeRT2.Close()
-
-	// Increase checkpoint persistence frequency for cross-node status verification
-	activeRT2.GetDatabase().SGReplicateMgr.CheckpointInterval = 50 * time.Millisecond
-
-	err := activeRT2.GetDatabase().SGReplicateMgr.StartReplications()
-	require.NoError(t, err)
 
 	// Wait for replication to be rebalanced to activeRT2
 	activeRT.waitForAssignedReplications(1)
@@ -957,11 +945,11 @@ func TestReplicationConcurrentPush(t *testing.T) {
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
 
+	// Increase checkpoint persistence frequency for cross-node status verification
+	defer reduceTestCheckpointInterval(50 * time.Millisecond)()
+
 	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()
-
-	// Increase checkpoint persistence frequency for cross-node status verification
-	activeRT.GetDatabase().SGReplicateMgr.CheckpointInterval = 50 * time.Millisecond
 
 	// Create push replications, verify running
 	activeRT.createReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true, db.ConflictResolverDefault)
@@ -1017,7 +1005,7 @@ func TestReplicationConcurrentPush(t *testing.T) {
 // setupSGRPeers sets up two rest testers to be used for sg-replicate testing with the following configuration:
 //   activeRT:
 //     - backed by test bucket
-//     - SGReplicationMgr.StartReplications() has been called
+//     - has sgreplicate enabled
 //   passiveRT:
 //     - backed by different test bucket
 //     - user 'alice' created with star channel access
@@ -1051,10 +1039,6 @@ func setupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 		TestBucket:         activeTestBucket.NoCloseClone(),
 		sgReplicateEnabled: true,
 	})
-
-	// Start replication manager on rt1
-	err := activeRT.GetDatabase().SGReplicateMgr.StartReplications()
-	require.NoError(t, err)
 
 	teardown = func() {
 		activeRT.Close()
@@ -1658,6 +1642,15 @@ func TestReplicationConfigChange(t *testing.T) {
 	require.Len(t, changesResults.Results, 8)
 }
 
+func reduceTestCheckpointInterval(interval time.Duration) func() {
+	previousInterval := db.DefaultCheckpointInterval
+	db.DefaultCheckpointInterval = interval
+	return func() {
+		db.DefaultCheckpointInterval = previousInterval
+	}
+
+}
+
 // TestReplicationHeartbeatRemoval
 //   - Starts 2 RestTesters, one active, and one passive.
 //   - Creates two continuous pull replications on rt1 via the REST API
@@ -1671,6 +1664,9 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 		t.Skipf("test is EE only (replication rebalance)")
 	}
 
+	// Increase checkpoint persistence frequency for cross-node status verification
+	defer reduceTestCheckpointInterval(50 * time.Millisecond)()
+
 	base.RequireNumTestBuckets(t, 2)
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
@@ -1679,9 +1675,6 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 
 	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()
-
-	// Increase checkpoint persistence frequency for cross-node status verification
-	activeRT.GetDatabase().SGReplicateMgr.CheckpointInterval = 50 * time.Millisecond
 
 	// Create docs on remote
 	docABC1 := t.Name() + "ABC1"
@@ -1707,12 +1700,6 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 	// Add another node to the active cluster
 	activeRT2 := addActiveRT(t, activeRT.TestBucket)
 	defer activeRT2.Close()
-
-	// Increase checkpoint persistence frequency for cross-node status verification
-	activeRT2.GetDatabase().SGReplicateMgr.CheckpointInterval = 50 * time.Millisecond
-
-	err := activeRT2.GetDatabase().SGReplicateMgr.StartReplications()
-	require.NoError(t, err)
 
 	// Wait for replication to be rebalanced to activeRT2
 	activeRT.waitForAssignedReplications(1)
@@ -1744,7 +1731,7 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 	assert.NoError(t, activeRT2Mgr.RemoveNode(activeRTUUID))
 
 	// Wait for nodes to add themselves back to cluster
-	err = activeRT.WaitForCondition(func() bool {
+	err := activeRT.WaitForCondition(func() bool {
 		clusterDef, err := activeRTMgr.GetSGRCluster()
 		if err != nil {
 			return false

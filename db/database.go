@@ -83,43 +83,43 @@ const BGTCompletionMaxWait = 30 * time.Second
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
-	Name                        string                  // Database name
-	UUID                        string                  // UUID for this database instance. Used by cbgt and sgr
-	Bucket                      base.Bucket             // Storage
-	BucketSpec                  base.BucketSpec         // The BucketSpec
-	BucketLock                  sync.RWMutex            // Control Access to the underlying bucket object
-	mutationListener            changeListener          // Caching feed listener
-	ImportListener              *importListener         // Import feed listener
-	sequences                   *sequenceAllocator      // Source of new sequence numbers
-	ChannelMapper               *channels.ChannelMapper // Runs JS 'sync' function
-	StartTime                   time.Time               // Timestamp when context was instantiated
-	RevsLimit                   uint32                  // Max depth a document's revision tree can grow to
-	autoImport                  bool                    // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
-	revisionCache               RevisionCache           // Cache of recently-accessed doc revisions
-	changeCache                 *changeCache            // Cache of recently-access channels
-	EventMgr                    *EventManager           // Manages notification events
-	AllowEmptyPassword          bool                    // Allow empty passwords?  Defaults to false
-	Options                     DatabaseContextOptions  // Database Context Options
-	AccessLock                  sync.RWMutex            // Allows DB offline to block until synchronous calls have completed
-	State                       uint32                  // The runtime state of the DB from a service perspective
-	ResyncManager               *BackgroundManager
-	TombstoneCompactionManager  *BackgroundManager
-	AttachmentCompactionManager *BackgroundManager
-	ExitChanges                 chan struct{}            // Active _changes feeds on the DB will close when this channel is closed
-	OIDCProviders               auth.OIDCProviderMap     // OIDC clients
-	PurgeInterval               time.Duration            // Metadata purge interval
-	serverUUID                  string                   // UUID of the server, if available
-	DbStats                     *base.DbStats            // stats that correspond to this database context
-	CompactState                uint32                   // Status of database compaction
-	terminator                  chan bool                // Signal termination of background goroutines
-	backgroundTasks             []BackgroundTask         // List of background tasks that are initiated.
-	activeChannels              *channels.ActiveChannels // Tracks active replications by channel
-	CfgSG                       cbgt.Cfg                 // Sync Gateway cluster shared config
-	//CfgSG                        *base.CfgSG              // Sync Gateway cluster shared config
-	SGReplicateMgr               *sgReplicateManager // Manages interactions with sg-replicate replications
-	Heartbeater                  base.Heartbeater    // Node heartbeater for SG cluster awareness
-	ServeInsecureAttachmentTypes bool                // Attachment content type will bypass the content-disposition handling, default false
-	GoCBHttpClient               *http.Client
+	Name                         string                  // Database name
+	UUID                         string                  // UUID for this database instance. Used by cbgt and sgr
+	Bucket                       base.Bucket             // Storage
+	BucketSpec                   base.BucketSpec         // The BucketSpec
+	BucketLock                   sync.RWMutex            // Control Access to the underlying bucket object
+	mutationListener             changeListener          // Caching feed listener
+	ImportListener               *importListener         // Import feed listener
+	sequences                    *sequenceAllocator      // Source of new sequence numbers
+	ChannelMapper                *channels.ChannelMapper // Runs JS 'sync' function
+	StartTime                    time.Time               // Timestamp when context was instantiated
+	RevsLimit                    uint32                  // Max depth a document's revision tree can grow to
+	autoImport                   bool                    // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
+	revisionCache                RevisionCache           // Cache of recently-accessed doc revisions
+	changeCache                  *changeCache            // Cache of recently-access channels
+	EventMgr                     *EventManager           // Manages notification events
+	AllowEmptyPassword           bool                    // Allow empty passwords?  Defaults to false
+	Options                      DatabaseContextOptions  // Database Context Options
+	AccessLock                   sync.RWMutex            // Allows DB offline to block until synchronous calls have completed
+	State                        uint32                  // The runtime state of the DB from a service perspective
+	ResyncManager                *BackgroundManager
+	TombstoneCompactionManager   *BackgroundManager
+	AttachmentCompactionManager  *BackgroundManager
+	ExitChanges                  chan struct{}            // Active _changes feeds on the DB will close when this channel is closed
+	OIDCProviders                auth.OIDCProviderMap     // OIDC clients
+	PurgeInterval                time.Duration            // Metadata purge interval
+	serverUUID                   string                   // UUID of the server, if available
+	DbStats                      *base.DbStats            // stats that correspond to this database context
+	CompactState                 uint32                   // Status of database compaction
+	terminator                   chan bool                // Signal termination of background goroutines
+	backgroundTasks              []BackgroundTask         // List of background tasks that are initiated.
+	activeChannels               *channels.ActiveChannels // Tracks active replications by channel
+	CfgSG                        cbgt.Cfg                 // Sync Gateway cluster shared config
+	SGReplicateMgr               *sgReplicateManager      // Manages interactions with sg-replicate replications
+	Heartbeater                  base.Heartbeater         // Node heartbeater for SG cluster awareness
+	ServeInsecureAttachmentTypes bool                     // Attachment content type will bypass the content-disposition handling, default false
+	GoCBHttpClient               *http.Client             // A HTTP Client from gocb to use the management endpoints
+	ServerContextHasStarted      chan struct{}            // Closed via PostStartup once the server has fully started
 }
 
 type DatabaseContextOptions struct {

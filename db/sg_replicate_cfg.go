@@ -27,12 +27,13 @@ import (
 )
 
 const (
-	cfgKeySGRCluster          = "sgrCluster"    // key used for sgrCluster information in a cbgt.Cfg-based key value store
-	maxSGRClusterCasRetries   = 100             // Maximum number of CAS retries when attempting to update the sgr cluster configuration
-	sgrClusterMgrContextID    = "sgr-mgr-"      // logging context ID prefix for sgreplicate manager
-	defaultChangesBatchSize   = 200             // default changes batch size if replication batch_size is unset
-	defaultCheckpointInterval = time.Second * 5 // default value used for time-based checkpointing
+	cfgKeySGRCluster        = "sgrCluster" // key used for sgrCluster information in a cbgt.Cfg-based key value store
+	maxSGRClusterCasRetries = 100          // Maximum number of CAS retries when attempting to update the sgr cluster configuration
+	sgrClusterMgrContextID  = "sgr-mgr-"   // logging context ID prefix for sgreplicate manager
+	defaultChangesBatchSize = 200          // default changes batch size if replication batch_size is unset
 )
+
+var DefaultCheckpointInterval = time.Second * 5 // default value used for time-based checkpointing
 
 const (
 	ReplicationStateStopped      = "stopped"
@@ -429,6 +430,36 @@ func (ar *ActiveReplicator) alignState(targetState string) error {
 
 }
 
+func (dbc *DatabaseContext) StartReplications() {
+	if dbc.Options.SGReplicateOptions.Enabled {
+		base.Debugf(base.KeyReplicate, "Will start Inter-Sync Gateway Replications for database %q", dbc.Name)
+		dbc.SGReplicateMgr.closeWg.Add(1)
+		go func() {
+			defer dbc.SGReplicateMgr.closeWg.Done()
+
+			// Wait for the server context to be started
+			t := time.NewTimer(time.Second * 10)
+			defer t.Stop()
+			select {
+			case <-dbc.ServerContextHasStarted:
+				base.Debugf(base.KeyReplicate, "Server context started, starting ISGR replications %q", dbc.Name)
+			case <-t.C:
+				base.Infof(base.KeyReplicate, "Timed out waiting for server context startup... starting ISGR replications for %q anyway", dbc.Name)
+			case <-dbc.terminator:
+				base.Debugf(base.KeyReplicate, "Database context for %q closed before starting ISGR replications - aborting...", dbc.Name)
+				return
+			}
+
+			err := dbc.SGReplicateMgr.StartReplications()
+			if err != nil {
+				base.Errorf("Error starting %q Inter-Sync Gateway Replications: %v", dbc.Name, err)
+			}
+		}()
+	} else {
+		base.Debugf(base.KeyReplicate, "Not starting Inter-Sync Gateway Replications for database %q - is disabled", dbc.Name)
+	}
+}
+
 func NewSGReplicateManager(dbContext *DatabaseContext, cfg cbgt.Cfg) (*sgReplicateManager, error) {
 	if cfg == nil {
 		return nil, errors.New("Cfg must be provided for SGReplicateManager")
@@ -442,7 +473,7 @@ func NewSGReplicateManager(dbContext *DatabaseContext, cfg cbgt.Cfg) (*sgReplica
 		clusterSubscribeTerminator: make(chan struct{}),
 		dbContext:                  dbContext,
 		activeReplicators:          make(map[string]*ActiveReplicator),
-		CheckpointInterval:         defaultCheckpointInterval,
+		CheckpointInterval:         DefaultCheckpointInterval,
 	}, nil
 
 }
