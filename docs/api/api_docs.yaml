@@ -41,10 +41,45 @@ paths:
     post:
       responses:
         '200':
-          description: OK
+          description: New revision created sucessfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/New-revision'
+          headers:
+            Etag:
+              schema:
+                type: string
+              description: The revision ID of the newly created document.
+            Location:
+              schema:
+                type: string
+              description: The document ID of the newly created document.
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '415':
+          $ref: '#/components/responses/Invalid-content-type'
       tags:
         - Admin
         - Public
+      summary: Create a new document
+      description: |-
+        Create a new document in the database.
+
+        This will generate a random document ID unless specified in the body.
+
+        A document can have a maximum size of 20MB.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Document'
+      parameters:
+        - $ref: '#/components/parameters/roundtrip'
     delete:
       responses:
         '200':
@@ -64,124 +99,614 @@ paths:
     get:
       responses:
         '200':
-          description: OK
+          $ref: '#/components/responses/all-docs'
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
         - Public
+      parameters:
+        - $ref: '#/components/parameters/include_docs'
+        - $ref: '#/components/parameters/Include-channels'
+        - $ref: '#/components/parameters/include-access'
+        - $ref: '#/components/parameters/include-revs'
+        - $ref: '#/components/parameters/include-seqs'
+        - $ref: '#/components/parameters/keys'
+        - $ref: '#/components/parameters/startkey'
+        - $ref: '#/components/parameters/endkey'
+        - $ref: '#/components/parameters/limit'
+      summary: Gets all the documents in the database with the given parameters
+      description: Returns all documents in the databased based on the specified parameters.
     post:
       responses:
         '200':
-          description: OK
+          $ref: '#/components/responses/all-docs'
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
         - Public
+      summary: Get all the documents in the database using a built-in view
+      parameters:
+        - $ref: '#/components/parameters/include_docs'
+        - $ref: '#/components/parameters/Include-channels'
+        - $ref: '#/components/parameters/include-access'
+        - $ref: '#/components/parameters/include-revs'
+        - $ref: '#/components/parameters/include-seqs'
+        - $ref: '#/components/parameters/startkey'
+        - $ref: '#/components/parameters/endkey'
+        - $ref: '#/components/parameters/limit'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                keys:
+                  description: List of the documents to retrieve.
+                  type: array
+                  items:
+                    type: string
+              required:
+                - keys
+      description: Get a built-in view of all the documents in the database.
     head:
       responses:
         '200':
           description: OK
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
         - Public
+      parameters:
+        - $ref: '#/components/parameters/include_docs'
+        - $ref: '#/components/parameters/Include-channels'
+        - $ref: '#/components/parameters/include-access'
+        - $ref: '#/components/parameters/include-revs'
+        - $ref: '#/components/parameters/include-seqs'
+        - $ref: '#/components/parameters/keys'
+        - $ref: '#/components/parameters/startkey'
+        - $ref: '#/components/parameters/endkey'
+        - $ref: '#/components/parameters/limit'
   '/{db}/_bulk_docs':
     parameters:
       - $ref: '#/components/parameters/db'
     post:
       responses:
-        '200':
-          description: OK
+        '201':
+          description: |-
+            Executed all operations. 
+
+            Each object in the returned array represents a document. Each document should be checked to make sure it was successfully added to the database.
+          content:
+            application/json:
+              schema:
+                type: array
+                uniqueItems: true
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      description: The ID of the document that the operation was performed on.
+                    rev:
+                      type: string
+                      description: The new revision of the document if the operation was a success.
+                    error:
+                      type: string
+                      description: The error type if the operation of the document failed.
+                    reason:
+                      type: string
+                      description: The reason the operation failed.
+                    status:
+                      type: string
+                      description: The HTTP status code for why the operation failed.
+                  required:
+                    - id
+              examples:
+                Success:
+                  value:
+                    - id: FooBar
+                      rev: 1-cd809becc169215072fd567eebd8b8de
+                    - id: AliceSettings
+                      rev: 6-b3e8dcf825b71ccee112f3572ec4323c
+                    - id: BobSettings
+                      rev: 2-5145e1086bb8d1d71a531e9f6b543c58
+                Partial success:
+                  value:
+                    - error: conflict
+                      id: FooBar
+                      reason: Document exists
+                      status: 409
+                    - id: AliceSettings
+                      rev: 6-b3e8dcf825b71ccee112f3572ec4323c
+                    - error: conflict
+                      id: BobSettings
+                      reason: Document revision conflict
+                      status: 409
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
         - Public
+      summary: Bulk document operations
+      description: |-
+        This will allow multiple documented to be created, updated or deleted in bulk.
+
+        To create a new document, simply add the body in an object under `docs`. A doc ID will be generated by Sync Gateway unless `_id` is specified.
+
+        To update an existing document, provide the document ID (`_id`) and revision ID (`_rev`) as well as the new body values.
+
+        To delete an existing document, provide the document ID (`_id`), revision ID (`_rev`), and set the deletion flag (`_deleted`) to true.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                new_edits:
+                  default: true
+                  type: boolean
+                  description: This controls whether to assign new revision identifiers to new edits (`true`) or use the existing ones (`false`).
+                docs:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Document'
+              required:
+                - docs
+            examples:
+              Example:
+                value:
+                  new_edits: true
+                  docs:
+                    - _id: FooBar
+                      foo: bar
+                    - _id: AliceSettings
+                      _rev: 5-832a6db48ed130adadede928aee54576
+                      FailedLoginAttempts: 7
+                    - _id: BobSettings
+                      _rev: 1-fa76ba41ee5fdfee1b91fc478ed09e59
+                      _deleted: true
   '/{db}/_bulk_get':
     parameters:
       - $ref: '#/components/parameters/db'
     post:
       responses:
         '200':
-          description: OK
+          description: Returned the requested docs as `multipart/mixed` response type
+        '400':
+          description: Bad Request
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
         - Public
+      parameters:
+        - name: attachments
+          in: query
+          schema:
+            type: boolean
+            default: 'false'
+          description: This is for whether to include attachments in each of the documents returned or not.
+        - $ref: '#/components/parameters/include-revs'
+        - name: revs_limit
+          schema:
+            type: integer
+          in: query
+          description: The number of revisions to include in the response from the document history. This parameter only makes a different if the `revs` query parameter is set to `true`. The full revision history will be returned if `revs` is set but this is not.
+        - name: X-Accept-Part-Encoding
+          schema:
+            type: string
+          in: header
+          description: If this header includes `gzip` then the part HTTP compression encoding will be done.
+        - name: Accept-Encoding
+          schema:
+            type: string
+          in: header
+          description: If this header includes `gzip` then the the HTTP response will be compressed. This takes priority over `X-Accept-Part-Encoding`. Only part compression will be done if `X-Accept-Part-Encoding=gzip` and the `User-Agent` is below 1.2 due to clients not being able to handle full compression.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                docs:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        description: ID of the document to retrieve.
+                    required:
+                      - id
+              required:
+                - docs
+            examples:
+              Example:
+                value:
+                  docs:
+                    - id: FooBar
+                    - id: attachment
+                    - id: AliceSettings
+      description: |
+        This request returns any number of documents, as individual bodies in a MIME multipart response.
+
+        Each enclosed body contains one requested document. The bodies appear in the same order as in the request, but can also be identified by their `X-Doc-ID` and `X-Rev-ID` headers (if the `attachments` query is `true`).
+
+        A body for a document with no attachments will have content type `application/json` and contain the document itself.
+
+        A body for a document that has attachments will be written as a nested `multipart/related` body.
+      summary: Get multiple documents in a MIME multipart response
   '/{db}/_changes':
     parameters:
       - $ref: '#/components/parameters/db'
     get:
       responses:
         '200':
-          description: OK
+          $ref: '#/components/responses/changes-feed'
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
         - Public
+      summary: Get changes list
+      description: |-
+        This request retrieves a sorted list of changes made to documents in the database, in time order of application. Each document appears at most once, ordered by its most recent change, regardless of how many times it’s been changed.
+
+        This request can be used to listen for update and modifications to the database for post processing or synchronization. A continuously connected changes feed is a reasonable approach for generating a real-time log for most applications.
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+          description: Maximum number of changes to return.
+        - name: style
+          schema:
+            type: string
+            default: main_only
+            enum:
+              - main_only
+              - all_docs
+          in: query
+          description: Controls whether to return the current winning revision (`main_only`) or all the leaf revision including conflicts and deleted former conflicts (`all_docs`).
+        - name: active_only
+          schema:
+            type: boolean
+            default: 'false'
+          in: query
+          description: Set true to exclude deleted documents and notifications for documents the user no longer has access to from the changes feed.
+        - $ref: '#/components/parameters/include_docs'
+        - name: revocations
+          schema:
+            type: boolean
+          in: query
+          description: 'If true, revocation messages will be sent on the changes feed.'
+        - name: filter
+          schema:
+            type: string
+            enum:
+              - sync_gateway/bychannel
+              - _doc_ids
+          in: query
+          description: Set a filter to either filter by channels or document IDs.
+        - name: channels
+          schema:
+            type: string
+          in: query
+          description: 'A comma-separated list of channel names to filter the response to only the channels specified. To use this option, the `filter` query option must be set to `sync_gateway/bychannels`.'
+        - name: doc_ids
+          schema:
+            type: array
+            items:
+              type: string
+          in: query
+          description: 'A valid JSON array of document IDs to filter the documents in the response to only the documents specified. To use this option, the `filter` query option must be set to `_doc_ids` and the `feed` parameter must be `normal`. Also accepts a comma separated list of document IDs instead.'
+        - name: heartbeat
+          schema:
+            type: integer
+            default: 0
+            minimum: 25000
+          in: query
+          description: The interval (in milliseconds) to send an empty line (CRLF) in the response. This is to help prevent gateways from deciding the socket is idle and therefore closing it. This is only applicable to `feed=longpoll` or `feed=continuous`. This will override any timeouts to keep the feed alive indefinitely. Setting to 0 results in no heartbeat. The maximum heartbeat can be set in the server replication configuration.
+        - name: timeout
+          schema:
+            type: integer
+            default: 300000
+            maximum: 900000
+            minimum: 0
+          in: query
+          description: 'This is the maximum period (in milliseconds) to wait for a change before the response is sent, even if there are no results. This is only applicable for `feed=longpoll` or `feed=continuous` changes feeds. Setting to 0 results in no timeout.'
+        - name: feed
+          schema:
+            type: string
+            default: normal
+            enum:
+              - normal
+              - longpoll
+              - continuous
+              - websocket
+          in: query
+          description: 'The type of changes feed to use. '
     post:
       responses:
         '200':
-          description: OK
+          $ref: '#/components/responses/changes-feed'
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
         - Public
+      summary: Get changes list
+      description: |-
+        This request retrieves a sorted list of changes made to documents in the database, in time order of application. Each document appears at most once, ordered by its most recent change, regardless of how many times it’s been changed.
+
+        This request can be used to listen for update and modifications to the database for post processing or synchronization. A continuously connected changes feed is a reasonable approach for generating a real-time log for most applications.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                limit:
+                  type: string
+                  description: Maximum number of changes to return.
+                style:
+                  type: string
+                  description: Controls whether to return the current winning revision (`main_only`) or all the leaf revision including conflicts and deleted former conflicts (`all_docs`).
+                active_only:
+                  type: string
+                  description: Set true to exclude deleted documents and notifications for documents the user no longer has access to from the changes feed.
+                include_docs:
+                  type: string
+                  description: Include the body associated with each document.
+                revocations:
+                  type: string
+                  description: 'If true, revocation messages will be sent on the changes feed.'
+                filter:
+                  type: string
+                  description: Set a filter to either filter by channels or document IDs.
+                channels:
+                  type: string
+                  description: 'A comma-separated list of channel names to filter the response to only the channels specified. To use this option, the `filter` query option must be set to `sync_gateway/bychannels`.'
+                doc_ids:
+                  type: string
+                  description: 'A valid JSON array of document IDs to filter the documents in the response to only the documents specified. To use this option, the `filter` query option must be set to `_doc_ids` and the `feed` parameter must be `normal`.'
+                heartbeat:
+                  type: string
+                  description: The interval (in milliseconds) to send an empty line (CRLF) in the response. This is to help prevent gateways from deciding the socket is idle and therefore closing it. This is only applicable to `feed=longpoll` or `feed=continuous`. This will override any timeouts to keep the feed alive indefinitely. Setting to 0 results in no heartbeat. The maximum heartbeat can be set in the server replication configuration.
+                timeout:
+                  type: string
+                  description: 'This is the maximum period (in milliseconds) to wait for a change before the response is sent, even if there are no results. This is only applicable for `feed=longpoll` or `feed=continuous` changes feeds. Setting to 0 results in no timeout.'
+                feed:
+                  type: string
+                  description: 'The type of changes feed to use. '
     head:
       responses:
         '200':
           description: OK
+        '400':
+          description: Bad Request
+        '404':
+          description: Not Found
       tags:
         - Admin
         - Public
   '/{db}/_design/{ddoc}':
     parameters:
       - $ref: '#/components/parameters/db'
-      - name: ddoc
-        schema:
-          type: string
-        in: path
-        required: true
+      - $ref: '#/components/parameters/ddoc'
     get:
       responses:
         '200':
-          description: OK
+          description: Successfully returned design document.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Design-doc'
+        '403':
+          $ref: '#/components/responses/ddoc-forbidden'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
         - Public
+      summary: Get views of a design document | Unsupported
+      description: |-
+        Query a design document.
+
+        **This is no longer supported**
     put:
       responses:
         '200':
-          description: OK
+          description: Design document changes successfully
+        '403':
+          $ref: '#/components/responses/ddoc-forbidden'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
         - Public
+      summary: Update views of a design document | Unsupported
+      description: |-
+        Update the views of a design document.
+
+        **This is no longer supported**
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Design-doc'
     delete:
       responses:
         '200':
-          description: OK
+          description: Design document deleted successfully
+        '403':
+          $ref: '#/components/responses/ddoc-forbidden'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
         - Public
+      description: |-
+        Delete a design document.
+
+        **This is no longer supported**
+      summary: Delete a design document | Unsupported
     head:
       responses:
         '200':
-          description: OK
+          description: Design document exists
+        '403':
+          description: Forbidden access possibly due to not using the Admin API or the design document is a built-in Sync Gateway one.
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
         - Public
+      description: |-
+        Check if a design document can be queried.
+
+        **This is no longer supported**
+      summary: Check if view of design document exists | Unsupported
   '/{db}/_design/{ddoc}/_view/{view}':
     parameters:
       - $ref: '#/components/parameters/db'
-      - name: ddoc
-        schema:
-          type: string
-        in: path
-        required: true
+      - $ref: '#/components/parameters/ddoc'
       - name: view
         schema:
           type: string
         in: path
         required: true
+        description: The view to query on the design document.
     get:
       responses:
         '200':
-          description: OK
+          description: Returned view successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_rows:
+                    type: integer
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        key:
+                          type: object
+                        value:
+                          type: object
+                        doc:
+                          type: object
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        From:
+                          type: string
+                        Reason:
+                          type: string
+                required:
+                  - total_rows
+                  - rows
+        '403':
+          description: Forbidden
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
         - Public
+      parameters:
+        - name: inclusive_end
+          schema:
+            type: boolean
+          in: query
+          description: Indicates whether the specified end key should be included in the result.
+        - name: descending
+          schema:
+            type: boolean
+          in: query
+          description: Return documents in descending order.
+        - name: include_docs
+          in: query
+          schema:
+            type: boolean
+          description: Only works when using Couchbase Server 3.0 and earlier. Indicates whether to include the full content of the documents in the response.
+        - name: reduce
+          schema:
+            type: boolean
+          in: query
+          description: Whether to execute a reduce function on the response or not.
+        - name: group
+          schema:
+            type: boolean
+          in: query
+          description: Group the results using the reduce function to a group or single row.
+        - name: skip
+          schema:
+            type: integer
+          in: query
+          description: Skip the specified number of documents before starting to return results.
+        - name: limit
+          in: query
+          schema:
+            type: integer
+          description: Return only the specified number of documents
+        - name: group_level
+          schema:
+            type: integer
+          in: query
+          description: Specify the group level to be used.
+        - name: startkey_docid
+          schema:
+            type: string
+          in: query
+          description: Return documents starting with the specified document identifier.
+        - name: endkey_docid
+          schema:
+            type: string
+          in: query
+          description: Stop returning records when the specified document identifier is reached.
+        - name: stale
+          schema:
+            type: string
+            enum:
+              - ok
+              - update_after
+          in: query
+          description: 'Allow the results from a stale view to be used, without triggering a rebuild of all views within the encompassing design document.'
+        - $ref: '#/components/parameters/startkey'
+        - $ref: '#/components/parameters/endkey'
+        - name: key
+          schema:
+            type: string
+          in: query
+          description: Return only the document that matches the specified key.
+        - $ref: '#/components/parameters/keys'
+      description: |-
+        Query a view on a design document.
+
+        **This is no longer supported**
+      summary: Query a view on a design document
   '/{db}/_ensure_full_commit':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -204,29 +729,103 @@ paths:
         - Public
   '/{db}/_local/{docid}':
     parameters:
-      - $ref: '#/components/parameters/db'
-      - $ref: '#/components/parameters/docid'
+      - name: db
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The name of the database to run the operation against.
+      - schema:
+          type: string
+        name: docid
+        in: path
+        required: true
+        description: The name of the local document ID excluding the `_local/` prefix.
     get:
       responses:
         '200':
-          description: OK
+          description: Successfully found local document
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
         - Public
+      description: |-
+        This request retrieves a local document. 
+
+        Local document IDs begin with `_local/`. Local documents are not replicated or indexed, don’t support attachments, and don’t save revision histories. In practice they are almost only used by Couchbase Lite’s replicator, as a place to store replication checkpoint data.
+      summary: Get local document
     put:
       responses:
-        '200':
-          description: OK
+        '201':
+          description: Document successfully upserted. The document ID will be prefixed with `_local/`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/New-revision'
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '409':
+          description: A revision ID conflict would result from updating this document revision.
       tags:
         - Admin
         - Public
+      description: |-
+        This request creates or updates a local document. Updating a local document requires that the revision ID be put in the body under `_rev`.
+
+        Local document IDs are given a `_local/` prefix. Local documents are not replicated or indexed, don’t support attachments, and don’t save revision histories. In practice they are almost only used by the client’s replicator, as a place to store replication checkpoint data.
+      summary: Upsert a local document
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                _rev:
+                  type: string
+                  description: Revision to replace. Required if updating existing local document.
+        description: The body of the document
     delete:
       responses:
         '200':
-          description: OK
+          description: Successfully removed the local document.
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '409':
+          description: A revision ID conflict would result from deleting this document revision.
       tags:
         - Admin
         - Public
+      description: |-
+        This request deletes a local document.
+
+        Local document IDs begin with `_local/`. Local documents are not replicated or indexed, don’t support attachments, and don’t save revision histories. In practice they are almost only used by Couchbase Lite’s replicator, as a place to store replication checkpoint data.
+      parameters:
+        - schema:
+            type: string
+          in: query
+          name: rev
+          description: The revision ID of the revision to delete.
+          required: true
+    head:
+      summary: Check if local document exists
+      responses:
+        '200':
+          description: Document exists
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '404':
+          $ref: '#/components/responses/Not-found'
+      description: |-
+        This request checks if a local document exists. 
+
+        Local document IDs begin with `_local/`. Local documents are not replicated or indexed, don’t support attachments, and don’t save revision histories. In practice they are almost only used by Couchbase Lite’s replicator, as a place to store replication checkpoint data.
   '/{db}/{docid}':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -234,31 +833,140 @@ paths:
     get:
       responses:
         '200':
-          description: OK
+          description: Document found and returned successfully
+          headers:
+            Etag:
+              schema:
+                type: string
+              description: The document revision ID if only returning 1 revision.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  _id:
+                    type: string
+                    description: The ID of the document.
+                  _rev:
+                    type: string
+                    description: The revision ID of the document.
+              examples:
+                Example with no optional fields filled:
+                  value:
+                    FailedLoginAttempts: 5
+                    Friends:
+                      - Bob
+                    _id: AliceSettings
+                    _rev: 1-64d4a1f179db5c1848fe52967b47c166
+        '400':
+          $ref: '#/components/responses/invalid-doc-id'
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '501':
+          description: Not Implemented. It is likely this error was caused due to trying to use an enterprise-only feature on the community edition.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTP-Error'
       tags:
         - Admin
         - Public
-    head:
-      responses:
-        '200':
-          description: OK
-      tags:
-        - Admin
-        - Public
+      summary: Get a document
+      parameters:
+        - $ref: '#/components/parameters/rev'
+        - $ref: '#/components/parameters/open_revs'
+        - $ref: '#/components/parameters/show_exp'
+        - $ref: '#/components/parameters/revs_from'
+        - $ref: '#/components/parameters/atts_since'
+        - $ref: '#/components/parameters/revs_limit'
+        - $ref: '#/components/parameters/includeAttachments'
+        - $ref: '#/components/parameters/replicator2'
+      description: Retrieve a document from the database by it's doc ID.
     put:
       responses:
-        '200':
-          description: OK
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/New-revision'
+          headers:
+            Etag:
+              schema:
+                type: string
+              description: The revision of the upserted document. Not set if query option `new_edits` is true.
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '415':
+          $ref: '#/components/responses/Invalid-content-type'
       tags:
         - Admin
         - Public
+      description: |-
+        This will upsert a document meaning if it does not exist, then it will be created. Otherwise a new revision will be made for the existing document. A revision ID must be provided if targetting an existing document.
+
+        A document ID must be specified for this endpoint. To let Sync Gateway generate the ID, use the `POST /{db}/` endpoint. 
+
+        If a document does exist, then replace the document content with the request body. This means unspecified fields will be removed in the new revision.
+
+        The maximum size for a document is 20MB.
+      parameters:
+        - $ref: '#/components/parameters/roundtrip'
+        - $ref: '#/components/parameters/replicator2'
+        - $ref: '#/components/parameters/new_edits'
+        - $ref: '#/components/parameters/rev'
+        - $ref: '#/components/parameters/If-Match'
+      summary: Upsert a document
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Document'
     delete:
       responses:
         '200':
-          description: OK
+          $ref: '#/components/responses/New-revision'
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
         - Public
+      summary: Delete a document
+      description: |-
+        Delete a document from the database. A new revision is created so the database can track the deletion in synchronized copies.
+
+        A revision ID either in the header or on the query parameters is required.
+      parameters:
+        - $ref: '#/components/parameters/rev'
+        - $ref: '#/components/parameters/If-Match'
+    head:
+      responses:
+        '200':
+          description: Document exists
+        '400':
+          $ref: '#/components/responses/invalid-doc-id'
+        '404':
+          $ref: '#/components/responses/Not-found'
+      tags:
+        - Admin
+        - Public
+      summary: Check if a document exists
+      parameters:
+        - $ref: '#/components/parameters/rev'
+        - $ref: '#/components/parameters/open_revs'
+        - $ref: '#/components/parameters/show_exp'
+        - $ref: '#/components/parameters/revs_from'
+        - $ref: '#/components/parameters/atts_since'
+        - $ref: '#/components/parameters/revs_limit'
+        - $ref: '#/components/parameters/includeAttachments'
+        - $ref: '#/components/parameters/replicator2'
+      description: Return a status code based on if the document exists or not.
   '/{db}/{docid}/{attach}':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -942,13 +1650,109 @@ paths:
     get:
       responses:
         '200':
-          description: OK
+          description: Document found sucessfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  _sync:
+                    type: object
+                    properties:
+                      rev:
+                        type: string
+                        description: The current document revision ID.
+                      sequence:
+                        type: number
+                        description: The most recent sequence number of the document.
+                      recent_sequences:
+                        type: array
+                        description: The previous sequence numbers of the document.
+                        items:
+                          type: number
+                      history:
+                        type: object
+                        properties:
+                          revs:
+                            type: array
+                            description: The past revision IDs.
+                            items:
+                              type: string
+                          parents:
+                            type: array
+                            items:
+                              type: number
+                          channels:
+                            description: The past channel history. Can contain string arrays, strings, or be null depending on if and how the channels where set. 
+                            type: array
+                            items:
+                              type: array
+                              items:
+                                type: string
+                              nullable: true
+                      cas:
+                        type: string
+                        description: The document CAS (Concurrent Document Mutations) number used for document locking.
+                      value_crc32c:
+                        type: string
+                        description: The documents CRC32 number.
+                      channel_set:
+                        type: array
+                        description: The channels the document has been in.
+                        nullable: true
+                        items:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                              description: The name of the channel.
+                            start:
+                              type: string
+                              description: The sequence number that document was added to the channel.
+                            end:
+                              type: string
+                              description: The sequence number the document was removed from the channel. Omitted if not removed.
+                      channel_set_history:
+                        type: array
+                        nullable: true
+                        items:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            start:
+                              type: string
+                            end:
+                              type: string
+                      time_saved:
+                        type: string
+                        description: The time and date the document was most recently changed.
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      summary: Get a document with the corresponding metadata
+      description: |-
+        Returns the a documents latest revision with it's metadata.
+
+        Note: The direct use of this endpoint is unsupported. The sync metadata is maintained internally by Sync Gateway and its structure can change. It should not be used to drive business logic of applications since the response to the `/{db}/_raw/{id}` endpoint can change at any time.
+      parameters:
+        - $ref: '#/components/parameters/include_doc'
+        - schema:
+            type: boolean
+          in: query
+          name: redact
+          description: This redacts sensitive parts of the sync data. Cannot be used when `include_docs=true`
     head:
       responses:
         '200':
-          description: OK
+          description: Document exists
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
   '/{db}/_revtree/{docid}':
@@ -958,9 +1762,29 @@ paths:
     get:
       responses:
         '200':
-          description: OK
+          description: Found document
+          content:
+            application/json:
+              schema:
+                type: string
+              examples:
+                Example:
+                  value: 'digraph graphname{"1-d4d949b7feafc8c31215684baa45b6cd" -> "2-4f3f24143ea43d85a9a340ac016fdfc4"; }'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      summary: Revision tree structure in Graphviz Dot format | Unsupported
+      description: |-
+        This returns the Dot syntax of the revision tree for the document so that it can be rendered in to a PNG image using the [Graphviz CLI tool](http://www.graphviz.org/).
+
+        To use:
+        1. Install the Graphviz tool. Using Brew, this can be done by calling `brew install graphviz`.
+        2. Save the response text from this endpoint to a file (for example, `revtree.dot`).
+        3. Render the PNG by calling `dot -Tpng revtree.dot > revtree.png`.
+
+
+        **Note: This endpoint is useful for debugging purposes only. It is not officially supported.**
   '/{db}/_user/':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -972,8 +1796,6 @@ paths:
             application/json:
               schema:
                 type: array
-                minItems: 0
-                uniqueItems: true
                 description: List of all user names
                 items:
                   type: string
@@ -1543,9 +2365,74 @@ paths:
     post:
       responses:
         '200':
-          description: OK
+          description: 'Attempted documents purge. Check output to verify the documents that were purged. The document IDs will not be listed if they have not been purged (for example, due to no existing).'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  purged:
+                    type: object
+                    properties:
+                      doc_id:
+                        type: array
+                        items:
+                          type: string
+                required:
+                  - purged
+              examples:
+                Example:
+                  value:
+                    purged:
+                      doc_id:
+                        - '*'
+                Multiple purges example:
+                  value:
+                    purged:
+                      doc_id_1:
+                        - '*'
+                      doc_id_2:
+                        - '*'
+        '400':
+          description: 'Bad request. This could be due to the documents listed in the request body not having the `["*"]` value for each document ID.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTP-Error'
       tags:
         - Admin
+      description: |-
+        The purge command provides a way to remove a document from the bucket itself. The operation removes all the revisions (active and tombstones) for the specified document(s). A common usage of this endpoint is to remove tombstone documents that are no longer needed, thus recovering storage space and reducing data replicated to clients. Other clients are not notified when a revision has been purged; so in order to purge a revision from the system it must be done from all databases (on Couchbase Lite and Sync Gateway).
+
+        When convergence is enabled, this endpoint removes the document and its associated extended attributes.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                doc_id:
+                  type: array
+                  description: |-
+                    The document ID to purge. The array must only be 1 element which is `*`.
+
+                    All revisions will be permanently removed for that document.
+                  items:
+                    type: string
+                    enum:
+                      - '*'
+            examples:
+              Example:
+                value:
+                  doc_id:
+                    - '*'
+              Multiple purges example:
+                value:
+                  doc_id_1:
+                    - '*'
+                  doc_id_2:
+                    - '*'
+        description: Purge request body
   '/{db}/_flush':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -1698,6 +2585,7 @@ components:
       required: true
       schema:
         type: string
+      description: The document ID to run the operation against.
     user-name:
       name: name
       in: path
@@ -1712,6 +2600,50 @@ components:
       schema:
         type: string
       description: The name of the role.
+    include_docs:
+      name: include_docs
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Include the body associated with each document.
+    Include-channels:
+      name: channels
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Include the channels each document is part of that the calling user also has access too.
+    include-access:
+      name: access
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Include what user/roles that each document grants access too.
+    include-revs:
+      name: revs
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Include all the revisions for each document under the `_revisions` property.
+    include-seqs:
+      name: update_seq
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Include the document sequence number `update_seq` property for each document.
+    keys:
+      name: keys
+      in: query
+      required: false
+      schema:
+        type: array
+        items:
+          type: string
+      description: An array of document ID strings to filter by.
     provider:
       name: provider
       in: query
@@ -1754,22 +2686,132 @@ components:
       schema:
         type: string
       description: The Sync Gateway OpenID Connect callback URL.
+    rev:
+      name: rev
+      in: query
+      required: false
+      schema:
+        type: string
+      description: The document revision to target.
+    show_exp:
+      name: show_exp
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Whether to show the expiry property (`_exp`) in the response.
+    revs_from:
+      name: revs_from
+      in: query
+      required: false
+      schema:
+        type: array
+        items:
+          type: string
+      description: 'Trim the revision history to stop at the first revision in the provided list. If no match is found, the revisions will be trimmed to the `revs_limit`.'
+    atts_since:
+      name: atts_since
+      in: query
+      required: false
+      schema:
+        type: array
+        items:
+          type: string
+      description: Include attachments only since specified revisions. Excludes the attachments for the specified revisions. Only gets used if `attachments=true`.
+    revs_limit:
+      name: revs_limit
+      in: query
+      required: false
+      schema:
+        type: integer
+      description: Maximum amount of revisions to return for each document.
+    includeAttachments:
+      name: attachments
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Include attachment bodies in response.
+    replicator2:
+      name: replicator2
+      in: query
+      required: false
+      schema:
+        type: boolean
+      description: Returns the document with the required properties for replication. This is an enterprise-edition only feature.
+    roundtrip:
+      name: roundtrip
+      in: query
+      required: false
+      schema:
+        type: boolean
+      description: Block until document has been received by change cache
+    new_edits:
+      name: new_edits
+      in: query
+      required: false
+      schema:
+        type: boolean
+        default: 'true'
+      description: 'Setting this to false indicates that the request body is an already-existing revision that should be directly inserted into the database, instead of a modification to apply to the current document. This mode is used for replication.  This option must be used in conjunction with the `_revisions` property in the request body.'
+    If-Match:
+      name: If-Match
+      in: header
+      required: false
+      schema:
+        type: string
+      description: The revision ID to target.
+    include_doc:
+      name: include_doc
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Include the body associated with the document.
+    startkey:
+      name: startkey
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Return records starting with the specified key.
+    endkey:
+      name: endkey
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Stop returning records when this key is reached.
+    limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: number
+      description: This limits the number of result rows returned. Using a value of `0` has the same effect as the value `1`.
+    ddoc:
+      name: ddoc
+      in: path
+      required: true
+      schema:
+        type: string
+      description: The design document name.
+    open_revs:
+      name: open_revs
+      in: query
+      required: false
+      schema:
+        type: array
+        items:
+          type: string
+      description: 'Option to fetch specified revisions of the document. The value can be all to fetch all leaf revisions or an array of revision numbers (i.e. open_revs=["rev1", “rev2”]). Only leaf revision bodies that haven’t been pruned are guaranteed to be returned. If this option is specified the response will be in multipart format. Use the `Accept: application/json` request header to get the result as a JSON object.'
   responses:
     Not-found:
       description: Resource could not be found
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              error:
-                type: string
-              reason:
-                type: string
-                description: The resource that could not be found and reason it could not be found.
-            required:
-              - error
-              - reason
+            $ref: '#/components/schemas/HTTP-Error'
           examples:
             Database not found:
               value:
@@ -1780,16 +2822,7 @@ components:
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              error:
-                type: string
-              reason:
-                type: string
-                description: The error description.
-            required:
-              - error
-              - reason
+            $ref: '#/components/schemas/HTTP-Error'
     User:
       description: Properties associated with a user
       content:
@@ -1807,15 +2840,7 @@ components:
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              error:
-                type: string
-              reason:
-                type: string
-            required:
-              - error
-              - reason
+            $ref: '#/components/schemas/HTTP-Error'
     User-session-information:
       description: Properties associated with a user session
       content:
@@ -1839,23 +2864,13 @@ components:
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              error:
-                type: string
-              reason:
-                type: string
+            $ref: '#/components/schemas/HTTP-Error'
     OIDC-testing-internal-error:
       description: An error occurred.
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              error:
-                type: string
-              reason:
-                type: string
+            $ref: '#/components/schemas/HTTP-Error'
     OIDC-token:
       description: Properties expected back from an OpenID Connect provider after successful authentication
       content:
@@ -1869,6 +2884,71 @@ components:
           schema:
             type: string
           description: The location to the Sync Gateway OpenID Connect callback URL.
+    invalid-doc-id:
+      description: |-
+        Document ID is not in an allowed format therefore is invalid.
+
+        This could be because it is over 250 characters or is prefixed with an underscore ("_").
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HTTP-Error'
+    New-revision:
+      description: New revision created sucessfully
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/New-revision'
+    request-problem:
+      description: There was a problem with your request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HTTP-Error'
+    Invalid-content-type:
+      description: Invalid content type
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HTTP-Error'
+    all-docs:
+      description: Operation ran successfully
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              rows:
+                type: array
+                uniqueItems: true
+                items:
+                  type: object
+                  properties:
+                    key:
+                      type: string
+                    id:
+                      type: string
+                    value:
+                      type: object
+                      properties:
+                        rev:
+                          type: string
+              total_rows:
+                type: number
+              update_seq:
+                type: number
+            required:
+              - rows
+              - total_rows
+              - update_seq
+    changes-feed:
+      description: Successfully returned the changes feed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Changes-feed'
+    ddoc-forbidden:
+      description: Forbidden access possibly due to not using the Admin API or the design document is a built-in Sync Gateway one.
   schemas:
     User:
       description: Properties associated with a user
@@ -2024,6 +3104,135 @@ components:
         - tokenttl
         - identity-token-formats
         - authenticated
+    Document:
+      description: The configurable Sync Gateway properties of a document.
+      type: object
+      properties:
+        _id:
+          type: string
+          description: The ID of the document.
+        _rev:
+          type: string
+          description: The revision of the document.
+        _exp:
+          type: string
+          description: |-
+            Expiry time after which the document will be purged. The expiration time is set and managed on the Couchbase Server document. The value can be specified in two ways; in ISO-8601 format, for example the 6th of July 2022 at 17:00 in the BST timezone would be `2016-07-06T17:00:00+01:00`; it can also be specified as a numeric Couchbase Server expiry value. Couchbase Server expiries are specified as Unix time, and if the desired TTL is below 30 days then it can also represent an interval in seconds from the current time (for example, a value of 5 will remove the document 5 seconds after it is written to Couchbase Server). The document expiration time is returned in the response of `GET /{db}/{doc} ` when `show_exp=true` is included in the query.
+
+            As with the existing explicit purge mechanism, this applies only to the local database; it has nothing to do with replication. This expiration time is not propagated when the document is replicated. The purge of the document does not cause it to be deleted on any other database.
+        _deleted:
+          type: boolean
+          description: 'Whether the document is a tombstone or not. If true, it is a tombstone.'
+        _revisions:
+          type: object
+          properties:
+            start:
+              type: number
+              description: Prefix number for the latest revision.
+            ids:
+              type: array
+              description: 'Array of valid revision IDs, in reverse order (latest first).'
+              items:
+                type: string
+        _attachments:
+          type: object
+          properties:
+            attachment_name:
+              type: object
+              description: The name of the attachment.
+              properties:
+                content_type:
+                  type: string
+                  description: Content type of the attachment.
+                data:
+                  type: string
+                  description: The data in the attachment in base64.
+    New-revision:
+      title: New-revision
+      type: object
+      description: Properties returned when a new revision is created
+      properties:
+        id:
+          type: string
+          description: The ID of the document.
+        ok:
+          type: boolean
+          description: Wheather the request completed successfully.
+        rev:
+          type: string
+          description: The revision of the document.
+      required:
+        - id
+        - ok
+        - rev
+    Changes-feed:
+      description: Properties of a changes feed
+      type: object
+      properties:
+        results:
+          type: array
+          uniqueItems: true
+          items:
+            type: object
+            properties:
+              seq:
+                type: number
+                description: The change sequence number.
+              id:
+                type: string
+                description: The document ID the change happened on.
+              changes:
+                type: array
+                uniqueItems: true
+                description: List of document leafs with each leaf containing only a `rev` field.
+                items:
+                  type: object
+                  properties:
+                    rev:
+                      type: string
+                      description: The new revision that was caused by that change.
+        last_seq:
+          type: string
+          description: The last change sequence number.
+    Design-doc:
+      description: Properties of a design document
+      type: object
+      properties:
+        language:
+          type: string
+        views:
+          type: object
+          properties:
+            view_name:
+              type: object
+              properties:
+                map:
+                  type: string
+                reduce:
+                  type: string
+        options:
+          type: object
+          properties:
+            local_seq:
+              type: string
+            include_design:
+              type: string
+            raw:
+              type: string
+            index_xattr_on_deleted_docs:
+              type: string
+    HTTP-Error:
+      title: HTTP-Error
+      type: object
+      properties:
+        error:
+          type: string
+        reason:
+          type: string
+          description: The error description.
+      required:
+        - error
+        - reason
   requestBodies:
     User:
       content:
@@ -2043,3 +3252,9 @@ components:
           schema:
             $ref: '#/components/schemas/OIDC-login-page-handler'
       description: Properties passed from the OpenID Connect mock login page to the handler
+    Doc-body:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Document'
+      description: Properties of a document
