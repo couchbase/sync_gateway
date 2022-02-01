@@ -982,6 +982,10 @@ paths:
         '200':
           description: Found attachment successfully.
           headers:
+            Content-Length:
+              schema:
+                type: number
+                description: Length of the attachment in bytes
             Etag:
               schema:
                 type: string
@@ -999,17 +1003,28 @@ paths:
       description: |-
         This request retrieves a file attachment associated with the document. 
 
-        The raw data of the associated attachment is returned (just as if you were accessing a static file). The `Content-Type` response header is the same content type set when the document attachment was added to the database. The `Content-Disposition` response header will be set instead if the content type is vulnerable to a phishing attack, causing the browser to download the file instead of display it (unless overriden by by database config option `serve_insecure_attachment_types`).
+        The raw data of the associated attachment is returned (just as if you were accessing a static file). The `Content-Type` response header is the same content type set when the document attachment was added to the database. The `Content-Disposition` response header will be set if the content type is considered unsafe to display in a browser (unless overriden by by database config option `serve_insecure_attachment_types`) which will force the attachment to be downloaded.
 
         If the `meta` query parameter is set then the response will be in JSON with the additional metadata tags.
       parameters:
         - $ref: '#/components/parameters/rev'
-        - schema:
+        - name: content_encoding
+          schema:
+            type: boolean
+            default: 'true'
+          in: query
+          description: 'Set to false to disable the `Content-Encoding` response header.'
+        - name: Range
+          schema:
+            type: string
+          in: header
+          description: 'RFC-2616 bytes range header. For example, bytes=123-456.'
+        - name: meta
+          schema:
             type: boolean
             default: 'false'
           in: query
-          name: meta
-          description: Include the metadata of the attachment in the response body. Will cause `Content-Type=application/json` in the response header.
+          description: Return only the metadata of the attachment in the response body.
     put:
       responses:
         '201':
@@ -1034,11 +1049,11 @@ paths:
       description: |-
         This request adds or updates an attachment associated with the document. If the document does not exist, it will be created and the attachment will be added to it.
 
-        The maximum content size of an attachment is 20MB. The `Content-Type` header of the request should be what the content type of the attachment is otherwise this will default to `application/octet-stream`.
+        If the attachment already exists, the data of the existing attachment will be replaced in the new revision.
 
-        If the attachment already exists, the data of the existing attachment will be replaced in the new revision. The revisions are for tracking document changes, not attachment changes.
+        The maximum content size of an attachment is 20MB. The `Content-Type` header of the request specifies the content type of the attachment.
 
-        To remove an attachment from a document, simply update the `_attachments` dictionary of the document in the `PUT /{db}/{docid}` request.
+        To remove an attachment from a document, omit the attachment in the `_attachments` object of the document in the `PUT /{db}/{docid}` request.
       parameters:
         - name: Content-Type
           schema:
@@ -1050,12 +1065,12 @@ paths:
           schema:
             type: string
           in: query
-          description: The document revision to add/modify the attachment on. Required only when modifying an existing document. This falls back on the `If-Match` header if not set.
+          description: The existing document revision ID to modify. Required only when modifying an existing document.
         - name: If-Match
           schema:
             type: string
           in: header
-          description: Used as the `rev` query parameter if it is not set.
+          description: An alternative way of specifying the document revision ID.
       requestBody:
         content:
           Attachment content type:
@@ -1068,6 +1083,10 @@ paths:
         '200':
           description: The document exists and the attachment exists on the document.
           headers:
+            Content-Length:
+              schema:
+                type: number
+                description: Length of the attachment in bytes
             Etag:
               schema:
                 type: string
