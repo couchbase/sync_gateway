@@ -10,7 +10,6 @@ package db
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -775,7 +774,8 @@ func splitRevisionList(revisions Revisions) (int, []string) {
 
 // Standard CouchDB encoding of a revision list: digests without numeric generation prefixes go in
 // the "ids" property, and the first (largest) generation number in the "start" property.
-func encodeRevisions(ctx context.Context, revs []string) Revisions {
+// The docID parameter is informational only - and used when logging edge cases.
+func encodeRevisions(docID string, revs []string) Revisions {
 	ids := make([]string, len(revs))
 	var start int
 	for i, revid := range revs {
@@ -784,7 +784,7 @@ func encodeRevisions(ctx context.Context, revs []string) Revisions {
 		if i == 0 {
 			start = gen
 		} else if gen != start-i {
-			base.WarnfCtx(ctx, "Found gap in revision list. Expecting gen %v but got %v in %v", start-i, gen, revs)
+			base.Warnf("Found gap in revision list for doc %q. Expecting gen %v but got %v in %v", base.UD(docID), start-i, gen, revs)
 		}
 	}
 	return Revisions{RevisionsStart: start, RevisionsIds: ids}

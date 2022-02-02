@@ -334,7 +334,7 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 	if fromRevision.Delta != nil {
 		if fromRevision.Delta.ToRevID == toRevID {
 
-			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, fromRevision.Delta.ToChannels, fromRevision.Delta.ToDeleted, encodeRevisions(db.Ctx, fromRevision.Delta.RevisionHistory))
+			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, fromRevision.Delta.ToChannels, fromRevision.Delta.ToDeleted, encodeRevisions(docID, fromRevision.Delta.RevisionHistory))
 			if !isAuthorized {
 				return nil, &redactedBody, nil
 			}
@@ -683,7 +683,7 @@ func (db *Database) get1xRevFromDoc(doc *Document, revid string, listRevisions b
 		if getHistoryErr != nil {
 			return nil, removed, getHistoryErr
 		}
-		kvPairs = append(kvPairs, base.KVPair{Key: BodyRevisions, Val: encodeRevisions(db.Ctx, validatedHistory)})
+		kvPairs = append(kvPairs, base.KVPair{Key: BodyRevisions, Val: encodeRevisions(doc.ID, validatedHistory)})
 	}
 
 	bodyBytes, err = base.InjectJSONProperties(bodyBytes, kvPairs...)
@@ -1911,7 +1911,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			DocID:            docid,
 			RevID:            newRevID,
 			BodyBytes:        storedDocBytes,
-			History:          encodeRevisions(db.Ctx, history),
+			History:          encodeRevisions(docid, history),
 			Channels:         revChannels,
 			Attachments:      doc.Attachments,
 			Expiry:           doc.Expiry,

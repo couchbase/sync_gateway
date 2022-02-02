@@ -754,35 +754,34 @@ func BenchmarkEncodeRevisions(b *testing.B) {
 		},
 	}
 
-	ctx := base.TestCtx(b)
-
 	for _, test := range tests {
+		docID := b.Name() + "-" + test.name
 		b.Run(test.name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				_ = encodeRevisions(ctx, test.input)
+				_ = encodeRevisions(docID, test.input)
 			}
 		})
 	}
 }
 
 func TestEncodeRevisions(t *testing.T) {
-	encoded := encodeRevisions(base.TestCtx(t), []string{"5-huey", "4-dewey", "3-louie"})
+	encoded := encodeRevisions(t.Name(), []string{"5-huey", "4-dewey", "3-louie"})
 	assert.Equal(t, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "dewey", "louie"}}, encoded)
 }
 
 func TestEncodeRevisionsGap(t *testing.T) {
-	encoded := encodeRevisions(base.TestCtx(t), []string{"5-huey", "3-louie"})
+	encoded := encodeRevisions(t.Name(), []string{"5-huey", "3-louie"})
 	assert.Equal(t, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "louie"}}, encoded)
 }
 
 func TestEncodeRevisionsZero(t *testing.T) {
-	encoded := encodeRevisions(base.TestCtx(t), []string{"1-foo", "0-bar"})
+	encoded := encodeRevisions(t.Name(), []string{"1-foo", "0-bar"})
 	assert.Equal(t, Revisions{RevisionsStart: 1, RevisionsIds: []string{"foo", ""}}, encoded)
 }
 
 func TestTrimEncodedRevisionsToAncestor(t *testing.T) {
 
-	encoded := encodeRevisions(base.TestCtx(t), []string{"5-huey", "4-dewey", "3-louie", "2-screwy"})
+	encoded := encodeRevisions(t.Name(), []string{"5-huey", "4-dewey", "3-louie", "2-screwy"})
 
 	result, trimmedRevs := trimEncodedRevisionsToAncestor(encoded, []string{"3-walter", "17-gretchen", "1-fooey"}, 1000)
 	goassert.True(t, result)
@@ -801,7 +800,7 @@ func TestTrimEncodedRevisionsToAncestor(t *testing.T) {
 	goassert.DeepEquals(t, trimmedRevs, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey"}})
 
 	// Check maxLength with no ancestors:
-	encoded = encodeRevisions(base.TestCtx(t), []string{"5-huey", "4-dewey", "3-louie", "2-screwy"})
+	encoded = encodeRevisions(t.Name(), []string{"5-huey", "4-dewey", "3-louie", "2-screwy"})
 
 	result, trimmedRevs = trimEncodedRevisionsToAncestor(encoded, nil, 6)
 	goassert.True(t, result)

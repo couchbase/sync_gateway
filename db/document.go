@@ -982,7 +982,7 @@ func (doc *Document) updateChannels(ctx context.Context, newChannels base.Set) (
 // Determine whether the specified revision was a channel removal, based on doc.Channels.  If so, construct the standard document body for a
 // removal notification (_removed=true)
 // Set of channels returned from IsChannelRemoval are "Active" channels and NOT "Removed".
-func (doc *Document) IsChannelRemoval(ctx context.Context, revID string) (bodyBytes []byte, history Revisions, channels base.Set, isRemoval bool, isDelete bool, err error) {
+func (doc *Document) IsChannelRemoval(revID string) (bodyBytes []byte, history Revisions, channels base.Set, isRemoval bool, isDelete bool, err error) {
 
 	removedChannels := make(base.Set)
 
@@ -1022,7 +1022,7 @@ func (doc *Document) IsChannelRemoval(ctx context.Context, revID string) (bodyBy
 	if len(revHistory) == 0 {
 		revHistory = []string{revID}
 	}
-	history = encodeRevisions(ctx, revHistory)
+	history = encodeRevisions(doc.ID, revHistory)
 
 	return bodyBytes, history, activeChannels, true, isDelete, nil
 }
