@@ -1597,11 +1597,27 @@ paths:
       - $ref: '#/components/parameters/db'
     get:
       responses:
-        '200':
-          description: OK
+        '101':
+          description: Upgraded to a web socket connection
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '426':
+          description: Cannot upgrade connection to a web socket connection
       tags:
         - Admin
         - Public
+      summary: Handle incoming BLIP Sync web socket request
+      description: This handles incoming BLIP Sync requests from either Couchbase Lite or another Sync Gateway node. The connection has to be upgradable to a websocket connection or else the request will fail.
+      parameters:
+        - name: client
+          schema:
+            type: string
+            default: cbl2
+            enum:
+              - cbl2
+              - sgr2
+          in: query
+          description: This is the client type that is making the BLIP Sync request. Used to control client-type specific replication behaviour.
   '/{targetdb}/':
     parameters:
       - name: targetdb
@@ -2027,91 +2043,220 @@ paths:
     get:
       responses:
         '200':
-          description: OK
+          description: |-
+            Retrieved replication configurations successfully.
+            The `assigned_node` fields will end with `(local)` or `(non-local)` depending on if the replication is running on this Sync Gateway node.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/All-replications'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      summary: Get all replication configurations
+      description: |-
+        This will retrieve all database replication definitions.
     post:
       responses:
         '200':
-          description: OK
+          $ref: '#/components/responses/Replicator-updated'
+        '201':
+          $ref: '#/components/responses/Replicator-created'
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      summary: Upsert a replication
+      description: |-
+        Create or update a replication in the database.
+
+        If an existing replication is being updated, that replication must be stopped first.
+      requestBody:
+        $ref: '#/components/requestBodies/Replication-upsert'
     head:
       responses:
         '200':
           description: OK
+        '404':
+          description: Not Found
       tags:
         - Admin
   '/{db}/_replication/{replicationid}':
     parameters:
       - $ref: '#/components/parameters/db'
-      - name: replicationid
-        schema:
-          type: string
-        in: path
-        required: true
+      - $ref: '#/components/parameters/replicationid'
     get:
       responses:
         '200':
-          description: OK
+          description: Successfully retrieved the replication configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Retrieved-replication'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      summary: Get a replication configuration
+      description: Retrieve a replication configuration from the database.
     put:
       responses:
         '200':
-          description: OK
+          $ref: '#/components/responses/Replicator-updated'
+        '201':
+          $ref: '#/components/responses/Replicator-created'
+        '400':
+          description: Bad Request. Likely to be the replication ID in the URI and request body do not match or the existing replication to update has not been stopped.
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      summary: Upsert a replication
+      description: |-
+        Create or update a replication in the database.
+
+        The replication ID does **not** need to be set in the request body.
+
+        If an existing replication is being updated, that replication must be stopped first and, if the `replication_id` is specified in the request body, it must match the replication ID in the URI.
+      requestBody:
+        $ref: '#/components/requestBodies/Replication-upsert'
     delete:
       responses:
         '200':
-          description: OK
+          description: Replication successfully deleted
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      summary: Stop and delete a replication
+      description: This will delete a replication causing it to stop and no longer exist.
     head:
       responses:
         '200':
-          description: OK
+          description: Replication exists
+        '404':
+          description: Replication does not exist
       tags:
         - Admin
+      summary: Check if a replication exists
+      description: Check if a replication exists.
   /_replicationStatus/:
     get:
       responses:
         '200':
-          description: OK
+          description: Successfully retrieved all replication statuses.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Replication-status'
+        '400':
+          $ref: '#/components/responses/request-problem'
       tags:
         - Admin
+      summary: Get all replication statuses
+      description: Retrieve all the replication statuses in the Sync Gateway node.
+      parameters:
+        - $ref: '#/components/parameters/replication-active-only'
+        - $ref: '#/components/parameters/replication-local-only'
+        - $ref: '#/components/parameters/replication-include-error'
+        - $ref: '#/components/parameters/replication-include-config'
     head:
       responses:
         '200':
           description: OK
+        '400':
+          description: Bad Request
       tags:
         - Admin
   '/_replicationStatus/{replicationid}':
     parameters:
-      - name: replicationid
-        schema:
-          type: string
-        in: path
-        required: true
+      - $ref: '#/components/parameters/replicationid'
     get:
       responses:
         '200':
-          description: OK
+          description: Successfully retrieved replication status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Replication-status'
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '404':
+          description: Could not find replication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTP-Error'
       tags:
         - Admin
+      summary: Get replication status
+      description: Retrieve the status of a replication.
+      parameters:
+        - $ref: '#/components/parameters/replication-active-only'
+        - $ref: '#/components/parameters/replication-local-only'
+        - $ref: '#/components/parameters/replication-include-error'
+        - $ref: '#/components/parameters/replication-include-config'
     put:
       responses:
         '200':
-          description: OK
+          description: Successfully changed target state of replicator
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Replication-status'
+        '400':
+          description: Bad Request. Likely the action specified was invalid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTP-Error'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      description: |-
+        Change the replication state to target. 
+
+        This is done through the action query parameter, which has 3 valid values:
+        * `start` - starts a stopped replication
+        * `stop` - stops an active replication
+        * `reset` - resets the replication checkpoint to 0. For bidirectional replication, both push and pull checkpoints are reset to 0. The replication must be stopped to use this.
+      summary: Modify a replication status
+      parameters:
+        - name: action
+          schema:
+            type: string
+            enum:
+              - start
+              - stop
+              - reset
+          in: query
+          description: The target state to put the replicator into.
+          required: true
     head:
       responses:
         '200':
-          description: OK
+          description: Replication exists
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      summary: Check if replication exists
+      parameters:
+        - $ref: '#/components/parameters/replication-active-only'
+        - $ref: '#/components/parameters/replication-local-only'
+        - $ref: '#/components/parameters/replication-include-error'
+        - $ref: '#/components/parameters/replication-include-config'
+      description: Check if a replication exists
   /_logging:
     get:
       responses:
@@ -2805,6 +2950,45 @@ components:
         items:
           type: string
       description: 'Option to fetch specified revisions of the document. The value can be all to fetch all leaf revisions or an array of revision numbers (i.e. open_revs=["rev1", “rev2”]). Only leaf revision bodies that haven’t been pruned are guaranteed to be returned. If this option is specified the response will be in multipart format. Use the `Accept: application/json` request header to get the result as a JSON object.'
+    replicationid:
+      name: replicationid
+      in: path
+      required: true
+      schema:
+        type: string
+      description: What replication to target based on it's replication ID.
+    replication-active-only:
+      name: activeOnly
+      in: query
+      required: false
+      schema:
+        type: boolean
+        default: 'false'
+      description: Only return replications that are actively running (`state=running`).
+    replication-local-only:
+      name: localOnly
+      in: query
+      required: false
+      schema:
+        type: boolean
+        default: 'false'
+      description: Only return replications that were started on the current Sync Gateway node.
+    replication-include-error:
+      name: includeError
+      in: query
+      required: false
+      schema:
+        type: boolean
+        default: 'true'
+      description: Include replications that have stopped due to an error (`state=error`).
+    replication-include-config:
+      name: includeConfig
+      in: query
+      required: false
+      schema:
+        type: boolean
+        default: 'false'
+      description: Include the replication configuration with each replicator status in the response.
   responses:
     Not-found:
       description: Resource could not be found
@@ -2949,6 +3133,10 @@ components:
             $ref: '#/components/schemas/Changes-feed'
     ddoc-forbidden:
       description: Forbidden access possibly due to not using the Admin API or the design document is a built-in Sync Gateway one.
+    Replicator-created:
+      description: Created new replication successfully
+    Replicator-updated:
+      description: Updated existing configuration successfully
   schemas:
     User:
       description: Properties associated with a user
@@ -3233,6 +3421,469 @@ components:
       required:
         - error
         - reason
+    Retrieved-replication:
+      title: Replication
+      type: object
+      description: Properties of a replication
+      properties:
+        replication_id:
+          type: string
+          description: |-
+            This is the ID of the replication.
+
+            When creating a new replication using a POST request, this will be set to a random UUID if not explicitly set. 
+
+            When the replication ID is specified in the URL, this must be set to the same replication ID if specifying it at all.
+        remote:
+          type: string
+          description: |-
+            This is the endpoint of the database for the remote Sync Gateway that is the subject of this replication's `push`, `pull`, or `pushAndPull` action.
+
+            Typically this would include the URI, port, and database name. For example, `http://localhost:4985/db`.
+
+            How this remote is used depends on the `direction` of the replication:
+            * `pull` - this replicator _pulls_ changes from the `remote`
+            * `push` - this replicator _pushes_ changes to this `remote`
+            * `pushAndPull` - this replicator _pushes_ changes to this `remote`, while also pulling recieving changes
+        username:
+          type: string
+          deprecated: true
+          description: |-
+            **This has been deprecated in favour of `remote_username`.**
+
+            This is the username to use to authenticate with the remote.
+
+            This can only be used for a pull replication.
+        password:
+          type: string
+          deprecated: true
+          description: |-
+            **This has been deprecated in favour of `remote_password`.**
+
+            This is the password to use to authenticate with the remote.
+
+            This password will be redacted in the replication config.
+
+            This can only be used for a pull replication.
+        remote_username:
+          type: string
+          description: |-
+            The username to use to authenticate with the remote.
+
+            This can only be used for a pull replication.
+        remote_password:
+          type: string
+          description: |-
+            The password to use to authenticate with the remote.
+
+            This password will be redacted in the replication config.
+
+            This can only be used for a pull replication.
+        direction:
+          type: string
+          enum:
+            - push
+            - pull
+            - pushAndPull
+          description: |-
+            This specifies which direction the replication will be replicating with the `remote` replicator.
+
+            The directions are:
+            * `pull` - changes are pulled from the remote database
+            * `push` - changes are pushed to the remote database
+            * `pushAndPull` - changes are both push-to and pulled-from the remote database
+
+            Replications created prior to Sync Gateway 2.8 derive their `direction` from the source/target URL of the replication.
+        conflict_resolution_type:
+          type: string
+          default: default
+          enum:
+            - default
+            - remoteWins
+            - localWins
+            - custom
+          description: |-
+            This defines what conflict resolution policy Sync Gateway should use to apply when resolving conflicting revisions.
+
+            Changing this is an enterprise-edition only feature.
+
+            **Behavior**
+            * *default* - In priority order, this will cause
+              - Deletes to always win (the delete with the logest revision history wins if both revisions are deletes)
+              - The revision with the longest revision history to win. This means the the revision with the most changes and therefore the highest revision ID will win.
+            * *localWins* - This will result in local revisions always being the winner in any conflict.
+            * *remoteWins* - This will result in remote revisions always being the winner in any conflict.
+            * *custom* - This will result in conflicts going through your own custom conflict resolver. You must provide this logic as a Javascript function in the `custom_conflict_resolver` parameter. This is an enterprise-edition only feature.
+
+
+            Note: replications created prior to Sync Gateway 2.8 will default to `default`.
+        custom_conflict_resolver:
+          type: string
+          default: none
+          description: "This specifies the Javascript function to use to resolve conflicts between conflicting revisions.\n \nThis **must** be used when `conflict_resolution_type=custom`. This property will be ignored when `conflict_resolution_type` is not `custom`.\n\nThe Javascript function to provide this property should be in backticks (like the sync function). The function takes 1 parameter which is a struct that represents the conflict. This struct has 2 properties:\n* `LocalDocument` - The local document. This contains the document ID under the `_id` key.\n* `RemoteDocument` - The remote document\nThe function should return the new documents body. This can be the winning revision (for example, `return conflict.LocalDocument`), a new body, or `nil` to resolve as a delete.\n\nExample:\n```\n\"custom_conflict_resolver\":\\`\n\tfunction(conflict) {\n\t\tconsole.log(\"Doc ID: \"+conflict.LocalDocument._id);\n\t\tconsole.log(\"Full remote doc: \"+JSON.stringify(conflict.RemoteDocument));\n\t\treturn conflict.RemoteDocument;\n\t}\n\\`\n```\n\nUsing complex `custom_conflict_resolver` functions can noticeably degrade performance. Use a built-in resolver whenever possible.\n\nThis is an enterprise-edition only feature.\n"
+        purge_on_removal:
+          type: boolean
+          default: false
+          description: |-
+            Specifies whether to purge a document if the remote user loses access to all of the channels on the document when attempting to pull it from the remote.
+
+            If false, documents will not be replicated and not be purged when the user loses access.
+        enable_delta_sync:
+          type: boolean
+          default: false
+          description: |-
+            This will turn on delta- sync for the replication. This works in conjunction with the database level setting `delta_sync.enabled`
+
+            If set to true, delta-sync will be used as long as both databases involved in the replication have delta-sync enabled. If a database does not have delta-sync enabled, then the replication will run without delta-sync.
+
+            Replications created prior to Sync Gateway 2.8 must have delta-sync disabled.
+
+            Enabling this is an enterprise-edition only feature.
+        max_backoff_time:
+          type: integer
+          default: 5
+          description: |-
+            Specifies the maximum time-period (in minutes) that Sync Gateway will attempt to reconnect to a lost or unreachable remote.
+
+            When a disconnection happens, Sync Gateway will do an exponential backoff up to this specified value. When this value is met, it will attempt to reconnect indefnitely every `max_backoff_time` minutes.
+
+            If this is set to 0, Sync Gateway will do the normal exponential backoff after the disconnect happens but then attempting 10 minutes and stop the replication.
+
+            Note: this defaults to 5 minutes for replications created prior to Sync Gateway 2.8.
+        initial_state:
+          type: string
+          default: running
+          enum:
+            - running
+            - stopped
+          description: |-
+            This is what state to start the replication in when creating a new replication.
+
+            This allows you to control if the replication starts in a `stopped` start or `running` state.
+
+            Replications prior to Sync Gateway 2.8 will run in the default state `running`.
+        continuous:
+          type: boolean
+          default: false
+          description: |-
+            If true, changes will be immediately synced whewn they happen. This is known as a continuous replication.
+
+            If false, all changes will be synced until they have been processed. The replication will then cease and not process any future changes (unless started again by the user). This is known as a one-shot replication.
+        filter:
+          type: string
+          enum:
+            - sync_gateway/bychannel
+          description: |-
+            This defines whether to filter documents by their channels or not.
+
+            If set to `sync_gateway/bychannel` then a **pull** replication will be limited to a specific set of channels specified by the `query_params.channels` property. 
+
+            This only can be used with pull replications.
+        query_params:
+          type: array
+          description: |-
+            This is a set of key/value pairs used in the query string of the replication.
+
+            If `filters=sync_gateway/bychannel` then this can be used to set the channels to filter by in a pull replication. To do this, set the `channels` key to a string array of the channels to filter by. For example:
+            ```
+            "filter":"sync_gateway/bychannel",
+            "query_params": {
+              "channels":["chanUser1"]
+            },
+            ```
+          items:
+            type: string
+        cancel:
+          type: boolean
+          description: Unused field
+        adhoc:
+          type: boolean
+          default: false
+          description: |-
+            Set to true to run the replication as an adhoc replication instead of a persistent one. 
+
+            This means that the replication will only last the period of the replication until the status is changed to `stopped` and then it will be removed automatically. It will also be removed if Sync Gateway restarts or if removed due to user action.
+        batch_size:
+          type: integer
+          default: 200
+          description: The amount of changes to be sent in one batch of replications. Changing this is an enterprise-edition only feature.
+        run_as:
+          type: string
+          description: This is used if you want to specify a user to run the replication as. This means that the replication will only be able to replicate what the user  access to what the user has access to.
+        assigned_node:
+          type: string
+          description: The unique ID of the node assigned to the replication.
+        target_state:
+          type: string
+          enum:
+            - running
+            - stopped
+            - resetting
+            - error
+            - starting
+            - reconnecting
+          description: This is the state that the replicator is in or that trying to transition in to.
+    Replication:
+      title: User configurable replication properties
+      type: object
+      description: Properties of a replication
+      properties:
+        replication_id:
+          type: string
+          description: |-
+            This is the ID of the replication.
+
+            When creating a new replication using a POST request, this will be set to a random UUID if not explicitly set. 
+
+            When the replication ID is specified in the URL, this must be set to the same replication ID if specifying it at all.
+        remote:
+          type: string
+          description: |-
+            This is the endpoint of the database for the remote Sync Gateway that is the subject of this replication's `push`, `pull`, or `pushAndPull` action.
+
+            Typically this would include the URI, port, and database name. For example, `http://localhost:4985/db`.
+
+            How this remote is used depends on the `direction` of the replication:
+            * `pull` - this replicator _pulls_ changes from the `remote`
+            * `push` - this replicator _pushes_ changes to this `remote`
+            * `pushAndPull` - this replicator _pushes_ changes to this `remote`, while also pulling recieving changes
+        username:
+          type: string
+          deprecated: true
+          description: |-
+            **This has been deprecated in favour of `remote_username`.**
+
+            This is the username to use to authenticate with the remote.
+
+            This can only be used for a pull replication.
+        password:
+          type: string
+          deprecated: true
+          description: |-
+            **This has been deprecated in favour of `remote_password`.**
+
+            This is the password to use to authenticate with the remote.
+
+            This password will be redacted in the replication config.
+
+            This can only be used for a pull replication.
+        remote_username:
+          type: string
+          description: |-
+            The username to use to authenticate with the remote.
+
+            This can only be used for a pull replication.
+        remote_password:
+          type: string
+          description: |-
+            The password to use to authenticate with the remote.
+
+            This password will be redacted in the replication config.
+
+            This can only be used for a pull replication.
+        direction:
+          type: string
+          enum:
+            - push
+            - pull
+            - pushAndPull
+          description: |-
+            This specifies which direction the replication will be replicating with the `remote` replicator.
+
+            The directions are:
+            * `pull` - changes are pulled from the remote database
+            * `push` - changes are pushed to the remote database
+            * `pushAndPull` - changes are both push-to and pulled-from the remote database
+
+            Replications created prior to Sync Gateway 2.8 derive their `direction` from the source/target URL of the replication.
+        conflict_resolution_type:
+          type: string
+          default: default
+          enum:
+            - default
+            - remoteWins
+            - localWins
+            - custom
+          description: |-
+            This defines what conflict resolution policy Sync Gateway should use to apply when resolving conflicting revisions.
+
+            Changing this is an enterprise-edition only feature.
+
+            **Behavior**
+            * *default* - In priority order, this will cause
+              - Deletes to always win (the delete with the logest revision history wins if both revisions are deletes)
+              - The revision with the longest revision history to win. This means the the revision with the most changes and therefore the highest revision ID will win.
+            * *localWins* - This will result in local revisions always being the winner in any conflict.
+            * *remoteWins* - This will result in remote revisions always being the winner in any conflict.
+            * *custom* - This will result in conflicts going through your own custom conflict resolver. You must provide this logic as a Javascript function in the `custom_conflict_resolver` parameter. This is an enterprise-edition only feature.
+
+
+            Note: replications created prior to Sync Gateway 2.8 will default to `default`.
+        custom_conflict_resolver:
+          type: string
+          default: none
+          description: "This specifies the Javascript function to use to resolve conflicts between conflicting revisions.\n \nThis **must** be used when `conflict_resolution_type=custom`. This property will be ignored when `conflict_resolution_type` is not `custom`.\n\nThe Javascript function to provide this property should be in backticks (like the sync function). The function takes 1 parameter which is a struct that represents the conflict. This struct has 2 properties:\n* `LocalDocument` - The local document. This contains the document ID under the `_id` key.\n* `RemoteDocument` - The remote document\nThe function should return the new documents body. This can be the winning revision (for example, `return conflict.LocalDocument`), a new body, or `nil` to resolve as a delete.\n\nExample:\n```\n\"custom_conflict_resolver\":\\`\n\tfunction(conflict) {\n\t\tconsole.log(\"Doc ID: \"+conflict.LocalDocument._id);\n\t\tconsole.log(\"Full remote doc: \"+JSON.stringify(conflict.RemoteDocument));\n\t\treturn conflict.RemoteDocument;\n\t}\n\\`\n```\n\nUsing complex `custom_conflict_resolver` functions can noticeably degrade performance. Use a built-in resolver whenever possible.\n\nThis is an enterprise-edition only feature.\n"
+        purge_on_removal:
+          type: boolean
+          default: false
+          description: |-
+            Specifies whether to purge a document if the remote user loses access to all of the channels on the document when attempting to pull it from the remote.
+
+            If false, documents will not be replicated and not be purged when the user loses access.
+        enable_delta_sync:
+          type: boolean
+          default: false
+          description: |-
+            This will turn on delta- sync for the replication. This works in conjunction with the database level setting `delta_sync.enabled`
+
+            If set to true, delta-sync will be used as long as both databases involved in the replication have delta-sync enabled. If a database does not have delta-sync enabled, then the replication will run without delta-sync.
+
+            Replications created prior to Sync Gateway 2.8 must have delta-sync disabled.
+
+            Enabling this is an enterprise-edition only feature.
+        max_backoff_time:
+          type: integer
+          default: 5
+          description: |-
+            Specifies the maximum time-period (in minutes) that Sync Gateway will attempt to reconnect to a lost or unreachable remote.
+
+            When a disconnection happens, Sync Gateway will do an exponential backoff up to this specified value. When this value is met, it will attempt to reconnect indefnitely every `max_backoff_time` minutes.
+
+            If this is set to 0, Sync Gateway will do the normal exponential backoff after the disconnect happens but then attempting 10 minutes and stop the replication.
+
+            Note: this defaults to 5 minutes for replications created prior to Sync Gateway 2.8.
+        initial_state:
+          type: string
+          default: running
+          enum:
+            - running
+            - stopped
+          description: |-
+            This is what state to start the replication in when creating a new replication.
+
+            This allows you to control if the replication starts in a `stopped` start or `running` state.
+
+            Replications prior to Sync Gateway 2.8 will run in the default state `running`.
+        continuous:
+          type: boolean
+          default: false
+          description: |-
+            If true, changes will be immediately synced whewn they happen. This is known as a continuous replication.
+
+            If false, all changes will be synced until they have been processed. The replication will then cease and not process any future changes (unless started again by the user). This is known as a one-shot replication.
+        filter:
+          type: string
+          enum:
+            - sync_gateway/bychannel
+          description: |-
+            This defines whether to filter documents by their channels or not.
+
+            If set to `sync_gateway/bychannel` then a **pull** replication will be limited to a specific set of channels specified by the `query_params.channels` property. 
+
+            This only can be used with pull replications.
+        query_params:
+          type: array
+          description: |-
+            This is a set of key/value pairs used in the query string of the replication.
+
+            If `filters=sync_gateway/bychannel` then this can be used to set the channels to filter by in a pull replication. To do this, set the `channels` key to a string array of the channels to filter by. For example:
+            ```
+            "filter":"sync_gateway/bychannel",
+            "query_params": {
+              "channels":["chanUser1"]
+            },
+            ```
+          items:
+            type: string
+        cancel:
+          type: boolean
+          description: Unused field
+        adhoc:
+          type: boolean
+          default: false
+          description: |-
+            Set to true to run the replication as an adhoc replication instead of a persistent one. 
+
+            This means that the replication will only last the period of the replication until the status is changed to `stopped` and then it will be removed automatically. It will also be removed if Sync Gateway restarts or if removed due to user action.
+        batch_size:
+          type: integer
+          default: 200
+          description: The amount of changes to be sent in one batch of replications. Changing this is an enterprise-edition only feature.
+        run_as:
+          type: string
+          description: This is used if you want to specify a user to run the replication as. This means that the replication will only be able to replicate what the user  access to what the user has access to.
+      required:
+        - direction
+    All-replications:
+      title: All-replications
+      type: object
+      description: Contains all the replication IDs with their corresponding replication configurations
+      properties:
+        replication_id:
+          $ref: '#/components/schemas/Retrieved-replication'
+    Replication-status:
+      title: Replication-status
+      type: object
+      properties:
+        replication_id:
+          type: string
+          description: The ID of the replication.
+        config:
+          $ref: '#/components/schemas/Replication'
+        status:
+          type: string
+          description: The status of the replication.
+          enum:
+            - stopped
+            - running
+            - reconnecting
+            - resetting
+            - error
+            - starting
+        error_message:
+          type: string
+          description: The error message of the replication if an error has occurred.
+        docs_read:
+          type: integer
+          description: The number of documents that have been read (fetched) from the source database.
+        docs_checked_pull:
+          type: integer
+        docs_purged:
+          type: integer
+          description: The number of documents that have been purged.
+        rejected_by_local:
+          type: integer
+          description: The number of documents that were received by the local but did not get replicated due to getting rejected by the sync function on the local.
+        last_seq_pull:
+          type: string
+          description: The last changes sequence number that was pulled from the remote.
+        deltas_recv:
+          type: integer
+          description: The number of deltas that have been receieved from the remote.
+        deltas_requested:
+          type: integer
+        docs_written:
+          type: integer
+          description: The number of documents that have been wrote (pushed) to the target database.
+        docs_checked_push:
+          type: integer
+        docs_write_failures:
+          type: integer
+          description: The number of documents that have failed to be wrote (pushed) to the target database. There will be no attempt to try to push these docs again.
+        docs_write_conflicts:
+          type: integer
+          description: The number of documents that had a conflict.
+        rejected_by_remote:
+          type: integer
+          description: The number of documents that were received by the remote but did not get replicated due to getting rejected by the sync function on the remote.
+        last_seq_push:
+          type: string
+          description: The last changes sequence number that was pushed to the remote.
+        deltas_sent:
+          type: integer
+          description: 'The number of deltas that have been sent to the remote. '
+      required:
+        - replication_id
   requestBodies:
     User:
       content:
@@ -3258,3 +3909,9 @@ components:
           schema:
             $ref: '#/components/schemas/Document'
       description: Properties of a document
+    Replication-upsert:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Replication'
+      description: If the `replication_id` matches an existing replication then the existing configuration will be updated. Only the specified fields in the request will be used to update the existing configuration. Unspecified fields will remain untouched.
