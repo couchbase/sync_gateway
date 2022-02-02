@@ -1018,7 +1018,8 @@ paths:
           schema:
             type: string
           in: header
-          description: 'RFC-2616 bytes range header. For example, bytes=123-456.'
+          description: 'RFC-2616 bytes range header.'
+          example: 'bytes=123-456'
         - name: meta
           schema:
             type: boolean
