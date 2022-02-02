@@ -985,7 +985,7 @@ paths:
             Content-Length:
               schema:
                 type: number
-                description: Length of the attachment in bytes
+              description: Length of the attachment in bytes
             Etag:
               schema:
                 type: string
