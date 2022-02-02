@@ -976,27 +976,131 @@ paths:
           type: string
         in: path
         required: true
+        description: 'The attachment name. This value must be URL encoded. For example, if the attachment name is `blob_/avatar`, the path component passed to the URL should be `blob_%2Favatar` (tested with [URLEncoder](https://www.urlencoder.org/)).'
     get:
       responses:
         '200':
-          description: OK
+          description: Found attachment successfully.
+          headers:
+            Content-Length:
+              schema:
+                type: number
+              description: Length of the attachment in bytes
+            Etag:
+              schema:
+                type: string
+              description: 'The attachment digest. Does not get set when request `meta=true`. '
+        '206':
+          description: Partial attachment content returned
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '416':
+          description: Requested range exceeds content length
       tags:
         - Admin
         - Public
+      summary: Get an attachment from a document
+      description: |-
+        This request retrieves a file attachment associated with the document. 
+
+        The raw data of the associated attachment is returned (just as if you were accessing a static file). The `Content-Type` response header is the same content type set when the document attachment was added to the database. The `Content-Disposition` response header will be set if the content type is considered unsafe to display in a browser (unless overriden by by database config option `serve_insecure_attachment_types`) which will force the attachment to be downloaded.
+
+        If the `meta` query parameter is set then the response will be in JSON with the additional metadata tags.
+      parameters:
+        - $ref: '#/components/parameters/rev'
+        - name: content_encoding
+          schema:
+            type: boolean
+            default: 'true'
+          in: query
+          description: 'Set to false to disable the `Content-Encoding` response header.'
+        - name: Range
+          schema:
+            type: string
+          in: header
+          description: 'RFC-2616 bytes range header.'
+          example: 'bytes=123-456'
+        - name: meta
+          schema:
+            type: boolean
+            default: 'false'
+          in: query
+          description: Return only the metadata of the attachment in the response body.
     put:
       responses:
-        '200':
-          description: OK
+        '201':
+          description: Attachment added to new or existing document successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/New-revision'
+          headers:
+            Etag:
+              schema:
+                type: string
+              description: The ID of the new revision.
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '409':
+          $ref: '#/components/responses/Conflict'
       tags:
         - Admin
         - Public
+      summary: Create or update an attachment on a document
+      description: |-
+        This request adds or updates an attachment associated with the document. If the document does not exist, it will be created and the attachment will be added to it.
+
+        If the attachment already exists, the data of the existing attachment will be replaced in the new revision.
+
+        The maximum content size of an attachment is 20MB. The `Content-Type` header of the request specifies the content type of the attachment.
+
+        To remove an attachment from a document, omit the attachment in the `_attachments` object of the document in the `PUT /{db}/{docid}` request.
+      parameters:
+        - name: Content-Type
+          schema:
+            type: string
+            default: application/octet-stream
+          in: header
+          description: The content type of the attachment.
+        - name: rev
+          schema:
+            type: string
+          in: query
+          description: The existing document revision ID to modify. Required only when modifying an existing document.
+        - name: If-Match
+          schema:
+            type: string
+          in: header
+          description: An alternative way of specifying the document revision ID.
+      requestBody:
+        content:
+          Attachment content type:
+            schema:
+              description: The content to store in the body
+              type: string
+        description: The attachment data
     head:
       responses:
         '200':
-          description: OK
+          description: The document exists and the attachment exists on the document.
+          headers:
+            Content-Length:
+              schema:
+                type: number
+                description: Length of the attachment in bytes
+            Etag:
+              schema:
+                type: string
+              description: The attachment digest.
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
         - Public
+      summary: Check if attachment exists
+      description: This request check if the attachment exists on the specified document.
+      parameters:
+        - $ref: '#/components/parameters/rev'
   '/{db}/_session':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -1395,8 +1499,7 @@ paths:
         - Admin
         - Public
       summary: OpenID Connect mock provider
-      description: |-
-        Mock an OpenID Connect provider response for testing purposes. This returns a response that is the same structure as what Sync Gateway expects from an OIDC provider after initiating OIDC authentication.
+      description: Mock an OpenID Connect provider response for testing purposes. This returns a response that is the same structure as what Sync Gateway expects from an OIDC provider after initiating OIDC authentication.
   '/{db}/_oidc_testing/authorize':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -1416,8 +1519,7 @@ paths:
         - Admin
         - Public
       summary: OpenID Connect mock login page
-      description: |-
-        Show a mock OpenID Connect login page for the client to log in to.
+      description: Show a mock OpenID Connect login page for the client to log in to.
       parameters:
         - $ref: '#/components/parameters/oidc-scope'
     post:
@@ -1436,8 +1538,7 @@ paths:
         - Admin
         - Public
       summary: OpenID Connect mock login page
-      description: |-
-        Show a mock OpenID Connect login page for the client to log in to.
+      description: Show a mock OpenID Connect login page for the client to log in to.
       parameters:
         - $ref: '#/components/parameters/oidc-scope'
   '/{db}/_oidc_testing/token':
@@ -1457,8 +1558,7 @@ paths:
         - Admin
         - Public
       summary: OpenID Connect mock token
-      description: |-
-        Return a mock OpenID Connect token for the OIDC authentication flow.
+      description: Return a mock OpenID Connect token for the OIDC authentication flow.
       requestBody:
         content:
           application/json:
@@ -1476,7 +1576,6 @@ paths:
                   description: '**`grant_type=refresh_token` only**: The OpenID Connect refresh token.'
               required:
                 - grant_type
-        description: ''
   '/{db}/_oidc_testing/certs':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -1531,8 +1630,7 @@ paths:
         - Admin
         - Public
       summary: OpenID Connect public certificates for signing keys
-      description: |-
-        Return a mock OpenID Connect public key to be used as signing keys.
+      description: Return a mock OpenID Connect public key to be used as signing keys.
   '/{db}/_oidc_testing/authenticate':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -1570,8 +1668,7 @@ paths:
           schema:
             type: string
           required: true
-      description: |-
-        Used to handle the login page displayed for the `GET /{db}/_oidc_testing/authorize` endpoint.
+      description: 'Used to handle the login page displayed for the `GET /{db}/_oidc_testing/authorize` endpoint.'
       summary: OpenID Connect mock login page handler
     post:
       responses:
@@ -1584,8 +1681,7 @@ paths:
       tags:
         - Admin
         - Public
-      description: |-
-        Used to handle the login page displayed for the `GET /{db}/_oidc_testing/authorize` endpoint.
+      description: 'Used to handle the login page displayed for the `GET /{db}/_oidc_testing/authorize` endpoint.'
       parameters:
         - $ref: '#/components/parameters/oidc-redirect_uri'
         - $ref: '#/components/parameters/oidc-scope'
@@ -1699,7 +1795,7 @@ paths:
                             items:
                               type: number
                           channels:
-                            description: The past channel history. Can contain string arrays, strings, or be null depending on if and how the channels where set. 
+                            description: 'The past channel history. Can contain string arrays, strings, or be null depending on if and how the channels where set.'
                             type: array
                             items:
                               type: array
@@ -3042,7 +3138,7 @@ components:
     OIDC-connection:
       description: Unable to connect and validate with the OpenID Connect provider requested
     OIDC-test-provider-disabled:
-      description: The OpenID Connect unsupported config option `oidc_test_provider` is not enabled. To use this endpoint, this option must be enabled.
+      description: 'The OpenID Connect unsupported config option `oidc_test_provider` is not enabled. To use this endpoint, this option must be enabled.'
     OIDC-invalid-scope:
       description: A validation error occurred with the scope.
       content:
