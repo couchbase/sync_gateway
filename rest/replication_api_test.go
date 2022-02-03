@@ -1184,7 +1184,6 @@ func TestReplicationAPIWithAuthCredentials(t *testing.T) {
 	err = json.Unmarshal(response.BodyBytes(), &configResponse)
 	require.NoError(t, err, "Error un-marshalling replication response")
 	replication2Config.Remote = "http://bob:xxxxx@remote:4984/db"
-	// checkReplicationConfig(&replication2Config, &configResponse)
 
 	// Check whether auth are credentials redacted from all replications response
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/", "")
