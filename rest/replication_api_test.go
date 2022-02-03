@@ -533,7 +533,7 @@ func TestPushReplicationAPI(t *testing.T) {
 	// Create push replication, verify running
 	replicationID := t.Name()
 	rt1.createReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
-	rt1.assertReplicationState(replicationID, db.ReplicationStateRunning)
+	rt1.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
 	// wait for document originally written to rt1 to arrive at rt2
 	changesResults := rt2.RequireWaitChanges(1, "0")
@@ -576,7 +576,7 @@ func TestPullReplicationAPI(t *testing.T) {
 	// Create pull replication, verify running
 	replicationID := t.Name()
 	rt1.createReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
-	rt1.assertReplicationState(replicationID, db.ReplicationStateRunning)
+	rt1.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
 	// wait for document originally written to rt2 to arrive at rt1
 	changesResults := rt1.RequireWaitChanges(1, "0")
@@ -618,7 +618,7 @@ func TestReplicationStatusActions(t *testing.T) {
 	// Create pull replication, verify running
 	replicationID := t.Name()
 	rt1.createReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
-	rt1.assertReplicationState(replicationID, db.ReplicationStateRunning)
+	rt1.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
 	// Start goroutine to continuously poll for status of replication on rt1 to detect race conditions
 	doneChan := make(chan struct{})
@@ -729,8 +729,8 @@ func TestReplicationRebalancePull(t *testing.T) {
 	activeRT.createReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePull, []string{"ABC"}, true, db.ConflictResolverDefault)
 	activeRT.createReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePull, []string{"DEF"}, true, db.ConflictResolverDefault)
 	activeRT.waitForAssignedReplications(2)
-	activeRT.assertReplicationState("rep_ABC", db.ReplicationStateRunning)
-	activeRT.assertReplicationState("rep_DEF", db.ReplicationStateRunning)
+	activeRT.waitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
+	activeRT.waitForReplicationStatus("rep_DEF", db.ReplicationStateRunning)
 
 	// wait for documents originally written to remoteRT to arrive at activeRT
 	changesResults := activeRT.RequireWaitChanges(2, "0")
@@ -817,9 +817,9 @@ func TestReplicationRebalancePush(t *testing.T) {
 
 	// Create push replications, verify running
 	activeRT.createReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true, db.ConflictResolverDefault)
-	activeRT.assertReplicationState("rep_ABC", db.ReplicationStateRunning)
+	activeRT.waitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
 	activeRT.createReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePush, []string{"DEF"}, true, db.ConflictResolverDefault)
-	activeRT.assertReplicationState("rep_DEF", db.ReplicationStateRunning)
+	activeRT.waitForReplicationStatus("rep_DEF", db.ReplicationStateRunning)
 
 	// wait for documents to be pushed to remote
 	changesResults := remoteRT.RequireWaitChanges(2, "0")
@@ -902,7 +902,7 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 	// Create oneshot replication, verify running
 	replicationID := t.Name()
 	activeRT.createReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, false, db.ConflictResolverDefault)
-	activeRT.assertReplicationState(replicationID, db.ReplicationStateRunning)
+	activeRT.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
 	// wait for documents originally written to rt2 to arrive at rt1
 	changesResults := activeRT.RequireWaitChanges(docCount, "0")
@@ -950,12 +950,11 @@ func TestReplicationConcurrentPush(t *testing.T) {
 
 	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()
-
 	// Create push replications, verify running
 	activeRT.createReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true, db.ConflictResolverDefault)
-	activeRT.assertReplicationState("rep_ABC", db.ReplicationStateRunning)
+	activeRT.waitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
 	activeRT.createReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePush, []string{"DEF"}, true, db.ConflictResolverDefault)
-	activeRT.assertReplicationState("rep_DEF", db.ReplicationStateRunning)
+	activeRT.waitForReplicationStatus("rep_DEF", db.ReplicationStateRunning)
 
 	// Create docs on active
 	docAllChannels1 := t.Name() + "All1"
@@ -1076,16 +1075,6 @@ func addActiveRT(t *testing.T, testBucket *base.TestBucket) (activeRT *RestTeste
 	return activeRT
 }
 
-// assertReplicationState retrieves _replicationStatus via the REST API for the specified replicationID, and
-// validates the expected state
-func (rt *RestTester) assertReplicationState(replicationID string, expectedState string) {
-	resp := rt.SendAdminRequest(http.MethodGet, "/db/_replicationStatus/"+replicationID, "")
-	assertStatus(rt.tb, resp, http.StatusOK)
-	var status db.ReplicationStatus
-	require.NoError(rt.tb, json.Unmarshal(resp.Body.Bytes(), &status))
-	assert.Equalf(rt.tb, expectedState, status.Status, "status: %v", status)
-}
-
 // createReplication creates a replication via the REST API with the specified ID, remoteURL, direction and channel filter
 func (rt *RestTester) createReplication(replicationID string, remoteURLString string, direction db.ActiveReplicatorDirection, channels []string, continuous bool, conflictResolver db.ConflictResolverType) {
 	replicationConfig := &db.ReplicationConfig{
@@ -1195,7 +1184,6 @@ func TestReplicationAPIWithAuthCredentials(t *testing.T) {
 	err = json.Unmarshal(response.BodyBytes(), &configResponse)
 	require.NoError(t, err, "Error un-marshalling replication response")
 	replication2Config.Remote = "http://bob:xxxxx@remote:4984/db"
-	//checkReplicationConfig(&replication2Config, &configResponse)
 
 	// Check whether auth are credentials redacted from all replications response
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/", "")
@@ -1686,8 +1674,8 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 	activeRT.createReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePull, []string{"ABC"}, true, db.ConflictResolverDefault)
 	activeRT.createReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePull, []string{"DEF"}, true, db.ConflictResolverDefault)
 	activeRT.waitForAssignedReplications(2)
-	activeRT.assertReplicationState("rep_ABC", db.ReplicationStateRunning)
-	activeRT.assertReplicationState("rep_DEF", db.ReplicationStateRunning)
+	activeRT.waitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
+	activeRT.waitForReplicationStatus("rep_DEF", db.ReplicationStateRunning)
 
 	// wait for documents originally written to remoteRT to arrive at activeRT
 	changesResults := activeRT.RequireWaitChanges(2, "0")
