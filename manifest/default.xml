@@ -16,6 +16,9 @@ licenses/APL2.txt.
   <remote fetch="https://github.com/couchbaselabs/" name="couchbaselabs"/>
   <remote fetch="https://github.com/couchbasedeps/" name="couchbasedeps"/>
 
+  <!-- FIXME: Temporary for CI until couchbasedeps is updated -->
+  <remote fetch="https://github.com/nhooyr/" name="nhooyr"/>
+
   <remote fetch="https://github.com/tleyden/" name="tleyden"/>
 
   <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private" />
@@ -105,7 +108,7 @@ licenses/APL2.txt.
 
   <project name="goutils" path="godeps/src/github.com/couchbase/goutils" remote="couchbase" revision="f98adca8eb365032cab838ef4d99453931afa112"/>
 
-  <project name="go-blip" path="godeps/src/github.com/couchbase/go-blip" remote="couchbase" revision="3c4edeb16c47cdb3bcd1eeab3b3c5c87832d4923"/>
+  <project name="go-blip" path="godeps/src/github.com/couchbase/go-blip" remote="couchbase" revision="nhooyr-websocket"/>
 
   <project name="errors" path="godeps/src/github.com/pkg/errors" remote="couchbasedeps" revision="f15c970de5b76fac0b59abb32d62c17cc7bed265"/>
 
@@ -155,5 +158,7 @@ licenses/APL2.txt.
   <project name="protobuf-go" path="godeps/src/google.golang.org/protobuf" remote="couchbasedeps" revision="1ecb1f411c1f2ce65a2db6ea4a8ae927182d342e"/>
 
   <project name="mergo" path="godeps/src/github.com/imdario/mergo" remote="couchbasedeps" revision="b968a17bce53738e37f30fd352eb2f7f69ed58a7"/>
+
+  <project name="websocket" path="nhooyr.io/websocket" remote="nhooyr" revision="8dee580a7f74cf1713400307b4eee514b927870f"/>
 
 </manifest>

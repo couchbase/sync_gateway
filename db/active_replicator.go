@@ -12,7 +12,6 @@ package db
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -21,7 +20,6 @@ import (
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
-	"golang.org/x/net/websocket"
 )
 
 // ActiveReplicator is a wrapper to encapsulate separate push and pull active replicators.
@@ -263,23 +261,18 @@ func blipSync(target url.URL, blipContext *blip.Context, insecureSkipVerify bool
 		target.User = nil
 	}
 
-	config, err := websocket.NewConfig(target.String()+"/_blipsync?"+BLIPSyncClientTypeQueryParam+"="+string(BLIPClientTypeSGR2), "http://localhost")
-	if err != nil {
-		return nil, err
-	}
-
-	if insecureSkipVerify {
-		if config.TlsConfig == nil {
-			config.TlsConfig = new(tls.Config)
-		}
-		config.TlsConfig.InsecureSkipVerify = true
+	config := blip.DialOptions{
+		URL:        target.String() + "/_blipsync?" + BLIPSyncClientTypeQueryParam + "=" + string(BLIPClientTypeSGR2),
+		HTTPClient: client,
 	}
 
 	if basicAuthCreds != nil {
-		config.Header.Add("Authorization", "Basic "+base64UserInfo(basicAuthCreds))
+		config.HTTPHeader = http.Header{
+			"Authorization": []string{"Basic " + base64UserInfo(basicAuthCreds)},
+		}
 	}
 
-	return blipContext.DialConfig(config)
+	return blipContext.DialConfig(&config)
 }
 
 // base64UserInfo returns the base64 encoded version of the given UserInfo.
