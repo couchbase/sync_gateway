@@ -4658,7 +4658,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 			// Create replication, wait for initial revision to be replicated
 			replicationID := test.name
 			activeRT.createReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePushAndPull, nil, true, db.ConflictResolverLocalWins)
-			activeRT.assertReplicationState(replicationID, db.ReplicationStateRunning)
+			activeRT.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
 			assert.NoError(t, remoteRT.waitForRev(docID, newRevID))
 
@@ -4871,7 +4871,7 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 
 			replicationID := "replication"
 			activeRT.createReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePushAndPull, nil, true, test.conflictResolution)
-			activeRT.assertReplicationState(replicationID, db.ReplicationStateRunning)
+			activeRT.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
 			assert.NoError(t, remoteRT.waitForRev(docID, newRevID))
 
