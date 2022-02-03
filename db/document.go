@@ -10,6 +10,7 @@ package db
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
@@ -592,14 +593,14 @@ func (s *SyncData) IsSGWrite(cas uint64, rawBody []byte, rawUserXattr []byte) (i
 
 // doc.IsSGWrite - used during on-demand import.  Doesn't invoke SyncData.IsSGWrite so that we
 // can complete the inexpensive cas check before the (potential) doc marshalling.
-func (doc *Document) IsSGWrite(rawBody []byte) (isSGWrite bool, crc32Match bool, bodyChanged bool) {
+func (doc *Document) IsSGWrite(ctx context.Context, rawBody []byte) (isSGWrite bool, crc32Match bool, bodyChanged bool) {
 
 	// If the raw body is available, use SyncData.IsSGWrite
 	if rawBody != nil && len(rawBody) > 0 {
 
 		isSgWriteFeed, crc32MatchFeed, bodyChangedFeed := doc.SyncData.IsSGWrite(doc.Cas, rawBody, doc.rawUserXattr)
 		if !isSgWriteFeed {
-			base.Debugf(base.KeyCRUD, "Doc %s is not an SG write, based on cas and body hash. cas:%x syncCas:%q", base.UD(doc.ID), doc.Cas, doc.SyncData.Cas)
+			base.DebugfCtx(ctx, base.KeyCRUD, "Doc %s is not an SG write, based on cas and body hash. cas:%x syncCas:%q", base.UD(doc.ID), doc.Cas, doc.SyncData.Cas)
 		}
 
 		return isSgWriteFeed, crc32MatchFeed, bodyChangedFeed
@@ -613,7 +614,7 @@ func (doc *Document) IsSGWrite(rawBody []byte) (isSGWrite bool, crc32Match bool,
 	// Since raw body isn't available, marshal from the document to perform body hash comparison
 	bodyBytes, err := doc.BodyBytes()
 	if err != nil {
-		base.Warnf("Unable to marshal doc body during SG write check for doc %s. Error: %v", base.UD(doc.ID), err)
+		base.WarnfCtx(ctx, "Unable to marshal doc body during SG write check for doc %s. Error: %v", base.UD(doc.ID), err)
 		return false, false, false
 	}
 	// The bodyBytes would be replaced with "{}" if the document is a "Delete" and it can’t be used for
@@ -626,12 +627,12 @@ func (doc *Document) IsSGWrite(rawBody []byte) (isSGWrite bool, crc32Match bool,
 
 	// If the current body crc32c matches the one in doc.SyncData, this was an SG write (i.e. has already been imported)
 	if currentBodyCrc32c != doc.SyncData.Crc32c {
-		base.Debugf(base.KeyCRUD, "Doc %s is not an SG write, based on cas and body hash. cas:%x syncCas:%q", base.UD(doc.ID), doc.Cas, doc.SyncData.Cas)
+		base.DebugfCtx(ctx, base.KeyCRUD, "Doc %s is not an SG write, based on cas and body hash. cas:%x syncCas:%q", base.UD(doc.ID), doc.Cas, doc.SyncData.Cas)
 		return false, false, true
 	}
 
 	if HasUserXattrChanged(doc.rawUserXattr, doc.Crc32cUserXattr) {
-		base.Debugf(base.KeyCRUD, "Doc %s is not an SG write, based on user xattr hash", base.UD(doc.ID))
+		base.DebugfCtx(ctx, base.KeyCRUD, "Doc %s is not an SG write, based on user xattr hash", base.UD(doc.ID))
 		return false, false, false
 	}
 
@@ -694,13 +695,13 @@ func (doc *Document) getNonWinningRevisionBody(revid string, loader RevLoaderFun
 }
 
 // Fetches the body of a revision as JSON, or nil if it's not available.
-func (doc *Document) getRevisionBodyJSON(revid string, loader RevLoaderFunc) []byte {
+func (doc *Document) getRevisionBodyJSON(ctx context.Context, revid string, loader RevLoaderFunc) []byte {
 	var bodyJSON []byte
 	if revid == doc.CurrentRev {
 		var marshalErr error
 		bodyJSON, marshalErr = doc.BodyBytes()
 		if marshalErr != nil {
-			base.Warnf("Marshal error when retrieving active current revision body: %v", marshalErr)
+			base.WarnfCtx(ctx, "Marshal error when retrieving active current revision body: %v", marshalErr)
 		}
 	} else {
 		bodyJSON, _ = doc.History.getRevisionBody(revid, loader)
@@ -850,7 +851,7 @@ func (doc *Document) UpdateExpiry(expiry uint32) {
 	}
 }
 
-//////// CHANNELS & ACCESS:
+// ////// CHANNELS & ACCESS:
 
 func (doc *Document) updateChannelHistory(channelName string, seq uint64, addition bool) {
 	// Check if we already have an entry for this channel
@@ -942,7 +943,7 @@ func (doc *Document) addToChannelSetHistory(channelName string, historyEntry Cha
 
 // Updates the Channels property of a document object with current & past channels.
 // Returns the set of channels that have changed (document joined or left in this revision)
-func (doc *Document) updateChannels(newChannels base.Set) (changedChannels base.Set, err error) {
+func (doc *Document) updateChannels(ctx context.Context, newChannels base.Set) (changedChannels base.Set, err error) {
 	var changed []string
 	oldChannels := doc.Channels
 	if oldChannels == nil {
@@ -972,7 +973,7 @@ func (doc *Document) updateChannels(newChannels base.Set) (changedChannels base.
 		}
 	}
 	if changed != nil {
-		base.Infof(base.KeyCRUD, "\tDoc %q / %q in channels %q", base.UD(doc.ID), doc.CurrentRev, base.UD(newChannels))
+		base.InfofCtx(ctx, base.KeyCRUD, "\tDoc %q / %q in channels %q", base.UD(doc.ID), doc.CurrentRev, base.UD(newChannels))
 		changedChannels, err = channels.SetFromArray(changed, channels.KeepStar)
 	}
 	return
@@ -1021,7 +1022,7 @@ func (doc *Document) IsChannelRemoval(revID string) (bodyBytes []byte, history R
 	if len(revHistory) == 0 {
 		revHistory = []string{revID}
 	}
-	history = encodeRevisions(revHistory)
+	history = encodeRevisions(doc.ID, revHistory)
 
 	return bodyBytes, history, activeChannels, true, isDelete, nil
 }
@@ -1058,7 +1059,7 @@ func (accessMap *UserAccessMap) updateAccess(doc *Document, newAccess channels.A
 	return changedUsers
 }
 
-//////// MARSHALING ////////
+// ////// MARSHALING ////////
 
 type documentRoot struct {
 	SyncData *SyncData `json:"_sync"`

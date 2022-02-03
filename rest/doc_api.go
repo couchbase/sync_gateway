@@ -96,7 +96,7 @@ func (h *handler) handleGetDoc() error {
 
 		if openRevs == "all" {
 			// open_revs=all
-			doc, err := h.db.GetDocument(docid, db.DocUnmarshalSync)
+			doc, err := h.db.GetDocument(h.db.Ctx, docid, db.DocUnmarshalSync)
 			if err != nil {
 				return err
 			}
@@ -117,7 +117,7 @@ func (h *handler) handleGetDoc() error {
 				for _, revid := range revids {
 					revBody, err := h.db.Get1xRevBodyWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 					if err != nil {
-						revBody = db.Body{"missing": revid} //TODO: More specific error
+						revBody = db.Body{"missing": revid} // TODO: More specific error
 					}
 					_ = WriteRevisionAsPart(h.rq.Context(), h.db.DatabaseContext.DbStats.CBLReplicationPull(), revBody, err != nil, false, writer)
 					h.db.DbStats.Database().NumDocReadsRest.Add(1)
@@ -133,7 +133,7 @@ func (h *handler) handleGetDoc() error {
 			for _, revid := range revids {
 				revBody, err := h.db.Get1xRevBodyWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 				if err != nil {
-					revBody = db.Body{"missing": revid} //TODO: More specific error
+					revBody = db.Body{"missing": revid} // TODO: More specific error
 				} else {
 					revBody = db.Body{"ok": revBody}
 				}
@@ -324,7 +324,7 @@ func (h *handler) handlePutAttachment() error {
 	attachment["data"] = attachmentData
 	attachment["content_type"] = attachmentContentType
 
-	//attach it
+	// attach it
 	attachments[attachmentName] = attachment
 	body[db.BodyAttachments] = attachments
 
@@ -513,7 +513,7 @@ func (h *handler) handleDeleteDoc() error {
 	return err
 }
 
-//////// LOCAL DOCS:
+// ////// LOCAL DOCS:
 
 // HTTP handler for a GET of a _local document
 func (h *handler) handleGetLocalDoc() error {

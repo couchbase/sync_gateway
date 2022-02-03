@@ -222,20 +222,20 @@ func (opm OIDCProviderMap) getProviderWhenSingle() (*OIDCProvider, bool) {
 	return nil, false
 }
 
-func (opm OIDCProviderMap) GetProviderForIssuer(issuer string, audiences []string) *OIDCProvider {
-	base.Debugf(base.KeyAuth, "GetProviderForIssuer with issuer: %v, audiences: %+v", base.UD(issuer), base.UD(audiences))
+func (opm OIDCProviderMap) GetProviderForIssuer(ctx context.Context, issuer string, audiences []string) *OIDCProvider {
+	base.DebugfCtx(ctx, base.KeyAuth, "GetProviderForIssuer with issuer: %v, audiences: %+v", base.UD(issuer), base.UD(audiences))
 	for _, provider := range opm {
 		if provider.Issuer == issuer && provider.ClientID != "" {
 			// Iterate over the audiences looking for a match
 			for _, aud := range audiences {
 				if provider.ClientID == aud {
-					base.Debugf(base.KeyAuth, "Provider matches, returning")
+					base.DebugfCtx(ctx, base.KeyAuth, "Provider matches, returning")
 					return provider
 				}
 			}
 		}
 	}
-	base.Debugf(base.KeyAuth, "No provider match found")
+	base.DebugfCtx(ctx, base.KeyAuth, "No provider match found")
 	return nil
 }
 
@@ -247,7 +247,7 @@ func (opm OIDCProviderMap) Stop() {
 }
 
 // GetClient initializes the client on first successful request.
-func (op *OIDCProvider) GetClient(buildCallbackURLFunc OIDCCallbackURLFunc) (*OIDCClient, error) {
+func (op *OIDCProvider) GetClient(ctx context.Context, buildCallbackURLFunc OIDCCallbackURLFunc) (*OIDCClient, error) {
 	// If the callback URL isn't defined for the provider, uses buildCallbackURLFunc to construct (based on current request)
 
 	if op.clientInit.IsTrue() {
@@ -269,7 +269,7 @@ func (op *OIDCProvider) GetClient(buildCallbackURLFunc OIDCCallbackURLFunc) (*OI
 			op.CallbackURL = &callbackURL
 		}
 	}
-	if err := op.initOIDCClient(); err != nil {
+	if err := op.initOIDCClient(ctx); err != nil {
 		return nil, err
 	}
 	op.clientInit.Set(true)
@@ -278,7 +278,7 @@ func (op *OIDCProvider) GetClient(buildCallbackURLFunc OIDCCallbackURLFunc) (*OI
 
 // To support multiple providers referencing the same issuer, the user prefix used to build the SG usernames for
 // a provider is based on the issuer
-func (op *OIDCProvider) InitUserPrefix() error {
+func (op *OIDCProvider) InitUserPrefix(ctx context.Context) error {
 
 	// If the user prefix has been explicitly defined, skip calculation
 	if op.UserPrefix != "" || op.UsernameClaim != "" {
@@ -287,7 +287,7 @@ func (op *OIDCProvider) InitUserPrefix() error {
 
 	issuerURL, err := url.ParseRequestURI(op.Issuer)
 	if err != nil {
-		base.Warnf("Unable to parse issuer URI when initializing user prefix - using provider name")
+		base.WarnfCtx(ctx, "Unable to parse issuer URI when initializing user prefix - using provider name")
 		op.UserPrefix = op.Name
 		return nil
 	}
@@ -303,7 +303,7 @@ func (op *OIDCProvider) InitUserPrefix() error {
 
 // initOIDCClient initializes the OpenID Connect client with the specified configurations by performing
 // an initial provider metadata discovery and initiates the discovery sync in the background.
-func (op *OIDCProvider) initOIDCClient() error {
+func (op *OIDCProvider) initOIDCClient(ctx context.Context) error {
 	if op == nil {
 		return fmt.Errorf(ErrMsgNilProvider)
 	}
@@ -328,11 +328,11 @@ func (op *OIDCProvider) initOIDCClient() error {
 	}
 
 	// Initialize the prefix for users created for this provider
-	if err := op.InitUserPrefix(); err != nil {
+	if err := op.InitUserPrefix(ctx); err != nil {
 		return err
 	}
 
-	metadata, verifier, err := op.discoverConfig()
+	metadata, verifier, err := op.discoverConfig(ctx)
 	if err != nil {
 		return pkgerrors.Wrap(err, ErrMsgUnableToDiscoverConfig)
 	}
@@ -347,8 +347,8 @@ func (op *OIDCProvider) initOIDCClient() error {
 	op.metadata = metadata
 
 	discoveryURL := op.getDiscoveryEndpoint()
-	if err := op.startDiscoverySync(discoveryURL); err != nil {
-		base.Errorf("failed to start OpenID Connect discovery sync: %v", err)
+	if err := op.startDiscoverySync(ctx, discoveryURL); err != nil {
+		base.ErrorfCtx(ctx, "failed to start OpenID Connect discovery sync: %v", err)
 	}
 
 	return nil
@@ -383,17 +383,17 @@ func GetStandardDiscoveryEndpoint(issuer string) string {
 }
 
 // discoverConfig initiates the initial metadata provider discovery while initializing the OpenID Connect client.
-func (op *OIDCProvider) discoverConfig() (metadata ProviderMetadata, verifier *oidc.IDTokenVerifier, err error) {
+func (op *OIDCProvider) discoverConfig(ctx context.Context) (metadata ProviderMetadata, verifier *oidc.IDTokenVerifier, err error) {
 	discoveryURL := op.getDiscoveryEndpoint()
 	if !op.isStandardDiscovery() {
-		base.Infof(base.KeyAuth, "Fetching provider config from explicitly defined discovery endpoint: %s", base.UD(discoveryURL))
-		metadata, _, _, err = op.fetchCustomProviderConfig(discoveryURL)
+		base.InfofCtx(ctx, base.KeyAuth, "Fetching provider config from explicitly defined discovery endpoint: %s", base.UD(discoveryURL))
+		metadata, _, _, err = op.fetchCustomProviderConfig(ctx, discoveryURL)
 		if err != nil {
 			return ProviderMetadata{}, nil, err
 		}
 		verifier = op.generateVerifier(&metadata, GetOIDCClientContext(op.InsecureSkipVerify))
 	} else {
-		metadata, verifier, err = op.standardDiscovery(discoveryURL)
+		metadata, verifier, err = op.standardDiscovery(ctx, discoveryURL)
 	}
 	return metadata, verifier, err
 }
@@ -401,8 +401,8 @@ func (op *OIDCProvider) discoverConfig() (metadata ProviderMetadata, verifier *o
 // standardDiscovery uses the standard OIDC discovery endpoint (issuer + /.well-known/openid-configuration) to
 // look up the OIDC provider configuration and returns provider metadata and ID token verifier. Provided discoveryURL
 // must not be empty.
-func (op *OIDCProvider) standardDiscovery(discoveryURL string) (metadata ProviderMetadata, verifier *oidc.IDTokenVerifier, err error) {
-	base.Infof(base.KeyAuth, "Fetching provider config from standard issuer-based discovery endpoint: %s", base.UD(discoveryURL))
+func (op *OIDCProvider) standardDiscovery(ctx context.Context, discoveryURL string) (metadata ProviderMetadata, verifier *oidc.IDTokenVerifier, err error) {
+	base.InfofCtx(ctx, base.KeyAuth, "Fetching provider config from standard issuer-based discovery endpoint: %s", base.UD(discoveryURL))
 	var provider *oidc.Provider
 	maxRetryAttempts := 5
 	for i := 1; i <= maxRetryAttempts; i++ {
@@ -410,11 +410,11 @@ func (op *OIDCProvider) standardDiscovery(discoveryURL string) (metadata Provide
 		if err == nil && provider != nil {
 			verifier = provider.Verifier(&oidc.Config{ClientID: op.ClientID})
 			if err = provider.Claims(&metadata); err != nil {
-				base.Errorf("Error caching metadata from standard issuer-based discovery endpoint: %s", base.UD(discoveryURL))
+				base.ErrorfCtx(ctx, "Error caching metadata from standard issuer-based discovery endpoint: %s", base.UD(discoveryURL))
 			}
 			break
 		}
-		base.Debugf(base.KeyAuth, "Unable to fetch provider config from discovery endpoint for %s (attempt %v/%v): %v", base.UD(op.Issuer), i, maxRetryAttempts, err)
+		base.DebugfCtx(ctx, base.KeyAuth, "Unable to fetch provider config from discovery endpoint for %s (attempt %v/%v): %v", base.UD(op.Issuer), i, maxRetryAttempts, err)
 		time.Sleep(OIDCDiscoveryRetryWait)
 	}
 	return metadata, verifier, err
@@ -454,20 +454,20 @@ func formatUsername(value interface{}) (string, error) {
 
 // fetchCustomProviderConfig collects the provider configuration from the given discovery endpoint and determines
 // whether the cached configuration needs to be refreshed by comparing the new metadata with the cached value
-func (op *OIDCProvider) fetchCustomProviderConfig(discoveryURL string) (metadata ProviderMetadata, ttl time.Duration, refresh bool, err error) {
+func (op *OIDCProvider) fetchCustomProviderConfig(ctx context.Context, discoveryURL string) (metadata ProviderMetadata, ttl time.Duration, refresh bool, err error) {
 	if discoveryURL == "" {
 		return ProviderMetadata{}, MaxProviderConfigSyncInterval, false, ErrEmptyDiscoveryURL
 	}
-	base.Debugf(base.KeyAuth, "Fetching custom provider config from %s", base.UD(discoveryURL))
+	base.DebugfCtx(ctx, base.KeyAuth, "Fetching custom provider config from %s", base.UD(discoveryURL))
 	req, err := http.NewRequest(http.MethodGet, discoveryURL, nil)
 	if err != nil {
-		base.Debugf(base.KeyAuth, "Error building new request for URL %s: %v", base.UD(discoveryURL), err)
+		base.DebugfCtx(ctx, base.KeyAuth, "Error building new request for URL %s: %v", base.UD(discoveryURL), err)
 		return ProviderMetadata{}, MaxProviderConfigSyncInterval, false, err
 	}
 	client := base.GetHttpClient(op.InsecureSkipVerify)
 	resp, err := client.Do(req)
 	if err != nil {
-		base.Debugf(base.KeyAuth, "Error invoking calling discovery URL %s: %v", base.UD(discoveryURL), err)
+		base.DebugfCtx(ctx, base.KeyAuth, "Error invoking calling discovery URL %s: %v", base.UD(discoveryURL), err)
 		return ProviderMetadata{}, MaxProviderConfigSyncInterval, false, err
 	}
 
@@ -486,7 +486,7 @@ func (op *OIDCProvider) fetchCustomProviderConfig(discoveryURL string) (metadata
 
 	ttl, _, err = cacheable(resp.Header)
 	if err != nil {
-		base.Infof(base.KeyAuth, "Failed to determine whether provider metadata can be cached, error: %v", err)
+		base.InfofCtx(ctx, base.KeyAuth, "Failed to determine whether provider metadata can be cached, error: %v", err)
 	}
 
 	// If the metadata expiry is zero or greater than 24 hours, the next sync should start in 24 hours.
@@ -504,12 +504,12 @@ func (op *OIDCProvider) fetchCustomProviderConfig(discoveryURL string) (metadata
 	}
 
 	if err := base.JSONUnmarshal(bodyBytes, &metadata); err != nil {
-		base.Debugf(base.KeyAuth, "Error parsing body during discovery sync: %v", err)
+		base.DebugfCtx(ctx, base.KeyAuth, "Error parsing body during discovery sync: %v", err)
 		return ProviderMetadata{}, MaxProviderConfigSyncInterval, false, err
 	}
 
 	if reflect.DeepEqual(op.metadata, metadata) {
-		base.Debugf(base.KeyAuth, "No change in discovery config detected at this time, next sync will be after %v", ttl)
+		base.DebugfCtx(ctx, base.KeyAuth, "No change in discovery config detected at this time, next sync will be after %v", ttl)
 		return metadata, ttl, false, nil
 	}
 
@@ -517,7 +517,7 @@ func (op *OIDCProvider) fetchCustomProviderConfig(discoveryURL string) (metadata
 		return ProviderMetadata{}, MaxProviderConfigSyncInterval, false, fmt.Errorf("oidc: issuer did not match the issuer returned by provider, expected %q got %q", op.Issuer, metadata.Issuer)
 	}
 
-	base.Debugf(base.KeyAuth, "Returning config: %v", base.UD(metadata))
+	base.DebugfCtx(ctx, base.KeyAuth, "Returning config: %v", base.UD(metadata))
 	return metadata, ttl, true, nil
 }
 
@@ -525,8 +525,8 @@ func (op *OIDCProvider) fetchCustomProviderConfig(discoveryURL string) (metadata
 // fetchCustomProviderConfig. If fetchCustomProviderConfig detects any change in provider
 // config, it sets the verifier, OAuth endpoints and returns the time interval between now
 // and next discovery sync.
-func (op *OIDCProvider) runDiscoverySync(discoveryURL string) (time.Duration, error) {
-	metadata, ttl, refresh, err := op.fetchCustomProviderConfig(discoveryURL)
+func (op *OIDCProvider) runDiscoverySync(ctx context.Context, discoveryURL string) (time.Duration, error) {
+	metadata, ttl, refresh, err := op.fetchCustomProviderConfig(ctx, discoveryURL)
 	if !refresh || err != nil {
 		return ttl, err
 	}
@@ -536,7 +536,7 @@ func (op *OIDCProvider) runDiscoverySync(discoveryURL string) (time.Duration, er
 		op.metadata = metadata
 	}
 	if refresh && op.isStandardDiscovery() {
-		metadata, verifier, err := op.standardDiscovery(discoveryURL)
+		metadata, verifier, err := op.standardDiscovery(ctx, discoveryURL)
 		if err != nil || verifier == nil {
 			return 0, pkgerrors.Wrap(err, ErrMsgUnableToDiscoverConfig)
 		}
@@ -550,7 +550,7 @@ func (op *OIDCProvider) runDiscoverySync(discoveryURL string) (time.Duration, er
 func (op *OIDCProvider) generateVerifier(metadata *ProviderMetadata, ctx context.Context) *oidc.IDTokenVerifier {
 	signingAlgorithms := op.getSigningAlgorithms(metadata)
 	if len(signingAlgorithms.unsupportedAlgorithms) > 0 {
-		base.Infof(base.KeyAuth, "Found algorithms not supported by underlying OpenID Connect library: %v", signingAlgorithms.unsupportedAlgorithms)
+		base.InfofCtx(ctx, base.KeyAuth, "Found algorithms not supported by underlying OpenID Connect library: %v", signingAlgorithms.unsupportedAlgorithms)
 	}
 	config := &oidc.Config{ClientID: op.ClientID}
 	if len(signingAlgorithms.supportedAlgorithms) > 0 {
@@ -665,9 +665,9 @@ func SetURLQueryParam(strURL, name, value string) (string, error) {
 }
 
 // startDiscoverySync starts the provider metadata discovery sync task in background.
-func (op *OIDCProvider) startDiscoverySync(discoveryURL string) error {
+func (op *OIDCProvider) startDiscoverySync(ctx context.Context, discoveryURL string) error {
 	op.terminator = make(chan struct{})
-	duration, err := op.runDiscoverySync(discoveryURL)
+	duration, err := op.runDiscoverySync(ctx, discoveryURL)
 	if err != nil {
 		return err
 	}
@@ -675,12 +675,12 @@ func (op *OIDCProvider) startDiscoverySync(discoveryURL string) error {
 		for {
 			select {
 			case <-time.After(duration):
-				duration, err = op.runDiscoverySync(discoveryURL)
+				duration, err = op.runDiscoverySync(ctx, discoveryURL)
 				if err != nil {
-					base.Warnf("OpenID Connect provider discovery sync ends up in error: %v, next retry in %v", err, duration)
+					base.WarnfCtx(ctx, "OpenID Connect provider discovery sync ends up in error: %v, next retry in %v", err, duration)
 				}
 			case <-op.terminator:
-				base.Debugf(base.KeyAll, "Terminating OpenID Connect provider discovery sync")
+				base.DebugfCtx(ctx, base.KeyAll, "Terminating OpenID Connect provider discovery sync")
 				return
 			}
 		}

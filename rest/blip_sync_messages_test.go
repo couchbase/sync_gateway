@@ -11,10 +11,10 @@ licenses/APL2.txt.
 package rest
 
 import (
-	"context"
 	"testing"
 
 	"github.com/couchbase/go-blip"
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -82,7 +82,7 @@ func TestSubChangesSince(t *testing.T) {
 	rq := blip.NewRequest()
 	rq.Properties["since"] = `"1"`
 
-	subChangesParams, err := db.NewSubChangesParams(context.TODO(), rq, db.SequenceID{}, testDb.ParseSequenceID)
+	subChangesParams, err := db.NewSubChangesParams(base.TestCtx(t), rq, db.SequenceID{}, testDb.ParseSequenceID)
 	require.NoError(t, err)
 
 	seqID := subChangesParams.Since()

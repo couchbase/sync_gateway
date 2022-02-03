@@ -11,7 +11,6 @@ licenses/APL2.txt.
 package rest
 
 import (
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -241,7 +240,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 	goassert.Equals(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
 
 	for i := 1; i < 1500; i++ {
-		//// Add a change: Send an unsolicited doc revision in a rev request
+		// // Add a change: Send an unsolicited doc revision in a rev request
 		receivedChangesWg.Add(1)
 		_, _, revResponse, err := bt.SendRev(
 			fmt.Sprintf("foo-%d", i),
@@ -359,7 +358,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 	cacheWaiter.Add(len(docIdsReceived))
 	// Add documents
 	for docID, _ := range docIdsReceived {
-		//// Add a change: Send an unsolicited doc revision in a rev request
+		// // Add a change: Send an unsolicited doc revision in a rev request
 		_, _, revResponse, err := bt.SendRev(
 			docID,
 			"1-abc",
@@ -408,7 +407,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 	// Create a few more changes, validate that they aren't sent (subChanges has been closed).
 	// Validated by the prefix matching in the subChanges callback, as well as waitgroup check below.
 	for i := 0; i < 5; i++ {
-		//// Add a change: Send an unsolicited doc revision in a rev request
+		// // Add a change: Send an unsolicited doc revision in a rev request
 		_, _, revResponse, err := bt.SendRev(
 			fmt.Sprintf("postOneShot_%d", i),
 			"1-abc",
@@ -534,7 +533,7 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 
 	// Add documents
 	for _, docID := range docIDsSent {
-		//// Add a change: Send an unsolicited doc revision in a rev request
+		// // Add a change: Send an unsolicited doc revision in a rev request
 		_, _, revResponse, err := bt.SendRev(
 			docID,
 			"1-abc",
@@ -847,7 +846,7 @@ function(doc, oldDoc) {
 
 	// Set up a ChangeWaiter for this test, to block until the user change notification happens
 	dbc := rt.GetDatabase()
-	user1, err := dbc.Authenticator().GetUser("user1")
+	user1, err := dbc.Authenticator(base.TestCtx(t)).GetUser("user1")
 	require.NoError(t, err)
 
 	userDb, err := db.GetDatabase(dbc, user1)
@@ -1331,7 +1330,7 @@ func TestReloadUser(t *testing.T) {
 
 	// Set up a ChangeWaiter for this test, to block until the user change notification happens
 	dbc := rt.GetDatabase()
-	user1, err := dbc.Authenticator().GetUser("user1")
+	user1, err := dbc.Authenticator(base.TestCtx(t)).GetUser("user1")
 	require.NoError(t, err)
 
 	userDb, err := db.GetDatabase(dbc, user1)
@@ -1895,7 +1894,7 @@ func TestGetRemovedDoc(t *testing.T) {
 	assert.NoError(t, err)                         // no error
 	assert.Empty(t, resp.Properties["Error-Code"]) // no error
 
-	require.NoError(t, rt.GetDatabase().WaitForPendingChanges(context.Background()))
+	require.NoError(t, rt.GetDatabase().WaitForPendingChanges(base.TestCtx(t)))
 
 	// Try to get rev 2 via BLIP API and assert that _removed == false
 	resultDoc, err := bt.GetDocAtRev("foo", "2-bcd")
@@ -1916,7 +1915,7 @@ func TestGetRemovedDoc(t *testing.T) {
 	assert.NoError(t, err)                         // no error
 	assert.Empty(t, resp.Properties["Error-Code"]) // no error
 
-	require.NoError(t, rt.GetDatabase().WaitForPendingChanges(context.Background()))
+	require.NoError(t, rt.GetDatabase().WaitForPendingChanges(base.TestCtx(t)))
 
 	// Flush rev cache in case this prevents the bug from showing up (didn't make a difference)
 	rt.GetDatabase().FlushRevisionCacheForTest()
@@ -2622,7 +2621,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		assert.Equal(t, `{"greetings":{"2-":[{"howdy":"bob"}]}}`, string(msgBody))
 
 		// Validate that generation of a delta didn't mutate the revision body in the revision cache
-		docRev, cacheErr := rt.GetDatabase().GetRevisionCacheForTest().Get("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", db.RevCacheOmitBody, db.RevCacheOmitDelta)
+		docRev, cacheErr := rt.GetDatabase().GetRevisionCacheForTest().Get(base.TestCtx(t), "doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", db.RevCacheOmitBody, db.RevCacheOmitDelta)
 		assert.NoError(t, cacheErr)
 		assert.NotContains(t, docRev.BodyBytes, "bob")
 	} else {
@@ -2834,7 +2833,7 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 	assert.Equal(t, float64(2), hello["revpos"])
 	assert.Equal(t, true, hello["stub"])
 
-	//assert.Equal(t, `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}},"_id":"doc1","_rev":"2-10000d5ec533b29b117e60274b1e3653","greetings":[{"hello":"world!"},{"hi":"alice"}]}`, resp.Body.String())
+	// assert.Equal(t, `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}},"_id":"doc1","_rev":"2-10000d5ec533b29b117e60274b1e3653","greetings":[{"hello":"world!"},{"hi":"alice"}]}`, resp.Body.String())
 }
 
 // Reproduces CBG-617 (a client using activeOnly for the initial replication, and then still expecting to get subsequent tombstones afterwards)
@@ -2954,7 +2953,7 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 	revID, err = btc.PushRev(docID, revID, []byte(`{"key":"val","_attachments":{"myAttachment":{"data":"`+attData+`"}}}`))
 	require.NoError(t, err)
 
-	syncData, err := rt.GetDatabase().GetDocSyncData(docID)
+	syncData, err := rt.GetDatabase().GetDocSyncData(base.TestCtx(t), docID)
 	require.NoError(t, err)
 
 	assert.Len(t, syncData.Attachments, 1)
@@ -2972,7 +2971,7 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 	revID, err = btc.PushRev(docID, revID, newBody)
 	require.NoError(t, err)
 
-	syncData, err = rt.GetDatabase().GetDocSyncData(docID)
+	syncData, err = rt.GetDatabase().GetDocSyncData(base.TestCtx(t), docID)
 	require.NoError(t, err)
 
 	assert.Len(t, syncData.Attachments, 1)
@@ -3267,8 +3266,8 @@ func TestUpdateExistingAttachment(t *testing.T) {
 	err = rt.waitForRev("doc2", revIDDoc2)
 	assert.NoError(t, err)
 
-	doc1, err := rt.GetDatabase().GetDocument("doc1", db.DocUnmarshalAll)
-	_, err = rt.GetDatabase().GetDocument("doc2", db.DocUnmarshalAll)
+	doc1, err := rt.GetDatabase().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
+	_, err = rt.GetDatabase().GetDocument(base.TestCtx(t), "doc2", db.DocUnmarshalAll)
 
 	revIDDoc1, err = btc.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=","length":11,"content_type":"","stub":true,"revpos":3}}}`))
 	require.NoError(t, err)
@@ -3276,7 +3275,7 @@ func TestUpdateExistingAttachment(t *testing.T) {
 	err = rt.waitForRev("doc1", revIDDoc1)
 	assert.NoError(t, err)
 
-	doc1, err = rt.GetDatabase().GetDocument("doc1", db.DocUnmarshalAll)
+	doc1, err = rt.GetDatabase().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
 	assert.Equal(t, "sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=", doc1.Attachments["attachment"].(map[string]interface{})["digest"])

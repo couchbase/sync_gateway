@@ -282,7 +282,7 @@ func Consolef(logLevel LogLevel, logKey LogKey, format string, args ...interface
 
 	// If the above logTo didn't already log to stderr, do it directly here
 	if !consoleLogger.isStderr || !consoleLogger.shouldLog(logLevel, logKey) {
-		format = color(addPrefixes(format, context.Background(), logLevel, logKey), logLevel)
+		format = color(addPrefixes(format, nil, logLevel, logKey), logLevel)
 		_, _ = fmt.Fprintf(consoleFOutput, format+"\n", args...)
 	}
 }
@@ -295,7 +295,7 @@ func LogSyncGatewayVersion() {
 	Consolef(LevelNone, KeyNone, msg)
 
 	// Log the startup indicator to ALL log files too.
-	msg = addPrefixes(msg, context.Background(), LevelNone, KeyNone)
+	msg = addPrefixes(msg, nil, LevelNone, KeyNone)
 	if errorLogger.shouldLog(LevelNone) {
 		errorLogger.logger.Printf(msg)
 	}

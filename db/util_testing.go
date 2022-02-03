@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 )
@@ -193,7 +194,7 @@ func emptyAllDocsIndex(ctx context.Context, b base.Bucket, tbp *base.TestBucketP
 
 	// A stripped down version of db.Compact() that works on AllDocs instead of tombstones
 	for {
-		results, err := database.QueryChannels("*", 0, 0, 0, false)
+		results, err := database.QueryChannels(ctx, "*", 0, 0, 0, false)
 		if err != nil {
 			return 0, err
 		}
@@ -368,4 +369,36 @@ func SuspendSequenceBatching() func() {
 	oldFrequency := MaxSequenceIncrFrequency
 	MaxSequenceIncrFrequency = 0 * time.Millisecond
 	return func() { MaxSequenceIncrFrequency = oldFrequency }
+}
+
+// Public channel view call - for unit test support
+func (dbc *DatabaseContext) ChannelViewForTest(tb testing.TB, channelName string, startSeq, endSeq uint64) (LogEntries, error) {
+	return dbc.getChangesInChannelFromQuery(base.TestCtx(tb), channelName, startSeq, endSeq, 0, false)
+}
+
+// Test-only version of GetPrincipal that doesn't trigger channel/role recalculation
+func (dbc *DatabaseContext) GetPrincipalForTest(tb testing.TB, name string, isUser bool) (info *PrincipalConfig, err error) {
+	ctx := base.TestCtx(tb)
+	var princ auth.Principal
+	if isUser {
+		princ, err = dbc.Authenticator(ctx).GetUser(name)
+	} else {
+		princ, err = dbc.Authenticator(ctx).GetRole(name)
+	}
+	if princ == nil {
+		return
+	}
+	info = new(PrincipalConfig)
+	info.Name = &name
+	info.ExplicitChannels = princ.ExplicitChannels().AsSet()
+	if user, ok := princ.(auth.User); ok {
+		info.Channels = user.InheritedChannels().AsSet()
+		info.Email = user.Email()
+		info.Disabled = base.BoolPtr(user.Disabled())
+		info.ExplicitRoleNames = user.ExplicitRoles().AllKeys()
+		info.RoleNames = user.RoleNames().AllKeys()
+	} else {
+		info.Channels = princ.Channels().AsSet()
+	}
+	return
 }

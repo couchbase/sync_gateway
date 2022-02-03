@@ -37,7 +37,7 @@ type TestingHandler struct {
 	ResultChannel chan interface{} // channel for tracking async results
 	HandledEvent  EventType
 	handleDelay   int        // long running handler execution
-	t             *testing.T //enclosing test instance
+	t             *testing.T // enclosing test instance
 }
 
 func (th *TestingHandler) HandleEvent(event Event) bool {
@@ -55,15 +55,15 @@ func (th *TestingHandler) HandleEvent(event Event) bool {
 		assert.Equal(th.t, 5, len(doc))
 
 		state := doc["state"]
-		//state must be online or offline
+		// state must be online or offline
 		assert.True(th.t, state != nil && (state == "online" || state == "offline"))
 
-		//admin interface must resolve to a a valis tcp address
+		// admin interface must resolve to a a valis tcp address
 		adminInterface := (doc["admininterface"]).(string)
 		_, err := net.ResolveTCPAddr("tcp", adminInterface)
 		assert.NoError(th.t, err)
 
-		//localtime must parse from an ISO8601 Format string
+		// localtime must parse from an ISO8601 Format string
 		localtime := (doc["localtime"]).(string)
 		_, err = time.Parse(base.ISO8601Format, localtime)
 		assert.NoError(th.t, err)
@@ -105,11 +105,11 @@ func TestDocumentChangeEvent(t *testing.T) {
 		return testBody, ids[i], channelSet
 	}
 	resultChannel := make(chan interface{}, 10)
-	//Setup test handler
+	// Setup test handler
 	testHandler := &TestingHandler{HandledEvent: DocumentChange}
 	testHandler.SetChannel(resultChannel)
 	em.RegisterEventHandler(testHandler, DocumentChange)
-	//Raise events
+	// Raise events
 	for i := 0; i < 10; i++ {
 		body, docid, channels := eventForTest(i)
 		bodyBytes, _ := base.JSONMarshal(body)
@@ -133,16 +133,16 @@ func TestDBStateChangeEvent(t *testing.T) {
 	}
 
 	resultChannel := make(chan interface{}, 20)
-	//Setup test handler
+	// Setup test handler
 	testHandler := &TestingHandler{HandledEvent: DBStateChange, t: t}
 	testHandler.SetChannel(resultChannel)
 	em.RegisterEventHandler(testHandler, DBStateChange)
-	//Raise online events
+	// Raise online events
 	for i := 0; i < 10; i++ {
 		err := em.RaiseDBStateChangeEvent(ids[i], "online", "DB started from config", base.StringPtr("0.0.0.0:0000"))
 		assert.NoError(t, err)
 	}
-	//Raise offline events
+	// Raise offline events
 	for i := 10; i < 20; i++ {
 		err := em.RaiseDBStateChangeEvent(ids[i], "offline", "Sync Gateway context closed", base.StringPtr("0.0.0.0:0000"))
 		assert.NoError(t, err)
@@ -463,7 +463,7 @@ func TestWebhookBasic(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels, false)
 		assert.NoError(t, err)
 	}
-	err := em.waitForProcessedTotal(context.TODO(), 10, DefaultWaitForWebhook)
+	err := em.waitForProcessedTotal(base.TestCtx(t), 10, DefaultWaitForWebhook)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(10), em.GetEventsProcessedSuccess())
 
@@ -488,7 +488,7 @@ func TestWebhookBasic(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	err = em.waitForProcessedTotal(context.TODO(), 10, DefaultWaitForWebhook)
+	err = em.waitForProcessedTotal(base.TestCtx(t), 10, DefaultWaitForWebhook)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(4), em.GetEventsProcessedSuccess())
 
@@ -503,7 +503,7 @@ func TestWebhookBasic(t *testing.T) {
 	bodyBytes, _ := base.JSONMarshalCanonical(body)
 	err = em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels, false)
 	assert.NoError(t, err)
-	err = em.waitForProcessedTotal(context.TODO(), 1, DefaultWaitForWebhook)
+	err = em.waitForProcessedTotal(base.TestCtx(t), 1, DefaultWaitForWebhook)
 	assert.NoError(t, err)
 	receivedPayload := string((wr.GetPayloads())[0])
 	fmt.Println("payload:", receivedPayload)
@@ -523,7 +523,7 @@ func TestWebhookBasic(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels, false)
 		assert.NoError(t, err)
 	}
-	err = em.waitForProcessedTotal(context.TODO(), 100, DefaultWaitForWebhook)
+	err = em.waitForProcessedTotal(base.TestCtx(t), 100, DefaultWaitForWebhook)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(100), em.GetEventsProcessedSuccess())
 
@@ -545,7 +545,7 @@ func TestWebhookBasic(t *testing.T) {
 	}
 	// Expect 21 to complete.  5 get goroutines immediately, 15 get queued, and one is blocked waiting
 	// for a goroutine.  The rest get discarded because the queue is full.
-	err = em.waitForProcessedTotal(context.TODO(), 21, 10*time.Second)
+	err = em.waitForProcessedTotal(base.TestCtx(t), 21, 10*time.Second)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(21), em.GetEventsProcessedSuccess())
 	assert.Equal(t, 79, errCount)
@@ -563,7 +563,7 @@ func TestWebhookBasic(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels, false)
 		assert.NoError(t, err)
 	}
-	err = em.waitForProcessedTotal(context.TODO(), 100, 10*time.Second)
+	err = em.waitForProcessedTotal(base.TestCtx(t), 100, 10*time.Second)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(100), em.GetEventsProcessedSuccess())
 }
@@ -614,7 +614,7 @@ func TestWebhookOldDoc(t *testing.T) {
 		assert.NoError(t, err)
 
 	}
-	err := em.waitForProcessedTotal(context.TODO(), 10, DefaultWaitForWebhook)
+	err := em.waitForProcessedTotal(base.TestCtx(t), 10, DefaultWaitForWebhook)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(10), em.eventsProcessedSuccess)
 	log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 10)
@@ -642,7 +642,7 @@ func TestWebhookOldDoc(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels, false)
 		assert.NoError(t, err)
 	}
-	err = em.waitForProcessedTotal(context.TODO(), 10, DefaultWaitForWebhook)
+	err = em.waitForProcessedTotal(base.TestCtx(t), 10, DefaultWaitForWebhook)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(4), em.eventsProcessedSuccess)
 	log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 4)
@@ -670,7 +670,7 @@ func TestWebhookOldDoc(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels, false)
 		assert.NoError(t, err)
 	}
-	err = em.waitForProcessedTotal(context.TODO(), 10, DefaultWaitForWebhook)
+	err = em.waitForProcessedTotal(base.TestCtx(t), 10, DefaultWaitForWebhook)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(4), em.eventsProcessedSuccess)
 	log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 4)
@@ -704,7 +704,7 @@ func TestWebhookOldDoc(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels, false)
 		assert.NoError(t, err)
 	}
-	err = em.waitForProcessedTotal(context.TODO(), 20, DefaultWaitForWebhook)
+	err = em.waitForProcessedTotal(base.TestCtx(t), 20, DefaultWaitForWebhook)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(10), em.eventsProcessedSuccess)
 	log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 10)
@@ -753,7 +753,7 @@ func TestWebhookTimeout(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels, false)
 		assert.NoError(t, err)
 	}
-	err := em.waitForProcessedTotal(context.TODO(), 10, DefaultWaitForWebhook)
+	err := em.waitForProcessedTotal(base.TestCtx(t), 10, DefaultWaitForWebhook)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(10), em.eventsProcessedSuccess)
 
@@ -779,7 +779,7 @@ func TestWebhookTimeout(t *testing.T) {
 		}
 	}
 	// Even though we timed out waiting for response on the SG side, POST still completed on target side.
-	err = em.waitForProcessedTotal(context.TODO(), 10, 30*time.Second)
+	err = em.waitForProcessedTotal(base.TestCtx(t), 10, 30*time.Second)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(0), em.GetEventsProcessedSuccess())
 	assert.Equal(t, int64(10), em.GetEventsProcessedFail())
@@ -804,7 +804,7 @@ func TestWebhookTimeout(t *testing.T) {
 		}
 	}
 	// wait for slow webhook to finish processing
-	err = em.waitForProcessedTotal(context.TODO(), 5, 30*time.Second)
+	err = em.waitForProcessedTotal(base.TestCtx(t), 5, 30*time.Second)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(5), em.GetEventsProcessedSuccess())
 
@@ -827,7 +827,7 @@ func TestWebhookTimeout(t *testing.T) {
 		}
 	}
 	// wait for slow webhook to finish processing
-	err = em.waitForProcessedTotal(context.TODO(), 10, 20*time.Second)
+	err = em.waitForProcessedTotal(base.TestCtx(t), 10, 20*time.Second)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(10), em.eventsProcessedSuccess)
 

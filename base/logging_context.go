@@ -62,8 +62,8 @@ func NewTaskID(contextID string, taskName string) string {
 	return contextID + "-" + taskName + "-" + strconv.Itoa(rand.Intn(65536))
 }
 
-// testCtx creates a log context for the given test.
-func testCtx(t testing.TB) context.Context {
+// TestCtx creates a log context for the given test.
+func TestCtx(t testing.TB) context.Context {
 	return context.WithValue(context.Background(), LogContextKey{}, LogContext{TestName: t.Name()})
 }
 

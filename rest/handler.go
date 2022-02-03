@@ -100,6 +100,7 @@ type handler struct {
 	queryValues           url.Values // Copy of results of rq.URL.Query()
 	permissionsResults    map[string]bool
 	authScopeFunc         authScopeFunc
+	rqCtx                 context.Context
 }
 
 type authScopeFunc func(bodyJSON []byte) (string, error)
@@ -163,9 +164,18 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 	}
 }
 
+// ctx returns the request-scoped context for logging/cancellation.
+func (h *handler) ctx() context.Context {
+	if h.rqCtx == nil {
+		h.rqCtx = context.WithValue(h.rq.Context(), base.LogContextKey{},
+			base.LogContext{CorrelationID: h.formatSerialNumber()},
+		)
+	}
+	return h.rqCtx
+}
+
 // Top-level handler call. It's passed a pointer to the specific method to run.
 func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, responsePermissions []Permission) error {
-
 	var err error
 	if h.server.config.API.CompressResponses == nil || *h.server.config.API.CompressResponses {
 		if encoded := NewEncodedResponseWriter(h.response, h.rq); encoded != nil {
@@ -207,7 +217,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	var dbContext *db.DatabaseContext
 	if dbname := h.PathVar("db"); dbname != "" {
 		if dbContext, err = h.server.GetDatabase(dbname); err != nil {
-			base.Infof(base.KeyHTTP, "Error trying to get db %s: %v", base.MD(dbname), err)
+			base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(dbname), err)
 
 			if shouldCheckAdminAuth {
 				if httpError, ok := err.(*base.HTTPError); ok && httpError.Status == http.StatusNotFound {
@@ -287,7 +297,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 			authScope = ""
 		}
 		if err != nil {
-			base.Warnf("An error occurred whilst obtaining management endpoints: %v", err)
+			base.WarnfCtx(h.ctx(), "An error occurred whilst obtaining management endpoints: %v", err)
 			return base.HTTPErrorf(http.StatusInternalServerError, "")
 		}
 
@@ -312,19 +322,19 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 			managementEndpoints, *h.server.config.API.EnableAdminAuthenticationPermissionsCheck, accessPermissions,
 			responsePermissions)
 		if err != nil {
-			base.Warnf("An error occurred whilst checking whether a user was authorized: %v", err)
+			base.WarnfCtx(h.ctx(), "An error occurred whilst checking whether a user was authorized: %v", err)
 			return base.HTTPErrorf(http.StatusInternalServerError, "")
 		}
 
 		if statusCode != http.StatusOK {
-			base.Infof(base.KeyAuth, "%s: User %s failed to auth as an admin statusCode: %d", h.formatSerialNumber(), base.UD(username), statusCode)
+			base.InfofCtx(h.ctx(), base.KeyAuth, "%s: User %s failed to auth as an admin statusCode: %d", h.formatSerialNumber(), base.UD(username), statusCode)
 			return base.HTTPErrorf(statusCode, "")
 		}
 
 		h.authorizedAdminUser = username
 		h.permissionsResults = permissions
 
-		base.Infof(base.KeyAuth, "%s: User %s was successfully authorized as an admin", h.formatSerialNumber(), base.UD(username))
+		base.InfofCtx(h.ctx(), base.KeyAuth, "%s: User %s was successfully authorized as an admin", h.formatSerialNumber(), base.UD(username))
 	} else {
 		// If admin auth is not enabled we should set any responsePermissions to true so that any handlers checking for
 		// these still pass
@@ -343,9 +353,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		if err != nil {
 			return err
 		}
-		h.db.Ctx = context.WithValue(context.Background(), base.LogContextKey{},
-			base.LogContext{CorrelationID: h.formatSerialNumber()},
-		)
+		h.db.Ctx = h.ctx()
 	}
 
 	return method(h) // Call the actual handler code
@@ -363,7 +371,7 @@ func (h *handler) logRequestLine() {
 	}
 
 	queryValues := h.getQueryValues()
-	base.Infof(base.KeyHTTP, " %s: %s %s%s%s", h.formatSerialNumber(), h.rq.Method, base.SanitizeRequestURL(h.rq, &queryValues), proto, h.formattedEffectiveUserName())
+	base.InfofCtx(h.ctx(), base.KeyHTTP, "%s %s%s%s", h.rq.Method, base.SanitizeRequestURL(h.rq, &queryValues), proto, h.formattedEffectiveUserName())
 }
 
 func (h *handler) logDuration(realTime bool) {
@@ -403,30 +411,30 @@ func (h *handler) logStatus(status int, message string) {
 	h.logDuration(false) // don't track actual time
 }
 
-func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
+func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 
 	h.user = nil
-	if context == nil {
+	if dbCtx == nil {
 		return nil
 	}
 
 	// Record Auth stats
 	defer func(t time.Time) {
 		delta := time.Since(t).Nanoseconds()
-		context.DbStats.Security().TotalAuthTime.Add(delta)
+		dbCtx.DbStats.Security().TotalAuthTime.Add(delta)
 		if err != nil {
-			context.DbStats.Security().AuthFailedCount.Add(1)
+			dbCtx.DbStats.Security().AuthFailedCount.Add(1)
 		} else {
-			context.DbStats.Security().AuthSuccessCount.Add(1)
+			dbCtx.DbStats.Security().AuthSuccessCount.Add(1)
 		}
 
 	}(time.Now())
 
 	// If oidc enabled, check for bearer ID token
-	if context.Options.OIDCOptions != nil {
+	if dbCtx.Options.OIDCOptions != nil {
 		if token := h.getBearerToken(); token != "" {
 			var authJwtErr error
-			h.user, authJwtErr = context.Authenticator().AuthenticateUntrustedJWT(token, context.OIDCProviders, h.getOIDCCallbackURL)
+			h.user, authJwtErr = dbCtx.Authenticator(h.ctx()).AuthenticateUntrustedJWT(token, dbCtx.OIDCProviders, h.getOIDCCallbackURL)
 			if h.user == nil || authJwtErr != nil {
 				return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 			}
@@ -439,10 +447,10 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 		* and the username and password match those in the oidc default provider config
 		* then authorize this request
 		 */
-		if strings.HasSuffix(h.rq.URL.Path, "/_oidc_testing/token") && context.Options.UnsupportedOptions != nil &&
-			context.Options.UnsupportedOptions.OidcTestProvider != nil && context.Options.UnsupportedOptions.OidcTestProvider.Enabled {
+		if strings.HasSuffix(h.rq.URL.Path, "/_oidc_testing/token") && dbCtx.Options.UnsupportedOptions != nil &&
+			dbCtx.Options.UnsupportedOptions.OidcTestProvider != nil && dbCtx.Options.UnsupportedOptions.OidcTestProvider.Enabled {
 			if username, password := h.getBasicAuth(); username != "" && password != "" {
-				provider := context.Options.OIDCOptions.Providers.GetProviderForIssuer(issuerUrlForDB(h, context.Name), testProviderAudiences)
+				provider := dbCtx.Options.OIDCOptions.Providers.GetProviderForIssuer(h.ctx(), issuerUrlForDB(h, dbCtx.Name), testProviderAudiences)
 				if provider != nil && provider.ValidationKey != nil {
 					if provider.ClientID == username && *provider.ValidationKey == password {
 						return nil
@@ -454,13 +462,13 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 
 	// Check basic auth first
 	if userName, password := h.getBasicAuth(); userName != "" {
-		h.user, err = context.Authenticator().AuthenticateUser(userName, password)
+		h.user, err = dbCtx.Authenticator(h.ctx()).AuthenticateUser(userName, password)
 		if err != nil {
 			return err
 		}
 		if h.user == nil {
-			base.Infof(base.KeyAll, "HTTP auth failed for username=%q", base.UD(userName))
-			if context.Options.SendWWWAuthenticateHeader == nil || *context.Options.SendWWWAuthenticateHeader {
+			base.InfofCtx(h.ctx(), base.KeyAll, "HTTP auth failed for username=%q", base.UD(userName))
+			if dbCtx.Options.SendWWWAuthenticateHeader == nil || *dbCtx.Options.SendWWWAuthenticateHeader {
 				h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
 			}
 			return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
@@ -469,7 +477,7 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 	}
 
 	// Check cookie
-	h.user, err = context.Authenticator().AuthenticateCookie(h.rq, h.response)
+	h.user, err = dbCtx.Authenticator(h.ctx()).AuthenticateCookie(h.rq, h.response)
 	if err != nil && h.privs != publicPrivs {
 		return err
 	} else if h.user != nil {
@@ -477,11 +485,11 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 	}
 
 	// No auth given -- check guest access
-	if h.user, err = context.Authenticator().GetUser(""); err != nil {
+	if h.user, err = dbCtx.Authenticator(h.ctx()).GetUser(""); err != nil {
 		return err
 	}
 	if h.privs == regularPrivs && h.user.Disabled() {
-		if context.Options.SendWWWAuthenticateHeader == nil || *context.Options.SendWWWAuthenticateHeader {
+		if dbCtx.Options.SendWWWAuthenticateHeader == nil || *dbCtx.Options.SendWWWAuthenticateHeader {
 			h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
 		}
 		return base.HTTPErrorf(http.StatusUnauthorized, "Login required")
@@ -605,7 +613,7 @@ func (h *handler) assertAdminOnly() {
 func (h *handler) PathVar(name string) string {
 	v := mux.Vars(h.rq)[name]
 
-	//Escape special chars i.e. '+' otherwise they are removed by QueryUnescape()
+	// Escape special chars i.e. '+' otherwise they are removed by QueryUnescape()
 	v = strings.Replace(v, "+", "%2B", -1)
 
 	// Before routing the URL we explicitly disabled expansion of %-escapes in the path
@@ -849,7 +857,7 @@ func (h *handler) formattedEffectiveUserName() string {
 	return ""
 }
 
-//////// RESPONSES:
+// ////// RESPONSES:
 
 func (h *handler) setHeader(name string, value string) {
 	h.response.Header().Set(name, value)

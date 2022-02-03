@@ -1168,7 +1168,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 	mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
 	defer mockSyncGateway.Close()
 	mockSyncGatewayURL := mockSyncGateway.URL
-	authenticator := restTester.ServerContext().Database("db").Authenticator()
+	authenticator := restTester.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 
 	sendAuthRequest := func(claimSet claimSet) (*http.Response, error) {
 		token, err := mockAuthServer.makeToken(claimSet)
@@ -1243,7 +1243,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		runGoodAuthTest(claimSet, username)
 
 		// Bad email shouldn't not be saved on successful authentication.
-		user, err := restTester.ServerContext().Database("db").Authenticator().GetUser("foo_noah")
+		user, err := restTester.ServerContext().Database("db").Authenticator(base.TestCtx(t)).GetUser("foo_noah")
 		require.NoError(t, err, "Error getting user from db")
 		assert.Equal(t, username, user.Name())
 		assert.Empty(t, user.Email(), "Bad email shouldn't be saved")
@@ -1257,7 +1257,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		runGoodAuthTest(claimSet, username)
 
 		// Bad email shouldn't not be saved on successful authentication.
-		user, err := restTester.ServerContext().Database("db").Authenticator().GetUser(username)
+		user, err := restTester.ServerContext().Database("db").Authenticator(base.TestCtx(t)).GetUser(username)
 		require.NoError(t, err, "Error getting user from db")
 		assert.Equal(t, username, user.Name())
 		assert.Equal(t, "foo_noah@couchbase.com", user.Email(), "Bad email shouldn't be saved")
@@ -1271,7 +1271,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		runGoodAuthTest(claimSet, username)
 
 		// Good email should be updated on successful authentication.
-		user, err := restTester.ServerContext().Database("db").Authenticator().GetUser(username)
+		user, err := restTester.ServerContext().Database("db").Authenticator(base.TestCtx(t)).GetUser(username)
 		require.NoError(t, err, "Error getting user from db")
 		assert.Equal(t, username, user.Name())
 		assert.Equal(t, "foo_noah@example.com", user.Email(), "Email is not updated")
@@ -1346,7 +1346,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		oldUserPrefix := provider.UserPrefix
 		provider.UsernameClaim = usernameClaim
 		provider.UserPrefix = ""
-		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		require.NoError(t, provider.InitUserPrefix(base.TestCtx(t)), "Error initializing user_prefix")
 		defer func() {
 			provider.UsernameClaim = oldUsernameClaim
 			provider.UserPrefix = oldUserPrefix
@@ -1371,7 +1371,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		oldUserPrefix := provider.UserPrefix
 		provider.UsernameClaim = usernameClaim
 		provider.UserPrefix = ""
-		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		require.NoError(t, provider.InitUserPrefix(base.TestCtx(t)), "Error initializing user_prefix")
 		defer func() {
 			provider.UsernameClaim = oldUsernameClaim
 			provider.UserPrefix = oldUserPrefix
@@ -1398,7 +1398,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		oldUserPrefix := provider.UserPrefix
 		provider.UsernameClaim = usernameClaim
 		provider.UserPrefix = "foo"
-		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		require.NoError(t, provider.InitUserPrefix(base.TestCtx(t)), "Error initializing user_prefix")
 		usernameExpected := provider.UserPrefix + "_" + username
 		defer func() {
 			provider.UsernameClaim = oldUsernameClaim
@@ -1424,7 +1424,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		oldUserPrefix := provider.UserPrefix
 		provider.UsernameClaim = usernameClaim
 		provider.UserPrefix = "foo"
-		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		require.NoError(t, provider.InitUserPrefix(base.TestCtx(t)), "Error initializing user_prefix")
 		usernameExpected := provider.UserPrefix + "_" + username
 		defer func() {
 			provider.UsernameClaim = oldUsernameClaim
@@ -1451,7 +1451,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		provider := restTester.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
 		oldUserPrefix := provider.UserPrefix
 		provider.UserPrefix = "foo"
-		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		require.NoError(t, provider.InitUserPrefix(base.TestCtx(t)), "Error initializing user_prefix")
 		defer func() { provider.UserPrefix = oldUserPrefix }()
 		claimSet := claimsAuthentic()
 		claimSet.secondaryClaims[emailClaim] = email
@@ -1472,7 +1472,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		provider := restTester.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
 		oldUserPrefix := provider.UserPrefix
 		provider.UserPrefix = "foo"
-		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		require.NoError(t, provider.InitUserPrefix(base.TestCtx(t)), "Error initializing user_prefix")
 		defer func() { provider.UserPrefix = oldUserPrefix }()
 		claimSet := claimsAuthentic()
 		claimSet.secondaryClaims[emailClaim] = email
@@ -1496,7 +1496,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		provider := restTester.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
 		oldUserPrefix := provider.UserPrefix
 		provider.UserPrefix = ""
-		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		require.NoError(t, provider.InitUserPrefix(base.TestCtx(t)), "Error initializing user_prefix")
 		defer func() { provider.UserPrefix = oldUserPrefix }()
 		claimSet := claimsAuthentic()
 		claimSet.secondaryClaims[emailClaim] = email
@@ -1519,7 +1519,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		provider := restTester.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
 		oldUserPrefix := provider.UserPrefix
 		provider.UserPrefix = ""
-		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		require.NoError(t, provider.InitUserPrefix(base.TestCtx(t)), "Error initializing user_prefix")
 		defer func() { provider.UserPrefix = oldUserPrefix }()
 		claimSet := claimsAuthentic()
 		claimSet.secondaryClaims[emailClaim] = email
@@ -1548,7 +1548,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		oldUserPrefix := provider.UserPrefix
 		provider.UsernameClaim = usernameClaim
 		provider.UserPrefix = ""
-		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		require.NoError(t, provider.InitUserPrefix(base.TestCtx(t)), "Error initializing user_prefix")
 		defer func() {
 			provider.UsernameClaim = oldUsernameClaim
 			provider.UserPrefix = oldUserPrefix
@@ -1567,7 +1567,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		oldUserPrefix := provider.UserPrefix
 		provider.UsernameClaim = usernameClaim
 		provider.UserPrefix = ""
-		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		require.NoError(t, provider.InitUserPrefix(base.TestCtx(t)), "Error initializing user_prefix")
 		defer func() {
 			provider.UsernameClaim = oldUsernameClaim
 			provider.UserPrefix = oldUserPrefix
@@ -1592,7 +1592,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		provider.UsernameClaim = usernameClaim
 		provider.UserPrefix = ""
 		provider.Register = true
-		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		require.NoError(t, provider.InitUserPrefix(base.TestCtx(t)), "Error initializing user_prefix")
 		defer func() {
 			provider.UsernameClaim = oldUsernameClaim
 			provider.UserPrefix = oldUserPrefix
@@ -1620,7 +1620,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		provider.UsernameClaim = usernameClaim
 		provider.UserPrefix = ""
 		provider.Register = false
-		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		require.NoError(t, provider.InitUserPrefix(base.TestCtx(t)), "Error initializing user_prefix")
 		defer func() {
 			provider.UsernameClaim = oldUsernameClaim
 			provider.UserPrefix = oldUserPrefix
@@ -1643,7 +1643,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 			oldUserPrefix := provider.UserPrefix
 			provider.UsernameClaim = usernameClaim
 			provider.UserPrefix = ""
-			require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+			require.NoError(t, provider.InitUserPrefix(base.TestCtx(t)), "Error initializing user_prefix")
 			defer func() {
 				provider.UsernameClaim = oldUsernameClaim
 				provider.UserPrefix = oldUserPrefix
@@ -1663,7 +1663,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		oldUserPrefix := provider.UserPrefix
 		provider.UsernameClaim = usernameClaim
 		provider.UserPrefix = ""
-		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		require.NoError(t, provider.InitUserPrefix(base.TestCtx(t)), "Error initializing user_prefix")
 		defer func() {
 			provider.UsernameClaim = oldUsernameClaim
 			provider.UserPrefix = oldUserPrefix
@@ -1686,7 +1686,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		provider.UsernameClaim = usernameClaim
 		provider.UserPrefix = ""
 		provider.Register = true
-		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		require.NoError(t, provider.InitUserPrefix(base.TestCtx(t)), "Error initializing user_prefix")
 		defer func() {
 			provider.UsernameClaim = oldUsernameClaim
 			provider.UserPrefix = oldUserPrefix
@@ -1712,7 +1712,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 			oldUserPrefix := provider.UserPrefix
 			provider.UsernameClaim = usernameClaim
 			provider.UserPrefix = ""
-			require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+			require.NoError(t, provider.InitUserPrefix(base.TestCtx(t)), "Error initializing user_prefix")
 			defer func() {
 				provider.UsernameClaim = oldUsernameClaim
 				provider.UserPrefix = oldUserPrefix
@@ -1739,7 +1739,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		provider.UsernameClaim = usernameClaim
 		provider.UserPrefix = ""
 		provider.Register = true
-		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		require.NoError(t, provider.InitUserPrefix(base.TestCtx(t)), "Error initializing user_prefix")
 		defer func() {
 			provider.UsernameClaim = oldUsernameClaim
 			provider.UserPrefix = oldUserPrefix
@@ -1765,7 +1765,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		provider.UsernameClaim = usernameClaim
 		provider.UserPrefix = ""
 		provider.Register = true
-		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		require.NoError(t, provider.InitUserPrefix(base.TestCtx(t)), "Error initializing user_prefix")
 		defer func() {
 			provider.UsernameClaim = oldUsernameClaim
 			provider.UserPrefix = oldUserPrefix

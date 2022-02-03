@@ -57,7 +57,7 @@ type ChannelCache interface {
 	Clear()
 
 	// Size of the the largest individual channel cache, invoked for stats reporting
-	//// TODO: let the cache manage its own stats internally (maybe take an updateStats call)
+	// // TODO: let the cache manage its own stats internally (maybe take an updateStats call)
 	MaxCacheSize() int
 
 	// Returns the highest cached sequence, used for changes synchronization
@@ -75,7 +75,7 @@ type ChannelCache interface {
 
 // ChannelQueryHandler interface is implemented by databaseContext.
 type ChannelQueryHandler interface {
-	getChangesInChannelFromQuery(channelName string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error)
+	getChangesInChannelFromQuery(ctx context.Context, channelName string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error)
 }
 
 type StableSequenceCallbackFunc func() uint64

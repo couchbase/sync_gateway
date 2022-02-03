@@ -131,7 +131,7 @@ func TestHasAttachmentsFlag(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 2-a...")
-	gotDoc, err := db.GetDocument("doc1", DocUnmarshalSync)
+	gotDoc, err := db.GetDocument(base.TestCtx(t), "doc1", DocUnmarshalSync)
 	assert.NoError(t, err)
 	require.Contains(t, gotDoc.Attachments, "hello.txt")
 	attachmentData, ok := gotDoc.Attachments["hello.txt"].(map[string]interface{})
@@ -157,7 +157,7 @@ func TestHasAttachmentsFlag(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc, verify rev 2-b")
-	gotDoc, err = db.GetDocument("doc1", DocUnmarshalSync)
+	gotDoc, err = db.GetDocument(base.TestCtx(t), "doc1", DocUnmarshalSync)
 	assert.NoError(t, err)
 	require.Contains(t, gotDoc.Attachments, "hello.txt")
 	attachmentData, ok = gotDoc.Attachments["hello.txt"].(map[string]interface{})
@@ -942,7 +942,7 @@ func TestLargeSequence(t *testing.T) {
 	_, _, err := db.PutExistingRevWithBody("largeSeqDoc", body, []string{"1-a"}, false)
 	assert.NoError(t, err, "add largeSeqDoc")
 
-	syncData, err := db.GetDocSyncData("largeSeqDoc")
+	syncData, err := db.GetDocSyncData(base.TestCtx(t), "largeSeqDoc")
 	assert.NoError(t, err, "Error retrieving document sync data")
 	goassert.Equals(t, syncData.Sequence, uint64(9223372036854775808))
 }

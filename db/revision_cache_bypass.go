@@ -11,6 +11,8 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
+
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -29,13 +31,13 @@ func NewBypassRevisionCache(backingStore RevisionCacheBackingStore, bypassStat *
 }
 
 // Get fetches the revision for the given docID and revID immediately from the bucket.
-func (rc *BypassRevisionCache) Get(docID, revID string, includeBody bool, includeDelta bool) (docRev DocumentRevision, err error) {
+func (rc *BypassRevisionCache) Get(ctx context.Context, docID, revID string, includeBody bool, includeDelta bool) (docRev DocumentRevision, err error) {
 
 	unmarshalLevel := DocUnmarshalSync
 	if includeBody {
 		unmarshalLevel = DocUnmarshalAll
 	}
-	doc, err := rc.backingStore.GetDocument(docID, unmarshalLevel)
+	doc, err := rc.backingStore.GetDocument(ctx, docID, unmarshalLevel)
 	if err != nil {
 		return DocumentRevision{}, err
 	}
@@ -43,7 +45,7 @@ func (rc *BypassRevisionCache) Get(docID, revID string, includeBody bool, includ
 	docRev = DocumentRevision{
 		RevID: revID,
 	}
-	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoaderForDocument(rc.backingStore, doc, revID)
+	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, revID)
 	if err != nil {
 		return DocumentRevision{}, err
 	}
@@ -54,13 +56,13 @@ func (rc *BypassRevisionCache) Get(docID, revID string, includeBody bool, includ
 }
 
 // GetActive fetches the active revision for the given docID immediately from the bucket.
-func (rc *BypassRevisionCache) GetActive(docID string, includeBody bool) (docRev DocumentRevision, err error) {
+func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, includeBody bool) (docRev DocumentRevision, err error) {
 
 	unmarshalLevel := DocUnmarshalSync
 	if includeBody {
 		unmarshalLevel = DocUnmarshalAll
 	}
-	doc, err := rc.backingStore.GetDocument(docID, unmarshalLevel)
+	doc, err := rc.backingStore.GetDocument(ctx, docID, unmarshalLevel)
 	if err != nil {
 		return DocumentRevision{}, err
 	}
@@ -69,7 +71,7 @@ func (rc *BypassRevisionCache) GetActive(docID string, includeBody bool) (docRev
 		RevID: doc.CurrentRev,
 	}
 
-	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoaderForDocument(rc.backingStore, doc, doc.SyncData.CurrentRev)
+	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, doc.SyncData.CurrentRev)
 	if err != nil {
 		return DocumentRevision{}, err
 	}
@@ -80,25 +82,25 @@ func (rc *BypassRevisionCache) GetActive(docID string, includeBody bool) (docRev
 }
 
 // Peek is a no-op for a BypassRevisionCache, and always returns a false 'found' value.
-func (rc *BypassRevisionCache) Peek(docID, revID string) (docRev DocumentRevision, found bool) {
+func (rc *BypassRevisionCache) Peek(ctx context.Context, docID, revID string) (docRev DocumentRevision, found bool) {
 	return DocumentRevision{}, false
 }
 
 // Put is a no-op for a BypassRevisionCache
-func (rc *BypassRevisionCache) Put(docRev DocumentRevision) {
+func (rc *BypassRevisionCache) Put(ctx context.Context, docRev DocumentRevision) {
 	// no-op
 }
 
 // Update is a no-op for a BypassRevisionCache
-func (rc *BypassRevisionCache) Upsert(docRev DocumentRevision) {
+func (rc *BypassRevisionCache) Upsert(ctx context.Context, docRev DocumentRevision) {
 	// no-op
 }
 
-func (rc *BypassRevisionCache) Invalidate(docID, revID string) {
+func (rc *BypassRevisionCache) Invalidate(ctx context.Context, docID, revID string) {
 	// nop
 }
 
 // UpdateDelta is a no-op for a BypassRevisionCache
-func (rc *BypassRevisionCache) UpdateDelta(docID, revID string, toDelta RevisionDelta) {
+func (rc *BypassRevisionCache) UpdateDelta(ctx context.Context, docID, revID string, toDelta RevisionDelta) {
 	// no-op
 }
