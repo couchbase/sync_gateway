@@ -159,7 +159,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		panic("invalid RestTester StartupConfig: " + err.Error())
 	}
 
-	// Post-validation, we can lower the bcrypt cost to reduce test runtime.
+	// Post-validation, we can lower the bcrypt cost beyond SG limits to reduce test runtime.
 	sc.Auth.BcryptCost = bcrypt.MinCost
 
 	rt.RestTesterServerContext = NewServerContext(&sc, rt.RestTesterConfig.persistentConfig)
