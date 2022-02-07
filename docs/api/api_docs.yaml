@@ -3397,12 +3397,12 @@ paths:
             type: boolean
           in: query
           name: reset
-          description: '**Attachment compaction only** This forces a fresh compact start instead of trying to resume the previous failed compact operation.'
+          description: '**Attachment compaction only**: This forces a fresh compact start instead of trying to resume the previous failed compact operation.'
         - schema:
             type: boolean
           in: query
           name: dry_run
-          description: '**Attachment compaction only** This will run through all 3 stages of attachment compact but will not purge any attachments. This can be used to check how many attachments will be purged.'
+          description: '**Attachment compaction only**: This will run through all 3 stages of attachment compact but will not purge any attachments. This can be used to check how many attachments will be purged.'
       summary: Manage a compact operation
       description: |-
         This allows a new compact operation to be done on the database, or to stop an existing running compact operation. 
@@ -3760,7 +3760,7 @@ components:
         enum:
           - attachment
           - tombstone
-      description: 'This is the type of compaction to use. The type must be either: * `attachment` for cleaning up legacy (pre-3.0) attachments * `tombstone` for purging the JSON bodies of non-leaf revisions.'
+      description: 'This is the type of compaction to use. The type must be either: `attachment` for cleaning up legacy (pre-3.0) attachments, or `tombstone` for purging the JSON bodies of non-leaf revisions.'
     view:
       name: view
       in: path
