@@ -15,7 +15,6 @@ import (
 )
 
 func TestOneShotDCP(t *testing.T) {
-
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
@@ -147,7 +146,6 @@ func TestTerminateDCPFeed(t *testing.T) {
 // TestDCPClientMultiFeedConsistency tests for DCP rollback between execution of two DCP feeds, based on
 // changes in the VbUUID
 func TestDCPClientMultiFeedConsistency(t *testing.T) {
-
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
@@ -190,7 +188,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 	assert.NoError(t, startErr)
 
 	// Wait for first feed to complete
-	timeout := time.After(3 * time.Second)
+	timeout := time.After(10 * time.Second)
 	select {
 	case <-doneChan:
 		mutationCount := atomic.LoadUint64(&mutationCount)
@@ -233,7 +231,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 	assert.NoError(t, startErr3)
 
 	// Wait for third feed to complete
-	timeout = time.After(3 * time.Second)
+	timeout = time.After(10 * time.Second)
 	select {
 	case <-doneChan3:
 		// only vbucket 0 should have rolled back, expect mutation count to be only vbucketZero
@@ -246,7 +244,6 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 
 // TestResumeInterruptedFeed uses persisted metadata to resume the feed
 func TestResumeStoppedFeed(t *testing.T) {
-
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}

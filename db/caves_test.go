@@ -1,14 +1,12 @@
 package db
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
 	"github.com/couchbase/gocb/v2"
 	"github.com/couchbaselabs/gocaves/client"
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -37,28 +35,4 @@ func SetupCaves(t *testing.T) (cluster *gocb.Cluster, collection *gocb.Collectio
 	require.NoError(t, err)
 
 	return cluster, collection
-}
-
-func TestCaves(t *testing.T) {
-	_, collection := SetupCaves(t)
-
-	testDoc := map[string]interface{}{"foo": "bar"}
-	_, err := collection.Upsert("test", testDoc, nil)
-	assert.NoError(t, err)
-
-	doc, err := collection.Get("test", nil)
-	assert.NoError(t, err)
-
-	var gotDoc map[string]interface{}
-	err = doc.Content(&gotDoc)
-	assert.NoError(t, err)
-
-	fmt.Println(gotDoc)
-}
-
-func TestCavesDCP(t *testing.T) {
-	_, collection := SetupCaves(t)
-
-	_ = collection
-
 }
