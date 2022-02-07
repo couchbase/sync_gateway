@@ -335,7 +335,7 @@ pipeline {
                                 script {
                                     try {
 					sh 'cp sync_gateway_ee-linux sync_gateway'
-                                        sh 'docker run --net=host --rm -v /root/.ssh/id_rsa:/root/.ssh/id_rsa -v ec2-user_jenkins_agent_volume:/home/jenkins/agent litecoretest2 -legacy-config'
+                                        sh 'docker run --net=host --rm -v /root/.ssh/id_rsa:/root/.ssh/id_rsa -v ec2-user_jenkins_agent_volume:/home/jenkins/agent -e PREFIX=`pwd` litecoretest2 -legacy-config'
                                         githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'EE with LiteCore Test Passed', status: 'SUCCESS')
                                     } catch (Exception e) {
                                         githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'EE with LiteCore Test Failed', status: 'FAILURE')
