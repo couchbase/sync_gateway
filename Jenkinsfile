@@ -198,16 +198,17 @@ pipeline {
                         withEnv(["PATH+=${GO}"]) {
                             script {
                                 try {
-                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'Running', status: 'PENDING')
-                                    sh "gofmt -d -e ${GOPATH}/src/${SGW_REPO} | tee gofmt.out"
+                                    // TODO: githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'Running', status: 'PENDING')
+                                    // sh "gofmt -d -e ${GOPATH}/src/${SGW_REPO} | tee gofmt.out"
+                                    sh "gofmt -d -e . | tee gofmt.out"
                                     sh "test -z \"\$(cat gofmt.out)\""
-                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'OK', status: 'SUCCESS')
+                                    // TODO: githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'OK', status: 'SUCCESS')
                                 } catch (Exception e) {
                                     sh "wc -l < gofmt.out | awk '{printf \$1}' > gofmt.count"
                                     script {
                                         env.GOFMT_COUNT = readFile 'gofmt.count'
                                     }
-                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: "found "+env.GOFMT_COUNT+" problems", status: 'FAILURE')
+                                    // TODO: githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: "found "+env.GOFMT_COUNT+" problems", status: 'FAILURE')
                                     unstable("gofmt failed")
                                 }
                             }
@@ -218,7 +219,9 @@ pipeline {
                     steps {
                         withEnv(["PATH+=${GO}"]) {
                             warnError(message: "go vet failed") {
-                                sh "go vet ${SGW_REPO}/..."
+                                // sh "go vet ${SGW_REPO}/..."
+                                // using . to exclude vendor packages (go help packages)
+                                sh "go vet -tags ${EE_BUILD_TAG} ./..."
                             }
                         }
                     }
@@ -227,7 +230,8 @@ pipeline {
                     steps {
                         withEnv(["PATH+=${GO}"]) {
                             warnError(message: "go fix failed") {
-                                sh "go tool fix -diff ${GOPATH}/src/${SGW_REPO} | tee gofix.out"
+                                // sh "go tool fix -diff ${GOPATH}/src/${SGW_REPO} | tee gofix.out"
+                                sh "go tool fix -diff . | tee gofix.out"
                                 sh "test -z \"\$(cat gofix.out)\""
                             }
                         }
@@ -238,16 +242,18 @@ pipeline {
                         withEnv(["PATH+=${GO}:${GOTOOLS}/bin"]) {
                             script {
                                 try {
-                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'Running', status: 'PENDING')
-                                    sh "errcheck ${SGW_REPO}/... | tee errcheck.out"
+                                    // TODO: githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'Running', status: 'PENDING')
+                                    // sh "errcheck ${SGW_REPO}/... | tee errcheck.out"
+                                    // using . to exclude vendor packages (go help packages)
+                                    sh "errcheck ./... | tee errcheck.out"
                                     sh "test -z \"\$(cat errcheck.out)\""
-                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'OK', status: 'SUCCESS')
+                                    // TODO: githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'OK', status: 'SUCCESS')
                                 } catch (Exception e) {
                                     sh "wc -l < errcheck.out | awk '{printf \$1}' > errcheck.count"
                                     script {
                                         env.ERRCHECK_COUNT = readFile 'errcheck.count'
                                     }
-                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: "found "+env.ERRCHECK_COUNT+" unhandled errors", status: 'FAILURE')
+                                    // TODO: githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: "found "+env.ERRCHECK_COUNT+" unhandled errors", status: 'FAILURE')
                                     unstable("errcheck failed")
                                 }
                             }
@@ -266,7 +272,7 @@ pipeline {
                             steps{
                                 // Travis-related variables are required as coveralls.io only officially supports a certain set of CI tools.
                                 withEnv(["PATH+=${GO}:${GOTOOLS}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
-                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: 'CE Unit Tests Running', status: 'PENDING')
+                                    // TODO: githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: 'CE Unit Tests Running', status: 'PENDING')
 
                                     // Build CE coverprofiles
                                     sh '2>&1 go test -timeout=20m -coverpkg=${SGW_REPO}/... -coverprofile=cover_ce.out -race -count=1 -v ${SGW_REPO}/... > verbose_ce.out.raw || true'
@@ -298,9 +304,9 @@ pipeline {
                                     script {
                                         try {
                                             sh 'go2xunit -fail -suite-name-prefix="CE-" -input verbose_ce.out -output reports/test-ce.xml'
-                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_PASS+'/'+env.TEST_CE_TOTAL+' passed ('+env.TEST_CE_SKIP+' skipped)', status: 'SUCCESS')
+                                            // TODO: githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_PASS+'/'+env.TEST_CE_TOTAL+' passed ('+env.TEST_CE_SKIP+' skipped)', status: 'SUCCESS')
                                         } catch (Exception e) {
-                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_FAIL+'/'+env.TEST_CE_TOTAL+' failed ('+env.TEST_CE_SKIP+' skipped)', status: 'FAILURE')
+                                            // TODO: githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_FAIL+'/'+env.TEST_CE_TOTAL+' failed ('+env.TEST_CE_SKIP+' skipped)', status: 'FAILURE')
                                             // archive verbose test logs in the event of a test failure
                                             archiveArtifacts artifacts: 'verbose_ce.out', fingerprint: false
                                             unstable("At least one CE unit test failed")
@@ -318,7 +324,7 @@ pipeline {
                         stage('EE') {
                             steps {
                                 withEnv(["PATH+=${GO}:${GOTOOLS}/bin"]) {
-                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: 'EE Unit Tests Running', status: 'PENDING')
+                                    // TODO: githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: 'EE Unit Tests Running', status: 'PENDING')
 
                                     // Build EE coverprofiles
                                     sh "2>&1 go test -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=${SGW_REPO}/... -coverprofile=cover_ee.out -race -count=1 -v ${SGW_REPO}/... > verbose_ee.out.raw || true"
@@ -349,9 +355,9 @@ pipeline {
                                     script {
                                         try {
                                             sh 'go2xunit -fail -suite-name-prefix="EE-" -input verbose_ee.out -output reports/test-ee.xml'
-                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_PASS+'/'+env.TEST_EE_TOTAL+' passed ('+env.TEST_EE_SKIP+' skipped)', status: 'SUCCESS')
+                                            // TODO: githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_PASS+'/'+env.TEST_EE_TOTAL+' passed ('+env.TEST_EE_SKIP+' skipped)', status: 'SUCCESS')
                                         } catch (Exception e) {
-                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_FAIL+'/'+env.TEST_EE_TOTAL+' failed ('+env.TEST_EE_SKIP+' skipped)', status: 'FAILURE')
+                                            // TODO: githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_FAIL+'/'+env.TEST_EE_TOTAL+' failed ('+env.TEST_EE_SKIP+' skipped)', status: 'FAILURE')
                                             // archive verbose test logs in the event of a test failure
                                             archiveArtifacts artifacts: 'verbose_ee.out', fingerprint: false
                                             unstable("At least one EE unit test failed")
@@ -374,16 +380,16 @@ pipeline {
                         }
                         stage('against EE') {
                             steps {
-                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'Running LiteCore Tests', status: 'PENDING')
+                                // TODO: githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'Running LiteCore Tests', status: 'PENDING')
                                 sh 'touch verbose_litecore.out'
                                 sh 'touch verbose_litecore-sg_trace.out'
 
                                 script {
                                     try {
                                         sh 'docker run --net=host --rm -v /root/.ssh/id_rsa_ns-buildbot:/root/.ssh/id_rsa -v `pwd`/sync_gateway_ee-linux:/sync_gateway -v `pwd`/verbose_litecore.out:/output.out -v `pwd`/verbose_litecore-sg_trace.out:/tmp/sglog/sg_trace.log couchbase/sg-test-litecore:latest -legacy-config'
-                                        githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'EE with LiteCore Test Passed', status: 'SUCCESS')
+                                        // TODO: githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'EE with LiteCore Test Passed', status: 'SUCCESS')
                                     } catch (Exception e) {
-                                        githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'EE with LiteCore Test Failed', status: 'FAILURE')
+                                        // TODO: githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'EE with LiteCore Test Failed', status: 'FAILURE')
                                         // archive verbose test logs in the event of a test failure
                                         archiveArtifacts artifacts: 'verbose_litecore*.out', fingerprint: false
                                         unstable("EE LIteCore Test Failed")
