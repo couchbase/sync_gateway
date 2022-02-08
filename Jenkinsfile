@@ -17,19 +17,14 @@ pipeline {
         GOPRIVATE = "github.com/couchbaselabs/go-fleecedelta"
     }
 
-    node {
-        // Ensure the desired Go version is installed
-        def root = tool type: 'go', name: "Go ${GO_VERSION}"
-
-        // Export environment variables pointing to the directory where Go was installed
-        withEnv(["GOROOT=${root}", "PATH+GO=${root}/bin"]) {
-            sh 'go version'
-        }
-
-        stages {
-             stage("Go"){
-                 sh 'go env'
-             }
+    stages {
+        stage("Go") {
+            steps {
+                withEnv(["PATH+=${GOPATH}/bin:${GOROOT}/bin"]) {
+                    sh 'go version'
+                    sh 'go env'
+                }
+            }
         }
     }
 
