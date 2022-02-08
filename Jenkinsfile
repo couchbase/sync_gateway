@@ -32,50 +32,39 @@ pipeline {
             }
         }
 
-        stage('Setup') {
-            parallel {
-                stage('Bootstrap') {
+        stage('Go') {
+            stages {
+                stage('Install') {
                     steps {
-                        echo "Bootstrapping commit ${SG_COMMIT}"
-                        sh 'cp .scm-checkout/bootstrap.sh .'
-                        sh 'chmod +x bootstrap.sh'
-                        sh "./bootstrap.sh -e ee -c ${SG_COMMIT}"
+                        echo 'Installing Go via gvm..'
+                        // We'll use Go 1.10.4 to bootstrap compilation of newer Go versions
+                        // (because we know this version is installed on the Jenkins node)
+                        withEnv(["GOROOT_BOOTSTRAP=/root/.gvm/gos/go1.10.4"]) {
+                            // Use gvm to install the required Go version, if not already
+                            sh "${GVM} install $GO_VERSION"
+                        }
                     }
                 }
-                stage('Go') {
-                    stages {
-                        stage('Install') {
-                            steps {
-                                echo 'Installing Go via gvm..'
-                                // We'll use Go 1.10.4 to bootstrap compilation of newer Go versions
-                                // (because we know this version is installed on the Jenkins node)
-                                withEnv(["GOROOT_BOOTSTRAP=/root/.gvm/gos/go1.10.4"]) {
-                                    // Use gvm to install the required Go version, if not already
-                                    sh "${GVM} install $GO_VERSION"
-                                }
-                            }
-                        }
-                        stage('Get Tools') {
-                            steps {
-                                withEnv(["PATH+=${GO}", "GOPATH=${GOTOOLS}", "GO111MODULE=off"]) {
-                                    sh "go env"
-                                    sh "go version"
-                                    // unhandled error checker
-                                    sh 'go get -v -u github.com/kisielk/errcheck'
-                                    // goveralls is used to send coverprofiles to coveralls.io
-                                    sh 'go get -v -u github.com/mattn/goveralls'
-                                    // Jenkins coverage reporting tools
-                                    sh 'go get -v -u github.com/axw/gocov/...'
-                                    sh 'go get -v -u github.com/AlekSi/gocov-xml'
-                                    // Jenkins test reporting tools
-                                    sh 'go get -v -u github.com/tebeka/go2xunit'
-                                }
-                            }
+                stage('Get Tools') {
+                    steps {
+                        withEnv(["PATH+=${GO}", "GOPATH=${GOTOOLS}", "GO111MODULE=off"]) {
+                            sh "go env"
+                            sh "go version"
+                            // unhandled error checker
+                            sh 'go get -v -u github.com/kisielk/errcheck'
+                            // goveralls is used to send coverprofiles to coveralls.io
+                            sh 'go get -v -u github.com/mattn/goveralls'
+                            // Jenkins coverage reporting tools
+                            sh 'go get -v -u github.com/axw/gocov/...'
+                            sh 'go get -v -u github.com/AlekSi/gocov-xml'
+                            // Jenkins test reporting tools
+                            sh 'go get -v -u github.com/tebeka/go2xunit'
                         }
                     }
                 }
             }
         }
+
 
     }
 }
