@@ -1,7 +1,7 @@
 pipeline {
     // Build on this uberjenkins node, as it has the Go environment set up in a known-state
     // We could potentially change this to use a dockerfile agent instead so it can be portable.
-    agent { label 'sync-gateway-pipeline-builder' }
+    agent { label 'sync-gateway-pipeline-builder-v2' }
 
     environment {
         GO_VERSION = 'go1.17.5'
@@ -335,7 +335,7 @@ pipeline {
                                 script {
                                     try {
 					sh 'cp sync_gateway_ee-linux sync_gateway'
-                                        sh 'docker run --net=host --rm -v /root/.ssh/id_rsa:/root/.ssh/id_rsa -v jenkins_jenkins_agent_volume:/home/jenkins/agent -e PREFIX=`pwd` litecoretest2 -legacy-config'
+                                        sh 'docker run --net=host --rm -v /root/.ssh/id_rsa:/root/.ssh/id_rsa -v jenkins_agent_volume:/home/jenkins/agent -e PREFIX=`pwd`  -legacy-config'
                                         githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'EE with LiteCore Test Passed', status: 'SUCCESS')
                                     } catch (Exception e) {
                                         githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'EE with LiteCore Test Failed', status: 'FAILURE')
