@@ -99,7 +99,7 @@ pipeline {
                         // (because we know this version is installed on the Jenkins node)
                         withEnv(["GOROOT_BOOTSTRAP=/root/.gvm/gos/go1.10.4"]) {
                             // Use gvm to install the required Go version, if not already
-                            sh "${GVM} install $GO_VERSION"
+                            sh "${GVM} install ${GO_VERSION}"
                         }
                     }
                 }
@@ -113,8 +113,6 @@ pipeline {
                             // goveralls is used to send coverprofiles to coveralls.io
                             sh 'go get -v -u github.com/mattn/goveralls'
                             // Jenkins coverage reporting tools
-                            // sh 'go get -v -u github.com/axw/gocov/...'
-                            // sh 'go get -v -u github.com/AlekSi/gocov-xml'
                             sh 'go install github.com/axw/gocov/gocov@latest'
                             sh 'go install github.com/AlekSi/gocov-xml@latest'
                             // Jenkins test reporting tools
@@ -422,11 +420,11 @@ pipeline {
                                 // if present, run stage as separate GH status
                                 echo 'Example of where we can run integration tests for this commit'
                                 // TODO: gitStatusWrapper(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", description: 'Running EE Integration Test', failureDescription: 'EE Integration Test Failed', gitHubContext: 'sgw-pipeline-integration-ee', successDescription: 'EE Integration Test Passed') {
-                                    echo "Waiting for integration test to finish..."
-                                    // TODO: add commit parameter
-                                    // Block the pipeline, but don't propagate a failure up to the top-level job - rely on gitStatusWrapper letting us know it failed
-                                    build job: 'sync-gateway-integration-master', wait: true, propagate: false
-                                }
+                                //     echo "Waiting for integration test to finish..."
+                                //     // TODO: add commit parameter
+                                //     // Block the pipeline, but don't propagate a failure up to the top-level job - rely on gitStatusWrapper letting us know it failed
+                                //     build job: 'sync-gateway-integration-master', wait: true, propagate: false
+                                // }
                             }
                         }
                     }
