@@ -23,29 +23,27 @@ pipeline {
     }
 
     stages {
-        stage('SCM') {
-            steps {
-                sh "git rev-parse HEAD > .git/commit-id"
-                script {
-                    env.SG_COMMIT = readFile '.git/commit-id'
-                    // Set BRANCH variable to target branch if this build is a PR
-                    if (env.CHANGE_TARGET) {
-                        env.BRANCH = env.CHANGE_TARGET
-                    }
-                }
+        // stage('SCM') {
+        //     steps {
+        //         sh "git rev-parse HEAD > .git/commit-id"
+        //         script {
+        //             env.SG_COMMIT = readFile '.git/commit-id'
+        //             // Set BRANCH variable to target branch if this build is a PR
+        //             if (env.CHANGE_TARGET) {
+        //                 env.BRANCH = env.CHANGE_TARGET
+        //             }
+        //         }
 
-                // Make a hidden directory to move scm
-                // checkout into, we'll need a bit for later,
-                // but mostly rely on bootstrap.sh to get our code.
-                //
-                // TODO: We could probably change the implicit checkout
-                // to clone directly into a subdirectory instead?
-                sh 'mkdir .scm-checkout'
-                sh 'mv * .scm-checkout/'
-
-                checkout scm
-            }
-        }
+        //         // Make a hidden directory to move scm
+        //         // checkout into, we'll need a bit for later,
+        //         // but mostly rely on bootstrap.sh to get our code.
+        //         //
+        //         // TODO: We could probably change the implicit checkout
+        //         // to clone directly into a subdirectory instead?
+        //         sh 'mkdir .scm-checkout'
+        //         sh 'mv * .scm-checkout/'
+        //     }
+        // }
         // stage('Setup') {
         //     parallel {
         //         stage('Bootstrap') {
@@ -90,6 +88,7 @@ pipeline {
         //         }
         //     }
         // }
+
         stage('Go Setup') {
             stages {
                 stage('Install') {
@@ -122,6 +121,32 @@ pipeline {
                 }
             }
         }
+        
+        stage('SCM') {
+            steps {
+                sh "git rev-parse HEAD > .git/commit-id"
+                script {
+                    env.SG_COMMIT = readFile '.git/commit-id'
+                    // Set BRANCH variable to target branch if this build is a PR
+                    if (env.CHANGE_TARGET) {
+                        env.BRANCH = env.CHANGE_TARGET
+                    }
+                }
+
+                // Make a hidden directory to move scm
+                // checkout into, we'll need a bit for later,
+                // but mostly rely on bootstrap.sh to get our code.
+                //
+                // TODO: We could probably change the implicit checkout
+                // to clone directly into a subdirectory instead?
+                sh 'mkdir .scm-checkout'
+                sh 'mv * .scm-checkout/'
+
+                // TODO: remove checkout after resolving previous TODO
+                checkout scm
+            }
+        }
+
 
         stage('Builds') {
             parallel {
