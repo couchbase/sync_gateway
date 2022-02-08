@@ -67,7 +67,7 @@ pipeline {
         //         }
         //     }
         // }
-        
+
         stage('SCM-1') {
             steps {
                 sh "git rev-parse HEAD > .git/commit-id"
@@ -115,8 +115,8 @@ pipeline {
                             // Jenkins coverage reporting tools
                             // sh 'go get -v -u github.com/axw/gocov/...'
                             // sh 'go get -v -u github.com/AlekSi/gocov-xml'
-                            go install github.com/axw/gocov/gocov@latest
-                            go install github.com/AlekSi/gocov-xml@latest
+                            sh 'go install github.com/axw/gocov/gocov@latest'
+                            sh 'go install github.com/AlekSi/gocov-xml@latest'
                             // Jenkins test reporting tools
                             sh 'go get -v -u github.com/tebeka/go2xunit'
                         }
