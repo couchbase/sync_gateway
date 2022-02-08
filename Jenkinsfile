@@ -105,7 +105,8 @@ pipeline {
                 }
                 stage('Get Tools') {
                     steps {
-                        withEnv(["PATH+=${GO}", "GOPATH=${GOTOOLS}"]) {
+                        // withEnv(["PATH+=${GO}", "GOPATH=${GOTOOLS}"]) {
+                        withEnv(["PATH+=${GO}"]) {
                             sh "go env"
                             sh "go version"
                             // unhandled error checker
@@ -239,7 +240,8 @@ pipeline {
                 }
                 stage('errcheck') {
                     steps {
-                        withEnv(["PATH+=${GO}:${GOTOOLS}/bin"]) {
+                        // withEnv(["PATH+=${GO}:${GOTOOLS}/bin"]) {
+                        withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
                             script {
                                 try {
                                     // TODO: githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'Running', status: 'PENDING')
@@ -271,7 +273,8 @@ pipeline {
                             when { branch 'master' }
                             steps{
                                 // Travis-related variables are required as coveralls.io only officially supports a certain set of CI tools.
-                                withEnv(["PATH+=${GO}:${GOTOOLS}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
+                                // withEnv(["PATH+=${GO}:${GOTOOLS}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
+                                withEnv(["PATH+=${GO}:${GOPATH}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
                                     // TODO: githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: 'CE Unit Tests Running', status: 'PENDING')
 
                                     // Build CE coverprofiles
@@ -323,7 +326,8 @@ pipeline {
 
                         stage('EE') {
                             steps {
-                                withEnv(["PATH+=${GO}:${GOTOOLS}/bin"]) {
+                                // withEnv(["PATH+=${GO}:${GOTOOLS}/bin"]) {
+                                withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
                                     // TODO: githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: 'EE Unit Tests Running', status: 'PENDING')
 
                                     // Build EE coverprofiles
