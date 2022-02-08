@@ -23,28 +23,6 @@ pipeline {
     }
 
     stages {
-        stage('SCM-1') {
-            steps {
-                sh "git rev-parse HEAD > .git/commit-id"
-                script {
-                    env.SG_COMMIT = readFile '.git/commit-id'
-                    // Set BRANCH variable to target branch if this build is a PR
-                    if (env.CHANGE_TARGET) {
-                        env.BRANCH = env.CHANGE_TARGET
-                    }
-                }
-
-                // Make a hidden directory to move scm
-                // checkout into, we'll need a bit for later,
-                // but mostly rely on bootstrap.sh to get our code.
-                //
-                // TODO: We could probably change the implicit checkout
-                // to clone directly into a subdirectory instead?
-                sh 'mkdir .scm-checkout'
-                sh 'mv * .scm-checkout/'
-            }
-        }
-
         // stage('Setup') {
         //     parallel {
         //         stage('Bootstrap') {
@@ -89,6 +67,28 @@ pipeline {
         //         }
         //     }
         // }
+        
+        stage('SCM-1') {
+            steps {
+                sh "git rev-parse HEAD > .git/commit-id"
+                script {
+                    env.SG_COMMIT = readFile '.git/commit-id'
+                    // Set BRANCH variable to target branch if this build is a PR
+                    if (env.CHANGE_TARGET) {
+                        env.BRANCH = env.CHANGE_TARGET
+                    }
+                }
+
+                // Make a hidden directory to move scm
+                // checkout into, we'll need a bit for later,
+                // but mostly rely on bootstrap.sh to get our code.
+                //
+                // TODO: We could probably change the implicit checkout
+                // to clone directly into a subdirectory instead?
+                sh 'mkdir .scm-checkout'
+                sh 'mv * .scm-checkout/'
+            }
+        }
 
         stage('Go Setup') {
             stages {
@@ -113,8 +113,10 @@ pipeline {
                             // goveralls is used to send coverprofiles to coveralls.io
                             sh 'go get -v -u github.com/mattn/goveralls'
                             // Jenkins coverage reporting tools
-                            sh 'go get -v -u github.com/axw/gocov/...'
-                            sh 'go get -v -u github.com/AlekSi/gocov-xml'
+                            // sh 'go get -v -u github.com/axw/gocov/...'
+                            // sh 'go get -v -u github.com/AlekSi/gocov-xml'
+                            go install github.com/axw/gocov/gocov@latest
+                            go install github.com/AlekSi/gocov-xml@latest
                             // Jenkins test reporting tools
                             sh 'go get -v -u github.com/tebeka/go2xunit'
                         }
@@ -419,7 +421,7 @@ pipeline {
                                 // TODO: Read labels on PR for 'integration-test'
                                 // if present, run stage as separate GH status
                                 echo 'Example of where we can run integration tests for this commit'
-                                gitStatusWrapper(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", description: 'Running EE Integration Test', failureDescription: 'EE Integration Test Failed', gitHubContext: 'sgw-pipeline-integration-ee', successDescription: 'EE Integration Test Passed') {
+                                // TODO: gitStatusWrapper(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", description: 'Running EE Integration Test', failureDescription: 'EE Integration Test Failed', gitHubContext: 'sgw-pipeline-integration-ee', successDescription: 'EE Integration Test Passed') {
                                     echo "Waiting for integration test to finish..."
                                     // TODO: add commit parameter
                                     // Block the pipeline, but don't propagate a failure up to the top-level job - rely on gitStatusWrapper letting us know it failed
