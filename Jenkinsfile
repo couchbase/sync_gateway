@@ -5,6 +5,7 @@ pipeline {
 
     environment {
         GO_VERSION = '1.17.5'
+        GOROOT = tool type: 'go', name: "Go ${GO_VERSION}"
         GOPATH = "${WORKSPACE}/godeps"
         GOCACHE = "${WORKSPACE}/.gocache"
         BRANCH = "${BRANCH_NAME}"
