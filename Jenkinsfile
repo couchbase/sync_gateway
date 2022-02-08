@@ -13,8 +13,10 @@ pipeline {
         BRANCH = "${BRANCH_NAME}"
         COVERALLS_TOKEN = credentials('SG_COVERALLS_TOKEN')
         EE_BUILD_TAG = "cb_sg_enterprise"
-        SGW_REPO = "github.com/couchbase/sync_gateway"
         GH_ACCESS_TOKEN_CREDENTIAL = "github_cb-robot-sg_access_token"
+        SGW_REPO = "github.com/cbbruno/sync_gateway_mod"
+        GO111MODULE = "auto"
+        GOPRIVATE = "github.com/couchbaselabs/go-fleecedelta"
     }
 
     stages {
@@ -58,6 +60,66 @@ pipeline {
                             sh 'go get -v -u github.com/AlekSi/gocov-xml'
                             // Jenkins test reporting tools
                             sh 'go get -v -u github.com/tebeka/go2xunit'
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Builds') {
+            parallel {
+                stage('CE Linux') {
+                    steps {
+                        withEnv(["PATH+=${GO}"]) {
+                            sh "GOOS=linux go build -o sync_gateway_ce-linux -v ${SGW_REPO}"
+                        }
+                    }
+                }
+                stage('EE Linux') {
+                    steps {
+                        withEnv(["PATH+=${GO}"]) {
+                            sh "GOOS=linux go build -o sync_gateway_ee-linux -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
+                        }
+                    }
+                }
+                stage('CE macOS') {
+                    // TODO: Remove skip
+                    when { expression { return false } }
+                    steps {
+                        withEnv(["PATH+=${GO}"]) {
+                            echo 'TODO: figure out why build issues are caused by gosigar'
+                            sh "GOOS=darwin go build -o sync_gateway_ce-darwin -v ${SGW_REPO}"
+                        }
+                    }
+                }
+                stage('EE macOS') {
+                    // TODO: Remove skip
+                    when { expression { return false } }
+                    steps {
+                        withEnv(["PATH+=${GO}"]) {
+                            echo 'TODO: figure out why build issues are caused by gosigar'
+                            sh "GOOS=darwin go build -o sync_gateway_ee-darwin -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
+                        }
+                    }
+                }
+                stage('CE Windows') {
+                    steps {
+                        withEnv(["PATH+=${GO}"]) {
+                            sh "GOOS=windows go build -o sync_gateway_ce-windows -v ${SGW_REPO}"
+                        }
+                    }
+                }
+                stage('EE Windows') {
+                    steps {
+                        withEnv(["PATH+=${GO}"]) {
+                            sh "GOOS=windows go build -o sync_gateway_ee-windows -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
+                        }
+                    }
+                }
+                stage('Windows Service') {
+                    steps {
+                        withEnv(["PATH+=${GO}"]) {
+                            sh "GOOS=windows go build -o sync_gateway_ce-windows-service -v ${SGW_REPO}/service/sg-windows/sg-service"
                         }
                     }
                 }
