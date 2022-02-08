@@ -41,6 +41,8 @@ pipeline {
                 // to clone directly into a subdirectory instead?
                 sh 'mkdir .scm-checkout'
                 sh 'mv * .scm-checkout/'
+
+                checkout scm
             }
         }
         // stage('Setup') {
