@@ -425,6 +425,7 @@ pipeline {
                                 //     // Block the pipeline, but don't propagate a failure up to the top-level job - rely on gitStatusWrapper letting us know it failed
                                 //     build job: 'sync-gateway-integration-master', wait: true, propagate: false
                                 // }
+                                build job: 'sync-gateway-integration-master', wait: true, propagate: false
                             }
                         }
                     }
