@@ -4,7 +4,7 @@ pipeline {
     agent { label 'sync-gateway-pipeline-builder' }
 
     environment {
-        GO_VERSION = '1.17.5'
+        GO_VERSION = '1.17'
         GOROOT = tool type: 'go', name: "Go ${GO_VERSION}"
         GOPATH = "${WORKSPACE}/godeps"
         GOCACHE = "${WORKSPACE}/.gocache"
