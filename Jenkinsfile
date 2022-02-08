@@ -25,6 +25,12 @@ pipeline {
         withEnv(["GOROOT=${root}", "PATH+GO=${root}/bin"]) {
             sh 'go version'
         }
+
+        stages {
+             stage("Go"){
+                 sh 'go env'
+             }
+        }
     }
 
 }
