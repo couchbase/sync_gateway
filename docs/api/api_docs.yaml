@@ -17,17 +17,44 @@ paths:
     get:
       responses:
         '200':
-          description: OK
+          description: Returned server information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ADMIN:
+                    type: boolean
+                    description: Whether the request is from the Admin API (`true`) or the Public API (`false`).
+                  couchdb:
+                    type: string
+                    default: Welcome
+                  vendor:
+                    $ref: '#/components/schemas/Vendor'
+                  version:
+                    type: string
+                    description: |-
+                      The product version including the build number and edition (ie. `EE` or `CE`).
+
+                      Blank if `api.hide_product_version=true` in the startup configuration.
+                required:
+                  - ADMIN
+                  - couchdb
+                  - vendor
       tags:
         - Admin
         - Public
+      summary: Get server information
+      description: This will return information about the server.
     head:
       responses:
         '200':
-          description: OK
+          description: Server is online
       tags:
         - Admin
         - Public
+      summary: Check if server online
+      description: Check if the server is online by checking the status code of response.
   '/{db}/':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -38,7 +65,6 @@ paths:
           content:
             application/json:
               schema:
-                description: ''
                 type: object
                 properties:
                   db_name:
@@ -884,12 +910,7 @@ paths:
                     type: string
   '/{db}/_local/{docid}':
     parameters:
-      - name: db
-        in: path
-        required: true
-        schema:
-          type: string
-        description: The name of the database to run the operation against.
+      - $ref: '#/components/parameters/db'
       - schema:
           type: string
         name: docid
@@ -1168,13 +1189,13 @@ paths:
             type: boolean
             default: 'true'
           in: query
-          description: 'Set to false to disable the `Content-Encoding` response header.'
+          description: Set to false to disable the `Content-Encoding` response header.
         - name: Range
           schema:
             type: string
           in: header
-          description: 'RFC-2616 bytes range header.'
-          example: 'bytes=123-456'
+          description: RFC-2616 bytes range header.
+          example: bytes=123-456
         - name: meta
           schema:
             type: boolean
@@ -1428,12 +1449,7 @@ paths:
                 - access_token
   '/{db}/_google':
     parameters:
-      - name: db
-        in: path
-        required: true
-        schema:
-          type: string
-        description: The name of the database to run the operation against.
+      - $ref: '#/components/parameters/db'
     post:
       deprecated: true
       responses:
@@ -1514,12 +1530,7 @@ paths:
         - $ref: '#/components/parameters/offline'
   '/{db}/_oidc_challenge':
     parameters:
-      - name: db
-        in: path
-        required: true
-        schema:
-          type: string
-        description: The name of the database to run the operation against.
+      - $ref: '#/components/parameters/db'
     get:
       responses:
         '400':
@@ -1885,15 +1896,10 @@ paths:
           description: Database exists
       tags:
         - Public
-      description: ''
   '/{db}/_session/{sessionid}':
     parameters:
       - $ref: '#/components/parameters/db'
-      - name: sessionid
-        schema:
-          type: string
-        in: path
-        required: true
+      - $ref: '#/components/parameters/sessionid'
     get:
       responses:
         '200':
@@ -2154,11 +2160,7 @@ paths:
   '/{db}/_user/{name}/_session':
     parameters:
       - $ref: '#/components/parameters/db'
-      - name: name
-        schema:
-          type: string
-        in: path
-        required: true
+      - $ref: '#/components/parameters/user-name'
     delete:
       responses:
         '200':
@@ -2175,16 +2177,8 @@ paths:
   '/{db}/_user/{name}/_session/{sessionid}':
     parameters:
       - $ref: '#/components/parameters/db'
-      - name: name
-        schema:
-          type: string
-        in: path
-        required: true
-      - name: sessionid
-        schema:
-          type: string
-        in: path
-        required: true
+      - $ref: '#/components/parameters/user-name'
+      - $ref: '#/components/parameters/sessionid'
     delete:
       responses:
         '200':
@@ -2310,8 +2304,7 @@ paths:
       tags:
         - Admin
       summary: Get all replication configurations
-      description: |-
-        This will retrieve all database replication definitions.
+      description: This will retrieve all database replication definitions.
     post:
       responses:
         '200':
@@ -2516,171 +2509,665 @@ paths:
     get:
       responses:
         '200':
-          description: OK
+          description: Returned map of console log keys
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Map of console log keys
+                properties:
+                  log_key:
+                    type: boolean
+                    default: true
+                    description: This is the console log keys currently in use (therefore all the values will be `true`).
+                required:
+                  - log_key
       tags:
         - Admin
+      description: |-
+        **Deprecated in favour of `GET /_config`**
+        This will return a map of the log keys being used for the console. This will include the runtime log keys.
+      summary: Get the console log keys
+      deprecated: true
     put:
       responses:
         '200':
-          description: OK
+          description: Log keys successfully replace
+        '400':
+          $ref: '#/components/responses/request-problem'
       tags:
         - Admin
+      deprecated: true
+      description: |-
+        **Deprecated in favour of `PUT /_config`**
+        This is for replacing all the log keys and optionally changing the console log level.
+      summary: Replace console log keys and change log level
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              description: A map of the console log keys to replace all the current log keys with.
+              properties:
+                log_key:
+                  type: boolean
+                  description: The name of the log key and the value `true` to use it.
+        description: The map of log keys to use for console logging.
+      parameters:
+        - $ref: '#/components/parameters/log-level'
+        - $ref: '#/components/parameters/log-level-int'
     post:
       responses:
         '200':
-          description: OK
+          description: Log keys successfully upserted.
+        '400':
+          $ref: '#/components/responses/request-problem'
       tags:
         - Admin
+      deprecated: true
+      summary: Update console log keys and change log level
+      description: |-
+        **Deprecated in favour of `PUT /_config`**
+        This is for upserting the log keys provided and optionally changing the console log level.
+      parameters:
+        - $ref: '#/components/parameters/log-level'
+        - $ref: '#/components/parameters/log-level-int'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                log_key:
+                  type: boolean
+                  description: 'The console log key to upsert along with the value. If the value is `false` then the log key will not be used, or else if `true` than the log key will be used.'
+        description: The console log keys to upsert.
   '/_profile/{profilename}':
     parameters:
       - name: profilename
         schema:
           type: string
+          enum:
+            - heap
+            - block
+            - threadcreate
+            - mutex
+            - goroutine
         in: path
         required: true
+        description: The handler to use for profiling.
     post:
       responses:
         '200':
-          description: OK
+          description: Successfully started profiling
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      description: |-
+        This endpoint allows you to start profiling Sync Gateway. Profiling outputs a Go pprof file so performance can be analysed.
+
+        To start profiling, call this endpoint with the handler to use for profiling and supply a file to output the pprof file to.
+      summary: Start profiling
   /_profile:
     post:
       responses:
         '200':
-          description: OK
+          description: Sucessfully started or stopped CPU profiling
+        '400':
+          $ref: '#/components/responses/request-problem'
       tags:
         - Admin
+      description: |-
+        This endpoint allows you to start or stop CPU profiling for Sync Gateway. Profiling outputs a Go pprof file so performance can be analysed.
+
+        To start profiling the CPU, call this endpoint and supply a file to output the pprof file to. To stop profiling, call this endpoint but don't supply the `file` in the body.
+      summary: Start or stop CPU profiling
+      requestBody:
+        $ref: '#/components/requestBodies/Profile'
   /_heap:
     post:
       responses:
         '200':
-          description: OK
+          description: Successfully dumped heap profile
+        '400':
+          $ref: '#/components/responses/request-problem'
       tags:
         - Admin
+      summary: Dump heap profile
+      description: This endpoint will dump a pprof heap profile.
+      requestBody:
+        $ref: '#/components/requestBodies/Profile'
   /_stats:
     get:
       responses:
         '200':
-          description: OK
+          description: Returned memory usage statistics
       tags:
         - Admin
+      description: This will return the current Sync Gateway nodes memory statistics such as current memory usage.
+      summary: Get memory statistics
   /_config:
     get:
       responses:
         '200':
-          description: OK
+          description: Successfully returned server configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Startup-config'
+        '400':
+          $ref: '#/components/responses/request-problem'
       tags:
         - Admin
+      description: This will return the configuration that the Sync Gateway node is running with.
+      parameters:
+        - $ref: '#/components/parameters/redact'
+        - name: include_runtime
+          in: query
+          description: Include the default values that Sync Gateway is running with (known as the runtime configuration) and include all the databases under the `databases` key.
+          schema:
+            type: boolean
+            default: 'false'
+      summary: Get the server configuration
     put:
       responses:
         '200':
-          description: OK
+          description: Successfully updated logging options
+        '400':
+          $ref: '#/components/responses/request-problem'
       tags:
         - Admin
+      summary: Update the server logging options
+      description: This endpoint is used to update the server logging options without needing a restart.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                logging:
+                  type: object
+                  properties:
+                    console:
+                      type: object
+                      description: Options for outputting the logs to the console.
+                      properties:
+                        log_level:
+                          type: string
+                          enum:
+                            - none
+                            - error
+                            - warn
+                            - info
+                            - debug
+                            - trace
+                          description: The minimum log level to output to console.
+                        log_keys:
+                          type: array
+                          description: |-
+                            The log keys to use to filter the outputted log messages.
+
+                            **If set, this will replace any existing logging keys.**
+                          items:
+                            type: string
+                            enum:
+                              - '*'
+                              - Admin
+                              - Access
+                              - Auth
+                              - Bucket
+                              - Cache
+                              - Changes
+                              - SGCluster
+                              - Config
+                              - CRUD
+                              - DCP
+                              - Events
+                              - gocb
+                              - HTTP
+                              - HTTP+
+                              - Import
+                              - Javascript
+                              - Migrate
+                              - Query
+                              - Replicate
+                              - Sync
+                              - SyncMsg
+                              - WS
+                              - WSFrame
+                              - TEST
+                    error:
+                      $ref: '#/components/schemas/Log-update-enabled'
+                    warn:
+                      $ref: '#/components/schemas/Log-update-enabled'
+                    info:
+                      $ref: '#/components/schemas/Log-update-enabled'
+                    debug:
+                      $ref: '#/components/schemas/Log-update-enabled'
+                    trace:
+                      $ref: '#/components/schemas/Log-update-enabled'
+                    stats:
+                      $ref: '#/components/schemas/Log-update-enabled'
   /_status:
     get:
       responses:
         '200':
-          description: OK
+          description: Returned the status successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        '400':
+          $ref: '#/components/responses/request-problem'
       tags:
         - Admin
+      summary: Get the server status
+      description: This will retrieve the status of each database and the overall server status.
   /_sgcollect_info:
     get:
       responses:
         '200':
-          description: OK
+          description: Returned sgcollect_info status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum:
+                      - stopped
+                      - running
+                    description: The status of sgcollect_info.
+                required:
+                  - status
       tags:
         - Admin
+      summary: Get the status of the Sync Gateway Collect Info
+      description: This will return the status of whether Sync Gateway Collect Info (sgcollect_info) is currently running or not.
     post:
       responses:
         '200':
-          description: OK
+          description: Successfully started sgcollect_info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    default: started
+                    description: The new sgcollect_info status.
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '500':
+          description: An error occurred while trying to run sgcollect_info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTP-Error'
       tags:
         - Admin
+      summary: Start Sync Gateway Collect Info
+      description: This endpoint is used to start a Sync Gateway Collect Info (sgcollect_info) job so that Sync Gateway diagnostic data can be outputted to a file.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                redact_level:
+                  type: string
+                  default: partial
+                  enum:
+                    - partial
+                    - none
+                  description: The redaction level to use for redacting the collected logs.
+                redact_salt:
+                  type: string
+                  description: The salt to use for the log redactions.
+                output_dir:
+                  type: string
+                  description: |-
+                    The directory to output the collected logs zip file at.
+
+                    This overrides the configured default output directory configured in the startup config `logging.log_file_path`.
+                  default: The configured path set in the startup config `logging.log_file_path`
+                upload:
+                  type: boolean
+                  description: |-
+                    If set, upload the logs to Couchbase Support.
+
+                    A customer name must be set if this is set.
+                upload_host:
+                  type: string
+                  default: 'https://uploads.couchbase.com'
+                  description: The host to send the logs too.
+                upload_proxy:
+                  type: string
+                  description: The proxy to use while uploading the logs.
+                customer:
+                  type: string
+                  description: The customer name to use when uploading the logs.
+                ticket:
+                  type: string
+                  description: The Zendesk ticket number to use when uploading logs.
+                  minLength: 1
+                  maxLength: 7
+        description: sgcollect_info options
     delete:
       responses:
         '200':
-          description: OK
+          description: Job cancelled successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    default: cancelled
+                    description: The new status of sgcollect_info.
+        '400':
+          $ref: '#/components/responses/request-problem'
       tags:
         - Admin
+      summary: Cancel the Sync Gateway Collect Info job
+      description: 'This endpoint is used to cancel a current Sync Gateway Collect Info (sgcollect_info) job that is running. '
   /_debug/pprof/goroutine:
     get:
       responses:
         '200':
           description: OK
+          content:
+            application/octet-stream:
+              schema:
+                type: string
       tags:
         - Admin
+      summary: Get the goroutine pprof debug file
+    post:
+      summary: Get the goroutine pprof debug file
+      responses:
+        '200':
+          description: OK
+          content:
+            application/octet-stream:
+              schema:
+                type: string
   /_debug/pprof/cmdline:
     get:
       responses:
         '200':
           description: OK
+          content:
+            text/plain:
+              schema:
+                type: string
       tags:
         - Admin
+      summary: Get passed in command line parameters
+      description: 'Gets the command line parameters that was passed in to Sync Gateway which will include the binary, flags (if any) and startup configuration.'
+    post:
+      summary: Get passed in command line parameters
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: string
+      description: 'Gets the command line parameters that was passed in to Sync Gateway which will include the binary, flags (if any) and startup configuration.'
   /_debug/pprof/symbol:
     get:
       responses:
         '200':
           description: OK
+          content:
+            text/plain:
+              schema:
+                type: string
       tags:
         - Admin
+      summary: Get symbol pprof debug information
+    post:
+      summary: Get symbol pprof debug information
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: string
   /_debug/pprof/heap:
     get:
       responses:
         '200':
           description: OK
+          content:
+            application/octet-stream:
+              schema:
+                type: string
       tags:
         - Admin
+      summary: Get the heap pprof debug file
+    post:
+      summary: Get the heap pprof debug file
+      responses:
+        '200':
+          description: OK
+          content:
+            application/octet-stream:
+              schema:
+                type: string
   /_debug/pprof/profile:
     get:
       responses:
         '200':
           description: OK
+          content:
+            application/octet-stream:
+              schema:
+                type: string
       tags:
         - Admin
+      summary: Get the profile pprof debug file
+    post:
+      summary: Get the profile pprof debug file
+      responses:
+        '200':
+          description: OK
+          content:
+            application/octet-stream:
+              schema:
+                type: string
   /_debug/pprof/block:
     get:
       responses:
         '200':
           description: OK
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTP-Error'
       tags:
         - Admin
+      summary: Get the block pprof debug file
+      parameters:
+        - $ref: '#/components/parameters/debug-profile-seconds'
+    post:
+      summary: Get the block pprof debug file
+      responses:
+        '200':
+          description: OK
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTP-Error'
+      parameters:
+        - $ref: '#/components/parameters/debug-profile-seconds'
   /_debug/pprof/threadcreate:
     get:
       responses:
         '200':
           description: OK
+          content:
+            application/octet-stream:
+              schema:
+                type: string
       tags:
         - Admin
+      summary: Get the threadcreate pprof debug file
+    post:
+      summary: Get the threadcreate pprof debug file
+      responses:
+        '200':
+          description: OK
+          content:
+            application/octet-stream:
+              schema:
+                type: string
   /_debug/pprof/mutex:
     get:
       responses:
         '200':
           description: OK
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTP-Error'
       tags:
         - Admin
+      summary: Get the mutex pprof debug file
+      parameters:
+        - $ref: '#/components/parameters/debug-profile-seconds'
+    post:
+      summary: Get the mutex pprof debug file
+      responses:
+        '200':
+          description: OK
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTP-Error'
+      parameters:
+        - $ref: '#/components/parameters/debug-profile-seconds'
   /_debug/pprof/trace:
     get:
       responses:
         '200':
           description: OK
+          content:
+            application/octet-stream:
+              schema:
+                type: string
       tags:
         - Admin
+      summary: Get the trace pprof debug file
+    post:
+      summary: Get the trace pprof debug file
+      responses:
+        '200':
+          description: OK
+          content:
+            application/octet-stream:
+              schema:
+                type: string
   /_debug/fgprof:
     get:
       responses:
         '200':
           description: OK
+          content:
+            application/x-gzip:
+              schema:
+                type: string
       tags:
         - Admin
+      summary: Get the fgprof debug profile
+    post:
+      summary: Get the fgprof debug profile
+      responses:
+        '200':
+          description: OK
+          content:
+            application/x-gzip:
+              schema:
+                type: string
   /_post_upgrade:
     post:
       responses:
         '200':
-          description: OK
+          description: Returned results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  post_upgrade_results:
+                    type: object
+                    description: A map of databases.
+                    properties:
+                      database_name:
+                        type: object
+                        description: The database name that was targetted.
+                        properties:
+                          removed_design_docs:
+                            type: array
+                            description: The design documents that have or will be removed.
+                            items:
+                              type: string
+                          removed_indexes:
+                            description: The indexes that have or will be removed.
+                            type: array
+                            items:
+                              type: string
+                        required:
+                          - removed_design_docs
+                          - removed_indexes
+                  preview:
+                    type: boolean
+                    description: 'If set, nothing in the database was changed as this was a dry-run. This can be controlled by the `preview` query parameter in the request.'
+                required:
+                  - post_upgrade_results
       tags:
         - Admin
+      summary: Run the post upgrade process on all databases
+      parameters:
+        - schema:
+            type: string
+            default: 'false'
+          in: query
+          name: preview
+          description: 'If set, a dry-run will be done to return what would be removed.'
+      description: The post upgrade process involves removing obsolete design documents and indexes when they are no longer needed.
   '/{db}/_config':
     get:
       responses:
@@ -3309,6 +3796,7 @@ paths:
           type: string
         in: path
         required: true
+        description: The channel to dump all the documents from.
     get:
       responses:
         '200':
@@ -3434,17 +3922,31 @@ paths:
     get:
       responses:
         '200':
-          description: OK
+          description: Successfully returned stats
+          content:
+            text/plain:
+              schema:
+                type: string
       tags:
         - Metric
+      summary: Get monitoring statistics in Prometheus format
+      description: |-
+        This returns Sync Gateway statistics and other runtime variables in Prometheus format. 
+
+        Generally, this is used for debugging or performance monitoring purposes.
   /_expvar:
     get:
       responses:
         '200':
-          description: OK
+          description: Returned statistics
       tags:
         - Admin
         - Metric
+      summary: Get all Sync Gateway debug statistics
+      description: |-
+        This returns all the statistics of Sync Gateway for debugging purposes.
+
+        This includes per database stats, replication stats, and server stats.
 components:
   parameters:
     db:
@@ -3768,6 +4270,46 @@ components:
       schema:
         type: string
       description: The view to target.
+    log-level:
+      name: logLevel
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - none
+          - error
+          - warn
+          - info
+          - debug
+          - trace
+      description: The is what to set the console log level too.
+    log-level-int:
+      name: level
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 3
+      deprecated: true
+      description: '**Deprecated: use log level instead.** This sets the console log level depending on the value provide. 1 sets to `info`, 2 sets to `warn`, and 3 sets to `error`.'
+    debug-profile-seconds:
+      name: seconds
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        default: 30
+      description: The amount of seconds to run the profiler for.
+    sessionid:
+      name: sessionid
+      in: path
+      required: true
+      schema:
+        type: string
+      description: The ID of the session to target.
   responses:
     Not-found:
       description: Resource could not be found
@@ -4732,9 +5274,9 @@ components:
           type: boolean
           description: |-
             If true, documents will be imported in to Sync Gateway from the bucket when requested. Documents will be ran through the set `import_filter` if any is set.
-            
+
             The default value depends on the edition of Sync Gateway being used. If the edition is the community-edition, then this will default to `false` or else in the enterprise-edition, it will default to `true`.
-            
+
             This can also be set to the string `continuous` which maps to true.
         import_partitions:
           type: number
@@ -5166,7 +5708,6 @@ components:
     Event-config:
       title: Event-config
       type: object
-      description: ''
       properties:
         handler:
           type: string
@@ -5273,6 +5814,410 @@ components:
         - status
         - start_time
         - last_error
+    Startup-config:
+      title: Startup-config
+      type: object
+      properties:
+        bootstrap:
+          type: object
+          description: Configuration settings for interacting with Couchbase Server.
+          properties:
+            group_id:
+              type: string
+              description: The config group ID to use when discovering databases. Allows for non-homogenous configuration.
+              default: default
+            config_update_frequency:
+              type: string
+              description: |-
+                How often to poll Couchbase Server for new config changes.
+
+                This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+              default: 10s
+            server:
+              type: string
+              description: Couchbase Server connection string/URL.
+            username:
+              type: string
+              description: Username for authenticating to server.
+            password:
+              type: string
+              description: Password for authenticating to server
+            ca_cert_path:
+              type: string
+              description: Root CA cert path for TLS connection
+            server_tls_skip_verify:
+              type: boolean
+              description: Allow empty server CA Cert Path without attempting to use system root pool
+              default: false
+            x509_cert_path:
+              type: string
+              description: Cert path (public key) for X.509 bucket auth
+            x509_key_path:
+              type: string
+              description: Key path (private key) for X.509 bucket auth
+            use_tls_server:
+              type: boolean
+              description: Enforces a secure or non-secure server scheme
+              default: true
+          required:
+            - server
+            - username
+            - password
+        api:
+          type: object
+          description: Configuration settings for modifying how the REST API is interacted with.
+          properties:
+            public_interface:
+              type: string
+              description: Network interface to bind public API to
+              default: ':4984'
+            admin_interface:
+              type: string
+              description: |-
+                Network interface to bind admin API to.
+
+                By default, this will only be accessible to the localhost.
+              default: '127.0.0.1:4985'
+            metric_interface:
+              type: string
+              description: |-
+                Network interface to bind metrics API to.
+
+                By default, this will only be accessible to the localhost.
+              default: '127.0.0.1:4986'
+            profile_interface:
+              type: string
+              description: Network interface to bind profiling API to
+            admin_interface_authentication:
+              type: boolean
+              description: Whether the admin API requires authentication
+              default: true
+            metrics_interface_authentication:
+              type: boolean
+              description: Whether the metrics API requires authentication
+              default: true
+            enable_advanced_auth_dp:
+              type: boolean
+              description: |-
+                Whether to enable the DP permissions check feature of admin auth.
+
+                Defaults to `true` if using enterprise-edition or `false` if using community-edition.
+            server_read_timeout:
+              type: string
+              description: |-
+                Maximum duration.Second before timing out read of the HTTP(S) request.
+
+                This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+            server_write_timeout:
+              type: string
+              description: |-
+                Maximum duration.Second before timing out write of the HTTP(S) response.
+
+                This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+            read_header_timeout:
+              type: string
+              description: |-
+                The amount of time allowed to read request headers.
+
+                This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+              default: 5s
+            idle_timeout:
+              type: string
+              description: |-
+                The maximum amount of time to wait for the next request when keep-alives are enabled.
+
+                This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+              default: 90s
+            pretty:
+              type: boolean
+              description: Pretty-print JSON responses
+            max_connections:
+              type: number
+              description: 'Max # of incoming HTTP connections to accept'
+              default: 0
+            compress_responses:
+              type: boolean
+              description: 'If false, disables compression of HTTP responses'
+              default: true
+            hide_product_version:
+              type: boolean
+              description: Whether product versions removed from Server headers and REST API responses
+            https:
+              type: object
+              properties:
+                tls_minimum_version:
+                  type: string
+                  description: The minimum allowable TLS version for the REST APIs
+                  default: tlsv1.2
+                tls_cert_path:
+                  type: string
+                  description: The TLS cert file to use for the REST APIs
+                tls_key_path:
+                  type: string
+                  description: The TLS key file to use for the REST APIs
+            cors:
+              type: object
+              properties:
+                origin:
+                  type: array
+                  description: 'List of allowed origins, use [''*''] to allow access from everywhere'
+                  items:
+                    type: string
+                login_origin:
+                  type: array
+                  description: List of allowed login origins
+                  items:
+                    type: string
+                headers:
+                  type: array
+                  description: List of allowed headers
+                  items:
+                    type: string
+                max_age:
+                  type: integer
+                  description: Maximum age of the CORS Options request
+        logging:
+          type: object
+          description: The configuration settings for moddifying Sync Gateway logging.
+          properties:
+            log_file_path:
+              type: string
+              description: Absolute or relative path on the filesystem to the log file directory. A relative path is from the directory that contains the Sync Gateway executable file.
+            redaction_level:
+              type: string
+              description: Redaction level to apply to log output.
+              enum:
+                - none
+                - partial
+                - full
+                - unset
+              default: partial
+            console:
+              $ref: '#/components/schemas/Console-logging-config'
+            error:
+              $ref: '#/components/schemas/File-logging-config'
+            warn:
+              $ref: '#/components/schemas/File-logging-config'
+            info:
+              $ref: '#/components/schemas/File-logging-config'
+            debug:
+              $ref: '#/components/schemas/File-logging-config'
+            trace:
+              $ref: '#/components/schemas/File-logging-config'
+            stats:
+              $ref: '#/components/schemas/File-logging-config'
+        auth:
+          type: object
+          properties:
+            bcrypt_cost:
+              type: integer
+              default: 10
+              maximum: 31
+              minimum: 10
+              description: Cost to use for bcrypt password hashes
+        replicator:
+          type: object
+          properties:
+            max_heartbeat:
+              type: string
+              description: |-
+                Max heartbeat value for `_changes` request.
+
+                This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+            blip_compression:
+              type: integer
+              description: BLIP data compression level (0-9)
+              minimum: 0
+              maximum: 9
+        unsupported:
+          type: object
+          description: Settings that are not officially supported. It is highly recommended these are **not** used.
+          properties:
+            stats_log_frequency:
+              type: string
+              description: |-
+                How often should stats be written to stats logs.
+
+                This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+              default: 1m
+            use_stdlib_json:
+              type: boolean
+              description: Bypass the jsoniter package and use Go's stdlib instead
+            http2:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                  description: Whether HTTP2 support is enabled
+        database_credentials:
+          description: 'A map of database name to credentials, that can be used instead of the bootstrap ones.'
+          type: object
+          properties:
+            database_name:
+              type: object
+              properties:
+                username:
+                  type: string
+                  description: Username for authenticating to the bucket
+                password:
+                  type: string
+                  description: Password for authenticating to the bucket
+                x509_cert_path:
+                  type: string
+                  description: Cert path (public key) for X.509 bucket auth
+                x509_key_path:
+                  type: string
+                  description: Key path (private key) for X.509 bucket auth
+        max_file_descriptors:
+          type: number
+          description: 'Max # of open file descriptors (RLIMIT_NOFILE)'
+          minimum: 0
+          default: 5000
+        couchbase_keepalive_interval:
+          description: TCP keep-alive interval between SG and Couchbase server
+          type: integer
+    File-logging-config:
+      title: File-logging-config
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          description: Toggle for this log output
+        rotation:
+          $ref: '#/components/schemas/Log-rotation-config'
+        collation_buffer_size:
+          type: integer
+          description: The size of the log collation buffer
+    Log-rotation-config:
+      title: Log-rotation-config
+      type: object
+      properties:
+        max_size:
+          type: integer
+          description: The maximum size in MB of the log file before it gets rotated.
+        max_age:
+          type: integer
+          description: The maximum number of days to retain old log files.
+        localtime:
+          type: boolean
+          description: 'If true, it uses the computer''s local time to format the backup timestamp.'
+        rotated_logs_size:
+          type: integer
+          description: Max Size (in mb) of log files before deletion
+    Console-logging-config:
+      title: Console-logging-config
+      type: object
+      properties:
+        log_level:
+          type: string
+          description: Log Level for the console output
+          default: none
+          enum:
+            - none
+            - error
+            - warn
+            - info
+            - debug
+            - trace
+        log_keys:
+          type: array
+          description: Log Keys for the console output
+          items:
+            type: string
+        color_enabled:
+          type: boolean
+          description: Log with color for the console output
+        file_output:
+          type: string
+          description: 'Override the default stderr output, and write to the file specified instead'
+        enabled:
+          type: boolean
+          description: Toggle for this log output
+        rotation:
+          $ref: '#/components/schemas/Log-rotation-config'
+        collation_buffer_size:
+          type: integer
+          description: The size of the log collation buffer.
+    Log-update-enabled:
+      title: Log-update-enabled
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          description: 'If set, this log level will be outputted.'
+    Status:
+      title: Status
+      type: object
+      properties:
+        databases:
+          type: object
+          description: Map of the databases in the node.
+          properties:
+            database_name:
+              type: object
+              properties:
+                seq:
+                  type: number
+                  minimum: 0
+                  description: The latest sequence number in the database.
+                server_uuid:
+                  type: string
+                  description: The server unique identifier.
+                state:
+                  type: string
+                  enum:
+                    - Online
+                    - Offline
+                  description: Whether the database is online or offline.
+                replication_status:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Replication-status'
+                cluster:
+                  type: object
+                  properties:
+                    replication:
+                      type: object
+                      description: Map of replication configs defined for the cluster.
+                      properties:
+                        replication_id:
+                          $ref: '#/components/schemas/Retrieved-replication'
+                    nodes:
+                      type: object
+                      description: Map of all Sync Gateway nodes in the cluster.
+                      properties:
+                        node_uuid:
+                          type: object
+                          description: The nodes unique identifier.
+                          properties:
+                            uuid:
+                              type: string
+                              description: The nodes unique identifier.
+                            host:
+                              type: string
+                              description: The nodes host name.
+        version:
+          type: string
+          description: |-
+            The product version including the build number and edition (ie. `EE` or `CE`).
+
+            Blank if `api.hide_product_version=true` in the startup configuration.
+    Vendor:
+      title: Vendor
+      type: object
+      properties:
+        name:
+          type: string
+          default: Couchbase Sync Gateway
+          description: The product name.
+        version:
+          type: string
+          description: |-
+            The product version.
+
+            Blank if `api.hide_product_version=true` in the startup configuration.
+      required:
+        - name
   requestBodies:
     User:
       content:
@@ -5304,3 +6249,12 @@ components:
           schema:
             $ref: '#/components/schemas/Replication'
       description: If the `replication_id` matches an existing replication then the existing configuration will be updated. Only the specified fields in the request will be used to update the existing configuration. Unspecified fields will remain untouched.
+    Profile:
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              file:
+                type: string
+                description: This is the file to output the pprof profile at.
