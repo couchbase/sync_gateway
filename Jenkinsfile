@@ -8,6 +8,7 @@ pipeline {
         GVM = "/root/.gvm/bin/gvm"
         GO = "/root/.gvm/gos/${GO_VERSION}/bin"
         // GOPATH = "${WORKSPACE}/godeps"
+        GOPATH = "/root/.gvm/gos/${GO_VERSION}"
         // GOTOOLS = "${WORKSPACE}/gotools"
         GOCACHE = "${WORKSPACE}/.gocache"
         BRANCH = "${BRANCH_NAME}"
