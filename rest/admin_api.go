@@ -32,7 +32,6 @@ const kDefaultDBOnlineDelay = 0
 
 // "Create" a database (actually just register an existing bucket)
 func (h *handler) handleCreateDB() error {
-	base.WarnfCtx(h.rq.Context(), "bbrks context test")
 	h.assertAdminOnly()
 	dbName := h.PathVar("newdb")
 	config, err := h.readSanitizeDbConfigJSON()
