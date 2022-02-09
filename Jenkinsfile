@@ -378,5 +378,53 @@ pipeline {
             }
         }
 
+        stage('Benchmarks'){
+            // when { branch 'master' }
+            when { branch 'develop' }
+            steps{
+                echo 'Queueing Benchmark Run test for branch "master" ...'
+                build job: 'sync-gateway-benchmark', parameters: [string(name: 'SG_COMMIT', value: env.SG_COMMIT)], wait: false
+            }
+        }
+
+    }   // stages
+
+    post {
+        always {
+            // Publish the cobertura formatted test coverage reports into Jenkins
+            cobertura autoUpdateHealth: false, onlyStable: false, autoUpdateStability: false, coberturaReportFile: 'reports/coverage-*.xml', conditionalCoverageTargets: '70, 0, 0', failNoReports: false, failUnhealthy: false, failUnstable: false, lineCoverageTargets: '80, 0, 0', maxNumberOfBuilds: 0, methodCoverageTargets: '80, 0, 0', sourceEncoding: 'ASCII', zoomCoverageChart: false
+
+            // Publish the junit test reports
+            junit allowEmptyResults: true, testResults: 'reports/test-*.xml'
+
+            step([$class: 'WsCleanup'])
+            // withEnv(["PATH+=${GO}", "GOPATH=${GOPATH}"]) {
+            withEnv(["PATH+=${GO}"]) {
+                sh "go clean -cache"
+            }
+        }
+        unstable {
+            // archive non-verbose outputs upon failure for inspection (each verbose output is conditionally archived on stage failure)
+            archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
+            script {
+                if ("${env.BRANCH_NAME}" == 'master') {
+                    mail to: 'mobile_dev_sg@couchbase.com',
+                        subject: "Failed tests in master SGW pipeline: ${currentBuild.fullDisplayName}",
+                        body: "At least one test failed: ${env.BUILD_URL}"
+                }
+            }
+        }
+        failure {
+            // archive non-verbose outputs upon failure for inspection (each verbose output is conditionally archived on stage failure)
+            archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
+            script {
+                if ("${env.BRANCH_NAME}" == 'master') {
+                    mail to: 'mobile_dev_sg@couchbase.com',
+                        subject: "Build failure in master SGW pipeline: ${currentBuild.fullDisplayName}",
+                        body: "Something went wrong building: ${env.BUILD_URL}"
+                }
+            }
+        }
     }
+
 }
