@@ -12,7 +12,8 @@ pipeline {
         GOCACHE = "${WORKSPACE}/.gocache"
         BRANCH = "${BRANCH_NAME}"
         COVERALLS_TOKEN = credentials('SG_COVERALLS_TOKEN')
-        EE_BUILD_TAG = "cb_sg_enterprise"
+        // TODO: EE_BUILD_TAG = "cb_sg_enterprise"
+        EE_BUILD_TAG = "NO-cb_sg_enterprise"
         GH_ACCESS_TOKEN_CREDENTIAL = "github_cb-robot-sg_access_token"
         SGW_REPO = "github.com/cbbruno/sync_gateway_mod"
         GO111MODULE = "auto"
