@@ -60,18 +60,19 @@ pipeline {
                 }
                 stage('Get Tools') {
                     steps {
-                        withEnv(["PATH+=${GO}", "GOPATH=${GOTOOLS}", "GO111MODULE=off"]) {
+                        // withEnv(["PATH+=${GO}", "GOPATH=${GOTOOLS}", "GO111MODULE=off"]) {
+                        withEnv(["PATH+=${GO}"]) {
                             sh "go env"
                             sh "go version"
                             // unhandled error checker
-                            sh 'go get -v -u github.com/kisielk/errcheck'
+                            sh 'go install github.com/kisielk/errcheck@latest'
                             // goveralls is used to send coverprofiles to coveralls.io
-                            sh 'go get -v -u github.com/mattn/goveralls'
+                            sh 'go install github.com/mattn/goveralls@latest'
                             // Jenkins coverage reporting tools
-                            sh 'go get -v -u github.com/axw/gocov/...'
-                            sh 'go get -v -u github.com/AlekSi/gocov-xml'
+                            sh 'go install github.com/axw/gocov/gocov@latest'
+                            sh 'go install github.com/AlekSi/gocov-xml@latest'
                             // Jenkins test reporting tools
-                            sh 'go get -v -u github.com/tebeka/go2xunit'
+                            sh 'go install github.com/tebeka/go2xunit@latest'
                         }
                     }
                 }
