@@ -41,7 +41,6 @@ pipeline {
                         env.BRANCH = env.CHANGE_TARGET
                     }
                 }
-                sh 'mv * .scm-checkout/'
             }
         }
 
