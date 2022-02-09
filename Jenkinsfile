@@ -7,8 +7,8 @@ pipeline {
         GO_VERSION = 'go1.17.5'
         GVM = "/root/.gvm/bin/gvm"
         GO = "/root/.gvm/gos/${GO_VERSION}/bin"
-        GOPATH = "${WORKSPACE}/godeps"
-        GOTOOLS = "${WORKSPACE}/gotools"
+        // GOPATH = "${WORKSPACE}/godeps"
+        // GOTOOLS = "${WORKSPACE}/gotools"
         GOCACHE = "${WORKSPACE}/.gocache"
         BRANCH = "${BRANCH_NAME}"
         COVERALLS_TOKEN = credentials('SG_COVERALLS_TOKEN')
@@ -183,7 +183,8 @@ pipeline {
                 }
                 stage('errcheck') {
                     steps {
-                        withEnv(["PATH+=${GO}:${GOTOOLS}/bin"]) {
+                        // withEnv(["PATH+=${GO}:${GOTOOLS}/bin"]) {
+                        withEnv(["PATH+=${GO}"]) {
                             script {
                                 try {
                                     // TODO: githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'Running', status: 'PENDING')
