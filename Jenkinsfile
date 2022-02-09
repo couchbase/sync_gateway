@@ -19,9 +19,20 @@ pipeline {
         GOPRIVATE = "github.com/couchbaselabs/go-fleecedelta"
     }
 
+    options {
+        // This is required if you want to clean before build
+        skipDefaultCheckout(true)
+    }
+
     stages {
+
         stage('SCM') {
             steps {
+               // Clean before build
+                cleanWs()
+                // We need to explicitly checkout from SCM here
+                checkout scm 
+                
                 sh "git rev-parse HEAD > .git/commit-id"
                 script {
                     env.SG_COMMIT = readFile '.git/commit-id'
@@ -30,6 +41,7 @@ pipeline {
                         env.BRANCH = env.CHANGE_TARGET
                     }
                 }
+                sh 'mv * .scm-checkout/'
             }
         }
 
