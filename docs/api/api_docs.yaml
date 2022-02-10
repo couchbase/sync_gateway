@@ -34,10 +34,62 @@ paths:
     get:
       responses:
         '200':
-          description: OK
+          description: Successfully returned database information
+          content:
+            application/json:
+              schema:
+                description: ''
+                type: object
+                properties:
+                  db_name:
+                    type: string
+                    description: Database name
+                  update_seq:
+                    type: number
+                    description: |-
+                      The last sequence number that was committed to the database. This is the number of updates to the database.
+
+                      Will return 0 if the database is offline.
+                  committed_update_seq:
+                    type: number
+                    description: |-
+                      The last sequence number that was committed to the database. This is the number of updates to the database.
+
+                      Will return 0 if the database is offline.
+                  instance_start_time:
+                    type: integer
+                    description: Date and time the database was opened in microseconds since 1st January 1970.
+                  compact_running:
+                    type: boolean
+                    description: Indicates whether database compaction is currently taking place or not.
+                  purge_seq:
+                    type: number
+                    description: Unused field.
+                    default: 0
+                  disk_format_version:
+                    type: number
+                    description: Unused field.
+                    default: 0
+                  state:
+                    type: string
+                    enum:
+                      - Online
+                      - Offline
+                    description: |-
+                      Whether the database is in an offline or online state.
+
+                      The database state can be changed by using the `/{db}/_offline` and `/{db}/_online` endpoints.
+                  server_uuid:
+                    type: string
+                    description: Unique server identifier. This is the same for all databases on the Sync Gateway node.
+              examples: {}
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
         - Public
+      description: Retrieve information about the database.
+      summary: Get database information
     post:
       responses:
         '200':
@@ -83,16 +135,83 @@ paths:
     delete:
       responses:
         '200':
-          description: OK
+          description: Successfully removed the database
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: {}
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '500':
+          description: Cannot remove database from bucket
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTP-Error'
       tags:
         - Admin
+      description: |-
+        Delete a database configuration from the bucket and remove it from the current node.
+
+        **Note:** If running in legacy mode, this will only delete the database from the current node.
+      summary: Remove a database
     head:
       responses:
         '200':
-          description: OK
+          description: Database exists
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
         - Public
+      summary: Check if database exists
+      description: Check if a database exists by using the response status code.
+    put:
+      summary: Create a new Sync Gateway database
+      responses:
+        '201':
+          description: Database created successfully
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '403':
+          description: An authentication failure occurred
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTP-Error'
+        '409':
+          description: A database already exists for this bucket
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTP-Error'
+        '412':
+          description: A database under that name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTP-Error'
+        '500':
+          description: A server error occurred
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTP-Error'
+      description: |-
+        This is to create a new database for Sync Gateway. 
+
+        The new database name will be the name specified in the URL, not what is specified in the request body database configuration.
+
+        If the bucket is not provided in the database configuration, Sync Gateway will attempt to find and use the database name as the bucket.
+
+        By default, the new database will be brought online immediately. This can be avoided by including `"offline": true` in the configuration in the request body.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Database'
+        description: The configuration to use for the new database
   '/{db}/_all_docs':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -526,9 +645,8 @@ paths:
         - Public
       summary: Get views of a design document | Unsupported
       description: |-
+        **This is unsupported**
         Query a design document.
-
-        **This is no longer supported**
     put:
       responses:
         '200':
@@ -542,9 +660,8 @@ paths:
         - Public
       summary: Update views of a design document | Unsupported
       description: |-
+        **This is unsupported**
         Update the views of a design document.
-
-        **This is no longer supported**
       requestBody:
         content:
           application/json:
@@ -562,9 +679,8 @@ paths:
         - Admin
         - Public
       description: |-
+        **This is unsupported**
         Delete a design document.
-
-        **This is no longer supported**
       summary: Delete a design document | Unsupported
     head:
       responses:
@@ -578,20 +694,14 @@ paths:
         - Admin
         - Public
       description: |-
+        **This is unsupported**
         Check if a design document can be queried.
-
-        **This is no longer supported**
       summary: Check if view of design document exists | Unsupported
   '/{db}/_design/{ddoc}/_view/{view}':
     parameters:
       - $ref: '#/components/parameters/db'
       - $ref: '#/components/parameters/ddoc'
-      - name: view
-        schema:
-          type: string
-        in: path
-        required: true
-        description: The view to query on the design document.
+      - $ref: '#/components/parameters/view'
     get:
       responses:
         '200':
@@ -703,17 +813,25 @@ paths:
           description: Return only the document that matches the specified key.
         - $ref: '#/components/parameters/keys'
       description: |-
+        **This is unsupported**
         Query a view on a design document.
-
-        **This is no longer supported**
-      summary: Query a view on a design document
+      summary: Query a view on a design document | Unsupported
   '/{db}/_ensure_full_commit':
     parameters:
       - $ref: '#/components/parameters/db'
     post:
       responses:
-        '200':
-          description: OK
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  instance_start_time:
+                    type: integer
+                  ok:
+                    type: boolean
       tags:
         - Admin
         - Public
@@ -723,10 +841,47 @@ paths:
     post:
       responses:
         '200':
-          description: OK
+          description: Comparisons successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  docid:
+                    type: object
+                    description: The document ID.
+                    properties:
+                      missing:
+                        type: array
+                        description: The revisions that are not in the database (and therefore `missing`).
+                        items:
+                          type: string
+                      possible_ancestors:
+                        type: array
+                        description: An array of known revisions that might be the recent ancestors.
+                        items:
+                          type: string
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
         - Public
+      summary: Compare revisions to whats in the database
+      description: |-
+        This is used by the replicator to detect which revisions Sync Gateway does not have. 
+
+        This takes the document IDs with each having set of revision IDs, then this is used to look up which revisions do not corrospond to what's in the database. An array of the unknown revisions are returned, and an array of known revisions that might be recent ancestors for each of the documents.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                docid:
+                  type: array
+                  description: The document ID with an array of revisions to use for the comparison.
+                  items:
+                    type: string
   '/{db}/_local/{docid}':
     parameters:
       - name: db
@@ -1721,12 +1876,16 @@ paths:
           type: string
         in: path
         required: true
+        description: The database name to target.
     put:
       responses:
-        '200':
-          description: OK
+        '403':
+          description: Database does not exist and cannot be created over the public API
+        '412':
+          description: Database exists
       tags:
         - Public
+      description: ''
   '/{db}/_session/{sessionid}':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -2205,7 +2364,7 @@ paths:
         '201':
           $ref: '#/components/responses/Replicator-created'
         '400':
-          description: Bad Request. Likely to be the replication ID in the URI and request body do not match or the existing replication to update has not been stopped.
+          $ref: '#/components/responses/request-problem'
         '404':
           $ref: '#/components/responses/Not-found'
       tags:
@@ -2308,7 +2467,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Replication-status'
         '400':
-          description: Bad Request. Likely the action specified was invalid.
+          $ref: '#/components/responses/request-problem'
           content:
             application/json:
               schema:
@@ -2523,83 +2682,311 @@ paths:
       tags:
         - Admin
   '/{db}/_config':
-    parameters:
-      - $ref: '#/components/parameters/db'
     get:
       responses:
         '200':
-          description: OK
+          description: Successfully retrieved database configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Database'
+          headers:
+            Etag:
+              schema:
+                type: string
+              description: The database configuration revision.
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      summary: Get an existing database configuration
+      parameters:
+        - $ref: '#/components/parameters/redact'
+        - name: include_javascript
+          schema:
+            type: boolean
+            default: 'true'
+          in: query
+          description: 'Include the fields that have Javascript functions in the response. This is the sync function, import filter, document changed event, and database state changed event.'
+        - $ref: '#/components/parameters/include_runtime'
+        - name: refresh_config
+          schema:
+            type: boolean
+            default: 'false'
+          in: query
+          description: Forces the configuration to be loaded out the bucket and applied on the Sync Gateway node..
+      description: Retrieve the full configuration for the database specified.
     put:
       responses:
-        '200':
-          description: OK
+        '201':
+          $ref: '#/components/responses/DB-config-updated'
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '412':
+          description: Precondition Failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTP-Error'
       tags:
         - Admin
+      summary: Replace an existing database configuration
+      description: |-
+        This is used to replace the whole database configuration with a new one. 
+
+        The bucket and database name cannot be changed. If these need to be changed, the database will need to be deleted then recreated with the new settings.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Database'
+        description: The new database configuration to use
+      parameters:
+        - name: If-Match
+          schema:
+            type: string
+          in: header
+          description: Database revision to replace. This will cause a HTTP 412 response if it does not match the latest database configuration revision.
     post:
+      summary: Update an existing database configuration
       responses:
-        '200':
-          description: OK
+        '201':
+          $ref: '#/components/responses/DB-config-updated'
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '404':
+          description: Not Found
+        '412':
+          description: Precondition Failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTP-Error'
+      description: |-
+        This is used to update the database configuration fields specified. This means that only the fields specified in the request will have their values replaced.
+
+        The bucket and database name cannot be changed. If these need to be changed, the database will need to be deleted then recreated with the new settings.
+      parameters:
+        - $ref: '#/components/parameters/DB-config-If-Match'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Database'
+        description: The database configuration fields to update
       tags:
         - Admin
+    parameters:
+      - $ref: '#/components/parameters/db'
   '/{db}/_config/sync':
     parameters:
       - $ref: '#/components/parameters/db'
     get:
       responses:
         '200':
-          description: OK
+          description: Successfully retrieved the sync function
+          headers:
+            Etag:
+              schema:
+                type: string
+              description: The database configuration revision.
+          content:
+            application/javascript:
+              schema:
+                type: string
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      summary: Get the database sync function
+      description: |-
+        This returns the database's sync function that documents are ran through when created.
+
+        Response will be blank if there has been no sync function set.
     put:
       responses:
         '200':
-          description: OK
+          description: Updated sync function successfully
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '412':
+          description: Precondition Failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTP-Error'
       tags:
         - Admin
+      summary: Replace the database sync function
+      description: This will allow you to update the sync function that documents are ran through on creation.
+      parameters:
+        - $ref: '#/components/parameters/DB-config-If-Match'
+      requestBody:
+        content:
+          application/javascript:
+            schema:
+              type: string
+            examples:
+              Example:
+                value: 'function(doc, oldDoc) { channel(doc.channels); }'
+        description: The new sync function to use
     delete:
       responses:
         '200':
-          description: OK
+          description: Successfully reset the sync function
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '412':
+          description: Precondition Failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTP-Error'
       tags:
         - Admin
+      summary: Reset the sync function back to it's default
+      description: |-
+        This will delete the current sync function from the database configuration so that Sync Gateway will instead use the default function.
+
+        The default sync function is: `function(doc){channel(doc.channels);}`.
+      parameters:
+        - $ref: '#/components/parameters/If-Match'
   '/{db}/_config/import_filter':
     parameters:
       - $ref: '#/components/parameters/db'
     get:
       responses:
         '200':
-          description: OK
+          description: Successfully retrieved the import filter
+          headers:
+            Etag:
+              schema:
+                type: string
+              description: The database configuration revision.
+          content:
+            application/javascript:
+              schema:
+                type: string
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      summary: Get the database import filter
+      description: |-
+        This returns the database's import filter that documents are ran through when importing.
+
+        Response will be blank if there has been no import filter set.
     put:
       responses:
         '200':
-          description: OK
+          description: Updated import filter successfully
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '412':
+          description: Precondition Failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTP-Error'
       tags:
         - Admin
+      summary: Replace the database import filter
+      description: This will allow you to update the import filter that documents are ran through when importing.
+      parameters:
+        - $ref: '#/components/parameters/DB-config-If-Match'
+      requestBody:
+        content:
+          application/javascript:
+            schema:
+              type: string
+        description: The import filter to use
     delete:
       responses:
         '200':
-          description: OK
+          description: Successfully deleted the import filter
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '412':
+          description: Precondition Failed
+          content:
+            application/json:
+              schema:
+                type: object
       tags:
         - Admin
+      summary: Delete the import filter
+      description: This will delete the current import filter from the database configuration so that Sync Gateway will not filter any documents during import.
+      parameters:
+        - $ref: '#/components/parameters/DB-config-If-Match'
   '/{db}/_resync':
     parameters:
       - $ref: '#/components/parameters/db'
     get:
       responses:
         '200':
-          description: OK
+          description: Sucessfully retrieved the most recent resync operation status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resync-status'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      summary: Get the most recent resync operation details
+      description: This will retrieve the status of last resync operation (whether it is running or not).
     post:
       responses:
         '200':
-          description: OK
+          description: Sucessfully changed the status of the resync operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resync-status'
+        '503':
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTP-Error'
       tags:
         - Admin
+      description: |
+        This can be used to start or stop a resync operation. A resync operation will cause all documents in the database to be reprocessed through the database sync function. 
+
+        Generally, a resync operation might be wanted when the sync function has been modified in such a way that the channel or access mappings for any existing documents would change as a result.
+
+        **action=start**
+        This is an asynchronous operation.
+
+        The `requireUser()` and `requireRole()` calls in the sync function will always return `true`. 
+
+        A resync operation cannot be done if the database is online. The database can be taken offline by calling the `POST /{db}/_offline` endpoint.
+
+        **action=stop**
+        This will stop the currently running resync operation.
+      summary: Reprocess all documents through the sync function
+      parameters:
+        - name: action
+          schema:
+            type: string
+            enum:
+              - start
+              - stop
+            default: start
+          in: query
+          description: This is whether to start a new resync job or stop an existing one.
+        - name: regenerate_sequences
+          schema:
+            type: boolean
+          in: query
+          description: '**Use this only when requested to do so by the Couchbase support team** This request will regenerate the sequence numbers for each document processed. It is only carried out on this node. It is not cross-node aware. In a multi-node cluster, the resync operation must only be ran on one node therefore, users should bring other nodes offline before initiating this action. Undefined system behaviour will happen if running resync on more than 1 node.'
   '/{db}/_purge':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -2640,6 +3027,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTP-Error'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
       description: |-
@@ -2674,61 +3063,244 @@ paths:
                   doc_id_2:
                     - '*'
         description: Purge request body
+      summary: Remove a document from the bucket
   '/{db}/_flush':
     parameters:
       - $ref: '#/components/parameters/db'
     post:
       responses:
         '200':
-          description: OK
+          description: Successfully flushed the bucket
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '503':
+          description: The bucket does not support flush or delete
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTP-Error'
       tags:
         - Admin
+      summary: Flush the entire database bucket | Unsupported
+      description: |-
+        **This is unsupported**
+        This will remove all documents in the entire bucket that the database uses.
+
+        The bucket will only be flushed if the unsupported database configuration option `enable_couchbase_bucket_flush` is set.
   '/{db}/_online':
     parameters:
       - $ref: '#/components/parameters/db'
     post:
       responses:
         '200':
-          description: OK
+          description: Database will be brought online immediately or with the specified delay
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '503':
+          description: An error occurred
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTP-Error'
       tags:
         - Admin
+      summary: Bring the database online
+      description: |-
+        This will bring the database online so the Public and full Admin REST API requests can be served.
+
+        Bringing a database online will:
+        * Close the database connection to the backing Couchbase Server bucket.
+        * Reload the database configuration, and connect to the backing Couchbase Server bucket.
+        * Re-establish access to the database from the Public REST API and accept all Admin API requests.
+
+        A specific delay before bringing the database online may be wanted to:
+        * Make the database available for Couchbase Lite clients at a specific time.
+        * Make the databases on several Sync Gateway instances available at the same time.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                delay:
+                  type: integer
+                  description: The amount of seconds to delay bringing the database online.
+                  default: 0
+        description: Add an optional delay to wait before bringing the database online
   '/{db}/_offline':
     parameters:
       - $ref: '#/components/parameters/db'
     post:
       responses:
         '200':
-          description: OK
+          description: Database has been taken offline successfully
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '503':
+          description: An error occurred while trying to take the database offline
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTP-Error'
       tags:
         - Admin
+      summary: Take the database offline
+      description: |
+        This will take the database offline meaning actions can be taken without distrupting current operations ungracefully or having the restart the Sync Gateway instance. 
+
+        This will not take the backing Couchbase Server bucket offline. 
+
+        Taking a database offline that is in the progress of coming online will take the database offline after it comes online.
+
+        Taking the database offline will:
+        * Close all active `_changes` feeds for the database.
+        * Reject all access to the database via the Public REST API (returning a 503 Service Unavailable code).
+        * Reject most Admin API requests (by returning a 503 Service Unavailable code). The only endpoints to be available are: the resync endpoints, the configuration endpoints, `DELETE, GET, HEAD /{db}/`, `POST /{db}/_offline`, and `POST /{db}/_online`. 
+        * Stops webhook event handlers.
   '/{db}/_dump/{view}':
     parameters:
       - $ref: '#/components/parameters/db'
-      - name: view
-        schema:
-          type: string
-        in: path
-        required: true
+      - $ref: '#/components/parameters/view'
     get:
       responses:
         '200':
-          description: OK
+          description: Retrieved view successfully
+          content:
+            text/html:
+              schema:
+                type: string
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTP-Error'
       tags:
         - Admin
+      description: |-
+        **This is unsupported**
+        This queries the view and outputs it as HTML.
+      summary: Dump a view | Unsupported
   '/{db}/_view/{view}':
     parameters:
       - $ref: '#/components/parameters/db'
-      - name: view
-        schema:
-          type: string
-        in: path
-        required: true
+      - $ref: '#/components/parameters/view'
     get:
       responses:
         '200':
-          description: OK
+          description: Returned view successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_rows:
+                    type: integer
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        key:
+                          type: object
+                        value:
+                          type: object
+                        doc:
+                          type: object
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        From:
+                          type: string
+                        Reason:
+                          type: string
+                required:
+                  - total_rows
+                  - rows
+        '403':
+          description: Forbidden
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+        - Public
+      parameters:
+        - name: inclusive_end
+          schema:
+            type: boolean
+          in: query
+          description: Indicates whether the specified end key should be included in the result.
+        - name: descending
+          schema:
+            type: boolean
+          in: query
+          description: Return documents in descending order.
+        - name: include_docs
+          in: query
+          schema:
+            type: boolean
+          description: Only works when using Couchbase Server 3.0 and earlier. Indicates whether to include the full content of the documents in the response.
+        - name: reduce
+          schema:
+            type: boolean
+          in: query
+          description: Whether to execute a reduce function on the response or not.
+        - name: group
+          schema:
+            type: boolean
+          in: query
+          description: Group the results using the reduce function to a group or single row.
+        - name: skip
+          schema:
+            type: integer
+          in: query
+          description: Skip the specified number of documents before starting to return results.
+        - name: limit
+          in: query
+          schema:
+            type: integer
+          description: Return only the specified number of documents
+        - name: group_level
+          schema:
+            type: integer
+          in: query
+          description: Specify the group level to be used.
+        - name: startkey_docid
+          schema:
+            type: string
+          in: query
+          description: Return documents starting with the specified document identifier.
+        - name: endkey_docid
+          schema:
+            type: string
+          in: query
+          description: Stop returning records when the specified document identifier is reached.
+        - name: stale
+          schema:
+            type: string
+            enum:
+              - ok
+              - update_after
+          in: query
+          description: 'Allow the results from a stale view to be used, without triggering a rebuild of all views within the encompassing design document.'
+        - $ref: '#/components/parameters/startkey'
+        - $ref: '#/components/parameters/endkey'
+        - name: key
+          schema:
+            type: string
+          in: query
+          description: Return only the document that matches the specified key.
+        - $ref: '#/components/parameters/keys'
+      description: |-
+        **This is unsupported**
+        Query a view on the default Sync Gateway design document.
+      summary: Query a view on the default design document | Unsupported
   '/{db}/_dumpchannel/{channel}':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -2740,34 +3312,51 @@ paths:
     get:
       responses:
         '200':
-          description: OK
+          description: Successfully got all documents in the channel
+          content:
+            text/html:
+              schema:
+                type: string
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      description: |-
+        **This is unsupported**
+        This queries a channel and displays all the document IDs and revisions that are in that channel.
+      summary: Dump all the documents in a channel | Unsupported
+      parameters:
+        - in: query
+          name: since
+          description: The minimum sequence number to retrieve the documents from.
+          schema:
+            type: integer
   '/{db}/_repair':
     parameters:
       - $ref: '#/components/parameters/db'
     post:
       responses:
-        '200':
-          description: OK
+        '500':
+          description: This endpoint is disabled
       tags:
         - Admin
-  '/{newdb}/':
-    parameters:
-      - $ref: '#/components/parameters/newdb'
-    get:
-      responses:
-        '200':
-          description: OK
-      tags:
-        - Admin
+      description: This endpoint is disabled.
+      summary: ''
   /_all_dbs:
     get:
       responses:
         '200':
-          description: OK
+          description: Successfully retrieved all database names
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
       tags:
         - Admin
+      description: This retrieves all the database's names that are in the current Sync Gateway node.
+      summary: Get a list of all the databases
     head:
       responses:
         '200':
@@ -2780,15 +3369,67 @@ paths:
     post:
       responses:
         '200':
-          description: OK
+          description: Started or stopped compact operation successfully
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '404':
+          $ref: '#/components/responses/Not-found'
+        '503':
+          description: Cannot start compaction due to another compaction operation still running.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTP-Error'
       tags:
         - Admin
+      parameters:
+        - $ref: '#/components/parameters/compact-type'
+        - schema:
+            type: string
+            default: start
+            enum:
+              - start
+              - stop
+          in: query
+          name: action
+          description: Defines whether the a compact operation is being started or stopped.
+        - schema:
+            type: boolean
+          in: query
+          name: reset
+          description: '**Attachment compaction only**: This forces a fresh compact start instead of trying to resume the previous failed compact operation.'
+        - schema:
+            type: boolean
+          in: query
+          name: dry_run
+          description: '**Attachment compaction only**: This will run through all 3 stages of attachment compact but will not purge any attachments. This can be used to check how many attachments will be purged.'
+      summary: Manage a compact operation
+      description: |-
+        This allows a new compact operation to be done on the database, or to stop an existing running compact operation. 
+
+        The type of compaction that is done depends on what the `type` query parameter is set to. The 2 options will:
+        * `tombstone` - purge the JSON bodies of non-leaf revisions. This is known as database compaction. Database compaction is done periodically automatically by the system. JSON bodies of leaf nodes (conflicting branches) are not removed therefore it is imporant to resolve conflicts in order to re-claim disk space.
+        * `attachment` - purge all unlinked/unused legacy (pre 3.0) attachments. If the previous attachment compact operation failed, this will attempt to restart the `compact_id` at the appropiate phase (if possible).
+
+        Both types can each have a maximum of 1 compact operation running at any one point. This means that an attachment compaction can be running at the same time as a tombstone compaction but not 2 tombstone compactions.
     get:
       responses:
         '200':
-          description: OK
+          description: Compaction status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Compact-status'
+        '400':
+          $ref: '#/components/responses/request-problem'
+        '404':
+          $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      parameters:
+        - $ref: '#/components/parameters/compact-type'
+      summary: Get the status of the most recent compact operation
+      description: This will retrieve the current status of the most recent compact operation.
   /_metrics:
     get:
       responses:
@@ -3085,6 +3726,48 @@ components:
         type: boolean
         default: 'false'
       description: Include the replication configuration with each replicator status in the response.
+    redact:
+      name: redact
+      in: query
+      required: false
+      schema:
+        type: boolean
+        default: 'true'
+      description: No longer supported field.
+    include_runtime:
+      name: include_runtime
+      in: query
+      required: false
+      schema:
+        type: boolean
+        default: 'false'
+      description: Include the default values that Sync Gateway is running with (known as the runtime configuration).
+    DB-config-If-Match:
+      name: If-Match
+      in: header
+      required: false
+      schema:
+        type: string
+        default: The current revision
+      description: Database revision to replace. This will cause a HTTP 412 response if it does not match the latest database configuration revision.
+    compact-type:
+      name: type
+      in: query
+      required: false
+      schema:
+        type: string
+        default: tombstone
+        enum:
+          - attachment
+          - tombstone
+      description: 'This is the type of compaction to use. The type must be either: `attachment` for cleaning up legacy (pre-3.0) attachments, or `tombstone` for purging the JSON bodies of non-leaf revisions.'
+    view:
+      name: view
+      in: path
+      required: true
+      schema:
+        type: string
+      description: The view to target.
   responses:
     Not-found:
       description: Resource could not be found
@@ -3233,6 +3916,13 @@ components:
       description: Created new replication successfully
     Replicator-updated:
       description: Updated existing configuration successfully
+    DB-config-updated:
+      description: Database configuration successfully updated
+      headers:
+        Etag:
+          schema:
+            type: string
+          description: The new database configuration revision.
   schemas:
     User:
       description: Properties associated with a user
@@ -3980,6 +4670,609 @@ components:
           description: 'The number of deltas that have been sent to the remote. '
       required:
         - replication_id
+    Database:
+      title: Database-config
+      type: object
+      description: The properties of a database configuration.
+      properties:
+        server:
+          type: string
+          description: 'This is the Couchbase Server address or addresses that the database connect to. '
+        pool:
+          type: string
+          deprecated: true
+          description: Couchbase pool name. Always forced to be `default` due to deprecation.
+        bucket:
+          type: string
+          description: The Couchbase Server backing bucket for the database.
+          default: The database name
+        username:
+          type: string
+          description: The username for authenticating to the server.
+        password:
+          type: string
+          description: The password for authenticating to the server.
+        certpath:
+          type: string
+          description: The cert path (public key) for X.509 bucket auth.
+        keypath:
+          type: string
+          description: The key path (private key) for X.509 bucket auth
+        cacertpath:
+          type: string
+          description: The root CA cert path for X.509 bucket authentication.
+        kv_tls_port:
+          type: integer
+          default: 11207
+          description: The Memcached TLS port.
+        max_concurrent_query_ops:
+          type: integer
+          description: The maximum amount of query operations that can be running at any one point.
+          default: 1000
+        name:
+          type: string
+          description: The name of the database.
+        sync:
+          type: string
+          description: The Javascript function that newly created documents are ran through.
+          default: 'function(doc){channel(doc.channels);}'
+        users:
+          $ref: '#/components/schemas/User'
+        roles:
+          $ref: '#/components/schemas/Role'
+        revs_limit:
+          type: number
+          description: |-
+            The maximum depth a document's revision tree can grow too.
+
+            The minimum is `20` if conflicts are allowed and 0 if not. It is not recommended to go below `100` when conflicts are allowed.
+          default: 100 if conflict allowed and 50 if not
+          minimum: 0
+        import_docs:
+          type: boolean
+          description: |-
+            If true, documents will be imported in to Sync Gateway from the bucket when requested. Documents will be ran through the set `import_filter` if any is set.
+            
+            The default value depends on the edition of Sync Gateway being used. If the edition is the community-edition, then this will default to `false` or else in the enterprise-edition, it will default to `true`.
+            
+            This can also be set to the string `continuous` which maps to true.
+        import_partitions:
+          type: number
+          description: |-
+            ** This is an enterprise-edition feature only**
+            This is how many import partitions should be used for import sharding. 
+
+            Partitions are distributed among all Sync Gateway nodes participating in import processing (`import_docs=true`), and each process a subset of the server’s vbuckets.
+
+            Each partition is processed by an independant function that runs simultaneously to others, so `import_partitions` can be used to tune concurrency based on the number of Sync Gateway nodes, and the number of cores per node.
+          default: 16
+        import_filter:
+          type: string
+          description: |-
+            This is the function that all imported documents are ran through in order to filter out what to import and what not to import. This allows you to control what is made available to Couchbase Mobile clients. If it is not set, then no documents are filtered when imported.
+
+            `import_docs` must be true to make this field applicable.
+          example: 'function(doc) { if (doc.type != ''mobile'') { return false; } return true; }'
+        import_backup_old_rev:
+          type: boolean
+          description: This controls whether import should attempt to create a temporary backup of the previous revision body (if available) when the document is modified in the bucket.
+          default: false
+        event_handlers:
+          type: object
+          description: These are the settings for webhooks.
+          properties:
+            max_processes:
+              type: string
+              description: The maximum amount of concurrent event handling independant functions that can be running at the same time.
+            wait_for_process:
+              type: string
+              description: The maximum amount of time (in milliseconds) to wait when the even queue is full.
+            document_changed:
+              $ref: '#/components/schemas/Event-config'
+            db_state_changed:
+              $ref: '#/components/schemas/Event-config'
+        feed_type:
+          type: string
+          description: |-
+            The type of feed to use to communicate with Couchbase Server.
+
+            Import cannot be used with a TAP feed.
+          default: Based on Couchbase Server version
+          enum:
+            - TAP
+            - DCP
+        allow_empty_password:
+          type: boolean
+          default: false
+          description: This controls whether users that are created can have an empty password or not.
+        cache:
+          type: object
+          properties:
+            rev_cache:
+              type: object
+              description: The revision cache config settings.
+              properties:
+                size:
+                  type: string
+                  description: The maximum number of revisions that can be stored in the revision cache.
+                  default: 5000
+                shard_count:
+                  type: string
+                  description: The number of shards the revision cache should be split into.
+                  default: 16
+            channel_cache:
+              type: object
+              description: The channel cache config settings.
+              properties:
+                max_number:
+                  type: integer
+                  description: The maximum number of channel caches which can exist at any one point.
+                  default: 50000
+                compact_high_watermark_pct:
+                  type: integer
+                  description: |-
+                    The trigger value for starting the channel cache eviction process. 
+
+                    Specify this as a percentage which will be the percentage used on `max_number).
+
+                    When the cache size, determined by `max_number`, reaches the high watermark, the eviction process iterates through the cache, removing inactive channels.
+                  default: 80
+                compact_low_watermark_pct:
+                  type: integer
+                  default: 60
+                  description: |-
+                    The trigger value for stopping the channel cache eviction process. 
+
+                    Specify this as a percentage which will be the percentage used on `max_number).
+
+                    When the cache size, determined by `max_number` returns to a value lower than the percentage of it set here, the cache eviction process is stopped.
+                max_wait_pending:
+                  type: number
+                  description: The maximum time (in milliseconds) for waiting for a pending sequence before skipping it.
+                  default: 5000
+                max_num_pending:
+                  type: integer
+                  description: The maximum number of pending sequences before skipping sequences.
+                  default: 10000
+                max_wait_skipped:
+                  type: number
+                  description: The maximum amount of time (in milliseconds) to wait for a skipped sequence before abandoning it.
+                  default: 3600000
+                enable_star_channel:
+                  type: boolean
+                  description: Used to control whether Sync Gateway should use the all documents (*) channel.
+                  default: false
+                max_length:
+                  type: integer
+                  description: The maximum number of entries to maintain in the cache per channel.
+                  default: 500
+                min_length:
+                  type: integer
+                  description: The minimum number of entries to maintain in the cache per channel.
+                  default: 50
+                expiry_seconds:
+                  type: integer
+                  description: The amount of time (in seconds) to keep entries in the cache beyond the minimum retained.
+                  default: 60
+                query_limit:
+                  type: integer
+                  description: |-
+                    **Deprecated in favour of the database setting `query_pagination_limit`**
+                    The limit used for channel queries.
+                  deprecated: true
+                  default: 5000
+            max_wait_pending:
+              type: number
+              deprecated: true
+              description: |-
+                **Deprecated, please use the database setting `cache.channel_cache.max_wait_pending` instead**
+                The maximum time (in milliseconds) for waiting for a pending sequence before skipping it.
+            max_wait_skipped:
+              type: number
+              deprecated: true
+              description: |-
+                **Deprecated, please use the database setting `cache.channel_cache.max_wait_skipped` instead**
+                The maximum time (in milliseconds) for waiting for pending sequences before skipping.
+            enable_star_channel:
+              type: boolean
+              deprecated: true
+              description: |-
+                **Deprecated, please use the database setting `cache.channel_cache.enable_star_channel` instead**
+                Used to control whether Sync Gateway should use the all documents (*) channel.
+            channel_cache_max_length:
+              type: number
+              deprecated: true
+              description: |-
+                **Deprecated, please use the database setting `cache.channel_cache.max_length` instead**
+                The maximum number of entries maintained in cache per channel.
+            channel_cache_min_length:
+              type: integer
+              deprecated: true
+              description: |-
+                **Deprecated, please use the database setting `cache.channel_cache.min_length` instead**
+                The minimum number of entries maintained in cache per channel.
+            channel_cache_expiry:
+              type: integer
+              deprecated: true
+              description: |-
+                **Deprecated, please use the database setting `cache.channel_cache.expiry_seconds` instead**
+                The time (seconds) to keep entries in cache beyond the minimum retained.
+            max_num_pending:
+              type: integer
+              deprecated: true
+              description: |-
+                **Deprecated, please use the database setting `cache.channel_cache.max_num_pending` instead**
+                The max number of pending sequences before skipping.
+        rev_cache_size:
+          type: number
+          deprecated: true
+          description: |-
+            **Deprecated, please use the database setting `cache.rev_cache.size` instead**
+            The maximum number of revisions to store in the revision cache.
+        offline:
+          type: boolean
+          default: false
+          description: Start the database in an offline state.
+        unsupported:
+          type: object
+          description: These are unsupported options and therfore it is not recommended to use them.
+          properties:
+            user_views:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                  description: Whether pass-through view query is supported through public API.
+            oidc_test_provider:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                  description: Whether the `oidc_test_provider` endpoints should be exposed on the public API.
+            api_endpoints:
+              type: object
+              properties:
+                enable_couchbase_bucket_flush:
+                  type: boolean
+                  description: |-
+                    **Setting for test purposes only**
+                    Whether Couchbase buckets can be flushed via Admin REST API.
+            warning_thresholds:
+              type: object
+              properties:
+                xattr_size_bytes:
+                  type: number
+                  description: The number of bytes to be used as a threshold for xattr size limit warnings.
+                channels_per_doc:
+                  type: number
+                  description: The number of channels per document to be used as a threshold for the channel count warnings.
+                access_and_role_grants_per_doc:
+                  type: number
+                  description: The number of access and role grants per document to be used as a threshold for grant count warnings.
+                channels_per_user:
+                  type: number
+                  description: The number of channels per user to be used as a threshold for channel count warnings.
+                channel_name_size:
+                  type: number
+                  description: The number of channel name characters to be used as a threshold for channel name warnings.
+            disable_clean_skipped_query:
+              type: boolean
+              description: Whether to clean skipped sequence processing to bypass final checks.
+            oidc_tls_skip_verify:
+              type: boolean
+              description: Enable self-signed certificates for OIDC testing.
+            sgr_tls_skip_verify:
+              type: boolean
+              description: Enable self-signed certificates for SG-replicate testing.
+            remote_config_tls_skip_verify:
+              type: boolean
+              description: Enable self-signed certificates for external JavaScript load.
+        oidc:
+          type: object
+          description: Configuration for OpenID Connect authentication.
+          properties:
+            providers:
+              type: object
+              description: List of OpenID Connect issuers.
+              properties:
+                provider_name:
+                  type: object
+                  description: The providers name.
+                  properties:
+                    issuer:
+                      type: string
+                      description: The URL for the OpenID Connect issuer.
+                    register:
+                      type: boolean
+                      description: If to register a new Sync Gateway user account when a user logs in with OpenID Connect.
+                    client_id:
+                      type: string
+                      description: The OpenID Connect provider client ID.
+                    validation_key:
+                      type: string
+                      description: The OpenID Connect provider client secret.
+                    callback_url:
+                      type: string
+                      description: |-
+                        The URL that the OpenID Connect will redirect to after authentication.
+
+                        If not provided, a callback URL will be generated.
+                    disable_session:
+                      type: boolean
+                      description: Disable Sync Gateway session creation on successful OpenID Connect authentication.
+                    scope:
+                      type: array
+                      description: The scope sent for the OpenID Connect request.
+                      items:
+                        type: string
+                    include_access:
+                      type: boolean
+                      description: 'This is whether the `_oidc_callback` response should include the OpenID Connect access token and associated fields (such as `token_type`, and `expires_in`).'
+                    user_prefix:
+                      type: string
+                      description: This is the username prefix for all users created through this provider.
+                    discovery_url:
+                      type: string
+                      description: The non-standard discovery endpoint.
+                    disable_cfg_validation:
+                      type: boolean
+                      description: This bypasses the configuration validation based on the OpenID Connect specifications. This may be required for some OpenID providers that don't strictly adhere to the specifications.
+                      default: false
+                    disable_callback_state:
+                      type: boolean
+                      description: |-
+                        Controls whether to maintain state between the auth request and callback endpoints (`/_oidc` and `/_oidc_callback`).
+
+                        **This is not recommended as it would cause OpenID Connect authentication to be vulnerable to Cross-Site Request Forgery (CSRF, XSRF).**
+                      default: false
+                    username_claim:
+                      type: string
+                      description: |-
+                        Allows a different OpenID Connect field to be specified instead of the Subject (`sub`).
+
+                        The field name to use can be specified here.
+                    allow_unsigned_provider_tokens:
+                      type: boolean
+                      description: Allows users accept unsigned tokens from providers.
+                    IsDefault:
+                      type: boolean
+                      description: Indicates if this is the default OpenID Connect provider.
+                    Name:
+                      type: string
+                      description: The name of the OpenID Connect Provider.
+                    InsecureSkipVerify:
+                      type: boolean
+                      description: 'Determines whether the TLS certificate verification should be disabled for this provider. '
+                      default: false
+            default_provider:
+              type: string
+              description: The default provider to use when the provider is not specified in the client.
+        old_rev_expiry_seconds:
+          type: number
+          description: The number of seconds before old revisions are removed from the Couchbase Server bucket.
+          default: 300
+        view_query_timeout_secs:
+          type: integer
+          description: The number of seconds before a view query should timeout.
+          default: 75
+        local_doc_expiry_secs:
+          type: integer
+          description: The number of seconds before a `_local` document should expire.
+          default: 7776000
+        enable_shared_bucket_access:
+          type: boolean
+          description: Whether to use extended attributes to store Sync Gateway document (`_sync`) metadata.
+          default: true
+        session_cookie_secure:
+          type: boolean
+          description: |-
+            Override the session cookie `secure` flag. If set, the cookie will have the `secure` flag.
+
+            This will default to `true` if startup config `api.https.tls_cert_path` is set otherwise it will default to `false`.
+        session_cookie_name:
+          type: string
+          description: This can be used to define a custom per-database session cookie name.
+        session_cookie_http_only:
+          type: boolean
+          description: Make all session cookies for the database set the `HttpOnly` flag so they are inaccessible to JavaScript.
+          default: false
+        allow_conflicts:
+          type: boolean
+          default: true
+          description: This controls whether to allow conflicting document revisions.
+        num_index_replicas:
+          type: number
+          description: This is the number of Global Secondary Indexes (GSI) to use for core indexes.
+          default: 1
+        use_views:
+          type: boolean
+          description: Force the use of views instead of GSI.
+          default: false
+        send_www_authentice_header:
+          type: boolean
+          description: Controls whether to send a `WWW-Authenticate` header in `401 Unauthorized` HTTP responses.
+          default: true
+        bucket_op_timeout_ms:
+          type: number
+          description: 'This is the amount of milliseconds should pass before a bucket operation times out. An error will be returned if the bucket operation times out saying: `operation timed out`.'
+        slow_query_warning_threshold:
+          type: number
+          description: 'The amount of milliseconds a N1QL query should run before logging a warning. '
+          default: 500
+        delta_sync:
+          type: object
+          description: |-
+            Delta sync configuration settings.
+
+            **This is an enterprise-edition feature only**
+          properties:
+            enabled:
+              type: boolean
+              description: |-
+                Whether delta sync is enabled.
+
+                **This is an enterprise-edition feature only**
+              default: false
+            rev_max_age_seconds:
+              type: number
+              description: |-
+                The number of seconds deltas for old revisions are available for.
+
+                This defaults to 24 hours (in seconds).
+              default: 86400
+        compact_interval_days:
+          type: number
+          description: |-
+            The interval between scheduled tombstone compaction runs (in days). This can be a floating point number.
+
+            If set to 0, compaction will not run automatically.
+          default: 1
+        sgreplicate_enabled:
+          type: boolean
+          default: true
+          description: Whether the node should accept assign replications (`true`) or not (`false`).
+        sgreplicate_websocket_heartbeat_secs:
+          type: integer
+          description: Use a custom heartbeat interval (in seconds) for websocket ping frames.
+          default: 300
+        replications:
+          type: object
+          properties:
+            replication_id:
+              $ref: '#/components/schemas/Replication'
+        serve_insecure_attachment_types:
+          type: boolean
+          description: |
+            If set, always serve attachments with the `Content-Type` header set to the type of the attachment.
+
+            When serving an attachment, usually the `Content-Type` header is set to the type of the attachment but the `Content-Disposition` response header will be set instead if the content type is vulnerable to a phishing attack, causing the browser to download the file instead of display it. This option will override that behaviour and always set the `Content-Type` header.
+          default: false
+        query_pagination_limit:
+          type: integer
+          description: The query limit to be used during pagination of large queries.
+          default: 5000
+        user_xattr_key:
+          type: string
+          description: 'The key to use for the user xattr that will be accessible from the sync function. IF empty, the feature will be disabled.'
+        client_partition_window_secs:
+          type: integer
+          description: |-
+            How long (in seconds) clients can remain offline for without losing replication metadata.
+
+            Defaults to 30 days (in seconds)
+          default: 2592000
+        guest:
+          $ref: '#/components/schemas/User'
+    Event-config:
+      title: Event-config
+      type: object
+      description: ''
+      properties:
+        handler:
+          type: string
+          description: The handler type.
+          enum:
+            - webhook
+        url:
+          type: string
+          description: The URL of the webhook.
+        filter:
+          type: string
+          description: The Javascript function to use to filter the webhook events.
+        timeout:
+          type: number
+          description: The amount of time (in seconds) to attempt connect to the webhook before giving up.
+        options:
+          type: object
+          description: The options for the event.
+          properties:
+            option_name:
+              description: The option key and value.
+    Resync-status:
+      title: Resync-status
+      type: object
+      properties:
+        status:
+          type: string
+          description: The status of the current operation.
+          enum:
+            - running
+            - completed
+            - stopping
+            - stopped
+            - error
+        start_time:
+          type: string
+          description: The ISO-8601 date and time the resync operation was started.
+        last_error:
+          type: string
+          description: The last error that occurred in the resync operation (if any).
+        docs_changed:
+          type: integer
+          description: The amount of documents that have been changed as a result of the resync operation.
+        docs_processed:
+          type: integer
+          description: The amount of docs that have been processed so far in the resync operation.
+      required:
+        - status
+        - start_time
+        - last_error
+        - docs_changed
+        - docs_processed
+      description: The status of a resync operation
+    Compact-status:
+      title: Compact-status
+      type: object
+      description: The status returned from a compaction.
+      properties:
+        status:
+          type: string
+          description: The status of the current operation.
+        start_time:
+          type: string
+          description: The ISO-8601 date and time the compact operation was started.
+        last_error:
+          type: string
+          description: The last error that occurred in the compact operation (if any).
+        docs_purged:
+          type: string
+          description: |-
+            **Applicable to tombstone compaction only**
+            This is the amount of documents that have been purged so far.
+        marked_attachments:
+          type: string
+          description: |-
+            **Applicable to attachment compaction only**
+            This is the amount of attachments that have been marked to be purged.
+        purged_attachments:
+          type: string
+          description: |-
+            **Applicable to attachment compaction only**
+            This is the amount of attachments that have been purged so far.
+        compact_id:
+          type: string
+          description: |-
+            **Applicable to attachment compaction only**
+            This is the ID of the compaction.
+        phase:
+          type: string
+          description: |-
+            **Applicable to attachment compaction only**
+            This indicates the current phase of running attachment compact processes.
+
+            For failed processes, this indicates the phase at which a compact_id restart will commence (where relevant).
+        dry_run:
+          type: string
+          description: |
+            **Applicable to attachment compaction only**
+          enum:
+            - mark
+            - sweep
+            - cleanup
+      required:
+        - status
+        - start_time
+        - last_error
   requestBodies:
     User:
       content:
