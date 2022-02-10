@@ -194,7 +194,6 @@ paths:
       summary: Check if database exists
       description: Check if a database exists by using the response status code.
     put:
-      summary: Create a new Sync Gateway database
       responses:
         '201':
           description: Database created successfully
@@ -224,6 +223,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTP-Error'
+      tags:
+        - Admin
+      summary: Create a new Sync Gateway database
       description: |-
         This is to create a new database for Sync Gateway. 
 
@@ -990,7 +992,6 @@ paths:
           description: The revision ID of the revision to delete.
           required: true
     head:
-      summary: Check if local document exists
       responses:
         '200':
           description: Document exists
@@ -998,6 +999,10 @@ paths:
           $ref: '#/components/responses/request-problem'
         '404':
           $ref: '#/components/responses/Not-found'
+      tags:
+        - Admin
+        - Public
+      summary: Check if local document exists
       description: |-
         This request checks if a local document exists. 
 
@@ -2890,7 +2895,6 @@ paths:
         - Admin
       summary: Get the goroutine pprof debug file
     post:
-      summary: Get the goroutine pprof debug file
       responses:
         '200':
           description: OK
@@ -2898,6 +2902,9 @@ paths:
             application/octet-stream:
               schema:
                 type: string
+      tags:
+        - Admin
+      summary: Get the goroutine pprof debug file
   /_debug/pprof/cmdline:
     get:
       responses:
@@ -2912,7 +2919,6 @@ paths:
       summary: Get passed in command line parameters
       description: 'Gets the command line parameters that was passed in to Sync Gateway which will include the binary, flags (if any) and startup configuration.'
     post:
-      summary: Get passed in command line parameters
       responses:
         '200':
           description: OK
@@ -2921,6 +2927,9 @@ paths:
               schema:
                 type: string
       description: 'Gets the command line parameters that was passed in to Sync Gateway which will include the binary, flags (if any) and startup configuration.'
+      tags:
+        - Admin
+      summary: Get passed in command line parameters
   /_debug/pprof/symbol:
     get:
       responses:
@@ -2934,7 +2943,6 @@ paths:
         - Admin
       summary: Get symbol pprof debug information
     post:
-      summary: Get symbol pprof debug information
       responses:
         '200':
           description: OK
@@ -2942,6 +2950,9 @@ paths:
             text/plain:
               schema:
                 type: string
+      tags:
+        - Admin
+      summary: Get symbol pprof debug information
   /_debug/pprof/heap:
     get:
       responses:
@@ -2955,7 +2966,6 @@ paths:
         - Admin
       summary: Get the heap pprof debug file
     post:
-      summary: Get the heap pprof debug file
       responses:
         '200':
           description: OK
@@ -2963,6 +2973,9 @@ paths:
             application/octet-stream:
               schema:
                 type: string
+      tags:
+        - Admin
+      summary: Get the heap pprof debug file
   /_debug/pprof/profile:
     get:
       responses:
@@ -2976,7 +2989,6 @@ paths:
         - Admin
       summary: Get the profile pprof debug file
     post:
-      summary: Get the profile pprof debug file
       responses:
         '200':
           description: OK
@@ -2984,6 +2996,9 @@ paths:
             application/octet-stream:
               schema:
                 type: string
+      tags:
+        - Admin
+      summary: Get the profile pprof debug file
   /_debug/pprof/block:
     get:
       responses:
@@ -3005,7 +3020,6 @@ paths:
       parameters:
         - $ref: '#/components/parameters/debug-profile-seconds'
     post:
-      summary: Get the block pprof debug file
       responses:
         '200':
           description: OK
@@ -3019,6 +3033,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTP-Error'
+      tags:
+        - Admin
+      summary: Get the block pprof debug file
       parameters:
         - $ref: '#/components/parameters/debug-profile-seconds'
   /_debug/pprof/threadcreate:
@@ -3034,7 +3051,6 @@ paths:
         - Admin
       summary: Get the threadcreate pprof debug file
     post:
-      summary: Get the threadcreate pprof debug file
       responses:
         '200':
           description: OK
@@ -3042,6 +3058,9 @@ paths:
             application/octet-stream:
               schema:
                 type: string
+      tags:
+        - Admin
+      summary: Get the threadcreate pprof debug file
   /_debug/pprof/mutex:
     get:
       responses:
@@ -3063,7 +3082,6 @@ paths:
       parameters:
         - $ref: '#/components/parameters/debug-profile-seconds'
     post:
-      summary: Get the mutex pprof debug file
       responses:
         '200':
           description: OK
@@ -3077,6 +3095,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTP-Error'
+      tags:
+        - Admin
+      summary: Get the mutex pprof debug file
       parameters:
         - $ref: '#/components/parameters/debug-profile-seconds'
   /_debug/pprof/trace:
@@ -3092,7 +3113,6 @@ paths:
         - Admin
       summary: Get the trace pprof debug file
     post:
-      summary: Get the trace pprof debug file
       responses:
         '200':
           description: OK
@@ -3100,6 +3120,9 @@ paths:
             application/octet-stream:
               schema:
                 type: string
+      tags:
+        - Admin
+      summary: Get the trace pprof debug file
   /_debug/fgprof:
     get:
       responses:
@@ -3113,7 +3136,6 @@ paths:
         - Admin
       summary: Get the fgprof debug profile
     post:
-      summary: Get the fgprof debug profile
       responses:
         '200':
           description: OK
@@ -3121,6 +3143,9 @@ paths:
             application/x-gzip:
               schema:
                 type: string
+      tags:
+        - Admin
+      summary: Get the fgprof debug profile
   /_post_upgrade:
     post:
       responses:
