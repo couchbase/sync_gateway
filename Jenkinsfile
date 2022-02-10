@@ -15,7 +15,6 @@ pipeline {
         GH_ACCESS_TOKEN_CREDENTIAL = "github_cb-robot-sg_access_token"
         SGW_REPO = "github.com/cbbruno/sync_gateway_mod"
         GO111MODULE = "auto"
-        GOPRIVATE = "github.com/couchbaselabs/go-fleecedelta"
     }
 
     options {
@@ -41,8 +40,8 @@ pipeline {
                     }
                 }
 
-                // forces go to get private module via ssh
-                sh 'git config --global url."git@github.com:couchbaselabs/go-fleecedelta".insteadOf "https://github.com/couchbaselabs/go-fleecedelta"'
+                // forces go to get private modules via ssh
+                sh 'git config --global url."git@github.com:".insteadOf "https://github.com/"'
             }
         }
 

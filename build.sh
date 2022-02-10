@@ -8,9 +8,9 @@
 # will be governed by the Apache License, Version 2.0, included in the file
 # licenses/APL2.txt.
 
-# This script builds sync gateway using pinned dependencies via the repo tool
-#
-# - Set GOPATH and call 'go install' to compile and build Sync Gateway binaries
+# NOTE: building the EE version (SG_EDITION=EE ./build.sh) requires ssh access
+# to private a repo.  Please make sure you have access to:
+# https://github.com/couchbaselabs/go-fleecedelta
 
 set -e
 
@@ -36,14 +36,17 @@ doBuild () {
     buildTags=""
     binarySuffix="_ce"
     if [ "$1" = "EE" ]; then
-        GOPRIVATE=github.com/couchbaselabs
         buildTags="-tags cb_sg_enterprise"
         binarySuffix=""
+        githutSshConfig=$( ( git config --global --list ; git config --system --list ) | grep -i "url.git@github.com:" | cat )
+        if [ -z "${githutSshConfig}" ]; then
+            git config --global url.git@github.com:couchbaselabs/go-fleecedelta.insteadOf https://github.com/couchbaselabs/go-fleecedelta
+        fi
     fi
 
     ## Go Install Sync Gateway
     echo "    Building Sync Gateway"
-    echo GOPRIVATE=${GOPRIVATE} go build -o "${OUTPATH}/sync_gateway${binarySuffix}" ${buildTags} "${BLDPARS}" ${SRCPATH}
+    echo go build -o "${OUTPATH}/sync_gateway${binarySuffix}" ${buildTags} "${BLDPARS}" ${SRCPATH}
     go build -o "${OUTPATH}/sync_gateway${binarySuffix}" ${buildTags} "${BLDPARS}" ${SRCPATH}
     # Let user know where to find binaries
     if [ -f "${OUTPATH}/sync_gateway${binarySuffix}" ]; then
