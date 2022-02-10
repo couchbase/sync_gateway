@@ -136,7 +136,7 @@ type DbConfig struct {
 	SecureCookieOverride             *bool                            `json:"session_cookie_secure,omitempty"`                // Override cookie secure flag
 	SessionCookieName                string                           `json:"session_cookie_name,omitempty"`                  // Custom per-database session cookie name
 	SessionCookieHTTPOnly            *bool                            `json:"session_cookie_http_only,omitempty"`             // HTTP only cookies
-	AllowConflicts                   *bool                            `json:"allow_conflicts,omitempty"`                      // False forbids creating conflicts
+	AllowConflicts                   *bool                            `json:"allow_conflicts,omitempty"`                      // Deprecated: False forbids creating conflicts
 	NumIndexReplicas                 *uint                            `json:"num_index_replicas,omitempty"`                   // Number of GSI index replicas used for core indexes
 	UseViews                         *bool                            `json:"use_views,omitempty"`                            // Force use of views instead of GSI
 	SendWWWAuthenticateHeader        *bool                            `json:"send_www_authenticate_header,omitempty"`         // If false, disables setting of 'WWW-Authenticate' header in 401 responses
@@ -692,6 +692,10 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) error {
 				multiError = multiError.Append(fmt.Errorf("The revs_limit (%v) value in your Sync Gateway configuration must be greater than zero.", *revsLimit))
 			}
 		}
+	}
+
+	if dbConfig.AllowConflicts != nil && *dbConfig.AllowConflicts {
+		base.Warnf(`Deprecation notice: Setting the database configuration option "allow_conflicts" to true is due to be removed. In the future, conflicts will not be allowed.`)
 	}
 
 	return multiError.ErrorOrNil()
