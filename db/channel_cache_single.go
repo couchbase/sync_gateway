@@ -318,9 +318,9 @@ func (c *singleChannelCacheImpl) GetCachedChanges(options ChangesOptions) (valid
 	sinceSeq := options.Since.SafeSequence()
 	limit := options.Limit
 
-	//If the activeOnly option is set, then do not limit the number of entries returned
-	//we don't know how many non active entries will be discarded from the entry set
-	//by the caller, so the additional entries may be needed to return up to the limit requested
+	// If the activeOnly option is set, then do not limit the number of entries returned
+	// we don't know how many non active entries will be discarded from the entry set
+	// by the caller, so the additional entries may be needed to return up to the limit requested
 	if options.ActiveOnly {
 		limit = 0
 	}
@@ -383,7 +383,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 	}
 
 	// Nope, we're going to have to backfill from the view.
-	//** First acquire the _query_ lock (not the regular lock!)
+	// ** First acquire the _query_ lock (not the regular lock!)
 	// Track pending queries via StatKeyChannelCachePendingQueries expvar
 	c.cacheStats.ChannelCachePendingQueries.Add(1)
 	c.queryLock.Lock()
@@ -415,7 +415,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 	// overlap, which helps confirm that we've got everything.
 	c.cacheStats.ChannelCacheMisses.Add(1)
 	endSeq := cacheValidFrom
-	resultFromQuery, err := c.queryHandler.getChangesInChannelFromQuery(c.channelName, startSeq, endSeq, options.Limit, options.ActiveOnly)
+	resultFromQuery, err := c.queryHandler.getChangesInChannelFromQuery(options.Ctx, c.channelName, startSeq, endSeq, options.Limit, options.ActiveOnly)
 	if err != nil {
 		return nil, err
 	}
@@ -452,7 +452,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 	return result, nil
 }
 
-//////// LOGENTRIES:
+// ////// LOGENTRIES:
 
 func (c *singleChannelCacheImpl) _adjustFirstSeq(change *LogEntry) {
 	if change.Sequence < c.validFrom {
@@ -837,7 +837,7 @@ type bypassChannelCache struct {
 func (b *bypassChannelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 	startSeq := options.Since.SafeSequence() + 1
 	endSeq := uint64(math.MaxUint64)
-	return b.queryHandler.getChangesInChannelFromQuery(b.channelName, startSeq, endSeq, options.Limit, options.ActiveOnly)
+	return b.queryHandler.getChangesInChannelFromQuery(options.Ctx, b.channelName, startSeq, endSeq, options.Limit, options.ActiveOnly)
 }
 
 // No cached changes for bypassChannelCache

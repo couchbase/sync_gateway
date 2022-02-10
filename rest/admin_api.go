@@ -28,7 +28,7 @@ import (
 
 const kDefaultDBOnlineDelay = 0
 
-//////// DATABASE MAINTENANCE:
+// ////// DATABASE MAINTENANCE:
 
 // "Create" a database (actually just register an existing bucket)
 func (h *handler) handleCreateDB() error {
@@ -150,12 +150,12 @@ func getAuthScopeHandleCreateDB(bodyJSON []byte) (string, error) {
 func (h *handler) handleDbOnline() error {
 	h.assertAdminOnly()
 	dbState := atomic.LoadUint32(&h.db.State)
-	//If the DB is already transitioning to: online or is online silently return
+	// If the DB is already transitioning to: online or is online silently return
 	if dbState == db.DBOnline || dbState == db.DBStarting {
 		return nil
 	}
 
-	//If the DB is currently re-syncing return an error asking the user to retry later
+	// If the DB is currently re-syncing return an error asking the user to retry later
 	if dbState == db.DBResyncing {
 		return base.HTTPErrorf(http.StatusServiceUnavailable, "Database _resync is in progress, this may take some time, try again later")
 	}
@@ -182,7 +182,7 @@ func (h *handler) handleDbOnline() error {
 	return nil
 }
 
-//Take a DB offline
+// Take a DB offline
 func (h *handler) handleDbOffline() error {
 	h.assertAdminOnly()
 	var err error
@@ -913,7 +913,7 @@ func (h *handler) handleGetRawDoc() error {
 		includeDoc = false
 	}
 
-	doc, err := h.db.GetDocument(docid, db.DocUnmarshalSync)
+	doc, err := h.db.GetDocument(h.db.Ctx, docid, db.DocUnmarshalSync)
 	if err != nil {
 		return err
 	}
@@ -964,7 +964,7 @@ func (h *handler) handleGetRawDoc() error {
 func (h *handler) handleGetRevTree() error {
 	h.assertAdminOnly()
 	docid := h.PathVar("docid")
-	doc, err := h.db.GetDocument(docid, db.DocUnmarshalAll)
+	doc, err := h.db.GetDocument(h.db.Ctx, docid, db.DocUnmarshalAll)
 
 	if doc != nil {
 		h.writeText([]byte(doc.History.RenderGraphvizDot()))
@@ -1148,7 +1148,7 @@ func (h *handler) handleSGCollect() error {
 	return nil
 }
 
-//////// USERS & ROLES:
+// ////// USERS & ROLES:
 
 func internalUserName(name string) string {
 	if name == base.GuestUsername {
@@ -1213,13 +1213,13 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 
 	internalName := internalUserName(*newInfo.Name)
 	newInfo.Name = &internalName
-	replaced, err := h.db.UpdatePrincipal(newInfo, isUser, h.rq.Method != "POST")
+	replaced, err := h.db.UpdatePrincipal(h.db.Ctx, newInfo, isUser, h.rq.Method != "POST")
 	if err != nil {
 		return err
 	} else if replaced {
 		// on update with a new password, remove previous user sessions
 		if newInfo.Password != nil {
-			err = h.db.DeleteUserSessions(*newInfo.Name)
+			err = h.db.DeleteUserSessions(h.db.Ctx, *newInfo.Name)
 			if err != nil {
 				return err
 			}
@@ -1253,26 +1253,26 @@ func (h *handler) deleteUser() error {
 			"The %s user cannot be deleted. Only disabled via an update.", base.GuestUsername)
 	}
 
-	user, err := h.db.Authenticator().GetUser(username)
+	user, err := h.db.Authenticator(h.db.Ctx).GetUser(username)
 	if user == nil {
 		if err == nil {
 			err = kNotFoundError
 		}
 		return err
 	}
-	return h.db.Authenticator().DeleteUser(user)
+	return h.db.Authenticator(h.db.Ctx).DeleteUser(user)
 }
 
 func (h *handler) deleteRole() error {
 	h.assertAdminOnly()
 	purge := h.getBoolQuery("purge")
-	return h.db.DeleteRole(mux.Vars(h.rq)["name"], purge)
+	return h.db.DeleteRole(h.ctx(), mux.Vars(h.rq)["name"], purge)
 
 }
 
 func (h *handler) getUserInfo() error {
 	h.assertAdminOnly()
-	user, err := h.db.Authenticator().GetUser(internalUserName(mux.Vars(h.rq)["name"]))
+	user, err := h.db.Authenticator(h.db.Ctx).GetUser(internalUserName(mux.Vars(h.rq)["name"]))
 	if user == nil {
 		if err == nil {
 			err = kNotFoundError
@@ -1288,7 +1288,7 @@ func (h *handler) getUserInfo() error {
 
 func (h *handler) getRoleInfo() error {
 	h.assertAdminOnly()
-	role, err := h.db.Authenticator().GetRole(mux.Vars(h.rq)["name"])
+	role, err := h.db.Authenticator(h.db.Ctx).GetRole(mux.Vars(h.rq)["name"])
 	if role == nil {
 		if err == nil {
 			err = kNotFoundError
@@ -1303,7 +1303,7 @@ func (h *handler) getRoleInfo() error {
 }
 
 func (h *handler) getUsers() error {
-	users, _, err := h.db.AllPrincipalIDs()
+	users, _, err := h.db.AllPrincipalIDs(h.db.Ctx)
 	if err != nil {
 		return err
 	}
@@ -1313,7 +1313,7 @@ func (h *handler) getUsers() error {
 }
 
 func (h *handler) getRoles() error {
-	_, roles, err := h.db.AllPrincipalIDs()
+	_, roles, err := h.db.AllPrincipalIDs(h.db.Ctx)
 	if err != nil {
 		return err
 	}
@@ -1327,7 +1327,7 @@ func (h *handler) handlePurge() error {
 
 	message := "OK"
 
-	//Get the list of docs to purge
+	// Get the list of docs to purge
 
 	input, err := h.readJSON()
 	if err != nil {
@@ -1343,23 +1343,23 @@ func (h *handler) handlePurge() error {
 	var first bool = true
 
 	for key, value := range input {
-		//For each one validate that the revision list is set to ["*"], otherwise skip doc and log warning
-		base.Infof(base.KeyCRUD, "purging document = %v", base.UD(key))
+		// For each one validate that the revision list is set to ["*"], otherwise skip doc and log warning
+		base.InfofCtx(h.db.Ctx, base.KeyCRUD, "purging document = %v", base.UD(key))
 
 		if revisionList, ok := value.([]interface{}); ok {
 
-			//There should only be a single revision entry of "*"
+			// There should only be a single revision entry of "*"
 			if len(revisionList) != 1 {
-				base.Infof(base.KeyCRUD, "Revision list for doc ID %v, should contain exactly one entry", base.UD(key))
-				continue //skip this entry its not valid
+				base.InfofCtx(h.db.Ctx, base.KeyCRUD, "Revision list for doc ID %v, should contain exactly one entry", base.UD(key))
+				continue // skip this entry its not valid
 			}
 
 			if revisionList[0] != "*" {
-				base.Infof(base.KeyCRUD, "Revision entry for doc ID %v, should be the '*' revison", base.UD(key))
-				continue //skip this entry its not valid
+				base.InfofCtx(h.db.Ctx, base.KeyCRUD, "Revision entry for doc ID %v, should be the '*' revison", base.UD(key))
+				continue // skip this entry its not valid
 			}
 
-			//Attempt to delete document, if successful add to response, otherwise log warning
+			// Attempt to delete document, if successful add to response, otherwise log warning
 			err = h.db.Purge(key)
 			if err == nil {
 
@@ -1375,19 +1375,19 @@ func (h *handler) handlePurge() error {
 				_, _ = h.response.Write([]byte(s))
 
 			} else {
-				base.Infof(base.KeyCRUD, "Failed to purge document %v, err = %v", base.UD(key), err)
-				continue //skip this entry its not valid
+				base.InfofCtx(h.db.Ctx, base.KeyCRUD, "Failed to purge document %v, err = %v", base.UD(key), err)
+				continue // skip this entry its not valid
 			}
 
 		} else {
-			base.Infof(base.KeyCRUD, "Revision list for doc ID %v, is not an array, ", base.UD(key))
-			continue //skip this entry its not valid
+			base.InfofCtx(h.db.Ctx, base.KeyCRUD, "Revision list for doc ID %v, is not an array, ", base.UD(key))
+			continue // skip this entry its not valid
 		}
 	}
 
 	if len(docIDs) > 0 {
 		count := h.db.GetChangeCache().Remove(docIDs, startTime)
-		base.Debugf(base.KeyCache, "Purged %d items from caches", count)
+		base.DebugfCtx(h.db.Ctx, base.KeyCache, "Purged %d items from caches", count)
 	}
 
 	_, _ = h.response.Write([]byte("}\n}\n"))

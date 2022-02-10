@@ -123,7 +123,7 @@ func CreatePublicHandler(sc *ServerContext) http.Handler {
 	return wrapRouter(sc, regularPrivs, r)
 }
 
-//////// ADMIN API:
+// ////// ADMIN API:
 
 // CreateAdminHandler Creates the HTTP handler for the PRIVATE admin API of a gateway server.
 func CreateAdminHandler(sc *ServerContext) http.Handler {

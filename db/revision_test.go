@@ -115,12 +115,12 @@ func TestBackupOldRevision(t *testing.T) {
 	require.NoError(t, err)
 
 	// make sure we didn't accidentally store an empty old revision
-	_, err = db.getOldRevisionJSON(docID, "")
+	_, err = db.getOldRevisionJSON(base.TestCtx(t), docID, "")
 	assert.Error(t, err)
 	assert.Equal(t, "404 missing", err.Error())
 
 	// check for current rev backup in xattr+delta case (to support deltas by sdk imports)
-	_, err = db.getOldRevisionJSON(docID, rev1ID)
+	_, err = db.getOldRevisionJSON(base.TestCtx(t), docID, rev1ID)
 	if deltasEnabled && xattrsEnabled {
 		require.NoError(t, err)
 	} else {
@@ -134,11 +134,11 @@ func TestBackupOldRevision(t *testing.T) {
 	require.NoError(t, err)
 
 	// now in all cases we'll have rev 1 backed up (for at least 5 minutes)
-	_, err = db.getOldRevisionJSON(docID, rev1ID)
+	_, err = db.getOldRevisionJSON(base.TestCtx(t), docID, rev1ID)
 	require.NoError(t, err)
 
 	// check for current rev backup in xattr+delta case (to support deltas by sdk imports)
-	_, err = db.getOldRevisionJSON(docID, rev2ID)
+	_, err = db.getOldRevisionJSON(base.TestCtx(t), docID, rev2ID)
 	if deltasEnabled && xattrsEnabled {
 		require.NoError(t, err)
 	} else {

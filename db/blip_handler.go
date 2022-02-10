@@ -100,7 +100,7 @@ func (bh *blipHandler) refreshUser() error {
 		// If changed, refresh the user and db while holding the lock
 		if userChanged {
 			// Refresh the BlipSyncContext database
-			newUser, err := bc.blipContextDb.Authenticator().GetUser(bc.userName)
+			newUser, err := bc.blipContextDb.Authenticator(bh.loggingCtx).GetUser(bc.userName)
 			if err != nil {
 				bc.dbUserLock.Unlock()
 				return err
@@ -117,7 +117,7 @@ func (bh *blipHandler) refreshUser() error {
 	return nil
 }
 
-//////// CHECKPOINTS
+// ////// CHECKPOINTS
 
 // Received a "getCheckpoint" request
 func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
@@ -169,7 +169,7 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 	return nil
 }
 
-//////// CHANGES
+// ////// CHANGES
 
 // Received a "subChanges" subscription request
 func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
@@ -695,7 +695,7 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 	return nil
 }
 
-//////// DOCUMENTS:
+// ////// DOCUMENTS:
 
 func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID, deltaSrcRevID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseDb *Database) error {
 
@@ -779,7 +779,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 		}
 	}()
 
-	//addRevisionParams := newAddRevisionParams(rq)
+	// addRevisionParams := newAddRevisionParams(rq)
 	revMessage := RevMessage{Message: rq}
 
 	base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s %s", bh.serialNumber, rq.Profile(), revMessage.String())
@@ -909,7 +909,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 	// Look at attachments with revpos > the last common ancestor's
 	minRevpos := 1
 	if len(history) > 0 {
-		currentDoc, rawDoc, err := bh.db.GetDocumentWithRaw(docID, DocUnmarshalSync)
+		currentDoc, rawDoc, err := bh.db.GetDocumentWithRaw(bh.loggingCtx, docID, DocUnmarshalSync)
 		// If we're able to obtain current doc data then we should use the common ancestor generation++ for min revpos
 		// as we will already have any attachments on the common ancestor so don't need to ask for them.
 		// Otherwise we'll have to go as far back as we can in the doc history and choose the last entry in there.
@@ -960,7 +960,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 	return nil
 }
 
-//////// ATTACHMENTS:
+// ////// ATTACHMENTS:
 
 func (bh *blipHandler) handleProveAttachment(rq *blip.Message) error {
 	nonce, err := rq.Body()

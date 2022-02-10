@@ -43,9 +43,9 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 		return nil, err
 	}
 	// Don't need to check session.Expiration, because Couchbase will have nuked the document.
-	//update the session Expiration if 10% or more of the current expiration time has elapsed
-	//if the session does not contain a Ttl (probably created prior to upgrading SG), use
-	//default value of 24Hours
+	// update the session Expiration if 10% or more of the current expiration time has elapsed
+	// if the session does not contain a Ttl (probably created prior to upgrading SG), use
+	// default value of 24Hours
 	if session.Ttl == 0 {
 		session.Ttl = kDefaultSessionTTL
 	}
@@ -121,7 +121,7 @@ func (auth Authenticator) DeleteSessionForCookie(rq *http.Request) *http.Cookie 
 	}
 
 	if err := auth.bucket.Delete(DocIDForSession(cookie.Value)); err != nil {
-		base.Debugf(base.KeyAuth, "Error while deleting session for cookie %s, Error: %v", base.UD(cookie.Value), err)
+		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error while deleting session for cookie %s, Error: %v", base.UD(cookie.Value), err)
 	}
 
 	newCookie := *cookie

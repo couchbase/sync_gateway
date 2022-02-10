@@ -90,12 +90,12 @@ func TestViewQuery(t *testing.T) {
 
 }
 
-//Tests #1109, wh ere design doc contains multiple views
+// Tests #1109, wh ere design doc contains multiple views
 func TestViewQueryMultipleViews(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
 	defer rt.Close()
 
-	//Define three views
+	// Define three views
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"views": {"by_fname": {"map": "function (doc, meta) { emit(doc.fname, null); }"},"by_lname": {"map": "function (doc, meta) { emit(doc.lname, null); }"},"by_age": {"map": "function (doc, meta) { emit(doc.age, null); }"}}}`)
 	assertStatus(t, response, http.StatusCreated)
 	response = rt.SendRequest(http.MethodPut, "/db/doc1", `{"fname": "Alice", "lname":"Ten", "age":10}`)
@@ -172,7 +172,7 @@ func TestViewQueryUserAccess(t *testing.T) {
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"}, result.Rows[1])
 
 	// Create a user:
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	password := "123456"
 	testUser, _ := a.NewUser("testUser", password, channels.SetOf(t, "*"))
 	assert.NoError(t, a.Save(testUser))
@@ -200,7 +200,7 @@ func TestViewQueryMultipleViewsInterfaceValues(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	//Define three views
+	// Define three views
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"views": {"by_fname": {"map": "function (doc, meta) { emit(doc.fname, null); }"},"by_lname": {"map": "function (doc, meta) { emit(doc.lname, null); }"},"by_age": {"map": "function (doc, meta) { emit(doc.age, doc); }"}}}`)
 	assertStatus(t, response, http.StatusCreated)
 	response = rt.SendRequest(http.MethodPut, "/db/doc1", `{"fname": "Alice", "lname":"Ten", "age":10}`)
@@ -239,7 +239,7 @@ func TestUserViewQuery(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	rt.ServerContext().Database("db").SetUserViewsEnabled(true)
 
 	// Create a view:
@@ -646,7 +646,7 @@ func TestViewQueryWrappers(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 3, result.Len())
 
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	testUser, err := a.NewUser("testUser", "password", channels.SetOf(t, "userchannel"))
 	assert.NoError(t, err)
 	err = a.Save(testUser)
@@ -680,19 +680,19 @@ func TestViewQueryWithXattrAndNonXattr(t *testing.T) {
 	response := rt.SendAdminRequest("PUT", "/db/doc1", `{"value":"foo"}`)
 	assertStatus(t, response, http.StatusCreated)
 
-	//Document with sync data in body
+	// Document with sync data in body
 	body := `{"_sync": { "rev": "1-fc2cf22c5e5007bd966869ebfe9e276a", "sequence": 2, "recent_sequences": [ 2 ], "history": { "revs": [ "1-fc2cf22c5e5007bd966869ebfe9e276a" ], "parents": [ -1], "channels": [ null ] }, "cas": "","value_crc32c": "", "time_saved": "2019-04-10T12:40:04.490083+01:00" }, "value": "foo"}`
 	ok, err := rt.Bucket().Add("doc2", 0, []byte(body))
 	assert.True(t, ok)
 	assert.NoError(t, err)
 
-	//Should handle the case where there is no sync data
+	// Should handle the case where there is no sync data
 	body = `{"value": "foo"}`
 	ok, err = rt.Bucket().Add("doc3", 0, []byte(body))
 	assert.True(t, ok)
 	assert.NoError(t, err)
 
-	//Document with sync data in xattr
+	// Document with sync data in xattr
 	response = rt.SendAdminRequest("PUT", "/db/_design/foodoc", `{"views": {"foobarview": {"map": "function(doc, meta) {if (doc.value == \"foo\") {emit(doc.key, null);}}"}}}`)
 	assert.Equal(t, 201, response.Code)
 

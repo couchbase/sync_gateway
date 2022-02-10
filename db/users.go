@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -67,34 +68,8 @@ func (p PrincipalConfig) IsPasswordValid(allowEmptyPass bool) (isValid bool, rea
 	return true, ""
 }
 
-// Test-only version of GetPrincipal that doesn't trigger channel/role recalculation
-func (dbc *DatabaseContext) GetPrincipal(name string, isUser bool) (info *PrincipalConfig, err error) {
-	var princ auth.Principal
-	if isUser {
-		princ, err = dbc.Authenticator().GetUser(name)
-	} else {
-		princ, err = dbc.Authenticator().GetRole(name)
-	}
-	if princ == nil {
-		return
-	}
-	info = new(PrincipalConfig)
-	info.Name = &name
-	info.ExplicitChannels = princ.ExplicitChannels().AsSet()
-	if user, ok := princ.(auth.User); ok {
-		info.Channels = user.InheritedChannels().AsSet()
-		info.Email = user.Email()
-		info.Disabled = base.BoolPtr(user.Disabled())
-		info.ExplicitRoleNames = user.ExplicitRoles().AllKeys()
-		info.RoleNames = user.RoleNames().AllKeys()
-	} else {
-		info.Channels = princ.Channels().AsSet()
-	}
-	return
-}
-
-func (db *DatabaseContext) DeleteRole(name string, purge bool) error {
-	authenticator := db.Authenticator()
+func (db *DatabaseContext) DeleteRole(ctx context.Context, name string, purge bool) error {
+	authenticator := db.Authenticator(ctx)
 
 	role, err := authenticator.GetRole(name)
 	if err != nil {
@@ -114,11 +89,11 @@ func (db *DatabaseContext) DeleteRole(name string, purge bool) error {
 }
 
 // Updates or creates a principal from a PrincipalConfig structure.
-func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool, allowReplace bool) (replaced bool, err error) {
+func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, newInfo PrincipalConfig, isUser bool, allowReplace bool) (replaced bool, err error) {
 	// Get the existing principal, or if this is a POST make sure there isn't one:
 	var princ auth.Principal
 	var user auth.User
-	authenticator := dbc.Authenticator()
+	authenticator := dbc.Authenticator(ctx)
 
 	// Retry handling for cas failure during principal update.  Limiting retry attempts
 	// to PrincipalUpdateMaxCasRetries defensively to avoid unexpected retry loops.
@@ -177,7 +152,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 		if isUser {
 			if newInfo.Email != user.Email() {
 				if err := user.SetEmail(newInfo.Email); err != nil {
-					base.Warnf("Skipping SetEmail for user %q - Invalid email address provided: %q", base.UD(*newInfo.Name), base.UD(newInfo.Email))
+					base.WarnfCtx(ctx, "Skipping SetEmail for user %q - Invalid email address provided: %q", base.UD(*newInfo.Name), base.UD(newInfo.Email))
 				}
 				changed = true
 			}
@@ -226,12 +201,12 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 		err = authenticator.Save(princ)
 		// On cas error, retry.  Otherwise break out of loop
 		if base.IsCasMismatch(err) {
-			base.Infof(base.KeyAuth, "CAS mismatch updating principal %s - will retry", base.UD(princ.Name()))
+			base.InfofCtx(ctx, base.KeyAuth, "CAS mismatch updating principal %s - will retry", base.UD(princ.Name()))
 		} else {
 			return replaced, err
 		}
 	}
 
-	base.Errorf("CAS mismatch updating principal %s - exceeded retry count. Latest failure: %v", base.UD(princ.Name()), err)
+	base.ErrorfCtx(ctx, "CAS mismatch updating principal %s - exceeded retry count. Latest failure: %v", base.UD(princ.Name()), err)
 	return replaced, err
 }

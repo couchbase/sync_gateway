@@ -11,7 +11,6 @@ licenses/APL2.txt.
 package db
 
 import (
-	"context"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -47,7 +46,7 @@ func TestBlipSyncContextSetUseDeltas(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := &BlipSyncContext{
-				blipContextDb:    &Database{Ctx: context.TODO()},
+				blipContextDb:    &Database{Ctx: base.TestCtx(t)},
 				useDeltas:        tt.startingCtxDeltas,
 				sgCanUseDeltas:   tt.sgCanUseDeltas,
 				replicationStats: NewBlipSyncStats(),
@@ -88,7 +87,7 @@ func BenchmarkBlipSyncContextSetUseDeltas(b *testing.B) {
 	for _, tt := range tests {
 		b.Run(tt.name, func(b *testing.B) {
 			ctx := &BlipSyncContext{
-				blipContextDb:    &Database{Ctx: context.TODO()},
+				blipContextDb:    &Database{Ctx: base.TestCtx(b)},
 				replicationStats: NewBlipSyncStats(),
 			}
 			b.ResetTimer()

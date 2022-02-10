@@ -266,7 +266,7 @@ func (user *userImpl) RevokedChannels(since uint64, lowSeq uint64, triggeredBy u
 	for roleName, roleRevokeSeq := range rolesToRevoke {
 		role, err := user.auth.GetRoleIncDeleted(roleName)
 		if err != nil || role == nil {
-			base.Warnf("unable to obtain role %s to calculate channel revocation: %v. Will continue", base.UD(roleName), err)
+			base.WarnfCtx(user.auth.LogCtx, "unable to obtain role %s to calculate channel revocation: %v. Will continue", base.UD(roleName), err)
 			continue
 		}
 
@@ -412,7 +412,7 @@ func (user *userImpl) Authenticate(password string) bool {
 
 	// exit early if old hash is present
 	if user.OldPasswordHash_ != nil {
-		base.Warnf("User account %q still has pre-beta password hash; need to reset password", base.UD(user.Name_))
+		base.WarnfCtx(user.auth.LogCtx, "User account %q still has pre-beta password hash; need to reset password", base.UD(user.Name_))
 		return false // Password must be reset to use new (bcrypt) password hash
 	}
 
@@ -427,7 +427,7 @@ func (user *userImpl) Authenticate(password string) bool {
 		// e.g: in the case of bcryptCost changes
 		if err := user.auth.rehashPassword(user, password); err != nil {
 			// rehash is best effort, just log a warning on error.
-			base.Warnf("Error when rehashing password for user %s: %v", base.UD(user.Name()), err)
+			base.WarnfCtx(user.auth.LogCtx, "Error when rehashing password for user %s: %v", base.UD(user.Name()), err)
 		}
 	} else {
 		// no hash, but (incorrect) password provided
@@ -452,14 +452,14 @@ func (user *userImpl) SetPassword(password string) {
 	}
 }
 
-//////// CHANNEL ACCESS:
+// ////// CHANNEL ACCESS:
 
 func (user *userImpl) GetRoles() []Role {
 	if user.roles == nil {
 		roles := make([]Role, 0, len(user.RoleNames()))
 		for name := range user.RoleNames() {
 			role, err := user.auth.GetRole(name)
-			//base.Infof(base.KeyAccess, "User %s role %q = %v", base.UD(user.Name_), base.UD(name), base.UD(role))
+			// base.InfofCtx(user.auth.LogCtx, base.KeyAccess, "User %s role %q = %v", base.UD(user.Name_), base.UD(name), base.UD(role))
 			if err != nil {
 				panic(fmt.Sprintf("Error getting user role %q: %v", name, err))
 			} else if role != nil {
@@ -516,7 +516,7 @@ func (user *userImpl) InheritedChannels() ch.TimedSet {
 		if channelsPerUserThreshold := user.auth.ChannelsWarningThreshold; channelsPerUserThreshold != nil {
 			channelCount := len(channels)
 			if uint32(channelCount) >= *channelsPerUserThreshold {
-				base.Warnf("User ID: %v channel count: %d exceeds %d for channels per user warning threshold",
+				base.WarnfCtx(user.auth.LogCtx, "User ID: %v channel count: %d exceeds %d for channels per user warning threshold",
 					base.UD(user.Name()), channelCount, *channelsPerUserThreshold)
 			}
 		}
@@ -558,7 +558,7 @@ func (user *userImpl) GetAddedChannels(channels ch.TimedSet) base.Set {
 	return output
 }
 
-//////// MARSHALING:
+// ////// MARSHALING:
 
 // JSON encoding/decoding -- these functions are ugly hacks to work around the current
 // Go 1.0.3 limitation that the JSON package won't traverse into unnamed/embedded

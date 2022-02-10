@@ -49,7 +49,7 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 	// Create push replication, verify running
 	replicationID := t.Name()
 	rt1.createReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
-	rt1.assertReplicationState(replicationID, db.ReplicationStateRunning)
+	rt1.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
 	// wait for document originally written to rt1 to arrive at rt2
 	changesResults := rt2.RequireWaitChanges(1, "0")
@@ -95,7 +95,7 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 
 	// wait for the last document written to rt1 to arrive at rt2
 	waitAndAssertCondition(t, func() bool {
-		_, err := rt2.GetDatabase().GetDocument(lastDocIDString, db.DocUnmarshalNone)
+		_, err := rt2.GetDatabase().GetDocument(base.TestCtx(t), lastDocIDString, db.DocUnmarshalNone)
 		return err == nil
 	})
 }

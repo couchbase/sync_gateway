@@ -9,6 +9,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"math/rand"
@@ -457,7 +458,7 @@ type testQueryHandler struct {
 	lock       sync.RWMutex
 }
 
-func (qh *testQueryHandler) getChangesInChannelFromQuery(channelName string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error) {
+func (qh *testQueryHandler) getChangesInChannelFromQuery(ctx context.Context, channelName string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error) {
 	queryEntries := make(LogEntries, 0)
 	qh.lock.RLock()
 	for _, entry := range qh.entries {

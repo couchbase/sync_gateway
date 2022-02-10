@@ -149,7 +149,7 @@ func DefaultCacheOptions() CacheOptions {
 	}
 }
 
-//////// HOUSEKEEPING:
+// ////// HOUSEKEEPING:
 
 // Initializes a new changeCache.
 // lastSequence is the last known database sequence assigned.
@@ -368,7 +368,7 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 		entry.Skipped = true
 		// Need to populate the actual channels for this entry - the entry returned from the * channel
 		// view will only have the * channel
-		doc, err := c.context.GetDocument(entry.DocID, DocUnmarshalNoHistory)
+		doc, err := c.context.GetDocument(ctx, entry.DocID, DocUnmarshalNoHistory)
 		if err != nil {
 			base.WarnfCtx(ctx, "Unable to retrieve doc when processing skipped document %q: abandoning sequence %d", base.UD(entry.DocID), entry.Sequence)
 			continue
@@ -393,7 +393,7 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 	return nil
 }
 
-//////// ADDING CHANGES:
+// ////// ADDING CHANGES:
 
 // Note that DocChanged may be executed concurrently for multiple events (in the DCP case, DCP events
 // originating from multiple vbuckets).  Only processEntry is locking - all other functionality needs to support
@@ -532,7 +532,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 					TimeReceived: event.TimeReceived,
 				}
 
-				//if the doc was removed from one or more channels at this sequence
+				// if the doc was removed from one or more channels at this sequence
 				// Set the removed flag and removed channel set on the LogEntry
 				if channelRemovals, atRevId := syncData.Channels.ChannelsRemovedAtSequence(seq); len(channelRemovals) > 0 {
 					change.DocID = docID
@@ -827,7 +827,7 @@ func (c *changeCache) getChannelCache() ChannelCache {
 	return c.channelCache
 }
 
-//////// CHANGE ACCESS:
+// ////// CHANGE ACCESS:
 
 func (c *changeCache) GetChanges(channelName string, options ChangesOptions) ([]*LogEntry, error) {
 
@@ -874,7 +874,7 @@ func (c *changeCache) getInitialSequence() (initialSequence uint64) {
 	return initialSequence
 }
 
-//////// LOG PRIORITY QUEUE -- container/heap callbacks that should not be called directly.   Use heap.Init/Push/etc()
+// ////// LOG PRIORITY QUEUE -- container/heap callbacks that should not be called directly.   Use heap.Init/Push/etc()
 
 func (h LogPriorityQueue) Len() int           { return len(h) }
 func (h LogPriorityQueue) Less(i, j int) bool { return h[i].Sequence < h[j].Sequence }
@@ -892,7 +892,7 @@ func (h *LogPriorityQueue) Pop() interface{} {
 	return x
 }
 
-//////// SKIPPED SEQUENCE QUEUE
+// ////// SKIPPED SEQUENCE QUEUE
 
 func (c *changeCache) RemoveSkipped(x uint64) error {
 	err := c.skippedSeqs.Remove(x)

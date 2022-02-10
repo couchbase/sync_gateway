@@ -47,9 +47,9 @@ func init() {
 	underscore.Disable() // It really slows down unit tests (by making otto.New take a lot longer)
 }
 
-//////// REST TESTER HELPER CLASS:
+// ////// REST TESTER HELPER CLASS:
 
-//////// AND NOW THE TESTS:
+// ////// AND NOW THE TESTS:
 
 func TestRoot(t *testing.T) {
 	rt := NewRestTester(t, nil)
@@ -115,7 +115,7 @@ func TestDocLifecycle(t *testing.T) {
 	assertStatus(t, response, 200)
 }
 
-//Validate that Etag header value is surrounded with double quotes, see issue #808
+// Validate that Etag header value is surrounded with double quotes, see issue #808
 func TestDocEtag(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
@@ -132,16 +132,16 @@ func TestDocEtag(t *testing.T) {
 		t.Fatalf("No revid in response for PUT doc")
 	}
 
-	//Validate Etag returned on doc creation
+	// Validate Etag returned on doc creation
 	goassert.Equals(t, response.Header().Get("Etag"), strconv.Quote(revid))
 
 	response = rt.SendRequest("GET", "/db/doc", "")
 	assertStatus(t, response, 200)
 
-	//Validate Etag returned when retrieving doc
+	// Validate Etag returned when retrieving doc
 	goassert.Equals(t, response.Header().Get("Etag"), strconv.Quote(revid))
 
-	//Validate Etag returned when updating doc
+	// Validate Etag returned when updating doc
 	response = rt.SendRequest("PUT", "/db/doc?rev="+revid, `{"prop":false}`)
 	revid = body["rev"].(string)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -153,7 +153,7 @@ func TestDocEtag(t *testing.T) {
 
 	goassert.Equals(t, response.Header().Get("Etag"), strconv.Quote(revid))
 
-	//Test Attachments
+	// Test Attachments
 	attachmentBody := "this is the body of attachment"
 	attachmentContentType := "content/type"
 	reqHeaders := map[string]string{
@@ -172,7 +172,7 @@ func TestDocEtag(t *testing.T) {
 	}
 	goassert.True(t, revIdAfterAttachment != revid)
 
-	//validate Etag returned from adding an attachment
+	// validate Etag returned from adding an attachment
 	goassert.Equals(t, response.Header().Get("Etag"), strconv.Quote(revIdAfterAttachment))
 
 	// retrieve attachment
@@ -182,7 +182,7 @@ func TestDocEtag(t *testing.T) {
 	goassert.Equals(t, response.Header().Get("Content-Disposition"), "")
 	goassert.Equals(t, response.Header().Get("Content-Type"), attachmentContentType)
 
-	//Validate Etag returned from retrieving an attachment
+	// Validate Etag returned from retrieving an attachment
 	goassert.Equals(t, response.Header().Get("Etag"), "\"sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=\"")
 
 }
@@ -307,14 +307,14 @@ func TestDocAttachmentOnRemovedRev(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	user, err := a.GetUser("")
 	assert.NoError(t, err)
 	user.SetDisabled(true)
 	err = a.Save(user)
 	assert.NoError(t, err)
 
-	//Create a test user
+	// Create a test user
 	user, err = a.NewUser("user1", "letmein", channels.SetOf(t, "foo"))
 	assert.NoError(t, a.Save(user))
 
@@ -324,7 +324,7 @@ func TestDocAttachmentOnRemovedRev(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	revid := body["rev"].(string)
 
-	//Put new revision removing document from users channel set
+	// Put new revision removing document from users channel set
 	response = rt.Send(requestByUser("PUT", "/db/doc?rev="+revid, `{"prop":true}`, "user1"))
 	assertStatus(t, response, 201)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -345,24 +345,24 @@ func TestDocumentUpdateWithNullBody(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	user, err := a.GetUser("")
 	assert.NoError(t, err)
 	user.SetDisabled(true)
 	err = a.Save(user)
 	assert.NoError(t, err)
 
-	//Create a test user
+	// Create a test user
 	user, err = a.NewUser("user1", "letmein", channels.SetOf(t, "foo"))
 	assert.NoError(t, a.Save(user))
-	//Create document
+	// Create document
 	response := rt.Send(requestByUser("PUT", "/db/doc", `{"prop":true, "channels":["foo"]}`, "user1"))
 	assertStatus(t, response, 201)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	revid := body["rev"].(string)
 
-	//Put new revision with null body
+	// Put new revision with null body
 	response = rt.Send(requestByUser("PUT", "/db/doc?rev="+revid, "", "user1"))
 	assertStatus(t, response, 400)
 }
@@ -1346,14 +1346,14 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	user, err := a.GetUser("")
 	assert.NoError(t, err)
 	user.SetDisabled(true)
 	err = a.Save(user)
 	assert.NoError(t, err)
 
-	//Create a test user
+	// Create a test user
 	user, err = a.NewUser("user1", "letmein", nil)
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(user))
@@ -1389,7 +1389,7 @@ func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 	defer rt.Close()
 
 	// Create a role with no channels assigned to it
-	authenticator := rt.ServerContext().Database("db").Authenticator()
+	authenticator := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	role, err := authenticator.NewRole("role1", nil)
 	assert.NoError(t, authenticator.Save(role))
 
@@ -1920,7 +1920,7 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 
 // Test _all_docs API call under different security scenarios
 func TestAllDocsAccessControl(t *testing.T) {
-	//restTester := initRestTester(db.IntSequenceType, `function(doc) {channel(doc.channels);}`)
+	// restTester := initRestTester(db.IntSequenceType, `function(doc) {channel(doc.channels);}`)
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	type allDocsRow struct {
@@ -1992,7 +1992,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	goassert.Equals(t, allDocsResult.Rows[2].ID, "doc5")
 	goassert.DeepEquals(t, allDocsResult.Rows[2].Value.Channels, []string{"Cinemax"})
 
-	//Check all docs limit option
+	// Check all docs limit option
 	request, _ = http.NewRequest("GET", "/db/_all_docs?limit=1&channels=true", nil)
 	request.SetBasicAuth("alice", "letmein")
 	response = rt.Send(request)
@@ -2006,7 +2006,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
 	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
 
-	//Check all docs startkey option
+	// Check all docs startkey option
 	request, _ = http.NewRequest("GET", "/db/_all_docs?startkey=doc5&channels=true", nil)
 	request.SetBasicAuth("alice", "letmein")
 	response = rt.Send(request)
@@ -2020,7 +2020,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc5")
 	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
 
-	//Check all docs startkey option with double quote
+	// Check all docs startkey option with double quote
 	request, _ = http.NewRequest("GET", `/db/_all_docs?startkey="doc5"&channels=true`, nil)
 	request.SetBasicAuth("alice", "letmein")
 	response = rt.Send(request)
@@ -2034,7 +2034,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc5")
 	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
 
-	//Check all docs endkey option
+	// Check all docs endkey option
 	request, _ = http.NewRequest("GET", "/db/_all_docs?endkey=doc3&channels=true", nil)
 	request.SetBasicAuth("alice", "letmein")
 	response = rt.Send(request)
@@ -2048,7 +2048,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
 	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
 
-	//Check all docs endkey option
+	// Check all docs endkey option
 	request, _ = http.NewRequest("GET", `/db/_all_docs?endkey="doc3"&channels=true`, nil)
 	request.SetBasicAuth("alice", "letmein")
 	response = rt.Send(request)
@@ -2161,7 +2161,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	guest, err := a.GetUser("")
 	assert.NoError(t, err)
 	guest.SetDisabled(false)
@@ -2348,7 +2348,7 @@ func TestAccessOnTombstone(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	guest, err := a.GetUser("")
 	assert.NoError(t, err)
 	guest.SetDisabled(false)
@@ -2442,7 +2442,7 @@ func TestSyncFnBodyProperties(t *testing.T) {
 	response := rt.SendAdminRequest("PUT", "/db/"+testDocID, `{"`+testdataKey+`":true}`)
 	assertStatus(t, response, 201)
 
-	syncData, err := rt.GetDatabase().GetDocSyncData(testDocID)
+	syncData, err := rt.GetDatabase().GetDocSyncData(base.TestCtx(t), testDocID)
 	assert.NoError(t, err)
 
 	actualProperties := syncData.Channels.KeySet()
@@ -2491,7 +2491,7 @@ func TestSyncFnBodyPropertiesTombstone(t *testing.T) {
 	response = rt.SendAdminRequest("DELETE", "/db/"+testDocID+"?rev="+revID, `{}`)
 	assertStatus(t, response, 200)
 
-	syncData, err := rt.GetDatabase().GetDocSyncData(testDocID)
+	syncData, err := rt.GetDatabase().GetDocSyncData(base.TestCtx(t), testDocID)
 	assert.NoError(t, err)
 
 	actualProperties := syncData.Channels.KeySet()
@@ -2539,7 +2539,7 @@ func TestSyncFnOldDocBodyProperties(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/"+testDocID+"?rev="+revID, `{"`+testdataKey+`":true,"update":2}`)
 	assertStatus(t, response, 201)
 
-	syncData, err := rt.GetDatabase().GetDocSyncData(testDocID)
+	syncData, err := rt.GetDatabase().GetDocSyncData(base.TestCtx(t), testDocID)
 	assert.NoError(t, err)
 
 	actualProperties := syncData.Channels.KeySet()
@@ -2595,7 +2595,7 @@ func TestSyncFnOldDocBodyPropertiesTombstoneResurrect(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/"+testDocID+"?rev="+revID, `{"`+testdataKey+`":true}`)
 	assertStatus(t, response, 201)
 
-	syncData, err := rt.GetDatabase().GetDocSyncData(testDocID)
+	syncData, err := rt.GetDatabase().GetDocSyncData(base.TestCtx(t), testDocID)
 	assert.NoError(t, err)
 
 	actualProperties := syncData.Channels.KeySet()
@@ -2627,7 +2627,7 @@ func TestSyncFnDocBodyPropertiesSwitchActiveTombstone(t *testing.T) {
 		console.log("full doc: "+JSON.stringify(doc));
 		console.log("full oldDoc: "+JSON.stringify(oldDoc));
 
-		if (oldDoc == null || !oldDoc.syncOldDocBodyCheck) {
+		if (doc.testdata == 1 || (oldDoc != null && !oldDoc.syncOldDocBodyCheck)) {
 			console.log("skipping oldDoc property checks for this rev")
 			return
 		}
@@ -2678,7 +2678,7 @@ func TestSyncFnDocBodyPropertiesSwitchActiveTombstone(t *testing.T) {
 	assert.Equal(t, 1, numErrorsAfter-numErrorsBefore, "expecting to see only only 1 error logged")
 }
 
-//Test for wrong _changes entries for user joining a populated channel
+// Test for wrong _changes entries for user joining a populated channel
 func TestUserJoiningPopulatedChannel(t *testing.T) {
 
 	if testing.Short() {
@@ -2691,7 +2691,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	guest, err := a.GetUser("")
 	assert.NoError(t, err)
 	guest.SetDisabled(false)
@@ -2714,7 +2714,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	since := changesResults.Results[49].Seq
 	assert.Equal(t, "doc48", changesResults.Results[49].ID)
 
-	//// Check the _changes feed with  since and limit, to get second half of feed
+	// // Check the _changes feed with  since and limit, to get second half of feed
 	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?since=\"%s\"&limit=%d", since, limit), "user1", false)
 	assert.NoError(t, err, "Unexpected error")
 	require.Len(t, changesResults.Results, 50)
@@ -2725,7 +2725,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/_user/user2", `{"email":"user2@couchbase.com", "password":"letmein", "admin_channels":["alpha"]}`)
 	assertStatus(t, response, 201)
 
-	//Retrieve all changes for user2 with no limits
+	// Retrieve all changes for user2 with no limits
 	changesResults, err = rt.WaitForChanges(101, fmt.Sprintf("/db/_changes"), "user2", false)
 	assert.NoError(t, err, "Unexpected error")
 	require.Len(t, changesResults.Results, 101)
@@ -2740,10 +2740,10 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	log.Printf("create user response: %s", getUserResponse.Body.Bytes())
 
 	// Get the sequence from the user doc to validate against the triggered by value in the changes results
-	user3, _ := rt.GetDatabase().Authenticator().GetUser("user3")
+	user3, _ := rt.GetDatabase().Authenticator(base.TestCtx(t)).GetUser("user3")
 	userSequence := user3.Sequence()
 
-	//Get first 50 document changes.
+	// Get first 50 document changes.
 	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?limit=%d", limit), "user3", false)
 	assert.NoError(t, err, "Unexpected error")
 	require.Len(t, changesResults.Results, 50)
@@ -2751,7 +2751,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equal(t, "doc49", changesResults.Results[49].ID)
 	assert.Equal(t, userSequence, since.TriggeredBy)
 
-	//// Get remainder of changes i.e. no limit parameter
+	// // Get remainder of changes i.e. no limit parameter
 	changesResults, err = rt.WaitForChanges(51, fmt.Sprintf("/db/_changes?since=\"%s\"", since), "user3", false)
 	assert.NoError(t, err, "Unexpected error")
 	require.Len(t, changesResults.Results, 51)
@@ -2761,7 +2761,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/_user/user4", `{"email":"user4@couchbase.com", "password":"letmein", "admin_channels":["alpha"]}`)
 	assertStatus(t, response, 201)
 	// Get the sequence from the user doc to validate against the triggered by value in the changes results
-	user4, _ := rt.GetDatabase().Authenticator().GetUser("user4")
+	user4, _ := rt.GetDatabase().Authenticator(base.TestCtx(t)).GetUser("user4")
 	user4Sequence := user4.Sequence()
 
 	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?limit=%d", limit), "user4", false)
@@ -2771,7 +2771,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equal(t, "doc49", changesResults.Results[49].ID)
 	assert.Equal(t, user4Sequence, since.TriggeredBy)
 
-	//// Check the _changes feed with  since and limit, to get second half of feed
+	// // Check the _changes feed with  since and limit, to get second half of feed
 	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?since=%s&limit=%d", since, limit), "user4", false)
 	assert.Equal(t, nil, err)
 	require.Len(t, changesResults.Results, 50)
@@ -2787,7 +2787,7 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	guest, err := a.GetUser("")
 	assert.NoError(t, err)
 	guest.SetDisabled(false)
@@ -2803,7 +2803,7 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, "role1", body["name"])
 
-	//Put document to trigger sync function
+	// Put document to trigger sync function
 	response = rt.Send(request("PUT", "/db/doc1", `{"user":"user1", "role":"role:role1", "channel":"chan1"}`)) // seq=1
 	assertStatus(t, response, 201)
 	body = nil
@@ -2821,8 +2821,8 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 	goassert.DeepEquals(t, body["roles"], []interface{}{"role1"})
 	goassert.DeepEquals(t, body["all_channels"], []interface{}{"!", "chan1"})
 
-	//goassert.DeepEquals(t, body["admin_roles"], []interface{}{"hipster"})
-	//goassert.DeepEquals(t, body["all_channels"], []interface{}{"bar", "fedoras", "fixies", "foo"})
+	// goassert.DeepEquals(t, body["admin_roles"], []interface{}{"hipster"})
+	// goassert.DeepEquals(t, body["all_channels"], []interface{}{"bar", "fedoras", "fixies", "foo"})
 }
 
 func TestRoleAccessChanges(t *testing.T) {
@@ -2833,7 +2833,7 @@ func TestRoleAccessChanges(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	guest, err := a.GetUser("")
 	require.NoError(t, err)
 
@@ -3000,7 +3000,7 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	guest, err := a.GetUser("")
 	assert.NoError(t, err)
 	guest.SetDisabled(false)
@@ -3038,7 +3038,7 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
 	goassert.Equals(t, allDocsResult.Rows[0].Value.Channels[0], "ch1")
 
-	//Commit rev 2 that maps to a differenet channel
+	// Commit rev 2 that maps to a differenet channel
 	str := fmt.Sprintf(`{"foo":"bar", "channels":["ch2"], "_rev":%q}`, doc1RevID)
 	assertStatus(t, rt.Send(request("PUT", "/db/doc1", str)), 201)
 
@@ -3068,7 +3068,7 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 	goassert.Equals(t, allDocsResult.Rows[0].Value.Channels[0], "ch2")
 }
 
-//Test for regression of issue #447
+// Test for regression of issue #447
 func TestAttachmentsNoCrossTalk(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
@@ -3101,7 +3101,7 @@ func TestAttachmentsNoCrossTalk(t *testing.T) {
 	log.Printf("/db/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", revIdAfterAttachment, doc1revId)
 	response = rt.SendAdminRequestWithHeaders("GET", fmt.Sprintf("/db/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", revIdAfterAttachment, doc1revId), "", reqHeaders)
 	goassert.Equals(t, response.Code, 200)
-	//validate attachment has data property
+	// validate attachment has data property
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	log.Printf("response body revid1 = %s", body)
 	attachments := body["_attachments"].(map[string]interface{})
@@ -3161,16 +3161,16 @@ func TestAddingAttachment(t *testing.T) {
 				"Content-Type": attachmentContentType,
 			}
 
-			//Set attachment
+			// Set attachment
 			response := rt.SendAdminRequestWithHeaders("PUT", "/db/"+testCase.docName+"/attach1?rev="+docrevId,
 				attachmentBody, reqHeaders)
 			assertStatus(tt, response, testCase.expectedPut)
 
-			//Get attachment back
+			// Get attachment back
 			response = rt.SendAdminRequestWithHeaders("GET", "/db/"+testCase.docName+"/attach1", "", reqHeaders)
 			assertStatus(tt, response, testCase.expectedGet)
 
-			//If able to retrieve document check it is same as original
+			// If able to retrieve document check it is same as original
 			if response.Code == 200 {
 				assert.Equal(tt, response.Body.String(), attachmentBody)
 			}
@@ -3213,7 +3213,7 @@ func TestOldDocHandling(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	guest, err := a.GetUser("")
 	assert.NoError(t, err)
 	guest.SetDisabled(false)
@@ -3456,10 +3456,10 @@ func TestCreateTarget(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	//Attempt to create existing target DB on public API
+	// Attempt to create existing target DB on public API
 	response := rt.SendRequest("PUT", "/db/", "")
 	assertStatus(t, response, 412)
-	//Attempt to create new target DB on public API
+	// Attempt to create new target DB on public API
 	response = rt.SendRequest("PUT", "/foo/", "")
 	assertStatus(t, response, 403)
 }
@@ -4013,7 +4013,7 @@ func TestLongpollWithWildcard(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 
 	// Create user:
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
@@ -4059,6 +4059,9 @@ func TestUnsupportedConfig(t *testing.T) {
 	testProviderOnlyJSON := `{"name": "test_provider_only",
         			"server": "walrus:",
         			"bucket": "test_provider_only",
+					"sgreplicate": {
+						"enabled": false
+					},
 			        "unsupported": {
 			          "oidc_test_provider": {
 			            "enabled":true,
@@ -4077,6 +4080,9 @@ func TestUnsupportedConfig(t *testing.T) {
 	viewsOnlyJSON := `{"name": "views_only",
         			"server": "walrus:",
         			"bucket": "views_only",
+					"sgreplicate": {
+						"enabled": false
+					},
 			        "unsupported": {
 			          "user_views": {
 			            "enabled":true
@@ -4094,6 +4100,9 @@ func TestUnsupportedConfig(t *testing.T) {
 	viewsAndTestJSON := `{"name": "views_and_test",
         			"server": "walrus:",
         			"bucket": "views_and_test",
+					"sgreplicate": {
+						"enabled": false
+					},
 			        "unsupported": {
 			          "oidc_test_provider": {
 			            "enabled":true,
@@ -4156,32 +4165,32 @@ func TestDocIDFilterResurrection(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	//Create User
-	a := rt.ServerContext().Database("db").Authenticator()
+	// Create User
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 	jacques, err := a.NewUser("jacques", "letmein", channels.SetOf(t, "A", "B"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(jacques))
 
-	//Create Doc
+	// Create Doc
 	response := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": ["A"]}`)
 	assert.Equal(t, http.StatusCreated, response.Code)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	docRevID := body["rev"].(string)
 
-	//Delete Doc
+	// Delete Doc
 	response = rt.SendAdminRequest("DELETE", "/db/doc1?rev="+docRevID, "")
 	assert.Equal(t, http.StatusOK, response.Code)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	docRevID2 := body["rev"].(string)
 
-	//Update / Revive Doc
+	// Update / Revive Doc
 	response = rt.SendAdminRequest("PUT", "/db/doc1?rev="+docRevID2, `{"channels": ["B"]}`)
 	assert.Equal(t, http.StatusCreated, response.Code)
 
 	require.NoError(t, rt.WaitForPendingChanges())
 
-	//Changes call
+	// Changes call
 	request, _ := http.NewRequest("GET", "/db/_changes", nil)
 	request.SetBasicAuth("jacques", "letmein")
 	response = rt.Send(request)
@@ -4226,43 +4235,43 @@ func TestConflictWithInvalidAttachment(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	//Create Doc
+	// Create Doc
 	docrevId := rt.createDoc(t, "doc1")
 
 	docRevDigest := strings.Split(docrevId, "-")[1]
 
-	//Setup Attachment
+	// Setup Attachment
 	attachmentContentType := "content/type"
 	reqHeaders := map[string]string{
 		"Content-Type": attachmentContentType,
 	}
 
-	//Set attachment
-	attachmentBody := "aGVsbG8gd29ybGQ=" //hello.txt
+	// Set attachment
+	attachmentBody := "aGVsbG8gd29ybGQ=" // hello.txt
 	response := rt.SendAdminRequestWithHeaders("PUT", "/db/doc1/attach1?rev="+docrevId, attachmentBody, reqHeaders)
 	assertStatus(t, response, http.StatusCreated)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	docrevId2 := body["rev"].(string)
 
-	//Update Doc
+	// Update Doc
 	rev3Input := `{"_attachments":{"attach1":{"content-type": "content/type", "digest":"sha1-b7fDq/pHG8Nf5F3fe0K2nu0xcw0=", "length": 16, "revpos": 2, "stub": true}}, "_id": "doc1", "_rev": "` + docrevId2 + `", "prop":true}`
 	response = rt.SendAdminRequest("PUT", "/db/doc1", rev3Input)
 	assertStatus(t, response, http.StatusCreated)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	docrevId3 := body["rev"].(string)
 
-	//Get Existing Doc & Update rev
+	// Get Existing Doc & Update rev
 	rev4Input := `{"_attachments":{"attach1":{"content-type": "content/type", "digest":"sha1-b7fDq/pHG8Nf5F3fe0K2nu0xcw0=", "length": 16, "revpos": 2, "stub": true}}, "_id": "doc1", "_rev": "` + docrevId3 + `", "prop":true}`
 	response = rt.SendAdminRequest("PUT", "/db/doc1", rev4Input)
 	assertStatus(t, response, http.StatusCreated)
 
-	//Get Existing Doc to Modify
+	// Get Existing Doc to Modify
 	response = rt.SendAdminRequest("GET", "/db/doc1?revs=true", "")
 	assertStatus(t, response, http.StatusOK)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 
-	//Modify Doc
+	// Modify Doc
 	parentRevList := [3]string{"foo3", "foo2", docRevDigest}
 	body["_rev"] = "3-foo3"
 	body["rev"] = "3-foo3"
@@ -4270,12 +4279,12 @@ func TestConflictWithInvalidAttachment(t *testing.T) {
 	body["_revisions"].(map[string]interface{})["start"] = 3
 	delete(body["_attachments"].(map[string]interface{})["attach1"].(map[string]interface{}), "digest")
 
-	//Prepare changed doc
+	// Prepare changed doc
 	temp, err := base.JSONMarshal(body)
 	assert.NoError(t, err)
 	newBody := string(temp)
 
-	//Send changed / conflict doc
+	// Send changed / conflict doc
 	response = rt.SendAdminRequest("PUT", "/db/doc1?new_edits=false", newBody)
 	assertStatus(t, response, http.StatusBadRequest)
 }
@@ -4324,11 +4333,11 @@ func TestConflictingBranchAttachments(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	//Create a document
+	// Create a document
 	docRevId := rt.createDoc(t, "doc1")
 	docRevDigest := strings.Split(docRevId, "-")[1]
 
-	////Create diverging tree
+	// //Create diverging tree
 	var body db.Body
 
 	reqBodyRev2 := `{"_rev": "2-two", "_revisions": {"ids": ["two", "` + docRevDigest + `"], "start": 2}}`
@@ -4346,41 +4355,41 @@ func TestConflictingBranchAttachments(t *testing.T) {
 	docRevId2a := body["rev"].(string)
 	assert.Equal(t, "2-twoa", docRevId2a)
 
-	//Create an attachment
+	// Create an attachment
 	attachmentContentType := "content/type"
 	reqHeaders := map[string]string{
 		"Content-Type": attachmentContentType,
 	}
 
-	//Put attachment on doc1 rev 2
-	rev3Attachment := `aGVsbG8gd29ybGQ=` //hello.txt
+	// Put attachment on doc1 rev 2
+	rev3Attachment := `aGVsbG8gd29ybGQ=` // hello.txt
 	response = rt.SendAdminRequestWithHeaders("PUT", "/db/doc1/attach1?rev=2-two", rev3Attachment, reqHeaders)
 	assertStatus(t, response, http.StatusCreated)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	docRevId3 := body["rev"].(string)
 
-	//Put attachment on doc1 conflicting rev 2a
-	rev3aAttachment := `Z29vZGJ5ZSBjcnVlbCB3b3JsZA==` //bye.txt
+	// Put attachment on doc1 conflicting rev 2a
+	rev3aAttachment := `Z29vZGJ5ZSBjcnVlbCB3b3JsZA==` // bye.txt
 	response = rt.SendAdminRequestWithHeaders("PUT", "/db/doc1/attach1a?rev=2-twoa", rev3aAttachment, reqHeaders)
 	assertStatus(t, response, http.StatusCreated)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	docRevId3a := body["rev"].(string)
 
-	//Perform small update on doc3
+	// Perform small update on doc3
 	rev4Body := `{"_id": "doc1", "_attachments": {"attach1": {"content_type": "content/type", "digest": "sha1-b7fDq/pHG8Nf5F3fe0K2nu0xcw0=", "length": 16, "revpos": 3, "stub":true}}}`
 	response = rt.SendAdminRequest("PUT", "/db/doc1?rev="+docRevId3, rev4Body)
 	assertStatus(t, response, http.StatusCreated)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	docRevId4 := body["rev"].(string)
 
-	//Perform small update on doc3a
+	// Perform small update on doc3a
 	rev4aBody := `{"_id": "doc1", "_attachments": {"attach1a": {"content_type": "content/type", "digest": "sha1-rdfKyt3ssqPHnWBUxl/xauXXcUs=", "length": 28, "revpos": 3, "stub": true}}}`
 	response = rt.SendAdminRequest("PUT", "/db/doc1?rev="+docRevId3a, rev4aBody)
 	assertStatus(t, response, http.StatusCreated)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	docRevId4a := body["rev"].(string)
 
-	//Ensure the two attachments are different
+	// Ensure the two attachments are different
 	response1 := rt.SendAdminRequest("GET", "/db/doc1?atts_since=[\""+docRevId+"\"]&rev="+docRevId4, "")
 	response2 := rt.SendAdminRequest("GET", "/db/doc1?rev="+docRevId4a, "")
 
@@ -4398,11 +4407,11 @@ func TestAttachmentsWithTombstonedConflict(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	//Create a document
+	// Create a document
 	docRevId := rt.createDoc(t, "doc1")
-	//docRevDigest := strings.Split(docRevId, "-")[1]
+	// docRevDigest := strings.Split(docRevId, "-")[1]
 
-	//Create an attachment
+	// Create an attachment
 	attachmentContentType := "content/type"
 	reqHeaders := map[string]string{
 		"Content-Type": attachmentContentType,
@@ -4410,7 +4419,7 @@ func TestAttachmentsWithTombstonedConflict(t *testing.T) {
 
 	// Add an attachment at rev 2
 	var body db.Body
-	rev2Attachment := `aGVsbG8gd29ybGQ=` //hello.txt
+	rev2Attachment := `aGVsbG8gd29ybGQ=` // hello.txt
 	response := rt.SendAdminRequestWithHeaders("PUT", "/db/doc1/attach1?rev="+docRevId, rev2Attachment, reqHeaders)
 	assertStatus(t, response, http.StatusCreated)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -4424,7 +4433,7 @@ func TestAttachmentsWithTombstonedConflict(t *testing.T) {
 	docRevId3 := body["rev"].(string)
 
 	// Add another attachment at rev 4
-	rev4Attachment := `Z29vZGJ5ZSBjcnVlbCB3b3JsZA==` //bye.txt
+	rev4Attachment := `Z29vZGJ5ZSBjcnVlbCB3b3JsZA==` // bye.txt
 	response = rt.SendAdminRequestWithHeaders("PUT", "/db/doc1/attach2?rev="+docRevId3, rev4Attachment, reqHeaders)
 	assertStatus(t, response, http.StatusCreated)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -4452,7 +4461,7 @@ func TestAttachmentsWithTombstonedConflict(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/doc1?rev="+docRevId5, rev6Body)
 	assertStatus(t, response, http.StatusCreated)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	//docRevId6 := body["rev"].(string)
+	// docRevId6 := body["rev"].(string)
 
 	response = rt.SendAdminRequest("GET", "/db/doc1?atts_since=[\""+docRevId+"\"]", "")
 	log.Printf("Rev6 GET: %s", response.Body.Bytes())
@@ -4495,9 +4504,9 @@ func TestNumAccessErrors(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
 
-	//Create a test user
+	// Create a test user
 	user, err := a.NewUser("user", "letmein", channels.SetOf(t, "A"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(user))
@@ -4991,13 +5000,13 @@ func Benchmark_RestApiGetDocPerformance(b *testing.B) {
 	prt := NewRestTester(b, nil)
 	defer prt.Close()
 
-	//Create test document
+	// Create test document
 	prt.SendRequest("PUT", "/db/doc", `{"prop":true}`)
 
 	b.ResetTimer()
 
 	b.RunParallel(func(pb *testing.PB) {
-		//GET the document until test run has completed
+		// GET the document until test run has completed
 		for pb.Next() {
 			prt.SendRequest("GET", "/db/doc", "")
 		}
@@ -5015,7 +5024,7 @@ func Benchmark_RestApiPutDocPerformanceDefaultSyncFunc(b *testing.B) {
 	b.ResetTimer()
 
 	b.RunParallel(func(pb *testing.PB) {
-		//PUT a new document until test run has completed
+		// PUT a new document until test run has completed
 		for pb.Next() {
 			prt.SendRequest("PUT", fmt.Sprintf("/db/doc-%v", base.GenerateRandomID()), threekdoc)
 		}
@@ -5033,7 +5042,7 @@ func Benchmark_RestApiPutDocPerformanceExplicitSyncFunc(b *testing.B) {
 	b.ResetTimer()
 
 	b.RunParallel(func(pb *testing.PB) {
-		//PUT a new document until test run has completed
+		// PUT a new document until test run has completed
 		for pb.Next() {
 			qrt.SendRequest("PUT", fmt.Sprintf("/db/doc-%v", base.GenerateRandomID()), threekdoc)
 		}
@@ -5042,7 +5051,7 @@ func Benchmark_RestApiPutDocPerformanceExplicitSyncFunc(b *testing.B) {
 
 func Benchmark_RestApiGetDocPerformanceFullRevCache(b *testing.B) {
 	defer base.SetUpBenchmarkLogging(base.LevelWarn, base.KeyHTTP)()
-	//Create test documents
+	// Create test documents
 	rt := NewRestTester(b, nil)
 	defer rt.Close()
 	keys := make([]string, 5000)
@@ -5055,7 +5064,7 @@ func Benchmark_RestApiGetDocPerformanceFullRevCache(b *testing.B) {
 	b.ResetTimer()
 
 	b.RunParallel(func(pb *testing.PB) {
-		//GET the document until test run has completed
+		// GET the document until test run has completed
 		for pb.Next() {
 			key := keys[rand.Intn(5000)]
 			rt.SendRequest("GET", "/db/"+key+"?rev=1-45ca73d819d5b1c9b8eea95290e79004", "")
@@ -6189,7 +6198,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
-	docRev, err := rt.GetDatabase().GetRevisionCacheForTest().Get(docKey, syncData.CurrentRev, true, false)
+	docRev, err := rt.GetDatabase().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, true, false)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(docRev.Channels.ToArray()))
 	assert.Equal(t, syncData.CurrentRev, docRev.RevID)
@@ -6209,7 +6218,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData2)
 	assert.NoError(t, err)
 
-	docRev2, err := rt.GetDatabase().GetRevisionCacheForTest().Get(docKey, syncData.CurrentRev, true, false)
+	docRev2, err := rt.GetDatabase().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, true, false)
 	assert.NoError(t, err)
 	assert.Equal(t, syncData2.CurrentRev, docRev2.RevID)
 
@@ -6248,7 +6257,7 @@ func TestDocumentChannelHistory(t *testing.T) {
 	assertStatus(t, resp, http.StatusCreated)
 	err := json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
-	syncData, err := rt.GetDatabase().GetDocSyncData("doc")
+	syncData, err := rt.GetDatabase().GetDocSyncData(base.TestCtx(t), "doc")
 	assert.NoError(t, err)
 
 	require.Len(t, syncData.ChannelSet, 1)
@@ -6261,7 +6270,7 @@ func TestDocumentChannelHistory(t *testing.T) {
 	assertStatus(t, resp, http.StatusCreated)
 	err = json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
-	syncData, err = rt.GetDatabase().GetDocSyncData("doc")
+	syncData, err = rt.GetDatabase().GetDocSyncData(base.TestCtx(t), "doc")
 	assert.NoError(t, err)
 
 	require.Len(t, syncData.ChannelSet, 1)
@@ -6274,7 +6283,7 @@ func TestDocumentChannelHistory(t *testing.T) {
 	assertStatus(t, resp, http.StatusCreated)
 	err = json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
-	syncData, err = rt.GetDatabase().GetDocSyncData("doc")
+	syncData, err = rt.GetDatabase().GetDocSyncData(base.TestCtx(t), "doc")
 	assert.NoError(t, err)
 
 	require.Len(t, syncData.ChannelSet, 2)
@@ -6339,7 +6348,7 @@ func TestChannelHistoryLegacyDoc(t *testing.T) {
 	assertStatus(t, resp, http.StatusCreated)
 	err = json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
-	syncData, err := rt.GetDatabase().GetDocSyncData("doc1")
+	syncData, err := rt.GetDatabase().GetDocSyncData(base.TestCtx(t), "doc1")
 	assert.NoError(t, err)
 	require.Len(t, syncData.ChannelSet, 1)
 	assert.Contains(t, syncData.ChannelSet, db.ChannelSetEntry{
@@ -7775,7 +7784,7 @@ func TestChannelHistoryPruning(t *testing.T) {
 	}
 
 	// Validate history is pruned properly with first entry merged to span a wider period
-	authenticator := rt.GetDatabase().Authenticator()
+	authenticator := rt.GetDatabase().Authenticator(base.TestCtx(t))
 	role, err := authenticator.GetRole("foo")
 	assert.NoError(t, err)
 	require.Contains(t, role.ChannelHistory(), "a")
@@ -7924,7 +7933,7 @@ func TestDocChannelSetPruning(t *testing.T) {
 		revID = rt.createDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": []string{"a"}})
 	}
 
-	syncData, err := rt.GetDatabase().GetDocSyncData("doc")
+	syncData, err := rt.GetDatabase().GetDocSyncData(base.TestCtx(t), "doc")
 	assert.NoError(t, err)
 
 	require.Len(t, syncData.ChannelSetHistory, db.DocumentHistoryMaxEntriesPerChannel)

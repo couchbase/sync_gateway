@@ -390,7 +390,7 @@ func TestRebalanceReplications(t *testing.T) {
 		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
 
 			cluster := NewSGRCluster()
-			cluster.loggingCtx = context.WithValue(context.Background(), base.LogContextKey{},
+			cluster.loggingCtx = context.WithValue(base.TestCtx(t), base.LogContextKey{},
 				base.LogContext{CorrelationID: sgrClusterMgrContextID + "test"})
 			cluster.Nodes = testCase.nodes
 			cluster.Replications = testCase.replications
@@ -555,6 +555,8 @@ func TestIsCfgChanged(t *testing.T) {
 				Filter:                 "a",
 				QueryParams:            []interface{}{"ABC"},
 				Cancel:                 true,
+				Username:               "alice",
+				Password:               "password",
 			},
 		}
 	}
@@ -590,6 +592,13 @@ func TestIsCfgChanged(t *testing.T) {
 			name: "conflictResolverFnChange",
 			updatedConfig: &ReplicationUpsertConfig{
 				ConflictResolutionFn: base.StringPtr("b"),
+			},
+			expectedChanged: true,
+		},
+		{
+			name: "passwordChanged", // Verify fix CBG-1858
+			updatedConfig: &ReplicationUpsertConfig{
+				Password: base.StringPtr("changed"),
 			},
 			expectedChanged: true,
 		},

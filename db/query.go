@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -235,11 +236,11 @@ const (
 )
 
 // N1QlQueryWithStats is a wrapper for gocbBucket.Query that performs additional diagnostic processing (expvars, slow query logging)
-func (context *DatabaseContext) N1QLQueryWithStats(queryName string, statement string, params map[string]interface{}, consistency base.ConsistencyMode, adhoc bool) (results sgbucket.QueryResultIterator, err error) {
+func (context *DatabaseContext) N1QLQueryWithStats(ctx context.Context, queryName string, statement string, params map[string]interface{}, consistency base.ConsistencyMode, adhoc bool) (results sgbucket.QueryResultIterator, err error) {
 
 	startTime := time.Now()
 	if threshold := context.Options.SlowQueryWarningThreshold; threshold > 0 {
-		defer base.SlowQueryLog(startTime, threshold, "N1QL Query(%q)", queryName)
+		defer base.SlowQueryLog(ctx, startTime, threshold, "N1QL Query(%q)", queryName)
 	}
 
 	n1QLStore, ok := base.AsN1QLStore(context.Bucket)
@@ -261,11 +262,11 @@ func (context *DatabaseContext) N1QLQueryWithStats(queryName string, statement s
 }
 
 // N1QlQueryWithStats is a wrapper for gocbBucket.Query that performs additional diagnostic processing (expvars, slow query logging)
-func (context *DatabaseContext) ViewQueryWithStats(ddoc string, viewName string, params map[string]interface{}) (results sgbucket.QueryResultIterator, err error) {
+func (context *DatabaseContext) ViewQueryWithStats(ctx context.Context, ddoc string, viewName string, params map[string]interface{}) (results sgbucket.QueryResultIterator, err error) {
 
 	startTime := time.Now()
 	if threshold := context.Options.SlowQueryWarningThreshold; threshold > 0 {
-		defer base.SlowQueryLog(startTime, threshold, "View Query (%s.%s)", ddoc, viewName)
+		defer base.SlowQueryLog(ctx, startTime, threshold, "View Query (%s.%s)", ddoc, viewName)
 	}
 
 	queryStat := context.DbStats.Query(fmt.Sprintf(base.StatViewFormat, ddoc, viewName))
@@ -281,24 +282,24 @@ func (context *DatabaseContext) ViewQueryWithStats(ddoc string, viewName string,
 }
 
 // Query to compute the set of channels granted to the specified user via the Sync Function
-func (context *DatabaseContext) QueryAccess(username string) (sgbucket.QueryResultIterator, error) {
+func (context *DatabaseContext) QueryAccess(ctx context.Context, username string) (sgbucket.QueryResultIterator, error) {
 
 	// View Query
 	if context.Options.UseViews {
 		opts := map[string]interface{}{"stale": false, "key": username}
-		return context.ViewQueryWithStats(DesignDocSyncGateway(), ViewAccess, opts)
+		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewAccess, opts)
 	}
 
 	// N1QL Query
 	if username == "" {
-		base.Warnf("QueryAccess called with empty username - returning empty result iterator")
+		base.WarnfCtx(ctx, "QueryAccess called with empty username - returning empty result iterator")
 		return &EmptyResultIterator{}, nil
 	}
 	accessQueryStatement := context.buildAccessQuery(username)
 	params := make(map[string]interface{}, 0)
 	params[QueryParamUserName] = username
 
-	return context.N1QLQueryWithStats(QueryAccess.name, accessQueryStatement, params, base.RequestPlus, QueryAccess.adhoc)
+	return context.N1QLQueryWithStats(ctx, QueryAccess.name, accessQueryStatement, params, base.RequestPlus, QueryAccess.adhoc)
 }
 
 // Builds the query statement for an access N1QL query.
@@ -313,12 +314,12 @@ func (context *DatabaseContext) buildAccessQuery(username string) string {
 }
 
 // Query to compute the set of roles granted to the specified user via the Sync Function
-func (context *DatabaseContext) QueryRoleAccess(username string) (sgbucket.QueryResultIterator, error) {
+func (context *DatabaseContext) QueryRoleAccess(ctx context.Context, username string) (sgbucket.QueryResultIterator, error) {
 
 	// View Query
 	if context.Options.UseViews {
 		opts := map[string]interface{}{"stale": false, "key": username}
-		return context.ViewQueryWithStats(DesignDocSyncGateway(), ViewRoleAccess, opts)
+		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewRoleAccess, opts)
 	}
 
 	// N1QL Query
@@ -330,7 +331,7 @@ func (context *DatabaseContext) QueryRoleAccess(username string) (sgbucket.Query
 	accessQueryStatement := context.buildRoleAccessQuery(username)
 	params := make(map[string]interface{}, 0)
 	params[QueryParamUserName] = username
-	return context.N1QLQueryWithStats(QueryTypeRoleAccess, accessQueryStatement, params, base.RequestPlus, QueryRoleAccess.adhoc)
+	return context.N1QLQueryWithStats(ctx, QueryTypeRoleAccess, accessQueryStatement, params, base.RequestPlus, QueryRoleAccess.adhoc)
 }
 
 // Builds the query statement for a roleAccess N1QL query.
@@ -345,11 +346,11 @@ func (context *DatabaseContext) buildRoleAccessQuery(username string) string {
 }
 
 // Query to compute the set of documents assigned to the specified channel within the sequence range
-func (context *DatabaseContext) QueryChannels(channelName string, startSeq uint64, endSeq uint64, limit int, activeOnly bool) (sgbucket.QueryResultIterator, error) {
+func (context *DatabaseContext) QueryChannels(ctx context.Context, channelName string, startSeq uint64, endSeq uint64, limit int, activeOnly bool) (sgbucket.QueryResultIterator, error) {
 
 	if context.Options.UseViews {
 		opts := changesViewOptions(channelName, startSeq, endSeq, limit)
-		return context.ViewQueryWithStats(DesignDocSyncGateway(), ViewChannels, opts)
+		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewChannels, opts)
 	}
 
 	// N1QL Query
@@ -358,11 +359,11 @@ func (context *DatabaseContext) QueryChannels(channelName string, startSeq uint6
 	// QueryChannels result schema (removal handling isn't needed for the star channel).
 	channelQueryStatement, params := context.buildChannelsQuery(channelName, startSeq, endSeq, limit, activeOnly)
 
-	return context.N1QLQueryWithStats(QueryChannels.name, channelQueryStatement, params, base.RequestPlus, QueryChannels.adhoc)
+	return context.N1QLQueryWithStats(ctx, QueryChannels.name, channelQueryStatement, params, base.RequestPlus, QueryChannels.adhoc)
 }
 
 // Query to retrieve keys for the specified sequences.  View query uses star channel, N1QL query uses IndexAllDocs
-func (context *DatabaseContext) QuerySequences(sequences []uint64) (sgbucket.QueryResultIterator, error) {
+func (context *DatabaseContext) QuerySequences(ctx context.Context, sequences []uint64) (sgbucket.QueryResultIterator, error) {
 
 	if len(sequences) == 0 {
 		return nil, errors.New("No sequences specified for QueryChannelsForSequences")
@@ -370,7 +371,7 @@ func (context *DatabaseContext) QuerySequences(sequences []uint64) (sgbucket.Que
 
 	if context.Options.UseViews {
 		opts := changesViewForSequencesOptions(sequences)
-		return context.ViewQueryWithStats(DesignDocSyncGateway(), ViewChannels, opts)
+		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewChannels, opts)
 	}
 
 	// N1QL Query
@@ -380,7 +381,7 @@ func (context *DatabaseContext) QuerySequences(sequences []uint64) (sgbucket.Que
 	params := make(map[string]interface{})
 	params[QueryParamInSequences] = sequences
 
-	return context.N1QLQueryWithStats(QuerySequences.name, sequenceQueryStatement, params, base.RequestPlus, QueryChannels.adhoc)
+	return context.N1QLQueryWithStats(ctx, QuerySequences.name, sequenceQueryStatement, params, base.RequestPlus, QueryChannels.adhoc)
 }
 
 // Builds the query statement and query parameters for a channels N1QL query.  Also used by unit tests to validate
@@ -417,12 +418,12 @@ func (context *DatabaseContext) buildChannelsQuery(channelName string, startSeq 
 	return channelQueryStatement, params
 }
 
-func (context *DatabaseContext) QueryResync(limit int, startSeq, endSeq uint64) (sgbucket.QueryResultIterator, error) {
-	return context.QueryChannels(channels.UserStarChannel, startSeq, endSeq, limit, false)
+func (context *DatabaseContext) QueryResync(ctx context.Context, limit int, startSeq, endSeq uint64) (sgbucket.QueryResultIterator, error) {
+	return context.QueryChannels(ctx, channels.UserStarChannel, startSeq, endSeq, limit, false)
 }
 
 // Query to retrieve the set of user and role doc ids, using the primary index
-func (context *DatabaseContext) QueryPrincipals(startKey string, limit int) (sgbucket.QueryResultIterator, error) {
+func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey string, limit int) (sgbucket.QueryResultIterator, error) {
 
 	// View Query
 	if context.Options.UseViews {
@@ -436,7 +437,7 @@ func (context *DatabaseContext) QueryPrincipals(startKey string, limit int) (sgb
 			opts[QueryParamStartKey] = startKey
 		}
 
-		return context.ViewQueryWithStats(DesignDocSyncGateway(), ViewPrincipals, opts)
+		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewPrincipals, opts)
 	}
 
 	queryStatement := replaceIndexTokensQuery(QueryPrincipals.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
@@ -453,18 +454,18 @@ func (context *DatabaseContext) QueryPrincipals(startKey string, limit int) (sgb
 	}
 
 	// N1QL Query
-	return context.N1QLQueryWithStats(QueryTypePrincipals, queryStatement, nil, base.RequestPlus, QueryPrincipals.adhoc)
+	return context.N1QLQueryWithStats(ctx, QueryTypePrincipals, queryStatement, nil, base.RequestPlus, QueryPrincipals.adhoc)
 }
 
 // Query to retrieve the set of user and role doc ids, using the primary index
-func (context *DatabaseContext) QuerySessions(userName string) (sgbucket.QueryResultIterator, error) {
+func (context *DatabaseContext) QuerySessions(ctx context.Context, userName string) (sgbucket.QueryResultIterator, error) {
 
 	// View Query
 	if context.Options.UseViews {
 		opts := Body{"stale": false}
 		opts[QueryParamStartKey] = userName
 		opts[QueryParamEndKey] = userName
-		return context.ViewQueryWithStats(DesignDocSyncHousekeeping(), ViewSessions, opts)
+		return context.ViewQueryWithStats(ctx, DesignDocSyncHousekeeping(), ViewSessions, opts)
 	}
 
 	queryStatement := replaceIndexTokensQuery(QuerySessions.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
@@ -472,7 +473,7 @@ func (context *DatabaseContext) QuerySessions(userName string) (sgbucket.QueryRe
 	// N1QL Query
 	params := make(map[string]interface{}, 1)
 	params[QueryParamUserName] = userName
-	return context.N1QLQueryWithStats(QueryTypeSessions, queryStatement, params, base.RequestPlus, QuerySessions.adhoc)
+	return context.N1QLQueryWithStats(ctx, QueryTypeSessions, queryStatement, params, base.RequestPlus, QuerySessions.adhoc)
 }
 
 type AllDocsViewQueryRow struct {
@@ -492,7 +493,7 @@ type AllDocsIndexQueryRow struct {
 }
 
 // AllDocs returns all non-deleted documents in the bucket between startKey and endKey
-func (context *DatabaseContext) QueryAllDocs(startKey string, endKey string) (sgbucket.QueryResultIterator, error) {
+func (context *DatabaseContext) QueryAllDocs(ctx context.Context, startKey string, endKey string) (sgbucket.QueryResultIterator, error) {
 
 	// View Query
 	if context.Options.UseViews {
@@ -503,7 +504,7 @@ func (context *DatabaseContext) QueryAllDocs(startKey string, endKey string) (sg
 		if endKey != "" {
 			opts[QueryParamEndKey] = endKey
 		}
-		return context.ViewQueryWithStats(DesignDocSyncHousekeeping(), ViewAllDocs, opts)
+		return context.ViewQueryWithStats(ctx, DesignDocSyncHousekeeping(), ViewAllDocs, opts)
 	}
 
 	bucketName := context.Bucket.GetName()
@@ -527,10 +528,10 @@ func (context *DatabaseContext) QueryAllDocs(startKey string, endKey string) (sg
 	allDocsQueryStatement = fmt.Sprintf("%s ORDER BY META(`%s`).id",
 		allDocsQueryStatement, bucketName)
 
-	return context.N1QLQueryWithStats(QueryTypeAllDocs, allDocsQueryStatement, params, base.RequestPlus, QueryAllDocs.adhoc)
+	return context.N1QLQueryWithStats(ctx, QueryTypeAllDocs, allDocsQueryStatement, params, base.RequestPlus, QueryAllDocs.adhoc)
 }
 
-func (context *DatabaseContext) QueryTombstones(olderThan time.Time, limit int) (sgbucket.QueryResultIterator, error) {
+func (context *DatabaseContext) QueryTombstones(ctx context.Context, olderThan time.Time, limit int) (sgbucket.QueryResultIterator, error) {
 
 	// View Query
 	if context.Options.UseViews {
@@ -542,7 +543,7 @@ func (context *DatabaseContext) QueryTombstones(olderThan time.Time, limit int) 
 		if limit != 0 {
 			opts[QueryParamLimit] = limit
 		}
-		return context.ViewQueryWithStats(DesignDocSyncHousekeeping(), ViewTombstones, opts)
+		return context.ViewQueryWithStats(ctx, DesignDocSyncHousekeeping(), ViewTombstones, opts)
 	}
 
 	// N1QL Query
@@ -556,7 +557,7 @@ func (context *DatabaseContext) QueryTombstones(olderThan time.Time, limit int) 
 		QueryParamOlderThan: olderThan.Unix(),
 	}
 
-	return context.N1QLQueryWithStats(QueryTypeTombstones, tombstoneQueryStatement, params, base.RequestPlus, QueryTombstones.adhoc)
+	return context.N1QLQueryWithStats(ctx, QueryTypeTombstones, tombstoneQueryStatement, params, base.RequestPlus, QueryTombstones.adhoc)
 }
 
 func changesViewOptions(channelName string, startSeq, endSeq uint64, limit int) map[string]interface{} {

@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"encoding/json"
 	"time"
 
@@ -30,28 +31,28 @@ type RevisionCache interface {
 	// Get returns the given revision, and stores if not already cached.
 	// When includeBody=true, the returned DocumentRevision will include a mutable shallow copy of the marshaled body.
 	// When includeDelta=true, the returned DocumentRevision will include delta - requires additional locking during retrieval.
-	Get(docID, revID string, includeBody bool, includeDelta bool) (DocumentRevision, error)
+	Get(ctx context.Context, docID, revID string, includeBody bool, includeDelta bool) (DocumentRevision, error)
 
 	// GetActive returns the current revision for the given doc ID, and stores if not already cached.
 	// When includeBody=true, the returned DocumentRevision will include a mutable shallow copy of the marshaled body.
-	GetActive(docID string, includeBody bool) (docRev DocumentRevision, err error)
+	GetActive(ctx context.Context, docID string, includeBody bool) (docRev DocumentRevision, err error)
 
 	// Peek returns the given revision if present in the cache
-	Peek(docID, revID string) (docRev DocumentRevision, found bool)
+	Peek(ctx context.Context, docID, revID string) (docRev DocumentRevision, found bool)
 
 	// Put will store the given docRev in the cache
-	Put(docRev DocumentRevision)
+	Put(ctx context.Context, docRev DocumentRevision)
 
 	// Update will remove existing value and re-create new one
-	Upsert(docRev DocumentRevision)
+	Upsert(ctx context.Context, docRev DocumentRevision)
 
 	// Invalidate marks a revision in the cache as invalid. This is used to call into LoadInvalidRevFromBackingStore in LRU.
 	// Marked revision denotes that this value should not be used and should be replaced. Used in the event of an user
 	// xattr only update where there is no revision change.
-	Invalidate(docID, revID string)
+	Invalidate(ctx context.Context, docID, revID string)
 
 	// UpdateDelta stores the given toDelta value in the given rev if cached
-	UpdateDelta(docID, revID string, toDelta RevisionDelta)
+	UpdateDelta(ctx context.Context, docID, revID string, toDelta RevisionDelta)
 }
 
 const (
@@ -103,8 +104,8 @@ func DefaultRevisionCacheOptions() *RevisionCacheOptions {
 
 // RevisionCacheBackingStore is the interface required to be passed into a RevisionCache constructor to provide a backing store for loading documents.
 type RevisionCacheBackingStore interface {
-	GetDocument(docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error)
-	getRevision(doc *Document, revid string) ([]byte, Body, AttachmentsMeta, error)
+	GetDocument(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error)
+	getRevision(ctx context.Context, doc *Document, revid string) ([]byte, Body, AttachmentsMeta, error)
 }
 
 // DocumentRevision stored and returned by the rev cache
@@ -245,22 +246,22 @@ func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRe
 
 // This is the RevisionCacheLoaderFunc callback for the context's RevisionCache.
 // Its job is to load a revision from the bucket when there's a cache miss.
-func revCacheLoader(backingStore RevisionCacheBackingStore, id IDAndRev, unmarshalBody bool) (bodyBytes []byte, body Body, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, err error) {
+func revCacheLoader(ctx context.Context, backingStore RevisionCacheBackingStore, id IDAndRev, unmarshalBody bool) (bodyBytes []byte, body Body, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, err error) {
 	var doc *Document
 	unmarshalLevel := DocUnmarshalSync
 	if unmarshalBody {
 		unmarshalLevel = DocUnmarshalAll
 	}
-	if doc, err = backingStore.GetDocument(id.DocID, unmarshalLevel); doc == nil {
+	if doc, err = backingStore.GetDocument(ctx, id.DocID, unmarshalLevel); doc == nil {
 		return bodyBytes, body, history, channels, removed, attachments, deleted, expiry, err
 	}
 
-	return revCacheLoaderForDocument(backingStore, doc, id.RevID)
+	return revCacheLoaderForDocument(ctx, backingStore, doc, id.RevID)
 }
 
 // Common revCacheLoader functionality used either during a cache miss (from revCacheLoader), or directly when retrieving current rev from cache
-func revCacheLoaderForDocument(backingStore RevisionCacheBackingStore, doc *Document, revid string) (bodyBytes []byte, body Body, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, err error) {
-	if bodyBytes, body, attachments, err = backingStore.getRevision(doc, revid); err != nil {
+func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBackingStore, doc *Document, revid string) (bodyBytes []byte, body Body, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, err error) {
+	if bodyBytes, body, attachments, err = backingStore.getRevision(ctx, doc, revid); err != nil {
 		// If we can't find the revision (either as active or conflicted body from the document, or as old revision body backup), check whether
 		// the revision was a channel removal. If so, we want to store as removal in the revision cache
 		removalBodyBytes, removalHistory, activeChannels, isRemoval, isDelete, isRemovalErr := doc.IsChannelRemoval(revid)
@@ -282,7 +283,7 @@ func revCacheLoaderForDocument(backingStore RevisionCacheBackingStore, doc *Docu
 	if getHistoryErr != nil {
 		return bodyBytes, body, history, channels, removed, nil, deleted, nil, getHistoryErr
 	}
-	history = encodeRevisions(validatedHistory)
+	history = encodeRevisions(doc.ID, validatedHistory)
 	channels = doc.History[revid].Channels
 
 	return bodyBytes, body, history, channels, removed, attachments, deleted, doc.Expiry, err

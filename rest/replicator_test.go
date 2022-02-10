@@ -180,7 +180,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	assertStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
 
-	remoteDoc, err := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	remoteDoc, err := rt2.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
@@ -224,7 +224,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
 
-	doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	doc, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
@@ -313,7 +313,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
 
-	doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	doc, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
@@ -334,7 +334,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	require.Len(t, changesResults.Results, 2)
 	assert.Equal(t, docID, changesResults.Results[1].ID)
 
-	doc2, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	doc2, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
 	assert.Equal(t, revID, doc2.SyncData.CurrentRev)
@@ -426,6 +426,9 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 
 			defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
+			// Increase checkpoint persistence frequency for cross-node status verification
+			defer reduceTestCheckpointInterval(50 * time.Millisecond)()
+
 			// Disable sequence batching for multi-RT tests (pending CBG-1000)
 			defer db.SuspendSequenceBatching()()
 
@@ -483,14 +486,9 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 					}`},
 					},
 				}},
+				sgReplicateEnabled: true,
 			})
 			defer rt1.Close()
-
-			// Increase checkpoint persistence frequency for cross-node status verification
-			rt1.GetDatabase().SGReplicateMgr.CheckpointInterval = 50 * time.Millisecond
-
-			err = rt1.GetDatabase().SGReplicateMgr.StartReplications()
-			require.NoError(t, err)
 
 			rt1.waitForAssignedReplications(1)
 
@@ -534,7 +532,7 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 			assert.Equal(t, docID, changesResults.Results[0].ID)
 			lastSeq = changesResults.Last_Seq.(string)
 
-			doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+			doc, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
 			revGen, _ := db.ParseRevID(doc.SyncData.CurrentRev)
 
@@ -642,7 +640,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 		docID := fmt.Sprintf("%s%d", docIDPrefix, i)
 		assert.True(t, docIDsSeen[docID])
 
-		doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+		doc, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
 
 		body, err := doc.GetDeepMutableBody()
@@ -695,7 +693,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 		docID := fmt.Sprintf("%s%d", docIDPrefix, i)
 		assert.True(t, docIDsSeen[docID])
 
-		doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+		doc, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
 
 		body, err := doc.GetDeepMutableBody()
@@ -816,7 +814,7 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 		docID := fmt.Sprintf("%s%d", docIDPrefix, i)
 		assert.True(t, docIDsSeen[docID])
 
-		_, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+		_, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
 	}
 
@@ -911,7 +909,7 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 	assertStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
 
-	remoteDoc, err := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	remoteDoc, err := rt2.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
@@ -961,7 +959,7 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 	}
 	assert.True(t, replicationStopped, "One-shot replication status should go to stopped on completion")
 
-	doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	doc, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
@@ -1012,7 +1010,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	assertStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
 
-	localDoc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	localDoc, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
@@ -1048,7 +1046,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
 
-	doc, err := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	doc, err := rt2.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
@@ -1135,7 +1133,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
 
-	doc, err := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	doc, err := rt2.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
@@ -1157,7 +1155,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 	require.Len(t, changesResults.Results, 2)
 	assert.Equal(t, docID, changesResults.Results[1].ID)
 
-	doc2, err := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	doc2, err := rt2.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
 	assert.Equal(t, revID, doc2.SyncData.CurrentRev)
@@ -1261,7 +1259,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 		docID := fmt.Sprintf("%s%d", docIDPrefix, i)
 		assert.True(t, docIDsSeen[docID])
 
-		doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+		doc, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
 
 		body, err := doc.GetDeepMutableBody()
@@ -1312,7 +1310,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 		docID := fmt.Sprintf("%s%d", docIDPrefix, i)
 		assert.True(t, docIDsSeen[docID])
 
-		doc, err := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+		doc, err := rt2.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
 
 		body, err := doc.GetDeepMutableBody()
@@ -1518,7 +1516,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 	assertStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
 
-	localDoc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	localDoc, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
@@ -1560,7 +1558,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 	}
 	assert.True(t, replicationStopped, "One-shot replication status should go to stopped on completion")
 
-	doc, err := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	doc, err := rt2.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
@@ -1645,7 +1643,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
 
-	doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	doc, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
@@ -1665,7 +1663,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
 
-	doc, err = rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	doc, err = rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
 	assert.True(t, doc.IsDeleted())
@@ -1746,7 +1744,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
 
-	doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	doc, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
@@ -1764,7 +1762,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 		return stats.DocsPurged
 	}, 1)
 
-	doc, err = rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	doc, err = rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	assert.Error(t, err)
 	assert.True(t, base.IsDocNotFoundError(err), "Error returned wasn't a DocNotFound error")
 	assert.Nil(t, doc)
@@ -1957,7 +1955,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			assert.Equal(t, test.expectedLocalRevID, changesResults.Results[0].Changes[0]["rev"])
 			log.Printf("Changes response is %+v", changesResults)
 
-			doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+			doc, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
 			assert.Equal(t, test.expectedLocalRevID, doc.SyncData.CurrentRev)
 
@@ -2107,7 +2105,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			rt2revID := respRevID(t, resp)
 			assert.Equal(t, test.remoteRevID, rt2revID)
 
-			remoteDoc, err := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalSync)
+			remoteDoc, err := rt2.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalSync)
 			require.NoError(t, err)
 
 			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
@@ -2141,7 +2139,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			rt1revID := respRevID(t, resp)
 			assert.Equal(t, test.localRevID, rt1revID)
 
-			localDoc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalSync)
+			localDoc, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalSync)
 			require.NoError(t, err)
 
 			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver)
@@ -2182,7 +2180,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			docResponse := rt1.SendAdminRequest(http.MethodGet, "/db/"+docID, "")
 			log.Printf("Non-raw response: %s", docResponse.Body.Bytes())
 
-			doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+			doc, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
 			assert.Equal(t, test.expectedRevID, doc.SyncData.CurrentRev)
 			assert.Equal(t, expectedLocalBody, doc.Body())
@@ -2222,7 +2220,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			assert.Equal(t, test.expectedRevID, changesResults.Results[0].Changes[0]["rev"])
 			log.Printf("Changes response is %+v", changesResults)
 
-			doc, err = rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+			doc, err = rt2.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
 			assert.Equal(t, test.expectedRevID, doc.SyncData.CurrentRev)
 			assert.Equal(t, expectedLocalBody, doc.Body())
@@ -2319,7 +2317,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
 
-	doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	doc, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
@@ -2463,7 +2461,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
 
-	doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	doc, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
 	body, err := doc.GetDeepMutableBody()
@@ -2518,7 +2516,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
 
-	doc, err = rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	doc, err = rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	require.NoError(t, err)
 
 	body, err = doc.GetDeepMutableBody()
@@ -2609,7 +2607,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	require.NoError(t, err)
 
 	startNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
-	//startNumRevsSentTotal := ar.Pull.GetStats().SendRevCount.Value()
+	// startNumRevsSentTotal := ar.Pull.GetStats().SendRevCount.Value()
 	startNumRevsSentTotal := ar.Push.GetStats().SendRevCount.Value()
 
 	assert.NoError(t, ar.Start())
@@ -2620,7 +2618,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
 
-	doc, err := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	doc, err := rt2.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
 	body, err := doc.GetDeepMutableBody()
@@ -2688,7 +2686,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
 
-	doc, err = rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	doc, err = rt2.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	require.NoError(t, err)
 
 	body, err = doc.GetDeepMutableBody()
@@ -2793,7 +2791,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	assert.Equal(t, docID, changesResults.Results[0].ID)
 	lastSeq := changesResults.Last_Seq.(string)
 
-	doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	doc, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
 	body, err := doc.GetDeepMutableBody()
@@ -2828,7 +2826,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID+"2", changesResults.Results[0].ID)
 
-	doc, err = rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	doc, err = rt2.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	require.NoError(t, err)
 
 	body, err = doc.GetDeepMutableBody()
@@ -2861,7 +2859,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID+"2", changesResults.Results[0].ID)
 
-	doc, err = rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	doc, err = rt2.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	require.NoError(t, err)
 
 	body, err = doc.GetDeepMutableBody()
@@ -3047,7 +3045,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, rt1docID, changesResults.Results[0].ID)
 
-	doc, err := rt2.GetDatabase().GetDocument(rt1docID, db.DocUnmarshalAll)
+	doc, err := rt2.GetDatabase().GetDocument(base.TestCtx(t), rt1docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
 	assert.Equal(t, rt1revID, doc.SyncData.CurrentRev)
@@ -3069,7 +3067,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	assert.Equal(t, rt1docID, changesResults.Results[0].ID)
 	assert.Equal(t, rt2docID, changesResults.Results[1].ID)
 
-	doc, err = rt1.GetDatabase().GetDocument(rt2docID, db.DocUnmarshalAll)
+	doc, err = rt1.GetDatabase().GetDocument(base.TestCtx(t), rt2docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
 	assert.Equal(t, rt2revID, doc.SyncData.CurrentRev)
@@ -3222,7 +3220,7 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 		docID := fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan2", i)
 		assert.True(t, docIDsSeen[docID])
 
-		doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+		doc, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
 
 		body, err := doc.GetDeepMutableBody()
@@ -3891,7 +3889,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			assert.Equal(t, test.expectedLocalRevID, changesResults.Results[0].Changes[0]["rev"])
 			log.Printf("Changes response is %+v", changesResults)
 
-			doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+			doc, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
 			assert.Equal(t, test.expectedLocalRevID, doc.SyncData.CurrentRev)
 			log.Printf("doc.Body(): %v", doc.Body())
@@ -4046,7 +4044,8 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			// Active
 			activeBucket := base.GetTestBucket(t)
 			localActiveRT := NewRestTester(t, &RestTesterConfig{
-				TestBucket: activeBucket,
+				TestBucket:         activeBucket,
+				sgReplicateEnabled: true,
 			})
 			defer localActiveRT.Close()
 
@@ -4066,16 +4065,12 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			resp = localActiveRT.SendAdminRequest("POST", "/db/_bulk_docs", `{"docs":[{"_id": "docid2", "_rev": "1-abc"}, {"_id": "docid2", "_rev": "2-abc", "_revisions": {"start": 2, "ids": ["abc", "abc"]}}, {"_id": "docid2", "_rev": "3-abc", "val":"test", "_revisions": {"start": 3, "ids": ["abc", "abc", "abc"]}}], "new_edits":false}`)
 			assertStatus(t, resp, http.StatusCreated)
 
-			// Start the replication
-			err := localActiveRT.GetDatabase().SGReplicateMgr.StartReplications()
-			assert.NoError(t, err)
-
 			// Wait for the replication to be started
 			localActiveRT.waitForReplicationStatus("replication", db.ReplicationStateRunning)
 
 			// Wait for document to arrive on the doc is was put on
-			err = localActiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
-				doc, _ := localActiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
+			err := localActiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
+				doc, _ := localActiveRT.GetDatabase().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
 				if doc != nil {
 					return compareDocRev(doc.SyncData.CurrentRev, "3-abc")
 				}
@@ -4085,7 +4080,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Wait for document to be replicated
 			err = remotePassiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
-				doc, _ := remotePassiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
+				doc, _ := remotePassiveRT.GetDatabase().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
 				if doc != nil {
 					return compareDocRev(doc.SyncData.CurrentRev, "3-abc")
 				}
@@ -4105,7 +4100,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 				// Validate document revision created to prevent race conditions
 				err = remotePassiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
-					doc, docErr := remotePassiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
+					doc, docErr := remotePassiveRT.GetDatabase().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
 					if assert.NoError(t, docErr) {
 						if shouldRetry, err, value = compareDocRev(doc.SyncData.CurrentRev, "4-cc0337d9d38c8e5fc930ae3deda62bf8"); value != nil {
 							requireTombstone(t, passiveBucket, "docid2")
@@ -4131,7 +4126,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 				// Validate document revision created to prevent race conditions
 				err = localActiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
-					doc, docErr := localActiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
+					doc, docErr := localActiveRT.GetDatabase().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
 					if assert.NoError(t, docErr) {
 						if shouldRetry, err, value = compareDocRev(doc.SyncData.CurrentRev, "4-cc0337d9d38c8e5fc930ae3deda62bf8"); value != nil {
 							requireTombstone(t, activeBucket, "docid2")
@@ -4157,7 +4152,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Wait for the recently longest branch to show up on both sides
 			err = localActiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
-				doc, docErr := localActiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
+				doc, docErr := localActiveRT.GetDatabase().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
 				if assert.NoError(t, docErr) {
 					if shouldRetry, err, value = compareDocRev(doc.SyncData.CurrentRev, "5-4a5f5a35196c37c117737afd5be1fc9b"); value != nil {
 						// Validate local is CBS tombstone, expect not found error
@@ -4171,7 +4166,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			assert.NoError(t, err)
 
 			err = remotePassiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
-				doc, docErr := remotePassiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
+				doc, docErr := remotePassiveRT.GetDatabase().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
 				if assert.NoError(t, docErr) {
 					if shouldRetry, err, value = compareDocRev(doc.SyncData.CurrentRev, "5-4a5f5a35196c37c117737afd5be1fc9b"); value != nil {
 						// Validate remote is CBS tombstone
@@ -4197,7 +4192,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 					err = activeBucket.Set("docid2", 0, updatedBody)
 					assert.NoError(t, err, "Unable to resurrect doc docid2")
 					// force on-demand import
-					_, getErr := localActiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
+					_, getErr := localActiveRT.GetDatabase().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
 					assert.NoError(t, getErr, "Unable to retrieve resurrected doc docid2")
 				} else {
 					resp = localActiveRT.SendAdminRequest("PUT", "/db/docid2", `{"resurrection": true}`)
@@ -4209,7 +4204,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 					err = passiveBucket.Set("docid2", 0, updatedBody)
 					assert.NoError(t, err, "Unable to resurrect doc docid2")
 					// force on-demand import
-					_, getErr := remotePassiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
+					_, getErr := remotePassiveRT.GetDatabase().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
 					assert.NoError(t, getErr, "Unable to retrieve resurrected doc docid2")
 				} else {
 					resp = remotePassiveRT.SendAdminRequest("PUT", "/db/docid2", `{"resurrection": true}`)
@@ -4354,7 +4349,7 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 			// Wait for the original document revision written to rt1 to arrive at rt2.
 			rt2RevIDCreated := rt1RevIDCreated
 			require.NoError(t, rt2.WaitForCondition(func() bool {
-				doc, _ := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+				doc, _ := rt2.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 				return doc != nil && len(doc.Body()) > 0
 			}))
 			requireRevID(t, rt2, docID, rt2RevIDCreated)
@@ -4506,7 +4501,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			// Wait for the original document revision written to rt2 to arrive at rt1.
 			rt1RevIDCreated := rt2RevIDCreated
 			require.NoError(t, rt1.WaitForCondition(func() bool {
-				doc, _ := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+				doc, _ := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 				return doc != nil && len(doc.Body()) > 0
 			}))
 			requireRevID(t, rt1, docID, rt1RevIDCreated)
@@ -4545,7 +4540,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			// Wait for conflict resolved doc (tombstone) to be pulled to passive bucket
 			// Then require it is the expected rev
 			require.NoError(t, rt2.WaitForCondition(func() bool {
-				doc, _ := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+				doc, _ := rt2.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 				return doc != nil && doc.SyncData.CurrentRev == test.expectedRevID
 			}))
 
@@ -4661,7 +4656,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 	for _, test := range conflictResolutionTests {
 		t.Run(test.name, func(t *testing.T) {
 			base.RequireNumTestBuckets(t, 2)
-			defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+			defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
 			activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
 			defer teardown()
@@ -4681,7 +4676,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 			// Create replication, wait for initial revision to be replicated
 			replicationID := test.name
 			activeRT.createReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePushAndPull, nil, true, db.ConflictResolverLocalWins)
-			activeRT.assertReplicationState(replicationID, db.ReplicationStateRunning)
+			activeRT.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
 			assert.NoError(t, remoteRT.waitForRev(docID, newRevID))
 
@@ -4894,7 +4889,7 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 
 			replicationID := "replication"
 			activeRT.createReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePushAndPull, nil, true, test.conflictResolution)
-			activeRT.assertReplicationState(replicationID, db.ReplicationStateRunning)
+			activeRT.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
 			assert.NoError(t, remoteRT.waitForRev(docID, newRevID))
 
@@ -5769,12 +5764,12 @@ func TestUnprocessableDeltas(t *testing.T) {
 	err = activeRT.WaitForPendingChanges()
 	require.NoError(t, err)
 
-	rev, err := passiveRT.GetDatabase().GetRevisionCacheForTest().GetActive("test", true)
+	rev, err := passiveRT.GetDatabase().GetRevisionCacheForTest().GetActive(base.TestCtx(t), "test", true)
 	require.NoError(t, err)
 	// Making body invalid to trigger log "Unable to unmarshal mutable body for doc" in handleRev
 	// Which should give a HTTP 422
 	rev.BodyBytes = []byte("{invalid}")
-	passiveRT.GetDatabase().GetRevisionCacheForTest().Upsert(rev)
+	passiveRT.GetDatabase().GetRevisionCacheForTest().Upsert(base.TestCtx(t), rev)
 
 	assert.NoError(t, ar.Start())
 	// Check if it replicated
@@ -5894,7 +5889,7 @@ func createOrUpdateDoc(t *testing.T, rt *RestTester, docID, revID, bodyValue str
 func waitForTombstone(t *testing.T, rt *RestTester, docID string) {
 	require.NoError(t, rt.WaitForPendingChanges())
 	require.NoError(t, rt.WaitForCondition(func() bool {
-		doc, _ := rt.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+		doc, _ := rt.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 		return doc.IsDeleted() && len(doc.Body()) == 0
 	}))
 }
@@ -5911,7 +5906,7 @@ func requireErrorKeyNotFound(t *testing.T, rt *RestTester, docID string) {
 // requireRevID asserts that the specified document revision is written to the
 // underlying bucket backed by the given RestTester instance.
 func requireRevID(t *testing.T, rt *RestTester, docID, revID string) {
-	doc, err := rt.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	doc, err := rt.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	require.NoError(t, err, "Error reading document from bucket")
 	require.Equal(t, revID, doc.SyncData.CurrentRev)
 }

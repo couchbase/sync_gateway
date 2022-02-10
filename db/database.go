@@ -83,43 +83,43 @@ const BGTCompletionMaxWait = 30 * time.Second
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
-	Name                        string                  // Database name
-	UUID                        string                  // UUID for this database instance. Used by cbgt and sgr
-	Bucket                      base.Bucket             // Storage
-	BucketSpec                  base.BucketSpec         // The BucketSpec
-	BucketLock                  sync.RWMutex            // Control Access to the underlying bucket object
-	mutationListener            changeListener          // Caching feed listener
-	ImportListener              *importListener         // Import feed listener
-	sequences                   *sequenceAllocator      // Source of new sequence numbers
-	ChannelMapper               *channels.ChannelMapper // Runs JS 'sync' function
-	StartTime                   time.Time               // Timestamp when context was instantiated
-	RevsLimit                   uint32                  // Max depth a document's revision tree can grow to
-	autoImport                  bool                    // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
-	revisionCache               RevisionCache           // Cache of recently-accessed doc revisions
-	changeCache                 *changeCache            // Cache of recently-access channels
-	EventMgr                    *EventManager           // Manages notification events
-	AllowEmptyPassword          bool                    // Allow empty passwords?  Defaults to false
-	Options                     DatabaseContextOptions  // Database Context Options
-	AccessLock                  sync.RWMutex            // Allows DB offline to block until synchronous calls have completed
-	State                       uint32                  // The runtime state of the DB from a service perspective
-	ResyncManager               *BackgroundManager
-	TombstoneCompactionManager  *BackgroundManager
-	AttachmentCompactionManager *BackgroundManager
-	ExitChanges                 chan struct{}            // Active _changes feeds on the DB will close when this channel is closed
-	OIDCProviders               auth.OIDCProviderMap     // OIDC clients
-	PurgeInterval               time.Duration            // Metadata purge interval
-	serverUUID                  string                   // UUID of the server, if available
-	DbStats                     *base.DbStats            // stats that correspond to this database context
-	CompactState                uint32                   // Status of database compaction
-	terminator                  chan bool                // Signal termination of background goroutines
-	backgroundTasks             []BackgroundTask         // List of background tasks that are initiated.
-	activeChannels              *channels.ActiveChannels // Tracks active replications by channel
-	CfgSG                       cbgt.Cfg                 // Sync Gateway cluster shared config
-	//CfgSG                        *base.CfgSG              // Sync Gateway cluster shared config
-	SGReplicateMgr               *sgReplicateManager // Manages interactions with sg-replicate replications
-	Heartbeater                  base.Heartbeater    // Node heartbeater for SG cluster awareness
-	ServeInsecureAttachmentTypes bool                // Attachment content type will bypass the content-disposition handling, default false
-	GoCBHttpClient               *http.Client
+	Name                         string                  // Database name
+	UUID                         string                  // UUID for this database instance. Used by cbgt and sgr
+	Bucket                       base.Bucket             // Storage
+	BucketSpec                   base.BucketSpec         // The BucketSpec
+	BucketLock                   sync.RWMutex            // Control Access to the underlying bucket object
+	mutationListener             changeListener          // Caching feed listener
+	ImportListener               *importListener         // Import feed listener
+	sequences                    *sequenceAllocator      // Source of new sequence numbers
+	ChannelMapper                *channels.ChannelMapper // Runs JS 'sync' function
+	StartTime                    time.Time               // Timestamp when context was instantiated
+	RevsLimit                    uint32                  // Max depth a document's revision tree can grow to
+	autoImport                   bool                    // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
+	revisionCache                RevisionCache           // Cache of recently-accessed doc revisions
+	changeCache                  *changeCache            // Cache of recently-access channels
+	EventMgr                     *EventManager           // Manages notification events
+	AllowEmptyPassword           bool                    // Allow empty passwords?  Defaults to false
+	Options                      DatabaseContextOptions  // Database Context Options
+	AccessLock                   sync.RWMutex            // Allows DB offline to block until synchronous calls have completed
+	State                        uint32                  // The runtime state of the DB from a service perspective
+	ResyncManager                *BackgroundManager
+	TombstoneCompactionManager   *BackgroundManager
+	AttachmentCompactionManager  *BackgroundManager
+	ExitChanges                  chan struct{}            // Active _changes feeds on the DB will close when this channel is closed
+	OIDCProviders                auth.OIDCProviderMap     // OIDC clients
+	PurgeInterval                time.Duration            // Metadata purge interval
+	serverUUID                   string                   // UUID of the server, if available
+	DbStats                      *base.DbStats            // stats that correspond to this database context
+	CompactState                 uint32                   // Status of database compaction
+	terminator                   chan bool                // Signal termination of background goroutines
+	backgroundTasks              []BackgroundTask         // List of background tasks that are initiated.
+	activeChannels               *channels.ActiveChannels // Tracks active replications by channel
+	CfgSG                        cbgt.Cfg                 // Sync Gateway cluster shared config
+	SGReplicateMgr               *sgReplicateManager      // Manages interactions with sg-replicate replications
+	Heartbeater                  base.Heartbeater         // Node heartbeater for SG cluster awareness
+	ServeInsecureAttachmentTypes bool                     // Attachment content type will bypass the content-disposition handling, default false
+	GoCBHttpClient               *http.Client             // A HTTP Client from gocb to use the management endpoints
+	ServerContextHasStarted      chan struct{}            // Closed via PostStartup once the server has fully started
 }
 
 type DatabaseContextOptions struct {
@@ -252,7 +252,7 @@ func ConnectToBucketFailFast(spec base.BucketSpec) (bucket base.Bucket, err erro
 // ConnectToBucket opens a Couchbase connection and return a specific bucket.
 func ConnectToBucket(spec base.BucketSpec) (base.Bucket, error) {
 
-	//start a retry loop to connect to the bucket backing off double the delay each time
+	// start a retry loop to connect to the bucket backing off double the delay each time
 	worker := func() (bool, error, interface{}) {
 		bucket, err := base.GetBucket(spec)
 
@@ -264,8 +264,8 @@ func ConnectToBucket(spec base.BucketSpec) (base.Bucket, error) {
 	}
 
 	sleeper := base.CreateDoublingSleeperFunc(
-		13, //MaxNumRetries approx 40 seconds total retry duration
-		5,  //InitialRetrySleepTimeMS
+		13, // MaxNumRetries approx 40 seconds total retry duration
+		5,  // InitialRetrySleepTimeMS
 	)
 
 	description := fmt.Sprintf("Attempt to connect to bucket : %v", spec.BucketName)
@@ -745,16 +745,16 @@ func (context *DatabaseContext) NotifyTerminatedChanges(username string) {
 func (dc *DatabaseContext) TakeDbOffline(reason string) error {
 
 	if atomic.CompareAndSwapUint32(&dc.State, DBOnline, DBStopping) {
-		//notify all active _changes feeds to close
+		// notify all active _changes feeds to close
 		close(dc.ExitChanges)
 
-		//Block until all current calls have returned, including _changes feeds
+		// Block until all current calls have returned, including _changes feeds
 		dc.AccessLock.Lock()
 		defer dc.AccessLock.Unlock()
 
 		dc.changeCache.Stop()
 
-		//set DB state to Offline
+		// set DB state to Offline
 		atomic.StoreUint32(&dc.State, DBOffline)
 
 		if err := dc.EventMgr.RaiseDBStateChangeEvent(dc.Name, "offline", reason, dc.Options.AdminInterface); err != nil {
@@ -779,7 +779,7 @@ func (dc *DatabaseContext) TakeDbOffline(reason string) error {
 	}
 }
 
-func (context *DatabaseContext) Authenticator() *auth.Authenticator {
+func (context *DatabaseContext) Authenticator(ctx context.Context) *auth.Authenticator {
 	context.BucketLock.RLock()
 	defer context.BucketLock.RUnlock()
 
@@ -799,6 +799,7 @@ func (context *DatabaseContext) Authenticator() *auth.Authenticator {
 		ChannelsWarningThreshold: channelsWarningThreshold,
 		SessionCookieName:        sessionCookieName,
 		BcryptCost:               context.Options.BcryptCost,
+		LogCtx:                   ctx,
 	})
 
 	return authenticator
@@ -835,7 +836,7 @@ func (db *Database) ReloadUser() error {
 	if db.user == nil {
 		return nil
 	}
-	user, err := db.Authenticator().GetUser(db.user.Name())
+	user, err := db.Authenticator(db.Ctx).GetUser(db.user.Name())
 	if err != nil {
 		return err
 	}
@@ -847,7 +848,7 @@ func (db *Database) ReloadUser() error {
 	}
 }
 
-//////// ALL DOCUMENTS:
+// ////// ALL DOCUMENTS:
 
 type IDRevAndSequence struct {
 	DocID    string
@@ -867,7 +868,7 @@ type ForEachDocIDFunc func(id IDRevAndSequence, channels []string) (bool, error)
 // Iterates over all documents in the database, calling the callback function on each
 func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachDocIDOptions) error {
 
-	results, err := db.QueryAllDocs(resultsOpts.Startkey, resultsOpts.Endkey)
+	results, err := db.QueryAllDocs(db.Ctx, resultsOpts.Startkey, resultsOpts.Endkey)
 	if err != nil {
 		return err
 	}
@@ -922,8 +923,8 @@ func (db *Database) processForEachDocIDResults(callback ForEachDocIDFunc, limit 
 		} else if err != nil {
 			return err
 		}
-		//We have to apply limit check after callback has been called
-		//to account for rows that are not in the current users channels
+		// We have to apply limit check after callback has been called
+		// to account for rows that are not in the current users channels
 		if limit > 0 && count == limit {
 			break
 		}
@@ -938,7 +939,7 @@ type principalsViewRow struct {
 }
 
 // Returns the IDs of all users and roles
-func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) {
+func (db *DatabaseContext) AllPrincipalIDs(ctx context.Context) (users, roles []string, err error) {
 
 	startKey := ""
 	limit := db.Options.QueryPaginationLimit
@@ -948,7 +949,7 @@ func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) 
 
 outerLoop:
 	for {
-		results, err := db.QueryPrincipals(startKey, limit)
+		results, err := db.QueryPrincipals(ctx, startKey, limit)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -1013,21 +1014,21 @@ outerLoop:
 	return users, roles, nil
 }
 
-//////// HOUSEKEEPING:
+// ////// HOUSEKEEPING:
 
 // Deletes all session documents for a user
-func (db *DatabaseContext) DeleteUserSessions(userName string) error {
+func (db *DatabaseContext) DeleteUserSessions(ctx context.Context, userName string) error {
 
-	results, err := db.QuerySessions(userName)
+	results, err := db.QuerySessions(ctx, userName)
 	if err != nil {
 		return err
 	}
 
 	var sessionsRow QueryIdRow
 	for results.Next(&sessionsRow) {
-		base.Infof(base.KeyCRUD, "\tDeleting %q", sessionsRow.Id)
+		base.InfofCtx(ctx, base.KeyCRUD, "\tDeleting %q", sessionsRow.Id)
 		if err := db.Bucket.Delete(sessionsRow.Id); err != nil {
-			base.Warnf("Error deleting %q: %v", sessionsRow.Id, err)
+			base.WarnfCtx(ctx, "Error deleting %q: %v", sessionsRow.Id, err)
 		}
 	}
 	return results.Close()
@@ -1069,7 +1070,7 @@ func (db *Database) Compact(skipRunningStateCheck bool, callback compactCallback
 	purgeBody := Body{"_purged": true}
 	for {
 		purgedDocs := make([]string, 0)
-		results, err := db.QueryTombstones(purgeOlderThan, QueryTombstoneBatch)
+		results, err := db.QueryTombstones(ctx, purgeOlderThan, QueryTombstoneBatch)
 		if err != nil {
 			return 0, err
 		}
@@ -1138,7 +1139,7 @@ func (db *Database) Compact(skipRunningStateCheck bool, callback compactCallback
 	return purgedDocCount, nil
 }
 
-//////// SYNC FUNCTION:
+// ////// SYNC FUNCTION:
 
 // Sets the database context's sync function based on the JS code from config.
 // Returns a boolean indicating whether the function is different from the saved one.
@@ -1190,8 +1191,8 @@ func (context *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err
 type updateAllDocChannelsCallbackFunc func(docsProcessed, docsChanged *int)
 
 func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback updateAllDocChannelsCallbackFunc, terminator *base.SafeTerminator) (int, error) {
-	base.Infof(base.KeyAll, "Recomputing document channels...")
-	base.Infof(base.KeyAll, "Re-running sync function on all documents...")
+	base.InfofCtx(db.Ctx, base.KeyAll, "Recomputing document channels...")
+	base.InfofCtx(db.Ctx, base.KeyAll, "Re-running sync function on all documents...")
 
 	queryLimit := db.Options.QueryPaginationLimit
 	startSeq := uint64(0)
@@ -1210,7 +1211,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 	var unusedSequences []uint64
 
 	for {
-		results, err := db.QueryResync(queryLimit, startSeq, endSeq)
+		results, err := db.QueryResync(db.Ctx, queryLimit, startSeq, endSeq)
 		if err != nil {
 			return 0, err
 		}
@@ -1222,7 +1223,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 		for results.Next(&importRow) {
 			select {
 			case <-terminator.Done():
-				base.Infof(base.KeyAll, "Resync was stopped before the operation could be completed. System "+
+				base.InfofCtx(db.Ctx, base.KeyAll, "Resync was stopped before the operation could be completed. System "+
 					"may be in an inconsistent state. Docs changed: %d Docs Processed: %d", docsChanged, docsProcessed)
 				closeErr := results.Close()
 				if closeErr != nil {
@@ -1243,7 +1244,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 					// This is a document not known to the sync gateway. Ignore it:
 					return nil, false, nil, base.ErrUpdateCancel
 				} else {
-					base.Debugf(base.KeyCRUD, "\tRe-syncing document %q", base.UD(docid))
+					base.DebugfCtx(db.Ctx, base.KeyCRUD, "\tRe-syncing document %q", base.UD(docid))
 				}
 
 				// Run the sync fn over each current/leaf revision, in case there are conflicts:
@@ -1251,11 +1252,11 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 				doc.History.forEachLeaf(func(rev *RevInfo) {
 					bodyBytes, _, err := db.get1xRevFromDoc(doc, rev.ID, false)
 					if err != nil {
-						base.Warnf("Error getting rev from doc %s/%s %s", base.UD(docid), rev.ID, err)
+						base.WarnfCtx(db.Ctx, "Error getting rev from doc %s/%s %s", base.UD(docid), rev.ID, err)
 					}
 					var body Body
 					if err := body.Unmarshal(bodyBytes); err != nil {
-						base.Warnf("Error unmarshalling body %s/%s for sync function %s", base.UD(docid), rev.ID, err)
+						base.WarnfCtx(db.Ctx, "Error unmarshalling body %s/%s for sync function %s", base.UD(docid), rev.ID, err)
 						return
 					}
 					metaMap, err := doc.GetMetaMap(db.Options.UserXattrKey)
@@ -1265,7 +1266,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 					channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(doc, body, metaMap, rev.ID)
 					if err != nil {
 						// Probably the validator rejected the doc
-						base.Warnf("Error calling sync() on doc %q: %v", base.UD(docid), err)
+						base.WarnfCtx(db.Ctx, "Error calling sync() on doc %q: %v", base.UD(docid), err)
 						access = nil
 						channels = nil
 					}
@@ -1276,12 +1277,12 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 						if regenerateSequences {
 							unusedSequences, err = db.assignSequence(0, doc, unusedSequences)
 							if err != nil {
-								base.Warnf("Unable to assign a sequence number: %v", err)
+								base.WarnfCtx(db.Ctx, "Unable to assign a sequence number: %v", err)
 							}
 							forceUpdate = true
 						}
 
-						changedChannels, err := doc.updateChannels(channels)
+						changedChannels, err := doc.updateChannels(db.Ctx, channels)
 						changed = len(doc.Access.updateAccess(doc, access)) +
 							len(doc.RoleAccess.updateAccess(doc, roles)) +
 							len(changedChannels)
@@ -1316,7 +1317,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 						return nil, nil, deleteDoc, nil, err
 					}
 					if shouldUpdate {
-						base.Infof(base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
+						base.InfofCtx(db.Ctx, base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
 						if updatedExpiry != nil {
 							updatedDoc.UpdateExpiry(*updatedExpiry)
 						}
@@ -1344,7 +1345,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 						return nil, nil, false, err
 					}
 					if shouldUpdate {
-						base.Infof(base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
+						base.InfofCtx(db.Ctx, base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
 						if updatedExpiry != nil {
 							updatedDoc.UpdateExpiry(*updatedExpiry)
 						}
@@ -1359,7 +1360,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 			if err == nil {
 				docsChanged++
 			} else if err != base.ErrUpdateCancel {
-				base.Warnf("Error updating doc %q: %v", base.UD(docid), err)
+				base.WarnfCtx(db.Ctx, "Error updating doc %q: %v", base.UD(docid), err)
 			}
 		}
 
@@ -1380,17 +1381,17 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 	for _, sequence := range unusedSequences {
 		err := db.sequences.releaseSequence(sequence)
 		if err != nil {
-			base.Warnf("Error attempting to release sequence %d. Error %v", sequence, err)
+			base.WarnfCtx(db.Ctx, "Error attempting to release sequence %d. Error %v", sequence, err)
 		}
 	}
 
 	if regenerateSequences {
-		users, roles, err := db.AllPrincipalIDs()
+		users, roles, err := db.AllPrincipalIDs(db.Ctx)
 		if err != nil {
 			return docsChanged, err
 		}
 
-		authr := db.Authenticator()
+		authr := db.Authenticator(db.Ctx)
 		regeneratePrincipalSequences := func(princ auth.Principal) error {
 			nextSeq, err := db.DatabaseContext.sequences.nextSequence()
 			if err != nil {
@@ -1429,12 +1430,12 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 
 	}
 
-	base.Infof(base.KeyAll, "Finished re-running sync function; %d/%d docs changed", docsChanged, docsProcessed)
+	base.InfofCtx(db.Ctx, base.KeyAll, "Finished re-running sync function; %d/%d docs changed", docsChanged, docsProcessed)
 
 	if docsChanged > 0 {
 		// Now invalidate channel cache of all users/roles:
-		base.Infof(base.KeyAll, "Invalidating channel caches of users/roles...")
-		users, roles, _ := db.AllPrincipalIDs()
+		base.InfofCtx(db.Ctx, base.KeyAll, "Invalidating channel caches of users/roles...")
+		users, roles, _ := db.AllPrincipalIDs(db.Ctx)
 		for _, name := range users {
 			db.invalUserChannels(name, endSeq)
 		}
@@ -1446,23 +1447,23 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 }
 
 func (db *Database) invalUserRoles(username string, invalSeq uint64) {
-	authr := db.Authenticator()
+	authr := db.Authenticator(db.Ctx)
 	if err := authr.InvalidateRoles(username, invalSeq); err != nil {
-		base.Warnf("Error invalidating roles for user %s: %v", base.UD(username), err)
+		base.WarnfCtx(db.Ctx, "Error invalidating roles for user %s: %v", base.UD(username), err)
 	}
 }
 
 func (db *Database) invalUserChannels(username string, invalSeq uint64) {
-	authr := db.Authenticator()
+	authr := db.Authenticator(db.Ctx)
 	if err := authr.InvalidateChannels(username, true, invalSeq); err != nil {
-		base.Warnf("Error invalidating channels for user %s: %v", base.UD(username), err)
+		base.WarnfCtx(db.Ctx, "Error invalidating channels for user %s: %v", base.UD(username), err)
 	}
 }
 
 func (db *Database) invalRoleChannels(rolename string, invalSeq uint64) {
-	authr := db.Authenticator()
+	authr := db.Authenticator(db.Ctx)
 	if err := authr.InvalidateChannels(rolename, false, invalSeq); err != nil {
-		base.Warnf("Error invalidating channels for role %s: %v", base.UD(rolename), err)
+		base.WarnfCtx(db.Ctx, "Error invalidating channels for role %s: %v", base.UD(rolename), err)
 	}
 }
 
@@ -1623,7 +1624,7 @@ func (context *DatabaseContext) AllowFlushNonCouchbaseBuckets() bool {
 	return false
 }
 
-//////// SEQUENCE ALLOCATION:
+// ////// SEQUENCE ALLOCATION:
 
 func (context *DatabaseContext) LastSequence() (uint64, error) {
 	return context.sequences.lastSequence()

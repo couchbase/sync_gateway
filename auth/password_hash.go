@@ -61,7 +61,7 @@ func compareHashAndPassword(cache Cache, hash []byte, password []byte) bool {
 func (auth *Authenticator) SetBcryptCost(cost int) error {
 	if cost <= 0 {
 		auth.BcryptCost = DefaultBcryptCost
-		base.Debugf(base.KeyAuth, "bcrypt cost set to default: %d", cost)
+		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "bcrypt cost set to default: %d", cost)
 		return nil
 	}
 
@@ -71,7 +71,7 @@ func (auth *Authenticator) SetBcryptCost(cost int) error {
 			cost, DefaultBcryptCost, bcrypt.MaxCost)
 	}
 
-	base.Infof(base.KeyAuth, "bcrypt cost set to: %d", cost)
+	base.InfofCtx(auth.LogCtx, base.KeyAuth, "bcrypt cost set to: %d", cost)
 	auth.BcryptCost = cost
 	auth.bcryptCostChanged = true
 

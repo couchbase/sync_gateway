@@ -136,6 +136,62 @@ func TestXattrImportOldDoc(t *testing.T) {
 	assert.True(t, HasActiveChannel(rawDeleteResponse.Sync.Channels, "docDeleted"), "doc did not set _deleted:true for SDK delete")
 }
 
+// Test import ancestor handling
+func TestXattrImportOldDocRevHistory(t *testing.T) {
+
+	SkipImportTestsIfNotEnabled(t)
+
+	rtConfig := RestTesterConfig{
+		SyncFn: `function(doc, oldDoc) {
+			if (oldDoc == null) {
+				channel("oldDocNil")
+			} 
+		}`,
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			AutoImport: false,
+		}},
+	}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	bucket := rt.Bucket()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD)()
+
+	// 1. Create revision with history
+	docID := t.Name()
+	putResponse := rt.putDoc(docID, `{"val":-1}`)
+	revID := putResponse.Rev
+
+	// Get db.Database to perform PurgeOldRevisionJSON
+	dbc := rt.GetDatabase()
+	database, err := db.GetDatabase(dbc, nil)
+	assert.NoError(t, err)
+
+	for i := 0; i < 10; i++ {
+		updateResponse := rt.updateDoc(docID, revID, fmt.Sprintf(`{"val":%d}`, i))
+		// Purge old revision JSON to simulate expiry, and to verify import doesn't attempt multiple retrievals
+		purgeErr := database.PurgeOldRevisionJSON(docID, revID)
+		assert.NoError(t, purgeErr)
+		revID = updateResponse.Rev
+	}
+
+	// 2. Modify doc via SDK
+	updatedBody := make(map[string]interface{})
+	updatedBody["test"] = "TestAncestorImport"
+	err = bucket.Set(docID, 0, updatedBody)
+	assert.NoError(t, err)
+
+	// Attempt to get the document via Sync Gateway, to trigger import
+	response := rt.SendAdminRequest("GET", "/db/_raw/"+docID+"?redact=false", "")
+	goassert.Equals(t, response.Code, 200)
+	var rawResponse RawResponse
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &rawResponse))
+	log.Printf("raw response: %s", response.Body.Bytes())
+	assert.Equal(t, 1, len(rawResponse.Sync.Channels))
+	_, ok := rawResponse.Sync.Channels["oldDocNil"]
+	assert.True(t, ok)
+}
+
 // Validate tombstone w/ xattrs
 func TestXattrSGTombstone(t *testing.T) {
 
@@ -469,7 +525,7 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 
 	// Attempt to retrieve via view.  Above operations were all synchronous (on-demand import of SDK delete, SG delete), so
 	// stale=false view results should be immediately updated.
-	results, err := rt.GetDatabase().ChannelViewTest("ABC", 0, 1000)
+	results, err := rt.GetDatabase().ChannelViewForTest(t, "ABC", 0, 1000)
 	assert.NoError(t, err, "Error issuing channel view query")
 	for _, entry := range results {
 		log.Printf("Got view result: %v", entry)
@@ -544,7 +600,7 @@ func TestImportFilterLogging(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	//Add document to bucket
+	// Add document to bucket
 	key := "ValidImport"
 	body := make(map[string]interface{})
 	body["type"] = "mobile"
@@ -553,19 +609,19 @@ func TestImportFilterLogging(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, ok)
 
-	//Get number of errors before
+	// Get number of errors before
 	numErrors, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)
 
-	//Attempt to get doc will trigger import
+	// Attempt to get doc will trigger import
 	response := rt.SendAdminRequest("GET", "/db/"+key, "")
 	assert.Equal(t, http.StatusOK, response.Code)
 
-	//Get number of errors after
+	// Get number of errors after
 	numErrorsAfter, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)
 
-	//Make sure an error was logged
+	// Make sure an error was logged
 	assert.Equal(t, numErrors+1, numErrorsAfter)
 
 }

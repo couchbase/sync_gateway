@@ -9,6 +9,7 @@
 package auth
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"log"
@@ -296,7 +297,7 @@ type mockComputer struct {
 	err          error
 }
 
-func (self *mockComputer) ComputeChannelsForPrincipal(p Principal) (ch.TimedSet, error) {
+func (self *mockComputer) ComputeChannelsForPrincipal(ctx context.Context, p Principal) (ch.TimedSet, error) {
 	switch p.(type) {
 	case User:
 		return self.channels, self.err
@@ -307,7 +308,7 @@ func (self *mockComputer) ComputeChannelsForPrincipal(p Principal) (ch.TimedSet,
 	}
 }
 
-func (self *mockComputer) ComputeRolesForUser(User) (ch.TimedSet, error) {
+func (self *mockComputer) ComputeRolesForUser(context.Context, User) (ch.TimedSet, error) {
 	return self.roles, self.err
 }
 
@@ -676,6 +677,8 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	defer testBucket.Close()
 	auth := NewAuthenticator(testBucket, nil, DefaultAuthenticatorOptions())
 
+	ctx := base.TestCtx(t)
+
 	var callbackURLFunc OIDCCallbackURLFunc
 	callbackURL := base.StringPtr("http://comcast:4984/_callback")
 	providerGoogle := &OIDCProvider{
@@ -734,7 +737,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			ClientID:                    "aud1",
 			AllowUnsignedProviderTokens: true,
 		}
-		err = provider.InitUserPrefix()
+		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
 			ID:       "id0123456789",
@@ -763,7 +766,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Issuer:      issuerGoogleAccounts,
 			ClientID:    "aud1",
 		}
-		err = provider.InitUserPrefix()
+		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
 			ID:       "id0123456789",
@@ -790,7 +793,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Issuer:      issuerGoogleAccounts,
 			ClientID:    "aud4",
 		}
-		err = provider.InitUserPrefix()
+		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
 			ID:       "id0123456789",
@@ -817,7 +820,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Issuer:      issuerGoogleAccounts,
 			ClientID:    "aud4",
 		}
-		err = provider.InitUserPrefix()
+		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
 			ID:       "id0123456789",
@@ -843,7 +846,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Issuer:      issuerGoogleAccounts,
 			ClientID:    "aud1",
 		}
-		err = provider.InitUserPrefix()
+		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
 			ID:       "id0123456789",
@@ -871,7 +874,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			ClientID:                    "aud1",
 			AllowUnsignedProviderTokens: true,
 		}
-		err = provider.InitUserPrefix()
+		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
 			ID:        "id0123456789",
@@ -901,7 +904,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Issuer:      issuerGoogleAccounts,
 			ClientID:    "aud1",
 		}
-		err = provider.InitUserPrefix()
+		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
 			ID:        "id0123456789",
@@ -929,7 +932,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Issuer:      issuerGoogleAccounts,
 			ClientID:    "aud1",
 		}
-		err = provider.InitUserPrefix()
+		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
 			ID:       "id0123456789",
@@ -964,7 +967,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			UserPrefix:                  strings.ToLower(providerGoogle.Name),
 			AllowUnsignedProviderTokens: true,
 		}
-		err = provider.InitUserPrefix()
+		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
 			ID:       "id0123456789",
@@ -1003,7 +1006,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			UserPrefix:                  strings.ToLower(providerGoogle.Name),
 			AllowUnsignedProviderTokens: true,
 		}
-		err = provider.InitUserPrefix()
+		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
 			ID:       "id0123456789",
@@ -1042,7 +1045,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			UserPrefix:                  strings.ToLower(providerGoogle.Name),
 			AllowUnsignedProviderTokens: true,
 		}
-		err = provider.InitUserPrefix()
+		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
 			ID:       "id0123456789",
@@ -1075,7 +1078,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			UserPrefix:                  strings.ToLower(providerGoogle.Name),
 			AllowUnsignedProviderTokens: true,
 		}
-		err = provider.InitUserPrefix()
+		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
 			ID:       "id0123456789",
@@ -1300,7 +1303,7 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 			ClientID:    "aud1",
 		}
 		providers := OIDCProviderMap{providerGoogle.Name: providerGoogle, providerFacebook.Name: providerFacebook}
-		err = providerGoogle.InitUserPrefix()
+		err = providerGoogle.InitUserPrefix(base.TestCtx(t))
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
 			ID:       "id0123456789",
@@ -1326,7 +1329,7 @@ type mockComputerV2 struct {
 	err          error
 }
 
-func (m mockComputerV2) ComputeChannelsForPrincipal(principal Principal) (ch.TimedSet, error) {
+func (m mockComputerV2) ComputeChannelsForPrincipal(ctx context.Context, principal Principal) (ch.TimedSet, error) {
 	if user, ok := principal.(User); ok {
 		return m.channels[user.Name()].Copy(), nil
 	} else {
@@ -1334,7 +1337,7 @@ func (m mockComputerV2) ComputeChannelsForPrincipal(principal Principal) (ch.Tim
 	}
 }
 
-func (m mockComputerV2) ComputeRolesForUser(user User) (ch.TimedSet, error) {
+func (m mockComputerV2) ComputeRolesForUser(ctx context.Context, user User) (ch.TimedSet, error) {
 	return m.roles[user.Name()].Copy(), nil
 }
 

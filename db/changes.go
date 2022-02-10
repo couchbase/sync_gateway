@@ -106,7 +106,7 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 
 	if options.IncludeDocs && includeConflicts {
 		// Load doc body + metadata
-		doc, err := db.GetDocument(entry.ID, DocUnmarshalAll)
+		doc, err := db.GetDocument(db.Ctx, entry.ID, DocUnmarshalAll)
 		if err != nil {
 			base.WarnfCtx(db.Ctx, "Changes feed: error getting doc %q: %v", base.UD(entry.ID), err)
 			return
@@ -117,7 +117,7 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 		// Load doc metadata only
 		doc := &Document{}
 		var err error
-		doc.SyncData, err = db.GetDocSyncData(entry.ID)
+		doc.SyncData, err = db.GetDocSyncData(db.Ctx, entry.ID)
 		if err != nil {
 			base.WarnfCtx(db.Ctx, "Changes feed: error getting doc sync data %q: %v", base.UD(entry.ID), err)
 			return
@@ -303,7 +303,7 @@ func (db *Database) buildRevokedFeed(channelName string, options ChangesOptions,
 }
 
 func UserHasDocAccess(db *Database, docID, revID string) (bool, error) {
-	rev, err := db.revisionCache.Get(docID, revID, false, false)
+	rev, err := db.revisionCache.Get(db.Ctx, docID, revID, false, false)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			return false, nil
@@ -322,7 +322,7 @@ func UserHasDocAccess(db *Database, docID, revID string) (bool, error) {
 // Checks if a document needs to be revoked. This is used in the case where the since < doc sequence
 func (db *Database) wasDocInChannelPriorToRevocation(docID, chanName string, since uint64) (bool, error) {
 	// Get doc sync data so we can verify the docs grant history
-	syncData, err := db.GetDocSyncData(docID)
+	syncData, err := db.GetDocSyncData(db.Ctx, docID)
 	if err != nil {
 		return false, err
 	}
@@ -1231,7 +1231,7 @@ func (db *Database) DocIDChangesFeed(userChannels base.Set, explicitDocIds []str
 func createChangesEntry(docid string, db *Database, options ChangesOptions) *ChangeEntry {
 	row := &ChangeEntry{ID: docid}
 
-	populatedDoc, err := db.GetDocument(docid, DocUnmarshalSync)
+	populatedDoc, err := db.GetDocument(db.Ctx, docid, DocUnmarshalSync)
 	if err != nil {
 		base.InfofCtx(db.Ctx, base.KeyChanges, "Unable to get changes for docID %v, caused by %v", base.UD(docid), err)
 		return nil
