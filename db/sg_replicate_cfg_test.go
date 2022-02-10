@@ -555,6 +555,8 @@ func TestIsCfgChanged(t *testing.T) {
 				Filter:                 "a",
 				QueryParams:            []interface{}{"ABC"},
 				Cancel:                 true,
+				Username:               "alice",
+				Password:               "password",
 			},
 		}
 	}
@@ -590,6 +592,13 @@ func TestIsCfgChanged(t *testing.T) {
 			name: "conflictResolverFnChange",
 			updatedConfig: &ReplicationUpsertConfig{
 				ConflictResolutionFn: base.StringPtr("b"),
+			},
+			expectedChanged: true,
+		},
+		{
+			name: "passwordChanged", // Verify fix CBG-1858
+			updatedConfig: &ReplicationUpsertConfig{
+				Password: base.StringPtr("changed"),
 			},
 			expectedChanged: true,
 		},
