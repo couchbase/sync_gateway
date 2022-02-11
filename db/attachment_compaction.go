@@ -3,6 +3,7 @@ package db
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -262,6 +263,7 @@ func attachmentCompactSweepPhase(db *Database, compactionID string, vbUUIDs []ui
 	// be deleted.
 	callback := func(event sgbucket.FeedEvent) bool {
 		docID := string(event.Key)
+		fmt.Println(docID)
 
 		// We only want to look over v1 attachment docs, skip otherwise
 		if !strings.HasPrefix(docID, base.AttPrefix) {
