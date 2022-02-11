@@ -3237,8 +3237,7 @@ func TestUpdateExistingAttachment(t *testing.T) {
 	assertStatus(t, req, http.StatusCreated)
 	doc2Bytes := req.BodyBytes()
 
-	_, err = rt.WaitForChanges(2, "/db/_changes?since=0", "", true)
-	require.NoError(t, err)
+	require.NoError(t, rt.WaitForPendingChanges())
 
 	err = json.Unmarshal(doc1Bytes, &doc1Body)
 	assert.NoError(t, err)
@@ -3305,31 +3304,27 @@ func TestRevocationMessage(t *testing.T) {
 
 	// Skip to seq 4 and then create doc in channel A
 	revocationTester.fillToSeq(4)
-	_ = rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"channels": "A"})
+	revID := rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"channels": "A"})
 
-	// Wait for changes to come over (user doc, and doc)
-	_, err = rt.WaitForChanges(2, "/db/_changes?since=0", "user", true)
-	require.NoError(t, err)
+	require.NoError(t, rt.WaitForPendingChanges())
 
 	// Start pull
 	err = btc.StartOneshotPull()
 	assert.NoError(t, err)
 
 	// Wait for doc revision to come over
-	_, ok := btc.WaitForBlipRevMessage("doc", "1-ad48b5c9d9c47b98532a3d8164ec0ae7")
+	_, ok := btc.WaitForBlipRevMessage("doc", revID)
 	require.True(t, ok)
 
 	// Remove role from user
 	revocationTester.removeRole("user", "foo")
 
-	revID := rt.createDocReturnRev(t, "doc1", "", map[string]interface{}{"channels": "!"})
+	revID = rt.createDocReturnRev(t, "doc1", "", map[string]interface{}{"channels": "!"})
 
 	revocationTester.fillToSeq(10)
 	revID = rt.createDocReturnRev(t, "doc1", revID, map[string]interface{}{})
 
-	// Wait for revocation message
-	_, err = rt.WaitForChanges(3, "/db/_changes?since=5", "", true)
-	require.NoError(t, err)
+	require.NoError(t, rt.WaitForPendingChanges())
 
 	// Start a pull since 5 to receive revocation and removal
 	err = btc.StartPullSince("false", "5", "false")
@@ -3421,8 +3416,7 @@ func TestRevocationNoRev(t *testing.T) {
 	revocationTester.fillToSeq(4)
 	revID := rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"channels": "A"})
 
-	changes, err := rt.WaitForChanges(3, "/db/_changes?since=0", "user", true)
-	require.NoError(t, err)
+	require.NoError(t, rt.WaitForPendingChanges())
 
 	// OneShot pull to grab doc
 	err = btc.StartOneshotPull()
@@ -3437,12 +3431,11 @@ func TestRevocationNoRev(t *testing.T) {
 	revID = rt.createDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": "A", "val": "mutate"})
 
 	waitRevID := rt.createDocReturnRev(t, "docmarker", "", map[string]interface{}{"channels": "!"})
-
-	lastSeq := fmt.Sprintf("%v", changes.Last_Seq)
-	_, err = rt.WaitForChanges(3, "/db/_changes?since="+lastSeq, "user", true)
+	require.NoError(t, rt.WaitForPendingChanges())
+	lastSeq, err := rt.SequenceForDoc("docmarker")
 	require.NoError(t, err)
 
-	err = btc.StartPullSince("false", lastSeq, "false")
+	err = btc.StartPullSince("false", strconv.FormatUint(lastSeq, 10), "false")
 	assert.NoError(t, err)
 
 	_, ok = btc.WaitForRev("docmarker", waitRevID)

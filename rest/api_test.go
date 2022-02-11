@@ -6190,12 +6190,11 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	resp := rt.SendAdminRequest("PUT", "/db/"+docKey, `{}`)
 	assertStatus(t, resp, http.StatusCreated)
 
-	// Wait for PUT to write
-	_, err := rt.WaitForChanges(1, "/db/_changes", "", true)
+	require.NoError(t, rt.WaitForPendingChanges())
 
 	// Get current sync data
 	var syncData db.SyncData
-	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
+	_, err := subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
 	docRev, err := rt.GetDatabase().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, true, false)
@@ -7665,15 +7664,13 @@ func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
 	assert.Len(t, changes.Results, 2)
 
 	revocationTester.removeRoleChannel("foo", "A")
-	_, err := rt.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%v", changes.Last_Seq), "", true)
-	assert.NoError(t, err)
+	require.NoError(t, rt.WaitForPendingChanges())
 
 	leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
 	require.True(t, ok)
 
 	leakyBucket.SetGetRawCallback(func(s string) {
-		err = leakyBucket.Delete("doc")
-		assert.NoError(t, err)
+		assert.NoError(t, leakyBucket.Delete("doc"))
 	})
 
 	changes = revocationTester.getChanges(changes.Last_Seq, 1)
