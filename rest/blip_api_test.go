@@ -3417,6 +3417,7 @@ func TestRevocationNoRev(t *testing.T) {
 	revID := rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"channels": "A"})
 
 	require.NoError(t, rt.WaitForPendingChanges())
+	firstOneShotSinceSeq := rt.GetDocumentSequence("doc")
 
 	// OneShot pull to grab doc
 	err = btc.StartOneshotPull()
@@ -3432,10 +3433,9 @@ func TestRevocationNoRev(t *testing.T) {
 
 	waitRevID := rt.createDocReturnRev(t, "docmarker", "", map[string]interface{}{"channels": "!"})
 	require.NoError(t, rt.WaitForPendingChanges())
-	lastSeq, err := rt.SequenceForDoc("docmarker")
-	require.NoError(t, err)
 
-	err = btc.StartPullSince("false", strconv.FormatUint(lastSeq, 10), "false")
+	lastSeqStr := strconv.FormatUint(firstOneShotSinceSeq, 10)
+	err = btc.StartPullSince("false", lastSeqStr, "false")
 	assert.NoError(t, err)
 
 	_, ok = btc.WaitForRev("docmarker", waitRevID)
