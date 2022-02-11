@@ -12,6 +12,7 @@ package base
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/couchbase/clog"
@@ -184,90 +185,19 @@ func (CBGoUtilsLogger) Logf(level logging.Level, fmt string, args ...interface{}
 }
 
 // go-couchbase/gomemcached don't use Pair/Map logs, so these are all stubs
-/*
-func (CBGoUtilsLogger) Fatalm(msg string, kv logging.Map) {
-	Warnf("CBGoUtilsLogger: Fatalm not implemented! " + msg)
-}
 
-func (CBGoUtilsLogger) Fatalp(msg string, kv ...logging.Pair) {
-	Warnf("CBGoUtilsLogger: Fatalp not implemented! " + msg)
+func (l CBGoUtilsLogger) Loga(level logging.Level, f func() string) { l.warnNotImplemented("Loga", f) }
+func (l CBGoUtilsLogger) Debuga(f func() string)                    { l.warnNotImplemented("Debuga", f) }
+func (l CBGoUtilsLogger) Tracea(f func() string)                    { l.warnNotImplemented("Tracea", f) }
+func (l CBGoUtilsLogger) Requesta(rlevel logging.Level, f func() string) {
+	l.warnNotImplemented("Requesta", f)
 }
+func (l CBGoUtilsLogger) Infoa(f func() string)   { l.warnNotImplemented("Infoa", f) }
+func (l CBGoUtilsLogger) Warna(f func() string)   { l.warnNotImplemented("Warna", f) }
+func (l CBGoUtilsLogger) Errora(f func() string)  { l.warnNotImplemented("Errora", f) }
+func (l CBGoUtilsLogger) Severea(f func() string) { l.warnNotImplemented("Severea", f) }
+func (l CBGoUtilsLogger) Fatala(f func() string)  { l.warnNotImplemented("Fatala", f) }
 
-func (CBGoUtilsLogger) Severem(msg string, kv logging.Map) {
-	Warnf("CBGoUtilsLogger: Severem not implemented! " + msg)
+func (CBGoUtilsLogger) warnNotImplemented(name string, f func() string) {
+	Warnf(fmt.Sprintf("CBGoUtilsLogger: %s not implemented! %s", name, f()))
 }
-
-func (CBGoUtilsLogger) Severep(msg string, kv ...logging.Pair) {
-	Warnf("CBGoUtilsLogger: Severep not implemented! " + msg)
-}
-
-func (CBGoUtilsLogger) Errorm(msg string, kv logging.Map) {
-	Warnf("CBGoUtilsLogger: Errorm not implemented! " + msg)
-}
-
-func (CBGoUtilsLogger) Errorp(msg string, kv ...logging.Pair) {
-	Warnf("CBGoUtilsLogger: Errorp not implemented! " + msg)
-}
-
-func (CBGoUtilsLogger) Warnm(msg string, kv logging.Map) {
-	Warnf("CBGoUtilsLogger: Warnm not implemented! " + msg)
-}
-
-func (CBGoUtilsLogger) Warnp(msg string, kv ...logging.Pair) {
-	Warnf("CBGoUtilsLogger: Warnp not implemented! " + msg)
-}
-
-func (CBGoUtilsLogger) Infom(msg string, kv logging.Map) {
-	Warnf("CBGoUtilsLogger: Infom not implemented! " + msg)
-}
-
-func (CBGoUtilsLogger) Infop(msg string, kv ...logging.Pair) {
-	Warnf("CBGoUtilsLogger: Infop not implemented! " + msg)
-}
-
-func (CBGoUtilsLogger) Requestm(rlevel logging.Level, msg string, kv logging.Map) {
-	Warnf("CBGoUtilsLogger: Requestm not implemented! " + msg)
-}
-
-func (CBGoUtilsLogger) Requestp(rlevel logging.Level, msg string, kv ...logging.Pair) {
-	Warnf("CBGoUtilsLogger: Requestp not implemented! " + msg)
-}
-
-func (CBGoUtilsLogger) Tracem(msg string, kv logging.Map) {
-	Warnf("CBGoUtilsLogger: Tracem not implemented! " + msg)
-}
-
-func (CBGoUtilsLogger) Tracep(msg string, kv ...logging.Pair) {
-	Warnf("CBGoUtilsLogger: Tracep not implemented! " + msg)
-}
-
-func (CBGoUtilsLogger) Debugm(msg string, kv logging.Map) {
-	Warnf("CBGoUtilsLogger: Debugm not implemented! " + msg)
-}
-
-func (CBGoUtilsLogger) Debugp(msg string, kv ...logging.Pair) {
-	Warnf("CBGoUtilsLogger: Debugp not implemented! " + msg)
-}
-
-func (CBGoUtilsLogger) Logm(level logging.Level, msg string, kv logging.Map) {
-	Warnf("CBGoUtilsLogger: Logm not implemented! " + msg)
-}
-
-func (CBGoUtilsLogger) Logp(level logging.Level, msg string, kv ...logging.Pair) {
-	Warnf("CBGoUtilsLogger: Logp not implemented! " + msg)
-}
-*/
-
-func (CBGoUtilsLogger) Loga(level logging.Level, f func() string) {
-	Warnf("CBGoUtilsLogger: Loga not implemented! ")
-}
-func (CBGoUtilsLogger) Debuga(f func() string) { Warnf("CBGoUtilsLogger: Debuga not implemented! ") }
-func (CBGoUtilsLogger) Tracea(f func() string) { Warnf("CBGoUtilsLogger: Tracea not implemented! ") }
-func (CBGoUtilsLogger) Requesta(rlevel logging.Level, f func() string) {
-	Warnf("CBGoUtilsLogger: Requesta not implemented! ")
-}
-func (CBGoUtilsLogger) Infoa(f func() string)   { Warnf("CBGoUtilsLogger: Infoa not implemented! ") }
-func (CBGoUtilsLogger) Warna(f func() string)   { Warnf("CBGoUtilsLogger: Warna not implemented! ") }
-func (CBGoUtilsLogger) Errora(f func() string)  { Warnf("CBGoUtilsLogger: Errora not implemented! ") }
-func (CBGoUtilsLogger) Severea(f func() string) { Warnf("CBGoUtilsLogger: Severea not implemented! ") }
-func (CBGoUtilsLogger) Fatala(f func() string)  { Warnf("CBGoUtilsLogger: Fatala not implemented! ") }
