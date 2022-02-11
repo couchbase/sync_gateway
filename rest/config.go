@@ -694,10 +694,6 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) error {
 		}
 	}
 
-	if dbConfig.AllowConflicts != nil && *dbConfig.AllowConflicts {
-		base.Warnf(`Deprecation notice: Setting the database configuration option "allow_conflicts" to true is due to be removed. In the future, conflicts will not be allowed.`)
-	}
-
 	return multiError.ErrorOrNil()
 }
 

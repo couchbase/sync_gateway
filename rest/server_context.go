@@ -771,6 +771,10 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		groupID = sc.config.Bootstrap.ConfigGroupID
 	}
 
+	if config.AllowConflicts != nil && *config.AllowConflicts {
+		base.Warnf(`Deprecation notice: setting database configuration option "allow_conflicts" to true is due to be removed. In the future, conflicts will not be allowed.`)
+	}
+
 	// Register the cbgt pindex type for the configGroup
 	db.RegisterImportPindexImpl(groupID)
 
