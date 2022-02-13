@@ -609,17 +609,18 @@ func TestLogFlush(t *testing.T) {
 			// Setup memory logging
 			base.InitializeMemoryLoggers()
 
-			// Log some stuff (which will go into the memory loggers)
-			base.Errorf("error")
-			base.Warnf("warn")
-			base.Infof(base.KeyAll, "info")
-			base.Debugf(base.KeyAll, "debug")
-			base.Tracef(base.KeyAll, "trace")
-			base.RecordStats("{}")
-
 			// Add temp dir to save log files to
 			tempPath, err := ioutil.TempDir("", "logs"+testCase.Name)
 			require.NoError(t, err)
+			testDirName := filepath.Base(tempPath)
+
+			// Log some stuff (which will go into the memory loggers)
+			base.Errorf("error: " + testDirName)
+			base.Warnf("warn: " + testDirName)
+			base.Infof(base.KeyAll, "info: "+testDirName)
+			base.Debugf(base.KeyAll, "debug: "+testDirName)
+			base.Tracef(base.KeyAll, "trace: "+testDirName)
+			base.RecordStats("{}")
 
 			config := DefaultStartupConfig(tempPath)
 			config = testCase.EnableFunc(config)
@@ -637,16 +638,17 @@ func TestLogFlush(t *testing.T) {
 			for i := 0; i < 10; i++ {
 				flushCallsWg.Add(1)
 				go func() {
+					defer flushCallsWg.Done()
 					// Flush collation buffers to ensure the files that will be built do get written
 					base.FlushLogBuffers()
-					flushCallsWg.Done()
 				}()
 			}
 			flushCallsWg.Wait()
 
 			// Check that the expected number of log files are created
+			var files []string
 			worker := func() (shouldRetry bool, err error, value interface{}) {
-				var files []string
+				files = []string{}
 				err = filepath.Walk(tempPath, func(path string, info os.FileInfo, err error) error {
 					if tempPath != path {
 						files = append(files, filepath.Base(path))
@@ -666,9 +668,18 @@ func TestLogFlush(t *testing.T) {
 			}
 
 			sleeper := base.CreateSleeperFunc(200, 100)
-			err, files := base.RetryLoop("Wait for log files", worker, sleeper)
+			err, _ = base.RetryLoop("Wait for log files", worker, sleeper)
 			assert.NoError(t, err)
-			assert.Len(t, files, testCase.ExpectedLogFileCount)
+			if !assert.Len(t, files, testCase.ExpectedLogFileCount) {
+				// Try to figure who is writing to the files
+				for _, filename := range files {
+					if content, err := os.ReadFile(filepath.Join(tempPath, filename)); err != nil {
+						t.Log("error reading file: ", filename, ": ", err)
+					} else {
+						t.Log(filename, ": ", string(content))
+					}
+				}
+			}
 		})
 	}
 
