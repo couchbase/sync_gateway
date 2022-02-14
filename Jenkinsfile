@@ -1,12 +1,9 @@
 pipeline {
     // Build on this uberjenkins node, as it has the Go environment set up in a known-state
     // We could potentially change this to use a dockerfile agent instead so it can be portable.
-    agent { label 'sync-gateway-pipeline-builder' }
+    agent { label 'sgw-pipeline-ec2' }
 
     environment {
-        GO_VERSION = 'go1.17.5'
-        GVM = "/root/.gvm/bin/gvm"
-        GO = "/root/.gvm/gos/${GO_VERSION}/bin"
         GOPATH = "${WORKSPACE}/godeps"
         GOTOOLS = "${WORKSPACE}/gotools"
         GOCACHE = "${WORKSPACE}/.gocache"
@@ -16,6 +13,10 @@ pipeline {
         SGW_REPO = "github.com/couchbase/sync_gateway"
         GH_ACCESS_TOKEN_CREDENTIAL = "github_cb-robot-sg_access_token"
         GO111MODULE = "off"
+    }
+
+    tools {
+        go '1.17.5'
     }
 
     stages {
@@ -44,28 +45,26 @@ pipeline {
             parallel {
                 stage('Bootstrap') {
                     steps {
-                        echo "Bootstrapping commit ${SG_COMMIT}"
-                        sh 'cp .scm-checkout/bootstrap.sh .'
-                        sh 'chmod +x bootstrap.sh'
-                        sh "./bootstrap.sh -e ee -c ${SG_COMMIT}"
+                        sshagent(credentials: ['CB SG Robot Github SSH Key']) {
+                            echo "Bootstrapping commit ${SG_COMMIT}"
+                            sh 'cp .scm-checkout/bootstrap.sh .'
+                            sh 'chmod +x bootstrap.sh'
+
+                            sh '''
+                                [ -d ~/.ssh ] || mkdir ~/.ssh && chmod 0700 ~/.ssh
+                                ssh-keyscan -t rsa,dsa github.com >> ~/.ssh/known_hosts
+                                ./bootstrap.sh -e ee -c ${SG_COMMIT}
+                            '''
+
+                            
+                        }
                     }
                 }
                 stage('Go') {
                     stages {
-                        stage('Install') {
-                            steps {
-                                echo 'Installing Go via gvm..'
-                                // We'll use Go 1.10.4 to bootstrap compilation of newer Go versions
-                                // (because we know this version is installed on the Jenkins node)
-                                withEnv(["GOROOT_BOOTSTRAP=/root/.gvm/gos/go1.10.4"]) {
-                                    // Use gvm to install the required Go version, if not already
-                                    sh "${GVM} install $GO_VERSION"
-                                }
-                            }
-                        }
                         stage('Get Tools') {
                             steps {
-                                withEnv(["PATH+=${GO}", "GOPATH=${GOTOOLS}"]) {
+                                withEnv(["PATH+GO=${GOPATH}/bin", "GOPATH=${GOTOOLS}"]) {
                                     sh "go env"
                                     sh "go version"
                                     // unhandled error checker
@@ -89,14 +88,14 @@ pipeline {
             parallel {
                 stage('CE Linux') {
                     steps {
-                        withEnv(["PATH+=${GO}"]) {
+                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
                             sh "GOOS=linux go build -o sync_gateway_ce-linux -v ${SGW_REPO}"
                         }
                     }
                 }
                 stage('EE Linux') {
                     steps {
-                        withEnv(["PATH+=${GO}"]) {
+                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
                             sh "GOOS=linux go build -o sync_gateway_ee-linux -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
                         }
                     }
@@ -105,7 +104,7 @@ pipeline {
                     // TODO: Remove skip
                     when { expression { return false } }
                     steps {
-                        withEnv(["PATH+=${GO}"]) {
+                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
                             echo 'TODO: figure out why build issues are caused by gosigar'
                             sh "GOOS=darwin go build -o sync_gateway_ce-darwin -v ${SGW_REPO}"
                         }
@@ -115,7 +114,7 @@ pipeline {
                     // TODO: Remove skip
                     when { expression { return false } }
                     steps {
-                        withEnv(["PATH+=${GO}"]) {
+                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
                             echo 'TODO: figure out why build issues are caused by gosigar'
                             sh "GOOS=darwin go build -o sync_gateway_ee-darwin -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
                         }
@@ -123,21 +122,21 @@ pipeline {
                 }
                 stage('CE Windows') {
                     steps {
-                        withEnv(["PATH+=${GO}"]) {
+                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
                             sh "GOOS=windows go build -o sync_gateway_ce-windows -v ${SGW_REPO}"
                         }
                     }
                 }
                 stage('EE Windows') {
                     steps {
-                        withEnv(["PATH+=${GO}"]) {
+                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
                             sh "GOOS=windows go build -o sync_gateway_ee-windows -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
                         }
                     }
                 }
                 stage('Windows Service') {
                     steps {
-                        withEnv(["PATH+=${GO}"]) {
+                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
                             sh "GOOS=windows go build -o sync_gateway_ce-windows-service -v ${SGW_REPO}/service/sg-windows/sg-service"
                         }
                     }
@@ -149,7 +148,7 @@ pipeline {
             parallel {
                 stage('gofmt') {
                     steps {
-                        withEnv(["PATH+=${GO}"]) {
+                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
                             script {
                                 try {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'Running', status: 'PENDING')
@@ -170,7 +169,7 @@ pipeline {
                 }
                 stage('go vet') {
                     steps {
-                        withEnv(["PATH+=${GO}"]) {
+                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
                             warnError(message: "go vet failed") {
                                 sh "go vet ${SGW_REPO}/..."
                             }
@@ -179,7 +178,7 @@ pipeline {
                 }
                 stage('go fix') {
                     steps {
-                        withEnv(["PATH+=${GO}"]) {
+                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
                             warnError(message: "go fix failed") {
                                 sh "go tool fix -diff ${GOPATH}/src/${SGW_REPO} | tee gofix.out"
                                 sh "test -z \"\$(cat gofix.out)\""
@@ -189,7 +188,7 @@ pipeline {
                 }
                 stage('errcheck') {
                     steps {
-                        withEnv(["PATH+=${GO}:${GOTOOLS}/bin"]) {
+                        withEnv(["PATH+GO=${GOPATH}/bin", "PATH+=${GOTOOLS}/bin"]) {
                             script {
                                 try {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'Running', status: 'PENDING')
@@ -219,7 +218,7 @@ pipeline {
                             when { branch 'master' }
                             steps{
                                 // Travis-related variables are required as coveralls.io only officially supports a certain set of CI tools.
-                                withEnv(["PATH+=${GO}:${GOTOOLS}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
+                                withEnv(["PATH+GO=${GOPATH}/bin", "PATH+=${GOTOOLS}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: 'CE Unit Tests Running', status: 'PENDING')
 
                                     // Build CE coverprofiles
@@ -271,7 +270,7 @@ pipeline {
 
                         stage('EE') {
                             steps {
-                                withEnv(["PATH+=${GO}:${GOTOOLS}/bin"]) {
+                                withEnv(["PATH+GO=${GOPATH}/bin", "PATH+=${GOTOOLS}/bin"]) {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: 'EE Unit Tests Running', status: 'PENDING')
 
                                     // Build EE coverprofiles
@@ -331,16 +330,17 @@ pipeline {
                                 githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'Running LiteCore Tests', status: 'PENDING')
                                 sh 'touch verbose_litecore.out'
                                 sh 'touch verbose_litecore-sg_trace.out'
-
                                 script {
-                                    try {
-                                        sh 'docker run --net=host --rm -v /root/.ssh/id_rsa_ns-buildbot:/root/.ssh/id_rsa -v `pwd`/sync_gateway_ee-linux:/sync_gateway -v `pwd`/verbose_litecore.out:/output.out -v `pwd`/verbose_litecore-sg_trace.out:/tmp/sglog/sg_trace.log couchbase/sg-test-litecore:latest -legacy-config'
-                                        githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'EE with LiteCore Test Passed', status: 'SUCCESS')
-                                    } catch (Exception e) {
-                                        githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'EE with LiteCore Test Failed', status: 'FAILURE')
-                                        // archive verbose test logs in the event of a test failure
-                                        archiveArtifacts artifacts: 'verbose_litecore*.out', fingerprint: false
-                                        unstable("EE LIteCore Test Failed")
+                                    withCredentials([sshUserPrivateKey(credentialsId: 'CB SG Robot Github SSH Key', keyFileVariable: 'KEY')]) {
+                                        try {
+                                            sh 'docker run --net=host --rm -v $KEY:/root/.ssh/id_rsa -v `pwd`/sync_gateway_ee-linux:/sync_gateway -v `pwd`/verbose_litecore.out:/output.out -v `pwd`/verbose_litecore-sg_trace.out:/tmp/sglog/sg_trace.log couchbase/sg-test-litecore:latest -legacy-config'
+                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'EE with LiteCore Test Passed', status: 'SUCCESS')
+                                        } catch (Exception e) {
+                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'EE with LiteCore Test Failed', status: 'FAILURE')
+                                            // archive verbose test logs in the event of a test failure
+                                            archiveArtifacts artifacts: 'verbose_litecore*.out', fingerprint: false
+                                            unstable("EE LIteCore Test Failed")
+                                        }
                                     }
                                 }
                             }
@@ -356,7 +356,8 @@ pipeline {
                                 echo 'Queueing Integration test for branch "master" ...'
                                 // Queues up an async integration test run using default build params (master branch),
                                 // but waits up to an hour for batches of PR merges before actually running (via quietPeriod)
-                                build job: 'sync-gateway-integration', quietPeriod: 3600, wait: false
+                                // TODO: Enable this when modules is in
+				// build job: 'SyncGateway-Integration', quietPeriod: 3600, wait: false
                             }
                         }
 
@@ -397,7 +398,7 @@ pipeline {
             junit allowEmptyResults: true, testResults: 'reports/test-*.xml'
 
             step([$class: 'WsCleanup'])
-            withEnv(["PATH+=${GO}", "GOPATH=${GOPATH}"]) {
+            withEnv(["PATH+GO=${GOPATH}/bin", "GOPATH=${GOPATH}"]) {
                 sh "go clean -cache"
             }
         }
