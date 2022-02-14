@@ -46,7 +46,7 @@ See the [Extended Build Instructions](docs/BUILD.md) to build with dependency pi
 
 ## License
 
-[Apache License 2.0](https://github.com/couchbase/sync_gateway/blob/master/LICENSE)
+[Business Source License 1.1](https://github.com/couchbase/sync_gateway/blob/master/LICENSE)
 
 [CB_MOBILE]: https://www.couchbase.com/products/mobile
 [CB_GATEWAY]: https://www.couchbase.com/products/sync-gateway
