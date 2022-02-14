@@ -1872,6 +1872,8 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
