@@ -430,7 +430,6 @@ func setTestLogging(logLevel LogLevel, caller string, logKeys ...LogKey) (teardo
 		return func() {
 			if caller != "" {
 				Infof(KeyAll, "%v: Reset logging", caller)
-				FlushLoggerBuffers()
 			}
 		}
 	}
@@ -453,7 +452,6 @@ func setTestLogging(logLevel LogLevel, caller string, logKeys ...LogKey) (teardo
 		consoleLogger.LogKeyMask.Set(initialLogKey)
 		if caller != "" {
 			Infof(KeyAll, "%v: Reset logging", caller)
-			FlushLoggerBuffers()
 		}
 	}
 }
