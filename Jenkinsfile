@@ -384,7 +384,8 @@ pipeline {
             when { branch 'master' }
             steps{
                 echo 'Queueing Benchmark Run test for branch "master" ...'
-                build job: 'sync-gateway-benchmark', parameters: [string(name: 'SG_COMMIT', value: env.SG_COMMIT)], wait: false
+                // TODO: Add this back with new system
+		// build job: 'sync-gateway-benchmark', parameters: [string(name: 'SG_COMMIT', value: env.SG_COMMIT)], wait: false
             }
         }
     }
