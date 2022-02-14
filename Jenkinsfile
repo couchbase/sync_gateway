@@ -356,7 +356,8 @@ pipeline {
                                 echo 'Queueing Integration test for branch "master" ...'
                                 // Queues up an async integration test run using default build params (master branch),
                                 // but waits up to an hour for batches of PR merges before actually running (via quietPeriod)
-                                build job: 'SyncGateway-Integration', quietPeriod: 3600, wait: false
+                                // TODO: Enable this when modules is in
+				// build job: 'SyncGateway-Integration', quietPeriod: 3600, wait: false
                             }
                         }
 
