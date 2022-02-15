@@ -12,11 +12,13 @@ package base
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"math/rand"
 	"os"
+	"runtime"
 	"runtime/pprof"
 	"strconv"
 	"strings"
@@ -301,6 +303,57 @@ func CreateProperty(size int) (result string) {
 		resultBytes[i] = alphaNumeric[i%len(alphaNumeric)]
 	}
 	return string(resultBytes)
+}
+
+// SetUpGlobalTestMemoryWatermark will periodically write an in-use memory watermark,
+// and will cause the tests to fail on teardown if the watermark has exceeded the threshold.
+func SetUpGlobalTestMemoryWatermark(m *testing.M, memWatermarkThresholdMB uint64) (teardownFn func()) {
+
+	const checkFrequency = time.Second * 5
+
+	var inuseHighWatermarkMB float64
+
+	ctx, ctxCancel := context.WithCancel(context.Background())
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
+	go func(ctx context.Context) {
+		defer wg.Done()
+
+		record := func() {
+			ms := runtime.MemStats{}
+			runtime.ReadMemStats(&ms)
+			totalInuseMB := float64(ms.HeapInuse+ms.StackInuse) / float64(1024*1024)
+			if totalInuseMB > inuseHighWatermarkMB {
+				inuseHighWatermarkMB = totalInuseMB
+			}
+		}
+		defer record() // grab one last reading just before we exit
+
+		t := time.NewTicker(checkFrequency)
+		defer t.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				record()
+			}
+		}
+	}(ctx)
+
+	return func() {
+		ctxCancel()
+		wg.Wait()
+
+		if inuseHighWatermarkMB > float64(memWatermarkThresholdMB) {
+			// Exit during teardown to fail the suite if they exceeded the threshold
+			log.Fatalf("FATAL - Test: memory watermark %.2f MB exceeded threshold (%d MB)", inuseHighWatermarkMB, memWatermarkThresholdMB)
+		} else {
+			log.Printf("Test: memory watermark %.2f MB", inuseHighWatermarkMB)
+		}
+	}
 }
 
 // SetUpGlobalTestProfiling will cause a packages tests to periodically write a profiles to the package's directory.
