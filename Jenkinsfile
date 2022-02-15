@@ -136,7 +136,7 @@ pipeline {
                             script {
                                 try {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'Running', status: 'PENDING')
-                                    sh "gofmt -d -e ${GOPATH}/src/${SGW_REPO} | tee gofmt.out"
+                                    sh "gofmt -d -e . | tee gofmt.out"
                                     sh "test -z \"\$(cat gofmt.out)\""
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'OK', status: 'SUCCESS')
                                 } catch (Exception e) {
@@ -155,7 +155,7 @@ pipeline {
                     steps {
                         withEnv(["PATH+GO=${GOPATH}/bin"]) {
                             warnError(message: "go vet failed") {
-                                sh "go vet ${SGW_REPO}/..."
+                                sh "go vet -tags ${EE_BUILD_TAG} ./..."
                             }
                         }
                     }
@@ -164,7 +164,7 @@ pipeline {
                     steps {
                         withEnv(["PATH+GO=${GOPATH}/bin"]) {
                             warnError(message: "go fix failed") {
-                                sh "go tool fix -diff ${GOPATH}/src/${SGW_REPO} | tee gofix.out"
+                                sh "go tool fix -diff . | tee gofix.out"
                                 sh "test -z \"\$(cat gofix.out)\""
                             }
                         }
@@ -176,7 +176,7 @@ pipeline {
                             script {
                                 try {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'Running', status: 'PENDING')
-                                    sh "errcheck ${SGW_REPO}/... | tee errcheck.out"
+                                    sh "errcheck ./... | tee errcheck.out"
                                     sh "test -z \"\$(cat errcheck.out)\""
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'OK', status: 'SUCCESS')
                                 } catch (Exception e) {
@@ -202,11 +202,11 @@ pipeline {
                             when { branch 'master' }
                             steps{
                                 // Travis-related variables are required as coveralls.io only officially supports a certain set of CI tools.
-                                withEnv(["PATH+GO=${GOPATH}/bin", "PATH+=${GOTOOLS}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
+                                withEnv(["PATH+GO=${GOPATH}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: 'CE Unit Tests Running', status: 'PENDING')
 
                                     // Build CE coverprofiles
-                                    sh '2>&1 go test -timeout=20m -coverpkg=${SGW_REPO}/... -coverprofile=cover_ce.out -race -count=1 -v ${SGW_REPO}/... > verbose_ce.out.raw || true'
+                                    sh '2>&1 go test -timeout=20m -coverpkg=./... -coverprofile=cover_ce.out -race -count=1 -v ./... > verbose_ce.out.raw || true'
 
                                     // Print total coverage stats
                                     sh 'go tool cover -func=cover_ce.out | awk \'END{print "Total SG CE Coverage: " $3}\''
@@ -254,11 +254,11 @@ pipeline {
 
                         stage('EE') {
                             steps {
-                                withEnv(["PATH+GO=${GOPATH}/bin", "PATH+=${GOTOOLS}/bin"]) {
+                                withEnv(["PATH+GO=${GOPATH}/bin"]) {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: 'EE Unit Tests Running', status: 'PENDING')
 
                                     // Build EE coverprofiles
-                                    sh "2>&1 go test -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=${SGW_REPO}/... -coverprofile=cover_ee.out -race -count=1 -v ${SGW_REPO}/... > verbose_ee.out.raw || true"
+                                    sh "2>&1 go test -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=./... -coverprofile=cover_ee.out -race -count=1 -v ./... > verbose_ee.out.raw || true"
 
                                     sh 'go tool cover -func=cover_ee.out | awk \'END{print "Total SG EE Coverage: " $3}\''
 
@@ -335,7 +335,8 @@ pipeline {
                 stage('Integration') {
                     stages {
                         stage('Master') {
-                            when { branch 'master' }
+                            // TODO: remove test branch after integration is working
+                            when { anyOf { branch 'master'; branch 'CBG-1851' } }
                             steps {
                                 echo 'Queueing Integration test for branch "master" ...'
                                 // Queues up an async integration test run using default build params (master branch),
@@ -365,7 +366,8 @@ pipeline {
             }
         }
         stage('Benchmarks'){
-            when { branch 'master' }
+            // TODO: remove test branch after re-enable benchmark and it is working
+            when { anyOf { branch 'master'; branch 'CBG-1851' } }
             steps{
                 echo 'Queueing Benchmark Run test for branch "master" ...'
                 // TODO: Add this back with new system
@@ -383,7 +385,7 @@ pipeline {
             junit allowEmptyResults: true, testResults: 'reports/test-*.xml'
 
             step([$class: 'WsCleanup'])
-            withEnv(["PATH+GO=${GOPATH}/bin", "GOPATH=${GOPATH}"]) {
+            withEnv(["PATH+GO=${GOPATH}/bin"]) {
                 sh "go clean -cache"
             }
         }
