@@ -24,7 +24,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/websocket"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Testing utilities that have been included in the rest package so that they
@@ -811,20 +811,17 @@ func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) (*BlipTester, err
 		return nil, err
 	}
 
-	origin := "http://localhost" // TODO: what should be used here?
-
-	config, err := websocket.NewConfig(u.String(), origin)
-	if err != nil {
-		return nil, err
+	config := blip.DialOptions{
+		URL: u.String(),
 	}
 
 	if len(spec.connectingUsername) > 0 {
-		config.Header = http.Header{
+		config.HTTPHeader = http.Header{
 			"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(spec.connectingUsername+":"+spec.connectingPassword))},
 		}
 	}
 
-	bt.sender, err = bt.blipContext.DialConfig(config)
+	bt.sender, err = bt.blipContext.DialConfig(&config)
 	if err != nil {
 		return nil, err
 	}
