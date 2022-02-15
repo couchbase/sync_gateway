@@ -725,12 +725,12 @@ func alternateAddressShims(loggingCtx context.Context, bucketSpecTLS bool, connS
 			}
 		}
 
-		pool, err := client.GetPool(poolName)
-		if err != nil {
-			return nil, err
+		var bucket *couchbase.Bucket
+		if auth != nil {
+			bucket, err = couchbase.ConnectWithAuthAndGetBucket(serverURL, poolName, bucketName, auth)
+		} else {
+			bucket, err = couchbase.GetBucket(serverURL, poolName, bucketName)
 		}
-
-		bucket, err := pool.GetBucket(bucketName)
 		if err != nil {
 			return nil, err
 		}
