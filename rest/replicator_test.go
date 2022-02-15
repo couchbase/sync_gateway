@@ -3536,10 +3536,13 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 	}, "Expecting NumConnectAttempts > 3")
 
 	assert.NoError(t, ar.Stop())
-	reconnectAttempts := ar.Pull.GetStats().NumConnectAttempts.Value()
+	waitAndRequireCondition(t, func() bool {
+		return ar.GetStatus().Status == db.ReplicationStateStopped
+	})
 
 	// wait for a bit to see if the reconnect loop has stopped
-	time.Sleep(time.Millisecond * 100)
+	reconnectAttempts := ar.Pull.GetStats().NumConnectAttempts.Value()
+	time.Sleep(time.Millisecond * 250)
 	assert.Equal(t, reconnectAttempts, ar.Pull.GetStats().NumConnectAttempts.Value())
 
 	assert.NoError(t, ar.Reset())
