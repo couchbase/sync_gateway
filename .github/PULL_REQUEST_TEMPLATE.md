@@ -12,4 +12,4 @@ Describe your PR here...
 - [ ] Bump manifest once merged
 
 ## [Integration Tests](https://jenkins.sgwdev.com/job/SyncGateway-Integration/build?delay=0sec)
-- [ ] `xattrs=true` https://jenkins.sgwdev.com/job/SyncGateway-Integration/???/
+- [ ] `xattrs=true` https://jenkins.sgwdev.com/job/SyncGateway-Integration/000/
