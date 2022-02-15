@@ -8,65 +8,57 @@
 # will be governed by the Apache License, Version 2.0, included in the file
 # licenses/APL2.txt.
 
-# This script builds sync gateway using pinned dependencies via the repo tool
-#
-# - Set GOPATH and call 'go install' to compile and build Sync Gateway binaries
+# NOTE: building the EE version (SG_EDITION=EE ./build.sh) requires ssh access
+# to private a repo.  Please make sure you have access to:
+# https://github.com/couchbaselabs/go-fleecedelta
 
 set -e
 
-if [ -d "godeps" ]; then
-  export GOPATH=`pwd`/godeps
-fi
+BLDPARS=${@:2}
+SRCPATH=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+OUTPATH=${SRCPATH}/bin
+mkdir -p ${OUTPATH}
 
 # Build both editions by default
 # Limit via the $SG_EDITION env var
 build_editions=( "CE" "EE" )
-if [ "$SG_EDITION" = "CE" -o "$SG_EDITION" = "EE" ]; then
-    echo "Building only $SG_EDITION"
-    build_editions=( $SG_EDITION )
+if [ "${SG_EDITION}" = "CE" -o "${SG_EDITION}" = "EE" ]; then
+    echo "Building only ${SG_EDITION}"
+    build_editions=( ${SG_EDITION} )
 else
     echo "Building all editions ... Limit with 'SG_EDITION=CE $0'"
 fi
 
-updateVersionStamp () {
-    # Build path to SG code directory
-    SG_DIR=$GOPATH/src/github.com/couchbase/sync_gateway
-
-    # Save the current directory
-    CURRENT_DIR=`pwd`
-
-    # Cd into SG code directory
-    cd $SG_DIR
-    ./set-version-stamp.sh || true
-
-    # Go back to the original current directory
-    cd $CURRENT_DIR
-}
-
 doBuild () {
+    cd ${SRCPATH}
+    ./set-version-stamp.sh || true
+    privRepos=""
     buildTags=""
     binarySuffix="_ce"
     if [ "$1" = "EE" ]; then
         buildTags="-tags cb_sg_enterprise"
         binarySuffix=""
+        githutSshConfig=$( ( git config --global --list ; git config --system --list ) | grep -i "url.git@github.com:" | cat )
+        if [ -z "${githutSshConfig}" ]; then
+            git config --global url.git@github.com:couchbaselabs/go-fleecedelta.insteadOf https://github.com/couchbaselabs/go-fleecedelta
+        fi
     fi
-
-    mkdir -p "${GOPATH}/bin"
 
     ## Go Install Sync Gateway
     echo "    Building Sync Gateway"
-    go build -o sync_gateway${binarySuffix} ${buildTags} "${@:2}" github.com/couchbase/sync_gateway
-    mv "sync_gateway${binarySuffix}" "${GOPATH}/bin/sync_gateway${binarySuffix}"
-    echo "      Success!"
-    # Let user where to know where to find binaries
-    if [ -f "${GOPATH}/bin/sync_gateway${binarySuffix}" ]; then
-        echo "      Binary compiled to: ${GOPATH}/bin/sync_gateway${binarySuffix}"
+    echo go build -o "${OUTPATH}/sync_gateway${binarySuffix}" ${buildTags} "${BLDPARS}" ${SRCPATH}
+    go build -o "${OUTPATH}/sync_gateway${binarySuffix}" ${buildTags} "${BLDPARS}" ${SRCPATH}
+    # Let user know where to find binaries
+    if [ -f "${OUTPATH}/sync_gateway${binarySuffix}" ]; then
+        echo "      Success!"
+        echo "      Binary compiled to: ${OUTPATH}/sync_gateway${binarySuffix}"
+    else
+        echo "      ERROR: Binary not found!"
+        exit 1
     fi
-
 }
 
 for edition in "${build_editions[@]}"; do
     echo "  Building edition: ${edition}"
-    updateVersionStamp
-    doBuild $edition "$@"
+    (doBuild $edition "$@")
 done

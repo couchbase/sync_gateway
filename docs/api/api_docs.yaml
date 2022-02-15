@@ -5646,6 +5646,7 @@ components:
         allow_conflicts:
           type: boolean
           default: true
+          deprecated: true
           description: This controls whether to allow conflicting document revisions.
         num_index_replicas:
           type: number

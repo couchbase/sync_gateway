@@ -1,6 +1,23 @@
 
-Building From Source (via repo)
--------------------------------
+Building with Go Modules 
+------------------------
+
+Recent versions of Sync Gateway provide support for Go modules, which simplifies the process of building from source. Older versions will require building with pinned dependencies, see below.
+
+Keep in mind that building the Enterprise Edition requires access to private repos, and is intended for internal use only.
+
+**Manual Build**
+```bash
+go build -o bin/sync_gateway_ce .
+```
+
+**Build Script**
+```bash
+SG_EDITION=CE ./build.sh
+```
+
+Building Older Versions (via repo)
+----------------------------------
 
 In order to build with [pinned dependencies](https://github.com/couchbase/sync_gateway/blob/master/manifest/default.xml), you will need to use the the `repo` multi-repository tool.
 
