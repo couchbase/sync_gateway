@@ -2678,10 +2678,9 @@ func TestUserXattrsRawGet(t *testing.T) {
 
 	resp := rt.SendAdminRequest("PUT", "/db/"+docKey, "{}")
 	assertStatus(t, resp, http.StatusCreated)
-	_, err := rt.WaitForChanges(1, "/db/_changes", "", true)
-	assert.NoError(t, err)
+	require.NoError(t, rt.WaitForPendingChanges())
 
-	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, "val")
+	_, err := userXattrStore.WriteUserXattr(docKey, xattrKey, "val")
 	assert.NoError(t, err)
 
 	err = rt.WaitForCondition(func() bool {

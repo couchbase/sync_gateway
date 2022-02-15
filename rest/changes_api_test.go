@@ -949,8 +949,7 @@ func TestChangeWaiterExitOnChangesTermination(t *testing.T) {
 			if test.manualNotify {
 				resp = sendRequestFn(rt, test.username, http.MethodPut, "/db/doc2", `{"foo":"bar"}`)
 				assertStatus(t, resp, http.StatusCreated)
-				_, err := rt.WaitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
-				assert.NoError(t, err)
+				require.NoError(t, rt.WaitForPendingChanges())
 			}
 
 			// wait for zero
