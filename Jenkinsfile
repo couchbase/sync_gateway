@@ -46,7 +46,7 @@ pipeline {
                                 [ -d ~/.ssh ] || mkdir ~/.ssh && chmod 0700 ~/.ssh
                                 ssh-keyscan -t rsa,dsa github.com >> ~/.ssh/known_hosts
                             '''
-                            sh "go get -v ./..." 
+                            sh "go mod download"
                         }
                     }
                 }
