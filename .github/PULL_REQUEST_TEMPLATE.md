@@ -11,6 +11,5 @@ Describe your PR here...
 - [ ] Link upstream PRs
 - [ ] Bump manifest once merged
 
-## [Integration Tests](http://uberjenkins.sc.couchbase.com:8080/job/sync-gateway-integration/build?delay=0sec)
-- [ ] `xattrs=true` http://uberjenkins.sc.couchbase.com:8080/job/sync-gateway-integration/???/
-- [ ] `xattrs=false` http://uberjenkins.sc.couchbase.com:8080/job/sync-gateway-integration/???/
+## [Integration Tests](https://jenkins.sgwdev.com/job/SyncGateway-Integration/build?delay=0sec)
+- [ ] `xattrs=true` https://jenkins.sgwdev.com/job/SyncGateway-Integration/000/
