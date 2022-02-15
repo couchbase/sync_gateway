@@ -5,19 +5,14 @@ pipeline {
 
     environment {
         GOPATH = "${WORKSPACE}/godeps"
-        // TODO: GOTOOLS = "${WORKSPACE}/gotools"
+        GOTOOLS = "${WORKSPACE}/gotools"
         GOCACHE = "${WORKSPACE}/.gocache"
         BRANCH = "${BRANCH_NAME}"
         COVERALLS_TOKEN = credentials('SG_COVERALLS_TOKEN')
         EE_BUILD_TAG = "cb_sg_enterprise"
         SGW_REPO = "github.com/couchbase/sync_gateway"
         GH_ACCESS_TOKEN_CREDENTIAL = "github_cb-robot-sg_access_token"
-        GO111MODULE = "auto"
-    }
-
-    options {
-        // skip checkout until we have ssh keys
-        skipDefaultCheckout(true)
+        GO111MODULE = "off"
     }
 
     tools {
@@ -25,21 +20,8 @@ pipeline {
     }
 
     stages {
-
         stage('SCM') {
             steps {
-                // Clean before build
-                cleanWs()
-                // ssh
-                sshagent(credentials: ['CB SG Robot Github SSH Key']) {
-                    sh '''
-                        [ -d ~/.ssh ] || mkdir ~/.ssh && chmod 0700 ~/.ssh
-                        ssh-keyscan -t rsa,dsa github.com >> ~/.ssh/known_hosts
-                    '''
-                }
-                // explicitly checkout after ssh keys
-                checkout scm 
-                // SG_COMMIT is used on benchmark step
                 sh "git rev-parse HEAD > .git/commit-id"
                 script {
                     env.SG_COMMIT = readFile '.git/commit-id'
@@ -48,25 +30,56 @@ pipeline {
                         env.BRANCH = env.CHANGE_TARGET
                     }
                 }
-                // forces go to get private modules via ssh
-                sh 'git config --global url."git@github.com:".insteadOf "https://github.com/"'
+
+                // Make a hidden directory to move scm
+                // checkout into, we'll need a bit for later,
+                // but mostly rely on bootstrap.sh to get our code.
+                //
+                // TODO: We could probably change the implicit checkout
+                // to clone directly into a subdirectory instead?
+                sh 'mkdir .scm-checkout'
+                sh 'mv * .scm-checkout/'
             }
         }
+        stage('Setup') {
+            parallel {
+                stage('Bootstrap') {
+                    steps {
+                        sshagent(credentials: ['CB SG Robot Github SSH Key']) {
+                            echo "Bootstrapping commit ${SG_COMMIT}"
+                            sh 'cp .scm-checkout/bootstrap.sh .'
+                            sh 'chmod +x bootstrap.sh'
 
-        stage('Go Tools') {
-            steps {
-                withEnv(["PATH+GO=${GOPATH}/bin"]) {
-                    sh "go env"
-                    sh "go version"
-                    // unhandled error checker
-                    sh 'go install github.com/kisielk/errcheck@latest'
-                    // goveralls is used to send coverprofiles to coveralls.io
-                    sh 'go install github.com/mattn/goveralls@latest'
-                    // Jenkins coverage reporting tools
-                    sh 'go install github.com/axw/gocov/gocov@latest'
-                    sh 'go install github.com/AlekSi/gocov-xml@latest'
-                    // Jenkins test reporting tools
-                    sh 'go install github.com/tebeka/go2xunit@latest'
+                            sh '''
+                                [ -d ~/.ssh ] || mkdir ~/.ssh && chmod 0700 ~/.ssh
+                                ssh-keyscan -t rsa,dsa github.com >> ~/.ssh/known_hosts
+                                ./bootstrap.sh -e ee -c ${SG_COMMIT}
+                            '''
+
+                            
+                        }
+                    }
+                }
+                stage('Go') {
+                    stages {
+                        stage('Get Tools') {
+                            steps {
+                                withEnv(["PATH+GO=${GOPATH}/bin", "GOPATH=${GOTOOLS}"]) {
+                                    sh "go env"
+                                    sh "go version"
+                                    // unhandled error checker
+                                    sh 'go get -v -u github.com/kisielk/errcheck'
+                                    // goveralls is used to send coverprofiles to coveralls.io
+                                    sh 'go get -v -u github.com/mattn/goveralls'
+                                    // Jenkins coverage reporting tools
+                                    sh 'go get -v -u github.com/axw/gocov/...'
+                                    sh 'go get -v -u github.com/AlekSi/gocov-xml'
+                                    // Jenkins test reporting tools
+                                    sh 'go get -v -u github.com/tebeka/go2xunit'
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
