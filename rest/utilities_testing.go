@@ -36,7 +36,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
-	"golang.org/x/net/websocket"
 )
 
 // Testing utilities that have been included in the rest package so that they
@@ -993,20 +992,17 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 		return nil, err
 	}
 
-	origin := "http://localhost" // TODO: what should be used here?
-
-	config, err := websocket.NewConfig(u.String(), origin)
-	if err != nil {
-		return nil, err
+	config := blip.DialOptions{
+		URL: u.String(),
 	}
 
 	if len(spec.connectingUsername) > 0 {
-		config.Header = http.Header{
+		config.HTTPHeader = http.Header{
 			"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(spec.connectingUsername+":"+spec.connectingPassword))},
 		}
 	}
 
-	bt.sender, err = bt.blipContext.DialConfig(config)
+	bt.sender, err = bt.blipContext.DialConfig(&config)
 	if err != nil {
 		return nil, err
 	}
