@@ -15,31 +15,14 @@ pipeline {
         GO111MODULE = "auto"
     }
 
-    options {
-        // skip checkout until we have ssh keys
-        skipDefaultCheckout(true)
-    }
-
     tools {
         go '1.17.5'
+        // go 'Go 1.17.5 (SGW 3.1+)'
     }
 
     stages {
-
         stage('SCM') {
             steps {
-                // Clean before build
-                cleanWs()
-                // ssh
-                sshagent(credentials: ['CB SG Robot Github SSH Key']) {
-                    sh '''
-                        [ -d ~/.ssh ] || mkdir ~/.ssh && chmod 0700 ~/.ssh
-                        ssh-keyscan -t rsa,dsa github.com >> ~/.ssh/known_hosts
-                    '''
-                }
-                // explicitly checkout after ssh keys
-                checkout scm 
-                // SG_COMMIT is used on benchmark step
                 sh "git rev-parse HEAD > .git/commit-id"
                 script {
                     env.SG_COMMIT = readFile '.git/commit-id'
@@ -52,21 +35,35 @@ pipeline {
                 sh 'git config --global url."git@github.com:".insteadOf "https://github.com/"'
             }
         }
-
-        stage('Go Tools') {
-            steps {
-                withEnv(["PATH+GO=${GOPATH}/bin"]) {
-                    sh "go env"
-                    sh "go version"
-                    // unhandled error checker
-                    sh 'go install github.com/kisielk/errcheck@latest'
-                    // goveralls is used to send coverprofiles to coveralls.io
-                    sh 'go install github.com/mattn/goveralls@latest'
-                    // Jenkins coverage reporting tools
-                    sh 'go install github.com/axw/gocov/gocov@latest'
-                    sh 'go install github.com/AlekSi/gocov-xml@latest'
-                    // Jenkins test reporting tools
-                    sh 'go install github.com/tebeka/go2xunit@latest'
+        stage('Setup') {
+            stages {
+                stage('Get Modules') {
+                    steps {
+                        sh "go env"
+                        sh "go version"
+                        sshagent(credentials: ['CB SG Robot Github SSH Key']) {
+                            sh '''
+                                [ -d ~/.ssh ] || mkdir ~/.ssh && chmod 0700 ~/.ssh
+                                ssh-keyscan -t rsa,dsa github.com >> ~/.ssh/known_hosts
+                            '''
+                            sh "go get -v ./..." 
+                        }
+                    }
+                }
+                stage('Get Tools') {
+                    steps {
+                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
+                            // unhandled error checker
+                            sh 'go install github.com/kisielk/errcheck@latest'
+                            // goveralls is used to send coverprofiles to coveralls.io
+                            sh 'go install github.com/mattn/goveralls@latest'
+                            // Jenkins coverage reporting tools
+                            sh 'go install github.com/axw/gocov/gocov@latest'
+                            sh 'go install github.com/AlekSi/gocov-xml@latest'
+                            // Jenkins test reporting tools
+                            sh 'go install github.com/tebeka/go2xunit@latest'
+                        }
+                    }
                 }
             }
         }
