@@ -22,7 +22,7 @@ func TestMain(m *testing.M) {
 	teardownFuncs := make([]func(), 0)
 	teardownFuncs = append(teardownFuncs, base.SetUpGlobalTestLogging(m))
 	teardownFuncs = append(teardownFuncs, base.SetUpGlobalTestProfiling(m))
-	teardownFuncs = append(teardownFuncs, base.SetUpGlobalTestMemoryWatermark(m, 2048))
+	teardownFuncs = append(teardownFuncs, base.SetUpGlobalTestMemoryWatermark(m, 128))
 
 	base.SkipPrometheusStatsRegistration = true
 
