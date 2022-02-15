@@ -349,9 +349,9 @@ func SetUpGlobalTestMemoryWatermark(m *testing.M, memWatermarkThresholdMB uint64
 
 		if inuseHighWatermarkMB > float64(memWatermarkThresholdMB) {
 			// Exit during teardown to fail the suite if they exceeded the threshold
-			log.Fatalf("FATAL - Test: memory watermark %.2f MB exceeded threshold (%d MB)", inuseHighWatermarkMB, memWatermarkThresholdMB)
+			log.Fatalf("FATAL - TEST: Memory watermark %.2f MB exceeded threshold (%d MB)", inuseHighWatermarkMB, memWatermarkThresholdMB)
 		} else {
-			log.Printf("Test: memory watermark %.2f MB", inuseHighWatermarkMB)
+			log.Printf("TEST: Memory watermark %.2f MB", inuseHighWatermarkMB)
 		}
 	}
 }
