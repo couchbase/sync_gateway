@@ -308,10 +308,19 @@ func CreateProperty(size int) (result string) {
 // SetUpGlobalTestMemoryWatermark will periodically write an in-use memory watermark,
 // and will cause the tests to fail on teardown if the watermark has exceeded the threshold.
 func SetUpGlobalTestMemoryWatermark(m *testing.M, memWatermarkThresholdMB uint64) (teardownFn func()) {
+	sampleFrequency := time.Second * 5
+	if freq := os.Getenv("SG_TEST_PROFILE_FREQUENCY"); freq != "" {
+		var err error
+		sampleFrequency, err = time.ParseDuration(freq)
+		if err != nil {
+			log.Fatalf("profile frequency %q was not a valid duration: %v", freq, err)
+		} else if sampleFrequency == 0 {
+			// disabled
+			return func() {}
+		}
+	}
 
-	const checkFrequency = time.Second * 5
-
-	var inuseHighWatermarkMB float64
+	var inuseHighWaterMarkMB float64
 
 	ctx, ctxCancel := context.WithCancel(context.Background())
 	wg := sync.WaitGroup{}
@@ -320,25 +329,29 @@ func SetUpGlobalTestMemoryWatermark(m *testing.M, memWatermarkThresholdMB uint64
 	go func(ctx context.Context) {
 		defer wg.Done()
 
-		record := func() {
-			ms := runtime.MemStats{}
+		sampleFn := func() {
+			var ms runtime.MemStats
 			runtime.ReadMemStats(&ms)
-			totalInuseMB := float64(ms.HeapInuse+ms.StackInuse) / float64(1024*1024)
-			if totalInuseMB > inuseHighWatermarkMB {
-				inuseHighWatermarkMB = totalInuseMB
+			heapInuseMB := float64(ms.HeapInuse) / float64(1024*1024)
+			stackInuseMB := float64(ms.StackInuse) / float64(1024*1024)
+			totalInuseMB := heapInuseMB + stackInuseMB
+			// log.Printf("TEST: Memory usage recorded heap: %.2f MB stack: %.2f MB", heapInuseMB, stackInuseMB)
+			if totalInuseMB > inuseHighWaterMarkMB {
+				log.Printf("TEST: Memory high water mark increased to %.2f MB (heap: %.2f MB stack: %.2f MB)", totalInuseMB, heapInuseMB, stackInuseMB)
+				inuseHighWaterMarkMB = totalInuseMB
 			}
 		}
-		defer record() // grab one last reading just before we exit
 
-		t := time.NewTicker(checkFrequency)
+		t := time.NewTicker(sampleFrequency)
 		defer t.Stop()
 
 		for {
 			select {
 			case <-ctx.Done():
+				sampleFn() // one last reading just before we exit
 				return
 			case <-t.C:
-				record()
+				sampleFn()
 			}
 		}
 	}(ctx)
@@ -347,11 +360,11 @@ func SetUpGlobalTestMemoryWatermark(m *testing.M, memWatermarkThresholdMB uint64
 		ctxCancel()
 		wg.Wait()
 
-		if inuseHighWatermarkMB > float64(memWatermarkThresholdMB) {
+		if inuseHighWaterMarkMB > float64(memWatermarkThresholdMB) {
 			// Exit during teardown to fail the suite if they exceeded the threshold
-			log.Fatalf("FATAL - TEST: Memory watermark %.2f MB exceeded threshold (%d MB)", inuseHighWatermarkMB, memWatermarkThresholdMB)
+			log.Fatalf("FATAL - TEST: Memory high water mark %.2f MB exceeded threshold (%d MB)", inuseHighWaterMarkMB, memWatermarkThresholdMB)
 		} else {
-			log.Printf("TEST: Memory watermark %.2f MB", inuseHighWatermarkMB)
+			log.Printf("TEST: Memory high water mark %.2f MB", inuseHighWaterMarkMB)
 		}
 	}
 }
@@ -360,6 +373,14 @@ func SetUpGlobalTestMemoryWatermark(m *testing.M, memWatermarkThresholdMB uint64
 func SetUpGlobalTestProfiling(m *testing.M) (teardownFn func()) {
 	freq := os.Getenv("SG_TEST_PROFILE_FREQUENCY")
 	if freq == "" {
+		return func() {}
+	}
+
+	d, err := time.ParseDuration(freq)
+	if err != nil {
+		log.Fatalf("profile frequency %q was not a valid duration: %v", freq, err)
+	} else if d == 0 {
+		// disabled
 		return func() {}
 	}
 
@@ -372,13 +393,7 @@ func SetUpGlobalTestProfiling(m *testing.M) (teardownFn func()) {
 		// "mutex",
 	}
 
-	d, err := time.ParseDuration(freq)
-	if err != nil {
-		log.Fatalf("profile frequency %q was not a valid duration: %v", freq, err)
-	}
-
-	log.Printf("profiling test with frequency: %v", freq)
-
+	log.Printf("profiling tests for %v with frequency: %v", profiles, freq)
 	t := time.NewTicker(d)
 
 	go func() {
