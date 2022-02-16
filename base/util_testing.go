@@ -12,11 +12,13 @@ package base
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"math/rand"
 	"os"
+	"runtime"
 	"runtime/pprof"
 	"strconv"
 	"strings"
@@ -303,10 +305,82 @@ func CreateProperty(size int) (result string) {
 	return string(resultBytes)
 }
 
+// SetUpGlobalTestMemoryWatermark will periodically write an in-use memory watermark,
+// and will cause the tests to fail on teardown if the watermark has exceeded the threshold.
+func SetUpGlobalTestMemoryWatermark(m *testing.M, memWatermarkThresholdMB uint64) (teardownFn func()) {
+	sampleFrequency := time.Second * 5
+	if freq := os.Getenv("SG_TEST_PROFILE_FREQUENCY"); freq != "" {
+		var err error
+		sampleFrequency, err = time.ParseDuration(freq)
+		if err != nil {
+			log.Fatalf("profile frequency %q was not a valid duration: %v", freq, err)
+		} else if sampleFrequency == 0 {
+			// disabled
+			return func() {}
+		}
+	}
+
+	var inuseHighWaterMarkMB float64
+
+	ctx, ctxCancel := context.WithCancel(context.Background())
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
+	go func(ctx context.Context) {
+		defer wg.Done()
+
+		sampleFn := func() {
+			var ms runtime.MemStats
+			runtime.ReadMemStats(&ms)
+			heapInuseMB := float64(ms.HeapInuse) / float64(1024*1024)
+			stackInuseMB := float64(ms.StackInuse) / float64(1024*1024)
+			totalInuseMB := heapInuseMB + stackInuseMB
+			// log.Printf("TEST: Memory usage recorded heap: %.2f MB stack: %.2f MB", heapInuseMB, stackInuseMB)
+			if totalInuseMB > inuseHighWaterMarkMB {
+				log.Printf("TEST: Memory high water mark increased to %.2f MB (heap: %.2f MB stack: %.2f MB)", totalInuseMB, heapInuseMB, stackInuseMB)
+				inuseHighWaterMarkMB = totalInuseMB
+			}
+		}
+
+		t := time.NewTicker(sampleFrequency)
+		defer t.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				sampleFn() // one last reading just before we exit
+				return
+			case <-t.C:
+				sampleFn()
+			}
+		}
+	}(ctx)
+
+	return func() {
+		ctxCancel()
+		wg.Wait()
+
+		if inuseHighWaterMarkMB > float64(memWatermarkThresholdMB) {
+			// Exit during teardown to fail the suite if they exceeded the threshold
+			log.Fatalf("FATAL - TEST: Memory high water mark %.2f MB exceeded threshold (%d MB)", inuseHighWaterMarkMB, memWatermarkThresholdMB)
+		} else {
+			log.Printf("TEST: Memory high water mark %.2f MB", inuseHighWaterMarkMB)
+		}
+	}
+}
+
 // SetUpGlobalTestProfiling will cause a packages tests to periodically write a profiles to the package's directory.
 func SetUpGlobalTestProfiling(m *testing.M) (teardownFn func()) {
 	freq := os.Getenv("SG_TEST_PROFILE_FREQUENCY")
 	if freq == "" {
+		return func() {}
+	}
+
+	d, err := time.ParseDuration(freq)
+	if err != nil {
+		log.Fatalf("profile frequency %q was not a valid duration: %v", freq, err)
+	} else if d == 0 {
+		// disabled
 		return func() {}
 	}
 
@@ -319,13 +393,7 @@ func SetUpGlobalTestProfiling(m *testing.M) (teardownFn func()) {
 		// "mutex",
 	}
 
-	d, err := time.ParseDuration(freq)
-	if err != nil {
-		log.Fatalf("profile frequency %q was not a valid duration: %v", freq, err)
-	}
-
-	log.Printf("profiling test with frequency: %v", freq)
-
+	log.Printf("profiling tests for %v with frequency: %v", profiles, freq)
 	t := time.NewTicker(d)
 
 	go func() {
