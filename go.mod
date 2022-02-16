@@ -1,4 +1,4 @@
-module github.com/cbbruno/sync_gateway_mod
+module github.com/couchbase/sync_gateway
 
 go 1.17
 
@@ -13,7 +13,6 @@ require (
 	github.com/couchbase/gomemcached v0.1.4
 	github.com/couchbase/goutils v0.1.2
 	github.com/couchbase/sg-bucket v0.0.0-20211203000713-178bb7ca1abb
-	github.com/couchbase/sync_gateway v0.0.0-20220110182909-779f11a7c919
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f
 	github.com/couchbaselabs/go.assert v0.0.0-20130325201400-cfb33e3a0dac
 	github.com/couchbaselabs/walrus v0.0.0-20211203000748-fc018ef7de83
@@ -73,5 +72,3 @@ require (
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )
-
-replace github.com/couchbase/sync_gateway => ./

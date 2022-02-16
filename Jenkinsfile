@@ -30,6 +30,7 @@ pipeline {
                     if (env.CHANGE_TARGET) {
                         env.BRANCH = env.CHANGE_TARGET
                     }
+                    env.GOTOOLS = sh(returnStdout: true, script: 'go env GOPATH').trim()
                 }
                 // forces go to get private modules via ssh
                 sh 'git config --global url."git@github.com:".insteadOf "https://github.com/"'
@@ -204,8 +205,7 @@ pipeline {
                             when { anyOf { branch 'master'; branch 'CBG-1851' } }
                             steps{
                                 // Travis-related variables are required as coveralls.io only officially supports a certain set of CI tools.
-                                // TODO: withEnv(["PATH+GO=${GOPATH}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
-                                withEnv(["TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
+                                withEnv(["PATH+GO=${env.GOTOOLS}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: 'CE Unit Tests Running', status: 'PENDING')
 
                                     // Build CE coverprofiles
@@ -257,7 +257,7 @@ pipeline {
 
                         stage('EE') {
                             steps {
-                                // withEnv(["PATH+GO=${GOPATH}/bin"]) {
+                                withEnv(["PATH+GO=${env.GOTOOLS}/bin"]) {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: 'EE Unit Tests Running', status: 'PENDING')
 
                                     // Build EE coverprofiles
@@ -297,7 +297,7 @@ pipeline {
                                             unstable("At least one EE unit test failed")
                                         }
                                     }
-                                // }
+                                }
                             }
                         }
                     }
