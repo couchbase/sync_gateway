@@ -38,8 +38,8 @@ doBuild () {
     if [ "$1" = "EE" ]; then
         buildTags="-tags cb_sg_enterprise"
         binarySuffix=""
-        githutSshConfig=$( ( git config --global --list ; git config --system --list ) | grep -i "url.git@github.com:" | cat )
-        if [ -z "${githutSshConfig}" ]; then
+        githubSshConfig=$( ( git config --global --list ; git config --system --list ) | grep -i "url.git@github.com:" | cat )
+        if [ -z "${githubSshConfig}" ]; then
             git config --global url.git@github.com:couchbaselabs/go-fleecedelta.insteadOf https://github.com/couchbaselabs/go-fleecedelta
         fi
     fi

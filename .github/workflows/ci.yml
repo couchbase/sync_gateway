@@ -10,9 +10,14 @@ name: ci
 
 on:
   push:
-    branches: [ develop ]
+    branches: 
+      - 'master'
+      - 'release/*'
+      - 'CBG*'
   pull_request:
-    branches: [ develop ]
+    branches:
+      - 'master'
+      - 'release/*'
 
 jobs:
   build:
