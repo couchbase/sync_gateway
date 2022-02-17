@@ -177,8 +177,7 @@ pipeline {
                 stage('Unit') {
                     stages {
                         stage('CE') {
-                            // TODO: when { branch 'master' }
-                            when { anyOf { branch 'master'; branch 'CBG-1851' } }
+                            when { branch 'master' }
                             steps{
                                 // Travis-related variables are required as coveralls.io only officially supports a certain set of CI tools.
                                 withEnv(["PATH+GO=${env.GOTOOLS}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
@@ -314,8 +313,7 @@ pipeline {
                 stage('Integration') {
                     stages {
                         stage('Master') {
-                            // TODO: when { branch 'master' }
-                            when { anyOf { branch 'master'; branch 'CBG-1851' } }
+                            when { branch 'master' }
                             steps {
                                 echo 'Queueing Integration test for branch "master" ...'
                                 // Queues up an async integration test run using default build params (master branch),
@@ -345,8 +343,7 @@ pipeline {
             }
         }
         stage('Benchmarks'){
-            // TODO: when { branch 'master' }
-            when { anyOf { branch 'master'; branch 'CBG-1851' } }
+            when { branch 'master' }
             steps{
                 echo 'Queueing Benchmark Run test for branch "master" ...'
                 // TODO: Add this back with new system
