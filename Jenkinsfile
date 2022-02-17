@@ -28,15 +28,8 @@ pipeline {
                     }
                     env.GOTOOLS = sh(returnStdout: true, script: 'go env GOPATH').trim()
                 }
-
-                // Make a hidden directory to move scm
-                // checkout into, we'll need a bit for later,
-                // but mostly rely on bootstrap.sh to get our code.
-                //
-                // TODO: We could probably change the implicit checkout
-                // to clone directly into a subdirectory instead?
-                sh 'mkdir .scm-checkout'
-                sh 'mv * .scm-checkout/'
+                // forces go to get private modules via ssh
+                sh 'git config --global url."git@github.com:".insteadOf "https://github.com/"'
             }
         }
         stage('Setup') {
