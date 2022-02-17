@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 
 # Uncomment these if running locally
-export COUCHBASE_SERVER_ADDR=127.0.0.1
-export WORKSPACE=.
-export TARGET_PACKAGE="..."
-export RUN_COUNT=1
-export XATTRS=true
-export GSI=false
-export TARGET_TEST=ALL
-export SG_EDITION=EE
-export COUCHBASE_SERVER_PROTOCOL=couchbase
-export TLS_SKIP_VERIFY=true
-export SG_TEST_BUCKET_POOL_SIZE=3
-export PACKAGE_TIMEOUT=120m
-export DETECT_RACES=false
-export TEST_DEBUG=true
-export SG_TEST_PROFILE_FREQUENCY=""
+# export COUCHBASE_SERVER_ADDR=127.0.0.1
+# export WORKSPACE=.
+# export TARGET_PACKAGE="..."
+# export RUN_COUNT=1
+# export XATTRS=true
+# export GSI=false
+# export TARGET_TEST=ALL
+# export SG_EDITION=EE
+# export COUCHBASE_SERVER_PROTOCOL=couchbase
+# export TLS_SKIP_VERIFY=true
+# export SG_TEST_BUCKET_POOL_SIZE=3
+# export PACKAGE_TIMEOUT=120m
+# export DETECT_RACES=false
+# export TEST_DEBUG=true
+# export SG_TEST_PROFILE_FREQUENCY=""
 
 # Abort on errors
 set -e
