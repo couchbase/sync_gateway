@@ -5026,7 +5026,9 @@ func Benchmark_RestApiPutDocPerformanceDefaultSyncFunc(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		// PUT a new document until test run has completed
 		for pb.Next() {
-			prt.SendRequest("PUT", fmt.Sprintf("/db/doc-%v", base.GenerateRandomID()), threekdoc)
+			docid, err := base.GenerateRandomID()
+			require.NoError(b, err)
+			prt.SendRequest("PUT", fmt.Sprintf("/db/doc-%v", docid), threekdoc)
 		}
 	})
 }
@@ -5044,7 +5046,9 @@ func Benchmark_RestApiPutDocPerformanceExplicitSyncFunc(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		// PUT a new document until test run has completed
 		for pb.Next() {
-			qrt.SendRequest("PUT", fmt.Sprintf("/db/doc-%v", base.GenerateRandomID()), threekdoc)
+			docid, err := base.GenerateRandomID()
+			require.NoError(b, err)
+			qrt.SendRequest("PUT", fmt.Sprintf("/db/doc-%v", docid), threekdoc)
 		}
 	})
 }
@@ -5284,9 +5288,12 @@ func TestSessionFail(t *testing.T) {
 	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{"name":"user1", "password":"letmein", "admin_channels":["user1"]}`)
 	assertStatus(t, response, http.StatusCreated)
 
+	id, err := base.GenerateRandomSecret()
+	require.NoError(t, err)
+
 	// Create fake, invalid session
 	fakeSession := auth.LoginSession{
-		ID:         base.GenerateRandomSecret(),
+		ID:         id,
 		Username:   "user1",
 		Expiration: time.Now().Add(4 * time.Hour),
 		Ttl:        24 * time.Hour,

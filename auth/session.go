@@ -77,8 +77,13 @@ func (auth *Authenticator) CreateSession(username string, ttl time.Duration) (*L
 		return nil, base.HTTPErrorf(400, "Invalid session time-to-live")
 	}
 
+	secret, err := base.GenerateRandomSecret()
+	if err != nil {
+		return nil, err
+	}
+
 	session := &LoginSession{
-		ID:         base.GenerateRandomSecret(),
+		ID:         secret,
 		Username:   username,
 		Expiration: time.Now().Add(ttl),
 		Ttl:        ttl,

@@ -404,7 +404,7 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 		case GoCBv2:
 			bucket, err = GetCouchbaseCollection(spec)
 		default:
-			panic(fmt.Sprintf("Unexpected CouchbaseDriver: %v", spec.CouchbaseDriver))
+			return nil, fmt.Errorf("%w: unexpected CouchbaseDriver: %v", ErrFatalBucketConnection, spec.CouchbaseDriver)
 		}
 
 		if err != nil {

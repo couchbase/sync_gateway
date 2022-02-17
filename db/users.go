@@ -157,7 +157,10 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, newInfo Princip
 				changed = true
 			}
 			if newInfo.Password != nil {
-				user.SetPassword(*newInfo.Password)
+				err = user.SetPassword(*newInfo.Password)
+				if err != nil {
+					return false, err
+				}
 				changed = true
 			}
 			if newInfo.Disabled != nil && *newInfo.Disabled != user.Disabled() {

@@ -98,7 +98,7 @@ func TestConsoleShouldLog(t *testing.T) {
 			test.loggerLevel.StringShort(), test.loggerKeys,
 			test.logToLevel.StringShort(), test.logToKey)
 
-		l := newConsoleLoggerOrPanic(&ConsoleLoggerConfig{
+		l := mustInitConsoleLogger(&ConsoleLoggerConfig{
 			LogLevel: &test.loggerLevel,
 			LogKeys:  test.loggerKeys,
 			FileLoggerConfig: FileLoggerConfig{
@@ -119,7 +119,7 @@ func BenchmarkConsoleShouldLog(b *testing.B) {
 			test.loggerLevel.StringShort(), test.loggerKeys,
 			test.logToLevel.StringShort(), test.logToKey)
 
-		l := newConsoleLoggerOrPanic(&ConsoleLoggerConfig{
+		l := mustInitConsoleLogger(&ConsoleLoggerConfig{
 			LogLevel: &test.loggerLevel,
 			LogKeys:  test.loggerKeys,
 			FileLoggerConfig: FileLoggerConfig{

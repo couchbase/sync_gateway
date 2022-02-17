@@ -776,6 +776,7 @@ func getTranscoder(value interface{}) gocb.Transcoder {
 
 func (c *Collection) mgmtRequest(method, uri, contentType string, body io.Reader) (*http.Response, error) {
 	if contentType == "" && body != nil {
+		// TODO: CBG-1948
 		panic("Content-type must be specified for non-null body.")
 	}
 

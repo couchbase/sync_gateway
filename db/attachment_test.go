@@ -496,7 +496,8 @@ func TestGenerateProofOfAttachment(t *testing.T) {
 
 	attData := []byte(`hello world`)
 
-	nonce, proof1 := GenerateProofOfAttachment(attData)
+	nonce, proof1, err := GenerateProofOfAttachment(attData)
+	require.NoError(t, err)
 	assert.True(t, len(nonce) >= 20, "nonce should be at least 20 bytes")
 	assert.NotEmpty(t, proof1)
 	assert.True(t, strings.HasPrefix(proof1, "sha1-"))

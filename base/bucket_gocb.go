@@ -238,6 +238,7 @@ func (bucket *CouchbaseBucketGoCB) MaxTTL() (int, error) {
 // - Or add all of the neccesary APIs we need to use
 func (bucket *CouchbaseBucketGoCB) mgmtRequest(method, uri, contentType string, body io.Reader) (*http.Response, error) {
 	if contentType == "" && body != nil {
+		// TODO: CBG-1948
 		panic("Content-type must be specified for non-null body.")
 	}
 
@@ -987,6 +988,7 @@ func (bucket *CouchbaseBucketGoCB) Remove(k string, cas uint64) (casOut uint64, 
 }
 
 func (bucket *CouchbaseBucketGoCB) Write(k string, flags int, exp uint32, v interface{}, opt sgbucket.WriteOptions) error {
+	// TODO: CBG-1948
 	Panicf("Unimplemented method: Write()")
 	return nil
 }
@@ -1000,11 +1002,13 @@ func (bucket *CouchbaseBucketGoCB) WriteCas(k string, flags int, exp uint32, cas
 
 	// we only support the sgbucket.Raw WriteOption at this point
 	if opt != 0 && opt != sgbucket.Raw {
+		// TODO: CBG-1948
 		Panicf("WriteOption must be empty or sgbucket.Raw")
 	}
 
 	// also, flags must be 0, since that is not supported by gocb
 	if flags != 0 {
+		// TODO: CBG-1948
 		Panicf("flags must be 0")
 	}
 

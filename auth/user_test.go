@@ -337,7 +337,8 @@ func TestUserAuthenticateWithBadPasswordHash(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, user)
 
-	user.SetPassword("hunter3")
+	err = user.SetPassword("hunter3")
+	require.NoError(t, err)
 	assert.False(t, user.Authenticate(password))
 }
 

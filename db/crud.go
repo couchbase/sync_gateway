@@ -2104,7 +2104,10 @@ func (db *Database) Post(body Body) (string, string, *Document, error) {
 	// If there's an incoming _id property, use that as the doc ID.
 	docid, idFound := body[BodyId].(string)
 	if !idFound {
-		docid = base.GenerateRandomID()
+		docid, err := base.GenerateRandomID()
+		if err != nil {
+			return docid, "", nil, err
+		}
 	}
 
 	rev, doc, err := db.Put(docid, body)

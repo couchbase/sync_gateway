@@ -90,7 +90,11 @@ func (auth *Authenticator) NewUser(username string, password string, channels ba
 		return nil, err
 	}
 
-	user.SetPassword(password)
+	err := user.SetPassword(password)
+	if err != nil {
+		return nil, err
+	}
+
 	return user, nil
 }
 
@@ -440,16 +444,17 @@ func (user *userImpl) Authenticate(password string) bool {
 }
 
 // Changes a user's password to the given string.
-func (user *userImpl) SetPassword(password string) {
+func (user *userImpl) SetPassword(password string) error {
 	if password == "" {
 		user.PasswordHash_ = nil
 	} else {
 		hash, err := bcrypt.GenerateFromPassword([]byte(password), user.auth.BcryptCost)
 		if err != nil {
-			panic(fmt.Sprintf("Error hashing password: %v", err))
+			return fmt.Errorf("error hashing password: %w", err)
 		}
 		user.PasswordHash_ = hash
 	}
+	return nil
 }
 
 // ////// CHANNEL ACCESS:
