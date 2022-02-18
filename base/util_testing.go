@@ -313,7 +313,7 @@ func SetUpGlobalTestMemoryWatermark(m *testing.M, memWatermarkThresholdMB uint64
 		var err error
 		sampleFrequency, err = time.ParseDuration(freq)
 		if err != nil {
-			log.Fatalf("profile frequency %q was not a valid duration: %v", freq, err)
+			log.Fatalf("TEST: profile frequency %q was not a valid duration: %v", freq, err)
 		} else if sampleFrequency == 0 {
 			// disabled
 			return func() {}
@@ -378,7 +378,7 @@ func SetUpGlobalTestProfiling(m *testing.M) (teardownFn func()) {
 
 	d, err := time.ParseDuration(freq)
 	if err != nil {
-		log.Fatalf("profile frequency %q was not a valid duration: %v", freq, err)
+		log.Fatalf("TEST: profile frequency %q was not a valid duration: %v", freq, err)
 	} else if d == 0 {
 		// disabled
 		return func() {}
@@ -393,35 +393,52 @@ func SetUpGlobalTestProfiling(m *testing.M) (teardownFn func()) {
 		// "mutex",
 	}
 
-	log.Printf("profiling tests for %v with frequency: %v", profiles, freq)
-	t := time.NewTicker(d)
+	log.Printf("TEST: profiling for %v with frequency: %v", profiles, freq)
 
-	go func() {
-		for {
-			select {
-			case <-t.C:
-				for _, profile := range profiles {
-					filename := fmt.Sprintf("test-pprof-%s-%d.pb.gz", profile, time.Now().Unix())
-					f, err := os.Create(filename)
-					if err != nil {
-						log.Fatalf("couldn't open pprof %s file: %v", profile, err)
-					}
-					err = pprof.Lookup(profile).WriteTo(f, 0)
-					if err != nil {
-						log.Fatalf("couldn't write pprof %s file: %v", profile, err)
-					}
-					err = f.Close()
-					if err != nil {
-						log.Fatalf("couldn't close pprof %s file: %v", profile, err)
-					}
-					log.Printf("test %s profile written to: %v", profile, filename)
+	ctx, ctxCancel := context.WithCancel(context.Background())
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
+	go func(ctx context.Context) {
+		defer wg.Done()
+
+		sampleFn := func() {
+			timestamp := time.Now().Unix()
+			for _, profile := range profiles {
+				filename := fmt.Sprintf("test-pprof-%s-%d.pb.gz", profile, timestamp)
+				f, err := os.Create(filename)
+				if err != nil {
+					log.Fatalf("TEST: couldn't open pprof %s file: %v", profile, err)
 				}
+				err = pprof.Lookup(profile).WriteTo(f, 0)
+				if err != nil {
+					log.Fatalf("TEST: couldn't write pprof %s file: %v", profile, err)
+				}
+				err = f.Close()
+				if err != nil {
+					log.Fatalf("TEST: couldn't close pprof %s file: %v", profile, err)
+				}
+				log.Printf("TEST: %s profile written to: %v", profile, filename)
 			}
 		}
-	}()
+
+		t := time.NewTicker(d)
+		defer t.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				sampleFn() // one last reading just before we exit
+				return
+			case <-t.C:
+				sampleFn()
+			}
+		}
+	}(ctx)
 
 	return func() {
-		t.Stop()
+		ctxCancel()
+		wg.Wait()
 	}
 }
 
@@ -434,7 +451,7 @@ func SetUpGlobalTestLogging(m *testing.M) (teardownFn func()) {
 		var l LogLevel
 		err := l.UnmarshalText([]byte(logLevel))
 		if err != nil {
-			Fatalf("Invalid log level used for %q: %s", TestEnvGlobalLogLevel, err)
+			Fatalf("TEST: Invalid log level used for %q: %s", TestEnvGlobalLogLevel, err)
 		}
 		teardown := SetUpTestLogging(l, KeyAll)
 		GlobalTestLoggingSet.Set(true)
