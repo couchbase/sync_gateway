@@ -9,92 +9,70 @@
 name: ci
 
 on:
+  push:
+    branches: 
+      - 'master'
+      - 'release/*'
+      - 'CBG*'
   pull_request:
     branches:
       - 'master'
       - 'release/*'
 
 jobs:
-  run-bootstrap:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/cache@v1
-        with:
-          path: ${{ github.workspace }}/godeps
-          key: sgw-bootstrap-cache-${{ github.event.pull_request.head.sha }}
-      - name: Bootstrap
-        run: |
-          wget https://raw.githubusercontent.com/couchbase/sync_gateway/master/bootstrap.sh
-          chmod +x bootstrap.sh
-          ./bootstrap.sh -c ${{ github.event.pull_request.head.sha }}
-
-  static-analysis:
-    needs: run-bootstrap
-    env:
-      GO111MODULE: off
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/cache@v1
-        with:
-          path: ${{ github.workspace }}/godeps
-          key: sgw-bootstrap-cache-${{ github.event.pull_request.head.sha }}
-      - uses: actions/setup-go@v2
+      - name: setup-go
+        uses: actions/setup-go@v2
         with:
           go-version: 1.17.5
-      - name: Set GOPATH
-        run: echo "GOPATH=$GITHUB_WORKSPACE/godeps" >> $GITHUB_ENV
-      - name: build
-        run: go build -v github.com/couchbase/sync_gateway
+      - name: checkout
+        uses: actions/checkout@v2
       - name: gofmt
         run: |
-          gofmt -d -e ${GOPATH}/src/github.com/couchbase/sync_gateway | tee gofmt.out
+          gofmt -d -e . | tee gofmt.out
           test -z "$(cat gofmt.out)"
       - name: vet
-        run: go vet github.com/couchbase/sync_gateway/...
+        run: go vet "./..."
+      - name: go-build
+        run: go build "./..."
 
   test:
-    needs: run-bootstrap
-    env:
-      GO111MODULE: off
+    needs: build
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            set-gopath: echo "GOPATH=$GITHUB_WORKSPACE/godeps" >> $GITHUB_ENV
-          - os: macos-latest
-            set-gopath: echo "GOPATH=$GITHUB_WORKSPACE/godeps" >> $GITHUB_ENV
-          - os: windows-latest
-            set-gopath: echo "GOPATH=$Env:GITHUB_WORKSPACE\godeps" >> $Env:GITHUB_ENV
-    name: test (${{ matrix.os }})
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    env:
+      GOPRIVATE: github.com/couchbaselabs
+      MallocNanoZone: 0
     steps:
-      - uses: actions/cache@v1
-        with:
-          path: ${{ github.workspace }}/godeps
-          key: sgw-bootstrap-cache-${{ github.event.pull_request.head.sha }}
-      - uses: actions/setup-go@v2
+      - name: setup-go
+        uses: actions/setup-go@v2
         with:
           go-version: 1.17.5
-      - name: Set GOPATH
-        run: ${{ matrix.set-gopath }}
-      - name: 'test'
-        run: go test -timeout=30m -count=1 -v github.com/couchbase/sync_gateway/...
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: Build
+        run: go build -v "./..."
+      - name: Test 
+        run: go test -timeout=30m -count=1 -v "./..."
 
   test-race:
-    needs: run-bootstrap
-    env:
-      GO111MODULE: off
+    needs: build
     runs-on: ubuntu-latest
+    env:
+      GOPRIVATE: github.com/couchbaselabs
     steps:
-      - uses: actions/cache@v1
-        with:
-          path: ${{ github.workspace }}/godeps
-          key: sgw-bootstrap-cache-${{ github.event.pull_request.head.sha }}
-      - uses: actions/setup-go@v2
+      - name: setup-go
+        uses: actions/setup-go@v2
         with:
           go-version: 1.17.5
-      - name: Set GOPATH
-        run: echo "GOPATH=$GITHUB_WORKSPACE/godeps" >> $GITHUB_ENV
-      - name: 'test -race'
-        run: go test -race -timeout=30m -count=1 -v github.com/couchbase/sync_gateway/...
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: Build
+        run: go build -v "./..."
+      - name: Test 
+        run: go test -race -timeout=30m -count=1 -v "./..."

@@ -4,15 +4,12 @@ pipeline {
     agent { label 'sgw-pipeline-ec2' }
 
     environment {
-        GOPATH = "${WORKSPACE}/godeps"
-        GOTOOLS = "${WORKSPACE}/gotools"
-        GOCACHE = "${WORKSPACE}/.gocache"
         BRANCH = "${BRANCH_NAME}"
         COVERALLS_TOKEN = credentials('SG_COVERALLS_TOKEN')
         EE_BUILD_TAG = "cb_sg_enterprise"
         SGW_REPO = "github.com/couchbase/sync_gateway"
         GH_ACCESS_TOKEN_CREDENTIAL = "github_cb-robot-sg_access_token"
-        GO111MODULE = "off"
+        GO111MODULE = "on"
     }
 
     tools {
@@ -29,56 +26,39 @@ pipeline {
                     if (env.CHANGE_TARGET) {
                         env.BRANCH = env.CHANGE_TARGET
                     }
+                    env.GOTOOLS = sh(returnStdout: true, script: 'go env GOPATH').trim()
                 }
-
-                // Make a hidden directory to move scm
-                // checkout into, we'll need a bit for later,
-                // but mostly rely on bootstrap.sh to get our code.
-                //
-                // TODO: We could probably change the implicit checkout
-                // to clone directly into a subdirectory instead?
-                sh 'mkdir .scm-checkout'
-                sh 'mv * .scm-checkout/'
+                // forces go to get private modules via ssh
+                sh 'git config --global url."git@github.com:".insteadOf "https://github.com/"'
             }
         }
         stage('Setup') {
-            parallel {
-                stage('Bootstrap') {
+            stages {
+                stage('Go Modules') {
                     steps {
+                        sh "which go"
+                        sh "go version"
+                        sh "go env"
                         sshagent(credentials: ['CB SG Robot Github SSH Key']) {
-                            echo "Bootstrapping commit ${SG_COMMIT}"
-                            sh 'cp .scm-checkout/bootstrap.sh .'
-                            sh 'chmod +x bootstrap.sh'
-
                             sh '''
                                 [ -d ~/.ssh ] || mkdir ~/.ssh && chmod 0700 ~/.ssh
                                 ssh-keyscan -t rsa,dsa github.com >> ~/.ssh/known_hosts
-                                ./bootstrap.sh -e ee -c ${SG_COMMIT}
                             '''
-
-                            
+                            sh "go get -v -tags ${EE_BUILD_TAG} ./..."
                         }
                     }
                 }
-                stage('Go') {
-                    stages {
-                        stage('Get Tools') {
-                            steps {
-                                withEnv(["PATH+GO=${GOPATH}/bin", "GOPATH=${GOTOOLS}"]) {
-                                    sh "go env"
-                                    sh "go version"
-                                    // unhandled error checker
-                                    sh 'go get -v -u github.com/kisielk/errcheck'
-                                    // goveralls is used to send coverprofiles to coveralls.io
-                                    sh 'go get -v -u github.com/mattn/goveralls'
-                                    // Jenkins coverage reporting tools
-                                    sh 'go get -v -u github.com/axw/gocov/...'
-                                    sh 'go get -v -u github.com/AlekSi/gocov-xml'
-                                    // Jenkins test reporting tools
-                                    sh 'go get -v -u github.com/tebeka/go2xunit'
-                                }
-                            }
-                        }
+                stage('Go Tools') {
+                    steps {
+                        // unhandled error checker
+                        sh 'go install github.com/kisielk/errcheck@latest'
+                        // goveralls is used to send coverprofiles to coveralls.io
+                        sh 'go install github.com/mattn/goveralls@latest'
+                        // Jenkins coverage reporting tools
+                        sh 'go install github.com/axw/gocov/gocov@latest'
+                        sh 'go install github.com/AlekSi/gocov-xml@latest'
+                        // Jenkins test reporting tools
+                        sh 'go install github.com/tebeka/go2xunit@latest'
                     }
                 }
             }
@@ -88,16 +68,12 @@ pipeline {
             parallel {
                 stage('CE Linux') {
                     steps {
-                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
-                            sh "GOOS=linux go build -o sync_gateway_ce-linux -v ${SGW_REPO}"
-                        }
+                        sh "GOOS=linux go build -o sync_gateway_ce-linux -v ${SGW_REPO}"
                     }
                 }
                 stage('EE Linux') {
                     steps {
-                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
-                            sh "GOOS=linux go build -o sync_gateway_ee-linux -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
-                        }
+                        sh "GOOS=linux go build -o sync_gateway_ee-linux -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
                     }
                 }
                 stage('CE macOS') {
@@ -122,23 +98,17 @@ pipeline {
                 }
                 stage('CE Windows') {
                     steps {
-                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
-                            sh "GOOS=windows go build -o sync_gateway_ce-windows -v ${SGW_REPO}"
-                        }
+                        sh "GOOS=windows go build -o sync_gateway_ce-windows -v ${SGW_REPO}"
                     }
                 }
                 stage('EE Windows') {
                     steps {
-                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
-                            sh "GOOS=windows go build -o sync_gateway_ee-windows -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
-                        }
+                        sh "GOOS=windows go build -o sync_gateway_ee-windows -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
                     }
                 }
                 stage('Windows Service') {
                     steps {
-                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
-                            sh "GOOS=windows go build -o sync_gateway_ce-windows-service -v ${SGW_REPO}/service/sg-windows/sg-service"
-                        }
+                        sh "GOOS=windows go build -o sync_gateway_ce-windows-service -v ${SGW_REPO}/service/sg-windows/sg-service"
                     }
                 }
             }
@@ -148,61 +118,53 @@ pipeline {
             parallel {
                 stage('gofmt') {
                     steps {
-                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
-                            script {
-                                try {
-                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'Running', status: 'PENDING')
-                                    sh "gofmt -d -e ${GOPATH}/src/${SGW_REPO} | tee gofmt.out"
-                                    sh "test -z \"\$(cat gofmt.out)\""
-                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'OK', status: 'SUCCESS')
-                                } catch (Exception e) {
-                                    sh "wc -l < gofmt.out | awk '{printf \$1}' > gofmt.count"
-                                    script {
-                                        env.GOFMT_COUNT = readFile 'gofmt.count'
-                                    }
-                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: "found "+env.GOFMT_COUNT+" problems", status: 'FAILURE')
-                                    unstable("gofmt failed")
+                        script {
+                            try {
+                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'Running', status: 'PENDING')
+                                sh "gofmt -d -e . | tee gofmt.out"
+                                sh "test -z \"\$(cat gofmt.out)\""
+                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'OK', status: 'SUCCESS')
+                            } catch (Exception e) {
+                                sh "wc -l < gofmt.out | awk '{printf \$1}' > gofmt.count"
+                                script {
+                                    env.GOFMT_COUNT = readFile 'gofmt.count'
                                 }
+                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: "found "+env.GOFMT_COUNT+" problems", status: 'FAILURE')
+                                unstable("gofmt failed")
                             }
                         }
                     }
                 }
                 stage('go vet') {
                     steps {
-                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
-                            warnError(message: "go vet failed") {
-                                sh "go vet ${SGW_REPO}/..."
-                            }
+                        warnError(message: "go vet failed") {
+                            sh "go vet -tags ${EE_BUILD_TAG} ./..."
                         }
                     }
                 }
                 stage('go fix') {
                     steps {
-                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
-                            warnError(message: "go fix failed") {
-                                sh "go tool fix -diff ${GOPATH}/src/${SGW_REPO} | tee gofix.out"
-                                sh "test -z \"\$(cat gofix.out)\""
-                            }
+                        warnError(message: "go fix failed") {
+                            sh "go tool fix -diff . | tee gofix.out"
+                            sh "test -z \"\$(cat gofix.out)\""
                         }
                     }
                 }
                 stage('errcheck') {
                     steps {
-                        withEnv(["PATH+GO=${GOPATH}/bin", "PATH+=${GOTOOLS}/bin"]) {
-                            script {
-                                try {
-                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'Running', status: 'PENDING')
-                                    sh "errcheck ${SGW_REPO}/... | tee errcheck.out"
-                                    sh "test -z \"\$(cat errcheck.out)\""
-                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'OK', status: 'SUCCESS')
-                                } catch (Exception e) {
-                                    sh "wc -l < errcheck.out | awk '{printf \$1}' > errcheck.count"
-                                    script {
-                                        env.ERRCHECK_COUNT = readFile 'errcheck.count'
-                                    }
-                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: "found "+env.ERRCHECK_COUNT+" unhandled errors", status: 'FAILURE')
-                                    unstable("errcheck failed")
+                        script {
+                            try {
+                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'Running', status: 'PENDING')
+                                sh "errcheck ./... | tee errcheck.out"
+                                sh "test -z \"\$(cat errcheck.out)\""
+                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'OK', status: 'SUCCESS')
+                            } catch (Exception e) {
+                                sh "wc -l < errcheck.out | awk '{printf \$1}' > errcheck.count"
+                                script {
+                                    env.ERRCHECK_COUNT = readFile 'errcheck.count'
                                 }
+                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: "found "+env.ERRCHECK_COUNT+" unhandled errors", status: 'FAILURE')
+                                unstable("errcheck failed")
                             }
                         }
                     }
@@ -218,11 +180,11 @@ pipeline {
                             when { branch 'master' }
                             steps{
                                 // Travis-related variables are required as coveralls.io only officially supports a certain set of CI tools.
-                                withEnv(["PATH+GO=${GOPATH}/bin", "PATH+=${GOTOOLS}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
+                                withEnv(["PATH+GO=${env.GOTOOLS}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: 'CE Unit Tests Running', status: 'PENDING')
 
                                     // Build CE coverprofiles
-                                    sh '2>&1 go test -timeout=20m -coverpkg=${SGW_REPO}/... -coverprofile=cover_ce.out -race -count=1 -v ${SGW_REPO}/... > verbose_ce.out.raw || true'
+                                    sh '2>&1 go test -timeout=20m -coverpkg=./... -coverprofile=cover_ce.out -race -count=1 -v ./... > verbose_ce.out.raw || true'
 
                                     // Print total coverage stats
                                     sh 'go tool cover -func=cover_ce.out | awk \'END{print "Total SG CE Coverage: " $3}\''
@@ -270,11 +232,11 @@ pipeline {
 
                         stage('EE') {
                             steps {
-                                withEnv(["PATH+GO=${GOPATH}/bin", "PATH+=${GOTOOLS}/bin"]) {
+                                withEnv(["PATH+GO=${env.GOTOOLS}/bin"]) {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: 'EE Unit Tests Running', status: 'PENDING')
 
                                     // Build EE coverprofiles
-                                    sh "2>&1 go test -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=${SGW_REPO}/... -coverprofile=cover_ee.out -race -count=1 -v ${SGW_REPO}/... > verbose_ee.out.raw || true"
+                                    sh "2>&1 go test -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=./... -coverprofile=cover_ee.out -race -count=1 -v ./... > verbose_ee.out.raw || true"
 
                                     sh 'go tool cover -func=cover_ee.out | awk \'END{print "Total SG EE Coverage: " $3}\''
 
@@ -399,9 +361,7 @@ pipeline {
             junit allowEmptyResults: true, testResults: 'reports/test-*.xml'
 
             step([$class: 'WsCleanup'])
-            withEnv(["PATH+GO=${GOPATH}/bin", "GOPATH=${GOPATH}"]) {
-                sh "go clean -cache"
-            }
+            sh "go clean -cache"
         }
         unstable {
             // archive non-verbose outputs upon failure for inspection (each verbose output is conditionally archived on stage failure)
