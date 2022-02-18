@@ -135,18 +135,24 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 
 	err = tbp.removeOldTestBuckets()
 	if err != nil {
-		Fatalf("Couldn't remove old test buckets: %v", err)
+		tbp.Fatalf(ctx, "Couldn't remove old test buckets: %v", err)
 	}
 
 	// Make sure the test buckets are created and put into the readier worker queue
 	start := time.Now()
 	if err := tbp.createTestBuckets(numBuckets, tbpBucketQuotaMB(), bucketInitFunc); err != nil {
-		Fatalf("Couldn't create test buckets: %v", err)
+		tbp.Fatalf(ctx, "Couldn't create test buckets: %v", err)
 	}
 	atomic.AddInt64(&tbp.stats.TotalBucketInitDurationNano, time.Since(start).Nanoseconds())
 	atomic.AddInt32(&tbp.stats.TotalBucketInitCount, int32(numBuckets))
 
 	return &tbp
+}
+
+// Fatalf logs and exits.
+func (tbp *TestBucketPool) Fatalf(ctx context.Context, format string, args ...interface{}) {
+	format = addPrefixes(format, ctx, LevelNone, KeySGTest)
+	FatalfCtx(ctx, format, args...)
 }
 
 // Logf formats the given test bucket logging and logs to stderr.
@@ -204,19 +210,19 @@ func (tbp *TestBucketPool) checkForViewOpsQueueEmptied(ctx context.Context, buck
 		}
 		return false, nil, nil
 	}, CreateSleeperFunc(90, 1000)); err != nil {
-		FatalfCtx(ctx, "View op queue check failed: %v", err)
+		tbp.Fatalf(ctx, "View op queue check failed: %v", err)
 	}
 }
 
 func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Bucket, s BucketSpec, teardown func()) {
 	testCtx := TestCtx(t)
 	if !UnitTestUrlIsWalrus() {
-		FatalfCtx(testCtx, "nil TestBucketPool, but not using a Walrus test URL")
+		tbp.Fatalf(testCtx, "nil TestBucketPool, but not using a Walrus test URL")
 	}
 
 	walrusBucket, err := walrus.GetBucket(url, DefaultPool, tbpBucketNamePrefix+"walrus_"+GenerateRandomID())
 	if err != nil {
-		FatalfCtx(testCtx, "couldn't get walrus bucket: %v", err)
+		tbp.Fatalf(testCtx, "couldn't get walrus bucket: %v", err)
 	}
 
 	// Wrap Walrus buckets with a leaky bucket to support vbucket IDs on feed.
@@ -228,7 +234,7 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 	initFuncStart := time.Now()
 	err = tbp.bucketInitFunc(ctx, b, tbp)
 	if err != nil {
-		FatalfCtx(ctx, "couldn't run bucket init func: %v", err)
+		tbp.Fatalf(ctx, "couldn't run bucket init func: %v", err)
 	}
 	atomic.AddInt32(&tbp.stats.TotalBucketInitCount, 1)
 	atomic.AddInt64(&tbp.stats.TotalBucketInitDurationNano, time.Since(initFuncStart).Nanoseconds())
@@ -281,7 +287,7 @@ func (tbp *TestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s Bucke
 	case bucket = <-tbp.readyBucketPool:
 	case <-time.After(waitForReadyBucketTimeout):
 		tbp.Logf(ctx, "Timed out after %s waiting for a bucket to become available.", waitForReadyBucketTimeout)
-		t.Fatalf("Timed out after %s waiting for a bucket to become available.", waitForReadyBucketTimeout)
+		t.Fatalf("TEST: Timed out after %s waiting for a bucket to become available.", waitForReadyBucketTimeout)
 	}
 	atomic.AddInt64(&tbp.stats.TotalWaitingForReadyBucketNano, time.Since(waitingBucketStart).Nanoseconds())
 	ctx = bucketCtx(ctx, bucket)
@@ -461,12 +467,12 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, 
 			tbp.Logf(ctx, "Creating new test bucket")
 			err := tbp.cluster.insertBucket(bucketName, bucketQuotaMB)
 			if err != nil {
-				FatalfCtx(ctx, "Couldn't create test bucket: %v", err)
+				tbp.Fatalf(ctx, "Couldn't create test bucket: %v", err)
 			}
 
 			b, err := tbp.cluster.openTestBucket(tbpBucketName(bucketName), 10*numBuckets)
 			if err != nil {
-				FatalfCtx(ctx, "Timed out trying to open new bucket: %v", err)
+				tbp.Fatalf(ctx, "Timed out trying to open new bucket: %v", err)
 			}
 			openBucketsLock.Lock()
 			openBuckets[bucketName] = b
@@ -474,16 +480,16 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, 
 
 			n1qlStore, ok := AsN1QLStore(b)
 			if !ok {
-				Fatalf("Couldn't remove old prepared statements: %v", err)
+				tbp.Fatalf(ctx, "Couldn't remove old prepared statements: %v", err)
 			}
 			queryRes, err := n1qlStore.Query(`DELETE FROM system:prepareds WHERE statement LIKE "%`+KeyspaceQueryToken+`%";`, nil, RequestPlus, true)
 			if err != nil {
-				Fatalf("Couldn't remove old prepared statements: %v", err)
+				tbp.Fatalf(ctx, "Couldn't remove old prepared statements: %v", err)
 			}
 
 			err = queryRes.Close()
 			if err != nil {
-				Fatalf("Failed to close query: %v", err)
+				tbp.Fatalf(ctx, "Failed to close query: %v", err)
 			}
 
 			wg.Done()
@@ -510,7 +516,7 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, 
 			}
 			return false, nil, nil
 		}, CreateSleeperFunc(5, 1000)); err != nil {
-			FatalfCtx(ctx, "Couldn't init bucket, got error: %v - Aborting", err)
+			tbp.Fatalf(ctx, "Couldn't init bucket, got error: %v - Aborting", err)
 		}
 
 		b.Close()
