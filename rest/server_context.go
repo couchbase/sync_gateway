@@ -822,7 +822,7 @@ func (sc *ServerContext) TakeDbOnline(database *db.DatabaseContext) {
 	if atomic.CompareAndSwapUint32(&database.State, db.DBOffline, db.DBStarting) {
 		reloadedDb, err := sc.ReloadDatabase(database.Name)
 		if err != nil {
-			base.Errorf("Error reloading database from config: %v", err)
+			base.ErrorfCtx(context.TODO(), "Error reloading database from config: %v", err)
 			return
 		}
 

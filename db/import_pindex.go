@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -61,7 +62,7 @@ func NewImportPIndexImpl(indexType, indexParams, path string, restart func()) (c
 
 	importDest, err := getListenerImportDest(indexParams)
 	if err != nil {
-		base.Errorf("Error creating NewImportDest during NewImportPIndexImpl: %v", err)
+		base.ErrorfCtx(context.TODO(), "Error creating NewImportDest during NewImportPIndexImpl: %v", err)
 	}
 	return nil, importDest, err
 }

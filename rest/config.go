@@ -10,6 +10,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -924,7 +925,7 @@ func SetMaxFileDescriptors(maxP *uint64) error {
 	}
 	_, err := base.SetMaxFileDescriptors(maxFDs)
 	if err != nil {
-		base.Errorf("Error setting MaxFileDescriptors to %d: %v", maxFDs, err)
+		base.ErrorfCtx(context.Background(), "Error setting MaxFileDescriptors to %d: %v", maxFDs, err)
 		return err
 	}
 	return nil
@@ -1203,7 +1204,7 @@ func (sc *ServerContext) _applyConfigs(dbNameConfigs map[string]DatabaseConfig) 
 	for dbName, cnf := range dbNameConfigs {
 		applied, err := sc._applyConfig(cnf, false)
 		if err != nil {
-			base.Errorf("Couldn't apply config for database %q: %v", base.MD(dbName), err)
+			base.ErrorfCtx(context.Background(), "Couldn't apply config for database %q: %v", base.MD(dbName), err)
 			continue
 		}
 		if applied {
@@ -1277,24 +1278,24 @@ func (sc *ServerContext) addLegacyPrincipals(legacyDbUsers, legacyDbRoles map[st
 	for dbName, dbUser := range legacyDbUsers {
 		dbCtx, err := sc.GetDatabase(dbName)
 		if err != nil {
-			base.Errorf("Couldn't get database context to install user principles: %v", err)
+			base.ErrorfCtx(context.Background(), "Couldn't get database context to install user principles: %v", err)
 			continue
 		}
 		err = sc.installPrincipals(dbCtx, dbUser, "user")
 		if err != nil {
-			base.Errorf("Couldn't install user principles: %v", err)
+			base.ErrorfCtx(context.Background(), "Couldn't install user principles: %v", err)
 		}
 	}
 
 	for dbName, dbRole := range legacyDbRoles {
 		dbCtx, err := sc.GetDatabase(dbName)
 		if err != nil {
-			base.Errorf("Couldn't get database context to install role principles: %v", err)
+			base.ErrorfCtx(context.Background(), "Couldn't get database context to install role principles: %v", err)
 			continue
 		}
 		err = sc.installPrincipals(dbCtx, dbRole, "role")
 		if err != nil {
-			base.Errorf("Couldn't install role principles: %v", err)
+			base.ErrorfCtx(context.Background(), "Couldn't install role principles: %v", err)
 		}
 	}
 }
@@ -1314,14 +1315,14 @@ func startServer(config *StartupConfig, sc *ServerContext) error {
 	base.Consolef(base.LevelInfo, base.KeyAll, "Starting metrics server on %s", config.API.MetricsInterface)
 	go func() {
 		if err := sc.Serve(config, config.API.MetricsInterface, CreateMetricHandler(sc)); err != nil {
-			base.Errorf("Error serving the Metrics API: %v", err)
+			base.ErrorfCtx(context.TODO(), "Error serving the Metrics API: %v", err)
 		}
 	}()
 
 	base.Consolef(base.LevelInfo, base.KeyAll, "Starting admin server on %s", config.API.AdminInterface)
 	go func() {
 		if err := sc.Serve(config, config.API.AdminInterface, CreateAdminHandler(sc)); err != nil {
-			base.Errorf("Error serving the Admin API: %v", err)
+			base.ErrorfCtx(context.TODO(), "Error serving the Admin API: %v", err)
 		}
 	}()
 

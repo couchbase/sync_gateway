@@ -1040,7 +1040,7 @@ func (h *handler) writeError(err error) {
 			if h.db != nil {
 				base.ErrorfCtx(h.db.Ctx, "%s: %v", h.formatSerialNumber(), err)
 			} else {
-				base.Errorf("%s: %v", h.formatSerialNumber(), err)
+				base.ErrorfCtx(h.ctx(), "%s: %v", h.formatSerialNumber(), err)
 			}
 		}
 	}

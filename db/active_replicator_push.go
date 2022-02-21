@@ -107,12 +107,12 @@ func (apr *ActivePushReplicator) _connect() error {
 			_ = apr.setError(PreHydrogenTargetAllowConflictsError)
 			err = apr.stopAndDisconnect()
 			if err != nil {
-				base.Errorf("Failed to stop and disconnect replication: %v", err)
+				base.ErrorfCtx(apr.ctx, "Failed to stop and disconnect replication: %v", err)
 			}
 		} else if strings.Contains(err.Error(), ErrDatabaseWentAway.Message) {
 			err = apr.reconnect()
 			if err != nil {
-				base.Errorf("Failed to reconnect replication: %v", err)
+				base.ErrorfCtx(apr.ctx, "Failed to reconnect replication: %v", err)
 			}
 		}
 		// No special handling for error

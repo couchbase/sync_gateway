@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
@@ -236,7 +237,7 @@ func renderJSON(w http.ResponseWriter, r *http.Request, statusCode int, data int
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	if err := json.NewEncoder(w).Encode(data); err != nil {
-		base.Errorf("Error rendering JSON response: %s", err)
+		base.ErrorfCtx(r.Context(), "Error rendering JSON response: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -253,7 +254,7 @@ func (s *mockAuthServer) authHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	redirect := r.URL.Query().Get(requestParamRedirectURI)
 	if redirect == "" {
-		base.Errorf("No redirect URL found in auth request")
+		base.ErrorfCtx(r.Context(), "No redirect URL found in auth request")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -278,7 +279,7 @@ func (s *mockAuthServer) authHandler(w http.ResponseWriter, r *http.Request) {
 	if s.options.forceError.errorType == untoldProviderErr {
 		uri, err := auth.SetURLQueryParam(redirectionURL, requestParamProvider, "untold")
 		if err != nil {
-			base.Errorf("error setting untold provider in mock callback URL")
+			base.ErrorfCtx(r.Context(), "error setting untold provider in mock callback URL")
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -335,7 +336,7 @@ func (s *mockAuthServer) makeToken(claimSet claimSet) (string, error) {
 	builder := jwt.Signed(s.signer).Claims(primaryClaims).Claims(secondaryClaims)
 	token, err := builder.CompactSerialize()
 	if err != nil {
-		base.Errorf("Error serializing token: %s", err)
+		base.ErrorfCtx(context.TODO(), "Error serializing token: %s", err)
 		return "", err
 	}
 	return token, nil

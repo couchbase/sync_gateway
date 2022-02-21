@@ -282,7 +282,7 @@ func Consolef(logLevel LogLevel, logKey LogKey, format string, args ...interface
 
 	// If the above logTo didn't already log to stderr, do it directly here
 	if !consoleLogger.isStderr || !consoleLogger.shouldLog(logLevel, logKey) {
-		format = color(addPrefixes(format, nil, logLevel, logKey), logLevel)
+		format = color(addPrefixes(format, context.Background(), logLevel, logKey), logLevel)
 		_, _ = fmt.Fprintf(consoleFOutput, format+"\n", args...)
 	}
 }
@@ -295,7 +295,7 @@ func LogSyncGatewayVersion() {
 	Consolef(LevelNone, KeyNone, msg)
 
 	// Log the startup indicator to ALL log files too.
-	msg = addPrefixes(msg, nil, LevelNone, KeyNone)
+	msg = addPrefixes(msg, context.Background(), LevelNone, KeyNone)
 	if errorLogger.shouldLog(LevelNone) {
 		errorLogger.logger.Printf(msg)
 	}
@@ -333,8 +333,15 @@ func addPrefixes(format string, ctx context.Context, logLevel LogLevel, logKey L
 		logKeyPrefix = logKeyName + ": "
 	}
 
-	if ctx != nil {
-		if logCtx, ok := ctx.Value(LogContextKey{}).(LogContext); ok {
+	// if ctx != nil && ctx.Value(LogContextKey{}) != nil {
+	// 	if logCtx, ok := ctx.Value(LogContextKey{}).(LogContext); ok {
+	// 		format = logCtx.addContext(format)
+	// 	}
+	// }
+	if ctx == nil {
+		format = color("[CTX NIL] ", LevelWarn)
+	} else if ctxVal := ctx.Value(LogContextKey{}); ctxVal != nil {
+		if logCtx, ok := ctxVal.(LogContext); ok {
 			format = logCtx.addContext(format)
 		}
 	}

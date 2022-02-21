@@ -441,7 +441,7 @@ func (dbc *DatabaseContext) StartReplications() {
 
 			err := dbc.SGReplicateMgr.StartReplications()
 			if err != nil {
-				base.Errorf("Error starting %q Inter-Sync Gateway Replications: %v", dbc.Name, err)
+				base.ErrorfCtx(dbc.SGReplicateMgr.loggingCtx, "Error starting %q Inter-Sync Gateway Replications: %v", dbc.Name, err)
 			}
 		}()
 	} else {

@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"context"
 	"os"
 	"runtime"
 	"time"
@@ -231,7 +232,7 @@ func setGlobalConfig(sc *StartupConfig) error {
 	}
 
 	if _, err := base.SetMaxFileDescriptors(sc.MaxFileDescriptors); err != nil {
-		base.Errorf("Error setting MaxFileDescriptors to %d: %v", sc.MaxFileDescriptors, err)
+		base.ErrorfCtx(context.Background(), "Error setting MaxFileDescriptors to %d: %v", sc.MaxFileDescriptors, err)
 	}
 
 	// TODO: Remove with GoCB DCP switch

@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -237,8 +238,8 @@ func (i *ConflictResolverJSServer) EvaluateFunction(conflict Conflict) (Body, er
 func newConflictResolverRunner(funcSource string) (sgbucket.JSServerTask, error) {
 	conflictResolverRunner := &sgbucket.JSRunner{}
 	err := conflictResolverRunner.InitWithLogging(funcSource,
-		func(s string) { base.Errorf(base.KeyJavascript.String()+": ConflictResolver %s", base.UD(s)) },
-		func(s string) { base.Infof(base.KeyJavascript, "ConflictResolver %s", base.UD(s)) })
+		func(s string) { base.ErrorfCtx(context.Background(), base.KeyJavascript.String()+": ConflictResolver %s", base.UD(s)) },
+		func(s string) { base.InfofCtx(context.Background(), base.KeyJavascript, "ConflictResolver %s", base.UD(s)) })
 	if err != nil {
 		return nil, err
 	}

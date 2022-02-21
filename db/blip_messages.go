@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -66,7 +67,7 @@ func (rq *SubChangesRequest) marshalBLIPRequest() (*blip.Message, error) {
 		if err := msg.SetJSONBody(map[string]interface{}{
 			"docIDs": rq.DocIDs,
 		}); err != nil {
-			base.Errorf("error marshalling docIDs slice into subChanges request: %v", err)
+			base.ErrorfCtx(context.Background(), "error marshalling docIDs slice into subChanges request: %v", err)
 			return nil, err
 		}
 	}

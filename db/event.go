@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -113,8 +114,10 @@ type jsEventTask struct {
 func newJsEventTask(funcSource string) (sgbucket.JSServerTask, error) {
 	eventTask := &jsEventTask{}
 	err := eventTask.InitWithLogging(funcSource,
-		func(s string) { base.Errorf(base.KeyJavascript.String()+": Webhook %s", base.UD(s)) },
-		func(s string) { base.Infof(base.KeyJavascript, "Webhook %s", base.UD(s)) })
+		func(s string) {
+			base.ErrorfCtx(context.Background(), base.KeyJavascript.String()+": Webhook %s", base.UD(s))
+		},
+		func(s string) { base.InfofCtx(context.Background(), base.KeyJavascript, "Webhook %s", base.UD(s)) })
 	if err != nil {
 		return nil, err
 	}

@@ -9,6 +9,7 @@
 package db
 
 import (
+	"context"
 	"net/http"
 	"sync"
 	"time"
@@ -138,7 +139,7 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 		}
 		err := b.Process.Run(options, updateStatusClusterAwareCallback, b.terminator)
 		if err != nil {
-			base.Errorf("Error: %v", err)
+			base.ErrorfCtx(context.TODO(), "Error: %v", err)
 			b.SetError(err)
 		}
 
@@ -169,7 +170,7 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 	if b.isClusterAware() {
 		err = b.UpdateStatusClusterAware()
 		if err != nil {
-			base.Errorf("Failed to update background manager status: %v", err)
+			base.ErrorfCtx(context.TODO(), "Failed to update background manager status: %v", err)
 		}
 	}
 
@@ -206,7 +207,7 @@ func (b *BackgroundManager) markStart() error {
 				case <-ticker.C:
 					err = b.UpdateHeartbeatDocClusterAware()
 					if err != nil {
-						base.Errorf("Failed to update expiry on heartbeat doc: %v", err)
+						base.ErrorfCtx(context.TODO(), "Failed to update expiry on heartbeat doc: %v", err)
 						b.SetError(err)
 					}
 				case <-b.terminator.Done():

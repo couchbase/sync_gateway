@@ -10,6 +10,7 @@ package db
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -423,7 +424,7 @@ func (tree RevTree) setRevisionBody(revid string, body []byte, bodyKey string, h
 func (tree RevTree) removeRevisionBody(revid string) (deletedBodyKey string) {
 	info, found := tree[revid]
 	if !found {
-		base.Errorf("RemoveRevisionBody called for revid not in tree: %v", revid)
+		base.ErrorfCtx(context.Background(), "RemoveRevisionBody called for revid not in tree: %v", revid)
 		return ""
 	}
 	deletedBodyKey = info.BodyKey

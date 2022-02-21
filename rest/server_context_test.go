@@ -10,6 +10,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -615,11 +616,12 @@ func TestLogFlush(t *testing.T) {
 			testDirName := filepath.Base(tempPath)
 
 			// Log some stuff (which will go into the memory loggers)
-			base.Errorf("error: " + testDirName)
-			base.Warnf("warn: " + testDirName)
-			base.Infof(base.KeyAll, "info: "+testDirName)
-			base.Debugf(base.KeyAll, "debug: "+testDirName)
-			base.Tracef(base.KeyAll, "trace: "+testDirName)
+			ctx := context.Background()
+			base.ErrorfCtx(ctx, "error: "+testDirName)
+			base.WarnfCtx(ctx, "warn: "+testDirName)
+			base.InfofCtx(ctx, base.KeyAll, "info: "+testDirName)
+			base.DebugfCtx(ctx, base.KeyAll, "debug: "+testDirName)
+			base.TracefCtx(ctx, base.KeyAll, "trace: "+testDirName)
 			base.RecordStats("{}")
 
 			config := DefaultStartupConfig(tempPath)
