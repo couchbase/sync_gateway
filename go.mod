@@ -7,7 +7,7 @@ require (
 	github.com/couchbase/cbgt v1.0.0
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20220208113358-746a6c2c2302
-	github.com/couchbase/go-couchbase v0.1.0
+	github.com/couchbase/go-couchbase v0.1.1
 	github.com/couchbase/gocb/v2 v2.3.5
 	github.com/couchbase/gocbcore/v10 v10.0.6
 	github.com/couchbase/gomemcached v0.1.4
