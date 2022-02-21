@@ -28,18 +28,18 @@ set -x # Output all executed shell commands
 git config --global --add url."git@github.com:".insteadOf "https://github.com/"
 export GOPRIVATE=github.com/couchbaselabs/go-fleecedelta
 
+# Print commit
+SG_COMMIT_HASH=$(git rev-parse HEAD)
+echo "Sync Gateway git commit hash: $SG_COMMIT_HASH"
+
 # Use Go modules (3.1 and above) or bootstrap for legacy Sync Gateway versions (3.0 and below)
 if [ ${USE_GO_MODULES} == "false" ]; then
-  rm -rf *
-  wget https://raw.githubusercontent.com/couchbase/sync_gateway/$SG_COMMIT/bootstrap.sh
+  mkdir sgw_int_testing
+  cp bootstrap.sh sgw_int_testing/bootstrap.sh
+  cd sgw_int_testing
   chmod +x bootstrap.sh
   ./bootstrap.sh -c ${SG_COMMIT} -e ee
   export GO111MODULE=off
-  cd "$WORKSPACE/godeps/src/github.com/couchbase/sync_gateway"
-  SG_COMMIT_HASH=$(git rev-parse HEAD)
-  echo "sync_gateway git commit hash: $SG_COMMIT_HASH"
-  cd $WORKSPACE
-  echo "$SG_COMMIT_HASH" > sg_commit.sha
 fi
 
 # Install tools to use after job has completed
