@@ -7,10 +7,10 @@ require (
 	github.com/couchbase/cbgt v1.0.0
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20220208113358-746a6c2c2302
-	github.com/couchbase/go-couchbase v0.1.1
-	github.com/couchbase/gocb/v2 v2.3.5
-	github.com/couchbase/gocbcore/v10 v10.0.6
-	github.com/couchbase/gomemcached v0.1.4
+	github.com/couchbase/go-couchbase v0.1.1-0.20210622145704-74908f5398d1
+	github.com/couchbase/gocb/v2 v2.3.2-0.20210914091708-3fc028aaec8b
+	github.com/couchbase/gocbcore/v10 v10.0.3-0.20210914091659-ed9bb8e33e28
+	github.com/couchbase/gomemcached v0.1.3
 	github.com/couchbase/goutils v0.1.2
 	github.com/couchbase/sg-bucket v0.0.0-20211203000713-178bb7ca1abb
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f
@@ -34,7 +34,7 @@ require (
 	golang.org/x/crypto v0.0.0-20211215153901-e495a2d5b3d3
 	golang.org/x/net v0.0.0-20220107192237-5cfca573fb4d
 	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
-	gopkg.in/couchbase/gocb.v1 v1.6.7
+	gopkg.in/couchbase/gocb.v1 v1.6.6
 	gopkg.in/couchbase/gocbcore.v7 v7.1.18
 	gopkg.in/couchbaselabs/gocbconnstr.v1 v1.0.4
 	gopkg.in/square/go-jose.v2 v2.6.0
@@ -42,13 +42,13 @@ require (
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/cespare/xxhash/v2 v2.1.2 // indirect
+	github.com/cespare/xxhash/v2 v2.1.1 // indirect
 	github.com/couchbase/blance v0.1.1 // indirect
-	github.com/couchbase/cbauth v0.1.0 // indirect
+	github.com/couchbase/cbauth v0.0.0-20190926094514-82614adbe4d4 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
-	github.com/golang/protobuf v1.5.2 // indirect
-	github.com/golang/snappy v0.0.3 // indirect
+	github.com/golang/protobuf v1.4.3 // indirect
+	github.com/golang/snappy v0.0.1 // indirect
 	github.com/google/pprof v0.0.0-20211214055906-6f57359322fd // indirect
 	github.com/klauspost/compress v1.10.3 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
@@ -63,14 +63,14 @@ require (
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
 	github.com/sergi/go-diff v1.2.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
-	golang.org/x/sys v0.0.0-20220114195835-da31bd327af9 // indirect
-	golang.org/x/text v0.3.7 // indirect
-	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/protobuf v1.27.1 // indirect
+	golang.org/x/sys v0.0.0-20211007075335-d3039528d8ac // indirect
+	golang.org/x/text v0.3.6 // indirect
+	google.golang.org/appengine v1.6.6 // indirect
+	google.golang.org/protobuf v1.26.0-rc.1 // indirect
 	gopkg.in/couchbaselabs/gojcbmock.v1 v1.0.4 // indirect
-	gopkg.in/couchbaselabs/jsonx.v1 v1.0.0 // indirect
+	gopkg.in/couchbaselabs/jsonx.v1 v1.0.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
-	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
+	gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c // indirect
 	nhooyr.io/websocket v1.8.7 // indirect
 )
