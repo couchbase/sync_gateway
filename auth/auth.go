@@ -500,7 +500,10 @@ func (auth *Authenticator) rehashPassword(user User, password string) error {
 		if costErr == nil && hashCost != auth.BcryptCost {
 			// the cost of the existing hash is different than the configured bcrypt cost.
 			// We'll re-hash the password to adopt the new cost:
-			currentUserImpl.SetPassword(password)
+			err = currentUserImpl.SetPassword(password)
+			if err != nil {
+				return nil, err
+			}
 			return currentUserImpl, nil
 		} else {
 			return nil, base.ErrUpdateCancel
@@ -753,7 +756,12 @@ func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider
 // Password will be random. The user will have access to no channels.  If the user already exists,
 // returns the existing user along with the cas failure error
 func (auth *Authenticator) RegisterNewUser(username, email string) (User, error) {
-	user, err := auth.NewUser(username, base.GenerateRandomSecret(), base.Set{})
+	secret, err := base.GenerateRandomSecret()
+	if err != nil {
+		return nil, err
+	}
+
+	user, err := auth.NewUser(username, secret, base.Set{})
 	if err != nil {
 		return nil, err
 	}

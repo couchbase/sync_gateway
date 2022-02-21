@@ -262,7 +262,12 @@ func (s *mockAuthServer) authHandler(w http.ResponseWriter, r *http.Request) {
 		redirectionURL = fmt.Sprintf("%s?error=%s", redirect, err)
 		http.Redirect(w, r, redirectionURL, http.StatusTemporaryRedirect)
 	}
-	code := base.GenerateRandomSecret()
+	code, err := base.GenerateRandomSecret()
+	if err != nil {
+		base.Errorf(err.Error())
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	if s.options.forceError.errorType == noCodeErr {
 		code = ""
 	}

@@ -85,21 +85,21 @@ func RedactBasicAuthURL(urlIn string, passwordOnly bool) (string, error) {
 }
 
 // GenerateRandomSecret returns a cryptographically-secure 160-bit random number encoded as a hex string.
-func GenerateRandomSecret() string {
+func GenerateRandomSecret() (string, error) {
 	val, err := randCryptoHex(160)
 	if err != nil {
-		panic("RNG failed, can't create password")
+		return "", fmt.Errorf("RNG failed, can't create password: %w", err)
 	}
-	return val
+	return val, nil
 }
 
 // GenerateRandomID returns a cryptographically-secure 128-bit random number encoded as a hex string.
-func GenerateRandomID() string {
+func GenerateRandomID() (string, error) {
 	val, err := randCryptoHex(128)
 	if err != nil {
-		Panicf("Failed to generate random ID: %s", err)
+		return "", fmt.Errorf("failed to generate random ID: %w", err)
 	}
-	return val
+	return val, nil
 }
 
 // randCryptoHex returns a cryptographically-secure random number of length sizeBits encoded as a hex string.

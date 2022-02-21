@@ -58,6 +58,7 @@ func (h *handler) handleAllDocs() error {
 	if h.user != nil {
 		availableChannels = h.user.InheritedChannels()
 		if availableChannels == nil {
+			// TODO: CBG-1948
 			panic("no channels for user?")
 		}
 		if availableChannels.Contains(ch.UserStarChannel) {

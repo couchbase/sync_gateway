@@ -13,6 +13,7 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/base64"
+	"fmt"
 	"net/http"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -310,14 +311,14 @@ func GetAttachmentVersion(meta map[string]interface{}) (int, bool) {
 }
 
 // GenerateProofOfAttachment returns a nonce and proof for an attachment body.
-func GenerateProofOfAttachment(attachmentData []byte) (nonce []byte, proof string) {
+func GenerateProofOfAttachment(attachmentData []byte) (nonce []byte, proof string, err error) {
 	nonce = make([]byte, 20)
 	if _, err := rand.Read(nonce); err != nil {
-		base.Panicf("Failed to generate random data: %s", err)
+		return nil, "", base.HTTPErrorf(http.StatusInternalServerError, fmt.Sprintf("Failed to generate random data: %s", err))
 	}
 	proof = ProveAttachment(attachmentData, nonce)
 	base.Tracef(base.KeyCRUD, "Generated nonce %v and proof %q for attachment: %v", nonce, proof, attachmentData)
-	return nonce, proof
+	return nonce, proof, nil
 }
 
 // ProveAttachment returns the proof for an attachment body and nonce pair.

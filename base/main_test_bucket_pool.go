@@ -24,6 +24,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"
 	"github.com/pkg/errors"
+	"github.com/stretchr/testify/require"
 )
 
 // GTestBucketPool is a global instance of a TestBucketPool used to manage a pool of buckets for integration testing.
@@ -220,7 +221,10 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 		tbp.Fatalf(testCtx, "nil TestBucketPool, but not using a Walrus test URL")
 	}
 
-	walrusBucket, err := walrus.GetBucket(url, DefaultPool, tbpBucketNamePrefix+"walrus_"+GenerateRandomID())
+	id, err := GenerateRandomID()
+	require.NoError(t, err)
+
+	walrusBucket, err := walrus.GetBucket(url, DefaultPool, tbpBucketNamePrefix+"walrus_"+id)
 	if err != nil {
 		tbp.Fatalf(testCtx, "couldn't get walrus bucket: %v", err)
 	}

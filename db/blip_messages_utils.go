@@ -31,6 +31,7 @@ func setProperty(p blip.Properties, k string, v interface{}) {
 	case fmt.Stringer:
 		p[k] = val.String()
 	default:
+		// TODO: CBG-1948
 		panic(fmt.Sprintf("unknown setProperty value type: %T", val))
 	}
 }
@@ -61,6 +62,7 @@ func setOptionalProperty(p blip.Properties, k string, v interface{}) {
 	case fmt.Stringer:
 		p[k] = val.String()
 	default:
+		// TODO: CBG-1948
 		panic(fmt.Sprintf("unknown setOptionalProperty value type: %T", val))
 	}
 }

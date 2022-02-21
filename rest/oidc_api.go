@@ -106,7 +106,10 @@ func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
 
 	// Set state to prevent cross-site request forgery (CSRF) when DisableCallbackState is not enabled.
 	if !provider.DisableCallbackState {
-		state = base.GenerateRandomSecret()
+		state, err = base.GenerateRandomSecret()
+		if err != nil {
+			return redirectURLString, err
+		}
 		stateCookie := h.makeStateCookie(state, stateCookieMaxAge)
 		http.SetCookie(h.response, stateCookie)
 	}

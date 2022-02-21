@@ -217,9 +217,10 @@ func (lcc *ConsoleLoggerConfig) init() error {
 	return nil
 }
 
-func newConsoleLoggerOrPanic(config *ConsoleLoggerConfig) *ConsoleLogger {
+func mustInitConsoleLogger(config *ConsoleLoggerConfig) *ConsoleLogger {
 	logger, err := NewConsoleLogger(false, config)
 	if err != nil {
+		// TODO: CBG-1948
 		panic(err)
 	}
 	return logger

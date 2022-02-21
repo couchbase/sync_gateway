@@ -606,6 +606,7 @@ func checkAdminAuth(bucketName, basicAuthUsername, basicAuthPassword string, att
 
 func (h *handler) assertAdminOnly() {
 	if h.privs != adminPrivs {
+		// TODO: CBG-1948
 		panic("Admin-only handler called without admin privileges, on " + h.rq.RequestURI)
 	}
 }

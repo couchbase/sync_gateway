@@ -3335,8 +3335,10 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 					})
 					defer rt1.Close()
 
+					id, err := base.GenerateRandomID()
+					require.NoError(t, err)
 					arConfig := db.ActiveReplicatorConfig{
-						ID:          base.GenerateRandomID(),
+						ID:          id,
 						Direction:   db.ActiveReplicatorTypePush,
 						RemoteDBURL: remoteDBURL,
 						ActiveDB: &db.Database{
@@ -3420,8 +3422,10 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 	})
 	defer rt1.Close()
 
+	id, err := base.GenerateRandomID()
+	require.NoError(t, err)
 	arConfig := db.ActiveReplicatorConfig{
-		ID:          base.GenerateRandomID(),
+		ID:          id,
 		Direction:   db.ActiveReplicatorTypePushAndPull,
 		RemoteDBURL: remoteDBURL,
 		ActiveDB: &db.Database{
@@ -3505,8 +3509,10 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 	})
 	defer rt1.Close()
 
+	id, err := base.GenerateRandomID()
+	require.NoError(t, err)
 	arConfig := db.ActiveReplicatorConfig{
-		ID:          base.GenerateRandomID(),
+		ID:          id,
 		Direction:   db.ActiveReplicatorTypePull,
 		RemoteDBURL: remoteDBURL,
 		ActiveDB: &db.Database{

@@ -18,6 +18,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCreateSession(t *testing.T) {
@@ -69,8 +70,11 @@ func TestDeleteSession(t *testing.T) {
 
 	auth := NewAuthenticator(testBucket, nil, DefaultAuthenticatorOptions())
 
+	id, err := base.GenerateRandomSecret()
+	require.NoError(t, err)
+
 	mockSession := &LoginSession{
-		ID:         base.GenerateRandomSecret(),
+		ID:         id,
 		Username:   username,
 		Expiration: time.Now().Add(2 * time.Hour),
 		Ttl:        24 * time.Hour,
@@ -95,7 +99,8 @@ func TestMakeSessionCookie(t *testing.T) {
 
 	auth := NewAuthenticator(testBucket, nil, DefaultAuthenticatorOptions())
 
-	sessionID := base.GenerateRandomSecret()
+	sessionID, err := base.GenerateRandomSecret()
+	require.NoError(t, err)
 	mockSession := &LoginSession{
 		ID:         sessionID,
 		Username:   "Alice",
@@ -120,7 +125,8 @@ func TestMakeSessionCookieProperties(t *testing.T) {
 
 	auth := NewAuthenticator(testBucket, nil, DefaultAuthenticatorOptions())
 
-	sessionID := base.GenerateRandomSecret()
+	sessionID, err := base.GenerateRandomSecret()
+	require.NoError(t, err)
 	mockSession := &LoginSession{
 		ID:         sessionID,
 		Username:   "jrascagneres",
@@ -154,7 +160,8 @@ func TestDeleteSessionForCookie(t *testing.T) {
 
 	auth := NewAuthenticator(testBucket, nil, DefaultAuthenticatorOptions())
 
-	sessionID := base.GenerateRandomSecret()
+	sessionID, err := base.GenerateRandomSecret()
+	require.NoError(t, err)
 	body := strings.NewReader("?")
 	request, _ := http.NewRequest(http.MethodPost, defaultEndpoint, body)
 

@@ -1493,9 +1493,9 @@ func TestPostWithExistingId(t *testing.T) {
 	log.Printf("Create document with existing id...")
 	body := Body{BodyId: customDocId, "key1": "value1", "key2": "existing"}
 	docid, rev1id, _, err := db.Post(body)
+	require.NoError(t, err, "Couldn't create document")
 	goassert.True(t, rev1id != "")
 	goassert.True(t, docid == customDocId)
-	assert.NoError(t, err, "Couldn't create document")
 
 	// Test retrieval
 	doc, err := db.GetDocument(base.TestCtx(t), customDocId, DocUnmarshalAll)
@@ -1506,9 +1506,9 @@ func TestPostWithExistingId(t *testing.T) {
 	log.Printf("Create document with existing id...")
 	body = Body{"notAnId": customDocId, "key1": "value1", "key2": "existing"}
 	docid, rev1id, _, err = db.Post(body)
+	require.NoError(t, err, "Couldn't create document")
 	goassert.True(t, rev1id != "")
 	goassert.True(t, docid != customDocId)
-	assert.NoError(t, err, "Couldn't create document")
 
 	// Test retrieval
 	doc, err = db.GetDocument(base.TestCtx(t), docid, DocUnmarshalAll)
@@ -1528,9 +1528,9 @@ func TestPutWithUserSpecialProperty(t *testing.T) {
 	log.Printf("Create document with existing id...")
 	body := Body{BodyId: customDocId, "key1": "value1", "_key2": "existing"}
 	docid, rev1id, _, err := db.Post(body)
+	require.True(t, err.Error() == "400 user defined top level properties beginning with '_' are not allowed in document body")
 	goassert.True(t, rev1id == "")
 	goassert.True(t, docid == "")
-	goassert.True(t, err.Error() == "400 user defined top level properties beginning with '_' are not allowed in document body")
 }
 
 // Unit test for issue #976
@@ -1543,7 +1543,8 @@ func TestWithNullPropertyKey(t *testing.T) {
 	customDocId := "customIdValue"
 	log.Printf("Create document with empty property key")
 	body := Body{BodyId: customDocId, "": "value1"}
-	docid, rev1id, _, _ := db.Post(body)
+	docid, rev1id, _, err := db.Post(body)
+	require.NoError(t, err)
 	goassert.True(t, rev1id != "")
 	goassert.True(t, docid != "")
 }
@@ -1559,9 +1560,9 @@ func TestPostWithUserSpecialProperty(t *testing.T) {
 	log.Printf("Create document with existing id...")
 	body := Body{BodyId: customDocId, "key1": "value1", "key2": "existing"}
 	docid, rev1id, _, err := db.Post(body)
+	require.NoError(t, err, "Couldn't create document")
 	goassert.True(t, rev1id != "")
 	goassert.True(t, docid == customDocId)
-	assert.NoError(t, err, "Couldn't create document")
 
 	// Test retrieval
 	doc, err := db.GetDocument(base.TestCtx(t), customDocId, DocUnmarshalAll)

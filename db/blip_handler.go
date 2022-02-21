@@ -985,7 +985,7 @@ func (bh *blipHandler) handleProveAttachment(rq *blip.Message) error {
 		if base.IsKeyNotFoundError(bh.db.Bucket, err) {
 			return ErrAttachmentNotFound
 		}
-		panic(fmt.Sprintf("error getting client attachment: %v", err))
+		return base.HTTPErrorf(http.StatusInternalServerError, fmt.Sprintf("Error getting client attachment: %v", err))
 	}
 
 	proof := ProveAttachment(attData, nonce)
@@ -1091,7 +1091,10 @@ func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name
 // This is to prevent clients from creating a doc with a digest for an attachment they otherwise can't access, in order to download it.
 func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, digest string, knownData []byte) error {
 	base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Verifying attachment %q for doc %s (digest %s)", base.UD(name), base.UD(docID), digest)
-	nonce, proof := GenerateProofOfAttachment(knownData)
+	nonce, proof, err := GenerateProofOfAttachment(knownData)
+	if err != nil {
+		return err
+	}
 	outrq := blip.NewRequest()
 	outrq.Properties = map[string]string{BlipProfile: MessageProveAttachment, ProveAttachmentDigest: digest}
 	outrq.SetBody(nonce)

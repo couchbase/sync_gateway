@@ -1067,6 +1067,7 @@ type documentRoot struct {
 
 func (doc *Document) UnmarshalJSON(data []byte) error {
 	if doc.ID == "" {
+		// TODO: CBG-1948
 		panic("Doc was unmarshaled without ID set")
 	}
 

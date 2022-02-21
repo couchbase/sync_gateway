@@ -224,6 +224,7 @@ func inverselogKeyNames(in [LogKeyCount]string) map[string]LogKey {
 	var out = make(map[string]LogKey, len(in))
 	for i, v := range in {
 		if v == "" && i != int(KeyNone) {
+			// TODO: CBG-1948
 			panic(fmt.Sprintf("Empty value for logKeyNames[%d]", i))
 		}
 		out[v] = LogKey(i)

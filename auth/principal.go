@@ -99,7 +99,7 @@ type User interface {
 	Authenticate(password string) bool
 
 	// Changes the user's password.
-	SetPassword(password string)
+	SetPassword(password string) error
 
 	// The set of Roles the user belongs to (including ones given to it by the sync function)
 	// Returns nil if invalidated

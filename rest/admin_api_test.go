@@ -896,10 +896,13 @@ func TestSessionExtension(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
 	defer rt.Close()
 
+	id, err := base.GenerateRandomSecret()
+	require.NoError(t, err)
+
 	// Fake session with more than 10% of the 24 hours TTL has elapsed. It should cause a new
 	// cookie to be sent by the server with the same session ID and an extended expiration date.
 	fakeSession := auth.LoginSession{
-		ID:         base.GenerateRandomSecret(),
+		ID:         id,
 		Username:   "Alice",
 		Expiration: time.Now().Add(4 * time.Hour),
 		Ttl:        24 * time.Hour,

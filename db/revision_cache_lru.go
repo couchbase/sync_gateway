@@ -241,6 +241,7 @@ func (rc *LRURevisionCache) statsRecorderFunc(cacheHit bool) {
 // Adds a revision to the cache.
 func (rc *LRURevisionCache) Put(ctx context.Context, docRev DocumentRevision) {
 	if docRev.History == nil {
+		// TODO: CBG-1948
 		panic("Missing history for RevisionCache.Put")
 	}
 	value := rc.getValue(docRev.DocID, docRev.RevID, true)
@@ -279,6 +280,7 @@ func (rc *LRURevisionCache) Invalidate(ctx context.Context, docID, revID string)
 
 func (rc *LRURevisionCache) getValue(docID, revID string, create bool) (value *revCacheValue) {
 	if docID == "" || revID == "" {
+		// TODO: CBG-1948
 		panic("RevisionCache: invalid empty doc/rev id")
 	}
 	key := IDAndRev{DocID: docID, RevID: revID}

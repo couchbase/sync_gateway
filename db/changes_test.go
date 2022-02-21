@@ -445,7 +445,8 @@ func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 	for docNum := 0; docNum < numDocs; docNum++ {
 
 		// Create the parent rev
-		docid := base.GenerateRandomID()
+		docid, err := base.GenerateRandomID()
+		require.NoError(b, err)
 		docBody := createDoc(numKeys, valSizeBytes)
 		revId, _, err := db.Put(docid, docBody)
 		if err != nil {
