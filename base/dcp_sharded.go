@@ -337,7 +337,7 @@ func (c *CbgtContext) StartManager(dbName string, configGroup string, bucket Buc
 	// TODO: Clarify the functional difference between registering the manager as 'wanted' vs 'known'.
 	registerType := cbgt.NODE_DEFS_WANTED
 	if err := c.Manager.Start(registerType); err != nil {
-		Errorf("cbgt Manager start failed: %v", err)
+		ErrorfCtx(c.loggingCtx, "cbgt Manager start failed: %v", err)
 		return err
 	}
 
@@ -349,7 +349,7 @@ func (c *CbgtContext) StartManager(dbName string, configGroup string, bucket Buc
 		} else if strings.Contains(err.Error(), "concurrent index definition update") {
 			Infof(KeyCluster, "Index update failed due to concurrent update, using existing")
 		} else {
-			Errorf("cbgt index creation failed: %v", err)
+			ErrorfCtx(c.loggingCtx, "cbgt index creation failed: %v", err)
 			return err
 		}
 	}

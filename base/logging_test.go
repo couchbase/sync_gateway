@@ -10,6 +10,7 @@ package base
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
@@ -65,7 +66,7 @@ func Benchmark_LoggingPerformance(b *testing.B) {
 		Debugf(KeyCRUD, "some crud'y message")
 		Infof(KeyCRUD, "some crud'y message")
 		Warnf("some crud'y message")
-		Errorf("some crud'y message")
+		ErrorfCtx(context.Background(), "some crud'y message")
 	}
 }
 

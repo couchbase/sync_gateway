@@ -9,6 +9,7 @@
 package base
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -282,7 +283,7 @@ func (b BucketSpec) TLSConfig() *tls.Config {
 		var err error
 		certPool, err = getRootCAs(b.CACertPath)
 		if err != nil {
-			Errorf("Error creating tlsConfig for DCP processing: %v", err)
+			ErrorfCtx(context.Background(), "Error creating tlsConfig for DCP processing: %v", err)
 			return nil
 		}
 	}
@@ -296,7 +297,7 @@ func (b BucketSpec) TLSConfig() *tls.Config {
 	if b.Certpath != "" && b.Keypath != "" {
 		cert, err := tls.LoadX509KeyPair(b.Certpath, b.Keypath)
 		if err != nil {
-			Errorf("Error creating tlsConfig for DCP processing: %v", err)
+			ErrorfCtx(context.Background(), "Error creating tlsConfig for DCP processing: %v", err)
 			return nil
 		}
 		tlsConfig.Certificates = []tls.Certificate{cert}
