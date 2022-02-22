@@ -61,11 +61,11 @@ paths:
                     type: boolean
                     example: true
                   couchdb:
-                    description: ''
+                    description: 'CouchDB welcome'
                     type: string
                     example: Welcome
                   vendor:
-                    description: ''
+                    description: 'Product vendor'
                     type: object
                     properties:
                       name:
@@ -900,7 +900,7 @@ paths:
       description: This endpoint is non-functional but is present for CouchDB compatibility.
       responses:
         '201':
-          description: ''
+          description: 'OK'
           content:
             application/json:
               schema:
