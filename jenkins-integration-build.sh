@@ -34,7 +34,7 @@ echo "Sync Gateway git commit hash: $SG_COMMIT_HASH"
 
 # Use Go modules (3.1 and above) or bootstrap for legacy Sync Gateway versions (3.0 and below)
 if [ ${USE_GO_MODULES} == "false" ]; then
-  mkdir sgw_int_testing
+  mkdir -p sgw_int_testing # Make the directory if it does not exist
   cp bootstrap.sh sgw_int_testing/bootstrap.sh
   cd sgw_int_testing
   chmod +x bootstrap.sh
