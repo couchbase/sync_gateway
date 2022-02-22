@@ -318,8 +318,7 @@ pipeline {
                                 echo 'Queueing Integration test for branch "master" ...'
                                 // Queues up an async integration test run using default build params (master branch),
                                 // but waits up to an hour for batches of PR merges before actually running (via quietPeriod)
-                                // TODO: Enable this when modules is in
-				// build job: 'SyncGateway-Integration', quietPeriod: 3600, wait: false
+                                build job: 'MasterIntegration', quietPeriod: 3600, wait: false
                             }
                         }
 
@@ -347,7 +346,7 @@ pipeline {
             steps{
                 echo 'Queueing Benchmark Run test for branch "master" ...'
                 // TODO: Add this back with new system
-		// build job: 'sync-gateway-benchmark', parameters: [string(name: 'SG_COMMIT', value: env.SG_COMMIT)], wait: false
+                // build job: 'sync-gateway-benchmark', parameters: [string(name: 'SG_COMMIT', value: env.SG_COMMIT)], wait: false
             }
         }
     }
@@ -368,9 +367,7 @@ pipeline {
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
                 if ("${env.BRANCH_NAME}" == 'master') {
-                    mail to: 'mobile_dev_sg@couchbase.com',
-                        subject: "Failed tests in master SGW pipeline: ${currentBuild.fullDisplayName}",
-                        body: "At least one test failed: ${env.BUILD_URL}"
+                    slackSend color: "danger", message: "Failed tests in master SGW pipeline: ${currentBuild.fullDisplayName}\nAt least one test failed: ${env.BUILD_URL}"
                 }
             }
         }
@@ -379,9 +376,7 @@ pipeline {
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
                 if ("${env.BRANCH_NAME}" == 'master') {
-                    mail to: 'mobile_dev_sg@couchbase.com',
-                        subject: "Build failure in master SGW pipeline: ${currentBuild.fullDisplayName}",
-                        body: "Something went wrong building: ${env.BUILD_URL}"
+                    slackSend color: "danger", message: "Build failure!!!\nA build failure occurred in the master SGW pipeline: ${currentBuild.fullDisplayName}\nSomething went wrong building: ${env.BUILD_URL}"
                 }
             }
         }
