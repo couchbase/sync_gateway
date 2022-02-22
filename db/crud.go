@@ -191,7 +191,7 @@ func (db *DatabaseContext) OnDemandImportForGet(ctx context.Context, docid strin
 	importDb := Database{DatabaseContext: db, user: nil, Ctx: ctx}
 	var importErr error
 
-	docOut, importErr = importDb.ImportDocRaw(docid, rawDoc, rawXattr, rawUserXattr, isDelete, cas, ImportOnDemand)
+	docOut, importErr = importDb.ImportDocRaw(docid, rawDoc, rawXattr, rawUserXattr, isDelete, cas, nil, ImportOnDemand)
 	if importErr == base.ErrImportCancelledFilter {
 		// If the import was cancelled due to filter, treat as not found
 		return nil, base.HTTPErrorf(404, "Not imported")
@@ -774,7 +774,7 @@ func (db *Database) OnDemandImportForWrite(docid string, doc *Document, deleted 
 	// Use an admin-scoped database for import
 	importDb := Database{DatabaseContext: db.DatabaseContext, user: nil}
 
-	importedDoc, importErr := importDb.ImportDoc(docid, doc, isDelete, ImportOnDemand)
+	importedDoc, importErr := importDb.ImportDoc(docid, doc, isDelete, nil, ImportOnDemand)
 
 	if importErr == base.ErrImportCancelledFilter {
 		// Document exists, but existing doc wasn't imported based on import filter.  Treat write as insert

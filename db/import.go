@@ -30,8 +30,12 @@ const (
 	ImportOnDemand                    // On-demand import. Reattempt import on cas write failure of the imported doc until either the import succeeds, or existing doc is an SG write.
 )
 
+func SupportPreserveExpiry() bool {
+	return true
+}
+
 // Imports a document that was written by someone other than sync gateway, given the existing state of the doc in raw bytes
-func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, userXattrValue []byte, isDelete bool, cas uint64, mode ImportMode) (docOut *Document, err error) {
+func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, userXattrValue []byte, isDelete bool, cas uint64, expiry *uint32, mode ImportMode) (docOut *Document, err error) {
 
 	var body Body
 	if isDelete {
@@ -58,11 +62,24 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 		Cas:       cas,
 	}
 
+	if !SupportPreserveExpiry() {
+		// Get the doc expiry if it wasn't passed in, this isn't a server tombstone, and preserve expiry is not supported
+		if expiry == nil {
+			cbStore, _ := base.AsCouchbaseStore(db.Bucket)
+			getExpiry, getExpiryErr := cbStore.GetExpiry(docid)
+			if getExpiryErr != nil {
+				return nil, getExpiryErr
+			}
+			expiry = &getExpiry
+		}
+		existingBucketDoc.Expiry = *expiry
+	}
+
 	return db.importDoc(docid, body, isDelete, existingBucketDoc, mode)
 }
 
 // Import a document, given the existing state of the doc in *document format.
-func (db *Database) ImportDoc(docid string, existingDoc *Document, isDelete bool, mode ImportMode) (docOut *Document, err error) {
+func (db *Database) ImportDoc(docid string, existingDoc *Document, isDelete bool, expiry *uint32, mode ImportMode) (docOut *Document, err error) {
 
 	if existingDoc == nil {
 		return nil, base.RedactErrorf("No existing doc present when attempting to import %s", base.UD(docid))
@@ -73,6 +90,19 @@ func (db *Database) ImportDoc(docid string, existingDoc *Document, isDelete bool
 	existingBucketDoc := &sgbucket.BucketDocument{
 		Cas:       existingDoc.Cas,
 		UserXattr: existingDoc.rawUserXattr,
+	}
+
+	if !SupportPreserveExpiry() {
+		// Get the doc expiry if it wasn't passed in and preserve expiry is not supported
+		if expiry == nil {
+			cbStore, _ := base.AsCouchbaseStore(db.Bucket)
+			getExpiry, getExpiryErr := cbStore.GetExpiry(docid)
+			if getExpiryErr != nil {
+				return nil, getExpiryErr
+			}
+			expiry = &getExpiry
+		}
+		existingBucketDoc.Expiry = *expiry
 	}
 
 	// If we marked this as having inline Sync Data ensure that the existingBucketDoc we pass to importDoc has syncData
@@ -123,9 +153,12 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 
 	var newRev string
 	var alreadyImportedDoc *Document
-	mutationOptions := sgbucket.MutateInOptions{PreserveExpiry: true}
-	docOut, _, err = db.updateAndReturnDoc(newDoc.ID, true, 0, &mutationOptions, existingDoc, func(doc *Document) (resultDocument *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 
+	mutationOptions := sgbucket.MutateInOptions{}
+	if SupportPreserveExpiry() {
+		mutationOptions.PreserveExpiry = true
+	}
+	docOut, _, err = db.updateAndReturnDoc(newDoc.ID, true, existingDoc.Expiry, &mutationOptions, existingDoc, func(doc *Document) (resultDocument *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// Perform cas mismatch check first, as we want to identify cas mismatch before triggering migrate handling.
 		// If there's a cas mismatch, the doc has been updated since the version that triggered the import.  Handling depends on import mode.
 		if doc.Cas != existingDoc.Cas {
@@ -145,6 +178,17 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 					Cas: doc.Cas,
 				}
 
+				if !mutationOptions.PreserveExpiry {
+					// Reload the doc expiry if GoCB is not preserving expiry
+					cbStore, _ := base.AsCouchbaseStore(db.Bucket)
+					expiry, getExpiryErr := cbStore.GetExpiry(newDoc.ID)
+					if getExpiryErr != nil {
+						return nil, nil, false, nil, getExpiryErr
+					}
+					existingDoc.Expiry = expiry
+					updatedExpiry = &expiry
+				}
+
 				if doc.inlineSyncData {
 					existingDoc.Body, err = doc.MarshalBodyAndSync()
 				} else {
@@ -162,12 +206,12 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		if ok || doc.inlineSyncData {
 			migratedDoc, requiresImport, migrateErr := db.migrateMetadata(newDoc.ID, body, existingDoc)
 			if migrateErr != nil {
-				return nil, nil, false, nil, migrateErr
+				return nil, nil, false, updatedExpiry, migrateErr
 			}
 			// Migration successful, doesn't require import - return ErrDocumentMigrated to cancel import processing
 			if !requiresImport {
 				alreadyImportedDoc = migratedDoc
-				return nil, nil, false, nil, base.ErrDocumentMigrated
+				return nil, nil, false, updatedExpiry, base.ErrDocumentMigrated
 			}
 
 			// If document still requires import post-migration attempt, continue with import processing based on the body returned by migrate
@@ -179,14 +223,14 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		// Check if the doc has been deleted
 		if doc.Cas == 0 {
 			base.DebugfCtx(db.Ctx, base.KeyImport, "Document has been removed from the bucket before it could be imported - cancelling import.")
-			return nil, nil, false, nil, base.ErrImportCancelled
+			return nil, nil, false, updatedExpiry, base.ErrImportCancelled
 		}
 
 		// If this is a delete, and there is no xattr on the existing doc,
 		// we shouldn't import.  (SG purge arriving over DCP feed)
 		if isDelete && doc.CurrentRev == "" {
 			base.DebugfCtx(db.Ctx, base.KeyImport, "Import not required for delete mutation with no existing SG xattr (SG purge): %s", base.UD(newDoc.ID))
-			return nil, nil, false, nil, base.ErrImportCancelled
+			return nil, nil, false, updatedExpiry, base.ErrImportCancelled
 		}
 
 		// Is this doc an SG Write?
@@ -200,7 +244,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		if isSgWrite {
 			base.DebugfCtx(db.Ctx, base.KeyImport, "During import, existing doc (%s) identified as SG write.  Canceling import.", base.UD(docid))
 			alreadyImportedDoc = doc
-			return nil, nil, false, nil, base.ErrAlreadyImported
+			return nil, nil, false, updatedExpiry, base.ErrAlreadyImported
 		}
 
 		// If there's a filter function defined, evaluate to determine whether we should import this doc
@@ -221,13 +265,13 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 
 			if importErr != nil {
 				base.DebugfCtx(db.Ctx, base.KeyImport, "Error returned for doc %s while evaluating import function - will not be imported.", base.UD(docid))
-				return nil, nil, false, nil, base.ErrImportCancelledFilter
+				return nil, nil, false, updatedExpiry, base.ErrImportCancelledFilter
 			}
 			if !shouldImport {
 				base.DebugfCtx(db.Ctx, base.KeyImport, "Doc %s excluded by document import function - will not be imported.", base.UD(docid))
 				// TODO: If this document has a current revision (this is a document that was previously mobile-enabled), do additional opt-out processing
 				// pending https://github.com/couchbase/sync_gateway/issues/2750
-				return nil, nil, false, nil, base.ErrImportCancelledFilter
+				return nil, nil, false, updatedExpiry, base.ErrImportCancelledFilter
 			}
 		}
 
@@ -255,7 +299,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 			generation++
 			newRev = CreateRevIDWithBytes(generation, parentRev, rawBodyForRevID)
 			if err != nil {
-				return nil, nil, false, nil, err
+				return nil, nil, false, updatedExpiry, err
 			}
 			base.DebugfCtx(db.Ctx, base.KeyImport, "Created new rev ID for doc %q / %q", base.UD(newDoc.ID), newRev)
 			// body[BodyRev] = newRev
@@ -294,7 +338,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 			newDoc.DocAttachments = doc.SyncData.Attachments
 		}
 
-		return newDoc, nil, !shouldGenerateNewRev, nil, nil
+		return newDoc, nil, !shouldGenerateNewRev, updatedExpiry, nil
 	})
 
 	switch err {

@@ -2553,6 +2553,7 @@ func TestGetStatsVbSeqNo(t *testing.T) {
 
 // Confirm that GoCBv2 preserveExpiry option works correctly for bucket Set function
 func TestUpsertOptionPreserveExpiry(t *testing.T) {
+	// TODO: Server version check
 	if UnitTestUrlIsWalrus() {
 		t.Skip("Walrus doesn't support expiry or preserveExpiry")
 	}

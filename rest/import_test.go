@@ -178,7 +178,7 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 	// 2. Modify doc via SDK
 	updatedBody := make(map[string]interface{})
 	updatedBody["test"] = "TestAncestorImport"
-	err = bucket.Set(docID, 0, updatedBody)
+	err = bucket.Set(docID, 0, nil, updatedBody)
 	assert.NoError(t, err)
 
 	// Attempt to get the document via Sync Gateway, to trigger import
