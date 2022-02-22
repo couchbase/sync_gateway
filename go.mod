@@ -8,11 +8,11 @@ require (
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20220208113358-746a6c2c2302
 	github.com/couchbase/go-couchbase v0.1.1-0.20210622145704-74908f5398d1
-	github.com/couchbase/gocb/v2 v2.3.2-0.20210914091708-3fc028aaec8b
-	github.com/couchbase/gocbcore/v10 v10.0.3-0.20210914091659-ed9bb8e33e28
+	github.com/couchbase/gocb/v2 v2.4.1-0.20220223120627-0fce9f8d7782
+	github.com/couchbase/gocbcore/v10 v10.1.1-0.20220221125514-72ee6aaebe8d
 	github.com/couchbase/gomemcached v0.1.3
 	github.com/couchbase/goutils v0.1.2
-	github.com/couchbase/sg-bucket v0.0.0-20220113105246-18301c0abdf3
+	github.com/couchbase/sg-bucket v0.0.0-20220223180218-17629dfdeffa
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f
 	github.com/couchbaselabs/go.assert v0.0.0-20130325201400-cfb33e3a0dac
 	github.com/couchbaselabs/walrus v0.0.0-20220113130225-d608d64c3815
@@ -48,7 +48,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/golang/protobuf v1.4.3 // indirect
-	github.com/golang/snappy v0.0.1 // indirect
+	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/pprof v0.0.0-20211214055906-6f57359322fd // indirect
 	github.com/klauspost/compress v1.10.3 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
@@ -71,6 +71,6 @@ require (
 	gopkg.in/couchbaselabs/jsonx.v1 v1.0.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
-	gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c // indirect
+	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 	nhooyr.io/websocket v1.8.7 // indirect
 )

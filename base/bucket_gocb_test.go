@@ -2553,7 +2553,6 @@ func TestGetStatsVbSeqNo(t *testing.T) {
 
 // Confirm that GoCBv2 preserveExpiry option works correctly for bucket Set function
 func TestUpsertOptionPreserveExpiry(t *testing.T) {
-	// TODO: Server version check
 	if UnitTestUrlIsWalrus() {
 		t.Skip("Walrus doesn't support expiry or preserveExpiry")
 	}
@@ -2579,11 +2578,20 @@ func TestUpsertOptionPreserveExpiry(t *testing.T) {
 			expectMatch:   false,
 		},
 	}
+
+	preserveExpirySupported := true
 	for _, test := range testCases {
+		if !preserveExpirySupported {
+			t.Skip("Preserve expiry is not supported with this CBS version. Skipping all subtests...")
+		}
 		t.Run(test.name, func(t *testing.T) {
 			bucket := GetTestBucketForDriver(t, GoCBv2)
 			defer bucket.Close()
 			cbStore, _ := AsCouchbaseStore(bucket)
+			if !bucket.IsSupported(sgbucket.DataStoreFeaturePreserveExpiry) {
+				preserveExpirySupported = false
+				t.Skip()
+			}
 
 			key := t.Name()
 			val := make(map[string]interface{}, 0)

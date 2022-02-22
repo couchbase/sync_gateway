@@ -107,10 +107,22 @@ func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilR
 		return nil, err
 	}
 
+	// Query node meta to find cluster compat version
+	//user, pass, _ := spec.Auth.GetCredentials()
+	nodesMetadata, err := cluster.Internal().GetNodesMetadata(&gocb.GetNodesMetadataOptions{})
+	if err != nil || len(nodesMetadata) == 0 {
+		_ = cluster.Close(&gocb.ClusterCloseOptions{})
+		return nil, fmt.Errorf("unable to get server cluster compatibility for %d nodes: %w", len(nodesMetadata), err)
+	}
+	// Safe to get first node as there will always be at least one node in the list and cluster compat is uniform across all nodes.
+	clusterCompatMajor, clusterCompatMinor := decodeClusterVersion(nodesMetadata[0].ClusterCompatibility)
+
 	collection := &Collection{
-		Collection: bucket.DefaultCollection(),
-		Spec:       spec,
-		cluster:    cluster,
+		Collection:                bucket.DefaultCollection(),
+		Spec:                      spec,
+		cluster:                   cluster,
+		clusterCompatMajorVersion: uint64(clusterCompatMajor),
+		clusterCompatMinorVersion: uint64(clusterCompatMinor),
 	}
 
 	// Set limits for concurrent query and kv ops
@@ -154,6 +166,8 @@ type Collection struct {
 	cluster          *gocb.Cluster // Associated cluster - required for N1QL operations
 	queryOps         chan struct{} // Manages max concurrent query ops
 	kvOps            chan struct{} // Manages max concurrent kv ops
+
+	clusterCompatMajorVersion, clusterCompatMinorVersion uint64 // E.g: 6 and 0 for 6.0.3
 }
 
 // DataStore
@@ -197,6 +211,9 @@ func (c *Collection) IsSupported(feature sgbucket.DataStoreFeature) bool {
 			return false
 		}
 		return status == gocb.CapabilityStatusSupported
+	case sgbucket.DataStoreFeaturePreserveExpiry:
+		// TODO: Change to capability check when GOCBC-1218 merged
+		return isMinimumVersion(c.clusterCompatMajorVersion, c.clusterCompatMinorVersion, 7, 0)
 	default:
 		return false
 	}

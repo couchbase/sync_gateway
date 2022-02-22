@@ -30,10 +30,6 @@ const (
 	ImportOnDemand                    // On-demand import. Reattempt import on cas write failure of the imported doc until either the import succeeds, or existing doc is an SG write.
 )
 
-func SupportPreserveExpiry() bool {
-	return true
-}
-
 // Imports a document that was written by someone other than sync gateway, given the existing state of the doc in raw bytes
 func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, userXattrValue []byte, isDelete bool, cas uint64, expiry *uint32, mode ImportMode) (docOut *Document, err error) {
 
@@ -62,7 +58,7 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 		Cas:       cas,
 	}
 
-	if !SupportPreserveExpiry() {
+	if !db.Bucket.IsSupported(sgbucket.DataStoreFeaturePreserveExpiry) {
 		// Get the doc expiry if it wasn't passed in, this isn't a server tombstone, and preserve expiry is not supported
 		if expiry == nil {
 			cbStore, _ := base.AsCouchbaseStore(db.Bucket)
@@ -92,7 +88,7 @@ func (db *Database) ImportDoc(docid string, existingDoc *Document, isDelete bool
 		UserXattr: existingDoc.rawUserXattr,
 	}
 
-	if !SupportPreserveExpiry() {
+	if !db.Bucket.IsSupported(sgbucket.DataStoreFeaturePreserveExpiry) {
 		// Get the doc expiry if it wasn't passed in and preserve expiry is not supported
 		if expiry == nil {
 			cbStore, _ := base.AsCouchbaseStore(db.Bucket)
@@ -155,7 +151,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 	var alreadyImportedDoc *Document
 
 	mutationOptions := sgbucket.MutateInOptions{}
-	if SupportPreserveExpiry() {
+	if db.Bucket.IsSupported(sgbucket.DataStoreFeaturePreserveExpiry) {
 		mutationOptions.PreserveExpiry = true
 	}
 	docOut, _, err = db.updateAndReturnDoc(newDoc.ID, true, existingDoc.Expiry, &mutationOptions, existingDoc, func(doc *Document) (resultDocument *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
