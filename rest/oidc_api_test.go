@@ -265,7 +265,7 @@ func (s *mockAuthServer) authHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	code, err := base.GenerateRandomSecret()
 	if err != nil {
-		base.Errorf(err.Error())
+		base.ErrorfCtx(r.Context(), err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
