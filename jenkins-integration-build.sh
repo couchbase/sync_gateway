@@ -34,25 +34,28 @@ echo "Sync Gateway git commit hash: $SG_COMMIT_HASH"
 
 # Use Go modules (3.1 and above) or bootstrap for legacy Sync Gateway versions (3.0 and below)
 if [ ${USE_GO_MODULES} == "false" ]; then
-  mkdir -p sgw_int_testing # Make the directory if it does not exist
-  cp bootstrap.sh sgw_int_testing/bootstrap.sh
-  cd sgw_int_testing
-  chmod +x bootstrap.sh
-  ./bootstrap.sh -c ${SG_COMMIT} -e ee
-  export GO111MODULE=off
+    mkdir -p sgw_int_testing # Make the directory if it does not exist
+    cp bootstrap.sh sgw_int_testing/bootstrap.sh
+    cd sgw_int_testing
+    chmod +x bootstrap.sh
+    ./bootstrap.sh -c ${SG_COMMIT} -e ee
+    export GO111MODULE=off
+    go get -u -v github.com/tebeka/go2xunit
+    go get -u -v github.com/axw/gocov/gocov
+    go get -u -v github.com/AlekSi/gocov-xml
+else
+    # Install tools to use after job has completed
+    go install -v github.com/tebeka/go2xunit@latest
+    go install -v github.com/axw/gocov/gocov@latest
+    go install -v github.com/AlekSi/gocov-xml@latest
 fi
-
-# Install tools to use after job has completed
-go install -v github.com/tebeka/go2xunit@latest
-go install -v github.com/axw/gocov/gocov@latest
-go install -v github.com/AlekSi/gocov-xml@latest
 
 # Set environment vars
 GO_TEST_FLAGS="-v -p 1 -count=${RUN_COUNT}"
 INT_LOG_FILE_NAME="verbose_int"
 
 if [ -d "godeps" ]; then
-  export GOPATH=`pwd`/godeps
+    export GOPATH=`pwd`/godeps
 fi
 export PATH=$PATH:`go env GOPATH`/bin
 echo "PATH: $PATH"
@@ -86,10 +89,10 @@ if [ "${SG_TEST_PROFILE_FREQUENCY}" == "true" ]; then
 fi    
 
 if [ "${RUN_WALRUS}" == "true" ]; then
-  # EE
-  go test -coverprofile=coverage_walrus_ee.out -coverpkg=github.com/couchbase/sync_gateway/... -tags cb_sg_enterprise $GO_TEST_FLAGS github.com/couchbase/sync_gateway/${TARGET_PACKAGE} >verbose_unit_ee.out.raw 2>&1 | true
-  # CE
-  go test -coverprofile=coverage_walrus_ce.out -coverpkg=github.com/couchbase/sync_gateway/... $GO_TEST_FLAGS github.com/couchbase/sync_gateway/${TARGET_PACKAGE} >verbose_unit_ce.out.raw 2>&1 | true
+    # EE
+    go test -coverprofile=coverage_walrus_ee.out -coverpkg=github.com/couchbase/sync_gateway/... -tags cb_sg_enterprise $GO_TEST_FLAGS github.com/couchbase/sync_gateway/${TARGET_PACKAGE} >verbose_unit_ee.out.raw 2>&1 | true
+    # CE
+    go test -coverprofile=coverage_walrus_ce.out -coverpkg=github.com/couchbase/sync_gateway/... $GO_TEST_FLAGS github.com/couchbase/sync_gateway/${TARGET_PACKAGE} >verbose_unit_ce.out.raw 2>&1 | true
 fi
 
 # Start CBS
@@ -127,35 +130,35 @@ fi
 
 go test ${GO_TEST_FLAGS} -coverprofile=coverage_int.out -coverpkg=github.com/couchbase/sync_gateway/... github.com/couchbase/sync_gateway/${TARGET_PACKAGE} 2>&1 | tee "${INT_LOG_FILE_NAME}.out.raw" | grep -E '(--- (FAIL|PASS|SKIP):|github.com/couchbase/sync_gateway(/.+)?\t|TEST: |panic: )'
 if [ "${PIPESTATUS[0]}" -ne "0" ]; then # If test exit code is not 0 (failed)
-  echo "Go test failed! Parsing logs to find cause..."
-  TEST_FAILED=true
+    echo "Go test failed! Parsing logs to find cause..."
+    TEST_FAILED=true
 fi
 
 # Generate xunit test report that can be parsed by the JUnit Plugin
 LC_CTYPE=C tr -dc [:print:][:space:] < ${INT_LOG_FILE_NAME}.out.raw > ${INT_LOG_FILE_NAME}.out # Strip non-printable characters
 ~/go/bin/go2xunit -input "${INT_LOG_FILE_NAME}.out" -output "${INT_LOG_FILE_NAME}.xml"
 if [ "${RUN_WALRUS}" == "true" ]; then
- # Strip non-printable characters before xml creation
-  LC_CTYPE=C tr -dc [:print:][:space:] < "verbose_unit_ee.out.raw" > "verbose_unit_ee.out"
-  LC_CTYPE=C tr -dc [:print:][:space:] < "verbose_unit_ce.out.raw" > "verbose_unit_ce.out"
-  ~/go/bin/go2xunit -input "verbose_unit_ee.out" -output "verbose_unit_ee.xml"
-  ~/go/bin/go2xunit -input "verbose_unit_ce.out" -output "verbose_unit_ce.xml"
+    # Strip non-printable characters before xml creation
+    LC_CTYPE=C tr -dc [:print:][:space:] < "verbose_unit_ee.out.raw" > "verbose_unit_ee.out"
+    LC_CTYPE=C tr -dc [:print:][:space:] < "verbose_unit_ce.out.raw" > "verbose_unit_ce.out"
+    ~/go/bin/go2xunit -input "verbose_unit_ee.out" -output "verbose_unit_ee.xml"
+    ~/go/bin/go2xunit -input "verbose_unit_ce.out" -output "verbose_unit_ce.xml"
 fi
 
 # Get coverage
 ~/go/bin/gocov convert "coverage_int.out" | ~/go/bin/gocov-xml > coverage_int.xml
 if [ "${RUN_WALRUS}" == "true" ]; then
-  ~/go/bin/gocov convert "coverage_walrus_ee.out" | ~/go/bin/gocov-xml > "coverage_walrus_ee.xml"
-  ~/go/bin/gocov convert "coverage_walrus_ce.out" | ~/go/bin/gocov-xml > "coverage_walrus_ce.xml"
+    ~/go/bin/gocov convert "coverage_walrus_ee.out" | ~/go/bin/gocov-xml > "coverage_walrus_ee.xml"
+    ~/go/bin/gocov convert "coverage_walrus_ce.out" | ~/go/bin/gocov-xml > "coverage_walrus_ce.xml"
 fi
 
 if [ "${TEST_FAILED}" = true ] ; then
-  # If output contained `FAIL:`
-  if grep -q 'FAIL:' "${INT_LOG_FILE_NAME}.out"; then
-    # Test failure, so mark as unstable
-    exit 50
-  else
-    # Test setup failure or unrecovered panic, so mark as failed
-    exit 1
-  fi
+    # If output contained `FAIL:`
+    if grep -q 'FAIL:' "${INT_LOG_FILE_NAME}.out"; then
+        # Test failure, so mark as unstable
+        exit 50
+    else
+        # Test setup failure or unrecovered panic, so mark as failed
+        exit 1
+    fi
 fi
