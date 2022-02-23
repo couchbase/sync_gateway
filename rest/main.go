@@ -86,8 +86,8 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 				// the config is actually a 3.x config but with a genuine unknown field, therefore we should  return the
 				// original error from LoadStartupConfigFromPath.
 				if pkgerrors.Cause(upgradeError) == base.ErrUnknownField {
-					base.Warnf("Automatic upgrade attempt failed, %s not recognized as legacy config format: %v", base.MD(configPath[0]), upgradeError)
-					base.Warnf("Provided config %s not recognized as bootstrap config format: %v", base.MD(configPath[0]), err)
+					base.WarnfCtx(context.Background(), "Automatic upgrade attempt failed, %s not recognized as legacy config format: %v", base.MD(configPath[0]), upgradeError)
+					base.WarnfCtx(context.Background(), "Provided config %s not recognized as bootstrap config format: %v", base.MD(configPath[0]), err)
 					return false, fmt.Errorf("unknown config fields supplied. Unable to continue")
 				}
 
@@ -242,7 +242,7 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 	// Otherwise continue with startup but don't attempt to write migrated config and log warning
 	backupLocation, err := backupCurrentConfigFile(configPath)
 	if err != nil {
-		base.Warnf("Unable to write config file backup: %v. Won't write backup or updated config but will continue with startup.", err)
+		base.WarnfCtx(context.Background(), "Unable to write config file backup: %v. Won't write backup or updated config but will continue with startup.", err)
 		return startupConfig, false, users, roles, nil
 	}
 
@@ -259,7 +259,7 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 	// Otherwise continue with startup but log warning
 	err = ioutil.WriteFile(configPath, jsonStartupConfig, 0644)
 	if err != nil {
-		base.Warnf("Unable to write updated config file: %v -  but will continue with startup.", err)
+		base.WarnfCtx(context.Background(), "Unable to write updated config file: %v -  but will continue with startup.", err)
 		return startupConfig, false, users, roles, nil
 	}
 

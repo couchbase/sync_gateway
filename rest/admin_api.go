@@ -974,7 +974,7 @@ func (h *handler) handleGetRevTree() error {
 
 func (h *handler) handleGetLogging() error {
 	h.writeJSON(base.GetLogKeys())
-	base.Warnf("Deprecation notice: Current _logging endpoints are now deprecated. Using _config endpoints " +
+	base.WarnfCtx(h.ctx(), "Deprecation notice: Current _logging endpoints are now deprecated. Using _config endpoints "+
 		"instead")
 	return nil
 }
@@ -1041,7 +1041,7 @@ func (h *handler) handleGetStatus() error {
 }
 
 func (h *handler) handleSetLogging() error {
-	base.Warnf("Deprecation notice: Current _logging endpoints are now deprecated. Using _config endpoints " +
+	base.WarnfCtx(h.ctx(), "Deprecation notice: Current _logging endpoints are now deprecated. Using _config endpoints "+
 		"instead")
 
 	body, err := h.readBody()
@@ -1057,7 +1057,7 @@ func (h *handler) handleSetLogging() error {
 		}
 		setLogLevel = true
 	} else if level := h.getIntQuery("level", 0); level != 0 {
-		base.Warnf("Using deprecated query parameter: %q. Use %q instead.", "level", "logLevel")
+		base.WarnfCtx(h.ctx(), "Using deprecated query parameter: %q. Use %q instead.", "level", "logLevel")
 		switch base.GetRestrictedInt(&level, 0, 1, 3, false) {
 		case 1:
 			newLogLevel = base.LevelInfo

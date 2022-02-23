@@ -324,7 +324,7 @@ func (context *DatabaseContext) QueryRoleAccess(ctx context.Context, username st
 
 	// N1QL Query
 	if username == "" {
-		base.Warnf("QueryRoleAccess called with empty username")
+		base.WarnfCtx(ctx, "QueryRoleAccess called with empty username")
 		return &EmptyResultIterator{}, nil
 	}
 

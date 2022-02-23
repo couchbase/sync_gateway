@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -142,7 +143,7 @@ func (em *EventManager) raiseEvent(event Event) error {
 			base.Tracef(base.KeyAll, "Event sent to channel %s", event.String())
 		case <-timer.C:
 			// Event queue channel is full - ignore event and log error
-			base.Warnf("Event queue full - discarding event: %s", base.UD(event.String()))
+			base.WarnfCtx(context.TODO(), "Event queue full - discarding event: %s", base.UD(event.String()))
 			return errors.New("Event queue full")
 		}
 	}

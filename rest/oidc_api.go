@@ -157,7 +157,7 @@ func (h *handler) handleOIDCCallback() error {
 		}
 
 		if err != nil {
-			base.Warnf("Unexpected error attempting to read OIDC state cookie: %v", err)
+			base.WarnfCtx(h.ctx(), "Unexpected error attempting to read OIDC state cookie: %v", err)
 			return ErrReadStateCookie
 		}
 
@@ -294,7 +294,7 @@ func (h *handler) getOIDCProvider(providerName string) (*auth.OIDCProvider, erro
 func (h *handler) getOIDCCallbackURL(providerName string, isDefault bool) string {
 	dbName := h.PathVar("db")
 	if dbName == "" {
-		base.Warnf("Can't calculate OIDC callback URL without DB in path.")
+		base.WarnfCtx(h.ctx(), "Can't calculate OIDC callback URL without DB in path.")
 		return ""
 	}
 
@@ -310,7 +310,7 @@ func (h *handler) getOIDCCallbackURL(providerName string, isDefault bool) string
 
 	callbackURL, err := auth.SetURLQueryParam(callbackURL, auth.OIDCAuthProvider, providerName)
 	if err != nil {
-		base.Warnf("Failed to add provider %q to OIDC callback URL (%s): %v", base.UD(providerName), callbackURL, err)
+		base.WarnfCtx(h.ctx(), "Failed to add provider %q to OIDC callback URL (%s): %v", base.UD(providerName), callbackURL, err)
 	}
 	return callbackURL
 }

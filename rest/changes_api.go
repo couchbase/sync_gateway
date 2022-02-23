@@ -11,6 +11,7 @@ package rest
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -622,7 +623,7 @@ func readWebSocketMessage(conn *websocket.Conn) ([]byte, error) {
 	var message []byte
 	if err := websocket.Message.Receive(conn, &message); err != nil {
 		if err != io.EOF {
-			base.Warnf("Error reading initial websocket message: %v", err)
+			base.WarnfCtx(context.TODO(), "Error reading initial websocket message: %v", err)
 			return nil, err
 		}
 	}

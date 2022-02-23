@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -261,7 +262,7 @@ func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, useXattrs bool, numRepli
 			if strings.Contains(err.Error(), "not enough indexer nodes") {
 				return false, fmt.Errorf("Unable to create indexes with the specified number of replicas (%d).  Increase the number of index nodes, or modify 'num_index_replicas' in your Sync Gateway database config.", numReplica), nil
 			}
-			base.Warnf("Error creating index %s: %v - will retry.", indexName, err)
+			base.WarnfCtx(context.TODO(), "Error creating index %s: %v - will retry.", indexName, err)
 		}
 		return err != nil, err, nil
 	}
@@ -336,7 +337,7 @@ func waitForIndexes(bucket base.N1QLStore, useXattrs bool) error {
 				queryStatement = replaceIndexTokensQuery(queryStatement, index, useXattrs)
 				queryErr := waitForIndex(bucket, index.fullIndexName(useXattrs), queryStatement)
 				if queryErr != nil {
-					base.Warnf("Query error for statement [%s], err:%v", queryStatement, queryErr)
+					base.WarnfCtx(context.TODO(), "Query error for statement [%s], err:%v", queryStatement, queryErr)
 					indexErrors <- queryErr
 				}
 				base.Debugf(base.KeyQuery, "Index %s verified as ready", base.MD(index.fullIndexName(useXattrs)))
@@ -423,7 +424,7 @@ func removeObsoleteIndexes(bucket base.N1QLStore, previewOnly bool, useXattrs bo
 	for _, indexName := range removalCandidates {
 		removed, err := removeObsoleteIndex(bucket, indexName, previewOnly)
 		if err != nil {
-			base.Warnf("Unexpected error when removing index %q: %s", indexName, err)
+			base.WarnfCtx(context.TODO(), "Unexpected error when removing index %q: %s", indexName, err)
 		}
 		if removed {
 			removedIndexes = append(removedIndexes, indexName)

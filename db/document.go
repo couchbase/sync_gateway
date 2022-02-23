@@ -256,14 +256,14 @@ func (doc *Document) Body() Body {
 	}
 
 	if doc._rawBody == nil {
-		base.Warnf("Null doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
+		base.WarnfCtx(context.Background(), "Null doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
 		return nil
 	}
 
 	base.Tracef(base.KeyAll, "        UNMARSHAL doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
 	err := doc._body.Unmarshal(doc._rawBody)
 	if err != nil {
-		base.Warnf("Unable to unmarshal document body from raw body : %s", err)
+		base.WarnfCtx(context.Background(), "Unable to unmarshal document body from raw body : %s", err)
 		return nil
 	}
 	return doc._body
@@ -313,7 +313,7 @@ func (doc *Document) BodyBytes() ([]byte, error) {
 	}
 
 	if doc._body == nil {
-		base.Warnf("Null doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
+		base.WarnfCtx(context.Background(), "Null doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
 		return nil, nil
 	}
 
@@ -688,7 +688,7 @@ func (doc *Document) getNonWinningRevisionBody(revid string, loader RevLoaderFun
 	}
 
 	if err := body.Unmarshal(bodyBytes); err != nil {
-		base.Warnf("Unexpected error parsing body of rev %q: %v", revid, err)
+		base.WarnfCtx(context.TODO(), "Unexpected error parsing body of rev %q: %v", revid, err)
 		return nil
 	}
 	return body
@@ -797,7 +797,7 @@ func (doc *Document) deleteRemovedRevisionBodies(bucket base.Bucket) {
 	for _, revBodyKey := range doc.removedRevisionBodyKeys {
 		deleteErr := bucket.Delete(revBodyKey)
 		if deleteErr != nil {
-			base.Warnf("Unable to delete old revision body using key %s - will not be deleted from bucket.", revBodyKey)
+			base.WarnfCtx(context.TODO(), "Unable to delete old revision body using key %s - will not be deleted from bucket.", revBodyKey)
 		}
 	}
 	doc.removedRevisionBodyKeys = map[string]string{}
@@ -820,7 +820,7 @@ func (doc *Document) migrateRevisionBodies(bucket base.Bucket) error {
 			bodyKey := generateRevBodyKey(doc.ID, revID)
 			persistErr := doc.persistRevisionBody(bucket, bodyKey, revInfo.Body)
 			if persistErr != nil {
-				base.Warnf("Unable to store revision body for doc %s, rev %s externally: %v", base.UD(doc.ID), revID, persistErr)
+				base.WarnfCtx(context.TODO(), "Unable to store revision body for doc %s, rev %s externally: %v", base.UD(doc.ID), revID, persistErr)
 				continue
 			}
 			revInfo.BodyKey = bodyKey
@@ -1118,7 +1118,7 @@ func (doc *Document) MarshalJSON() (data []byte, err error) {
 // lazy unmarshalling as needed.
 func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLevel DocumentUnmarshalLevel) error {
 	if doc.ID == "" {
-		base.Warnf("Attempted to unmarshal document without ID set")
+		base.WarnfCtx(context.Background(), "Attempted to unmarshal document without ID set")
 		return errors.New("Document was unmarshalled without ID set")
 	}
 

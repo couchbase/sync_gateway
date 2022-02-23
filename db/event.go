@@ -177,12 +177,12 @@ func (ef *JSEventFunction) CallFunction(event Event) (interface{}, error) {
 	case *DBStateChangeEvent:
 		result, err = ef.Call(event.Doc)
 	default:
-		base.Warnf("unknown event %v tried to call function", event.EventType())
+		base.WarnfCtx(context.TODO(), "unknown event %v tried to call function", event.EventType())
 		return "", fmt.Errorf("unknown event %v tried to call function", event.EventType())
 	}
 
 	if err != nil {
-		base.Warnf("Error calling function - function processing aborted: %v", err)
+		base.WarnfCtx(context.TODO(), "Error calling function - function processing aborted: %v", err)
 		return "", err
 	}
 
@@ -207,7 +207,7 @@ func (ef *JSEventFunction) CallValidateFunction(event Event) (bool, error) {
 		}
 		return boolResult, nil
 	default:
-		base.Warnf("Event validate function returned non-boolean result %T %v", result, result)
+		base.WarnfCtx(context.TODO(), "Event validate function returned non-boolean result %T %v", result, result)
 		return false, errors.New("Validate function returned non-boolean value.")
 	}
 

@@ -468,7 +468,7 @@ func (h *handler) handleProfiling() error {
 	}
 
 	if fileCloseError := f.Close(); fileCloseError != nil {
-		base.Warnf("Error closing profile file: %v", fileCloseError)
+		base.WarnfCtx(h.ctx(), "Error closing profile file: %v", fileCloseError)
 	}
 
 	return err
@@ -495,7 +495,7 @@ func (h *handler) handleHeapProfiling() error {
 	err = pprof.WriteHeapProfile(f)
 
 	if fileCloseError := f.Close(); fileCloseError != nil {
-		base.Warnf("Error closing profile file: %v", fileCloseError)
+		base.WarnfCtx(h.ctx(), "Error closing profile file: %v", fileCloseError)
 	}
 
 	return err

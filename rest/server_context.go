@@ -87,7 +87,7 @@ func (sc *ServerContext) SetCpuPprofFile(file *os.File) {
 func (sc *ServerContext) CloseCpuPprofFile() {
 	sc.cpuPprofFileMutex.Lock()
 	if err := sc.cpuPprofFile.Close(); err != nil {
-		base.Warnf("Error closing CPU profile file: %v", err)
+		base.WarnfCtx(context.TODO(), "Error closing CPU profile file: %v", err)
 	}
 	sc.cpuPprofFile = nil
 	sc.cpuPprofFileMutex.Unlock()
@@ -174,14 +174,14 @@ func (sc *ServerContext) Close() {
 	for _, s := range sc._httpServers {
 		base.Infof(base.KeyHTTP, "Closing HTTP Server: %v", s.Addr)
 		if err := s.Close(); err != nil {
-			base.Warnf("Error closing HTTP server %q: %v", s.Addr, err)
+			base.WarnfCtx(context.TODO(), "Error closing HTTP server %q: %v", s.Addr, err)
 		}
 	}
 	sc._httpServers = nil
 
 	if agent := sc.GoCBAgent; agent != nil {
 		if err := agent.Close(); err != nil {
-			base.Warnf("Error closing agent connection: %v", err)
+			base.WarnfCtx(context.TODO(), "Error closing agent connection: %v", err)
 		}
 	}
 }
@@ -350,7 +350,7 @@ func GetBucketSpec(config *DatabaseConfig, serverConfig *StartupConfig) (spec ba
 
 	spec.UseXattrs = config.UseXattrs()
 	if !spec.UseXattrs {
-		base.Warnf("Running Sync Gateway without shared bucket access is deprecated. Recommendation: set enable_shared_bucket_access=true")
+		base.WarnfCtx(context.TODO(), "Running Sync Gateway without shared bucket access is deprecated. Recommendation: set enable_shared_bucket_access=true")
 	}
 
 	if config.BucketOpTimeoutMs != nil {
@@ -363,7 +363,7 @@ func GetBucketSpec(config *DatabaseConfig, serverConfig *StartupConfig) (spec ba
 // Adds a database to the ServerContext.  Attempts a read after it gets the write
 // lock to see if it's already been added by another process. If so, returns either the
 // existing DatabaseContext or an error based on the useExisting flag.
-func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useExisting, failFast bool) (context *db.DatabaseContext, err error) {
+func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useExisting, failFast bool) (*db.DatabaseContext, error) {
 
 	// Generate bucket spec and validate whether db already exists
 	spec, err := GetBucketSpec(&config, sc.config)
@@ -407,7 +407,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	// If using a walrus bucket, force use of views
 	useViews := base.BoolDefault(config.UseViews, false)
 	if !useViews && spec.IsWalrusBucket() {
-		base.Warnf("Using GSI is not supported when using a walrus bucket - switching to use views.  Set 'use_views':true in Sync Gateway's database config to avoid this warning.")
+		base.WarnfCtx(context.TODO(), "Using GSI is not supported when using a walrus bucket - switching to use views.  Set 'use_views':true in Sync Gateway's database config to avoid this warning.")
 		useViews = true
 	}
 
@@ -528,7 +528,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 			}
 
 			if dbcontext.RevsLimit < db.DefaultRevsLimitConflicts {
-				base.Warnf("Setting the revs_limit (%v) to less than %d, whilst having allow_conflicts set to true, may have unwanted results when documents are frequently updated. Please see documentation for details.", dbcontext.RevsLimit, db.DefaultRevsLimitConflicts)
+				base.WarnfCtx(context.TODO(), "Setting the revs_limit (%v) to less than %d, whilst having allow_conflicts set to true, may have unwanted results when documents are frequently updated. Please see documentation for details.", dbcontext.RevsLimit, db.DefaultRevsLimitConflicts)
 			}
 		} else {
 			if dbcontext.RevsLimit <= 0 {
@@ -606,7 +606,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 	// Check for deprecated cache options. If new are set they will take priority but will still log warnings
 	warnings := config.deprecatedConfigCacheFallback()
 	for _, warnLog := range warnings {
-		base.Warnf(warnLog)
+		base.WarnfCtx(context.TODO(), warnLog)
 	}
 	// Set cache properties, if present
 	cacheOptions := db.DefaultCacheOptions()
@@ -704,10 +704,10 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 	if config.CacheConfig != nil && config.CacheConfig.ChannelCacheConfig != nil && config.CacheConfig.ChannelCacheConfig.DeprecatedQueryLimit != nil {
 		// If QueryPaginationLimit has not been set use the deprecated option
 		if queryPaginationLimit == 0 {
-			base.Warnf("Using deprecated config parameter 'cache.channel_cache.query_limit'. Use 'query_pagination_limit' instead")
+			base.WarnfCtx(context.TODO(), "Using deprecated config parameter 'cache.channel_cache.query_limit'. Use 'query_pagination_limit' instead")
 			queryPaginationLimit = *config.CacheConfig.ChannelCacheConfig.DeprecatedQueryLimit
 		} else {
-			base.Warnf("Both query_pagination_limit and the deprecated cache.channel_cache.query_limit have been specified in config - using query_pagination_limit")
+			base.WarnfCtx(context.TODO(), "Both query_pagination_limit and the deprecated cache.channel_cache.query_limit have been specified in config - using query_pagination_limit")
 		}
 	}
 
@@ -772,7 +772,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 	}
 
 	if config.AllowConflicts != nil && *config.AllowConflicts {
-		base.Warnf(`Deprecation notice: setting database configuration option "allow_conflicts" to true is due to be removed. In the future, conflicts will not be allowed.`)
+		base.WarnfCtx(context.TODO(), `Deprecation notice: setting database configuration option "allow_conflicts" to true is due to be removed. In the future, conflicts will not be allowed.`)
 	}
 
 	// Register the cbgt pindex type for the configGroup
@@ -917,7 +917,7 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 		customWaitTime, err = strconv.ParseInt(config.EventHandlers.WaitForProcess, 10, 0)
 		if err != nil {
 			customWaitTime = -1
-			base.Warnf("Error parsing wait_for_process from config, using default %s", err)
+			base.WarnfCtx(context.TODO(), "Error parsing wait_for_process from config, using default %s", err)
 		}
 	}
 	dbcontext.EventMgr.Start(config.EventHandlers.MaxEventProc, int(customWaitTime))
@@ -944,7 +944,7 @@ func (sc *ServerContext) processEventHandlersForEvent(events []*EventConfig, eve
 		case "webhook":
 			wh, err := db.NewWebhook(event.Url, event.Filter, event.Timeout, event.Options)
 			if err != nil {
-				base.Warnf("Error creating webhook %v", err)
+				base.WarnfCtx(context.TODO(), "Error creating webhook %v", err)
 				return err
 			}
 			dbcontext.EventMgr.RegisterEventHandler(wh, eventType)
@@ -1079,7 +1079,7 @@ func (sc *ServerContext) startStatsLogger() {
 			case <-sc.statsContext.statsLoggingTicker.C:
 				err := sc.logStats()
 				if err != nil {
-					base.Warnf("Error logging stats: %v", err)
+					base.WarnfCtx(context.TODO(), "Error logging stats: %v", err)
 				}
 			case <-sc.statsContext.terminator:
 				base.Debugf(base.KeyAll, "Stopping stats logging goroutine")
@@ -1099,7 +1099,7 @@ func (sc *ServerContext) logStats() error {
 	sc.logNetworkInterfaceStats()
 
 	if err := sc.statsContext.addGoSigarStats(); err != nil {
-		base.Warnf("Error getting sigar based system resource stats: %v", err)
+		base.WarnfCtx(context.TODO(), "Error getting sigar based system resource stats: %v", err)
 	}
 
 	sc.updateCalculatedStats()
@@ -1126,11 +1126,11 @@ func (sc *ServerContext) logStats() error {
 func (sc *ServerContext) logNetworkInterfaceStats() {
 
 	if err := sc.statsContext.addPublicNetworkInterfaceStatsForHostnamePort(sc.config.API.PublicInterface); err != nil {
-		base.Warnf("Error getting public network interface resource stats: %v", err)
+		base.WarnfCtx(context.TODO(), "Error getting public network interface resource stats: %v", err)
 	}
 
 	if err := sc.statsContext.addAdminNetworkInterfaceStatsForHostnamePort(sc.config.API.AdminInterface); err != nil {
-		base.Warnf("Error getting admin network interface resource stats: %v", err)
+		base.WarnfCtx(context.TODO(), "Error getting admin network interface resource stats: %v", err)
 	}
 
 }
@@ -1177,7 +1177,7 @@ func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPat
 	defer func() {
 		if shouldCloseAgent {
 			if err := agent.Close(); err != nil {
-				base.Warnf("unable to close gocb agent: %v", err)
+				base.WarnfCtx(context.TODO(), "unable to close gocb agent: %v", err)
 			}
 		}
 	}()
@@ -1417,7 +1417,7 @@ func (sc *ServerContext) initializeCouchbaseServerConnections() error {
 		if count > 0 {
 			base.Infof(base.KeyConfig, "Successfully fetched %d database configs from buckets in cluster", count)
 		} else {
-			base.Warnf("Config: No database configs for group %q. Continuing startup to allow REST API database creation", sc.config.Bootstrap.ConfigGroupID)
+			base.WarnfCtx(context.TODO(), "Config: No database configs for group %q. Continuing startup to allow REST API database creation", sc.config.Bootstrap.ConfigGroupID)
 		}
 
 		if sc.config.Bootstrap.ConfigUpdateFrequency.Value() > 0 {
@@ -1438,7 +1438,7 @@ func (sc *ServerContext) initializeCouchbaseServerConnections() error {
 						base.Debugf(base.KeyConfig, "Fetching configs from buckets in cluster for group %q", sc.config.Bootstrap.ConfigGroupID)
 						count, err := sc.fetchAndLoadConfigs()
 						if err != nil {
-							base.Warnf("Couldn't load configs from bucket when polled: %v", err)
+							base.WarnfCtx(context.TODO(), "Couldn't load configs from bucket when polled: %v", err)
 						}
 						if count > 0 {
 							base.Infof(base.KeyConfig, "Successfully fetched %d database configs from buckets in cluster", count)

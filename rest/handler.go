@@ -786,7 +786,7 @@ func (h *handler) readDocument() (db.Body, error) {
 			body, err := ReadMultipartDocument(reader)
 			if err != nil {
 				_ = ioutil.WriteFile("GatewayPUT.mime", raw, 0600)
-				base.Warnf("Error reading MIME data: copied to file GatewayPUT.mime")
+				base.WarnfCtx(h.ctx(), "Error reading MIME data: copied to file GatewayPUT.mime")
 			}
 			return body, err
 		} else {
@@ -906,14 +906,14 @@ func (h *handler) writeJSON(value interface{}) {
 // If status is nonzero, the header will be written with that status.
 func (h *handler) writeJSONStatus(status int, value interface{}) {
 	if !h.requestAccepts("application/json") {
-		base.Warnf("Client won't accept JSON, only %s", h.rq.Header.Get("Accept"))
+		base.WarnfCtx(h.ctx(), "Client won't accept JSON, only %s", h.rq.Header.Get("Accept"))
 		h.writeStatus(http.StatusNotAcceptable, "only application/json available")
 		return
 	}
 
 	jsonOut, err := base.JSONMarshalCanonical(value)
 	if err != nil {
-		base.Warnf("Couldn't serialize JSON for %v : %s", base.UD(value), err)
+		base.WarnfCtx(h.ctx(), "Couldn't serialize JSON for %v : %s", base.UD(value), err)
 		h.writeStatus(http.StatusInternalServerError, "JSON serialization failed")
 		return
 	}
@@ -935,7 +935,7 @@ func (h *handler) writeRawJSON(b []byte) {
 // If status is nonzero, the header will be written with that status.
 func (h *handler) writeRawJSONStatus(status int, b []byte) {
 	if !h.requestAccepts("application/json") {
-		base.Warnf("Client won't accept JSON, only %s", h.rq.Header.Get("Accept"))
+		base.WarnfCtx(h.ctx(), "Client won't accept JSON, only %s", h.rq.Header.Get("Accept"))
 		h.writeStatus(http.StatusNotAcceptable, "only application/json available")
 		return
 	}
@@ -962,7 +962,7 @@ func (h *handler) writeJavascript(js string) {
 // If status is nonzero, the header will be written with that status.
 func (h *handler) writeWithMimetypeStatus(status int, value []byte, mimetype string) {
 	if !h.requestAccepts(mimetype) {
-		base.Warnf("Client won't accept %s, only %s", mimetype, h.rq.Header.Get("Accept"))
+		base.WarnfCtx(h.ctx(), "Client won't accept %s, only %s", mimetype, h.rq.Header.Get("Accept"))
 		h.writeStatus(http.StatusNotAcceptable, fmt.Sprintf("only %s available", mimetype))
 		return
 	}
@@ -986,7 +986,7 @@ func (h *handler) addJSON(value interface{}) error {
 			base.Debugf(base.KeyCRUD, "Couldn't serialize document body, HTTP client closed connection")
 			return err
 		} else {
-			base.Warnf("Couldn't serialize JSON for %s", err)
+			base.WarnfCtx(h.ctx(), "Couldn't serialize JSON for %s", err)
 			h.writeStatus(http.StatusInternalServerError, "Couldn't serialize document body")
 		}
 	}

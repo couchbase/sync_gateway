@@ -324,7 +324,7 @@ func (rc *ReplicationConfig) Upsert(c *ReplicationUpsertConfig) {
 			rc.QueryParams = newParamMap
 		default:
 			// unsupported query params type, don't upsert
-			base.Warnf("Unexpected QueryParams type found during upsert, will be ignored (%T): %v", c.QueryParams, c.QueryParams)
+			base.WarnfCtx(context.Background(), "Unexpected QueryParams type found during upsert, will be ignored (%T): %v", c.QueryParams, c.QueryParams)
 		}
 	}
 }
@@ -505,7 +505,7 @@ func (m *sgReplicateManager) StartReplications() error {
 		if replicationCfg.AssignedNode == m.localNodeUUID {
 			activeReplicator, err := m.InitializeReplication(replicationCfg)
 			if err != nil {
-				base.Warnf("Error initializing replication %s: %v", err)
+				base.WarnfCtx(m.loggingCtx, "Error initializing replication %s: %v", err)
 				continue
 			}
 			m.activeReplicatorsLock.Lock()
@@ -513,7 +513,7 @@ func (m *sgReplicateManager) StartReplications() error {
 			m.activeReplicatorsLock.Unlock()
 			if replicationCfg.TargetState == "" || replicationCfg.TargetState == ReplicationStateRunning {
 				if startErr := activeReplicator.Start(); startErr != nil {
-					base.Warnf("Unable to start replication %s: %v", replicationID, startErr)
+					base.WarnfCtx(m.loggingCtx, "Unable to start replication %s: %v", replicationID, startErr)
 				}
 			}
 		}
@@ -603,7 +603,7 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 	username := config.Username
 	password := config.Password
 	if username != "" || password != "" {
-		base.Warnf(`Deprecation notice: replication config fields "username" and "password" are now "remote_username" and "remote_password" respectively`)
+		base.WarnfCtx(m.loggingCtx, `Deprecation notice: replication config fields "username" and "password" are now "remote_username" and "remote_password" respectively`)
 	}
 	if config.RemoteUsername != "" {
 		username = config.RemoteUsername
@@ -661,7 +661,7 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 func (m *sgReplicateManager) replicationComplete(replicationID string) {
 	err := m.UpdateReplicationState(replicationID, ReplicationStateStopped)
 	if err != nil {
-		base.Warnf("Unable to update replication state to stopped on completion: %v", err)
+		base.WarnfCtx(m.loggingCtx, "Unable to update replication state to stopped on completion: %v", err)
 	}
 }
 
@@ -714,7 +714,7 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 			base.Infof(base.KeyReplicate, "Stopping reassigned replication %s", replicationID)
 			err := activeReplicator.Stop()
 			if err != nil {
-				base.Warnf("Unable to gracefully close active replication: %v", err)
+				base.WarnfCtx(m.loggingCtx, "Unable to gracefully close active replication: %v", err)
 			}
 			if !ok {
 				activeReplicator.purgeCheckpoints()
@@ -728,12 +728,12 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 			// If the config has changed, re-initialize the replication
 			isChanged, err := m.isCfgChanged(replicationCfg, activeReplicator.config)
 			if err != nil {
-				base.Warnf("Error evaluating whether cfg has changed, potential changes not applied: %v", err)
+				base.WarnfCtx(m.loggingCtx, "Error evaluating whether cfg has changed, potential changes not applied: %v", err)
 			}
 			if isChanged {
 				replicator, initError := m.InitializeReplication(replicationCfg)
 				if initError != nil {
-					base.Warnf("Error initializing upserted replication %s: %v", initError)
+					base.WarnfCtx(m.loggingCtx, "Error initializing upserted replication %s: %v", initError)
 				} else {
 					m.activeReplicators[replicationID] = replicator
 					activeReplicator = replicator
@@ -742,13 +742,13 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 
 			stateErr := activeReplicator.alignState(replicationCfg.TargetState)
 			if stateErr != nil {
-				base.Warnf("Error updating active replication %s to state %s: %v", replicationID, replicationCfg.TargetState, stateErr)
+				base.WarnfCtx(m.loggingCtx, "Error updating active replication %s to state %s: %v", replicationID, replicationCfg.TargetState, stateErr)
 			}
 			// Reset is synchronous - after completion the replication state should be updated to stopped
 			if replicationCfg.TargetState == ReplicationStateResetting {
 				postResetErr := m.UpdateReplicationState(replicationCfg.ID, ReplicationStateStopped)
 				if postResetErr != nil {
-					base.Warnf("Error updating replication state to stopped after successful reset: %v", postResetErr)
+					base.WarnfCtx(m.loggingCtx, "Error updating replication state to stopped after successful reset: %v", postResetErr)
 				}
 
 			}
@@ -763,7 +763,7 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 				var initError error
 				replicator, initError = m.InitializeReplication(replicationCfg)
 				if initError != nil {
-					base.Warnf("Error initializing replication %s: %v", initError)
+					base.WarnfCtx(m.loggingCtx, "Error initializing replication %s: %v", initError)
 					continue
 				}
 				m.activeReplicators[replicationID] = replicator
@@ -771,7 +771,7 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 				if replicationCfg.TargetState == "" || replicationCfg.TargetState == ReplicationStateRunning {
 					base.Infof(base.KeyReplicate, "Starting newly assigned replication %s", replicationID)
 					if startErr := replicator.Start(); startErr != nil {
-						base.Warnf("Unable to start replication after refresh %s: %v", replicationID, startErr)
+						base.WarnfCtx(m.loggingCtx, "Unable to start replication after refresh %s: %v", replicationID, startErr)
 					}
 				}
 			}
@@ -800,7 +800,7 @@ func (m *sgReplicateManager) SubscribeCfgChanges() error {
 				}
 				err := m.RefreshReplicationCfg()
 				if err != nil {
-					base.Warnf("Error while updating replications based on latest cfg: %v", err)
+					base.WarnfCtx(m.loggingCtx, "Error while updating replications based on latest cfg: %v", err)
 				}
 			case <-m.clusterSubscribeTerminator:
 				return
@@ -1402,7 +1402,7 @@ func (m *sgReplicateManager) GetReplicationStatusAll(options ReplicationStatusOp
 	for replicationID, _ := range persistedReplications {
 		status, err := m.GetReplicationStatus(replicationID, options)
 		if err != nil {
-			base.Warnf("Unable to retrieve replication status for replication %s", replicationID)
+			base.WarnfCtx(m.loggingCtx, "Unable to retrieve replication status for replication %s", replicationID)
 		}
 		if status != nil {
 			statuses = append(statuses, status)
@@ -1456,7 +1456,7 @@ func (l *ReplicationHeartbeatListener) StaleHeartbeatDetected(nodeUUID string) {
 	base.Infof(base.KeyCluster, "StaleHeartbeatDetected by sg-replicate listener for node: %v", nodeUUID)
 	err := l.mgr.RemoveNode(nodeUUID)
 	if err != nil {
-		base.Warnf("Attempt to remove node %v from sg-replicate cfg got error: %v", nodeUUID, err)
+		base.WarnfCtx(l.mgr.loggingCtx, "Attempt to remove node %v from sg-replicate cfg got error: %v", nodeUUID, err)
 	}
 }
 
@@ -1478,12 +1478,12 @@ func (l *ReplicationHeartbeatListener) subscribeNodeSetChanges() error {
 			case <-cfgEvents:
 				localNodeRegistered, err := l.reloadNodes()
 				if err != nil {
-					base.Warnf("Error while reloading heartbeat node definitions: %v", err)
+					base.WarnfCtx(l.mgr.loggingCtx, "Error while reloading heartbeat node definitions: %v", err)
 				}
 				if !localNodeRegistered {
 					registerErr := l.mgr.RegisterNode(l.mgr.localNodeUUID)
 					if registerErr != nil {
-						base.Warnf("Error attempting to re-register node, node will not participate in sg-replicate until restarted or replication cfg is next updated: %v", registerErr)
+						base.WarnfCtx(l.mgr.loggingCtx, "Error attempting to re-register node, node will not participate in sg-replicate until restarted or replication cfg is next updated: %v", registerErr)
 					}
 				}
 			case <-l.terminator:

@@ -459,7 +459,7 @@ func (dbConfig *DbConfig) AutoImportEnabled() (bool, error) {
 
 	str, ok := dbConfig.AutoImport.(string)
 	if ok && str == "continuous" {
-		base.Warnf(`Using deprecated config value for "import_docs": "continuous". Use "import_docs": true instead.`)
+		base.WarnfCtx(context.Background(), `Using deprecated config value for "import_docs": "continuous". Use "import_docs": true instead.`)
 		return true, nil
 	}
 
@@ -519,15 +519,15 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) error {
 			// EE: channel cache
 			if !isEnterpriseEdition {
 				if val := dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber; val != nil {
-					base.Warnf(eeOnlyWarningMsg, "cache.channel_cache.max_number", *val, db.DefaultChannelCacheMaxNumber)
+					base.WarnfCtx(context.Background(), eeOnlyWarningMsg, "cache.channel_cache.max_number", *val, db.DefaultChannelCacheMaxNumber)
 					dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber = nil
 				}
 				if val := dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent; val != nil {
-					base.Warnf(eeOnlyWarningMsg, "cache.channel_cache.compact_high_watermark_pct", *val, db.DefaultCompactHighWatermarkPercent)
+					base.WarnfCtx(context.Background(), eeOnlyWarningMsg, "cache.channel_cache.compact_high_watermark_pct", *val, db.DefaultCompactHighWatermarkPercent)
 					dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent = nil
 				}
 				if val := dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent; val != nil {
-					base.Warnf(eeOnlyWarningMsg, "cache.channel_cache.compact_low_watermark_pct", *val, db.DefaultCompactLowWatermarkPercent)
+					base.WarnfCtx(context.Background(), eeOnlyWarningMsg, "cache.channel_cache.compact_low_watermark_pct", *val, db.DefaultCompactLowWatermarkPercent)
 					dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent = nil
 				}
 			}
@@ -579,7 +579,7 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) error {
 			// EE: disable revcache
 			revCacheSize := dbConfig.CacheConfig.RevCacheConfig.Size
 			if !isEnterpriseEdition && revCacheSize != nil && *revCacheSize == 0 {
-				base.Warnf(eeOnlyWarningMsg, "cache.rev_cache.size", *revCacheSize, db.DefaultRevisionCacheSize)
+				base.WarnfCtx(context.Background(), eeOnlyWarningMsg, "cache.rev_cache.size", *revCacheSize, db.DefaultRevisionCacheSize)
 				dbConfig.CacheConfig.RevCacheConfig.Size = nil
 			}
 
@@ -593,7 +593,7 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) error {
 
 	// EE: delta sync
 	if !isEnterpriseEdition && dbConfig.DeltaSync != nil && dbConfig.DeltaSync.Enabled != nil {
-		base.Warnf(eeOnlyWarningMsg, "delta_sync.enabled", *dbConfig.DeltaSync.Enabled, false)
+		base.WarnfCtx(context.Background(), eeOnlyWarningMsg, "delta_sync.enabled", *dbConfig.DeltaSync.Enabled, false)
 		dbConfig.DeltaSync.Enabled = nil
 	}
 
@@ -612,7 +612,7 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) error {
 
 	if dbConfig.ImportPartitions != nil {
 		if !isEnterpriseEdition {
-			base.Warnf(eeOnlyWarningMsg, "import_partitions", *dbConfig.ImportPartitions, nil)
+			base.WarnfCtx(context.Background(), eeOnlyWarningMsg, "import_partitions", *dbConfig.ImportPartitions, nil)
 			dbConfig.ImportPartitions = nil
 		} else if !dbConfig.UseXattrs() {
 			multiError = multiError.Append(fmt.Errorf("Invalid configuration - import_partitions set, but enable_shared_bucket_access not enabled"))
@@ -624,7 +624,7 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) error {
 	}
 
 	if dbConfig.DeprecatedPool != nil {
-		base.Warnf(`"pool" config option is not supported. The pool will be set to "default". The option should be removed from config file.`)
+		base.WarnfCtx(context.Background(), `"pool" config option is not supported. The pool will be set to "default". The option should be removed from config file.`)
 	}
 
 	if dbConfig.Sync != nil {
@@ -1345,7 +1345,7 @@ func sharedBucketDatabaseCheck(sc *ServerContext) (errors error) {
 		multiError = multiError.Append(sharedBucketError)
 		messageFormat := "Bucket %q is shared among databases %s. " +
 			"This may result in unexpected behaviour if security is not defined consistently."
-		base.Warnf(messageFormat, base.MD(sharedBucket.bucketName), base.MD(sharedBucket.dbNames))
+		base.WarnfCtx(context.Background(), messageFormat, base.MD(sharedBucket.bucketName), base.MD(sharedBucket.dbNames))
 	}
 	return multiError.ErrorOrNil()
 }
@@ -1386,7 +1386,7 @@ func sharedBuckets(dbContextMap map[string][]*db.DatabaseContext) (sharedBuckets
 func HandleSighup() {
 	for logger, err := range base.RotateLogfiles() {
 		if err != nil {
-			base.Warnf("Error rotating %v: %v", logger, err)
+			base.WarnfCtx(context.Background(), "Error rotating %v: %v", logger, err)
 		}
 	}
 }

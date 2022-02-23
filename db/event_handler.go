@@ -12,6 +12,7 @@ package db
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -111,12 +112,12 @@ func (wh *Webhook) HandleEvent(event Event) bool {
 		//}
 		jsonOut, err := base.JSONMarshal(event.Doc)
 		if err != nil {
-			base.Warnf("Error marshalling doc for webhook post")
+			base.WarnfCtx(context.TODO(), "Error marshalling doc for webhook post")
 			return false
 		}
 		payload = jsonOut
 	default:
-		base.Warnf("Webhook invoked for unsupported event type.")
+		base.WarnfCtx(context.TODO(), "Webhook invoked for unsupported event type.")
 		return false
 	}
 
@@ -124,7 +125,7 @@ func (wh *Webhook) HandleEvent(event Event) bool {
 		// If filter function is defined, use it to determine whether to post
 		success, err := wh.filter.CallValidateFunction(event)
 		if err != nil {
-			base.Warnf("Error calling webhook filter function: %v", err)
+			base.WarnfCtx(context.TODO(), "Error calling webhook filter function: %v", err)
 		}
 
 		// If filter returns false, cancel webhook post
@@ -150,7 +151,7 @@ func (wh *Webhook) HandleEvent(event Event) bool {
 		}()
 
 		if err != nil {
-			base.Warnf("Error attempting to post %s to url %s: %s", base.UD(event.String()), base.UD(wh.SanitizedUrl()), err)
+			base.WarnfCtx(context.TODO(), "Error attempting to post %s to url %s: %s", base.UD(event.String()), base.UD(wh.SanitizedUrl()), err)
 			return false
 		}
 
