@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 DEFAULT_PACKAGE_TIMEOUT="45m"
 
-if [ $1 == "-m" ]; then
+if [ "$1" == "-m" ]; then
     echo "Running in automated master integration mode"
     # Set automated setting parameters
     SG_COMMIT="master"
@@ -49,7 +49,7 @@ go install -v github.com/AlekSi/gocov-xml@latest
 
 # Set environment vars
 GO_TEST_FLAGS="-v -p 1 -count=${RUN_COUNT}"
-INT_LOG_FILE_NAME="int_logs_${SG_EDITION}_${SG_COMMIT}_${TARGET_TEST}"
+INT_LOG_FILE_NAME="verbose_int"
 
 if [ -d "godeps" ]; then
   export GOPATH=`pwd`/godeps
