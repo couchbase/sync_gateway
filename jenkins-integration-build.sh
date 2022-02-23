@@ -43,12 +43,9 @@ if [ ${USE_GO_MODULES} == "false" ]; then
 fi
 
 # Install tools to use after job has completed
-go get -u -v github.com/tebeka/go2xunit
-go install -v github.com/tebeka/go2xunit
-go get -v -u github.com/axw/gocov/gocov
-go install -v github.com/axw/gocov/gocov
-go get -v -u github.com/AlekSi/gocov-xml
-go install -v github.com/AlekSi/gocov-xml
+go install -v github.com/tebeka/go2xunit@latest
+go install -v github.com/axw/gocov/gocov@latest
+go install -v github.com/AlekSi/gocov-xml@latest
 
 # Set environment vars
 GO_TEST_FLAGS="-v -p 1 -count=${RUN_COUNT}"
