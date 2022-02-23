@@ -33,12 +33,12 @@ SG_COMMIT_HASH=$(git rev-parse HEAD)
 echo "Sync Gateway git commit hash: $SG_COMMIT_HASH"
 
 # Use Go modules (3.1 and above) or bootstrap for legacy Sync Gateway versions (3.0 and below)
-if [ ${USE_GO_MODULES} == "false" ]; then
+if [ "${USE_GO_MODULES}" == "false" ]; then
     mkdir -p sgw_int_testing # Make the directory if it does not exist
     cp bootstrap.sh sgw_int_testing/bootstrap.sh
     cd sgw_int_testing
     chmod +x bootstrap.sh
-    ./bootstrap.sh -c ${SG_COMMIT} -e ee
+    ./bootstrap.sh -c "${SG_COMMIT}" -e ee
     export GO111MODULE=off
     go get -u -v github.com/tebeka/go2xunit
     go get -u -v github.com/axw/gocov/gocov
@@ -99,7 +99,7 @@ fi
 docker stop couchbase || true
 docker rm couchbase || true
 # -p 8091-8094:8091-8094 -p 11210:11210
-docker run -d --name couchbase --net=host couchbase/server:${COUCHBASE_SERVER_VERSION}
+docker run -d --name couchbase --net=host "couchbase/server:${COUCHBASE_SERVER_VERSION}"
 
 # Test to see if Couchbase Server is up
 # Each retry min wait 5s, max 10s. Retry 20 times with exponential backoff (delay 0), fail at 120s
@@ -117,12 +117,12 @@ curl -u Administrator:password -v -X POST http://localhost:8091/settings/indexes
 sleep 10
 
 # Set up test environment variables for CBS runs
-export SG_TEST_USE_XATTRS=${XATTRS}
-export SG_TEST_USE_GSI=${GSI}
+export SG_TEST_USE_XATTRS="${XATTRS}"
+export SG_TEST_USE_GSI="${GSI}"
 export SG_TEST_COUCHBASE_SERVER_URL="${COUCHBASE_SERVER_PROTOCOL}://127.0.0.1"
 export SG_TEST_BACKING_STORE="Couchbase"
-export SG_TEST_BUCKET_POOL_SIZE=${SG_TEST_BUCKET_POOL_SIZE}
-export SG_TEST_TLS_SKIP_VERIFY=${TLS_SKIP_VERIFY}
+export SG_TEST_BUCKET_POOL_SIZE="${SG_TEST_BUCKET_POOL_SIZE}"
+export SG_TEST_TLS_SKIP_VERIFY="${TLS_SKIP_VERIFY}"
 
 if [ "${SG_EDITION}" == "EE" ]; then
     GO_TEST_FLAGS="${GO_TEST_FLAGS} -tags cb_sg_enterprise"
