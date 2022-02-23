@@ -189,9 +189,9 @@ func Fatalf(format string, args ...interface{}) {
 // }
 
 // Warnf logs the given formatted string and args to the warn log level and given log key.
-func Warnf(format string, args ...interface{}) {
-	logTo(context.TODO(), LevelWarn, KeyAll, format, args...)
-}
+// func Warnf(format string, args ...interface{}) {
+// 	logTo(context.TODO(), LevelWarn, KeyAll, format, args...)
+// }
 
 // Infof logs the given formatted string and args to the info log level and given log key.
 func Infof(logKey LogKey, format string, args ...interface{}) {
