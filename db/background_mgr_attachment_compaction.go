@@ -103,7 +103,7 @@ func (a *AttachmentCompactionManager) Run(options map[string]interface{}, persis
 	persistClusterStatus := func() {
 		err := persistClusterStatusCallback()
 		if err != nil {
-			base.Warnf("Failed to persist cluster status on-demand following completion of phase: %v", err)
+			base.WarnfCtx(database.Ctx, "Failed to persist cluster status on-demand following completion of phase: %v", err)
 		}
 	}
 

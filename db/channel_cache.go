@@ -327,7 +327,7 @@ func (c *channelCacheImpl) getBypassChannelCache(channelName string) SingleChann
 func AsSingleChannelCache(cacheValue interface{}) *singleChannelCacheImpl {
 	singleChannelCache, ok := cacheValue.(*singleChannelCacheImpl)
 	if !ok {
-		base.Warnf("Unexpected channel cache value type: %T", cacheValue)
+		base.WarnfCtx(context.Background(), "Unexpected channel cache value type: %T", cacheValue)
 		return nil
 	}
 	return singleChannelCache
@@ -452,7 +452,7 @@ func (c *channelCacheImpl) compactChannelCache() {
 			elementCount++
 			singleChannelCache, ok := elem.Value.(*singleChannelCacheImpl)
 			if !ok {
-				base.Warnf("Non-cache entry (%T) found in channel cache during compaction - ignoring", elem.Value)
+				base.WarnfCtx(context.Background(), "Non-cache entry (%T) found in channel cache during compaction - ignoring", elem.Value)
 				return true
 			}
 

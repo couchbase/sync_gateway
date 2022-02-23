@@ -107,7 +107,7 @@ func ChooseCouchbaseDriver(bucketType CouchbaseBucketType) CouchbaseDriver {
 		return GoCBv2
 	default:
 		// If a new bucket type is added and this method isn't updated, flag a warning (or, could panic)
-		Warnf("Unexpected bucket type: %v", bucketType)
+		WarnfCtx(context.Background(), "Unexpected bucket type: %v", bucketType)
 		return GoCBv2
 	}
 
@@ -416,7 +416,7 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 		// or later, otherwise refuse to connect to the bucket since pre 5.0 versions don't support XATTRs
 		if spec.UseXattrs {
 			if !bucket.IsSupported(sgbucket.DataStoreFeatureXattrs) {
-				Warnf("If using XATTRS, Couchbase Server version must be >= 5.0.")
+				WarnfCtx(context.Background(), "If using XATTRS, Couchbase Server version must be >= 5.0.")
 				return nil, ErrFatalBucketConnection
 			}
 		}
@@ -589,7 +589,7 @@ func retrievePurgeInterval(bucket CouchbaseStore, uri string) (time.Duration, er
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusForbidden {
-		Warnf("403 Forbidden attempting to access %s.  Bucket user must have Bucket Full Access and Bucket Admin roles to retrieve metadata purge interval.", UD(uri))
+		WarnfCtx(resp.Request.Context(), "403 Forbidden attempting to access %s.  Bucket user must have Bucket Full Access and Bucket Admin roles to retrieve metadata purge interval.", UD(uri))
 	} else if resp.StatusCode != http.StatusOK {
 		return 0, errors.New(resp.Status)
 	}

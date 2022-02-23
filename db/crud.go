@@ -732,7 +732,7 @@ func (db *Database) getAvailableRevAttachments(doc *Document, revid string) (anc
 func (db *Database) backupAncestorRevs(doc *Document, newDoc *Document) {
 	newBodyBytes, err := newDoc.BodyBytes()
 	if err != nil {
-		base.Warnf("Error getting body bytes when backing up ancestor revs")
+		base.WarnfCtx(db.Ctx, "Error getting body bytes when backing up ancestor revs")
 		return
 	}
 
@@ -1201,7 +1201,7 @@ func (db *Database) resolveDocLocalWins(localDoc *Document, remoteDoc *Document,
 		for _, value := range remoteDoc.DocAttachments {
 			attachmentMeta, ok := value.(map[string]interface{})
 			if !ok {
-				base.Warnf("Unable to parse attachment meta during conflict resolution for %s/%s: %v", base.UD(localDoc.ID), localDoc.SyncData.CurrentRev, value)
+				base.WarnfCtx(db.Ctx, "Unable to parse attachment meta during conflict resolution for %s/%s: %v", base.UD(localDoc.ID), localDoc.SyncData.CurrentRev, value)
 				continue
 			}
 			revpos, ok := base.ToInt64(attachmentMeta["revpos"])
@@ -1487,7 +1487,7 @@ func (db *Database) assignSequence(docSequence uint64, doc *Document, unusedSequ
 			} else {
 				releaseErr := db.sequences.releaseSequence(docSequence)
 				if releaseErr != nil {
-					base.Warnf("Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, err)
+					base.WarnfCtx(db.Ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, err)
 				}
 			}
 		}
@@ -1913,7 +1913,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 		if db.EventMgr.HasHandlerForEvent(DocumentChange) {
 			webhookJSON, err := doc.BodyWithSpecialProperties()
 			if err != nil {
-				base.Warnf("Error marshalling doc with id %s and revid %s for webhook post: %v", base.UD(docid), base.UD(newRevID), err)
+				base.WarnfCtx(db.Ctx, "Error marshalling doc with id %s and revid %s for webhook post: %v", base.UD(docid), base.UD(newRevID), err)
 			} else {
 				winningRevChange := prevCurrentRev != doc.CurrentRev
 				err = db.EventMgr.RaiseDocumentChangeEvent(webhookJSON, docid, oldBodyJSON, revChannels, winningRevChange)
@@ -2209,7 +2209,7 @@ func (db *Database) getChannelsAndAccess(doc *Document, body Body, metaMap map[s
 		if value != nil {
 			array, nonStrings := base.ValueToStringArray(value)
 			if nonStrings != nil {
-				base.Warnf("Channel names must be string values only. Ignoring non-string channels: %s", base.UD(nonStrings))
+				base.WarnfCtx(db.Ctx, "Channel names must be string values only. Ignoring non-string channels: %s", base.UD(nonStrings))
 			}
 			result, err = channels.SetFromArray(array, channels.KeepStar)
 		}
@@ -2234,7 +2234,7 @@ func validateAccessMap(access channels.AccessMap) bool {
 	for name := range access {
 		principalName, _ := channels.AccessNameToPrincipalName(name)
 		if !auth.IsValidPrincipalName(principalName) {
-			base.Warnf("Invalid principal name %q in access() or role() call", base.UD(principalName))
+			base.WarnfCtx(context.Background(), "Invalid principal name %q in access() or role() call", base.UD(principalName))
 			return false
 		}
 	}
@@ -2248,7 +2248,7 @@ func validateRoleAccessMap(roleAccess channels.AccessMap) bool {
 	for _, roles := range roleAccess {
 		for rolename := range roles {
 			if !auth.IsValidPrincipalName(rolename) {
-				base.Warnf("Invalid role name %q in role() call", base.UD(rolename))
+				base.WarnfCtx(context.Background(), "Invalid role name %q in role() call", base.UD(rolename))
 				return false
 			}
 		}

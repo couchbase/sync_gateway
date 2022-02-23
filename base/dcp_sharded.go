@@ -204,7 +204,7 @@ func dcpSafeIndexName(c *CbgtContext, dbName string) (safeIndexName, previousUUI
 	if legacyIndexUUID != "" {
 		deleteErr := c.Manager.DeleteIndexEx(legacyIndexName, "")
 		if deleteErr != nil {
-			Warnf("Error removing legacy import feed index: %v", deleteErr)
+			WarnfCtx(c.loggingCtx, "Error removing legacy import feed index: %v", deleteErr)
 		}
 	}
 	return indexName, indexUUID
@@ -471,7 +471,7 @@ func (l *importHeartbeatListener) StaleHeartbeatDetected(nodeUUID string) {
 	Infof(KeyCluster, "StaleHeartbeatDetected by import listener for node: %v", nodeUUID)
 	err := cbgt.UnregisterNodes(l.cfg, l.mgr.Version(), []string{nodeUUID})
 	if err != nil {
-		Warnf("Attempt to unregister %v from CBGT got error: %v", nodeUUID, err)
+		WarnfCtx(context.Background(), "Attempt to unregister %v from CBGT got error: %v", nodeUUID, err)
 	}
 }
 
@@ -497,12 +497,12 @@ func (l *importHeartbeatListener) subscribeNodeChanges() error {
 			case <-cfgEvents:
 				localNodeRegistered, err := l.reloadNodes()
 				if err != nil {
-					Warnf("Error while reloading heartbeat node definitions: %v", err)
+					WarnfCtx(context.Background(), "Error while reloading heartbeat node definitions: %v", err)
 				}
 				if !localNodeRegistered {
 					registerErr := l.mgr.Register(cbgt.NODE_DEFS_WANTED)
 					if registerErr != nil {
-						Warnf("Error attempting to re-register node, node will not participate in import until restarted or cbgt cfg is next updated: %v", registerErr)
+						WarnfCtx(context.Background(), "Error attempting to re-register node, node will not participate in import until restarted or cbgt cfg is next updated: %v", registerErr)
 					}
 				}
 
@@ -567,7 +567,7 @@ func StoreDestFactory(destKey string, dest CbgtDestFactoryFunc) {
 
 	// We don't expect duplicate destKey registration - log a warning if it already exists
 	if ok {
-		Warnf("destKey %s already exists in cbgtDestFactories - new value will replace the existing dest", destKey)
+		WarnfCtx(context.Background(), "destKey %s already exists in cbgtDestFactories - new value will replace the existing dest", destKey)
 	}
 	cbgtDestFactories[destKey] = dest
 	cbgtDestFactoriesLock.Unlock()

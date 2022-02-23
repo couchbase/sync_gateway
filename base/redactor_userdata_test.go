@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package base
 
 import (
+	"context"
 	"math/big"
 	"testing"
 	"time"
@@ -102,35 +103,35 @@ func BenchmarkRedactOnLog(b *testing.B) {
 
 	b.Run("WarnPlain", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			Warnf("Log: %s", "Fixed String")
+			WarnfCtx(context.Background(), "Log: %s", "Fixed String")
 		}
 	})
 
 	b.Run("WarnRedactTrueNotUD", func(b *testing.B) {
 		RedactUserData = true
 		for i := 0; i < b.N; i++ {
-			Warnf("Log: %s", FakeLogger{})
+			WarnfCtx(context.Background(), "Log: %s", FakeLogger{})
 		}
 	})
 
 	b.Run("WarnRedactTrueUD", func(b *testing.B) {
 		RedactUserData = true
 		for i := 0; i < b.N; i++ {
-			Warnf("Log: %s", UD(FakeLogger{}))
+			WarnfCtx(context.Background(), "Log: %s", UD(FakeLogger{}))
 		}
 	})
 
 	b.Run("WarnRedactFalseNotUD", func(b *testing.B) {
 		RedactUserData = false
 		for i := 0; i < b.N; i++ {
-			Warnf("Log: %s", FakeLogger{})
+			WarnfCtx(context.Background(), "Log: %s", FakeLogger{})
 		}
 	})
 
 	b.Run("WarnRedactFalseUD", func(b *testing.B) {
 		RedactUserData = false
 		for i := 0; i < b.N; i++ {
-			Warnf("Log: %s", UD(FakeLogger{}))
+			WarnfCtx(context.Background(), "Log: %s", UD(FakeLogger{}))
 		}
 	})
 

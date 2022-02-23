@@ -284,7 +284,7 @@ func (auth *Authenticator) rebuildRoles(user User) error {
 		var err error
 		roles, err = auth.channelComputer.ComputeRolesForUser(auth.LogCtx, user)
 		if err != nil {
-			base.Warnf("channelComputer.ComputeRolesForUser failed on user %s: %v", base.UD(user.Name()), err)
+			base.WarnfCtx(auth.LogCtx, "channelComputer.ComputeRolesForUser failed on user %s: %v", base.UD(user.Name()), err)
 			return err
 		}
 	}

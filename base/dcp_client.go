@@ -1,6 +1,7 @@
 package base
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -161,7 +162,7 @@ func (dc *DCPClient) close() {
 
 		agentErr := dc.agent.Close()
 		if agentErr != nil {
-			Warnf("Error closing DCP agent in client close: %v", agentErr)
+			WarnfCtx(context.Background(), "Error closing DCP agent in client close: %v", agentErr)
 		}
 	}
 	closeErr := dc.getCloseError()
@@ -298,12 +299,12 @@ func (dc *DCPClient) openStream(vbID uint16) (err error) {
 				return fmt.Errorf("metadata rollback failed for vb %d: %v", vbID, err)
 			}
 		case errors.Is(openStreamErr, gocbcore.ErrShutdown):
-			Warnf("Closing stream for vbID %d, agent has been shut down", vbID)
+			WarnfCtx(context.Background(), "Closing stream for vbID %d, agent has been shut down", vbID)
 			return openStreamErr
 		case errors.Is(openStreamErr, ErrTimeout):
 			Debugf(KeyDCP, "Timeout attempting to open stream for vb %d, will retry", vbID)
 		default:
-			Warnf("Error opening stream for vbID %d: %v", vbID, openStreamErr)
+			WarnfCtx(context.Background(), "Error opening stream for vbID %d: %v", vbID, openStreamErr)
 			return openStreamErr
 		}
 	}

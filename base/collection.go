@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package base
 
 import (
+	"context"
 	"errors"
 	"expvar"
 	"fmt"
@@ -33,7 +34,7 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 
 	connString, err := spec.GetGoCBConnString()
 	if err != nil {
-		Warnf("Unable to parse server value: %s error: %v", SD(spec.Server), err)
+		WarnfCtx(context.TODO(), "Unable to parse server value: %s error: %v", SD(spec.Server), err)
 		return nil, err
 	}
 
@@ -83,7 +84,7 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 		if errors.Is(err, gocb.ErrAuthenticationFailure) {
 			return nil, ErrAuthError
 		}
-		Warnf("Error waiting for cluster to be ready: %v", err)
+		WarnfCtx(context.TODO(), "Error waiting for cluster to be ready: %v", err)
 		return nil, err
 	}
 
@@ -101,7 +102,7 @@ func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilR
 		if errors.Is(err, gocb.ErrAuthenticationFailure) {
 			return nil, ErrAuthError
 		}
-		Warnf("Error waiting for bucket to be ready: %v", err)
+		WarnfCtx(context.TODO(), "Error waiting for bucket to be ready: %v", err)
 		return nil, err
 	}
 
@@ -171,7 +172,7 @@ func (c *Collection) UUID() (string, error) {
 func (c *Collection) Close() {
 	if c.cluster != nil {
 		if err := c.cluster.Close(nil); err != nil {
-			Warnf("Error closing collection cluster: %v", err)
+			WarnfCtx(context.TODO(), "Error closing collection cluster: %v", err)
 		}
 	}
 	return
@@ -628,7 +629,7 @@ func (c *Collection) Flush() error {
 	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
 		err = bucketManager.FlushBucket(c.Bucket().Name(), nil)
 		if err != nil {
-			Warnf("Error flushing bucket: %v  Will retry.", err)
+			WarnfCtx(context.TODO(), "Error flushing bucket: %v  Will retry.", err)
 			shouldRetry = true
 		}
 		return shouldRetry, err, nil
@@ -719,7 +720,7 @@ func (c *Collection) MaxTTL() (int, error) {
 func (c *Collection) HttpClient() *http.Client {
 	router, routerErr := c.Bucket().Internal().IORouter()
 	if routerErr != nil {
-		Warnf("Unable to obtain router while retrieving httpClient:%v", routerErr)
+		WarnfCtx(context.TODO(), "Unable to obtain router while retrieving httpClient:%v", routerErr)
 		return nil
 	}
 	return router.HTTPClient()
@@ -732,7 +733,7 @@ func (c *Collection) GetExpiry(k string) (expiry uint32, getMetaError error) {
 
 	router, routerErr := c.Bucket().Internal().IORouter()
 	if routerErr != nil {
-		Warnf("Unable to obtain router while retrieving expiry:%v", routerErr)
+		WarnfCtx(context.TODO(), "Unable to obtain router while retrieving expiry:%v", routerErr)
 		return 0, routerErr
 	}
 	getMetaOptions := gocbcore.GetMetaOptions{

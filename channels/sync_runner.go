@@ -176,7 +176,7 @@ func NewSyncRunner(funcSource string) (*SyncRunner, error) {
 
 			expiry, reflectErr := base.ReflectExpiry(rawExpiry)
 			if reflectErr != nil {
-				base.Warnf("SyncRunner: Invalid value passed to expiry().  Value:%+v ", call.Argument(0))
+				base.WarnfCtx(ctx, "SyncRunner: Invalid value passed to expiry().  Value:%+v ", call.Argument(0))
 				return otto.UndefinedValue()
 			}
 
@@ -264,7 +264,7 @@ func ottoValueToStringArray(value otto.Value) []string {
 	result, nonStrings := base.ValueToStringArray(nativeValue)
 
 	if !value.IsNull() && !value.IsUndefined() && nonStrings != nil {
-		base.Warnf("Channel names must be string values only. Ignoring non-string channels: %s", base.UD(nonStrings))
+		base.WarnfCtx(context.Background(), "Channel names must be string values only. Ignoring non-string channels: %s", base.UD(nonStrings))
 	}
 	return result
 }

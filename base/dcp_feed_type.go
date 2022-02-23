@@ -1,6 +1,7 @@
 package base
 
 import (
+	"context"
 	"sync"
 
 	"github.com/couchbase/cbgt"
@@ -139,7 +140,7 @@ func addCbgtAuthToDCPParams(dcpParams string) string {
 
 	unmarshalErr := JSONUnmarshal([]byte(dcpParams), &sgSourceParams)
 	if unmarshalErr != nil {
-		Warnf("Unable to unmarshal params provided by cbgt as sgSourceParams: %v", unmarshalErr)
+		WarnfCtx(context.Background(), "Unable to unmarshal params provided by cbgt as sgSourceParams: %v", unmarshalErr)
 		return dcpParams
 	}
 
@@ -158,7 +159,7 @@ func addCbgtAuthToDCPParams(dcpParams string) string {
 	var feedParamsWithAuth cbgt.DCPFeedParams
 	unmarshalDCPErr := JSONUnmarshal([]byte(dcpParams), &feedParamsWithAuth)
 	if unmarshalDCPErr != nil {
-		Warnf("Unable to unmarshal params provided by cbgt as dcpFeedParams: %v", unmarshalDCPErr)
+		WarnfCtx(context.Background(), "Unable to unmarshal params provided by cbgt as dcpFeedParams: %v", unmarshalDCPErr)
 	}
 
 	// Add creds to params
@@ -167,7 +168,7 @@ func addCbgtAuthToDCPParams(dcpParams string) string {
 
 	marshalledParamsWithAuth, marshalErr := JSONMarshal(feedParamsWithAuth)
 	if marshalErr != nil {
-		Warnf("Unable to marshal updated cbgt dcp params: %v", marshalErr)
+		WarnfCtx(context.Background(), "Unable to marshal updated cbgt dcp params: %v", marshalErr)
 		return dcpParams
 	}
 

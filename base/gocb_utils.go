@@ -1,6 +1,7 @@
 package base
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -148,7 +149,7 @@ func getRootCAs(caCertPath string) (*x509.CertPool, error) {
 	rootCAs, err := x509.SystemCertPool()
 	if err != nil {
 		rootCAs = x509.NewCertPool()
-		Warnf("Could not retrieve root CAs: %v", err)
+		WarnfCtx(context.Background(), "Could not retrieve root CAs: %v", err)
 	}
 	return rootCAs, nil
 }

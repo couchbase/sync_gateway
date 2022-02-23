@@ -51,9 +51,9 @@ func TestRedactedLogFuncs(t *testing.T) {
 	assertLogContains(t, "Username: <ud>alice</ud>", func() { Infof(KeyAll, "Username: %s", username) })
 
 	RedactUserData = false
-	assertLogContains(t, "Username: alice", func() { Warnf("Username: %s", username) })
+	assertLogContains(t, "Username: alice", func() { WarnfCtx(context.Background(), "Username: %s", username) })
 	RedactUserData = true
-	assertLogContains(t, "Username: <ud>alice</ud>", func() { Warnf("Username: %s", username) })
+	assertLogContains(t, "Username: <ud>alice</ud>", func() { WarnfCtx(context.Background(), "Username: %s", username) })
 }
 
 func Benchmark_LoggingPerformance(b *testing.B) {
@@ -65,7 +65,7 @@ func Benchmark_LoggingPerformance(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		Debugf(KeyCRUD, "some crud'y message")
 		Infof(KeyCRUD, "some crud'y message")
-		Warnf("some crud'y message")
+		WarnfCtx(context.Background(), "some crud'y message")
 		ErrorfCtx(context.Background(), "some crud'y message")
 	}
 }

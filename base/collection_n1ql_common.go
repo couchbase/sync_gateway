@@ -277,7 +277,7 @@ func GetIndexMeta(store N1QLStore, indexName string) (exists bool, meta *IndexMe
 		exists, meta, err := getIndexMetaWithoutRetry(store, indexName)
 		if err != nil {
 			// retry
-			Warnf("Error from GetIndexMeta for index %s: %v will retry", indexName, err)
+			WarnfCtx(context.TODO(), "Error from GetIndexMeta for index %s: %v will retry", indexName, err)
 			return true, err, nil
 		}
 		return false, nil, getIndexMetaRetryValues{
@@ -478,7 +478,7 @@ func (i *gocbRawIterator) Next(valuePtr interface{}) bool {
 
 	err := JSONUnmarshal(nextBytes, &valuePtr)
 	if err != nil {
-		Warnf("Unable to marshal view result row into value: %v", err)
+		WarnfCtx(context.TODO(), "Unable to marshal view result row into value: %v", err)
 		return false
 	}
 	return true

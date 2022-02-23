@@ -10,6 +10,7 @@ package base
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"expvar"
 	"fmt"
@@ -77,7 +78,7 @@ var _ CouchbaseStore = &CouchbaseBucketGoCB{}
 func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err error) {
 	connString, err := spec.GetGoCBConnString()
 	if err != nil {
-		Warnf("Unable to parse server value: %s error: %v", SD(spec.Server), err)
+		WarnfCtx(context.Background(), "Unable to parse server value: %s error: %v", SD(spec.Server), err)
 		return nil, err
 	}
 
@@ -105,7 +106,7 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		})
 		// If RBAC authentication fails, revert to non-RBAC authentication by including the password to OpenBucket
 		if authErr != nil {
-			Warnf("RBAC authentication against bucket %s as user %s failed - will re-attempt w/ bucketname, password", MD(spec.BucketName), UD(user))
+			WarnfCtx(context.Background(), "RBAC authentication against bucket %s as user %s failed - will re-attempt w/ bucketname, password", MD(spec.BucketName), UD(user))
 			bucketPassword = pass
 		}
 	}
@@ -588,7 +589,7 @@ func (bucket *CouchbaseBucketGoCB) processGetRawBatch(keys []string, resultAccum
 			if ok {
 				resultAccumulator[getOp.Key] = *byteValue
 			} else {
-				Warnf("Skipping GetBulkRaw result - unable to cast to []byte.  Type: %v", reflect.TypeOf(getOp.Value))
+				WarnfCtx(context.TODO(), "Skipping GetBulkRaw result - unable to cast to []byte.  Type: %v", reflect.TypeOf(getOp.Value))
 			}
 		} else {
 			// if it's a recoverable error, then throw it in retry collection.
@@ -628,7 +629,7 @@ func (bucket *CouchbaseBucketGoCB) processGetCountersBatch(keys []string, result
 			if ok {
 				resultAccumulator[getOp.Key] = *intValue
 			} else {
-				Warnf("Skipping GetBulkCounter result - unable to cast to []byte.  Type: %v", reflect.TypeOf(getOp.Value))
+				WarnfCtx(context.Background(), "Skipping GetBulkCounter result - unable to cast to []byte.  Type: %v", reflect.TypeOf(getOp.Value))
 			}
 		} else {
 			// if it's a recoverable error, then throw it in retry collection.
@@ -645,11 +646,11 @@ func (bucket *CouchbaseBucketGoCB) processGetCountersBatch(keys []string, result
 func createBatchesEntries(batchSize uint, entries []*sgbucket.BulkSetEntry) [][]*sgbucket.BulkSetEntry {
 	// boundary checking
 	if len(entries) == 0 {
-		Warnf("createBatchesEnrties called with empty entries")
+		WarnfCtx(context.Background(), "createBatchesEnrties called with empty entries")
 		return [][]*sgbucket.BulkSetEntry{}
 	}
 	if batchSize == 0 {
-		Warnf("createBatchesEntries called with invalid batchSize")
+		WarnfCtx(context.Background(), "createBatchesEntries called with invalid batchSize")
 		result := [][]*sgbucket.BulkSetEntry{}
 		return append(result, entries)
 	}
@@ -679,11 +680,11 @@ func createBatchesKeys(batchSize uint, keys []string) [][]string {
 
 	// boundary checking
 	if len(keys) == 0 {
-		Warnf("createBatchesKeys called with empty keys")
+		WarnfCtx(context.Background(), "createBatchesKeys called with empty keys")
 		return [][]string{}
 	}
 	if batchSize == 0 {
-		Warnf("createBatchesKeys called with invalid batchSize")
+		WarnfCtx(context.Background(), "createBatchesKeys called with invalid batchSize")
 		result := [][]string{}
 		return append(result, keys)
 	}
@@ -1233,7 +1234,7 @@ func (bucket *CouchbaseBucketGoCB) PutDDoc(docname string, sgDesignDoc *sgbucket
 	var worker RetryWorker = func() (bool, error, interface{}) {
 		err := manager.UpsertDesignDocument(gocbDesignDoc)
 		if err != nil {
-			Warnf("Got error from UpsertDesignDocument: %v - Retrying...", err)
+			WarnfCtx(context.Background(), "Got error from UpsertDesignDocument: %v - Retrying...", err)
 			return true, err, nil
 		}
 		return false, nil, nil
@@ -1447,7 +1448,7 @@ func getTotalRows(goCbViewResult gocb.ViewResults) int {
 	viewResultMetrics, gotTotalRows := goCbViewResult.(gocb.ViewResultMetrics)
 	if !gotTotalRows {
 		// Should never happen
-		Warnf("Unable to type assert goCbViewResult -> gocb.ViewResultMetrics.  The total rows count will be missing.")
+		WarnfCtx(context.Background(), "Unable to type assert goCbViewResult -> gocb.ViewResultMetrics.  The total rows count will be missing.")
 		return -1
 	}
 	return viewResultMetrics.TotalRows()
@@ -1530,7 +1531,7 @@ func (bucket *CouchbaseBucketGoCB) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeq
 }
 
 func (bucket *CouchbaseBucketGoCB) Dump() {
-	Warnf("CouchbaseBucketGoCB: Unimplemented method: Dump()")
+	WarnfCtx(context.Background(), "CouchbaseBucketGoCB: Unimplemented method: Dump()")
 }
 
 func (bucket *CouchbaseBucketGoCB) VBHash(docID string) uint32 {
@@ -1552,7 +1553,7 @@ func (bucket *CouchbaseBucketGoCB) UUID() (string, error) {
 
 func (bucket *CouchbaseBucketGoCB) Close() {
 	if err := bucket.Bucket.Close(); err != nil {
-		Warnf("Error closing GoCB bucket: %v.", err)
+		WarnfCtx(context.Background(), "Error closing GoCB bucket: %v.", err)
 		return
 	}
 }
@@ -1568,7 +1569,7 @@ func (bucket *CouchbaseBucketGoCB) Flush() error {
 	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
 		err = bucketManager.Flush()
 		if err != nil {
-			Warnf("Error flushing bucket: %v  Will retry.", err)
+			WarnfCtx(context.Background(), "Error flushing bucket: %v  Will retry.", err)
 			shouldRetry = true
 		}
 		return shouldRetry, err, nil
@@ -1813,7 +1814,7 @@ func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interfac
 		case ViewQueryParamLimit:
 			uintVal, err := normalizeIntToUint(optionValue)
 			if err != nil {
-				Warnf("ViewQueryParamLimit error: %v", err)
+				WarnfCtx(context.Background(), "ViewQueryParamLimit error: %v", err)
 			}
 			viewQuery.Limit(uintVal)
 		case ViewQueryParamDescending:
@@ -1823,7 +1824,7 @@ func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interfac
 		case ViewQueryParamSkip:
 			uintVal, err := normalizeIntToUint(optionValue)
 			if err != nil {
-				Warnf("ViewQueryParamSkip error: %v", err)
+				WarnfCtx(context.Background(), "ViewQueryParamSkip error: %v", err)
 			}
 			viewQuery.Skip(uintVal)
 		case ViewQueryParamGroup:
@@ -1831,7 +1832,7 @@ func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interfac
 		case ViewQueryParamGroupLevel:
 			uintVal, err := normalizeIntToUint(optionValue)
 			if err != nil {
-				Warnf("ViewQueryParamGroupLevel error: %v", err)
+				WarnfCtx(context.Background(), "ViewQueryParamGroupLevel error: %v", err)
 			}
 			viewQuery.GroupLevel(uintVal)
 		case ViewQueryParamKey:
@@ -1903,14 +1904,14 @@ func asBool(value interface{}) bool {
 	case string:
 		parsedVal, err := strconv.ParseBool(typeValue)
 		if err != nil {
-			Warnf("asBool called with unknown value: %v.  defaulting to false", typeValue)
+			WarnfCtx(context.Background(), "asBool called with unknown value: %v.  defaulting to false", typeValue)
 			return false
 		}
 		return parsedVal
 	case bool:
 		return typeValue
 	default:
-		Warnf("asBool called with unknown type: %T.  defaulting to false", typeValue)
+		WarnfCtx(context.Background(), "asBool called with unknown type: %T.  defaulting to false", typeValue)
 		return false
 	}
 
@@ -1928,7 +1929,7 @@ func asStale(value interface{}) gocb.StaleMode {
 		}
 		parsedVal, err := strconv.ParseBool(typeValue)
 		if err != nil {
-			Warnf("asStale called with unknown value: %v.  defaulting to stale=false", typeValue)
+			WarnfCtx(context.Background(), "asStale called with unknown value: %v.  defaulting to stale=false", typeValue)
 			return gocb.Before
 		}
 		if parsedVal {
@@ -1943,7 +1944,7 @@ func asStale(value interface{}) gocb.StaleMode {
 			return gocb.Before
 		}
 	default:
-		Warnf("asBool called with unknown type: %T.  defaulting to false", typeValue)
+		WarnfCtx(context.Background(), "asBool called with unknown type: %T.  defaulting to false", typeValue)
 		return gocb.Before
 	}
 

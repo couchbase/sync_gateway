@@ -1,6 +1,7 @@
 package base
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -239,7 +240,7 @@ func WriteUpdateWithXattr(store SubdocXattrStore, k string, xattrKey string, use
 			// conflict/duplicate handling on retry.
 		} else {
 			// WriteWithXattr already handles retry on recoverable errors, so fail on any errors other than ErrKeyExists
-			Warnf("Failed to update doc with xattr for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), writeErr)
+			WarnfCtx(context.TODO(), "Failed to update doc with xattr for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), writeErr)
 			return emptyCas, writeErr
 		}
 

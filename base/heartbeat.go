@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package base
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sort"
@@ -134,7 +135,7 @@ func (h *couchbaseHeartBeater) Stop() {
 	for h.sendActive.IsTrue() || h.checkActive.IsTrue() {
 		waitTimeMs += 10
 		if waitTimeMs > maxWaitTimeMs {
-			Warnf("couchbaseHeartBeater didn't complete Stop() within expected elapsed time")
+			WarnfCtx(context.Background(), "couchbaseHeartBeater didn't complete Stop() within expected elapsed time")
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -161,7 +162,7 @@ func (h *couchbaseHeartBeater) StartSendingHeartbeats() error {
 				return
 			case <-ticker.C:
 				if err := h.sendHeartbeat(); err != nil {
-					Warnf("Unexpected error sending heartbeat - will be retried: %v", err)
+					WarnfCtx(context.Background(), "Unexpected error sending heartbeat - will be retried: %v", err)
 				}
 			}
 		}
@@ -174,7 +175,7 @@ func (h *couchbaseHeartBeater) StartSendingHeartbeats() error {
 func (h *couchbaseHeartBeater) StartCheckingHeartbeats() error {
 
 	if err := h.checkStaleHeartbeats(); err != nil {
-		Warnf("Error checking for stale heartbeats: %v", err)
+		WarnfCtx(context.Background(), "Error checking for stale heartbeats: %v", err)
 	}
 
 	ticker := time.NewTicker(h.heartbeatPollInterval)
@@ -188,7 +189,7 @@ func (h *couchbaseHeartBeater) StartCheckingHeartbeats() error {
 				return
 			case <-ticker.C:
 				if err := h.checkStaleHeartbeats(); err != nil {
-					Warnf("Error checking for stale heartbeats: %v", err)
+					WarnfCtx(context.Background(), "Error checking for stale heartbeats: %v", err)
 				}
 			}
 		}
@@ -252,7 +253,7 @@ func (h *couchbaseHeartBeater) getNodeListenerMap() ListenerMap {
 	for _, listener := range h.heartbeatListeners {
 		listenerNodes, err := listener.GetNodes()
 		if err != nil {
-			Warnf("Error obtaining node set for listener %s - will be omitted for this heartbeat iteration.  Error: %v", listener.Name(), err)
+			WarnfCtx(context.Background(), "Error obtaining node set for listener %s - will be omitted for this heartbeat iteration.  Error: %v", listener.Name(), err)
 		}
 		for _, nodeUUID := range listenerNodes {
 			_, ok := nodeToListenerMap[nodeUUID]

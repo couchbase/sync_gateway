@@ -12,6 +12,7 @@ package db
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -290,7 +291,7 @@ func (flag changesDeletedFlag) HasFlag(deletedFlag changesDeletedFlag) bool {
 func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions) (isComplete bool) {
 	defer func() {
 		if panicked := recover(); panicked != nil {
-			base.Warnf("[%s] PANIC sending changes: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
+			base.WarnfCtx(bh.loggingCtx, "[%s] PANIC sending changes: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
 		}
 	}()
 
@@ -500,7 +501,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 
 	var changeList [][]interface{}
 	if err := rq.ReadJSONBody(&changeList); err != nil {
-		base.Warnf("Handle changes got error: %v", err)
+		base.WarnfCtx(bh.loggingCtx, "Handle changes got error: %v", err)
 		return err
 	}
 
@@ -622,7 +623,7 @@ func seqStr(seq interface{}) string {
 	case json.Number:
 		return seq.String()
 	}
-	base.Warnf("unknown seq type: %T", seq)
+	base.WarnfCtx(context.Background(), "unknown seq type: %T", seq)
 	return ""
 }
 
@@ -673,7 +674,7 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 				revEntry := IncludeConflictRevEntry{Status: status, Rev: currentRev}
 				entryBytes, marshalErr := base.JSONMarshal(revEntry)
 				if marshalErr != nil {
-					base.Warnf("Unable to marshal proposeChangesEntry as includeConflictRev - falling back to status-only entry.  Error: %v", marshalErr)
+					base.WarnfCtx(bh.loggingCtx, "Unable to marshal proposeChangesEntry as includeConflictRev - falling back to status-only entry.  Error: %v", marshalErr)
 					output.Write([]byte(strconv.FormatInt(int64(status), 10)))
 				}
 				output.Write(entryBytes)

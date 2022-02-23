@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"expvar"
 	"math"
 	"strings"
@@ -168,7 +169,7 @@ func (listener *changeListener) Stop() {
 	case <-listener.FeedArgs.DoneChan:
 		// Mutation feed worker goroutine is terminated and doneChan is already closed.
 	case <-time.After(waitTime):
-		base.Warnf("Timeout after %v of waiting for mutation feed worker to terminate", waitTime)
+		base.WarnfCtx(context.Background(), "Timeout after %v of waiting for mutation feed worker to terminate", waitTime)
 	}
 }
 

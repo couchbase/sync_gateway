@@ -458,7 +458,7 @@ func (b *backfillStatus) updateStats(vbno uint16, previousVbSequence uint64, cur
 		b.lastPersistTime = time.Now()
 		err := b.persistBackfillSequences(bucket, currentSequences)
 		if err != nil {
-			Warnf("Error persisting back-fill sequences: %v", err)
+			WarnfCtx(context.Background(), "Error persisting back-fill sequences: %v", err)
 		}
 		b.logBackfillProgress()
 	}
@@ -469,7 +469,7 @@ func (b *backfillStatus) updateStats(vbno uint16, previousVbSequence uint64, cur
 		b.active = false
 		err := b.purgeBackfillSequences(bucket)
 		if err != nil {
-			Warnf("Error purging back-fill sequences: %v", err)
+			WarnfCtx(context.Background(), "Error purging back-fill sequences: %v", err)
 		}
 	}
 }
@@ -631,7 +631,7 @@ func getNetworkTypeFromConnSpec(spec gocbconnstr.ConnSpec) clusterNetworkType {
 	networkType := clusterNetworkAuto
 	if networkOpt, ok := spec.Options["network"]; ok && len(networkOpt) > 0 {
 		if len(networkOpt) > 1 {
-			Warnf("multiple 'network' options found in connection string - using first one: %q", networkOpt[0])
+			WarnfCtx(context.Background(), "multiple 'network' options found in connection string - using first one: %q", networkOpt[0])
 		}
 		networkType = clusterNetworkType(networkOpt[0])
 	}

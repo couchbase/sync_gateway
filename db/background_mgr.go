@@ -122,7 +122,7 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 				case <-ticker.C:
 					err = b.UpdateStatusClusterAware()
 					if err != nil {
-						base.Warnf("Failed to update background manager status: %v", err)
+						base.WarnfCtx(context.TODO(), "Failed to update background manager status: %v", err)
 					}
 
 				case <-b.terminator.Done():
@@ -158,7 +158,7 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 		if b.isClusterAware() {
 			err = b.UpdateStatusClusterAware()
 			if err != nil {
-				base.Warnf("Failed to update background manager status: %v", err)
+				base.WarnfCtx(context.TODO(), "Failed to update background manager status: %v", err)
 			}
 
 			// Delete the heartbeat doc to allow another process to run
@@ -465,7 +465,7 @@ func (b *BackgroundManager) UpdateHeartbeatDocClusterAware() error {
 	if status.ShouldStop {
 		err = b.Stop()
 		if err != nil {
-			base.Warnf("Failed to stop process %q: %v", b.clusterAwareOptions.processSuffix, err)
+			base.WarnfCtx(context.TODO(), "Failed to stop process %q: %v", b.clusterAwareOptions.processSuffix, err)
 		}
 	}
 
