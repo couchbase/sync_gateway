@@ -180,7 +180,7 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 	}
 	c.channelCache = channelCache
 
-	base.Infof(base.KeyCache, "Initializing changes cache for database %s with options %+v", base.UD(dbcontext.Name), c.options)
+	base.InfofCtx(context.TODO(), base.KeyCache, "Initializing changes cache for database %s with options %+v", base.UD(dbcontext.Name), c.options)
 
 	heap.Init(&c.pendingLogs)
 
@@ -472,10 +472,10 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	if !c.context.UseXattrs() && !syncData.HasValidSyncData() {
 		migratedDoc, _ := c.context.checkForUpgrade(docID, DocUnmarshalNoHistory)
 		if migratedDoc != nil && migratedDoc.Cas == event.Cas {
-			base.Infof(base.KeyCache, "Found mobile xattr on doc %q without %s property - caching, assuming upgrade in progress.", base.UD(docID), base.SyncPropertyName)
+			base.InfofCtx(context.TODO(), base.KeyCache, "Found mobile xattr on doc %q without %s property - caching, assuming upgrade in progress.", base.UD(docID), base.SyncPropertyName)
 			syncData = &migratedDoc.SyncData
 		} else {
-			base.Infof(base.KeyCache, "changeCache: Doc %q does not have valid sync data.", base.UD(docID))
+			base.InfofCtx(context.TODO(), base.KeyCache, "changeCache: Doc %q does not have valid sync data.", base.UD(docID))
 			c.context.DbStats.Cache().NonMobileIgnoredCount.Add(1)
 			return
 		}
@@ -503,7 +503,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
 	// If the doc update wasted any sequences due to conflicts, add empty entries for them:
 	for _, seq := range syncData.UnusedSequences {
-		base.Infof(base.KeyCache, "Received unused #%d in unused_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
+		base.InfofCtx(context.TODO(), base.KeyCache, "Received unused #%d in unused_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
 		change := &LogEntry{
 			Sequence:     seq,
 			TimeReceived: event.TimeReceived,
@@ -526,7 +526,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
 		for _, seq := range syncData.RecentSequences {
 			if seq >= c.getNextSequence() && seq < currentSequence {
-				base.Infof(base.KeyCache, "Received deduplicated #%d in recent_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
+				base.InfofCtx(context.TODO(), base.KeyCache, "Received deduplicated #%d in recent_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
 				change := &LogEntry{
 					Sequence:     seq,
 					TimeReceived: event.TimeReceived,
@@ -561,7 +561,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
 	// If latency is larger than 1 minute or is negative there is likely an issue and this should be clear to the user
 	if millisecondLatency >= 60*1000 {
-		base.Infof(base.KeyDCP, "Received #%d after %3dms (%q / %q)", change.Sequence, millisecondLatency, base.UD(change.DocID), change.RevID)
+		base.InfofCtx(context.TODO(), base.KeyDCP, "Received #%d after %3dms (%q / %q)", change.Sequence, millisecondLatency, base.UD(change.DocID), change.RevID)
 	} else {
 		base.Debugf(base.KeyDCP, "Received #%d after %3dms (%q / %q)", change.Sequence, millisecondLatency, base.UD(change.DocID), change.RevID)
 	}
@@ -610,7 +610,7 @@ func (c *changeCache) releaseUnusedSequence(sequence uint64, timeReceived time.T
 		Sequence:     sequence,
 		TimeReceived: timeReceived,
 	}
-	base.Infof(base.KeyCache, "Received #%d (unused sequence)", sequence)
+	base.InfofCtx(context.TODO(), base.KeyCache, "Received #%d (unused sequence)", sequence)
 
 	// Since processEntry may unblock pending sequences, if there were any changed channels we need
 	// to notify any change listeners that are working changes feeds for these channels
@@ -673,7 +673,7 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 		change.DocID = "_role/" + princ.Name
 	}
 
-	base.Infof(base.KeyDCP, "Received #%d (%q)", change.Sequence, base.UD(change.DocID))
+	base.InfofCtx(context.TODO(), base.KeyDCP, "Received #%d (%q)", change.Sequence, base.UD(change.DocID))
 
 	changedChannels := c.processEntry(change)
 	if c.notifyChange != nil && len(changedChannels) > 0 {
@@ -740,9 +740,9 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		// Remove from skipped sequence queue
 		if !c.WasSkipped(sequence) {
 			// Error removing from skipped sequences
-			base.Infof(base.KeyCache, "  Received unexpected out-of-order change - not in skippedSeqs (seq %d, expecting %d) doc %q / %q", sequence, c.nextSequence, base.UD(change.DocID), change.RevID)
+			base.InfofCtx(context.TODO(), base.KeyCache, "  Received unexpected out-of-order change - not in skippedSeqs (seq %d, expecting %d) doc %q / %q", sequence, c.nextSequence, base.UD(change.DocID), change.RevID)
 		} else {
-			base.Infof(base.KeyCache, "  Received previously skipped out-of-order change (seq %d, expecting %d) doc %q / %q ", sequence, c.nextSequence, base.UD(change.DocID), change.RevID)
+			base.InfofCtx(context.TODO(), base.KeyCache, "  Received previously skipped out-of-order change (seq %d, expecting %d) doc %q / %q ", sequence, c.nextSequence, base.UD(change.DocID), change.RevID)
 			change.Skipped = true
 		}
 
@@ -914,7 +914,7 @@ func (c *changeCache) WasSkipped(x uint64) bool {
 func (c *changeCache) PushSkipped(sequence uint64) {
 	err := c.skippedSeqs.Push(&SkippedSequence{seq: sequence, timeAdded: time.Now()})
 	if err != nil {
-		base.Infof(base.KeyCache, "Error pushing skipped sequence: %d, %v", sequence, err)
+		base.InfofCtx(context.TODO(), base.KeyCache, "Error pushing skipped sequence: %d, %v", sequence, err)
 		return
 	}
 	c.context.DbStats.Cache().SkippedSeqLen.Set(int64(c.skippedSeqs.skippedList.Len()))

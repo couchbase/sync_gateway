@@ -429,7 +429,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}
 
 	// Start DCP feed
-	base.Infof(base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import)", base.MD(bucket.GetName()))
+	base.InfofCtx(context.TODO(), base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import)", base.MD(bucket.GetName()))
 	cacheFeedStatsMap := dbContext.DbStats.Database().CacheFeedMapStats
 	err = dbContext.mutationListener.Start(bucket, cacheFeedStatsMap.Map)
 
@@ -534,7 +534,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 				dbContext.PurgeInterval = serverPurgeInterval
 			}
 		}
-		base.Infof(base.KeyAll, "Using metadata purge interval of %.2f days for tombstone compaction.", dbContext.PurgeInterval.Hours()/24)
+		base.InfofCtx(context.TODO(), base.KeyAll, "Using metadata purge interval of %.2f days for tombstone compaction.", dbContext.PurgeInterval.Hours()/24)
 
 		if dbContext.Options.CompactInterval != 0 {
 			if autoImport {
@@ -684,7 +684,7 @@ func waitForBGTCompletion(waitTimeMax time.Duration, tasks []BackgroundTask, dbN
 		case <-time.After(waitTime):
 			// Timeout after waiting for background task to terminate.
 		}
-		base.Infof(base.KeyAll, "Timeout after %v of waiting for background task %q to "+
+		base.InfofCtx(context.TODO(), base.KeyAll, "Timeout after %v of waiting for background task %q to "+
 			"terminate, database: %s", waitTimeMax, t.taskName, dbName)
 	}
 }
@@ -709,9 +709,9 @@ func (context *DatabaseContext) RestartListener() error {
 }
 
 // Cache flush support.  Currently test-only - added for unit test access from rest package
-func (context *DatabaseContext) FlushChannelCache() error {
-	base.Infof(base.KeyCache, "Flushing channel cache")
-	return context.changeCache.Clear()
+func (dbCtx *DatabaseContext) FlushChannelCache() error {
+	base.InfofCtx(context.TODO(), base.KeyCache, "Flushing channel cache")
+	return dbCtx.changeCache.Clear()
 }
 
 // Removes previous versions of Sync Gateway's design docs found on the server
@@ -774,7 +774,7 @@ func (dc *DatabaseContext) TakeDbOffline(reason string) error {
 			msg = "Unable to take Database offline, another operation was already in progress. Please try again."
 		}
 
-		base.Infof(base.KeyCRUD, msg)
+		base.InfofCtx(context.TODO(), base.KeyCRUD, msg)
 		return base.HTTPErrorf(http.StatusServiceUnavailable, msg)
 	}
 }

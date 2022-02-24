@@ -55,12 +55,12 @@ func (a *AttachmentCompactionManager) Init(options map[string]interface{}, clust
 
 		dryRun, _ := options["dryRun"].(bool)
 		if dryRun {
-			base.Infof(base.KeyAll, "Attachment Compaction: Running as dry run. No attachments will be purged")
+			base.InfofCtx(database.Ctx, base.KeyAll, "Attachment Compaction: Running as dry run. No attachments will be purged")
 		}
 
 		a.dryRun = dryRun
 		a.CompactID = uniqueUUID.String()
-		base.Infof(base.KeyAll, "Attachment Compaction: Starting new compaction run with compact ID: %q", a.CompactID)
+		base.InfofCtx(database.Ctx, base.KeyAll, "Attachment Compaction: Starting new compaction run with compact ID: %q", a.CompactID)
 		return nil
 	}
 
@@ -70,7 +70,7 @@ func (a *AttachmentCompactionManager) Init(options map[string]interface{}, clust
 
 		reset, ok := options["reset"].(bool)
 		if reset && ok {
-			base.Infof(base.KeyAll, "Attachment Compaction: Resetting compaction process. Will not  resume any "+
+			base.InfofCtx(database.Ctx, base.KeyAll, "Attachment Compaction: Resetting compaction process. Will not  resume any "+
 				"partially completed process")
 		}
 
@@ -87,7 +87,7 @@ func (a *AttachmentCompactionManager) Init(options map[string]interface{}, clust
 			a.PurgedAttachments.Set(statusDoc.PurgedAttachments)
 			a.VBUUIDs = statusDoc.VBUUIDs
 
-			base.Infof(base.KeyAll, "Attachment Compaction: Attempting to resume compaction with compact ID: %q phase %q", a.CompactID, a.Phase)
+			base.InfofCtx(database.Ctx, base.KeyAll, "Attachment Compaction: Attempting to resume compaction with compact ID: %q phase %q", a.CompactID, a.Phase)
 		}
 
 		return nil

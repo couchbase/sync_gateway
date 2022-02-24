@@ -199,7 +199,7 @@ func (c *channelCacheImpl) AddToCache(change *LogEntry) (updatedChannels []strin
 	// twice)
 	if change.Skipped {
 		c.lateSeqLock.Lock()
-		base.Infof(base.KeyChanges, "Acquired late sequence lock in order to cache %d - doc %q / %q", change.Sequence, base.UD(change.DocID), change.RevID)
+		base.InfofCtx(context.TODO(), base.KeyChanges, "Acquired late sequence lock in order to cache %d - doc %q / %q", change.Sequence, base.UD(change.DocID), change.RevID)
 		defer c.lateSeqLock.Unlock()
 	}
 
@@ -419,7 +419,7 @@ func (c *channelCacheImpl) compactChannelCache() {
 	c.cacheStats.ChannelCacheCompactCount.Add(1)
 
 	cacheSize := c.channelCaches.Length()
-	base.Infof(base.KeyCache, "Starting channel cache compaction, size %d", cacheSize)
+	base.InfofCtx(context.TODO(), base.KeyCache, "Starting channel cache compaction, size %d", cacheSize)
 	for {
 		// channelCache close handling
 		compactIterationStart := time.Now()
@@ -435,7 +435,7 @@ func (c *channelCacheImpl) compactChannelCache() {
 		// Maintain a target number of items to compact per iteration.  Break the list iteration when the target is reached
 		targetEvictCount := cacheSize - c.compactLowWatermark
 		if targetEvictCount <= 0 {
-			base.Infof(base.KeyCache, "Stopping channel cache compaction, size %d", cacheSize)
+			base.InfofCtx(context.TODO(), base.KeyCache, "Stopping channel cache compaction, size %d", cacheSize)
 			return
 		}
 		base.Tracef(base.KeyCache, "Target eviction count: %d (lwm:%d)", targetEvictCount, c.compactLowWatermark)

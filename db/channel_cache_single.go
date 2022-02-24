@@ -188,7 +188,7 @@ func (c *singleChannelCacheImpl) addToCache(change *LogEntry, isRemoval bool) {
 	defer c.lock.Unlock()
 
 	if c.wouldBeImmediatelyPruned(change) {
-		base.Infof(base.KeyCache, "Not adding change #%d doc %q / %q ==> channel %q, since it will be immediately pruned",
+		base.InfofCtx(context.TODO(), base.KeyCache, "Not adding change #%d doc %q / %q ==> channel %q, since it will be immediately pruned",
 			change.Sequence, base.UD(change.DocID), change.RevID, base.UD(c.channelName))
 		return
 	}
@@ -602,7 +602,7 @@ func (c *singleChannelCacheImpl) prependChanges(changes LogEntries, changesValid
 		}
 		c.logs = make(LogEntries, len(changes))
 		copy(c.logs, changes)
-		base.Infof(base.KeyCache, "  Initialized cache of %q with %d entries from query (#%d--#%d)",
+		base.InfofCtx(context.TODO(), base.KeyCache, "  Initialized cache of %q with %d entries from query (#%d--#%d)",
 			base.UD(c.channelName), len(changes), changes[0].Sequence, changes[len(changes)-1].Sequence)
 
 		for _, change := range changes {
@@ -657,7 +657,7 @@ func (c *singleChannelCacheImpl) prependChanges(changes LogEntries, changesValid
 	numToPrepend := len(entriesToPrepend)
 	if numToPrepend > 0 {
 		c.logs = append(entriesToPrepend, c.logs...)
-		base.Infof(base.KeyCache, "  Added %d entries from query (#%d--#%d) to cache of %q",
+		base.InfofCtx(context.TODO(), base.KeyCache, "  Added %d entries from query (#%d--#%d) to cache of %q",
 			numToPrepend, entriesToPrepend[0].Sequence, entriesToPrepend[numToPrepend-1].Sequence, base.UD(c.channelName))
 	}
 	base.Debugf(base.KeyCache, " Backfill cache from query c.validFrom from %v -> %v",

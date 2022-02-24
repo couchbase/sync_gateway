@@ -311,7 +311,7 @@ func combinedState(state1, state2 string) (combinedState string) {
 		return ReplicationStateReconnecting
 	}
 
-	base.Infof(base.KeyReplicate, "Unhandled combination of replication states (%s, %s), returning %s", state1, state2, state1)
+	base.InfofCtx(context.Background(), base.KeyReplicate, "Unhandled combination of replication states (%s, %s), returning %s", state1, state2, state1)
 	return state1
 }
 
