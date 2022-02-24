@@ -58,20 +58,7 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 		Cas:       cas,
 	}
 
-	if !db.Bucket.IsSupported(sgbucket.DataStoreFeaturePreserveExpiry) {
-		// Get the doc expiry if it wasn't passed in, this isn't a server tombstone, and preserve expiry is not supported
-		if expiry == nil {
-			cbStore, _ := base.AsCouchbaseStore(db.Bucket)
-			getExpiry, getExpiryErr := cbStore.GetExpiry(docid)
-			if getExpiryErr != nil {
-				return nil, getExpiryErr
-			}
-			expiry = &getExpiry
-		}
-		existingBucketDoc.Expiry = *expiry
-	}
-
-	return db.importDoc(docid, body, isDelete, existingBucketDoc, mode)
+	return db.importDoc(docid, body, expiry, isDelete, existingBucketDoc, mode)
 }
 
 // Import a document, given the existing state of the doc in *document format.
@@ -86,19 +73,6 @@ func (db *Database) ImportDoc(docid string, existingDoc *Document, isDelete bool
 	existingBucketDoc := &sgbucket.BucketDocument{
 		Cas:       existingDoc.Cas,
 		UserXattr: existingDoc.rawUserXattr,
-	}
-
-	if !db.Bucket.IsSupported(sgbucket.DataStoreFeaturePreserveExpiry) {
-		// Get the doc expiry if it wasn't passed in and preserve expiry is not supported
-		if expiry == nil {
-			cbStore, _ := base.AsCouchbaseStore(db.Bucket)
-			getExpiry, getExpiryErr := cbStore.GetExpiry(docid)
-			if getExpiryErr != nil {
-				return nil, getExpiryErr
-			}
-			expiry = &getExpiry
-		}
-		existingBucketDoc.Expiry = *expiry
 	}
 
 	// If we marked this as having inline Sync Data ensure that the existingBucketDoc we pass to importDoc has syncData
@@ -118,7 +92,7 @@ func (db *Database) ImportDoc(docid string, existingDoc *Document, isDelete bool
 		return nil, err
 	}
 
-	return db.importDoc(docid, existingDoc.Body(), isDelete, existingBucketDoc, mode)
+	return db.importDoc(docid, existingDoc.Body(), expiry, isDelete, existingBucketDoc, mode)
 }
 
 // Import document
@@ -127,7 +101,7 @@ func (db *Database) ImportDoc(docid string, existingDoc *Document, isDelete bool
 //   isDelete - whether the document to be imported is a delete
 //   existingDoc - bytes/cas/expiry of the  document to be imported (including xattr when available)
 //   mode - ImportMode - ImportFromFeed or ImportOnDemand
-func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDoc *sgbucket.BucketDocument, mode ImportMode) (docOut *Document, err error) {
+func (db *Database) importDoc(docid string, body Body, expiry *uint32, isDelete bool, existingDoc *sgbucket.BucketDocument, mode ImportMode) (docOut *Document, err error) {
 
 	base.DebugfCtx(db.Ctx, base.KeyImport, "Attempting to import doc %q...", base.UD(docid))
 	importStartTime := time.Now()
@@ -153,7 +127,19 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 	mutationOptions := sgbucket.MutateInOptions{}
 	if db.Bucket.IsSupported(sgbucket.DataStoreFeaturePreserveExpiry) {
 		mutationOptions.PreserveExpiry = true
+	} else {
+		// Get the doc expiry if it wasn't passed in and preserve expiry is not supported
+		if expiry == nil {
+			cbStore, _ := base.AsCouchbaseStore(db.Bucket)
+			getExpiry, getExpiryErr := cbStore.GetExpiry(docid)
+			if getExpiryErr != nil {
+				return nil, getExpiryErr
+			}
+			expiry = &getExpiry
+		}
+		existingDoc.Expiry = *expiry
 	}
+
 	docOut, _, err = db.updateAndReturnDoc(newDoc.ID, true, existingDoc.Expiry, &mutationOptions, existingDoc, func(doc *Document) (resultDocument *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// Perform cas mismatch check first, as we want to identify cas mismatch before triggering migrate handling.
 		// If there's a cas mismatch, the doc has been updated since the version that triggered the import.  Handling depends on import mode.
@@ -200,7 +186,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		// If the existing doc is a legacy SG write (_sync in body), check for migrate instead of import.
 		_, ok := body[base.SyncPropertyName]
 		if ok || doc.inlineSyncData {
-			migratedDoc, requiresImport, migrateErr := db.migrateMetadata(newDoc.ID, body, existingDoc)
+			migratedDoc, requiresImport, migrateErr := db.migrateMetadata(newDoc.ID, body, existingDoc, &mutationOptions)
 			if migrateErr != nil {
 				return nil, nil, false, updatedExpiry, migrateErr
 			}
@@ -370,7 +356,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 
 // Migrates document metadata from document body to system xattr.  On CAS failure, retrieves current doc body and retries
 // migration if _sync property exists.  If _sync property is not found, returns doc and sets requiresImport to true
-func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbucket.BucketDocument) (docOut *Document, requiresImport bool, err error) {
+func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbucket.BucketDocument, opts *sgbucket.MutateInOptions) (docOut *Document, requiresImport bool, err error) {
 
 	// Unmarshal the existing doc in legacy SG format
 	doc, unmarshalErr := unmarshalDocument(docid, existingDoc.Body)
@@ -400,7 +386,7 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 	// Use WriteWithXattr to handle both normal migration and tombstone migration (xattr creation, body delete)
 	isDelete := doc.hasFlag(channels.Deleted)
 	deleteBody := isDelete && len(existingDoc.Body) > 0
-	casOut, writeErr := db.Bucket.WriteWithXattr(docid, base.SyncXattrName, existingDoc.Expiry, existingDoc.Cas, value, xattrValue, isDelete, deleteBody)
+	casOut, writeErr := db.Bucket.WriteWithXattr(docid, base.SyncXattrName, existingDoc.Expiry, existingDoc.Cas, opts, value, xattrValue, isDelete, deleteBody)
 	if writeErr == nil {
 		doc.Cas = casOut
 		base.InfofCtx(db.Ctx, base.KeyMigrate, "Successfully migrated doc %q", base.UD(docid))

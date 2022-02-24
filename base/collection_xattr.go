@@ -31,12 +31,12 @@ func (c *Collection) GetSpec() BucketSpec {
 }
 
 // Implementation of the XattrStore interface primarily invokes common wrappers that in turn invoke SDK-specific SubdocXattrStore API
-func (c *Collection) WriteCasWithXattr(k string, xattrKey string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
-	return WriteCasWithXattr(c, k, xattrKey, exp, cas, nil, v, xv)
+func (c *Collection) WriteCasWithXattr(k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v interface{}, xv interface{}) (casOut uint64, err error) {
+	return WriteCasWithXattr(c, k, xattrKey, exp, cas, opts, v, xv)
 }
 
-func (c *Collection) WriteWithXattr(k string, xattrKey string, exp uint32, cas uint64, v []byte, xv []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) { // If this is a tombstone, we want to delete the document and update the xattr
-	return WriteWithXattr(c, k, xattrKey, exp, cas, nil, v, xv, isDelete, deleteBody)
+func (c *Collection) WriteWithXattr(k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v []byte, xv []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) { // If this is a tombstone, we want to delete the document and update the xattr
+	return WriteWithXattr(c, k, xattrKey, exp, cas, opts, v, xv, isDelete, deleteBody)
 }
 
 func (c *Collection) DeleteWithXattr(k string, xattrKey string) error {

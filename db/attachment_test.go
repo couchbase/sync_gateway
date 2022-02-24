@@ -841,7 +841,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		assert.NoError(t, err)
 
 		if base.TestUseXattrs() {
-			_, err = bucket.WriteCasWithXattr(docKey, base.SyncXattrName, 0, 0, bodyVal, xattrVal)
+			_, err = bucket.WriteCasWithXattr(docKey, base.SyncXattrName, 0, 0, nil, bodyVal, xattrVal)
 			assert.NoError(t, err)
 		} else {
 			newBody, err := base.InjectJSONPropertiesFromBytes([]byte(bodyPre25), base.KVPairBytes{Key: base.SyncPropertyName, Val: []byte(syncData)})
@@ -1140,7 +1140,7 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 	assert.NoError(t, err)
 
 	if base.TestUseXattrs() {
-		_, err = bucket.WriteCasWithXattr(docKey, base.SyncXattrName, 0, 0, bodyVal, xattrVal)
+		_, err = bucket.WriteCasWithXattr(docKey, base.SyncXattrName, 0, 0, nil, bodyVal, xattrVal)
 		assert.NoError(t, err)
 	} else {
 		newBody, err := base.InjectJSONPropertiesFromBytes([]byte(bodyPre25), base.KVPairBytes{Key: base.SyncPropertyName, Val: []byte(syncData)})
@@ -1326,7 +1326,7 @@ func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
 	assert.NoError(t, err)
 
 	if base.TestUseXattrs() {
-		_, err = bucket.WriteCasWithXattr(docKey, base.SyncXattrName, 0, 0, bodyVal, xattrVal)
+		_, err = bucket.WriteCasWithXattr(docKey, base.SyncXattrName, 0, 0, nil, bodyVal, xattrVal)
 		assert.NoError(t, err)
 	} else {
 		newBody, err := base.InjectJSONPropertiesFromBytes([]byte(bodyPre25), base.KVPairBytes{Key: base.SyncPropertyName, Val: []byte(syncData)})

@@ -12,12 +12,12 @@ import (
 
 var _ SubdocXattrStore = &CouchbaseBucketGoCB{}
 
-func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
-	return WriteCasWithXattr(bucket, k, xattrKey, exp, cas, nil, v, xv)
+func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v interface{}, xv interface{}) (casOut uint64, err error) {
+	return WriteCasWithXattr(bucket, k, xattrKey, exp, cas, opts, v, xv)
 }
 
-func (bucket *CouchbaseBucketGoCB) WriteWithXattr(k string, xattrKey string, exp uint32, cas uint64, v []byte, xv []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) { // If this is a tombstone, we want to delete the document and update the xattr
-	return WriteWithXattr(bucket, k, xattrKey, exp, cas, nil, v, xv, isDelete, deleteBody)
+func (bucket *CouchbaseBucketGoCB) WriteWithXattr(k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v []byte, xv []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) { // If this is a tombstone, we want to delete the document and update the xattr
+	return WriteWithXattr(bucket, k, xattrKey, exp, cas, opts, v, xv, isDelete, deleteBody)
 }
 
 func (bucket *CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) error {

@@ -33,6 +33,7 @@ import (
 // 5. Assert that migrateMeta does the right thing and respects the new expiry value
 //
 // See SG PR #3109 for more details on motivation for this test
+// Tests when preserve expiry is not used (CBS < 7.0.0)
 func TestMigrateMetadata(t *testing.T) {
 
 	if !base.TestUseXattrs() {
@@ -83,6 +84,7 @@ func TestMigrateMetadata(t *testing.T) {
 		key,
 		body,
 		existingBucketDoc,
+		&sgbucket.MutateInOptions{PreserveExpiry: false},
 	)
 	goassert.True(t, err != nil)
 	goassert.True(t, err == base.ErrCasFailureShouldRetry)
@@ -104,7 +106,6 @@ func TestMigrateMetadata(t *testing.T) {
 // - Temporarily set expectedGeneration:2, see https://github.com/couchbase/sync_gateway/issues/3804
 //
 func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
-
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}
@@ -157,7 +158,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 
 			// Set the expiry value
 			syncMetaExpiryUnix := syncMetaExpiry.Unix()
-			existingBucketDoc.Expiry = uint32(syncMetaExpiryUnix)
+			expiry := uint32(syncMetaExpiryUnix)
 
 			// Perform an SDK update to turn existingBucketDoc into a stale doc
 			laterExpiryDuration := time.Minute * 60
@@ -176,7 +177,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			require.NoError(t, err)
 
 			// Import the doc (will migrate as part of the import since the doc contains sync meta)
-			_, errImportDoc := db.importDoc(key, body, false, existingBucketDoc, ImportOnDemand)
+			_, errImportDoc := db.importDoc(key, body, &expiry, false, existingBucketDoc, ImportOnDemand)
 			assert.NoError(t, errImportDoc, "Unexpected error")
 
 			// Make sure the doc in the bucket has expected XATTR
@@ -184,7 +185,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 
 			// Verify the expiry has been preserved after the import
 			cbStore, _ := base.AsCouchbaseStore(db.Bucket)
-			expiry, err := cbStore.GetExpiry(key)
+			expiry, err = cbStore.GetExpiry(key)
 			require.NoError(t, err, "Error calling GetExpiry()")
 			updatedExpiryDuration := base.CbsExpiryToDuration(expiry)
 			assert.True(t, updatedExpiryDuration > expiryDuration)
@@ -282,7 +283,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 			}`
 
 			cas, _ := db.Bucket.GetWithXattr(key, base.SyncXattrName, "", &body, &xattr, nil)
-			_, err := db.Bucket.WriteCasWithXattr(key, base.SyncXattrName, 0, cas, []byte(valStr), []byte(xattrStr))
+			_, err := db.Bucket.WriteCasWithXattr(key, base.SyncXattrName, 0, cas, nil, []byte(valStr), []byte(xattrStr))
 			assert.NoError(t, err)
 		}
 	}
@@ -324,7 +325,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 			runOnce = true
 
 			// Trigger import
-			_, err = db.importDoc(testcase.docname, bodyD, false, existingBucketDoc, ImportOnDemand)
+			_, err = db.importDoc(testcase.docname, bodyD, nil, false, existingBucketDoc, ImportOnDemand)
 			assert.NoError(t, err)
 
 			// Check document has the rev and new body
@@ -392,7 +393,7 @@ func TestImportNullDoc(t *testing.T) {
 	existingDoc := &sgbucket.BucketDocument{Body: rawNull, Cas: 1}
 
 	// Import a null document
-	importedDoc, err := db.importDoc(key+"1", body, false, existingDoc, ImportOnDemand)
+	importedDoc, err := db.importDoc(key+"1", body, nil, false, existingDoc, ImportOnDemand)
 	goassert.Equals(t, err, base.ErrEmptyDocument)
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
 }
