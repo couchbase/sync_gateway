@@ -219,6 +219,7 @@ func TestCacheRace(t *testing.T) {
 		{"RandReplKeyCache", NewRandReplKeyCache(maxCacheSize), randReplKeyCache},
 		{"NoReplKeyCache", NewNoReplKeyCache(maxCacheSize), noReplKeyCache},
 	}
+	ctx := base.TestCtx(t)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -235,7 +236,7 @@ func TestCacheRace(t *testing.T) {
 					defer wg.Done()
 					key := fmt.Sprintf("k%d", i)
 					cache.Put(key)
-					base.Infof(base.KeyAuth, "Goroutine%v Put key: %v", i, key)
+					base.InfofCtx(ctx, base.KeyAuth, "Goroutine%v Put key: %v", i, key)
 				}(cache, i)
 
 				wg.Add(1)
@@ -243,7 +244,7 @@ func TestCacheRace(t *testing.T) {
 					defer wg.Done()
 					key := fmt.Sprintf("k%d", i)
 					ok := cache.Contains(key)
-					base.Infof(base.KeyAuth, "Goroutine%v Contains: %v, key: %v", i, ok, key)
+					base.InfofCtx(ctx, base.KeyAuth, "Goroutine%v Contains: %v, key: %v", i, ok, key)
 				}(cache, i)
 			}
 			wg.Wait()

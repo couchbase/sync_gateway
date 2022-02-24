@@ -372,7 +372,7 @@ func (auth *Authenticator) InvalidateChannels(name string, isUser bool, invalSeq
 		docID = docIDForRole(name)
 	}
 
-	base.Infof(base.KeyAccess, "Invalidate access of %q", base.UD(name))
+	base.InfofCtx(auth.LogCtx, base.KeyAccess, "Invalidate access of %q", base.UD(name))
 
 	if auth.bucket.IsSupported(sgbucket.DataStoreFeatureSubdocOperations) {
 		err := auth.bucket.SubdocInsert(docID, "channel_inval_seq", 0, invalSeq)
@@ -544,7 +544,7 @@ func (auth *Authenticator) casUpdatePrincipal(p Principal, callback casUpdatePri
 			return err
 		}
 
-		base.Infof(base.KeyAuth, "CAS mismatch in casUpdatePrincipal, retrying.  Principal:%s", base.UD(p.Name()))
+		base.InfofCtx(auth.LogCtx, base.KeyAuth, "CAS mismatch in casUpdatePrincipal, retrying.  Principal:%s", base.UD(p.Name()))
 
 		switch p.(type) {
 		case User:

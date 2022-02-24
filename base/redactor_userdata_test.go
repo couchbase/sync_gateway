@@ -11,7 +11,6 @@ licenses/APL2.txt.
 package base
 
 import (
-	"context"
 	"math/big"
 	"testing"
 	"time"
@@ -102,36 +101,41 @@ func BenchmarkRedactOnLog(b *testing.B) {
 	defer SetUpBenchmarkLogging(LevelWarn, KeyAll)()
 
 	b.Run("WarnPlain", func(b *testing.B) {
+		ctx := TestCtx(b)
 		for i := 0; i < b.N; i++ {
-			WarnfCtx(context.Background(), "Log: %s", "Fixed String")
+			WarnfCtx(ctx, "Log: %s", "Fixed String")
 		}
 	})
 
 	b.Run("WarnRedactTrueNotUD", func(b *testing.B) {
+		ctx := TestCtx(b)
 		RedactUserData = true
 		for i := 0; i < b.N; i++ {
-			WarnfCtx(context.Background(), "Log: %s", FakeLogger{})
+			WarnfCtx(ctx, "Log: %s", FakeLogger{})
 		}
 	})
 
 	b.Run("WarnRedactTrueUD", func(b *testing.B) {
+		ctx := TestCtx(b)
 		RedactUserData = true
 		for i := 0; i < b.N; i++ {
-			WarnfCtx(context.Background(), "Log: %s", UD(FakeLogger{}))
+			WarnfCtx(ctx, "Log: %s", UD(FakeLogger{}))
 		}
 	})
 
 	b.Run("WarnRedactFalseNotUD", func(b *testing.B) {
+		ctx := TestCtx(b)
 		RedactUserData = false
 		for i := 0; i < b.N; i++ {
-			WarnfCtx(context.Background(), "Log: %s", FakeLogger{})
+			WarnfCtx(ctx, "Log: %s", FakeLogger{})
 		}
 	})
 
 	b.Run("WarnRedactFalseUD", func(b *testing.B) {
+		ctx := TestCtx(b)
 		RedactUserData = false
 		for i := 0; i < b.N; i++ {
-			WarnfCtx(context.Background(), "Log: %s", UD(FakeLogger{}))
+			WarnfCtx(ctx, "Log: %s", UD(FakeLogger{}))
 		}
 	})
 
