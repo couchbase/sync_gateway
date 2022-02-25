@@ -331,7 +331,7 @@ func waitForIndexes(bucket base.N1QLStore, useXattrs bool) error {
 			indexesWg.Add(1)
 			go func(index SGIndex) {
 				defer indexesWg.Done()
-				base.Debugf(base.KeyQuery, "Verifying index availability for index %s...", base.MD(index.fullIndexName(useXattrs)))
+				base.DebugfCtx(logCtx, base.KeyQuery, "Verifying index availability for index %s...", base.MD(index.fullIndexName(useXattrs)))
 				queryStatement := index.readinessQuery
 				if index.simpleName == QueryTypeChannels {
 					queryStatement = replaceActiveOnlyFilter(queryStatement, false)
@@ -343,7 +343,7 @@ func waitForIndexes(bucket base.N1QLStore, useXattrs bool) error {
 					base.WarnfCtx(logCtx, "Query error for statement [%s], err:%v", queryStatement, queryErr)
 					indexErrors <- queryErr
 				}
-				base.Debugf(base.KeyQuery, "Index %s verified as ready", base.MD(index.fullIndexName(useXattrs)))
+				base.DebugfCtx(logCtx, base.KeyQuery, "Index %s verified as ready", base.MD(index.fullIndexName(useXattrs)))
 			}(sgIndex)
 		}
 	}

@@ -9,6 +9,7 @@
 package rest
 
 import (
+	"context"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
@@ -154,7 +155,7 @@ func (h *handler) handleOidcProviderConfiguration() error {
 	}
 
 	issuerUrl := issuerUrl(h)
-	base.Debugf(base.KeyAuth, "handleOidcProviderConfiguration issuerURL = %s", issuerUrl)
+	base.DebugfCtx(h.ctx(), base.KeyAuth, "handleOidcProviderConfiguration issuerURL = %s", issuerUrl)
 
 	config := &auth.ProviderMetadata{
 		Issuer:                            issuerUrl,
@@ -330,10 +331,10 @@ func (h *handler) handleOidcTestProviderAuthenticate() error {
 	tokenDuration := time.Duration(tokenTtl) * time.Second
 	authenticated := h.rq.FormValue(formKeyAuthenticated)
 	redirectURI := requestParams.Get(requestParamRedirectURI)
-	base.Debugf(base.KeyAuth, "handleOidcTestProviderAuthenticate() called.  username: %s authenticated: %s", username, authenticated)
+	base.DebugfCtx(h.ctx(), base.KeyAuth, "handleOidcTestProviderAuthenticate() called.  username: %s authenticated: %s", username, authenticated)
 
 	if username == "" || authenticated == "" {
-		base.Debugf(base.KeyAuth, "user did not enter valid credentials -- username or authenticated is empty")
+		base.DebugfCtx(h.ctx(), base.KeyAuth, "user did not enter valid credentials -- username or authenticated is empty")
 		error := "?error=invalid_request&error_description=User failed authentication"
 		h.setHeader(headerLocation, requestParams.Get(requestParamRedirectURI)+error)
 		h.response.WriteHeader(http.StatusFound)
@@ -542,13 +543,13 @@ func writeTokenResponse(h *handler, subject string, issuerUrl string, authState 
 func extractSubjectFromRefreshToken(refreshToken string) (string, error) {
 	decodedToken, err := base64.StdEncoding.DecodeString(refreshToken)
 	if err != nil {
-		base.Debugf(base.KeyAuth, "invalid refresh token provided, error: %v", err)
+		base.DebugfCtx(context.Background(), base.KeyAuth, "invalid refresh token provided, error: %v", err)
 		return "", base.HTTPErrorf(http.StatusBadRequest, "Invalid OIDC Refresh Token")
 	}
 
 	components := strings.Split(string(decodedToken), ":::")
 	subject := components[0]
-	base.Debugf(base.KeyAuth, "subject extracted from refresh token = %v", subject)
+	base.DebugfCtx(context.Background(), base.KeyAuth, "subject extracted from refresh token = %v", subject)
 
 	if len(components) != 2 || subject == "" {
 		return "", base.HTTPErrorf(http.StatusBadRequest, "OIDC Refresh Token does not contain subject")

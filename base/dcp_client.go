@@ -303,7 +303,7 @@ func (dc *DCPClient) openStream(vbID uint16) (err error) {
 			WarnfCtx(logCtx, "Closing stream for vbID %d, agent has been shut down", vbID)
 			return openStreamErr
 		case errors.Is(openStreamErr, ErrTimeout):
-			Debugf(KeyDCP, "Timeout attempting to open stream for vb %d, will retry", vbID)
+			DebugfCtx(logCtx, KeyDCP, "Timeout attempting to open stream for vb %d, will retry", vbID)
 		default:
 			WarnfCtx(logCtx, "Error opening stream for vbID %d: %v", vbID, openStreamErr)
 			return openStreamErr
@@ -395,20 +395,21 @@ func (dc *DCPClient) deactivateVbucket(vbID uint16) {
 }
 
 func (dc *DCPClient) onStreamEnd(e endStreamEvent) {
+	logCtx := context.TODO()
 
 	if e.err == nil {
-		Debugf(KeyDCP, "Stream (vb:%d) closed, all items streamed", e.vbID)
+		DebugfCtx(logCtx, KeyDCP, "Stream (vb:%d) closed, all items streamed", e.vbID)
 		dc.deactivateVbucket(e.vbID)
 		return
 	}
 
 	if errors.Is(e.err, gocbcore.ErrDCPStreamClosed) {
-		Debugf(KeyDCP, "Stream (vb:%d) closed by DCPClient", e.vbID)
+		DebugfCtx(logCtx, KeyDCP, "Stream (vb:%d) closed by DCPClient", e.vbID)
 	}
 
 	if errors.Is(e.err, gocbcore.ErrDCPStreamStateChanged) || errors.Is(e.err, gocbcore.ErrDCPStreamTooSlow) ||
 		errors.Is(e.err, gocbcore.ErrDCPStreamDisconnected) {
-		InfofCtx(context.TODO(), KeyDCP, "Stream (vb:%d) closed by server, will reconnect.  Reason: %v", e.vbID, e.err)
+		InfofCtx(logCtx, KeyDCP, "Stream (vb:%d) closed by server, will reconnect.  Reason: %v", e.vbID, e.err)
 		err := dc.openStream(e.vbID)
 		if err != nil {
 			dc.fatalError(fmt.Errorf("Stream (vb:%d) failed to reopen: %w", e.vbID, err))

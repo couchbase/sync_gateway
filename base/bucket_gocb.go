@@ -1103,7 +1103,7 @@ func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucke
 		}
 
 		retryAttempts++
-		Debugf(KeyCRUD, "CAS Update RetryLoop retrying for doc %q, attempt %d", UD(k), retryAttempts)
+		DebugfCtx(context.TODO(), KeyCRUD, "CAS Update RetryLoop retrying for doc %q, attempt %d", UD(k), retryAttempts)
 	}
 }
 

@@ -441,7 +441,7 @@ func RetryLoopCtx(description string, worker RetryWorker, sleeper RetrySleeper, 
 			WarnfCtx(ctx, "RetryLoop for %v giving up after %v attempts", description, numAttempts)
 			return err, value
 		}
-		Debugf(KeyAll, "RetryLoop retrying %v after %v ms.", description, sleepMs)
+		DebugfCtx(ctx, KeyAll, "RetryLoop retrying %v after %v ms.", description, sleepMs)
 
 		select {
 		case <-ctx.Done():
@@ -476,7 +476,7 @@ func RetryLoopCas(description string, worker RetryCasWorker, sleeper RetrySleepe
 			WarnfCtx(context.Background(), "RetryLoopCas for %v giving up after %v attempts", description, numAttempts)
 			return err, value
 		}
-		Debugf(KeyAll, "RetryLoopCas retrying %v after %v ms.", description, sleepMs)
+		DebugfCtx(context.Background(), KeyAll, "RetryLoopCas retrying %v after %v ms.", description, sleepMs)
 
 		<-time.After(time.Millisecond * time.Duration(sleepMs))
 

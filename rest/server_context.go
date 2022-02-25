@@ -1084,7 +1084,7 @@ func (sc *ServerContext) startStatsLogger() {
 					base.WarnfCtx(context.TODO(), "Error logging stats: %v", err)
 				}
 			case <-sc.statsContext.terminator:
-				base.Debugf(base.KeyAll, "Stopping stats logging goroutine")
+				base.DebugfCtx(context.TODO(), base.KeyAll, "Stopping stats logging goroutine")
 				sc.statsContext.statsLoggingTicker.Stop()
 				return
 			}
@@ -1438,7 +1438,7 @@ func (sc *ServerContext) initializeCouchbaseServerConnections() error {
 						t.Stop()
 						return
 					case <-t.C:
-						base.Debugf(base.KeyConfig, "Fetching configs from buckets in cluster for group %q", sc.config.Bootstrap.ConfigGroupID)
+						base.DebugfCtx(logCtx, base.KeyConfig, "Fetching configs from buckets in cluster for group %q", sc.config.Bootstrap.ConfigGroupID)
 						count, err := sc.fetchAndLoadConfigs()
 						if err != nil {
 							base.WarnfCtx(logCtx, "Couldn't load configs from bucket when polled: %v", err)

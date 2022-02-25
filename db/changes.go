@@ -1080,20 +1080,20 @@ func (db *Database) GetChangeLog(channelName string, afterSeq uint64) (entries [
 
 // WaitForSequenceNotSkipped blocks until the given sequence has been received or skipped by the change cache.
 func (dbc *DatabaseContext) WaitForSequence(ctx context.Context, sequence uint64) (err error) {
-	base.Debugf(base.KeyChanges, "Waiting for sequence: %d", sequence)
+	base.DebugfCtx(ctx, base.KeyChanges, "Waiting for sequence: %d", sequence)
 	return dbc.changeCache.waitForSequence(ctx, sequence, base.DefaultWaitForSequence)
 }
 
 // WaitForSequenceNotSkipped blocks until the given sequence has been received by the change cache without being skipped.
 func (dbc *DatabaseContext) WaitForSequenceNotSkipped(ctx context.Context, sequence uint64) (err error) {
-	base.Debugf(base.KeyChanges, "Waiting for sequence: %d", sequence)
+	base.DebugfCtx(ctx, base.KeyChanges, "Waiting for sequence: %d", sequence)
 	return dbc.changeCache.waitForSequenceNotSkipped(ctx, sequence, base.DefaultWaitForSequence)
 }
 
 // WaitForPendingChanges blocks until the change-cache has caught up with the latest writes to the database.
 func (dbc *DatabaseContext) WaitForPendingChanges(ctx context.Context) (err error) {
 	lastSequence, err := dbc.LastSequence()
-	base.Debugf(base.KeyChanges, "Waiting for sequence: %d", lastSequence)
+	base.DebugfCtx(ctx, base.KeyChanges, "Waiting for sequence: %d", lastSequence)
 	return dbc.changeCache.waitForSequence(ctx, lastSequence, base.DefaultWaitForSequence)
 }
 

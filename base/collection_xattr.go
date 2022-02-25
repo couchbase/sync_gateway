@@ -1,6 +1,7 @@
 package base
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 
@@ -95,13 +96,13 @@ func (c *Collection) SubdocGetXattr(k string, xattrKey string, xv interface{}) (
 		xattrContErr := res.ContentAt(0, xv)
 		// On error here, treat as the xattr wasn't found
 		if xattrContErr != nil {
-			Debugf(KeyCRUD, "No xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), xattrContErr)
+			DebugfCtx(context.TODO(), KeyCRUD, "No xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), xattrContErr)
 			return 0, ErrXattrNotFound
 		}
 		cas := uint64(res.Cas())
 		return cas, nil
 	} else if errors.Is(lookupErr, gocbcore.ErrDocumentNotFound) {
-		Debugf(KeyCRUD, "No document found for key=%s", UD(k))
+		DebugfCtx(context.TODO(), KeyCRUD, "No document found for key=%s", UD(k))
 		return 0, ErrNotFound
 	} else {
 		return 0, lookupErr
@@ -208,16 +209,16 @@ func (c *Collection) SubdocGetBodyAndXattr(k string, xattrKey string, userXattrK
 
 			if isKVError(docContentErr, memd.StatusSubDocMultiPathFailureDeleted) && isKVError(xattrContentErr, memd.StatusSubDocMultiPathFailureDeleted) {
 				// No doc, no xattr can be treated as NotFound from Sync Gateway's perspective, even if it is a server tombstone, but should return cas
-				Debugf(KeyCRUD, "No xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), xattrContentErr)
+				DebugfCtx(context.TODO(), KeyCRUD, "No xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), xattrContentErr)
 				return false, ErrNotFound, cas
 			}
 
 			if docContentErr != nil {
-				Debugf(KeyCRUD, "No document body found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), docContentErr)
+				DebugfCtx(context.TODO(), KeyCRUD, "No document body found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), docContentErr)
 			}
 			// Attempt to retrieve the xattr, if present
 			if xattrContentErr != nil {
-				Debugf(KeyCRUD, "No xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), xattrContentErr)
+				DebugfCtx(context.TODO(), KeyCRUD, "No xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), xattrContentErr)
 			}
 
 		case gocbcore.ErrMemdSubDocMultiPathFailureDeleted:
@@ -226,7 +227,7 @@ func (c *Collection) SubdocGetBodyAndXattr(k string, xattrKey string, userXattrK
 			cas = uint64(res.Cas())
 			if xattrContentErr != nil {
 				// No doc, no xattr means the doc isn't found
-				Debugf(KeyCRUD, "No xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), xattrContentErr)
+				DebugfCtx(context.TODO(), KeyCRUD, "No xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), xattrContentErr)
 				return false, ErrNotFound, cas
 			}
 			return false, nil, cas

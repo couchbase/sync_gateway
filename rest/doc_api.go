@@ -69,7 +69,7 @@ func (h *handler) handleGetDoc() error {
 		value, err := h.db.Get1xRevBodyWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 		if err != nil {
 			if err == base.ErrImportCancelledPurged {
-				base.Debugf(base.KeyImport, fmt.Sprintf("Import cancelled as document %v is purged", base.UD(docid)))
+				base.DebugfCtx(h.ctx(), base.KeyImport, fmt.Sprintf("Import cancelled as document %v is purged", base.UD(docid)))
 				return nil
 			}
 			return err
@@ -126,7 +126,7 @@ func (h *handler) handleGetDoc() error {
 			})
 			return err
 		} else {
-			base.Debugf(base.KeyHTTP, "Fallback to non-multipart for open_revs")
+			base.DebugfCtx(h.ctx(), base.KeyHTTP, "Fallback to non-multipart for open_revs")
 			h.setHeader("Content-Type", "application/json")
 			_, _ = h.response.Write([]byte(`[` + "\n"))
 			separator := []byte(``)

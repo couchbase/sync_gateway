@@ -482,7 +482,7 @@ type ImportFilterFunction struct {
 
 func NewImportFilterFunction(fnSource string) *ImportFilterFunction {
 
-	base.Debugf(base.KeyImport, "Creating new ImportFilterFunction")
+	base.DebugfCtx(context.Background(), base.KeyImport, "Creating new ImportFilterFunction")
 	return &ImportFilterFunction{
 		JSServer: sgbucket.NewJSServer(fnSource, kTaskCacheSize,
 			func(fnSource string) (sgbucket.JSServerTask, error) {

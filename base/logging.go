@@ -199,9 +199,9 @@ func Fatalf(format string, args ...interface{}) {
 // }
 
 // Debugf logs the given formatted string and args to the debug log level with an optional log key.
-func Debugf(logKey LogKey, format string, args ...interface{}) {
-	logTo(context.TODO(), LevelDebug, logKey, format, args...)
-}
+// func Debugf(logKey LogKey, format string, args ...interface{}) {
+// 	logTo(context.TODO(), LevelDebug, logKey, format, args...)
+// }
 
 // Tracef logs the given formatted string and args to the trace log level with an optional log key.
 func Tracef(logKey LogKey, format string, args ...interface{}) {

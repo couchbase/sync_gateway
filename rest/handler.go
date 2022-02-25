@@ -983,7 +983,7 @@ func (h *handler) addJSON(value interface{}) error {
 		brokenPipeError := strings.Contains(err.Error(), "write: broken pipe")
 		connectionResetError := strings.Contains(err.Error(), "write: connection reset")
 		if brokenPipeError || connectionResetError {
-			base.Debugf(base.KeyCRUD, "Couldn't serialize document body, HTTP client closed connection")
+			base.DebugfCtx(h.ctx(), base.KeyCRUD, "Couldn't serialize document body, HTTP client closed connection")
 			return err
 		} else {
 			base.WarnfCtx(h.ctx(), "Couldn't serialize JSON for %s", err)

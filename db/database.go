@@ -363,7 +363,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		options.CacheOptions,
 	)
 	if err != nil {
-		base.Debugf(base.KeyDCP, "Error initializing the change cache", err)
+		base.DebugfCtx(logCtx, base.KeyDCP, "Error initializing the change cache", err)
 	}
 
 	// Set the DB Context notifyChange callback to call back the changecache DocChanged callback
@@ -636,7 +636,7 @@ func (dbCtx *DatabaseContext) GetServerUUID() string {
 			return ""
 		}
 
-		base.Debugf(base.KeyAll, "Database %v: Got server UUID %v", base.MD(dbCtx.Name), base.MD(uuid))
+		base.DebugfCtx(context.TODO(), base.KeyAll, "Database %v: Got server UUID %v", base.MD(dbCtx.Name), base.MD(uuid))
 		dbCtx.serverUUID = uuid
 	}
 
@@ -759,7 +759,7 @@ func (dc *DatabaseContext) TakeDbOffline(reason string) error {
 		atomic.StoreUint32(&dc.State, DBOffline)
 
 		if err := dc.EventMgr.RaiseDBStateChangeEvent(dc.Name, "offline", reason, dc.Options.AdminInterface); err != nil {
-			base.Debugf(base.KeyCRUD, "Error raising database state change event: %v", err)
+			base.DebugfCtx(context.TODO(), base.KeyCRUD, "Error raising database state change event: %v", err)
 		}
 
 		return nil

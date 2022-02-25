@@ -123,7 +123,7 @@ func newChannelCache(dbName string, options ChannelCacheOptions, queryHandler Ch
 		return nil, err
 	}
 	channelCache.backgroundTasks = append(channelCache.backgroundTasks, bgt)
-	base.Debugf(base.KeyCache, "Initialized channel cache with maxChannels:%d, HWM: %d, LWM: %d",
+	base.DebugfCtx(context.Background(), base.KeyCache, "Initialized channel cache with maxChannels:%d, HWM: %d, LWM: %d",
 		channelCache.maxChannels, channelCache.compactHighWatermark, channelCache.compactLowWatermark)
 	return channelCache, nil
 }
@@ -427,7 +427,7 @@ func (c *channelCacheImpl) compactChannelCache() {
 
 		select {
 		case <-c.terminator:
-			base.Debugf(base.KeyCache, "Channel cache compaction stopped due to cache close.")
+			base.DebugfCtx(logCtx, base.KeyCache, "Channel cache compaction stopped due to cache close.")
 			return
 		default:
 			// continue

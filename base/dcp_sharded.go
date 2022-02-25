@@ -478,16 +478,17 @@ func (l *importHeartbeatListener) StaleHeartbeatDetected(nodeUUID string) {
 // subscribeNodeChanges registers with the manager's cfg implementation for notifications on changes to the
 // NODE_DEFS_KNOWN key.  When notified, refreshes the handlers nodeIDs.
 func (l *importHeartbeatListener) subscribeNodeChanges() error {
+	logCtx := context.TODO()
 
 	cfgEvents := make(chan cbgt.CfgEvent)
 	err := l.cfg.Subscribe(cbgt.CfgNodeDefsKey(cbgt.NODE_DEFS_KNOWN), cfgEvents)
 	if err != nil {
-		Debugf(KeyCluster, "Error subscribing NODE_DEFS_KNOWN changes: %v", err)
+		DebugfCtx(logCtx, KeyCluster, "Error subscribing NODE_DEFS_KNOWN changes: %v", err)
 		return err
 	}
 	err = l.cfg.Subscribe(cbgt.CfgNodeDefsKey(cbgt.NODE_DEFS_WANTED), cfgEvents)
 	if err != nil {
-		Debugf(KeyCluster, "Error subscribing NODE_DEFS_WANTED changes: %v", err)
+		DebugfCtx(logCtx, KeyCluster, "Error subscribing NODE_DEFS_WANTED changes: %v", err)
 		return err
 	}
 	go func() {
@@ -497,12 +498,12 @@ func (l *importHeartbeatListener) subscribeNodeChanges() error {
 			case <-cfgEvents:
 				localNodeRegistered, err := l.reloadNodes()
 				if err != nil {
-					WarnfCtx(context.Background(), "Error while reloading heartbeat node definitions: %v", err)
+					WarnfCtx(logCtx, "Error while reloading heartbeat node definitions: %v", err)
 				}
 				if !localNodeRegistered {
 					registerErr := l.mgr.Register(cbgt.NODE_DEFS_WANTED)
 					if registerErr != nil {
-						WarnfCtx(context.Background(), "Error attempting to re-register node, node will not participate in import until restarted or cbgt cfg is next updated: %v", registerErr)
+						WarnfCtx(logCtx, "Error attempting to re-register node, node will not participate in import until restarted or cbgt cfg is next updated: %v", registerErr)
 					}
 				}
 

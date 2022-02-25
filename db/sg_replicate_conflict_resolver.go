@@ -197,7 +197,7 @@ type ConflictResolverJSServer struct {
 }
 
 func NewConflictResolverJSServer(fnSource string) *ConflictResolverJSServer {
-	base.Debugf(base.KeyReplicate, "Creating new ConflictResolverFunction")
+	base.DebugfCtx(context.Background(), base.KeyReplicate, "Creating new ConflictResolverFunction")
 	return &ConflictResolverJSServer{
 		JSServer: sgbucket.NewJSServer(fnSource, kTaskCacheSize, newConflictResolverRunner),
 	}

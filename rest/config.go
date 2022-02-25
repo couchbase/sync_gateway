@@ -856,7 +856,7 @@ func expandEnv(config []byte) (value []byte, err error) {
 	var multiError *base.MultiError
 	val := []byte(os.Expand(string(config), func(key string) string {
 		if key == "$" {
-			base.Debugf(base.KeyConfig, "Skipping environment variable expansion: %s", key)
+			base.DebugfCtx(context.Background(), base.KeyConfig, "Skipping environment variable expansion: %s", key)
 			return key
 		}
 		val, err := envDefaultExpansion(key, os.Getenv)
@@ -887,12 +887,12 @@ func envDefaultExpansion(key string, getEnvFn func(string) string) (value string
 	if value == "" && len(kvPair) == 2 {
 		// Set value to the default.
 		value = kvPair[1]
-		base.Debugf(base.KeyConfig, "Replacing config environment variable '${%s}' with "+
+		base.DebugfCtx(context.Background(), base.KeyConfig, "Replacing config environment variable '${%s}' with "+
 			"default value specified", key)
 	} else if value == "" && len(kvPair) != 2 {
 		return "", ErrEnvVarUndefined{key: key}
 	} else {
-		base.Debugf(base.KeyConfig, "Replacing config environment variable '${%s}'", key)
+		base.DebugfCtx(context.Background(), base.KeyConfig, "Replacing config environment variable '${%s}'", key)
 	}
 	return value, nil
 }
@@ -1095,6 +1095,7 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 	if err != nil {
 		return false, nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
 	}
+	logCtx := context.TODO()
 
 	// move bucket matching dbName to the front so it's searched first
 	for i, bucket := range buckets {
@@ -1107,11 +1108,11 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 		var cnf DatabaseConfig
 		cas, err := sc.bootstrapContext.connection.GetConfig(bucket, sc.config.Bootstrap.ConfigGroupID, &cnf)
 		if err == base.ErrNotFound {
-			base.Debugf(base.KeyConfig, "%q did not contain config in group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
+			base.DebugfCtx(logCtx, base.KeyConfig, "%q did not contain config in group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
 			continue
 		}
 		if err != nil {
-			base.Debugf(base.KeyConfig, "unable to fetch config in group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
+			base.DebugfCtx(logCtx, base.KeyConfig, "unable to fetch config in group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
 			continue
 		}
 
@@ -1155,6 +1156,7 @@ func (sc *ServerContext) fetchConfigs() (dbNameConfigs map[string]DatabaseConfig
 		return nil, nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
 	}
 
+	logCtx := context.TODO()
 	fetchedConfigs := make(map[string]DatabaseConfig, len(buckets))
 
 	for _, bucket := range buckets {
@@ -1167,7 +1169,7 @@ func (sc *ServerContext) fetchConfigs() (dbNameConfigs map[string]DatabaseConfig
 			continue
 		}
 		if err != nil {
-			base.Debugf(base.KeyConfig, "unable to fetch config for group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
+			base.DebugfCtx(logCtx, base.KeyConfig, "unable to fetch config for group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
 			continue
 		}
 
@@ -1192,7 +1194,7 @@ func (sc *ServerContext) fetchConfigs() (dbNameConfigs map[string]DatabaseConfig
 			cnf.KeyPath = sc.config.Bootstrap.X509KeyPath
 		}
 
-		base.Debugf(base.KeyConfig, "Got config for group %q from bucket %q with cas %d", sc.config.Bootstrap.ConfigGroupID, bucket, cas)
+		base.DebugfCtx(logCtx, base.KeyConfig, "Got config for group %q from bucket %q with cas %d", sc.config.Bootstrap.ConfigGroupID, bucket, cas)
 		fetchedConfigs[cnf.Name] = cnf
 	}
 
@@ -1236,7 +1238,7 @@ func (sc *ServerContext) _applyConfig(cnf DatabaseConfig, failFast bool) (applie
 			base.InfofCtx(context.TODO(), base.KeyConfig, "Forcing update of config for database %q bucket %q", cnf.Name, *cnf.Bucket)
 		} else {
 			if sc.dbConfigs[foundDbName].cas >= cnf.cas {
-				base.Debugf(base.KeyConfig, "Database %q bucket %q config has not changed since last update", cnf.Name, *cnf.Bucket)
+				base.DebugfCtx(context.TODO(), base.KeyConfig, "Database %q bucket %q config has not changed since last update", cnf.Name, *cnf.Bucket)
 				return false, nil
 			}
 			base.InfofCtx(context.TODO(), base.KeyConfig, "Updating database %q for bucket %q with new config from bucket", cnf.Name, *cnf.Bucket)

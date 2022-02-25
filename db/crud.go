@@ -1129,7 +1129,7 @@ func (db *Database) resolveDocRemoteWins(localDoc *Document, conflict Conflict) 
 		return "", tombstoneErr
 	}
 	remoteRevID := conflict.RemoteDocument.ExtractRev()
-	base.Debugf(base.KeyReplicate, "Resolved conflict for doc %s as remote wins - remote rev is %s, previous local rev %s tombstoned by %s, ", base.UD(localDoc.ID), remoteRevID, localRevID, tombstoneRevID)
+	base.DebugfCtx(db.Ctx, base.KeyReplicate, "Resolved conflict for doc %s as remote wins - remote rev is %s, previous local rev %s tombstoned by %s, ", base.UD(localDoc.ID), remoteRevID, localRevID, tombstoneRevID)
 	return remoteRevID, nil
 }
 
@@ -1220,7 +1220,7 @@ func (db *Database) resolveDocLocalWins(localDoc *Document, remoteDoc *Document,
 		return "", nil, tombstoneErr
 	}
 
-	base.Debugf(base.KeyReplicate, "Resolved conflict for doc %s as localWins - local rev %s moved to %s, and tombstoned with %s", base.UD(localDoc.ID), localRevID, newRevID, tombstoneRevID)
+	base.DebugfCtx(db.Ctx, base.KeyReplicate, "Resolved conflict for doc %s as localWins - local rev %s moved to %s, and tombstoned with %s", base.UD(localDoc.ID), localRevID, newRevID, tombstoneRevID)
 	return newRevID, docHistory, nil
 }
 
@@ -1262,7 +1262,7 @@ func (db *Database) resolveDocMerge(localDoc *Document, remoteDoc *Document, con
 	// Update the history for the remote doc to prepend the merged revID
 	docHistory = append([]string{mergedRevID}, docHistory...)
 
-	base.Debugf(base.KeyReplicate, "Resolved conflict for doc %s as merge - merged rev %s added as child of %s, previous local rev %s tombstoned by %s", base.UD(localDoc.ID), mergedRevID, remoteRevID, localRevID, tombstoneRevID)
+	base.DebugfCtx(db.Ctx, base.KeyReplicate, "Resolved conflict for doc %s as merge - merged rev %s added as child of %s, previous local rev %s tombstoned by %s", base.UD(localDoc.ID), mergedRevID, remoteRevID, localRevID, tombstoneRevID)
 	return mergedRevID, docHistory, nil
 }
 
@@ -1275,7 +1275,7 @@ func (db *Database) tombstoneActiveRevision(doc *Document, revID string) (tombst
 
 	// Don't tombstone an already deleted revision, return the incoming revID instead.
 	if doc.IsDeleted() {
-		base.Debugf(base.KeyReplicate, "Active revision %s/%s is already tombstoned.", base.UD(doc.ID), revID)
+		base.DebugfCtx(db.Ctx, base.KeyReplicate, "Active revision %s/%s is already tombstoned.", base.UD(doc.ID), revID)
 		return revID, nil
 	}
 
@@ -1918,7 +1918,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 				winningRevChange := prevCurrentRev != doc.CurrentRev
 				err = db.EventMgr.RaiseDocumentChangeEvent(webhookJSON, docid, oldBodyJSON, revChannels, winningRevChange)
 				if err != nil {
-					base.Debugf(base.KeyCRUD, "Error raising document change event: %v", err)
+					base.DebugfCtx(db.Ctx, base.KeyCRUD, "Error raising document change event: %v", err)
 				}
 			}
 		}

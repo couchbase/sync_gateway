@@ -115,7 +115,7 @@ func createIndex(store N1QLStore, indexName string, createStatement string, opti
 		createStatement = fmt.Sprintf(`%s with %s`, createStatement, withClause)
 	}
 
-	Debugf(KeyQuery, "Attempting to create index using statement: [%s]", UD(createStatement))
+	DebugfCtx(context.TODO(), KeyQuery, "Attempting to create index using statement: [%s]", UD(createStatement))
 
 	err := store.executeStatement(createStatement)
 	if err == nil {

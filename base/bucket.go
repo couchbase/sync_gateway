@@ -611,6 +611,6 @@ func retrievePurgeInterval(bucket CouchbaseStore, uri string) (time.Duration, er
 func ensureBodyClosed(body io.ReadCloser) {
 	err := body.Close()
 	if err != nil {
-		Debugf(KeyBucket, "Failed to close socket: %v", err)
+		DebugfCtx(context.TODO(), KeyBucket, "Failed to close socket: %v", err)
 	}
 }

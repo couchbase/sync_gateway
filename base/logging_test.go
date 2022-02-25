@@ -64,7 +64,7 @@ func Benchmark_LoggingPerformance(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		Debugf(KeyCRUD, "some crud'y message")
+		DebugfCtx(ctx, KeyCRUD, "some crud'y message")
 		InfofCtx(ctx, KeyCRUD, "some crud'y message")
 		WarnfCtx(ctx, "some crud'y message")
 		ErrorfCtx(ctx, "some crud'y message")

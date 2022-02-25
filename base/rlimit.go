@@ -84,7 +84,7 @@ func getSoftFDLimit(requestedSoftFDLimit uint64, limit syscall.Rlimit) (requires
 	// Is the user requesting something that is less than the existing soft limit?
 	if requestedSoftFDLimit <= currentSoftFdLimit {
 		// yep, and there is no point in doing so, so return false for requiresUpdate.
-		Debugf(KeyAll, "requestedSoftFDLimit < currentSoftFdLimit (%v <= %v) no action needed", requestedSoftFDLimit, currentSoftFdLimit)
+		DebugfCtx(context.Background(), KeyAll, "requestedSoftFDLimit < currentSoftFdLimit (%v <= %v) no action needed", requestedSoftFDLimit, currentSoftFdLimit)
 		return false, currentSoftFdLimit
 	}
 

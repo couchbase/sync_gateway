@@ -194,7 +194,7 @@ func (s *sequenceAllocator) _reserveSequenceRange() error {
 		if s.sequenceBatchSize > maxBatchSize {
 			s.sequenceBatchSize = maxBatchSize
 		}
-		base.Debugf(base.KeyCRUD, "Increased sequence batch to %d", s.sequenceBatchSize)
+		base.DebugfCtx(context.TODO(), base.KeyCRUD, "Increased sequence batch to %d", s.sequenceBatchSize)
 	}
 
 	max, err := s.incrementSequence(s.sequenceBatchSize)
@@ -238,7 +238,7 @@ func (s *sequenceAllocator) releaseSequence(sequence uint64) error {
 		return err
 	}
 	s.dbStats.SequenceReleasedCount.Add(1)
-	base.Debugf(base.KeyCRUD, "Released unused sequence #%d", sequence)
+	base.DebugfCtx(context.TODO(), base.KeyCRUD, "Released unused sequence #%d", sequence)
 	return nil
 }
 
@@ -255,7 +255,7 @@ func (s *sequenceAllocator) releaseSequenceRange(fromSequence, toSequence uint64
 		return err
 	}
 	s.dbStats.SequenceReleasedCount.Add(int64(toSequence - fromSequence + 1))
-	base.Debugf(base.KeyCRUD, "Released unused sequences #%d-#%d", fromSequence, toSequence)
+	base.DebugfCtx(context.TODO(), base.KeyCRUD, "Released unused sequences #%d-#%d", fromSequence, toSequence)
 	return nil
 }
 

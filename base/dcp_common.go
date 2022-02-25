@@ -332,14 +332,14 @@ func (c *DCPCommon) initFeed(backfillType uint64) (highSeqnos map[uint16]uint64,
 	switch backfillType {
 	case sgbucket.FeedNoBackfill:
 		// For non-backfill, use vbucket uuids, high sequence numbers
-		Debugf(KeyDCP, "Initializing DCP with no backfill - seeding seqnos: %v", highSeqnos)
+		DebugfCtx(c.loggingCtx, KeyDCP, "Initializing DCP with no backfill - seeding seqnos: %v", highSeqnos)
 		c.seedSeqnos(statsUuids, highSeqnos)
 	case sgbucket.FeedResume:
 		// For resume case, load previously persisted checkpoints from bucket
 		c.initMetadata(c.maxVbNo)
 		// Track backfill (from persisted checkpoints to current high seqno)
 		c.backfill.init(c.seqs, highSeqnos, c.maxVbNo, c.dbStatsExpvars)
-		Debugf(KeyDCP, "Initializing DCP feed based on persisted checkpoints")
+		DebugfCtx(c.loggingCtx, KeyDCP, "Initializing DCP feed based on persisted checkpoints")
 	default:
 		// Otherwise, start feed from zero
 		startSeqnos := make(map[uint16]uint64, c.maxVbNo)
@@ -347,7 +347,7 @@ func (c *DCPCommon) initFeed(backfillType uint64) (highSeqnos map[uint16]uint64,
 		c.seedSeqnos(vbuuids, startSeqnos)
 		// Track backfill (from zero to current high seqno)
 		c.backfill.init(c.seqs, highSeqnos, c.maxVbNo, c.dbStatsExpvars)
-		Debugf(KeyDCP, "Initializing DCP feed to start from zero")
+		DebugfCtx(c.loggingCtx, KeyDCP, "Initializing DCP feed to start from zero")
 	}
 
 	return highSeqnos, nil

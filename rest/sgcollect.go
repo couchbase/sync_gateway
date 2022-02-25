@@ -76,7 +76,7 @@ func (sg *sgCollect) Start(logFilePath string, ctxSerialNumber uint64, zipFilena
 		// If no output directory specified, default to the configured LogFilePath
 		if logFilePath != "" {
 			params.OutputDirectory = logFilePath
-			base.Debugf(base.KeyAdmin, "sgcollect_info: no output directory specified, using LogFilePath: %v", params.OutputDirectory)
+			base.DebugfCtx(sg.context, base.KeyAdmin, "sgcollect_info: no output directory specified, using LogFilePath: %v", params.OutputDirectory)
 		} else {
 			// If LogFilePath is not set, and DefaultLogFilePath is not set via a service script, error out.
 			return errors.New("no output directory or LogFilePath specified")
@@ -308,6 +308,7 @@ func sgCollectPaths() (sgBinary, sgCollectBinary string, err error) {
 		return "", "", err
 	}
 
+	logCtx := context.Background()
 	hasBinDir := true
 	sgCollectPath := filepath.Join("tools", "sgcollect_info")
 
@@ -325,7 +326,7 @@ func sgCollectPaths() (sgBinary, sgCollectBinary string, err error) {
 		}
 
 		// Check sgcollect_info exists at the path we guessed.
-		base.Debugf(base.KeyAdmin, "Checking sgcollect_info binary exists at: %v", sgCollectBinary)
+		base.DebugfCtx(logCtx, base.KeyAdmin, "Checking sgcollect_info binary exists at: %v", sgCollectBinary)
 		_, err = os.Stat(sgCollectBinary)
 		if err != nil {
 

@@ -12,6 +12,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"fmt"
 	"net/http"
@@ -662,7 +663,7 @@ func (btc *BlipTesterClient) PushRevWithHistory(docID, parentRev string, body []
 	revRequest.Properties[db.RevMessageHistory] = strings.Join(revisionHistory, ",")
 
 	if btc.ClientDeltas && proposeChangesResponse.Properties[db.ProposeChangesResponseDeltas] == "true" {
-		base.Debugf(base.KeySync, "Sending deltas from test client")
+		base.DebugfCtx(context.TODO(), base.KeySync, "Sending deltas from test client")
 		var parentDocJSON, newDocJSON db.Body
 		err := parentDocJSON.Unmarshal(parentDocBody)
 		if err != nil {
@@ -681,7 +682,7 @@ func (btc *BlipTesterClient) PushRevWithHistory(docID, parentRev string, body []
 		revRequest.Properties[db.RevMessageDeltaSrc] = parentRev
 		body = delta
 	} else {
-		base.Debugf(base.KeySync, "Not sending deltas from test client")
+		base.DebugfCtx(context.TODO(), base.KeySync, "Not sending deltas from test client")
 	}
 
 	revRequest.SetBody(body)

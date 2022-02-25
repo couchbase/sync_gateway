@@ -688,7 +688,7 @@ func verifyToken(ctx context.Context, token string, provider *OIDCProvider, call
 // creates the user when autoRegister=true.
 func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCProvider, callbackURLFunc OIDCCallbackURLFunc) (user User,
 	tokenExpiry time.Time, err error) {
-	base.Debugf(base.KeyAuth, "AuthenticateTrustedJWT called with token: %s", base.UD(token))
+	base.DebugfCtx(auth.LogCtx, base.KeyAuth, "AuthenticateTrustedJWT called with token: %s", base.UD(token))
 
 	var identity *Identity
 	if provider.AllowUnsignedProviderTokens {

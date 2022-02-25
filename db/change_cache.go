@@ -434,7 +434,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
 	// If this is a delete and there are no xattrs (no existing SG revision), we can ignore
 	if event.Opcode == sgbucket.FeedOpDeletion && len(docJSON) == 0 {
-		base.Debugf(base.KeyImport, "Ignoring delete mutation for %s - no existing Sync Gateway metadata.", base.UD(docID))
+		base.DebugfCtx(logCtx, base.KeyImport, "Ignoring delete mutation for %s - no existing Sync Gateway metadata.", base.UD(docID))
 		return
 	}
 
@@ -449,7 +449,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	if err != nil {
 		// Avoid log noise related to failed unmarshaling of binary documents.
 		if event.DataType != base.MemcachedDataTypeRaw {
-			base.Debugf(base.KeyCache, "Unable to unmarshal sync metadata for feed document %q.  Will not be included in channel cache.  Error: %v", base.UD(docID), err)
+			base.DebugfCtx(logCtx, base.KeyCache, "Unable to unmarshal sync metadata for feed document %q.  Will not be included in channel cache.  Error: %v", base.UD(docID), err)
 		}
 		if err == base.ErrEmptyMetadata {
 			base.WarnfCtx(logCtx, "Unexpected empty metadata when processing feed event.  docid: %s opcode: %v datatype:%v", base.UD(event.Key), event.Opcode, event.DataType)
@@ -564,7 +564,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	if millisecondLatency >= 60*1000 {
 		base.InfofCtx(logCtx, base.KeyDCP, "Received #%d after %3dms (%q / %q)", change.Sequence, millisecondLatency, base.UD(change.DocID), change.RevID)
 	} else {
-		base.Debugf(base.KeyDCP, "Received #%d after %3dms (%q / %q)", change.Sequence, millisecondLatency, base.UD(change.DocID), change.RevID)
+		base.DebugfCtx(logCtx, base.KeyDCP, "Received #%d after %3dms (%q / %q)", change.Sequence, millisecondLatency, base.UD(change.DocID), change.RevID)
 	}
 
 	changedChannels := c.processEntry(change)
@@ -690,6 +690,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		return nil
 	}
 
+	logCtx := context.TODO()
 	sequence := change.Sequence
 	if change.Sequence > c.internalStats.highSeqFeed {
 		c.internalStats.highSeqFeed = change.Sequence
@@ -701,13 +702,13 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	// We can cancel processing early in these scenarios.
 	// Check if this is a duplicate of an already processed sequence
 	if sequence < c.nextSequence && !c.WasSkipped(sequence) {
-		base.Debugf(base.KeyCache, "  Ignoring duplicate of #%d", sequence)
+		base.DebugfCtx(logCtx, base.KeyCache, "  Ignoring duplicate of #%d", sequence)
 		return nil
 	}
 
 	// Check if this is a duplicate of a pending sequence
 	if _, found := c.receivedSeqs[sequence]; found {
-		base.Debugf(base.KeyCache, "  Ignoring duplicate of #%d", sequence)
+		base.DebugfCtx(logCtx, base.KeyCache, "  Ignoring duplicate of #%d", sequence)
 		return nil
 	}
 	c.receivedSeqs[sequence] = struct{}{}
@@ -724,7 +725,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		numPending := len(c.pendingLogs)
 		c.internalStats.pendingSeqLen = numPending
 		if base.LogDebugEnabled(base.KeyCache) {
-			base.Debugf(base.KeyCache, "  Deferring #%d (%d now waiting for #%d...#%d) doc %q / %q",
+			base.DebugfCtx(logCtx, base.KeyCache, "  Deferring #%d (%d now waiting for #%d...#%d) doc %q / %q",
 				sequence, numPending, c.nextSequence, c.pendingLogs[0].Sequence-1, base.UD(change.DocID), change.RevID)
 		}
 		// Update max pending high watermark stat
@@ -741,9 +742,9 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		// Remove from skipped sequence queue
 		if !c.WasSkipped(sequence) {
 			// Error removing from skipped sequences
-			base.InfofCtx(context.TODO(), base.KeyCache, "  Received unexpected out-of-order change - not in skippedSeqs (seq %d, expecting %d) doc %q / %q", sequence, c.nextSequence, base.UD(change.DocID), change.RevID)
+			base.InfofCtx(logCtx, base.KeyCache, "  Received unexpected out-of-order change - not in skippedSeqs (seq %d, expecting %d) doc %q / %q", sequence, c.nextSequence, base.UD(change.DocID), change.RevID)
 		} else {
-			base.InfofCtx(context.TODO(), base.KeyCache, "  Received previously skipped out-of-order change (seq %d, expecting %d) doc %q / %q ", sequence, c.nextSequence, base.UD(change.DocID), change.RevID)
+			base.InfofCtx(logCtx, base.KeyCache, "  Received previously skipped out-of-order change (seq %d, expecting %d) doc %q / %q ", sequence, c.nextSequence, base.UD(change.DocID), change.RevID)
 			change.Skipped = true
 		}
 
@@ -752,7 +753,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		// in cache
 		err := c.RemoveSkipped(sequence)
 		if err != nil {
-			base.Debugf(base.KeyCache, "Error removing skipped sequence: #%d from cache: %v", sequence, err)
+			base.DebugfCtx(logCtx, base.KeyCache, "Error removing skipped sequence: #%d from cache: %v", sequence, err)
 		}
 	}
 	return changedChannels
@@ -781,7 +782,7 @@ func (c *changeCache) _addToCache(change *LogEntry) []string {
 	// the change's active channels, as well as any channel removals for the active revision.
 	updatedChannels := c.channelCache.AddToCache(change)
 	if base.LogDebugEnabled(base.KeyDCP) {
-		base.Debugf(base.KeyDCP, " #%d ==> channels %v", change.Sequence, base.UD(updatedChannels))
+		base.DebugfCtx(context.TODO(), base.KeyDCP, " #%d ==> channels %v", change.Sequence, base.UD(updatedChannels))
 	}
 
 	if !change.TimeReceived.IsZero() {
@@ -848,7 +849,7 @@ func (c *changeCache) LastSequence() uint64 {
 func (c *changeCache) getOldestSkippedSequence() uint64 {
 	oldestSkippedSeq := c.skippedSeqs.getOldest()
 	if oldestSkippedSeq > 0 {
-		base.Debugf(base.KeyChanges, "Get oldest skipped, returning: %d", oldestSkippedSeq)
+		base.DebugfCtx(context.TODO(), base.KeyChanges, "Get oldest skipped, returning: %d", oldestSkippedSeq)
 	}
 	return oldestSkippedSeq
 }
@@ -931,7 +932,7 @@ func (c *changeCache) waitForSequence(ctx context.Context, sequence uint64, maxW
 
 	worker := func() (bool, error, interface{}) {
 		if c.getNextSequence() >= sequence+1 {
-			base.Debugf(base.KeyCache, "waitForSequence(%d) took %v", sequence, time.Since(startTime))
+			base.DebugfCtx(ctx, base.KeyCache, "waitForSequence(%d) took %v", sequence, time.Since(startTime))
 			return false, nil, nil
 		}
 		// retry
@@ -953,7 +954,7 @@ func (c *changeCache) waitForSequenceNotSkipped(ctx context.Context, sequence ui
 		if c.getNextSequence() >= sequence+1 {
 			foundInMissing := c.skippedSeqs.Contains(sequence)
 			if !foundInMissing {
-				base.Debugf(base.KeyCache, "waitForSequenceNotSkipped(%d) took %v", sequence, time.Since(startTime))
+				base.DebugfCtx(ctx, base.KeyCache, "waitForSequenceNotSkipped(%d) took %v", sequence, time.Since(startTime))
 				return false, nil, nil
 			}
 		}

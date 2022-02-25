@@ -32,7 +32,8 @@ func NewBackgroundTask(taskName string, dbName string, task BackgroundTaskFunc, 
 		doneChan: make(chan struct{}),
 	}
 
-	base.InfofCtx(context.Background(), base.KeyAll, "Created background task: %q with interval %v", taskName, interval)
+	logCtx := context.Background()
+	base.InfofCtx(logCtx, base.KeyAll, "Created background task: %q with interval %v", taskName, interval)
 	go func() {
 		defer close(bgt.doneChan)
 		defer base.FatalPanicHandler()
@@ -41,13 +42,13 @@ func NewBackgroundTask(taskName string, dbName string, task BackgroundTaskFunc, 
 		for {
 			select {
 			case <-ticker.C:
-				ctx := context.WithValue(context.Background(), base.LogContextKey{}, base.LogContext{CorrelationID: base.NewTaskID(dbName, taskName)})
+				ctx := context.WithValue(logCtx, base.LogContextKey{}, base.LogContext{CorrelationID: base.NewTaskID(dbName, taskName)})
 				if err := task(ctx); err != nil {
 					base.ErrorfCtx(ctx, "Background task returned error: %v", err)
 					return
 				}
 			case <-c:
-				base.Debugf(base.KeyAll, "Terminating background task: %q", taskName)
+				base.DebugfCtx(logCtx, base.KeyAll, "Terminating background task: %q", taskName)
 				return
 			}
 		}

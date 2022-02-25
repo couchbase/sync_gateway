@@ -96,11 +96,12 @@ func (em *EventManager) Start(maxProcesses uint, waitTime int) {
 // Concurrent processing of all async event handlers registered for the event type
 func (em *EventManager) ProcessEvent(event Event) {
 	defer func() { <-em.activeCountChannel }()
+	logCtx := context.TODO()
 	// Send event to all registered handlers concurrently.  WaitGroup blocks
 	// until all are finished
 	var wg sync.WaitGroup
 	for _, handler := range em.eventHandlers[event.EventType()] {
-		base.Debugf(base.KeyEvents, "Event queue worker sending event %s to: %s", base.UD(event.String()), handler)
+		base.DebugfCtx(logCtx, base.KeyEvents, "Event queue worker sending event %s to: %s", base.UD(event.String()), handler)
 		wg.Add(1)
 		go func(event Event, handler EventHandler) {
 			defer wg.Done()

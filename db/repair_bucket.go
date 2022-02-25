@@ -336,8 +336,8 @@ func (r RepairBucket) TransformBucketDoc(docId string, originalCBDoc []byte) (tr
 // Repairs rev tree cycles (see SG issue #2847)
 func RepairJobRevTreeCycles(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error) {
 
-	base.Debugf(base.KeyCRUD, "RepairJobRevTreeCycles() called with doc id: %v", base.UD(docId))
-	defer base.Debugf(base.KeyCRUD, "RepairJobRevTreeCycles() finished.  Doc id: %v.  transformed: %v.  err: %v", base.UD(docId), base.UD(transformed), err)
+	base.DebugfCtx(context.TODO(), base.KeyCRUD, "RepairJobRevTreeCycles() called with doc id: %v", base.UD(docId))
+	defer base.DebugfCtx(context.TODO(), base.KeyCRUD, "RepairJobRevTreeCycles() finished.  Doc id: %v.  transformed: %v.  err: %v", base.UD(docId), base.UD(transformed), err)
 
 	doc, errUnmarshal := unmarshalDocument(docId, originalCBDoc)
 	if errUnmarshal != nil {

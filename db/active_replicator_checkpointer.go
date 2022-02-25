@@ -668,7 +668,7 @@ func getLocalCheckpoint(db *DatabaseContext, clientID string) (*replicationCheck
 		if !base.IsKeyNotFoundError(db.Bucket, err) {
 			return nil, err
 		}
-		base.Debugf(base.KeyReplicate, "couldn't find existing local checkpoint for ID %q", clientID)
+		base.DebugfCtx(context.TODO(), base.KeyReplicate, "couldn't find existing local checkpoint for ID %q", clientID)
 		return nil, nil
 	}
 	var checkpoint *replicationCheckpoint

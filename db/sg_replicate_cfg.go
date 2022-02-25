@@ -421,7 +421,7 @@ func (ar *ActiveReplicator) alignState(targetState string) error {
 
 func (dbc *DatabaseContext) StartReplications() {
 	if dbc.Options.SGReplicateOptions.Enabled {
-		base.Debugf(base.KeyReplicate, "Will start Inter-Sync Gateway Replications for database %q", dbc.Name)
+		base.DebugfCtx(dbc.SGReplicateMgr.loggingCtx, base.KeyReplicate, "Will start Inter-Sync Gateway Replications for database %q", dbc.Name)
 		dbc.SGReplicateMgr.closeWg.Add(1)
 		go func() {
 			defer dbc.SGReplicateMgr.closeWg.Done()
@@ -431,11 +431,11 @@ func (dbc *DatabaseContext) StartReplications() {
 			defer t.Stop()
 			select {
 			case <-dbc.ServerContextHasStarted:
-				base.Debugf(base.KeyReplicate, "Server context started, starting ISGR replications %q", dbc.Name)
+				base.DebugfCtx(dbc.SGReplicateMgr.loggingCtx, base.KeyReplicate, "Server context started, starting ISGR replications %q", dbc.Name)
 			case <-t.C:
 				base.InfofCtx(dbc.SGReplicateMgr.loggingCtx, base.KeyReplicate, "Timed out waiting for server context startup... starting ISGR replications for %q anyway", dbc.Name)
 			case <-dbc.terminator:
-				base.Debugf(base.KeyReplicate, "Database context for %q closed before starting ISGR replications - aborting...", dbc.Name)
+				base.DebugfCtx(dbc.SGReplicateMgr.loggingCtx, base.KeyReplicate, "Database context for %q closed before starting ISGR replications - aborting...", dbc.Name)
 				return
 			}
 
@@ -445,7 +445,7 @@ func (dbc *DatabaseContext) StartReplications() {
 			}
 		}()
 	} else {
-		base.Debugf(base.KeyReplicate, "Not starting Inter-Sync Gateway Replications for database %q - is disabled", dbc.Name)
+		base.DebugfCtx(context.TODO(), base.KeyReplicate, "Not starting Inter-Sync Gateway Replications for database %q - is disabled", dbc.Name)
 	}
 }
 
@@ -501,7 +501,7 @@ func (m *sgReplicateManager) StartReplications() error {
 		return err
 	}
 	for replicationID, replicationCfg := range replications {
-		base.Debugf(base.KeyCluster, "Replication %s is assigned to node %s (local node is %s)", replicationID, replicationCfg.AssignedNode, m.localNodeUUID)
+		base.DebugfCtx(m.loggingCtx, base.KeyCluster, "Replication %s is assigned to node %s (local node is %s)", replicationID, replicationCfg.AssignedNode, m.localNodeUUID)
 		if replicationCfg.AssignedNode == m.localNodeUUID {
 			activeReplicator, err := m.InitializeReplication(replicationCfg)
 			if err != nil {
@@ -723,7 +723,7 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 
 		} else {
 			// Check for replications assigned to this node with updated state
-			base.Debugf(base.KeyReplicate, "Aligning state for existing replication %s", replicationID)
+			base.DebugfCtx(m.loggingCtx, base.KeyReplicate, "Aligning state for existing replication %s", replicationID)
 
 			// If the config has changed, re-initialize the replication
 			isChanged, err := m.isCfgChanged(replicationCfg, activeReplicator.config)
@@ -785,7 +785,7 @@ func (m *sgReplicateManager) SubscribeCfgChanges() error {
 
 	err := m.cfg.Subscribe(cfgKeySGRCluster, cfgEvents)
 	if err != nil {
-		base.Debugf(base.KeyCluster, "Error subscribing to %s key changes: %v", cfgKeySGRCluster, err)
+		base.DebugfCtx(m.loggingCtx, base.KeyCluster, "Error subscribing to %s key changes: %v", cfgKeySGRCluster, err)
 		return err
 	}
 	m.closeWg.Add(1)
@@ -1468,7 +1468,7 @@ func (l *ReplicationHeartbeatListener) subscribeNodeSetChanges() error {
 
 	err := l.mgr.cfg.Subscribe(cfgKeySGRCluster, cfgEvents)
 	if err != nil {
-		base.Debugf(base.KeyCluster, "Error subscribing to %s key changes: %v", cfgKeySGRCluster, err)
+		base.DebugfCtx(l.mgr.loggingCtx, base.KeyCluster, "Error subscribing to %s key changes: %v", cfgKeySGRCluster, err)
 		return err
 	}
 	go func() {

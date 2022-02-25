@@ -114,7 +114,7 @@ func (h *couchbaseHeartBeater) Start() error {
 		return err
 	}
 
-	Debugf(KeyCluster, "Sending node heartbeats at interval: %v", h.heartbeatSendInterval)
+	DebugfCtx(context.TODO(), KeyCluster, "Sending node heartbeats at interval: %v", h.heartbeatSendInterval)
 
 	return nil
 
