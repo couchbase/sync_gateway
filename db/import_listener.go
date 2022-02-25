@@ -41,7 +41,7 @@ func NewImportListener(groupID string) *importListener {
 // Writes DCP stats into the StatKeyImportDcpStats map
 func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbStats, dbContext *DatabaseContext) (err error) {
 
-	base.Infof(base.KeyDCP, "Attempting to start import DCP feed...")
+	base.InfofCtx(context.TODO(), base.KeyDCP, "Attempting to start import DCP feed...")
 
 	il.bucketName = bucket.GetName()
 	il.database = Database{DatabaseContext: dbContext, user: nil}
@@ -60,7 +60,7 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 	base.StoreDestFactory(base.ImportDestKey(il.database.Name), il.NewImportDest)
 
 	// Start DCP mutation feed
-	base.Infof(base.KeyDCP, "Starting DCP import feed for bucket: %q ", base.UD(bucket.GetName()))
+	base.InfofCtx(context.TODO(), base.KeyDCP, "Starting DCP import feed for bucket: %q ", base.UD(bucket.GetName()))
 
 	// TODO: need to clean up StartDCPFeed to push bucket dependencies down
 	cbStore, ok := base.AsCouchbaseStore(bucket)
@@ -141,7 +141,7 @@ func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 		// last attempt to exit processing if the importListener has been closed before attempting to write to the bucket
 		select {
 		case <-il.terminator:
-			base.Infof(base.KeyImport, "Aborting import for doc %q - importListener.terminator was closed", base.UD(docID))
+			base.InfofCtx(context.TODO(), base.KeyImport, "Aborting import for doc %q - importListener.terminator was closed", base.UD(docID))
 			return
 		default:
 		}

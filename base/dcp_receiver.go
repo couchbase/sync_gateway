@@ -239,7 +239,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 
 	feedID := args.ID
 	if feedID == "" {
-		Infof(KeyDCP, "DCP feed started without feedID specified - defaulting to %s", DCPCachingFeedID)
+		InfofCtx(context.TODO(), KeyDCP, "DCP feed started without feedID specified - defaulting to %s", DCPCachingFeedID)
 		feedID = DCPCachingFeedID
 	}
 	receiver, loggingCtx := NewDCPReceiver(callback, bucket, maxVbno, persistCheckpoints, dbStats, feedID, args.CheckpointPrefix)
@@ -295,7 +295,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 	}
 
 	networkType := getNetworkTypeFromConnSpec(connSpec)
-	Infof(KeyDCP, "Using network type: %s", networkType)
+	InfofCtx(loggingCtx, KeyDCP, "Using network type: %s", networkType)
 
 	// default (aka internal) networking is handled by cbdatasource, so we can avoid the shims altogether in this case, for all other cases we need shims to remap hosts.
 	if networkType != clusterNetworkDefault {

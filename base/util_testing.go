@@ -480,7 +480,7 @@ func SetUpGlobalTestLogging(m *testing.M) (teardownFn func()) {
 //     defer SetUpTestLogging(LevelDebug, KeyCache,KeyDCP,KeySync)()
 func SetUpTestLogging(logLevel LogLevel, logKeys ...LogKey) (teardownFn func()) {
 	caller := GetCallersName(1, false)
-	Infof(KeyAll, "%s: Setup logging: level: %v - keys: %v", caller, logLevel, logKeys)
+	InfofCtx(context.Background(), KeyAll, "%s: Setup logging: level: %v - keys: %v", caller, logLevel, logKeys)
 	return setTestLogging(logLevel, caller, logKeys...)
 }
 
@@ -514,7 +514,7 @@ func setTestLogging(logLevel LogLevel, caller string, logKeys ...LogKey) (teardo
 		// noop, test log level is already set globally
 		return func() {
 			if caller != "" {
-				Infof(KeyAll, "%v: Reset logging", caller)
+				InfofCtx(context.Background(), KeyAll, "%v: Reset logging", caller)
 			}
 		}
 	}
@@ -536,7 +536,7 @@ func setTestLogging(logLevel LogLevel, caller string, logKeys ...LogKey) (teardo
 		consoleLogger.LogLevel.Set(initialLogLevel)
 		consoleLogger.LogKeyMask.Set(initialLogKey)
 		if caller != "" {
-			Infof(KeyAll, "%v: Reset logging", caller)
+			InfofCtx(context.Background(), KeyAll, "%v: Reset logging", caller)
 		}
 	}
 }

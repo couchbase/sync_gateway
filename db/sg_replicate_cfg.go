@@ -390,7 +390,7 @@ func (ar *ActiveReplicator) alignState(targetState string) error {
 
 	switch targetState {
 	case ReplicationStateStopped:
-		base.Infof(base.KeyReplicate, "Stopping replication %s - previous state %s", ar.ID, currentState)
+		base.InfofCtx(context.TODO(), base.KeyReplicate, "Stopping replication %s - previous state %s", ar.ID, currentState)
 		stopErr := ar.Stop()
 		if stopErr != nil {
 			return fmt.Errorf("Unable to gracefully stop active replicator for replication %s: %v", ar.ID, stopErr)
@@ -400,7 +400,7 @@ func (ar *ActiveReplicator) alignState(targetState string) error {
 			// a replicator in a reconnecting state is already running
 			return nil
 		}
-		base.Infof(base.KeyReplicate, "Starting replication %s - previous state %s", ar.ID, currentState)
+		base.InfofCtx(context.TODO(), base.KeyReplicate, "Starting replication %s - previous state %s", ar.ID, currentState)
 		startErr := ar.Start()
 		if startErr != nil {
 			return fmt.Errorf("Unable to start active replicator for replication %s: %v", ar.ID, startErr)
@@ -409,7 +409,7 @@ func (ar *ActiveReplicator) alignState(targetState string) error {
 		if currentState != ReplicationStateStopped {
 			return fmt.Errorf("Replication must be stopped before it can be reset")
 		}
-		base.Infof(base.KeyReplicate, "Resetting replication %s - previous state %s", ar.ID, currentState)
+		base.InfofCtx(context.TODO(), base.KeyReplicate, "Resetting replication %s - previous state %s", ar.ID, currentState)
 		resetErr := ar.Reset()
 		if resetErr != nil {
 			return fmt.Errorf("Unable to reset active replicator for replication %s: %v", ar.ID, resetErr)
@@ -433,7 +433,7 @@ func (dbc *DatabaseContext) StartReplications() {
 			case <-dbc.ServerContextHasStarted:
 				base.Debugf(base.KeyReplicate, "Server context started, starting ISGR replications %q", dbc.Name)
 			case <-t.C:
-				base.Infof(base.KeyReplicate, "Timed out waiting for server context startup... starting ISGR replications for %q anyway", dbc.Name)
+				base.InfofCtx(dbc.SGReplicateMgr.loggingCtx, base.KeyReplicate, "Timed out waiting for server context startup... starting ISGR replications for %q anyway", dbc.Name)
 			case <-dbc.terminator:
 				base.Debugf(base.KeyReplicate, "Database context for %q closed before starting ISGR replications - aborting...", dbc.Name)
 				return
@@ -488,7 +488,7 @@ func (m *sgReplicateManager) StartLocalNode(nodeUUID string, heartbeater base.He
 		return err
 	}
 
-	base.Infof(base.KeyCluster, "Started local node for sg-replicate as %s", nodeUUID)
+	base.InfofCtx(m.loggingCtx, base.KeyCluster, "Started local node for sg-replicate as %s", nodeUUID)
 	return heartbeater.RegisterListener(m.heartbeatListener)
 }
 
@@ -630,7 +630,7 @@ func (m *sgReplicateManager) isCfgChanged(newCfg *ReplicationCfg, activeCfg *Act
 
 func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (replicator *ActiveReplicator, err error) {
 
-	base.Infof(base.KeyReplicate, "Initializing replication %v", base.UD(config.ID))
+	base.InfofCtx(m.loggingCtx, base.KeyReplicate, "Initializing replication %v", base.UD(config.ID))
 
 	// Re-validate replication.  Replication config should have already been validated on creation/update, but
 	// re-checking here in case of issues during persistence/load.
@@ -696,7 +696,7 @@ func (m *sgReplicateManager) Stop() {
 // have been added to or removed from this node
 func (m *sgReplicateManager) RefreshReplicationCfg() error {
 
-	base.Infof(base.KeyCluster, "Replication definitions changed - refreshing...")
+	base.InfofCtx(m.loggingCtx, base.KeyCluster, "Replication definitions changed - refreshing...")
 	configReplications, err := m.GetReplications()
 	if err != nil {
 		return err
@@ -711,7 +711,7 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 
 		// Check for active replications removed from this node
 		if !ok || replicationCfg.AssignedNode != m.localNodeUUID {
-			base.Infof(base.KeyReplicate, "Stopping reassigned replication %s", replicationID)
+			base.InfofCtx(m.loggingCtx, base.KeyReplicate, "Stopping reassigned replication %s", replicationID)
 			err := activeReplicator.Stop()
 			if err != nil {
 				base.WarnfCtx(m.loggingCtx, "Unable to gracefully close active replication: %v", err)
@@ -769,7 +769,7 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 				m.activeReplicators[replicationID] = replicator
 
 				if replicationCfg.TargetState == "" || replicationCfg.TargetState == ReplicationStateRunning {
-					base.Infof(base.KeyReplicate, "Starting newly assigned replication %s", replicationID)
+					base.InfofCtx(m.loggingCtx, base.KeyReplicate, "Starting newly assigned replication %s", replicationID)
 					if startErr := replicator.Start(); startErr != nil {
 						base.WarnfCtx(m.loggingCtx, "Unable to start replication after refresh %s: %v", replicationID, startErr)
 					}
@@ -881,7 +881,7 @@ func (m *sgReplicateManager) RegisterNode(nodeUUID string) error {
 
 	hostName, hostErr := os.Hostname()
 	if hostErr != nil {
-		base.Infof(base.KeyCluster, "Unable to retrieve hostname, registering node for sgreplicate without host specified.  Error: %v", hostErr)
+		base.InfofCtx(m.loggingCtx, base.KeyCluster, "Unable to retrieve hostname, registering node for sgreplicate without host specified.  Error: %v", hostErr)
 	}
 	return m.registerNodeForHost(nodeUUID, hostName)
 }
@@ -1453,7 +1453,7 @@ func (l *ReplicationHeartbeatListener) Name() string {
 // When we detect other nodes have stopped pushing heartbeats, use manager to remove from cfg
 func (l *ReplicationHeartbeatListener) StaleHeartbeatDetected(nodeUUID string) {
 
-	base.Infof(base.KeyCluster, "StaleHeartbeatDetected by sg-replicate listener for node: %v", nodeUUID)
+	base.InfofCtx(l.mgr.loggingCtx, base.KeyCluster, "StaleHeartbeatDetected by sg-replicate listener for node: %v", nodeUUID)
 	err := l.mgr.RemoveNode(nodeUUID)
 	if err != nil {
 		base.WarnfCtx(l.mgr.loggingCtx, "Attempt to remove node %v from sg-replicate cfg got error: %v", nodeUUID, err)

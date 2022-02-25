@@ -446,7 +446,7 @@ func (dh *documentBackedListener) updateNodeList(nodeID string, remove bool) err
 			dh.nodeIDs = append(dh.nodeIDs, nodeID)
 		}
 
-		Infof(KeyCluster, "Updating nodeList document (%s) with node IDs: %v", dh.nodeListKey, dh.nodeIDs)
+		InfofCtx(context.TODO(), KeyCluster, "Updating nodeList document (%s) with node IDs: %v", dh.nodeListKey, dh.nodeIDs)
 
 		casOut, err := dh.bucket.WriteCas(dh.nodeListKey, 0, 0, dh.cas, dh.nodeIDs, 0)
 

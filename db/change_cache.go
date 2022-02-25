@@ -403,6 +403,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	docID := string(event.Key)
 	docJSON := event.Value
 	changedChannelsCombined := base.Set{}
+	logCtx := context.TODO()
 
 	// ** This method does not directly access any state of c, so it doesn't lock.
 	// Is this a user/role doc?
@@ -451,7 +452,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 			base.Debugf(base.KeyCache, "Unable to unmarshal sync metadata for feed document %q.  Will not be included in channel cache.  Error: %v", base.UD(docID), err)
 		}
 		if err == base.ErrEmptyMetadata {
-			base.WarnfCtx(context.TODO(), "Unexpected empty metadata when processing feed event.  docid: %s opcode: %v datatype:%v", base.UD(event.Key), event.Opcode, event.DataType)
+			base.WarnfCtx(logCtx, "Unexpected empty metadata when processing feed event.  docid: %s opcode: %v datatype:%v", base.UD(event.Key), event.Opcode, event.DataType)
 		}
 		return
 	}
@@ -472,10 +473,10 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	if !c.context.UseXattrs() && !syncData.HasValidSyncData() {
 		migratedDoc, _ := c.context.checkForUpgrade(docID, DocUnmarshalNoHistory)
 		if migratedDoc != nil && migratedDoc.Cas == event.Cas {
-			base.InfofCtx(context.TODO(), base.KeyCache, "Found mobile xattr on doc %q without %s property - caching, assuming upgrade in progress.", base.UD(docID), base.SyncPropertyName)
+			base.InfofCtx(logCtx, base.KeyCache, "Found mobile xattr on doc %q without %s property - caching, assuming upgrade in progress.", base.UD(docID), base.SyncPropertyName)
 			syncData = &migratedDoc.SyncData
 		} else {
-			base.InfofCtx(context.TODO(), base.KeyCache, "changeCache: Doc %q does not have valid sync data.", base.UD(docID))
+			base.InfofCtx(logCtx, base.KeyCache, "changeCache: Doc %q does not have valid sync data.", base.UD(docID))
 			c.context.DbStats.Cache().NonMobileIgnoredCount.Add(1)
 			return
 		}
@@ -503,7 +504,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
 	// If the doc update wasted any sequences due to conflicts, add empty entries for them:
 	for _, seq := range syncData.UnusedSequences {
-		base.InfofCtx(context.TODO(), base.KeyCache, "Received unused #%d in unused_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
+		base.InfofCtx(logCtx, base.KeyCache, "Received unused #%d in unused_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
 		change := &LogEntry{
 			Sequence:     seq,
 			TimeReceived: event.TimeReceived,
@@ -526,7 +527,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
 		for _, seq := range syncData.RecentSequences {
 			if seq >= c.getNextSequence() && seq < currentSequence {
-				base.InfofCtx(context.TODO(), base.KeyCache, "Received deduplicated #%d in recent_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
+				base.InfofCtx(logCtx, base.KeyCache, "Received deduplicated #%d in recent_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
 				change := &LogEntry{
 					Sequence:     seq,
 					TimeReceived: event.TimeReceived,
@@ -561,7 +562,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
 	// If latency is larger than 1 minute or is negative there is likely an issue and this should be clear to the user
 	if millisecondLatency >= 60*1000 {
-		base.InfofCtx(context.TODO(), base.KeyDCP, "Received #%d after %3dms (%q / %q)", change.Sequence, millisecondLatency, base.UD(change.DocID), change.RevID)
+		base.InfofCtx(logCtx, base.KeyDCP, "Received #%d after %3dms (%q / %q)", change.Sequence, millisecondLatency, base.UD(change.DocID), change.RevID)
 	} else {
 		base.Debugf(base.KeyDCP, "Received #%d after %3dms (%q / %q)", change.Sequence, millisecondLatency, base.UD(change.DocID), change.RevID)
 	}

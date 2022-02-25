@@ -227,7 +227,7 @@ func setGlobalConfig(sc *StartupConfig) error {
 		cpus := runtime.NumCPU()
 		if cpus > 1 {
 			runtime.GOMAXPROCS(cpus)
-			base.Infof(base.KeyAll, "Configured Go to use all %d CPUs; setenv GOMAXPROCS to override this", cpus)
+			base.InfofCtx(context.Background(), base.KeyAll, "Configured Go to use all %d CPUs; setenv GOMAXPROCS to override this", cpus)
 		}
 	}
 
@@ -242,7 +242,7 @@ func setGlobalConfig(sc *StartupConfig) error {
 
 	// Given unscoped usage of base.JSON functions, this can't be scoped.
 	if base.BoolDefault(sc.Unsupported.UseStdlibJSON, false) {
-		base.Infof(base.KeyAll, "Using the stdlib JSON package")
+		base.InfofCtx(context.Background(), base.KeyAll, "Using the stdlib JSON package")
 		base.UseStdlibJSON = true
 	}
 

@@ -418,8 +418,9 @@ func (c *channelCacheImpl) compactChannelCache() {
 	// Increment compact count on start, as timing is updated per loop iteration
 	c.cacheStats.ChannelCacheCompactCount.Add(1)
 
+	logCtx := context.TODO()
 	cacheSize := c.channelCaches.Length()
-	base.InfofCtx(context.TODO(), base.KeyCache, "Starting channel cache compaction, size %d", cacheSize)
+	base.InfofCtx(logCtx, base.KeyCache, "Starting channel cache compaction, size %d", cacheSize)
 	for {
 		// channelCache close handling
 		compactIterationStart := time.Now()
@@ -435,7 +436,7 @@ func (c *channelCacheImpl) compactChannelCache() {
 		// Maintain a target number of items to compact per iteration.  Break the list iteration when the target is reached
 		targetEvictCount := cacheSize - c.compactLowWatermark
 		if targetEvictCount <= 0 {
-			base.InfofCtx(context.TODO(), base.KeyCache, "Stopping channel cache compaction, size %d", cacheSize)
+			base.InfofCtx(logCtx, base.KeyCache, "Stopping channel cache compaction, size %d", cacheSize)
 			return
 		}
 		base.Tracef(base.KeyCache, "Target eviction count: %d (lwm:%d)", targetEvictCount, c.compactLowWatermark)
@@ -452,7 +453,7 @@ func (c *channelCacheImpl) compactChannelCache() {
 			elementCount++
 			singleChannelCache, ok := elem.Value.(*singleChannelCacheImpl)
 			if !ok {
-				base.WarnfCtx(context.Background(), "Non-cache entry (%T) found in channel cache during compaction - ignoring", elem.Value)
+				base.WarnfCtx(logCtx, "Non-cache entry (%T) found in channel cache during compaction - ignoring", elem.Value)
 				return true
 			}
 

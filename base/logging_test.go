@@ -46,9 +46,9 @@ func TestRedactedLogFuncs(t *testing.T) {
 	defer func() { RedactUserData = false }()
 
 	RedactUserData = false
-	assertLogContains(t, "Username: alice", func() { Infof(KeyAll, "Username: %s", username) })
+	assertLogContains(t, "Username: alice", func() { InfofCtx(ctx, KeyAll, "Username: %s", username) })
 	RedactUserData = true
-	assertLogContains(t, "Username: <ud>alice</ud>", func() { Infof(KeyAll, "Username: %s", username) })
+	assertLogContains(t, "Username: <ud>alice</ud>", func() { InfofCtx(ctx, KeyAll, "Username: %s", username) })
 
 	RedactUserData = false
 	assertLogContains(t, "Username: alice", func() { WarnfCtx(ctx, "Username: %s", username) })
@@ -65,7 +65,7 @@ func Benchmark_LoggingPerformance(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		Debugf(KeyCRUD, "some crud'y message")
-		Infof(KeyCRUD, "some crud'y message")
+		InfofCtx(ctx, KeyCRUD, "some crud'y message")
 		WarnfCtx(ctx, "some crud'y message")
 		ErrorfCtx(ctx, "some crud'y message")
 	}

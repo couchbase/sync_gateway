@@ -173,7 +173,7 @@ func (h *handler) handleDbOnline() error {
 
 	_ = base.JSONUnmarshal(body, &input)
 
-	base.Infof(base.KeyCRUD, "Taking Database : %v, online in %v seconds", base.MD(h.db.Name), input.Delay)
+	base.InfofCtx(h.ctx(), base.KeyCRUD, "Taking Database : %v, online in %v seconds", base.MD(h.db.Name), input.Delay)
 	go func() {
 		time.Sleep(time.Duration(input.Delay) * time.Second)
 		h.server.TakeDbOnline(h.db.DatabaseContext)
@@ -187,7 +187,7 @@ func (h *handler) handleDbOffline() error {
 	h.assertAdminOnly()
 	var err error
 	if err = h.db.TakeDbOffline("ADMIN Request"); err != nil {
-		base.Infof(base.KeyCRUD, "Unable to take Database : %v, offline", base.MD(h.db.Name))
+		base.InfofCtx(h.ctx(), base.KeyCRUD, "Unable to take Database : %v, offline", base.MD(h.db.Name))
 	}
 
 	return err
@@ -1070,7 +1070,7 @@ func (h *handler) handleSetLogging() error {
 	}
 
 	if setLogLevel {
-		base.Infof(base.KeyAll, "Setting log level to: %v", newLogLevel)
+		base.InfofCtx(h.ctx(), base.KeyAll, "Setting log level to: %v", newLogLevel)
 		base.ConsoleLogLevel().Set(newLogLevel)
 
 		// empty body is OK if request is just setting the log level

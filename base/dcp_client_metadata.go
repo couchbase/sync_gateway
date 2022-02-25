@@ -1,6 +1,7 @@
 package base
 
 import (
+	"context"
 	"fmt"
 	"math"
 
@@ -235,7 +236,7 @@ func (m *DCPMetadataCS) Persist(workerID int, vbIDs []uint16) {
 	}
 	err := m.bucket.Set(m.getMetadataKey(workerID), 0, meta)
 	if err != nil {
-		Infof(KeyDCP, "Unable to persist DCP metadata: %v", err)
+		InfofCtx(context.TODO(), KeyDCP, "Unable to persist DCP metadata: %v", err)
 	} else {
 		Tracef(KeyDCP, "Persisted metadata for worker %d: %v", workerID, meta)
 		//log.Printf("Persisted metadata for worker %d (%s): %v", workerID, m.getMetadataKey(workerID), meta)
@@ -250,7 +251,7 @@ func (m *DCPMetadataCS) load(workerID int) {
 		if IsKeyNotFoundError(m.bucket, err) {
 			return
 		}
-		Infof(KeyDCP, "Error loading persisted metadata - metadata will be reset for worker %d: %s", workerID, err)
+		InfofCtx(context.TODO(), KeyDCP, "Error loading persisted metadata - metadata will be reset for worker %d: %s", workerID, err)
 	}
 
 	Tracef(KeyDCP, "Loaded metadata for worker %d: %v", workerID, meta)
@@ -264,7 +265,7 @@ func (m *DCPMetadataCS) Purge(numWorkers int) {
 	for i := 0; i < numWorkers; i++ {
 		err := m.bucket.Delete(m.getMetadataKey(i))
 		if err != nil && !IsKeyNotFoundError(m.bucket, err) {
-			Infof(KeyDCP, "Unable to remove DCP checkpoint for key %s: %v", m.getMetadataKey(i), err)
+			InfofCtx(context.TODO(), KeyDCP, "Unable to remove DCP checkpoint for key %s: %v", m.getMetadataKey(i), err)
 		}
 	}
 }

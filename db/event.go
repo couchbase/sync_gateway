@@ -154,7 +154,7 @@ type JSEventFunction struct {
 
 func NewJSEventFunction(fnSource string) *JSEventFunction {
 
-	base.Infof(base.KeyEvents, "Creating new JSEventFunction")
+	base.InfofCtx(context.Background(), base.KeyEvents, "Creating new JSEventFunction")
 	return &JSEventFunction{
 		JSServer: sgbucket.NewJSServer(fnSource, kTaskCacheSize,
 			func(fnSource string) (sgbucket.JSServerTask, error) {

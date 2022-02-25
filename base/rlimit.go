@@ -13,7 +13,10 @@ licenses/APL2.txt.
 
 package base
 
-import "syscall"
+import (
+	"context"
+	"syscall"
+)
 
 // Set Max File Descriptor limits
 //
@@ -49,7 +52,7 @@ func SetMaxFileDescriptors(requestedSoftFDLimit uint64) (uint64, error) {
 	err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &limits)
 
 	if err == nil {
-		Infof(KeyAll, "Configured process to allow %d open file descriptors", recommendedSoftFDLimit)
+		InfofCtx(context.Background(), KeyAll, "Configured process to allow %d open file descriptors", recommendedSoftFDLimit)
 	}
 
 	return recommendedSoftFDLimit, err
@@ -88,7 +91,7 @@ func getSoftFDLimit(requestedSoftFDLimit uint64, limit syscall.Rlimit) (requires
 	// Is the user requesting something higher than the existing hard limit?
 	if requestedSoftFDLimit >= currentHardFdLimit {
 		// yes, so just use the hard limit
-		Infof(KeyAll, "requestedSoftFDLimit >= currentHardFdLimit (%v >= %v) capping at %v", requestedSoftFDLimit, currentHardFdLimit, currentHardFdLimit)
+		InfofCtx(context.Background(), KeyAll, "requestedSoftFDLimit >= currentHardFdLimit (%v >= %v) capping at %v", requestedSoftFDLimit, currentHardFdLimit, currentHardFdLimit)
 		return true, currentHardFdLimit
 	}
 

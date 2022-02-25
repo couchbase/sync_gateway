@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package base
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"net"
@@ -45,7 +46,7 @@ func ListenAndServeHTTP(addr string, connLimit uint, certFile, keyFile string, h
 			protocolsEnabled = []string{"h2", "http/1.1"}
 		}
 		config.NextProtos = protocolsEnabled
-		Infof(KeyHTTP, "Protocols enabled: %v on %v", config.NextProtos, SD(addr))
+		InfofCtx(context.TODO(), KeyHTTP, "Protocols enabled: %v on %v", config.NextProtos, SD(addr))
 		config.Certificates = make([]tls.Certificate, 1)
 		var err error
 		config.Certificates[0], err = tls.LoadX509KeyPair(certFile, keyFile)

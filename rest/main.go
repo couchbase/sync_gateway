@@ -76,7 +76,7 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 			// If we have an unknown field error processing config its possible that the config is a 2.x config
 			// requiring automatic upgrade. We should attempt to perform this upgrade
 
-			base.Infof(base.KeyAll, "Found unknown fields in startup config. Attempting to read as legacy config.")
+			base.InfofCtx(context.Background(), base.KeyAll, "Found unknown fields in startup config. Attempting to read as legacy config.")
 
 			var upgradeError error
 			fileStartupConfig, disablePersistentConfigFallback, legacyDbUsers, legacyDbRoles, upgradeError = automaticConfigUpgrade(configPath[0])
@@ -134,7 +134,7 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 		return false, err
 	}
 
-	base.Infof(base.KeyAll, "Config: Starting in persistent mode using config group %q", sc.Bootstrap.ConfigGroupID)
+	base.InfofCtx(context.Background(), base.KeyAll, "Config: Starting in persistent mode using config group %q", sc.Bootstrap.ConfigGroupID)
 	ctx, err := setupServerContext(&sc, true)
 	if err != nil {
 		return false, err
@@ -185,7 +185,7 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 		return nil, true, users, roles, nil
 	}
 
-	base.Infof(base.KeyAll, "Config is a legacy config, and disable_persistent_config was not requested. Attempting automatic config upgrade.")
+	base.InfofCtx(context.Background(), base.KeyAll, "Config is a legacy config, and disable_persistent_config was not requested. Attempting automatic config upgrade.")
 
 	startupConfig, dbConfigs, err := legacyServerConfig.ToStartupConfig()
 	if err != nil {
@@ -229,12 +229,12 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 		if err != nil {
 			// If key already exists just continue
 			if errors.Is(err, base.ErrAlreadyExists) {
-				base.Infof(base.KeyAll, "Skipping Couchbase Server persistence for config group %q in %s. Already exists.", configGroupID, base.UD(dbc.Name))
+				base.InfofCtx(context.Background(), base.KeyAll, "Skipping Couchbase Server persistence for config group %q in %s. Already exists.", configGroupID, base.UD(dbc.Name))
 				continue
 			}
 			return nil, false, nil, nil, err
 		}
-		base.Infof(base.KeyAll, "Persisted database %s config for group %q to Couchbase Server bucket: %s", base.UD(dbc.Name), configGroupID, base.MD(*dbc.Bucket))
+		base.InfofCtx(context.Background(), base.KeyAll, "Persisted database %s config for group %q to Couchbase Server bucket: %s", base.UD(dbc.Name), configGroupID, base.MD(*dbc.Bucket))
 	}
 
 	// Attempt to backup current config
@@ -246,7 +246,7 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 		return startupConfig, false, users, roles, nil
 	}
 
-	base.Infof(base.KeyAll, "Current config backed up to %s", base.MD(backupLocation))
+	base.InfofCtx(context.Background(), base.KeyAll, "Current config backed up to %s", base.MD(backupLocation))
 
 	// Overwrite old config with new migrated startup config
 	jsonStartupConfig, err := json.MarshalIndent(startupConfig, "", "  ")
@@ -263,7 +263,7 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 		return startupConfig, false, users, roles, nil
 	}
 
-	base.Infof(base.KeyAll, "Current config file overwritten by upgraded config at %s", base.MD(configPath))
+	base.InfofCtx(context.Background(), base.KeyAll, "Current config file overwritten by upgraded config at %s", base.MD(configPath))
 	return startupConfig, false, users, roles, nil
 }
 
@@ -360,7 +360,7 @@ func createCouchbaseClusterFromStartupConfig(config *StartupConfig) (*base.Couch
 		config.Bootstrap.Password, config.Bootstrap.X509CertPath, config.Bootstrap.X509KeyPath,
 		config.Bootstrap.CACertPath, config.Bootstrap.ServerTLSSkipVerify)
 	if err != nil {
-		base.Infof(base.KeyConfig, "Couldn't create couchbase cluster instance: %v", err)
+		base.InfofCtx(context.Background(), base.KeyConfig, "Couldn't create couchbase cluster instance: %v", err)
 		return nil, err
 	}
 

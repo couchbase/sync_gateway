@@ -73,7 +73,7 @@ func (em *EventManager) Start(maxProcesses uint, waitTime int) {
 		em.waitTime = waitTime
 	}
 
-	base.Infof(base.KeyEvents, "Starting event manager with max processes:%d, wait time:%d ms", maxProcesses, em.waitTime)
+	base.InfofCtx(context.TODO(), base.KeyEvents, "Starting event manager with max processes:%d, wait time:%d ms", maxProcesses, em.waitTime)
 	// activeCountChannel limits the number of concurrent events being processed
 	em.activeCountChannel = make(chan bool, maxProcesses)
 
@@ -123,7 +123,7 @@ func (em *EventManager) ProcessEvent(event Event) {
 func (em *EventManager) RegisterEventHandler(handler EventHandler, eventType EventType) {
 	em.eventHandlers[eventType] = append(em.eventHandlers[eventType], handler)
 	em.activeEventTypes[eventType] = true
-	base.Infof(base.KeyEvents, "Registered event handler: %v, for event type %v", handler, eventType)
+	base.InfofCtx(context.Background(), base.KeyEvents, "Registered event handler: %v, for event type %v", handler, eventType)
 }
 
 // Checks whether a handler of the given type has been registered to the event manager.

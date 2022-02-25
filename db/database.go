@@ -326,6 +326,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	)
 
 	dbContext.EventMgr = NewEventManager()
+	logCtx := context.TODO()
 
 	var err error
 	dbContext.sequences, err = newSequenceAllocator(bucket, dbContext.DbStats.Database())
@@ -429,7 +430,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}
 
 	// Start DCP feed
-	base.InfofCtx(context.TODO(), base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import)", base.MD(bucket.GetName()))
+	base.InfofCtx(logCtx, base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import)", base.MD(bucket.GetName()))
 	cacheFeedStatsMap := dbContext.DbStats.Database().CacheFeedMapStats
 	err = dbContext.mutationListener.Start(bucket, cacheFeedStatsMap.Map)
 
@@ -477,12 +478,12 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 		for name, provider := range options.OIDCOptions.Providers {
 			if provider.Issuer == "" || provider.ClientID == "" {
-				base.WarnfCtx(context.TODO(), "Issuer and ClientID required for OIDC Provider - skipping provider %q", base.UD(name))
+				base.WarnfCtx(logCtx, "Issuer and ClientID required for OIDC Provider - skipping provider %q", base.UD(name))
 				continue
 			}
 
 			if provider.ValidationKey == nil {
-				base.WarnfCtx(context.TODO(), "Validation Key not defined in config for provider %q - auth code flow will not be supported for this provider", base.UD(name))
+				base.WarnfCtx(logCtx, "Validation Key not defined in config for provider %q - auth code flow will not be supported for this provider", base.UD(name))
 			}
 
 			if strings.Contains(name, "_") {
@@ -529,12 +530,12 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		if ok {
 			serverPurgeInterval, err := cbStore.MetadataPurgeInterval()
 			if err != nil {
-				base.WarnfCtx(context.TODO(), "Unable to retrieve server's metadata purge interval - will use default value. %s", err)
+				base.WarnfCtx(logCtx, "Unable to retrieve server's metadata purge interval - will use default value. %s", err)
 			} else if serverPurgeInterval > 0 {
 				dbContext.PurgeInterval = serverPurgeInterval
 			}
 		}
-		base.InfofCtx(context.TODO(), base.KeyAll, "Using metadata purge interval of %.2f days for tombstone compaction.", dbContext.PurgeInterval.Hours()/24)
+		base.InfofCtx(logCtx, base.KeyAll, "Using metadata purge interval of %.2f days for tombstone compaction.", dbContext.PurgeInterval.Hours()/24)
 
 		if dbContext.Options.CompactInterval != 0 {
 			if autoImport {
@@ -551,7 +552,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 				}
 				db.backgroundTasks = append(db.backgroundTasks, bgt)
 			} else {
-				base.WarnfCtx(context.TODO(), "Automatic compaction can only be enabled on nodes running an Import process")
+				base.WarnfCtx(logCtx, "Automatic compaction can only be enabled on nodes running an Import process")
 			}
 		}
 

@@ -79,7 +79,7 @@ func (body Body) Copy(copyType BodyCopyType) Body {
 	case BodyNoCopy:
 		return body
 	default:
-		base.Infof(base.KeyCRUD, "Unexpected copy type specified in body.Copy - defaulting to shallow copy.  copyType: %d", copyType)
+		base.InfofCtx(context.Background(), base.KeyCRUD, "Unexpected copy type specified in body.Copy - defaulting to shallow copy.  copyType: %d", copyType)
 		return body.ShallowCopy()
 	}
 }
@@ -99,7 +99,7 @@ func (body Body) DeepCopy() Body {
 	var copiedBody Body
 	err := base.DeepCopyInefficient(&copiedBody, body)
 	if err != nil {
-		base.Infof(base.KeyCRUD, "Error copying body: %v", err)
+		base.InfofCtx(context.Background(), base.KeyCRUD, "Error copying body: %v", err)
 	}
 	return copiedBody
 }

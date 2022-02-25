@@ -32,7 +32,7 @@ func NewBackgroundTask(taskName string, dbName string, task BackgroundTaskFunc, 
 		doneChan: make(chan struct{}),
 	}
 
-	base.Infof(base.KeyAll, "Created background task: %q with interval %v", taskName, interval)
+	base.InfofCtx(context.Background(), base.KeyAll, "Created background task: %q with interval %v", taskName, interval)
 	go func() {
 		defer close(bgt.doneChan)
 		defer base.FatalPanicHandler()

@@ -152,7 +152,7 @@ func (h *handler) makeSessionFromNameAndEmail(username, email string, createUser
 			if email != user.Email() {
 				if err = h.db.Authenticator(h.db.Ctx).UpdateUserEmail(user, email); err != nil {
 					// Failure to update email during session creation is non-critical, log and continue.
-					base.Infof(base.KeyAuth, "Unable to update email for user %s during session creation.  Session will still be created. Error:%v,", base.UD(username), err)
+					base.InfofCtx(h.ctx(), base.KeyAuth, "Unable to update email for user %s during session creation.  Session will still be created. Error:%v,", base.UD(username), err)
 				}
 			}
 		} else {

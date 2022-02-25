@@ -29,6 +29,7 @@ func (c *Collection) Keyspace() string {
 }
 
 func (c *Collection) Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (resultsIterator sgbucket.QueryResultIterator, err error) {
+	logCtx := context.TODO()
 
 	bucketStatement := strings.Replace(statement, KeyspaceQueryToken, c.Keyspace(), -1)
 
@@ -57,19 +58,19 @@ func (c *Collection) Query(statement string, params map[string]interface{}, cons
 
 		// Non-retry error - return
 		if !isTransientIndexerError(queryErr) {
-			WarnfCtx(context.TODO(), "Error when querying index using statement: [%s] parameters: [%+v] error:%v", UD(bucketStatement), UD(params), queryErr)
+			WarnfCtx(logCtx, "Error when querying index using statement: [%s] parameters: [%+v] error:%v", UD(bucketStatement), UD(params), queryErr)
 			return resultsIterator, pkgerrors.WithStack(queryErr)
 		}
 
 		// Indexer error - wait then retry
 		err = queryErr
-		WarnfCtx(context.TODO(), "Indexer error during query - retry %d/%d after %v.  Error: %v", i, MaxQueryRetries, waitTime, queryErr)
+		WarnfCtx(logCtx, "Indexer error during query - retry %d/%d after %v.  Error: %v", i, MaxQueryRetries, waitTime, queryErr)
 		time.Sleep(waitTime)
 
 		waitTime = waitTime * 2
 	}
 
-	WarnfCtx(context.TODO(), "Exceeded max retries for query when querying index using statement: [%s] parameters: [%+v], err:%v", UD(bucketStatement), UD(params), err)
+	WarnfCtx(logCtx, "Exceeded max retries for query when querying index using statement: [%s] parameters: [%+v], err:%v", UD(bucketStatement), UD(params), err)
 	return nil, err
 }
 

@@ -146,7 +146,7 @@ func createCBGTIndex(c *CbgtContext, dbName string, configGroupID string, bucket
 		}
 
 		networkType := getNetworkTypeFromConnSpec(connSpec)
-		Infof(KeyDCP, "Using network type: %s", networkType)
+		InfofCtx(c.loggingCtx, KeyDCP, "Using network type: %s", networkType)
 
 		// default (aka internal) networking is handled by cbdatasource, so we can avoid the shims altogether in this case, for all other cases we need shims to remap hosts.
 		if networkType != clusterNetworkDefault {
@@ -345,9 +345,9 @@ func (c *CbgtContext) StartManager(dbName string, configGroup string, bucket Buc
 	err = createCBGTIndex(c, dbName, configGroup, bucket, spec, numPartitions)
 	if err != nil {
 		if strings.Contains(err.Error(), "an index with the same name already exists") {
-			Infof(KeyCluster, "Duplicate cbgt index detected during index creation (concurrent creation), using existing")
+			InfofCtx(c.loggingCtx, KeyCluster, "Duplicate cbgt index detected during index creation (concurrent creation), using existing")
 		} else if strings.Contains(err.Error(), "concurrent index definition update") {
-			Infof(KeyCluster, "Index update failed due to concurrent update, using existing")
+			InfofCtx(c.loggingCtx, KeyCluster, "Index update failed due to concurrent update, using existing")
 		} else {
 			ErrorfCtx(c.loggingCtx, "cbgt index creation failed: %v", err)
 			return err
@@ -468,10 +468,10 @@ func (l *importHeartbeatListener) Name() string {
 // When we detect other nodes have stopped pushing heartbeats, use manager to remove from cfg
 func (l *importHeartbeatListener) StaleHeartbeatDetected(nodeUUID string) {
 
-	Infof(KeyCluster, "StaleHeartbeatDetected by import listener for node: %v", nodeUUID)
+	InfofCtx(context.TODO(), KeyCluster, "StaleHeartbeatDetected by import listener for node: %v", nodeUUID)
 	err := cbgt.UnregisterNodes(l.cfg, l.mgr.Version(), []string{nodeUUID})
 	if err != nil {
-		WarnfCtx(context.Background(), "Attempt to unregister %v from CBGT got error: %v", nodeUUID, err)
+		WarnfCtx(context.TODO(), "Attempt to unregister %v from CBGT got error: %v", nodeUUID, err)
 	}
 }
 

@@ -437,7 +437,7 @@ func (h *handler) handleProfiling() error {
 	// Handle no file
 	if params.File == "" {
 		if isCPUProfile {
-			base.Infof(base.KeyAll, "... ending CPU profile")
+			base.InfofCtx(h.ctx(), base.KeyAll, "... ending CPU profile")
 			pprof.StopCPUProfile()
 			h.server.CloseCpuPprofFile()
 			return nil
@@ -451,17 +451,17 @@ func (h *handler) handleProfiling() error {
 	}
 
 	if isCPUProfile {
-		base.Infof(base.KeyAll, "Starting CPU profile to %s ...", base.UD(params.File))
+		base.InfofCtx(h.ctx(), base.KeyAll, "Starting CPU profile to %s ...", base.UD(params.File))
 		if err = pprof.StartCPUProfile(f); err != nil {
 			if fileError := os.Remove(params.File); fileError != nil {
-				base.Infof(base.KeyAll, "Error removing file: %s", base.UD(params.File))
+				base.InfofCtx(h.ctx(), base.KeyAll, "Error removing file: %s", base.UD(params.File))
 			}
 			return err
 		}
 		h.server.SetCpuPprofFile(f)
 		return err
 	} else if profile := pprof.Lookup(profileName); profile != nil {
-		base.Infof(base.KeyAll, "Writing %q profile to %s ...", profileName, base.UD(params.File))
+		base.InfofCtx(h.ctx(), base.KeyAll, "Writing %q profile to %s ...", profileName, base.UD(params.File))
 		err = profile.WriteTo(f, 0)
 	} else {
 		err = base.HTTPErrorf(http.StatusNotFound, "No such profile %q", profileName)
@@ -487,7 +487,7 @@ func (h *handler) handleHeapProfiling() error {
 		return err
 	}
 
-	base.Infof(base.KeyAll, "Dumping heap profile to %s ...", base.UD(params.File))
+	base.InfofCtx(h.ctx(), base.KeyAll, "Dumping heap profile to %s ...", base.UD(params.File))
 	f, err := os.Create(params.File)
 	if err != nil {
 		return err

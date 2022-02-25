@@ -201,7 +201,7 @@ func (tree RevTree) RepairCycles() (err error) {
 		for {
 
 			if node.ParentGenGTENodeGen() {
-				base.Infof(base.KeyCRUD, "Node %+v detected to have invalid parent rev (parent generation larger than node generation).  Repairing by designating as a root node.", base.UD(node))
+				base.InfofCtx(context.Background(), base.KeyCRUD, "Node %+v detected to have invalid parent rev (parent generation larger than node generation).  Repairing by designating as a root node.", base.UD(node))
 				node.Parent = ""
 				break
 			}

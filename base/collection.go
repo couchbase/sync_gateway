@@ -32,9 +32,10 @@ var _ CouchbaseStore = &Collection{}
 // Connect to the default collection for the specified bucket
 func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 
+	logCtx := context.TODO()
 	connString, err := spec.GetGoCBConnString()
 	if err != nil {
-		WarnfCtx(context.TODO(), "Unable to parse server value: %s error: %v", SD(spec.Server), err)
+		WarnfCtx(logCtx, "Unable to parse server value: %s error: %v", SD(spec.Server), err)
 		return nil, err
 	}
 
@@ -49,13 +50,13 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 	}
 
 	if _, ok := authenticator.(gocb.CertificateAuthenticator); ok {
-		Infof(KeyAuth, "Using cert authentication for bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
+		InfofCtx(logCtx, KeyAuth, "Using cert authentication for bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
 	} else {
-		Infof(KeyAuth, "Using credential authentication for bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
+		InfofCtx(logCtx, KeyAuth, "Using credential authentication for bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
 	}
 
 	timeoutsConfig := GoCBv2TimeoutsConfig(spec.BucketOpTimeout, StdlibDurationPtr(spec.GetViewQueryTimeout()))
-	Infof(KeyAll, "Setting query timeouts for bucket %s to %v", spec.BucketName, timeoutsConfig.QueryTimeout)
+	InfofCtx(logCtx, KeyAll, "Setting query timeouts for bucket %s to %v", spec.BucketName, timeoutsConfig.QueryTimeout)
 
 	clusterOptions := gocb.ClusterOptions{
 		Authenticator:  authenticator,
@@ -70,7 +71,7 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 
 	cluster, err := gocb.Connect(connString, clusterOptions)
 	if err != nil {
-		Infof(KeyAuth, "Unable to connect to cluster: %v", err)
+		InfofCtx(logCtx, KeyAuth, "Unable to connect to cluster: %v", err)
 		return nil, err
 	}
 
@@ -125,7 +126,7 @@ func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilR
 
 	if maxConcurrentQueryOps > DefaultHttpMaxIdleConnsPerHost*queryNodeCount {
 		maxConcurrentQueryOps = DefaultHttpMaxIdleConnsPerHost * queryNodeCount
-		Infof(KeyAll, "Setting max_concurrent_query_ops to %d based on query node count (%d)", maxConcurrentQueryOps, queryNodeCount)
+		InfofCtx(context.TODO(), KeyAll, "Setting max_concurrent_query_ops to %d based on query node count (%d)", maxConcurrentQueryOps, queryNodeCount)
 	}
 
 	collection.queryOps = make(chan struct{}, maxConcurrentQueryOps)

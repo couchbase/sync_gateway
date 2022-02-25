@@ -44,7 +44,7 @@ func UpdateLogKeys(keys map[string]bool, replace bool) {
 		}
 	}
 
-	Infof(KeyAll, "Setting log keys to: %v", ConsoleLogKey().EnabledLogKeys())
+	InfofCtx(context.Background(), KeyAll, "Setting log keys to: %v", ConsoleLogKey().EnabledLogKeys())
 }
 
 // Returns a string identifying a function on the call stack.
@@ -91,7 +91,7 @@ var (
 
 // RotateLogfiles rotates all active log files.
 func RotateLogfiles() map[*FileLogger]error {
-	Infof(KeyAll, "Rotating log files...")
+	InfofCtx(context.Background(), KeyAll, "Rotating log files...")
 
 	loggers := map[*FileLogger]error{
 		traceLogger: nil,
@@ -194,9 +194,9 @@ func Fatalf(format string, args ...interface{}) {
 // }
 
 // Infof logs the given formatted string and args to the info log level and given log key.
-func Infof(logKey LogKey, format string, args ...interface{}) {
-	logTo(context.TODO(), LevelInfo, logKey, format, args...)
-}
+// func Infof(logKey LogKey, format string, args ...interface{}) {
+// 	logTo(context.TODO(), LevelInfo, logKey, format, args...)
+// }
 
 // Debugf logs the given formatted string and args to the debug log level with an optional log key.
 func Debugf(logKey LogKey, format string, args ...interface{}) {

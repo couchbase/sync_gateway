@@ -145,14 +145,14 @@ func addCbgtAuthToDCPParams(dcpParams string) string {
 	}
 
 	if sgSourceParams.DbName == "" {
-		Infof(KeyImport, "Database name not specified in dcp params, feed credentials not added")
+		InfofCtx(context.Background(), KeyImport, "Database name not specified in dcp params, feed credentials not added")
 		return dcpParams
 	}
 
 	username, password, ok := getCbgtCredentials(sgSourceParams.DbName)
 	if !ok {
 		// no stored credentials includes the valid x.509 auth case
-		Infof(KeyImport, "No feed credentials stored for db from sourceParams: %s", MD(sgSourceParams.DbName))
+		InfofCtx(context.Background(), KeyImport, "No feed credentials stored for db from sourceParams: %s", MD(sgSourceParams.DbName))
 		return dcpParams
 	}
 

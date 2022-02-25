@@ -28,7 +28,7 @@ func RegisterImportPindexImpl(configGroup string) {
 	// config group scoped.  The associated importListener within the context is retrieved based on the
 	// dbname in the index params
 	pIndexType := base.CBGTIndexTypeSyncGatewayImport + configGroup
-	base.Infof(base.KeyDCP, "Registering PindexImplType for %s", pIndexType)
+	base.InfofCtx(context.TODO(), base.KeyDCP, "Registering PindexImplType for %s", pIndexType)
 	cbgt.RegisterPIndexImplType(pIndexType,
 		&cbgt.PIndexImplType{
 			New:       NewImportPIndexImpl,

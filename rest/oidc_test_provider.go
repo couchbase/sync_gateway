@@ -198,7 +198,7 @@ func (h *handler) handleOidcTestProviderAuthorize() error {
 
 	requestParams := h.rq.URL.RawQuery
 
-	base.Infof(base.KeyAuth, "handleOidcTestProviderAuthorize() raw authorize request raw query params = %v", requestParams)
+	base.InfofCtx(h.ctx(), base.KeyAuth, "handleOidcTestProviderAuthorize() raw authorize request raw query params = %v", requestParams)
 
 	scope := h.getQueryValues().Get(requestParamScope)
 	if scope == "" {
@@ -259,7 +259,7 @@ func (h *handler) handleOidcTestProviderToken() error {
 		return base.HTTPErrorf(http.StatusForbidden, "OIDC test provider is not enabled")
 	}
 
-	base.Infof(base.KeyAuth, "handleOidcTestProviderToken() called")
+	base.InfofCtx(h.ctx(), base.KeyAuth, "handleOidcTestProviderToken() called")
 
 	// determine the grant_type being requested
 	grantType := h.rq.FormValue("grant_type")
@@ -282,7 +282,7 @@ func (h *handler) handleOidcTestProviderCerts() error {
 		return base.HTTPErrorf(http.StatusForbidden, "OIDC test provider is not enabled")
 	}
 
-	base.Infof(base.KeyAuth, "handleOidcTestProviderCerts() called")
+	base.InfofCtx(h.ctx(), base.KeyAuth, "handleOidcTestProviderCerts() called")
 
 	privateKey, err := privateKey()
 	if err != nil {

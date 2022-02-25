@@ -89,7 +89,7 @@ func (h *handler) handleOIDCChallenge() error {
 
 func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
 	providerName := h.getQuery(requestParamProvider)
-	base.Infof(base.KeyAuth, "Getting provider for name %v", base.UD(providerName))
+	base.InfofCtx(h.ctx(), base.KeyAuth, "Getting provider for name %v", base.UD(providerName))
 	provider, err := h.getOIDCProvider(providerName)
 	if err != nil || provider == nil {
 		return redirectURLString, err
@@ -187,7 +187,7 @@ func (h *handler) handleOIDCCallback() error {
 	if !ok {
 		return base.HTTPErrorf(http.StatusInternalServerError, "No id_token field in oauth2 token.")
 	}
-	base.Infof(base.KeyAuth, "Obtained token from Authorization Server: %v", rawIDToken)
+	base.InfofCtx(h.ctx(), base.KeyAuth, "Obtained token from Authorization Server: %v", rawIDToken)
 
 	// Create a Sync Gateway session
 	username, sessionID, err := h.createSessionForTrustedIdToken(rawIDToken, provider)
@@ -232,7 +232,7 @@ func (h *handler) handleOIDCRefresh() error {
 	context := auth.GetOIDCClientContext(provider.InsecureSkipVerify)
 	token, err := client.Config().TokenSource(context, &oauth2.Token{RefreshToken: refreshToken}).Token()
 	if err != nil {
-		base.Infof(base.KeyAuth, "Unsuccessful token refresh: %v", err)
+		base.InfofCtx(h.ctx(), base.KeyAuth, "Unsuccessful token refresh: %v", err)
 		return base.HTTPErrorf(http.StatusInternalServerError, "Unable to refresh token.")
 	}
 
@@ -240,7 +240,7 @@ func (h *handler) handleOIDCRefresh() error {
 	if !ok {
 		return base.HTTPErrorf(http.StatusInternalServerError, "No id_token field in oauth2 token.")
 	}
-	base.Infof(base.KeyAuth, "Obtained token from Authorization Server: %v", rawIDToken)
+	base.InfofCtx(h.ctx(), base.KeyAuth, "Obtained token from Authorization Server: %v", rawIDToken)
 
 	username, sessionID, err := h.createSessionForTrustedIdToken(rawIDToken, provider)
 	if err != nil {

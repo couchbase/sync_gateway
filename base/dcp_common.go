@@ -436,6 +436,7 @@ func (b *backfillStatus) updateStats(vbno uint16, previousVbSequence uint64, cur
 		return
 	}
 
+	logCtx := context.TODO()
 	currentVbSequence := currentSequences[vbno]
 
 	// Update backfill progress.  If this vbucket has run past the end of the backfill, only include up to
@@ -458,18 +459,18 @@ func (b *backfillStatus) updateStats(vbno uint16, previousVbSequence uint64, cur
 		b.lastPersistTime = time.Now()
 		err := b.persistBackfillSequences(bucket, currentSequences)
 		if err != nil {
-			WarnfCtx(context.Background(), "Error persisting back-fill sequences: %v", err)
+			WarnfCtx(logCtx, "Error persisting back-fill sequences: %v", err)
 		}
 		b.logBackfillProgress()
 	}
 
 	// If backfill is complete, log and do backfill inactivation/cleanup
 	if b.receivedSequences >= b.expectedSequences {
-		Infof(KeyDCP, "Backfill complete")
+		InfofCtx(logCtx, KeyDCP, "Backfill complete")
 		b.active = false
 		err := b.purgeBackfillSequences(bucket)
 		if err != nil {
-			WarnfCtx(context.Background(), "Error purging back-fill sequences: %v", err)
+			WarnfCtx(logCtx, "Error purging back-fill sequences: %v", err)
 		}
 	}
 }
@@ -479,7 +480,7 @@ func (b *backfillStatus) logBackfillProgress() {
 	if !b.active {
 		return
 	}
-	Infof(KeyDCP, "Backfill in progress: %d%% (%d / %d)", int(b.receivedSequences*100/b.expectedSequences), b.receivedSequences, b.expectedSequences)
+	InfofCtx(context.TODO(), KeyDCP, "Backfill in progress: %d%% (%d / %d)", int(b.receivedSequences*100/b.expectedSequences), b.receivedSequences, b.expectedSequences)
 }
 
 // BackfillSequences defines the format used to persist snapshot information to the _sync:dcp_backfill document
@@ -505,7 +506,7 @@ func (b *backfillStatus) loadBackfillSequences(bucket Bucket) (*BackfillSequence
 	if err != nil {
 		return nil, err
 	}
-	Infof(KeyDCP, "Previously persisted backfill sequences found - will resume")
+	InfofCtx(context.TODO(), KeyDCP, "Previously persisted backfill sequences found - will resume")
 	return &backfillSeqs, nil
 }
 
@@ -631,7 +632,7 @@ func getNetworkTypeFromConnSpec(spec gocbconnstr.ConnSpec) clusterNetworkType {
 	networkType := clusterNetworkAuto
 	if networkOpt, ok := spec.Options["network"]; ok && len(networkOpt) > 0 {
 		if len(networkOpt) > 1 {
-			WarnfCtx(context.Background(), "multiple 'network' options found in connection string - using first one: %q", networkOpt[0])
+			WarnfCtx(context.TODO(), "multiple 'network' options found in connection string - using first one: %q", networkOpt[0])
 		}
 		networkType = clusterNetworkType(networkOpt[0])
 	}

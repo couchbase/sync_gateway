@@ -2,6 +2,7 @@ package base
 
 import (
 	"bytes"
+	"context"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -78,7 +79,7 @@ func (w *DCPWorker) Send(event streamEvent) {
 	select {
 	case w.eventFeed <- event:
 	case <-w.terminator:
-		Infof(KeyDCP, "Closing DCP worker, DCP Client was closed")
+		InfofCtx(context.TODO(), KeyDCP, "Closing DCP worker, DCP Client was closed")
 	}
 }
 

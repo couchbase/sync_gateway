@@ -392,7 +392,7 @@ func (h *handler) logDuration(realTime bool) {
 		logKey = base.KeyHTTP
 	}
 
-	base.Infof(logKey, "%s:     --> %d %s  (%.1f ms)",
+	base.InfofCtx(h.ctx(), logKey, "%s:     --> %d %s  (%.1f ms)",
 		h.formatSerialNumber(), h.status, h.statusMessage,
 		float64(duration)/float64(time.Millisecond),
 	)

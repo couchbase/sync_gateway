@@ -426,7 +426,7 @@ var ErrPathNotFound = errors.New("path not found")
 func readFromPath(path string, insecureSkipVerify bool) (rc io.ReadCloser, err error) {
 	messageFormat := "Loading content from [%s] ..."
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
-		base.Infof(base.KeyAll, messageFormat, path)
+		base.InfofCtx(context.Background(), base.KeyAll, messageFormat, path)
 		client := base.GetHttpClient(insecureSkipVerify)
 		resp, err := client.Get(path)
 		if err != nil {
@@ -437,7 +437,7 @@ func readFromPath(path string, insecureSkipVerify bool) (rc io.ReadCloser, err e
 		}
 		rc = resp.Body
 	} else if base.FileExists(path) {
-		base.Infof(base.KeyAll, messageFormat, path)
+		base.InfofCtx(context.Background(), base.KeyAll, messageFormat, path)
 		rc, err = os.Open(path)
 		if err != nil {
 			return nil, err
@@ -1029,9 +1029,9 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 
 	base.FlushLoggerBuffers()
 
-	base.Infof(base.KeyAll, "Logging: Console level: %v", base.ConsoleLogLevel())
-	base.Infof(base.KeyAll, "Logging: Console keys: %v", base.ConsoleLogKey().EnabledLogKeys())
-	base.Infof(base.KeyAll, "Logging: Redaction level: %s", config.Logging.RedactionLevel)
+	base.InfofCtx(context.Background(), base.KeyAll, "Logging: Console level: %v", base.ConsoleLogLevel())
+	base.InfofCtx(context.Background(), base.KeyAll, "Logging: Console keys: %v", base.ConsoleLogKey().EnabledLogKeys())
+	base.InfofCtx(context.Background(), base.KeyAll, "Logging: Redaction level: %s", config.Logging.RedactionLevel)
 
 	if err := setGlobalConfig(config); err != nil {
 		return nil, err
@@ -1064,7 +1064,7 @@ func (sc *ServerContext) fetchAndLoadConfigs() (count int, err error) {
 	for _, bucket := range bucketsNoConfig {
 		dbName, ok := sc.bucketDbName[bucket]
 		if ok {
-			base.Infof(base.KeyConfig, "database %q was running on this node, but config was not found on the server - removing database", base.MD(dbName))
+			base.InfofCtx(context.TODO(), base.KeyConfig, "database %q was running on this node, but config was not found on the server - removing database", base.MD(dbName))
 			sc._removeDatabase(dbName)
 		}
 	}
@@ -1233,13 +1233,13 @@ func (sc *ServerContext) _applyConfig(cnf DatabaseConfig, failFast bool) (applie
 
 		if cnf.cas == 0 {
 			// force an update when the new config's cas was set to zero prior to load
-			base.Infof(base.KeyConfig, "Forcing update of config for database %q bucket %q", cnf.Name, *cnf.Bucket)
+			base.InfofCtx(context.TODO(), base.KeyConfig, "Forcing update of config for database %q bucket %q", cnf.Name, *cnf.Bucket)
 		} else {
 			if sc.dbConfigs[foundDbName].cas >= cnf.cas {
 				base.Debugf(base.KeyConfig, "Database %q bucket %q config has not changed since last update", cnf.Name, *cnf.Bucket)
 				return false, nil
 			}
-			base.Infof(base.KeyConfig, "Updating database %q for bucket %q with new config from bucket", cnf.Name, *cnf.Bucket)
+			base.InfofCtx(context.TODO(), base.KeyConfig, "Updating database %q for bucket %q with new config from bucket", cnf.Name, *cnf.Bucket)
 		}
 	}
 
@@ -1304,7 +1304,7 @@ func (sc *ServerContext) addLegacyPrincipals(legacyDbUsers, legacyDbRoles map[st
 func startServer(config *StartupConfig, sc *ServerContext) error {
 	if config.API.ProfileInterface != "" {
 		//runtime.MemProfileRate = 10 * 1024
-		base.Infof(base.KeyAll, "Starting profile server on %s", base.UD(config.API.ProfileInterface))
+		base.InfofCtx(context.TODO(), base.KeyAll, "Starting profile server on %s", base.UD(config.API.ProfileInterface))
 		go func() {
 			_ = http.ListenAndServe(config.API.ProfileInterface, nil)
 		}()
@@ -1401,7 +1401,7 @@ func RegisterSignalHandler() {
 
 	go func() {
 		for sig := range signalChannel {
-			base.Infof(base.KeyAll, "Handling signal: %v", sig)
+			base.InfofCtx(context.TODO(), base.KeyAll, "Handling signal: %v", sig)
 			switch sig {
 			case syscall.SIGHUP:
 				HandleSighup()

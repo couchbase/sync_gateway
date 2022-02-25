@@ -155,14 +155,15 @@ func (sc *ServerContext) Close() {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
 
+	logCtx := context.TODO()
 	err := base.TerminateAndWaitForClose(sc.statsContext.terminator, sc.statsContext.doneChan, serverContextStopMaxWait)
 	if err != nil {
-		base.Infof(base.KeyAll, "Couldn't stop stats logger: %v", err)
+		base.InfofCtx(logCtx, base.KeyAll, "Couldn't stop stats logger: %v", err)
 	}
 
 	err = base.TerminateAndWaitForClose(sc.bootstrapContext.terminator, sc.bootstrapContext.doneChan, serverContextStopMaxWait)
 	if err != nil {
-		base.Infof(base.KeyAll, "Couldn't stop background config update worker: %v", err)
+		base.InfofCtx(logCtx, base.KeyAll, "Couldn't stop background config update worker: %v", err)
 	}
 
 	for _, ctx := range sc.databases_ {
@@ -172,16 +173,16 @@ func (sc *ServerContext) Close() {
 	sc.databases_ = nil
 
 	for _, s := range sc._httpServers {
-		base.Infof(base.KeyHTTP, "Closing HTTP Server: %v", s.Addr)
+		base.InfofCtx(logCtx, base.KeyHTTP, "Closing HTTP Server: %v", s.Addr)
 		if err := s.Close(); err != nil {
-			base.WarnfCtx(context.TODO(), "Error closing HTTP server %q: %v", s.Addr, err)
+			base.WarnfCtx(logCtx, "Error closing HTTP server %q: %v", s.Addr, err)
 		}
 	}
 	sc._httpServers = nil
 
 	if agent := sc.GoCBAgent; agent != nil {
 		if err := agent.Close(); err != nil {
-			base.WarnfCtx(context.TODO(), "Error closing agent connection: %v", err)
+			base.WarnfCtx(logCtx, "Error closing agent connection: %v", err)
 		}
 	}
 }
@@ -393,7 +394,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	}
 
 	// Connect to bucket
-	base.Infof(base.KeyAll, "Opening db /%s as bucket %q, pool %q, server <%s>",
+	base.InfofCtx(context.TODO(), base.KeyAll, "Opening db /%s as bucket %q, pool %q, server <%s>",
 		base.MD(dbName), base.MD(spec.BucketName), base.SD(base.DefaultPool), base.SD(spec.Server))
 	connectToBucketFn := db.ConnectToBucket
 	if failFast {
@@ -541,7 +542,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	dbcontext.ServeInsecureAttachmentTypes = base.BoolDefault(config.ServeInsecureAttachmentTypes, false)
 
 	if dbcontext.ChannelMapper == nil {
-		base.Infof(base.KeyAll, "Using default sync function 'channel(doc.channels)' for database %q", base.MD(dbName))
+		base.InfofCtx(context.TODO(), base.KeyAll, "Using default sync function 'channel(doc.channels)' for database %q", base.MD(dbName))
 	}
 
 	// Create default users & roles:
@@ -686,7 +687,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 			deltaSyncOptions.RevMaxAgeSeconds = *revMaxAge
 		}
 	}
-	base.Infof(base.KeyAll, "delta_sync enabled=%t with rev_max_age_seconds=%d for database %s", deltaSyncOptions.Enabled, deltaSyncOptions.RevMaxAgeSeconds, dbName)
+	base.InfofCtx(context.TODO(), base.KeyAll, "delta_sync enabled=%t with rev_max_age_seconds=%d for database %s", deltaSyncOptions.Enabled, deltaSyncOptions.RevMaxAgeSeconds, dbName)
 
 	compactIntervalSecs := db.DefaultCompactInterval
 	if config.CompactIntervalDays != nil {
@@ -831,7 +832,7 @@ func (sc *ServerContext) TakeDbOnline(database *db.DatabaseContext) {
 		atomic.StoreUint32(&reloadedDb.State, db.DBOnline)
 
 	} else {
-		base.Infof(base.KeyCRUD, "Unable to take Database : %v online , database must be in Offline state", base.UD(database.Name))
+		base.InfofCtx(context.TODO(), base.KeyCRUD, "Unable to take Database : %v online , database must be in Offline state", base.UD(database.Name))
 	}
 
 }
@@ -962,7 +963,7 @@ func (sc *ServerContext) applySyncFunction(dbcontext *db.DatabaseContext, syncFn
 		return err
 	}
 	// Sync function has changed:
-	base.Infof(base.KeyAll, "**NOTE:** %q's sync function has changed. The new function may assign different channels to documents, or permissions to users. You may want to re-sync the database to update these.", base.MD(dbcontext.Name))
+	base.InfofCtx(context.TODO(), base.KeyAll, "**NOTE:** %q's sync function has changed. The new function may assign different channels to documents, or permissions to users. You may want to re-sync the database to update these.", base.MD(dbcontext.Name))
 	return nil
 }
 
@@ -979,7 +980,7 @@ func (sc *ServerContext) _unloadDatabase(dbName string) bool {
 	if dbCtx == nil {
 		return false
 	}
-	base.Infof(base.KeyAll, "Closing db /%s (bucket %q)", base.MD(dbCtx.Name), base.MD(dbCtx.Bucket.GetName()))
+	base.InfofCtx(context.TODO(), base.KeyAll, "Closing db /%s (bucket %q)", base.MD(dbCtx.Name), base.MD(dbCtx.Bucket.GetName()))
 	dbCtx.Close()
 	delete(sc.databases_, dbName)
 	return true
@@ -1011,6 +1012,7 @@ func (sc *ServerContext) installPrincipals(dbc *db.DatabaseContext, spec map[str
 			princ.Name = &n
 		}
 
+		logCtx := context.TODO()
 		createdPrincipal := true
 		worker := func() (shouldRetry bool, err error, value interface{}) {
 			_, err = dbc.UpdatePrincipal(context.Background(), *princ, (what == "user"), isGuest)
@@ -1024,7 +1026,7 @@ func (sc *ServerContext) installPrincipals(dbc *db.DatabaseContext, spec map[str
 
 				if err == base.ErrViewTimeoutError {
 					// Timeout error, possibly due to view re-indexing, so retry
-					base.Infof(base.KeyAuth, "Error calling UpdatePrincipal(): %v.  Will retry in case this is a temporary error", err)
+					base.InfofCtx(logCtx, base.KeyAuth, "Error calling UpdatePrincipal(): %v.  Will retry in case this is a temporary error", err)
 					return true, err, nil
 				}
 
@@ -1043,9 +1045,9 @@ func (sc *ServerContext) installPrincipals(dbc *db.DatabaseContext, spec map[str
 		}
 
 		if isGuest {
-			base.Infof(base.KeyAll, "Reset guest user to config")
+			base.InfofCtx(logCtx, base.KeyAll, "Reset guest user to config")
 		} else if createdPrincipal {
-			base.Infof(base.KeyAll, "Created %s %q", what, base.UD(name))
+			base.InfofCtx(logCtx, base.KeyAll, "Created %s %q", what, base.UD(name))
 		}
 
 	}
@@ -1088,7 +1090,7 @@ func (sc *ServerContext) startStatsLogger() {
 			}
 		}
 	}()
-	base.Infof(base.KeyAll, "Logging stats with frequency: %v", interval)
+	base.InfofCtx(context.TODO(), base.KeyAll, "Logging stats with frequency: %v", interval)
 
 }
 
@@ -1217,7 +1219,7 @@ func (sc *ServerContext) initializeGoCBAgent() (*gocbcore.Agent, error) {
 			sc.config.Bootstrap.Server, sc.config.Bootstrap.Username, sc.config.Bootstrap.Password,
 			sc.config.Bootstrap.X509CertPath, sc.config.Bootstrap.X509KeyPath, sc.config.Bootstrap.CACertPath, sc.config.Bootstrap.ServerTLSSkipVerify)
 		if err != nil {
-			base.Infof(base.KeyConfig, "Couldn't initialize cluster agent: %v - will retry...", err)
+			base.InfofCtx(context.TODO(), base.KeyConfig, "Couldn't initialize cluster agent: %v - will retry...", err)
 			return true, err, nil
 		}
 
@@ -1227,7 +1229,7 @@ func (sc *ServerContext) initializeGoCBAgent() (*gocbcore.Agent, error) {
 		return nil, err
 	}
 
-	base.Infof(base.KeyConfig, "Successfully initialized cluster agent")
+	base.InfofCtx(context.TODO(), base.KeyConfig, "Successfully initialized cluster agent")
 	agent := a.(*gocbcore.Agent)
 	return agent, nil
 }
@@ -1414,40 +1416,41 @@ func (sc *ServerContext) initializeCouchbaseServerConnections() error {
 			return err
 		}
 
+		logCtx := context.TODO()
 		if count > 0 {
-			base.Infof(base.KeyConfig, "Successfully fetched %d database configs from buckets in cluster", count)
+			base.InfofCtx(logCtx, base.KeyConfig, "Successfully fetched %d database configs from buckets in cluster", count)
 		} else {
-			base.WarnfCtx(context.TODO(), "Config: No database configs for group %q. Continuing startup to allow REST API database creation", sc.config.Bootstrap.ConfigGroupID)
+			base.WarnfCtx(logCtx, "Config: No database configs for group %q. Continuing startup to allow REST API database creation", sc.config.Bootstrap.ConfigGroupID)
 		}
 
 		if sc.config.Bootstrap.ConfigUpdateFrequency.Value() > 0 {
 			sc.bootstrapContext.terminator = make(chan struct{})
 			sc.bootstrapContext.doneChan = make(chan struct{})
 
-			base.Infof(base.KeyConfig, "Starting background polling for new configs/buckets: %s", sc.config.Bootstrap.ConfigUpdateFrequency.Value().String())
+			base.InfofCtx(logCtx, base.KeyConfig, "Starting background polling for new configs/buckets: %s", sc.config.Bootstrap.ConfigUpdateFrequency.Value().String())
 			go func() {
 				defer close(sc.bootstrapContext.doneChan)
 				t := time.NewTicker(sc.config.Bootstrap.ConfigUpdateFrequency.Value())
 				for {
 					select {
 					case <-sc.bootstrapContext.terminator:
-						base.Infof(base.KeyConfig, "Stopping background config polling loop")
+						base.InfofCtx(logCtx, base.KeyConfig, "Stopping background config polling loop")
 						t.Stop()
 						return
 					case <-t.C:
 						base.Debugf(base.KeyConfig, "Fetching configs from buckets in cluster for group %q", sc.config.Bootstrap.ConfigGroupID)
 						count, err := sc.fetchAndLoadConfigs()
 						if err != nil {
-							base.WarnfCtx(context.TODO(), "Couldn't load configs from bucket when polled: %v", err)
+							base.WarnfCtx(logCtx, "Couldn't load configs from bucket when polled: %v", err)
 						}
 						if count > 0 {
-							base.Infof(base.KeyConfig, "Successfully fetched %d database configs from buckets in cluster", count)
+							base.InfofCtx(logCtx, base.KeyConfig, "Successfully fetched %d database configs from buckets in cluster", count)
 						}
 					}
 				}
 			}()
 		} else {
-			base.Infof(base.KeyConfig, "Disabled background polling for new configs/buckets")
+			base.InfofCtx(logCtx, base.KeyConfig, "Disabled background polling for new configs/buckets")
 		}
 	}
 

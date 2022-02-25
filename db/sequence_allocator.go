@@ -267,7 +267,7 @@ func (s *sequenceAllocator) waitForReleasedSequences(startTime time.Time) (waite
 	if requiredWait < 0 {
 		return 0
 	}
-	base.Infof(base.KeyCache, "Waiting %v for sequence allocation...", requiredWait)
+	base.InfofCtx(context.TODO(), base.KeyCache, "Waiting %v for sequence allocation...", requiredWait)
 	time.Sleep(requiredWait)
 	return requiredWait
 }

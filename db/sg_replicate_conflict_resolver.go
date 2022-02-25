@@ -131,7 +131,7 @@ func (c *ConflictResolver) Resolve(conflict Conflict) (winner Body, resolutionTy
 		return winner, ConflictResolutionRemote, nil
 	}
 
-	base.Infof(base.KeyReplicate, "Conflict resolver returned non-empty revID (%s) not matching local (%s) or remote (%s), treating result as merge.", winningRev, localRev, remoteRev)
+	base.InfofCtx(context.Background(), base.KeyReplicate, "Conflict resolver returned non-empty revID (%s) not matching local (%s) or remote (%s), treating result as merge.", winningRev, localRev, remoteRev)
 	c.stats.ConflictResultMergeCount.Add(1)
 	return winner, ConflictResolutionMerge, err
 }

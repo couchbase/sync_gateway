@@ -98,6 +98,7 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 		return err
 	}
 
+	logCtx := context.TODO()
 	var processClusterStatus []byte
 	if b.isClusterAware() {
 		processClusterStatus, _, err = b.clusterAwareOptions.bucket.GetRaw(b.clusterAwareOptions.StatusDocID())
@@ -122,7 +123,7 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 				case <-ticker.C:
 					err = b.UpdateStatusClusterAware()
 					if err != nil {
-						base.WarnfCtx(context.TODO(), "Failed to update background manager status: %v", err)
+						base.WarnfCtx(logCtx, "Failed to update background manager status: %v", err)
 					}
 
 				case <-b.terminator.Done():
@@ -139,7 +140,7 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 		}
 		err := b.Process.Run(options, updateStatusClusterAwareCallback, b.terminator)
 		if err != nil {
-			base.ErrorfCtx(context.TODO(), "Error: %v", err)
+			base.ErrorfCtx(logCtx, "Error: %v", err)
 			b.SetError(err)
 		}
 
@@ -158,7 +159,7 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 		if b.isClusterAware() {
 			err = b.UpdateStatusClusterAware()
 			if err != nil {
-				base.WarnfCtx(context.TODO(), "Failed to update background manager status: %v", err)
+				base.WarnfCtx(logCtx, "Failed to update background manager status: %v", err)
 			}
 
 			// Delete the heartbeat doc to allow another process to run
@@ -170,7 +171,7 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 	if b.isClusterAware() {
 		err = b.UpdateStatusClusterAware()
 		if err != nil {
-			base.ErrorfCtx(context.TODO(), "Failed to update background manager status: %v", err)
+			base.ErrorfCtx(logCtx, "Failed to update background manager status: %v", err)
 		}
 	}
 
