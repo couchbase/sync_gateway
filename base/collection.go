@@ -108,7 +108,6 @@ func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilR
 	}
 
 	// Query node meta to find cluster compat version
-	//user, pass, _ := spec.Auth.GetCredentials()
 	nodesMetadata, err := cluster.Internal().GetNodesMetadata(&gocb.GetNodesMetadataOptions{})
 	if err != nil || len(nodesMetadata) == 0 {
 		_ = cluster.Close(&gocb.ClusterCloseOptions{})
@@ -318,7 +317,7 @@ func (c *Collection) AddRaw(k string, exp uint32, v []byte) (added bool, err err
 	return err == nil, err
 }
 
-func (c *Collection) Set(k string, exp uint32, upsertOptions *sgbucket.UpsertOptions, v interface{}) error {
+func (c *Collection) Set(k string, exp uint32, opts *sgbucket.UpsertOptions, v interface{}) error {
 	c.waitForAvailKvOp()
 	defer c.releaseKvOp()
 
@@ -326,7 +325,7 @@ func (c *Collection) Set(k string, exp uint32, upsertOptions *sgbucket.UpsertOpt
 		Expiry:     CbsExpiryToDuration(exp),
 		Transcoder: NewSGJSONTranscoder(),
 	}
-	fillUpsertOptions(goCBUpsertOptions, upsertOptions)
+	fillUpsertOptions(goCBUpsertOptions, opts)
 
 	if _, ok := v.([]byte); ok {
 		goCBUpsertOptions.Transcoder = gocb.NewRawJSONTranscoder()
@@ -336,7 +335,7 @@ func (c *Collection) Set(k string, exp uint32, upsertOptions *sgbucket.UpsertOpt
 	return err
 }
 
-func (c *Collection) SetRaw(k string, exp uint32, upsertOptions *sgbucket.UpsertOptions, v []byte) error {
+func (c *Collection) SetRaw(k string, exp uint32, opts *sgbucket.UpsertOptions, v []byte) error {
 	c.waitForAvailKvOp()
 	defer c.releaseKvOp()
 
@@ -344,7 +343,7 @@ func (c *Collection) SetRaw(k string, exp uint32, upsertOptions *sgbucket.Upsert
 		Expiry:     CbsExpiryToDuration(exp),
 		Transcoder: NewSGRawTranscoder(),
 	}
-	fillUpsertOptions(goCBUpsertOptions, upsertOptions)
+	fillUpsertOptions(goCBUpsertOptions, opts)
 
 	_, err := c.Collection.Upsert(k, v, goCBUpsertOptions)
 	return err

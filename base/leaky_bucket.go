@@ -127,16 +127,16 @@ func (b *LeakyBucket) Add(k string, exp uint32, v interface{}) (added bool, err 
 func (b *LeakyBucket) AddRaw(k string, exp uint32, v []byte) (added bool, err error) {
 	return b.bucket.AddRaw(k, exp, v)
 }
-func (b *LeakyBucket) Set(k string, exp uint32, upsertOptions *sgbucket.UpsertOptions, v interface{}) error {
-	return b.bucket.Set(k, exp, upsertOptions, v)
+func (b *LeakyBucket) Set(k string, exp uint32, opts *sgbucket.UpsertOptions, v interface{}) error {
+	return b.bucket.Set(k, exp, opts, v)
 }
-func (b *LeakyBucket) SetRaw(k string, exp uint32, upsertOptions *sgbucket.UpsertOptions, v []byte) error {
+func (b *LeakyBucket) SetRaw(k string, exp uint32, opts *sgbucket.UpsertOptions, v []byte) error {
 	for _, errorKey := range b.config.ForceErrorSetRawKeys {
 		if k == errorKey {
 			return fmt.Errorf("Leaky bucket forced SetRaw error for key %s", k)
 		}
 	}
-	return b.bucket.SetRaw(k, exp, upsertOptions, v)
+	return b.bucket.SetRaw(k, exp, opts, v)
 }
 func (b *LeakyBucket) Delete(k string) error {
 	return b.bucket.Delete(k)

@@ -66,13 +66,13 @@ func (b *LoggingBucket) AddRaw(k string, exp uint32, v []byte) (added bool, err 
 	defer b.log(time.Now(), k, exp)
 	return b.bucket.AddRaw(k, exp, v)
 }
-func (b *LoggingBucket) Set(k string, exp uint32, upsertOptions *sgbucket.UpsertOptions, v interface{}) error {
+func (b *LoggingBucket) Set(k string, exp uint32, opts *sgbucket.UpsertOptions, v interface{}) error {
 	defer b.log(time.Now(), k, exp)
-	return b.bucket.Set(k, exp, upsertOptions, v)
+	return b.bucket.Set(k, exp, opts, v)
 }
-func (b *LoggingBucket) SetRaw(k string, exp uint32, upsertOptions *sgbucket.UpsertOptions, v []byte) error {
+func (b *LoggingBucket) SetRaw(k string, exp uint32, opts *sgbucket.UpsertOptions, v []byte) error {
 	defer b.log(time.Now(), k, exp)
-	return b.bucket.SetRaw(k, exp, upsertOptions, v)
+	return b.bucket.SetRaw(k, exp, opts, v)
 }
 func (b *LoggingBucket) Delete(k string) error {
 	defer b.log(time.Now(), k)
