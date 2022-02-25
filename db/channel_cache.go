@@ -439,7 +439,7 @@ func (c *channelCacheImpl) compactChannelCache() {
 			base.InfofCtx(logCtx, base.KeyCache, "Stopping channel cache compaction, size %d", cacheSize)
 			return
 		}
-		base.Tracef(base.KeyCache, "Target eviction count: %d (lwm:%d)", targetEvictCount, c.compactLowWatermark)
+		base.TracefCtx(logCtx, base.KeyCache, "Target eviction count: %d (lwm:%d)", targetEvictCount, c.compactLowWatermark)
 
 		// Iterates through cache entries based on cache size at start of compaction iteration loop.  Intentionally
 		// ignores channels added during compaction iteration
@@ -466,16 +466,16 @@ func (c *channelCacheImpl) compactChannelCache() {
 			// Determine whether NRU channel is active, to establish eviction priority
 			isActive := c.activeChannels.IsActive(singleChannelCache.channelName)
 			if !isActive {
-				base.Tracef(base.KeyCache, "Marking inactive cache entry %q for eviction ", base.UD(singleChannelCache.channelName))
+				base.TracefCtx(logCtx, base.KeyCache, "Marking inactive cache entry %q for eviction ", base.UD(singleChannelCache.channelName))
 				inactiveEvictionCandidates = append(inactiveEvictionCandidates, elem)
 			} else {
-				base.Tracef(base.KeyCache, "Marking NRU cache entry %q for eviction", base.UD(singleChannelCache.channelName))
+				base.TracefCtx(logCtx, base.KeyCache, "Marking NRU cache entry %q for eviction", base.UD(singleChannelCache.channelName))
 				nruEvictionCandidates = append(nruEvictionCandidates, elem)
 			}
 
 			// If we have enough inactive channels to reach targetCount, terminate range
 			if len(inactiveEvictionCandidates) >= targetEvictCount {
-				base.Tracef(base.KeyCache, "Eviction count target (%d) reached with inactive channels, proceeding to removal", targetEvictCount)
+				base.TracefCtx(logCtx, base.KeyCache, "Eviction count target (%d) reached with inactive channels, proceeding to removal", targetEvictCount)
 				return false
 			}
 			return true
@@ -513,7 +513,7 @@ func (c *channelCacheImpl) compactChannelCache() {
 		// Update eviction stats
 		c.updateEvictionStats(inactiveEvictCount, len(evictionElements), compactIterationStart)
 
-		base.Tracef(base.KeyCache, "Compact iteration complete - eviction count: %d (lwm:%d)", len(evictionElements), c.compactLowWatermark)
+		base.TracefCtx(logCtx, base.KeyCache, "Compact iteration complete - eviction count: %d (lwm:%d)", len(evictionElements), c.compactLowWatermark)
 	}
 }
 

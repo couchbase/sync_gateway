@@ -328,7 +328,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 	if args.Terminator != nil {
 		go func() {
 			<-args.Terminator
-			Tracef(KeyDCP, "Closing DCP Feed [%s-%s] based on termination notification", MD(bucketName), feedID)
+			TracefCtx(loggingCtx, KeyDCP, "Closing DCP Feed [%s-%s] based on termination notification", MD(bucketName), feedID)
 			if err := bds.Close(); err != nil {
 				DebugfCtx(loggingCtx, KeyDCP, "Error closing DCP Feed [%s-%s] based on termination notification, Error: %v", MD(bucketName), feedID, err)
 			}

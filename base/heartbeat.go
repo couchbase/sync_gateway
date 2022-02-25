@@ -271,7 +271,7 @@ func (h *couchbaseHeartBeater) checkStaleHeartbeats() error {
 
 	// Build set of all nodes
 	nodeListenerMap := h.getNodeListenerMap()
-	Tracef(KeyCluster, "Checking heartbeats for node set: %s", nodeListenerMap)
+	TracefCtx(context.Background(), KeyCluster, "Checking heartbeats for node set: %s", nodeListenerMap)
 
 	for heartbeatNodeUUID, listeners := range nodeListenerMap {
 		if heartbeatNodeUUID == h.nodeUUID {

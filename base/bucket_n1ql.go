@@ -64,7 +64,7 @@ func (bucket *CouchbaseBucketGoCB) Query(statement string, params map[string]int
 	waitTime := 10 * time.Millisecond
 	for i := 1; i <= MaxQueryRetries; i++ {
 
-		Tracef(KeyQuery, "Executing N1QL query: %v", UD(n1qlQuery))
+		TracefCtx(logCtx, KeyQuery, "Executing N1QL query: %v", UD(n1qlQuery))
 		queryResults, queryErr := bucket.runQuery(n1qlQuery, params)
 
 		if queryErr == nil {

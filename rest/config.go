@@ -1121,7 +1121,7 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 		}
 
 		if cnf.Name != dbName {
-			base.Tracef(base.KeyConfig, "%q did not contain config in group %q for db %q", bucket, sc.config.Bootstrap.ConfigGroupID, dbName)
+			base.TracefCtx(logCtx, base.KeyConfig, "%q did not contain config in group %q for db %q", bucket, sc.config.Bootstrap.ConfigGroupID, dbName)
 			continue
 		}
 
@@ -1142,7 +1142,7 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 			cnf.CertPath = sc.config.Bootstrap.X509CertPath
 			cnf.KeyPath = sc.config.Bootstrap.X509KeyPath
 		}
-		base.Tracef(base.KeyConfig, "Got config for bucket %q with cas %d", bucket, cas)
+		base.TracefCtx(logCtx, base.KeyConfig, "Got config for bucket %q with cas %d", bucket, cas)
 		return true, &cnf, nil
 	}
 
@@ -1160,11 +1160,11 @@ func (sc *ServerContext) fetchConfigs() (dbNameConfigs map[string]DatabaseConfig
 	fetchedConfigs := make(map[string]DatabaseConfig, len(buckets))
 
 	for _, bucket := range buckets {
-		base.Tracef(base.KeyConfig, "Checking for config for group %q from bucket %q", sc.config.Bootstrap.ConfigGroupID, bucket)
+		base.TracefCtx(logCtx, base.KeyConfig, "Checking for config for group %q from bucket %q", sc.config.Bootstrap.ConfigGroupID, bucket)
 		var cnf DatabaseConfig
 		cas, err := sc.bootstrapContext.connection.GetConfig(bucket, sc.config.Bootstrap.ConfigGroupID, &cnf)
 		if err == base.ErrNotFound {
-			base.Tracef(base.KeyConfig, "bucket %q did not contain config for group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
+			base.TracefCtx(logCtx, base.KeyConfig, "bucket %q did not contain config for group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
 			bucketsNoConfig = append(bucketsNoConfig, bucket)
 			continue
 		}

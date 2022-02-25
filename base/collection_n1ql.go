@@ -41,7 +41,7 @@ func (c *Collection) Query(statement string, params map[string]interface{}, cons
 
 	waitTime := 10 * time.Millisecond
 	for i := 1; i <= MaxQueryRetries; i++ {
-		Tracef(KeyQuery, "Executing N1QL query: %v - %+v", UD(bucketStatement), UD(params))
+		TracefCtx(logCtx, KeyQuery, "Executing N1QL query: %v - %+v", UD(bucketStatement), UD(params))
 		queryResults, queryErr := c.runQuery(bucketStatement, n1qlOptions)
 		if queryErr == nil {
 			resultsIterator := &gocbRawIterator{

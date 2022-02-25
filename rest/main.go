@@ -60,7 +60,8 @@ func serverMain(ctx context.Context, osArgs []string) error {
 func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConfig) (disablePersistentConfigFallback bool, err error) {
 
 	sc := DefaultStartupConfig(defaultLogFilePath)
-	base.Tracef(base.KeyAll, "default config: %#v", sc)
+	logCtx := context.Background()
+	base.TracefCtx(logCtx, base.KeyAll, "default config: %#v", sc)
 
 	configPath := fs.Args()
 	if len(configPath) > 1 {
@@ -76,7 +77,7 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 			// If we have an unknown field error processing config its possible that the config is a 2.x config
 			// requiring automatic upgrade. We should attempt to perform this upgrade
 
-			base.InfofCtx(context.Background(), base.KeyAll, "Found unknown fields in startup config. Attempting to read as legacy config.")
+			base.InfofCtx(logCtx, base.KeyAll, "Found unknown fields in startup config. Attempting to read as legacy config.")
 
 			var upgradeError error
 			fileStartupConfig, disablePersistentConfigFallback, legacyDbUsers, legacyDbRoles, upgradeError = automaticConfigUpgrade(configPath[0])
@@ -86,8 +87,8 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 				// the config is actually a 3.x config but with a genuine unknown field, therefore we should  return the
 				// original error from LoadStartupConfigFromPath.
 				if pkgerrors.Cause(upgradeError) == base.ErrUnknownField {
-					base.WarnfCtx(context.Background(), "Automatic upgrade attempt failed, %s not recognized as legacy config format: %v", base.MD(configPath[0]), upgradeError)
-					base.WarnfCtx(context.Background(), "Provided config %s not recognized as bootstrap config format: %v", base.MD(configPath[0]), err)
+					base.WarnfCtx(logCtx, "Automatic upgrade attempt failed, %s not recognized as legacy config format: %v", base.MD(configPath[0]), upgradeError)
+					base.WarnfCtx(logCtx, "Provided config %s not recognized as bootstrap config format: %v", base.MD(configPath[0]), err)
 					return false, fmt.Errorf("unknown config fields supplied. Unable to continue")
 				}
 
@@ -106,7 +107,7 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 			if err != nil {
 				return false, err
 			}
-			base.Tracef(base.KeyAll, "got config from file: %#v", redactedConfig)
+			base.TracefCtx(logCtx, base.KeyAll, "got config from file: %#v", redactedConfig)
 			err = sc.Merge(fileStartupConfig)
 			if err != nil {
 				return false, err
@@ -116,7 +117,7 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 
 	// merge flagStartupConfig on top of fileStartupConfig, because flags take precedence over config files.
 	if flagStartupConfig != nil {
-		base.Tracef(base.KeyAll, "got config from flags: %#v", flagStartupConfig)
+		base.TracefCtx(logCtx, base.KeyAll, "got config from flags: %#v", flagStartupConfig)
 		err := sc.Merge(flagStartupConfig)
 		if err != nil {
 			return false, err
@@ -127,14 +128,14 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 	if err != nil {
 		return false, err
 	}
-	base.Tracef(base.KeyAll, "final config: %#v", redactedConfig)
+	base.TracefCtx(logCtx, base.KeyAll, "final config: %#v", redactedConfig)
 
 	initialStartupConfig, err := getInitialStartupConfig(fileStartupConfig, flagStartupConfig)
 	if err != nil {
 		return false, err
 	}
 
-	base.InfofCtx(context.Background(), base.KeyAll, "Config: Starting in persistent mode using config group %q", sc.Bootstrap.ConfigGroupID)
+	base.InfofCtx(logCtx, base.KeyAll, "Config: Starting in persistent mode using config group %q", sc.Bootstrap.ConfigGroupID)
 	ctx, err := setupServerContext(&sc, true)
 	if err != nil {
 		return false, err

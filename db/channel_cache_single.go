@@ -260,7 +260,7 @@ func (c *singleChannelCacheImpl) Remove(docIDs []string, startTime time.Time) (c
 			delete(c.cachedDocIDs, docID)
 			count++
 
-			base.Tracef(base.KeyCache, "Removed doc %q from cache %q", base.UD(docID), base.UD(c.channelName))
+			base.TracefCtx(logCtx, base.KeyCache, "Removed doc %q from cache %q", base.UD(docID), base.UD(c.channelName))
 		}
 	}
 

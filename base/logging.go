@@ -204,9 +204,9 @@ func Fatalf(format string, args ...interface{}) {
 // }
 
 // Tracef logs the given formatted string and args to the trace log level with an optional log key.
-func Tracef(logKey LogKey, format string, args ...interface{}) {
-	logTo(context.TODO(), LevelTrace, logKey, format, args...)
-}
+// func Tracef(logKey LogKey, format string, args ...interface{}) {
+// 	logTo(context.TODO(), LevelTrace, logKey, format, args...)
+// }
 
 // RecordStats writes the given stats JSON content to a stats log file, if enabled.
 // The content passed in is expected to be a JSON dictionary.

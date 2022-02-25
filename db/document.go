@@ -251,7 +251,7 @@ func (doc *Document) Body() Body {
 	}
 
 	if doc._body != nil {
-		base.Tracef(base.KeyAll, "Already had doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
+		base.TracefCtx(context.Background(), base.KeyAll, "Already had doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
 		return doc._body
 	}
 
@@ -260,7 +260,7 @@ func (doc *Document) Body() Body {
 		return nil
 	}
 
-	base.Tracef(base.KeyAll, "        UNMARSHAL doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
+	base.TracefCtx(context.Background(), base.KeyAll, "        UNMARSHAL doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
 	err := doc._body.Unmarshal(doc._rawBody)
 	if err != nil {
 		base.WarnfCtx(context.Background(), "Unable to unmarshal document body from raw body : %s", err)

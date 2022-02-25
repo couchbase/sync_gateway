@@ -112,7 +112,7 @@ func (em *EventManager) ProcessEvent(event Event) {
 			} else {
 				em.IncrementEventsProcessedFail(1)
 			}
-			base.Tracef(base.KeyAll, "Webhook event processed %s", event)
+			base.TracefCtx(logCtx, base.KeyAll, "Webhook event processed %s", event)
 
 		}(event, handler)
 	}
@@ -141,7 +141,7 @@ func (em *EventManager) raiseEvent(event Event) error {
 		defer timer.Stop()
 		select {
 		case em.asyncEventChannel <- event:
-			base.Tracef(base.KeyAll, "Event sent to channel %s", event.String())
+			base.TracefCtx(context.TODO(), base.KeyAll, "Event sent to channel %s", event.String())
 		case <-timer.C:
 			// Event queue channel is full - ignore event and log error
 			base.WarnfCtx(context.TODO(), "Event queue full - discarding event: %s", base.UD(event.String()))

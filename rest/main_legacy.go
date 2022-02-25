@@ -36,7 +36,7 @@ func legacyServerMain(osArgs []string, flagStartupConfig *StartupConfig) error {
 	}
 
 	if flagStartupConfig != nil {
-		base.Tracef(base.KeyAll, "got config from flags: %#v", flagStartupConfig)
+		base.TracefCtx(context.Background(), base.KeyAll, "got config from flags: %#v", flagStartupConfig)
 		err := sc.Merge(flagStartupConfig)
 		if err != nil {
 			return err
