@@ -1473,7 +1473,7 @@ type JSONEncoderI interface {
 func FatalPanicHandler() {
 	// Log any panics using the built-in loggers so that the stacktraces end up in SG log files before exiting.
 	if r := recover(); r != nil {
-		Fatalf("Unexpected panic: %v - stopping process\n%v", r, string(debug.Stack()))
+		FatalfCtx(context.TODO(), "Unexpected panic: %v - stopping process\n%v", r, string(debug.Stack()))
 	}
 }
 

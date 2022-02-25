@@ -23,7 +23,7 @@ import (
 // does the initial setup and finally starts the server.
 func ServerMain() {
 	if err := serverMain(context.Background(), os.Args); err != nil {
-		base.Fatalf("Couldn't start Sync Gateway: %v", err)
+		base.FatalfCtx(context.TODO(), "Couldn't start Sync Gateway: %v", err)
 	}
 }
 

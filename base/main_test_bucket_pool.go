@@ -104,7 +104,7 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 
 	_, err := SetMaxFileDescriptors(5000)
 	if err != nil {
-		Fatalf("couldn't set max file descriptors: %v", err)
+		FatalfCtx(context.TODO(), "couldn't set max file descriptors: %v", err)
 	}
 
 	numBuckets := tbpNumBuckets()
@@ -716,7 +716,7 @@ func tbpNumBuckets() int {
 		var err error
 		numBuckets, err = strconv.Atoi(envPoolSize)
 		if err != nil {
-			Fatalf("Couldn't parse %s: %v", tbpEnvPoolSize, err)
+			FatalfCtx(context.TODO(), "Couldn't parse %s: %v", tbpEnvPoolSize, err)
 		}
 	}
 	return numBuckets
@@ -729,7 +729,7 @@ func tbpBucketQuotaMB() int {
 		var err error
 		bucketQuota, err = strconv.Atoi(envBucketQuotaMB)
 		if err != nil {
-			Fatalf("Couldn't parse %s: %v", tbpEnvBucketQuotaMB, err)
+			FatalfCtx(context.TODO(), "Couldn't parse %s: %v", tbpEnvBucketQuotaMB, err)
 		}
 	}
 	return bucketQuota

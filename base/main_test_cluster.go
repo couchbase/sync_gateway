@@ -57,12 +57,12 @@ func initV1Cluster(server string) *gocbv1.Cluster {
 
 	connStr, err := spec.GetGoCBConnString()
 	if err != nil {
-		Fatalf("error getting connection string: %v", err)
+		FatalfCtx(context.TODO(), "error getting connection string: %v", err)
 	}
 
 	cluster, err := gocbv1.Connect(connStr)
 	if err != nil {
-		Fatalf("Couldn't connect to %q: %v", server, err)
+		FatalfCtx(context.TODO(), "Couldn't connect to %q: %v", server, err)
 	}
 
 	err = cluster.Authenticate(gocbv1.PasswordAuthenticator{
@@ -70,7 +70,7 @@ func initV1Cluster(server string) *gocbv1.Cluster {
 		Password: TestClusterPassword(),
 	})
 	if err != nil {
-		Fatalf("Couldn't authenticate with %q: %v", server, err)
+		FatalfCtx(context.TODO(), "Couldn't authenticate with %q: %v", server, err)
 	}
 
 	return cluster
@@ -172,17 +172,17 @@ func getCluster(server string) *gocb.Cluster {
 
 	connStr, err := spec.GetGoCBConnString()
 	if err != nil {
-		Fatalf("error getting connection string: %v", err)
+		FatalfCtx(context.TODO(), "error getting connection string: %v", err)
 	}
 
 	securityConfig, err := GoCBv2SecurityConfig(&spec.TLSSkipVerify, spec.CACertPath)
 	if err != nil {
-		Fatalf("Couldn't initialize cluster security config: %v", err)
+		FatalfCtx(context.TODO(), "Couldn't initialize cluster security config: %v", err)
 	}
 
 	authenticatorConfig, authErr := GoCBv2Authenticator(TestClusterUsername(), TestClusterPassword(), spec.Certpath, spec.Keypath)
 	if authErr != nil {
-		Fatalf("Couldn't initialize cluster authenticator config: %v", authErr)
+		FatalfCtx(context.TODO(), "Couldn't initialize cluster authenticator config: %v", authErr)
 	}
 
 	timeoutsConfig := GoCBv2TimeoutsConfig(spec.BucketOpTimeout, StdlibDurationPtr(spec.GetViewQueryTimeout()))
@@ -195,11 +195,11 @@ func getCluster(server string) *gocb.Cluster {
 
 	cluster, err := gocb.Connect(connStr, clusterOptions)
 	if err != nil {
-		Fatalf("Couldn't connect to %q: %v", server, err)
+		FatalfCtx(context.TODO(), "Couldn't connect to %q: %v", server, err)
 	}
 	err = cluster.WaitUntilReady(15*time.Second, nil)
 	if err != nil {
-		Fatalf("Cluster not ready: %v", err)
+		FatalfCtx(context.TODO(), "Cluster not ready: %v", err)
 	}
 
 	return cluster

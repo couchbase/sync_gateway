@@ -124,6 +124,10 @@ func init() {
 
 // PanicfCtx logs the given formatted string and args to the error log level and given log key and then panics.
 func PanicfCtx(ctx context.Context, format string, args ...interface{}) {
+	// Fall back to stdlib's log.Panicf if SG loggers aren't set up.
+	if errorLogger == nil {
+		log.Panicf(format, args...)
+	}
 	logTo(ctx, LevelError, KeyAll, format, args...)
 	FlushLogBuffers()
 	panic(fmt.Sprintf(format, args...))
@@ -131,6 +135,10 @@ func PanicfCtx(ctx context.Context, format string, args ...interface{}) {
 
 // FatalfCtx logs the given formatted string and args to the error log level and given log key and then exits.
 func FatalfCtx(ctx context.Context, format string, args ...interface{}) {
+	// Fall back to stdlib's log.Panicf if SG loggers aren't set up.
+	if errorLogger == nil {
+		log.Fatalf(format, args...)
+	}
 	logTo(ctx, LevelError, KeyAll, format, args...)
 	FlushLogBuffers()
 	os.Exit(1)
@@ -162,26 +170,26 @@ func TracefCtx(ctx context.Context, logKey LogKey, format string, args ...interf
 }
 
 // Panicf logs the given formatted string and args to the error log level and given log key and then panics.
-func Panicf(format string, args ...interface{}) {
-	// Fall back to stdlib's log.Panicf if SG loggers aren't set up.
-	if errorLogger == nil {
-		log.Panicf(format, args...)
-	}
-	logTo(context.TODO(), LevelError, KeyAll, format, args...)
-	FlushLogBuffers()
-	panic(fmt.Sprintf(format, args...))
-}
+// func Panicf(format string, args ...interface{}) {
+// 	// Fall back to stdlib's log.Panicf if SG loggers aren't set up.
+// 	if errorLogger == nil {
+// 		log.Panicf(format, args...)
+// 	}
+// 	logTo(context.TODO(), LevelError, KeyAll, format, args...)
+// 	FlushLogBuffers()
+// 	panic(fmt.Sprintf(format, args...))
+// }
 
 // Fatalf logs the given formatted string and args to the error log level and given log key and then exits.
-func Fatalf(format string, args ...interface{}) {
-	// Fall back to stdlib's log.Fatalf if SG loggers aren't set up.
-	if errorLogger == nil {
-		log.Fatalf(format, args...)
-	}
-	logTo(context.TODO(), LevelError, KeyAll, format, args...)
-	FlushLogBuffers()
-	os.Exit(1)
-}
+// func Fatalf(format string, args ...interface{}) {
+// 	// Fall back to stdlib's log.Fatalf if SG loggers aren't set up.
+// 	if errorLogger == nil {
+// 		log.Fatalf(format, args...)
+// 	}
+// 	logTo(context.TODO(), LevelError, KeyAll, format, args...)
+// 	FlushLogBuffers()
+// 	os.Exit(1)
+// }
 
 // Errorf logs the given formatted string and args to the error log level and given log key.
 // func Errorf(format string, args ...interface{}) {

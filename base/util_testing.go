@@ -451,7 +451,7 @@ func SetUpGlobalTestLogging(m *testing.M) (teardownFn func()) {
 		var l LogLevel
 		err := l.UnmarshalText([]byte(logLevel))
 		if err != nil {
-			Fatalf("TEST: Invalid log level used for %q: %s", TestEnvGlobalLogLevel, err)
+			FatalfCtx(context.TODO(), "TEST: Invalid log level used for %q: %s", TestEnvGlobalLogLevel, err)
 		}
 		teardown := SetUpTestLogging(l, KeyAll)
 		GlobalTestLoggingSet.Set(true)
