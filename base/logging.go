@@ -169,53 +169,6 @@ func TracefCtx(ctx context.Context, logKey LogKey, format string, args ...interf
 	logTo(ctx, LevelTrace, logKey, format, args...)
 }
 
-// Panicf logs the given formatted string and args to the error log level and given log key and then panics.
-// func Panicf(format string, args ...interface{}) {
-// 	// Fall back to stdlib's log.Panicf if SG loggers aren't set up.
-// 	if errorLogger == nil {
-// 		log.Panicf(format, args...)
-// 	}
-// 	logTo(context.TODO(), LevelError, KeyAll, format, args...)
-// 	FlushLogBuffers()
-// 	panic(fmt.Sprintf(format, args...))
-// }
-
-// Fatalf logs the given formatted string and args to the error log level and given log key and then exits.
-// func Fatalf(format string, args ...interface{}) {
-// 	// Fall back to stdlib's log.Fatalf if SG loggers aren't set up.
-// 	if errorLogger == nil {
-// 		log.Fatalf(format, args...)
-// 	}
-// 	logTo(context.TODO(), LevelError, KeyAll, format, args...)
-// 	FlushLogBuffers()
-// 	os.Exit(1)
-// }
-
-// Errorf logs the given formatted string and args to the error log level and given log key.
-// func Errorf(format string, args ...interface{}) {
-// 	logTo(context.TODO(), LevelError, KeyAll, format, args...)
-// }
-
-// Warnf logs the given formatted string and args to the warn log level and given log key.
-// func Warnf(format string, args ...interface{}) {
-// 	logTo(context.TODO(), LevelWarn, KeyAll, format, args...)
-// }
-
-// Infof logs the given formatted string and args to the info log level and given log key.
-// func Infof(logKey LogKey, format string, args ...interface{}) {
-// 	logTo(context.TODO(), LevelInfo, logKey, format, args...)
-// }
-
-// Debugf logs the given formatted string and args to the debug log level with an optional log key.
-// func Debugf(logKey LogKey, format string, args ...interface{}) {
-// 	logTo(context.TODO(), LevelDebug, logKey, format, args...)
-// }
-
-// Tracef logs the given formatted string and args to the trace log level with an optional log key.
-// func Tracef(logKey LogKey, format string, args ...interface{}) {
-// 	logTo(context.TODO(), LevelTrace, logKey, format, args...)
-// }
-
 // RecordStats writes the given stats JSON content to a stats log file, if enabled.
 // The content passed in is expected to be a JSON dictionary.
 func RecordStats(statsJson string) {
