@@ -357,7 +357,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyCache)()
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 	// Create 10 documents
 	revId := ""
 	var err error

@@ -764,7 +764,7 @@ func allDocIDs(db *Database) (docs []AllDocsEntry, err error) {
 
 func TestAllDocsOnly(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
 	// Lower the log max length so no more than 50 items will be kept.
 	cacheOptions := DefaultCacheOptions()
@@ -1000,7 +1000,7 @@ func TestConflicts(t *testing.T) {
 	// Verify the change-log of the "all" channel:
 	cacheWaiter.Wait()
 	changeLog = db.GetChangeLog("all", 0)
-	goassert.Equals(t, len(changeLog), 1)
+	require.Len(t, changeLog, 1)
 	goassert.Equals(t, changeLog[0].Sequence, uint64(3))
 	goassert.Equals(t, changeLog[0].DocID, "doc")
 	goassert.Equals(t, changeLog[0].RevID, "2-b")
@@ -1012,7 +1012,7 @@ func TestConflicts(t *testing.T) {
 	}
 	changes, err := db.GetChanges(channels.SetOf(t, "all"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
-	goassert.Equals(t, len(changes), 1)
+	require.Len(t, changeLog, 1)
 	goassert.DeepEquals(t, changes[0], &ChangeEntry{
 		Seq:      SequenceID{Seq: 3},
 		ID:       "doc",

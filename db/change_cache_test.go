@@ -1723,7 +1723,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 // sets query/cache boundaries
 func TestInitializeCacheUnderLoad(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges)()
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
 	// Increase the cache max size
 	cacheOptions := DefaultCacheOptions()

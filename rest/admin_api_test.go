@@ -2081,6 +2081,7 @@ func TestPurgeWithChannelCache(t *testing.T) {
 
 	changes, err := rt.WaitForChanges(2, "/db/_changes?filter=sync_gateway/bychannel&channels=abc,def", "", true)
 	assert.NoError(t, err, "Error waiting for changes")
+	require.Len(t, changes.Results, 2)
 	goassert.Equals(t, changes.Results[0].ID, "doc1")
 	goassert.Equals(t, changes.Results[1].ID, "doc2")
 
