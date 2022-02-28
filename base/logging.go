@@ -294,16 +294,11 @@ func addPrefixes(format string, ctx context.Context, logLevel LogLevel, logKey L
 		logKeyPrefix = logKeyName + ": "
 	}
 
-	// if ctx != nil && ctx.Value(LogContextKey{}) != nil {
-	// 	if logCtx, ok := ctx.Value(LogContextKey{}).(LogContext); ok {
-	// 		format = logCtx.addContext(format)
-	// 	}
-	// }
-	if ctx == nil {
-		format = color("[CTX NIL] ", LevelWarn)
-	} else if ctxVal := ctx.Value(LogContextKey{}); ctxVal != nil {
-		if logCtx, ok := ctxVal.(LogContext); ok {
-			format = logCtx.addContext(format)
+	if ctx != nil {
+		if ctxVal := ctx.Value(LogContextKey{}); ctxVal != nil {
+			if logCtx, ok := ctxVal.(LogContext); ok {
+				format = logCtx.addContext(format)
+			}
 		}
 	}
 
