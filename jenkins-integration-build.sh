@@ -10,7 +10,7 @@ if [ "$1" == "-m" ]; then
     RUN_WALRUS="true"
     USE_GO_MODULES="true"
     DETECT_RACES="false"
-    SG_EDITION="ee"
+    SG_EDITION="EE"
     XATTRS="true"
     RUN_COUNT="1"
     # CBS server settings
