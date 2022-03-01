@@ -15,7 +15,7 @@ if [ "$1" == "-m" ]; then
     RUN_COUNT="1"
     # CBS server settings
     COUCHBASE_SERVER_PROTOCOL="couchbase"
-    COUCHBASE_SERVER_VERSION="enterprise"
+    COUCHBASE_SERVER_VERSION="latest"
     SG_TEST_BUCKET_POOL_SIZE="3"
     GSI="false"
     TLS_SKIP_VERIFY="false"
