@@ -106,7 +106,11 @@ paths:
       - $ref: '#/components/parameters/db'
     get:
       summary: Get database information
-      description: Retrieve information about the database.
+      description: |-
+        Retrieve information about the database.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       responses:
         '200':
           description: Successfully returned database information
@@ -171,6 +175,9 @@ paths:
         This will generate a random document ID unless specified in the body.
 
         A document can have a maximum size of 20MB.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
       parameters:
         - $ref: '#/components/parameters/roundtrip'
       requestBody:
@@ -211,6 +218,9 @@ paths:
         Removes a database from the Sync Gateway cluster
 
         **Note:** If running in legacy mode, this will only delete the database from the current node.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
       responses:
         '200':
           description: Successfully removed the database
@@ -231,7 +241,11 @@ paths:
         - Admin
     head:
       summary: Check if database exists
-      description: Check if a database exists by using the response status code.
+      description: |-
+        Check if a database exists by using the response status code.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       responses:
         '200':
           description: Database exists
@@ -250,6 +264,9 @@ paths:
         If the bucket is not provided in the database configuration, Sync Gateway will attempt to find and use the database name as the bucket.
 
         By default, the new database will be brought online immediately. This can be avoided by including `"offline": true` in the configuration in the request body.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
       requestBody:
         description: The configuration to use for the new database
         content:
@@ -292,7 +309,12 @@ paths:
       - $ref: '#/components/parameters/db'
     get:
       summary: Gets all the documents in the database with the given parameters
-      description: Returns all documents in the databased based on the specified parameters.
+      description: |-
+        Returns all documents in the databased based on the specified parameters.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
+        * [rbac:app-ro]
       parameters:
         - $ref: '#/components/parameters/include_docs'
         - $ref: '#/components/parameters/Include-channels'
@@ -315,7 +337,12 @@ paths:
         - Public
     post:
       summary: Get all the documents in the database using a built-in view
-      description: Get a built-in view of all the documents in the database.
+      description: |-
+        Get a built-in view of all the documents in the database.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
+        * [rbac:app-ro]
       parameters:
         - $ref: '#/components/parameters/include_docs'
         - $ref: '#/components/parameters/Include-channels'
@@ -369,6 +396,10 @@ paths:
         - $ref: '#/components/parameters/startkey'
         - $ref: '#/components/parameters/endkey'
         - $ref: '#/components/parameters/limit'
+      description: |-
+        [sgw-rbac-roles]
+        * [rbac:app]
+        * [rbac:app-ro]
   '/{db}/_bulk_docs':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -382,6 +413,9 @@ paths:
         To update an existing document, provide the document ID (`_id`) and revision ID (`_rev`) as well as the new body values.
 
         To delete an existing document, provide the document ID (`_id`), revision ID (`_rev`), and set the deletion flag (`_deleted`) to true.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
       requestBody:
         content:
           application/json:
@@ -481,6 +515,10 @@ paths:
         A body for a document with no attachments will have content type `application/json` and contain the document itself.
 
         A body for a document that has attachments will be written as a nested `multipart/related` body.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
+        * [rbac:app-ro]
       parameters:
         - name: attachments
           in: query
@@ -546,6 +584,10 @@ paths:
         This request retrieves a sorted list of changes made to documents in the database, in time order of application. Each document appears at most once, ordered by its most recent change, regardless of how many times it has been changed.
 
         This request can be used to listen for update and modifications to the database for post processing or synchronization. A continuously connected changes feed is a reasonable approach for generating a real-time log for most applications.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
+        * [rbac:app-ro]
       parameters:
         - name: limit
           in: query
@@ -640,6 +682,10 @@ paths:
         This request retrieves a sorted list of changes made to documents in the database, in time order of application. Each document appears at most once, ordered by its most recent change, regardless of how many times it has been changed.
 
         This request can be used to listen for update and modifications to the database for post processing or synchronization. A continuously connected changes feed is a reasonable approach for generating a real-time log for most applications.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
+        * [rbac:app-ro]
       requestBody:
         content:
           application/json:
@@ -700,6 +746,10 @@ paths:
       tags:
         - Admin
         - Public
+      description: |-
+        [sgw-rbac-roles]
+        * [rbac:app]
+        * [rbac:app-ro]
   '/{db}/_design/{ddoc}':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -709,6 +759,10 @@ paths:
       description: |-
         **This is unsupported**
         Query a design document.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
+        * [rbac:app-ro]
       responses:
         '200':
           description: Successfully returned design document.
@@ -728,6 +782,9 @@ paths:
       description: |-
         **This is unsupported**
         Update the views of a design document.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
       requestBody:
         content:
           application/json:
@@ -748,6 +805,9 @@ paths:
       description: |-
         **This is unsupported**
         Delete a design document.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
       responses:
         '200':
           description: Design document deleted successfully
@@ -772,6 +832,10 @@ paths:
       description: |-
         **This is unsupported**
         Check if a design document can be queried.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
+        * [rbac:app-ro]
       summary: Check if view of design document exists | Unsupported
   '/{db}/_design/{ddoc}/_view/{view}':
     parameters:
@@ -783,6 +847,10 @@ paths:
       description: |-
         **This is unsupported**
         Query a view on a design document.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
+        * [rbac:app-ro]
       parameters:
         - name: inclusive_end
           in: query
@@ -897,10 +965,15 @@ paths:
       - $ref: '#/components/parameters/db'
     post:
       summary: ''
-      description: This endpoint is non-functional but is present for CouchDB compatibility.
+      description: |-
+        This endpoint is non-functional but is present for CouchDB compatibility.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
+        * [rbac:app-ro]
       responses:
         '201':
-          description: 'OK'
+          description: OK
           content:
             application/json:
               schema:
@@ -922,7 +995,11 @@ paths:
       - $ref: '#/components/parameters/db'
     post:
       summary: Compare revisions to what is in the database
-      description: 'Takes a set of document IDs, each with a set of revision IDs. For each document, an array of unknown revisions are returned with an array of known revisions that may be recent ancestors.'
+      description: |-
+        Takes a set of document IDs, each with a set of revision IDs. For each document, an array of unknown revisions are returned with an array of known revisions that may be recent ancestors.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
       requestBody:
         content:
           application/json:
@@ -976,6 +1053,10 @@ paths:
         This request retrieves a local document.
 
         Local document IDs begin with `_local/`. Local documents are not replicated or indexed, don't support attachments, and don't save revision histories. In practice they are almost only used by Couchbase Lite's replicator, as a place to store replication checkpoint data.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
+        * [rbac:app-ro]
       responses:
         '200':
           description: Successfully found local document
@@ -992,6 +1073,9 @@ paths:
         This request creates or updates a local document. Updating a local document requires that the revision ID be put in the body under `_rev`.
 
         Local document IDs are given a `_local/` prefix. Local documents are not replicated or indexed, don't support attachments, and don't save revision histories. In practice they are almost only used by the client's replicator, as a place to store replication checkpoint data.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
       requestBody:
         description: The body of the document
         content:
@@ -1023,6 +1107,9 @@ paths:
         This request deletes a local document.
 
         Local document IDs begin with `_local/`. Local documents are not replicated or indexed, don't support attachments, and don't save revision histories. In practice they are almost only used by Couchbase Lite's replicator, as a place to store replication checkpoint data.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
       parameters:
         - name: rev
           in: query
@@ -1042,6 +1129,7 @@ paths:
       tags:
         - Admin
         - Public
+      summary: Delete a local document
     head:
       responses:
         '200':
@@ -1058,13 +1146,22 @@ paths:
         This request checks if a local document exists. 
 
         Local document IDs begin with `_local/`. Local documents are not replicated or indexed, don't support attachments, and don't save revision histories. In practice they are almost only used by Couchbase Lite's replicator, as a place to store replication checkpoint data.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
+        * [rbac:app-ro]
   '/{db}/{docid}':
     parameters:
       - $ref: '#/components/parameters/db'
       - $ref: '#/components/parameters/docid'
     get:
       summary: Get a document
-      description: Retrieve a document from the database by its doc ID.
+      description: |-
+        Retrieve a document from the database by its doc ID.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
+        * [rbac:app-ro]
       parameters:
         - $ref: '#/components/parameters/rev'
         - $ref: '#/components/parameters/open_revs'
@@ -1122,6 +1219,9 @@ paths:
         If a document does exist, then replace the document content with the request body. This means unspecified fields will be removed in the new revision.
 
         The maximum size for a document is 20MB.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
       parameters:
         - $ref: '#/components/parameters/roundtrip'
         - $ref: '#/components/parameters/replicator2'
@@ -1162,6 +1262,9 @@ paths:
         Delete a document from the database. A new revision is created so the database can track the deletion in synchronized copies.
 
         A revision ID either in the header or on the query parameters is required.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
       parameters:
         - $ref: '#/components/parameters/rev'
         - $ref: '#/components/parameters/If-Match'
@@ -1196,7 +1299,12 @@ paths:
         - $ref: '#/components/parameters/revs_limit'
         - $ref: '#/components/parameters/includeAttachments'
         - $ref: '#/components/parameters/replicator2'
-      description: Return a status code based on if the document exists or not.
+      description: |-
+        Return a status code based on if the document exists or not.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
+        * [rbac:app-ro]
   '/{db}/{docid}/{attach}':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -1215,6 +1323,10 @@ paths:
         The raw data of the associated attachment is returned (just as if you were accessing a static file). The `Content-Type` response header is the same content type set when the document attachment was added to the database. The `Content-Disposition` response header will be set if the content type is considered unsafe to display in a browser (unless overridden by by database config option `serve_insecure_attachment_types`) which will force the attachment to be downloaded.
 
         If the `meta` query parameter is set then the response will be in JSON with the additional metadata tags.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
+        * [rbac:app-ro]
       parameters:
         - $ref: '#/components/parameters/rev'
         - name: content_encoding
@@ -1266,6 +1378,9 @@ paths:
         The maximum content size of an attachment is 20MB. The `Content-Type` header of the request specifies the content type of the attachment.
 
         To remove an attachment from a document, omit the attachment in the `_attachments` object of the document in the `PUT /{db}/{docid}` request.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
       parameters:
         - name: Content-Type
           in: header
@@ -1328,7 +1443,12 @@ paths:
         - Admin
         - Public
       summary: Check if attachment exists
-      description: This request check if the attachment exists on the specified document.
+      description: |-
+        This request check if the attachment exists on the specified document.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
+        * [rbac:app-ro]
       parameters:
         - $ref: '#/components/parameters/rev'
   '/{db}/_session':
@@ -1352,6 +1472,10 @@ paths:
         Generates a login session for a user and returns the session ID and cookie name for that session. If no TTL is provided, then the default of 24 hours will be used.
 
         A session cannot be generated for an non-existent user or the `GUEST` user.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
+        * [rbac:app]
 
         # Public API
         Generates a login session for the user based on the credentials provided in the request body or if that fails (due to invalid credentials or none provided at all), generates the new session for the currently authenticated user instead. On a successful session creation, a session cookie is stored to keep the user authenticated for future API calls.
@@ -1913,7 +2037,11 @@ paths:
       - $ref: '#/components/parameters/db'
     get:
       summary: Handle incoming BLIP Sync web socket request
-      description: This handles incoming BLIP Sync requests from either Couchbase Lite or another Sync Gateway node. The connection has to be upgradable to a websocket connection or else the request will fail.
+      description: |-
+        This handles incoming BLIP Sync requests from either Couchbase Lite or another Sync Gateway node. The connection has to be upgradable to a websocket connection or else the request will fail.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
       parameters:
         - name: client
           in: query
@@ -1965,7 +2093,13 @@ paths:
       - $ref: '#/components/parameters/sessionid'
     get:
       summary: Get session information
-      description: Retrieve session information such as the user the session belongs too and what channels that user can access.
+      description: |-
+        Retrieve session information such as the user the session belongs too and what channels that user can access.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
+        * [rbac:app]
+        * [rbac:app-ro]
       responses:
         '200':
           $ref: '#/components/responses/User-session-information'
@@ -1975,7 +2109,12 @@ paths:
         - Admin
     delete:
       summary: Remove session
-      description: Invalidates the session provided so that anyone using it is logged out and is prevented from future use.
+      description: |-
+        Invalidates the session provided so that anyone using it is logged out and is prevented from future use.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
+        * [rbac:app]
       responses:
         '200':
           description: Successfully removed the user session
@@ -1993,6 +2132,10 @@ paths:
         Returns the a documents latest revision with its metadata.
 
         Note: The direct use of this endpoint is unsupported. The sync metadata is maintained internally by Sync Gateway and its structure can change. It should not be used to drive business logic of applications since the response to the `/{db}/_raw/{id}` endpoint can change at any time.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
+        * [rbac:app-ro]
       parameters:
         - $ref: '#/components/parameters/include_doc'
         - name: redact
@@ -2095,6 +2238,10 @@ paths:
           $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      description: |-
+        [sgw-rbac-roles]
+        * [rbac:app]
+        * [rbac:app-ro]
   '/{db}/_revtree/{docid}':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -2109,6 +2256,9 @@ paths:
         2. Save the response text from this endpoint to a file (for example, `revtree.dot`).
         3. Render the PNG by calling `dot -Tpng revtree.dot > revtree.png`.
 
+        [sgw-rbac-roles]
+        * [rbac:app]
+        * [rbac:app-ro]
 
         **Note: This endpoint is useful for debugging purposes only. It is not officially supported.**
       responses:
@@ -2128,7 +2278,13 @@ paths:
       - $ref: '#/components/parameters/db'
     get:
       summary: Get all the names of the users
-      description: Retrieves all the names of the users that are in the database.
+      description: |-
+        Retrieves all the names of the users that are in the database.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
+        * [rbac:app]
+        * [rbac:app-ro]
       responses:
         '200':
           description: Users retrieved successfully
@@ -2148,7 +2304,12 @@ paths:
         - Admin
     post:
       summary: Create a new user
-      description: Create a new user using the request body to specify the properties on the user.
+      description: |-
+        Create a new user using the request body to specify the properties on the user.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
+        * [rbac:app]
       requestBody:
         $ref: '#/components/requestBodies/User'
       responses:
@@ -2168,13 +2329,24 @@ paths:
           $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      description: |-
+        [sgw-rbac-roles]
+        * [rbac:arch]
+        * [rbac:app]
+        * [rbac:app-ro]
   '/{db}/_user/{name}':
     parameters:
       - $ref: '#/components/parameters/db'
       - $ref: '#/components/parameters/user-name'
     get:
       summary: Get a user
-      description: Retrieve a single users information.
+      description: |-
+        Retrieve a single users information.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
+        * [rbac:app]
+        * [rbac:app-ro]
       responses:
         '200':
           $ref: '#/components/responses/User'
@@ -2184,7 +2356,12 @@ paths:
         - Admin
     put:
       summary: Upsert a user
-      description: 'If the user does not exist, create a new user otherwise update the existing user.'
+      description: |-
+        If the user does not exist, create a new user otherwise update the existing user.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
+        * [rbac:app]
       requestBody:
         $ref: '#/components/requestBodies/User'
       responses:
@@ -2198,7 +2375,12 @@ paths:
         - Admin
     delete:
       summary: Delete a user
-      description: Delete a user from the database.
+      description: |-
+        Delete a user from the database.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
+        * [rbac:app]
       responses:
         '200':
           description: User deleted successfully
@@ -2215,7 +2397,13 @@ paths:
       tags:
         - Admin
       summary: Check if user exists
-      description: Check if the user exists by checking the status code.
+      description: |-
+        Check if the user exists by checking the status code.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
+        * [rbac:app]
+        * [rbac:app-ro]
   '/{db}/_user/{name}/_session':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -2226,6 +2414,10 @@ paths:
         Invalidates all the sessions that a user has.
 
         Will still return a `200` status code if the user has no sessions.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
+        * [rbac:app]
       responses:
         '200':
           description: User now has no sessions
@@ -2240,7 +2432,12 @@ paths:
       - $ref: '#/components/parameters/sessionid'
     delete:
       summary: Remove session with user validation
-      description: Invalidates the session only if it belongs to the user.
+      description: |-
+        Invalidates the session only if it belongs to the user.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
+        * [rbac:app]
       responses:
         '200':
           description: Session has been successfully removed as the user was associated with the session
@@ -2253,7 +2450,13 @@ paths:
       - $ref: '#/components/parameters/db'
     get:
       summary: Get all names of the roles
-      description: Retrieves all the roles that are in the database.
+      description: |-
+        Retrieves all the roles that are in the database.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
+        * [rbac:app]
+        * [rbac:app-ro]
       responses:
         '200':
           description: Roles retrieved successfully
@@ -2275,7 +2478,12 @@ paths:
         - Admin
     post:
       summary: Create a new role
-      description: Create a new role using the request body to specify the properties on the role.
+      description: |-
+        Create a new role using the request body to specify the properties on the role.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
+        * [rbac:app]
       requestBody:
         $ref: '#/components/requestBodies/Role'
       responses:
@@ -2295,13 +2503,24 @@ paths:
           $ref: '#/components/responses/Not-found'
       tags:
         - Admin
+      description: |-
+        [sgw-rbac-roles]
+        * [rbac:arch]
+        * [rbac:app]
+        * [rbac:app-ro]
   '/{db}/_role/{name}':
     parameters:
       - $ref: '#/components/parameters/db'
       - $ref: '#/components/parameters/role-name'
     get:
       summary: Get a role
-      description: Retrieve a single roles properties.
+      description: |-
+        Retrieve a single roles properties.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
+        * [rbac:app]
+        * [rbac:app-ro]
       responses:
         '200':
           $ref: '#/components/responses/Role'
@@ -2311,7 +2530,12 @@ paths:
         - Admin
     put:
       summary: Upsert a role
-      description: 'If the role does not exist, create a new role otherwise update the existing role.'
+      description: |-
+        If the role does not exist, create a new role otherwise update the existing role.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
+        * [rbac:app]
       requestBody:
         $ref: '#/components/requestBodies/Role'
       responses:
@@ -2325,7 +2549,12 @@ paths:
         - Admin
     delete:
       summary: Delete a role
-      description: Delete a role from the database.
+      description: |-
+        Delete a role from the database.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
+        * [rbac:app]
       responses:
         '200':
           description: OK
@@ -2341,14 +2570,24 @@ paths:
           $ref: '#/components/responses/Not-found'
       tags:
         - Admin
-      description: Check if the role exists by checking the status code.
+      description: |-
+        Check if the role exists by checking the status code.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
+        * [rbac:app]
+        * [rbac:app-ro]
       summary: Check if role exists
   '/{db}/_replication/':
     parameters:
       - $ref: '#/components/parameters/db'
     get:
       summary: Get all replication configurations
-      description: This will retrieve all database replication definitions.
+      description: |-
+        This will retrieve all database replication definitions.
+
+        [sgw-rbac-roles]
+        * [rbac:rep]
       responses:
         '200':
           description: |-
@@ -2368,6 +2607,9 @@ paths:
         Create or update a replication in the database.
 
         If an existing replication is being updated, that replication must be stopped first.
+
+        [sgw-rbac-roles]
+        * [rbac:rep]
       requestBody:
         $ref: '#/components/requestBodies/Replication-upsert'
       responses:
@@ -2389,13 +2631,20 @@ paths:
           description: Not Found
       tags:
         - Admin
+      description: |-
+        [sgw-rbac-roles]
+        * [rbac:rep]
   '/{db}/_replication/{replicationid}':
     parameters:
       - $ref: '#/components/parameters/db'
       - $ref: '#/components/parameters/replicationid'
     get:
       summary: Get a replication configuration
-      description: Retrieve a replication configuration from the database.
+      description: |-
+        Retrieve a replication configuration from the database.
+
+        [sgw-rbac-roles]
+        * [rbac:rep]
       responses:
         '200':
           description: Successfully retrieved the replication configuration
@@ -2415,6 +2664,9 @@ paths:
         The replication ID does **not** need to be set in the request body.
 
         If an existing replication is being updated, that replication must be stopped first and, if the `replication_id` is specified in the request body, it must match the replication ID in the URI.
+
+        [sgw-rbac-roles]
+        * [rbac:rep]
       requestBody:
         $ref: '#/components/requestBodies/Replication-upsert'
       responses:
@@ -2430,7 +2682,11 @@ paths:
         - Admin
     delete:
       summary: Stop and delete a replication
-      description: This will delete a replication causing it to stop and no longer exist.
+      description: |-
+        This will delete a replication causing it to stop and no longer exist.
+
+        [sgw-rbac-roles]
+        * [rbac:rep]
       responses:
         '200':
           description: Replication successfully deleted
@@ -2449,13 +2705,21 @@ paths:
       tags:
         - Admin
       summary: Check if a replication exists
-      description: Check if a replication exists.
+      description: |-
+        Check if a replication exists.
+
+        [sgw-rbac-roles]
+        * [rbac:rep]
   '/{db}/_replicationStatus/':
     parameters:
       - $ref: '#/components/parameters/db'
     get:
       summary: Get all replication statuses
-      description: Retrieve all the replication statuses in the Sync Gateway node.
+      description: |-
+        Retrieve all the replication statuses in the Sync Gateway node.
+
+        [sgw-rbac-roles]
+        * [rbac:rep]
       parameters:
         - $ref: '#/components/parameters/replication-active-only'
         - $ref: '#/components/parameters/replication-local-only'
@@ -2482,13 +2746,20 @@ paths:
           description: Bad Request
       tags:
         - Admin
+      description: |-
+        [sgw-rbac-roles]
+        * [rbac:rep]
   '/{db}/_replicationStatus/{replicationid}':
     parameters:
       - $ref: '#/components/parameters/db'
       - $ref: '#/components/parameters/replicationid'
     get:
       summary: Get replication status
-      description: Retrieve the status of a replication.
+      description: |-
+        Retrieve the status of a replication.
+
+        [sgw-rbac-roles]
+        * [rbac:rep]
       parameters:
         - $ref: '#/components/parameters/replication-active-only'
         - $ref: '#/components/parameters/replication-local-only'
@@ -2520,6 +2791,9 @@ paths:
         * `start` - starts a stopped replication
         * `stop` - stops an active replication
         * `reset` - resets the replication checkpoint to 0. For bidirectional replication, both push and pull checkpoints are reset to 0. The replication must be stopped to use this.
+
+        [sgw-rbac-roles]
+        * [rbac:rep]
       parameters:
         - name: action
           in: query
@@ -2564,13 +2838,20 @@ paths:
         - $ref: '#/components/parameters/replication-local-only'
         - $ref: '#/components/parameters/replication-include-error'
         - $ref: '#/components/parameters/replication-include-config'
-      description: Check if a replication exists
+      description: |-
+        Check if a replication exists
+
+        [sgw-rbac-roles]
+        * [rbac:rep]
   /_logging:
     get:
       summary: Get console logging settings
       description: |-
         **Deprecated in favour of `GET /_config`**
         This will return a map of the log keys being used for the console logging.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       responses:
         '200':
           description: Returned map of console log keys
@@ -2586,6 +2867,9 @@ paths:
       description: |-
         **Deprecated in favour of `PUT /_config`**
         Enable or disable console log keys and optionally change the console log level.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       parameters:
         - $ref: '#/components/parameters/log-level'
         - $ref: '#/components/parameters/log-level-int'
@@ -2608,6 +2892,9 @@ paths:
       description: |-
         **Deprecated in favour of `PUT /_config`**
         This is for enabling the log keys provided and optionally changing the console log level.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       parameters:
         - $ref: '#/components/parameters/log-level'
         - $ref: '#/components/parameters/log-level-int'
@@ -2641,7 +2928,11 @@ paths:
             - goroutine
     post:
       summary: Create point-in-time profile
-      description: This endpoint allows you to create a pprof snapshot of the given type.
+      description: |-
+        This endpoint allows you to create a pprof snapshot of the given type.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       requestBody:
         $ref: '#/components/requestBodies/Profile'
       responses:
@@ -2662,6 +2953,9 @@ paths:
         To start profiling the CPU, call this endpoint and supply a file to output the pprof file to.
 
         To stop profiling, call this endpoint but don't supply the `file` in the body.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       requestBody:
         $ref: '#/components/requestBodies/Profile'
       responses:
@@ -2674,7 +2968,11 @@ paths:
   /_heap:
     post:
       summary: Dump heap profile
-      description: This endpoint will dump a pprof heap profile.
+      description: |-
+        This endpoint will dump a pprof heap profile.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       requestBody:
         $ref: '#/components/requestBodies/Profile'
       responses:
@@ -2687,7 +2985,12 @@ paths:
   /_stats:
     get:
       summary: Get memory statistics
-      description: This will return the current Sync Gateway nodes memory statistics such as current memory usage.
+      description: |-
+        This will return the current Sync Gateway nodes memory statistics such as current memory usage.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
+        * [rbac:external]
       responses:
         '200':
           description: Returned memory usage statistics
@@ -2704,7 +3007,11 @@ paths:
   /_config:
     get:
       summary: Get server configuration
-      description: This will return the configuration that the Sync Gateway node is running with.
+      description: |-
+        This will return the configuration that the Sync Gateway node is running with.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       parameters:
         - $ref: '#/components/parameters/deprecated-redact'
         - name: include_runtime
@@ -2732,6 +3039,9 @@ paths:
         These options are not persisted, and will not survive a restart of Sync Gateway.
 
         The endpoint only accepts a limited number of options that can be changed at runtime. See request body schema for allowable options.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       requestBody:
         content:
           application/json:
@@ -2747,7 +3057,11 @@ paths:
   /_status:
     get:
       summary: Get the server status
-      description: This will retrieve the status of each database and the overall server status.
+      description: |-
+        This will retrieve the status of each database and the overall server status.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       responses:
         '200':
           description: Returned the status successfully
@@ -2762,7 +3076,11 @@ paths:
   /_sgcollect_info:
     get:
       summary: Get the status of the Sync Gateway Collect Info
-      description: This will return the status of whether Sync Gateway Collect Info (sgcollect_info) is currently running or not.
+      description: |-
+        This will return the status of whether Sync Gateway Collect Info (sgcollect_info) is currently running or not.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       responses:
         '200':
           description: Returned sgcollect_info status
@@ -2783,7 +3101,11 @@ paths:
         - Admin
     post:
       summary: Start Sync Gateway Collect Info
-      description: This endpoint is used to start a Sync Gateway Collect Info (sgcollect_info) job so that Sync Gateway diagnostic data can be outputted to a file.
+      description: |-
+        This endpoint is used to start a Sync Gateway Collect Info (sgcollect_info) job so that Sync Gateway diagnostic data can be outputted to a file.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       requestBody:
         description: sgcollect_info options
         content:
@@ -2853,7 +3175,11 @@ paths:
         - Admin
     delete:
       summary: Cancel the Sync Gateway Collect Info job
-      description: 'This endpoint is used to cancel a current Sync Gateway Collect Info (sgcollect_info) job that is running. '
+      description: |-
+        This endpoint is used to cancel a current Sync Gateway Collect Info (sgcollect_info) job that is running. 
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       responses:
         '200':
           description: Job cancelled successfully
@@ -2873,7 +3199,11 @@ paths:
   /_debug/pprof/goroutine:
     get:
       summary: Get goroutine profile
-      description: Stack traces of all current goroutines.
+      description: |-
+        Stack traces of all current goroutines.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       parameters:
         - $ref: '#/components/parameters/pprof-seconds'
       responses:
@@ -2883,7 +3213,11 @@ paths:
         - Admin
     post:
       summary: Get goroutine profile
-      description: Stack traces of all current goroutines.
+      description: |-
+        Stack traces of all current goroutines.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       parameters:
         - $ref: '#/components/parameters/pprof-seconds'
       responses:
@@ -2894,7 +3228,11 @@ paths:
   /_debug/pprof/cmdline:
     get:
       summary: Get passed in command line parameters
-      description: 'Gets the command line parameters that was passed in to Sync Gateway which will include the binary, flags (if any) and startup configuration.'
+      description: |-
+        Gets the command line parameters that was passed in to Sync Gateway which will include the binary, flags (if any) and startup configuration.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       responses:
         '200':
           description: OK
@@ -2906,7 +3244,11 @@ paths:
         - Admin
     post:
       summary: Get passed in command line parameters
-      description: 'Gets the command line parameters that was passed in to Sync Gateway which will include the binary, flags (if any) and startup configuration.'
+      description: |-
+        Gets the command line parameters that was passed in to Sync Gateway which will include the binary, flags (if any) and startup configuration.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       responses:
         '200':
           description: OK
@@ -2928,6 +3270,9 @@ paths:
                 type: string
       tags:
         - Admin
+      description: |-
+        [sgw-rbac-roles]
+        * [rbac:dev]
     post:
       summary: Get symbol pprof debug information
       responses:
@@ -2939,6 +3284,9 @@ paths:
                 type: string
       tags:
         - Admin
+      description: |-
+        [sgw-rbac-roles]
+        * [rbac:dev]
   /_debug/pprof/heap:
     get:
       summary: Get the heap pprof debug file
@@ -2949,6 +3297,9 @@ paths:
           $ref: '#/components/responses/pprof-binary'
       tags:
         - Admin
+      description: |-
+        [sgw-rbac-roles]
+        * [rbac:dev]
     post:
       summary: Get the heap pprof debug file
       parameters:
@@ -2958,6 +3309,9 @@ paths:
           $ref: '#/components/responses/pprof-binary'
       tags:
         - Admin
+      description: |-
+        [sgw-rbac-roles]
+        * [rbac:dev]
   /_debug/pprof/profile:
     get:
       summary: Get the profile pprof debug file
@@ -2968,6 +3322,9 @@ paths:
           $ref: '#/components/responses/pprof-binary'
       tags:
         - Admin
+      description: |-
+        [sgw-rbac-roles]
+        * [rbac:dev]
     post:
       summary: Get the profile pprof debug file
       parameters:
@@ -2977,10 +3334,17 @@ paths:
           $ref: '#/components/responses/pprof-binary'
       tags:
         - Admin
+      description: |-
+        [sgw-rbac-roles]
+        * [rbac:dev]
   /_debug/pprof/block:
     get:
       summary: Get block profile
-      description: Returns stack traces that led to blocking on synchronization primitives
+      description: |-
+        Returns stack traces that led to blocking on synchronization primitives.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       parameters:
         - $ref: '#/components/parameters/debug-profile-seconds'
       responses:
@@ -2999,7 +3363,11 @@ paths:
         - Admin
     post:
       summary: Get block profile
-      description: Returns stack traces that led to blocking on synchronization primitives
+      description: |-
+        Returns stack traces that led to blocking on synchronization primitives.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       parameters:
         - $ref: '#/components/parameters/debug-profile-seconds'
       responses:
@@ -3024,6 +3392,9 @@ paths:
           $ref: '#/components/responses/pprof-binary'
       tags:
         - Admin
+      description: |-
+        [sgw-rbac-roles]
+        * [rbac:dev]
     post:
       summary: Get the threadcreate pprof debug file
       responses:
@@ -3031,10 +3402,17 @@ paths:
           $ref: '#/components/responses/pprof-binary'
       tags:
         - Admin
+      description: |-
+        [sgw-rbac-roles]
+        * [rbac:dev]
   /_debug/pprof/mutex:
     get:
       summary: Get mutex profile
-      description: Returns stack traces of holders of contended mutexes
+      description: |-
+        Returns stack traces of holders of contended mutexes.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       parameters:
         - $ref: '#/components/parameters/debug-profile-seconds'
       responses:
@@ -3053,7 +3431,11 @@ paths:
         - Admin
     post:
       summary: Get mutex profile
-      description: Returns stack traces of holders of contended mutexes
+      description: |-
+        Returns stack traces of holders of contended mutexes.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       parameters:
         - $ref: '#/components/parameters/debug-profile-seconds'
       responses:
@@ -3073,7 +3455,11 @@ paths:
   /_debug/pprof/trace:
     get:
       summary: Get trace profile
-      description: Responds with the execution trace in binary form
+      description: |-
+        Responds with the execution trace in binary form.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       parameters:
         - name: seconds
           in: query
@@ -3087,7 +3473,11 @@ paths:
         - Admin
     post:
       summary: Get trace profile
-      description: Responds with the execution trace in binary form
+      description: |-
+        Responds with the execution trace in binary form.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       parameters:
         - name: seconds
           in: query
@@ -3102,7 +3492,11 @@ paths:
   /_debug/fgprof:
     get:
       summary: Get fgprof profile
-      description: 'A sampling Go profiler that allows you to analyze On-CPU as well as [Off-CPU](http://www.brendangregg.com/offcpuanalysis.html) (e.g. I/O) time together.'
+      description: |-
+        A sampling Go profiler that allows you to analyze On-CPU as well as [Off-CPU](http://www.brendangregg.com/offcpuanalysis.html) (e.g. I/O) time together.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       parameters:
         - $ref: '#/components/parameters/debug-profile-seconds'
       responses:
@@ -3116,7 +3510,11 @@ paths:
         - Admin
     post:
       summary: Get fgprof profile
-      description: 'A sampling Go profiler that allows you to analyze On-CPU as well as [Off-CPU](http://www.brendangregg.com/offcpuanalysis.html) (e.g. I/O) time together.'
+      description: |-
+        A sampling Go profiler that allows you to analyze On-CPU as well as [Off-CPU](http://www.brendangregg.com/offcpuanalysis.html) (e.g. I/O) time together.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       parameters:
         - $ref: '#/components/parameters/debug-profile-seconds'
       responses:
@@ -3131,7 +3529,11 @@ paths:
   /_post_upgrade:
     post:
       summary: Run the post upgrade process on all databases
-      description: The post upgrade process involves removing obsolete design documents and indexes when they are no longer needed.
+      description: |-
+        The post upgrade process involves removing obsolete design documents and indexes when they are no longer needed.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       parameters:
         - name: preview
           in: query
@@ -3178,7 +3580,11 @@ paths:
   '/{db}/_config':
     get:
       summary: Get database configuration
-      description: Retrieve the full configuration for the database specified.
+      description: |-
+        Retrieve the full configuration for the database specified.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
       parameters:
         - $ref: '#/components/parameters/deprecated-redact'
         - name: include_javascript
@@ -3216,6 +3622,10 @@ paths:
         Replaces the database configuration with the one sent in the request.
 
         The bucket and database name cannot be changed. If these need to be changed, the database will need to be deleted then recreated with the new settings.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
+        * [rbac:app]
       parameters:
         - $ref: '#/components/parameters/DB-config-If-Match'
       requestBody:
@@ -3241,6 +3651,10 @@ paths:
         This is used to update the database configuration fields specified. Only the fields specified in the request will have their values replaced.
 
         The bucket and database name cannot be changed. If these need to be changed, the database will need to be deleted then recreated with the new settings.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
+        * [rbac:app]
       parameters:
         - $ref: '#/components/parameters/DB-config-If-Match'
       requestBody:
@@ -3271,6 +3685,9 @@ paths:
         This returns the database's sync function.
 
         Response will be blank if there has been no sync function set.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
       responses:
         '200':
           description: Successfully retrieved the sync function
@@ -3293,7 +3710,11 @@ paths:
         - Admin
     put:
       summary: Set database sync function
-      description: This will allow you to update the sync function.
+      description: |-
+        This will allow you to update the sync function.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
       parameters:
         - $ref: '#/components/parameters/DB-config-If-Match'
       requestBody:
@@ -3328,6 +3749,9 @@ paths:
           channel(doc.channels);
         }
         ```
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
       parameters:
         - $ref: '#/components/parameters/If-Match'
       responses:
@@ -3348,6 +3772,9 @@ paths:
         This returns the database's import filter that documents are ran through when importing.
 
         Response will be blank if there has been no import filter set.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
       responses:
         '200':
           description: Successfully retrieved the import filter
@@ -3366,7 +3793,11 @@ paths:
         - Admin
     put:
       summary: Set database import filter
-      description: This will allow you to update the database's import filter.
+      description: |-
+        This will allow you to update the database's import filter.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
       parameters:
         - $ref: '#/components/parameters/DB-config-If-Match'
       requestBody:
@@ -3388,7 +3819,11 @@ paths:
         - Admin
     delete:
       summary: Delete import filter
-      description: This will remove the custom import filter function from the database configuration so that Sync Gateway will not filter any documents during import.
+      description: |-
+        This will remove the custom import filter function from the database configuration so that Sync Gateway will not filter any documents during import.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
       parameters:
         - $ref: '#/components/parameters/DB-config-If-Match'
       responses:
@@ -3405,7 +3840,11 @@ paths:
       - $ref: '#/components/parameters/db'
     get:
       summary: Get resync status
-      description: This will retrieve the status of last resync operation (whether it is running or not).
+      description: |-
+        This will retrieve the status of last resync operation (whether it is running or not).
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
       responses:
         '200':
           description: successfully retrieved the most recent resync operation status
@@ -3432,6 +3871,9 @@ paths:
 
         - **action=start** - This is an asynchronous operation, and will start resync in the background.
         - **action=stop** - This will stop the currently running resync operation.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
       parameters:
         - name: action
           in: query
@@ -3471,6 +3913,9 @@ paths:
         The purge command provides a way to remove a document from the database. The operation removes *all* revisions (active and tombstones) for the specified document(s). A common usage of this endpoint is to remove tombstone documents that are no longer needed, thus recovering storage space and reducing data replicated to clients. Other clients are not notified when a revision has been purged; so in order to purge a revision from the system it must be done from all databases (on Couchbase Lite and Sync Gateway).
 
         When `enable_shared_bucket_access` is enabled, this endpoint removes the document and its associated extended attributes.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
       requestBody:
         description: Purge request body
         content:
@@ -3550,6 +3995,9 @@ paths:
         This will purge ***all*** documents.
 
         The bucket will only be flushed if the unsupported database configuration option `enable_couchbase_bucket_flush` is set.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       responses:
         '200':
           description: Successfully flushed the bucket
@@ -3579,6 +4027,9 @@ paths:
         A specific delay before bringing the database online may be wanted to:
         * Make the database available for Couchbase Lite clients at a specific time.
         * Make the databases on several Sync Gateway instances available at the same time.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
       requestBody:
         description: Add an optional delay to wait before bringing the database online
         content:
@@ -3608,7 +4059,7 @@ paths:
       - $ref: '#/components/parameters/db'
     post:
       summary: Take the database offline
-      description: |
+      description: |-
         This will take the database offline meaning actions can be taken without disrupting current operations ungracefully or having the restart the Sync Gateway instance.
 
         This will not take the backing Couchbase Server bucket offline. 
@@ -3620,6 +4071,9 @@ paths:
         * Reject all access to the database via the Public REST API (returning a 503 Service Unavailable code).
         * Reject most Admin API requests (by returning a 503 Service Unavailable code). The only endpoints to be available are: the resync endpoints, the configuration endpoints, `DELETE, GET, HEAD /{db}/`, `POST /{db}/_offline`, and `POST /{db}/_online`. 
         * Stops webhook event handlers.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
       responses:
         '200':
           description: Database has been taken offline successfully
@@ -3642,6 +4096,10 @@ paths:
       description: |-
         **This is unsupported**
         This queries the view and outputs it as HTML.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
+        * [rbac:app-ro]
       responses:
         '200':
           description: Retrieved view successfully
@@ -3668,6 +4126,10 @@ paths:
       description: |-
         **This is unsupported**
         Query a view on the default Sync Gateway design document.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
+        * [rbac:app-ro]
       parameters:
         - name: inclusive_end
           in: query
@@ -3791,6 +4253,10 @@ paths:
       description: |-
         **This is unsupported**
         This queries a channel and displays all the document IDs and revisions that are in that channel.
+
+        [sgw-rbac-roles]
+        * [rbac:app]
+        * [rbac:app-ro]
       parameters:
         - name: since
           in: query
@@ -3813,7 +4279,11 @@ paths:
       - $ref: '#/components/parameters/db'
     post:
       summary: ''
-      description: This endpoint is disabled.
+      description: |-
+        This endpoint is disabled.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
       responses:
         '500':
           description: This endpoint is disabled
@@ -3822,7 +4292,11 @@ paths:
   /_all_dbs:
     get:
       summary: Get a list of all the databases
-      description: This retrieves all the database's names that are in the current Sync Gateway node.
+      description: |-
+        This retrieves all the database's names that are in the current Sync Gateway node.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
       responses:
         '200':
           description: Successfully retrieved all database names
@@ -3853,6 +4327,9 @@ paths:
         * `attachment` - purge all unlinked/unused legacy (pre 3.0) attachments. If the previous attachment compact operation failed, this will attempt to restart the `compact_id` at the appropriate phase (if possible).
 
         Both types can each have a maximum of 1 compact operation running at any one point. This means that an attachment compaction can be running at the same time as a tombstone compaction but not 2 tombstone compactions.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
       parameters:
         - $ref: '#/components/parameters/compact-type'
         - name: action
@@ -3891,7 +4368,11 @@ paths:
         - Admin
     get:
       summary: Get the status of the most recent compact operation
-      description: This will retrieve the current status of the most recent compact operation.
+      description: |-
+        This will retrieve the current status of the most recent compact operation.
+
+        [sgw-rbac-roles]
+        * [rbac:arch]
       parameters:
         - $ref: '#/components/parameters/compact-type'
       responses:
@@ -3910,7 +4391,12 @@ paths:
   /_metrics:
     get:
       summary: Debugging/monitoring runtime stats in Prometheus Exposition format
-      description: Returns Sync Gateway statistics and other runtime variables in Prometheus Exposition format.
+      description: |-
+        Returns Sync Gateway statistics and other runtime variables in Prometheus Exposition format.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
+        * [rbac:external]
       responses:
         '200':
           description: Successfully returned stats
@@ -3927,6 +4413,10 @@ paths:
         This returns a snapshot of all metrics in Sync Gateway for debugging and monitoring purposes.
 
         This includes per database stats, replication stats, and server stats.
+
+        [sgw-rbac-roles]
+        * [rbac:dev]
+        * [rbac:external]
       responses:
         '200':
           description: Returned statistics
