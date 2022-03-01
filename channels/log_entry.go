@@ -8,6 +8,8 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
+// File renamed from `change_log.go` in CBG-1949 PR #5452 commit `e4454e4640fbbd593949ea9ef3b11e23279d0281`
+
 package channels
 
 import (
