@@ -2249,7 +2249,7 @@ paths:
     get:
       summary: Revision tree structure in Graphviz Dot format | Unsupported
       description: |-
-        This returns the Dot syntax of the revision tree for the document so that it can be rendered in to a PNG image using the [Graphviz CLI tool](http://www.graphviz.org/).
+        This returns the Dot syntax of the revision tree for the document so that it can be rendered in to a PNG image using the [Graphviz CLI tool](https://www.graphviz.org/).
 
         To use:
         1. Install the Graphviz tool. Using Brew, this can be done by calling `brew install graphviz`.
@@ -2813,10 +2813,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/Replication-status'
         '400':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTP-Error'
           $ref: '#/components/responses/request-problem'
         '404':
           $ref: '#/components/responses/Not-found'
@@ -3493,7 +3489,7 @@ paths:
     get:
       summary: Get fgprof profile
       description: |-
-        A sampling Go profiler that allows you to analyze On-CPU as well as [Off-CPU](http://www.brendangregg.com/offcpuanalysis.html) (e.g. I/O) time together.
+        A sampling Go profiler that allows you to analyze On-CPU as well as [Off-CPU](https://www.brendangregg.com/offcpuanalysis.html) (e.g. I/O) time together.
 
         Required Sync Gateway RBAC roles:
         * Sync Gateway Dev Ops
@@ -3511,7 +3507,7 @@ paths:
     post:
       summary: Get fgprof profile
       description: |-
-        A sampling Go profiler that allows you to analyze On-CPU as well as [Off-CPU](http://www.brendangregg.com/offcpuanalysis.html) (e.g. I/O) time together.
+        A sampling Go profiler that allows you to analyze On-CPU as well as [Off-CPU](https://www.brendangregg.com/offcpuanalysis.html) (e.g. I/O) time together.
 
         Required Sync Gateway RBAC roles:
         * Sync Gateway Dev Ops
