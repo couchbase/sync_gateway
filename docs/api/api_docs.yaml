@@ -324,7 +324,7 @@ paths:
         - $ref: '#/components/parameters/keys'
         - $ref: '#/components/parameters/startkey'
         - $ref: '#/components/parameters/endkey'
-        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/limit-result-rows'
       responses:
         '200':
           $ref: '#/components/responses/all-docs'
@@ -351,7 +351,7 @@ paths:
         - $ref: '#/components/parameters/include-seqs'
         - $ref: '#/components/parameters/startkey'
         - $ref: '#/components/parameters/endkey'
-        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/limit-result-rows'
       requestBody:
         content:
           application/json:
@@ -395,7 +395,7 @@ paths:
         - $ref: '#/components/parameters/keys'
         - $ref: '#/components/parameters/startkey'
         - $ref: '#/components/parameters/endkey'
-        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/limit-result-rows'
       description: |-
         Required Sync Gateway RBAC roles:
         * Sync Gateway Application
@@ -758,6 +758,7 @@ paths:
       summary: Get views of a design document | Unsupported
       description: |-
         **This is unsupported**
+
         Query a design document.
 
         Required Sync Gateway RBAC roles:
@@ -781,6 +782,7 @@ paths:
       summary: Update views of a design document | Unsupported
       description: |-
         **This is unsupported**
+
         Update the views of a design document.
 
         Required Sync Gateway RBAC roles:
@@ -804,6 +806,7 @@ paths:
       summary: Delete a design document | Unsupported
       description: |-
         **This is unsupported**
+
         Delete a design document.
 
         Required Sync Gateway RBAC roles:
@@ -831,6 +834,7 @@ paths:
         - Public
       description: |-
         **This is unsupported**
+
         Check if a design document can be queried.
 
         Required Sync Gateway RBAC roles:
@@ -846,77 +850,27 @@ paths:
       summary: Query a view on a design document | Unsupported
       description: |-
         **This is unsupported**
+
         Query a view on a design document.
 
         Required Sync Gateway RBAC roles:
         * Sync Gateway Application
         * Sync Gateway Application Read Only
       parameters:
-        - name: inclusive_end
-          in: query
-          description: Indicates whether the specified end key should be included in the result.
-          schema:
-            type: boolean
-        - name: descending
-          in: query
-          description: Return documents in descending order.
-          schema:
-            type: boolean
-        - name: include_docs
-          in: query
-          description: Only works when using Couchbase Server 3.0 and earlier. Indicates whether to include the full content of the documents in the response.
-          schema:
-            type: boolean
-        - name: reduce
-          in: query
-          description: Whether to execute a reduce function on the response or not.
-          schema:
-            type: boolean
-        - name: group
-          in: query
-          description: Group the results using the reduce function to a group or single row.
-          schema:
-            type: boolean
-        - name: skip
-          in: query
-          description: Skip the specified number of documents before starting to return results.
-          schema:
-            type: integer
-        - name: limit
-          in: query
-          description: Return only the specified number of documents
-          schema:
-            type: integer
-        - name: group_level
-          in: query
-          description: Specify the group level to be used.
-          schema:
-            type: integer
-        - name: startkey_docid
-          in: query
-          description: Return documents starting with the specified document identifier.
-          schema:
-            type: string
-        - name: endkey_docid
-          in: query
-          description: Stop returning records when the specified document identifier is reached.
-          schema:
-            type: string
-        - name: stale
-          in: query
-          description: 'Allow the results from a stale view to be used, without triggering a rebuild of all views within the encompassing design document.'
-          schema:
-            type: string
-            enum:
-              - ok
-              - update_after
+        - $ref: '#/components/parameters/inclusive-end'
+        - $ref: '#/components/parameters/descending'
+        - $ref: '#/components/parameters/include_docs-cbs3'
+        - $ref: '#/components/parameters/reduce'
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/skip'
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/group_level'
+        - $ref: '#/components/parameters/startkey_docid'
+        - $ref: '#/components/parameters/endkey_docid'
+        - $ref: '#/components/parameters/stale'
         - $ref: '#/components/parameters/startkey'
         - $ref: '#/components/parameters/endkey'
-        - name: key
-          in: query
-          description: Return only the document that matches the specified key.
-          schema:
-            type: string
+        - $ref: '#/components/parameters/key'
         - $ref: '#/components/parameters/keys'
       responses:
         '200':
@@ -3988,7 +3942,7 @@ paths:
       description: |-
         **This is unsupported**
 
-        This will purge ***all*** documents.
+        This will purge *all* documents.
 
         The bucket will only be flushed if the unsupported database configuration option `enable_couchbase_bucket_flush` is set.
 
@@ -4091,6 +4045,7 @@ paths:
       summary: Dump a view | Unsupported
       description: |-
         **This is unsupported**
+
         This queries the view and outputs it as HTML.
 
         Required Sync Gateway RBAC roles:
@@ -4121,77 +4076,27 @@ paths:
       summary: Query a view on the default design document | Unsupported
       description: |-
         **This is unsupported**
+
         Query a view on the default Sync Gateway design document.
 
         Required Sync Gateway RBAC roles:
         * Sync Gateway Application
         * Sync Gateway Application Read Only
       parameters:
-        - name: inclusive_end
-          in: query
-          description: Indicates whether the specified end key should be included in the result.
-          schema:
-            type: boolean
-        - name: descending
-          in: query
-          description: Return documents in descending order.
-          schema:
-            type: boolean
-        - name: include_docs
-          in: query
-          description: Only works when using Couchbase Server 3.0 and earlier. Indicates whether to include the full content of the documents in the response.
-          schema:
-            type: boolean
-        - name: reduce
-          in: query
-          description: Whether to execute a reduce function on the response or not.
-          schema:
-            type: boolean
-        - name: group
-          in: query
-          description: Group the results using the reduce function to a group or single row.
-          schema:
-            type: boolean
-        - name: skip
-          in: query
-          description: Skip the specified number of documents before starting to return results.
-          schema:
-            type: integer
-        - name: limit
-          in: query
-          description: Return only the specified number of documents
-          schema:
-            type: integer
-        - name: group_level
-          in: query
-          description: Specify the group level to be used.
-          schema:
-            type: integer
-        - name: startkey_docid
-          in: query
-          description: Return documents starting with the specified document identifier.
-          schema:
-            type: string
-        - name: endkey_docid
-          in: query
-          description: Stop returning records when the specified document identifier is reached.
-          schema:
-            type: string
-        - name: stale
-          in: query
-          description: 'Allow the results from a stale view to be used, without triggering a rebuild of all views within the encompassing design document.'
-          schema:
-            type: string
-            enum:
-              - ok
-              - update_after
+        - $ref: '#/components/parameters/inclusive_end'
+        - $ref: '#/components/parameters/descending'
+        - $ref: '#/components/parameters/include_docs-cbs3'
+        - $ref: '#/components/parameters/reduce'
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/skip'
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/group_level'
+        - $ref: '#/components/parameters/startkey_docid'
+        - $ref: '#/components/parameters/endkey_docid'
+        - $ref: '#/components/parameters/stale'
         - $ref: '#/components/parameters/startkey'
         - $ref: '#/components/parameters/endkey'
-        - name: key
-          in: query
-          description: Return only the document that matches the specified key.
-          schema:
-            type: string
+        - $ref: '#/components/parameters/key'
         - $ref: '#/components/parameters/keys'
       responses:
         '200':
@@ -4248,6 +4153,7 @@ paths:
       summary: Dump all the documents in a channel | Unsupported
       description: |-
         **This is unsupported**
+
         This queries a channel and displays all the document IDs and revisions that are in that channel.
 
         Required Sync Gateway RBAC roles:
@@ -4305,6 +4211,9 @@ paths:
       tags:
         - Admin
     head:
+      description: |-
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       responses:
         '200':
           description: OK
@@ -4339,12 +4248,18 @@ paths:
               - stop
         - name: reset
           in: query
-          description: '**Attachment compaction only**: This forces a fresh compact start instead of trying to resume the previous failed compact operation.'
+          description: |-
+            **Attachment compaction only**
+
+            This forces a fresh compact start instead of trying to resume the previous failed compact operation.
           schema:
             type: boolean
         - name: dry_run
           in: query
-          description: '**Attachment compaction only**: This will run through all 3 stages of attachment compact but will not purge any attachments. This can be used to check how many attachments will be purged.'
+          description: |-
+            **Attachment compaction only**
+
+            This will run through all 3 stages of attachment compact but will not purge any attachments. This can be used to check how many attachments will be purged.'
           schema:
             type: boolean
       responses:
@@ -4465,7 +4380,10 @@ components:
         enum:
           - attachment
           - tombstone
-      description: 'This is the type of compaction to use. The type must be either: `attachment` for cleaning up legacy (pre-3.0) attachments, or `tombstone` for purging the JSON bodies of non-leaf revisions.'
+      description: |-
+        This is the type of compaction to use. The type must be either:
+        * `attachment` for cleaning up legacy (pre-3.0) attachments
+        * `tombstone` for purging the JSON bodies of non-leaf revisions.'
     db:
       name: db
       in: path
@@ -4571,7 +4489,7 @@ components:
         items:
           type: string
       description: An array of document ID strings to filter by.
-    limit:
+    limit-result-rows:
       name: limit
       in: query
       required: false
@@ -4601,7 +4519,10 @@ components:
         maximum: 3
         minimum: 1
       deprecated: true
-      description: '**Deprecated: use log level instead.** This sets the console log level depending on the value provide. 1 sets to `info`, 2 sets to `warn`, and 3 sets to `error`.'
+      description: |-
+        **Deprecated: use log level instead.**
+
+        This sets the console log level depending on the value provide. 1 sets to `info`, 2 sets to `warn`, and 3 sets to `error`.'
     new_edits:
       name: new_edits
       in: query
@@ -4785,6 +4706,93 @@ components:
       schema:
         type: string
       description: The view to target.
+    inclusive_end:
+      name: inclusive_end
+      in: query
+      required: false
+      description: Indicates whether the specified end key should be included in the result.
+      schema:
+        type: boolean
+    descending:
+      name: descending
+      in: query
+      required: false
+      description: Return documents in descending order.
+      schema:
+        type: boolean
+    include_docs-cbs3:
+      name: include_docs
+      in: query
+      required: false
+      description: Only works when using Couchbase Server 3.0 and earlier. Indicates whether to include the full content of the documents in the response.
+      schema:
+        type: boolean
+    reduce:
+      name: reduce
+      in: query
+      required: false
+      description: Whether to execute a reduce function on the response or not.
+      schema:
+        type: boolean
+    group:
+      name: group
+      in: query
+      required: false
+      description: Group the results using the reduce function to a group or single row.
+      schema:
+        type: boolean
+    skip:
+      name: skip
+      in: query
+      required: false
+      description: Skip the specified number of documents before starting to return results.
+      schema:
+        type: integer
+    limit:
+      name: limit
+      in: query
+      required: false
+      description: Return only the specified number of documents
+      schema:
+        type: integer
+    group_level:
+      name: group_level
+      in: query
+      required: false
+      description: Specify the group level to be used.
+      schema:
+        type: integer
+    startkey_docid:
+      name: startkey_docid
+      in: query
+      required: false
+      description: Return documents starting with the specified document identifier.
+      schema:
+        type: string
+    endkey_docid:
+      name: endkey_docid
+      in: query
+      required: false
+      description: Stop returning records when the specified document identifier is reached.
+      schema:
+        type: string
+    stale:
+      name: stale
+      in: query
+      required: false
+      description: 'Allow the results from a stale view to be used, without triggering a rebuild of all views within the encompassing design document.'
+      schema:
+        type: string
+        enum:
+          - ok
+          - update_after
+    key:
+      name: key
+      in: query
+      required: false
+      description: Return only the document that matches the specified key.
+      schema:
+        type: string
   schemas:
     ExpVars:
       type: object
@@ -5804,6 +5812,7 @@ components:
         import_partitions:
           description: |-
             ** This is an enterprise-edition feature only**
+
             This is how many import partitions should be used for import sharding. 
 
             Partitions are distributed among all Sync Gateway nodes participating in import processing (`import_docs=true`), and each process a subset of the server's vbuckets.
@@ -5920,6 +5929,7 @@ components:
                 query_limit:
                   description: |-
                     **Deprecated in favour of the database setting `query_pagination_limit`**
+
                     The limit used for channel queries.
                   type: integer
                   default: 5000
@@ -5927,48 +5937,56 @@ components:
             max_wait_pending:
               description: |-
                 **Deprecated, please use the database setting `cache.channel_cache.max_wait_pending` instead**
+
                 The maximum time (in milliseconds) for waiting for a pending sequence before skipping it.
               type: number
               deprecated: true
             max_wait_skipped:
               description: |-
                 **Deprecated, please use the database setting `cache.channel_cache.max_wait_skipped` instead**
+
                 The maximum time (in milliseconds) for waiting for pending sequences before skipping.
               type: number
               deprecated: true
             enable_star_channel:
               description: |-
                 **Deprecated, please use the database setting `cache.channel_cache.enable_star_channel` instead**
+
                 Used to control whether Sync Gateway should use the all documents (*) channel.
               type: boolean
               deprecated: true
             channel_cache_max_length:
               description: |-
                 **Deprecated, please use the database setting `cache.channel_cache.max_length` instead**
+
                 The maximum number of entries maintained in cache per channel.
               type: number
               deprecated: true
             channel_cache_min_length:
               description: |-
                 **Deprecated, please use the database setting `cache.channel_cache.min_length` instead**
+
                 The minimum number of entries maintained in cache per channel.
               type: integer
               deprecated: true
             channel_cache_expiry:
               description: |-
                 **Deprecated, please use the database setting `cache.channel_cache.expiry_seconds` instead**
+
                 The time (seconds) to keep entries in cache beyond the minimum retained.
               type: integer
               deprecated: true
             max_num_pending:
               description: |-
                 **Deprecated, please use the database setting `cache.channel_cache.max_num_pending` instead**
+
                 The max number of pending sequences before skipping.
               type: integer
               deprecated: true
         rev_cache_size:
           description: |-
             **Deprecated, please use the database setting `cache.rev_cache.size` instead**
+
             The maximum number of revisions to store in the revision cache.
           type: number
           deprecated: true
@@ -5998,6 +6016,7 @@ components:
                 enable_couchbase_bucket_flush:
                   description: |-
                     **Setting for test purposes only**
+
                     Whether Couchbase buckets can be flushed via Admin REST API.
                   type: boolean
             warning_thresholds:
@@ -6300,26 +6319,31 @@ components:
         docs_purged:
           description: |-
             **Applicable to tombstone compaction only**
+
             This is the amount of documents that have been purged so far.
           type: string
         marked_attachments:
           description: |-
             **Applicable to attachment compaction only**
+
             This is the amount of attachments that have been marked to be purged.
           type: string
         purged_attachments:
           description: |-
             **Applicable to attachment compaction only**
+
             This is the amount of attachments that have been purged so far.
           type: string
         compact_id:
           description: |-
             **Applicable to attachment compaction only**
+
             This is the ID of the compaction.
           type: string
         phase:
           description: |-
             **Applicable to attachment compaction only**
+
             This indicates the current phase of running attachment compact processes.
 
             For failed processes, this indicates the phase at which a compact_id restart will commence (where relevant).
