@@ -109,8 +109,8 @@ paths:
       description: |-
         Retrieve information about the database.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       responses:
         '200':
           description: Successfully returned database information
@@ -176,8 +176,8 @@ paths:
 
         A document can have a maximum size of 20MB.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
       parameters:
         - $ref: '#/components/parameters/roundtrip'
       requestBody:
@@ -219,8 +219,8 @@ paths:
 
         **Note:** If running in legacy mode, this will only delete the database from the current node.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
       responses:
         '200':
           description: Successfully removed the database
@@ -244,8 +244,8 @@ paths:
       description: |-
         Check if a database exists by using the response status code.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       responses:
         '200':
           description: Database exists
@@ -265,8 +265,8 @@ paths:
 
         By default, the new database will be brought online immediately. This can be avoided by including `"offline": true` in the configuration in the request body.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
       requestBody:
         description: The configuration to use for the new database
         content:
@@ -312,9 +312,9 @@ paths:
       description: |-
         Returns all documents in the databased based on the specified parameters.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
       parameters:
         - $ref: '#/components/parameters/include_docs'
         - $ref: '#/components/parameters/Include-channels'
@@ -340,9 +340,9 @@ paths:
       description: |-
         Get a built-in view of all the documents in the database.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
       parameters:
         - $ref: '#/components/parameters/include_docs'
         - $ref: '#/components/parameters/Include-channels'
@@ -397,9 +397,9 @@ paths:
         - $ref: '#/components/parameters/endkey'
         - $ref: '#/components/parameters/limit'
       description: |-
-        [sgw-rbac-roles]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
   '/{db}/_bulk_docs':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -414,8 +414,8 @@ paths:
 
         To delete an existing document, provide the document ID (`_id`), revision ID (`_rev`), and set the deletion flag (`_deleted`) to true.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
       requestBody:
         content:
           application/json:
@@ -516,9 +516,9 @@ paths:
 
         A body for a document that has attachments will be written as a nested `multipart/related` body.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
       parameters:
         - name: attachments
           in: query
@@ -585,9 +585,9 @@ paths:
 
         This request can be used to listen for update and modifications to the database for post processing or synchronization. A continuously connected changes feed is a reasonable approach for generating a real-time log for most applications.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
       parameters:
         - name: limit
           in: query
@@ -683,9 +683,9 @@ paths:
 
         This request can be used to listen for update and modifications to the database for post processing or synchronization. A continuously connected changes feed is a reasonable approach for generating a real-time log for most applications.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
       requestBody:
         content:
           application/json:
@@ -747,9 +747,9 @@ paths:
         - Admin
         - Public
       description: |-
-        [sgw-rbac-roles]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
   '/{db}/_design/{ddoc}':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -760,9 +760,9 @@ paths:
         **This is unsupported**
         Query a design document.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
       responses:
         '200':
           description: Successfully returned design document.
@@ -783,8 +783,8 @@ paths:
         **This is unsupported**
         Update the views of a design document.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
       requestBody:
         content:
           application/json:
@@ -806,8 +806,8 @@ paths:
         **This is unsupported**
         Delete a design document.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
       responses:
         '200':
           description: Design document deleted successfully
@@ -833,9 +833,9 @@ paths:
         **This is unsupported**
         Check if a design document can be queried.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
       summary: Check if view of design document exists | Unsupported
   '/{db}/_design/{ddoc}/_view/{view}':
     parameters:
@@ -848,9 +848,9 @@ paths:
         **This is unsupported**
         Query a view on a design document.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
       parameters:
         - name: inclusive_end
           in: query
@@ -968,9 +968,9 @@ paths:
       description: |-
         This endpoint is non-functional but is present for CouchDB compatibility.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
       responses:
         '201':
           description: OK
@@ -998,8 +998,8 @@ paths:
       description: |-
         Takes a set of document IDs, each with a set of revision IDs. For each document, an array of unknown revisions are returned with an array of known revisions that may be recent ancestors.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
       requestBody:
         content:
           application/json:
@@ -1054,9 +1054,9 @@ paths:
 
         Local document IDs begin with `_local/`. Local documents are not replicated or indexed, don't support attachments, and don't save revision histories. In practice they are almost only used by Couchbase Lite's replicator, as a place to store replication checkpoint data.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
       responses:
         '200':
           description: Successfully found local document
@@ -1074,8 +1074,8 @@ paths:
 
         Local document IDs are given a `_local/` prefix. Local documents are not replicated or indexed, don't support attachments, and don't save revision histories. In practice they are almost only used by the client's replicator, as a place to store replication checkpoint data.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
       requestBody:
         description: The body of the document
         content:
@@ -1108,8 +1108,8 @@ paths:
 
         Local document IDs begin with `_local/`. Local documents are not replicated or indexed, don't support attachments, and don't save revision histories. In practice they are almost only used by Couchbase Lite's replicator, as a place to store replication checkpoint data.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
       parameters:
         - name: rev
           in: query
@@ -1147,9 +1147,9 @@ paths:
 
         Local document IDs begin with `_local/`. Local documents are not replicated or indexed, don't support attachments, and don't save revision histories. In practice they are almost only used by Couchbase Lite's replicator, as a place to store replication checkpoint data.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
   '/{db}/{docid}':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -1159,9 +1159,9 @@ paths:
       description: |-
         Retrieve a document from the database by its doc ID.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
       parameters:
         - $ref: '#/components/parameters/rev'
         - $ref: '#/components/parameters/open_revs'
@@ -1220,8 +1220,8 @@ paths:
 
         The maximum size for a document is 20MB.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
       parameters:
         - $ref: '#/components/parameters/roundtrip'
         - $ref: '#/components/parameters/replicator2'
@@ -1263,8 +1263,8 @@ paths:
 
         A revision ID either in the header or on the query parameters is required.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
       parameters:
         - $ref: '#/components/parameters/rev'
         - $ref: '#/components/parameters/If-Match'
@@ -1302,9 +1302,9 @@ paths:
       description: |-
         Return a status code based on if the document exists or not.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
   '/{db}/{docid}/{attach}':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -1324,9 +1324,9 @@ paths:
 
         If the `meta` query parameter is set then the response will be in JSON with the additional metadata tags.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
       parameters:
         - $ref: '#/components/parameters/rev'
         - name: content_encoding
@@ -1379,8 +1379,8 @@ paths:
 
         To remove an attachment from a document, omit the attachment in the `_attachments` object of the document in the `PUT /{db}/{docid}` request.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
       parameters:
         - name: Content-Type
           in: header
@@ -1446,9 +1446,9 @@ paths:
       description: |-
         This request check if the attachment exists on the specified document.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
       parameters:
         - $ref: '#/components/parameters/rev'
   '/{db}/_session':
@@ -1473,9 +1473,9 @@ paths:
 
         A session cannot be generated for an non-existent user or the `GUEST` user.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
-        * [rbac:app]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
+        * Sync Gateway Application
 
         # Public API
         Generates a login session for the user based on the credentials provided in the request body or if that fails (due to invalid credentials or none provided at all), generates the new session for the currently authenticated user instead. On a successful session creation, a session cookie is stored to keep the user authenticated for future API calls.
@@ -2040,8 +2040,8 @@ paths:
       description: |-
         This handles incoming BLIP Sync requests from either Couchbase Lite or another Sync Gateway node. The connection has to be upgradable to a websocket connection or else the request will fail.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
       parameters:
         - name: client
           in: query
@@ -2096,10 +2096,10 @@ paths:
       description: |-
         Retrieve session information such as the user the session belongs too and what channels that user can access.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
       responses:
         '200':
           $ref: '#/components/responses/User-session-information'
@@ -2112,9 +2112,9 @@ paths:
       description: |-
         Invalidates the session provided so that anyone using it is logged out and is prevented from future use.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
-        * [rbac:app]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
+        * Sync Gateway Application
       responses:
         '200':
           description: Successfully removed the user session
@@ -2133,9 +2133,9 @@ paths:
 
         Note: The direct use of this endpoint is unsupported. The sync metadata is maintained internally by Sync Gateway and its structure can change. It should not be used to drive business logic of applications since the response to the `/{db}/_raw/{id}` endpoint can change at any time.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
       parameters:
         - $ref: '#/components/parameters/include_doc'
         - name: redact
@@ -2239,9 +2239,9 @@ paths:
       tags:
         - Admin
       description: |-
-        [sgw-rbac-roles]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
   '/{db}/_revtree/{docid}':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -2256,9 +2256,9 @@ paths:
         2. Save the response text from this endpoint to a file (for example, `revtree.dot`).
         3. Render the PNG by calling `dot -Tpng revtree.dot > revtree.png`.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
 
         **Note: This endpoint is useful for debugging purposes only. It is not officially supported.**
       responses:
@@ -2281,10 +2281,10 @@ paths:
       description: |-
         Retrieves all the names of the users that are in the database.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
       responses:
         '200':
           description: Users retrieved successfully
@@ -2307,9 +2307,9 @@ paths:
       description: |-
         Create a new user using the request body to specify the properties on the user.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
-        * [rbac:app]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
+        * Sync Gateway Application
       requestBody:
         $ref: '#/components/requestBodies/User'
       responses:
@@ -2330,10 +2330,10 @@ paths:
       tags:
         - Admin
       description: |-
-        [sgw-rbac-roles]
-        * [rbac:arch]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
   '/{db}/_user/{name}':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -2343,10 +2343,10 @@ paths:
       description: |-
         Retrieve a single users information.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
       responses:
         '200':
           $ref: '#/components/responses/User'
@@ -2359,9 +2359,9 @@ paths:
       description: |-
         If the user does not exist, create a new user otherwise update the existing user.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
-        * [rbac:app]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
+        * Sync Gateway Application
       requestBody:
         $ref: '#/components/requestBodies/User'
       responses:
@@ -2378,9 +2378,9 @@ paths:
       description: |-
         Delete a user from the database.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
-        * [rbac:app]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
+        * Sync Gateway Application
       responses:
         '200':
           description: User deleted successfully
@@ -2400,10 +2400,10 @@ paths:
       description: |-
         Check if the user exists by checking the status code.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
   '/{db}/_user/{name}/_session':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -2415,9 +2415,9 @@ paths:
 
         Will still return a `200` status code if the user has no sessions.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
-        * [rbac:app]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
+        * Sync Gateway Application
       responses:
         '200':
           description: User now has no sessions
@@ -2435,9 +2435,9 @@ paths:
       description: |-
         Invalidates the session only if it belongs to the user.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
-        * [rbac:app]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
+        * Sync Gateway Application
       responses:
         '200':
           description: Session has been successfully removed as the user was associated with the session
@@ -2453,10 +2453,10 @@ paths:
       description: |-
         Retrieves all the roles that are in the database.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
       responses:
         '200':
           description: Roles retrieved successfully
@@ -2481,9 +2481,9 @@ paths:
       description: |-
         Create a new role using the request body to specify the properties on the role.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
-        * [rbac:app]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
+        * Sync Gateway Application
       requestBody:
         $ref: '#/components/requestBodies/Role'
       responses:
@@ -2504,10 +2504,10 @@ paths:
       tags:
         - Admin
       description: |-
-        [sgw-rbac-roles]
-        * [rbac:arch]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
   '/{db}/_role/{name}':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -2517,10 +2517,10 @@ paths:
       description: |-
         Retrieve a single roles properties.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
       responses:
         '200':
           $ref: '#/components/responses/Role'
@@ -2533,9 +2533,9 @@ paths:
       description: |-
         If the role does not exist, create a new role otherwise update the existing role.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
-        * [rbac:app]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
+        * Sync Gateway Application
       requestBody:
         $ref: '#/components/requestBodies/Role'
       responses:
@@ -2552,9 +2552,9 @@ paths:
       description: |-
         Delete a role from the database.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
-        * [rbac:app]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
+        * Sync Gateway Application
       responses:
         '200':
           description: OK
@@ -2573,10 +2573,10 @@ paths:
       description: |-
         Check if the role exists by checking the status code.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
       summary: Check if role exists
   '/{db}/_replication/':
     parameters:
@@ -2586,8 +2586,8 @@ paths:
       description: |-
         This will retrieve all database replication definitions.
 
-        [sgw-rbac-roles]
-        * [rbac:rep]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Replicator
       responses:
         '200':
           description: |-
@@ -2608,8 +2608,8 @@ paths:
 
         If an existing replication is being updated, that replication must be stopped first.
 
-        [sgw-rbac-roles]
-        * [rbac:rep]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Replicator
       requestBody:
         $ref: '#/components/requestBodies/Replication-upsert'
       responses:
@@ -2632,8 +2632,8 @@ paths:
       tags:
         - Admin
       description: |-
-        [sgw-rbac-roles]
-        * [rbac:rep]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Replicator
   '/{db}/_replication/{replicationid}':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -2643,8 +2643,8 @@ paths:
       description: |-
         Retrieve a replication configuration from the database.
 
-        [sgw-rbac-roles]
-        * [rbac:rep]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Replicator
       responses:
         '200':
           description: Successfully retrieved the replication configuration
@@ -2665,8 +2665,8 @@ paths:
 
         If an existing replication is being updated, that replication must be stopped first and, if the `replication_id` is specified in the request body, it must match the replication ID in the URI.
 
-        [sgw-rbac-roles]
-        * [rbac:rep]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Replicator
       requestBody:
         $ref: '#/components/requestBodies/Replication-upsert'
       responses:
@@ -2685,8 +2685,8 @@ paths:
       description: |-
         This will delete a replication causing it to stop and no longer exist.
 
-        [sgw-rbac-roles]
-        * [rbac:rep]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Replicator
       responses:
         '200':
           description: Replication successfully deleted
@@ -2708,8 +2708,8 @@ paths:
       description: |-
         Check if a replication exists.
 
-        [sgw-rbac-roles]
-        * [rbac:rep]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Replicator
   '/{db}/_replicationStatus/':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -2718,8 +2718,8 @@ paths:
       description: |-
         Retrieve all the replication statuses in the Sync Gateway node.
 
-        [sgw-rbac-roles]
-        * [rbac:rep]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Replicator
       parameters:
         - $ref: '#/components/parameters/replication-active-only'
         - $ref: '#/components/parameters/replication-local-only'
@@ -2747,8 +2747,8 @@ paths:
       tags:
         - Admin
       description: |-
-        [sgw-rbac-roles]
-        * [rbac:rep]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Replicator
   '/{db}/_replicationStatus/{replicationid}':
     parameters:
       - $ref: '#/components/parameters/db'
@@ -2758,8 +2758,8 @@ paths:
       description: |-
         Retrieve the status of a replication.
 
-        [sgw-rbac-roles]
-        * [rbac:rep]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Replicator
       parameters:
         - $ref: '#/components/parameters/replication-active-only'
         - $ref: '#/components/parameters/replication-local-only'
@@ -2792,8 +2792,8 @@ paths:
         * `stop` - stops an active replication
         * `reset` - resets the replication checkpoint to 0. For bidirectional replication, both push and pull checkpoints are reset to 0. The replication must be stopped to use this.
 
-        [sgw-rbac-roles]
-        * [rbac:rep]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Replicator
       parameters:
         - name: action
           in: query
@@ -2841,8 +2841,8 @@ paths:
       description: |-
         Check if a replication exists
 
-        [sgw-rbac-roles]
-        * [rbac:rep]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Replicator
   /_logging:
     get:
       summary: Get console logging settings
@@ -2850,8 +2850,8 @@ paths:
         **Deprecated in favour of `GET /_config`**
         This will return a map of the log keys being used for the console logging.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       responses:
         '200':
           description: Returned map of console log keys
@@ -2868,8 +2868,8 @@ paths:
         **Deprecated in favour of `PUT /_config`**
         Enable or disable console log keys and optionally change the console log level.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       parameters:
         - $ref: '#/components/parameters/log-level'
         - $ref: '#/components/parameters/log-level-int'
@@ -2893,8 +2893,8 @@ paths:
         **Deprecated in favour of `PUT /_config`**
         This is for enabling the log keys provided and optionally changing the console log level.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       parameters:
         - $ref: '#/components/parameters/log-level'
         - $ref: '#/components/parameters/log-level-int'
@@ -2931,8 +2931,8 @@ paths:
       description: |-
         This endpoint allows you to create a pprof snapshot of the given type.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       requestBody:
         $ref: '#/components/requestBodies/Profile'
       responses:
@@ -2954,8 +2954,8 @@ paths:
 
         To stop profiling, call this endpoint but don't supply the `file` in the body.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       requestBody:
         $ref: '#/components/requestBodies/Profile'
       responses:
@@ -2971,8 +2971,8 @@ paths:
       description: |-
         This endpoint will dump a pprof heap profile.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       requestBody:
         $ref: '#/components/requestBodies/Profile'
       responses:
@@ -2988,9 +2988,9 @@ paths:
       description: |-
         This will return the current Sync Gateway nodes memory statistics such as current memory usage.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
-        * [rbac:external]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
+        * External Stats Reader
       responses:
         '200':
           description: Returned memory usage statistics
@@ -3010,8 +3010,8 @@ paths:
       description: |-
         This will return the configuration that the Sync Gateway node is running with.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       parameters:
         - $ref: '#/components/parameters/deprecated-redact'
         - name: include_runtime
@@ -3040,8 +3040,8 @@ paths:
 
         The endpoint only accepts a limited number of options that can be changed at runtime. See request body schema for allowable options.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       requestBody:
         content:
           application/json:
@@ -3060,8 +3060,8 @@ paths:
       description: |-
         This will retrieve the status of each database and the overall server status.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       responses:
         '200':
           description: Returned the status successfully
@@ -3079,8 +3079,8 @@ paths:
       description: |-
         This will return the status of whether Sync Gateway Collect Info (sgcollect_info) is currently running or not.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       responses:
         '200':
           description: Returned sgcollect_info status
@@ -3104,8 +3104,8 @@ paths:
       description: |-
         This endpoint is used to start a Sync Gateway Collect Info (sgcollect_info) job so that Sync Gateway diagnostic data can be outputted to a file.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       requestBody:
         description: sgcollect_info options
         content:
@@ -3178,8 +3178,8 @@ paths:
       description: |-
         This endpoint is used to cancel a current Sync Gateway Collect Info (sgcollect_info) job that is running. 
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       responses:
         '200':
           description: Job cancelled successfully
@@ -3202,8 +3202,8 @@ paths:
       description: |-
         Stack traces of all current goroutines.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       parameters:
         - $ref: '#/components/parameters/pprof-seconds'
       responses:
@@ -3216,8 +3216,8 @@ paths:
       description: |-
         Stack traces of all current goroutines.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       parameters:
         - $ref: '#/components/parameters/pprof-seconds'
       responses:
@@ -3231,8 +3231,8 @@ paths:
       description: |-
         Gets the command line parameters that was passed in to Sync Gateway which will include the binary, flags (if any) and startup configuration.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       responses:
         '200':
           description: OK
@@ -3247,8 +3247,8 @@ paths:
       description: |-
         Gets the command line parameters that was passed in to Sync Gateway which will include the binary, flags (if any) and startup configuration.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       responses:
         '200':
           description: OK
@@ -3271,8 +3271,8 @@ paths:
       tags:
         - Admin
       description: |-
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
     post:
       summary: Get symbol pprof debug information
       responses:
@@ -3285,8 +3285,8 @@ paths:
       tags:
         - Admin
       description: |-
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
   /_debug/pprof/heap:
     get:
       summary: Get the heap pprof debug file
@@ -3298,8 +3298,8 @@ paths:
       tags:
         - Admin
       description: |-
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
     post:
       summary: Get the heap pprof debug file
       parameters:
@@ -3310,8 +3310,8 @@ paths:
       tags:
         - Admin
       description: |-
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
   /_debug/pprof/profile:
     get:
       summary: Get the profile pprof debug file
@@ -3323,8 +3323,8 @@ paths:
       tags:
         - Admin
       description: |-
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
     post:
       summary: Get the profile pprof debug file
       parameters:
@@ -3335,16 +3335,16 @@ paths:
       tags:
         - Admin
       description: |-
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
   /_debug/pprof/block:
     get:
       summary: Get block profile
       description: |-
         Returns stack traces that led to blocking on synchronization primitives.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       parameters:
         - $ref: '#/components/parameters/debug-profile-seconds'
       responses:
@@ -3366,8 +3366,8 @@ paths:
       description: |-
         Returns stack traces that led to blocking on synchronization primitives.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       parameters:
         - $ref: '#/components/parameters/debug-profile-seconds'
       responses:
@@ -3393,8 +3393,8 @@ paths:
       tags:
         - Admin
       description: |-
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
     post:
       summary: Get the threadcreate pprof debug file
       responses:
@@ -3403,16 +3403,16 @@ paths:
       tags:
         - Admin
       description: |-
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
   /_debug/pprof/mutex:
     get:
       summary: Get mutex profile
       description: |-
         Returns stack traces of holders of contended mutexes.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       parameters:
         - $ref: '#/components/parameters/debug-profile-seconds'
       responses:
@@ -3434,8 +3434,8 @@ paths:
       description: |-
         Returns stack traces of holders of contended mutexes.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       parameters:
         - $ref: '#/components/parameters/debug-profile-seconds'
       responses:
@@ -3458,8 +3458,8 @@ paths:
       description: |-
         Responds with the execution trace in binary form.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       parameters:
         - name: seconds
           in: query
@@ -3476,8 +3476,8 @@ paths:
       description: |-
         Responds with the execution trace in binary form.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       parameters:
         - name: seconds
           in: query
@@ -3495,8 +3495,8 @@ paths:
       description: |-
         A sampling Go profiler that allows you to analyze On-CPU as well as [Off-CPU](http://www.brendangregg.com/offcpuanalysis.html) (e.g. I/O) time together.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       parameters:
         - $ref: '#/components/parameters/debug-profile-seconds'
       responses:
@@ -3513,8 +3513,8 @@ paths:
       description: |-
         A sampling Go profiler that allows you to analyze On-CPU as well as [Off-CPU](http://www.brendangregg.com/offcpuanalysis.html) (e.g. I/O) time together.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       parameters:
         - $ref: '#/components/parameters/debug-profile-seconds'
       responses:
@@ -3532,8 +3532,8 @@ paths:
       description: |-
         The post upgrade process involves removing obsolete design documents and indexes when they are no longer needed.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       parameters:
         - name: preview
           in: query
@@ -3583,8 +3583,8 @@ paths:
       description: |-
         Retrieve the full configuration for the database specified.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
       parameters:
         - $ref: '#/components/parameters/deprecated-redact'
         - name: include_javascript
@@ -3623,9 +3623,9 @@ paths:
 
         The bucket and database name cannot be changed. If these need to be changed, the database will need to be deleted then recreated with the new settings.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
-        * [rbac:app]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
+        * Sync Gateway Application
       parameters:
         - $ref: '#/components/parameters/DB-config-If-Match'
       requestBody:
@@ -3652,9 +3652,9 @@ paths:
 
         The bucket and database name cannot be changed. If these need to be changed, the database will need to be deleted then recreated with the new settings.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
-        * [rbac:app]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
+        * Sync Gateway Application
       parameters:
         - $ref: '#/components/parameters/DB-config-If-Match'
       requestBody:
@@ -3686,8 +3686,8 @@ paths:
 
         Response will be blank if there has been no sync function set.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
       responses:
         '200':
           description: Successfully retrieved the sync function
@@ -3713,8 +3713,8 @@ paths:
       description: |-
         This will allow you to update the sync function.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
       parameters:
         - $ref: '#/components/parameters/DB-config-If-Match'
       requestBody:
@@ -3750,8 +3750,8 @@ paths:
         }
         ```
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
       parameters:
         - $ref: '#/components/parameters/If-Match'
       responses:
@@ -3773,8 +3773,8 @@ paths:
 
         Response will be blank if there has been no import filter set.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
       responses:
         '200':
           description: Successfully retrieved the import filter
@@ -3796,8 +3796,8 @@ paths:
       description: |-
         This will allow you to update the database's import filter.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
       parameters:
         - $ref: '#/components/parameters/DB-config-If-Match'
       requestBody:
@@ -3822,8 +3822,8 @@ paths:
       description: |-
         This will remove the custom import filter function from the database configuration so that Sync Gateway will not filter any documents during import.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
       parameters:
         - $ref: '#/components/parameters/DB-config-If-Match'
       responses:
@@ -3843,8 +3843,8 @@ paths:
       description: |-
         This will retrieve the status of last resync operation (whether it is running or not).
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
       responses:
         '200':
           description: successfully retrieved the most recent resync operation status
@@ -3872,8 +3872,8 @@ paths:
         - **action=start** - This is an asynchronous operation, and will start resync in the background.
         - **action=stop** - This will stop the currently running resync operation.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
       parameters:
         - name: action
           in: query
@@ -3914,8 +3914,8 @@ paths:
 
         When `enable_shared_bucket_access` is enabled, this endpoint removes the document and its associated extended attributes.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
       requestBody:
         description: Purge request body
         content:
@@ -3996,8 +3996,8 @@ paths:
 
         The bucket will only be flushed if the unsupported database configuration option `enable_couchbase_bucket_flush` is set.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       responses:
         '200':
           description: Successfully flushed the bucket
@@ -4028,8 +4028,8 @@ paths:
         * Make the database available for Couchbase Lite clients at a specific time.
         * Make the databases on several Sync Gateway instances available at the same time.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
       requestBody:
         description: Add an optional delay to wait before bringing the database online
         content:
@@ -4072,8 +4072,8 @@ paths:
         * Reject most Admin API requests (by returning a 503 Service Unavailable code). The only endpoints to be available are: the resync endpoints, the configuration endpoints, `DELETE, GET, HEAD /{db}/`, `POST /{db}/_offline`, and `POST /{db}/_online`. 
         * Stops webhook event handlers.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
       responses:
         '200':
           description: Database has been taken offline successfully
@@ -4097,9 +4097,9 @@ paths:
         **This is unsupported**
         This queries the view and outputs it as HTML.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
       responses:
         '200':
           description: Retrieved view successfully
@@ -4127,9 +4127,9 @@ paths:
         **This is unsupported**
         Query a view on the default Sync Gateway design document.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
       parameters:
         - name: inclusive_end
           in: query
@@ -4254,9 +4254,9 @@ paths:
         **This is unsupported**
         This queries a channel and displays all the document IDs and revisions that are in that channel.
 
-        [sgw-rbac-roles]
-        * [rbac:app]
-        * [rbac:app-ro]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Application
+        * Sync Gateway Application Read Only
       parameters:
         - name: since
           in: query
@@ -4282,8 +4282,8 @@ paths:
       description: |-
         This endpoint is disabled.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
       responses:
         '500':
           description: This endpoint is disabled
@@ -4295,8 +4295,8 @@ paths:
       description: |-
         This retrieves all the database's names that are in the current Sync Gateway node.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
       responses:
         '200':
           description: Successfully retrieved all database names
@@ -4328,8 +4328,8 @@ paths:
 
         Both types can each have a maximum of 1 compact operation running at any one point. This means that an attachment compaction can be running at the same time as a tombstone compaction but not 2 tombstone compactions.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
       parameters:
         - $ref: '#/components/parameters/compact-type'
         - name: action
@@ -4371,8 +4371,8 @@ paths:
       description: |-
         This will retrieve the current status of the most recent compact operation.
 
-        [sgw-rbac-roles]
-        * [rbac:arch]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
       parameters:
         - $ref: '#/components/parameters/compact-type'
       responses:
@@ -4394,9 +4394,9 @@ paths:
       description: |-
         Returns Sync Gateway statistics and other runtime variables in Prometheus Exposition format.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
-        * [rbac:external]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
+        * External Stats Reader
       responses:
         '200':
           description: Successfully returned stats
@@ -4414,9 +4414,9 @@ paths:
 
         This includes per database stats, replication stats, and server stats.
 
-        [sgw-rbac-roles]
-        * [rbac:dev]
-        * [rbac:external]
+        Required Sync Gateway RBAC roles:
+        * Sync Gateway Dev Ops
+        * External Stats Reader
       responses:
         '200':
           description: Returned statistics
