@@ -693,7 +693,7 @@ func TestViewQueryWithXattrAndNonXattr(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Document with sync data in xattr
-	response = rt.SendAdminRequest("PUT", "/db/_design/foodoc", `{"views": {"foobarview": {"map": "function(doc, meta) {if (doc.value == \"foo\") {emit(doc.key, null);}}"}}}`)
+	response = rt.SendAdminRequest("PUT", "/db/_design/foodoc", `{"views": {"foobarview": {"map": "function(doc, meta) {if (doc.value == \"foo\") {emit(meta.id, null);}}"}}}`)
 	assert.Equal(t, 201, response.Code)
 
 	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foodoc/_view/foobarview")

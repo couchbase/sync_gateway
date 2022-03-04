@@ -1336,7 +1336,7 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 
 	// Wait until the change appears on the changes feed to ensure that it's been imported by this point
 	changes, err := rt.WaitForChanges(2, "/db/_changes", "", true)
-	assert.NoError(t, err, "Error waiting for changes")
+	require.NoError(t, err, "Error waiting for changes")
 
 	log.Printf("changes: %+v", changes)
 	changeEntry := changes.Results[0]
@@ -1390,7 +1390,7 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 	// Wait until the change appears on the changes feed to ensure that it's been imported by this point
 	now := time.Now()
 	changes, err := rt.WaitForChanges(1, "/db/_changes", "", true)
-	assert.NoError(t, err, "Error waiting for changes")
+	require.NoError(t, err, "Error waiting for changes")
 	changeEntry := changes.Results[0]
 	goassert.Equals(t, changeEntry.ID, key)
 	log.Printf("Saw doc on changes feed after %v", time.Since(now))
@@ -1693,7 +1693,7 @@ func TestImportZeroValueDecimalPlaces(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport)()
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{

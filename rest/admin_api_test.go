@@ -1358,12 +1358,12 @@ func TestResync(t *testing.T) {
 			assertStatus(t, response, http.StatusOK)
 
 			var resyncManagerStatus db.ResyncManagerResponse
-			err := rt.WaitForCondition(func() bool {
+			err := rt.WaitForConditionWithOptions(func() bool {
 				response := rt.SendAdminRequest("GET", "/db/_resync", "")
 				err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
 				assert.NoError(t, err)
 				return resyncManagerStatus.State == db.BackgroundProcessStateCompleted
-			})
+			}, 200, 200)
 			assert.NoError(t, err)
 
 			assert.Equal(t, testCase.expectedSyncFnRuns, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
