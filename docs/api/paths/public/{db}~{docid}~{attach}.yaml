@@ -1,0 +1,135 @@
+# /{db}/{docid}/{attach}
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+- $ref: ../../components/parameters.yaml#/docid
+- name: attach
+  in: path
+  description: The attachment name. This value must be URL encoded. For example, if
+    the attachment name is `blob_/avatar`, the path component passed to the URL should
+    be `blob_%2Favatar` (tested with [URLEncoder](https://www.urlencoder.org/)).
+  required: true
+  schema:
+    type: string
+get:
+  summary: Get an attachment from a document
+  description: |-
+    This request retrieves a file attachment associated with the document.
+
+    The raw data of the associated attachment is returned (just as if you were accessing a static file). The `Content-Type` response header is the same content type set when the document attachment was added to the database. The `Content-Disposition` response header will be set if the content type is considered unsafe to display in a browser (unless overridden by by database config option `serve_insecure_attachment_types`) which will force the attachment to be downloaded.
+
+    If the `meta` query parameter is set then the response will be in JSON with the additional metadata tags.
+  parameters:
+  - $ref: ../../components/parameters.yaml#/rev
+  - name: content_encoding
+    in: query
+    description: Set to false to disable the `Content-Encoding` response header.
+    schema:
+      type: boolean
+      default: "true"
+  - name: Range
+    in: header
+    description: RFC-2616 bytes range header.
+    schema:
+      type: string
+    example: bytes=123-456
+  - name: meta
+    in: query
+    description: Return only the metadata of the attachment in the response body.
+    schema:
+      type: boolean
+      default: "false"
+  responses:
+    "200":
+      description: Found attachment successfully.
+      headers:
+        Content-Length:
+          schema:
+            type: number
+          description: Length of the attachment in bytes
+        Etag:
+          schema:
+            type: string
+          description: 'The attachment digest. Does not get set when request `meta=true`. '
+    "206":
+      description: Partial attachment content returned
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+    "416":
+      description: Requested range exceeds content length
+  tags:
+  - Document
+put:
+  summary: Create or update an attachment on a document
+  description: |-
+    This request adds or updates an attachment associated with the document. If the document does not exist, it will be created and the attachment will be added to it.
+
+    If the attachment already exists, the data of the existing attachment will be replaced in the new revision.
+
+    The maximum content size of an attachment is 20MB. The `Content-Type` header of the request specifies the content type of the attachment.
+
+    To remove an attachment from a document, omit the attachment in the `_attachments` object of the document in the `PUT /{db}/{docid}` request.
+  parameters:
+  - name: Content-Type
+    in: header
+    description: The content type of the attachment.
+    schema:
+      type: string
+      default: application/octet-stream
+  - name: rev
+    in: query
+    description: The existing document revision ID to modify. Required only when modifying
+      an existing document.
+    schema:
+      type: string
+  - name: If-Match
+    in: header
+    description: An alternative way of specifying the document revision ID.
+    schema:
+      type: string
+  requestBody:
+    description: The attachment data
+    content:
+      Attachment content type:
+        schema:
+          description: The content to store in the body
+          type: string
+  responses:
+    "201":
+      description: Attachment added to new or existing document successfully
+      headers:
+        Etag:
+          schema:
+            type: string
+          description: The ID of the new revision.
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/New-revision
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+    "409":
+      $ref: ../../components/responses.yaml#/Conflict
+  tags:
+  - Document
+head:
+  responses:
+    "200":
+      description: The document exists and the attachment exists on the document.
+      headers:
+        Content-Length:
+          schema:
+            description: Length of the attachment in bytes
+            type: number
+        Etag:
+          schema:
+            type: string
+          description: The attachment digest.
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Document
+  summary: Check if attachment exists
+  description: |-
+    This request check if the attachment exists on the specified document.
+  parameters:
+  - $ref: ../../components/parameters.yaml#/rev

@@ -1,0 +1,98 @@
+openapi: 3.0.3
+info:
+  title: Sync Gateway
+  description: Sync Gateway manages access and synchronization between Couchbase Lite and Couchbase Server
+  version: 3.1.0
+  license:
+    name: Business Source License 1.1 (BSL)
+    url: 'https://github.com/couchbase/sync_gateway/blob/master/LICENSE'
+servers:
+  - url: '{protocol}://{hostname}:4984'
+    description: Public API
+    variables:
+      protocol:
+        description: The protocol to use (HTTP or HTTPS)
+        default: http
+        enum:
+          - http
+          - https
+      hostname:
+        description: The hostname to use
+        default: localhost
+paths:
+  # Public only paths
+  /{db}/_session:
+    $ref: './paths/public/{db}~_session.yaml'
+  /{targetdb}/:
+    $ref: './paths/public/{targetdb}~.yaml'
+  /{db}/:
+    $ref: './paths/public/{db}~.yaml'
+  # Common paths
+  /:
+    $ref: './paths/public/~.yaml'
+  /{db}/_all_docs:
+    $ref: './paths/public/{db}~_all_docs.yaml'
+  /{db}/_bulk_docs:
+    $ref: './paths/public/{db}~_bulk_docs.yaml'
+  /{db}/_bulk_get:
+    $ref: './paths/public/{db}~_bulk_get.yaml'
+  /{db}/_changes:
+    $ref: './paths/public/{db}~_changes.yaml'
+  /{db}/_design/{ddoc}:
+    $ref: './paths/public/{db}~_design~{ddoc}.yaml'
+  /{db}/_design/{ddoc}/_view/{view}:
+    $ref: './paths/public/{db}~_design~{ddoc}~_view~{view}.yaml'
+  /{db}/_ensure_full_commit:
+    $ref: './paths/public/{db}~_ensure_full_commit.yaml'
+  /{db}/_revs_diff:
+    $ref: './paths/public/{db}~_revs_diff.yaml'
+  /{db}/_local/{docid}:
+    $ref: './paths/public/{db}~_local~{docid}.yaml'
+  /{db}/{docid}:
+    $ref: './paths/public/{db}~{docid}.yaml'
+  /{db}/{docid}/{attach}:
+    $ref: './paths/public/{db}~{docid}~{attach}.yaml'
+  /{db}/_facebook:
+    $ref: './paths/public/{db}~_facebook.yaml'
+  /{db}/_google:
+    $ref: './paths/public/{db}~_google.yaml'
+  /{db}/_oidc:
+    $ref: './paths/public/{db}~_oidc.yaml'
+  /{db}/_oidc_challenge:
+    $ref: './paths/public/{db}~_oidc_challenge.yaml'
+  /{db}/_oidc_callback:
+    $ref: './paths/public/{db}~_oidc_callback.yaml'
+  /{db}/_oidc_refresh:
+    $ref: './paths/public/{db}~_oidc_refresh.yaml'
+  /{db}/_oidc_testing/.well-known/openid-configuration:
+    $ref: './paths/public/{db}~_oidc_testing~.well-known~openid-configuration.yaml'
+  /{db}/_oidc_testing/authorize:
+    $ref: './paths/public/{db}~_oidc_testing~authorize.yaml'
+  /{db}/_oidc_testing/token:
+    $ref: './paths/public/{db}~_oidc_testing~token.yaml'
+  /{db}/_oidc_testing/certs:
+    $ref: './paths/public/{db}~_oidc_testing~certs.yaml'
+  /{db}/_oidc_testing/authenticate:
+    $ref: './paths/public/{db}~_oidc_testing~authenticate.yaml'
+  /{db}/_blipsync:
+    $ref: './paths/public/{db}~_blipsync.yaml'
+tags:
+  - name: Public only endpoints
+    description: Endpoints that are unique to the Public API (port 4984)
+  - name: Server
+    description: Manage server activities
+  - name: Database Management
+    description: Create and manage Sync Gateway databases
+  - name: Session
+    description: Manage user sessions
+  - name: OpenID Connect
+    description: Manage OpenID Connect
+  - name: Document
+    description: Create and manage documents and attachments
+  - name: Replication
+    description: Create and manage inter-Sync Gateway replications
+  - name: Unsupported
+    description: Endpoints that are not supported by Sync Gateway
+externalDocs:
+  description: Sync Gateway Quickstart | Couchbase Docs
+  url: 'https://docs.couchbase.com/sync-gateway/current/index.html'

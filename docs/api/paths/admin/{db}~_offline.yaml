@@ -1,0 +1,34 @@
+# /{db}/_offline
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+post:
+  summary: Take the database offline
+  description: |-
+    This will take the database offline meaning actions can be taken without disrupting current operations ungracefully or having the restart the Sync Gateway instance.
+
+    This will not take the backing Couchbase Server bucket offline.
+
+    Taking a database offline that is in the progress of coming online will take the database offline after it comes online.
+
+    Taking the database offline will:
+    * Close all active `_changes` feeds for the database.
+    * Reject all access to the database via the Public REST API (returning a 503 Service Unavailable code).
+    * Reject most Admin API requests (by returning a 503 Service Unavailable code). The only endpoints to be available are: the resync endpoints, the configuration endpoints, `DELETE, GET, HEAD /{db}/`, `POST /{db}/_offline`, and `POST /{db}/_online`.
+    * Stops webhook event handlers.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Architect
+  responses:
+    "200":
+      description: Database has been taken offline successfully
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+    "503":
+      description: An error occurred while trying to take the database offline
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+  tags:
+  - Admin only endpoints
+  - Database Management

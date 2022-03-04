@@ -1,0 +1,39 @@
+# /_debug/pprof/trace
+get:
+  summary: Get trace profile
+  description: |-
+    Responds with the execution trace in binary form.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Dev Ops
+  parameters:
+  - name: seconds
+    in: query
+    schema:
+      type: integer
+      default: 1
+  responses:
+    "200":
+      $ref: ../../components/responses.yaml#/pprof-binary
+  tags:
+  - Admin only endpoints
+  - Profiling
+post:
+  summary: Get trace profile
+  description: |-
+    Responds with the execution trace in binary form.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Dev Ops
+  parameters:
+  - name: seconds
+    in: query
+    schema:
+      type: integer
+      default: 1
+  responses:
+    "200":
+      $ref: ../../components/responses.yaml#/pprof-binary
+  tags:
+  - Admin only endpoints
+  - Profiling

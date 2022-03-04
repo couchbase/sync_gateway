@@ -1,0 +1,30 @@
+# /{db}/_oidc_challenge
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+get:
+  summary: OpenID Connect authentication initiation via WWW-Authenticate header
+  description: Called by clients to initiate the OpenID Connect Authorization Code
+    Flow. This will establish a connection with the provider, then put the redirect
+    URL in the `WWW-Authenticate` header.
+  parameters:
+  - $ref: ../../components/parameters.yaml#/provider
+  - $ref: ../../components/parameters.yaml#/offline
+  responses:
+    "400":
+      description: 'The provider provided is not defined in the Sync Gateway config.
+        If no provided was specified then there is no default provider set. '
+    "401":
+      description: Successfully connected with the OpenID Connect provider so now
+        the client can login.
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+          description: The OpenID Connect authentication URL.
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+    "500":
+      description: Unable to connect and validate with the OpenID Connect provider
+        requested
+  tags:
+  - OpenID Connect

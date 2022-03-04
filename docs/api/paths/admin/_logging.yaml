@@ -1,0 +1,72 @@
+# /_logging
+get:
+  summary: Get console logging settings
+  description: |-
+    **Deprecated in favour of `GET /_config`**
+    This will return a map of the log keys being used for the console logging.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Dev Ops
+  responses:
+    "200":
+      description: Returned map of console log keys
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/DeprecatedLogKeyMap
+  deprecated: true
+  tags:
+  - Admin only endpoints
+  - Server
+put:
+  summary: Set console logging settings
+  description: |-
+    **Deprecated in favour of `PUT /_config`**
+    Enable or disable console log keys and optionally change the console log level.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Dev Ops
+  parameters:
+  - $ref: ../../components/parameters.yaml#/log-level
+  - $ref: ../../components/parameters.yaml#/log-level-int
+  requestBody:
+    description: The map of log keys to use for console logging.
+    content:
+      application/json:
+        schema:
+          $ref: ../../components/schemas.yaml#/DeprecatedLogKeyMap
+  responses:
+    "200":
+      description: Log keys successfully replaced.
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+  deprecated: true
+  tags:
+  - Admin only endpoints
+  - Server
+post:
+  summary: Update console logging settings
+  description: |-
+    **Deprecated in favour of `PUT /_config`**
+    This is for enabling the log keys provided and optionally changing the console log level.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Dev Ops
+  parameters:
+  - $ref: ../../components/parameters.yaml#/log-level
+  - $ref: ../../components/parameters.yaml#/log-level-int
+  requestBody:
+    description: The console log keys to upsert.
+    content:
+      application/json:
+        schema:
+          $ref: ../../components/schemas.yaml#/DeprecatedLogKeyMap
+  responses:
+    "200":
+      description: Log keys successfully updated.
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+  deprecated: true
+  tags:
+  - Admin only endpoints
+  - Server

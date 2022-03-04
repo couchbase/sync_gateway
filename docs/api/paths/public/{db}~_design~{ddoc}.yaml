@@ -1,0 +1,74 @@
+# /{db}/_design/{ddoc}
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+- $ref: ../../components/parameters.yaml#/ddoc
+get:
+  summary: Get views of a design document | Unsupported
+  description: |-
+    **This is unsupported**
+
+    Query a design document.
+  responses:
+    "200":
+      description: Successfully returned design document.
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/Design-doc
+    "403":
+      $ref: ../../components/responses.yaml#/ddoc-forbidden
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Unsupported
+put:
+  summary: Update views of a design document | Unsupported
+  description: |-
+    **This is unsupported**
+
+    Update the views of a design document.
+  requestBody:
+    content:
+      application/json:
+        schema:
+          $ref: ../../components/schemas.yaml#/Design-doc
+  responses:
+    "200":
+      description: Design document changes successfully
+    "403":
+      $ref: ../../components/responses.yaml#/ddoc-forbidden
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Unsupported
+delete:
+  summary: Delete a design document | Unsupported
+  description: |-
+    **This is unsupported**
+
+    Delete a design document.
+  responses:
+    "200":
+      description: Design document deleted successfully
+    "403":
+      $ref: ../../components/responses.yaml#/ddoc-forbidden
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Unsupported
+head:
+  responses:
+    "200":
+      description: Design document exists
+    "403":
+      description: Forbidden access possibly due to not using the Admin API or the
+        design document is a built-in Sync Gateway one.
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Unsupported
+  description: |-
+    **This is unsupported**
+
+    Check if a design document can be queried.
+  summary: Check if view of design document exists | Unsupported

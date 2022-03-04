@@ -1,0 +1,39 @@
+User:
+  content:
+    application/json:
+      schema:
+        $ref: './schemas.yaml#/User'
+  description: Properties associated with a user
+Role:
+  content:
+    application/json:
+      schema:
+        $ref: './schemas.yaml#/Role'
+  description: Properties associated with a role
+OIDC-login-page-handler:
+  content:
+    application/json:
+      schema:
+        $ref: './schemas.yaml#/OIDC-login-page-handler'
+  description: Properties passed from the OpenID Connect mock login page to the handler
+Doc-body:
+  content:
+    application/json:
+      schema:
+        $ref: './schemas.yaml#/Document'
+  description: Properties of a document
+Replication-upsert:
+  content:
+    application/json:
+      schema:
+        $ref: './schemas.yaml#/Replication'
+  description: If the `replication_id` matches an existing replication then the existing configuration will be updated. Only the specified fields in the request will be used to update the existing configuration. Unspecified fields will remain untouched.
+Profile:
+  content:
+    application/json:
+      schema:
+        type: object
+        properties:
+          file:
+            description: This is the file to output the pprof profile at.
+            type: string

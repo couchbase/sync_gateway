@@ -1,0 +1,41 @@
+# /{db}/_replicationStatus
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+get:
+  summary: Get all replication statuses
+  description: |-
+    Retrieve all the replication statuses in the Sync Gateway node.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Replicator
+  parameters:
+  - $ref: ../../components/parameters.yaml#/replication-active-only
+  - $ref: ../../components/parameters.yaml#/replication-local-only
+  - $ref: ../../components/parameters.yaml#/replication-include-error
+  - $ref: ../../components/parameters.yaml#/replication-include-config
+  responses:
+    "200":
+      description: Successfully retrieved all replication statuses.
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: ../../components/schemas.yaml#/Replication-status
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+  tags:
+  - Admin only endpoints
+  - Replication
+head:
+  responses:
+    "200":
+      description: OK
+    "400":
+      description: Bad Request
+  tags:
+  - Admin only endpoints
+  - Replication
+  description: |-
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Replicator

@@ -1,0 +1,59 @@
+# /{db}/replication
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+get:
+  summary: Get all replication configurations
+  description: |-
+    This will retrieve all database replication definitions.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Replicator
+  responses:
+    "200":
+      description: |-
+        Retrieved replication configurations successfully.
+        The `assigned_node` fields will end with `(local)` or `(non-local)` depending on if the replication is running on this Sync Gateway node.
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/All-replications
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Admin only endpoints
+  - Replication
+post:
+  summary: Upsert a replication
+  description: |-
+    Create or update a replication in the database.
+
+    If an existing replication is being updated, that replication must be stopped first.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Replicator
+  requestBody:
+    $ref: ../../components/requestBodies.yaml#/Replication-upsert
+  responses:
+    "200":
+      $ref: ../../components/responses.yaml#/Replicator-updated
+    "201":
+      $ref: ../../components/responses.yaml#/Replicator-created
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Admin only endpoints
+  - Replication
+head:
+  responses:
+    "200":
+      description: OK
+    "404":
+      description: Not Found
+  tags:
+  - Admin only endpoints
+  - Replication
+  description: |-
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Replicator

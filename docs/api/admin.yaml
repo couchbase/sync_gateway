@@ -1,0 +1,199 @@
+openapi: 3.0.3
+info:
+  title: Sync Gateway
+  description: Sync Gateway manages access and synchronization between Couchbase Lite and Couchbase Server
+  version: 3.1.0
+  license:
+    name: Business Source License 1.1 (BSL)
+    url: 'https://github.com/couchbase/sync_gateway/blob/master/LICENSE'
+servers:
+  - url: '{protocol}://{hostname}:4985'
+    description: Admin API
+    variables:
+      protocol:
+        description: The protocol to use (HTTP or HTTPS)
+        default: http
+        enum:
+          - http
+          - https
+      hostname:
+        description: The hostname to use
+        default: localhost
+paths:
+  # Admin only paths
+  /{db}/_session:
+    $ref: './paths/admin/{db}~_session.yaml'
+  /{db}/_session/{sessionid}:
+    $ref: './paths/admin/{db}~_session~{sessionid}.yaml'
+  /{db}/_raw/{docid}:
+    $ref: './paths/admin/{db}~_raw~{docid}.yaml'
+  /{db}/_revtree/{docid}:
+    $ref: './paths/admin/{db}~_revtree~{docid}.yaml'
+  /{db}/_user/:
+    $ref: './paths/admin/{db}~_user~.yaml'
+  /{db}/_user/{name}:
+    $ref: './paths/admin/{db}~_user~{name}.yaml'
+  /{db}/_user/{name}/_session:
+    $ref: './paths/admin/{db}~_user~{name}~_session.yaml'
+  /{db}/_user/{name}/_session/{sessionid}:
+    $ref: './paths/admin/{db}~_user~{name}~_session~{sessionid}.yaml'
+  /{db}/_role/:
+    $ref: './paths/admin/{db}~_role~.yaml'
+  /{db}/_role/{name}:
+    $ref: './paths/admin/{db}~_role~{name}.yaml'
+  /{db}/_replication/:
+    $ref: './paths/admin/{db}~_replication~.yaml'
+  /{db}/_replication/{replicationid}:
+    $ref: './paths/admin/{db}~_replication~{replicationid}.yaml'
+  /{db}/_replicationStatus/:
+    $ref: './paths/admin/{db}~_replicationStatus~.yaml'
+  /{db}/_replicationStatus/{replicationid}:
+    $ref: './paths/admin/{db}~_replicationStatus~{replicationid}.yaml'
+  /_logging:
+    $ref: './paths/admin/_logging.yaml'
+  /_profile/{profilename}:
+    $ref: './paths/admin/_profile~{profilename}.yaml'
+  /_profile:
+    $ref: './paths/admin/_profile.yaml'
+  /_heap:
+    $ref: './paths/admin/_heap.yaml'
+  /_stats:
+    $ref: './paths/admin/_stats.yaml'
+  /_config:
+    $ref: './paths/admin/_config.yaml'
+  /_status:
+    $ref: './paths/admin/_status.yaml'
+  /_sgcollect_info:
+    $ref: './paths/admin/_sgcollect_info.yaml'
+  /_debug/pprof/goroutine:
+    $ref: './paths/admin/_debug~pprof~goroutine.yaml'
+  /_debug/pprof/cmdline:
+    $ref: './paths/admin/_debug~pprof~cmdline.yaml'
+  /_debug/pprof/symbol:
+    $ref: './paths/admin/_debug~pprof~symbol.yaml'
+  /_debug/pprof/heap:
+    $ref: './paths/admin/_debug~pprof~heap.yaml'
+  /_debug/pprof/profile:
+    $ref: './paths/admin/_debug~pprof~profile.yaml'
+  /_debug/pprof/block:
+    $ref: './paths/admin/_debug~pprof~block.yaml'
+  /_debug/pprof/threadcreate:
+    $ref: './paths/admin/_debug~pprof~threadcreate.yaml'
+  /_debug/pprof/mutex:
+    $ref: './paths/admin/_debug~pprof~mutex.yaml'
+  /_debug/pprof/trace:
+    $ref: './paths/admin/_debug~pprof~trace.yaml'
+  /_debug/fgprof:
+    $ref: './paths/admin/_debug~fgprof.yaml'
+  /_post_upgrade:
+    $ref: './paths/admin/_post_upgrade.yaml'
+  /{db}/_config:
+    $ref: './paths/admin/{db}~_config.yaml'
+  /{db}/_config/sync:
+    $ref: './paths/admin/{db}~_config~sync.yaml'
+  /{db}/_config/import_filter:
+    $ref: './paths/admin/{db}~_config~import_filter.yaml'
+  /{db}/_resync:
+    $ref: './paths/admin/{db}~_resync.yaml'
+  /{db}/_purge:
+    $ref: './paths/admin/{db}~_purge.yaml'
+  /{db}/_flush:
+    $ref: './paths/admin/{db}~_flush.yaml'
+  /{db}/_online:
+    $ref: './paths/admin/{db}~_online.yaml'
+  /{db}/_offline:
+    $ref: './paths/admin/{db}~_offline.yaml'
+  /{db}/_dump/{view}:
+    $ref: './paths/admin/{db}~_dump~{view}.yaml'
+  /{db}/_view/{view}:
+    $ref: './paths/admin/{db}~_view~{view}.yaml'
+  /{db}/_dumpchannel/{channel}:
+    $ref: './paths/admin/{db}~_dumpchannel~{channel}.yaml'
+  /{db}/_repair:
+    $ref: './paths/admin/{db}~_repair.yaml'
+  /_all_dbs:
+    $ref: './paths/admin/_all_dbs.yaml'
+  /{db}/_compact:
+    $ref: './paths/admin/{db}~_compact.yaml'
+  /{db}/:
+    $ref: './paths/admin/{db}~.yaml'
+  # Metric and admin paths
+  /_expvar:
+    $ref: './paths/admin/_expvar.yaml'
+  # Common paths
+  /:
+    $ref: './paths/admin/~.yaml'
+  /{db}/_all_docs:
+    $ref: './paths/admin/{db}~_all_docs.yaml'
+  /{db}/_bulk_docs:
+    $ref: './paths/admin/{db}~_bulk_docs.yaml'
+  /{db}/_bulk_get:
+    $ref: './paths/admin/{db}~_bulk_get.yaml'
+  /{db}/_changes:
+    $ref: './paths/admin/{db}~_changes.yaml'
+  /{db}/_design/{ddoc}:
+    $ref: './paths/admin/{db}~_design~{ddoc}.yaml'
+  /{db}/_design/{ddoc}/_view/{view}:
+    $ref: './paths/admin/{db}~_design~{ddoc}~_view~{view}.yaml'
+  /{db}/_ensure_full_commit:
+    $ref: './paths/admin/{db}~_ensure_full_commit.yaml'
+  /{db}/_revs_diff:
+    $ref: './paths/admin/{db}~_revs_diff.yaml'
+  /{db}/_local/{docid}:
+    $ref: './paths/admin/{db}~_local~{docid}.yaml'
+  /{db}/{docid}:
+    $ref: './paths/admin/{db}~{docid}.yaml'
+  /{db}/{docid}/{attach}:
+    $ref: './paths/admin/{db}~{docid}~{attach}.yaml'
+  /{db}/_facebook:
+    $ref: './paths/admin/{db}~_facebook.yaml'
+  /{db}/_google:
+    $ref: './paths/admin/{db}~_google.yaml'
+  /{db}/_oidc:
+    $ref: './paths/admin/{db}~_oidc.yaml'
+  /{db}/_oidc_challenge:
+    $ref: './paths/admin/{db}~_oidc_challenge.yaml'
+  /{db}/_oidc_callback:
+    $ref: './paths/admin/{db}~_oidc_callback.yaml'
+  /{db}/_oidc_refresh:
+    $ref: './paths/admin/{db}~_oidc_refresh.yaml'
+  /{db}/_oidc_testing/.well-known/openid-configuration:
+    $ref: './paths/admin/{db}~_oidc_testing~.well-known~openid-configuration.yaml'
+  /{db}/_oidc_testing/authorize:
+    $ref: './paths/admin/{db}~_oidc_testing~authorize.yaml'
+  /{db}/_oidc_testing/token:
+    $ref: './paths/admin/{db}~_oidc_testing~token.yaml'
+  /{db}/_oidc_testing/certs:
+    $ref: './paths/admin/{db}~_oidc_testing~certs.yaml'
+  /{db}/_oidc_testing/authenticate:
+    $ref: './paths/admin/{db}~_oidc_testing~authenticate.yaml'
+  /{db}/_blipsync:
+    $ref: './paths/admin/{db}~_blipsync.yaml'
+tags:
+  - name: Admin only endpoints
+    description: Endpoints that are unique to the Admin API (port 4985)
+  - name: Server
+    description: Manage server activities
+  - name: Database Management
+    description: Create and manage Sync Gateway databases
+  - name: Database Configuration
+    description: Configure Sync Gateway databases
+  - name: Database Security
+    description: Create and manage database users and roles
+  - name: Session
+    description: Manage user sessions
+  - name: OpenID Connect
+    description: Manage OpenID Connect
+  - name: Document
+    description: Create and manage documents and attachments
+  - name: Replication
+    description: Create and manage inter-Sync Gateway replications
+  - name: Metrics
+    description: Get Sync Gateway statistics
+  - name: Profiling
+    description: Generate information to help debug and fine-tune Sync Gateway
+  - name: Unsupported
+    description: Endpoints that are not supported by Sync Gateway
+externalDocs:
+  description: Sync Gateway Quickstart | Couchbase Docs
+  url: 'https://docs.couchbase.com/sync-gateway/current/index.html'

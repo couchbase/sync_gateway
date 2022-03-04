@@ -1,0 +1,30 @@
+# /_all_dbs
+get:
+  summary: Get a list of all the databases
+  description: |-
+    This retrieves all the database's names that are in the current Sync Gateway node.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Dev Ops
+  responses:
+    "200":
+      description: Successfully retrieved all database names
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              type: string
+  tags:
+  - Admin only endpoints
+  - Database Management
+head:
+  description: |-
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Dev Ops
+  responses:
+    "200":
+      description: OK
+  tags:
+  - Admin only endpoints
+  - Database Management

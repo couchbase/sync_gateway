@@ -1,0 +1,32 @@
+# /{db}/_dump/{view}
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+- $ref: ../../components/parameters.yaml#/view
+get:
+  summary: Dump a view | Unsupported
+  description: |-
+    **This is unsupported**
+
+    This queries the view and outputs it as HTML.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Application
+    * Sync Gateway Application Read Only
+  responses:
+    "200":
+      description: Retrieved view successfully
+      content:
+        text/html:
+          schema:
+            type: string
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+    "500":
+      description: Internal Server Error
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+  tags:
+  - Admin only endpoints
+  - Unsupported

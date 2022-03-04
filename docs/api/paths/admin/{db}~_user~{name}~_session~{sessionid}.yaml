@@ -1,0 +1,22 @@
+# /{db}/_user/{name}/_session/{sessionid}
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+- $ref: ../../components/parameters.yaml#/user-name
+- $ref: ../../components/parameters.yaml#/sessionid
+delete:
+  summary: Remove session with user validation
+  description: |-
+    Invalidates the session only if it belongs to the user.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Architect
+    * Sync Gateway Application
+  responses:
+    "200":
+      description: Session has been successfully removed as the user was associated
+        with the session
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Admin only endpoints
+  - Session

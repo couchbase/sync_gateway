@@ -1,0 +1,93 @@
+# /{db}/_replicationStatus/{replicationid}
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+- $ref: ../../components/parameters.yaml#/replicationid
+get:
+  summary: Get replication status
+  description: |-
+    Retrieve the status of a replication.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Replicator
+  parameters:
+  - $ref: ../../components/parameters.yaml#/replication-active-only
+  - $ref: ../../components/parameters.yaml#/replication-local-only
+  - $ref: ../../components/parameters.yaml#/replication-include-error
+  - $ref: ../../components/parameters.yaml#/replication-include-config
+  responses:
+    "200":
+      description: Successfully retrieved replication status
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/Replication-status
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+    "404":
+      description: Could not find replication
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+  tags:
+  - Admin only endpoints
+  - Replication
+put:
+  summary: Control a replication state
+  description: |-
+    Control the replication by changing its state.
+
+    This is done through the action query parameter, which has 3 valid values:
+    * `start` - starts a stopped replication
+    * `stop` - stops an active replication
+    * `reset` - resets the replication checkpoint to 0. For bidirectional replication, both push and pull checkpoints are reset to 0. The replication must be stopped to use this.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Replicator
+  parameters:
+  - name: action
+    in: query
+    description: The target state to put the replicator into.
+    required: true
+    schema:
+      type: string
+      enum:
+      - start
+      - stop
+      - reset
+  responses:
+    "200":
+      description: Successfully changed target state of replicator
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/Replication-status
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Admin only endpoints
+  - Replication
+head:
+  responses:
+    "200":
+      description: Replication exists
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Admin only endpoints
+  - Replication
+  summary: Check if replication exists
+  parameters:
+  - $ref: ../../components/parameters.yaml#/replication-active-only
+  - $ref: ../../components/parameters.yaml#/replication-local-only
+  - $ref: ../../components/parameters.yaml#/replication-include-error
+  - $ref: ../../components/parameters.yaml#/replication-include-config
+  description: |-
+    Check if a replication exists.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Replicator

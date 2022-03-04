@@ -1,0 +1,74 @@
+# /{db}/_role/{name}
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+- $ref: ../../components/parameters.yaml#/role-name
+get:
+  summary: Get a role
+  description: |-
+    Retrieve a single roles properties.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Architect
+    * Sync Gateway Application
+    * Sync Gateway Application Read Only
+  responses:
+    "200":
+      $ref: ../../components/responses.yaml#/Role
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Admin only endpoints
+  - Database Security
+put:
+  summary: Upsert a role
+  description: |-
+    If the role does not exist, create a new role otherwise update the existing role.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Architect
+    * Sync Gateway Application
+  requestBody:
+    $ref: ../../components/requestBodies.yaml#/Role
+  responses:
+    "200":
+      description: OK
+    "201":
+      description: Created
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Admin only endpoints
+  - Database Security
+delete:
+  summary: Delete a role
+  description: |-
+    Delete a role from the database.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Architect
+    * Sync Gateway Application
+  responses:
+    "200":
+      description: OK
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Admin only endpoints
+  - Database Security
+head:
+  responses:
+    "200":
+      description: Role exists
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Admin only endpoints
+  - Database Security
+  description: |-
+    Check if the role exists by checking the status code.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Architect
+    * Sync Gateway Application
+    * Sync Gateway Application Read Only
+  summary: Check if role exists

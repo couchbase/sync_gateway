@@ -1,0 +1,71 @@
+# /{db}/_view/{view}
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+- $ref: ../../components/parameters.yaml#/view
+get:
+  summary: Query a view on the default design document | Unsupported
+  description: |-
+    **This is unsupported**
+
+    Query a view on the default Sync Gateway design document.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Application
+    * Sync Gateway Application Read Only
+  parameters:
+  - $ref: ../../components/parameters.yaml#/inclusive_end
+  - $ref: ../../components/parameters.yaml#/descending
+  - $ref: ../../components/parameters.yaml#/include_docs-cbs3
+  - $ref: ../../components/parameters.yaml#/reduce
+  - $ref: ../../components/parameters.yaml#/group
+  - $ref: ../../components/parameters.yaml#/skip
+  - $ref: ../../components/parameters.yaml#/limit
+  - $ref: ../../components/parameters.yaml#/group_level
+  - $ref: ../../components/parameters.yaml#/startkey_docid
+  - $ref: ../../components/parameters.yaml#/endkey_docid
+  - $ref: ../../components/parameters.yaml#/stale
+  - $ref: ../../components/parameters.yaml#/startkey
+  - $ref: ../../components/parameters.yaml#/endkey
+  - $ref: ../../components/parameters.yaml#/key
+  - $ref: ../../components/parameters.yaml#/keys
+  responses:
+    "200":
+      description: Returned view successfully
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              total_rows:
+                type: integer
+              rows:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    key:
+                      type: object
+                    value:
+                      type: object
+                    doc:
+                      type: object
+              errors:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    From:
+                      type: string
+                    Reason:
+                      type: string
+            required:
+            - total_rows
+            - rows
+    "403":
+      description: Forbidden
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Unsupported

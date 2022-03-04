@@ -1,0 +1,24 @@
+# /_stats
+get:
+  summary: Get memory statistics
+  description: |-
+    This will return the current Sync Gateway nodes memory statistics such as current memory usage.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Architect
+    * Sync Gateway Dev Ops
+    * External Stats Reader
+  responses:
+    "200":
+      description: Returned memory usage statistics
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              memstats:
+                description: A set of Go runtime memory statistics.
+                additionalProperties: true
+  tags:
+  - Admin only endpoints
+  - Metrics

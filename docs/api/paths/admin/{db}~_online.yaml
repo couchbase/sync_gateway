@@ -1,0 +1,45 @@
+# /{db}/_online
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+post:
+  summary: Bring the database online
+  description: |-
+    This will bring the database online so the Public and full Admin REST API requests can be served.
+
+    Bringing a database online will:
+    * Close the database connection to the backing Couchbase Server bucket.
+    * Reload the database configuration, and connect to the backing Couchbase Server bucket.
+    * Re-establish access to the database from the Public REST API and accept all Admin API requests.
+
+    A specific delay before bringing the database online may be wanted to:
+    * Make the database available for Couchbase Lite clients at a specific time.
+    * Make the databases on several Sync Gateway instances available at the same time.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Architect
+  requestBody:
+    description: Add an optional delay to wait before bringing the database online
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            delay:
+              description: The amount of seconds to delay bringing the database online.
+              type: integer
+              default: 0
+  responses:
+    "200":
+      description: Database will be brought online immediately or with the specified
+        delay
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+    "503":
+      description: An error occurred
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+  tags:
+  - Admin only endpoints
+  - Database Management

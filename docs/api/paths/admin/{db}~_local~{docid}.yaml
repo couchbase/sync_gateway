@@ -1,0 +1,112 @@
+# /{db}/_local/{docid}
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+- name: docid
+  in: path
+  description: The name of the local document ID excluding the `_local/` prefix.
+  required: true
+  schema:
+    type: string
+get:
+  summary: Get local document
+  description: |-
+    This request retrieves a local document.
+
+    Local document IDs begin with `_local/`. Local documents are not replicated or indexed, don't support attachments, and don't save revision histories. In practice they are almost only used by Couchbase Lite's replicator, as a place to store replication checkpoint data.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Application
+    * Sync Gateway Application Read Only
+  responses:
+    "200":
+      description: Successfully found local document
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Document
+put:
+  summary: Upsert a local document
+  description: |-
+    This request creates or updates a local document. Updating a local document requires that the revision ID be put in the body under `_rev`.
+
+    Local document IDs are given a `_local/` prefix. Local documents are not replicated or indexed, don't support attachments, and don't save revision histories. In practice they are almost only used by the client's replicator, as a place to store replication checkpoint data.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Application
+  requestBody:
+    description: The body of the document
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            _rev:
+              description: Revision to replace. Required if updating existing local
+                document.
+              type: string
+  responses:
+    "201":
+      description: Document successfully written. The document ID will be prefixed
+        with `_local/`.
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/New-revision
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+    "409":
+      description: A revision ID conflict would result from updating this document
+        revision.
+  tags:
+  - Document
+delete:
+  description: |-
+    This request deletes a local document.
+
+    Local document IDs begin with `_local/`. Local documents are not replicated or indexed, don't support attachments, and don't save revision histories. In practice they are almost only used by Couchbase Lite's replicator, as a place to store replication checkpoint data.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Application
+  parameters:
+  - name: rev
+    in: query
+    description: The revision ID of the revision to delete.
+    required: true
+    schema:
+      type: string
+  responses:
+    "200":
+      description: Successfully removed the local document.
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+    "409":
+      description: A revision ID conflict would result from deleting this document
+        revision.
+  tags:
+  - Document
+  summary: Delete a local document
+head:
+  responses:
+    "200":
+      description: Document exists
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Document
+  summary: Check if local document exists
+  description: |-
+    This request checks if a local document exists.
+
+    Local document IDs begin with `_local/`. Local documents are not replicated or indexed, don't support attachments, and don't save revision histories. In practice they are almost only used by Couchbase Lite's replicator, as a place to store replication checkpoint data.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Application
+    * Sync Gateway Application Read Only

@@ -1,0 +1,57 @@
+# /{db}/_oidc_testing/authenticate
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+get:
+  summary: OpenID Connect mock login page handler
+  description: Used to handle the login page displayed for the `GET /{db}/_oidc_testing/authorize`
+    endpoint.
+  parameters:
+  - $ref: ../../components/parameters.yaml#/oidc-redirect_uri
+  - $ref: ../../components/parameters.yaml#/oidc-scope
+  - name: username
+    in: query
+    required: true
+    schema:
+      type: string
+  - name: tokenttl
+    in: query
+    required: true
+    schema:
+      type: integer
+  - name: identity-token-formats
+    in: query
+    required: true
+    schema:
+      type: string
+  - name: authenticated
+    in: query
+    required: true
+    schema:
+      type: string
+  responses:
+    "302":
+      $ref: ../../components/responses.yaml#/OIDC-testing-redirect
+    "403":
+      $ref: ../../components/responses.yaml#/OIDC-test-provider-disabled
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - OpenID Connect
+post:
+  summary: OpenID Connect mock login page handler
+  description: Used to handle the login page displayed for the `GET /{db}/_oidc_testing/authorize`
+    endpoint.
+  parameters:
+  - $ref: ../../components/parameters.yaml#/oidc-redirect_uri
+  - $ref: ../../components/parameters.yaml#/oidc-scope
+  requestBody:
+    $ref: ../../components/requestBodies.yaml#/OIDC-login-page-handler
+  responses:
+    "302":
+      $ref: ../../components/responses.yaml#/OIDC-testing-redirect
+    "403":
+      $ref: ../../components/responses.yaml#/OIDC-test-provider-disabled
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - OpenID Connect

@@ -1,0 +1,129 @@
+# /{db}/_raw/{docid}
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+- $ref: ../../components/parameters.yaml#/docid
+get:
+  summary: Get a document with the corresponding metadata
+  description: |-
+    Returns the a documents latest revision with its metadata.
+
+    Note: The direct use of this endpoint is unsupported. The sync metadata is maintained internally by Sync Gateway and its structure can change. It should not be used to drive business logic of applications since the response to the `/{db}/_raw/{id}` endpoint can change at any time.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Application
+    * Sync Gateway Application Read Only
+  parameters:
+  - $ref: ../../components/parameters.yaml#/include_doc
+  - name: redact
+    in: query
+    description: This redacts sensitive parts of the response. Cannot be used when
+      `include_docs=true`
+    schema:
+      type: boolean
+  responses:
+    "200":
+      description: Document found successfully
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              _sync:
+                type: object
+                properties:
+                  rev:
+                    description: The current document revision ID.
+                    type: string
+                  sequence:
+                    description: The most recent sequence number of the document.
+                    type: number
+                  recent_sequences:
+                    description: The previous sequence numbers of the document.
+                    type: array
+                    items:
+                      type: number
+                  history:
+                    type: object
+                    properties:
+                      revs:
+                        description: The past revision IDs.
+                        type: array
+                        items:
+                          type: string
+                      parents:
+                        type: array
+                        items:
+                          type: number
+                      channels:
+                        description: The past channel history. Can contain string
+                          arrays, strings, or be null depending on if and how the
+                          channels where set.
+                        type: array
+                        items:
+                          type: array
+                          items:
+                            type: string
+                          nullable: true
+                  cas:
+                    description: The document CAS (Concurrent Document Mutations)
+                      number used for document locking.
+                    type: string
+                  value_crc32c:
+                    description: The documents CRC32 number.
+                    type: string
+                  channel_set:
+                    description: The channels the document has been in.
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          description: The name of the channel.
+                          type: string
+                        start:
+                          description: The sequence number that document was added
+                            to the channel.
+                          type: string
+                        end:
+                          description: The sequence number the document was removed
+                            from the channel. Omitted if not removed.
+                          type: string
+                    nullable: true
+                  channel_set_history:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        start:
+                          type: string
+                        end:
+                          type: string
+                    nullable: true
+                  time_saved:
+                    description: The time and date the document was most recently
+                      changed.
+                    type: string
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Admin only endpoints
+  - Document
+head:
+  responses:
+    "200":
+      description: Document exists
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Admin only endpoints
+  - Document
+  description: |-
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Application
+    * Sync Gateway Application Read Only

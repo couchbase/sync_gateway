@@ -1,0 +1,27 @@
+# /{db}/_oidc
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+get:
+  summary: OpenID Connect authentication initiation via Location header redirect
+  description: 'Called by clients to initiate the OpenID Connect Authorization Code
+    Flow. Redirects to the OpenID Connect provider if successful. '
+  parameters:
+  - $ref: ../../components/parameters.yaml#/provider
+  - $ref: ../../components/parameters.yaml#/offline
+  responses:
+    "302":
+      description: Successfully connected with the OpenID Connect provider so now
+        redirecting to the requested OIDC provider for authentication.
+      headers:
+        Location:
+          schema:
+            type: string
+          description: The link to redirect to so the client can authenticate.
+    "400":
+      $ref: ../../components/responses.yaml#/OIDC-invalid-provider
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+    "500":
+      $ref: ../../components/responses.yaml#/OIDC-connection
+  tags:
+  - OpenID Connect

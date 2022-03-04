@@ -1,0 +1,49 @@
+# /_debug/pprof/mutex
+get:
+  summary: Get mutex profile
+  description: |-
+    Returns stack traces of holders of contended mutexes.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Dev Ops
+  parameters:
+  - $ref: ../../components/parameters.yaml#/debug-profile-seconds
+  responses:
+    "200":
+      $ref: ../../components/responses.yaml#/pprof-binary
+    "403":
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+          example:
+            error: forbidden
+            reason: Can only run one mutex profile at a time
+  tags:
+  - Admin only endpoints
+  - Profiling
+post:
+  summary: Get mutex profile
+  description: |-
+    Returns stack traces of holders of contended mutexes.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Dev Ops
+  parameters:
+  - $ref: ../../components/parameters.yaml#/debug-profile-seconds
+  responses:
+    "200":
+      $ref: ../../components/responses.yaml#/pprof-binary
+    "403":
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+          example:
+            error: forbidden
+            reason: Can only run one mutex profile at a time
+  tags:
+  - Admin only endpoints
+  - Profiling

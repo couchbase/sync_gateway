@@ -1,0 +1,127 @@
+# /_sgcollect_info
+get:
+  summary: Get the status of the Sync Gateway Collect Info
+  description: |-
+    This will return the status of whether Sync Gateway Collect Info (sgcollect_info) is currently running or not.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Dev Ops
+  responses:
+    "200":
+      description: Returned sgcollect_info status
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                description: The status of sgcollect_info.
+                type: string
+                enum:
+                - stopped
+                - running
+            required:
+            - status
+  tags:
+  - Admin only endpoints
+  - Server
+post:
+  summary: Start Sync Gateway Collect Info
+  description: |-
+    This endpoint is used to start a Sync Gateway Collect Info (sgcollect_info) job so that Sync Gateway diagnostic data can be outputted to a file.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Dev Ops
+  requestBody:
+    description: sgcollect_info options
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            redact_level:
+              description: The redaction level to use for redacting the collected
+                logs.
+              type: string
+              default: partial
+              enum:
+              - partial
+              - none
+            redact_salt:
+              description: The salt to use for the log redactions.
+              type: string
+            output_dir:
+              description: |-
+                The directory to output the collected logs zip file at.
+
+                This overrides the configured default output directory configured in the startup config `logging.log_file_path`.
+              type: string
+              default: The configured path set in the startup config `logging.log_file_path`
+            upload:
+              description: |-
+                If set, upload the logs to Couchbase Support.
+
+                A customer name must be set if this is set.
+              type: boolean
+            upload_host:
+              description: The host to send the logs too.
+              type: string
+              default: https://uploads.couchbase.com
+            upload_proxy:
+              description: The proxy to use while uploading the logs.
+              type: string
+            customer:
+              description: The customer name to use when uploading the logs.
+              type: string
+            ticket:
+              description: The Zendesk ticket number to use when uploading logs.
+              type: string
+              maxLength: 7
+              minLength: 1
+  responses:
+    "200":
+      description: Successfully started sgcollect_info
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                description: The new sgcollect_info status.
+                type: string
+                default: started
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+    "500":
+      description: An error occurred while trying to run sgcollect_info
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+  tags:
+  - Admin only endpoints
+  - Server
+delete:
+  summary: Cancel the Sync Gateway Collect Info job
+  description: |-
+    This endpoint is used to cancel a current Sync Gateway Collect Info (sgcollect_info) job that is running.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Dev Ops
+  responses:
+    "200":
+      description: Job cancelled successfully
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                description: The new status of sgcollect_info.
+                type: string
+                default: cancelled
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+  tags:
+  - Admin only endpoints
+  - Server

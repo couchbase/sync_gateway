@@ -1,0 +1,37 @@
+# /{db}/_blipsync
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+get:
+  summary: Handle incoming BLIP Sync web socket request
+  description: |-
+    This handles incoming BLIP Sync requests from either Couchbase Lite or another Sync Gateway node. The connection has to be upgradable to a websocket connection or else the request will fail.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Application
+  parameters:
+  - name: client
+    in: query
+    description: This is the client type that is making the BLIP Sync request. Used
+      to control client-type specific replication behaviour.
+    schema:
+      type: string
+      default: cbl2
+      enum:
+      - cbl2
+      - sgr2
+  responses:
+    "101":
+      description: Upgraded to a web socket connection
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+    "426":
+      description: Cannot upgrade connection to a web socket connection
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+          example:
+            error: Upgrade Required
+            reason: Can't upgrade this request to websocket connection
+  tags:
+  - Replication

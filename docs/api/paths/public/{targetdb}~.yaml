@@ -1,0 +1,19 @@
+parameters:
+- name: targetdb
+  in: path
+  description: The database name to target.
+  required: true
+  schema:
+    type: string
+put:
+  summary: Create DB public API stub
+  description: A stub that always returns an error on the Public API, for createTarget/CouchDB
+    compatibility.
+  responses:
+    "403":
+      description: Database does not exist and cannot be created over the public API
+    "412":
+      description: Database exists
+  tags:
+  - Public only endpoints
+  - Database Management

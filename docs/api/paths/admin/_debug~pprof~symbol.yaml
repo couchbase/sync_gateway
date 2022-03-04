@@ -1,0 +1,31 @@
+# /_debug/pprof/symbol
+get:
+  summary: Get symbol pprof debug information
+  responses:
+    "200":
+      description: OK
+      content:
+        text/plain:
+          schema:
+            type: string
+  tags:
+  - Admin only endpoints
+  - Profiling
+  description: |-
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Dev Ops
+post:
+  summary: Get symbol pprof debug information
+  responses:
+    "200":
+      description: OK
+      content:
+        text/plain:
+          schema:
+            type: string
+  tags:
+  - Admin only endpoints
+  - Profiling
+  description: |-
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Dev Ops

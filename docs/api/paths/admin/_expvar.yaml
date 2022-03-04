@@ -1,0 +1,20 @@
+get:
+  summary: Get all Sync Gateway statistics
+  description: |-
+    This returns a snapshot of all metrics in Sync Gateway for debugging and monitoring purposes.
+
+    This includes per database stats, replication stats, and server stats.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Architect
+    * Sync Gateway Dev Ops
+    * External Stats Reader
+  responses:
+    "200":
+      description: Returned statistics
+      content:
+        application/javascript:
+          schema:
+            $ref: ../../components/schemas.yaml#/ExpVars
+  tags:
+  - Metrics

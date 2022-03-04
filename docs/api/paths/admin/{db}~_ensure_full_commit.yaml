@@ -1,0 +1,30 @@
+# /{db}/_ensure_full_commit
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+post:
+  summary: ""
+  description: |-
+    This endpoint is non-functional but is present for CouchDB compatibility.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Application
+    * Sync Gateway Application Read Only
+  responses:
+    "201":
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              instance_start_time:
+                description: Timestamp of when the database opened, in microseconds
+                  since the Unix epoch.
+                type: integer
+                example: 1644600082279583
+              ok:
+                type: boolean
+                example: true
+                default: true
+  tags:
+  - Database Management

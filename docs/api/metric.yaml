@@ -1,0 +1,35 @@
+openapi: 3.0.3
+info:
+  title: Sync Gateway
+  description: Sync Gateway manages access and synchronization between Couchbase Lite and Couchbase Server
+  version: 3.1.0
+  license:
+    name: Business Source License 1.1 (BSL)
+    url: 'https://github.com/couchbase/sync_gateway/blob/master/LICENSE'
+servers:
+  - url: '{protocol}://{hostname}:4986'
+    description: Metrics API
+    variables:
+      protocol:
+        description: The protocol to use (HTTP or HTTPS)
+        default: http
+        enum:
+          - http
+          - https
+      hostname:
+        description: The hostname to use
+        default: localhost
+paths:
+  # Metric only
+  /_metrics:
+    $ref: './paths/metric/_metrics.yaml'
+  # Metric and admin
+  /_expvar:
+    $ref: './paths/metric/_expvar.yaml'
+tags:
+  - name: Prometheus
+    description: Endpoints for use with Prometheus
+  - name: Standard Output
+externalDocs:
+  description: Sync Gateway Quickstart | Couchbase Docs
+  url: 'https://docs.couchbase.com/sync-gateway/current/index.html'

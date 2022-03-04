@@ -1,0 +1,89 @@
+# {db}/_config/sync
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+get:
+  summary: Get database sync function
+  description: |-
+    This returns the database's sync function.
+
+    Response will be blank if there has been no sync function set.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Architect
+  responses:
+    "200":
+      description: Successfully retrieved the sync function
+      headers:
+        Etag:
+          schema:
+            type: string
+          description: The database configuration revision.
+      content:
+        application/javascript:
+          schema:
+            type: string
+          example: |-
+            function (doc, oldDoc) {
+              channel(doc.channels);
+            }
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Admin only endpoints
+  - Database Configuration
+put:
+  summary: Set database sync function
+  description: |-
+    This will allow you to update the sync function.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Architect
+  parameters:
+  - $ref: ../../components/parameters.yaml#/DB-config-If-Match
+  requestBody:
+    description: The new sync function to use
+    content:
+      application/javascript:
+        schema:
+          type: string
+        example: |-
+          function (doc, oldDoc) {
+            channel(doc.channels);
+          }
+  responses:
+    "200":
+      description: Updated sync function successfully
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+    "412":
+      $ref: ../../components/responses.yaml#/DB-config-precondition-failed
+  tags:
+  - Admin only endpoints
+delete:
+  summary: Remove custom sync function
+  description: |-
+    This will remove the custom sync function from the database configuration.
+
+    The default sync function is equivalent to:
+    ```javascript
+    function (doc) {
+      channel(doc.channels);
+    }
+    ```
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Architect
+  parameters:
+  - $ref: ../../components/parameters.yaml#/If-Match
+  responses:
+    "200":
+      description: Successfully reset the sync function
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+    "412":
+      $ref: ../../components/responses.yaml#/DB-config-precondition-failed
+  tags:
+  - Admin only endpoints
+  - Database Configuration

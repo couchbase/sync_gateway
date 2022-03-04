@@ -1,0 +1,83 @@
+# /{db}/_compact
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+post:
+  summary: Manage a compact operation
+  description: |-
+    This allows a new compact operation to be done on the database, or to stop an existing running compact operation.
+
+    The type of compaction that is done depends on what the `type` query parameter is set to. The 2 options will:
+    * `tombstone` - purge the JSON bodies of non-leaf revisions. This is known as database compaction. Database compaction is done periodically automatically by the system. JSON bodies of leaf nodes (conflicting branches) are not removed therefore it is important to resolve conflicts in order to re-claim disk space.
+    * `attachment` - purge all unlinked/unused legacy (pre 3.0) attachments. If the previous attachment compact operation failed, this will attempt to restart the `compact_id` at the appropriate phase (if possible).
+
+    Both types can each have a maximum of 1 compact operation running at any one point. This means that an attachment compaction can be running at the same time as a tombstone compaction but not 2 tombstone compactions.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Architect
+  parameters:
+  - $ref: ../../components/parameters.yaml#/compact-type
+  - name: action
+    in: query
+    description: Defines whether the a compact operation is being started or stopped.
+    schema:
+      type: string
+      default: start
+      enum:
+      - start
+      - stop
+  - name: reset
+    in: query
+    description: |-
+      **Attachment compaction only**
+
+      This forces a fresh compact start instead of trying to resume the previous failed compact operation.
+    schema:
+      type: boolean
+  - name: dry_run
+    in: query
+    description: |-
+      **Attachment compaction only**
+
+      This will run through all 3 stages of attachment compact but will not purge any attachments. This can be used to check how many attachments will be purged.'
+    schema:
+      type: boolean
+  responses:
+    "200":
+      description: Started or stopped compact operation successfully
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+    "503":
+      description: Cannot start compaction due to another compaction operation still
+        running.
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+  tags:
+  - Admin only endpoints
+  - Database Management
+get:
+  summary: Get the status of the most recent compact operation
+  description: |-
+    This will retrieve the current status of the most recent compact operation.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Architect
+  parameters:
+  - $ref: ../../components/parameters.yaml#/compact-type
+  responses:
+    "200":
+      description: Compaction status retrieved successfully
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/Compact-status
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Admin only endpoints
+  - Database Management

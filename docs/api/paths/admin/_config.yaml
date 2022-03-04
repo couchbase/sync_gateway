@@ -1,0 +1,53 @@
+# /_config
+get:
+  summary: Get server configuration
+  description: |-
+    This will return the configuration that the Sync Gateway node is running with.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Dev Ops
+  parameters:
+  - $ref: ../../components/parameters.yaml#/deprecated-redact
+  - name: include_runtime
+    in: query
+    description: Whether to include the values set at runtime, default values, and
+      all loaded databases.
+    schema:
+      type: boolean
+      default: false
+  responses:
+    "200":
+      description: Successfully returned server configuration
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/Startup-config
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+  tags:
+  - Admin only endpoints
+  - Server
+put:
+  summary: Set runtime configuration
+  description: |-
+    This endpoint is used to dynamically set runtime options, like logging without needing a restart.
+
+    These options are not persisted, and will not survive a restart of Sync Gateway.
+
+    The endpoint only accepts a limited number of options that can be changed at runtime. See request body schema for allowable options.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Dev Ops
+  requestBody:
+    content:
+      application/json:
+        schema:
+          $ref: ../../components/schemas.yaml#/Startup-config
+  responses:
+    "200":
+      description: Successfully set runtime options
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+  tags:
+  - Admin only endpoints
+  - Server
