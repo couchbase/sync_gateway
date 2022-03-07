@@ -82,22 +82,42 @@ const (
 	activeOnlyFilterExpression = "AND ($sync.flags IS MISSING OR BITTEST($sync.flags,1) = false) "
 )
 
+// var QueryChannels = SGQuery{
+// 	name: QueryTypeChannels,
+// 	statement: fmt.Sprintf(
+// 		"SELECT [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)][1] AS seq, "+
+// 			"[op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)][2] AS rRev, "+
+// 			"[op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)][3] AS rDel, "+
+// 			"$sync.rev AS rev, "+
+// 			"$sync.flags AS flags, "+
+// 			"META(`%s`).id AS id "+
+// 			"FROM `%s` "+
+// 			"USE INDEX ($idx) "+
+// 			"UNNEST OBJECT_PAIRS($sync.channels) AS op "+
+// 			"WHERE ([op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)]  "+
+// 			"BETWEEN  [$channelName, $startSeq] AND [$channelName, $endSeq]) "+
+// 			"%s"+
+// 			"ORDER BY [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)]",
+// 		base.KeyspaceQueryToken, base.KeyspaceQueryToken, activeOnlyFilter),
+// 	adhoc: false,
+// }
+
 var QueryChannels = SGQuery{
 	name: QueryTypeChannels,
 	statement: fmt.Sprintf(
-		"SELECT [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)][1] AS seq, "+
-			"[op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)][2] AS rRev, "+
-			"[op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)][3] AS rDel, "+
+		"SELECT LEAST($sync.sequence, op.val.seq) AS seq, "+
+			"IFMISSING(op.val.rev,null) AS rRev, "+
+			"IFMISSING(op.val.del,null) AS rDel, "+
 			"$sync.rev AS rev, "+
 			"$sync.flags AS flags, "+
 			"META(`%s`).id AS id "+
 			"FROM `%s` "+
 			"USE INDEX ($idx) "+
 			"UNNEST OBJECT_PAIRS($sync.channels) AS op "+
-			"WHERE ([op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)]  "+
-			"BETWEEN  [$channelName, $startSeq] AND [$channelName, $endSeq]) "+
+			"WHERE op.name = $channelName "+
+			"AND   LEAST($sync.sequence, op.val.seq) BETWEEN $startSeq AND $endSeq "+
 			"%s"+
-			"ORDER BY [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)]",
+			"ORDER BY op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)",
 		base.KeyspaceQueryToken, base.KeyspaceQueryToken, activeOnlyFilter),
 	adhoc: false,
 }
