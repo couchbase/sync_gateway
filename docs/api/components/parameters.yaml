@@ -1,0 +1,453 @@
+DB-config-If-Match:
+  name: If-Match
+  in: header
+  required: false
+  schema:
+    type: string
+  description: 'If set to a configuration''s Etag value, enables optimistic concurrency control for the request. Returns HTTP 412 if another update happened underneath this one.'
+If-Match:
+  name: If-Match
+  in: header
+  required: false
+  schema:
+    type: string
+  description: The revision ID to target.
+Include-channels:
+  name: channels
+  in: query
+  required: false
+  schema:
+    type: string
+  description: Include the channels each document is part of that the calling user also has access too.
+atts_since:
+  name: atts_since
+  in: query
+  required: false
+  schema:
+    type: array
+    items:
+      type: string
+  description: Include attachments only since specified revisions. Excludes the attachments for the specified revisions. Only gets used if `attachments=true`.
+compact-type:
+  name: type
+  in: query
+  required: false
+  schema:
+    type: string
+    default: tombstone
+    enum:
+      - attachment
+      - tombstone
+  description: |-
+    This is the type of compaction to use. The type must be either:
+    * `attachment` for cleaning up legacy (pre-3.0) attachments
+    * `tombstone` for purging the JSON bodies of non-leaf revisions.'
+db:
+  name: db
+  in: path
+  required: true
+  schema:
+    type: string
+  description: The name of the database to run the operation against.
+ddoc:
+  name: ddoc
+  in: path
+  required: true
+  schema:
+    type: string
+  description: The design document name.
+debug-profile-seconds:
+  name: seconds
+  in: query
+  required: false
+  schema:
+    type: integer
+    default: 30
+    minimum: 0
+  description: The amount of seconds to run the profiler for.
+deprecated-redact:
+  name: redact
+  in: query
+  deprecated: true
+  required: false
+  schema:
+    type: boolean
+    default: 'true'
+  description: No longer supported field.
+docid:
+  name: docid
+  in: path
+  required: true
+  schema:
+    type: string
+  description: The document ID to run the operation against.
+endkey:
+  name: endkey
+  in: query
+  required: false
+  schema:
+    type: string
+  description: Stop returning records when this key is reached.
+include-access:
+  name: access
+  in: query
+  required: false
+  schema:
+    type: string
+  description: Include what user/roles that each document grants access too.
+include-revs:
+  name: revs
+  in: query
+  required: false
+  schema:
+    type: string
+  description: Include all the revisions for each document under the `_revisions` property.
+include-seqs:
+  name: update_seq
+  in: query
+  required: false
+  schema:
+    type: string
+  description: Include the document sequence number `update_seq` property for each document.
+includeAttachments:
+  name: attachments
+  in: query
+  required: false
+  schema:
+    type: string
+  description: Include attachment bodies in response.
+include_doc:
+  name: include_doc
+  in: query
+  required: false
+  schema:
+    type: string
+  description: Include the body associated with the document.
+include_docs:
+  name: include_docs
+  in: query
+  required: false
+  schema:
+    type: string
+  description: Include the body associated with each document.
+include_runtime:
+  name: include_runtime
+  in: query
+  required: false
+  schema:
+    type: boolean
+    default: false
+  description: 'Whether to include the values set at runtime, and default values.'
+keys:
+  name: keys
+  in: query
+  required: false
+  schema:
+    type: array
+    items:
+      type: string
+  description: An array of document ID strings to filter by.
+limit-result-rows:
+  name: limit
+  in: query
+  required: false
+  schema:
+    type: number
+  description: This limits the number of result rows returned. Using a value of `0` has the same effect as the value `1`.
+log-level:
+  name: logLevel
+  in: query
+  required: false
+  schema:
+    type: string
+    enum:
+      - none
+      - error
+      - warn
+      - info
+      - debug
+      - trace
+  description: The is what to set the console log level too.
+log-level-int:
+  name: level
+  in: query
+  required: false
+  schema:
+    type: integer
+    maximum: 3
+    minimum: 1
+  deprecated: true
+  description: |-
+    **Deprecated: use log level instead.**
+
+    This sets the console log level depending on the value provide. 1 sets to `info`, 2 sets to `warn`, and 3 sets to `error`.'
+new_edits:
+  name: new_edits
+  in: query
+  required: false
+  schema:
+    type: boolean
+    default: 'true'
+  description: 'Setting this to false indicates that the request body is an already-existing revision that should be directly inserted into the database, instead of a modification to apply to the current document. This mode is used for replication.  This option must be used in conjunction with the `_revisions` property in the request body.'
+offline:
+  name: offline
+  in: query
+  required: false
+  schema:
+    type: string
+  description: 'If true, the OpenID Connect provider is requested to confirm with the user the permissions requested and refresh the OIDC token. To do this, access_type=offline and prompt=consent is set on the redirection link.'
+oidc-code:
+  name: code
+  in: query
+  required: true
+  schema:
+    type: string
+  description: The OpenID Connect authentication code.
+oidc-redirect_uri:
+  name: redirect_uri
+  in: query
+  required: false
+  schema:
+    type: string
+  description: The Sync Gateway OpenID Connect callback URL.
+oidc-scope:
+  name: scope
+  in: query
+  required: true
+  schema:
+    type: string
+  description: The OpenID Connect authentication scope.
+oidc-state:
+  name: state
+  in: query
+  required: false
+  schema:
+    type: string
+  description: The OpenID Connect state to verify against the state cookie. This is used to prevent cross-site request forgery (CSRF). This is not required if `disable_callback_state=true` for the provider config (NOT recommended).
+open_revs:
+  name: open_revs
+  in: query
+  required: false
+  schema:
+    type: array
+    items:
+      type: string
+  description: 'Option to fetch specified revisions of the document. The value can be all to fetch all leaf revisions or an array of revision numbers (i.e. open_revs=["rev1", "rev2"]). Only leaf revision bodies that haven''t been pruned are guaranteed to be returned. If this option is specified the response will be in multipart format. Use the `Accept: application/json` request header to get the result as a JSON object.'
+pprof-seconds:
+  name: seconds
+  in: query
+  description: 'If set, collect a delta profile for the given duration, instead of a snapshot.'
+  schema:
+    type: integer
+provider:
+  name: provider
+  in: query
+  required: false
+  schema:
+    type: string
+  description: 'The OpenID Connect provider to use for authentication.  The list of providers are defined in the Sync Gateway config. If left empty, the default provider will be used.'
+replication-active-only:
+  name: activeOnly
+  in: query
+  required: false
+  schema:
+    type: boolean
+    default: 'false'
+  description: Only return replications that are actively running (`state=running`).
+replication-include-config:
+  name: includeConfig
+  in: query
+  required: false
+  schema:
+    type: boolean
+    default: 'false'
+  description: Include the replication configuration with each replicator status in the response.
+replication-include-error:
+  name: includeError
+  in: query
+  required: false
+  schema:
+    type: boolean
+    default: 'true'
+  description: Include replications that have stopped due to an error (`state=error`).
+replication-local-only:
+  name: localOnly
+  in: query
+  required: false
+  schema:
+    type: boolean
+    default: 'false'
+  description: Only return replications that were started on the current Sync Gateway node.
+replicationid:
+  name: replicationid
+  in: path
+  required: true
+  schema:
+    type: string
+  description: What replication to target based on its replication ID.
+replicator2:
+  name: replicator2
+  in: query
+  required: false
+  schema:
+    type: boolean
+  description: Returns the document with the required properties for replication. This is an enterprise-edition only feature.
+rev:
+  name: rev
+  in: query
+  required: false
+  schema:
+    type: string
+  description: The document revision to target.
+revs_from:
+  name: revs_from
+  in: query
+  required: false
+  schema:
+    type: array
+    items:
+      type: string
+  description: 'Trim the revision history to stop at the first revision in the provided list. If no match is found, the revisions will be trimmed to the `revs_limit`.'
+revs_limit:
+  name: revs_limit
+  in: query
+  required: false
+  schema:
+    type: integer
+  description: Maximum amount of revisions to return for each document.
+role-name:
+  name: name
+  in: path
+  required: true
+  schema:
+    type: string
+  description: The name of the role.
+roundtrip:
+  name: roundtrip
+  in: query
+  required: false
+  schema:
+    type: boolean
+  description: Block until document has been received by change cache
+sessionid:
+  name: sessionid
+  in: path
+  required: true
+  schema:
+    type: string
+  description: The ID of the session to target.
+show_exp:
+  name: show_exp
+  in: query
+  required: false
+  schema:
+    type: string
+  description: Whether to show the expiry property (`_exp`) in the response.
+startkey:
+  name: startkey
+  in: query
+  required: false
+  schema:
+    type: string
+  description: Return records starting with the specified key.
+user-name:
+  name: name
+  in: path
+  required: true
+  schema:
+    type: string
+  description: The name of the user.
+view:
+  name: view
+  in: path
+  required: true
+  schema:
+    type: string
+  description: The view to target.
+inclusive_end:
+  name: inclusive_end
+  in: query
+  required: false
+  description: Indicates whether the specified end key should be included in the result.
+  schema:
+    type: boolean
+descending:
+  name: descending
+  in: query
+  required: false
+  description: Return documents in descending order.
+  schema:
+    type: boolean
+include_docs-cbs3:
+  name: include_docs
+  in: query
+  required: false
+  description: Only works when using Couchbase Server 3.0 and earlier. Indicates whether to include the full content of the documents in the response.
+  schema:
+    type: boolean
+reduce:
+  name: reduce
+  in: query
+  required: false
+  description: Whether to execute a reduce function on the response or not.
+  schema:
+    type: boolean
+group:
+  name: group
+  in: query
+  required: false
+  description: Group the results using the reduce function to a group or single row.
+  schema:
+    type: boolean
+skip:
+  name: skip
+  in: query
+  required: false
+  description: Skip the specified number of documents before starting to return results.
+  schema:
+    type: integer
+limit:
+  name: limit
+  in: query
+  required: false
+  description: Return only the specified number of documents
+  schema:
+    type: integer
+group_level:
+  name: group_level
+  in: query
+  required: false
+  description: Specify the group level to be used.
+  schema:
+    type: integer
+startkey_docid:
+  name: startkey_docid
+  in: query
+  required: false
+  description: Return documents starting with the specified document identifier.
+  schema:
+    type: string
+endkey_docid:
+  name: endkey_docid
+  in: query
+  required: false
+  description: Stop returning records when the specified document identifier is reached.
+  schema:
+    type: string
+stale:
+  name: stale
+  in: query
+  required: false
+  description: 'Allow the results from a stale view to be used, without triggering a rebuild of all views within the encompassing design document.'
+  schema:
+    type: string
+    enum:
+      - ok
+      - update_after
+key:
+  name: key
+  in: query
+  required: false
+  description: Return only the document that matches the specified key.
+  schema:
+    type: string

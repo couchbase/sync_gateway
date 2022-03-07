@@ -1,0 +1,34 @@
+get:
+  summary: Get passed in command line parameters
+  description: |-
+    Gets the command line parameters that was passed in to Sync Gateway which will include the binary, flags (if any) and startup configuration.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Dev Ops
+  responses:
+    "200":
+      description: OK
+      content:
+        text/plain:
+          schema:
+            type: string
+  tags:
+  - Admin only endpoints
+  - Profiling
+post:
+  summary: Get passed in command line parameters
+  description: |-
+    Gets the command line parameters that was passed in to Sync Gateway which will include the binary, flags (if any) and startup configuration.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Dev Ops
+  responses:
+    "200":
+      description: OK
+      content:
+        text/plain:
+          schema:
+            type: string
+  tags:
+  - Admin only endpoints
+  - Profiling

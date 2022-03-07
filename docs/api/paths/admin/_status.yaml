@@ -1,0 +1,20 @@
+# /_status
+get:
+  summary: Get the server status
+  description: |-
+    This will retrieve the status of each database and the overall server status.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Dev Ops
+  responses:
+    "200":
+      description: Returned the status successfully
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/Status
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+  tags:
+  - Admin only endpoints
+  - Server

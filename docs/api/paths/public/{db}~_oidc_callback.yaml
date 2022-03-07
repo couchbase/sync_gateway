@@ -1,0 +1,39 @@
+# /{db}/_oidc_callback
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+get:
+  summary: OpenID Connect authentication callback
+  description: The callback URL that the client is redirected to after authenticating
+    with the OpenID Connect provider.
+  parameters:
+  - name: error
+    in: query
+    description: The OpenID Connect error, if any occurred.
+    schema:
+      type: string
+  - $ref: ../../components/parameters.yaml#/oidc-code
+  - $ref: ../../components/parameters.yaml#/provider
+  - $ref: ../../components/parameters.yaml#/oidc-state
+  responses:
+    "200":
+      $ref: ../../components/responses.yaml#/OIDC-callback
+    "400":
+      description: A problem occurred when reading the callback request body
+    "401":
+      description: An error was received from the OpenID Connect provider. This means
+        the error query parameter was filled.
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+    "500":
+      description: A problem occurred in regards to the token
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              reason:
+                type: string
+  tags:
+  - OpenID Connect

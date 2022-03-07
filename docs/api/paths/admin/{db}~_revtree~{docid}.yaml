@@ -1,0 +1,33 @@
+# /{db}/_revtree/{docid}
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+- $ref: ../../components/parameters.yaml#/docid
+get:
+  summary: Revision tree structure in Graphviz Dot format | Unsupported
+  description: |-
+    This returns the Dot syntax of the revision tree for the document so that it can be rendered in to a PNG image using the [Graphviz CLI tool](https://www.graphviz.org/).
+
+    To use:
+    1. Install the Graphviz tool. Using Brew, this can be done by calling `brew install graphviz`.
+    2. Save the response text from this endpoint to a file (for example, `revtree.dot`).
+    3. Render the PNG by calling `dot -Tpng revtree.dot > revtree.png`.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Application
+    * Sync Gateway Application Read Only
+
+    **Note: This endpoint is useful for debugging purposes only. It is not officially supported.**
+  responses:
+    "200":
+      description: Found document
+      content:
+        application/json:
+          schema:
+            type: string
+          example: digraph graphname{"1-d4d949b7feafc8c31215684baa45b6cd" -> "2-4f3f24143ea43d85a9a340ac016fdfc4";
+            }
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Admin only endpoints
+  - Unsupported

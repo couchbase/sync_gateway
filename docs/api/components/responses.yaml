@@ -1,0 +1,174 @@
+Not-found:
+  description: Resource could not be found
+  content:
+    application/json:
+      schema:
+        $ref: './schemas.yaml#/HTTP-Error'
+      example:
+        error: not_found
+        reason: no such database "invalid-db"
+Conflict:
+  description: Resource already exists under that name
+  content:
+    application/json:
+      schema:
+        $ref: './schemas.yaml#/HTTP-Error'
+User:
+  description: Properties associated with a user
+  content:
+    application/json:
+      schema:
+        $ref: './schemas.yaml#/User'
+Role:
+  description: Properties associated with a role
+  content:
+    application/json:
+      schema:
+        $ref: './schemas.yaml#/Role'
+Invalid-CORS:
+  description: Origin is not in the approved list of allowed origins
+  content:
+    application/json:
+      schema:
+        $ref: './schemas.yaml#/HTTP-Error'
+User-session-information:
+  description: Properties associated with a user session
+  content:
+    application/json:
+      schema:
+        $ref: './schemas.yaml#/User-session-information'
+OIDC-callback:
+  description: Successfully authenticated with OpenID Connect.
+  content:
+    application/json:
+      schema:
+        $ref: './schemas.yaml#/OIDC-callback'
+OIDC-invalid-provider:
+  description: 'The provider provided is not defined in the Sync Gateway config. If no provided was specified then there is no default provider set. '
+OIDC-connection:
+  description: Unable to connect and validate with the OpenID Connect provider requested
+OIDC-test-provider-disabled:
+  description: 'The OpenID Connect unsupported config option `oidc_test_provider` is not enabled. To use this endpoint, this option must be enabled.'
+OIDC-invalid-scope:
+  description: A validation error occurred with the scope.
+  content:
+    application/json:
+      schema:
+        $ref: './schemas.yaml#/HTTP-Error'
+OIDC-testing-internal-error:
+  description: An error occurred.
+  content:
+    application/json:
+      schema:
+        $ref: './schemas.yaml#/HTTP-Error'
+OIDC-token:
+  description: Properties expected back from an OpenID Connect provider after successful authentication
+  content:
+    application/json:
+      schema:
+        $ref: './schemas.yaml#/OIDC-token'
+OIDC-testing-redirect:
+  description: Redirecting to Sync Gateway OpenID Connect callback URL
+  headers:
+    Location:
+      schema:
+        type: string
+      description: The location to the Sync Gateway OpenID Connect callback URL.
+invalid-doc-id:
+  description: |-
+    Document ID is not in an allowed format therefore is invalid.
+
+    This could be because it is over 250 characters or is prefixed with an underscore ("_").
+  content:
+    application/json:
+      schema:
+        $ref: './schemas.yaml#/HTTP-Error'
+New-revision:
+  description: New revision created successfully
+  content:
+    application/json:
+      schema:
+        $ref: './schemas.yaml#/New-revision'
+request-problem:
+  description: There was a problem with your request
+  content:
+    application/json:
+      schema:
+        $ref: './schemas.yaml#/HTTP-Error'
+Invalid-content-type:
+  description: Invalid content type
+  content:
+    application/json:
+      schema:
+        $ref: './schemas.yaml#/HTTP-Error'
+pprof-binary:
+  description: OK
+  content:
+    application/octet-stream:
+      schema:
+        description: pprof binary data
+        type: string
+        example: pprof binary data
+all-docs:
+  description: Operation ran successfully
+  content:
+    application/json:
+      schema:
+        type: object
+        properties:
+          rows:
+            type: array
+            items:
+              type: object
+              properties:
+                key:
+                  type: string
+                id:
+                  type: string
+                value:
+                  type: object
+                  properties:
+                    rev:
+                      type: string
+            uniqueItems: true
+          total_rows:
+            type: number
+          update_seq:
+            type: number
+        required:
+          - rows
+          - total_rows
+          - update_seq
+changes-feed:
+  description: Successfully returned the changes feed
+  content:
+    application/json:
+      schema:
+        $ref: './schemas.yaml#/Changes-feed'
+ddoc-forbidden:
+  description: Forbidden access possibly due to not using the Admin API or the design document is a built-in Sync Gateway one.
+Replicator-created:
+  description: Created new replication successfully
+Replicator-updated:
+  description: Updated existing configuration successfully
+DB-config-updated:
+  description: Database configuration successfully updated
+  headers:
+    Etag:
+      schema:
+        type: string
+      description: The new database configuration revision.
+DB-config-precondition-failed:
+  description: |-
+    Precondition Failed
+
+    The supplied If-Match header did not match the current version of the configuration.
+
+    Returned when optimistic concurrency control is used, and there has been an update to the configuration in between this update.
+  content:
+    application/json:
+      schema:
+        $ref: './schemas.yaml#/HTTP-Error'
+      example:
+        error: Precondition Failed
+        reason: Provided If-Match header does not match current config version

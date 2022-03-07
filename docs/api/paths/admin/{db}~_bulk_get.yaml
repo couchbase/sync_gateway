@@ -1,0 +1,80 @@
+# /{db}/_bulk_get
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+post:
+  summary: Get multiple documents in a MIME multipart response
+  description: |
+    This request returns any number of documents, as individual bodies in a MIME multipart response.
+
+    Each enclosed body contains one requested document. The bodies appear in the same order as in the request, but can also be identified by their `X-Doc-ID` and `X-Rev-ID` headers (if the `attachments` query is `true`).
+
+    A body for a document with no attachments will have content type `application/json` and contain the document itself.
+
+    A body for a document that has attachments will be written as a nested `multipart/related` body.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Application
+    * Sync Gateway Application Read Only
+  parameters:
+  - name: attachments
+    in: query
+    description: This is for whether to include attachments in each of the documents
+      returned or not.
+    schema:
+      type: boolean
+      default: "false"
+  - $ref: ../../components/parameters.yaml#/include-revs
+  - name: revs_limit
+    in: query
+    description: The number of revisions to include in the response from the document
+      history. This parameter only makes a different if the `revs` query parameter
+      is set to `true`. The full revision history will be returned if `revs` is set
+      but this is not.
+    schema:
+      type: integer
+  - name: X-Accept-Part-Encoding
+    in: header
+    description: If this header includes `gzip` then the part HTTP compression encoding
+      will be done.
+    schema:
+      type: string
+  - name: Accept-Encoding
+    in: header
+    description: If this header includes `gzip` then the the HTTP response will be
+      compressed. This takes priority over `X-Accept-Part-Encoding`. Only part compression
+      will be done if `X-Accept-Part-Encoding=gzip` and the `User-Agent` is below
+      1.2 due to clients not being able to handle full compression.
+    schema:
+      type: string
+  requestBody:
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            docs:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    description: ID of the document to retrieve.
+                    type: string
+                required:
+                - id
+          required:
+          - docs
+        example:
+          docs:
+          - id: FooBar
+          - id: attachment
+          - id: AliceSettings
+  responses:
+    "200":
+      description: Returned the requested docs as `multipart/mixed` response type
+    "400":
+      description: Bad Request
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Document

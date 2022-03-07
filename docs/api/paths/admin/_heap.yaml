@@ -1,0 +1,18 @@
+# /_heap
+post:
+  summary: Dump heap profile
+  description: |-
+    This endpoint will dump a pprof heap profile.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Dev Ops
+  requestBody:
+    $ref: ../../components/requestBodies.yaml#/Profile
+  responses:
+    "200":
+      description: Successfully dumped heap profile
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+  tags:
+  - Admin only endpoints
+  - Profiling

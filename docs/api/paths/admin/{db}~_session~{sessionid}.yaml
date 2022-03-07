@@ -1,0 +1,36 @@
+# /{db}/_session/{sessionid}
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+- $ref: ../../components/parameters.yaml#/sessionid
+get:
+  summary: Get session information
+  description: |-
+    Retrieve session information such as the user the session belongs too and what channels that user can access.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Architect
+    * Sync Gateway Application
+    * Sync Gateway Application Read Only
+  responses:
+    "200":
+      $ref: ../../components/responses.yaml#/User-session-information
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Admin only endpoints
+delete:
+  summary: Remove session
+  description: |-
+    Invalidates the session provided so that anyone using it is logged out and is prevented from future use.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Architect
+    * Sync Gateway Application
+  responses:
+    "200":
+      description: Successfully removed the user session
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Admin only endpoints
+  - Session

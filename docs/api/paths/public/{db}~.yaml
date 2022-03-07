@@ -1,0 +1,117 @@
+# /{db}/
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+get:
+  summary: Get database information
+  description: |-
+    Retrieve information about the database.
+  responses:
+    "200":
+      description: Successfully returned database information
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              db_name:
+                description: Database name
+                type: string
+                example: db
+              update_seq:
+                description: |-
+                  The last sequence number that was committed to the database.
+
+                  Will return 0 if the database is offline.
+                type: integer
+                example: 123456
+              committed_update_seq:
+                description: |-
+                  The last sequence number that was committed to the database.
+
+                  Will return 0 if the database is offline.
+                type: integer
+                example: 123456
+              instance_start_time:
+                description: Timestamp of when the database opened, in microseconds
+                  since the Unix epoch.
+                type: integer
+                example: 1644600082279583
+              compact_running:
+                description: Indicates whether database compaction is currently taking
+                  place or not.
+                type: boolean
+              purge_seq:
+                description: Unused field.
+                type: number
+                default: 0
+              disk_format_version:
+                description: Unused field.
+                type: number
+                default: 0
+              state:
+                description: The database state. Change using the `/{db}/_offline`
+                  and `/{db}/_online` endpoints.
+                type: string
+                enum:
+                - Online
+                - Offline
+              server_uuid:
+                description: Unique server identifier.
+                type: string
+                example: 995618a6a6cc9ac79731bd13240e19b5
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Database Management
+post:
+  summary: Create a new document
+  description: |-
+    Create a new document in the database.
+
+    This will generate a random document ID unless specified in the body.
+
+    A document can have a maximum size of 20MB.
+  parameters:
+  - $ref: ../../components/parameters.yaml#/roundtrip
+  requestBody:
+    content:
+      application/json:
+        schema:
+          $ref: ../../components/schemas.yaml#/Document
+  responses:
+    "200":
+      description: New document revision created successfully.
+      headers:
+        Etag:
+          schema:
+            type: string
+          description: The revision ID of the newly created document.
+        Location:
+          schema:
+            type: string
+          description: The document ID of the newly created document.
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/New-revision
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+    "409":
+      $ref: ../../components/responses.yaml#/Conflict
+    "415":
+      $ref: ../../components/responses.yaml#/Invalid-content-type
+  tags:
+  - Document
+head:
+  summary: Check if database exists
+  description: |-
+    Check if a database exists by using the response status code.
+  responses:
+    "200":
+      description: Database exists
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Database Management

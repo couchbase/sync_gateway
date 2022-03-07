@@ -1,0 +1,195 @@
+# /{db}/_changes
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+get:
+  summary: Get changes list
+  description: |-
+    This request retrieves a sorted list of changes made to documents in the database, in time order of application. Each document appears at most once, ordered by its most recent change, regardless of how many times it has been changed.
+
+    This request can be used to listen for update and modifications to the database for post processing or synchronization. A continuously connected changes feed is a reasonable approach for generating a real-time log for most applications.
+  parameters:
+  - name: limit
+    in: query
+    description: Maximum number of changes to return.
+    schema:
+      type: integer
+  - name: since
+    in: query
+    description: Starts the results from the change immediately after the given sequence
+      ID. Sequence IDs should be considered opaque; they come from the last_seq property
+      of a prior response.
+    schema:
+      type: string
+  - name: style
+    in: query
+    description: Controls whether to return the current winning revision (`main_only`)
+      or all the leaf revision including conflicts and deleted former conflicts (`all_docs`).
+    schema:
+      type: string
+      default: main_only
+      enum:
+      - main_only
+      - all_docs
+  - name: active_only
+    in: query
+    description: Set true to exclude deleted documents and notifications for documents
+      the user no longer has access to from the changes feed.
+    schema:
+      type: boolean
+      default: "false"
+  - $ref: ../../components/parameters.yaml#/include_docs
+  - name: revocations
+    in: query
+    description: If true, revocation messages will be sent on the changes feed.
+    schema:
+      type: boolean
+  - name: filter
+    in: query
+    description: Set a filter to either filter by channels or document IDs.
+    schema:
+      type: string
+      enum:
+      - sync_gateway/bychannel
+      - _doc_ids
+  - name: channels
+    in: query
+    description: A comma-separated list of channel names to filter the response to
+      only the channels specified. To use this option, the `filter` query option must
+      be set to `sync_gateway/bychannels`.
+    schema:
+      type: string
+  - name: doc_ids
+    in: query
+    description: A valid JSON array of document IDs to filter the documents in the
+      response to only the documents specified. To use this option, the `filter` query
+      option must be set to `_doc_ids` and the `feed` parameter must be `normal`.
+      Also accepts a comma separated list of document IDs instead.
+    schema:
+      type: array
+      items:
+        type: string
+  - name: heartbeat
+    in: query
+    description: The interval (in milliseconds) to send an empty line (CRLF) in the
+      response. This is to help prevent gateways from deciding the socket is idle
+      and therefore closing it. This is only applicable to `feed=longpoll` or `feed=continuous`.
+      This will override any timeouts to keep the feed alive indefinitely. Setting
+      to 0 results in no heartbeat. The maximum heartbeat can be set in the server
+      replication configuration.
+    schema:
+      type: integer
+      default: 0
+      minimum: 25000
+  - name: timeout
+    in: query
+    description: This is the maximum period (in milliseconds) to wait for a change
+      before the response is sent, even if there are no results. This is only applicable
+      for `feed=longpoll` or `feed=continuous` changes feeds. Setting to 0 results
+      in no timeout.
+    schema:
+      type: integer
+      default: 300000
+      maximum: 900000
+      minimum: 0
+  - name: feed
+    in: query
+    description: 'The type of changes feed to use. '
+    schema:
+      type: string
+      default: normal
+      enum:
+      - normal
+      - longpoll
+      - continuous
+      - websocket
+  responses:
+    "200":
+      $ref: ../../components/responses.yaml#/changes-feed
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Database Management
+post:
+  summary: Get changes list
+  description: |-
+    This request retrieves a sorted list of changes made to documents in the database, in time order of application. Each document appears at most once, ordered by its most recent change, regardless of how many times it has been changed.
+
+    This request can be used to listen for update and modifications to the database for post processing or synchronization. A continuously connected changes feed is a reasonable approach for generating a real-time log for most applications.
+  requestBody:
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            limit:
+              description: Maximum number of changes to return.
+              type: string
+            style:
+              description: Controls whether to return the current winning revision
+                (`main_only`) or all the leaf revision including conflicts and deleted
+                former conflicts (`all_docs`).
+              type: string
+            active_only:
+              description: Set true to exclude deleted documents and notifications
+                for documents the user no longer has access to from the changes feed.
+              type: string
+            include_docs:
+              description: Include the body associated with each document.
+              type: string
+            revocations:
+              description: If true, revocation messages will be sent on the changes
+                feed.
+              type: string
+            filter:
+              description: Set a filter to either filter by channels or document IDs.
+              type: string
+            channels:
+              description: A comma-separated list of channel names to filter the response
+                to only the channels specified. To use this option, the `filter` query
+                option must be set to `sync_gateway/bychannels`.
+              type: string
+            doc_ids:
+              description: A valid JSON array of document IDs to filter the documents
+                in the response to only the documents specified. To use this option,
+                the `filter` query option must be set to `_doc_ids` and the `feed`
+                parameter must be `normal`.
+              type: string
+            heartbeat:
+              description: The interval (in milliseconds) to send an empty line (CRLF)
+                in the response. This is to help prevent gateways from deciding the
+                socket is idle and therefore closing it. This is only applicable to
+                `feed=longpoll` or `feed=continuous`. This will override any timeouts
+                to keep the feed alive indefinitely. Setting to 0 results in no heartbeat.
+                The maximum heartbeat can be set in the server replication configuration.
+              type: string
+            timeout:
+              description: This is the maximum period (in milliseconds) to wait for
+                a change before the response is sent, even if there are no results.
+                This is only applicable for `feed=longpoll` or `feed=continuous` changes
+                feeds. Setting to 0 results in no timeout.
+              type: string
+            feed:
+              description: 'The type of changes feed to use. '
+              type: string
+  responses:
+    "200":
+      $ref: ../../components/responses.yaml#/changes-feed
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Database Management
+head:
+  responses:
+    "200":
+      description: OK
+    "400":
+      description: Bad Request
+    "404":
+      description: Not Found
+  tags:
+  - Database Management
+  description: |-

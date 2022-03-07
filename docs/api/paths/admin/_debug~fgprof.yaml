@@ -1,0 +1,39 @@
+# /_debug/fgprof
+get:
+  summary: Get fgprof profile
+  description: |-
+    A sampling Go profiler that allows you to analyze On-CPU as well as [Off-CPU](https://www.brendangregg.com/offcpuanalysis.html) (e.g. I/O) time together.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Dev Ops
+  parameters:
+  - $ref: ../../components/parameters.yaml#/debug-profile-seconds
+  responses:
+    "200":
+      description: OK
+      content:
+        application/x-gzip:
+          schema:
+            type: string
+  tags:
+  - Admin only endpoints
+  - Profiling
+post:
+  summary: Get fgprof profile
+  description: |-
+    A sampling Go profiler that allows you to analyze On-CPU as well as [Off-CPU](https://www.brendangregg.com/offcpuanalysis.html) (e.g. I/O) time together.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Dev Ops
+  parameters:
+  - $ref: ../../components/parameters.yaml#/debug-profile-seconds
+  responses:
+    "200":
+      description: OK
+      content:
+        application/x-gzip:
+          schema:
+            type: string
+  tags:
+  - Admin only endpoints
+  - Profiling

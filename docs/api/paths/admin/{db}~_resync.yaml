@@ -1,0 +1,72 @@
+# /{db}/_resync
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+get:
+  summary: Get resync status
+  description: |-
+    This will retrieve the status of last resync operation (whether it is running or not).
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Architect
+  responses:
+    "200":
+      description: successfully retrieved the most recent resync operation status
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/Resync-status
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Admin only endpoints
+  - Database Management
+post:
+  summary: Start or stop Resync
+  description: |
+    This can be used to start or stop a resync operation. A resync operation will cause all documents in the database to be reprocessed through the database sync function.
+
+    Generally, a resync operation might be wanted when the sync function has been modified in such a way that the channel or access mappings for any existing documents would change as a result.
+
+    A resync operation cannot be run if the database is online. The database can be taken offline by calling the `POST /{db}/_offline` endpoint.
+
+    In a multi-node cluster, the resync operation *must* be run on only a single node. Therefore, users should bring other nodes offline before initiating this action. Undefined system behaviour will happen if running resync on more than 1 node.
+
+    The `requireUser()` and `requireRole()` calls in the sync function will always return `true`.
+
+    - **action=start** - This is an asynchronous operation, and will start resync in the background.
+    - **action=stop** - This will stop the currently running resync operation.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Architect
+  parameters:
+  - name: action
+    in: query
+    description: This is whether to start a new resync job or stop an existing one.
+    schema:
+      type: string
+      default: start
+      enum:
+      - start
+      - stop
+  - name: regenerate_sequences
+    in: query
+    description: '**Use this only when requested to do so by the Couchbase support
+      team** This request will regenerate the sequence numbers for each document processed.'
+    schema:
+      type: boolean
+  responses:
+    "200":
+      description: successfully changed the status of the resync operation
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/Resync-status
+    "503":
+      description: Service Unavailable
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+  tags:
+  - Admin only endpoints
+  - Database Management

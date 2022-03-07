@@ -1,0 +1,37 @@
+# /{db}/_oidc_testing/token
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+post:
+  summary: OpenID Connect mock token
+  description: Return a mock OpenID Connect token for the OIDC authentication flow.
+  requestBody:
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            grant_type:
+              description: The grant type of the token to request. Can either be an
+                `authorization_code` or `refresh_token`.
+              type: string
+            code:
+              description: '**`grant_type=authorization_code` only**: The OpenID Connect
+                authentication token.'
+              type: string
+            refresh_token:
+              description: '**`grant_type=refresh_token` only**: The OpenID Connect
+                refresh token.'
+              type: string
+          required:
+          - grant_type
+  responses:
+    "200":
+      $ref: ../../components/responses.yaml#/OIDC-token
+    "400":
+      description: Invalid token provided
+    "403":
+      $ref: ../../components/responses.yaml#/OIDC-test-provider-disabled
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - OpenID Connect

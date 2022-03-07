@@ -1,0 +1,22 @@
+# /{db}/_user/{name}/_session
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+- $ref: ../../components/parameters.yaml#/user-name
+delete:
+  summary: Remove all of a users sessions
+  description: |-
+    Invalidates all the sessions that a user has.
+
+    Will still return a `200` status code if the user has no sessions.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Architect
+    * Sync Gateway Application
+  responses:
+    "200":
+      description: User now has no sessions
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Admin only endpoints
+  - Session

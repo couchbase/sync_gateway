@@ -1,0 +1,39 @@
+# /{db}/_oidc_testing/authorize
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+get:
+  summary: OpenID Connect mock login page
+  description: Show a mock OpenID Connect login page for the client to log in to.
+  parameters:
+  - $ref: ../../components/parameters.yaml#/oidc-scope
+  responses:
+    "200":
+      description: OK
+    "400":
+      $ref: ../../components/responses.yaml#/OIDC-invalid-scope
+    "403":
+      $ref: ../../components/responses.yaml#/OIDC-test-provider-disabled
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+    "500":
+      $ref: ../../components/responses.yaml#/OIDC-testing-internal-error
+  tags:
+  - OpenID Connect
+post:
+  summary: OpenID Connect mock login page
+  description: Show a mock OpenID Connect login page for the client to log in to.
+  parameters:
+  - $ref: ../../components/parameters.yaml#/oidc-scope
+  responses:
+    "200":
+      description: OK
+    "400":
+      $ref: ../../components/responses.yaml#/OIDC-invalid-scope
+    "403":
+      $ref: ../../components/responses.yaml#/OIDC-test-provider-disabled
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+    "500":
+      $ref: ../../components/responses.yaml#/OIDC-testing-internal-error
+  tags:
+  - OpenID Connect

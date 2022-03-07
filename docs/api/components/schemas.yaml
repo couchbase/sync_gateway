@@ -1,0 +1,1981 @@
+ExpVars:
+  type: object
+  properties:
+    cmdline:
+      description: 'Built-in variables from the Go runtime, lists the command-line arguments'
+      type: object
+    memstats:
+      description: Dumps a large amount of information about the memory heap and garbage collector
+      type: object
+    cb:
+      description: Variables reported by the Couchbase SDK (go_couchbase package)
+      type: object
+    mc:
+      description: Variables reported by the low-level memcached API (gomemcached package)
+      type: object
+    syncGateway_changeCache:
+      type: object
+      properties:
+        maxPending:
+          description: Max number of sequences waiting on a missing earlier sequence number
+          type: object
+        lag-tap-0000ms:
+          description: Histogram of delay from doc save till it shows up in Tap feed
+          type: object
+        lag-queue-0000ms:
+          description: Histogram of delay from Tap feed till doc is posted to changes feed
+          type: object
+        lag-total-0000ms:
+          description: Histogram of total delay from doc save till posted to changes feed
+          type: object
+        outOfOrder:
+          description: Number of out-of-order sequences posted
+          type: object
+        view_queries:
+          description: Number of queries to channels view
+          type: object
+    syncGateway_db:
+      type: object
+      properties:
+        channelChangesFeeds:
+          description: 'Number of calls to db.changesFeed, i.e. generating a changes feed for a single channel.'
+          type: object
+        channelLogAdds:
+          description: Number of entries added to channel logs
+          type: object
+        channelLogAppends:
+          description: Number of times entries were written to channel logs using an APPEND operation
+          type: object
+        channelLogCacheHits:
+          description: Number of requests for channel-logs that were fulfilled from the in-memory cache
+          type: object
+        channelLogRewrites:
+          description: Number of times entries were written to channel logs using a SET operation (rewriting the entire log)
+          type: object
+        channelLogRewriteCollisions:
+          description: Number of collisions while attempting to rewrite channel logs using SET
+          type: object
+        document_gets:
+          description: Number of times a document was read from the database
+          type: object
+        revisionCache_adds:
+          description: Number of revisions added to the revision cache
+          type: object
+        revisionCache_hits:
+          description: Number of times a revision-cache lookup succeeded
+          type: object
+        revisionCache_misses:
+          description: Number of times a revision-cache lookup failed
+          type: object
+        revs_added:
+          description: Number of revisions added to the database (including deletions)
+          type: object
+        sequence_gets:
+          description: Number of times the database's lastSequence was read
+          type: object
+        sequence_reserves:
+          description: Number of times the database's lastSequence was incremented
+          type: object
+    syncgateway:
+      description: Monitoring stats
+      type: object
+      properties:
+        global:
+          description: Global Sync Gateway stats
+          type: object
+          properties:
+            resource_utilization:
+              description: Resource utilization stats
+              type: object
+              properties:
+                admin_net_bytes_recv:
+                  type: integer
+                admin_net_bytes_sent:
+                  type: integer
+                error_count:
+                  type: integer
+                go_memstats_heapalloc:
+                  type: integer
+                go_memstats_heapidle:
+                  type: integer
+                go_memstats_heapinuse:
+                  type: integer
+                go_memstats_heapreleased:
+                  type: integer
+                go_memstats_pausetotalns:
+                  type: integer
+                go_memstats_stackinuse:
+                  type: integer
+                go_memstats_stacksys:
+                  type: integer
+                go_memstats_sys:
+                  type: integer
+                goroutines_high_watermark:
+                  type: integer
+                num_goroutines:
+                  type: integer
+                process_cpu_percent_utilization:
+                  type: integer
+                process_memory_resident:
+                  type: integer
+                pub_net_bytes_recv:
+                  type: integer
+                pub_net_bytes_sent:
+                  type: integer
+                system_memory_total:
+                  type: integer
+                warn_count:
+                  type: integer
+        per_db:
+          description: |-
+            This array contains stats for all databases declared in the config file -- see the [Sync Gateway Statistics Schema](./../stats-monitoring.html) for more details on the metrics collected and reported by Sync Gateway.
+            The statistics for each {$db_name} database are grouped into:
+            - cache related statistics
+            - cbl_replication_push
+            - cbl_replication_pull
+            - database_related_statistics
+            - delta_sync
+            - gsi_views
+            - security_related_statistics
+            - shared_bucket_import
+            - per_replication statistics for each `replication_id`
+          type: array
+          items:
+            type: object
+            properties:
+              cache:
+                type: object
+              database:
+                type: object
+              per_replication:
+                type: array
+              security:
+                type: object
+        per_replication:
+          description: |-
+            An array of stats for each replication declared in the config file
+            **Deprecated @ 2.8**: used only by inter-sync-gateway replications version 1.
+          type: array
+          items:
+            type: object
+            description: Stats for a given replication_id
+            properties:
+              $replication_id:
+                type: object
+                properties:
+                  sgr_active:
+                    description: |-
+                      Whether the replication is active at this time.
+                      **Deprecated @ 2.8**: used only by inter-sync-gateway replications version 1.
+                    type: boolean
+                  sgr_docs_checked_sent:
+                    description: |-
+                      The total number of documents checked for changes since replication started.
+                      This represents the number of potential change notifications pushed by Sync Gateway.
+                      **Constraints**
+                        This is not necessarily the number of documents pushed, as a given target might already have the change.
+                        Used by versions 1 and 2.
+                    type: integer
+                  sgr_num_attachments_transferred:
+                    description: |-
+                      The total number of attachments transferred since replication started.
+                      **Deprecated @ 2.8**: used only by inter-sync-gateway replications version 1.
+                    type: integer
+                  sgr_num_attachment_bytes_transferred:
+                    description: |-
+                      The total number of attachment bytes transferred since replication started.
+                      **Deprecated @ 2.8**: used only by inter-sync-gateway replications version 1.
+                    type: integer
+                  sgr_num_docs_failed_to_push:
+                    description: |-
+                      The total number of documents that failed to be pushed since replication started.
+                      Used by versions 1 and 2.
+                    type: integer
+                  sgr_num_docs_pushed:
+                    description: |-
+                      The total number of documents that were pushed since replication started.
+                      Used by versions 1 and 2.
+                    type: integer
+          deprecated: true
+User:
+  description: Properties associated with a user
+  type: object
+  properties:
+    name:
+      description: |-
+        The name of the user.
+
+        User names can only have alphanumeric ASCII characters and underscores.
+      type: string
+    password:
+      description: |-
+        The password of the user.
+
+        Mandatory. unless `allow_empty_password` is `true` in the database configs.
+      type: string
+    admin_channels:
+      description: A list of channels to explicitly grant to the user.
+      type: array
+      items:
+        type: string
+    all_channels:
+      description: |-
+        All the channels that the user has been granted access to.
+
+        Access could have been granted through the sync function, roles, or explicitly on the user under the `admin_channels` property.
+      type: array
+      items:
+        type: string
+      readOnly: true
+    email:
+      description: The email address of the user.
+      type: string
+    disabled:
+      description: 'If true, the user will not be able to login to the account as it is disabled.'
+      type: boolean
+    admin_roles:
+      description: A list of roles to explicitly grant to the user.
+      type: array
+      items:
+        type: string
+    roles:
+      description: |-
+        All the roles that the user has been granted access to.
+
+        Access could have been granted through the sync function, or explicitly on the user under the `admin_roles` property.
+      type: array
+      items:
+        type: string
+      readOnly: true
+  title: User
+Role:
+  description: Properties associated with a role
+  type: object
+  properties:
+    name:
+      description: |-
+        The name of the role.
+
+        Role names can only have alphanumeric ASCII characters and underscores.
+      type: string
+    admin_channels:
+      description: The channels that users in the role are able to access.
+      type: array
+      items:
+        type: string
+    all_channels:
+      description: |-
+        The channels that the role grants access to.
+
+        These channels could have been assigned by the Sync function or using the `admin_channels` property.
+      type: array
+      items:
+        type: string
+      readOnly: true
+  title: Role
+User-session-information:
+  type: object
+  properties:
+    authentication_handlers:
+      description: The ways authentication can be established to authenticate as the user.
+      type: array
+      items:
+        type: string
+    ok:
+      type: boolean
+    userCtx:
+      type: object
+      properties:
+        channels:
+          description: |
+            A map of the channels the user has access to and the sequence number each channel was created at.
+
+            The key is the channel name and the value is the sequence number.
+          type: object
+        name:
+          description: The name of the user.
+          type: string
+          nullable: true
+  title: User Session Information
+OIDC-callback:
+  type: object
+  properties:
+    id_token:
+      description: The OpenID Connect ID token
+      type: string
+    refresh_token:
+      description: The OpenID Connect ID refresh token
+      type: string
+    session_id:
+      description: The Sync Gateway session token
+      type: string
+    name:
+      description: The Sync Gateway user
+      type: string
+    access_token:
+      description: The OpenID Connect access token
+      type: string
+    token_type:
+      description: The OpenID Connect ID token type
+      type: string
+    expires_in:
+      description: The time until the id_token expires (TTL).
+      type: number
+  title: OpenID Connect callback properties
+OIDC-token:
+  description: Properties expected back from an OpenID Connect provider after successful authentication
+  type: object
+  properties:
+    access_token:
+      type: string
+    token_type:
+      type: string
+    refresh_token:
+      type: string
+    expires_in:
+      type: string
+    id_token:
+      type: string
+  title: OIDC-token
+OIDC-login-page-handler:
+  description: Properties passed from the OpenID Connect mock login page to the handler
+  type: object
+  properties:
+    username:
+      type: string
+    tokenttl:
+      type: string
+    identity-token-formats:
+      type: string
+    authenticated:
+      type: string
+  required:
+    - username
+    - tokenttl
+    - identity-token-formats
+    - authenticated
+Document:
+  description: The configurable Sync Gateway properties of a document.
+  type: object
+  properties:
+    _id:
+      description: The ID of the document.
+      type: string
+    _rev:
+      description: The revision of the document.
+      type: string
+    _exp:
+      description: |-
+        Expiry time after which the document will be purged. The expiration time is set and managed on the Couchbase Server document. The value can be specified in two ways; in ISO-8601 format, for example the 6th of July 2022 at 17:00 in the BST timezone would be `2016-07-06T17:00:00+01:00`; it can also be specified as a numeric Couchbase Server expiry value. Couchbase Server expiries are specified as Unix time, and if the desired TTL is below 30 days then it can also represent an interval in seconds from the current time (for example, a value of 5 will remove the document 5 seconds after it is written to Couchbase Server). The document expiration time is returned in the response of `GET /{db}/{doc} ` when `show_exp=true` is included in the query.
+
+        As with the existing explicit purge mechanism, this applies only to the local database; it has nothing to do with replication. This expiration time is not propagated when the document is replicated. The purge of the document does not cause it to be deleted on any other database.
+      type: string
+    _deleted:
+      description: 'Whether the document is a tombstone or not. If true, it is a tombstone.'
+      type: boolean
+    _revisions:
+      type: object
+      properties:
+        start:
+          description: Prefix number for the latest revision.
+          type: number
+        ids:
+          description: 'Array of valid revision IDs, in reverse order (latest first).'
+          type: array
+          items:
+            type: string
+    _attachments:
+      type: object
+      properties:
+        attachment_name:
+          description: The name of the attachment.
+          type: object
+          properties:
+            content_type:
+              description: Content type of the attachment.
+              type: string
+            data:
+              description: The data in the attachment in base64.
+              type: string
+New-revision:
+  description: Properties returned when a new document revision is created
+  type: object
+  properties:
+    id:
+      description: The ID of the document.
+      type: string
+    ok:
+      description: Wheather the request completed successfully.
+      type: boolean
+    rev:
+      description: The revision of the document.
+      type: string
+  required:
+    - id
+    - ok
+    - rev
+  title: New-revision
+Changes-feed:
+  description: Properties of a changes feed
+  type: object
+  properties:
+    results:
+      type: array
+      items:
+        type: object
+        properties:
+          seq:
+            description: The change sequence number.
+            type: number
+          id:
+            description: The document ID the change happened on.
+            type: string
+          changes:
+            description: List of document leafs with each leaf containing only a `rev` field.
+            type: array
+            items:
+              type: object
+              properties:
+                rev:
+                  description: The new revision that was caused by that change.
+                  type: string
+            uniqueItems: true
+      uniqueItems: true
+    last_seq:
+      description: The last change sequence number.
+      type: string
+Design-doc:
+  description: Properties of a design document
+  type: object
+  properties:
+    language:
+      type: string
+    views:
+      type: object
+      properties:
+        view_name:
+          type: object
+          properties:
+            map:
+              type: string
+            reduce:
+              type: string
+    options:
+      type: object
+      properties:
+        local_seq:
+          type: string
+        include_design:
+          type: string
+        raw:
+          type: string
+        index_xattr_on_deleted_docs:
+          type: string
+HTTP-Error:
+  type: object
+  properties:
+    error:
+      description: The error name.
+      type: string
+    reason:
+      description: The error description.
+      type: string
+  required:
+    - error
+    - reason
+  title: HTTP-Error
+Retrieved-replication:
+  description: Properties of a replication
+  type: object
+  properties:
+    replication_id:
+      description: |-
+        This is the ID of the replication.
+
+        When creating a new replication using a POST request, this will be set to a random UUID if not explicitly set.
+
+        When the replication ID is specified in the URL, this must be set to the same replication ID if specifying it at all.
+      type: string
+    remote:
+      description: |-
+        This is the endpoint of the database for the remote Sync Gateway that is the subject of this replication's `push`, `pull`, or `pushAndPull` action.
+
+        Typically this would include the URI, port, and database name. For example, `http://localhost:4985/db`.
+
+        How this remote is used depends on the `direction` of the replication:
+        * `pull` - this replicator _pulls_ changes from the `remote`
+        * `push` - this replicator _pushes_ changes to this `remote`
+        * `pushAndPull` - this replicator _pushes_ changes to this `remote`, while also pulling receiving changes
+      type: string
+    username:
+      description: |-
+        **This has been deprecated in favour of `remote_username`.**
+
+        This is the username to use to authenticate with the remote.
+
+        This can only be used for a pull replication.
+      type: string
+      deprecated: true
+    password:
+      description: |-
+        **This has been deprecated in favour of `remote_password`.**
+
+        This is the password to use to authenticate with the remote.
+
+        This password will be redacted in the replication config.
+
+        This can only be used for a pull replication.
+      type: string
+      deprecated: true
+    remote_username:
+      description: |-
+        The username to use to authenticate with the remote.
+
+        This can only be used for a pull replication.
+      type: string
+    remote_password:
+      description: |-
+        The password to use to authenticate with the remote.
+
+        This password will be redacted in the replication config.
+
+        This can only be used for a pull replication.
+      type: string
+    direction:
+      description: |-
+        This specifies which direction the replication will be replicating with the `remote` replicator.
+
+        The directions are:
+        * `pull` - changes are pulled from the remote database
+        * `push` - changes are pushed to the remote database
+        * `pushAndPull` - changes are both push-to and pulled-from the remote database
+
+        Replications created prior to Sync Gateway 2.8 derive their `direction` from the source/target URL of the replication.
+      type: string
+      enum:
+        - push
+        - pull
+        - pushAndPull
+    conflict_resolution_type:
+      description: |-
+        This defines what conflict resolution policy Sync Gateway should use to apply when resolving conflicting revisions.
+
+        Changing this is an enterprise-edition only feature.
+
+        **Behaviour**
+        * *default* - In priority order, this will cause
+          - Deletes to always win (the delete with the logest revision history wins if both revisions are deletes)
+          - The revision with the longest revision history to win. This means the the revision with the most changes and therefore the highest revision ID will win.
+        * *localWins* - This will result in local revisions always being the winner in any conflict.
+        * *remoteWins* - This will result in remote revisions always being the winner in any conflict.
+        * *custom* - This will result in conflicts going through your own custom conflict resolver. You must provide this logic as a Javascript function in the `custom_conflict_resolver` parameter. This is an enterprise-edition only feature.
+
+
+        Note: replications created prior to Sync Gateway 2.8 will default to `default`.
+      type: string
+      default: default
+      enum:
+        - default
+        - remoteWins
+        - localWins
+        - custom
+    custom_conflict_resolver:
+      description: "This specifies the Javascript function to use to resolve conflicts between conflicting revisions.\n \nThis **must** be used when `conflict_resolution_type=custom`. This property will be ignored when `conflict_resolution_type` is not `custom`.\n\nThe Javascript function to provide this property should be in backticks (like the sync function). The function takes 1 parameter which is a struct that represents the conflict. This struct has 2 properties:\n* `LocalDocument` - The local document. This contains the document ID under the `_id` key.\n* `RemoteDocument` - The remote document\nThe function should return the new documents body. This can be the winning revision (for example, `return conflict.LocalDocument`), a new body, or `nil` to resolve as a delete.\n\nExample:\n```\n\"custom_conflict_resolver\":\\`\n\tfunction(conflict) {\n\t\tconsole.log(\"Doc ID: \"+conflict.LocalDocument._id);\n\t\tconsole.log(\"Full remote doc: \"+JSON.stringify(conflict.RemoteDocument));\n\t\treturn conflict.RemoteDocument;\n\t}\n\\`\n```\n\nUsing complex `custom_conflict_resolver` functions can noticeably degrade performance. Use a built-in resolver whenever possible.\n\nThis is an enterprise-edition only feature.\n"
+      type: string
+      default: none
+    purge_on_removal:
+      description: |-
+        Specifies whether to purge a document if the remote user loses access to all of the channels on the document when attempting to pull it from the remote.
+
+        If false, documents will not be replicated and not be purged when the user loses access.
+      type: boolean
+      default: false
+    enable_delta_sync:
+      description: |-
+        This will turn on delta- sync for the replication. This works in conjunction with the database level setting `delta_sync.enabled`
+
+        If set to true, delta-sync will be used as long as both databases involved in the replication have delta-sync enabled. If a database does not have delta-sync enabled, then the replication will run without delta-sync.
+
+        Replications created prior to Sync Gateway 2.8 must have delta-sync disabled.
+
+        Enabling this is an enterprise-edition only feature.
+      type: boolean
+      default: false
+    max_backoff_time:
+      description: |-
+        Specifies the maximum time-period (in minutes) that Sync Gateway will attempt to reconnect to a lost or unreachable remote.
+
+        When a disconnection happens, Sync Gateway will do an exponential backoff up to this specified value. When this value is met, it will attempt to reconnect indefinitely every `max_backoff_time` minutes.
+
+        If this is set to 0, Sync Gateway will do the normal exponential backoff after the disconnect happens but then attempting 10 minutes and stop the replication.
+
+        Note: this defaults to 5 minutes for replications created prior to Sync Gateway 2.8.
+      type: integer
+      default: 5
+    initial_state:
+      description: |-
+        This is what state to start the replication in when creating a new replication.
+
+        This allows you to control if the replication starts in a `stopped` start or `running` state.
+
+        Replications prior to Sync Gateway 2.8 will run in the default state `running`.
+      type: string
+      default: running
+      enum:
+        - running
+        - stopped
+    continuous:
+      description: |-
+        If true, changes will be immediately synced when they happen. This is known as a continuous replication.
+
+        If false, all changes will be synced until they have been processed. The replication will then cease and not process any future changes (unless started again by the user). This is known as a one-shot replication.
+      type: boolean
+      default: false
+    filter:
+      description: |-
+        This defines whether to filter documents by their channels or not.
+
+        If set to `sync_gateway/bychannel` then a **pull** replication will be limited to a specific set of channels specified by the `query_params.channels` property.
+
+        This only can be used with pull replications.
+      type: string
+      enum:
+        - sync_gateway/bychannel
+    query_params:
+      description: |-
+        This is a set of key/value pairs used in the query string of the replication.
+
+        If `filters=sync_gateway/bychannel` then this can be used to set the channels to filter by in a pull replication. To do this, set the `channels` key to a string array of the channels to filter by. For example:
+        ```
+        "filter":"sync_gateway/bychannel",
+        "query_params": {
+          "channels":["chanUser1"]
+        },
+        ```
+      type: array
+      items:
+        type: string
+    cancel:
+      description: Unused field
+      type: boolean
+    adhoc:
+      description: |-
+        Set to true to run the replication as an adhoc replication instead of a persistent one.
+
+        This means that the replication will only last the period of the replication until the status is changed to `stopped` and then it will be removed automatically. It will also be removed if Sync Gateway restarts or if removed due to user action.
+      type: boolean
+      default: false
+    batch_size:
+      description: The amount of changes to be sent in one batch of replications. Changing this is an enterprise-edition only feature.
+      type: integer
+      default: 200
+    run_as:
+      description: This is used if you want to specify a user to run the replication as. This means that the replication will only be able to replicate what the user  access to what the user has access to.
+      type: string
+    assigned_node:
+      description: The unique ID of the node assigned to the replication.
+      type: string
+    target_state:
+      description: This is the state that the replicator is in or that trying to transition in to.
+      type: string
+      enum:
+        - running
+        - stopped
+        - resetting
+        - error
+        - starting
+        - reconnecting
+  title: Replication
+Replication:
+  description: Properties of a replication
+  type: object
+  properties:
+    replication_id:
+      description: |-
+        This is the ID of the replication.
+
+        When creating a new replication using a POST request, this will be set to a random UUID if not explicitly set.
+
+        When the replication ID is specified in the URL, this must be set to the same replication ID if specifying it at all.
+      type: string
+    remote:
+      description: |-
+        This is the endpoint of the database for the remote Sync Gateway that is the subject of this replication's `push`, `pull`, or `pushAndPull` action.
+
+        Typically this would include the URI, port, and database name. For example, `http://localhost:4985/db`.
+
+        How this remote is used depends on the `direction` of the replication:
+        * `pull` - this replicator _pulls_ changes from the `remote`
+        * `push` - this replicator _pushes_ changes to this `remote`
+        * `pushAndPull` - this replicator _pushes_ changes to this `remote`, while also pulling receiving changes
+      type: string
+    username:
+      description: |-
+        **This has been deprecated in favour of `remote_username`.**
+
+        This is the username to use to authenticate with the remote.
+
+        This can only be used for a pull replication.
+      type: string
+      deprecated: true
+    password:
+      description: |-
+        **This has been deprecated in favour of `remote_password`.**
+
+        This is the password to use to authenticate with the remote.
+
+        This password will be redacted in the replication config.
+
+        This can only be used for a pull replication.
+      type: string
+      deprecated: true
+    remote_username:
+      description: |-
+        The username to use to authenticate with the remote.
+
+        This can only be used for a pull replication.
+      type: string
+    remote_password:
+      description: |-
+        The password to use to authenticate with the remote.
+
+        This password will be redacted in the replication config.
+
+        This can only be used for a pull replication.
+      type: string
+    direction:
+      description: |-
+        This specifies which direction the replication will be replicating with the `remote` replicator.
+
+        The directions are:
+        * `pull` - changes are pulled from the remote database
+        * `push` - changes are pushed to the remote database
+        * `pushAndPull` - changes are both push-to and pulled-from the remote database
+
+        Replications created prior to Sync Gateway 2.8 derive their `direction` from the source/target URL of the replication.
+      type: string
+      enum:
+        - push
+        - pull
+        - pushAndPull
+    conflict_resolution_type:
+      description: |-
+        This defines what conflict resolution policy Sync Gateway should use to apply when resolving conflicting revisions.
+
+        Changing this is an enterprise-edition only feature.
+
+        **Behaviour**
+        * *default* - In priority order, this will cause
+          - Deletes to always win (the delete with the logest revision history wins if both revisions are deletes)
+          - The revision with the longest revision history to win. This means the the revision with the most changes and therefore the highest revision ID will win.
+        * *localWins* - This will result in local revisions always being the winner in any conflict.
+        * *remoteWins* - This will result in remote revisions always being the winner in any conflict.
+        * *custom* - This will result in conflicts going through your own custom conflict resolver. You must provide this logic as a Javascript function in the `custom_conflict_resolver` parameter. This is an enterprise-edition only feature.
+
+
+        Note: replications created prior to Sync Gateway 2.8 will default to `default`.
+      type: string
+      default: default
+      enum:
+        - default
+        - remoteWins
+        - localWins
+        - custom
+    custom_conflict_resolver:
+      description: "This specifies the Javascript function to use to resolve conflicts between conflicting revisions.\n \nThis **must** be used when `conflict_resolution_type=custom`. This property will be ignored when `conflict_resolution_type` is not `custom`.\n\nThe Javascript function to provide this property should be in backticks (like the sync function). The function takes 1 parameter which is a struct that represents the conflict. This struct has 2 properties:\n* `LocalDocument` - The local document. This contains the document ID under the `_id` key.\n* `RemoteDocument` - The remote document\nThe function should return the new documents body. This can be the winning revision (for example, `return conflict.LocalDocument`), a new body, or `nil` to resolve as a delete.\n\nExample:\n```\n\"custom_conflict_resolver\":\\`\n\tfunction(conflict) {\n\t\tconsole.log(\"Doc ID: \"+conflict.LocalDocument._id);\n\t\tconsole.log(\"Full remote doc: \"+JSON.stringify(conflict.RemoteDocument));\n\t\treturn conflict.RemoteDocument;\n\t}\n\\`\n```\n\nUsing complex `custom_conflict_resolver` functions can noticeably degrade performance. Use a built-in resolver whenever possible.\n\nThis is an enterprise-edition only feature.\n"
+      type: string
+      default: none
+    purge_on_removal:
+      description: |-
+        Specifies whether to purge a document if the remote user loses access to all of the channels on the document when attempting to pull it from the remote.
+
+        If false, documents will not be replicated and not be purged when the user loses access.
+      type: boolean
+      default: false
+    enable_delta_sync:
+      description: |-
+        This will turn on delta- sync for the replication. This works in conjunction with the database level setting `delta_sync.enabled`
+
+        If set to true, delta-sync will be used as long as both databases involved in the replication have delta-sync enabled. If a database does not have delta-sync enabled, then the replication will run without delta-sync.
+
+        Replications created prior to Sync Gateway 2.8 must have delta-sync disabled.
+
+        Enabling this is an enterprise-edition only feature.
+      type: boolean
+      default: false
+    max_backoff_time:
+      description: |-
+        Specifies the maximum time-period (in minutes) that Sync Gateway will attempt to reconnect to a lost or unreachable remote.
+
+        When a disconnection happens, Sync Gateway will do an exponential backoff up to this specified value. When this value is met, it will attempt to reconnect indefinitely every `max_backoff_time` minutes.
+
+        If this is set to 0, Sync Gateway will do the normal exponential backoff after the disconnect happens but then attempting 10 minutes and stop the replication.
+
+        Note: this defaults to 5 minutes for replications created prior to Sync Gateway 2.8.
+      type: integer
+      default: 5
+    initial_state:
+      description: |-
+        This is what state to start the replication in when creating a new replication.
+
+        This allows you to control if the replication starts in a `stopped` start or `running` state.
+
+        Replications prior to Sync Gateway 2.8 will run in the default state `running`.
+      type: string
+      default: running
+      enum:
+        - running
+        - stopped
+    continuous:
+      description: |-
+        If true, changes will be immediately synced when they happen. This is known as a continuous replication.
+
+        If false, all changes will be synced until they have been processed. The replication will then cease and not process any future changes (unless started again by the user). This is known as a one-shot replication.
+      type: boolean
+      default: false
+    filter:
+      description: |-
+        This defines whether to filter documents by their channels or not.
+
+        If set to `sync_gateway/bychannel` then a **pull** replication will be limited to a specific set of channels specified by the `query_params.channels` property.
+
+        This only can be used with pull replications.
+      type: string
+      enum:
+        - sync_gateway/bychannel
+    query_params:
+      description: |-
+        This is a set of key/value pairs used in the query string of the replication.
+
+        If `filters=sync_gateway/bychannel` then this can be used to set the channels to filter by in a pull replication. To do this, set the `channels` key to a string array of the channels to filter by. For example:
+        ```
+        "filter":"sync_gateway/bychannel",
+        "query_params": {
+          "channels":["chanUser1"]
+        },
+        ```
+      type: array
+      items:
+        type: string
+    cancel:
+      description: Unused field
+      type: boolean
+    adhoc:
+      description: |-
+        Set to true to run the replication as an adhoc replication instead of a persistent one.
+
+        This means that the replication will only last the period of the replication until the status is changed to `stopped` and then it will be removed automatically. It will also be removed if Sync Gateway restarts or if removed due to user action.
+      type: boolean
+      default: false
+    batch_size:
+      description: The amount of changes to be sent in one batch of replications. Changing this is an enterprise-edition only feature.
+      type: integer
+      default: 200
+    run_as:
+      description: This is used if you want to specify a user to run the replication as. This means that the replication will only be able to replicate what the user  access to what the user has access to.
+      type: string
+  required:
+    - direction
+  title: User configurable replication properties
+All-replications:
+  description: Contains all the replication IDs with their corresponding replication configurations
+  type: object
+  properties:
+    replication_id:
+      $ref: '#/Retrieved-replication'
+  title: All-replications
+Replication-status:
+  type: object
+  properties:
+    replication_id:
+      description: The ID of the replication.
+      type: string
+    config:
+      $ref: '#/Replication'
+    status:
+      description: The status of the replication.
+      type: string
+      enum:
+        - stopped
+        - running
+        - reconnecting
+        - resetting
+        - error
+        - starting
+    error_message:
+      description: The error message of the replication if an error has occurred.
+      type: string
+    docs_read:
+      description: The number of documents that have been read (fetched) from the source database.
+      type: integer
+    docs_checked_pull:
+      type: integer
+    docs_purged:
+      description: The number of documents that have been purged.
+      type: integer
+    rejected_by_local:
+      description: The number of documents that were received by the local but did not get replicated due to getting rejected by the sync function on the local.
+      type: integer
+    last_seq_pull:
+      description: The last changes sequence number that was pulled from the remote.
+      type: string
+    deltas_recv:
+      description: The number of deltas that have been received from the remote.
+      type: integer
+    deltas_requested:
+      type: integer
+    docs_written:
+      description: The number of documents that have been wrote (pushed) to the target database.
+      type: integer
+    docs_checked_push:
+      type: integer
+    docs_write_failures:
+      description: The number of documents that have failed to be wrote (pushed) to the target database. There will be no attempt to try to push these docs again.
+      type: integer
+    docs_write_conflicts:
+      description: The number of documents that had a conflict.
+      type: integer
+    rejected_by_remote:
+      description: The number of documents that were received by the remote but did not get replicated due to getting rejected by the sync function on the remote.
+      type: integer
+    last_seq_push:
+      description: The last changes sequence number that was pushed to the remote.
+      type: string
+    deltas_sent:
+      description: 'The number of deltas that have been sent to the remote. '
+      type: integer
+  required:
+    - replication_id
+  title: Replication-status
+Database:
+  description: The properties of a database configuration.
+  type: object
+  properties:
+    server:
+      description: 'This is the Couchbase Server address or addresses that the database connect to. '
+      type: string
+    pool:
+      description: This field is unsupported and ignored.
+      type: string
+      default: default
+      deprecated: true
+    bucket:
+      description: The Couchbase Server backing bucket for the database.
+      type: string
+      default: The database name
+    username:
+      description: The username for authenticating to the server.
+      type: string
+    password:
+      description: The password for authenticating to the server.
+      type: string
+    certpath:
+      description: The cert path (public key) for X.509 bucket auth.
+      type: string
+    keypath:
+      description: The key path (private key) for X.509 bucket auth
+      type: string
+    cacertpath:
+      description: The root CA cert path for X.509 bucket authentication.
+      type: string
+    kv_tls_port:
+      description: The Memcached TLS port.
+      type: integer
+      default: 11207
+    max_concurrent_query_ops:
+      description: The maximum amount of query operations that can be running at any one point.
+      type: integer
+      default: 1000
+    name:
+      description: The name of the database.
+      type: string
+    sync:
+      description: The Javascript function that newly created documents are ran through.
+      type: string
+      default: 'function(doc){channel(doc.channels);}'
+    users:
+      $ref: '#/User'
+    roles:
+      $ref: '#/Role'
+    revs_limit:
+      description: |-
+        The maximum depth a document's revision tree can grow too.
+
+        The minimum is `20` if conflicts are allowed and 0 if not. It is not recommended to go below `100` when conflicts are allowed.
+      type: number
+      default: 100 if conflict allowed and 50 if not
+      minimum: 0
+    import_docs:
+      description: |-
+        If true, documents will be imported in to Sync Gateway from the bucket when requested. Documents will be ran through the set `import_filter` if any is set.
+
+        The default value depends on the edition of Sync Gateway being used. If the edition is the community-edition, then this will default to `false` or else in the enterprise-edition, it will default to `true`.
+
+        This can also be set to the string `continuous` which maps to true.
+      type: boolean
+    import_partitions:
+      description: |-
+        ** This is an enterprise-edition feature only**
+
+        This is how many import partitions should be used for import sharding.
+
+        Partitions are distributed among all Sync Gateway nodes participating in import processing (`import_docs=true`), and each process a subset of the server's vbuckets.
+
+        Each partition is processed by an independent function that runs simultaneously to others, so `import_partitions` can be used to tune concurrency based on the number of Sync Gateway nodes, and the number of cores per node.
+      type: number
+      default: 16
+    import_filter:
+      description: |-
+        This is the function that all imported documents are ran through in order to filter out what to import and what not to import. This allows you to control what is made available to Couchbase Mobile clients. If it is not set, then no documents are filtered when imported.
+
+        `import_docs` must be true to make this field applicable.
+      type: string
+      example: 'function(doc) { if (doc.type != ''mobile'') { return false; } return true; }'
+    import_backup_old_rev:
+      description: This controls whether import should attempt to create a temporary backup of the previous revision body (if available) when the document is modified in the bucket.
+      type: boolean
+      default: false
+    event_handlers:
+      description: These are the settings for webhooks.
+      type: object
+      properties:
+        max_processes:
+          description: The maximum amount of concurrent event handling independent functions that can be running at the same time.
+          type: string
+        wait_for_process:
+          description: The maximum amount of time (in milliseconds) to wait when the even queue is full.
+          type: string
+        document_changed:
+          $ref: '#/Event-config'
+        db_state_changed:
+          $ref: '#/Event-config'
+    feed_type:
+      description: The type of feed to use to communicate with Couchbase Server.
+      type: string
+      default: DCP
+      enum:
+        - TAP
+        - DCP
+      deprecated: true
+    allow_empty_password:
+      description: This controls whether users that are created can have an empty password or not.
+      type: boolean
+      default: false
+    cache:
+      type: object
+      properties:
+        rev_cache:
+          description: The revision cache config settings.
+          type: object
+          properties:
+            size:
+              description: The maximum number of revisions that can be stored in the revision cache.
+              type: string
+              default: 5000
+            shard_count:
+              description: The number of shards the revision cache should be split into.
+              type: string
+              default: 16
+        channel_cache:
+          description: The channel cache config settings.
+          type: object
+          properties:
+            max_number:
+              description: The maximum number of channel caches which can exist at any one point.
+              type: integer
+              default: 50000
+            compact_high_watermark_pct:
+              description: |-
+                The trigger value for starting the channel cache eviction process.
+
+                Specify this as a percentage which will be the percentage used on `max_number).
+
+                When the cache size, determined by `max_number`, reaches the high watermark, the eviction process iterates through the cache, removing inactive channels.
+              type: integer
+              default: 80
+            compact_low_watermark_pct:
+              description: |-
+                The trigger value for stopping the channel cache eviction process.
+
+                Specify this as a percentage which will be the percentage used on `max_number).
+
+                When the cache size, determined by `max_number` returns to a value lower than the percentage of it set here, the cache eviction process is stopped.
+              type: integer
+              default: 60
+            max_wait_pending:
+              description: The maximum time (in milliseconds) for waiting for a pending sequence before skipping it.
+              type: number
+              default: 5000
+            max_num_pending:
+              description: The maximum number of pending sequences before skipping sequences.
+              type: integer
+              default: 10000
+            max_wait_skipped:
+              description: The maximum amount of time (in milliseconds) to wait for a skipped sequence before abandoning it.
+              type: number
+              default: 3600000
+            enable_star_channel:
+              description: Used to control whether Sync Gateway should use the all documents (*) channel.
+              type: boolean
+              default: false
+            max_length:
+              description: The maximum number of entries to maintain in the cache per channel.
+              type: integer
+              default: 500
+            min_length:
+              description: The minimum number of entries to maintain in the cache per channel.
+              type: integer
+              default: 50
+            expiry_seconds:
+              description: The amount of time (in seconds) to keep entries in the cache beyond the minimum retained.
+              type: integer
+              default: 60
+            query_limit:
+              description: |-
+                **Deprecated in favour of the database setting `query_pagination_limit`**
+
+                The limit used for channel queries.
+              type: integer
+              default: 5000
+              deprecated: true
+        max_wait_pending:
+          description: |-
+            **Deprecated, please use the database setting `cache.channel_cache.max_wait_pending` instead**
+
+            The maximum time (in milliseconds) for waiting for a pending sequence before skipping it.
+          type: number
+          deprecated: true
+        max_wait_skipped:
+          description: |-
+            **Deprecated, please use the database setting `cache.channel_cache.max_wait_skipped` instead**
+
+            The maximum time (in milliseconds) for waiting for pending sequences before skipping.
+          type: number
+          deprecated: true
+        enable_star_channel:
+          description: |-
+            **Deprecated, please use the database setting `cache.channel_cache.enable_star_channel` instead**
+
+            Used to control whether Sync Gateway should use the all documents (*) channel.
+          type: boolean
+          deprecated: true
+        channel_cache_max_length:
+          description: |-
+            **Deprecated, please use the database setting `cache.channel_cache.max_length` instead**
+
+            The maximum number of entries maintained in cache per channel.
+          type: number
+          deprecated: true
+        channel_cache_min_length:
+          description: |-
+            **Deprecated, please use the database setting `cache.channel_cache.min_length` instead**
+
+            The minimum number of entries maintained in cache per channel.
+          type: integer
+          deprecated: true
+        channel_cache_expiry:
+          description: |-
+            **Deprecated, please use the database setting `cache.channel_cache.expiry_seconds` instead**
+
+            The time (seconds) to keep entries in cache beyond the minimum retained.
+          type: integer
+          deprecated: true
+        max_num_pending:
+          description: |-
+            **Deprecated, please use the database setting `cache.channel_cache.max_num_pending` instead**
+
+            The max number of pending sequences before skipping.
+          type: integer
+          deprecated: true
+    rev_cache_size:
+      description: |-
+        **Deprecated, please use the database setting `cache.rev_cache.size` instead**
+
+        The maximum number of revisions to store in the revision cache.
+      type: number
+      deprecated: true
+    offline:
+      description: Start the database in an offline state.
+      type: boolean
+      default: false
+    unsupported:
+      description: These are unsupported options and therefore it is not recommended to use them.
+      type: object
+      properties:
+        user_views:
+          type: object
+          properties:
+            enabled:
+              description: Whether pass-through view query is supported through public API.
+              type: boolean
+        oidc_test_provider:
+          type: object
+          properties:
+            enabled:
+              description: Whether the `oidc_test_provider` endpoints should be exposed on the public API.
+              type: boolean
+        api_endpoints:
+          type: object
+          properties:
+            enable_couchbase_bucket_flush:
+              description: |-
+                **Setting for test purposes only**
+
+                Whether Couchbase buckets can be flushed via Admin REST API.
+              type: boolean
+        warning_thresholds:
+          type: object
+          properties:
+            xattr_size_bytes:
+              description: The number of bytes to be used as a threshold for xattr size limit warnings.
+              type: number
+            channels_per_doc:
+              description: The number of channels per document to be used as a threshold for the channel count warnings.
+              type: number
+            access_and_role_grants_per_doc:
+              description: The number of access and role grants per document to be used as a threshold for grant count warnings.
+              type: number
+            channels_per_user:
+              description: The number of channels per user to be used as a threshold for channel count warnings.
+              type: number
+            channel_name_size:
+              description: The number of channel name characters to be used as a threshold for channel name warnings.
+              type: number
+        disable_clean_skipped_query:
+          description: Whether to clean skipped sequence processing to bypass final checks.
+          type: boolean
+        oidc_tls_skip_verify:
+          description: Enable self-signed certificates for OIDC testing.
+          type: boolean
+        sgr_tls_skip_verify:
+          description: Enable self-signed certificates for SG-replicate testing.
+          type: boolean
+        remote_config_tls_skip_verify:
+          description: Enable self-signed certificates for external JavaScript load.
+          type: boolean
+    oidc:
+      description: Configuration for OpenID Connect authentication.
+      type: object
+      properties:
+        providers:
+          description: List of OpenID Connect issuers.
+          type: object
+          properties:
+            provider_name:
+              description: The providers name.
+              type: object
+              properties:
+                issuer:
+                  description: The URL for the OpenID Connect issuer.
+                  type: string
+                register:
+                  description: If to register a new Sync Gateway user account when a user logs in with OpenID Connect.
+                  type: boolean
+                client_id:
+                  description: The OpenID Connect provider client ID.
+                  type: string
+                validation_key:
+                  description: The OpenID Connect provider client secret.
+                  type: string
+                callback_url:
+                  description: |-
+                    The URL that the OpenID Connect will redirect to after authentication.
+
+                    If not provided, a callback URL will be generated.
+                  type: string
+                disable_session:
+                  description: Disable Sync Gateway session creation on successful OpenID Connect authentication.
+                  type: boolean
+                scope:
+                  description: The scope sent for the OpenID Connect request.
+                  type: array
+                  items:
+                    type: string
+                include_access:
+                  description: 'This is whether the `_oidc_callback` response should include the OpenID Connect access token and associated fields (such as `token_type`, and `expires_in`).'
+                  type: boolean
+                user_prefix:
+                  description: This is the username prefix for all users created through this provider.
+                  type: string
+                discovery_url:
+                  description: The non-standard discovery endpoint.
+                  type: string
+                disable_cfg_validation:
+                  description: This bypasses the configuration validation based on the OpenID Connect specifications. This may be required for some OpenID providers that don't strictly adhere to the specifications.
+                  type: boolean
+                  default: false
+                disable_callback_state:
+                  description: |-
+                    Controls whether to maintain state between the auth request and callback endpoints (`/_oidc` and `/_oidc_callback`).
+
+                    **This is not recommended as it would cause OpenID Connect authentication to be vulnerable to Cross-Site Request Forgery (CSRF, XSRF).**
+                  type: boolean
+                  default: false
+                username_claim:
+                  description: |-
+                    Allows a different OpenID Connect field to be specified instead of the Subject (`sub`).
+
+                    The field name to use can be specified here.
+                  type: string
+                allow_unsigned_provider_tokens:
+                  description: Allows users accept unsigned tokens from providers.
+                  type: boolean
+                IsDefault:
+                  description: Indicates if this is the default OpenID Connect provider.
+                  type: boolean
+                Name:
+                  description: The name of the OpenID Connect Provider.
+                  type: string
+                InsecureSkipVerify:
+                  description: 'Determines whether the TLS certificate verification should be disabled for this provider. '
+                  type: boolean
+                  default: false
+        default_provider:
+          description: The default provider to use when the provider is not specified in the client.
+          type: string
+    old_rev_expiry_seconds:
+      description: The number of seconds before old revisions are removed from the Couchbase Server bucket.
+      type: number
+      default: 300
+    view_query_timeout_secs:
+      description: The number of seconds before a view query should timeout.
+      type: integer
+      default: 75
+    local_doc_expiry_secs:
+      description: The number of seconds before a `_local` document should expire.
+      type: integer
+      default: 7776000
+    enable_shared_bucket_access:
+      description: Whether to use extended attributes to store Sync Gateway document (`_sync`) metadata.
+      type: boolean
+      default: true
+    session_cookie_secure:
+      description: |-
+        Override the session cookie `secure` flag. If set, the cookie will have the `secure` flag.
+
+        This will default to `true` if startup config `api.https.tls_cert_path` is set otherwise it will default to `false`.
+      type: boolean
+    session_cookie_name:
+      description: This can be used to define a custom per-database session cookie name.
+      type: string
+    session_cookie_http_only:
+      description: Make all session cookies for the database set the `HttpOnly` flag so they are inaccessible to JavaScript.
+      type: boolean
+      default: false
+    allow_conflicts:
+      description: This controls whether to allow conflicting document revisions.
+      type: boolean
+      default: true
+      deprecated: true
+    num_index_replicas:
+      description: This is the number of Global Secondary Indexes (GSI) to use for core indexes.
+      type: number
+      default: 1
+    use_views:
+      description: Force the use of views instead of GSI.
+      type: boolean
+      default: false
+    send_www_authentice_header:
+      description: Controls whether to send a `WWW-Authenticate` header in `401 Unauthorized` HTTP responses.
+      type: boolean
+      default: true
+    bucket_op_timeout_ms:
+      description: 'This is the amount of milliseconds should pass before a bucket operation times out. An error will be returned if the bucket operation times out saying: `operation timed out`.'
+      type: number
+    slow_query_warning_threshold:
+      description: 'The amount of milliseconds a N1QL query should run before logging a warning. '
+      type: number
+      default: 500
+    delta_sync:
+      description: |-
+        Delta sync configuration settings.
+
+        **This is an enterprise-edition feature only**
+      type: object
+      properties:
+        enabled:
+          description: |-
+            Whether delta sync is enabled.
+
+            **This is an enterprise-edition feature only**
+          type: boolean
+          default: false
+        rev_max_age_seconds:
+          description: |-
+            The number of seconds deltas for old revisions are available for.
+
+            This defaults to 24 hours (in seconds).
+          type: number
+          default: 86400
+    compact_interval_days:
+      description: |-
+        The interval between scheduled tombstone compaction runs (in days). This can be a floating point number.
+
+        If set to 0, compaction will not run automatically.
+      type: number
+      default: 1
+    sgreplicate_enabled:
+      description: Whether the node should accept assign replications (`true`) or not (`false`).
+      type: boolean
+      default: true
+    sgreplicate_websocket_heartbeat_secs:
+      description: Use a custom heartbeat interval (in seconds) for websocket ping frames.
+      type: integer
+      default: 300
+    replications:
+      type: object
+      properties:
+        replication_id:
+          $ref: '#/Replication'
+    serve_insecure_attachment_types:
+      description: |
+        If set, always serve attachments with the `Content-Type` header set to the type of the attachment.
+
+        When serving an attachment, usually the `Content-Type` header is set to the type of the attachment but the `Content-Disposition` response header will be set instead if the content type is vulnerable to a phishing attack, causing the browser to download the file instead of display it. This option will override that behaviour and always set the `Content-Type` header.
+      type: boolean
+      default: false
+    query_pagination_limit:
+      description: The query limit to be used during pagination of large queries.
+      type: integer
+      default: 5000
+    user_xattr_key:
+      description: 'The key to use for the user xattr that will be accessible from the sync function. IF empty, the feature will be disabled.'
+      type: string
+    client_partition_window_secs:
+      description: |-
+        How long (in seconds) clients can remain offline for without losing replication metadata.
+
+        Defaults to 30 days (in seconds)
+      type: integer
+      default: 2592000
+    guest:
+      $ref: '#/User'
+  title: Database-config
+Event-config:
+  type: object
+  properties:
+    handler:
+      description: The handler type.
+      type: string
+      enum:
+        - webhook
+    url:
+      description: The URL of the webhook.
+      type: string
+    filter:
+      description: The Javascript function to use to filter the webhook events.
+      type: string
+    timeout:
+      description: The amount of time (in seconds) to attempt connect to the webhook before giving up.
+      type: number
+    options:
+      description: The options for the event.
+      type: object
+      properties:
+        option_name:
+          description: The option key and value.
+  title: Event-config
+Resync-status:
+  description: The status of a resync operation
+  type: object
+  properties:
+    status:
+      description: The status of the current operation.
+      type: string
+      enum:
+        - running
+        - completed
+        - stopping
+        - stopped
+        - error
+    start_time:
+      description: The ISO-8601 date and time the resync operation was started.
+      type: string
+    last_error:
+      description: The last error that occurred in the resync operation (if any).
+      type: string
+    docs_changed:
+      description: The amount of documents that have been changed as a result of the resync operation.
+      type: integer
+    docs_processed:
+      description: The amount of docs that have been processed so far in the resync operation.
+      type: integer
+  required:
+    - status
+    - start_time
+    - last_error
+    - docs_changed
+    - docs_processed
+  title: Resync-status
+Compact-status:
+  description: The status returned from a compaction.
+  type: object
+  properties:
+    status:
+      description: The status of the current operation.
+      type: string
+    start_time:
+      description: The ISO-8601 date and time the compact operation was started.
+      type: string
+    last_error:
+      description: The last error that occurred in the compact operation (if any).
+      type: string
+    docs_purged:
+      description: |-
+        **Applicable to tombstone compaction only**
+
+        This is the amount of documents that have been purged so far.
+      type: string
+    marked_attachments:
+      description: |-
+        **Applicable to attachment compaction only**
+
+        This is the amount of attachments that have been marked to be purged.
+      type: string
+    purged_attachments:
+      description: |-
+        **Applicable to attachment compaction only**
+
+        This is the amount of attachments that have been purged so far.
+      type: string
+    compact_id:
+      description: |-
+        **Applicable to attachment compaction only**
+
+        This is the ID of the compaction.
+      type: string
+    phase:
+      description: |-
+        **Applicable to attachment compaction only**
+
+        This indicates the current phase of running attachment compact processes.
+
+        For failed processes, this indicates the phase at which a compact_id restart will commence (where relevant).
+      type: string
+    dry_run:
+      description: |
+        **Applicable to attachment compaction only**
+      type: string
+      enum:
+        - mark
+        - sweep
+        - cleanup
+  required:
+    - status
+    - start_time
+    - last_error
+  title: Compact-status
+Startup-config:
+  type: object
+  properties:
+    bootstrap:
+      description: Configuration settings for interacting with Couchbase Server.
+      type: object
+      properties:
+        group_id:
+          description: The config group ID to use when discovering databases. Allows for non-homogenous configuration.
+          type: string
+          default: default
+        config_update_frequency:
+          description: |-
+            How often to poll Couchbase Server for new config changes.
+
+            This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+          type: string
+          default: 10s
+        server:
+          description: Couchbase Server connection string/URL.
+          type: string
+        username:
+          description: Username for authenticating to server.
+          type: string
+        password:
+          description: Password for authenticating to server
+          type: string
+        ca_cert_path:
+          description: Root CA cert path for TLS connection
+          type: string
+        server_tls_skip_verify:
+          description: Allow empty server CA Cert Path without attempting to use system root pool
+          type: boolean
+          default: false
+        x509_cert_path:
+          description: Cert path (public key) for X.509 bucket auth
+          type: string
+        x509_key_path:
+          description: Key path (private key) for X.509 bucket auth
+          type: string
+        use_tls_server:
+          description: Enforces a secure or non-secure server scheme
+          type: boolean
+          default: true
+      readOnly: true
+      required:
+        - server
+        - username
+        - password
+    api:
+      description: Configuration settings for modifying how the REST API is interacted with.
+      type: object
+      properties:
+        public_interface:
+          description: Network interface to bind public API to
+          type: string
+          default: ':4984'
+        admin_interface:
+          description: |-
+            Network interface to bind admin API to.
+
+            By default, this will only be accessible to the localhost.
+          type: string
+          default: '127.0.0.1:4985'
+        metric_interface:
+          description: |-
+            Network interface to bind metrics API to.
+
+            By default, this will only be accessible to the localhost.
+          type: string
+          default: '127.0.0.1:4986'
+        profile_interface:
+          description: Network interface to bind profiling API to
+          type: string
+        admin_interface_authentication:
+          description: Whether the admin API requires authentication
+          type: boolean
+          default: true
+        metrics_interface_authentication:
+          description: Whether the metrics API requires authentication
+          type: boolean
+          default: true
+        enable_advanced_auth_dp:
+          description: |-
+            Whether to enable the DP permissions check feature of admin auth.
+
+            Defaults to `true` if using enterprise-edition or `false` if using community-edition.
+          type: boolean
+        server_read_timeout:
+          description: |-
+            Maximum duration.Second before timing out read of the HTTP(S) request.
+
+            This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+          type: string
+        server_write_timeout:
+          description: |-
+            Maximum duration.Second before timing out write of the HTTP(S) response.
+
+            This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+          type: string
+        read_header_timeout:
+          description: |-
+            The amount of time allowed to read request headers.
+
+            This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+          type: string
+          default: 5s
+        idle_timeout:
+          description: |-
+            The maximum amount of time to wait for the next request when keep-alives are enabled.
+
+            This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+          type: string
+          default: 90s
+        pretty:
+          description: Pretty-print JSON responses
+          type: boolean
+        max_connections:
+          description: Max of incoming HTTP connections to accept
+          type: number
+          default: 0
+        compress_responses:
+          description: 'If false, disables compression of HTTP responses'
+          type: boolean
+          default: true
+        hide_product_version:
+          description: Whether product versions removed from Server headers and REST API responses
+          type: boolean
+        https:
+          type: object
+          properties:
+            tls_minimum_version:
+              description: The minimum allowable TLS version for the REST APIs
+              type: string
+              default: tlsv1.2
+            tls_cert_path:
+              description: The TLS cert file to use for the REST APIs
+              type: string
+            tls_key_path:
+              description: The TLS key file to use for the REST APIs
+              type: string
+        cors:
+          type: object
+          properties:
+            origin:
+              description: 'List of allowed origins, use [''*''] to allow access from everywhere'
+              type: array
+              items:
+                type: string
+            login_origin:
+              description: List of allowed login origins
+              type: array
+              items:
+                type: string
+            headers:
+              description: List of allowed headers
+              type: array
+              items:
+                type: string
+            max_age:
+              description: Maximum age of the CORS Options request
+              type: integer
+      readOnly: true
+    logging:
+      description: The configuration settings for modifying Sync Gateway logging.
+      type: object
+      properties:
+        log_file_path:
+          description: Absolute or relative path on the filesystem to the log file directory. A relative path is from the directory that contains the Sync Gateway executable file.
+          type: string
+          readOnly: true
+        redaction_level:
+          description: Redaction level to apply to log output.
+          type: string
+          default: partial
+          enum:
+            - none
+            - partial
+            - full
+            - unset
+          readOnly: true
+        console:
+          $ref: '#/Console-logging-config'
+        error:
+          $ref: '#/File-logging-config'
+        warn:
+          $ref: '#/File-logging-config'
+        info:
+          $ref: '#/File-logging-config'
+        debug:
+          $ref: '#/File-logging-config'
+        trace:
+          $ref: '#/File-logging-config'
+        stats:
+          $ref: '#/File-logging-config'
+    auth:
+      type: object
+      properties:
+        bcrypt_cost:
+          description: Cost to use for bcrypt password hashes
+          type: integer
+          default: 10
+          maximum: 31
+          minimum: 10
+      readOnly: true
+    replicator:
+      type: object
+      properties:
+        max_heartbeat:
+          description: |-
+            Max heartbeat value for `_changes` request.
+
+            This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+          type: string
+        blip_compression:
+          description: BLIP data compression level (0-9)
+          type: integer
+          maximum: 9
+          minimum: 0
+      readOnly: true
+    unsupported:
+      description: Settings that are not officially supported. It is highly recommended these are **not** used.
+      type: object
+      properties:
+        stats_log_frequency:
+          description: |-
+            How often should stats be written to stats logs.
+
+            This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+          type: string
+          default: 1m
+        use_stdlib_json:
+          description: Bypass the jsoniter package and use Go's stdlib instead
+          type: boolean
+        http2:
+          type: object
+          properties:
+            enabled:
+              description: Whether HTTP2 support is enabled
+              type: boolean
+      readOnly: true
+    database_credentials:
+      description: 'A map of database name to credentials, that can be used instead of the bootstrap ones.'
+      type: object
+      properties:
+        database_name:
+          type: object
+          properties:
+            username:
+              description: Username for authenticating to the bucket
+              type: string
+            password:
+              description: Password for authenticating to the bucket. This value is always redacted.
+              type: string
+            x509_cert_path:
+              description: Cert path (public key) for X.509 bucket auth
+              type: string
+            x509_key_path:
+              description: Key path (private key) for X.509 bucket auth
+              type: string
+      readOnly: true
+    max_file_descriptors:
+      description: Max of open file descriptors (RLIMIT_NOFILE)
+      type: number
+      default: 5000
+      minimum: 0
+      readOnly: true
+    couchbase_keepalive_interval:
+      description: TCP keep-alive interval between SG and Couchbase server
+      type: integer
+      readOnly: true
+  title: Startup-config
+File-logging-config:
+  type: object
+  properties:
+    enabled:
+      description: Toggle for this log output
+      type: boolean
+    rotation:
+      $ref: '#/Log-rotation-config-readonly'
+    collation_buffer_size:
+      description: The size of the log collation buffer
+      type: integer
+      readOnly: true
+  title: File-logging-config
+Log-rotation-config-readonly:
+  type: object
+  properties:
+    max_size:
+      description: The maximum size in MB of the log file before it gets rotated.
+      type: integer
+    max_age:
+      description: The maximum number of days to retain old log files.
+      type: integer
+    localtime:
+      description: 'If true, it uses the computer''s local time to format the backup timestamp.'
+      type: boolean
+    rotated_logs_size:
+      description: Max Size (in mb) of log files before deletion
+      type: integer
+  readOnly: true
+  title: Log-rotation-config
+Console-logging-config:
+  type: object
+  properties:
+    log_level:
+      description: Log Level for the console output
+      type: string
+      default: none
+      enum:
+        - none
+        - error
+        - warn
+        - info
+        - debug
+        - trace
+    log_keys:
+      description: Log Keys for the console output
+      type: array
+      items:
+        type: string
+    color_enabled:
+      description: Log with color for the console output
+      type: boolean
+      readOnly: true
+    file_output:
+      description: 'Override the default stderr output, and write to the file specified instead'
+      type: string
+      readOnly: true
+    enabled:
+      description: Toggle for this log output
+      type: boolean
+      readOnly: true
+    rotation:
+      $ref: '#/Log-rotation-config-readonly'
+    collation_buffer_size:
+      description: The size of the log collation buffer.
+      type: integer
+      readOnly: true
+  title: Console-logging-config
+Log-update-enabled:
+  type: object
+  properties:
+    enabled:
+      description: 'If set, this log level will be outputted.'
+      type: boolean
+  title: Log-update-enabled
+DeprecatedLogKeyMap:
+  description: A map of log keys and whether they are enabled or not.
+  type: object
+  example:
+    HTTP: true
+    CRUD: false
+    Changes: true
+  additionalProperties:
+    description: The log key and whether it is enabled or not.
+    type: boolean
+Status:
+  type: object
+  properties:
+    databases:
+      description: Map of the databases in the node.
+      type: object
+      properties:
+        database_name:
+          type: object
+          properties:
+            seq:
+              description: The latest sequence number in the database.
+              type: number
+              minimum: 0
+            server_uuid:
+              description: The server unique identifier.
+              type: string
+            state:
+              description: Whether the database is online or offline.
+              type: string
+              enum:
+                - Online
+                - Offline
+            replication_status:
+              type: array
+              items:
+                $ref: '#/Replication-status'
+            cluster:
+              type: object
+              properties:
+                replication:
+                  description: Map of replication configs defined for the cluster.
+                  type: object
+                  properties:
+                    replication_id:
+                      $ref: '#/Retrieved-replication'
+                nodes:
+                  description: Map of all Sync Gateway nodes in the cluster.
+                  type: object
+                  properties:
+                    node_uuid:
+                      description: The nodes unique identifier.
+                      type: object
+                      properties:
+                        uuid:
+                          description: The nodes unique identifier.
+                          type: string
+                        host:
+                          description: The nodes host name.
+                          type: string
+    version:
+      description: |-
+        The product version including the build number and edition (ie. `EE` or `CE`).
+
+        Blank if `api.hide_product_version=true` in the startup configuration.
+      type: string
+  title: Status

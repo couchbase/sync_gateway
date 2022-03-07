@@ -1,0 +1,22 @@
+# /_profile
+post:
+  summary: Start or Stop continuous CPU profiling
+  description: |-
+    This endpoint allows you to start and stop continuous CPU profiling.
+
+    To start profiling the CPU, call this endpoint and supply a file to output the pprof file to.
+
+    To stop profiling, call this endpoint but don't supply the `file` in the body.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Dev Ops
+  requestBody:
+    $ref: ../../components/requestBodies.yaml#/Profile
+  responses:
+    "200":
+      description: Successfully started or stopped CPU profiling
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+  tags:
+  - Admin only endpoints
+  - Profiling

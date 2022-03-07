@@ -1,0 +1,28 @@
+# /{db}/_flush
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+post:
+  summary: Flush the entire database bucket | Unsupported
+  description: |-
+    **This is unsupported**
+
+    This will purge *all* documents.
+
+    The bucket will only be flushed if the unsupported database configuration option `enable_couchbase_bucket_flush` is set.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Dev Ops
+  responses:
+    "200":
+      description: Successfully flushed the bucket
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+    "503":
+      description: The bucket does not support flush or delete
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+  tags:
+  - Admin only endpoints
+  - Unsupported

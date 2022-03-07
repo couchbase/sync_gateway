@@ -1,0 +1,39 @@
+# /{db}/_dumpchannel/{channel}
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+- name: channel
+  in: path
+  description: The channel to dump all the documents from.
+  required: true
+  schema:
+    type: string
+get:
+  summary: Dump all the documents in a channel | Unsupported
+  description: |-
+    **This is unsupported**
+
+    This queries a channel and displays all the document IDs and revisions that are in that channel.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Application
+    * Sync Gateway Application Read Only
+  parameters:
+  - name: since
+    in: query
+    description: Starts the results from the change immediately after the given sequence
+      ID. Sequence IDs should be considered opaque; they come from the last_seq property
+      of a prior response.
+    schema:
+      type: string
+  responses:
+    "200":
+      description: Successfully got all documents in the channel
+      content:
+        text/html:
+          schema:
+            type: string
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Admin only endpoints
+  - Unsupported

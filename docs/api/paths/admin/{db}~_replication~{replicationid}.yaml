@@ -1,0 +1,80 @@
+# /{db}/_replication/{replicationid}
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+- $ref: ../../components/parameters.yaml#/replicationid
+get:
+  summary: Get a replication configuration
+  description: |-
+    Retrieve a replication configuration from the database.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Replicator
+  responses:
+    "200":
+      description: Successfully retrieved the replication configuration
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/Retrieved-replication
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Admin only endpoints
+  - Replication
+put:
+  summary: Upsert a replication
+  description: |-
+    Create or update a replication in the database.
+
+    The replication ID does **not** need to be set in the request body.
+
+    If an existing replication is being updated, that replication must be stopped first and, if the `replication_id` is specified in the request body, it must match the replication ID in the URI.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Replicator
+  requestBody:
+    $ref: ../../components/requestBodies.yaml#/Replication-upsert
+  responses:
+    "200":
+      $ref: ../../components/responses.yaml#/Replicator-updated
+    "201":
+      $ref: ../../components/responses.yaml#/Replicator-created
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Admin only endpoints
+  - Replication
+delete:
+  summary: Stop and delete a replication
+  description: |-
+    This will delete a replication causing it to stop and no longer exist.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Replicator
+  responses:
+    "200":
+      description: Replication successfully deleted
+    "400":
+      $ref: ../../components/responses.yaml#/request-problem
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+  - Admin only endpoints
+  - Replication
+head:
+  responses:
+    "200":
+      description: Replication exists
+    "404":
+      description: Replication does not exist
+  tags:
+  - Admin only endpoints
+  - Replication
+  summary: Check if a replication exists
+  description: |-
+    Check if a replication exists.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Replicator

@@ -1,0 +1,54 @@
+# /_post_upgrade
+post:
+  summary: Run the post upgrade process on all databases
+  description: |-
+    The post upgrade process involves removing obsolete design documents and indexes when they are no longer needed.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Dev Ops
+  parameters:
+  - name: preview
+    in: query
+    description: If set, a dry-run will be done to return what would be removed.
+    schema:
+      type: string
+      default: "false"
+  responses:
+    "200":
+      description: Returned results
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              post_upgrade_results:
+                description: A map of databases.
+                type: object
+                properties:
+                  database_name:
+                    description: The database name that was targetted.
+                    type: object
+                    properties:
+                      removed_design_docs:
+                        description: The design documents that have or will be removed.
+                        type: array
+                        items:
+                          type: string
+                      removed_indexes:
+                        description: The indexes that have or will be removed.
+                        type: array
+                        items:
+                          type: string
+                    required:
+                    - removed_design_docs
+                    - removed_indexes
+              preview:
+                description: If set, nothing in the database was changed as this was
+                  a dry-run. This can be controlled by the `preview` query parameter
+                  in the request.
+                type: boolean
+            required:
+            - post_upgrade_results
+  tags:
+  - Admin only endpoints
+  - Server

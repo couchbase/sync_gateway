@@ -1,0 +1,55 @@
+# /{db}/_google
+parameters:
+- $ref: ../../components/parameters.yaml#/db
+post:
+  summary: Create a new Google-based session
+  description: |-
+    Creates a new session based on a Google user. On a successful session creation, a session cookie is stored to keep the user authenticated for future API calls.
+
+    If CORS is enabled, the origin must match an allowed login origin otherwise an error will be returned.
+  requestBody:
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            id_token:
+              description: Google ID token to base the new session on.
+              type: string
+          required:
+          - id_token
+  responses:
+    "200":
+      description: Session created successfully
+    "400":
+      $ref: ../../components/responses.yaml#/Invalid-CORS
+    "401":
+      description: Received error from Google token verifier or invalid application
+        ID in the config
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              reason:
+                type: string
+    "404":
+      $ref: ../../components/responses.yaml#/Not-found
+    "502":
+      description: Received invalid response from the Google token verifier
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              reason:
+                type: string
+    "504":
+      description: Unable to send request to the Google token verifier
+  deprecated: true
+  tags:
+  - OpenID Connect
