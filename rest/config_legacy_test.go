@@ -441,3 +441,50 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 		assert.NotNil(t, role)
 	}
 }
+
+// CBG-1929: Test fromConfig=true validation in ToStartupConfig()
+func TestLegacyReplicationConfigValidation(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       map[string]*db.ReplicationConfig
+		expectError bool
+	}{
+		{
+			name:        "Valid config",
+			input:       map[string]*db.ReplicationConfig{"repl": {ID: "repl"}},
+			expectError: false,
+		},
+		{
+			name:        "Replication key and ID mismatch", // Error from ToStartupConfig, not ValidateReplication
+			input:       map[string]*db.ReplicationConfig{"repl": {ID: "repl_id"}},
+			expectError: true,
+		},
+		{
+			name:        "Setting adhoc when using config", // Only errors when set from legacy config (fromConfig=true)
+			input:       map[string]*db.ReplicationConfig{"repl": {ID: "repl", Adhoc: true}},
+			expectError: true,
+		},
+		{
+			name:        "Setting username and remote username", // Error on API and legacy config
+			input:       map[string]*db.ReplicationConfig{"repl": {ID: "repl", RemoteUsername: "username", Username: "username"}},
+			expectError: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Set required replication fields to avoid errors
+			test.input["repl"].Remote = "localhost"
+			test.input["repl"].Direction = "pull"
+
+			lc := LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{Replications: test.input}}}
+
+			_, _, err := lc.ToStartupConfig()
+			fmt.Println(err)
+			if test.expectError {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}

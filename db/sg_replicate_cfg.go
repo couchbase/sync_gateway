@@ -53,7 +53,6 @@ const (
 	ConfigErrorMissingDirection                 = "Replication direction must be specified"
 	ConfigErrorDuplicateCredentials             = "Auth credentials can be specified using remote_username/remote_password config properties or remote URL, but not both"
 	ConfigErrorConfigBasedAdhoc                 = "adhoc=true is invalid for replication in Sync Gateway configuration"
-	ConfigErrorConfigBasedCancel                = "cancel=true is invalid for replication in Sync Gateway configuration"
 	ConfigErrorInvalidConflictResolutionTypeFmt = "Conflict resolution type is invalid, valid values are %s/%s/%s/%s"
 	ConfigErrorInvalidDirectionFmt              = "Invalid replication direction %q, valid values are %s/%s/%s"
 	ConfigErrorBadChannelsArray                 = "Bad channels array in query_params for sync_gateway/bychannel filter"
@@ -107,7 +106,6 @@ type ReplicationConfig struct {
 	Continuous             bool                      `json:"continuous"`
 	Filter                 string                    `json:"filter,omitempty"`
 	QueryParams            interface{}               `json:"query_params,omitempty"`
-	Cancel                 bool                      `json:"cancel,omitempty"`
 	Adhoc                  bool                      `json:"adhoc,omitempty"`
 	BatchSize              int                       `json:"batch_size,omitempty"`
 	RunAs                  string                    `json:"run_as,omitempty"`
@@ -151,7 +149,6 @@ type ReplicationUpsertConfig struct {
 	Continuous             *bool       `json:"continuous"`
 	Filter                 *string     `json:"filter,omitempty"`
 	QueryParams            interface{} `json:"query_params,omitempty"`
-	Cancel                 *bool       `json:"cancel,omitempty"`
 	Adhoc                  *bool       `json:"adhoc,omitempty"`
 	BatchSize              *int        `json:"batch_size,omitempty"`
 	RunAs                  *string     `json:"run_as,omitempty"`
@@ -177,11 +174,6 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 	// key-related enhancements
 	if len(rc.ID) > 160 {
 		return base.HTTPErrorf(http.StatusBadRequest, ConfigErrorIDTooLong)
-	}
-
-	// Cancel is only supported via the REST API
-	if rc.Cancel && fromConfig {
-		return base.HTTPErrorf(http.StatusBadRequest, ConfigErrorConfigBasedCancel)
 	}
 
 	if rc.Adhoc {
@@ -300,9 +292,6 @@ func (rc *ReplicationConfig) Upsert(c *ReplicationUpsertConfig) {
 	}
 	if c.Filter != nil {
 		rc.Filter = *c.Filter
-	}
-	if c.Cancel != nil {
-		rc.Cancel = *c.Cancel
 	}
 	if c.Adhoc != nil {
 		rc.Adhoc = *c.Adhoc

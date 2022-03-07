@@ -655,9 +655,6 @@ Retrieved-replication:
       type: array
       items:
         type: string
-    cancel:
-      description: Unused field
-      type: boolean
     adhoc:
       description: |-
         Set to true to run the replication as an adhoc replication instead of a persistent one.
@@ -857,9 +854,6 @@ Replication:
       type: array
       items:
         type: string
-    cancel:
-      description: Unused field
-      type: boolean
     adhoc:
       description: |-
         Set to true to run the replication as an adhoc replication instead of a persistent one.
