@@ -111,6 +111,18 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 			dbConfig.SlowQueryWarningThresholdMs = base.Uint32Ptr(uint32(*lc.SlowQueryWarningThreshold))
 		}
 
+		// Validate replication configs
+		for replicationID, replicationConfig := range dbConfig.Replications {
+			if replicationConfig.ID != "" && replicationConfig.ID != replicationID {
+				return nil, nil, fmt.Errorf("replication_id %q does not match replications key %q in replication config", replicationConfig.ID, replicationID)
+			}
+
+			err := replicationConfig.ValidateReplication(true)
+			if err != nil {
+				return nil, nil, err
+			}
+		}
+
 		if dbConfig.Server == nil || *dbConfig.Server == "" {
 			continue
 		}

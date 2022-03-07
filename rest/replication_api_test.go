@@ -1239,14 +1239,6 @@ func TestValidateReplication(t *testing.T) {
 		eeOnly            bool
 	}{
 		{
-			name: "replication config unsupported Cancel option",
-			replicationConfig: db.ReplicationConfig{
-				Cancel: true,
-			},
-			fromConfig:       true,
-			expectedErrorMsg: db.ConfigErrorConfigBasedCancel,
-		},
-		{
 			name: "replication config unsupported Adhoc option",
 			replicationConfig: db.ReplicationConfig{
 				Adhoc: true,

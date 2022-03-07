@@ -493,7 +493,6 @@ func TestUpsertReplicationConfig(t *testing.T) {
 				Continuous:             true,
 				Filter:                 "a",
 				QueryParams:            []interface{}{"ABC"},
-				Cancel:                 true,
 			},
 			updatedConfig: &ReplicationUpsertConfig{
 				ID:                     "foo",
@@ -508,7 +507,6 @@ func TestUpsertReplicationConfig(t *testing.T) {
 				Continuous:             base.BoolPtr(false),
 				Filter:                 base.StringPtr("b"),
 				QueryParams:            []interface{}{"DEF"},
-				Cancel:                 base.BoolPtr(false),
 			},
 			expectedConfig: &ReplicationConfig{
 				ID:                     "foo",
@@ -523,7 +521,6 @@ func TestUpsertReplicationConfig(t *testing.T) {
 				Continuous:             false,
 				Filter:                 "b",
 				QueryParams:            []interface{}{"DEF"},
-				Cancel:                 false,
 			},
 		},
 	}
@@ -554,7 +551,6 @@ func TestIsCfgChanged(t *testing.T) {
 				Continuous:             true,
 				Filter:                 "a",
 				QueryParams:            []interface{}{"ABC"},
-				Cancel:                 true,
 				Username:               "alice",
 				Password:               "password",
 			},
