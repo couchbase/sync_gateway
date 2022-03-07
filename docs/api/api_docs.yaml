@@ -2939,6 +2939,7 @@ paths:
         This will return the current Sync Gateway nodes memory statistics such as current memory usage.
 
         Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
         * Sync Gateway Dev Ops
         * External Stats Reader
       responses:
@@ -4306,6 +4307,7 @@ paths:
         Returns Sync Gateway statistics and other runtime variables in Prometheus Exposition format.
 
         Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
         * Sync Gateway Dev Ops
         * External Stats Reader
       responses:
@@ -4326,6 +4328,7 @@ paths:
         This includes per database stats, replication stats, and server stats.
 
         Required Sync Gateway RBAC roles:
+        * Sync Gateway Architect
         * Sync Gateway Dev Ops
         * External Stats Reader
       responses:
