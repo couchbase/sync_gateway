@@ -9320,6 +9320,8 @@ func TestAttachmentDeleteOnPurge(t *testing.T) {
 }
 
 func TestAttachmentDeleteOnExpiry(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Expiry only supported by Couchbase Server")
 	}
