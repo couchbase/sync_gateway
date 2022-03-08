@@ -906,26 +906,87 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 
 	var rawBucketDoc *sgbucket.BucketDocument
 
-	// Look at attachments with revpos > the last common ancestor's
-	minRevpos := 1
-	if len(history) > 0 {
-		currentDoc, rawDoc, err := bh.db.GetDocumentWithRaw(bh.loggingCtx, docID, DocUnmarshalSync)
-		// If we're able to obtain current doc data then we should use the common ancestor generation++ for min revpos
-		// as we will already have any attachments on the common ancestor so don't need to ask for them.
-		// Otherwise we'll have to go as far back as we can in the doc history and choose the last entry in there.
-		if err == nil {
-			commonAncestor := currentDoc.History.findAncestorFromSet(currentDoc.CurrentRev, history)
-			minRevpos, _ = ParseRevID(commonAncestor)
-			minRevpos++
-			rawBucketDoc = rawDoc
-		} else {
-			minRevpos, _ = ParseRevID(history[len(history)-1])
-		}
-	}
-
 	// Pull out attachments
 	if injectedAttachmentsForDelta || bytes.Contains(bodyBytes, []byte(BodyAttachments)) {
 		body := newDoc.Body()
+
+		var currentBucketDoc *Document
+
+		// Look at attachments with revpos > the last common ancestor's
+		minRevpos := 1
+		if len(history) > 0 {
+			currentDoc, rawDoc, err := bh.db.GetDocumentWithRaw(bh.loggingCtx, docID, DocUnmarshalSync)
+			// If we're able to obtain current doc data then we should use the common ancestor generation++ for min revpos
+			// as we will already have any attachments on the common ancestor so don't need to ask for them.
+			// Otherwise we'll have to go as far back as we can in the doc history and choose the last entry in there.
+			if err == nil {
+				commonAncestor := currentDoc.History.findAncestorFromSet(currentDoc.CurrentRev, history)
+				minRevpos, _ = ParseRevID(commonAncestor)
+				minRevpos++
+				rawBucketDoc = rawDoc
+				currentBucketDoc = currentDoc
+			} else {
+				minRevpos, _ = ParseRevID(history[len(history)-1])
+			}
+		}
+
+		// Do we have a previous doc? If not don't need to do this check
+		if currentBucketDoc != nil {
+			bodyAtts := GetBodyAttachments(body)
+			for name, value := range bodyAtts {
+				// Check if we have this attachment name already, if we do, continue check
+				currentAttachment, ok := currentBucketDoc.Attachments[name]
+				if !ok {
+					continue
+				}
+
+				incomingAttachmentMeta, ok := value.(map[string]interface{})
+				if !ok {
+					return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
+				}
+
+				// If this attachment has data then we're fine, this isn't a stub attachment and therefore doesn't
+				// need the check.
+				if incomingAttachmentMeta["data"] != nil {
+					continue
+				}
+
+				incomingAttachmentDigest, ok := incomingAttachmentMeta["digest"].(string)
+				if !ok {
+					return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
+				}
+
+				incomingAttachmentRevpos, ok := base.ToInt64(incomingAttachmentMeta["revpos"])
+				if !ok {
+					return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
+				}
+
+				currentAttachmentMeta, ok := currentAttachment.(map[string]interface{})
+				if !ok {
+					return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
+				}
+
+				currentAttachmentDigest, ok := currentAttachmentMeta["digest"].(string)
+				if !ok {
+					return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
+				}
+
+				currentAttachmentRevpos, ok := base.ToInt64(currentAttachmentMeta["revpos"])
+				if !ok {
+					return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
+				}
+
+				// Compare the revpos and attachment digest. If revpos is same but attachment digest is different we
+				// need to override the revpos and set it to the current revision as the incoming revpos must be invalid
+				// and we need to request it.
+				if currentAttachmentRevpos == incomingAttachmentRevpos && currentAttachmentDigest != incomingAttachmentDigest {
+					minRevpos, _ = ParseRevID(history[len(history)-1])
+					bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(revID)
+				}
+			}
+
+			body[BodyAttachments] = bodyAtts
+		}
 
 		// Check for any attachments I don't have yet, and request them:
 		if err := bh.downloadOrVerifyAttachments(rq.Sender, body, minRevpos, docID); err != nil {
