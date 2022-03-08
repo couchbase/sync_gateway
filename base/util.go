@@ -51,7 +51,7 @@ const (
 func RedactBasicAuthURLUserAndPassword(urlIn string) string {
 	redactedUrl, err := RedactBasicAuthURL(urlIn, false)
 	if err != nil {
-		Warnf("%v", err)
+		WarnfCtx(context.Background(), "%v", err)
 		return ""
 	}
 	return redactedUrl
@@ -61,7 +61,7 @@ func RedactBasicAuthURLUserAndPassword(urlIn string) string {
 func RedactBasicAuthURLPassword(urlIn string) string {
 	redactedUrl, err := RedactBasicAuthURL(urlIn, true)
 	if err != nil {
-		Warnf("%v", err)
+		WarnfCtx(context.Background(), "%v", err)
 		return ""
 	}
 	return redactedUrl
@@ -438,10 +438,10 @@ func RetryLoopCtx(description string, worker RetryWorker, sleeper RetrySleeper, 
 			if err == nil {
 				err = NewRetryTimeoutError(description, numAttempts)
 			}
-			Warnf("RetryLoop for %v giving up after %v attempts", description, numAttempts)
+			WarnfCtx(ctx, "RetryLoop for %v giving up after %v attempts", description, numAttempts)
 			return err, value
 		}
-		Debugf(KeyAll, "RetryLoop retrying %v after %v ms.", description, sleepMs)
+		DebugfCtx(ctx, KeyAll, "RetryLoop retrying %v after %v ms.", description, sleepMs)
 
 		select {
 		case <-ctx.Done():
@@ -473,10 +473,10 @@ func RetryLoopCas(description string, worker RetryCasWorker, sleeper RetrySleepe
 			if err == nil {
 				err = NewRetryTimeoutError(description, numAttempts)
 			}
-			Warnf("RetryLoopCas for %v giving up after %v attempts", description, numAttempts)
+			WarnfCtx(context.Background(), "RetryLoopCas for %v giving up after %v attempts", description, numAttempts)
 			return err, value
 		}
-		Debugf(KeyAll, "RetryLoopCas retrying %v after %v ms.", description, sleepMs)
+		DebugfCtx(context.Background(), KeyAll, "RetryLoopCas retrying %v after %v ms.", description, sleepMs)
 
 		<-time.After(time.Millisecond * time.Duration(sleepMs))
 
@@ -1153,7 +1153,7 @@ func ExpvarVar2Int(expvarVar expvar.Var) int64 {
 	}
 	asInt, ok := expvarVar.(*expvar.Int)
 	if !ok {
-		Warnf("ExpvarVar2Int could not convert %v to *expvar.Int", expvarVar)
+		WarnfCtx(context.Background(), "ExpvarVar2Int could not convert %v to *expvar.Int", expvarVar)
 		return 0
 	}
 	return asInt.Value()
@@ -1473,7 +1473,7 @@ type JSONEncoderI interface {
 func FatalPanicHandler() {
 	// Log any panics using the built-in loggers so that the stacktraces end up in SG log files before exiting.
 	if r := recover(); r != nil {
-		Fatalf("Unexpected panic: %v - stopping process\n%v", r, string(debug.Stack()))
+		FatalfCtx(context.TODO(), "Unexpected panic: %v - stopping process\n%v", r, string(debug.Stack()))
 	}
 }
 

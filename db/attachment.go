@@ -9,6 +9,7 @@
 package db
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha1"
 	"crypto/sha256"
@@ -317,7 +318,7 @@ func GenerateProofOfAttachment(attachmentData []byte) (nonce []byte, proof strin
 		return nil, "", base.HTTPErrorf(http.StatusInternalServerError, fmt.Sprintf("Failed to generate random data: %s", err))
 	}
 	proof = ProveAttachment(attachmentData, nonce)
-	base.Tracef(base.KeyCRUD, "Generated nonce %v and proof %q for attachment: %v", nonce, proof, attachmentData)
+	base.TracefCtx(context.Background(), base.KeyCRUD, "Generated nonce %v and proof %q for attachment: %v", nonce, proof, attachmentData)
 	return nonce, proof, nil
 }
 
@@ -328,7 +329,7 @@ func ProveAttachment(attachmentData, nonce []byte) (proof string) {
 	d.Write(nonce)
 	d.Write(attachmentData)
 	proof = "sha1-" + base64.StdEncoding.EncodeToString(d.Sum(nil))
-	base.Tracef(base.KeyCRUD, "Generated proof %q using nonce %v for attachment: %v", proof, nonce, attachmentData)
+	base.TracefCtx(context.Background(), base.KeyCRUD, "Generated proof %q using nonce %v for attachment: %v", proof, nonce, attachmentData)
 	return proof
 }
 

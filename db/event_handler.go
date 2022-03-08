@@ -12,6 +12,7 @@ package db
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -91,6 +92,7 @@ func (wh *Webhook) HandleEvent(event Event) bool {
 
 	const contentType = "application/json"
 	var payload []byte
+	logCtx := context.TODO()
 
 	// Different events post different content by default
 	switch event := event.(type) {
@@ -111,12 +113,12 @@ func (wh *Webhook) HandleEvent(event Event) bool {
 		//}
 		jsonOut, err := base.JSONMarshal(event.Doc)
 		if err != nil {
-			base.Warnf("Error marshalling doc for webhook post")
+			base.WarnfCtx(logCtx, "Error marshalling doc for webhook post")
 			return false
 		}
 		payload = jsonOut
 	default:
-		base.Warnf("Webhook invoked for unsupported event type.")
+		base.WarnfCtx(logCtx, "Webhook invoked for unsupported event type.")
 		return false
 	}
 
@@ -124,7 +126,7 @@ func (wh *Webhook) HandleEvent(event Event) bool {
 		// If filter function is defined, use it to determine whether to post
 		success, err := wh.filter.CallValidateFunction(event)
 		if err != nil {
-			base.Warnf("Error calling webhook filter function: %v", err)
+			base.WarnfCtx(logCtx, "Error calling webhook filter function: %v", err)
 		}
 
 		// If filter returns false, cancel webhook post
@@ -140,23 +142,23 @@ func (wh *Webhook) HandleEvent(event Event) bool {
 			if resp != nil && resp.Body != nil {
 				_, err := io.Copy(ioutil.Discard, resp.Body)
 				if err != nil {
-					base.Debugf(base.KeyEvents, "Error copying response body: %v", err)
+					base.DebugfCtx(logCtx, base.KeyEvents, "Error copying response body: %v", err)
 				}
 				err = resp.Body.Close()
 				if err != nil {
-					base.Debugf(base.KeyEvents, "Error closing response body: %v", err)
+					base.DebugfCtx(logCtx, base.KeyEvents, "Error closing response body: %v", err)
 				}
 			}
 		}()
 
 		if err != nil {
-			base.Warnf("Error attempting to post %s to url %s: %s", base.UD(event.String()), base.UD(wh.SanitizedUrl()), err)
+			base.WarnfCtx(logCtx, "Error attempting to post %s to url %s: %s", base.UD(event.String()), base.UD(wh.SanitizedUrl()), err)
 			return false
 		}
 
 		// Check Log Level first, as SanitizedUrl is expensive to evaluate.
 		if base.LogDebugEnabled(base.KeyEvents) {
-			base.Debugf(base.KeyEvents, "Webhook handler ran for event.  Payload %s posted to URL %s, got status %s",
+			base.DebugfCtx(logCtx, base.KeyEvents, "Webhook handler ran for event.  Payload %s posted to URL %s, got status %s",
 				base.UD(string(payload)), base.UD(wh.SanitizedUrl()), resp.Status)
 		}
 		return true

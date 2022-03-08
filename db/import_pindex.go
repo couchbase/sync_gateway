@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -27,7 +28,7 @@ func RegisterImportPindexImpl(configGroup string) {
 	// config group scoped.  The associated importListener within the context is retrieved based on the
 	// dbname in the index params
 	pIndexType := base.CBGTIndexTypeSyncGatewayImport + configGroup
-	base.Infof(base.KeyDCP, "Registering PindexImplType for %s", pIndexType)
+	base.InfofCtx(context.TODO(), base.KeyDCP, "Registering PindexImplType for %s", pIndexType)
 	cbgt.RegisterPIndexImplType(pIndexType,
 		&cbgt.PIndexImplType{
 			New:       NewImportPIndexImpl,
@@ -61,7 +62,7 @@ func NewImportPIndexImpl(indexType, indexParams, path string, restart func()) (c
 
 	importDest, err := getListenerImportDest(indexParams)
 	if err != nil {
-		base.Errorf("Error creating NewImportDest during NewImportPIndexImpl: %v", err)
+		base.ErrorfCtx(context.TODO(), "Error creating NewImportDest during NewImportPIndexImpl: %v", err)
 	}
 	return nil, importDest, err
 }

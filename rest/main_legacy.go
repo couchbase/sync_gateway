@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"reflect"
@@ -13,7 +14,7 @@ const flagDeprecated = `Flag "%s" is deprecated. Please use "%s" in future.`
 
 // legacyServerMain runs the pre-3.0 Sync Gateway server.
 func legacyServerMain(osArgs []string, flagStartupConfig *StartupConfig) error {
-	base.Warnf("Running in legacy config mode")
+	base.WarnfCtx(context.Background(), "Running in legacy config mode")
 
 	lc, err := setupServerConfig(osArgs)
 	if err != nil {
@@ -35,7 +36,7 @@ func legacyServerMain(osArgs []string, flagStartupConfig *StartupConfig) error {
 	}
 
 	if flagStartupConfig != nil {
-		base.Tracef(base.KeyAll, "got config from flags: %#v", flagStartupConfig)
+		base.TracefCtx(context.Background(), base.KeyAll, "got config from flags: %#v", flagStartupConfig)
 		err := sc.Merge(flagStartupConfig)
 		if err != nil {
 			return err
@@ -99,30 +100,30 @@ func fillConfigWithLegacyFlags(flags map[string]legacyConfigFlag, fs *flag.FlagS
 		switch f.Name {
 		case "interface", "adminInterface", "profileInterface", "url", "certpath", "keypath", "cacertpath", "logFilePath":
 			*cfgFlag.config.(*string) = *cfgFlag.flagValue.(*string)
-			base.Warnf(flagDeprecated, "-"+f.Name, "-"+cfgFlag.supersededFlag)
+			base.WarnfCtx(context.Background(), flagDeprecated, "-"+f.Name, "-"+cfgFlag.supersededFlag)
 		case "pretty":
 			rCfg := reflect.ValueOf(cfgFlag.config).Elem()
 			rFlag := reflect.ValueOf(cfgFlag.flagValue)
 			rCfg.Set(rFlag)
-			base.Warnf(flagDeprecated, "-"+f.Name, "-"+cfgFlag.supersededFlag)
+			base.WarnfCtx(context.Background(), flagDeprecated, "-"+f.Name, "-"+cfgFlag.supersededFlag)
 		case "verbose":
 			if *cfgFlag.flagValue.(*bool) {
 				if consoleLogLevelSet {
-					base.Warnf(`Cannot use deprecated flag "-verbose" with flag "-logging.console.log_level". To set Sync Gateway to be verbose, please use flag "-logging.console.log_level info". Ignoring flag...`)
+					base.WarnfCtx(context.Background(), `Cannot use deprecated flag "-verbose" with flag "-logging.console.log_level". To set Sync Gateway to be verbose, please use flag "-logging.console.log_level info". Ignoring flag...`)
 				} else {
 					*cfgFlag.config.(**base.LogLevel) = base.LogLevelPtr(base.LevelInfo)
-					base.Warnf(flagDeprecated, "-"+f.Name, "-logging.console.log_level info")
+					base.WarnfCtx(context.Background(), flagDeprecated, "-"+f.Name, "-logging.console.log_level info")
 				}
 			}
 		case "log":
 			list := strings.Split(*cfgFlag.flagValue.(*string), ",")
 			*cfgFlag.config.(*[]string) = list
-			base.Warnf(flagDeprecated, "-"+f.Name, "-"+cfgFlag.supersededFlag)
+			base.WarnfCtx(context.Background(), flagDeprecated, "-"+f.Name, "-"+cfgFlag.supersededFlag)
 		case "configServer":
 			err := fmt.Errorf(`flag "-%s" is no longer supported and has been removed`, f.Name)
 			errors = errors.Append(err)
 		case "dbname", "deploymentID":
-			base.Warnf(`Flag "-%s" is no longer supported and has been removed.`, f.Name)
+			base.WarnfCtx(context.Background(), `Flag "-%s" is no longer supported and has been removed.`, f.Name)
 		}
 	})
 	return errors.ErrorOrNil()

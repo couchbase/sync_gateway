@@ -219,7 +219,7 @@ func (c *Checkpointer) CheckpointNow() {
 	base.InfofCtx(c.ctx, base.KeyReplicate, "checkpointer: calculated seq: %v", seq)
 	err := c._setCheckpoints(seq, status)
 	if err != nil {
-		base.Warnf("couldn't set checkpoints: %v", err)
+		base.WarnfCtx(c.ctx, "couldn't set checkpoints: %v", err)
 	}
 }
 
@@ -647,7 +647,7 @@ func (c *Checkpointer) setLocalCheckpointStatus(status string, errorMessage stri
 
 	checkpoint.Status.Status = status
 	checkpoint.Status.ErrorMessage = errorMessage
-	base.Tracef(base.KeyReplicate, "setLocalCheckpoint(%v)", checkpoint)
+	base.TracefCtx(c.ctx, base.KeyReplicate, "setLocalCheckpoint(%v)", checkpoint)
 	newRev, setErr := c.setLocalCheckpoint(checkpoint)
 	if setErr != nil {
 		base.WarnfCtx(c.ctx, "Unable to persist status in local checkpoint for %s, status not updated: %v", c.clientID, setErr)
@@ -661,14 +661,14 @@ func (c *Checkpointer) setLocalCheckpointStatus(status string, errorMessage stri
 }
 
 func getLocalCheckpoint(db *DatabaseContext, clientID string) (*replicationCheckpoint, error) {
-	base.Tracef(base.KeyReplicate, "getLocalCheckpoint for %s", clientID)
+	base.TracefCtx(context.TODO(), base.KeyReplicate, "getLocalCheckpoint for %s", clientID)
 
 	checkpointBytes, err := db.GetSpecialBytes(DocTypeLocal, checkpointDocIDPrefix+clientID)
 	if err != nil {
 		if !base.IsKeyNotFoundError(db.Bucket, err) {
 			return nil, err
 		}
-		base.Debugf(base.KeyReplicate, "couldn't find existing local checkpoint for ID %q", clientID)
+		base.DebugfCtx(context.TODO(), base.KeyReplicate, "couldn't find existing local checkpoint for ID %q", clientID)
 		return nil, nil
 	}
 	var checkpoint *replicationCheckpoint
@@ -683,7 +683,7 @@ func setLocalCheckpointStatus(db *Database, clientID string, status string, erro
 	// getCheckpoint to obtain the current rev
 	checkpoint, err := getLocalCheckpoint(db.DatabaseContext, clientID)
 	if err != nil {
-		base.Warnf("Unable to retrieve local checkpoint for %s, status not updated", clientID)
+		base.WarnfCtx(db.Ctx, "Unable to retrieve local checkpoint for %s, status not updated", clientID)
 		return
 	}
 	if checkpoint == nil {
@@ -696,12 +696,12 @@ func setLocalCheckpointStatus(db *Database, clientID string, status string, erro
 
 	checkpoint.Status.Status = status
 	checkpoint.Status.ErrorMessage = errorMessage
-	base.Tracef(base.KeyReplicate, "setLocalCheckpoint(%v)", checkpoint)
+	base.TracefCtx(db.Ctx, base.KeyReplicate, "setLocalCheckpoint(%v)", checkpoint)
 	newRev, putErr := db.putSpecial(DocTypeLocal, checkpointDocIDPrefix+clientID, checkpoint.Rev, checkpoint.AsBody())
 	if putErr != nil {
-		base.Warnf("Unable to persist status in local checkpoint for %s, status not updated: %v", clientID, putErr)
+		base.WarnfCtx(db.Ctx, "Unable to persist status in local checkpoint for %s, status not updated: %v", clientID, putErr)
 	} else {
-		base.Tracef(base.KeyReplicate, "setLocalCheckpointStatus successful for %s, newRev: %s: %+v %+v", clientID, newRev, checkpoint, checkpoint.Status)
+		base.TracefCtx(db.Ctx, base.KeyReplicate, "setLocalCheckpointStatus successful for %s, newRev: %s: %+v %+v", clientID, newRev, checkpoint, checkpoint.Status)
 	}
 	return
 }

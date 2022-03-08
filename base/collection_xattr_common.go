@@ -1,6 +1,7 @@
 package base
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -199,7 +200,7 @@ func WriteUpdateWithXattr(store SubdocXattrStore, k string, xattrKey string, use
 			if err != nil {
 				if pkgerrors.Cause(err) != ErrNotFound {
 					// Unexpected error, cancel writeupdate
-					Debugf(KeyCRUD, "Retrieval of existing doc failed during WriteUpdateWithXattr for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), err)
+					DebugfCtx(context.TODO(), KeyCRUD, "Retrieval of existing doc failed during WriteUpdateWithXattr for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), err)
 					return emptyCas, err
 				}
 				// Key not found - initialize values
@@ -239,7 +240,7 @@ func WriteUpdateWithXattr(store SubdocXattrStore, k string, xattrKey string, use
 			// conflict/duplicate handling on retry.
 		} else {
 			// WriteWithXattr already handles retry on recoverable errors, so fail on any errors other than ErrKeyExists
-			Warnf("Failed to update doc with xattr for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), writeErr)
+			WarnfCtx(context.TODO(), "Failed to update doc with xattr for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), writeErr)
 			return emptyCas, writeErr
 		}
 
@@ -350,7 +351,7 @@ type deleteWithXattrRaceInjection func(k string, xattrKey string)
 
 func deleteWithXattrInternal(store KvXattrStore, k string, xattrKey string, callback deleteWithXattrRaceInjection) error {
 
-	Debugf(KeyCRUD, "DeleteWithXattr called with key: %v xattrKey: %v", UD(k), UD(xattrKey))
+	DebugfCtx(context.TODO(), KeyCRUD, "DeleteWithXattr called with key: %v xattrKey: %v", UD(k), UD(xattrKey))
 
 	// Try to delete body and xattrs in single op
 	// NOTE: ongoing discussion w/ KV Engine team on whether this should handle cases where the body

@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -139,8 +140,9 @@ This is how the view is iterated:
 */
 func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 
-	base.Infof(base.KeyCRUD, "RepairBucket() invoked")
-	defer base.Infof(base.KeyCRUD, "RepairBucket() finished")
+	logCtx := context.TODO()
+	base.InfofCtx(logCtx, base.KeyCRUD, "RepairBucket() invoked")
+	defer base.InfofCtx(logCtx, base.KeyCRUD, "RepairBucket() finished")
 
 	startKey := ""
 	results = []RepairBucketResult{}
@@ -155,9 +157,9 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 		}
 		options["limit"] = r.ViewQueryPageSize
 
-		base.Infof(base.KeyCRUD, "RepairBucket() querying view with options: %+v", options)
+		base.InfofCtx(logCtx, base.KeyCRUD, "RepairBucket() querying view with options: %+v", options)
 		vres, err := r.Bucket.View(DesignDocSyncHousekeeping(), ViewImport, options)
-		base.Infof(base.KeyCRUD, "RepairBucket() queried view and got %d results", len(vres.Rows))
+		base.InfofCtx(logCtx, base.KeyCRUD, "RepairBucket() queried view and got %d results", len(vres.Rows))
 		if err != nil {
 			// TODO: Maybe we could retry if the view timed out (as seen in #3267)
 			return results, err
@@ -210,9 +212,9 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 
 					backupOrDryRunDocId, err = r.WriteRepairedDocsToBucket(key, currentValue, updatedDoc)
 					if err != nil {
-						base.Infof(base.KeyCRUD, "Repair Doc (dry_run=%v) Writing docs to bucket failed with error: %v.  Dumping raw contents.", r.DryRun, err)
-						base.Infof(base.KeyCRUD, "Original Doc before repair: %s", base.UD(currentValue))
-						base.Infof(base.KeyCRUD, "Updated doc after repair: %s", base.UD(updatedDoc))
+						base.InfofCtx(logCtx, base.KeyCRUD, "Repair Doc (dry_run=%v) Writing docs to bucket failed with error: %v.  Dumping raw contents.", r.DryRun, err)
+						base.InfofCtx(logCtx, base.KeyCRUD, "Original Doc before repair: %s", base.UD(currentValue))
+						base.InfofCtx(logCtx, base.KeyCRUD, "Updated doc after repair: %s", base.UD(updatedDoc))
 					}
 
 					result := RepairBucketResult{
@@ -244,9 +246,9 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 
 			if backupOrDryRunDocId != "" {
 				if r.DryRun {
-					base.Infof(base.KeyCRUD, "Repair Doc: dry run result available in Bucket Doc: %v (auto-deletes in 24 hours)", base.UD(backupOrDryRunDocId))
+					base.InfofCtx(logCtx, base.KeyCRUD, "Repair Doc: dry run result available in Bucket Doc: %v (auto-deletes in 24 hours)", base.UD(backupOrDryRunDocId))
 				} else {
-					base.Infof(base.KeyCRUD, "Repair Doc: Doc repaired, original doc backed up in Bucket Doc: %v (auto-deletes in 24 hours)", base.UD(backupOrDryRunDocId))
+					base.InfofCtx(logCtx, base.KeyCRUD, "Repair Doc: Doc repaired, original doc backed up in Bucket Doc: %v (auto-deletes in 24 hours)", base.UD(backupOrDryRunDocId))
 				}
 			}
 
@@ -254,7 +256,7 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 
 		numDocsProcessed += numResultsProcessed
 
-		base.Infof(base.KeyCRUD, "RepairBucket() processed %d / %d", numDocsProcessed, vres.TotalRows)
+		base.InfofCtx(logCtx, base.KeyCRUD, "RepairBucket() processed %d / %d", numDocsProcessed, vres.TotalRows)
 
 		if numResultsProcessed == 0 {
 			// No point in going to the next page, since this page had 0 results.  See method comments.
@@ -284,7 +286,7 @@ func (r RepairBucket) WriteRepairedDocsToBucket(docId string, originalDoc, updat
 
 	//If the RepairedFileTTL is explicitly set to 0 then don't write the doc at all
 	if int(r.RepairedFileTTL.Seconds()) == 0 {
-		base.Infof(base.KeyCRUD, "Repair Doc: Doc %v repaired, TTL set to 0, doc will not be written to bucket", base.UD(backupOrDryRunDocId))
+		base.InfofCtx(context.TODO(), base.KeyCRUD, "Repair Doc: Doc %v repaired, TTL set to 0, doc will not be written to bucket", base.UD(backupOrDryRunDocId))
 		return backupOrDryRunDocId, nil
 	}
 
@@ -334,8 +336,8 @@ func (r RepairBucket) TransformBucketDoc(docId string, originalCBDoc []byte) (tr
 // Repairs rev tree cycles (see SG issue #2847)
 func RepairJobRevTreeCycles(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error) {
 
-	base.Debugf(base.KeyCRUD, "RepairJobRevTreeCycles() called with doc id: %v", base.UD(docId))
-	defer base.Debugf(base.KeyCRUD, "RepairJobRevTreeCycles() finished.  Doc id: %v.  transformed: %v.  err: %v", base.UD(docId), base.UD(transformed), err)
+	base.DebugfCtx(context.TODO(), base.KeyCRUD, "RepairJobRevTreeCycles() called with doc id: %v", base.UD(docId))
+	defer base.DebugfCtx(context.TODO(), base.KeyCRUD, "RepairJobRevTreeCycles() finished.  Doc id: %v.  transformed: %v.  err: %v", base.UD(docId), base.UD(transformed), err)
 
 	doc, errUnmarshal := unmarshalDocument(docId, originalCBDoc)
 	if errUnmarshal != nil {

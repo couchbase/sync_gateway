@@ -9,6 +9,7 @@
 package base
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -106,7 +107,7 @@ func ChooseCouchbaseDriver(bucketType CouchbaseBucketType) CouchbaseDriver {
 		return GoCBv2
 	default:
 		// If a new bucket type is added and this method isn't updated, flag a warning (or, could panic)
-		Warnf("Unexpected bucket type: %v", bucketType)
+		WarnfCtx(context.Background(), "Unexpected bucket type: %v", bucketType)
 		return GoCBv2
 	}
 
@@ -282,7 +283,7 @@ func (b BucketSpec) TLSConfig() *tls.Config {
 		var err error
 		certPool, err = getRootCAs(b.CACertPath)
 		if err != nil {
-			Errorf("Error creating tlsConfig for DCP processing: %v", err)
+			ErrorfCtx(context.Background(), "Error creating tlsConfig for DCP processing: %v", err)
 			return nil
 		}
 	}
@@ -296,7 +297,7 @@ func (b BucketSpec) TLSConfig() *tls.Config {
 	if b.Certpath != "" && b.Keypath != "" {
 		cert, err := tls.LoadX509KeyPair(b.Certpath, b.Keypath)
 		if err != nil {
-			Errorf("Error creating tlsConfig for DCP processing: %v", err)
+			ErrorfCtx(context.Background(), "Error creating tlsConfig for DCP processing: %v", err)
 			return nil
 		}
 		tlsConfig.Certificates = []tls.Certificate{cert}
@@ -379,7 +380,7 @@ func GetStatsVbSeqno(stats map[string]map[string]string, maxVbno uint16, useAbsH
 
 func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 	if spec.IsWalrusBucket() {
-		Infof(KeyAll, "Opening Walrus database %s on <%s>", MD(spec.BucketName), SD(spec.Server))
+		InfofCtx(context.TODO(), KeyAll, "Opening Walrus database %s on <%s>", MD(spec.BucketName), SD(spec.Server))
 		sgbucket.SetLogging(ConsoleLogKey().Enabled(KeyBucket))
 		bucket, err = walrus.GetBucket(spec.Server, DefaultPool, spec.BucketName)
 		// If feed type is not specified (defaults to DCP) or isn't TAP, wrap with pseudo-vbucket handling for walrus
@@ -392,7 +393,7 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 		if spec.Auth != nil {
 			username, _, _ = spec.Auth.GetCredentials()
 		}
-		Infof(KeyAll, "%v Opening Couchbase database %s on <%s> as user %q", spec.CouchbaseDriver, MD(spec.BucketName), SD(spec.Server), UD(username))
+		InfofCtx(context.TODO(), KeyAll, "%v Opening Couchbase database %s on <%s> as user %q", spec.CouchbaseDriver, MD(spec.BucketName), SD(spec.Server), UD(username))
 
 		switch spec.CouchbaseDriver {
 		case GoCB, GoCBCustomSGTranscoder:
@@ -415,7 +416,7 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 		// or later, otherwise refuse to connect to the bucket since pre 5.0 versions don't support XATTRs
 		if spec.UseXattrs {
 			if !bucket.IsSupported(sgbucket.DataStoreFeatureXattrs) {
-				Warnf("If using XATTRS, Couchbase Server version must be >= 5.0.")
+				WarnfCtx(context.Background(), "If using XATTRS, Couchbase Server version must be >= 5.0.")
 				return nil, ErrFatalBucketConnection
 			}
 		}
@@ -588,7 +589,7 @@ func retrievePurgeInterval(bucket CouchbaseStore, uri string) (time.Duration, er
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusForbidden {
-		Warnf("403 Forbidden attempting to access %s.  Bucket user must have Bucket Full Access and Bucket Admin roles to retrieve metadata purge interval.", UD(uri))
+		WarnfCtx(resp.Request.Context(), "403 Forbidden attempting to access %s.  Bucket user must have Bucket Full Access and Bucket Admin roles to retrieve metadata purge interval.", UD(uri))
 	} else if resp.StatusCode != http.StatusOK {
 		return 0, errors.New(resp.Status)
 	}
@@ -610,6 +611,6 @@ func retrievePurgeInterval(bucket CouchbaseStore, uri string) (time.Duration, er
 func ensureBodyClosed(body io.ReadCloser) {
 	err := body.Close()
 	if err != nil {
-		Debugf(KeyBucket, "Failed to close socket: %v", err)
+		DebugfCtx(context.TODO(), KeyBucket, "Failed to close socket: %v", err)
 	}
 }

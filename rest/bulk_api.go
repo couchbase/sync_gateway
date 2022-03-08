@@ -230,7 +230,7 @@ func (h *handler) handleAllDocs() error {
 // HTTP handler for _dump
 func (h *handler) handleDump() error {
 	viewName := h.PathVar("view")
-	base.Infof(base.KeyHTTP, "Dump view %q", base.MD(viewName))
+	base.InfofCtx(h.ctx(), base.KeyHTTP, "Dump view %q", base.MD(viewName))
 	opts := db.Body{"stale": false, "reduce": false}
 	result, err := h.db.Bucket.View(db.DesignDocSyncGateway(), viewName, opts)
 	if err != nil {
@@ -264,7 +264,7 @@ func (h *handler) handleRepair() error {
 		return errors.New("_repair endpoint disabled")
 	}
 
-	base.Infof(base.KeyHTTP, "Repair bucket")
+	base.InfofCtx(h.ctx(), base.KeyHTTP, "Repair bucket")
 
 	// Todo: is this actually needed or does something else in the handler do it?  I can't find that..
 	defer func() {
@@ -305,7 +305,7 @@ func (h *handler) handleRepair() error {
 func (h *handler) handleDumpChannel() error {
 	channelName := h.PathVar("channel")
 	since := h.getIntQuery("since", 0)
-	base.Infof(base.KeyHTTP, "Dump channel %q", base.UD(channelName))
+	base.InfofCtx(h.ctx(), base.KeyHTTP, "Dump channel %q", base.UD(channelName))
 
 	chanLog := h.db.GetChangeLog(channelName, since)
 	if chanLog == nil {
@@ -519,7 +519,7 @@ func (h *handler) handleBulkDocs() error {
 			status["status"] = code
 			status["error"] = base.CouchHTTPErrorName(code)
 			status["reason"] = msg
-			base.Infof(base.KeyAll, "\tBulkDocs: Doc %q --> %d %s (%v)", base.UD(docid), code, msg, err)
+			base.InfofCtx(h.ctx(), base.KeyAll, "\tBulkDocs: Doc %q --> %d %s (%v)", base.UD(docid), code, msg, err)
 			err = nil // wrote it to output already; not going to return it
 		} else {
 			status["rev"] = revid
@@ -545,7 +545,7 @@ func (h *handler) handleBulkDocs() error {
 			status["status"] = code
 			status["error"] = base.CouchHTTPErrorName(code)
 			status["reason"] = msg
-			base.Infof(base.KeyAll, "\tBulkDocs: Local Doc %q --> %d %s (%v)", base.UD(docid), code, msg, err)
+			base.InfofCtx(h.ctx(), base.KeyAll, "\tBulkDocs: Local Doc %q --> %d %s (%v)", base.UD(docid), code, msg, err)
 			err = nil
 		} else {
 			status["rev"] = revid

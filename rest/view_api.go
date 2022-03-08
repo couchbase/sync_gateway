@@ -24,7 +24,7 @@ import (
 // HTTP handler for GET _design/$ddoc
 func (h *handler) handleGetDesignDoc() error {
 	ddocID := h.PathVar("ddoc")
-	base.Debugf(base.KeyAll, "GetDesignDoc %v", base.MD(ddocID))
+	base.DebugfCtx(h.ctx(), base.KeyAll, "GetDesignDoc %v", base.MD(ddocID))
 	var result interface{}
 	if ddocID == db.DesignDocSyncGateway() {
 		// we serve this content here so that CouchDB 1.2 has something to
@@ -111,7 +111,7 @@ func (h *handler) handleView() error {
 		}
 	}
 
-	base.Infof(base.KeyHTTP, "JSON view %q/%q - opts %v", base.MD(ddocName), base.MD(viewName), base.MD(opts))
+	base.InfofCtx(h.ctx(), base.KeyHTTP, "JSON view %q/%q - opts %v", base.MD(ddocName), base.MD(viewName), base.MD(opts))
 
 	result, err := h.db.QueryDesignDoc(ddocName, viewName, opts)
 	if err != nil {

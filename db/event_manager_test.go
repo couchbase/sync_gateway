@@ -353,7 +353,7 @@ func (em *EventManager) waitForProcessedTotal(ctx context.Context, waitCount int
 	worker := func() (bool, error, interface{}) {
 		eventTotal := em.GetEventsProcessedSuccess() + em.GetEventsProcessedFail()
 		if eventTotal >= int64(waitCount) {
-			base.Debugf(base.KeyAll, "waitForProcessedTotal(%d) took %v", waitCount, time.Since(startTime))
+			base.DebugfCtx(ctx, base.KeyAll, "waitForProcessedTotal(%d) took %v", waitCount, time.Since(startTime))
 			return false, nil, nil
 		}
 

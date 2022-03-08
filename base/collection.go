@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package base
 
 import (
+	"context"
 	"errors"
 	"expvar"
 	"fmt"
@@ -31,9 +32,10 @@ var _ CouchbaseStore = &Collection{}
 // Connect to the default collection for the specified bucket
 func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 
+	logCtx := context.TODO()
 	connString, err := spec.GetGoCBConnString()
 	if err != nil {
-		Warnf("Unable to parse server value: %s error: %v", SD(spec.Server), err)
+		WarnfCtx(logCtx, "Unable to parse server value: %s error: %v", SD(spec.Server), err)
 		return nil, err
 	}
 
@@ -48,13 +50,13 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 	}
 
 	if _, ok := authenticator.(gocb.CertificateAuthenticator); ok {
-		Infof(KeyAuth, "Using cert authentication for bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
+		InfofCtx(logCtx, KeyAuth, "Using cert authentication for bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
 	} else {
-		Infof(KeyAuth, "Using credential authentication for bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
+		InfofCtx(logCtx, KeyAuth, "Using credential authentication for bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
 	}
 
 	timeoutsConfig := GoCBv2TimeoutsConfig(spec.BucketOpTimeout, StdlibDurationPtr(spec.GetViewQueryTimeout()))
-	Infof(KeyAll, "Setting query timeouts for bucket %s to %v", spec.BucketName, timeoutsConfig.QueryTimeout)
+	InfofCtx(logCtx, KeyAll, "Setting query timeouts for bucket %s to %v", spec.BucketName, timeoutsConfig.QueryTimeout)
 
 	clusterOptions := gocb.ClusterOptions{
 		Authenticator:  authenticator,
@@ -69,7 +71,7 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 
 	cluster, err := gocb.Connect(connString, clusterOptions)
 	if err != nil {
-		Infof(KeyAuth, "Unable to connect to cluster: %v", err)
+		InfofCtx(logCtx, KeyAuth, "Unable to connect to cluster: %v", err)
 		return nil, err
 	}
 
@@ -83,7 +85,7 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 		if errors.Is(err, gocb.ErrAuthenticationFailure) {
 			return nil, ErrAuthError
 		}
-		Warnf("Error waiting for cluster to be ready: %v", err)
+		WarnfCtx(context.TODO(), "Error waiting for cluster to be ready: %v", err)
 		return nil, err
 	}
 
@@ -101,7 +103,7 @@ func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilR
 		if errors.Is(err, gocb.ErrAuthenticationFailure) {
 			return nil, ErrAuthError
 		}
-		Warnf("Error waiting for bucket to be ready: %v", err)
+		WarnfCtx(context.TODO(), "Error waiting for bucket to be ready: %v", err)
 		return nil, err
 	}
 
@@ -124,7 +126,7 @@ func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilR
 
 	if maxConcurrentQueryOps > DefaultHttpMaxIdleConnsPerHost*queryNodeCount {
 		maxConcurrentQueryOps = DefaultHttpMaxIdleConnsPerHost * queryNodeCount
-		Infof(KeyAll, "Setting max_concurrent_query_ops to %d based on query node count (%d)", maxConcurrentQueryOps, queryNodeCount)
+		InfofCtx(context.TODO(), KeyAll, "Setting max_concurrent_query_ops to %d based on query node count (%d)", maxConcurrentQueryOps, queryNodeCount)
 	}
 
 	collection.queryOps = make(chan struct{}, maxConcurrentQueryOps)
@@ -171,7 +173,7 @@ func (c *Collection) UUID() (string, error) {
 func (c *Collection) Close() {
 	if c.cluster != nil {
 		if err := c.cluster.Close(nil); err != nil {
-			Warnf("Error closing collection cluster: %v", err)
+			WarnfCtx(context.TODO(), "Error closing collection cluster: %v", err)
 		}
 	}
 	return
@@ -628,7 +630,7 @@ func (c *Collection) Flush() error {
 	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
 		err = bucketManager.FlushBucket(c.Bucket().Name(), nil)
 		if err != nil {
-			Warnf("Error flushing bucket: %v  Will retry.", err)
+			WarnfCtx(context.TODO(), "Error flushing bucket: %v  Will retry.", err)
 			shouldRetry = true
 		}
 		return shouldRetry, err, nil
@@ -719,7 +721,7 @@ func (c *Collection) MaxTTL() (int, error) {
 func (c *Collection) HttpClient() *http.Client {
 	router, routerErr := c.Bucket().Internal().IORouter()
 	if routerErr != nil {
-		Warnf("Unable to obtain router while retrieving httpClient:%v", routerErr)
+		WarnfCtx(context.TODO(), "Unable to obtain router while retrieving httpClient:%v", routerErr)
 		return nil
 	}
 	return router.HTTPClient()
@@ -732,7 +734,7 @@ func (c *Collection) GetExpiry(k string) (expiry uint32, getMetaError error) {
 
 	router, routerErr := c.Bucket().Internal().IORouter()
 	if routerErr != nil {
-		Warnf("Unable to obtain router while retrieving expiry:%v", routerErr)
+		WarnfCtx(context.TODO(), "Unable to obtain router while retrieving expiry:%v", routerErr)
 		return 0, routerErr
 	}
 	getMetaOptions := gocbcore.GetMetaOptions{

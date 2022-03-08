@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -130,7 +131,7 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 		server, username, password, err := legacyServerAddressUpgrade(*dbConfig.Server)
 		if err != nil {
 			server = *dbConfig.Server
-			base.Errorf("Error upgrading server address: %v", err)
+			base.ErrorfCtx(context.Background(), "Error upgrading server address: %v", err)
 		}
 
 		dbConfig.Server = base.StringPtr(server)
@@ -394,7 +395,7 @@ func setupServerConfig(args []string) (config *LegacyServerConfig, err error) {
 	multiError = multiError.Append(config.validate())
 	multiError = multiError.Append(config.setupAndValidateDatabases())
 	if multiError.ErrorOrNil() != nil {
-		base.Errorf("Error during config validation: %v", multiError)
+		base.ErrorfCtx(context.Background(), "Error during config validation: %v", multiError)
 		return nil, fmt.Errorf("error(s) during config validation: %v", multiError)
 	}
 

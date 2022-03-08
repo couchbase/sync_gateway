@@ -1,6 +1,7 @@
 package base
 
 import (
+	"context"
 	"sync"
 
 	"github.com/couchbase/cbgt"
@@ -139,26 +140,26 @@ func addCbgtAuthToDCPParams(dcpParams string) string {
 
 	unmarshalErr := JSONUnmarshal([]byte(dcpParams), &sgSourceParams)
 	if unmarshalErr != nil {
-		Warnf("Unable to unmarshal params provided by cbgt as sgSourceParams: %v", unmarshalErr)
+		WarnfCtx(context.Background(), "Unable to unmarshal params provided by cbgt as sgSourceParams: %v", unmarshalErr)
 		return dcpParams
 	}
 
 	if sgSourceParams.DbName == "" {
-		Infof(KeyImport, "Database name not specified in dcp params, feed credentials not added")
+		InfofCtx(context.Background(), KeyImport, "Database name not specified in dcp params, feed credentials not added")
 		return dcpParams
 	}
 
 	username, password, ok := getCbgtCredentials(sgSourceParams.DbName)
 	if !ok {
 		// no stored credentials includes the valid x.509 auth case
-		Infof(KeyImport, "No feed credentials stored for db from sourceParams: %s", MD(sgSourceParams.DbName))
+		InfofCtx(context.Background(), KeyImport, "No feed credentials stored for db from sourceParams: %s", MD(sgSourceParams.DbName))
 		return dcpParams
 	}
 
 	var feedParamsWithAuth cbgt.DCPFeedParams
 	unmarshalDCPErr := JSONUnmarshal([]byte(dcpParams), &feedParamsWithAuth)
 	if unmarshalDCPErr != nil {
-		Warnf("Unable to unmarshal params provided by cbgt as dcpFeedParams: %v", unmarshalDCPErr)
+		WarnfCtx(context.Background(), "Unable to unmarshal params provided by cbgt as dcpFeedParams: %v", unmarshalDCPErr)
 	}
 
 	// Add creds to params
@@ -167,7 +168,7 @@ func addCbgtAuthToDCPParams(dcpParams string) string {
 
 	marshalledParamsWithAuth, marshalErr := JSONMarshal(feedParamsWithAuth)
 	if marshalErr != nil {
-		Warnf("Unable to marshal updated cbgt dcp params: %v", marshalErr)
+		WarnfCtx(context.Background(), "Unable to marshal updated cbgt dcp params: %v", marshalErr)
 		return dcpParams
 	}
 

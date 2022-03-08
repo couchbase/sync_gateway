@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"expvar"
 	"math"
 	"strings"
@@ -97,7 +98,7 @@ func (listener *changeListener) StartMutationFeed(bucket base.Bucket, dbStats *e
 	default:
 		// DCP Feed
 		//    DCP receiver isn't go-channel based - DCPReceiver calls ProcessEvent directly.
-		base.Infof(base.KeyDCP, "Using DCP feed for bucket: %q (based on feed_type specified in config file)", base.MD(bucket.GetName()))
+		base.InfofCtx(context.TODO(), base.KeyDCP, "Using DCP feed for bucket: %q (based on feed_type specified in config file)", base.MD(bucket.GetName()))
 		return bucket.StartDCPFeed(listener.FeedArgs, listener.ProcessFeedEvent, dbStats)
 	}
 }
@@ -144,7 +145,8 @@ const MutationFeedStopMaxWait = 30 * time.Second
 // Stops a changeListener. Any pending Wait() calls will immediately return false.
 func (listener *changeListener) Stop() {
 
-	base.Debugf(base.KeyChanges, "changeListener.Stop() called")
+	logCtx := context.TODO()
+	base.DebugfCtx(logCtx, base.KeyChanges, "changeListener.Stop() called")
 
 	if listener.terminator != nil {
 		close(listener.terminator)
@@ -158,7 +160,7 @@ func (listener *changeListener) Stop() {
 	if listener.tapFeed != nil {
 		err := listener.tapFeed.Close()
 		if err != nil {
-			base.Debugf(base.KeyChanges, "Error closing listener tap feed: %v", err)
+			base.DebugfCtx(logCtx, base.KeyChanges, "Error closing listener tap feed: %v", err)
 		}
 	}
 
@@ -168,7 +170,7 @@ func (listener *changeListener) Stop() {
 	case <-listener.FeedArgs.DoneChan:
 		// Mutation feed worker goroutine is terminated and doneChan is already closed.
 	case <-time.After(waitTime):
-		base.Warnf("Timeout after %v of waiting for mutation feed worker to terminate", waitTime)
+		base.WarnfCtx(logCtx, "Timeout after %v of waiting for mutation feed worker to terminate", waitTime)
 	}
 }
 
@@ -189,7 +191,7 @@ func (listener *changeListener) Notify(keys base.Set) {
 	for key := range keys {
 		listener.keyCounts[key] = listener.counter
 	}
-	base.Debugf(base.KeyChanges, "Notifying that %q changed (keys=%q) count=%d",
+	base.DebugfCtx(context.TODO(), base.KeyChanges, "Notifying that %q changed (keys=%q) count=%d",
 		base.MD(listener.bucketName), base.UD(keys), listener.counter)
 	listener.tapNotifier.Broadcast()
 	listener.tapNotifier.L.Unlock()
@@ -210,7 +212,7 @@ func (listener *changeListener) NotifyCheckForTermination(keys base.Set) {
 		listener.terminateCheckCounter = 0
 	}
 
-	base.Debugf(base.KeyChanges, "Notifying to check for _changes feed termination")
+	base.DebugfCtx(context.TODO(), base.KeyChanges, "Notifying to check for _changes feed termination")
 	listener.tapNotifier.Broadcast()
 	listener.tapNotifier.L.Unlock()
 }
@@ -219,7 +221,7 @@ func (listener *changeListener) notifyStopping() {
 	listener.tapNotifier.L.Lock()
 	listener.counter = 0
 	listener.keyCounts = map[string]uint64{}
-	base.Debugf(base.KeyChanges, "Notifying that changeListener is stopping")
+	base.DebugfCtx(context.TODO(), base.KeyChanges, "Notifying that changeListener is stopping")
 	listener.tapNotifier.Broadcast()
 	listener.tapNotifier.L.Unlock()
 }
@@ -228,7 +230,7 @@ func (listener *changeListener) notifyStopping() {
 func (listener *changeListener) Wait(keys []string, counter uint64, terminateCheckCounter uint64) (uint64, uint64) {
 	listener.tapNotifier.L.Lock()
 	defer listener.tapNotifier.L.Unlock()
-	base.Debugf(base.KeyChanges, "No new changes to send to change listener.  Waiting for %q's count to pass %d",
+	base.DebugfCtx(context.TODO(), base.KeyChanges, "No new changes to send to change listener.  Waiting for %q's count to pass %d",
 		base.MD(listener.bucketName), counter)
 
 	for {

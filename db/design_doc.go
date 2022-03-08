@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -322,7 +323,7 @@ func InitializeViews(bucket base.Bucket) error {
 
 	// If not present, install design docs and views
 	if !ddocsExist {
-		base.Infof(base.KeyAll, "Design docs for current view version (%s) do not exist - creating...", DesignDocVersion)
+		base.InfofCtx(context.TODO(), base.KeyAll, "Design docs for current view version (%s) do not exist - creating...", DesignDocVersion)
 		if err := installViews(bucket); err != nil {
 			return err
 		}
@@ -342,7 +343,7 @@ func checkExistingDDocs(bucket base.Bucket) bool {
 	sgHousekeepingDDocExists := getDDocErr == nil
 
 	if sgDDocExists && sgHousekeepingDDocExists {
-		base.Infof(base.KeyAll, "Design docs for current SG view version (%s) found.", DesignDocVersion)
+		base.InfofCtx(context.TODO(), base.KeyAll, "Design docs for current SG view version (%s) found.", DesignDocVersion)
 		return true
 	}
 
@@ -567,7 +568,7 @@ func installViews(bucket base.Bucket) error {
 		worker := func() (shouldRetry bool, err error, value interface{}) {
 			err = bucket.PutDDoc(designDocName, designDoc)
 			if err != nil {
-				base.Warnf("Error installing Couchbase design doc: %v", err)
+				base.WarnfCtx(context.TODO(), "Error installing Couchbase design doc: %v", err)
 			}
 			return err != nil, err, nil
 		}
@@ -580,7 +581,7 @@ func installViews(bucket base.Bucket) error {
 		}
 	}
 
-	base.Infof(base.KeyAll, "Design docs successfully created for view version %s.", DesignDocVersion)
+	base.InfofCtx(context.TODO(), base.KeyAll, "Design docs successfully created for view version %s.", DesignDocVersion)
 
 	return nil
 }
@@ -591,7 +592,7 @@ func WaitForViews(bucket base.Bucket) error {
 	views := []string{ViewChannels, ViewAccess, ViewRoleAccess}
 	viewErrors := make(chan error, len(views))
 
-	base.Infof(base.KeyAll, "Verifying view availability for bucket %s...", base.UD(bucket.GetName()))
+	base.InfofCtx(context.TODO(), base.KeyAll, "Verifying view availability for bucket %s...", base.UD(bucket.GetName()))
 
 	for _, viewName := range views {
 		viewsWg.Add(1)
@@ -611,7 +612,7 @@ func WaitForViews(bucket base.Bucket) error {
 		return err
 	}
 
-	base.Infof(base.KeyAll, "Views ready for bucket %s.", base.UD(bucket.GetName()))
+	base.InfofCtx(context.TODO(), base.KeyAll, "Views ready for bucket %s.", base.UD(bucket.GetName()))
 	return nil
 
 }
@@ -636,14 +637,14 @@ func waitForViewIndexing(bucket base.Bucket, ddocName string, viewName string) e
 
 		// Retry on timeout or undefined view errors , otherwise return the error
 		if err == base.ErrViewTimeoutError {
-			base.Infof(base.KeyAll, "Timeout waiting for view %q to be ready for bucket %q - retrying...", viewName, base.UD(bucket.GetName()))
+			base.InfofCtx(context.TODO(), base.KeyAll, "Timeout waiting for view %q to be ready for bucket %q - retrying...", viewName, base.UD(bucket.GetName()))
 		} else {
 			// For any other error, retry up to maxRetry, to wait for view initialization on the server
 			errRetryCount++
 			if errRetryCount > maxRetry {
 				return err
 			}
-			base.Warnf("Error waiting for view %q to be ready for bucket %q - retrying...(%d/%d)", viewName, bucket.GetName(), errRetryCount, maxRetry)
+			base.WarnfCtx(context.TODO(), "Error waiting for view %q to be ready for bucket %q - retrying...(%d/%d)", viewName, bucket.GetName(), errRetryCount, maxRetry)
 			time.Sleep(time.Duration(retrySleep) * time.Millisecond)
 			retrySleep *= float64(1.5)
 		}
@@ -674,7 +675,7 @@ func removeObsoleteDesignDocs(bucket base.Bucket, previewOnly bool, useViews boo
 			if !previewOnly {
 				removeDDocErr := bucket.DeleteDDoc(ddocName)
 				if removeDDocErr != nil && !IsMissingDDocError(removeDDocErr) {
-					base.Warnf("Unexpected error when removing design doc %q: %s", ddocName, removeDDocErr)
+					base.WarnfCtx(context.TODO(), "Unexpected error when removing design doc %q: %s", ddocName, removeDDocErr)
 				}
 				// Only include in list of removedDesignDocs if it was actually removed
 				if removeDDocErr == nil {
@@ -683,7 +684,7 @@ func removeObsoleteDesignDocs(bucket base.Bucket, previewOnly bool, useViews boo
 			} else {
 				_, existsDDocErr := bucket.GetDDoc(ddocName)
 				if existsDDocErr != nil && !IsMissingDDocError(existsDDocErr) {
-					base.Warnf("Unexpected error when checking existence of design doc %q: %s", ddocName, existsDDocErr)
+					base.WarnfCtx(context.TODO(), "Unexpected error when checking existence of design doc %q: %s", ddocName, existsDDocErr)
 				}
 				// Only include in list of removedDesignDocs if it exists
 				if existsDDocErr == nil {

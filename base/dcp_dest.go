@@ -242,7 +242,7 @@ func (d *DCPDest) Stats(io.Writer) error {
 func partitionToVbNo(partition string) uint16 {
 	vbNo, err := strconv.Atoi(partition)
 	if err != nil {
-		Errorf("Unexpected non-numeric partition value %s, ignoring: %v", partition, err)
+		ErrorfCtx(context.Background(), "Unexpected non-numeric partition value %s, ignoring: %v", partition, err)
 		return 0
 	}
 	return uint16(vbNo)

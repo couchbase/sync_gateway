@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package base
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"time"
@@ -28,6 +29,7 @@ func (c *Collection) Keyspace() string {
 }
 
 func (c *Collection) Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (resultsIterator sgbucket.QueryResultIterator, err error) {
+	logCtx := context.TODO()
 
 	bucketStatement := strings.Replace(statement, KeyspaceQueryToken, c.Keyspace(), -1)
 
@@ -39,7 +41,7 @@ func (c *Collection) Query(statement string, params map[string]interface{}, cons
 
 	waitTime := 10 * time.Millisecond
 	for i := 1; i <= MaxQueryRetries; i++ {
-		Tracef(KeyQuery, "Executing N1QL query: %v - %+v", UD(bucketStatement), UD(params))
+		TracefCtx(logCtx, KeyQuery, "Executing N1QL query: %v - %+v", UD(bucketStatement), UD(params))
 		queryResults, queryErr := c.runQuery(bucketStatement, n1qlOptions)
 		if queryErr == nil {
 			resultsIterator := &gocbRawIterator{
@@ -56,19 +58,19 @@ func (c *Collection) Query(statement string, params map[string]interface{}, cons
 
 		// Non-retry error - return
 		if !isTransientIndexerError(queryErr) {
-			Warnf("Error when querying index using statement: [%s] parameters: [%+v] error:%v", UD(bucketStatement), UD(params), queryErr)
+			WarnfCtx(logCtx, "Error when querying index using statement: [%s] parameters: [%+v] error:%v", UD(bucketStatement), UD(params), queryErr)
 			return resultsIterator, pkgerrors.WithStack(queryErr)
 		}
 
 		// Indexer error - wait then retry
 		err = queryErr
-		Warnf("Indexer error during query - retry %d/%d after %v.  Error: %v", i, MaxQueryRetries, waitTime, queryErr)
+		WarnfCtx(logCtx, "Indexer error during query - retry %d/%d after %v.  Error: %v", i, MaxQueryRetries, waitTime, queryErr)
 		time.Sleep(waitTime)
 
 		waitTime = waitTime * 2
 	}
 
-	Warnf("Exceeded max retries for query when querying index using statement: [%s] parameters: [%+v], err:%v", UD(bucketStatement), UD(params), err)
+	WarnfCtx(logCtx, "Exceeded max retries for query when querying index using statement: [%s] parameters: [%+v], err:%v", UD(bucketStatement), UD(params), err)
 	return nil, err
 }
 

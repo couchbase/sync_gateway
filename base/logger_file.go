@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package base
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -209,7 +210,7 @@ func (lfc *FileLoggerConfig) init(level LogLevel, name string, logFilePath strin
 	go func() {
 		defer func() {
 			if panicked := recover(); panicked != nil {
-				Warnf("Panic when deleting rotated log files: \n %s", panicked, debug.Stack())
+				WarnfCtx(context.Background(), "Panic when deleting rotated log files: \n %s", panicked, debug.Stack())
 			}
 		}()
 		for {
@@ -217,7 +218,7 @@ func (lfc *FileLoggerConfig) init(level LogLevel, name string, logFilePath strin
 			case <-ticker.C:
 				err := runLogDeletion(logFilePath, level.String(), int(float64(*lfc.Rotation.RotatedLogsSizeLimit)*rotatedLogsLowWatermarkMultiplier), *lfc.Rotation.RotatedLogsSizeLimit)
 				if err != nil {
-					Warnf("%s", err)
+					WarnfCtx(context.Background(), "%s", err)
 				}
 			}
 		}

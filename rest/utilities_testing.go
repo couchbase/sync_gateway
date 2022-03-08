@@ -562,7 +562,7 @@ func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath st
 		// If the view is undefined, it might be a race condition where the view is still being created
 		// See https://github.com/couchbase/sync_gateway/issues/3570#issuecomment-390487982
 		if strings.Contains(response.Body.String(), "view_undefined") {
-			base.Infof(base.KeyAll, "view_undefined error: %v.  Retrying", response.Body.String())
+			base.InfofCtx(response.Req.Context(), base.KeyAll, "view_undefined error: %v.  Retrying", response.Body.String())
 			return true, nil, nil
 		}
 

@@ -173,7 +173,7 @@ func (h *handler) handleDbOnline() error {
 
 	_ = base.JSONUnmarshal(body, &input)
 
-	base.Infof(base.KeyCRUD, "Taking Database : %v, online in %v seconds", base.MD(h.db.Name), input.Delay)
+	base.InfofCtx(h.ctx(), base.KeyCRUD, "Taking Database : %v, online in %v seconds", base.MD(h.db.Name), input.Delay)
 	go func() {
 		time.Sleep(time.Duration(input.Delay) * time.Second)
 		h.server.TakeDbOnline(h.db.DatabaseContext)
@@ -187,7 +187,7 @@ func (h *handler) handleDbOffline() error {
 	h.assertAdminOnly()
 	var err error
 	if err = h.db.TakeDbOffline("ADMIN Request"); err != nil {
-		base.Infof(base.KeyCRUD, "Unable to take Database : %v, offline", base.MD(h.db.Name))
+		base.InfofCtx(h.ctx(), base.KeyCRUD, "Unable to take Database : %v, offline", base.MD(h.db.Name))
 	}
 
 	return err
@@ -974,7 +974,7 @@ func (h *handler) handleGetRevTree() error {
 
 func (h *handler) handleGetLogging() error {
 	h.writeJSON(base.GetLogKeys())
-	base.Warnf("Deprecation notice: Current _logging endpoints are now deprecated. Using _config endpoints " +
+	base.WarnfCtx(h.ctx(), "Deprecation notice: Current _logging endpoints are now deprecated. Using _config endpoints "+
 		"instead")
 	return nil
 }
@@ -1041,7 +1041,7 @@ func (h *handler) handleGetStatus() error {
 }
 
 func (h *handler) handleSetLogging() error {
-	base.Warnf("Deprecation notice: Current _logging endpoints are now deprecated. Using _config endpoints " +
+	base.WarnfCtx(h.ctx(), "Deprecation notice: Current _logging endpoints are now deprecated. Using _config endpoints "+
 		"instead")
 
 	body, err := h.readBody()
@@ -1057,7 +1057,7 @@ func (h *handler) handleSetLogging() error {
 		}
 		setLogLevel = true
 	} else if level := h.getIntQuery("level", 0); level != 0 {
-		base.Warnf("Using deprecated query parameter: %q. Use %q instead.", "level", "logLevel")
+		base.WarnfCtx(h.ctx(), "Using deprecated query parameter: %q. Use %q instead.", "level", "logLevel")
 		switch base.GetRestrictedInt(&level, 0, 1, 3, false) {
 		case 1:
 			newLogLevel = base.LevelInfo
@@ -1070,7 +1070,7 @@ func (h *handler) handleSetLogging() error {
 	}
 
 	if setLogLevel {
-		base.Infof(base.KeyAll, "Setting log level to: %v", newLogLevel)
+		base.InfofCtx(h.ctx(), base.KeyAll, "Setting log level to: %v", newLogLevel)
 		base.ConsoleLogLevel().Set(newLogLevel)
 
 		// empty body is OK if request is just setting the log level

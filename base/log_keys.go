@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package base
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -206,14 +207,14 @@ func ToLogKey(keysStr []string) (logKeys LogKeyMask) {
 		// Strip a single "+" suffix in log keys and warn (for backwards compatibility)
 		if strings.HasSuffix(key, "+") {
 			newLogKey := strings.TrimSuffix(key, "+")
-			Warnf("Deprecated log key: %q found. Changing to: %q.", originalKey, newLogKey)
+			WarnfCtx(context.Background(), "Deprecated log key: %q found. Changing to: %q.", originalKey, newLogKey)
 			key = newLogKey
 		}
 
 		if logKey, ok := logKeyNamesInverse[key]; ok {
 			logKeys.Enable(logKey)
 		} else {
-			Warnf("Invalid log key: %v", originalKey)
+			WarnfCtx(context.Background(), "Invalid log key: %v", originalKey)
 		}
 	}
 

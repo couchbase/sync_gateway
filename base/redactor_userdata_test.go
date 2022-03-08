@@ -101,70 +101,80 @@ func BenchmarkRedactOnLog(b *testing.B) {
 	defer SetUpBenchmarkLogging(LevelWarn, KeyAll)()
 
 	b.Run("WarnPlain", func(b *testing.B) {
+		ctx := TestCtx(b)
 		for i := 0; i < b.N; i++ {
-			Warnf("Log: %s", "Fixed String")
+			WarnfCtx(ctx, "Log: %s", "Fixed String")
 		}
 	})
 
 	b.Run("WarnRedactTrueNotUD", func(b *testing.B) {
+		ctx := TestCtx(b)
 		RedactUserData = true
 		for i := 0; i < b.N; i++ {
-			Warnf("Log: %s", FakeLogger{})
+			WarnfCtx(ctx, "Log: %s", FakeLogger{})
 		}
 	})
 
 	b.Run("WarnRedactTrueUD", func(b *testing.B) {
+		ctx := TestCtx(b)
 		RedactUserData = true
 		for i := 0; i < b.N; i++ {
-			Warnf("Log: %s", UD(FakeLogger{}))
+			WarnfCtx(ctx, "Log: %s", UD(FakeLogger{}))
 		}
 	})
 
 	b.Run("WarnRedactFalseNotUD", func(b *testing.B) {
+		ctx := TestCtx(b)
 		RedactUserData = false
 		for i := 0; i < b.N; i++ {
-			Warnf("Log: %s", FakeLogger{})
+			WarnfCtx(ctx, "Log: %s", FakeLogger{})
 		}
 	})
 
 	b.Run("WarnRedactFalseUD", func(b *testing.B) {
+		ctx := TestCtx(b)
 		RedactUserData = false
 		for i := 0; i < b.N; i++ {
-			Warnf("Log: %s", UD(FakeLogger{}))
+			WarnfCtx(ctx, "Log: %s", UD(FakeLogger{}))
 		}
 	})
 
 	b.Run("DebugPlain", func(b *testing.B) {
+		ctx := TestCtx(b)
 		for i := 0; i < b.N; i++ {
-			Debugf(KeyAll, "Log: %s", "Fixed String")
+			DebugfCtx(ctx, KeyAll, "Log: %s", "Fixed String")
 		}
 	})
 
 	b.Run("DebugRedactTrueNotUD", func(b *testing.B) {
+		ctx := TestCtx(b)
 		RedactUserData = true
 		for i := 0; i < b.N; i++ {
-			Debugf(KeyAll, "Log: %s", FakeLogger{})
+			DebugfCtx(ctx, KeyAll, "Log: %s", FakeLogger{})
 		}
 	})
 
 	b.Run("DebugRedactTrueUD", func(b *testing.B) {
+		ctx := TestCtx(b)
 		RedactUserData = true
 		for i := 0; i < b.N; i++ {
-			Debugf(KeyAll, "Log: %s", UD(FakeLogger{}))
+			DebugfCtx(ctx, KeyAll, "Log: %s", UD(FakeLogger{}))
 		}
 	})
 
 	b.Run("DebugRedactFalseNotUD", func(b *testing.B) {
+		ctx := TestCtx(b)
 		RedactUserData = false
 		for i := 0; i < b.N; i++ {
-			Debugf(KeyAll, "Log: %s", FakeLogger{})
+			DebugfCtx(ctx, KeyAll, "Log: %s", FakeLogger{})
 		}
 	})
 
 	b.Run("DebugRedactFalseUD", func(b *testing.B) {
+		ctx := TestCtx(b)
 		RedactUserData = false
 		for i := 0; i < b.N; i++ {
-			Debugf(KeyAll, "Log: %s", UD(FakeLogger{}))
+			DebugfCtx(ctx, KeyAll, "Log: %s", UD(FakeLogger{}))
 		}
 	})
 }

@@ -44,7 +44,7 @@ func UpdateLogKeys(keys map[string]bool, replace bool) {
 		}
 	}
 
-	Infof(KeyAll, "Setting log keys to: %v", ConsoleLogKey().EnabledLogKeys())
+	InfofCtx(context.Background(), KeyAll, "Setting log keys to: %v", ConsoleLogKey().EnabledLogKeys())
 }
 
 // Returns a string identifying a function on the call stack.
@@ -91,7 +91,7 @@ var (
 
 // RotateLogfiles rotates all active log files.
 func RotateLogfiles() map[*FileLogger]error {
-	Infof(KeyAll, "Rotating log files...")
+	InfofCtx(context.Background(), KeyAll, "Rotating log files...")
 
 	loggers := map[*FileLogger]error{
 		traceLogger: nil,
@@ -124,6 +124,10 @@ func init() {
 
 // PanicfCtx logs the given formatted string and args to the error log level and given log key and then panics.
 func PanicfCtx(ctx context.Context, format string, args ...interface{}) {
+	// Fall back to stdlib's log.Panicf if SG loggers aren't set up.
+	if errorLogger == nil {
+		log.Panicf(format, args...)
+	}
 	logTo(ctx, LevelError, KeyAll, format, args...)
 	FlushLogBuffers()
 	panic(fmt.Sprintf(format, args...))
@@ -131,6 +135,10 @@ func PanicfCtx(ctx context.Context, format string, args ...interface{}) {
 
 // FatalfCtx logs the given formatted string and args to the error log level and given log key and then exits.
 func FatalfCtx(ctx context.Context, format string, args ...interface{}) {
+	// Fall back to stdlib's log.Panicf if SG loggers aren't set up.
+	if errorLogger == nil {
+		log.Fatalf(format, args...)
+	}
 	logTo(ctx, LevelError, KeyAll, format, args...)
 	FlushLogBuffers()
 	os.Exit(1)
@@ -159,53 +167,6 @@ func DebugfCtx(ctx context.Context, logKey LogKey, format string, args ...interf
 // TracefCtx logs the given formatted string and args to the trace log level with an optional log key.
 func TracefCtx(ctx context.Context, logKey LogKey, format string, args ...interface{}) {
 	logTo(ctx, LevelTrace, logKey, format, args...)
-}
-
-// Panicf logs the given formatted string and args to the error log level and given log key and then panics.
-func Panicf(format string, args ...interface{}) {
-	// Fall back to stdlib's log.Panicf if SG loggers aren't set up.
-	if errorLogger == nil {
-		log.Panicf(format, args...)
-	}
-	logTo(context.TODO(), LevelError, KeyAll, format, args...)
-	FlushLogBuffers()
-	panic(fmt.Sprintf(format, args...))
-}
-
-// Fatalf logs the given formatted string and args to the error log level and given log key and then exits.
-func Fatalf(format string, args ...interface{}) {
-	// Fall back to stdlib's log.Fatalf if SG loggers aren't set up.
-	if errorLogger == nil {
-		log.Fatalf(format, args...)
-	}
-	logTo(context.TODO(), LevelError, KeyAll, format, args...)
-	FlushLogBuffers()
-	os.Exit(1)
-}
-
-// Errorf logs the given formatted string and args to the error log level and given log key.
-func Errorf(format string, args ...interface{}) {
-	logTo(context.TODO(), LevelError, KeyAll, format, args...)
-}
-
-// Warnf logs the given formatted string and args to the warn log level and given log key.
-func Warnf(format string, args ...interface{}) {
-	logTo(context.TODO(), LevelWarn, KeyAll, format, args...)
-}
-
-// Infof logs the given formatted string and args to the info log level and given log key.
-func Infof(logKey LogKey, format string, args ...interface{}) {
-	logTo(context.TODO(), LevelInfo, logKey, format, args...)
-}
-
-// Debugf logs the given formatted string and args to the debug log level with an optional log key.
-func Debugf(logKey LogKey, format string, args ...interface{}) {
-	logTo(context.TODO(), LevelDebug, logKey, format, args...)
-}
-
-// Tracef logs the given formatted string and args to the trace log level with an optional log key.
-func Tracef(logKey LogKey, format string, args ...interface{}) {
-	logTo(context.TODO(), LevelTrace, logKey, format, args...)
 }
 
 // RecordStats writes the given stats JSON content to a stats log file, if enabled.
@@ -282,7 +243,7 @@ func Consolef(logLevel LogLevel, logKey LogKey, format string, args ...interface
 
 	// If the above logTo didn't already log to stderr, do it directly here
 	if !consoleLogger.isStderr || !consoleLogger.shouldLog(logLevel, logKey) {
-		format = color(addPrefixes(format, nil, logLevel, logKey), logLevel)
+		format = color(addPrefixes(format, context.Background(), logLevel, logKey), logLevel)
 		_, _ = fmt.Fprintf(consoleFOutput, format+"\n", args...)
 	}
 }
@@ -295,7 +256,7 @@ func LogSyncGatewayVersion() {
 	Consolef(LevelNone, KeyNone, msg)
 
 	// Log the startup indicator to ALL log files too.
-	msg = addPrefixes(msg, nil, LevelNone, KeyNone)
+	msg = addPrefixes(msg, context.Background(), LevelNone, KeyNone)
 	if errorLogger.shouldLog(LevelNone) {
 		errorLogger.logger.Printf(msg)
 	}
@@ -334,8 +295,10 @@ func addPrefixes(format string, ctx context.Context, logLevel LogLevel, logKey L
 	}
 
 	if ctx != nil {
-		if logCtx, ok := ctx.Value(LogContextKey{}).(LogContext); ok {
-			format = logCtx.addContext(format)
+		if ctxVal := ctx.Value(LogContextKey{}); ctxVal != nil {
+			if logCtx, ok := ctxVal.(LogContext); ok {
+				format = logCtx.addContext(format)
+			}
 		}
 	}
 

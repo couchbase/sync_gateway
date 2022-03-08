@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -113,8 +114,10 @@ type jsEventTask struct {
 func newJsEventTask(funcSource string) (sgbucket.JSServerTask, error) {
 	eventTask := &jsEventTask{}
 	err := eventTask.InitWithLogging(funcSource,
-		func(s string) { base.Errorf(base.KeyJavascript.String()+": Webhook %s", base.UD(s)) },
-		func(s string) { base.Infof(base.KeyJavascript, "Webhook %s", base.UD(s)) })
+		func(s string) {
+			base.ErrorfCtx(context.Background(), base.KeyJavascript.String()+": Webhook %s", base.UD(s))
+		},
+		func(s string) { base.InfofCtx(context.Background(), base.KeyJavascript, "Webhook %s", base.UD(s)) })
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +154,7 @@ type JSEventFunction struct {
 
 func NewJSEventFunction(fnSource string) *JSEventFunction {
 
-	base.Infof(base.KeyEvents, "Creating new JSEventFunction")
+	base.InfofCtx(context.Background(), base.KeyEvents, "Creating new JSEventFunction")
 	return &JSEventFunction{
 		JSServer: sgbucket.NewJSServer(fnSource, kTaskCacheSize,
 			func(fnSource string) (sgbucket.JSServerTask, error) {
@@ -174,12 +177,12 @@ func (ef *JSEventFunction) CallFunction(event Event) (interface{}, error) {
 	case *DBStateChangeEvent:
 		result, err = ef.Call(event.Doc)
 	default:
-		base.Warnf("unknown event %v tried to call function", event.EventType())
+		base.WarnfCtx(context.TODO(), "unknown event %v tried to call function", event.EventType())
 		return "", fmt.Errorf("unknown event %v tried to call function", event.EventType())
 	}
 
 	if err != nil {
-		base.Warnf("Error calling function - function processing aborted: %v", err)
+		base.WarnfCtx(context.TODO(), "Error calling function - function processing aborted: %v", err)
 		return "", err
 	}
 
@@ -204,7 +207,7 @@ func (ef *JSEventFunction) CallValidateFunction(event Event) (bool, error) {
 		}
 		return boolResult, nil
 	default:
-		base.Warnf("Event validate function returned non-boolean result %T %v", result, result)
+		base.WarnfCtx(context.TODO(), "Event validate function returned non-boolean result %T %v", result, result)
 		return false, errors.New("Validate function returned non-boolean value.")
 	}
 

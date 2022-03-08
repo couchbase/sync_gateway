@@ -12,6 +12,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"fmt"
 	"net/http"
@@ -373,12 +374,12 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 		digest, ok := msg.Properties[db.GetAttachmentDigest]
 		if !ok {
-			base.Panicf("couldn't find digest in getAttachment message properties")
+			base.PanicfCtx(context.TODO(), "couldn't find digest in getAttachment message properties")
 		}
 
 		attachment, err := btc.getAttachment(digest)
 		if err != nil {
-			base.Panicf("couldn't find attachment for digest: %v", digest)
+			base.PanicfCtx(context.TODO(), "couldn't find attachment for digest: %v", digest)
 		}
 
 		response := msg.Response()
@@ -393,7 +394,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 	btr.bt.blipContext.DefaultHandler = func(msg *blip.Message) {
 		btr.storeMessage(msg)
-		base.Panicf("Unknown profile: %s caught by client DefaultHandler - msg: %#v", msg.Profile(), msg)
+		base.PanicfCtx(context.TODO(), "Unknown profile: %s caught by client DefaultHandler - msg: %#v", msg.Profile(), msg)
 	}
 }
 
@@ -662,7 +663,7 @@ func (btc *BlipTesterClient) PushRevWithHistory(docID, parentRev string, body []
 	revRequest.Properties[db.RevMessageHistory] = strings.Join(revisionHistory, ",")
 
 	if btc.ClientDeltas && proposeChangesResponse.Properties[db.ProposeChangesResponseDeltas] == "true" {
-		base.Debugf(base.KeySync, "Sending deltas from test client")
+		base.DebugfCtx(context.TODO(), base.KeySync, "Sending deltas from test client")
 		var parentDocJSON, newDocJSON db.Body
 		err := parentDocJSON.Unmarshal(parentDocBody)
 		if err != nil {
@@ -681,7 +682,7 @@ func (btc *BlipTesterClient) PushRevWithHistory(docID, parentRev string, body []
 		revRequest.Properties[db.RevMessageDeltaSrc] = parentRev
 		body = delta
 	} else {
-		base.Debugf(base.KeySync, "Not sending deltas from test client")
+		base.DebugfCtx(context.TODO(), base.KeySync, "Not sending deltas from test client")
 	}
 
 	revRequest.SetBody(body)

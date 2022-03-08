@@ -23,7 +23,7 @@ import (
 // does the initial setup and finally starts the server.
 func ServerMain() {
 	if err := serverMain(context.Background(), os.Args); err != nil {
-		base.Fatalf("Couldn't start Sync Gateway: %v", err)
+		base.FatalfCtx(context.TODO(), "Couldn't start Sync Gateway: %v", err)
 	}
 }
 
@@ -60,7 +60,8 @@ func serverMain(ctx context.Context, osArgs []string) error {
 func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConfig) (disablePersistentConfigFallback bool, err error) {
 
 	sc := DefaultStartupConfig(defaultLogFilePath)
-	base.Tracef(base.KeyAll, "default config: %#v", sc)
+	logCtx := context.Background()
+	base.TracefCtx(logCtx, base.KeyAll, "default config: %#v", sc)
 
 	configPath := fs.Args()
 	if len(configPath) > 1 {
@@ -76,7 +77,7 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 			// If we have an unknown field error processing config its possible that the config is a 2.x config
 			// requiring automatic upgrade. We should attempt to perform this upgrade
 
-			base.Infof(base.KeyAll, "Found unknown fields in startup config. Attempting to read as legacy config.")
+			base.InfofCtx(logCtx, base.KeyAll, "Found unknown fields in startup config. Attempting to read as legacy config.")
 
 			var upgradeError error
 			fileStartupConfig, disablePersistentConfigFallback, legacyDbUsers, legacyDbRoles, upgradeError = automaticConfigUpgrade(configPath[0])
@@ -86,8 +87,8 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 				// the config is actually a 3.x config but with a genuine unknown field, therefore we should  return the
 				// original error from LoadStartupConfigFromPath.
 				if pkgerrors.Cause(upgradeError) == base.ErrUnknownField {
-					base.Warnf("Automatic upgrade attempt failed, %s not recognized as legacy config format: %v", base.MD(configPath[0]), upgradeError)
-					base.Warnf("Provided config %s not recognized as bootstrap config format: %v", base.MD(configPath[0]), err)
+					base.WarnfCtx(logCtx, "Automatic upgrade attempt failed, %s not recognized as legacy config format: %v", base.MD(configPath[0]), upgradeError)
+					base.WarnfCtx(logCtx, "Provided config %s not recognized as bootstrap config format: %v", base.MD(configPath[0]), err)
 					return false, fmt.Errorf("unknown config fields supplied. Unable to continue")
 				}
 
@@ -106,7 +107,7 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 			if err != nil {
 				return false, err
 			}
-			base.Tracef(base.KeyAll, "got config from file: %#v", redactedConfig)
+			base.TracefCtx(logCtx, base.KeyAll, "got config from file: %#v", redactedConfig)
 			err = sc.Merge(fileStartupConfig)
 			if err != nil {
 				return false, err
@@ -116,7 +117,7 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 
 	// merge flagStartupConfig on top of fileStartupConfig, because flags take precedence over config files.
 	if flagStartupConfig != nil {
-		base.Tracef(base.KeyAll, "got config from flags: %#v", flagStartupConfig)
+		base.TracefCtx(logCtx, base.KeyAll, "got config from flags: %#v", flagStartupConfig)
 		err := sc.Merge(flagStartupConfig)
 		if err != nil {
 			return false, err
@@ -127,14 +128,14 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 	if err != nil {
 		return false, err
 	}
-	base.Tracef(base.KeyAll, "final config: %#v", redactedConfig)
+	base.TracefCtx(logCtx, base.KeyAll, "final config: %#v", redactedConfig)
 
 	initialStartupConfig, err := getInitialStartupConfig(fileStartupConfig, flagStartupConfig)
 	if err != nil {
 		return false, err
 	}
 
-	base.Infof(base.KeyAll, "Config: Starting in persistent mode using config group %q", sc.Bootstrap.ConfigGroupID)
+	base.InfofCtx(logCtx, base.KeyAll, "Config: Starting in persistent mode using config group %q", sc.Bootstrap.ConfigGroupID)
 	ctx, err := setupServerContext(&sc, true)
 	if err != nil {
 		return false, err
@@ -185,7 +186,7 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 		return nil, true, users, roles, nil
 	}
 
-	base.Infof(base.KeyAll, "Config is a legacy config, and disable_persistent_config was not requested. Attempting automatic config upgrade.")
+	base.InfofCtx(context.Background(), base.KeyAll, "Config is a legacy config, and disable_persistent_config was not requested. Attempting automatic config upgrade.")
 
 	startupConfig, dbConfigs, err := legacyServerConfig.ToStartupConfig()
 	if err != nil {
@@ -229,12 +230,12 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 		if err != nil {
 			// If key already exists just continue
 			if errors.Is(err, base.ErrAlreadyExists) {
-				base.Infof(base.KeyAll, "Skipping Couchbase Server persistence for config group %q in %s. Already exists.", configGroupID, base.UD(dbc.Name))
+				base.InfofCtx(context.Background(), base.KeyAll, "Skipping Couchbase Server persistence for config group %q in %s. Already exists.", configGroupID, base.UD(dbc.Name))
 				continue
 			}
 			return nil, false, nil, nil, err
 		}
-		base.Infof(base.KeyAll, "Persisted database %s config for group %q to Couchbase Server bucket: %s", base.UD(dbc.Name), configGroupID, base.MD(*dbc.Bucket))
+		base.InfofCtx(context.Background(), base.KeyAll, "Persisted database %s config for group %q to Couchbase Server bucket: %s", base.UD(dbc.Name), configGroupID, base.MD(*dbc.Bucket))
 	}
 
 	// Attempt to backup current config
@@ -242,11 +243,11 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 	// Otherwise continue with startup but don't attempt to write migrated config and log warning
 	backupLocation, err := backupCurrentConfigFile(configPath)
 	if err != nil {
-		base.Warnf("Unable to write config file backup: %v. Won't write backup or updated config but will continue with startup.", err)
+		base.WarnfCtx(context.Background(), "Unable to write config file backup: %v. Won't write backup or updated config but will continue with startup.", err)
 		return startupConfig, false, users, roles, nil
 	}
 
-	base.Infof(base.KeyAll, "Current config backed up to %s", base.MD(backupLocation))
+	base.InfofCtx(context.Background(), base.KeyAll, "Current config backed up to %s", base.MD(backupLocation))
 
 	// Overwrite old config with new migrated startup config
 	jsonStartupConfig, err := json.MarshalIndent(startupConfig, "", "  ")
@@ -259,11 +260,11 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 	// Otherwise continue with startup but log warning
 	err = ioutil.WriteFile(configPath, jsonStartupConfig, 0644)
 	if err != nil {
-		base.Warnf("Unable to write updated config file: %v -  but will continue with startup.", err)
+		base.WarnfCtx(context.Background(), "Unable to write updated config file: %v -  but will continue with startup.", err)
 		return startupConfig, false, users, roles, nil
 	}
 
-	base.Infof(base.KeyAll, "Current config file overwritten by upgraded config at %s", base.MD(configPath))
+	base.InfofCtx(context.Background(), base.KeyAll, "Current config file overwritten by upgraded config at %s", base.MD(configPath))
 	return startupConfig, false, users, roles, nil
 }
 
@@ -360,7 +361,7 @@ func createCouchbaseClusterFromStartupConfig(config *StartupConfig) (*base.Couch
 		config.Bootstrap.Password, config.Bootstrap.X509CertPath, config.Bootstrap.X509KeyPath,
 		config.Bootstrap.CACertPath, config.Bootstrap.ServerTLSSkipVerify)
 	if err != nil {
-		base.Infof(base.KeyConfig, "Couldn't create couchbase cluster instance: %v", err)
+		base.InfofCtx(context.Background(), base.KeyConfig, "Couldn't create couchbase cluster instance: %v", err)
 		return nil, err
 	}
 

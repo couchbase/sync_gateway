@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package base
 
 import (
+	"context"
 	"strings"
 	"time"
 
@@ -54,6 +55,7 @@ func (bucket *CouchbaseBucketGoCB) Keyspace() string {
 //
 // Query retries on Indexer Errors, as these are normally transient
 func (bucket *CouchbaseBucketGoCB) Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (results sgbucket.QueryResultIterator, err error) {
+	logCtx := context.TODO()
 	bucketStatement := strings.Replace(statement, KeyspaceQueryToken, bucket.GetName(), -1)
 	n1qlQuery := gocb.NewN1qlQuery(bucketStatement)
 	n1qlQuery = n1qlQuery.AdHoc(adhoc)
@@ -62,7 +64,7 @@ func (bucket *CouchbaseBucketGoCB) Query(statement string, params map[string]int
 	waitTime := 10 * time.Millisecond
 	for i := 1; i <= MaxQueryRetries; i++ {
 
-		Tracef(KeyQuery, "Executing N1QL query: %v", UD(n1qlQuery))
+		TracefCtx(logCtx, KeyQuery, "Executing N1QL query: %v", UD(n1qlQuery))
 		queryResults, queryErr := bucket.runQuery(n1qlQuery, params)
 
 		if queryErr == nil {
@@ -76,19 +78,19 @@ func (bucket *CouchbaseBucketGoCB) Query(statement string, params map[string]int
 
 		// Non-retry error - return
 		if !isTransientIndexerError(queryErr) {
-			Warnf("Error when querying index using statement: [%s] parameters: [%+v] error:%v", UD(bucketStatement), UD(params), queryErr)
+			WarnfCtx(logCtx, "Error when querying index using statement: [%s] parameters: [%+v] error:%v", UD(bucketStatement), UD(params), queryErr)
 			return queryResults, pkgerrors.WithStack(queryErr)
 		}
 
 		// Indexer error - wait then retry
 		err = queryErr
-		Warnf("Indexer error during query - retry %d/%d after %v.  Error: %v", i, MaxQueryRetries, waitTime, queryErr)
+		WarnfCtx(logCtx, "Indexer error during query - retry %d/%d after %v.  Error: %v", i, MaxQueryRetries, waitTime, queryErr)
 		time.Sleep(waitTime)
 
 		waitTime = time.Duration(waitTime * 2)
 	}
 
-	Warnf("Exceeded max retries for query when querying index using statement: [%s], err:%v", UD(bucketStatement), err)
+	WarnfCtx(logCtx, "Exceeded max retries for query when querying index using statement: [%s], err:%v", UD(bucketStatement), err)
 	return nil, err
 }
 

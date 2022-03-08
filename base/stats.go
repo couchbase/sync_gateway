@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package base
 
 import (
+	"context"
 	"expvar"
 	"math"
 	"strconv"
@@ -105,7 +106,7 @@ func (s *SgwStats) String() string {
 	bytes, err := JSONMarshalCanonical(s)
 	s.dbStatsMapMutex.Unlock()
 	if err != nil {
-		Errorf("Unable to Marshal SgwStats: %v", err)
+		ErrorfCtx(context.Background(), "Unable to Marshal SgwStats: %v", err)
 		return "null"
 	}
 	return string(bytes)

@@ -1,6 +1,7 @@
 package base
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"time"
@@ -243,7 +244,7 @@ func (cc *CouchbaseCluster) getBucket(bucketName string) (b *gocb.Bucket, teardo
 	teardownFn = func() {
 		err := connection.Close(&gocb.ClusterCloseOptions{})
 		if err != nil {
-			Warnf("Failed to close cluster connection: %v", err)
+			WarnfCtx(context.Background(), "Failed to close cluster connection: %v", err)
 		}
 	}
 

@@ -123,7 +123,7 @@ func newChannelCache(dbName string, options ChannelCacheOptions, queryHandler Ch
 		return nil, err
 	}
 	channelCache.backgroundTasks = append(channelCache.backgroundTasks, bgt)
-	base.Debugf(base.KeyCache, "Initialized channel cache with maxChannels:%d, HWM: %d, LWM: %d",
+	base.DebugfCtx(context.Background(), base.KeyCache, "Initialized channel cache with maxChannels:%d, HWM: %d, LWM: %d",
 		channelCache.maxChannels, channelCache.compactHighWatermark, channelCache.compactLowWatermark)
 	return channelCache, nil
 }
@@ -199,7 +199,7 @@ func (c *channelCacheImpl) AddToCache(change *LogEntry) (updatedChannels []strin
 	// twice)
 	if change.Skipped {
 		c.lateSeqLock.Lock()
-		base.Infof(base.KeyChanges, "Acquired late sequence lock in order to cache %d - doc %q / %q", change.Sequence, base.UD(change.DocID), change.RevID)
+		base.InfofCtx(context.TODO(), base.KeyChanges, "Acquired late sequence lock in order to cache %d - doc %q / %q", change.Sequence, base.UD(change.DocID), change.RevID)
 		defer c.lateSeqLock.Unlock()
 	}
 
@@ -327,7 +327,7 @@ func (c *channelCacheImpl) getBypassChannelCache(channelName string) SingleChann
 func AsSingleChannelCache(cacheValue interface{}) *singleChannelCacheImpl {
 	singleChannelCache, ok := cacheValue.(*singleChannelCacheImpl)
 	if !ok {
-		base.Warnf("Unexpected channel cache value type: %T", cacheValue)
+		base.WarnfCtx(context.Background(), "Unexpected channel cache value type: %T", cacheValue)
 		return nil
 	}
 	return singleChannelCache
@@ -418,15 +418,16 @@ func (c *channelCacheImpl) compactChannelCache() {
 	// Increment compact count on start, as timing is updated per loop iteration
 	c.cacheStats.ChannelCacheCompactCount.Add(1)
 
+	logCtx := context.TODO()
 	cacheSize := c.channelCaches.Length()
-	base.Infof(base.KeyCache, "Starting channel cache compaction, size %d", cacheSize)
+	base.InfofCtx(logCtx, base.KeyCache, "Starting channel cache compaction, size %d", cacheSize)
 	for {
 		// channelCache close handling
 		compactIterationStart := time.Now()
 
 		select {
 		case <-c.terminator:
-			base.Debugf(base.KeyCache, "Channel cache compaction stopped due to cache close.")
+			base.DebugfCtx(logCtx, base.KeyCache, "Channel cache compaction stopped due to cache close.")
 			return
 		default:
 			// continue
@@ -435,10 +436,10 @@ func (c *channelCacheImpl) compactChannelCache() {
 		// Maintain a target number of items to compact per iteration.  Break the list iteration when the target is reached
 		targetEvictCount := cacheSize - c.compactLowWatermark
 		if targetEvictCount <= 0 {
-			base.Infof(base.KeyCache, "Stopping channel cache compaction, size %d", cacheSize)
+			base.InfofCtx(logCtx, base.KeyCache, "Stopping channel cache compaction, size %d", cacheSize)
 			return
 		}
-		base.Tracef(base.KeyCache, "Target eviction count: %d (lwm:%d)", targetEvictCount, c.compactLowWatermark)
+		base.TracefCtx(logCtx, base.KeyCache, "Target eviction count: %d (lwm:%d)", targetEvictCount, c.compactLowWatermark)
 
 		// Iterates through cache entries based on cache size at start of compaction iteration loop.  Intentionally
 		// ignores channels added during compaction iteration
@@ -452,7 +453,7 @@ func (c *channelCacheImpl) compactChannelCache() {
 			elementCount++
 			singleChannelCache, ok := elem.Value.(*singleChannelCacheImpl)
 			if !ok {
-				base.Warnf("Non-cache entry (%T) found in channel cache during compaction - ignoring", elem.Value)
+				base.WarnfCtx(logCtx, "Non-cache entry (%T) found in channel cache during compaction - ignoring", elem.Value)
 				return true
 			}
 
@@ -465,16 +466,16 @@ func (c *channelCacheImpl) compactChannelCache() {
 			// Determine whether NRU channel is active, to establish eviction priority
 			isActive := c.activeChannels.IsActive(singleChannelCache.channelName)
 			if !isActive {
-				base.Tracef(base.KeyCache, "Marking inactive cache entry %q for eviction ", base.UD(singleChannelCache.channelName))
+				base.TracefCtx(logCtx, base.KeyCache, "Marking inactive cache entry %q for eviction ", base.UD(singleChannelCache.channelName))
 				inactiveEvictionCandidates = append(inactiveEvictionCandidates, elem)
 			} else {
-				base.Tracef(base.KeyCache, "Marking NRU cache entry %q for eviction", base.UD(singleChannelCache.channelName))
+				base.TracefCtx(logCtx, base.KeyCache, "Marking NRU cache entry %q for eviction", base.UD(singleChannelCache.channelName))
 				nruEvictionCandidates = append(nruEvictionCandidates, elem)
 			}
 
 			// If we have enough inactive channels to reach targetCount, terminate range
 			if len(inactiveEvictionCandidates) >= targetEvictCount {
-				base.Tracef(base.KeyCache, "Eviction count target (%d) reached with inactive channels, proceeding to removal", targetEvictCount)
+				base.TracefCtx(logCtx, base.KeyCache, "Eviction count target (%d) reached with inactive channels, proceeding to removal", targetEvictCount)
 				return false
 			}
 			return true
@@ -512,7 +513,7 @@ func (c *channelCacheImpl) compactChannelCache() {
 		// Update eviction stats
 		c.updateEvictionStats(inactiveEvictCount, len(evictionElements), compactIterationStart)
 
-		base.Tracef(base.KeyCache, "Compact iteration complete - eviction count: %d (lwm:%d)", len(evictionElements), c.compactLowWatermark)
+		base.TracefCtx(logCtx, base.KeyCache, "Compact iteration complete - eviction count: %d (lwm:%d)", len(evictionElements), c.compactLowWatermark)
 	}
 }
 

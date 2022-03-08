@@ -10,6 +10,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -3967,6 +3968,6 @@ func WriteDirectWithKey(testDb *db.DatabaseContext, key string, channelArray []s
 
 	_, err := testDb.Bucket.Add(key, 0, db.Body{base.SyncPropertyName: syncData, "key": key})
 	if err != nil {
-		base.Panicf("Error while add ket to bucket: %v", err)
+		base.PanicfCtx(context.TODO(), "Error while add ket to bucket: %v", err)
 	}
 }

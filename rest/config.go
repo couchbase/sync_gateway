@@ -10,6 +10,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -425,7 +426,7 @@ var ErrPathNotFound = errors.New("path not found")
 func readFromPath(path string, insecureSkipVerify bool) (rc io.ReadCloser, err error) {
 	messageFormat := "Loading content from [%s] ..."
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
-		base.Infof(base.KeyAll, messageFormat, path)
+		base.InfofCtx(context.Background(), base.KeyAll, messageFormat, path)
 		client := base.GetHttpClient(insecureSkipVerify)
 		resp, err := client.Get(path)
 		if err != nil {
@@ -436,7 +437,7 @@ func readFromPath(path string, insecureSkipVerify bool) (rc io.ReadCloser, err e
 		}
 		rc = resp.Body
 	} else if base.FileExists(path) {
-		base.Infof(base.KeyAll, messageFormat, path)
+		base.InfofCtx(context.Background(), base.KeyAll, messageFormat, path)
 		rc, err = os.Open(path)
 		if err != nil {
 			return nil, err
@@ -458,7 +459,7 @@ func (dbConfig *DbConfig) AutoImportEnabled() (bool, error) {
 
 	str, ok := dbConfig.AutoImport.(string)
 	if ok && str == "continuous" {
-		base.Warnf(`Using deprecated config value for "import_docs": "continuous". Use "import_docs": true instead.`)
+		base.WarnfCtx(context.Background(), `Using deprecated config value for "import_docs": "continuous". Use "import_docs": true instead.`)
 		return true, nil
 	}
 
@@ -518,15 +519,15 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) error {
 			// EE: channel cache
 			if !isEnterpriseEdition {
 				if val := dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber; val != nil {
-					base.Warnf(eeOnlyWarningMsg, "cache.channel_cache.max_number", *val, db.DefaultChannelCacheMaxNumber)
+					base.WarnfCtx(context.Background(), eeOnlyWarningMsg, "cache.channel_cache.max_number", *val, db.DefaultChannelCacheMaxNumber)
 					dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber = nil
 				}
 				if val := dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent; val != nil {
-					base.Warnf(eeOnlyWarningMsg, "cache.channel_cache.compact_high_watermark_pct", *val, db.DefaultCompactHighWatermarkPercent)
+					base.WarnfCtx(context.Background(), eeOnlyWarningMsg, "cache.channel_cache.compact_high_watermark_pct", *val, db.DefaultCompactHighWatermarkPercent)
 					dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent = nil
 				}
 				if val := dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent; val != nil {
-					base.Warnf(eeOnlyWarningMsg, "cache.channel_cache.compact_low_watermark_pct", *val, db.DefaultCompactLowWatermarkPercent)
+					base.WarnfCtx(context.Background(), eeOnlyWarningMsg, "cache.channel_cache.compact_low_watermark_pct", *val, db.DefaultCompactLowWatermarkPercent)
 					dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent = nil
 				}
 			}
@@ -578,7 +579,7 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) error {
 			// EE: disable revcache
 			revCacheSize := dbConfig.CacheConfig.RevCacheConfig.Size
 			if !isEnterpriseEdition && revCacheSize != nil && *revCacheSize == 0 {
-				base.Warnf(eeOnlyWarningMsg, "cache.rev_cache.size", *revCacheSize, db.DefaultRevisionCacheSize)
+				base.WarnfCtx(context.Background(), eeOnlyWarningMsg, "cache.rev_cache.size", *revCacheSize, db.DefaultRevisionCacheSize)
 				dbConfig.CacheConfig.RevCacheConfig.Size = nil
 			}
 
@@ -592,7 +593,7 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) error {
 
 	// EE: delta sync
 	if !isEnterpriseEdition && dbConfig.DeltaSync != nil && dbConfig.DeltaSync.Enabled != nil {
-		base.Warnf(eeOnlyWarningMsg, "delta_sync.enabled", *dbConfig.DeltaSync.Enabled, false)
+		base.WarnfCtx(context.Background(), eeOnlyWarningMsg, "delta_sync.enabled", *dbConfig.DeltaSync.Enabled, false)
 		dbConfig.DeltaSync.Enabled = nil
 	}
 
@@ -611,7 +612,7 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) error {
 
 	if dbConfig.ImportPartitions != nil {
 		if !isEnterpriseEdition {
-			base.Warnf(eeOnlyWarningMsg, "import_partitions", *dbConfig.ImportPartitions, nil)
+			base.WarnfCtx(context.Background(), eeOnlyWarningMsg, "import_partitions", *dbConfig.ImportPartitions, nil)
 			dbConfig.ImportPartitions = nil
 		} else if !dbConfig.UseXattrs() {
 			multiError = multiError.Append(fmt.Errorf("Invalid configuration - import_partitions set, but enable_shared_bucket_access not enabled"))
@@ -623,7 +624,7 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) error {
 	}
 
 	if dbConfig.DeprecatedPool != nil {
-		base.Warnf(`"pool" config option is not supported. The pool will be set to "default". The option should be removed from config file.`)
+		base.WarnfCtx(context.Background(), `"pool" config option is not supported. The pool will be set to "default". The option should be removed from config file.`)
 	}
 
 	if dbConfig.Sync != nil {
@@ -855,7 +856,7 @@ func expandEnv(config []byte) (value []byte, err error) {
 	var multiError *base.MultiError
 	val := []byte(os.Expand(string(config), func(key string) string {
 		if key == "$" {
-			base.Debugf(base.KeyConfig, "Skipping environment variable expansion: %s", key)
+			base.DebugfCtx(context.Background(), base.KeyConfig, "Skipping environment variable expansion: %s", key)
 			return key
 		}
 		val, err := envDefaultExpansion(key, os.Getenv)
@@ -886,12 +887,12 @@ func envDefaultExpansion(key string, getEnvFn func(string) string) (value string
 	if value == "" && len(kvPair) == 2 {
 		// Set value to the default.
 		value = kvPair[1]
-		base.Debugf(base.KeyConfig, "Replacing config environment variable '${%s}' with "+
+		base.DebugfCtx(context.Background(), base.KeyConfig, "Replacing config environment variable '${%s}' with "+
 			"default value specified", key)
 	} else if value == "" && len(kvPair) != 2 {
 		return "", ErrEnvVarUndefined{key: key}
 	} else {
-		base.Debugf(base.KeyConfig, "Replacing config environment variable '${%s}'", key)
+		base.DebugfCtx(context.Background(), base.KeyConfig, "Replacing config environment variable '${%s}'", key)
 	}
 	return value, nil
 }
@@ -924,7 +925,7 @@ func SetMaxFileDescriptors(maxP *uint64) error {
 	}
 	_, err := base.SetMaxFileDescriptors(maxFDs)
 	if err != nil {
-		base.Errorf("Error setting MaxFileDescriptors to %d: %v", maxFDs, err)
+		base.ErrorfCtx(context.Background(), "Error setting MaxFileDescriptors to %d: %v", maxFDs, err)
 		return err
 	}
 	return nil
@@ -1028,9 +1029,9 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 
 	base.FlushLoggerBuffers()
 
-	base.Infof(base.KeyAll, "Logging: Console level: %v", base.ConsoleLogLevel())
-	base.Infof(base.KeyAll, "Logging: Console keys: %v", base.ConsoleLogKey().EnabledLogKeys())
-	base.Infof(base.KeyAll, "Logging: Redaction level: %s", config.Logging.RedactionLevel)
+	base.InfofCtx(context.Background(), base.KeyAll, "Logging: Console level: %v", base.ConsoleLogLevel())
+	base.InfofCtx(context.Background(), base.KeyAll, "Logging: Console keys: %v", base.ConsoleLogKey().EnabledLogKeys())
+	base.InfofCtx(context.Background(), base.KeyAll, "Logging: Redaction level: %s", config.Logging.RedactionLevel)
 
 	if err := setGlobalConfig(config); err != nil {
 		return nil, err
@@ -1063,7 +1064,7 @@ func (sc *ServerContext) fetchAndLoadConfigs() (count int, err error) {
 	for _, bucket := range bucketsNoConfig {
 		dbName, ok := sc.bucketDbName[bucket]
 		if ok {
-			base.Infof(base.KeyConfig, "database %q was running on this node, but config was not found on the server - removing database", base.MD(dbName))
+			base.InfofCtx(context.TODO(), base.KeyConfig, "database %q was running on this node, but config was not found on the server - removing database", base.MD(dbName))
 			sc._removeDatabase(dbName)
 		}
 	}
@@ -1094,6 +1095,7 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 	if err != nil {
 		return false, nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
 	}
+	logCtx := context.TODO()
 
 	// move bucket matching dbName to the front so it's searched first
 	for i, bucket := range buckets {
@@ -1106,11 +1108,11 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 		var cnf DatabaseConfig
 		cas, err := sc.bootstrapContext.connection.GetConfig(bucket, sc.config.Bootstrap.ConfigGroupID, &cnf)
 		if err == base.ErrNotFound {
-			base.Debugf(base.KeyConfig, "%q did not contain config in group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
+			base.DebugfCtx(logCtx, base.KeyConfig, "%q did not contain config in group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
 			continue
 		}
 		if err != nil {
-			base.Debugf(base.KeyConfig, "unable to fetch config in group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
+			base.DebugfCtx(logCtx, base.KeyConfig, "unable to fetch config in group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
 			continue
 		}
 
@@ -1119,7 +1121,7 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 		}
 
 		if cnf.Name != dbName {
-			base.Tracef(base.KeyConfig, "%q did not contain config in group %q for db %q", bucket, sc.config.Bootstrap.ConfigGroupID, dbName)
+			base.TracefCtx(logCtx, base.KeyConfig, "%q did not contain config in group %q for db %q", bucket, sc.config.Bootstrap.ConfigGroupID, dbName)
 			continue
 		}
 
@@ -1140,7 +1142,7 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 			cnf.CertPath = sc.config.Bootstrap.X509CertPath
 			cnf.KeyPath = sc.config.Bootstrap.X509KeyPath
 		}
-		base.Tracef(base.KeyConfig, "Got config for bucket %q with cas %d", bucket, cas)
+		base.TracefCtx(logCtx, base.KeyConfig, "Got config for bucket %q with cas %d", bucket, cas)
 		return true, &cnf, nil
 	}
 
@@ -1154,19 +1156,20 @@ func (sc *ServerContext) fetchConfigs() (dbNameConfigs map[string]DatabaseConfig
 		return nil, nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
 	}
 
+	logCtx := context.TODO()
 	fetchedConfigs := make(map[string]DatabaseConfig, len(buckets))
 
 	for _, bucket := range buckets {
-		base.Tracef(base.KeyConfig, "Checking for config for group %q from bucket %q", sc.config.Bootstrap.ConfigGroupID, bucket)
+		base.TracefCtx(logCtx, base.KeyConfig, "Checking for config for group %q from bucket %q", sc.config.Bootstrap.ConfigGroupID, bucket)
 		var cnf DatabaseConfig
 		cas, err := sc.bootstrapContext.connection.GetConfig(bucket, sc.config.Bootstrap.ConfigGroupID, &cnf)
 		if err == base.ErrNotFound {
-			base.Tracef(base.KeyConfig, "bucket %q did not contain config for group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
+			base.TracefCtx(logCtx, base.KeyConfig, "bucket %q did not contain config for group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
 			bucketsNoConfig = append(bucketsNoConfig, bucket)
 			continue
 		}
 		if err != nil {
-			base.Debugf(base.KeyConfig, "unable to fetch config for group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
+			base.DebugfCtx(logCtx, base.KeyConfig, "unable to fetch config for group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
 			continue
 		}
 
@@ -1191,7 +1194,7 @@ func (sc *ServerContext) fetchConfigs() (dbNameConfigs map[string]DatabaseConfig
 			cnf.KeyPath = sc.config.Bootstrap.X509KeyPath
 		}
 
-		base.Debugf(base.KeyConfig, "Got config for group %q from bucket %q with cas %d", sc.config.Bootstrap.ConfigGroupID, bucket, cas)
+		base.DebugfCtx(logCtx, base.KeyConfig, "Got config for group %q from bucket %q with cas %d", sc.config.Bootstrap.ConfigGroupID, bucket, cas)
 		fetchedConfigs[cnf.Name] = cnf
 	}
 
@@ -1203,7 +1206,7 @@ func (sc *ServerContext) _applyConfigs(dbNameConfigs map[string]DatabaseConfig) 
 	for dbName, cnf := range dbNameConfigs {
 		applied, err := sc._applyConfig(cnf, false)
 		if err != nil {
-			base.Errorf("Couldn't apply config for database %q: %v", base.MD(dbName), err)
+			base.ErrorfCtx(context.Background(), "Couldn't apply config for database %q: %v", base.MD(dbName), err)
 			continue
 		}
 		if applied {
@@ -1232,13 +1235,13 @@ func (sc *ServerContext) _applyConfig(cnf DatabaseConfig, failFast bool) (applie
 
 		if cnf.cas == 0 {
 			// force an update when the new config's cas was set to zero prior to load
-			base.Infof(base.KeyConfig, "Forcing update of config for database %q bucket %q", cnf.Name, *cnf.Bucket)
+			base.InfofCtx(context.TODO(), base.KeyConfig, "Forcing update of config for database %q bucket %q", cnf.Name, *cnf.Bucket)
 		} else {
 			if sc.dbConfigs[foundDbName].cas >= cnf.cas {
-				base.Debugf(base.KeyConfig, "Database %q bucket %q config has not changed since last update", cnf.Name, *cnf.Bucket)
+				base.DebugfCtx(context.TODO(), base.KeyConfig, "Database %q bucket %q config has not changed since last update", cnf.Name, *cnf.Bucket)
 				return false, nil
 			}
-			base.Infof(base.KeyConfig, "Updating database %q for bucket %q with new config from bucket", cnf.Name, *cnf.Bucket)
+			base.InfofCtx(context.TODO(), base.KeyConfig, "Updating database %q for bucket %q with new config from bucket", cnf.Name, *cnf.Bucket)
 		}
 	}
 
@@ -1277,24 +1280,24 @@ func (sc *ServerContext) addLegacyPrincipals(legacyDbUsers, legacyDbRoles map[st
 	for dbName, dbUser := range legacyDbUsers {
 		dbCtx, err := sc.GetDatabase(dbName)
 		if err != nil {
-			base.Errorf("Couldn't get database context to install user principles: %v", err)
+			base.ErrorfCtx(context.Background(), "Couldn't get database context to install user principles: %v", err)
 			continue
 		}
 		err = sc.installPrincipals(dbCtx, dbUser, "user")
 		if err != nil {
-			base.Errorf("Couldn't install user principles: %v", err)
+			base.ErrorfCtx(context.Background(), "Couldn't install user principles: %v", err)
 		}
 	}
 
 	for dbName, dbRole := range legacyDbRoles {
 		dbCtx, err := sc.GetDatabase(dbName)
 		if err != nil {
-			base.Errorf("Couldn't get database context to install role principles: %v", err)
+			base.ErrorfCtx(context.Background(), "Couldn't get database context to install role principles: %v", err)
 			continue
 		}
 		err = sc.installPrincipals(dbCtx, dbRole, "role")
 		if err != nil {
-			base.Errorf("Couldn't install role principles: %v", err)
+			base.ErrorfCtx(context.Background(), "Couldn't install role principles: %v", err)
 		}
 	}
 }
@@ -1303,7 +1306,7 @@ func (sc *ServerContext) addLegacyPrincipals(legacyDbUsers, legacyDbRoles map[st
 func startServer(config *StartupConfig, sc *ServerContext) error {
 	if config.API.ProfileInterface != "" {
 		//runtime.MemProfileRate = 10 * 1024
-		base.Infof(base.KeyAll, "Starting profile server on %s", base.UD(config.API.ProfileInterface))
+		base.InfofCtx(context.TODO(), base.KeyAll, "Starting profile server on %s", base.UD(config.API.ProfileInterface))
 		go func() {
 			_ = http.ListenAndServe(config.API.ProfileInterface, nil)
 		}()
@@ -1314,14 +1317,14 @@ func startServer(config *StartupConfig, sc *ServerContext) error {
 	base.Consolef(base.LevelInfo, base.KeyAll, "Starting metrics server on %s", config.API.MetricsInterface)
 	go func() {
 		if err := sc.Serve(config, config.API.MetricsInterface, CreateMetricHandler(sc)); err != nil {
-			base.Errorf("Error serving the Metrics API: %v", err)
+			base.ErrorfCtx(context.TODO(), "Error serving the Metrics API: %v", err)
 		}
 	}()
 
 	base.Consolef(base.LevelInfo, base.KeyAll, "Starting admin server on %s", config.API.AdminInterface)
 	go func() {
 		if err := sc.Serve(config, config.API.AdminInterface, CreateAdminHandler(sc)); err != nil {
-			base.Errorf("Error serving the Admin API: %v", err)
+			base.ErrorfCtx(context.TODO(), "Error serving the Admin API: %v", err)
 		}
 	}()
 
@@ -1344,7 +1347,7 @@ func sharedBucketDatabaseCheck(sc *ServerContext) (errors error) {
 		multiError = multiError.Append(sharedBucketError)
 		messageFormat := "Bucket %q is shared among databases %s. " +
 			"This may result in unexpected behaviour if security is not defined consistently."
-		base.Warnf(messageFormat, base.MD(sharedBucket.bucketName), base.MD(sharedBucket.dbNames))
+		base.WarnfCtx(context.Background(), messageFormat, base.MD(sharedBucket.bucketName), base.MD(sharedBucket.dbNames))
 	}
 	return multiError.ErrorOrNil()
 }
@@ -1385,7 +1388,7 @@ func sharedBuckets(dbContextMap map[string][]*db.DatabaseContext) (sharedBuckets
 func HandleSighup() {
 	for logger, err := range base.RotateLogfiles() {
 		if err != nil {
-			base.Warnf("Error rotating %v: %v", logger, err)
+			base.WarnfCtx(context.Background(), "Error rotating %v: %v", logger, err)
 		}
 	}
 }
@@ -1400,7 +1403,7 @@ func RegisterSignalHandler() {
 
 	go func() {
 		for sig := range signalChannel {
-			base.Infof(base.KeyAll, "Handling signal: %v", sig)
+			base.InfofCtx(context.TODO(), base.KeyAll, "Handling signal: %v", sig)
 			switch sig {
 			case syscall.SIGHUP:
 				HandleSighup()

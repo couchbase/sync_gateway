@@ -10,6 +10,7 @@ package db
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -200,7 +201,7 @@ func (tree RevTree) RepairCycles() (err error) {
 		for {
 
 			if node.ParentGenGTENodeGen() {
-				base.Infof(base.KeyCRUD, "Node %+v detected to have invalid parent rev (parent generation larger than node generation).  Repairing by designating as a root node.", base.UD(node))
+				base.InfofCtx(context.Background(), base.KeyCRUD, "Node %+v detected to have invalid parent rev (parent generation larger than node generation).  Repairing by designating as a root node.", base.UD(node))
 				node.Parent = ""
 				break
 			}
@@ -423,7 +424,7 @@ func (tree RevTree) setRevisionBody(revid string, body []byte, bodyKey string, h
 func (tree RevTree) removeRevisionBody(revid string) (deletedBodyKey string) {
 	info, found := tree[revid]
 	if !found {
-		base.Errorf("RemoveRevisionBody called for revid not in tree: %v", revid)
+		base.ErrorfCtx(context.Background(), "RemoveRevisionBody called for revid not in tree: %v", revid)
 		return ""
 	}
 	deletedBodyKey = info.BodyKey
@@ -787,7 +788,7 @@ func encodeRevisions(docID string, revs []string) Revisions {
 		if i == 0 {
 			start = gen
 		} else if gen != start-i {
-			base.Warnf("Found gap in revision list for doc %q. Expecting gen %v but got %v in %v", base.UD(docID), start-i, gen, revs)
+			base.WarnfCtx(context.TODO(), "Found gap in revision list for doc %q. Expecting gen %v but got %v in %v", base.UD(docID), start-i, gen, revs)
 		}
 	}
 	return Revisions{RevisionsStart: start, RevisionsIds: ids}

@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -130,7 +131,7 @@ func (c *ConflictResolver) Resolve(conflict Conflict) (winner Body, resolutionTy
 		return winner, ConflictResolutionRemote, nil
 	}
 
-	base.Infof(base.KeyReplicate, "Conflict resolver returned non-empty revID (%s) not matching local (%s) or remote (%s), treating result as merge.", winningRev, localRev, remoteRev)
+	base.InfofCtx(context.Background(), base.KeyReplicate, "Conflict resolver returned non-empty revID (%s) not matching local (%s) or remote (%s), treating result as merge.", winningRev, localRev, remoteRev)
 	c.stats.ConflictResultMergeCount.Add(1)
 	return winner, ConflictResolutionMerge, err
 }
@@ -196,7 +197,7 @@ type ConflictResolverJSServer struct {
 }
 
 func NewConflictResolverJSServer(fnSource string) *ConflictResolverJSServer {
-	base.Debugf(base.KeyReplicate, "Creating new ConflictResolverFunction")
+	base.DebugfCtx(context.Background(), base.KeyReplicate, "Creating new ConflictResolverFunction")
 	return &ConflictResolverJSServer{
 		JSServer: sgbucket.NewJSServer(fnSource, kTaskCacheSize, newConflictResolverRunner),
 	}
@@ -209,7 +210,7 @@ func (i *ConflictResolverJSServer) EvaluateFunction(conflict Conflict) (Body, er
 	remoteRevID, _ := conflict.RemoteDocument[BodyRev].(string)
 	result, err := i.Call(conflict)
 	if err != nil {
-		base.Warnf("Unexpected error invoking conflict resolver for document %s, local/remote revisions %s/%s - processing aborted, document will not be replicated.  Error: %v",
+		base.WarnfCtx(context.Background(), "Unexpected error invoking conflict resolver for document %s, local/remote revisions %s/%s - processing aborted, document will not be replicated.  Error: %v",
 			base.UD(docID), base.UD(localRevID), base.UD(remoteRevID), err)
 		return nil, err
 	}
@@ -225,10 +226,10 @@ func (i *ConflictResolverJSServer) EvaluateFunction(conflict Conflict) (Body, er
 	case map[string]interface{}:
 		return result, nil
 	case error:
-		base.Warnf("conflictResolverRunner: " + result.Error())
+		base.WarnfCtx(context.Background(), "conflictResolverRunner: "+result.Error())
 		return nil, result
 	default:
-		base.Warnf("Custom conflict resolution function returned non-document result %v Type: %T", result, result)
+		base.WarnfCtx(context.Background(), "Custom conflict resolution function returned non-document result %v Type: %T", result, result)
 		return nil, errors.New("Custom conflict resolution function returned non-document value.")
 	}
 }
@@ -237,8 +238,12 @@ func (i *ConflictResolverJSServer) EvaluateFunction(conflict Conflict) (Body, er
 func newConflictResolverRunner(funcSource string) (sgbucket.JSServerTask, error) {
 	conflictResolverRunner := &sgbucket.JSRunner{}
 	err := conflictResolverRunner.InitWithLogging(funcSource,
-		func(s string) { base.Errorf(base.KeyJavascript.String()+": ConflictResolver %s", base.UD(s)) },
-		func(s string) { base.Infof(base.KeyJavascript, "ConflictResolver %s", base.UD(s)) })
+		func(s string) {
+			base.ErrorfCtx(context.Background(), base.KeyJavascript.String()+": ConflictResolver %s", base.UD(s))
+		},
+		func(s string) {
+			base.InfofCtx(context.Background(), base.KeyJavascript, "ConflictResolver %s", base.UD(s))
+		})
 	if err != nil {
 		return nil, err
 	}
@@ -283,7 +288,7 @@ func newConflictResolverRunner(funcSource string) (sgbucket.JSServerTask, error)
 func ErrorToOttoValue(runner *sgbucket.JSRunner, err error) otto.Value {
 	errorValue, convertErr := runner.ToValue(err)
 	if convertErr != nil {
-		base.Warnf("Unable to convert error to otto value: %v", convertErr)
+		base.WarnfCtx(context.Background(), "Unable to convert error to otto value: %v", convertErr)
 	}
 	return errorValue
 }

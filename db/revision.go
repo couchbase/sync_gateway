@@ -79,7 +79,7 @@ func (body Body) Copy(copyType BodyCopyType) Body {
 	case BodyNoCopy:
 		return body
 	default:
-		base.Infof(base.KeyCRUD, "Unexpected copy type specified in body.Copy - defaulting to shallow copy.  copyType: %d", copyType)
+		base.InfofCtx(context.Background(), base.KeyCRUD, "Unexpected copy type specified in body.Copy - defaulting to shallow copy.  copyType: %d", copyType)
 		return body.ShallowCopy()
 	}
 }
@@ -99,7 +99,7 @@ func (body Body) DeepCopy() Body {
 	var copiedBody Body
 	err := base.DeepCopyInefficient(&copiedBody, body)
 	if err != nil {
-		base.Infof(base.KeyCRUD, "Error copying body: %v", err)
+		base.InfofCtx(context.Background(), base.KeyCRUD, "Error copying body: %v", err)
 	}
 	return copiedBody
 }
@@ -363,7 +363,7 @@ func genOfRevID(revid string) int {
 	var generation int
 	n, _ := fmt.Sscanf(revid, "%d-", &generation)
 	if n < 1 || generation < 1 {
-		base.Warnf("genOfRevID unsuccessful for %q", revid)
+		base.WarnfCtx(context.Background(), "genOfRevID unsuccessful for %q", revid)
 		return -1
 	}
 	return generation
@@ -377,16 +377,16 @@ func ParseRevID(revid string) (int, string) {
 
 	idx := strings.Index(revid, "-")
 	if idx == -1 {
-		base.Warnf("parseRevID found no separator in rev %q", revid)
+		base.WarnfCtx(context.Background(), "parseRevID found no separator in rev %q", revid)
 		return -1, ""
 	}
 
 	gen, err := strconv.Atoi(revid[:idx])
 	if err != nil {
-		base.Warnf("parseRevID unexpected generation in rev %q: %s", revid, err)
+		base.WarnfCtx(context.Background(), "parseRevID unexpected generation in rev %q: %s", revid, err)
 		return -1, ""
 	} else if gen < 1 {
-		base.Warnf("parseRevID unexpected generation in rev %q", revid)
+		base.WarnfCtx(context.Background(), "parseRevID unexpected generation in rev %q", revid)
 		return -1, ""
 	}
 

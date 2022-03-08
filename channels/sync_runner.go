@@ -9,6 +9,7 @@
 package channels
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -115,11 +116,12 @@ type SyncRunner struct {
 }
 
 func NewSyncRunner(funcSource string) (*SyncRunner, error) {
+	ctx := context.Background()
 	funcSource = wrappedFuncSource(funcSource)
 	runner := &SyncRunner{}
 	err := runner.InitWithLogging(funcSource,
-		func(s string) { base.Errorf(base.KeyJavascript.String()+": Sync %s", base.UD(s)) },
-		func(s string) { base.Infof(base.KeyJavascript, "Sync %s", base.UD(s)) })
+		func(s string) { base.ErrorfCtx(ctx, base.KeyJavascript.String()+": Sync %s", base.UD(s)) },
+		func(s string) { base.InfofCtx(ctx, base.KeyJavascript, "Sync %s", base.UD(s)) })
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +165,7 @@ func NewSyncRunner(funcSource string) (*SyncRunner, error) {
 		if len(call.ArgumentList) > 0 {
 			rawExpiry, exportErr := call.Argument(0).Export()
 			if exportErr != nil {
-				base.Warnf("SyncRunner: Unable to export expiry parameter: %v Error: %s", call.Argument(0), exportErr)
+				base.WarnfCtx(ctx, "SyncRunner: Unable to export expiry parameter: %v Error: %s", call.Argument(0), exportErr)
 				return otto.UndefinedValue()
 			}
 
@@ -174,7 +176,7 @@ func NewSyncRunner(funcSource string) (*SyncRunner, error) {
 
 			expiry, reflectErr := base.ReflectExpiry(rawExpiry)
 			if reflectErr != nil {
-				base.Warnf("SyncRunner: Invalid value passed to expiry().  Value:%+v ", call.Argument(0))
+				base.WarnfCtx(ctx, "SyncRunner: Invalid value passed to expiry().  Value:%+v ", call.Argument(0))
 				return otto.UndefinedValue()
 			}
 
@@ -262,7 +264,7 @@ func ottoValueToStringArray(value otto.Value) []string {
 	result, nonStrings := base.ValueToStringArray(nativeValue)
 
 	if !value.IsNull() && !value.IsUndefined() && nonStrings != nil {
-		base.Warnf("Channel names must be string values only. Ignoring non-string channels: %s", base.UD(nonStrings))
+		base.WarnfCtx(context.Background(), "Channel names must be string values only. Ignoring non-string channels: %s", base.UD(nonStrings))
 	}
 	return result
 }

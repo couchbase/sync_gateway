@@ -460,8 +460,10 @@ type jsImportFilterRunner struct {
 func newImportFilterRunner(funcSource string) (sgbucket.JSServerTask, error) {
 	importFilterRunner := &jsEventTask{}
 	err := importFilterRunner.InitWithLogging(funcSource,
-		func(s string) { base.Errorf(base.KeyJavascript.String()+": Import %s", base.UD(s)) },
-		func(s string) { base.Infof(base.KeyJavascript, "Import %s", base.UD(s)) })
+		func(s string) {
+			base.ErrorfCtx(context.Background(), base.KeyJavascript.String()+": Import %s", base.UD(s))
+		},
+		func(s string) { base.InfofCtx(context.Background(), base.KeyJavascript, "Import %s", base.UD(s)) })
 	if err != nil {
 		return nil, err
 	}
@@ -480,7 +482,7 @@ type ImportFilterFunction struct {
 
 func NewImportFilterFunction(fnSource string) *ImportFilterFunction {
 
-	base.Debugf(base.KeyImport, "Creating new ImportFilterFunction")
+	base.DebugfCtx(context.Background(), base.KeyImport, "Creating new ImportFilterFunction")
 	return &ImportFilterFunction{
 		JSServer: sgbucket.NewJSServer(fnSource, kTaskCacheSize,
 			func(fnSource string) (sgbucket.JSServerTask, error) {

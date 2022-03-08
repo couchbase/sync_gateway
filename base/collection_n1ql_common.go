@@ -115,7 +115,7 @@ func createIndex(store N1QLStore, indexName string, createStatement string, opti
 		createStatement = fmt.Sprintf(`%s with %s`, createStatement, withClause)
 	}
 
-	Debugf(KeyQuery, "Attempting to create index using statement: [%s]", UD(createStatement))
+	DebugfCtx(context.TODO(), KeyQuery, "Attempting to create index using statement: [%s]", UD(createStatement))
 
 	err := store.executeStatement(createStatement)
 	if err == nil {
@@ -123,13 +123,13 @@ func createIndex(store N1QLStore, indexName string, createStatement string, opti
 	}
 
 	if IsIndexerRetryIndexError(err) {
-		Infof(KeyQuery, "Indexer error creating index - waiting for server background retry.  Error:%v", err)
+		InfofCtx(context.TODO(), KeyQuery, "Indexer error creating index - waiting for server background retry.  Error:%v", err)
 		// Wait for bucket to be created in background before returning
 		return waitForIndexExistence(store, indexName, true)
 	}
 
 	if IsCreateDuplicateIndexError(err) {
-		Infof(KeyQuery, "Duplicate index creation in progress - waiting for index readiness.  Error:%v", err)
+		InfofCtx(context.TODO(), KeyQuery, "Duplicate index creation in progress - waiting for index readiness.  Error:%v", err)
 		// Wait for bucket to be created in background before returning
 		return waitForIndexExistence(store, indexName, true)
 	}
@@ -203,7 +203,7 @@ func BuildDeferredIndexes(s N1QLStore, indexSet []string) error {
 		return nil
 	}
 
-	Infof(KeyQuery, "Building deferred indexes: %v", deferredIndexes)
+	InfofCtx(context.TODO(), KeyQuery, "Building deferred indexes: %v", deferredIndexes)
 	buildErr := buildIndexes(s, deferredIndexes)
 	return buildErr
 }
@@ -223,7 +223,7 @@ func buildIndexes(s N1QLStore, indexNames []string) error {
 
 	// If indexer reports build will be completed in the background, wait to validate build actually happens.
 	if IsIndexerRetryBuildError(err) {
-		Infof(KeyQuery, "Indexer error creating index - waiting for background build.  Error:%v", err)
+		InfofCtx(context.TODO(), KeyQuery, "Indexer error creating index - waiting for background build.  Error:%v", err)
 		// Wait for bucket to be created in background before returning
 		for _, indexName := range indexNames {
 			waitErr := s.WaitForIndexOnline(indexName)
@@ -277,7 +277,7 @@ func GetIndexMeta(store N1QLStore, indexName string) (exists bool, meta *IndexMe
 		exists, meta, err := getIndexMetaWithoutRetry(store, indexName)
 		if err != nil {
 			// retry
-			Warnf("Error from GetIndexMeta for index %s: %v will retry", indexName, err)
+			WarnfCtx(context.TODO(), "Error from GetIndexMeta for index %s: %v will retry", indexName, err)
 			return true, err, nil
 		}
 		return false, nil, getIndexMetaRetryValues{
@@ -328,7 +328,7 @@ func DropIndex(store N1QLStore, indexName string) error {
 	}
 
 	if IsIndexerRetryIndexError(err) {
-		Infof(KeyQuery, "Indexer error dropping index - waiting for server background retry.  Error:%v", err)
+		InfofCtx(context.TODO(), KeyQuery, "Indexer error dropping index - waiting for server background retry.  Error:%v", err)
 		// Wait for bucket to be dropped in background before returning
 		return waitForIndexExistence(store, indexName, false)
 	}
@@ -478,7 +478,7 @@ func (i *gocbRawIterator) Next(valuePtr interface{}) bool {
 
 	err := JSONUnmarshal(nextBytes, &valuePtr)
 	if err != nil {
-		Warnf("Unable to marshal view result row into value: %v", err)
+		WarnfCtx(context.TODO(), "Unable to marshal view result row into value: %v", err)
 		return false
 	}
 	return true

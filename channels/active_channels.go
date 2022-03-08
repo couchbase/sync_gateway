@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package channels
 
 import (
+	"context"
 	"sync"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -98,7 +99,7 @@ func (ac *ActiveChannels) _incr(channelName string) {
 func (ac *ActiveChannels) _decr(channelName string) {
 	current, ok := ac.channelCounts[channelName]
 	if !ok {
-		base.Warnf("Attempt made to decrement inactive channel %s - will be ignored", base.UD(channelName))
+		base.WarnfCtx(context.Background(), "Attempt made to decrement inactive channel %s - will be ignored", base.UD(channelName))
 		return
 	}
 	if current <= 1 {

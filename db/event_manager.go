@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -72,7 +73,7 @@ func (em *EventManager) Start(maxProcesses uint, waitTime int) {
 		em.waitTime = waitTime
 	}
 
-	base.Infof(base.KeyEvents, "Starting event manager with max processes:%d, wait time:%d ms", maxProcesses, em.waitTime)
+	base.InfofCtx(context.TODO(), base.KeyEvents, "Starting event manager with max processes:%d, wait time:%d ms", maxProcesses, em.waitTime)
 	// activeCountChannel limits the number of concurrent events being processed
 	em.activeCountChannel = make(chan bool, maxProcesses)
 
@@ -95,11 +96,12 @@ func (em *EventManager) Start(maxProcesses uint, waitTime int) {
 // Concurrent processing of all async event handlers registered for the event type
 func (em *EventManager) ProcessEvent(event Event) {
 	defer func() { <-em.activeCountChannel }()
+	logCtx := context.TODO()
 	// Send event to all registered handlers concurrently.  WaitGroup blocks
 	// until all are finished
 	var wg sync.WaitGroup
 	for _, handler := range em.eventHandlers[event.EventType()] {
-		base.Debugf(base.KeyEvents, "Event queue worker sending event %s to: %s", base.UD(event.String()), handler)
+		base.DebugfCtx(logCtx, base.KeyEvents, "Event queue worker sending event %s to: %s", base.UD(event.String()), handler)
 		wg.Add(1)
 		go func(event Event, handler EventHandler) {
 			defer wg.Done()
@@ -110,7 +112,7 @@ func (em *EventManager) ProcessEvent(event Event) {
 			} else {
 				em.IncrementEventsProcessedFail(1)
 			}
-			base.Tracef(base.KeyAll, "Webhook event processed %s", event)
+			base.TracefCtx(logCtx, base.KeyAll, "Webhook event processed %s", event)
 
 		}(event, handler)
 	}
@@ -122,7 +124,7 @@ func (em *EventManager) ProcessEvent(event Event) {
 func (em *EventManager) RegisterEventHandler(handler EventHandler, eventType EventType) {
 	em.eventHandlers[eventType] = append(em.eventHandlers[eventType], handler)
 	em.activeEventTypes[eventType] = true
-	base.Infof(base.KeyEvents, "Registered event handler: %v, for event type %v", handler, eventType)
+	base.InfofCtx(context.Background(), base.KeyEvents, "Registered event handler: %v, for event type %v", handler, eventType)
 }
 
 // Checks whether a handler of the given type has been registered to the event manager.
@@ -139,10 +141,10 @@ func (em *EventManager) raiseEvent(event Event) error {
 		defer timer.Stop()
 		select {
 		case em.asyncEventChannel <- event:
-			base.Tracef(base.KeyAll, "Event sent to channel %s", event.String())
+			base.TracefCtx(context.TODO(), base.KeyAll, "Event sent to channel %s", event.String())
 		case <-timer.C:
 			// Event queue channel is full - ignore event and log error
-			base.Warnf("Event queue full - discarding event: %s", base.UD(event.String()))
+			base.WarnfCtx(context.TODO(), "Event queue full - discarding event: %s", base.UD(event.String()))
 			return errors.New("Event queue full")
 		}
 	}
