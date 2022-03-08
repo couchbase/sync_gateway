@@ -975,7 +975,7 @@ func TestReplicationConcurrentPush(t *testing.T) {
 		}
 		defStatus := activeRT.GetReplicationStatus("rep_DEF")
 		if defStatus.DocsCheckedPush != 2 {
-			log.Printf("abcStatus.DocsCheckedPush not 2, is %v", abcStatus.DocsCheckedPush)
+			log.Printf("defStatus.DocsCheckedPush not 2, is %v", defStatus.DocsCheckedPush)
 			return false
 		}
 
