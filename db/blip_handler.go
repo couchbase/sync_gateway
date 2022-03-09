@@ -971,15 +971,10 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 					return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
 				}
 
-				currentAttachmentRevpos, ok := base.ToInt64(currentAttachmentMeta["revpos"])
-				if !ok {
-					return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
-				}
-
-				// Compare the revpos and attachment digest. If revpos is same but attachment digest is different we
-				// need to override the revpos and set it to the current revision as the incoming revpos must be invalid
-				// and we need to request it.
-				if currentAttachmentRevpos == incomingAttachmentRevpos && currentAttachmentDigest != incomingAttachmentDigest {
+				// Compare the revpos and attachment digest. If incoming revpos is less than or equal to minRevPos and
+				// digest is different we need to override the revpos and set it to the current revision as the incoming
+				// revpos must be invalid and we need to request it.
+				if int(incomingAttachmentRevpos) <= minRevpos && currentAttachmentDigest != incomingAttachmentDigest {
 					minRevpos, _ = ParseRevID(history[len(history)-1])
 					bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(revID)
 				}
