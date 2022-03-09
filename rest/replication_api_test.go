@@ -940,7 +940,7 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 func TestReplicationConcurrentPush(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyCRUD, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
@@ -971,11 +971,13 @@ func TestReplicationConcurrentPush(t *testing.T) {
 		abcStatus := activeRT.GetReplicationStatus("rep_ABC")
 		if abcStatus.DocsCheckedPush != 2 {
 			log.Printf("abcStatus.DocsCheckedPush not 2, is %v", abcStatus.DocsCheckedPush)
+			log.Printf("abcStatus=%+v", abcStatus)
 			return false
 		}
 		defStatus := activeRT.GetReplicationStatus("rep_DEF")
 		if defStatus.DocsCheckedPush != 2 {
-			log.Printf("abcStatus.DocsCheckedPush not 2, is %v", abcStatus.DocsCheckedPush)
+			log.Printf("defStatus.DocsCheckedPush not 2, is %v", defStatus.DocsCheckedPush)
+			log.Printf("defStatus=%+v", defStatus)
 			return false
 		}
 
