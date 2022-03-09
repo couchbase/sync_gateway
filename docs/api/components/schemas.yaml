@@ -1524,7 +1524,7 @@ Compact-status:
       description: |-
         **Applicable to attachment compaction only**
 
-        This is the amount of attachments that have been marked to be kept.
+        This is the number of references there are to legacy attachments. 
       type: string
     purged_attachments:
       description: |-
