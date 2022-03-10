@@ -1005,7 +1005,7 @@ function(doc, oldDoc) {
 }
 
 // Start subChanges w/ continuous=true, batchsize=20
-// Start goroutine sending rev messages for documents that grant access to themselves for the active replication's user
+// Start sending rev messages for documents that grant access to themselves for the active replication's user
 
 func TestConcurrentRefreshUser(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache)()
@@ -1114,31 +1114,29 @@ function(doc, oldDoc) {
 	subChangesResponse := subChangesRequest.Response()
 	goassert.Equals(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
 
-	// Start goroutine to simulate sending docs from the client
-
+	// Start goroutines to simulate sending docs from the client
 	receivedChangesWg.Add(100)
 	revsFinishedWg.Add(100)
-	go func() {
-		for i := 0; i < 100; i++ {
-			docID := fmt.Sprintf("foo_%d", i)
-			_, _, _, sendErr := bt.SendRev(
-				docID,
-				"1-abc",
-				[]byte(`{"accessUser": "user1",
-				"accessChannel":"`+docID+`",
-				"channels":["`+docID+`"]}`),
-				blip.Properties{},
-			)
-			assert.NoError(t, sendErr)
-		}
-	}()
+	beforeChangesSent := time.Now().UnixMilli()
+	for i := 0; i < 100; i++ {
+		docID := fmt.Sprintf("foo_%d", i)
+		_, _, _, sendErr := bt.SendRev(
+			docID,
+			"1-abc",
+			[]byte(`{"accessUser": "user1",
+			"accessChannel":"`+docID+`",
+			"channels":["`+docID+`"]}`),
+			blip.Properties{},
+		)
+		assert.NoError(t, sendErr)
+	}
 
 	// Wait until all expected changes are received by change handler
-	// receivedChangesWg.Wait()
-	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*60)
+	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*30)
 	assert.NoError(t, timeoutErr, "Timed out waiting for all changes.")
+	fmt.Println("Revs sent and changes received in", time.Now().UnixMilli()-beforeChangesSent, "ms")
 
-	revTimeoutErr := WaitWithTimeout(&revsFinishedWg, time.Second*60)
+	revTimeoutErr := WaitWithTimeout(&revsFinishedWg, time.Second*30)
 	assert.NoError(t, revTimeoutErr, "Timed out waiting for all revs.")
 
 	assert.False(t, nonIntegerSequenceReceived, "Unexpected non-integer sequence seen.")
