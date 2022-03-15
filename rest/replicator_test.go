@@ -5411,6 +5411,7 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 	require.NoError(t, ar.Start())
 
 	changesResults, err := rt1.WaitForChanges(3, "/db/_changes?since=0", "", true)
+	fmt.Println(changesResults.Results)
 	require.NoError(t, err)
 	assert.Len(t, changesResults.Results, 3)
 
