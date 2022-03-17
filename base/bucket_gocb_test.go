@@ -2556,6 +2556,11 @@ func TestUpsertOptionPreserveExpiry(t *testing.T) {
 	if !TestUseCouchbaseServer() {
 		t.Skip("Test can only be ran against CBS due to GoCB v2 use")
 	}
+	bucket := GetTestBucketForDriver(t, GoCBv2)
+	defer bucket.Close()
+	if bucket.IsSupported(sgbucket.DataStoreFeaturePreserveExpiry) {
+		t.Skip("Preserve expiry is not supported with this CBS version. Skipping test...")
+	}
 	defer SetUpTestLogging(LevelInfo, KeyAll)()
 
 	testCases := []struct {
@@ -2581,13 +2586,7 @@ func TestUpsertOptionPreserveExpiry(t *testing.T) {
 	}
 
 	for i, test := range testCases {
-		bucket := GetTestBucketForDriver(t, GoCBv2)
-		if !bucket.IsSupported(sgbucket.DataStoreFeaturePreserveExpiry) {
-			bucket.Close()
-			t.Skip("Preserve expiry is not supported with this CBS version. Skipping entire test...")
-		}
 		t.Run(test.name, func(t *testing.T) {
-			defer bucket.Close()
 			cbStore, _ := AsCouchbaseStore(bucket)
 			key := fmt.Sprintf("test%d", i)
 			val := make(map[string]interface{}, 0)
