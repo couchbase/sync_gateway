@@ -5126,6 +5126,7 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 }
 
 func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 	base.RequireNumTestBuckets(t, 2)
 
 	// Passive
@@ -5160,10 +5161,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	})
 	require.NoError(t, ar.Start())
 
-	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein"}`)
-	assertStatus(t, resp, http.StatusOK)
-
-	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", `{"admin_channels": ["A", "B", "C"]}`)
+	resp := rt2.SendAdminRequest("PUT", "/db/_role/foo", `{"admin_channels": ["A", "B", "C"]}`)
 	assertStatus(t, resp, http.StatusOK)
 
 	revocationTester.addRole("user", "foo")
