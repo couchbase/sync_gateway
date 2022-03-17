@@ -940,7 +940,7 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 func TestReplicationConcurrentPush(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
@@ -1026,6 +1026,8 @@ func setupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 			},
 		}},
 	})
+	// Initalize RT and bucket
+	_ = passiveRT.Bucket()
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
 	srv := httptest.NewServer(passiveRT.TestPublicHandler())
@@ -1040,6 +1042,8 @@ func setupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 		TestBucket:         activeTestBucket.NoCloseClone(),
 		sgReplicateEnabled: true,
 	})
+	// Initalize RT and bucket
+	_ = activeRT.Bucket()
 
 	teardown = func() {
 		activeRT.Close()

@@ -501,7 +501,7 @@ func (m *sgReplicateManager) StartReplications() error {
 		return err
 	}
 	for replicationID, replicationCfg := range replications {
-		base.DebugfCtx(m.loggingCtx, base.KeyCluster, "Replication %s is assigned to node %s (local node is %s)", replicationID, replicationCfg.AssignedNode, m.localNodeUUID)
+		base.DebugfCtx(m.loggingCtx, base.KeyCluster, "Replication %s is assigned to node %s (local node is %s) on start up", replicationID, replicationCfg.AssignedNode, m.localNodeUUID)
 		if replicationCfg.AssignedNode == m.localNodeUUID {
 			activeReplicator, err := m.InitializeReplication(replicationCfg)
 			if err != nil {
@@ -1179,7 +1179,7 @@ func (c *SGRCluster) RebalanceReplications() {
 	for replicationID, replication := range unassignedReplications {
 		replication.AssignedNode = nodesByReplicationCount[0].host
 		nodesByReplicationCount[0].assignedReplicationIDs = append(nodesByReplicationCount[0].assignedReplicationIDs, replicationID)
-		base.DebugfCtx(c.loggingCtx, base.KeyReplicate, "Replication %s assigned to %s.", replicationID, nodesByReplicationCount[0].host)
+		base.DebugfCtx(c.loggingCtx, base.KeyReplicate, "Replication %s assigned to %s on update.", replicationID, nodesByReplicationCount[0].host)
 		sort.Sort(nodesByReplicationCount)
 	}
 
@@ -1202,7 +1202,7 @@ func (c *SGRCluster) RebalanceReplications() {
 		base.DebugfCtx(c.loggingCtx, base.KeyReplicate, "Replication %s unassigned from %s.", replicationToMove, highCountNode.host)
 		lowCountNode.assignedReplicationIDs = append(lowCountNode.assignedReplicationIDs, replicationToMove)
 		c.Replications[replicationToMove].AssignedNode = lowCountNode.host
-		base.DebugfCtx(c.loggingCtx, base.KeyReplicate, "Replication %s assigned to %s.", replicationToMove, lowCountNode.host)
+		base.DebugfCtx(c.loggingCtx, base.KeyReplicate, "Replication %s assigned to %s on update.", replicationToMove, lowCountNode.host)
 		sort.Sort(nodesByReplicationCount)
 	}
 
