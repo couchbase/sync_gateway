@@ -1006,7 +1006,6 @@ function(doc, oldDoc) {
 
 // Start subChanges w/ continuous=true, batchsize=20
 // Start sending rev messages for documents that grant access to themselves for the active replication's user
-
 func TestConcurrentRefreshUser(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache)()
 	// Initialize restTester here, so that we can use custom sync function, and later modify user
@@ -1114,10 +1113,13 @@ function(doc, oldDoc) {
 	subChangesResponse := subChangesRequest.Response()
 	goassert.Equals(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
 
-	// Start goroutines to simulate sending docs from the client
+	// Simulate sending docs from the client
 	receivedChangesWg.Add(100)
 	revsFinishedWg.Add(100)
 	beforeChangesSent := time.Now().UnixMilli()
+	// Sending revs may take a while if using views (GSI=false) due to the CBS views engine taking a while to execute the queries
+	// regarding rebuilding the users access grants (due to the constant invalidation of this).
+	// This blip tester is running as the user so the users access grants are rebuilt instantly when invalidated instead of the usual lazy-loading.
 	for i := 0; i < 100; i++ {
 		docID := fmt.Sprintf("foo_%d", i)
 		_, _, _, sendErr := bt.SendRev(
