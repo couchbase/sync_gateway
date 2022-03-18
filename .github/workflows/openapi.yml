@@ -32,7 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: r7kamura/redocly-problem-matchers@v1
-      - uses: bbrks/redoc-lint-github-action@temp-fork-version-bump
+      - uses: mhiew/redoc-lint-github-action@v3
         with:
           args: '--format stylish'
         env:
