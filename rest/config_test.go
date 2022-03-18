@@ -1189,10 +1189,22 @@ func deleteTempFile(t *testing.T, file *os.File) {
 	require.False(t, base.FileExists(path), "Deleted file %s shouldn't exist", path)
 }
 
-func TestRedactPartialDefault(t *testing.T) {
+func TestDefaultLogging(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+
 	config := DefaultStartupConfig("")
 	assert.Equal(t, base.RedactPartial, config.Logging.RedactionLevel)
 	assert.Equal(t, true, base.RedactUserData)
+
+	require.NoError(t, config.SetupAndValidateLogging())
+	assert.Equal(t, base.LevelNone, *base.ConsoleLogLevel())
+	assert.Equal(t, []string{"HTTP"}, base.ConsoleLogKey().EnabledLogKeys())
+
+	// setting just a log key should enable logging
+	config.Logging.Console = &base.ConsoleLoggerConfig{LogKeys: []string{"CRUD"}}
+	require.NoError(t, config.SetupAndValidateLogging())
+	assert.Equal(t, base.LevelInfo, *base.ConsoleLogLevel())
+	assert.Equal(t, []string{"CRUD", "HTTP"}, base.ConsoleLogKey().EnabledLogKeys())
 }
 
 func TestSetupServerContext(t *testing.T) {
