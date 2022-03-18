@@ -10,6 +10,7 @@ pipeline {
         SGW_REPO = "github.com/couchbase/sync_gateway"
         GH_ACCESS_TOKEN_CREDENTIAL = "github_cb-robot-sg_access_token"
         GO111MODULE = "on"
+        GOCACHE = "${WORKSPACE}/.gocache"
     }
 
     tools {
