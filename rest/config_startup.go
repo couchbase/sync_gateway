@@ -46,9 +46,6 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 		Logging: base.LoggingConfig{
 			LogFilePath:    defaultLogFilePath,
 			RedactionLevel: base.DefaultRedactionLevel,
-			Console: &base.ConsoleLoggerConfig{
-				LogLevel: base.LogLevelPtr(base.LevelNone),
-			},
 		},
 		Auth: AuthConfig{
 			BcryptCost: auth.DefaultBcryptCost,
