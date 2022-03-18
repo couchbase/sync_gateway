@@ -29,7 +29,6 @@ paths:
 tags:
   - name: Prometheus
     description: Endpoints for use with Prometheus
-  - name: Standard Output
 externalDocs:
   description: Sync Gateway Quickstart | Couchbase Docs
   url: 'https://docs.couchbase.com/sync-gateway/current/index.html'
