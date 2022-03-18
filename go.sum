@@ -81,6 +81,8 @@ github.com/couchbase/sg-bucket v0.0.0-20220224144245-d2db8dda67d5 h1:Fugt21U8QhS
 github.com/couchbase/sg-bucket v0.0.0-20220224144245-d2db8dda67d5/go.mod h1:TbsZS/X8bc/ZdojThFt87VZmOfDBhD9IVK3tpAwxSNo=
 github.com/couchbase/sg-bucket v0.0.0-20220225104226-b83107efc62c h1:1z7XxtLegRuYJxxm3reFTaBZlqS93E6v5XkNLGUF4rM=
 github.com/couchbase/sg-bucket v0.0.0-20220225104226-b83107efc62c/go.mod h1:TbsZS/X8bc/ZdojThFt87VZmOfDBhD9IVK3tpAwxSNo=
+github.com/couchbase/sg-bucket v0.0.0-20220318123944-92714b6cd4cd h1:oOAMsL3qNbCA5+lO3SJVWyIxlHEv+Bl1AI3XI5Duiuw=
+github.com/couchbase/sg-bucket v0.0.0-20220318123944-92714b6cd4cd/go.mod h1:TbsZS/X8bc/ZdojThFt87VZmOfDBhD9IVK3tpAwxSNo=
 github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f h1:al5DxXEBAUmINnP5dR950gL47424WzncuRpNdg0TWR0=
 github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f/go.mod h1:daOs69VstinwoALl3wwWxjBf1nD4lIe3wwYhKHKDapY=
 github.com/couchbaselabs/go.assert v0.0.0-20130325201400-cfb33e3a0dac h1:E8RCOlhM2LnVvZmt08UjaLiMPKPWfH++y6//Z3Crm8E=
@@ -94,6 +96,8 @@ github.com/couchbaselabs/walrus v0.0.0-20220224144309-039c91075fb6 h1:VFniuNO99Y
 github.com/couchbaselabs/walrus v0.0.0-20220224144309-039c91075fb6/go.mod h1:/SmwQEBdQT9on8GJJzriUYoDAlCgQ1RSMHjzVbNnMqY=
 github.com/couchbaselabs/walrus v0.0.0-20220225104433-490ed8f33d57 h1:ukHCb9aZf0ljNlETgaX1Gjn9V8WkMuRoxVtOfN5JUOU=
 github.com/couchbaselabs/walrus v0.0.0-20220225104433-490ed8f33d57/go.mod h1:/SmwQEBdQT9on8GJJzriUYoDAlCgQ1RSMHjzVbNnMqY=
+github.com/couchbaselabs/walrus v0.0.0-20220318124032-662716ba7b36 h1:zRL/kcUBO2ybQzCsmDGmsn56UohnvtL7RvlzsaEOMh4=
+github.com/couchbaselabs/walrus v0.0.0-20220318124032-662716ba7b36/go.mod h1:/SmwQEBdQT9on8GJJzriUYoDAlCgQ1RSMHjzVbNnMqY=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
@@ -451,6 +455,8 @@ golang.org/x/text v0.3.2/go.mod h1:bEr9sfX3Q8Zfm5fL9x+3itogRgK3+ptLWKqgva+5dAk=
 golang.org/x/text v0.3.3/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
 golang.org/x/text v0.3.6 h1:aRYxNxv6iGQlyVaZmk6ZgYEDa+Jg18DxebPSrd6bg1M=
 golang.org/x/text v0.3.6/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
+golang.org/x/text v0.3.7 h1:olpwvP2KacW1ZWvsR7uQhoyTYvKAupfQrRGBFM352Gk=
+golang.org/x/text v0.3.7/go.mod h1:u+2+/6zg+i71rQMx5EYifcz6MCKuco9NR6JIITiCfzQ=
 golang.org/x/time v0.0.0-20181108054448-85acf8d2951c/go.mod h1:tRJNPiyCQ0inRvYxbN9jk5I+vvW/OXSQhTDSoE431IQ=
 golang.org/x/time v0.0.0-20190308202827-9d24e82272b4/go.mod h1:tRJNPiyCQ0inRvYxbN9jk5I+vvW/OXSQhTDSoE431IQ=
 golang.org/x/time v0.0.0-20191024005414-555d28b269f0/go.mod h1:tRJNPiyCQ0inRvYxbN9jk5I+vvW/OXSQhTDSoE431IQ=
@@ -582,6 +588,8 @@ gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 h1:YR8cESwS4TdDjEe65xsg0ogR
 gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/couchbase/gocb.v1 v1.6.6 h1:rMliGFADaFey8FEUQokDlLHd9YZCPc6lC+a9znCSTpQ=
 gopkg.in/couchbase/gocb.v1 v1.6.6/go.mod h1:Ri5Qok4ZKiwmPr75YxZ0uELQy45XJgUSzeUnK806gTY=
+gopkg.in/couchbase/gocb.v1 v1.6.7 h1:Za2KhMBdo00+CKg4C09QetVziU8/N4YmQNwaPQqZWPg=
+gopkg.in/couchbase/gocb.v1 v1.6.7/go.mod h1:Ri5Qok4ZKiwmPr75YxZ0uELQy45XJgUSzeUnK806gTY=
 gopkg.in/couchbase/gocbcore.v7 v7.1.18 h1:d4yfIXWdf/ZmyuJjwRVVlGT/yqx8ICy6fcT/ViaMZsI=
 gopkg.in/couchbase/gocbcore.v7 v7.1.18/go.mod h1:48d2Be0MxRtsyuvn+mWzqmoGUG9uA00ghopzOs148/E=
 gopkg.in/couchbaselabs/gocbconnstr.v1 v1.0.4 h1:VVVoIV/nSw1w9ZnTEOjmkeJVcAzaCyxEujKglarxz7U=
