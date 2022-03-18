@@ -211,17 +211,9 @@ func TestPostChanges(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/pbs3", `{"value":3, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
 
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq db.SequenceID
-	}
-	changesJSON := `{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"0"}`
-	changesResponse := rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
-
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
-	require.Len(t, changes.Results, 3)
-
+	changes, err := rt.WaitForChanges(3, "/db/_changes?style=all_docs&heartbeat=300000&feed=longpoll&limit=50&since=0", "bernard", false)
+	assert.NoError(t, err)
+	assert.Len(t, changes.Results, 3)
 }
 
 // Tests race between waking up the changes feed, and detecting that the user doc has changed
