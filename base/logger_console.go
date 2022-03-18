@@ -30,7 +30,7 @@ type ConsoleLogger struct {
 	LogKeyMask   *LogKeyMask
 	ColorEnabled bool
 
-	// isStderr is true when the console logger is configured with no FileOutput
+	// isStderr is true when the console logger is enabled with no FileOutput
 	isStderr bool
 
 	// ConsoleLoggerConfig stores the initial config used to instantiate ConsoleLogger
@@ -60,18 +60,17 @@ func NewConsoleLogger(shouldLogLocation bool, config *ConsoleLoggerConfig) (*Con
 	}
 
 	logKey := ToLogKey(config.LogKeys)
-	isStderr := config.FileOutput == "" && *config.Enabled
 
 	logger := &ConsoleLogger{
 		LogLevel:     config.LogLevel,
 		LogKeyMask:   &logKey,
-		ColorEnabled: *config.ColorEnabled && isStderr,
+		ColorEnabled: *config.ColorEnabled,
 		FileLogger: FileLogger{
 			Enabled: AtomicBool{},
 			logger:  log.New(config.Output, "", 0),
 			config:  config.FileLoggerConfig,
 		},
-		isStderr: isStderr,
+		isStderr: config.FileOutput == "" && *config.Enabled,
 		config:   *config,
 	}
 	logger.Enabled.Set(*config.Enabled)
