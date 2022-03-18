@@ -10,11 +10,21 @@ name: ci
 
 on:
   push:
-    branches: 
+    # Only run when we change SG code
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+    branches:
       - 'master'
       - 'release/*'
       - 'CBG*'
   pull_request:
+    # Only run when we change SG code
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
     branches:
       - 'master'
       - 'release/*'
