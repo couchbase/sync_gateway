@@ -45,11 +45,11 @@ func TestView(t *testing.T) {
 		}()
 
 		// Put test docs
-		err = bucket.Set("u1", 0, map[string]interface{}{"type": "Circle"})
+		err = bucket.Set("u1", 0, nil, map[string]interface{}{"type": "Circle"})
 		assert.NoError(t, err)
-		err = bucket.Set("u2", 0, map[string]interface{}{"type": "Northern"})
+		err = bucket.Set("u2", 0, nil, map[string]interface{}{"type": "Northern"})
 		assert.NoError(t, err)
-		err = bucket.Set("u3", 0, map[string]interface{}{"type": "District"})
+		err = bucket.Set("u3", 0, nil, map[string]interface{}{"type": "District"})
 		assert.NoError(t, err)
 
 		// Confirm view availability

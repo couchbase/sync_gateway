@@ -328,7 +328,7 @@ func TestImportFilterEndpoint(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	// Add a document
-	err = tb.Bucket.Set("importDoc1", 0, []byte("{}"))
+	err = tb.Bucket.Set("importDoc1", 0, nil, []byte("{}"))
 	assert.NoError(t, err)
 
 	// Ensure document is imported based on default import filter
@@ -342,7 +342,7 @@ func TestImportFilterEndpoint(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	// Add a document
-	err = tb.Bucket.Set("importDoc2", 0, []byte("{}"))
+	err = tb.Bucket.Set("importDoc2", 0, nil, []byte("{}"))
 	assert.NoError(t, err)
 
 	// Ensure document is not imported and is rejected based on updated filter
@@ -358,7 +358,7 @@ func TestImportFilterEndpoint(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	// Add a document
-	err = tb.Bucket.Set("importDoc3", 0, []byte("{}"))
+	err = tb.Bucket.Set("importDoc3", 0, nil, []byte("{}"))
 	assert.NoError(t, err)
 
 	// Ensure document is imported based on default import filter

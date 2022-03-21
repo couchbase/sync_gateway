@@ -3728,7 +3728,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	*/
 
 	// Put the doc back into couchbase
-	err = bucket.Set(docIdDoc1, 0, couchbaseDoc)
+	err = bucket.Set(docIdDoc1, 0, nil, couchbaseDoc)
 	assert.NoError(t, err, "Error putting couchbaseDoc")
 
 	// Flush rev cache so that the _bulk_get request is forced to go back to the bucket to load the doc
@@ -5808,7 +5808,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
 
 	// Update body but same value and ensure it isn't imported again (crc32 hash should match)
-	err = rt.Bucket().Set(docKey, 0, map[string]interface{}{})
+	err = rt.Bucket().Set(docKey, 0, nil, map[string]interface{}{})
 	assert.NoError(t, err)
 
 	err = rt.WaitForCondition(func() bool {
@@ -5827,7 +5827,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 
 	// Update body and ensure import occurs
 	updateVal := []byte(`{"prop":"val"}`)
-	err = rt.Bucket().Set(docKey, 0, updateVal)
+	err = rt.Bucket().Set(docKey, 0, nil, updateVal)
 	assert.NoError(t, err)
 
 	err = rt.WaitForCondition(func() bool {
@@ -5888,7 +5888,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 	require.True(t, ok)
 
 	// Add doc with SDK
-	err := rt.Bucket().Set(docKey, 0, []byte(`{}`))
+	err := rt.Bucket().Set(docKey, 0, nil, []byte(`{}`))
 	assert.NoError(t, err)
 
 	// GET to trigger import
@@ -5990,7 +5990,7 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 	assertStatus(t, resp, http.StatusCreated)
 
 	// SDK PUT
-	err := rt.Bucket().Set(docKey, 0, []byte(`{"update": "update"}`))
+	err := rt.Bucket().Set(docKey, 0, nil, []byte(`{"update": "update"}`))
 	assert.NoError(t, err)
 
 	// Trigger Import
@@ -6233,7 +6233,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	assert.Equal(t, []string{channelName}, syncData2.Channels.KeySet())
 	assert.Equal(t, syncData2.Channels.KeySet(), docRev2.Channels.ToArray())
 
-	err = rt.Bucket().Set(docKey, 0, []byte(`{"update": "update"}`))
+	err = rt.Bucket().Set(docKey, 0, nil, []byte(`{"update": "update"}`))
 	assert.NoError(t, err)
 
 	err = rt.WaitForCondition(func() bool {
@@ -6339,7 +6339,7 @@ func TestChannelHistoryLegacyDoc(t *testing.T) {
 	}`
 
 	// Insert raw 'legacy' doc with no channel history info
-	err := rt.GetDatabase().Bucket.Set("doc1", 0, []byte(docData))
+	err := rt.GetDatabase().Bucket.Set("doc1", 0, nil, []byte(docData))
 	assert.NoError(t, err)
 
 	var body db.Body
@@ -8768,7 +8768,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.NotEmpty(t, attKey)
 
 		// Update the document via SDK.
-		err := rt.Bucket().Set(docID, 0, []byte(`{"prop": false}`))
+		err := rt.Bucket().Set(docID, 0, nil, []byte(`{"prop": false}`))
 		require.NoError(t, err, "Error updating the document")
 
 		// Wait until the "update" mutation appears on the changes feed.

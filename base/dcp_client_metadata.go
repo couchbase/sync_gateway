@@ -234,7 +234,7 @@ func (m *DCPMetadataCS) Persist(workerID int, vbIDs []uint16) {
 	for _, vbID := range vbIDs {
 		meta.DCPMeta[vbID] = m.metadata[vbID]
 	}
-	err := m.bucket.Set(m.getMetadataKey(workerID), 0, meta)
+	err := m.bucket.Set(m.getMetadataKey(workerID), 0, nil, meta)
 	if err != nil {
 		InfofCtx(context.TODO(), KeyDCP, "Unable to persist DCP metadata: %v", err)
 	} else {

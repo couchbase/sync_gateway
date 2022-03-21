@@ -290,7 +290,7 @@ func (r RepairBucket) WriteRepairedDocsToBucket(docId string, originalDoc, updat
 		return backupOrDryRunDocId, nil
 	}
 
-	if err := r.Bucket.Set(backupOrDryRunDocId, base.DurationToCbsExpiry(r.RepairedFileTTL), doc); err != nil {
+	if err := r.Bucket.Set(backupOrDryRunDocId, base.DurationToCbsExpiry(r.RepairedFileTTL), nil, doc); err != nil {
 		return backupOrDryRunDocId, err
 	}
 

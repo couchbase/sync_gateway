@@ -822,7 +822,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 	delete(body, BodyRevisions)
 
 	allowImport := db.UseXattrs()
-	doc, newRevID, err = db.updateAndReturnDoc(newDoc.ID, allowImport, expiry, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	doc, newRevID, err = db.updateAndReturnDoc(newDoc.ID, allowImport, expiry, nil, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 
 		var isSgWrite bool
 		var crc32Match bool
@@ -909,7 +909,7 @@ func (db *Database) PutExistingRev(newDoc *Document, docHistory []string, noConf
 	return db.PutExistingRevWithConflictResolution(newDoc, docHistory, noConflicts, nil, forceAllConflicts, existingDoc)
 }
 
-// Adds an existing revision to a document along with its history (list of rev IDs.)
+// PutExistingRevWithConflictResolution Adds an existing revision to a document along with its history (list of rev IDs.)
 // If this new revision would result in a conflict:
 //     1. If noConflicts == false, the revision will be added to the rev tree as a conflict
 //     2. If noConflicts == true and a conflictResolverFunc is not provided, a 409 conflict error will be returned
@@ -922,7 +922,7 @@ func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHi
 	}
 
 	allowImport := db.UseXattrs()
-	doc, _, err = db.updateAndReturnDoc(newDoc.ID, allowImport, newDoc.DocExpiry, existingDoc, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	doc, _, err = db.updateAndReturnDoc(newDoc.ID, allowImport, newDoc.DocExpiry, nil, existingDoc, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 
 		var isSgWrite bool
@@ -1713,7 +1713,7 @@ type updateAndReturnDocCallback func(*Document) (resultDoc *Document, resultAtta
 //   1. Receive the updated document body in the response
 //   2. Specify the existing document body/xattr/cas, to avoid initial retrieval of the doc in cases that the current contents are already known (e.g. import).
 //      On cas failure, the document will still be reloaded from the bucket as usual.
-func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry uint32, existingDoc *sgbucket.BucketDocument, callback updateAndReturnDocCallback) (doc *Document, newRevID string, err error) {
+func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry uint32, opts *sgbucket.MutateInOptions, existingDoc *sgbucket.BucketDocument, callback updateAndReturnDocCallback) (doc *Document, newRevID string, err error) {
 
 	key := realDocID(docid)
 	if key == "" {
@@ -1777,7 +1777,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 	if db.UseXattrs() || upgradeInProgress {
 		var casOut uint64
 		// Update the document, storing metadata in extended attribute
-		casOut, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, db.Options.UserXattrKey, expiry, existingDoc, func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, err error) {
+		casOut, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, db.Options.UserXattrKey, expiry, opts, existingDoc, func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocumentWithXattr(docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll); err != nil {
 				return

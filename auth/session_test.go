@@ -80,7 +80,7 @@ func TestDeleteSession(t *testing.T) {
 		Ttl:        24 * time.Hour,
 	}
 	const noSessionExpiry = 0
-	assert.NoError(t, testBucket.Set(DocIDForSession(mockSession.ID), noSessionExpiry, mockSession))
+	assert.NoError(t, testBucket.Set(DocIDForSession(mockSession.ID), noSessionExpiry, nil, mockSession))
 	assert.NoError(t, auth.DeleteSession(mockSession.ID))
 
 	// Just to verify the session has been deleted gracefully.

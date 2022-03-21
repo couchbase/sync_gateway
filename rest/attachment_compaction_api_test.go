@@ -69,7 +69,7 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 
 	// Create some 'unmarked' attachments
 	makeUnmarkedDoc := func(docid string) {
-		err := rt.GetDatabase().Bucket.SetRaw(docid, 0, []byte("{}"))
+		err := rt.GetDatabase().Bucket.SetRaw(docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
 	}
 
@@ -205,7 +205,7 @@ func TestAttachmentCompactionDryRun(t *testing.T) {
 
 	// Create some 'unmarked' attachments
 	makeUnmarkedDoc := func(docid string) {
-		err := rt.GetDatabase().Bucket.SetRaw(docid, 0, []byte("{}"))
+		err := rt.GetDatabase().Bucket.SetRaw(docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
 	}
 
@@ -299,9 +299,9 @@ func TestAttachmentCompactionInvalidDocs(t *testing.T) {
 	CreateLegacyAttachmentDoc(t, &db.Database{DatabaseContext: rt.GetDatabase()}, "docID", []byte("{}"), "attKey", []byte("{}"))
 
 	// Create attachment with no doc reference
-	err = rt.GetDatabase().Bucket.SetRaw(base.AttPrefix+"test", 0, []byte("{}"))
+	err = rt.GetDatabase().Bucket.SetRaw(base.AttPrefix+"test", 0, nil, []byte("{}"))
 	assert.NoError(t, err)
-	err = rt.GetDatabase().Bucket.SetRaw(base.AttPrefix+"test2", 0, []byte("{}"))
+	err = rt.GetDatabase().Bucket.SetRaw(base.AttPrefix+"test2", 0, nil, []byte("{}"))
 	assert.NoError(t, err)
 
 	// Write a normal doc to ensure this passes through fine
@@ -327,7 +327,7 @@ func TestAttachmentCompactionStartTimeAndStats(t *testing.T) {
 	defer rt.Close()
 
 	// Create attachment with no doc reference
-	err := rt.GetDatabase().Bucket.SetRaw(base.AttPrefix+"test", 0, []byte("{}"))
+	err := rt.GetDatabase().Bucket.SetRaw(base.AttPrefix+"test", 0, nil, []byte("{}"))
 	assert.NoError(t, err)
 
 	databaseStats := rt.GetDatabase().DbStats.Database()
@@ -416,7 +416,7 @@ func CreateLegacyAttachmentDoc(t *testing.T, testDB *db.Database, docID string, 
 	_, _, err = testDB.Put(docID, unmarshalledBody)
 	require.NoError(t, err)
 
-	_, err = testDB.Bucket.WriteUpdateWithXattr(docID, base.SyncXattrName, "", 0, nil, func(doc []byte, xattr []byte, userXattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, err error) {
+	_, err = testDB.Bucket.WriteUpdateWithXattr(docID, base.SyncXattrName, "", 0, nil, nil, func(doc []byte, xattr []byte, userXattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, err error) {
 		attachmentSyncData := map[string]interface{}{
 			attID: map[string]interface{}{
 				"content_type": "application/json",

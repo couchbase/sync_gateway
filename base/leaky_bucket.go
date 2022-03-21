@@ -127,16 +127,16 @@ func (b *LeakyBucket) Add(k string, exp uint32, v interface{}) (added bool, err 
 func (b *LeakyBucket) AddRaw(k string, exp uint32, v []byte) (added bool, err error) {
 	return b.bucket.AddRaw(k, exp, v)
 }
-func (b *LeakyBucket) Set(k string, exp uint32, v interface{}) error {
-	return b.bucket.Set(k, exp, v)
+func (b *LeakyBucket) Set(k string, exp uint32, opts *sgbucket.UpsertOptions, v interface{}) error {
+	return b.bucket.Set(k, exp, opts, v)
 }
-func (b *LeakyBucket) SetRaw(k string, exp uint32, v []byte) error {
+func (b *LeakyBucket) SetRaw(k string, exp uint32, opts *sgbucket.UpsertOptions, v []byte) error {
 	for _, errorKey := range b.config.ForceErrorSetRawKeys {
 		if k == errorKey {
 			return fmt.Errorf("Leaky bucket forced SetRaw error for key %s", k)
 		}
 	}
-	return b.bucket.SetRaw(k, exp, v)
+	return b.bucket.SetRaw(k, exp, opts, v)
 }
 func (b *LeakyBucket) Delete(k string) error {
 	return b.bucket.Delete(k)
@@ -226,27 +226,27 @@ func (b *LeakyBucket) GetMaxVbno() (uint16, error) {
 	return b.bucket.GetMaxVbno()
 }
 
-func (b *LeakyBucket) WriteCasWithXattr(k string, xattr string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
-	return b.bucket.WriteCasWithXattr(k, xattr, exp, cas, v, xv)
+func (b *LeakyBucket) WriteCasWithXattr(k string, xattr string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v interface{}, xv interface{}) (casOut uint64, err error) {
+	return b.bucket.WriteCasWithXattr(k, xattr, exp, cas, opts, v, xv)
 }
 
-func (b *LeakyBucket) WriteWithXattr(k string, xattrKey string, exp uint32, cas uint64, value []byte, xattrValue []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) {
+func (b *LeakyBucket) WriteWithXattr(k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, value []byte, xattrValue []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) {
 	if b.config.WriteWithXattrCallback != nil {
 		b.config.WriteWithXattrCallback(k)
 	}
-	return b.bucket.WriteWithXattr(k, xattrKey, exp, cas, value, xattrValue, isDelete, deleteBody)
+	return b.bucket.WriteWithXattr(k, xattrKey, exp, cas, opts, value, xattrValue, isDelete, deleteBody)
 }
 
-func (b *LeakyBucket) WriteUpdateWithXattr(k string, xattr string, userXattrKey string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+func (b *LeakyBucket) WriteUpdateWithXattr(k string, xattr string, userXattrKey string, exp uint32, opts *sgbucket.MutateInOptions, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 	if b.config.UpdateCallback != nil {
 		wrapperCallback := func(current []byte, xattr []byte, userXattr []byte, cas uint64) (updated []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, err error) {
 			updated, updatedXattr, deletedDoc, expiry, err = callback(current, xattr, userXattr, cas)
 			b.config.UpdateCallback(k)
 			return updated, updatedXattr, deletedDoc, expiry, err
 		}
-		return b.bucket.WriteUpdateWithXattr(k, xattr, userXattrKey, exp, previous, wrapperCallback)
+		return b.bucket.WriteUpdateWithXattr(k, xattr, userXattrKey, exp, opts, previous, wrapperCallback)
 	}
-	return b.bucket.WriteUpdateWithXattr(k, xattr, userXattrKey, exp, previous, callback)
+	return b.bucket.WriteUpdateWithXattr(k, xattr, userXattrKey, exp, opts, previous, callback)
 }
 
 func (b *LeakyBucket) SetXattr(k string, xattrKey string, xv []byte) (casOut uint64, err error) {

@@ -1330,7 +1330,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 						return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
 					}
 				}
-				_, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, db.Options.UserXattrKey, 0, nil, writeUpdateFunc)
+				_, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, db.Options.UserXattrKey, 0, nil, nil, writeUpdateFunc)
 			} else {
 				_, err = db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
 					// Be careful: this block can be invoked multiple times if there are races!

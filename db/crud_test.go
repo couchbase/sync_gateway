@@ -243,7 +243,7 @@ func TestHasAttachmentsFlagForLegacyAttachments(t *testing.T) {
 		require.NoError(t, err)
 
 		// Migrate document metadata from document body to system xattr.
-		_, _, err = db.migrateMetadata(docID, body, existingBucketDoc)
+		_, _, err = db.migrateMetadata(docID, body, existingBucketDoc, nil)
 		require.NoError(t, err)
 	}
 

@@ -318,7 +318,7 @@ func (h *couchbaseHeartBeater) sendHeartbeat() error {
 	// On KeyNotFound, recreate heartbeat timeout doc
 	if IsKeyNotFoundError(h.bucket, touchErr) {
 		heartbeatDocBody := []byte(h.nodeUUID)
-		setErr := h.bucket.SetRaw(docID, h.heartbeatExpirySeconds, heartbeatDocBody)
+		setErr := h.bucket.SetRaw(docID, h.heartbeatExpirySeconds, nil, heartbeatDocBody)
 		if setErr != nil {
 			return setErr
 		}

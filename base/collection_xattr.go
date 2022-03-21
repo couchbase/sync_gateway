@@ -31,12 +31,12 @@ func (c *Collection) GetSpec() BucketSpec {
 }
 
 // Implementation of the XattrStore interface primarily invokes common wrappers that in turn invoke SDK-specific SubdocXattrStore API
-func (c *Collection) WriteCasWithXattr(k string, xattrKey string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
-	return WriteCasWithXattr(c, k, xattrKey, exp, cas, v, xv)
+func (c *Collection) WriteCasWithXattr(k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v interface{}, xv interface{}) (casOut uint64, err error) {
+	return WriteCasWithXattr(c, k, xattrKey, exp, cas, opts, v, xv)
 }
 
-func (c *Collection) WriteWithXattr(k string, xattrKey string, exp uint32, cas uint64, v []byte, xv []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) { // If this is a tombstone, we want to delete the document and update the xattr
-	return WriteWithXattr(c, k, xattrKey, exp, cas, v, xv, isDelete, deleteBody)
+func (c *Collection) WriteWithXattr(k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v []byte, xv []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) { // If this is a tombstone, we want to delete the document and update the xattr
+	return WriteWithXattr(c, k, xattrKey, exp, cas, opts, v, xv, isDelete, deleteBody)
 }
 
 func (c *Collection) DeleteWithXattr(k string, xattrKey string) error {
@@ -59,8 +59,8 @@ func (c *Collection) GetWithXattr(k string, xattrKey string, userXattrKey string
 	return c.SubdocGetBodyAndXattr(k, xattrKey, userXattrKey, rv, xv, uxv)
 }
 
-func (c *Collection) WriteUpdateWithXattr(k string, xattrKey string, userXattrKey string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
-	return WriteUpdateWithXattr(c, k, xattrKey, userXattrKey, exp, previous, callback)
+func (c *Collection) WriteUpdateWithXattr(k string, xattrKey string, userXattrKey string, exp uint32, opts *sgbucket.MutateInOptions, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+	return WriteUpdateWithXattr(c, k, xattrKey, userXattrKey, exp, opts, previous, callback)
 }
 
 func (c *Collection) SetXattr(k string, xattrKey string, xv []byte) (casOut uint64, err error) {
@@ -399,7 +399,7 @@ func (c *Collection) SubdocUpdateXattr(k string, xattrKey string, exp uint32, ca
 
 // SubdocUpdateBodyAndXattr updates the document body and xattr of an existing document. Writes cas and crc32c to the xattr using
 // macro expansion.
-func (c *Collection) SubdocUpdateBodyAndXattr(k string, xattrKey string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
+func (c *Collection) SubdocUpdateBodyAndXattr(k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v interface{}, xv interface{}) (casOut uint64, err error) {
 	c.waitForAvailKvOp()
 	defer c.releaseKvOp()
 
@@ -414,6 +414,7 @@ func (c *Collection) SubdocUpdateBodyAndXattr(k string, xattrKey string, exp uin
 		StoreSemantic: gocb.StoreSemanticsUpsert,
 		Cas:           gocb.Cas(cas),
 	}
+	fillMutateInOptions(options, opts)
 	result, mutateErr := c.MutateIn(k, mutateOps, options)
 	if mutateErr != nil {
 		return 0, mutateErr

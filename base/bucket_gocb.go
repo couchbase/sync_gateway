@@ -895,7 +895,7 @@ func (bucket *CouchbaseBucketGoCB) Append(k string, data []byte) error {
 	return err
 }
 
-func (bucket *CouchbaseBucketGoCB) Set(k string, exp uint32, v interface{}) error {
+func (bucket *CouchbaseBucketGoCB) Set(k string, exp uint32, _ *sgbucket.UpsertOptions, v interface{}) error {
 
 	bucket.singleOps <- struct{}{}
 	defer func() {
@@ -920,7 +920,7 @@ func (bucket *CouchbaseBucketGoCB) Set(k string, exp uint32, v interface{}) erro
 
 }
 
-func (bucket *CouchbaseBucketGoCB) SetRaw(k string, exp uint32, v []byte) error {
+func (bucket *CouchbaseBucketGoCB) SetRaw(k string, exp uint32, _ *sgbucket.UpsertOptions, v []byte) error {
 
 	bucket.singleOps <- struct{}{}
 	defer func() {

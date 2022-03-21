@@ -357,7 +357,7 @@ func (b *BackgroundManager) markStop() error {
 			return base.HTTPErrorf(http.StatusInternalServerError, "Unable to verify whether a process is running: %v", err)
 		}
 
-		err = b.clusterAwareOptions.bucket.Set(b.clusterAwareOptions.HeartbeatDocID(), BackgroundManagerHeartbeatExpirySecs, HeartbeatDoc{ShouldStop: true})
+		err = b.clusterAwareOptions.bucket.Set(b.clusterAwareOptions.HeartbeatDocID(), BackgroundManagerHeartbeatExpirySecs, nil, HeartbeatDoc{ShouldStop: true})
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "Failed to mark process as stopping: %v", err)
 		}

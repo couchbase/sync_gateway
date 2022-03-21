@@ -38,7 +38,7 @@ func TestAttachmentMark(t *testing.T) {
 		attKeys = append(attKeys, CreateLegacyAttachmentDoc(t, testDb, docID, []byte("{}"), attKey, attJSONBody))
 	}
 
-	err := testDb.Bucket.SetRaw("testDocx", 0, []byte("{}"))
+	err := testDb.Bucket.SetRaw("testDocx", 0, nil, []byte("{}"))
 	assert.NoError(t, err)
 
 	attKeys = append(attKeys, createConflictingDocOneLeafHasAttachmentBodyMap(t, "conflictAtt", "attForConflict", []byte(`{"value": "att"}`), testDb))
@@ -72,14 +72,14 @@ func TestAttachmentSweep(t *testing.T) {
 	defer testDb.Close()
 
 	makeMarkedDoc := func(docid string, compactID string) {
-		err := testDb.Bucket.SetRaw(docid, 0, []byte("{}"))
+		err := testDb.Bucket.SetRaw(docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
 		_, err = testDb.Bucket.SetXattr(docid, getCompactionIDSubDocPath(compactID), []byte(strconv.Itoa(int(time.Now().Unix()))))
 		assert.NoError(t, err)
 	}
 
 	makeUnmarkedDoc := func(docid string) {
-		err := testDb.Bucket.SetRaw(docid, 0, []byte("{}"))
+		err := testDb.Bucket.SetRaw(docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
 	}
 
@@ -117,14 +117,14 @@ func TestAttachmentCleanup(t *testing.T) {
 	defer testDb.Close()
 
 	makeMarkedDoc := func(docid string, compactID string) {
-		err := testDb.Bucket.SetRaw(docid, 0, []byte("{}"))
+		err := testDb.Bucket.SetRaw(docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
 		_, err = testDb.Bucket.SetXattr(docid, getCompactionIDSubDocPath(compactID), []byte(strconv.Itoa(int(time.Now().Unix()))))
 		assert.NoError(t, err)
 	}
 
 	makeMultiMarkedDoc := func(docid string, compactIDs map[string]interface{}) {
-		err := testDb.Bucket.SetRaw(docid, 0, []byte("{}"))
+		err := testDb.Bucket.SetRaw(docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
 		compactIDsJSON, err := base.JSONMarshal(compactIDs)
 		assert.NoError(t, err)
@@ -231,7 +231,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 	}
 
 	makeUnmarkedDoc := func(docid string) {
-		err := testDb.Bucket.SetRaw(docid, 0, []byte("{}"))
+		err := testDb.Bucket.SetRaw(docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
 		attKeys = append(attKeys, docid)
 	}
@@ -619,7 +619,7 @@ func CreateLegacyAttachmentDoc(t *testing.T, db *Database, docID string, body []
 	_, _, err = db.Put(docID, unmarshalledBody)
 	require.NoError(t, err)
 
-	_, err = db.Bucket.WriteUpdateWithXattr(docID, base.SyncXattrName, "", 0, nil, func(doc []byte, xattr []byte, userXattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, err error) {
+	_, err = db.Bucket.WriteUpdateWithXattr(docID, base.SyncXattrName, "", 0, nil, nil, func(doc []byte, xattr []byte, userXattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, err error) {
 		attachmentSyncData := map[string]interface{}{
 			attID: map[string]interface{}{
 				"content_type": "application/json",
@@ -684,7 +684,7 @@ func createConflictingDocOneLeafHasAttachmentBodyMap(t *testing.T, docID string,
       "time_saved": "2021-10-14T16:38:11.359443+01:00"
     }`
 
-	_, err := db.Bucket.WriteWithXattr(docID, base.SyncXattrName, 0, 0, []byte(`{"Winning Rev": true}`), []byte(syncData), false, false)
+	_, err := db.Bucket.WriteWithXattr(docID, base.SyncXattrName, 0, 0, nil, []byte(`{"Winning Rev": true}`), []byte(syncData), false, false)
 	assert.NoError(t, err)
 
 	attDocID := MakeAttachmentKey(AttVersion1, docID, attDigest)
@@ -733,7 +733,7 @@ func createConflictingDocOneLeafHasAttachmentBodyKey(t *testing.T, docID string,
       "time_saved": "2021-10-21T12:48:39.549095+01:00"
     }`
 
-	_, err := db.Bucket.WriteWithXattr(docID, base.SyncXattrName, 0, 0, []byte(`{"Winning Rev": true}`), []byte(syncData), false, false)
+	_, err := db.Bucket.WriteWithXattr(docID, base.SyncXattrName, 0, 0, nil, []byte(`{"Winning Rev": true}`), []byte(syncData), false, false)
 	assert.NoError(t, err)
 
 	attDocID := MakeAttachmentKey(AttVersion1, docID, attDigest)
@@ -753,7 +753,7 @@ func createConflictingDocOneLeafHasAttachmentBodyKey(t *testing.T, docID string,
 	  "testval": "val"
 	}`
 
-	err = db.Bucket.SetRaw(backupKey, 0, []byte(bodyBackup))
+	err = db.Bucket.SetRaw(backupKey, 0, nil, []byte(bodyBackup))
 	assert.NoError(t, err)
 
 	return attDocID

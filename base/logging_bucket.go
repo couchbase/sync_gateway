@@ -66,13 +66,13 @@ func (b *LoggingBucket) AddRaw(k string, exp uint32, v []byte) (added bool, err 
 	defer b.log(time.Now(), k, exp)
 	return b.bucket.AddRaw(k, exp, v)
 }
-func (b *LoggingBucket) Set(k string, exp uint32, v interface{}) error {
+func (b *LoggingBucket) Set(k string, exp uint32, opts *sgbucket.UpsertOptions, v interface{}) error {
 	defer b.log(time.Now(), k, exp)
-	return b.bucket.Set(k, exp, v)
+	return b.bucket.Set(k, exp, opts, v)
 }
-func (b *LoggingBucket) SetRaw(k string, exp uint32, v []byte) error {
+func (b *LoggingBucket) SetRaw(k string, exp uint32, opts *sgbucket.UpsertOptions, v []byte) error {
 	defer b.log(time.Now(), k, exp)
-	return b.bucket.SetRaw(k, exp, v)
+	return b.bucket.SetRaw(k, exp, opts, v)
 }
 func (b *LoggingBucket) Delete(k string) error {
 	defer b.log(time.Now(), k)
@@ -96,19 +96,19 @@ func (b *LoggingBucket) Incr(k string, amt, def uint64, exp uint32) (uint64, err
 	return b.bucket.Incr(k, amt, def, exp)
 }
 
-func (b *LoggingBucket) WriteCasWithXattr(k string, xattr string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
+func (b *LoggingBucket) WriteCasWithXattr(k string, xattr string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v interface{}, xv interface{}) (casOut uint64, err error) {
 	defer b.log(time.Now(), k, xattr, exp, cas)
-	return b.bucket.WriteCasWithXattr(k, xattr, exp, cas, v, xv)
+	return b.bucket.WriteCasWithXattr(k, xattr, exp, cas, opts, v, xv)
 }
 
-func (b *LoggingBucket) WriteWithXattr(k string, xattrKey string, exp uint32, cas uint64, value []byte, xattrValue []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) {
+func (b *LoggingBucket) WriteWithXattr(k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, value []byte, xattrValue []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) {
 	defer b.log(time.Now(), k, xattrKey, exp, cas, value, xattrValue, isDelete, deleteBody)
-	return b.bucket.WriteWithXattr(k, xattrKey, exp, cas, value, xattrValue, isDelete, deleteBody)
+	return b.bucket.WriteWithXattr(k, xattrKey, exp, cas, opts, value, xattrValue, isDelete, deleteBody)
 }
 
-func (b *LoggingBucket) WriteUpdateWithXattr(k string, xattr string, userXattrKey string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+func (b *LoggingBucket) WriteUpdateWithXattr(k string, xattr string, userXattrKey string, exp uint32, opts *sgbucket.MutateInOptions, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 	defer b.log(time.Now(), k, xattr, exp)
-	return b.bucket.WriteUpdateWithXattr(k, xattr, userXattrKey, exp, previous, callback)
+	return b.bucket.WriteUpdateWithXattr(k, xattr, userXattrKey, exp, opts, previous, callback)
 }
 
 func (b *LoggingBucket) SetXattr(k string, xattrKey string, xv []byte) (casOut uint64, err error) {

@@ -66,7 +66,7 @@ func TestSetGet(t *testing.T) {
 		_, err := bucket.Get(key, &rVal)
 		assert.Error(t, err, "Key should not exist yet, expected error but got nil")
 
-		err = bucket.Set(key, 0, val)
+		err = bucket.Set(key, 0, nil, val)
 		assert.NoError(t, err, "Error calling Set()")
 
 		_, err = bucket.Get(key, &rVal)
@@ -93,7 +93,7 @@ func TestSetGetRaw(t *testing.T) {
 			t.Errorf("Key should not exist yet, expected error but got nil")
 		}
 
-		if err := bucket.SetRaw(key, 0, val); err != nil {
+		if err := bucket.SetRaw(key, 0, nil, val); err != nil {
 			t.Errorf("Error calling SetRaw(): %v", err)
 		}
 
@@ -317,14 +317,14 @@ func TestUpdateCASFailure(t *testing.T) {
 		}
 
 		// Initialize document
-		setErr := bucket.Set(key, 0, valInitial)
+		setErr := bucket.Set(key, 0, nil, valInitial)
 		assert.NoError(t, setErr)
 
 		triggerCasFail := true
 		updateFunc := func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
 			if triggerCasFail == true {
 				// mutate the document to trigger cas failure
-				setErr := bucket.Set(key, 0, valCasMismatch)
+				setErr := bucket.Set(key, 0, nil, valCasMismatch)
 				assert.NoError(t, setErr)
 				triggerCasFail = false
 			}
@@ -367,7 +367,7 @@ func TestUpdateCASFailureOnInsert(t *testing.T) {
 		updateFunc := func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
 			if triggerCasFail == true {
 				// mutate the document to trigger cas failure
-				setErr := bucket.Set(key, 0, valCasMismatch)
+				setErr := bucket.Set(key, 0, nil, valCasMismatch)
 				assert.NoError(t, setErr)
 				triggerCasFail = false
 			}
@@ -443,7 +443,7 @@ func TestGetAndTouchRaw(t *testing.T) {
 		_, _, err := bucket.GetRaw(key)
 		assert.Error(t, err, "Key should not exist yet, expected error but got nil")
 
-		err = bucket.SetRaw(key, 0, val)
+		err = bucket.SetRaw(key, 0, nil, val)
 		assert.NoError(t, err, "Error calling SetRaw()")
 
 		rv, _, err := bucket.GetRaw(key)
@@ -555,7 +555,7 @@ func TestXattrWriteCasSimple(t *testing.T) {
 		}
 
 		cas := uint64(0)
-		cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
+		cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, nil, val, xattrVal)
 		assert.NoError(t, err, "WriteCasWithXattr error")
 		log.Printf("Post-write, cas is %d", cas)
 
@@ -613,7 +613,7 @@ func TestXattrWriteCasUpsert(t *testing.T) {
 		}
 
 		cas := uint64(0)
-		cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
+		cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, nil, val, xattrVal)
 		assert.NoError(t, err, "WriteCasWithXattr error")
 		log.Printf("Post-write, cas is %d", cas)
 
@@ -635,7 +635,7 @@ func TestXattrWriteCasUpsert(t *testing.T) {
 		xattrVal2 := make(map[string]interface{})
 		xattrVal2["seq"] = float64(124)
 		xattrVal2["rev"] = "2-5678"
-		cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, getCas, val2, xattrVal2)
+		cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, getCas, nil, val2, xattrVal2)
 		assert.NoError(t, err, "WriteCasWithXattr error")
 		log.Printf("Post-write, cas is %d", cas)
 
@@ -678,7 +678,7 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 		}
 
 		cas := uint64(0)
-		cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
+		cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, nil, val, xattrVal)
 		assert.NoError(t, err, "WriteCasWithXattr error")
 		log.Printf("Post-write, cas is %d", cas)
 
@@ -697,12 +697,12 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 		// Simulate an SDK update
 		updatedVal := make(map[string]interface{})
 		updatedVal["sdk_field"] = "abc"
-		require.NoError(t, bucket.Set(key, 0, updatedVal))
+		require.NoError(t, bucket.Set(key, 0, nil, updatedVal))
 
 		// Attempt to update with the previous CAS
 		val["sg_field"] = "sg_value_mod"
 		xattrVal["rev"] = "2-1234"
-		_, err = bucket.WriteCasWithXattr(key, xattrName, 0, getCas, val, xattrVal)
+		_, err = bucket.WriteCasWithXattr(key, xattrName, 0, getCas, nil, val, xattrVal)
 		assert.True(t, IsCasMismatch(err))
 
 		// Retrieve again, ensure we get the SDK value, SG xattr
@@ -747,7 +747,7 @@ func TestXattrWriteCasRaw(t *testing.T) {
 		}
 
 		cas := uint64(0)
-		cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, valRaw, xattrValRaw)
+		cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, nil, valRaw, xattrValRaw)
 		if err != nil {
 			t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 		}
@@ -796,7 +796,7 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 
 		// Write document with xattr
 		cas := uint64(0)
-		cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
+		cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, nil, val, xattrVal)
 		if err != nil {
 			t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 		}
@@ -827,7 +827,7 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 		xattrVal = make(map[string]interface{})
 		xattrVal["seq"] = float64(456)
 		xattrVal["rev"] = "2-2345"
-		cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
+		cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, nil, val, xattrVal)
 		if err != nil {
 			t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 		}
@@ -872,7 +872,7 @@ func TestXattrWriteCasTombstoneUpdate(t *testing.T) {
 
 		// Write document with xattr
 		cas := uint64(0)
-		cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
+		cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, nil, val, xattrVal)
 		if err != nil {
 			t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 		}
@@ -903,7 +903,7 @@ func TestXattrWriteCasTombstoneUpdate(t *testing.T) {
 		xattrVal = make(map[string]interface{})
 		xattrVal["seq"] = float64(456)
 		xattrVal["rev"] = "2-2345"
-		cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, nil, xattrVal)
+		cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, nil, nil, xattrVal)
 		if err != nil {
 			t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 		}
@@ -1002,7 +1002,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 		}
 
 		// Insert
-		_, err = bucket.WriteUpdateWithXattr(key, xattrName, "", 0, nil, writeUpdateFunc)
+		_, err = bucket.WriteUpdateWithXattr(key, xattrName, "", 0, nil, nil, writeUpdateFunc)
 		if err != nil {
 			t.Errorf("Error doing WriteUpdateWithXattr: %+v", err)
 		}
@@ -1018,7 +1018,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 		goassert.Equals(t, retrievedXattr["seq"], float64(1))
 
 		// Update
-		_, err = bucket.WriteUpdateWithXattr(key, xattrName, "", 0, nil, writeUpdateFunc)
+		_, err = bucket.WriteUpdateWithXattr(key, xattrName, "", 0, nil, nil, writeUpdateFunc)
 		if err != nil {
 			t.Errorf("Error doing WriteUpdateWithXattr: %+v", err)
 		}
@@ -1084,7 +1084,7 @@ func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
 			return updatedDoc, updatedXattr, false, nil, nil
 		}
 
-		_, err := bucket.WriteUpdateWithXattr(key, xattrKey, userXattrKey, 0, nil, writeUpdateFunc)
+		_, err := bucket.WriteUpdateWithXattr(key, xattrKey, userXattrKey, 0, nil, nil, writeUpdateFunc)
 		assert.NoError(t, err)
 
 		var gotBody map[string]interface{}
@@ -1099,7 +1099,7 @@ func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
 		_, err = userXattrStore.WriteUserXattr(key, userXattrKey, userXattrVal)
 		assert.NoError(t, err)
 
-		_, err = bucket.WriteUpdateWithXattr(key, xattrKey, userXattrKey, 0, nil, writeUpdateFunc)
+		_, err = bucket.WriteUpdateWithXattr(key, xattrKey, userXattrKey, 0, nil, nil, writeUpdateFunc)
 		assert.NoError(t, err)
 
 		_, err = bucket.Get(key, &gotBody)
@@ -1134,7 +1134,7 @@ func TestXattrDeleteDocument(t *testing.T) {
 
 		// Create w/ XATTR, delete doc and XATTR, retrieve doc (expect fail), retrieve XATTR (expect success)
 		cas := uint64(0)
-		cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
+		cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, nil, val, xattrVal)
 		if err != nil {
 			t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 		}
@@ -1183,7 +1183,7 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 
 		// Create w/ XATTR, delete doc and XATTR, retrieve doc (expect fail), retrieve XATTR (expect success)
 		cas := uint64(0)
-		cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
+		cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, nil, val, xattrVal)
 		if err != nil {
 			t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 		}
@@ -1209,7 +1209,7 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 		// Update the xattr only
 		xattrVal["seq"] = 2
 		xattrVal["rev"] = "1-1234"
-		casOut, writeErr := bucket.WriteCasWithXattr(key, xattrName, 0, getCas, nil, xattrVal)
+		casOut, writeErr := bucket.WriteCasWithXattr(key, xattrName, 0, getCas, nil, nil, xattrVal)
 		assert.NoError(t, writeErr, "Error updating xattr post-delete")
 		log.Printf("WriteCasWithXattr cas: %d", casOut)
 
@@ -1250,7 +1250,7 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 
 		// Create w/ XATTR, delete doc and XATTR, retrieve doc (expect fail), retrieve XATTR (expect fail)
 		cas := uint64(0)
-		cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
+		cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, nil, val, xattrVal)
 		if err != nil {
 			t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 		}
@@ -1300,7 +1300,7 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 
 		// Create w/ XATTR
 		cas1 := uint64(0)
-		cas1, err = bucket.WriteCasWithXattr(key1, xattrName, 0, cas1, val, xattrVal)
+		cas1, err = bucket.WriteCasWithXattr(key1, xattrName, 0, cas1, nil, val, xattrVal)
 		if err != nil {
 			t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 		}
@@ -1321,7 +1321,7 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 
 		// Create w/ XATTR
 		cas3int := uint64(0)
-		cas3int, err = bucket.WriteCasWithXattr(key3, xattrName, 0, cas3int, val, xattrVal)
+		cas3int, err = bucket.WriteCasWithXattr(key3, xattrName, 0, cas3int, nil, val, xattrVal)
 		if err != nil {
 			t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 		}
@@ -1396,7 +1396,7 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 
 		// Create w/ XATTR
 		cas1 := uint64(0)
-		cas1, err = bucket.WriteCasWithXattr(key1, xattrName, 0, cas1, val, xattrVal)
+		cas1, err = bucket.WriteCasWithXattr(key1, xattrName, 0, cas1, nil, val, xattrVal)
 		if err != nil {
 			t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 		}
@@ -1404,7 +1404,7 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 		// 2. Create document with no XATTR
 		val = make(map[string]interface{})
 		val["type"] = key2
-		err = bucket.Set(key2, uint32(0), val)
+		err = bucket.Set(key2, uint32(0), nil, val)
 		assert.NoError(t, err)
 
 		// 3. Xattr, no document
@@ -1417,7 +1417,7 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 
 		// Create w/ XATTR
 		cas3int := uint64(0)
-		cas3int, err = bucket.WriteCasWithXattr(key3, xattrName, 0, cas3int, val, xattrVal)
+		cas3int, err = bucket.WriteCasWithXattr(key3, xattrName, 0, cas3int, nil, val, xattrVal)
 		if err != nil {
 			t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 		}
@@ -1477,7 +1477,7 @@ func TestDeleteWithXattrWithSimulatedRaceResurrect(t *testing.T) {
 			xattrVal := make(map[string]interface{})
 			xattrVal["seq"] = float64(456)
 			xattrVal["rev"] = "2-2345"
-			_, writeErr := bucket.WriteCasWithXattr(k, xattrKey, 0, 0, updatedVal, xattrVal)
+			_, writeErr := bucket.WriteCasWithXattr(k, xattrKey, 0, 0, nil, updatedVal, xattrVal)
 			if writeErr != nil {
 				panic(fmt.Sprintf("Unexpected error in WriteCasWithXattr: %v", writeErr))
 
@@ -1524,7 +1524,7 @@ func TestXattrRetrieveDocumentAndXattr(t *testing.T) {
 
 		// Create w/ XATTR
 		cas := uint64(0)
-		cas, err = bucket.WriteCasWithXattr(key1, xattrName, 0, cas, val, xattrVal)
+		cas, err = bucket.WriteCasWithXattr(key1, xattrName, 0, cas, nil, val, xattrVal)
 		if err != nil {
 			t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 		}
@@ -1544,7 +1544,7 @@ func TestXattrRetrieveDocumentAndXattr(t *testing.T) {
 
 		// Create w/ XATTR
 		cas = uint64(0)
-		cas, err = bucket.WriteCasWithXattr(key3, xattrName, 0, cas, val, xattrVal)
+		cas, err = bucket.WriteCasWithXattr(key3, xattrName, 0, cas, nil, val, xattrVal)
 		if err != nil {
 			t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 		}
@@ -1610,7 +1610,7 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 
 		// Create w/ XATTR
 		cas1 := uint64(0)
-		cas1, err = bucket.WriteCasWithXattr(key1, xattrName, 0, cas1, val, xattrVal)
+		cas1, err = bucket.WriteCasWithXattr(key1, xattrName, 0, cas1, nil, val, xattrVal)
 		if err != nil {
 			t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 		}
@@ -1631,7 +1631,7 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 
 		// Create w/ XATTR
 		cas3int := uint64(0)
-		cas3int, err = bucket.WriteCasWithXattr(key3, xattrName, 0, cas3int, val, xattrVal)
+		cas3int, err = bucket.WriteCasWithXattr(key3, xattrName, 0, cas3int, nil, val, xattrVal)
 		if err != nil {
 			t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 		}
@@ -1654,7 +1654,7 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 		// Attempt to mutate all 4 docs
 		exp := uint32(0)
 		updatedVal["type"] = fmt.Sprintf("updated_%s", key1)
-		_, key1err := bucket.WriteCasWithXattr(key1, xattrName, exp, cas1, &updatedVal, &updatedXattrVal)
+		_, key1err := bucket.WriteCasWithXattr(key1, xattrName, exp, cas1, nil, &updatedVal, &updatedXattrVal)
 		assert.NoError(t, key1err, fmt.Sprintf("Unexpected error mutating %s", key1))
 		var key1DocResult map[string]interface{}
 		var key1XattrResult map[string]interface{}
@@ -1663,7 +1663,7 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 		goassert.Equals(t, key1XattrResult["rev"], "2-1234")
 
 		updatedVal["type"] = fmt.Sprintf("updated_%s", key2)
-		_, key2err := bucket.WriteCasWithXattr(key2, xattrName, exp, uint64(cas2), &updatedVal, &updatedXattrVal)
+		_, key2err := bucket.WriteCasWithXattr(key2, xattrName, exp, uint64(cas2), nil, &updatedVal, &updatedXattrVal)
 		assert.NoError(t, key2err, fmt.Sprintf("Unexpected error mutating %s", key2))
 		var key2DocResult map[string]interface{}
 		var key2XattrResult map[string]interface{}
@@ -1672,7 +1672,7 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 		goassert.Equals(t, key2XattrResult["rev"], "2-1234")
 
 		updatedVal["type"] = fmt.Sprintf("updated_%s", key3)
-		_, key3err := bucket.WriteCasWithXattr(key3, xattrName, exp, uint64(cas3), &updatedVal, &updatedXattrVal)
+		_, key3err := bucket.WriteCasWithXattr(key3, xattrName, exp, uint64(cas3), nil, &updatedVal, &updatedXattrVal)
 		assert.NoError(t, key3err, fmt.Sprintf("Unexpected error mutating %s", key3))
 		var key3DocResult map[string]interface{}
 		var key3XattrResult map[string]interface{}
@@ -1681,7 +1681,7 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 		goassert.Equals(t, key3XattrResult["rev"], "2-1234")
 
 		updatedVal["type"] = fmt.Sprintf("updated_%s", key4)
-		_, key4err := bucket.WriteCasWithXattr(key4, xattrName, exp, uint64(cas4), &updatedVal, &updatedXattrVal)
+		_, key4err := bucket.WriteCasWithXattr(key4, xattrName, exp, uint64(cas4), nil, &updatedVal, &updatedXattrVal)
 		assert.NoError(t, key4err, fmt.Sprintf("Unexpected error mutating %s", key4))
 		var key4DocResult map[string]interface{}
 		var key4XattrResult map[string]interface{}
@@ -1729,7 +1729,7 @@ func TestGetXattr(t *testing.T) {
 
 		//Create w/ XATTR
 		cas := uint64(0)
-		cas, err = bucket.WriteCasWithXattr(key1, xattrName1, 0, cas, val1, xattrVal1)
+		cas, err = bucket.WriteCasWithXattr(key1, xattrName1, 0, cas, nil, val1, xattrVal1)
 		if err != nil {
 			t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 		}
@@ -1756,7 +1756,7 @@ func TestGetXattr(t *testing.T) {
 		assert.Equal(t, ErrNotFound, pkgerrors.Cause(err))
 
 		//Get Xattr From Tombstoned Doc With Existing System Xattr (ErrSubDocSuccessDeleted)
-		cas, err = bucket.WriteCasWithXattr(key2, SyncXattrName, 0, uint64(0), val2, xattrVal2)
+		cas, err = bucket.WriteCasWithXattr(key2, SyncXattrName, 0, uint64(0), nil, val2, xattrVal2)
 		_, err = bucket.Remove(key2, cas)
 		require.NoError(t, err)
 		_, err = bucket.GetXattr(key2, SyncXattrName, &response)
@@ -1775,7 +1775,7 @@ func TestGetXattr(t *testing.T) {
 		assert.Equal(t, ErrNotFound, pkgerrors.Cause(err))
 
 		////Get Xattr From Tombstoned Doc With Deleted User Xattr
-		cas, err = bucket.WriteCasWithXattr(key3, xattrName3, 0, uint64(0), val3, xattrVal3)
+		cas, err = bucket.WriteCasWithXattr(key3, xattrName3, 0, uint64(0), nil, val3, xattrVal3)
 		_, err = bucket.Remove(key3, cas)
 		require.NoError(t, err)
 		_, err = bucket.GetXattr(key3, xattrName3, &response)
@@ -1821,7 +1821,7 @@ func TestGetXattrAndBody(t *testing.T) {
 
 		//Create w/ XATTR
 		cas := uint64(0)
-		cas, err = bucket.WriteCasWithXattr(key1, xattrName1, 0, cas, val1, xattrVal1)
+		cas, err = bucket.WriteCasWithXattr(key1, xattrName1, 0, cas, nil, val1, xattrVal1)
 		if err != nil {
 			t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 		}
@@ -1848,7 +1848,7 @@ func TestGetXattrAndBody(t *testing.T) {
 		assert.Equal(t, ErrNotFound, pkgerrors.Cause(err))
 
 		//Get Xattr From Tombstoned Doc With Existing System Xattr (ErrSubDocSuccessDeleted)
-		cas, err = bucket.WriteCasWithXattr(key2, SyncXattrName, 0, uint64(0), val2, xattrVal2)
+		cas, err = bucket.WriteCasWithXattr(key2, SyncXattrName, 0, uint64(0), nil, val2, xattrVal2)
 		_, err = bucket.Remove(key2, cas)
 		require.NoError(t, err)
 		_, err = subdocStore.SubdocGetBodyAndXattr(key2, SyncXattrName, "", &v, &xv, &userXv)
@@ -1860,7 +1860,7 @@ func TestGetXattrAndBody(t *testing.T) {
 		assert.Equal(t, ErrNotFound, pkgerrors.Cause(err))
 
 		////Get Xattr From Tombstoned Doc With Deleted User Xattr -> returns not found
-		cas, err = bucket.WriteCasWithXattr(key3, xattrName3, 0, uint64(0), val3, xattrVal3)
+		cas, err = bucket.WriteCasWithXattr(key3, xattrName3, 0, uint64(0), nil, val3, xattrVal3)
 		_, err = bucket.Remove(key3, cas)
 		require.NoError(t, err)
 		_, err = subdocStore.SubdocGetBodyAndXattr(key3, xattrName3, "", &v, &xv, &userXv)
@@ -2200,7 +2200,7 @@ func createTombstonedDoc(bucket sgbucket.DataStore, key, xattrName string) {
 
 	// Create w/ doc and XATTR
 	cas := uint64(0)
-	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
+	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, nil, val, xattrVal)
 	if err != nil {
 		panic(fmt.Sprintf("Error doing WriteCasWithXattr: %+v", err))
 	}
@@ -2277,7 +2277,7 @@ func TestUpdateXattrWithDeleteBodyAndIsDelete(t *testing.T) {
 
 		cas := uint64(0)
 		// CAS-safe write of the document and it's associated named extended attributes
-		cas, err := bucket.WriteCasWithXattr(key, xattrKey, 0, cas, val, xattrVal)
+		cas, err := bucket.WriteCasWithXattr(key, xattrKey, 0, cas, nil, val, xattrVal)
 		require.NoError(t, err, "Error doing WriteCasWithXattr")
 
 		updatedXattrVal := make(map[string]interface{})
@@ -2314,7 +2314,7 @@ func TestUserXattrGetWithXattr(t *testing.T) {
 		syncXattrVal := map[string]interface{}{"val": "syncVal"}
 		userXattrVal := map[string]interface{}{"val": "userXattrVal"}
 
-		err := bucket.Set(docKey, 0, docVal)
+		err := bucket.Set(docKey, 0, nil, docVal)
 		assert.NoError(t, err)
 
 		_, err = userXattrStore.WriteUserXattr(docKey, "_sync", syncXattrVal)
@@ -2343,7 +2343,7 @@ func TestUserXattrGetWithXattrNil(t *testing.T) {
 		docVal := map[string]interface{}{"val": "docVal"}
 		syncXattrVal := map[string]interface{}{"val": "syncVal"}
 
-		err := bucket.Set(docKey, 0, docVal)
+		err := bucket.Set(docKey, 0, nil, docVal)
 		assert.NoError(t, err)
 
 		userXattrStore, ok := AsUserXattrStore(bucket)
@@ -2416,7 +2416,7 @@ func TestRawBackwardCompatibilityFromJSON(t *testing.T) {
 		}
 
 		// Write as JSON
-		setErr := bucket.Set(key, 0, val)
+		setErr := bucket.Set(key, 0, nil, val)
 		assert.NoError(t, setErr)
 
 		// Read as binary
@@ -2427,7 +2427,7 @@ func TestRawBackwardCompatibilityFromJSON(t *testing.T) {
 		}
 
 		// Write as binary
-		setRawErr := bucket.SetRaw(key, 0, updatedVal)
+		setRawErr := bucket.SetRaw(key, 0, nil, updatedVal)
 		assert.NoError(t, setRawErr)
 
 	})
@@ -2455,7 +2455,7 @@ func TestRawBackwardCompatibilityFromBinary(t *testing.T) {
 		}
 
 		// Write as binary
-		err = bucket.SetRaw(key, 0, val)
+		err = bucket.SetRaw(key, 0, nil, val)
 		assert.NoError(t, err)
 
 		// Read as raw JSON
@@ -2467,7 +2467,7 @@ func TestRawBackwardCompatibilityFromBinary(t *testing.T) {
 		}
 
 		// Write as raw JSON
-		setErr := bucket.Set(key, 0, updatedVal)
+		setErr := bucket.Set(key, 0, nil, updatedVal)
 		assert.NoError(t, setErr)
 
 	})
@@ -2489,7 +2489,7 @@ func TestGetExpiry(t *testing.T) {
 		val["foo"] = "bar"
 
 		expiryValue := uint32(time.Now().Add(1 * time.Minute).Unix())
-		err := bucket.Set(key, expiryValue, val)
+		err := bucket.Set(key, expiryValue, nil, val)
 		assert.NoError(t, err, "Error calling Set()")
 
 		expiry, expiryErr := store.GetExpiry(key)
@@ -2549,4 +2549,74 @@ func TestGetStatsVbSeqNo(t *testing.T) {
 		assert.True(t, len(uuids) > 0)
 		assert.True(t, len(highSeqNos) > 0)
 	})
+}
+
+// Confirm that GoCBv2 preserveExpiry option works correctly for bucket Set function
+func TestUpsertOptionPreserveExpiry(t *testing.T) {
+	if !TestUseCouchbaseServer() {
+		t.Skip("Test can only be ran against CBS due to GoCB v2 use")
+	}
+	bucket := GetTestBucketForDriver(t, GoCBv2)
+	defer bucket.Close()
+	if bucket.IsSupported(sgbucket.DataStoreFeaturePreserveExpiry) {
+		t.Skip("Preserve expiry is not supported with this CBS version. Skipping test...")
+	}
+	defer SetUpTestLogging(LevelInfo, KeyAll)()
+
+	testCases := []struct {
+		name          string
+		upsertOptions *sgbucket.UpsertOptions
+		expectMatch   bool
+	}{
+		{
+			name:          "Expect matching expiry - preserveExpiry",
+			upsertOptions: &sgbucket.UpsertOptions{PreserveExpiry: true},
+			expectMatch:   true,
+		},
+		{
+			name:          "Expect updated expiry - false preserveExpiry",
+			upsertOptions: &sgbucket.UpsertOptions{PreserveExpiry: false},
+			expectMatch:   false,
+		},
+		{
+			name:          "Expect updated expiry - nil upsert options",
+			upsertOptions: nil,
+			expectMatch:   false,
+		},
+	}
+
+	for i, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			cbStore, _ := AsCouchbaseStore(bucket)
+			key := fmt.Sprintf("test%d", i)
+			val := make(map[string]interface{}, 0)
+			val["foo"] = "bar"
+
+			var rVal map[string]interface{}
+			_, err := bucket.Get(key, &rVal)
+			assert.Error(t, err, "Key should not exist yet, expected error but got nil")
+
+			err = bucket.Set(key, DurationToCbsExpiry(time.Hour*24), nil, val)
+			assert.NoError(t, err, "Error calling Set()")
+
+			beforeExp, err := cbStore.GetExpiry(key)
+			require.NoError(t, err)
+			require.NotEqual(t, 0, beforeExp)
+
+			val["foo"] = "baz"
+			err = bucket.Set(key, 0, test.upsertOptions, val)
+			assert.NoError(t, err, "Error calling Set()")
+
+			afterExp, err := cbStore.GetExpiry(key)
+			assert.NoError(t, err)
+			if test.expectMatch {
+				assert.Equal(t, beforeExp, afterExp) // Make sure both expiry timestamps match
+			} else {
+				assert.NotEqual(t, beforeExp, afterExp) // Make sure both expiry timestamps do not match
+			}
+
+			err = bucket.Delete(key)
+			require.NoError(t, err)
+		})
+	}
 }
