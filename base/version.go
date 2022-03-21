@@ -17,7 +17,7 @@ import (
 
 const (
 	ProductName          = "Couchbase Sync Gateway"
-	ProductVersionNumber = "3.0" // API/feature level
+	ProductVersionNumber = "3.0.1" // API/feature level
 )
 
 var (
