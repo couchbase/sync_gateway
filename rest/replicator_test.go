@@ -3537,14 +3537,16 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 	assert.True(t, strings.Contains(err.Error(), "unexpected status code 401 from target database"))
 
 	// wait for an arbitrary number of reconnect attempts
-	waitAndRequireCondition(t, func() bool {
+	err = rt1.WaitForCondition(func() bool {
 		return ar.Pull.GetStats().NumConnectAttempts.Value() > 3
-	}, "Expecting NumConnectAttempts > 3")
+	})
+	assert.NoError(t, err, "Expecting NumConnectAttempts > 3")
 
 	assert.NoError(t, ar.Stop())
-	waitAndRequireCondition(t, func() bool {
+	err = rt1.WaitForCondition(func() bool {
 		return ar.GetStatus().Status == db.ReplicationStateStopped
 	})
+	require.NoError(t, err)
 
 	// wait for a bit to see if the reconnect loop has stopped
 	reconnectAttempts := ar.Pull.GetStats().NumConnectAttempts.Value()
@@ -3558,11 +3560,12 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 	assert.True(t, strings.Contains(err.Error(), "unexpected status code 401 from target database"))
 
 	// wait for another set of reconnect attempts
-	waitAndRequireCondition(t, func() bool {
+	err = rt1.WaitForCondition(func() bool {
 		return ar.Pull.GetStats().NumConnectAttempts.Value() > 3
-	}, "Expecting NumConnectAttempts > 3")
+	})
+	assert.NoError(t, err, "Expecting NumConnectAttempts > 3")
 
-	assert.NoError(t, ar.Stop())
+	require.NoError(t, ar.Stop())
 }
 
 func waitAndRequireCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
