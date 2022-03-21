@@ -5126,7 +5126,7 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 }
 
 func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	base.RequireNumTestBuckets(t, 2)
 
 	// Passive
