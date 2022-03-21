@@ -256,8 +256,11 @@ func TestBootstrapDuplicateDatabase(t *testing.T) {
 func bootstrapStartupConfigForTest(t *testing.T) StartupConfig {
 	config := DefaultStartupConfig("")
 
-	config.Logging.Console.LogLevel.Set(base.LevelInfo)
-	config.Logging.Console.LogKeys = []string{"*"}
+	config.Logging.Console = &base.ConsoleLoggerConfig{
+		LogLevel: base.LogLevelPtr(base.LevelInfo),
+		LogKeys:  []string{"*"},
+	}
+
 	config.API.AdminInterfaceAuthentication = base.BoolPtr(false)
 
 	config.API.PublicInterface = "127.0.0.1:" + strconv.FormatInt(4984+bootstrapTestPortOffset, 10)
