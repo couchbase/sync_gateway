@@ -280,7 +280,7 @@
             "interval": 120,
             "go_version": "1.16.6",
             "trigger_blackduck": true,
-            "start_build": 529
+            "start_build": 1
         },
         "manifest/3.0/3.0.0.xml": {
             "do-build": false,
