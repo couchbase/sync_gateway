@@ -6569,6 +6569,8 @@ func (rt *RestTester) createDocReturnRev(t *testing.T, docID string, revID strin
 	if revID == "" {
 		t.Fatalf("No revID in response for PUT doc")
 	}
+
+	require.NoError(t, rt.WaitForPendingChanges())
 	return revID
 }
 
