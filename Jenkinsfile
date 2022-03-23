@@ -1,12 +1,9 @@
 pipeline {
     // Build on this uberjenkins node, as it has the Go environment set up in a known-state
     // We could potentially change this to use a dockerfile agent instead so it can be portable.
-    agent { label 'sync-gateway-pipeline-builder' }
+    agent { label 'sgw-pipeline-ec2-3.0.1-backport' }
 
     environment {
-        GO_VERSION = 'go1.16.6'
-        GVM = "/root/.gvm/bin/gvm"
-        GO = "/root/.gvm/gos/${GO_VERSION}/bin"
         GOPATH = "${WORKSPACE}/godeps"
         GOTOOLS = "${WORKSPACE}/gotools"
         GOCACHE = "${WORKSPACE}/.gocache"
@@ -16,6 +13,10 @@ pipeline {
         SGW_REPO = "github.com/couchbase/sync_gateway"
         GH_ACCESS_TOKEN_CREDENTIAL = "github_cb-robot-sg_access_token"
         GO111MODULE = "off"
+    }
+
+    tools {
+        go '1.17.5'
     }
 
     stages {
@@ -47,37 +48,28 @@ pipeline {
                         echo "Bootstrapping commit ${SG_COMMIT}"
                         sh 'cp .scm-checkout/bootstrap.sh .'
                         sh 'chmod +x bootstrap.sh'
-                        sh "./bootstrap.sh -e ee -c ${SG_COMMIT}"
+                        sshagent(credentials: ['CB SG Robot Github SSH Key']) {
+                            sh '''
+                                [ -d ~/.ssh ] || mkdir ~/.ssh && chmod 0700 ~/.ssh
+                                ssh-keyscan -t rsa,dsa github.com >> ~/.ssh/known_hosts
+                            '''
+                            sh "./bootstrap.sh -e ee -c ${SG_COMMIT}"
+                        }
                     }
                 }
-                stage('Go') {
+                stage('Setup') {
                     stages {
-                        stage('Install') {
+                        stage('Go Tools') {
                             steps {
-                                echo 'Installing Go via gvm..'
-                                // We'll use Go 1.10.4 to bootstrap compilation of newer Go versions
-                                // (because we know this version is installed on the Jenkins node)
-                                withEnv(["GOROOT_BOOTSTRAP=/root/.gvm/gos/go1.10.4"]) {
-                                    // Use gvm to install the required Go version, if not already
-                                    sh "${GVM} install $GO_VERSION"
-                                }
-                            }
-                        }
-                        stage('Get Tools') {
-                            steps {
-                                withEnv(["PATH+=${GO}", "GOPATH=${GOTOOLS}"]) {
-                                    sh "go env"
-                                    sh "go version"
-                                    // unhandled error checker
-                                    sh 'go get -v -u github.com/kisielk/errcheck'
-                                    // goveralls is used to send coverprofiles to coveralls.io
-                                    sh 'go get -v -u github.com/mattn/goveralls'
-                                    // Jenkins coverage reporting tools
-                                    sh 'go get -v -u github.com/axw/gocov/...'
-                                    sh 'go get -v -u github.com/AlekSi/gocov-xml'
-                                    // Jenkins test reporting tools
-                                    sh 'go get -v -u github.com/tebeka/go2xunit'
-                                }
+                                // unhandled error checker
+                                sh 'go get -v -u github.com/kisielk/errcheck'
+                                // goveralls is used to send coverprofiles to coveralls.io
+                                sh 'go get -v -u github.com/mattn/goveralls'
+                                // Jenkins coverage reporting tools
+                                sh 'go get -v -u github.com/axw/gocov/...'
+                                sh 'go get -v -u github.com/AlekSi/gocov-xml'
+                                // Jenkins test reporting tools
+                                sh 'go get -v -u github.com/tebeka/go2xunit'
                             }
                         }
                     }
@@ -89,16 +81,12 @@ pipeline {
             parallel {
                 stage('CE Linux') {
                     steps {
-                        withEnv(["PATH+=${GO}"]) {
-                            sh "GOOS=linux go build -o sync_gateway_ce-linux -v ${SGW_REPO}"
-                        }
+                        sh "GOOS=linux go build -o sync_gateway_ce-linux -v ${SGW_REPO}"
                     }
                 }
                 stage('EE Linux') {
                     steps {
-                        withEnv(["PATH+=${GO}"]) {
-                            sh "GOOS=linux go build -o sync_gateway_ee-linux -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
-                        }
+                        sh "GOOS=linux go build -o sync_gateway_ee-linux -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
                     }
                 }
                 stage('CE macOS') {
@@ -123,23 +111,17 @@ pipeline {
                 }
                 stage('CE Windows') {
                     steps {
-                        withEnv(["PATH+=${GO}"]) {
-                            sh "GOOS=windows go build -o sync_gateway_ce-windows -v ${SGW_REPO}"
-                        }
+                        sh "GOOS=windows go build -o sync_gateway_ce-windows -v ${SGW_REPO}"
                     }
                 }
                 stage('EE Windows') {
                     steps {
-                        withEnv(["PATH+=${GO}"]) {
-                            sh "GOOS=windows go build -o sync_gateway_ee-windows -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
-                        }
+                        sh "GOOS=windows go build -o sync_gateway_ee-windows -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
                     }
                 }
                 stage('Windows Service') {
                     steps {
-                        withEnv(["PATH+=${GO}"]) {
-                            sh "GOOS=windows go build -o sync_gateway_ce-windows-service -v ${SGW_REPO}/service/sg-windows/sg-service"
-                        }
+                        sh "GOOS=windows go build -o sync_gateway_ce-windows-service -v ${SGW_REPO}/service/sg-windows/sg-service"
                     }
                 }
             }
@@ -149,61 +131,53 @@ pipeline {
             parallel {
                 stage('gofmt') {
                     steps {
-                        withEnv(["PATH+=${GO}"]) {
-                            script {
-                                try {
-                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'Running', status: 'PENDING')
-                                    sh "gofmt -d -e ${GOPATH}/src/${SGW_REPO} | tee gofmt.out"
-                                    sh "test -z \"\$(cat gofmt.out)\""
-                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'OK', status: 'SUCCESS')
-                                } catch (Exception e) {
-                                    sh "wc -l < gofmt.out | awk '{printf \$1}' > gofmt.count"
-                                    script {
-                                        env.GOFMT_COUNT = readFile 'gofmt.count'
-                                    }
-                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: "found "+env.GOFMT_COUNT+" problems", status: 'FAILURE')
-                                    unstable("gofmt failed")
+                        script {
+                            try {
+                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'Running', status: 'PENDING')
+                                sh "gofmt -d -e ${GOPATH}/src/${SGW_REPO} | tee gofmt.out"
+                                sh "test -z \"\$(cat gofmt.out)\""
+                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'OK', status: 'SUCCESS')
+                            } catch (Exception e) {
+                                sh "wc -l < gofmt.out | awk '{printf \$1}' > gofmt.count"
+                                script {
+                                    env.GOFMT_COUNT = readFile 'gofmt.count'
                                 }
+                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: "found "+env.GOFMT_COUNT+" problems", status: 'FAILURE')
+                                unstable("gofmt failed")
                             }
                         }
                     }
                 }
                 stage('go vet') {
                     steps {
-                        withEnv(["PATH+=${GO}"]) {
-                            warnError(message: "go vet failed") {
-                                sh "go vet ${SGW_REPO}/..."
-                            }
+                        warnError(message: "go vet failed") {
+                            sh "go vet ${SGW_REPO}/..."
                         }
                     }
                 }
                 stage('go fix') {
                     steps {
-                        withEnv(["PATH+=${GO}"]) {
-                            warnError(message: "go fix failed") {
-                                sh "go tool fix -diff ${GOPATH}/src/${SGW_REPO} | tee gofix.out"
-                                sh "test -z \"\$(cat gofix.out)\""
-                            }
+                        warnError(message: "go fix failed") {
+                            sh "go tool fix -diff ${GOPATH}/src/${SGW_REPO} | tee gofix.out"
+                            sh "test -z \"\$(cat gofix.out)\""
                         }
                     }
                 }
                 stage('errcheck') {
                     steps {
-                        withEnv(["PATH+=${GO}:${GOTOOLS}/bin"]) {
-                            script {
-                                try {
-                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'Running', status: 'PENDING')
-                                    sh "errcheck ${SGW_REPO}/... | tee errcheck.out"
-                                    sh "test -z \"\$(cat errcheck.out)\""
-                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'OK', status: 'SUCCESS')
-                                } catch (Exception e) {
-                                    sh "wc -l < errcheck.out | awk '{printf \$1}' > errcheck.count"
-                                    script {
-                                        env.ERRCHECK_COUNT = readFile 'errcheck.count'
-                                    }
-                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: "found "+env.ERRCHECK_COUNT+" unhandled errors", status: 'FAILURE')
-                                    unstable("errcheck failed")
+                        script {
+                            try {
+                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'Running', status: 'PENDING')
+                                sh "errcheck ${SGW_REPO}/... | tee errcheck.out"
+                                sh "test -z \"\$(cat errcheck.out)\""
+                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'OK', status: 'SUCCESS')
+                            } catch (Exception e) {
+                                sh "wc -l < errcheck.out | awk '{printf \$1}' > errcheck.count"
+                                script {
+                                    env.ERRCHECK_COUNT = readFile 'errcheck.count'
                                 }
+                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: "found "+env.ERRCHECK_COUNT+" unhandled errors", status: 'FAILURE')
+                                unstable("errcheck failed")
                             }
                         }
                     }
@@ -219,7 +193,7 @@ pipeline {
                             when { branch 'master' }
                             steps{
                                 // Travis-related variables are required as coveralls.io only officially supports a certain set of CI tools.
-                                withEnv(["PATH+=${GO}:${GOTOOLS}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
+                                withEnv(["PATH+GO=${env.GOTOOLS}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: 'CE Unit Tests Running', status: 'PENDING')
 
                                     // Build CE coverprofiles
@@ -271,7 +245,7 @@ pipeline {
 
                         stage('EE') {
                             steps {
-                                withEnv(["PATH+=${GO}:${GOTOOLS}/bin"]) {
+                                withEnv(["PATH+GO=${env.GOTOOLS}/bin"]) {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: 'EE Unit Tests Running', status: 'PENDING')
 
                                     // Build EE coverprofiles
@@ -334,7 +308,7 @@ pipeline {
 
                                 script {
                                     try {
-                                        sh 'docker run --net=host --rm -v /root/.ssh/id_rsa_ns-buildbot:/root/.ssh/id_rsa -v `pwd`/sync_gateway_ee-linux:/sync_gateway -v `pwd`/verbose_litecore.out:/output.out -v `pwd`/verbose_litecore-sg_trace.out:/tmp/sglog/sg_trace.log couchbase/sg-test-litecore:latest -legacy-config'
+                                        sh 'docker run --rm -v $KEY:/root/.ssh/id_rsa -v `pwd`/sync_gateway_ee-linux:/sync_gateway -v `pwd`/verbose_litecore.out:/output.out -v `pwd`/verbose_litecore-sg_trace.out:/tmp/sglog/sg_trace.log couchbase/sg-test-litecore:latest -legacy-config'
                                         githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'EE with LiteCore Test Passed', status: 'SUCCESS')
                                     } catch (Exception e) {
                                         githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'EE with LiteCore Test Failed', status: 'FAILURE')
@@ -356,7 +330,7 @@ pipeline {
                                 echo 'Queueing Integration test for branch "master" ...'
                                 // Queues up an async integration test run using default build params (master branch),
                                 // but waits up to an hour for batches of PR merges before actually running (via quietPeriod)
-                                build job: 'sync-gateway-integration', quietPeriod: 3600, wait: false
+                                build job: 'MasterIntegration', quietPeriod: 3600, wait: false
                             }
                         }
 
@@ -383,7 +357,7 @@ pipeline {
             when { branch 'master' }
             steps{
                 echo 'Queueing Benchmark Run test for branch "master" ...'
-                build job: 'sync-gateway-benchmark', parameters: [string(name: 'SG_COMMIT', value: env.SG_COMMIT)], wait: false
+                // build job: 'sync-gateway-benchmark', parameters: [string(name: 'SG_COMMIT', value: env.SG_COMMIT)], wait: false
             }
         }
     }
@@ -394,21 +368,17 @@ pipeline {
             cobertura autoUpdateHealth: false, onlyStable: false, autoUpdateStability: false, coberturaReportFile: 'reports/coverage-*.xml', conditionalCoverageTargets: '70, 0, 0', failNoReports: false, failUnhealthy: false, failUnstable: false, lineCoverageTargets: '80, 0, 0', maxNumberOfBuilds: 0, methodCoverageTargets: '80, 0, 0', sourceEncoding: 'ASCII', zoomCoverageChart: false
 
             // Publish the junit test reports
-            junit allowEmptyResults: true, testResults: 'reports/test-*.xml'
+            junit allowEmptyResults: true, testDataPublishers: [[$class: 'JUnitFlakyTestDataPublisher']], testResults: 'reports/test-*.xml'
 
             step([$class: 'WsCleanup'])
-            withEnv(["PATH+=${GO}", "GOPATH=${GOPATH}"]) {
-                sh "go clean -cache"
-            }
+            sh "go clean -cache"
         }
         unstable {
             // archive non-verbose outputs upon failure for inspection (each verbose output is conditionally archived on stage failure)
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
                 if ("${env.BRANCH_NAME}" == 'master') {
-                    mail to: 'mobile_dev_sg@couchbase.com',
-                        subject: "Failed tests in master SGW pipeline: ${currentBuild.fullDisplayName}",
-                        body: "At least one test failed: ${env.BUILD_URL}"
+                    slackSend color: "danger", message: "Failed tests in master SGW pipeline: ${currentBuild.fullDisplayName}\nAt least one test failed: ${env.BUILD_URL}"
                 }
             }
         }
@@ -417,9 +387,7 @@ pipeline {
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
                 if ("${env.BRANCH_NAME}" == 'master') {
-                    mail to: 'mobile_dev_sg@couchbase.com',
-                        subject: "Build failure in master SGW pipeline: ${currentBuild.fullDisplayName}",
-                        body: "Something went wrong building: ${env.BUILD_URL}"
+                    slackSend color: "danger", message: "Build failure!!!\nA build failure occurred in the master SGW pipeline: ${currentBuild.fullDisplayName}\nSomething went wrong building: ${env.BUILD_URL}"
                 }
             }
         }
