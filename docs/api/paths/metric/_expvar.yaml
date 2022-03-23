@@ -16,5 +16,3 @@ get:
         application/javascript:
           schema:
             $ref: ../../components/schemas.yaml#/ExpVars
-  tags:
-  - Standard Output

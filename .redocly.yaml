@@ -1,0 +1,26 @@
+# Copyright 2022-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included in
+# the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
+# file, in accordance with the Business Source License, use of this software
+# will be governed by the Apache License, Version 2.0, included in the file
+# licenses/APL2.txt.
+
+# This configuration file is read by the Redocly `openapi` CLI tool to validate/lint our specs (from GitHub Actions)
+
+apiDefinitions:
+  admin: ./docs/api/admin.yaml
+  public: ./docs/api/public.yaml
+  metric: ./docs/api/metric.yaml
+
+lint:
+  extends:
+    - minimal
+  rules:
+    # disable unnecessary/invalid warnings
+    operation-2xx-response: off # _blipsync 101 Upgrade ...
+    operation-operationId: off  # Optional (mostly used for generating code)
+    operation-summary: off      # Optional field
+    no-ambiguous-paths: off     # /{db}/{doc} != /_debug/expvar
+    no-identical-paths: off     # /{db} != /{targetdb}
+    no-path-trailing-slash: off # Some endpoints require a trailing slash
