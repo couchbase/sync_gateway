@@ -129,14 +129,14 @@ func TestActiveReplicatorHeartbeats(t *testing.T) {
 
 	assert.NoError(t, ar.Start())
 
-	time.Sleep(time.Millisecond * 50)
+	// let some pings happen
+	time.Sleep(time.Millisecond * 500)
 
 	pingGoroutines := base.ExpvarVar2Int(expvar.Get("goblip").(*expvar.Map).Get("goroutines_sender_ping"))
 	assert.Equal(t, 1+pingGoroutinesStart, pingGoroutines, "Expected ping sender goroutine to be 1 more than start")
 
 	pingCount := base.ExpvarVar2Int(expvar.Get("goblip").(*expvar.Map).Get("sender_ping_count"))
-	assert.Truef(t, pingCount > pingCountStart, "Expected ping count to be > pingCountStart")
-
+	assert.Greaterf(t, pingCount, pingCountStart, "Expected ping count to increase since start")
 	assert.NoError(t, ar.Stop())
 
 	pingGoroutines = base.ExpvarVar2Int(expvar.Get("goblip").(*expvar.Map).Get("goroutines_sender_ping"))
