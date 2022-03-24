@@ -16,7 +16,7 @@ pipeline {
     }
 
     tools {
-        go '1.17.5'
+        go '1.16.6'
     }
 
     stages {
@@ -61,15 +61,17 @@ pipeline {
                     stages {
                         stage('Go Tools') {
                             steps {
-                                // unhandled error checker
-                                sh 'go get -v -u github.com/kisielk/errcheck'
-                                // goveralls is used to send coverprofiles to coveralls.io
-                                sh 'go get -v -u github.com/mattn/goveralls'
-                                // Jenkins coverage reporting tools
-                                sh 'go get -v -u github.com/axw/gocov/...'
-                                sh 'go get -v -u github.com/AlekSi/gocov-xml'
-                                // Jenkins test reporting tools
-                                sh 'go get -v -u github.com/tebeka/go2xunit'
+                                withEnv(["GOPATH=${GOTOOLS}"]) {
+                                    // unhandled error checker
+                                    sh 'go get -v -u github.com/kisielk/errcheck'
+                                    // goveralls is used to send coverprofiles to coveralls.io
+                                    sh 'go get -v -u github.com/mattn/goveralls'
+                                    // Jenkins coverage reporting tools
+                                    sh 'go get -v -u github.com/axw/gocov/...'
+                                    sh 'go get -v -u github.com/AlekSi/gocov-xml'
+                                    // Jenkins test reporting tools
+                                    sh 'go get -v -u github.com/tebeka/go2xunit'
+                                }
                             }
                         }
                     }
@@ -165,19 +167,21 @@ pipeline {
                 }
                 stage('errcheck') {
                     steps {
-                        script {
-                            try {
-                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'Running', status: 'PENDING')
-                                sh "errcheck ${SGW_REPO}/... | tee errcheck.out"
-                                sh "test -z \"\$(cat errcheck.out)\""
-                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'OK', status: 'SUCCESS')
-                            } catch (Exception e) {
-                                sh "wc -l < errcheck.out | awk '{printf \$1}' > errcheck.count"
-                                script {
-                                    env.ERRCHECK_COUNT = readFile 'errcheck.count'
+                        withEnv(["PATH+=${GOTOOLS}/bin"]) {
+                            script {
+                                try {
+                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'Running', status: 'PENDING')
+                                    sh "errcheck ${SGW_REPO}/... | tee errcheck.out"
+                                    sh "test -z \"\$(cat errcheck.out)\""
+                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'OK', status: 'SUCCESS')
+                                } catch (Exception e) {
+                                    sh "wc -l < errcheck.out | awk '{printf \$1}' > errcheck.count"
+                                    script {
+                                        env.ERRCHECK_COUNT = readFile 'errcheck.count'
+                                    }
+                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: "found "+env.ERRCHECK_COUNT+" unhandled errors", status: 'FAILURE')
+                                    unstable("errcheck failed")
                                 }
-                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: "found "+env.ERRCHECK_COUNT+" unhandled errors", status: 'FAILURE')
-                                unstable("errcheck failed")
                             }
                         }
                     }
@@ -193,7 +197,7 @@ pipeline {
                             when { branch 'master' }
                             steps{
                                 // Travis-related variables are required as coveralls.io only officially supports a certain set of CI tools.
-                                withEnv(["PATH+GO=${env.GOTOOLS}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
+                                withEnv(["PATH+=${env.GOTOOLS}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: 'CE Unit Tests Running', status: 'PENDING')
 
                                     // Build CE coverprofiles
@@ -245,7 +249,7 @@ pipeline {
 
                         stage('EE') {
                             steps {
-                                withEnv(["PATH+GO=${env.GOTOOLS}/bin"]) {
+                                withEnv(["PATH+=${env.GOTOOLS}/bin"]) {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: 'EE Unit Tests Running', status: 'PENDING')
 
                                     // Build EE coverprofiles
