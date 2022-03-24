@@ -311,14 +311,16 @@ pipeline {
                                 sh 'touch verbose_litecore-sg_trace.out'
 
                                 script {
-                                    try {
-                                        sh 'docker run --rm -v $KEY:/root/.ssh/id_rsa -v `pwd`/sync_gateway_ee-linux:/sync_gateway -v `pwd`/verbose_litecore.out:/output.out -v `pwd`/verbose_litecore-sg_trace.out:/tmp/sglog/sg_trace.log couchbase/sg-test-litecore:latest -legacy-config'
-                                        githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'EE with LiteCore Test Passed', status: 'SUCCESS')
-                                    } catch (Exception e) {
-                                        githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'EE with LiteCore Test Failed', status: 'FAILURE')
-                                        // archive verbose test logs in the event of a test failure
-                                        archiveArtifacts artifacts: 'verbose_litecore*.out', fingerprint: false
-                                        unstable("EE LIteCore Test Failed")
+                                    withCredentials([sshUserPrivateKey(credentialsId: 'CB SG Robot Github SSH Key', keyFileVariable: 'KEY')]) {
+                                        try {
+                                            sh 'docker run --rm -v $KEY:/root/.ssh/id_rsa -v `pwd`/sync_gateway_ee-linux:/sync_gateway -v `pwd`/verbose_litecore.out:/output.out -v `pwd`/verbose_litecore-sg_trace.out:/tmp/sglog/sg_trace.log couchbase/sg-test-litecore:latest -legacy-config'
+                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'EE with LiteCore Test Passed', status: 'SUCCESS')
+                                        } catch (Exception e) {
+                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'EE with LiteCore Test Failed', status: 'FAILURE')
+                                            // archive verbose test logs in the event of a test failure
+                                            archiveArtifacts artifacts: 'verbose_litecore*.out', fingerprint: false
+                                            unstable("EE LIteCore Test Failed")
+                                        }
                                     }
                                 }
                             }
