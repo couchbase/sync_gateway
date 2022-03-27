@@ -3283,6 +3283,82 @@ func TestUpdateExistingAttachment(t *testing.T) {
 	assert.Equal(t, "attachmentB", string(req.BodyBytes()))
 }
 
+// TestCBLRevposHandling mimics CBL 2.x's revpos handling (setting incoming revpos to the incoming generation).  Test
+// validates that proveAttachment isn't being invoked when the attachment is already present and the
+// digest doesn't change, regardless of revpos.
+func TestCBLRevposHandling(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		guestEnabled: true,
+	})
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClient(t, rt)
+	assert.NoError(t, err)
+	defer btc.Close()
+
+	var doc1Body db.Body
+	var doc2Body db.Body
+
+	// Add doc1 and doc2
+	req := rt.SendAdminRequest("PUT", "/db/doc1", `{}`)
+	assertStatus(t, req, http.StatusCreated)
+	doc1Bytes := req.BodyBytes()
+	req = rt.SendAdminRequest("PUT", "/db/doc2", `{}`)
+	assertStatus(t, req, http.StatusCreated)
+	doc2Bytes := req.BodyBytes()
+
+	require.NoError(t, rt.WaitForPendingChanges())
+
+	err = json.Unmarshal(doc1Bytes, &doc1Body)
+	assert.NoError(t, err)
+	err = json.Unmarshal(doc2Bytes, &doc2Body)
+	assert.NoError(t, err)
+
+	err = btc.StartOneshotPull()
+	assert.NoError(t, err)
+
+	_, ok := btc.WaitForRev("doc1", "1-ca9ad22802b66f662ff171f226211d5c")
+	require.True(t, ok)
+	_, ok = btc.WaitForRev("doc2", "1-ca9ad22802b66f662ff171f226211d5c")
+	require.True(t, ok)
+
+	attachmentAData := base64.StdEncoding.EncodeToString([]byte("attachmentA"))
+	attachmentBData := base64.StdEncoding.EncodeToString([]byte("attachmentB"))
+
+	revIDDoc1, err := btc.PushRev("doc1", doc1Body["rev"].(string), []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentAData+`"}}}`))
+	require.NoError(t, err)
+	revIDDoc2, err := btc.PushRev("doc2", doc2Body["rev"].(string), []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentBData+`"}}}`))
+	require.NoError(t, err)
+
+	err = rt.waitForRev("doc1", revIDDoc1)
+	assert.NoError(t, err)
+	err = rt.waitForRev("doc2", revIDDoc2)
+	assert.NoError(t, err)
+
+	_, err = rt.GetDatabase().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
+	_, err = rt.GetDatabase().GetDocument(base.TestCtx(t), "doc2", db.DocUnmarshalAll)
+
+	// Update doc1, don't change attachment, use correct revpos
+	revIDDoc1, err = btc.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"content_type":"","stub":true,"revpos":2}}}`))
+	require.NoError(t, err)
+
+	err = rt.waitForRev("doc1", revIDDoc1)
+	assert.NoError(t, err)
+
+	// Update doc1, don't change attachment, use revpos=generation of revid, as CBL 2.x does.  Should not proveAttachment on digest match.
+	revIDDoc1, err = btc.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"content_type":"","stub":true,"revpos":4}}}`))
+	require.NoError(t, err)
+
+	attachmentPushCount := rt.GetDatabase().DbStats.CBLReplicationPushStats.AttachmentPushCount.Value()
+	// Update doc1, change attachment digest with CBL revpos=generation.  Should getAttachment
+	revIDDoc1, err = btc.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=","length":11,"content_type":"","stub":true,"revpos":5}}}`))
+	require.NoError(t, err)
+
+	attachmentPushCountAfter := rt.GetDatabase().DbStats.CBLReplicationPushStats.AttachmentPushCount.Value()
+	assert.Equal(t, attachmentPushCount+1, attachmentPushCountAfter)
+
+}
+
 func TestRevocationMessage(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
