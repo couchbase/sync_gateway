@@ -123,6 +123,8 @@ type User interface {
 
 	RoleHistory() TimedSetHistory
 
+	InitializeRoles()
+
 	RevokedChannels(since uint64, lowSeq uint64, triggeredBy uint64) RevokedChannels
 
 	// Obtains the period over which the user had access to the given channel. Either directly or via a role.
