@@ -249,7 +249,7 @@ func (rc *ReplicationConfig) Upsert(c *ReplicationUpsertConfig) {
 		rc.Username = *c.Username
 	}
 
-	if c.Username != nil {
+	if c.Password != nil {
 		rc.Password = *c.Password
 	}
 
