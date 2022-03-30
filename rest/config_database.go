@@ -34,7 +34,7 @@ func (dbc *DatabaseConfig) Redacted() (*DatabaseConfig, error) {
 	}
 
 	if config.Guest != nil && config.Guest.Password != nil && *config.Guest.Password != "" {
-		config.Guest.Password = base.StringPtr(base.RedactedStr)
+		config.Guest.Password = base.Ptr(base.RedactedStr)
 	}
 
 	return &config, nil
@@ -73,62 +73,62 @@ func DefaultDbConfig(sc *StartupConfig) *DbConfig {
 	dbConfig := DbConfig{
 		BucketConfig:       BucketConfig{},
 		Name:               "",
-		Sync:               base.StringPtr(channels.DefaultSyncFunction),
+		Sync:               base.Ptr(channels.DefaultSyncFunction),
 		Users:              nil,
 		Roles:              nil,
 		RevsLimit:          nil, // Set this below struct
-		AutoImport:         base.BoolPtr(base.DefaultAutoImport),
+		AutoImport:         base.Ptr(base.DefaultAutoImport),
 		ImportPartitions:   base.Uint16Ptr(base.DefaultImportPartitions),
 		ImportFilter:       nil,
-		ImportBackupOldRev: base.BoolPtr(false),
+		ImportBackupOldRev: base.Ptr(false),
 		EventHandlers:      nil,
 		FeedType:           "",
-		AllowEmptyPassword: base.BoolPtr(false),
+		AllowEmptyPassword: base.Ptr(false),
 		CacheConfig: &CacheConfig{
 			RevCacheConfig: &RevCacheConfig{
 				Size:       base.Uint32Ptr(db.DefaultRevisionCacheSize),
 				ShardCount: base.Uint16Ptr(db.DefaultRevisionCacheShardCount),
 			},
 			ChannelCacheConfig: &ChannelCacheConfig{
-				MaxNumber:            base.IntPtr(db.DefaultChannelCacheMaxNumber),
-				HighWatermarkPercent: base.IntPtr(db.DefaultCompactHighWatermarkPercent),
-				LowWatermarkPercent:  base.IntPtr(db.DefaultCompactLowWatermarkPercent),
+				MaxNumber:            base.Ptr(db.DefaultChannelCacheMaxNumber),
+				HighWatermarkPercent: base.Ptr(db.DefaultCompactHighWatermarkPercent),
+				LowWatermarkPercent:  base.Ptr(db.DefaultCompactLowWatermarkPercent),
 				MaxWaitPending:       base.Uint32Ptr(uint32(db.DefaultCachePendingSeqMaxWait.Milliseconds())),
-				MaxNumPending:        base.IntPtr(db.DefaultCachePendingSeqMaxNum),
+				MaxNumPending:        base.Ptr(db.DefaultCachePendingSeqMaxNum),
 				MaxWaitSkipped:       base.Uint32Ptr(uint32(db.DefaultSkippedSeqMaxWait.Milliseconds())),
-				EnableStarChannel:    base.BoolPtr(false),
-				MaxLength:            base.IntPtr(db.DefaultChannelCacheMaxLength),
-				MinLength:            base.IntPtr(db.DefaultChannelCacheMinLength),
-				ExpirySeconds:        base.IntPtr(int(db.DefaultChannelCacheAge.Seconds())),
+				EnableStarChannel:    base.Ptr(false),
+				MaxLength:            base.Ptr(db.DefaultChannelCacheMaxLength),
+				MinLength:            base.Ptr(db.DefaultChannelCacheMinLength),
+				ExpirySeconds:        base.Ptr(int(db.DefaultChannelCacheAge.Seconds())),
 			},
 		},
-		StartOffline:                base.BoolPtr(false),
+		StartOffline:                base.Ptr(false),
 		OIDCConfig:                  nil,
 		OldRevExpirySeconds:         base.Uint32Ptr(base.DefaultOldRevExpirySeconds),
 		ViewQueryTimeoutSecs:        base.Uint32Ptr(base.DefaultViewTimeoutSecs),
 		LocalDocExpirySecs:          base.Uint32Ptr(base.DefaultLocalDocExpirySecs),
-		EnableXattrs:                base.BoolPtr(base.DefaultUseXattrs),
-		SecureCookieOverride:        base.BoolPtr(sc.API.HTTPS.TLSCertPath != ""),
+		EnableXattrs:                base.Ptr(base.DefaultUseXattrs),
+		SecureCookieOverride:        base.Ptr(sc.API.HTTPS.TLSCertPath != ""),
 		SessionCookieName:           "",
-		SessionCookieHTTPOnly:       base.BoolPtr(false),
-		AllowConflicts:              base.BoolPtr(base.DefaultAllowConflicts),
-		NumIndexReplicas:            base.UintPtr(DefaultNumIndexReplicas),
-		UseViews:                    base.BoolPtr(false),
-		SendWWWAuthenticateHeader:   base.BoolPtr(true),
+		SessionCookieHTTPOnly:       base.Ptr(false),
+		AllowConflicts:              base.Ptr(base.DefaultAllowConflicts),
+		NumIndexReplicas:            base.Ptr(DefaultNumIndexReplicas),
+		UseViews:                    base.Ptr(false),
+		SendWWWAuthenticateHeader:   base.Ptr(true),
 		BucketOpTimeoutMs:           nil,
 		SlowQueryWarningThresholdMs: base.Uint32Ptr(kDefaultSlowQueryWarningThreshold),
 		DeltaSync: &DeltaSyncConfig{
-			Enabled:          base.BoolPtr(db.DefaultDeltaSyncEnabled),
+			Enabled:          base.Ptr(db.DefaultDeltaSyncEnabled),
 			RevMaxAgeSeconds: base.Uint32Ptr(db.DefaultDeltaSyncRevMaxAge),
 		},
 		CompactIntervalDays:              base.Float32Ptr(float32(db.DefaultCompactInterval)),
-		SGReplicateEnabled:               base.BoolPtr(db.DefaultSGReplicateEnabled),
-		SGReplicateWebsocketPingInterval: base.IntPtr(int(db.DefaultSGReplicateWebsocketPingInterval.Seconds())),
+		SGReplicateEnabled:               base.Ptr(db.DefaultSGReplicateEnabled),
+		SGReplicateWebsocketPingInterval: base.Ptr(int(db.DefaultSGReplicateWebsocketPingInterval.Seconds())),
 		Replications:                     nil,
-		ServeInsecureAttachmentTypes:     base.BoolPtr(false),
-		QueryPaginationLimit:             base.IntPtr(db.DefaultQueryPaginationLimit),
+		ServeInsecureAttachmentTypes:     base.Ptr(false),
+		QueryPaginationLimit:             base.Ptr(db.DefaultQueryPaginationLimit),
 		UserXattrKey:                     "",
-		ClientPartitionWindowSecs:        base.IntPtr(int(base.DefaultClientPartitionWindow.Seconds())),
+		ClientPartitionWindowSecs:        base.Ptr(int(base.DefaultClientPartitionWindow.Seconds())),
 	}
 
 	revsLimit := db.DefaultRevsLimitNoConflicts

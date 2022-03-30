@@ -778,66 +778,12 @@ func GetGoCBBucketFromBaseBucket(baseBucket Bucket) (bucket CouchbaseBucketGoCB,
 	}
 }
 
-// StdlibDurationPtr returns a pointer to the given time.Duration literal.
-func StdlibDurationPtr(value time.Duration) *time.Duration {
-	return &value
-}
-
-// DurationPtr returns a pointer to the given ConfigDuration literal.
-func DurationPtr(value ConfigDuration) *ConfigDuration {
-	return &value
-}
-
-// LogLevelPtr returns a pointer to the given LogLevel literal.
-func LogLevelPtr(value LogLevel) *LogLevel {
-	return &value
-}
-
-// StringPtr returns a pointer to the given string literal.
-func StringPtr(value string) *string {
-	return &value
-}
-
-// Uint16Ptr returns a pointer to the given uint16 literal.
-func Uint16Ptr(u uint16) *uint16 {
-	return &u
-}
-
-// Uint32Ptr returns a pointer to the given uint32 literal.
-func Uint32Ptr(u uint32) *uint32 {
-	return &u
-}
-
-// Uint64Ptr returns a pointer to the given uint64 literal.
-func Uint64Ptr(u uint64) *uint64 {
-	return &u
-}
-
-// UintPtr returns a pointer to the given uint literal.
-func UintPtr(u uint) *uint {
-	return &u
-}
-
-// IntPtr returns a pointer to the given int literal.
-func IntPtr(i int) *int {
-	return &i
-}
-
-// BoolPtr returns a pointer to the given bool literal.
-func BoolPtr(b bool) *bool {
-	return &b
-}
-
 // BoolDefault returns ifNil if b is nil, or else returns dereferenced value of b
 func BoolDefault(b *bool, ifNil bool) bool {
 	if b != nil {
 		return *b
 	}
 	return ifNil
-}
-
-func Float32Ptr(f float32) *float32 {
-	return &f
 }
 
 // Convert a Bucket, or a Couchbase URI (eg, couchbase://host1,host2) to a list of HTTP URLs with ports (eg, ["http://host1:8091", "http://host2:8091"])
@@ -1667,4 +1613,10 @@ func TerminateAndWaitForClose(terminator chan struct{}, done chan struct{}, time
 	}
 
 	return nil
+}
+
+// Ptr returns a pointer to a copy of the value.
+// This is useful for tests with inline values and getting pointer values from constants.
+func Ptr[T any](val T) *T {
+	return &val
 }

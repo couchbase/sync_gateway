@@ -405,7 +405,7 @@ func TestGetOIDCCallbackURL(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			providers := auth.OIDCProviderMap{"foo": mockProvider("foo"), "bar": mockProvider("bar")}
-			openIDConnectOptions := auth.OIDCOptions{Providers: providers, DefaultProvider: base.StringPtr("foo")}
+			openIDConnectOptions := auth.OIDCOptions{Providers: providers, DefaultProvider: base.Ptr("foo")}
 			rtConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{OIDCConfig: &openIDConnectOptions}}}
 			rt := NewRestTester(t, &rtConfig)
 			defer rt.Close()
@@ -456,7 +456,7 @@ func mockProvider(name string) *auth.OIDCProvider {
 		Name:          name,
 		ClientID:      "baz",
 		UserPrefix:    name,
-		ValidationKey: base.StringPtr("qux"),
+		ValidationKey: base.Ptr("qux"),
 	}
 }
 
@@ -466,7 +466,7 @@ func mockProviderWithRegister(name string) *auth.OIDCProvider {
 		Name:          name,
 		ClientID:      "baz",
 		UserPrefix:    name,
-		ValidationKey: base.StringPtr("qux"),
+		ValidationKey: base.Ptr("qux"),
 		Register:      true,
 	}
 }
@@ -478,7 +478,7 @@ func mockProviderWithRegisterWithAccessToken(name string) *auth.OIDCProvider {
 		Name:               name,
 		ClientID:           "baz",
 		UserPrefix:         name,
-		ValidationKey:      base.StringPtr("qux"),
+		ValidationKey:      base.Ptr("qux"),
 		Register:           true,
 		IncludeAccessToken: true,
 	}
@@ -490,7 +490,7 @@ func mockProviderWithAccessToken(name string) *auth.OIDCProvider {
 		Name:               name,
 		ClientID:           "baz",
 		UserPrefix:         name,
-		ValidationKey:      base.StringPtr("qux"),
+		ValidationKey:      base.Ptr("qux"),
 		IncludeAccessToken: true,
 	}
 }
@@ -501,7 +501,7 @@ func mockProviderWithCallbackStateDisabled(name string) *auth.OIDCProvider {
 		Name:                 name,
 		ClientID:             "baz",
 		UserPrefix:           name,
-		ValidationKey:        base.StringPtr("qux"),
+		ValidationKey:        base.Ptr("qux"),
 		Register:             true,
 		IncludeAccessToken:   true,
 		DisableCallbackState: true,
@@ -515,7 +515,7 @@ func mockProviderWithCallbackStateDisabledWithNoRegister(name string) *auth.OIDC
 		Name:                 name,
 		ClientID:             "baz",
 		UserPrefix:           name,
-		ValidationKey:        base.StringPtr("qux"),
+		ValidationKey:        base.Ptr("qux"),
 		IncludeAccessToken:   true,
 		DisableCallbackState: true,
 	}
@@ -526,7 +526,7 @@ func mockProviderWithRegisterWithUsernameClaim(name, usernameClaim string) *auth
 	return &auth.OIDCProvider{
 		Name:          name,
 		ClientID:      "baz",
-		ValidationKey: base.StringPtr("qux"),
+		ValidationKey: base.Ptr("qux"),
 		Register:      true,
 		UsernameClaim: usernameClaim,
 	}
@@ -539,7 +539,7 @@ func mockProviderWithRegisterWithUsernameClaimWithUserPrefix(name, usernameClaim
 		Name:          name,
 		ClientID:      "baz",
 		UserPrefix:    name,
-		ValidationKey: base.StringPtr("qux"),
+		ValidationKey: base.Ptr("qux"),
 		Register:      true,
 		UsernameClaim: usernameClaim,
 	}
@@ -550,7 +550,7 @@ func mockProviderWithUsernameClaimWithUserPrefix(name, usernameClaim string) *au
 	return &auth.OIDCProvider{
 		Name:          name,
 		ClientID:      "baz",
-		ValidationKey: base.StringPtr("qux"),
+		ValidationKey: base.Ptr("qux"),
 		UsernameClaim: usernameClaim,
 		UserPrefix:    name,
 	}
@@ -561,7 +561,7 @@ func mockProviderWithUsernameClaim(name, usernameClaim string) *auth.OIDCProvide
 	return &auth.OIDCProvider{
 		Name:          name,
 		ClientID:      "baz",
-		ValidationKey: base.StringPtr("qux"),
+		ValidationKey: base.Ptr("qux"),
 		UsernameClaim: usernameClaim,
 	}
 }
@@ -571,7 +571,7 @@ func mockProviderWithUserPrefix(name string) *auth.OIDCProvider {
 	return &auth.OIDCProvider{
 		Name:          name,
 		ClientID:      "baz",
-		ValidationKey: base.StringPtr("qux"),
+		ValidationKey: base.Ptr("qux"),
 		UserPrefix:    name,
 	}
 }
@@ -582,7 +582,7 @@ func mockProviderWithRegisterWithUserPrefix(name string) *auth.OIDCProvider {
 	return &auth.OIDCProvider{
 		Name:          name,
 		ClientID:      "baz",
-		ValidationKey: base.StringPtr("qux"),
+		ValidationKey: base.Ptr("qux"),
 		Register:      true,
 		UserPrefix:    name,
 	}

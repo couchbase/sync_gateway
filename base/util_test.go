@@ -1609,3 +1609,42 @@ func TestTerminateAndWaitForClose(t *testing.T) {
 		})
 	}
 }
+
+func TestPtr(t *testing.T) {
+	t.Run("mutability", func(t *testing.T) {
+		tests := []struct {
+			name  string
+			value any
+		}{
+			{"int", 123},
+			{"string", "foo"},
+			{"bool", false},
+		}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				v := test.value
+				p := Ptr(v)
+				assert.Equal(t, v, *p)
+				// p is a pointer *to a copy of* v, so changing v will not change p
+				v = []any{"bar", 456, true}
+				assert.Equal(t, test.value, *p)
+			})
+		}
+	})
+
+	t.Run("alloc", func(t *testing.T) {
+		r := testing.Benchmark(func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				p1 := Ptr(1234)
+				p2 := Ptr(4321)
+				sum := *p1 + *p2
+				if sum != 5555 {
+					b.Errorf("expected summed value of 5555 but got %v", sum)
+				}
+			}
+		})
+		assert.LessOrEqual(t, r.AllocsPerOp(), int64(0), "Expected Ptr() to be a zero-alloc operation")
+		t.Log(r.String() + "\t" + r.MemString())
+	})
+}

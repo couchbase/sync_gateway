@@ -1824,7 +1824,7 @@ func TestImportRevisionCopy(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			ImportBackupOldRev: base.BoolPtr(true),
+			ImportBackupOldRev: base.Ptr(true),
 			AutoImport:         false,
 		}},
 	}
@@ -1881,7 +1881,7 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			ImportBackupOldRev: base.BoolPtr(true),
+			ImportBackupOldRev: base.Ptr(true),
 			AutoImport:         false,
 		}},
 	}
@@ -2199,7 +2199,7 @@ func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 		SyncFn: `function(doc) {console.log("Doc in Sync Fn:" + JSON.stringify(doc))}`,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: false,
-			ImportFilter: base.StringPtr(`function (doc) {
+			ImportFilter: base.Ptr(`function (doc) {
 				console.log("Doc in Import Filter:" + JSON.stringify(doc));
 				if (doc.channels || doc._deleted) {
 					return true

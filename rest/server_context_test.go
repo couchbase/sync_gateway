@@ -38,7 +38,7 @@ func TestRecordGoroutineHighwaterMark(t *testing.T) {
 
 }
 
-//////// MOCK HTTP CLIENT: (TODO: Move this into a separate package)
+// ////// MOCK HTTP CLIENT: (TODO: Move this into a separate package)
 
 // Creates a filled-in http.Response from minimal details
 func MakeResponse(status int, headers map[string]string, body string) *http.Response {
@@ -111,7 +111,7 @@ func TestAllDatabaseNames(t *testing.T) {
 	defer tb2.Close()
 
 	serverConfig := &StartupConfig{
-		Bootstrap: BootstrapConfig{UseTLSServer: base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())), ServerTLSSkipVerify: base.BoolPtr(base.TestTLSSkipVerify())},
+		Bootstrap: BootstrapConfig{UseTLSServer: base.Ptr(base.ServerIsTLS(base.UnitTestUrl())), ServerTLSSkipVerify: base.Ptr(base.TestTLSSkipVerify())},
 		API:       APIConfig{CORS: &CORSConfig{}, AdminInterface: DefaultAdminInterface}}
 	serverContext := NewServerContext(serverConfig, false)
 	defer serverContext.Close()
@@ -121,8 +121,8 @@ func TestAllDatabaseNames(t *testing.T) {
 	dbConfig := DbConfig{
 		BucketConfig:       bucketConfigFromTestBucket(tb1),
 		Name:               "imdb1",
-		AllowEmptyPassword: base.BoolPtr(true),
-		NumIndexReplicas:   base.UintPtr(0),
+		AllowEmptyPassword: base.Ptr(true),
+		NumIndexReplicas:   base.Ptr(0),
 		EnableXattrs:       &xattrs,
 		UseViews:           &useViews,
 	}
@@ -134,8 +134,8 @@ func TestAllDatabaseNames(t *testing.T) {
 	dbConfig = DbConfig{
 		BucketConfig:       bucketConfigFromTestBucket(tb2),
 		Name:               "imdb2",
-		AllowEmptyPassword: base.BoolPtr(true),
-		NumIndexReplicas:   base.UintPtr(0),
+		AllowEmptyPassword: base.Ptr(true),
+		NumIndexReplicas:   base.Ptr(0),
 		EnableXattrs:       &xattrs,
 		UseViews:           &useViews,
 	}
@@ -191,7 +191,7 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 	dbConfig = DbConfig{
 		BucketConfig:       bucketConfig,
 		Name:               databaseName,
-		AllowEmptyPassword: base.BoolPtr(true),
+		AllowEmptyPassword: base.Ptr(true),
 		EnableXattrs:       &xattrs,
 		UseViews:           &useViews,
 	}
@@ -337,8 +337,8 @@ func TestStartAndStopHTTPServers(t *testing.T) {
 	config.API.MetricsInterface = "127.0.0.1:24986"
 
 	config.Bootstrap.Server = base.UnitTestUrl()
-	config.Bootstrap.UseTLSServer = base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl()))
-	config.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
+	config.Bootstrap.UseTLSServer = base.Ptr(base.ServerIsTLS(base.UnitTestUrl()))
+	config.Bootstrap.ServerTLSSkipVerify = base.Ptr(base.TestTLSSkipVerify())
 	config.Bootstrap.Username = base.TestClusterUsername()
 	config.Bootstrap.Password = base.TestClusterPassword()
 
@@ -376,7 +376,7 @@ func TestTLSSkipVerifyCombinations(t *testing.T) {
 	}{
 		{
 			name:                "CA Provided, explicitly not skipping TLS validation",
-			serverTLSSkipVerify: base.BoolPtr(false),
+			serverTLSSkipVerify: base.Ptr(false),
 			caCert:              "t.ca",
 			expectError:         false,
 		},
@@ -387,13 +387,13 @@ func TestTLSSkipVerifyCombinations(t *testing.T) {
 		},
 		{
 			name:                "CA Provided and skipping TLS validation",
-			serverTLSSkipVerify: base.BoolPtr(true),
+			serverTLSSkipVerify: base.Ptr(true),
 			caCert:              "t.ca",
 			expectError:         true,
 		},
 		{
 			name:                "Skipping TLS validation, no CA",
-			serverTLSSkipVerify: base.BoolPtr(true),
+			serverTLSSkipVerify: base.Ptr(true),
 			caCert:              "",
 			expectError:         false,
 		},
@@ -403,7 +403,7 @@ func TestTLSSkipVerifyCombinations(t *testing.T) {
 		},
 		{
 			name:                "No CA, no TLS validation skip explicitly",
-			serverTLSSkipVerify: base.BoolPtr(false),
+			serverTLSSkipVerify: base.Ptr(false),
 			expectError:         false,
 		},
 	}
@@ -439,7 +439,7 @@ func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
 	}{
 		{
 			name:                "CA Provided, explicitly not skipping TLS validation",
-			serverTLSSkipVerify: base.BoolPtr(false),
+			serverTLSSkipVerify: base.Ptr(false),
 			caCert:              "t.ca",
 		},
 		{
@@ -448,7 +448,7 @@ func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
 		},
 		{
 			name:                "Skipping TLS validation, no CA",
-			serverTLSSkipVerify: base.BoolPtr(true),
+			serverTLSSkipVerify: base.Ptr(true),
 			caCert:              "",
 		},
 		{
@@ -456,7 +456,7 @@ func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
 		},
 		{
 			name:                "No CA, no TLS validation skip explicitly",
-			serverTLSSkipVerify: base.BoolPtr(false),
+			serverTLSSkipVerify: base.Ptr(false),
 		},
 	}
 	for _, test := range testCases {
@@ -468,7 +468,7 @@ func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, test.caCert, spec.CACertPath)
 			if test.serverTLSSkipVerify == nil {
-				test.serverTLSSkipVerify = base.BoolPtr(false)
+				test.serverTLSSkipVerify = base.Ptr(false)
 			}
 			assert.Equal(t, spec.TLSSkipVerify, *test.serverTLSSkipVerify)
 		})
@@ -572,7 +572,7 @@ func TestLogFlush(t *testing.T) {
 			5,
 			func(config StartupConfig) StartupConfig {
 				config.Logging.Trace = &base.FileLoggerConfig{
-					Enabled: base.BoolPtr(true),
+					Enabled: base.Ptr(true),
 				}
 				return config
 			},
@@ -582,10 +582,10 @@ func TestLogFlush(t *testing.T) {
 			6,
 			func(config StartupConfig) StartupConfig {
 				config.Logging.Debug = &base.FileLoggerConfig{
-					Enabled: base.BoolPtr(true),
+					Enabled: base.Ptr(true),
 				}
 				config.Logging.Trace = &base.FileLoggerConfig{
-					Enabled: base.BoolPtr(true),
+					Enabled: base.Ptr(true),
 				}
 				return config
 			},
@@ -595,7 +595,7 @@ func TestLogFlush(t *testing.T) {
 			3,
 			func(config StartupConfig) StartupConfig {
 				config.Logging.Error = &base.FileLoggerConfig{
-					Enabled: base.BoolPtr(false),
+					Enabled: base.Ptr(false),
 				}
 				return config
 			},

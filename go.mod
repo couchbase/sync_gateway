@@ -1,6 +1,6 @@
 module github.com/couchbase/sync_gateway
 
-go 1.17
+go 1.18
 
 require (
 	github.com/coreos/go-oidc v2.2.1+incompatible

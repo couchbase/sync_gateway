@@ -328,7 +328,7 @@ func TestUserPasswordValidation(t *testing.T) {
 func TestUserAllowEmptyPassword(t *testing.T) {
 
 	// PUT a user
-	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{AllowEmptyPassword: base.BoolPtr(true)}}})
+	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{AllowEmptyPassword: base.Ptr(true)}}})
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)
@@ -1510,7 +1510,7 @@ func TestResyncStop(t *testing.T) {
 		&RestTesterConfig{
 			SyncFn: syncFn,
 			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-				QueryPaginationLimit: base.IntPtr(10),
+				QueryPaginationLimit: base.Ptr(10),
 			}},
 			TestBucket: leakyTestBucket,
 		},
@@ -2215,7 +2215,7 @@ func TestHandleCreateDB(t *testing.T) {
 	resource := fmt.Sprintf("/%s/", bucket)
 
 	bucketConfig := BucketConfig{Server: &server, Bucket: &bucket, KvTLSPort: kvTLSPort}
-	dbConfig := &DbConfig{BucketConfig: bucketConfig, SGReplicateEnabled: base.BoolPtr(false)}
+	dbConfig := &DbConfig{BucketConfig: bucketConfig, SGReplicateEnabled: base.Ptr(false)}
 	var respBody db.Body
 
 	reqBody, err := base.JSONMarshal(dbConfig)
@@ -2295,10 +2295,10 @@ func TestHandleDBConfig(t *testing.T) {
 				Size: base.Uint32Ptr(1337), ShardCount: base.Uint16Ptr(7),
 			},
 		},
-		NumIndexReplicas:   base.UintPtr(0),
-		EnableXattrs:       base.BoolPtr(base.TestUseXattrs()),
-		UseViews:           base.BoolPtr(base.TestsDisableGSI()),
-		SGReplicateEnabled: base.BoolPtr(false),
+		NumIndexReplicas:   base.Ptr(0),
+		EnableXattrs:       base.Ptr(base.TestUseXattrs()),
+		UseViews:           base.Ptr(base.TestsDisableGSI()),
+		SGReplicateEnabled: base.Ptr(false),
 	}
 	reqBody, err := base.JSONMarshal(dbConfig)
 	assert.NoError(t, err, "Error unmarshalling changes response")
@@ -2602,7 +2602,7 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 }
 
 func TestConfigRedaction(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{Users: map[string]*db.PrincipalConfig{"alice": {Password: base.StringPtr("password")}}}}})
+	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{Users: map[string]*db.PrincipalConfig{"alice": {Password: base.Ptr("password")}}}}})
 	defer rt.Close()
 
 	// Test default db config redaction
@@ -4321,11 +4321,11 @@ function (doc) {
 				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 					Users: map[string]*db.PrincipalConfig{
 						"alice": {
-							Password:         base.StringPtr("pass"),
+							Password:         base.Ptr("pass"),
 							ExplicitChannels: base.SetOf("chanAlpha", "chanBeta", "chanCharlie", "chanHotel", "chanIndia"),
 						},
 						"bob": {
-							Password:         base.StringPtr("pass"),
+							Password:         base.Ptr("pass"),
 							ExplicitChannels: base.SetOf("chanDelta", "chanEcho"),
 						},
 					},
@@ -4453,7 +4453,7 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 		DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
-					Password: base.StringPtr("pass"),
+					Password: base.Ptr("pass"),
 				},
 			},
 		},

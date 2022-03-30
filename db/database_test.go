@@ -1060,7 +1060,7 @@ func TestConflictRevLimit(t *testing.T) {
 
 	// Test AllowConflicts
 	dbOptions := DatabaseContextOptions{
-		AllowConflicts: base.BoolPtr(true),
+		AllowConflicts: base.Ptr(true),
 	}
 
 	db = setupTestDBWithOptions(t, dbOptions)
@@ -1069,7 +1069,7 @@ func TestConflictRevLimit(t *testing.T) {
 
 	// Test AllowConflicts false
 	dbOptions = DatabaseContextOptions{
-		AllowConflicts: base.BoolPtr(false),
+		AllowConflicts: base.Ptr(false),
 	}
 
 	db = setupTestDBWithOptions(t, dbOptions)
@@ -1084,7 +1084,7 @@ func TestNoConflictsMode(t *testing.T) {
 	defer db.Close()
 	// Strictly speaking, this flag should be set before opening the database, but it only affects
 	// Put operations and replication, so it doesn't make a difference if we do it afterwards.
-	db.Options.AllowConflicts = base.BoolPtr(false)
+	db.Options.AllowConflicts = base.Ptr(false)
 
 	// Create revs 1 and 2 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
@@ -1187,7 +1187,7 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 	assert.NoError(t, err, "add 2-a")
 
 	// Set AllowConflicts to false
-	db.Options.AllowConflicts = base.BoolPtr(false)
+	db.Options.AllowConflicts = base.Ptr(false)
 
 	// Attempt to tombstone a non-leaf node of a conflicted document
 	_, _, err = db.PutExistingRevWithBody("doc1", body, []string{"2-c", "1-a"}, false)
@@ -1263,7 +1263,7 @@ func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T)
 	assert.NoError(t, err, "add 2-a")
 
 	// Set AllowConflicts to false
-	db.Options.AllowConflicts = base.BoolPtr(false)
+	db.Options.AllowConflicts = base.Ptr(false)
 	delete(body, "n")
 
 	// Attempt to tombstone a non-leaf node of a conflicted document

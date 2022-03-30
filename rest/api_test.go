@@ -992,7 +992,7 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 	// clear out the sync function.
 	dbConfigCopy, err := rt1.DatabaseConfig.DeepCopy()
 	assert.NoError(t, err, "Unexpected error")
-	dbConfigCopy.Sync = base.StringPtr("")
+	dbConfigCopy.Sync = base.Ptr("")
 
 	// Add a second database that uses the same underlying bucket.
 	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(dbConfigCopy)
@@ -1083,7 +1083,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 	// clear out the sync function.
 	dbConfigCopy, err := rt1.DatabaseConfig.DeepCopy()
 	assert.NoError(t, err, "Unexpected error calling DeepCopy()")
-	dbConfigCopy.Sync = base.StringPtr("")
+	dbConfigCopy.Sync = base.Ptr("")
 
 	// Add a second database that uses the same underlying bucket.
 	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(dbConfigCopy)
@@ -1181,7 +1181,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 	// clear out the sync function.
 	dbConfigCopy, err := rt1.DatabaseConfig.DeepCopy()
 	assert.NoError(t, err, "Unexpected error calling DeepCopy()")
-	dbConfigCopy.Sync = base.StringPtr("")
+	dbConfigCopy.Sync = base.Ptr("")
 
 	// Add a second database that uses the same underlying bucket.
 	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(dbConfigCopy)
@@ -5406,7 +5406,7 @@ func TestAttachmentContentType(t *testing.T) {
 	}
 
 	// Ran against allow insecure
-	rt.DatabaseConfig.ServeInsecureAttachmentTypes = base.BoolPtr(true)
+	rt.DatabaseConfig.ServeInsecureAttachmentTypes = base.Ptr(true)
 	for index, _ := range tests {
 		response := rt.SendRequest("GET", fmt.Sprintf("/db/doc_allow_insecure_%d/login.aspx", index), "")
 		contentDisposition := response.Header().Get("Content-Disposition")
@@ -7512,13 +7512,13 @@ func TestRevocationsWithQueryLimit(t *testing.T) {
 
 	revocationTester, rt := initScenario(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			QueryPaginationLimit: base.IntPtr(2),
+			QueryPaginationLimit: base.Ptr(2),
 			CacheConfig: &CacheConfig{
 				RevCacheConfig: &RevCacheConfig{
 					Size: base.Uint32Ptr(0),
 				},
 				ChannelCacheConfig: &ChannelCacheConfig{
-					MaxNumber: base.IntPtr(0),
+					MaxNumber: base.Ptr(0),
 				},
 			},
 		}},
@@ -7561,13 +7561,13 @@ func TestRevocationsWithQueryLimitChangesLimit(t *testing.T) {
 
 	revocationTester, rt := initScenario(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			QueryPaginationLimit: base.IntPtr(2),
+			QueryPaginationLimit: base.Ptr(2),
 			CacheConfig: &CacheConfig{
 				RevCacheConfig: &RevCacheConfig{
 					Size: base.Uint32Ptr(0),
 				},
 				ChannelCacheConfig: &ChannelCacheConfig{
-					MaxNumber: base.IntPtr(0),
+					MaxNumber: base.Ptr(0),
 				},
 			},
 		}},
@@ -7611,13 +7611,13 @@ func TestRevocationsWithQueryLimitChangesLimit(t *testing.T) {
 func TestUserHasDocAccessDocNotFound(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			QueryPaginationLimit: base.IntPtr(2),
+			QueryPaginationLimit: base.Ptr(2),
 			CacheConfig: &CacheConfig{
 				RevCacheConfig: &RevCacheConfig{
 					Size: base.Uint32Ptr(0),
 				},
 				ChannelCacheConfig: &ChannelCacheConfig{
-					MaxNumber: base.IntPtr(0),
+					MaxNumber: base.Ptr(0),
 				},
 			},
 		}},
@@ -7650,13 +7650,13 @@ func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
 
 	revocationTester, rt := initScenario(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			QueryPaginationLimit: base.IntPtr(2),
+			QueryPaginationLimit: base.Ptr(2),
 			CacheConfig: &CacheConfig{
 				RevCacheConfig: &RevCacheConfig{
 					Size: base.Uint32Ptr(0),
 				},
 				ChannelCacheConfig: &ChannelCacheConfig{
-					MaxNumber: base.IntPtr(0),
+					MaxNumber: base.Ptr(0),
 				},
 			},
 		}},
@@ -9116,7 +9116,7 @@ func TestAttachmentRemovalWithConflicts(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
-				AllowConflicts: base.BoolPtr(true),
+				AllowConflicts: base.Ptr(true),
 			},
 		},
 	})

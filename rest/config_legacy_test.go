@@ -33,19 +33,19 @@ func TestLegacyConfigToStartupConfig(t *testing.T) {
 		{
 			name:     "Override *duration for StatsLogFrequency",
 			base:     StartupConfig{Unsupported: UnsupportedConfig{StatsLogFrequency: base.NewConfigDuration(time.Minute)}},
-			input:    LegacyServerConfig{Unsupported: &UnsupportedServerConfigLegacy{StatsLogFrequencySecs: base.UintPtr(10)}},
+			input:    LegacyServerConfig{Unsupported: &UnsupportedServerConfigLegacy{StatsLogFrequencySecs: base.Ptr(10)}},
 			expected: StartupConfig{Unsupported: UnsupportedConfig{StatsLogFrequency: base.NewConfigDuration(time.Second * 10)}},
 		},
 		{
 			name:     "Override duration zero ServerReadTimeout",
 			base:     StartupConfig{API: APIConfig{ServerReadTimeout: base.NewConfigDuration(time.Second * 10)}},
-			input:    LegacyServerConfig{ServerReadTimeout: base.IntPtr(0)},
+			input:    LegacyServerConfig{ServerReadTimeout: base.Ptr(0)},
 			expected: StartupConfig{API: APIConfig{ServerReadTimeout: base.NewConfigDuration(0)}},
 		},
 		{
 			name:     "Override duration non-zero ServerWriteTimeout",
 			base:     StartupConfig{API: APIConfig{ServerWriteTimeout: base.NewConfigDuration(time.Second * 10)}},
-			input:    LegacyServerConfig{ServerWriteTimeout: base.IntPtr(30)},
+			input:    LegacyServerConfig{ServerWriteTimeout: base.Ptr(30)},
 			expected: StartupConfig{API: APIConfig{ServerWriteTimeout: base.NewConfigDuration(time.Second * 30)}},
 		},
 		{
@@ -56,56 +56,56 @@ func TestLegacyConfigToStartupConfig(t *testing.T) {
 		},
 		{
 			name:     "Override bool Pretty",
-			base:     StartupConfig{API: APIConfig{Pretty: base.BoolPtr(true)}},
+			base:     StartupConfig{API: APIConfig{Pretty: base.Ptr(true)}},
 			input:    LegacyServerConfig{Pretty: false},
-			expected: StartupConfig{API: APIConfig{Pretty: base.BoolPtr(true)}},
+			expected: StartupConfig{API: APIConfig{Pretty: base.Ptr(true)}},
 		},
 		{
 			name:     "Override *bool(false) CompressResponses",
-			base:     StartupConfig{API: APIConfig{CompressResponses: base.BoolPtr(true)}},
-			input:    LegacyServerConfig{CompressResponses: base.BoolPtr(false)},
-			expected: StartupConfig{API: APIConfig{CompressResponses: base.BoolPtr(false)}},
+			base:     StartupConfig{API: APIConfig{CompressResponses: base.Ptr(true)}},
+			input:    LegacyServerConfig{CompressResponses: base.Ptr(false)},
+			expected: StartupConfig{API: APIConfig{CompressResponses: base.Ptr(false)}},
 		},
 		{
 			name:     "Override nil *bool HTTP2Enable",
 			base:     StartupConfig{},
-			input:    LegacyServerConfig{Unsupported: &UnsupportedServerConfigLegacy{Http2Config: &HTTP2Config{Enabled: base.BoolPtr(false)}}},
-			expected: StartupConfig{Unsupported: UnsupportedConfig{HTTP2: &HTTP2Config{Enabled: base.BoolPtr(false)}}},
+			input:    LegacyServerConfig{Unsupported: &UnsupportedServerConfigLegacy{Http2Config: &HTTP2Config{Enabled: base.Ptr(false)}}},
+			expected: StartupConfig{Unsupported: UnsupportedConfig{HTTP2: &HTTP2Config{Enabled: base.Ptr(false)}}},
 		},
 		{
 			name:     "Absent property AdminInterfaceAuthentication",
-			base:     StartupConfig{API: APIConfig{AdminInterfaceAuthentication: base.BoolPtr(true)}},
+			base:     StartupConfig{API: APIConfig{AdminInterfaceAuthentication: base.Ptr(true)}},
 			input:    LegacyServerConfig{},
-			expected: StartupConfig{API: APIConfig{AdminInterfaceAuthentication: base.BoolPtr(true)}},
+			expected: StartupConfig{API: APIConfig{AdminInterfaceAuthentication: base.Ptr(true)}},
 		},
 		{
 			name:     "http:// to couchbase://",
 			base:     StartupConfig{},
-			input:    LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("http://http.couchbase.com:8091,host2:8091,host1,[2001:db8::8811],[2001:db8::8822]:8091")}}}},
+			input:    LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{BucketConfig: BucketConfig{Server: base.Ptr("http://http.couchbase.com:8091,host2:8091,host1,[2001:db8::8811],[2001:db8::8822]:8091")}}}},
 			expected: StartupConfig{Bootstrap: BootstrapConfig{Server: "couchbase://http.couchbase.com,host2,host1,[2001:db8::8811],[2001:db8::8822]"}},
 		},
 		{
 			name:     "Username and password in server URL",
 			base:     StartupConfig{},
-			input:    LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("http://foo:bar@[2001:db8::8811]:8091,host2")}}}},
+			input:    LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{BucketConfig: BucketConfig{Server: base.Ptr("http://foo:bar@[2001:db8::8811]:8091,host2")}}}},
 			expected: StartupConfig{Bootstrap: BootstrapConfig{Server: "couchbase://[2001:db8::8811],host2", Username: "foo", Password: "bar"}},
 		},
 		{
 			name:     "Keep couchbase:// port with args",
 			base:     StartupConfig{},
-			input:    LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("couchbase://host1:123,host2:9911?test=true")}}}},
+			input:    LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{BucketConfig: BucketConfig{Server: base.Ptr("couchbase://host1:123,host2:9911?test=true")}}}},
 			expected: StartupConfig{Bootstrap: BootstrapConfig{Server: "couchbase://host1:123,host2:9911?test=true"}},
 		},
 		{
 			name:     "Prioritise username/password fields over credentials in host",
 			base:     StartupConfig{},
-			input:    LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("couchbase://foo:bar@host1:123"), Username: "usr", Password: "pass"}}}},
+			input:    LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{BucketConfig: BucketConfig{Server: base.Ptr("couchbase://foo:bar@host1:123"), Username: "usr", Password: "pass"}}}},
 			expected: StartupConfig{Bootstrap: BootstrapConfig{Server: "couchbase://host1:123", Username: "usr", Password: "pass"}},
 		},
 		{
 			name:     "http:// to couchbase:// with args",
 			base:     StartupConfig{},
-			input:    LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("http://host1,host2:8091?p1=v1&p2=v2&p3=v3")}}}},
+			input:    LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{BucketConfig: BucketConfig{Server: base.Ptr("http://host1,host2:8091?p1=v1&p2=v2&p3=v3")}}}},
 			expected: StartupConfig{Bootstrap: BootstrapConfig{Server: "couchbase://host1,host2?p1=v1&p2=v2&p3=v3"}},
 		},
 	}
@@ -233,12 +233,12 @@ func TestLegacyConfigXattrsDefault(t *testing.T) {
 		},
 		{
 			name:           "False Xattrs",
-			xattrs:         base.BoolPtr(false),
+			xattrs:         base.Ptr(false),
 			expectedXattrs: false,
 		},
 		{
 			name:           "True Xattrs",
-			xattrs:         base.BoolPtr(true),
+			xattrs:         base.Ptr(true),
 			expectedXattrs: true,
 		},
 	}
@@ -282,7 +282,7 @@ func TestLegacyGuestUserMigration(t *testing.T) {
 
 	expected := db.PrincipalConfig{
 		ExplicitChannels: base.SetFromArray([]string{"*"}),
-		Disabled:         base.BoolPtr(false),
+		Disabled:         base.Ptr(false),
 	}
 
 	tb := base.GetTestBucket(t)
@@ -360,11 +360,11 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 	// Add principles already on bucket before migration
 	existingUsers := map[string]*db.PrincipalConfig{
 		"ExistingUserStatic": {
-			Name:             base.StringPtr("ExistingUserStatic"),
+			Name:             base.Ptr("ExistingUserStatic"),
 			ExplicitChannels: base.SetOf("*"),
 		},
 		"ExistingUser": {
-			Name:             base.StringPtr("ExistingUser"),
+			Name:             base.Ptr("ExistingUser"),
 			ExplicitChannels: base.SetOf("*"),
 		},
 	}
@@ -373,11 +373,11 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 
 	existingRoles := map[string]*db.PrincipalConfig{
 		"ExistingRoleStatic": {
-			Name:             base.StringPtr("ExistingRoleStatic"),
+			Name:             base.Ptr("ExistingRoleStatic"),
 			ExplicitChannels: base.SetOf("*"),
 		},
 		"ExistingRole": {
-			Name:             base.StringPtr("ExistingRole"),
+			Name:             base.Ptr("ExistingRole"),
 			ExplicitChannels: base.SetOf("*"),
 		},
 	}

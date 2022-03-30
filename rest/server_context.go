@@ -112,8 +112,8 @@ func NewServerContext(config *StartupConfig, persistentConfig bool) *ServerConte
 		// Disable Admin API authentication when running as walrus on the default admin interface to support dev
 		// environments.
 		if sc.config.API.AdminInterface == DefaultAdminInterface {
-			sc.config.API.AdminInterfaceAuthentication = base.BoolPtr(false)
-			sc.config.API.MetricsInterfaceAuthentication = base.BoolPtr(false)
+			sc.config.API.AdminInterfaceAuthentication = base.Ptr(false)
+			sc.config.API.MetricsInterfaceAuthentication = base.Ptr(false)
 		}
 	}
 

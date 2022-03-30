@@ -73,7 +73,7 @@ type RestTesterClusterConfig struct {
 func defaultRestTesterClusterConfig(t *testing.T) *RestTesterClusterConfig {
 	return &RestTesterClusterConfig{
 		numNodes:   3,
-		groupID:    base.StringPtr(t.Name()),
+		groupID:    base.Ptr(t.Name()),
 		rtConfig:   nil,
 		testBucket: nil,
 	}
@@ -130,11 +130,11 @@ func NewRestTesterCluster(t *testing.T, config *RestTesterClusterConfig) *RestTe
 func dbConfigForTestBucket(tb *base.TestBucket) DbConfig {
 	return DbConfig{
 		BucketConfig: BucketConfig{
-			Bucket: base.StringPtr(tb.GetName()),
+			Bucket: base.Ptr(tb.GetName()),
 		},
-		NumIndexReplicas: base.UintPtr(0),
-		UseViews:         base.BoolPtr(base.TestsDisableGSI()),
-		EnableXattrs:     base.BoolPtr(base.TestUseXattrs()),
+		NumIndexReplicas: base.Ptr(0),
+		UseViews:         base.Ptr(base.TestsDisableGSI()),
+		EnableXattrs:     base.Ptr(base.TestUseXattrs()),
 	}
 }
 

@@ -102,7 +102,7 @@ func TestConsoleShouldLog(t *testing.T) {
 			LogLevel: &test.loggerLevel,
 			LogKeys:  test.loggerKeys,
 			FileLoggerConfig: FileLoggerConfig{
-				Enabled: BoolPtr(true),
+				Enabled: Ptr(true),
 				Output:  ioutil.Discard,
 			}})
 
@@ -123,7 +123,7 @@ func BenchmarkConsoleShouldLog(b *testing.B) {
 			LogLevel: &test.loggerLevel,
 			LogKeys:  test.loggerKeys,
 			FileLoggerConfig: FileLoggerConfig{
-				Enabled: BoolPtr(true),
+				Enabled: Ptr(true),
 				Output:  ioutil.Discard,
 			}})
 
@@ -146,7 +146,7 @@ func TestConsoleLogDefaults(t *testing.T) {
 			config: ConsoleLoggerConfig{},
 			expected: ConsoleLogger{
 				FileLogger: FileLogger{Enabled: AtomicBool{0}},
-				LogLevel:   logLevelPtr(LevelNone),
+				LogLevel:   Ptr(LevelNone),
 				LogKeyMask: logKeyMask(KeyHTTP),
 				isStderr:   false,
 			},
@@ -156,27 +156,27 @@ func TestConsoleLogDefaults(t *testing.T) {
 			config: ConsoleLoggerConfig{LogKeys: []string{"CRUD"}},
 			expected: ConsoleLogger{
 				FileLogger: FileLogger{Enabled: AtomicBool{1}},
-				LogLevel:   logLevelPtr(LevelInfo),
+				LogLevel:   Ptr(LevelInfo),
 				LogKeyMask: logKeyMask(KeyHTTP, KeyCRUD),
 				isStderr:   true,
 			},
 		},
 		{
 			name:   "level",
-			config: ConsoleLoggerConfig{LogLevel: logLevelPtr(LevelWarn)},
+			config: ConsoleLoggerConfig{LogLevel: Ptr(LevelWarn)},
 			expected: ConsoleLogger{
 				FileLogger: FileLogger{Enabled: AtomicBool{1}},
-				LogLevel:   logLevelPtr(LevelWarn),
+				LogLevel:   Ptr(LevelWarn),
 				LogKeyMask: logKeyMask(KeyHTTP),
 				isStderr:   true,
 			},
 		},
 		{
 			name:   "level and key",
-			config: ConsoleLoggerConfig{LogLevel: logLevelPtr(LevelWarn), LogKeys: []string{"CRUD"}},
+			config: ConsoleLoggerConfig{LogLevel: Ptr(LevelWarn), LogKeys: []string{"CRUD"}},
 			expected: ConsoleLogger{
 				FileLogger: FileLogger{Enabled: AtomicBool{1}},
-				LogLevel:   logLevelPtr(LevelWarn),
+				LogLevel:   Ptr(LevelWarn),
 				LogKeyMask: logKeyMask(KeyHTTP, KeyCRUD),
 				isStderr:   true,
 			},

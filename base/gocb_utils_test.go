@@ -30,21 +30,21 @@ func TestGoCBv2SecurityConfig(t *testing.T) {
 	}{
 		{
 			name:           "TLS Skip Verify",
-			tlsSkipVerify:  BoolPtr(true),
+			tlsSkipVerify:  Ptr(true),
 			caCertPath:     "",
 			expectCertPool: false,
 			expectError:    false,
 		},
 		{
 			name:           "File does not exist",
-			tlsSkipVerify:  BoolPtr(false),
+			tlsSkipVerify:  Ptr(false),
 			caCertPath:     "/var/lib/couchbase/unknown.root.ca.pem",
 			expectCertPool: false,
 			expectError:    true,
 		},
 		{
 			name:           "Normal CA",
-			tlsSkipVerify:  BoolPtr(false),
+			tlsSkipVerify:  Ptr(false),
 			caCertPath:     rootCertPath,
 			expectCertPool: true,
 			expectError:    false,

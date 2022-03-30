@@ -257,11 +257,11 @@ func bootstrapStartupConfigForTest(t *testing.T) StartupConfig {
 	config := DefaultStartupConfig("")
 
 	config.Logging.Console = &base.ConsoleLoggerConfig{
-		LogLevel: base.LogLevelPtr(base.LevelInfo),
+		LogLevel: base.Ptr(base.LevelInfo),
 		LogKeys:  []string{"*"},
 	}
 
-	config.API.AdminInterfaceAuthentication = base.BoolPtr(false)
+	config.API.AdminInterfaceAuthentication = base.Ptr(false)
 
 	config.API.PublicInterface = "127.0.0.1:" + strconv.FormatInt(4984+bootstrapTestPortOffset, 10)
 	config.API.AdminInterface = "127.0.0.1:" + strconv.FormatInt(4985+bootstrapTestPortOffset, 10)
@@ -270,8 +270,8 @@ func bootstrapStartupConfigForTest(t *testing.T) StartupConfig {
 	config.Bootstrap.Server = base.UnitTestUrl()
 	config.Bootstrap.Username = base.TestClusterUsername()
 	config.Bootstrap.Password = base.TestClusterPassword()
-	config.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
-	config.Bootstrap.UseTLSServer = base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl()))
+	config.Bootstrap.ServerTLSSkipVerify = base.Ptr(base.TestTLSSkipVerify())
+	config.Bootstrap.UseTLSServer = base.Ptr(base.ServerIsTLS(base.UnitTestUrl()))
 
 	// avoid loading existing configs by choosing a non-default config group
 	if !base.IsEnterpriseEdition() {

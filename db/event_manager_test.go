@@ -139,12 +139,12 @@ func TestDBStateChangeEvent(t *testing.T) {
 	em.RegisterEventHandler(testHandler, DBStateChange)
 	// Raise online events
 	for i := 0; i < 10; i++ {
-		err := em.RaiseDBStateChangeEvent(ids[i], "online", "DB started from config", base.StringPtr("0.0.0.0:0000"))
+		err := em.RaiseDBStateChangeEvent(ids[i], "online", "DB started from config", base.Ptr("0.0.0.0:0000"))
 		assert.NoError(t, err)
 	}
 	// Raise offline events
 	for i := 10; i < 20; i++ {
-		err := em.RaiseDBStateChangeEvent(ids[i], "offline", "Sync Gateway context closed", base.StringPtr("0.0.0.0:0000"))
+		err := em.RaiseDBStateChangeEvent(ids[i], "offline", "Sync Gateway context closed", base.Ptr("0.0.0.0:0000"))
 		assert.NoError(t, err)
 	}
 

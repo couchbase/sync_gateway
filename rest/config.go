@@ -786,7 +786,7 @@ func (dbConfig *DbConfig) ConflictsAllowed() *bool {
 	if dbConfig.AllowConflicts != nil {
 		return dbConfig.AllowConflicts
 	}
-	return base.BoolPtr(base.DefaultAllowConflicts)
+	return base.Ptr(base.DefaultAllowConflicts)
 }
 
 func (dbConfig *DbConfig) UseXattrs() bool {
@@ -817,7 +817,7 @@ func (config *DbConfig) redactInPlace() error {
 
 	for i := range config.Users {
 		if config.Users[i].Password != nil && *config.Users[i].Password != "" {
-			config.Users[i].Password = base.StringPtr(base.RedactedStr)
+			config.Users[i].Password = base.Ptr(base.RedactedStr)
 		}
 	}
 

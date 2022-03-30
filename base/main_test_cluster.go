@@ -185,7 +185,7 @@ func getCluster(server string) *gocb.Cluster {
 		FatalfCtx(context.TODO(), "Couldn't initialize cluster authenticator config: %v", authErr)
 	}
 
-	timeoutsConfig := GoCBv2TimeoutsConfig(spec.BucketOpTimeout, StdlibDurationPtr(spec.GetViewQueryTimeout()))
+	timeoutsConfig := GoCBv2TimeoutsConfig(spec.BucketOpTimeout, Ptr(spec.GetViewQueryTimeout()))
 
 	clusterOptions := gocb.ClusterOptions{
 		Authenticator:  authenticatorConfig,

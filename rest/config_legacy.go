@@ -134,7 +134,7 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 			base.ErrorfCtx(context.Background(), "Error upgrading server address: %v", err)
 		}
 
-		dbConfig.Server = base.StringPtr(server)
+		dbConfig.Server = base.Ptr(server)
 
 		if !bootstrapConfigIsSet {
 			// Prioritise config fields over credentials in host
@@ -289,7 +289,7 @@ func (dbc *DbConfig) ToDatabaseConfig() *DatabaseConfig {
 
 	// Backwards compatibility: Continue defaulting to xattrs=false for upgraded 2.x configs (3.0+ default xattrs=true)
 	if dbc.EnableXattrs == nil {
-		dbc.EnableXattrs = base.BoolPtr(false)
+		dbc.EnableXattrs = base.Ptr(false)
 	}
 
 	// Move guest out of the Users section and into its own promoted field
@@ -606,7 +606,7 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*LegacyServer
 		}
 
 		config = &LegacyServerConfig{
-			UseTLSServer:     base.BoolPtr(true),
+			UseTLSServer:     base.Ptr(true),
 			Interface:        addr,
 			AdminInterface:   authAddr,
 			ProfileInterface: profAddr,
@@ -615,7 +615,7 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*LegacyServer
 			Logging: &base.LegacyLoggingConfig{
 				Console: base.ConsoleLoggerConfig{
 					// Enable the logger only when log keys have explicitly been set on the command line
-					FileLoggerConfig: base.FileLoggerConfig{Enabled: base.BoolPtr(*logKeys != "")},
+					FileLoggerConfig: base.FileLoggerConfig{Enabled: base.Ptr(*logKeys != "")},
 					LogKeys:          strings.Split(*logKeys, ","),
 				},
 				LogFilePath: *logFilePath,
@@ -632,7 +632,7 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*LegacyServer
 					},
 					Users: map[string]*db.PrincipalConfig{
 						base.GuestUsername: {
-							Disabled:         base.BoolPtr(false),
+							Disabled:         base.Ptr(false),
 							ExplicitChannels: base.SetFromArray([]string{"*"}),
 						},
 					},

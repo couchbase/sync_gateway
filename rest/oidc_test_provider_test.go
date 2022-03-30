@@ -131,8 +131,8 @@ func restTesterConfigWithTestProviderEnabled() RestTesterConfig {
 			Issuer:        "${baseURL}/db/_oidc_testing",
 			Name:          "test",
 			ClientID:      "sync_gateway",
-			ValidationKey: base.StringPtr("qux"),
-			CallbackURL:   base.StringPtr("${baseURL}/db/_oidc_callback"),
+			ValidationKey: base.Ptr("qux"),
+			CallbackURL:   base.Ptr("${baseURL}/db/_oidc_callback"),
 		},
 	}
 	defaultProvider := "test"
@@ -164,7 +164,7 @@ func TestProviderOIDCAuthWithTlsSkipVerifyEnabled(t *testing.T) {
 	mockSyncGatewayURL := mockSyncGateway.URL
 	provider := restTesterConfig.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
 	provider.Issuer = mockSyncGateway.URL + "/db/_oidc_testing"
-	provider.CallbackURL = base.StringPtr(mockSyncGateway.URL + "/db/_oidc_callback")
+	provider.CallbackURL = base.Ptr(mockSyncGateway.URL + "/db/_oidc_callback")
 
 	// Send OpenID Connect request
 	authURL := "/db/_oidc?provider=test&offline=true"
@@ -218,7 +218,7 @@ func TestProviderOIDCAuthWithTlsSkipVerifyDisabled(t *testing.T) {
 	mockSyncGatewayURL := mockSyncGateway.URL
 	provider := restTesterConfig.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
 	provider.Issuer = mockSyncGateway.URL + "/db/_oidc_testing"
-	provider.CallbackURL = base.StringPtr(mockSyncGateway.URL + "/db/_oidc_callback")
+	provider.CallbackURL = base.Ptr(mockSyncGateway.URL + "/db/_oidc_callback")
 
 	// Send OpenID Connect request
 	authURL := "/db/_oidc?provider=test&offline=true"
@@ -285,8 +285,8 @@ func TestOpenIDConnectTestProviderWithRealWorldToken(t *testing.T) {
 					Issuer:        "${baseURL}/db/_oidc_testing",
 					Name:          "test",
 					ClientID:      "sync_gateway",
-					ValidationKey: base.StringPtr("qux"),
-					CallbackURL:   base.StringPtr("${baseURL}/db/_oidc_callback"),
+					ValidationKey: base.Ptr("qux"),
+					CallbackURL:   base.Ptr("${baseURL}/db/_oidc_callback"),
 					UserPrefix:    "foo",
 				},
 			}
@@ -310,7 +310,7 @@ func TestOpenIDConnectTestProviderWithRealWorldToken(t *testing.T) {
 			mockSyncGatewayURL := mockSyncGateway.URL
 			provider := restTesterConfig.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
 			provider.Issuer = mockSyncGateway.URL + "/db/_oidc_testing"
-			provider.CallbackURL = base.StringPtr(mockSyncGateway.URL + "/db/_oidc_callback")
+			provider.CallbackURL = base.Ptr(mockSyncGateway.URL + "/db/_oidc_callback")
 			createUser(t, restTester, "foo_noah")
 
 			// Send OpenID Connect request

@@ -680,7 +680,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	ctx := base.TestCtx(t)
 
 	var callbackURLFunc OIDCCallbackURLFunc
-	callbackURL := base.StringPtr("http://comcast:4984/_callback")
+	callbackURL := base.Ptr("http://comcast:4984/_callback")
 	providerGoogle := &OIDCProvider{
 		Name:        "Google",
 		ClientID:    "aud1",
@@ -1179,7 +1179,7 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 
 	issuerFacebookAccounts := "https://accounts.facebook.com"
 	issuerAmazonAccounts := "https://accounts.amazon.com"
-	callbackURL := base.StringPtr("http://comcast:4984/_callback")
+	callbackURL := base.Ptr("http://comcast:4984/_callback")
 	var callbackURLFunc OIDCCallbackURLFunc
 	providerGoogle := &OIDCProvider{
 		Name:        "Google",

@@ -1172,7 +1172,7 @@ func marshalPrincipal(princ auth.Principal, includeDynamicGrantInfo bool) ([]byt
 	}
 	if user, ok := princ.(auth.User); ok {
 		info.Email = user.Email()
-		info.Disabled = base.BoolPtr(user.Disabled())
+		info.Disabled = base.Ptr(user.Disabled())
 		info.ExplicitRoleNames = user.ExplicitRoles().AllKeys()
 		if includeDynamicGrantInfo {
 			info.Channels = user.InheritedChannels().AsSet()

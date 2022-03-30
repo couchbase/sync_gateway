@@ -55,7 +55,7 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 		InfofCtx(logCtx, KeyAuth, "Using credential authentication for bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
 	}
 
-	timeoutsConfig := GoCBv2TimeoutsConfig(spec.BucketOpTimeout, StdlibDurationPtr(spec.GetViewQueryTimeout()))
+	timeoutsConfig := GoCBv2TimeoutsConfig(spec.BucketOpTimeout, Ptr(spec.GetViewQueryTimeout()))
 	InfofCtx(logCtx, KeyAll, "Setting query timeouts for bucket %s to %v", spec.BucketName, timeoutsConfig.QueryTimeout)
 
 	clusterOptions := gocb.ClusterOptions{

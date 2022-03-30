@@ -338,12 +338,12 @@ func TestDeprecatedCacheConfig(t *testing.T) {
 
 	// Set Deprecated Values
 	dbConfig.DeprecatedRevCacheSize = base.Uint32Ptr(10)
-	dbConfig.CacheConfig.DeprecatedChannelCacheAge = base.IntPtr(10)
-	dbConfig.CacheConfig.DeprecatedChannelCacheMinLength = base.IntPtr(10)
-	dbConfig.CacheConfig.DeprecatedChannelCacheMaxLength = base.IntPtr(10)
-	dbConfig.CacheConfig.DeprecatedEnableStarChannel = base.BoolPtr(true)
+	dbConfig.CacheConfig.DeprecatedChannelCacheAge = base.Ptr(10)
+	dbConfig.CacheConfig.DeprecatedChannelCacheMinLength = base.Ptr(10)
+	dbConfig.CacheConfig.DeprecatedChannelCacheMaxLength = base.Ptr(10)
+	dbConfig.CacheConfig.DeprecatedEnableStarChannel = base.Ptr(true)
 	dbConfig.CacheConfig.DeprecatedCacheSkippedSeqMaxWait = base.Uint32Ptr(10)
-	dbConfig.CacheConfig.DeprecatedCachePendingSeqMaxNum = base.IntPtr(10)
+	dbConfig.CacheConfig.DeprecatedCachePendingSeqMaxNum = base.Ptr(10)
 	dbConfig.CacheConfig.DeprecatedCachePendingSeqMaxWait = base.Uint32Ptr(10)
 
 	// Run Deprecated Fallback
@@ -373,8 +373,8 @@ func TestDeprecatedCacheConfig(t *testing.T) {
 	// Set A Couple Deprecated Values AND Their New Counterparts
 	dbConfig.DeprecatedRevCacheSize = base.Uint32Ptr(10)
 	dbConfig.CacheConfig.RevCacheConfig.Size = base.Uint32Ptr(20)
-	dbConfig.CacheConfig.DeprecatedEnableStarChannel = base.BoolPtr(false)
-	dbConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel = base.BoolPtr(true)
+	dbConfig.CacheConfig.DeprecatedEnableStarChannel = base.Ptr(false)
+	dbConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel = base.Ptr(true)
 
 	// Run Deprecated Fallback
 	warnings = dbConfig.deprecatedConfigCacheFallback()
@@ -820,8 +820,8 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 	xattrs := base.TestUseXattrs()
 	config := &StartupConfig{
 		Bootstrap: BootstrapConfig{
-			UseTLSServer:        base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())),
-			ServerTLSSkipVerify: base.BoolPtr(base.TestTLSSkipVerify()),
+			UseTLSServer:        base.Ptr(base.ServerIsTLS(base.UnitTestUrl())),
+			ServerTLSSkipVerify: base.Ptr(base.TestTLSSkipVerify()),
 		},
 	}
 	databases := DbConfigMap{
@@ -833,8 +833,8 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 				Password: tb1Password,
 			},
 			EnableXattrs:     &xattrs,
-			UseViews:         base.BoolPtr(base.TestsDisableGSI()),
-			NumIndexReplicas: base.UintPtr(0),
+			UseViews:         base.Ptr(base.TestsDisableGSI()),
+			NumIndexReplicas: base.Ptr(0),
 		},
 		"db2": {
 			BucketConfig: BucketConfig{
@@ -844,8 +844,8 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 				Password: tb1Password,
 			},
 			EnableXattrs:     &xattrs,
-			UseViews:         base.BoolPtr(base.TestsDisableGSI()),
-			NumIndexReplicas: base.UintPtr(0),
+			UseViews:         base.Ptr(base.TestsDisableGSI()),
+			NumIndexReplicas: base.Ptr(0),
 		},
 		"db3": {
 			BucketConfig: BucketConfig{
@@ -855,8 +855,8 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 				Password: tb2Password,
 			},
 			EnableXattrs:     &xattrs,
-			UseViews:         base.BoolPtr(base.TestsDisableGSI()),
-			NumIndexReplicas: base.UintPtr(0),
+			UseViews:         base.Ptr(base.TestsDisableGSI()),
+			NumIndexReplicas: base.Ptr(0),
 		},
 	}
 
@@ -1212,8 +1212,8 @@ func TestSetupServerContext(t *testing.T) {
 	t.Run("Create server context with a valid configuration", func(t *testing.T) {
 		config := DefaultStartupConfig("")
 		config.Bootstrap.Server = base.UnitTestUrl() // Valid config requires server to be explicitly defined
-		config.Bootstrap.UseTLSServer = base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl()))
-		config.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
+		config.Bootstrap.UseTLSServer = base.Ptr(base.ServerIsTLS(base.UnitTestUrl()))
+		config.Bootstrap.ServerTLSSkipVerify = base.Ptr(base.TestTLSSkipVerify())
 		config.Bootstrap.Username = base.TestClusterUsername()
 		config.Bootstrap.Password = base.TestClusterPassword()
 		sc, err := setupServerContext(&config, false)
@@ -1278,7 +1278,7 @@ func TestConfigGroupIDValidation(t *testing.T) {
 				Bootstrap: BootstrapConfig{
 					ConfigGroupID: test.cfgGroupID,
 					Server:        base.UnitTestUrl(),
-					UseTLSServer:  base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())),
+					UseTLSServer:  base.Ptr(base.ServerIsTLS(base.UnitTestUrl())),
 				},
 			}
 			err := sc.validate(isEnterpriseEdition)
@@ -1674,7 +1674,7 @@ func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 			}()
 			dbConfig := DbConfig{
 				Name: "db",
-				Sync: base.StringPtr(sync),
+				Sync: base.Ptr(sync),
 			}
 			if test.insecureSkipVerify {
 				dbConfig.Unsupported = &db.UnsupportedOptions{
@@ -1774,7 +1774,7 @@ func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
 			}()
 			dbConfig := DbConfig{
 				Name:         "db",
-				ImportFilter: base.StringPtr(importFilter),
+				ImportFilter: base.Ptr(importFilter),
 			}
 			if test.insecureSkipVerify {
 				dbConfig.Unsupported = &db.UnsupportedOptions{
@@ -2040,12 +2040,12 @@ func TestUseXattrs(t *testing.T) {
 		},
 		{
 			name:           "False Xattrs",
-			enableXattrs:   base.BoolPtr(false),
+			enableXattrs:   base.Ptr(false),
 			expectedXattrs: false,
 		},
 		{
 			name:           "True Xattrs",
-			enableXattrs:   base.BoolPtr(true),
+			enableXattrs:   base.Ptr(true),
 			expectedXattrs: true,
 		},
 	}
@@ -2077,39 +2077,39 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 		},
 		{
 			"Valid Sync Fn No Import",
-			base.StringPtr(`function(){}`),
+			base.Ptr(`function(){}`),
 			nil,
 			0,
-			base.StringPtr(`function(){}`),
+			base.Ptr(`function(){}`),
 			nil,
 		},
 		{
 			"Valid Import Fn No Sync",
 			nil,
-			base.StringPtr(`function(){}`),
+			base.Ptr(`function(){}`),
 			0,
 			nil,
-			base.StringPtr(`function(){}`),
+			base.Ptr(`function(){}`),
 		},
 		{
 			"Both empty",
-			base.StringPtr(``),
-			base.StringPtr(``),
+			base.Ptr(``),
+			base.Ptr(``),
 			0,
 			nil,
 			nil,
 		},
 		{
 			"Both blank",
-			base.StringPtr(` `),
-			base.StringPtr(` `),
+			base.Ptr(` `),
+			base.Ptr(` `),
 			0,
 			nil,
 			nil,
 		},
 		{
 			"Invalid Sync Fn No Import",
-			base.StringPtr(`function(){`),
+			base.Ptr(`function(){`),
 			nil,
 			1,
 			nil,
@@ -2117,7 +2117,7 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 		},
 		{
 			"Invalid Sync Fn No Import 2",
-			base.StringPtr(`function(doc){
+			base.Ptr(`function(doc){
 				if (t )){}
 			}`),
 			nil,
@@ -2128,15 +2128,15 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 		{
 			"Invalid Import Fn No Sync",
 			nil,
-			base.StringPtr(`function(){`),
+			base.Ptr(`function(){`),
 			1,
 			nil,
 			nil,
 		},
 		{
 			"Both invalid",
-			base.StringPtr(`function(){`),
-			base.StringPtr(`function(){`),
+			base.Ptr(`function(){`),
+			base.Ptr(`function(){`),
 			2,
 			nil,
 			nil,

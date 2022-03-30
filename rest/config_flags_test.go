@@ -81,7 +81,7 @@ func TestFillConfigWithFlagsValidVals(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, "testServer", config.Bootstrap.Server)
-	assert.Equal(t, base.BoolPtr(true), config.Bootstrap.ServerTLSSkipVerify)
+	assert.Equal(t, base.Ptr(true), config.Bootstrap.ServerTLSSkipVerify)
 	assert.Equal(t, uint(5), config.API.MaximumConnections)
 	require.NotNil(t, config.Bootstrap.ConfigUpdateFrequency)
 	assert.Equal(t, base.NewConfigDuration(time.Hour*2), config.Bootstrap.ConfigUpdateFrequency)

@@ -142,13 +142,13 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.Bootstrap.Password = password
 	sc.API.AdminInterface = *adminInterface
 	sc.API.CORS = corsConfig
-	sc.API.HideProductVersion = base.BoolPtr(rt.RestTesterConfig.hideProductInfo)
+	sc.API.HideProductVersion = base.Ptr(rt.RestTesterConfig.hideProductInfo)
 	sc.DeprecatedConfig = &DeprecatedConfig{Facebook: &FacebookConfigLegacy{}}
 	sc.API.AdminInterfaceAuthentication = &rt.adminInterfaceAuthentication
 	sc.API.MetricsInterfaceAuthentication = &rt.metricsInterfaceAuthentication
 	sc.API.EnableAdminAuthenticationPermissionsCheck = &rt.enableAdminAuthPermissionsCheck
 	sc.Bootstrap.UseTLSServer = &rt.RestTesterConfig.useTLSServer
-	sc.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
+	sc.Bootstrap.ServerTLSSkipVerify = base.Ptr(base.TestTLSSkipVerify())
 	if rt.RestTesterConfig.groupID != nil {
 		sc.Bootstrap.ConfigGroupID = *rt.RestTesterConfig.groupID
 	}
@@ -194,7 +194,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		}
 
 		if base.TestsDisableGSI() {
-			rt.DatabaseConfig.UseViews = base.BoolPtr(true)
+			rt.DatabaseConfig.UseViews = base.Ptr(true)
 		}
 
 		// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
@@ -215,7 +215,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.DatabaseConfig.AllowConflicts = &boolVal
 		}
 
-		rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(rt.RestTesterConfig.sgReplicateEnabled)
+		rt.DatabaseConfig.SGReplicateEnabled = base.Ptr(rt.RestTesterConfig.sgReplicateEnabled)
 
 		_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(*rt.DatabaseConfig)
 		if err != nil {

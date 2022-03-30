@@ -80,7 +80,7 @@ func TestBlipPusherUpdateDatabase(t *testing.T) {
 
 	// just change the sync function to cause the database to reload
 	dbConfig := *rt.ServerContext().GetDbConfig("db")
-	dbConfig.Sync = base.StringPtr(`function(doc){console.log("update");}`)
+	dbConfig.Sync = base.Ptr(`function(doc){console.log("update");}`)
 	resp, err := rt.ReplaceDbConfig("db", dbConfig)
 	require.NoError(t, err)
 	assertStatus(t, resp, http.StatusCreated)

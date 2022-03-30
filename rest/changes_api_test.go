@@ -3623,7 +3623,7 @@ func TestChangesLargeSequences(t *testing.T) {
 			 channel(doc.channel)
 		 }`,
 		InitSyncSeq:    initialSeq,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{UseViews: base.BoolPtr(true)}},
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{UseViews: base.Ptr(true)}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()

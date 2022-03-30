@@ -799,16 +799,16 @@ func TestPublicPortAuthentication(t *testing.T) {
 	changesChannelUser1 := btUser1.WaitForNumChanges(1)
 	goassert.Equals(t, len(changesChannelUser1), 1)
 	change := changesChannelUser1[0]
-	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: base.BoolPtr(false)})
+	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: base.Ptr(false)})
 
 	// Assert that user2 received user1's change as well as it's own change
 	changesChannelUser2 := btUser2.WaitForNumChanges(2)
 	goassert.Equals(t, len(changesChannelUser2), 2)
 	change = changesChannelUser2[0]
-	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: base.BoolPtr(false)})
+	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: base.Ptr(false)})
 
 	change = changesChannelUser2[1]
-	AssertChangeEquals(t, change, ExpectedChange{docId: "foo2", revId: "1-abcd", sequence: "*", deleted: base.BoolPtr(false)})
+	AssertChangeEquals(t, change, ExpectedChange{docId: "foo2", revId: "1-abcd", sequence: "*", deleted: base.Ptr(false)})
 
 }
 
@@ -2082,7 +2082,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
-				Enabled: base.BoolPtr(true),
+				Enabled: base.Ptr(true),
 			},
 		}},
 		guestEnabled: true,
@@ -2933,7 +2933,7 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
-				Enabled: base.BoolPtr(true),
+				Enabled: base.Ptr(true),
 			},
 		}},
 		guestEnabled: true,
@@ -2994,7 +2994,7 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
-				Enabled: base.BoolPtr(true),
+				Enabled: base.Ptr(true),
 			},
 		}},
 		guestEnabled: true,
@@ -3074,7 +3074,7 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				DeltaSync: &DeltaSyncConfig{
-					Enabled: base.BoolPtr(true),
+					Enabled: base.Ptr(true),
 				},
 			},
 		},
@@ -3152,7 +3152,7 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				DeltaSync: &DeltaSyncConfig{
-					Enabled: base.BoolPtr(true),
+					Enabled: base.Ptr(true),
 				},
 			},
 		},
@@ -3703,7 +3703,7 @@ func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
 		guestEnabled: true,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
-				AllowConflicts: base.BoolPtr(true),
+				AllowConflicts: base.Ptr(true),
 			},
 		},
 	})

@@ -1020,7 +1020,7 @@ func setupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
-					Password:         base.StringPtr("pass"),
+					Password:         base.Ptr("pass"),
 					ExplicitChannels: base.SetOf("*"),
 				},
 			},
