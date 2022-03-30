@@ -444,25 +444,6 @@ func stripSpecialPropertiesExcept(b Body, exceptions ...string) (sb Body, foundS
 	}
 }
 
-// containsUserSpecialProperties returns true if the given body contains a non-SG special property (underscore prefixed)
-func containsUserSpecialProperties(b Body) bool {
-	for k := range b {
-		if k != "" && k[0] == '_' &&
-			!base.ContainsString([]string{
-				BodyId,
-				BodyRev,
-				BodyDeleted,
-				BodyAttachments,
-				BodyRevisions,
-				BodyExpiry,
-			}, k) {
-			// body contains special property that isn't one of the above... must be user's
-			return true
-		}
-	}
-	return false
-}
-
 func GetStringArrayProperty(body map[string]interface{}, property string) ([]string, error) {
 	if raw, exists := body[property]; !exists {
 		return nil, nil

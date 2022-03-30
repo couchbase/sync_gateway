@@ -183,10 +183,5 @@ func BenchmarkSpecialProperties(b *testing.B) {
 				stripAllSpecialProperties(t.body)
 			}
 		})
-		b.Run(t.name+"-containsUserSpecialProperties", func(bb *testing.B) {
-			for i := 0; i < bb.N; i++ {
-				containsUserSpecialProperties(t.body)
-			}
-		})
 	}
 }

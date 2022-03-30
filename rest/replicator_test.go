@@ -5867,6 +5867,107 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	assert.Equal(t, docWriteFailuresBefore, ar.GetStatus().DocWriteFailures, "ISGR should ignore _remove:true bodies when purgeOnRemoval is disabled. CBG-1428 regression.")
 }
 
+// CBG-1995: Test the support for using an underscore prefix in the top-level body of a document
+// Tests replication and Rest API
+func TestUnderscorePrefixSupport(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+
+	// Passive //
+	passiveRT := NewRestTester(t, nil)
+	defer passiveRT.Close()
+
+	// Make passive RT listen on an actual HTTP port, so it can receive the blipsync request from the active replicator
+	srv := httptest.NewServer(passiveRT.TestAdminHandler())
+	defer srv.Close()
+
+	// Active //
+	activeRT := NewRestTester(t, nil)
+	defer activeRT.Close()
+
+	// Create the document
+	docID := t.Name()
+	rawDoc := `{"_id": "replaced", "_foo": true, "_exp": 120, "true": false, "_attachments": {"bar": {"data": "Zm9vYmFy"}}}`
+	_ = activeRT.putDoc(docID, rawDoc)
+
+	// Set-up replicator
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePush,
+		RemoteDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: activeRT.GetDatabase(),
+		},
+		Continuous:          true,
+		ChangesBatchSize:    200,
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		PurgeOnRemoval:      false,
+	})
+	defer func() { require.NoError(t, ar.Stop()) }()
+
+	require.NoError(t, ar.Start())
+	activeRT.waitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
+
+	// Confirm document is replicated
+	changesResults, err := passiveRT.WaitForChanges(1, "/db/_changes?since=0", "", true)
+	assert.NoError(t, err)
+	assert.Len(t, changesResults.Results, 1)
+
+	err = passiveRT.WaitForPendingChanges()
+	require.NoError(t, err)
+
+	require.NoError(t, ar.Stop())
+
+	// Assert document was replicated successfully
+	doc := passiveRT.getDoc(docID)
+	assert.EqualValues(t, docID, doc["_id"])  // Confirm ID gets replaced with doc ID
+	assert.EqualValues(t, true, doc["_foo"])  // Confirm user defined value got created
+	assert.EqualValues(t, nil, doc["_exp"])   // Confirm expiry was consumed
+	assert.EqualValues(t, false, doc["true"]) // Sanity check normal keys
+	// Confirm attachment was created successfully
+	resp := passiveRT.SendAdminRequest("GET", "/db/"+t.Name()+"/bar", "")
+	assertStatus(t, resp, 200)
+
+	// Edit existing document
+	rev := doc["_rev"]
+	require.NotNil(t, rev)
+	rawDoc = fmt.Sprintf(`{"_id": "replaced", "_rev": "%s","_foo": false, "test": true}`, rev)
+	_ = activeRT.putDoc(docID, rawDoc)
+
+	// Replicate modified document
+	require.NoError(t, ar.Start())
+	activeRT.waitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
+
+	changesResults, err = passiveRT.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%v", changesResults.Last_Seq), "", true)
+	assert.NoError(t, err)
+	assert.Len(t, changesResults.Results, 1)
+
+	err = passiveRT.WaitForPendingChanges()
+	require.NoError(t, err)
+
+	// Verify document replicated successfully
+	doc = passiveRT.getDoc(docID)
+	assert.NotEqualValues(t, doc["_rev"], rev) // Confirm rev got replaced with new rev
+	assert.EqualValues(t, docID, doc["_id"])   // Confirm ID gets replaced with doc ID
+	assert.EqualValues(t, false, doc["_foo"])  // Confirm user defined value got created
+	assert.EqualValues(t, true, doc["test"])
+	// Confirm attachment was removed successfully in latest revision
+	resp = passiveRT.SendAdminRequest("GET", "/db/"+docID+"/bar", "")
+	assertStatus(t, resp, 404)
+
+	// Add disallowed _removed tag in document
+	rawDoc = fmt.Sprintf(`{"_rev": "%s","_removed": false}`, doc["_rev"])
+	resp = activeRT.SendAdminRequest("PUT", "/db/"+docID, rawDoc)
+	assertStatus(t, resp, 404)
+
+	// Add disallowed _purged tag in document
+	rawDoc = fmt.Sprintf(`{"_rev": "%s","_purged": true}`, doc["_rev"])
+	resp = activeRT.SendAdminRequest("PUT", "/db/"+docID, rawDoc)
+	assertStatus(t, resp, 400)
+}
+
 func getTestRevpos(t *testing.T, doc db.Body, attachmentKey string) (revpos int) {
 	attachments := db.GetBodyAttachments(doc)
 	if attachments == nil {
