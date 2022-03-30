@@ -974,7 +974,7 @@ func (sc *StartupConfig) validate(isEnterpriseEdition bool) (errorMessages error
 	}
 
 	secureServer := base.ServerIsTLS(sc.Bootstrap.Server)
-	if base.BoolDefault(sc.Bootstrap.UseTLSServer, DefaultUseTLSServer) {
+	if base.ValOr(sc.Bootstrap.UseTLSServer, DefaultUseTLSServer) {
 		if !secureServer && !base.ServerIsWalrus(sc.Bootstrap.Server) {
 			multiError = multiError.Append(fmt.Errorf("Must use secure scheme in Couchbase Server URL, or opt out by setting bootstrap.use_tls_server to false. Current URL: %s", base.SD(sc.Bootstrap.Server)))
 		}

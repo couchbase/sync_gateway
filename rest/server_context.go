@@ -406,7 +406,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	}
 
 	// If using a walrus bucket, force use of views
-	useViews := base.BoolDefault(config.UseViews, false)
+	useViews := base.ValOr(config.UseViews, false)
 	if !useViews && spec.IsWalrusBucket() {
 		base.WarnfCtx(context.TODO(), "Using GSI is not supported when using a walrus bucket - switching to use views.  Set 'use_views':true in Sync Gateway's database config to avoid this warning.")
 		useViews = true
@@ -538,8 +538,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 		}
 	}
 
-	dbcontext.AllowEmptyPassword = base.BoolDefault(config.AllowEmptyPassword, false)
-	dbcontext.ServeInsecureAttachmentTypes = base.BoolDefault(config.ServeInsecureAttachmentTypes, false)
+	dbcontext.AllowEmptyPassword = base.ValOr(config.AllowEmptyPassword, false)
+	dbcontext.ServeInsecureAttachmentTypes = base.ValOr(config.ServeInsecureAttachmentTypes, false)
 
 	if dbcontext.ChannelMapper == nil {
 		base.InfofCtx(context.TODO(), base.KeyAll, "Using default sync function 'channel(doc.channels)' for database %q", base.MD(dbName))
@@ -576,7 +576,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	sc.dbConfigs[dbcontext.Name] = &config
 	sc.bucketDbName[spec.BucketName] = dbName
 
-	if base.BoolDefault(config.StartOffline, false) {
+	if base.ValOr(config.StartOffline, false) {
 		atomic.StoreUint32(&dbcontext.State, db.DBOffline)
 		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "DB loaded from config", &sc.config.API.AdminInterface)
 	} else {
@@ -596,7 +596,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 	if config.ImportFilter != nil {
 		importOptions.ImportFilter = db.NewImportFilterFunction(*config.ImportFilter)
 	}
-	importOptions.BackupOldRev = base.BoolDefault(config.ImportBackupOldRev, false)
+	importOptions.BackupOldRev = base.ValOr(config.ImportBackupOldRev, false)
 
 	if config.ImportPartitions == nil {
 		importOptions.ImportPartitions = base.DefaultImportPartitions
@@ -792,7 +792,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		EnableXattr:               config.UseXattrs(),
 		SecureCookieOverride:      secureCookieOverride,
 		SessionCookieName:         config.SessionCookieName,
-		SessionCookieHttpOnly:     base.BoolDefault(config.SessionCookieHTTPOnly, false),
+		SessionCookieHttpOnly:     base.ValOr(config.SessionCookieHTTPOnly, false),
 		AllowConflicts:            config.ConflictsAllowed(),
 		SendWWWAuthenticateHeader: config.SendWWWAuthenticateHeader,
 		DeltaSyncOptions:          deltaSyncOptions,

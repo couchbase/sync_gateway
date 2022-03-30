@@ -778,14 +778,6 @@ func GetGoCBBucketFromBaseBucket(baseBucket Bucket) (bucket CouchbaseBucketGoCB,
 	}
 }
 
-// BoolDefault returns ifNil if b is nil, or else returns dereferenced value of b
-func BoolDefault(b *bool, ifNil bool) bool {
-	if b != nil {
-		return *b
-	}
-	return ifNil
-}
-
 // Convert a Bucket, or a Couchbase URI (eg, couchbase://host1,host2) to a list of HTTP URLs with ports (eg, ["http://host1:8091", "http://host2:8091"])
 // connSpec can be optionally passed in if available, to prevent unnecessary double-parsing of connstr
 // Primary use case is for backwards compatibility with go-couchbase, cbdatasource, and CBGT. Supports secure URI's as well (couchbases://).
@@ -1619,4 +1611,18 @@ func TerminateAndWaitForClose(terminator chan struct{}, done chan struct{}, time
 // This is useful for tests with inline values and getting pointer values from constants.
 func Ptr[T any](val T) *T {
 	return &val
+}
+
+// Val safely dereferences v by returning a zero value if v is nil.
+func Val[T any](v *T) T {
+	var zero T
+	return ValOr(v, zero)
+}
+
+// ValOr safely dereferences v by returning the value of or if v is nil.
+func ValOr[T any](v *T, or T) T {
+	if v == nil {
+		return or
+	}
+	return *v
 }

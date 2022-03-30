@@ -707,8 +707,8 @@ func TestEncodeDecodeCompatVersion(t *testing.T) {
 			minor: 65535,
 		},
 		{
-			major: 32767, //Max size 15 bit integer
-			minor: 65535, //Max size 16 bit integer
+			major: 32767, // Max size 15 bit integer
+			minor: 65535, // Max size 16 bit integer
 		},
 	}
 
@@ -1610,7 +1610,7 @@ func TestTerminateAndWaitForClose(t *testing.T) {
 	}
 }
 
-func TestPtr(t *testing.T) {
+func TestPtrVal(t *testing.T) {
 	t.Run("mutability", func(t *testing.T) {
 		tests := []struct {
 			name  string
@@ -1638,9 +1638,10 @@ func TestPtr(t *testing.T) {
 			for i := 0; i < b.N; i++ {
 				p1 := Ptr(1234)
 				p2 := Ptr(4321)
-				sum := *p1 + *p2
-				if sum != 5555 {
-					b.Errorf("expected summed value of 5555 but got %v", sum)
+				var n *int
+				sum := Val(p1) + Val(p2) + Val(n) + ValOr(n, 4444)
+				if sum != 9999 {
+					b.Errorf("expected summed value of 9999 but got %v", sum)
 				}
 			}
 		})

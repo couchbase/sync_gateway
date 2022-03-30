@@ -238,7 +238,7 @@ func setGlobalConfig(sc *StartupConfig) error {
 	}
 
 	// Given unscoped usage of base.JSON functions, this can't be scoped.
-	if base.BoolDefault(sc.Unsupported.UseStdlibJSON, false) {
+	if base.ValOr(sc.Unsupported.UseStdlibJSON, false) {
 		base.InfofCtx(context.Background(), base.KeyAll, "Using the stdlib JSON package")
 		base.UseStdlibJSON = true
 	}
