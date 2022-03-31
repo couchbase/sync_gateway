@@ -1870,45 +1870,47 @@ func TestSingleDBOnlineWithDelay(t *testing.T) {
 // DB should should only be brought online once
 // there should be no errors
 func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
-
 	if testing.Short() {
 		t.Skip("skipping test in short mode")
 	}
 
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
+	// CBG-1513: This test is prone to panicing when the walrus bucket was closed and still used
+	assert.NotPanicsf(t, func() {
+		rt := NewRestTester(t, nil)
+		defer rt.Close()
 
-	var response *TestResponse
-	var errDBState error
+		var response *TestResponse
+		var errDBState error
 
-	log.Printf("Taking DB offline")
-	require.Equal(t, "Online", rt.GetDBState())
+		log.Printf("Taking DB offline")
+		require.Equal(t, "Online", rt.GetDBState())
 
-	response = rt.SendAdminRequest("POST", "/db/_offline", "")
-	assertStatus(t, response, 200)
+		response = rt.SendAdminRequest("POST", "/db/_offline", "")
+		assertStatus(t, response, 200)
 
-	// Bring DB online with delay of two seconds
-	response = rt.SendAdminRequest("POST", "/db/_online", "{\"delay\":1}")
-	assertStatus(t, response, 200)
+		// Bring DB online with delay of two seconds
+		response = rt.SendAdminRequest("POST", "/db/_online", "{\"delay\":1}")
+		assertStatus(t, response, 200)
 
-	require.Equal(t, "Offline", rt.GetDBState())
+		require.Equal(t, "Offline", rt.GetDBState())
 
-	// Bring DB online immediately
-	response = rt.SendAdminRequest("POST", "/db/_online", "")
-	assertStatus(t, response, 200)
+		// Bring DB online immediately
+		response = rt.SendAdminRequest("POST", "/db/_online", "")
+		assertStatus(t, response, 200)
 
-	// Wait for DB to come online (retry loop)
-	errDBState = rt.WaitForDBOnline()
-	assert.NoError(t, errDBState)
+		// Wait for DB to come online (retry loop)
+		errDBState = rt.WaitForDBOnline()
+		assert.NoError(t, errDBState)
 
-	// Wait until after the 1 second delay, since the online request explicitly asked for a delay
-	time.Sleep(1500 * time.Millisecond)
+		// Wait until after the 1 second delay, since the online request explicitly asked for a delay
+		time.Sleep(1500 * time.Millisecond)
 
-	// Wait for DB to come online (retry loop)
-	errDBState = rt.WaitForDBOnline()
-	assert.NoError(t, errDBState)
+		// Wait for DB to come online (retry loop)
+		errDBState = rt.WaitForDBOnline()
+		assert.NoError(t, errDBState)
+	}, "CBG-1513: panicked when the walrus bucket was closed and still used")
 }
 
 // Test bring DB online concurrently with delay of 1 second
