@@ -1117,7 +1117,7 @@ function(doc, oldDoc) {
 	// Simulate sending docs from the client
 	receivedChangesWg.Add(100)
 	revsFinishedWg.Add(100)
-	beforeChangesSent := time.Now().UnixMilli()
+	beforeChangesSent := time.Now().Unix()
 	// Sending revs may take a while if using views (GSI=false) due to the CBS views engine taking a while to execute the queries
 	// regarding rebuilding the users access grants (due to the constant invalidation of this).
 	// This blip tester is running as the user so the users access grants are rebuilt instantly when invalidated instead of the usual lazy-loading.
@@ -1137,7 +1137,7 @@ function(doc, oldDoc) {
 	// Wait until all expected changes are received by change handler
 	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*30)
 	assert.NoError(t, timeoutErr, "Timed out waiting for all changes.")
-	fmt.Println("Revs sent and changes received in", time.Now().UnixMilli()-beforeChangesSent, "ms")
+	fmt.Println("Revs sent and changes received in", time.Now().Unix()-beforeChangesSent, "s")
 
 	revTimeoutErr := WaitWithTimeout(&revsFinishedWg, time.Second*30)
 	assert.NoError(t, revTimeoutErr, "Timed out waiting for all revs.")
