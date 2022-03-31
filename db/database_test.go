@@ -1562,6 +1562,7 @@ func TestPostWithUserSpecialProperty(t *testing.T) {
 	doc, err = db.GetDocument(base.TestCtx(t), docid, DocUnmarshalAll)
 	require.NotNil(t, doc)
 	assert.Equal(t, rev2id, doc.CurrentRev)
+	assert.Equal(t, "value", doc.Body()["_special"])
 	assert.NoError(t, err, "Unable to retrieve doc using generated uuid")
 }
 
