@@ -16,6 +16,12 @@ post:
       application/json:
         schema:
           type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+              enum:
+                - '*'
           properties:
             doc_id:
               description: |-
@@ -50,11 +56,12 @@ post:
             properties:
               purged:
                 type: object
-                properties:
-                  doc_id:
-                    type: array
-                    items:
-                      type: string
+                additionalProperties:
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                      - '*'
             required:
             - purged
           examples:

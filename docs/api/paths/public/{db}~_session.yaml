@@ -59,15 +59,13 @@ post:
                 properties:
                   channels:
                     type: object
-                    required:
-                      - channel
                     description: A map of the channels the user is in along with the sequence number the user was granted access.
-                    properties:
-                      channel:
-                        type:
-                          - number
-                          - string
-                        description: The channel name (as the key) and the channel sequence number the user was granted access to that channel.
+                    additionalProperties:
+                      oneOf:
+                        - type: number
+                        - type: string
+                      minimum: 1
+                      description: The channel name (as the key) and the channel sequence number the user was granted access to that channel.
                   name:
                     type: string
                     minLength: 1

@@ -71,7 +71,7 @@ post:
                   type: string
                 status:
                   description: The HTTP status code for why the operation failed.
-                  type: string
+                  type: integer
               required:
               - id
             uniqueItems: true

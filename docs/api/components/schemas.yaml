@@ -357,6 +357,7 @@ OIDC-login-page-handler:
 Document:
   description: The configurable Sync Gateway properties of a document.
   type: object
+  additionalProperties: true
   properties:
     _id:
       description: The ID of the document.

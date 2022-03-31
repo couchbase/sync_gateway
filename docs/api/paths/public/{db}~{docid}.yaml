@@ -27,6 +27,7 @@ get:
         application/json:
           schema:
             type: object
+            additionalProperties: true
             properties:
               _id:
                 description: The ID of the document.
