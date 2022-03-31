@@ -2627,7 +2627,7 @@ func TestSyncFnDocBodyPropertiesSwitchActiveTombstone(t *testing.T) {
 		console.log("full doc: "+JSON.stringify(doc));
 		console.log("full oldDoc: "+JSON.stringify(oldDoc));
 
-		if (oldDoc == null || !oldDoc.syncOldDocBodyCheck) {
+		if (doc.testdata == 1 || (oldDoc != null && !oldDoc.syncOldDocBodyCheck)) {
 			console.log("skipping oldDoc property checks for this rev")
 			return
 		}

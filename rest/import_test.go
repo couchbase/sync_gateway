@@ -136,6 +136,62 @@ func TestXattrImportOldDoc(t *testing.T) {
 	assert.True(t, HasActiveChannel(rawDeleteResponse.Sync.Channels, "docDeleted"), "doc did not set _deleted:true for SDK delete")
 }
 
+// Test import ancestor handling
+func TestXattrImportOldDocRevHistory(t *testing.T) {
+
+	SkipImportTestsIfNotEnabled(t)
+
+	rtConfig := RestTesterConfig{
+		SyncFn: `function(doc, oldDoc) {
+			if (oldDoc == null) {
+				channel("oldDocNil")
+			} 
+		}`,
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			AutoImport: false,
+		}},
+	}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	bucket := rt.Bucket()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD)()
+
+	// 1. Create revision with history
+	docID := t.Name()
+	putResponse := rt.putDoc(docID, `{"val":-1}`)
+	revID := putResponse.Rev
+
+	// Get db.Database to perform PurgeOldRevisionJSON
+	dbc := rt.GetDatabase()
+	database, err := db.GetDatabase(dbc, nil)
+	assert.NoError(t, err)
+
+	for i := 0; i < 10; i++ {
+		updateResponse := rt.updateDoc(docID, revID, fmt.Sprintf(`{"val":%d}`, i))
+		// Purge old revision JSON to simulate expiry, and to verify import doesn't attempt multiple retrievals
+		purgeErr := database.PurgeOldRevisionJSON(docID, revID)
+		assert.NoError(t, purgeErr)
+		revID = updateResponse.Rev
+	}
+
+	// 2. Modify doc via SDK
+	updatedBody := make(map[string]interface{})
+	updatedBody["test"] = "TestAncestorImport"
+	err = bucket.Set(docID, 0, updatedBody)
+	assert.NoError(t, err)
+
+	// Attempt to get the document via Sync Gateway, to trigger import
+	response := rt.SendAdminRequest("GET", "/db/_raw/"+docID+"?redact=false", "")
+	goassert.Equals(t, response.Code, 200)
+	var rawResponse RawResponse
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &rawResponse))
+	log.Printf("raw response: %s", response.Body.Bytes())
+	assert.Equal(t, 1, len(rawResponse.Sync.Channels))
+	_, ok := rawResponse.Sync.Channels["oldDocNil"]
+	assert.True(t, ok)
+}
+
 // Validate tombstone w/ xattrs
 func TestXattrSGTombstone(t *testing.T) {
 
