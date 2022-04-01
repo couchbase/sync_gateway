@@ -35,6 +35,7 @@ import (
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/net/websocket"
 )
 
@@ -158,6 +159,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 	if err := sc.validate(true); err != nil {
 		panic("invalid RestTester StartupConfig: " + err.Error())
 	}
+
+	// Post-validation, we can lower the bcrypt cost beyond SG limits to reduce test runtime.
+	sc.Auth.BcryptCost = bcrypt.MinCost
 
 	rt.RestTesterServerContext = NewServerContext(&sc, rt.RestTesterConfig.persistentConfig)
 
@@ -506,6 +510,16 @@ func (rt *RestTester) WaitForConditionWithOptions(successFunc func() bool, maxNu
 
 	sleeper := base.CreateSleeperFunc(maxNumAttempts, timeToSleepMs)
 	err, _ := base.RetryLoop("Wait for condition options", waitForSuccess, sleeper)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (rt *RestTester) WaitForConditionShouldRetry(conditionFunc func() (shouldRetry bool, err error, value interface{}), maxNumAttempts, timeToSleepMs int) error {
+	sleeper := base.CreateSleeperFunc(maxNumAttempts, timeToSleepMs)
+	err, _ := base.RetryLoop("Wait for condition options", conditionFunc, sleeper)
 	if err != nil {
 		return err
 	}

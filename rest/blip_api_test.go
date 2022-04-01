@@ -991,6 +991,7 @@ function(doc, oldDoc) {
 	revsFinishedWg.Add(1)
 	response := rt.SendAdminRequest("PUT", "/db/grantDoc", `{"accessUser":"user1", "accessChannel":"ABC", "channels":["ABC"]}`)
 	assertStatus(t, response, 201)
+	require.NoError(t, rt.WaitForPendingChanges())
 
 	// Wait until all expected changes are received by change handler
 	// receivedChangesWg.Wait()
@@ -1005,8 +1006,7 @@ function(doc, oldDoc) {
 }
 
 // Start subChanges w/ continuous=true, batchsize=20
-// Start goroutine sending rev messages for documents that grant access to themselves for the active replication's user
-
+// Start sending rev messages for documents that grant access to themselves for the active replication's user
 func TestConcurrentRefreshUser(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache)()
 	// Initialize restTester here, so that we can use custom sync function, and later modify user
@@ -1114,31 +1114,32 @@ function(doc, oldDoc) {
 	subChangesResponse := subChangesRequest.Response()
 	goassert.Equals(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
 
-	// Start goroutine to simulate sending docs from the client
-
+	// Simulate sending docs from the client
 	receivedChangesWg.Add(100)
 	revsFinishedWg.Add(100)
-	go func() {
-		for i := 0; i < 100; i++ {
-			docID := fmt.Sprintf("foo_%d", i)
-			_, _, _, sendErr := bt.SendRev(
-				docID,
-				"1-abc",
-				[]byte(`{"accessUser": "user1",
-				"accessChannel":"`+docID+`",
-				"channels":["`+docID+`"]}`),
-				blip.Properties{},
-			)
-			assert.NoError(t, sendErr)
-		}
-	}()
+	beforeChangesSent := time.Now().Unix()
+	// Sending revs may take a while if using views (GSI=false) due to the CBS views engine taking a while to execute the queries
+	// regarding rebuilding the users access grants (due to the constant invalidation of this).
+	// This blip tester is running as the user so the users access grants are rebuilt instantly when invalidated instead of the usual lazy-loading.
+	for i := 0; i < 100; i++ {
+		docID := fmt.Sprintf("foo_%d", i)
+		_, _, _, sendErr := bt.SendRev(
+			docID,
+			"1-abc",
+			[]byte(`{"accessUser": "user1",
+			"accessChannel":"`+docID+`",
+			"channels":["`+docID+`"]}`),
+			blip.Properties{},
+		)
+		assert.NoError(t, sendErr)
+	}
 
 	// Wait until all expected changes are received by change handler
-	// receivedChangesWg.Wait()
-	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*60)
+	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*30)
 	assert.NoError(t, timeoutErr, "Timed out waiting for all changes.")
+	fmt.Println("Revs sent and changes received in", time.Now().Unix()-beforeChangesSent, "s")
 
-	revTimeoutErr := WaitWithTimeout(&revsFinishedWg, time.Second*60)
+	revTimeoutErr := WaitWithTimeout(&revsFinishedWg, time.Second*30)
 	assert.NoError(t, revTimeoutErr, "Timed out waiting for all revs.")
 
 	assert.False(t, nonIntegerSequenceReceived, "Unexpected non-integer sequence seen.")
@@ -3773,7 +3774,9 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	}
 
 	pullStats := bt.restTester.GetDatabase().DbStats.CBLReplicationPull()
+	require.EqualValues(t, 0, pullStats.NumPullReplTotalContinuous.Value())
 	require.EqualValues(t, 0, pullStats.NumPullReplActiveContinuous.Value())
+	require.EqualValues(t, 0, pullStats.NumPullReplTotalOneShot.Value())
 	require.EqualValues(t, 0, pullStats.NumPullReplActiveOneShot.Value())
 	require.EqualValues(t, 0, pullStats.NumPullReplSinceZero.Value())
 
@@ -3792,10 +3795,11 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "", errorCode, "resp: %s", respBody)
 
-	base.WaitForStat(pullStats.NumPullReplTotalOneShot.Value, 1)
-	value, _ := base.WaitForStat(pullStats.NumPullReplActiveOneShot.Value, 0)
-	require.EqualValues(t, 0, value)
-	require.EqualValues(t, 1, pullStats.NumPullReplSinceZero.Value())
+	base.RequireWaitForStat(t, pullStats.NumPullReplTotalOneShot.Value, 1)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveOneShot.Value, 0)
+	base.RequireWaitForStat(t, pullStats.NumPullReplTotalContinuous.Value, 0)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveContinuous.Value, 0)
+	base.RequireWaitForStat(t, pullStats.NumPullReplSinceZero.Value, 1)
 
 	// Send continous subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
 	subChangesRequest = blip.NewRequest()
@@ -3812,11 +3816,11 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "", errorCode, "resp: %s", respBody)
 
-	value, _ = base.WaitForStat(pullStats.NumPullReplTotalContinuous.Value, 1)
-	require.EqualValues(t, 1, value)
-	require.EqualValues(t, 1, pullStats.NumPullReplActiveContinuous.Value())
-	require.EqualValues(t, 0, pullStats.NumPullReplActiveOneShot.Value())
-	require.EqualValues(t, 2, pullStats.NumPullReplSinceZero.Value())
+	base.RequireWaitForStat(t, pullStats.NumPullReplTotalOneShot.Value, 1)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveOneShot.Value, 0)
+	base.RequireWaitForStat(t, pullStats.NumPullReplTotalContinuous.Value, 1)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveContinuous.Value, 1)
+	base.RequireWaitForStat(t, pullStats.NumPullReplSinceZero.Value, 2)
 
 	// Send a second continuous subchanges request, expect an error
 	subChangesRequest = blip.NewRequest()
@@ -3831,9 +3835,11 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	log.Printf("errorCode2: %v", errorCode)
 	assert.Equal(t, "500", errorCode)
 
-	assert.EqualValues(t, 1, pullStats.NumPullReplTotalContinuous.Value())
-	assert.EqualValues(t, 1, pullStats.NumPullReplActiveContinuous.Value())
-	assert.EqualValues(t, 2, pullStats.NumPullReplSinceZero.Value())
+	base.RequireWaitForStat(t, pullStats.NumPullReplTotalOneShot.Value, 1)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveOneShot.Value, 0)
+	base.RequireWaitForStat(t, pullStats.NumPullReplTotalContinuous.Value, 1)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveContinuous.Value, 1)
+	base.RequireWaitForStat(t, pullStats.NumPullReplSinceZero.Value, 2)
 
 	// Even a subsequent continuous = false subChanges request should return an error. This isn't restricted to only continuous changes.
 	subChangesRequest = blip.NewRequest()
@@ -3850,15 +3856,14 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "500", errorCode, "resp: %s", respBody)
 
-	assert.EqualValues(t, 0, pullStats.NumPullReplActiveOneShot.Value())
-	assert.EqualValues(t, 1, pullStats.NumPullReplTotalOneShot.Value())
-	assert.EqualValues(t, 2, pullStats.NumPullReplSinceZero.Value())
+	base.RequireWaitForStat(t, pullStats.NumPullReplTotalOneShot.Value, 1)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveOneShot.Value, 0)
+	base.RequireWaitForStat(t, pullStats.NumPullReplTotalContinuous.Value, 1)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveContinuous.Value, 1)
+	base.RequireWaitForStat(t, pullStats.NumPullReplSinceZero.Value, 2)
 
 	bt.sender.Close() // Close continuous sub changes feed
 
-	value, _ = base.WaitForStat(pullStats.NumPullReplActiveContinuous.Value, 0)
-	assert.EqualValues(t, 0, value)
-
-	value, _ = base.WaitForStat(pullStats.NumPullReplActiveOneShot.Value, 0)
-	assert.EqualValues(t, 0, value)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveOneShot.Value, 0)
+	base.RequireWaitForStat(t, pullStats.NumPullReplActiveContinuous.Value, 0)
 }

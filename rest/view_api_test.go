@@ -325,10 +325,13 @@ func TestAdminReduceViewQuery(t *testing.T) {
 	response = rt.SendRequest(http.MethodPut, fmt.Sprintf("/db/doc%v", 10), `{"key":1, "value":"0", "channel":"W"}`)
 	assertStatus(t, response, http.StatusCreated)
 
-	var result sgbucket.ViewResult
+	// Wait for all created documents to avoid race when using "reduce"
+	_, err := rt.WaitForNAdminViewResults(10, "/db/_design/foo/_view/bar?reduce=false")
+	require.NoError(t, err, "Unexpected error")
 
+	var result sgbucket.ViewResult
 	// Admin view query:
-	result, err := rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?reduce=true")
+	result, err = rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?reduce=true")
 	assert.NoError(t, err, "Unexpected error")
 
 	// we should get 1 row with the reduce result
@@ -368,16 +371,18 @@ func TestAdminReduceSumQuery(t *testing.T) {
 		// Create docs:
 		response = rt.SendRequest(http.MethodPut, fmt.Sprintf("/db/doc%v", i), `{"key":"A", "value":1}`)
 		assertStatus(t, response, http.StatusCreated)
-
 	}
 	response = rt.SendRequest(http.MethodPut, fmt.Sprintf("/db/doc%v", 10), `{"key":"B", "value":99}`)
 	assertStatus(t, response, http.StatusCreated)
 
-	var result sgbucket.ViewResult
+	// Wait for all created documents to avoid race when using "reduce"
+	_, err := rt.WaitForNAdminViewResults(10, "/db/_design/foo/_view/bar?reduce=false")
+	require.NoError(t, err, "Unexpected error")
 
+	var result sgbucket.ViewResult
 	// Admin view query:
-	result, err := rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?reduce=true")
-	assert.NoError(t, err, "Unexpected error")
+	result, err = rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?reduce=true")
+	require.NoError(t, err, "Unexpected error")
 
 	// we should get 1 row with the reduce result
 	require.Len(t, result.Rows, 1)
