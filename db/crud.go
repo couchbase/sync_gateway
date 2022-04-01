@@ -868,8 +868,8 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 		}
 
 		// Make up a new _rev, and add it to the history:
-		bodyWithoutSpecialProps, wasStripped := stripSpecialProperties(body)
-		canonicalBytesForRevID, err := base.JSONMarshalCanonical(bodyWithoutSpecialProps)
+		bodyWithoutInternalProps, wasStripped := stripInternalProperties(body)
+		canonicalBytesForRevID, err := base.JSONMarshalCanonical(bodyWithoutInternalProps)
 		if err != nil {
 			return nil, nil, false, nil, err
 		}
