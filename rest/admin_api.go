@@ -79,7 +79,8 @@ func (h *handler) handleCreateDB() error {
 		}
 
 		loadedConfig := DatabaseConfig{Version: version, DbConfig: *config}
-		persistedConfig := DatabaseConfig{Version: version, DbConfig: persistedDbConfig}
+
+		persistedConfig := DatabaseConfig{Version: version, DbConfig: persistedDbConfig, SGVersion: base.ProductVersion.String()}
 
 		h.server.lock.Lock()
 		defer h.server.lock.Unlock()
@@ -551,6 +552,8 @@ func (h *handler) handlePutDbConfig() (err error) {
 				return nil, err
 			}
 
+			bucketDbConfig.SGVersion = base.ProductVersion.String()
+
 			updatedDbConfig = &bucketDbConfig
 
 			// take a copy to stamp credentials and load before we persist
@@ -645,6 +648,8 @@ func (h *handler) handleDeleteDbConfigSync() error {
 				return nil, err
 			}
 
+			bucketDbConfig.SGVersion = base.ProductVersion.String()
+
 			updatedDbConfig = &bucketDbConfig
 			return base.JSONMarshal(bucketDbConfig)
 		})
@@ -705,10 +710,11 @@ func (h *handler) handlePutDbConfigSync() error {
 			}
 
 			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
-
 			if err != nil {
 				return nil, err
 			}
+
+			bucketDbConfig.SGVersion = base.ProductVersion.String()
 
 			updatedDbConfig = &bucketDbConfig
 			return base.JSONMarshal(bucketDbConfig)
@@ -792,6 +798,8 @@ func (h *handler) handleDeleteDbConfigImportFilter() error {
 				return nil, err
 			}
 
+			bucketDbConfig.SGVersion = base.ProductVersion.String()
+
 			updatedDbConfig = &bucketDbConfig
 			return base.JSONMarshal(bucketDbConfig)
 		})
@@ -856,6 +864,8 @@ func (h *handler) handlePutDbConfigImportFilter() error {
 			if err != nil {
 				return nil, err
 			}
+
+			bucketDbConfig.SGVersion = base.ProductVersion.String()
 
 			updatedDbConfig = &bucketDbConfig
 			return base.JSONMarshal(bucketDbConfig)

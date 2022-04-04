@@ -3912,6 +3912,99 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 }
 
+// TestDbConfigPersistentSGVersions ensures that cluster-wide config updates are not applied to older nodes to avoid pushing invalid configuration.
+func TestDbConfigPersistentSGVersions(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyConfig)()
+
+	serverErr := make(chan error, 0)
+
+	// Start SG with no databases
+	config := bootstrapStartupConfigForTest(t)
+	sc, err := setupServerContext(&config, true)
+	require.NoError(t, err)
+	defer func() {
+		sc.Close()
+		require.NoError(t, <-serverErr)
+	}()
+
+	go func() {
+		serverErr <- startServer(&config, sc)
+	}()
+	require.NoError(t, sc.waitForRESTAPIs())
+
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer func() { tb.Close() }()
+
+	dbConfig := DatabaseConfig{
+		SGVersion: "", // leave empty to emulate what 3.0.0 would've written to the bucket
+		DbConfig: DbConfig{
+			BucketConfig: BucketConfig{
+				Bucket: base.StringPtr(tb.GetName()),
+			},
+			Name:             "db",
+			EnableXattrs:     base.BoolPtr(base.TestUseXattrs()),
+			UseViews:         base.BoolPtr(base.TestsDisableGSI()),
+			NumIndexReplicas: base.UintPtr(0),
+			RevsLimit:        base.Uint32Ptr(123), // use RevsLimit to detect config changes
+		},
+	}
+	dbConfig.Version, err = GenerateDatabaseConfigVersionID("", &dbConfig.DbConfig)
+	require.NoError(t, err)
+
+	// initialise with db config
+	_, err = sc.bootstrapContext.connection.InsertConfig(tb.GetName(), t.Name(), dbConfig)
+	require.NoError(t, err)
+
+	assertRevsLimit := func(revsLimit uint32) {
+		waitAndAssertCondition(t, func() bool {
+			db, err := sc.GetDatabase("db")
+			if err != nil {
+				return false
+			}
+			return db.RevsLimit == revsLimit
+		}, "expected database with RevsLimit=%v", revsLimit)
+	}
+
+	assertRevsLimit(123)
+
+	writeSessionCookieNameConfigWithVersion := func(version string, revsLimit uint32) error {
+		_, err = sc.bootstrapContext.connection.UpdateConfig(tb.GetName(), t.Name(), func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
+			var db DatabaseConfig
+			if err := base.JSONUnmarshal(rawBucketConfig, &db); err != nil {
+				return nil, err
+			}
+			db.SGVersion = version
+			db.DbConfig.RevsLimit = base.Uint32Ptr(revsLimit)
+			db.Version, err = GenerateDatabaseConfigVersionID(db.Version, &db.DbConfig)
+			if err != nil {
+				return nil, err
+			}
+			return base.JSONMarshal(db)
+		})
+		return err
+	}
+
+	require.NoError(t, writeSessionCookieNameConfigWithVersion("", 456))
+	assertRevsLimit(456)
+
+	// should be allowed (as of writing current version is 3.1.0)
+	require.NoError(t, writeSessionCookieNameConfigWithVersion("3.0.1", 789))
+	assertRevsLimit(789)
+
+	warnsStart := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
+	require.NoError(t, writeSessionCookieNameConfigWithVersion("5.4.3", 654))
+	waitAndAssertConditionTimeout(t, time.Second*10, func() bool {
+		warns := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
+		return warns-warnsStart > 3
+	}, "expected some warnings from trying to apply newer config")
+	assertRevsLimit(789)
+}
+
 func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -257,8 +258,8 @@ func bootstrapStartupConfigForTest(t *testing.T) StartupConfig {
 	config := DefaultStartupConfig("")
 
 	config.Logging.Console = &base.ConsoleLoggerConfig{
-		LogLevel: base.LogLevelPtr(base.LevelInfo),
-		LogKeys:  []string{"*"},
+		LogLevel: base.ConsoleLogLevel(),
+		LogKeys:  base.ConsoleLogKey().EnabledLogKeys(),
 	}
 
 	config.API.AdminInterfaceAuthentication = base.BoolPtr(false)
@@ -278,6 +279,7 @@ func bootstrapStartupConfigForTest(t *testing.T) StartupConfig {
 		t.Skipf("EE-ONLY: Skipping test %s due to requiring non-default Config Group ID", t.Name())
 	}
 	config.Bootstrap.ConfigGroupID = t.Name()
+	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Millisecond * 250)
 
 	return config
 }

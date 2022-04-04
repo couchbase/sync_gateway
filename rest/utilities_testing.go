@@ -1700,3 +1700,43 @@ func NewHTTPTestServerOnListener(h http.Handler, l net.Listener) *httptest.Serve
 	s.Start()
 	return s
 }
+
+func waitAndRequireCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
+	t.Log("starting waitAndRequireCondition")
+	for i := 0; i <= 20; i++ {
+		if i == 20 {
+			require.Fail(t, "Condition failed to be satisfied", failureMsgAndArgs...)
+		}
+		if fn() {
+			break
+		}
+		time.Sleep(time.Millisecond * 250)
+	}
+}
+
+func waitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
+	t.Log("starting waitAndAssertCondition")
+	for i := 0; i <= 20; i++ {
+		if i == 20 {
+			assert.Fail(t, "Condition failed to be satisfied", failureMsgAndArgs...)
+		}
+		if fn() {
+			break
+		}
+		time.Sleep(time.Millisecond * 250)
+	}
+}
+
+func waitAndAssertConditionTimeout(t *testing.T, timeout time.Duration, fn func() bool, failureMsgAndArgs ...interface{}) {
+	start := time.Now()
+	tick := time.NewTicker(timeout / 20)
+	defer tick.Stop()
+	for range tick.C {
+		if time.Since(start) > timeout {
+			assert.Fail(t, "Condition failed to be satisfied", failureMsgAndArgs...)
+		}
+		if fn() {
+			return
+		}
+	}
+}

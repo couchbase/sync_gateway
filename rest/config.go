@@ -1286,6 +1286,24 @@ func (sc *ServerContext) applyConfigs(dbNameConfigs map[string]DatabaseConfig) (
 
 // _applyConfig loads the given database, failFast=true will not attempt to retry connecting/loading
 func (sc *ServerContext) _applyConfig(cnf DatabaseConfig, failFast bool) (applied bool, err error) {
+	// 3.0.0 doesn't write a SGVersion, but everything else will
+	configSGVersionStr := "3.0.0"
+	if cnf.SGVersion != "" {
+		configSGVersionStr = cnf.SGVersion
+	}
+
+	configSGVersion, err := base.NewComparableVersionFromString(configSGVersionStr)
+	if err != nil {
+		return false, err
+	}
+
+	// Skip applying if the config is from a newer SG version than this node
+	nodeSGVersion := base.ProductVersion
+	if nodeSGVersion.Less(configSGVersion) {
+		base.WarnfCtx(context.TODO(), "Cannot apply config update from server for db %q, this SG version is older than config's SG version (%s < %s)", cnf.Name, nodeSGVersion.String(), configSGVersion.String())
+		return false, nil
+	}
+
 	// skip if we already have this config loaded, and we've got a cas value to compare with
 	foundDbName, exists := sc.bucketDbName[*cnf.Bucket]
 	if exists {

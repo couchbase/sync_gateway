@@ -213,6 +213,8 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 			return nil, false, nil, nil, err
 		}
 
+		dbc.SGVersion = base.ProductVersion.String()
+
 		// Return users and roles separate from config
 		users = make(map[string]map[string]*auth.PrincipalConfig)
 		roles = make(map[string]map[string]*auth.PrincipalConfig)

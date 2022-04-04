@@ -154,8 +154,6 @@ func (sc *ServerContext) PostStartup() {
 const serverContextStopMaxWait = 30 * time.Second
 
 func (sc *ServerContext) Close() {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
 
 	logCtx := context.TODO()
 	err := base.TerminateAndWaitForClose(sc.statsContext.terminator, sc.statsContext.doneChan, serverContextStopMaxWait)
@@ -167,6 +165,9 @@ func (sc *ServerContext) Close() {
 	if err != nil {
 		base.InfofCtx(logCtx, base.KeyAll, "Couldn't stop background config update worker: %v", err)
 	}
+
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
 
 	for _, ctx := range sc.databases_ {
 		ctx.Close()
