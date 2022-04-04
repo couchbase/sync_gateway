@@ -1057,15 +1057,14 @@ func (sc *ServerContext) fetchAndLoadConfigs() (count int, err error) {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
 
-	fetchedConfigs, bucketsNoConfig, err := sc.fetchConfigs()
+	fetchedConfigs, err := sc.fetchConfigs()
 	if err != nil {
 		return 0, err
 	}
 
-	for _, bucket := range bucketsNoConfig {
-		dbName, ok := sc.bucketDbName[bucket]
-		if ok {
-			base.InfofCtx(context.TODO(), base.KeyConfig, "database %q was running on this node, but config was not found on the server - removing database", base.MD(dbName))
+	for _, dbName := range sc.bucketDbName {
+		if _, foundMatchingDb := fetchedConfigs[dbName]; !foundMatchingDb {
+			base.InfofCtx(context.TODO(), base.KeyConfig, "Database %q was running on this node, but config was not found on the server - removing database", base.MD(dbName))
 			sc._removeDatabase(dbName)
 		}
 	}
@@ -1151,10 +1150,10 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 }
 
 // fetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
-func (sc *ServerContext) fetchConfigs() (dbNameConfigs map[string]DatabaseConfig, bucketsNoConfig []string, err error) {
+func (sc *ServerContext) fetchConfigs() (dbNameConfigs map[string]DatabaseConfig, err error) {
 	buckets, err := sc.bootstrapContext.connection.GetConfigBuckets()
 	if err != nil {
-		return nil, nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
+		return nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
 	}
 
 	logCtx := context.TODO()
@@ -1165,12 +1164,13 @@ func (sc *ServerContext) fetchConfigs() (dbNameConfigs map[string]DatabaseConfig
 		var cnf DatabaseConfig
 		cas, err := sc.bootstrapContext.connection.GetConfig(bucket, sc.config.Bootstrap.ConfigGroupID, &cnf)
 		if err == base.ErrNotFound {
-			base.TracefCtx(logCtx, base.KeyConfig, "bucket %q did not contain config for group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
-			bucketsNoConfig = append(bucketsNoConfig, bucket)
+			base.DebugfCtx(logCtx, base.KeyConfig, "Bucket %q did not contain config for group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
 			continue
 		}
 		if err != nil {
-			base.DebugfCtx(logCtx, base.KeyConfig, "unable to fetch config for group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
+			// Unexpected error fetching config - SDK has already performed retries, so we'll treat it as a database removal
+			// this could be due to invalid JSON or some other non-recoverable error.
+			base.WarnfCtx(logCtx, "Unable to fetch config for group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
 			continue
 		}
 
@@ -1199,7 +1199,7 @@ func (sc *ServerContext) fetchConfigs() (dbNameConfigs map[string]DatabaseConfig
 		fetchedConfigs[cnf.Name] = cnf
 	}
 
-	return fetchedConfigs, bucketsNoConfig, nil
+	return fetchedConfigs, nil
 }
 
 // _applyConfigs takes a map of dbName->DatabaseConfig and loads them into the ServerContext where necessary.
