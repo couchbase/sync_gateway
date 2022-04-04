@@ -1013,7 +1013,7 @@ func (h *handler) handleGetStatus() error {
 	// This handler is supposed to be admin-only anyway, but being defensive if this is opened up in the routes file.
 	if h.shouldShowProductVersion() {
 		status.Version = base.LongVersionString
-		status.Vendor.Version = base.ProductVersionNumber
+		status.Vendor.Version = base.ProductAPIVersion
 	}
 
 	for _, database := range h.server.databases_ {
