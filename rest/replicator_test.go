@@ -3569,6 +3569,7 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 }
 
 func waitAndRequireCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
+	t.Log("starting waitAndRequireCondition")
 	for i := 0; i <= 20; i++ {
 		if i == 20 {
 			require.Fail(t, "Condition failed to be satisfied", failureMsgAndArgs...)
@@ -3576,11 +3577,12 @@ func waitAndRequireCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...
 		if fn() {
 			break
 		}
-		time.Sleep(time.Millisecond * 100)
+		time.Sleep(time.Millisecond * 250)
 	}
 }
 
 func waitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
+	t.Log("starting waitAndAssertCondition")
 	for i := 0; i <= 20; i++ {
 		if i == 20 {
 			assert.Fail(t, "Condition failed to be satisfied", failureMsgAndArgs...)
@@ -3588,7 +3590,7 @@ func waitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...i
 		if fn() {
 			break
 		}
-		time.Sleep(time.Millisecond * 100)
+		time.Sleep(time.Millisecond * 250)
 	}
 }
 
