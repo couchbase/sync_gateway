@@ -353,15 +353,15 @@ func (h *handler) handlePostUpgrade() error {
 	return nil
 }
 
-func (h *handler) instanceStartTime() int64 {
-	return h.db.StartTime.UnixNano() / 1000
+func (h *handler) instanceStartTimeMicro() int64 {
+	return h.db.StartTime.UnixMicro()
 }
 
 type DatabaseRoot struct {
 	DBName                        string `json:"db_name"`
 	SequenceNumber                uint64 `json:"update_seq"`
 	CommittedUpdateSequenceNumber uint64 `json:"committed_update_seq"` // Used by perf tests, shouldn't be removed
-	InstanceStartTime             int64  `json:"instance_start_time"`
+	InstanceStartTimeMicro        int64  `json:"instance_start_time"`  // microseconds since epoch
 	CompactRunning                bool   `json:"compact_running"`
 	PurgeSequenceNumber           uint64 `json:"purge_seq"`
 	DiskFormatVersion             uint64 `json:"disk_format_version"`
@@ -386,7 +386,7 @@ func (h *handler) handleGetDB() error {
 		DBName:                        h.db.Name,
 		SequenceNumber:                lastSeq,
 		CommittedUpdateSequenceNumber: lastSeq,
-		InstanceStartTime:             h.instanceStartTime(),
+		InstanceStartTimeMicro:        h.instanceStartTimeMicro(),
 		CompactRunning:                h.db.IsCompactRunning(),
 		PurgeSequenceNumber:           0, // TODO: Should track this value
 		DiskFormatVersion:             0, // Probably meaningless, but add for compatibility
@@ -412,7 +412,7 @@ func (h *handler) handleCreateTarget() error {
 
 func (h *handler) handleEFC() error { // Handles _ensure_full_commit.
 	// no-op. CouchDB's replicator sends this, so don't barf. Status must be 201.
-	h.writeRawJSONStatus(http.StatusCreated, []byte(`{"instance_start_time":`+strconv.FormatInt(h.instanceStartTime(), 10)+`,"ok":true}`))
+	h.writeRawJSONStatus(http.StatusCreated, []byte(`{"instance_start_time":`+strconv.FormatInt(h.instanceStartTimeMicro(), 10)+`,"ok":true}`))
 	return nil
 }
 
