@@ -3924,6 +3924,10 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 
 	// Start SG with no databases
 	config := bootstrapStartupConfigForTest(t)
+
+	// enable the background update worker for this test only
+	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Millisecond * 250)
+
 	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
 	defer func() {
