@@ -1,0 +1,126 @@
+package base
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestComparableVersion(t *testing.T) {
+	// An *ascending* list of valid versions (order is required for comparison testing)
+	testDataComparableVersions := []struct {
+		str string
+	}{
+		{"0.0.0"}, // min
+		{"0.0.0.1"},
+		{"0.0.1"},
+		{"0.0.1.1"},
+		{"0.1.0"},
+		{"0.1.0.1"},
+		{"0.1.0.1@2"}, // build ordering
+		{"0.1.0.1@11"},
+		{"0.1.0.2"},
+		{"0.1.1"},
+		{"0.1.1.1"},
+		{"0.1.1.1@1-CE"}, // edition ordering
+		{"0.1.1.1@1-EE"},
+		{"1.0.0"},
+		{"1.0.0.1"},
+		{"1.1.1.1"},
+		{"2.3.4"},
+		{"2.3.4.5"},
+		{"2.3.5"},
+		{"11.0.0"}, // check for lexicographic ordering
+		{"31.3.3.7"},
+		{"32.1.0"},
+		{"1:22.3.25"}, // maintain ordering with new epoch when defining new versioning scheme (yy.m.d)
+		{"2:1.0.0"},
+		{"8:7.6.5.4@3-EE"},
+		{"255:255.255.255.255@65535-EE"}, // max
+	}
+
+	for i, test := range testDataComparableVersions {
+		t.Run(test.str, func(t *testing.T) {
+			current, err := NewComparableVersionFromString(test.str)
+			require.NoError(t, err)
+
+			// string->version->string round-trip
+			assert.Equal(t, test.str, current.String())
+
+			// comparisons (Less/Equal)
+			if i > 1 {
+				prevStr := testDataComparableVersions[i-1].str
+				previous, err := NewComparableVersionFromString(prevStr)
+				require.NoError(t, err)
+
+				assert.Truef(t, previous.Less(current), "incorrect comparison: expected %q < %q", prevStr, test.str)
+				assert.Falsef(t, current.Equal(previous), "incorrect comparison: expected %q != %q", prevStr, test.str)
+				assert.Falsef(t, current.Less(previous), "incorrect comparison: expected %q > %q", test.str, prevStr)
+			}
+		})
+	}
+}
+
+func TestInvalidComparableVersion(t *testing.T) {
+	// A list of invalid ComparableVersion
+	tests := []struct {
+		ver string
+	}{
+		{""},
+		{":..@-"},
+		{":...@-"},
+		{"."},
+		{".."},
+		{"..."},
+		{"...."},
+		{"1:"},
+		{"@1"},
+		{"-EE"},
+		{"-1"},
+		{"0"},
+		{"0.1"},
+		{"0.0."},
+		{"0.0.0.a"},
+		{"0.0.a.0"},
+		{"0.a.0.0"},
+		{"a.0.0.0"},
+		{"1.1.1-3"},                 // invalid edition
+		{"1.1.1-ZZ"},                // invalid edition
+		{"a:1.1.1-EE"},              // invalid epoch
+		{"1.1.1@a-EE"},              // invalid build
+		{"256.1.1"},                 // overflowing major
+		{"1.256.1"},                 // overflowing minor
+		{"1.1.256"},                 // overflowing patch
+		{"1.1.1.256"},               // overflowing other
+		{"1.1.1@65536"},             // overflowing build
+		{"256:1.1.1-EE"},            // overflowing epoch
+		{"256.256.256.256@65536-3"}, // overflowing all
+	}
+
+	for _, test := range tests {
+		t.Run(test.ver, func(t *testing.T) {
+			ver, err := NewComparableVersionFromString(test.ver)
+			assert.Error(t, err)
+			assert.Nil(t, ver)
+		})
+	}
+}
+
+func BenchmarkComparableVersion(b *testing.B) {
+	const str = "8:7.6.5.4@3-EE"
+
+	current, err := NewComparableVersionFromString(str)
+	require.NoError(b, err)
+
+	b.Run("parseComparableVersion", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_, _, _, _, _, _, _, _ = parseComparableVersion(str)
+		}
+	})
+	b.Run("formatComparableVersion", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_ = current.formatComparableVersion()
+		}
+	})
+}
