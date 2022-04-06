@@ -4254,8 +4254,11 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
-	defer sc.Close()
 	serverErr := make(chan error, 0)
+	defer func() {
+		sc.Close()
+		require.NoError(t, <-serverErr)
+	}()
 	go func() {
 		serverErr <- startServer(&config, sc)
 	}()
