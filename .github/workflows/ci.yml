@@ -58,7 +58,7 @@ jobs:
         shell: bash
       - name: Annotate Failures
         if: always()
-        uses: IsaacLambat/golang-test-annotations@v0.6.0
+        uses: IsaacLambat/golang-test-annotations@v0.6.2
         with:
           test-results: test.json
 
@@ -76,6 +76,6 @@ jobs:
         shell: bash
       - name: Annotate Failures
         if: always()
-        uses: IsaacLambat/golang-test-annotations@v0.6.0
+        uses: IsaacLambat/golang-test-annotations@v0.6.2
         with:
           test-results: test.json
