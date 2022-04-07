@@ -209,6 +209,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		ChangesBatchSize:    200,
+		Continuous:          true,
 		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	})
 	defer func() { assert.NoError(t, ar.Stop()) }()
