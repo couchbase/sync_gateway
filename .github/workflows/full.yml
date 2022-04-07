@@ -6,38 +6,22 @@
 # will be governed by the Apache License, Version 2.0, included in the file
 # licenses/APL2.txt.
 
-name: ci
+# full is a workflow that runs more comprehensive jobs - it is run for PR, `master` and `release` commits.
+# it is assumed that other workflows are still triggered (e.g. go.yml or openapi.yml)
+name: full
 
 on:
   push:
     branches: 
       - 'master'
       - 'release/*'
-      - 'CBG*'
-      - 'ci-*'
   pull_request:
     branches:
       - 'master'
       - 'release/*'
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/setup-go@v2
-        with:
-          go-version: 1.17.5
-      - uses: actions/checkout@v2
-      - name: gofmt
-        run: |
-          gofmt -d -e . | tee gofmt.out
-          test -z "$(cat gofmt.out)"
-      - name: vet
-        run: go vet "./..."
-      - name: go-build
-        run: go build "./..."
-
-  test:
+  test-matrix:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

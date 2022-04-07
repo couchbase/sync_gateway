@@ -6,6 +6,7 @@
 # will be governed by the Apache License, Version 2.0, included in the file
 # licenses/APL2.txt.
 
+# openapi validates the OpenAPI specs and is run on every commit that modifies the specs
 name: openapi
 
 on:
@@ -14,18 +15,7 @@ on:
     paths:
       - 'docs/api/**'
     branches: 
-      - 'master'
-      - 'release/*'
-      - 'CBG*'
-      - 'ci-*'
-      - 'api-ci-*'
-  pull_request:
-    # Only run when we change an API spec
-    paths:
-      - 'docs/api/**'
-    branches:
-      - 'master'
-      - 'release/*'
+      - '*'
 
 jobs:
   api_validation:
