@@ -24,6 +24,7 @@ import (
 
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/google/uuid"
 )
 
 const (
@@ -63,6 +64,7 @@ type ClusterUpdateFunc func(cluster *SGRCluster) (cancel bool, err error)
 
 // SGRCluster defines sg-replicate configuration and distribution for a collection of Sync Gateway nodes
 type SGRCluster struct {
+	ClusterUUID  string                     `json:"cluster_uuid"` // A generated unique ID to identify the cluster
 	Replications map[string]*ReplicationCfg `json:"replications"` // Set of replications defined for the cluster, indexed by replicationID
 	Nodes        map[string]*SGNode         `json:"nodes"`        // Set of nodes, indexed by host name
 	loggingCtx   context.Context            // logging context for cluster operations
@@ -127,6 +129,7 @@ func DefaultReplicationConfig() ReplicationConfig {
 // ReplicationCfg represents a replication definition as stored in the cluster config.
 type ReplicationCfg struct {
 	ReplicationConfig
+	ClusterUUID  string `json:"cluster_uuid,omitempty"` // UUID of the cluster for the replication, if it was defined at replication creation time
 	AssignedNode string `json:"assigned_node"`          // UUID of node assigned to this replication
 	TargetState  string `json:"target_state,omitempty"` // Target state for replication.
 }
@@ -644,9 +647,16 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 		return nil, cfgErr
 	}
 
-	if m.dbContext.Options.GroupID != "" {
-		rc.checkpointPrefix = m.dbContext.Options.GroupID + ":"
+	checkpointPrefix := ""
+	// ClusterUUID is to prevent collisions between multiple remote replication checkpoints (e.g. two edge replications sharing the same ID)
+	if config.ClusterUUID != "" {
+		checkpointPrefix += config.ClusterUUID + ":"
 	}
+	// GroupID is to prevent collisions between multiple local replication checkpoints within different groups.
+	if m.dbContext.Options.GroupID != "" {
+		checkpointPrefix += m.dbContext.Options.GroupID + ":"
+	}
+	rc.checkpointPrefix = checkpointPrefix
 
 	// Retrieve or create an entry in db.replications expvar for this replication
 	allReplicationsStatsMap := m.dbContext.DbStats.DBReplicatorStats(rc.ID)
@@ -828,6 +838,11 @@ func (m *sgReplicateManager) loadSGRCluster() (sgrCluster *SGRCluster, cas uint6
 			return nil, 0, err
 		}
 	}
+
+	if sgrCluster.ClusterUUID == "" {
+		sgrCluster.ClusterUUID = uuid.NewString()
+	}
+
 	sgrCluster.loggingCtx = m.loggingCtx
 	return sgrCluster, cas, nil
 }
@@ -972,6 +987,9 @@ func (m *sgReplicateManager) AddReplication(replication *ReplicationCfg) error {
 		if exists {
 			return false, base.ErrAlreadyExists
 		}
+		if replication.ClusterUUID == "" {
+			replication.ClusterUUID = cluster.ClusterUUID
+		}
 		cluster.Replications[replication.ID] = replication
 		cluster.RebalanceReplications()
 		return false, nil
@@ -996,6 +1014,10 @@ func (m *sgReplicateManager) PutReplications(replications map[string]*Replicatio
 					replicationCfg.TargetState = ReplicationStateStopped
 				} else {
 					replicationCfg.TargetState = ReplicationStateRunning
+				}
+				// New replication, so stamp ClusterUUID into the replication config
+				if replicationCfg.ClusterUUID == "" {
+					replicationCfg.ClusterUUID = cluster.ClusterUUID
 				}
 			}
 			replicationCfg.ReplicationConfig = *replication
