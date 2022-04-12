@@ -4551,3 +4551,151 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 	err = activeRT.GetDatabase().SGReplicateMgr.DeleteReplication(t.Name())
 	require.NoError(t, err)
 }
+
+func TestApiInternalPropertiesHandling(t *testing.T) {
+	testCases := []struct {
+		name                        string
+		inputBody                   map[string]interface{}
+		expectReject                bool
+		skipDocContentsVerification *bool
+	}{
+		{
+			name:         "Valid document with special prop",
+			inputBody:    map[string]interface{}{"_cookie": "is valid"},
+			expectReject: false,
+		},
+		{
+			name:         "Invalid _sync",
+			inputBody:    map[string]interface{}{"_sync": true},
+			expectReject: true,
+		},
+		{
+			name:         "Valid _sync",
+			inputBody:    map[string]interface{}{"_sync": db.SyncData{}},
+			expectReject: true,
+		},
+		{
+			name:                        "Valid _deleted",
+			inputBody:                   map[string]interface{}{"_deleted": false},
+			expectReject:                false,
+			skipDocContentsVerification: base.BoolPtr(true),
+		},
+		{
+			name:                        "Valid _revisions",
+			inputBody:                   map[string]interface{}{"_revisions": map[string]interface{}{"ids": "1-abc"}},
+			expectReject:                false,
+			skipDocContentsVerification: base.BoolPtr(true),
+		},
+		{
+			name:                        "Valid _exp",
+			inputBody:                   map[string]interface{}{"_exp": "123"},
+			expectReject:                false,
+			skipDocContentsVerification: base.BoolPtr(true),
+		},
+		{
+			name:         "Invalid _exp",
+			inputBody:    map[string]interface{}{"_exp": "abc"},
+			expectReject: true,
+		},
+		{
+			name:         "_purged",
+			inputBody:    map[string]interface{}{"_purged": false},
+			expectReject: true,
+		},
+		{
+			name:         "_removed",
+			inputBody:    map[string]interface{}{"_removed": false},
+			expectReject: true,
+		},
+		// TODO: When first _sync_ (BodyInternalPrefix) prefixed internal property is added, this document should be expect to be rejected
+		{
+			name:         "_sync_cookies",
+			inputBody:    map[string]interface{}{"_sync_cookies": true},
+			expectReject: false,
+		},
+	}
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	for i, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			docID := fmt.Sprintf("test%d", i)
+			rawBody, err := json.Marshal(test.inputBody)
+			require.NoError(t, err)
+
+			resp := rt.SendAdminRequest("PUT", "/db/"+docID, string(rawBody))
+			if test.expectReject {
+				assert.NotEqual(t, 201, resp.Code)
+				return
+			}
+			require.Equal(t, 201, resp.Code)
+
+			var bucketDoc map[string]interface{}
+			_, err = rt.Bucket().Get(docID, &bucketDoc)
+			assert.NoError(t, err)
+			// Confirm input body is in the bucket doc
+			if test.skipDocContentsVerification == nil || !*test.skipDocContentsVerification {
+				for k, v := range test.inputBody {
+					assert.Equal(t, v, bucketDoc[k])
+				}
+			}
+		})
+	}
+}
+
+func TestPutIDRevMatchBody(t *testing.T) {
+	testCases := []struct {
+		name        string
+		docBody     string
+		docID       string
+		rev         string
+		expectError bool
+	}{
+		{
+			name:        "ID match",
+			docBody:     `{"_id": "id_match"}`,
+			docID:       "id_match",
+			expectError: false,
+		},
+		{
+			name:        "ID mismatch",
+			docBody:     `{"_id": "id_mismatch"}`,
+			docID:       "completely_different_id",
+			expectError: true,
+		},
+		{
+			name:        "Rev match",
+			docBody:     `{"_rev": "1-ca9ad22802b66f662ff171f226211d5c", "rand": "439870"}`,
+			rev:         "1-ca9ad22802b66f662ff171f226211d5c",
+			expectError: false,
+		},
+		{
+			name:        "Rev mismatch",
+			docBody:     `{"_rev": "1-ca9ad22802b66f662ff171f226211d5c", "rand": "123112"}`,
+			rev:         "1-abc",
+			expectError: true,
+		},
+	}
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	// Create document to create rev from
+	resp := rt.SendAdminRequest("PUT", "/db/document", "{}")
+	assertStatus(t, resp, 201)
+
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			docID := "document" // Used for the rev tests to branch off of
+			if test.docID != "" {
+				docID = test.docID
+			}
+			resp := rt.SendAdminRequest("PUT", "/db/"+docID+"?rev="+test.rev, test.docBody)
+			if test.expectError {
+				assertStatus(t, resp, 400)
+				return
+			}
+			assertStatus(t, resp, 201)
+		})
+	}
+}

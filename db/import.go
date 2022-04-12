@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -42,13 +43,12 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 			base.InfofCtx(db.Ctx, base.KeyImport, "Unmarshal error during importDoc %v", err)
 			return nil, err
 		}
-		if body == nil {
-			return nil, base.ErrEmptyDocument
-		}
-	}
 
-	if isPurged, ok := body[BodyPurged].(bool); ok && isPurged {
-		return nil, base.ErrImportCancelledPurged
+		err = validateImportBody(body)
+		if err != nil {
+			return nil, err
+		}
+		delete(body, BodyPurged)
 	}
 
 	existingBucketDoc := &sgbucket.BucketDocument{
@@ -440,6 +440,33 @@ func (db *Database) backupPreImportRevision(docid, revid string) error {
 		return fmt.Errorf("Persistence error: %v", setOldRevErr)
 	}
 
+	return nil
+}
+
+func validateImportBody(body Body) error {
+	if body[BodyId] != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "top level property '_id' is a reserved internal property therefore cannot be imported")
+	}
+	if body[BodyRev] != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "top level property '_rev' is a reserved internal property therefore cannot be imported")
+	}
+	if body[BodyDeleted] != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "top level property '_deleted' is a reserved internal property therefore cannot be imported")
+	}
+	if body[BodyExpiry] != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "top level property '_exp' is a reserved internal property therefore cannot be imported")
+	}
+	if body[BodyRevisions] != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "top level property '_revisions' is a reserved internal property therefore cannot be imported")
+	}
+
+	if isPurged, ok := body[BodyPurged].(bool); ok && isPurged {
+		return base.ErrImportCancelledPurged
+	}
+	// TODO: Validate attachment data to ensure user is not setting invalid attachments
+	if body == nil {
+		return base.ErrEmptyDocument
+	}
 	return nil
 }
 

@@ -4302,14 +4302,6 @@ func TestImportingPurgedDocument(t *testing.T) {
 	assert.Equal(t, numErrors, numErrorsAfter)
 }
 
-func TestRestSettingPurged(t *testing.T) {
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-
-	response := rt.SendAdminRequest("PUT", "/db/doc1", `{"_purged": true, "foo": "bar"}`)
-	assert.Equal(t, http.StatusBadRequest, response.Code)
-}
-
 func TestDocIDFilterResurrection(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()

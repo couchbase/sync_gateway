@@ -821,6 +821,11 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 
 	delete(body, BodyRevisions)
 
+	err = validateDocUpdate(body)
+	if err != nil {
+		return "", nil, err
+	}
+
 	allowImport := db.UseXattrs()
 	doc, newRevID, err = db.updateAndReturnDoc(newDoc.ID, allowImport, expiry, nil, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 
@@ -1040,6 +1045,11 @@ func (db *Database) PutExistingRevWithBody(docid string, body Body, docHistory [
 	delete(body, BodyAttachments)
 	newDoc.UpdateBody(body)
 
+	err = validateDocUpdate(body)
+	if err != nil {
+		return nil, "", err
+	}
+
 	doc, newRevID, putExistingRevErr := db.PutExistingRev(newDoc, docHistory, noConflicts, false, nil)
 
 	if putExistingRevErr != nil {
@@ -1048,6 +1058,13 @@ func (db *Database) PutExistingRevWithBody(docid string, body Body, docHistory [
 
 	return doc, newRevID, err
 
+}
+
+func validateDocUpdate(body Body) error {
+	if body[base.SyncPropertyName] != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "document top level property '_sync' is a reserved internal property")
+	}
+	return nil
 }
 
 // resolveConflict runs the conflictResolverFunction with doc and newDoc.  doc and newDoc's bodies and revision trees
@@ -1309,17 +1326,18 @@ func (db *Database) validateExistingDoc(doc *Document, importAllowed, docExists 
 	return nil
 }
 
+// validateNewBody validates any new body being received
 func validateNewBody(body Body) error {
 	// Reject a body that contains the "_removed" property, this means that the user
 	// is trying to update a document they do not have read access to.
 	if body[BodyRemoved] != nil {
 		return base.HTTPErrorf(http.StatusNotFound, "Document revision is not accessible")
 	}
-
 	// Reject bodies that contains the "_purged" property.
 	if body[BodyPurged] != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "user defined top level property '_purged' is not allowed in document body")
 	}
+	// TODO: Add validation when the first property is added using the BodyInternalPrefix "_sync_"
 	return nil
 }
 
@@ -1621,6 +1639,11 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 		return
 	}
 
+	err = validateNewBody(newDoc.Body())
+	if err != nil {
+		return
+	}
+
 	// Marshal raw user xattrs for use in Sync Fn. If this fails we can bail out so we should do early as possible.
 	metaMap, err := doc.GetMetaMap(db.Options.UserXattrKey)
 	if err != nil {
@@ -1628,12 +1651,6 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 	}
 
 	syncFnBody, err := newDoc.GetDeepMutableBody()
-	if err != nil {
-		return
-	}
-
-	// TODO: seems a bit late to do this. Could we move it earlier?
-	err = validateNewBody(syncFnBody)
 	if err != nil {
 		return
 	}

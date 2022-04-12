@@ -768,6 +768,25 @@ type removalDocument struct {
 	Removed bool `json:"_removed"`
 }
 
+func validateBlipBody(body Body) error {
+	if body[base.SyncPropertyName] != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "top level property '_sync' is a reserved internal property")
+	}
+	if body[BodyId] != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "top level property '_id' is a reserved internal property")
+	}
+	if body[BodyRev] != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "top level property '_rev' is a reserved internal property")
+	}
+	if body[BodyDeleted] != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "top level property '_deleted' is a reserved internal property")
+	}
+	if body[BodyRevisions] != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "top level property '_rev' is a reserved internal property")
+	}
+	return nil
+}
+
 // Received a "rev" request, i.e. client is pushing a revision body
 func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 	startTime := time.Now()
@@ -824,6 +843,10 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 		RevID: revID,
 	}
 	newDoc.UpdateBodyBytes(bodyBytes)
+	err = validateBlipBody(newDoc.Body())
+	if err != nil {
+		return err
+	}
 
 	injectedAttachmentsForDelta := false
 	if deltaSrcRevID, isDelta := revMessage.DeltaSrc(); isDelta {

@@ -2267,3 +2267,115 @@ func TestUnderscorePrefixSupportImport(t *testing.T) {
 		assert.EqualValues(t, val, resp[key])
 	}
 }
+
+func TestImportInternalPropertiesHandling(t *testing.T) {
+	SkipImportTestsIfNotEnabled(t)
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+
+	testCases := []struct {
+		name               string
+		importBody         map[string]interface{}
+		expectReject       bool
+		expectedStatusCode *int // Defaults to not 200 (for expectedReject=true) and 200 if expectedReject=false
+	}{
+		{
+			name:         "Valid document with special prop",
+			importBody:   map[string]interface{}{"_cookie": "is valid"},
+			expectReject: false,
+		},
+		{
+			name:               "Invalid _sync",
+			importBody:         map[string]interface{}{"_sync": true},
+			expectReject:       true,
+			expectedStatusCode: base.IntPtr(500), // Internal server error due to unmarshal error
+		},
+		{
+			name:               "Valid _id",
+			importBody:         map[string]interface{}{"_id": "documentid"},
+			expectReject:       true,
+			expectedStatusCode: base.IntPtr(400),
+		},
+		{
+			name:         "Valid _rev",
+			importBody:   map[string]interface{}{"_rev": "1-abc"},
+			expectReject: true,
+		},
+		{
+			name:         "Valid _deleted",
+			importBody:   map[string]interface{}{"_deleted": false},
+			expectReject: true,
+		},
+		{
+			name:         "Valid _revisions",
+			importBody:   map[string]interface{}{"_revisions": map[string]interface{}{"ids": "1-abc"}},
+			expectReject: true,
+		},
+		{
+			name:         "Valid _exp",
+			importBody:   map[string]interface{}{"_exp": "123"},
+			expectReject: true,
+		},
+		{
+			name:         "Invalid _attachments",
+			importBody:   map[string]interface{}{"_attachments": false},
+			expectReject: false,
+		},
+		{
+			name:         "Valid _attachments",
+			importBody:   map[string]interface{}{"_attachments": map[string]interface{}{"attch": map[string]interface{}{"data": "c2d3IGZ0dw=="}}},
+			expectReject: false,
+		},
+		{
+			name:         "_purged false",
+			importBody:   map[string]interface{}{"_purged": false},
+			expectReject: false, // Should only reject when _purged=true
+		},
+		{
+			name:               "_removed",
+			importBody:         map[string]interface{}{"_removed": false},
+			expectReject:       true,
+			expectedStatusCode: base.IntPtr(404),
+		},
+		// TODO: When first _sync_ (BodyInternalPrefix) prefixed internal property is added, this document should be expect to be rejected
+		{
+			name:         "_sync_cookies",
+			importBody:   map[string]interface{}{"_sync_cookies": true},
+			expectReject: false,
+		},
+	}
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	bucket := rt.Bucket()
+
+	for i, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			docID := fmt.Sprintf("test%d", i)
+			added, err := bucket.Add(docID, 0, test.importBody)
+			require.True(t, added)
+			require.NoError(t, err)
+
+			// Perform on-demand import
+			resp := rt.SendAdminRequest("GET", "/db/"+docID, "")
+			if test.expectReject {
+				if test.expectedStatusCode != nil {
+					assert.Equal(t, *test.expectedStatusCode, resp.Code)
+				} else {
+					assert.NotEqual(t, 200, resp.Code)
+				}
+				return
+			}
+			if test.expectedStatusCode != nil {
+				assertStatus(rt.tb, resp, *test.expectedStatusCode)
+			} else {
+				assertStatus(rt.tb, resp, 200)
+			}
+			var body db.Body
+			require.NoError(rt.tb, base.JSONUnmarshal(resp.Body.Bytes(), &body))
+
+			for key, val := range body {
+				assert.EqualValues(t, val, body[key])
+			}
+		})
+	}
+}
