@@ -411,6 +411,9 @@ func (h *handler) logStatus(status int, message string) {
 	h.logDuration(false) // don't track actual time
 }
 
+// checkAuth verifies that the current request is authenticated for the given database.
+//
+// NOTE: checkAuth is not used for the admin interface.
 func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 
 	h.user = nil
@@ -461,19 +464,21 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 	}
 
 	// Check basic auth first
-	if userName, password := h.getBasicAuth(); userName != "" {
-		h.user, err = dbCtx.Authenticator(h.ctx()).AuthenticateUser(userName, password)
-		if err != nil {
-			return err
-		}
-		if h.user == nil {
-			base.InfofCtx(h.ctx(), base.KeyAll, "HTTP auth failed for username=%q", base.UD(userName))
-			if dbCtx.Options.SendWWWAuthenticateHeader == nil || *dbCtx.Options.SendWWWAuthenticateHeader {
-				h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
+	if !dbCtx.Options.DisablePublicBasicAuth {
+		if userName, password := h.getBasicAuth(); userName != "" {
+			h.user, err = dbCtx.Authenticator(h.ctx()).AuthenticateUser(userName, password)
+			if err != nil {
+				return err
 			}
-			return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
+			if h.user == nil {
+				base.InfofCtx(h.ctx(), base.KeyAll, "HTTP auth failed for username=%q", base.UD(userName))
+				if dbCtx.Options.SendWWWAuthenticateHeader == nil || *dbCtx.Options.SendWWWAuthenticateHeader {
+					h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
+				}
+				return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
+			}
+			return nil
 		}
-		return nil
 	}
 
 	// Check cookie

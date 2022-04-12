@@ -140,7 +140,8 @@ type DbConfig struct {
 	AllowConflicts                   *bool                            `json:"allow_conflicts,omitempty"`                      // Deprecated: False forbids creating conflicts
 	NumIndexReplicas                 *uint                            `json:"num_index_replicas,omitempty"`                   // Number of GSI index replicas used for core indexes
 	UseViews                         *bool                            `json:"use_views,omitempty"`                            // Force use of views instead of GSI
-	SendWWWAuthenticateHeader        *bool                            `json:"send_www_authenticate_header,omitempty"`         // If false, disables setting of 'WWW-Authenticate' header in 401 responses
+	SendWWWAuthenticateHeader        *bool                            `json:"send_www_authenticate_header,omitempty"`         // If false, disables setting of 'WWW-Authenticate' header in 401 responses. Implicitly false if disable_public_basic_auth is true.
+	DisablePublicBasicAuth           bool                             `json:"disable_public_basic_auth,omitempty"`            // If true, disables basic authentication, only permitting OIDC or guest access
 	BucketOpTimeoutMs                *uint32                          `json:"bucket_op_timeout_ms,omitempty"`                 // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
 	SlowQueryWarningThresholdMs      *uint32                          `json:"slow_query_warning_threshold,omitempty"`         // Log warnings if N1QL queries take this many ms
 	DeltaSync                        *DeltaSyncConfig                 `json:"delta_sync,omitempty"`                           // Config for delta sync
@@ -692,6 +693,13 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) error {
 			if *revsLimit <= 0 {
 				multiError = multiError.Append(fmt.Errorf("The revs_limit (%v) value in your Sync Gateway configuration must be greater than zero.", *revsLimit))
 			}
+		}
+	}
+
+	// Ensure that, if basic auth is disabled, there's another way to authenticate
+	if dbConfig.DisablePublicBasicAuth {
+		if dbConfig.OIDCConfig == nil && (dbConfig.Guest == nil || base.BoolDefault(dbConfig.Guest.Disabled, true)) {
+			multiError = multiError.Append(fmt.Errorf("basic authentication is disabled, but there is no alternative auth configuration (OIDC or guest access)"))
 		}
 	}
 

@@ -1374,6 +1374,10 @@ Database:
       description: Controls whether to send a `WWW-Authenticate` header in `401 Unauthorized` HTTP responses.
       type: boolean
       default: true
+    disable_public_basic_auth:
+      description: Whether to disable basic authentication and only allow OIDC and guest access.
+      type: boolean
+      default: false
     bucket_op_timeout_ms:
       description: 'This is the amount of milliseconds should pass before a bucket operation times out. An error will be returned if the bucket operation times out saying: `operation timed out`.'
       type: number

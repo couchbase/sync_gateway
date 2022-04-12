@@ -376,6 +376,106 @@ func TestOpenIDConnectTestProviderWithRealWorldToken(t *testing.T) {
 	}
 }
 
+func TestOIDCWithBasicAuthDisabled(t *testing.T) {
+	providers := auth.OIDCProviderMap{
+		"test": &auth.OIDCProvider{
+			Register:      true,
+			Issuer:        "${baseURL}/db/_oidc_testing",
+			Name:          "test",
+			ClientID:      "sync_gateway",
+			ValidationKey: base.StringPtr("qux"),
+			CallbackURL:   base.StringPtr("${baseURL}/db/_oidc_callback"),
+			UserPrefix:    "foo",
+		},
+	}
+	defaultProvider := "test"
+	opts := auth.OIDCOptions{Providers: providers, DefaultProvider: &defaultProvider}
+
+	restTesterConfig := RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			OIDCConfig: &opts,
+			Unsupported: &db.UnsupportedOptions{
+				OidcTestProvider: &db.OidcTestProviderOptions{
+					Enabled: true,
+				},
+			},
+			DisablePublicBasicAuth: true,
+		}}}
+	restTester := NewRestTester(t, &restTesterConfig)
+	require.NoError(t, restTester.SetAdminParty(false))
+	defer restTester.Close()
+
+	mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
+	defer mockSyncGateway.Close()
+	mockSyncGatewayURL := mockSyncGateway.URL
+	provider := restTesterConfig.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
+	provider.Issuer = mockSyncGateway.URL + "/db/_oidc_testing"
+	provider.CallbackURL = base.StringPtr(mockSyncGateway.URL + "/db/_oidc_callback")
+	createUser(t, restTester, "foo_noah")
+
+	// Send OpenID Connect request
+	authURL := "/db/_oidc?provider=test&offline=true"
+	requestURL := mockSyncGatewayURL + authURL
+	request, err := http.NewRequest(http.MethodGet, requestURL, nil)
+	require.NoError(t, err, "Error creating new request")
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err, "Error creating new cookie jar")
+	client := http.DefaultClient
+	client.Jar = jar
+	response, err := client.Do(request)
+	require.NoError(t, err, "Error sending request")
+	require.Equal(t, http.StatusOK, response.StatusCode)
+	bodyBytes, err := ioutil.ReadAll(response.Body)
+	require.NoError(t, err, "Error reading response")
+	bodyString := string(bodyBytes)
+	require.NoError(t, response.Body.Close(), "Error closing response body")
+
+	// Send authentication request
+	requestURL = mockSyncGateway.URL + "/db/_oidc_testing/" + parseAuthURL(bodyString)
+	form := url.Values{}
+	form.Add(formKeyUsername, "noah")
+	form.Add(formKeyAuthenticated, "Return a valid authorization code for this user")
+	form.Add(formKeyIdTokenFormat, string(defaultFormat))
+	request, err = http.NewRequest(http.MethodPost, requestURL, bytes.NewBufferString(form.Encode()))
+	require.NoError(t, err, "Error creating new request")
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	response, err = client.Do(request)
+	require.NoError(t, err, "Error sending request")
+	require.Equal(t, http.StatusOK, response.StatusCode)
+
+	var authResponseActual OIDCTokenResponse
+	require.NoError(t, err, json.NewDecoder(response.Body).Decode(&authResponseActual))
+	require.NoError(t, response.Body.Close(), "Error closing response body")
+	assert.NotEmpty(t, authResponseActual.SessionID, "session_id doesn't exist")
+	assert.NotEmpty(t, authResponseActual.Username, "session_id doesn't exist")
+	assert.NotEmpty(t, authResponseActual.IDToken, "id_token mismatch")
+	assert.NotEmpty(t, authResponseActual.RefreshToken, "refresh_token mismatch")
+
+	// Obtain session with Bearer token
+	sessionEndpoint := mockSyncGatewayURL + "/" + restTester.DatabaseConfig.Name + "/_session"
+	request, err = http.NewRequest(http.MethodPost, sessionEndpoint, strings.NewReader(`{}`))
+	require.NoError(t, err, "Error creating new request")
+	request.Header.Add("Authorization", BearerToken+" "+authResponseActual.IDToken)
+	response, err = http.DefaultClient.Do(request)
+	require.NoError(t, err, "Error sending request with bearer token")
+	checkGoodAuthResponse(t, response, "foo_noah")
+
+	// Now verify that we can perform a trivial request
+	request, err = http.NewRequest(http.MethodGet, mockSyncGatewayURL+"/"+restTester.DatabaseConfig.Name, nil)
+	require.NoError(t, err, "Error creating new request")
+	response, err = client.Do(request)
+	require.NoError(t, err, "Error sending request")
+	require.Equal(t, http.StatusOK, response.StatusCode)
+
+	// Finally, forget the session and check that we're back to getting a 401, but with no WWW-Authenticate
+	client.Jar = nil
+	request, err = http.NewRequest(http.MethodGet, mockSyncGatewayURL+"/"+restTester.DatabaseConfig.Name, nil)
+	require.NoError(t, err, "Error creating new request")
+	response, err = client.Do(request)
+	require.NoError(t, err, "Error sending request")
+	require.Equal(t, http.StatusUnauthorized, response.StatusCode)
+}
+
 // parseAuthURL returns the authentication URL extracted from user consent form.
 func parseAuthURL(html string) string {
 	re := regexp.MustCompile(`<form action="(.+)" method`)

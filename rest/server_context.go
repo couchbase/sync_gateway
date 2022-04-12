@@ -776,6 +776,12 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		base.WarnfCtx(context.TODO(), `Deprecation notice: setting database configuration option "allow_conflicts" to true is due to be removed. In the future, conflicts will not be allowed.`)
 	}
 
+	// If basic auth is disabled, it doesn't make sense to send WWW-Authenticate
+	sendWWWAuthenticate := config.SendWWWAuthenticateHeader
+	if config.DisablePublicBasicAuth {
+		sendWWWAuthenticate = base.BoolPtr(false)
+	}
+
 	// Register the cbgt pindex type for the configGroup
 	db.RegisterImportPindexImpl(groupID)
 
@@ -794,7 +800,8 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		SessionCookieName:         config.SessionCookieName,
 		SessionCookieHttpOnly:     base.BoolDefault(config.SessionCookieHTTPOnly, false),
 		AllowConflicts:            config.ConflictsAllowed(),
-		SendWWWAuthenticateHeader: config.SendWWWAuthenticateHeader,
+		SendWWWAuthenticateHeader: sendWWWAuthenticate,
+		DisablePublicBasicAuth:    config.DisablePublicBasicAuth,
 		DeltaSyncOptions:          deltaSyncOptions,
 		CompactInterval:           compactIntervalSecs,
 		QueryPaginationLimit:      queryPaginationLimit,

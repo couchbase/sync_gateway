@@ -91,6 +91,34 @@ func TestDBRoot(t *testing.T) {
 	goassert.Equals(t, response.Header().Get("Allow"), "GET, HEAD, POST, PUT")
 }
 
+func TestDisablePublicBasicAuth(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				DisablePublicBasicAuth: true,
+				Guest: &db.PrincipalConfig{
+					Disabled: base.BoolPtr(true),
+				},
+			},
+		},
+	})
+	defer rt.Close()
+
+	response := rt.SendRequest(http.MethodGet, "/db/", "")
+	assertStatus(t, response, http.StatusUnauthorized)
+	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when basic auth is disabled")
+
+	// Double-check that even if we provide valid credentials we still won't be let in
+	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	user, err := a.NewUser("user1", "letmein", channels.SetOf(t, "foo"))
+	assert.NoError(t, err)
+	assert.NoError(t, a.Save(user))
+
+	response = rt.Send(requestByUser(http.MethodGet, "/db/", "", "user1"))
+	assertStatus(t, response, http.StatusUnauthorized)
+	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when basic auth is disabled")
+}
+
 func (rt *RestTester) createDoc(t *testing.T, docid string) string {
 	response := rt.SendAdminRequest("PUT", "/db/"+docid, `{"prop":true}`)
 	assertStatus(t, response, 201)

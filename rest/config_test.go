@@ -125,6 +125,15 @@ func TestConfigValidation(t *testing.T) {
 			name:   "Compact Interval just right",
 			config: `{"databases": {"db":{"compact_interval_days": 0.04}}}`,
 		},
+		{
+			name:   "Basic auth disabled with no alternative",
+			config: `{"databases": {"db":{"disable_public_basic_auth": true}}}`,
+			err:    "basic authentication is disabled, but there is no alternative auth configuration (OIDC or guest access)",
+		},
+		{
+			name:   "Basic auth disabled but OIDC configured",
+			config: `{"databases": {"db":{"disable_public_basic_auth": true, "oidc": {"providers":{"test":{}}}}}}`,
+		},
 	}
 
 	for _, test := range tests {
