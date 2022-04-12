@@ -17,6 +17,8 @@ import (
 	"time"
 )
 
+var LogBLIPTraceAtWarn bool
+
 const (
 
 	// The username of the special "GUEST" user

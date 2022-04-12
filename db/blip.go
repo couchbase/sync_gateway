@@ -55,6 +55,10 @@ func defaultBlipLogger(ctx context.Context) blip.LogFn {
 			base.DebugfCtx(ctx, base.KeyWebSocketFrame, format, params...)
 		case blip.LogMessage:
 			base.DebugfCtx(ctx, base.KeyWebSocket, format, params...)
+		case blip.LogTrace:
+			if base.LogBLIPTraceAtWarn {
+				base.WarnfCtx(ctx, format, params...)
+			}
 		default:
 			base.InfofCtx(ctx, base.KeyWebSocket, format, params...)
 		}

@@ -22,6 +22,7 @@ import (
 // function directly calls this. It registers both signal and fatal panic handlers,
 // does the initial setup and finally starts the server.
 func ServerMain() {
+	base.LogBLIPTraceAtWarn = true
 	if err := serverMain(context.Background(), os.Args); err != nil {
 		base.FatalfCtx(context.TODO(), "Couldn't start Sync Gateway: %v", err)
 	}
