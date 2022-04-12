@@ -33,6 +33,9 @@ const (
 	MessageGetAttachment   = "getAttachment"
 	MessageProposeChanges  = "proposeChanges"
 	MessageProveAttachment = "proveAttachment"
+	MessageGetRev          = "getRev"       // Connected Client API
+	MessagePutRev          = "putRev"       // Connected Client API
+	MessageUnsubChanges    = "unsubChanges" // Connected Client API
 )
 
 // Message properties
@@ -77,6 +80,11 @@ const (
 	NorevMessageSequence = "sequence"
 	NorevMessageError    = "error"
 	NorevMessageReason   = "reason"
+
+	// getRev (Connected Client) message properties
+	GetRevMessageId = "id"
+	GetRevRevId     = "rev"
+	GetRevIfNotRev  = "ifNotRev"
 
 	// changes message properties
 	ChangesMessageIgnoreNoConflicts = "ignoreNoConflicts"

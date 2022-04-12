@@ -39,6 +39,8 @@ var kHandlersByProfile = map[string]blipHandlerFunc{
 	MessageGetAttachment:   userBlipHandler((*blipHandler).handleGetAttachment),
 	MessageProveAttachment: userBlipHandler((*blipHandler).handleProveAttachment),
 	MessageProposeChanges:  (*blipHandler).handleProposeChanges,
+	MessageGetRev:          (*blipHandler).handleGetRev,
+	MessagePutRev:          (*blipHandler).handlePutRev,
 }
 
 // maxInFlightChangesBatches is the maximum number of in-flight changes batches a client is allowed to send without being throttled.
