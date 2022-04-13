@@ -1333,10 +1333,12 @@ func validateNewBody(body Body) error {
 	if body[BodyRemoved] != nil {
 		return base.HTTPErrorf(http.StatusNotFound, "Document revision is not accessible")
 	}
+
 	// Reject bodies that contains the "_purged" property.
 	if body[BodyPurged] != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "user defined top level property '_purged' is not allowed in document body")
 	}
+
 	// TODO: Add validation when the first property is added using the BodyInternalPrefix "_sync_"
 	return nil
 }

@@ -769,20 +769,12 @@ type removalDocument struct {
 }
 
 func validateBlipBody(body Body) error {
-	if body[base.SyncPropertyName] != nil {
-		return base.HTTPErrorf(http.StatusBadRequest, "top level property '_sync' is a reserved internal property")
-	}
-	if body[BodyId] != nil {
-		return base.HTTPErrorf(http.StatusBadRequest, "top level property '_id' is a reserved internal property")
-	}
-	if body[BodyRev] != nil {
-		return base.HTTPErrorf(http.StatusBadRequest, "top level property '_rev' is a reserved internal property")
-	}
-	if body[BodyDeleted] != nil {
-		return base.HTTPErrorf(http.StatusBadRequest, "top level property '_deleted' is a reserved internal property")
-	}
-	if body[BodyRevisions] != nil {
-		return base.HTTPErrorf(http.StatusBadRequest, "top level property '_rev' is a reserved internal property")
+	// Prevent disallowed internal properties from being used
+	disallowed := []string{base.SyncPropertyName, BodyId, BodyRev, BodyDeleted, BodyRevisions}
+	for _, prop := range disallowed {
+		if body[prop] != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, "top level property '"+prop+"' is a reserved internal property")
+		}
 	}
 	return nil
 }
