@@ -1547,8 +1547,7 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 		assert.Equal(t, 200, response.Code)
 	}
 	triggerOnDemandViaWrite := func(rt *RestTester, key string) {
-		bodyString := rawDocWithSyncMeta()
-		rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", key), bodyString)
+		rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", key), "{}")
 	}
 
 	type testcase struct {
