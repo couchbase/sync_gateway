@@ -445,10 +445,10 @@ func (db *Database) backupPreImportRevision(docid, revid string) error {
 
 func validateImportBody(body Body) error {
 	// Prevent disallowed internal properties from being used
-	disallowed := []string{BodyId, BodyRev, BodyDeleted, BodyExpiry, BodyRevisions}
+	disallowed := []string{BodyId, BodyRev, BodyExpiry, BodyRevisions}
 	for _, prop := range disallowed {
 		if body[prop] != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "top level property '"+prop+"' is a reserved internal property therefore cannot be imported")
+			return base.HTTPErrorf(http.StatusBadRequest, "top-level property '"+prop+"' is a reserved internal property therefore cannot be imported")
 		}
 	}
 

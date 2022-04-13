@@ -773,7 +773,7 @@ func validateBlipBody(body Body) error {
 	disallowed := []string{base.SyncPropertyName, BodyId, BodyRev, BodyDeleted, BodyRevisions}
 	for _, prop := range disallowed {
 		if body[prop] != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "top level property '"+prop+"' is a reserved internal property")
+			return base.HTTPErrorf(http.StatusBadRequest, "top-level property '"+prop+"' is a reserved internal property")
 		}
 	}
 	return nil

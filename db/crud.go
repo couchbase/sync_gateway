@@ -1062,7 +1062,7 @@ func (db *Database) PutExistingRevWithBody(docid string, body Body, docHistory [
 
 func validateDocUpdate(body Body) error {
 	if body[base.SyncPropertyName] != nil {
-		return base.HTTPErrorf(http.StatusBadRequest, "document top level property '_sync' is a reserved internal property")
+		return base.HTTPErrorf(http.StatusBadRequest, "document-top level property '_sync' is a reserved internal property")
 	}
 	return nil
 }
@@ -1336,10 +1336,14 @@ func validateNewBody(body Body) error {
 
 	// Reject bodies that contains the "_purged" property.
 	if body[BodyPurged] != nil {
-		return base.HTTPErrorf(http.StatusBadRequest, "user defined top level property '_purged' is not allowed in document body")
+		return base.HTTPErrorf(http.StatusBadRequest, "user defined top-level property '_purged' is not allowed in document body")
 	}
 
-	// TODO: Add validation when the first property is added using the BodyInternalPrefix "_sync_"
+	for key := range body {
+		if strings.HasPrefix(key, BodyInternalPrefix) {
+			return base.HTTPErrorf(http.StatusBadRequest, "user defined top-level properties that start with '_sync_' are not allowed in document body")
+		}
+	}
 	return nil
 }
 

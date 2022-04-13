@@ -4052,11 +4052,10 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 			inputBody:    map[string]interface{}{"_removed": false},
 			expectReject: true,
 		},
-		// TODO: When first _sync_ (BodyInternalPrefix) prefixed internal property is added, this document should be expect to be rejected
 		{
 			name:         "_sync_cookies",
 			inputBody:    map[string]interface{}{"_sync_cookies": true},
-			expectReject: false,
+			expectReject: true,
 		},
 	}
 

@@ -2241,32 +2241,7 @@ func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 }
 
 // CBG-1995: Test the support for using an underscore prefix in the top-level body of a document
-func TestUnderscorePrefixSupportImport(t *testing.T) {
-	SkipImportTestsIfNotEnabled(t)
-
-	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{AutoImport: true}}})
-	defer rt.Close()
-	bucket := rt.Bucket()
-
-	docID := t.Name()
-	docBody := map[string]interface{}{
-		"_test": true,
-		"_exp":  120,
-		"true":  false,
-	}
-
-	added, err := bucket.Add(docID, 0, docBody)
-	require.True(t, added)
-	require.NoError(t, err)
-
-	resp := rt.getDoc(docID)
-
-	// Make sure doc values match inputted doc body
-	for key, val := range docBody {
-		assert.EqualValues(t, val, resp[key])
-	}
-}
-
+// CBG-2023: Test preventing underscore attachments
 func TestImportInternalPropertiesHandling(t *testing.T) {
 	SkipImportTestsIfNotEnabled(t)
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
@@ -2277,6 +2252,11 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 		expectReject       bool
 		expectedStatusCode *int // Defaults to not 200 (for expectedReject=true) and 200 if expectedReject=false
 	}{
+		{
+			name:         "Valid document with properties and special prop",
+			importBody:   map[string]interface{}{"true": false, "_cookie": "is valid"},
+			expectReject: false,
+		},
 		{
 			name:         "Valid document with special prop",
 			importBody:   map[string]interface{}{"_cookie": "is valid"},
@@ -2302,7 +2282,7 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 		{
 			name:         "Valid _deleted",
 			importBody:   map[string]interface{}{"_deleted": false},
-			expectReject: true,
+			expectReject: false,
 		},
 		{
 			name:         "Valid _revisions",
@@ -2335,11 +2315,10 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 			expectReject:       true,
 			expectedStatusCode: base.IntPtr(404),
 		},
-		// TODO: When first _sync_ (BodyInternalPrefix) prefixed internal property is added, this document should be expect to be rejected
 		{
 			name:         "_sync_cookies",
 			importBody:   map[string]interface{}{"_sync_cookies": true},
-			expectReject: false,
+			expectReject: true,
 		},
 	}
 
