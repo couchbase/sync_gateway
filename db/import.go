@@ -266,9 +266,9 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		if len(existingDoc.Body) > 0 {
 			rawBodyForRevID = existingDoc.Body
 		} else {
-			var bodyWithoutSpecialProps Body
-			bodyWithoutSpecialProps, wasStripped = stripSpecialProperties(body)
-			rawBodyForRevID, err = base.JSONMarshalCanonical(bodyWithoutSpecialProps)
+			var bodyWithoutInternalProps Body
+			bodyWithoutInternalProps, wasStripped = stripInternalProperties(body)
+			rawBodyForRevID, err = base.JSONMarshalCanonical(bodyWithoutInternalProps)
 			if err != nil {
 				return nil, nil, false, nil, err
 			}

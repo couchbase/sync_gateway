@@ -2237,3 +2237,30 @@ func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 	syncMeta = respBody[base.SyncPropertyName].(map[string]interface{})
 	assert.NotEmpty(t, syncMeta["rev"].(string))
 }
+
+// CBG-1995: Test the support for using an underscore prefix in the top-level body of a document
+func TestUnderscorePrefixSupportImport(t *testing.T) {
+	SkipImportTestsIfNotEnabled(t)
+
+	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{AutoImport: true}}})
+	defer rt.Close()
+	bucket := rt.Bucket()
+
+	docID := t.Name()
+	docBody := map[string]interface{}{
+		"_test": true,
+		"_exp":  120,
+		"true":  false,
+	}
+
+	added, err := bucket.Add(docID, 0, docBody)
+	require.True(t, added)
+	require.NoError(t, err)
+
+	resp := rt.getDoc(docID)
+
+	// Make sure doc values match inputted doc body
+	for key, val := range docBody {
+		assert.EqualValues(t, val, resp[key])
+	}
+}
