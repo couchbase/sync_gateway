@@ -118,9 +118,16 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 	assertStatus(t, response, http.StatusUnauthorized)
 	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when basic auth is disabled")
 
+	// Also check that we can't create a session through POST /db/_session
+	response = rt.SendRequest(http.MethodPost, "/db/_session", `{"name":"user1","password":"letmein"}`)
+	assertStatus(t, response, http.StatusUnauthorized)
+
 	// As a sanity check, ensure it does work when the setting is disabled
 	rt.ServerContext().Database("db").Options.DisablePublicBasicAuth = false
 	response = rt.Send(requestByUser(http.MethodGet, "/db/", "", "user1"))
+	assertStatus(t, response, http.StatusOK)
+
+	response = rt.SendRequest(http.MethodPost, "/db/_session", `{"name":"user1","password":"letmein"}`)
 	assertStatus(t, response, http.StatusOK)
 }
 
