@@ -1517,22 +1517,6 @@ func TestPostWithExistingId(t *testing.T) {
 
 }
 
-// Unit test for issue #507
-func TestPutWithUserSpecialProperty(t *testing.T) {
-
-	db := setupTestDB(t)
-	defer db.Close()
-
-	// Test creating a document with existing id property:
-	customDocId := "customIdValue"
-	log.Printf("Create document with existing id...")
-	body := Body{BodyId: customDocId, "key1": "value1", "_key2": "existing"}
-	docid, rev1id, _, err := db.Post(body)
-	require.True(t, err.Error() == "400 user defined top level properties beginning with '_' are not allowed in document body")
-	goassert.True(t, rev1id == "")
-	goassert.True(t, docid == "")
-}
-
 // Unit test for issue #976
 func TestWithNullPropertyKey(t *testing.T) {
 
@@ -1549,9 +1533,8 @@ func TestWithNullPropertyKey(t *testing.T) {
 	goassert.True(t, docid != "")
 }
 
-// Unit test for issue #507
+// Unit test for issue #507, modified for CBG-1995 (allowing special properties)
 func TestPostWithUserSpecialProperty(t *testing.T) {
-
 	db := setupTestDB(t)
 	defer db.Close()
 
@@ -1561,27 +1544,26 @@ func TestPostWithUserSpecialProperty(t *testing.T) {
 	body := Body{BodyId: customDocId, "key1": "value1", "key2": "existing"}
 	docid, rev1id, _, err := db.Post(body)
 	require.NoError(t, err, "Couldn't create document")
-	goassert.True(t, rev1id != "")
-	goassert.True(t, docid == customDocId)
+	require.NotEqual(t, "", rev1id)
+	require.Equal(t, customDocId, docid)
 
 	// Test retrieval
 	doc, err := db.GetDocument(base.TestCtx(t), customDocId, DocUnmarshalAll)
-	goassert.True(t, doc != nil)
+	require.NotNil(t, doc)
 	assert.NoError(t, err, "Unable to retrieve doc using custom id")
 
-	// Test that posting an update with a user special property does not update the
-	// document
+	// Test that posting an update with a user special property does update the document
 	log.Printf("Update document with existing id...")
 	body = Body{BodyId: customDocId, BodyRev: rev1id, "_special": "value", "key1": "value1", "key2": "existing"}
-	_, _, err = db.Put(docid, body)
-	goassert.True(t, err.Error() == "400 user defined top level properties beginning with '_' are not allowed in document body")
+	rev2id, _, err := db.Put(docid, body)
+	assert.NoError(t, err)
 
-	// Test retrieval gets rev1
+	// Test retrieval gets rev2
 	doc, err = db.GetDocument(base.TestCtx(t), docid, DocUnmarshalAll)
-	goassert.True(t, doc != nil)
-	goassert.True(t, doc.CurrentRev == rev1id)
+	require.NotNil(t, doc)
+	assert.Equal(t, rev2id, doc.CurrentRev)
+	assert.Equal(t, "value", doc.Body()["_special"])
 	assert.NoError(t, err, "Unable to retrieve doc using generated uuid")
-
 }
 
 func TestRecentSequenceHistory(t *testing.T) {

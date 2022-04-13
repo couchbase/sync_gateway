@@ -147,6 +147,63 @@ func TestBackupOldRevision(t *testing.T) {
 	}
 }
 
+func TestStripSpecialProperties(t *testing.T) {
+	testCases := []struct {
+		name              string
+		input             Body
+		stripInternalOnly bool
+		stripped          bool // Should at least 1 property have been stripped
+		newBodyIfStripped *Body
+	}{
+		{
+			name:              "No special",
+			input:             Body{"test": 0, "bob": 0, "alice": 0},
+			stripInternalOnly: false,
+			stripped:          false,
+			newBodyIfStripped: nil,
+		},
+		{
+			name:              "No special internal only",
+			input:             Body{"test": 0, "bob": 0, "alice": 0},
+			stripInternalOnly: true,
+			stripped:          false,
+			newBodyIfStripped: nil,
+		},
+		{
+			name:              "Strip special props",
+			input:             Body{"_test": 0, "test": 0, "_attachments": 0, "_id": 0},
+			stripInternalOnly: false,
+			stripped:          true,
+			newBodyIfStripped: &Body{"test": 0},
+		},
+		{
+			name:              "Strip internal special props",
+			input:             Body{"_test": 0, "test": 0, "_rev": 0, "_exp": 0},
+			stripInternalOnly: true,
+			stripped:          true,
+			newBodyIfStripped: &Body{"_test": 0, "test": 0},
+		},
+		{
+			name:              "Confirm internal attachments and deleted skipped",
+			input:             Body{"_test": 0, "test": 0, "_attachments": 0, "_rev": 0, "_deleted": 0},
+			stripInternalOnly: true,
+			stripped:          true,
+			newBodyIfStripped: &Body{"_test": 0, "test": 0, "_attachments": 0, "_deleted": 0},
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			stripped, specialProps := stripSpecialProperties(test.input, test.stripInternalOnly)
+			assert.Equal(t, test.stripped, specialProps)
+			if test.stripped {
+				assert.Equal(t, *test.newBodyIfStripped, stripped)
+				return
+			}
+			assert.Equal(t, test.input, stripped)
+		})
+	}
+}
+
 func BenchmarkSpecialProperties(b *testing.B) {
 	noSpecialBody := Body{
 		"asdf": "qwerty", "a": true, "b": true, "c": true,
@@ -173,19 +230,14 @@ func BenchmarkSpecialProperties(b *testing.B) {
 	}
 
 	for _, t := range tests {
-		b.Run(t.name+"-stripSpecialProperties", func(bb *testing.B) {
+		b.Run(t.name+"-stripInternalProperties", func(bb *testing.B) {
 			for i := 0; i < bb.N; i++ {
-				stripSpecialProperties(t.body)
+				stripInternalProperties(t.body)
 			}
 		})
-		b.Run(t.name+"-stripAllSpecialProperties", func(bb *testing.B) {
+		b.Run(t.name+"-stripAllInternalProperties", func(bb *testing.B) {
 			for i := 0; i < bb.N; i++ {
 				stripAllSpecialProperties(t.body)
-			}
-		})
-		b.Run(t.name+"-containsUserSpecialProperties", func(bb *testing.B) {
-			for i := 0; i < bb.N; i++ {
-				containsUserSpecialProperties(t.body)
 			}
 		})
 	}

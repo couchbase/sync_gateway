@@ -25,14 +25,15 @@ import (
 type Body map[string]interface{}
 
 const (
-	BodyDeleted     = "_deleted"
-	BodyRev         = "_rev"
-	BodyId          = "_id"
-	BodyRevisions   = "_revisions"
-	BodyAttachments = "_attachments"
-	BodyPurged      = "_purged"
-	BodyExpiry      = "_exp"
-	BodyRemoved     = "_removed"
+	BodyDeleted        = "_deleted"
+	BodyRev            = "_rev"
+	BodyId             = "_id"
+	BodyRevisions      = "_revisions"
+	BodyAttachments    = "_attachments"
+	BodyPurged         = "_purged"
+	BodyExpiry         = "_exp"
+	BodyRemoved        = "_removed"
+	BodyInternalPrefix = "_sync_" // New internal properties prefix (CBG-1995)
 )
 
 // A revisions property found within a Body.  Expected to be of the form:
@@ -339,7 +340,7 @@ func (body Body) FixJSONNumbers() {
 
 func CreateRevID(generation int, parentRevID string, body Body) (string, error) {
 	// This should produce the same results as TouchDB.
-	strippedBody, _ := stripSpecialProperties(body)
+	strippedBody, _ := stripInternalProperties(body)
 	encoding, err := base.JSONMarshalCanonical(strippedBody)
 	if err != nil {
 		return "", err
@@ -413,54 +414,49 @@ func compareRevIDs(id1, id2 string) int {
 	return 0
 }
 
-// stripSpecialProperties returns a copy of the given body with all underscore-prefixed keys removed, except _attachments and _deleted.
-func stripSpecialProperties(b Body) (Body, bool) {
-	return stripSpecialPropertiesExcept(b, BodyAttachments, BodyDeleted)
+// stripInternalProperties returns a copy of the given body with all internal underscore-prefixed keys removed, except _attachments and _deleted.
+func stripInternalProperties(b Body) (Body, bool) {
+	return stripSpecialProperties(b, true)
 }
 
-// stripAllSpecialProperties returns a copy of the given body with all underscore-prefixed keys removed.
+// stripAllInternalProperties returns a copy of the given body with all underscore-prefixed keys removed.
 func stripAllSpecialProperties(b Body) (Body, bool) {
-	return stripSpecialPropertiesExcept(b)
+	return stripSpecialProperties(b, false)
 }
 
-// stripSpecialPropertiesExcept returns a copy of the given body with all underscore-prefixed keys removed, except those given.
-func stripSpecialPropertiesExcept(b Body, exceptions ...string) (sb Body, foundSpecialProps bool) {
+// stripSpecialPropertiesExcept returns a copy of the given body with underscore-prefixed keys removed.
+// Set internalOnly to only strip internal properties except _deleted and _attachments
+func stripSpecialProperties(b Body, internalOnly bool) (sb Body, foundSpecialProps bool) {
 	// Assume no properties removed for the initial capacity to reduce allocs on large docs.
 	stripped := make(Body, len(b))
 	for k, v := range b {
-		if k == "" || k[0] != '_' ||
-			base.StringSliceContains(exceptions, k) {
+		// Property is not stripped if:
+		// - It is blank
+		// - Does not start with an underscore ('_')
+		// - Is not an internal special property (this check is excluded when internalOnly = false)
+		if k == "" || k[0] != '_' || (internalOnly && (!strings.HasPrefix(k, BodyInternalPrefix) &&
+			!base.StringSliceContains([]string{
+				base.SyncPropertyName,
+				BodyId,
+				BodyRev,
+				BodyRevisions,
+				BodyExpiry,
+				BodyPurged,
+				BodyRemoved,
+			}, k))) {
 			// property is allowed
 			stripped[k] = v
 		} else {
 			foundSpecialProps = true
 		}
 	}
+
 	if foundSpecialProps {
 		return stripped, true
 	} else {
 		// Return original body if nothing was removed
 		return b, false
 	}
-}
-
-// containsUserSpecialProperties returns true if the given body contains a non-SG special property (underscore prefixed)
-func containsUserSpecialProperties(b Body) bool {
-	for k := range b {
-		if k != "" && k[0] == '_' &&
-			!base.ContainsString([]string{
-				BodyId,
-				BodyRev,
-				BodyDeleted,
-				BodyAttachments,
-				BodyRevisions,
-				BodyExpiry,
-			}, k) {
-			// body contains special property that isn't one of the above... must be user's
-			return true
-		}
-	}
-	return false
 }
 
 func GetStringArrayProperty(body map[string]interface{}, property string) ([]string, error) {
