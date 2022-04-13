@@ -114,6 +114,9 @@ const (
 // Function signature for something that parses a sequence id from a string
 type SequenceIDParser func(since string) (SequenceID, error)
 
+// Function signature that returns the latest sequence
+type LatestSequenceFunc func() (SequenceID, error)
+
 // Helper for handling BLIP subChanges requests.  Supports Stringer() interface to log aspects of the request.
 type SubChangesParams struct {
 	rq      *blip.Message // The underlying BLIP message
@@ -126,7 +129,7 @@ type SubChangesBody struct {
 }
 
 // Create a new subChanges helper
-func NewSubChangesParams(logCtx context.Context, rq *blip.Message, zeroSeq SequenceID, sequenceIDParser SequenceIDParser) (*SubChangesParams, error) {
+func NewSubChangesParams(logCtx context.Context, rq *blip.Message, zeroSeq SequenceID, latestSeq LatestSequenceFunc, sequenceIDParser SequenceIDParser) (*SubChangesParams, error) {
 
 	params := &SubChangesParams{
 		rq: rq,
@@ -134,12 +137,16 @@ func NewSubChangesParams(logCtx context.Context, rq *blip.Message, zeroSeq Seque
 
 	// Determine incoming since and docIDs once, since there is some overhead associated with their calculation
 	sinceSequenceId := zeroSeq
-	if sinceStr, found := rq.Properties[SubChangesSince]; found {
-		var err error
+	var err error
+	if rq.Properties["future"] == "true" {
+		sinceSequenceId, err = latestSeq()
+	} else if sinceStr, found := rq.Properties[SubChangesSince]; found {
 		if sinceSequenceId, err = sequenceIDParser(base.ConvertJSONString(sinceStr)); err != nil {
 			base.InfofCtx(logCtx, base.KeySync, "%s: Invalid sequence ID in 'since': %s", rq, sinceStr)
-			return params, err
 		}
+	}
+	if err != nil {
+		return params, err
 	}
 	params._since = sinceSequenceId
 
