@@ -399,7 +399,7 @@ func TestOIDCWithBasicAuthDisabled(t *testing.T) {
 					Enabled: true,
 				},
 			},
-			DisablePublicBasicAuth: true,
+			DisablePasswordAuth: true,
 		}}}
 	restTester := NewRestTester(t, &restTesterConfig)
 	require.NoError(t, restTester.SetAdminParty(false))

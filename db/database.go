@@ -123,32 +123,32 @@ type DatabaseContext struct {
 }
 
 type DatabaseContextOptions struct {
-	CacheOptions              *CacheOptions
-	RevisionCacheOptions      *RevisionCacheOptions
-	OldRevExpirySeconds       uint32
-	AdminInterface            *string
-	UnsupportedOptions        *UnsupportedOptions
-	OIDCOptions               *auth.OIDCOptions
-	DBOnlineCallback          DBOnlineCallback // Callback function to take the DB back online
-	ImportOptions             ImportOptions
-	EnableXattr               bool             // Use xattr for _sync
-	LocalDocExpirySecs        uint32           // The _local doc expiry time in seconds
-	SecureCookieOverride      bool             // Pass-through DBConfig.SecureCookieOverride
-	SessionCookieName         string           // Pass-through DbConfig.SessionCookieName
-	SessionCookieHttpOnly     bool             // Pass-through DbConfig.SessionCookieHTTPOnly
-	AllowConflicts            *bool            // False forbids creating conflicts
-	SendWWWAuthenticateHeader *bool            // False disables setting of 'WWW-Authenticate' header
-	DisablePublicBasicAuth    bool             // True enforces OIDC/guest only
-	UseViews                  bool             // Force use of views
-	DeltaSyncOptions          DeltaSyncOptions // Delta Sync Options
-	CompactInterval           uint32           // Interval in seconds between compaction is automatically ran - 0 means don't run
-	SGReplicateOptions        SGReplicateOptions
-	SlowQueryWarningThreshold time.Duration
-	QueryPaginationLimit      int    // Limit used for pagination of queries. If not set defaults to DefaultQueryPaginationLimit
-	UserXattrKey              string // Key of user xattr that will be accessible from the Sync Function. If empty the feature will be disabled.
-	ClientPartitionWindow     time.Duration
-	BcryptCost                int
-	GroupID                   string
+	CacheOptions                  *CacheOptions
+	RevisionCacheOptions          *RevisionCacheOptions
+	OldRevExpirySeconds           uint32
+	AdminInterface                *string
+	UnsupportedOptions            *UnsupportedOptions
+	OIDCOptions                   *auth.OIDCOptions
+	DBOnlineCallback              DBOnlineCallback // Callback function to take the DB back online
+	ImportOptions                 ImportOptions
+	EnableXattr                   bool             // Use xattr for _sync
+	LocalDocExpirySecs            uint32           // The _local doc expiry time in seconds
+	SecureCookieOverride          bool             // Pass-through DBConfig.SecureCookieOverride
+	SessionCookieName             string           // Pass-through DbConfig.SessionCookieName
+	SessionCookieHttpOnly         bool             // Pass-through DbConfig.SessionCookieHTTPOnly
+	AllowConflicts                *bool            // False forbids creating conflicts
+	SendWWWAuthenticateHeader     *bool            // False disables setting of 'WWW-Authenticate' header
+	DisablePasswordAuthentication bool             // True enforces OIDC/guest only
+	UseViews                      bool             // Force use of views
+	DeltaSyncOptions              DeltaSyncOptions // Delta Sync Options
+	CompactInterval               uint32           // Interval in seconds between compaction is automatically ran - 0 means don't run
+	SGReplicateOptions            SGReplicateOptions
+	SlowQueryWarningThreshold     time.Duration
+	QueryPaginationLimit          int    // Limit used for pagination of queries. If not set defaults to DefaultQueryPaginationLimit
+	UserXattrKey                  string // Key of user xattr that will be accessible from the Sync Function. If empty the feature will be disabled.
+	ClientPartitionWindow         time.Duration
+	BcryptCost                    int
+	GroupID                       string
 }
 
 type SGReplicateOptions struct {

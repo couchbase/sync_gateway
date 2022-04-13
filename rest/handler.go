@@ -464,7 +464,7 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 	}
 
 	// Check basic auth first
-	if !dbCtx.Options.DisablePublicBasicAuth {
+	if !dbCtx.Options.DisablePasswordAuthentication {
 		if userName, password := h.getBasicAuth(); userName != "" {
 			h.user, err = dbCtx.Authenticator(h.ctx()).AuthenticateUser(userName, password)
 			if err != nil {

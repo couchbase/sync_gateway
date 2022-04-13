@@ -1374,8 +1374,8 @@ Database:
       description: Controls whether to send a `WWW-Authenticate` header in `401 Unauthorized` HTTP responses.
       type: boolean
       default: true
-    disable_public_basic_auth:
-      description: Whether to disable basic authentication and only allow OIDC and guest access.
+    disable_password_auth:
+      description: Whether to disable username/password authentication and only allow OIDC and guest access.
       type: boolean
       default: false
     bucket_op_timeout_ms:

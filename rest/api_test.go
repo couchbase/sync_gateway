@@ -95,7 +95,7 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
-				DisablePublicBasicAuth: true,
+				DisablePasswordAuth: true,
 				Guest: &db.PrincipalConfig{
 					Disabled: base.BoolPtr(true),
 				},
@@ -123,7 +123,7 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 	assertStatus(t, response, http.StatusUnauthorized)
 
 	// As a sanity check, ensure it does work when the setting is disabled
-	rt.ServerContext().Database("db").Options.DisablePublicBasicAuth = false
+	rt.ServerContext().Database("db").Options.DisablePasswordAuthentication = false
 	response = rt.Send(requestByUser(http.MethodGet, "/db/", "", "user1"))
 	assertStatus(t, response, http.StatusOK)
 
