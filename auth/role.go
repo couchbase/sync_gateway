@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
@@ -93,7 +94,14 @@ func (pair *GrantHistorySequencePair) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-var kValidNameRegexp = regexp.MustCompile(`^[-+.@%\w]*$`)
+// Reasons for forbidding each of these:
+// * colons: basic authentication uses them to separate usernames from passwords
+// * commas: fails channels.IsValidChannel, which channels.compileAccessMap uses via SetFromArray
+// * slashes: would need to make many (possibly breaking) changes to routing
+var (
+	kValidNameRegexp        = regexp.MustCompile(`^[^:,/]*$`)
+	atLeastOneAlphanumRegex = regexp.MustCompile(`[a-zA-Z0-9]`)
+)
 
 func (role *roleImpl) initRole(name string, channels base.Set) error {
 	channels = ch.ExpandingStar(channels)
@@ -102,9 +110,16 @@ func (role *roleImpl) initRole(name string, channels base.Set) error {
 	return role.validate()
 }
 
-// Is this string a valid name for a User/Role? (Valid chars are alphanumeric and any of "_-+.@")
+// IsValidPrincipalName checks if the given user/role name would be valid. Valid names must be valid UTF-8, containing
+// at least one alphanumeric (except for the guest user), and no colons, commas, or slashes.
 func IsValidPrincipalName(name string) bool {
-	return kValidNameRegexp.Copy().MatchString(name)
+	if !utf8.ValidString(name) {
+		return false
+	}
+	if len(name) > 0 && !atLeastOneAlphanumRegex.MatchString(name) {
+		return false
+	}
+	return kValidNameRegexp.MatchString(name)
 }
 
 // Creates a new Role object.

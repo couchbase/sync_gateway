@@ -30,9 +30,11 @@ func TestInitRole(t *testing.T) {
 
 	// Check initializing role with illegal role name.
 	role = &roleImpl{}
-	assert.Error(t, role.initRole("Mu$ic", channels.SetOf(t, "Spotify", "Youtube")))
-	assert.Error(t, role.initRole("Musi[", channels.SetOf(t, "Spotify", "Youtube")))
-	assert.Error(t, role.initRole("Music~", channels.SetOf(t, "Spotify", "Youtube")))
+	assert.Error(t, role.initRole("Music/", channels.SetOf(t, "Spotify", "Youtube")))
+	assert.Error(t, role.initRole("Music:", channels.SetOf(t, "Spotify", "Youtube")))
+	assert.Error(t, role.initRole("Music,", channels.SetOf(t, "Spotify", "Youtube")))
+	assert.Error(t, role.initRole(".", channels.SetOf(t, "Spotify", "Youtube")))
+	assert.Error(t, role.initRole("\xf7,", channels.SetOf(t, "Spotify", "Youtube")))
 }
 
 func TestAuthorizeChannelsRole(t *testing.T) {

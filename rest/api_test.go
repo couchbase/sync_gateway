@@ -22,6 +22,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -446,6 +447,101 @@ func TestFunkyDocIDs(t *testing.T) {
 	assertStatus(t, response, 201)
 	response = rt.SendAdminRequest("GET", "/db/foo+bar%2Bmoo+car3", "")
 	assertStatus(t, response, 200)
+}
+
+func TestFunkyUsernames(t *testing.T) {
+	cases := []struct {
+		Name     string
+		UserName string
+	}{
+		{
+			Name:     "hashes",
+			UserName: "foo#bar",
+		},
+		{
+			Name:     "spaces and punctuation",
+			UserName: "Foo And Bar!",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.Name, func(t *testing.T) {
+			require.Truef(t, auth.IsValidPrincipalName(tc.UserName), "expected '%s' to be accepted", tc.UserName)
+			rt := NewRestTester(t, nil)
+			defer rt.Close()
+
+			a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+
+			// Create a test user
+			user, err := a.NewUser(tc.UserName, "letmein", channels.SetOf(t, "foo"))
+			require.NoError(t, err)
+			require.NoError(t, a.Save(user))
+
+			response := rt.Send(requestByUser("PUT", "/db/AC+DC", `{"foo":"bar", "channels": ["foo"]}`, tc.UserName))
+			assertStatus(t, response, 201)
+
+			response = rt.Send(requestByUser("GET", "/db/_all_docs", "", tc.UserName))
+			assertStatus(t, response, 200)
+
+			response = rt.Send(requestByUser("GET", "/db/AC+DC", "", tc.UserName))
+			assertStatus(t, response, 200)
+			var overlay struct {
+				Rev string `json:"_rev"`
+			}
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &overlay))
+
+			response = rt.Send(requestByUser("DELETE", "/db/AC+DC?rev="+overlay.Rev, "", tc.UserName))
+			assertStatus(t, response, 200)
+		})
+	}
+}
+
+func TestFunkyRoleNames(t *testing.T) {
+	cases := []struct {
+		Name     string
+		RoleName string
+	}{
+		{
+			Name:     "hashes",
+			RoleName: "foo#bar",
+		},
+		{
+			Name:     "spaces and punctuation",
+			RoleName: "Foo And Bar!",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.Name, func(t *testing.T) {
+			require.Truef(t, auth.IsValidPrincipalName(tc.RoleName), "expected '%s' to be accepted", tc.RoleName)
+			roleNameJSON, err := json.Marshal("role:" + tc.RoleName)
+			require.NoError(t, err)
+			const username = "user1"
+			syncFn := fmt.Sprintf(`function(doc) {channel(doc.channels); role("%s", %s);}`, username, string(roleNameJSON))
+			t.Logf("syncFn:\n%s", syncFn)
+			rt := NewRestTester(t, &RestTesterConfig{
+				SyncFn: syncFn,
+			})
+			defer rt.Close()
+
+			a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+
+			// Create a test user
+			user, err := a.NewUser(username, "letmein", channels.SetOf(t))
+			require.NoError(t, err)
+			require.NoError(t, a.Save(user))
+
+			// Create role
+			response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_role/%s", url.PathEscape(tc.RoleName)), `{"admin_channels": ["testchannel"]}`)
+			assertStatus(t, response, 201)
+
+			// Create test document
+			response = rt.SendAdminRequest("PUT", "/db/testdoc", `{"channels":["testchannel"]}`)
+			assertStatus(t, response, 201)
+
+			// Assert user can access it
+			response = rt.Send(requestByUser("GET", "/db/testdoc", "", username))
+			assertStatus(t, response, 200)
+		})
+	}
 }
 
 func TestFunkyDocAndAttachmentIDs(t *testing.T) {
