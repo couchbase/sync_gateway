@@ -466,7 +466,7 @@ func TestOIDCWithBasicAuthDisabled(t *testing.T) {
 	response, err = client.Do(request)
 	require.NoError(t, err, "Error sending request")
 	require.Equal(t, http.StatusOK, response.StatusCode)
-	require.NoError(t, request.Body.Close(), "Error closing response body")
+	require.NoError(t, response.Body.Close(), "Error closing response body")
 
 	// Finally, forget the session and check that we're back to getting a 401, but with no WWW-Authenticate
 	client.Jar = nil
@@ -475,7 +475,7 @@ func TestOIDCWithBasicAuthDisabled(t *testing.T) {
 	response, err = client.Do(request)
 	require.NoError(t, err, "Error sending request")
 	require.Equal(t, http.StatusUnauthorized, response.StatusCode)
-	require.NoError(t, request.Body.Close(), "Error closing response body")
+	require.NoError(t, response.Body.Close(), "Error closing response body")
 }
 
 // parseAuthURL returns the authentication URL extracted from user consent form.
