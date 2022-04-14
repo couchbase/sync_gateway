@@ -696,13 +696,6 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) error {
 		}
 	}
 
-	// Ensure that, if password auth is disabled, there's another way to authenticate
-	if dbConfig.DisablePasswordAuth {
-		if dbConfig.OIDCConfig == nil && (dbConfig.Guest == nil || base.BoolDefault(dbConfig.Guest.Disabled, true)) {
-			multiError = multiError.Append(fmt.Errorf("password authentication is disabled, but there is no alternative auth configuration (OIDC or guest access)"))
-		}
-	}
-
 	return multiError.ErrorOrNil()
 }
 
