@@ -126,12 +126,12 @@ func TestConfigValidation(t *testing.T) {
 			config: `{"databases": {"db":{"compact_interval_days": 0.04}}}`,
 		},
 		{
-			name:   "Basic auth disabled with no alternative",
+			name:   "Password auth disabled with no alternative",
 			config: `{"databases": {"db":{"disable_password_auth": true}}}`,
-			err:    "basic authentication is disabled, but there is no alternative auth configuration (OIDC or guest access)",
+			err:    "password authentication is disabled, but there is no alternative auth configuration (OIDC or guest access)",
 		},
 		{
-			name:   "Basic auth disabled but OIDC configured",
+			name:   "Password auth disabled but OIDC configured",
 			config: `{"databases": {"db":{"disable_password_auth": true, "oidc": {"providers":{"test":{}}}}}}`,
 		},
 	}

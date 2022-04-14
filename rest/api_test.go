@@ -106,7 +106,7 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 
 	response := rt.SendRequest(http.MethodGet, "/db/", "")
 	assertStatus(t, response, http.StatusUnauthorized)
-	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when basic auth is disabled")
+	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
 
 	// Double-check that even if we provide valid credentials we still won't be let in
 	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
@@ -116,7 +116,7 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 
 	response = rt.Send(requestByUser(http.MethodGet, "/db/", "", "user1"))
 	assertStatus(t, response, http.StatusUnauthorized)
-	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when basic auth is disabled")
+	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
 
 	// Also check that we can't create a session through POST /db/_session
 	response = rt.SendRequest(http.MethodPost, "/db/_session", `{"name":"user1","password":"letmein"}`)
