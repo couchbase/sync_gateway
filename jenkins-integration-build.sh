@@ -98,8 +98,8 @@ fi
 # Start CBS
 docker stop couchbase || true
 docker rm couchbase || true
-# -p 8091-8094:8091-8094 -p 11210:11210
-docker run -d --name couchbase --net=host couchbase/server:${COUCHBASE_SERVER_VERSION}
+# --volume: Makes and mounts a CBS folder for storing a CBCollect if needed
+docker run -d --name couchbase --volume `pwd`/cbs:/root --net=host couchbase/server:${COUCHBASE_SERVER_VERSION}
 
 # Test to see if Couchbase Server is up
 # Each retry min wait 5s, max 10s. Retry 20 times with exponential backoff (delay 0), fail at 120s
@@ -133,6 +133,12 @@ if [ "${PIPESTATUS[0]}" -ne "0" ]; then # If test exit code is not 0 (failed)
     echo "Go test failed! Parsing logs to find cause..."
     TEST_FAILED=true
 fi
+
+# Collect CBS logs if server error occurred
+if grep -q "server logs for details\|Timed out after 1m0s waiting for a bucket to become available" "${INT_LOG_FILE_NAME}.out.raw"; then
+    docker exec -t couchbase /opt/couchbase/bin/cbcollect_info /root/cbcollect.zip
+fi
+
 
 # Generate xunit test report that can be parsed by the JUnit Plugin
 LC_CTYPE=C tr -dc [:print:][:space:] < ${INT_LOG_FILE_NAME}.out.raw > ${INT_LOG_FILE_NAME}.out # Strip non-printable characters
