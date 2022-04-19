@@ -14,9 +14,11 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
 
+	"github.com/couchbase/gomemcached"
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -53,6 +55,9 @@ type DocAttachment struct {
 	Version     int    `json:"ver,omitempty"`
 	Data        []byte `json:"-"` // tell json marshal/unmarshal to ignore this field
 }
+
+// ErrAttachmentTooLarge is returned when an attempt to attach an oversize attachment is made.
+var ErrAttachmentTooLarge = errors.New("attachment too large")
 
 // Given Attachments Meta to be stored in the database, storeAttachments goes through the map, finds attachments with
 // inline bodies, copies the bodies into the Couchbase db, and replaces the bodies with the 'digest' attributes which
@@ -246,6 +251,9 @@ func (db *Database) setAttachment(key string, value []byte) error {
 func (db *Database) setAttachments(attachments AttachmentData) error {
 	for key, data := range attachments {
 		attachmentSize := int64(len(data))
+		if attachmentSize > int64(gomemcached.MaxBodyLen) {
+			return ErrAttachmentTooLarge
+		}
 		_, err := db.Bucket.AddRaw(key, 0, data)
 		if err == nil {
 			base.InfofCtx(db.Ctx, base.KeyCRUD, "\tAdded attachment %q", base.UD(key))

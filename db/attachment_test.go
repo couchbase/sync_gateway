@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"strconv"
 	"strings"
@@ -1547,4 +1548,35 @@ func TestGetAttVersion(t *testing.T) {
 			assert.Equal(t, tt.expectedAttVersion, version)
 		})
 	}
+}
+
+func TestLargeAttachments(t *testing.T) {
+	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
+	assert.NoError(t, err, "Couldn't create context for database 'db'")
+	defer context.Close()
+	db, err := CreateDatabase(context)
+	assert.NoError(t, err, "Couldn't create database 'db'")
+
+	normalAttachment := make([]byte, 10*1024*1024)
+	hugeAttachment := make([]byte, 30*1024*1024)
+	_, _ = rand.Read(normalAttachment)
+	_, _ = rand.Read(hugeAttachment)
+
+	_, _, err = db.Put("testdoc", Body{
+		"_attachments": AttachmentsMeta{
+			"foo.bin": map[string]interface{}{
+				"data": base64.StdEncoding.EncodeToString(normalAttachment),
+			},
+		},
+	})
+	require.NoError(t, err, "Couldn't create testdoc")
+
+	_, _, err = db.Put("bigdoc", Body{
+		"_attachments": AttachmentsMeta{
+			"foo.bin": map[string]interface{}{
+				"data": base64.StdEncoding.EncodeToString(hugeAttachment),
+			},
+		},
+	})
+	require.Error(t, err, "Created doc with oversize attachment")
 }

@@ -1449,7 +1449,7 @@ func (db *Database) addAttachments(newAttachments AttachmentData) error {
 	// Need to check and add attachments here to ensure the attachment is within size constraints
 	err := db.setAttachments(newAttachments)
 	if err != nil {
-		if err.Error() == "document value was too large" {
+		if errors.Is(err, ErrAttachmentTooLarge) || err.Error() == "document value was too large" {
 			err = base.HTTPErrorf(http.StatusRequestEntityTooLarge, "Attachment too large")
 		} else {
 			err = errors.Wrap(err, "Error adding attachment")
