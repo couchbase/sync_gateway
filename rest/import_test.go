@@ -2307,7 +2307,12 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 		{
 			name:         "_purged false",
 			importBody:   map[string]interface{}{"_purged": false},
-			expectReject: false, // Should only reject when _purged=true
+			expectReject: true,
+		},
+		{
+			name:         "_purged true",
+			importBody:   map[string]interface{}{"_purged": true},
+			expectReject: true,
 		},
 		{
 			name:               "_removed",
