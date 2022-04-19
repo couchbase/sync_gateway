@@ -16,6 +16,7 @@ type RestTesterCluster struct {
 	testBucket      *base.TestBucket
 	restTesters     []*RestTester
 	roundRobinCount int64
+	config          *RestTesterClusterConfig
 }
 
 // RefreshClusterDbConfigs will synchronously fetch the latest db configs from each bucket for each RestTester.
@@ -123,6 +124,7 @@ func NewRestTesterCluster(t *testing.T, config *RestTesterClusterConfig) *RestTe
 	return &RestTesterCluster{
 		testBucket:  tb,
 		restTesters: restTesters,
+		config:      config,
 	}
 }
 
@@ -189,4 +191,17 @@ func TestPersistentDbConfigWithInvalidUpsert(t *testing.T) {
 	resp = rtNode.SendAdminRequest(http.MethodGet, "/"+db+"/_config", "")
 	assertStatus(t, resp, http.StatusOK)
 	assert.NotContains(t, string(resp.BodyBytes()), `"revs_limit":`)
+
+	// remove the db config directly from the bucket
+	require.NoError(t, rtc.testBucket.Delete(base.PersistentConfigPrefix+*rtc.config.groupID))
+
+	// ensure all nodes remove the database
+	count, err = rtc.RefreshClusterDbConfigs()
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+	rtc.ForEachNode(func(rt *RestTester) {
+		resp := rt.SendAdminRequest(http.MethodGet, "/"+db+"/", "")
+		assertStatus(t, resp, http.StatusNotFound)
+	})
+
 }
