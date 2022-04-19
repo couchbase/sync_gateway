@@ -516,7 +516,6 @@ func TestFunkyRoleNames(t *testing.T) {
 			require.NoError(t, err)
 			const username = "user1"
 			syncFn := fmt.Sprintf(`function(doc) {channel(doc.channels); role("%s", %s);}`, username, string(roleNameJSON))
-			t.Logf("syncFn:\n%s", syncFn)
 			rt := NewRestTester(t, &RestTesterConfig{
 				SyncFn: syncFn,
 			})
