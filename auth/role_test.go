@@ -11,6 +11,8 @@ licenses/APL2.txt.
 package auth
 
 import (
+	"math/rand"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -51,4 +53,17 @@ func TestAuthorizeChannelsRole(t *testing.T) {
 	assert.Error(t, role.AuthorizeAllChannels(channels.SetOf(t, "unknown")))
 	assert.NoError(t, role.AuthorizeAnyChannel(channels.SetOf(t, "superuser", "unknown")))
 	assert.Error(t, role.AuthorizeAllChannels(channels.SetOf(t, "unknown1", "unknown2")))
+}
+
+func BenchmarkIsValidPrincipalName(b *testing.B) {
+	const nameLength = 50
+	name := strings.Builder{}
+	for i := 0; i < nameLength; i++ {
+		name.WriteRune(rune(rand.Intn('z'-'a') + 'a'))
+	}
+	nameStr := name.String()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		IsValidPrincipalName(nameStr)
+	}
 }
