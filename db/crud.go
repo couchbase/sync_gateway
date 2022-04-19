@@ -821,7 +821,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 
 	delete(body, BodyRevisions)
 
-	err = validateDocUpdate(body)
+	err = validateAPIDocUpdate(body)
 	if err != nil {
 		return "", nil, err
 	}
@@ -1027,6 +1027,11 @@ func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHi
 }
 
 func (db *Database) PutExistingRevWithBody(docid string, body Body, docHistory []string, noConflicts bool) (doc *Document, newRev string, err error) {
+	err = validateAPIDocUpdate(body)
+	if err != nil {
+		return nil, "", err
+	}
+
 	expiry, _ := body.ExtractExpiry()
 	deleted := body.ExtractDeleted()
 	revid := body.ExtractRev()
@@ -1043,12 +1048,8 @@ func (db *Database) PutExistingRevWithBody(docid string, body Body, docHistory [
 
 	newDoc.DocAttachments = GetBodyAttachments(body)
 	delete(body, BodyAttachments)
-	newDoc.UpdateBody(body)
 
-	err = validateDocUpdate(body)
-	if err != nil {
-		return nil, "", err
-	}
+	newDoc.UpdateBody(body)
 
 	doc, newRevID, putExistingRevErr := db.PutExistingRev(newDoc, docHistory, noConflicts, false, nil)
 
@@ -1058,13 +1059,6 @@ func (db *Database) PutExistingRevWithBody(docid string, body Body, docHistory [
 
 	return doc, newRevID, err
 
-}
-
-func validateDocUpdate(body Body) error {
-	if body[base.SyncPropertyName] != nil {
-		return base.HTTPErrorf(http.StatusBadRequest, "document-top level property '_sync' is a reserved internal property")
-	}
-	return nil
 }
 
 // resolveConflict runs the conflictResolverFunction with doc and newDoc.  doc and newDoc's bodies and revision trees
@@ -1317,34 +1311,6 @@ func (db *Database) tombstoneActiveRevision(doc *Document, revID string) (tombst
 	doc.RemoveBody()
 
 	return newRevID, nil
-}
-
-func (db *Database) validateExistingDoc(doc *Document, importAllowed, docExists bool) error {
-	if !importAllowed && docExists && !doc.HasValidSyncData() {
-		return base.HTTPErrorf(409, "Not imported")
-	}
-	return nil
-}
-
-// validateNewBody validates any new body being received
-func validateNewBody(body Body) error {
-	// Reject a body that contains the "_removed" property, this means that the user
-	// is trying to update a document they do not have read access to.
-	if body[BodyRemoved] != nil {
-		return base.HTTPErrorf(http.StatusNotFound, "Document revision is not accessible")
-	}
-
-	// Reject bodies that contains the "_purged" property.
-	if body[BodyPurged] != nil {
-		return base.HTTPErrorf(http.StatusBadRequest, "user defined top-level property '_purged' is not allowed in document body")
-	}
-
-	for key := range body {
-		if strings.HasPrefix(key, BodyInternalPrefix) {
-			return base.HTTPErrorf(http.StatusBadRequest, "user defined top-level properties that start with '_sync_' are not allowed in document body")
-		}
-	}
-	return nil
 }
 
 func (doc *Document) updateWinningRevAndSetDocFlags() {
@@ -1645,11 +1611,6 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 		return
 	}
 
-	err = validateNewBody(newDoc.Body())
-	if err != nil {
-		return
-	}
-
 	// Marshal raw user xattrs for use in Sync Fn. If this fails we can bail out so we should do early as possible.
 	metaMap, err := doc.GetMetaMap(db.Options.UserXattrKey)
 	if err != nil {
@@ -1657,6 +1618,11 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 	}
 
 	syncFnBody, err := newDoc.GetDeepMutableBody()
+	if err != nil {
+		return
+	}
+
+	err = validateNewBody(syncFnBody)
 	if err != nil {
 		return
 	}

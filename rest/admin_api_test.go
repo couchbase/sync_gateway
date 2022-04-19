@@ -4644,6 +4644,7 @@ func TestApiInternalPropertiesHandling(t *testing.T) {
 }
 
 func TestPutIDRevMatchBody(t *testing.T) {
+	// [REV] is replaced with the most recent revision of document "doc"
 	testCases := []struct {
 		name        string
 		docBody     string
@@ -4664,37 +4665,64 @@ func TestPutIDRevMatchBody(t *testing.T) {
 			expectError: true,
 		},
 		{
+			name:        "ID in URL only",
+			docBody:     `{}`,
+			docID:       "id_in_url",
+			expectError: false,
+		},
+		{
 			name:        "Rev match",
-			docBody:     `{"_rev": "1-ca9ad22802b66f662ff171f226211d5c", "rand": "439870"}`,
-			rev:         "1-ca9ad22802b66f662ff171f226211d5c",
+			docBody:     `{"_rev": "[REV]", "nonce": "1"}`,
+			rev:         "[REV]",
 			expectError: false,
 		},
 		{
 			name:        "Rev mismatch",
-			docBody:     `{"_rev": "1-ca9ad22802b66f662ff171f226211d5c", "rand": "123112"}`,
+			docBody:     `{"_rev": "[REV]", "nonce": "2"}`,
 			rev:         "1-abc",
 			expectError: true,
+		},
+		{
+			name:        "Rev in body only",
+			docBody:     `{"_rev": "[REV]", "nonce": "3"}`,
+			expectError: false,
+		},
+		{
+			name:        "Rev in URL only",
+			docBody:     `{"nonce": "4"}`,
+			rev:         "[REV]",
+			expectError: false,
 		},
 	}
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	// Create document to create rev from
-	resp := rt.SendAdminRequest("PUT", "/db/document", "{}")
+	resp := rt.SendAdminRequest("PUT", "/db/doc", "{}")
 	assertStatus(t, resp, 201)
+	rev := respRevID(t, resp)
 
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			docID := "document" // Used for the rev tests to branch off of
-			if test.docID != "" {
-				docID = test.docID
+			docID := test.docID
+			docRev := test.rev
+			docBody := test.docBody
+			if test.docID == "" {
+				docID = "doc" // Used for the rev tests to branch off of
+				docBody = strings.ReplaceAll(docBody, "[REV]", rev)
+				docRev = strings.ReplaceAll(docRev, "[REV]", rev)
 			}
-			resp := rt.SendAdminRequest("PUT", "/db/"+docID+"?rev="+test.rev, test.docBody)
+
+			resp = rt.SendAdminRequest("PUT", "/db/"+docID+"?rev="+docRev, docBody)
 			if test.expectError {
 				assertStatus(t, resp, 400)
 				return
 			}
 			assertStatus(t, resp, 201)
+			if test.docID == "" {
+				// Update rev to branch off for next test
+				rev = respRevID(t, resp)
+			}
 		})
 	}
 }

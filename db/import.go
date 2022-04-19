@@ -14,7 +14,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"strconv"
 	"time"
 
@@ -440,27 +439,6 @@ func (db *Database) backupPreImportRevision(docid, revid string) error {
 		return fmt.Errorf("Persistence error: %v", setOldRevErr)
 	}
 
-	return nil
-}
-
-func validateImportBody(body Body) error {
-	// Prevent disallowed internal properties from being used
-	disallowed := []string{BodyId, BodyRev, BodyExpiry, BodyRevisions}
-	for _, prop := range disallowed {
-		if body[prop] != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "top-level property '"+prop+"' is a reserved internal property therefore cannot be imported")
-		}
-	}
-
-	if isPurged, ok := body[BodyPurged].(bool); ok && isPurged {
-		return base.ErrImportCancelledPurged
-	}
-
-	// TODO: Validate attachment data to ensure user is not setting invalid attachments
-
-	if body == nil {
-		return base.ErrEmptyDocument
-	}
 	return nil
 }
 

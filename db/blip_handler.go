@@ -768,17 +768,6 @@ type removalDocument struct {
 	Removed bool `json:"_removed"`
 }
 
-func validateBlipBody(body Body) error {
-	// Prevent disallowed internal properties from being used
-	disallowed := []string{base.SyncPropertyName, BodyId, BodyRev, BodyDeleted, BodyRevisions}
-	for _, prop := range disallowed {
-		if body[prop] != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "top-level property '"+prop+"' is a reserved internal property")
-		}
-	}
-	return nil
-}
-
 // Received a "rev" request, i.e. client is pushing a revision body
 func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 	startTime := time.Now()
@@ -835,10 +824,6 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 		RevID: revID,
 	}
 	newDoc.UpdateBodyBytes(bodyBytes)
-	err = validateBlipBody(newDoc.Body())
-	if err != nil {
-		return err
-	}
 
 	injectedAttachmentsForDelta := false
 	if deltaSrcRevID, isDelta := revMessage.DeltaSrc(); isDelta {
@@ -889,6 +874,11 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 		newDoc.UpdateBody(deltaSrcMap)
 		base.TracefCtx(bh.loggingCtx, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(deltaSrcMap))
 		bh.replicationStats.HandleRevDeltaRecvCount.Add(1)
+	}
+
+	err = validateBlipBody(bodyBytes, newDoc)
+	if err != nil {
+		return err
 	}
 
 	// Handle and pull out expiry
