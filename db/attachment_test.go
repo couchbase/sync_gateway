@@ -1580,7 +1580,9 @@ func TestLargeAttachments(t *testing.T) {
 			},
 		},
 	})
-	require.Error(t, err, "Created doc with oversize attachment")
+	var httpErr *base.HTTPError
+	require.ErrorAs(t, err, &httpErr, "Created doc with oversize attachment")
+	require.Equal(t, http.StatusRequestEntityTooLarge, httpErr.Status)
 
 	_, _, err = db.Put("hugedoc", Body{
 		"_attachments": AttachmentsMeta{
@@ -1589,5 +1591,6 @@ func TestLargeAttachments(t *testing.T) {
 			},
 		},
 	})
-	require.Error(t, err, "Created doc with huge attachment")
+	require.ErrorAs(t, err, &httpErr, "Created doc with huge attachment")
+	require.Equal(t, http.StatusRequestEntityTooLarge, httpErr.Status)
 }
