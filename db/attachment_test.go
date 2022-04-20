@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"strconv"
 	"strings"
@@ -1567,4 +1568,49 @@ func TestGetAttVersion(t *testing.T) {
 			assert.Equal(t, tt.expectedAttVersion, version)
 		})
 	}
+}
+
+func TestLargeAttachments(t *testing.T) {
+	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
+	assert.NoError(t, err, "Couldn't create context for database 'db'")
+	defer context.Close()
+	db, err := CreateDatabase(context)
+	assert.NoError(t, err, "Couldn't create database 'db'")
+
+	normalAttachment := make([]byte, 15*1024*1024)   // permissible size
+	oversizeAttachment := make([]byte, 25*1024*1024) // memcached would send an E2BIG
+	hugeAttachment := make([]byte, 35*1024*1024)     // memcached would abruptly close our connection
+	_, _ = rand.Read(normalAttachment)
+	_, _ = rand.Read(oversizeAttachment)
+	_, _ = rand.Read(hugeAttachment)
+
+	_, _, err = db.Put("testdoc", Body{
+		"_attachments": AttachmentsMeta{
+			"foo.bin": map[string]interface{}{
+				"data": base64.StdEncoding.EncodeToString(normalAttachment),
+			},
+		},
+	})
+	require.NoError(t, err, "Couldn't create appropriately sized attachment")
+
+	_, _, err = db.Put("bigdoc", Body{
+		"_attachments": AttachmentsMeta{
+			"foo.bin": map[string]interface{}{
+				"data": base64.StdEncoding.EncodeToString(oversizeAttachment),
+			},
+		},
+	})
+	var httpErr *base.HTTPError
+	require.ErrorAs(t, err, &httpErr, "Created doc with oversize attachment")
+	require.Equal(t, http.StatusRequestEntityTooLarge, httpErr.Status)
+
+	_, _, err = db.Put("hugedoc", Body{
+		"_attachments": AttachmentsMeta{
+			"foo.bin": map[string]interface{}{
+				"data": base64.StdEncoding.EncodeToString(hugeAttachment),
+			},
+		},
+	})
+	require.ErrorAs(t, err, &httpErr, "Created doc with huge attachment")
+	require.Equal(t, http.StatusRequestEntityTooLarge, httpErr.Status)
 }
