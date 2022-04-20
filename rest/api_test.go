@@ -460,7 +460,15 @@ func TestFunkyUsernames(t *testing.T) {
 		},
 		{
 			Name:     "spaces and punctuation",
-			UserName: "Foo And Bar!",
+			UserName: "Foo `And` Bar!",
+		},
+		{
+			Name:     "question mark",
+			UserName: "foo?bar",
+		},
+		{
+			Name:     "underscore prefix",
+			UserName: "_sync-foobar",
 		},
 	}
 	for _, tc := range cases {
@@ -506,7 +514,15 @@ func TestFunkyRoleNames(t *testing.T) {
 		},
 		{
 			Name:     "spaces and punctuation",
-			RoleName: "Foo And Bar!",
+			RoleName: "Foo `And` Bar!",
+		},
+		{
+			Name:     "question mark",
+			RoleName: "foo?bar",
+		},
+		{
+			Name:     "underscore prefix",
+			RoleName: "_sync-foobar",
 		},
 	}
 	for _, tc := range cases {
