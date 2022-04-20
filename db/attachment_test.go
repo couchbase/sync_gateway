@@ -1557,9 +1557,11 @@ func TestLargeAttachments(t *testing.T) {
 	db, err := CreateDatabase(context)
 	assert.NoError(t, err, "Couldn't create database 'db'")
 
-	normalAttachment := make([]byte, 10*1024*1024)
-	hugeAttachment := make([]byte, 30*1024*1024)
+	normalAttachment := make([]byte, 15*1024*1024)   // permissible size
+	oversizeAttachment := make([]byte, 25*1024*1024) // memcached would send an E2BIG
+	hugeAttachment := make([]byte, 35*1024*1024)     // memcached would abruptly close our connection
 	_, _ = rand.Read(normalAttachment)
+	_, _ = rand.Read(oversizeAttachment)
 	_, _ = rand.Read(hugeAttachment)
 
 	_, _, err = db.Put("testdoc", Body{
@@ -1569,14 +1571,23 @@ func TestLargeAttachments(t *testing.T) {
 			},
 		},
 	})
-	require.NoError(t, err, "Couldn't create testdoc")
+	require.NoError(t, err, "Couldn't create appropriately sized attachment")
 
 	_, _, err = db.Put("bigdoc", Body{
+		"_attachments": AttachmentsMeta{
+			"foo.bin": map[string]interface{}{
+				"data": base64.StdEncoding.EncodeToString(oversizeAttachment),
+			},
+		},
+	})
+	require.Error(t, err, "Created doc with oversize attachment")
+
+	_, _, err = db.Put("hugedoc", Body{
 		"_attachments": AttachmentsMeta{
 			"foo.bin": map[string]interface{}{
 				"data": base64.StdEncoding.EncodeToString(hugeAttachment),
 			},
 		},
 	})
-	require.Error(t, err, "Created doc with oversize attachment")
+	require.Error(t, err, "Created doc with huge attachment")
 }
