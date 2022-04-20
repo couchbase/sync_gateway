@@ -771,29 +771,36 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		groupID = sc.config.Bootstrap.ConfigGroupID
 	}
 
+	// If basic auth is disabled, it doesn't make sense to send WWW-Authenticate
+	sendWWWAuthenticate := config.SendWWWAuthenticateHeader
+	if config.DisablePasswordAuth {
+		sendWWWAuthenticate = base.BoolPtr(false)
+	}
+
 	// Register the cbgt pindex type for the configGroup
 	db.RegisterImportPindexImpl(groupID)
 
 	contextOptions := db.DatabaseContextOptions{
-		CacheOptions:              &cacheOptions,
-		RevisionCacheOptions:      revCacheOptions,
-		OldRevExpirySeconds:       oldRevExpirySeconds,
-		LocalDocExpirySecs:        localDocExpirySecs,
-		AdminInterface:            &sc.config.API.AdminInterface,
-		UnsupportedOptions:        config.Unsupported,
-		OIDCOptions:               config.OIDCConfig,
-		DBOnlineCallback:          dbOnlineCallback,
-		ImportOptions:             importOptions,
-		EnableXattr:               config.UseXattrs(),
-		SecureCookieOverride:      secureCookieOverride,
-		SessionCookieName:         config.SessionCookieName,
-		SessionCookieHttpOnly:     base.BoolDefault(config.SessionCookieHTTPOnly, false),
-		AllowConflicts:            config.ConflictsAllowed(),
-		SendWWWAuthenticateHeader: config.SendWWWAuthenticateHeader,
-		DeltaSyncOptions:          deltaSyncOptions,
-		CompactInterval:           compactIntervalSecs,
-		QueryPaginationLimit:      queryPaginationLimit,
-		UserXattrKey:              config.UserXattrKey,
+		CacheOptions:                  &cacheOptions,
+		RevisionCacheOptions:          revCacheOptions,
+		OldRevExpirySeconds:           oldRevExpirySeconds,
+		LocalDocExpirySecs:            localDocExpirySecs,
+		AdminInterface:                &sc.config.API.AdminInterface,
+		UnsupportedOptions:            config.Unsupported,
+		OIDCOptions:                   config.OIDCConfig,
+		DBOnlineCallback:              dbOnlineCallback,
+		ImportOptions:                 importOptions,
+		EnableXattr:                   config.UseXattrs(),
+		SecureCookieOverride:          secureCookieOverride,
+		SessionCookieName:             config.SessionCookieName,
+		SessionCookieHttpOnly:         base.BoolDefault(config.SessionCookieHTTPOnly, false),
+		AllowConflicts:                config.ConflictsAllowed(),
+		SendWWWAuthenticateHeader:     sendWWWAuthenticate,
+		DisablePasswordAuthentication: config.DisablePasswordAuth,
+		DeltaSyncOptions:              deltaSyncOptions,
+		CompactInterval:               compactIntervalSecs,
+		QueryPaginationLimit:          queryPaginationLimit,
+		UserXattrKey:                  config.UserXattrKey,
 		SGReplicateOptions: db.SGReplicateOptions{
 			Enabled:               sgReplicateEnabled,
 			WebsocketPingInterval: sgReplicateWebsocketPingInterval,
