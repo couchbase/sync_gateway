@@ -459,12 +459,12 @@ func TestFunkyUsernames(t *testing.T) {
 			UserName: "foo#bar",
 		},
 		{
-			Name:     "spaces and punctuation",
-			UserName: "Foo `And` Bar!",
-		},
-		{
 			Name:     "question mark",
 			UserName: "foo?bar",
+		},
+		{
+			Name:     "dollars",
+			UserName: "$foo$bar",
 		},
 		{
 			Name:     "underscore prefix",
@@ -513,12 +513,12 @@ func TestFunkyRoleNames(t *testing.T) {
 			RoleName: "foo#bar",
 		},
 		{
-			Name:     "spaces and punctuation",
-			RoleName: "Foo `And` Bar!",
-		},
-		{
 			Name:     "question mark",
 			RoleName: "foo?bar",
+		},
+		{
+			Name:     "dollars",
+			RoleName: "$foo$bar",
 		},
 		{
 			Name:     "underscore prefix",

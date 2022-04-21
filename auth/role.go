@@ -102,7 +102,7 @@ func (role *roleImpl) initRole(name string, channels base.Set) error {
 }
 
 // IsValidPrincipalName checks if the given user/role name would be valid. Valid names must be valid UTF-8, containing
-// at least one alphanumeric (except for the guest user), and no colons, commas, or slashes.
+// at least one alphanumeric (except for the guest user), and no colons, commas, backticks, or slashes.
 func IsValidPrincipalName(name string) bool {
 	if len(name) == 0 {
 		return true // guest user
@@ -116,7 +116,8 @@ func IsValidPrincipalName(name string) bool {
 		// colons: basic authentication uses them to separate usernames from passwords
 		// commas: fails channels.IsValidChannel, which channels.compileAccessMap uses via SetFromArray
 		// slashes: would need to make many (possibly breaking) changes to routing
-		if char == '/' || char == ':' || char == ',' {
+		// backticks: MB-50619
+		if char == '/' || char == ':' || char == ',' || char == '`' {
 			return false
 		}
 		if !seenAnAlphanum && (unicode.IsLetter(char) || unicode.IsNumber(char)) {
