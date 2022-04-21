@@ -3651,7 +3651,20 @@ func TestPutDBConfigOIDC(t *testing.T) {
 
 	// Attempt to update the config with an invalid OIDC issuer - should fail
 	invalidOIDCConfig := fmt.Sprintf(
-		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "oidc": {"providers": {"test": {"issuer": "https://test.invalid", "client_id": "test"}}}}`,
+		`{
+			"bucket": "%s",
+			"num_index_replicas": 0,
+			"enable_shared_bucket_access": %t,
+			"use_views": %t,
+			"oidc": {
+				"providers": {
+					"test": {
+						"issuer": "https://test.invalid",
+						"client_id": "test"
+					}
+				}
+			}
+		}`,
 		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 	)
 
