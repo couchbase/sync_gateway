@@ -165,6 +165,8 @@ put:
 
     Required Sync Gateway RBAC roles:
     * Sync Gateway Architect
+  parameters:
+    - $ref: ../../components/parameters.yaml#/disable_oidc_validation
   requestBody:
     description: The configuration to use for the new database
     content:
