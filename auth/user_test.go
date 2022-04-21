@@ -212,6 +212,39 @@ func TestIsValidEmail(t *testing.T) {
 
 }
 
+func TestInvalidUsernamesRejected(t *testing.T) {
+	cases := []struct {
+		Name     string
+		Username string
+	}{
+		{
+			Name:     "colons",
+			Username: "foo:bar",
+		},
+		{
+			Name:     "commas",
+			Username: "foo,bar",
+		},
+		{
+			Name:     "slashes",
+			Username: "foo/bar",
+		},
+		{
+			Name:     "no alphanumeric",
+			Username: "..",
+		},
+		{
+			Name:     "invalid UTF-8",
+			Username: "foo\xf9bar",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.Name, func(t *testing.T) {
+			require.False(t, IsValidPrincipalName(tc.Username), "expected '%s' to be rejected", tc.Username)
+		})
+	}
+}
+
 func TestCanSeeChannelSince(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
 	testBucket := base.GetTestBucket(t)

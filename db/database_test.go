@@ -1364,15 +1364,15 @@ func TestAccessFunctionValidation(t *testing.T) {
 	_, _, err = db.Put("doc2", body)
 	assert.NoError(t, err, "")
 
-	body = Body{"users": []string{"bad username"}, "userChannels": []string{"BBC1"}}
+	body = Body{"users": []string{"bad,username"}, "userChannels": []string{"BBC1"}}
 	_, _, err = db.Put("doc3", body)
 	assertHTTPError(t, err, 500)
 
-	body = Body{"users": []string{"role:bad rolename"}, "userChannels": []string{"BBC1"}}
+	body = Body{"users": []string{"role:bad:rolename"}, "userChannels": []string{"BBC1"}}
 	_, _, err = db.Put("doc4", body)
 	assertHTTPError(t, err, 500)
 
-	body = Body{"users": []string{"roll:over"}, "userChannels": []string{"BBC1"}}
+	body = Body{"users": []string{",.,.,.,.,."}, "userChannels": []string{"BBC1"}}
 	_, _, err = db.Put("doc5", body)
 	assertHTTPError(t, err, 500)
 

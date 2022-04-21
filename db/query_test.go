@@ -454,28 +454,18 @@ func TestAccessQuery(t *testing.T) {
 	assert.Equal(t, 5, rowCount)
 	assert.NoError(t, results.Close())
 
-	// Attempt to introduce syntax error.  Should return zero rows for user `user1'`, and not return error
-	username = "user1'"
-	results, queryErr = db.QueryAccess(base.TestCtx(t), username)
-	assert.NoError(t, queryErr, "Query error")
-	rowCount = 0
-	for results.Next(&row) {
-		rowCount++
-	}
-	assert.Equal(t, 0, rowCount)
-	assert.NoError(t, results.Close())
-
-	// Attempt to introduce syntax error.  Should return zero rows for user `user1`AND`, and not return error.
+	// Attempt to introduce syntax errors. Each of these should return zero rows and no error.
 	// Validates select clause protection
-	username = "user1`AND"
-	results, queryErr = db.QueryAccess(base.TestCtx(t), username)
-	assert.NoError(t, queryErr, "Query error")
-	rowCount = 0
-	for results.Next(&row) {
-		rowCount++
+	for _, username := range []string{"user1'", "user1`AND", "user1?", "user1 ! user2$"} {
+		results, queryErr = db.QueryAccess(base.TestCtx(t), username)
+		assert.NoError(t, queryErr, "Query error")
+		rowCount = 0
+		for results.Next(&row) {
+			rowCount++
+		}
+		assert.Equal(t, 0, rowCount)
+		assert.NoError(t, results.Close())
 	}
-	assert.Equal(t, 0, rowCount)
-	assert.NoError(t, results.Close())
 }
 
 func TestRoleAccessQuery(t *testing.T) {
@@ -507,28 +497,18 @@ func TestRoleAccessQuery(t *testing.T) {
 	assert.Equal(t, 5, rowCount)
 	assert.NoError(t, results.Close())
 
-	// Attempt to introduce syntax error.  Should return zero rows for user `user1'`, and not return error
-	username = "user1'"
-	results, queryErr = db.QueryRoleAccess(base.TestCtx(t), username)
-	assert.NoError(t, queryErr, "Query error")
-	rowCount = 0
-	for results.Next(&row) {
-		rowCount++
-	}
-	assert.Equal(t, 0, rowCount)
-	assert.NoError(t, results.Close())
-
-	// Attempt to introduce syntax error.  Should return zero rows for user `user1`AND`, and not return error
+	// Attempt to introduce syntax errors. Each of these should return zero rows and no error.
 	// Validates select clause protection
-	username = "user1`AND"
-	results, queryErr = db.QueryRoleAccess(base.TestCtx(t), username)
-	assert.NoError(t, queryErr, "Query error")
-	rowCount = 0
-	for results.Next(&row) {
-		rowCount++
+	for _, username := range []string{"user1'", "user1`AND", "user1?", "user1 ! user2$"} {
+		results, queryErr = db.QueryRoleAccess(base.TestCtx(t), username)
+		assert.NoError(t, queryErr, "Query error")
+		rowCount = 0
+		for results.Next(&row) {
+			rowCount++
+		}
+		assert.Equal(t, 0, rowCount)
+		assert.NoError(t, results.Close())
 	}
-	assert.Equal(t, 0, rowCount)
-	assert.NoError(t, results.Close())
 }
 
 // Parse the plan looking for use of the fetch operation (appears as the key/value pair "#operator":"Fetch")
