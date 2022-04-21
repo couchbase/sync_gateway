@@ -499,11 +499,11 @@ func (dbConfig *DbConfig) validatePersistentDbConfig() (errorMessages error) {
 	return multiError.ErrorOrNil()
 }
 
-func (dbConfig *DbConfig) validate() error {
-	return dbConfig.validateVersion(base.IsEnterpriseEdition())
+func (dbConfig *DbConfig) validate(validateOIDCConfig bool) error {
+	return dbConfig.validateVersion(base.IsEnterpriseEdition(), validateOIDCConfig)
 }
 
-func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) error {
+func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition, validateOIDCConfig bool) error {
 
 	var multiError *base.MultiError
 	// Make sure a non-zero compact_interval_days config is within the valid range
@@ -692,6 +692,15 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) error {
 		} else {
 			if *revsLimit <= 0 {
 				multiError = multiError.Append(fmt.Errorf("The revs_limit (%v) value in your Sync Gateway configuration must be greater than zero.", *revsLimit))
+			}
+		}
+	}
+
+	if validateOIDCConfig && dbConfig.OIDCConfig != nil {
+		for name, provider := range dbConfig.OIDCConfig.Providers {
+			_, _, err := provider.DiscoverConfig(context.TODO())
+			if err != nil {
+				multiError = multiError.Append(fmt.Errorf("failed to validate OIDC configuration for %s: %w", name, err))
 			}
 		}
 	}
