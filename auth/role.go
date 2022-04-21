@@ -12,10 +12,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
@@ -93,8 +94,6 @@ func (pair *GrantHistorySequencePair) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-var kValidNameRegexp = regexp.MustCompile(`^[-+.@%\w]*$`)
-
 func (role *roleImpl) initRole(name string, channels base.Set) error {
 	channels = ch.ExpandingStar(channels)
 	role.Name_ = name
@@ -102,9 +101,30 @@ func (role *roleImpl) initRole(name string, channels base.Set) error {
 	return role.validate()
 }
 
-// Is this string a valid name for a User/Role? (Valid chars are alphanumeric and any of "_-+.@")
+// IsValidPrincipalName checks if the given user/role name would be valid. Valid names must be valid UTF-8, containing
+// at least one alphanumeric (except for the guest user), and no colons, commas, backticks, or slashes.
 func IsValidPrincipalName(name string) bool {
-	return kValidNameRegexp.Copy().MatchString(name)
+	if len(name) == 0 {
+		return true // guest user
+	}
+	if !utf8.ValidString(name) {
+		return false
+	}
+	seenAnAlphanum := false
+	for _, char := range name {
+		// Reasons for forbidding each of these:
+		// colons: basic authentication uses them to separate usernames from passwords
+		// commas: fails channels.IsValidChannel, which channels.compileAccessMap uses via SetFromArray
+		// slashes: would need to make many (possibly breaking) changes to routing
+		// backticks: MB-50619
+		if char == '/' || char == ':' || char == ',' || char == '`' {
+			return false
+		}
+		if !seenAnAlphanum && (unicode.IsLetter(char) || unicode.IsNumber(char)) {
+			seenAnAlphanum = true
+		}
+	}
+	return seenAnAlphanum
 }
 
 // Creates a new Role object.
