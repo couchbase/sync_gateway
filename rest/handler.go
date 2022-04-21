@@ -403,6 +403,9 @@ func (h *handler) logStatus(status int, message string) {
 	h.logDuration(false) // don't track actual time
 }
 
+// checkAuth verifies that the current request is authenticated for the given database.
+//
+// NOTE: checkAuth is not used for the admin interface.
 func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 
 	h.user = nil
@@ -453,16 +456,18 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 	}
 
 	// Check basic auth first
-	if userName, password := h.getBasicAuth(); userName != "" {
-		h.user = context.Authenticator().AuthenticateUser(userName, password)
-		if h.user == nil {
-			base.Infof(base.KeyAll, "HTTP auth failed for username=%q", base.UD(userName))
-			if context.Options.SendWWWAuthenticateHeader == nil || *context.Options.SendWWWAuthenticateHeader {
-				h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
+	if !context.Options.DisablePasswordAuthentication {
+		if userName, password := h.getBasicAuth(); userName != "" {
+			h.user = context.Authenticator().AuthenticateUser(userName, password)
+			if h.user == nil {
+				base.Infof(base.KeyAll, "HTTP auth failed for username=%q", base.UD(userName))
+				if context.Options.SendWWWAuthenticateHeader == nil || *context.Options.SendWWWAuthenticateHeader {
+					h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
+				}
+				return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 			}
-			return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
+			return nil
 		}
-		return nil
 	}
 
 	// Check cookie
