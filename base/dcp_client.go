@@ -25,6 +25,7 @@ type DCPClient struct {
 	agent                      *gocbcore.DCPAgent             // SDK DCP agent, manages connections and calls back to DCPClient stream observer implementation
 	callback                   sgbucket.FeedEventCallbackFunc // Callback invoked on DCP mutations/deletions
 	workers                    []*DCPWorker                   // Workers for concurrent processing of incoming mutations and callback.  vbuckets are partitioned across workers
+	workersWg                  sync.WaitGroup                 // Active workers WG - used for signaling when the DCPClient workers have all stopped so the doneChannel can be closed
 	spec                       BucketSpec                     // Bucket spec for the target data store
 	numVbuckets                uint16                         // number of vbuckets on target data store
 	terminator                 chan bool                      // Used to close worker goroutines spawned by the DCPClient
@@ -159,7 +160,6 @@ func (dc *DCPClient) close() {
 	// Stop workers
 	close(dc.terminator)
 	if dc.agent != nil {
-
 		agentErr := dc.agent.Close()
 		if agentErr != nil {
 			WarnfCtx(context.TODO(), "Error closing DCP agent in client close: %v", agentErr)
@@ -169,7 +169,12 @@ func (dc *DCPClient) close() {
 	if closeErr != nil {
 		dc.doneChannel <- closeErr
 	}
-	close(dc.doneChannel)
+
+	// Wait for all workers to finish before closing doneChannel
+	go func() {
+		dc.workersWg.Wait()
+		close(dc.doneChannel)
+	}()
 }
 
 func (dc *DCPClient) initAgent(spec BucketSpec) error {
@@ -267,7 +272,7 @@ func (dc *DCPClient) startWorkers() {
 			metaPersistFrequency: dc.checkpointPersistFrequency,
 		}
 		dc.workers[index] = NewDCPWorker(index, dc.metadata, dc.callback, dc.onStreamEnd, dc.terminator, nil, dc.checkpointPrefix, assignedVbs[index], options)
-		dc.workers[index].Start()
+		dc.workers[index].Start(&dc.workersWg)
 	}
 }
 
