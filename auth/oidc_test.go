@@ -254,7 +254,7 @@ func TestConcurrentSetConfig(t *testing.T) {
 	}
 	err := provider.initOIDCClient()
 	require.NoError(t, err, "openid connect client initialization failure")
-	metadata, verifier, err := provider.discoverConfig()
+	metadata, verifier, err := provider.DiscoverConfig()
 	require.NoError(t, err, "error discovering provider metadata")
 
 	expectedAuthURL := []string{

@@ -28,6 +28,8 @@ import (
 
 const kDefaultDBOnlineDelay = 0
 
+const paramDisableOIDCValidation = "disable_oidc_validation"
+
 //////// DATABASE MAINTENANCE:
 
 // "Create" a database (actually just register an existing bucket)
@@ -45,7 +47,7 @@ func (h *handler) handleCreateDB() error {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
 
-		if err := config.validate(); err != nil {
+		if err := config.validate(!h.getBoolQuery(paramDisableOIDCValidation)); err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
 
@@ -488,9 +490,11 @@ func (h *handler) handlePutDbConfig() (err error) {
 		dbConfig.Name = dbName
 	}
 
+	validateOIDC := !h.getBoolQuery(paramDisableOIDCValidation)
+
 	if !h.server.persistentConfig {
 		updatedDbConfig := &DatabaseConfig{DbConfig: *dbConfig}
-		err = updatedDbConfig.validate()
+		err = updatedDbConfig.validate(validateOIDC)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
@@ -532,7 +536,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 			if err := dbConfig.validatePersistentDbConfig(); err != nil {
 				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 			}
-			if err := bucketDbConfig.validate(); err != nil {
+			if err := bucketDbConfig.validate(validateOIDC); err != nil {
 				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 			}
 
@@ -690,7 +694,7 @@ func (h *handler) handlePutDbConfigSync() error {
 
 			bucketDbConfig.Sync = &js
 
-			if err := bucketDbConfig.validate(); err != nil {
+			if err := bucketDbConfig.validate(!h.getBoolQuery(paramDisableOIDCValidation)); err != nil {
 				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 			}
 
@@ -838,7 +842,7 @@ func (h *handler) handlePutDbConfigImportFilter() error {
 
 			bucketDbConfig.ImportFilter = &js
 
-			if err := bucketDbConfig.validate(); err != nil {
+			if err := bucketDbConfig.validate(!h.getBoolQuery(paramDisableOIDCValidation)); err != nil {
 				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 			}
 

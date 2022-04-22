@@ -394,7 +394,7 @@ func setupAndValidateDatabases(databases DbConfigMap) error {
 		if err := dbConfig.setup(name, BootstrapConfig{}, nil); err != nil {
 			return err
 		}
-		if err := dbConfig.validate(); err != nil {
+		if err := dbConfig.validate(false); err != nil {
 			return err
 		}
 	}
