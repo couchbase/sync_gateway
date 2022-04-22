@@ -157,26 +157,41 @@ func (s *SgwStats) ReplicationStats() *expvar.Map {
 }
 
 type ResourceUtilization struct {
-	AdminNetworkInterfaceBytesReceived  *SgwIntStat   `json:"admin_net_bytes_recv"`
-	AdminNetworkInterfaceBytesSent      *SgwIntStat   `json:"admin_net_bytes_sent"`
-	ErrorCount                          *SgwIntStat   `json:"error_count"`
-	GoMemstatsHeapAlloc                 *SgwIntStat   `json:"go_memstats_heapalloc"`
-	GoMemstatsHeapIdle                  *SgwIntStat   `json:"go_memstats_heapidle"`
-	GoMemstatsHeapInUse                 *SgwIntStat   `json:"go_memstats_heapinuse"`
-	GoMemstatsHeapReleased              *SgwIntStat   `json:"go_memstats_heapreleased"`
-	GoMemstatsPauseTotalNS              *SgwIntStat   `json:"go_memstats_pausetotalns"`
-	GoMemstatsStackInUse                *SgwIntStat   `json:"go_memstats_stackinuse"`
-	GoMemstatsStackSys                  *SgwIntStat   `json:"go_memstats_stacksys"`
-	GoMemstatsSys                       *SgwIntStat   `json:"go_memstats_sys"`
-	GoroutinesHighWatermark             *SgwIntStat   `json:"goroutines_high_watermark"`
-	NumGoroutines                       *SgwIntStat   `json:"num_goroutines"`
-	CpuPercentUtil                      *SgwFloatStat `json:"process_cpu_percent_utilization"`
-	ProcessMemoryResident               *SgwIntStat   `json:"process_memory_resident"`
-	PublicNetworkInterfaceBytesReceived *SgwIntStat   `json:"pub_net_bytes_recv"`
-	PublicNetworkInterfaceBytesSent     *SgwIntStat   `json:"pub_net_bytes_sent"`
-	SystemMemoryTotal                   *SgwIntStat   `json:"system_memory_total"`
-	WarnCount                           *SgwIntStat   `json:"warn_count"`
-	Uptime                              *SgwDurStat   `json:"uptime"`
+	// The total number of bytes received (since node start-up) on the network interface to which the Sync Gateway api.admin_interface is bound.
+	AdminNetworkInterfaceBytesReceived *SgwIntStat `json:"admin_net_bytes_recv"`
+	// The total number of bytes sent (since node start-up) on the network interface to which the Sync Gateway api.admin_interface is bound.
+	AdminNetworkInterfaceBytesSent *SgwIntStat `json:"admin_net_bytes_sent"`
+	// The total number of errors logged.
+	ErrorCount             *SgwIntStat `json:"error_count"`
+	GoMemstatsHeapAlloc    *SgwIntStat `json:"go_memstats_heapalloc"`
+	GoMemstatsHeapIdle     *SgwIntStat `json:"go_memstats_heapidle"`
+	GoMemstatsHeapInUse    *SgwIntStat `json:"go_memstats_heapinuse"`
+	GoMemstatsHeapReleased *SgwIntStat `json:"go_memstats_heapreleased"`
+	GoMemstatsPauseTotalNS *SgwIntStat `json:"go_memstats_pausetotalns"`
+	GoMemstatsStackInUse   *SgwIntStat `json:"go_memstats_stackinuse"`
+	GoMemstatsStackSys     *SgwIntStat `json:"go_memstats_stacksys"`
+	GoMemstatsSys          *SgwIntStat `json:"go_memstats_sys"`
+	// Peak number of go routines since process start.
+	GoroutinesHighWatermark *SgwIntStat `json:"goroutines_high_watermark"`
+	// The total number of goroutines.
+	NumGoroutines *SgwIntStat `json:"num_goroutines"`
+	// The CPU’s utilization as percentage value.
+	//
+	// The CPU usage calculation is performed based on user and system CPU time, but it doesn’t include components such as iowait.
+	// The derivation means that the values of process_cpu_percent_utilization and %Cpu, returned when running the top command, will differ.
+	CpuPercentUtil *SgwFloatStat `json:"process_cpu_percent_utilization"`
+	// The memory utilization (Resident Set Size) for the process, in bytes.
+	ProcessMemoryResident *SgwIntStat `json:"process_memory_resident"`
+	// The total number of bytes received (since node start-up) on the network interface to which the Sync Gateway api.public_interface is bound.
+	PublicNetworkInterfaceBytesReceived *SgwIntStat `json:"pub_net_bytes_recv"`
+	// The total number of bytes sent (since node start-up) on the network interface to which Sync Gateway api.public_interface is bound.
+	PublicNetworkInterfaceBytesSent *SgwIntStat `json:"pub_net_bytes_sent"`
+	// The total memory available on the system in bytes.
+	SystemMemoryTotal *SgwIntStat `json:"system_memory_total"`
+	// The total number of warnings logged.
+	WarnCount *SgwIntStat `json:"warn_count"`
+	// The total uptime.
+	Uptime *SgwDurStat `json:"uptime"`
 }
 
 type DbStats struct {
@@ -193,94 +208,179 @@ type DbStats struct {
 }
 
 type CacheStats struct {
-	AbandonedSeqs                       *SgwIntStat `json:"abandoned_seqs"`
-	ChannelCacheRevsActive              *SgwIntStat `json:"chan_cache_active_revs"`
-	ChannelCacheBypassCount             *SgwIntStat `json:"chan_cache_bypass_count"`
-	ChannelCacheChannelsAdded           *SgwIntStat `json:"chan_cache_channels_added"`
+	// The total number of skipped sequences that were not found after 60 minutes and were abandoned.
+	AbandonedSeqs *SgwIntStat `json:"abandoned_seqs"`
+	// The total number of active revisions in the channel cache.
+	ChannelCacheRevsActive *SgwIntStat `json:"chan_cache_active_revs"`
+	// The total number of transient bypass channel caches created to serve requests when the channel cache was at capacity.
+	ChannelCacheBypassCount *SgwIntStat `json:"chan_cache_bypass_count"`
+	// The total number of channel caches added.
+	//
+	// The metric doesn't decrease when a channel is removed. That is, it is similar to chan_cache_num_channels but doesn’t track removals.
+	ChannelCacheChannelsAdded *SgwIntStat `json:"chan_cache_channels_added"`
+	// The total number of channel cache channels evicted due to inactivity.
 	ChannelCacheChannelsEvictedInactive *SgwIntStat `json:"chan_cache_channels_evicted_inactive"`
-	ChannelCacheChannelsEvictedNRU      *SgwIntStat `json:"chan_cache_channels_evicted_nru"`
-	ChannelCacheCompactCount            *SgwIntStat `json:"chan_cache_compact_count"`
-	ChannelCacheCompactTime             *SgwIntStat `json:"chan_cache_compact_time"`
-	ChannelCacheHits                    *SgwIntStat `json:"chan_cache_hits"`
-	ChannelCacheMaxEntries              *SgwIntStat `json:"chan_cache_max_entries"`
-	ChannelCacheMisses                  *SgwIntStat `json:"chan_cache_misses"`
-	ChannelCacheNumChannels             *SgwIntStat `json:"chan_cache_num_channels"`
-	ChannelCachePendingQueries          *SgwIntStat `json:"chan_cache_pending_queries"`
-	ChannelCacheRevsRemoval             *SgwIntStat `json:"chan_cache_removal_revs"`
-	ChannelCacheRevsTombstone           *SgwIntStat `json:"chan_cache_tombstone_revs"`
-	HighSeqCached                       *SgwIntStat `json:"high_seq_cached"`
-	HighSeqStable                       *SgwIntStat `json:"high_seq_stable"`
-	NonMobileIgnoredCount               *SgwIntStat `json:"non_mobile_ignored_count"`
-	NumActiveChannels                   *SgwIntStat `json:"num_active_channels"`
-	NumSkippedSeqs                      *SgwIntStat `json:"num_skipped_seqs"`
-	PendingSeqLen                       *SgwIntStat `json:"pending_seq_len"`
-	RevisionCacheBypass                 *SgwIntStat `json:"rev_cache_bypass"`
-	RevisionCacheHits                   *SgwIntStat `json:"rev_cache_hits"`
-	RevisionCacheMisses                 *SgwIntStat `json:"rev_cache_misses"`
-	SkippedSeqLen                       *SgwIntStat `json:"skipped_seq_len"`
-	ViewQueries                         *SgwIntStat `json:"view_queries"`
+	// The total number of active channel cache channels evicted, based on ‘not recently used’ criteria.
+	ChannelCacheChannelsEvictedNRU *SgwIntStat `json:"chan_cache_channels_evicted_nru"`
+	// The total number of channel cache compaction runs.
+	ChannelCacheCompactCount *SgwIntStat `json:"chan_cache_compact_count"`
+	// The total amount of time taken by channel cache compaction across all compaction runs.
+	ChannelCacheCompactTime *SgwIntStat `json:"chan_cache_compact_time"`
+	// The total number of channel cache requests fully served by the cache.
+	ChannelCacheHits *SgwIntStat `json:"chan_cache_hits"`
+	// The total size of the largest channel cache.
+	ChannelCacheMaxEntries *SgwIntStat `json:"chan_cache_max_entries"`
+	// The total number of channel cache requests not fully served by the cache.
+	ChannelCacheMisses *SgwIntStat `json:"chan_cache_misses"`
+	// The total number of channels being cached.
+	ChannelCacheNumChannels *SgwIntStat `json:"chan_cache_num_channels"`
+	// The total number of channel cache pending queries.
+	ChannelCachePendingQueries *SgwIntStat `json:"chan_cache_pending_queries"`
+	// The total number of removal revisions in the channel cache.
+	ChannelCacheRevsRemoval *SgwIntStat `json:"chan_cache_removal_revs"`
+	// The total number of tombstone revisions in the channel cache.
+	ChannelCacheRevsTombstone *SgwIntStat `json:"chan_cache_tombstone_revs"`
+	// The highest sequence number cached.
+	//
+	// There may be skipped sequences lower than high_seq_cached.
+	HighSeqCached *SgwIntStat `json:"high_seq_cached"`
+	// The highest contiguous sequence number that has been cached.
+	HighSeqStable         *SgwIntStat `json:"high_seq_stable"`
+	NonMobileIgnoredCount *SgwIntStat `json:"non_mobile_ignored_count"`
+	// The total number of active channels.
+	NumActiveChannels *SgwIntStat `json:"num_active_channels"`
+	// The total number of skipped sequences.
+	NumSkippedSeqs *SgwIntStat `json:"num_skipped_seqs"`
+	// The total number of pending sequences. These are out-of-sequence entries waiting to be cached.
+	PendingSeqLen *SgwIntStat `json:"pending_seq_len"`
+	// The total number of revision cache bypass operations performed.
+	RevisionCacheBypass *SgwIntStat `json:"rev_cache_bypass"`
+	// The total number of revision cache hits.
+	RevisionCacheHits *SgwIntStat `json:"rev_cache_hits"`
+	// The total number of revision cache misses.
+	RevisionCacheMisses *SgwIntStat `json:"rev_cache_misses"`
+	// The current length of the pending skipped sequence queue.
+	SkippedSeqLen *SgwIntStat `json:"skipped_seq_len"`
+	// The total view_queries.
+	ViewQueries *SgwIntStat `json:"view_queries"`
 }
 
 type CBLReplicationPullStats struct {
-	AttachmentPullBytes         *SgwIntStat `json:"attachment_pull_bytes"`
-	AttachmentPullCount         *SgwIntStat `json:"attachment_pull_count"`
-	MaxPending                  *SgwIntStat `json:"max_pending"`
-	NumReplicationsActive       *SgwIntStat `json:"num_replications_active"`
+	// The total size of attachments pulled. This is the pre-compressed size.
+	AttachmentPullBytes *SgwIntStat `json:"attachment_pull_bytes"`
+	// The total number of attachments pulled.
+	AttachmentPullCount *SgwIntStat `json:"attachment_pull_count"`
+	// The high watermark for the number of documents buffered during feed processing, waiting on a missing earlier sequence.
+	MaxPending *SgwIntStat `json:"max_pending"`
+	/// The total number of active replications. This metric only counts continuous pull replications.
+	NumReplicationsActive *SgwIntStat `json:"num_replications_active"`
+	// The total number of continuous pull replications in the active state.
 	NumPullReplActiveContinuous *SgwIntStat `json:"num_pull_repl_active_continuous"`
-	NumPullReplActiveOneShot    *SgwIntStat `json:"num_pull_repl_active_one_shot"`
-	NumPullReplCaughtUp         *SgwIntStat `json:"num_pull_repl_caught_up"`
-	NumPullReplTotalCaughtUp    *SgwIntStat `json:"num_pull_repl_total_caught_up"`
-	NumPullReplSinceZero        *SgwIntStat `json:"num_pull_repl_since_zero"`
-	NumPullReplTotalContinuous  *SgwIntStat `json:"num_pull_repl_total_continuous"`
-	NumPullReplTotalOneShot     *SgwIntStat `json:"num_pull_repl_total_one_shot"`
-	RequestChangesCount         *SgwIntStat `json:"request_changes_count"`
-	RequestChangesTime          *SgwIntStat `json:"request_changes_time"`
-	RevProcessingTime           *SgwIntStat `json:"rev_processing_time"`
-	RevSendCount                *SgwIntStat `json:"rev_send_count"`
-	RevSendLatency              *SgwIntStat `json:"rev_send_latency"`
+	// The total number of one-shot pull replications in the active state.
+	NumPullReplActiveOneShot *SgwIntStat `json:"num_pull_repl_active_one_shot"`
+	// The total number of replications which have caught up to the latest changes.
+	NumPullReplCaughtUp      *SgwIntStat `json:"num_pull_repl_caught_up"`
+	NumPullReplTotalCaughtUp *SgwIntStat `json:"num_pull_repl_total_caught_up"`
+	// The total number of new replications started (/_changes?since=0).
+	NumPullReplSinceZero *SgwIntStat `json:"num_pull_repl_since_zero"`
+	// The total number of continuous pull replications.
+	NumPullReplTotalContinuous *SgwIntStat `json:"num_pull_repl_total_continuous"`
+	// The total number of one-shot pull replications.
+	NumPullReplTotalOneShot *SgwIntStat `json:"num_pull_repl_total_one_shot"`
+	// The total number of changes requested.
+	RequestChangesCount *SgwIntStat `json:"request_changes_count"`
+	RequestChangesTime  *SgwIntStat `json:"request_changes_time"`
+	// The total amount of time processing rev messages (revisions) during pull revision.
+	RevProcessingTime *SgwIntStat `json:"rev_processing_time"`
+	// The total number of rev messages processed during replication.
+	RevSendCount *SgwIntStat `json:"rev_send_count"`
+	// The total amount of time between Sync Gateway receiving a request for a revision and that revision being sent.
+	//
+	// In a pull replication, Sync Gateway sends a /_changes request to the client and the client responds with the list of revisions it wants to receive.
+	//
+	// So, rev_send_latency measures the time between the client asking for those revisions and Sync Gateway sending them to the client.
+	RevSendLatency *SgwIntStat `json:"rev_send_latency"`
 }
 
 type CBLReplicationPushStats struct {
+	// The total number of attachment bytes pushed.
 	AttachmentPushBytes *SgwIntStat `json:"attachment_push_bytes"`
+	// The total number of attachments pushed.
 	AttachmentPushCount *SgwIntStat `json:"attachment_push_count"`
-	DocPushCount        *SgwIntStat `json:"doc_push_count"`
-	ProposeChangeCount  *SgwIntStat `json:"propose_change_count"`
-	ProposeChangeTime   *SgwIntStat `json:"propose_change_time"`
+	// The total number of documents pushed.
+	DocPushCount *SgwIntStat `json:"doc_push_count"`
+	// The total number of changes and-or proposeChanges messages processed since node start-up.
+	ProposeChangeCount *SgwIntStat `json:"propose_change_count"`
+	// The total time spent processing changes and/or proposeChanges messages.
+	//
+	// The propose_change_time is not included in the write_processing_time.
+	ProposeChangeTime *SgwIntStat `json:"propose_change_time"`
+	// Total time spent processing writes. Measures complete request-to-response time for a write.
 	WriteProcessingTime *SgwIntStat `json:"write_processing_time"`
 }
 
 type DatabaseStats struct {
+	// The compaction_attachment_start_time.
 	CompactionAttachmentStartTime *SgwIntStat `json:"compaction_attachment_start_time"`
-	CompactionTombstoneStartTime  *SgwIntStat `json:"compaction_tombstone_start_time"`
-	ConflictWriteCount            *SgwIntStat `json:"conflict_write_count"`
-	Crc32MatchCount               *SgwIntStat `json:"crc32c_match_count"`
-	DCPCachingCount               *SgwIntStat `json:"dcp_caching_count"`
-	DCPCachingTime                *SgwIntStat `json:"dcp_caching_time"`
-	DCPReceivedCount              *SgwIntStat `json:"dcp_received_count"`
-	DCPReceivedTime               *SgwIntStat `json:"dcp_received_time"`
-	DocReadsBytesBlip             *SgwIntStat `json:"doc_reads_bytes_blip"`
-	DocWritesBytes                *SgwIntStat `json:"doc_writes_bytes"`
-	DocWritesBytesBlip            *SgwIntStat `json:"doc_writes_bytes_blip"`
-	DocWritesXattrBytes           *SgwIntStat `json:"doc_writes_xattr_bytes"`
-	HighSeqFeed                   *SgwIntStat `json:"high_seq_feed"`
-	NumAttachmentsCompacted       *SgwIntStat `json:"num_attachments_compacted"`
-	NumDocReadsBlip               *SgwIntStat `json:"num_doc_reads_blip"`
-	NumDocReadsRest               *SgwIntStat `json:"num_doc_reads_rest"`
-	NumDocWrites                  *SgwIntStat `json:"num_doc_writes"`
-	NumReplicationsActive         *SgwIntStat `json:"num_replications_active"`
-	NumReplicationsTotal          *SgwIntStat `json:"num_replications_total"`
-	NumTombstonesCompacted        *SgwIntStat `json:"num_tombstones_compacted"`
-	SequenceAssignedCount         *SgwIntStat `json:"sequence_assigned_count"`
-	SequenceGetCount              *SgwIntStat `json:"sequence_get_count"`
-	SequenceIncrCount             *SgwIntStat `json:"sequence_incr_count"`
-	SequenceReleasedCount         *SgwIntStat `json:"sequence_released_count"`
-	SequenceReservedCount         *SgwIntStat `json:"sequence_reserved_count"`
-	WarnChannelNameSizeCount      *SgwIntStat `json:"warn_channel_name_size_count"`
-	WarnChannelsPerDocCount       *SgwIntStat `json:"warn_channels_per_doc_count"`
-	WarnGrantsPerDocCount         *SgwIntStat `json:"warn_grants_per_doc_count"`
-	WarnXattrSizeCount            *SgwIntStat `json:"warn_xattr_size_count"`
-	SyncFunctionCount             *SgwIntStat `json:"sync_function_count"`
-	SyncFunctionTime              *SgwIntStat `json:"sync_function_time"`
+	// The compaction_tombstone_start_time.
+	CompactionTombstoneStartTime *SgwIntStat `json:"compaction_tombstone_start_time"`
+	// The total number of writes that left the document in a conflicted state. Includes new conflicts, and mutations that don’t resolve existing conflicts.
+	ConflictWriteCount *SgwIntStat `json:"conflict_write_count"`
+	// The total number of instances during import when the document cas had changed, but the document was not imported because the document body had not changed.
+	Crc32MatchCount *SgwIntStat `json:"crc32c_match_count"`
+	// The total number of DCP mutations added to Sync Gateway’s channel cache.
+	DCPCachingCount *SgwIntStat `json:"dcp_caching_count"`
+	// The total time between a DCP mutation arriving at Sync Gateway and being added to channel cache.
+	DCPCachingTime *SgwIntStat `json:"dcp_caching_time"`
+	// The total number of document mutations received by Sync Gateway over DCP.
+	DCPReceivedCount *SgwIntStat `json:"dcp_received_count"`
+	// The time between a document write and that document being received by Sync Gateway over DCP. If the document was written prior to Sync Gateway starting the feed, it is recorded as the time since the feed was started.
+	DCPReceivedTime *SgwIntStat `json:"dcp_received_time"`
+	// The total number of bytes read via Couchbase Lite 2.x replication since Sync Gateway node startup.
+	DocReadsBytesBlip *SgwIntStat `json:"doc_reads_bytes_blip"`
+	// The total number of bytes written as part of document writes since Sync Gateway node startup.
+	DocWritesBytes *SgwIntStat `json:"doc_writes_bytes"`
+	// The total number of bytes written as part of Couchbase Lite document writes since Sync Gateway node startup.
+	DocWritesBytesBlip *SgwIntStat `json:"doc_writes_bytes_blip"`
+	// The total size of xattrs written (in bytes).
+	DocWritesXattrBytes *SgwIntStat `json:"doc_writes_xattr_bytes"`
+	// Highest sequence number seen on the caching DCP feed.
+	HighSeqFeed *SgwIntStat `json:"high_seq_feed"`
+	// The number of attachments compacted
+	NumAttachmentsCompacted *SgwIntStat `json:"num_attachments_compacted"`
+	// The total number of documents read via Couchbase Lite 2.x replication since Sync Gateway node startup.
+	NumDocReadsBlip *SgwIntStat `json:"num_doc_reads_blip"`
+	// The total number of documents read via the REST API since Sync Gateway node startup. Includes Couchbase Lite 1.x replication.
+	NumDocReadsRest *SgwIntStat `json:"num_doc_reads_rest"`
+	// The total number of documents written by any means (replication, rest API interaction or imports) since Sync Gateway node startup.
+	NumDocWrites *SgwIntStat `json:"num_doc_writes"`
+	// The total number of active replications. This metric only counts continuous pull replications.
+	NumReplicationsActive *SgwIntStat `json:"num_replications_active"`
+	// The total number of replications created since Sync Gateway node startup.
+	NumReplicationsTotal   *SgwIntStat `json:"num_replications_total"`
+	NumTombstonesCompacted *SgwIntStat `json:"num_tombstones_compacted"`
+	// The total number of sequence numbers assigned.
+	SequenceAssignedCount *SgwIntStat `json:"sequence_assigned_count"`
+	// The total number of high sequence lookups.
+	SequenceGetCount *SgwIntStat `json:"sequence_get_count"`
+	// The total number of times the sequence counter document has been incremented.
+	SequenceIncrCount *SgwIntStat `json:"sequence_incr_count"`
+	// The total number of unused, reserved sequences released by Sync Gateway.
+	SequenceReleasedCount *SgwIntStat `json:"sequence_released_count"`
+	// The total number of sequences reserved by Sync Gateway.
+	SequenceReservedCount *SgwIntStat `json:"sequence_reserved_count"`
+	// The total number of warnings relating to the channel name size.
+	WarnChannelNameSizeCount *SgwIntStat `json:"warn_channel_name_size_count"`
+	// The total number of warnings relating to the channel count exceeding the channel count threshold.
+	WarnChannelsPerDocCount *SgwIntStat `json:"warn_channels_per_doc_count"`
+	// The total number of warnings relating to the grant count exceeding the grant count threshold.
+	WarnGrantsPerDocCount *SgwIntStat `json:"warn_grants_per_doc_count"`
+	// The total number of warnings relating to the xattr sync data being larger than a configured threshold.
+	WarnXattrSizeCount *SgwIntStat `json:"warn_xattr_size_count"`
+	// The total number of times that the sync_function is evaluated.
+	SyncFunctionCount *SgwIntStat `json:"sync_function_count"`
+	// The total time spent evaluating the sync_function.
+	SyncFunctionTime *SgwIntStat `json:"sync_function_time"`
 
 	// These can be cleaned up in future versions of SGW, implemented as maps to reduce amount of potential risk
 	// prior to Hydrogen release. These are not exported as part of prometheus and only exposed through expvars
@@ -362,12 +462,18 @@ func (rs *ReplicatorStats) Collect(ch chan<- prometheus.Metric) {
 }
 
 type DeltaSyncStats struct {
-	DeltaCacheHit             *SgwIntStat `json:"delta_cache_hit"`
-	DeltaCacheMiss            *SgwIntStat `json:"delta_cache_miss"`
+	// The total number of requested deltas that were available in the revision cache.
+	DeltaCacheHit *SgwIntStat `json:"delta_cache_hit"`
+	// The total number of requested deltas that were not available in the revision cache.
+	DeltaCacheMiss *SgwIntStat `json:"delta_cache_miss"`
+	// The number of delta replications that have been run.
 	DeltaPullReplicationCount *SgwIntStat `json:"delta_pull_replication_count"`
-	DeltaPushDocCount         *SgwIntStat `json:"delta_push_doc_count"`
-	DeltasRequested           *SgwIntStat `json:"deltas_requested"`
-	DeltasSent                *SgwIntStat `json:"deltas_sent"`
+	// The total number of documents pushed as a delta from a previous revision.
+	DeltaPushDocCount *SgwIntStat `json:"delta_push_doc_count"`
+	// The total number of times a revision is sent as delta from a previous revision.
+	DeltasRequested *SgwIntStat `json:"deltas_requested"`
+	// The total number of revisions sent to clients as deltas.
+	DeltasSent *SgwIntStat `json:"deltas_sent"`
 }
 
 type QueryStats struct {
@@ -376,48 +482,84 @@ type QueryStats struct {
 }
 
 type DbReplicatorStats struct {
+	// The total number of bytes in all the attachments that were pushed since replication started.
 	NumAttachmentBytesPushed *SgwIntStat `json:"sgr_num_attachment_bytes_pushed"`
-	NumAttachmentPushed      *SgwIntStat `json:"sgr_num_attachments_pushed"`
-	NumDocPushed             *SgwIntStat `json:"sgr_num_docs_pushed"`
-	NumDocsFailedToPush      *SgwIntStat `json:"sgr_num_docs_failed_to_push"`
-	PushConflictCount        *SgwIntStat `json:"sgr_push_conflict_count"`
-	PushRejectedCount        *SgwIntStat `json:"sgr_push_rejected_count"`
-	PushDeltaSentCount       *SgwIntStat `json:"sgr_deltas_sent"`
+	// The total number of attachments that were pushed since replication started.
+	NumAttachmentPushed *SgwIntStat `json:"sgr_num_attachments_pushed"`
+	// The total number of documents that were pushed since replication started.
+	//
+	// Used by Inter-Sync Gateway and SG Replicate.
+	NumDocPushed *SgwIntStat `json:"sgr_num_docs_pushed"`
+	// The total number of documents that failed to be pushed since replication started.
+	//
+	// Used by Inter-Sync Gateway and SG Replicate
+	NumDocsFailedToPush *SgwIntStat `json:"sgr_num_docs_failed_to_push"`
+	// The total number of pushed documents that conflicted since replication started.
+	PushConflictCount *SgwIntStat `json:"sgr_push_conflict_count"`
+	// The total number of pushed documents that were rejected since replication started.
+	PushRejectedCount *SgwIntStat `json:"sgr_push_rejected_count"`
+	// The total number of deltas sent
+	PushDeltaSentCount *SgwIntStat `json:"sgr_deltas_sent"`
+	// The total number of documents checked for changes since replication started. This represents the number of potential change notifications pushed by Sync Gateway.
+	//
+	// This is not necessarily the number of documents pushed, as a given target might already have the change. Used by Inter-Sync Gateway and SG Replicate
 	DocsCheckedSent          *SgwIntStat `json:"sgr_docs_checked_sent" `
 	NumConnectAttemptsPull   *SgwIntStat `json:"sgr_num_connect_attempts_pull"`
 	NumReconnectsAbortedPull *SgwIntStat `json:"sgr_num_reconnects_aborted_pull"`
 
+	// The total number of bytes in all the attachments that were pulled since replication started.
 	NumAttachmentBytesPulled *SgwIntStat `json:"sgr_num_attachment_bytes_pulled"`
-	NumAttachmentsPulled     *SgwIntStat `json:"sgr_num_attachments_pulled"`
-	PulledCount              *SgwIntStat `json:"sgr_num_docs_pulled"`
-	PurgedCount              *SgwIntStat `json:"sgr_num_docs_purged"`
-	FailedToPullCount        *SgwIntStat `json:"sgr_num_docs_failed_to_pull"`
-	DeltaReceivedCount       *SgwIntStat `json:"sgr_deltas_recv"`
-	DeltaRequestedCount      *SgwIntStat `json:"sgr_deltas_requested"`
+	// The total number of attachments that were pulled since replication started.
+	NumAttachmentsPulled *SgwIntStat `json:"sgr_num_attachments_pulled"`
+	// The total number of documents that were pulled since replication started.
+	PulledCount *SgwIntStat `json:"sgr_num_docs_pulled"`
+	// The total number of documents that were purged since replication started.
+	PurgedCount *SgwIntStat `json:"sgr_num_docs_purged"`
+	// The total number of document pulls that failed since replication started.
+	FailedToPullCount *SgwIntStat `json:"sgr_num_docs_failed_to_pull"`
+	// The total number of documents that were purged since replication started.
+	DeltaReceivedCount *SgwIntStat `json:"sgr_deltas_recv"`
+	// The total number of deltas requested
+	DeltaRequestedCount *SgwIntStat `json:"sgr_deltas_requested"`
+	// The total number of documents that were purged since replication started.
 	DocsCheckedReceived      *SgwIntStat `json:"sgr_docs_checked_recv"`
 	NumConnectAttemptsPush   *SgwIntStat `json:"sgr_num_connect_attempts_push"`
 	NumReconnectsAbortedPush *SgwIntStat `json:"sgr_num_reconnects_aborted_push"`
 
-	ConflictResolvedLocalCount  *SgwIntStat `json:"sgr_conflict_resolved_local_count"`
+	// The total number of conflicting documents that were resolved successfully locally (by the active replicator).
+	ConflictResolvedLocalCount *SgwIntStat `json:"sgr_conflict_resolved_local_count"`
+	// The total number of conflicting documents that were resolved successfully remotely (by the active replicator).
 	ConflictResolvedRemoteCount *SgwIntStat `json:"sgr_conflict_resolved_remote_count"`
+	// The total number of conflicting documents that were resolved successfully by a merge action (by the active replicator)
 	ConflictResolvedMergedCount *SgwIntStat `json:"sgr_conflict_resolved_merge_count"`
 }
 
 type SecurityStats struct {
-	AuthFailedCount  *SgwIntStat `json:"auth_failed_count"`
+	// The total number of unsuccessful authentications.
+	AuthFailedCount *SgwIntStat `json:"auth_failed_count"`
+	// The total number of successful authentications.
 	AuthSuccessCount *SgwIntStat `json:"auth_success_count"`
-	NumAccessErrors  *SgwIntStat `json:"num_access_errors"`
-	NumDocsRejected  *SgwIntStat `json:"num_docs_rejected"`
-	TotalAuthTime    *SgwIntStat `json:"total_auth_time"`
+	// The total number of documents rejected by write access functions (requireAccess, requireRole, requireUser).
+	NumAccessErrors *SgwIntStat `json:"num_access_errors"`
+	// The total number of documents rejected by the sync_function.
+	NumDocsRejected *SgwIntStat `json:"num_docs_rejected"`
+	// The total time spent in authenticating all requests.
+	TotalAuthTime *SgwIntStat `json:"total_auth_time"`
 }
 
 type SharedBucketImportStats struct {
-	ImportCount          *SgwIntStat `json:"import_count"`
-	ImportCancelCAS      *SgwIntStat `json:"import_cancel_cas"`
-	ImportErrorCount     *SgwIntStat `json:"import_error_count"`
+	// The total number of docs imported.
+	ImportCount *SgwIntStat `json:"import_count"`
+	// The total number of imports cancelled due to cas failure.
+	ImportCancelCAS *SgwIntStat `json:"import_cancel_cas"`
+	// The total number of errors arising as a result of a document import.
+	ImportErrorCount *SgwIntStat `json:"import_error_count"`
+	// The total time taken to process a document import.
 	ImportProcessingTime *SgwIntStat `json:"import_processing_time"`
-	ImportHighSeq        *SgwIntStat `json:"import_high_seq"`
-	ImportPartitions     *SgwIntStat `json:"import_partitions"`
+	// The highest sequence number value imported.
+	ImportHighSeq *SgwIntStat `json:"import_high_seq"`
+	// The total number of import partitions.
+	ImportPartitions *SgwIntStat `json:"import_partitions"`
 }
 
 type SgwStat struct {
