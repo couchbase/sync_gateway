@@ -36,6 +36,7 @@ put:
     * Sync Gateway Architect
   parameters:
   - $ref: ../../components/parameters.yaml#/DB-config-If-Match
+  - $ref: ../../components/parameters.yaml#/disable_oidc_validation
   requestBody:
     description: The import filter to use
     content:

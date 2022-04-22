@@ -2158,7 +2158,7 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 				dbConfig.ImportFilter = testCase.ImportFilter
 			}
 
-			err := dbConfig.validate()
+			err := dbConfig.validate(base.TestCtx(t), false)
 
 			if testCase.ExpectErrorCount == 0 {
 				assert.NoError(t, err)

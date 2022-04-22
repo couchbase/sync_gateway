@@ -499,11 +499,11 @@ func (dbConfig *DbConfig) validatePersistentDbConfig() (errorMessages error) {
 	return multiError.ErrorOrNil()
 }
 
-func (dbConfig *DbConfig) validate() error {
-	return dbConfig.validateVersion(base.IsEnterpriseEdition())
+func (dbConfig *DbConfig) validate(ctx context.Context, validateOIDCConfig bool) error {
+	return dbConfig.validateVersion(ctx, base.IsEnterpriseEdition(), validateOIDCConfig)
 }
 
-func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) error {
+func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEdition, validateOIDCConfig bool) error {
 
 	var multiError *base.MultiError
 	// Make sure a non-zero compact_interval_days config is within the valid range
@@ -520,15 +520,15 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) error {
 			// EE: channel cache
 			if !isEnterpriseEdition {
 				if val := dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber; val != nil {
-					base.WarnfCtx(context.Background(), eeOnlyWarningMsg, "cache.channel_cache.max_number", *val, db.DefaultChannelCacheMaxNumber)
+					base.WarnfCtx(ctx, eeOnlyWarningMsg, "cache.channel_cache.max_number", *val, db.DefaultChannelCacheMaxNumber)
 					dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber = nil
 				}
 				if val := dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent; val != nil {
-					base.WarnfCtx(context.Background(), eeOnlyWarningMsg, "cache.channel_cache.compact_high_watermark_pct", *val, db.DefaultCompactHighWatermarkPercent)
+					base.WarnfCtx(ctx, eeOnlyWarningMsg, "cache.channel_cache.compact_high_watermark_pct", *val, db.DefaultCompactHighWatermarkPercent)
 					dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent = nil
 				}
 				if val := dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent; val != nil {
-					base.WarnfCtx(context.Background(), eeOnlyWarningMsg, "cache.channel_cache.compact_low_watermark_pct", *val, db.DefaultCompactLowWatermarkPercent)
+					base.WarnfCtx(ctx, eeOnlyWarningMsg, "cache.channel_cache.compact_low_watermark_pct", *val, db.DefaultCompactLowWatermarkPercent)
 					dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent = nil
 				}
 			}
@@ -580,7 +580,7 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) error {
 			// EE: disable revcache
 			revCacheSize := dbConfig.CacheConfig.RevCacheConfig.Size
 			if !isEnterpriseEdition && revCacheSize != nil && *revCacheSize == 0 {
-				base.WarnfCtx(context.Background(), eeOnlyWarningMsg, "cache.rev_cache.size", *revCacheSize, db.DefaultRevisionCacheSize)
+				base.WarnfCtx(ctx, eeOnlyWarningMsg, "cache.rev_cache.size", *revCacheSize, db.DefaultRevisionCacheSize)
 				dbConfig.CacheConfig.RevCacheConfig.Size = nil
 			}
 
@@ -594,7 +594,7 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) error {
 
 	// EE: delta sync
 	if !isEnterpriseEdition && dbConfig.DeltaSync != nil && dbConfig.DeltaSync.Enabled != nil {
-		base.WarnfCtx(context.Background(), eeOnlyWarningMsg, "delta_sync.enabled", *dbConfig.DeltaSync.Enabled, false)
+		base.WarnfCtx(ctx, eeOnlyWarningMsg, "delta_sync.enabled", *dbConfig.DeltaSync.Enabled, false)
 		dbConfig.DeltaSync.Enabled = nil
 	}
 
@@ -613,7 +613,7 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) error {
 
 	if dbConfig.ImportPartitions != nil {
 		if !isEnterpriseEdition {
-			base.WarnfCtx(context.Background(), eeOnlyWarningMsg, "import_partitions", *dbConfig.ImportPartitions, nil)
+			base.WarnfCtx(ctx, eeOnlyWarningMsg, "import_partitions", *dbConfig.ImportPartitions, nil)
 			dbConfig.ImportPartitions = nil
 		} else if !dbConfig.UseXattrs() {
 			multiError = multiError.Append(fmt.Errorf("Invalid configuration - import_partitions set, but enable_shared_bucket_access not enabled"))
@@ -625,7 +625,7 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) error {
 	}
 
 	if dbConfig.DeprecatedPool != nil {
-		base.WarnfCtx(context.Background(), `"pool" config option is not supported. The pool will be set to "default". The option should be removed from config file.`)
+		base.WarnfCtx(ctx, `"pool" config option is not supported. The pool will be set to "default". The option should be removed from config file.`)
 	}
 
 	if dbConfig.Sync != nil {
@@ -692,6 +692,15 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) error {
 		} else {
 			if *revsLimit <= 0 {
 				multiError = multiError.Append(fmt.Errorf("The revs_limit (%v) value in your Sync Gateway configuration must be greater than zero.", *revsLimit))
+			}
+		}
+	}
+
+	if validateOIDCConfig && dbConfig.OIDCConfig != nil {
+		for name, provider := range dbConfig.OIDCConfig.Providers {
+			_, _, err := provider.DiscoverConfig(ctx)
+			if err != nil {
+				multiError = multiError.Append(fmt.Errorf("failed to validate OIDC configuration for %s: %w", name, err))
 			}
 		}
 	}
