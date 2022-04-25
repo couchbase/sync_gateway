@@ -453,7 +453,9 @@ func SetUpGlobalTestLogging(m *testing.M) (teardownFn func()) {
 		if err != nil {
 			FatalfCtx(context.TODO(), "TEST: Invalid log level used for %q: %s", TestEnvGlobalLogLevel, err)
 		}
-		teardown := SetUpTestLogging(l, KeyAll)
+		caller := GetCallersName(1, false)
+		InfofCtx(context.Background(), KeyAll, "%s: Setup logging: level: %v - keys: %v", caller, logLevel, KeyAll)
+		teardown := setTestLogging(l, caller, KeyAll)
 		GlobalTestLoggingSet.Set(true)
 		return func() {
 			teardown()
@@ -464,41 +466,32 @@ func SetUpGlobalTestLogging(m *testing.M) (teardownFn func()) {
 	return func() { GlobalTestLoggingSet.Set(false) }
 }
 
-// SetUpTestLogging will set the given log level and log keys,
-// and return a function that can be deferred for teardown.
+// SetUpTestLogging will set the given log level and log keys, and revert the changes at the end of the current test.
 //
-// This function will panic if called multiple times without running the teardownFn.
-//
-// To set multiple log keys, append as variadic arguments
-// E.g. KeyCache,KeyDCP,KeySync
-//
-// Usage:
-//     teardownFn := SetUpTestLogging(LevelDebug, KeyCache,KeyDCP,KeySync)
-//     defer teardownFn()
-//
-// Shorthand style:
-//     defer SetUpTestLogging(LevelDebug, KeyCache,KeyDCP,KeySync)()
-func SetUpTestLogging(logLevel LogLevel, logKeys ...LogKey) (teardownFn func()) {
+// This function will panic if called multiple times in the same test.
+func SetUpTestLogging(tb testing.TB, logLevel LogLevel, logKeys ...LogKey) {
 	caller := GetCallersName(1, false)
 	InfofCtx(context.Background(), KeyAll, "%s: Setup logging: level: %v - keys: %v", caller, logLevel, logKeys)
-	return setTestLogging(logLevel, caller, logKeys...)
+	cleanup := setTestLogging(logLevel, caller, logKeys...)
+	tb.Cleanup(cleanup)
 }
 
 // DisableTestLogging is an alias for SetUpTestLogging(LevelNone, KeyNone)
-// This function will panic if called multiple times without running the teardownFn.
-func DisableTestLogging() (teardownFn func()) {
+// This function will panic if called multiple times in the same test.
+func DisableTestLogging(tb testing.TB) {
 	caller := ""
-	return setTestLogging(LevelNone, caller, KeyNone)
+	cleanup := setTestLogging(LevelNone, caller, KeyNone)
+	tb.Cleanup(cleanup)
 }
 
 // SetUpBenchmarkLogging will set the given log level and key, and do log processing for that configuration,
 // but discards the output, instead of writing it to console.
-func SetUpBenchmarkLogging(logLevel LogLevel, logKeys ...LogKey) (teardownFn func()) {
+func SetUpBenchmarkLogging(tb testing.TB, logLevel LogLevel, logKeys ...LogKey) {
 	teardownFnOrig := setTestLogging(logLevel, "", logKeys...)
 
 	// discard all logging output for benchmarking (but still execute logging as normal)
 	consoleLogger.logger.SetOutput(ioutil.Discard)
-	return func() {
+	tb.Cleanup(func() {
 		// revert back to original output
 		if consoleLogger != nil && consoleLogger.output != nil {
 			consoleLogger.logger.SetOutput(consoleLogger.output)
@@ -506,7 +499,7 @@ func SetUpBenchmarkLogging(logLevel LogLevel, logKeys ...LogKey) (teardownFn fun
 			consoleLogger.logger.SetOutput(os.Stderr)
 		}
 		teardownFnOrig()
-	}
+	})
 }
 
 func setTestLogging(logLevel LogLevel, caller string, logKeys ...LogKey) (teardownFn func()) {

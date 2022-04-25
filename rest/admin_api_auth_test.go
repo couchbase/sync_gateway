@@ -499,7 +499,7 @@ func TestAdminAuthWithX509(t *testing.T) {
 func TestAdminAPIAuth(t *testing.T) {
 
 	// Don't really care about the log level but this test hits the logging endpoint so this is used to reset the logging
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyNone)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
 
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")

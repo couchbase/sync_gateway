@@ -521,7 +521,7 @@ func TestReplicationsFromConfig(t *testing.T) {
 func TestPushReplicationAPI(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	rt1, rt2, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()
@@ -564,7 +564,7 @@ func TestPushReplicationAPI(t *testing.T) {
 func TestPullReplicationAPI(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	rt1, rt2, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()
@@ -606,7 +606,7 @@ func TestPullReplicationAPI(t *testing.T) {
 func TestReplicationStatusActions(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	rt1, rt2, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()
@@ -708,7 +708,7 @@ func TestReplicationRebalancePull(t *testing.T) {
 	}
 
 	base.RequireNumTestBuckets(t, 2)
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	// Increase checkpoint persistence frequency for cross-node status verification
 	defer reduceTestCheckpointInterval(50 * time.Millisecond)()
@@ -798,7 +798,7 @@ func TestReplicationRebalancePush(t *testing.T) {
 	}
 
 	base.RequireNumTestBuckets(t, 2)
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	// Increase checkpoint persistence frequency for cross-node status verification
 	defer reduceTestCheckpointInterval(50 * time.Millisecond)()
@@ -885,7 +885,7 @@ func TestReplicationRebalancePush(t *testing.T) {
 func TestPullOneshotReplicationAPI(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()
@@ -940,7 +940,7 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 func TestReplicationConcurrentPush(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
@@ -1503,7 +1503,7 @@ func TestGetStatusWithReplication(t *testing.T) {
 }
 
 func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -1555,7 +1555,7 @@ func TestReplicationConfigChange(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	rt1, rt2, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()
@@ -1654,7 +1654,7 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 	defer reduceTestCheckpointInterval(50 * time.Millisecond)()
 
 	base.RequireNumTestBuckets(t, 2)
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()

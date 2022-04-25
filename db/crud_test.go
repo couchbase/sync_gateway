@@ -63,7 +63,7 @@ func getRevTreeList(bucket base.Bucket, key string, useXattrs bool) (revTreeList
 // Tests simple retrieval of rev not resident in the cache
 func TestRevisionCacheLoad(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	db := setupTestDBWithViewsEnabled(t)
 	defer db.Close()
@@ -103,7 +103,7 @@ func TestRevisionCacheLoad(t *testing.T) {
 }
 
 func TestHasAttachmentsFlag(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db := setupTestDB(t)
 	defer db.Close()
 
@@ -181,7 +181,7 @@ func TestHasAttachmentsFlagForLegacyAttachments(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
 		t.Skip("Test only works with a Couchbase server and Xattrs")
 	}
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db := setupTestDB(t)
 	defer db.Close()
 
@@ -301,7 +301,7 @@ func TestHasAttachmentsFlagForLegacyAttachments(t *testing.T) {
 // Tests permutations of inline and external storage of conflicts and tombstones
 func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	db := setupTestDB(t)
 	defer db.Close()
@@ -1019,7 +1019,7 @@ func TestMalformedRevisionStorageRecovery(t *testing.T) {
 }
 
 func BenchmarkDatabaseGet1xRev(b *testing.B) {
-	defer base.DisableTestLogging()()
+	base.DisableTestLogging(b)
 
 	db := setupTestDB(b)
 	defer db.Close()
@@ -1075,7 +1075,7 @@ func BenchmarkDatabaseGet1xRev(b *testing.B) {
 }
 
 func BenchmarkDatabaseGetRev(b *testing.B) {
-	defer base.DisableTestLogging()()
+	base.DisableTestLogging(b)
 
 	db := setupTestDB(b)
 	defer db.Close()
@@ -1132,7 +1132,7 @@ func BenchmarkDatabaseGetRev(b *testing.B) {
 
 // Replicates delta patching work carried out by handleRev
 func BenchmarkHandleRevDelta(b *testing.B) {
-	defer base.DisableTestLogging()()
+	base.DisableTestLogging(b)
 
 	db := setupTestDB(b)
 	defer db.Close()

@@ -102,7 +102,7 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 		t.Skip("Skipping heartbeattest in short mode")
 	}
 
-	defer SetUpTestLogging(LevelDebug, KeyDCP)()
+	SetUpTestLogging(t, LevelDebug, KeyDCP)
 
 	keyprefix := SyncPrefix + t.Name()
 
@@ -281,7 +281,7 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 // one second, so retry polling is required.
 func TestCBGTManagerHeartbeater(t *testing.T) {
 
-	defer SetUpTestLogging(LevelDebug, KeyDCP)()
+	SetUpTestLogging(t, LevelDebug, KeyDCP)
 
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test won't work under walrus - no expiry, required for heartbeats")

@@ -27,7 +27,7 @@ func TestUserAuthenticateDisabled(t *testing.T) {
 		oldPassword = "hunter2"
 	)
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
@@ -62,7 +62,7 @@ func TestUserAuthenticatePasswordHashUpgrade(t *testing.T) {
 		newBcryptCost = 12
 	)
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
@@ -246,7 +246,7 @@ func TestInvalidUsernamesRejected(t *testing.T) {
 }
 
 func TestCanSeeChannelSince(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
@@ -274,7 +274,7 @@ func TestCanSeeChannelSince(t *testing.T) {
 }
 
 func TestGetAddedChannels(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
@@ -313,7 +313,7 @@ func TestUserAuthenticateWithNilUserReference(t *testing.T) {
 
 // Must not authenticate if the user account is disabled.
 func TestUserAuthenticateWithDisabledUserAccount(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
 	const (
 		username = "alice"
 		password = "hunter2"
@@ -335,7 +335,7 @@ func TestUserAuthenticateWithDisabledUserAccount(t *testing.T) {
 // Must not authenticate if old hash is present.
 // Password must be reset to use new (bcrypt) password hash.
 func TestUserAuthenticateWithOldPasswordHash(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
 	const (
 		username = "alice"
 		password = "hunter2"
@@ -356,7 +356,7 @@ func TestUserAuthenticateWithOldPasswordHash(t *testing.T) {
 
 // Must not authenticate with bad password hash
 func TestUserAuthenticateWithBadPasswordHash(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
 	const (
 		username = "alice"
 		password = "hunter2"
@@ -377,7 +377,7 @@ func TestUserAuthenticateWithBadPasswordHash(t *testing.T) {
 
 // Must not authenticate if No hash, but (incorrect) password provided.
 func TestUserAuthenticateWithNoHashAndBadPassword(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
 	const (
 		username = "alice"
 		password = "hunter2"

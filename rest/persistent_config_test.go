@@ -289,7 +289,7 @@ func TestImportFilterEndpoint(t *testing.T) {
 		t.Skip("Test requires xattrs")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	serverErr := make(chan error, 0)
 

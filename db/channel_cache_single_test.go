@@ -25,7 +25,7 @@ import (
 
 func TestDuplicateDocID(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
 	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	require.NoError(t, err)
@@ -72,7 +72,7 @@ func TestDuplicateDocID(t *testing.T) {
 
 func TestLateArrivingSequence(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
 	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	require.NoError(t, err)
@@ -105,7 +105,7 @@ func TestLateArrivingSequence(t *testing.T) {
 
 func TestLateSequenceAsFirst(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
 	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	require.NoError(t, err)
@@ -138,7 +138,7 @@ func TestLateSequenceAsFirst(t *testing.T) {
 
 func TestDuplicateLateArrivingSequence(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
 	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	require.NoError(t, err)
@@ -212,7 +212,7 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 
 func TestPrependChanges(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
 	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	require.NoError(t, err)
@@ -396,7 +396,7 @@ func TestPrependChanges(t *testing.T) {
 
 func TestChannelCacheRemove(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
 	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	require.NoError(t, err)
@@ -435,7 +435,7 @@ func TestChannelCacheRemove(t *testing.T) {
 
 func TestChannelCacheStats(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
 	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	require.NoError(t, err)
@@ -505,7 +505,7 @@ func TestChannelCacheStats(t *testing.T) {
 
 func TestChannelCacheStatsOnPrune(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
 	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	require.NoError(t, err)
@@ -535,7 +535,7 @@ func TestChannelCacheStatsOnPrune(t *testing.T) {
 
 func TestChannelCacheStatsOnPrepend(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
 	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	require.NoError(t, err)
@@ -595,7 +595,7 @@ func TestChannelCacheStatsOnPrepend(t *testing.T) {
 }
 
 func TestBypassSingleChannelCache(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
 	terminator := make(chan bool)
 	defer close(terminator)
@@ -624,7 +624,7 @@ func TestBypassSingleChannelCache(t *testing.T) {
 
 func BenchmarkChannelCacheUniqueDocs_Ordered(b *testing.B) {
 
-	defer base.DisableTestLogging()()
+	base.DisableTestLogging(b)
 
 	context, err := NewDatabaseContext("db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 	require.NoError(b, err)
@@ -643,7 +643,7 @@ func BenchmarkChannelCacheUniqueDocs_Ordered(b *testing.B) {
 
 func BenchmarkChannelCacheRepeatedDocs5(b *testing.B) {
 
-	defer base.DisableTestLogging()()
+	base.DisableTestLogging(b)
 
 	context, err := NewDatabaseContext("db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 	require.NoError(b, err)
@@ -660,7 +660,7 @@ func BenchmarkChannelCacheRepeatedDocs5(b *testing.B) {
 
 func BenchmarkChannelCacheRepeatedDocs20(b *testing.B) {
 
-	defer base.DisableTestLogging()()
+	base.DisableTestLogging(b)
 
 	context, err := NewDatabaseContext("db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 	require.NoError(b, err)
@@ -677,7 +677,7 @@ func BenchmarkChannelCacheRepeatedDocs20(b *testing.B) {
 
 func BenchmarkChannelCacheRepeatedDocs50(b *testing.B) {
 
-	defer base.DisableTestLogging()()
+	base.DisableTestLogging(b)
 
 	context, err := NewDatabaseContext("db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 	require.NoError(b, err)
@@ -694,7 +694,7 @@ func BenchmarkChannelCacheRepeatedDocs50(b *testing.B) {
 
 func BenchmarkChannelCacheRepeatedDocs80(b *testing.B) {
 
-	defer base.DisableTestLogging()()
+	base.DisableTestLogging(b)
 
 	context, err := NewDatabaseContext("db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 	require.NoError(b, err)
@@ -711,7 +711,7 @@ func BenchmarkChannelCacheRepeatedDocs80(b *testing.B) {
 
 func BenchmarkChannelCacheRepeatedDocs95(b *testing.B) {
 
-	defer base.SetUpBenchmarkLogging(base.LevelInfo, base.KeyHTTP)()
+	base.SetUpBenchmarkLogging(b, base.LevelInfo, base.KeyHTTP)
 
 	context, err := NewDatabaseContext("db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 	require.NoError(b, err)
@@ -728,7 +728,7 @@ func BenchmarkChannelCacheRepeatedDocs95(b *testing.B) {
 
 func BenchmarkChannelCacheUniqueDocs_Unordered(b *testing.B) {
 
-	defer base.DisableTestLogging()()
+	base.DisableTestLogging(b)
 
 	context, err := NewDatabaseContext("db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 	require.NoError(b, err)

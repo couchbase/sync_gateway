@@ -1278,7 +1278,7 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	defer SetUpTestLogging(LevelDebug, KeyCRUD)()
+	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
 	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 
@@ -1374,7 +1374,7 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	defer SetUpTestLogging(LevelDebug, KeyCRUD)()
+	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
 	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 
@@ -1695,7 +1695,7 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 func TestGetXattr(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 
-	defer SetUpTestLogging(LevelDebug, KeyAll)()
+	SetUpTestLogging(t, LevelDebug, KeyAll)
 
 	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 
@@ -1787,7 +1787,7 @@ func TestGetXattr(t *testing.T) {
 func TestGetXattrAndBody(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 
-	defer SetUpTestLogging(LevelDebug, KeyAll)()
+	SetUpTestLogging(t, LevelDebug, KeyAll)
 
 	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 
@@ -2258,7 +2258,7 @@ func verifyDocDeletedXattrExists(store sgbucket.XattrStore, key, xattrName strin
 
 func TestUpdateXattrWithDeleteBodyAndIsDelete(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
-	defer SetUpTestLogging(LevelDebug, KeyCRUD)()
+	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
 	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 
@@ -2301,7 +2301,7 @@ func TestUpdateXattrWithDeleteBodyAndIsDelete(t *testing.T) {
 
 func TestUserXattrGetWithXattr(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
-	defer SetUpTestLogging(LevelDebug, KeyCRUD)()
+	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
 	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 
@@ -2334,7 +2334,7 @@ func TestUserXattrGetWithXattr(t *testing.T) {
 
 func TestUserXattrGetWithXattrNil(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
-	defer SetUpTestLogging(LevelDebug, KeyCRUD)()
+	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
 	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 
@@ -2361,7 +2361,7 @@ func TestUserXattrGetWithXattrNil(t *testing.T) {
 
 func TestInsertTombstoneWithXattr(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
-	defer SetUpTestLogging(LevelDebug, KeyCRUD)()
+	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
 	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 
@@ -2561,7 +2561,7 @@ func TestUpsertOptionPreserveExpiry(t *testing.T) {
 	if bucket.IsSupported(sgbucket.DataStoreFeaturePreserveExpiry) {
 		t.Skip("Preserve expiry is not supported with this CBS version. Skipping test...")
 	}
-	defer SetUpTestLogging(LevelInfo, KeyAll)()
+	SetUpTestLogging(t, LevelInfo, KeyAll)
 
 	testCases := []struct {
 		name          string

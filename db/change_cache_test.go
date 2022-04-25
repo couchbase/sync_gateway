@@ -246,7 +246,7 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close()
@@ -364,7 +364,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
 	cacheOptions := shortWaitCache()
 	cacheOptions.ChannelCacheOptions.MaxNumChannels = 100
@@ -544,7 +544,7 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyDCP)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyDCP)
 
 	db := setupTestDB(t)
 	defer db.Close()
@@ -582,7 +582,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close()
@@ -647,7 +647,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache, base.KeyChanges, base.KeyDCP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache, base.KeyChanges, base.KeyDCP)
 
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close()
@@ -747,7 +747,7 @@ func TestLowSequenceHandling(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyQuery)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyQuery)
 
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close()
@@ -812,7 +812,7 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyQuery)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyQuery)
 
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close()
@@ -869,7 +869,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges, base.KeyQuery)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyQuery)
 
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close()
@@ -955,7 +955,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 		t.Skip("Skip test with LeakyBucket dependency test when running in integration")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
 	// Set up PostQueryCallback on bucket - will be invoked when changes triggers the cache backfill view query
 
@@ -1070,7 +1070,7 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyCache)
 
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close()
@@ -1162,7 +1162,7 @@ func TestChannelRace(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges)
 
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close()
@@ -1255,7 +1255,7 @@ func TestSkippedViewRetrieval(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
 
 	originalBatchSize := SkippedSeqCleanViewBatch
 	SkippedSeqCleanViewBatch = 4
@@ -1325,7 +1325,7 @@ func TestStopChangeCache(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges, base.KeyDCP)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyDCP)
 
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
@@ -1367,7 +1367,7 @@ func TestChannelCacheSize(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
 
 	options := DefaultCacheOptions()
 	options.ChannelCacheOptions.ChannelCacheMinLength = 600
@@ -1587,7 +1587,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	}
 
 	// Enable relevant logging
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache, base.KeyChanges)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache, base.KeyChanges)
 
 	// Create a test db that uses channel cache
 	options := DefaultCacheOptions()
@@ -1672,7 +1672,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 // Trigger initialization of empty cache, then write and validate a subsequent changes request returns expected data.
 func TestInitializeEmptyCache(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges)
 
 	// Increase the cache max size
 	cacheOptions := DefaultCacheOptions()
@@ -1723,7 +1723,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 // sets query/cache boundaries
 func TestInitializeCacheUnderLoad(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges)
 
 	// Increase the cache max size
 	cacheOptions := DefaultCacheOptions()
@@ -1781,7 +1781,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 func TestNotifyForInactiveChannel(t *testing.T) {
 
 	// Enable relevant logging
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache, base.KeyDCP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache, base.KeyDCP)
 
 	db := setupTestDB(t)
 	defer db.Close()
@@ -1843,7 +1843,7 @@ func TestChangeCache_InsertPendingEntries(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
 	cacheOptions := DefaultCacheOptions()
 	cacheOptions.CachePendingSeqMaxWait = 100 * time.Millisecond
@@ -1934,7 +1934,7 @@ func (f *testProcessEntryFeed) Next() *LogEntry {
 //   - non-unique doc ids?
 
 func BenchmarkProcessEntry(b *testing.B) {
-	defer base.SetUpBenchmarkLogging(base.LevelError, base.KeyCache, base.KeyChanges)()
+	base.SetUpBenchmarkLogging(b, base.LevelError, base.KeyCache, base.KeyChanges)
 	processEntryBenchmarks := []struct {
 		name           string
 		feed           *testProcessEntryFeed
@@ -2160,7 +2160,7 @@ func (f *testDocChangedFeed) Next() sgbucket.FeedEvent {
 //   - non-unique doc ids?
 
 func BenchmarkDocChanged(b *testing.B) {
-	defer base.SetUpBenchmarkLogging(base.LevelError, base.KeyCache, base.KeyChanges)()
+	base.SetUpBenchmarkLogging(b, base.LevelError, base.KeyCache, base.KeyChanges)
 	processEntryBenchmarks := []struct {
 		name           string
 		feed           *testDocChangedFeed

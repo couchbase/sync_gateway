@@ -527,7 +527,7 @@ func TestMetaMap(t *testing.T) {
 }
 
 func TestNilMetaMap(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	mapper := NewChannelMapper(`function(doc, oldDoc, meta) {channel(meta.xattrs.myxattr.val);}`)
 
 	metaMap := map[string]interface{}{

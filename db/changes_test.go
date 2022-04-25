@@ -50,7 +50,7 @@ func TestFilterToAvailableChannels(t *testing.T) {
 			expectedDocsReturned: []string{"doc1", "doc3"},
 		},
 	}
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges)
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			db := setupTestDB(t)
@@ -98,7 +98,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -196,7 +196,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 		t.Skip("This test is known to be failing against couchbase server with XATTRS enabled.  See https://gist.github.com/tleyden/a41632355fadde54f19e84ba68015512")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	db := setupTestDB(t)
 	defer db.Close()
@@ -357,7 +357,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 	// Create 10 documents
 	revId := ""
 	var err error
@@ -416,7 +416,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 
 // Benchmark to validate fix for https://github.com/couchbase/sync_gateway/issues/2428
 func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
-	defer base.SetUpBenchmarkLogging(base.LevelWarn, base.KeyHTTP)()
+	base.SetUpBenchmarkLogging(b, base.LevelWarn, base.KeyHTTP)
 
 	db := setupTestDB(b)
 	defer db.Close()

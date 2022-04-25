@@ -33,7 +33,7 @@ func TestBlipPusherUpdateDatabase(t *testing.T) {
 
 	t.Skip("Skipping test - revisit in CBG-1908")
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeyHTTPResp, base.KeySync)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyHTTPResp, base.KeySync)
 
 	tb := base.GetTestBucket(t)
 	defer tb.Close()

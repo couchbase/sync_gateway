@@ -141,7 +141,7 @@ func dbConfigForTestBucket(tb *base.TestBucket) DbConfig {
 }
 
 func TestPersistentDbConfigWithInvalidUpsert(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	rtc := NewRestTesterCluster(t, nil)
 	defer rtc.Close()

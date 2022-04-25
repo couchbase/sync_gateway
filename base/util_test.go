@@ -629,7 +629,7 @@ func TestRedactBasicAuthURL(t *testing.T) {
 	}
 }
 
-func TestSetUpTestLogging(t *testing.T) {
+func TestSetTestLogging(t *testing.T) {
 	if GlobalTestLoggingSet.IsTrue() {
 		t.Skip("Test does not work when a global test log level is set")
 	}
@@ -638,31 +638,31 @@ func TestSetUpTestLogging(t *testing.T) {
 	require.Equal(t, LevelInfo, *consoleLogger.LogLevel)
 	require.Equal(t, *logKeyMask(KeyHTTP), *consoleLogger.LogKeyMask)
 
-	teardownFn := SetUpTestLogging(LevelDebug, KeyDCP, KeySync)
+	cleanup := setTestLogging(LevelDebug, "", KeyDCP, KeySync)
 	assert.Equal(t, LevelDebug, *consoleLogger.LogLevel)
 	assert.Equal(t, *logKeyMask(KeyDCP, KeySync), *consoleLogger.LogKeyMask)
 
-	teardownFn()
+	cleanup()
 	assert.Equal(t, LevelInfo, *consoleLogger.LogLevel)
 	assert.Equal(t, *logKeyMask(KeyHTTP), *consoleLogger.LogKeyMask)
 
-	teardownFn = DisableTestLogging()
+	cleanup = setTestLogging(LevelNone, "", KeyNone)
 	assert.Equal(t, LevelNone, *consoleLogger.LogLevel)
 	assert.Equal(t, *logKeyMask(KeyNone), *consoleLogger.LogKeyMask)
 
-	teardownFn()
+	cleanup()
 	assert.Equal(t, LevelInfo, *consoleLogger.LogLevel)
 	assert.Equal(t, *logKeyMask(KeyHTTP), *consoleLogger.LogKeyMask)
 
-	SetUpTestLogging(LevelDebug, KeyDCP, KeySync)
+	cleanup = setTestLogging(LevelDebug, "", KeyDCP, KeySync)
 	assert.Equal(t, LevelDebug, *consoleLogger.LogLevel)
 	assert.Equal(t, *logKeyMask(KeyDCP, KeySync), *consoleLogger.LogKeyMask)
 
 	// Now we should panic because we forgot to call teardown!
 	assert.Panics(t, func() {
-		SetUpTestLogging(LevelError, KeyAuth, KeyCRUD)
+		setTestLogging(LevelDebug, "", KeyDCP, KeySync)
 	}, "Expected panic from multiple SetUpTestLogging calls")
-	teardownFn()
+	cleanup()
 }
 
 func TestEncodeDecodeCompatVersion(t *testing.T) {

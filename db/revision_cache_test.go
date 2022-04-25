@@ -225,7 +225,7 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 
 func TestBypassRevisionCache(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	db := setupTestDB(t)
 	defer db.Close()
@@ -286,7 +286,7 @@ func TestBypassRevisionCache(t *testing.T) {
 // Ensure attachment properties aren't being incorrectly stored in revision cache body when inserted via Put
 func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	db := setupTestDB(t)
 	defer db.Close()
@@ -327,7 +327,7 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 // Ensure attachment properties aren't being incorrectly stored in revision cache body when inserted via PutExistingRev
 func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	db := setupTestDB(t)
 	defer db.Close()
@@ -480,7 +480,7 @@ func TestInvalidate(t *testing.T) {
 }
 
 func BenchmarkRevisionCacheRead(b *testing.B) {
-	defer base.SetUpBenchmarkLogging(base.LevelDebug, base.KeyAll)()
+	base.SetUpBenchmarkLogging(b, base.LevelDebug, base.KeyAll)
 
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 	cache := NewLRURevisionCache(5000, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)

@@ -521,7 +521,7 @@ func TestLoggingKeys(t *testing.T) {
 	}
 
 	// Reset logging to initial state, in case any other tests forgot to clean up after themselves
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyNone)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -601,7 +601,7 @@ func TestLoggingLevels(t *testing.T) {
 	}
 
 	// Reset logging to initial state, in case any other tests forgot to clean up after themselves
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyNone)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -639,7 +639,7 @@ func TestLoggingCombined(t *testing.T) {
 	}
 
 	// Reset logging to initial state, in case any other tests forgot to clean up after themselves
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyNone)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -681,7 +681,7 @@ func TestGetStatus(t *testing.T) {
 // Test user delete while that user has an active changes feed (see issue 809)
 func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyCache, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache, base.KeyHTTP)
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); if(doc.type == "setaccess") { access(doc.owner, doc.channel);}}`}
 	rt := NewRestTester(t, &rtConfig)
@@ -1293,7 +1293,7 @@ func TestDBOfflineSingleResync(t *testing.T) {
 }
 
 func TestResync(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	testCases := []struct {
 		name               string
@@ -1592,7 +1592,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		}
 	}`
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	var testBucket *base.TestBucket
 
@@ -1874,7 +1874,7 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
 
 	// CBG-1513: This test is prone to panicing when the walrus bucket was closed and still used
 	assert.NotPanicsf(t, func() {
@@ -2627,7 +2627,7 @@ func TestConfigRedaction(t *testing.T) {
 
 // Reproduces panic seen in CBG-1053
 func TestAdhocReplicationStatus(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll, base.KeyReplicate)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll, base.KeyReplicate)
 	rt := NewRestTester(t, &RestTesterConfig{sgReplicateEnabled: true})
 	defer rt.Close()
 
@@ -3144,7 +3144,7 @@ func TestConfigEndpoint(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+			base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 			base.InitializeMemoryLoggers()
 			tempDir := os.TempDir()
@@ -3184,7 +3184,7 @@ func TestConfigEndpoint(t *testing.T) {
 }
 
 func TestLoggingDeprecationWarning(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -3210,7 +3210,7 @@ func TestLoggingDeprecationWarning(t *testing.T) {
 }
 
 func TestInitialStartupConfig(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -3245,7 +3245,7 @@ func TestInitialStartupConfig(t *testing.T) {
 }
 
 func TestIncludeRuntimeStartupConfig(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	base.InitializeMemoryLoggers()
 	tempDir := os.TempDir()
@@ -3346,7 +3346,7 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	serverErr := make(chan error, 0)
 
@@ -3407,7 +3407,7 @@ func TestDbConfigCredentials(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	serverErr := make(chan error, 0)
 
@@ -3479,7 +3479,7 @@ func TestInvalidDBConfig(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	serverErr := make(chan error, 0)
 
@@ -3538,7 +3538,7 @@ func TestCreateDbOnNonExistentBucket(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	serverErr := make(chan error, 0)
 
@@ -3576,7 +3576,7 @@ func TestPutDbConfigChangeName(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	serverErr := make(chan error, 0)
 
@@ -3617,7 +3617,7 @@ func TestPutDBConfigOIDC(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	serverErr := make(chan error, 0)
 
@@ -3733,7 +3733,7 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	serverErr := make(chan error, 0)
 
@@ -3830,7 +3830,7 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	serverErr := make(chan error, 0)
 
@@ -3917,7 +3917,7 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	serverErr := make(chan error, 0)
 
@@ -3996,7 +3996,7 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	// Start SG with bootstrap credentials filled
 	config := bootstrapStartupConfigForTest(t)
@@ -4083,7 +4083,7 @@ func TestSetFunctionsWhileDbOffline(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	// Start SG with bootstrap credentials filled
 	config := bootstrapStartupConfigForTest(t)
@@ -4148,7 +4148,7 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	serverErr := make(chan error, 0)
 
@@ -4209,7 +4209,7 @@ func TestGroupIDReplications(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
 		t.Skip("This test only works against Couchbase Server with xattrs enabled")
 	}
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	// Create test buckets to replicate between
 	passiveBucket := base.GetTestBucket(t)
@@ -4320,7 +4320,7 @@ func TestDeleteDatabasePointingAtSameBucket(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
 		t.Skip("This test only works against Couchbase Server with xattrs")
 	}
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 	tb := base.GetTestBucket(t)
 	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb})
 	defer rt.Close()
@@ -4340,7 +4340,7 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 	// Start SG with no databases in bucket(s)
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(&config, true)
@@ -4389,7 +4389,7 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 // CBG-1046: Add ability to specify user for active peer in sg-replicate2
 func TestSpecifyUserDocsToReplicate(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	testCases := []struct {
 		direction string
