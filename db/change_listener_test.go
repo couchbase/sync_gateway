@@ -22,7 +22,7 @@ import (
 
 func TestUserWaiter(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
 	db := setupTestDB(t)
 	defer db.Close()
@@ -67,7 +67,7 @@ func TestUserWaiter(t *testing.T) {
 
 func TestUserWaiterForRoleChange(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
 	db := setupTestDB(t)
 	defer db.Close()

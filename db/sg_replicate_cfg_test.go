@@ -230,7 +230,7 @@ func testReplicationCfg(id, assignedNode string) *ReplicationCfg {
 
 func TestRebalanceReplications(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyReplicate)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate)
 
 	type rebalanceTest struct {
 		name                  string                     // Test name
@@ -417,7 +417,7 @@ func TestRebalanceReplications(t *testing.T) {
 
 func TestUpsertReplicationConfig(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyReplicate)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate)
 
 	type rebalanceTest struct {
 		name           string                   // Test name
@@ -634,7 +634,7 @@ func TestIsCfgChanged(t *testing.T) {
 
 // Test replicators assigned nodes with different group IDs
 func TestReplicateGroupIDAssignedNodes(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 

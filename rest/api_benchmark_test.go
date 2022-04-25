@@ -67,7 +67,7 @@ var doc_1k_format = `{%s
 
 func BenchmarkReadOps_Get(b *testing.B) {
 
-	defer base.DisableTestLogging()()
+	base.DisableTestLogging(b)
 
 	rt := NewRestTester(b, nil)
 	defer rt.Close()
@@ -118,7 +118,7 @@ func BenchmarkReadOps_Get(b *testing.B) {
 // Benchmark 100% rev cache miss scenario
 func BenchmarkReadOps_GetRevCacheMisses(b *testing.B) {
 
-	defer base.DisableTestLogging()()
+	base.DisableTestLogging(b)
 
 	rt := NewRestTester(b, nil)
 	defer rt.Close()
@@ -185,7 +185,7 @@ func BenchmarkReadOps_GetRevCacheMisses(b *testing.B) {
 
 func BenchmarkReadOps_Changes(b *testing.B) {
 
-	defer base.DisableTestLogging()()
+	base.DisableTestLogging(b)
 
 	rt := NewRestTester(b, nil)
 	defer rt.Close()
@@ -258,7 +258,7 @@ func BenchmarkReadOps_Changes(b *testing.B) {
 
 func BenchmarkReadOps_RevsDiff(b *testing.B) {
 
-	defer base.DisableTestLogging()()
+	base.DisableTestLogging(b)
 
 	rt := NewRestTester(b, nil)
 	defer rt.Close()

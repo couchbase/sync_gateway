@@ -98,7 +98,7 @@ func TestParseRevisionsToAncestor(t *testing.T) {
 
 // TestBackupOldRevision ensures that old revisions are kept around temporarily for in-flight requests and delta sync purposes.
 func TestBackupOldRevision(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	deltasEnabled := base.IsEnterpriseEdition()
 	xattrsEnabled := base.TestUseXattrs()

@@ -251,7 +251,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	defer SetUpTestLogging(LevelDebug, KeyAll)()
+	SetUpTestLogging(t, LevelDebug, KeyAll)
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()

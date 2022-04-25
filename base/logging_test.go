@@ -58,7 +58,7 @@ func TestRedactedLogFuncs(t *testing.T) {
 
 func Benchmark_LoggingPerformance(b *testing.B) {
 
-	defer SetUpBenchmarkLogging(LevelInfo, KeyHTTP, KeyCRUD)()
+	SetUpBenchmarkLogging(b, LevelInfo, KeyHTTP, KeyCRUD)
 
 	ctx := TestCtx(b)
 	b.ResetTimer()

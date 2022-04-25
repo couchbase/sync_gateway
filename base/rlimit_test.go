@@ -49,7 +49,7 @@ func TestGetSoftFDLimitWithCurrent(t *testing.T) {
 }
 
 func TestSetMaxFileDescriptors(t *testing.T) {
-	defer SetUpTestLogging(LevelDebug, KeyAll)()
+	SetUpTestLogging(t, LevelDebug, KeyAll)
 
 	// grab current limits
 	var startLimits syscall.Rlimit

@@ -162,7 +162,7 @@ func TestDBStateChangeEvent(t *testing.T) {
 // the max concurrent goroutines
 func TestSlowExecutionProcessing(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyEvents)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyEvents)
 
 	em := NewEventManager()
 	em.Start(0, -1)
@@ -716,7 +716,7 @@ func TestWebhookTimeout(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	ts, wr := InitWebhookTest()
 	defer ts.Close()
 	url := ts.URL

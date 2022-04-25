@@ -28,7 +28,7 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 		t.Skip("Bootstrap works with Couchbase Server only")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	// Start SG with no databases
 	config := bootstrapStartupConfigForTest(t)
@@ -142,7 +142,7 @@ func TestBootstrapDuplicateBucket(t *testing.T) {
 		t.Skip("Bootstrap works with Couchbase Server only")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	serverErr := make(chan error, 0)
 
@@ -194,7 +194,7 @@ func TestBootstrapDuplicateDatabase(t *testing.T) {
 		t.Skip("Bootstrap works with Couchbase Server only")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	serverErr := make(chan error, 0)
 

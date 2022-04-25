@@ -212,7 +212,7 @@ func TestAttachmentCleanup(t *testing.T) {
 }
 
 func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Requires CBS")
 	}

@@ -40,7 +40,7 @@ func TestMigrateMetadata(t *testing.T) {
 		t.Skip("This test only works with XATTRS enabled")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyMigrate, base.KeyImport)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
 
 	db := setupTestDB(t)
 	defer db.Close()
@@ -110,7 +110,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 		t.Skip("This test only works with XATTRS enabled")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyMigrate, base.KeyImport)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
 
 	db := setupTestDB(t)
 	defer db.Close()
@@ -382,7 +382,7 @@ func TestImportNullDoc(t *testing.T) {
 		t.Skip("This test only works with XATTRS enabled and in integration mode")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyImport)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyImport)
 
 	db := setupTestDB(t)
 	defer db.Close()
@@ -399,7 +399,7 @@ func TestImportNullDoc(t *testing.T) {
 }
 
 func TestImportNullDocRaw(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyImport)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyImport)
 
 	db := setupTestDB(t)
 	defer db.Close()
@@ -424,7 +424,7 @@ func assertXattrSyncMetaRevGeneration(t *testing.T, bucket base.Bucket, key stri
 }
 
 func TestEvaluateFunction(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyImport)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyImport)
 	db := setupTestDB(t)
 	defer db.Close()
 

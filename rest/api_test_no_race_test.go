@@ -33,7 +33,7 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`})
 	defer rt.Close()
@@ -88,7 +88,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
@@ -166,7 +166,7 @@ func TestSetupAndValidate(t *testing.T) {
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("Skipping this test; it only works on Walrus bucket")
 	}
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	t.Run("Run setupAndValidate with valid config", func(t *testing.T) {
 		configFile := createTempFile(t, []byte(`{
           "databases": {

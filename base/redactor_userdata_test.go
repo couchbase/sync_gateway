@@ -98,7 +98,7 @@ func (fakeLogger FakeLogger) String() string {
 
 func BenchmarkRedactOnLog(b *testing.B) {
 
-	defer SetUpBenchmarkLogging(LevelWarn, KeyAll)()
+	SetUpBenchmarkLogging(b, LevelWarn, KeyAll)
 
 	b.Run("WarnPlain", func(b *testing.B) {
 		ctx := TestCtx(b)

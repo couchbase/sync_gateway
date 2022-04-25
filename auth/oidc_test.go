@@ -33,7 +33,7 @@ import (
 )
 
 func TestOIDCProviderMap_GetDefaultProvider(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAuth)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAuth)
 
 	cbProvider := OIDCProvider{
 		Name: "Couchbase",
@@ -106,7 +106,7 @@ func TestOIDCProviderMap_GetDefaultProvider(t *testing.T) {
 
 func TestOIDCProviderMap_GetProviderForIssuer(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAuth)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAuth)
 
 	clientID := "SGW-TEST"
 	cbProvider := OIDCProvider{

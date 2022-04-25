@@ -37,7 +37,7 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 	}
 
 	base.RequireNumTestBuckets(t, 2)
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	rt1, rt2, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()

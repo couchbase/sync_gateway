@@ -158,7 +158,7 @@ const (
 )
 
 func TestCache(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAuth)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAuth)
 	var tests = []struct {
 		name      string
 		cache     Cache
@@ -209,7 +209,7 @@ func TestCache(t *testing.T) {
 }
 
 func TestCacheRace(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAuth)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAuth)
 	const maxCacheSize = 5
 	var tests = []struct {
 		name      string

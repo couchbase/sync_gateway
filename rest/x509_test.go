@@ -28,7 +28,7 @@ import (
 // TestX509RoundtripUsingIP is a happy-path roundtrip write test for SG connecting to CBS using valid X.509 certs for authentication.
 // The test enforces SG connects using an IP address which is also present in the node cert.
 func TestX509RoundtripUsingIP(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	tb, teardownFn, _, _, _ := setupX509Tests(t, true)
 	defer tb.Close()
@@ -49,7 +49,7 @@ func TestX509RoundtripUsingIP(t *testing.T) {
 // TestX509RoundtripUsingDomain is a happy-path roundtrip write test for SG connecting to CBS using valid X.509 certs for authentication.
 // The test enforces SG connects using a domain name which is also present in the node cert.
 func TestX509RoundtripUsingDomain(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	tb, teardownFn, _, _, _ := setupX509Tests(t, false)
 	defer tb.Close()
@@ -68,7 +68,7 @@ func TestX509RoundtripUsingDomain(t *testing.T) {
 }
 
 func TestX509UnknownAuthorityWrap(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	tb, teardownFn, _, _, _ := setupX509Tests(t, true)
 	defer tb.Close()

@@ -36,7 +36,7 @@ func TestReproduce2383(t *testing.T) {
 		t.Skip("Skip LeakyBucket test when running in integration")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -190,7 +190,7 @@ func TestDocDeletionFromChannel(t *testing.T) {
 
 func TestPostChanges(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
@@ -223,7 +223,7 @@ func TestPostChangesUserTiming(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel)}`})
 	defer rt.Close()
@@ -284,7 +284,7 @@ func TestPostChangesSinceInteger(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
@@ -390,7 +390,7 @@ func postChangesSince(t *testing.T, rt *RestTester) {
 
 func TestPostChangesChannelFilterInteger(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
@@ -459,7 +459,7 @@ func TestPostChangesAdminChannelGrant(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
@@ -541,7 +541,7 @@ func TestPostChangesAdminChannelGrant(t *testing.T) {
 }
 
 func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
@@ -698,7 +698,7 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 }
 
 func TestPostChangesAdminChannelGrantRemovalWithLimit(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
@@ -760,7 +760,7 @@ func TestPostChangesAdminChannelGrantRemovalWithLimit(t *testing.T) {
 // TestChangesFromCompoundSinceViaDocGrant ensures that a changes feed with a compound since value returns the correct result after a dynamic channel grant.
 func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyHTTP)
 
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
@@ -907,7 +907,7 @@ func TestChangeWaiterExitOnChangesTermination(t *testing.T) {
 	for _, test := range tests {
 		testName := fmt.Sprintf("%v user:%v manualNotify:%t", test.feedType, test.username, test.manualNotify)
 		t.Run(testName, func(t *testing.T) {
-			defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+			base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 			rt := NewRestTester(t, nil)
 			defer rt.Close()
@@ -960,7 +960,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 		t.Skip("This test cannot run in xattr mode until WriteDirect() is updated.  See https://github.com/couchbase/sync_gateway/issues/2666#issuecomment-311183219")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges)
 
 	pendingMaxWait := uint32(5)
 	maxNum := 50
@@ -1052,7 +1052,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 		t.Skip("This test cannot run in xattr mode until WriteDirect() is updated.  See https://github.com/couchbase/sync_gateway/issues/2666#issuecomment-311183219")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges)
 	pendingMaxWait := uint32(5)
 	maxNum := 50
 	skippedMaxWait := uint32(120000)
@@ -1186,7 +1186,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 		t.Skip("This test cannot run in xattr mode until WriteDirect() is updated.  See https://github.com/couchbase/sync_gateway/issues/2666#issuecomment-311183219")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges)
 	pendingMaxWait := uint32(5)
 	maxNum := 50
 	skippedMaxWait := uint32(120000)
@@ -1316,7 +1316,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 		t.Skip("This test cannot run in xattr mode until WriteDirect() is updated.  See https://github.com/couchbase/sync_gateway/issues/2666#issuecomment-311183219")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges)
 
 	pendingMaxWait := uint32(5)
 	maxNum := 50
@@ -1426,7 +1426,7 @@ func TestUnusedSequences(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyCRUD, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyCRUD, base.KeyHTTP)
 
 	// Only do 10 iterations if running against walrus.  If against a live couchbase server,
 	// just do single iteration.  (Takes approx 30s)
@@ -1603,7 +1603,7 @@ func _testConcurrentNewEditsFalseDelete(t *testing.T) {
 }
 
 func TestChangesActiveOnlyInteger(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
@@ -1726,7 +1726,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyNone)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
 
 	defer db.SuspendSequenceBatching()()
 
@@ -1931,7 +1931,7 @@ func updateTestDoc(rt *RestTester, docid string, revid string, body string) (new
 // Validate retrieval of various document body types using include_docs.
 func TestChangesIncludeDocs(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyNone)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channels)}`}
 	rt := NewRestTester(t, &rtConfig)
@@ -2160,7 +2160,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 // Tests view backfills into empty cache and validates that results are prepended to cache
 func TestChangesViewBackfillFromQueryOnly(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 	rt := NewRestTester(t, &rtConfig)
@@ -2232,7 +2232,7 @@ func TestChangesViewBackfillFromQueryOnly(t *testing.T) {
 // Validate that non-contiguous query results (due to limit) are not prepended to the cache
 func TestChangesViewBackfillNonContiguousQueryResults(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 	rt := NewRestTester(t, &rtConfig)
@@ -2331,7 +2331,7 @@ func TestChangesViewBackfillNonContiguousQueryResults(t *testing.T) {
 // Tests multiple view backfills and validates that results are prepended to cache
 func TestChangesViewBackfillFromPartialQueryOnly(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 	rt := NewRestTester(t, &rtConfig)
@@ -2415,7 +2415,7 @@ func TestChangesViewBackfillFromPartialQueryOnly(t *testing.T) {
 // Tests multiple view backfills and validates that results are prepended to cache
 func TestChangesViewBackfillNoOverlap(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 	rt := NewRestTester(t, &rtConfig)
@@ -2501,7 +2501,7 @@ func TestChangesViewBackfillNoOverlap(t *testing.T) {
 // Tests view backfill and validates that results are prepended to cache
 func TestChangesViewBackfill(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 	rt := NewRestTester(t, &rtConfig)
@@ -2572,7 +2572,7 @@ func TestChangesViewBackfill(t *testing.T) {
 // Tests view backfill and validates that results are prepended to cache
 func TestChangesViewBackfillStarChannel(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 	rt := NewRestTester(t, &rtConfig)
@@ -2648,7 +2648,7 @@ func TestChangesViewBackfillStarChannel(t *testing.T) {
 // Tests query backfill with limit
 func TestChangesQueryBackfillWithLimit(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 	rt := NewRestTester(t, &rtConfig)
@@ -2812,7 +2812,7 @@ func TestChangesQueryBackfillWithLimit(t *testing.T) {
 // Tests query backfill with limit
 func TestMultichannelChangesQueryBackfillWithLimit(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 	rt := NewRestTester(t, &rtConfig)
@@ -2887,7 +2887,7 @@ func TestMultichannelChangesQueryBackfillWithLimit(t *testing.T) {
 // Tests star channel query backfill with limit
 func TestChangesQueryStarChannelBackfillLimit(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 	queryLimit := 5
@@ -2940,7 +2940,7 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 		t.Skip("Skip test with LeakyBucket dependency test when running in integration")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 	rt := NewRestTester(t, &rtConfig)
@@ -3046,7 +3046,7 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 
 func TestChangesActiveOnlyWithLimit(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyChanges)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyChanges)
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
@@ -3228,7 +3228,7 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 // additional to general view handling.
 func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
@@ -3417,7 +3417,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 
 func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)
 
 	cacheSize := 2
 	shortWaitConfig := &DatabaseConfig{DbConfig: DbConfig{
@@ -3574,7 +3574,7 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 // Test _changes returning conflicts
 func TestChangesIncludeConflicts(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyCRUD)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyCRUD)
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
@@ -3663,7 +3663,7 @@ func TestChangesLargeSequences(t *testing.T) {
 
 func TestIncludeDocsWithPrincipals(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -3717,7 +3717,7 @@ func TestIncludeDocsWithPrincipals(t *testing.T) {
 // Validate that an admin channel grant wakes up a waiting changes request
 func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyHTTP)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -3772,7 +3772,7 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 // Validate handling when a single channel cache is compacted while changes request is in wait mode
 func TestCacheCompactDuringChangesWait(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
 
 	numIndexReplicas := uint(0)
 	smallCacheSize := 100
@@ -3846,7 +3846,7 @@ func TestCacheCompactDuringChangesWait(t *testing.T) {
 }
 
 func TestTombstoneCompaction(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Walrus does not support Xattrs")

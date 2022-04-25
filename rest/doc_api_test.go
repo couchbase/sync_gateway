@@ -101,7 +101,7 @@ func TestDocumentNumbers(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	for _, test := range tests {
 		t.Run(test.name, func(ts *testing.T) {
