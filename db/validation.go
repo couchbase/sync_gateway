@@ -17,7 +17,7 @@ func validateNewBody(body Body) error {
 	}
 
 	// Reject bodies that contains the "_purged" property.
-	if body[BodyPurged] != nil {
+	if _, ok := body[BodyPurged]; ok {
 		return base.HTTPErrorf(http.StatusBadRequest, "user defined top-level property '_purged' is not allowed in document body")
 	}
 
@@ -34,7 +34,7 @@ func validateNewBody(body Body) error {
 func validateAPIDocUpdate(body Body) error {
 	// VaLidation for disallowed properties for blip and import should be done in validateNewBody
 	// _rev, _attachments, _id are validated before reaching this function (due to endpoint specific behaviour)
-	if body[base.SyncPropertyName] != nil {
+	if _, ok := body[base.SyncPropertyName]; ok {
 		return base.HTTPErrorf(http.StatusBadRequest, "document-top level property '_sync' is a reserved internal property")
 	}
 	return nil
@@ -53,7 +53,7 @@ func validateImportBody(body Body) error {
 	// Prevent disallowed internal properties from being used
 	disallowed := []string{BodyId, BodyRev, BodyExpiry, BodyRevisions}
 	for _, prop := range disallowed {
-		if body[prop] != nil {
+		if _, ok := body[prop]; ok {
 			return base.HTTPErrorf(http.StatusBadRequest, "top-level property '"+prop+"' is a reserved internal property therefore cannot be imported")
 		}
 	}
@@ -63,13 +63,14 @@ func validateImportBody(body Body) error {
 }
 
 // validateBlipBody validates incoming blip rev bodies
+// Takes a rawBody to avoid an unnecessary call to doc.BodyBytes()
 func validateBlipBody(rawBody []byte, doc *Document) error {
 	// Prevent disallowed internal properties from being used
 	disallowed := []string{base.SyncPropertyName, BodyId, BodyRev, BodyDeleted, BodyRevisions}
 	for _, prop := range disallowed {
 		// Only unmarshal if raw body contains the disallowed property
-		if bytes.Contains(rawBody, []byte(prop)) {
-			if doc.Body()[prop] != nil {
+		if bytes.Contains(rawBody, []byte(`"`+prop+`"`)) {
+			if _, ok := doc.Body()[prop]; ok {
 				return base.HTTPErrorf(http.StatusBadRequest, "top-level property '"+prop+"' is a reserved internal property")
 			}
 		}

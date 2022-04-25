@@ -2244,7 +2244,7 @@ func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 // CBG-2023: Test preventing underscore attachments
 func TestImportInternalPropertiesHandling(t *testing.T) {
 	SkipImportTestsIfNotEnabled(t)
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	testCases := []struct {
 		name               string
@@ -2310,9 +2310,10 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 			expectReject: true,
 		},
 		{
-			name:         "_purged true",
-			importBody:   map[string]interface{}{"_purged": true},
-			expectReject: true,
+			name:               "_purged true",
+			importBody:         map[string]interface{}{"_purged": true},
+			expectReject:       true,
+			expectedStatusCode: base.IntPtr(200), // Import gets cancelled and returns 200 and blank body
 		},
 		{
 			name:               "_removed",

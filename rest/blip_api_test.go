@@ -3976,7 +3976,7 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 }
 
 func TestBlipInternalPropertiesHandling(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	testCases := []struct {
 		name                        string
