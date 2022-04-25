@@ -3610,6 +3610,97 @@ func TestPutDbConfigChangeName(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 
+func TestPutDBConfigOIDC(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+
+	serverErr := make(chan error, 0)
+
+	// Start SG with no databases
+	config := bootstrapStartupConfigForTest(t)
+	sc, err := setupServerContext(&config, true)
+	require.NoError(t, err)
+	defer func() {
+		sc.Close()
+		require.NoError(t, <-serverErr)
+	}()
+
+	go func() {
+		serverErr <- startServer(&config, sc)
+	}()
+	require.NoError(t, sc.waitForRESTAPIs())
+
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer func() {
+		fmt.Println("closing test bucket")
+		tb.Close()
+	}()
+	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/",
+		fmt.Sprintf(
+			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
+			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+		),
+	)
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	// Attempt to update the config with an invalid OIDC issuer - should fail
+	invalidOIDCConfig := fmt.Sprintf(
+		`{
+			"bucket": "%s",
+			"num_index_replicas": 0,
+			"enable_shared_bucket_access": %t,
+			"use_views": %t,
+			"oidc": {
+				"providers": {
+					"test": {
+						"issuer": "https://test.invalid",
+						"client_id": "test"
+					}
+				}
+			}
+		}`,
+		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+	)
+
+	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config", invalidOIDCConfig)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+	// Now pass the parameter to skip the validation
+	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config?disable_oidc_validation=true", invalidOIDCConfig)
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	// Now check with a valid OIDC issuer
+	validOIDCConfig := fmt.Sprintf(
+		`{
+			"bucket": "%s",
+			"num_index_replicas": 0,
+			"enable_shared_bucket_access": %t,
+			"use_views": %t,
+			"unsupported": {
+				"oidc_test_provider": {
+					"enabled": true
+				}
+			},
+			"oidc": {
+				"providers": {
+					"test": {
+						"issuer": "http://localhost:%d/db/_oidc_testing",
+						"client_id": "sync_gateway"
+					}
+				}
+			}
+		}`,
+		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(), 4984+bootstrapTestPortOffset,
+	)
+
+	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config", validOIDCConfig)
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+}
+
 func TestNotExistentDBRequest(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")

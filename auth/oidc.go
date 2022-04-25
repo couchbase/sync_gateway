@@ -332,7 +332,7 @@ func (op *OIDCProvider) initOIDCClient() error {
 		return err
 	}
 
-	metadata, verifier, err := op.discoverConfig()
+	metadata, verifier, err := op.DiscoverConfig()
 	if err != nil {
 		return pkgerrors.Wrap(err, ErrMsgUnableToDiscoverConfig)
 	}
@@ -382,8 +382,8 @@ func GetStandardDiscoveryEndpoint(issuer string) string {
 	return strings.TrimSuffix(issuer, "/") + OIDCDiscoveryConfigPath
 }
 
-// discoverConfig initiates the initial metadata provider discovery while initializing the OpenID Connect client.
-func (op *OIDCProvider) discoverConfig() (metadata ProviderMetadata, verifier *oidc.IDTokenVerifier, err error) {
+// DiscoverConfig initiates the initial metadata provider discovery while initializing the OpenID Connect client.
+func (op *OIDCProvider) DiscoverConfig() (metadata ProviderMetadata, verifier *oidc.IDTokenVerifier, err error) {
 	discoveryURL := op.getDiscoveryEndpoint()
 	if !op.isStandardDiscovery() {
 		base.Infof(base.KeyAuth, "Fetching provider config from explicitly defined discovery endpoint: %s", base.UD(discoveryURL))
