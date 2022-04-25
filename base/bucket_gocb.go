@@ -1571,7 +1571,7 @@ func (bucket *CouchbaseBucketGoCB) Flush() error {
 	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
 		err = bucketManager.Flush()
 		if err != nil {
-			WarnfCtx(context.Background(), "Error flushing bucket: %v  Will retry.", err)
+			WarnfCtx(context.Background(), "Error flushing bucket %s: %v  Will retry.", MD(bucket.Spec.BucketName).Redact(), err)
 			shouldRetry = true
 		}
 		return shouldRetry, err, nil

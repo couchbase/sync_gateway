@@ -650,7 +650,7 @@ func (c *Collection) Flush() error {
 	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
 		err = bucketManager.FlushBucket(c.Bucket().Name(), nil)
 		if err != nil {
-			WarnfCtx(context.TODO(), "Error flushing bucket: %v  Will retry.", err)
+			WarnfCtx(context.TODO(), "Error flushing bucket %s: %v  Will retry.", MD(c.Bucket().Name()).Redact(), err)
 			shouldRetry = true
 		}
 		return shouldRetry, err, nil
