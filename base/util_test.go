@@ -629,14 +629,6 @@ func TestRedactBasicAuthURL(t *testing.T) {
 	}
 }
 
-type mockTB struct {
-	cleanupFn func()
-}
-
-func (m *mockTB) Cleanup(fn func()) {
-	m.cleanupFn = fn
-}
-
 func TestSetTestLogging(t *testing.T) {
 	if GlobalTestLoggingSet.IsTrue() {
 		t.Skip("Test does not work when a global test log level is set")
