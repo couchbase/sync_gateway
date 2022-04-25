@@ -466,15 +466,10 @@ func SetUpGlobalTestLogging(m *testing.M) (teardownFn func()) {
 	return func() { GlobalTestLoggingSet.Set(false) }
 }
 
-// canCleanup is a subset of testing.TB used for testing the test logging.
-type canCleanup interface {
-	Cleanup(func())
-}
-
 // SetUpTestLogging will set the given log level and log keys, and revert the changes at the end of the current test.
 //
 // This function will panic if called multiple times in the same test.
-func SetUpTestLogging(tb canCleanup, logLevel LogLevel, logKeys ...LogKey) {
+func SetUpTestLogging(tb testing.TB, logLevel LogLevel, logKeys ...LogKey) {
 	caller := GetCallersName(1, false)
 	InfofCtx(context.Background(), KeyAll, "%s: Setup logging: level: %v - keys: %v", caller, logLevel, logKeys)
 	cleanup := setTestLogging(logLevel, caller, logKeys...)
@@ -483,7 +478,7 @@ func SetUpTestLogging(tb canCleanup, logLevel LogLevel, logKeys ...LogKey) {
 
 // DisableTestLogging is an alias for SetUpTestLogging(LevelNone, KeyNone)
 // This function will panic if called multiple times in the same test.
-func DisableTestLogging(tb canCleanup) {
+func DisableTestLogging(tb testing.TB) {
 	caller := ""
 	cleanup := setTestLogging(LevelNone, caller, KeyNone)
 	tb.Cleanup(cleanup)
