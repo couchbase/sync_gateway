@@ -26,7 +26,6 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/robertkrimen/otto/underscore"
 	"github.com/stretchr/testify/assert"
 )
@@ -147,12 +146,9 @@ func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
 }
 
 func assertHTTPError(t *testing.T, err error, status int) {
-	httpErr, ok := err.(*base.HTTPError)
-	if !ok {
-		goassert.Errorf(t, "assertHTTPError: Expected an HTTP %d; got error %T %v", status, err, err)
-	} else {
-		assert.Equal(t, status, httpErr.Status)
-	}
+	var httpErr *base.HTTPError
+	assert.ErrorAs(t, err, &httpErr)
+	assert.Equal(t, status, httpErr.Status)
 }
 
 func TestDatabase(t *testing.T) {

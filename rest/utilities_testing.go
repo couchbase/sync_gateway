@@ -31,7 +31,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
@@ -284,8 +283,7 @@ func (rt *RestTester) GetDatabase() *db.DatabaseContext {
 
 func (rt *RestTester) MustWaitForDoc(docid string, t testing.TB) {
 	err := rt.WaitForDoc(docid)
-	goassert.True(t, err == nil)
-
+	assert.NoError(t, err)
 }
 
 func (rt *RestTester) WaitForDoc(docid string) (err error) {
