@@ -4102,3 +4102,57 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 		})
 	}
 }
+
+// CBG-2004: Test that prove attachment over Blip works correctly when receiving a ErrAttachmentNotFound
+func TestProveAttachmentNotFound(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		guestEnabled: true,
+	})
+	defer rt.Close()
+
+	bt, err := NewBlipTesterFromSpecWithRT(t, nil, rt)
+	assert.NoError(t, err, "Error creating BlipTester")
+	defer bt.Close()
+
+	attachmentData := []byte("attachmentA")
+	attachmentDataEncoded := base64.StdEncoding.EncodeToString(attachmentData)
+
+	bt.blipContext.HandlerForProfile[db.MessageProveAttachment] = func(msg *blip.Message) {
+		status, errMsg := base.ErrorAsHTTPStatus(db.ErrAttachmentNotFound)
+		msg.Response().SetError("HTTP", status, errMsg)
+	}
+
+	// Handler for when full attachment is requested
+	bt.blipContext.HandlerForProfile[db.MessageGetAttachment] = func(msg *blip.Message) {
+		resp := msg.Response()
+		resp.SetBody(attachmentData)
+		resp.SetCompressed(msg.Properties[db.BlipCompress] == "true")
+	}
+
+	// Initial set up
+	sent, _, _, err := bt.SendRev("doc1", "1-abc", []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentDataEncoded+`"}}}`), blip.Properties{})
+	require.True(t, sent)
+	require.NoError(t, err)
+
+	err = rt.WaitForPendingChanges()
+	require.NoError(t, err)
+
+	// Should log:
+	// "Peer sent prove attachment error 404 attachment not found, falling back to getAttachment for proof in doc <ud>doc1</ud> (digest sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=)"
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+
+	// Use different attachment name to bypass digest check in ForEachStubAttachment() which skips prove attachment code
+	// Set attachment to V2 so it can be retrieved by RT successfully
+	sent, _, _, err = bt.SendRev("doc1", "2-abc", []byte(`{"key": "val", "_attachments":{"attach":{"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"content_type":"","stub":true,"revpos":4, "ver":2}}}`), blip.Properties{})
+	require.True(t, sent)
+	require.NoError(t, err)
+
+	err = rt.WaitForPendingChanges()
+	require.NoError(t, err)
+	// Check attachment is on the document
+	body := rt.getDoc("doc1")
+	assert.Equal(t, "2-abc", body.ExtractRev())
+	resp := rt.SendAdminRequest("GET", "/db/doc1/attach", "")
+	assertStatus(t, resp, 200)
+	assert.EqualValues(t, attachmentData, resp.BodyBytes())
+}

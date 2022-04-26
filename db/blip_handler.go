@@ -1217,32 +1217,23 @@ func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, dig
 func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Body, minRevpos int, docID string, currentDigests map[string]string) error {
 	return bh.db.ForEachStubAttachment(body, minRevpos, docID, currentDigests,
 		func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
-			// request attachment if we don't have it
+			// Request attachment if we don't have it
 			if knownData == nil {
 				return bh.sendGetAttachment(sender, docID, name, digest, meta)
 			}
 
-			// ask client to prove they have the attachment without sending it
+			// Ask client to prove they have the attachment without sending it
 			proveAttErr := bh.sendProveAttachment(sender, docID, name, digest, knownData)
 			if proveAttErr == nil {
 				return nil, nil
 			}
 
-			// peer doesn't support proveAttachment... Fall back to using getAttachment as proof.
-			if proveAttErr == NoBLIPHandlerError {
-				base.InfofCtx(bh.loggingCtx, base.KeySync, "Peer doesn't support proveAttachment, falling back to getAttachment for proof in doc %s (digest %s)", base.UD(docID), digest)
+			// Peer doesn't support proveAttachment or does not have attachment. Fall back to using getAttachment as proof.
+			if proveAttErr == NoBLIPHandlerError || proveAttErr == ErrAttachmentNotFound {
+				base.InfofCtx(bh.loggingCtx, base.KeySync, "Peer sent prove attachment error %v, falling back to getAttachment for proof in doc %s (digest %s)", proveAttErr, base.UD(docID), digest)
 				_, getAttErr := bh.sendGetAttachment(sender, docID, name, digest, meta)
 				if getAttErr == nil {
-					return nil, nil
-				}
-				return nil, getAttErr
-			}
-
-			// Peer doesn't have the attachment, falling back to getAttachment for proof.
-			if proveAttErr == ErrAttachmentNotFound {
-				base.InfofCtx(bh.loggingCtx, base.KeySync, "Peer doesn't have the attachment, falling back to getAttachment for proof in doc %s (digest %s)", base.UD(docID), digest)
-				_, getAttErr := bh.sendGetAttachment(sender, docID, name, digest, meta)
-				if getAttErr == nil {
+					// Peer proved they have matching attachment. Keep existing attachment
 					return nil, nil
 				}
 				return nil, getAttErr
