@@ -15,7 +15,6 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -55,7 +54,7 @@ func TestRemoveObsoleteDesignDocs(t *testing.T) {
 		// Invoke removal in preview mode
 		removedDDocs, removeErr := removeObsoleteDesignDocs(bucket, true, true)
 		assert.NoError(t, removeErr, "Error removing previous design docs")
-		goassert.Equals(t, len(removedDDocs), 2)
+		assert.Equal(t, 2, len(removedDDocs))
 		assert.True(t, base.StringSliceContains(removedDDocs, DesignDocSyncGatewayPrefix), "Missing design doc from removed set")
 		assert.True(t, base.StringSliceContains(removedDDocs, DesignDocSyncHousekeepingPrefix), "Missing design doc from removed set")
 
@@ -67,7 +66,7 @@ func TestRemoveObsoleteDesignDocs(t *testing.T) {
 		// Invoke removal in non-preview mode
 		removedDDocs, removeErr = removeObsoleteDesignDocs(bucket, false, true)
 		assert.NoError(t, removeErr, "Error removing previous design docs")
-		goassert.Equals(t, len(removedDDocs), 2)
+		assert.Equal(t, 2, len(removedDDocs))
 		assert.True(t, base.StringSliceContains(removedDDocs, DesignDocSyncGatewayPrefix), "Missing design doc from removed set")
 		assert.True(t, base.StringSliceContains(removedDDocs, DesignDocSyncHousekeepingPrefix), "Missing design doc from removed set")
 

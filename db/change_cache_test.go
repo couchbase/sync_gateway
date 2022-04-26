@@ -22,7 +22,6 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -122,14 +121,14 @@ func TestLateSequenceHandling(t *testing.T) {
 	cacheStats := stats.NewDBStats("", false, false, false).CacheStats
 
 	cache := newSingleChannelCache(context, "Test1", 0, cacheStats)
-	goassert.True(t, cache != nil)
+	assert.True(t, cache != nil)
 
 	// Empty late sequence cache should return empty set
 	startSequence := cache.RegisterLateSequenceClient()
 	entries, lastSeq, err := cache.GetLateSequencesSince(startSequence)
-	goassert.Equals(t, len(entries), 0)
-	goassert.Equals(t, lastSeq, uint64(0))
-	goassert.True(t, err == nil)
+	assert.Equal(t, 0, len(entries))
+	assert.Equal(t, uint64(0), lastSeq)
+	assert.True(t, err == nil)
 
 	cache.AddLateSequence(testLogEntry(5, "foo", "1-a"))
 	cache.AddLateSequence(testLogEntry(8, "foo2", "1-a"))
@@ -137,47 +136,47 @@ func TestLateSequenceHandling(t *testing.T) {
 	// Retrieve since 0
 	entries, lastSeq, err = cache.GetLateSequencesSince(0)
 	log.Println("entries:", entries)
-	goassert.Equals(t, len(entries), 2)
-	goassert.Equals(t, lastSeq, uint64(8))
-	goassert.Equals(t, cache.lateLogs[2].getListenerCount(), uint64(1))
-	goassert.True(t, err == nil)
+	assert.Equal(t, 2, len(entries))
+	assert.Equal(t, uint64(8), lastSeq)
+	assert.Equal(t, uint64(1), cache.lateLogs[2].getListenerCount())
+	assert.True(t, err == nil)
 
 	// Add Sequences.  Will trigger purge on old sequences without listeners
 	cache.AddLateSequence(testLogEntry(2, "foo3", "1-a"))
 	cache.AddLateSequence(testLogEntry(7, "foo4", "1-a"))
-	goassert.Equals(t, len(cache.lateLogs), 3)
-	goassert.Equals(t, cache.lateLogs[0].logEntry.Sequence, uint64(8))
-	goassert.Equals(t, cache.lateLogs[1].logEntry.Sequence, uint64(2))
-	goassert.Equals(t, cache.lateLogs[2].logEntry.Sequence, uint64(7))
-	goassert.Equals(t, cache.lateLogs[0].getListenerCount(), uint64(1))
+	assert.Equal(t, 3, len(cache.lateLogs))
+	assert.Equal(t, uint64(8), cache.lateLogs[0].logEntry.Sequence)
+	assert.Equal(t, uint64(2), cache.lateLogs[1].logEntry.Sequence)
+	assert.Equal(t, uint64(7), cache.lateLogs[2].logEntry.Sequence)
+	assert.Equal(t, uint64(1), cache.lateLogs[0].getListenerCount())
 
 	// Retrieve since previous
 	entries, lastSeq, err = cache.GetLateSequencesSince(lastSeq)
 	log.Println("entries:", entries)
-	goassert.Equals(t, len(entries), 2)
-	goassert.Equals(t, lastSeq, uint64(7))
-	goassert.Equals(t, cache.lateLogs[0].getListenerCount(), uint64(0))
-	goassert.Equals(t, cache.lateLogs[2].getListenerCount(), uint64(1))
+	assert.Equal(t, 2, len(entries))
+	assert.Equal(t, uint64(7), lastSeq)
+	assert.Equal(t, uint64(0), cache.lateLogs[0].getListenerCount())
+	assert.Equal(t, uint64(1), cache.lateLogs[2].getListenerCount())
 	log.Println("cache.lateLogs:", cache.lateLogs)
-	goassert.True(t, err == nil)
+	assert.True(t, err == nil)
 
 	// Purge.  We have a listener sitting at seq=7, so purge should only clear previous
 	cache.AddLateSequence(testLogEntry(15, "foo5", "1-a"))
 	cache.AddLateSequence(testLogEntry(11, "foo6", "1-a"))
 	log.Println("cache.lateLogs:", cache.lateLogs)
 	cache.purgeLateLogEntries()
-	goassert.Equals(t, len(cache.lateLogs), 3)
-	goassert.Equals(t, cache.lateLogs[0].logEntry.Sequence, uint64(7))
-	goassert.Equals(t, cache.lateLogs[1].logEntry.Sequence, uint64(15))
-	goassert.Equals(t, cache.lateLogs[2].logEntry.Sequence, uint64(11))
+	assert.Equal(t, 3, len(cache.lateLogs))
+	assert.Equal(t, uint64(7), cache.lateLogs[0].logEntry.Sequence)
+	assert.Equal(t, uint64(15), cache.lateLogs[1].logEntry.Sequence)
+	assert.Equal(t, uint64(11), cache.lateLogs[2].logEntry.Sequence)
 	log.Println("cache.lateLogs:", cache.lateLogs)
-	goassert.True(t, err == nil)
+	assert.True(t, err == nil)
 
 	// Release the listener, and purge again
 	cache.ReleaseLateSequenceClient(uint64(7))
 	cache.purgeLateLogEntries()
-	goassert.Equals(t, len(cache.lateLogs), 1)
-	goassert.True(t, err == nil)
+	assert.Equal(t, 1, len(cache.lateLogs))
+	assert.True(t, err == nil)
 
 }
 
@@ -192,14 +191,14 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 	cacheStats := stats.NewDBStats("", false, false, false).CacheStats
 
 	cache := newSingleChannelCache(context, "Test1", 0, cacheStats)
-	goassert.True(t, cache != nil)
+	assert.True(t, cache != nil)
 
 	// Add Listener before late entries arrive
 	startSequence := cache.RegisterLateSequenceClient()
 	entries, lastSeq1, err := cache.GetLateSequencesSince(startSequence)
-	goassert.Equals(t, len(entries), 0)
-	goassert.Equals(t, lastSeq1, uint64(0))
-	goassert.True(t, err == nil)
+	assert.Equal(t, 0, len(entries))
+	assert.Equal(t, uint64(0), lastSeq1)
+	assert.True(t, err == nil)
 
 	// Add two entries
 	cache.AddLateSequence(testLogEntry(5, "foo", "1-a"))
@@ -208,33 +207,33 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 	// Add a second client.  Expect the first listener at [0], and the new one at [2]
 	startSequence = cache.RegisterLateSequenceClient()
 	entries, lastSeq2, err := cache.GetLateSequencesSince(startSequence)
-	goassert.Equals(t, startSequence, uint64(8))
-	goassert.Equals(t, lastSeq2, uint64(8))
+	assert.Equal(t, uint64(8), startSequence)
+	assert.Equal(t, uint64(8), lastSeq2)
 
-	goassert.Equals(t, cache.lateLogs[0].getListenerCount(), uint64(1))
-	goassert.Equals(t, cache.lateLogs[2].getListenerCount(), uint64(1))
+	assert.Equal(t, uint64(1), cache.lateLogs[0].getListenerCount())
+	assert.Equal(t, uint64(1), cache.lateLogs[2].getListenerCount())
 
 	cache.AddLateSequence(testLogEntry(3, "foo3", "1-a"))
 	// First client requests again.  Expect first client at latest (3), second still at (8).
 	entries, lastSeq1, err = cache.GetLateSequencesSince(lastSeq1)
-	goassert.Equals(t, lastSeq1, uint64(3))
-	goassert.Equals(t, cache.lateLogs[2].getListenerCount(), uint64(1))
-	goassert.Equals(t, cache.lateLogs[3].getListenerCount(), uint64(1))
+	assert.Equal(t, uint64(3), lastSeq1)
+	assert.Equal(t, uint64(1), cache.lateLogs[2].getListenerCount())
+	assert.Equal(t, uint64(1), cache.lateLogs[3].getListenerCount())
 
 	// Add another sequence, which triggers a purge.  Ensure we don't lose our listeners
 	cache.AddLateSequence(testLogEntry(12, "foo4", "1-a"))
-	goassert.Equals(t, cache.lateLogs[0].getListenerCount(), uint64(1))
-	goassert.Equals(t, cache.lateLogs[1].getListenerCount(), uint64(1))
+	assert.Equal(t, uint64(1), cache.lateLogs[0].getListenerCount())
+	assert.Equal(t, uint64(1), cache.lateLogs[1].getListenerCount())
 
 	// Release the first listener - ensure we maintain the second
 	cache.ReleaseLateSequenceClient(lastSeq1)
-	goassert.Equals(t, cache.lateLogs[0].getListenerCount(), uint64(1))
-	goassert.Equals(t, cache.lateLogs[1].getListenerCount(), uint64(0))
+	assert.Equal(t, uint64(1), cache.lateLogs[0].getListenerCount())
+	assert.Equal(t, uint64(0), cache.lateLogs[1].getListenerCount())
 
 	// Release the second listener
 	cache.ReleaseLateSequenceClient(lastSeq2)
-	goassert.Equals(t, cache.lateLogs[0].getListenerCount(), uint64(0))
-	goassert.Equals(t, cache.lateLogs[1].getListenerCount(), uint64(0))
+	assert.Equal(t, uint64(0), cache.lateLogs[0].getListenerCount())
+	assert.Equal(t, uint64(0), cache.lateLogs[1].getListenerCount())
 
 }
 
@@ -604,11 +603,11 @@ func TestChannelCacheBackfill(t *testing.T) {
 	db.user, _ = authenticator.GetUser("naomi")
 	changes, err := db.GetChanges(base.SetOf("*"), ChangesOptions{Since: SequenceID{Seq: 0}})
 	assert.NoError(t, err, "Couldn't GetChanges")
-	goassert.Equals(t, len(changes), 4)
-	goassert.DeepEquals(t, changes[0], &ChangeEntry{
+	assert.Equal(t, 4, len(changes))
+	assert.Equal(t, &ChangeEntry{
 		Seq:     SequenceID{Seq: 1, TriggeredBy: 0, LowSeq: 2},
 		ID:      "doc-1",
-		Changes: []ChangeRev{{"rev": "1-a"}}})
+		Changes: []ChangeRev{{"rev": "1-a"}}}, changes[0])
 
 	lastSeq := changes[len(changes)-1].Seq
 
@@ -618,25 +617,25 @@ func TestChannelCacheBackfill(t *testing.T) {
 	require.NoError(t, db.changeCache.waitForSequence(base.TestCtx(t), 7, base.DefaultWaitForSequence))
 	// verify insert at start (PBS)
 	pbsCache := db.changeCache.getChannelCache().getSingleChannelCache("PBS").(*singleChannelCacheImpl)
-	goassert.True(t, verifyCacheSequences(pbsCache, []uint64{3, 5, 6}))
+	assert.True(t, verifyCacheSequences(pbsCache, []uint64{3, 5, 6}))
 	// verify insert at middle (ABC)
 	abcCache := db.changeCache.getChannelCache().getSingleChannelCache("ABC").(*singleChannelCacheImpl)
-	goassert.True(t, verifyCacheSequences(abcCache, []uint64{1, 2, 3, 5, 6}))
+	assert.True(t, verifyCacheSequences(abcCache, []uint64{1, 2, 3, 5, 6}))
 	// verify insert at end (NBC)
 	nbcCache := db.changeCache.getChannelCache().getSingleChannelCache("NBC").(*singleChannelCacheImpl)
-	goassert.True(t, verifyCacheSequences(nbcCache, []uint64{1, 3}))
+	assert.True(t, verifyCacheSequences(nbcCache, []uint64{1, 3}))
 	// verify insert to empty cache (TBS)
 	tbsCache := db.changeCache.getChannelCache().getSingleChannelCache("TBS").(*singleChannelCacheImpl)
-	goassert.True(t, verifyCacheSequences(tbsCache, []uint64{3}))
+	assert.True(t, verifyCacheSequences(tbsCache, []uint64{3}))
 
 	// verify changes has three entries (needs to resend all since previous LowSeq, which
 	// will be the late arriver (3) along with 5, 6)
 	changes, err = db.GetChanges(base.SetOf("*"), ChangesOptions{Since: lastSeq})
-	goassert.Equals(t, len(changes), 3)
-	goassert.DeepEquals(t, changes[0], &ChangeEntry{
+	assert.Equal(t, 3, len(changes))
+	assert.Equal(t, &ChangeEntry{
 		Seq:     SequenceID{Seq: 3, LowSeq: 3},
 		ID:      "doc-3",
-		Changes: []ChangeRev{{"rev": "1-a"}}})
+		Changes: []ChangeRev{{"rev": "1-a"}}}, changes[0])
 
 }
 
@@ -676,7 +675,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	defer close(options.Terminator)
 
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
-	goassert.True(t, err == nil)
+	assert.True(t, err == nil)
 
 	time.Sleep(50 * time.Millisecond)
 
@@ -737,7 +736,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 		log.Printf("Received %d unexpected docs", len(expectedDocs))
 	}
 
-	goassert.Equals(t, len(expectedDocs), 0)
+	assert.Equal(t, 0, len(expectedDocs))
 }
 
 // Test low sequence handling of late arriving sequences to a continuous changes feed
@@ -779,28 +778,28 @@ func TestLowSequenceHandling(t *testing.T) {
 	options.Continuous = true
 	options.Wait = true
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
-	goassert.True(t, err == nil)
+	assert.True(t, err == nil)
 
 	changes, err := verifySequencesInFeed(feed, []uint64{1, 2, 5, 6})
-	goassert.True(t, err == nil)
+	assert.True(t, err == nil)
 	require.Len(t, changes, 4)
-	goassert.DeepEquals(t, changes[0], &ChangeEntry{
+	assert.Equal(t, &ChangeEntry{
 		Seq:     SequenceID{Seq: 1, TriggeredBy: 0, LowSeq: 2},
 		ID:      "doc-1",
-		Changes: []ChangeRev{{"rev": "1-a"}}})
+		Changes: []ChangeRev{{"rev": "1-a"}}}, changes[0])
 
 	// Test backfill clear - sequence numbers go back to standard handling
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "TBS"}, 3)
 	WriteDirect(db, []string{"ABC", "PBS"}, 4)
 
 	_, err = verifySequencesInFeed(feed, []uint64{3, 4})
-	goassert.True(t, err == nil)
+	assert.True(t, err == nil)
 
 	WriteDirect(db, []string{"ABC"}, 7)
 	WriteDirect(db, []string{"ABC", "NBC"}, 8)
 	WriteDirect(db, []string{"ABC", "PBS"}, 9)
 	_, err = verifySequencesInFeed(feed, []uint64{7, 8, 9})
-	goassert.True(t, err == nil)
+	assert.True(t, err == nil)
 
 }
 
@@ -842,17 +841,17 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 	options.Continuous = true
 	options.Wait = true
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
-	goassert.True(t, err == nil)
+	assert.True(t, err == nil)
 
 	_, err = verifySequencesInFeed(feed, []uint64{1, 2, 6})
-	goassert.True(t, err == nil)
+	assert.True(t, err == nil)
 
 	// Test backfill of sequence the user doesn't have visibility to
 	WriteDirect(db, []string{"PBS"}, 3)
 	WriteDirect(db, []string{"ABC"}, 9)
 
 	_, err = verifySequencesInFeed(feed, []uint64{9})
-	goassert.True(t, err == nil)
+	assert.True(t, err == nil)
 
 	close(options.Terminator)
 }
@@ -906,7 +905,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	err = appendFromFeed(&changes, feed, 3, base.DefaultWaitForSequence)
 	require.NoError(t, err)
 	assert.Len(t, changes, 3)
-	goassert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "2::6"}))
+	assert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "2::6"}))
 
 	_, incrErr := db.Bucket.Incr(base.SyncSeqKey, 7, 7, 0)
 	require.NoError(t, incrErr)
@@ -1102,7 +1101,7 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	options.Continuous = true
 	options.Wait = true
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
-	goassert.True(t, err == nil)
+	assert.True(t, err == nil)
 
 	// Array to read changes from feed to support assertions
 	var changes = make([]*ChangeEntry, 0, 50)
@@ -1110,12 +1109,12 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	err = appendFromFeed(&changes, feed, 4, base.DefaultWaitForSequence)
 
 	// Validate the initial sequences arrive as expected
-	goassert.True(t, err == nil)
-	goassert.Equals(t, len(changes), 4)
-	goassert.DeepEquals(t, changes[0], &ChangeEntry{
+	assert.True(t, err == nil)
+	assert.Equal(t, 4, len(changes))
+	assert.Equal(t, &ChangeEntry{
 		Seq:     SequenceID{Seq: 1, TriggeredBy: 0, LowSeq: 2},
 		ID:      "doc-1",
-		Changes: []ChangeRev{{"rev": "1-a"}}})
+		Changes: []ChangeRev{{"rev": "1-a"}}}, changes[0])
 
 	// Test backfill clear - sequence numbers go back to standard handling
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "TBS"}, 3)
@@ -1124,16 +1123,16 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	require.NoError(t, db.changeCache.waitForSequenceNotSkipped(base.TestCtx(t), 4, base.DefaultWaitForSequence))
 
 	err = appendFromFeed(&changes, feed, 2, base.DefaultWaitForSequence)
-	goassert.True(t, err == nil)
-	goassert.Equals(t, len(changes), 6)
-	goassert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4}))
+	assert.True(t, err == nil)
+	assert.Equal(t, 6, len(changes))
+	assert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4}))
 
 	WriteDirect(db, []string{"ABC"}, 7)
 	WriteDirect(db, []string{"ABC", "NBC"}, 8)
 	WriteDirect(db, []string{"ABC", "PBS"}, 9)
 	require.NoError(t, db.changeCache.waitForSequence(base.TestCtx(t), 9, base.DefaultWaitForSequence))
 	require.NoError(t, appendFromFeed(&changes, feed, 5, base.DefaultWaitForSequence))
-	goassert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4, 7, 8, 9}))
+	assert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4, 7, 8, 9}))
 
 }
 
@@ -1190,7 +1189,7 @@ func TestChannelRace(t *testing.T) {
 	options.Continuous = true
 	options.Wait = true
 	feed, err := db.MultiChangesFeed(base.SetOf("Even", "Odd"), options)
-	goassert.True(t, err == nil)
+	assert.True(t, err == nil)
 	feedClosed := false
 
 	// Go-routine to work the feed channel and write to an array for use by assertions
@@ -1216,7 +1215,7 @@ func TestChannelRace(t *testing.T) {
 	// Wait for processing of two channels (100 ms each)
 	time.Sleep(250 * time.Millisecond)
 	// Validate the initial sequences arrive as expected
-	goassert.Equals(t, len(changes), 3)
+	assert.Equal(t, 3, len(changes))
 
 	// Send update to trigger the start of the next changes iteration
 	WriteDirect(db, []string{"Even"}, 4)
@@ -1234,8 +1233,8 @@ func TestChannelRace(t *testing.T) {
 	WriteDirect(db, []string{"Even"}, 8)
 	WriteDirect(db, []string{"Odd"}, 9)
 	time.Sleep(750 * time.Millisecond)
-	goassert.Equals(t, len(changes), 9)
-	goassert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "3", "4", "5", "6", "7", "8", "9"}))
+	assert.Equal(t, 9, len(changes))
+	assert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "3", "4", "5", "6", "7", "8", "9"}))
 	changesString := ""
 	for _, change := range changes {
 		changesString = fmt.Sprintf("%s%d, ", changesString, change.Seq.Seq)
@@ -1305,15 +1304,15 @@ func TestSkippedViewRetrieval(t *testing.T) {
 	require.NoError(t, db.changeCache.waitForSequence(base.TestCtx(t), 15, base.DefaultWaitForSequence))
 	entries, err := db.changeCache.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 2}})
 	assert.NoError(t, err, "Get Changes returned error")
-	goassert.Equals(t, len(entries), 6)
+	assert.Equal(t, 6, len(entries))
 	log.Printf("entries: %v", entries)
 	if len(entries) == 6 {
-		goassert.Equals(t, entries[0].DocID, "doc-3")
-		goassert.Equals(t, entries[1].DocID, "doc-7")
-		goassert.Equals(t, entries[2].DocID, "doc-10")
-		goassert.Equals(t, entries[3].DocID, "doc-13")
-		goassert.Equals(t, entries[4].DocID, "doc-14")
-		goassert.Equals(t, entries[5].DocID, "doc-15")
+		assert.Equal(t, "doc-3", entries[0].DocID)
+		assert.Equal(t, "doc-7", entries[1].DocID)
+		assert.Equal(t, "doc-10", entries[2].DocID)
+		assert.Equal(t, "doc-13", entries[3].DocID)
+		assert.Equal(t, "doc-14", entries[4].DocID)
+		assert.Equal(t, "doc-15", entries[5].DocID)
 	}
 
 }
@@ -1394,11 +1393,11 @@ func TestChannelCacheSize(t *testing.T) {
 	db.user, _ = authenticator.GetUser("naomi")
 	changes, err := db.GetChanges(base.SetOf("ABC"), ChangesOptions{Since: SequenceID{Seq: 0}})
 	assert.NoError(t, err, "Couldn't GetChanges")
-	goassert.Equals(t, len(changes), 750)
+	assert.Equal(t, 750, len(changes))
 
 	// Validate that cache stores the expected number of values
 	abcCache := db.changeCache.getChannelCache().getSingleChannelCache("ABC").(*singleChannelCacheImpl)
-	goassert.Equals(t, len(abcCache.logs), 600)
+	assert.Equal(t, 600, len(abcCache.logs))
 }
 
 func shortWaitCache() CacheOptions {

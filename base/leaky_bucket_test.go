@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	sgbucket "github.com/couchbase/sg-bucket"
-	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestDedupeTapEventsLaterSeqSameDoc(t *testing.T) {
@@ -37,11 +37,11 @@ func TestDedupeTapEventsLaterSeqSameDoc(t *testing.T) {
 	deduped := dedupeTapEvents(tapEvents)
 
 	// make sure that one was deduped
-	goassert.Equals(t, len(deduped), 1)
+	assert.Equal(t, 1, len(deduped))
 
 	// make sure the earlier event was deduped
 	dedupedEvent := deduped[0]
-	goassert.True(t, dedupedEvent.Cas == 2)
+	assert.True(t, dedupedEvent.Cas == 2)
 
 }
 
@@ -65,6 +65,6 @@ func TestDedupeNoDedupeDifferentDocs(t *testing.T) {
 	deduped := dedupeTapEvents(tapEvents)
 
 	// make sure that nothing was deduped
-	goassert.True(t, len(deduped) == 2)
+	assert.True(t, len(deduped) == 2)
 
 }

@@ -18,7 +18,6 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -148,21 +147,21 @@ func TestQuerySequencesStatsView(t *testing.T) {
 		docSeqMap["queryTestDoc6"], docSeqMap["queryTestDoc8"],
 	})
 	assert.NoError(t, queryErr, "Query error")
-	goassert.Equals(t, countQueryResults(results), 4)
+	assert.Equal(t, 4, countQueryResults(results))
 	closeErr := results.Close()
 	assert.NoError(t, closeErr, "Close error")
 
 	// Issue query with single key
 	results, queryErr = db.QuerySequences(base.TestCtx(t), []uint64{docSeqMap["queryTestDoc2"]})
 	assert.NoError(t, queryErr, "Query error")
-	goassert.Equals(t, countQueryResults(results), 1)
+	assert.Equal(t, 1, countQueryResults(results))
 	closeErr = results.Close()
 	assert.NoError(t, closeErr, "Close error")
 
 	// Issue query with key outside keyset range
 	results, queryErr = db.QuerySequences(base.TestCtx(t), []uint64{100})
 	assert.NoError(t, queryErr, "Query error")
-	goassert.Equals(t, countQueryResults(results), 0)
+	assert.Equal(t, 0, countQueryResults(results))
 	closeErr = results.Close()
 	assert.NoError(t, closeErr, "Close error")
 
@@ -173,8 +172,8 @@ func TestQuerySequencesStatsView(t *testing.T) {
 	channelQueryCountAfter := db.DbStats.Query(queryExpvar).QueryCount.Value()
 	channelQueryErrorCountAfter := db.DbStats.Query(queryExpvar).QueryErrorCount.Value()
 
-	goassert.Equals(t, channelQueryCountBefore+3, channelQueryCountAfter)
-	goassert.Equals(t, channelQueryErrorCountBefore, channelQueryErrorCountAfter)
+	assert.Equal(t, channelQueryCountAfter, channelQueryCountBefore+3)
+	assert.Equal(t, channelQueryErrorCountAfter, channelQueryErrorCountBefore)
 
 	// Add some docs in different channels, to validate query handling when non-star channel docs are present
 	for i := 1; i <= 10; i++ {
@@ -190,14 +189,14 @@ func TestQuerySequencesStatsView(t *testing.T) {
 		docSeqMap["queryTestDocChanneled5"],
 	})
 	assert.NoError(t, queryErr, "Query error")
-	goassert.Equals(t, countQueryResults(results), 5)
+	assert.Equal(t, 5, countQueryResults(results))
 	closeErr = results.Close()
 	assert.NoError(t, closeErr, "Close error")
 
 	// Issue query with single key
 	results, queryErr = db.QuerySequences(base.TestCtx(t), []uint64{docSeqMap["queryTestDoc2"]})
 	assert.NoError(t, queryErr, "Query error")
-	goassert.Equals(t, countQueryResults(results), 1)
+	assert.Equal(t, 1, countQueryResults(results))
 	closeErr = results.Close()
 	assert.NoError(t, closeErr, "Close error")
 
@@ -205,7 +204,7 @@ func TestQuerySequencesStatsView(t *testing.T) {
 	// [*, 25] is sorted before ["ABC1", 11]
 	results, queryErr = db.QuerySequences(base.TestCtx(t), []uint64{100})
 	assert.NoError(t, queryErr, "Query error")
-	goassert.Equals(t, countQueryResults(results), 0)
+	assert.Equal(t, 0, countQueryResults(results))
 	closeErr = results.Close()
 	assert.NoError(t, closeErr, "Close error")
 }
@@ -241,21 +240,21 @@ func TestQuerySequencesStatsN1ql(t *testing.T) {
 		docSeqMap["queryTestDoc6"], docSeqMap["queryTestDoc8"],
 	})
 	assert.NoError(t, queryErr, "Query error")
-	goassert.Equals(t, countQueryResults(results), 4)
+	assert.Equal(t, 4, countQueryResults(results))
 	closeErr := results.Close()
 	assert.NoError(t, closeErr, "Close error")
 
 	// Issue query with single key
 	results, queryErr = db.QuerySequences(base.TestCtx(t), []uint64{docSeqMap["queryTestDoc2"]})
 	assert.NoError(t, queryErr, "Query error")
-	goassert.Equals(t, countQueryResults(results), 1)
+	assert.Equal(t, 1, countQueryResults(results))
 	closeErr = results.Close()
 	assert.NoError(t, closeErr, "Close error")
 
 	// Issue query with key outside keyset range
 	results, queryErr = db.QuerySequences(base.TestCtx(t), []uint64{100})
 	assert.NoError(t, queryErr, "Query error")
-	goassert.Equals(t, countQueryResults(results), 0)
+	assert.Equal(t, 0, countQueryResults(results))
 	closeErr = results.Close()
 	assert.NoError(t, closeErr, "Close error")
 
@@ -266,8 +265,8 @@ func TestQuerySequencesStatsN1ql(t *testing.T) {
 	channelQueryCountAfter := db.DbStats.Query(QueryTypeSequences).QueryCount.Value()
 	channelQueryErrorCountAfter := db.DbStats.Query(QueryTypeSequences).QueryErrorCount.Value()
 
-	goassert.Equals(t, channelQueryCountBefore+3, channelQueryCountAfter)
-	goassert.Equals(t, channelQueryErrorCountBefore, channelQueryErrorCountAfter)
+	assert.Equal(t, channelQueryCountAfter, channelQueryCountBefore+3)
+	assert.Equal(t, channelQueryErrorCountAfter, channelQueryErrorCountBefore)
 
 	// Add some docs in different channels, to validate query handling when non-star channel docs are present
 	for i := 1; i <= 10; i++ {
@@ -284,14 +283,14 @@ func TestQuerySequencesStatsN1ql(t *testing.T) {
 		docSeqMap["queryTestDocChanneled5"],
 	})
 	assert.NoError(t, queryErr, "Query error")
-	goassert.Equals(t, countQueryResults(results), 5)
+	assert.Equal(t, 5, countQueryResults(results))
 	closeErr = results.Close()
 	assert.NoError(t, closeErr, "Close error")
 
 	// Issue query with single key
 	results, queryErr = db.QuerySequences(base.TestCtx(t), []uint64{docSeqMap["queryTestDoc2"]})
 	assert.NoError(t, queryErr, "Query error")
-	goassert.Equals(t, countQueryResults(results), 1)
+	assert.Equal(t, 1, countQueryResults(results))
 	closeErr = results.Close()
 	assert.NoError(t, closeErr, "Close error")
 
@@ -299,7 +298,7 @@ func TestQuerySequencesStatsN1ql(t *testing.T) {
 	// [*, 25] is sorted before ["ABC1", 11]
 	results, queryErr = db.QuerySequences(base.TestCtx(t), []uint64{100})
 	assert.NoError(t, queryErr, "Query error")
-	goassert.Equals(t, countQueryResults(results), 0)
+	assert.Equal(t, 0, countQueryResults(results))
 	closeErr = results.Close()
 	assert.NoError(t, closeErr, "Close error")
 }

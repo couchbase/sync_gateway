@@ -12,7 +12,6 @@ import (
 	"sort"
 	"testing"
 
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -26,32 +25,32 @@ func TestSetFromArray(t *testing.T) {
 	}
 	for _, cas := range cases {
 		channels := SetFromArray(cas[0])
-		goassert.DeepEquals(t, channels, SetOf(cas[1]...))
+		assert.Equal(t, SetOf(cas[1]...), channels)
 	}
 }
 
 func TestSet(t *testing.T) {
 	set := SetFromArray(nil)
-	goassert.Equals(t, len(set), 0)
-	goassert.DeepEquals(t, set.ToArray(), []string{})
+	assert.Equal(t, 0, len(set))
+	assert.Equal(t, []string{}, set.ToArray())
 
 	set = SetFromArray([]string{})
-	goassert.Equals(t, len(set), 0)
+	assert.Equal(t, 0, len(set))
 
 	set = SetFromArray([]string{"foo"})
-	goassert.Equals(t, len(set), 1)
-	goassert.True(t, set.Contains("foo"))
-	goassert.False(t, set.Contains("bar"))
+	assert.Equal(t, 1, len(set))
+	assert.True(t, set.Contains("foo"))
+	assert.False(t, set.Contains("bar"))
 
 	values := []string{"bar", "foo", "zog"}
 	set = SetFromArray(values)
-	goassert.Equals(t, len(set), 3)
+	assert.Equal(t, 3, len(set))
 	asArray := set.ToArray()
 	sort.Strings(asArray)
-	goassert.DeepEquals(t, asArray, values)
+	assert.Equal(t, values, asArray)
 
 	set2 := set.copy()
-	goassert.DeepEquals(t, set2, set)
+	assert.Equal(t, set, set2)
 }
 
 func TestUnion(t *testing.T) {
@@ -59,12 +58,12 @@ func TestUnion(t *testing.T) {
 	empty := Set{}
 	set1 := SetOf("foo", "bar", "baz")
 	set2 := SetOf("bar", "block", "deny")
-	goassert.DeepEquals(t, set1.Union(empty), set1)
-	goassert.DeepEquals(t, empty.Union(set1), set1)
-	goassert.DeepEquals(t, set1.Union(nilSet), set1)
-	goassert.DeepEquals(t, nilSet.Union(set1), set1)
-	goassert.DeepEquals(t, nilSet.Union(nilSet), nilSet)
-	goassert.Equals(t, set1.Union(set2).String(), "{bar, baz, block, deny, foo}")
+	assert.Equal(t, set1, set1.Union(empty))
+	assert.Equal(t, set1, empty.Union(set1))
+	assert.Equal(t, set1, set1.Union(nilSet))
+	assert.Equal(t, set1, nilSet.Union(set1))
+	assert.Equal(t, nilSet, nilSet.Union(nilSet))
+	assert.Equal(t, "{bar, baz, block, deny, foo}", set1.Union(set2).String())
 }
 
 func TestUpdateSet(t *testing.T) {
@@ -72,12 +71,12 @@ func TestUpdateSet(t *testing.T) {
 	empty := Set{}
 	set1 := SetOf("foo", "bar", "baz")
 	set2 := SetOf("bar", "block", "deny")
-	goassert.DeepEquals(t, set1.Update(empty), set1)
-	goassert.DeepEquals(t, empty.Update(set1), set1)
-	goassert.DeepEquals(t, set1.Update(nilSet), set1)
-	goassert.DeepEquals(t, nilSet.Update(set1), set1)
-	goassert.DeepEquals(t, nilSet.Update(nilSet), nilSet)
-	goassert.Equals(t, set1.Update(set2).String(), "{bar, baz, block, deny, foo}")
+	assert.Equal(t, set1, set1.Update(empty))
+	assert.Equal(t, set1, empty.Update(set1))
+	assert.Equal(t, set1, set1.Update(nilSet))
+	assert.Equal(t, set1, nilSet.Update(set1))
+	assert.Equal(t, nilSet, nilSet.Update(nilSet))
+	assert.Equal(t, "{bar, baz, block, deny, foo}", set1.Update(set2).String())
 }
 
 func TestSetMarshal(t *testing.T) {
@@ -86,17 +85,17 @@ func TestSetMarshal(t *testing.T) {
 	}
 	bytes, err := JSONMarshal(str)
 	assert.NoError(t, err, "Marshal")
-	goassert.Equals(t, string(bytes), `{"Channels":null}`)
+	assert.Equal(t, `{"Channels":null}`, string(bytes))
 
 	str.Channels = SetOf()
 	bytes, err = JSONMarshal(str)
 	assert.NoError(t, err, "Marshal")
-	goassert.Equals(t, string(bytes), `{"Channels":[]}`)
+	assert.Equal(t, `{"Channels":[]}`, string(bytes))
 
 	str.Channels = SetOf("a", "b")
 	bytes, err = JSONMarshal(str)
 	assert.NoError(t, err, "Marshal")
-	goassert.Equals(t, string(bytes), `{"Channels":["a","b"]}`)
+	assert.Equal(t, `{"Channels":["a","b"]}`, string(bytes))
 }
 
 func BenchmarkSet_Union(b *testing.B) {
@@ -123,14 +122,14 @@ func TestSetUnmarshal(t *testing.T) {
 	}
 	err := JSONUnmarshal([]byte(`{"channels":null}`), &str)
 	assert.NoError(t, err, "Unmarshal")
-	goassert.DeepEquals(t, str.Channels, Set(nil))
+	assert.Equal(t, Set(nil), str.Channels)
 
 	err = JSONUnmarshal([]byte(`{"channels":[]}`), &str)
 	assert.NoError(t, err, "Unmarshal")
-	goassert.DeepEquals(t, str.Channels, SetOf())
+	assert.Equal(t, SetOf(), str.Channels)
 
 	err = JSONUnmarshal([]byte(`{"channels":["foo"]}`), &str)
 	assert.NoError(t, err, "Unmarshal")
-	goassert.DeepEquals(t, str.Channels.ToArray(), []string{"foo"})
+	assert.Equal(t, []string{"foo"}, str.Channels.ToArray())
 
 }

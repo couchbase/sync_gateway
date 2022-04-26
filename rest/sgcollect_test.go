@@ -19,7 +19,6 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -28,7 +27,7 @@ func TestSgcollectFilename(t *testing.T) {
 	filename := sgcollectFilename()
 
 	// Check it doesn't have forbidden chars
-	goassert.False(t, strings.ContainsAny(filename, "\\/:*?\"<>|"))
+	assert.False(t, strings.ContainsAny(filename, "\\/:*?\"<>|"))
 
 	pattern := `^sgcollectinfo\-\d{4}\-\d{2}\-\d{2}t\d{6}\-sga?@(\d{1,3}\.){4}zip$`
 	matched, err := regexp.Match(pattern, []byte(filename))
@@ -215,7 +214,7 @@ func TestSgcollectOptionsArgs(t *testing.T) {
 			_ = test.options.Validate()
 
 			args := test.options.Args()
-			goassert.DeepEquals(ts, args, test.expectedArgs)
+			assert.Equal(ts, test.expectedArgs, args)
 		})
 	}
 }

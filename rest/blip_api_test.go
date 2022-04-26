@@ -28,7 +28,6 @@ import (
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -58,16 +57,16 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	changesRequest.SetProfile("changes")
 	changesRequest.SetBody([]byte(`[["1", "foo", "1-abc", false]]`)) // [sequence, docID, revID]
 	sent := bt.sender.Send(changesRequest)
-	goassert.True(t, sent)
+	assert.True(t, sent)
 	changesResponse := changesRequest.Response()
-	goassert.Equals(t, changesResponse.SerialNumber(), changesRequest.SerialNumber())
+	assert.Equal(t, changesRequest.SerialNumber(), changesResponse.SerialNumber())
 	body, err := changesResponse.Body()
 	assert.NoError(t, err, "Error reading changes response body")
 	err = base.JSONUnmarshal(body, &changeList)
 	assert.NoError(t, err, "Error unmarshalling response body")
-	goassert.Equals(t, len(changeList), 1) // Should be 1 row, corresponding to the single doc that was queried in changes
+	assert.Equal(t, 1, len(changeList)) // Should be 1 row, corresponding to the single doc that was queried in changes
 	changeRow := changeList[0]
-	goassert.Equals(t, len(changeRow), 0) // Should be empty, meaning the server is saying it doesn't have the revision yet
+	assert.Equal(t, 0, len(changeRow)) // Should be empty, meaning the server is saying it doesn't have the revision yet
 
 	// Send the doc revision in a rev request
 	_, _, revResponse, err := bt.SendRev(
@@ -87,17 +86,17 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	changesRequest2.SetProfile("changes")
 	changesRequest2.SetBody([]byte(`[["2", "foo", "2-xyz", false]]`)) // [sequence, docID, revID]
 	sent2 := bt.sender.Send(changesRequest2)
-	goassert.True(t, sent2)
+	assert.True(t, sent2)
 	changesResponse2 := changesRequest2.Response()
-	goassert.Equals(t, changesResponse2.SerialNumber(), changesRequest2.SerialNumber())
+	assert.Equal(t, changesRequest2.SerialNumber(), changesResponse2.SerialNumber())
 	body2, err := changesResponse2.Body()
 	assert.NoError(t, err, "Error reading changes response body")
 	err = base.JSONUnmarshal(body2, &changeList2)
 	assert.NoError(t, err, "Error unmarshalling response body")
-	goassert.Equals(t, len(changeList2), 1) // Should be 1 row, corresponding to the single doc that was queried in changes
+	assert.Equal(t, 1, len(changeList2)) // Should be 1 row, corresponding to the single doc that was queried in changes
 	changeRow2 := changeList2[0]
-	goassert.Equals(t, len(changeRow2), 1) // Should have 1 item in row, which is the rev id of the previous revision pushed
-	goassert.Equals(t, changeRow2[0], "1-abc")
+	assert.Equal(t, 1, len(changeRow2)) // Should have 1 item in row, which is the rev id of the previous revision pushed
+	assert.Equal(t, "1-abc", changeRow2[0])
 
 	// Call subChanges api and make sure we get expected changes back
 	receivedChangesRequestWg := sync.WaitGroup{}
@@ -115,12 +114,12 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 			changeListReceived := [][]interface{}{}
 			err = base.JSONUnmarshal(body, &changeListReceived)
 			assert.NoError(t, err, "Error unmarshalling changes received")
-			goassert.Equals(t, len(changeListReceived), 1)
+			assert.Equal(t, 1, len(changeListReceived))
 			change := changeListReceived[0] // [1,"foo","1-abc"]
-			goassert.Equals(t, len(change), 3)
-			goassert.Equals(t, change[0].(float64), float64(1)) // Expect sequence to be 1, since first item in DB
-			goassert.Equals(t, change[1], "foo")                // Doc id of pushed rev
-			goassert.Equals(t, change[2], "1-abc")              // Rev id of pushed rev
+			assert.Equal(t, 3, len(change))
+			assert.Equal(t, float64(1), change[0].(float64)) // Expect sequence to be 1, since first item in DB
+			assert.Equal(t, "foo", change[1])                // Doc id of pushed rev
+			assert.Equal(t, "1-abc", change[2])              // Rev id of pushed rev
 
 		}
 
@@ -142,10 +141,10 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "true"
 	sent = bt.sender.Send(subChangesRequest)
-	goassert.True(t, sent)
+	assert.True(t, sent)
 	receivedChangesRequestWg.Add(1)
 	subChangesResponse := subChangesRequest.Response()
-	goassert.Equals(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
+	assert.Equal(t, subChangesRequest.SerialNumber(), subChangesResponse.SerialNumber())
 
 	// Also expect the "changes" profile handler above to be called back again with an empty request that
 	// will be ignored since body will be "null"
@@ -192,12 +191,12 @@ func TestContinuousChangesSubscription(t *testing.T) {
 
 				// The change should have three items in the array
 				// [1,"foo","1-abc"]
-				goassert.Equals(t, len(change), 3)
+				assert.Equal(t, 3, len(change))
 
 				// Make sure sequence numbers are monotonically increasing
 				receivedSeq, ok := change[0].(float64)
 				if ok {
-					goassert.True(t, receivedSeq > lastReceivedSeq)
+					assert.True(t, receivedSeq > lastReceivedSeq)
 					lastReceivedSeq = receivedSeq
 				} else {
 					nonIntegerSequenceReceived = true
@@ -206,8 +205,8 @@ func TestContinuousChangesSubscription(t *testing.T) {
 
 				// Verify doc id and rev id have expected vals
 				docId := change[1].(string)
-				goassert.True(t, strings.HasPrefix(docId, "foo"))
-				goassert.Equals(t, change[2], "1-abc") // Rev id of pushed rev
+				assert.True(t, strings.HasPrefix(docId, "foo"))
+				assert.Equal(t, "1-abc", change[2]) // Rev id of pushed rev
 				changeCount++
 				receivedChangesWg.Done()
 			}
@@ -235,9 +234,9 @@ func TestContinuousChangesSubscription(t *testing.T) {
 	subChangesRequest.Properties["batch"] = "10" // default batch size is 200, lower this to 10 to make sure we get multiple batches
 	subChangesRequest.SetCompressed(false)
 	sent := bt.sender.Send(subChangesRequest)
-	goassert.True(t, sent)
+	assert.True(t, sent)
 	subChangesResponse := subChangesRequest.Response()
-	goassert.Equals(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
+	assert.Equal(t, subChangesRequest.SerialNumber(), subChangesResponse.SerialNumber())
 
 	for i := 1; i < 1500; i++ {
 		// // Add a change: Send an unsolicited doc revision in a rev request
@@ -262,7 +261,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 
 	// Since batch size was set to 10, and 15 docs were added, expect at _least_ 2 batches
 	numBatchesReceivedSnapshot := atomic.LoadInt32(&numbatchesReceived)
-	goassert.True(t, numBatchesReceivedSnapshot >= 2)
+	assert.True(t, numBatchesReceivedSnapshot >= 2)
 
 	assert.False(t, nonIntegerSequenceReceived, "Unexpected non-integer sequence seen.")
 
@@ -314,12 +313,12 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 
 				// The change should have three items in the array
 				// [1,"foo","1-abc"]
-				goassert.Equals(t, len(change), 3)
+				assert.Equal(t, 3, len(change))
 
 				// Make sure sequence numbers are monotonically increasing
 				receivedSeq, ok := change[0].(float64)
 				if ok {
-					goassert.True(t, receivedSeq > lastReceivedSeq)
+					assert.True(t, receivedSeq > lastReceivedSeq)
 					lastReceivedSeq = receivedSeq
 				} else {
 					nonIntegerSequenceReceived = true
@@ -328,8 +327,8 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 
 				// Verify doc id and rev id have expected vals
 				docId := change[1].(string)
-				goassert.True(t, strings.HasPrefix(docId, "preOneShot"))
-				goassert.Equals(t, change[2], "1-abc") // Rev id of pushed rev
+				assert.True(t, strings.HasPrefix(docId, "preOneShot"))
+				assert.Equal(t, "1-abc", change[2]) // Rev id of pushed rev
 				docIdsReceived[docId] = true
 				receivedChangesWg.Done()
 			}
@@ -381,9 +380,9 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 	subChangesRequest.Properties["batch"] = "10" // default batch size is 200, lower this to 10 to make sure we get multiple batches
 	subChangesRequest.SetCompressed(false)
 	sent := bt.sender.Send(subChangesRequest)
-	goassert.True(t, sent)
+	assert.True(t, sent)
 	subChangesResponse := subChangesRequest.Response()
-	goassert.Equals(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
+	assert.Equal(t, subChangesRequest.SerialNumber(), subChangesResponse.SerialNumber())
 
 	// Wait until all expected changes are received by change handler
 	// receivedChangesWg.Wait()
@@ -479,12 +478,12 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 
 				// The change should have three items in the array
 				// [1,"foo","1-abc"]
-				goassert.Equals(t, len(change), 3)
+				assert.Equal(t, 3, len(change))
 
 				// Make sure sequence numbers are monotonically increasing
 				receivedSeq, ok := change[0].(float64)
 				if ok {
-					goassert.True(t, receivedSeq > lastReceivedSeq)
+					assert.True(t, receivedSeq > lastReceivedSeq)
 					lastReceivedSeq = receivedSeq
 				} else {
 					nonIntegerSequenceReceived = true
@@ -493,8 +492,8 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 
 				// Verify doc id and rev id have expected vals
 				docId := change[1].(string)
-				goassert.True(t, strings.HasPrefix(docId, "docIDFiltered"))
-				goassert.Equals(t, change[2], "1-abc") // Rev id of pushed rev
+				assert.True(t, strings.HasPrefix(docId, "docIDFiltered"))
+				assert.Equal(t, "1-abc", change[2]) // Rev id of pushed rev
 				log.Printf("Changes got docID: %s", docId)
 
 				// Ensure we only receive expected docs
@@ -566,9 +565,9 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 	subChangesRequest.SetBody(bodyBytes)
 
 	sent := bt.sender.Send(subChangesRequest)
-	goassert.True(t, sent)
+	assert.True(t, sent)
 	subChangesResponse := subChangesRequest.Response()
-	goassert.Equals(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
+	assert.Equal(t, subChangesRequest.SerialNumber(), subChangesResponse.SerialNumber())
 
 	// Wait until all expected changes are received by change handler
 	// receivedChangesWg.Wait()
@@ -577,7 +576,7 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 
 	// Since batch size was set to 10, and 15 docs were added, expect at _least_ 2 batches
 	numBatchesReceivedSnapshot := atomic.LoadInt32(&numbatchesReceived)
-	goassert.True(t, numBatchesReceivedSnapshot >= 2)
+	assert.True(t, numBatchesReceivedSnapshot >= 2)
 
 	// Validate all expected documents were received.
 	for docID, received := range docIDsReceived {
@@ -587,7 +586,7 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 	}
 
 	// Validate that the 'caught up' message was sent
-	goassert.True(t, receivedCaughtUpChange)
+	assert.True(t, receivedCaughtUpChange)
 
 	// Validate integer sequences
 	assert.False(t, nonIntegerSequenceReceived, "Unexpected non-integer sequence seen.")
@@ -623,7 +622,7 @@ func TestProposedChangesNoConflictsMode(t *testing.T) {
 `
 	proposeChangesRequest.SetBody([]byte(changesBody))
 	sent := bt.sender.Send(proposeChangesRequest)
-	goassert.True(t, sent)
+	assert.True(t, sent)
 	proposeChangesResponse := proposeChangesRequest.Response()
 	body, err := proposeChangesResponse.Body()
 	assert.NoError(t, err, "Error getting changes response body")
@@ -634,7 +633,7 @@ func TestProposedChangesNoConflictsMode(t *testing.T) {
 
 	// The common case of an empty array response tells the sender to send all of the proposed revisions,
 	// so the changeList returned by Sync Gateway is expected to be empty
-	goassert.Equals(t, len(changeList), 0)
+	assert.Equal(t, 0, len(changeList))
 
 }
 
@@ -739,7 +738,7 @@ func TestProposedChangesIncludeConflictingRev(t *testing.T) {
 
 	proposeChangesRequest.SetBody(proposeChangesBody)
 	sent := bt.sender.Send(proposeChangesRequest)
-	goassert.True(t, sent)
+	assert.True(t, sent)
 	proposeChangesResponse := proposeChangesRequest.Response()
 	bodyReader, err := proposeChangesResponse.BodyReader()
 	assert.NoError(t, err, "Error getting changes response body reader")
@@ -797,13 +796,13 @@ func TestPublicPortAuthentication(t *testing.T) {
 
 	// Assert that user1 received a single expected change
 	changesChannelUser1 := btUser1.WaitForNumChanges(1)
-	goassert.Equals(t, len(changesChannelUser1), 1)
+	assert.Equal(t, 1, len(changesChannelUser1))
 	change := changesChannelUser1[0]
 	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: base.BoolPtr(false)})
 
 	// Assert that user2 received user1's change as well as it's own change
 	changesChannelUser2 := btUser2.WaitForNumChanges(2)
-	goassert.Equals(t, len(changesChannelUser2), 2)
+	assert.Equal(t, 2, len(changesChannelUser2))
 	change = changesChannelUser2[0]
 	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: base.BoolPtr(false)})
 
@@ -928,12 +927,12 @@ function(doc, oldDoc) {
 
 				// The change should have three items in the array
 				// [1,"foo","1-abc"]
-				goassert.Equals(t, len(change), 3)
+				assert.Equal(t, 3, len(change))
 
 				// Make sure sequence numbers are monotonically increasing
 				receivedSeq, ok := change[0].(float64)
 				if ok {
-					goassert.True(t, receivedSeq > lastReceivedSeq)
+					assert.True(t, receivedSeq > lastReceivedSeq)
 					lastReceivedSeq = receivedSeq
 				} else {
 					nonIntegerSequenceReceived = true
@@ -981,9 +980,9 @@ function(doc, oldDoc) {
 	subChangesRequest.Properties["batch"] = "10" // default batch size is 200, lower this to 10 to make sure we get multiple batches
 	subChangesRequest.SetCompressed(false)
 	sent := bt.sender.Send(subChangesRequest)
-	goassert.True(t, sent)
+	assert.True(t, sent)
 	subChangesResponse := subChangesRequest.Response()
-	goassert.Equals(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
+	assert.Equal(t, subChangesRequest.SerialNumber(), subChangesResponse.SerialNumber())
 
 	// Write a doc that grants user1 access to channel ABC, and doc is also in channel ABC
 	receivedChangesWg.Add(1)
@@ -1054,12 +1053,12 @@ function(doc, oldDoc) {
 
 				// The change should have three items in the array
 				// [1,"foo","1-abc"]
-				goassert.Equals(t, len(change), 3)
+				assert.Equal(t, 3, len(change))
 
 				// Make sure sequence numbers are monotonically increasing
 				receivedSeq, ok := change[0].(float64)
 				if ok {
-					goassert.True(t, receivedSeq > lastReceivedSeq)
+					assert.True(t, receivedSeq > lastReceivedSeq)
 					lastReceivedSeq = receivedSeq
 				} else {
 					nonIntegerSequenceReceived = true
@@ -1109,9 +1108,9 @@ function(doc, oldDoc) {
 	subChangesRequest.Properties["batch"] = "10" // default batch size is 200, lower this to 10 to make sure we get multiple batches
 	subChangesRequest.SetCompressed(false)
 	sent := bt.sender.Send(subChangesRequest)
-	goassert.True(t, sent)
+	assert.True(t, sent)
 	subChangesResponse := subChangesRequest.Response()
-	goassert.Equals(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
+	assert.Equal(t, subChangesRequest.SerialNumber(), subChangesResponse.SerialNumber())
 
 	// Simulate sending docs from the client
 	receivedChangesWg.Add(100)
@@ -1163,9 +1162,9 @@ func TestBlipSendAndGetRev(t *testing.T) {
 
 	// Send non-deleted rev
 	sent, _, resp, err := bt.SendRev("sendAndGetRev", "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{})
-	goassert.True(t, sent)
+	assert.True(t, sent)
 	assert.NoError(t, err)
-	goassert.Equals(t, resp.Properties["Error-Code"], "")
+	assert.Equal(t, "", resp.Properties["Error-Code"])
 
 	// Get non-deleted rev
 	response := bt.restTester.SendAdminRequest("GET", "/db/sendAndGetRev?rev=1-abc", "")
@@ -1173,14 +1172,14 @@ func TestBlipSendAndGetRev(t *testing.T) {
 	var responseBody RestDocument
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody), "Error unmarshalling GET doc response")
 	_, ok := responseBody[db.BodyDeleted]
-	goassert.False(t, ok)
+	assert.False(t, ok)
 
 	// Tombstone the document
 	history := []string{"1-abc"}
 	sent, _, resp, err = bt.SendRevWithHistory("sendAndGetRev", "2-bcd", history, []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{"deleted": "true"})
-	goassert.True(t, sent)
+	assert.True(t, sent)
 	assert.NoError(t, err)
-	goassert.Equals(t, resp.Properties["Error-Code"], "")
+	assert.Equal(t, "", resp.Properties["Error-Code"])
 
 	// Get the tombstoned document
 	response = bt.restTester.SendAdminRequest("GET", "/db/sendAndGetRev?rev=2-bcd", "")
@@ -1188,8 +1187,8 @@ func TestBlipSendAndGetRev(t *testing.T) {
 	responseBody = RestDocument{}
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody), "Error unmarshalling GET doc response")
 	deletedValue, deletedOK := responseBody[db.BodyDeleted].(bool)
-	goassert.True(t, deletedOK)
-	goassert.True(t, deletedValue)
+	assert.True(t, deletedOK)
+	assert.True(t, deletedValue)
 }
 
 // Test send and retrieval of a doc with a large numeric value.  Ensure proper large number handling.
@@ -1210,9 +1209,9 @@ func TestBlipSendAndGetLargeNumberRev(t *testing.T) {
 
 	// Send non-deleted rev
 	sent, _, resp, err := bt.SendRev("largeNumberRev", "1-abc", []byte(`{"key": "val", "largeNumber":9223372036854775807, "channels": ["user1"]}`), blip.Properties{})
-	goassert.True(t, sent)
+	assert.True(t, sent)
 	assert.NoError(t, err)
-	goassert.Equals(t, resp.Properties["Error-Code"], "")
+	assert.Equal(t, "", resp.Properties["Error-Code"])
 
 	// Get non-deleted rev
 	response := bt.restTester.SendAdminRequest("GET", "/db/largeNumberRev?rev=1-abc", "")
@@ -1267,28 +1266,28 @@ func TestBlipSetCheckpoint(t *testing.T) {
 	// Create new checkpoint
 	checkpointBody := []byte(`{"client_seq":"1000"}`)
 	sent, _, resp, err := bt.SetCheckpoint("testclient", "", checkpointBody)
-	goassert.True(t, sent)
+	assert.True(t, sent)
 	assert.NoError(t, err)
-	goassert.Equals(t, resp.Properties["Error-Code"], "")
+	assert.Equal(t, "", resp.Properties["Error-Code"])
 
 	checkpointRev := resp.Rev()
-	goassert.Equals(t, checkpointRev, "0-1")
+	assert.Equal(t, "0-1", checkpointRev)
 
 	// Validate checkpoint existence in bucket (local file name "/" needs to be URL encoded as %252F)
 	response := rt.SendAdminRequest("GET", "/db/_local/checkpoint%252Ftestclient", "")
 	assertStatus(t, response, 200)
 	var responseBody map[string]interface{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &responseBody)
-	goassert.Equals(t, responseBody["client_seq"], "1000")
+	assert.Equal(t, "1000", responseBody["client_seq"])
 
 	// Attempt to update the checkpoint with previous rev
 	checkpointBody = []byte(`{"client_seq":"1005"}`)
 	sent, _, resp, err = bt.SetCheckpoint("testclient", checkpointRev, checkpointBody)
-	goassert.True(t, sent)
+	assert.True(t, sent)
 	assert.NoError(t, err)
-	goassert.Equals(t, resp.Properties["Error-Code"], "")
+	assert.Equal(t, "", resp.Properties["Error-Code"])
 	checkpointRev = resp.Rev()
-	goassert.Equals(t, checkpointRev, "0-2")
+	assert.Equal(t, "0-2", checkpointRev)
 }
 
 // Test no-conflicts mode replication (proposeChanges endpoint)
@@ -1358,7 +1357,7 @@ func TestReloadUser(t *testing.T) {
 	addRevResponseBody, err := addRevResponse.Body()
 	assert.NoError(t, err, "Unexpected error")
 	errorCode, hasErrorCode := addRevResponse.Properties["Error-Code"]
-	goassert.False(t, hasErrorCode)
+	assert.False(t, hasErrorCode)
 	if hasErrorCode {
 		t.Fatalf("Unexpected error sending revision.  Error code: %v.  Response body: %s", errorCode, addRevResponseBody)
 	}
@@ -1407,7 +1406,7 @@ func TestAccessGrantViaSyncFunction(t *testing.T) {
 	// Make sure we can see it by getting changes
 	changes := bt.WaitForNumChanges(2)
 	log.Printf("changes: %+v", changes)
-	goassert.Equals(t, len(changes), 2)
+	assert.Equal(t, 2, len(changes))
 
 }
 
@@ -1447,7 +1446,7 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 
 	// Make sure we can see both docs in the changes
 	changes := bt.WaitForNumChanges(2)
-	goassert.Equals(t, len(changes), 2)
+	assert.Equal(t, 2, len(changes))
 
 }
 
@@ -1478,8 +1477,8 @@ func TestCheckpoint(t *testing.T) {
 
 	// Expect to get no checkpoint
 	errorcode, ok := checkpointResponse.Properties["Error-Code"]
-	goassert.True(t, ok)
-	goassert.Equals(t, errorcode, "404")
+	assert.True(t, ok)
+	assert.Equal(t, "404", errorcode)
 
 	// Set a checkpoint
 	requestSetCheckpoint := blip.NewRequest()
@@ -1511,8 +1510,8 @@ func TestCheckpoint(t *testing.T) {
 	body, err = checkpointResponse.Body()
 	assert.NoError(t, err, "Unexpected error")
 	log.Printf("body: %s", body)
-	goassert.True(t, strings.Contains(string(body), "Key"))
-	goassert.True(t, strings.Contains(string(body), "Value"))
+	assert.True(t, strings.Contains(string(body), "Key"))
+	assert.True(t, strings.Contains(string(body), "Value"))
 
 }
 
@@ -1557,12 +1556,12 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 	}
 	getAttachmentResponse := getAttachmentRequest.Response()
 	errorCode, hasErrorCode := getAttachmentResponse.Properties["Error-Code"]
-	goassert.Equals(t, errorCode, "403") // "Attachment's doc not being synced"
-	goassert.True(t, hasErrorCode)
+	assert.Equal(t, "403", errorCode) // "Attachment's doc not being synced"
+	assert.True(t, hasErrorCode)
 
 	// Get the attachment via REST api and make sure it matches the attachment pushed earlier
 	response := bt.restTester.SendAdminRequest("GET", fmt.Sprintf("/db/%s/%s", input.docId, input.attachmentName), ``)
-	goassert.Equals(t, response.Body.String(), input.attachmentBody)
+	assert.Equal(t, input.attachmentBody, response.Body.String())
 
 }
 
@@ -1592,7 +1591,7 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 		attachmentDigest: digest,
 	}
 	sent, _, _ := bt.SendRevWithAttachment(input)
-	goassert.True(t, sent)
+	assert.True(t, sent)
 
 	// Get all docs and attachment via subChanges request
 	allDocs, ok := bt.WaitForNumDocsViaChanges(1)
@@ -1603,18 +1602,18 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 	retrievedDoc := allDocs[input.docId]
 
 	// doc assertions
-	goassert.Equals(t, retrievedDoc.ID(), input.docId)
-	goassert.Equals(t, retrievedDoc.RevID(), input.revId)
+	assert.Equal(t, input.docId, retrievedDoc.ID())
+	assert.Equal(t, input.revId, retrievedDoc.RevID())
 
 	// attachment assertions
 	attachments, err := retrievedDoc.GetAttachments()
-	goassert.True(t, err == nil)
-	goassert.Equals(t, len(attachments), 1)
+	assert.True(t, err == nil)
+	assert.Equal(t, 1, len(attachments))
 	retrievedAttachment := attachments[input.attachmentName]
 	require.NotNil(t, retrievedAttachment)
-	goassert.Equals(t, string(retrievedAttachment.Data), input.attachmentBody)
-	goassert.Equals(t, retrievedAttachment.Length, len(attachmentBody))
-	goassert.Equals(t, input.attachmentDigest, retrievedAttachment.Digest)
+	assert.Equal(t, input.attachmentBody, string(retrievedAttachment.Data))
+	assert.Equal(t, len(attachmentBody), retrievedAttachment.Length)
+	assert.Equal(t, retrievedAttachment.Digest, input.attachmentDigest)
 
 }
 
@@ -1726,18 +1725,18 @@ func TestPutInvalidRevSyncFnReject(t *testing.T) {
 	revRequest.Properties["deleted"] = "false"
 	revRequest.SetBody([]byte(`{"key": "val", "channels": ["CNN"]}`))
 	sent := bt.sender.Send(revRequest)
-	goassert.True(t, sent)
+	assert.True(t, sent)
 
 	revResponse := revRequest.Response()
 
 	// Since doc is rejected by sync function, expect a 403 error
 	errorCode, hasErrorCode := revResponse.Properties["Error-Code"]
-	goassert.True(t, hasErrorCode)
-	goassert.Equals(t, errorCode, "403")
+	assert.True(t, hasErrorCode)
+	assert.Equal(t, "403", errorCode)
 
 	// Make sure that a one-off GetChanges() returns no documents
 	changes := bt.GetChanges()
-	goassert.Equals(t, len(changes), 0)
+	assert.Equal(t, 0, len(changes))
 
 }
 
@@ -1763,19 +1762,19 @@ func TestPutInvalidRevMalformedBody(t *testing.T) {
 	revRequest.SetBody([]byte(`{"key": "val", "channels": [" MALFORMED JSON DOC`))
 
 	sent := bt.sender.Send(revRequest)
-	goassert.True(t, sent)
+	assert.True(t, sent)
 
 	revResponse := revRequest.Response()
 
 	// Since doc is rejected by sync function, expect a 403 error
 	errorCode, hasErrorCode := revResponse.Properties["Error-Code"]
-	goassert.True(t, hasErrorCode)
+	assert.True(t, hasErrorCode)
 	// FIXME: This used to check for error 500 -- No longer does readJSON in handleRev so fails at different point
-	goassert.Equals(t, errorCode, "400")
+	assert.Equal(t, "400", errorCode)
 
 	// Make sure that a one-off GetChanges() returns no documents
 	changes := bt.GetChanges()
-	goassert.Equals(t, len(changes), 0)
+	assert.Equal(t, 0, len(changes))
 
 }
 
@@ -1793,19 +1792,19 @@ func TestPutRevNoConflictsMode(t *testing.T) {
 	defer bt.Close()
 
 	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val"}`), blip.Properties{})
-	goassert.True(t, sent)
-	assert.NoError(t, err)                                // no error
-	goassert.Equals(t, resp.Properties["Error-Code"], "") // no error
+	assert.True(t, sent)
+	assert.NoError(t, err)                             // no error
+	assert.Equal(t, "", resp.Properties["Error-Code"]) // no error
 
 	sent, _, resp, err = bt.SendRev("foo", "1-def", []byte(`{"key": "val"}`), blip.Properties{"noconflicts": "true"})
-	goassert.True(t, sent)
-	goassert.NotEquals(t, err, nil)                          // conflict error
-	goassert.Equals(t, resp.Properties["Error-Code"], "409") // conflict
+	assert.True(t, sent)
+	assert.NotEqual(t, nil, err)                          // conflict error
+	assert.Equal(t, "409", resp.Properties["Error-Code"]) // conflict
 
 	sent, _, resp, err = bt.SendRev("foo", "1-ghi", []byte(`{"key": "val"}`), blip.Properties{"noconflicts": "false"})
-	goassert.True(t, sent)
-	goassert.NotEquals(t, err, nil)                          // conflict error
-	goassert.Equals(t, resp.Properties["Error-Code"], "409") // conflict
+	assert.True(t, sent)
+	assert.NotEqual(t, nil, err)                          // conflict error
+	assert.Equal(t, "409", resp.Properties["Error-Code"]) // conflict
 
 }
 
@@ -1823,19 +1822,19 @@ func TestPutRevConflictsMode(t *testing.T) {
 	defer bt.Close()
 
 	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val"}`), blip.Properties{})
-	goassert.True(t, sent)
-	assert.NoError(t, err)                                // no error
-	goassert.Equals(t, resp.Properties["Error-Code"], "") // no error
+	assert.True(t, sent)
+	assert.NoError(t, err)                             // no error
+	assert.Equal(t, "", resp.Properties["Error-Code"]) // no error
 
 	sent, _, resp, err = bt.SendRev("foo", "1-def", []byte(`{"key": "val"}`), blip.Properties{"noconflicts": "false"})
-	goassert.True(t, sent)
-	assert.NoError(t, err)                                // no error
-	goassert.Equals(t, resp.Properties["Error-Code"], "") // no error
+	assert.True(t, sent)
+	assert.NoError(t, err)                             // no error
+	assert.Equal(t, "", resp.Properties["Error-Code"]) // no error
 
 	sent, _, resp, err = bt.SendRev("foo", "1-ghi", []byte(`{"key": "val"}`), blip.Properties{"noconflicts": "true"})
-	goassert.True(t, sent)
-	goassert.NotEquals(t, err, nil)                          // conflict error
-	goassert.Equals(t, resp.Properties["Error-Code"], "409") // conflict
+	assert.True(t, sent)
+	assert.NotEqual(t, nil, err)                          // conflict error
+	assert.Equal(t, "409", resp.Properties["Error-Code"]) // conflict
 
 }
 
@@ -1963,7 +1962,7 @@ func TestMissingNoRev(t *testing.T) {
 		docId := fmt.Sprintf("doc-%d", i)
 		docRev := fmt.Sprintf("1-abc%d", i)
 		sent, _, resp, err := bt.SendRev(docId, docRev, []byte(`{"key": "val", "channels": ["ABC"]}`), blip.Properties{})
-		goassert.True(t, sent)
+		assert.True(t, sent)
 		log.Printf("resp: %v, err: %v", resp, err)
 	}
 

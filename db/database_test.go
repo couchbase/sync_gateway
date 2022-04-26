@@ -151,7 +151,7 @@ func assertHTTPError(t *testing.T, err error, status int) {
 	if !ok {
 		goassert.Errorf(t, "assertHTTPError: Expected an HTTP %d; got error %T %v", status, err, err)
 	} else {
-		goassert.Equals(t, httpErr.Status, status)
+		assert.Equal(t, status, httpErr.Status)
 	}
 }
 
@@ -169,7 +169,7 @@ func TestDatabase(t *testing.T) {
 	body[BodyId] = doc.ID
 	body[BodyRev] = rev1id
 	assert.NoError(t, err, "Couldn't create document")
-	goassert.Equals(t, rev1id, "1-cb0c9a22be0e5a1b01084ec019defa81")
+	assert.Equal(t, "1-cb0c9a22be0e5a1b01084ec019defa81", rev1id)
 
 	log.Printf("Create rev 2...")
 	body["key1"] = "new value"
@@ -178,7 +178,7 @@ func TestDatabase(t *testing.T) {
 	body[BodyId] = "doc1"
 	body[BodyRev] = rev2id
 	assert.NoError(t, err, "Couldn't update document")
-	goassert.Equals(t, rev2id, "2-488724414d0ed6b398d6d2aeb228d797")
+	assert.Equal(t, "2-488724414d0ed6b398d6d2aeb228d797", rev2id)
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc...")
@@ -199,37 +199,37 @@ func TestDatabase(t *testing.T) {
 
 	gotbody, err = db.Get1xRevBody("doc1", "bogusrev", false, nil)
 	status, _ := base.ErrorAsHTTPStatus(err)
-	goassert.Equals(t, status, 404)
+	assert.Equal(t, 404, status)
 
 	// Test the _revisions property:
 	log.Printf("Check _revisions...")
 	gotbody, err = db.Get1xRevBody("doc1", rev2id, true, nil)
 	revisions := gotbody[BodyRevisions].(Revisions)
-	goassert.Equals(t, revisions[RevisionsStart], 2)
-	goassert.DeepEquals(t, revisions[RevisionsIds],
-		[]string{"488724414d0ed6b398d6d2aeb228d797",
-			"cb0c9a22be0e5a1b01084ec019defa81"})
+	assert.Equal(t, 2, revisions[RevisionsStart])
+	assert.Equal(t, []string{"488724414d0ed6b398d6d2aeb228d797",
+		"cb0c9a22be0e5a1b01084ec019defa81"}, revisions[RevisionsIds])
 
 	// Test RevDiff:
 	log.Printf("Check RevDiff...")
 	missing, possible := db.RevDiff("doc1",
 		[]string{"1-cb0c9a22be0e5a1b01084ec019defa81",
 			"2-488724414d0ed6b398d6d2aeb228d797"})
-	goassert.True(t, missing == nil)
-	goassert.True(t, possible == nil)
+	assert.True(t, missing == nil)
+	assert.True(t, possible == nil)
 
 	missing, possible = db.RevDiff("doc1",
 		[]string{"1-cb0c9a22be0e5a1b01084ec019defa81",
 			"3-foo"})
-	goassert.DeepEquals(t, missing, []string{"3-foo"})
-	goassert.DeepEquals(t, possible, []string{"2-488724414d0ed6b398d6d2aeb228d797"})
+	assert.Equal(t, []string{"3-foo"}, missing)
+	assert.Equal(t, []string{"2-488724414d0ed6b398d6d2aeb228d797"}, possible)
 
 	missing, possible = db.RevDiff("nosuchdoc",
 		[]string{"1-cb0c9a22be0e5a1b01084ec019defa81",
 			"3-foo"})
-	goassert.DeepEquals(t, missing, []string{"1-cb0c9a22be0e5a1b01084ec019defa81",
-		"3-foo"})
-	goassert.True(t, possible == nil)
+	assert.Equal(t, []string{"1-cb0c9a22be0e5a1b01084ec019defa81",
+		"3-foo"}, missing)
+
+	assert.True(t, possible == nil)
 
 	// Test PutExistingRev:
 	log.Printf("Check PutExistingRev...")
@@ -277,7 +277,7 @@ func TestGetDeleted(t *testing.T) {
 	// Get the raw doc and make sure the sync data has the current revision
 	doc, err := db.GetDocument(base.TestCtx(t), "doc1", DocUnmarshalAll)
 	assert.NoError(t, err, "Err getting doc")
-	goassert.Equals(t, doc.SyncData.CurrentRev, rev2id)
+	assert.Equal(t, rev2id, doc.SyncData.CurrentRev)
 
 	// Try again but with a user who doesn't have access to this revision (see #179)
 	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
@@ -364,7 +364,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 			RevisionsStart: 2,
 			RevisionsIds:   []string{rev2digest, rev1digest}},
 	}
-	goassert.DeepEquals(t, body, expectedResult)
+	assert.Equal(t, expectedResult, body)
 
 	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
 	err = db.PurgeOldRevisionJSON("doc1", rev1id)
@@ -892,7 +892,7 @@ func TestUpdatePrincipal(t *testing.T) {
 	assert.NoError(t, err, "Unable to update principal")
 
 	nextSeq, err := db.sequences.nextSequence()
-	goassert.Equals(t, nextSeq, uint64(1))
+	assert.Equal(t, uint64(1), nextSeq)
 
 	// Validate that a call to UpdatePrincipals with changes to the user does allocate a sequence
 	userInfo, err = db.GetPrincipalForTest(t, "naomi", true)
@@ -901,7 +901,7 @@ func TestUpdatePrincipal(t *testing.T) {
 	assert.NoError(t, err, "Unable to update principal")
 
 	nextSeq, err = db.sequences.nextSequence()
-	goassert.Equals(t, nextSeq, uint64(3))
+	assert.Equal(t, uint64(3), nextSeq)
 }
 
 // Re-apply one of the conflicting changes to make sure that PutExistingRevWithBody() treats it as a no-op (SG Issue #3048)
@@ -928,7 +928,7 @@ func TestRepeatedConflict(t *testing.T) {
 
 	// Get the _rev that was set in the body by PutExistingRevWithBody() and make assertions on it
 	revGen, _ := ParseRevID(newRev)
-	goassert.Equals(t, revGen, 2)
+	assert.Equal(t, 2, revGen)
 
 	// Remove the _rev key from the body, and call PutExistingRevWithBody() again, which should re-add it
 	delete(body, BodyRev)
@@ -937,7 +937,7 @@ func TestRepeatedConflict(t *testing.T) {
 
 	// The _rev should pass the same assertions as before, since PutExistingRevWithBody() should re-add it
 	revGen, _ = ParseRevID(newRev)
-	goassert.Equals(t, revGen, 2)
+	assert.Equal(t, 2, revGen)
 
 }
 
@@ -966,7 +966,7 @@ func TestConflicts(t *testing.T) {
 	cacheWaiter.AddAndWait(1)
 
 	changeLog := db.GetChangeLog("all", 0)
-	goassert.Equals(t, len(changeLog), 1)
+	assert.Equal(t, 1, len(changeLog))
 
 	// Create two conflicting changes:
 	body["n"] = 2
@@ -1000,11 +1000,11 @@ func TestConflicts(t *testing.T) {
 	// Verify the change-log of the "all" channel:
 	cacheWaiter.Wait()
 	changeLog = db.GetChangeLog("all", 0)
-	goassert.Equals(t, len(changeLog), 1)
-	goassert.Equals(t, changeLog[0].Sequence, uint64(3))
-	goassert.Equals(t, changeLog[0].DocID, "doc")
-	goassert.Equals(t, changeLog[0].RevID, "2-b")
-	goassert.Equals(t, changeLog[0].Flags, uint8(channels.Hidden|channels.Branched|channels.Conflict))
+	assert.Equal(t, 1, len(changeLog))
+	assert.Equal(t, uint64(3), changeLog[0].Sequence)
+	assert.Equal(t, "doc", changeLog[0].DocID)
+	assert.Equal(t, "2-b", changeLog[0].RevID)
+	assert.Equal(t, uint8(channels.Hidden|channels.Branched|channels.Conflict), changeLog[0].Flags)
 
 	// Verify the _changes feed:
 	options := ChangesOptions{
@@ -1012,12 +1012,12 @@ func TestConflicts(t *testing.T) {
 	}
 	changes, err := db.GetChanges(channels.SetOf(t, "all"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
-	goassert.Equals(t, len(changes), 1)
-	goassert.DeepEquals(t, changes[0], &ChangeEntry{
+	assert.Equal(t, 1, len(changes))
+	assert.Equal(t, &ChangeEntry{
 		Seq:      SequenceID{Seq: 3},
 		ID:       "doc",
 		Changes:  []ChangeRev{{"rev": "2-b"}, {"rev": "2-a"}},
-		branched: true})
+		branched: true}, changes[0])
 
 	// Delete 2-b; verify this makes 2-a current:
 	rev3, err := db.DeleteDoc("doc", "2-b")
@@ -1033,9 +1033,9 @@ func TestConflicts(t *testing.T) {
 	// Verify channel assignments are correct for channels defined by 2-a:
 	doc, _ := db.GetDocument(base.TestCtx(t), "doc", DocUnmarshalAll)
 	chan2a, found := doc.Channels["2a"]
-	goassert.True(t, found)
-	goassert.True(t, chan2a == nil)             // currently in 2a
-	goassert.True(t, doc.Channels["2b"] != nil) // has been removed from 2b
+	assert.True(t, found)
+	assert.True(t, chan2a == nil)             // currently in 2a
+	assert.True(t, doc.Channels["2b"] != nil) // has been removed from 2b
 
 	// Wait for delete mutation to arrive over feed
 	cacheWaiter.AddAndWait(1)
@@ -1043,12 +1043,13 @@ func TestConflicts(t *testing.T) {
 	// Verify the _changes feed:
 	changes, err = db.GetChanges(channels.SetOf(t, "all"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
-	goassert.Equals(t, len(changes), 1)
-	goassert.DeepEquals(t, changes[0], &ChangeEntry{
+	assert.Equal(t, 1, len(changes))
+	assert.Equal(t, &ChangeEntry{
 		Seq:      SequenceID{Seq: 4},
 		ID:       "doc",
 		Changes:  []ChangeRev{{"rev": "2-a"}, {"rev": rev3}},
-		branched: true})
+		branched: true}, changes[0])
+
 }
 
 func TestConflictRevLimit(t *testing.T) {
@@ -1200,7 +1201,7 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 	assert.NoError(t, putErr, "tombstone 2-a")
 	doc, err = db.GetDocument(base.TestCtx(t), "doc1", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
-	goassert.Equals(t, doc.CurrentRev, "2-b")
+	assert.Equal(t, "2-b", doc.CurrentRev)
 
 	// Attempt to add a tombstone rev w/ the previous tombstone as parent
 	body[BodyRev] = tombstoneRev
@@ -1215,7 +1216,7 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 	assert.NoError(t, putErr, "tombstone 2-b")
 	doc, err = db.GetDocument(base.TestCtx(t), "doc2", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
-	goassert.Equals(t, doc.CurrentRev, "2-a")
+	assert.Equal(t, "2-a", doc.CurrentRev)
 
 	// Set revs_limit=1, then tombstone non-winning branch of a conflicted document.  Validate retrieval still works.
 	db.RevsLimit = uint32(1)
@@ -1225,7 +1226,7 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 	assert.NoError(t, putErr, "tombstone 2-a w/ revslimit=1")
 	doc, err = db.GetDocument(base.TestCtx(t), "doc3", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
-	goassert.Equals(t, doc.CurrentRev, "2-b")
+	assert.Equal(t, "2-b", doc.CurrentRev)
 
 	log.Printf("tombstoned conflicts: %+v", doc)
 
@@ -1277,7 +1278,7 @@ func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T)
 	assert.NoError(t, err, "add 3-a (tombstone)")
 	doc, err := db.GetDocument(base.TestCtx(t), "doc1", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
-	goassert.Equals(t, doc.CurrentRev, "2-b")
+	assert.Equal(t, "2-b", doc.CurrentRev)
 
 	// Tombstone the winning branch of a conflicted document
 	body[BodyDeleted] = true
@@ -1285,7 +1286,7 @@ func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T)
 	assert.NoError(t, err, "add 3-b (tombstone)")
 	doc, err = db.GetDocument(base.TestCtx(t), "doc2", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
-	goassert.Equals(t, doc.CurrentRev, "2-a")
+	assert.Equal(t, "2-a", doc.CurrentRev)
 
 	// Set revs_limit=1, then tombstone non-winning branch of a conflicted document.  Validate retrieval still works.
 	body[BodyDeleted] = true
@@ -1294,7 +1295,7 @@ func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T)
 	assert.NoError(t, err, "add 3-a (tombstone)")
 	doc, err = db.GetDocument(base.TestCtx(t), "doc3", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
-	goassert.Equals(t, doc.CurrentRev, "2-b")
+	assert.Equal(t, "2-b", doc.CurrentRev)
 
 	log.Printf("tombstoned conflicts: %+v", doc)
 }
@@ -1329,11 +1330,12 @@ func TestSyncFnOnPush(t *testing.T) {
 
 	// Check that the doc has the correct channel (test for issue #300)
 	doc, err := db.GetDocument(base.TestCtx(t), "doc1", DocUnmarshalAll)
-	goassert.DeepEquals(t, doc.Channels, channels.ChannelMap{
-		"clibup": nil, // i.e. it is currently in this channel (no removal)
+	assert.Equal(t, channels.ChannelMap{
+		"clibup": nil,
 		"public": &channels.ChannelRemoval{Seq: 2, RevID: "4-four"},
-	})
-	goassert.DeepEquals(t, doc.History["4-four"].Channels, base.SetOf("clibup"))
+	}, doc.Channels)
+
+	assert.Equal(t, base.SetOf("clibup"), doc.History["4-four"].Channels)
 }
 
 func TestInvalidChannel(t *testing.T) {
@@ -1411,10 +1413,10 @@ func TestAccessFunctionDb(t *testing.T) {
 	user, err = authenticator.GetUser("naomi")
 	assert.NoError(t, err, "GetUser")
 	expected := channels.AtSequence(channels.SetOf(t, "Hulu", "Netflix", "!"), 1)
-	goassert.DeepEquals(t, user.Channels(), expected)
+	assert.Equal(t, expected, user.Channels())
 
 	expected.AddChannel("CrunchyRoll", 2)
-	goassert.DeepEquals(t, user.InheritedChannels(), expected)
+	assert.Equal(t, expected, user.InheritedChannels())
 }
 
 func TestDocIDs(t *testing.T) {
@@ -1473,9 +1475,9 @@ func TestUpdateDesignDoc(t *testing.T) {
 
 	assert.NoError(t, err, "retrieve design doc as admin")
 	retrievedView, ok := result.Views["TestView"]
-	goassert.True(t, ok)
-	goassert.True(t, strings.Contains(retrievedView.Map, "emit()"))
-	goassert.NotEquals(t, retrievedView.Map, mapFunction) // SG should wrap the map function, so they shouldn't be equal
+	assert.True(t, ok)
+	assert.True(t, strings.Contains(retrievedView.Map, "emit()"))
+	assert.NotEqual(t, mapFunction, retrievedView.Map) // SG should wrap the map function, so they shouldn't be equal
 
 	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
 	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "Netflix"))
@@ -1494,12 +1496,12 @@ func TestPostWithExistingId(t *testing.T) {
 	body := Body{BodyId: customDocId, "key1": "value1", "key2": "existing"}
 	docid, rev1id, _, err := db.Post(body)
 	require.NoError(t, err, "Couldn't create document")
-	goassert.True(t, rev1id != "")
-	goassert.True(t, docid == customDocId)
+	assert.True(t, rev1id != "")
+	assert.True(t, docid == customDocId)
 
 	// Test retrieval
 	doc, err := db.GetDocument(base.TestCtx(t), customDocId, DocUnmarshalAll)
-	goassert.True(t, doc != nil)
+	assert.True(t, doc != nil)
 	assert.NoError(t, err, "Unable to retrieve doc using custom id")
 
 	// Test that standard UUID creation still works:
@@ -1507,12 +1509,12 @@ func TestPostWithExistingId(t *testing.T) {
 	body = Body{"notAnId": customDocId, "key1": "value1", "key2": "existing"}
 	docid, rev1id, _, err = db.Post(body)
 	require.NoError(t, err, "Couldn't create document")
-	goassert.True(t, rev1id != "")
-	goassert.True(t, docid != customDocId)
+	assert.True(t, rev1id != "")
+	assert.True(t, docid != customDocId)
 
 	// Test retrieval
 	doc, err = db.GetDocument(base.TestCtx(t), docid, DocUnmarshalAll)
-	goassert.True(t, doc != nil)
+	assert.True(t, doc != nil)
 	assert.NoError(t, err, "Unable to retrieve doc using generated uuid")
 
 }
@@ -1529,8 +1531,8 @@ func TestWithNullPropertyKey(t *testing.T) {
 	body := Body{BodyId: customDocId, "": "value1"}
 	docid, rev1id, _, err := db.Post(body)
 	require.NoError(t, err)
-	goassert.True(t, rev1id != "")
-	goassert.True(t, docid != "")
+	assert.True(t, rev1id != "")
+	assert.True(t, docid != "")
 }
 
 // Unit test for issue #507, modified for CBG-1995 (allowing special properties)
@@ -1581,11 +1583,11 @@ func TestRecentSequenceHistory(t *testing.T) {
 	seqTracker++
 
 	expectedRecent := make([]uint64, 0)
-	goassert.True(t, revid != "")
+	assert.True(t, revid != "")
 	doc, err = db.GetDocument(base.TestCtx(t), "doc1", DocUnmarshalAll)
 	expectedRecent = append(expectedRecent, seqTracker)
-	goassert.True(t, err == nil)
-	goassert.DeepEquals(t, doc.RecentSequences, expectedRecent)
+	assert.True(t, err == nil)
+	assert.Equal(t, expectedRecent, doc.RecentSequences)
 
 	// Add up to kMaxRecentSequences revisions - validate they are retained when total is less than max
 	for i := 1; i < kMaxRecentSequences; i++ {
@@ -1597,8 +1599,8 @@ func TestRecentSequenceHistory(t *testing.T) {
 	}
 
 	doc, err = db.GetDocument(base.TestCtx(t), "doc1", DocUnmarshalAll)
-	goassert.True(t, err == nil)
-	goassert.DeepEquals(t, doc.RecentSequences, expectedRecent)
+	assert.True(t, err == nil)
+	assert.Equal(t, expectedRecent, doc.RecentSequences)
 
 	// Recent sequence pruning only prunes entries older than what's been seen over DCP
 	// (to ensure it's not pruning something that may still be coalesced).  Because of this, test waits
@@ -1612,9 +1614,9 @@ func TestRecentSequenceHistory(t *testing.T) {
 	body[BodyRev] = revid
 	seqTracker++
 	doc, err = db.GetDocument(base.TestCtx(t), "doc1", DocUnmarshalAll)
-	goassert.True(t, err == nil)
+	assert.True(t, err == nil)
 	log.Printf("recent:%d, max:%d", len(doc.RecentSequences), kMaxRecentSequences)
-	goassert.True(t, len(doc.RecentSequences) <= kMaxRecentSequences)
+	assert.True(t, len(doc.RecentSequences) <= kMaxRecentSequences)
 
 	// Ensure pruning works when sequences aren't sequential
 	doc2Body := Body{"val": "two"}
@@ -1636,9 +1638,9 @@ func TestRecentSequenceHistory(t *testing.T) {
 	body[BodyRev] = revid
 	seqTracker++
 	doc, err = db.GetDocument(base.TestCtx(t), "doc1", DocUnmarshalAll)
-	goassert.True(t, err == nil)
+	assert.True(t, err == nil)
 	log.Printf("Recent sequences: %v (shouldn't exceed %v)", len(doc.RecentSequences), kMaxRecentSequences)
-	goassert.True(t, len(doc.RecentSequences) <= kMaxRecentSequences)
+	assert.True(t, len(doc.RecentSequences) <= kMaxRecentSequences)
 
 }
 
@@ -1652,7 +1654,7 @@ func TestChannelView(t *testing.T) {
 	body := Body{"key1": "value1", "key2": 1234}
 	rev1id, _, err := db.Put("doc1", body)
 	assert.NoError(t, err, "Couldn't create document")
-	goassert.Equals(t, rev1id, "1-cb0c9a22be0e5a1b01084ec019defa81")
+	assert.Equal(t, "1-cb0c9a22be0e5a1b01084ec019defa81", rev1id)
 
 	var entries LogEntries
 	// Query view (retry loop to wait for indexing)
@@ -1671,7 +1673,7 @@ func TestChannelView(t *testing.T) {
 	for i, entry := range entries {
 		log.Printf("View Query returned entry (%d): %v", i, entry)
 	}
-	goassert.Equals(t, len(entries), 1)
+	assert.Equal(t, 1, len(entries))
 
 }
 

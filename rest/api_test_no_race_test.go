@@ -22,7 +22,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -65,7 +64,7 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 		changesJSON := `{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"0"}`
 		changesResponse := rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
 		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-		goassert.Equals(t, len(changes.Results), 3)
+		assert.Equal(t, 3, len(changes.Results))
 	}()
 
 	// Wait for changes to get into wait mode
@@ -134,7 +133,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &initialChanges)
 	assert.NoError(t, err, "Unexpected error unmarshalling initialChanges")
 	lastSeq := initialChanges.Last_Seq.String()
-	goassert.Equals(t, lastSeq, "1")
+	assert.Equal(t, "1", lastSeq)
 
 	caughtUpWaiter := rt.GetDatabase().NewPullReplicationCaughtUpWaiter(t)
 	caughtUpWaiter.Add(1)
@@ -150,7 +149,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 		sinceLastJSON := fmt.Sprintf(changesJSON, lastSeq)
 		changesResponse := rt.Send(requestByUser("POST", "/db/_changes", sinceLastJSON, "bernard"))
 		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-		goassert.Equals(t, len(changes.Results), 1)
+		assert.Equal(t, 1, len(changes.Results))
 	}()
 
 	// Wait to see if the longpoll will terminate on wait before a document shows up on the channel

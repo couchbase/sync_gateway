@@ -15,7 +15,6 @@ import (
 	"io/ioutil"
 	"testing"
 
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -108,7 +107,7 @@ func TestConsoleShouldLog(t *testing.T) {
 
 		t.Run(name, func(ts *testing.T) {
 			got := l.shouldLog(test.logToLevel, test.logToKey)
-			goassert.Equals(ts, got, test.expected)
+			assert.Equal(ts, test.expected, got)
 		})
 	}
 }

@@ -14,7 +14,7 @@ import (
 	"net/http"
 	"testing"
 
-	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestParseHTTPRangeHeader(t *testing.T) {
@@ -72,10 +72,10 @@ func TestParseHTTPRangeHeader(t *testing.T) {
 	for _, expected := range testcases {
 		status, start, end := parseHTTPRangeHeader(expected.header, expected.contentLength)
 		t.Logf("*** Range: %s  --> %d %d-%d", expected.header, status, start, end)
-		goassert.Equals(t, status, expected.status)
+		assert.Equal(t, expected.status, status)
 		if status == http.StatusPartialContent {
-			goassert.Equals(t, start, expected.start)
-			goassert.Equals(t, end, expected.end)
+			assert.Equal(t, expected.start, start)
+			assert.Equal(t, expected.end, end)
 		}
 	}
 }

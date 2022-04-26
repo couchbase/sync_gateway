@@ -17,7 +17,6 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -208,18 +207,18 @@ func TestParseXattr(t *testing.T) {
 
 	resultBody, resultXattr, _, err := parseXattrStreamData(base.SyncXattrName, "", dcpBody)
 	assert.NoError(t, err, "Unexpected error parsing dcp body")
-	goassert.Equals(t, string(resultBody), string(body))
-	goassert.Equals(t, string(resultXattr), string(xattrValue))
+	assert.Equal(t, string(body), string(resultBody))
+	assert.Equal(t, string(xattrValue), string(resultXattr))
 
 	// Attempt to retrieve non-existent xattr
 	resultBody, resultXattr, _, err = parseXattrStreamData("nonexistent", "", dcpBody)
 	assert.NoError(t, err, "Unexpected error parsing dcp body")
-	goassert.Equals(t, string(resultBody), string(body))
-	goassert.Equals(t, string(resultXattr), "")
+	assert.Equal(t, string(body), string(resultBody))
+	assert.Equal(t, "", string(resultXattr))
 
 	// Attempt to retrieve xattr from empty dcp body
 	emptyBody, emptyXattr, _, emptyErr := parseXattrStreamData(base.SyncXattrName, "", []byte{})
-	goassert.Equals(t, emptyErr, base.ErrEmptyMetadata)
+	assert.Equal(t, base.ErrEmptyMetadata, emptyErr)
 	assert.True(t, emptyBody == nil, "Nil body expected")
 	assert.True(t, emptyXattr == nil, "Nil xattr expected")
 }
@@ -230,7 +229,7 @@ func TestParseDocumentCas(t *testing.T) {
 
 	casInt := syncData.GetSyncCas()
 
-	goassert.Equals(t, casInt, uint64(1492749160563736576))
+	assert.Equal(t, uint64(1492749160563736576), casInt)
 }
 
 func TestGetDeepMutableBody(t *testing.T) {

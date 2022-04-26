@@ -20,7 +20,6 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -86,8 +85,8 @@ func TestMigrateMetadata(t *testing.T) {
 		existingBucketDoc,
 		&sgbucket.MutateInOptions{PreserveExpiry: false},
 	)
-	goassert.True(t, err != nil)
-	goassert.True(t, err == base.ErrCasFailureShouldRetry)
+	assert.True(t, err != nil)
+	assert.True(t, err == base.ErrCasFailureShouldRetry)
 
 }
 
@@ -394,7 +393,7 @@ func TestImportNullDoc(t *testing.T) {
 
 	// Import a null document
 	importedDoc, err := db.importDoc(key+"1", body, nil, false, existingDoc, ImportOnDemand)
-	goassert.Equals(t, err, base.ErrEmptyDocument)
+	assert.Equal(t, base.ErrEmptyDocument, err)
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
 }
 
@@ -408,7 +407,7 @@ func TestImportNullDocRaw(t *testing.T) {
 	exp := uint32(0)
 
 	importedDoc, err := db.ImportDocRaw("TestImportNullDoc", []byte("null"), []byte("{}"), nil, false, 1, &exp, ImportFromFeed)
-	goassert.Equals(t, err, base.ErrEmptyDocument)
+	assert.Equal(t, base.ErrEmptyDocument, err)
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
 }
 
@@ -417,10 +416,10 @@ func assertXattrSyncMetaRevGeneration(t *testing.T, bucket base.Bucket, key stri
 	_, err := bucket.GetWithXattr(key, base.SyncXattrName, "", nil, &xattr, nil)
 	assert.NoError(t, err, "Error Getting Xattr")
 	revision, ok := xattr["rev"]
-	goassert.True(t, ok)
+	assert.True(t, ok)
 	generation, _ := ParseRevID(revision.(string))
 	log.Printf("assertXattrSyncMetaRevGeneration generation: %d rev: %s", generation, revision)
-	goassert.True(t, generation == expectedRevGeneration)
+	assert.True(t, generation == expectedRevGeneration)
 }
 
 func TestEvaluateFunction(t *testing.T) {

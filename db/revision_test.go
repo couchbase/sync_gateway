@@ -16,7 +16,6 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -74,8 +73,8 @@ func TestBodyUnmarshal(t *testing.T) {
 				assert.True(t, err != nil, fmt.Sprintf("Expected error when unmarshalling %s", test.name))
 			} else {
 				assert.NoError(t, err, fmt.Sprintf("Expected no error when unmarshalling %s", test.name))
-				goassert.DeepEquals(t, b, test.expectedBody) // Check against expected body
-				goassert.DeepEquals(t, b, jsonUnmarshalBody) // Check against json.Unmarshal results
+				assert.Equal(t, test.expectedBody, b) // Check against expected body
+				assert.Equal(t, jsonUnmarshalBody, b) // Check against json.Unmarshal results
 			}
 
 		})

@@ -19,7 +19,6 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -218,9 +217,9 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 
 	validRevisionsMap, ok := validRevisions.(Revisions)
 	_, startOk := validRevisionsMap[RevisionsStart]
-	goassert.True(t, startOk)
+	assert.True(t, startOk)
 	_, idsOk := validRevisionsMap[RevisionsIds]
-	goassert.True(t, idsOk)
+	assert.True(t, idsOk)
 }
 
 func TestBypassRevisionCache(t *testing.T) {
