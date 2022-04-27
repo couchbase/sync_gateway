@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -24,10 +23,10 @@ func TestUserDataRedact(t *testing.T) {
 	userdata := UserData(username)
 
 	RedactUserData = true
-	goassert.Equals(t, userdata.Redact(), userDataPrefix+username+userDataSuffix)
+	assert.Equal(t, userDataPrefix+username+userDataSuffix, userdata.Redact())
 
 	RedactUserData = false
-	goassert.Equals(t, userdata.Redact(), username)
+	assert.Equal(t, username, userdata.Redact())
 }
 
 func TestUD(t *testing.T) {
@@ -36,19 +35,19 @@ func TestUD(t *testing.T) {
 
 	// Straight-forward string test.
 	ud := UD("hello world")
-	goassert.Equals(t, ud.Redact(), userDataPrefix+"hello world"+userDataSuffix)
+	assert.Equal(t, userDataPrefix+"hello world"+userDataSuffix, ud.Redact())
 
 	// big.Int fulfils the Stringer interface, so we should get sensible values.
 	ud = UD(big.NewInt(1234))
-	goassert.Equals(t, ud.Redact(), userDataPrefix+"1234"+userDataSuffix)
+	assert.Equal(t, userDataPrefix+"1234"+userDataSuffix, ud.Redact())
 
 	// Even plain structs could be redactable.
 	ud = UD(struct{}{})
-	goassert.Equals(t, ud.Redact(), userDataPrefix+"{}"+userDataSuffix)
+	assert.Equal(t, userDataPrefix+"{}"+userDataSuffix, ud.Redact())
 
 	// String slice test.
 	ud = UD([]string{"hello", "world", "o/"})
-	goassert.Equals(t, ud.Redact(), "[ "+userDataPrefix+"hello"+userDataSuffix+" "+userDataPrefix+"world"+userDataSuffix+" "+userDataPrefix+"o/"+userDataSuffix+" ]")
+	assert.Equal(t, "[ "+userDataPrefix+"hello"+userDataSuffix+" "+userDataPrefix+"world"+userDataSuffix+" "+userDataPrefix+"o/"+userDataSuffix+" ]", ud.Redact())
 
 	// Set
 	ud = UD(SetOf("hello", "world"))

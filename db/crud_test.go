@@ -17,7 +17,6 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -333,7 +332,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	log.Printf("Retrieve doc 2-a...")
 	gotbody, err := db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
-	goassert.DeepEquals(t, gotbody, rev2a_body)
+	assert.Equal(t, rev2a_body, gotbody)
 
 	// Create rev 2-b
 	//    1-a
@@ -352,14 +351,14 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	log.Printf("Retrieve doc, verify rev 2-b")
 	gotbody, err = db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
-	goassert.DeepEquals(t, gotbody, rev2b_body)
+	assert.Equal(t, rev2b_body, gotbody)
 
 	// Retrieve the raw document, and verify 2-a isn't stored inline
 	log.Printf("Retrieve doc, verify rev 2-a not inline")
 	revTree, err := getRevTreeList(db.Bucket, "doc1", db.UseXattrs())
 	assert.NoError(t, err, "Couldn't get revtree for raw document")
-	goassert.Equals(t, len(revTree.BodyMap), 0)
-	goassert.Equals(t, len(revTree.BodyKeyMap), 1)
+	assert.Equal(t, 0, len(revTree.BodyMap))
+	assert.Equal(t, 1, len(revTree.BodyKeyMap))
 
 	// Retrieve the raw revision body backup of 2-a, and verify it's intact
 	log.Printf("Verify document storage of 2-a")
@@ -367,14 +366,14 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	rawRevision, _, err := db.Bucket.GetRaw(base.SyncPrefix + "rb:4GctXhLVg13d59D0PUTPRD0i58Hbe1d0djgo1qOEpfI=")
 	assert.NoError(t, err, "Couldn't get raw backup revision")
 	assert.NoError(t, base.JSONUnmarshal(rawRevision, &revisionBody))
-	goassert.Equals(t, revisionBody["version"], rev2a_body["version"])
-	goassert.Equals(t, revisionBody["value"], rev2a_body["value"])
+	assert.Equal(t, rev2a_body["version"], revisionBody["version"])
+	assert.Equal(t, rev2a_body["value"], revisionBody["value"])
 
 	// Retrieve the non-inline revision
 	db.FlushRevisionCacheForTest()
 	rev2aGet, err := db.Get1xRevBody("doc1", "2-a", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 2-a")
-	goassert.DeepEquals(t, rev2aGet, rev2a_body)
+	assert.Equal(t, rev2a_body, rev2aGet)
 
 	// Tombstone 2-b (with rev 3-b, minimal tombstone)
 	//    1-a
@@ -395,13 +394,13 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	// Retrieve tombstone
 	rev3bGet, err := db.Get1xRevBody("doc1", "3-b", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 3-b")
-	goassert.DeepEquals(t, rev3bGet, rev3b_body)
+	assert.Equal(t, rev3b_body, rev3bGet)
 
 	// Retrieve the document, validate that we get 2-a
 	log.Printf("Retrieve doc, expect 2-a")
 	gotbody, err = db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
-	goassert.DeepEquals(t, gotbody, rev2a_body)
+	assert.Equal(t, rev2a_body, gotbody)
 
 	// Ensure previous revision body backup has been removed
 	_, _, err = db.Bucket.GetRaw(base.RevBodyPrefix + "4GctXhLVg13d59D0PUTPRD0i58Hbe1d0djgo1qOEpfI=")
@@ -410,8 +409,8 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	// Validate the tombstone is stored inline (due to small size)
 	revTree, err = getRevTreeList(db.Bucket, "doc1", db.UseXattrs())
 	assert.NoError(t, err, "Couldn't get revtree for raw document")
-	goassert.Equals(t, len(revTree.BodyMap), 1)
-	goassert.Equals(t, len(revTree.BodyKeyMap), 0)
+	assert.Equal(t, 1, len(revTree.BodyMap))
+	assert.Equal(t, 0, len(revTree.BodyKeyMap))
 
 	// Create another conflict (2-c)
 	//      1-a
@@ -432,7 +431,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	log.Printf("Retrieve doc, verify rev 2-c")
 	gotbody, err = db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
-	goassert.DeepEquals(t, gotbody, rev2c_body)
+	assert.Equal(t, rev2c_body, gotbody)
 
 	// Tombstone with a large tombstone
 	//      1-a
@@ -455,19 +454,19 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	log.Printf("Verify raw revtree w/ tombstone 3-c in key map")
 	newRevTree, err := getRevTreeList(db.Bucket, "doc1", db.UseXattrs())
 	assert.NoError(t, err, "Couldn't get revtree for raw document")
-	goassert.Equals(t, len(newRevTree.BodyMap), 1)    // tombstone 3-b
-	goassert.Equals(t, len(newRevTree.BodyKeyMap), 1) // tombstone 3-c
+	assert.Equal(t, 1, len(newRevTree.BodyMap))    // tombstone 3-b
+	assert.Equal(t, 1, len(newRevTree.BodyKeyMap)) // tombstone 3-c
 
 	// Retrieve the non-inline tombstone revision
 	db.FlushRevisionCacheForTest()
 	rev3cGet, err := db.Get1xRevBody("doc1", "3-c", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 3-c")
-	goassert.DeepEquals(t, rev3cGet, rev3c_body)
+	assert.Equal(t, rev3c_body, rev3cGet)
 
 	log.Printf("Retrieve doc, verify active rev is 2-a")
 	gotbody, err = db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
-	goassert.DeepEquals(t, gotbody, rev2a_body)
+	assert.Equal(t, rev2a_body, gotbody)
 
 	// Add active revision, ensure all revisions remain intact
 	log.Printf("Create rev 3-a with a large body")
@@ -479,8 +478,8 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
 	revTree, err = getRevTreeList(db.Bucket, "doc1", db.UseXattrs())
 	assert.NoError(t, err, "Couldn't get revtree for raw document")
-	goassert.Equals(t, len(revTree.BodyMap), 1)    // tombstone 3-b
-	goassert.Equals(t, len(revTree.BodyKeyMap), 1) // tombstone 3-c
+	assert.Equal(t, 1, len(revTree.BodyMap))    // tombstone 3-b
+	assert.Equal(t, 1, len(revTree.BodyKeyMap)) // tombstone 3-c
 }
 
 // TestRevisionStoragePruneTombstone - tests cleanup of external tombstone bodies when pruned.
@@ -516,7 +515,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	log.Printf("Retrieve doc 2-a...")
 	gotbody, err := db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
-	goassert.DeepEquals(t, gotbody, rev2a_body)
+	assert.Equal(t, rev2a_body, gotbody)
 
 	// Create rev 2-b
 	//    1-a
@@ -535,14 +534,14 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	log.Printf("Retrieve doc, verify rev 2-b")
 	gotbody, err = db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
-	goassert.DeepEquals(t, gotbody, rev2b_body)
+	assert.Equal(t, rev2b_body, gotbody)
 
 	// Retrieve the raw document, and verify 2-a isn't stored inline
 	log.Printf("Retrieve doc, verify rev 2-a not inline")
 	revTree, err := getRevTreeList(db.Bucket, "doc1", db.UseXattrs())
 	assert.NoError(t, err, "Couldn't get revtree for raw document")
-	goassert.Equals(t, len(revTree.BodyMap), 0)
-	goassert.Equals(t, len(revTree.BodyKeyMap), 1)
+	assert.Equal(t, 0, len(revTree.BodyMap))
+	assert.Equal(t, 1, len(revTree.BodyKeyMap))
 
 	// Retrieve the raw revision body backup of 2-a, and verify it's intact
 	log.Printf("Verify document storage of 2-a")
@@ -550,14 +549,14 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	rawRevision, _, err := db.Bucket.GetRaw(base.SyncPrefix + "rb:4GctXhLVg13d59D0PUTPRD0i58Hbe1d0djgo1qOEpfI=")
 	assert.NoError(t, err, "Couldn't get raw backup revision")
 	assert.NoError(t, base.JSONUnmarshal(rawRevision, &revisionBody))
-	goassert.Equals(t, revisionBody["version"], rev2a_body["version"])
-	goassert.Equals(t, revisionBody["value"], rev2a_body["value"])
+	assert.Equal(t, rev2a_body["version"], revisionBody["version"])
+	assert.Equal(t, rev2a_body["value"], revisionBody["value"])
 
 	// Retrieve the non-inline revision
 	db.FlushRevisionCacheForTest()
 	rev2aGet, err := db.Get1xRevBody("doc1", "2-a", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 2-a")
-	goassert.DeepEquals(t, rev2aGet, rev2a_body)
+	assert.Equal(t, rev2a_body, rev2aGet)
 
 	// Tombstone 2-b (with rev 3-b, large tombstone)
 	//    1-a
@@ -581,20 +580,20 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	db.FlushRevisionCacheForTest()
 	rev3bGet, err := db.Get1xRevBody("doc1", "3-b", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 3-b")
-	goassert.DeepEquals(t, rev3bGet, rev3b_body)
+	assert.Equal(t, rev3b_body, rev3bGet)
 
 	// Retrieve the document, validate that we get 2-a
 	log.Printf("Retrieve doc, expect 2-a")
 	gotbody, err = db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
-	goassert.DeepEquals(t, gotbody, rev2a_body)
+	assert.Equal(t, rev2a_body, gotbody)
 
 	// Retrieve the raw document, and verify 2-a isn't stored inline
 	log.Printf("Retrieve doc, verify rev 2-a not inline")
 	revTree, err = getRevTreeList(db.Bucket, "doc1", db.UseXattrs())
 	assert.NoError(t, err, "Couldn't get revtree for raw document")
-	goassert.Equals(t, len(revTree.BodyMap), 0)
-	goassert.Equals(t, len(revTree.BodyKeyMap), 1)
+	assert.Equal(t, 0, len(revTree.BodyMap))
+	assert.Equal(t, 1, len(revTree.BodyKeyMap))
 	log.Printf("revTree.BodyKeyMap:%v", revTree.BodyKeyMap)
 
 	revTree, err = getRevTreeList(db.Bucket, "doc1", db.UseXattrs())
@@ -631,7 +630,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	log.Printf("Attempt to retrieve 3-b, expect pruned")
 	db.FlushRevisionCacheForTest()
 	rev3bGet, err = db.Get1xRevBody("doc1", "3-b", false, nil)
-	goassert.Equals(t, err.Error(), "404 missing")
+	assert.Equal(t, "404 missing", err.Error())
 
 	// Ensure previous tombstone body backup has been removed
 	log.Printf("Verify revision body doc has been removed from bucket")
@@ -669,7 +668,7 @@ func TestOldRevisionStorage(t *testing.T) {
 	log.Printf("Retrieve doc 2-a...")
 	gotbody, err := db.Get1xBody("doc1")
 	require.NoError(t, err, "Couldn't get document")
-	goassert.DeepEquals(t, gotbody, rev2a_body)
+	assert.Equal(t, rev2a_body, gotbody)
 
 	// Create rev 3-a
 
@@ -689,7 +688,7 @@ func TestOldRevisionStorage(t *testing.T) {
 	log.Printf("Retrieve doc 3-a...")
 	gotbody, err = db.Get1xBody("doc1")
 	require.NoError(t, err, "Couldn't get document")
-	goassert.DeepEquals(t, gotbody, rev3a_body)
+	assert.Equal(t, rev3a_body, gotbody)
 
 	// Create rev 2-b
 	//    1-a
@@ -706,7 +705,7 @@ func TestOldRevisionStorage(t *testing.T) {
 	log.Printf("Retrieve doc, verify still rev 3-a")
 	gotbody, err = db.Get1xBody("doc1")
 	require.NoError(t, err, "Couldn't get document")
-	goassert.DeepEquals(t, gotbody, rev3a_body)
+	assert.Equal(t, rev3a_body, gotbody)
 
 	// Create rev that hops a few generations
 	//    1-a
@@ -731,7 +730,7 @@ func TestOldRevisionStorage(t *testing.T) {
 	log.Printf("Retrieve doc 6-a...")
 	gotbody, err = db.Get1xBody("doc1")
 	require.NoError(t, err, "Couldn't get document")
-	goassert.DeepEquals(t, gotbody, rev6a_body)
+	assert.Equal(t, rev6a_body, gotbody)
 
 	// Add child to non-winning revision w/ inline body
 	//    1-a
@@ -830,7 +829,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 	log.Printf("Retrieve doc 2-a...")
 	gotbody, err := db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
-	goassert.DeepEquals(t, gotbody, rev2a_body)
+	assert.Equal(t, rev2a_body, gotbody)
 
 	// Create rev 3-a, should re-attempt to write old revision body for 2-a
 	// 1-a
@@ -862,7 +861,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 	log.Printf("Retrieve doc, verify still rev 3-a")
 	gotbody, err = db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
-	goassert.DeepEquals(t, gotbody, rev3a_body)
+	assert.Equal(t, rev3a_body, gotbody)
 
 	// Create rev that hops a few generations
 	//    1-a
@@ -887,7 +886,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 	log.Printf("Retrieve doc 6-a...")
 	gotbody, err = db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
-	goassert.DeepEquals(t, gotbody, rev6a_body)
+	assert.Equal(t, rev6a_body, gotbody)
 
 	// Add child to non-winning revision w/ inline body
 	// Creation of 3-b will trigger leaky bucket handling when obsolete body of rev 2-b is persisted
@@ -944,7 +943,7 @@ func TestLargeSequence(t *testing.T) {
 
 	syncData, err := db.GetDocSyncData(base.TestCtx(t), "largeSeqDoc")
 	assert.NoError(t, err, "Error retrieving document sync data")
-	goassert.Equals(t, syncData.Sequence, uint64(9223372036854775808))
+	assert.Equal(t, uint64(9223372036854775808), syncData.Sequence)
 }
 
 const rawDocMalformedRevisionStorage = `
@@ -992,7 +991,7 @@ func TestMalformedRevisionStorageRecovery(t *testing.T) {
 	// 6-a
 	log.Printf("Add doc1 w/ malformed body for rev 2-b included in revision tree")
 	ok, addErr := db.Bucket.Add("doc1", 0, []byte(rawDocMalformedRevisionStorage))
-	goassert.True(t, ok)
+	assert.True(t, ok)
 	assert.NoError(t, addErr, "Error writing raw document")
 
 	// Increment _sync:seq to match sequences allocated by raw doc

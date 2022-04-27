@@ -8,7 +8,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -77,30 +76,30 @@ func TestUserAPI(t *testing.T) {
 	assertStatus(t, response, 200)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.Equals(t, body["name"], "snej")
-	goassert.Equals(t, body["email"], "jens@couchbase.com")
-	goassert.DeepEquals(t, body["admin_channels"], []interface{}{"bar", "foo"})
-	goassert.DeepEquals(t, body["all_channels"], []interface{}{"!", "bar", "foo"})
-	goassert.Equals(t, body["password"], nil)
+	assert.Equal(t, "snej", body["name"])
+	assert.Equal(t, "jens@couchbase.com", body["email"])
+	assert.Equal(t, []interface{}{"bar", "foo"}, body["admin_channels"])
+	assert.Equal(t, []interface{}{"!", "bar", "foo"}, body["all_channels"])
+	assert.Equal(t, nil, body["password"])
 
 	// Check the list of all users:
 	response = rt.SendAdminRequest("GET", "/db/_user/", "")
 	assertStatus(t, response, 200)
-	goassert.Equals(t, string(response.Body.Bytes()), `["snej"]`)
+	assert.Equal(t, `["snej"]`, string(response.Body.Bytes()))
 
 	// Check that the actual User object is correct:
 	user, _ := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t)).GetUser("snej")
-	goassert.Equals(t, user.Name(), "snej")
-	goassert.Equals(t, user.Email(), "jens@couchbase.com")
-	goassert.DeepEquals(t, user.ExplicitChannels(), channels.TimedSet{"bar": channels.NewVbSimpleSequence(0x1), "foo": channels.NewVbSimpleSequence(0x1)})
-	goassert.True(t, user.Authenticate("letmein"))
+	assert.Equal(t, "snej", user.Name())
+	assert.Equal(t, "jens@couchbase.com", user.Email())
+	assert.Equal(t, channels.TimedSet{"bar": channels.NewVbSimpleSequence(0x1), "foo": channels.NewVbSimpleSequence(0x1)}, user.ExplicitChannels())
+	assert.True(t, user.Authenticate("letmein"))
 
 	// Change the password and verify it:
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"123", "admin_channels":["foo", "bar"]}`)
 	assertStatus(t, response, 200)
 
 	user, _ = rt.ServerContext().Database("db").Authenticator(base.TestCtx(t)).GetUser("snej")
-	goassert.True(t, user.Authenticate("123"))
+	assert.True(t, user.Authenticate("123"))
 
 	// DELETE the user
 	assertStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/snej", ""), 200)
@@ -117,7 +116,7 @@ func TestUserAPI(t *testing.T) {
 	assertStatus(t, response, 200)
 	body = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.Equals(t, body["name"], "snej")
+	assert.Equal(t, "snej", body["name"])
 
 	// Create a role
 	assertStatus(t, rt.SendAdminRequest("GET", "/db/_role/hipster", ""), 404)
@@ -133,8 +132,8 @@ func TestUserAPI(t *testing.T) {
 	assertStatus(t, response, 200)
 	body = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.DeepEquals(t, body["admin_roles"], []interface{}{"hipster"})
-	goassert.DeepEquals(t, body["all_channels"], []interface{}{"!", "bar", "fedoras", "fixies", "foo"})
+	assert.Equal(t, []interface{}{"hipster"}, body["admin_roles"])
+	assert.Equal(t, []interface{}{"!", "bar", "fedoras", "fixies", "foo"}, body["all_channels"])
 
 	// DELETE the user
 	assertStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/snej", ""), 200)

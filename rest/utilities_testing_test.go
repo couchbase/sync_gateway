@@ -16,7 +16,6 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -45,21 +44,21 @@ func TestDocumentUnmarshal(t *testing.T) {
 	if err != nil {
 		log.Printf("Error: %v", err)
 	}
-	goassert.True(t, err == nil)
+	assert.True(t, err == nil)
 	log.Printf("doc: %+v", doc)
 
-	goassert.True(t, doc.ID() == "docid")
+	assert.True(t, doc.ID() == "docid")
 
 	docFooField, hasFoo := doc["foo"]
-	goassert.True(t, hasFoo)
+	assert.True(t, hasFoo)
 	log.Printf("docFooField: %v", docFooField)
 
 	attachments, err := doc.GetAttachments()
-	goassert.True(t, err == nil)
+	assert.True(t, err == nil)
 
-	goassert.Equals(t, len(attachments), 1)
+	assert.Equal(t, 1, len(attachments))
 	myattachment := attachments["myattachment"]
-	goassert.Equals(t, myattachment.ContentType, "text")
+	assert.Equal(t, "text", myattachment.ContentType)
 
 }
 

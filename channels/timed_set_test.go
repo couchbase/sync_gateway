@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -29,12 +28,12 @@ func TestTimedSetMarshal(t *testing.T) {
 	str.Channels = TimedSet{}
 	bytes, err = base.JSONMarshal(str)
 	assert.NoError(t, err, "Marshal")
-	goassert.Equals(t, string(bytes), `{"Channels":{}}`)
+	assert.Equal(t, `{"Channels":{}}`, string(bytes))
 
 	str.Channels = AtSequence(SetOf(t, "a"), 17)
 	bytes, err = base.JSONMarshal(str)
 	assert.NoError(t, err, "Marshal")
-	goassert.Equals(t, string(bytes), `{"Channels":{"a":17}}`)
+	assert.Equal(t, `{"Channels":{"a":17}}`, string(bytes))
 
 	str.Channels = AtSequence(SetOf(t, "a", "b"), 17)
 	bytes, err = base.JSONMarshal(str)
@@ -50,65 +49,65 @@ func TestTimedSetUnmarshal(t *testing.T) {
 	}
 	err := base.JSONUnmarshal([]byte(`{"channels":null}`), &str)
 	assert.NoError(t, err, "Unmarshal")
-	goassert.DeepEquals(t, str.Channels, TimedSet(nil))
+	assert.Equal(t, TimedSet(nil), str.Channels)
 
 	err = base.JSONUnmarshal([]byte(`{"channels":{}}`), &str)
 	assert.NoError(t, err, "Unmarshal empty")
-	goassert.DeepEquals(t, str.Channels, TimedSet{})
+	assert.Equal(t, TimedSet{}, str.Channels)
 
 	err = base.JSONUnmarshal([]byte(`{"channels":{"a":17,"b":17}}`), &str)
 	assert.NoError(t, err, "Unmarshal sequence only")
-	goassert.DeepEquals(t, str.Channels, TimedSet{"a": NewVbSimpleSequence(17), "b": NewVbSimpleSequence(17)})
+	assert.Equal(t, TimedSet{"a": NewVbSimpleSequence(17), "b": NewVbSimpleSequence(17)}, str.Channels)
 
 	// Now try unmarshaling the alternative array form:
 	err = base.JSONUnmarshal([]byte(`{"channels":[]}`), &str)
 	assert.NoError(t, err, "Unmarshal empty array")
-	goassert.DeepEquals(t, str.Channels, TimedSet{})
+	assert.Equal(t, TimedSet{}, str.Channels)
 
 	err = base.JSONUnmarshal([]byte(`{"channels":["a","b"]}`), &str)
 	assert.NoError(t, err, "Unmarshal populated array")
-	goassert.DeepEquals(t, str.Channels, TimedSet{"a": NewVbSimpleSequence(0), "b": NewVbSimpleSequence(0)})
+	assert.Equal(t, TimedSet{"a": NewVbSimpleSequence(0), "b": NewVbSimpleSequence(0)}, str.Channels)
 
 	err = base.JSONUnmarshal([]byte(`{"channels":{"a":{"seq":17, "vb":21},"b":{"seq":23, "vb":25}}}`), &str)
 	assert.NoError(t, err, "Unmarshal sequence and vbucket only")
-	goassert.Equals(t, fmt.Sprintf("%s", str.Channels), fmt.Sprintf("%s", TimedSet{"a": NewVbSequence(21, 17), "b": NewVbSequence(25, 23)}))
+	assert.Equal(t, fmt.Sprintf("%s", TimedSet{"a": NewVbSequence(21, 17), "b": NewVbSequence(25, 23)}), fmt.Sprintf("%s", str.Channels))
 }
 
 func TestEncodeSequenceID(t *testing.T) {
 	set := TimedSet{"ABC": NewVbSimpleSequence(17), "CBS": NewVbSimpleSequence(23), "BBC": NewVbSimpleSequence(1)}
 	encoded := set.String()
-	goassert.Equals(t, encoded, "ABC:17,BBC:1,CBS:23")
+	assert.Equal(t, "ABC:17,BBC:1,CBS:23", encoded)
 	decoded := TimedSetFromString(encoded)
-	goassert.DeepEquals(t, decoded, set)
+	assert.Equal(t, set, decoded)
 
-	goassert.Equals(t, TimedSet{"ABC": NewVbSimpleSequence(17), "CBS": NewVbSimpleSequence(0)}.String(), "ABC:17")
+	assert.Equal(t, "ABC:17", TimedSet{"ABC": NewVbSimpleSequence(17), "CBS": NewVbSimpleSequence(0)}.String())
 
-	goassert.DeepEquals(t, TimedSetFromString(""), TimedSet{})
-	goassert.DeepEquals(t, TimedSetFromString("ABC:17"), TimedSet{"ABC": NewVbSimpleSequence(17)})
+	assert.Equal(t, TimedSet{}, TimedSetFromString(""))
+	assert.Equal(t, TimedSet{"ABC": NewVbSimpleSequence(17)}, TimedSetFromString("ABC:17"))
 
-	goassert.DeepEquals(t, TimedSetFromString(":17"), TimedSet(nil))
-	goassert.DeepEquals(t, TimedSetFromString("ABC:"), TimedSet(nil))
-	goassert.DeepEquals(t, TimedSetFromString("ABC:0"), TimedSet(nil))
-	goassert.DeepEquals(t, TimedSetFromString("ABC:-1"), TimedSet(nil))
-	goassert.DeepEquals(t, TimedSetFromString("ABC:17,"), TimedSet(nil))
-	goassert.DeepEquals(t, TimedSetFromString(",ABC:17"), TimedSet(nil))
-	goassert.DeepEquals(t, TimedSetFromString("ABC:17,,NBC:12"), TimedSet(nil))
-	goassert.DeepEquals(t, TimedSetFromString("ABC:17,ABC:12"), TimedSet(nil))
+	assert.Equal(t, TimedSet(nil), TimedSetFromString(":17"))
+	assert.Equal(t, TimedSet(nil), TimedSetFromString("ABC:"))
+	assert.Equal(t, TimedSet(nil), TimedSetFromString("ABC:0"))
+	assert.Equal(t, TimedSet(nil), TimedSetFromString("ABC:-1"))
+	assert.Equal(t, TimedSet(nil), TimedSetFromString("ABC:17,"))
+	assert.Equal(t, TimedSet(nil), TimedSetFromString(",ABC:17"))
+	assert.Equal(t, TimedSet(nil), TimedSetFromString("ABC:17,,NBC:12"))
+	assert.Equal(t, TimedSet(nil), TimedSetFromString("ABC:17,ABC:12"))
 }
 
 func TestEqualsWithEqualSet(t *testing.T) {
 	set1 := TimedSet{"ABC": NewVbSimpleSequence(17), "CBS": NewVbSimpleSequence(23), "BBC": NewVbSimpleSequence(1)}
 	set2 := base.SetFromArray([]string{"ABC", "CBS", "BBC"})
-	goassert.True(t, set1.Equals(set2))
+	assert.True(t, set1.Equals(set2))
 
 }
 
 func TestEqualsWithUnequalSet(t *testing.T) {
 	set1 := TimedSet{"ABC": NewVbSimpleSequence(17), "CBS": NewVbSimpleSequence(23), "BBC": NewVbSimpleSequence(1)}
 	set2 := base.SetFromArray([]string{"ABC", "BBC"})
-	goassert.True(t, !set1.Equals(set2))
+	assert.True(t, !set1.Equals(set2))
 	set3 := base.SetFromArray([]string{"ABC", "BBC", "CBS", "FOO"})
-	goassert.True(t, !set1.Equals(set3))
+	assert.True(t, !set1.Equals(set3))
 
 }
 

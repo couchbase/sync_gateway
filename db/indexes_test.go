@@ -18,7 +18,6 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -111,17 +110,17 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 
 	// Running w/ opposite xattrs flag should preview removal of the indexes associated with this db context
 	removedIndexes, removeErr = removeObsoleteIndexes(n1qlStore, true, !db.UseXattrs(), db.UseViews(), sgIndexes)
-	goassert.Equals(t, len(removedIndexes), int(expectedIndexes))
+	assert.Equal(t, int(expectedIndexes), len(removedIndexes))
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in preview mode")
 
 	// Running again w/ preview=false to perform cleanup
 	removedIndexes, removeErr = removeObsoleteIndexes(n1qlStore, false, !db.UseXattrs(), db.UseViews(), sgIndexes)
-	goassert.Equals(t, len(removedIndexes), int(expectedIndexes))
+	assert.Equal(t, int(expectedIndexes), len(removedIndexes))
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in non-preview mode")
 
 	// One more time to make sure they are actually gone
 	removedIndexes, removeErr = removeObsoleteIndexes(n1qlStore, false, !db.UseXattrs(), db.UseViews(), sgIndexes)
-	goassert.Equals(t, len(removedIndexes), 0)
+	assert.Equal(t, 0, len(removedIndexes))
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in post-cleanup no-op")
 
 	// Restore indexes after test
@@ -146,7 +145,7 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	// Validate that removeObsoleteIndexes is a no-op for the default case
 	removedIndexes, removeErr := removeObsoleteIndexes(n1qlStore, true, db.UseXattrs(), db.UseViews(), copiedIndexes)
 	log.Printf("removedIndexes: %+v", removedIndexes)
-	goassert.Equals(t, len(removedIndexes), 0)
+	assert.Equal(t, 0, len(removedIndexes))
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in no-op case")
 
 	// Hack sgIndexes to simulate new version of indexes
@@ -163,7 +162,7 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	// Validate that removeObsoleteIndexes now triggers removal of one index
 	removedIndexes, removeErr = removeObsoleteIndexes(n1qlStore, true, db.UseXattrs(), db.UseViews(), copiedIndexes)
 	log.Printf("removedIndexes: %+v", removedIndexes)
-	goassert.Equals(t, len(removedIndexes), 1)
+	assert.Equal(t, 1, len(removedIndexes))
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes with hacked sgIndexes")
 
 	// Restore indexes after test

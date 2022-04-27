@@ -11,8 +11,9 @@ licenses/APL2.txt.
 package rest
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNetworkInterfaceStatsForHostnamePort(t *testing.T) {

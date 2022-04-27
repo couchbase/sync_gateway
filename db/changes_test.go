@@ -16,7 +16,6 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -116,7 +115,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 	// Modify user to have access to both channels (sequence 2):
 	userInfo, err := db.GetPrincipalForTest(t, "naomi", true)
-	goassert.True(t, userInfo != nil)
+	assert.True(t, userInfo != nil)
 	userInfo.ExplicitChannels = base.SetOf("ABC", "PBS")
 	_, err = db.UpdatePrincipal(base.TestCtx(t), *userInfo, true, true)
 	assert.NoError(t, err, "UpdatePrincipal failed")
@@ -219,11 +218,12 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	changes, err := db.GetChanges(base.SetOf("*"), getZeroSequence())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
-	goassert.Equals(t, len(changes), 1)
-	goassert.DeepEquals(t, changes[0], &ChangeEntry{ // Seq 1, from A
+	assert.Equal(t, 1, len(changes))
+	assert.Equal(t, &ChangeEntry{
 		Seq:     SequenceID{Seq: 1},
 		ID:      "alpha",
-		Changes: []ChangeRev{{"rev": revid}}})
+		Changes: []ChangeRev{{"rev": revid}}}, changes[0])
+
 	lastSeq := getLastSeq(changes)
 	lastSeq, _ = db.ParseSequenceID(lastSeq.String())
 
@@ -261,13 +261,13 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 	assert.NoError(t, err, "Couldn't GetChanges (2nd)")
 
-	goassert.Equals(t, len(changes), 1)
-	goassert.DeepEquals(t, changes[0], &ChangeEntry{
+	assert.Equal(t, 1, len(changes))
+	assert.Equal(t, &ChangeEntry{
 		Seq:        SequenceID{Seq: 2},
 		ID:         "alpha",
 		Removed:    base.SetOf("A"),
 		allRemoved: true,
-		Changes:    []ChangeRev{{"rev": "2-e99405a23fa102238fa8c3fd499b15bc"}}})
+		Changes:    []ChangeRev{{"rev": "2-e99405a23fa102238fa8c3fd499b15bc"}}}, changes[0])
 
 	printChanges(changes)
 }
@@ -304,11 +304,12 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
 
-	goassert.Equals(t, len(changes), 1)
-	goassert.DeepEquals(t, changes[0], &ChangeEntry{ // Seq 1, from A
+	assert.Equal(t, 1, len(changes))
+	assert.Equal(t, &ChangeEntry{
 		Seq:     SequenceID{Seq: 1},
 		ID:      "alpha",
-		Changes: []ChangeRev{{"rev": revid}}})
+		Changes: []ChangeRev{{"rev": revid}}}, changes[0])
+
 	lastSeq := getLastSeq(changes)
 	lastSeq, _ = db.ParseSequenceID(lastSeq.String())
 
@@ -343,11 +344,11 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 
 	assert.NoError(t, err, "Couldn't GetChanges (2nd)")
 
-	goassert.Equals(t, len(changes), 1)
-	goassert.DeepEquals(t, changes[0], &ChangeEntry{
+	assert.Equal(t, 1, len(changes))
+	assert.Equal(t, &ChangeEntry{
 		Seq:     SequenceID{Seq: 3},
 		ID:      "alpha",
-		Changes: []ChangeRev{{"rev": "3-e99405a23fa102238fa8c3fd499b15bc"}}})
+		Changes: []ChangeRev{{"rev": "3-e99405a23fa102238fa8c3fd499b15bc"}}}, changes[0])
 
 	printChanges(changes)
 }

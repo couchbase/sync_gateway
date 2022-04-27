@@ -14,7 +14,6 @@ import (
 	"math/big"
 	"testing"
 
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -37,33 +36,33 @@ func TestRedactHelper(t *testing.T) {
 
 	// Since redact performs an in-place redaction,
 	// we'd expect the input slice to change too.
-	goassert.DeepEquals(t, out, in)
+	assert.Equal(t, in, out)
 
 	// Check that ptr wasn't redacted outside of the slice... this could be dangerous!
-	goassert.Equals(t, string(ptr), "hello")
+	assert.Equal(t, "hello", string(ptr))
 
 	// Verify that only the types implementing Redactor have changed.
-	goassert.Equals(t, out[0], UserData("alice").Redact())
-	goassert.Equals(t, out[1], ptr.Redact())
-	goassert.Equals(t, out[2], "bob")
-	goassert.Equals(t, out[3], 1234)
-	goassert.Equals(t, out[4].(*big.Int).String(), big.NewInt(1234).String())
-	goassert.Equals(t, out[5], struct{}{})
+	assert.Equal(t, UserData("alice").Redact(), out[0])
+	assert.Equal(t, ptr.Redact(), out[1])
+	assert.Equal(t, "bob", out[2])
+	assert.Equal(t, 1234, out[3])
+	assert.Equal(t, big.NewInt(1234).String(), out[4].(*big.Int).String())
+	assert.Equal(t, struct{}{}, out[5])
 }
 
 func TestSetRedaction(t *testing.T) {
 	// Hits the default case
 	SetRedaction(-1)
-	goassert.Equals(t, RedactUserData, true)
+	assert.Equal(t, true, RedactUserData)
 
 	SetRedaction(RedactFull)
-	goassert.Equals(t, RedactUserData, true)
+	assert.Equal(t, true, RedactUserData)
 
 	SetRedaction(RedactPartial)
-	goassert.Equals(t, RedactUserData, true)
+	assert.Equal(t, true, RedactUserData)
 
 	SetRedaction(RedactNone)
-	goassert.Equals(t, RedactUserData, false)
+	assert.Equal(t, false, RedactUserData)
 }
 
 func TestRedactionLevelMarshalText(t *testing.T) {
@@ -71,39 +70,39 @@ func TestRedactionLevelMarshalText(t *testing.T) {
 	level = RedactNone
 	text, err := level.MarshalText()
 	assert.NoError(t, err)
-	goassert.Equals(t, string(text), "none")
+	assert.Equal(t, "none", string(text))
 
 	level = RedactPartial
 	text, err = level.MarshalText()
 	assert.NoError(t, err)
-	goassert.Equals(t, string(text), "partial")
+	assert.Equal(t, "partial", string(text))
 
 	level = RedactFull
 	text, err = level.MarshalText()
 	assert.NoError(t, err)
-	goassert.Equals(t, string(text), "full")
+	assert.Equal(t, "full", string(text))
 }
 
 func TestRedactionLevelUnmarshalText(t *testing.T) {
 	var level RedactionLevel
 	err := level.UnmarshalText([]byte("none"))
 	assert.NoError(t, err)
-	goassert.Equals(t, level, RedactNone)
+	assert.Equal(t, RedactNone, level)
 
 	err = level.UnmarshalText([]byte("partial"))
 	assert.NoError(t, err)
-	goassert.Equals(t, level, RedactPartial)
+	assert.Equal(t, RedactPartial, level)
 
 	err = level.UnmarshalText([]byte("full"))
 	assert.NoError(t, err)
-	goassert.Equals(t, level, RedactFull)
+	assert.Equal(t, RedactFull, level)
 
 	err = level.UnmarshalText([]byte("unset"))
 	assert.NoError(t, err)
-	goassert.Equals(t, level, RedactUnset)
+	assert.Equal(t, RedactUnset, level)
 
 	err = level.UnmarshalText([]byte("asdf"))
-	goassert.Equals(t, err.Error(), "unrecognized redaction level: \"asdf\"")
+	assert.Equal(t, "unrecognized redaction level: \"asdf\"", err.Error())
 }
 
 func TestMixedTypeSliceRedaction(t *testing.T) {

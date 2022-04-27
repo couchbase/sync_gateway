@@ -37,7 +37,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/couchbaselabs/walrus"
 	"github.com/robertkrimen/otto/underscore"
 	"github.com/stretchr/testify/assert"
@@ -60,16 +59,16 @@ func TestRoot(t *testing.T) {
 	assertStatus(t, response, 200)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.Equals(t, body["couchdb"], "Welcome")
+	assert.Equal(t, "Welcome", body["couchdb"])
 
 	response = rt.SendRequest("HEAD", "/", "")
 	assertStatus(t, response, 200)
 	response = rt.SendRequest("OPTIONS", "/", "")
 	assertStatus(t, response, 204)
-	goassert.Equals(t, response.Header().Get("Allow"), "GET, HEAD")
+	assert.Equal(t, "GET, HEAD", response.Header().Get("Allow"))
 	response = rt.SendRequest("PUT", "/", "")
 	assertStatus(t, response, 405)
-	goassert.Equals(t, response.Header().Get("Allow"), "GET, HEAD")
+	assert.Equal(t, "GET, HEAD", response.Header().Get("Allow"))
 }
 
 func TestDBRoot(t *testing.T) {
@@ -82,14 +81,14 @@ func TestDBRoot(t *testing.T) {
 	err := base.JSONUnmarshal(response.Body.Bytes(), &body)
 	assert.NoError(t, err)
 
-	goassert.Equals(t, body["db_name"], "db")
-	goassert.Equals(t, body["state"], "Online")
+	assert.Equal(t, "db", body["db_name"])
+	assert.Equal(t, "Online", body["state"])
 
 	response = rt.SendRequest("HEAD", "/db/", "")
 	assertStatus(t, response, 200)
 	response = rt.SendRequest("OPTIONS", "/db/", "")
 	assertStatus(t, response, 204)
-	goassert.Equals(t, response.Header().Get("Allow"), "GET, HEAD, POST, PUT")
+	assert.Equal(t, "GET, HEAD, POST, PUT", response.Header().Get("Allow"))
 }
 
 func TestDisablePublicBasicAuth(t *testing.T) {
@@ -137,7 +136,7 @@ func (rt *RestTester) createDoc(t *testing.T, docid string) string {
 	assertStatus(t, response, 201)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.Equals(t, body["ok"], true)
+	assert.Equal(t, true, body["ok"])
 	revid := body["rev"].(string)
 	if revid == "" {
 		t.Fatalf("No revid in response for PUT doc")
@@ -150,7 +149,7 @@ func TestDocLifecycle(t *testing.T) {
 	defer rt.Close()
 
 	revid := rt.createDoc(t, "doc")
-	goassert.Equals(t, revid, "1-45ca73d819d5b1c9b8eea95290e79004")
+	assert.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", revid)
 
 	response := rt.SendAdminRequest("DELETE", "/db/doc?rev="+revid, "")
 	assertStatus(t, response, 200)
@@ -167,32 +166,32 @@ func TestDocEtag(t *testing.T) {
 	assertStatus(t, response, 201)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.Equals(t, body["ok"], true)
+	assert.Equal(t, true, body["ok"])
 	revid := body["rev"].(string)
 	if revid == "" {
 		t.Fatalf("No revid in response for PUT doc")
 	}
 
 	// Validate Etag returned on doc creation
-	goassert.Equals(t, response.Header().Get("Etag"), strconv.Quote(revid))
+	assert.Equal(t, strconv.Quote(revid), response.Header().Get("Etag"))
 
 	response = rt.SendRequest("GET", "/db/doc", "")
 	assertStatus(t, response, 200)
 
 	// Validate Etag returned when retrieving doc
-	goassert.Equals(t, response.Header().Get("Etag"), strconv.Quote(revid))
+	assert.Equal(t, strconv.Quote(revid), response.Header().Get("Etag"))
 
 	// Validate Etag returned when updating doc
 	response = rt.SendRequest("PUT", "/db/doc?rev="+revid, `{"prop":false}`)
 	revid = body["rev"].(string)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.Equals(t, body["ok"], true)
+	assert.Equal(t, true, body["ok"])
 	revid = body["rev"].(string)
 	if revid == "" {
 		t.Fatalf("No revid in response for PUT doc")
 	}
 
-	goassert.Equals(t, response.Header().Get("Etag"), strconv.Quote(revid))
+	assert.Equal(t, strconv.Quote(revid), response.Header().Get("Etag"))
 
 	// Test Attachments
 	attachmentBody := "this is the body of attachment"
@@ -206,25 +205,25 @@ func TestDocEtag(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.Equals(t, body["ok"], true)
+	assert.Equal(t, true, body["ok"])
 	revIdAfterAttachment := body["rev"].(string)
 	if revIdAfterAttachment == "" {
 		t.Fatalf("No revid in response for PUT attachment")
 	}
-	goassert.True(t, revIdAfterAttachment != revid)
+	assert.True(t, revIdAfterAttachment != revid)
 
 	// validate Etag returned from adding an attachment
-	goassert.Equals(t, response.Header().Get("Etag"), strconv.Quote(revIdAfterAttachment))
+	assert.Equal(t, strconv.Quote(revIdAfterAttachment), response.Header().Get("Etag"))
 
 	// retrieve attachment
 	response = rt.SendRequest("GET", "/db/doc/attach1", "")
 	assertStatus(t, response, 200)
-	goassert.Equals(t, string(response.Body.Bytes()), attachmentBody)
-	goassert.Equals(t, response.Header().Get("Content-Disposition"), "")
-	goassert.Equals(t, response.Header().Get("Content-Type"), attachmentContentType)
+	assert.Equal(t, attachmentBody, string(response.Body.Bytes()))
+	assert.Equal(t, "", response.Header().Get("Content-Disposition"))
+	assert.Equal(t, attachmentContentType, response.Header().Get("Content-Type"))
 
 	// Validate Etag returned from retrieving an attachment
-	goassert.Equals(t, response.Header().Get("Etag"), "\"sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=\"")
+	assert.Equal(t, "\"sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=\"", response.Header().Get("Etag"))
 
 }
 
@@ -252,20 +251,20 @@ func TestDocAttachment(t *testing.T) {
 	// retrieve attachment
 	response = rt.SendRequest("GET", "/db/doc/attach1", "")
 	assertStatus(t, response, 200)
-	goassert.Equals(t, string(response.Body.Bytes()), attachmentBody)
-	goassert.Equals(t, response.Header().Get("Accept-Ranges"), "bytes")
-	goassert.Equals(t, response.Header().Get("Content-Disposition"), "")
-	goassert.Equals(t, response.Header().Get("Content-Length"), "30")
-	goassert.Equals(t, response.Header().Get("Content-Type"), attachmentContentType)
+	assert.Equal(t, attachmentBody, string(response.Body.Bytes()))
+	assert.Equal(t, "bytes", response.Header().Get("Accept-Ranges"))
+	assert.Equal(t, "", response.Header().Get("Content-Disposition"))
+	assert.Equal(t, "30", response.Header().Get("Content-Length"))
+	assert.Equal(t, attachmentContentType, response.Header().Get("Content-Type"))
 
 	// retrieve subrange
 	response = rt.SendRequestWithHeaders("GET", "/db/doc/attach1", "", map[string]string{"Range": "bytes=5-6"})
 	assertStatus(t, response, 206)
-	goassert.Equals(t, string(response.Body.Bytes()), "is")
-	goassert.Equals(t, response.Header().Get("Accept-Ranges"), "bytes")
-	goassert.Equals(t, response.Header().Get("Content-Length"), "2")
-	goassert.Equals(t, response.Header().Get("Content-Range"), "bytes 5-6/30")
-	goassert.Equals(t, response.Header().Get("Content-Type"), attachmentContentType)
+	assert.Equal(t, "is", string(response.Body.Bytes()))
+	assert.Equal(t, "bytes", response.Header().Get("Accept-Ranges"))
+	assert.Equal(t, "2", response.Header().Get("Content-Length"))
+	assert.Equal(t, "bytes 5-6/30", response.Header().Get("Content-Range"))
+	assert.Equal(t, attachmentContentType, response.Header().Get("Content-Type"))
 }
 
 func TestDocAttachmentMetaOption(t *testing.T) {
@@ -674,7 +673,7 @@ func TestCORSOrigin(t *testing.T) {
 		"Origin": "http://example.com",
 	}
 	response := rt.SendRequestWithHeaders("GET", "/db/", "", reqHeaders)
-	goassert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "http://example.com")
+	assert.Equal(t, "http://example.com", response.Header().Get("Access-Control-Allow-Origin"))
 
 	// now test a non-listed origin
 	// b/c * is in config we get *
@@ -682,21 +681,21 @@ func TestCORSOrigin(t *testing.T) {
 		"Origin": "http://hack0r.com",
 	}
 	response = rt.SendRequestWithHeaders("GET", "/db/", "", reqHeaders)
-	goassert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "*")
+	assert.Equal(t, "*", response.Header().Get("Access-Control-Allow-Origin"))
 
 	// now test another origin in config
 	reqHeaders = map[string]string{
 		"Origin": "http://staging.example.com",
 	}
 	response = rt.SendRequestWithHeaders("GET", "/db/", "", reqHeaders)
-	goassert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "http://staging.example.com")
+	assert.Equal(t, "http://staging.example.com", response.Header().Get("Access-Control-Allow-Origin"))
 
 	// test no header on _admin apis
 	reqHeaders = map[string]string{
 		"Origin": "http://example.com",
 	}
 	response = rt.SendAdminRequestWithHeaders("GET", "/db/_all_docs", "", reqHeaders)
-	goassert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "")
+	assert.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
 
 	// test with a config without * should reject non-matches
 	sc := rt.ServerContext()
@@ -707,7 +706,7 @@ func TestCORSOrigin(t *testing.T) {
 		"Origin": "http://hack0r.com",
 	}
 	response = rt.SendRequestWithHeaders("GET", "/db/", "", reqHeaders)
-	goassert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "")
+	assert.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
 }
 
 // assertGatewayStatus is like assertStatus but with StatusGatewayTimeout error checking for temporary network failures.
@@ -784,7 +783,7 @@ func TestCORSLogoutOriginOnSessionDelete(t *testing.T) {
 
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.Equals(t, body["reason"], "no session")
+	assert.Equal(t, "no session", body["reason"])
 }
 
 func TestCORSLogoutOriginOnSessionDeleteNoCORSConfig(t *testing.T) {
@@ -804,7 +803,7 @@ func TestCORSLogoutOriginOnSessionDeleteNoCORSConfig(t *testing.T) {
 
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.Equals(t, body["reason"], "No CORS")
+	assert.Equal(t, "No CORS", body["reason"])
 }
 
 func TestNoCORSOriginOnSessionDelete(t *testing.T) {
@@ -820,7 +819,7 @@ func TestNoCORSOriginOnSessionDelete(t *testing.T) {
 
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.Equals(t, body["reason"], "No CORS")
+	assert.Equal(t, "No CORS", body["reason"])
 }
 
 func TestManualAttachment(t *testing.T) {
@@ -853,27 +852,27 @@ func TestManualAttachment(t *testing.T) {
 	assertStatus(t, response, 201)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.Equals(t, body["ok"], true)
+	assert.Equal(t, true, body["ok"])
 	revIdAfterAttachment := body["rev"].(string)
 	if revIdAfterAttachment == "" {
 		t.Fatalf("No revid in response for PUT attachment")
 	}
-	goassert.True(t, revIdAfterAttachment != doc1revId)
+	assert.True(t, revIdAfterAttachment != doc1revId)
 
 	// retrieve attachment
 	response = rt.SendRequest("GET", "/db/doc1/attach1", "")
 	assertStatus(t, response, 200)
-	goassert.Equals(t, string(response.Body.Bytes()), attachmentBody)
-	goassert.True(t, response.Header().Get("Content-Disposition") == "")
-	goassert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+	assert.Equal(t, attachmentBody, string(response.Body.Bytes()))
+	assert.True(t, response.Header().Get("Content-Disposition") == "")
+	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
 
 	// retrieve attachment as admin should have
 	// Content-disposition: attachment
 	response = rt.SendAdminRequest("GET", "/db/doc1/attach1", "")
 	assertStatus(t, response, 200)
-	goassert.Equals(t, string(response.Body.Bytes()), attachmentBody)
-	goassert.True(t, response.Header().Get("Content-Disposition") == `attachment`)
-	goassert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+	assert.Equal(t, attachmentBody, string(response.Body.Bytes()))
+	assert.True(t, response.Header().Get("Content-Disposition") == `attachment`)
+	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
 
 	// try to overwrite that attachment
 	attachmentBody = "updated content"
@@ -881,12 +880,12 @@ func TestManualAttachment(t *testing.T) {
 	assertStatus(t, response, 201)
 	body = db.Body{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.Equals(t, body["ok"], true)
+	assert.Equal(t, true, body["ok"])
 	revIdAfterUpdateAttachment := body["rev"].(string)
 	if revIdAfterUpdateAttachment == "" {
 		t.Fatalf("No revid in response for PUT attachment")
 	}
-	goassert.True(t, revIdAfterUpdateAttachment != revIdAfterAttachment)
+	assert.True(t, revIdAfterUpdateAttachment != revIdAfterAttachment)
 
 	// try to overwrite that attachment again, this time using If-Match header
 	attachmentBody = "updated content again"
@@ -895,19 +894,19 @@ func TestManualAttachment(t *testing.T) {
 	assertStatus(t, response, 201)
 	body = db.Body{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.Equals(t, body["ok"], true)
+	assert.Equal(t, true, body["ok"])
 	revIdAfterUpdateAttachmentAgain := body["rev"].(string)
 	if revIdAfterUpdateAttachmentAgain == "" {
 		t.Fatalf("No revid in response for PUT attachment")
 	}
-	goassert.True(t, revIdAfterUpdateAttachmentAgain != revIdAfterUpdateAttachment)
+	assert.True(t, revIdAfterUpdateAttachmentAgain != revIdAfterUpdateAttachment)
 	delete(reqHeaders, "If-Match")
 
 	// retrieve attachment
 	response = rt.SendRequest("GET", "/db/doc1/attach1", "")
 	assertStatus(t, response, 200)
-	goassert.Equals(t, string(response.Body.Bytes()), attachmentBody)
-	goassert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+	assert.Equal(t, attachmentBody, string(response.Body.Bytes()))
+	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
 
 	// add another attachment to the document
 	// also no explicit Content-Type header on this one
@@ -917,18 +916,18 @@ func TestManualAttachment(t *testing.T) {
 	assertStatus(t, response, 201)
 	body = db.Body{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.Equals(t, body["ok"], true)
+	assert.Equal(t, true, body["ok"])
 	revIdAfterSecondAttachment := body["rev"].(string)
 	if revIdAfterSecondAttachment == "" {
 		t.Fatalf("No revid in response for PUT attachment")
 	}
-	goassert.True(t, revIdAfterSecondAttachment != revIdAfterUpdateAttachment)
+	assert.True(t, revIdAfterSecondAttachment != revIdAfterUpdateAttachment)
 
 	// retrieve attachment
 	response = rt.SendRequest("GET", "/db/doc1/attach2", "")
 	assertStatus(t, response, 200)
-	goassert.Equals(t, string(response.Body.Bytes()), attachmentBody)
-	goassert.True(t, response.Header().Get("Content-Type") == "application/octet-stream")
+	assert.Equal(t, attachmentBody, string(response.Body.Bytes()))
+	assert.True(t, response.Header().Get("Content-Type") == "application/octet-stream")
 
 	// now check the attachments index on the document
 	response = rt.SendRequest("GET", "/db/doc1", "")
@@ -939,7 +938,7 @@ func TestManualAttachment(t *testing.T) {
 	if !ok {
 		t.Errorf("Attachments must be map")
 	} else {
-		goassert.Equals(t, len(bodyAttachments), 2)
+		assert.Equal(t, 2, len(bodyAttachments))
 	}
 	// make sure original document property has remained
 	prop, ok := body["prop"]
@@ -973,7 +972,7 @@ func TestManualAttachmentNewDoc(t *testing.T) {
 	assertStatus(t, response, 201)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.Equals(t, body["ok"], true)
+	assert.Equal(t, true, body["ok"])
 	revIdAfterAttachment := body["rev"].(string)
 	if revIdAfterAttachment == "" {
 		t.Fatalf("No revid in response for PUT attachment")
@@ -982,8 +981,8 @@ func TestManualAttachmentNewDoc(t *testing.T) {
 	// retrieve attachment
 	response = rt.SendAdminRequest("GET", "/db/notexistyet/attach1", "")
 	assertStatus(t, response, 200)
-	goassert.Equals(t, string(response.Body.Bytes()), attachmentBody)
-	goassert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+	assert.Equal(t, attachmentBody, string(response.Body.Bytes()))
+	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
 
 	// now check the document
 	body = db.Body{}
@@ -991,7 +990,7 @@ func TestManualAttachmentNewDoc(t *testing.T) {
 	assertStatus(t, response, 200)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	// body should only have 3 top-level entries _id, _rev, _attachments
-	goassert.True(t, len(body) == 3)
+	assert.True(t, len(body) == 3)
 }
 
 func TestBulkDocs(t *testing.T) {
@@ -1050,11 +1049,11 @@ func TestBulkDocsIDGeneration(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
 	log.Printf("response: %s", response.Body.Bytes())
 	assertStatus(t, response, 201)
-	goassert.Equals(t, len(docs), 2)
-	goassert.Equals(t, docs[0]["rev"], "1-50133ddd8e49efad34ad9ecae4cb9907")
-	goassert.True(t, docs[0]["id"] != "")
-	goassert.Equals(t, docs[1]["rev"], "1-035168c88bd4b80fb098a8da72f881ce")
-	goassert.True(t, docs[1]["id"] != "")
+	assert.Equal(t, 2, len(docs))
+	assert.Equal(t, "1-50133ddd8e49efad34ad9ecae4cb9907", docs[0]["rev"])
+	assert.True(t, docs[0]["id"] != "")
+	assert.Equal(t, "1-035168c88bd4b80fb098a8da72f881ce", docs[1]["rev"])
+	assert.True(t, docs[1]["id"] != "")
 }
 
 /*
@@ -1516,11 +1515,11 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 
 	var docs []interface{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
-	goassert.Equals(t, len(docs), 2)
-	goassert.DeepEquals(t, docs[0],
-		map[string]interface{}{"rev": "1-afbcffa8a4641a0f4dd94d3fc9593e74", "id": "bulk1"})
-	goassert.DeepEquals(t, docs[1],
-		map[string]interface{}{"rev": "1-4d79588b9fe9c38faae61f0c1b9471c0", "id": "bulk2"})
+	assert.Equal(t, 2, len(docs))
+	assert.Equal(t, map[string]interface{}{"rev": "1-afbcffa8a4641a0f4dd94d3fc9593e74", "id": "bulk1"}, docs[0])
+
+	assert.Equal(t, map[string]interface{}{"rev": "1-4d79588b9fe9c38faae61f0c1b9471c0", "id": "bulk2"}, docs[1])
+
 }
 
 func TestBulkDocsChangeToRoleAccess(t *testing.T) {
@@ -1569,11 +1568,11 @@ func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 
 	var docs []interface{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
-	goassert.Equals(t, len(docs), 2)
-	goassert.DeepEquals(t, docs[0],
-		map[string]interface{}{"rev": "1-17424d2a21bf113768dfdbcd344741ac", "id": "bulk1"})
-	goassert.DeepEquals(t, docs[1],
-		map[string]interface{}{"rev": "1-f120ccb33c0a6ef43ef202ade28f98ef", "id": "bulk2"})
+	assert.Equal(t, 2, len(docs))
+	assert.Equal(t, map[string]interface{}{"rev": "1-17424d2a21bf113768dfdbcd344741ac", "id": "bulk1"}, docs[0])
+
+	assert.Equal(t, map[string]interface{}{"rev": "1-f120ccb33c0a6ef43ef202ade28f98ef", "id": "bulk2"}, docs[1])
+
 }
 
 func TestBulkDocsNoEdits(t *testing.T) {
@@ -1590,11 +1589,10 @@ func TestBulkDocsNoEdits(t *testing.T) {
 	assertStatus(t, response, 201)
 	var docs []interface{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
-	goassert.Equals(t, len(docs), 2)
-	goassert.DeepEquals(t, docs[0],
-		map[string]interface{}{"rev": "12-abc", "id": "bdne1"})
-	goassert.DeepEquals(t, docs[1],
-		map[string]interface{}{"rev": "34-def", "id": "bdne2"})
+	assert.Equal(t, 2, len(docs))
+	assert.Equal(t, map[string]interface{}{"rev": "12-abc", "id": "bdne1"}, docs[0])
+
+	assert.Equal(t, map[string]interface{}{"rev": "34-def", "id": "bdne2"}, docs[1])
 
 	// Now update the first doc with two new revisions:
 	input = `{"new_edits":false, "docs": [
@@ -1604,9 +1602,9 @@ func TestBulkDocsNoEdits(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_bulk_docs", input)
 	assertStatus(t, response, 201)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
-	goassert.Equals(t, len(docs), 1)
-	goassert.DeepEquals(t, docs[0],
-		map[string]interface{}{"rev": "14-jkl", "id": "bdne1"})
+	assert.Equal(t, 1, len(docs))
+	assert.Equal(t, map[string]interface{}{"rev": "14-jkl", "id": "bdne1"}, docs[0])
+
 }
 
 type RevDiffResponse map[string][]string
@@ -1637,10 +1635,11 @@ func TestRevsDiff(t *testing.T) {
 	var diffResponse RevsDiffResponse
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &diffResponse))
 	sort.Strings(diffResponse["rd1"]["possible_ancestors"])
-	goassert.DeepEquals(t, diffResponse, RevsDiffResponse{
+	assert.Equal(t, RevsDiffResponse{
 		"rd1": RevDiffResponse{"missing": []string{"13-def", "12-xyz"},
 			"possible_ancestors": []string{"11-eleven", "12-abc"}},
-		"rd9": RevDiffResponse{"missing": []string{"1-a", "2-b", "3-c"}}})
+		"rd9": RevDiffResponse{"missing": []string{"1-a", "2-b", "3-c"}}}, diffResponse)
+
 }
 
 func TestOpenRevs(t *testing.T) {
@@ -1739,14 +1738,14 @@ func TestBulkGetPerDocRevsLimit(t *testing.T) {
 				}
 			]
 		}`, docs["doc1"], docs["doc2"], docs["doc3"], docs["doc4"]))
-	goassert.Equals(t, bulkGetResponse.Code, http.StatusOK)
+	assert.Equal(t, http.StatusOK, bulkGetResponse.Code)
 
 	bulkGetResponse.DumpBody()
 
 	// Parse multipart/mixed docs and create reader
 	contentType, attrs, _ := mime.ParseMediaType(bulkGetResponse.Header().Get("Content-Type"))
 	log.Printf("content-type: %v.  attrs: %v", contentType, attrs)
-	goassert.Equals(t, contentType, "multipart/mixed")
+	assert.Equal(t, "multipart/mixed", contentType)
 	reader := multipart.NewReader(bulkGetResponse.Body, attrs["boundary"])
 
 readerLoop:
@@ -1779,18 +1778,18 @@ readerLoop:
 			exp = 1
 		case "doc3":
 			// revs_limit of zero should display no revision object at all
-			goassert.Equals(t, partJSON[db.BodyRevisions], nil)
+			assert.Equal(t, nil, partJSON[db.BodyRevisions])
 			break readerLoop
 		case "doc4":
 			// revs_limit must be >= 0
-			goassert.Equals(t, partJSON["error"], "bad_request")
+			assert.Equal(t, "bad_request", partJSON["error"])
 			break readerLoop
 		default:
 			t.Error("unrecognised part in response")
 		}
 
 		revisions := partJSON[db.BodyRevisions].(map[string]interface{})
-		goassert.Equals(t, len(revisions[db.RevisionsIds].([]interface{})), exp)
+		assert.Equal(t, exp, len(revisions[db.RevisionsIds].([]interface{})))
 	}
 
 }
@@ -1928,7 +1927,7 @@ func TestLogin(t *testing.T) {
 
 	user, err = a.GetUser("")
 	assert.NoError(t, err)
-	goassert.True(t, user.Disabled())
+	assert.True(t, user.Disabled())
 
 	response := rt.SendRequest("PUT", "/db/doc", `{"hi": "there"}`)
 	assertStatus(t, response, 401)
@@ -1941,7 +1940,7 @@ func TestLogin(t *testing.T) {
 	response = rt.SendRequest("POST", "/db/_session", `{"name":"pupshaw", "password":"letmein"}`)
 	assertStatus(t, response, 200)
 	log.Printf("Set-Cookie: %s", response.Header().Get("Set-Cookie"))
-	goassert.True(t, response.Header().Get("Set-Cookie") != "")
+	assert.True(t, response.Header().Get("Set-Cookie") != "")
 }
 
 func TestInvalidSession(t *testing.T) {
@@ -1988,25 +1987,25 @@ func TestCustomCookieName(t *testing.T) {
 
 	// Create a session
 	resp := rt.SendRequest("POST", "/db/_session", `{"name":"user1", "password":"1234"}`)
-	goassert.Equals(t, resp.Code, 200)
+	assert.Equal(t, 200, resp.Code)
 
 	// Extract the cookie from the create session response to verify the "Set-Cookie" value returned by Sync Gateway
 	cookies := resp.Result().Cookies()
-	goassert.True(t, len(cookies) == 1)
+	assert.True(t, len(cookies) == 1)
 	cookie := cookies[0]
-	goassert.Equals(t, cookie.Name, customCookieName)
-	goassert.Equals(t, cookie.Path, "/db")
+	assert.Equal(t, customCookieName, cookie.Name)
+	assert.Equal(t, "/db", cookie.Path)
 
 	// Attempt to use default cookie name to authenticate -- expect a 401 error
 	headers := map[string]string{}
 	headers["Cookie"] = fmt.Sprintf("%s=%s", auth.DefaultCookieName, cookie.Value)
 	resp = rt.SendRequestWithHeaders("GET", "/db/foo", `{}`, headers)
-	goassert.Equals(t, resp.Result().StatusCode, 401)
+	assert.Equal(t, 401, resp.Result().StatusCode)
 
 	// Attempt to use custom cookie name to authenticate
 	headers["Cookie"] = fmt.Sprintf("%s=%s", customCookieName, cookie.Value)
 	resp = rt.SendRequestWithHeaders("POST", "/db/", `{"_id": "foo", "key": "val"}`, headers)
-	goassert.Equals(t, resp.Result().StatusCode, 200)
+	assert.Equal(t, 200, resp.Result().StatusCode)
 
 }
 
@@ -2021,52 +2020,52 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 				"include_docs": true, "filter": "Melitta", "channels": "ABC,BBC"}`
 	feed, options, filter, channelsArray, _, _, err := h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.NoError(t, err)
-	goassert.Equals(t, feed, "longpoll")
+	assert.Equal(t, "longpoll", feed)
 
-	goassert.Equals(t, options.Since.Seq, uint64(78))
-	goassert.Equals(t, options.Since.TriggeredBy, uint64(123456))
-	goassert.Equals(t, options.Limit, 123)
-	goassert.Equals(t, options.Conflicts, true)
-	goassert.Equals(t, options.IncludeDocs, true)
-	goassert.Equals(t, options.HeartbeatMs, uint64(kDefaultHeartbeatMS))
-	goassert.Equals(t, options.TimeoutMs, uint64(kDefaultTimeoutMS))
+	assert.Equal(t, uint64(78), options.Since.Seq)
+	assert.Equal(t, uint64(123456), options.Since.TriggeredBy)
+	assert.Equal(t, 123, options.Limit)
+	assert.Equal(t, true, options.Conflicts)
+	assert.Equal(t, true, options.IncludeDocs)
+	assert.Equal(t, uint64(kDefaultHeartbeatMS), options.HeartbeatMs)
+	assert.Equal(t, uint64(kDefaultTimeoutMS), options.TimeoutMs)
 
-	goassert.Equals(t, filter, "Melitta")
-	goassert.DeepEquals(t, channelsArray, []string{"ABC", "BBC"})
+	assert.Equal(t, "Melitta", filter)
+	assert.Equal(t, []string{"ABC", "BBC"}, channelsArray)
 
 	// Attempt to set heartbeat, timeout to valid values
 	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":30000, "timeout":60000}`
 	feed, options, filter, channelsArray, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.NoError(t, err)
-	goassert.Equals(t, options.HeartbeatMs, uint64(30000))
-	goassert.Equals(t, options.TimeoutMs, uint64(60000))
+	assert.Equal(t, uint64(30000), options.HeartbeatMs)
+	assert.Equal(t, uint64(60000), options.TimeoutMs)
 
 	// Attempt to set valid timeout, no heartbeat
 	optStr = `{"feed":"longpoll", "since": "1", "timeout":2000}`
 	feed, options, filter, channelsArray, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.NoError(t, err)
-	goassert.Equals(t, options.TimeoutMs, uint64(2000))
+	assert.Equal(t, uint64(2000), options.TimeoutMs)
 
 	// Disable heartbeat, timeout by explicitly setting to zero
 	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":0, "timeout":0}`
 	feed, options, filter, channelsArray, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.NoError(t, err)
-	goassert.Equals(t, options.HeartbeatMs, uint64(0))
-	goassert.Equals(t, options.TimeoutMs, uint64(0))
+	assert.Equal(t, uint64(0), options.HeartbeatMs)
+	assert.Equal(t, uint64(0), options.TimeoutMs)
 
 	// Attempt to set heartbeat less than minimum heartbeat, timeout greater than max timeout
 	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":1000, "timeout":1000000}`
 	feed, options, filter, channelsArray, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.NoError(t, err)
-	goassert.Equals(t, options.HeartbeatMs, uint64(kMinHeartbeatMS))
-	goassert.Equals(t, options.TimeoutMs, uint64(kMaxTimeoutMS))
+	assert.Equal(t, uint64(kMinHeartbeatMS), options.HeartbeatMs)
+	assert.Equal(t, uint64(kMaxTimeoutMS), options.TimeoutMs)
 
 	// Set max heartbeat in server context, attempt to set heartbeat greater than max
 	h.server.config.Replicator.MaxHeartbeat = base.NewConfigDuration(time.Minute)
 	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":90000}`
 	feed, options, filter, channelsArray, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.NoError(t, err)
-	goassert.Equals(t, options.HeartbeatMs, uint64(60000))
+	assert.Equal(t, uint64(60000), options.HeartbeatMs)
 }
 
 // Test _all_docs API call under different security scenarios
@@ -2135,13 +2134,13 @@ func TestAllDocsAccessControl(t *testing.T) {
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(allDocsResult.Rows), 3)
-	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
-	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
-	goassert.Equals(t, allDocsResult.Rows[1].ID, "doc4")
-	goassert.DeepEquals(t, allDocsResult.Rows[1].Value.Channels, []string{"Cinemax"})
-	goassert.Equals(t, allDocsResult.Rows[2].ID, "doc5")
-	goassert.DeepEquals(t, allDocsResult.Rows[2].Value.Channels, []string{"Cinemax"})
+	assert.Equal(t, 3, len(allDocsResult.Rows))
+	assert.Equal(t, "doc3", allDocsResult.Rows[0].ID)
+	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
+	assert.Equal(t, "doc4", allDocsResult.Rows[1].ID)
+	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[1].Value.Channels)
+	assert.Equal(t, "doc5", allDocsResult.Rows[2].ID)
+	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[2].Value.Channels)
 
 	// Check all docs limit option
 	request, _ = http.NewRequest("GET", "/db/_all_docs?limit=1&channels=true", nil)
@@ -2154,8 +2153,8 @@ func TestAllDocsAccessControl(t *testing.T) {
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
 	require.Equal(t, 1, len(allDocsResult.Rows))
-	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
-	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	assert.Equal(t, "doc3", allDocsResult.Rows[0].ID)
+	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
 	// Check all docs startkey option
 	request, _ = http.NewRequest("GET", "/db/_all_docs?startkey=doc5&channels=true", nil)
@@ -2167,9 +2166,9 @@ func TestAllDocsAccessControl(t *testing.T) {
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(allDocsResult.Rows), 1)
-	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc5")
-	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	assert.Equal(t, 1, len(allDocsResult.Rows))
+	assert.Equal(t, "doc5", allDocsResult.Rows[0].ID)
+	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
 	// Check all docs startkey option with double quote
 	request, _ = http.NewRequest("GET", `/db/_all_docs?startkey="doc5"&channels=true`, nil)
@@ -2181,9 +2180,9 @@ func TestAllDocsAccessControl(t *testing.T) {
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(allDocsResult.Rows), 1)
-	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc5")
-	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	assert.Equal(t, 1, len(allDocsResult.Rows))
+	assert.Equal(t, "doc5", allDocsResult.Rows[0].ID)
+	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
 	// Check all docs endkey option
 	request, _ = http.NewRequest("GET", "/db/_all_docs?endkey=doc3&channels=true", nil)
@@ -2195,9 +2194,9 @@ func TestAllDocsAccessControl(t *testing.T) {
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(allDocsResult.Rows), 1)
-	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
-	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	assert.Equal(t, 1, len(allDocsResult.Rows))
+	assert.Equal(t, "doc3", allDocsResult.Rows[0].ID)
+	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
 	// Check all docs endkey option
 	request, _ = http.NewRequest("GET", `/db/_all_docs?endkey="doc3"&channels=true`, nil)
@@ -2209,9 +2208,9 @@ func TestAllDocsAccessControl(t *testing.T) {
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(allDocsResult.Rows), 1)
-	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
-	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	assert.Equal(t, 1, len(allDocsResult.Rows))
+	assert.Equal(t, "doc3", allDocsResult.Rows[0].ID)
+	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
 	// Check _all_docs with include_docs option:
 	request, _ = http.NewRequest("GET", "/db/_all_docs?include_docs=true", nil)
@@ -2223,10 +2222,10 @@ func TestAllDocsAccessControl(t *testing.T) {
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(allDocsResult.Rows), 3)
-	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
-	goassert.Equals(t, allDocsResult.Rows[1].ID, "doc4")
-	goassert.Equals(t, allDocsResult.Rows[2].ID, "doc5")
+	assert.Equal(t, 3, len(allDocsResult.Rows))
+	assert.Equal(t, "doc3", allDocsResult.Rows[0].ID)
+	assert.Equal(t, "doc4", allDocsResult.Rows[1].ID)
+	assert.Equal(t, "doc5", allDocsResult.Rows[2].ID)
 
 	// Check POST to _all_docs:
 	body := `{"keys": ["doc4", "doc1", "doc3", "b0gus"]}`
@@ -2239,20 +2238,20 @@ func TestAllDocsAccessControl(t *testing.T) {
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(allDocsResult.Rows), 4)
-	goassert.Equals(t, allDocsResult.Rows[0].Key, "doc4")
-	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc4")
-	goassert.Equals(t, allDocsResult.Rows[0].Value.Rev, "1-e0351a57554e023a77544d33dd21e56c")
-	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
-	goassert.Equals(t, allDocsResult.Rows[1].Key, "doc1")
-	goassert.Equals(t, allDocsResult.Rows[1].Error, "forbidden")
-	goassert.Equals(t, allDocsResult.Rows[1].Value.Rev, "")
-	goassert.Equals(t, allDocsResult.Rows[2].ID, "doc3")
-	goassert.DeepEquals(t, allDocsResult.Rows[2].Value.Channels, []string{"Cinemax"})
-	goassert.Equals(t, allDocsResult.Rows[2].Value.Rev, "1-20912648f85f2bbabefb0993ddd37b41")
-	goassert.Equals(t, allDocsResult.Rows[3].Key, "b0gus")
-	goassert.Equals(t, allDocsResult.Rows[3].Error, "not_found")
-	goassert.Equals(t, allDocsResult.Rows[3].Value.Rev, "")
+	assert.Equal(t, 4, len(allDocsResult.Rows))
+	assert.Equal(t, "doc4", allDocsResult.Rows[0].Key)
+	assert.Equal(t, "doc4", allDocsResult.Rows[0].ID)
+	assert.Equal(t, "1-e0351a57554e023a77544d33dd21e56c", allDocsResult.Rows[0].Value.Rev)
+	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
+	assert.Equal(t, "doc1", allDocsResult.Rows[1].Key)
+	assert.Equal(t, "forbidden", allDocsResult.Rows[1].Error)
+	assert.Equal(t, "", allDocsResult.Rows[1].Value.Rev)
+	assert.Equal(t, "doc3", allDocsResult.Rows[2].ID)
+	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[2].Value.Channels)
+	assert.Equal(t, "1-20912648f85f2bbabefb0993ddd37b41", allDocsResult.Rows[2].Value.Rev)
+	assert.Equal(t, "b0gus", allDocsResult.Rows[3].Key)
+	assert.Equal(t, "not_found", allDocsResult.Rows[3].Error)
+	assert.Equal(t, "", allDocsResult.Rows[3].Value.Rev)
 
 	// Check GET to _all_docs with keys parameter:
 	request, _ = http.NewRequest("GET", `/db/_all_docs?channels=true&keys=%5B%22doc4%22%2C%22doc1%22%2C%22doc3%22%2C%22b0gus%22%5D`, nil)
@@ -2264,16 +2263,16 @@ func TestAllDocsAccessControl(t *testing.T) {
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(allDocsResult.Rows), 4)
-	goassert.Equals(t, allDocsResult.Rows[0].Key, "doc4")
-	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc4")
-	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
-	goassert.Equals(t, allDocsResult.Rows[1].Key, "doc1")
-	goassert.Equals(t, allDocsResult.Rows[1].Error, "forbidden")
-	goassert.Equals(t, allDocsResult.Rows[2].ID, "doc3")
-	goassert.DeepEquals(t, allDocsResult.Rows[2].Value.Channels, []string{"Cinemax"})
-	goassert.Equals(t, allDocsResult.Rows[3].Key, "b0gus")
-	goassert.Equals(t, allDocsResult.Rows[3].Error, "not_found")
+	assert.Equal(t, 4, len(allDocsResult.Rows))
+	assert.Equal(t, "doc4", allDocsResult.Rows[0].Key)
+	assert.Equal(t, "doc4", allDocsResult.Rows[0].ID)
+	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
+	assert.Equal(t, "doc1", allDocsResult.Rows[1].Key)
+	assert.Equal(t, "forbidden", allDocsResult.Rows[1].Error)
+	assert.Equal(t, "doc3", allDocsResult.Rows[2].ID)
+	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[2].Value.Channels)
+	assert.Equal(t, "b0gus", allDocsResult.Rows[3].Key)
+	assert.Equal(t, "not_found", allDocsResult.Rows[3].Error)
 
 	// Check POST to _all_docs with limit option:
 	body = `{"keys": ["doc4", "doc1", "doc3", "b0gus"]}`
@@ -2286,10 +2285,10 @@ func TestAllDocsAccessControl(t *testing.T) {
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(allDocsResult.Rows), 1)
-	goassert.Equals(t, allDocsResult.Rows[0].Key, "doc4")
-	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc4")
-	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	assert.Equal(t, 1, len(allDocsResult.Rows))
+	assert.Equal(t, "doc4", allDocsResult.Rows[0].Key)
+	assert.Equal(t, "doc4", allDocsResult.Rows[0].ID)
+	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
 	// Check _all_docs as admin:
 	response = rt.SendAdminRequest("GET", "/db/_all_docs", "")
@@ -2299,9 +2298,9 @@ func TestAllDocsAccessControl(t *testing.T) {
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(allDocsResult.Rows), 5)
-	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
-	goassert.Equals(t, allDocsResult.Rows[1].ID, "doc2")
+	assert.Equal(t, 5, len(allDocsResult.Rows))
+	assert.Equal(t, "doc1", allDocsResult.Rows[0].ID)
+	assert.Equal(t, "doc2", allDocsResult.Rows[1].ID)
 }
 
 func TestChannelAccessChanges(t *testing.T) {
@@ -2330,7 +2329,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	assertStatus(t, response, 201)
 	var body db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.Equals(t, body["ok"], true)
+	assert.Equal(t, true, body["ok"])
 	alphaRevID := body["rev"].(string)
 
 	assertStatus(t, rt.Send(request("PUT", "/db/beta", `{"owner":"boadecia"}`)), 201)
@@ -2366,25 +2365,25 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Check user access:
 	alice, _ = a.GetUser("alice")
-	goassert.DeepEquals(
+	assert.Equal(
 		t,
-		alice.Channels(),
+
 		channels.TimedSet{
 			"!":     channels.NewVbSimpleSequence(uint64(1)),
 			"zero":  channels.NewVbSimpleSequence(uint64(1)),
 			"alpha": channels.NewVbSimpleSequence(uint64(1)),
 			"delta": channels.NewVbSimpleSequence(deltaGrantDocSeq),
-		})
+		}, alice.Channels())
 
 	zegpold, _ = a.GetUser("zegpold")
-	goassert.DeepEquals(
+	assert.Equal(
 		t,
-		zegpold.Channels(),
+
 		channels.TimedSet{
 			"!":     channels.NewVbSimpleSequence(uint64(1)),
 			"zero":  channels.NewVbSimpleSequence(uint64(1)),
 			"gamma": channels.NewVbSimpleSequence(gammaGrantDocSeq),
-		})
+		}, zegpold.Channels())
 
 	// Update a document to revoke access to alice and grant it to zegpold:
 	str := fmt.Sprintf(`{"owner":"zegpold", "_rev":%q}`, alphaRevID)
@@ -2395,25 +2394,25 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Check user access again:
 	alice, _ = a.GetUser("alice")
-	goassert.DeepEquals(
+	assert.Equal(
 		t,
-		alice.Channels(),
+
 		channels.TimedSet{
 			"!":     channels.NewVbSimpleSequence(uint64(1)),
 			"zero":  channels.NewVbSimpleSequence(uint64(1)),
 			"delta": channels.NewVbSimpleSequence(deltaGrantDocSeq),
-		})
+		}, alice.Channels())
 
 	zegpold, _ = a.GetUser("zegpold")
-	goassert.DeepEquals(
+	assert.Equal(
 		t,
-		zegpold.Channels(),
+
 		channels.TimedSet{
 			"!":     channels.NewVbSimpleSequence(uint64(1)),
 			"zero":  channels.NewVbSimpleSequence(uint64(1)),
 			"alpha": channels.NewVbSimpleSequence(alphaGrantDocSeq),
 			"gamma": channels.NewVbSimpleSequence(gammaGrantDocSeq),
-		})
+		}, zegpold.Channels())
 
 	rt.MustWaitForDoc("alpha", t)
 
@@ -2515,7 +2514,7 @@ func TestAccessOnTombstone(t *testing.T) {
 	assertStatus(t, response, 201)
 	var body db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.Equals(t, body["ok"], true)
+	assert.Equal(t, true, body["ok"])
 	revId := body["rev"].(string)
 
 	assert.NoError(t, rt.WaitForPendingChanges())
@@ -2531,7 +2530,7 @@ func TestAccessOnTombstone(t *testing.T) {
 	assert.NoError(t, err)
 	require.Len(t, changes.Results, 1)
 	if len(changes.Results) > 0 {
-		goassert.Equals(t, changes.Results[0].ID, "alpha")
+		assert.Equal(t, "alpha", changes.Results[0].ID)
 	}
 
 	// Delete the document
@@ -2552,8 +2551,8 @@ func TestAccessOnTombstone(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 1)
 	if len(changes.Results) > 0 {
-		goassert.Equals(t, changes.Results[0].ID, "alpha")
-		goassert.Equals(t, changes.Results[0].Deleted, true)
+		assert.Equal(t, "alpha", changes.Results[0].ID)
+		assert.Equal(t, true, changes.Results[0].Deleted)
 	}
 
 }
@@ -2636,7 +2635,7 @@ func TestSyncFnBodyPropertiesTombstone(t *testing.T) {
 	assertStatus(t, response, 201)
 	var body db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.Equals(t, body["ok"], true)
+	assert.Equal(t, true, body["ok"])
 	revID := body["rev"].(string)
 
 	response = rt.SendAdminRequest("DELETE", "/db/"+testDocID+"?rev="+revID, `{}`)
@@ -2684,7 +2683,7 @@ func TestSyncFnOldDocBodyProperties(t *testing.T) {
 	assertStatus(t, response, 201)
 	var body db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.Equals(t, body["ok"], true)
+	assert.Equal(t, true, body["ok"])
 	revID := body["rev"].(string)
 
 	response = rt.SendAdminRequest("PUT", "/db/"+testDocID+"?rev="+revID, `{"`+testdataKey+`":true,"update":2}`)
@@ -2733,14 +2732,14 @@ func TestSyncFnOldDocBodyPropertiesTombstoneResurrect(t *testing.T) {
 	assertStatus(t, response, 201)
 	var body db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.Equals(t, body["ok"], true)
+	assert.Equal(t, true, body["ok"])
 	revID := body["rev"].(string)
 
 	response = rt.SendAdminRequest("DELETE", "/db/"+testDocID+"?rev="+revID, `{}`)
 	assertStatus(t, response, 200)
 	body = nil
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.Equals(t, body["ok"], true)
+	assert.Equal(t, true, body["ok"])
 	revID = body["rev"].(string)
 
 	response = rt.SendAdminRequest("PUT", "/db/"+testDocID+"?rev="+revID, `{"`+testdataKey+`":true}`)
@@ -2969,8 +2968,8 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 	body = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, "user1", body["name"])
-	goassert.DeepEquals(t, body["roles"], []interface{}{"role1"})
-	goassert.DeepEquals(t, body["all_channels"], []interface{}{"!", "chan1"})
+	assert.Equal(t, []interface{}{"role1"}, body["roles"])
+	assert.Equal(t, []interface{}{"!", "chan1"}, body["all_channels"])
 
 	// goassert.DeepEquals(t, body["admin_roles"], []interface{}{"hipster"})
 	// goassert.DeepEquals(t, body["all_channels"], []interface{}{"bar", "fedoras", "fixies", "foo"})
@@ -3032,30 +3031,30 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// Check user access:
 	alice, _ := a.GetUser("alice")
-	goassert.DeepEquals(t,
-		alice.InheritedChannels(),
+	assert.Equal(t,
+
 		channels.TimedSet{
 			"!":     channels.NewVbSimpleSequence(1),
 			"alpha": channels.NewVbSimpleSequence(alice.Sequence()),
 			"gamma": channels.NewVbSimpleSequence(roleGrantSequence),
-		},
-	)
-	goassert.DeepEquals(t,
-		alice.RoleNames(),
+		}, alice.InheritedChannels())
+
+	assert.Equal(t,
+
 		channels.TimedSet{
 			"bogus":   channels.NewVbSimpleSequence(roleGrantSequence),
 			"hipster": channels.NewVbSimpleSequence(roleGrantSequence),
-		},
-	)
+		}, alice.RoleNames())
+
 	zegpold, _ := a.GetUser("zegpold")
-	goassert.DeepEquals(t,
-		zegpold.InheritedChannels(),
+	assert.Equal(t,
+
 		channels.TimedSet{
 			"!":    channels.NewVbSimpleSequence(1),
 			"beta": channels.NewVbSimpleSequence(zegpold.Sequence()),
-		},
-	)
-	goassert.DeepEquals(t, zegpold.RoleNames(), channels.TimedSet{})
+		}, zegpold.InheritedChannels())
+
+	assert.Equal(t, channels.TimedSet{}, zegpold.RoleNames())
 
 	// Check the _changes feed:
 	var changes struct {
@@ -3089,22 +3088,21 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// Check user access again:
 	alice, _ = a.GetUser("alice")
-	goassert.DeepEquals(t,
-		alice.InheritedChannels(),
+	assert.Equal(t,
+
 		channels.TimedSet{
 			"!":     channels.NewVbSimpleSequence(0x1),
 			"alpha": channels.NewVbSimpleSequence(alice.Sequence()),
-		},
-	)
+		}, alice.InheritedChannels())
+
 	zegpold, _ = a.GetUser("zegpold")
-	goassert.DeepEquals(t,
-		zegpold.InheritedChannels(),
+	assert.Equal(t,
+
 		channels.TimedSet{
 			"!":     channels.NewVbSimpleSequence(0x1),
 			"beta":  channels.NewVbSimpleSequence(zegpold.Sequence()),
 			"gamma": channels.NewVbSimpleSequence(updatedRoleGrantSequence),
-		},
-	)
+		}, zegpold.InheritedChannels())
 
 	// The complete _changes feed for zegpold contains docs g1 and b1:
 	cacheWaiter.Wait()
@@ -3163,7 +3161,7 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 	assertStatus(t, response, 201)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.Equals(t, body["ok"], true)
+	assert.Equal(t, true, body["ok"])
 	doc1RevID := body["rev"].(string)
 
 	// Run GET _all_docs as admin with channels=true:
@@ -3173,9 +3171,9 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 	log.Printf("Admin response = %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(allDocsResult.Rows), 1)
-	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
-	goassert.Equals(t, allDocsResult.Rows[0].Value.Channels[0], "ch1")
+	assert.Equal(t, 1, len(allDocsResult.Rows))
+	assert.Equal(t, "doc1", allDocsResult.Rows[0].ID)
+	assert.Equal(t, "ch1", allDocsResult.Rows[0].Value.Channels[0])
 
 	// Run POST _all_docs as admin with explicit docIDs and channels=true:
 	keys := `{"keys": ["doc1"]}`
@@ -3185,9 +3183,9 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 	log.Printf("Admin response = %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(allDocsResult.Rows), 1)
-	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
-	goassert.Equals(t, allDocsResult.Rows[0].Value.Channels[0], "ch1")
+	assert.Equal(t, 1, len(allDocsResult.Rows))
+	assert.Equal(t, "doc1", allDocsResult.Rows[0].ID)
+	assert.Equal(t, "ch1", allDocsResult.Rows[0].Value.Channels[0])
 
 	// Commit rev 2 that maps to a differenet channel
 	str := fmt.Sprintf(`{"foo":"bar", "channels":["ch2"], "_rev":%q}`, doc1RevID)
@@ -3201,9 +3199,9 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 	log.Printf("Admin response = %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(allDocsResult.Rows), 1)
-	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
-	goassert.Equals(t, allDocsResult.Rows[0].Value.Channels[0], "ch2")
+	assert.Equal(t, 1, len(allDocsResult.Rows))
+	assert.Equal(t, "doc1", allDocsResult.Rows[0].ID)
+	assert.Equal(t, "ch2", allDocsResult.Rows[0].Value.Channels[0])
 
 	// Run POST _all_docs as admin with explicit docIDs and channels=true
 	// Make sure that only the new channel appears in the docs channel list
@@ -3214,9 +3212,9 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 	log.Printf("Admin response = %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(allDocsResult.Rows), 1)
-	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
-	goassert.Equals(t, allDocsResult.Rows[0].Value.Channels[0], "ch2")
+	assert.Equal(t, 1, len(allDocsResult.Rows))
+	assert.Equal(t, "doc1", allDocsResult.Rows[0].ID)
+	assert.Equal(t, "ch2", allDocsResult.Rows[0].Value.Channels[0])
 }
 
 // Test for regression of issue #447
@@ -3238,12 +3236,12 @@ func TestAttachmentsNoCrossTalk(t *testing.T) {
 	assertStatus(t, response, 201)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.Equals(t, body["ok"], true)
+	assert.Equal(t, true, body["ok"])
 	revIdAfterAttachment := body["rev"].(string)
 	if revIdAfterAttachment == "" {
 		t.Fatalf("No revid in response for PUT attachment")
 	}
-	goassert.True(t, revIdAfterAttachment != doc1revId)
+	assert.True(t, revIdAfterAttachment != doc1revId)
 
 	reqHeaders = map[string]string{
 		"Accept": "application/json",
@@ -3251,24 +3249,24 @@ func TestAttachmentsNoCrossTalk(t *testing.T) {
 
 	log.Printf("/db/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", revIdAfterAttachment, doc1revId)
 	response = rt.SendAdminRequestWithHeaders("GET", fmt.Sprintf("/db/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", revIdAfterAttachment, doc1revId), "", reqHeaders)
-	goassert.Equals(t, response.Code, 200)
+	assert.Equal(t, 200, response.Code)
 	// validate attachment has data property
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	log.Printf("response body revid1 = %s", body)
 	attachments := body["_attachments"].(map[string]interface{})
 	attach1 := attachments["attach1"].(map[string]interface{})
 	data := attach1["data"]
-	goassert.True(t, data != nil)
+	assert.True(t, data != nil)
 
 	log.Printf("/db/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", revIdAfterAttachment, revIdAfterAttachment)
 	response = rt.SendAdminRequestWithHeaders("GET", fmt.Sprintf("/db/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", revIdAfterAttachment, revIdAfterAttachment), "", reqHeaders)
-	goassert.Equals(t, response.Code, 200)
+	assert.Equal(t, 200, response.Code)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	log.Printf("response body revid1 = %s", body)
 	attachments = body["_attachments"].(map[string]interface{})
 	attach1 = attachments["attach1"].(map[string]interface{})
 	data = attach1["data"]
-	goassert.True(t, data == nil)
+	assert.True(t, data == nil)
 
 }
 
@@ -3380,7 +3378,7 @@ func TestOldDocHandling(t *testing.T) {
 	assertStatus(t, response, 201)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.Equals(t, body["ok"], true)
+	assert.Equal(t, true, body["ok"])
 	alphaRevID := body["rev"].(string)
 
 	// Update a document to validate oldDoc id handling.  Will reject if old doc id not available
@@ -3461,11 +3459,11 @@ func TestStarAccess(t *testing.T) {
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(allDocsResult.Rows), 3)
-	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
-	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"books"})
-	goassert.Equals(t, allDocsResult.Rows[1].ID, "doc3")
-	goassert.DeepEquals(t, allDocsResult.Rows[1].Value.Channels, []string{"!"})
+	assert.Equal(t, 3, len(allDocsResult.Rows))
+	assert.Equal(t, "doc1", allDocsResult.Rows[0].ID)
+	assert.Equal(t, []string{"books"}, allDocsResult.Rows[0].Value.Channels)
+	assert.Equal(t, "doc3", allDocsResult.Rows[1].ID)
+	assert.Equal(t, []string{"!"}, allDocsResult.Rows[1].Value.Channels)
 
 	// Ensure docs have been processed before issuing changes requests
 	expectedSeq := uint64(6)
@@ -3476,37 +3474,37 @@ func TestStarAccess(t *testing.T) {
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(changes.Results), 3)
+	assert.Equal(t, 3, len(changes.Results))
 	since := changes.Results[0].Seq
-	goassert.Equals(t, changes.Results[0].ID, "doc1")
-	goassert.Equals(t, since.Seq, uint64(1))
+	assert.Equal(t, "doc1", changes.Results[0].ID)
+	assert.Equal(t, uint64(1), since.Seq)
 
 	// GET /db/_changes for single channel
 	response = rt.Send(requestByUser("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=books", "", "bernard"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(changes.Results), 1)
+	assert.Equal(t, 1, len(changes.Results))
 	since = changes.Results[0].Seq
-	goassert.Equals(t, changes.Results[0].ID, "doc1")
-	goassert.Equals(t, since.Seq, uint64(1))
+	assert.Equal(t, "doc1", changes.Results[0].ID)
+	assert.Equal(t, uint64(1), since.Seq)
 
 	// GET /db/_changes for ! channel
 	response = rt.Send(requestByUser("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=!", "", "bernard"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(changes.Results), 2)
+	assert.Equal(t, 2, len(changes.Results))
 	since = changes.Results[0].Seq
-	goassert.Equals(t, changes.Results[0].ID, "doc3")
-	goassert.Equals(t, since.Seq, uint64(3))
+	assert.Equal(t, "doc3", changes.Results[0].ID)
+	assert.Equal(t, uint64(3), since.Seq)
 
 	// GET /db/_changes for unauthorized channel
 	response = rt.Send(requestByUser("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=gifts", "", "bernard"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(changes.Results), 0)
+	assert.Equal(t, 0, len(changes.Results))
 
 	//
 	// Part 2 - Tests for user with * channel access
@@ -3532,29 +3530,29 @@ func TestStarAccess(t *testing.T) {
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(allDocsResult.Rows), 6)
-	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
-	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"books"})
+	assert.Equal(t, 6, len(allDocsResult.Rows))
+	assert.Equal(t, "doc1", allDocsResult.Rows[0].ID)
+	assert.Equal(t, []string{"books"}, allDocsResult.Rows[0].Value.Channels)
 
 	// GET /db/_changes
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "fran"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(changes.Results), 6)
+	assert.Equal(t, 6, len(changes.Results))
 	since = changes.Results[0].Seq
-	goassert.Equals(t, changes.Results[0].ID, "doc1")
-	goassert.Equals(t, since.Seq, uint64(1))
+	assert.Equal(t, "doc1", changes.Results[0].ID)
+	assert.Equal(t, uint64(1), since.Seq)
 
 	// GET /db/_changes for ! channel
 	response = rt.Send(requestByUser("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=!", "", "fran"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(changes.Results), 2)
+	assert.Equal(t, 2, len(changes.Results))
 	since = changes.Results[0].Seq
-	goassert.Equals(t, changes.Results[0].ID, "doc3")
-	goassert.Equals(t, since.Seq, uint64(3))
+	assert.Equal(t, "doc3", changes.Results[0].ID)
+	assert.Equal(t, uint64(3), since.Seq)
 
 	//
 	// Part 3 - Tests for user with no user channel access
@@ -3578,28 +3576,28 @@ func TestStarAccess(t *testing.T) {
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(allDocsResult.Rows), 2)
-	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
+	assert.Equal(t, 2, len(allDocsResult.Rows))
+	assert.Equal(t, "doc3", allDocsResult.Rows[0].ID)
 
 	// GET /db/_changes
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "manny"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(changes.Results), 2)
+	assert.Equal(t, 2, len(changes.Results))
 	since = changes.Results[0].Seq
-	goassert.Equals(t, changes.Results[0].ID, "doc3")
-	goassert.Equals(t, since.Seq, uint64(3))
+	assert.Equal(t, "doc3", changes.Results[0].ID)
+	assert.Equal(t, uint64(3), since.Seq)
 
 	// GET /db/_changes for ! channel
 	response = rt.Send(requestByUser("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=!", "", "manny"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(changes.Results), 2)
+	assert.Equal(t, 2, len(changes.Results))
 	since = changes.Results[0].Seq
-	goassert.Equals(t, changes.Results[0].ID, "doc3")
-	goassert.Equals(t, since.Seq, uint64(3))
+	assert.Equal(t, "doc3", changes.Results[0].ID)
+	assert.Equal(t, uint64(3), since.Seq)
 }
 
 // Test for issue #562
@@ -3630,7 +3628,7 @@ func TestBasicAuthWithSessionCookie(t *testing.T) {
 	// Create a session for the first user
 	response = rt.Send(requestByUser("POST", "/db/_session", `{"name":"bernard", "password":"letmein"}`, "bernard"))
 	log.Println("response.Header()", response.Header())
-	goassert.True(t, response.Header().Get("Set-Cookie") != "")
+	assert.True(t, response.Header().Get("Set-Cookie") != "")
 
 	cookie := response.Header().Get("Set-Cookie")
 
@@ -3686,10 +3684,10 @@ func TestEventConfigValidationSuccess(t *testing.T) {
 
 	var dbConfig DbConfig
 	err := base.JSONUnmarshal([]byte(configJSON), &dbConfig)
-	goassert.True(t, err == nil)
+	assert.True(t, err == nil)
 
 	_, err = sc.AddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig})
-	goassert.True(t, err == nil)
+	assert.True(t, err == nil)
 
 	sc.Close()
 
@@ -3905,7 +3903,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	// Parse multipart/mixed docs and create reader
 	contentType, attrs, _ := mime.ParseMediaType(bulkGetResponse.Header().Get("Content-Type"))
 	log.Printf("content-type: %v.  attrs: %v", contentType, attrs)
-	goassert.Equals(t, contentType, "multipart/mixed")
+	assert.Equal(t, "multipart/mixed", contentType)
 	reader := multipart.NewReader(bulkGetResponse.Body, attrs["boundary"])
 
 	// Make sure we see both docs
@@ -3963,7 +3961,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 			// expect an error
 			_, hasErr := partJson["error"]
 			assert.True(t, hasErr, "Expected error field for this doc")
-			goassert.Equals(t, docIdDoc1, rawId)
+			assert.Equal(t, rawId, docIdDoc1)
 			sawDoc1 = true
 
 		}
@@ -3973,7 +3971,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 		if ok {
 			_, hasErr := partJson["error"]
 			assert.True(t, !hasErr, "Did not expect error field for this doc")
-			goassert.Equals(t, docIdDoc2, rawId)
+			assert.Equal(t, rawId, docIdDoc2)
 			sawDoc2 = true
 		}
 
@@ -3999,7 +3997,7 @@ func TestDocExpiry(t *testing.T) {
 	assertStatus(t, response, 200)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	_, ok := body["_exp"]
-	goassert.Equals(t, ok, false)
+	assert.Equal(t, false, ok)
 
 	bulkGetDocs := `{"docs": [{"id": "expNumericTTL", "rev": "1-ca9ad22802b66f662ff171f226211d5c"}]}`
 	response = rt.SendAdminRequest("POST", "/db/_bulk_get", bulkGetDocs)
@@ -4017,7 +4015,7 @@ func TestDocExpiry(t *testing.T) {
 	assertStatus(t, response, 200)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	_, ok = body["_exp"]
-	goassert.Equals(t, ok, true)
+	assert.Equal(t, true, ok)
 
 	// Validate other exp formats
 	body = nil
@@ -4028,7 +4026,7 @@ func TestDocExpiry(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	log.Printf("numeric unix response: %s", response.Body.Bytes())
 	_, ok = body["_exp"]
-	goassert.Equals(t, ok, true)
+	assert.Equal(t, true, ok)
 
 	body = nil
 	response = rt.SendAdminRequest("PUT", "/db/expNumericString", `{"val":1, "_exp":"100"}`)
@@ -4037,7 +4035,7 @@ func TestDocExpiry(t *testing.T) {
 	assertStatus(t, response, 200)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	_, ok = body["_exp"]
-	goassert.Equals(t, ok, true)
+	assert.Equal(t, true, ok)
 
 	body = nil
 	response = rt.SendAdminRequest("PUT", "/db/expBadString", `{"_exp":"abc"}`)
@@ -4046,7 +4044,7 @@ func TestDocExpiry(t *testing.T) {
 	assertStatus(t, response, 404)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	_, ok = body["_exp"]
-	goassert.Equals(t, ok, false)
+	assert.Equal(t, false, ok)
 
 	body = nil
 	response = rt.SendAdminRequest("PUT", "/db/expDateString", `{"_exp":"2105-01-01T00:00:00.000+00:00"}`)
@@ -4055,7 +4053,7 @@ func TestDocExpiry(t *testing.T) {
 	assertStatus(t, response, 200)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	_, ok = body["_exp"]
-	goassert.Equals(t, ok, true)
+	assert.Equal(t, true, ok)
 
 	body = nil
 	response = rt.SendAdminRequest("PUT", "/db/expBadDateString", `{"_exp":"2105-0321-01T00:00:00.000+00:00"}`)
@@ -4064,7 +4062,7 @@ func TestDocExpiry(t *testing.T) {
 	assertStatus(t, response, 404)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	_, ok = body["_exp"]
-	goassert.Equals(t, ok, false)
+	assert.Equal(t, false, ok)
 
 }
 
@@ -4082,7 +4080,7 @@ func TestDocSyncFunctionExpiry(t *testing.T) {
 	assertStatus(t, response, 200)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	value, ok := body["_exp"]
-	goassert.Equals(t, ok, true)
+	assert.Equal(t, true, ok)
 	log.Printf("value: %v", value)
 }
 
@@ -4168,7 +4166,7 @@ func TestLongpollWithWildcard(t *testing.T) {
 
 	// Create user:
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
-	goassert.True(t, err == nil)
+	assert.True(t, err == nil)
 	assert.NoError(t, a.Save(bernard))
 
 	// Issue is only reproducible when the wait counter is zero for all requested channels (including the user channel) - the count=0
@@ -4176,7 +4174,7 @@ func TestLongpollWithWildcard(t *testing.T) {
 	// otherwise the count for the user pseudo-channel will always be non-zero
 	db, _ := rt.ServerContext().GetDatabase("db")
 	err = db.RestartListener()
-	goassert.True(t, err == nil)
+	assert.True(t, err == nil)
 	// Put a document to increment the counter for the * channel
 	response := rt.Send(request("PUT", "/db/lost", `{"channel":["ABC"]}`))
 	assertStatus(t, response, 201)
@@ -4195,7 +4193,7 @@ func TestLongpollWithWildcard(t *testing.T) {
 		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 		// Checkthat the changes loop isn't returning an empty result immediately (the previous bug) - should
 		// be waiting until entry 'sherlock', created below, appears.
-		goassert.True(t, len(changes.Results) > 0)
+		assert.True(t, len(changes.Results) > 0)
 	}()
 
 	// Send a doc that will properly close the longpoll response
@@ -4223,7 +4221,7 @@ func TestUnsupportedConfig(t *testing.T) {
 
 	var testProviderOnlyConfig DbConfig
 	err := base.JSONUnmarshal([]byte(testProviderOnlyJSON), &testProviderOnlyConfig)
-	goassert.True(t, err == nil)
+	assert.True(t, err == nil)
 
 	_, err = sc.AddDatabaseFromConfig(DatabaseConfig{DbConfig: testProviderOnlyConfig})
 	assert.NoError(t, err, "Error adding testProviderOnly database.")
@@ -4243,7 +4241,7 @@ func TestUnsupportedConfig(t *testing.T) {
 
 	var viewsOnlyConfig DbConfig
 	err = base.JSONUnmarshal([]byte(viewsOnlyJSON), &viewsOnlyConfig)
-	goassert.True(t, err == nil)
+	assert.True(t, err == nil)
 
 	_, err = sc.AddDatabaseFromConfig(DatabaseConfig{DbConfig: viewsOnlyConfig})
 	assert.NoError(t, err, "Error adding viewsOnlyConfig database.")
@@ -4267,7 +4265,7 @@ func TestUnsupportedConfig(t *testing.T) {
 
 	var viewsAndTestConfig DbConfig
 	err = base.JSONUnmarshal([]byte(viewsAndTestJSON), &viewsAndTestConfig)
-	goassert.True(t, err == nil)
+	assert.True(t, err == nil)
 
 	_, err = sc.AddDatabaseFromConfig(DatabaseConfig{DbConfig: viewsAndTestConfig})
 	assert.NoError(t, err, "Error adding viewsAndTestConfig database.")

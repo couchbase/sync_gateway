@@ -24,7 +24,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -164,7 +163,7 @@ func TestDocDeletionFromChannel(t *testing.T) {
 
 	assert.Equal(t, "alpha", changes.Results[0].ID)
 	assert.Equal(t, true, changes.Results[0].Deleted)
-	goassert.DeepEquals(t, changes.Results[0].Removed, base.SetOf("zero"))
+	assert.Equal(t, base.SetOf("zero"), changes.Results[0].Removed)
 	rev2 := changes.Results[0].Changes[0]["rev"]
 
 	// Now get the deleted revision:
@@ -173,7 +172,7 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	log.Printf("Deletion looks like: %s", response.Body.Bytes())
 	var docBody db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docBody))
-	goassert.DeepEquals(t, docBody, db.Body{db.BodyId: "alpha", db.BodyRev: rev2, db.BodyDeleted: true})
+	assert.Equal(t, db.Body{db.BodyId: "alpha", db.BodyRev: rev2, db.BodyDeleted: true}, docBody)
 
 	// Access without deletion revID shouldn't be allowed (since doc is not in Alice's channels):
 	response = rt.Send(requestByUser("GET", "/db/alpha", "", "alice"))
