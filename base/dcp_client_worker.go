@@ -85,8 +85,8 @@ func (w *DCPWorker) Send(event streamEvent) {
 }
 
 func (w *DCPWorker) Start(wg *sync.WaitGroup) {
+	wg.Add(1)
 	go func() {
-		wg.Add(1)
 		defer wg.Done()
 		for {
 			select {

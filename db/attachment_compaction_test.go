@@ -831,7 +831,7 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 		attKeys = append(attKeys, CreateLegacyAttachmentDoc(t, testDb, docID, []byte("{}"), attKey, attJSONBody))
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	// Start marking stage
 	terminator := base.NewSafeTerminator()
 	stat := &base.AtomicInt{}
