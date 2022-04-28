@@ -4143,7 +4143,7 @@ func TestProveAttachmentNotFound(t *testing.T) {
 
 	// Use different attachment name to bypass digest check in ForEachStubAttachment() which skips prove attachment code
 	// Set attachment to V2 so it can be retrieved by RT successfully
-	sent, _, _, err = bt.SendRev("doc1", "2-abc", []byte(`{"key": "val", "_attachments":{"attach":{"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"content_type":"","stub":true,"revpos":4, "ver":2}}}`), blip.Properties{})
+	sent, _, _, err = bt.SendRev("doc1", "2-abc", []byte(`{"key": "val", "_attachments":{"attach":{"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"stub":true,"revpos":1,"ver":2}}}`), blip.Properties{})
 	require.True(t, sent)
 	require.NoError(t, err)
 
