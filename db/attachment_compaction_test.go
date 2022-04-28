@@ -813,7 +813,7 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 
 	testDb := setupTestDB(t)
 	defer testDb.Close()
-	// Create the docs that will be marked and swept
+	// Create the docs that will be marked and not swept
 	body := map[string]interface{}{"foo": "bar"}
 	for i := 0; i < docsToCreate; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
@@ -821,7 +821,7 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	attKeys := make([]string, 0, 11)
+	attKeys := make([]string, 0, docsToCreate)
 	for i := 0; i < docsToCreate; i++ {
 		docID := fmt.Sprintf("testDoc-%d", i)
 		attKey := fmt.Sprintf("att-%d", i)
@@ -842,17 +842,26 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 		require.NoError(t, err)
 	}()
 
-	retryFunc := func() (shouldRetry bool, err error, value interface{}) {
+	statAboveZeroRetryFunc := func() (shouldRetry bool, err error, value interface{}) {
 		if stat.Value() == 0 {
 			return true, nil, nil
 		}
 		return false, nil, nil
 	}
 
-	err, _ = base.RetryLoop("wait for marking to start", retryFunc, base.CreateSleeperFunc(1000, 1))
+	compactionFuncReturnedRetryFunc := func() (shouldRetry bool, err error, value interface{}) {
+		if count == 0 {
+			return true, nil, nil
+		}
+		return false, nil, nil
+	}
+
+	err, _ = base.RetryLoop("wait for marking to start", statAboveZeroRetryFunc, base.CreateSleeperFunc(1000, 1))
 	require.NoError(t, err)
 
 	terminator.Close() // Terminate mark function
+	err, _ = base.RetryLoop("wait for marking function to return", compactionFuncReturnedRetryFunc, base.CreateSleeperFunc(200, 100))
+	require.NoError(t, err)
 	// Allow time for timing issue to be hit where stat increments when it shouldn't
 	time.Sleep(time.Second * 1)
 
@@ -862,7 +871,7 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 		fmt.Println("Attachment compaction ran too fast, causing it to process all documents instead of terminating mid-way. Consider upping the docsToCreate")
 	}
 
-	// Start sweeping with different compact ID so all documents get sweeped
+	// Start sweeping with different compact ID so all documents get swept
 	stat = &base.AtomicInt{}
 	terminator = base.NewSafeTerminator()
 	go func() {
@@ -870,10 +879,12 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 		require.NoError(t, err)
 	}()
 
-	err, _ = base.RetryLoop("wait for marking to start", retryFunc, base.CreateSleeperFunc(1000, 1))
+	err, _ = base.RetryLoop("wait for sweeping to start", statAboveZeroRetryFunc, base.CreateSleeperFunc(1000, 1))
 	require.NoError(t, err)
 
 	terminator.Close() // Terminate sweep function
+	err, _ = base.RetryLoop("wait for sweeping function to return", compactionFuncReturnedRetryFunc, base.CreateSleeperFunc(200, 100))
+	require.NoError(t, err)
 	// Allow time for timing issue to be hit where stat increments when it shouldn't
 	time.Sleep(time.Second * 1)
 
