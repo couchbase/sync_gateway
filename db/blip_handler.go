@@ -33,12 +33,15 @@ var kHandlersByProfile = map[string]blipHandlerFunc{
 	MessageGetCheckpoint:   (*blipHandler).handleGetCheckpoint,
 	MessageSetCheckpoint:   (*blipHandler).handleSetCheckpoint,
 	MessageSubChanges:      userBlipHandler((*blipHandler).handleSubChanges),
+	MessageUnsubChanges:    userBlipHandler((*blipHandler).handleUnsubChanges),
 	MessageChanges:         userBlipHandler((*blipHandler).handleChanges),
 	MessageRev:             userBlipHandler((*blipHandler).handleRev),
 	MessageNoRev:           (*blipHandler).handleNoRev,
 	MessageGetAttachment:   userBlipHandler((*blipHandler).handleGetAttachment),
 	MessageProveAttachment: userBlipHandler((*blipHandler).handleProveAttachment),
 	MessageProposeChanges:  (*blipHandler).handleProposeChanges,
+	MessageGetRev:          (*blipHandler).handleGetRev,
+	MessagePutRev:          (*blipHandler).handlePutRev,
 }
 
 // maxInFlightChangesBatches is the maximum number of in-flight changes batches a client is allowed to send without being throttled.
@@ -180,8 +183,12 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
 	bh.gotSubChanges = true
 
-	logCtx := bh.loggingCtx
-	subChangesParams, err := NewSubChangesParams(logCtx, rq, bh.db.CreateZeroSinceValue(), bh.db.ParseSequenceID)
+	defaultSince := bh.db.CreateZeroSinceValue()
+	latestSeq := func() (SequenceID, error) {
+		seq, err := bh.db.LastSequence()
+		return SequenceID{Seq: seq}, err
+	}
+	subChangesParams, err := NewSubChangesParams(bh.loggingCtx, rq, defaultSince, latestSeq, bh.db.ParseSequenceID)
 	if err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid subChanges parameters")
 	}
@@ -253,6 +260,11 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	}()
 
 	return nil
+}
+
+func (bh *blipHandler) handleUnsubChanges(rq *blip.Message) error {
+	return base.HTTPErrorf(http.StatusNotImplemented, "unsubChanges not implemented yet")
+	// TODO: Implement unsubChanges
 }
 
 type clientType uint8
