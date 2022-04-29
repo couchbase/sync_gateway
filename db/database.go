@@ -961,7 +961,7 @@ outerLoop:
 		resultCount := 0
 
 		for {
-			// Skips first result if using startKey as this results in an overlapping result
+			// startKey is inclusive for views, so need to skip first result if using non-empty startKey, as this results in an overlapping result
 			var skipAddition bool
 			if resultCount == 0 && startKey != "" {
 				skipAddition = true
