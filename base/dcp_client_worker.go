@@ -3,6 +3,7 @@ package base
 import (
 	"bytes"
 	"context"
+	"sync"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -83,9 +84,10 @@ func (w *DCPWorker) Send(event streamEvent) {
 	}
 }
 
-func (w *DCPWorker) Start() {
-
+func (w *DCPWorker) Start(wg *sync.WaitGroup) {
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for {
 			select {
 			case event := <-w.eventFeed:

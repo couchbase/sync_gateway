@@ -135,16 +135,28 @@ func attachmentCompactMarkPhase(db *Database, compactionID string, terminator *b
 	select {
 	case <-doneChan:
 		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Mark phase of attachment compaction completed. Marked %d attachments", compactionLoggingID, markedAttachmentCount.Value())
+		err = dcpClient.Close()
+		if markProcessFailureErr != nil {
+			return markedAttachmentCount.Value(), nil, markProcessFailureErr
+		}
 	case <-terminator.Done():
+		err = dcpClient.Close()
+		if markProcessFailureErr != nil {
+			return markedAttachmentCount.Value(), nil, markProcessFailureErr
+		}
+		if err != nil {
+			return markedAttachmentCount.Value(), base.GetVBUUIDs(dcpClient.GetMetadata()), err
+		}
+
+		err = <-doneChan
+		if err != nil {
+			return markedAttachmentCount.Value(), base.GetVBUUIDs(dcpClient.GetMetadata()), err
+		}
+
 		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Mark phase of attachment compaction was terminated. Marked %d attachments", compactionLoggingID, markedAttachmentCount.Value())
 	}
 
-	if markProcessFailureErr != nil {
-		_ = dcpClient.Close()
-		return markedAttachmentCount.Value(), nil, markProcessFailureErr
-	}
-
-	return markedAttachmentCount.Value(), base.GetVBUUIDs(dcpClient.GetMetadata()), dcpClient.Close()
+	return markedAttachmentCount.Value(), base.GetVBUUIDs(dcpClient.GetMetadata()), err
 }
 
 // AttachmentsMetaMap struct is a very minimal struct to unmarshal into when getting attachments from bodies
@@ -336,11 +348,22 @@ func attachmentCompactSweepPhase(db *Database, compactionID string, vbUUIDs []ui
 	select {
 	case <-doneChan:
 		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Sweep phase of attachment compaction completed. Deleted %d attachments", compactionLoggingID, purgedAttachmentCount.Value())
+		err = dcpClient.Close()
 	case <-terminator.Done():
+		err = dcpClient.Close()
+		if err != nil {
+			return purgedAttachmentCount.Value(), err
+		}
+
+		err = <-doneChan
+		if err != nil {
+			return purgedAttachmentCount.Value(), err
+		}
+
 		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Sweep phase of attachment compaction was terminated. Deleted %d attachments", compactionLoggingID, purgedAttachmentCount.Value())
 	}
 
-	return purgedAttachmentCount.Value(), dcpClient.Close()
+	return purgedAttachmentCount.Value(), err
 }
 
 func attachmentCompactCleanupPhase(db *Database, compactionID string, vbUUIDs []uint64, terminator *base.SafeTerminator) error {
@@ -450,11 +473,22 @@ func attachmentCompactCleanupPhase(db *Database, compactionID string, vbUUIDs []
 	select {
 	case <-doneChan:
 		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Cleanup phase of attachment compaction completed", compactionLoggingID)
+		err = dcpClient.Close()
 	case <-terminator.Done():
+		err = dcpClient.Close()
+		if err != nil {
+			return err
+		}
+
+		err = <-doneChan
+		if err != nil {
+			return err
+		}
+
 		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Cleanup phase of attachment compaction was terminated", compactionLoggingID)
 	}
 
-	return dcpClient.Close()
+	return err
 }
 
 // getCompactionIDSubDocPath is just a tiny helper func that just concatenates the subdoc path we're using to store

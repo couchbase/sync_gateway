@@ -802,3 +802,95 @@ func createDocWithInBodyAttachment(t *testing.T, docID string, docBody []byte, a
 
 	return attDocID
 }
+
+// Check for regression of CBG-1980 caused by DCP closing timing issue for the mark and sweep stage
+// May sometimes pass even if there is a regression of the timing issue
+func TestAttachmentCompactIncorrectStat(t *testing.T) {
+	const docsToCreate = 500
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Requires CBS")
+	}
+
+	testDb := setupTestDB(t)
+	defer testDb.Close()
+	// Create the docs that will be marked and not swept
+	body := map[string]interface{}{"foo": "bar"}
+	for i := 0; i < docsToCreate; i++ {
+		key := fmt.Sprintf("%s_%d", t.Name(), i)
+		_, _, err := testDb.Put(key, body)
+		assert.NoError(t, err)
+	}
+
+	attKeys := make([]string, 0, docsToCreate)
+	for i := 0; i < docsToCreate; i++ {
+		docID := fmt.Sprintf("testDoc-%d", i)
+		attKey := fmt.Sprintf("att-%d", i)
+		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
+		attJSONBody, err := base.JSONMarshal(attBody)
+		assert.NoError(t, err)
+		attKeys = append(attKeys, CreateLegacyAttachmentDoc(t, testDb, docID, []byte("{}"), attKey, attJSONBody))
+	}
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	// Start marking stage
+	terminator := base.NewSafeTerminator()
+	stat := &base.AtomicInt{}
+	count := int64(0)
+	var err error
+	go func() {
+		count, _, err = attachmentCompactMarkPhase(testDb, "mark", terminator, stat)
+		require.NoError(t, err)
+	}()
+
+	statAboveZeroRetryFunc := func() (shouldRetry bool, err error, value interface{}) {
+		if stat.Value() == 0 {
+			return true, nil, nil
+		}
+		return false, nil, nil
+	}
+
+	compactionFuncReturnedRetryFunc := func() (shouldRetry bool, err error, value interface{}) {
+		if count == 0 {
+			return true, nil, nil
+		}
+		return false, nil, nil
+	}
+
+	err, _ = base.RetryLoop("wait for marking to start", statAboveZeroRetryFunc, base.CreateSleeperFunc(1000, 1))
+	require.NoError(t, err)
+
+	terminator.Close() // Terminate mark function
+	err, _ = base.RetryLoop("wait for marking function to return", compactionFuncReturnedRetryFunc, base.CreateSleeperFunc(200, 100))
+	require.NoError(t, err)
+	// Allow time for timing issue to be hit where stat increments when it shouldn't
+	time.Sleep(time.Second * 1)
+
+	assert.Equal(t, count, stat.Value())
+	fmt.Println("Count:", count, "stat:", stat.Value())
+	if count == docsToCreate && stat.Value() == docsToCreate {
+		fmt.Println("Attachment compaction ran too fast, causing it to process all documents instead of terminating mid-way. Consider upping the docsToCreate")
+	}
+
+	// Start sweeping with different compact ID so all documents get swept
+	stat = &base.AtomicInt{}
+	terminator = base.NewSafeTerminator()
+	go func() {
+		count, err = attachmentCompactSweepPhase(testDb, "sweep", nil, false, terminator, stat)
+		require.NoError(t, err)
+	}()
+
+	err, _ = base.RetryLoop("wait for sweeping to start", statAboveZeroRetryFunc, base.CreateSleeperFunc(1000, 1))
+	require.NoError(t, err)
+
+	terminator.Close() // Terminate sweep function
+	err, _ = base.RetryLoop("wait for sweeping function to return", compactionFuncReturnedRetryFunc, base.CreateSleeperFunc(200, 100))
+	require.NoError(t, err)
+	// Allow time for timing issue to be hit where stat increments when it shouldn't
+	time.Sleep(time.Second * 1)
+
+	assert.Equal(t, count, stat.Value())
+	fmt.Println("Count:", count, "stat:", stat.Value())
+	if count == docsToCreate && stat.Value() == docsToCreate {
+		fmt.Println("Attachment compaction ran too fast, causing it to process all documents instead of terminating mid-way. Consider upping the docsToCreate")
+	}
+}
