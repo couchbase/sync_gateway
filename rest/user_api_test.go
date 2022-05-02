@@ -61,6 +61,200 @@ func TestUsersAPI(t *testing.T) {
 	}
 }
 
+// TestUsersAPIDetails tests users endpoint with name_only=false when using views (unsupported combination, should return 400)
+func TestUsersAPIDetailsViews(t *testing.T) {
+
+	if !base.TestsDisableGSI() {
+		t.Skip("This test only works with UseViews=true")
+	}
+
+	// Create rest tester with low pagination limit
+	rtConfig := &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				QueryPaginationLimit: base.IntPtr(5),
+				// Disable the guest user to support testing the zero user boundary condition
+				Guest: &db.PrincipalConfig{
+					Disabled: base.BoolPtr(false),
+				},
+			},
+		},
+	}
+	rt := NewRestTester(t, rtConfig)
+	defer rt.Close()
+
+	// Validate error handling
+	response := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_user/?%s=false", paramNameOnly), "")
+	assertStatus(t, response, 400)
+
+}
+
+// TestUsersAPIDetails tests users endpoint with name_only=false
+func TestUsersAPIDetails(t *testing.T) {
+
+	if base.TestsDisableGSI() {
+		t.Skip("This test only works with Couchbase Server and UseViews=false")
+	}
+
+	// Create rest tester with low pagination limit
+	rtConfig := &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				QueryPaginationLimit: base.IntPtr(5),
+				// Disable the guest user to support testing the zero user boundary condition
+				Guest: &db.PrincipalConfig{
+					Disabled: base.BoolPtr(false),
+				},
+			},
+		},
+	}
+	rt := NewRestTester(t, rtConfig)
+	defer rt.Close()
+
+	// Validate the zero user case
+	var responseUsers []db.PrincipalConfig
+	response := rt.SendAdminRequest("GET", "/db/_user/?"+paramNameOnly+"=false", "")
+	assertStatus(t, response, 200)
+	err := json.Unmarshal(response.Body.Bytes(), &responseUsers)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(responseUsers))
+
+	// Test for user counts going from 1 to a few multiples of QueryPaginationLimit to check boundary conditions.
+	for i := 1; i <= 12; i++ {
+		userName := fmt.Sprintf("user%d", i)
+		disabled := "false"
+		if userName == "user3" || userName == "user8" {
+			disabled = "true"
+		}
+		response := rt.SendAdminRequest("PUT", "/db/_user/"+userName, `{"password":"letmein", "email": "`+userName+`@foo.com", "disabled":`+disabled+`, "admin_channels":["foo", "bar"]}`)
+		assertStatus(t, response, 201)
+
+		// check user count
+		response = rt.SendAdminRequest("GET", "/db/_user/?"+paramNameOnly+"=false", "")
+		assertStatus(t, response, 200)
+		err := json.Unmarshal(response.Body.Bytes(), &responseUsers)
+		assert.NoError(t, err)
+		assert.Equal(t, i, len(responseUsers))
+
+		// Check property values, and validate no duplicate users returned in response
+		userMap := make(map[string]interface{})
+		for _, principal := range responseUsers {
+			assert.Equal(t, *principal.Name+"@foo.com", principal.Email)
+			if *principal.Name == "user3" || *principal.Name == "user8" {
+				assert.Equal(t, true, *principal.Disabled)
+			} else {
+				assert.Equal(t, false, *principal.Disabled)
+			}
+			_, ok := userMap[*principal.Name]
+			assert.False(t, ok)
+			userMap[*principal.Name] = struct{}{}
+		}
+	}
+}
+
+// TestUsersAPIDetailsWithLimit tests users endpoint with name_only=false and limit
+func TestUsersAPIDetailsWithLimit(t *testing.T) {
+
+	if base.TestsDisableGSI() {
+		t.Skip("This test only works with Couchbase Server and UseViews=false")
+	}
+
+	// Create rest tester with low pagination limit
+	rtConfig := &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				QueryPaginationLimit: base.IntPtr(5),
+				// Disable the guest user to support testing the zero user boundary condition
+				Guest: &db.PrincipalConfig{
+					Disabled: base.BoolPtr(false),
+				},
+			},
+		},
+	}
+	rt := NewRestTester(t, rtConfig)
+	defer rt.Close()
+
+	// Validate the zero user case with limit
+	var responseUsers []db.PrincipalConfig
+	response := rt.SendAdminRequest("GET", "/db/_user/?"+paramNameOnly+"=false&"+paramLimit+"=10", "")
+	assertStatus(t, response, 200)
+	err := json.Unmarshal(response.Body.Bytes(), &responseUsers)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(responseUsers))
+
+	// Create users
+	numUsers := 12
+	for i := 1; i <= numUsers; i++ {
+		userName := fmt.Sprintf("user%d", i)
+		response := rt.SendAdminRequest("PUT", "/db/_user/"+userName, `{"password":"letmein", "admin_channels":["foo", "bar"]}`)
+		assertStatus(t, response, 201)
+	}
+
+	// limit without name_only=false should return Bad Request
+	response = rt.SendAdminRequest("GET", "/db/_user/?"+paramLimit+"=10", "")
+	assertStatus(t, response, 400)
+
+	testCases := []struct {
+		name          string
+		limit         string
+		expectedCount int
+	}{
+		{
+			name:          "limit<pagination limit",
+			limit:         "3",
+			expectedCount: 3,
+		},
+		{
+			name:          "limit=pagination limit",
+			limit:         "5",
+			expectedCount: 5,
+		},
+		{
+			name:          "limit>pagination limit",
+			limit:         "8",
+			expectedCount: 8,
+		},
+		{
+			name:          "limit=multiple of pagination limit",
+			limit:         "10",
+			expectedCount: 10,
+		},
+		{
+			name:          "limit>multiple of pagination limit",
+			limit:         "11",
+			expectedCount: 11,
+		},
+		{
+			name:          "limit>resultset",
+			limit:         "25",
+			expectedCount: numUsers,
+		},
+		{
+			name:          "limit=0",
+			limit:         "0",
+			expectedCount: numUsers,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			response = rt.SendAdminRequest("GET", "/db/_user/?"+paramNameOnly+"=false&"+paramLimit+"="+testCase.limit, "")
+			assertStatus(t, response, 200)
+			err = json.Unmarshal(response.Body.Bytes(), &responseUsers)
+			assert.NoError(t, err)
+			assert.Equal(t, testCase.expectedCount, len(responseUsers))
+
+			// validate no duplicate users returned in response
+			userMap := make(map[string]interface{})
+			for _, principal := range responseUsers {
+				_, ok := userMap[*principal.Name]
+				assert.False(t, ok)
+				userMap[*principal.Name] = struct{}{}
+			}
+		})
+	}
+
+}
+
 func TestUserAPI(t *testing.T) {
 
 	// PUT a user
