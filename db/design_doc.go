@@ -54,6 +54,12 @@ const (
 	ViewTombstones                  = "tombstones"
 )
 
+// Principals view result row
+type principalsViewRow struct {
+	Key   string // principal name
+	Value bool   // 'isUser' flag
+}
+
 func isInternalDDoc(ddocName string) bool {
 	return strings.HasPrefix(ddocName, "sync_")
 }

@@ -39,6 +39,7 @@ const (
 	QueryTypeTombstones   = "tombstones"
 	QueryTypeResync       = "resync"
 	QueryTypeAllDocs      = "allDocs"
+	QueryTypeUsers        = "users"
 )
 
 type SGQuery struct {
@@ -151,13 +152,40 @@ var QueryPrincipals = SGQuery{
 			"WHERE META(`%s`).id LIKE '%s' "+
 			"AND (META(`%s`).id LIKE '%s' "+
 			"OR META(`%s`).id LIKE '%s') "+
-			"AND META(`%s`).id >= $%s "+ // Using >= to match views inclusive startKey handling
+			"AND META(`%s`).id >= $%s "+ // Uses >= for inclusive startKey
 			"ORDER BY META(`%s`).id",
 		base.KeyspaceQueryToken,
 		base.KeyspaceQueryToken,
 		base.KeyspaceQueryToken, SyncDocWildcard,
 		base.KeyspaceQueryToken, `\\_sync:user:%`,
 		base.KeyspaceQueryToken, `\\_sync:role:%`,
+		base.KeyspaceQueryToken, QueryParamStartKey,
+		base.KeyspaceQueryToken),
+	adhoc: false,
+}
+
+type QueryUsersRow struct {
+	Name     string `json:"name"`
+	Email    string `json:"email,omitempty"`
+	Disabled bool   `json:"disabled,omitempty"`
+}
+
+var QueryUsers = SGQuery{
+	name: QueryTypeUsers,
+	statement: fmt.Sprintf(
+		"SELECT `%s`.name, "+
+			"`%s`.email, "+
+			"`%s`.disabled "+
+			"FROM `%s` "+
+			"USE INDEX($idx) "+
+			"WHERE META(`%s`).id LIKE '%s' "+
+			"AND META(`%s`).id >= $%s "+ // Using >= to match QueryPrincipals startKey handling
+			"ORDER BY META(`%s`).id",
+		base.KeyspaceQueryToken,
+		base.KeyspaceQueryToken,
+		base.KeyspaceQueryToken,
+		base.KeyspaceQueryToken,
+		base.KeyspaceQueryToken, `\\_sync:user:%`,
 		base.KeyspaceQueryToken, QueryParamStartKey,
 		base.KeyspaceQueryToken),
 	adhoc: false,
@@ -429,7 +457,7 @@ func (context *DatabaseContext) QueryResync(ctx context.Context, limit int, star
 	return context.QueryChannels(ctx, channels.UserStarChannel, startSeq, endSeq, limit, false)
 }
 
-// Query to retrieve the set of user and role doc ids, using the primary index
+// Query to retrieve the set of user and role doc ids, using the syncDocs index
 func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey string, limit int) (sgbucket.QueryResultIterator, error) {
 
 	// View Query
@@ -460,7 +488,28 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 	return context.N1QLQueryWithStats(ctx, QueryTypePrincipals, queryStatement, params, base.RequestPlus, QueryPrincipals.adhoc)
 }
 
-// Query to retrieve the set of user and role doc ids, using the primary index
+// Query to retrieve user details, using the syncDocs index
+func (context *DatabaseContext) QueryUsers(ctx context.Context, startKey string, limit int) (sgbucket.QueryResultIterator, error) {
+
+	// View Query
+	if context.Options.UseViews {
+		return nil, errors.New("QueryUsers does not support views")
+	}
+
+	queryStatement := replaceIndexTokensQuery(QueryUsers.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+
+	params := make(map[string]interface{})
+	params[QueryParamStartKey] = startKey
+
+	if limit > 0 {
+		queryStatement = fmt.Sprintf("%s LIMIT %d", queryStatement, limit)
+	}
+
+	// N1QL Query
+	return context.N1QLQueryWithStats(ctx, QueryTypeUsers, queryStatement, params, base.RequestPlus, QueryUsers.adhoc)
+}
+
+// Query to retrieve the set of sessions, using the syncDocs index
 func (context *DatabaseContext) QuerySessions(ctx context.Context, userName string) (sgbucket.QueryResultIterator, error) {
 
 	// View Query

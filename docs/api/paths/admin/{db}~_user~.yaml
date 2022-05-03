@@ -10,13 +10,16 @@ get:
     * Sync Gateway Architect
     * Sync Gateway Application
     * Sync Gateway Application Read Only
+  parameters:
+    - $ref: ../../components/parameters.yaml#/usersNameOnly
+    - $ref: ../../components/parameters.yaml#/usersLimit
   responses:
     "200":
       description: Users retrieved successfully
       content:
         application/json:
           schema:
-            description: List of all user names
+            description: List of users
             type: array
             items:
               type: string

@@ -30,6 +30,10 @@ const kDefaultDBOnlineDelay = 0
 
 const paramDisableOIDCValidation = "disable_oidc_validation"
 
+// GetUsers  - GET /{db}/_user/
+const paramNameOnly = "name_only"
+const paramLimit = "limit"
+
 // ////// DATABASE MAINTENANCE:
 
 // "Create" a database (actually just register an existing bucket)
@@ -1309,13 +1313,38 @@ func (h *handler) getRoleInfo() error {
 }
 
 func (h *handler) getUsers() error {
-	users, _, err := h.db.AllPrincipalIDs(h.db.Ctx)
-	if err != nil {
-		return err
+
+	limit := h.getIntQuery(paramLimit, 0)
+	nameOnly, _ := h.getOptBoolQuery(paramNameOnly, true)
+
+	if limit > 0 && nameOnly {
+		return base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("Use of %s only supported when %s=false", paramLimit, paramNameOnly))
 	}
-	bytes, err := base.JSONMarshal(users)
+
+	var bytes []byte
+	var marshalErr error
+	if nameOnly {
+		users, _, err := h.db.AllPrincipalIDs(h.db.Ctx)
+		if err != nil {
+			return err
+		}
+		bytes, marshalErr = base.JSONMarshal(users)
+	} else {
+		if h.db.Options.UseViews {
+			return base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("Use of %s=false not supported when database has use_views=true", paramNameOnly))
+		}
+		users, err := h.db.GetUsers(h.db.Ctx, int(limit))
+		if err != nil {
+			return err
+		}
+		bytes, marshalErr = base.JSONMarshal(users)
+	}
+
+	if marshalErr != nil {
+		return marshalErr
+	}
 	h.writeRawJSON(bytes)
-	return err
+	return nil
 }
 
 func (h *handler) getRoles() error {
