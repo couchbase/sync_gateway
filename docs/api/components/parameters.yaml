@@ -459,3 +459,19 @@ disable_oidc_validation:
   schema:
     type: boolean
     default: false
+usersNameOnly:
+  name: name_only
+  in: query
+  required: false
+  schema:
+    type: boolean
+    default: true
+  description: Whether to return user names only, or more detailed information for each user.
+usersLimit:
+  name: limit
+  in: query
+  required: false
+  schema:
+    type: integer
+  description: How many results to return. Using a value of `0` results in no limit.
+

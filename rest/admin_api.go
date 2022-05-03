@@ -1339,8 +1339,12 @@ func (h *handler) getUsers() error {
 		}
 		bytes, marshalErr = base.JSONMarshal(users)
 	}
+
+	if marshalErr != nil {
+		return marshalErr
+	}
 	h.writeRawJSON(bytes)
-	return marshalErr
+	return nil
 }
 
 func (h *handler) getRoles() error {
