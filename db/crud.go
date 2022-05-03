@@ -821,6 +821,11 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 
 	delete(body, BodyRevisions)
 
+	err = validateAPIDocUpdate(body)
+	if err != nil {
+		return "", nil, err
+	}
+
 	allowImport := db.UseXattrs()
 	doc, newRevID, err = db.updateAndReturnDoc(newDoc.ID, allowImport, expiry, nil, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 
@@ -1022,6 +1027,11 @@ func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHi
 }
 
 func (db *Database) PutExistingRevWithBody(docid string, body Body, docHistory []string, noConflicts bool) (doc *Document, newRev string, err error) {
+	err = validateAPIDocUpdate(body)
+	if err != nil {
+		return nil, "", err
+	}
+
 	expiry, _ := body.ExtractExpiry()
 	deleted := body.ExtractDeleted()
 	revid := body.ExtractRev()
@@ -1038,6 +1048,7 @@ func (db *Database) PutExistingRevWithBody(docid string, body Body, docHistory [
 
 	newDoc.DocAttachments = GetBodyAttachments(body)
 	delete(body, BodyAttachments)
+
 	newDoc.UpdateBody(body)
 
 	doc, newRevID, putExistingRevErr := db.PutExistingRev(newDoc, docHistory, noConflicts, false, nil)
@@ -1300,27 +1311,6 @@ func (db *Database) tombstoneActiveRevision(doc *Document, revID string) (tombst
 	doc.RemoveBody()
 
 	return newRevID, nil
-}
-
-func (db *Database) validateExistingDoc(doc *Document, importAllowed, docExists bool) error {
-	if !importAllowed && docExists && !doc.HasValidSyncData() {
-		return base.HTTPErrorf(409, "Not imported")
-	}
-	return nil
-}
-
-func validateNewBody(body Body) error {
-	// Reject a body that contains the "_removed" property, this means that the user
-	// is trying to update a document they do not have read access to.
-	if body[BodyRemoved] != nil {
-		return base.HTTPErrorf(http.StatusNotFound, "Document revision is not accessible")
-	}
-
-	// Reject bodies that contains the "_purged" property.
-	if body[BodyPurged] != nil {
-		return base.HTTPErrorf(http.StatusBadRequest, "user defined top level property '_purged' is not allowed in document body")
-	}
-	return nil
 }
 
 func (doc *Document) updateWinningRevAndSetDocFlags() {
@@ -1632,7 +1622,6 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 		return
 	}
 
-	// TODO: seems a bit late to do this. Could we move it earlier?
 	err = validateNewBody(syncFnBody)
 	if err != nil {
 		return

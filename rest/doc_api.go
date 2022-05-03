@@ -358,8 +358,13 @@ func (h *handler) handlePutDoc() error {
 	if err != nil {
 		return err
 	}
+
 	if body == nil {
 		return base.ErrEmptyDocument
+	}
+
+	if bodyDocID, ok := body[db.BodyId].(string); ok && bodyDocID != docid {
+		return base.HTTPErrorf(http.StatusBadRequest, "The document ID provided in the body does not match the document ID in the path")
 	}
 
 	var newRev string
@@ -367,11 +372,16 @@ func (h *handler) handlePutDoc() error {
 
 	if h.getQuery("new_edits") != "false" {
 		// Regular PUT:
+		bodyRev := body[db.BodyRev]
 		if oldRev := h.getQuery("rev"); oldRev != "" {
 			body[db.BodyRev] = oldRev
 		} else if ifMatch := h.rq.Header.Get("If-Match"); ifMatch != "" {
 			body[db.BodyRev] = ifMatch
 		}
+		if bodyRev != nil && bodyRev != body[db.BodyRev] {
+			return base.HTTPErrorf(http.StatusBadRequest, "Revision IDs provided do not match")
+		}
+
 		newRev, doc, err = h.db.Put(docid, body)
 		if err != nil {
 			return err

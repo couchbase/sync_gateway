@@ -1210,8 +1210,6 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (s
 		}
 	}
 
-	doc.SetID(input.docId)
-	doc.SetRevID(input.revId)
 	doc.SetAttachments(db.AttachmentMap{
 		input.attachmentName: &myAttachment,
 	})

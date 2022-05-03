@@ -42,13 +42,12 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 			base.InfofCtx(db.Ctx, base.KeyImport, "Unmarshal error during importDoc %v", err)
 			return nil, err
 		}
-		if body == nil {
-			return nil, base.ErrEmptyDocument
-		}
-	}
 
-	if isPurged, ok := body[BodyPurged].(bool); ok && isPurged {
-		return nil, base.ErrImportCancelledPurged
+		err = validateImportBody(body)
+		if err != nil {
+			return nil, err
+		}
+		delete(body, BodyPurged)
 	}
 
 	existingBucketDoc := &sgbucket.BucketDocument{

@@ -888,6 +888,11 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 		bh.replicationStats.HandleRevDeltaRecvCount.Add(1)
 	}
 
+	err = validateBlipBody(bodyBytes, newDoc)
+	if err != nil {
+		return err
+	}
+
 	// Handle and pull out expiry
 	if bytes.Contains(bodyBytes, []byte(BodyExpiry)) {
 		body := newDoc.Body()

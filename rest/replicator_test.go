@@ -5889,7 +5889,7 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 
 	// Create the document
 	docID := t.Name()
-	rawDoc := `{"_id": "replaced", "_foo": true, "_exp": 120, "true": false, "_attachments": {"bar": {"data": "Zm9vYmFy"}}}`
+	rawDoc := `{"_foo": true, "_exp": 120, "true": false, "_attachments": {"bar": {"data": "Zm9vYmFy"}}}`
 	_ = activeRT.putDoc(docID, rawDoc)
 
 	// Set-up replicator
@@ -5925,7 +5925,6 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 
 	// Assert document was replicated successfully
 	doc := passiveRT.getDoc(docID)
-	assert.EqualValues(t, docID, doc["_id"])  // Confirm ID gets replaced with doc ID
 	assert.EqualValues(t, true, doc["_foo"])  // Confirm user defined value got created
 	assert.EqualValues(t, nil, doc["_exp"])   // Confirm expiry was consumed
 	assert.EqualValues(t, false, doc["true"]) // Sanity check normal keys
@@ -5936,7 +5935,7 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 	// Edit existing document
 	rev := doc["_rev"]
 	require.NotNil(t, rev)
-	rawDoc = fmt.Sprintf(`{"_id": "replaced", "_rev": "%s","_foo": false, "test": true}`, rev)
+	rawDoc = fmt.Sprintf(`{"_rev": "%s","_foo": false, "test": true}`, rev)
 	_ = activeRT.putDoc(docID, rawDoc)
 
 	// Replicate modified document
@@ -5953,7 +5952,6 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 	// Verify document replicated successfully
 	doc = passiveRT.getDoc(docID)
 	assert.NotEqualValues(t, doc["_rev"], rev) // Confirm rev got replaced with new rev
-	assert.EqualValues(t, docID, doc["_id"])   // Confirm ID gets replaced with doc ID
 	assert.EqualValues(t, false, doc["_foo"])  // Confirm user defined value got created
 	assert.EqualValues(t, true, doc["test"])
 	// Confirm attachment was removed successfully in latest revision
