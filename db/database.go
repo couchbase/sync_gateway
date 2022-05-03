@@ -933,11 +933,6 @@ func (db *Database) processForEachDocIDResults(callback ForEachDocIDFunc, limit 
 	return nil
 }
 
-type principalsViewRow struct {
-	Key   string // principal name
-	Value bool   // 'isUser' flag
-}
-
 // Returns the IDs of all users and roles
 func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) {
 
@@ -1012,6 +1007,86 @@ outerLoop:
 	}
 
 	return users, roles, nil
+}
+
+// Returns user information for all users (ID, disabled, email)
+func (db *DatabaseContext) GetUsers(limit int) (users []PrincipalConfig, err error) {
+
+	if db.Options.UseViews {
+		return nil, errors.New("GetUsers not supported when running with useViews=true")
+	}
+
+	// While using SyncDocs index, must set startKey to the user prefix to avoid unwanted interaction between
+	// limit handling and startKey (non-user _sync: prefixed documents being included in the query limit evaluation).
+	// This doesn't happen for AllPrincipalIDs, I believe because the role check forces query to not assume
+	// a contiguous set of results
+	startKey := base.UserPrefix
+	paginationLimit := db.Options.QueryPaginationLimit
+	if paginationLimit == 0 {
+		paginationLimit = DefaultQueryPaginationLimit
+	}
+
+	// If the requested limit is lower than the pagination limit, use requested limit as pagination limit
+	if limit > 0 && limit < paginationLimit {
+		paginationLimit = limit
+	}
+
+	users = []PrincipalConfig{}
+
+	totalCount := 0
+
+outerLoop:
+	for {
+		results, err := db.QueryUsers(startKey, paginationLimit)
+		if err != nil {
+			return nil, err
+		}
+
+		resultCount := 0
+		for {
+			// startKey is inclusive, so need to skip first result if using non-empty startKey, as this results in an overlapping result
+			var skipAddition bool
+			if resultCount == 0 && startKey != "" {
+				skipAddition = true
+			}
+
+			var queryRow QueryUsersRow
+			found := results.Next(&queryRow)
+			if !found {
+				break
+			}
+			startKey = base.UserPrefix + queryRow.Name
+			resultCount++
+			if queryRow.Name != "" && !skipAddition {
+				principal := PrincipalConfig{
+					Name:     &queryRow.Name,
+					Email:    queryRow.Email,
+					Disabled: &queryRow.Disabled,
+				}
+				users = append(users, principal)
+				totalCount++
+				if limit > 0 && totalCount >= limit {
+					break
+				}
+			}
+		}
+
+		closeErr := results.Close()
+		if closeErr != nil {
+			return nil, closeErr
+		}
+
+		if resultCount < paginationLimit {
+			break outerLoop
+		}
+
+		if limit > 0 && totalCount >= limit {
+			break outerLoop
+		}
+
+	}
+
+	return users, nil
 }
 
 //////// HOUSEKEEPING:
@@ -1599,6 +1674,7 @@ func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOp
 			QueryTypeTombstones,
 			QueryTypeResync,
 			QueryTypeAllDocs,
+			QueryTypeUsers,
 		}
 	}
 

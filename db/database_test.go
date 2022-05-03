@@ -2465,6 +2465,48 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 	assert.Equal(t, QueryTombstoneBatch, int(tombstoneCompactionStatus.DocsPurged))
 }
 
+func TestGetAllUsers(t *testing.T) {
+
+	if base.TestsDisableGSI() {
+		t.Skip("This test only works with Couchbase Server and UseViews=false")
+	}
+
+	base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges)
+
+	db := setupTestDB(t)
+	db.Options.QueryPaginationLimit = 100
+	defer db.Close()
+
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
+
+	log.Printf("Creating users...")
+	// Create users
+	authenticator := db.Authenticator()
+	user, _ := authenticator.NewUser("userA", "letmein", channels.SetOf(t, "ABC"))
+	_ = user.SetEmail("userA@test.org")
+	assert.NoError(t, authenticator.Save(user))
+	user, _ = authenticator.NewUser("userB", "letmein", channels.SetOf(t, "ABC"))
+	_ = user.SetEmail("userB@test.org")
+	assert.NoError(t, authenticator.Save(user))
+	user, _ = authenticator.NewUser("userC", "letmein", channels.SetOf(t, "ABC"))
+	user.SetDisabled(true)
+	assert.NoError(t, authenticator.Save(user))
+	user, _ = authenticator.NewUser("userD", "letmein", channels.SetOf(t, "ABC"))
+	assert.NoError(t, authenticator.Save(user))
+
+	log.Printf("Getting users...")
+	users, err := db.GetUsers(0)
+	assert.NoError(t, err)
+	assert.Equal(t, 4, len(users))
+	log.Printf("THE USERS: %+v", users)
+	marshalled, err := json.Marshal(users)
+	log.Printf("THE USERS MARSHALLED: %s", marshalled)
+
+	limitedUsers, err := db.GetUsers(2)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(limitedUsers))
+}
+
 func waitAndAssertConditionWithOptions(t *testing.T, fn func() bool, retryCount, msSleepTime int, failureMsgAndArgs ...interface{}) {
 	for i := 0; i <= retryCount; i++ {
 		if i == retryCount {
