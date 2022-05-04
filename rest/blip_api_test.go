@@ -3867,3 +3867,126 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	base.RequireWaitForStat(t, pullStats.NumPullReplActiveOneShot.Value, 0)
 	base.RequireWaitForStat(t, pullStats.NumPullReplActiveContinuous.Value, 0)
 }
+
+func TestBlipInternalPropertiesHandling(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+
+	testCases := []struct {
+		name                        string
+		inputBody                   map[string]interface{}
+		expectReject                bool
+		skipDocContentsVerification *bool
+	}{
+		{
+			name:         "Valid document",
+			inputBody:    map[string]interface{}{"document": "is valid"},
+			expectReject: false,
+		},
+		{
+			name:         "Valid document with special prop",
+			inputBody:    map[string]interface{}{"_cookie": "is valid"},
+			expectReject: false,
+		},
+		{
+			name:         "Valid _id",
+			inputBody:    map[string]interface{}{"_id": "documentid"},
+			expectReject: false,
+		},
+		{
+			name:         "Valid _rev",
+			inputBody:    map[string]interface{}{"_rev": "1-abc"},
+			expectReject: false,
+		},
+		{
+			name:         "Valid _deleted",
+			inputBody:    map[string]interface{}{"_deleted": false},
+			expectReject: false,
+		},
+		{
+			name:         "Invalid _attachments",
+			inputBody:    map[string]interface{}{"_attachments": false},
+			expectReject: true,
+		},
+		{
+			name:                        "Valid _attachments",
+			inputBody:                   map[string]interface{}{"_attachments": map[string]interface{}{"attch": map[string]interface{}{"data": "c2d3IGZ0dw=="}}},
+			expectReject:                false,
+			skipDocContentsVerification: base.BoolPtr(true),
+		},
+		{
+			name:                        "_revisions",
+			inputBody:                   map[string]interface{}{"_revisions": false},
+			expectReject:                false,
+			skipDocContentsVerification: base.BoolPtr(true),
+		},
+		{
+			name:                        "Valid _exp",
+			inputBody:                   map[string]interface{}{"_exp": "123"},
+			expectReject:                false,
+			skipDocContentsVerification: base.BoolPtr(true),
+		},
+		{
+			name:         "Invalid _exp",
+			inputBody:    map[string]interface{}{"_exp": "abc"},
+			expectReject: true,
+		},
+		{
+			name:         "_purged",
+			inputBody:    map[string]interface{}{"_purged": false},
+			expectReject: true,
+		},
+		{
+			name:         "_removed",
+			inputBody:    map[string]interface{}{"_removed": false},
+			expectReject: true,
+		},
+		{
+			name:         "_sync_cookies",
+			inputBody:    map[string]interface{}{"_sync_cookies": true},
+			expectReject: false,
+		},
+	}
+
+	// Setup
+	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
+	defer rt.Close()
+
+	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	require.NoError(t, err)
+	defer client.Close()
+
+	// Track last sequence for next changes feed
+	var changes changesResults
+	changes.Last_Seq = "0"
+
+	for i, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			docID := fmt.Sprintf("test%d", i)
+			rawBody, err := json.Marshal(test.inputBody)
+			require.NoError(t, err)
+
+			_, err = client.PushRev(docID, "", rawBody)
+			if test.expectReject {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+
+			// Wait for rev to be received on RT
+			err = rt.WaitForPendingChanges()
+			require.NoError(t, err)
+			changes, err = rt.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq), "", true)
+			require.NoError(t, err)
+
+			var bucketDoc map[string]interface{}
+			_, err = rt.Bucket().Get(docID, &bucketDoc)
+			assert.NoError(t, err)
+			// Confirm input body is in the bucket doc
+			if test.skipDocContentsVerification == nil || !*test.skipDocContentsVerification {
+				for k, v := range test.inputBody {
+					assert.Equal(t, v, bucketDoc[k])
+				}
+			}
+		})
+	}
+}

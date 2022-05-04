@@ -42,13 +42,12 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 			base.Infof(base.KeyImport, "Unmarshal error during importDoc %v", err)
 			return nil, err
 		}
-		if body == nil {
-			return nil, base.ErrEmptyDocument
-		}
-	}
 
-	if isPurged, ok := body[BodyPurged].(bool); ok && isPurged {
-		return nil, base.ErrImportCancelledPurged
+		err = validateImportBody(body)
+		if err != nil {
+			return nil, err
+		}
+		delete(body, BodyPurged)
 	}
 
 	// Get the doc expiry if it wasn't passed in, and this isn't a server tombstone

@@ -4271,3 +4271,180 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	_, fetchDb2DestErr := base.FetchDestFactory(base.ImportDestKey("db2"))
 	assert.NoError(t, fetchDb2DestErr)
 }
+
+func TestApiInternalPropertiesHandling(t *testing.T) {
+	testCases := []struct {
+		name                        string
+		inputBody                   map[string]interface{}
+		expectReject                bool
+		skipDocContentsVerification *bool
+	}{
+		{
+			name:         "Valid document with special prop",
+			inputBody:    map[string]interface{}{"_cookie": "is valid"},
+			expectReject: false,
+		},
+		{
+			name:                        "Invalid _sync",
+			inputBody:                   map[string]interface{}{"_sync": true},
+			expectReject:                false,
+			skipDocContentsVerification: base.BoolPtr(true),
+		},
+		{
+			name:                        "Valid _sync",
+			inputBody:                   map[string]interface{}{"_sync": db.SyncData{}},
+			expectReject:                false,
+			skipDocContentsVerification: base.BoolPtr(true),
+		},
+		{
+			name:                        "Valid _deleted",
+			inputBody:                   map[string]interface{}{"_deleted": false},
+			expectReject:                false,
+			skipDocContentsVerification: base.BoolPtr(true),
+		},
+		{
+			name:                        "Valid _revisions",
+			inputBody:                   map[string]interface{}{"_revisions": map[string]interface{}{"ids": "1-abc"}},
+			expectReject:                false,
+			skipDocContentsVerification: base.BoolPtr(true),
+		},
+		{
+			name:                        "Valid _exp",
+			inputBody:                   map[string]interface{}{"_exp": "123"},
+			expectReject:                false,
+			skipDocContentsVerification: base.BoolPtr(true),
+		},
+		{
+			name:         "Invalid _exp",
+			inputBody:    map[string]interface{}{"_exp": "abc"},
+			expectReject: true,
+		},
+		{
+			name:         "_purged",
+			inputBody:    map[string]interface{}{"_purged": false},
+			expectReject: true,
+		},
+		{
+			name:         "_removed",
+			inputBody:    map[string]interface{}{"_removed": false},
+			expectReject: true,
+		},
+		{
+			name:         "_sync_cookies",
+			inputBody:    map[string]interface{}{"_sync_cookies": true},
+			expectReject: false,
+		},
+	}
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	for i, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			docID := fmt.Sprintf("test%d", i)
+			rawBody, err := json.Marshal(test.inputBody)
+			require.NoError(t, err)
+
+			resp := rt.SendAdminRequest("PUT", "/db/"+docID, string(rawBody))
+			if test.expectReject {
+				assert.NotEqual(t, 201, resp.Code)
+				return
+			}
+			require.Equal(t, 201, resp.Code)
+
+			var bucketDoc map[string]interface{}
+			_, err = rt.Bucket().Get(docID, &bucketDoc)
+			assert.NoError(t, err)
+			// Confirm input body is in the bucket doc
+			if test.skipDocContentsVerification == nil || !*test.skipDocContentsVerification {
+				for k, v := range test.inputBody {
+					assert.Equal(t, v, bucketDoc[k])
+				}
+			}
+		})
+	}
+}
+
+func TestPutIDRevMatchBody(t *testing.T) {
+	// [REV] is replaced with the most recent revision of document "doc"
+	testCases := []struct {
+		name        string
+		docBody     string
+		docID       string
+		rev         string
+		expectError bool
+	}{
+		{
+			name:        "ID match",
+			docBody:     `{"_id": "id_match"}`,
+			docID:       "id_match",
+			expectError: false,
+		},
+		{
+			name:        "ID mismatch",
+			docBody:     `{"_id": "id_mismatch"}`,
+			docID:       "completely_different_id",
+			expectError: true,
+		},
+		{
+			name:        "ID in URL only",
+			docBody:     `{}`,
+			docID:       "id_in_url",
+			expectError: false,
+		},
+		{
+			name:        "Rev match",
+			docBody:     `{"_rev": "[REV]", "nonce": "1"}`,
+			rev:         "[REV]",
+			expectError: false,
+		},
+		{
+			name:        "Rev mismatch",
+			docBody:     `{"_rev": "[REV]", "nonce": "2"}`,
+			rev:         "1-abc",
+			expectError: true,
+		},
+		{
+			name:        "Rev in body only",
+			docBody:     `{"_rev": "[REV]", "nonce": "3"}`,
+			expectError: false,
+		},
+		{
+			name:        "Rev in URL only",
+			docBody:     `{"nonce": "4"}`,
+			rev:         "[REV]",
+			expectError: false,
+		},
+	}
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	// Create document to create rev from
+	resp := rt.SendAdminRequest("PUT", "/db/doc", "{}")
+	assertStatus(t, resp, 201)
+	rev := respRevID(t, resp)
+
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			docID := test.docID
+			docRev := test.rev
+			docBody := test.docBody
+			if test.docID == "" {
+				docID = "doc" // Used for the rev tests to branch off of
+				docBody = strings.ReplaceAll(docBody, "[REV]", rev)
+				docRev = strings.ReplaceAll(docRev, "[REV]", rev)
+			}
+
+			resp = rt.SendAdminRequest("PUT", "/db/"+docID+"?rev="+docRev, docBody)
+			if test.expectError {
+				assertStatus(t, resp, 400)
+				return
+			}
+			assertStatus(t, resp, 201)
+			if test.docID == "" {
+				// Update rev to branch off for next test
+				rev = respRevID(t, resp)
+			}
+		})
+	}
+}
