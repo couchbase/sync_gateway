@@ -3664,6 +3664,7 @@ func TestEventConfigValidationSuccess(t *testing.T) {
 	}
 
 	sc := NewServerContext(&StartupConfig{}, false)
+	defer sc.Close()
 
 	// Valid config
 	configJSON := `{"name": "default",
@@ -3688,9 +3689,6 @@ func TestEventConfigValidationSuccess(t *testing.T) {
 
 	_, err = sc.AddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig})
 	assert.True(t, err == nil)
-
-	sc.Close()
-
 }
 
 func TestEventConfigValidationInvalid(t *testing.T) {
@@ -4205,6 +4203,7 @@ func TestLongpollWithWildcard(t *testing.T) {
 func TestUnsupportedConfig(t *testing.T) {
 
 	sc := NewServerContext(&StartupConfig{}, false)
+	defer sc.Close()
 	testProviderOnlyJSON := `{"name": "test_provider_only",
         			"server": "walrus:",
         			"bucket": "test_provider_only",
@@ -4269,8 +4268,6 @@ func TestUnsupportedConfig(t *testing.T) {
 
 	_, err = sc.AddDatabaseFromConfig(DatabaseConfig{DbConfig: viewsAndTestConfig})
 	assert.NoError(t, err, "Error adding viewsAndTestConfig database.")
-
-	sc.Close()
 }
 
 func TestImportingPurgedDocument(t *testing.T) {

@@ -381,5 +381,13 @@ pipeline {
                 }
             }
         }
+        aborted {
+            archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
+            script {
+                if ("${env.BRANCH_NAME}" == 'master') {
+                    slackSend color: "danger", message: "Master SGW pipeline build aborted: ${currentBuild.fullDisplayName}\nCould be due to build timeout: ${env.BUILD_URL}"
+                }
+            }
+        }
     }
 }

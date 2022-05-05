@@ -1858,6 +1858,8 @@ func TestNewDatabaseContextWithOIDCProviderOptionErrors(t *testing.T) {
 	}()
 
 	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+
 	tests := []struct {
 		name          string
 		inputOptions  *auth.OIDCOptions
@@ -1901,8 +1903,6 @@ func TestNewDatabaseContextWithOIDCProviderOptionErrors(t *testing.T) {
 			assert.Nil(t, context, "Database context shouldn't be created")
 		})
 	}
-
-	testBucket.Close()
 }
 
 func TestNewDatabaseContextWithOIDCProviderOptions(t *testing.T) {

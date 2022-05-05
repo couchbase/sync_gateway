@@ -350,6 +350,11 @@ func TestStartAndStopHTTPServers(t *testing.T) {
 		serveErr <- startServer(&config, sc)
 	}()
 
+	defer func() {
+		sc.Close()
+		require.NoError(t, <-serveErr)
+	}()
+
 	err, _ = base.RetryLoop("try http request", func() (shouldRetry bool, err error, value interface{}) {
 		resp, err := http.Get("http://" + config.API.PublicInterface)
 		if err != nil {
@@ -359,10 +364,6 @@ func TestStartAndStopHTTPServers(t *testing.T) {
 		return false, nil, nil
 	}, base.CreateMaxDoublingSleeperFunc(10, 10, 1000))
 	assert.NoError(t, err)
-
-	sc.Close()
-
-	assert.NoError(t, <-serveErr)
 }
 
 // CBG-1518 - Test CA Certificate behaviour with and with Bootstrap.ServerTLSSkipVerify
