@@ -2471,7 +2471,7 @@ func TestGetAllUsers(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
-	base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges)
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges)()
 
 	db := setupTestDB(t)
 	db.Options.QueryPaginationLimit = 100
