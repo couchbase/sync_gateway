@@ -53,6 +53,7 @@ func TestFilterToAvailableChannels(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			db := setupTestDB(t)
+			defer db.Close()
 
 			auth := db.Authenticator(base.TestCtx(t))
 			user, err := auth.NewUser("test", "pass", testCase.userChans)
@@ -81,8 +82,6 @@ func TestFilterToAvailableChannels(t *testing.T) {
 				}
 			}
 			assert.True(t, match)
-
-			db.Close()
 		})
 	}
 }

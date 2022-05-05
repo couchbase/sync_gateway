@@ -1217,9 +1217,9 @@ func TestSetupServerContext(t *testing.T) {
 		config.Bootstrap.Username = base.TestClusterUsername()
 		config.Bootstrap.Password = base.TestClusterPassword()
 		sc, err := setupServerContext(&config, false)
+		defer sc.Close()
 		require.NoError(t, err)
 		require.NotNil(t, sc)
-		sc.Close()
 	})
 }
 

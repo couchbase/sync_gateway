@@ -2133,8 +2133,8 @@ func TestAllDocsAccessControl(t *testing.T) {
 	allDocsResult := allDocsResponse{}
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.NoError(t, err)
-	assert.Equal(t, 3, len(allDocsResult.Rows))
+	require.NoError(t, err)
+	require.Equal(t, 3, len(allDocsResult.Rows))
 	assert.Equal(t, "doc3", allDocsResult.Rows[0].ID)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 	assert.Equal(t, "doc4", allDocsResult.Rows[1].ID)
@@ -2151,7 +2151,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	log.Printf("Response = %s", response.Body.Bytes())
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	require.Equal(t, 1, len(allDocsResult.Rows))
 	assert.Equal(t, "doc3", allDocsResult.Rows[0].ID)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
@@ -2165,8 +2165,8 @@ func TestAllDocsAccessControl(t *testing.T) {
 	log.Printf("Response = %s", response.Body.Bytes())
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.NoError(t, err)
-	assert.Equal(t, 1, len(allDocsResult.Rows))
+	require.NoError(t, err)
+	require.Equal(t, 1, len(allDocsResult.Rows))
 	assert.Equal(t, "doc5", allDocsResult.Rows[0].ID)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
@@ -2179,8 +2179,8 @@ func TestAllDocsAccessControl(t *testing.T) {
 	log.Printf("Response = %s", response.Body.Bytes())
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.NoError(t, err)
-	assert.Equal(t, 1, len(allDocsResult.Rows))
+	require.NoError(t, err)
+	require.Equal(t, 1, len(allDocsResult.Rows))
 	assert.Equal(t, "doc5", allDocsResult.Rows[0].ID)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
@@ -2193,8 +2193,8 @@ func TestAllDocsAccessControl(t *testing.T) {
 	log.Printf("Response = %s", response.Body.Bytes())
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.NoError(t, err)
-	assert.Equal(t, 1, len(allDocsResult.Rows))
+	require.NoError(t, err)
+	require.Equal(t, 1, len(allDocsResult.Rows))
 	assert.Equal(t, "doc3", allDocsResult.Rows[0].ID)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
@@ -2207,8 +2207,8 @@ func TestAllDocsAccessControl(t *testing.T) {
 	log.Printf("Response = %s", response.Body.Bytes())
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.NoError(t, err)
-	assert.Equal(t, 1, len(allDocsResult.Rows))
+	require.NoError(t, err)
+	require.Equal(t, 1, len(allDocsResult.Rows))
 	assert.Equal(t, "doc3", allDocsResult.Rows[0].ID)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
@@ -2221,8 +2221,8 @@ func TestAllDocsAccessControl(t *testing.T) {
 	log.Printf("Response = %s", response.Body.Bytes())
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.NoError(t, err)
-	assert.Equal(t, 3, len(allDocsResult.Rows))
+	require.NoError(t, err)
+	require.Equal(t, 3, len(allDocsResult.Rows))
 	assert.Equal(t, "doc3", allDocsResult.Rows[0].ID)
 	assert.Equal(t, "doc4", allDocsResult.Rows[1].ID)
 	assert.Equal(t, "doc5", allDocsResult.Rows[2].ID)
@@ -2237,8 +2237,8 @@ func TestAllDocsAccessControl(t *testing.T) {
 	log.Printf("Response from POST _all_docs = %s", response.Body.Bytes())
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.NoError(t, err)
-	assert.Equal(t, 4, len(allDocsResult.Rows))
+	require.NoError(t, err)
+	require.Equal(t, 4, len(allDocsResult.Rows))
 	assert.Equal(t, "doc4", allDocsResult.Rows[0].Key)
 	assert.Equal(t, "doc4", allDocsResult.Rows[0].ID)
 	assert.Equal(t, "1-e0351a57554e023a77544d33dd21e56c", allDocsResult.Rows[0].Value.Rev)
@@ -2262,8 +2262,8 @@ func TestAllDocsAccessControl(t *testing.T) {
 	log.Printf("Response from GET _all_docs = %s", response.Body.Bytes())
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.NoError(t, err)
-	assert.Equal(t, 4, len(allDocsResult.Rows))
+	require.NoError(t, err)
+	require.Equal(t, 4, len(allDocsResult.Rows))
 	assert.Equal(t, "doc4", allDocsResult.Rows[0].Key)
 	assert.Equal(t, "doc4", allDocsResult.Rows[0].ID)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
@@ -2284,8 +2284,8 @@ func TestAllDocsAccessControl(t *testing.T) {
 	log.Printf("Response from POST _all_docs = %s", response.Body.Bytes())
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.NoError(t, err)
-	assert.Equal(t, 1, len(allDocsResult.Rows))
+	require.NoError(t, err)
+	require.Equal(t, 1, len(allDocsResult.Rows))
 	assert.Equal(t, "doc4", allDocsResult.Rows[0].Key)
 	assert.Equal(t, "doc4", allDocsResult.Rows[0].ID)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
@@ -2297,8 +2297,8 @@ func TestAllDocsAccessControl(t *testing.T) {
 	log.Printf("Admin response = %s", response.Body.Bytes())
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.NoError(t, err)
-	assert.Equal(t, 5, len(allDocsResult.Rows))
+	require.NoError(t, err)
+	require.Equal(t, 5, len(allDocsResult.Rows))
 	assert.Equal(t, "doc1", allDocsResult.Rows[0].ID)
 	assert.Equal(t, "doc2", allDocsResult.Rows[1].ID)
 }
@@ -3664,6 +3664,7 @@ func TestEventConfigValidationSuccess(t *testing.T) {
 	}
 
 	sc := NewServerContext(&StartupConfig{}, false)
+	defer sc.Close()
 
 	// Valid config
 	configJSON := `{"name": "default",
@@ -3688,9 +3689,6 @@ func TestEventConfigValidationSuccess(t *testing.T) {
 
 	_, err = sc.AddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig})
 	assert.True(t, err == nil)
-
-	sc.Close()
-
 }
 
 func TestEventConfigValidationInvalid(t *testing.T) {
@@ -4205,6 +4203,7 @@ func TestLongpollWithWildcard(t *testing.T) {
 func TestUnsupportedConfig(t *testing.T) {
 
 	sc := NewServerContext(&StartupConfig{}, false)
+	defer sc.Close()
 	testProviderOnlyJSON := `{"name": "test_provider_only",
         			"server": "walrus:",
         			"bucket": "test_provider_only",
@@ -4269,8 +4268,6 @@ func TestUnsupportedConfig(t *testing.T) {
 
 	_, err = sc.AddDatabaseFromConfig(DatabaseConfig{DbConfig: viewsAndTestConfig})
 	assert.NoError(t, err, "Error adding viewsAndTestConfig database.")
-
-	sc.Close()
 }
 
 func TestImportingPurgedDocument(t *testing.T) {
