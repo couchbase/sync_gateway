@@ -4181,7 +4181,6 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 	pullStats := ar.Pull.GetStats()
 	require.EqualValues(t, 0, pullStats.HandleRevCount.Value())
 	require.EqualValues(t, 0, pullStats.HandleRevBytes.Value())
-	require.EqualValues(t, 0, pullStats.HandleRevProcessingTime.Value())
 	require.EqualValues(t, 0, pullStats.HandlePutRevCount.Value())
 
 	rev := remoteRT.createDoc(t, "doc")
@@ -4196,7 +4195,6 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 
 	assert.EqualValues(t, 1, pullStats.HandleRevCount.Value())
 	assert.NotEqualValues(t, 0, pullStats.HandleRevBytes.Value())
-	assert.NotEqualValues(t, 0, pullStats.HandleRevProcessingTime.Value())
 	// Confirm connected client count has not increased, which uses same processRev code
 	assert.EqualValues(t, 0, pullStats.HandlePutRevCount.Value())
 }
