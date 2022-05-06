@@ -2505,6 +2505,40 @@ func TestGetAllUsers(t *testing.T) {
 	assert.Equal(t, 2, len(limitedUsers))
 }
 
+// Regression test for CBG-2058.
+func TestImportCompactPanic(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("requires xattrs")
+	}
+
+	// Set the compaction and purge interval unrealistically low to reproduce faster
+	options := DatabaseContextOptions{
+		CompactInterval: 1,
+	}
+	AddOptionsFromEnvironmentVariables(&options)
+	bucket := base.GetTestBucket(t)
+	dbc, err := NewDatabaseContext("db", bucket, true, options)
+	require.NoError(t, err, "Couldn't create context for database 'db'")
+	defer dbc.Close()
+
+	dbc.PurgeInterval = time.Millisecond
+	db, err := CreateDatabase(dbc)
+	require.NoError(t, err, "Couldn't create database 'db'")
+
+	// Create a document, then delete it, to create a tombstone
+	rev, doc, err := db.Put("test", Body{})
+	require.NoError(t, err)
+	_, err = db.DeleteDoc(doc.ID, rev)
+	require.NoError(t, err)
+	require.NoError(t, db.WaitForPendingChanges(base.TestCtx(t)))
+
+	// Wait for Compact to run - in the failing case it'll panic before incrementing the stat
+	_, ok := base.WaitForStat(func() int64 {
+		return db.DbStats.Database().NumTombstonesCompacted.Value()
+	}, 1)
+	require.True(t, ok)
+}
+
 func waitAndAssertConditionWithOptions(t *testing.T, fn func() bool, retryCount, msSleepTime int, failureMsgAndArgs ...interface{}) {
 	for i := 0; i <= retryCount; i++ {
 		if i == retryCount {
