@@ -24,8 +24,13 @@ type BlipSyncStats struct {
 	HandleRevBytes                   *base.SgwIntStat
 	HandleRevProcessingTime          *base.SgwIntStat
 	HandleRevDocsPurgedCount         *base.SgwIntStat
-	HandleGetRev                     *base.SgwIntStat // Connected Client API
-	HandlePutRev                     *base.SgwIntStat // Connected Client API
+	HandleGetRevCount                *base.SgwIntStat // Connected Client API
+	HandlePutRevCount                *base.SgwIntStat // Connected Client API
+	HandlePutRevErrorCount           *base.SgwIntStat // Connected Client API
+	HandlePutRevDeltaRecvCount       *base.SgwIntStat // Connected Client API
+	HandlePutRevBytes                *base.SgwIntStat // Connected Client API
+	HandlePutRevProcessingTime       *base.SgwIntStat // Connected Client API
+	HandlePutRevDocsPurgedCount      *base.SgwIntStat // Connected Client API
 	SendRevCount                     *base.SgwIntStat // sendRev
 	SendRevDeltaRequestedCount       *base.SgwIntStat
 	SendRevDeltaSentCount            *base.SgwIntStat
@@ -66,8 +71,13 @@ func NewBlipSyncStats() *BlipSyncStats {
 		HandleRevBytes:                   &base.SgwIntStat{},
 		HandleRevProcessingTime:          &base.SgwIntStat{},
 		HandleRevDocsPurgedCount:         &base.SgwIntStat{},
-		HandleGetRev:                     &base.SgwIntStat{},
-		HandlePutRev:                     &base.SgwIntStat{},
+		HandleGetRevCount:                &base.SgwIntStat{},
+		HandlePutRevCount:                &base.SgwIntStat{},
+		HandlePutRevErrorCount:           &base.SgwIntStat{},
+		HandlePutRevDeltaRecvCount:       &base.SgwIntStat{},
+		HandlePutRevBytes:                &base.SgwIntStat{},
+		HandlePutRevProcessingTime:       &base.SgwIntStat{},
+		HandlePutRevDocsPurgedCount:      &base.SgwIntStat{},
 		SendRevCount:                     &base.SgwIntStat{}, // sendRev
 		SendRevDeltaRequestedCount:       &base.SgwIntStat{},
 		SendRevDeltaSentCount:            &base.SgwIntStat{},

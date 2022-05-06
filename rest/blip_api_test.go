@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -4155,4 +4156,47 @@ func TestProveAttachmentNotFound(t *testing.T) {
 	resp := rt.SendAdminRequest("GET", "/db/doc1/attach", "")
 	assertStatus(t, resp, 200)
 	assert.EqualValues(t, attachmentData, resp.BodyBytes())
+}
+
+// CBG-2053: Test that the handleRev stats still increment correctly when going through the processRev function with
+// the stat mapping (processRevStats)
+func TestProcessRevIncrementsStat(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+
+	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
+	defer teardown()
+
+	remoteURL, _ := url.Parse(remoteURLString)
+
+	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+		ID:                  t.Name(),
+		Direction:           db.ActiveReplicatorTypePull,
+		ActiveDB:            &db.Database{DatabaseContext: activeRT.GetDatabase()},
+		RemoteDBURL:         remoteURL,
+		Continuous:          true,
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats("test", false, false, false).DBReplicatorStats(t.Name()),
+	})
+	// Confirm all stats starting on 0
+	require.NotNil(t, ar.Pull)
+	pullStats := ar.Pull.GetStats()
+	require.EqualValues(t, 0, pullStats.HandleRevCount.Value())
+	require.EqualValues(t, 0, pullStats.HandleRevBytes.Value())
+	require.EqualValues(t, 0, pullStats.HandleRevProcessingTime.Value())
+	require.EqualValues(t, 0, pullStats.HandlePutRevCount.Value())
+
+	rev := remoteRT.createDoc(t, "doc")
+
+	assert.NoError(t, ar.Start())
+	defer func() { require.NoError(t, ar.Stop()) }()
+
+	err := activeRT.WaitForPendingChanges()
+	require.NoError(t, err)
+	err = activeRT.waitForRev("doc", rev)
+	require.NoError(t, err)
+
+	assert.EqualValues(t, 1, pullStats.HandleRevCount.Value())
+	assert.NotEqualValues(t, 0, pullStats.HandleRevBytes.Value())
+	assert.NotEqualValues(t, 0, pullStats.HandleRevProcessingTime.Value())
+	// Confirm connected client count has not increased, which uses same processRev code
+	assert.EqualValues(t, 0, pullStats.HandlePutRevCount.Value())
 }
