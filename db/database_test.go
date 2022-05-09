@@ -66,6 +66,11 @@ func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptio
 
 func setupTestDBWithOptionsAndImport(t testing.TB, dbcOptions DatabaseContextOptions) *Database {
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
+	if dbcOptions.GroupID == "" && base.IsEnterpriseEdition() {
+		// In a real SG this would be set in DefaultStartupConfig.
+		dbcOptions.GroupID = "default"
+		RegisterImportPindexImpl("default")
+	}
 	context, err := NewDatabaseContext("db", base.GetTestBucket(t), true, dbcOptions)
 	require.NoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
@@ -2512,18 +2517,10 @@ func TestImportCompactPanic(t *testing.T) {
 	}
 
 	// Set the compaction and purge interval unrealistically low to reproduce faster
-	options := DatabaseContextOptions{
+	db := setupTestDBWithOptionsAndImport(t, DatabaseContextOptions{
 		CompactInterval: 1,
-	}
-	AddOptionsFromEnvironmentVariables(&options)
-	bucket := base.GetTestBucket(t)
-	dbc, err := NewDatabaseContext("db", bucket, true, options)
-	require.NoError(t, err, "Couldn't create context for database 'db'")
-	defer dbc.Close()
-
-	dbc.PurgeInterval = time.Millisecond
-	db, err := CreateDatabase(dbc)
-	require.NoError(t, err, "Couldn't create database 'db'")
+	})
+	db.PurgeInterval = time.Millisecond
 
 	// Create a document, then delete it, to create a tombstone
 	rev, doc, err := db.Put("test", Body{})
