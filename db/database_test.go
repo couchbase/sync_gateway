@@ -2520,6 +2520,7 @@ func TestImportCompactPanic(t *testing.T) {
 	db := setupTestDBWithOptionsAndImport(t, DatabaseContextOptions{
 		CompactInterval: 1,
 	})
+	defer db.Close()
 	db.PurgeInterval = time.Millisecond
 
 	// Create a document, then delete it, to create a tombstone
