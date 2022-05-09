@@ -780,15 +780,25 @@ type removalDocument struct {
 	Removed bool `json:"_removed"`
 }
 
-// Received a "rev" request, i.e. client is pushing a revision body
-func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
+type processRevStats struct {
+	count           *base.SgwIntStat // Increments when rev processed successfully
+	errorCount      *base.SgwIntStat
+	deltaRecvCount  *base.SgwIntStat
+	bytes           *base.SgwIntStat
+	processingTime  *base.SgwIntStat
+	docsPurgedCount *base.SgwIntStat
+}
+
+// Processes a "rev" request, i.e. client is pushing a revision body
+// stats must always be provided, along with all the fields filled with valid pointers
+func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err error) {
 	startTime := time.Now()
 	defer func() {
-		bh.replicationStats.HandleRevProcessingTime.Add(time.Since(startTime).Nanoseconds())
+		stats.processingTime.Add(time.Since(startTime).Nanoseconds())
 		if err == nil {
-			bh.BlipSyncContext.replicationStats.HandleRevCount.Add(1)
+			stats.count.Add(1)
 		} else {
-			bh.BlipSyncContext.replicationStats.HandleRevErrorCount.Add(1)
+			stats.errorCount.Add(1)
 		}
 	}()
 
@@ -804,7 +814,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 
 	base.TracefCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Properties:%v  Body:%s", bh.serialNumber, base.UD(revMessage.Properties), base.UD(string(bodyBytes)))
 
-	bh.replicationStats.HandleRevBytes.Add(int64(len(bodyBytes)))
+	stats.bytes.Add(int64(len(bodyBytes)))
 
 	// Doc metadata comes from the BLIP message metadata, not magic document properties:
 	docID, found := revMessage.ID()
@@ -823,7 +833,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 			if err := bh.db.Purge(docID); err != nil {
 				return err
 			}
-			bh.replicationStats.HandleRevDocsPurgedCount.Add(1)
+			stats.docsPurgedCount.Add(1)
 			if bh.sgr2PullProcessedSeqCallback != nil {
 				bh.sgr2PullProcessedSeqCallback(rq.Properties[RevMessageSequence], IDAndRev{DocID: docID, RevID: revID})
 			}
@@ -885,7 +895,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 
 		newDoc.UpdateBody(deltaSrcMap)
 		base.TracefCtx(bh.loggingCtx, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(deltaSrcMap))
-		bh.replicationStats.HandleRevDeltaRecvCount.Add(1)
+		stats.deltaRecvCount.Add(1)
 	}
 
 	err = validateBlipBody(bodyBytes, newDoc)
@@ -1037,6 +1047,19 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 	}
 
 	return nil
+}
+
+// Handler for when a rev is received from the client
+func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
+	stats := processRevStats{
+		count:           bh.replicationStats.HandleRevCount,
+		errorCount:      bh.replicationStats.HandleRevErrorCount,
+		deltaRecvCount:  bh.replicationStats.HandleRevDeltaRecvCount,
+		bytes:           bh.replicationStats.HandleRevBytes,
+		processingTime:  bh.replicationStats.HandleRevProcessingTime,
+		docsPurgedCount: bh.replicationStats.HandleRevDocsPurgedCount,
+	}
+	return bh.processRev(rq, &stats)
 }
 
 // ////// ATTACHMENTS:

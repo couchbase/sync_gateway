@@ -52,15 +52,19 @@ func (bh *blipHandler) handleGetRev(rq *blip.Message) error {
 	response.SetCompressed(true)
 	response.Properties[GetRevRevId] = rev.RevID
 	response.SetBody(bodyBytes)
-	bh.replicationStats.HandleGetRev.Add(1)
+	bh.replicationStats.HandleGetRevCount.Add(1)
 	return nil
 }
 
 // Handles a Connected-Client "putRev" request.
 func (bh *blipHandler) handlePutRev(rq *blip.Message) error {
-	//FIXME: This should probably not just call into `handleRev`, which
-	// looks like it does some stuff specific to replication.
-	err := bh.handleRev(rq)
-	bh.replicationStats.HandlePutRev.Add(1)
-	return err
+	stats := processRevStats{
+		count:           bh.replicationStats.HandlePutRevCount,
+		errorCount:      bh.replicationStats.HandlePutRevErrorCount,
+		deltaRecvCount:  bh.replicationStats.HandlePutRevDeltaRecvCount,
+		bytes:           bh.replicationStats.HandlePutRevBytes,
+		processingTime:  bh.replicationStats.HandlePutRevProcessingTime,
+		docsPurgedCount: bh.replicationStats.HandlePutRevDocsPurgedCount,
+	}
+	return bh.processRev(rq, &stats)
 }
