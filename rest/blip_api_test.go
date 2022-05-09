@@ -3990,3 +3990,43 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 		})
 	}
 }
+
+func TestAttachmentWithErroneousRevPos(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		guestEnabled: true,
+	})
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	require.NoError(t, err)
+	defer btc.Close()
+
+	// Create rev 1 with the hello.txt attachment
+	revid := rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"val": "val", "_attachments": map[string]interface{}{"hello.txt": map[string]interface{}{"data": "aGVsbG8gd29ybGQ="}}})
+	err = rt.WaitForPendingChanges()
+	assert.NoError(t, err)
+
+	// Pull rev and attachment down to client
+	err = btc.StartOneshotPull()
+	assert.NoError(t, err)
+	_, found := btc.WaitForRev("doc", revid)
+	assert.True(t, found)
+
+	// Add an attachment to client
+	btc.attachmentsLock.Lock()
+	btc.attachments["sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc="] = []byte("goodbye cruel world")
+	btc.attachmentsLock.Unlock()
+
+	// Put doc with an erroneous revpos 1 but with a different digest, referring to the above attachment
+	revid, err = btc.PushRevWithHistory("doc", revid, []byte(`{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"length": 19,"digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc="}}}`), 1, 0)
+	require.NoError(t, err)
+
+	// Ensure message and attachment is pushed up
+	_, ok := btc.pushReplication.WaitForMessage(2)
+	assert.True(t, ok)
+
+	// Get the attachment and ensure the data is updated
+	resp := rt.SendAdminRequest(http.MethodGet, "/db/doc/hello.txt", "")
+	assertStatus(t, resp, http.StatusOK)
+	assert.Equal(t, "goodbye cruel world", string(resp.BodyBytes()))
+}
