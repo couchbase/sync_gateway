@@ -790,7 +790,8 @@ type processRevStats struct {
 }
 
 // Processes a "rev" request, i.e. client is pushing a revision body
-func (bh *blipHandler) processRev(rq *blip.Message, stats processRevStats) (err error) {
+// stats must always be provided, along with all the fields filled with valid pointers
+func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err error) {
 	startTime := time.Now()
 	defer func() {
 		stats.processingTime.Add(time.Since(startTime).Nanoseconds())
@@ -1058,7 +1059,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 		processingTime:  bh.replicationStats.HandleRevProcessingTime,
 		docsPurgedCount: bh.replicationStats.HandleRevDocsPurgedCount,
 	}
-	return bh.processRev(rq, stats)
+	return bh.processRev(rq, &stats)
 }
 
 // ////// ATTACHMENTS:

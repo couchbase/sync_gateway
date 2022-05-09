@@ -66,5 +66,5 @@ func (bh *blipHandler) handlePutRev(rq *blip.Message) error {
 		processingTime:  bh.replicationStats.HandlePutRevProcessingTime,
 		docsPurgedCount: bh.replicationStats.HandlePutRevDocsPurgedCount,
 	}
-	return bh.processRev(rq, stats)
+	return bh.processRev(rq, &stats)
 }
