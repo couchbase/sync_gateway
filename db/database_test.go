@@ -2530,7 +2530,7 @@ func TestImportCompactPanic(t *testing.T) {
 	require.NoError(t, err)
 	_, err = db.DeleteDoc(doc.ID, rev)
 	require.NoError(t, err)
-	require.NoError(t, db.WaitForPendingChanges(base.TestCtx(t)))
+	require.NoError(t, db.WaitForPendingChanges(context.Background()))
 
 	// Wait for Compact to run - in the failing case it'll panic before incrementing the stat
 	_, ok := base.WaitForStat(func() int64 {
