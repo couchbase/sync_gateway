@@ -200,6 +200,11 @@ func (auth *Authenticator) rebuildChannels(princ Principal) error {
 		}
 		channels.Add(viewChannels)
 	}
+
+	if oidc := princ.OIDCChannels(); oidc != nil {
+		channels.Add(oidc)
+	}
+
 	// always grant access to the public document channel
 	channels.AddChannel(ch.DocumentStarChannel, 1)
 
@@ -298,6 +303,10 @@ func (auth *Authenticator) rebuildRoles(user User) error {
 
 	if explicit := user.ExplicitRoles(); explicit != nil {
 		roles.Add(explicit)
+	}
+
+	if oidc := user.OIDCRoles(); oidc != nil {
+		roles.Add(oidc)
 	}
 
 	roleHistory := auth.calculateHistory(user.Name(), user.GetRoleInvalSeq(), user.InvalidatedRoles(), roles, user.RoleHistory())
@@ -714,8 +723,11 @@ func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCPr
 	return auth.authenticateOIDCIdentity(identity, provider)
 }
 
-// Obtains a Sync Gateway User for the JWT. Expects that the JWT has already been verified for OIDC compliance.
+// authenticateOIDCIdentity obtains a Sync Gateway User for the JWT. Expects that the JWT has already been verified for OIDC compliance.
+// TODO: possibly move this function to oidc.go
 func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider *OIDCProvider) (user User, tokenExpiry time.Time, err error) {
+	// Note: any errors returned from this function will be converted to 403s with a generic message, so we need to
+	// separately log them to ensure they're preserved for debugging.
 	if identity == nil || identity.Subject == "" {
 		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Empty subject found in OIDC identity: %v", base.UD(identity))
 		return nil, time.Time{}, errors.New("subject not found in OIDC identity")
@@ -726,6 +738,24 @@ func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider
 		return nil, time.Time{}, err
 	}
 	base.DebugfCtx(auth.LogCtx, base.KeyAuth, "OIDCUsername: %v", base.UD(username))
+
+	var oidcRoles, oidcChannels base.Set
+	if provider.RolesClaim != "" {
+		oidcRoles, err = getJWTClaimAsSet(identity, provider.RolesClaim)
+		if err != nil {
+			return nil, time.Time{}, fmt.Errorf("failed to find OIDC roles: %w", err)
+		}
+	} else {
+		oidcRoles = base.Set{}
+	}
+	if provider.ChannelsClaim != "" {
+		oidcChannels, err = getJWTClaimAsSet(identity, provider.ChannelsClaim)
+		if err != nil {
+			return nil, time.Time{}, fmt.Errorf("failed to find OIDC channels: %w", err)
+		}
+	} else {
+		oidcChannels = base.Set{}
+	}
 
 	user, err = auth.GetUser(username)
 	if err != nil {
@@ -750,6 +780,24 @@ func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider
 		if err != nil && !base.IsCasMismatch(err) {
 			base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error registering new user: %v", err)
 			return nil, time.Time{}, err
+		}
+	}
+
+	// Check if we need to grant or revoke access to any OIDC roles/channels
+	if user != nil {
+		if !user.OIDCRoles().Equals(oidcRoles) || !user.OIDCChannels().Equals(oidcChannels) {
+			if err := auth.UpdateUserOIDCRolesChannels(user, oidcRoles, oidcChannels); err != nil {
+				err = fmt.Errorf("failed to save updated OIDC roles/channels for %v: %w", base.UD(user.Name()).Redact(), err)
+				base.WarnfCtx(auth.LogCtx, "Unable to update OIDC user: %v", err)
+				return nil, time.Time{}, err
+			}
+			// Fetch the up-to-date roles/channels
+			user, err = auth.GetUser(user.Name())
+			if err != nil {
+				err = fmt.Errorf("failed to refresh updated OIDC user %v: %w", base.UD(user.Name()).Redact(), err)
+				base.WarnfCtx(auth.LogCtx, "Unable to update OIDC user: %v", err)
+				return nil, time.Time{}, err
+			}
 		}
 	}
 
@@ -784,4 +832,50 @@ func (auth *Authenticator) RegisterNewUser(username, email string) (User, error)
 	}
 
 	return user, err
+}
+
+// UpdateUserOIDCRolesChannels saves the user's current OIDC roles/channels, and resulting implicit roles/channels,
+// to the database.
+func (auth *Authenticator) UpdateUserOIDCRolesChannels(user_ User, roles base.Set, channels base.Set) error {
+	updateRolesChannelsCallback := func(currentPrincipal Principal) (updatedPrincipal Principal, err error) {
+		user, ok := currentPrincipal.(User)
+		if !ok {
+			return nil, base.ErrUpdateCancel
+		}
+
+		nextSeq := user.Sequence() + 1
+		user.SetSequence(nextSeq)
+
+		// TODO: these calls to rebuildRoles/rebuildChannels are somewhat expensive (require access/role-access queries)
+		// and we could hit this more than once if we're inside a CAS-loop.
+
+		newChans := user.OIDCChannels()
+		if newChans == nil {
+			newChans = ch.TimedSet{}
+		}
+		if !newChans.Equals(channels) {
+			newChans.UpdateAtSequence(channels, nextSeq)
+			user.SetOIDCChannels(newChans, nextSeq)
+			if err := auth.rebuildRoles(user); err != nil {
+				return nil, fmt.Errorf("failed to rebuild roles for %v: %w", base.UD(user.Name()).Redact(), err)
+			}
+		}
+
+		newRoles := user.OIDCRoles()
+		if newRoles == nil {
+			newRoles = ch.TimedSet{}
+		}
+		if !newRoles.Equals(roles) {
+			newRoles.UpdateAtSequence(roles, nextSeq)
+			user.SetOIDCRoles(newRoles, nextSeq)
+			if err := auth.rebuildChannels(user); err != nil {
+				return nil, fmt.Errorf("failed to rebuild channels for %v: %w", base.UD(user.Name()).Redact(), err)
+			}
+		}
+
+		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Updating user %s OIDC roles/channels to: %v, %v", base.UD(user.Name()), base.UD(user.OIDCRoles()), base.UD(user.OIDCChannels()).Redact())
+		return user, nil
+	}
+
+	return auth.casUpdatePrincipal(user_, updateRolesChannelsCallback)
 }

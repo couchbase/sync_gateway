@@ -23,7 +23,12 @@ type Principal interface {
 	SetSequence(sequence uint64)
 
 	// The set of channels the Principal belongs to, and what sequence access was granted.
-	// Returns nil if invalidated
+	// Returns nil if invalidated.
+	// For both roles and users, the set of channels is the union of ExplicitChannels, OIDCChannels, and any channels
+	// they are granted through a sync function.
+	//
+	// NOTE: channels a user has access to through a role are *not* included in Channels(), so the user could have
+	// access to more documents than included in Channels. CanSeeChannel will also check against the user's roles.
 	Channels() ch.TimedSet
 
 	// The channels the Principal was explicitly granted access to thru the admin API.
@@ -31,6 +36,9 @@ type Principal interface {
 
 	// Sets the explicit channels the Principal has access to.
 	SetExplicitChannels(ch.TimedSet, uint64)
+
+	OIDCChannels() ch.TimedSet
+	SetOIDCChannels(ch.TimedSet, uint64)
 
 	GetChannelInvalSeq() uint64
 
@@ -101,7 +109,7 @@ type User interface {
 	// Changes the user's password.
 	SetPassword(password string) error
 
-	// The set of Roles the user belongs to (including ones given to it by the sync function)
+	// The set of Roles the user belongs to (including ones given to it by the sync function and by OIDC)
 	// Returns nil if invalidated
 	RoleNames() ch.TimedSet
 
@@ -110,6 +118,9 @@ type User interface {
 
 	// Sets the explicit roles the user belongs to.
 	SetExplicitRoles(ch.TimedSet, uint64)
+
+	OIDCRoles() ch.TimedSet
+	SetOIDCRoles(ch.TimedSet, uint64)
 
 	GetRoleInvalSeq() uint64
 

@@ -159,6 +159,9 @@ type OIDCProvider struct {
 	// Sync Gateway and the underlying OIDC library.
 	UsernameClaim string `json:"username_claim"`
 
+	RolesClaim    string `json:"roles_claim"`
+	ChannelsClaim string `json:"channels_claim"`
+
 	// AllowUnsignedProviderTokens allows users to opt-in to accepting unsigned tokens from providers.
 	AllowUnsignedProviderTokens bool `json:"allow_unsigned_provider_tokens"`
 
@@ -449,6 +452,35 @@ func formatUsername(value interface{}) (string, error) {
 		return strconv.FormatFloat(valueType, 'f', -1, 64), nil
 	default:
 		return "", fmt.Errorf("oidc: can't treat value of type: %T as valid username", valueType)
+	}
+}
+
+// getJWTClaimAsSet looks up the given claim in the identity's claims, and transforms it to a set of strings.
+// The claim can be either a string or a slice of strings; other types will result in an error.
+// If the claim is missing from the identity, the empty set (and nil error) will be returned.
+func getJWTClaimAsSet(identity *Identity, claim string) (base.Set, error) {
+	val, ok := identity.Claims[claim]
+	if !ok {
+		return base.Set{}, nil
+	}
+
+	switch typed := val.(type) {
+	case string:
+		return base.SetOf(typed), nil
+	case []string:
+		return base.SetFromArray(typed), nil
+	case []interface{}: // could be a []string
+		result := make([]string, 0, len(typed))
+		for i, val := range typed {
+			strVal, ok := val.(string)
+			if !ok {
+				return base.Set{}, fmt.Errorf("invalid value at JWT payload[%q][%d]: expected string, got %T", base.UD(claim).Redact(), i, val)
+			}
+			result = append(result, strVal)
+		}
+		return base.SetFromArray(result), nil
+	default:
+		return base.Set{}, fmt.Errorf("invalid value at JWT payload[%q]: expected string or []string, got %T", base.UD(claim).Redact(), val)
 	}
 }
 

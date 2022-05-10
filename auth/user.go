@@ -42,6 +42,7 @@ type userImplBody struct {
 	PasswordHash_    []byte          `json:"passwordhash_bcrypt,omitempty"`
 	OldPasswordHash_ interface{}     `json:"passwordhash,omitempty"` // For pre-beta compatibility
 	ExplicitRoles_   ch.TimedSet     `json:"explicit_roles,omitempty"`
+	OIDCRoles_       ch.TimedSet     `json:"oidc_roles,omitempty"`
 	RolesSince_      ch.TimedSet     `json:"rolesSince"`
 	RoleInvalSeq     uint64          `json:"role_inval_seq,omitempty"` // Sequence at which the roles were invalidated. Data remains in RolesSince_ for history calculation.
 	RoleHistory_     TimedSetHistory `json:"role_history,omitempty"`   // Added to when a previously granted role is revoked. Calculated inside of rebuildRoles.
@@ -182,6 +183,16 @@ func (user *userImpl) InvalidatedRoles() ch.TimedSet {
 		return user.RolesSince_
 	}
 	return nil
+}
+
+func (user *userImpl) OIDCRoles() ch.TimedSet {
+	return user.OIDCRoles_
+}
+
+func (user *userImpl) SetOIDCRoles(channels ch.TimedSet, invalSeq uint64) {
+	user.OIDCRoles_ = channels
+	// change to OIDC roles means roles need to be recomputed
+	user.SetRoleInvalSeq(invalSeq)
 }
 
 func (user *userImpl) SetRoleHistory(history TimedSetHistory) {

@@ -24,15 +24,17 @@ import (
 
 /** A group that users can belong to, with associated channel permissions. */
 type roleImpl struct {
-	Name_             string          `json:"name,omitempty"`
-	ExplicitChannels_ ch.TimedSet     `json:"admin_channels,omitempty"`
-	Channels_         ch.TimedSet     `json:"all_channels"`
-	Sequence_         uint64          `json:"sequence"`
-	ChannelHistory_   TimedSetHistory `json:"channel_history,omitempty"`   // Added to when a previously granted channel is revoked. Calculated inside of rebuildChannels.
-	ChannelInvalSeq   uint64          `json:"channel_inval_seq,omitempty"` // Sequence at which the channels were invalidated. Data remains in Channels_ for history calculation.
-	Deleted           bool            `json:"deleted,omitempty"`
-	vbNo              *uint16
-	cas               uint64
+	Name_             string      `json:"name,omitempty"`
+	ExplicitChannels_ ch.TimedSet `json:"admin_channels,omitempty"`
+	// TODO: it doesn't make sense for a role to have OIDC channels - this is only here because User inherits it
+	OIDCChannels_   ch.TimedSet     `json:"oidc_channels,omitempty"`
+	Channels_       ch.TimedSet     `json:"all_channels"`
+	Sequence_       uint64          `json:"sequence"`
+	ChannelHistory_ TimedSetHistory `json:"channel_history,omitempty"`   // Added to when a previously granted channel is revoked. Calculated inside of rebuildChannels.
+	ChannelInvalSeq uint64          `json:"channel_inval_seq,omitempty"` // Sequence at which the channels were invalidated. Data remains in Channels_ for history calculation.
+	Deleted         bool            `json:"deleted,omitempty"`
+	vbNo            *uint16
+	cas             uint64
 }
 
 type TimedSetHistory map[string]GrantHistory
@@ -207,6 +209,16 @@ func (role *roleImpl) ExplicitChannels() ch.TimedSet {
 
 func (role *roleImpl) SetExplicitChannels(channels ch.TimedSet, invalSeq uint64) {
 	role.ExplicitChannels_ = channels
+	role.SetChannelInvalSeq(invalSeq)
+}
+
+func (role *roleImpl) OIDCChannels() ch.TimedSet {
+	return role.OIDCChannels_
+}
+
+func (role *roleImpl) SetOIDCChannels(channels ch.TimedSet, invalSeq uint64) {
+	role.OIDCChannels_ = channels
+	// change to OIDC channels means channels need to be recomputed
 	role.SetChannelInvalSeq(invalSeq)
 }
 
