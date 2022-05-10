@@ -541,8 +541,14 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		if dbContext.Options.CompactInterval != 0 {
 			if autoImport {
 				db := Database{DatabaseContext: dbContext}
+				// Wrap the dbContext's terminator in a SafeTerminator for the compaction task
+				bgtTerminator := base.NewSafeTerminator()
+				go func() {
+					<-dbContext.terminator
+					bgtTerminator.Close()
+				}()
 				bgt, err := NewBackgroundTask("Compact", dbContext.Name, func(ctx context.Context) error {
-					_, err := db.Compact(false, func(purgedDocCount *int) {}, nil)
+					_, err := db.Compact(false, func(purgedDocCount *int) {}, bgtTerminator)
 					if err != nil {
 						base.WarnfCtx(ctx, "Error trying to compact tombstoned documents for %q with error: %v", dbContext.Name, err)
 					}

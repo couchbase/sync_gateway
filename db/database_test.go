@@ -66,6 +66,11 @@ func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptio
 
 func setupTestDBWithOptionsAndImport(t testing.TB, dbcOptions DatabaseContextOptions) *Database {
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
+	if dbcOptions.GroupID == "" && base.IsEnterpriseEdition() {
+		// TODO: Once RegisterImportPindexImpl is moved into NewDatabaseContext this won't be necessary
+		dbcOptions.GroupID = t.Name()
+		RegisterImportPindexImpl(t.Name())
+	}
 	context, err := NewDatabaseContext("db", base.GetTestBucket(t), true, dbcOptions)
 	require.NoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
@@ -2503,6 +2508,33 @@ func TestGetAllUsers(t *testing.T) {
 	limitedUsers, err := db.GetUsers(base.TestCtx(t), 2)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(limitedUsers))
+}
+
+// Regression test for CBG-2058.
+func TestImportCompactPanic(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("requires xattrs")
+	}
+
+	// Set the compaction and purge interval unrealistically low to reproduce faster
+	db := setupTestDBWithOptionsAndImport(t, DatabaseContextOptions{
+		CompactInterval: 1,
+	})
+	defer db.Close()
+	db.PurgeInterval = time.Millisecond
+
+	// Create a document, then delete it, to create a tombstone
+	rev, doc, err := db.Put("test", Body{})
+	require.NoError(t, err)
+	_, err = db.DeleteDoc(doc.ID, rev)
+	require.NoError(t, err)
+	require.NoError(t, db.WaitForPendingChanges(base.TestCtx(t)))
+
+	// Wait for Compact to run - in the failing case it'll panic before incrementing the stat
+	_, ok := base.WaitForStat(func() int64 {
+		return db.DbStats.Database().NumTombstonesCompacted.Value()
+	}, 1)
+	require.True(t, ok)
 }
 
 func waitAndAssertConditionWithOptions(t *testing.T, fn func() bool, retryCount, msSleepTime int, failureMsgAndArgs ...interface{}) {
