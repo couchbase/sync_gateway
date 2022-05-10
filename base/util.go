@@ -1058,7 +1058,7 @@ func Crc32cHash(input []byte) uint32 {
 }
 
 func Crc32cHashString(input []byte) string {
-	return fmt.Sprintf("0x%x", Crc32cHash(input))
+	return fmt.Sprintf("0x%08x", Crc32cHash(input))
 }
 
 func SplitHostPort(hostport string) (string, string, error) {
