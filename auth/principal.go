@@ -37,9 +37,6 @@ type Principal interface {
 	// Sets the explicit channels the Principal has access to.
 	SetExplicitChannels(ch.TimedSet, uint64)
 
-	OIDCChannels() ch.TimedSet
-	SetOIDCChannels(ch.TimedSet, uint64)
-
 	GetChannelInvalSeq() uint64
 
 	SetChannelInvalSeq(uint64)
@@ -121,6 +118,8 @@ type User interface {
 
 	OIDCRoles() ch.TimedSet
 	SetOIDCRoles(ch.TimedSet, uint64)
+	OIDCChannels() ch.TimedSet
+	SetOIDCChannels(ch.TimedSet, uint64)
 
 	GetRoleInvalSeq() uint64
 

@@ -201,8 +201,10 @@ func (auth *Authenticator) rebuildChannels(princ Principal) error {
 		channels.Add(viewChannels)
 	}
 
-	if oidc := princ.OIDCChannels(); oidc != nil {
-		channels.Add(oidc)
+	if user, ok := princ.(User); ok {
+		if oidc := user.OIDCChannels(); oidc != nil {
+			channels.Add(oidc)
+		}
 	}
 
 	// always grant access to the public document channel
