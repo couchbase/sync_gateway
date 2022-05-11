@@ -2363,3 +2363,56 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 		})
 	}
 }
+
+// Test import of an SDK expiry change
+func TestImportTouch(t *testing.T) {
+
+	SkipImportTestsIfNotEnabled(t)
+
+	rtConfig := RestTesterConfig{
+		SyncFn: `function(doc, oldDoc) {
+			if (oldDoc == null) {
+				channel("oldDocNil")
+			}
+			if (doc._deleted) {
+				channel("docDeleted")
+			}
+		}`,
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			AutoImport: false,
+		}},
+	}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	bucket := rt.Bucket()
+
+	// 1. Create a document
+	key := "TestImportTouch"
+	docBody := make(map[string]interface{})
+	docBody["test"] = "TestImportTouch"
+	docBody["channels"] = "ABC"
+
+	_, err := bucket.Add(key, 0, docBody)
+	require.NoError(t, err, "Unable to insert doc TestImportDelete")
+
+	// Attempt to get the document via Sync Gateway, to trigger import.
+	response := rt.SendAdminRequest("GET", "/db/_raw/"+key+"?redact=false", "")
+	require.Equal(t, 200, response.Code)
+	var rawInsertResponse RawResponse
+	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
+	require.NoError(t, err, "Unable to unmarshal raw response")
+	initialRev := rawInsertResponse.Sync.Rev
+
+	// 2. Test import behaviour after SDK touch
+	_, err = bucket.Touch(key, 1000000)
+	require.NoError(t, err, "Unable to touch doc TestImportTouch")
+
+	// Attempt to get the document via Sync Gateway, to trigger import.
+	response = rt.SendAdminRequest("GET", "/db/_raw/"+key+"?redact=false", "")
+	require.Equal(t, 200, response.Code)
+	var rawUpdateResponse RawResponse
+	err = base.JSONUnmarshal(response.Body.Bytes(), &rawUpdateResponse)
+	require.NoError(t, err, "Unable to unmarshal raw response")
+	require.Equal(t, initialRev, rawUpdateResponse.Sync.Rev)
+}

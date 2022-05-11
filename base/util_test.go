@@ -1608,3 +1608,26 @@ func TestTerminateAndWaitForClose(t *testing.T) {
 		})
 	}
 }
+
+func TestCrc32cHashString(t *testing.T) {
+	tests := []struct {
+		input string
+		hash  string
+	}{
+		{
+			input: "",
+			hash:  "0x00000000",
+		},
+		{
+			input: "foo",
+			hash:  "0xcfc4ae1d",
+		},
+	}
+	for _, test := range tests {
+		t.Run(fmt.Sprintf("input %s -> hash %s", test.hash, test.input), func(t *testing.T) {
+			assert.Equal(t, test.hash, Crc32cHashString([]byte(test.input)))
+			// crc32 hashes are always leading 0x + length 8
+			assert.Equal(t, len(test.hash), 10)
+		})
+	}
+}
