@@ -1057,6 +1057,7 @@ func Crc32cHash(input []byte) uint32 {
 	return crc32.Checksum(input, table)
 }
 
+// Crc32cHashString returns a zero padded version of a crc32 hash to always be hexidecimal prefixed 8 character string
 func Crc32cHashString(input []byte) string {
 	return fmt.Sprintf("0x%08x", Crc32cHash(input))
 }
