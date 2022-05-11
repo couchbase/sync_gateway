@@ -455,137 +455,55 @@ func mockProvider(name string) *auth.OIDCProvider {
 	return &auth.OIDCProvider{
 		Name:          name,
 		ClientID:      "baz",
-		UserPrefix:    name,
 		ValidationKey: base.StringPtr("qux"),
 	}
 }
 
-// mockProviderWithRegister returns an auto registration enabled provider.
-func mockProviderWithRegister(name string) *auth.OIDCProvider {
-	return &auth.OIDCProvider{
-		Name:          name,
-		ClientID:      "baz",
-		UserPrefix:    name,
-		ValidationKey: base.StringPtr("qux"),
-		Register:      true,
+// mockProviderWith returns an OIDCProvider with the given options applied.
+func mockProviderWith(name string, options ...mockProviderOption) *auth.OIDCProvider {
+	baseProvider := mockProvider(name)
+	for _, opt := range options {
+		opt.Apply(baseProvider)
 	}
+	return baseProvider
 }
 
-// mockProviderWithRegisterWithAccessToken returns a new OIDCProvider with Register and
-// IncludeAccessToken flags enabled.
-func mockProviderWithRegisterWithAccessToken(name string) *auth.OIDCProvider {
-	return &auth.OIDCProvider{
-		Name:               name,
-		ClientID:           "baz",
-		UserPrefix:         name,
-		ValidationKey:      base.StringPtr("qux"),
-		Register:           true,
-		IncludeAccessToken: true,
-	}
+type mockProviderOption interface {
+	Apply(provider *auth.OIDCProvider)
 }
 
-// mockProviderWithAccessToken returns a new OIDCProvider with IncludeAccessToken flag enabled.
-func mockProviderWithAccessToken(name string) *auth.OIDCProvider {
-	return &auth.OIDCProvider{
-		Name:               name,
-		ClientID:           "baz",
-		UserPrefix:         name,
-		ValidationKey:      base.StringPtr("qux"),
-		IncludeAccessToken: true,
-	}
+type mockProviderRegister struct{}
+
+func (m mockProviderRegister) Apply(provider *auth.OIDCProvider) {
+	provider.Register = true
 }
 
-// mockProviderWithCallbackStateDisabled returns a new OIDCProvider with callback state disabled.
-func mockProviderWithCallbackStateDisabled(name string) *auth.OIDCProvider {
-	return &auth.OIDCProvider{
-		Name:                 name,
-		ClientID:             "baz",
-		UserPrefix:           name,
-		ValidationKey:        base.StringPtr("qux"),
-		Register:             true,
-		IncludeAccessToken:   true,
-		DisableCallbackState: true,
-	}
+type mockProviderIncludeAccessToken struct{}
+
+func (m mockProviderIncludeAccessToken) Apply(provider *auth.OIDCProvider) {
+	provider.IncludeAccessToken = true
 }
 
-// mockProviderWithCallbackStateDisabledWithNoRegister returns a new OIDCProvider with callback
-// state disabled with no Register flag.
-func mockProviderWithCallbackStateDisabledWithNoRegister(name string) *auth.OIDCProvider {
-	return &auth.OIDCProvider{
-		Name:                 name,
-		ClientID:             "baz",
-		UserPrefix:           name,
-		ValidationKey:        base.StringPtr("qux"),
-		IncludeAccessToken:   true,
-		DisableCallbackState: true,
-	}
+type mockProviderDisableCallbackState struct{}
+
+func (m mockProviderDisableCallbackState) Apply(provider *auth.OIDCProvider) {
+	provider.DisableCallbackState = true
 }
 
-// mockProviderWithRegisterWithUsernameClaim returns an auto registration and username claim enabled provider.
-func mockProviderWithRegisterWithUsernameClaim(name, usernameClaim string) *auth.OIDCProvider {
-	return &auth.OIDCProvider{
-		Name:          name,
-		ClientID:      "baz",
-		ValidationKey: base.StringPtr("qux"),
-		Register:      true,
-		UsernameClaim: usernameClaim,
-	}
+type mockProviderUsernameClaim struct {
+	string
 }
 
-// mockProviderWithRegisterWithUsernameClaimWithUserPrefix returns an auto registration, user prefix and username
-// claim enabled provider.
-func mockProviderWithRegisterWithUsernameClaimWithUserPrefix(name, usernameClaim string) *auth.OIDCProvider {
-	return &auth.OIDCProvider{
-		Name:          name,
-		ClientID:      "baz",
-		UserPrefix:    name,
-		ValidationKey: base.StringPtr("qux"),
-		Register:      true,
-		UsernameClaim: usernameClaim,
-	}
+func (m mockProviderUsernameClaim) Apply(provider *auth.OIDCProvider) {
+	provider.UsernameClaim = m.string
 }
 
-// mockProviderWithUsernameClaimWithUserPrefix returns a provider with both username_claim and user_prefix are set.
-func mockProviderWithUsernameClaimWithUserPrefix(name, usernameClaim string) *auth.OIDCProvider {
-	return &auth.OIDCProvider{
-		Name:          name,
-		ClientID:      "baz",
-		ValidationKey: base.StringPtr("qux"),
-		UsernameClaim: usernameClaim,
-		UserPrefix:    name,
-	}
+type mockProviderUserPrefix struct {
+	string
 }
 
-// mockProviderWithUsernameClaim returns a provider with only username_claim is set.
-func mockProviderWithUsernameClaim(name, usernameClaim string) *auth.OIDCProvider {
-	return &auth.OIDCProvider{
-		Name:          name,
-		ClientID:      "baz",
-		ValidationKey: base.StringPtr("qux"),
-		UsernameClaim: usernameClaim,
-	}
-}
-
-// mockProviderWithUserPrefix returns a provider with only user_prefix is set.
-func mockProviderWithUserPrefix(name string) *auth.OIDCProvider {
-	return &auth.OIDCProvider{
-		Name:          name,
-		ClientID:      "baz",
-		ValidationKey: base.StringPtr("qux"),
-		UserPrefix:    name,
-	}
-}
-
-// mockProviderWithRegisterWithUserPrefix returns a provider with both auto registration
-// enabled and user_prefix is set.
-func mockProviderWithRegisterWithUserPrefix(name string) *auth.OIDCProvider {
-	return &auth.OIDCProvider{
-		Name:          name,
-		ClientID:      "baz",
-		ValidationKey: base.StringPtr("qux"),
-		Register:      true,
-		UserPrefix:    name,
-	}
+func (m mockProviderUserPrefix) Apply(provider *auth.OIDCProvider) {
+	provider.UserPrefix = m.string
 }
 
 // E2E test that checks OpenID Connect Authorization Code Flow.
@@ -605,7 +523,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			// with auto registration and access token enabled.
 			name: "successful user registration against single provider",
 			providers: auth.OIDCProviderMap{
-				"foo": mockProviderWithRegisterWithAccessToken("foo"),
+				"foo": mockProviderWith("foo", mockProviderRegister{}, mockProviderIncludeAccessToken{}, mockProviderUserPrefix{"foo"}),
 			},
 			defaultProvider: "foo",
 			authURL:         "/db/_oidc?provider=foo&offline=true",
@@ -628,7 +546,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			// registration enabled but access token NOT.
 			name: "successful user registration against single provider without access token",
 			providers: auth.OIDCProviderMap{
-				"foo": mockProviderWithRegister("foo"),
+				"foo": mockProviderWith("foo", mockProviderRegister{}, mockProviderUserPrefix{"foo"}),
 			},
 			defaultProvider: "foo",
 			authURL:         "/db/_oidc?provider=foo&offline=true",
@@ -637,8 +555,8 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			// with auto registration and access token enabled.
 			name: "successful user registration against multiple providers",
 			providers: auth.OIDCProviderMap{
-				"foo": mockProviderWithRegisterWithAccessToken("foo"),
-				"bar": mockProviderWithRegisterWithAccessToken("bar"),
+				"foo": mockProviderWith("foo", mockProviderRegister{}, mockProviderIncludeAccessToken{}, mockProviderUserPrefix{"foo"}),
+				"bar": mockProviderWith("bar", mockProviderRegister{}, mockProviderIncludeAccessToken{}, mockProviderUserPrefix{"bar"}),
 			},
 			defaultProvider: "foo",
 			authURL:         "/db/_oidc?provider=foo&offline=true",
@@ -662,8 +580,8 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			// registration enabled but access token NOT.
 			name: "successful user registration against multiple provider without access token",
 			providers: auth.OIDCProviderMap{
-				"foo": mockProviderWithRegister("foo"),
-				"bar": mockProviderWithRegister("bar"),
+				"foo": mockProviderWith("foo", mockProviderRegister{}, mockProviderUserPrefix{"foo"}),
+				"bar": mockProviderWith("bar", mockProviderRegister{}, mockProviderUserPrefix{"bar"}),
 			},
 			defaultProvider: "foo",
 			authURL:         "/db/_oidc?provider=foo&offline=true",
@@ -741,7 +659,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			// Make sure user registration is successful when access type is offline.
 			name: "successful user registration with access type not offline",
 			providers: auth.OIDCProviderMap{
-				"foo": mockProviderWithRegisterWithAccessToken("foo"),
+				"foo": mockProviderWith("foo", mockProviderRegister{}, mockProviderIncludeAccessToken{}, mockProviderUserPrefix{"foo"}),
 			},
 			defaultProvider: "foo",
 			authURL:         "/db/_oidc?provider=foo&offline=false",
@@ -779,7 +697,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			// token refresh request is NOT due to exchange error.
 			name: "unsuccessful auth token exchange error during token refresh",
 			providers: auth.OIDCProviderMap{
-				"foo": mockProviderWithRegisterWithAccessToken("foo"),
+				"foo": mockProviderWith("foo", mockProviderRegister{}, mockProviderIncludeAccessToken{}, mockProviderUserPrefix{"foo"}),
 			},
 			defaultProvider: "foo",
 			authURL:         "/db/_oidc?provider=foo&offline=true",
@@ -794,7 +712,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			// token refresh request is NOT due to no id_token in token response.
 			name: "unsuccessful auth no id token received during token refresh",
 			providers: auth.OIDCProviderMap{
-				"foo": mockProviderWithRegisterWithAccessToken("foo"),
+				"foo": mockProviderWith("foo", mockProviderRegister{}, mockProviderIncludeAccessToken{}, mockProviderUserPrefix{"foo"}),
 			},
 			defaultProvider: "foo",
 			authURL:         "/db/_oidc?provider=foo&offline=true",
@@ -806,7 +724,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 		}, {
 			name: "successful registered user authentication against single provider",
 			providers: auth.OIDCProviderMap{
-				"foo": mockProvider("foo"),
+				"foo": mockProviderWith("foo", mockProviderUserPrefix{"foo"}),
 			},
 			defaultProvider:     "foo",
 			authURL:             "/db/_oidc?provider=foo&offline=true",
@@ -814,7 +732,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 		}, {
 			name: "successful registered user authentication against single provider with access token enabled",
 			providers: auth.OIDCProviderMap{
-				"foo": mockProviderWithAccessToken("foo"),
+				"foo": mockProviderWith("foo", mockProviderIncludeAccessToken{}, mockProviderUserPrefix{"foo"}),
 			},
 			defaultProvider:     "foo",
 			authURL:             "/db/_oidc?provider=foo&offline=true",
@@ -822,8 +740,8 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 		}, {
 			name: "successful registered user authentication against multiple providers",
 			providers: auth.OIDCProviderMap{
-				"foo": mockProvider("foo"),
-				"bar": mockProvider("bar"),
+				"foo": mockProviderWith("foo", mockProviderUserPrefix{"foo"}),
+				"bar": mockProviderWith("bar", mockProviderUserPrefix{"bar"}),
 			},
 			defaultProvider:     "foo",
 			authURL:             "/db/_oidc?provider=foo&offline=true",
@@ -831,8 +749,8 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 		}, {
 			name: "successful registered user authentication against multiple providers with access token enabled",
 			providers: auth.OIDCProviderMap{
-				"foo": mockProviderWithAccessToken("foo"),
-				"bar": mockProviderWithAccessToken("bar"),
+				"foo": mockProviderWith("foo", mockProviderIncludeAccessToken{}, mockProviderUserPrefix{"foo"}),
+				"bar": mockProviderWith("bar", mockProviderIncludeAccessToken{}, mockProviderUserPrefix{"bar"}),
 			},
 			defaultProvider:     "foo",
 			authURL:             "/db/_oidc?provider=foo&offline=true",
@@ -840,14 +758,14 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 		}, {
 			name: "successful new user authentication with callback state disabled",
 			providers: auth.OIDCProviderMap{
-				"foo": mockProviderWithCallbackStateDisabled("foo"),
+				"foo": mockProviderWith("foo", mockProviderRegister{}, mockProviderDisableCallbackState{}, mockProviderIncludeAccessToken{}, mockProviderUserPrefix{"foo"}),
 			},
 			defaultProvider: "foo",
 			authURL:         "/db/_oidc?provider=foo&offline=true",
 		}, {
 			name: "unsuccessful new user authentication against csrf attack",
 			providers: auth.OIDCProviderMap{
-				"foo": mockProviderWithRegisterWithAccessToken("foo"),
+				"foo": mockProviderWith("foo", mockProviderRegister{}, mockProviderIncludeAccessToken{}),
 			},
 			defaultProvider: "foo",
 			authURL:         "/db/_oidc?provider=foo&offline=true",
@@ -859,7 +777,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 		}, {
 			name: "successful registered user authentication with callback state disabled",
 			providers: auth.OIDCProviderMap{
-				"foo": mockProviderWithCallbackStateDisabledWithNoRegister("foo"),
+				"foo": mockProviderWith("foo", mockProviderDisableCallbackState{}, mockProviderUserPrefix{"foo"}),
 			},
 			defaultProvider:     "foo",
 			authURL:             "/db/_oidc?provider=foo&offline=true",
@@ -867,7 +785,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 		}, {
 			name: "unsuccessful registered user authentication against csrf attack",
 			providers: auth.OIDCProviderMap{
-				"foo": mockProviderWithAccessToken("foo"),
+				"foo": mockProviderWith("foo", mockProviderIncludeAccessToken{}),
 			},
 			defaultProvider: "foo",
 			authURL:         "/db/_oidc?provider=foo&offline=true",
@@ -1022,7 +940,7 @@ func getCookie(cookies []*http.Cookie, name string) *http.Cookie {
 // createUser creates a user with the specified name.
 func createUser(t *testing.T, restTester *RestTester, name string) {
 	body := fmt.Sprintf(`{"name":"%s", "password":"pass", "email":"%s@couchbase.com"}`, name, name)
-	userEndpoint := fmt.Sprintf("/db/_user/%s", name)
+	userEndpoint := fmt.Sprintf("/db/_user/%s", url.QueryEscape(name))
 	response := restTester.SendAdminRequest(http.MethodPut, userEndpoint, body)
 	assertStatus(t, response, http.StatusCreated)
 	response = restTester.SendAdminRequest(http.MethodGet, userEndpoint, "")
@@ -1062,7 +980,7 @@ func TestOpenIDConnectImplicitFlow(t *testing.T) {
 			// when auto registration is enabled.
 			name: "successful user registration against single provider",
 			providers: auth.OIDCProviderMap{
-				"foo": mockProviderWithRegister("foo"),
+				"foo": mockProviderWith("foo", mockProviderRegister{}, mockProviderUserPrefix{"foo"}),
 			},
 			defaultProvider: "foo",
 		}, {
@@ -1080,7 +998,7 @@ func TestOpenIDConnectImplicitFlow(t *testing.T) {
 		}, {
 			name: "successful registered user authentication against single provider",
 			providers: auth.OIDCProviderMap{
-				"foo": mockProvider("foo"),
+				"foo": mockProviderWith("foo", mockProviderUserPrefix{"foo"}),
 			},
 			defaultProvider:     "foo",
 			requireExistingUser: true,
@@ -1155,7 +1073,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 	const emailClaim = "email"
 	var username = "foo_noah"
 	providers := auth.OIDCProviderMap{
-		"foo": mockProviderWithRegister("foo"),
+		"foo": mockProviderWith("foo", mockProviderRegister{}, mockProviderUserPrefix{"foo"}),
 	}
 	defaultProvider := "foo"
 	mockAuthServer, err := newMockAuthServer()
@@ -1792,7 +1710,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 // Checks callback state cookie persistence across requests.
 func TestCallbackStateClientCookies(t *testing.T) {
 	providers := auth.OIDCProviderMap{
-		"foo": mockProviderWithRegister("foo"),
+		"foo": mockProviderWith("foo", mockProviderRegister{}, mockProviderUserPrefix{"foo"}),
 	}
 	authURL := "/db/_oidc?provider=foo&offline=true"
 	defaultProvider := "foo"
@@ -1876,22 +1794,24 @@ func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
 		providers             auth.OIDCProviderMap
 		authErrorExpected     forceError
 		requireRegisteredUser bool
-		registeredUsername    string
-		claims                claimSet
-		usernameExpected      string
+		// can contain "$issuer", which will be replaced with the test issuer
+		registeredUsername string
+		claims             claimSet
+		// can contain "$issuer", which will be replaced with the test issuer
+		usernameExpected string
 	}
 	tests := []test{
 		{
 			name: "successful new user auth when username_claim is set but user_prefix is not set",
 			providers: auth.OIDCProviderMap{
-				defaultProvider: mockProviderWithRegisterWithUsernameClaim(defaultProvider, claimKey),
+				defaultProvider: mockProviderWith(defaultProvider, mockProviderRegister{}, mockProviderUsernameClaim{claimKey}),
 			},
 			claims:           claimsAuthenticWithUsernameClaim(claimKey, claimValue),
 			usernameExpected: claimValue,
 		}, {
 			name: "successful registered user auth when username_claim is set but user_prefix is not set",
 			providers: auth.OIDCProviderMap{
-				defaultProvider: mockProviderWithUsernameClaim(defaultProvider, claimKey),
+				defaultProvider: mockProviderWith(defaultProvider, mockProviderUsernameClaim{claimKey}),
 			},
 			claims:                claimsAuthenticWithUsernameClaim(claimKey, claimValue),
 			usernameExpected:      claimValue,
@@ -1900,14 +1820,14 @@ func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
 		}, {
 			name: "successful new user auth when both username_claim and user_prefix are set",
 			providers: auth.OIDCProviderMap{
-				defaultProvider: mockProviderWithRegisterWithUsernameClaimWithUserPrefix(defaultProvider, claimKey),
+				defaultProvider: mockProviderWith(defaultProvider, mockProviderRegister{}, mockProviderUsernameClaim{claimKey}, mockProviderUserPrefix{defaultProvider}),
 			},
 			claims:           claimsAuthenticWithUsernameClaim(claimKey, claimValue),
 			usernameExpected: "foo_80249751",
 		}, {
 			name: "successful registered user auth when both username_claim and user_prefix are set",
 			providers: auth.OIDCProviderMap{
-				defaultProvider: mockProviderWithUsernameClaimWithUserPrefix(defaultProvider, claimKey),
+				defaultProvider: mockProviderWith(defaultProvider, mockProviderUsernameClaim{claimKey}, mockProviderUserPrefix{defaultProvider}),
 			},
 			claims:                claimsAuthenticWithUsernameClaim(claimKey, claimValue),
 			requireRegisteredUser: true,
@@ -1916,14 +1836,14 @@ func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
 		}, {
 			name: "successful new user auth when username_claim is not set but user_prefix is set",
 			providers: auth.OIDCProviderMap{
-				defaultProvider: mockProviderWithRegisterWithUserPrefix(defaultProvider),
+				defaultProvider: mockProviderWith(defaultProvider, mockProviderRegister{}, mockProviderUserPrefix{defaultProvider}),
 			},
 			claims:           claimsAuthenticWithUsernameClaim(claimKey, claimValue),
 			usernameExpected: "foo_noah",
 		}, {
 			name: "successful registered user auth when username_claim is not set but user_prefix is set",
 			providers: auth.OIDCProviderMap{
-				defaultProvider: mockProviderWithUserPrefix(defaultProvider),
+				defaultProvider: mockProviderWith(defaultProvider, mockProviderUserPrefix{defaultProvider}),
 			},
 			claims:                claimsAuthenticWithUsernameClaim(claimKey, claimValue),
 			usernameExpected:      "foo_noah",
@@ -1932,23 +1852,23 @@ func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
 		}, {
 			name: "successful new user auth when neither username_claim nor user_prefix are set",
 			providers: auth.OIDCProviderMap{
-				defaultProvider: mockProviderWithRegister(defaultProvider),
+				defaultProvider: mockProviderWith(defaultProvider, mockProviderRegister{}),
 			},
 			claims:           claimsAuthenticWithUsernameClaim(claimKey, claimValue),
-			usernameExpected: "foo_noah",
+			usernameExpected: `$issuer_noah`,
 		}, {
 			name: "successful registered user auth when neither username_claim nor user_prefix are set",
 			providers: auth.OIDCProviderMap{
 				defaultProvider: mockProvider(defaultProvider),
 			},
 			claims:                claimsAuthenticWithUsernameClaim(claimKey, claimValue),
-			usernameExpected:      "foo_noah",
-			registeredUsername:    "foo_noah",
+			usernameExpected:      `$issuer_noah`,
+			registeredUsername:    `$issuer_noah`,
 			requireRegisteredUser: true,
 		}, {
 			name: "unsuccessful new user auth when username_claim is set but claim not found in token",
 			providers: auth.OIDCProviderMap{
-				defaultProvider: mockProviderWithRegisterWithUsernameClaim(defaultProvider, claimKey),
+				defaultProvider: mockProviderWith(defaultProvider, mockProviderRegister{}, mockProviderUsernameClaim{claimKey}),
 			},
 			claims: claimsAuthentic(),
 			authErrorExpected: forceError{
@@ -1958,7 +1878,7 @@ func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
 		}, {
 			name: "unsuccessful registered user auth when username_claim is set but claim not found in token",
 			providers: auth.OIDCProviderMap{
-				defaultProvider: mockProviderWithUsernameClaim(defaultProvider, claimKey),
+				defaultProvider: mockProviderWith(defaultProvider, mockProviderUsernameClaim{claimKey}),
 			},
 			claims:                claimsAuthentic(),
 			requireRegisteredUser: true,
@@ -1971,7 +1891,7 @@ func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
 		}, {
 			name: "successful user auth when username_claim is set with different value in token",
 			providers: auth.OIDCProviderMap{
-				defaultProvider: mockProviderWithRegisterWithUsernameClaim(defaultProvider, claimKey),
+				defaultProvider: mockProviderWith(defaultProvider, mockProviderRegister{}, mockProviderUsernameClaim{claimKey}),
 			},
 			claims:                claimsAuthenticWithUsernameClaim(claimKey, claimValue),
 			requireRegisteredUser: true,
@@ -1980,7 +1900,7 @@ func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
 		}, {
 			name: "unsuccessful user auth when username_claim is set with different value in token",
 			providers: auth.OIDCProviderMap{
-				defaultProvider: mockProviderWithUsernameClaim(defaultProvider, claimKey),
+				defaultProvider: mockProviderWith(defaultProvider, mockProviderUsernameClaim{claimKey}),
 			},
 			claims:                claimsAuthenticWithUsernameClaim(claimKey, claimValue),
 			requireRegisteredUser: true,
@@ -1992,7 +1912,7 @@ func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
 		}, {
 			name: "unsuccessful new user auth when username_claim is set but claim is of illegal type in token",
 			providers: auth.OIDCProviderMap{
-				defaultProvider: mockProviderWithRegisterWithUsernameClaim(defaultProvider, claimKey),
+				defaultProvider: mockProviderWith(defaultProvider, mockProviderRegister{}, mockProviderUsernameClaim{claimKey}),
 			},
 			claims: claimsAuthenticWithUsernameClaim(claimKey, []int{80249751}),
 			authErrorExpected: forceError{
@@ -2002,7 +1922,7 @@ func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
 		}, {
 			name: "unsuccessful registered user auth when username_claim is set but claim is of illegal type in token",
 			providers: auth.OIDCProviderMap{
-				defaultProvider: mockProviderWithRegisterWithUsernameClaim(defaultProvider, claimKey),
+				defaultProvider: mockProviderWith(defaultProvider, mockProviderRegister{}, mockProviderUsernameClaim{claimKey}),
 			},
 			claims: claimsAuthenticWithUsernameClaim(claimKey, []int{80249751}),
 			authErrorExpected: forceError{
@@ -2014,14 +1934,14 @@ func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
 		}, {
 			name: "successful new user auth when username_claim is set but claim is of legal type in token",
 			providers: auth.OIDCProviderMap{
-				defaultProvider: mockProviderWithRegisterWithUsernameClaim(defaultProvider, claimKey),
+				defaultProvider: mockProviderWith(defaultProvider, mockProviderRegister{}, mockProviderUsernameClaim{claimKey}),
 			},
 			claims:           claimsAuthenticWithUsernameClaim(claimKey, 80249751),
 			usernameExpected: "80249751",
 		}, {
 			name: "successful registered user auth when username_claim is set but claim is of legal type in token",
 			providers: auth.OIDCProviderMap{
-				defaultProvider: mockProviderWithRegisterWithUsernameClaim(defaultProvider, claimKey),
+				defaultProvider: mockProviderWith(defaultProvider, mockProviderRegister{}, mockProviderUsernameClaim{claimKey}),
 			},
 			claims:                claimsAuthenticWithUsernameClaim(claimKey, 80249751),
 			requireRegisteredUser: true,
@@ -2052,9 +1972,19 @@ func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
 			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
 
+			issuerURL, err := url.Parse(mockAuthServer.options.issuer)
+			require.NoError(t, err, "invalid issuer URL")
+
 			// Create the user first if the test requires a registered user.
 			if tc.requireRegisteredUser {
-				createUser(t, restTester, tc.registeredUsername)
+				registeredUsername := tc.registeredUsername
+				if strings.Contains(registeredUsername, "$issuer") {
+					// Note: createUser will URL-encode the username again. The double-encoding is intentional, otherwise
+					// gorilla/mux will un-escape the slash and 404.
+					// The Host+Path concatenation (rather than using the URL verbatim) is to match the behaviour of getOIDCUsername.
+					registeredUsername = url.QueryEscape(strings.Replace(registeredUsername, "$issuer", issuerURL.Host+issuerURL.Path, -1))
+				}
+				createUser(t, restTester, registeredUsername)
 			}
 			mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
 			defer mockSyncGateway.Close()
@@ -2080,7 +2010,11 @@ func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
 			require.NoError(t, err, json.NewDecoder(response.Body).Decode(&authResponseActual))
 			require.NoError(t, response.Body.Close(), "Error closing response body")
 			assert.NotEmpty(t, authResponseActual.SessionID, "session_id doesn't exist")
-			assert.Equal(t, tc.usernameExpected, authResponseActual.Username, "name mismatch")
+			expectedUsername := tc.usernameExpected
+			if strings.Contains(expectedUsername, "$issuer") {
+				expectedUsername = url.QueryEscape(strings.Replace(expectedUsername, "$issuer", issuerURL.Host+issuerURL.Path, -1))
+			}
+			assert.Equal(t, expectedUsername, authResponseActual.Username, "name mismatch")
 
 			authResponseExpected := mockAuthServer.options.tokenResponse
 			assert.Equal(t, authResponseExpected.IDToken, authResponseActual.IDToken, "id_token mismatch")
@@ -2119,14 +2053,14 @@ func TestEventuallyReachableOIDCClient(t *testing.T) {
 			// when auto registration is enabled.
 			name: "successful user registration against single provider",
 			providers: auth.OIDCProviderMap{
-				"foo": mockProviderWithRegister("foo"),
+				"foo": mockProviderWith("foo", mockProviderRegister{}, mockProviderUserPrefix{"foo"}),
 			},
 			defaultProvider: "foo",
 		},
 		{
 			name: "successful registered user authentication against single provider",
 			providers: auth.OIDCProviderMap{
-				"foo": mockProvider("foo"),
+				"foo": mockProviderWith("foo", mockProviderUserPrefix{"foo"}),
 			},
 			defaultProvider:     "foo",
 			requireExistingUser: true,
