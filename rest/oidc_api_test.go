@@ -359,12 +359,18 @@ func claimsAuthentic() claimSet {
 	}
 }
 
-// claimsAuthenticWithUsernameClaim returns returns an authentic claim set after
+// claimsAuthenticWithUsernameClaim returns an authentic claim set after
+// setting the given secondary claims.
+func claimsAuthenticWithExtraClaims(extra map[string]interface{}) claimSet {
+	claims := claimsAuthentic()
+	claims.secondaryClaims = extra
+	return claims
+}
+
+// claimsAuthenticWithUsernameClaim returns an authentic claim set after
 // setting the given claim key and value as secondary claims.
 func claimsAuthenticWithUsernameClaim(key string, value interface{}) claimSet {
-	claims := claimsAuthentic()
-	claims.secondaryClaims[key] = value
-	return claims
+	return claimsAuthenticWithExtraClaims(map[string]interface{}{key: value})
 }
 
 // keysHandler exposes a set of of a public keys in JWK format that enable clients
@@ -504,6 +510,22 @@ type mockProviderUserPrefix struct {
 
 func (m mockProviderUserPrefix) Apply(provider *auth.OIDCProvider) {
 	provider.UserPrefix = m.string
+}
+
+type mockProviderRolesClaim struct {
+	string
+}
+
+func (m mockProviderRolesClaim) Apply(provider *auth.OIDCProvider) {
+	provider.RolesClaim = m.string
+}
+
+type mockProviderChannelsClaim struct {
+	string
+}
+
+func (m mockProviderChannelsClaim) Apply(provider *auth.OIDCProvider) {
+	provider.ChannelsClaim = m.string
 }
 
 // E2E test that checks OpenID Connect Authorization Code Flow.
@@ -2115,6 +2137,143 @@ func TestEventuallyReachableOIDCClient(t *testing.T) {
 			response, err = http.DefaultClient.Do(request)
 			require.NoError(t, err, "Error sending request with bearer token")
 			checkGoodAuthResponse(t, response, "foo_noah")
+		})
+	}
+}
+
+// E2E tests for mapping roles and channels from OIDC. Also see auth/oidc_test.go, which is more exhaustive wrt edge cases.
+// Sets up a test document with various combinations of roles and channels granting (or not granting) access to it.
+func TestOpenIDConnectRolesChannelsClaims(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth, base.KeyAccess, base.KeyHTTP)
+	var (
+		defaultProvider = "foo"
+		authURL         = "/db/_oidc?provider=foo&offline=true"
+		testDocName     = "testdoc"
+	)
+	type test struct {
+		name            string
+		providers       auth.OIDCProviderMap
+		claims          claimSet
+		testDocChannels []string
+		roleChannels    map[string][]string
+		expectAccess    bool
+	}
+	tests := []test{
+		{
+			name: "successful access to document with channels from OIDC",
+			providers: auth.OIDCProviderMap{
+				defaultProvider: mockProviderWith(defaultProvider, mockProviderRegister{}, mockProviderUserPrefix{defaultProvider}, mockProviderChannelsClaim{"channels"}),
+			},
+			claims:          claimsAuthenticWithExtraClaims(map[string]interface{}{"channels": []string{"fooChan"}}),
+			testDocChannels: []string{"fooChan"},
+			expectAccess:    true,
+		},
+		{
+			name: "unsuccessful access to document with channels from OIDC",
+			providers: auth.OIDCProviderMap{
+				defaultProvider: mockProviderWith(defaultProvider, mockProviderRegister{}, mockProviderUserPrefix{defaultProvider}, mockProviderChannelsClaim{"channels"}),
+			},
+			claims:          claimsAuthenticWithExtraClaims(map[string]interface{}{"channels": []string{}}),
+			testDocChannels: []string{"fooChan"},
+			expectAccess:    false,
+		},
+		{
+			name: "successful access to document with roles from OIDC",
+			providers: auth.OIDCProviderMap{
+				defaultProvider: mockProviderWith(defaultProvider, mockProviderRegister{}, mockProviderUserPrefix{defaultProvider}, mockProviderRolesClaim{"roles"}),
+			},
+			claims:          claimsAuthenticWithExtraClaims(map[string]interface{}{"roles": []string{"fooRole"}}),
+			roleChannels:    map[string][]string{"fooRole": {"barChan"}},
+			testDocChannels: []string{"barChan"},
+			expectAccess:    true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mockAuthServer, err := newMockAuthServer()
+			require.NoError(t, err, "Error creating mock oauth2 server")
+			mockAuthServer.Start()
+			defer mockAuthServer.Shutdown()
+			mockAuthServer.options.issuer = mockAuthServer.URL + "/" + defaultProvider
+			refreshProviderConfig(tc.providers, mockAuthServer.URL)
+
+			opts := auth.OIDCOptions{
+				Providers:       tc.providers,
+				DefaultProvider: &defaultProvider,
+			}
+			restTesterConfig := RestTesterConfig{
+				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+					OIDCConfig: &opts,
+				}},
+			}
+			restTester := NewRestTester(t, &restTesterConfig)
+			require.NoError(t, restTester.SetAdminParty(false))
+			defer restTester.Close()
+
+			// Create the test roles and document
+			for roleName, channels := range tc.roleChannels {
+				payload := struct {
+					Name     string   `json:"name"`
+					Channels []string `json:"admin_channels"`
+				}{
+					Name:     roleName,
+					Channels: channels,
+				}
+				payloadJSON, err := json.Marshal(payload)
+				require.NoError(t, err, "Failed to marshal role payload")
+				res := restTester.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/_role/%s", restTester.DatabaseConfig.Name, roleName), string(payloadJSON))
+				assertStatus(t, res, http.StatusCreated)
+			}
+
+			testDocBody := struct {
+				Channels []string `json:"channels"`
+			}{
+				Channels: tc.testDocChannels,
+			}
+			testDocJSON, err := json.Marshal(testDocBody)
+			require.NoError(t, err, "Failed to marshal test doc payload")
+			res := restTester.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", restTester.DatabaseConfig.Name, testDocName), string(testDocJSON))
+			assertStatus(t, res, http.StatusCreated)
+
+			mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
+			defer mockSyncGateway.Close()
+			mockSyncGatewayURL := mockSyncGateway.URL
+			mockAuthServer.options.claims = tc.claims
+
+			// Initiate OpenID Connect Authorization Code flow.
+			requestURL := mockSyncGatewayURL + authURL
+			request, err := http.NewRequest(http.MethodGet, requestURL, nil)
+			require.NoError(t, err, "Error creating new request")
+			jar, err := cookiejar.New(nil)
+			require.NoError(t, err, "Error creating new cookie jar")
+			client := &http.Client{Jar: jar}
+			response, err := client.Do(request)
+			require.NoError(t, err, "Error sending request")
+			// Validate received token response
+			require.Equal(t, http.StatusOK, response.StatusCode)
+			var authResponseActual OIDCTokenResponse
+			require.NoError(t, err, json.NewDecoder(response.Body).Decode(&authResponseActual))
+			require.NoError(t, response.Body.Close(), "Error closing response body")
+			assert.NotEmpty(t, authResponseActual.SessionID, "session_id doesn't exist")
+
+			authResponseExpected := mockAuthServer.options.tokenResponse
+			assert.Equal(t, authResponseExpected.IDToken, authResponseActual.IDToken, "id_token mismatch")
+			assert.Equal(t, authResponseExpected.RefreshToken, authResponseActual.RefreshToken, "refresh_token mismatch")
+
+			// Request the test document and validate the response
+			dbEndpoint := fmt.Sprintf("%s/%s/%s", mockSyncGatewayURL, restTester.DatabaseConfig.Name, testDocName)
+			request, err = http.NewRequest(http.MethodGet, dbEndpoint, nil)
+			require.NoError(t, err, "Error creating new request")
+			request.Header.Add("Authorization", BearerToken+" "+authResponseActual.IDToken)
+			response, err = client.Do(request)
+			require.NoError(t, err, "Error sending request with bearer token")
+			defer response.Body.Close()
+			if tc.expectAccess {
+				assert.Equal(t, http.StatusOK, response.StatusCode)
+			} else {
+				assert.Equal(t, http.StatusForbidden, response.StatusCode)
+			}
 		})
 	}
 }
