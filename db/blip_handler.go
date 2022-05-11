@@ -40,8 +40,8 @@ var kHandlersByProfile = map[string]blipHandlerFunc{
 	MessageGetAttachment:   userBlipHandler((*blipHandler).handleGetAttachment),
 	MessageProveAttachment: userBlipHandler((*blipHandler).handleProveAttachment),
 	MessageProposeChanges:  (*blipHandler).handleProposeChanges,
-	MessageGetRev:          (*blipHandler).handleGetRev,
-	MessagePutRev:          (*blipHandler).handlePutRev,
+	MessageGetRev:          userBlipHandler((*blipHandler).handleGetRev),
+	MessagePutRev:          userBlipHandler((*blipHandler).handlePutRev),
 }
 
 // maxInFlightChangesBatches is the maximum number of in-flight changes batches a client is allowed to send without being throttled.
@@ -805,6 +805,17 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	// addRevisionParams := newAddRevisionParams(rq)
 	revMessage := RevMessage{Message: rq}
 
+	// Doc metadata comes from the BLIP message metadata, not magic document properties:
+	docID, found := revMessage.ID()
+	revID, rfound := revMessage.Rev()
+	if !found || !rfound {
+		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or revID")
+	}
+
+	if bh.readOnly {
+		return base.HTTPErrorf(http.StatusForbidden, "Replication context is read-only, docID: %s, revID:%s", docID, revID)
+	}
+
 	base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s %s", bh.serialNumber, rq.Profile(), revMessage.String())
 
 	bodyBytes, err := rq.Body()
@@ -815,13 +826,6 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	base.TracefCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Properties:%v  Body:%s", bh.serialNumber, base.UD(revMessage.Properties), base.UD(string(bodyBytes)))
 
 	stats.bytes.Add(int64(len(bodyBytes)))
-
-	// Doc metadata comes from the BLIP message metadata, not magic document properties:
-	docID, found := revMessage.ID()
-	revID, rfound := revMessage.Rev()
-	if !found || !rfound {
-		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or revID")
-	}
 
 	if bh.BlipSyncContext.purgeOnRemoval && bytes.Contains(bodyBytes, []byte(`"`+BodyRemoved+`":`)) {
 		var r removalDocument

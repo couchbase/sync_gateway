@@ -109,6 +109,10 @@ const (
 	// Sync Gateway specific properties (used for testing)
 	SGShowHandler = "sgShowHandler" // Used to request a response with sgHandler
 	SGHandler     = "sgHandler"     // Used to show which handler processed the message
+
+	// blip error properties
+	BlipErrorDomain = "Error-Domain"
+	BlipErrorCode   = "Error-Code"
 )
 
 // Function signature for something that parses a sequence id from a string

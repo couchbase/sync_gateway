@@ -267,6 +267,11 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		if err = h.checkAuth(dbContext); err != nil {
 			return err
 		}
+		if h.user != nil && h.user.Name() == "" && dbContext != nil && dbContext.IsGuestReadOnly() {
+			if requiresWritePermission(accessPermissions) {
+				return base.HTTPErrorf(http.StatusForbidden, auth.GuestUserReadOnly)
+			}
+		}
 	}
 
 	if shouldCheckAdminAuth {
@@ -1187,5 +1192,13 @@ func (h *handler) formatSerialNumber() string {
 func (h *handler) shouldShowProductVersion() bool {
 	hideProductVersion := base.BoolDefault(h.server.config.API.HideProductVersion, false)
 	return h.privs == adminPrivs || !hideProductVersion
+}
 
+func requiresWritePermission(accessPermissions []Permission) bool {
+	for _, permission := range accessPermissions {
+		if permission == PermWriteAppData {
+			return true
+		}
+	}
+	return false
 }
