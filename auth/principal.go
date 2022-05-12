@@ -120,6 +120,8 @@ type User interface {
 	SetOIDCRoles(ch.TimedSet, uint64)
 	OIDCChannels() ch.TimedSet
 	SetOIDCChannels(ch.TimedSet, uint64)
+	OIDCIssuer() string
+	SetOIDCIssuer(string)
 
 	GetRoleInvalSeq() uint64
 

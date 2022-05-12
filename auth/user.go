@@ -44,6 +44,7 @@ type userImplBody struct {
 	ExplicitRoles_   ch.TimedSet     `json:"explicit_roles,omitempty"`
 	OIDCRoles_       ch.TimedSet     `json:"oidc_roles,omitempty"`
 	OIDCChannels_    ch.TimedSet     `json:"oidc_channels,omitempty"`
+	OIDCIssuer_      string          `json:"oidc_issuer,omitempty"`
 	RolesSince_      ch.TimedSet     `json:"rolesSince"`
 	RoleInvalSeq     uint64          `json:"role_inval_seq,omitempty"` // Sequence at which the roles were invalidated. Data remains in RolesSince_ for history calculation.
 	RoleHistory_     TimedSetHistory `json:"role_history,omitempty"`   // Added to when a previously granted role is revoked. Calculated inside of rebuildRoles.
@@ -204,6 +205,14 @@ func (user *userImpl) SetOIDCChannels(channels ch.TimedSet, invalSeq uint64) {
 	user.OIDCChannels_ = channels
 	// change to OIDC channels means channels need to be recomputed
 	user.SetChannelInvalSeq(invalSeq)
+}
+
+func (user *userImpl) OIDCIssuer() string {
+	return user.OIDCIssuer_
+}
+
+func (user *userImpl) SetOIDCIssuer(val string) {
+	user.OIDCIssuer_ = val
 }
 
 func (user *userImpl) SetRoleHistory(history TimedSetHistory) {

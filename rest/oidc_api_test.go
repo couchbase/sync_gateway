@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
@@ -29,6 +30,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -2276,4 +2278,132 @@ func TestOpenIDConnectRolesChannelsClaims(t *testing.T) {
 			}
 		})
 	}
+}
+
+// This test verifies the edge case of having two different OIDC providers with different role/channel configurations
+// but with UsernameClaim set in a way that means they create users with the same username, yet with different access.
+func TestOpenIDConnectIssuerChange(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth, base.KeyAccess, base.KeyHTTP)
+	const (
+		testDocName = "testDoc"
+		subject     = "frodo"
+	)
+
+	// We need to create two different sync gateways, so that we have two different OIDC issuers to test with.
+	// Note that we set the OIDC config after the mock SG is running, because we need to know its URL for the issuer field
+	tb1 := base.GetTestBucket(t)
+	defer tb1.Close()
+	rt1Config := RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{}},
+		TestBucket:     tb1,
+	}
+	rt1 := NewRestTester(t, &rt1Config)
+	require.NoError(t, rt1.SetAdminParty(false))
+	defer rt1.Close()
+
+	msg1 := httptest.NewServer(rt1.TestPublicHandler())
+	defer msg1.Close()
+
+	rt2 := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		Unsupported: &db.UnsupportedOptions{
+			OidcTestProvider: &db.OidcTestProviderOptions{
+				Enabled: true,
+			},
+		},
+	}}})
+	defer rt2.Close()
+	msg2 := httptest.NewServer(rt2.TestPublicHandler())
+	defer msg2.Close()
+
+	updateReqJSON, err := json.Marshal(DbConfig{
+		EnableXattrs: base.BoolPtr(base.TestUseXattrs()),
+		UseViews:     base.BoolPtr(base.TestsDisableGSI()),
+		OIDCConfig: &auth.OIDCOptions{
+			Providers: auth.OIDCProviderMap{
+				"test": &auth.OIDCProvider{
+					Issuer:   fmt.Sprintf("%s/%s/_oidc_testing", msg1.URL, rt1.DatabaseConfig.Name),
+					ClientID: "sync_gateway",
+					Register: true,
+					// this UsernameClaim is critical - we'll generate two users from two different OIDC issuers but with the same username
+					UsernameClaim: "username",
+					ChannelsClaim: "channels",
+				},
+				"test2": &auth.OIDCProvider{
+					Issuer:        fmt.Sprintf("%s/%s/_oidc_testing", msg2.URL, rt2.DatabaseConfig.Name),
+					ClientID:      "sync_gateway",
+					Register:      true,
+					UsernameClaim: "username",
+				},
+			},
+		},
+		Unsupported: &db.UnsupportedOptions{
+			OidcTestProvider: &db.OidcTestProviderOptions{
+				Enabled: true,
+			},
+		},
+	})
+	require.NoError(t, err, "Failed to marshal update request body")
+	testRes := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/_config", rt1Config.DatabaseConfig.Name), string(updateReqJSON))
+	assertStatus(t, testRes, http.StatusCreated)
+
+	cookieJar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+	httpClient := &http.Client{Jar: cookieJar}
+
+	testDocBody := struct {
+		Channels []string `json:"channels"`
+	}{
+		Channels: []string{"foo"},
+	}
+	testDocJSON, err := json.Marshal(testDocBody)
+	require.NoError(t, err, "Failed to marshal test doc payload")
+	tdRes := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", rt1.DatabaseConfig.Name, testDocName), string(testDocJSON))
+	assertStatus(t, tdRes, http.StatusCreated)
+
+	jwt, err := createJWTWithExtraClaims(subject, fmt.Sprintf("%s/%s/_oidc_testing", msg1.URL, rt1.DatabaseConfig.Name), AuthState{TokenTTL: time.Hour}, map[string]interface{}{
+		"username": "frodo",
+		"channels": "foo",
+	})
+	require.NoError(t, err, "Failed to create test JWT")
+	base.DebugfCtx(base.TestCtx(t), base.KeyAll, "Test JWT: %v", jwt)
+
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/%s/_session", msg1.URL, rt1.DatabaseConfig.Name), bytes.NewReader([]byte("{}")))
+	require.NoError(t, err, "Failed to create test session request")
+	req.Header.Set("Authorization", BearerToken+" "+jwt)
+	res, err := httpClient.Do(req)
+	require.NoError(t, err, "Failed to execute test session request")
+	defer res.Body.Close()
+	require.Equal(t, http.StatusOK, res.StatusCode, "Bad session request status")
+
+	// Now, with that session, try to get the test doc
+	req, err = http.NewRequest(http.MethodGet, fmt.Sprintf("%s/%s/%s", msg1.URL, rt1.DatabaseConfig.Name, testDocName), nil)
+	require.NoError(t, err, "Failed to create test doc request")
+	req.Header.Add("Authorization", BearerToken+" "+jwt)
+	res, err = httpClient.Do(req)
+	require.NoError(t, err, "Failed to send test doc request")
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusOK, res.StatusCode, "No access")
+
+	// Now sign in again with a different issuer but the same username
+	jwt, err = createJWTWithExtraClaims(subject, fmt.Sprintf("%s/%s/_oidc_testing", msg2.URL, rt2.DatabaseConfig.Name), AuthState{TokenTTL: time.Hour}, map[string]interface{}{
+		"username": "frodo",
+	})
+	require.NoError(t, err, "Failed to create test JWT")
+	base.DebugfCtx(base.TestCtx(t), base.KeyAll, "Test JWT: %v", jwt)
+
+	req, err = http.NewRequest(http.MethodPost, fmt.Sprintf("%s/%s/_session", msg1.URL, rt1.DatabaseConfig.Name), bytes.NewReader([]byte("{}")))
+	require.NoError(t, err, "Failed to create test session request")
+	req.Header.Set("Authorization", BearerToken+" "+jwt)
+	res, err = httpClient.Do(req)
+	require.NoError(t, err, "Failed to execute test session request")
+	defer res.Body.Close()
+	require.Equal(t, http.StatusOK, res.StatusCode, "Bad session request status")
+
+	req, err = http.NewRequest(http.MethodGet, fmt.Sprintf("%s/%s/%s", msg1.URL, rt1.DatabaseConfig.Name, testDocName), nil)
+	require.NoError(t, err, "Failed to create test doc request")
+	req.Header.Add("Authorization", BearerToken+" "+jwt)
+	res, err = httpClient.Do(req)
+	require.NoError(t, err, "Failed to send test doc request")
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusForbidden, res.StatusCode, "Shouldn't have access")
 }

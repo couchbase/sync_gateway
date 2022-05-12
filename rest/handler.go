@@ -274,6 +274,25 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		}
 	}
 
+	// If the user has OIDC roles/channels configured, we need to check if the OIDC issuer they came from is still valid.
+	// TODO: is the best place to do this? checkAuth early-returns in various places and we need to ensure we check this in all cases.
+	if h.user != nil && (len(h.user.OIDCRoles()) > 0 || len(h.user.OIDCChannels()) > 0) {
+		providerStillValid := false
+		for _, provider := range dbContext.OIDCProviders {
+			// No need to verify audiences, as that was done when the user was authenticated
+			if provider.Issuer == h.user.OIDCIssuer() {
+				providerStillValid = true
+				break
+			}
+		}
+		if !providerStillValid {
+			base.InfofCtx(h.ctx(), base.KeyAuth, "User %v's OIDC roles/channels are from issuer %v which is no longer configured - revoking", base.UD(h.user.Name()), base.UD(h.user.OIDCIssuer()))
+			if err := dbContext.Authenticator(h.ctx()).UpdateUserOIDCRolesChannels(h.user, "", base.Set{}, base.Set{}); err != nil {
+				return err
+			}
+		}
+	}
+
 	if shouldCheckAdminAuth {
 		// If server is walrus but auth is enabled we should just kick the user out as invalid as we have nothing to
 		// validate credentials against

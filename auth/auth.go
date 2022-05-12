@@ -788,7 +788,7 @@ func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider
 	// Check if we need to grant or revoke access to any OIDC roles/channels
 	if user != nil {
 		if !user.OIDCRoles().Equals(oidcRoles) || !user.OIDCChannels().Equals(oidcChannels) {
-			if err := auth.UpdateUserOIDCRolesChannels(user, oidcRoles, oidcChannels); err != nil {
+			if err := auth.UpdateUserOIDCRolesChannels(user, provider.Issuer, oidcRoles, oidcChannels); err != nil {
 				err = fmt.Errorf("failed to save updated OIDC roles/channels for %v: %w", base.UD(user.Name()).Redact(), err)
 				base.WarnfCtx(auth.LogCtx, "Unable to update OIDC user: %v", err)
 				return nil, time.Time{}, err
@@ -838,7 +838,7 @@ func (auth *Authenticator) RegisterNewUser(username, email string) (User, error)
 
 // UpdateUserOIDCRolesChannels saves the user's current OIDC roles/channels, and resulting implicit roles/channels,
 // to the database.
-func (auth *Authenticator) UpdateUserOIDCRolesChannels(user_ User, newOIDCRoles, newOIDCChannels base.Set) error {
+func (auth *Authenticator) UpdateUserOIDCRolesChannels(user_ User, issuer string, newOIDCRoles, newOIDCChannels base.Set) error {
 	updateRolesChannelsCallback := func(currentPrincipal Principal) (updatedPrincipal Principal, err error) {
 		user, ok := currentPrincipal.(User)
 		if !ok {
@@ -850,6 +850,11 @@ func (auth *Authenticator) UpdateUserOIDCRolesChannels(user_ User, newOIDCRoles,
 
 		// TODO: these calls to rebuildRoles/rebuildChannels are somewhat expensive (require access/role-access queries)
 		// and we could hit this more than once if we're inside a CAS-loop.
+
+		if user.OIDCIssuer() != issuer {
+			user.SetOIDCIssuer(issuer)
+		}
+		// newOIDCRoles/newOIDCChannels will have come from the new issuer, so no need to revoke and re-add
 
 		oidcChannels := user.OIDCChannels()
 		if oidcChannels == nil {

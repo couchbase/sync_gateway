@@ -381,7 +381,19 @@ func scopeStringToMap(scope string) map[string]struct{} {
 
 // Creates a signed JWT for the requesting subject and issuer URL
 func createJWT(subject string, issuerUrl string, authState AuthState) (token string, err error) {
+	customClaims := CustomClaims{}
+	if _, ok := authState.Scopes["email"]; ok {
+		customClaims.Email = subject + "@syncgatewayoidctesting.com"
+	}
 
+	if _, ok := authState.Scopes["profile"]; ok {
+		customClaims.Nickname = "slim jim"
+	}
+
+	return createJWTWithExtraClaims(subject, issuerUrl, authState, customClaims)
+}
+
+func createJWTWithExtraClaims(subject, issuerUrl string, authState AuthState, extraClaims interface{}) (token string, err error) {
 	key, err := privateKey()
 	if err != nil {
 		return "", base.HTTPErrorf(http.StatusInternalServerError, "Error getting private RSA Key: %v", err)
@@ -421,17 +433,7 @@ func createJWT(subject string, issuerUrl string, authState AuthState) (token str
 		Audience: jwt.Audience{testProviderAud},
 	}
 
-	var customClaims CustomClaims
-
-	if _, ok := authState.Scopes["email"]; ok {
-		customClaims.Email = subject + "@syncgatewayoidctesting.com"
-	}
-
-	if _, ok := authState.Scopes["profile"]; ok {
-		customClaims.Nickname = "slim jim"
-	}
-
-	token, err = jwt.Signed(signer).Claims(claims).Claims(customClaims).CompactSerialize()
+	token, err = jwt.Signed(signer).Claims(claims).Claims(extraClaims).CompactSerialize()
 	if err != nil {
 		return "", err
 	}
