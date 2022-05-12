@@ -1188,6 +1188,9 @@ func marshalPrincipal(princ auth.Principal, includeDynamicGrantInfo bool) ([]byt
 		if includeDynamicGrantInfo {
 			info.Channels = user.InheritedChannels().AsSet()
 			info.RoleNames = user.RoleNames().AllKeys()
+			info.OIDCIssuer = user.OIDCIssuer()
+			info.OIDCRoles = user.OIDCRoles().AllKeys()
+			info.OIDCChannels = user.OIDCChannels().AllKeys()
 		}
 	} else {
 		if includeDynamicGrantInfo {
