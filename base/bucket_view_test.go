@@ -64,7 +64,7 @@ func TestView(t *testing.T) {
 			if viewErr == nil {
 				return false, nil, nil
 			}
-			log.Printf("Unexpected error querying view for readiness, retrying: %v", err)
+			log.Printf("Unexpected error querying view for readiness, retrying: %v", viewErr)
 			return true, viewErr, nil
 		}
 
