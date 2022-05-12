@@ -806,7 +806,7 @@ func (m *sgReplicateManager) loadSGRCluster() (sgrCluster *SGRCluster, cas uint6
 	}
 
 	if sgrCluster.ClusterUUID == "" {
-		sgrCluster.ClusterUUID = uuid.NewString()
+		sgrCluster.ClusterUUID = uuid.New().String()
 	}
 
 	sgrCluster.loggingCtx = m.loggingCtx

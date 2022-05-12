@@ -1343,7 +1343,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 3)
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	const (
 		changesBatchSize  = 10
@@ -1422,7 +1422,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 		docID := fmt.Sprintf("%s%d", docIDPrefix, i)
 		assert.True(t, docIDsSeen[docID])
 
-		doc, err := edge1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
+		doc, err := edge1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
 
 		body, err := doc.GetDeepMutableBody()
