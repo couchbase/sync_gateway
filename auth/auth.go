@@ -838,7 +838,7 @@ func (auth *Authenticator) RegisterNewUser(username, email string) (User, error)
 
 // UpdateUserOIDCRolesChannels saves the user's current OIDC roles/channels, and resulting implicit roles/channels,
 // to the database.
-func (auth *Authenticator) UpdateUserOIDCRolesChannels(user_ User, roles base.Set, channels base.Set) error {
+func (auth *Authenticator) UpdateUserOIDCRolesChannels(user_ User, newOIDCRoles, newOIDCChannels base.Set) error {
 	updateRolesChannelsCallback := func(currentPrincipal Principal) (updatedPrincipal Principal, err error) {
 		user, ok := currentPrincipal.(User)
 		if !ok {
@@ -851,31 +851,31 @@ func (auth *Authenticator) UpdateUserOIDCRolesChannels(user_ User, roles base.Se
 		// TODO: these calls to rebuildRoles/rebuildChannels are somewhat expensive (require access/role-access queries)
 		// and we could hit this more than once if we're inside a CAS-loop.
 
-		newChans := user.OIDCChannels()
-		if newChans == nil {
-			newChans = ch.TimedSet{}
+		oidcChannels := user.OIDCChannels()
+		if oidcChannels == nil {
+			oidcChannels = ch.TimedSet{}
 		}
-		if !newChans.Equals(channels) {
-			newChans.UpdateAtSequence(channels, nextSeq)
-			user.SetOIDCChannels(newChans, nextSeq)
+		if !oidcChannels.Equals(newOIDCChannels) {
+			oidcChannels.UpdateAtSequence(newOIDCChannels, nextSeq)
+			user.SetOIDCChannels(oidcChannels, nextSeq)
 			if err := auth.rebuildRoles(user); err != nil {
 				return nil, fmt.Errorf("failed to rebuild roles for %v: %w", base.UD(user.Name()).Redact(), err)
 			}
 		}
 
-		newRoles := user.OIDCRoles()
-		if newRoles == nil {
-			newRoles = ch.TimedSet{}
+		oidcRoles := user.OIDCRoles()
+		if oidcRoles == nil {
+			oidcRoles = ch.TimedSet{}
 		}
-		if !newRoles.Equals(roles) {
-			newRoles.UpdateAtSequence(roles, nextSeq)
-			user.SetOIDCRoles(newRoles, nextSeq)
+		if !oidcRoles.Equals(newOIDCRoles) {
+			oidcRoles.UpdateAtSequence(newOIDCRoles, nextSeq)
+			user.SetOIDCRoles(oidcRoles, nextSeq)
 			if err := auth.rebuildChannels(user); err != nil {
 				return nil, fmt.Errorf("failed to rebuild channels for %v: %w", base.UD(user.Name()).Redact(), err)
 			}
 		}
 
-		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Updating user %s OIDC roles/channels to: %v, %v", base.UD(user.Name()), base.UD(user.OIDCRoles()), base.UD(user.OIDCChannels()).Redact())
+		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Updating user %s OIDC roles/channels to: %v, %v", base.UD(user.Name()), base.UD(user.OIDCRoles()), base.UD(user.OIDCChannels()))
 		return user, nil
 	}
 
