@@ -358,7 +358,7 @@ func backupCurrentConfigFile(sourcePath string) (string, error) {
 func createCouchbaseClusterFromStartupConfig(config *StartupConfig) (*base.CouchbaseCluster, error) {
 	cluster, err := base.NewCouchbaseCluster(config.Bootstrap.Server, config.Bootstrap.Username,
 		config.Bootstrap.Password, config.Bootstrap.X509CertPath, config.Bootstrap.X509KeyPath,
-		config.Bootstrap.CACertPath, config.Bootstrap.ServerTLSSkipVerify)
+		config.Bootstrap.CACertPath, config.Bootstrap.ServerTLSSkipVerify, config.Unsupported.UseXattrConfig)
 	if err != nil {
 		base.Infof(base.KeyConfig, "Couldn't create couchbase cluster instance: %v", err)
 		return nil, err

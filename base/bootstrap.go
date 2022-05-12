@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/couchbase/gocb/v2"
-	"github.com/couchbase/gocbcore/v10/memd"
 	"github.com/imdario/mergo"
 )
 
@@ -24,8 +23,9 @@ type BootstrapConnection interface {
 
 // CouchbaseCluster is a GoCBv2 implementation of BootstrapConnection
 type CouchbaseCluster struct {
-	server         string
-	clusterOptions gocb.ClusterOptions
+	server            string
+	configPersistence ConfigPersistence
+	clusterOptions    gocb.ClusterOptions
 }
 
 var _ BootstrapConnection = &CouchbaseCluster{}
@@ -33,7 +33,8 @@ var _ BootstrapConnection = &CouchbaseCluster{}
 // NewCouchbaseCluster creates and opens a Couchbase Server cluster connection.
 func NewCouchbaseCluster(server, username, password,
 	x509CertPath, x509KeyPath,
-	caCertPath string, tlsSkipVerify *bool) (*CouchbaseCluster, error) {
+	caCertPath string, tlsSkipVerify *bool,
+	useXattrConfig *bool) (*CouchbaseCluster, error) {
 
 	securityConfig, err := GoCBv2SecurityConfig(tlsSkipVerify, caCertPath)
 	if err != nil {
@@ -54,7 +55,14 @@ func NewCouchbaseCluster(server, username, password,
 		RetryStrategy:  &goCBv2FailFastRetryStrategy{},
 	}
 
-	return &CouchbaseCluster{server: server, clusterOptions: clusterOptions}, nil
+	var configPersistence ConfigPersistence
+
+	configPersistence = &DocumentBootstrapPersistence{}
+	if useXattrConfig != nil && *useXattrConfig == true {
+		configPersistence = &XattrBootstrapPersistence{}
+	}
+
+	return &CouchbaseCluster{server: server, clusterOptions: clusterOptions, configPersistence: configPersistence}, nil
 }
 
 // connect attempts to open a gocb.Cluster connection. Callers will be responsible for closing the connection.
@@ -116,22 +124,7 @@ func (cc *CouchbaseCluster) GetConfig(location, groupID string, valuePtr interfa
 
 	defer teardown()
 
-	res, err := b.DefaultCollection().Get(PersistentConfigPrefix+groupID, &gocb.GetOptions{
-		Timeout:       time.Second * 10,
-		RetryStrategy: gocb.NewBestEffortRetryStrategy(nil),
-	})
-	if err != nil {
-		if errors.Is(err, gocb.ErrDocumentNotFound) {
-			return 0, ErrNotFound
-		}
-		return 0, err
-	}
-	err = res.Content(valuePtr)
-	if err != nil {
-		return 0, err
-	}
-
-	return uint64(res.Cas()), nil
+	return cc.configPersistence.loadConfig(b.DefaultCollection(), PersistentConfigPrefix+groupID, valuePtr)
 }
 
 func (cc *CouchbaseCluster) InsertConfig(location, groupID string, value interface{}) (newCAS uint64, err error) {
@@ -146,15 +139,8 @@ func (cc *CouchbaseCluster) InsertConfig(location, groupID string, value interfa
 	defer teardown()
 
 	docID := PersistentConfigPrefix + groupID
-	res, err := b.DefaultCollection().Insert(docID, value, nil)
-	if err != nil {
-		if isKVError(err, memd.StatusKeyExists) {
-			return 0, ErrAlreadyExists
-		}
-		return 0, err
-	}
 
-	return uint64(res.Cas()), nil
+	return cc.configPersistence.insertConfig(b.DefaultCollection(), docID, value)
 }
 
 func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallback func(bucketConfig []byte) (newConfig []byte, err error)) (newCAS uint64, err error) {
@@ -172,15 +158,8 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 
 	docID := PersistentConfigPrefix + groupID
 	for {
-		res, err := collection.Get(docID, &gocb.GetOptions{
-			Transcoder: gocb.NewRawJSONTranscoder(),
-		})
-		if err != nil {
-			return 0, err
-		}
 
-		var bucketValue []byte
-		err = res.Content(&bucketValue)
+		bucketValue, cas, err := cc.configPersistence.loadRawConfig(collection, docID)
 		if err != nil {
 			return 0, err
 		}
@@ -192,7 +171,7 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 
 		// handle delete when updateCallback returns nil
 		if newConfig == nil {
-			deleteRes, err := collection.Remove(docID, &gocb.RemoveOptions{Cas: res.Cas()})
+			removeCasOut, err := cc.configPersistence.removeRawConfig(collection, docID, cas)
 			if err != nil {
 				// retry on cas failure
 				if errors.Is(err, gocb.ErrCasMismatch) {
@@ -200,10 +179,10 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 				}
 				return 0, err
 			}
-			return uint64(deleteRes.Cas()), nil
+			return uint64(removeCasOut), nil
 		}
 
-		replaceRes, err := collection.Replace(docID, newConfig, &gocb.ReplaceOptions{Transcoder: gocb.NewRawJSONTranscoder(), Cas: res.Cas()})
+		replaceCasOut, err := cc.configPersistence.replaceRawConfig(collection, docID, newConfig, cas)
 		if err != nil {
 			if errors.Is(err, gocb.ErrCasMismatch) {
 				// retry on cas failure
@@ -212,7 +191,7 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 			return 0, err
 		}
 
-		return uint64(replaceRes.Cas()), nil
+		return uint64(replaceCasOut), nil
 	}
 
 }
