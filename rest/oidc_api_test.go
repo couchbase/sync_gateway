@@ -2315,33 +2315,28 @@ func TestOpenIDConnectIssuerChange(t *testing.T) {
 	msg2 := httptest.NewServer(rt2.TestPublicHandler())
 	defer msg2.Close()
 
-	updateReqJSON, err := json.Marshal(DbConfig{
-		EnableXattrs: base.BoolPtr(base.TestUseXattrs()),
-		UseViews:     base.BoolPtr(base.TestsDisableGSI()),
-		OIDCConfig: &auth.OIDCOptions{
-			Providers: auth.OIDCProviderMap{
-				"test": &auth.OIDCProvider{
-					Issuer:   fmt.Sprintf("%s/%s/_oidc_testing", msg1.URL, rt1.DatabaseConfig.Name),
-					ClientID: "sync_gateway",
-					Register: true,
-					// this UsernameClaim is critical - we'll generate two users from two different OIDC issuers but with the same username
-					UsernameClaim: "username",
-					ChannelsClaim: "channels",
-				},
-				"test2": &auth.OIDCProvider{
-					Issuer:        fmt.Sprintf("%s/%s/_oidc_testing", msg2.URL, rt2.DatabaseConfig.Name),
-					ClientID:      "sync_gateway",
-					Register:      true,
-					UsernameClaim: "username",
-				},
+	// We need to update the config now because there's a chicken-and-egg problem - we need to know the ports of the mock
+	// sync gateways for the issuer fields
+	newCfg := rt1.DatabaseConfig.DbConfig
+	newCfg.OIDCConfig = &auth.OIDCOptions{
+		Providers: auth.OIDCProviderMap{
+			"test": &auth.OIDCProvider{
+				Issuer:   fmt.Sprintf("%s/%s/_oidc_testing", msg1.URL, rt1.DatabaseConfig.Name),
+				ClientID: "sync_gateway",
+				Register: true,
+				// this UsernameClaim is critical - we'll generate two users from two different OIDC issuers but with the same username
+				UsernameClaim: "username",
+				ChannelsClaim: "channels",
+			},
+			"test2": &auth.OIDCProvider{
+				Issuer:        fmt.Sprintf("%s/%s/_oidc_testing", msg2.URL, rt2.DatabaseConfig.Name),
+				ClientID:      "sync_gateway",
+				Register:      true,
+				UsernameClaim: "username",
 			},
 		},
-		Unsupported: &db.UnsupportedOptions{
-			OidcTestProvider: &db.OidcTestProviderOptions{
-				Enabled: true,
-			},
-		},
-	})
+	}
+	updateReqJSON, err := json.Marshal(&newCfg)
 	require.NoError(t, err, "Failed to marshal update request body")
 	testRes := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/_config", rt1Config.DatabaseConfig.Name), string(updateReqJSON))
 	assertStatus(t, testRes, http.StatusCreated)
