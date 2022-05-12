@@ -90,7 +90,7 @@ func (h *handler) handleCreateDB() error {
 				"Duplicate database name %q", dbName)
 		}
 
-		_, err = h.server._applyConfig(loadedConfig, true)
+		_, err = h.server._applyConfig(loadedConfig, true, false)
 		if err != nil {
 			if errors.Is(err, base.ErrAuthError) {
 				return base.HTTPErrorf(http.StatusForbidden, "auth failure accessing provided bucket: %s", bucket)

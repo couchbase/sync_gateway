@@ -3918,7 +3918,7 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyConfig)()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyConfig)
 
 	serverErr := make(chan error, 0)
 
@@ -3930,10 +3930,6 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 
 	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
-	defer func() {
-		sc.Close()
-		require.NoError(t, <-serverErr)
-	}()
 
 	go func() {
 		serverErr <- startServer(&config, sc)
@@ -3964,19 +3960,24 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	_, err = sc.bootstrapContext.connection.InsertConfig(tb.GetName(), t.Name(), dbConfig)
 	require.NoError(t, err)
 
-	assertRevsLimit := func(revsLimit uint32) {
+	assertRevsLimit := func(sc *ServerContext, revsLimit uint32) {
 		waitAndAssertCondition(t, func() bool {
-			db, err := sc.GetDatabase("db")
+			dbc, err := sc.GetDatabase("db")
 			if err != nil {
+				t.Logf("expected database with RevsLimit=%v but got err=%v", revsLimit, err)
 				return false
 			}
-			return db.RevsLimit == revsLimit
+			if dbc.RevsLimit != revsLimit {
+				t.Logf("expected database with RevsLimit=%v but got %v", revsLimit, dbc.RevsLimit)
+				return false
+			}
+			return true
 		}, "expected database with RevsLimit=%v", revsLimit)
 	}
 
-	assertRevsLimit(123)
+	assertRevsLimit(sc, 123)
 
-	writeSessionCookieNameConfigWithVersion := func(version string, revsLimit uint32) error {
+	writeRevsLimitConfigWithVersion := func(sc *ServerContext, version string, revsLimit uint32) error {
 		_, err = sc.bootstrapContext.connection.UpdateConfig(tb.GetName(), t.Name(), func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
 			var db DatabaseConfig
 			if err := base.JSONUnmarshal(rawBucketConfig, &db); err != nil {
@@ -3993,20 +3994,44 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 		return err
 	}
 
-	require.NoError(t, writeSessionCookieNameConfigWithVersion("", 456))
-	assertRevsLimit(456)
+	require.NoError(t, writeRevsLimitConfigWithVersion(sc, "", 456))
+	assertRevsLimit(sc, 456)
 
 	// should be allowed (as of writing current version is 3.1.0)
-	require.NoError(t, writeSessionCookieNameConfigWithVersion("3.0.1", 789))
-	assertRevsLimit(789)
+	require.NoError(t, writeRevsLimitConfigWithVersion(sc, "3.0.1", 789))
+	assertRevsLimit(sc, 789)
 
+	// shouldn't be applied to the already started node (as "5.4.3" is newer)
 	warnsStart := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
-	require.NoError(t, writeSessionCookieNameConfigWithVersion("5.4.3", 654))
+	require.NoError(t, writeRevsLimitConfigWithVersion(sc, "5.4.3", 654))
 	waitAndAssertConditionTimeout(t, time.Second*10, func() bool {
 		warns := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
 		return warns-warnsStart > 3
 	}, "expected some warnings from trying to apply newer config")
-	assertRevsLimit(789)
+	assertRevsLimit(sc, 789)
+
+	// Shut down the first SG node
+	sc.Close()
+	require.NoError(t, <-serverErr)
+
+	// Start a new SG node and ensure we *can* load the "newer" config version on initial startup, to support downgrade
+	sc, err = setupServerContext(&config, true)
+	require.NoError(t, err)
+	defer func() {
+		sc.Close()
+		require.NoError(t, <-serverErr)
+	}()
+
+	go func() {
+		serverErr <- startServer(&config, sc)
+	}()
+	require.NoError(t, sc.waitForRESTAPIs())
+
+	assertRevsLimit(sc, 654)
+
+	// overwrite new config back to current version post-downgrade
+	require.NoError(t, writeRevsLimitConfigWithVersion(sc, "3.1.0", 321))
+	assertRevsLimit(sc, 321)
 }
 
 func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
