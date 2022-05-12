@@ -1312,6 +1312,18 @@ Database:
 
                     The field name to use can be specified here.
                   type: string
+                roles_claim:
+                  description: |-
+                    If set, the value(s) of the given OpenID Connect authentication token claim will be added to the user's roles.
+                    
+                    The value of this claim must be either a string or an array of strings, any other type will result in an error.
+                  type: string
+                channels_claim:
+                  description: |-
+                    If set, the value(s) of the given OpenID Connect authentication token claim will be added to the user's channels.
+
+                    The value of this claim must be either a string or an array of strings, any other type will result in an error.
+                  type: string
                 allow_unsigned_provider_tokens:
                   description: Allows users accept unsigned tokens from providers.
                   type: boolean
