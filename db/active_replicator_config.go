@@ -17,6 +17,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -96,6 +97,11 @@ type ActiveReplicatorConfig struct {
 	// Map corresponding to db.replications.[replicationID] in Sync Gateway's expvars.  Populated with
 	// replication stats in blip_sync_stats.go
 	ReplicationStatsMap *base.DbReplicatorStats
+}
+
+// SetCheckpointPrefix is a cross-package way of defining a checkpoint prefix for an ActiveReplicatorConfig intended for test usage.
+func (arc *ActiveReplicatorConfig) SetCheckpointPrefix(_ testing.TB, s string) {
+	arc.checkpointPrefix = s
 }
 
 type OnCompleteFunc func(replicationID string)

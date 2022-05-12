@@ -1336,6 +1336,174 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	assert.Equal(t, int64(1), ar.Push.Checkpointer.Stats().SetCheckpointCount)
 }
 
+// TestActiveReplicatorEdgeCheckpointNameCollisions:
+//   - Starts 3 RestTesters, one to create documents, and two running pull replications from the central cluster
+//   - Replicators running on the edges have identical IDs (e.g. edge-repl)
+func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
+
+	base.RequireNumTestBuckets(t, 3)
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
+
+	const (
+		changesBatchSize  = 10
+		numRT1DocsInitial = 13 // 2 batches of changes
+	)
+
+	// Central cluster
+	tb1 := base.GetTestBucket(t)
+	rt1 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb1,
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			Users: map[string]*db.PrincipalConfig{
+				"alice": {
+					Password:         base.StringPtr("pass"),
+					ExplicitChannels: base.SetOf("alice"),
+				},
+			},
+		}},
+	})
+	defer rt1.Close()
+
+	// Create first batch of docs
+	docIDPrefix := t.Name() + "rt1doc"
+	for i := 0; i < numRT1DocsInitial; i++ {
+		resp := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"source":"rt1","channels":["alice"]}`)
+		assertStatus(t, resp, http.StatusCreated)
+	}
+
+	// Make rt1 listen on an actual HTTP port, so it can receive the blipsync request from edges
+	srv := httptest.NewServer(rt1.TestPublicHandler())
+	defer srv.Close()
+
+	// Build rt1DBURL with basic auth creds
+	rt1DBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+	rt1DBURL.User = url.UserPassword("alice", "pass")
+
+	// Edge 1
+	edge1Bucket := base.GetTestBucket(t)
+	edge1 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: edge1Bucket,
+	})
+	defer edge1.Close()
+
+	arConfig := db.ActiveReplicatorConfig{
+		ID:          "edge-repl",
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: rt1DBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: edge1.GetDatabase(),
+		},
+		Continuous:       true,
+		ChangesBatchSize: changesBatchSize,
+	}
+	arConfig.SetCheckpointPrefix(t, "cluster1:")
+
+	// Create the first active replicator to pull from seq:0
+	arConfig.ReplicationStatsMap = base.SyncGatewayStats.NewDBStats(t.Name()+"edge1", false, false, false).DBReplicatorStats(t.Name())
+	edge1Replicator := db.NewActiveReplicator(&arConfig)
+
+	startNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+	startNumRevsHandledTotal := edge1Replicator.Pull.GetStats().HandleRevCount.Value()
+
+	assert.NoError(t, edge1Replicator.Start())
+
+	// wait for all of the documents originally written to rt1 to arrive at edge1
+	changesResults, err := edge1.WaitForChanges(numRT1DocsInitial, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	edge1LastSeq := changesResults.Last_Seq
+	require.Len(t, changesResults.Results, numRT1DocsInitial)
+	docIDsSeen := make(map[string]bool, numRT1DocsInitial)
+	for _, result := range changesResults.Results {
+		docIDsSeen[result.ID] = true
+	}
+	for i := 0; i < numRT1DocsInitial; i++ {
+		docID := fmt.Sprintf("%s%d", docIDPrefix, i)
+		assert.True(t, docIDsSeen[docID])
+
+		doc, err := edge1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
+		assert.NoError(t, err)
+
+		body, err := doc.GetDeepMutableBody()
+		require.NoError(t, err)
+		assert.Equal(t, "rt1", body["source"])
+	}
+
+	edge1Replicator.Pull.Checkpointer.CheckpointNow()
+
+	// one _changes from seq:0 with initial number of docs sent
+	numChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+	assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
+
+	// rev assertions
+	numRevsHandledTotal := edge1Replicator.Pull.GetStats().HandleRevCount.Value()
+	assert.Equal(t, startNumRevsHandledTotal+numRT1DocsInitial, numRevsHandledTotal)
+	assert.Equal(t, int64(numRT1DocsInitial), edge1Replicator.Pull.Checkpointer.Stats().ProcessedSequenceCount)
+	assert.Equal(t, int64(numRT1DocsInitial), edge1Replicator.Pull.Checkpointer.Stats().ExpectedSequenceCount)
+
+	// checkpoint assertions
+	assert.Equal(t, int64(0), edge1Replicator.Pull.Checkpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(1), edge1Replicator.Pull.Checkpointer.Stats().GetCheckpointMissCount)
+	assert.Equal(t, int64(1), edge1Replicator.Pull.Checkpointer.Stats().SetCheckpointCount)
+
+	assert.NoError(t, edge1Replicator.Stop())
+
+	// Edge 2
+	edge2Bucket := base.GetTestBucket(t)
+	edge2 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: edge2Bucket,
+	})
+	defer edge2.Close()
+
+	// Create a new replicator using the same ID, which should NOT use the checkpoint set by the first edge.
+	arConfig.ReplicationStatsMap = base.SyncGatewayStats.NewDBStats(t.Name()+"edge2", false, false, false).DBReplicatorStats(t.Name())
+	arConfig.ActiveDB = &db.Database{
+		DatabaseContext: edge2.GetDatabase(),
+	}
+	arConfig.SetCheckpointPrefix(t, "cluster2:")
+	edge2Replicator := db.NewActiveReplicator(&arConfig)
+	assert.NoError(t, edge2Replicator.Start())
+
+	changesResults, err = edge2.WaitForChanges(numRT1DocsInitial, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+
+	edge2Replicator.Pull.Checkpointer.CheckpointNow()
+
+	// make sure that edge 2 didn't use a checkpoint
+	assert.Equal(t, int64(0), edge2Replicator.Pull.Checkpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(1), edge2Replicator.Pull.Checkpointer.Stats().GetCheckpointMissCount)
+	assert.Equal(t, int64(1), edge2Replicator.Pull.Checkpointer.Stats().SetCheckpointCount)
+
+	assert.NoError(t, edge2Replicator.Stop())
+
+	resp := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, numRT1DocsInitial), `{"source":"rt1","channels":["alice"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	require.NoError(t, rt1.WaitForPendingChanges())
+
+	// run a replicator on edge1 again to make sure that edge2 didn't blow away its checkpoint
+	arConfig.ReplicationStatsMap = base.SyncGatewayStats.NewDBStats(t.Name()+"edge1", false, false, false).DBReplicatorStats(t.Name())
+	arConfig.ActiveDB = &db.Database{
+		DatabaseContext: edge1.GetDatabase(),
+	}
+	arConfig.SetCheckpointPrefix(t, "cluster1:")
+
+	edge1Replicator2 := db.NewActiveReplicator(&arConfig)
+	require.NoError(t, edge1Replicator2.Start())
+
+	changesResults, err = edge1.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%v", edge1LastSeq), "", true)
+	require.NoErrorf(t, err, "changesResults: %v", changesResults)
+	changesResults.requireDocIDs(t, []string{fmt.Sprintf("%s%d", docIDPrefix, numRT1DocsInitial)})
+
+	edge1Replicator2.Pull.Checkpointer.CheckpointNow()
+
+	assert.Equal(t, int64(1), edge1Replicator2.Pull.Checkpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(0), edge1Replicator2.Pull.Checkpointer.Stats().GetCheckpointMissCount)
+	assert.Equal(t, int64(1), edge1Replicator2.Pull.Checkpointer.Stats().SetCheckpointCount)
+
+	require.NoError(t, edge1Replicator2.Stop())
+}
+
 // TestActiveReplicatorPushFromCheckpointIgnored:
 //   - Starts 2 RestTesters, one active, and one passive.
 //   - Creates enough documents on rt1 which can be pushed by a replicator running in rt1 to start setting checkpoints.
