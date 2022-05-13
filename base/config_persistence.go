@@ -55,12 +55,34 @@ func (xbp *XattrBootstrapPersistence) insertConfig(c *gocb.Collection, key strin
 
 }
 
+// loadRawConfig returns the config and document cas (not cfgCas).  Does not restore deleted documents,
+// to avoid cas collisions with concurrent updates
 func (xbp *XattrBootstrapPersistence) loadRawConfig(c *gocb.Collection, key string) ([]byte, gocb.Cas, error) {
 
 	var rawValue []byte
-	cas, err := xbp.loadConfig(c, key, &rawValue)
-	return rawValue, gocb.Cas(cas), err
+	ops := []gocb.LookupInSpec{
+		gocb.GetSpec(cfgXattrConfigPath, GetSpecXattr),
+	}
+	lookupOpts := &gocb.LookupInOptions{
+		Timeout: time.Second * 10,
+	}
+	lookupOpts.Internal.DocFlags = gocb.SubdocDocFlagAccessDeleted
 
+	res, lookupErr := c.LookupIn(key, ops, LookupOptsAccessDeleted)
+	if lookupErr == nil {
+		// config
+		xattrContErr := res.ContentAt(0, &rawValue)
+		if xattrContErr != nil {
+			Debugf(KeyCRUD, "No xattr config found for key=%s, path=%s: %v", key, cfgXattrConfigPath, xattrContErr)
+			return rawValue, 0, ErrNotFound
+		}
+		return rawValue, res.Cas(), nil
+	} else if errors.Is(lookupErr, gocbcore.ErrDocumentNotFound) {
+		Debugf(KeyCRUD, "No config document found for key=%s", key)
+		return rawValue, 0, ErrNotFound
+	} else {
+		return rawValue, 0, lookupErr
+	}
 }
 
 func (xbp *XattrBootstrapPersistence) removeRawConfig(c *gocb.Collection, key string, cas gocb.Cas) (gocb.Cas, error) {
@@ -107,12 +129,14 @@ func (xbp *XattrBootstrapPersistence) replaceRawConfig(c *gocb.Collection, key s
 	return result.Cas(), uint64(result.Cas()), nil
 }
 
-// loadConfig returns the cas associated with the last cfg change (xattr._sync.cas)
+// loadConfig returns the cas associated with the last cfg change (xattr._sync.cas).  If a deleted document body is
+// detected, recreates the document to avoid metadata purge
 func (xbp *XattrBootstrapPersistence) loadConfig(c *gocb.Collection, key string, valuePtr interface{}) (cas uint64, err error) {
 
 	ops := []gocb.LookupInSpec{
 		gocb.GetSpec(cfgXattrConfigPath, GetSpecXattr),
 		gocb.GetSpec(cfgXattrCasPath, GetSpecXattr),
+		gocb.GetSpec("", &gocb.GetSpecOptions{}),
 	}
 	lookupOpts := &gocb.LookupInOptions{
 		Timeout: time.Second * 10,
@@ -121,12 +145,14 @@ func (xbp *XattrBootstrapPersistence) loadConfig(c *gocb.Collection, key string,
 
 	res, lookupErr := c.LookupIn(key, ops, LookupOptsAccessDeleted)
 	if lookupErr == nil {
+		// config
 		xattrContErr := res.ContentAt(0, valuePtr)
 		if xattrContErr != nil {
 			Debugf(KeyCRUD, "No xattr config found for key=%s, path=%s: %v", key, cfgXattrConfigPath, xattrContErr)
 			return 0, ErrNotFound
 		}
 
+		// cas
 		var strCas string
 		xattrCasErr := res.ContentAt(1, &strCas)
 		if xattrCasErr != nil {
@@ -134,6 +160,16 @@ func (xbp *XattrBootstrapPersistence) loadConfig(c *gocb.Collection, key string,
 			return 0, ErrNotFound
 		}
 		cfgCas := HexCasToUint64(strCas)
+
+		// deleted document check - if deleted, restore
+		var body map[string]interface{}
+		bodyErr := res.ContentAt(2, &body)
+		if bodyErr != nil {
+			restoreErr := xbp.restoreDocumentBody(c, key, valuePtr, strCas)
+			if restoreErr != nil {
+				Warnf("Error attempting to restore unexpected deletion of config: %v", restoreErr)
+			}
+		}
 		return cfgCas, nil
 	} else if errors.Is(lookupErr, gocbcore.ErrDocumentNotFound) {
 		Debugf(KeyCRUD, "No config document found for key=%s", key)
@@ -141,6 +177,26 @@ func (xbp *XattrBootstrapPersistence) loadConfig(c *gocb.Collection, key string,
 	} else {
 		return 0, lookupErr
 	}
+}
+
+// Restore a deleted document's body.  Rewrites metadata, but preserves previous cfgCas
+func (xbp *XattrBootstrapPersistence) restoreDocumentBody(c *gocb.Collection, key string, value interface{}, cfgCas string) error {
+	mutateOps := []gocb.MutateInSpec{
+		gocb.UpsertSpec(cfgXattrConfigPath, value, UpsertSpecXattr),
+		gocb.UpsertSpec(cfgXattrCasPath, cfgCas, UpsertSpecXattr),
+		gocb.ReplaceSpec("", json.RawMessage(cfgXattrBody), nil),
+	}
+	options := &gocb.MutateInOptions{
+		StoreSemantic: gocb.StoreSemanticsInsert,
+	}
+	_, mutateErr := c.MutateIn(key, mutateOps, options)
+	if isKVError(mutateErr, memd.StatusKeyExists) {
+		return ErrAlreadyExists
+	}
+	if mutateErr != nil {
+		return mutateErr
+	}
+	return nil
 }
 
 // Document Body persistence stores config in the document body.
