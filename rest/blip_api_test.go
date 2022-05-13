@@ -4110,7 +4110,7 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 // Attempt to send rev as GUEST when read-only guest is enabled
 func TestSendRevAsReadOnlyGuest(t *testing.T) {
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		noConflictsMode: true,
