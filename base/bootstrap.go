@@ -57,7 +57,7 @@ func NewCouchbaseCluster(server, username, password,
 
 	var configPersistence ConfigPersistence
 
-	configPersistence = &DocumentBootstrapPersistence{}
+	configPersistence = &XattrBootstrapPersistence{}
 	if useXattrConfig != nil && *useXattrConfig == true {
 		configPersistence = &XattrBootstrapPersistence{}
 	}
