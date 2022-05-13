@@ -935,15 +935,31 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 			}
 		}
 
+		// currentDigests is a map from attachment name to the current bucket doc digest,
+		// for any attachments on the incoming document that are also on the current bucket doc
+		var currentDigests map[string]string
+
 		// Do we have a previous doc? If not don't need to do this check
 		if currentBucketDoc != nil {
 			bodyAtts := GetBodyAttachments(body)
+			currentDigests = make(map[string]string, len(bodyAtts))
 			for name, value := range bodyAtts {
 				// Check if we have this attachment name already, if we do, continue check
 				currentAttachment, ok := currentBucketDoc.Attachments[name]
 				if !ok {
 					continue
 				}
+
+				currentAttachmentMeta, ok := currentAttachment.(map[string]interface{})
+				if !ok {
+					return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
+				}
+
+				currentAttachmentDigest, ok := currentAttachmentMeta["digest"].(string)
+				if !ok {
+					return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
+				}
+				currentDigests[name] = currentAttachmentDigest
 
 				incomingAttachmentMeta, ok := value.(map[string]interface{})
 				if !ok {
@@ -966,16 +982,6 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 					return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
 				}
 
-				currentAttachmentMeta, ok := currentAttachment.(map[string]interface{})
-				if !ok {
-					return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
-				}
-
-				currentAttachmentDigest, ok := currentAttachmentMeta["digest"].(string)
-				if !ok {
-					return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
-				}
-
 				// Compare the revpos and attachment digest. If incoming revpos is less than or equal to minRevPos and
 				// digest is different we need to override the revpos and set it to the current revision as the incoming
 				// revpos must be invalid and we need to request it.
@@ -988,8 +994,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 			body[BodyAttachments] = bodyAtts
 		}
 
-		// Check for any attachments I don't have yet, and request them:
-		if err := bh.downloadOrVerifyAttachments(rq.Sender, body, minRevpos, docID); err != nil {
+		if err := bh.downloadOrVerifyAttachments(rq.Sender, body, minRevpos, docID, currentDigests); err != nil {
 			base.ErrorfCtx(bh.loggingCtx, "Error during downloadOrVerifyAttachments for doc %s/%s: %v", base.UD(docID), revID, err)
 			return err
 		}
@@ -1193,8 +1198,8 @@ func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, dig
 
 // For each attachment in the revision, makes sure it's in the database, asking the client to
 // upload it if necessary. This method blocks until all the attachments have been processed.
-func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Body, minRevpos int, docID string) error {
-	return bh.db.ForEachStubAttachment(body, minRevpos, docID,
+func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Body, minRevpos int, docID string, currentDigests map[string]string) error {
+	return bh.db.ForEachStubAttachment(body, minRevpos, docID, currentDigests,
 		func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
 			// request attachment if we don't have it
 			if knownData == nil {
