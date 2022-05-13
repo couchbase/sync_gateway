@@ -1412,7 +1412,7 @@ func (sc *ServerContext) initializeCouchbaseServerConnections() error {
 
 		sc.bootstrapContext.connection = couchbaseCluster
 
-		count, err := sc.fetchAndLoadConfigs()
+		count, err := sc.fetchAndLoadConfigs(true)
 		if err != nil {
 			return err
 		}
@@ -1439,7 +1439,7 @@ func (sc *ServerContext) initializeCouchbaseServerConnections() error {
 						return
 					case <-t.C:
 						base.Debugf(base.KeyConfig, "Fetching configs from buckets in cluster for group %q", sc.config.Bootstrap.ConfigGroupID)
-						count, err := sc.fetchAndLoadConfigs()
+						count, err := sc.fetchAndLoadConfigs(false)
 						if err != nil {
 							base.Warnf("Couldn't load configs from bucket when polled: %v", err)
 						}

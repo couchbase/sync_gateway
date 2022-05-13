@@ -1062,11 +1062,11 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 
 // fetchAndLoadConfigs retrieves all database configs from the ServerContext's bootstrapConnection, and loads them into the ServerContext.
 // It will remove any databases currently running that are not found in the bucket.
-func (sc *ServerContext) fetchAndLoadConfigs() (count int, err error) {
+func (sc *ServerContext) fetchAndLoadConfigs(isInitialStartup bool) (count int, err error) {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
 
-	fetchedConfigs, err := sc.fetchConfigs()
+	fetchedConfigs, err := sc.fetchConfigs(isInitialStartup)
 	if err != nil {
 		return 0, err
 	}
@@ -1133,7 +1133,7 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 			continue
 		}
 
-		cnf.cas = cas
+		cnf.cfgCas = cas
 
 		// TODO: This code is mostly copied from fetchConfigs, move into shared function with DbConfig REST API work?
 
@@ -1158,7 +1158,7 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 }
 
 // fetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
-func (sc *ServerContext) fetchConfigs() (dbNameConfigs map[string]DatabaseConfig, err error) {
+func (sc *ServerContext) fetchConfigs(isInitialStartup bool) (dbNameConfigs map[string]DatabaseConfig, err error) {
 	buckets, err := sc.bootstrapContext.connection.GetConfigBuckets()
 	if err != nil {
 		return nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
@@ -1177,11 +1177,15 @@ func (sc *ServerContext) fetchConfigs() (dbNameConfigs map[string]DatabaseConfig
 		if err != nil {
 			// Unexpected error fetching config - SDK has already performed retries, so we'll treat it as a database removal
 			// this could be due to invalid JSON or some other non-recoverable error.
-			base.WarnfCtx(context.TODO(), "Unable to fetch config for group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
+			if isInitialStartup {
+				base.WarnfCtx(context.TODO(), "Unable to fetch config for group %q from bucket %q on startup: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
+			} else {
+				base.DebugfCtx(context.TODO(), base.KeyConfig, "Unable to fetch config for group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
+			}
 			continue
 		}
 
-		cnf.cas = cas
+		cnf.cfgCas = cas
 
 		// inherit properties the bootstrap config
 		cnf.CACertPath = sc.config.Bootstrap.CACertPath
@@ -1241,11 +1245,11 @@ func (sc *ServerContext) _applyConfig(cnf DatabaseConfig, failFast bool) (applie
 			return false, fmt.Errorf("%w: Bucket %q already in use by database %q", base.ErrAlreadyExists, *cnf.Bucket, foundDbName)
 		}
 
-		if cnf.cas == 0 {
+		if cnf.cfgCas == 0 {
 			// force an update when the new config's cas was set to zero prior to load
 			base.Infof(base.KeyConfig, "Forcing update of config for database %q bucket %q", cnf.Name, *cnf.Bucket)
 		} else {
-			if sc.dbConfigs[foundDbName].cas >= cnf.cas {
+			if sc.dbConfigs[foundDbName].cfgCas >= cnf.cfgCas {
 				base.Debugf(base.KeyConfig, "Database %q bucket %q config has not changed since last update", cnf.Name, *cnf.Bucket)
 				return false, nil
 			}
@@ -1313,7 +1317,7 @@ func (sc *ServerContext) addLegacyPrincipals(legacyDbUsers, legacyDbRoles map[st
 // startServer starts and runs the server with the given configuration. (This function never returns.)
 func startServer(config *StartupConfig, sc *ServerContext) error {
 	if config.API.ProfileInterface != "" {
-		//runtime.MemProfileRate = 10 * 1024
+		// runtime.MemProfileRate = 10 * 1024
 		base.Infof(base.KeyAll, "Starting profile server on %s", base.UD(config.API.ProfileInterface))
 		go func() {
 			_ = http.ListenAndServe(config.API.ProfileInterface, nil)
