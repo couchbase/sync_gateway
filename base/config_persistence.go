@@ -13,14 +13,16 @@ import (
 // ConfigPersistence manages the underlying storage of database config documents in the bucket.
 // Implementations support using either document body or xattr for storage
 type ConfigPersistence interface {
-	// Operations for interacting with raw config ([]byte)
+	// Operations for interacting with raw config ([]byte).  gocb.Cas values represent document cas,
+	// cfgCas represent the cas value associated with the last mutation, and may not match document CAS
 	loadRawConfig(c *gocb.Collection, key string) ([]byte, gocb.Cas, error)
 	removeRawConfig(c *gocb.Collection, key string, cas gocb.Cas) (gocb.Cas, error)
-	replaceRawConfig(c *gocb.Collection, key string, value []byte, cas gocb.Cas) (gocb.Cas, error)
+	replaceRawConfig(c *gocb.Collection, key string, value []byte, cas gocb.Cas) (casOut gocb.Cas, cfgCas uint64, err error)
 
-	// Operations for interacting with marshalled config
-	loadConfig(c *gocb.Collection, key string, valuePtr interface{}) (cas uint64, err error)
-	insertConfig(c *gocb.Collection, key string, value interface{}) (cas uint64, err error)
+	// Operations for interacting with marshalled config. cfgCas represents the cas value
+	// associated with the last config mutation, and may not match document CAS
+	loadConfig(c *gocb.Collection, key string, valuePtr interface{}) (cfgCas uint64, err error)
+	insertConfig(c *gocb.Collection, key string, value interface{}) (cfgCas uint64, err error)
 }
 
 // System xattr persistence
@@ -43,6 +45,9 @@ func (xbp *XattrBootstrapPersistence) insertConfig(c *gocb.Collection, key strin
 		StoreSemantic: gocb.StoreSemanticsInsert,
 	}
 	result, mutateErr := c.MutateIn(key, mutateOps, options)
+	if isKVError(mutateErr, memd.StatusKeyExists) {
+		return 0, ErrAlreadyExists
+	}
 	if mutateErr != nil {
 		return 0, mutateErr
 	}
@@ -86,7 +91,7 @@ func (xbp *XattrBootstrapPersistence) removeRawConfig(c *gocb.Collection, key st
 
 }
 
-func (xbp *XattrBootstrapPersistence) replaceRawConfig(c *gocb.Collection, key string, value []byte, cas gocb.Cas) (gocb.Cas, error) {
+func (xbp *XattrBootstrapPersistence) replaceRawConfig(c *gocb.Collection, key string, value []byte, cas gocb.Cas) (gocb.Cas, uint64, error) {
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(cfgXattrConfigPath, bytesToRawMessage(value), UpsertSpecXattr),
 		gocb.UpsertSpec(cfgXattrCasPath, gocb.MutationMacroCAS, UpsertSpecXattr),
@@ -97,15 +102,17 @@ func (xbp *XattrBootstrapPersistence) replaceRawConfig(c *gocb.Collection, key s
 	}
 	result, mutateErr := c.MutateIn(key, mutateOps, options)
 	if mutateErr != nil {
-		return 0, mutateErr
+		return 0, 0, mutateErr
 	}
-	return result.Cas(), nil
+	return result.Cas(), uint64(result.Cas()), nil
 }
 
+// loadConfig returns the cas associated with the last cfg change (xattr._sync.cas)
 func (xbp *XattrBootstrapPersistence) loadConfig(c *gocb.Collection, key string, valuePtr interface{}) (cas uint64, err error) {
 
 	ops := []gocb.LookupInSpec{
 		gocb.GetSpec(cfgXattrConfigPath, GetSpecXattr),
+		gocb.GetSpec(cfgXattrCasPath, GetSpecXattr),
 	}
 	lookupOpts := &gocb.LookupInOptions{
 		Timeout: time.Second * 10,
@@ -116,11 +123,18 @@ func (xbp *XattrBootstrapPersistence) loadConfig(c *gocb.Collection, key string,
 	if lookupErr == nil {
 		xattrContErr := res.ContentAt(0, valuePtr)
 		if xattrContErr != nil {
-			Debugf(KeyCRUD, "No xattr config found for key=%s, oath=%s: %v", key, cfgXattrConfigPath, xattrContErr)
+			Debugf(KeyCRUD, "No xattr config found for key=%s, path=%s: %v", key, cfgXattrConfigPath, xattrContErr)
 			return 0, ErrNotFound
 		}
-		cas := uint64(res.Cas())
-		return cas, nil
+
+		var strCas string
+		xattrCasErr := res.ContentAt(1, &strCas)
+		if xattrCasErr != nil {
+			Debugf(KeyCRUD, "No xattr cas found for key=%s, path=%s: %v", key, cfgXattrCasPath, xattrContErr)
+			return 0, ErrNotFound
+		}
+		cfgCas := HexCasToUint64(strCas)
+		return cfgCas, nil
 	} else if errors.Is(lookupErr, gocbcore.ErrDocumentNotFound) {
 		Debugf(KeyCRUD, "No config document found for key=%s", key)
 		return 0, ErrNotFound
@@ -129,7 +143,8 @@ func (xbp *XattrBootstrapPersistence) loadConfig(c *gocb.Collection, key string,
 	}
 }
 
-// Document Body persistence
+// Document Body persistence stores config in the document body.
+// cfgCas is just document cas
 type DocumentBootstrapPersistence struct {
 }
 
@@ -158,13 +173,14 @@ func (dbp *DocumentBootstrapPersistence) removeRawConfig(c *gocb.Collection, key
 	return deleteRes.Cas(), err
 }
 
-func (dbp *DocumentBootstrapPersistence) replaceRawConfig(c *gocb.Collection, key string, value []byte, cas gocb.Cas) (gocb.Cas, error) {
+func (dbp *DocumentBootstrapPersistence) replaceRawConfig(c *gocb.Collection, key string, value []byte, cas gocb.Cas) (gocb.Cas, uint64, error) {
 	replaceRes, err := c.Replace(key, value, &gocb.ReplaceOptions{Transcoder: gocb.NewRawJSONTranscoder(), Cas: cas})
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
-	return replaceRes.Cas(), nil
+	// For DocumentBootstrapPersistence, cfgCas always equals doc.cas
+	return replaceRes.Cas(), uint64(replaceRes.Cas()), nil
 }
 
 func (dbp *DocumentBootstrapPersistence) loadConfig(c *gocb.Collection, key string, valuePtr interface{}) (cas uint64, err error) {

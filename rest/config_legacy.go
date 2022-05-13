@@ -286,7 +286,7 @@ func (dbc *DbConfig) ToDatabaseConfig() *DatabaseConfig {
 	}
 
 	return &DatabaseConfig{
-		cas:      0,
+		cfgCas:   0,
 		DbConfig: *dbc,
 	}
 }

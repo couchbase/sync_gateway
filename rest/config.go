@@ -1133,7 +1133,7 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 			continue
 		}
 
-		cnf.cas = cas
+		cnf.cfgCas = cas
 
 		// TODO: This code is mostly copied from fetchConfigs, move into shared function with DbConfig REST API work?
 
@@ -1177,11 +1177,11 @@ func (sc *ServerContext) fetchConfigs() (dbNameConfigs map[string]DatabaseConfig
 		if err != nil {
 			// Unexpected error fetching config - SDK has already performed retries, so we'll treat it as a database removal
 			// this could be due to invalid JSON or some other non-recoverable error.
-			base.WarnfCtx(context.TODO(), "Unable to fetch config for group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
+			base.DebugfCtx(context.TODO(), base.KeyConfig, "Unable to fetch config for group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
 			continue
 		}
 
-		cnf.cas = cas
+		cnf.cfgCas = cas
 
 		// inherit properties the bootstrap config
 		cnf.CACertPath = sc.config.Bootstrap.CACertPath
@@ -1241,11 +1241,11 @@ func (sc *ServerContext) _applyConfig(cnf DatabaseConfig, failFast bool) (applie
 			return false, fmt.Errorf("%w: Bucket %q already in use by database %q", base.ErrAlreadyExists, *cnf.Bucket, foundDbName)
 		}
 
-		if cnf.cas == 0 {
+		if cnf.cfgCas == 0 {
 			// force an update when the new config's cas was set to zero prior to load
 			base.Infof(base.KeyConfig, "Forcing update of config for database %q bucket %q", cnf.Name, *cnf.Bucket)
 		} else {
-			if sc.dbConfigs[foundDbName].cas >= cnf.cas {
+			if sc.dbConfigs[foundDbName].cfgCas >= cnf.cfgCas {
 				base.Debugf(base.KeyConfig, "Database %q bucket %q config has not changed since last update", cnf.Name, *cnf.Bucket)
 				return false, nil
 			}

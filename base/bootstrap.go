@@ -182,7 +182,7 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 			return uint64(removeCasOut), nil
 		}
 
-		replaceCasOut, err := cc.configPersistence.replaceRawConfig(collection, docID, newConfig, cas)
+		_, replaceCfgCasOut, err := cc.configPersistence.replaceRawConfig(collection, docID, newConfig, cas)
 		if err != nil {
 			if errors.Is(err, gocb.ErrCasMismatch) {
 				// retry on cas failure
@@ -191,7 +191,7 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 			return 0, err
 		}
 
-		return uint64(replaceCasOut), nil
+		return replaceCfgCasOut, nil
 	}
 
 }

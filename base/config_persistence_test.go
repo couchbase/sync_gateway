@@ -48,6 +48,10 @@ func TestConfigPersistence(t *testing.T) {
 			insertCas, insertErr := cp.insertConfig(c, configKey, configBody)
 			require.NoError(t, insertErr)
 
+			// attempt to re-insert, must return ErrAlreadyExists
+			_, reinsertErr := cp.insertConfig(c, configKey, configBody)
+			require.Equal(t, ErrAlreadyExists, reinsertErr)
+
 			var loadedConfig map[string]interface{}
 			loadCas, loadErr := cp.loadConfig(c, configKey, &loadedConfig)
 			require.NoError(t, loadErr)
@@ -64,11 +68,11 @@ func TestConfigPersistence(t *testing.T) {
 			require.NoError(t, marshalErr)
 
 			// update with incorrect cas
-			_, updateErr := cp.replaceRawConfig(c, configKey, updatedRawBody, 1234)
+			_, _, updateErr := cp.replaceRawConfig(c, configKey, updatedRawBody, 1234)
 			require.Error(t, updateErr)
 
 			// update with correct cas
-			updateCas, updateErr := cp.replaceRawConfig(c, configKey, updatedRawBody, gocb.Cas(insertCas))
+			updateCas, _, updateErr := cp.replaceRawConfig(c, configKey, updatedRawBody, gocb.Cas(insertCas))
 			require.NoError(t, updateErr)
 
 			// retrieve config, validate updated value

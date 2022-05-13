@@ -115,7 +115,7 @@ func (h *handler) handleCreateDB() error {
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't save database config: %v", err)
 		}
 		// store the cas in the loaded config after a successful insert
-		h.server.dbConfigs[dbName].cas = cas
+		h.server.dbConfigs[dbName].cfgCas = cas
 	} else {
 		// Intentionally pass in an empty BootstrapConfig to avoid inheriting any credentials or server when running with a legacy config (CBG-1764)
 		if err := config.setup(dbName, BootstrapConfig{}, nil); err != nil {
@@ -225,7 +225,7 @@ func (h *handler) handleGetDbConfig() error {
 		// refresh_config=true forces the config loaded out of the bucket to be applied on the node
 		if h.getBoolQuery("refresh_config") && h.server.bootstrapContext.connection != nil {
 			// set cas=0 to force a refresh
-			dbConfig.cas = 0
+			dbConfig.cfgCas = 0
 			h.server.applyConfigs(map[string]DatabaseConfig{h.db.Name: *dbConfig})
 		}
 
@@ -578,7 +578,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 		return err
 	}
 	// store the cas in the loaded config after a successful update
-	h.server.dbConfigs[dbName].cas = cas
+	h.server.dbConfigs[dbName].cfgCas = cas
 	h.response.Header().Set("ETag", updatedDbConfig.Version)
 	return base.HTTPErrorf(http.StatusCreated, "updated")
 
@@ -649,7 +649,7 @@ func (h *handler) handleDeleteDbConfigSync() error {
 	if err != nil {
 		return err
 	}
-	updatedDbConfig.cas = cas
+	updatedDbConfig.cfgCas = cas
 
 	dbName := h.db.Name
 	dbCreds, _ := h.server.config.DatabaseCredentials[dbName]
@@ -714,7 +714,7 @@ func (h *handler) handlePutDbConfigSync() error {
 	if err != nil {
 		return err
 	}
-	updatedDbConfig.cas = cas
+	updatedDbConfig.cfgCas = cas
 
 	dbName := h.db.Name
 	dbCreds, _ := h.server.config.DatabaseCredentials[dbName]
@@ -796,7 +796,7 @@ func (h *handler) handleDeleteDbConfigImportFilter() error {
 	if err != nil {
 		return err
 	}
-	updatedDbConfig.cas = cas
+	updatedDbConfig.cfgCas = cas
 
 	dbName := h.db.Name
 	dbCreds, _ := h.server.config.DatabaseCredentials[dbName]
@@ -861,7 +861,7 @@ func (h *handler) handlePutDbConfigImportFilter() error {
 	if err != nil {
 		return err
 	}
-	updatedDbConfig.cas = cas
+	updatedDbConfig.cfgCas = cas
 
 	dbName := h.db.Name
 	dbCreds, _ := h.server.config.DatabaseCredentials[dbName]
