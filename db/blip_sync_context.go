@@ -67,6 +67,9 @@ func NewBlipSyncContext(bc *blip.Context, db *Database, contextID string, replic
 	if u := db.User(); u != nil {
 		bsc.userName = u.Name()
 		u.InitializeRoles()
+		if u.Name() == "" && db.IsGuestReadOnly() {
+			bsc.readOnly = true
+		}
 	}
 
 	// Register default handlers
@@ -125,6 +128,9 @@ type BlipSyncContext struct {
 	// fatalErrorCallback is called by the replicator code when the replicator using this blipSyncContext should be
 	// stopped
 	fatalErrorCallback func(err error)
+
+	// when readOnly is true, handleRev requests are rejected
+	readOnly bool
 }
 
 // AllowedAttachment contains the metadata for handling allowed attachments

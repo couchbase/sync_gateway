@@ -2148,6 +2148,11 @@ func (db *Database) getChannelsAndAccess(doc *Document, body Body, metaMap map[s
 	err error) {
 	base.DebugfCtx(db.Ctx, base.KeyCRUD, "Invoking sync on doc %q rev %s", base.UD(doc.ID), body[BodyRev])
 
+	// Low-level protection against writes for read-only guest.  Handles write pathways that don't fail-fast
+	if db.user != nil && db.user.Name() == "" && db.DatabaseContext.IsGuestReadOnly() {
+		return result, access, roles, expiry, oldJson, base.HTTPErrorf(403, auth.GuestUserReadOnly)
+	}
+
 	// Get the parent revision, to pass to the sync function:
 	var oldJsonBytes []byte
 	if oldJsonBytes, err = db.getAncestorJSON(doc, revID); err != nil {

@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 )
@@ -281,6 +282,11 @@ func (h *handler) handleGetAttachment() error {
 
 // HTTP handler for a PUT of an attachment
 func (h *handler) handlePutAttachment() error {
+
+	if h.isReadOnlyGuest() {
+		return base.HTTPErrorf(http.StatusForbidden, auth.GuestUserReadOnly)
+	}
+
 	docid := h.PathVar("docid")
 	attachmentName := h.PathVar("attach")
 	attachmentContentType := h.rq.Header.Get("Content-Type")
@@ -340,6 +346,10 @@ func (h *handler) handlePutAttachment() error {
 
 // HTTP handler for a PUT of a document
 func (h *handler) handlePutDoc() error {
+
+	if h.isReadOnlyGuest() {
+		return base.HTTPErrorf(http.StatusForbidden, auth.GuestUserReadOnly)
+	}
 
 	startTime := time.Now()
 	defer func() {
@@ -413,6 +423,9 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 	if !base.IsEnterpriseEdition() {
 		return base.HTTPErrorf(http.StatusNotImplemented, "replicator2 endpoints are only supported in EE")
 	}
+	if h.isReadOnlyGuest() {
+		return base.HTTPErrorf(http.StatusForbidden, auth.GuestUserReadOnly)
+	}
 
 	bodyBytes, err := h.readBody()
 	if err != nil {
@@ -485,6 +498,10 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 
 // HTTP handler for a POST to a database (creating a document)
 func (h *handler) handlePostDoc() error {
+	if h.isReadOnlyGuest() {
+		return base.HTTPErrorf(http.StatusForbidden, auth.GuestUserReadOnly)
+	}
+
 	roundTrip := h.getBoolQuery("roundtrip")
 	body, err := h.readDocument()
 	if err != nil {
@@ -558,4 +575,12 @@ func (h *handler) handlePutLocalDoc() error {
 func (h *handler) handleDelLocalDoc() error {
 	docid := h.PathVar("docid")
 	return h.db.DeleteSpecial(db.DocTypeLocal, docid, h.getQuery("rev"))
+}
+
+// helper for read only check
+func (h *handler) isReadOnlyGuest() bool {
+	if h.db.IsGuestReadOnly() && h.db.User() != nil && h.db.User().Name() == "" {
+		return true
+	}
+	return false
 }
