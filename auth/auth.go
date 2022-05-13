@@ -845,6 +845,10 @@ func (auth *Authenticator) UpdateUserOIDCRolesChannels(user_ User, issuer string
 			return nil, base.ErrUpdateCancel
 		}
 
+		if user.OIDCIssuer() == issuer && user.OIDCChannels().Equals(newOIDCChannels) && user.OIDCRoles().Equals(newOIDCRoles) {
+			return nil, base.ErrUpdateCancel
+		}
+
 		nextSeq := user.Sequence() + 1
 		user.SetSequence(nextSeq)
 
