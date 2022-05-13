@@ -13,10 +13,12 @@ package rest
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -129,5 +131,34 @@ func TestDocumentNumbers(t *testing.T) {
 
 		})
 	}
+
+}
+
+func TestGuestReadOnly(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		guestEnabled: true,
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			Unsupported: &db.UnsupportedOptions{
+				GuestReadOnly: true,
+			},
+		},
+		}},
+	)
+
+	defer rt.Close()
+
+	rt.GetDatabase()
+	// Write a document as admin
+	response := rt.SendAdminRequest("PUT", "/db/doc", "{}")
+	assertStatus(t, response, http.StatusCreated)
+
+	// Attempt to read as guest
+	response = rt.SendRequest("GET", "/db/doc", "")
+	assertStatus(t, response, http.StatusOK)
+	assert.Equal(t, `{"_id":"doc","_rev":"1-ca9ad22802b66f662ff171f226211d5c"}`, string(response.BodyBytes()))
+
+	// Attempt to write as guest
+	response = rt.SendRequest("PUT", "/db/doc?rev=1-ca9ad22802b66f662ff171f226211d5c", `{"val": "newval"}`)
+	assertStatus(t, response, http.StatusForbidden)
 
 }

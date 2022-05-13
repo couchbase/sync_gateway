@@ -782,6 +782,17 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 	//addRevisionParams := newAddRevisionParams(rq)
 	revMessage := RevMessage{Message: rq}
 
+	// Doc metadata comes from the BLIP message metadata, not magic document properties:
+	docID, found := revMessage.ID()
+	revID, rfound := revMessage.Rev()
+	if !found || !rfound {
+		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or revID")
+	}
+
+	if bh.readOnly {
+		return base.HTTPErrorf(http.StatusForbidden, "Replication context is read-only, docID: %s, revID:%s", docID, revID)
+	}
+
 	base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s %s", bh.serialNumber, rq.Profile(), revMessage.String())
 
 	bodyBytes, err := rq.Body()
@@ -792,13 +803,6 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 	base.TracefCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Properties:%v  Body:%s", bh.serialNumber, base.UD(revMessage.Properties), base.UD(string(bodyBytes)))
 
 	bh.replicationStats.HandleRevBytes.Add(int64(len(bodyBytes)))
-
-	// Doc metadata comes from the BLIP message metadata, not magic document properties:
-	docID, found := revMessage.ID()
-	revID, rfound := revMessage.Rev()
-	if !found || !rfound {
-		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or revID")
-	}
 
 	if bh.BlipSyncContext.purgeOnRemoval && bytes.Contains(bodyBytes, []byte(`"`+BodyRemoved+`":`)) {
 		var r removalDocument

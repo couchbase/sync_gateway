@@ -4106,3 +4106,58 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 	assertStatus(t, resp, http.StatusOK)
 	assert.Equal(t, "goodbye cruel world", string(resp.BodyBytes()))
 }
+
+// Attempt to send rev as GUEST when read-only guest is enabled
+func TestSendRevAsReadOnlyGuest(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
+
+	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+		noConflictsMode: true,
+		guestEnabled:    true,
+	})
+	assert.NoError(t, err, "Error creating BlipTester")
+	defer bt.Close()
+
+	// Send rev as guest with read-only=false
+	revRequest := blip.NewRequest()
+	revRequest.SetCompressed(false)
+	revRequest.SetProfile("rev")
+	revRequest.Properties["deleted"] = "false"
+	revRequest.Properties["id"] = "writeGuest"
+	revRequest.Properties["rev"] = "1-abc"
+	revRequest.SetBody([]byte(`{"key": "val"}`))
+
+	sent := bt.sender.Send(revRequest)
+	assert.True(t, sent)
+	revResponse := revRequest.Response()
+
+	errorCode, ok := revResponse.Properties[db.BlipErrorCode]
+	assert.False(t, ok)
+
+	body, err := revResponse.Body()
+	log.Printf("response body: %s", body)
+
+	// Send rev as guest with read-only=true
+	bt.DatabaseContext().Options.UnsupportedOptions.GuestReadOnly = true
+
+	revRequest = blip.NewRequest()
+	revRequest.SetCompressed(false)
+	revRequest.SetProfile("rev")
+	revRequest.Properties["deleted"] = "false"
+	revRequest.Properties["id"] = "readOnlyGuest"
+	revRequest.Properties["rev"] = "1-abc"
+	revRequest.SetBody([]byte(`{"key": "val"}`))
+
+	sent = bt.sender.Send(revRequest)
+	assert.True(t, sent)
+	revResponse = revRequest.Response()
+
+	errorCode, ok = revResponse.Properties[db.BlipErrorCode]
+	assert.True(t, ok)
+	assert.Equal(t, "403", errorCode)
+
+	body, err = revResponse.Body()
+	log.Printf("response body: %s", body)
+
+}

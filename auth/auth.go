@@ -61,6 +61,10 @@ const (
 	maxHistoryEntriesPerGrant    = 10          // Ceiling of history entries count to ensure there is no more than 10 entries
 )
 
+const (
+	GuestUserReadOnly = "Anonymous access is read-only"
+)
+
 // Creates a new Authenticator that stores user info in the given Bucket.
 func NewAuthenticator(bucket base.Bucket, channelComputer ChannelComputer, options AuthenticatorOptions) *Authenticator {
 	return &Authenticator{

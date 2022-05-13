@@ -176,6 +176,7 @@ type APIEndpoints struct {
 	EnableCouchbaseBucketFlush bool `json:"enable_couchbase_bucket_flush,omitempty"` // Whether Couchbase buckets can be flushed via Admin REST API
 }
 
+// UnsupportedOptions are not supported for external use
 type UnsupportedOptions struct {
 	UserViews                 *UserViewsOptions        `json:"user_views,omitempty"`                    // Config settings for user views
 	OidcTestProvider          *OidcTestProviderOptions `json:"oidc_test_provider,omitempty"`            // Config settings for OIDC Provider
@@ -185,6 +186,7 @@ type UnsupportedOptions struct {
 	OidcTlsSkipVerify         bool                     `json:"oidc_tls_skip_verify,omitempty"`          // Config option to enable self-signed certs for OIDC testing.
 	SgrTlsSkipVerify          bool                     `json:"sgr_tls_skip_verify,omitempty"`           // Config option to enable self-signed certs for SG-Replicate testing.
 	RemoteConfigTlsSkipVerify bool                     `json:"remote_config_tls_skip_verify,omitempty"` // Config option to enable self signed certificates for external JavaScript load.
+	GuestReadOnly             bool                     `json:"guest_read_only,omitempty"`               // Config option to restrict GUEST document access to read-only
 }
 
 type WarningThresholds struct {
@@ -1710,4 +1712,10 @@ func (context *DatabaseContext) AllowFlushNonCouchbaseBuckets() bool {
 
 func (context *DatabaseContext) LastSequence() (uint64, error) {
 	return context.sequences.lastSequence()
+}
+
+// Helpers for unsupported options
+func (context *DatabaseContext) IsGuestReadOnly() bool {
+	return context.Options.UnsupportedOptions != nil && context.Options.UnsupportedOptions.GuestReadOnly
+
 }
