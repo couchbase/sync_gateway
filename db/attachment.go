@@ -259,10 +259,11 @@ func (db *Database) setAttachments(attachments AttachmentData) error {
 type AttachmentCallback func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error)
 
 // Given a document body, invokes the callback once for each attachment that doesn't include
-// its data. The callback is told whether the attachment body is known to the database, according
+// its data, and isn't present with a matching digest on the existing doc (existingDigests).
+// The callback is told whether the attachment body is known to the database, according
 // to its digest. If the attachment isn't known, the callback can return data for it, which will
 // be added to the metadata as a "data" property.
-func (db *Database) ForEachStubAttachment(body Body, minRevpos int, docID string, callback AttachmentCallback) error {
+func (db *Database) ForEachStubAttachment(body Body, minRevpos int, docID string, existingDigests map[string]string, callback AttachmentCallback) error {
 	atts := GetBodyAttachments(body)
 	if atts == nil && body[BodyAttachments] != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid _attachments")
@@ -281,7 +282,13 @@ func (db *Database) ForEachStubAttachment(body Body, minRevpos int, docID string
 				return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
 			}
 
-			// TODO: CBG-1590 to determine whether incoming attachment is AttVersion1 or AttVersion2
+			// If digest matches the one on existing doc, SG doesn't need to prove/get
+			existingDigest, existingOk := existingDigests[name]
+			if existingOk && existingDigest == digest {
+				// see CBG-2010 for discussion of potential existence check here
+				continue
+			}
+
 			// Assumes the attachment is always AttVersion2 while checking whether it has already been uploaded.
 			attachmentKey := MakeAttachmentKey(AttVersion2, docID, digest)
 			data, err := db.GetAttachment(attachmentKey)
