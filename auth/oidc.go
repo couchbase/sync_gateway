@@ -159,6 +159,9 @@ type OIDCProvider struct {
 	// Sync Gateway and the underlying OIDC library.
 	UsernameClaim string `json:"username_claim"`
 
+	// RolesClaim and ChannelsClaim allow specifying a claim (which must be a string or string[]) to add roles/channels
+	// to users. These are added in addition to any other roles/channels the user may have (via the admin API or the
+	// sync function). If the claim is absent from the access/ID token, no roles/channels will be added.
 	RolesClaim    string `json:"roles_claim"`
 	ChannelsClaim string `json:"channels_claim"`
 
