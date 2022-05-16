@@ -275,8 +275,13 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	}
 
 	// If the user has OIDC roles/channels configured, we need to check if the OIDC issuer they came from is still valid.
-	if h.user != nil {
-		if err := verifyOIDCIssuerStillValid(h.ctx(), dbContext, h.user); err != nil {
+	// Note: checkAuth already does this check if the user authenticates with a bearer token, but we still need to recheck
+	// for users using session tokens / basic auth. However, updatePrincipal will be idempotent.
+	if h.user != nil && h.user.OIDCIssuer() != "" {
+		name := h.user.Name()
+		if err := h.maybeUpdateOIDCUser(dbContext, h.user, auth.PrincipalConfig{
+			Name: &name,
+		}); err != nil {
 			return err
 		}
 	}
@@ -371,26 +376,6 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	return method(h) // Call the actual handler code
 }
 
-// verifyOIDCIssuerStillValid checks that the OIDC issuer assigned to the user is still configured in the database.
-// If not, and they have any OIDC roles/channels assigned, it revokes them.
-func verifyOIDCIssuerStillValid(ctx context.Context, dbContext *db.DatabaseContext, user auth.User) error {
-	providerStillValid := false
-	for _, provider := range dbContext.OIDCProviders {
-		// No need to verify audiences, as that was done when the user was authenticated
-		if provider.Issuer == user.OIDCIssuer() {
-			providerStillValid = true
-			break
-		}
-	}
-	if !providerStillValid {
-		base.InfofCtx(ctx, base.KeyAuth, "User %v last signed in with OIDC issuer %v which is no longer configured - revoking any OIDC roles/channels", base.UD(user.Name()), base.UD(user.OIDCIssuer()))
-		if err := dbContext.Authenticator(ctx).UpdateUserOIDCRolesChannels(user, "", base.Set{}, base.Set{}); err != nil {
-			return errors.Wrapf(err, "failed to revoke user %s's OIDC roles/channels", base.UD(user.Name()).Redact())
-		}
-	}
-	return nil
-}
-
 func (h *handler) logRequestLine() {
 	// Check Log Level first, as SanitizeRequestURL is expensive to evaluate.
 	if !base.LogInfoEnabled(base.KeyHTTP) {
@@ -469,9 +454,13 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 	if dbCtx.Options.OIDCOptions != nil {
 		if token := h.getBearerToken(); token != "" {
 			var authJwtErr error
-			h.user, authJwtErr = dbCtx.Authenticator(h.ctx()).AuthenticateUntrustedJWT(token, dbCtx.OIDCProviders, h.getOIDCCallbackURL)
+			var updates auth.PrincipalConfig
+			h.user, updates, authJwtErr = dbCtx.Authenticator(h.ctx()).AuthenticateUntrustedJWT(token, dbCtx.OIDCProviders, h.getOIDCCallbackURL)
 			if h.user == nil || authJwtErr != nil {
 				return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
+			}
+			if err := h.maybeUpdateOIDCUser(dbCtx, h.user, updates); err != nil {
+				return err
 			}
 			return nil
 		}
@@ -533,6 +522,33 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 	}
 
 	return nil
+}
+
+// maybeUpdateOIDCUser makes any changes necessary to the given user as a result of OIDC authentication.
+// It also verifies whether the user's OIDC issuer is still valid, and revokes their OIDC roles/channels if not.
+func (h *handler) maybeUpdateOIDCUser(dbCtx *db.DatabaseContext, user auth.User, updates auth.PrincipalConfig) error {
+	issuer := user.OIDCIssuer()
+	if updates.OIDCIssuer != nil {
+		issuer = *updates.OIDCIssuer
+	}
+	providerStillValid := false
+	for _, provider := range dbCtx.OIDCProviders {
+		// No need to verify audiences, as that was done when the user was authenticated
+		if provider.Issuer == issuer {
+			providerStillValid = true
+			break
+		}
+	}
+	if !providerStillValid {
+		base.InfofCtx(h.ctx(), base.KeyAuth, "User %v uses OIDC issuer %v which is no longer configured. Revoking OIDC roles/channels.", base.UD(user.Name()), base.UD(issuer))
+		updates = updates.Merge(auth.PrincipalConfig{
+			OIDCIssuer:   base.StringPtr(""),
+			OIDCRoles:    base.Set{},
+			OIDCChannels: base.Set{},
+		})
+	}
+	_, err := dbCtx.UpdatePrincipal(h.ctx(), &updates, true, true)
+	return err
 }
 
 // checkAdminAuthenticationOnly simply checks whether a username / password combination is authenticated pulling the

@@ -1213,9 +1213,15 @@ func TestOIDCRolesChannels(t *testing.T) {
 					Subject: testSubject,
 					Claims:  login.claims,
 				}
-				user, _, err = auth.authenticateOIDCIdentity(identity, provider)
+				var updates PrincipalConfig
+				user, updates, _, err = auth.authenticateOIDCIdentity(identity, provider)
 				require.NoError(t, err, "error on authenticateOIDCIdentity")
 				require.NotNil(t, user, "nil user")
+				user.SetOIDCChannels(ch.AtSequence(updates.OIDCChannels, user.Sequence()), user.Sequence())
+				user.SetOIDCRoles(ch.AtSequence(updates.OIDCRoles, user.Sequence()), user.Sequence())
+
+				require.NoError(t, auth.rebuildRoles(user))
+				require.NoError(t, auth.rebuildChannels(user))
 
 				if user.RoleNames() == nil {
 					require.Empty(t, login.expectedRoles, "user's roles were nil when we expected roles")

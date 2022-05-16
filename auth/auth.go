@@ -628,7 +628,7 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) (U
 // Used to authenticate a JWT token coming from an insecure source (e.g. client request)
 // If the token is validated but the user for the username defined in the subject claim doesn't exist,
 // creates the user when autoRegister=true.
-func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDCProviderMap, callbackURLFunc OIDCCallbackURLFunc) (User, error) {
+func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDCProviderMap, callbackURLFunc OIDCCallbackURLFunc) (User, PrincipalConfig, error) {
 
 	base.DebugfCtx(auth.LogCtx, base.KeyAuth, "AuthenticateUntrustedJWT called with token: %s", base.UD(token))
 	var provider *OIDCProvider
@@ -641,7 +641,7 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 		jwt, err := jwt.ParseSigned(token)
 		if err != nil {
 			base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error parsing JWT in AuthenticateUntrustedJWT: %v", err)
-			return nil, err
+			return nil, PrincipalConfig{}, err
 		}
 
 		// Extract issuer and audience(s) from JSON Web Token.
@@ -650,7 +650,7 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "JWT issuer: %v, audiences: %v", base.UD(issuer), base.UD(audiences))
 		if err != nil {
 			base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error getting issuer and audience from token: %v", err)
-			return nil, err
+			return nil, PrincipalConfig{}, err
 		}
 
 		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Call GetProviderForIssuer w/ providers: %+v", base.UD(providers))
@@ -659,15 +659,15 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 	}
 
 	if provider == nil {
-		return nil, base.RedactErrorf("No provider found for issuer %v", base.UD(issuer))
+		return nil, PrincipalConfig{}, base.RedactErrorf("No provider found for issuer %v", base.UD(issuer))
 	}
 
 	identity, verifyErr := verifyToken(auth.LogCtx, token, provider, callbackURLFunc)
 	if verifyErr != nil {
-		return nil, verifyErr
+		return nil, PrincipalConfig{}, verifyErr
 	}
-	user, _, err := auth.authenticateOIDCIdentity(identity, provider)
-	return user, err
+	user, updates, _, err := auth.authenticateOIDCIdentity(identity, provider)
+	return user, updates, err
 }
 
 // verifyToken verifies claims and signature on the token; ensure that it's been signed by the provider.
@@ -702,7 +702,7 @@ func verifyToken(ctx context.Context, token string, provider *OIDCProvider, call
 // If the token is validated but the user for the username defined in the subject claim doesn't exist,
 // creates the user when autoRegister=true.
 func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCProvider, callbackURLFunc OIDCCallbackURLFunc) (user User,
-	tokenExpiry time.Time, err error) {
+	updates PrincipalConfig, tokenExpiry time.Time, err error) {
 	base.DebugfCtx(auth.LogCtx, base.KeyAuth, "AuthenticateTrustedJWT called with token: %s", base.UD(token))
 
 	var identity *Identity
@@ -711,14 +711,14 @@ func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCPr
 		identity, err = VerifyClaims(token, provider.ClientID, provider.Issuer)
 		if err != nil {
 			base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error verifying raw token in AuthenticateTrustedJWT: %v", err)
-			return nil, time.Time{}, err
+			return nil, PrincipalConfig{}, time.Time{}, err
 		}
 	} else {
 		// Verify claims and signature on the JWT.
 		var verifyErr error
 		identity, verifyErr = verifyToken(auth.LogCtx, token, provider, callbackURLFunc)
 		if verifyErr != nil {
-			return nil, time.Time{}, verifyErr
+			return nil, PrincipalConfig{}, time.Time{}, verifyErr
 		}
 	}
 
@@ -727,17 +727,17 @@ func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCPr
 
 // authenticateOIDCIdentity obtains a Sync Gateway User for the JWT. Expects that the JWT has already been verified for OIDC compliance.
 // TODO: possibly move this function to oidc.go
-func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider *OIDCProvider) (user User, tokenExpiry time.Time, err error) {
+func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider *OIDCProvider) (user User, updates PrincipalConfig, tokenExpiry time.Time, err error) {
 	// Note: any errors returned from this function will be converted to 403s with a generic message, so we need to
 	// separately log them to ensure they're preserved for debugging.
 	if identity == nil || identity.Subject == "" {
 		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Empty subject found in OIDC identity: %v", base.UD(identity))
-		return nil, time.Time{}, errors.New("subject not found in OIDC identity")
+		return nil, PrincipalConfig{}, time.Time{}, errors.New("subject not found in OIDC identity")
 	}
 	username, err := getOIDCUsername(provider, identity)
 	if err != nil {
 		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error retrieving OIDCUsername: %v", err)
-		return nil, time.Time{}, err
+		return nil, PrincipalConfig{}, time.Time{}, err
 	}
 	base.DebugfCtx(auth.LogCtx, base.KeyAuth, "OIDCUsername: %v", base.UD(username))
 
@@ -745,7 +745,7 @@ func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider
 	if provider.RolesClaim != "" {
 		oidcRoles, err = getJWTClaimAsSet(identity, provider.RolesClaim)
 		if err != nil {
-			return nil, time.Time{}, fmt.Errorf("failed to find OIDC roles: %w", err)
+			return nil, PrincipalConfig{}, time.Time{}, fmt.Errorf("failed to find OIDC roles: %w", err)
 		}
 	} else {
 		oidcRoles = base.Set{}
@@ -753,7 +753,7 @@ func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider
 	if provider.ChannelsClaim != "" {
 		oidcChannels, err = getJWTClaimAsSet(identity, provider.ChannelsClaim)
 		if err != nil {
-			return nil, time.Time{}, fmt.Errorf("failed to find OIDC channels: %w", err)
+			return nil, PrincipalConfig{}, time.Time{}, fmt.Errorf("failed to find OIDC channels: %w", err)
 		}
 	} else {
 		oidcChannels = base.Set{}
@@ -762,15 +762,7 @@ func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider
 	user, err = auth.GetUser(username)
 	if err != nil {
 		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error retrieving user for username %q: %v", base.UD(username), err)
-		return nil, time.Time{}, err
-	}
-
-	// If user found, check whether the email needs to be updated (e.g. user has changed email in external auth system)
-	if user != nil && identity.Email != "" && user.Email() != identity.Email {
-		err = auth.UpdateUserEmail(user, identity.Email)
-		if err != nil {
-			base.WarnfCtx(auth.LogCtx, "Unable to set user email to %v for OIDC", base.UD(identity.Email))
-		}
+		return nil, PrincipalConfig{}, time.Time{}, err
 	}
 
 	// Auto-registration. This will normally be done when token is originally returned
@@ -781,29 +773,22 @@ func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider
 		user, err = auth.RegisterNewUser(username, identity.Email)
 		if err != nil && !base.IsCasMismatch(err) {
 			base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error registering new user: %v", err)
-			return nil, time.Time{}, err
+			return nil, PrincipalConfig{}, time.Time{}, err
 		}
 	}
 
-	// Check if we need to grant or revoke access to any OIDC roles/channels
 	if user != nil {
-		if !user.OIDCRoles().Equals(oidcRoles) || !user.OIDCChannels().Equals(oidcChannels) {
-			if err := auth.UpdateUserOIDCRolesChannels(user, provider.Issuer, oidcRoles, oidcChannels); err != nil {
-				err = fmt.Errorf("failed to save updated OIDC roles/channels for %v: %w", base.UD(user.Name()).Redact(), err)
-				base.WarnfCtx(auth.LogCtx, "Unable to update OIDC user: %v", err)
-				return nil, time.Time{}, err
-			}
-			// Fetch the up-to-date roles/channels
-			user, err = auth.GetUser(user.Name())
-			if err != nil {
-				err = fmt.Errorf("failed to refresh updated OIDC user %v: %w", base.UD(user.Name()).Redact(), err)
-				base.WarnfCtx(auth.LogCtx, "Unable to update OIDC user: %v", err)
-				return nil, time.Time{}, err
-			}
+		name := user.Name()
+		updates = PrincipalConfig{
+			Name:         &name,
+			Email:        &identity.Email,
+			OIDCIssuer:   &provider.Issuer,
+			OIDCRoles:    oidcRoles,
+			OIDCChannels: oidcChannels,
 		}
 	}
 
-	return user, identity.Expiry, nil
+	return user, updates, identity.Expiry, nil
 }
 
 // Registers a new user account based on the given verified username and optional email address.
@@ -834,59 +819,4 @@ func (auth *Authenticator) RegisterNewUser(username, email string) (User, error)
 	}
 
 	return user, err
-}
-
-// UpdateUserOIDCRolesChannels saves the user's current OIDC roles/channels, and resulting implicit roles/channels,
-// to the database.
-func (auth *Authenticator) UpdateUserOIDCRolesChannels(user_ User, issuer string, newOIDCRoles, newOIDCChannels base.Set) error {
-	updateRolesChannelsCallback := func(currentPrincipal Principal) (updatedPrincipal Principal, err error) {
-		user, ok := currentPrincipal.(User)
-		if !ok {
-			return nil, base.ErrUpdateCancel
-		}
-
-		if user.OIDCIssuer() == issuer && user.OIDCChannels().Equals(newOIDCChannels) && user.OIDCRoles().Equals(newOIDCRoles) {
-			return nil, base.ErrUpdateCancel
-		}
-
-		nextSeq := user.Sequence() + 1
-		user.SetSequence(nextSeq)
-
-		// TODO: these calls to rebuildRoles/rebuildChannels are somewhat expensive (require access/role-access queries)
-		// and we could hit this more than once if we're inside a CAS-loop.
-
-		if user.OIDCIssuer() != issuer {
-			user.SetOIDCIssuer(issuer)
-		}
-		// newOIDCRoles/newOIDCChannels will have come from the new issuer, so no need to revoke and re-add
-
-		oidcChannels := user.OIDCChannels()
-		if oidcChannels == nil {
-			oidcChannels = ch.TimedSet{}
-		}
-		if !oidcChannels.Equals(newOIDCChannels) {
-			oidcChannels.UpdateAtSequence(newOIDCChannels, nextSeq)
-			user.SetOIDCChannels(oidcChannels, nextSeq)
-			if err := auth.rebuildRoles(user); err != nil {
-				return nil, fmt.Errorf("failed to rebuild roles for %v: %w", base.UD(user.Name()).Redact(), err)
-			}
-		}
-
-		oidcRoles := user.OIDCRoles()
-		if oidcRoles == nil {
-			oidcRoles = ch.TimedSet{}
-		}
-		if !oidcRoles.Equals(newOIDCRoles) {
-			oidcRoles.UpdateAtSequence(newOIDCRoles, nextSeq)
-			user.SetOIDCRoles(oidcRoles, nextSeq)
-			if err := auth.rebuildChannels(user); err != nil {
-				return nil, fmt.Errorf("failed to rebuild channels for %v: %w", base.UD(user.Name()).Redact(), err)
-			}
-		}
-
-		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Updating user %s OIDC roles/channels to: %v, %v", base.UD(user.Name()), base.UD(user.OIDCRoles()), base.UD(user.OIDCChannels()))
-		return user, nil
-	}
-
-	return auth.casUpdatePrincipal(user_, updateRolesChannelsCallback)
 }

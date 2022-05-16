@@ -107,16 +107,11 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 		if updatedExplicitChannels == nil {
 			updatedExplicitChannels = ch.TimedSet{}
 		}
-
-		updatedChannels := princ.ExplicitChannels()
-		if updatedChannels == nil {
-			updatedChannels = ch.TimedSet{}
-		}
 		if updates.ExplicitChannels != nil && !updatedExplicitChannels.Equals(updates.ExplicitChannels) {
 			changed = true
 		}
 
-		var updatedExplicitRoles ch.TimedSet
+		var updatedExplicitRoles, updatedOIDCRoles, updatedOIDCChannels ch.TimedSet
 
 		// Then the user-specific fields like roles:
 		if isUser {
@@ -145,6 +140,27 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 			if updates.ExplicitRoleNames != nil && !updatedExplicitRoles.Equals(updates.ExplicitRoleNames) {
 				changed = true
 			}
+
+			if updates.OIDCIssuer != nil && *updates.OIDCIssuer != user.OIDCIssuer() {
+				user.SetOIDCIssuer(*updates.OIDCIssuer)
+				changed = true
+			}
+
+			updatedOIDCRoles = user.OIDCRoles()
+			if updatedOIDCRoles == nil {
+				updatedOIDCRoles = ch.TimedSet{}
+			}
+			if updates.OIDCRoles != nil && !updatedOIDCRoles.Equals(updates.OIDCRoles) {
+				changed = true
+			}
+
+			updatedOIDCChannels = user.OIDCChannels()
+			if updatedOIDCChannels == nil {
+				updatedOIDCChannels = ch.TimedSet{}
+			}
+			if updates.OIDCChannels != nil && !updatedOIDCChannels.Equals(updates.OIDCChannels) {
+				changed = true
+			}
 		}
 
 		// And finally save the Principal if anything has changed:
@@ -169,6 +185,12 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 		if isUser {
 			if updates.ExplicitRoleNames != nil && updatedExplicitRoles.UpdateAtSequence(updates.ExplicitRoleNames, nextSeq) {
 				user.SetExplicitRoles(updatedExplicitRoles, nextSeq)
+			}
+			if updates.OIDCRoles != nil && updatedOIDCRoles.UpdateAtSequence(updates.OIDCRoles, nextSeq) {
+				user.SetOIDCRoles(updatedOIDCRoles, nextSeq)
+			}
+			if updates.OIDCChannels != nil && updatedOIDCChannels.UpdateAtSequence(updates.OIDCChannels, nextSeq) {
+				user.SetOIDCChannels(updatedOIDCChannels, nextSeq)
 			}
 		}
 		err = authenticator.Save(princ)

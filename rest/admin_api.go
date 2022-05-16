@@ -1188,9 +1188,9 @@ func marshalPrincipal(princ auth.Principal, includeDynamicGrantInfo bool) ([]byt
 		if includeDynamicGrantInfo {
 			info.Channels = user.InheritedChannels().AsSet()
 			info.RoleNames = user.RoleNames().AllKeys()
-			info.OIDCIssuer = user.OIDCIssuer()
-			info.OIDCRoles = user.OIDCRoles().AllKeys()
-			info.OIDCChannels = user.OIDCChannels().AllKeys()
+			info.OIDCIssuer = base.StringPtr(user.OIDCIssuer())
+			info.OIDCRoles = user.OIDCRoles().AsSet()
+			info.OIDCChannels = user.OIDCChannels().AsSet()
 		}
 	} else {
 		if includeDynamicGrantInfo {
@@ -1223,6 +1223,11 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 		} else if *newInfo.Name != name {
 			return base.HTTPErrorf(http.StatusBadRequest, "Name mismatch (can't change name)")
 		}
+	}
+
+	// NB: other read-only properties are ignored but no error is returned for backwards-compatibility
+	if newInfo.OIDCIssuer != nil || len(newInfo.OIDCRoles) > 0 || len(newInfo.OIDCChannels) > 0 {
+		return base.HTTPErrorf(http.StatusBadRequest, "Can't change read-only properties")
 	}
 
 	internalName := internalUserName(*newInfo.Name)

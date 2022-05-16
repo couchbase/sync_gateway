@@ -170,8 +170,11 @@ type PrincipalConfig struct {
 	Password          *string  `json:"password,omitempty"`
 	ExplicitRoleNames base.Set `json:"admin_roles,omitempty"`
 	// Fields below are read-only
-	Channels  base.Set `json:"all_channels,omitempty"`
-	RoleNames []string `json:"roles,omitempty"`
+	Channels     base.Set `json:"all_channels,omitempty"`
+	RoleNames    []string `json:"roles,omitempty"`
+	OIDCIssuer   *string  `json:"oidc_issuer,omitempty"`
+	OIDCRoles    base.Set `json:"oidc_roles,omitempty"`
+	OIDCChannels base.Set `json:"oidc_channels,omitempty"`
 }
 
 // IsPasswordValid checks if the passwords in this PrincipalConfig is valid.  Only allows
