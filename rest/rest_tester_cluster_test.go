@@ -22,7 +22,7 @@ type RestTesterCluster struct {
 // RefreshClusterDbConfigs will synchronously fetch the latest db configs from each bucket for each RestTester.
 func (rtc *RestTesterCluster) RefreshClusterDbConfigs() (count int, err error) {
 	for _, rt := range rtc.restTesters {
-		c, err := rt.ServerContext().fetchAndLoadConfigs()
+		c, err := rt.ServerContext().fetchAndLoadConfigs(false)
 		if err != nil {
 			return 0, err
 		}
