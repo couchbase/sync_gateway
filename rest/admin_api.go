@@ -1174,7 +1174,7 @@ func externalUserName(name string) string {
 	return name
 }
 
-func marshalPrincipal(princ auth.Principal, includeDynamicGrantInfo bool) ([]byte, error) {
+func marshalPrincipal(princ auth.Principal, includeDynamicGrantInfo bool) db.PrincipalConfig {
 	name := externalUserName(princ.Name())
 	info := auth.PrincipalConfig{
 		Name:             &name,
@@ -1197,7 +1197,7 @@ func marshalPrincipal(princ auth.Principal, includeDynamicGrantInfo bool) ([]byt
 			info.Channels = princ.Channels().AsSet()
 		}
 	}
-	return base.JSONMarshal(info)
+	return info
 }
 
 // Handles PUT and POST for a user or a role.
@@ -1300,7 +1300,25 @@ func (h *handler) getUserInfo() error {
 	}
 	// If not specified will default to false
 	includeDynamicGrantInfo := h.permissionsResults[PermReadPrincipalAppData.PermissionName]
-	bytes, err := marshalPrincipal(user, includeDynamicGrantInfo)
+	info := marshalPrincipal(user, includeDynamicGrantInfo)
+	// If the user's OIDC issuer is no longer valid, remove the OIDC information to avoid confusing users
+	// (it'll get removed permanently the next time the user signs in)
+	if info.OIDCIssuer != "" {
+		issuerValid := false
+		for _, provider := range h.db.OIDCProviders {
+			if provider.Issuer == info.OIDCIssuer {
+				issuerValid = true
+				break
+			}
+		}
+		if !issuerValid {
+			info.OIDCIssuer = ""
+			info.OIDCLastUpdated = time.Time{}
+			info.OIDCRoles = nil
+			info.OIDCChannels = nil
+		}
+	}
+	bytes, err := base.JSONMarshal(info)
 	h.writeRawJSON(bytes)
 	return err
 }
@@ -1316,7 +1334,8 @@ func (h *handler) getRoleInfo() error {
 	}
 	// If not specified will default to false
 	includeDynamicGrantInfo := h.permissionsResults[PermReadPrincipalAppData.PermissionName]
-	bytes, err := marshalPrincipal(role, includeDynamicGrantInfo)
+	info := marshalPrincipal(role, includeDynamicGrantInfo)
+	bytes, err := base.JSONMarshal(info)
 	_, _ = h.response.Write(bytes)
 	return err
 }
