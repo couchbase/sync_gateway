@@ -46,7 +46,7 @@ func (bucket *CouchbaseBucketGoCB) Keyspace() string {
 // Params specified using the $param notation in the statement are intended to be used w/ N1QL prepared statements, and will be
 // passed through as params to n1ql.  e.g.:
 //   SELECT _sync.sequence FROM $_keyspace WHERE _sync.sequence > $minSeq
-// https://developer.couchbase.com/documentation/server/current/sdk/go/n1ql-queries-with-sdk.html for additional details.
+// https://docs.couchbase.com/go-sdk/current/howtos/n1ql-queries-with-sdk.html for additional details.
 // Will additionally replace all instances of KeyspaceQueryToken($_keyspace) in the statement
 // with the bucket name.  'bucket' should not be included in params.
 //

@@ -29,17 +29,18 @@ type QueryIdRow struct {
 }
 
 const (
-	QueryTypeAccess       = "access"
-	QueryTypeRoleAccess   = "roleAccess"
-	QueryTypeChannels     = "channels"
-	QueryTypeChannelsStar = "channelsStar"
-	QueryTypeSequences    = "sequences"
-	QueryTypePrincipals   = "principals"
-	QueryTypeSessions     = "sessions"
-	QueryTypeTombstones   = "tombstones"
-	QueryTypeResync       = "resync"
-	QueryTypeAllDocs      = "allDocs"
-	QueryTypeUsers        = "users"
+	QueryTypeAccess                = "access"
+	QueryTypeRoleAccess            = "roleAccess"
+	QueryTypeChannels              = "channels"
+	QueryTypeChannelsStar          = "channelsStar"
+	QueryTypeSequences             = "sequences"
+	QueryTypePrincipals            = "principals"
+	QueryTypeSessions              = "sessions"
+	QueryTypeTombstones            = "tombstones"
+	QueryTypeResync                = "resync"
+	QueryTypeAllDocs               = "allDocs"
+	QueryTypeUsers                 = "users"
+	QueryTypeConnectedClientPrefix = "connectedClient:" // Prefix applied to named queries in config file
 )
 
 type SGQuery struct {

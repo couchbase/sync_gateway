@@ -131,17 +131,18 @@ type DatabaseContextOptions struct {
 	OIDCOptions                   *auth.OIDCOptions
 	DBOnlineCallback              DBOnlineCallback // Callback function to take the DB back online
 	ImportOptions                 ImportOptions
-	EnableXattr                   bool             // Use xattr for _sync
-	LocalDocExpirySecs            uint32           // The _local doc expiry time in seconds
-	SecureCookieOverride          bool             // Pass-through DBConfig.SecureCookieOverride
-	SessionCookieName             string           // Pass-through DbConfig.SessionCookieName
-	SessionCookieHttpOnly         bool             // Pass-through DbConfig.SessionCookieHTTPOnly
-	AllowConflicts                *bool            // False forbids creating conflicts
-	SendWWWAuthenticateHeader     *bool            // False disables setting of 'WWW-Authenticate' header
-	DisablePasswordAuthentication bool             // True enforces OIDC/guest only
-	UseViews                      bool             // Force use of views
-	DeltaSyncOptions              DeltaSyncOptions // Delta Sync Options
-	CompactInterval               uint32           // Interval in seconds between compaction is automatically ran - 0 means don't run
+	EnableXattr                   bool                    // Use xattr for _sync
+	LocalDocExpirySecs            uint32                  // The _local doc expiry time in seconds
+	SecureCookieOverride          bool                    // Pass-through DBConfig.SecureCookieOverride
+	SessionCookieName             string                  // Pass-through DbConfig.SessionCookieName
+	SessionCookieHttpOnly         bool                    // Pass-through DbConfig.SessionCookieHTTPOnly
+	ConnectedClientQueries        ConnectedClientQueryMap // Pass-through DbConfig.ConnectedClientQueries
+	AllowConflicts                *bool                   // False forbids creating conflicts
+	SendWWWAuthenticateHeader     *bool                   // False disables setting of 'WWW-Authenticate' header
+	DisablePasswordAuthentication bool                    // True enforces OIDC/guest only
+	UseViews                      bool                    // Force use of views
+	DeltaSyncOptions              DeltaSyncOptions        // Delta Sync Options
+	CompactInterval               uint32                  // Interval in seconds between compaction is automatically ran - 0 means don't run
 	SGReplicateOptions            SGReplicateOptions
 	SlowQueryWarningThreshold     time.Duration
 	QueryPaginationLimit          int    // Limit used for pagination of queries. If not set defaults to DefaultQueryPaginationLimit
@@ -203,6 +204,15 @@ type ImportOptions struct {
 	BackupOldRev     bool                  // Create temporary backup of old revision body when available
 	ImportPartitions uint16                // Number of partitions for import
 }
+
+// Defines a N1QL query that the Connected Client API can invoke by name.
+// (The name is the key in the map DatabaseContextOptions.ConnectedClientQueries.)
+type ConnectedClientQuery struct {
+	Statement  string   `json:"statement"`  // N1QL / SQL++ query string
+	Parameters []string `json:"parameters"` // Names of '$'-prefixed parameters in query
+}
+
+type ConnectedClientQueryMap = map[string]*ConnectedClientQuery
 
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,
 // so this struct does not have to be thread-safe.
@@ -1678,6 +1688,9 @@ func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOp
 			QueryTypeResync,
 			QueryTypeAllDocs,
 			QueryTypeUsers,
+		}
+		for name, _ := range options.ConnectedClientQueries {
+			queryNames = append(queryNames, QueryTypeConnectedClientPrefix+name)
 		}
 	}
 
