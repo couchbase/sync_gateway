@@ -1704,3 +1704,14 @@ func CoalesceBools(a, b *bool) *bool {
 	}
 	return nil
 }
+
+// CoalesceTimes returns the first non-nil argument, or nil if both are nil.
+func CoalesceTimes(a, b *time.Time) *time.Time {
+	if a != nil {
+		return a
+	}
+	if b != nil {
+		return b
+	}
+	return nil
+}

@@ -278,11 +278,12 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	// Note: checkAuth already does this check if the user authenticates with a bearer token, but we still need to recheck
 	// for users using session tokens / basic auth. However, updatePrincipal will be idempotent.
 	if h.user != nil && h.user.OIDCIssuer() != "" {
-		name := h.user.Name()
-		if err := h.maybeUpdateOIDCUser(dbContext, h.user, auth.PrincipalConfig{
-			Name: &name,
-		}); err != nil {
-			return err
+		updates := checkOIDCIssuerStillValid(h.ctx(), dbContext, h.user)
+		if updates != nil {
+			_, err := dbContext.UpdatePrincipal(h.ctx(), updates, true, true)
+			if err != nil {
+				return fmt.Errorf("failed to revoke stale OIDC roles/channels: %w", err)
+			}
 		}
 	}
 
@@ -459,8 +460,10 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 			if h.user == nil || authJwtErr != nil {
 				return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 			}
-			if err := h.maybeUpdateOIDCUser(dbCtx, h.user, updates); err != nil {
-				return err
+			updates = updates.Merge(checkOIDCIssuerStillValid(h.ctx(), dbCtx, h.user))
+			_, err := dbCtx.UpdatePrincipal(h.ctx(), &updates, true, true)
+			if err != nil {
+				return fmt.Errorf("failed to update OIDC user after sign-in: %w", err)
 			}
 			return nil
 		}
@@ -524,12 +527,10 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 	return nil
 }
 
-// maybeUpdateOIDCUser makes any changes necessary to the given user as a result of OIDC authentication.
-// It also verifies whether the user's OIDC issuer is still valid, and revokes their OIDC roles/channels if not.
-func (h *handler) maybeUpdateOIDCUser(dbCtx *db.DatabaseContext, user auth.User, updates auth.PrincipalConfig) error {
+func checkOIDCIssuerStillValid(ctx context.Context, dbCtx *db.DatabaseContext, user auth.User) *auth.PrincipalConfig {
 	issuer := user.OIDCIssuer()
-	if updates.OIDCIssuer != nil {
-		issuer = *updates.OIDCIssuer
+	if issuer == "" {
+		return nil
 	}
 	providerStillValid := false
 	for _, provider := range dbCtx.OIDCProviders {
@@ -540,15 +541,15 @@ func (h *handler) maybeUpdateOIDCUser(dbCtx *db.DatabaseContext, user auth.User,
 		}
 	}
 	if !providerStillValid {
-		base.InfofCtx(h.ctx(), base.KeyAuth, "User %v uses OIDC issuer %v which is no longer configured. Revoking OIDC roles/channels.", base.UD(user.Name()), base.UD(issuer))
-		updates = updates.Merge(auth.PrincipalConfig{
+		base.InfofCtx(ctx, base.KeyAuth, "User %v uses OIDC issuer %v which is no longer configured. Revoking OIDC roles/channels.", base.UD(user.Name()), base.UD(issuer))
+		return &auth.PrincipalConfig{
+			Name:         base.StringPtr(user.Name()),
 			OIDCIssuer:   base.StringPtr(""),
 			OIDCRoles:    base.Set{},
 			OIDCChannels: base.Set{},
-		})
+		}
 	}
-	_, err := dbCtx.UpdatePrincipal(h.ctx(), &updates, true, true)
-	return err
+	return nil
 }
 
 // checkAdminAuthenticationOnly simply checks whether a username / password combination is authenticated pulling the

@@ -1184,8 +1184,9 @@ func TestOIDCRolesChannels(t *testing.T) {
 
 			for i, login := range tc.logins {
 				var (
-					user User
-					err  error
+					user           User
+					err            error
+					lastUpdateTime time.Time
 				)
 				if i == 0 {
 					user, err = auth.NewUser(testUserPrefix+"_"+testSubject, "test", base.SetFromArray(login.explicitChannels))
@@ -1219,6 +1220,7 @@ func TestOIDCRolesChannels(t *testing.T) {
 				require.NotNil(t, user, "nil user")
 				user.SetOIDCChannels(ch.AtSequence(updates.OIDCChannels, user.Sequence()), user.Sequence())
 				user.SetOIDCRoles(ch.AtSequence(updates.OIDCRoles, user.Sequence()), user.Sequence())
+				user.SetOIDCLastUpdated(*updates.OIDCLastUpdated)
 
 				require.NoError(t, auth.rebuildRoles(user))
 				require.NoError(t, auth.rebuildChannels(user))
@@ -1229,6 +1231,9 @@ func TestOIDCRolesChannels(t *testing.T) {
 					require.Equal(t, base.SetFromArray(login.expectedRoles), user.RoleNames().AsSet())
 				}
 				require.Equal(t, base.SetFromArray(login.expectedChannels), user.Channels().AsSet())
+
+				require.Greater(t, user.OIDCLastUpdated(), lastUpdateTime)
+				lastUpdateTime = user.OIDCLastUpdated()
 			}
 		})
 	}

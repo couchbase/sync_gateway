@@ -9,6 +9,8 @@
 package auth
 
 import (
+	"time"
+
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 )
@@ -122,6 +124,8 @@ type User interface {
 	SetOIDCChannels(ch.TimedSet, uint64)
 	OIDCIssuer() string
 	SetOIDCIssuer(string)
+	OIDCLastUpdated() time.Time
+	SetOIDCLastUpdated(time.Time)
 
 	GetRoleInvalSeq() uint64
 
@@ -170,11 +174,12 @@ type PrincipalConfig struct {
 	Password          *string  `json:"password,omitempty"`
 	ExplicitRoleNames base.Set `json:"admin_roles,omitempty"`
 	// Fields below are read-only
-	Channels     base.Set `json:"all_channels,omitempty"`
-	RoleNames    []string `json:"roles,omitempty"`
-	OIDCIssuer   *string  `json:"oidc_issuer,omitempty"`
-	OIDCRoles    base.Set `json:"oidc_roles,omitempty"`
-	OIDCChannels base.Set `json:"oidc_channels,omitempty"`
+	Channels        base.Set   `json:"all_channels,omitempty"`
+	RoleNames       []string   `json:"roles,omitempty"`
+	OIDCIssuer      *string    `json:"oidc_issuer,omitempty"`
+	OIDCRoles       base.Set   `json:"oidc_roles,omitempty"`
+	OIDCChannels    base.Set   `json:"oidc_channels,omitempty"`
+	OIDCLastUpdated *time.Time `json:"oidc_last_updated,omitempty"`
 }
 
 // IsPasswordValid checks if the passwords in this PrincipalConfig is valid.  Only allows

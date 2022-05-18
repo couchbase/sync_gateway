@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"regexp"
 	"sync"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -45,6 +46,7 @@ type userImplBody struct {
 	OIDCRoles_       ch.TimedSet     `json:"oidc_roles,omitempty"`
 	OIDCChannels_    ch.TimedSet     `json:"oidc_channels,omitempty"`
 	OIDCIssuer_      string          `json:"oidc_issuer,omitempty"`
+	OIDCLastUpdated_ time.Time       `json:"oidc_last_updated_,omitempty"`
 	RolesSince_      ch.TimedSet     `json:"rolesSince"`
 	RoleInvalSeq     uint64          `json:"role_inval_seq,omitempty"` // Sequence at which the roles were invalidated. Data remains in RolesSince_ for history calculation.
 	RoleHistory_     TimedSetHistory `json:"role_history,omitempty"`   // Added to when a previously granted role is revoked. Calculated inside of rebuildRoles.
@@ -213,6 +215,14 @@ func (user *userImpl) OIDCIssuer() string {
 
 func (user *userImpl) SetOIDCIssuer(val string) {
 	user.OIDCIssuer_ = val
+}
+
+func (user *userImpl) OIDCLastUpdated() time.Time {
+	return user.OIDCLastUpdated_
+}
+
+func (user *userImpl) SetOIDCLastUpdated(val time.Time) {
+	user.OIDCLastUpdated_ = val
 }
 
 func (user *userImpl) SetRoleHistory(history TimedSetHistory) {

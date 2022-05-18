@@ -161,6 +161,10 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 			if updates.OIDCChannels != nil && !updatedOIDCChannels.Equals(updates.OIDCChannels) {
 				changed = true
 			}
+
+			if updates.OIDCLastUpdated != nil && !user.OIDCLastUpdated().Equal(*updates.OIDCLastUpdated) {
+				changed = true
+			}
 		}
 
 		// And finally save the Principal if anything has changed:
@@ -191,6 +195,9 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 			}
 			if updates.OIDCChannels != nil && updatedOIDCChannels.UpdateAtSequence(updates.OIDCChannels, nextSeq) {
 				user.SetOIDCChannels(updatedOIDCChannels, nextSeq)
+			}
+			if updates.OIDCLastUpdated != nil {
+				user.SetOIDCLastUpdated(*updates.OIDCLastUpdated)
 			}
 		}
 		err = authenticator.Save(princ)
