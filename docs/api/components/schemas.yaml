@@ -242,10 +242,35 @@ User:
       description: |-
         All the roles that the user has been granted access to.
 
-        Access could have been granted through the sync function, or explicitly on the user under the `admin_roles` property.
+        Access could have been granted through the sync function, OpenID Connect, or explicitly on the user under the `admin_roles` property.
       type: array
       items:
         type: string
+      readOnly: true
+    oidc_roles:
+      description: |-
+        The roles that the user has been added to through OpenID Connect.
+      type: array
+      items:
+        type: string
+      readOnly: true
+    oidc_channels:
+      description: |-
+        The channels that the user has been granted access to through OpenID Connect.
+      type: array
+      items:
+        type: string
+      readOnly: true
+    oidc_issuer:
+      description: |-
+        The OpenID Connect issuer that the user last used to sign in.
+      type: string
+      readOnly: true
+    oidc_last_updated:
+      description: |-
+        The last time that the user's OIDC roles/channels were updated.
+      type: string
+      format: date-time
       readOnly: true
   title: User
 Role:
