@@ -778,13 +778,14 @@ func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider
 	}
 
 	if user != nil {
-		name := user.Name()
+		now := time.Now()
 		updates = PrincipalConfig{
-			Name:         &name,
-			Email:        &identity.Email,
-			OIDCIssuer:   &provider.Issuer,
-			OIDCRoles:    oidcRoles,
-			OIDCChannels: oidcChannels,
+			Name:            base.StringPtr(user.Name()),
+			Email:           &identity.Email,
+			OIDCIssuer:      &provider.Issuer,
+			OIDCRoles:       oidcRoles,
+			OIDCChannels:    oidcChannels,
+			OIDCLastUpdated: &now,
 		}
 	}
 

@@ -1174,7 +1174,7 @@ func externalUserName(name string) string {
 	return name
 }
 
-func marshalPrincipal(princ auth.Principal, includeDynamicGrantInfo bool) db.PrincipalConfig {
+func marshalPrincipal(princ auth.Principal, includeDynamicGrantInfo bool) auth.PrincipalConfig {
 	name := externalUserName(princ.Name())
 	info := auth.PrincipalConfig{
 		Name:             &name,
@@ -1303,17 +1303,17 @@ func (h *handler) getUserInfo() error {
 	info := marshalPrincipal(user, includeDynamicGrantInfo)
 	// If the user's OIDC issuer is no longer valid, remove the OIDC information to avoid confusing users
 	// (it'll get removed permanently the next time the user signs in)
-	if info.OIDCIssuer != "" {
+	if info.OIDCIssuer != nil {
 		issuerValid := false
 		for _, provider := range h.db.OIDCProviders {
-			if provider.Issuer == info.OIDCIssuer {
+			if provider.Issuer == *info.OIDCIssuer {
 				issuerValid = true
 				break
 			}
 		}
 		if !issuerValid {
-			info.OIDCIssuer = ""
-			info.OIDCLastUpdated = time.Time{}
+			info.OIDCIssuer = nil
+			info.OIDCLastUpdated = nil
 			info.OIDCRoles = nil
 			info.OIDCChannels = nil
 		}

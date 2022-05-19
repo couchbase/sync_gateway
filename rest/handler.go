@@ -460,7 +460,9 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 			if h.user == nil || authJwtErr != nil {
 				return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 			}
-			updates = updates.Merge(checkOIDCIssuerStillValid(h.ctx(), dbCtx, h.user))
+			if changes := checkOIDCIssuerStillValid(h.ctx(), dbCtx, h.user); changes != nil {
+				updates = updates.Merge(*changes)
+			}
 			_, err := dbCtx.UpdatePrincipal(h.ctx(), &updates, true, true)
 			if err != nil {
 				return fmt.Errorf("failed to update OIDC user after sign-in: %w", err)
