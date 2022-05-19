@@ -1022,7 +1022,7 @@ func (sc *ServerContext) installPrincipals(dbc *db.DatabaseContext, spec map[str
 		logCtx := context.TODO()
 		createdPrincipal := true
 		worker := func() (shouldRetry bool, err error, value interface{}) {
-			_, err = dbc.UpdatePrincipal(context.Background(), *princ, (what == "user"), isGuest)
+			_, err = dbc.UpdatePrincipal(context.Background(), princ.AsPrincipalUpdates(), (what == "user"), isGuest)
 			if err != nil {
 				if status, _ := base.ErrorAsHTTPStatus(err); status == http.StatusConflict {
 					// Ignore and absorb this error if it's a conflict error, which just means that updatePrincipal didn't overwrite an existing user.

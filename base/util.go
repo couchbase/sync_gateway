@@ -1669,3 +1669,38 @@ func TerminateAndWaitForClose(terminator chan struct{}, done chan struct{}, time
 
 	return nil
 }
+
+// TODO: replace these with a generic implementation once we upgrade to Go 1.18
+
+// CoalesceStrings returns the first non-nil argument, or nil if both are nil.
+func CoalesceStrings(a, b *string) *string {
+	if a != nil {
+		return a
+	}
+	if b != nil {
+		return b
+	}
+	return nil
+}
+
+// CoalesceSets returns the first non-nil argument, or nil if both are nil.
+func CoalesceSets(a, b *Set) *Set {
+	if a != nil {
+		return a
+	}
+	if b != nil {
+		return b
+	}
+	return nil
+}
+
+// CoalesceBools returns the first non-nil argument, or nil if both are nil.
+func CoalesceBools(a, b *bool) *bool {
+	if a != nil {
+		return a
+	}
+	if b != nil {
+		return b
+	}
+	return nil
+}

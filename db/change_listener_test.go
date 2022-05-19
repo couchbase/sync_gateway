@@ -57,7 +57,7 @@ func TestUserWaiter(t *testing.T) {
 		Name:     &username,
 		Channels: base.SetFromArray([]string{"ABC", "DEF"}),
 	}
-	_, err = db.UpdatePrincipal(ctx, updatedUser, true, true)
+	_, err = db.UpdatePrincipal(ctx, updatedUser.AsPrincipalUpdates(), true, true)
 	require.NoError(t, err, "Error updating user")
 
 	// Wait for notification from grant
@@ -109,7 +109,7 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 		Name:              &username,
 		ExplicitRoleNames: []string{roleName},
 	}
-	_, err = db.UpdatePrincipal(ctx, updatedUser, true, true)
+	_, err = db.UpdatePrincipal(ctx, updatedUser.AsPrincipalUpdates(), true, true)
 	require.NoError(t, err, "Error updating user")
 
 	// Wait for notify from updated user
@@ -130,7 +130,7 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 		Name:     &roleName,
 		Channels: base.SetFromArray([]string{"ABC"}),
 	}
-	_, err = db.UpdatePrincipal(ctx, updatedRole, false, true)
+	_, err = db.UpdatePrincipal(ctx, updatedRole.AsPrincipalUpdates(), false, true)
 	require.NoError(t, err, "Error updating role")
 
 	// Wait for user notification of updated role

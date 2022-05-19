@@ -145,3 +145,68 @@ type User interface {
 
 	setRolesSince(ch.TimedSet)
 }
+
+// PrincipalUpdates represents a set of changes to a principal. It is meant for use with db.UpdatePrincipal, but is in
+// the auth package to avoid import cycles.
+// Name must always be specified, the other fields can be omitted to keep their current value.
+type PrincipalUpdates struct {
+	Name             string
+	ExplicitChannels *base.Set
+	// Users only
+	Email             *string
+	OIDCIssuer        *string
+	Password          *string
+	Disabled          *bool
+	ExplicitRoleNames *base.Set
+}
+
+// Merge returns a new PrincipalUpdates that represents the combination of both this and other's changes.
+// If any changes conflict, those of the other take precedence.
+func (u PrincipalUpdates) Merge(other PrincipalUpdates) PrincipalUpdates {
+	name := u.Name
+	if other.Name != "" {
+		name = other.Name
+	}
+	return PrincipalUpdates{
+		Name:              name,
+		ExplicitChannels:  base.CoalesceSets(other.ExplicitChannels, u.ExplicitChannels),
+		Email:             base.CoalesceStrings(other.Email, u.Email),
+		OIDCIssuer:        base.CoalesceStrings(other.OIDCIssuer, u.OIDCIssuer),
+		Password:          base.CoalesceStrings(other.Password, u.Password),
+		Disabled:          base.CoalesceBools(other.Disabled, u.Disabled),
+		ExplicitRoleNames: base.CoalesceSets(other.ExplicitRoleNames, u.ExplicitRoleNames),
+	}
+}
+
+// IsPasswordValid checks if the passwords in this PrincipalUpdates is valid.  Only allows
+// empty passwords if allowEmptyPass is true.
+func (u PrincipalUpdates) IsPasswordValid(allowEmptyPass bool) (isValid bool, reason string) {
+	// if it's an anon user, they should not have a password
+	if u.Name == "" {
+		if u.Password != nil {
+			return false, "Anonymous users should not have a password"
+		} else {
+			return true, ""
+		}
+	}
+
+	/*
+		if allowEmptyPass && ( u.Password == nil || len(*u.Password) == 0) {
+			return true, ""
+		}
+
+		if u.Password == nil || (u.Password != nil && len(*u.Password) < 3) {
+			return false, "Passwords must be at least three 3 characters"
+		}
+	*/
+
+	if u.Password == nil || len(*u.Password) == 0 {
+		if !allowEmptyPass {
+			return false, "Empty passwords are not allowed "
+		}
+	} else if len(*u.Password) < 3 {
+		return false, "Passwords must be at least three 3 characters"
+	}
+
+	return true, ""
+}

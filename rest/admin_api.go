@@ -1223,7 +1223,7 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 
 	internalName := internalUserName(*newInfo.Name)
 	newInfo.Name = &internalName
-	replaced, err := h.db.UpdatePrincipal(h.db.Ctx, newInfo, isUser, h.rq.Method != "POST")
+	replaced, err := h.db.UpdatePrincipal(h.db.Ctx, newInfo.AsPrincipalUpdates(), isUser, h.rq.Method != "POST")
 	if err != nil {
 		return err
 	} else if replaced {
