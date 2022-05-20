@@ -300,6 +300,11 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		return nil, err
 	}
 
+	if autoImport {
+		// Register the cbgt pindex type for the configGroup
+		RegisterImportPindexImpl(options.GroupID)
+	}
+
 	dbContext := &DatabaseContext{
 		Name:       dbName,
 		UUID:       cbgt.NewUUID(),

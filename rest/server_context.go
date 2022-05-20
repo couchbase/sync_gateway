@@ -782,9 +782,6 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		sendWWWAuthenticate = base.BoolPtr(false)
 	}
 
-	// Register the cbgt pindex type for the configGroup
-	db.RegisterImportPindexImpl(groupID)
-
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:                  &cacheOptions,
 		RevisionCacheOptions:          revCacheOptions,

@@ -67,9 +67,7 @@ func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptio
 func setupTestDBWithOptionsAndImport(t testing.TB, dbcOptions DatabaseContextOptions) *Database {
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	if dbcOptions.GroupID == "" && base.IsEnterpriseEdition() {
-		// TODO: Once RegisterImportPindexImpl is moved into NewDatabaseContext this won't be necessary
 		dbcOptions.GroupID = t.Name()
-		RegisterImportPindexImpl(t.Name())
 	}
 	context, err := NewDatabaseContext("db", base.GetTestBucket(t), true, dbcOptions)
 	require.NoError(t, err, "Couldn't create context for database 'db'")
