@@ -127,8 +127,8 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 
 	// Update the role to grant a new channel
 	updatedRole := PrincipalConfig{
-		Name:     &roleName,
-		Channels: base.SetFromArray([]string{"ABC"}),
+		Name:             &roleName,
+		ExplicitChannels: base.SetFromArray([]string{"DEF"}),
 	}
 	_, err = db.UpdatePrincipal(ctx, updatedRole.AsPrincipalUpdates(), false, true)
 	require.NoError(t, err, "Error updating role")
