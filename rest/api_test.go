@@ -96,7 +96,7 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				DisablePasswordAuth: true,
-				Guest: &db.PrincipalConfig{
+				Guest: &auth.PrincipalConfig{
 					Disabled: base.BoolPtr(true),
 				},
 			},

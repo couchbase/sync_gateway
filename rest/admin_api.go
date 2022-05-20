@@ -1176,14 +1176,15 @@ func externalUserName(name string) string {
 
 func marshalPrincipal(princ auth.Principal, includeDynamicGrantInfo bool) ([]byte, error) {
 	name := externalUserName(princ.Name())
-	info := db.PrincipalConfig{
+	info := auth.PrincipalConfig{
 		Name:             &name,
 		ExplicitChannels: princ.ExplicitChannels().AsSet(),
 	}
 	if user, ok := princ.(auth.User); ok {
-		info.Email = user.Email()
+		email := user.Email()
+		info.Email = &email
 		info.Disabled = base.BoolPtr(user.Disabled())
-		info.ExplicitRoleNames = user.ExplicitRoles().AllKeys()
+		info.ExplicitRoleNames = user.ExplicitRoles().AsSet()
 		if includeDynamicGrantInfo {
 			info.Channels = user.InheritedChannels().AsSet()
 			info.RoleNames = user.RoleNames().AllKeys()
@@ -1201,7 +1202,7 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	h.assertAdminOnly()
 	// Unmarshal the request body into a PrincipalConfig struct:
 	body, _ := h.readBody()
-	var newInfo db.PrincipalConfig
+	var newInfo auth.PrincipalConfig
 	var err error
 	if err = base.JSONUnmarshal(body, &newInfo); err != nil {
 		return err
@@ -1223,7 +1224,7 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 
 	internalName := internalUserName(*newInfo.Name)
 	newInfo.Name = &internalName
-	replaced, err := h.db.UpdatePrincipal(h.db.Ctx, newInfo.AsPrincipalUpdates(), isUser, h.rq.Method != "POST")
+	replaced, err := h.db.UpdatePrincipal(h.db.Ctx, &newInfo, isUser, h.rq.Method != "POST")
 	if err != nil {
 		return err
 	} else if replaced {

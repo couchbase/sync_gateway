@@ -116,7 +116,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	userInfo, err := db.GetPrincipalForTest(t, "naomi", true)
 	assert.True(t, userInfo != nil)
 	userInfo.ExplicitChannels = base.SetOf("ABC", "PBS")
-	_, err = db.UpdatePrincipal(base.TestCtx(t), userInfo.AsPrincipalUpdates(), true, true)
+	_, err = db.UpdatePrincipal(base.TestCtx(t), userInfo, true, true)
 	assert.NoError(t, err, "UpdatePrincipal failed")
 
 	err = db.WaitForPendingChanges(base.TestCtx(t))

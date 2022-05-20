@@ -889,7 +889,7 @@ func TestUpdatePrincipal(t *testing.T) {
 	// Validate that a call to UpdatePrincipals with no changes to the user doesn't allocate a sequence
 	userInfo, err := db.GetPrincipalForTest(t, "naomi", true)
 	userInfo.ExplicitChannels = base.SetOf("ABC")
-	_, err = db.UpdatePrincipal(base.TestCtx(t), userInfo.AsPrincipalUpdates(), true, true)
+	_, err = db.UpdatePrincipal(base.TestCtx(t), userInfo, true, true)
 	assert.NoError(t, err, "Unable to update principal")
 
 	nextSeq, err := db.sequences.nextSequence()
@@ -898,7 +898,7 @@ func TestUpdatePrincipal(t *testing.T) {
 	// Validate that a call to UpdatePrincipals with changes to the user does allocate a sequence
 	userInfo, err = db.GetPrincipalForTest(t, "naomi", true)
 	userInfo.ExplicitChannels = base.SetOf("ABC", "PBS")
-	_, err = db.UpdatePrincipal(base.TestCtx(t), userInfo.AsPrincipalUpdates(), true, true)
+	_, err = db.UpdatePrincipal(base.TestCtx(t), userInfo, true, true)
 	assert.NoError(t, err, "Unable to update principal")
 
 	nextSeq, err = db.sequences.nextSequence()

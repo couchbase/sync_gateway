@@ -146,43 +146,27 @@ type User interface {
 	setRolesSince(ch.TimedSet)
 }
 
-// PrincipalUpdates represents a set of changes to a principal. It is meant for use with db.UpdatePrincipal, but is in
-// the auth package to avoid import cycles.
-// Name must always be specified, the other fields can be omitted to keep their current value.
-type PrincipalUpdates struct {
-	Name             string
-	ExplicitChannels base.Set
-	// Users only
-	Email             *string
-	OIDCIssuer        *string
-	Password          *string
-	Disabled          *bool
-	ExplicitRoleNames base.Set
+// PrincipalConfig represents a user/role as a JSON object.
+// Used to define a user/role within DbConfig, and structures the request/response body in the admin REST API
+// for /db/_user/*
+type PrincipalConfig struct {
+	Name             *string  `json:"name,omitempty"`
+	ExplicitChannels base.Set `json:"admin_channels,omitempty"`
+	// Fields below only apply to Users, not Roles:
+	Email             *string  `json:"email,omitempty"`
+	Disabled          *bool    `json:"disabled,omitempty"`
+	Password          *string  `json:"password,omitempty"`
+	ExplicitRoleNames base.Set `json:"admin_roles,omitempty"`
+	// Fields below are read-only
+	Channels  base.Set `json:"all_channels,omitempty"`
+	RoleNames []string `json:"roles,omitempty"`
 }
 
-// Merge returns a new PrincipalUpdates that represents the combination of both this and other's changes.
-// If any changes conflict, those of the other take precedence.
-func (u PrincipalUpdates) Merge(other PrincipalUpdates) PrincipalUpdates {
-	name := u.Name
-	if other.Name != "" {
-		name = other.Name
-	}
-	return PrincipalUpdates{
-		Name:              name,
-		ExplicitChannels:  base.CoalesceSets(other.ExplicitChannels, u.ExplicitChannels),
-		Email:             base.CoalesceStrings(other.Email, u.Email),
-		OIDCIssuer:        base.CoalesceStrings(other.OIDCIssuer, u.OIDCIssuer),
-		Password:          base.CoalesceStrings(other.Password, u.Password),
-		Disabled:          base.CoalesceBools(other.Disabled, u.Disabled),
-		ExplicitRoleNames: base.CoalesceSets(other.ExplicitRoleNames, u.ExplicitRoleNames),
-	}
-}
-
-// IsPasswordValid checks if the passwords in this PrincipalUpdates is valid.  Only allows
+// IsPasswordValid checks if the passwords in this PrincipalConfig is valid.  Only allows
 // empty passwords if allowEmptyPass is true.
-func (u PrincipalUpdates) IsPasswordValid(allowEmptyPass bool) (isValid bool, reason string) {
+func (u PrincipalConfig) IsPasswordValid(allowEmptyPass bool) (isValid bool, reason string) {
 	// if it's an anon user, they should not have a password
-	if u.Name == "" {
+	if u.Name == nil {
 		if u.Password != nil {
 			return false, "Anonymous users should not have a password"
 		} else {
@@ -209,4 +193,21 @@ func (u PrincipalUpdates) IsPasswordValid(allowEmptyPass bool) (isValid bool, re
 	}
 
 	return true, ""
+}
+
+// Merge returns a new PrincipalConfig that represents the combination of both this and other's changes.
+// If any changes conflict, those of the other take precedence.
+func (u PrincipalConfig) Merge(other PrincipalConfig) PrincipalConfig {
+	name := u.Name
+	if other.Name != nil {
+		name = other.Name
+	}
+	return PrincipalConfig{
+		Name:              name,
+		ExplicitChannels:  base.CoalesceSets(other.ExplicitChannels, u.ExplicitChannels),
+		Email:             base.CoalesceStrings(other.Email, u.Email),
+		Password:          base.CoalesceStrings(other.Password, u.Password),
+		Disabled:          base.CoalesceBools(other.Disabled, u.Disabled),
+		ExplicitRoleNames: base.CoalesceSets(other.ExplicitRoleNames, u.ExplicitRoleNames),
+	}
 }

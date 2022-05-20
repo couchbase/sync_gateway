@@ -14,6 +14,7 @@ import (
 	"log"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/assert"
@@ -53,11 +54,11 @@ func TestUserWaiter(t *testing.T) {
 	require.True(t, WaitForUserWaiterChange(userWaiter))
 
 	// Update the user to grant new channel
-	updatedUser := PrincipalConfig{
+	updatedUser := auth.PrincipalConfig{
 		Name:             &username,
 		ExplicitChannels: base.SetFromArray([]string{"ABC", "DEF"}),
 	}
-	_, err = db.UpdatePrincipal(ctx, updatedUser.AsPrincipalUpdates(), true, true)
+	_, err = db.UpdatePrincipal(ctx, &updatedUser, true, true)
 	require.NoError(t, err, "Error updating user")
 
 	// Wait for notification from grant
@@ -105,11 +106,11 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 	require.True(t, WaitForUserWaiterChange(userWaiter))
 
 	// Update the user to grant role
-	updatedUser := PrincipalConfig{
+	updatedUser := auth.PrincipalConfig{
 		Name:              &username,
-		ExplicitRoleNames: []string{roleName},
+		ExplicitRoleNames: base.SetOf(roleName),
 	}
-	_, err = db.UpdatePrincipal(ctx, updatedUser.AsPrincipalUpdates(), true, true)
+	_, err = db.UpdatePrincipal(ctx, &updatedUser, true, true)
 	require.NoError(t, err, "Error updating user")
 
 	// Wait for notify from updated user
@@ -126,11 +127,11 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 	userWaiter.RefreshUserKeys(userRefresh)
 
 	// Update the role to grant a new channel
-	updatedRole := PrincipalConfig{
+	updatedRole := auth.PrincipalConfig{
 		Name:             &roleName,
 		ExplicitChannels: base.SetFromArray([]string{"DEF"}),
 	}
-	_, err = db.UpdatePrincipal(ctx, updatedRole.AsPrincipalUpdates(), false, true)
+	_, err = db.UpdatePrincipal(ctx, &updatedRole, false, true)
 	require.NoError(t, err, "Error updating role")
 
 	// Wait for user notification of updated role

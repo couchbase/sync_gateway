@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
@@ -21,7 +22,7 @@ func TestUsersAPI(t *testing.T) {
 			DbConfig: DbConfig{
 				QueryPaginationLimit: base.IntPtr(5),
 				// Disable the guest user to support testing the zero user boundary condition
-				Guest: &db.PrincipalConfig{
+				Guest: &auth.PrincipalConfig{
 					Disabled: base.BoolPtr(false),
 				},
 			},
@@ -74,7 +75,7 @@ func TestUsersAPIDetailsViews(t *testing.T) {
 			DbConfig: DbConfig{
 				QueryPaginationLimit: base.IntPtr(5),
 				// Disable the guest user to support testing the zero user boundary condition
-				Guest: &db.PrincipalConfig{
+				Guest: &auth.PrincipalConfig{
 					Disabled: base.BoolPtr(false),
 				},
 			},
@@ -102,7 +103,7 @@ func TestUsersAPIDetails(t *testing.T) {
 			DbConfig: DbConfig{
 				QueryPaginationLimit: base.IntPtr(5),
 				// Disable the guest user to support testing the zero user boundary condition
-				Guest: &db.PrincipalConfig{
+				Guest: &auth.PrincipalConfig{
 					Disabled: base.BoolPtr(false),
 				},
 			},
@@ -112,7 +113,7 @@ func TestUsersAPIDetails(t *testing.T) {
 	defer rt.Close()
 
 	// Validate the zero user case
-	var responseUsers []db.PrincipalConfig
+	var responseUsers []auth.PrincipalConfig
 	response := rt.SendAdminRequest("GET", "/db/_user/?"+paramNameOnly+"=false", "")
 	assertStatus(t, response, 200)
 	err := json.Unmarshal(response.Body.Bytes(), &responseUsers)
@@ -165,7 +166,7 @@ func TestUsersAPIDetailsWithLimit(t *testing.T) {
 			DbConfig: DbConfig{
 				QueryPaginationLimit: base.IntPtr(5),
 				// Disable the guest user to support testing the zero user boundary condition
-				Guest: &db.PrincipalConfig{
+				Guest: &auth.PrincipalConfig{
 					Disabled: base.BoolPtr(false),
 				},
 			},
@@ -175,7 +176,7 @@ func TestUsersAPIDetailsWithLimit(t *testing.T) {
 	defer rt.Close()
 
 	// Validate the zero user case with limit
-	var responseUsers []db.PrincipalConfig
+	var responseUsers []auth.PrincipalConfig
 	response := rt.SendAdminRequest("GET", "/db/_user/?"+paramNameOnly+"=false&"+paramLimit+"=10", "")
 	assertStatus(t, response, 200)
 	err := json.Unmarshal(response.Body.Bytes(), &responseUsers)

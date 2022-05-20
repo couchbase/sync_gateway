@@ -20,35 +20,6 @@ import (
 	ch "github.com/couchbase/sync_gateway/channels"
 )
 
-// PrincipalConfig represents a user/role as a JSON object.
-// Used to define a user/role within DbConfig, and structures the request/response body in the admin REST API
-// for /db/_user/*
-type PrincipalConfig struct {
-	Name             *string  `json:"name,omitempty"`
-	ExplicitChannels base.Set `json:"admin_channels,omitempty"`
-	// Fields below only apply to Users, not Roles:
-	Email             string   `json:"email,omitempty"`
-	Disabled          *bool    `json:"disabled,omitempty"`
-	Password          *string  `json:"password,omitempty"`
-	ExplicitRoleNames []string `json:"admin_roles,omitempty"`
-	// Fields below are read-only
-	Channels  base.Set `json:"all_channels,omitempty"`
-	RoleNames []string `json:"roles,omitempty"`
-}
-
-// AsPrincipalUpdates converts this PrincipalConfig into a PrincipalUpdates structure.
-func (p PrincipalConfig) AsPrincipalUpdates() auth.PrincipalUpdates {
-	roles := base.SetFromArray(p.ExplicitRoleNames)
-	return auth.PrincipalUpdates{
-		Name:              *p.Name,
-		ExplicitChannels:  p.ExplicitChannels,
-		Email:             base.StringPtr(p.Email),
-		Disabled:          p.Disabled,
-		Password:          p.Password,
-		ExplicitRoleNames: roles,
-	}
-}
-
 func (db *DatabaseContext) DeleteRole(ctx context.Context, name string, purge bool) error {
 	authenticator := db.Authenticator(ctx)
 
@@ -69,8 +40,8 @@ func (db *DatabaseContext) DeleteRole(ctx context.Context, name string, purge bo
 	return authenticator.DeleteRole(role, purge, seq)
 }
 
-// UpdatePrincipal updates or creates a principal from auth.PrincipalUpdates structure.
-func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates auth.PrincipalUpdates, isUser bool, allowReplace bool) (replaced bool, err error) {
+// UpdatePrincipal updates or creates a principal from a PrincipalConfig structure.
+func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.PrincipalConfig, isUser bool, allowReplace bool) (replaced bool, err error) {
 	// Get the existing principal, or if this is a POST make sure there isn't one:
 	var princ auth.Principal
 	var user auth.User
@@ -80,10 +51,10 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates auth.Pr
 	// to PrincipalUpdateMaxCasRetries defensively to avoid unexpected retry loops.
 	for i := 1; i <= auth.PrincipalUpdateMaxCasRetries; i++ {
 		if isUser {
-			user, err = authenticator.GetUser(updates.Name)
+			user, err = authenticator.GetUser(*updates.Name)
 			princ = user
 		} else {
-			princ, err = authenticator.GetRole(updates.Name)
+			princ, err = authenticator.GetRole(*updates.Name)
 		}
 		if err != nil {
 			return replaced, err
@@ -92,7 +63,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates auth.Pr
 		changed := false
 		replaced = (princ != nil)
 		if !replaced {
-			if updates.Name == "" {
+			if updates.Name == nil || *updates.Name == "" {
 				return replaced, fmt.Errorf("UpdatePrincipal: cannot create principal with empty name")
 			}
 			// If user/role didn't exist already, instantiate a new one:
@@ -102,10 +73,10 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates auth.Pr
 					err = base.HTTPErrorf(http.StatusBadRequest, "Error creating user: %s", reason)
 					return replaced, err
 				}
-				user, err = authenticator.NewUser(updates.Name, "", nil)
+				user, err = authenticator.NewUser(*updates.Name, "", nil)
 				princ = user
 			} else {
-				princ, err = authenticator.NewRole(updates.Name, nil)
+				princ, err = authenticator.NewRole(*updates.Name, nil)
 			}
 			if err != nil {
 				return replaced, fmt.Errorf("Error creating user/role: %w", err)
