@@ -1684,7 +1684,7 @@ func CoalesceStrings(a, b *string) *string {
 }
 
 // CoalesceSets returns the first non-nil argument, or nil if both are nil.
-func CoalesceSets(a, b *Set) *Set {
+func CoalesceSets(a, b Set) Set {
 	if a != nil {
 		return a
 	}

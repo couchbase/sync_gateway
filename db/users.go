@@ -31,9 +31,9 @@ type PrincipalConfig struct {
 	Disabled          *bool    `json:"disabled,omitempty"`
 	Password          *string  `json:"password,omitempty"`
 	ExplicitRoleNames []string `json:"admin_roles,omitempty"`
-	RoleNames         []string `json:"roles,omitempty"`
 	// Fields below are read-only
-	Channels base.Set `json:"all_channels,omitempty"`
+	Channels        base.Set  `json:"all_channels,omitempty"`
+	RoleNames       []string  `json:"roles,omitempty"`
 }
 
 // AsPrincipalUpdates converts this PrincipalConfig into a PrincipalUpdates structure.
@@ -41,11 +41,11 @@ func (p PrincipalConfig) AsPrincipalUpdates() auth.PrincipalUpdates {
 	roles := base.SetFromArray(p.ExplicitRoleNames)
 	return auth.PrincipalUpdates{
 		Name:              *p.Name,
-		ExplicitChannels:  &p.ExplicitChannels,
+		ExplicitChannels:  p.ExplicitChannels,
 		Email:             base.StringPtr(p.Email),
 		Disabled:          p.Disabled,
 		Password:          p.Password,
-		ExplicitRoleNames: &roles,
+		ExplicitRoleNames: roles,
 	}
 }
 
@@ -126,7 +126,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates auth.Pr
 		if updatedExplicitChannels == nil {
 			updatedExplicitChannels = ch.TimedSet{}
 		}
-		if updates.ExplicitChannels != nil && !updatedExplicitChannels.Equals(*updates.ExplicitChannels) {
+		if updates.ExplicitChannels != nil && !updatedExplicitChannels.Equals(updates.ExplicitChannels) {
 			changed = true
 		}
 
@@ -156,7 +156,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates auth.Pr
 			if updatedExplicitRoles == nil {
 				updatedExplicitRoles = ch.TimedSet{}
 			}
-			if updates.ExplicitRoleNames != nil && !updatedExplicitRoles.Equals(*updates.ExplicitRoleNames) {
+			if updates.ExplicitRoleNames != nil && !updatedExplicitRoles.Equals(updates.ExplicitRoleNames) {
 				changed = true
 			}
 		}
@@ -176,12 +176,12 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates auth.Pr
 		princ.SetSequence(nextSeq)
 
 		// Now update the Principal object from the properties in the request, first the channels:
-		if updates.ExplicitChannels != nil && updatedExplicitChannels.UpdateAtSequence(*updates.ExplicitChannels, nextSeq) {
+		if updates.ExplicitChannels != nil && updatedExplicitChannels.UpdateAtSequence(updates.ExplicitChannels, nextSeq) {
 			princ.SetExplicitChannels(updatedExplicitChannels, nextSeq)
 		}
 
 		if isUser {
-			if updates.ExplicitRoleNames != nil && updatedExplicitRoles.UpdateAtSequence(*updates.ExplicitRoleNames, nextSeq) {
+			if updates.ExplicitRoleNames != nil && updatedExplicitRoles.UpdateAtSequence(updates.ExplicitRoleNames, nextSeq) {
 				user.SetExplicitRoles(updatedExplicitRoles, nextSeq)
 			}
 		}

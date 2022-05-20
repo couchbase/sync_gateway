@@ -151,13 +151,13 @@ type User interface {
 // Name must always be specified, the other fields can be omitted to keep their current value.
 type PrincipalUpdates struct {
 	Name             string
-	ExplicitChannels *base.Set
+	ExplicitChannels base.Set
 	// Users only
 	Email             *string
 	OIDCIssuer        *string
 	Password          *string
 	Disabled          *bool
-	ExplicitRoleNames *base.Set
+	ExplicitRoleNames base.Set
 }
 
 // Merge returns a new PrincipalUpdates that represents the combination of both this and other's changes.

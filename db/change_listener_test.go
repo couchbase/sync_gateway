@@ -54,8 +54,8 @@ func TestUserWaiter(t *testing.T) {
 
 	// Update the user to grant new channel
 	updatedUser := PrincipalConfig{
-		Name:     &username,
-		Channels: base.SetFromArray([]string{"ABC", "DEF"}),
+		Name:             &username,
+		ExplicitChannels: base.SetFromArray([]string{"ABC", "DEF"}),
 	}
 	_, err = db.UpdatePrincipal(ctx, updatedUser.AsPrincipalUpdates(), true, true)
 	require.NoError(t, err, "Error updating user")
