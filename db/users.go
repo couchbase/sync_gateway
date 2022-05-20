@@ -32,8 +32,8 @@ type PrincipalConfig struct {
 	Password          *string  `json:"password,omitempty"`
 	ExplicitRoleNames []string `json:"admin_roles,omitempty"`
 	// Fields below are read-only
-	Channels        base.Set  `json:"all_channels,omitempty"`
-	RoleNames       []string  `json:"roles,omitempty"`
+	Channels  base.Set `json:"all_channels,omitempty"`
+	RoleNames []string `json:"roles,omitempty"`
 }
 
 // AsPrincipalUpdates converts this PrincipalConfig into a PrincipalUpdates structure.
