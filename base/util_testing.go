@@ -200,6 +200,25 @@ func TestTLSSkipVerify() bool {
 	return val
 }
 
+func TestX509LocalServer() (bool, string) {
+	testX509LocalServer, isSet := os.LookupEnv(TestEnvX509Local)
+	if !isSet {
+		return false, ""
+	}
+
+	val, err := strconv.ParseBool(testX509LocalServer)
+	if err != nil {
+		panic(fmt.Sprintf("unable to parse %q value %q: %v", TestEnvX509Local, testX509LocalServer, err))
+	}
+
+	username, isSet := os.LookupEnv(TestEnvX509LocalUser)
+	if !isSet {
+		panic(fmt.Sprintf("TestEnvX509LocalUser must be set when TestEnvX509Local=true"))
+	}
+
+	return val, username
+}
+
 // Should tests try to drop GSI indexes before flushing buckets?
 // See SG #3422
 func TestsShouldDropIndexes() bool {
