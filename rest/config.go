@@ -640,26 +640,16 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		base.WarnfCtx(ctx, `"pool" config option is not supported. The pool will be set to "default". The option should be removed from config file.`)
 	}
 
-	if dbConfig.Sync != nil {
-		if strings.TrimSpace(*dbConfig.Sync) != "" {
-			_, err = sgbucket.NewJSRunner(*dbConfig.Sync)
-			if err != nil {
-				multiError = multiError.Append(fmt.Errorf("sync function contains invalid javascript syntax: %v", err))
-			}
-		} else {
-			dbConfig.Sync = nil
-		}
+	if isEmpty, err := validateJavascriptFunction(dbConfig.Sync); err != nil {
+		multiError = multiError.Append(fmt.Errorf("sync function error: %w", err))
+	} else if isEmpty {
+		dbConfig.Sync = nil
 	}
 
-	if dbConfig.ImportFilter != nil {
-		if strings.TrimSpace(*dbConfig.ImportFilter) != "" {
-			_, err = sgbucket.NewJSRunner(*dbConfig.ImportFilter)
-			if err != nil {
-				multiError = multiError.Append(fmt.Errorf("import filter function contains invalid javascript syntax: %v", err))
-			}
-		} else {
-			dbConfig.ImportFilter = nil
-		}
+	if isEmpty, err := validateJavascriptFunction(dbConfig.ImportFilter); err != nil {
+		multiError = multiError.Append(fmt.Errorf("import filter error: %w", err))
+	} else if isEmpty {
+		dbConfig.ImportFilter = nil
 	}
 
 	if err := db.ValidateDatabaseName(dbConfig.Name); err != nil {
@@ -740,21 +730,15 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 
 		// validate each collection's config
 		for collectionName, collectionConfig := range scopeConfig.Collections {
-			if strings.TrimSpace(*collectionConfig.SyncFn) != "" {
-				_, err = sgbucket.NewJSRunner(*collectionConfig.SyncFn)
-				if err != nil {
-					multiError = multiError.Append(fmt.Errorf("collection %q sync function contains invalid javascript syntax: %v", collectionName, err))
-				}
-			} else {
+			if isEmpty, err := validateJavascriptFunction(collectionConfig.SyncFn); err != nil {
+				multiError = multiError.Append(fmt.Errorf("collection %q sync function error: %w", collectionName, err))
+			} else if isEmpty {
 				collectionConfig.SyncFn = nil
 			}
 
-			if strings.TrimSpace(*collectionConfig.ImportFilter) != "" {
-				_, err = sgbucket.NewJSRunner(*collectionConfig.ImportFilter)
-				if err != nil {
-					multiError = multiError.Append(fmt.Errorf("collection %q import filter contains invalid javascript syntax: %v", collectionName, err))
-				}
-			} else {
+			if isEmpty, err := validateJavascriptFunction(collectionConfig.ImportFilter); err != nil {
+				multiError = multiError.Append(fmt.Errorf("collection %q import filter error: %w", collectionName, err))
+			} else if isEmpty {
 				collectionConfig.ImportFilter = nil
 			}
 		}
@@ -840,6 +824,17 @@ func (dbConfig *DbConfig) deprecatedConfigCacheFallback() (warnings []string) {
 
 	return warnings
 
+}
+
+// validateJavascriptFunction returns an error if the javascript function was invalid, if set.
+func validateJavascriptFunction(jsFunc *string) (isEmpty bool, err error) {
+	if jsFunc != nil && strings.TrimSpace(*jsFunc) != "" {
+		if _, err := sgbucket.NewJSRunner(*jsFunc); err != nil {
+			return false, fmt.Errorf("invalid javascript syntax: %w", err)
+		}
+		return false, nil
+	}
+	return true, nil
 }
 
 // Implementation of AuthHandler interface for DbConfig
