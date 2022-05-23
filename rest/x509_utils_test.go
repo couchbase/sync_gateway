@@ -12,6 +12,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -299,6 +300,64 @@ func loadCertsIntoCouchbaseServer(couchbaseServerURL url.URL, ca *caPair, node *
 	return nil
 }
 
+// loadCertsIntoLocalCouchbaseServer will upload the given certs into Couchbase Server (via SSH and the REST API)
+func loadCertsIntoLocalCouchbaseServer(couchbaseServerURL url.URL, ca *caPair, node *nodePair, localMacOSUser string) error {
+
+	localMacOSCouchbaseServerInbox := "/Users/" + localMacOSUser + "/Library/Application Support/Couchbase/var/lib/couchbase/inbox"
+
+	// Copy node cert and key
+	err := copyLocalFile(node.PEMFilepath, localMacOSCouchbaseServerInbox)
+	if err != nil {
+		return err
+	}
+	logCtx := context.Background()
+	base.DebugfCtx(logCtx, base.KeyAll, "copied x509 node chain.pem to integration test server")
+
+	err = copyLocalFile(node.KeyFilePath, localMacOSCouchbaseServerInbox)
+	if err != nil {
+		return err
+	}
+	base.DebugfCtx(logCtx, base.KeyAll, "copied x509 node pkey.key to integration test server")
+
+	restAPIURL := basicAuthRESTPIURLFromConnstrHost(couchbaseServerURL)
+
+	// Upload the CA cert via the REST API
+	resp, err := http.Post(restAPIURL.String()+"/controller/uploadClusterCA", "application/octet-stream", ca.PEM)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	respBody, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("couldn't uploadClusterCA: expected %d status code but got %d: %s", http.StatusOK, resp.StatusCode, respBody)
+	}
+	base.DebugfCtx(logCtx, base.KeyAll, "uploaded ca.pem to Couchbase Server")
+
+	// Make CBS read the newly uploaded certs
+	resp, err = http.Post(restAPIURL.String()+"/node/controller/reloadCertificate", "", nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	respBody, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("couldn't reloadCertificate: expected %d status code but got %d: %s", http.StatusOK, resp.StatusCode, respBody)
+	}
+	base.DebugfCtx(logCtx, base.KeyAll, "triggered reload of certificates on Couchbase Server")
+
+	if err := enableX509ClientCertsInCouchbaseServer(restAPIURL); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // couchbaseNodeConfiguredHostname returns the Couchbase node name for the given URL.
 func couchbaseNodeConfiguredHostname(restAPIURL url.URL) (string, error) {
 	resp, err := http.Get(restAPIURL.String() + "/pools/default")
@@ -396,6 +455,31 @@ func sshCopyFileAsExecutable(sourceFilepath, sshRemoteHost, destinationDirectory
 
 	// make the file we just copied readable and executable (required for Couchbase server to use the certs)
 	cmd = exec.Command("ssh", forceKeyOnly, skipHostFingerprint, sshRemoteHost, "chmod -R a+rx", filepath.Join(destinationDirectory, filepath.Base(sourceFilepath)))
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return errors.Wrap(err, string(output))
+	}
+
+	return nil
+}
+
+// copyLocalFile takes in a full source filepath and a destination directory.
+// The destination directory will be created in full if it does not exist, the file will be copied, and then the read and execute permissions set.
+func copyLocalFile(sourceFilepath, destinationDirectory string) error {
+
+	// make destination directory if it doesn't exist
+	cmd := exec.Command("mkdir", "-p", destinationDirectory)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return errors.Wrap(err, string(output))
+	}
+
+	// copy the file
+	cmd = exec.Command("cp", sourceFilepath, destinationDirectory)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return errors.Wrap(err, string(output))
+	}
+
+	// make the file we just copied readable and executable (required for Couchbase server to use the certs)
+	cmd = exec.Command("chmod", "-R", "a+rwx", filepath.Join(destinationDirectory, filepath.Base(sourceFilepath)))
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return errors.Wrap(err, string(output))
 	}

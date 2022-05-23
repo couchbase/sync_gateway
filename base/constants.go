@@ -71,6 +71,12 @@ const (
 	// Can be used to set a global log level for all tests at runtime.
 	TestEnvGlobalLogLevel = "SG_TEST_LOG_LEVEL"
 
+	// Should x509 tests deploy certs to local macOS Couchbase Server?
+	TestEnvX509Local = "SG_TEST_X509_LOCAL"
+
+	// If TestEnvX509Local=true, must use SG_TEST_X509_LOCAL_USER to set macOS username to locate CBS cert inbox
+	TestEnvX509LocalUser = "SG_TEST_X509_LOCAL_USER"
+
 	DefaultUseXattrs      = true // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
 	DefaultAllowConflicts = true // Whether Sync Gateway allows revision conflicts, if not specified in the config
 
