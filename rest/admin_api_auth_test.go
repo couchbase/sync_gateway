@@ -204,6 +204,10 @@ func TestCheckPermissionsWithX509(t *testing.T) {
 	require.NoError(t, err)
 	ctx.GoCBAgent = goCBAgent
 
+	noX509HttpClient, err := ctx.initializeNoX509HttpClient()
+	require.NoError(t, err)
+	ctx.NoX509HTTPClient = noX509HttpClient
+
 	eps, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()
 	assert.NoError(t, err)
 
@@ -489,11 +493,21 @@ func TestAdminAuthWithX509(t *testing.T) {
 	require.NoError(t, err)
 	ctx.GoCBAgent = goCBAgent
 
+	noX509HttpClient, err := ctx.initializeNoX509HttpClient()
+	require.NoError(t, err)
+	ctx.NoX509HTTPClient = noX509HttpClient
+
 	managementEndpoints, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
 
-	_, _, err = checkAdminAuth("", base.TestClusterUsername(), base.TestClusterPassword(), "", httpClient, managementEndpoints, true, []Permission{{"!admin", false}}, nil)
+	var statusCode int
+	_, statusCode, err = checkAdminAuth("", base.TestClusterUsername(), base.TestClusterPassword(), "", httpClient, managementEndpoints, true, []Permission{{"!admin", false}}, nil)
 	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, statusCode)
+
+	_, statusCode, err = checkAdminAuth("", "invalidUser", "invalidPassword", "", httpClient, managementEndpoints, true, []Permission{{"!admin", false}}, nil)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusUnauthorized, statusCode)
 }
 
 func TestAdminAPIAuth(t *testing.T) {

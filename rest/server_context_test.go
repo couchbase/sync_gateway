@@ -298,6 +298,10 @@ func TestObtainManagementEndpointsFromServerContextWithX509(t *testing.T) {
 	require.NoError(t, err)
 	ctx.GoCBAgent = goCBAgent
 
+	noX509HttpClient, err := ctx.initializeNoX509HttpClient()
+	require.NoError(t, err)
+	ctx.NoX509HTTPClient = noX509HttpClient
+
 	eps, _, err := ctx.ObtainManagementEndpointsAndHTTPClient()
 	assert.NoError(t, err)
 
