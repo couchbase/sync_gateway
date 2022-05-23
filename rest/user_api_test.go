@@ -111,6 +111,37 @@ func TestUsersAPIDetails(t *testing.T) {
 	rt := NewRestTester(t, rtConfig)
 	defer rt.Close()
 
+	validateUsersNameOnlyFalse(t, rt)
+}
+
+// TestUsersAPIDetails tests users endpoint with name_only=false, with guest disabled.
+// Note: this isn't using subtests with the test above to avoid requiring multiple buckets or
+// dealing with RT close races
+func TestUsersAPIDetailsWithoutGuest(t *testing.T) {
+
+	if base.TestsDisableGSI() {
+		t.Skip("This test only works with Couchbase Server and UseViews=false")
+	}
+
+	// Create rest tester with low pagination limit
+	rtConfig := &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				QueryPaginationLimit: base.IntPtr(5),
+			},
+		},
+		guestEnabled: false,
+	}
+	rt := NewRestTester(t, rtConfig)
+	defer rt.Close()
+
+	validateUsersNameOnlyFalse(t, rt)
+
+}
+
+// validateUsersNameOnlyFalse validates query results with paramNameOnly=false.  Includes
+// users with/without email, enabled/disabled, various limits
+func validateUsersNameOnlyFalse(t *testing.T, rt *RestTester) {
 	// Validate the zero user case
 	var responseUsers []db.PrincipalConfig
 	response := rt.SendAdminRequest("GET", "/db/_user/?"+paramNameOnly+"=false", "")
@@ -126,7 +157,13 @@ func TestUsersAPIDetails(t *testing.T) {
 		if userName == "user3" || userName == "user8" {
 			disabled = "true"
 		}
-		response := rt.SendAdminRequest("PUT", "/db/_user/"+userName, `{"password":"letmein", "email": "`+userName+`@foo.com", "disabled":`+disabled+`, "admin_channels":["foo", "bar"]}`)
+		// don't set email in some users
+		var response *TestResponse
+		if userName == "user5" {
+			response = rt.SendAdminRequest("PUT", "/db/_user/"+userName, `{"password":"letmein", "disabled":`+disabled+`, "admin_channels":["foo", "bar"]}`)
+		} else {
+			response = rt.SendAdminRequest("PUT", "/db/_user/"+userName, `{"password":"letmein", "email": "`+userName+`@foo.com", "disabled":`+disabled+`, "admin_channels":["foo", "bar"]}`)
+		}
 		assertStatus(t, response, 201)
 
 		// check user count
@@ -139,7 +176,9 @@ func TestUsersAPIDetails(t *testing.T) {
 		// Check property values, and validate no duplicate users returned in response
 		userMap := make(map[string]interface{})
 		for _, principal := range responseUsers {
-			assert.Equal(t, *principal.Name+"@foo.com", principal.Email)
+			if *principal.Name != "user5" {
+				assert.Equal(t, *principal.Name+"@foo.com", principal.Email)
+			}
 			if *principal.Name == "user3" || *principal.Name == "user8" {
 				assert.Equal(t, true, *principal.Disabled)
 			} else {
