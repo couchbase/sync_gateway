@@ -110,17 +110,18 @@ func (bucketConfig *BucketConfig) GetCredentials() (username string, password st
 	return base.TransformBucketCredentials(bucketConfig.Username, bucketConfig.Password, *bucketConfig.Bucket)
 }
 
-// JSON object that defines a database configuration within the LegacyServerConfig.
+// DbConfig defines a database configuration used in a config file or the REST API.
 type DbConfig struct {
 	BucketConfig
+	Scopes                           ScopesConfig                     `json:"scopes,omitempty"`                               // Scopes and collection specific config
 	Name                             string                           `json:"name,omitempty"`                                 // Database name in REST API (stored as key in JSON)
-	Sync                             *string                          `json:"sync,omitempty"`                                 // Sync function defines which users can see which data
+	Sync                             *string                          `json:"sync,omitempty"`                                 // The sync function applied to write operations in the _default scope and collection
 	Users                            map[string]*db.PrincipalConfig   `json:"users,omitempty"`                                // Initial user accounts
 	Roles                            map[string]*db.PrincipalConfig   `json:"roles,omitempty"`                                // Initial roles
 	RevsLimit                        *uint32                          `json:"revs_limit,omitempty"`                           // Max depth a document's revision tree can grow to
 	AutoImport                       interface{}                      `json:"import_docs,omitempty"`                          // Whether to automatically import Couchbase Server docs into SG.  Xattrs must be enabled.  true or "continuous" both enable this.
 	ImportPartitions                 *uint16                          `json:"import_partitions,omitempty"`                    // Number of partitions for import sharding.  Impacts the total DCP concurrency for import
-	ImportFilter                     *string                          `json:"import_filter,omitempty"`                        // Filter function (import)
+	ImportFilter                     *string                          `json:"import_filter,omitempty"`                        // The import filter applied to import operations in the _default scope and collection
 	ImportBackupOldRev               *bool                            `json:"import_backup_old_rev,omitempty"`                // Whether import should attempt to create a temporary backup of the previous revision body, when available.
 	EventHandlers                    *EventHandlerConfig              `json:"event_handlers,omitempty"`                       // Event handlers (webhook)
 	FeedType                         string                           `json:"feed_type,omitempty"`                            // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
@@ -154,6 +155,17 @@ type DbConfig struct {
 	UserXattrKey                     string                           `json:"user_xattr_key,omitempty"`                       // Key of user xattr that will be accessible from the Sync Function. If empty the feature will be disabled.
 	ClientPartitionWindowSecs        *int                             `json:"client_partition_window_secs,omitempty"`         // How long clients can remain offline for without losing replication metadata. Default 30 days (in seconds)
 	Guest                            *db.PrincipalConfig              `json:"guest,omitempty"`                                // Guest user settings
+}
+
+type ScopesConfig map[string]ScopeConfig
+type ScopeConfig struct {
+	Collections CollectionsConfig `json:"collections,omitempty"` // Collection-specific config options.
+}
+
+type CollectionsConfig map[string]CollectionConfig
+type CollectionConfig struct {
+	SyncFn       *string `json:"sync,omitempty"`          // The sync function applied to write operations in this collection.
+	ImportFilter *string `json:"import_filter,omitempty"` // The import filter applied to import operations in this collection.
 }
 
 type DeltaSyncConfig struct {
@@ -701,6 +713,49 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 			_, _, err := provider.DiscoverConfig(ctx)
 			if err != nil {
 				multiError = multiError.Append(fmt.Errorf("failed to validate OIDC configuration for %s: %w", name, err))
+			}
+		}
+	}
+
+	// scopes and collections validation
+	numScopes := 0
+	for scopeName, scopeConfig := range dbConfig.Scopes {
+		numScopes++
+		if numScopes > 1 {
+			multiError = multiError.Append(fmt.Errorf("only one named scope is supported, but had %d (%v)", len(dbConfig.Scopes), dbConfig.Scopes))
+			continue
+		}
+
+		if len(scopeConfig.Collections) == 0 {
+			multiError = multiError.Append(fmt.Errorf("must specify at least one collection in scope %v", scopeName))
+			continue
+		}
+
+		if dbConfig.Sync != nil {
+			multiError = multiError.Append(errors.New("cannot specify a database-level sync function with named scopes and collections"))
+		}
+		if dbConfig.ImportFilter != nil {
+			multiError = multiError.Append(errors.New("cannot specify a database-level import filter with named scopes and collections"))
+		}
+
+		// validate each collection's config
+		for collectionName, collectionConfig := range scopeConfig.Collections {
+			if strings.TrimSpace(*collectionConfig.SyncFn) != "" {
+				_, err = sgbucket.NewJSRunner(*collectionConfig.SyncFn)
+				if err != nil {
+					multiError = multiError.Append(fmt.Errorf("collection %q sync function contains invalid javascript syntax: %v", collectionName, err))
+				}
+			} else {
+				collectionConfig.SyncFn = nil
+			}
+
+			if strings.TrimSpace(*collectionConfig.ImportFilter) != "" {
+				_, err = sgbucket.NewJSRunner(*collectionConfig.ImportFilter)
+				if err != nil {
+					multiError = multiError.Append(fmt.Errorf("collection %q import filter contains invalid javascript syntax: %v", collectionName, err))
+				}
+			} else {
+				collectionConfig.ImportFilter = nil
 			}
 		}
 	}
