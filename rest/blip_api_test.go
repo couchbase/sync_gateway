@@ -4058,6 +4058,15 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 			inputBody:    map[string]interface{}{"_sync_cookies": true},
 			expectReject: true,
 		},
+		{
+			name: "Valid user defined uppercase properties", // Uses internal properties names but in upper case
+			// Known issue: _SYNC causes unmarshal error when not using xattrs
+			inputBody: map[string]interface{}{
+				"_ID": true, "_REV": true, "_DELETED": true, "_ATTACHMENTS": true, "_REVISIONS": true,
+				"_EXP": true, "_PURGED": true, "_REMOVED": true, "_SYNC_COOKIES": true,
+			},
+			expectReject: false,
+		},
 	}
 
 	// Setup
@@ -4094,10 +4103,12 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 			var bucketDoc map[string]interface{}
 			_, err = rt.Bucket().Get(docID, &bucketDoc)
 			assert.NoError(t, err)
+			body := rt.getDoc(docID)
 			// Confirm input body is in the bucket doc
 			if test.skipDocContentsVerification == nil || !*test.skipDocContentsVerification {
 				for k, v := range test.inputBody {
 					assert.Equal(t, v, bucketDoc[k])
+					assert.Equal(t, v, body[k])
 				}
 			}
 		})

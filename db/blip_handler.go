@@ -828,11 +828,11 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	stats.bytes.Add(int64(len(bodyBytes)))
 
 	if bh.BlipSyncContext.purgeOnRemoval && bytes.Contains(bodyBytes, []byte(`"`+BodyRemoved+`":`)) {
-		var r removalDocument
-		if err := json.Unmarshal(bodyBytes, &r); err != nil {
+		var body Body
+		if err := body.Unmarshal(bodyBytes); err != nil {
 			return err
 		}
-		if r.Removed {
+		if removed, ok := body[BodyRemoved].(bool); ok && removed {
 			base.InfofCtx(bh.loggingCtx, base.KeySync, "Purging doc %v - removed at rev %v", base.UD(docID), revID)
 			if err := bh.db.Purge(docID); err != nil {
 				return err
