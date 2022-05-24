@@ -93,9 +93,14 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 			}
 		}
 
-		// Ensure the caller isn't trying to set all_channels explicitly - it'll get recomputed automatically.
+		// Ensure the caller isn't trying to set all_channels or roles explicitly - it'll get recomputed automatically.
 		if len(updates.Channels) > 0 && !princ.Channels().Equals(updates.Channels) {
 			return false, base.HTTPErrorf(http.StatusBadRequest, "all_channels is read-only")
+		}
+		if user, ok := princ.(auth.User); ok {
+			if len(updates.RoleNames) > 0 && !user.RoleNames().Equals(base.SetFromArray(updates.RoleNames)) {
+				return false, base.HTTPErrorf(http.StatusBadRequest, "roles is read-only")
+			}
 		}
 
 		updatedExplicitChannels := princ.ExplicitChannels()

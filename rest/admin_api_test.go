@@ -278,6 +278,14 @@ func TestPrincipalForbidUpdatingChannels(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "all_channels":["baz"]}`)
 	assertStatus(t, response, 400)
 
+	// PUT admin_roles
+	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_roles":["foo", "bar"]}`)
+	assertStatus(t, response, 200)
+
+	// PUT roles - should fail
+	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "roles":["baz"]}`)
+	assertStatus(t, response, 400)
+
 	// Roles
 	// PUT admin_channels
 	response = rt.SendAdminRequest("PUT", "/db/_role/test", `{"admin_channels":["foo", "bar"]}`)
