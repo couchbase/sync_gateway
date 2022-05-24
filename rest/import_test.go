@@ -2326,6 +2326,15 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 			importBody:   map[string]interface{}{"_sync_cookies": true},
 			expectReject: true,
 		},
+		{
+			name: "Valid user defined uppercase properties", // Uses internal properties names but in upper case
+			// Known issue: _SYNC causes unmarshal error when importing document that contains it
+			importBody: map[string]interface{}{
+				"_ID": true, "_REV": true, "_DELETED": true, "_ATTACHMENTS": true, "_REVISIONS": true,
+				"_EXP": true, "_PURGED": true, "_REMOVED": true, "_SYNC_COOKIES": true,
+			},
+			expectReject: false,
+		},
 	}
 
 	rt := NewRestTester(t, nil)
