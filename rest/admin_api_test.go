@@ -4556,61 +4556,57 @@ func TestApiInternalPropertiesHandling(t *testing.T) {
 	testCases := []struct {
 		name                        string
 		inputBody                   map[string]interface{}
-		expectReject                bool
+		expectedErrorStatus         *int // If nil, will check for 201 Status Created
 		skipDocContentsVerification *bool
 	}{
 		{
-			name:         "Valid document with special prop",
-			inputBody:    map[string]interface{}{"_cookie": "is valid"},
-			expectReject: false,
+			name:      "Valid document with special prop",
+			inputBody: map[string]interface{}{"_cookie": "is valid"},
 		},
 		{
-			name:         "Invalid _sync",
-			inputBody:    map[string]interface{}{"_sync": true},
-			expectReject: true,
+			name:                "Invalid _sync",
+			inputBody:           map[string]interface{}{"_sync": true},
+			expectedErrorStatus: base.IntPtr(http.StatusBadRequest),
 		},
 		{
-			name:         "Valid _sync",
-			inputBody:    map[string]interface{}{"_sync": db.SyncData{}},
-			expectReject: true,
+			name:                "Valid _sync",
+			inputBody:           map[string]interface{}{"_sync": db.SyncData{}},
+			expectedErrorStatus: base.IntPtr(http.StatusBadRequest),
 		},
 		{
 			name:                        "Valid _deleted",
 			inputBody:                   map[string]interface{}{"_deleted": false},
-			expectReject:                false,
 			skipDocContentsVerification: base.BoolPtr(true),
 		},
 		{
 			name:                        "Valid _revisions",
 			inputBody:                   map[string]interface{}{"_revisions": map[string]interface{}{"ids": "1-abc"}},
-			expectReject:                false,
 			skipDocContentsVerification: base.BoolPtr(true),
 		},
 		{
 			name:                        "Valid _exp",
 			inputBody:                   map[string]interface{}{"_exp": "123"},
-			expectReject:                false,
 			skipDocContentsVerification: base.BoolPtr(true),
 		},
 		{
-			name:         "Invalid _exp",
-			inputBody:    map[string]interface{}{"_exp": "abc"},
-			expectReject: true,
+			name:                "Invalid _exp",
+			inputBody:           map[string]interface{}{"_exp": "abc"},
+			expectedErrorStatus: base.IntPtr(http.StatusBadRequest),
 		},
 		{
-			name:         "_purged",
-			inputBody:    map[string]interface{}{"_purged": false},
-			expectReject: true,
+			name:                "_purged",
+			inputBody:           map[string]interface{}{"_purged": false},
+			expectedErrorStatus: base.IntPtr(http.StatusBadRequest),
 		},
 		{
-			name:         "_removed",
-			inputBody:    map[string]interface{}{"_removed": false},
-			expectReject: true,
+			name:                "_removed",
+			inputBody:           map[string]interface{}{"_removed": false},
+			expectedErrorStatus: base.IntPtr(http.StatusNotFound),
 		},
 		{
-			name:         "_sync_cookies",
-			inputBody:    map[string]interface{}{"_sync_cookies": true},
-			expectReject: true,
+			name:                "_sync_cookies",
+			inputBody:           map[string]interface{}{"_sync_cookies": true},
+			expectedErrorStatus: base.IntPtr(http.StatusBadRequest),
 		},
 		{
 			name: "Valid user defined uppercase properties", // Uses internal properties names but in upper case
@@ -4619,7 +4615,6 @@ func TestApiInternalPropertiesHandling(t *testing.T) {
 				"_ID": true, "_REV": true, "_DELETED": true, "_ATTACHMENTS": true, "_REVISIONS": true,
 				"_EXP": true, "_PURGED": true, "_REMOVED": true, "_SYNC_COOKIES": true,
 			},
-			expectReject: false,
 		},
 	}
 
@@ -4633,8 +4628,8 @@ func TestApiInternalPropertiesHandling(t *testing.T) {
 			require.NoError(t, err)
 
 			resp := rt.SendAdminRequest("PUT", "/db/"+docID, string(rawBody))
-			if test.expectReject {
-				assert.NotEqual(t, http.StatusOK, resp.Code)
+			if test.expectedErrorStatus != nil {
+				assertStatus(t, resp, *test.expectedErrorStatus)
 				return
 			}
 			assertStatus(t, resp, http.StatusCreated)
