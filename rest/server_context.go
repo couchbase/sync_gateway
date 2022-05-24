@@ -11,6 +11,7 @@ package rest
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
@@ -58,6 +59,7 @@ type ServerContext struct {
 	cpuPprofFile         *os.File        // An open file descriptor holds the reference during CPU profiling
 	_httpServers         []*http.Server  // A list of HTTP servers running under the ServerContext
 	GoCBAgent            *gocbcore.Agent // GoCB Agent to use when obtaining management endpoints
+	NoX509HTTPClient     *http.Client    // httpClient for the cluster that doesn't include x509 credentials, even if they are configured for the cluster
 	hasStarted           chan struct{}   // A channel that is closed via PostStartup once the ServerContext has fully started
 }
 
@@ -504,14 +506,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	}
 	dbcontext.BucketSpec = spec
 	dbcontext.ServerContextHasStarted = sc.hasStarted
-
-	if !dbcontext.BucketSpec.IsWalrusBucket() {
-		gocbHttpClient, err := dbcontext.InitializeGoCBHttpClient()
-		if err != nil {
-			return nil, err
-		}
-		dbcontext.GoCBHttpClient = gocbHttpClient
-	}
+	dbcontext.NoX509HTTPClient = sc.NoX509HTTPClient
 
 	syncFn := ""
 	if config.Sync != nil {
@@ -781,9 +776,6 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 	if config.DisablePasswordAuth {
 		sendWWWAuthenticate = base.BoolPtr(false)
 	}
-
-	// Register the cbgt pindex type for the configGroup
-	db.RegisterImportPindexImpl(groupID)
 
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:                  &cacheOptions,
@@ -1241,12 +1233,95 @@ func (sc *ServerContext) initializeGoCBAgent() (*gocbcore.Agent, error) {
 	return agent, nil
 }
 
+// initializeNoX509HttpClient() returns an http client based on the bootstrap connection information, but
+// without any x509 keypair included in the tls config.  This client can be used to perform basic
+// authentication checks against the server.
+// Client creation otherwise clones the approach used by gocb.
+func (sc *ServerContext) initializeNoX509HttpClient() (*http.Client, error) {
+
+	// baseTlsConfig defines the tlsConfig except for ServerName, which is updated based
+	// on addr in DialTLS
+	baseTlsConfig := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+	}
+	var rootCAs *x509.CertPool
+	tlsRootCAProvider, err := base.GoCBCoreTLSRootCAProvider(sc.config.Bootstrap.ServerTLSSkipVerify, sc.config.Bootstrap.CACertPath)
+	if err != nil {
+		return nil, err
+	}
+	rootCAs = tlsRootCAProvider()
+	if rootCAs != nil {
+		baseTlsConfig.RootCAs = rootCAs
+		baseTlsConfig.InsecureSkipVerify = false
+	} else {
+		baseTlsConfig.InsecureSkipVerify = true
+	}
+
+	httpDialer := &net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+	maxIdleConns, _ := strconv.Atoi(base.DefaultHttpMaxIdleConns)
+	idleConnTimeoutMs, _ := strconv.Atoi(base.DefaultHttpIdleConnTimeoutMilliseconds)
+
+	// gocbcore: We set ForceAttemptHTTP2, which will update the base-config to support HTTP2
+	// automatically, so that all configs from it will look for that.
+	httpTransport := &http.Transport{
+		ForceAttemptHTTP2: true,
+
+		Dial: func(network, addr string) (net.Conn, error) {
+			return httpDialer.Dial(network, addr)
+		},
+		DialTLS: func(network, addr string) (net.Conn, error) {
+			tcpConn, err := httpDialer.Dial(network, addr)
+			if err != nil {
+				return nil, err
+			}
+
+			// Update tlsConfig.ServerName based on addr
+			tlsConfig := baseTlsConfig.Clone()
+			host, _, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+			tlsConfig.ServerName = host
+			tlsConn := tls.Client(tcpConn, tlsConfig)
+			return tlsConn, nil
+		},
+		MaxIdleConns:        maxIdleConns,
+		MaxIdleConnsPerHost: base.DefaultHttpMaxIdleConnsPerHost,
+		IdleConnTimeout:     time.Duration(idleConnTimeoutMs) * time.Millisecond,
+	}
+
+	httpCli := &http.Client{
+		Transport: httpTransport,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			// gocbcore: All that we're doing here is setting auth on any redirects.
+			// For that reason we can just pull it off the oldest (first) request.
+			if len(via) >= 10 {
+				// Just duplicate the default behaviour for maximum redirects.
+				return errors.New("stopped after 10 redirects")
+			}
+
+			oldest := via[0]
+			auth := oldest.Header.Get("Authorization")
+			if auth != "" {
+				req.Header.Set("Authorization", auth)
+			}
+
+			return nil
+		},
+	}
+
+	return httpCli, nil
+}
+
 func (sc *ServerContext) ObtainManagementEndpointsAndHTTPClient() ([]string, *http.Client, error) {
 	if sc.GoCBAgent == nil {
 		return nil, nil, fmt.Errorf("unable to obtain agent")
 	}
 
-	return sc.GoCBAgent.MgmtEps(), sc.GoCBAgent.HTTPClient(), nil
+	return sc.GoCBAgent.MgmtEps(), sc.NoX509HTTPClient, nil
 }
 
 // CheckPermissions is used for Admin authentication to check a CBS RBAC user.
@@ -1408,6 +1483,11 @@ func (sc *ServerContext) initializeCouchbaseServerConnections() error {
 		return err
 	}
 	sc.GoCBAgent = goCBAgent
+
+	sc.NoX509HTTPClient, err = sc.initializeNoX509HttpClient()
+	if err != nil {
+		return err
+	}
 
 	// Fetch database configs from bucket and start polling for new buckets and config updates.
 	if sc.persistentConfig {

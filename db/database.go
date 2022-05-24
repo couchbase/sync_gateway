@@ -118,7 +118,7 @@ type DatabaseContext struct {
 	SGReplicateMgr               *sgReplicateManager      // Manages interactions with sg-replicate replications
 	Heartbeater                  base.Heartbeater         // Node heartbeater for SG cluster awareness
 	ServeInsecureAttachmentTypes bool                     // Attachment content type will bypass the content-disposition handling, default false
-	GoCBHttpClient               *http.Client             // A HTTP Client from gocb to use the management endpoints
+	NoX509HTTPClient             *http.Client             // A HTTP Client from gocb to use the management endpoints
 	ServerContextHasStarted      chan struct{}            // Closed via PostStartup once the server has fully started
 }
 
@@ -299,6 +299,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	if err := ValidateDatabaseName(dbName); err != nil {
 		return nil, err
 	}
+
+	// Register the cbgt pindex type for the configGroup
+	RegisterImportPindexImpl(options.GroupID)
 
 	dbContext := &DatabaseContext{
 		Name:       dbName,
@@ -1056,7 +1059,7 @@ outerLoop:
 		for {
 			// startKey is inclusive, so need to skip first result if using non-empty startKey, as this results in an overlapping result
 			var skipAddition bool
-			if resultCount == 0 && startKey != "" {
+			if resultCount == 0 && startKey != base.UserPrefix {
 				skipAddition = true
 			}
 
@@ -1572,16 +1575,6 @@ func (dbCtx *DatabaseContext) ObtainManagementEndpoints() ([]string, error) {
 	return base.GoCBBucketMgmtEndpoints(cbStore)
 }
 
-func (dbCtx *DatabaseContext) InitializeGoCBHttpClient() (*http.Client, error) {
-	cbStore, ok := base.AsCouchbaseStore(dbCtx.Bucket)
-	if !ok {
-		base.WarnfCtx(context.TODO(), "Database %v: Unable to get server management endpoints. Underlying bucket type was not GoCBBucket.", base.MD(dbCtx.Name))
-		return nil, nil
-	}
-
-	return cbStore.HttpClient(), nil
-}
-
 func (dbCtx *DatabaseContext) ObtainManagementEndpointsAndHTTPClient() ([]string, *http.Client, error) {
 	cbStore, ok := base.AsCouchbaseStore(dbCtx.Bucket)
 	if !ok {
@@ -1591,7 +1584,7 @@ func (dbCtx *DatabaseContext) ObtainManagementEndpointsAndHTTPClient() ([]string
 
 	// This shouldn't happen as the only place we don't initialize this is in the case where we're not using a Couchbase
 	// Bucket. This means the above check should catch it but check just to be safe.
-	if dbCtx.GoCBHttpClient == nil {
+	if dbCtx.NoX509HTTPClient == nil {
 		return nil, nil, fmt.Errorf("unable to obtain http client")
 	}
 
@@ -1600,7 +1593,7 @@ func (dbCtx *DatabaseContext) ObtainManagementEndpointsAndHTTPClient() ([]string
 		return nil, nil, err
 	}
 
-	return endpoints, dbCtx.GoCBHttpClient, nil
+	return endpoints, dbCtx.NoX509HTTPClient, nil
 }
 
 func (context *DatabaseContext) GetUserViewsEnabled() bool {
