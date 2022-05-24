@@ -265,6 +265,29 @@ func TestUserAllowEmptyPassword(t *testing.T) {
 	assertStatus(t, response, 200)
 }
 
+func TestPrincipalForbidUpdatingChannels(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{})
+	defer rt.Close()
+
+	// Users
+	// PUT admin_channels
+	response := rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)
+	assertStatus(t, response, 201)
+
+	// PUT all_channels - should fail
+	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "all_channels":["baz"]}`)
+	assertStatus(t, response, 400)
+
+	// Roles
+	// PUT admin_channels
+	response = rt.SendAdminRequest("PUT", "/db/_role/test", `{"admin_channels":["foo", "bar"]}`)
+	assertStatus(t, response, 201)
+
+	// PUT all_channels - should fail
+	response = rt.SendAdminRequest("PUT", "/db/_role/test", `{"all_channels":["baz"]}`)
+	assertStatus(t, response, 400)
+}
+
 // Test user access grant while that user has an active changes feed.  (see issue #880)
 func TestUserAccessRace(t *testing.T) {
 

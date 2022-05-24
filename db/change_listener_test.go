@@ -54,8 +54,8 @@ func TestUserWaiter(t *testing.T) {
 
 	// Update the user to grant new channel
 	updatedUser := PrincipalConfig{
-		Name:     &username,
-		Channels: base.SetFromArray([]string{"ABC", "DEF"}),
+		Name:             &username,
+		ExplicitChannels: base.SetFromArray([]string{"ABC", "DEF"}),
 	}
 	_, err = db.UpdatePrincipal(ctx, updatedUser, true, true)
 	require.NoError(t, err, "Error updating user")
@@ -127,8 +127,8 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 
 	// Update the role to grant a new channel
 	updatedRole := PrincipalConfig{
-		Name:     &roleName,
-		Channels: base.SetFromArray([]string{"ABC"}),
+		Name:             &roleName,
+		ExplicitChannels: base.SetFromArray([]string{"ABC", "DEF"}),
 	}
 	_, err = db.UpdatePrincipal(ctx, updatedRole, false, true)
 	require.NoError(t, err, "Error updating role")

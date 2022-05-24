@@ -138,6 +138,11 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, newInfo Princip
 			}
 		}
 
+		// Ensure the caller isn't trying to set all_channels explicitly - it'll get recomputed automatically.
+		if len(newInfo.Channels) > 0 && !princ.Channels().Equals(newInfo.Channels) {
+			return false, base.HTTPErrorf(http.StatusBadRequest, "all_channels is read-only")
+		}
+
 		updatedChannels := princ.ExplicitChannels()
 		if updatedChannels == nil {
 			updatedChannels = ch.TimedSet{}
