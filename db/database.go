@@ -1059,7 +1059,7 @@ outerLoop:
 		for {
 			// startKey is inclusive, so need to skip first result if using non-empty startKey, as this results in an overlapping result
 			var skipAddition bool
-			if resultCount == 0 && startKey != "" {
+			if resultCount == 0 && startKey != base.UserPrefix {
 				skipAddition = true
 			}
 
