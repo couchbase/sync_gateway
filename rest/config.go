@@ -708,14 +708,10 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 	}
 
 	// scopes and collections validation
-	numScopes := 0
+	if len(dbConfig.Scopes) > 1 {
+		multiError = multiError.Append(fmt.Errorf("only one named scope is supported, but had %d (%v)", len(dbConfig.Scopes), dbConfig.Scopes))
+	}
 	for scopeName, scopeConfig := range dbConfig.Scopes {
-		numScopes++
-		if numScopes > 1 {
-			multiError = multiError.Append(fmt.Errorf("only one named scope is supported, but had %d (%v)", len(dbConfig.Scopes), dbConfig.Scopes))
-			continue
-		}
-
 		if len(scopeConfig.Collections) == 0 {
 			multiError = multiError.Append(fmt.Errorf("must specify at least one collection in scope %v", scopeName))
 			continue
