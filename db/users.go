@@ -97,11 +97,11 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 		if len(newInfo.Channels) > 0 && !princ.Channels().Equals(newInfo.Channels) {
 			return false, base.HTTPErrorf(http.StatusBadRequest, "all_channels is read-only")
 		}
-    
-    updatedExplicitChannels := princ.ExplicitChannels()
+
+		updatedExplicitChannels := princ.ExplicitChannels()
 		if updatedExplicitChannels == nil {
 			updatedExplicitChannels = ch.TimedSet{}
-    }
+		}
 
 		updatedChannels := princ.ExplicitChannels()
 		if updatedChannels == nil {
