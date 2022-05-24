@@ -710,32 +710,33 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 	// scopes and collections validation
 	if len(dbConfig.Scopes) > 1 {
 		multiError = multiError.Append(fmt.Errorf("only one named scope is supported, but had %d (%v)", len(dbConfig.Scopes), dbConfig.Scopes))
-	}
-	for scopeName, scopeConfig := range dbConfig.Scopes {
-		if len(scopeConfig.Collections) == 0 {
-			multiError = multiError.Append(fmt.Errorf("must specify at least one collection in scope %v", scopeName))
-			continue
-		}
-
-		if dbConfig.Sync != nil {
-			multiError = multiError.Append(errors.New("cannot specify a database-level sync function with named scopes and collections"))
-		}
-		if dbConfig.ImportFilter != nil {
-			multiError = multiError.Append(errors.New("cannot specify a database-level import filter with named scopes and collections"))
-		}
-
-		// validate each collection's config
-		for collectionName, collectionConfig := range scopeConfig.Collections {
-			if isEmpty, err := validateJavascriptFunction(collectionConfig.SyncFn); err != nil {
-				multiError = multiError.Append(fmt.Errorf("collection %q sync function error: %w", collectionName, err))
-			} else if isEmpty {
-				collectionConfig.SyncFn = nil
+	} else {
+		for scopeName, scopeConfig := range dbConfig.Scopes {
+			if len(scopeConfig.Collections) == 0 {
+				multiError = multiError.Append(fmt.Errorf("must specify at least one collection in scope %v", scopeName))
+				continue
 			}
 
-			if isEmpty, err := validateJavascriptFunction(collectionConfig.ImportFilter); err != nil {
-				multiError = multiError.Append(fmt.Errorf("collection %q import filter error: %w", collectionName, err))
-			} else if isEmpty {
-				collectionConfig.ImportFilter = nil
+			if dbConfig.Sync != nil {
+				multiError = multiError.Append(errors.New("cannot specify a database-level sync function with named scopes and collections"))
+			}
+			if dbConfig.ImportFilter != nil {
+				multiError = multiError.Append(errors.New("cannot specify a database-level import filter with named scopes and collections"))
+			}
+
+			// validate each collection's config
+			for collectionName, collectionConfig := range scopeConfig.Collections {
+				if isEmpty, err := validateJavascriptFunction(collectionConfig.SyncFn); err != nil {
+					multiError = multiError.Append(fmt.Errorf("collection %q sync function error: %w", collectionName, err))
+				} else if isEmpty {
+					collectionConfig.SyncFn = nil
+				}
+
+				if isEmpty, err := validateJavascriptFunction(collectionConfig.ImportFilter); err != nil {
+					multiError = multiError.Append(fmt.Errorf("collection %q import filter error: %w", collectionName, err))
+				} else if isEmpty {
+					collectionConfig.ImportFilter = nil
+				}
 			}
 		}
 	}
