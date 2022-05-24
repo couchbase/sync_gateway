@@ -94,7 +94,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 		}
 
 		// Ensure the caller isn't trying to set all_channels explicitly - it'll get recomputed automatically.
-		if len(newInfo.Channels) > 0 && !princ.Channels().Equals(newInfo.Channels) {
+		if len(updates.Channels) > 0 && !princ.Channels().Equals(updates.Channels) {
 			return false, base.HTTPErrorf(http.StatusBadRequest, "all_channels is read-only")
 		}
 
