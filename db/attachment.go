@@ -290,12 +290,18 @@ func (db *Database) ForEachStubAttachment(body Body, minRevpos int, docID string
 			if err != nil && !base.IsDocNotFoundError(err) {
 				return err
 			}
-			if newData, err := callback(name, digest, data, meta); err != nil {
+			newData, err := callback(name, digest, data, meta)
+			if err != nil {
 				return err
-			} else if newData != nil {
+			}
+			if newData != nil {
 				meta["data"] = newData
 				delete(meta, "stub")
 				delete(meta, "follows")
+			} else {
+				// Update version in the case where this is a new attachment on the doc sharing a V2 digest with
+				// an existing attachment
+				meta["ver"] = AttVersion2
 			}
 		}
 	}
