@@ -4223,7 +4223,7 @@ func TestSendRevAsReadOnlyGuest(t *testing.T) {
 
 }
 
-// Repro CBG-2055: changing an attachment name on a stub causes version metadata to be lost
+// TestBlipAttachNameChange tests CBL handling - attachments with changed names are sent as stubs, and not new attachments
 func TestBlipAttachNameChange(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		guestEnabled: true,
@@ -4264,4 +4264,56 @@ func TestBlipAttachNameChange(t *testing.T) {
 	resp := rt.SendAdminRequest("GET", "/db/doc/attach", "")
 	assertStatus(t, resp, http.StatusOK)
 	assert.Equal(t, attachmentA, resp.BodyBytes())
+}
+
+// TestBlipLegacyAttachNameChange ensures that CBL name changes for legacy attachments are handled correctly
+func TestBlipLegacyAttachNameChange(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		guestEnabled: true,
+	})
+	defer rt.Close()
+
+	client1, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	require.NoError(t, err)
+	defer client1.Close()
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeySync, base.KeySyncMsg, base.KeyWebSocket, base.KeyWebSocketFrame, base.KeyHTTP, base.KeyCRUD)()
+
+	// Create document in the bucket with a legacy attachment
+	docID := "doc"
+	attBody := []byte(`attachmentA`)
+	digest := db.Sha1DigestKey(attBody)
+	attKey := db.MakeAttachmentKey(db.AttVersion1, docID, digest)
+	rawDoc := rawDocWithAttachmentAndSyncMeta()
+
+	// Create a document with legacy attachment.
+	createDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
+
+	// Get the document and grab the revID.
+	responseBody := rt.getDoc(docID)
+	revID := responseBody["_rev"].(string)
+	require.NotEmpty(t, revID)
+
+	// Store the document and attachment on the test client
+	err = client1.StoreRevOnClient(docID, revID, rawDoc)
+	require.NoError(t, err)
+	client1.attachmentsLock.Lock()
+	client1.attachments[digest] = attBody
+	client1.attachmentsLock.Unlock()
+
+	// Confirm attachment is in the bucket
+	attachmentAKey := db.MakeAttachmentKey(1, "doc", digest)
+	bucketAttachmentA, _, err := rt.Bucket().GetRaw(attachmentAKey)
+	require.NoError(t, err)
+	require.EqualValues(t, bucketAttachmentA, attBody)
+
+	// Simulate changing only the attachment name over CBL
+	// Use revpos 2 to simulate revpos bug in CBL 2.8 - 3.0.0
+	revID, err = client1.PushRev("doc", revID, []byte(`{"key":"val","_attachments":{"attach":{"revpos":2,"content_type":"","length":11,"stub":true,"digest":"`+digest+`"}}}`))
+	require.NoError(t, err)
+	err = rt.waitForRev("doc", revID)
+	require.NoError(t, err)
+
+	resp := rt.SendAdminRequest("GET", "/db/doc/attach", "")
+	assertStatus(t, resp, http.StatusOK)
+	assert.Equal(t, attBody, resp.BodyBytes())
 }
