@@ -198,12 +198,8 @@ func (u PrincipalConfig) IsPasswordValid(allowEmptyPass bool) (isValid bool, rea
 // Merge returns a new PrincipalConfig that represents the combination of both this and other's changes.
 // If any changes conflict, those of the other take precedence.
 func (u PrincipalConfig) Merge(other PrincipalConfig) PrincipalConfig {
-	name := u.Name
-	if other.Name != nil {
-		name = other.Name
-	}
 	return PrincipalConfig{
-		Name:              name,
+		Name:              base.CoalesceStrings(other.Name, u.Name),
 		ExplicitChannels:  base.CoalesceSets(other.ExplicitChannels, u.ExplicitChannels),
 		Email:             base.CoalesceStrings(other.Email, u.Email),
 		Password:          base.CoalesceStrings(other.Password, u.Password),
