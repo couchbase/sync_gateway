@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -24,13 +25,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/couchbase/go-blip"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // This test performs the following steps against the Sync Gateway passive blip replicator:
@@ -4280,7 +4281,7 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 
 	// Create document in the bucket with a legacy attachment
 	docID := "doc"
-	attBody := []byte(`attachmentA`)
+	attBody := []byte(`hi`)
 	digest := db.Sha1DigestKey(attBody)
 	attKey := db.MakeAttachmentKey(db.AttVersion1, docID, digest)
 	rawDoc := rawDocWithAttachmentAndSyncMeta()
@@ -4308,7 +4309,7 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 
 	// Simulate changing only the attachment name over CBL
 	// Use revpos 2 to simulate revpos bug in CBL 2.8 - 3.0.0
-	revID, err = client1.PushRev("doc", revID, []byte(`{"key":"val","_attachments":{"attach":{"revpos":2,"content_type":"","length":11,"stub":true,"digest":"`+digest+`"}}}`))
+	revID, err = client1.PushRev("doc", revID, []byte(`{"key":"val","_attachments":{"attach":{"revpos":2,"content_type":"test/plain","length":2,"stub":true,"digest":"`+digest+`"}}}`))
 	require.NoError(t, err)
 	err = rt.waitForRev("doc", revID)
 	require.NoError(t, err)
@@ -4316,4 +4317,68 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 	resp := rt.SendAdminRequest("GET", "/db/doc/attach", "")
 	assertStatus(t, resp, http.StatusOK)
 	assert.Equal(t, attBody, resp.BodyBytes())
+}
+
+// TestBlipLegacyAttachNameChange ensures that CBL updates for documents associated with legacy attachments are handled correctly
+func TestBlipLegacyAttachDocUpdate(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		guestEnabled: true,
+	})
+	defer rt.Close()
+
+	client1, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	require.NoError(t, err)
+	defer client1.Close()
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeySync, base.KeySyncMsg, base.KeyWebSocket, base.KeyWebSocketFrame, base.KeyHTTP, base.KeyCRUD)()
+
+	// Create document in the bucket with a legacy attachment.  Properties here align with rawDocWithAttachmentAndSyncMeta
+	docID := "doc"
+	attBody := []byte(`hi`)
+	digest := db.Sha1DigestKey(attBody)
+	attKey := db.MakeAttachmentKey(db.AttVersion1, docID, digest)
+	attName := "hi.txt"
+	rawDoc := rawDocWithAttachmentAndSyncMeta()
+
+	// Create a document with legacy attachment.
+	createDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
+
+	// Get the document and grab the revID.
+	responseBody := rt.getDoc(docID)
+	revID := responseBody["_rev"].(string)
+	require.NotEmpty(t, revID)
+
+	// Store the document and attachment on the test client
+	err = client1.StoreRevOnClient(docID, revID, rawDoc)
+	require.NoError(t, err)
+	client1.attachmentsLock.Lock()
+	client1.attachments[digest] = attBody
+	client1.attachmentsLock.Unlock()
+
+	// Confirm attachment is in the bucket
+	attachmentAKey := db.MakeAttachmentKey(1, "doc", digest)
+	bucketAttachmentA, _, err := rt.Bucket().GetRaw(attachmentAKey)
+	require.NoError(t, err)
+	require.EqualValues(t, bucketAttachmentA, attBody)
+
+	// Update the document, leaving body intact
+	revID, err = client1.PushRev("doc", revID, []byte(`{"key":"val1","_attachments":{"`+attName+`":{"revpos":2,"content_type":"text/plain","length":2,"stub":true,"digest":"`+digest+`"}}}`))
+	require.NoError(t, err)
+	err = rt.waitForRev("doc", revID)
+	require.NoError(t, err)
+
+	resp := rt.SendAdminRequest("GET", "/db/doc/"+attName, "")
+	assertStatus(t, resp, http.StatusOK)
+	assert.Equal(t, attBody, resp.BodyBytes())
+
+	// Validate that the attachment hasn't been migrated to V2
+	v1Key := db.MakeAttachmentKey(1, "doc", digest)
+	v1Body, _, err := rt.Bucket().GetRaw(v1Key)
+	require.NoError(t, err)
+	require.EqualValues(t, attBody, v1Body)
+
+	v2Key := db.MakeAttachmentKey(2, "doc", digest)
+	_, _, err = rt.Bucket().GetRaw(v2Key)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, sgbucket.MissingError{Key: v2Key}))
+
 }
