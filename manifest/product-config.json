@@ -293,9 +293,19 @@
             "trigger_blackduck": true,
             "start_build": 22
         },
-        "manifest/3.0.xml": {
+        "manifest/3.0/3.0.2.xml": {
+            "do-build": false,
             "release": "3.0.2",
             "release_name": "Couchbase Sync Gateway 3.0.2",
+            "production": true,
+            "interval": 1440,
+            "go_version": "1.16.6",
+            "trigger_blackduck": true,
+            "start_build": 4
+        },
+        "manifest/3.0.xml": {
+            "release": "3.0.3",
+            "release_name": "Couchbase Sync Gateway 3.0.3",
             "production": true,
             "interval": 120,
             "go_version": "1.16.6",
