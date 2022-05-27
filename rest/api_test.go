@@ -8144,57 +8144,8 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, attBodyExpected, attBodyActual)
 	}
 
-	rawDocWithAttachmentAndSyncMeta := func() []byte {
-		return []byte(`{
-   "_sync": {
-      "rev": "1-5fc93bd36377008f96fdae2719c174ed",
-      "sequence": 2,
-      "recent_sequences": [
-         2
-      ],
-      "history": {
-         "revs": [
-            "1-5fc93bd36377008f96fdae2719c174ed"
-         ],
-         "parents": [
-            -1
-         ],
-         "channels": [
-            null
-         ]
-      },
-      "cas": "",
-      "attachments": {
-         "hi.txt": {
-            "revpos": 1,
-            "content_type": "text/plain",
-            "length": 2,
-            "stub": true,
-            "digest": "sha1-witfkXg0JglCjW9RssWvTAveakI="
-         }
-      },
-      "time_saved": "2021-09-01T17:33:03.054227821Z"
-   },
-  "key": "value"
-}`)
-	}
-
 	createDocWithLegacyAttachment := func(docID string, rawDoc []byte, attKey string, attBody []byte) {
-		// Write attachment directly to the bucket.
-		_, err := rt.Bucket().Add(attKey, 0, attBody)
-		require.NoError(t, err)
-
-		body := db.Body{}
-		err = body.Unmarshal(rawDoc)
-		require.NoError(t, err, "Error unmarshalling body")
-
-		// Write raw document to the bucket.
-		_, err = rt.Bucket().Add(docID, 0, rawDoc)
-		require.NoError(t, err)
-
-		// Migrate document metadata from document body to system xattr.
-		attachments := retrieveAttachmentMeta(docID)
-		require.Len(t, attachments, 1)
+		createDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
 	}
 
 	t.Run("single attachment removal upon document update", func(t *testing.T) {
@@ -9502,4 +9453,64 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
+}
+
+func createDocWithLegacyAttachment(t *testing.T, rt *RestTester, docID string, rawDoc []byte, attKey string, attBody []byte) {
+	// Write attachment directly to the bucket.
+	_, err := rt.Bucket().Add(attKey, 0, attBody)
+	require.NoError(t, err)
+
+	body := db.Body{}
+	err = body.Unmarshal(rawDoc)
+	require.NoError(t, err, "Error unmarshalling body")
+
+	// Write raw document to the bucket.
+	_, err = rt.Bucket().Add(docID, 0, rawDoc)
+	require.NoError(t, err)
+
+	// Migrate document metadata from document body to system xattr.
+	attachments := retrieveAttachmentMeta(t, rt, docID)
+	require.Len(t, attachments, 1)
+}
+
+func retrieveAttachmentMeta(t *testing.T, rt *RestTester, docID string) (attMeta map[string]interface{}) {
+	body := rt.getDoc(docID)
+	attachments, ok := body["_attachments"].(map[string]interface{})
+	require.True(t, ok)
+	return attachments
+}
+
+func rawDocWithAttachmentAndSyncMeta() []byte {
+	return []byte(`{
+   "_sync": {
+      "rev": "1-5fc93bd36377008f96fdae2719c174ed",
+      "sequence": 2,
+      "recent_sequences": [
+         2
+      ],
+      "history": {
+         "revs": [
+            "1-5fc93bd36377008f96fdae2719c174ed"
+         ],
+         "parents": [
+            -1
+         ],
+         "channels": [
+            null
+         ]
+      },
+      "cas": "",
+      "attachments": {
+         "hi.txt": {
+            "revpos": 1,
+            "content_type": "text/plain",
+            "length": 2,
+            "stub": true,
+            "digest": "sha1-witfkXg0JglCjW9RssWvTAveakI="
+         }
+      },
+      "time_saved": "2021-09-01T17:33:03.054227821Z"
+   },
+  "key": "value"
+}`)
 }
