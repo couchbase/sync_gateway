@@ -4221,3 +4221,46 @@ func TestSendRevAsReadOnlyGuest(t *testing.T) {
 	log.Printf("response body: %s", body)
 
 }
+
+// Repro CBG-2055: changing an attachment name on a stub causes version metadata to be lost
+func TestBlipAttachNameChange(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		guestEnabled: true,
+	})
+	defer rt.Close()
+
+	client1, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	require.NoError(t, err)
+	defer client1.Close()
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeySync, base.KeySyncMsg, base.KeyWebSocket, base.KeyWebSocketFrame, base.KeyHTTP, base.KeyCRUD)()
+
+	attachmentA := []byte("attachmentA")
+	attachmentAData := base64.StdEncoding.EncodeToString(attachmentA)
+	digest := db.Sha1DigestKey(attachmentA)
+
+	// Push initial attachment data
+	rev, err := client1.PushRev("doc", "", []byte(`{"key":"val","_attachments":{"attachment": {"data":"`+attachmentAData+`"}}}`))
+	require.NoError(t, err)
+
+	// Confirm attachment is in the bucket
+	attachmentAKey := db.MakeAttachmentKey(2, "doc", digest)
+	bucketAttachmentA, _, err := rt.Bucket().GetRaw(attachmentAKey)
+	require.NoError(t, err)
+	require.EqualValues(t, bucketAttachmentA, attachmentA)
+
+	// Simulate changing only the attachment name over CBL
+	// Use revpos 2 to simulate revpos bug in CBL 2.8 - 3.0.0
+	rev, err = client1.PushRev("doc", rev, []byte(`{"key":"val","_attachments":{"attach":{"revpos":2,"content_type":"","length":11,"stub":true,"digest":"`+digest+`"}}}`))
+	require.NoError(t, err)
+	err = rt.waitForRev("doc", rev)
+	require.NoError(t, err)
+
+	// Check if attachment is still in bucket
+	bucketAttachmentA, _, err = rt.Bucket().GetRaw(attachmentAKey)
+	assert.NoError(t, err)
+	assert.Equal(t, bucketAttachmentA, attachmentA)
+
+	resp := rt.SendAdminRequest("GET", "/db/doc/attach", "")
+	assertStatus(t, resp, http.StatusOK)
+	assert.Equal(t, attachmentA, resp.BodyBytes())
+}
