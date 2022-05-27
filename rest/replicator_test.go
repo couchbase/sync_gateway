@@ -4826,7 +4826,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 			initialState:   newRevisionState(3, "a", false, 0),
 			localMutation:  newRevisionState(6, "b", false, 4),
 			remoteMutation: newRevisionState(6, "c", false, 5),
-			expectedResult: newRevisionState(7, "b", false, 7),
+			expectedResult: newRevisionState(7, "b", false, 5),
 		},
 	}
 

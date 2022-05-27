@@ -104,23 +104,18 @@ func (db *Database) storeAttachments(doc *Document, newAttachmentsMeta Attachmen
 			if meta["stub"] != true {
 				return nil, base.HTTPErrorf(400, "Missing data of attachment %q", name)
 			}
-
-			revpos, ok := base.ToInt64(meta["revpos"])
-			if !ok || revpos < 1 {
-				return nil, base.HTTPErrorf(400, "Missing/invalid revpos in stub attachment %q", name)
-			}
 			// Try to look up the attachment in ancestor attachments
 			if parentAttachments == nil {
 				parentAttachments = db.retrieveAncestorAttachments(doc, parentRev, docHistory)
 			}
 
+			// Note: in a non-conflict CAS retry, parentAttachments may be nil, because the attachment
+			//  data was persisted prior to the CAS failure writing the doc.  In this scenario the
+			//  incoming doc attachment metadata has already been updated to stub=true to avoid attempting to
+			//  persist the attachment again, even though there is not an attachment on an ancestor.
 			if parentAttachments != nil {
 				if parentAttachment := parentAttachments[name]; parentAttachment != nil {
-					parentrevpos, ok := base.ToInt64(parentAttachment.(map[string]interface{})["revpos"])
-
-					if ok && revpos <= parentrevpos {
-						atts[name] = parentAttachment
-					}
+					atts[name] = parentAttachment
 				}
 			} else if meta["digest"] == nil {
 				return nil, base.HTTPErrorf(400, "Missing digest in stub attachment %q", name)
@@ -295,12 +290,18 @@ func (db *Database) ForEachStubAttachment(body Body, minRevpos int, docID string
 			if err != nil && !base.IsDocNotFoundError(err) {
 				return err
 			}
-			if newData, err := callback(name, digest, data, meta); err != nil {
+			newData, err := callback(name, digest, data, meta)
+			if err != nil {
 				return err
-			} else if newData != nil {
+			}
+			if newData != nil {
 				meta["data"] = newData
 				delete(meta, "stub")
 				delete(meta, "follows")
+			} else {
+				// Update version in the case where this is a new attachment on the doc sharing a V2 digest with
+				// an existing attachment
+				meta["ver"] = AttVersion2
 			}
 		}
 	}
