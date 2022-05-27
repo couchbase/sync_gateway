@@ -2237,3 +2237,46 @@ func TestStartupConfigBcryptCostValidation(t *testing.T) {
 		})
 	}
 }
+
+func Test_validateJavascriptFunction(t *testing.T) {
+	tests := []struct {
+		name        string
+		jsFunc      *string
+		wantIsEmpty bool
+		wantErr     assert.ErrorAssertionFunc
+	}{
+		{
+			name:        "unset (nil)",
+			jsFunc:      nil,
+			wantIsEmpty: true,
+			wantErr:     assert.NoError,
+		},
+		{
+			name:        "whitespace only",
+			jsFunc:      base.StringPtr("   \t \n "),
+			wantIsEmpty: true,
+			wantErr:     assert.NoError,
+		},
+		{
+			name:        "invalid js",
+			jsFunc:      base.StringPtr("  func() { console.log(\"foo\"); } "),
+			wantIsEmpty: false,
+			wantErr:     assert.Error,
+		},
+		{
+			name:        "valid js",
+			jsFunc:      base.StringPtr(" function() { console.log(\"foo\"); }  "),
+			wantIsEmpty: false,
+			wantErr:     assert.NoError,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			gotIsEmpty, err := validateJavascriptFunction(test.jsFunc)
+			if !test.wantErr(t, err, fmt.Sprintf("validateJavascriptFunction(%v)", test.jsFunc)) {
+				return
+			}
+			assert.Equalf(t, test.wantIsEmpty, gotIsEmpty, "validateJavascriptFunction(%v)", test.jsFunc)
+		})
+	}
+}
