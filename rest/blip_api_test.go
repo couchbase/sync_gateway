@@ -3351,13 +3351,73 @@ func TestCBLRevposHandling(t *testing.T) {
 	revIDDoc1, err = btc.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"content_type":"","stub":true,"revpos":4}}}`))
 	require.NoError(t, err)
 
+	// Validate attachment exists
+	attResponse := rt.SendAdminRequest("GET", "/db/doc1/attachment", "")
+	assert.Equal(t, 200, attResponse.Code)
+	assert.Equal(t, "attachmentA", string(attResponse.BodyBytes()))
+
 	attachmentPushCount := rt.GetDatabase().DbStats.CBLReplicationPushStats.AttachmentPushCount.Value()
 	// Update doc1, change attachment digest with CBL revpos=generation.  Should getAttachment
 	revIDDoc1, err = btc.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=","length":11,"content_type":"","stub":true,"revpos":5}}}`))
 	require.NoError(t, err)
 
+	// Validate attachment exists and is updated
+	attResponse = rt.SendAdminRequest("GET", "/db/doc1/attachment", "")
+	assert.Equal(t, 200, attResponse.Code)
+	assert.Equal(t, "attachmentB", string(attResponse.BodyBytes()))
+
 	attachmentPushCountAfter := rt.GetDatabase().DbStats.CBLReplicationPushStats.AttachmentPushCount.Value()
 	assert.Equal(t, attachmentPushCount+1, attachmentPushCountAfter)
+
+}
+
+// TestPushUnknownAttachmentAsStub sets revpos to an older generation, for an attachment that doesn't exist on the server.
+// Verifies that getAttachment is triggered, and attachment is properly persisted.
+func TestPushUnknownAttachmentAsStub(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		guestEnabled: true,
+	})
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClient(t, rt)
+	assert.NoError(t, err)
+	defer btc.Close()
+
+	var doc1Body db.Body
+
+	// Add doc1 and doc2
+	req := rt.SendAdminRequest("PUT", "/db/doc1", `{}`)
+	assertStatus(t, req, http.StatusCreated)
+	doc1Bytes := req.BodyBytes()
+
+	require.NoError(t, rt.WaitForPendingChanges())
+
+	err = json.Unmarshal(doc1Bytes, &doc1Body)
+	assert.NoError(t, err)
+
+	err = btc.StartOneshotPull()
+	assert.NoError(t, err)
+
+	rev1ID := "1-ca9ad22802b66f662ff171f226211d5c"
+	_, ok := btc.WaitForRev("doc1", rev1ID)
+	require.True(t, ok)
+
+	// force attachment into test client's store to validate it's fetched
+	attachmentAData := base64.StdEncoding.EncodeToString([]byte("attachmentA"))
+	contentType := "text/plain"
+	length, digest, err := btc.saveAttachment(contentType, attachmentAData)
+
+	// Update doc1, include reference to non-existing attachment with recent revpos
+	revIDDoc1, err := btc.PushRev("doc1", rev1ID, []byte(fmt.Sprintf(`{"key": "val", "_attachments":{"attachment":{"digest":"%s","length":%d,"content_type":"%s","stub":true,"revpos":1}}}`, digest, length, contentType)))
+	require.NoError(t, err)
+
+	err = rt.waitForRev("doc1", revIDDoc1)
+	assert.NoError(t, err)
+
+	// verify that attachment exists on document and was persisted
+	attResponse := rt.SendAdminRequest("GET", "/db/doc1/attachment", "")
+	assert.Equal(t, 200, attResponse.Code)
+	assert.Equal(t, "attachmentA", string(attResponse.BodyBytes()))
 
 }
 
