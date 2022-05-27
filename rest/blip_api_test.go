@@ -3406,6 +3406,7 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 	attachmentAData := base64.StdEncoding.EncodeToString([]byte("attachmentA"))
 	contentType := "text/plain"
 	length, digest, err := btc.saveAttachment(contentType, attachmentAData)
+	require.NoError(t, err)
 
 	// Update doc1, include reference to non-existing attachment with recent revpos
 	revIDDoc1, err := btc.PushRev("doc1", rev1ID, []byte(fmt.Sprintf(`{"key": "val", "_attachments":{"attachment":{"digest":"%s","length":%d,"content_type":"%s","stub":true,"revpos":1}}}`, digest, length, contentType)))
