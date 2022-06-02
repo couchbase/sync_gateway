@@ -77,6 +77,9 @@ const (
 	// If TestEnvX509Local=true, must use SG_TEST_X509_LOCAL_USER to set macOS username to locate CBS cert inbox
 	TestEnvX509LocalUser = "SG_TEST_X509_LOCAL_USER"
 
+	// If set, corresponds to name of the docker image of couchbase server
+	TestEnvCouchbaseServerDockerName = "SG_TEST_COUCHBASE_SERVER_DOCKER_NAME"
+
 	DefaultUseXattrs      = true // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
 	DefaultAllowConflicts = true // Whether Sync Gateway allows revision conflicts, if not specified in the config
 

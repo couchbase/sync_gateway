@@ -280,13 +280,17 @@ outerLoop:
 }
 
 func TestObtainManagementEndpointsFromServerContextWithX509(t *testing.T) {
+	serverURL := base.UnitTestUrl()
+	if !base.ServerIsTLS(serverURL) {
+		t.Skipf("URI %s needs to start with couchbases://", serverURL)
+	}
 	tb, teardownFn, caCertPath, certPath, keyPath := setupX509Tests(t, true)
 	defer tb.Close()
 	defer teardownFn()
 
 	ctx := NewServerContext(&StartupConfig{
 		Bootstrap: BootstrapConfig{
-			Server:       base.UnitTestUrl(),
+			Server:       serverURL,
 			X509CertPath: certPath,
 			X509KeyPath:  keyPath,
 			CACertPath:   caCertPath,

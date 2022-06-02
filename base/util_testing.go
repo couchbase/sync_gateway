@@ -200,6 +200,14 @@ func TestTLSSkipVerify() bool {
 	return val
 }
 
+func TestUseCouchbaseServerDockerName() (bool, string) {
+	testX509CouchbaseServerDockerName, isSet := os.LookupEnv(TestEnvCouchbaseServerDockerName)
+	if !isSet {
+		return false, ""
+	}
+	return true, testX509CouchbaseServerDockerName
+}
+
 func TestX509LocalServer() (bool, string) {
 	testX509LocalServer, isSet := os.LookupEnv(TestEnvX509Local)
 	if !isSet {

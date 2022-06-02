@@ -11,3 +11,7 @@
 *.exe
 *.iml
 sg_config.json
+coverage*.out
+coverage*.xml
+verbose*.out*
+verbose*.xml
