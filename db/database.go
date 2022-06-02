@@ -208,8 +208,9 @@ type ImportOptions struct {
 // Defines a N1QL query that the Connected Client API can invoke by name.
 // (The name is the key in the map DatabaseContextOptions.ConnectedClientQueries.)
 type ConnectedClientQuery struct {
-	Statement  string   `json:"statement"`  // N1QL / SQL++ query string
-	Parameters []string `json:"parameters"` // Names of '$'-prefixed parameters in query
+	Statement  string   `json:"statement"`            // N1QL / SQL++ query string
+	Parameters []string `json:"parameters,omitempty"` // Names of '$'-prefixed parameters in query
+	Channels   base.Set `json:"channels"`             // Names of channel(s) that grant access to query
 }
 
 type ConnectedClientQueryMap = map[string]*ConnectedClientQuery

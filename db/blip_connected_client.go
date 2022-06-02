@@ -79,6 +79,7 @@ func (bh *blipHandler) handlePutRev(rq *blip.Message) error {
 
 // Handles a Connected-Client "query" request.
 func (bh *blipHandler) handleQuery(rq *blip.Message) error {
+	// Look up the query by name:
 	if _, found := rq.Properties[QuerySource]; found {
 		return base.HTTPErrorf(http.StatusForbidden, "Only named queries allowed")
 	}
@@ -90,7 +91,11 @@ func (bh *blipHandler) handleQuery(rq *blip.Message) error {
 	if !found {
 		return base.HTTPErrorf(http.StatusNotFound, "No such query '%s'", name)
 	}
+	if err := bh.db.user.AuthorizeAnyChannel(query.Channels); err != nil {
+		return err
+	}
 
+	// Get the parameter values:
 	var params map[string]interface{}
 	bodyBytes, err := rq.Body()
 	if err != nil {
