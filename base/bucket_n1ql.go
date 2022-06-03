@@ -44,7 +44,7 @@ func (bucket *CouchbaseBucketGoCB) Keyspace() string {
 
 // Substitutes `keyspaceName` for the KeyspaceQueryToken in `statement`, returning the result.
 func SubstituteKeyspaceQueryToken(statement string, keyspaceName string) string {
-	return strings.Replace(statement, KeyspaceQueryToken, "`" + keyspaceName + "`", -1)
+	return strings.Replace(statement, KeyspaceQueryToken, "`"+keyspaceName+"`", -1)
 }
 
 // Query accepts a parameterized statement,  optional list of params, and an optional flag to force adhoc query execution.
