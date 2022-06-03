@@ -16,7 +16,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/gocb/v2"
@@ -114,14 +113,8 @@ func (bh *blipHandler) handleQuery(rq *blip.Message) error {
 
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("name: %s", name))
 
-	// In the N1QL string, replace "BUCKET" with the actual bucket name, wrapped in back-quotes in
-	// case it's not a valid N1QL identifier (e.g. `travel-sample`.)
-	// TODO: This is a workaround for the inability to use back-quotes for this in an SG config
-	// file, because those are already reserved for quoting long literals like the sync function.
-	statement := strings.ReplaceAll(query.Statement, "BUCKET", "`"+bh.db.Name+"`")
-
 	// Run the query:
-	results, err := bh.db.N1QLQueryWithStats(bh.db.Ctx, QueryTypeConnectedClientPrefix+name, statement, params,
+	results, err := bh.db.N1QLQueryWithStats(bh.db.Ctx, QueryTypeConnectedClientPrefix+name, query.Statement, params,
 		base.RequestPlus, false)
 	if err != nil {
 		var qe *gocb.QueryError
@@ -136,10 +129,13 @@ func (bh *blipHandler) handleQuery(rq *blip.Message) error {
 
 	// Write the results to the response:
 	var out bytes.Buffer
-	enc := json.NewEncoder(&out)
+	enc := base.JSONEncoder(&out)
 	var row interface{}
 	for results.Next(&row) {
 		enc.Encode(row) // always ends with a newline
+	}
+	if err = results.Close(); err != nil {
+		return err
 	}
 	response := rq.Response()
 	response.SetCompressed(true)
