@@ -13,7 +13,6 @@ package base
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/couchbase/gocb/v2"
@@ -31,7 +30,7 @@ func (c *Collection) Keyspace() string {
 func (c *Collection) Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (resultsIterator sgbucket.QueryResultIterator, err error) {
 	logCtx := context.TODO()
 
-	bucketStatement := strings.Replace(statement, KeyspaceQueryToken, c.Keyspace(), -1)
+	bucketStatement := SubstituteKeyspaceQueryToken(statement, c.Keyspace())
 
 	n1qlOptions := &gocb.QueryOptions{
 		ScanConsistency: gocb.QueryScanConsistency(consistency),

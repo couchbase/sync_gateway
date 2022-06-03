@@ -35,9 +35,9 @@ const (
 // When running with xattrs, that gets replaced with META().xattrs._sync (or META(bucketname).xattrs._sync for query).
 // When running w/out xattrs, it's just replaced by the doc path `bucketname`._sync
 // This gets replaced before the statement is sent to N1QL by the replaceSyncTokens methods.
-var syncNoXattr = fmt.Sprintf("`%s`.%s", base.KeyspaceQueryToken, base.SyncPropertyName)
+var syncNoXattr = fmt.Sprintf("%s.%s", base.KeyspaceQueryToken, base.SyncPropertyName)
 var syncXattr = "meta().xattrs." + base.SyncXattrName
-var syncXattrQuery = fmt.Sprintf("meta(`%s`).xattrs.%s", base.KeyspaceQueryToken, base.SyncXattrName) // Replacement for $sync token for xattr queries
+var syncXattrQuery = fmt.Sprintf("meta(%s).xattrs.%s", base.KeyspaceQueryToken, base.SyncXattrName) // Replacement for $sync token for xattr queries
 
 type SGIndexType int
 
@@ -118,17 +118,17 @@ var (
 	// Queries used to check readiness on startup.  Only required for critical indexes.
 	readinessQueries = map[SGIndexType]string{
 		IndexAccess: "SELECT $sync.access.foo as val " +
-			"FROM `%s` " +
+			"FROM %s " +
 			"USE INDEX ($idx) " +
 			"WHERE ANY op in OBJECT_PAIRS($sync.access) SATISFIES op.name = 'foo' end " +
 			"LIMIT 1",
 		IndexRoleAccess: "SELECT $sync.role_access.foo as val " +
-			"FROM `%s` " +
+			"FROM %s " +
 			"USE INDEX ($idx) " +
 			"WHERE ANY op in OBJECT_PAIRS($sync.role_access) SATISFIES op.name = 'foo' end " +
 			"LIMIT 1",
 		IndexChannels: "SELECT  [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null), IFMISSING(op.val.del,null)][1] AS sequence " +
-			"FROM `%s` " +
+			"FROM %s " +
 			"USE INDEX ($idx) " +
 			"UNNEST OBJECT_PAIRS($sync.channels) AS op " +
 			"WHERE [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null), IFMISSING(op.val.del,null)]  BETWEEN  ['foo', 0] AND ['foo', 1] " +

@@ -1657,7 +1657,7 @@ func (bucket *CouchbaseBucketGoCB) APIBucketItemCount() (itemCount int, err erro
 // QueryBucketItemCount uses a request plus query to get the number of items in a bucket, as the REST API can be slow to update its value.
 // Requires a primary index on the bucket.
 func QueryBucketItemCount(n1qlStore N1QLStore) (itemCount int, err error) {
-	statement := fmt.Sprintf("SELECT COUNT(1) AS count FROM `%s`", KeyspaceQueryToken)
+	statement := fmt.Sprintf("SELECT COUNT(1) AS count FROM %s", KeyspaceQueryToken)
 	r, err := n1qlStore.Query(statement, nil, RequestPlus, true)
 	if err != nil {
 		return -1, err

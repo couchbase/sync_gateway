@@ -42,6 +42,11 @@ func (bucket *CouchbaseBucketGoCB) Keyspace() string {
 	return bucket.GetName()
 }
 
+// Substitutes `keyspaceName` for the KeyspaceQueryToken in `statement`, returning the result.
+func SubstituteKeyspaceQueryToken(statement string, keyspaceName string) string {
+	return strings.Replace(statement, KeyspaceQueryToken, "`" + keyspaceName + "`", -1)
+}
+
 // Query accepts a parameterized statement,  optional list of params, and an optional flag to force adhoc query execution.
 // Params specified using the $param notation in the statement are intended to be used w/ N1QL prepared statements, and will be
 // passed through as params to n1ql.  e.g.:
@@ -56,7 +61,7 @@ func (bucket *CouchbaseBucketGoCB) Keyspace() string {
 // Query retries on Indexer Errors, as these are normally transient
 func (bucket *CouchbaseBucketGoCB) Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (results sgbucket.QueryResultIterator, err error) {
 	logCtx := context.TODO()
-	bucketStatement := strings.Replace(statement, KeyspaceQueryToken, bucket.GetName(), -1)
+	bucketStatement := SubstituteKeyspaceQueryToken(statement, bucket.GetName())
 	n1qlQuery := gocb.NewN1qlQuery(bucketStatement)
 	n1qlQuery = n1qlQuery.AdHoc(adhoc)
 	n1qlQuery = n1qlQuery.Consistency(gocb.ConsistencyMode(consistency))

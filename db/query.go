@@ -53,7 +53,7 @@ var QueryAccess = SGQuery{
 	name: QueryTypeAccess,
 	statement: fmt.Sprintf(
 		"SELECT $sync.access.`$$selectUserName` as `value` "+
-			"FROM `%s` "+
+			"FROM %s "+
 			"USE INDEX ($idx) "+
 			"WHERE any op in object_pairs($sync.access) satisfies op.name = $userName end;",
 		base.KeyspaceQueryToken),
@@ -64,7 +64,7 @@ var QueryRoleAccess = SGQuery{
 	name: QueryTypeRoleAccess,
 	statement: fmt.Sprintf(
 		"SELECT $sync.role_access.`$$selectUserName` as `value` "+
-			"FROM `%s` "+
+			"FROM %s "+
 			"USE INDEX ($idx) "+
 			"WHERE any op in object_pairs($sync.role_access) satisfies op.name = $userName end;",
 		base.KeyspaceQueryToken),
@@ -92,8 +92,8 @@ var QueryChannels = SGQuery{
 			"[op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)][3] AS rDel, "+
 			"$sync.rev AS rev, "+
 			"$sync.flags AS flags, "+
-			"META(`%s`).id AS id "+
-			"FROM `%s` "+
+			"META(%s).id AS id "+
+			"FROM %s "+
 			"USE INDEX ($idx) "+
 			"UNNEST OBJECT_PAIRS($sync.channels) AS op "+
 			"WHERE ([op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)]  "+
@@ -110,8 +110,8 @@ var QueryStarChannel = SGQuery{
 		"SELECT $sync.sequence AS seq, "+
 			"$sync.rev AS rev, "+
 			"$sync.flags AS flags, "+
-			"META(`%s`).id AS id "+
-			"FROM `%s` "+
+			"META(%s).id AS id "+
+			"FROM %s "+
 			"USE INDEX ($idx) "+
 			"WHERE $sync.sequence >= $startSeq AND $sync.sequence < $endSeq "+
 			"AND META().id NOT LIKE '%s' %s"+
@@ -126,8 +126,8 @@ var QuerySequences = SGQuery{
 		"SELECT $sync.sequence AS seq, "+
 			"$sync.rev AS rev, "+
 			"$sync.flags AS flags, "+
-			"META(`%s`).id AS id "+
-			"FROM `%s` "+
+			"META(%s).id AS id "+
+			"FROM %s "+
 			"USE INDEX($idx) "+
 			"WHERE $sync.sequence IN $inSequences "+
 			"AND META().id NOT LIKE '%s'",
@@ -147,14 +147,14 @@ type QueryChannelsRow struct {
 var QueryPrincipals = SGQuery{
 	name: QueryTypePrincipals,
 	statement: fmt.Sprintf(
-		"SELECT META(`%s`).id "+
-			"FROM `%s` "+
+		"SELECT META(%s).id "+
+			"FROM %s "+
 			"USE INDEX($idx) "+
-			"WHERE META(`%s`).id LIKE '%s' "+
-			"AND (META(`%s`).id LIKE '%s' "+
-			"OR META(`%s`).id LIKE '%s') "+
-			"AND META(`%s`).id >= $%s "+ // Uses >= for inclusive startKey
-			"ORDER BY META(`%s`).id",
+			"WHERE META(%s).id LIKE '%s' "+
+			"AND (META(%s).id LIKE '%s' "+
+			"OR META(%s).id LIKE '%s') "+
+			"AND META(%s).id >= $%s "+ // Uses >= for inclusive startKey
+			"ORDER BY META(%s).id",
 		base.KeyspaceQueryToken,
 		base.KeyspaceQueryToken,
 		base.KeyspaceQueryToken, SyncDocWildcard,
@@ -174,14 +174,14 @@ type QueryUsersRow struct {
 var QueryUsers = SGQuery{
 	name: QueryTypeUsers,
 	statement: fmt.Sprintf(
-		"SELECT `%s`.name, "+
-			"`%s`.email, "+
-			"`%s`.disabled "+
-			"FROM `%s` "+
+		"SELECT %s.name, "+
+			"%s.email, "+
+			"%s.disabled "+
+			"FROM %s "+
 			"USE INDEX($idx) "+
-			"WHERE META(`%s`).id LIKE '%s' "+
-			"AND META(`%s`).id >= $%s "+ // Using >= to match QueryPrincipals startKey handling
-			"ORDER BY META(`%s`).id",
+			"WHERE META(%s).id LIKE '%s' "+
+			"AND META(%s).id >= $%s "+ // Using >= to match QueryPrincipals startKey handling
+			"ORDER BY META(%s).id",
 		base.KeyspaceQueryToken,
 		base.KeyspaceQueryToken,
 		base.KeyspaceQueryToken,
@@ -195,11 +195,11 @@ var QueryUsers = SGQuery{
 var QuerySessions = SGQuery{
 	name: QueryTypeSessions,
 	statement: fmt.Sprintf(
-		"SELECT META(`%s`).id "+
-			"FROM `%s` "+
+		"SELECT META(%s).id "+
+			"FROM %s "+
 			"USE INDEX($idx) "+
-			"WHERE META(`%s`).id LIKE '%s' "+
-			"AND META(`%s`).id LIKE '%s' "+
+			"WHERE META(%s).id LIKE '%s' "+
+			"AND META(%s).id LIKE '%s' "+
 			"AND username = $userName",
 		base.KeyspaceQueryToken, base.KeyspaceQueryToken, base.KeyspaceQueryToken, SyncDocWildcard, base.KeyspaceQueryToken, `\\_sync:session:%`),
 	adhoc: false,
@@ -207,8 +207,8 @@ var QuerySessions = SGQuery{
 var QueryTombstones = SGQuery{
 	name: QueryTypeTombstones,
 	statement: fmt.Sprintf(
-		"SELECT META(`%s`).id "+
-			"FROM `%s` "+
+		"SELECT META(%s).id "+
+			"FROM %s "+
 			"USE INDEX ($idx) "+
 			"WHERE $sync.tombstoned_at BETWEEN 0 AND $olderThan",
 		base.KeyspaceQueryToken, base.KeyspaceQueryToken),
@@ -222,10 +222,10 @@ var QueryTombstones = SGQuery{
 var QueryResync = SGQuery{
 	name: QueryTypeResync,
 	statement: fmt.Sprintf(
-		"SELECT META(`%s`).id "+
-			"FROM `%s` "+
+		"SELECT META(%s).id "+
+			"FROM %s "+
 			"USE INDEX ($idx) "+
-			"WHERE META(`%s`).id NOT LIKE '%s' "+
+			"WHERE META(%s).id NOT LIKE '%s' "+
 			"AND $sync.sequence > 0", // Required to use IndexAllDocs
 		base.KeyspaceQueryToken, base.KeyspaceQueryToken, base.KeyspaceQueryToken, SyncDocWildcard),
 	adhoc: false,
@@ -240,14 +240,14 @@ var QueryResync = SGQuery{
 var QueryAllDocs = SGQuery{
 	name: QueryTypeAllDocs,
 	statement: fmt.Sprintf(
-		"SELECT META(`%s`).id as id, "+
+		"SELECT META(%s).id as id, "+
 			"$sync.rev as r, "+
 			"$sync.sequence as s, "+
 			"$sync.channels as c "+
-			"FROM `%s` "+
+			"FROM %s "+
 			"USE INDEX ($idx) "+
 			"WHERE $sync.sequence > 0 AND "+ // Required to use IndexAllDocs
-			"META(`%s`).id NOT LIKE '%s' "+
+			"META(%s).id NOT LIKE '%s' "+
 			"AND $sync IS NOT MISSING "+
 			"AND ($sync.flags IS MISSING OR BITTEST($sync.flags,1) = false)",
 		base.KeyspaceQueryToken, base.KeyspaceQueryToken, base.KeyspaceQueryToken, SyncDocWildcard),

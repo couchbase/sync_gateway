@@ -89,7 +89,7 @@ func CreateIndex(store N1QLStore, indexName string, expression string, filterExp
 	}
 
 	// Replace any KeyspaceQueryToken references in the index expression
-	createStatement = strings.Replace(createStatement, KeyspaceQueryToken, store.Keyspace(), -1)
+	createStatement = SubstituteKeyspaceQueryToken(createStatement, store.Keyspace())
 
 	createErr := createIndex(store, indexName, createStatement, options)
 	if createErr != nil {
