@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
 	pkgerrors "github.com/pkg/errors"
 )
 
@@ -69,8 +69,8 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 	}
 
 	var fileStartupConfig *StartupConfig
-	var legacyDbUsers map[string]map[string]*db.PrincipalConfig // [db][user]PrincipleConfig
-	var legacyDbRoles map[string]map[string]*db.PrincipalConfig // [db][roles]PrincipleConfig
+	var legacyDbUsers map[string]map[string]*auth.PrincipalConfig // [db][user]PrincipleConfig
+	var legacyDbRoles map[string]map[string]*auth.PrincipalConfig // [db][roles]PrincipleConfig
 	if len(configPath) == 1 {
 		fileStartupConfig, err = LoadStartupConfigFromPath(configPath[0])
 		if pkgerrors.Cause(err) == base.ErrUnknownField {
@@ -176,7 +176,7 @@ func getInitialStartupConfig(fileStartupConfig *StartupConfig, flagStartupConfig
 // automaticConfigUpgrade takes the config path of the current 2.x config and attempts to perform the update steps to
 // update it to a 3.x config
 // Returns the new startup config, a bool of whether to fallback to legacy config, map of users per database, map of roles per database, and an error
-func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersistentConfig bool, users map[string]map[string]*db.PrincipalConfig, roles map[string]map[string]*db.PrincipalConfig, err error) {
+func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersistentConfig bool, users map[string]map[string]*auth.PrincipalConfig, roles map[string]map[string]*auth.PrincipalConfig, err error) {
 	legacyServerConfig, err := LoadLegacyServerConfig(configPath)
 	if err != nil {
 		return nil, false, nil, nil, err
@@ -214,8 +214,8 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 		}
 
 		// Return users and roles separate from config
-		users = make(map[string]map[string]*db.PrincipalConfig)
-		roles = make(map[string]map[string]*db.PrincipalConfig)
+		users = make(map[string]map[string]*auth.PrincipalConfig)
+		roles = make(map[string]map[string]*auth.PrincipalConfig)
 		users[dbc.Name] = dbc.Users
 		roles[dbc.Name] = dbc.Roles
 		dbc.Roles = nil

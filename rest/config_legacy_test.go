@@ -280,7 +280,7 @@ func TestLegacyGuestUserMigration(t *testing.T) {
 		t.Skip("CBS required")
 	}
 
-	expected := db.PrincipalConfig{
+	expected := auth.PrincipalConfig{
 		ExplicitChannels: base.SetFromArray([]string{"*"}),
 		Disabled:         base.BoolPtr(false),
 	}
@@ -358,7 +358,7 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 	}
 
 	// Add principles already on bucket before migration
-	existingUsers := map[string]*db.PrincipalConfig{
+	existingUsers := map[string]*auth.PrincipalConfig{
 		"ExistingUserStatic": {
 			Name:             base.StringPtr("ExistingUserStatic"),
 			ExplicitChannels: base.SetOf("*"),
@@ -371,7 +371,7 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 	err := rt.ServerContext().installPrincipals(rt.GetDatabase(), existingUsers, "user")
 	require.NoError(t, err)
 
-	existingRoles := map[string]*db.PrincipalConfig{
+	existingRoles := map[string]*auth.PrincipalConfig{
 		"ExistingRoleStatic": {
 			Name:             base.StringPtr("ExistingRoleStatic"),
 			ExplicitChannels: base.SetOf("*"),

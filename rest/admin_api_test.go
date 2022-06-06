@@ -278,6 +278,14 @@ func TestPrincipalForbidUpdatingChannels(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "all_channels":["baz"]}`)
 	assertStatus(t, response, 400)
 
+	// PUT admin_roles
+	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_roles":["foo", "bar"]}`)
+	assertStatus(t, response, 200)
+
+	// PUT roles - should fail
+	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "roles":["baz"]}`)
+	assertStatus(t, response, 400)
+
 	// Roles
 	// PUT admin_channels
 	response = rt.SendAdminRequest("PUT", "/db/_role/test", `{"admin_channels":["foo", "bar"]}`)
@@ -1100,9 +1108,9 @@ func TestDBGetConfigNames(t *testing.T) {
 	p := "password"
 
 	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
-		Users: map[string]*db.PrincipalConfig{
-			"alice": &db.PrincipalConfig{Password: &p},
-			"bob":   &db.PrincipalConfig{Password: &p},
+		Users: map[string]*auth.PrincipalConfig{
+			"alice": &auth.PrincipalConfig{Password: &p},
+			"bob":   &auth.PrincipalConfig{Password: &p},
 		},
 	}}
 
@@ -2517,7 +2525,7 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 }
 
 func TestConfigRedaction(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{Users: map[string]*db.PrincipalConfig{"alice": {Password: base.StringPtr("password")}}}}})
+	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{Users: map[string]*auth.PrincipalConfig{"alice": {Password: base.StringPtr("password")}}}}})
 	defer rt.Close()
 
 	// Test default db config redaction
@@ -4328,7 +4336,7 @@ function (doc) {
 			rtConfig := &RestTesterConfig{
 				SyncFn: syncFunc,
 				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-					Users: map[string]*db.PrincipalConfig{
+					Users: map[string]*auth.PrincipalConfig{
 						"alice": {
 							Password:         base.StringPtr("pass"),
 							ExplicitChannels: base.SetOf("chanAlpha", "chanBeta", "chanCharlie", "chanHotel", "chanIndia"),
@@ -4460,7 +4468,7 @@ function (doc) {
 func TestReplicatorDeprecatedCredentials(t *testing.T) {
 	passiveRT := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{
 		DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
 					Password: base.StringPtr("pass"),
 				},

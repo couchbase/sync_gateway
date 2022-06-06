@@ -1023,7 +1023,7 @@ outerLoop:
 }
 
 // Returns user information for all users (ID, disabled, email)
-func (db *DatabaseContext) GetUsers(ctx context.Context, limit int) (users []PrincipalConfig, err error) {
+func (db *DatabaseContext) GetUsers(ctx context.Context, limit int) (users []auth.PrincipalConfig, err error) {
 
 	if db.Options.UseViews {
 		return nil, errors.New("GetUsers not supported when running with useViews=true")
@@ -1044,7 +1044,7 @@ func (db *DatabaseContext) GetUsers(ctx context.Context, limit int) (users []Pri
 		paginationLimit = limit
 	}
 
-	users = []PrincipalConfig{}
+	users = []auth.PrincipalConfig{}
 
 	totalCount := 0
 
@@ -1071,9 +1071,9 @@ outerLoop:
 			startKey = base.UserPrefix + queryRow.Name
 			resultCount++
 			if queryRow.Name != "" && !skipAddition {
-				principal := PrincipalConfig{
+				principal := auth.PrincipalConfig{
 					Name:     &queryRow.Name,
-					Email:    queryRow.Email,
+					Email:    &queryRow.Email,
 					Disabled: &queryRow.Disabled,
 				}
 				users = append(users, principal)

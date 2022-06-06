@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
@@ -37,7 +38,7 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				"alice": {Password: base.StringPtr("pass")},
 			},
 		}},
@@ -97,7 +98,7 @@ func TestActiveReplicatorHeartbeats(t *testing.T) {
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				"alice": {Password: base.StringPtr("pass")},
 			},
 		}},
@@ -165,7 +166,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				username: {
 					Password:         base.StringPtr(password),
 					ExplicitChannels: base.SetOf(username),
@@ -255,7 +256,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
@@ -436,7 +437,7 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 			// Passive
 			rt2 := NewRestTester(t, &RestTesterConfig{
 				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-					Users: map[string]*db.PrincipalConfig{
+					Users: map[string]*auth.PrincipalConfig{
 						"alice": {
 							Password:         base.StringPtr("pass"),
 							ExplicitChannels: base.SetOf("alice"),
@@ -576,7 +577,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
@@ -741,7 +742,7 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
@@ -895,7 +896,7 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
@@ -988,7 +989,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
@@ -1083,7 +1084,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
@@ -1209,7 +1210,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
@@ -1356,7 +1357,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	rt1 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb1,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
@@ -1534,7 +1535,7 @@ func TestActiveReplicatorPushFromCheckpointIgnored(t *testing.T) {
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
@@ -1662,7 +1663,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
@@ -1757,7 +1758,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
@@ -1857,7 +1858,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
@@ -2033,7 +2034,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			rt2 := NewRestTester(t, &RestTesterConfig{
 				TestBucket: tb2,
 				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-					Users: map[string]*db.PrincipalConfig{
+					Users: map[string]*auth.PrincipalConfig{
 						"alice": {
 							Password:         base.StringPtr("pass"),
 							ExplicitChannels: base.SetOf("*"),
@@ -2238,7 +2239,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			rt2 := NewRestTester(t, &RestTesterConfig{
 				TestBucket: base.GetTestBucket(t),
 				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-					Users: map[string]*db.PrincipalConfig{
+					Users: map[string]*auth.PrincipalConfig{
 						"alice": {
 							Password:         base.StringPtr("pass"),
 							ExplicitChannels: base.SetOf("*"),
@@ -2432,7 +2433,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: base.GetTestBucket(t),
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
@@ -2509,7 +2510,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: base.GetTestBucket(t),
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
@@ -2573,7 +2574,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: base.GetTestBucket(t),
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
@@ -2728,7 +2729,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
@@ -2823,7 +2824,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	rt2 = NewRestTester(t, &RestTesterConfig{
 		TestBucket: base.GetTestBucket(t),
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
@@ -2900,7 +2901,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: base.GetTestBucket(t),
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
@@ -3056,7 +3057,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: base.GetTestBucket(t),
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
@@ -3156,7 +3157,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 		TestBucket: base.GetTestBucket(t),
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AllowConflicts: base.BoolPtr(false),
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
@@ -3269,7 +3270,7 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("chan1", "chan2"),
@@ -3468,7 +3469,7 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 					rt2 := NewRestTester(t, &RestTesterConfig{
 						TestBucket: tb2,
 						DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-							Users: map[string]*db.PrincipalConfig{
+							Users: map[string]*auth.PrincipalConfig{
 								"alice": {
 									Password:         base.StringPtr("pass"),
 									ExplicitChannels: base.SetOf("alice"),
@@ -3650,7 +3651,7 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
@@ -3767,7 +3768,7 @@ func TestBlipSyncNonUpgradableConnection(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				"alice": {Password: base.StringPtr("pass")},
 			},
 		}},
@@ -3990,7 +3991,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			rt2 := NewRestTester(t, &RestTesterConfig{
 				TestBucket: tb2,
 				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-					Users: map[string]*db.PrincipalConfig{
+					Users: map[string]*auth.PrincipalConfig{
 						"alice": {
 							Password:         base.StringPtr("pass"),
 							ExplicitChannels: base.SetOf("*"),
@@ -4479,7 +4480,7 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 			rt2 := NewRestTester(t, &RestTesterConfig{
 				TestBucket: base.GetTestBucket(t),
 				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-					Users: map[string]*db.PrincipalConfig{
+					Users: map[string]*auth.PrincipalConfig{
 						"alice": {
 							Password:         base.StringPtr("pass"),
 							ExplicitChannels: base.SetOf("alice"),
@@ -4631,7 +4632,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			rt2 := NewRestTester(t, &RestTesterConfig{
 				TestBucket: base.GetTestBucket(t),
 				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-					Users: map[string]*db.PrincipalConfig{
+					Users: map[string]*auth.PrincipalConfig{
 						"alice": {
 							Password:         base.StringPtr("pass"),
 							ExplicitChannels: base.SetOf("alice"),

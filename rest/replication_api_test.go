@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbaselabs/walrus"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -1018,7 +1019,7 @@ func setupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 	passiveRT = NewRestTester(t, &RestTesterConfig{
 		TestBucket: passiveTestBucket.NoCloseClone(),
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*db.PrincipalConfig{
+			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("*"),

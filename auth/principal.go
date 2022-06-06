@@ -145,3 +145,65 @@ type User interface {
 
 	setRolesSince(ch.TimedSet)
 }
+
+// PrincipalConfig represents a user/role as a JSON object.
+// Used to define a user/role within DbConfig, and structures the request/response body in the admin REST API
+// for /db/_user/*
+type PrincipalConfig struct {
+	Name             *string  `json:"name,omitempty"`
+	ExplicitChannels base.Set `json:"admin_channels,omitempty"`
+	// Fields below only apply to Users, not Roles:
+	Email             *string  `json:"email,omitempty"`
+	Disabled          *bool    `json:"disabled,omitempty"`
+	Password          *string  `json:"password,omitempty"`
+	ExplicitRoleNames base.Set `json:"admin_roles,omitempty"`
+	// Fields below are read-only
+	Channels  base.Set `json:"all_channels,omitempty"`
+	RoleNames []string `json:"roles,omitempty"`
+}
+
+// IsPasswordValid checks if the passwords in this PrincipalConfig is valid.  Only allows
+// empty passwords if allowEmptyPass is true.
+func (u PrincipalConfig) IsPasswordValid(allowEmptyPass bool) (isValid bool, reason string) {
+	// if it's an anon user, they should not have a password
+	if u.Name == nil {
+		if u.Password != nil {
+			return false, "Anonymous users should not have a password"
+		} else {
+			return true, ""
+		}
+	}
+
+	/*
+		if allowEmptyPass && ( u.Password == nil || len(*u.Password) == 0) {
+			return true, ""
+		}
+
+		if u.Password == nil || (u.Password != nil && len(*u.Password) < 3) {
+			return false, "Passwords must be at least three 3 characters"
+		}
+	*/
+
+	if u.Password == nil || len(*u.Password) == 0 {
+		if !allowEmptyPass {
+			return false, "Empty passwords are not allowed "
+		}
+	} else if len(*u.Password) < 3 {
+		return false, "Passwords must be at least three 3 characters"
+	}
+
+	return true, ""
+}
+
+// Merge returns a new PrincipalConfig that represents the combination of both this and other's changes.
+// If any changes conflict, those of the other take precedence.
+func (u PrincipalConfig) Merge(other PrincipalConfig) PrincipalConfig {
+	return PrincipalConfig{
+		Name:              base.CoalesceStrings(other.Name, u.Name),
+		ExplicitChannels:  base.CoalesceSets(other.ExplicitChannels, u.ExplicitChannels),
+		Email:             base.CoalesceStrings(other.Email, u.Email),
+		Password:          base.CoalesceStrings(other.Password, u.Password),
+		Disabled:          base.CoalesceBools(other.Disabled, u.Disabled),
+		ExplicitRoleNames: base.CoalesceSets(other.ExplicitRoleNames, u.ExplicitRoleNames),
+	}
+}

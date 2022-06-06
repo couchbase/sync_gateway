@@ -20,54 +20,6 @@ import (
 	ch "github.com/couchbase/sync_gateway/channels"
 )
 
-// Struct that configures settings of a User/Role, for UpdatePrincipal.
-// Also used in the rest package as a JSON object that defines a User/Role within a DbConfig
-// and structures the request/response body in the admin REST API for /db/_user/*
-type PrincipalConfig struct {
-	Name             *string  `json:"name,omitempty"`
-	ExplicitChannels base.Set `json:"admin_channels,omitempty"`
-	Channels         base.Set `json:"all_channels,omitempty"`
-	// Fields below only apply to Users, not Roles:
-	Email             string   `json:"email,omitempty"`
-	Disabled          *bool    `json:"disabled,omitempty"`
-	Password          *string  `json:"password,omitempty"`
-	ExplicitRoleNames []string `json:"admin_roles,omitempty"`
-	RoleNames         []string `json:"roles,omitempty"`
-}
-
-// Check if the password in this PrincipalConfig is valid.  Only allow
-// empty passwords if allowEmptyPass is true.
-func (p PrincipalConfig) IsPasswordValid(allowEmptyPass bool) (isValid bool, reason string) {
-	// if it's an anon user, they should not have a password
-	if p.Name == nil {
-		if p.Password != nil {
-			return false, "Anonymous users should not have a password"
-		} else {
-			return true, ""
-		}
-	}
-
-	/*
-		if allowEmptyPass && ( p.Password == nil || len(*p.Password) == 0) {
-			return true, ""
-		}
-
-		if p.Password == nil || (p.Password != nil && len(*p.Password) < 3) {
-			return false, "Passwords must be at least three 3 characters"
-		}
-	*/
-
-	if p.Password == nil || len(*p.Password) == 0 {
-		if !allowEmptyPass {
-			return false, "Empty passwords are not allowed "
-		}
-	} else if len(*p.Password) < 3 {
-		return false, "Passwords must be at least three 3 characters"
-	}
-
-	return true, ""
-}
-
 func (db *DatabaseContext) DeleteRole(ctx context.Context, name string, purge bool) error {
 	authenticator := db.Authenticator(ctx)
 
@@ -88,8 +40,8 @@ func (db *DatabaseContext) DeleteRole(ctx context.Context, name string, purge bo
 	return authenticator.DeleteRole(role, purge, seq)
 }
 
-// Updates or creates a principal from a PrincipalConfig structure.
-func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, newInfo PrincipalConfig, isUser bool, allowReplace bool) (replaced bool, err error) {
+// UpdatePrincipal updates or creates a principal from a PrincipalConfig structure.
+func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.PrincipalConfig, isUser bool, allowReplace bool) (replaced bool, err error) {
 	// Get the existing principal, or if this is a POST make sure there isn't one:
 	var princ auth.Principal
 	var user auth.User
@@ -99,10 +51,10 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, newInfo Princip
 	// to PrincipalUpdateMaxCasRetries defensively to avoid unexpected retry loops.
 	for i := 1; i <= auth.PrincipalUpdateMaxCasRetries; i++ {
 		if isUser {
-			user, err = authenticator.GetUser(*newInfo.Name)
+			user, err = authenticator.GetUser(*updates.Name)
 			princ = user
 		} else {
-			princ, err = authenticator.GetRole(*newInfo.Name)
+			princ, err = authenticator.GetRole(*updates.Name)
 		}
 		if err != nil {
 			return replaced, err
@@ -111,17 +63,20 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, newInfo Princip
 		changed := false
 		replaced = (princ != nil)
 		if !replaced {
+			if updates.Name == nil || *updates.Name == "" {
+				return replaced, fmt.Errorf("UpdatePrincipal: cannot create principal with empty name")
+			}
 			// If user/role didn't exist already, instantiate a new one:
 			if isUser {
-				isValid, reason := newInfo.IsPasswordValid(dbc.AllowEmptyPassword)
+				isValid, reason := updates.IsPasswordValid(dbc.AllowEmptyPassword)
 				if !isValid {
 					err = base.HTTPErrorf(http.StatusBadRequest, "Error creating user: %s", reason)
 					return replaced, err
 				}
-				user, err = authenticator.NewUser(*newInfo.Name, "", nil)
+				user, err = authenticator.NewUser(*updates.Name, "", nil)
 				princ = user
 			} else {
-				princ, err = authenticator.NewRole(*newInfo.Name, nil)
+				princ, err = authenticator.NewRole(*updates.Name, nil)
 			}
 			if err != nil {
 				return replaced, fmt.Errorf("Error creating user/role: %w", err)
@@ -130,59 +85,69 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, newInfo Princip
 		} else if !allowReplace {
 			err = base.HTTPErrorf(http.StatusConflict, "Already exists")
 			return
-		} else if isUser && newInfo.Password != nil {
-			isValid, reason := newInfo.IsPasswordValid(dbc.AllowEmptyPassword)
+		} else if isUser && updates.Password != nil {
+			isValid, reason := updates.IsPasswordValid(dbc.AllowEmptyPassword)
 			if !isValid {
 				err = base.HTTPErrorf(http.StatusBadRequest, "Error updating user/role: %s", reason)
 				return replaced, err
 			}
 		}
 
-		// Ensure the caller isn't trying to set all_channels explicitly - it'll get recomputed automatically.
-		if len(newInfo.Channels) > 0 && !princ.Channels().Equals(newInfo.Channels) {
+		// Ensure the caller isn't trying to set all_channels or roles explicitly - it'll get recomputed automatically.
+		if len(updates.Channels) > 0 && !princ.Channels().Equals(updates.Channels) {
 			return false, base.HTTPErrorf(http.StatusBadRequest, "all_channels is read-only")
+		}
+		if user, ok := princ.(auth.User); ok {
+			if len(updates.RoleNames) > 0 && !user.RoleNames().Equals(base.SetFromArray(updates.RoleNames)) {
+				return false, base.HTTPErrorf(http.StatusBadRequest, "roles is read-only")
+			}
+		}
+
+		updatedExplicitChannels := princ.ExplicitChannels()
+		if updatedExplicitChannels == nil {
+			updatedExplicitChannels = ch.TimedSet{}
 		}
 
 		updatedChannels := princ.ExplicitChannels()
 		if updatedChannels == nil {
 			updatedChannels = ch.TimedSet{}
 		}
-		if !updatedChannels.Equals(newInfo.ExplicitChannels) {
+		if updates.ExplicitChannels != nil && !updatedExplicitChannels.Equals(updates.ExplicitChannels) {
 			changed = true
 		}
 
-		var updatedRoles ch.TimedSet
+		var updatedExplicitRoles ch.TimedSet
 
 		// Then the user-specific fields like roles:
 		if isUser {
-			if newInfo.Email != user.Email() {
-				if err := user.SetEmail(newInfo.Email); err != nil {
-					base.WarnfCtx(ctx, "Skipping SetEmail for user %q - Invalid email address provided: %q", base.UD(*newInfo.Name), base.UD(newInfo.Email))
+			if updates.Email != nil && *updates.Email != user.Email() {
+				if err := user.SetEmail(*updates.Email); err != nil {
+					base.WarnfCtx(ctx, "Skipping SetEmail for user %q - Invalid email address provided: %q", base.UD(updates.Name), base.UD(*updates.Email))
 				}
 				changed = true
 			}
-			if newInfo.Password != nil {
-				err = user.SetPassword(*newInfo.Password)
+			if updates.Password != nil {
+				err = user.SetPassword(*updates.Password)
 				if err != nil {
 					return false, err
 				}
 				changed = true
 			}
-			if newInfo.Disabled != nil && *newInfo.Disabled != user.Disabled() {
-				user.SetDisabled(*newInfo.Disabled)
+			if updates.Disabled != nil && *updates.Disabled != user.Disabled() {
+				user.SetDisabled(*updates.Disabled)
 				changed = true
 			}
 
-			updatedRoles = user.ExplicitRoles()
-			if updatedRoles == nil {
-				updatedRoles = ch.TimedSet{}
+			updatedExplicitRoles = user.ExplicitRoles()
+			if updatedExplicitRoles == nil {
+				updatedExplicitRoles = ch.TimedSet{}
 			}
-			if !updatedRoles.Equals(base.SetFromArray(newInfo.ExplicitRoleNames)) {
+			if updates.ExplicitRoleNames != nil && !updatedExplicitRoles.Equals(updates.ExplicitRoleNames) {
 				changed = true
 			}
 		}
 
-		// And finally save the Principal:
+		// And finally save the Principal if anything has changed:
 		if !changed {
 			return replaced, nil
 		}
@@ -197,13 +162,13 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, newInfo Princip
 		princ.SetSequence(nextSeq)
 
 		// Now update the Principal object from the properties in the request, first the channels:
-		if updatedChannels.UpdateAtSequence(newInfo.ExplicitChannels, nextSeq) {
-			princ.SetExplicitChannels(updatedChannels, nextSeq)
+		if updates.ExplicitChannels != nil && updatedExplicitChannels.UpdateAtSequence(updates.ExplicitChannels, nextSeq) {
+			princ.SetExplicitChannels(updatedExplicitChannels, nextSeq)
 		}
 
 		if isUser {
-			if updatedRoles.UpdateAtSequence(base.SetFromArray(newInfo.ExplicitRoleNames), nextSeq) {
-				user.SetExplicitRoles(updatedRoles, nextSeq)
+			if updates.ExplicitRoleNames != nil && updatedExplicitRoles.UpdateAtSequence(updates.ExplicitRoleNames, nextSeq) {
+				user.SetExplicitRoles(updatedExplicitRoles, nextSeq)
 			}
 		}
 		err = authenticator.Save(princ)

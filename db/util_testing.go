@@ -377,7 +377,7 @@ func (dbc *DatabaseContext) ChannelViewForTest(tb testing.TB, channelName string
 }
 
 // Test-only version of GetPrincipal that doesn't trigger channel/role recalculation
-func (dbc *DatabaseContext) GetPrincipalForTest(tb testing.TB, name string, isUser bool) (info *PrincipalConfig, err error) {
+func (dbc *DatabaseContext) GetPrincipalForTest(tb testing.TB, name string, isUser bool) (info *auth.PrincipalConfig, err error) {
 	ctx := base.TestCtx(tb)
 	var princ auth.Principal
 	if isUser {
@@ -388,14 +388,15 @@ func (dbc *DatabaseContext) GetPrincipalForTest(tb testing.TB, name string, isUs
 	if princ == nil {
 		return
 	}
-	info = new(PrincipalConfig)
+	info = new(auth.PrincipalConfig)
 	info.Name = &name
 	info.ExplicitChannels = princ.ExplicitChannels().AsSet()
 	if user, ok := princ.(auth.User); ok {
 		info.Channels = user.InheritedChannels().AsSet()
-		info.Email = user.Email()
+		email := user.Email()
+		info.Email = &email
 		info.Disabled = base.BoolPtr(user.Disabled())
-		info.ExplicitRoleNames = user.ExplicitRoles().AllKeys()
+		info.ExplicitRoleNames = user.ExplicitRoles().AsSet()
 		info.RoleNames = user.RoleNames().AllKeys()
 	} else {
 		info.Channels = princ.Channels().AsSet()

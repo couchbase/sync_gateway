@@ -549,7 +549,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	}
 
 	if config.Guest != nil {
-		guest := map[string]*db.PrincipalConfig{base.GuestUsername: config.Guest}
+		guest := map[string]*auth.PrincipalConfig{base.GuestUsername: config.Guest}
 		if err := sc.installPrincipals(dbcontext, guest, "user"); err != nil {
 			return nil, err
 		}
@@ -1000,7 +1000,7 @@ func (sc *ServerContext) _removeDatabase(dbName string) bool {
 	return true
 }
 
-func (sc *ServerContext) installPrincipals(dbc *db.DatabaseContext, spec map[string]*db.PrincipalConfig, what string) error {
+func (sc *ServerContext) installPrincipals(dbc *db.DatabaseContext, spec map[string]*auth.PrincipalConfig, what string) error {
 	for name, princ := range spec {
 		isGuest := name == base.GuestUsername
 		if isGuest {
@@ -1014,7 +1014,7 @@ func (sc *ServerContext) installPrincipals(dbc *db.DatabaseContext, spec map[str
 		logCtx := context.TODO()
 		createdPrincipal := true
 		worker := func() (shouldRetry bool, err error, value interface{}) {
-			_, err = dbc.UpdatePrincipal(context.Background(), *princ, (what == "user"), isGuest)
+			_, err = dbc.UpdatePrincipal(context.Background(), princ, (what == "user"), isGuest)
 			if err != nil {
 				if status, _ := base.ErrorAsHTTPStatus(err); status == http.StatusConflict {
 					// Ignore and absorb this error if it's a conflict error, which just means that updatePrincipal didn't overwrite an existing user.

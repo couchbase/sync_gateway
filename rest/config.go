@@ -116,8 +116,8 @@ type DbConfig struct {
 	Scopes                           ScopesConfig                     `json:"scopes,omitempty"`                               // Scopes and collection specific config
 	Name                             string                           `json:"name,omitempty"`                                 // Database name in REST API (stored as key in JSON)
 	Sync                             *string                          `json:"sync,omitempty"`                                 // The sync function applied to write operations in the _default scope and collection
-	Users                            map[string]*db.PrincipalConfig   `json:"users,omitempty"`                                // Initial user accounts
-	Roles                            map[string]*db.PrincipalConfig   `json:"roles,omitempty"`                                // Initial roles
+	Users                            map[string]*auth.PrincipalConfig `json:"users,omitempty"`                                // Initial user accounts
+	Roles                            map[string]*auth.PrincipalConfig `json:"roles,omitempty"`                                // Initial roles
 	RevsLimit                        *uint32                          `json:"revs_limit,omitempty"`                           // Max depth a document's revision tree can grow to
 	AutoImport                       interface{}                      `json:"import_docs,omitempty"`                          // Whether to automatically import Couchbase Server docs into SG.  Xattrs must be enabled.  true or "continuous" both enable this.
 	ImportPartitions                 *uint16                          `json:"import_partitions,omitempty"`                    // Number of partitions for import sharding.  Impacts the total DCP concurrency for import
@@ -154,7 +154,7 @@ type DbConfig struct {
 	QueryPaginationLimit             *int                             `json:"query_pagination_limit,omitempty"`               // Query limit to be used during pagination of large queries
 	UserXattrKey                     string                           `json:"user_xattr_key,omitempty"`                       // Key of user xattr that will be accessible from the Sync Function. If empty the feature will be disabled.
 	ClientPartitionWindowSecs        *int                             `json:"client_partition_window_secs,omitempty"`         // How long clients can remain offline for without losing replication metadata. Default 30 days (in seconds)
-	Guest                            *db.PrincipalConfig              `json:"guest,omitempty"`                                // Guest user settings
+	Guest                            *auth.PrincipalConfig            `json:"guest,omitempty"`                                // Guest user settings
 }
 
 type ScopesConfig map[string]ScopeConfig
@@ -1337,7 +1337,7 @@ func (sc *ServerContext) applyConfig(cnf DatabaseConfig) (applied bool, err erro
 // addLegacyPrincipals takes a map of databases that each have a map of names with principle configs.
 // Call this function to install the legacy principles to the upgraded database that use a persistent config.
 // Only call this function after the databases have been initalised via setupServerContext.
-func (sc *ServerContext) addLegacyPrincipals(legacyDbUsers, legacyDbRoles map[string]map[string]*db.PrincipalConfig) {
+func (sc *ServerContext) addLegacyPrincipals(legacyDbUsers, legacyDbRoles map[string]map[string]*auth.PrincipalConfig) {
 	for dbName, dbUser := range legacyDbUsers {
 		dbCtx, err := sc.GetDatabase(dbName)
 		if err != nil {
