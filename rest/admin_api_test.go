@@ -4130,11 +4130,24 @@ func TestConfigResetBooleanFields(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	res := rt.SendAdminRequest(http.MethodPost, "/db/_config", `{"disable_password_auth": true}`)
+	newConfig := map[string]interface{}{
+		"bucket":                      rt.Bucket().GetName(),
+		"num_index_replicas":          0,
+		"enable_shared_bucket_access": base.TestUseXattrs(),
+		"use_views":                   base.TestsDisableGSI(),
+		"disable_password_auth":       true,
+	}
+
+	newConfigJSON, err := base.JSONMarshal(newConfig)
+	require.NoError(t, err, "failed to marshal new config")
+	res := rt.SendAdminRequest(http.MethodPut, "/db/_config", string(newConfigJSON))
 	assertStatus(t, res, http.StatusCreated)
 	assert.True(t, base.BoolDefault(rt.GetDatabase().Options.DisablePasswordAuthentication, false), "disable_password_auth was not true")
 
-	res = rt.SendAdminRequest(http.MethodPost, "/db/_config", `{"disable_password_auth": false}`)
+	newConfig["disable_password_auth"] = false
+	newConfigJSON, err = base.JSONMarshal(newConfig)
+	require.NoError(t, err, "failed to marshal new config")
+	res = rt.SendAdminRequest(http.MethodPut, "/db/_config", string(newConfigJSON))
 	assertStatus(t, res, http.StatusCreated)
 	assert.False(t, base.BoolDefault(rt.GetDatabase().Options.DisablePasswordAuthentication, false), "disable_password_auth was not false")
 }
