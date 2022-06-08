@@ -4132,11 +4132,11 @@ func TestDisablePasswordAuthThroughAdminAPI(t *testing.T) {
 
 	res := rt.SendAdminRequest(http.MethodPost, "/db/_config", `{"bucket":"`+rt.Bucket().GetName()+`","num_index_replicas":0,"disable_password_auth": true}`)
 	assertStatus(t, res, http.StatusCreated)
-	assert.True(t, base.BoolDefault(rt.GetDatabase().Options.DisablePasswordAuthentication, false))
+	assert.True(t, rt.GetDatabase().Options.DisablePasswordAuthentication)
 
 	res = rt.SendAdminRequest(http.MethodPost, "/db/_config", `{"bucket":"`+rt.Bucket().GetName()+`","num_index_replicas":0,"disable_password_auth": false}`)
 	assertStatus(t, res, http.StatusCreated)
-	assert.False(t, base.BoolDefault(rt.GetDatabase().Options.DisablePasswordAuthentication, false))
+	assert.False(t, rt.GetDatabase().Options.DisablePasswordAuthentication)
 }
 
 // Tests replications to make sure they are namespaced by group ID

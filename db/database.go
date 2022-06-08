@@ -138,7 +138,7 @@ type DatabaseContextOptions struct {
 	SessionCookieHttpOnly         bool             // Pass-through DbConfig.SessionCookieHTTPOnly
 	AllowConflicts                *bool            // False forbids creating conflicts
 	SendWWWAuthenticateHeader     *bool            // False disables setting of 'WWW-Authenticate' header
-	DisablePasswordAuthentication *bool            // True enforces OIDC/guest only
+	DisablePasswordAuthentication bool             // True enforces OIDC/guest only
 	UseViews                      bool             // Force use of views
 	DeltaSyncOptions              DeltaSyncOptions // Delta Sync Options
 	CompactInterval               uint32           // Interval in seconds between compaction is automatically ran - 0 means don't run
