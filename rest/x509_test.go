@@ -154,11 +154,16 @@ func setupX509Tests(t *testing.T, useIPAddress bool) (testBucket *base.TestBucke
 	sgPair := generateX509SG(t, ca, base.TestClusterUsername(), time.Now().Add(time.Hour*24))
 	teardownFn := saveX509Files(t, ca, nodePair, sgPair)
 
-	isLocalX509, localUserName := base.TestX509LocalServer()
-	if isLocalX509 {
-		err = loadCertsIntoLocalCouchbaseServer(*testURL, ca, nodePair, localUserName)
+	usingDocker, dockerName := base.TestUseCouchbaseServerDockerName()
+	if usingDocker {
+		err = loadCertsIntoCouchbaseServerDocker(*testURL, ca, nodePair, dockerName)
 	} else {
-		err = loadCertsIntoCouchbaseServer(*testURL, ca, nodePair)
+		isLocalX509, localUserName := base.TestX509LocalServer()
+		if isLocalX509 {
+			err = loadCertsIntoLocalCouchbaseServer(*testURL, ca, nodePair, localUserName)
+		} else {
+			err = loadCertsIntoCouchbaseServer(*testURL, ca, nodePair)
+		}
 	}
 	require.NoError(t, err)
 

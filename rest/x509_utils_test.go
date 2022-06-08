@@ -48,6 +48,18 @@ const (
 // x509TestsEnabled returns true if the test flag is enabled.
 func x509TestsEnabled() bool {
 	b, _ := strconv.ParseBool(os.Getenv(x509TestFlag))
+	if b == true {
+		allVars := []string{base.TestEnvX509LocalUser, x509TestFlagSSHUsername, base.TestEnvCouchbaseServerDockerName}
+		var setVars []string
+		for _, envVar := range allVars {
+			if os.Getenv(envVar) != "" {
+				setVars = append(setVars, envVar)
+			}
+		}
+		if len(setVars) > 1 {
+			panic(fmt.Sprintf("%+v are mutually exclusive environment variables in a test environment", setVars))
+		}
+	}
 	return b
 }
 
@@ -57,25 +69,25 @@ func saveX509Files(t *testing.T, ca *caPair, node *nodePair, sg *sgPair) (teardo
 	require.NoError(t, err)
 
 	caPEMFilepath := filepath.Join(dirName, "ca.pem")
-	err = ioutil.WriteFile(caPEMFilepath, ca.PEM.Bytes(), os.FileMode(777))
+	err = ioutil.WriteFile(caPEMFilepath, ca.PEM.Bytes(), os.FileMode(0777))
 	require.NoError(t, err)
 	ca.PEMFilepath = caPEMFilepath
 
 	chainPEMFilepath := filepath.Join(dirName, "chain.pem")
-	err = ioutil.WriteFile(chainPEMFilepath, node.PEM.Bytes(), os.FileMode(777))
+	err = ioutil.WriteFile(chainPEMFilepath, node.PEM.Bytes(), os.FileMode(0777))
 	require.NoError(t, err)
 	node.PEMFilepath = chainPEMFilepath
 	pkeyKeyFilepath := filepath.Join(dirName, "pkey.key")
-	err = ioutil.WriteFile(pkeyKeyFilepath, node.Key.Bytes(), os.FileMode(777))
+	err = ioutil.WriteFile(pkeyKeyFilepath, node.Key.Bytes(), os.FileMode(0777))
 	require.NoError(t, err)
 	node.KeyFilePath = pkeyKeyFilepath
 
 	sgPEMFilepath := filepath.Join(dirName, "sg.pem")
-	err = ioutil.WriteFile(sgPEMFilepath, sg.PEM.Bytes(), os.FileMode(777))
+	err = ioutil.WriteFile(sgPEMFilepath, sg.PEM.Bytes(), os.FileMode(0777))
 	require.NoError(t, err)
 	sg.PEMFilepath = sgPEMFilepath
 	sgKeyFilepath := filepath.Join(dirName, "sg.key")
-	err = ioutil.WriteFile(sgKeyFilepath, sg.Key.Bytes(), os.FileMode(777))
+	err = ioutil.WriteFile(sgKeyFilepath, sg.Key.Bytes(), os.FileMode(0777))
 	require.NoError(t, err)
 	sg.KeyFilePath = sgKeyFilepath
 
@@ -262,43 +274,25 @@ func loadCertsIntoCouchbaseServer(couchbaseServerURL url.URL, ca *caPair, node *
 	}
 	base.DebugfCtx(logCtx, base.KeyAll, "copied x509 node pkey.key to integration test server")
 
-	restAPIURL := basicAuthRESTPIURLFromConnstrHost(couchbaseServerURL)
+	return uploadCACertViaREST(couchbaseServerURL, ca)
+}
 
-	// Upload the CA cert via the REST API
-	resp, err := http.Post(restAPIURL.String()+"/controller/uploadClusterCA", "application/octet-stream", ca.PEM)
+// loadCertsIntoCouchbaseServer will upload the given certs into Couchbase Server (via SSH and the REST API)
+func loadCertsIntoCouchbaseServerDocker(couchbaseServerURL url.URL, ca *caPair, node *nodePair, containerName string) error {
+	err := copyLocalFileIntoDocker(containerName, node.PEMFilepath, "/opt/couchbase/var/lib/couchbase/inbox")
 	if err != nil {
 		return err
 	}
-	defer func() { _ = resp.Body.Close() }()
-	respBody, err := ioutil.ReadAll(resp.Body)
+	logCtx := context.Background()
+	base.DebugfCtx(logCtx, base.KeyAll, "copied x509 node chain.pem to integration test server")
+
+	err = copyLocalFileIntoDocker(containerName, node.KeyFilePath, "/opt/couchbase/var/lib/couchbase/inbox")
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("couldn't uploadClusterCA: expected %d status code but got %d: %s", http.StatusOK, resp.StatusCode, respBody)
-	}
-	base.DebugfCtx(logCtx, base.KeyAll, "uploaded ca.pem to Couchbase Server")
+	base.DebugfCtx(logCtx, base.KeyAll, "copied x509 node pkey.key to integration test server")
 
-	// Make CBS read the newly uploaded certs
-	resp, err = http.Post(restAPIURL.String()+"/node/controller/reloadCertificate", "", nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	respBody, err = ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("couldn't reloadCertificate: expected %d status code but got %d: %s", http.StatusOK, resp.StatusCode, respBody)
-	}
-	base.DebugfCtx(logCtx, base.KeyAll, "triggered reload of certificates on Couchbase Server")
-
-	if err := enableX509ClientCertsInCouchbaseServer(restAPIURL); err != nil {
-		return err
-	}
-
-	return nil
+	return uploadCACertViaREST(couchbaseServerURL, ca)
 }
 
 // loadCertsIntoLocalCouchbaseServer will upload the given certs into Couchbase Server (via SSH and the REST API)
@@ -319,7 +313,10 @@ func loadCertsIntoLocalCouchbaseServer(couchbaseServerURL url.URL, ca *caPair, n
 		return err
 	}
 	base.DebugfCtx(logCtx, base.KeyAll, "copied x509 node pkey.key to integration test server")
+	return uploadCACertViaREST(couchbaseServerURL, ca)
+}
 
+func uploadCACertViaREST(couchbaseServerURL url.URL, ca *caPair) error {
 	restAPIURL := basicAuthRESTPIURLFromConnstrHost(couchbaseServerURL)
 
 	// Upload the CA cert via the REST API
@@ -335,6 +332,7 @@ func loadCertsIntoLocalCouchbaseServer(couchbaseServerURL url.URL, ca *caPair, n
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("couldn't uploadClusterCA: expected %d status code but got %d: %s", http.StatusOK, resp.StatusCode, respBody)
 	}
+	logCtx := context.Background()
 	base.DebugfCtx(logCtx, base.KeyAll, "uploaded ca.pem to Couchbase Server")
 
 	// Make CBS read the newly uploaded certs
@@ -440,27 +438,23 @@ func sshCopyFileAsExecutable(sourceFilepath, sshRemoteHost, destinationDirectory
 		// SSH option flags
 		forceKeyOnly        = "-o PasswordAuthentication=no"
 		skipHostFingerprint = "-o StrictHostKeyChecking=no"
+		batchMode           = "-o BatchMode=true"
 	)
 
 	// make destination directory if it doesn't exist
-	cmd := exec.Command("ssh", forceKeyOnly, skipHostFingerprint, sshRemoteHost, "mkdir", "-p", destinationDirectory)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return errors.Wrap(err, string(output))
+	err := runCmd("ssh", forceKeyOnly, skipHostFingerprint, batchMode, sshRemoteHost, "mkdir", "-p", destinationDirectory)
+	if err != nil {
+		return err
 	}
 
 	// copy the file (requires SSH Keys to be set up)
-	cmd = exec.Command("scp", forceKeyOnly, skipHostFingerprint, sourceFilepath, sshRemoteHost+":"+destinationDirectory)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return errors.Wrap(err, string(output))
+	err = runCmd("scp", forceKeyOnly, skipHostFingerprint, batchMode, sourceFilepath, sshRemoteHost+":"+destinationDirectory)
+	if err != nil {
+		return err
 	}
 
 	// make the file we just copied readable and executable (required for Couchbase server to use the certs)
-	cmd = exec.Command("ssh", forceKeyOnly, skipHostFingerprint, sshRemoteHost, "chmod -R a+rx", filepath.Join(destinationDirectory, filepath.Base(sourceFilepath)))
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return errors.Wrap(err, string(output))
-	}
-
-	return nil
+	return runCmd("ssh", forceKeyOnly, skipHostFingerprint, batchMode, sshRemoteHost, "chmod -R a+rx", filepath.Join(destinationDirectory, filepath.Base(sourceFilepath)))
 }
 
 // copyLocalFile takes in a full source filepath and a destination directory.
@@ -468,22 +462,48 @@ func sshCopyFileAsExecutable(sourceFilepath, sshRemoteHost, destinationDirectory
 func copyLocalFile(sourceFilepath, destinationDirectory string) error {
 
 	// make destination directory if it doesn't exist
-	cmd := exec.Command("mkdir", "-p", destinationDirectory)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return errors.Wrap(err, string(output))
+	err := runCmd("mkdir", "-p", destinationDirectory)
+	if err != nil {
+		return err
 	}
 
 	// copy the file
-	cmd = exec.Command("cp", sourceFilepath, destinationDirectory)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return errors.Wrap(err, string(output))
+	err = runCmd("cp", sourceFilepath, destinationDirectory)
+	if err != nil {
+		return err
 	}
 
 	// make the file we just copied readable and executable (required for Couchbase server to use the certs)
-	cmd = exec.Command("chmod", "-R", "a+rwx", filepath.Join(destinationDirectory, filepath.Base(sourceFilepath)))
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return errors.Wrap(err, string(output))
+	return runCmd("chmod", "-R", "a+rwx", filepath.Join(destinationDirectory, filepath.Base(sourceFilepath)))
+
+}
+
+// runCmd runs a command and returns error if the command fails
+func runCmd(arg ...string) error {
+	cmd := exec.Command(arg[0], arg[1:]...) //#nosec G204 // unsanitized input OK for test code
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return errors.Wrap(err, fmt.Sprintf("Error executing %s : %s", cmd, output))
+	}
+	return nil
+}
+
+// copyLocalFileIntoDocker takes in a full source filepath and a destination directory.
+// The destination directory will be created in full if it does not exist, the file will be copied, and then the read and execute permissions set.
+func copyLocalFileIntoDocker(containerName, sourceFilepath, destinationDirectory string) error {
+
+	// make destination directory if it doesn't exist
+	err := runCmd("docker", "exec", containerName, "mkdir", "-p", destinationDirectory)
+	if err != nil {
+		return err
 	}
 
-	return nil
+	// copy the file
+	err = runCmd("docker", "cp", sourceFilepath, containerName+":"+destinationDirectory)
+	if err != nil {
+		return err
+	}
+
+	// make the file we just copied readable and executable (required for Couchbase server to use the certs)
+	return runCmd("docker", "exec", containerName, "chmod", "-R", "a+rwx", filepath.Join(destinationDirectory, filepath.Base(sourceFilepath)))
 }
