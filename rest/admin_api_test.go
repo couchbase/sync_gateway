@@ -4127,54 +4127,16 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 
 // Regression test for CBG-2119 - ensure that bool fields are handled correctly both when set as true and as false
 func TestConfigResetBooleanFields(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
+	rt := NewRestTester(t, &RestTesterConfig{})
+	defer rt.Close()
 
-	serverErr := make(chan error)
+	res := rt.SendAdminRequest(http.MethodPost, "/db/_config", `{"bucket":"`+rt.Bucket().GetName()+`","num_index_replicas":0,"disable_password_auth": true}`)
+	assertStatus(t, res, http.StatusCreated)
+	assert.True(t, base.BoolDefault(rt.GetDatabase().Options.DisablePasswordAuthentication, false), "disable_password_auth was not true")
 
-	// Start SG with no databases
-	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true)
-	require.NoError(t, err)
-	defer func() {
-		base.InfofCtx(base.TestCtx(t), base.KeyAll, "closing server context")
-		sc.Close()
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- startServer(&config, sc)
-	}()
-	require.NoError(t, sc.waitForRESTAPIs())
-
-	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer func() {
-		base.InfofCtx(base.TestCtx(t), base.KeyAll, "closing test bucket")
-		tb.Close()
-	}()
-
-	// Initialise DB
-	res := bootstrapAdminRequest(t, http.MethodPut, "/db/",
-		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
-			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
-		),
-	)
-	require.NoError(t, res.Body.Close())
-	require.Equal(t, http.StatusCreated, res.StatusCode)
-
-	res = bootstrapAdminRequest(t, http.MethodPost, "/db/_config", `{"disable_password_auth": true}`)
-	require.NoError(t, res.Body.Close())
-	require.Equal(t, http.StatusCreated, res.StatusCode)
-	require.True(t, base.BoolDefault(sc.GetDbConfig("db").DisablePasswordAuth, false))
-
-	res = bootstrapAdminRequest(t, http.MethodPost, "/db/_config", `{"disable_password_auth": false}`)
-	require.NoError(t, res.Body.Close())
-	require.Equal(t, http.StatusCreated, res.StatusCode)
-	require.False(t, base.BoolDefault(sc.GetDbConfig("db").DisablePasswordAuth, false))
+	res = rt.SendAdminRequest(http.MethodPost, "/db/_config", `{"bucket":"`+rt.Bucket().GetName()+`","num_index_replicas":0,"disable_password_auth": false}`)
+	assertStatus(t, res, http.StatusCreated)
+	assert.False(t, base.BoolDefault(rt.GetDatabase().Options.DisablePasswordAuthentication, false), "disable_password_auth was not false")
 }
 
 // Tests replications to make sure they are namespaced by group ID
