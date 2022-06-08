@@ -50,7 +50,8 @@ func (h *handler) handleSessionPOST() error {
 
 	// NOTE: handleSessionPOST doesn't handle creating users from OIDC - checkAuth calls out into AuthenticateUntrustedJWT.
 	// Therefore, if by this point `h.user` is guest, this isn't creating a session from OIDC.
-	if h.db.Options.DisablePasswordAuthentication && (h.user == nil || h.user.Name() == "") {
+	if base.BoolDefault(h.db.Options.DisablePasswordAuthentication, false) &&
+		(h.user == nil || h.user.Name() == "") {
 		return base.HTTPErrorf(http.StatusUnauthorized, "Password authentication is disabled")
 	}
 	user, err := h.getUserFromSessionRequestBody()

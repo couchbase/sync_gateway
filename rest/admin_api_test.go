@@ -4125,6 +4125,20 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 }
 
+// Regression test for CBG-2119 - ensure that bool fields are handled correctly both when set as true and as false
+func TestConfigResetBooleanFields(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	res := rt.SendAdminRequest(http.MethodPost, "/db/_config", `{"disable_password_auth": true}`)
+	assertStatus(t, res, http.StatusCreated)
+	assert.True(t, base.BoolDefault(rt.GetDatabase().Options.DisablePasswordAuthentication, false), "disable_password_auth was not true")
+
+	res = rt.SendAdminRequest(http.MethodPost, "/db/_config", `{"disable_password_auth": false}`)
+	assertStatus(t, res, http.StatusCreated)
+	assert.False(t, base.BoolDefault(rt.GetDatabase().Options.DisablePasswordAuthentication, false), "disable_password_auth was not false")
+}
+
 // Tests replications to make sure they are namespaced by group ID
 func TestGroupIDReplications(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {

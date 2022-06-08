@@ -773,7 +773,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 
 	// If basic auth is disabled, it doesn't make sense to send WWW-Authenticate
 	sendWWWAuthenticate := config.SendWWWAuthenticateHeader
-	if config.DisablePasswordAuth {
+	if base.BoolDefault(config.DisablePasswordAuth, false) {
 		sendWWWAuthenticate = base.BoolPtr(false)
 	}
 
