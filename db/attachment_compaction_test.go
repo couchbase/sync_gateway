@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -838,7 +839,8 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	count := int64(0)
 	var err error
 	go func() {
-		count, _, err = attachmentCompactMarkPhase(testDb, "mark", terminator, stat)
+		docCount, _, err := attachmentCompactMarkPhase(testDb, "mark", terminator, stat)
+		atomic.StoreInt64(&count, docCount)
 		require.NoError(t, err)
 	}()
 
@@ -850,7 +852,7 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	}
 
 	compactionFuncReturnedRetryFunc := func() (shouldRetry bool, err error, value interface{}) {
-		if count == 0 {
+		if atomic.LoadInt64(&count) == 0 {
 			return true, nil, nil
 		}
 		return false, nil, nil

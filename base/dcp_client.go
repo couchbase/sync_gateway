@@ -335,7 +335,16 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 	openStreamError := make(chan error)
 	openStreamCallback := func(f []gocbcore.FailoverEntry, err error) {
 		if err == nil {
-			err = dc.verifyAndUpdateFailoverLog(vbID, f)
+			err = dc.verifyFailoverLog(vbID, f)
+			if err == nil {
+				e := streamOpenEvent{
+					streamEventCommon: streamEventCommon{
+						vbID: vbID,
+					},
+					failoverLogs: f,
+				}
+				dc.workerForVbno(vbID).Send(e)
+			}
 		}
 		openStreamError <- err
 	}
@@ -362,16 +371,15 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 	}
 }
 
-// verifyAndUpdateFailoverLog checks for VbUUID changes when failOnRollback is set, and
+// verifyFailoverLog checks for VbUUID changes when failOnRollback is set, and
 // writes the failover log to the client metadata store.  If previous VbUUID is zero, it's
 // not considered a rollback - it's not required to initialize vbUUIDs into meta.
-func (dc *DCPClient) verifyAndUpdateFailoverLog(vbID uint16, f []gocbcore.FailoverEntry) error {
+func (dc *DCPClient) verifyFailoverLog(vbID uint16, f []gocbcore.FailoverEntry) error {
 
 	if dc.failOnRollback {
 		previousMeta := dc.metadata.GetMeta(vbID)
 		// Cases where VbUUID and StartSeqNo aren't set aren't considered rollback
 		if previousMeta.VbUUID == 0 && previousMeta.StartSeqNo == 0 {
-			dc.metadata.SetFailoverEntries(vbID, f)
 			return nil
 		}
 
@@ -381,7 +389,6 @@ func (dc *DCPClient) verifyAndUpdateFailoverLog(vbID uint16, f []gocbcore.Failov
 			return errors.New("VbUUID mismatch when failOnRollback set")
 		}
 	}
-	dc.metadata.SetFailoverEntries(vbID, f)
 	return nil
 }
 
