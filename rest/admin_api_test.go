@@ -4132,11 +4132,11 @@ func TestConfigResetBooleanFields(t *testing.T) {
 
 	res := rt.SendAdminRequest(http.MethodPost, "/db/_config", `{"bucket":"`+rt.Bucket().GetName()+`","num_index_replicas":0,"disable_password_auth": true}`)
 	assertStatus(t, res, http.StatusCreated)
-	assert.True(t, base.BoolDefault(rt.GetDatabase().Options.DisablePasswordAuthentication, false), "disable_password_auth was not true")
+	assert.True(t, base.BoolDefault(rt.GetDatabase().Options.DisablePasswordAuthentication, false))
 
 	res = rt.SendAdminRequest(http.MethodPost, "/db/_config", `{"bucket":"`+rt.Bucket().GetName()+`","num_index_replicas":0,"disable_password_auth": false}`)
 	assertStatus(t, res, http.StatusCreated)
-	assert.False(t, base.BoolDefault(rt.GetDatabase().Options.DisablePasswordAuthentication, false), "disable_password_auth was not false")
+	assert.False(t, base.BoolDefault(rt.GetDatabase().Options.DisablePasswordAuthentication, false))
 }
 
 // Tests replications to make sure they are namespaced by group ID
