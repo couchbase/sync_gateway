@@ -26,6 +26,8 @@ import (
 	"time"
 
 	"github.com/couchbase/go-blip"
+	"github.com/couchbase/gocb/v2"
+	"github.com/couchbase/gocbcore/v10/memd"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -4482,6 +4484,11 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 	v2Key := db.MakeAttachmentKey(2, "doc", digest)
 	_, _, err = rt.Bucket().GetRaw(v2Key)
 	require.Error(t, err)
-	require.True(t, errors.Is(err, sgbucket.MissingError{Key: v2Key}))
-
+	// Confirm correct type of error for both integration test and Walrus
+	if !errors.Is(err, sgbucket.MissingError{Key: v2Key}) {
+		var keyValueErr *gocb.KeyValueError
+		require.True(t, errors.As(err, &keyValueErr))
+		require.Equal(t, keyValueErr.StatusCode, memd.StatusKeyNotFound)
+		require.Equal(t, keyValueErr.DocumentID, v2Key)
+	}
 }
