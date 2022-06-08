@@ -4125,8 +4125,8 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 }
 
-// Regression test for CBG-2119 - ensure that bool fields are handled correctly both when set as true and as false
-func TestConfigResetBooleanFields(t *testing.T) {
+// Regression test for CBG-2119 - ensure that the disable_password_auth bool field is handled correctly both when set as true and as false
+func TestDisablePasswordAuthThroughAdminAPI(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{})
 	defer rt.Close()
 
