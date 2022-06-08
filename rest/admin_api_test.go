@@ -4142,14 +4142,14 @@ func TestConfigResetBooleanFields(t *testing.T) {
 	require.NoError(t, err, "failed to marshal new config")
 	res := rt.SendAdminRequest(http.MethodPut, "/db/_config", string(newConfigJSON))
 	assertStatus(t, res, http.StatusCreated)
-	assert.True(t, base.BoolDefault(rt.GetDatabase().Options.DisablePasswordAuthentication, false), "disable_password_auth was not true")
+	assert.True(t, base.BoolDefault(rt.GetDatabase().Options.DisablePasswordAuthentication, false))
 
 	newConfig["disable_password_auth"] = false
 	newConfigJSON, err = base.JSONMarshal(newConfig)
 	require.NoError(t, err, "failed to marshal new config")
 	res = rt.SendAdminRequest(http.MethodPut, "/db/_config", string(newConfigJSON))
 	assertStatus(t, res, http.StatusCreated)
-	assert.False(t, base.BoolDefault(rt.GetDatabase().Options.DisablePasswordAuthentication, false), "disable_password_auth was not false")
+	assert.False(t, base.BoolDefault(rt.GetDatabase().Options.DisablePasswordAuthentication, false))
 }
 
 // Tests replications to make sure they are namespaced by group ID
