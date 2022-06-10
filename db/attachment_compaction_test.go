@@ -805,7 +805,7 @@ func createDocWithInBodyAttachment(t *testing.T, docID string, docBody []byte, a
 }
 
 // Check for regression of CBG-1980 caused by DCP closing timing issue for the mark and sweep stage
-// May sometimes pass even if there is a regression of the timing issue
+// May sometimes fail if docsToCreate is not high enough
 func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	const docsToCreate = 500
 	if base.UnitTestUrlIsWalrus() {
@@ -819,17 +819,16 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	for i := 0; i < docsToCreate; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		_, _, err := testDb.Put(key, body)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
-	attKeys := make([]string, 0, docsToCreate)
 	for i := 0; i < docsToCreate; i++ {
 		docID := fmt.Sprintf("testDoc-%d", i)
 		attKey := fmt.Sprintf("att-%d", i)
 		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
-		assert.NoError(t, err)
-		attKeys = append(attKeys, CreateLegacyAttachmentDoc(t, testDb, docID, []byte("{}"), attKey, attJSONBody))
+		require.NoError(t, err)
+		CreateLegacyAttachmentDoc(t, testDb, docID, []byte("{}"), attKey, attJSONBody)
 	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
@@ -839,8 +838,8 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	count := int64(0)
 	var err error
 	go func() {
-		docCount, _, err := attachmentCompactMarkPhase(testDb, "mark", terminator, stat)
-		atomic.StoreInt64(&count, docCount)
+		attachmentCount, _, err := attachmentCompactMarkPhase(testDb, "mark", terminator, stat)
+		atomic.StoreInt64(&count, attachmentCount)
 		require.NoError(t, err)
 	}()
 
@@ -867,17 +866,17 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	// Allow time for timing issue to be hit where stat increments when it shouldn't
 	time.Sleep(time.Second * 1)
 
-	assert.Equal(t, count, stat.Value())
-	fmt.Println("Count:", count, "stat:", stat.Value())
-	if count == docsToCreate && stat.Value() == docsToCreate {
-		fmt.Println("Attachment compaction ran too fast, causing it to process all documents instead of terminating mid-way. Consider upping the docsToCreate")
-	}
+	require.Equal(t, count, stat.Value())
+	require.False(t, count == docsToCreate && stat.Value() == docsToCreate,
+		"Attachment compaction ran too fast, causing it to process all documents instead of terminating mid-way. Consider upping the docsToCreate")
 
 	// Start sweeping with different compact ID so all documents get swept
 	stat = &base.AtomicInt{}
+	count = 0
 	terminator = base.NewSafeTerminator()
 	go func() {
-		count, err = attachmentCompactSweepPhase(testDb, "sweep", nil, false, terminator, stat)
+		attachmentCount, err := attachmentCompactSweepPhase(testDb, "sweep", nil, false, terminator, stat)
+		atomic.StoreInt64(&count, attachmentCount)
 		require.NoError(t, err)
 	}()
 
@@ -890,9 +889,7 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	// Allow time for timing issue to be hit where stat increments when it shouldn't
 	time.Sleep(time.Second * 1)
 
-	assert.Equal(t, count, stat.Value())
-	fmt.Println("Count:", count, "stat:", stat.Value())
-	if count == docsToCreate && stat.Value() == docsToCreate {
-		fmt.Println("Attachment compaction ran too fast, causing it to process all documents instead of terminating mid-way. Consider upping the docsToCreate")
-	}
+	require.Equal(t, count, stat.Value())
+	require.False(t, count == docsToCreate && stat.Value() == docsToCreate,
+		"Attachment compaction ran too fast, causing it to process all documents instead of terminating mid-way. Consider upping the docsToCreate")
 }

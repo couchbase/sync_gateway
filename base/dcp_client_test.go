@@ -210,12 +210,12 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			require.NoError(t, startErr)
 
 			// Wait for first feed to complete
-			timeout := time.After(oneShotDCPTimeout)
+			feed1Timeout := time.After(oneShotDCPTimeout)
 			select {
 			case <-doneChan:
 				mutationCount := atomic.LoadUint64(&mutationCount)
 				require.Equal(t, uint64(10000), mutationCount)
-			case <-timeout:
+			case <-feed1Timeout:
 				t.Errorf("timeout waiting for first one-shot feed to complete")
 			}
 
@@ -236,9 +236,11 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			dcpClient2, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, bucket, "")
 			require.NoError(t, err)
 
-			_, startErr2 := dcpClient2.Start()
+			doneChan2, startErr2 := dcpClient2.Start()
 			require.Error(t, startErr2)
 
+			require.NoError(t, dcpClient2.Close())
+			<-doneChan2
 			log.Printf("Starting third feed")
 			// Perform a third DCP feed - mismatched VbUUID, failOnRollback=false
 			atomic.StoreUint64(&mutationCount, 0)
@@ -254,13 +256,13 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			require.NoError(t, startErr3)
 
 			// Wait for third feed to complete
-			timeout = time.After(oneShotDCPTimeout)
+			feed3Timeout := time.After(oneShotDCPTimeout)
 			select {
 			case <-doneChan3:
 				// only vbucket 0 should have rolled back, expect mutation count to be only vbucketZero
 				mutationCount := atomic.LoadUint64(&mutationCount)
 				require.Equal(t, int(vbucketZeroExpected), int(mutationCount))
-			case <-timeout:
+			case <-feed3Timeout:
 				t.Errorf("timeout waiting for first one-shot feed to complete")
 			}
 		})

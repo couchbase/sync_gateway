@@ -118,7 +118,7 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 func (dc *DCPClient) Start() (doneChan chan error, err error) {
 	err = dc.initAgent(dc.spec)
 	if err != nil {
-		return nil, err
+		return dc.doneChannel, err
 	}
 	dc.startWorkers()
 
@@ -126,7 +126,7 @@ func (dc *DCPClient) Start() (doneChan chan error, err error) {
 		openErr := dc.openStream(i)
 		if openErr != nil {
 			// If this error condition is hit, the caller must call DCPClient.Close(). If we close here, should we make it blocking?
-			return nil, fmt.Errorf("Unable to start DCP client, error opening stream for vb %d: %w", i, openErr)
+			return dc.doneChannel, fmt.Errorf("Unable to start DCP client, error opening stream for vb %d: %w", i, openErr)
 		}
 	}
 	// It is possible, but unlikely for doneChannel to be closed when returning this if the DCPWorkers fail to start or finish very quickly.
@@ -167,14 +167,11 @@ func (dc *DCPClient) close() {
 			WarnfCtx(context.TODO(), "Error closing DCP agent in client close: %v", agentErr)
 		}
 	}
-	closeErr := dc.getCloseError()
-	if closeErr != nil {
-		dc.doneChannel <- closeErr
-	}
 
 	// Wait for all workers to finish before closing doneChannel
 	go func() {
 		dc.workersWg.Wait()
+		dc.doneChannel <- dc.getCloseError()
 		close(dc.doneChannel)
 	}()
 }
