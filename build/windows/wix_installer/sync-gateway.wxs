@@ -97,6 +97,10 @@
                    Type="ownProcess"
                    Arguments='start "[INSTALLDIR]$(var.WinSGWEXE)" "[INSTALLDIR]$(var.WinServiceConfig)" "[INSTALLDIR]var\lib\couchbase\logs\sync_gateway_error.log" '
                    Vital="yes">
+            <util:ServiceConfig
+                     FirstFailureActionType="restart"
+                     SecondFailureActionType="none"
+                     ThirdFailureActionType="none" />
           </ServiceInstall>
 
         <ServiceControl Id="sc_SGWService" Start="install" Stop="both" Remove="uninstall" Name="SyncGateway" Wait="yes">
