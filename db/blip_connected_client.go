@@ -82,33 +82,24 @@ func (bh *blipHandler) handleQuery(rq *blip.Message) error {
 	if _, found := rq.Properties[QuerySource]; found {
 		return base.HTTPErrorf(http.StatusForbidden, "Only named queries allowed")
 	}
+
 	name, found := rq.Properties[QueryName]
 	if !found {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing 'name'")
 	}
+
 	query, found := bh.db.Options.ConnectedClientQueries[name]
 	if !found {
 		return base.HTTPErrorf(http.StatusNotFound, "No such query '%s'", name)
 	}
+
 	if err := bh.db.user.AuthorizeAnyChannel(query.Channels); err != nil {
 		return err
 	}
 
-	// Get the parameter values:
-	var params map[string]interface{}
-	bodyBytes, err := rq.Body()
+	params, err := bh.getQueryParameterValues(rq, query)
 	if err != nil {
 		return err
-	}
-	if len(bodyBytes) > 0 {
-		if err = json.Unmarshal(bodyBytes, &params); err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "Invalid query parameters")
-		}
-	}
-	for _, paramName := range query.Parameters {
-		if _, found := params[paramName]; !found {
-			return base.HTTPErrorf(http.StatusBadRequest, "Parameter '%s' is missing", paramName)
-		}
 	}
 
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("name: %s", name))
@@ -141,4 +132,54 @@ func (bh *blipHandler) handleQuery(rq *blip.Message) error {
 	response.SetCompressed(true)
 	response.SetJSONBodyAsBytes(out.Bytes())
 	return nil
+}
+
+const (
+	ConnectedClientQueryUserParam    = "user"     // Reserved parameter name passed to N1QL query
+	ConnectedClientQueryUserName     = "name"     // Sub-key in "user" giving the user's name
+	ConnectedClientQueryUserChannels = "channels" // Sub-key in "user" giving the user's channels
+	ConnectedClientQueryUserRoles    = "roles"    // Sub-key in "user" giving the user's roles
+)
+
+// Subroutine of `handleQuery` that generates the JSON parameter dictionary for the N1QL query.
+func (bh *blipHandler) getQueryParameterValues(rq *blip.Message, query *ConnectedClientQuery) (map[string]interface{}, error) {
+	// Read the parameters out of the request body:
+	bodyBytes, err := rq.Body()
+	if err != nil {
+		return nil, err
+	}
+	var requestParams map[string]interface{}
+	if len(bodyBytes) > 0 {
+		if err = json.Unmarshal(bodyBytes, &requestParams); err != nil {
+			return nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid query parameters")
+		}
+	}
+
+	// Copy over parameters specified in the query definition:
+	params := map[string]interface{}{}
+	for _, paramName := range query.Parameters {
+		if paramName == ConnectedClientQueryUserParam {
+			base.WarnfCtx(bh.loggingCtx, "Bad config: Query %q uses reserved parameter name 'user'", rq.Properties[QueryName])
+			return nil, base.HTTPErrorf(http.StatusInternalServerError, "Bad server config: query parameter 'user' is reserved")
+		}
+		if value, found := requestParams[paramName]; found {
+			params[paramName] = value
+			delete(requestParams, paramName)
+		} else {
+			return nil, base.HTTPErrorf(http.StatusBadRequest, "Parameter '%s' is missing", paramName)
+		}
+	}
+	// Any remaining parameters are illegal:
+	for badKey, _ := range requestParams {
+		return nil, base.HTTPErrorf(http.StatusBadRequest, "Unknown parameter '%s'", badKey)
+	}
+
+	// Add "user" parameter, for query's use:
+	params[ConnectedClientQueryUserParam] = map[string]interface{}{
+		ConnectedClientQueryUserName:     bh.db.user.Name(),
+		ConnectedClientQueryUserChannels: bh.db.user.Channels().AllKeys(),
+		ConnectedClientQueryUserRoles:    bh.db.user.RoleNames().AllKeys(),
+	}
+
+	return params, nil
 }
