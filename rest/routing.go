@@ -46,31 +46,34 @@ func createCommonRouter(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mu
 	r.Handle("/{db:"+dbRegex+"}/", makeOfflineHandler(sc, privs, []Permission{PermDevOps}, nil, (*handler).handleGetDB)).Methods("GET", "HEAD")
 	r.Handle("/{db:"+dbRegex+"}/", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handlePostDoc)).Methods("POST")
 
-	// Special database URLs:
+	// Keyspace operations (i.e. collection-specific):
+	keyspace := r.PathPrefix("/{keyspace:" + dbRegex + "}/").Subrouter()
+	keyspace.StrictSlash(true)
+	keyspace.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleGetDoc)).Methods("GET", "HEAD")
+	keyspace.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handlePutDoc)).Methods("PUT")
+	keyspace.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handleDeleteDoc)).Methods("DELETE")
+
+	keyspace.Handle("/{docid:"+docRegex+"}/{attach}", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleGetAttachment)).Methods("GET", "HEAD")
+	keyspace.Handle("/{docid:"+docRegex+"}/{attach}", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handlePutAttachment)).Methods("PUT")
+
+	keyspace.Handle("/_local/{docid}", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleGetLocalDoc)).Methods("GET", "HEAD")
+	keyspace.Handle("/_local/{docid}", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handlePutLocalDoc)).Methods("PUT")
+	keyspace.Handle("/_local/{docid}", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handleDelLocalDoc)).Methods("DELETE")
+
+	keyspace.Handle("/_bulk_docs", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handleBulkDocs)).Methods("POST")
+	keyspace.Handle("/_bulk_get", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleBulkGet)).Methods("POST")
+	keyspace.Handle("/_revs_diff", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handleRevsDiff)).Methods("POST")
+
+	// Database operations (i.e. multi-collection):
 	dbr := r.PathPrefix("/{db:" + dbRegex + "}/").Subrouter()
 	dbr.StrictSlash(true)
 	dbr.Handle("/_all_docs", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleAllDocs)).Methods("GET", "HEAD", "POST")
-	dbr.Handle("/_bulk_docs", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handleBulkDocs)).Methods("POST")
-	dbr.Handle("/_bulk_get", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleBulkGet)).Methods("POST")
 	dbr.Handle("/_changes", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleChanges)).Methods("GET", "HEAD", "POST")
 	dbr.Handle("/_design/{ddoc}", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleGetDesignDoc)).Methods("GET", "HEAD")
 	dbr.Handle("/_design/{ddoc}", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handlePutDesignDoc)).Methods("PUT")
 	dbr.Handle("/_design/{ddoc}", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handleDeleteDesignDoc)).Methods("DELETE")
 	dbr.Handle("/_design/{ddoc}/_view/{view}", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleView)).Methods("GET")
 	dbr.Handle("/_ensure_full_commit", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleEFC)).Methods("POST")
-	dbr.Handle("/_revs_diff", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handleRevsDiff)).Methods("POST")
-
-	// Document URLs:
-	dbr.Handle("/_local/{docid}", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleGetLocalDoc)).Methods("GET", "HEAD")
-	dbr.Handle("/_local/{docid}", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handlePutLocalDoc)).Methods("PUT")
-	dbr.Handle("/_local/{docid}", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handleDelLocalDoc)).Methods("DELETE")
-
-	dbr.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleGetDoc)).Methods("GET", "HEAD")
-	dbr.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handlePutDoc)).Methods("PUT")
-	dbr.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handleDeleteDoc)).Methods("DELETE")
-
-	dbr.Handle("/{docid:"+docRegex+"}/{attach}", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleGetAttachment)).Methods("GET", "HEAD")
-	dbr.Handle("/{docid:"+docRegex+"}/{attach}", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handlePutAttachment)).Methods("PUT")
 
 	// Session/login URLs are per-database (unlike in CouchDB)
 	// These have public privileges so that they can be called without being logged in already

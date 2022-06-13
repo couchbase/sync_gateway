@@ -174,6 +174,44 @@ func (h *handler) ctx() context.Context {
 	return h.rqCtx
 }
 
+// parseKeyspace will return a fully qualified db, scope and collection for a given '.' separated keyspace string.
+// Returns "_default" for scope and collection if the given keyspace is not otherwise fully qualified.
+func parseKeyspace(ks string) (db, scope, collection string, err error) {
+	var (
+		dbField,
+		scopeField,
+		collectionField *string
+	)
+
+	// FIXME: This will be quicker/zero alloc if we use base.safeCut...
+	parts := strings.Split(ks, base.ScopeCollectionSeparator)
+	switch len(parts) {
+	case 1:
+		dbField = &parts[0]
+	case 2:
+		dbField = &parts[0]
+		collectionField = &parts[1]
+	case 3:
+		dbField = &parts[0]
+		scopeField = &parts[1]
+		collectionField = &parts[2]
+	default:
+		return "", "", "", fmt.Errorf("unknown keyspace format: %q - expected 1-3 fields", ks)
+	}
+
+	// make sure all declared fields have stuff in them
+	if dbField != nil && *dbField == "" ||
+		collectionField != nil && *collectionField == "" ||
+		scopeField != nil && *scopeField == "" {
+		return "", "", "", fmt.Errorf("keyspace fields cannot be empty: %q", ks)
+	}
+
+	return *dbField,
+		base.StringDefault(scopeField, base.DefaultScope),
+		base.StringDefault(collectionField, base.DefaultCollection),
+		nil
+}
+
 // Top-level handler call. It's passed a pointer to the specific method to run.
 func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, responsePermissions []Permission) error {
 	var err error
@@ -213,11 +251,22 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	// user credentials
 	shouldCheckAdminAuth := (h.privs == adminPrivs && *h.server.config.API.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.config.API.MetricsInterfaceAuthentication)
 
+	dbName := h.PathVar("db")
+	keyspaceScope := base.DefaultScope
+	keyspaceCollection := base.DefaultCollection
+	// If there is a "keyspace" path variable, determine the fully qualified collection:
+	if ks := h.PathVar("keyspace"); ks != "" {
+		dbName, keyspaceScope, keyspaceCollection, err = parseKeyspace(ks)
+		if err != nil {
+			return err
+		}
+	}
+
 	// If there is a "db" path variable, look up the database context:
 	var dbContext *db.DatabaseContext
-	if dbname := h.PathVar("db"); dbname != "" {
-		if dbContext, err = h.server.GetDatabase(dbname); err != nil {
-			base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(dbname), err)
+	if dbName != "" {
+		if dbContext, err = h.server.GetDatabase(dbName); err != nil {
+			base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(dbName), err)
 
 			if shouldCheckAdminAuth {
 				if httpError, ok := err.(*base.HTTPError); ok && httpError.Status == http.StatusNotFound {
@@ -369,6 +418,9 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 
 	// Now set the request's Database (i.e. context + user)
 	if dbContext != nil {
+		// TODO: Set keyspace fields in h.db/DatabaseContext for access in API handlers
+		_, _ = keyspaceScope, keyspaceCollection
+
 		h.db, err = db.GetDatabase(dbContext, h.user)
 		if err != nil {
 			return err

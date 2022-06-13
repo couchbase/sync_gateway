@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -165,5 +166,75 @@ func TestHTTPLoggingRedaction(t *testing.T) {
 				}
 			})
 		})
+	}
+}
+
+func Test_parseKeyspace(t *testing.T) {
+	tests := []struct {
+		ks             string
+		wantDb         string
+		wantScope      string
+		wantCollection string
+		wantErr        assert.ErrorAssertionFunc
+	}{
+		{
+			ks:             "db",
+			wantDb:         "db",
+			wantScope:      base.DefaultScope,
+			wantCollection: base.DefaultCollection,
+			wantErr:        assert.NoError,
+		},
+		{
+			ks:             "d.c",
+			wantDb:         "d",
+			wantScope:      base.DefaultScope,
+			wantCollection: "c",
+			wantErr:        assert.NoError,
+		},
+		{
+			ks:             "d.s.c",
+			wantDb:         "d",
+			wantScope:      "s",
+			wantCollection: "c",
+			wantErr:        assert.NoError,
+		},
+		{
+			ks:      "",
+			wantErr: assert.Error,
+		},
+		{
+			ks:      "d.s.c.z",
+			wantErr: assert.Error,
+		},
+		{
+			ks:      ".s.",
+			wantErr: assert.Error,
+		},
+		{
+			ks:      "d..c",
+			wantErr: assert.Error,
+		},
+		{
+			ks:      "d.",
+			wantErr: assert.Error,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.ks, func(t *testing.T) {
+			gotDb, gotScope, gotCollection, err := parseKeyspace(tt.ks)
+			if !tt.wantErr(t, err, fmt.Sprintf("parseKeyspace(%v)", tt.ks)) {
+				return
+			}
+			assert.Equalf(t, tt.wantDb, gotDb, "parseKeyspace(%v)", tt.ks)
+			assert.Equalf(t, tt.wantScope, gotScope, "parseKeyspace(%v)", tt.ks)
+			assert.Equalf(t, tt.wantCollection, gotCollection, "parseKeyspace(%v)", tt.ks)
+		})
+	}
+}
+
+func Benchmark_parseKeyspace(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _, _, _ = parseKeyspace("d.s.c")
 	}
 }
