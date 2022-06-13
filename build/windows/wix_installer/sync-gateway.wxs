@@ -99,8 +99,8 @@
                    Vital="yes">
             <util:ServiceConfig
                      FirstFailureActionType="restart"
-                     SecondFailureActionType="none"
-                     ThirdFailureActionType="none" />
+                     SecondFailureActionType="restart"
+                     ThirdFailureActionType="restart" />
           </ServiceInstall>
 
         <ServiceControl Id="sc_SGWService" Start="install" Stop="both" Remove="uninstall" Name="SyncGateway" Wait="yes">
