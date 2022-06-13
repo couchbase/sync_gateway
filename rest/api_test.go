@@ -95,7 +95,7 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
-				DisablePasswordAuth: true,
+				DisablePasswordAuth: base.BoolPtr(true),
 				Guest: &auth.PrincipalConfig{
 					Disabled: base.BoolPtr(true),
 				},
