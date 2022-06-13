@@ -768,7 +768,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 
 	// If basic auth is disabled, it doesn't make sense to send WWW-Authenticate
 	sendWWWAuthenticate := config.SendWWWAuthenticateHeader
-	if config.DisablePasswordAuth {
+	if base.BoolDefault(config.DisablePasswordAuth, false) {
 		sendWWWAuthenticate = base.BoolPtr(false)
 	}
 
@@ -791,7 +791,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		SessionCookieHttpOnly:         base.BoolDefault(config.SessionCookieHTTPOnly, false),
 		AllowConflicts:                config.ConflictsAllowed(),
 		SendWWWAuthenticateHeader:     sendWWWAuthenticate,
-		DisablePasswordAuthentication: config.DisablePasswordAuth,
+		DisablePasswordAuthentication: base.BoolDefault(config.DisablePasswordAuth, false),
 		DeltaSyncOptions:              deltaSyncOptions,
 		CompactInterval:               compactIntervalSecs,
 		QueryPaginationLimit:          queryPaginationLimit,
