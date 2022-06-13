@@ -5593,7 +5593,7 @@ func TestHideProductInfo(t *testing.T) {
 				assert.Equal(t, base.VersionString, resp.Header().Get("Server"))
 
 				body := string(resp.BodyBytes())
-				assert.Contains(t, body, base.ProductVersionNumber)
+				assert.Contains(t, body, base.ProductAPIVersion)
 				return
 			}
 
@@ -5609,11 +5609,11 @@ func TestHideProductInfo(t *testing.T) {
 				assert.Contains(t, body, base.ProductNameString)
 				// no versions
 				assert.NotEqual(t, base.VersionString, serverHeader)
-				assert.NotContains(t, body, base.ProductVersionNumber)
+				assert.NotContains(t, body, base.ProductAPIVersion)
 			} else {
 				assert.Equal(t, base.VersionString, serverHeader)
 				assert.Contains(t, body, base.ProductNameString)
-				assert.Contains(t, body, base.ProductVersionNumber)
+				assert.Contains(t, body, base.ProductAPIVersion)
 			}
 		})
 	}

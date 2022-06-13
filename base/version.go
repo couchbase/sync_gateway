@@ -11,16 +11,24 @@ licenses/APL2.txt.
 package base
 
 import (
+	"context"
 	"fmt"
 	"strings"
 )
 
 const (
-	ProductName          = "Couchbase Sync Gateway"
-	ProductVersionNumber = "3.1" // API/feature level
+	ProductName = "Couchbase Sync Gateway"
+
+	ProductAPIVersionMajor = "3"
+	ProductAPIVersionMinor = "1"
+	ProductAPIVersion      = ProductAPIVersionMajor + "." + ProductAPIVersionMinor
 )
 
+// populated via init() below
 var (
+	// ProductVersion describes the specific version information of the build.
+	ProductVersion *ComparableVersion
+
 	// VersionString appears in the "Server:" header of HTTP responses.
 	// CBL 1.x parses the header to determine whether it's talking to Sync Gateway (vs. CouchDB) and what version.
 	// This determines what replication API features it will use (E.g: bulk get and POST _changes that are CB-Mobile only features.)
@@ -29,39 +37,76 @@ var (
 	// LongVersionString includes build number; appears in the response of "GET /" and the initial log message
 	LongVersionString string
 
-	// ProductNameString comes from Gerrit (jenkins builds) or Git (dev builds)
+	// ProductNameString comes from Gerrit (jenkins builds) or Git (dev builds); is probably "Couchbase Sync Gateway"
 	ProductNameString string
 )
 
+// substituted by Jenkins build scripts
+const (
+	buildPlaceholderServerName               = "@PRODUCT_NAME@"    // e.g: Couchbase Sync Gateway
+	buildPlaceholderVersionBuildNumberString = "@PRODUCT_VERSION@" // e.g: 2.8.2-1
+	buildPlaceholderVersionCommitSHA         = "@COMMIT_SHA@"      // e.g: 4df7a2d
+)
+
 func init() {
-	// Placeholders substituted by Jenkins build
-	const (
-		buildPlaceholderServerName               = "@PRODUCT_NAME@"
-		buildPlaceholderVersionBuildNumberString = "@PRODUCT_VERSION@"
-		buildPlaceholderVersionCommitSHA         = "@COMMIT_SHA@"
+
+	var (
+		majorStr, minorStr, patchStr, otherStr, buildStr, editionStr string
 	)
 
 	// Use build info if available, otherwise use git info to populate instead.
 	if buildPlaceholderVersionBuildNumberString[0] != '@' {
 		// Split version number and build number (optional)
-		versionTokens := strings.Split(buildPlaceholderVersionBuildNumberString, "-")
-		BuildVersionString := versionTokens[0]
-		var BuildNumberString string
-		if len(versionTokens) > 1 {
-			BuildNumberString = fmt.Sprintf("%s;", versionTokens[1])
+		versionAndBuild := strings.Split(buildPlaceholderVersionBuildNumberString, "-")
+
+		versions := strings.Split(versionAndBuild[0], ".")
+		if len(versions) >= 0 {
+			majorStr = versions[0]
+		} else if len(versions) >= 1 {
+			minorStr = versions[1]
+		} else if len(versions) >= 2 {
+			patchStr = versions[2]
+		} else if len(versions) >= 3 {
+			otherStr = versions[3]
+		} else {
+			PanicfCtx(context.Background(), "unknown version format (expected major.minor.patch[.other]) got %v", versions)
 		}
-		LongVersionString = fmt.Sprintf("%s/%s(%s%.7s) %s", buildPlaceholderServerName, BuildVersionString, BuildNumberString, buildPlaceholderVersionCommitSHA, productEditionShortName)
-		VersionString = fmt.Sprintf("%s/%s %s", buildPlaceholderServerName, BuildVersionString, productEditionShortName)
-		ProductNameString = buildPlaceholderServerName
+
+		var formattedBuildStr string
+		if len(versionAndBuild) > 1 {
+			buildStr = versionAndBuild[1]
+			formattedBuildStr = ";" + buildStr
+		}
+
+		productName := buildPlaceholderServerName
+
+		// E.g: Couchbase Sync Gateway/2.8.2(1;4df7a2d) EE
+		LongVersionString = fmt.Sprintf("%s/%s(%s%.7s) %s", productName, versionString, formattedBuildStr, buildPlaceholderVersionCommitSHA, productEditionShortName)
+		VersionString = fmt.Sprintf("%s/%s %s", productName, versionString, productEditionShortName)
+		ProductNameString = productName
 	} else {
+		// no patch version available for git-based version info
+		majorStr = ProductAPIVersionMajor
+		minorStr = ProductAPIVersionMinor
+
 		// GitProductName is set via the build script, but may not be set when unit testing.
 		productName := GitProductName
 		if productName == "" {
 			productName = ProductName
 		}
+
+		// E.g: Couchbase Sync Gateway/CBG-1914(6282c1c+CHANGES) CE
 		LongVersionString = fmt.Sprintf("%s/%s(%.7s%s) %s", productName, GitBranch, GitCommit, GitDirty, productEditionShortName)
-		VersionString = fmt.Sprintf("%s/%s branch/%s commit/%.7s%s %s", productName, ProductVersionNumber, GitBranch, GitCommit, GitDirty, productEditionShortName)
+		VersionString = fmt.Sprintf("%s/%s branch/%s commit/%.7s%s %s", productName, ProductAPIVersion, GitBranch, GitCommit, GitDirty, productEditionShortName)
 		ProductNameString = productName
+	}
+
+	editionStr = productEditionShortName
+
+	var err error
+	ProductVersion, err = NewComparableVersion(majorStr, minorStr, patchStr, otherStr, buildStr, editionStr)
+	if err != nil {
+		panic(err)
 	}
 }
 

@@ -79,7 +79,8 @@ func (h *handler) handleCreateDB() error {
 		}
 
 		loadedConfig := DatabaseConfig{Version: version, DbConfig: *config}
-		persistedConfig := DatabaseConfig{Version: version, DbConfig: persistedDbConfig}
+
+		persistedConfig := DatabaseConfig{Version: version, DbConfig: persistedDbConfig, SGVersion: base.ProductVersion.String()}
 
 		h.server.lock.Lock()
 		defer h.server.lock.Unlock()
@@ -89,7 +90,7 @@ func (h *handler) handleCreateDB() error {
 				"Duplicate database name %q", dbName)
 		}
 
-		_, err = h.server._applyConfig(loadedConfig, true)
+		_, err = h.server._applyConfig(loadedConfig, true, false)
 		if err != nil {
 			if errors.Is(err, base.ErrAuthError) {
 				return base.HTTPErrorf(http.StatusForbidden, "auth failure accessing provided bucket: %s", bucket)
@@ -551,6 +552,8 @@ func (h *handler) handlePutDbConfig() (err error) {
 				return nil, err
 			}
 
+			bucketDbConfig.SGVersion = base.ProductVersion.String()
+
 			updatedDbConfig = &bucketDbConfig
 
 			// take a copy to stamp credentials and load before we persist
@@ -645,6 +648,8 @@ func (h *handler) handleDeleteDbConfigSync() error {
 				return nil, err
 			}
 
+			bucketDbConfig.SGVersion = base.ProductVersion.String()
+
 			updatedDbConfig = &bucketDbConfig
 			return base.JSONMarshal(bucketDbConfig)
 		})
@@ -705,10 +710,11 @@ func (h *handler) handlePutDbConfigSync() error {
 			}
 
 			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
-
 			if err != nil {
 				return nil, err
 			}
+
+			bucketDbConfig.SGVersion = base.ProductVersion.String()
 
 			updatedDbConfig = &bucketDbConfig
 			return base.JSONMarshal(bucketDbConfig)
@@ -792,6 +798,8 @@ func (h *handler) handleDeleteDbConfigImportFilter() error {
 				return nil, err
 			}
 
+			bucketDbConfig.SGVersion = base.ProductVersion.String()
+
 			updatedDbConfig = &bucketDbConfig
 			return base.JSONMarshal(bucketDbConfig)
 		})
@@ -856,6 +864,8 @@ func (h *handler) handlePutDbConfigImportFilter() error {
 			if err != nil {
 				return nil, err
 			}
+
+			bucketDbConfig.SGVersion = base.ProductVersion.String()
 
 			updatedDbConfig = &bucketDbConfig
 			return base.JSONMarshal(bucketDbConfig)
@@ -1013,7 +1023,7 @@ func (h *handler) handleGetStatus() error {
 	// This handler is supposed to be admin-only anyway, but being defensive if this is opened up in the routes file.
 	if h.shouldShowProductVersion() {
 		status.Version = base.LongVersionString
-		status.Vendor.Version = base.ProductVersionNumber
+		status.Vendor.Version = base.ProductAPIVersion
 	}
 
 	for _, database := range h.server.databases_ {

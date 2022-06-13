@@ -3738,32 +3738,6 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 	require.NoError(t, ar.Stop())
 }
 
-func waitAndRequireCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
-	t.Log("starting waitAndRequireCondition")
-	for i := 0; i <= 20; i++ {
-		if i == 20 {
-			require.Fail(t, "Condition failed to be satisfied", failureMsgAndArgs...)
-		}
-		if fn() {
-			break
-		}
-		time.Sleep(time.Millisecond * 250)
-	}
-}
-
-func waitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
-	t.Log("starting waitAndAssertCondition")
-	for i := 0; i <= 20; i++ {
-		if i == 20 {
-			assert.Fail(t, "Condition failed to be satisfied", failureMsgAndArgs...)
-		}
-		if fn() {
-			break
-		}
-		time.Sleep(time.Millisecond * 250)
-	}
-}
-
 func TestBlipSyncNonUpgradableConnection(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)
 	rt := NewRestTester(t, &RestTesterConfig{
