@@ -791,7 +791,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		SecureCookieOverride:          secureCookieOverride,
 		SessionCookieName:             config.SessionCookieName,
 		SessionCookieHttpOnly:         base.BoolDefault(config.SessionCookieHTTPOnly, false),
-		ConnectedClientQueries:        config.ConnectedClientQueries,
+		UserQueries:                   config.UserQueries,
 		AllowConflicts:                config.ConflictsAllowed(),
 		SendWWWAuthenticateHeader:     sendWWWAuthenticate,
 		DisablePasswordAuthentication: config.DisablePasswordAuth,

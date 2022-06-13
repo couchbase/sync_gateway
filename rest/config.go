@@ -154,7 +154,7 @@ type DbConfig struct {
 	UserXattrKey                     string                           `json:"user_xattr_key,omitempty"`                       // Key of user xattr that will be accessible from the Sync Function. If empty the feature will be disabled.
 	ClientPartitionWindowSecs        *int                             `json:"client_partition_window_secs,omitempty"`         // How long clients can remain offline for without losing replication metadata. Default 30 days (in seconds)
 	Guest                            *db.PrincipalConfig              `json:"guest,omitempty"`                                // Guest user settings
-	ConnectedClientQueries           db.ConnectedClientQueryMap       `json:"queries,omitempty"`                              // Queries for connected clients to invoke by name
+	UserQueries                      db.UserQueryMap                  `json:"queries,omitempty"`                              // Queries for connected clients to invoke by name
 }
 
 type DeltaSyncConfig struct {
