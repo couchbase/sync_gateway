@@ -974,6 +974,9 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 				// Check if we have this attachment name already, if we do, continue check
 				currentAttachment, ok := currentBucketDoc.Attachments[name]
 				if !ok {
+					// If we don't have this attachment already, ensure incoming revpos is greater than minRevPos, otherwise
+					// update to ensure it's fetched and uploaded
+					bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(revID)
 					continue
 				}
 
@@ -1010,10 +1013,9 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 				}
 
 				// Compare the revpos and attachment digest. If incoming revpos is less than or equal to minRevPos and
-				// digest is different we need to override the revpos and set it to the current revision as the incoming
-				// revpos must be invalid and we need to request it.
+				// digest is different we need to override the revpos and set it to the current revision to ensure
+				// the attachment is requested and stored
 				if int(incomingAttachmentRevpos) <= minRevpos && currentAttachmentDigest != incomingAttachmentDigest {
-					minRevpos, _ = ParseRevID(history[len(history)-1])
 					bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(revID)
 				}
 			}

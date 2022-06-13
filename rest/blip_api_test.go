@@ -13,6 +13,7 @@ package rest
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -24,12 +25,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/couchbase/go-blip"
+	"github.com/couchbase/gocb/v2"
+	"github.com/couchbase/gocbcore/v10/memd"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // This test performs the following steps against the Sync Gateway passive blip replicator:
@@ -3349,13 +3352,74 @@ func TestCBLRevposHandling(t *testing.T) {
 	revIDDoc1, err = btc.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"content_type":"","stub":true,"revpos":4}}}`))
 	require.NoError(t, err)
 
+	// Validate attachment exists
+	attResponse := rt.SendAdminRequest("GET", "/db/doc1/attachment", "")
+	assert.Equal(t, 200, attResponse.Code)
+	assert.Equal(t, "attachmentA", string(attResponse.BodyBytes()))
+
 	attachmentPushCount := rt.GetDatabase().DbStats.CBLReplicationPushStats.AttachmentPushCount.Value()
 	// Update doc1, change attachment digest with CBL revpos=generation.  Should getAttachment
 	revIDDoc1, err = btc.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=","length":11,"content_type":"","stub":true,"revpos":5}}}`))
 	require.NoError(t, err)
 
+	// Validate attachment exists and is updated
+	attResponse = rt.SendAdminRequest("GET", "/db/doc1/attachment", "")
+	assert.Equal(t, 200, attResponse.Code)
+	assert.Equal(t, "attachmentB", string(attResponse.BodyBytes()))
+
 	attachmentPushCountAfter := rt.GetDatabase().DbStats.CBLReplicationPushStats.AttachmentPushCount.Value()
 	assert.Equal(t, attachmentPushCount+1, attachmentPushCountAfter)
+
+}
+
+// TestPushUnknownAttachmentAsStub sets revpos to an older generation, for an attachment that doesn't exist on the server.
+// Verifies that getAttachment is triggered, and attachment is properly persisted.
+func TestPushUnknownAttachmentAsStub(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		guestEnabled: true,
+	})
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClient(t, rt)
+	assert.NoError(t, err)
+	defer btc.Close()
+
+	var doc1Body db.Body
+
+	// Add doc1 and doc2
+	req := rt.SendAdminRequest("PUT", "/db/doc1", `{}`)
+	assertStatus(t, req, http.StatusCreated)
+	doc1Bytes := req.BodyBytes()
+
+	require.NoError(t, rt.WaitForPendingChanges())
+
+	err = json.Unmarshal(doc1Bytes, &doc1Body)
+	assert.NoError(t, err)
+
+	err = btc.StartOneshotPull()
+	assert.NoError(t, err)
+
+	rev1ID := "1-ca9ad22802b66f662ff171f226211d5c"
+	_, ok := btc.WaitForRev("doc1", rev1ID)
+	require.True(t, ok)
+
+	// force attachment into test client's store to validate it's fetched
+	attachmentAData := base64.StdEncoding.EncodeToString([]byte("attachmentA"))
+	contentType := "text/plain"
+	length, digest, err := btc.saveAttachment(contentType, attachmentAData)
+	require.NoError(t, err)
+
+	// Update doc1, include reference to non-existing attachment with recent revpos
+	revIDDoc1, err := btc.PushRev("doc1", rev1ID, []byte(fmt.Sprintf(`{"key": "val", "_attachments":{"attachment":{"digest":"%s","length":%d,"content_type":"%s","stub":true,"revpos":1}}}`, digest, length, contentType)))
+	require.NoError(t, err)
+
+	err = rt.waitForRev("doc1", revIDDoc1)
+	assert.NoError(t, err)
+
+	// verify that attachment exists on document and was persisted
+	attResponse := rt.SendAdminRequest("GET", "/db/doc1/attachment", "")
+	assert.Equal(t, 200, attResponse.Code)
+	assert.Equal(t, "attachmentA", string(attResponse.BodyBytes()))
 
 }
 
@@ -4263,4 +4327,168 @@ func TestSendRevAsReadOnlyGuest(t *testing.T) {
 	body, err = revResponse.Body()
 	log.Printf("response body: %s", body)
 
+}
+
+// TestBlipAttachNameChange tests CBL handling - attachments with changed names are sent as stubs, and not new attachments
+func TestBlipAttachNameChange(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		guestEnabled: true,
+	})
+	defer rt.Close()
+
+	client1, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	require.NoError(t, err)
+	defer client1.Close()
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeySync, base.KeySyncMsg, base.KeyWebSocket, base.KeyWebSocketFrame, base.KeyHTTP, base.KeyCRUD)
+
+	attachmentA := []byte("attachmentA")
+	attachmentAData := base64.StdEncoding.EncodeToString(attachmentA)
+	digest := db.Sha1DigestKey(attachmentA)
+
+	// Push initial attachment data
+	rev, err := client1.PushRev("doc", "", []byte(`{"key":"val","_attachments":{"attachment": {"data":"`+attachmentAData+`"}}}`))
+	require.NoError(t, err)
+
+	// Confirm attachment is in the bucket
+	attachmentAKey := db.MakeAttachmentKey(2, "doc", digest)
+	bucketAttachmentA, _, err := rt.Bucket().GetRaw(attachmentAKey)
+	require.NoError(t, err)
+	require.EqualValues(t, bucketAttachmentA, attachmentA)
+
+	// Simulate changing only the attachment name over CBL
+	// Use revpos 2 to simulate revpos bug in CBL 2.8 - 3.0.0
+	rev, err = client1.PushRev("doc", rev, []byte(`{"key":"val","_attachments":{"attach":{"revpos":2,"content_type":"","length":11,"stub":true,"digest":"`+digest+`"}}}`))
+	require.NoError(t, err)
+	err = rt.waitForRev("doc", rev)
+	require.NoError(t, err)
+
+	// Check if attachment is still in bucket
+	bucketAttachmentA, _, err = rt.Bucket().GetRaw(attachmentAKey)
+	assert.NoError(t, err)
+	assert.Equal(t, bucketAttachmentA, attachmentA)
+
+	resp := rt.SendAdminRequest("GET", "/db/doc/attach", "")
+	assertStatus(t, resp, http.StatusOK)
+	assert.Equal(t, attachmentA, resp.BodyBytes())
+}
+
+// TestBlipLegacyAttachNameChange ensures that CBL name changes for legacy attachments are handled correctly
+func TestBlipLegacyAttachNameChange(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		guestEnabled: true,
+	})
+	defer rt.Close()
+
+	client1, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	require.NoError(t, err)
+	defer client1.Close()
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeySync, base.KeySyncMsg, base.KeyWebSocket, base.KeyWebSocketFrame, base.KeyHTTP, base.KeyCRUD)
+
+	// Create document in the bucket with a legacy attachment
+	docID := "doc"
+	attBody := []byte(`hi`)
+	digest := db.Sha1DigestKey(attBody)
+	attKey := db.MakeAttachmentKey(db.AttVersion1, docID, digest)
+	rawDoc := rawDocWithAttachmentAndSyncMeta()
+
+	// Create a document with legacy attachment.
+	createDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
+
+	// Get the document and grab the revID.
+	responseBody := rt.getDoc(docID)
+	revID := responseBody["_rev"].(string)
+	require.NotEmpty(t, revID)
+
+	// Store the document and attachment on the test client
+	err = client1.StoreRevOnClient(docID, revID, rawDoc)
+	require.NoError(t, err)
+	client1.attachmentsLock.Lock()
+	client1.attachments[digest] = attBody
+	client1.attachmentsLock.Unlock()
+
+	// Confirm attachment is in the bucket
+	attachmentAKey := db.MakeAttachmentKey(1, "doc", digest)
+	bucketAttachmentA, _, err := rt.Bucket().GetRaw(attachmentAKey)
+	require.NoError(t, err)
+	require.EqualValues(t, bucketAttachmentA, attBody)
+
+	// Simulate changing only the attachment name over CBL
+	// Use revpos 2 to simulate revpos bug in CBL 2.8 - 3.0.0
+	revID, err = client1.PushRev("doc", revID, []byte(`{"key":"val","_attachments":{"attach":{"revpos":2,"content_type":"test/plain","length":2,"stub":true,"digest":"`+digest+`"}}}`))
+	require.NoError(t, err)
+	err = rt.waitForRev("doc", revID)
+	require.NoError(t, err)
+
+	resp := rt.SendAdminRequest("GET", "/db/doc/attach", "")
+	assertStatus(t, resp, http.StatusOK)
+	assert.Equal(t, attBody, resp.BodyBytes())
+}
+
+// TestBlipLegacyAttachNameChange ensures that CBL updates for documents associated with legacy attachments are handled correctly
+func TestBlipLegacyAttachDocUpdate(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		guestEnabled: true,
+	})
+	defer rt.Close()
+
+	client1, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	require.NoError(t, err)
+	defer client1.Close()
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeySync, base.KeySyncMsg, base.KeyWebSocket, base.KeyWebSocketFrame, base.KeyHTTP, base.KeyCRUD)
+
+	// Create document in the bucket with a legacy attachment.  Properties here align with rawDocWithAttachmentAndSyncMeta
+	docID := "doc"
+	attBody := []byte(`hi`)
+	digest := db.Sha1DigestKey(attBody)
+	attKey := db.MakeAttachmentKey(db.AttVersion1, docID, digest)
+	attName := "hi.txt"
+	rawDoc := rawDocWithAttachmentAndSyncMeta()
+
+	// Create a document with legacy attachment.
+	createDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
+
+	// Get the document and grab the revID.
+	responseBody := rt.getDoc(docID)
+	revID := responseBody["_rev"].(string)
+	require.NotEmpty(t, revID)
+
+	// Store the document and attachment on the test client
+	err = client1.StoreRevOnClient(docID, revID, rawDoc)
+	require.NoError(t, err)
+	client1.attachmentsLock.Lock()
+	client1.attachments[digest] = attBody
+	client1.attachmentsLock.Unlock()
+
+	// Confirm attachment is in the bucket
+	attachmentAKey := db.MakeAttachmentKey(1, "doc", digest)
+	bucketAttachmentA, _, err := rt.Bucket().GetRaw(attachmentAKey)
+	require.NoError(t, err)
+	require.EqualValues(t, bucketAttachmentA, attBody)
+
+	// Update the document, leaving body intact
+	revID, err = client1.PushRev("doc", revID, []byte(`{"key":"val1","_attachments":{"`+attName+`":{"revpos":2,"content_type":"text/plain","length":2,"stub":true,"digest":"`+digest+`"}}}`))
+	require.NoError(t, err)
+	err = rt.waitForRev("doc", revID)
+	require.NoError(t, err)
+
+	resp := rt.SendAdminRequest("GET", "/db/doc/"+attName, "")
+	assertStatus(t, resp, http.StatusOK)
+	assert.Equal(t, attBody, resp.BodyBytes())
+
+	// Validate that the attachment hasn't been migrated to V2
+	v1Key := db.MakeAttachmentKey(1, "doc", digest)
+	v1Body, _, err := rt.Bucket().GetRaw(v1Key)
+	require.NoError(t, err)
+	require.EqualValues(t, attBody, v1Body)
+
+	v2Key := db.MakeAttachmentKey(2, "doc", digest)
+	_, _, err = rt.Bucket().GetRaw(v2Key)
+	require.Error(t, err)
+	// Confirm correct type of error for both integration test and Walrus
+	if !errors.Is(err, sgbucket.MissingError{Key: v2Key}) {
+		var keyValueErr *gocb.KeyValueError
+		require.True(t, errors.As(err, &keyValueErr))
+		require.Equal(t, keyValueErr.StatusCode, memd.StatusKeyNotFound)
+		require.Equal(t, keyValueErr.DocumentID, v2Key)
+	}
 }
