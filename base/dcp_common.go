@@ -580,7 +580,7 @@ func GenerateDcpStreamName(feedID string) (string, error) {
 	return fmt.Sprintf(
 		"%v-v-%v-commit-%v-uuid-%v",
 		feedID,
-		ProductVersionNumber,
+		ProductAPIVersion,
 		commitTruncated,
 		u.String(),
 	), nil

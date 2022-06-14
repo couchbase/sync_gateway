@@ -257,8 +257,8 @@ func bootstrapStartupConfigForTest(t *testing.T) StartupConfig {
 	config := DefaultStartupConfig("")
 
 	config.Logging.Console = &base.ConsoleLoggerConfig{
-		LogLevel: base.LogLevelPtr(base.LevelInfo),
-		LogKeys:  []string{"*"},
+		LogLevel: base.ConsoleLogLevel(),
+		LogKeys:  base.ConsoleLogKey().EnabledLogKeys(),
 	}
 
 	config.API.AdminInterfaceAuthentication = base.BoolPtr(false)

@@ -1715,3 +1715,29 @@ func CoalesceTimes(a, b *time.Time) *time.Time {
 	}
 	return nil
 }
+
+// stringsCut is a backport of the Go 1.18 strings.Cut function. This can be removed once we're running on Go 1.18
+func stringsCut(s, sep string) (before, after string, found bool) {
+	if i := strings.Index(s, sep); i >= 0 {
+		return s[:i], s[i+len(sep):], true
+	}
+	return s, "", false
+}
+
+// safeCutBefore returns the value up to the first instance of sep if it exists, and the remaining part of the string after sep.
+func safeCutBefore(s, sep string) (value, remainder string) {
+	val, after, ok := stringsCut(s, sep)
+	if !ok {
+		return "", s
+	}
+	return val, after
+}
+
+// safeCutAfter returns the value after the first instance of sep if it exists, and the remaining part of the string before sep.
+func safeCutAfter(s, sep string) (value, remainder string) {
+	before, val, ok := stringsCut(s, sep)
+	if !ok {
+		return "", s
+	}
+	return val, before
+}

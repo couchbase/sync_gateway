@@ -73,6 +73,10 @@ func TestCheckPermissions(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
+	serverURL := base.UnitTestUrl()
+	if base.ServerIsTLS(serverURL) {
+		t.Skipf("URI %s can not start with couchbases://", serverURL)
+	}
 
 	clusterAdminPermission := Permission{"!admin", false}
 	clusterReadOnlyAdminPermission := Permission{"!ro_admin", false}
@@ -186,13 +190,17 @@ func TestCheckPermissions(t *testing.T) {
 }
 
 func TestCheckPermissionsWithX509(t *testing.T) {
+	serverURL := base.UnitTestUrl()
+	if !base.ServerIsTLS(serverURL) {
+		t.Skipf("URI %s needs to start with couchbases://", serverURL)
+	}
 	tb, teardownFn, caCertPath, certPath, keyPath := setupX509Tests(t, true)
 	defer tb.Close()
 	defer teardownFn()
 
 	ctx := NewServerContext(&StartupConfig{
 		Bootstrap: BootstrapConfig{
-			Server:       base.UnitTestUrl(),
+			Server:       serverURL,
 			X509CertPath: certPath,
 			X509KeyPath:  keyPath,
 			CACertPath:   caCertPath,
@@ -220,6 +228,10 @@ func TestCheckPermissionsWithX509(t *testing.T) {
 func TestCheckRoles(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
+	}
+	serverURL := base.UnitTestUrl()
+	if base.ServerIsTLS(serverURL) {
+		t.Skipf("URI %s can not start with couchbases://", serverURL)
 	}
 
 	rt := NewRestTester(t, nil)
@@ -475,13 +487,17 @@ func TestAdminAuth(t *testing.T) {
 }
 
 func TestAdminAuthWithX509(t *testing.T) {
+	serverURL := base.UnitTestUrl()
+	if !base.ServerIsTLS(serverURL) {
+		t.Skipf("URI %s needs to start with couchbases://", serverURL)
+	}
 	tb, teardownFn, caCertPath, certPath, keyPath := setupX509Tests(t, true)
 	defer tb.Close()
 	defer teardownFn()
 
 	ctx := NewServerContext(&StartupConfig{
 		Bootstrap: BootstrapConfig{
-			Server:       base.UnitTestUrl(),
+			Server:       serverURL,
 			X509CertPath: certPath,
 			X509KeyPath:  keyPath,
 			CACertPath:   caCertPath,

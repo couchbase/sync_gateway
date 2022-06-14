@@ -142,7 +142,7 @@ type DbConfig struct {
 	NumIndexReplicas                 *uint                            `json:"num_index_replicas,omitempty"`                   // Number of GSI index replicas used for core indexes
 	UseViews                         *bool                            `json:"use_views,omitempty"`                            // Force use of views instead of GSI
 	SendWWWAuthenticateHeader        *bool                            `json:"send_www_authenticate_header,omitempty"`         // If false, disables setting of 'WWW-Authenticate' header in 401 responses. Implicitly false if disable_password_auth is true.
-	DisablePasswordAuth              bool                             `json:"disable_password_auth,omitempty"`                // If true, disables user/pass authentication, only permitting OIDC or guest access
+	DisablePasswordAuth              *bool                            `json:"disable_password_auth,omitempty"`                // If true, disables user/pass authentication, only permitting OIDC or guest access
 	BucketOpTimeoutMs                *uint32                          `json:"bucket_op_timeout_ms,omitempty"`                 // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
 	SlowQueryWarningThresholdMs      *uint32                          `json:"slow_query_warning_threshold,omitempty"`         // Log warnings if N1QL queries take this many ms
 	DeltaSync                        *DeltaSyncConfig                 `json:"delta_sync,omitempty"`                           // Config for delta sync
@@ -1125,7 +1125,7 @@ func (sc *ServerContext) fetchAndLoadConfigs(isInitialStartup bool) (count int, 
 		}
 	}
 
-	return sc._applyConfigs(fetchedConfigs), nil
+	return sc._applyConfigs(fetchedConfigs, isInitialStartup), nil
 }
 
 func (sc *ServerContext) fetchAndLoadDatabase(dbName string) (found bool, err error) {
@@ -1141,7 +1141,7 @@ func (sc *ServerContext) _fetchAndLoadDatabase(dbName string) (found bool, err e
 	if err != nil || !found {
 		return false, err
 	}
-	sc._applyConfigs(map[string]DatabaseConfig{dbName: *dbConfig})
+	sc._applyConfigs(map[string]DatabaseConfig{dbName: *dbConfig}, false)
 
 	return true, nil
 }
@@ -1263,9 +1263,9 @@ func (sc *ServerContext) fetchConfigs(isInitialStartup bool) (dbNameConfigs map[
 }
 
 // _applyConfigs takes a map of dbName->DatabaseConfig and loads them into the ServerContext where necessary.
-func (sc *ServerContext) _applyConfigs(dbNameConfigs map[string]DatabaseConfig) (count int) {
+func (sc *ServerContext) _applyConfigs(dbNameConfigs map[string]DatabaseConfig, isInitialStartup bool) (count int) {
 	for dbName, cnf := range dbNameConfigs {
-		applied, err := sc._applyConfig(cnf, false)
+		applied, err := sc._applyConfig(cnf, false, isInitialStartup)
 		if err != nil {
 			base.ErrorfCtx(context.Background(), "Couldn't apply config for database %q: %v", base.MD(dbName), err)
 			continue
@@ -1281,11 +1281,31 @@ func (sc *ServerContext) _applyConfigs(dbNameConfigs map[string]DatabaseConfig) 
 func (sc *ServerContext) applyConfigs(dbNameConfigs map[string]DatabaseConfig) (count int) {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
-	return sc._applyConfigs(dbNameConfigs)
+	return sc._applyConfigs(dbNameConfigs, false)
 }
 
 // _applyConfig loads the given database, failFast=true will not attempt to retry connecting/loading
-func (sc *ServerContext) _applyConfig(cnf DatabaseConfig, failFast bool) (applied bool, err error) {
+func (sc *ServerContext) _applyConfig(cnf DatabaseConfig, failFast, isInitialStartup bool) (applied bool, err error) {
+	// 3.0.0 doesn't write a SGVersion, but everything else will
+	configSGVersionStr := "3.0.0"
+	if cnf.SGVersion != "" {
+		configSGVersionStr = cnf.SGVersion
+	}
+
+	configSGVersion, err := base.NewComparableVersionFromString(configSGVersionStr)
+	if err != nil {
+		return false, err
+	}
+
+	if !isInitialStartup {
+		// Skip applying if the config is from a newer SG version than this node and we're not just starting up
+		nodeSGVersion := base.ProductVersion
+		if nodeSGVersion.Less(configSGVersion) {
+			base.WarnfCtx(context.TODO(), "Cannot apply config update from server for db %q, this SG version is older than config's SG version (%s < %s)", cnf.Name, nodeSGVersion.String(), configSGVersion.String())
+			return false, nil
+		}
+	}
+
 	// skip if we already have this config loaded, and we've got a cas value to compare with
 	foundDbName, exists := sc.bucketDbName[*cnf.Bucket]
 	if exists {
@@ -1325,13 +1345,6 @@ func (sc *ServerContext) _applyConfig(cnf DatabaseConfig, failFast bool) (applie
 	}
 
 	return true, nil
-}
-
-// applyConfigs takes a map of bucket->DatabaseConfig and loads them into the ServerContext where necessary.
-func (sc *ServerContext) applyConfig(cnf DatabaseConfig) (applied bool, err error) {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
-	return sc._applyConfig(cnf, false)
 }
 
 // addLegacyPrincipals takes a map of databases that each have a map of names with principle configs.

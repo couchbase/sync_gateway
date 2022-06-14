@@ -58,7 +58,7 @@ func (h *handler) handleRoot() error {
 
 	if h.shouldShowProductVersion() {
 		resp.Version = base.LongVersionString
-		resp.Vendor.Version = base.ProductVersionNumber
+		resp.Vendor.Version = base.ProductAPIVersion
 	}
 
 	h.writeJSON(resp)
