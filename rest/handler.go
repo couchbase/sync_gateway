@@ -284,6 +284,8 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 			if err != nil {
 				return fmt.Errorf("failed to revoke stale OIDC roles/channels: %w", err)
 			}
+			// TODO: could avoid this extra fetch if UpdatePrincipal returned the new principal
+			h.user, err = dbContext.Authenticator(h.ctx()).GetUser(*updates.Name)
 		}
 	}
 
@@ -454,10 +456,9 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 	// If oidc enabled, check for bearer ID token
 	if dbCtx.Options.OIDCOptions != nil {
 		if token := h.getBearerToken(); token != "" {
-			var authJwtErr error
 			var updates auth.PrincipalConfig
-			h.user, updates, authJwtErr = dbCtx.Authenticator(h.ctx()).AuthenticateUntrustedJWT(token, dbCtx.OIDCProviders, h.getOIDCCallbackURL)
-			if h.user == nil || authJwtErr != nil {
+			h.user, updates, err = dbCtx.Authenticator(h.ctx()).AuthenticateUntrustedJWT(token, dbCtx.OIDCProviders, h.getOIDCCallbackURL)
+			if h.user == nil || err != nil {
 				return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 			}
 			if changes := checkOIDCIssuerStillValid(h.ctx(), dbCtx, h.user); changes != nil {
@@ -467,7 +468,11 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 			if err != nil {
 				return fmt.Errorf("failed to update OIDC user after sign-in: %w", err)
 			}
-			return nil
+			// TODO: could avoid this extra fetch if UpdatePrincipal returned the newly updated principal
+			if updates.Name != nil {
+				h.user, err = dbCtx.Authenticator(h.ctx()).GetUser(*updates.Name)
+			}
+			return err
 		}
 
 		/*
