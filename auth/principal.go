@@ -225,5 +225,9 @@ func (u PrincipalConfig) Merge(other PrincipalConfig) PrincipalConfig {
 		Password:          base.CoalesceStrings(other.Password, u.Password),
 		Disabled:          base.CoalesceBools(other.Disabled, u.Disabled),
 		ExplicitRoleNames: base.CoalesceSets(other.ExplicitRoleNames, u.ExplicitRoleNames),
+		OIDCIssuer:        base.CoalesceStrings(other.OIDCIssuer, u.OIDCIssuer),
+		OIDCRoles:         base.CoalesceSets(other.OIDCRoles, u.OIDCRoles),
+		OIDCChannels:      base.CoalesceSets(other.OIDCChannels, u.OIDCChannels),
+		OIDCLastUpdated:   base.CoalesceTimes(other.OIDCLastUpdated, u.OIDCLastUpdated),
 	}
 }

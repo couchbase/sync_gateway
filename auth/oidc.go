@@ -467,24 +467,11 @@ func getJWTClaimAsSet(identity *Identity, claim string) (base.Set, error) {
 		return base.Set{}, nil
 	}
 
-	switch typed := val.(type) {
-	case string:
-		return base.SetOf(typed), nil
-	case []string:
-		return base.SetFromArray(typed), nil
-	case []interface{}: // could be a []string
-		result := make([]string, 0, len(typed))
-		for i, val := range typed {
-			strVal, ok := val.(string)
-			if !ok {
-				return base.Set{}, fmt.Errorf("invalid value at JWT payload[%q][%d]: expected string, got %T", base.UD(claim).Redact(), i, val)
-			}
-			result = append(result, strVal)
-		}
-		return base.SetFromArray(result), nil
-	default:
-		return base.Set{}, fmt.Errorf("invalid value at JWT payload[%q]: expected string or []string, got %T", base.UD(claim).Redact(), val)
+	strs, nonStrings := base.ValueToStringArray(val)
+	if len(nonStrings) > 0 {
+		return nil, fmt.Errorf("invalid claim value %v: non-strings present", base.UD(claim))
 	}
+	return base.SetFromArray(strs), nil
 }
 
 // fetchCustomProviderConfig collects the provider configuration from the given discovery endpoint and determines
