@@ -73,10 +73,6 @@ func TestCheckPermissions(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
-	serverURL := base.UnitTestUrl()
-	if base.ServerIsTLS(serverURL) {
-		t.Skipf("URI %s can not start with couchbases://", serverURL)
-	}
 
 	clusterAdminPermission := Permission{"!admin", false}
 	clusterReadOnlyAdminPermission := Permission{"!ro_admin", false}
@@ -229,10 +225,6 @@ func TestCheckRoles(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
-	serverURL := base.UnitTestUrl()
-	if base.ServerIsTLS(serverURL) {
-		t.Skipf("URI %s can not start with couchbases://", serverURL)
-	}
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -345,7 +337,6 @@ func TestAdminAuth(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
-
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
