@@ -119,6 +119,12 @@ func TestHTTPLoggingRedaction(t *testing.T) {
 			expectedLog: "/db/<ud>test</ud>/<ud>attach</ud>",
 		},
 		{
+			name:        "docid-attach-equalnames",
+			method:      http.MethodGet,
+			path:        "/db/test/test",
+			expectedLog: "/db/<ud>test</ud>/<ud>test</ud>",
+		},
+		{
 			name:        "user",
 			method:      http.MethodGet,
 			path:        "/db/_user/foo",
