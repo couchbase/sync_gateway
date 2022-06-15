@@ -1741,3 +1741,14 @@ func safeCutAfter(s, sep string) (value, remainder string) {
 	}
 	return val, before
 }
+
+// AllOrNoneNil returns true if either all of its arguments are nil, or none are.
+func AllOrNoneNil(vals ...interface{}) bool {
+	nonNil := 0
+	for _, val := range vals {
+		if val != nil {
+			nonNil++
+		}
+	}
+	return nonNil == 0 || nonNil == len(vals)
+}

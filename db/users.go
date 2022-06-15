@@ -42,6 +42,11 @@ func (db *DatabaseContext) DeleteRole(ctx context.Context, name string, purge bo
 
 // UpdatePrincipal updates or creates a principal from a PrincipalConfig structure.
 func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.PrincipalConfig, isUser bool, allowReplace bool) (replaced bool, err error) {
+	// Sanity checking
+	if !base.AllOrNoneNil(updates.OIDCIssuer, updates.OIDCRoles, updates.OIDCChannels, updates.OIDCLastUpdated) {
+		return false, fmt.Errorf("must either specify all OIDC properties or none")
+	}
+
 	// Get the existing principal, or if this is a POST make sure there isn't one:
 	var princ auth.Principal
 	var user auth.User
