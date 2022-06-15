@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -77,5 +78,86 @@ func TestParseHTTPRangeHeader(t *testing.T) {
 			assert.Equal(t, expected.start, start)
 			assert.Equal(t, expected.end, end)
 		}
+	}
+}
+
+func TestHTTPLoggingRedaction(t *testing.T) {
+	cases := []struct {
+		name, method, path, expectedLog string
+		admin                           bool
+	}{
+		{
+			name:        "docid",
+			method:      http.MethodGet,
+			path:        "/db/test",
+			expectedLog: "/db/<ud>test</ud>",
+		},
+		{
+			name:        "local",
+			method:      http.MethodGet,
+			path:        "/db/_local/test",
+			expectedLog: "/db/_local/<ud>test</ud>",
+		},
+		{
+			name:        "raw-docid",
+			method:      http.MethodGet,
+			path:        "/db/_raw/test",
+			expectedLog: "/db/_raw/<ud>test</ud>",
+			admin:       true,
+		},
+		{
+			name:        "revtree-docid",
+			method:      http.MethodGet,
+			path:        "/db/_revtree/test",
+			expectedLog: "/db/_revtree/<ud>test</ud>",
+			admin:       true,
+		},
+		{
+			name:        "docid-attach",
+			method:      http.MethodGet,
+			path:        "/db/test/attach",
+			expectedLog: "/db/<ud>test</ud>/<ud>attach</ud>",
+		},
+		{
+			name:        "user",
+			method:      http.MethodGet,
+			path:        "/db/_user/foo",
+			expectedLog: "/db/_user/<ud>foo</ud>",
+			admin:       true,
+		},
+		{
+			name:        "userSession",
+			method:      http.MethodDelete,
+			path:        "/db/_user/foo/_session",
+			expectedLog: "/db/_user/<ud>foo</ud>/_session",
+			admin:       true,
+		},
+		{
+			name:        "role",
+			method:      http.MethodGet,
+			path:        "/db/_role/foo",
+			expectedLog: "/db/_role/<ud>foo</ud>",
+			admin:       true,
+		},
+		{
+			name:        "CBG-2059",
+			method:      http.MethodGet,
+			path:        "/db/db",
+			expectedLog: "/db/<ud>db</ud>",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rt := NewRestTester(t, nil)
+			defer rt.Close()
+
+			base.AssertLogContains(t, tc.expectedLog, func() {
+				if tc.admin {
+					_ = rt.SendAdminRequest(tc.method, tc.path, "")
+				} else {
+					_ = rt.SendRequest(tc.method, tc.path, "")
+				}
+			})
+		})
 	}
 }

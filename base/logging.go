@@ -9,6 +9,7 @@
 package base
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -16,7 +17,10 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // GetLogKeys returns log keys in a map
@@ -364,4 +368,16 @@ func LogDebugEnabled(logKey LogKey) bool {
 // or if the traceLogger is enabled.
 func LogTraceEnabled(logKey LogKey) bool {
 	return consoleLogger.shouldLog(LevelTrace, logKey) || traceLogger.shouldLog(LevelTrace)
+}
+
+// AssertLogContains asserts that the logs produced by function f contain string s.
+func AssertLogContains(t *testing.T, s string, f func()) {
+	b := bytes.Buffer{}
+
+	// temporarily override logger output for the given function call
+	consoleLogger.logger.SetOutput(&b)
+	f()
+	consoleLogger.logger.SetOutput(os.Stderr)
+
+	assert.Contains(t, b.String(), s)
 }

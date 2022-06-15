@@ -1631,3 +1631,22 @@ func TestCrc32cHashString(t *testing.T) {
 		})
 	}
 }
+
+func TestReplaceLast(t *testing.T) {
+	cases := []struct {
+		name, s, search, replacement, expected string
+	}{
+		{
+			name:        "basic",
+			s:           "foo foo",
+			search:      "foo",
+			replacement: "bar",
+			expected:    "foo bar",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, replaceLast(tc.s, tc.search, tc.replacement))
+		})
+	}
+}
