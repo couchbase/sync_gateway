@@ -695,15 +695,24 @@ func tagPathVars(req *http.Request, urlString *string) {
 	for k, v := range pathVars {
 		switch redactedPathVars[k] {
 		case "UD":
-			str = strings.Replace(str, "/"+v, "/"+UD(v).Redact(), 1)
+			str = replaceLast(str, "/"+v, "/"+UD(v).Redact())
 		case "MD":
-			str = strings.Replace(str, "/"+v, "/"+MD(v).Redact(), 1)
+			str = replaceLast(str, "/"+v, "/"+MD(v).Redact())
 		case "SD":
-			str = strings.Replace(str, "/"+v, "/"+SD(v).Redact(), 1)
+			str = replaceLast(str, "/"+v, "/"+SD(v).Redact())
 		}
 	}
 
 	*urlString = str
+}
+
+// replaceLast replaces the last instance of search in s with replacement.
+func replaceLast(s, search, replacement string) string {
+	idx := strings.LastIndex(s, search)
+	if idx == -1 {
+		return s
+	}
+	return s[:idx] + replacement + s[idx+len(search):]
 }
 
 // redactedQueryParams is a lookup map of query params to redaction types.
