@@ -159,6 +159,12 @@ type OIDCProvider struct {
 	// Sync Gateway and the underlying OIDC library.
 	UsernameClaim string `json:"username_claim"`
 
+	// RolesClaim and ChannelsClaim allow specifying a claim (which must be a string or string[]) to add roles/channels
+	// to users. These are added in addition to any other roles/channels the user may have (via the admin API or the
+	// sync function). If the claim is absent from the access/ID token, no roles/channels will be added.
+	RolesClaim    string `json:"roles_claim"`
+	ChannelsClaim string `json:"channels_claim"`
+
 	// AllowUnsignedProviderTokens allows users to opt-in to accepting unsigned tokens from providers.
 	AllowUnsignedProviderTokens bool `json:"allow_unsigned_provider_tokens"`
 
@@ -450,6 +456,22 @@ func formatUsername(value interface{}) (string, error) {
 	default:
 		return "", fmt.Errorf("oidc: can't treat value of type: %T as valid username", valueType)
 	}
+}
+
+// getJWTClaimAsSet looks up the given claim in the identity's claims, and transforms it to a set of strings.
+// The claim can be either a string or a slice of strings; other types will result in an error.
+// If the claim is missing from the identity, the empty set (and nil error) will be returned.
+func getJWTClaimAsSet(identity *Identity, claim string) (base.Set, error) {
+	val, ok := identity.Claims[claim]
+	if !ok {
+		return base.Set{}, nil
+	}
+
+	strs, nonStrings := base.ValueToStringArray(val)
+	if len(nonStrings) > 0 {
+		return nil, fmt.Errorf("invalid claim value %v: non-strings present", base.UD(claim))
+	}
+	return base.SetFromArray(strs), nil
 }
 
 // fetchCustomProviderConfig collects the provider configuration from the given discovery endpoint and determines

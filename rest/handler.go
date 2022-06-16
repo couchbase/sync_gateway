@@ -274,6 +274,21 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		}
 	}
 
+	// If the user has OIDC roles/channels configured, we need to check if the OIDC issuer they came from is still valid.
+	// Note: checkAuth already does this check if the user authenticates with a bearer token, but we still need to recheck
+	// for users using session tokens / basic auth. However, updatePrincipal will be idempotent.
+	if h.user != nil && h.user.OIDCIssuer() != "" {
+		updates := checkOIDCIssuerStillValid(h.ctx(), dbContext, h.user)
+		if updates != nil {
+			_, err := dbContext.UpdatePrincipal(h.ctx(), updates, true, true)
+			if err != nil {
+				return fmt.Errorf("failed to revoke stale OIDC roles/channels: %w", err)
+			}
+			// TODO: could avoid this extra fetch if UpdatePrincipal returned the new principal
+			h.user, err = dbContext.Authenticator(h.ctx()).GetUser(*updates.Name)
+		}
+	}
+
 	if shouldCheckAdminAuth {
 		// If server is walrus but auth is enabled we should just kick the user out as invalid as we have nothing to
 		// validate credentials against
@@ -441,12 +456,23 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 	// If oidc enabled, check for bearer ID token
 	if dbCtx.Options.OIDCOptions != nil {
 		if token := h.getBearerToken(); token != "" {
-			var authJwtErr error
-			h.user, authJwtErr = dbCtx.Authenticator(h.ctx()).AuthenticateUntrustedJWT(token, dbCtx.OIDCProviders, h.getOIDCCallbackURL)
-			if h.user == nil || authJwtErr != nil {
+			var updates auth.PrincipalConfig
+			h.user, updates, err = dbCtx.Authenticator(h.ctx()).AuthenticateUntrustedJWT(token, dbCtx.OIDCProviders, h.getOIDCCallbackURL)
+			if h.user == nil || err != nil {
 				return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 			}
-			return nil
+			if changes := checkOIDCIssuerStillValid(h.ctx(), dbCtx, h.user); changes != nil {
+				updates = updates.Merge(*changes)
+			}
+			_, err := dbCtx.UpdatePrincipal(h.ctx(), &updates, true, true)
+			if err != nil {
+				return fmt.Errorf("failed to update OIDC user after sign-in: %w", err)
+			}
+			// TODO: could avoid this extra fetch if UpdatePrincipal returned the newly updated principal
+			if updates.Name != nil {
+				h.user, err = dbCtx.Authenticator(h.ctx()).GetUser(*updates.Name)
+			}
+			return err
 		}
 
 		/*
@@ -505,6 +531,31 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 		return base.HTTPErrorf(http.StatusUnauthorized, "Login required")
 	}
 
+	return nil
+}
+
+func checkOIDCIssuerStillValid(ctx context.Context, dbCtx *db.DatabaseContext, user auth.User) *auth.PrincipalConfig {
+	issuer := user.OIDCIssuer()
+	if issuer == "" {
+		return nil
+	}
+	providerStillValid := false
+	for _, provider := range dbCtx.OIDCProviders {
+		// No need to verify audiences, as that was done when the user was authenticated
+		if provider.Issuer == issuer {
+			providerStillValid = true
+			break
+		}
+	}
+	if !providerStillValid {
+		base.InfofCtx(ctx, base.KeyAuth, "User %v uses OIDC issuer %v which is no longer configured. Revoking OIDC roles/channels.", base.UD(user.Name()), base.UD(issuer))
+		return &auth.PrincipalConfig{
+			Name:         base.StringPtr(user.Name()),
+			OIDCIssuer:   base.StringPtr(""),
+			OIDCRoles:    base.Set{},
+			OIDCChannels: base.Set{},
+		}
+	}
 	return nil
 }
 

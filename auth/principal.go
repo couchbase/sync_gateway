@@ -9,6 +9,8 @@
 package auth
 
 import (
+	"time"
+
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 )
@@ -23,7 +25,12 @@ type Principal interface {
 	SetSequence(sequence uint64)
 
 	// The set of channels the Principal belongs to, and what sequence access was granted.
-	// Returns nil if invalidated
+	// Returns nil if invalidated.
+	// For both roles and users, the set of channels is the union of ExplicitChannels, OIDCChannels, and any channels
+	// they are granted through a sync function.
+	//
+	// NOTE: channels a user has access to through a role are *not* included in Channels(), so the user could have
+	// access to more documents than included in Channels. CanSeeChannel will also check against the user's roles.
 	Channels() ch.TimedSet
 
 	// The channels the Principal was explicitly granted access to thru the admin API.
@@ -101,7 +108,7 @@ type User interface {
 	// Changes the user's password.
 	SetPassword(password string) error
 
-	// The set of Roles the user belongs to (including ones given to it by the sync function)
+	// The set of Roles the user belongs to (including ones given to it by the sync function and by OIDC)
 	// Returns nil if invalidated
 	RoleNames() ch.TimedSet
 
@@ -110,6 +117,15 @@ type User interface {
 
 	// Sets the explicit roles the user belongs to.
 	SetExplicitRoles(ch.TimedSet, uint64)
+
+	OIDCRoles() ch.TimedSet
+	SetOIDCRoles(ch.TimedSet, uint64)
+	OIDCChannels() ch.TimedSet
+	SetOIDCChannels(ch.TimedSet, uint64)
+	OIDCIssuer() string
+	SetOIDCIssuer(string)
+	OIDCLastUpdated() time.Time
+	SetOIDCLastUpdated(time.Time)
 
 	GetRoleInvalSeq() uint64
 
@@ -158,8 +174,12 @@ type PrincipalConfig struct {
 	Password          *string  `json:"password,omitempty"`
 	ExplicitRoleNames base.Set `json:"admin_roles,omitempty"`
 	// Fields below are read-only
-	Channels  base.Set `json:"all_channels,omitempty"`
-	RoleNames []string `json:"roles,omitempty"`
+	Channels        base.Set   `json:"all_channels,omitempty"`
+	RoleNames       []string   `json:"roles,omitempty"`
+	OIDCIssuer      *string    `json:"oidc_issuer,omitempty"`
+	OIDCRoles       base.Set   `json:"oidc_roles,omitempty"`
+	OIDCChannels    base.Set   `json:"oidc_channels,omitempty"`
+	OIDCLastUpdated *time.Time `json:"oidc_last_updated,omitempty"`
 }
 
 // IsPasswordValid checks if the passwords in this PrincipalConfig is valid.  Only allows
@@ -205,5 +225,9 @@ func (u PrincipalConfig) Merge(other PrincipalConfig) PrincipalConfig {
 		Password:          base.CoalesceStrings(other.Password, u.Password),
 		Disabled:          base.CoalesceBools(other.Disabled, u.Disabled),
 		ExplicitRoleNames: base.CoalesceSets(other.ExplicitRoleNames, u.ExplicitRoleNames),
+		OIDCIssuer:        base.CoalesceStrings(other.OIDCIssuer, u.OIDCIssuer),
+		OIDCRoles:         base.CoalesceSets(other.OIDCRoles, u.OIDCRoles),
+		OIDCChannels:      base.CoalesceSets(other.OIDCChannels, u.OIDCChannels),
+		OIDCLastUpdated:   base.CoalesceTimes(other.OIDCLastUpdated, u.OIDCLastUpdated),
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"regexp"
 	"sync"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -42,6 +43,10 @@ type userImplBody struct {
 	PasswordHash_    []byte          `json:"passwordhash_bcrypt,omitempty"`
 	OldPasswordHash_ interface{}     `json:"passwordhash,omitempty"` // For pre-beta compatibility
 	ExplicitRoles_   ch.TimedSet     `json:"explicit_roles,omitempty"`
+	OIDCRoles_       ch.TimedSet     `json:"oidc_roles,omitempty"`
+	OIDCChannels_    ch.TimedSet     `json:"oidc_channels,omitempty"`
+	OIDCIssuer_      string          `json:"oidc_issuer,omitempty"`
+	OIDCLastUpdated_ time.Time       `json:"oidc_last_updated_,omitempty"`
 	RolesSince_      ch.TimedSet     `json:"rolesSince"`
 	RoleInvalSeq     uint64          `json:"role_inval_seq,omitempty"` // Sequence at which the roles were invalidated. Data remains in RolesSince_ for history calculation.
 	RoleHistory_     TimedSetHistory `json:"role_history,omitempty"`   // Added to when a previously granted role is revoked. Calculated inside of rebuildRoles.
@@ -182,6 +187,42 @@ func (user *userImpl) InvalidatedRoles() ch.TimedSet {
 		return user.RolesSince_
 	}
 	return nil
+}
+
+func (user *userImpl) OIDCRoles() ch.TimedSet {
+	return user.OIDCRoles_
+}
+
+func (user *userImpl) SetOIDCRoles(channels ch.TimedSet, invalSeq uint64) {
+	user.OIDCRoles_ = channels
+	// change to OIDC roles means roles need to be recomputed
+	user.SetRoleInvalSeq(invalSeq)
+}
+
+func (user *userImpl) OIDCChannels() ch.TimedSet {
+	return user.OIDCChannels_
+}
+
+func (user *userImpl) SetOIDCChannels(channels ch.TimedSet, invalSeq uint64) {
+	user.OIDCChannels_ = channels
+	// change to OIDC channels means channels need to be recomputed
+	user.SetChannelInvalSeq(invalSeq)
+}
+
+func (user *userImpl) OIDCIssuer() string {
+	return user.OIDCIssuer_
+}
+
+func (user *userImpl) SetOIDCIssuer(val string) {
+	user.OIDCIssuer_ = val
+}
+
+func (user *userImpl) OIDCLastUpdated() time.Time {
+	return user.OIDCLastUpdated_
+}
+
+func (user *userImpl) SetOIDCLastUpdated(val time.Time) {
+	user.OIDCLastUpdated_ = val
 }
 
 func (user *userImpl) SetRoleHistory(history TimedSetHistory) {

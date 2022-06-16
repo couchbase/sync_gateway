@@ -200,6 +200,13 @@ func (auth *Authenticator) rebuildChannels(princ Principal) error {
 		}
 		channels.Add(viewChannels)
 	}
+
+	if user, ok := princ.(User); ok {
+		if oidc := user.OIDCChannels(); oidc != nil {
+			channels.Add(oidc)
+		}
+	}
+
 	// always grant access to the public document channel
 	channels.AddChannel(ch.DocumentStarChannel, 1)
 
@@ -298,6 +305,10 @@ func (auth *Authenticator) rebuildRoles(user User) error {
 
 	if explicit := user.ExplicitRoles(); explicit != nil {
 		roles.Add(explicit)
+	}
+
+	if oidc := user.OIDCRoles(); oidc != nil {
+		roles.Add(oidc)
 	}
 
 	roleHistory := auth.calculateHistory(user.Name(), user.GetRoleInvalSeq(), user.InvalidatedRoles(), roles, user.RoleHistory())
@@ -617,7 +628,7 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) (U
 // Used to authenticate a JWT token coming from an insecure source (e.g. client request)
 // If the token is validated but the user for the username defined in the subject claim doesn't exist,
 // creates the user when autoRegister=true.
-func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDCProviderMap, callbackURLFunc OIDCCallbackURLFunc) (User, error) {
+func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDCProviderMap, callbackURLFunc OIDCCallbackURLFunc) (User, PrincipalConfig, error) {
 
 	base.DebugfCtx(auth.LogCtx, base.KeyAuth, "AuthenticateUntrustedJWT called with token: %s", base.UD(token))
 	var provider *OIDCProvider
@@ -630,7 +641,7 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 		jwt, err := jwt.ParseSigned(token)
 		if err != nil {
 			base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error parsing JWT in AuthenticateUntrustedJWT: %v", err)
-			return nil, err
+			return nil, PrincipalConfig{}, err
 		}
 
 		// Extract issuer and audience(s) from JSON Web Token.
@@ -639,7 +650,7 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "JWT issuer: %v, audiences: %v", base.UD(issuer), base.UD(audiences))
 		if err != nil {
 			base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error getting issuer and audience from token: %v", err)
-			return nil, err
+			return nil, PrincipalConfig{}, err
 		}
 
 		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Call GetProviderForIssuer w/ providers: %+v", base.UD(providers))
@@ -648,15 +659,15 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 	}
 
 	if provider == nil {
-		return nil, base.RedactErrorf("No provider found for issuer %v", base.UD(issuer))
+		return nil, PrincipalConfig{}, base.RedactErrorf("No provider found for issuer %v", base.UD(issuer))
 	}
 
 	identity, verifyErr := verifyToken(auth.LogCtx, token, provider, callbackURLFunc)
 	if verifyErr != nil {
-		return nil, verifyErr
+		return nil, PrincipalConfig{}, verifyErr
 	}
-	user, _, err := auth.authenticateOIDCIdentity(identity, provider)
-	return user, err
+	user, updates, _, err := auth.authenticateOIDCIdentity(identity, provider)
+	return user, updates, err
 }
 
 // verifyToken verifies claims and signature on the token; ensure that it's been signed by the provider.
@@ -691,7 +702,7 @@ func verifyToken(ctx context.Context, token string, provider *OIDCProvider, call
 // If the token is validated but the user for the username defined in the subject claim doesn't exist,
 // creates the user when autoRegister=true.
 func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCProvider, callbackURLFunc OIDCCallbackURLFunc) (user User,
-	tokenExpiry time.Time, err error) {
+	updates PrincipalConfig, tokenExpiry time.Time, err error) {
 	base.DebugfCtx(auth.LogCtx, base.KeyAuth, "AuthenticateTrustedJWT called with token: %s", base.UD(token))
 
 	var identity *Identity
@@ -700,45 +711,58 @@ func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCPr
 		identity, err = VerifyClaims(token, provider.ClientID, provider.Issuer)
 		if err != nil {
 			base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error verifying raw token in AuthenticateTrustedJWT: %v", err)
-			return nil, time.Time{}, err
+			return nil, PrincipalConfig{}, time.Time{}, err
 		}
 	} else {
 		// Verify claims and signature on the JWT.
 		var verifyErr error
 		identity, verifyErr = verifyToken(auth.LogCtx, token, provider, callbackURLFunc)
 		if verifyErr != nil {
-			return nil, time.Time{}, verifyErr
+			return nil, PrincipalConfig{}, time.Time{}, verifyErr
 		}
 	}
 
 	return auth.authenticateOIDCIdentity(identity, provider)
 }
 
-// Obtains a Sync Gateway User for the JWT. Expects that the JWT has already been verified for OIDC compliance.
-func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider *OIDCProvider) (user User, tokenExpiry time.Time, err error) {
+// authenticateOIDCIdentity obtains a Sync Gateway User for the JWT. Expects that the JWT has already been verified for OIDC compliance.
+// TODO: possibly move this function to oidc.go
+func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider *OIDCProvider) (user User, updates PrincipalConfig, tokenExpiry time.Time, err error) {
+	// Note: any errors returned from this function will be converted to 403s with a generic message, so we need to
+	// separately log them to ensure they're preserved for debugging.
 	if identity == nil || identity.Subject == "" {
 		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Empty subject found in OIDC identity: %v", base.UD(identity))
-		return nil, time.Time{}, errors.New("subject not found in OIDC identity")
+		return nil, PrincipalConfig{}, time.Time{}, errors.New("subject not found in OIDC identity")
 	}
 	username, err := getOIDCUsername(provider, identity)
 	if err != nil {
 		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error retrieving OIDCUsername: %v", err)
-		return nil, time.Time{}, err
+		return nil, PrincipalConfig{}, time.Time{}, err
 	}
 	base.DebugfCtx(auth.LogCtx, base.KeyAuth, "OIDCUsername: %v", base.UD(username))
+
+	var oidcRoles, oidcChannels base.Set
+	if provider.RolesClaim != "" {
+		oidcRoles, err = getJWTClaimAsSet(identity, provider.RolesClaim)
+		if err != nil {
+			return nil, PrincipalConfig{}, time.Time{}, fmt.Errorf("failed to find OIDC roles: %w", err)
+		}
+	} else {
+		oidcRoles = base.Set{}
+	}
+	if provider.ChannelsClaim != "" {
+		oidcChannels, err = getJWTClaimAsSet(identity, provider.ChannelsClaim)
+		if err != nil {
+			return nil, PrincipalConfig{}, time.Time{}, fmt.Errorf("failed to find OIDC channels: %w", err)
+		}
+	} else {
+		oidcChannels = base.Set{}
+	}
 
 	user, err = auth.GetUser(username)
 	if err != nil {
 		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error retrieving user for username %q: %v", base.UD(username), err)
-		return nil, time.Time{}, err
-	}
-
-	// If user found, check whether the email needs to be updated (e.g. user has changed email in external auth system)
-	if user != nil && identity.Email != "" && user.Email() != identity.Email {
-		err = auth.UpdateUserEmail(user, identity.Email)
-		if err != nil {
-			base.WarnfCtx(auth.LogCtx, "Unable to set user email to %v for OIDC", base.UD(identity.Email))
-		}
+		return nil, PrincipalConfig{}, time.Time{}, err
 	}
 
 	// Auto-registration. This will normally be done when token is originally returned
@@ -749,11 +773,23 @@ func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider
 		user, err = auth.RegisterNewUser(username, identity.Email)
 		if err != nil && !base.IsCasMismatch(err) {
 			base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error registering new user: %v", err)
-			return nil, time.Time{}, err
+			return nil, PrincipalConfig{}, time.Time{}, err
 		}
 	}
 
-	return user, identity.Expiry, nil
+	if user != nil {
+		now := time.Now()
+		updates = PrincipalConfig{
+			Name:            base.StringPtr(user.Name()),
+			Email:           &identity.Email,
+			OIDCIssuer:      &provider.Issuer,
+			OIDCRoles:       oidcRoles,
+			OIDCChannels:    oidcChannels,
+			OIDCLastUpdated: &now,
+		}
+	}
+
+	return user, updates, identity.Expiry, nil
 }
 
 // Registers a new user account based on the given verified username and optional email address.

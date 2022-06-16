@@ -1714,6 +1714,17 @@ func CoalesceBools(a, b *bool) *bool {
 	return nil
 }
 
+// CoalesceTimes returns the first non-nil argument, or nil if both are nil.
+func CoalesceTimes(a, b *time.Time) *time.Time {
+	if a != nil {
+		return a
+	}
+	if b != nil {
+		return b
+	}
+	return nil
+}
+
 // stringsCut is a backport of the Go 1.18 strings.Cut function. This can be removed once we're running on Go 1.18
 func stringsCut(s, sep string) (before, after string, found bool) {
 	if i := strings.Index(s, sep); i >= 0 {
@@ -1738,4 +1749,15 @@ func safeCutAfter(s, sep string) (value, remainder string) {
 		return "", s
 	}
 	return val, before
+}
+
+// AllOrNoneNil returns true if either all of its arguments are nil, or none are.
+func AllOrNoneNil(vals ...interface{}) bool {
+	nonNil := 0
+	for _, val := range vals {
+		if val != nil {
+			nonNil++
+		}
+	}
+	return nonNil == 0 || nonNil == len(vals)
 }

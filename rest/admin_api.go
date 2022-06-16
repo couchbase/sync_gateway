@@ -1184,7 +1184,7 @@ func externalUserName(name string) string {
 	return name
 }
 
-func marshalPrincipal(princ auth.Principal, includeDynamicGrantInfo bool) ([]byte, error) {
+func marshalPrincipal(princ auth.Principal, includeDynamicGrantInfo bool) auth.PrincipalConfig {
 	name := externalUserName(princ.Name())
 	info := auth.PrincipalConfig{
 		Name:             &name,
@@ -1198,13 +1198,16 @@ func marshalPrincipal(princ auth.Principal, includeDynamicGrantInfo bool) ([]byt
 		if includeDynamicGrantInfo {
 			info.Channels = user.InheritedChannels().AsSet()
 			info.RoleNames = user.RoleNames().AllKeys()
+			info.OIDCIssuer = base.StringPtr(user.OIDCIssuer())
+			info.OIDCRoles = user.OIDCRoles().AsSet()
+			info.OIDCChannels = user.OIDCChannels().AsSet()
 		}
 	} else {
 		if includeDynamicGrantInfo {
 			info.Channels = princ.Channels().AsSet()
 		}
 	}
-	return base.JSONMarshal(info)
+	return info
 }
 
 // Handles PUT and POST for a user or a role.
@@ -1230,6 +1233,11 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 		} else if *newInfo.Name != name {
 			return base.HTTPErrorf(http.StatusBadRequest, "Name mismatch (can't change name)")
 		}
+	}
+
+	// NB: other read-only properties are ignored but no error is returned for backwards-compatibility
+	if newInfo.OIDCIssuer != nil || len(newInfo.OIDCRoles) > 0 || len(newInfo.OIDCChannels) > 0 {
+		return base.HTTPErrorf(http.StatusBadRequest, "Can't change read-only properties")
 	}
 
 	internalName := internalUserName(*newInfo.Name)
@@ -1302,7 +1310,25 @@ func (h *handler) getUserInfo() error {
 	}
 	// If not specified will default to false
 	includeDynamicGrantInfo := h.permissionsResults[PermReadPrincipalAppData.PermissionName]
-	bytes, err := marshalPrincipal(user, includeDynamicGrantInfo)
+	info := marshalPrincipal(user, includeDynamicGrantInfo)
+	// If the user's OIDC issuer is no longer valid, remove the OIDC information to avoid confusing users
+	// (it'll get removed permanently the next time the user signs in)
+	if info.OIDCIssuer != nil {
+		issuerValid := false
+		for _, provider := range h.db.OIDCProviders {
+			if provider.Issuer == *info.OIDCIssuer {
+				issuerValid = true
+				break
+			}
+		}
+		if !issuerValid {
+			info.OIDCIssuer = nil
+			info.OIDCLastUpdated = nil
+			info.OIDCRoles = nil
+			info.OIDCChannels = nil
+		}
+	}
+	bytes, err := base.JSONMarshal(info)
 	h.writeRawJSON(bytes)
 	return err
 }
@@ -1318,7 +1344,8 @@ func (h *handler) getRoleInfo() error {
 	}
 	// If not specified will default to false
 	includeDynamicGrantInfo := h.permissionsResults[PermReadPrincipalAppData.PermissionName]
-	bytes, err := marshalPrincipal(role, includeDynamicGrantInfo)
+	info := marshalPrincipal(role, includeDynamicGrantInfo)
+	bytes, err := base.JSONMarshal(info)
 	_, _ = h.response.Write(bytes)
 	return err
 }

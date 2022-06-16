@@ -26,6 +26,7 @@ import (
 
 	"github.com/coreos/go-oidc"
 	"github.com/couchbase/sync_gateway/base"
+	ch "github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/square/go-jose.v2"
@@ -981,6 +982,259 @@ func TestFormatUsername(t *testing.T) {
 			username, err := formatUsername(tc.username)
 			assert.Equal(t, tc.errorExpected, err)
 			assert.Equal(t, tc.usernameExpected, username)
+		})
+	}
+}
+
+func TestOIDCRolesChannels(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth, base.KeyAccess)
+	const (
+		testUserPrefix = "foo"
+		testIssuer     = "https://example.com"
+		testSubject    = "frodo"
+	)
+	type simulatedLogin struct {
+		explicitRoles, explicitChannels []string
+		claims                          map[string]interface{}
+		expectedRoles, expectedChannels []string
+	}
+	type testCase struct {
+		name                              string
+		rolesClaimName, channelsClaimName string
+		logins                            []simulatedLogin
+	}
+	cases := []testCase{
+		{
+			name: "base",
+			logins: []simulatedLogin{
+				{
+					expectedRoles:    []string{},
+					expectedChannels: []string{"!"},
+				},
+			},
+		},
+		{
+			name:           "roles from OIDC",
+			rolesClaimName: "roles",
+			logins: []simulatedLogin{
+				{
+					claims:           map[string]interface{}{"roles": []string{"foo"}},
+					expectedRoles:    []string{"foo"},
+					expectedChannels: []string{"!"},
+				},
+			},
+		},
+		{
+			name:           "claim is missing",
+			rolesClaimName: "roles",
+			logins: []simulatedLogin{
+				{
+					claims:           map[string]interface{}{},
+					expectedRoles:    []string{},
+					expectedChannels: []string{"!"},
+				},
+			},
+		},
+		{
+			name:           "combine explicit and OIDC roles",
+			rolesClaimName: "roles",
+			logins: []simulatedLogin{
+				{
+					explicitRoles:    []string{"bar"},
+					claims:           map[string]interface{}{"roles": []string{"foo"}},
+					expectedRoles:    []string{"foo", "bar"},
+					expectedChannels: []string{"!"},
+				},
+			},
+		},
+		{
+			name:           "grant, then revoke, OIDC roles",
+			rolesClaimName: "roles",
+			logins: []simulatedLogin{
+				{
+					claims:           map[string]interface{}{"roles": []string{"foo"}},
+					expectedRoles:    []string{"foo"},
+					expectedChannels: []string{"!"},
+				},
+				{
+					claims:           map[string]interface{}{"roles": []string{}},
+					expectedRoles:    []string{},
+					expectedChannels: []string{"!"},
+				},
+			},
+		},
+		{
+			name:           "same role explicit and OIDC",
+			rolesClaimName: "roles",
+			logins: []simulatedLogin{
+				{
+					explicitRoles:    []string{"foo"},
+					claims:           map[string]interface{}{"roles": []string{"foo"}},
+					expectedRoles:    []string{"foo"},
+					expectedChannels: []string{"!"},
+				},
+			},
+		},
+		{
+			name:           "grant, then revoke, OIDC role which is also explicit",
+			rolesClaimName: "roles",
+			logins: []simulatedLogin{
+				{
+					explicitRoles:    []string{"foo"},
+					claims:           map[string]interface{}{"roles": []string{"foo"}},
+					expectedRoles:    []string{"foo"},
+					expectedChannels: []string{"!"},
+				},
+				{
+					explicitRoles:    []string{"foo"},
+					claims:           map[string]interface{}{"roles": []string{}},
+					expectedRoles:    []string{"foo"},
+					expectedChannels: []string{"!"},
+				},
+			},
+		},
+		{
+			name:           "grant OIDC role, then revoke and grant another",
+			rolesClaimName: "roles",
+			logins: []simulatedLogin{
+				{
+					claims:           map[string]interface{}{"roles": []string{"foo"}},
+					expectedRoles:    []string{"foo"},
+					expectedChannels: []string{"!"},
+				},
+				{
+					claims:           map[string]interface{}{"roles": []string{"bar"}},
+					expectedRoles:    []string{"bar"},
+					expectedChannels: []string{"!"},
+				},
+			},
+		},
+		{
+			name:              "channels from OIDC",
+			channelsClaimName: "channels",
+			logins: []simulatedLogin{
+				{
+					claims:           map[string]interface{}{"channels": []string{"foo"}},
+					expectedRoles:    []string{},
+					expectedChannels: []string{"!", "foo"},
+				},
+			},
+		},
+		{
+			name:              "combine explicit and OIDC channels",
+			channelsClaimName: "channels",
+			logins: []simulatedLogin{
+				{
+					explicitChannels: []string{"bar"},
+					claims:           map[string]interface{}{"channels": []string{"foo"}},
+					expectedRoles:    []string{},
+					expectedChannels: []string{"!", "foo", "bar"},
+				},
+			},
+		},
+		{
+			name:              "combine OIDC roles and channels",
+			rolesClaimName:    "roles",
+			channelsClaimName: "channels",
+			logins: []simulatedLogin{
+				{
+					claims:           map[string]interface{}{"roles": []string{"rFoo"}, "channels": []string{"cBar"}},
+					expectedRoles:    []string{"rFoo"},
+					expectedChannels: []string{"!", "cBar"},
+				},
+			},
+		},
+		{
+			name:              "combine OIDC and explicit roles and channels",
+			rolesClaimName:    "roles",
+			channelsClaimName: "channels",
+			logins: []simulatedLogin{
+				{
+					claims:           map[string]interface{}{"roles": []string{"rFoo"}, "channels": []string{"cBar"}},
+					explicitRoles:    []string{"rBaz"},
+					explicitChannels: []string{"cQux"},
+					expectedRoles:    []string{"rFoo", "rBaz"},
+					expectedChannels: []string{"!", "cBar", "cQux"},
+				},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Greater(t, len(tc.logins), 0, "Test case is missing simulated logins")
+
+			testBucket := base.GetTestBucket(t)
+			defer testBucket.Close()
+
+			testMockComputer := mockComputerV2{
+				roles:        map[string]ch.TimedSet{},
+				channels:     map[string]ch.TimedSet{},
+				roleChannels: map[string]ch.TimedSet{},
+			}
+
+			auth := NewAuthenticator(testBucket, &testMockComputer, DefaultAuthenticatorOptions())
+
+			provider := &OIDCProvider{
+				Name:          "foo",
+				Issuer:        testIssuer,
+				RolesClaim:    tc.rolesClaimName,
+				ChannelsClaim: tc.channelsClaimName,
+				UserPrefix:    testUserPrefix,
+			}
+
+			for i, login := range tc.logins {
+				var (
+					user           User
+					err            error
+					lastUpdateTime time.Time
+				)
+				if i == 0 {
+					user, err = auth.NewUser(testUserPrefix+"_"+testSubject, "test", base.SetFromArray(login.explicitChannels))
+					require.NoError(t, err, "Failed to register test user")
+				} else {
+					user, err = auth.GetUser(testUserPrefix + "_" + testSubject)
+					require.NoError(t, err, "Failed to get test user")
+				}
+				seq := user.Sequence() + 1
+				if !user.ExplicitRoles().Equals(base.SetFromArray(login.explicitRoles)) {
+					base.DebugfCtx(base.TestCtx(t), base.KeyAll, "setting explicit roles to %v", login.explicitRoles)
+					user.SetExplicitRoles(ch.AtSequence(base.SetFromArray(login.explicitRoles), seq), seq)
+					user.SetRoleInvalSeq(seq)
+				}
+				if !user.ExplicitChannels().Equals(base.SetFromArray(login.explicitChannels)) {
+					base.DebugfCtx(base.TestCtx(t), base.KeyAll, "setting explicit channels to %v", login.explicitRoles)
+					user.SetExplicitChannels(ch.AtSequence(base.SetFromArray(login.explicitChannels), seq), seq)
+					user.SetChannelInvalSeq(seq)
+				}
+				user.SetSequence(seq)
+				require.NoError(t, auth.Save(user), "Failed to save test user")
+
+				identity := &Identity{
+					Issuer:  testIssuer,
+					Subject: testSubject,
+					Claims:  login.claims,
+				}
+				var updates PrincipalConfig
+				user, updates, _, err = auth.authenticateOIDCIdentity(identity, provider)
+				require.NoError(t, err, "error on authenticateOIDCIdentity")
+				require.NotNil(t, user, "nil user")
+				user.SetOIDCChannels(ch.AtSequence(updates.OIDCChannels, user.Sequence()), user.Sequence())
+				user.SetOIDCRoles(ch.AtSequence(updates.OIDCRoles, user.Sequence()), user.Sequence())
+				user.SetOIDCLastUpdated(*updates.OIDCLastUpdated)
+
+				require.NoError(t, auth.rebuildRoles(user))
+				require.NoError(t, auth.rebuildChannels(user))
+
+				if user.RoleNames() == nil {
+					require.Empty(t, login.expectedRoles, "user's roles were nil when we expected roles")
+				} else {
+					require.Equal(t, base.SetFromArray(login.expectedRoles), user.RoleNames().AsSet())
+				}
+				require.Equal(t, base.SetFromArray(login.expectedChannels), user.Channels().AsSet())
+
+				require.Greater(t, user.OIDCLastUpdated(), lastUpdateTime)
+				lastUpdateTime = user.OIDCLastUpdated()
+			}
 		})
 	}
 }
