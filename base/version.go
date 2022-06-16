@@ -59,7 +59,7 @@ func init() {
 		// Split version number and build number (optional)
 		versionAndBuild := strings.Split(buildPlaceholderVersionBuildNumberString, "-")
 
-		versionString = versionAndBuild[0]
+		versionString := versionAndBuild[0]
 		versions := strings.Split(versionString, ".")
 		if len(versions) >= 0 {
 			majorStr = versions[0]
