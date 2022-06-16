@@ -28,12 +28,14 @@ paths:
     $ref: './paths/public/{db}~.yaml'
   /:
     $ref: ./paths/public/~.yaml
+  '/{keyspace}/':
+    $ref: './paths/admin/{keyspace}~.yaml'
   '/{db}/_all_docs':
     $ref: './paths/public/{db}~_all_docs.yaml'
-  '/{db}/_bulk_docs':
-    $ref: './paths/public/{db}~_bulk_docs.yaml'
-  '/{db}/_bulk_get':
-    $ref: './paths/public/{db}~_bulk_get.yaml'
+  '/{keyspace}/_bulk_docs':
+    $ref: './paths/public/{keyspace}~_bulk_docs.yaml'
+  '/{keyspace}/_bulk_get':
+    $ref: './paths/public/{keyspace}~_bulk_get.yaml'
   '/{db}/_changes':
     $ref: './paths/public/{db}~_changes.yaml'
   '/{db}/_design/{ddoc}':
@@ -42,14 +44,14 @@ paths:
     $ref: './paths/public/{db}~_design~{ddoc}~_view~{view}.yaml'
   '/{db}/_ensure_full_commit':
     $ref: './paths/public/{db}~_ensure_full_commit.yaml'
-  '/{db}/_revs_diff':
-    $ref: './paths/public/{db}~_revs_diff.yaml'
-  '/{db}/_local/{docid}':
-    $ref: './paths/public/{db}~_local~{docid}.yaml'
-  '/{db}/{docid}':
-    $ref: './paths/public/{db}~{docid}.yaml'
-  '/{db}/{docid}/{attach}':
-    $ref: './paths/public/{db}~{docid}~{attach}.yaml'
+  '/{keyspace}/_revs_diff':
+    $ref: './paths/public/{keyspace}~_revs_diff.yaml'
+  '/{keyspace}/_local/{docid}':
+    $ref: './paths/public/{keyspace}~_local~{docid}.yaml'
+  '/{keyspace}/{docid}':
+    $ref: './paths/public/{keyspace}~{docid}.yaml'
+  '/{keyspace}/{docid}/{attach}':
+    $ref: './paths/public/{keyspace}~{docid}~{attach}.yaml'
   '/{db}/_facebook':
     $ref: './paths/public/{db}~_facebook.yaml'
   '/{db}/_google':

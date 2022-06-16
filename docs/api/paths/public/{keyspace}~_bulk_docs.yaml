@@ -1,5 +1,5 @@
 parameters:
-  - $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/keyspace
 post:
   summary: Bulk document operations
   description: |-
@@ -10,9 +10,6 @@ post:
     To update an existing document, provide the document ID (`_id`) and revision ID (`_rev`) as well as the new body values.
 
     To delete an existing document, provide the document ID (`_id`), revision ID (`_rev`), and set the deletion flag (`_deleted`) to true.
-
-    Required Sync Gateway RBAC roles:
-    * Sync Gateway Application
   requestBody:
     content:
       application/json:

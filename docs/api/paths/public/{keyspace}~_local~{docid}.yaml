@@ -1,5 +1,5 @@
 parameters:
-  - $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/keyspace
   - name: docid
     in: path
     description: The name of the local document ID excluding the `_local/` prefix.
@@ -12,10 +12,6 @@ get:
     This request retrieves a local document.
 
     Local document IDs begin with `_local/`. Local documents are not replicated or indexed, don't support attachments, and don't save revision histories. In practice they are almost only used by Couchbase Lite's replicator, as a place to store replication checkpoint data.
-
-    Required Sync Gateway RBAC roles:
-    * Sync Gateway Application
-    * Sync Gateway Application Read Only
   responses:
     '200':
       description: Successfully found local document
@@ -31,9 +27,6 @@ put:
     This request creates or updates a local document. Updating a local document requires that the revision ID be put in the body under `_rev`.
 
     Local document IDs are given a `_local/` prefix. Local documents are not replicated or indexed, don't support attachments, and don't save revision histories. In practice they are almost only used by the client's replicator, as a place to store replication checkpoint data.
-
-    Required Sync Gateway RBAC roles:
-    * Sync Gateway Application
   requestBody:
     description: The body of the document
     content:
@@ -65,9 +58,6 @@ delete:
     This request deletes a local document.
 
     Local document IDs begin with `_local/`. Local documents are not replicated or indexed, don't support attachments, and don't save revision histories. In practice they are almost only used by Couchbase Lite's replicator, as a place to store replication checkpoint data.
-
-    Required Sync Gateway RBAC roles:
-    * Sync Gateway Application
   parameters:
     - name: rev
       in: query
@@ -101,7 +91,3 @@ head:
     This request checks if a local document exists.
 
     Local document IDs begin with `_local/`. Local documents are not replicated or indexed, don't support attachments, and don't save revision histories. In practice they are almost only used by Couchbase Lite's replicator, as a place to store replication checkpoint data.
-
-    Required Sync Gateway RBAC roles:
-    * Sync Gateway Application
-    * Sync Gateway Application Read Only

@@ -1,5 +1,5 @@
 parameters:
-  - $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/keyspace
 post:
   summary: Get multiple documents in a MIME multipart response
   description: |
@@ -10,6 +10,10 @@ post:
     A body for a document with no attachments will have content type `application/json` and contain the document itself.
 
     A body for a document that has attachments will be written as a nested `multipart/related` body.
+
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Application
+    * Sync Gateway Application Read Only
   parameters:
     - name: attachments
       in: query
