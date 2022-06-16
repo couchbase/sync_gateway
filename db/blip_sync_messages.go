@@ -37,6 +37,7 @@ const (
 	MessagePutRev          = "putRev"       // Connected Client API
 	MessageUnsubChanges    = "unsubChanges" // Connected Client API
 	MessageQuery           = "query"        // Connected Client API
+	MessageGraphQL         = "graphql"      // Connected Client API
 )
 
 // Message properties

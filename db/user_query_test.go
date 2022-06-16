@@ -26,7 +26,7 @@ func TestExpandChannel(t *testing.T) {
 		"WORDS": []string{"ouais", "fromage", "amour"},
 		"user": &userQueryUserInfo{
 			name:     "maurice",
-			email: "maurice@academie.fr",
+			email:    "maurice@academie.fr",
 			channels: []string{"x", "y"},
 			roles:    []string{"a", "b"},
 		},

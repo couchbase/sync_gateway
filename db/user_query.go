@@ -20,6 +20,7 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/graphql-go/graphql"
 )
 
 // Name of built-in user-info query parameter
@@ -37,7 +38,7 @@ type userQueryUserInfo struct {
 // alphanumeric characters or underscore. It also matches `$$` so it can be subtituted with `$`.
 var kChannelPropertyRegexp = regexp.MustCompile(`\$(\w+|\([^)]+\)|\$)`)
 
-// Runs a named query on behalf of a user, presumably invoked via a REST or BLIP API.
+// Runs a named N1QL query on behalf of a user, presumably invoked via a REST or BLIP API.
 func (db *Database) UserQuery(name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
 	// Look up the query name in the server config:
 	query, found := db.Options.UserQueries[name]
@@ -130,4 +131,39 @@ func expandChannelPattern(queryName string, channelPattern string, params map[st
 		}
 	})
 	return channel, err
+}
+
+// Runs a GraphQL query on behalf of a user, presumably invoked via a REST or BLIP API.
+func (db *Database) UserGraphQLQuery(request string) (*graphql.Result, error) {
+	params := graphql.Params{Schema: graphQLSchema(), RequestString: request}
+	r := graphql.Do(params)
+	if len(r.Errors) > 0 {
+		logCtx := context.TODO()
+		base.WarnfCtx(logCtx, "Failed to create GraphQL schema: %+v", r.Errors)
+	}
+	return r, nil
+}
+
+var kSchema *graphql.Schema
+
+func graphQLSchema() graphql.Schema {
+	if kSchema == nil {
+		fields := graphql.Fields{
+			"hello": &graphql.Field{
+				Type: graphql.String,
+				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+					return "world", nil
+				},
+			},
+		}
+		rootQuery := graphql.ObjectConfig{Name: "RootQuery", Fields: fields}
+		schemaConfig := graphql.SchemaConfig{Query: graphql.NewObject(rootQuery)}
+		schema, err := graphql.NewSchema(schemaConfig)
+		if err != nil {
+			logCtx := context.TODO()
+			base.WarnfCtx(logCtx, "Failed to create GraphQL schema: %v", err)
+		}
+		kSchema = &schema
+	}
+	return *kSchema
 }

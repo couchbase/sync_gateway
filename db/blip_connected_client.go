@@ -130,3 +130,24 @@ func (bh *blipHandler) handleQuery(rq *blip.Message) error {
 	response.SetJSONBodyAsBytes(out.Bytes())
 	return nil
 }
+
+// Handles a Connected-Client "graphql" request.
+// - Request string is in the body of the request.
+// - Response JSON is returned in the body of the response in GraphQL format (including errors.)
+func (bh *blipHandler) handleGraphQL(rq *blip.Message) error {
+	body, err := rq.Body()
+	if err != nil {
+		return err
+	}
+	request := string(body)
+	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("request: %s", request))
+	result, err := bh.db.UserGraphQLQuery(request)
+	if err != nil {
+		base.WarnfCtx(bh.loggingCtx, "Error running GraphQL query %q: %v", request, err)
+		return base.HTTPErrorf(http.StatusInternalServerError, "Internal GraphQL error")
+	}
+	response := rq.Response()
+	response.SetCompressed(true)
+	response.SetJSONBody(result)
+	return nil
+}

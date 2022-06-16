@@ -75,3 +75,16 @@ func (h *handler) handleUserQuery() error {
 	_, _ = h.response.Write([]byte(`]` + "\n"))
 	return nil
 }
+
+// HTTP handler for POST `/$db/_graphql`
+func (h *handler) handleGraphQL() error {
+	query, err := h.readBody()
+	if err != nil {
+		return err
+	}
+	result, err := h.db.UserGraphQLQuery(string(query))
+	if err == nil {
+		h.writeJSON(result)
+	}
+	return err
+}
