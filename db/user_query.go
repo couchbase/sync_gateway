@@ -133,37 +133,207 @@ func expandChannelPattern(queryName string, channelPattern string, params map[st
 	return channel, err
 }
 
+type queryContextKey string
+var dbKey = queryContextKey("db")
+
 // Runs a GraphQL query on behalf of a user, presumably invoked via a REST or BLIP API.
 func (db *Database) UserGraphQLQuery(request string) (*graphql.Result, error) {
-	params := graphql.Params{Schema: graphQLSchema(), RequestString: request}
+	params := graphql.Params{
+		Schema: graphQLSchema(),
+		RequestString: request,
+		Context: context.WithValue(db.Ctx, dbKey, db),
+	}
 	r := graphql.Do(params)
 	if len(r.Errors) > 0 {
 		logCtx := context.TODO()
-		base.WarnfCtx(logCtx, "Failed to create GraphQL schema: %+v", r.Errors)
+		base.WarnfCtx(logCtx, "GraphQL query failed with error: %+v", r.Errors)
 	}
 	return r, nil
 }
 
-var kSchema *graphql.Schema
+var _graphQLSchema *graphql.Schema
 
 func graphQLSchema() graphql.Schema {
-	if kSchema == nil {
-		fields := graphql.Fields{
-			"hello": &graphql.Field{
-				Type: graphql.String,
-				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
-					return "world", nil
+	if _graphQLSchema == nil {
+		geoType := graphql.NewObject(
+			graphql.ObjectConfig{
+				Name: "Geo",
+				Fields: graphql.Fields{
+					"lat": &graphql.Field{
+						Type: graphql.Float,
+					},
+					"lon": &graphql.Field{
+						Type: graphql.Float,
+					},
+					"alt": &graphql.Field{
+						Type: graphql.Float,
+					},
+				},
+			},
+		)
+		airportType := graphql.NewObject(
+			graphql.ObjectConfig{
+				Name: "Airport",
+				Fields: graphql.Fields{
+					"id": &graphql.Field{
+						Type: graphql.Int,
+					},
+					"airportname": &graphql.Field{
+						Type: graphql.String,
+					},
+					"icao": &graphql.Field{
+						Type: graphql.String,
+					},
+					"country": &graphql.Field{
+						Type: graphql.String,
+					},
+					"city": &graphql.Field{
+						Type: graphql.String,
+					},
+					"faa": &graphql.Field{
+						Type: graphql.String,
+					},
+					"tz": &graphql.Field{
+						Type: graphql.String,
+					},
+					"geo": &graphql.Field{
+						Type: geoType,
+					},
+				},
+			},
+		)
+		// airlineType := graphql.NewObject(
+		// 	graphql.ObjectConfig{
+		// 		Name: "Airline",
+		// 		Fields: graphql.Fields{
+		// 			"id": &graphql.Field{
+		// 				Type: graphql.Int,
+		// 			},
+		// 			"name": &graphql.Field{
+		// 				Type: graphql.String,
+		// 			},
+		// 			"iata": &graphql.Field{
+		// 				Type: graphql.String,
+		// 			},
+		// 			"icao": &graphql.Field{
+		// 				Type: graphql.String,
+		// 			},
+		// 			"country": &graphql.Field{
+		// 				Type: graphql.String,
+		// 			},
+		// 			"callsign": &graphql.Field{
+		// 				Type: graphql.String,
+		// 			},
+		// 		},
+		// 	},
+		// )
+		// routeType := graphql.NewObject(
+		// 	graphql.ObjectConfig{
+		// 		Name: "Route",
+		// 		Fields: graphql.Fields{
+		// 			"id": &graphql.Field{
+		// 				Type: graphql.Int,
+		// 			},
+		// 			"airline": &graphql.Field{
+		// 				Type: airlineType,
+		// 			},
+		// 			"sourceairport": &graphql.Field{
+		// 				Type: airportType,
+		// 			},
+		// 			"destinationairport": &graphql.Field{
+		// 				Type: airportType,
+		// 			},
+		// 			"stops": &graphql.Field{
+		// 				Type: graphql.Int,
+		// 			},
+		// 			"equipment": &graphql.Field{
+		// 				Type: graphql.String,
+		// 			},
+		// 		},
+		// 	},
+		// )
+		rootQuery := graphql.ObjectConfig{
+			Name: "RootQuery",
+			Fields: graphql.Fields{
+				"airport": &graphql.Field{
+					Type:        airportType,
+					Description: "Get single airport by id",
+					Args: graphql.FieldConfigArgument{
+						"id": &graphql.ArgumentConfig{
+							Type: graphql.Int,
+						},
+					},
+					Resolve: func(params graphql.ResolveParams) (interface{}, error) {
+						db, ok := params.Context.Value(dbKey).(*Database)
+						if !ok {
+							panic("No db in context")
+						}
+						return getAirportByID(db, params.Args)
+					},
+				},
+				"airports_in_city": &graphql.Field{
+					Type:        graphql.NewList(airportType),
+					Description: "Get all airports in a city",
+					Args: graphql.FieldConfigArgument{
+						"city": &graphql.ArgumentConfig{
+							Type: graphql.String,
+						},
+					},
+					Resolve: func(params graphql.ResolveParams) (interface{}, error) {
+						db, ok := params.Context.Value(dbKey).(*Database)
+						if !ok {
+							panic("No db in context")
+						}
+						return getAirportsInCity(db, params.Args)
+					},
 				},
 			},
 		}
-		rootQuery := graphql.ObjectConfig{Name: "RootQuery", Fields: fields}
-		schemaConfig := graphql.SchemaConfig{Query: graphql.NewObject(rootQuery)}
+		schemaConfig := graphql.SchemaConfig{
+			Query: graphql.NewObject(rootQuery),
+		}
 		schema, err := graphql.NewSchema(schemaConfig)
 		if err != nil {
-			logCtx := context.TODO()
-			base.WarnfCtx(logCtx, "Failed to create GraphQL schema: %v", err)
+			panic(fmt.Sprintf("Failed to create GraphQL schema: %v", err)) // TODO
 		}
-		kSchema = &schema
+		_graphQLSchema = &schema
 	}
-	return *kSchema
+	return *_graphQLSchema
+}
+
+func getAirportByID(db *Database, params map[string]interface{}) (interface{}, error) {
+	results, err := db.N1QLQueryWithStats(
+		db.Ctx,
+		QueryTypeUsers, //bogus
+		"SELECT ts.* FROM `travel-sample` AS ts WHERE type=\"airport\" and id=$id",
+		params,
+		base.RequestPlus,
+		false)
+	if err != nil {
+		return nil, err
+	}
+	var row interface{}
+	if results.Next(&row) {
+		return row, nil
+	}
+	return Body{}, nil
+}
+
+func getAirportsInCity(db *Database, params map[string]interface{}) (interface{}, error) {
+	results, err := db.N1QLQueryWithStats(
+		db.Ctx,
+		QueryTypeUsers, //bogus
+		"SELECT ts.* FROM `travel-sample` AS ts WHERE type=\"airport\" and city=$city",
+		params,
+		base.RequestPlus,
+		false)
+	if err != nil {
+		return nil, err
+	}
+	result := []interface{}{}
+	var row interface{}
+	for results.Next(&row) {
+		result = append(result, row)
+	}
+	return result, nil
 }
