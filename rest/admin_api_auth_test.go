@@ -345,7 +345,10 @@ func TestAdminAuth(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
-
+	serverURL := base.UnitTestUrl()
+	if base.ServerIsTLS(serverURL) {
+		t.Skipf("URI %s needs to start with couchbase://", serverURL)
+	}
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -533,6 +536,10 @@ func TestAdminAPIAuth(t *testing.T) {
 
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
+	}
+	serverURL := base.UnitTestUrl()
+	if base.ServerIsTLS(serverURL) {
+		t.Skipf("URI %s can not start with couchbases://", serverURL)
 	}
 
 	rt := NewRestTester(t, &RestTesterConfig{

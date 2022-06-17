@@ -9,10 +9,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/gocbcore/v10"
 	sgbucket "github.com/couchbase/sg-bucket"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+const oneShotDCPTimeout = 60 * time.Second
 
 func TestOneShotDCP(t *testing.T) {
 
@@ -23,13 +27,13 @@ func TestOneShotDCP(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
-	num_docs := 1000
+	numDocs := 1000
 	// write documents to bucket
 	body := map[string]interface{}{"foo": "bar"}
-	for i := 0; i < num_docs; i++ {
+	for i := 0; i < numDocs; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		err := bucket.Set(key, 0, nil, body)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	// create callback
@@ -46,14 +50,14 @@ func TestOneShotDCP(t *testing.T) {
 	}
 
 	dcpClient, err := NewDCPClient(feedID, counterCallback, clientOptions, bucket, "")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Add additional documents in a separate goroutine, to verify afterEndSeq handling
 	var additionalDocsWg sync.WaitGroup
 	additionalDocsWg.Add(1)
 	go func() {
 		updatedBody := map[string]interface{}{"foo": "bar"}
-		for i := num_docs; i < num_docs*2; i++ {
+		for i := numDocs; i < numDocs*2; i++ {
 			key := fmt.Sprintf("%s_%d", t.Name(), i)
 			err := bucket.Set(key, 0, nil, updatedBody)
 			assert.NoError(t, err)
@@ -62,18 +66,18 @@ func TestOneShotDCP(t *testing.T) {
 	}()
 
 	doneChan, startErr := dcpClient.Start()
-	assert.NoError(t, startErr)
+	require.NoError(t, startErr)
 
 	defer func() {
 		_ = dcpClient.Close()
 	}()
 
 	// wait for done
-	timeout := time.After(3 * time.Second)
+	timeout := time.After(oneShotDCPTimeout)
 	select {
 	case err := <-doneChan:
-		assert.Equal(t, uint64(num_docs), mutationCount)
-		assert.NoError(t, err)
+		require.Equal(t, uint64(numDocs), mutationCount)
+		require.NoError(t, err)
 	case <-timeout:
 		t.Errorf("timeout waiting for one-shot feed to complete")
 	}
@@ -101,7 +105,7 @@ func TestTerminateDCPFeed(t *testing.T) {
 	feedID := t.Name()
 
 	dcpClient, err := NewDCPClient(feedID, counterCallback, DCPClientOptions{}, bucket, "")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Add documents in a separate goroutine
 	var feedClosed AtomicBool
@@ -121,17 +125,17 @@ func TestTerminateDCPFeed(t *testing.T) {
 	}()
 
 	doneChan, startErr := dcpClient.Start()
-	assert.NoError(t, startErr)
+	require.NoError(t, startErr)
 
 	// Wait for some processing to complete, then close the feed
 	time.Sleep(10 * time.Millisecond)
 	log.Printf("Closing DCP Client")
 	err = dcpClient.Close()
 	log.Printf("DCP Client closed, waiting for feed close notification")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// wait for done
-	timeout := time.After(3 * time.Second)
+	timeout := time.After(oneShotDCPTimeout)
 	select {
 	case <-doneChan:
 		feedClosed.Set(true)
@@ -151,96 +155,117 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
+	testCases := []struct {
+		startSeqNo gocbcore.SeqNo
+		vbNo       uint16
+		vbUUID     gocbcore.VbUUID
+	}{
+		{
+			startSeqNo: 2,
+			vbUUID:     1234, // garbage UUID
+		},
+		{
+			startSeqNo: 0,
+			vbUUID:     1234, // garbage UUID
+		},
+	}
+	for _, test := range testCases {
+		t.Run(fmt.Sprintf("metadata mismatch %+v", test), func(t *testing.T) {
 
-	bucket := GetTestBucket(t)
-	defer bucket.Close()
+			bucket := GetTestBucket(t)
+			defer bucket.Close()
 
-	// create callback
-	mutationCount := uint64(0)
-	vbucketZeroCount := uint64(0)
-	counterCallback := func(event sgbucket.FeedEvent) bool {
-		if bytes.HasPrefix(event.Key, []byte(t.Name())) {
-			atomic.AddUint64(&mutationCount, 1)
-			if event.VbNo == 0 {
-				atomic.AddUint64(&vbucketZeroCount, 1)
+			// create callback
+			mutationCount := uint64(0)
+			vbucketZeroCount := uint64(0)
+			counterCallback := func(event sgbucket.FeedEvent) bool {
+				if bytes.HasPrefix(event.Key, []byte(t.Name())) {
+					atomic.AddUint64(&mutationCount, 1)
+					if event.VbNo == 0 {
+						atomic.AddUint64(&vbucketZeroCount, 1)
+					}
+				}
+				return false
 			}
-		}
-		return false
-	}
 
-	feedID := t.Name()
+			feedID := t.Name()
 
-	// Add documents
-	updatedBody := map[string]interface{}{"foo": "bar"}
-	for i := 0; i < 10000; i++ {
-		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		err := bucket.Set(key, 0, nil, updatedBody)
-		assert.NoError(t, err)
-	}
+			// Add documents
+			updatedBody := map[string]interface{}{"foo": "bar"}
+			for i := 0; i < 10000; i++ {
+				key := fmt.Sprintf("%s_%d", t.Name(), i)
+				err := bucket.Set(key, 0, nil, updatedBody)
+				require.NoError(t, err)
+			}
 
-	// Perform first one-shot DCP feed - normal one-shot
-	dcpClientOpts := DCPClientOptions{
-		OneShot:        true,
-		FailOnRollback: true,
-	}
-	dcpClient, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, bucket, "")
-	assert.NoError(t, err)
+			// Perform first one-shot DCP feed - normal one-shot
+			dcpClientOpts := DCPClientOptions{
+				OneShot:        true,
+				FailOnRollback: true,
+			}
+			dcpClient, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, bucket, "")
+			require.NoError(t, err)
 
-	doneChan, startErr := dcpClient.Start()
-	assert.NoError(t, startErr)
+			doneChan, startErr := dcpClient.Start()
+			require.NoError(t, startErr)
 
-	// Wait for first feed to complete
-	timeout := time.After(3 * time.Second)
-	select {
-	case <-doneChan:
-		mutationCount := atomic.LoadUint64(&mutationCount)
-		assert.Equal(t, uint64(10000), mutationCount)
-	case <-timeout:
-		t.Errorf("timeout waiting for first one-shot feed to complete")
-	}
+			// Wait for first feed to complete
+			feed1Timeout := time.After(oneShotDCPTimeout)
+			select {
+			case <-doneChan:
+				mutationCount := atomic.LoadUint64(&mutationCount)
+				require.Equal(t, uint64(10000), mutationCount)
+			case <-feed1Timeout:
+				t.Errorf("timeout waiting for first one-shot feed to complete")
+			}
 
-	// store the number of mutations from vbucket zero for validating rollback on the third feed
-	vbucketZeroExpected := atomic.LoadUint64(&vbucketZeroCount)
+			// store the number of mutations from vbucket zero for validating rollback on the third feed
+			vbucketZeroExpected := atomic.LoadUint64(&vbucketZeroCount)
+			uuidMismatchMetadata := dcpClient.GetMetadata()
 
-	// Perform second one-shot DCP feed - VbUUID mismatch, failOnRollback=true
-	// Retrieve metadata from first DCP feed, and modify VbUUID to simulate rollback on server
-	uuidMismatchMetadata := dcpClient.GetMetadata()
-	uuidMismatchMetadata[0].VbUUID = 1234
+			// Perform second one-shot DCP feed - VbUUID mismatch, failOnRollback=true
+			// Retrieve metadata from first DCP feed, and modify VbUUID to simulate rollback on server
+			uuidMismatchMetadata[0].VbUUID = test.vbUUID
+			uuidMismatchMetadata[0].StartSeqNo = test.startSeqNo
 
-	dcpClientOpts = DCPClientOptions{
-		InitialMetadata: uuidMismatchMetadata,
-		FailOnRollback:  true,
-		OneShot:         true,
-	}
-	dcpClient2, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, bucket, "")
-	assert.NoError(t, err)
+			dcpClientOpts = DCPClientOptions{
+				InitialMetadata: uuidMismatchMetadata,
+				FailOnRollback:  true,
+				OneShot:         true,
+			}
+			dcpClient2, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, bucket, "")
+			require.NoError(t, err)
 
-	_, startErr2 := dcpClient2.Start()
-	assert.Error(t, startErr2)
+			doneChan2, startErr2 := dcpClient2.Start()
+			require.Error(t, startErr2)
 
-	log.Printf("Starting third feed")
-	// Perform a third DCP feed - mismatched VbUUID, failOnRollback=false
-	atomic.StoreUint64(&mutationCount, 0)
-	dcpClientOpts = DCPClientOptions{
-		InitialMetadata: uuidMismatchMetadata,
-		FailOnRollback:  false,
-		OneShot:         true,
-	}
-	dcpClient3, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, bucket, "")
-	assert.NoError(t, err)
+			require.NoError(t, dcpClient2.Close())
+			<-doneChan2
+			log.Printf("Starting third feed")
+			// Perform a third DCP feed - mismatched VbUUID, failOnRollback=false
+			atomic.StoreUint64(&mutationCount, 0)
+			dcpClientOpts = DCPClientOptions{
+				InitialMetadata: uuidMismatchMetadata,
+				FailOnRollback:  false,
+				OneShot:         true,
+			}
+			dcpClient3, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, bucket, "")
+			require.NoError(t, err)
 
-	doneChan3, startErr3 := dcpClient3.Start()
-	assert.NoError(t, startErr3)
+			doneChan3, startErr3 := dcpClient3.Start()
+			require.NoError(t, startErr3)
 
-	// Wait for third feed to complete
-	timeout = time.After(3 * time.Second)
-	select {
-	case <-doneChan3:
-		// only vbucket 0 should have rolled back, expect mutation count to be only vbucketZero
-		mutationCount := atomic.LoadUint64(&mutationCount)
-		assert.Equal(t, int(vbucketZeroExpected), int(mutationCount))
-	case <-timeout:
-		t.Errorf("timeout waiting for first one-shot feed to complete")
+			// Wait for third feed to complete
+			feed3Timeout := time.After(oneShotDCPTimeout)
+			select {
+			case <-doneChan3:
+				// only vbucket 0 should have rolled back, expect mutation count to be only vbucketZero
+				mutationCount := atomic.LoadUint64(&mutationCount)
+				require.Equal(t, int(vbucketZeroExpected), int(mutationCount))
+			case <-feed3Timeout:
+				t.Errorf("timeout waiting for first one-shot feed to complete")
+			}
+		})
 	}
 }
 
@@ -278,7 +303,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 	for i := 0; i < 10000; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		err := bucket.Set(key, 0, nil, updatedBody)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	// Start first one-shot DCP feed, will be stopped by callback after processing 5000 records
@@ -291,18 +316,17 @@ func TestResumeStoppedFeed(t *testing.T) {
 	}
 	var err error
 	dcpClient, err = NewDCPClient(feedID, counterCallback, dcpClientOpts, bucket, "")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	doneChan, startErr := dcpClient.Start()
-	assert.NoError(t, startErr)
+	require.NoError(t, startErr)
 
 	// Wait for first feed to complete
-	timeout := time.After(3 * time.Second)
-	time.Sleep(1 * time.Second)
+	timeout := time.After(oneShotDCPTimeout)
 	select {
 	case <-doneChan:
 		mutationCount := atomic.LoadUint64(&mutationCount)
-		assert.True(t, int(mutationCount) > 5000)
+		require.Greater(t, int(mutationCount), 5000)
 		log.Printf("Total processed first feed: %v", mutationCount)
 	case <-timeout:
 		t.Errorf("timeout waiting for first one-shot feed to complete")
@@ -323,21 +347,20 @@ func TestResumeStoppedFeed(t *testing.T) {
 		OneShot:        true,
 	}
 	dcpClient2, err := NewDCPClient(feedID, secondCallback, dcpClientOpts, bucket, "")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	doneChan2, startErr2 := dcpClient2.Start()
-	assert.NoError(t, startErr2)
+	require.NoError(t, startErr2)
 
 	// Wait for second feed to complete
-	timeout = time.After(3 * time.Second)
-	time.Sleep(1 * time.Second)
+	timeout = time.After(oneShotDCPTimeout)
 	select {
 	case <-doneChan2:
 		// validate the total count exceeds 10000, and the second feed didn't just reprocess everything
 		mutationCount := atomic.LoadUint64(&mutationCount)
-		assert.True(t, int(mutationCount) >= 10000)
+		require.GreaterOrEqual(t, int(mutationCount), 10000)
 		secondFeedCount := atomic.LoadUint64(&secondFeedCount)
-		assert.True(t, int(secondFeedCount) < 10000)
+		require.Less(t, int(secondFeedCount), 10000)
 		log.Printf("Total processed: %v, second feed: %v", mutationCount, secondFeedCount)
 	case <-timeout:
 		t.Errorf("timeout waiting for second one-shot feed to complete")
