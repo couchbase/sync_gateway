@@ -248,27 +248,23 @@ User:
         type: string
       readOnly: true
     oidc_roles:
-      description: |-
-        The roles that the user has been added to through OpenID Connect.
+      description: The roles that the user has been added to through OpenID Connect.
       type: array
       items:
         type: string
       readOnly: true
     oidc_channels:
-      description: |-
-        The channels that the user has been granted access to through OpenID Connect.
+      description: The channels that the user has been granted access to through OpenID Connect.
       type: array
       items:
         type: string
       readOnly: true
     oidc_issuer:
-      description: |-
-        The OpenID Connect issuer that the user last used to sign in.
+      description: The OpenID Connect issuer that the user last used to sign in.
       type: string
       readOnly: true
     oidc_last_updated:
-      description: |-
-        The last time that the user's OIDC roles/channels were updated.
+      description: The last time that the user's OIDC roles/channels were updated.
       type: string
       format: date-time
       readOnly: true
@@ -1340,7 +1336,7 @@ Database:
                 roles_claim:
                   description: |-
                     If set, the value(s) of the given OpenID Connect authentication token claim will be added to the user's roles.
-                    
+
                     The value of this claim must be either a string or an array of strings, any other type will result in an error.
                   type: string
                 channels_claim:

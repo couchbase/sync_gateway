@@ -1,6 +1,5 @@
-# /{db}/_config/import_filter
 parameters:
-- $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/db
 get:
   summary: Get database import filter
   description: |-
@@ -11,7 +10,7 @@ get:
     Required Sync Gateway RBAC roles:
     * Sync Gateway Architect
   responses:
-    "200":
+    '200':
       description: Successfully retrieved the import filter
       headers:
         Etag:
@@ -22,11 +21,11 @@ get:
         application/javascript:
           schema:
             type: string
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Admin only endpoints
-  - Database Configuration
+    - Admin only endpoints
+    - Database Configuration
 put:
   summary: Set database import filter
   description: |-
@@ -35,8 +34,8 @@ put:
     Required Sync Gateway RBAC roles:
     * Sync Gateway Architect
   parameters:
-  - $ref: ../../components/parameters.yaml#/DB-config-If-Match
-  - $ref: ../../components/parameters.yaml#/disable_oidc_validation
+    - $ref: ../../components/parameters.yaml#/DB-config-If-Match
+    - $ref: ../../components/parameters.yaml#/disable_oidc_validation
   requestBody:
     description: The import filter to use
     content:
@@ -44,17 +43,17 @@ put:
         schema:
           type: string
   responses:
-    "200":
+    '200':
       description: Updated import filter successfully
-    "400":
+    '400':
       $ref: ../../components/responses.yaml#/request-problem
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
-    "412":
+    '412':
       $ref: ../../components/responses.yaml#/DB-config-precondition-failed
   tags:
-  - Admin only endpoints
-  - Database Configuration
+    - Admin only endpoints
+    - Database Configuration
 delete:
   summary: Delete import filter
   description: |-
@@ -63,14 +62,14 @@ delete:
     Required Sync Gateway RBAC roles:
     * Sync Gateway Architect
   parameters:
-  - $ref: ../../components/parameters.yaml#/DB-config-If-Match
+    - $ref: ../../components/parameters.yaml#/DB-config-If-Match
   responses:
-    "200":
+    '200':
       description: Successfully deleted the import filter
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
-    "412":
+    '412':
       $ref: ../../components/responses.yaml#/DB-config-precondition-failed
   tags:
-  - Admin only endpoints
-  - Database Configuration
+    - Admin only endpoints
+    - Database Configuration

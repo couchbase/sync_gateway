@@ -1,7 +1,6 @@
-# /{db}/_design/{ddoc}
 parameters:
-- $ref: ../../components/parameters.yaml#/db
-- $ref: ../../components/parameters.yaml#/ddoc
+  - $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/ddoc
 get:
   summary: Get views of a design document | Unsupported
   description: |-
@@ -13,18 +12,18 @@ get:
     * Sync Gateway Application
     * Sync Gateway Application Read Only
   responses:
-    "200":
+    '200':
       description: Successfully returned design document.
       content:
         application/json:
           schema:
             $ref: ../../components/schemas.yaml#/Design-doc
-    "403":
+    '403':
       $ref: ../../components/responses.yaml#/ddoc-forbidden
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Unsupported
+    - Unsupported
 put:
   summary: Update views of a design document | Unsupported
   description: |-
@@ -40,14 +39,14 @@ put:
         schema:
           $ref: ../../components/schemas.yaml#/Design-doc
   responses:
-    "200":
+    '200':
       description: Design document changes successfully
-    "403":
+    '403':
       $ref: ../../components/responses.yaml#/ddoc-forbidden
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Unsupported
+    - Unsupported
 delete:
   summary: Delete a design document | Unsupported
   description: |-
@@ -58,25 +57,24 @@ delete:
     Required Sync Gateway RBAC roles:
     * Sync Gateway Application
   responses:
-    "200":
+    '200':
       description: Design document deleted successfully
-    "403":
+    '403':
       $ref: ../../components/responses.yaml#/ddoc-forbidden
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Unsupported
+    - Unsupported
 head:
   responses:
-    "200":
+    '200':
       description: Design document exists
-    "403":
-      description: Forbidden access possibly due to not using the Admin API or the
-        design document is a built-in Sync Gateway one.
-    "404":
+    '403':
+      description: Forbidden access possibly due to not using the Admin API or the design document is a built-in Sync Gateway one.
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Unsupported
+    - Unsupported
   description: |-
     **This is unsupported**
 

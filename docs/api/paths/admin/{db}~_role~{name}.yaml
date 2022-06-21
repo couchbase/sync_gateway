@@ -1,7 +1,6 @@
-# /{db}/_role/{name}
 parameters:
-- $ref: ../../components/parameters.yaml#/db
-- $ref: ../../components/parameters.yaml#/role-name
+  - $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/role-name
 get:
   summary: Get a role
   description: |-
@@ -12,13 +11,13 @@ get:
     * Sync Gateway Application
     * Sync Gateway Application Read Only
   responses:
-    "200":
+    '200':
       $ref: ../../components/responses.yaml#/Role
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Admin only endpoints
-  - Database Security
+    - Admin only endpoints
+    - Database Security
 put:
   summary: Upsert a role
   description: |-
@@ -30,15 +29,15 @@ put:
   requestBody:
     $ref: ../../components/requestBodies.yaml#/Role
   responses:
-    "200":
+    '200':
       description: OK
-    "201":
+    '201':
       description: Created
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Admin only endpoints
-  - Database Security
+    - Admin only endpoints
+    - Database Security
 delete:
   summary: Delete a role
   description: |-
@@ -48,22 +47,22 @@ delete:
     * Sync Gateway Architect
     * Sync Gateway Application
   responses:
-    "200":
+    '200':
       description: OK
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Admin only endpoints
-  - Database Security
+    - Admin only endpoints
+    - Database Security
 head:
   responses:
-    "200":
+    '200':
       description: Role exists
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Admin only endpoints
-  - Database Security
+    - Admin only endpoints
+    - Database Security
   description: |-
     Check if the role exists by checking the status code.
 

@@ -455,7 +455,7 @@ disable_oidc_validation:
   name: disable_oidc_validation
   in: query
   required: false
-  description: If set, will not attempt to validate the configured OpenID Connect providers are reachable.
+  description: 'If set, will not attempt to validate the configured OpenID Connect providers are reachable.'
   schema:
     type: boolean
     default: false
@@ -466,7 +466,7 @@ usersNameOnly:
   schema:
     type: boolean
     default: true
-  description: Whether to return user names only, or more detailed information for each user.
+  description: 'Whether to return user names only, or more detailed information for each user.'
 usersLimit:
   name: limit
   in: query
@@ -474,4 +474,3 @@ usersLimit:
   schema:
     type: integer
   description: How many results to return. Using a value of `0` results in no limit.
-

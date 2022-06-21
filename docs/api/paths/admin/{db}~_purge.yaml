@@ -1,6 +1,5 @@
-# /{db}/_purge
 parameters:
-- $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/db
 post:
   summary: Purge a document
   description: |-
@@ -16,12 +15,6 @@ post:
       application/json:
         schema:
           type: object
-          additionalProperties:
-            type: array
-            items:
-              type: string
-              enum:
-                - '*'
           properties:
             doc_id:
               description: |-
@@ -32,23 +25,27 @@ post:
               items:
                 type: string
                 enum:
+                  - '*'
+          additionalProperties:
+            type: array
+            items:
+              type: string
+              enum:
                 - '*'
         examples:
           Example:
             value:
               doc_id:
-              - '*'
+                - '*'
           Multiple purges example:
             value:
               doc_id_1:
-              - '*'
+                - '*'
               doc_id_2:
-              - '*'
+                - '*'
   responses:
-    "200":
-      description: Attempted documents purge. Check output to verify the documents
-        that were purged. The document IDs will not be listed if they have not been
-        purged (for example, due to no existing).
+    '200':
+      description: 'Attempted documents purge. Check output to verify the documents that were purged. The document IDs will not be listed if they have not been purged (for example, due to no existing).'
       content:
         application/json:
           schema:
@@ -63,29 +60,28 @@ post:
                     enum:
                       - '*'
             required:
-            - purged
+              - purged
           examples:
             Example:
               value:
                 purged:
                   doc_id:
-                  - '*'
+                    - '*'
             Multiple purges example:
               value:
                 purged:
                   doc_id_1:
-                  - '*'
+                    - '*'
                   doc_id_2:
-                  - '*'
-    "400":
-      description: Bad request. This could be due to the documents listed in the request
-        body not having the `["*"]` value for each document ID.
+                    - '*'
+    '400':
+      description: 'Bad request. This could be due to the documents listed in the request body not having the `["*"]` value for each document ID.'
       content:
         application/json:
           schema:
             $ref: ../../components/schemas.yaml#/HTTP-Error
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Admin only endpoints
-  - Document
+    - Admin only endpoints
+    - Document

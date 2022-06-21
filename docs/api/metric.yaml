@@ -20,12 +20,10 @@ servers:
         description: The hostname to use
         default: localhost
 paths:
-  # Metric only
   /_metrics:
-    $ref: './paths/metric/_metrics.yaml'
-  # Metric and admin
+    $ref: ./paths/metric/_metrics.yaml
   /_expvar:
-    $ref: './paths/metric/_expvar.yaml'
+    $ref: ./paths/metric/_expvar.yaml
 tags:
   - name: Prometheus
     description: Endpoints for use with Prometheus

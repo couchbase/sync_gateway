@@ -1,6 +1,5 @@
-# {db}/_config/sync
 parameters:
-- $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/db
 get:
   summary: Get database sync function
   description: |-
@@ -11,7 +10,7 @@ get:
     Required Sync Gateway RBAC roles:
     * Sync Gateway Architect
   responses:
-    "200":
+    '200':
       description: Successfully retrieved the sync function
       headers:
         Etag:
@@ -26,11 +25,11 @@ get:
             function (doc, oldDoc) {
               channel(doc.channels);
             }
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Admin only endpoints
-  - Database Configuration
+    - Admin only endpoints
+    - Database Configuration
 put:
   summary: Set database sync function
   description: |-
@@ -39,8 +38,8 @@ put:
     Required Sync Gateway RBAC roles:
     * Sync Gateway Architect
   parameters:
-  - $ref: ../../components/parameters.yaml#/DB-config-If-Match
-  - $ref: ../../components/parameters.yaml#/disable_oidc_validation
+    - $ref: ../../components/parameters.yaml#/DB-config-If-Match
+    - $ref: ../../components/parameters.yaml#/disable_oidc_validation
   requestBody:
     description: The new sync function to use
     content:
@@ -52,16 +51,16 @@ put:
             channel(doc.channels);
           }
   responses:
-    "200":
+    '200':
       description: Updated sync function successfully
-    "400":
+    '400':
       $ref: ../../components/responses.yaml#/request-problem
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
-    "412":
+    '412':
       $ref: ../../components/responses.yaml#/DB-config-precondition-failed
   tags:
-  - Admin only endpoints
+    - Admin only endpoints
 delete:
   summary: Remove custom sync function
   description: |-
@@ -77,14 +76,14 @@ delete:
     Required Sync Gateway RBAC roles:
     * Sync Gateway Architect
   parameters:
-  - $ref: ../../components/parameters.yaml#/If-Match
+    - $ref: ../../components/parameters.yaml#/If-Match
   responses:
-    "200":
+    '200':
       description: Successfully reset the sync function
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
-    "412":
+    '412':
       $ref: ../../components/responses.yaml#/DB-config-precondition-failed
   tags:
-  - Admin only endpoints
-  - Database Configuration
+    - Admin only endpoints
+    - Database Configuration

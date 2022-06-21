@@ -1,6 +1,5 @@
-# /{db}/_online
 parameters:
-- $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/db
 post:
   summary: Bring the database online
   description: |-
@@ -29,17 +28,16 @@ post:
               type: integer
               default: 0
   responses:
-    "200":
-      description: Database will be brought online immediately or with the specified
-        delay
-    "404":
+    '200':
+      description: Database will be brought online immediately or with the specified delay
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
-    "503":
+    '503':
       description: An error occurred
       content:
         application/json:
           schema:
             $ref: ../../components/schemas.yaml#/HTTP-Error
   tags:
-  - Admin only endpoints
-  - Database Management
+    - Admin only endpoints
+    - Database Management

@@ -1,8 +1,7 @@
-# /{db}/_ensure_full_commit
 parameters:
-- $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/db
 post:
-  summary: ""
+  summary: ''
   description: |-
     This endpoint is non-functional but is present for CouchDB compatibility.
 
@@ -10,7 +9,7 @@ post:
     * Sync Gateway Application
     * Sync Gateway Application Read Only
   responses:
-    "201":
+    '201':
       description: OK
       content:
         application/json:
@@ -18,8 +17,7 @@ post:
             type: object
             properties:
               instance_start_time:
-                description: Timestamp of when the database opened, in microseconds
-                  since the Unix epoch.
+                description: 'Timestamp of when the database opened, in microseconds since the Unix epoch.'
                 type: integer
                 example: 1644600082279583
               ok:
@@ -27,4 +25,4 @@ post:
                 example: true
                 default: true
   tags:
-  - Database Management
+    - Database Management

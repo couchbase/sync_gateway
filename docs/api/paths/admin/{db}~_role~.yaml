@@ -1,6 +1,5 @@
-# /{db}/_role/
 parameters:
-- $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/db
 get:
   summary: Get all names of the roles
   description: |-
@@ -11,7 +10,7 @@ get:
     * Sync Gateway Application
     * Sync Gateway Application Read Only
   responses:
-    "200":
+    '200':
       description: Roles retrieved successfully
       content:
         application/json:
@@ -23,13 +22,13 @@ get:
             minItems: 0
             uniqueItems: true
           example:
-          - Administrator
-          - Moderator
-    "404":
+            - Administrator
+            - Moderator
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Admin only endpoints
-  - Database Security
+    - Admin only endpoints
+    - Database Security
 post:
   summary: Create a new role
   description: |-
@@ -41,24 +40,24 @@ post:
   requestBody:
     $ref: ../../components/requestBodies.yaml#/Role
   responses:
-    "201":
+    '201':
       description: New role created successfully
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
-    "409":
+    '409':
       $ref: ../../components/responses.yaml#/Conflict
   tags:
-  - Admin only endpoints
-  - Database Security
+    - Admin only endpoints
+    - Database Security
 head:
   responses:
-    "200":
+    '200':
       description: OK
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Admin only endpoints
-  - Database Security
+    - Admin only endpoints
+    - Database Security
   description: |-
     Required Sync Gateway RBAC roles:
     * Sync Gateway Architect
