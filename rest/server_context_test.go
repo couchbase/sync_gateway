@@ -564,6 +564,9 @@ func TestUseTLSServer(t *testing.T) {
 }
 
 func TestLogFlush(t *testing.T) {
+	// FIXME: CBG-1869 flaky test
+	t.Skip("CBG-1869: Flaky test")
+
 	testCases := []struct {
 		Name                 string
 		ExpectedLogFileCount int
