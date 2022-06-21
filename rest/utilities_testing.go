@@ -86,6 +86,7 @@ func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
 	} else {
 		rt.RestTesterConfig = &RestTesterConfig{}
 	}
+	rt.RestTesterConfig.useTLSServer = base.ServerIsTLS(base.UnitTestUrl())
 	return &rt
 }
 
@@ -1412,6 +1413,7 @@ func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 
 		defer revsFinishedWg.Done()
 		body, err := request.Body()
+
 		var doc RestDocument
 		err = base.JSONUnmarshal(body, &doc)
 		if err != nil {
