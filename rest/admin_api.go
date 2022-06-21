@@ -1201,6 +1201,10 @@ func marshalPrincipal(princ auth.Principal, includeDynamicGrantInfo bool) auth.P
 			info.OIDCIssuer = base.StringPtr(user.OIDCIssuer())
 			info.OIDCRoles = user.OIDCRoles().AsSet()
 			info.OIDCChannels = user.OIDCChannels().AsSet()
+			lastUpdated := user.OIDCLastUpdated()
+			if !lastUpdated.IsZero() {
+				info.OIDCLastUpdated = &lastUpdated
+			}
 		}
 	} else {
 		if includeDynamicGrantInfo {
