@@ -2960,9 +2960,7 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 }
 
 func TestUpdateExistingAttachment(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{
-		guestEnabled: true,
-	})
+	rt := NewRestTester(t, &RestTesterConfig{})
 	defer rt.Close()
 
 	btc, err := NewBlipTesterClient(t, rt)
