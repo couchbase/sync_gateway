@@ -204,6 +204,22 @@ func graphQLSchema() graphql.Schema {
 			},
 		}
 
+		airportInput := graphql.NewInputObject(
+			graphql.InputObjectConfig{
+				Name: "AirportInput",
+				Fields: graphql.InputObjectConfigFieldMap{
+					"id":          &graphql.InputObjectFieldConfig{Type: graphql.NewNonNull(graphql.ID)},
+					"airportname": &graphql.InputObjectFieldConfig{Type: graphql.NewNonNull(graphql.String)},
+					"icao":        &graphql.InputObjectFieldConfig{Type: graphql.String},
+					"country":     &graphql.InputObjectFieldConfig{Type: graphql.String},
+					"city":        &graphql.InputObjectFieldConfig{Type: graphql.String},
+					"faa":         &graphql.InputObjectFieldConfig{Type: graphql.String},
+					"tz":          &graphql.InputObjectFieldConfig{Type: graphql.String},
+					"geo":         &graphql.InputObjectFieldConfig{Type: geoType},
+				},
+			},
+		)
+
 		rootMutation := graphql.ObjectConfig{
 			Name: "RootMutation",
 			Fields: graphql.Fields{
@@ -211,15 +227,7 @@ func graphQLSchema() graphql.Schema {
 					Type:        airportType,
 					Description: "Create new Airport",
 					Args: graphql.FieldConfigArgument{
-						// "airport": &graphql.ArgumentConfig{Type: airportType},
-						"id": 		   &graphql.ArgumentConfig{Type: graphql.String},
-						"airportname": &graphql.ArgumentConfig{Type: graphql.String},
-						"icao":        &graphql.ArgumentConfig{Type: graphql.String},
-						"country":     &graphql.ArgumentConfig{Type: graphql.String},
-						"city":        &graphql.ArgumentConfig{Type: graphql.String},
-						"faa":         &graphql.ArgumentConfig{Type: graphql.String},
-						"tz":          &graphql.ArgumentConfig{Type: graphql.String},
-						"geo":         &graphql.ArgumentConfig{Type: geoType},
+						"airport": &graphql.ArgumentConfig{Type: airportInput},
 					},
 					Resolve: saveAirport,
 				},
@@ -258,7 +266,7 @@ func getAirportsInCity(params graphql.ResolveParams) (interface{}, error) {
 }
 
 func saveAirport(params graphql.ResolveParams) (interface{}, error) {
-	return graphQLPutDoc("airport", params)
+	return graphQLPutDoc("airport", "airport", params)
 }
 
 func saveAirports(params graphql.ResolveParams) (interface{}, error) {
@@ -314,12 +322,15 @@ func graphQLListQuery(queryN1QL string, params graphql.ResolveParams) (interface
 	return result, nil
 }
 
-func graphQLPutDoc(docType string, params graphql.ResolveParams) (interface{}, error) {
+func graphQLPutDoc(docType string, argName string, params graphql.ResolveParams) (interface{}, error) {
 	db, ok := params.Context.Value(dbKey).(*Database)
 	if !ok {
 		panic("No db in context")
 	}
-	body := params.Args
+	body, ok := params.Args[argName].(map[string]interface{})
+	if (!ok) {
+		return nil, base.HTTPErrorf(http.StatusBadRequest, "%q arg is missing or wrong type", argName)
+	}
 	body["type"] = docType
 	docID := body["id"].(string)
 	delete(body, "id")
