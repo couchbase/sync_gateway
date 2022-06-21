@@ -134,14 +134,15 @@ func expandChannelPattern(queryName string, channelPattern string, params map[st
 }
 
 type queryContextKey string
+
 var dbKey = queryContextKey("db")
 
 // Runs a GraphQL query on behalf of a user, presumably invoked via a REST or BLIP API.
 func (db *Database) UserGraphQLQuery(request string) (*graphql.Result, error) {
 	params := graphql.Params{
-		Schema: graphQLSchema(),
+		Schema:        graphQLSchema(),
 		RequestString: request,
-		Context: context.WithValue(db.Ctx, dbKey, db),
+		Context:       context.WithValue(db.Ctx, dbKey, db),
 	}
 	r := graphql.Do(params)
 	if len(r.Errors) > 0 {
@@ -159,15 +160,9 @@ func graphQLSchema() graphql.Schema {
 			graphql.ObjectConfig{
 				Name: "Geo",
 				Fields: graphql.Fields{
-					"lat": &graphql.Field{
-						Type: graphql.Float,
-					},
-					"lon": &graphql.Field{
-						Type: graphql.Float,
-					},
-					"alt": &graphql.Field{
-						Type: graphql.Float,
-					},
+					"lat": &graphql.Field{Type: graphql.NewNonNull(graphql.Float)},
+					"lon": &graphql.Field{Type: graphql.NewNonNull(graphql.Float)},
+					"alt": &graphql.Field{Type: graphql.NewNonNull(graphql.Float)},
 				},
 			},
 		)
@@ -175,122 +170,73 @@ func graphQLSchema() graphql.Schema {
 			graphql.ObjectConfig{
 				Name: "Airport",
 				Fields: graphql.Fields{
-					"id": &graphql.Field{
-						Type: graphql.Int,
-					},
-					"airportname": &graphql.Field{
-						Type: graphql.String,
-					},
-					"icao": &graphql.Field{
-						Type: graphql.String,
-					},
-					"country": &graphql.Field{
-						Type: graphql.String,
-					},
-					"city": &graphql.Field{
-						Type: graphql.String,
-					},
-					"faa": &graphql.Field{
-						Type: graphql.String,
-					},
-					"tz": &graphql.Field{
-						Type: graphql.String,
-					},
-					"geo": &graphql.Field{
-						Type: geoType,
-					},
+					"id":          &graphql.Field{Type: graphql.NewNonNull(graphql.ID)},
+					"airportname": &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
+					"icao":        &graphql.Field{Type: graphql.String},
+					"country":     &graphql.Field{Type: graphql.String},
+					"city":        &graphql.Field{Type: graphql.String},
+					"faa":         &graphql.Field{Type: graphql.String},
+					"tz":          &graphql.Field{Type: graphql.String},
+					"geo":         &graphql.Field{Type: geoType},
 				},
 			},
 		)
-		// airlineType := graphql.NewObject(
-		// 	graphql.ObjectConfig{
-		// 		Name: "Airline",
-		// 		Fields: graphql.Fields{
-		// 			"id": &graphql.Field{
-		// 				Type: graphql.Int,
-		// 			},
-		// 			"name": &graphql.Field{
-		// 				Type: graphql.String,
-		// 			},
-		// 			"iata": &graphql.Field{
-		// 				Type: graphql.String,
-		// 			},
-		// 			"icao": &graphql.Field{
-		// 				Type: graphql.String,
-		// 			},
-		// 			"country": &graphql.Field{
-		// 				Type: graphql.String,
-		// 			},
-		// 			"callsign": &graphql.Field{
-		// 				Type: graphql.String,
-		// 			},
-		// 		},
-		// 	},
-		// )
-		// routeType := graphql.NewObject(
-		// 	graphql.ObjectConfig{
-		// 		Name: "Route",
-		// 		Fields: graphql.Fields{
-		// 			"id": &graphql.Field{
-		// 				Type: graphql.Int,
-		// 			},
-		// 			"airline": &graphql.Field{
-		// 				Type: airlineType,
-		// 			},
-		// 			"sourceairport": &graphql.Field{
-		// 				Type: airportType,
-		// 			},
-		// 			"destinationairport": &graphql.Field{
-		// 				Type: airportType,
-		// 			},
-		// 			"stops": &graphql.Field{
-		// 				Type: graphql.Int,
-		// 			},
-		// 			"equipment": &graphql.Field{
-		// 				Type: graphql.String,
-		// 			},
-		// 		},
-		// 	},
-		// )
+
 		rootQuery := graphql.ObjectConfig{
 			Name: "RootQuery",
 			Fields: graphql.Fields{
-				"airport": &graphql.Field{
+				"getAirport": &graphql.Field{
 					Type:        airportType,
 					Description: "Get single airport by id",
 					Args: graphql.FieldConfigArgument{
-						"id": &graphql.ArgumentConfig{
-							Type: graphql.Int,
-						},
+						"id": &graphql.ArgumentConfig{Type: graphql.ID},
 					},
-					Resolve: func(params graphql.ResolveParams) (interface{}, error) {
-						db, ok := params.Context.Value(dbKey).(*Database)
-						if !ok {
-							panic("No db in context")
-						}
-						return getAirportByID(db, params.Args)
-					},
+					Resolve: getAirportByID,
 				},
-				"airports_in_city": &graphql.Field{
+				"airportsByCity": &graphql.Field{
 					Type:        graphql.NewList(airportType),
 					Description: "Get all airports in a city",
 					Args: graphql.FieldConfigArgument{
-						"city": &graphql.ArgumentConfig{
-							Type: graphql.String,
-						},
+						"city": &graphql.ArgumentConfig{Type: graphql.String},
 					},
-					Resolve: func(params graphql.ResolveParams) (interface{}, error) {
-						db, ok := params.Context.Value(dbKey).(*Database)
-						if !ok {
-							panic("No db in context")
-						}
-						return getAirportsInCity(db, params.Args)
-					},
+					Resolve: getAirportsInCity,
 				},
 			},
 		}
+
+		rootMutation := graphql.ObjectConfig{
+			Name: "RootMutation",
+			Fields: graphql.Fields{
+				"saveAirport": &graphql.Field{
+					Type:        airportType,
+					Description: "Create new Airport",
+					Args: graphql.FieldConfigArgument{
+						// "airport": &graphql.ArgumentConfig{Type: airportType},
+						"id": 		   &graphql.ArgumentConfig{Type: graphql.String},
+						"airportname": &graphql.ArgumentConfig{Type: graphql.String},
+						"icao":        &graphql.ArgumentConfig{Type: graphql.String},
+						"country":     &graphql.ArgumentConfig{Type: graphql.String},
+						"city":        &graphql.ArgumentConfig{Type: graphql.String},
+						"faa":         &graphql.ArgumentConfig{Type: graphql.String},
+						"tz":          &graphql.ArgumentConfig{Type: graphql.String},
+						"geo":         &graphql.ArgumentConfig{Type: geoType},
+					},
+					Resolve: saveAirport,
+				},
+				"saveAirports": &graphql.Field{
+					Type:        graphql.NewList(airportType),
+					Description: "Create multiple Airports",
+					Args: graphql.FieldConfigArgument{
+						"airports": &graphql.ArgumentConfig{Type: graphql.NewList(airportType)},
+					},
+					Resolve: saveAirports,
+				},
+			},
+		}
+
 		schemaConfig := graphql.SchemaConfig{
-			Query: graphql.NewObject(rootQuery),
+			Query:    graphql.NewObject(rootQuery),
+			Mutation: graphql.NewObject(rootMutation),
 		}
 		schema, err := graphql.NewSchema(schemaConfig)
 		if err != nil {
@@ -301,30 +247,60 @@ func graphQLSchema() graphql.Schema {
 	return *_graphQLSchema
 }
 
-func getAirportByID(db *Database, params map[string]interface{}) (interface{}, error) {
-	results, err := db.N1QLQueryWithStats(
-		db.Ctx,
-		QueryTypeUsers, //bogus
-		"SELECT ts.* FROM `travel-sample` AS ts WHERE type=\"airport\" and id=$id",
-		params,
-		base.RequestPlus,
-		false)
+func getAirportByID(params graphql.ResolveParams) (interface{}, error) {
+	return graphQLDocIDQuery("airport", params)
+}
+
+func getAirportsInCity(params graphql.ResolveParams) (interface{}, error) {
+	return graphQLListQuery(
+		"SELECT ts.*,  meta().id FROM `travel-sample` AS ts WHERE type=\"airport\" and city=$city",
+		params)
+}
+
+func saveAirport(params graphql.ResolveParams) (interface{}, error) {
+	return graphQLPutDoc("airport", params)
+}
+
+func saveAirports(params graphql.ResolveParams) (interface{}, error) {
+	return nil, fmt.Errorf("Unimplemented")
+}
+
+//////////////////// GENERAL PURPOSE ///////////////////////////
+
+// General purpose GraphQL query handler that gets a doc by docID (called "id").
+// It checks that the "type" property equals docType.
+func graphQLDocIDQuery(docType string, params graphql.ResolveParams) (interface{}, error) {
+	db, ok := params.Context.Value(dbKey).(*Database)
+	if !ok {
+		panic("No db in context")
+	}
+	docID := params.Args["id"].(string) // graphql ensures "id" exists and is a string
+	rev, err := db.GetRev(docID, "", false, nil)
 	if err != nil {
 		return nil, err
 	}
-	var row interface{}
-	if results.Next(&row) {
-		return row, nil
+	body, err := rev.Body()
+	if err != nil {
+		return nil, err
 	}
-	return Body{}, nil
+	if body["type"] != docType {
+		return nil, base.HTTPErrorf(http.StatusNotFound, "No doc with this ID and type")
+	}
+	body["id"] = docID
+	return body, nil
 }
 
-func getAirportsInCity(db *Database, params map[string]interface{}) (interface{}, error) {
+// General purpose GraphQL query handler that returns a list of objects.
+func graphQLListQuery(queryN1QL string, params graphql.ResolveParams) (interface{}, error) {
+	db, ok := params.Context.Value(dbKey).(*Database)
+	if !ok {
+		panic("No db in context")
+	}
 	results, err := db.N1QLQueryWithStats(
 		db.Ctx,
-		QueryTypeUsers, //bogus
-		"SELECT ts.* FROM `travel-sample` AS ts WHERE type=\"airport\" and city=$city",
-		params,
+		QueryTypeUsers, //FIX: bogus
+		queryN1QL,
+		params.Args,
 		base.RequestPlus,
 		false)
 	if err != nil {
@@ -337,3 +313,38 @@ func getAirportsInCity(db *Database, params map[string]interface{}) (interface{}
 	}
 	return result, nil
 }
+
+func graphQLPutDoc(docType string, params graphql.ResolveParams) (interface{}, error) {
+	db, ok := params.Context.Value(dbKey).(*Database)
+	if !ok {
+		panic("No db in context")
+	}
+	body := params.Args
+	body["type"] = docType
+	docID := body["id"].(string)
+	delete(body, "id")
+
+	rev, err := db.GetRev(docID, "", false, []string{})
+	if err == nil {
+		curBody, err := rev.Body()
+		if err != nil {
+			return nil, err
+		}
+		if curBody["type"] != docType {
+			return nil, base.HTTPErrorf(http.StatusBadRequest, "Doc exists but with different type %q", curBody["type"])
+		}
+		body["_rev"] = rev.RevID
+	}
+
+	_, _, err = db.Put(docID, body)
+	if err != nil {
+		return nil, err
+	}
+
+	// Return the body in its original form:
+	body["id"] = docID
+	delete(body, "type")
+	delete(body, "_rev")
+	return body, nil
+}
+
