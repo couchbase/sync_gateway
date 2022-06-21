@@ -115,18 +115,18 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 	return client, nil
 }
 
+// Start returns an error and a channel to indicate when the DCPClient is done. If Start returns an error, DCPClient.Close() needs to be called.
 func (dc *DCPClient) Start() (doneChan chan error, err error) {
-
 	err = dc.initAgent(dc.spec)
 	if err != nil {
-		return nil, err
+		return dc.doneChannel, err
 	}
 	dc.startWorkers()
 
 	for i := uint16(0); i < dc.numVbuckets; i++ {
 		openErr := dc.openStream(i)
 		if openErr != nil {
-			return nil, fmt.Errorf("Unable to start DCP client, error opening stream for vb %d: %w", i, openErr)
+			return dc.doneChannel, fmt.Errorf("Unable to start DCP client, error opening stream for vb %d: %w", i, openErr)
 		}
 	}
 	return dc.doneChannel, nil
@@ -165,14 +165,11 @@ func (dc *DCPClient) close() {
 			WarnfCtx(context.TODO(), "Error closing DCP agent in client close: %v", agentErr)
 		}
 	}
-	closeErr := dc.getCloseError()
-	if closeErr != nil {
-		dc.doneChannel <- closeErr
-	}
 
 	// Wait for all workers to finish before closing doneChannel
 	go func() {
 		dc.workersWg.Wait()
+		dc.doneChannel <- dc.getCloseError()
 		close(dc.doneChannel)
 	}()
 }
@@ -335,7 +332,16 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 	openStreamError := make(chan error)
 	openStreamCallback := func(f []gocbcore.FailoverEntry, err error) {
 		if err == nil {
-			err = dc.verifyAndUpdateFailoverLog(vbID, f)
+			err = dc.verifyFailoverLog(vbID, f)
+			if err == nil {
+				e := streamOpenEvent{
+					streamEventCommon: streamEventCommon{
+						vbID: vbID,
+					},
+					failoverLogs: f,
+				}
+				dc.workerForVbno(vbID).Send(e)
+			}
 		}
 		openStreamError <- err
 	}
@@ -362,16 +368,15 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 	}
 }
 
-// verifyAndUpdateFailoverLog checks for VbUUID changes when failOnRollback is set, and
+// verifyFailoverLog checks for VbUUID changes when failOnRollback is set, and
 // writes the failover log to the client metadata store.  If previous VbUUID is zero, it's
 // not considered a rollback - it's not required to initialize vbUUIDs into meta.
-func (dc *DCPClient) verifyAndUpdateFailoverLog(vbID uint16, f []gocbcore.FailoverEntry) error {
+func (dc *DCPClient) verifyFailoverLog(vbID uint16, f []gocbcore.FailoverEntry) error {
 
 	if dc.failOnRollback {
 		previousMeta := dc.metadata.GetMeta(vbID)
 		// Cases where VbUUID and StartSeqNo aren't set aren't considered rollback
 		if previousMeta.VbUUID == 0 && previousMeta.StartSeqNo == 0 {
-			dc.metadata.SetFailoverEntries(vbID, f)
 			return nil
 		}
 
@@ -381,7 +386,6 @@ func (dc *DCPClient) verifyAndUpdateFailoverLog(vbID uint16, f []gocbcore.Failov
 			return errors.New("VbUUID mismatch when failOnRollback set")
 		}
 	}
-	dc.metadata.SetFailoverEntries(vbID, f)
 	return nil
 }
 

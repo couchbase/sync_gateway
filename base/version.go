@@ -59,7 +59,8 @@ func init() {
 		// Split version number and build number (optional)
 		versionAndBuild := strings.Split(buildPlaceholderVersionBuildNumberString, "-")
 
-		versions := strings.Split(versionAndBuild[0], ".")
+		versionString := versionAndBuild[0]
+		versions := strings.Split(versionString, ".")
 		if len(versions) >= 0 {
 			majorStr = versions[0]
 		} else if len(versions) >= 1 {
@@ -69,13 +70,13 @@ func init() {
 		} else if len(versions) >= 3 {
 			otherStr = versions[3]
 		} else {
-			PanicfCtx(context.Background(), "unknown version format (expected major.minor.patch[.other]) got %v", versions)
+			PanicfCtx(context.Background(), "unknown version format (expected major.minor.patch[.other]) got %v", versionString)
 		}
 
 		var formattedBuildStr string
 		if len(versionAndBuild) > 1 {
 			buildStr = versionAndBuild[1]
-			formattedBuildStr = ";" + buildStr
+			formattedBuildStr = buildStr + ";"
 		}
 
 		productName := buildPlaceholderServerName

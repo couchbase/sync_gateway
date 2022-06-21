@@ -327,10 +327,6 @@ type couchbaseFeedImpl struct {
 	events chan sgbucket.FeedEvent
 }
 
-var (
-	versionString string
-)
-
 func (feed *couchbaseFeedImpl) Events() <-chan sgbucket.FeedEvent {
 	return feed.events
 }
