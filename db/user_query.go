@@ -235,7 +235,7 @@ func graphQLSchema() graphql.Schema {
 					Type:        graphql.NewList(airportType),
 					Description: "Create multiple Airports",
 					Args: graphql.FieldConfigArgument{
-						"airports": &graphql.ArgumentConfig{Type: graphql.NewList(airportType)},
+						"airports": &graphql.ArgumentConfig{Type: graphql.NewList(airportInput)},
 					},
 					Resolve: saveAirports,
 				},
@@ -270,7 +270,7 @@ func saveAirport(params graphql.ResolveParams) (interface{}, error) {
 }
 
 func saveAirports(params graphql.ResolveParams) (interface{}, error) {
-	return nil, fmt.Errorf("Unimplemented")
+	return graphQLPutDocList("airports", "airport", params)
 }
 
 //////////////////// GENERAL PURPOSE ///////////////////////////
@@ -322,14 +322,18 @@ func graphQLListQuery(queryN1QL string, params graphql.ResolveParams) (interface
 	return result, nil
 }
 
-func graphQLPutDoc(docType string, argName string, params graphql.ResolveParams) (interface{}, error) {
+func graphQLPutDoc(argName string, docType string, params graphql.ResolveParams) (interface{}, error) {
+	if body, ok := params.Args[argName].(map[string]interface{}); ok {
+		return graphQLPutDocObject(body, docType, params)
+	} else {
+		return nil, base.HTTPErrorf(http.StatusBadRequest, "%q arg is missing or wrong type", argName)
+	}
+}
+
+func graphQLPutDocObject(body Body, docType string, params graphql.ResolveParams) (interface{}, error) {
 	db, ok := params.Context.Value(dbKey).(*Database)
 	if !ok {
 		panic("No db in context")
-	}
-	body, ok := params.Args[argName].(map[string]interface{})
-	if (!ok) {
-		return nil, base.HTTPErrorf(http.StatusBadRequest, "%q arg is missing or wrong type", argName)
 	}
 	body["type"] = docType
 	docID := body["id"].(string)
@@ -359,3 +363,22 @@ func graphQLPutDoc(docType string, argName string, params graphql.ResolveParams)
 	return body, nil
 }
 
+func graphQLPutDocList(argName string, docType string, params graphql.ResolveParams) (interface{}, error) {
+	objects, ok := params.Args[argName].([]interface{})
+	if (!ok) {
+		return nil, base.HTTPErrorf(http.StatusBadRequest, "%q arg is missing or wrong type", argName)
+	}
+	result := []interface{}{}
+	for i, object := range(objects) {
+		object, ok := object.(map[string]interface{})
+		if !ok {
+			return nil, base.HTTPErrorf(http.StatusBadRequest, "%q[%d] arg is wrong type", argName, i)
+		}
+		oneResult, err := graphQLPutDocObject(object, docType, params)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, oneResult)
+	}
+	return result, nil
+}
