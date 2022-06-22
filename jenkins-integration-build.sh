@@ -53,6 +53,11 @@ else
     go install -v github.com/AlekSi/gocov-xml@latest
 fi
 
+if [ "${SG_TEST_X509:-}" == "true" -a "${COUCHBASE_SERVER_PROTOCOL}" != "couchbases" ]; then
+    echo "Setting SG_TEST_X509 requires using couchbases:// protocol, aborting integration tests"
+    exit 1
+fi
+
 # Set environment vars
 GO_TEST_FLAGS="-v -p 1 -count=${RUN_COUNT:-1}"
 INT_LOG_FILE_NAME="verbose_int"
