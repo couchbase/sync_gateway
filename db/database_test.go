@@ -1863,61 +1863,6 @@ func mockOIDCOptionsWithBadName() *auth.OIDCOptions {
 	return &auth.OIDCOptions{DefaultProvider: &defaultProvider, Providers: providers}
 }
 
-func TestNewDatabaseContextWithOIDCProviderOptionErrors(t *testing.T) {
-	// Enable prometheus stats. Ensures that we recover / cleanup stats if we fail to initialize a DatabaseContext
-	base.SkipPrometheusStatsRegistration = false
-	defer func() {
-		base.SkipPrometheusStatsRegistration = true
-	}()
-
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-
-	tests := []struct {
-		name          string
-		inputOptions  *auth.OIDCOptions
-		expectedError string
-	}{
-		// Provider should be skipped if no issuer is not provided in OIDCOptions. It should throw the error
-		// "OpenID Connect defined in config, but no valid OpenID Connect providers specified". Also a warning
-		// should be logged saying "Issuer and ClientID required for OIDC Provider - skipping provider"
-		{
-			name:          "TestWithNoIss",
-			inputOptions:  mockOIDCOptionsWithNoIss(),
-			expectedError: "OpenID Connect defined in config, but no valid OpenID Connect providers specified",
-		},
-		// Provider should be skipped if no client ID is not provided in OIDCOptions. It should throw the error
-		// "OpenID Connect defined in config, but no valid OpenID Connect providers specified". Also a warning
-		//	should be logged saying "Issuer and ClientID required for OIDC Provider - skipping provider"
-		{
-			name:          "TestWithNoClientID",
-			inputOptions:  mockOIDCOptionsWithNoClientID(),
-			expectedError: "OpenID Connect defined in config, but no valid OpenID Connect providers specified",
-		},
-		// If the provider name is illegal; meaning an underscore character in provider name is considered as
-		// illegal, it should throw an error stating OpenID Connect provider names cannot contain underscore.
-		{
-			name:          "TestWithWithBadName",
-			inputOptions:  mockOIDCOptionsWithBadName(),
-			expectedError: "OpenID Connect provider names cannot contain underscore",
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			options := DatabaseContextOptions{
-				OIDCOptions: tc.inputOptions,
-			}
-			AddOptionsFromEnvironmentVariables(&options)
-
-			context, err := NewDatabaseContext("db", testBucket, false, options)
-			assert.Error(t, err, "Couldn't create context for database 'db'")
-			assert.Contains(t, err.Error(), tc.expectedError)
-			assert.Nil(t, context, "Database context shouldn't be created")
-		})
-	}
-}
-
 func TestNewDatabaseContextWithOIDCProviderOptions(t *testing.T) {
 	tests := []struct {
 		name          string
