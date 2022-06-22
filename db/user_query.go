@@ -134,15 +134,22 @@ func expandChannelPattern(queryName string, channelPattern string, params map[st
 	return channel, err
 }
 
+//////////////////// GRAPHQL ///////////////////////////
+
 type queryContextKey string
 
 var dbKey = queryContextKey("db")
 var mutAllowedKey = queryContextKey("mutAllowed")
+var _graphQLSchema *graphql.Schema
 
 // Runs a GraphQL query on behalf of a user, presumably invoked via a REST or BLIP API.
 func (db *Database) UserGraphQLQuery(query string, operationName string, variables map[string]interface{}, mutationAllowed bool) (*graphql.Result, error) {
+	schema, err := db.getGraphQLSchema()
+	if err != nil {
+		return nil, err
+	}
 	params := graphql.Params{
-		Schema:         graphQLSchema(),
+		Schema:         *schema,
 		RequestString:  query,
 		VariableValues: variables,
 		OperationName:  operationName,
@@ -156,86 +163,60 @@ func (db *Database) UserGraphQLQuery(query string, operationName string, variabl
 	return r, nil
 }
 
-var _graphQLSchema *graphql.Schema
-
-func graphQLSchema() graphql.Schema {
+func (db *Database) getGraphQLSchema() (*graphql.Schema, error) {
 	if _graphQLSchema == nil {
-		source := `
-	        type Airport {
-	            id: ID!
-	            airportname: String!
-	            city: String!
-	            country: String!
-	            tz: String!
-	            faa: String!
-	            icao: String!
-	            geo: Geo
-	        }
-
-	        input AirportInput {
-	            id: ID!
-	            airportname: String!
-	            city: String!
-	            country: String!
-	            tz: String!
-	            faa: String!
-	            icao: String!
-	            geo: Geo
-	        }
-
-	        type Geo {
-	            lat: Float
-	            lon: Float
-	            alt: Float
-	        }
-
-	        type GeoInput {
-	            lat: Float
-	            lon: Float
-	            alt: Float
-	        }
-
-	        type Query {
-	            getAirport(id: ID!): Airport
-	            airportsByCity(city: String): [Airport]
-	        }
-
-	        type Mutation {
-	            saveAirport(airport: AirportInput!): Boolean
-	            saveAirports(airports: [AirportInput!]!): Boolean
-	        }
-		`
+		if db.Options.GraphQL == nil {
+			return nil, base.HTTPErrorf(http.StatusServiceUnavailable, "GraphQL is not configured")
+		}
+		resolvers := map[string]interface{}{}
+		for name, resolver := range db.Options.GraphQL.Resolvers {
+			fieldMap := map[string]*gqltools.FieldResolve{}
+			for fieldName, jsCode := range resolver {
+				if fn, err := db.compileResolver(name, fieldName, jsCode); err == nil {
+					fieldMap[fieldName] = &gqltools.FieldResolve{Resolve: fn}
+				} else {
+					return nil, err
+				}
+			}
+			resolvers[name] = &gqltools.ObjectResolver{Fields: fieldMap}
+		}
 		schema, err := gqltools.MakeExecutableSchema(gqltools.ExecutableSchema{
-			TypeDefs: source,
-			Resolvers: map[string]interface{}{
-				"Query": &gqltools.ObjectResolver{
-					Fields: gqltools.FieldResolveMap{
-						"getAirport": &gqltools.FieldResolve{
-							Resolve: getAirportByID,
-						},
-						"airportsByCity": &gqltools.FieldResolve{
-							Resolve: getAirportsInCity,
-						},
-					},
-				},
-				"Mutation": &gqltools.ObjectResolver{
-					Fields: gqltools.FieldResolveMap{
-						"saveAirport": &gqltools.FieldResolve{
-							Resolve: saveAirport,
-						},
-						"saveAirports": &gqltools.FieldResolve{
-							Resolve: saveAirports,
-						},
-					},
-				},
-			},
+			TypeDefs:  db.Options.GraphQL.Schema,
+			Resolvers: resolvers,
 		})
 		if err != nil {
-			panic(fmt.Sprintf("Failed to create GraphQL schema: %v", err)) // TODO
+			logCtx := context.TODO()
+			base.WarnfCtx(logCtx, "GraphQL schema compilation error: %+v", err)
+			return nil, base.HTTPErrorf(http.StatusInternalServerError, "Server GraphQL configuration error")
 		}
 		_graphQLSchema = &schema
 	}
-	return *_graphQLSchema
+	return _graphQLSchema, nil
+}
+
+//////////////////// RESOLVERS ///////////////////////////
+
+func (db *Database) compileResolver(resolverName string, fieldName string, jsCode string) (graphql.FieldResolveFn, error) {
+	// TODO: This is where the hackiness lives. We ignore the JS code and just return a hardcoded
+	// resolver function based on the name.
+	fmt.Printf("*** 'Compiling' GraphQL resolver %s.%s: %s\n", resolverName, fieldName, jsCode)
+	switch resolverName {
+	case "Query":
+		switch fieldName {
+		case "getAirport":
+			return getAirportByID, nil
+		case "airportsByCity":
+			return getAirportsInCity, nil
+		}
+	case "Mutation":
+		switch fieldName {
+		case "saveAirport":
+			return saveAirport, nil
+		case "saveAirports":
+			return saveAirports, nil
+		}
+	}
+	return nil, fmt.Errorf("Unknown resolver %q field %q (not hardwired)", resolverName, fieldName)
 }
 
 func getAirportByID(params graphql.ResolveParams) (interface{}, error) {
@@ -281,7 +262,7 @@ func graphQLDocIDQuery(docType string, params graphql.ResolveParams) (interface{
 	return body, nil
 }
 
-// General purpose GraphQL query handler that returns a list of objects.
+// General purpose GraphQL query handler that returns a list of objects based on a N1QL query.
 func graphQLListQuery(queryN1QL string, params graphql.ResolveParams) (interface{}, error) {
 	db, ok := params.Context.Value(dbKey).(*Database)
 	if !ok {

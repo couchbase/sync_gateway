@@ -137,6 +137,7 @@ type DatabaseContextOptions struct {
 	SessionCookieName             string           // Pass-through DbConfig.SessionCookieName
 	SessionCookieHttpOnly         bool             // Pass-through DbConfig.SessionCookieHTTPOnly
 	UserQueries                   UserQueryMap     // Pass-through DbConfig.UserQueries
+	GraphQL                       *GraphQLConfig   // Pass-through DbConfig.GraphQL
 	AllowConflicts                *bool            // False forbids creating conflicts
 	SendWWWAuthenticateHeader     *bool            // False disables setting of 'WWW-Authenticate' header
 	DisablePasswordAuthentication bool             // True enforces OIDC/guest only
@@ -214,6 +215,15 @@ type UserQuery struct {
 }
 
 type UserQueryMap = map[string]*UserQuery
+
+// Configuration for GraphQL.
+type GraphQLConfig struct {
+	Schema    string                     `json:"schema"`    // Schema in SDL syntax
+	Resolvers map[string]GraphQLResolver `json:"resolvers"` // Defines query/mutation code
+}
+
+// Maps GraphQL query/mutation names to the JS source code that implements them.
+type GraphQLResolver map[string]string
 
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,
 // so this struct does not have to be thread-safe.
