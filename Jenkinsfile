@@ -38,6 +38,8 @@ pipeline {
                 // to clone directly into a subdirectory instead?
                 sh 'mkdir .scm-checkout'
                 sh 'mv * .scm-checkout/'
+                // forces go to get private modules via ssh
+                sh 'git config --global url."git@github.com:".insteadOf "https://github.com/"'
             }
         }
         stage('Setup') {
