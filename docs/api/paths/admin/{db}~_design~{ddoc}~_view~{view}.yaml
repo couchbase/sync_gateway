@@ -1,8 +1,7 @@
-# /{db}/_design/{ddoc}/_view/{view}
 parameters:
-- $ref: ../../components/parameters.yaml#/db
-- $ref: ../../components/parameters.yaml#/ddoc
-- $ref: ../../components/parameters.yaml#/view
+  - $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/ddoc
+  - $ref: ../../components/parameters.yaml#/view
 get:
   summary: Query a view on a design document | Unsupported
   description: |-
@@ -14,23 +13,23 @@ get:
     * Sync Gateway Application
     * Sync Gateway Application Read Only
   parameters:
-  - $ref: ../../components/parameters.yaml#/inclusive_end
-  - $ref: ../../components/parameters.yaml#/descending
-  - $ref: ../../components/parameters.yaml#/include_docs-cbs3
-  - $ref: ../../components/parameters.yaml#/reduce
-  - $ref: ../../components/parameters.yaml#/group
-  - $ref: ../../components/parameters.yaml#/skip
-  - $ref: ../../components/parameters.yaml#/limit
-  - $ref: ../../components/parameters.yaml#/group_level
-  - $ref: ../../components/parameters.yaml#/startkey_docid
-  - $ref: ../../components/parameters.yaml#/endkey_docid
-  - $ref: ../../components/parameters.yaml#/stale
-  - $ref: ../../components/parameters.yaml#/startkey
-  - $ref: ../../components/parameters.yaml#/endkey
-  - $ref: ../../components/parameters.yaml#/key
-  - $ref: ../../components/parameters.yaml#/keys
+    - $ref: ../../components/parameters.yaml#/inclusive_end
+    - $ref: ../../components/parameters.yaml#/descending
+    - $ref: ../../components/parameters.yaml#/include_docs-cbs3
+    - $ref: ../../components/parameters.yaml#/reduce
+    - $ref: ../../components/parameters.yaml#/group
+    - $ref: ../../components/parameters.yaml#/skip
+    - $ref: ../../components/parameters.yaml#/limit
+    - $ref: ../../components/parameters.yaml#/group_level
+    - $ref: ../../components/parameters.yaml#/startkey_docid
+    - $ref: ../../components/parameters.yaml#/endkey_docid
+    - $ref: ../../components/parameters.yaml#/stale
+    - $ref: ../../components/parameters.yaml#/startkey
+    - $ref: ../../components/parameters.yaml#/endkey
+    - $ref: ../../components/parameters.yaml#/key
+    - $ref: ../../components/parameters.yaml#/keys
   responses:
-    "200":
+    '200':
       description: Returned view successfully
       content:
         application/json:
@@ -62,11 +61,11 @@ get:
                     Reason:
                       type: string
             required:
-            - total_rows
-            - rows
-    "403":
+              - total_rows
+              - rows
+    '403':
       description: Forbidden
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Unsupported
+    - Unsupported

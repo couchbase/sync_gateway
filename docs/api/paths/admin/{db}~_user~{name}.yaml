@@ -1,7 +1,6 @@
-# /{db}/_user/{name}
 parameters:
-- $ref: ../../components/parameters.yaml#/db
-- $ref: ../../components/parameters.yaml#/user-name
+  - $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/user-name
 get:
   summary: Get a user
   description: |-
@@ -12,13 +11,13 @@ get:
     * Sync Gateway Application
     * Sync Gateway Application Read Only
   responses:
-    "200":
+    '200':
       $ref: ../../components/responses.yaml#/User
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Admin only endpoints
-  - Database Security
+    - Admin only endpoints
+    - Database Security
 put:
   summary: Upsert a user
   description: |-
@@ -30,15 +29,15 @@ put:
   requestBody:
     $ref: ../../components/requestBodies.yaml#/User
   responses:
-    "200":
+    '200':
       description: Existing user modified successfully
-    "201":
+    '201':
       description: New user created
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Admin only endpoints
-  - Database Security
+    - Admin only endpoints
+    - Database Security
 delete:
   summary: Delete a user
   description: |-
@@ -48,22 +47,22 @@ delete:
     * Sync Gateway Architect
     * Sync Gateway Application
   responses:
-    "200":
+    '200':
       description: User deleted successfully
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Admin only endpoints
-  - Database Security
+    - Admin only endpoints
+    - Database Security
 head:
   responses:
-    "200":
+    '200':
       description: User exists
-    "404":
+    '404':
       description: Not Found
   tags:
-  - Admin only endpoints
-  - Database Security
+    - Admin only endpoints
+    - Database Security
   summary: Check if user exists
   description: |-
     Check if the user exists by checking the status code.

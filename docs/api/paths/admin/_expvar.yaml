@@ -10,11 +10,11 @@ get:
     * Sync Gateway Dev Ops
     * External Stats Reader
   responses:
-    "200":
+    '200':
       description: Returned statistics
       content:
         application/javascript:
           schema:
             $ref: ../../components/schemas.yaml#/ExpVars
   tags:
-  - Metrics
+    - Metrics

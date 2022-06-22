@@ -1,4 +1,3 @@
-# /_debug/pprof/trace
 get:
   summary: Get trace profile
   description: |-
@@ -7,17 +6,17 @@ get:
     Required Sync Gateway RBAC roles:
     * Sync Gateway Dev Ops
   parameters:
-  - name: seconds
-    in: query
-    schema:
-      type: integer
-      default: 1
+    - name: seconds
+      in: query
+      schema:
+        type: integer
+        default: 1
   responses:
-    "200":
+    '200':
       $ref: ../../components/responses.yaml#/pprof-binary
   tags:
-  - Admin only endpoints
-  - Profiling
+    - Admin only endpoints
+    - Profiling
 post:
   summary: Get trace profile
   description: |-
@@ -26,14 +25,14 @@ post:
     Required Sync Gateway RBAC roles:
     * Sync Gateway Dev Ops
   parameters:
-  - name: seconds
-    in: query
-    schema:
-      type: integer
-      default: 1
+    - name: seconds
+      in: query
+      schema:
+        type: integer
+        default: 1
   responses:
-    "200":
+    '200':
       $ref: ../../components/responses.yaml#/pprof-binary
   tags:
-  - Admin only endpoints
-  - Profiling
+    - Admin only endpoints
+    - Profiling

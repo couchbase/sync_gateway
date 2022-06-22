@@ -1,4 +1,3 @@
-# /_heap
 post:
   summary: Dump heap profile
   description: |-
@@ -9,10 +8,10 @@ post:
   requestBody:
     $ref: ../../components/requestBodies.yaml#/Profile
   responses:
-    "200":
+    '200':
       description: Successfully dumped heap profile
-    "400":
+    '400':
       $ref: ../../components/responses.yaml#/request-problem
   tags:
-  - Admin only endpoints
-  - Profiling
+    - Admin only endpoints
+    - Profiling

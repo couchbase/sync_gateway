@@ -1,4 +1,3 @@
-# /_status
 get:
   summary: Get the server status
   description: |-
@@ -7,14 +6,14 @@ get:
     Required Sync Gateway RBAC roles:
     * Sync Gateway Dev Ops
   responses:
-    "200":
+    '200':
       description: Returned the status successfully
       content:
         application/json:
           schema:
             $ref: ../../components/schemas.yaml#/Status
-    "400":
+    '400':
       $ref: ../../components/responses.yaml#/request-problem
   tags:
-  - Admin only endpoints
-  - Server
+    - Admin only endpoints
+    - Server

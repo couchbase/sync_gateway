@@ -1,11 +1,10 @@
-# /{db}/_oidc_testing/certs
 parameters:
-- $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/db
 get:
   summary: OpenID Connect public certificates for signing keys
   description: Return a mock OpenID Connect public key to be used as signing keys.
   responses:
-    "200":
+    '200':
       description: Returned public key successfully
       content:
         application/json:
@@ -30,16 +29,16 @@ get:
                     Algorithm:
                       type: string
                   required:
-                  - Key
-                  - KeyID
-                  - Use
+                    - Key
+                    - KeyID
+                    - Use
             required:
-            - keys
-    "403":
+              - keys
+    '403':
       $ref: ../../components/responses.yaml#/OIDC-test-provider-disabled
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
-    "500":
+    '500':
       description: An error occurred while getting the private RSA key
       content:
         application/json:
@@ -51,4 +50,4 @@ get:
               reason:
                 type: string
   tags:
-  - OpenID Connect
+    - OpenID Connect

@@ -1,12 +1,11 @@
-# /{db}/_local/{docid}
 parameters:
-- $ref: ../../components/parameters.yaml#/db
-- name: docid
-  in: path
-  description: The name of the local document ID excluding the `_local/` prefix.
-  required: true
-  schema:
-    type: string
+  - $ref: ../../components/parameters.yaml#/db
+  - name: docid
+    in: path
+    description: The name of the local document ID excluding the `_local/` prefix.
+    required: true
+    schema:
+      type: string
 get:
   summary: Get local document
   description: |-
@@ -18,14 +17,14 @@ get:
     * Sync Gateway Application
     * Sync Gateway Application Read Only
   responses:
-    "200":
+    '200':
       description: Successfully found local document
-    "400":
+    '400':
       $ref: ../../components/responses.yaml#/request-problem
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Document
+    - Document
 put:
   summary: Upsert a local document
   description: |-
@@ -43,27 +42,25 @@ put:
           type: object
           properties:
             _rev:
-              description: Revision to replace. Required if updating existing local
-                document.
+              description: Revision to replace. Required if updating existing local document.
               type: string
   responses:
-    "201":
-      description: Document successfully written. The document ID will be prefixed
-        with `_local/`.
+    '201':
+      description: Document successfully written. The document ID will be prefixed with `_local/`.
       content:
         application/json:
           schema:
             $ref: ../../components/schemas.yaml#/New-revision
-    "400":
+    '400':
       $ref: ../../components/responses.yaml#/request-problem
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
-    "409":
-      description: A revision ID conflict would result from updating this document
-        revision.
+    '409':
+      description: A revision ID conflict would result from updating this document revision.
   tags:
-  - Document
+    - Document
 delete:
+  summary: Delete a local document
   description: |-
     This request deletes a local document.
 
@@ -72,35 +69,33 @@ delete:
     Required Sync Gateway RBAC roles:
     * Sync Gateway Application
   parameters:
-  - name: rev
-    in: query
-    description: The revision ID of the revision to delete.
-    required: true
-    schema:
-      type: string
+    - name: rev
+      in: query
+      description: The revision ID of the revision to delete.
+      required: true
+      schema:
+        type: string
   responses:
-    "200":
+    '200':
       description: Successfully removed the local document.
-    "400":
+    '400':
       $ref: ../../components/responses.yaml#/request-problem
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
-    "409":
-      description: A revision ID conflict would result from deleting this document
-        revision.
+    '409':
+      description: A revision ID conflict would result from deleting this document revision.
   tags:
-  - Document
-  summary: Delete a local document
+    - Document
 head:
   responses:
-    "200":
+    '200':
       description: Document exists
-    "400":
+    '400':
       $ref: ../../components/responses.yaml#/request-problem
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Document
+    - Document
   summary: Check if local document exists
   description: |-
     This request checks if a local document exists.

@@ -1,25 +1,24 @@
-# /{db}/_oidc_refresh
 parameters:
-- $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/db
 get:
   summary: OpenID Connect token refresh
   description: Refresh the OpenID Connect token based on the provided refresh token.
   parameters:
-  - name: refresh_token
-    in: query
-    description: The OpenID Connect refresh token.
-    required: true
-    schema:
-      type: string
-  - $ref: ../../components/parameters.yaml#/provider
+    - name: refresh_token
+      in: query
+      description: The OpenID Connect refresh token.
+      required: true
+      schema:
+        type: string
+    - $ref: ../../components/parameters.yaml#/provider
   responses:
-    "200":
+    '200':
       $ref: ../../components/responses.yaml#/OIDC-callback
-    "400":
+    '400':
       $ref: ../../components/responses.yaml#/OIDC-invalid-provider
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
-    "500":
+    '500':
       $ref: ../../components/responses.yaml#/OIDC-connection
   tags:
-  - OpenID Connect
+    - OpenID Connect

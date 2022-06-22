@@ -1,16 +1,15 @@
-# /{db}/_session
 parameters:
-- $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/db
 get:
   summary: Get information about the current user
   description: This will get the information about the current user.
   responses:
-    "200":
+    '200':
       $ref: ../../components/responses.yaml#/User-session-information
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Session
+    - Session
 post:
   summary: Create a new user session
   description: |-
@@ -32,10 +31,10 @@ post:
               description: User name to generate the session for.
               type: string
             ttl:
-              description: 'Time until the session expires. Uses default value of 24 hours if left blank.'
+              description: Time until the session expires. Uses default value of 24 hours if left blank.
               type: integer
   responses:
-    "200":
+    '200':
       description: Session created successfully. Returned body is dependant on if using Public or Admin APIs.
       content:
         application/json:
@@ -43,32 +42,31 @@ post:
             type: object
             properties:
               session_id:
-                description: 'The ID of the session. This is the value that would
-                  be put in to the cookie to keep the user authenticated.'
+                description: The ID of the session. This is the value that would be put in to the cookie to keep the user authenticated.
                 type: string
               expires:
-                description: 'The date and time the cookie expires.'
+                description: The date and time the cookie expires.
                 type: string
               cookie_name:
-                description: 'The name of the cookie that would be used to store the users session.'
+                description: The name of the cookie that would be used to store the users session.
                 type: string
           examples:
             Example:
               value:
                 session_id: c5af80a039db4ed9d2b6865576b6999935282689
-                expires: "2022-01-21T15:24:44Z"
+                expires: '2022-01-21T15:24:44Z'
                 cookie_name: SyncGatewaySession
-    "400":
+    '400':
       $ref: ../../components/responses.yaml#/Invalid-CORS
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Session
+    - Session
 head:
   responses:
-    "200":
+    '200':
       description: OK
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Session
+    - Session

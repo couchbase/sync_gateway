@@ -1,6 +1,5 @@
-# /{db}/_user/
 parameters:
-- $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/db
 get:
   summary: Get all the names of the users
   description: |-
@@ -14,7 +13,7 @@ get:
     - $ref: ../../components/parameters.yaml#/usersNameOnly
     - $ref: ../../components/parameters.yaml#/usersLimit
   responses:
-    "200":
+    '200':
       description: Users retrieved successfully
       content:
         application/json:
@@ -24,13 +23,13 @@ get:
             items:
               type: string
           example:
-          - Alice
-          - Bob
-    "404":
+            - Alice
+            - Bob
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Admin only endpoints
-  - Database Security
+    - Admin only endpoints
+    - Database Security
 post:
   summary: Create a new user
   description: |-
@@ -42,24 +41,24 @@ post:
   requestBody:
     $ref: ../../components/requestBodies.yaml#/User
   responses:
-    "201":
+    '201':
       description: New user created successfully
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
-    "409":
+    '409':
       $ref: ../../components/responses.yaml#/Conflict
   tags:
-  - Admin only endpoints
-  - Database Security
+    - Admin only endpoints
+    - Database Security
 head:
   responses:
-    "200":
+    '200':
       description: OK
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Admin only endpoints
-  - Database Security
+    - Admin only endpoints
+    - Database Security
   description: |-
     Required Sync Gateway RBAC roles:
     * Sync Gateway Architect

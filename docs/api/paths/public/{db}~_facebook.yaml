@@ -1,6 +1,5 @@
-# /{db}/_facebook
 parameters:
-- $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/db
 post:
   summary: Create a new Facebook-based session
   description: |-
@@ -17,13 +16,13 @@ post:
               description: Facebook access token to base the new session on.
               type: string
           required:
-          - access_token
+            - access_token
   responses:
-    "200":
+    '200':
       description: Session created successfully
-    "400":
+    '400':
       $ref: ../../components/responses.yaml#/Invalid-CORS
-    "401":
+    '401':
       description: Received error from Facebook verifier
       content:
         application/json:
@@ -34,9 +33,9 @@ post:
                 type: string
               reason:
                 type: string
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
-    "502":
+    '502':
       description: Received invalid response from the Facebook verifier
       content:
         application/json:
@@ -47,7 +46,7 @@ post:
                 type: string
               reason:
                 type: string
-    "504":
+    '504':
       description: Unable to send request to Facebook API
       content:
         application/json:
@@ -60,4 +59,4 @@ post:
                 type: string
   deprecated: true
   tags:
-  - OpenID Connect
+    - OpenID Connect

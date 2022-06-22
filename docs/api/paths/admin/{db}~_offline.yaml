@@ -1,6 +1,5 @@
-# /{db}/_offline
 parameters:
-- $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/db
 post:
   summary: Take the database offline
   description: |-
@@ -19,16 +18,16 @@ post:
     Required Sync Gateway RBAC roles:
     * Sync Gateway Architect
   responses:
-    "200":
+    '200':
       description: Database has been taken offline successfully
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
-    "503":
+    '503':
       description: An error occurred while trying to take the database offline
       content:
         application/json:
           schema:
             $ref: ../../components/schemas.yaml#/HTTP-Error
   tags:
-  - Admin only endpoints
-  - Database Management
+    - Admin only endpoints
+    - Database Management

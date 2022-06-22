@@ -1,4 +1,3 @@
-# /_stats
 get:
   summary: Get memory statistics
   description: |-
@@ -9,7 +8,7 @@ get:
     * Sync Gateway Dev Ops
     * External Stats Reader
   responses:
-    "200":
+    '200':
       description: Returned memory usage statistics
       content:
         application/json:
@@ -20,5 +19,5 @@ get:
                 description: A set of Go runtime memory statistics.
                 additionalProperties: true
   tags:
-  - Admin only endpoints
-  - Metrics
+    - Admin only endpoints
+    - Metrics

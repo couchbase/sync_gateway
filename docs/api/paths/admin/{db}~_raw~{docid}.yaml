@@ -1,7 +1,6 @@
-# /{db}/_raw/{docid}
 parameters:
-- $ref: ../../components/parameters.yaml#/db
-- $ref: ../../components/parameters.yaml#/docid
+  - $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/docid
 get:
   summary: Get a document with the corresponding metadata
   description: |-
@@ -13,15 +12,14 @@ get:
     * Sync Gateway Application
     * Sync Gateway Application Read Only
   parameters:
-  - $ref: ../../components/parameters.yaml#/include_doc
-  - name: redact
-    in: query
-    description: This redacts sensitive parts of the response. Cannot be used when
-      `include_docs=true`
-    schema:
-      type: boolean
+    - $ref: ../../components/parameters.yaml#/include_doc
+    - name: redact
+      in: query
+      description: This redacts sensitive parts of the response. Cannot be used when `include_docs=true`
+      schema:
+        type: boolean
   responses:
-    "200":
+    '200':
       description: Document found successfully
       content:
         application/json:
@@ -55,9 +53,7 @@ get:
                         items:
                           type: number
                       channels:
-                        description: The past channel history. Can contain string
-                          arrays, strings, or be null depending on if and how the
-                          channels where set.
+                        description: 'The past channel history. Can contain string arrays, strings, or be null depending on if and how the channels where set.'
                         type: array
                         items:
                           type: array
@@ -65,8 +61,7 @@ get:
                             type: string
                           nullable: true
                   cas:
-                    description: The document CAS (Concurrent Document Mutations)
-                      number used for document locking.
+                    description: The document CAS (Concurrent Document Mutations) number used for document locking.
                     type: string
                   value_crc32c:
                     description: The documents CRC32 number.
@@ -81,12 +76,10 @@ get:
                           description: The name of the channel.
                           type: string
                         start:
-                          description: The sequence number that document was added
-                            to the channel.
+                          description: The sequence number that document was added to the channel.
                           type: string
                         end:
-                          description: The sequence number the document was removed
-                            from the channel. Omitted if not removed.
+                          description: The sequence number the document was removed from the channel. Omitted if not removed.
                           type: string
                     nullable: true
                   channel_set_history:
@@ -102,27 +95,26 @@ get:
                           type: string
                     nullable: true
                   time_saved:
-                    description: The time and date the document was most recently
-                      changed.
+                    description: The time and date the document was most recently changed.
                     type: string
-    "400":
+    '400':
       $ref: ../../components/responses.yaml#/request-problem
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Admin only endpoints
-  - Document
+    - Admin only endpoints
+    - Document
 head:
   responses:
-    "200":
+    '200':
       description: Document exists
-    "400":
+    '400':
       $ref: ../../components/responses.yaml#/request-problem
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Admin only endpoints
-  - Document
+    - Admin only endpoints
+    - Document
   description: |-
     Required Sync Gateway RBAC roles:
     * Sync Gateway Application

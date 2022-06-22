@@ -1,7 +1,6 @@
-# /{db}/_session/{sessionid}
 parameters:
-- $ref: ../../components/parameters.yaml#/db
-- $ref: ../../components/parameters.yaml#/sessionid
+  - $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/sessionid
 get:
   summary: Get session information
   description: |-
@@ -12,12 +11,12 @@ get:
     * Sync Gateway Application
     * Sync Gateway Application Read Only
   responses:
-    "200":
+    '200':
       $ref: ../../components/responses.yaml#/User-session-information
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Admin only endpoints
+    - Admin only endpoints
 delete:
   summary: Remove session
   description: |-
@@ -27,10 +26,10 @@ delete:
     * Sync Gateway Architect
     * Sync Gateway Application
   responses:
-    "200":
+    '200':
       description: Successfully removed the user session
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Admin only endpoints
-  - Session
+    - Admin only endpoints
+    - Session

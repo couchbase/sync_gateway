@@ -1,7 +1,6 @@
-# /{db}/_user/{name}/_session
 parameters:
-- $ref: ../../components/parameters.yaml#/db
-- $ref: ../../components/parameters.yaml#/user-name
+  - $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/user-name
 delete:
   summary: Remove all of a users sessions
   description: |-
@@ -13,10 +12,10 @@ delete:
     * Sync Gateway Architect
     * Sync Gateway Application
   responses:
-    "200":
+    '200':
       description: User now has no sessions
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Admin only endpoints
-  - Session
+    - Admin only endpoints
+    - Session

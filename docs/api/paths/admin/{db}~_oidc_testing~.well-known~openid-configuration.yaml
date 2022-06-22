@@ -1,13 +1,10 @@
-# /{db}/_oidc_testing/.well-known-openid-configuration
 parameters:
-- $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/db
 get:
   summary: OpenID Connect mock provider
-  description: Mock an OpenID Connect provider response for testing purposes. This
-    returns a response that is the same structure as what Sync Gateway expects from
-    an OIDC provider after initiating OIDC authentication.
+  description: Mock an OpenID Connect provider response for testing purposes. This returns a response that is the same structure as what Sync Gateway expects from an OIDC provider after initiating OIDC authentication.
   responses:
-    "200":
+    '200':
       description: 'Successfully generated OpenID Connect provider mock response. '
       headers:
         Expiry:
@@ -41,9 +38,9 @@ get:
                 type: string
               token_endpoint_auth_methods_supported:
                 type: string
-    "403":
+    '403':
       $ref: ../../components/responses.yaml#/OIDC-test-provider-disabled
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - OpenID Connect
+    - OpenID Connect
