@@ -845,6 +845,13 @@ func BoolDefault(b *bool, ifNil bool) bool {
 	return ifNil
 }
 
+func StringDefault(s *string, ifNil string) string {
+	if s != nil {
+		return *s
+	}
+	return ifNil
+}
+
 func Float32Ptr(f float32) *float32 {
 	return &f
 }

@@ -27,6 +27,7 @@ import (
 	"syscall"
 
 	"golang.org/x/crypto/bcrypt"
+	"gopkg.in/square/go-jose.v2"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
@@ -113,24 +114,25 @@ func (bucketConfig *BucketConfig) GetCredentials() (username string, password st
 // DbConfig defines a database configuration used in a config file or the REST API.
 type DbConfig struct {
 	BucketConfig
-	Scopes                           ScopesConfig                     `json:"scopes,omitempty"`                               // Scopes and collection specific config
-	Name                             string                           `json:"name,omitempty"`                                 // Database name in REST API (stored as key in JSON)
-	Sync                             *string                          `json:"sync,omitempty"`                                 // The sync function applied to write operations in the _default scope and collection
-	Users                            map[string]*auth.PrincipalConfig `json:"users,omitempty"`                                // Initial user accounts
-	Roles                            map[string]*auth.PrincipalConfig `json:"roles,omitempty"`                                // Initial roles
-	RevsLimit                        *uint32                          `json:"revs_limit,omitempty"`                           // Max depth a document's revision tree can grow to
-	AutoImport                       interface{}                      `json:"import_docs,omitempty"`                          // Whether to automatically import Couchbase Server docs into SG.  Xattrs must be enabled.  true or "continuous" both enable this.
-	ImportPartitions                 *uint16                          `json:"import_partitions,omitempty"`                    // Number of partitions for import sharding.  Impacts the total DCP concurrency for import
-	ImportFilter                     *string                          `json:"import_filter,omitempty"`                        // The import filter applied to import operations in the _default scope and collection
-	ImportBackupOldRev               *bool                            `json:"import_backup_old_rev,omitempty"`                // Whether import should attempt to create a temporary backup of the previous revision body, when available.
-	EventHandlers                    *EventHandlerConfig              `json:"event_handlers,omitempty"`                       // Event handlers (webhook)
-	FeedType                         string                           `json:"feed_type,omitempty"`                            // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
-	AllowEmptyPassword               *bool                            `json:"allow_empty_password,omitempty"`                 // Allow empty passwords?  Defaults to false
-	CacheConfig                      *CacheConfig                     `json:"cache,omitempty"`                                // Cache settings
-	DeprecatedRevCacheSize           *uint32                          `json:"rev_cache_size,omitempty"`                       // Maximum number of revisions to store in the revision cache (deprecated, CBG-356)
-	StartOffline                     *bool                            `json:"offline,omitempty"`                              // start the DB in the offline state, defaults to false
-	Unsupported                      *db.UnsupportedOptions           `json:"unsupported,omitempty"`                          // Config for unsupported features
-	OIDCConfig                       *auth.OIDCOptions                `json:"oidc,omitempty"`                                 // Config properties for OpenID Connect authentication
+	Scopes                           ScopesConfig                     `json:"scopes,omitempty"`                // Scopes and collection specific config
+	Name                             string                           `json:"name,omitempty"`                  // Database name in REST API (stored as key in JSON)
+	Sync                             *string                          `json:"sync,omitempty"`                  // The sync function applied to write operations in the _default scope and collection
+	Users                            map[string]*auth.PrincipalConfig `json:"users,omitempty"`                 // Initial user accounts
+	Roles                            map[string]*auth.PrincipalConfig `json:"roles,omitempty"`                 // Initial roles
+	RevsLimit                        *uint32                          `json:"revs_limit,omitempty"`            // Max depth a document's revision tree can grow to
+	AutoImport                       interface{}                      `json:"import_docs,omitempty"`           // Whether to automatically import Couchbase Server docs into SG.  Xattrs must be enabled.  true or "continuous" both enable this.
+	ImportPartitions                 *uint16                          `json:"import_partitions,omitempty"`     // Number of partitions for import sharding.  Impacts the total DCP concurrency for import
+	ImportFilter                     *string                          `json:"import_filter,omitempty"`         // The import filter applied to import operations in the _default scope and collection
+	ImportBackupOldRev               *bool                            `json:"import_backup_old_rev,omitempty"` // Whether import should attempt to create a temporary backup of the previous revision body, when available.
+	EventHandlers                    *EventHandlerConfig              `json:"event_handlers,omitempty"`        // Event handlers (webhook)
+	FeedType                         string                           `json:"feed_type,omitempty"`             // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
+	AllowEmptyPassword               *bool                            `json:"allow_empty_password,omitempty"`  // Allow empty passwords?  Defaults to false
+	CacheConfig                      *CacheConfig                     `json:"cache,omitempty"`                 // Cache settings
+	DeprecatedRevCacheSize           *uint32                          `json:"rev_cache_size,omitempty"`        // Maximum number of revisions to store in the revision cache (deprecated, CBG-356)
+	StartOffline                     *bool                            `json:"offline,omitempty"`               // start the DB in the offline state, defaults to false
+	Unsupported                      *db.UnsupportedOptions           `json:"unsupported,omitempty"`           // Config for unsupported features
+	OIDCConfig                       *auth.OIDCOptions                `json:"oidc,omitempty"`                  // Config properties for OpenID Connect authentication
+	LocalJWTConfig                   auth.LocalJWTConfig              `json:"local_jwt,omitempty"`
 	OldRevExpirySeconds              *uint32                          `json:"old_rev_expiry_seconds,omitempty"`               // The number of seconds before old revs are removed from CBS bucket
 	ViewQueryTimeoutSecs             *uint32                          `json:"view_query_timeout_secs,omitempty"`              // The view query timeout in seconds
 	LocalDocExpirySecs               *uint32                          `json:"local_doc_expiry_secs,omitempty"`                // The _local doc expiry time in seconds
@@ -704,6 +706,42 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 			if err != nil {
 				multiError = multiError.Append(fmt.Errorf("failed to validate OIDC configuration for %s: %w", name, err))
 			}
+		}
+	}
+	seenIssuers := base.Set{}
+	for name, local := range dbConfig.LocalJWTConfig {
+		if local.Issuer == "" {
+			multiError = multiError.Append(fmt.Errorf("Issuer required for Local JWT provider %s", name))
+		}
+		if local.ClientID == nil {
+			multiError = multiError.Append(fmt.Errorf("Client ID required for Local JWT provider %s (set to \"\" to disable audience validation)", name))
+		}
+		if len(local.Keys) == 0 || len(local.Algorithms) == 0 {
+			multiError = multiError.Append(fmt.Errorf("Keys and Algorithms required for Local JWT provider %s", name))
+		}
+		didReportKIDError := false
+		for _, key := range local.Keys {
+			if key.KeyID == "" && len(local.Keys) > 1 && !didReportKIDError {
+				multiError = multiError.Append(fmt.Errorf("%s: 'kid' property required on all keys when more than one key is defined", name))
+				didReportKIDError = true
+			}
+			if !key.Valid() {
+				multiError = multiError.Append(fmt.Errorf("%s: key %q invalid", name, key.KeyID))
+			}
+			// This check is important to ensure private keys never make it into the DB config (because sgcollect will include them)
+			if !key.IsPublic() {
+				multiError = multiError.Append(fmt.Errorf("%s: key %q is not a public key", name, key.KeyID))
+			}
+		}
+		for _, algo := range local.Algorithms {
+			if _, ok := auth.SupportedAlgorithms[jose.SignatureAlgorithm(algo)]; !ok {
+				multiError = multiError.Append(fmt.Errorf("%s: signing algorithm %q invalid or unsupported", name, algo))
+			}
+		}
+		if _, ok := seenIssuers[local.Issuer]; ok {
+			multiError = multiError.Append(fmt.Errorf("duplicate OIDC/JWT issuer: %s", local.Issuer))
+		} else {
+			seenIssuers.Add(local.Issuer)
 		}
 	}
 

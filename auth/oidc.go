@@ -14,7 +14,7 @@
 //
 // parseClaim: https://github.com/coreos/go-oidc/blob/8d771559cf6e5111c9b9159810d0e4538e7cdc82/verify.go#L174
 // VerifyClaims: https://github.com/coreos/go-oidc/blob/8d771559cf6e5111c9b9159810d0e4538e7cdc82/verify.go#L208
-// supportedAlgorithms: https://github.com/coreos/go-oidc/blob/8d771559cf6e5111c9b9159810d0e4538e7cdc82/oidc.go#L97
+// SupportedAlgorithms: https://github.com/coreos/go-oidc/blob/8d771559cf6e5111c9b9159810d0e4538e7cdc82/oidc.go#L97
 // audience: https://github.com/coreos/go-oidc/blob/8d771559cf6e5111c9b9159810d0e4538e7cdc82/oidc.go#L360
 // audience.UnmarshalJSON: https://github.com/coreos/go-oidc/blob/8d771559cf6e5111c9b9159810d0e4538e7cdc82/oidc.go#L362
 // jsonTime: https://github.com/coreos/go-oidc/blob/8d771559cf6e5111c9b9159810d0e4538e7cdc82/oidc.go#L376
@@ -42,6 +42,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	pkgerrors "github.com/pkg/errors"
 	"golang.org/x/oauth2"
+	"gopkg.in/square/go-jose.v2"
 	"gopkg.in/square/go-jose.v2/jwt"
 )
 
@@ -135,15 +136,11 @@ func (client *OIDCClient) SetConfig(verifier *oidc.IDTokenVerifier, endpoint oau
 }
 
 type OIDCProvider struct {
-	Issuer                  string   `json:"issuer"`                           // OIDC Issuer
-	Register                bool     `json:"register"`                         // If true, server will register new user accounts
-	ClientID                string   `json:"client_id,omitempty"`              // Client ID
+	JWTConfigCommon
 	ValidationKey           *string  `json:"validation_key,omitempty"`         // Client secret
 	CallbackURL             *string  `json:"callback_url,omitempty"`           // Sync Gateway redirect URL.  Needs to be specified to handle load balancer endpoints?  Or can we lazy load on first client use, based on request
-	DisableSession          bool     `json:"disable_session,omitempty"`        // Disable Sync Gateway session creation on successful OIDC authentication
 	Scope                   []string `json:"scope,omitempty"`                  // Scope sent for openid request
 	IncludeAccessToken      bool     `json:"include_access,omitempty"`         // Whether the _oidc_callback response should include OP access token and associated fields (token_type, expires_in)
-	UserPrefix              string   `json:"user_prefix,omitempty"`            // Username prefix for users created for this provider
 	DiscoveryURI            string   `json:"discovery_url,omitempty"`          // Non-standard discovery endpoints
 	DisableConfigValidation bool     `json:"disable_cfg_validation,omitempty"` // Bypasses config validation based on the OIDC spec.  Required for some OPs that don't strictly adhere to spec (eg. Yahoo)
 
@@ -153,17 +150,6 @@ type OIDCProvider struct {
 	// configuration by setting property "disable_callback_state": true. Disabling callback state is
 	// vulnerable to Cross-Site Request Forgery (CSRF, XSRF) and NOT recommended.
 	DisableCallbackState bool `json:"disable_callback_state,omitempty"`
-
-	// UsernameClaim allows to specify a claim other than subject to use as the Sync Gateway username.
-	// The specified claim must be a string - numeric claims may be unmarshalled inconsistently between
-	// Sync Gateway and the underlying OIDC library.
-	UsernameClaim string `json:"username_claim"`
-
-	// RolesClaim and ChannelsClaim allow specifying a claim (which must be a string or string[]) to add roles/channels
-	// to users. These are added in addition to any other roles/channels the user may have (via the admin API or the
-	// sync function). If the claim is absent from the access/ID token, no roles/channels will be added.
-	RolesClaim    string `json:"roles_claim"`
-	ChannelsClaim string `json:"channels_claim"`
 
 	// AllowUnsignedProviderTokens allows users to opt-in to accepting unsigned tokens from providers.
 	AllowUnsignedProviderTokens bool `json:"allow_unsigned_provider_tokens"`
@@ -231,10 +217,11 @@ func (opm OIDCProviderMap) getProviderWhenSingle() (*OIDCProvider, bool) {
 func (opm OIDCProviderMap) GetProviderForIssuer(ctx context.Context, issuer string, audiences []string) *OIDCProvider {
 	base.DebugfCtx(ctx, base.KeyAuth, "GetProviderForIssuer with issuer: %v, audiences: %+v", base.UD(issuer), base.UD(audiences))
 	for _, provider := range opm {
-		if provider.Issuer == issuer && provider.ClientID != "" {
+		clientID := base.StringDefault(provider.ClientID, "")
+		if provider.Issuer == issuer && clientID != "" {
 			// Iterate over the audiences looking for a match
 			for _, aud := range audiences {
-				if provider.ClientID == aud {
+				if clientID == aud {
 					base.DebugfCtx(ctx, base.KeyAuth, "Provider matches, returning")
 					return provider
 				}
@@ -319,7 +306,7 @@ func (op *OIDCProvider) initOIDCClient(ctx context.Context) error {
 	}
 
 	config := oauth2.Config{
-		ClientID:    op.ClientID,
+		ClientID:    base.StringDefault(op.ClientID, ""),
 		RedirectURL: *op.CallbackURL,
 	}
 
@@ -414,7 +401,7 @@ func (op *OIDCProvider) standardDiscovery(ctx context.Context, discoveryURL stri
 	for i := 1; i <= maxRetryAttempts; i++ {
 		provider, err = oidc.NewProvider(GetOIDCClientContext(op.InsecureSkipVerify), op.Issuer)
 		if err == nil && provider != nil {
-			verifier = provider.Verifier(&oidc.Config{ClientID: op.ClientID})
+			verifier = provider.Verifier(&oidc.Config{ClientID: base.StringDefault(op.ClientID, "")})
 			if err = provider.Claims(&metadata); err != nil {
 				base.ErrorfCtx(ctx, "Error caching metadata from standard issuer-based discovery endpoint: %s", base.UD(discoveryURL))
 			}
@@ -574,7 +561,7 @@ func (op *OIDCProvider) generateVerifier(metadata *ProviderMetadata, ctx context
 	if len(signingAlgorithms.unsupportedAlgorithms) > 0 {
 		base.InfofCtx(ctx, base.KeyAuth, "Found algorithms not supported by underlying OpenID Connect library: %v", signingAlgorithms.unsupportedAlgorithms)
 	}
-	config := &oidc.Config{ClientID: op.ClientID}
+	config := &oidc.Config{ClientID: base.StringDefault(op.ClientID, "")}
 	if len(signingAlgorithms.supportedAlgorithms) > 0 {
 		config.SupportedSigningAlgs = signingAlgorithms.supportedAlgorithms
 	}
@@ -591,28 +578,13 @@ type SigningAlgorithms struct {
 // getSigningAlgorithms returns the list of supported and unsupported signing algorithms.
 func (op *OIDCProvider) getSigningAlgorithms(metadata *ProviderMetadata) (signingAlgorithms SigningAlgorithms) {
 	for _, algorithm := range metadata.IdTokenSigningAlgValuesSupported {
-		if supportedAlgorithms[algorithm] {
+		if SupportedAlgorithms[jose.SignatureAlgorithm(algorithm)] {
 			signingAlgorithms.supportedAlgorithms = append(signingAlgorithms.supportedAlgorithms, algorithm)
 		} else {
 			signingAlgorithms.unsupportedAlgorithms = append(signingAlgorithms.unsupportedAlgorithms, algorithm)
 		}
 	}
 	return signingAlgorithms
-}
-
-// supportedAlgorithms is list of signing algorithms explicitly supported
-// by github.com/coreos/go-oidc package. If a provider supports other algorithms,
-// such as HS256 or none, those values won't be passed to the IDTokenVerifier.
-var supportedAlgorithms = map[string]bool{
-	oidc.RS256: true,
-	oidc.RS384: true,
-	oidc.RS512: true,
-	oidc.ES256: true,
-	oidc.ES384: true,
-	oidc.ES512: true,
-	oidc.PS256: true,
-	oidc.PS384: true,
-	oidc.PS512: true,
 }
 
 // ProviderMetadata describes the configuration of an OpenID Connect Provider.

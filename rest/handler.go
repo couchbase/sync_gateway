@@ -486,7 +486,7 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 			if username, password := h.getBasicAuth(); username != "" && password != "" {
 				provider := dbCtx.Options.OIDCOptions.Providers.GetProviderForIssuer(h.ctx(), issuerUrlForDB(h, dbCtx.Name), testProviderAudiences)
 				if provider != nil && provider.ValidationKey != nil {
-					if provider.ClientID == username && *provider.ValidationKey == password {
+					if base.StringDefault(provider.ClientID, "") == username && *provider.ValidationKey == password {
 						return nil
 					}
 				}

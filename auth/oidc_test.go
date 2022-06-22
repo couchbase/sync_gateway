@@ -111,19 +111,25 @@ func TestOIDCProviderMap_GetProviderForIssuer(t *testing.T) {
 
 	clientID := "SGW-TEST"
 	cbProvider := OIDCProvider{
-		Name:     "Couchbase",
-		Issuer:   "http://127.0.0.1:1234",
-		ClientID: clientID,
+		Name: "Couchbase",
+		JWTConfigCommon: JWTConfigCommon{
+			Issuer:   "http://127.0.0.1:1234",
+			ClientID: &clientID,
+		},
 	}
 	glProvider := OIDCProvider{
-		Name:     "Gügul",
-		Issuer:   "http://127.0.0.1:1235",
-		ClientID: clientID,
+		Name: "Gügul",
+		JWTConfigCommon: JWTConfigCommon{
+			Issuer:   "http://127.0.0.1:1235",
+			ClientID: &clientID,
+		},
 	}
 	fbProvider := OIDCProvider{
-		Name:     "Fæsbuk",
-		Issuer:   "http://127.0.0.1:1236",
-		ClientID: clientID,
+		Name: "Fæsbuk",
+		JWTConfigCommon: JWTConfigCommon{
+			Issuer:   "http://127.0.0.1:1236",
+			ClientID: &clientID,
+		},
 	}
 	providerMap := OIDCProviderMap{
 		"gl": &glProvider,
@@ -173,8 +179,10 @@ func TestOIDCProviderMap_GetProviderForIssuer(t *testing.T) {
 
 func TestOIDCUsername(t *testing.T) {
 	provider := OIDCProvider{
-		Name:   "Some_Provider",
-		Issuer: "http://www.someprovider.com",
+		Name: "Some_Provider",
+		JWTConfigCommon: JWTConfigCommon{
+			Issuer: "http://www.someprovider.com",
+		},
 	}
 
 	ctx := base.TestCtx(t)
@@ -229,7 +237,9 @@ func TestInitOIDCClient(t *testing.T) {
 
 	t.Run("initialize openid connect client with unavailable issuer", func(t *testing.T) {
 		provider := &OIDCProvider{
-			Issuer:      "http://127.0.0.1:12345/auth",
+			JWTConfigCommon: JWTConfigCommon{
+				Issuer: "http://127.0.0.1:12345/auth",
+			},
 			CallbackURL: base.StringPtr("http://127.0.0.1:12345/callback"),
 		}
 		err := provider.initOIDCClient(ctx)
@@ -239,8 +249,10 @@ func TestInitOIDCClient(t *testing.T) {
 
 	t.Run("initialize openid connect client with valid provider config", func(t *testing.T) {
 		provider := &OIDCProvider{
-			ClientID:    "foo",
-			Issuer:      "https://accounts.google.com",
+			JWTConfigCommon: JWTConfigCommon{
+				ClientID: base.StringPtr("foo"),
+				Issuer:   "https://accounts.google.com",
+			},
 			CallbackURL: base.StringPtr("http://sgw-test:4984/_callback"),
 		}
 		err := provider.initOIDCClient(ctx)
@@ -252,8 +264,10 @@ func TestInitOIDCClient(t *testing.T) {
 func TestConcurrentSetConfig(t *testing.T) {
 	providerLock := sync.Mutex{}
 	provider := &OIDCProvider{
-		ClientID:    "foo",
-		Issuer:      "https://accounts.google.com",
+		JWTConfigCommon: JWTConfigCommon{
+			ClientID: base.StringPtr("foo"),
+			Issuer:   "https://accounts.google.com",
+		},
 		CallbackURL: base.StringPtr("http://sgw-test:4984/_callback"),
 	}
 
@@ -411,7 +425,7 @@ func TestFetchCustomProviderConfig(t *testing.T) {
 				issuer += "/"
 			}
 			discoveryURL := GetStandardDiscoveryEndpoint(issuer)
-			op := &OIDCProvider{Issuer: issuer}
+			op := &OIDCProvider{JWTConfigCommon: JWTConfigCommon{Issuer: issuer}}
 			metadata, _, _, err := op.fetchCustomProviderConfig(base.TestCtx(t), discoveryURL)
 			if err != nil {
 				assert.True(t, test.wantErr, "Unexpected Error!")
@@ -1175,11 +1189,13 @@ func TestOIDCRolesChannels(t *testing.T) {
 			auth := NewAuthenticator(testBucket, &testMockComputer, DefaultAuthenticatorOptions())
 
 			provider := &OIDCProvider{
-				Name:          "foo",
-				Issuer:        testIssuer,
-				RolesClaim:    tc.rolesClaimName,
-				ChannelsClaim: tc.channelsClaimName,
-				UserPrefix:    testUserPrefix,
+				Name: "foo",
+				JWTConfigCommon: JWTConfigCommon{
+					Issuer:        testIssuer,
+					RolesClaim:    tc.rolesClaimName,
+					ChannelsClaim: tc.channelsClaimName,
+					UserPrefix:    testUserPrefix,
+				},
 			}
 
 			for i, login := range tc.logins {
