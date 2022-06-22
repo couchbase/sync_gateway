@@ -463,8 +463,10 @@ func TestGetOIDCCallbackURL(t *testing.T) {
 func mockProvider(name string) *auth.OIDCProvider {
 	return &auth.OIDCProvider{
 		Name:          name,
-		ClientID:      "baz",
 		ValidationKey: base.StringPtr("qux"),
+		JWTConfigCommon: auth.JWTConfigCommon{
+			ClientID: base.StringPtr("baz"),
+		},
 	}
 }
 
@@ -2471,18 +2473,22 @@ func TestOpenIDConnectIssuerChange(t *testing.T) {
 	newCfg.OIDCConfig = &auth.OIDCOptions{
 		Providers: auth.OIDCProviderMap{
 			"test": &auth.OIDCProvider{
-				Issuer:   fmt.Sprintf("%s/%s/_oidc_testing", msg1.URL, rt1.DatabaseConfig.Name),
-				ClientID: "sync_gateway",
-				Register: true,
-				// this UsernameClaim is critical - we'll generate two users from two different OIDC issuers but with the same username
-				UsernameClaim: "username",
-				ChannelsClaim: "channels",
+				JWTConfigCommon: auth.JWTConfigCommon{
+					Issuer:   fmt.Sprintf("%s/%s/_oidc_testing", msg1.URL, rt1.DatabaseConfig.Name),
+					ClientID: base.StringPtr("sync_gateway"),
+					Register: true,
+					// this UsernameClaim is critical - we'll generate two users from two different OIDC issuers but with the same username
+					UsernameClaim: "username",
+					ChannelsClaim: "channels",
+				},
 			},
 			"test2": &auth.OIDCProvider{
-				Issuer:        fmt.Sprintf("%s/%s/_oidc_testing", msg2.URL, rt2.DatabaseConfig.Name),
-				ClientID:      "sync_gateway",
-				Register:      true,
-				UsernameClaim: "username",
+				JWTConfigCommon: auth.JWTConfigCommon{
+					Issuer:        fmt.Sprintf("%s/%s/_oidc_testing", msg2.URL, rt2.DatabaseConfig.Name),
+					ClientID:      base.StringPtr("sync_gateway"),
+					Register:      true,
+					UsernameClaim: "username",
+				},
 			},
 		},
 	}

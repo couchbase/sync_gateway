@@ -12,6 +12,10 @@ package rest
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -27,6 +31,7 @@ import (
 	"testing"
 
 	"golang.org/x/crypto/bcrypt"
+	"gopkg.in/square/go-jose.v2"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -295,6 +300,116 @@ func TestConfigValidationImportPartitions(t *testing.T) {
 				assert.EqualError(t, multiError.Errors[0], test.err)
 			} else {
 				assert.NoError(t, errorMessages)
+			}
+		})
+	}
+}
+
+func generateTestJWK(t *testing.T, alg, kid string, key interface{}) string {
+	jwk := jose.JSONWebKey{
+		Algorithm: alg,
+		Key:       key,
+		KeyID:     kid,
+	}
+	keyJSON, err := jwk.MarshalJSON()
+	require.NoError(t, err, "failed to marshal test key")
+	return string(keyJSON)
+}
+
+func TestConfigValidationJWTAndOIDC(t *testing.T) {
+	rsaPrivkey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	ecdsaPrivkey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	testRSA256JWK := generateTestJWK(t, "RS256", "rsa", rsaPrivkey.Public())
+	testEC256JWK := generateTestJWK(t, "ES256", "ec", ecdsaPrivkey.Public())
+	testRSA256JWKWithoutKID := generateTestJWK(t, "RS256", "", rsaPrivkey.Public())
+	testPrivateRSA256JWK := generateTestJWK(t, "RS256", "rsa-priv", rsaPrivkey)
+
+	cases := []struct {
+		name          string
+		configJSON    string
+		expectedError string
+		validateOIDC  bool
+	}{
+		{
+			name:       "Local JWT: ok",
+			configJSON: `{"name": "test", "local_jwt": { "test": { "issuer": "test", "client_id": "foo", "keys": [` + testRSA256JWK + `], "algorithms": ["RS256"] }}}`,
+		},
+		{
+			name:       "Local JWT: ok - mixed algorithms",
+			configJSON: `{"name": "test", "local_jwt": { "test": { "issuer": "test", "client_id": "", "keys": [` + testRSA256JWK + "," + testEC256JWK + ` ], "algorithms": ["RS256", "ES256"] }}}`,
+		},
+		{
+			name:          "Local JWT: no issuer",
+			configJSON:    `{"name": "test", "local_jwt": { "test": { "client_id": "foo", "keys": [] } }}`,
+			expectedError: "Issuer required for Local JWT provider test",
+		},
+		{
+			name:          "Local JWT: no client ID",
+			configJSON:    `{"name": "test", "local_jwt": { "test": { "issuer": "test", "keys": [] } }}`,
+			expectedError: "Client ID required for Local JWT provider test",
+		},
+		{
+			name:       "Local JWT: empty client ID (valid)",
+			configJSON: `{"name": "test", "local_jwt": { "test": { "issuer": "test", "client_id": "", "keys": [` + testRSA256JWK + `], "algorithms": ["RS256"] } }}`,
+		},
+		{
+			name:          "Local JWT: private key",
+			configJSON:    `{"name": "test", "local_jwt": { "test": { "issuer": "test", "client_id": "", "keys": [` + testPrivateRSA256JWK + `], "algorithms": ["RS256"] } }}`,
+			expectedError: `key "rsa-priv" is not a public key`,
+		},
+		{
+			name:          "Local JWT: multiple keys without KID",
+			configJSON:    `{"name": "test", "local_jwt": { "test": { "issuer": "test", "client_id": "", "keys": [` + testRSA256JWKWithoutKID + ", " + testRSA256JWKWithoutKID + `], "algorithms": ["RS256"] } }}`,
+			expectedError: "'kid' property required on all keys when more than one key is defined",
+		},
+		{
+			name:          "Local JWT: invalid algo",
+			configJSON:    `{"name": "test", "local_jwt": { "test": { "issuer": "test", "client_id": "", "keys": [` + testRSA256JWK + `], "algorithms": ["asdf"] } }}`,
+			expectedError: `signing algorithm "asdf" invalid or unsupported`,
+		},
+		{
+			name:          "Local JWT: unsupported algos (HS256)",
+			configJSON:    `{"name": "test", "local_jwt": { "test": { "issuer": "test", "client_id": "", "keys": [` + testRSA256JWK + `], "algorithms": ["HS256"] } }}`,
+			expectedError: `signing algorithm "HS256" invalid or unsupported`,
+		},
+		{
+			name:          "Local JWT: unsupported algos (none)",
+			configJSON:    `{"name": "test", "local_jwt": { "test": { "issuer": "test", "client_id": "", "keys": [` + testRSA256JWK + `], "algorithms": ["none"] } }}`,
+			expectedError: `signing algorithm "none" invalid or unsupported`,
+		},
+		{
+			name:          "Local JWT: duplicate issuers (local-JWT)",
+			configJSON:    `{"name": "test", "local_jwt": { "test": { "issuer": "test", "client_id": "", "keys": [` + testRSA256JWK + `], "algorithms": ["RS256"] }, "test2": { "issuer": "test", "client_id": "", "keys": [` + testRSA256JWK + `], "algorithms": ["RS256"] } }}`,
+			expectedError: "duplicate OIDC/JWT issuer: test",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var dbConfig DatabaseConfig
+			err := base.JSONUnmarshal([]byte(tc.configJSON), &dbConfig)
+			if tc.expectedError == "" {
+				require.NoError(t, err, "failed to unmarshal valid startupConfig")
+			} else if err != nil {
+				if strings.Contains(err.Error(), tc.expectedError) {
+					return
+				}
+				t.Fatalf("received unexpected unmarshaling error: %v", err)
+			}
+
+			err = dbConfig.validate(base.TestCtx(t), tc.validateOIDC)
+			switch {
+			case tc.expectedError == "":
+				require.NoError(t, err, "failed to validate valid startupConfig")
+			case err != nil:
+				if strings.Contains(err.Error(), tc.expectedError) {
+					return
+				}
+				t.Fatalf("received unexpected validation error: %v", err)
+			default:
+				t.Fatal("expected error, but did not get one")
 			}
 		})
 	}

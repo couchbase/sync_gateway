@@ -1758,37 +1758,45 @@ var (
 
 func mockOIDCProvider() auth.OIDCProvider {
 	return auth.OIDCProvider{
+		JWTConfigCommon: auth.JWTConfigCommon{
+			Issuer:   "https://accounts.google.com",
+			ClientID: base.StringPtr(clientID),
+		},
 		Name:          "Google",
-		Issuer:        "https://accounts.google.com",
 		CallbackURL:   &callbackURL,
-		ClientID:      clientID,
 		ValidationKey: &validationKey,
 	}
 }
 
 func mockOIDCProviderWithCallbackURLQuery() auth.OIDCProvider {
 	return auth.OIDCProvider{
+		JWTConfigCommon: auth.JWTConfigCommon{
+			Issuer:   "https://accounts.google.com",
+			ClientID: base.StringPtr(clientID),
+		},
 		Name:          "Google",
-		Issuer:        "https://accounts.google.com",
 		CallbackURL:   &callbackURLWithQuery,
-		ClientID:      clientID,
 		ValidationKey: &validationKey,
 	}
 }
 
 func mockOIDCProviderWithNoIss() auth.OIDCProvider {
 	return auth.OIDCProvider{
+		JWTConfigCommon: auth.JWTConfigCommon{
+			ClientID: base.StringPtr(clientID),
+		},
 		Name:          "Microsoft",
 		CallbackURL:   &callbackURL,
-		ClientID:      clientID,
 		ValidationKey: &validationKey,
 	}
 }
 
 func mockOIDCProviderWithNoClientID() auth.OIDCProvider {
 	return auth.OIDCProvider{
+		JWTConfigCommon: auth.JWTConfigCommon{
+			Issuer: "https://accounts.google.com",
+		},
 		Name:          "Amazon",
-		Issuer:        "https://accounts.amazon.com",
 		CallbackURL:   &callbackURL,
 		ValidationKey: &validationKey,
 	}
@@ -1797,9 +1805,11 @@ func mockOIDCProviderWithNoClientID() auth.OIDCProvider {
 func mockOIDCProviderWithNoValidationKey() auth.OIDCProvider {
 	return auth.OIDCProvider{
 		Name:        "Yahoo",
-		Issuer:      "https://accounts.yahoo.com",
 		CallbackURL: &callbackURL,
-		ClientID:    clientID,
+		JWTConfigCommon: auth.JWTConfigCommon{
+			Issuer:   "https://accounts.yahoo.com",
+			ClientID: base.StringPtr(clientID),
+		},
 	}
 }
 

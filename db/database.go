@@ -483,7 +483,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		dbContext.OIDCProviders = make(auth.OIDCProviderMap)
 
 		for name, provider := range options.OIDCOptions.Providers {
-			if provider.Issuer == "" || provider.ClientID == "" {
+			if provider.Issuer == "" || base.StringDefault(provider.ClientID, "") == "" {
 				base.WarnfCtx(logCtx, "Issuer and ClientID required for OIDC Provider - skipping provider %q", base.UD(name))
 				continue
 			}
