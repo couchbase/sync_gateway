@@ -18,6 +18,7 @@ import (
 	"regexp"
 	"strings"
 
+	gqltools "github.com/bhoriuchi/graphql-go-tools"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/graphql-go/graphql"
@@ -141,11 +142,11 @@ var mutAllowedKey = queryContextKey("mutAllowed")
 // Runs a GraphQL query on behalf of a user, presumably invoked via a REST or BLIP API.
 func (db *Database) UserGraphQLQuery(query string, operationName string, variables map[string]interface{}, mutationAllowed bool) (*graphql.Result, error) {
 	params := graphql.Params{
-		Schema:        graphQLSchema(),
-		RequestString: query,
+		Schema:         graphQLSchema(),
+		RequestString:  query,
 		VariableValues: variables,
-		OperationName: operationName,
-		Context:       context.WithValue(context.WithValue(db.Ctx, dbKey, db), mutAllowedKey, mutationAllowed),
+		OperationName:  operationName,
+		Context:        context.WithValue(context.WithValue(db.Ctx, dbKey, db), mutAllowedKey, mutationAllowed),
 	}
 	r := graphql.Do(params)
 	if len(r.Errors) > 0 {
@@ -159,97 +160,76 @@ var _graphQLSchema *graphql.Schema
 
 func graphQLSchema() graphql.Schema {
 	if _graphQLSchema == nil {
-		geoType := graphql.NewObject(
-			graphql.ObjectConfig{
-				Name: "Geo",
-				Fields: graphql.Fields{
-					"lat": &graphql.Field{Type: graphql.NewNonNull(graphql.Float)},
-					"lon": &graphql.Field{Type: graphql.NewNonNull(graphql.Float)},
-					"alt": &graphql.Field{Type: graphql.NewNonNull(graphql.Float)},
-				},
-			},
-		)
-		airportType := graphql.NewObject(
-			graphql.ObjectConfig{
-				Name: "Airport",
-				Fields: graphql.Fields{
-					"id":          &graphql.Field{Type: graphql.NewNonNull(graphql.ID)},
-					"airportname": &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
-					"icao":        &graphql.Field{Type: graphql.String},
-					"country":     &graphql.Field{Type: graphql.String},
-					"city":        &graphql.Field{Type: graphql.String},
-					"faa":         &graphql.Field{Type: graphql.String},
-					"tz":          &graphql.Field{Type: graphql.String},
-					"geo":         &graphql.Field{Type: geoType},
-				},
-			},
-		)
+		source := `
+	        type Airport {
+	            id: ID!
+	            airportname: String!
+	            city: String!
+	            country: String!
+	            tz: String!
+	            faa: String!
+	            icao: String!
+	            geo: Geo
+	        }
 
-		rootQuery := graphql.ObjectConfig{
-			Name: "RootQuery",
-			Fields: graphql.Fields{
-				"getAirport": &graphql.Field{
-					Type:        airportType,
-					Description: "Get single airport by id",
-					Args: graphql.FieldConfigArgument{
-						"id": &graphql.ArgumentConfig{Type: graphql.ID},
+	        input AirportInput {
+	            id: ID!
+	            airportname: String!
+	            city: String!
+	            country: String!
+	            tz: String!
+	            faa: String!
+	            icao: String!
+	            geo: Geo
+	        }
+
+	        type Geo {
+	            lat: Float
+	            lon: Float
+	            alt: Float
+	        }
+
+	        type GeoInput {
+	            lat: Float
+	            lon: Float
+	            alt: Float
+	        }
+
+	        type Query {
+	            getAirport(id: ID!): Airport
+	            airportsByCity(city: String): [Airport]
+	        }
+
+	        type Mutation {
+	            saveAirport(airport: AirportInput!): Boolean
+	            saveAirports(airports: [AirportInput!]!): Boolean
+	        }
+		`
+		schema, err := gqltools.MakeExecutableSchema(gqltools.ExecutableSchema{
+			TypeDefs: source,
+			Resolvers: map[string]interface{}{
+				"Query": &gqltools.ObjectResolver{
+					Fields: gqltools.FieldResolveMap{
+						"getAirport": &gqltools.FieldResolve{
+							Resolve: getAirportByID,
+						},
+						"airportsByCity": &gqltools.FieldResolve{
+							Resolve: getAirportsInCity,
+						},
 					},
-					Resolve: getAirportByID,
 				},
-				"airportsByCity": &graphql.Field{
-					Type:        graphql.NewList(airportType),
-					Description: "Get all airports in a city",
-					Args: graphql.FieldConfigArgument{
-						"city": &graphql.ArgumentConfig{Type: graphql.String},
+				"Mutation": &gqltools.ObjectResolver{
+					Fields: gqltools.FieldResolveMap{
+						"saveAirport": &gqltools.FieldResolve{
+							Resolve: saveAirport,
+						},
+						"saveAirports": &gqltools.FieldResolve{
+							Resolve: saveAirports,
+						},
 					},
-					Resolve: getAirportsInCity,
 				},
 			},
-		}
-
-		airportInput := graphql.NewInputObject(
-			graphql.InputObjectConfig{
-				Name: "AirportInput",
-				Fields: graphql.InputObjectConfigFieldMap{
-					"id":          &graphql.InputObjectFieldConfig{Type: graphql.NewNonNull(graphql.ID)},
-					"airportname": &graphql.InputObjectFieldConfig{Type: graphql.NewNonNull(graphql.String)},
-					"icao":        &graphql.InputObjectFieldConfig{Type: graphql.String},
-					"country":     &graphql.InputObjectFieldConfig{Type: graphql.String},
-					"city":        &graphql.InputObjectFieldConfig{Type: graphql.String},
-					"faa":         &graphql.InputObjectFieldConfig{Type: graphql.String},
-					"tz":          &graphql.InputObjectFieldConfig{Type: graphql.String},
-					"geo":         &graphql.InputObjectFieldConfig{Type: geoType},
-				},
-			},
-		)
-
-		rootMutation := graphql.ObjectConfig{
-			Name: "RootMutation",
-			Fields: graphql.Fields{
-				"saveAirport": &graphql.Field{
-					Type:        airportType,
-					Description: "Create new Airport",
-					Args: graphql.FieldConfigArgument{
-						"airport": &graphql.ArgumentConfig{Type: airportInput},
-					},
-					Resolve: saveAirport,
-				},
-				"saveAirports": &graphql.Field{
-					Type:        graphql.NewList(airportType),
-					Description: "Create multiple Airports",
-					Args: graphql.FieldConfigArgument{
-						"airports": &graphql.ArgumentConfig{Type: graphql.NewList(airportInput)},
-					},
-					Resolve: saveAirports,
-				},
-			},
-		}
-
-		schemaConfig := graphql.SchemaConfig{
-			Query:    graphql.NewObject(rootQuery),
-			Mutation: graphql.NewObject(rootMutation),
-		}
-		schema, err := graphql.NewSchema(schemaConfig)
+		})
 		if err != nil {
 			panic(fmt.Sprintf("Failed to create GraphQL schema: %v", err)) // TODO
 		}
@@ -362,11 +342,7 @@ func graphQLPutDocObject(body Body, docType string, params graphql.ResolveParams
 		return nil, err
 	}
 
-	// Return the body in its original form:
-	body["id"] = docID
-	delete(body, "type")
-	delete(body, "_rev")
-	return body, nil
+	return true, nil
 }
 
 func graphQLPutDocList(argName string, docType string, params graphql.ResolveParams) (interface{}, error) {
@@ -374,11 +350,11 @@ func graphQLPutDocList(argName string, docType string, params graphql.ResolvePar
 		return nil, base.HTTPErrorf(http.StatusForbidden, "Can't mutate from a read-only request")
 	}
 	objects, ok := params.Args[argName].([]interface{})
-	if (!ok) {
+	if !ok {
 		return nil, base.HTTPErrorf(http.StatusBadRequest, "%q arg is missing or wrong type", argName)
 	}
 	result := []interface{}{}
-	for i, object := range(objects) {
+	for i, object := range objects {
 		object, ok := object.(map[string]interface{})
 		if !ok {
 			return nil, base.HTTPErrorf(http.StatusBadRequest, "%q[%d] arg is wrong type", argName, i)
@@ -389,5 +365,6 @@ func graphQLPutDocList(argName string, docType string, params graphql.ResolvePar
 		}
 		result = append(result, oneResult)
 	}
-	return result, nil
+
+	return true, nil
 }

@@ -89,7 +89,7 @@ func (h *handler) handleGraphQL() error {
 	if h.rq.Method == "POST" {
 		canMutate = true
 		if h.rq.Header.Get("Content-Type") == "application/graphql" {
-			// POST graphql data: Just read the query
+			// POST graphql data: Request body contains the query string alone:
 			query, err := h.readBody()
 			if err != nil {
 				return err
