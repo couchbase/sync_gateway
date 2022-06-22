@@ -4740,7 +4740,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 			initialState:   newRevisionState(3, "a", false, 0),
 			localMutation:  newRevisionState(6, "b", false, 4),
 			remoteMutation: newRevisionState(6, "c", false, 5),
-			expectedResult: newRevisionState(7, "b", false, 5),
+			expectedResult: newRevisionState(7, "b", false, 7),
 		},
 	}
 
@@ -4863,6 +4863,112 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 
 			rawResponse = remoteRT.SendAdminRequest("GET", "/db/_raw/"+docID, "")
 			log.Printf("-- remote raw post-replication: %s", rawResponse.Body.Bytes())
+		})
+	}
+}
+
+func TestReplicatorConflictAttachment(t *testing.T) {
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("requires enterprise edition")
+	}
+
+	testCases := []struct {
+		name                      string
+		conflictResolution        db.ConflictResolverType
+		expectedFinalRev          string
+		expectedRevPos            int
+		expectedAttachmentContent string
+	}{
+		{
+			name:                      "local",
+			conflictResolution:        db.ConflictResolverLocalWins,
+			expectedFinalRev:          "6-3545745ab68aec5b00e745f9e0e3277c",
+			expectedRevPos:            6,
+			expectedAttachmentContent: "hello world",
+		},
+		{
+			name:                      "remote",
+			conflictResolution:        db.ConflictResolverRemoteWins,
+			expectedFinalRev:          "5-remote",
+			expectedRevPos:            4,
+			expectedAttachmentContent: "goodbye cruel world",
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
+			defer teardown()
+
+			docID := test.name
+
+			var parentRevID, newRevID string
+			for gen := 1; gen <= 3; gen++ {
+				newRevID = fmt.Sprintf("%d-initial", gen)
+				resp := activeRT.putNewEditsFalse(docID, newRevID, parentRevID, "{}")
+				parentRevID = newRevID
+				assert.True(t, resp.Ok)
+			}
+
+			replicationID := "replication"
+			activeRT.createReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePushAndPull, nil, true, test.conflictResolution)
+			activeRT.assertReplicationState(replicationID, db.ReplicationStateRunning)
+
+			assert.NoError(t, remoteRT.waitForRev(docID, newRevID))
+
+			response := activeRT.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=stop", "")
+			assertStatus(t, response, http.StatusOK)
+			activeRT.waitForReplicationStatus(replicationID, db.ReplicationStateStopped)
+
+			nextGen := 4
+
+			localGen := nextGen
+			localParentRevID := newRevID
+			newLocalRevID := fmt.Sprintf("%d-local", localGen)
+			resp := activeRT.putNewEditsFalse(docID, newLocalRevID, localParentRevID, `{"_attachments": {"attach": {"data":"aGVsbG8gd29ybGQ="}}}`)
+			assert.True(t, resp.Ok)
+			localParentRevID = newLocalRevID
+
+			localGen++
+			newLocalRevID = fmt.Sprintf("%d-local", localGen)
+			resp = activeRT.putNewEditsFalse(docID, newLocalRevID, localParentRevID, fmt.Sprintf(`{"_attachments": {"attach": {"stub": true, "revpos": %d, "digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`, localGen-1))
+			assert.True(t, resp.Ok)
+
+			remoteGen := nextGen
+			remoteParentRevID := newRevID
+			newRemoteRevID := fmt.Sprintf("%d-remote", remoteGen)
+			resp = remoteRT.putNewEditsFalse(docID, newRemoteRevID, remoteParentRevID, `{"_attachments": {"attach": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="}}}`)
+			assert.True(t, resp.Ok)
+			remoteParentRevID = newRemoteRevID
+
+			remoteGen++
+			newRemoteRevID = fmt.Sprintf("%d-remote", remoteGen)
+			resp = remoteRT.putNewEditsFalse(docID, newRemoteRevID, remoteParentRevID, fmt.Sprintf(`{"_attachments": {"attach": {"stub": true, "revpos": %d, "digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`, remoteGen-1))
+
+			response = activeRT.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=start", "")
+			assertStatus(t, response, http.StatusOK)
+
+			waitErr := activeRT.waitForRev(docID, test.expectedFinalRev)
+			assert.NoError(t, waitErr)
+			waitErr = remoteRT.waitForRev(docID, test.expectedFinalRev)
+			assert.NoError(t, waitErr)
+
+			localDoc := activeRT.getDoc(docID)
+			localRevID := localDoc.ExtractRev()
+
+			remoteDoc := remoteRT.getDoc(docID)
+			remoteRevID := remoteDoc.ExtractRev()
+
+			assert.Equal(t, localRevID, remoteRevID)
+			remoteRevpos := getTestRevpos(t, remoteDoc, "attach")
+			assert.Equal(t, test.expectedRevPos, remoteRevpos)
+
+			response = activeRT.SendAdminRequest("GET", "/db/"+docID+"/attach", "")
+			assert.Equal(t, test.expectedAttachmentContent, string(response.BodyBytes()))
 		})
 	}
 }

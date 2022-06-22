@@ -2,6 +2,7 @@ package rest
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -2956,4 +2957,67 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 	assert.Equal(t, float64(11), world["length"])
 	assert.Equal(t, float64(2), world["revpos"])
 	assert.Equal(t, true, world["stub"])
+}
+
+func TestUpdateExistingAttachment(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{})
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClient(t, rt)
+	assert.NoError(t, err)
+	defer btc.Close()
+
+	var doc1Body db.Body
+	var doc2Body db.Body
+
+	// Add doc1 and doc2
+	req := rt.SendAdminRequest("PUT", "/db/doc1", `{}`)
+	assertStatus(t, req, http.StatusCreated)
+	doc1Bytes := req.BodyBytes()
+	req = rt.SendAdminRequest("PUT", "/db/doc2", `{}`)
+	assertStatus(t, req, http.StatusCreated)
+	doc2Bytes := req.BodyBytes()
+
+	err = json.Unmarshal(doc1Bytes, &doc1Body)
+	assert.NoError(t, err)
+	err = json.Unmarshal(doc2Bytes, &doc2Body)
+	assert.NoError(t, err)
+
+	err = btc.StartOneshotPull()
+	assert.NoError(t, err)
+
+	_, ok := btc.WaitForRev("doc1", "1-ca9ad22802b66f662ff171f226211d5c")
+	require.True(t, ok)
+	_, ok = btc.WaitForRev("doc2", "1-ca9ad22802b66f662ff171f226211d5c")
+	require.True(t, ok)
+
+	attachmentAData := base64.StdEncoding.EncodeToString([]byte("attachmentA"))
+	attachmentBData := base64.StdEncoding.EncodeToString([]byte("attachmentB"))
+
+	revIDDoc1, err := btc.PushRev("doc1", doc1Body["rev"].(string), []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentAData+`"}}}`))
+	require.NoError(t, err)
+	revIDDoc2, err := btc.PushRev("doc2", doc2Body["rev"].(string), []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentBData+`"}}}`))
+	require.NoError(t, err)
+
+	err = rt.waitForRev("doc1", revIDDoc1)
+	assert.NoError(t, err)
+	err = rt.waitForRev("doc2", revIDDoc2)
+	assert.NoError(t, err)
+
+	doc1, err := rt.GetDatabase().GetDocument("doc1", db.DocUnmarshalAll)
+	_, err = rt.GetDatabase().GetDocument("doc2", db.DocUnmarshalAll)
+
+	revIDDoc1, err = btc.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=","length":11,"content_type":"","stub":true,"revpos":3}}}`))
+	require.NoError(t, err)
+
+	err = rt.waitForRev("doc1", revIDDoc1)
+	assert.NoError(t, err)
+
+	doc1, err = rt.GetDatabase().GetDocument("doc1", db.DocUnmarshalAll)
+	assert.NoError(t, err)
+
+	assert.Equal(t, "sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=", doc1.Attachments["attachment"].(map[string]interface{})["digest"])
+
+	req = rt.SendAdminRequest("GET", "/db/doc1/attachment", "")
+	assert.Equal(t, "attachmentB", string(req.BodyBytes()))
 }
