@@ -135,15 +135,27 @@ func (bh *blipHandler) handleQuery(rq *blip.Message) error {
 // - Request string is in the body of the request.
 // - Response JSON is returned in the body of the response in GraphQL format (including errors.)
 func (bh *blipHandler) handleGraphQL(rq *blip.Message) error {
-	body, err := rq.Body()
+	query, found := rq.Properties["query"]
+	if !found {
+		return base.HTTPErrorf(http.StatusBadRequest, "Missing 'query'")
+	}
+	operationName := rq.Properties["operationName"]
+
+	bodyBytes, err := rq.Body()
 	if err != nil {
 		return err
 	}
-	request := string(body)
-	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("request: %s", request))
-	result, err := bh.db.UserGraphQLQuery(request)
+	var variables map[string]interface{}
+	if len(bodyBytes) > 0 {
+		if err = json.Unmarshal(bodyBytes, &variables); err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, "Invalid body JSON")
+		}
+	}
+
+	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("query: %s", query))
+	result, err := bh.db.UserGraphQLQuery(query, operationName, variables, true)
 	if err != nil {
-		base.WarnfCtx(bh.loggingCtx, "Error running GraphQL query %q: %v", request, err)
+		base.WarnfCtx(bh.loggingCtx, "Error running GraphQL query %q: %v", query, err)
 		return base.HTTPErrorf(http.StatusInternalServerError, "Internal GraphQL error")
 	}
 	response := rq.Response()

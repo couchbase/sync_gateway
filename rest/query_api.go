@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -76,13 +77,55 @@ func (h *handler) handleUserQuery() error {
 	return nil
 }
 
-// HTTP handler for POST `/$db/_graphql`
+// HTTP handler for GET or POST `/$db/_graphql`
+// See <https://graphql.org/learn/serving-over-http/#http-methods-headers-and-body>
 func (h *handler) handleGraphQL() error {
-	query, err := h.readBody()
-	if err != nil {
-		return err
+	var queryString string
+	var operationName string
+	var variables map[string]interface{}
+	var err error
+	canMutate := false
+
+	if h.rq.Method == "POST" {
+		canMutate = true
+		if h.rq.Header.Get("Content-Type") == "application/graphql" {
+			// POST graphql data: Just read the query
+			query, err := h.readBody()
+			if err != nil {
+				return err
+			}
+			queryString = string(query)
+		} else {
+			// POST JSON: Get the "query", "operationName" and "variables" properties:
+			body, err := h.readJSON()
+			if err != nil {
+				return err
+			}
+			queryString = body["query"].(string)
+			operationName, _ = body["operationName"].(string)
+			if variablesVal, _ := body["variables"]; variablesVal != nil {
+				variables, _ = variablesVal.(map[string]interface{})
+				if variables == nil {
+					return base.HTTPErrorf(http.StatusBadRequest, "`variables` property must be an object")
+				}
+			}
+		}
+	} else {
+		// GET: Params come from the URL queries (`?query=...&operationName=...&variables=...`):
+		queryString = h.getQuery("query")
+		operationName = h.getQuery("operationName")
+		if varsJSON := h.getQuery("variables"); len(varsJSON) > 0 {
+			if err := json.Unmarshal([]byte(varsJSON), &variables); err != nil {
+				return err
+			}
+		}
 	}
-	result, err := h.db.UserGraphQLQuery(string(query))
+
+	if len(queryString) == 0 {
+		return base.HTTPErrorf(http.StatusBadRequest, "Missing/empty `query` property")
+	}
+
+	result, err := h.db.UserGraphQLQuery(queryString, operationName, variables, canMutate)
 	if err == nil {
 		h.writeJSON(result)
 	}

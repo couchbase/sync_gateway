@@ -136,13 +136,16 @@ func expandChannelPattern(queryName string, channelPattern string, params map[st
 type queryContextKey string
 
 var dbKey = queryContextKey("db")
+var mutAllowedKey = queryContextKey("mutAllowed")
 
 // Runs a GraphQL query on behalf of a user, presumably invoked via a REST or BLIP API.
-func (db *Database) UserGraphQLQuery(request string) (*graphql.Result, error) {
+func (db *Database) UserGraphQLQuery(query string, operationName string, variables map[string]interface{}, mutationAllowed bool) (*graphql.Result, error) {
 	params := graphql.Params{
 		Schema:        graphQLSchema(),
-		RequestString: request,
-		Context:       context.WithValue(db.Ctx, dbKey, db),
+		RequestString: query,
+		VariableValues: variables,
+		OperationName: operationName,
+		Context:       context.WithValue(context.WithValue(db.Ctx, dbKey, db), mutAllowedKey, mutationAllowed),
 	}
 	r := graphql.Do(params)
 	if len(r.Errors) > 0 {
@@ -331,6 +334,9 @@ func graphQLPutDoc(argName string, docType string, params graphql.ResolveParams)
 }
 
 func graphQLPutDocObject(body Body, docType string, params graphql.ResolveParams) (interface{}, error) {
+	if !params.Context.Value(mutAllowedKey).(bool) {
+		return nil, base.HTTPErrorf(http.StatusForbidden, "Can't mutate from a read-only request")
+	}
 	db, ok := params.Context.Value(dbKey).(*Database)
 	if !ok {
 		panic("No db in context")
@@ -364,6 +370,9 @@ func graphQLPutDocObject(body Body, docType string, params graphql.ResolveParams
 }
 
 func graphQLPutDocList(argName string, docType string, params graphql.ResolveParams) (interface{}, error) {
+	if !params.Context.Value(mutAllowedKey).(bool) {
+		return nil, base.HTTPErrorf(http.StatusForbidden, "Can't mutate from a read-only request")
+	}
 	objects, ok := params.Args[argName].([]interface{})
 	if (!ok) {
 		return nil, base.HTTPErrorf(http.StatusBadRequest, "%q arg is missing or wrong type", argName)
