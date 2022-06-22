@@ -4609,3 +4609,38 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 		})
 	}
 }
+
+func TestUnsubChanged(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	require.NoError(t, err)
+	defer btc.Close()
+
+	// Sub changes
+	err = btc.StartPull()
+	require.NoError(t, err)
+	resp := rt.updateDoc("doc1", "", `{"key":"val1"}`)
+	_, found := btc.WaitForRev("doc1", resp.Rev)
+	require.True(t, found)
+
+	// Unsub changes
+	unsubChangesRequest := blip.NewRequest()
+	unsubChangesRequest.SetProfile(db.MessageUnsubChanges)
+	err = btc.pullReplication.sendMsg(unsubChangesRequest)
+	require.NoError(t, err)
+	unsubChangesResponse := unsubChangesRequest.Response()
+	_, err = unsubChangesResponse.Body()
+	require.NoError(t, err)
+
+	// Confirm no more chnages being sent
+	resp = rt.updateDoc("doc2", "", `{"key":"val1"}`)
+	err = rt.WaitForConditionWithOptions(func() bool {
+		_, found = btc.GetRev("doc2", resp.Rev)
+		return found
+	}, 10, 100)
+	assert.Error(t, err)
+
+}

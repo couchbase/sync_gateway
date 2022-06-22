@@ -264,8 +264,8 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 }
 
 func (bh *blipHandler) handleUnsubChanges(rq *blip.Message) error {
-	return base.HTTPErrorf(http.StatusNotImplemented, "unsubChanges not implemented yet")
-	// TODO: Implement unsubChanges
+	bh.Close()
+	return nil
 }
 
 type clientType uint8
