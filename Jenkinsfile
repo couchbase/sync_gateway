@@ -19,6 +19,10 @@ pipeline {
         go '1.19.5'
     }
 
+    tools {
+        go '1.13.4'
+    }
+
     stages {
         stage('SCM') {
             steps {
