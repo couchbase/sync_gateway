@@ -2369,6 +2369,10 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	assert.Equal(t, subject, adminResult["name"])
 	assert.Equal(t, mockAuthServer.options.issuer, adminResult["oidc_issuer"])
 	assert.Equal(t, []interface{}{testChannelName}, adminResult["oidc_channels"])
+	assert.NotEmpty(t, adminResult["oidc_last_updated"])
+	// check it's a valid time
+	_, err = time.Parse(time.RFC3339Nano, adminResult["oidc_last_updated"].(string))
+	require.NoError(t, err)
 
 	// Now simulate deleting the provider from the config.
 	// Need to do this get-then-replace because of CBG-2122
