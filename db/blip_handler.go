@@ -322,7 +322,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 		ActiveOnly:  opts.activeOnly,
 		Revocations: opts.revocations,
 		Terminator:  bh.BlipSyncContext.terminator,
-		Ctx:         bh.loggingCtx,
+		LoggingCtx:  bh.loggingCtx,
 		clientType:  opts.clientType,
 		ChangesCtx:  bh.BlipSyncContext.changesCtx,
 	}

@@ -38,7 +38,7 @@ type ChangesOptions struct {
 	ActiveOnly  bool            // If true, only return information on non-deleted, non-removed revisions
 	Revocations bool            // Specifies whether revocation messages should be sent on the changes feed
 	clientType  clientType      // Can be used to determine if the replication is being started from a CBL 2.x or SGR2 client
-	Ctx         context.Context // Used for adding context to logs
+	LoggingCtx  context.Context // Used for adding context to logs
 	ChangesCtx  context.Context // Used for cancelling checking the changes feed should stop
 }
 
@@ -401,7 +401,7 @@ func (db *Database) changesFeed(singleChannelCache SingleChannelCache, options C
 				paginationOptions.Limit = base.MinInt(remainingLimit, queryLimit)
 			}
 
-			// TODO: pass db.Ctx down to changeCache?
+			// TODO: pass db.LoggingCtx down to changeCache?
 			base.TracefCtx(db.Ctx, base.KeyChanges, "Querying channel %q with options: %+v", base.UD(singleChannelCache.ChannelName()), paginationOptions)
 			changes, err := singleChannelCache.GetChanges(paginationOptions)
 			if err != nil {

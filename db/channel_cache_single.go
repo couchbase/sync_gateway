@@ -371,10 +371,10 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 	cacheValidFrom, resultFromCache := c.GetCachedChanges(options)
 	numFromCache := len(resultFromCache)
 	if numFromCache > 0 {
-		base.InfofCtx(options.Ctx, base.KeyCache, "GetCachedChanges(%q, %s) --> %d changes valid from #%d",
+		base.InfofCtx(options.LoggingCtx, base.KeyCache, "GetCachedChanges(%q, %s) --> %d changes valid from #%d",
 			base.UD(c.channelName), options.Since.String(), numFromCache, cacheValidFrom)
 	} else {
-		base.DebugfCtx(options.Ctx, base.KeyCache, "GetCachedChanges(%q, %s) --> nothing cached",
+		base.DebugfCtx(options.LoggingCtx, base.KeyCache, "GetCachedChanges(%q, %s) --> nothing cached",
 			base.UD(c.channelName), options.Since.String())
 	}
 	startSeq := options.Since.SafeSequence() + 1
@@ -395,7 +395,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 	// the cache, so repeat the above:
 	cacheValidFrom, resultFromCache = c.GetCachedChanges(options)
 	if len(resultFromCache) > numFromCache {
-		base.InfofCtx(options.Ctx, base.KeyCache, "2nd GetCachedChanges(%q, %s) got %d more, valid from #%d!",
+		base.InfofCtx(options.LoggingCtx, base.KeyCache, "2nd GetCachedChanges(%q, %s) got %d more, valid from #%d!",
 			base.UD(c.channelName), options.Since.String(), len(resultFromCache)-numFromCache, cacheValidFrom)
 	}
 	if cacheValidFrom <= startSeq {
@@ -416,7 +416,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 	// overlap, which helps confirm that we've got everything.
 	c.cacheStats.ChannelCacheMisses.Add(1)
 	endSeq := cacheValidFrom
-	resultFromQuery, err := c.queryHandler.getChangesInChannelFromQuery(options.Ctx, c.channelName, startSeq, endSeq, options.Limit, options.ActiveOnly)
+	resultFromQuery, err := c.queryHandler.getChangesInChannelFromQuery(options.LoggingCtx, c.channelName, startSeq, endSeq, options.Limit, options.ActiveOnly)
 	if err != nil {
 		return nil, err
 	}
@@ -448,7 +448,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 		}
 		result = append(result, resultFromCache[0:n]...)
 	}
-	base.InfofCtx(options.Ctx, base.KeyCache, "GetChangesInChannel(%q) --> %d rows", base.UD(c.channelName), len(result))
+	base.InfofCtx(options.LoggingCtx, base.KeyCache, "GetChangesInChannel(%q) --> %d rows", base.UD(c.channelName), len(result))
 
 	return result, nil
 }
@@ -839,7 +839,7 @@ type bypassChannelCache struct {
 func (b *bypassChannelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 	startSeq := options.Since.SafeSequence() + 1
 	endSeq := uint64(math.MaxUint64)
-	return b.queryHandler.getChangesInChannelFromQuery(options.Ctx, b.channelName, startSeq, endSeq, options.Limit, options.ActiveOnly)
+	return b.queryHandler.getChangesInChannelFromQuery(options.LoggingCtx, b.channelName, startSeq, endSeq, options.Limit, options.ActiveOnly)
 }
 
 // No cached changes for bypassChannelCache
