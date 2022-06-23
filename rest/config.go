@@ -717,12 +717,21 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 			if strings.Contains(name, "_") {
 				multiError = multiError.Append(fmt.Errorf("OpenID Connect provider names cannot contain underscore: %s", name))
 				validProviders--
+				continue
 			}
 			if _, ok := seenIssuers[oidc.Issuer]; ok {
 				multiError = multiError.Append(fmt.Errorf("duplicate OIDC/JWT issuer: %s", oidc.Issuer))
 				validProviders--
+				continue
 			} else {
 				seenIssuers.Add(oidc.Issuer)
+			}
+			if validateOIDCConfig {
+				_, _, err := oidc.DiscoverConfig(ctx)
+				if err != nil {
+					multiError = multiError.Append(fmt.Errorf("failed to validate OIDC configuration for %s: %w", name, err))
+					validProviders--
+				}
 			}
 		}
 		if validProviders == 0 {
