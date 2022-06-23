@@ -268,7 +268,6 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 }
 
 func (bh *blipHandler) handleUnsubChanges(rq *blip.Message) error {
-	fmt.Println("Unsubscribing from changes")
 	bh.changesCtxCancel()
 	return nil
 }
