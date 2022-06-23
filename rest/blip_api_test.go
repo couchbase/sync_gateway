@@ -4635,7 +4635,7 @@ func TestUnsubChanged(t *testing.T) {
 	_, err = unsubChangesResponse.Body()
 	require.NoError(t, err)
 
-	// Confirm no more chnages being sent
+	// Confirm no more changes being sent
 	resp = rt.updateDoc("doc2", "", `{"key":"val1"}`)
 	err = rt.WaitForConditionWithOptions(func() bool {
 		_, found = btc.GetRev("doc2", resp.Rev)
@@ -4643,6 +4643,7 @@ func TestUnsubChanged(t *testing.T) {
 	}, 10, 100)
 	assert.Error(t, err)
 
+	// Confirm the pull replication can be restarted and it sync doc2
 	err = btc.StartPull()
 	require.NoError(t, err)
 	_, found = btc.WaitForRev("doc2", resp.Rev)
