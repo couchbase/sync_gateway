@@ -193,14 +193,14 @@ func TestOIDCUsername(t *testing.T) {
 
 	// test username suffix
 	identity := Identity{Subject: "bernard"}
-	oidcUsername, err := getOIDCUsername(&provider, &identity)
+	oidcUsername, err := getOIDCUsername(provider.common(), &identity)
 	assert.NoError(t, err, "Error retrieving OpenID Connect username")
 	assert.Equal(t, "www.someprovider.com_bernard", oidcUsername)
 	assert.Equal(t, true, IsValidPrincipalName(oidcUsername))
 
 	// test char escaping
 	identity.Subject = "{bernard}"
-	oidcUsername, err = getOIDCUsername(&provider, &identity)
+	oidcUsername, err = getOIDCUsername(provider.common(), &identity)
 	assert.NoError(t, err, "Error retrieving OpenID Connect username")
 	assert.Equal(t, "www.someprovider.com_%7Bbernard%7D", oidcUsername)
 	assert.Equal(t, true, IsValidPrincipalName(oidcUsername))
@@ -1231,7 +1231,7 @@ func TestOIDCRolesChannels(t *testing.T) {
 					Claims:  login.claims,
 				}
 				var updates PrincipalConfig
-				user, updates, _, err = auth.authenticateOIDCIdentity(identity, provider)
+				user, updates, _, err = auth.authenticateJWTIdentity(identity, provider.common())
 				require.NoError(t, err, "error on authenticateOIDCIdentity")
 				require.NotNil(t, user, "nil user")
 				user.SetOIDCChannels(ch.AtSequence(updates.OIDCChannels, user.Sequence()), user.Sequence())

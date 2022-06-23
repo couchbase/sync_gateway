@@ -128,6 +128,7 @@ type DatabaseContextOptions struct {
 	AdminInterface                *string
 	UnsupportedOptions            *UnsupportedOptions
 	OIDCOptions                   *auth.OIDCOptions
+	LocalJWTConfig                auth.LocalJWTConfig
 	DBOnlineCallback              DBOnlineCallback // Callback function to take the DB back online
 	ImportOptions                 ImportOptions
 	EnableXattr                   bool             // Use xattr for _sync

@@ -786,6 +786,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		AdminInterface:                &sc.config.API.AdminInterface,
 		UnsupportedOptions:            config.Unsupported,
 		OIDCOptions:                   config.OIDCConfig,
+		LocalJWTConfig:                config.LocalJWTConfig,
 		DBOnlineCallback:              dbOnlineCallback,
 		ImportOptions:                 importOptions,
 		EnableXattr:                   config.UseXattrs(),

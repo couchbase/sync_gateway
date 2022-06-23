@@ -414,7 +414,7 @@ func (op *OIDCProvider) standardDiscovery(ctx context.Context, discoveryURL stri
 }
 
 // getOIDCUsername returns the username to be used as the Sync Gateway username.
-func getOIDCUsername(provider *OIDCProvider, identity *Identity) (username string, err error) {
+func getOIDCUsername(provider JWTConfigCommon, identity *Identity) (username string, err error) {
 	if provider.UsernameClaim != "" {
 		value, ok := identity.Claims[provider.UsernameClaim]
 		if !ok {
@@ -614,6 +614,35 @@ func (metadata *ProviderMetadata) endpoint() oauth2.Endpoint {
 		AuthURL:  metadata.AuthorizationEndpoint,
 		TokenURL: metadata.TokenEndpoint,
 	}
+}
+
+func (op *OIDCProvider) verifyToken(ctx context.Context, token string, callbackURLFunc OIDCCallbackURLFunc) (*Identity, error) {
+	// Get client for issuer
+	client, err := op.GetClient(ctx, callbackURLFunc)
+	if err != nil {
+		return nil, fmt.Errorf("OIDC initialization error: %w", err)
+	}
+
+	// Verify claims and signature on the JWT; ensure that it's been signed by the provider.
+	idToken, err := client.verifyJWT(token)
+	if err != nil {
+		base.DebugfCtx(ctx, base.KeyAuth, "Client %v could not verify JWT. Error: %v", base.UD(client), err)
+		return nil, err
+	}
+
+	identity, ok, err := getIdentity(idToken)
+	if err != nil {
+		base.DebugfCtx(ctx, base.KeyAuth, "Error getting identity from token (Identity: %v, Error: %v)", base.UD(identity), err)
+	}
+	if !ok {
+		return nil, err
+	}
+
+	return identity, nil
+}
+
+func (op *OIDCProvider) common() JWTConfigCommon {
+	return op.JWTConfigCommon
 }
 
 // getIssuerWithAudience returns "issuer" and "audiences" claims from the given JSON Web Token.

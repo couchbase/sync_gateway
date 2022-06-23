@@ -19,7 +19,6 @@ import (
 	ch "github.com/couchbase/sync_gateway/channels"
 	pkgerrors "github.com/pkg/errors"
 	"golang.org/x/crypto/bcrypt"
-	"gopkg.in/square/go-jose.v2/jwt"
 )
 
 /** Manages user authentication for a database. */
@@ -623,80 +622,6 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) (U
 	return user, nil
 }
 
-// Authenticates a user based on a JWT token string and a set of providers.  Attempts to match the
-// issuer in the token with a provider.
-// Used to authenticate a JWT token coming from an insecure source (e.g. client request)
-// If the token is validated but the user for the username defined in the subject claim doesn't exist,
-// creates the user when autoRegister=true.
-func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDCProviderMap, callbackURLFunc OIDCCallbackURLFunc) (User, PrincipalConfig, error) {
-
-	base.DebugfCtx(auth.LogCtx, base.KeyAuth, "AuthenticateUntrustedJWT called with token: %s", base.UD(token))
-	var provider *OIDCProvider
-	var issuer string
-
-	provider, ok := providers.getProviderWhenSingle()
-
-	if !ok {
-		// Parse JWT (needed to determine issuer/provider)
-		jwt, err := jwt.ParseSigned(token)
-		if err != nil {
-			base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error parsing JWT in AuthenticateUntrustedJWT: %v", err)
-			return nil, PrincipalConfig{}, err
-		}
-
-		// Extract issuer and audience(s) from JSON Web Token.
-		var audiences []string
-		issuer, audiences, err = getIssuerWithAudience(jwt)
-		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "JWT issuer: %v, audiences: %v", base.UD(issuer), base.UD(audiences))
-		if err != nil {
-			base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error getting issuer and audience from token: %v", err)
-			return nil, PrincipalConfig{}, err
-		}
-
-		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Call GetProviderForIssuer w/ providers: %+v", base.UD(providers))
-		provider = providers.GetProviderForIssuer(auth.LogCtx, issuer, audiences)
-		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Provider for issuer: %+v", base.UD(provider))
-	}
-
-	if provider == nil {
-		return nil, PrincipalConfig{}, base.RedactErrorf("No provider found for issuer %v", base.UD(issuer))
-	}
-
-	identity, verifyErr := verifyToken(auth.LogCtx, token, provider, callbackURLFunc)
-	if verifyErr != nil {
-		return nil, PrincipalConfig{}, verifyErr
-	}
-	user, updates, _, err := auth.authenticateOIDCIdentity(identity, provider)
-	return user, updates, err
-}
-
-// verifyToken verifies claims and signature on the token; ensure that it's been signed by the provider.
-// Returns identity claims extracted from the token if the verification is successful and an identity error if not.
-func verifyToken(ctx context.Context, token string, provider *OIDCProvider, callbackURLFunc OIDCCallbackURLFunc) (identity *Identity, err error) {
-	// Get client for issuer
-	client, err := provider.GetClient(ctx, callbackURLFunc)
-	if err != nil {
-		return nil, fmt.Errorf("OIDC initialization error: %w", err)
-	}
-
-	// Verify claims and signature on the JWT; ensure that it's been signed by the provider.
-	idToken, err := client.verifyJWT(token)
-	if err != nil {
-		base.DebugfCtx(ctx, base.KeyAuth, "Client %v could not verify JWT. Error: %v", base.UD(client), err)
-		return nil, err
-	}
-
-	identity, ok, err := getIdentity(idToken)
-	if err != nil {
-		base.DebugfCtx(ctx, base.KeyAuth, "Error getting identity from token (Identity: %v, Error: %v)", base.UD(identity), err)
-	}
-	if !ok {
-		return nil, err
-	}
-
-	return identity, nil
-}
-
 // Authenticates a user based on a JWT token obtained directly from a provider (auth code flow, refresh flow).
 // Verifies the token claims, but doesn't require signature verification if allow_unsigned_provider_tokens is enabled.
 // If the token is validated but the user for the username defined in the subject claim doesn't exist,
@@ -716,18 +641,18 @@ func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCPr
 	} else {
 		// Verify claims and signature on the JWT.
 		var verifyErr error
-		identity, verifyErr = verifyToken(auth.LogCtx, token, provider, callbackURLFunc)
+		identity, verifyErr = provider.verifyToken(auth.LogCtx, token, callbackURLFunc)
 		if verifyErr != nil {
 			return nil, PrincipalConfig{}, time.Time{}, verifyErr
 		}
 	}
 
-	return auth.authenticateOIDCIdentity(identity, provider)
+	return auth.authenticateJWTIdentity(identity, provider.JWTConfigCommon)
 }
 
 // authenticateOIDCIdentity obtains a Sync Gateway User for the JWT. Expects that the JWT has already been verified for OIDC compliance.
 // TODO: possibly move this function to oidc.go
-func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider *OIDCProvider) (user User, updates PrincipalConfig, tokenExpiry time.Time, err error) {
+func (auth *Authenticator) authenticateJWTIdentity(identity *Identity, provider JWTConfigCommon) (user User, updates PrincipalConfig, tokenExpiry time.Time, err error) {
 	// Note: any errors returned from this function will be converted to 403s with a generic message, so we need to
 	// separately log them to ensure they're preserved for debugging.
 	if identity == nil || identity.Subject == "" {

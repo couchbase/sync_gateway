@@ -457,7 +457,7 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 	if dbCtx.Options.OIDCOptions != nil {
 		if token := h.getBearerToken(); token != "" {
 			var updates auth.PrincipalConfig
-			h.user, updates, err = dbCtx.Authenticator(h.ctx()).AuthenticateUntrustedJWT(token, dbCtx.OIDCProviders, h.getOIDCCallbackURL)
+			h.user, updates, err = dbCtx.Authenticator(h.ctx()).AuthenticateUntrustedJWT(token, dbCtx.OIDCProviders, dbCtx.Options.LocalJWTConfig, h.getOIDCCallbackURL)
 			if h.user == nil || err != nil {
 				return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 			}
