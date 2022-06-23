@@ -483,7 +483,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 		for name, provider := range options.OIDCOptions.Providers {
 			if provider.Issuer == "" || base.StringDefault(provider.ClientID, "") == "" {
-				// TODO: this duplicates a check in DbConfig.validate to avoid a BWC issue
+				// TODO: this duplicates a check in DbConfig.validate to avoid a backwards compatibility issue
 				base.WarnfCtx(logCtx, "Issuer and Client ID not defined for provider %q - skipping", base.UD(name))
 				continue
 			}
