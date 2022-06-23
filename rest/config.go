@@ -700,7 +700,7 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		}
 	}
 
-	seenIssuers := base.SetOf()
+	seenIssuers := base.Set{}
 	if dbConfig.OIDCConfig != nil {
 		validProviders := len(dbConfig.OIDCConfig.Providers)
 		for name, oidc := range dbConfig.OIDCConfig.Providers {
