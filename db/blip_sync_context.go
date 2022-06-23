@@ -98,6 +98,8 @@ type BlipSyncContext struct {
 	replicationStats                 *BlipSyncStats                            // Replication stats
 	purgeOnRemoval                   bool                                      // Purges the document when we pull a _removed:true revision.
 	conflictResolver                 *ConflictResolver                         // Conflict resolver for active replications
+	changesCtx                       context.Context                           // Used for the unsub changes Blip message to check if the subChanges feed should stop
+	changesCtxCancel                 context.CancelFunc                        // Cancel function for changesCtx to cancel subChanges being sent
 	changesPendingResponseCount      int64                                     // Number of changes messages pending changesResponse
 	// TODO: For review, whether sendRevAllConflicts needs to be per sendChanges invocation
 	sendRevNoConflicts bool                      // Whether to set noconflicts=true when sending revisions

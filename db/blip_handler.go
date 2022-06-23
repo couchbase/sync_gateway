@@ -184,6 +184,10 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
 	bh.gotSubChanges = true
 
+	// Context to cancel subchanges from being sent
+	changesCtx := context.Background()
+	bh.changesCtx, bh.changesCtxCancel = context.WithCancel(changesCtx)
+
 	defaultSince := bh.db.CreateZeroSinceValue()
 	latestSeq := func() (SequenceID, error) {
 		seq, err := bh.db.LastSequence()
@@ -264,7 +268,8 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 }
 
 func (bh *blipHandler) handleUnsubChanges(rq *blip.Message) error {
-	bh.Close()
+	fmt.Println("Unsubscribing from changes")
+	bh.changesCtxCancel()
 	return nil
 }
 
@@ -319,6 +324,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 		Terminator:  bh.BlipSyncContext.terminator,
 		Ctx:         bh.loggingCtx,
 		clientType:  opts.clientType,
+		ChangesCtx:  bh.BlipSyncContext.changesCtx,
 	}
 
 	channelSet := opts.channels

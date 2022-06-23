@@ -39,6 +39,7 @@ type ChangesOptions struct {
 	Revocations bool            // Specifies whether revocation messages should be sent on the changes feed
 	clientType  clientType      // Can be used to determine if the replication is being started from a CBL 2.x or SGR2 client
 	Ctx         context.Context // Used for adding context to logs
+	ChangesCtx  context.Context // Used for cancelling checking the changes feed should stop
 }
 
 // A changes entry; Database.GetChanges returns an array of these.
@@ -1305,7 +1306,12 @@ func generateBlipSyncChanges(database *Database, inChannels base.Set, options Ch
 
 	// Store one-shot here to protect
 	isOneShot := !options.Continuous
-	err, forceClose = GenerateChanges(context.Background(), database, inChannels, options, docIDFilter, send)
+	// Use the context if provided in the options
+	ctx := options.ChangesCtx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	err, forceClose = GenerateChanges(ctx, database, inChannels, options, docIDFilter, send)
 
 	if _, ok := err.(*ChangesSendErr); ok {
 		return nil, forceClose // error is probably because the client closed the connection

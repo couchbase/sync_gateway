@@ -4643,4 +4643,8 @@ func TestUnsubChanged(t *testing.T) {
 	}, 10, 100)
 	assert.Error(t, err)
 
+	err = btc.StartPull()
+	require.NoError(t, err)
+	_, found = btc.WaitForRev("doc2", resp.Rev)
+	assert.True(t, found)
 }
