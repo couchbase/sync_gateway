@@ -79,13 +79,16 @@ type LocalJWTAuthProvider struct {
 func (l *LocalJWTAuthProvider) verifyToken(ctx context.Context, token string, _ OIDCCallbackURLFunc) (*Identity, error) {
 	jws, err := jose.ParseSigned(token)
 	if err != nil {
+		base.DebugfCtx(ctx, base.KeyAuth, "Rejecting JWT - failed to parse: %v", err)
 		return nil, err
 	}
 	switch len(jws.Signatures) {
 	case 0:
+		base.DebugfCtx(ctx, base.KeyAuth, "Rejecting JWT - not signed")
 		return nil, fmt.Errorf("JWT not signed")
 	case 1:
 	default:
+		base.DebugfCtx(ctx, base.KeyAuth, "Rejecting JWT - multiple signatures on JWT not supported")
 		return nil, fmt.Errorf("multiple signatures on JWT not supported")
 	}
 	sig := jws.Signatures[0]
@@ -100,6 +103,7 @@ func (l *LocalJWTAuthProvider) verifyToken(ctx context.Context, token string, _ 
 		}
 	}
 	if !algSupported {
+		base.DebugfCtx(ctx, base.KeyAuth, "Rejecting JWT - algorithm %q not supported", base.UD(alg))
 		return nil, fmt.Errorf("unsupported signing algorithm")
 	}
 
@@ -115,32 +119,42 @@ func (l *LocalJWTAuthProvider) verifyToken(ctx context.Context, token string, _ 
 		}
 	}
 	if key == nil {
+		base.DebugfCtx(ctx, base.KeyAuth, "Rejecting JWT - no matching key")
 		return nil, fmt.Errorf("no matching key")
 	}
 	if key.Algorithm != alg {
+		base.DebugfCtx(ctx, base.KeyAuth, "Rejecting JWT - key alg mismatch (expected %v got %v)", base.UD(alg), base.UD(key.Algorithm))
 		return nil, fmt.Errorf("key alg mismatch (expected %s got %s)", alg, key.Algorithm)
 	}
 	if key.Use != "" && key.Use != "sig" {
+		base.DebugfCtx(ctx, base.KeyAuth, "Rejecting JWT - invalid key 'use' (%q)", base.UD(key.Use))
 		return nil, fmt.Errorf("invalid key use")
 	}
 
 	rawPayload, err := jws.Verify(key.Key)
 	if err != nil {
-		return nil, err
+		base.DebugfCtx(ctx, base.KeyAuth, "Rejecting JWT - invalid signature: %v", err)
+		return nil, fmt.Errorf("invalid JWT signature: %w", err)
 	}
 
 	identityJSON, err := UnmarshalIdentityJSON(rawPayload)
 	if err != nil {
-		return nil, err
+		base.DebugfCtx(ctx, base.KeyAuth, "Rejecting JWT - failed to parse payload: %v", err)
+		return nil, fmt.Errorf("invalid JWT payload: %w", err)
 	}
 
-	if err := identityJSON.ToClaims().Validate(jwt.Expected{
-		Issuer:   l.Issuer,
-		Audience: jwt.Audience{*l.ClientID},
-		Time:     time.Now(),
-	}); err != nil {
+	expected := jwt.Expected{
+		Issuer: l.Issuer,
+		Time:   time.Now(),
+	}
+	if *l.ClientID != "" {
+		expected.Audience = jwt.Audience{*l.ClientID}
+	}
+	if err := identityJSON.ToClaims().Validate(expected); err != nil {
+		base.DebugfCtx(ctx, base.KeyAuth, "Rejecting JWT - invalid: %v", err)
 		return nil, err
 	}
+	base.DebugfCtx(ctx, base.KeyAuth, "JWT successfully parsed and validated (issuer %q, subject %q)", base.UD(identityJSON.Issuer), base.UD(identityJSON.Subject))
 
 	return &Identity{
 		Issuer:   identityJSON.Issuer,
