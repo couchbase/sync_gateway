@@ -52,6 +52,11 @@ export DONT_STRIP=1
 rm -rf %{buildroot}
 mkdir -p %{buildroot}@@PREFIX@@
 gtar cf - * | (cd %{buildroot}@@PREFIX@@ ; gtar xf -)
+extra_files=%{buildroot}/extra.list
+touch %{extra_files}
+if [ -f %{buildroot}@@PREFIX@@/notices.txt ]; then
+echo @@PREFIX@@/notices.txt > %{extra_files}
+fi
 
 %clean
 
@@ -189,7 +194,7 @@ EOF
 
 exit 0
 
-%files
+%files -f %{extra_files}
 %defattr(-,bin,bin,-)
 
 # Directory structure
