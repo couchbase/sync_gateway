@@ -120,6 +120,7 @@ type DatabaseContext struct {
 	ServeInsecureAttachmentTypes bool                     // Attachment content type will bypass the content-disposition handling, default false
 	NoX509HTTPClient             *http.Client             // A HTTP Client from gocb to use the management endpoints
 	ServerContextHasStarted      chan struct{}            // Closed via PostStartup once the server has fully started
+	graphQL                      *GraphQL                 // GraphQL query evaluator
 }
 
 type DatabaseContextOptions struct {
@@ -619,6 +620,13 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	dbContext.ResyncManager = NewResyncManager()
 	dbContext.TombstoneCompactionManager = NewTombstoneCompactionManager()
 	dbContext.AttachmentCompactionManager = NewAttachmentCompactionManager(bucket)
+
+	if options.GraphQL != nil {
+		dbContext.graphQL, err = NewGraphQL(dbContext)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	return dbContext, nil
 }

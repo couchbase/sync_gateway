@@ -21,88 +21,97 @@ import (
 	"github.com/graphql-go/graphql"
 )
 
+type gqContextKey string
 
-type queryContextKey string
+var dbKey = gqContextKey("db")                 // Context key to access the Database instance
+var mutAllowedKey = gqContextKey("mutAllowed") // Context key to access `mutationAllowed`
 
-var dbKey = queryContextKey("db")
-var mutAllowedKey = queryContextKey("mutAllowed")
-var _graphQLSchema *graphql.Schema
+// GraphQL query handler for a Database.
+type GraphQL struct {
+	dbc    *DatabaseContext
+	schema graphql.Schema // The compiled GraphQL schema object
+}
 
-// Runs a GraphQL query on behalf of a user, presumably invoked via a REST or BLIP API.
+// Top-level public method to run a GraphQL query on a Database.
 func (db *Database) UserGraphQLQuery(query string, operationName string, variables map[string]interface{}, mutationAllowed bool) (*graphql.Result, error) {
-	if db.Options.GraphQL == nil {
+	if db.graphQL == nil {
 		return nil, base.HTTPErrorf(http.StatusServiceUnavailable, "GraphQL is not configured")
 	}
-	logCtx := context.TODO()
-	schema, err := db.getGraphQLSchema()
-	if err != nil {
-		base.WarnfCtx(logCtx, "GraphQL schema compilation error: %+v", err)
-		return nil, base.HTTPErrorf(http.StatusInternalServerError, "Server GraphQL configuration error")
+	return db.graphQL.Query(db, query, operationName, variables, mutationAllowed)
+}
+
+// Creates a new GraphQL instance for this DatabaseContext, using the config from `dbc.Options`.
+func NewGraphQL(dbc *DatabaseContext) (*GraphQL, error) {
+	gq := &GraphQL{
+		dbc: dbc,
 	}
-	params := graphql.Params{
-		Schema:         *schema,
+	opts := dbc.Options.GraphQL
+
+	// Get the schema source, from either `schema` or `schemaFile`:
+	var schemaSource string
+	if opts.Schema != nil {
+		if opts.SchemaFile != nil {
+			return nil, fmt.Errorf("Config error in `graphql`: Only one of `schema` and `schemaFile` may be used")
+		}
+		schemaSource = *opts.Schema
+	} else {
+		if opts.SchemaFile == nil {
+			return nil, fmt.Errorf("Config error in `graphql`: Either `schema` or `schemaFile` must be defined")
+		}
+		src, err := os.ReadFile(*opts.SchemaFile)
+		if err != nil {
+			return nil, fmt.Errorf("Config error in `graphql`: Can't read schemaFile %s", *opts.SchemaFile)
+		}
+		schemaSource = string(src)
+	}
+
+	// Assemble the resolvers:
+	resolvers := map[string]interface{}{}
+	for name, resolver := range opts.Resolvers {
+		fieldMap := map[string]*gqltools.FieldResolve{}
+		for fieldName, jsCode := range resolver {
+			if fn, err := gq.compileResolver(name, fieldName, jsCode); err == nil {
+				fieldMap[fieldName] = &gqltools.FieldResolve{Resolve: fn}
+			} else {
+				return nil, err
+			}
+		}
+		resolvers[name] = &gqltools.ObjectResolver{Fields: fieldMap}
+	}
+
+	// Now compile the schema and create the graphql.Schema object:
+	var err error
+	gq.schema, err = gqltools.MakeExecutableSchema(gqltools.ExecutableSchema{
+		TypeDefs:  schemaSource,
+		Resolvers: resolvers,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return gq, nil
+}
+
+// Runs a GraphQL query on behalf of a user, presumably invoked via a REST or BLIP API.
+func (gq *GraphQL) Query(db *Database, query string, operationName string, variables map[string]interface{}, mutationAllowed bool) (*graphql.Result, error) {
+	ctx := context.WithValue(db.Ctx, dbKey, db)
+	ctx = context.WithValue(ctx, mutAllowedKey, mutationAllowed)
+	result := graphql.Do(graphql.Params{
+		Schema:         gq.schema,
 		RequestString:  query,
 		VariableValues: variables,
 		OperationName:  operationName,
-		Context:        context.WithValue(context.WithValue(db.Ctx, dbKey, db), mutAllowedKey, mutationAllowed),
+		Context:        ctx,
+	})
+	if len(result.Errors) > 0 {
+		// ??? Is this worth logging?
+		base.WarnfCtx(ctx, "GraphQL query produced errors: %+v", result.Errors)
 	}
-	r := graphql.Do(params)
-	if len(r.Errors) > 0 {
-		base.WarnfCtx(logCtx, "GraphQL query failed with error: %+v", r.Errors)
-	}
-	return r, nil
-}
-
-func (db *Database) getGraphQLSchema() (*graphql.Schema, error) {
-	if _graphQLSchema == nil {
-		// Get the schema source, from either `schema` or `schemaFile`:
-		var schemaSource string
-		if db.Options.GraphQL.Schema != nil {
-			if db.Options.GraphQL.SchemaFile != nil {
-				return nil, fmt.Errorf("Only one of `schema` and `schemaFile` may be used")
-			}
-			schemaSource = *db.Options.GraphQL.Schema
-		} else {
-			if db.Options.GraphQL.SchemaFile == nil {
-				return nil, fmt.Errorf("Either `schema` or `schemaFile` must be defined")
-			}
-			src, err := os.ReadFile(*db.Options.GraphQL.SchemaFile)
-			if err != nil {
-				return nil, fmt.Errorf("Can't read graphql.schemaFile %s", *db.Options.GraphQL.SchemaFile)
-			}
-			schemaSource = string(src)
-		}
-
-		// Assemble the resolvers:
-		resolvers := map[string]interface{}{}
-		for name, resolver := range db.Options.GraphQL.Resolvers {
-			fieldMap := map[string]*gqltools.FieldResolve{}
-			for fieldName, jsCode := range resolver {
-				if fn, err := db.compileResolver(name, fieldName, jsCode); err == nil {
-					fieldMap[fieldName] = &gqltools.FieldResolve{Resolve: fn}
-				} else {
-					return nil, err
-				}
-			}
-			resolvers[name] = &gqltools.ObjectResolver{Fields: fieldMap}
-		}
-
-		// Now generate the Schema object:
-		schema, err := gqltools.MakeExecutableSchema(gqltools.ExecutableSchema{
-			TypeDefs:  schemaSource,
-			Resolvers: resolvers,
-		})
-		if err != nil {
-			return nil, err
-		}
-		_graphQLSchema = &schema
-	}
-	return _graphQLSchema, nil
+	return result, nil
 }
 
 //////////////////// RESOLVERS ///////////////////////////
 
-func (db *Database) compileResolver(resolverName string, fieldName string, jsCode string) (graphql.FieldResolveFn, error) {
+func (gq *GraphQL) compileResolver(resolverName string, fieldName string, jsCode string) (graphql.FieldResolveFn, error) {
 	// TODO: This is where the hackiness lives. We ignore the JS code and just return a hardcoded
 	// resolver function based on the name.
 	//fmt.Printf("*** 'Compiling' GraphQL resolver %s.%s: %s\n", resolverName, fieldName, jsCode)
@@ -110,25 +119,25 @@ func (db *Database) compileResolver(resolverName string, fieldName string, jsCod
 	case "Query":
 		switch fieldName {
 		case "airline":
-			return resolveByDocID("airline")
+			return gq.resolveByDocID("airline")
 		case "airport":
-			return resolveByDocID("airport")
+			return gq.resolveByDocID("airport")
 		case "hotel":
-			return resolveByDocID("hotel")
+			return gq.resolveByDocID("hotel")
 		case "route":
-			return resolveByDocID("route")
+			return gq.resolveByDocID("route")
 		case "airports":
-			return resolveToListByN1QL("SELECT ts.*,  meta().id FROM $_keyspace AS ts WHERE type=\"airport\" and city=$city")
+			return gq.resolveToListByN1QL("SELECT ts.*,  meta().id FROM $_keyspace AS ts WHERE type=\"airport\" and city=$city")
 		}
 
 	case "Route":
 		switch fieldName {
 		case "airline":
-			return resolveJoinProperty("airline", "airline", "iata")
+			return gq.resolveJoinProperty("airline", "airline", "iata")
 		case "sourceairport":
-			return resolveJoinProperty("sourceairport", "airport", "faa")
+			return gq.resolveJoinProperty("sourceairport", "airport", "faa")
 		case "destinationairport":
-			return resolveJoinProperty("destinationairport", "airport", "faa")
+			return gq.resolveJoinProperty("destinationairport", "airport", "faa")
 		}
 
 	case "Mutation":
@@ -154,7 +163,7 @@ func saveAirports(params graphql.ResolveParams) (interface{}, error) {
 
 // Returns a resolver function that will return a document whose docID is given by the GraphQL
 // `id` parameter, and is of the given `docType`.
-func resolveByDocID(docType string) (graphql.FieldResolveFn, error) {
+func (gq *GraphQL) resolveByDocID(docType string) (graphql.FieldResolveFn, error) {
 	return func(params graphql.ResolveParams) (interface{}, error) {
 		return graphQLDocIDQuery(docType, params)
 	}, nil
@@ -162,7 +171,7 @@ func resolveByDocID(docType string) (graphql.FieldResolveFn, error) {
 
 // Returns a resolver function that will run a N1QL query, parameterized by the GraphQL arguments,
 // and return the results as a list/array.
-func resolveToListByN1QL(n1qlQuery string) (graphql.FieldResolveFn, error) {
+func (gq *GraphQL) resolveToListByN1QL(n1qlQuery string) (graphql.FieldResolveFn, error) {
 	return func(params graphql.ResolveParams) (interface{}, error) {
 		return graphQLListQuery(n1qlQuery, params)
 	}, nil
@@ -170,7 +179,7 @@ func resolveToListByN1QL(n1qlQuery string) (graphql.FieldResolveFn, error) {
 
 // Returns a resolver function that gets the value of the `sourceKey` key in the source object,
 // then uses that to look up a document of type `docType` whose `docKey` property matches it.
-func resolveJoinProperty(sourceKey string, docType string, docKey string) (graphql.FieldResolveFn, error) {
+func (gq *GraphQL) resolveJoinProperty(sourceKey string, docType string, docKey string) (graphql.FieldResolveFn, error) {
 	n1ql := fmt.Sprintf("SELECT db.*,  meta().id FROM $_keyspace AS db WHERE type=%q and `%s`=$VALUE", docType, docKey)
 	return func(params graphql.ResolveParams) (interface{}, error) {
 		value, found := params.Source.(Body)[sourceKey].(string)
