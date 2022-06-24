@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -171,6 +172,25 @@ func (l *LocalJWTAuthProvider) common() JWTConfigCommon {
 	return l.JWTConfigCommon
 }
 
+func (l *LocalJWTAuthProvider) InitUserPrefix(ctx context.Context, name string) {
+	if l.UserPrefix != "" || l.UsernameClaim != "" {
+		return
+	}
+
+	issuerURL, err := url.ParseRequestURI(l.Issuer)
+	if err != nil {
+		base.WarnfCtx(ctx, "Unable to parse issuer URI when initializing user prefix - using provider name")
+		l.UserPrefix = name
+		return
+	}
+	l.UserPrefix = issuerURL.Host + issuerURL.Path
+
+	// If the prefix contains forward slash or underscore, it's not valid as-is for a username: forward slash
+	// breaks the REST API, underscore breaks uniqueness of "[prefix]_[sub]".  URL encode the prefix to cover
+	// this scenario
+	l.UserPrefix = url.QueryEscape(l.UserPrefix)
+}
+
 type LocalJWTConfig map[string]*LocalJWTAuthProvider
 
 type jwtAuthenticator interface {
@@ -190,25 +210,31 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(rawToken string, oidcProvide
 		return nil, PrincipalConfig{}, err
 	}
 
-	var authenticator jwtAuthenticator
+	var (
+		authenticatorName string
+		authenticator     jwtAuthenticator
+	)
 	// can't do `authenticator, ok = getProviderWhenSingle()` because it'll return a non-nil pointer to a nil OIDCProvider
 	if single, ok := oidcProviders.getProviderWhenSingle(); ok {
 		authenticator = single
+		authenticatorName = single.Name
 	}
 	if authenticator == nil {
-		for _, provider := range oidcProviders {
+		for name, provider := range oidcProviders {
 			if provider.ValidFor(issuer, audiences) {
 				base.TracefCtx(auth.LogCtx, base.KeyAuth, "Using OIDC provider %v", base.UD(provider.Issuer))
+				authenticatorName = name
 				authenticator = provider
 				break
 			}
 		}
 	}
 	if authenticator == nil {
-		for _, provider := range localJWT {
+		for name, provider := range localJWT {
 			if provider.ValidFor(issuer, audiences) {
 				base.TracefCtx(auth.LogCtx, base.KeyAuth, "Using local JWT provider %v", base.UD(provider.Issuer))
 				authenticator = provider
+				authenticatorName = name
 				break
 			}
 		}
@@ -223,6 +249,11 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(rawToken string, oidcProvide
 	if err != nil {
 		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "JWT invalid: %v", err)
 		return nil, PrincipalConfig{}, err
+	}
+
+	// OIDC will perform InitUserPrefix as part of initClient, but Local-JWT won't
+	if local, ok := authenticator.(*LocalJWTAuthProvider); ok {
+		local.InitUserPrefix(context.TODO(), authenticatorName)
 	}
 
 	user, updates, _, err := auth.authenticateJWTIdentity(identity, authenticator.common())

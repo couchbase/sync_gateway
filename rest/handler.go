@@ -278,7 +278,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	// Note: checkAuth already does this check if the user authenticates with a bearer token, but we still need to recheck
 	// for users using session tokens / basic auth. However, updatePrincipal will be idempotent.
 	if h.user != nil && h.user.OIDCIssuer() != "" {
-		updates := checkOIDCIssuerStillValid(h.ctx(), dbContext, h.user)
+		updates := checkJWTIssuerStillValid(h.ctx(), dbContext, h.user)
 		if updates != nil {
 			_, err := dbContext.UpdatePrincipal(h.ctx(), updates, true, true)
 			if err != nil {
@@ -454,14 +454,14 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 	}(time.Now())
 
 	// If oidc enabled, check for bearer ID token
-	if dbCtx.Options.OIDCOptions != nil {
+	if dbCtx.Options.OIDCOptions != nil || len(dbCtx.Options.LocalJWTConfig) > 0 {
 		if token := h.getBearerToken(); token != "" {
 			var updates auth.PrincipalConfig
 			h.user, updates, err = dbCtx.Authenticator(h.ctx()).AuthenticateUntrustedJWT(token, dbCtx.OIDCProviders, dbCtx.Options.LocalJWTConfig, h.getOIDCCallbackURL)
 			if h.user == nil || err != nil {
 				return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 			}
-			if changes := checkOIDCIssuerStillValid(h.ctx(), dbCtx, h.user); changes != nil {
+			if changes := checkJWTIssuerStillValid(h.ctx(), dbCtx, h.user); changes != nil {
 				updates = updates.Merge(*changes)
 			}
 			_, err := dbCtx.UpdatePrincipal(h.ctx(), &updates, true, true)
@@ -534,7 +534,7 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 	return nil
 }
 
-func checkOIDCIssuerStillValid(ctx context.Context, dbCtx *db.DatabaseContext, user auth.User) *auth.PrincipalConfig {
+func checkJWTIssuerStillValid(ctx context.Context, dbCtx *db.DatabaseContext, user auth.User) *auth.PrincipalConfig {
 	issuer := user.OIDCIssuer()
 	if issuer == "" {
 		return nil
@@ -542,6 +542,12 @@ func checkOIDCIssuerStillValid(ctx context.Context, dbCtx *db.DatabaseContext, u
 	providerStillValid := false
 	for _, provider := range dbCtx.OIDCProviders {
 		// No need to verify audiences, as that was done when the user was authenticated
+		if provider.Issuer == issuer {
+			providerStillValid = true
+			break
+		}
+	}
+	for _, provider := range dbCtx.Options.LocalJWTConfig {
 		if provider.Issuer == issuer {
 			providerStillValid = true
 			break
