@@ -19,6 +19,7 @@ import (
 	ch "github.com/couchbase/sync_gateway/channels"
 	pkgerrors "github.com/pkg/errors"
 	"golang.org/x/crypto/bcrypt"
+	"gopkg.in/square/go-jose.v2/jwt"
 )
 
 /** Manages user authentication for a database. */
