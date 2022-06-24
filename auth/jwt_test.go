@@ -14,29 +14,8 @@ import (
 	"gopkg.in/square/go-jose.v2/jwt"
 )
 
-func dummyCallbackURL(s string, b bool) string {
+func dummyCallbackURL(_ string, _ bool) string {
 	return ""
-}
-
-type headers map[jose.HeaderKey]interface{}
-
-func createTestJWT(t *testing.T, alg jose.SignatureAlgorithm, key interface{}, headers headers, claims jwt.Claims) string {
-	t.Helper()
-
-	signerOpts := new(jose.SignerOptions)
-	for key, val := range headers {
-		signerOpts.WithHeader(key, val)
-	}
-
-	signer, err := jose.NewSigner(jose.SigningKey{
-		Algorithm: alg,
-		Key:       key,
-	}, signerOpts)
-	require.NoError(t, err, "failed to create signer")
-
-	tok, err := jwt.Signed(signer).Claims(claims).CompactSerialize()
-	require.NoError(t, err, "failed to serialize JWT")
-	return tok
 }
 
 const anyError = "SGW_TEST_ANY_ERROR"
@@ -112,21 +91,21 @@ func TestJWTVerifyToken(t *testing.T) {
 	// "e30" is "{}" url-base64-encoded
 	t.Run("empty JSON objects", test(baseProvider, "e30.e30.e30", anyError))
 
-	t.Run("valid RSA", test(baseProvider, createTestJWT(t, jose.RS256, testRSAKeypair, headers{
+	t.Run("valid RSA", test(baseProvider, CreateTestJWT(t, jose.RS256, testRSAKeypair, JWTHeaders{
 		"kid": testRSAJWK.KeyID,
 	}, jwt.Claims{
 		Issuer:   "testIss",
 		Audience: jwt.Audience{"testAud"},
 	}), ""))
 
-	t.Run("valid EC", test(baseProvider, createTestJWT(t, jose.ES256, testECKeypair, headers{
+	t.Run("valid EC", test(baseProvider, CreateTestJWT(t, jose.ES256, testECKeypair, JWTHeaders{
 		"kid": testECJWK.KeyID,
 	}, jwt.Claims{
 		Issuer:   "testIss",
 		Audience: jwt.Audience{"testAud"},
 	}), ""))
 
-	invalidSignature := createTestJWT(t, jose.RS256, testRSAKeypair, headers{
+	invalidSignature := CreateTestJWT(t, jose.RS256, testRSAKeypair, JWTHeaders{
 		"kid": testRSAJWK.KeyID,
 	}, jwt.Claims{
 		Issuer:   "testIss",
@@ -135,21 +114,21 @@ func TestJWTVerifyToken(t *testing.T) {
 	invalidSignature += "INVALID"
 	t.Run("valid JWT invalid signature", test(baseProvider, invalidSignature, anyError))
 
-	t.Run("valid JWT signed with an unknown key", test(baseProvider, createTestJWT(t, jose.RS256, testExtraKeypair, headers{
+	t.Run("valid JWT signed with an unknown key", test(baseProvider, CreateTestJWT(t, jose.RS256, testExtraKeypair, JWTHeaders{
 		"kid": testExtraJWK.KeyID,
 	}, jwt.Claims{
 		Issuer:   "testIss",
 		Audience: jwt.Audience{"testAud"},
 	}), anyError))
 
-	t.Run("valid JWT signed with a mismatching KID", test(baseProvider, createTestJWT(t, jose.RS256, testExtraKeypair, headers{
+	t.Run("valid JWT signed with a mismatching KID", test(baseProvider, CreateTestJWT(t, jose.RS256, testExtraKeypair, JWTHeaders{
 		"kid": testRSAJWK.KeyID,
 	}, jwt.Claims{
 		Issuer:   "testIss",
 		Audience: jwt.Audience{"testAud"},
 	}), anyError))
 
-	t.Run("valid RSA signed with key with use=enc", test(baseProvider, createTestJWT(t, jose.RS256, testRSAKeypair, headers{
+	t.Run("valid RSA signed with key with use=enc", test(baseProvider, CreateTestJWT(t, jose.RS256, testRSAKeypair, JWTHeaders{
 		"kid": testEncRSAJWK.KeyID,
 	}, jwt.Claims{
 		Issuer:   "testIss",
@@ -163,7 +142,7 @@ func TestJWTVerifyToken(t *testing.T) {
 	// header: alg=RS256, kid=rsa
 	t.Run("valid JWT with no signature", test(baseProvider, `eyJhbGciOiJSUzI1NiIsImtpZCI6InJzYSJ9.eyJhdWQiOlsidGVzdEF1ZCJdLCJpc3MiOiJ0ZXN0SXNzIn0.`, anyError))
 
-	t.Run("valid RSA with invalid issuer", test(baseProvider, createTestJWT(t, jose.RS256, testRSAKeypair, headers{
+	t.Run("valid RSA with invalid issuer", test(baseProvider, CreateTestJWT(t, jose.RS256, testRSAKeypair, JWTHeaders{
 		"kid": testRSAJWK.KeyID,
 	}, jwt.Claims{
 		Issuer:   "nonsense",
