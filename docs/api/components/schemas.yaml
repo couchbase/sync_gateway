@@ -1276,24 +1276,22 @@ Database:
         provider_name:
           description: The providers name.
           type: object
+          required: ['issuer', 'client_id', 'algorithms', 'keys']
           properties:
             issuer:
               description: The value to match against the "iss" claim of JWTs.
               type: string
-              required: true
             register:
               description: If to register a new Sync Gateway user account when a user logs in with a JWT.
               type: boolean
             client_id:
               description: The value to match against the "aud" claim of JWTs. Set to an empty string to disable audience validation.
               type: string
-              required: true
             algorithms:
               description: The JWT signing algorithms to accept for authentication.
               type: array
               items:
                 type: string
-              required: true
             keys:
               description: The JSON Web Keys to use to validate JWTs.
               type: array
