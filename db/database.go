@@ -218,8 +218,9 @@ type UserQueryMap = map[string]*UserQuery
 
 // Configuration for GraphQL.
 type GraphQLConfig struct {
-	Schema    string                     `json:"schema"`    // Schema in SDL syntax
-	Resolvers map[string]GraphQLResolver `json:"resolvers"` // Defines query/mutation code
+	Schema     *string                    `json:"schema,omitempty"`     // Schema in SDL syntax
+	SchemaFile *string                    `json:"schemaFile,omitempty"` // Path of schema file
+	Resolvers  map[string]GraphQLResolver `json:"resolvers"`            // Defines query/mutation code
 }
 
 // Maps GraphQL query/mutation names to the JS source code that implements them.
