@@ -773,6 +773,42 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 			seenIssuers.Add(local.Issuer)
 		}
 	}
+	seenIssuers := base.Set{}
+	for name, local := range dbConfig.LocalJWTConfig {
+		if local.Issuer == "" {
+			multiError = multiError.Append(fmt.Errorf("Issuer required for Local JWT provider %s", name))
+		}
+		if local.ClientID == nil {
+			multiError = multiError.Append(fmt.Errorf("Client ID required for Local JWT provider %s (set to \"\" to disable audience validation)", name))
+		}
+		if len(local.Keys) == 0 || len(local.Algorithms) == 0 {
+			multiError = multiError.Append(fmt.Errorf("Keys and Algorithms required for Local JWT provider %s", name))
+		}
+		didReportKIDError := false
+		for _, key := range local.Keys {
+			if key.KeyID == "" && len(local.Keys) > 1 && !didReportKIDError {
+				multiError = multiError.Append(fmt.Errorf("%s: 'kid' property required on all keys when more than one key is defined", name))
+				didReportKIDError = true
+			}
+			if !key.Valid() {
+				multiError = multiError.Append(fmt.Errorf("%s: key %q invalid", name, key.KeyID))
+			}
+			// This check is important to ensure private keys never make it into the DB config (because sgcollect will include them)
+			if !key.IsPublic() {
+				multiError = multiError.Append(fmt.Errorf("%s: key %q is not a public key", name, key.KeyID))
+			}
+		}
+		for _, algo := range local.Algorithms {
+			if _, ok := auth.SupportedAlgorithms[jose.SignatureAlgorithm(algo)]; !ok {
+				multiError = multiError.Append(fmt.Errorf("%s: signing algorithm %q invalid or unsupported", name, algo))
+			}
+		}
+		if _, ok := seenIssuers[local.Issuer]; ok {
+			multiError = multiError.Append(fmt.Errorf("duplicate OIDC/JWT issuer: %s", local.Issuer))
+		} else {
+			seenIssuers.Add(local.Issuer)
+		}
+	}
 
 	// scopes and collections validation
 	if len(dbConfig.Scopes) > 1 {
