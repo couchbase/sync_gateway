@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/square/go-jose.v2"
-	"gopkg.in/square/go-jose.v2/jwt"
 )
 
 func dummyCallbackURL(_ string, _ bool) string {
@@ -74,9 +73,14 @@ func TestJWTVerifyToken(t *testing.T) {
 		KeyID:     "ec",
 	}
 
+	const (
+		testIssuer   = "testIssuer"
+		testClientID = "testAud"
+	)
+
 	common := JWTConfigCommon{
-		Issuer:   "testIss",
-		ClientID: base.StringPtr("testAud"),
+		Issuer:   testIssuer,
+		ClientID: base.StringPtr(testClientID),
 	}
 	baseProvider := LocalJWTAuthProvider{
 		JWTConfigCommon: common,
@@ -93,46 +97,46 @@ func TestJWTVerifyToken(t *testing.T) {
 
 	t.Run("valid RSA", test(baseProvider, CreateTestJWT(t, jose.RS256, testRSAKeypair, JWTHeaders{
 		"kid": testRSAJWK.KeyID,
-	}, jwt.Claims{
-		Issuer:   "testIss",
-		Audience: jwt.Audience{"testAud"},
+	}, map[string]interface{}{
+		"iss": testIssuer,
+		"aud": []string{testClientID},
 	}), ""))
 
 	t.Run("valid EC", test(baseProvider, CreateTestJWT(t, jose.ES256, testECKeypair, JWTHeaders{
 		"kid": testECJWK.KeyID,
-	}, jwt.Claims{
-		Issuer:   "testIss",
-		Audience: jwt.Audience{"testAud"},
+	}, map[string]interface{}{
+		"iss": testIssuer,
+		"aud": []string{testClientID},
 	}), ""))
 
 	invalidSignature := CreateTestJWT(t, jose.RS256, testRSAKeypair, JWTHeaders{
 		"kid": testRSAJWK.KeyID,
-	}, jwt.Claims{
-		Issuer:   "testIss",
-		Audience: jwt.Audience{"testAud"},
+	}, map[string]interface{}{
+		"iss": testIssuer,
+		"aud": []string{testClientID},
 	})
 	invalidSignature += "INVALID"
 	t.Run("valid JWT invalid signature", test(baseProvider, invalidSignature, anyError))
 
 	t.Run("valid JWT signed with an unknown key", test(baseProvider, CreateTestJWT(t, jose.RS256, testExtraKeypair, JWTHeaders{
 		"kid": testExtraJWK.KeyID,
-	}, jwt.Claims{
-		Issuer:   "testIss",
-		Audience: jwt.Audience{"testAud"},
+	}, map[string]interface{}{
+		"iss": testIssuer,
+		"aud": []string{testClientID},
 	}), anyError))
 
 	t.Run("valid JWT signed with a mismatching KID", test(baseProvider, CreateTestJWT(t, jose.RS256, testExtraKeypair, JWTHeaders{
 		"kid": testRSAJWK.KeyID,
-	}, jwt.Claims{
-		Issuer:   "testIss",
-		Audience: jwt.Audience{"testAud"},
+	}, map[string]interface{}{
+		"iss": testIssuer,
+		"aud": []string{testClientID},
 	}), anyError))
 
 	t.Run("valid RSA signed with key with use=enc", test(baseProvider, CreateTestJWT(t, jose.RS256, testRSAKeypair, JWTHeaders{
 		"kid": testEncRSAJWK.KeyID,
-	}, jwt.Claims{
-		Issuer:   "testIss",
-		Audience: jwt.Audience{"testAud"},
+	}, map[string]interface{}{
+		"iss": testIssuer,
+		"aud": []string{testClientID},
 	}), anyError))
 
 	// header: alg=none
@@ -144,8 +148,8 @@ func TestJWTVerifyToken(t *testing.T) {
 
 	t.Run("valid RSA with invalid issuer", test(baseProvider, CreateTestJWT(t, jose.RS256, testRSAKeypair, JWTHeaders{
 		"kid": testRSAJWK.KeyID,
-	}, jwt.Claims{
-		Issuer:   "nonsense",
-		Audience: jwt.Audience{"testAud"},
+	}, map[string]interface{}{
+		"iss": "nonsense",
+		"aud": []string{testClientID},
 	}), "invalid issuer"))
 }
