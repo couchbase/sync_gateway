@@ -4626,6 +4626,9 @@ func TestUnsubChanged(t *testing.T) {
 	_, found := btc.WaitForRev("doc1", resp.Rev)
 	require.True(t, found)
 
+	activeReplStat := rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplActiveContinuous
+	require.EqualValues(t, 1, activeReplStat.Value())
+
 	// Unsub changes
 	unsubChangesRequest := blip.NewRequest()
 	unsubChangesRequest.SetProfile(db.MessageUnsubChanges)
@@ -4634,8 +4637,11 @@ func TestUnsubChanged(t *testing.T) {
 	unsubChangesResponse := unsubChangesRequest.Response()
 	_, err = unsubChangesResponse.Body()
 	require.NoError(t, err)
+	// Wait for unsub changes to stop the sub changes being sent before sending document up
+	activeReplVal, _ := base.WaitForStat(activeReplStat.Value, 0)
+	assert.EqualValues(t, 0, activeReplVal)
 
-	// Confirm no more changes being sent
+	// Confirm no more changes are being sent
 	resp = rt.updateDoc("doc2", "", `{"key":"val1"}`)
 	err = rt.WaitForConditionWithOptions(func() bool {
 		_, found = btc.GetRev("doc2", resp.Rev)
@@ -4643,7 +4649,7 @@ func TestUnsubChanged(t *testing.T) {
 	}, 10, 100)
 	assert.Error(t, err)
 
-	// Confirm the pull replication can be restarted and it sync doc2
+	// Confirm the pull replication can be restarted and it syncs doc2
 	err = btc.StartPull()
 	require.NoError(t, err)
 	_, found = btc.WaitForRev("doc2", resp.Rev)
