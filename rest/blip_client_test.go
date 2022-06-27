@@ -114,7 +114,6 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 	}
 
 	btr.bt.blipContext.HandlerForProfile[db.MessageChanges] = func(msg *blip.Message) {
-		btr.storeMessage(msg)
 
 		// Exit early when there's nothing to do
 		if msg.NoReply() {
@@ -200,6 +199,8 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		}
 
 		response.SetBody(b)
+		// Set message cafter msg.Response() which can change the state of the message
+		btr.storeMessage(msg)
 	}
 
 	btr.bt.blipContext.HandlerForProfile[db.MessageProposeChanges] = func(msg *blip.Message) {
