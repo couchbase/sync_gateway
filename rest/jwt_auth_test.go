@@ -2,6 +2,8 @@ package rest
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"net/http"
@@ -143,4 +145,109 @@ func TestLocalJWTAuthenticationE2E(t *testing.T) {
 			}
 		}
 	}
+}
+
+// Tests a subset of the cases covered by auth.TestJWTVerifyToken.
+func TestLocalJWTAuthenticationNegative(t *testing.T) {
+	testRSAKeypair, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	testRSAJWK := jose.JSONWebKey{
+		Key:       testRSAKeypair.Public(),
+		Use:       "sig",
+		Algorithm: "RS256",
+		KeyID:     "rsa",
+	}
+
+	testECKeypair, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	testECJWK := jose.JSONWebKey{
+		Key:       testECKeypair.Public(),
+		Use:       "sig",
+		Algorithm: "ES256",
+		KeyID:     "ec",
+	}
+
+	const (
+		testProviderName = "test"
+		testIssuer       = "testIssuer"
+		testSubject      = "bilbo"
+		testClientID     = "testAud"
+	)
+
+	common := auth.JWTConfigCommon{
+		Issuer:   testIssuer,
+		ClientID: base.StringPtr(testClientID),
+	}
+	baseProvider := auth.LocalJWTAuthProvider{
+		JWTConfigCommon: common,
+		Algorithms:      auth.JWTAlgList{"RS256", "ES256"},
+		Keys:            []jose.JSONWebKey{testRSAJWK, testECJWK},
+	}
+
+	runTest := func(provider *auth.LocalJWTAuthProvider, token string, createUserName string, expectedStatus int) func(*testing.T) {
+		return func(t *testing.T) {
+			base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth, base.KeyHTTP)
+			restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{LocalJWTConfig: auth.LocalJWTConfig{
+				testProviderName: provider,
+			}}}}
+			restTester := NewRestTester(t, &restTesterConfig)
+			require.NoError(t, restTester.SetAdminParty(false))
+			defer restTester.Close()
+
+			mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
+			defer mockSyncGateway.Close()
+			mockSyncGatewayURL := mockSyncGateway.URL
+
+			if createUserName != "" {
+				authn := restTester.GetDatabase().Authenticator(base.TestCtx(t))
+				_, err = authn.RegisterNewUser(createUserName, "test@sgwdev.com")
+				require.NoError(t, err, "Failed to register test user %s", createUserName)
+			}
+
+			req, err := http.NewRequest(http.MethodPost, mockSyncGatewayURL+"/db/_session", bytes.NewBufferString("{}"))
+			require.NoError(t, err)
+
+			req.Header.Set("Authorization", BearerToken+" "+token)
+
+			res, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			defer res.Body.Close()
+
+			assert.Equal(t, expectedStatus, res.StatusCode)
+		}
+	}
+
+	testUsername := testProviderName + "_" + testSubject
+
+	t.Run("valid - RSA", runTest(&baseProvider, auth.CreateTestJWT(t, jose.RS256, testRSAKeypair, auth.JWTHeaders{
+		"alg": jose.RS256,
+		"kid": testRSAJWK.KeyID,
+	}, map[string]interface{}{
+		"iss": testIssuer,
+		"aud": []string{testClientID},
+		"sub": testSubject,
+	}), testUsername, http.StatusOK))
+
+	t.Run("valid - EC", runTest(&baseProvider, auth.CreateTestJWT(t, jose.ES256, testECKeypair, auth.JWTHeaders{
+		"alg": jose.ES256,
+		"kid": testECJWK.KeyID,
+	}, map[string]interface{}{
+		"iss": testIssuer,
+		"aud": []string{testClientID},
+		"sub": testSubject,
+	}), testUsername, http.StatusOK))
+
+	t.Run("garbage", runTest(&baseProvider, "garbage", testUsername, http.StatusUnauthorized))
+
+	// header: alg=none
+	t.Run("valid JWT with alg none", runTest(
+		&baseProvider,
+		`eyJhbGciOiJub25lIn0.eyJhdWQiOlsidGVzdEF1ZCJdLCJpc3MiOiJ0ZXN0SXNzIn0.`,
+		testUsername,
+		http.StatusUnauthorized))
+	// header: alg=HS256
+	t.Run("valid JWT with alg HS256", runTest(&baseProvider,
+		`eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOlsidGVzdEF1ZCJdLCJpc3MiOiJ0ZXN0SXNzIn0.gbdmOrzJ2CT01ABybPN-_dwXwv8_8iMEj4HNPtBqQjI`,
+		testUsername,
+		http.StatusUnauthorized))
 }
