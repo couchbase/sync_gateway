@@ -113,7 +113,7 @@ func (gq *GraphQL) Query(db *Database, query string, operationName string, varia
 
 func (gq *GraphQL) compileResolver(resolverName string, fieldName string, jsCode string) (graphql.FieldResolveFn, error) {
 	if len(jsCode) > 0 {
-		resolver := NewGraphQLResolver(jsCode)
+		resolver := NewGraphQLResolver(resolverName+"."+fieldName, jsCode)
 		return func(params graphql.ResolveParams) (interface{}, error) {
 			db := params.Context.Value(dbKey).(*Database)
 			mutationAllowed := params.Context.Value(mutAllowedKey).(bool)

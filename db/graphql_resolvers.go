@@ -41,14 +41,16 @@ const kGQTaskCacheSize = 2
 // An object that can run a JavaScript GraphQL resolve function, as found in the GraphQL config.
 type GraphQLResolver struct {
 	*sgbucket.JSServer // "Superclass"
+	Name               string
 }
 
-func NewGraphQLResolver(fnSource string) *GraphQLResolver {
+func NewGraphQLResolver(name string, fnSource string) *GraphQLResolver {
 	return &GraphQLResolver{
 		JSServer: sgbucket.NewJSServer(fnSource, kGQTaskCacheSize,
 			func(fnSource string) (sgbucket.JSServerTask, error) {
-				return NewGraphQLResolverRunner(fnSource)
+				return NewGraphQLResolverRunner(name, fnSource)
 			}),
+		Name: name,
 	}
 }
 
@@ -79,6 +81,9 @@ func (res *GraphQLResolver) Resolve(db *Database, params *graphql.ResolveParams,
 // `%s` is replaced with the resolver.
 const kGraphQLResolverFuncWrapper = `
 	function() {
+		function resolveFn(parent, args, context, info) {
+			%s; // <-- The actual JS code from the config file goes here
+		}
 
 		// The "context.app" object the resolver script calls:
 		var _app = {
@@ -86,10 +91,6 @@ const kGraphQLResolverFuncWrapper = `
 			query: _query,
 			save: _save
 		};
-
-		function resolveFn(parent, args, context, info) {
-			%s; // <-- The actual JS code from the config file goes here
-		}
 
 		// This is the JS function invoked by the 'Call(...)' in GraphQLResolver.Resolve(), above
 		return function (parent, args, context, info) {
@@ -108,21 +109,20 @@ func wrappedFuncSource(funcSource string) string {
 // An object that runs a specific JS GraphQuery resolver function. Not thread-safe!
 type graphQLResolverRunner struct {
 	sgbucket.JSRunner           // "Superclass"
+	name              string    // Name of the resolver
 	currentDB         *Database // Database instance for this call
 	mutationAllowed   bool      // Whether save() is allowed during this call
 }
 
-func NewGraphQLResolverRunner(funcSource string) (*graphQLResolverRunner, error) {
+func NewGraphQLResolverRunner(name string, funcSource string) (*graphQLResolverRunner, error) {
 	ctx := context.Background()
-	runner := &graphQLResolverRunner{}
+	runner := &graphQLResolverRunner{name: name}
 	err := runner.InitWithLogging("",
 		func(s string) {
-			fmt.Printf("#### %s\n", s)
-			base.ErrorfCtx(ctx, base.KeyJavascript.String()+": GraphQLResolver %s", base.UD(s))
+			base.ErrorfCtx(ctx, base.KeyJavascript.String()+": GraphQLResolver %s: %s", name, base.UD(s))
 		},
 		func(s string) {
-			fmt.Printf("#### %s\n", s)
-			base.InfofCtx(ctx, base.KeyJavascript, "GraphQLResolver %s", base.UD(s))
+			base.InfofCtx(ctx, base.KeyJavascript, "GraphQLResolver %s: %s", name, base.UD(s))
 		})
 	if err != nil {
 		return nil, err
@@ -151,22 +151,26 @@ func NewGraphQLResolverRunner(funcSource string) (*graphQLResolverRunner, error)
 		return ottoResult(call, nil, err)
 	})
 
-	runner.SetFunction(funcSource)
+	// Set (and compile) the function:
+	if _, err := runner.SetFunction(funcSource); err != nil {
+		fmt.Printf("*** Error: Resolver fn failed to compile: %v", err) //TEMP
+		return nil, base.HTTPErrorf(http.StatusInternalServerError, "Error compiling GraphQL resolver %s: %v", name, err)
+	}
 
 	runner.Before = func() {
 		if runner.currentDB == nil {
 			panic("GraphQLResolverRunner can't run without a currentDB")
 		}
-		fmt.Printf("*** GQ runner about to run\n")
+		fmt.Printf("*** GQ runner %s about to run\n", runner.name)
 	}
 	runner.After = func(jsResult otto.Value, err error) (interface{}, error) {
 		runner.currentDB = nil
 		if err != nil {
-			fmt.Printf("*** GQ runner failed: %+v\n", err)
+			fmt.Printf("*** GQ runner %s failed: %+v\n", runner.name, err)
 			return nil, err
 		}
 		result, _ := jsResult.Export()
-		fmt.Printf("*** GQ runner finished: %v\n", result)
+		fmt.Printf("*** GQ runner %s finished: %v\n", runner.name, result)
 		return result, nil
 	}
 
