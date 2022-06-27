@@ -117,7 +117,7 @@ func TestLocalJWTAuthenticationE2E(t *testing.T) {
 			user, err := authenticator.GetUser(expectedUsername)
 			require.NoError(t, err)
 			require.NotNil(t, user, "user was nil")
-			assert.Equal(t, testIssuer, user.OIDCIssuer())
+			assert.Equal(t, testIssuer, user.JWTIssuer())
 		}
 	}
 
@@ -314,6 +314,6 @@ func TestLocalJWTRolesChannels(t *testing.T) {
 
 	assert.Contains(t, user.RoleNames(), "jwt_only_role")
 	assert.Contains(t, user.Channels().AllKeys(), "jwt_only_channel")
-	assert.Equal(t, testIssuer, user.OIDCIssuer())
-	assert.Greater(t, user.OIDCLastUpdated(), reqTime)
+	assert.Equal(t, testIssuer, user.JWTIssuer())
+	assert.Greater(t, user.JWTLastUpdated(), reqTime)
 }

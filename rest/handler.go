@@ -277,7 +277,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	// If the user has OIDC roles/channels configured, we need to check if the OIDC issuer they came from is still valid.
 	// Note: checkAuth already does this check if the user authenticates with a bearer token, but we still need to recheck
 	// for users using session tokens / basic auth. However, updatePrincipal will be idempotent.
-	if h.user != nil && h.user.OIDCIssuer() != "" {
+	if h.user != nil && h.user.JWTIssuer() != "" {
 		updates := checkJWTIssuerStillValid(h.ctx(), dbContext, h.user)
 		if updates != nil {
 			_, err := dbContext.UpdatePrincipal(h.ctx(), updates, true, true)
@@ -535,7 +535,7 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 }
 
 func checkJWTIssuerStillValid(ctx context.Context, dbCtx *db.DatabaseContext, user auth.User) *auth.PrincipalConfig {
-	issuer := user.OIDCIssuer()
+	issuer := user.JWTIssuer()
 	if issuer == "" {
 		return nil
 	}
@@ -556,10 +556,10 @@ func checkJWTIssuerStillValid(ctx context.Context, dbCtx *db.DatabaseContext, us
 	if !providerStillValid {
 		base.InfofCtx(ctx, base.KeyAuth, "User %v uses OIDC issuer %v which is no longer configured. Revoking OIDC roles/channels.", base.UD(user.Name()), base.UD(issuer))
 		return &auth.PrincipalConfig{
-			Name:         base.StringPtr(user.Name()),
-			OIDCIssuer:   base.StringPtr(""),
-			OIDCRoles:    base.Set{},
-			OIDCChannels: base.Set{},
+			Name:        base.StringPtr(user.Name()),
+			JWTIssuer:   base.StringPtr(""),
+			JWTRoles:    base.Set{},
+			JWTChannels: base.Set{},
 		}
 	}
 	return nil

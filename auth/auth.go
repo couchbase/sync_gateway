@@ -202,8 +202,8 @@ func (auth *Authenticator) rebuildChannels(princ Principal) error {
 	}
 
 	if user, ok := princ.(User); ok {
-		if oidc := user.OIDCChannels(); oidc != nil {
-			channels.Add(oidc)
+		if jwt := user.JWTChannels(); jwt != nil {
+			channels.Add(jwt)
 		}
 	}
 
@@ -307,8 +307,8 @@ func (auth *Authenticator) rebuildRoles(user User) error {
 		roles.Add(explicit)
 	}
 
-	if oidc := user.OIDCRoles(); oidc != nil {
-		roles.Add(oidc)
+	if jwt := user.JWTRoles(); jwt != nil {
+		roles.Add(jwt)
 	}
 
 	roleHistory := auth.calculateHistory(user.Name(), user.GetRoleInvalSeq(), user.InvalidatedRoles(), roles, user.RoleHistory())
@@ -729,22 +729,22 @@ func (auth *Authenticator) authenticateJWTIdentity(identity *Identity, provider 
 	}
 	base.DebugfCtx(auth.LogCtx, base.KeyAuth, "OIDCUsername: %v", base.UD(username))
 
-	var oidcRoles, oidcChannels base.Set
+	var jwtRoles, jwtChannels base.Set
 	if provider.RolesClaim != "" {
-		oidcRoles, err = getJWTClaimAsSet(identity, provider.RolesClaim)
+		jwtRoles, err = getJWTClaimAsSet(identity, provider.RolesClaim)
 		if err != nil {
-			return nil, PrincipalConfig{}, time.Time{}, fmt.Errorf("failed to find OIDC roles: %w", err)
+			return nil, PrincipalConfig{}, time.Time{}, fmt.Errorf("failed to find JWT roles: %w", err)
 		}
 	} else {
-		oidcRoles = base.Set{}
+		jwtRoles = base.Set{}
 	}
 	if provider.ChannelsClaim != "" {
-		oidcChannels, err = getJWTClaimAsSet(identity, provider.ChannelsClaim)
+		jwtChannels, err = getJWTClaimAsSet(identity, provider.ChannelsClaim)
 		if err != nil {
-			return nil, PrincipalConfig{}, time.Time{}, fmt.Errorf("failed to find OIDC channels: %w", err)
+			return nil, PrincipalConfig{}, time.Time{}, fmt.Errorf("failed to find JWT channels: %w", err)
 		}
 	} else {
-		oidcChannels = base.Set{}
+		jwtChannels = base.Set{}
 	}
 
 	user, err = auth.GetUser(username)
@@ -768,12 +768,12 @@ func (auth *Authenticator) authenticateJWTIdentity(identity *Identity, provider 
 	if user != nil {
 		now := time.Now()
 		updates = PrincipalConfig{
-			Name:            base.StringPtr(user.Name()),
-			Email:           &identity.Email,
-			OIDCIssuer:      &provider.Issuer,
-			OIDCRoles:       oidcRoles,
-			OIDCChannels:    oidcChannels,
-			OIDCLastUpdated: &now,
+			Name:           base.StringPtr(user.Name()),
+			Email:          &identity.Email,
+			JWTIssuer:      &provider.Issuer,
+			JWTRoles:       jwtRoles,
+			JWTChannels:    jwtChannels,
+			JWTLastUpdated: &now,
 		}
 	}
 
