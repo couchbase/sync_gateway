@@ -753,7 +753,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			IssuedAt: jwt.NewNumericDate(time.Now()),
 			Expiry:   jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
 		}
-		wantUsername, err := getOIDCUsername(provider.common(), &Identity{Subject: claims.Subject})
+		wantUsername, err := getJWTUsername(provider.common(), &Identity{Subject: claims.Subject})
 		assert.NoError(t, err, "Error retrieving OpenID Connect username")
 		builder := jwt.Signed(signer).Claims(claims)
 		token, err := builder.CompactSerialize()
@@ -901,7 +901,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Expiry:    jwt.NewNumericDate(time.Now().Add(1 * time.Minute)),
 			NotBefore: jwt.NewNumericDate(time.Now().Add(1 * time.Minute)),
 		}
-		wantUsername, err := getOIDCUsername(provider.common(), &Identity{Subject: claims.Subject})
+		wantUsername, err := getJWTUsername(provider.common(), &Identity{Subject: claims.Subject})
 		assert.NoError(t, err, "Error retrieving OpenID Connect username")
 		builder := jwt.Signed(signer).Claims(claims)
 		token, err := builder.CompactSerialize()

@@ -722,7 +722,7 @@ func (auth *Authenticator) authenticateJWTIdentity(identity *Identity, provider 
 		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Empty subject found in OIDC identity: %v", base.UD(identity))
 		return nil, PrincipalConfig{}, time.Time{}, errors.New("subject not found in OIDC identity")
 	}
-	username, err := getOIDCUsername(provider, identity)
+	username, err := getJWTUsername(provider, identity)
 	if err != nil {
 		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error retrieving OIDCUsername: %v", err)
 		return nil, PrincipalConfig{}, time.Time{}, err

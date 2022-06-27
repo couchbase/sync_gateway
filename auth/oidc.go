@@ -413,12 +413,12 @@ func (op *OIDCProvider) standardDiscovery(ctx context.Context, discoveryURL stri
 	return metadata, verifier, err
 }
 
-// getOIDCUsername returns the username to be used as the Sync Gateway username.
-func getOIDCUsername(provider JWTConfigCommon, identity *Identity) (username string, err error) {
+// getJWTUsername returns the username to be used as the Sync Gateway username.
+func getJWTUsername(provider JWTConfigCommon, identity *Identity) (username string, err error) {
 	if provider.UsernameClaim != "" {
 		value, ok := identity.Claims[provider.UsernameClaim]
 		if !ok {
-			return "", fmt.Errorf("oidc: specified claim %q not found in id_token, identity: %v", provider.UsernameClaim, identity)
+			return "", fmt.Errorf("jwt: specified claim %q not found in id_token, identity: %v", provider.UsernameClaim, identity)
 		}
 		if username, err = formatUsername(value); err != nil {
 			return "", err

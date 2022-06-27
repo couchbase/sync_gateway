@@ -193,14 +193,14 @@ func TestOIDCUsername(t *testing.T) {
 
 	// test username suffix
 	identity := Identity{Subject: "bernard"}
-	oidcUsername, err := getOIDCUsername(provider.common(), &identity)
+	oidcUsername, err := getJWTUsername(provider.common(), &identity)
 	assert.NoError(t, err, "Error retrieving OpenID Connect username")
 	assert.Equal(t, "www.someprovider.com_bernard", oidcUsername)
 	assert.Equal(t, true, IsValidPrincipalName(oidcUsername))
 
 	// test char escaping
 	identity.Subject = "{bernard}"
-	oidcUsername, err = getOIDCUsername(provider.common(), &identity)
+	oidcUsername, err = getJWTUsername(provider.common(), &identity)
 	assert.NoError(t, err, "Error retrieving OpenID Connect username")
 	assert.Equal(t, "www.someprovider.com_%7Bbernard%7D", oidcUsername)
 	assert.Equal(t, true, IsValidPrincipalName(oidcUsername))
