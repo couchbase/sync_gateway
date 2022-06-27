@@ -646,7 +646,7 @@ func (op *OIDCProvider) common() JWTConfigCommon {
 }
 
 // getIssuerWithAudience returns "issuer" and "audiences" claims from the given JSON Web Token.
-// Returns malformed oidc token error when issuer/audience doesn't exist in token.
+// Returns an error if issuer is not present, returns an empty []string when audience is not present.
 func getIssuerWithAudience(token *jwt.JSONWebToken) (issuer string, audiences []string, err error) {
 	claims := &jwt.Claims{}
 	err = token.UnsafeClaimsWithoutVerification(claims)
@@ -654,10 +654,7 @@ func getIssuerWithAudience(token *jwt.JSONWebToken) (issuer string, audiences []
 		return issuer, audiences, pkgerrors.Wrapf(err, "failed to parse JWT claims")
 	}
 	if claims.Issuer == "" {
-		return issuer, audiences, fmt.Errorf("malformed oidc token %v, issuer claim doesn't exist", token)
-	}
-	if claims.Audience == nil || len(claims.Audience) == 0 {
-		return issuer, audiences, fmt.Errorf("malformed oidc token %v, audience claim doesn't exist", token)
+		return issuer, audiences, fmt.Errorf("malformed JWT %v, issuer claim doesn't exist", token)
 	}
 	return claims.Issuer, claims.Audience, err
 }
