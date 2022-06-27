@@ -385,6 +385,31 @@ func TestConfigValidationJWTAndOIDC(t *testing.T) {
 			configJSON:    `{"name": "test", "local_jwt": { "test": { "issuer": "test", "client_id": "", "keys": [` + testRSA256JWK + `], "algorithms": ["RS256"] }, "test2": { "issuer": "test", "client_id": "", "keys": [` + testRSA256JWK + `], "algorithms": ["RS256"] } }}`,
 			expectedError: "duplicate OIDC/JWT issuer: test",
 		},
+		{
+			name:          "Local JWT: duplicate issuers (OIDC)",
+			configJSON:    `{"name": "test", "oidc": { "providers": { "test": {"issuer": "test", "client_id": "test"}, "test2": {"issuer": "test", "client_id": "test"} } }}`,
+			expectedError: "duplicate OIDC/JWT issuer: test",
+		},
+		{
+			name:          "Local JWT: duplicate issuers (mixed)",
+			configJSON:    `{"name": "test", "local_jwt": { "test": { "issuer": "test", "client_id": "", "keys": [` + testRSA256JWK + `], "algorithms": ["RS256"] }}, "oidc": { "providers": { "test": {"issuer": "test", "client_id": "test"} } }}`,
+			expectedError: "duplicate OIDC/JWT issuer: test",
+		},
+		{
+			name:          "OIDC: no providers",
+			configJSON:    `{"name": "test", "oidc": {"providers": {}}}`,
+			expectedError: "OpenID Connect defined in config, but no valid providers specified",
+		},
+		{
+			name:          "OIDC: no client ID",
+			configJSON:    `{"name": "test", "oidc": {"providers": { "test": {"issuer": "test", "client_id": ""} }}}`,
+			expectedError: "OpenID Connect defined in config, but no valid providers specified",
+		},
+		{
+			name:          "OIDC: illegal name",
+			configJSON:    `{"name": "test", "oidc": {"providers": { "invalid_test": {"issuer": "test", "client_id": "test"} }}}`,
+			expectedError: "OpenID Connect provider names cannot contain underscore",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

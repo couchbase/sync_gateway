@@ -700,15 +700,44 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		}
 	}
 
-	if validateOIDCConfig && dbConfig.OIDCConfig != nil {
-		for name, provider := range dbConfig.OIDCConfig.Providers {
-			_, _, err := provider.DiscoverConfig(ctx)
-			if err != nil {
-				multiError = multiError.Append(fmt.Errorf("failed to validate OIDC configuration for %s: %w", name, err))
+	seenIssuers := base.Set{}
+	if dbConfig.OIDCConfig != nil {
+		validProviders := len(dbConfig.OIDCConfig.Providers)
+		for name, oidc := range dbConfig.OIDCConfig.Providers {
+			if oidc.Issuer == "" || base.StringDefault(oidc.ClientID, "") == "" {
+				// TODO: rather than being an error, this skips the current provider to avoid a backwards compatibility issue (previously valid
+				// configs becoming invalid). This also means it's duplicated in NewDatabaseContext.
+				base.WarnfCtx(ctx, "Issuer and Client ID not defined for provider %q - skipping", base.UD(name))
+				validProviders--
+				continue
+			}
+			if oidc.ValidationKey == nil {
+				base.WarnfCtx(ctx, "Validation Key not defined in config for provider %q - auth code flow will not be supported for this provider", base.UD(name))
+			}
+			if strings.Contains(name, "_") {
+				multiError = multiError.Append(fmt.Errorf("OpenID Connect provider names cannot contain underscore: %s", name))
+				validProviders--
+				continue
+			}
+			if _, ok := seenIssuers[oidc.Issuer]; ok {
+				multiError = multiError.Append(fmt.Errorf("duplicate OIDC/JWT issuer: %s", oidc.Issuer))
+				validProviders--
+				continue
+			} else {
+				seenIssuers.Add(oidc.Issuer)
+			}
+			if validateOIDCConfig {
+				_, _, err := oidc.DiscoverConfig(ctx)
+				if err != nil {
+					multiError = multiError.Append(fmt.Errorf("failed to validate OIDC configuration for %s: %w", name, err))
+					validProviders--
+				}
 			}
 		}
+		if validProviders == 0 {
+			multiError = multiError.Append(fmt.Errorf("OpenID Connect defined in config, but no valid providers specified"))
+		}
 	}
-	seenIssuers := base.Set{}
 	for name, local := range dbConfig.LocalJWTConfig {
 		if local.Issuer == "" {
 			multiError = multiError.Append(fmt.Errorf("Issuer required for Local JWT provider %s", name))
