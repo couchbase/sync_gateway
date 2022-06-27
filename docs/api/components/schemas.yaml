@@ -1269,6 +1269,89 @@ Database:
         remote_config_tls_skip_verify:
           description: Enable self-signed certificates for external JavaScript load.
           type: boolean
+    local_jwt:
+      description: Configuration for Local JWT authentication.
+      type: object
+      properties:
+        provider_name:
+          description: The providers name.
+          type: object
+          required: ['issuer', 'client_id', 'algorithms', 'keys']
+          properties:
+            issuer:
+              description: The value to match against the "iss" claim of JWTs.
+              type: string
+            register:
+              description: If to register a new Sync Gateway user account when a user logs in with a JWT.
+              type: boolean
+            client_id:
+              description: The value to match against the "aud" claim of JWTs. Set to an empty string to disable audience validation.
+              type: string
+            algorithms:
+              description: The JWT signing algorithms to accept for authentication.
+              type: array
+              items:
+                type: string
+            keys:
+              description: The JSON Web Keys to use to validate JWTs.
+              type: array
+              items:
+                type: object
+                properties:
+                  kty:
+                    type: string
+                    description: The cryptographic algorithm family used with the key, such as "RSA" or "EC"
+                    enum: [ 'RSA', 'EC' ]
+                  use:
+                    type: string
+                    description: The intended use of the public key. Only 'sig' is accepted.
+                    enum: [ 'sig' ]
+                  alg:
+                    type: string
+                    description: The algorithm intended for use with the key.
+                  kid:
+                    type: string
+                    description: The Key ID, used to identify the key to use.
+                  crv:
+                    type: string
+                    description: For Elliptic Curve keys, the name of the curve to use.
+                    enum: [ 'P-256', 'P-384', 'P-521' ]
+                  x:
+                    type: string
+                    description: For Elliptic Curve keys, the X coordinate of the point, as a base64url string.
+                  y:
+                    type: string
+                    description: For Elliptic Curve keys, the Y coordinate of the point, as a base64url string.
+                  n:
+                    type: string
+                    description: For RSA keys, the modulus value of the key, as a Base64urlUInt-encoded value.
+                  e:
+                    type: string
+                    description: For RSA keys, the exponent of the public key, as a Base64urlUInt-encoded value.
+            disable_session:
+              description: Disable Sync Gateway session creation on successful JWT authentication.
+              type: boolean
+            user_prefix:
+              description: This is the username prefix for all users created through this provider.
+              type: string
+            username_claim:
+              description: |-
+                Allows a different OpenID Connect field to be specified instead of the Subject (`sub`).
+                
+                The field name to use can be specified here.
+              type: string
+            roles_claim:
+              description: |-
+                If set, the value(s) of the given JSON Web Token claim will be added to the user's roles.
+                
+                The value of this claim must be either a string or an array of strings, any other type will result in an error.
+              type: string
+            channels_claim:
+              description: |-
+                If set, the value(s) of the given JSON Web Token claim will be added to the user's channels.
+                
+                The value of this claim must be either a string or an array of strings, any other type will result in an error.
+              type: string
     oidc:
       description: Configuration for OpenID Connect authentication.
       type: object

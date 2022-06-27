@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -483,22 +482,12 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		dbContext.OIDCProviders = make(auth.OIDCProviderMap)
 
 		for name, provider := range options.OIDCOptions.Providers {
-			if provider.Issuer == "" || provider.ClientID == "" {
-				base.WarnfCtx(logCtx, "Issuer and ClientID required for OIDC Provider - skipping provider %q", base.UD(name))
+			if provider.Issuer == "" || base.StringDefault(provider.ClientID, "") == "" {
+				// TODO: this duplicates a check in DbConfig.validate to avoid a backwards compatibility issue
+				base.WarnfCtx(logCtx, "Issuer and Client ID not defined for provider %q - skipping", base.UD(name))
 				continue
 			}
-
-			if provider.ValidationKey == nil {
-				base.WarnfCtx(logCtx, "Validation Key not defined in config for provider %q - auth code flow will not be supported for this provider", base.UD(name))
-			}
-
-			if strings.Contains(name, "_") {
-				return nil, base.RedactErrorf("OpenID Connect provider names cannot contain underscore:%s", base.UD(name))
-			}
 			provider.Name = name
-			if _, ok := dbContext.OIDCProviders[provider.Issuer]; ok {
-				return nil, base.RedactErrorf("Multiple OIDC providers defined for issuer %v", base.UD(provider.Issuer))
-			}
 
 			// If this is the default provider, or there's only one provider defined, set IsDefault
 			if (options.OIDCOptions.DefaultProvider != nil && name == *options.OIDCOptions.DefaultProvider) || len(options.OIDCOptions.Providers) == 1 {
@@ -522,11 +511,6 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 			dbContext.OIDCProviders[name] = provider
 		}
-		if len(dbContext.OIDCProviders) == 0 {
-			return nil, errors.New("OpenID Connect defined in config, but no valid OpenID Connect providers specified")
-
-		}
-
 	}
 
 	if dbContext.UseXattrs() {
