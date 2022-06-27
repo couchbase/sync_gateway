@@ -23,6 +23,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -749,17 +750,26 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 			multiError = multiError.Append(fmt.Errorf("Keys and Algorithms required for Local JWT provider %s", name))
 		}
 		didReportKIDError := false
-		for _, key := range local.Keys {
+		for i, key := range local.Keys {
 			if key.KeyID == "" && len(local.Keys) > 1 && !didReportKIDError {
 				multiError = multiError.Append(fmt.Errorf("%s: 'kid' property required on all keys when more than one key is defined", name))
 				didReportKIDError = true
 			}
+			var keyLabel string
+			if key.KeyID != "" {
+				keyLabel = "\"" + key.KeyID + "\""
+			} else {
+				keyLabel = strconv.Itoa(i)
+			}
 			if !key.Valid() {
-				multiError = multiError.Append(fmt.Errorf("%s: key %q invalid", name, key.KeyID))
+				multiError = multiError.Append(fmt.Errorf("%s: key %s invalid", name, keyLabel))
+			}
+			if key.Algorithm == "" {
+				multiError = multiError.Append(fmt.Errorf("%s: key %s has no 'alg' proeprty", name, keyLabel))
 			}
 			// This check is important to ensure private keys never make it into the DB config (because sgcollect will include them)
 			if !key.IsPublic() {
-				multiError = multiError.Append(fmt.Errorf("%s: key %q is not a public key", name, key.KeyID))
+				multiError = multiError.Append(fmt.Errorf("%s: key %s is not a public key", name, keyLabel))
 			}
 		}
 		for _, algo := range local.Algorithms {
