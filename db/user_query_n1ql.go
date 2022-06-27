@@ -67,27 +67,29 @@ func (db *Database) UserQuery(name string, params map[string]interface{}) (sgbuc
 		}
 	}
 
-	// Add `user` parameter, for query's use in filtering the output:
-	params[userQueryUserParam] = &userQueryUserInfo{
-		name:     db.user.Name(),
-		email:    db.user.Email(),
-		channels: db.user.Channels().AllKeys(),
-		roles:    db.user.RoleNames().AllKeys(),
-	}
-
-	// Verify the user has access to at least one of the given channels.
-	// Channel names in the config are parameter-expanded like the query string.
-	authorized := false
-	for channelPattern, _ := range query.Channels {
-		if channel, err := expandChannelPattern(name, channelPattern, params); err != nil {
-			return nil, err
-		} else if db.user.CanSeeChannel(channel) {
-			authorized = true
-			break
+	if db.user != nil {
+		// Add `user` parameter, for query's use in filtering the output:
+		params[userQueryUserParam] = &userQueryUserInfo{
+			name:     db.user.Name(),
+			email:    db.user.Email(),
+			channels: db.user.Channels().AllKeys(),
+			roles:    db.user.RoleNames().AllKeys(),
 		}
-	}
-	if !authorized {
-		return nil, db.user.UnauthError("You do not have access to this query")
+
+		// Verify the user has access to at least one of the given channels.
+		// Channel names in the config are parameter-expanded like the query string.
+		authorized := false
+		for channelPattern, _ := range query.Channels {
+			if channel, err := expandChannelPattern(name, channelPattern, params); err != nil {
+				return nil, err
+			} else if db.user.CanSeeChannel(channel) {
+				authorized = true
+				break
+			}
+		}
+		if !authorized {
+			return nil, db.user.UnauthError("You do not have access to this query")
+		}
 	}
 
 	// Run the query:
