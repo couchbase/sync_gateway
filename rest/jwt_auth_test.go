@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -300,6 +301,7 @@ func TestLocalJWTRolesChannels(t *testing.T) {
 		"channels": []string{"jwt_only_channel"},
 	})
 
+	reqTime := time.Now()
 	res := restTester.SendRequestWithHeaders(http.MethodPost, "/db/_session", "{}", map[string]string{
 		"Authorization": BearerToken + " " + token,
 	})
@@ -312,4 +314,6 @@ func TestLocalJWTRolesChannels(t *testing.T) {
 
 	assert.Contains(t, user.RoleNames(), "jwt_only_role")
 	assert.Contains(t, user.Channels().AllKeys(), "jwt_only_channel")
+	assert.Equal(t, testIssuer, user.OIDCIssuer())
+	assert.Greater(t, user.OIDCLastUpdated(), reqTime)
 }
