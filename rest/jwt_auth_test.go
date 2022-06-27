@@ -148,7 +148,7 @@ func TestLocalJWTAuthenticationE2E(t *testing.T) {
 }
 
 // Tests a subset of the cases covered by auth.TestJWTVerifyToken.
-func TestLocalJWTAuthenticationNegative(t *testing.T) {
+func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 	testRSAKeypair, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 	testRSAJWK := jose.JSONWebKey{
