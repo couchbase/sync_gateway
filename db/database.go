@@ -221,11 +221,11 @@ type UserQueryMap = map[string]*UserQuery
 type GraphQLConfig struct {
 	Schema     *string                    `json:"schema,omitempty"`     // Schema in SDL syntax
 	SchemaFile *string                    `json:"schemaFile,omitempty"` // Path of schema file
-	Resolvers  map[string]GraphQLResolver `json:"resolvers"`            // Defines query/mutation code
+	Resolvers  map[string]GraphQLResolverConfig `json:"resolvers"`            // Defines query/mutation code
 }
 
 // Maps GraphQL query/mutation names to the JS source code that implements them.
-type GraphQLResolver map[string]string
+type GraphQLResolverConfig map[string]string
 
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,
 // so this struct does not have to be thread-safe.

@@ -104,7 +104,7 @@ func (gq *GraphQL) Query(db *Database, query string, operationName string, varia
 	})
 	if len(result.Errors) > 0 {
 		// ??? Is this worth logging?
-		base.WarnfCtx(ctx, "GraphQL query produced errors: %+v", result.Errors)
+		base.WarnfCtx(ctx, "GraphQL query produced errors: %#v", result.Errors)
 	}
 	return result, nil
 }
@@ -112,43 +112,53 @@ func (gq *GraphQL) Query(db *Database, query string, operationName string, varia
 //////////////////// RESOLVERS ///////////////////////////
 
 func (gq *GraphQL) compileResolver(resolverName string, fieldName string, jsCode string) (graphql.FieldResolveFn, error) {
-	// TODO: This is where the hackiness lives. We ignore the JS code and just return a hardcoded
-	// resolver function based on the name.
-	//fmt.Printf("*** 'Compiling' GraphQL resolver %s.%s: %s\n", resolverName, fieldName, jsCode)
-	switch resolverName {
-	case "Query":
-		switch fieldName {
-		case "airline":
-			return gq.resolveByDocID("airline")
-		case "airport":
-			return gq.resolveByDocID("airport")
-		case "hotel":
-			return gq.resolveByDocID("hotel")
-		case "route":
-			return gq.resolveByDocID("route")
-		case "airports":
-			return gq.resolveToListByN1QL("SELECT ts.*,  meta().id FROM $_keyspace AS ts WHERE type=\"airport\" and city=$city")
-		}
+	if len(jsCode) > 0 {
+		resolver := NewGraphQLResolver(jsCode)
+		return func(params graphql.ResolveParams) (interface{}, error) {
+			db := params.Context.Value(dbKey).(*Database)
+			mutationAllowed := params.Context.Value(mutAllowedKey).(bool)
+			return resolver.Resolve(db, &params, mutationAllowed)
+		}, nil
 
-	case "Route":
-		switch fieldName {
-		case "airline":
-			return gq.resolveJoinProperty("airline", "airline", "iata")
-		case "sourceairport":
-			return gq.resolveJoinProperty("sourceairport", "airport", "faa")
-		case "destinationairport":
-			return gq.resolveJoinProperty("destinationairport", "airport", "faa")
-		}
+	} else {
+		// TODO: This is where the hackiness lives. We ignore the JS code and just return a hardcoded
+		// resolver function based on the name.
+		//fmt.Printf("*** 'Compiling' GraphQL resolver %s.%s: %s\n", resolverName, fieldName, jsCode)
+		switch resolverName {
+		case "Query":
+			switch fieldName {
+			case "airline":
+				return gq.resolveByDocID("airline")
+			case "airport":
+				return gq.resolveByDocID("airport")
+			case "hotel":
+				return gq.resolveByDocID("hotel")
+			case "route":
+				return gq.resolveByDocID("route")
+			case "airports":
+				return gq.resolveToListByN1QL("SELECT ts.*,  meta().id FROM $_keyspace AS ts WHERE type=\"airport\" and city=$city")
+			}
 
-	case "Mutation":
-		switch fieldName {
-		case "saveAirport":
-			return saveAirport, nil
-		case "saveAirports":
-			return saveAirports, nil
+		case "Route":
+			switch fieldName {
+			case "airline":
+				return gq.resolveJoinProperty("airline", "airline", "iata")
+			case "sourceairport":
+				return gq.resolveJoinProperty("sourceairport", "airport", "faa")
+			case "destinationairport":
+				return gq.resolveJoinProperty("destinationairport", "airport", "faa")
+			}
+
+		case "Mutation":
+			switch fieldName {
+			case "saveAirport":
+				return saveAirport, nil
+			case "saveAirports":
+				return saveAirports, nil
+			}
 		}
+		return nil, fmt.Errorf("Unknown resolver %q field %q (not hardwired)", resolverName, fieldName)
 	}
-	return nil, fmt.Errorf("Unknown resolver %q field %q (not hardwired)", resolverName, fieldName)
 }
 
 func saveAirport(params graphql.ResolveParams) (interface{}, error) {
@@ -200,10 +210,7 @@ func (gq *GraphQL) resolveJoinProperty(sourceKey string, docType string, docKey 
 // General purpose GraphQL query handler that gets a doc by docID (called "id").
 // It checks that the "type" property equals docType.
 func graphQLDocIDQuery(docType string, params graphql.ResolveParams) (interface{}, error) {
-	db, ok := params.Context.Value(dbKey).(*Database)
-	if !ok {
-		panic("No db in context")
-	}
+	db := params.Context.Value(dbKey).(*Database)
 	docID := params.Args["id"].(string) // graphql ensures "id" exists and is a string
 	rev, err := db.GetRev(docID, "", false, nil)
 	if err != nil {
