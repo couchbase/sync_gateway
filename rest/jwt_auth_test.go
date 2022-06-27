@@ -251,3 +251,65 @@ func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 		testUsername,
 		http.StatusUnauthorized))
 }
+
+// Sanity checks that roles_claim/channels_claim also work with Local-JWTs. More extensive coverage in oidc_api_test.go.
+func TestLocalJWTRolesChannels(t *testing.T) {
+	testRSAKeypair, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	testRSAJWK := jose.JSONWebKey{
+		Key:       testRSAKeypair.Public(),
+		Use:       "sig",
+		Algorithm: "RS256",
+		KeyID:     "rsa",
+	}
+
+	const (
+		testProviderName = "test"
+		testIssuer       = "testIssuer"
+		testSubject      = "bilbo"
+		testClientID     = "testAud"
+	)
+
+	baseProvider := auth.LocalJWTAuthProvider{
+		JWTConfigCommon: auth.JWTConfigCommon{
+			Issuer:        testIssuer,
+			ClientID:      base.StringPtr(testClientID),
+			RolesClaim:    "roles",
+			ChannelsClaim: "channels",
+			Register:      true,
+		},
+		Algorithms: auth.JWTAlgList{"RS256"},
+		Keys:       []jose.JSONWebKey{testRSAJWK},
+	}
+
+	restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{LocalJWTConfig: auth.LocalJWTConfig{
+		testProviderName: &baseProvider,
+	}}}}
+	restTester := NewRestTester(t, &restTesterConfig)
+	require.NoError(t, restTester.SetAdminParty(false))
+	defer restTester.Close()
+
+	token := auth.CreateTestJWT(t, jose.RS256, testRSAKeypair, auth.JWTHeaders{
+		"alg": jose.RS256,
+		"kid": testRSAJWK.KeyID,
+	}, map[string]interface{}{
+		"iss":      testIssuer,
+		"aud":      []string{testClientID},
+		"sub":      testSubject,
+		"roles":    []string{"jwt_only_role"},
+		"channels": []string{"jwt_only_channel"},
+	})
+
+	res := restTester.SendRequestWithHeaders(http.MethodPost, "/db/_session", "{}", map[string]string{
+		"Authorization": BearerToken + " " + token,
+	})
+	assertStatus(t, res, http.StatusOK)
+
+	authn := restTester.GetDatabase().Authenticator(base.TestCtx(t))
+	user, err := authn.GetUser(testProviderName + "_" + testSubject)
+	require.NoError(t, err)
+	require.NotNil(t, user)
+
+	assert.Contains(t, user.RoleNames(), "jwt_only_role")
+	assert.Contains(t, user.Channels().AllKeys(), "jwt_only_channel")
+}
