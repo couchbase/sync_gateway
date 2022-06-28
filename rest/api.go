@@ -402,14 +402,14 @@ func (h *handler) handleGetDB() error {
 		State:                         runState,
 		ServerUUID:                    h.db.DatabaseContext.GetServerUUID(),
 		// TODO: Get scope/collection sequences
-		Scopes: map[string]databaseRootScope{
-			"scope1": {
-				Collections: map[string]databaseRootCollection{
-					"collection1": {SequenceNumber: 123456},
-					"collection2": {SequenceNumber: 987654},
-				},
-			},
-		},
+		// Scopes: map[string]databaseRootScope{
+		// 	"scope1": {
+		// 		Collections: map[string]databaseRootCollection{
+		// 			"collection1": {SequenceNumber: 123456},
+		// 			"collection2": {SequenceNumber: 987654},
+		// 		},
+		// 	},
+		// },
 	}
 
 	h.writeJSON(response)
