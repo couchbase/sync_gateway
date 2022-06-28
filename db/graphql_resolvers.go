@@ -20,7 +20,7 @@ import (
 	_ "github.com/robertkrimen/otto/underscore"
 )
 
-// Note: This source file is adapted from channels/channelmapper.go and channels/sync_runner.go
+// Note: This source file was originally adapted from channels/channelmapper.go and channels/sync_runner.go
 
 // Subset of graphql.ResolveInfo, which is marshalable to JSON (and thereby to Otto)
 type jsResolveInfo struct {
@@ -36,7 +36,7 @@ type jsResolveContext struct {
 // Number of ResolverRunner tasks (and Otto contexts) to cache
 const kGQTaskCacheSize = 2
 
-//////// RESOLVER:
+//////// GRAPHQL RESOLVER:
 
 // An object that can run a JavaScript GraphQL resolve function, as found in the GraphQL config.
 type GraphQLResolver struct {
@@ -44,6 +44,7 @@ type GraphQLResolver struct {
 	Name               string
 }
 
+// Creates a GraphQLResolver given its name and JavaScript source code.
 func NewGraphQLResolver(name string, fnSource string) *GraphQLResolver {
 	return &GraphQLResolver{
 		JSServer: sgbucket.NewJSServer(fnSource, kGQTaskCacheSize,
@@ -54,6 +55,9 @@ func NewGraphQLResolver(name string, fnSource string) *GraphQLResolver {
 	}
 }
 
+// Calls a GraphQLResolver. `params` is the parameter struct passed by the go-graphql API,
+// and mutationAllowed is true iff the resolver is allowed to make changes to the database;
+// the `save` callback checks this.
 func (res *GraphQLResolver) Resolve(db *Database, params *graphql.ResolveParams, mutationAllowed bool) (interface{}, error) {
 	context := jsResolveContext{}
 	if db.user != nil {
@@ -107,6 +111,7 @@ func wrappedFuncSource(funcSource string) string {
 }
 
 // An object that runs a specific JS GraphQuery resolver function. Not thread-safe!
+// Owned by a GraphQLResolver, which arbitrates access to it.
 type graphQLResolverRunner struct {
 	sgbucket.JSRunner           // "Superclass"
 	name              string    // Name of the resolver
@@ -114,6 +119,7 @@ type graphQLResolverRunner struct {
 	mutationAllowed   bool      // Whether save() is allowed during this call
 }
 
+// Creates a graphQLResolverRunner given its name and JavaScript source code.
 func NewGraphQLResolverRunner(name string, funcSource string) (*graphQLResolverRunner, error) {
 	ctx := context.Background()
 	runner := &graphQLResolverRunner{name: name}
@@ -157,12 +163,14 @@ func NewGraphQLResolverRunner(name string, funcSource string) (*graphQLResolverR
 		return nil, base.HTTPErrorf(http.StatusInternalServerError, "Error compiling GraphQL resolver %s: %v", name, err)
 	}
 
+	// Function that runs before every call:
 	runner.Before = func() {
 		if runner.currentDB == nil {
 			panic("GraphQLResolverRunner can't run without a currentDB")
 		}
 		fmt.Printf("*** GQ runner %s about to run\n", runner.name)
 	}
+	// Function that runs after every call:
 	runner.After = func(jsResult otto.Value, err error) (interface{}, error) {
 		runner.currentDB = nil
 		if err != nil {
