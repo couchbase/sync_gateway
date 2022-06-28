@@ -124,13 +124,13 @@ func attachmentCompactMarkPhase(db *Database, compactionID string, terminator *b
 	dcpFeedKey := compactionID + "_mark"
 	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, db.Bucket, db.Options.GroupID)
 	if err != nil {
-		base.WarnfCtx(db.Ctx, "[%s] Failed to create DCP client! %v", compactionLoggingID, err)
+		base.WarnfCtx(db.Ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)
 		return 0, nil, err
 	}
 
 	doneChan, err := dcpClient.Start()
 	if err != nil {
-		base.WarnfCtx(db.Ctx, "[%s] Failed to start DCP feed! %v", compactionLoggingID, err)
+		base.WarnfCtx(db.Ctx, "[%s] Failed to start attachment compaction DCP feed! %v", compactionLoggingID, err)
 		_ = dcpClient.Close()
 		return 0, nil, err
 	}
@@ -343,13 +343,13 @@ func attachmentCompactSweepPhase(db *Database, compactionID string, vbUUIDs []ui
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed %q for sweep phase of attachment compaction", compactionLoggingID, dcpFeedKey)
 	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, db.Bucket, db.Options.GroupID)
 	if err != nil {
-		base.WarnfCtx(db.Ctx, "[%s] Failed to create DCP client! %v", compactionLoggingID, err)
+		base.WarnfCtx(db.Ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)
 		return 0, err
 	}
 
 	doneChan, err := dcpClient.Start()
 	if err != nil {
-		base.WarnfCtx(db.Ctx, "[%s] Failed to start DCP feed! %v", compactionLoggingID, err)
+		base.WarnfCtx(db.Ctx, "[%s] Failed to start attachment compaction DCP feed! %v", compactionLoggingID, err)
 		_ = dcpClient.Close()
 		return 0, err
 	}
@@ -363,7 +363,7 @@ func attachmentCompactSweepPhase(db *Database, compactionID string, vbUUIDs []ui
 		base.DebugfCtx(db.Ctx, base.KeyAll, "[%s] Terminator closed. Ending sweep phase.", compactionLoggingID)
 		err = dcpClient.Close()
 		if err != nil {
-			base.WarnfCtx(db.Ctx, "[%s] Failed to close DCP client! %v", compactionLoggingID, err)
+			base.WarnfCtx(db.Ctx, "[%s] Failed to close attachment compaction DCP client! %v", compactionLoggingID, err)
 			return purgedAttachmentCount.Value(), err
 		}
 
@@ -473,11 +473,13 @@ func attachmentCompactCleanupPhase(db *Database, compactionID string, vbUUIDs []
 	dcpFeedKey := compactionID + "_cleanup"
 	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, db.Bucket, db.Options.GroupID)
 	if err != nil {
+		base.WarnfCtx(db.Ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)
 		return err
 	}
 
 	doneChan, err := dcpClient.Start()
 	if err != nil {
+		base.WarnfCtx(db.Ctx, "[%s] Failed to start attachment compaction DCP feed! %v", compactionLoggingID, err)
 		_ = dcpClient.Close()
 		return err
 	}
@@ -489,6 +491,7 @@ func attachmentCompactCleanupPhase(db *Database, compactionID string, vbUUIDs []
 	case <-terminator.Done():
 		err = dcpClient.Close()
 		if err != nil {
+			base.WarnfCtx(db.Ctx, "[%s] Failed to close attachment compaction DCP client! %v", compactionLoggingID, err)
 			return err
 		}
 
