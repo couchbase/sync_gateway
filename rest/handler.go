@@ -174,42 +174,32 @@ func (h *handler) ctx() context.Context {
 	return h.rqCtx
 }
 
-// parseKeyspace will return a fully qualified db, scope and collection for a given '.' separated keyspace string.
-// Returns "_default" for scope and collection if the given keyspace is not otherwise fully qualified.
-func parseKeyspace(ks string) (db, scope, collection string, err error) {
-	var (
-		dbField,
-		scopeField,
-		collectionField *string
-	)
-
-	// FIXME: This will be quicker/zero alloc if we use base.safeCut...
+// parseKeyspace will return a db, scope and collection for a given '.' separated keyspace string.
+// Returns nil for scope and/or collection if not present in the keyspace string.
+func parseKeyspace(ks string) (db string, scope, collection *string, err error) {
 	parts := strings.Split(ks, base.ScopeCollectionSeparator)
 	switch len(parts) {
 	case 1:
-		dbField = &parts[0]
+		db = parts[0]
 	case 2:
-		dbField = &parts[0]
-		collectionField = &parts[1]
+		db = parts[0]
+		collection = &parts[1]
 	case 3:
-		dbField = &parts[0]
-		scopeField = &parts[1]
-		collectionField = &parts[2]
+		db = parts[0]
+		scope = &parts[1]
+		collection = &parts[2]
 	default:
-		return "", "", "", fmt.Errorf("unknown keyspace format: %q - expected 1-3 fields", ks)
+		return "", nil, nil, fmt.Errorf("unknown keyspace format: %q - expected 1-3 fields", ks)
 	}
 
 	// make sure all declared fields have stuff in them
-	if dbField != nil && *dbField == "" ||
-		collectionField != nil && *collectionField == "" ||
-		scopeField != nil && *scopeField == "" {
-		return "", "", "", fmt.Errorf("keyspace fields cannot be empty: %q", ks)
+	if db == "" ||
+		collection != nil && *collection == "" ||
+		scope != nil && *scope == "" {
+		return "", nil, nil, fmt.Errorf("keyspace fields cannot be empty: %q", ks)
 	}
 
-	return *dbField,
-		base.StringDefault(scopeField, base.DefaultScope),
-		base.StringDefault(collectionField, base.DefaultCollection),
-		nil
+	return db, scope, collection, nil
 }
 
 // Top-level handler call. It's passed a pointer to the specific method to run.
@@ -252,13 +242,20 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	shouldCheckAdminAuth := (h.privs == adminPrivs && *h.server.config.API.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.config.API.MetricsInterfaceAuthentication)
 
 	dbName := h.PathVar("db")
-	keyspaceScope := base.DefaultScope
+	keyspaceScope := base.DefaultScope // TODO: Change to scope defined in db config
 	keyspaceCollection := base.DefaultCollection
 	// If there is a "keyspace" path variable, determine the fully qualified collection:
 	if ks := h.PathVar("keyspace"); ks != "" {
-		dbName, keyspaceScope, keyspaceCollection, err = parseKeyspace(ks)
+		parsedDb, parsedScope, parsedCollection, err := parseKeyspace(ks)
 		if err != nil {
 			return err
+		}
+		dbName = parsedDb
+		if parsedScope != nil {
+			keyspaceScope = *parsedScope
+		}
+		if parsedCollection != nil {
+			keyspaceCollection = *parsedCollection
 		}
 	}
 

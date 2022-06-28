@@ -173,29 +173,29 @@ func Test_parseKeyspace(t *testing.T) {
 	tests := []struct {
 		ks             string
 		wantDb         string
-		wantScope      string
-		wantCollection string
+		wantScope      *string
+		wantCollection *string
 		wantErr        assert.ErrorAssertionFunc
 	}{
 		{
 			ks:             "db",
 			wantDb:         "db",
-			wantScope:      base.DefaultScope,
-			wantCollection: base.DefaultCollection,
+			wantScope:      nil,
+			wantCollection: nil,
 			wantErr:        assert.NoError,
 		},
 		{
 			ks:             "d.c",
 			wantDb:         "d",
-			wantScope:      base.DefaultScope,
-			wantCollection: "c",
+			wantScope:      nil,
+			wantCollection: base.StringPtr("c"),
 			wantErr:        assert.NoError,
 		},
 		{
 			ks:             "d.s.c",
 			wantDb:         "d",
-			wantScope:      "s",
-			wantCollection: "c",
+			wantScope:      base.StringPtr("s"),
+			wantCollection: base.StringPtr("c"),
 			wantErr:        assert.NoError,
 		},
 		{
