@@ -20,7 +20,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-type BLIPMessageSender interface {
+// blipMessageSender validates specific reuest types
+type blipMessageSender interface {
 	Send(s *blip.Sender) (err error)
 }
 
@@ -37,7 +38,7 @@ type SubChangesRequest struct {
 	clientType     clientType
 }
 
-var _ BLIPMessageSender = &SubChangesRequest{}
+var _ blipMessageSender = &SubChangesRequest{}
 
 func (rq *SubChangesRequest) Send(s *blip.Sender) error {
 	r, err := rq.marshalBLIPRequest()
@@ -84,7 +85,7 @@ type SetSGR2CheckpointRequest struct {
 	msg *blip.Message
 }
 
-var _ BLIPMessageSender = &SetSGR2CheckpointRequest{}
+var _ blipMessageSender = &SetSGR2CheckpointRequest{}
 
 func (rq *SetSGR2CheckpointRequest) Send(s *blip.Sender) error {
 	msg, err := rq.marshalBLIPRequest()
@@ -132,8 +133,7 @@ func (rq *SetSGR2CheckpointRequest) Response() (*SetSGR2CheckpointResponse, erro
 	}
 
 	if msgType := respMsg.Type(); msgType != blip.ResponseType {
-		if msgType == blip.ErrorType &&
-			respMsg.Properties["Error-Domain"] == "HTTP" &&
+		if msgType == blip.ErrorType && errorDomainIsHTTP(respMsg) &&
 			respMsg.Properties["Error-Code"] == "409" {
 			// conflict writing checkpoint
 			return nil, base.HTTPErrorf(http.StatusConflict, "Document update conflict")
@@ -153,7 +153,7 @@ type GetSGR2CheckpointRequest struct {
 	msg *blip.Message
 }
 
-var _ BLIPMessageSender = &GetSGR2CheckpointRequest{}
+var _ blipMessageSender = &GetSGR2CheckpointRequest{}
 
 func (rq *GetSGR2CheckpointRequest) Send(s *blip.Sender) error {
 	msg := rq.marshalBLIPRequest()
@@ -195,7 +195,7 @@ func (rq *GetSGR2CheckpointRequest) Response() (*SGR2Checkpoint, error) {
 
 	if msgType := respMsg.Type(); msgType != blip.ResponseType {
 		if msgType == blip.ErrorType &&
-			respMsg.Properties["Error-Domain"] == "HTTP" &&
+			errorDomainIsHTTP(respMsg) &&
 			respMsg.Properties["Error-Code"] == "404" {
 			// no checkpoint found
 			return nil, nil
@@ -212,4 +212,8 @@ func (rq *GetSGR2CheckpointRequest) Response() (*SGR2Checkpoint, error) {
 		RevID:     respMsg.Properties[GetCheckpointResponseRev],
 		BodyBytes: bodyBytes,
 	}, nil
+}
+
+func errorDomainIsHTTP(response *blip.Message) bool {
+	return response.Properties[BlipErrorDomain] == "HTTP"
 }

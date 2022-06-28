@@ -65,7 +65,7 @@ const (
 	SubChangesRevocations = "revocations"
 
 	// rev message properties
-	RevMessageId          = "id"
+	RevMessageID          = "id"
 	RevMessageRev         = "rev"
 	RevMessageDeleted     = "deleted"
 	RevMessageSequence    = "sequence"
@@ -115,13 +115,16 @@ const (
 	BlipErrorCode   = "Error-Code"
 )
 
-// Function signature for something that parses a sequence id from a string
+const falseProperty = "false"
+const trueProperty = "true"
+
+// SequenceIDParser is a function signature for something that parses a sequence id from a string
 type SequenceIDParser func(since string) (SequenceID, error)
 
-// Function signature that returns the latest sequence
+// LatestSequenceFunc is a function signature that returns the latest sequence
 type LatestSequenceFunc func() (SequenceID, error)
 
-// Helper for handling BLIP subChanges requests.  Supports Stringer() interface to log aspects of the request.
+// SubChangesParams is a helper for handling BLIP subChanges requests.  Supports Stringer() interface to log aspects of the request.
 type SubChangesParams struct {
 	rq      *blip.Message // The underlying BLIP message
 	_since  SequenceID    // Since value on the incoming request
@@ -142,7 +145,7 @@ func NewSubChangesParams(logCtx context.Context, rq *blip.Message, zeroSeq Seque
 	// Determine incoming since and docIDs once, since there is some overhead associated with their calculation
 	sinceSequenceId := zeroSeq
 	var err error
-	if rq.Properties["future"] == "true" {
+	if rq.Properties["future"] == trueProperty {
 		sinceSequenceId, err = latestSeq()
 	} else if sinceStr, found := rq.Properties[SubChangesSince]; found {
 		if sinceSequenceId, err = sequenceIDParser(base.ConvertJSONString(sinceStr)); err != nil {
@@ -186,9 +189,8 @@ func readDocIDsFromRequest(rq *blip.Message) (docIDs []string, err error) {
 		unmarshalErr := base.JSONUnmarshal(rawBody, &body)
 		if unmarshalErr != nil {
 			return nil, err
-		} else {
-			docIDs = body.DocIDs
 		}
+		docIDs = body.DocIDs
 	}
 	return docIDs, err
 
@@ -200,18 +202,18 @@ func (s *SubChangesParams) batchSize() int {
 
 func (s *SubChangesParams) continuous() bool {
 	continuous := false
-	if val, found := s.rq.Properties[SubChangesContinuous]; found && val != "false" {
+	if val, found := s.rq.Properties[SubChangesContinuous]; found && val != falseProperty {
 		continuous = true
 	}
 	return continuous
 }
 
 func (s *SubChangesParams) revocations() bool {
-	return s.rq.Properties[SubChangesRevocations] == "true"
+	return s.rq.Properties[SubChangesRevocations] == trueProperty
 }
 
 func (s *SubChangesParams) activeOnly() bool {
-	return (s.rq.Properties[SubChangesActiveOnly] == "true")
+	return (s.rq.Properties[SubChangesActiveOnly] == trueProperty)
 }
 
 func (s *SubChangesParams) filter() string {
@@ -335,7 +337,7 @@ func NewRevMessage() *RevMessage {
 }
 
 func (rm *RevMessage) ID() (id string, found bool) {
-	id, found = rm.Properties[RevMessageId]
+	id, found = rm.Properties[RevMessageID]
 	return id, found
 }
 
@@ -349,7 +351,7 @@ func (rm *RevMessage) Deleted() bool {
 	if !found {
 		return false
 	}
-	return deleted != "0" && deleted != "false"
+	return deleted != "0" && deleted != falseProperty
 }
 
 func (rm *RevMessage) DeltaSrc() (deltaSrc string, found bool) {
@@ -368,7 +370,7 @@ func (rm *RevMessage) Sequence() (sequence string, found bool) {
 }
 
 func (rm *RevMessage) SetID(id string) {
-	rm.Properties[RevMessageId] = id
+	rm.Properties[RevMessageID] = id
 }
 
 func (rm *RevMessage) SetRev(rev string) {
@@ -377,9 +379,9 @@ func (rm *RevMessage) SetRev(rev string) {
 
 func (rm *RevMessage) SetNoConflicts(noConflicts bool) {
 	if noConflicts {
-		rm.Properties[RevMessageNoConflicts] = "true"
+		rm.Properties[RevMessageNoConflicts] = trueProperty
 	} else {
-		rm.Properties[RevMessageNoConflicts] = "false"
+		rm.Properties[RevMessageNoConflicts] = falseProperty
 	}
 }
 
@@ -410,7 +412,7 @@ func (rm *RevMessage) String() string {
 		buffer.WriteString(fmt.Sprintf("DeltaSrc:%v ", deltaSrc))
 	}
 
-	if sequence, foundSequence := rm.Sequence(); foundSequence == true {
+	if sequence, foundSequence := rm.Sequence(); foundSequence {
 		buffer.WriteString(fmt.Sprintf("Sequence:%v ", sequence))
 	}
 
