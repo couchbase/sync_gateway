@@ -77,6 +77,15 @@ func NewDCPWorker(workerID int, metadata DCPMetadataStore, mutationCallback sgbu
 
 // Send accepts incoming events from the DCP client and adds to the worker's buffered feed, to be processed by the main worker goroutine
 func (w *DCPWorker) Send(event streamEvent) {
+	// Ignore mutations if they come in after the client has started closing (CBG-2173)
+	// This needs to be a separate select because if w.eventFeed has capacity at the same time as the terminator is closed,
+	// the outcome is non-deterministic (https://go.dev/ref/spec#Select_statements)
+	select {
+	case <-w.terminator:
+		TracefCtx(context.TODO(), KeyDCP, "Ignoring stream event (vb:%d) as the client is closing", event.VbID())
+		return
+	default:
+	}
 	select {
 	case w.eventFeed <- event:
 	case <-w.terminator:
