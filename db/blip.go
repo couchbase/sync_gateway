@@ -27,18 +27,18 @@ const (
 )
 
 var (
-	// kCompressedTypes are MIME types that explicitly indicate they're compressed:
+	// compressedTypes are MIME types that explicitly indicate they're compressed:
 	compressedTypes = regexp.MustCompile(`(?i)\bg?zip\b`)
 
-	// kGoodTypes are MIME types that are compressible:
+	// goodTypes are MIME types that are compressible:
 	goodTypes = regexp.MustCompile(`(?i)(^text)|(xml\b)|(\b(html|json|yaml)\b)`)
 
-	// kBadTypes are MIME types that are generally incompressible:
+	// badTypes are MIME types that are generally incompressible:
 	badTypes = regexp.MustCompile(`(?i)^(audio|image|video)/`)
 	// An interesting type is SVG (image/svg+xml) which matches _both_! (It's compressible.)
 	// See <http://www.iana.org/assignments/media-types/media-types.xhtml>
 
-	// kBadFilenames are filename extensions of incompressible types:
+	// badFilenames are filename extensions of incompressible types:
 	badFilenames = regexp.MustCompile(`(?i)\.(zip|t?gz|rar|7z|jpe?g|png|gif|svgz|mp3|m4a|ogg|wav|aiff|mp4|mov|avi|theora)$`)
 )
 
