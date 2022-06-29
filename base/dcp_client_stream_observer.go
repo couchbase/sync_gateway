@@ -1,6 +1,8 @@
 package base
 
 import (
+	"context"
+
 	"github.com/couchbase/gocbcore/v10"
 )
 
@@ -23,6 +25,12 @@ func (dc *DCPClient) SnapshotMarker(snapshotMarker gocbcore.DcpSnapshotMarker) {
 }
 
 func (dc *DCPClient) Mutation(mutation gocbcore.DcpMutation) {
+	if dc.closing.IsTrue() {
+		// Ignore mutations if they come in after the client has started closing (CBG-2173)
+		TracefCtx(context.TODO(), KeyDCP, "Observer dropping mutation (key=%v vb=%d seq=%d) as it is closing", UD(string(mutation.Key)), mutation.VbID, mutation.SeqNo)
+		return
+	}
+
 	if dc.afterEndSeq(mutation.VbID, mutation.SeqNo) {
 		return
 	}
@@ -48,6 +56,12 @@ func (dc *DCPClient) Mutation(mutation gocbcore.DcpMutation) {
 }
 
 func (dc *DCPClient) Deletion(deletion gocbcore.DcpDeletion) {
+	if dc.closing.IsTrue() {
+		// Ignore mutations if they come in after the client has started closing (CBG-2173)
+		TracefCtx(context.TODO(), KeyDCP, "Observer dropping deletion (key=%v vb=%d seq=%d) as it is closing", UD(string(deletion.Key)), deletion.VbID, deletion.SeqNo)
+		return
+	}
+
 	if dc.afterEndSeq(deletion.VbID, deletion.SeqNo) {
 		return
 	}
