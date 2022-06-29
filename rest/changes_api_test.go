@@ -210,7 +210,7 @@ func TestPostChanges(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/pbs3", `{"value":3, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
 
-	changes, err := rt.WaitForChanges(3, "/db/_changes?style=all_docs&heartbeat=300000&feed=longpoll&limit=50&since=0", "bernard", false)
+	changes, err := rt.waitForChanges(3, "/db/_changes?style=all_docs&heartbeat=300000&feed=longpoll&limit=50&since=0", "bernard", false)
 	assert.NoError(t, err)
 	assert.Len(t, changes.Results, 3)
 }
@@ -618,7 +618,7 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 		`{"seq":26,"id":"abc-2","deleted":true,"removed":["ABC"],"changes":[{"rev":"2-6055be21d970eb690f48452505ea02ed"}]}`,
 		`{"seq":27,"id":"abc-3","removed":["ABC"],"changes":[{"rev":"2-09b89154aa9a0e1620da0d86528d406a"}]}`,
 	}
-	changes, err := rt.WaitForChanges(len(expectedResults), "/db/_changes", "bernard", false)
+	changes, err := rt.waitForChanges(len(expectedResults), "/db/_changes", "bernard", false)
 	require.NoError(t, err, "Error retrieving changes results")
 
 	for index, result := range changes.Results {
@@ -646,7 +646,7 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 		`{"seq":"28:22","id":"mix-5","changes":[{"rev":"3-8192afec7aa6986420be1d57f1677960"}]}`,
 		`{"seq":28,"id":"_user/bernard","changes":[]}`,
 	}
-	changes, err = rt.WaitForChanges(len(expectedResults),
+	changes, err = rt.waitForChanges(len(expectedResults),
 		fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq), "bernard", false)
 	require.NoError(t, err, "Error retrieving changes results")
 
@@ -681,7 +681,7 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 		`{"seq":31,"id":"hbo-3","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
 		`{"seq":32,"id":"mix-7","changes":[{"rev":"1-32f69cdbf1772a8e064f15e928a18f85"}]}`,
 	}
-	changes, err = rt.WaitForChanges(len(expectedResults),
+	changes, err = rt.waitForChanges(len(expectedResults),
 		fmt.Sprintf("/db/_changes?since=28:5"), "bernard", false)
 	require.NoError(t, err, "Error retrieving changes results")
 
@@ -740,7 +740,7 @@ func TestPostChangesAdminChannelGrantRemovalWithLimit(t *testing.T) {
 	cacheWaiter.AddAndWait(3)
 
 	// Issue changes request with limit less than 5.  Expect to get pbs-5, user doc, and abc-1
-	changes, err := rt.WaitForChanges(0, "/db/_changes?limit=3", "bernard", false)
+	changes, err := rt.waitForChanges(0, "/db/_changes?limit=3", "bernard", false)
 	assert.NoError(t, err)
 	require.Equal(t, len(changes.Results), 3)
 	assert.Equal(t, "pbs-5", changes.Results[0].ID)
@@ -749,7 +749,7 @@ func TestPostChangesAdminChannelGrantRemovalWithLimit(t *testing.T) {
 	lastSeq := changes.Last_Seq
 
 	// Issue a second changes request, expect to see last 2 documents.
-	moreChanges, err := rt.WaitForChanges(0, fmt.Sprintf("/db/_changes?limit=3&since=%s", lastSeq), "bernard", false)
+	moreChanges, err := rt.waitForChanges(0, fmt.Sprintf("/db/_changes?limit=3&since=%s", lastSeq), "bernard", false)
 	assert.NoError(t, err)
 	require.Equal(t, 2, len(moreChanges.Results))
 	assert.Equal(t, "abc-2", moreChanges.Results[0].ID)
@@ -805,7 +805,7 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 	expectedResults := []string{
 		`{"seq":7,"id":"abc-1","changes":[{"rev":"1-0143105976caafbda3b90cf82948dc64"}]}`,
 	}
-	changes, err := rt.WaitForChanges(len(expectedResults), "/db/_changes", "bernard", false)
+	changes, err := rt.waitForChanges(len(expectedResults), "/db/_changes", "bernard", false)
 	require.NoError(t, err, "Error retrieving changes results")
 	for index, result := range changes.Results {
 		var expectedChange db.ChangeEntry
@@ -824,7 +824,7 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 		`{"seq":"8:2","id":"hbo-1","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
 		`{"seq":8,"id":"grant-1","changes":[{"rev":"1-c5098bb14d12d647c901850ff6a6292a"}]}`,
 	}
-	changes, err = rt.WaitForChanges(1,
+	changes, err = rt.waitForChanges(1,
 		fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq), "bernard", false)
 	require.NoError(t, err, "Error retrieving changes results")
 	for index, result := range changes.Results {
@@ -847,7 +847,7 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 	}
 
 	t.Run("grant via existing channel", func(t *testing.T) {
-		changes, err = rt.WaitForChanges(len(expectedResults), "/db/_changes?since=8:1", "alice", false)
+		changes, err = rt.waitForChanges(len(expectedResults), "/db/_changes?since=8:1", "alice", false)
 		require.NoError(t, err, "Error retrieving changes results for alice")
 		for index, result := range changes.Results {
 			var expectedChange db.ChangeEntry
@@ -857,7 +857,7 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 	})
 
 	t.Run("grant via new channel", func(t *testing.T) {
-		changes, err = rt.WaitForChanges(len(expectedResults), "/db/_changes?since=8:1", "bernard", false)
+		changes, err = rt.waitForChanges(len(expectedResults), "/db/_changes?since=8:1", "bernard", false)
 		require.NoError(t, err, "Error retrieving changes results for bernard")
 		for index, result := range changes.Results {
 			var expectedChange db.ChangeEntry
@@ -924,7 +924,7 @@ func TestChangeWaiterExitOnChangesTermination(t *testing.T) {
 			// Create a doc and send an initial changes
 			resp := sendRequestFn(rt, test.username, http.MethodPut, "/db/doc1", `{"foo":"bar"}`)
 			assertStatus(t, resp, http.StatusCreated)
-			c, err := rt.WaitForChanges(1, "/db/_changes?since=0", "", true)
+			c, err := rt.waitForChanges(1, "/db/_changes?since=0", "", true)
 			require.NoError(t, err)
 
 			lastSeq := c.Last_Seq.(string)
@@ -3473,7 +3473,7 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	// Get pre-delete changes
-	changes, err := rt.WaitForChanges(5, "/db/_changes?style=all_docs", "bernard", false)
+	changes, err := rt.waitForChanges(5, "/db/_changes?style=all_docs", "bernard", false)
 	require.NoError(t, err, "Error retrieving changes results")
 	require.Len(t, changes.Results, 5)
 
@@ -3502,7 +3502,7 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	// Normal changes
-	changes, err = rt.WaitForChanges(10, "/db/_changes?style=all_docs", "bernard", false)
+	changes, err = rt.waitForChanges(10, "/db/_changes?style=all_docs", "bernard", false)
 	require.NoError(t, err, "Error retrieving changes results")
 	require.Len(t, changes.Results, 10)
 	for _, entry := range changes.Results {
