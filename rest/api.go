@@ -359,9 +359,9 @@ func (h *handler) instanceStartTimeMicro() int64 {
 
 type DatabaseRoot struct {
 	DBName                        string                       `json:"db_name"`
-	SequenceNumber                uint64                       `json:"update_seq"`           // The last sequence written to the _default collection
-	CommittedUpdateSequenceNumber uint64                       `json:"committed_update_seq"` // Used by perf tests, shouldn't be removed
-	InstanceStartTimeMicro        int64                        `json:"instance_start_time"`  // microseconds since epoch
+	SequenceNumber                *uint64                      `json:"update_seq,omitempty"`           // The last sequence written to the _default collection, if not running with multiple collections.
+	CommittedUpdateSequenceNumber *uint64                      `json:"committed_update_seq,omitempty"` // Same as above - Used by perf tests, shouldn't be removed
+	InstanceStartTimeMicro        int64                        `json:"instance_start_time"`            // microseconds since epoch
 	CompactRunning                bool                         `json:"compact_running"`
 	PurgeSequenceNumber           uint64                       `json:"purge_seq"`
 	DiskFormatVersion             uint64                       `json:"disk_format_version"`
@@ -383,25 +383,27 @@ func (h *handler) handleGetDB() error {
 		return nil
 	}
 
-	lastSeq := uint64(0)
-	runState := db.RunStateString[atomic.LoadUint32(&h.db.State)]
+	// TODO: If running with multiple collections, leave nil
+	var defaultCollectionLastSeq *uint64
 
 	// Don't bother trying to lookup LastSequence() if offline
+	runState := db.RunStateString[atomic.LoadUint32(&h.db.State)]
 	if runState != db.RunStateString[db.DBOffline] {
-		lastSeq, _ = h.db.LastSequence()
+		lastSeq, _ := h.db.LastSequence()
+		defaultCollectionLastSeq = &lastSeq
 	}
 
 	var response = DatabaseRoot{
 		DBName:                        h.db.Name,
-		SequenceNumber:                lastSeq,
-		CommittedUpdateSequenceNumber: lastSeq,
+		SequenceNumber:                defaultCollectionLastSeq,
+		CommittedUpdateSequenceNumber: defaultCollectionLastSeq,
 		InstanceStartTimeMicro:        h.instanceStartTimeMicro(),
 		CompactRunning:                h.db.IsCompactRunning(),
 		PurgeSequenceNumber:           0, // TODO: Should track this value
 		DiskFormatVersion:             0, // Probably meaningless, but add for compatibility
 		State:                         runState,
 		ServerUUID:                    h.db.DatabaseContext.GetServerUUID(),
-		// TODO: Get scope/collection sequences
+		// TODO: If running with multiple scope/collections
 		// Scopes: map[string]databaseRootScope{
 		// 	"scope1": {
 		// 		Collections: map[string]databaseRootCollection{
