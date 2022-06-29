@@ -807,7 +807,7 @@ func createDocWithInBodyAttachment(t *testing.T, docID string, docBody []byte, a
 // Check for regression of CBG-1980 caused by DCP closing timing issue for the mark and sweep stage
 // May sometimes fail if docsToCreate is not high enough
 func TestAttachmentCompactIncorrectStat(t *testing.T) {
-	const docsToCreate = 1000
+	const docsToCreate = 10_000
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Requires CBS")
 	}
@@ -836,7 +836,6 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	terminator := base.NewSafeTerminator()
 	stat := &base.AtomicInt{}
 	count := int64(0)
-	var err error
 	go func() {
 		attachmentCount, _, err := attachmentCompactMarkPhase(testDb, "mark", terminator, stat)
 		atomic.StoreInt64(&count, attachmentCount)
@@ -857,11 +856,16 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 		return false, nil, nil
 	}
 
-	err, _ = base.RetryLoop("wait for marking to start", statAboveZeroRetryFunc, base.CreateSleeperFunc(1000, 1))
+	const (
+		maxAttempts = 3_000
+		// The timeToSleepMs here is low to ensure that this retry loop finishes after the mark starts, but before it has time to finish
+		timeToSleepMs = 10
+	)
+	err, _ := base.RetryLoop("wait for marking to start", statAboveZeroRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
 	require.NoError(t, err)
 
 	terminator.Close() // Terminate mark function
-	err, _ = base.RetryLoop("wait for marking function to return", compactionFuncReturnedRetryFunc, base.CreateSleeperFunc(200, 100))
+	err, _ = base.RetryLoop("wait for marking function to return", compactionFuncReturnedRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
 	require.NoError(t, err)
 	// Allow time for timing issue to be hit where stat increments when it shouldn't
 	time.Sleep(time.Second * 1)
@@ -880,11 +884,12 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 		require.NoError(t, err)
 	}()
 
-	err, _ = base.RetryLoop("wait for sweeping to start", statAboveZeroRetryFunc, base.CreateSleeperFunc(1000, 1))
+	// The timeToSleepMs here is low to ensure that this retry loop finishes after the sweep starts, but before it has time to finish
+	err, _ = base.RetryLoop("wait for sweeping to start", statAboveZeroRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
 	require.NoError(t, err)
 
 	terminator.Close() // Terminate sweep function
-	err, _ = base.RetryLoop("wait for sweeping function to return", compactionFuncReturnedRetryFunc, base.CreateSleeperFunc(200, 100))
+	err, _ = base.RetryLoop("wait for sweeping function to return", compactionFuncReturnedRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
 	require.NoError(t, err)
 	// Allow time for timing issue to be hit where stat increments when it shouldn't
 	time.Sleep(time.Second * 1)
