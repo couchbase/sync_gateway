@@ -88,7 +88,7 @@ const (
 	DefaultOldRevExpirySeconds = uint32(300)
 
 	// Default value of _local document expiry
-	DefaultLocalDocExpirySecs = uint32(60 * 60 * 24 * 90) //90 days in seconds
+	DefaultLocalDocExpirySecs = uint32(60 * 60 * 24 * 90) // 90 days in seconds
 
 	DefaultViewQueryPageSize = 5000 // This must be greater than 1, or the code won't work due to windowing method
 
@@ -116,7 +116,7 @@ const (
 	// The limit in Couchbase Server for total system xattr size
 	couchbaseMaxSystemXattrSize = 1 * 1024 * 1024 // 1MB
 
-	//==== Sync Prefix Documents & Keys ====
+	// ==== Sync Prefix Documents & Keys ====
 	SyncPrefix = "_sync:"
 
 	AttPrefix              = SyncPrefix + "att:"
@@ -164,6 +164,12 @@ const (
 
 	// RedactedStr can be substituted in place of any sensitive data being returned by an API. The 'xxxxx' pattern is the same used by Go's url.Redacted() method.
 	RedactedStr = "xxxxx"
+)
+
+const (
+	DefaultScope             = "_default"
+	DefaultCollection        = "_default"
+	ScopeCollectionSeparator = "."
 )
 
 const (

@@ -1,12 +1,8 @@
 parameters:
-  - $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/keyspace
 post:
   summary: Compare revisions to what is in the database
-  description: |-
-    Takes a set of document IDs, each with a set of revision IDs. For each document, an array of unknown revisions are returned with an array of known revisions that may be recent ancestors.
-
-    Required Sync Gateway RBAC roles:
-    * Sync Gateway Application
+  description: 'Takes a set of document IDs, each with a set of revision IDs. For each document, an array of unknown revisions are returned with an array of known revisions that may be recent ancestors.'
   requestBody:
     content:
       application/json:

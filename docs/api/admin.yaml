@@ -24,10 +24,10 @@ paths:
     $ref: './paths/admin/{db}~_session.yaml'
   '/{db}/_session/{sessionid}':
     $ref: './paths/admin/{db}~_session~{sessionid}.yaml'
-  '/{db}/_raw/{docid}':
-    $ref: './paths/admin/{db}~_raw~{docid}.yaml'
-  '/{db}/_revtree/{docid}':
-    $ref: './paths/admin/{db}~_revtree~{docid}.yaml'
+  '/{keyspace}/_raw/{docid}':
+    $ref: './paths/admin/{keyspace}~_raw~{docid}.yaml'
+  '/{keyspace}/_revtree/{docid}':
+    $ref: './paths/admin/{keyspace}~_revtree~{docid}.yaml'
   '/{db}/_user/':
     $ref: './paths/admin/{db}~_user~.yaml'
   '/{db}/_user/{name}':
@@ -92,10 +92,10 @@ paths:
     $ref: './paths/admin/{db}~_config~sync.yaml'
   '/{db}/_config/import_filter':
     $ref: './paths/admin/{db}~_config~import_filter.yaml'
-  '/{db}/_resync':
-    $ref: './paths/admin/{db}~_resync.yaml'
-  '/{db}/_purge':
-    $ref: './paths/admin/{db}~_purge.yaml'
+  '/{keyspace}/_resync':
+    $ref: './paths/admin/{keyspace}~_resync.yaml'
+  '/{keyspace}/_purge':
+    $ref: './paths/admin/{keyspace}~_purge.yaml'
   '/{db}/_flush':
     $ref: './paths/admin/{db}~_flush.yaml'
   '/{db}/_online':
@@ -112,20 +112,22 @@ paths:
     $ref: './paths/admin/{db}~_repair.yaml'
   /_all_dbs:
     $ref: ./paths/admin/_all_dbs.yaml
-  '/{db}/_compact':
-    $ref: './paths/admin/{db}~_compact.yaml'
+  '/{keyspace}/_compact':
+    $ref: './paths/admin/{keyspace}~_compact.yaml'
   '/{db}/':
     $ref: './paths/admin/{db}~.yaml'
+  '/{keyspace}/':
+    $ref: './paths/admin/{keyspace}~.yaml'
   /_expvar:
     $ref: ./paths/admin/_expvar.yaml
   /:
     $ref: ./paths/admin/~.yaml
   '/{db}/_all_docs':
     $ref: './paths/admin/{db}~_all_docs.yaml'
-  '/{db}/_bulk_docs':
-    $ref: './paths/admin/{db}~_bulk_docs.yaml'
-  '/{db}/_bulk_get':
-    $ref: './paths/admin/{db}~_bulk_get.yaml'
+  '/{keyspace}/_bulk_docs':
+    $ref: './paths/admin/{keyspace}~_bulk_docs.yaml'
+  '/{keyspace}/_bulk_get':
+    $ref: './paths/admin/{keyspace}~_bulk_get.yaml'
   '/{db}/_changes':
     $ref: './paths/admin/{db}~_changes.yaml'
   '/{db}/_design/{ddoc}':
@@ -134,14 +136,14 @@ paths:
     $ref: './paths/admin/{db}~_design~{ddoc}~_view~{view}.yaml'
   '/{db}/_ensure_full_commit':
     $ref: './paths/admin/{db}~_ensure_full_commit.yaml'
-  '/{db}/_revs_diff':
-    $ref: './paths/admin/{db}~_revs_diff.yaml'
-  '/{db}/_local/{docid}':
-    $ref: './paths/admin/{db}~_local~{docid}.yaml'
-  '/{db}/{docid}':
-    $ref: './paths/admin/{db}~{docid}.yaml'
-  '/{db}/{docid}/{attach}':
-    $ref: './paths/admin/{db}~{docid}~{attach}.yaml'
+  '/{keyspace}/_revs_diff':
+    $ref: './paths/admin/{keyspace}~_revs_diff.yaml'
+  '/{keyspace}/_local/{docid}':
+    $ref: './paths/admin/{keyspace}~_local~{docid}.yaml'
+  '/{keyspace}/{docid}':
+    $ref: './paths/admin/{keyspace}~{docid}.yaml'
+  '/{keyspace}/{docid}/{attach}':
+    $ref: './paths/admin/{keyspace}~{docid}~{attach}.yaml'
   '/{db}/_facebook':
     $ref: './paths/admin/{db}~_facebook.yaml'
   '/{db}/_google':

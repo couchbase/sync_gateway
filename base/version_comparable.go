@@ -248,7 +248,7 @@ func extractComparableVersionComponents(version string) (epoch, major, minor, pa
 	minor, remainder = safeCutBefore(remainder, string(comparableVersionSep))
 
 	// handle optional [.other]
-	if before, after, ok := stringsCut(remainder, string(comparableVersionSep)); !ok {
+	if before, after, ok := StringsCut(remainder, string(comparableVersionSep)); !ok {
 		patch = remainder
 	} else {
 		patch = before

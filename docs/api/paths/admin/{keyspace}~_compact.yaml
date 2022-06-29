@@ -1,5 +1,5 @@
 parameters:
-  - $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/keyspace
 post:
   summary: Manage a compact operation
   description: |-

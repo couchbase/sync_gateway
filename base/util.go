@@ -282,13 +282,13 @@ func IsPowerOfTwo(n uint16) bool {
 
 // This is how Couchbase Server handles document expiration times
 //
-//The actual value sent may either be
-//Unix time (number of seconds since January 1, 1970, as a 32-bit
-//value), or a number of seconds starting from current time. In the
-//latter case, this number of seconds may not exceed 60*60*24*30 (number
-//of seconds in 30 days); if the number sent by a client is larger than
-//that, the server will consider it to be real Unix time value rather
-//than an offset from current time.
+// The actual value sent may either be
+// Unix time (number of seconds since January 1, 1970, as a 32-bit
+// value), or a number of seconds starting from current time. In the
+// latter case, this number of seconds may not exceed 60*60*24*30 (number
+// of seconds in 30 days); if the number sent by a client is larger than
+// that, the server will consider it to be real Unix time value rather
+// than an offset from current time.
 
 // DurationToCbsExpiry takes a ttl as a Duration and returns an int
 // formatted as required by CBS expiry processing
@@ -767,7 +767,7 @@ func sanitizeRequestURLQueryParams(urlStr string, values url.Values) string {
 		urlStr, _ = url.QueryUnescape(urlStr)
 		for key, vals := range values {
 			if key == "code" || strings.Contains(key, "token") {
-				//In case there are multiple entries
+				// In case there are multiple entries
 				for _, val := range vals {
 					urlStr = strings.Replace(urlStr, fmt.Sprintf("%s=%s", key, val), fmt.Sprintf("%s=******", key), -1)
 				}
@@ -807,6 +807,14 @@ func StringPtr(value string) *string {
 	return &value
 }
 
+// StringDefault returns ifNil if s is nil, or else returns dereferenced value of s
+func StringDefault(s *string, ifNil string) string {
+	if s != nil {
+		return *s
+	}
+	return ifNil
+}
+
 // Uint16Ptr returns a pointer to the given uint16 literal.
 func Uint16Ptr(u uint16) *uint16 {
 	return &u
@@ -841,13 +849,6 @@ func BoolPtr(b bool) *bool {
 func BoolDefault(b *bool, ifNil bool) bool {
 	if b != nil {
 		return *b
-	}
-	return ifNil
-}
-
-func StringDefault(s *string, ifNil string) string {
-	if s != nil {
-		return *s
 	}
 	return ifNil
 }
@@ -1476,7 +1477,7 @@ type JSONDecoderI interface {
 	DisallowUnknownFields()
 	Decode(v interface{}) error
 	Buffered() io.Reader
-	//Token() (json.Token, error) // Not implemented by jsoniter
+	// Token() (json.Token, error) // Not implemented by jsoniter
 	More() bool
 }
 
@@ -1732,8 +1733,8 @@ func CoalesceTimes(a, b *time.Time) *time.Time {
 	return nil
 }
 
-// stringsCut is a backport of the Go 1.18 strings.Cut function. This can be removed once we're running on Go 1.18
-func stringsCut(s, sep string) (before, after string, found bool) {
+// StringsCut is a backport of the Go 1.18 strings.Cut function. This can be removed once we're running on Go 1.18
+func StringsCut(s, sep string) (before, after string, found bool) {
 	if i := strings.Index(s, sep); i >= 0 {
 		return s[:i], s[i+len(sep):], true
 	}
@@ -1742,7 +1743,7 @@ func stringsCut(s, sep string) (before, after string, found bool) {
 
 // safeCutBefore returns the value up to the first instance of sep if it exists, and the remaining part of the string after sep.
 func safeCutBefore(s, sep string) (value, remainder string) {
-	val, after, ok := stringsCut(s, sep)
+	val, after, ok := StringsCut(s, sep)
 	if !ok {
 		return "", s
 	}
@@ -1751,7 +1752,7 @@ func safeCutBefore(s, sep string) (value, remainder string) {
 
 // safeCutAfter returns the value after the first instance of sep if it exists, and the remaining part of the string before sep.
 func safeCutAfter(s, sep string) (value, remainder string) {
-	before, val, ok := stringsCut(s, sep)
+	before, val, ok := StringsCut(s, sep)
 	if !ok {
 		return "", s
 	}
