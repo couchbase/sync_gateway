@@ -174,8 +174,8 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 				response.SetError("HTTP", status, msg)
 			}
 			base.InfofCtx(bsc.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> %d %s Time:%v", handler.serialNumber, profile, status, msg, time.Since(startTime))
-			// Log the fact that the handler has finished, except for the "subChanges" special case which does it's own termination related logging
 		} else if profile != "subChanges" {
+			// Log the fact that the handler has finished, except for the "subChanges" special case which does it's own termination related logging
 			base.DebugfCtx(bsc.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> OK Time:%v", handler.serialNumber, profile, time.Since(startTime))
 		}
 
@@ -279,7 +279,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 		docID := changeArray[i][1].(string)
 		revID := changeArray[i][2].(string)
 
-		if knownRevsArray, ok := knownRevsArrayInterface.([]interface{}); ok { //nolint:nestif
+		if knownRevsArray, ok := knownRevsArrayInterface.([]interface{}); ok {
 			deltaSrcRevID := ""
 			knownRevs := knownRevsByDoc[docID]
 			if knownRevs == nil {
@@ -385,7 +385,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 		return ErrClosedBLIPSender
 	}
 
-	if awaitResponse { //nolint: nestif
+	if awaitResponse {
 		go func(activeSubprotocol string) {
 			defer func() {
 				if panicked := recover(); panicked != nil {
@@ -548,7 +548,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	base.TracefCtx(bsc.loggingCtx, base.KeySync, "sendRevision, rev attachments for %s/%s are %v", base.UD(docID), revID, base.UD(rev.Attachments))
 	attachmentStorageMeta := ToAttachmentStorageMeta(rev.Attachments)
 	var bodyBytes []byte
-	if base.IsEnterpriseEdition() { //nolint: nestif
+	if base.IsEnterpriseEdition() {
 		// Still need to stamp _attachments into BLIP messages
 		if len(rev.Attachments) > 0 {
 			DeleteAttachmentVersion(rev.Attachments)

@@ -20,7 +20,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-// blipMessageSender validates specific reuest types
+// blipMessageSender validates specific request types
 type blipMessageSender interface {
 	Send(s *blip.Sender) (err error)
 }

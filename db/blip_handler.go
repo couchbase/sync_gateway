@@ -343,7 +343,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	_, forceClose := generateBlipSyncChanges(changesDb, channelSet, options, opts.docIDs, func(changes []*ChangeEntry) error {
 		base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Sending %d changes", len(changes))
 		for _, change := range changes {
-			if !strings.HasPrefix(change.ID, "_") { //nolint: nestif
+			if !strings.HasPrefix(change.ID, "_") {
 				for _, item := range change.Changes {
 					changeRow := bh.buildChangesRow(change, item["rev"])
 
@@ -412,7 +412,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 func (bh *blipHandler) buildChangesRow(change *ChangeEntry, revID string) []interface{} {
 	var changeRow []interface{}
 
-	if bh.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV3 { //nolint: nestif
+	if bh.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV3 {
 		deletedFlags := changesDeletedFlag(0)
 		if change.Deleted {
 			deletedFlags |= changesDeletedFlagDeleted
@@ -450,7 +450,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 		base.InfofCtx(bh.loggingCtx, base.KeyAll, "Error setting changes: %v", err)
 	}
 
-	if len(changeArray) > 0 { //nolint: nestif
+	if len(changeArray) > 0 {
 		// Check for user updates before creating the db copy for handleChangesResponse
 		if err := bh.refreshUser(); err != nil {
 			return err
@@ -583,7 +583,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 			missing = nil
 		}
 
-		if missing == nil { //nolint: nestif
+		if missing == nil {
 			// already have this rev, tell the peer to skip sending it
 			output.Write([]byte("0"))
 			if bh.sgr2PullAlreadyKnownSeqsCallback != nil {
@@ -674,7 +674,7 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 			parentRevID = change[2].(string)
 		}
 		status, currentRev := bh.db.CheckProposedRev(docID, revID, parentRevID)
-		if status != 0 { //nolint: nestif
+		if status != 0 {
 			// Skip writing trailing zeroes; but if we write a number afterwards we have to catch up
 			if nWritten > 0 {
 				output.Write([]byte(","))
@@ -823,7 +823,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 
 	stats.bytes.Add(int64(len(bodyBytes)))
 
-	if bh.BlipSyncContext.purgeOnRemoval && bytes.Contains(bodyBytes, []byte(`"`+BodyRemoved+`":`)) { //nolint: nestif
+	if bh.BlipSyncContext.purgeOnRemoval && bytes.Contains(bodyBytes, []byte(`"`+BodyRemoved+`":`)) {
 		var body Body
 		if err := body.Unmarshal(bodyBytes); err != nil {
 			return err
@@ -848,7 +848,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	newDoc.UpdateBodyBytes(bodyBytes)
 
 	injectedAttachmentsForDelta := false
-	if deltaSrcRevID, isDelta := revMessage.DeltaSrc(); isDelta { //nolint: nestif
+	if deltaSrcRevID, isDelta := revMessage.DeltaSrc(); isDelta {
 		if !bh.sgCanUseDeltas {
 			return base.HTTPErrorf(http.StatusBadRequest, "Deltas are disabled for this peer")
 		}
@@ -935,7 +935,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	var rawBucketDoc *sgbucket.BucketDocument
 
 	// Pull out attachments
-	if injectedAttachmentsForDelta || bytes.Contains(bodyBytes, []byte(BodyAttachments)) { //nolint: nestif
+	if injectedAttachmentsForDelta || bytes.Contains(bodyBytes, []byte(BodyAttachments)) {
 		body := newDoc.Body()
 
 		var currentBucketDoc *Document
