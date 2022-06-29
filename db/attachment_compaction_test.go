@@ -856,12 +856,16 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 		return false, nil, nil
 	}
 
-	// The timeToSleepMs here is low to ensure that this retry loop finishes after the mark starts, but before it has time to finish
-	err, _ := base.RetryLoop("wait for marking to start", statAboveZeroRetryFunc, base.CreateSleeperFunc(3_000, 10))
+	const (
+		maxAttempts = 3_000
+		// The timeToSleepMs here is low to ensure that this retry loop finishes after the mark starts, but before it has time to finish
+		timeToSleepMs = 10
+	)
+	err, _ := base.RetryLoop("wait for marking to start", statAboveZeroRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
 	require.NoError(t, err)
 
 	terminator.Close() // Terminate mark function
-	err, _ = base.RetryLoop("wait for marking function to return", compactionFuncReturnedRetryFunc, base.CreateSleeperFunc(3_000, 10))
+	err, _ = base.RetryLoop("wait for marking function to return", compactionFuncReturnedRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
 	require.NoError(t, err)
 	// Allow time for timing issue to be hit where stat increments when it shouldn't
 	time.Sleep(time.Second * 1)
@@ -881,11 +885,11 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	}()
 
 	// The timeToSleepMs here is low to ensure that this retry loop finishes after the sweep starts, but before it has time to finish
-	err, _ = base.RetryLoop("wait for sweeping to start", statAboveZeroRetryFunc, base.CreateSleeperFunc(3_000, 10))
+	err, _ = base.RetryLoop("wait for sweeping to start", statAboveZeroRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
 	require.NoError(t, err)
 
 	terminator.Close() // Terminate sweep function
-	err, _ = base.RetryLoop("wait for sweeping function to return", compactionFuncReturnedRetryFunc, base.CreateSleeperFunc(3_000, 10))
+	err, _ = base.RetryLoop("wait for sweeping function to return", compactionFuncReturnedRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
 	require.NoError(t, err)
 	// Allow time for timing issue to be hit where stat increments when it shouldn't
 	time.Sleep(time.Second * 1)
