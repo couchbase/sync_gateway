@@ -28,8 +28,8 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 )
 
-// kHandlersByProfile defines the routes for each message profile (verb) of an incoming request to the function that handles it.
-var kHandlersByProfile = map[string]blipHandlerFunc{
+// handlersByProfile defines the routes for each message profile (verb) of an incoming request to the function that handles it.
+var handlersByProfile = map[string]blipHandlerFunc{
 	MessageGetCheckpoint:   (*blipHandler).handleGetCheckpoint,
 	MessageSetCheckpoint:   (*blipHandler).handleSetCheckpoint,
 	MessageSubChanges:      userBlipHandler((*blipHandler).handleSubChanges),
@@ -195,7 +195,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
 	// Ensure that only _one_ subChanges subscription can be open on this blip connection at any given time.  SG #3222.
 	if !bh.activeSubChanges.CASRetry(false, true) {
-		return fmt.Errorf("blipHandler already has an outstanding continous subChanges.  Cannot open another one.")
+		return fmt.Errorf("blipHandler already has an outstanding continous subChanges.  Cannot open another one")
 	}
 
 	if len(subChangesParams.docIDs()) > 0 && subChangesParams.continuous() {
@@ -220,7 +220,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	}
 
 	clientType := clientTypeCBL2
-	if rq.Properties["client_sgr2"] == "true" {
+	if rq.Properties["client_sgr2"] == trueProperty {
 		clientType = clientTypeSGR2
 	}
 
@@ -443,7 +443,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 	outrq := blip.NewRequest()
 	outrq.SetProfile("changes")
 	if ignoreNoConflicts {
-		outrq.Properties[ChangesMessageIgnoreNoConflicts] = "true"
+		outrq.Properties[ChangesMessageIgnoreNoConflicts] = trueProperty
 	}
 	err := outrq.SetJSONBody(changeArray)
 	if err != nil {
@@ -504,7 +504,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	var ignoreNoConflicts bool
 	if val := rq.Properties[ChangesMessageIgnoreNoConflicts]; val != "" {
-		ignoreNoConflicts = val == "true"
+		ignoreNoConflicts = val == trueProperty
 	}
 
 	if !ignoreNoConflicts && !bh.db.AllowConflicts() {
@@ -612,7 +612,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	response := rq.Response()
 	if bh.sgCanUseDeltas {
 		base.DebugfCtx(bh.loggingCtx, base.KeyAll, "Setting deltas=true property on handleChanges response")
-		response.Properties[ChangesResponseDeltas] = "true"
+		response.Properties[ChangesResponseDeltas] = trueProperty
 		bh.replicationStats.HandleChangesDeltaRequestedCount.Add(int64(nRequested))
 	}
 	response.SetCompressed(true)
@@ -644,7 +644,7 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 
 	includeConflictRev := false
 	if val := rq.Properties[ProposeChangesConflictsIncludeRev]; val != "" {
-		includeConflictRev = val == "true"
+		includeConflictRev = val == trueProperty
 	}
 
 	var changeList [][]interface{}
@@ -701,7 +701,7 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 	response := rq.Response()
 	if bh.sgCanUseDeltas {
 		base.DebugfCtx(bh.loggingCtx, base.KeyAll, "Setting deltas=true property on proposeChanges response")
-		response.Properties[ChangesResponseDeltas] = "true"
+		response.Properties[ChangesResponseDeltas] = trueProperty
 	}
 	response.SetCompressed(true)
 	response.SetBody(output.Bytes())
@@ -715,7 +715,7 @@ func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID, de
 	bsc.replicationStats.SendRevDeltaRequestedCount.Add(1)
 
 	revDelta, redactedRev, err := handleChangesResponseDb.GetDelta(docID, deltaSrcRevID, revID)
-	if err == ErrForbidden {
+	if err == ErrForbidden { //nolint: gocritic // can't convert if/else if to switch since base.IsFleeceDeltaError is not switchable
 		return err
 	} else if base.IsFleeceDeltaError(err) {
 		// Something went wrong in the diffing library. We want to know about this!
@@ -768,16 +768,12 @@ func (bh *blipHandler) handleNoRev(rq *blip.Message) error {
 
 	// Couchbase Lite always sends noreply=true for norev profiles
 	// but for testing purposes, it's useful to know which handler processed the message
-	if !rq.NoReply() && rq.Properties[SGShowHandler] == "true" {
+	if !rq.NoReply() && rq.Properties[SGShowHandler] == trueProperty {
 		response := rq.Response()
 		response.Properties[SGHandler] = "handleNoRev"
 	}
 
 	return nil
-}
-
-type removalDocument struct {
-	Removed bool `json:"_removed"`
 }
 
 type processRevStats struct {
@@ -1145,14 +1141,14 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	base.DebugfCtx(bh.loggingCtx, base.KeySync, "Sending attachment with digest=%q (%.2f KB)", digest, float64(len(attachment))/float64(1024))
 	response := rq.Response()
 	response.SetBody(attachment)
-	response.SetCompressed(rq.Properties[BlipCompress] == "true")
+	response.SetCompressed(rq.Properties[BlipCompress] == trueProperty)
 	bh.replicationStats.HandleGetAttachment.Add(1)
 	bh.replicationStats.HandleGetAttachmentBytes.Add(int64(len(attachment)))
 
 	return nil
 }
 
-var NoBLIPHandlerError = fmt.Errorf("404 - No handler for BLIP request")
+var errNoBlipHandler = fmt.Errorf("404 - No handler for BLIP request")
 
 // sendGetAttachment requests the full attachment from the peer.
 func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name string, digest string, meta map[string]interface{}) ([]byte, error) {
@@ -1160,7 +1156,7 @@ func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name
 	outrq := blip.NewRequest()
 	outrq.Properties = map[string]string{BlipProfile: MessageGetAttachment, GetAttachmentDigest: digest}
 	if isCompressible(name, meta) {
-		outrq.Properties[BlipCompress] = "true"
+		outrq.Properties[BlipCompress] = trueProperty
 	}
 
 	if bh.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV3 {
@@ -1219,14 +1215,14 @@ func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, dig
 	}
 
 	if resp.Type() == blip.ErrorType &&
-		resp.Properties["Error-Domain"] == blip.BLIPErrorDomain &&
-		resp.Properties["Error-Code"] == "404" {
-		return NoBLIPHandlerError
+		resp.Properties[BlipErrorDomain] == blip.BLIPErrorDomain &&
+		resp.Properties[BlipErrorCode] == "404" {
+		return errNoBlipHandler
 	}
 
 	if resp.Type() == blip.ErrorType &&
-		resp.Properties["Error-Domain"] == "HTTP" &&
-		resp.Properties["Error-Code"] == "404" {
+		errorDomainIsHTTP(resp) &&
+		resp.Properties[BlipErrorCode] == "404" {
 		return ErrAttachmentNotFound
 	}
 
@@ -1258,7 +1254,7 @@ func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Bod
 			}
 
 			// Peer doesn't support proveAttachment or does not have attachment. Fall back to using getAttachment as proof.
-			if proveAttErr == NoBLIPHandlerError || proveAttErr == ErrAttachmentNotFound {
+			if proveAttErr == errNoBlipHandler || proveAttErr == ErrAttachmentNotFound {
 				base.InfofCtx(bh.loggingCtx, base.KeySync, "Peer sent prove attachment error %v, falling back to getAttachment for proof in doc %s (digest %s)", proveAttErr, base.UD(docID), digest)
 				_, getAttErr := bh.sendGetAttachment(sender, docID, name, digest, meta)
 				if getAttErr == nil {
@@ -1292,7 +1288,7 @@ func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []Attach
 		att, found := bsc.allowedAttachments[key]
 		if found {
 			if activeSubprotocol == BlipCBMobileReplicationV2 {
-				att.counter = att.counter + 1
+				att.counter++
 				bsc.allowedAttachments[key] = att
 			}
 		} else {

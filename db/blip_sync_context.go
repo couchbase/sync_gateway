@@ -15,7 +15,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"runtime/debug"
 	"strconv"
 	"sync"
@@ -29,22 +28,6 @@ const (
 	// Blip default vals
 	BlipDefaultBatchSize = uint64(200)
 	BlipMinimumBatchSize = uint64(10) // Not in the replication spec - is this required?
-)
-
-var (
-	// kCompressedTypes are MIME types that explicitly indicate they're compressed:
-	kCompressedTypes = regexp.MustCompile(`(?i)\bg?zip\b`)
-
-	// kGoodTypes are MIME types that are compressible:
-	kGoodTypes = regexp.MustCompile(`(?i)(^text)|(xml\b)|(\b(html|json|yaml)\b)`)
-
-	// kBadTypes are MIME types that are generally incompressible:
-	kBadTypes = regexp.MustCompile(`(?i)^(audio|image|video)/`)
-	// An interesting type is SVG (image/svg+xml) which matches _both_! (It's compressible.)
-	// See <http://www.iana.org/assignments/media-types/media-types.xhtml>
-
-	// kBadFilenames are filename extensions of incompressible types:
-	kBadFilenames = regexp.MustCompile(`(?i)\.(zip|t?gz|rar|7z|jpe?g|png|gif|svgz|mp3|m4a|ogg|wav|aiff|mp4|mov|avi|theora)$`)
 )
 
 var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
@@ -79,7 +62,7 @@ func NewBlipSyncContext(bc *blip.Context, db *Database, contextID string, replic
 	}
 
 	// Register 2.x replicator handlers
-	for profile, handlerFn := range kHandlersByProfile {
+	for profile, handlerFn := range handlersByProfile {
 		bsc.register(profile, handlerFn)
 	}
 
@@ -93,8 +76,8 @@ type BlipSyncContext struct {
 	blipContextDb                    *Database       // 'master' database instance for the replication, used as source when creating handler-specific databases
 	loggingCtx                       context.Context // logging context for connection
 	dbUserLock                       sync.RWMutex    // Must be held when refreshing the db user
-	gotSubChanges                    bool
-	continuous                       bool
+	gotSubChanges                    bool            //nolint: structcheck // false structcheck positive due to https://github.com/golangci/golangci-lint/issues/826
+	continuous                       bool            //nolint: structcheck // false structcheck positive due to https://github.com/golangci/golangci-lint/issues/826
 	lock                             sync.Mutex
 	allowedAttachments               map[string]AllowedAttachment
 	handlerSerialNumber              uint64                                    // Each handler within a context gets a unique serial number for logging
@@ -191,11 +174,9 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 				response.SetError("HTTP", status, msg)
 			}
 			base.InfofCtx(bsc.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> %d %s Time:%v", handler.serialNumber, profile, status, msg, time.Since(startTime))
-		} else {
+		} else if profile != "subChanges" {
 			// Log the fact that the handler has finished, except for the "subChanges" special case which does it's own termination related logging
-			if profile != "subChanges" {
-				base.DebugfCtx(bsc.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> OK Time:%v", handler.serialNumber, profile, time.Since(startTime))
-			}
+			base.DebugfCtx(bsc.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> OK Time:%v", handler.serialNumber, profile, time.Since(startTime))
 		}
 
 		// Trace log the full response body and properties
@@ -254,7 +235,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 	}
 
 	if response.Type() == blip.ErrorType {
-		return errors.New(fmt.Sprintf("Client returned error in changesResponse: %s", respBody))
+		return fmt.Errorf("Client returned error in changesResponse: %s", respBody)
 	}
 
 	var answer []interface{}
@@ -278,7 +259,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 
 	// Set useDeltas if the client has delta support and has it enabled
 	if clientDeltasStr, ok := response.Properties[ChangesResponseDeltas]; ok {
-		bsc.setUseDeltas(clientDeltasStr == "true")
+		bsc.setUseDeltas(clientDeltasStr == trueProperty)
 	} else {
 		base.TracefCtx(bsc.loggingCtx, base.KeySync, "Client didn't specify 'deltas' property in 'changes' response. useDeltas: %v", bsc.useDeltas)
 	}
@@ -300,7 +281,6 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 
 		if knownRevsArray, ok := knownRevsArrayInterface.([]interface{}); ok {
 			deltaSrcRevID := ""
-			//deleted := changeArray[i][3].(bool)
 			knownRevs := knownRevsByDoc[docID]
 			if knownRevs == nil {
 				knownRevs = make(map[string]bool, len(knownRevsArray))
@@ -427,7 +407,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 				bsc.replicationStats.SendRevErrorTotal.Add(1)
 				base.InfofCtx(bsc.loggingCtx, base.KeySync, "error %s in response to rev: %s", resp.Properties["Error-Code"], respBody)
 
-				if resp.Properties["Error-Domain"] == "HTTP" {
+				if errorDomainIsHTTP(resp) {
 					switch resp.Properties["Error-Code"] {
 					case "409":
 						bsc.replicationStats.SendRevErrorConflictCount.Add(1)

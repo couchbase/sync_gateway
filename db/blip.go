@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"regexp"
 	"strings"
 
 	"github.com/couchbase/go-blip"
@@ -23,6 +24,22 @@ const (
 	// sub protocol.  One must match identically with one provided by the peer (CBLite / ISGR)
 	BlipCBMobileReplicationV2 = "CBMobile_2"
 	BlipCBMobileReplicationV3 = "CBMobile_3"
+)
+
+var (
+	// compressedTypes are MIME types that explicitly indicate they're compressed:
+	compressedTypes = regexp.MustCompile(`(?i)\bg?zip\b`)
+
+	// goodTypes are MIME types that are compressible:
+	goodTypes = regexp.MustCompile(`(?i)(^text)|(xml\b)|(\b(html|json|yaml)\b)`)
+
+	// badTypes are MIME types that are generally incompressible:
+	badTypes = regexp.MustCompile(`(?i)^(audio|image|video)/`)
+	// An interesting type is SVG (image/svg+xml) which matches _both_! (It's compressible.)
+	// See <http://www.iana.org/assignments/media-types/media-types.xhtml>
+
+	// badFilenames are filename extensions of incompressible types:
+	badFilenames = regexp.MustCompile(`(?i)\.(zip|t?gz|rar|7z|jpe?g|png|gif|svgz|mp3|m4a|ogg|wav|aiff|mp4|mov|avi|theora)$`)
 )
 
 // NewSGBlipContext returns a go-blip context with the given ID, initialized for use in Sync Gateway.
@@ -84,12 +101,12 @@ func blipRevMessageProperties(revisionHistory []string, deleted bool, seq Sequen
 func isCompressible(filename string, meta map[string]interface{}) bool {
 	if meta["encoding"] != nil {
 		return false
-	} else if kBadFilenames.MatchString(filename) {
+	} else if badFilenames.MatchString(filename) {
 		return false
 	} else if mimeType, ok := meta["content_type"].(string); ok && mimeType != "" {
-		return !kCompressedTypes.MatchString(mimeType) &&
-			(kGoodTypes.MatchString(mimeType) ||
-				!kBadTypes.MatchString(mimeType))
+		return !compressedTypes.MatchString(mimeType) &&
+			(goodTypes.MatchString(mimeType) ||
+				!badTypes.MatchString(mimeType))
 	}
 	return true // be optimistic by default
 }

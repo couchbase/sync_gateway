@@ -209,7 +209,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 	btr.bt.blipContext.HandlerForProfile[db.MessageRev] = func(msg *blip.Message) {
 		btc.pullReplication.storeMessage(msg)
 
-		docID := msg.Properties[db.RevMessageId]
+		docID := msg.Properties[db.RevMessageID]
 		revID := msg.Properties[db.RevMessageRev]
 		deltaSrc := msg.Properties[db.RevMessageDeltaSrc]
 
@@ -658,7 +658,7 @@ func (btc *BlipTesterClient) PushRevWithHistory(docID, parentRev string, body []
 	// send msg rev with new doc
 	revRequest := blip.NewRequest()
 	revRequest.SetProfile(db.MessageRev)
-	revRequest.Properties[db.RevMessageId] = docID
+	revRequest.Properties[db.RevMessageID] = docID
 	revRequest.Properties[db.RevMessageRev] = newRevID
 	revRequest.Properties[db.RevMessageHistory] = strings.Join(revisionHistory, ",")
 

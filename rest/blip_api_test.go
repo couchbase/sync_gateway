@@ -208,8 +208,8 @@ func TestContinuousChangesSubscription(t *testing.T) {
 				}
 
 				// Verify doc id and rev id have expected vals
-				docId := change[1].(string)
-				assert.True(t, strings.HasPrefix(docId, "foo"))
+				docID := change[1].(string)
+				assert.True(t, strings.HasPrefix(docID, "foo"))
 				assert.Equal(t, "1-abc", change[2]) // Rev id of pushed rev
 				changeCount++
 				receivedChangesWg.Done()
@@ -360,7 +360,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 	cacheWaiter := bt.DatabaseContext().NewDCPCachingCountWaiter(t)
 	cacheWaiter.Add(len(docIdsReceived))
 	// Add documents
-	for docID, _ := range docIdsReceived {
+	for docID := range docIdsReceived {
 		// // Add a change: Send an unsolicited doc revision in a rev request
 		_, _, revResponse, err := bt.SendRev(
 			docID,
@@ -1101,7 +1101,7 @@ function(doc, oldDoc) {
 			panic(fmt.Sprintf("Unexpected err: %v", err))
 		}
 		_, isRemoved := doc[db.BodyRemoved]
-		assert.False(t, isRemoved, fmt.Sprintf("Document %v shouldn't be removed", request.Properties[db.RevMessageId]))
+		assert.False(t, isRemoved, fmt.Sprintf("Document %v shouldn't be removed", request.Properties[db.RevMessageID]))
 
 	}
 
@@ -1978,6 +1978,7 @@ func TestMissingNoRev(t *testing.T) {
 
 	// Pull docs, expect to pull 5 docs since none of them has purged yet.
 	docs, ok := bt.WaitForNumDocsViaChanges(5)
+	require.True(t, ok)
 	assert.Len(t, docs, 5)
 
 	// Purge one doc
@@ -3268,7 +3269,7 @@ func TestUpdateExistingAttachment(t *testing.T) {
 	err = rt.waitForRev("doc2", revIDDoc2)
 	assert.NoError(t, err)
 
-	doc1, err := rt.GetDatabase().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
+	_, err = rt.GetDatabase().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
 	_, err = rt.GetDatabase().GetDocument(base.TestCtx(t), "doc2", db.DocUnmarshalAll)
 
 	revIDDoc1, err = btc.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=","length":11,"content_type":"","stub":true,"revpos":3}}}`))
@@ -3277,7 +3278,7 @@ func TestUpdateExistingAttachment(t *testing.T) {
 	err = rt.waitForRev("doc1", revIDDoc1)
 	assert.NoError(t, err)
 
-	doc1, err = rt.GetDatabase().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
+	doc1, err := rt.GetDatabase().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
 	assert.Equal(t, "sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=", doc1.Attachments["attachment"].(map[string]interface{})["digest"])
@@ -3359,7 +3360,7 @@ func TestCBLRevposHandling(t *testing.T) {
 
 	attachmentPushCount := rt.GetDatabase().DbStats.CBLReplicationPushStats.AttachmentPushCount.Value()
 	// Update doc1, change attachment digest with CBL revpos=generation.  Should getAttachment
-	revIDDoc1, err = btc.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=","length":11,"content_type":"","stub":true,"revpos":5}}}`))
+	_, err = btc.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=","length":11,"content_type":"","stub":true,"revpos":5}}}`))
 	require.NoError(t, err)
 
 	// Validate attachment exists and is updated
@@ -3656,7 +3657,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	_, ok = btc.WaitForRev("doc", "2-f0d4cbcdd4a9ec835799055fdba45263")
 	assert.True(t, ok)
 
-	docRevID = rt.createDocReturnRev(t, "doc", docRevID, map[string]interface{}{"channels": []string{}})
+	_ = rt.createDocReturnRev(t, "doc", docRevID, map[string]interface{}{"channels": []string{}})
 	_ = rt.createDocReturnRev(t, "docmarker", "", map[string]interface{}{"channels": []string{"!"}})
 
 	changes, err = rt.WaitForChanges(2, fmt.Sprintf("/db/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
@@ -4027,7 +4028,7 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 	btc.attachmentsLock.Unlock()
 
 	// Put doc with an erroneous revpos 1 but with a different digest, referring to the above attachment
-	revid, err = btc.PushRevWithHistory("doc", revid, []byte(`{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"length": 19,"digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc="}}}`), 1, 0)
+	_, err = btc.PushRevWithHistory("doc", revid, []byte(`{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"length": 19,"digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc="}}}`), 1, 0)
 	require.NoError(t, err)
 
 	// Ensure message and attachment is pushed up
@@ -4300,7 +4301,8 @@ func TestSendRevAsReadOnlyGuest(t *testing.T) {
 	revResponse := revRequest.Response()
 
 	errorCode, ok := revResponse.Properties[db.BlipErrorCode]
-	assert.False(t, ok)
+	require.False(t, ok)
+	require.Equal(t, errorCode, "")
 
 	body, err := revResponse.Body()
 	log.Printf("response body: %s", body)

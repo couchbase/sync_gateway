@@ -26,9 +26,11 @@ func (bh *blipHandler) handleGetRev(rq *blip.Message) error {
 	if err != nil {
 		status, reason := base.ErrorAsHTTPStatus(err)
 		return &base.HTTPError{Status: status, Message: reason}
-	} else if ifNotRev == rev.RevID {
+	}
+	if ifNotRev == rev.RevID {
 		return base.HTTPErrorf(http.StatusNotModified, "Not Modified")
-	} else if rev.Deleted {
+	}
+	if rev.Deleted {
 		return base.HTTPErrorf(http.StatusNotFound, "Deleted")
 	}
 
