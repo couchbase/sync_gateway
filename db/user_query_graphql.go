@@ -70,16 +70,16 @@ func NewGraphQL(dbc *DatabaseContext) (*GraphQL, error) {
 	var schemaSource string
 	if opts.Schema != nil {
 		if opts.SchemaFile != nil {
-			return nil, fmt.Errorf("Config error in `graphql`: Only one of `schema` and `schemaFile` may be used")
+			return nil, fmt.Errorf("config error in `graphql`: Only one of `schema` and `schemaFile` may be used")
 		}
 		schemaSource = *opts.Schema
 	} else {
 		if opts.SchemaFile == nil {
-			return nil, fmt.Errorf("Config error in `graphql`: Either `schema` or `schemaFile` must be defined")
+			return nil, fmt.Errorf("config error in `graphql`: Either `schema` or `schemaFile` must be defined")
 		}
 		src, err := os.ReadFile(*opts.SchemaFile)
 		if err != nil {
-			return nil, fmt.Errorf("Config error in `graphql`: Can't read schemaFile %s", *opts.SchemaFile)
+			return nil, fmt.Errorf("config error in `graphql`: Can't read schemaFile %s", *opts.SchemaFile)
 		}
 		schemaSource = string(src)
 	}

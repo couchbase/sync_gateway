@@ -242,7 +242,7 @@ func (runner *graphQLResolverRunner) do_query(queryName string, params map[strin
 func (runner *graphQLResolverRunner) do_save(docID string, body map[string]interface{}) error {
 	fmt.Printf("*** GQ save(%q, %v)\n", docID, body)
 	if !runner.mutationAllowed {
-		return fmt.Errorf("A read-only request is not allowed to mutate the database")
+		return fmt.Errorf("a read-only request is not allowed to mutate the database")
 	}
 
 	// TODO: Currently this is "last writer wins": get the current revision if any, and pass it
