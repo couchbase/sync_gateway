@@ -48,7 +48,6 @@ func (dc *DCPClient) Mutation(mutation gocbcore.DcpMutation) {
 }
 
 func (dc *DCPClient) Deletion(deletion gocbcore.DcpDeletion) {
-
 	if dc.afterEndSeq(deletion.VbID, deletion.SeqNo) {
 		return
 	}
