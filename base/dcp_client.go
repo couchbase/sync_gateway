@@ -151,9 +151,7 @@ func (dc *DCPClient) GetMetadata() []DCPMetadata {
 // closes that channel.
 func (dc *DCPClient) close() {
 
-	// Set dc.closing to true, avoid re-triggering close if it's already in progress.
-	// This also stops the mutation observers passing on mutations/deletions, to ensure that the stream
-	// closes in a consistent state.
+	// set dc.closing to true, avoid re-triggering close if it's already in progress
 	if !dc.closing.CompareAndSwap(false, true) {
 		InfofCtx(context.TODO(), KeyDCP, "DCP Client close called - client is already closing")
 		return
