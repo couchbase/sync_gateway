@@ -1182,25 +1182,28 @@ func (sc *ServerContext) fetchAndLoadConfigs(isInitialStartup bool) (count int, 
 		return 0, err
 	}
 
-	// check if we need to update the set of databases before we have to acquire the write lock to do so
+	// Check if we need to update the set of databases before we have to acquire the write lock to do so
+	// we don't need to do this two-stage lock on initial startup as the REST APIs aren't even online yet.
 	var deletedDatabases []string
-	sc.lock.RLock()
-	for _, dbName := range sc.bucketDbName {
-		if _, foundMatchingDb := fetchedConfigs[dbName]; !foundMatchingDb {
-			deletedDatabases = append(deletedDatabases, dbName)
+	if !isInitialStartup {
+		sc.lock.RLock()
+		for _, dbName := range sc.bucketDbName {
+			if _, foundMatchingDb := fetchedConfigs[dbName]; !foundMatchingDb {
+				deletedDatabases = append(deletedDatabases, dbName)
+			}
 		}
-	}
-	for dbName, fetchedConfig := range fetchedConfigs {
-		if dbConfig, ok := sc.dbConfigs[dbName]; ok && dbConfig.cas >= fetchedConfig.cas {
-			base.DebugfCtx(context.TODO(), base.KeyConfig, "Database %q bucket %q config has not changed since last update", fetchedConfig.Name, *fetchedConfig.Bucket)
-			delete(fetchedConfigs, dbName)
+		for dbName, fetchedConfig := range fetchedConfigs {
+			if dbConfig, ok := sc.dbConfigs[dbName]; ok && dbConfig.cas >= fetchedConfig.cas {
+				base.DebugfCtx(context.TODO(), base.KeyConfig, "Database %q bucket %q config has not changed since last update", fetchedConfig.Name, *fetchedConfig.Bucket)
+				delete(fetchedConfigs, dbName)
+			}
 		}
-	}
-	sc.lock.RUnlock()
+		sc.lock.RUnlock()
 
-	// nothing to do, we can bail out
-	if len(deletedDatabases) == 0 && len(fetchedConfigs) == 0 {
-		return 0, nil
+		// nothing to do, we can bail out without needing the write lock
+		if len(deletedDatabases) == 0 && len(fetchedConfigs) == 0 {
+			return 0, nil
+		}
 	}
 
 	// we have databases to update/remove
