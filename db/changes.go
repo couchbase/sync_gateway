@@ -525,8 +525,10 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 	}
 
 	if options.ChangesCtx == nil {
-		base.ErrorfCtx(db.Ctx, "MultiChangesFeed: Changes Context not provided")
-		return nil, fmt.Errorf("changes Context not provided when starting multi changes feed")
+		if options.Continuous || options.Wait {
+			base.WarnfCtx(db.Ctx, "MultiChangesFeed: Changes Context missing for Continuous/Wait mode")
+		}
+		options.ChangesCtx = context.Background()
 	}
 	base.DebugfCtx(db.Ctx, base.KeyChanges, "Int sequence multi changes feed...")
 	return db.SimpleMultiChangesFeed(chans, options)
