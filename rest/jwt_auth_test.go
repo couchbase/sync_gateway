@@ -66,8 +66,9 @@ func TestLocalJWTAuthenticationE2E(t *testing.T) {
 						UsernameClaim: usernameClaim,
 						UserPrefix:    usernamePrefix,
 					},
-					Algorithms: auth.JWTAlgList{"RS256"},
-					Keys:       []jose.JSONWebKey{testRSAJWK},
+					Algorithms:      []string{"RS256"},
+					Keys:            []jose.JSONWebKey{testRSAJWK},
+					SkipExpiryCheck: base.BoolPtr(true),
 				},
 			}
 			restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{LocalJWTConfig: providers}}}
@@ -181,7 +182,7 @@ func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 	}
 	baseProvider := auth.LocalJWTAuthProvider{
 		JWTConfigCommon: common,
-		Algorithms:      auth.JWTAlgList{"RS256", "ES256"},
+		Algorithms:      []string{"RS256", "ES256"},
 		Keys:            []jose.JSONWebKey{testRSAJWK, testECJWK},
 	}
 
@@ -227,6 +228,7 @@ func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 		"iss": testIssuer,
 		"aud": []string{testClientID},
 		"sub": testSubject,
+		"exp": time.Now().Add(time.Hour).Unix(),
 	}), testUsername, http.StatusOK))
 
 	t.Run("valid - EC", runTest(&baseProvider, auth.CreateTestJWT(t, jose.ES256, testECKeypair, auth.JWTHeaders{
@@ -236,6 +238,7 @@ func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 		"iss": testIssuer,
 		"aud": []string{testClientID},
 		"sub": testSubject,
+		"exp": time.Now().Add(time.Hour).Unix(),
 	}), testUsername, http.StatusOK))
 
 	t.Run("garbage", runTest(&baseProvider, "garbage", testUsername, http.StatusUnauthorized))
@@ -279,7 +282,7 @@ func TestLocalJWTRolesChannels(t *testing.T) {
 			ChannelsClaim: "channels",
 			Register:      true,
 		},
-		Algorithms: auth.JWTAlgList{"RS256"},
+		Algorithms: []string{"RS256"},
 		Keys:       []jose.JSONWebKey{testRSAJWK},
 	}
 
@@ -299,6 +302,7 @@ func TestLocalJWTRolesChannels(t *testing.T) {
 		"sub":      testSubject,
 		"roles":    []string{"jwt_only_role"},
 		"channels": []string{"jwt_only_channel"},
+		"exp":      time.Now().Add(time.Hour).Unix(),
 	})
 
 	reqTime := time.Now()

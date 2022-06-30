@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
@@ -84,8 +85,15 @@ func TestJWTVerifyToken(t *testing.T) {
 	}
 	baseProvider := LocalJWTAuthProvider{
 		JWTConfigCommon: common,
-		Algorithms:      JWTAlgList{"RS256", "ES256"},
+		Algorithms:      []string{"RS256", "ES256"},
 		Keys:            []jose.JSONWebKey{testRSAJWK, testECJWK, testEncRSAJWK},
+		SkipExpiryCheck: base.BoolPtr(true),
+	}
+	providerWithExpiryCheck := LocalJWTAuthProvider{
+		JWTConfigCommon: common,
+		Algorithms:      []string{"RS256", "ES256"},
+		Keys:            []jose.JSONWebKey{testRSAJWK, testECJWK, testEncRSAJWK},
+		SkipExpiryCheck: base.BoolPtr(false),
 	}
 
 	t.Run("garbage", test(baseProvider, "INVALID", anyError))
@@ -108,6 +116,35 @@ func TestJWTVerifyToken(t *testing.T) {
 		"iss": testIssuer,
 		"aud": []string{testClientID},
 	}), ""))
+
+	t.Run("valid + expiry check", test(providerWithExpiryCheck, CreateTestJWT(t, jose.RS256, testRSAKeypair, JWTHeaders{
+		"kid": testRSAJWK.KeyID,
+	}, map[string]interface{}{
+		"iss": testIssuer,
+		"aud": []string{testClientID},
+		"exp": time.Now().Add(time.Hour).Unix(),
+		"iat": time.Now().Add(-time.Hour).Unix(),
+		"nbf": time.Now().Add(-time.Hour).Unix(),
+	}), ""))
+
+	t.Run("valid but expired", test(providerWithExpiryCheck, CreateTestJWT(t, jose.RS256, testRSAKeypair, JWTHeaders{
+		"kid": testRSAJWK.KeyID,
+	}, map[string]interface{}{
+		"iss": testIssuer,
+		"aud": []string{testClientID},
+		// 2000-01-01T00:00:00Z
+		"exp": 946684800,
+	}), "token is expired"))
+
+	t.Run("valid but issued in the future", test(providerWithExpiryCheck, CreateTestJWT(t, jose.RS256, testRSAKeypair, JWTHeaders{
+		"kid": testRSAJWK.KeyID,
+	}, map[string]interface{}{
+		"iss": testIssuer,
+		"aud": []string{testClientID},
+		// 3000-01-01T00:00:00Z
+		"exp": 32503680000,
+		"nbf": 32503680000,
+	}), "before the nbf (not before) time"))
 
 	invalidSignature := CreateTestJWT(t, jose.RS256, testRSAKeypair, JWTHeaders{
 		"kid": testRSAJWK.KeyID,
@@ -140,16 +177,16 @@ func TestJWTVerifyToken(t *testing.T) {
 	}), anyError))
 
 	// header: alg=none
-	t.Run("valid JWT with alg none", test(baseProvider, `eyJhbGciOiJub25lIn0.eyJhdWQiOlsidGVzdEF1ZCJdLCJpc3MiOiJ0ZXN0SXNzIn0.`, "unsupported signing algorithm"))
+	t.Run("valid JWT with alg none", test(baseProvider, `eyJhbGciOiJub25lIn0.eyJhdWQiOlsidGVzdEF1ZCJdLCJpc3MiOiJ0ZXN0SXNzdWVyIn0.`, "id token signed with unsupported algorithm"))
 	// header: alg=HS256
-	t.Run("valid JWT with alg HS256", test(baseProvider, `eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOlsidGVzdEF1ZCJdLCJpc3MiOiJ0ZXN0SXNzIn0.gbdmOrzJ2CT01ABybPN-_dwXwv8_8iMEj4HNPtBqQjI`, "unsupported signing algorithm"))
+	t.Run("valid JWT with alg HS256", test(baseProvider, `eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOlsidGVzdEF1ZCJdLCJpc3MiOiJ0ZXN0SXNzdWVyIn0.aPSuXUVKN1FNS53mw0Xw3a-SU2GVS98gHWEVrzTnQYM`, "id token signed with unsupported algorithm"))
 	// header: alg=RS256, kid=rsa
-	t.Run("valid JWT with no signature", test(baseProvider, `eyJhbGciOiJSUzI1NiIsImtpZCI6InJzYSJ9.eyJhdWQiOlsidGVzdEF1ZCJdLCJpc3MiOiJ0ZXN0SXNzIn0.`, anyError))
+	t.Run("valid JWT with no signature", test(baseProvider, `eyJhbGciOiJSUzI1NiIsImtpZCI6InJzYSJ9.eyJhdWQiOlsidGVzdEF1ZCJdLCJpc3MiOiJ0ZXN0SXNzdWVyIn0.`, "failed to verify signature"))
 
 	t.Run("valid RSA with invalid issuer", test(baseProvider, CreateTestJWT(t, jose.RS256, testRSAKeypair, JWTHeaders{
 		"kid": testRSAJWK.KeyID,
 	}, map[string]interface{}{
 		"iss": "nonsense",
 		"aud": []string{testClientID},
-	}), "invalid issuer"))
+	}), "id token issued by a different provider"))
 }
