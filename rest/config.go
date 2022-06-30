@@ -1202,6 +1202,7 @@ func (sc *ServerContext) fetchAndLoadConfigs(isInitialStartup bool) (count int, 
 
 		// nothing to do, we can bail out without needing the write lock
 		if len(deletedDatabases) == 0 && len(fetchedConfigs) == 0 {
+			base.TracefCtx(context.TODO(), base.KeyConfig, "No persistent config changes to make")
 			return 0, nil
 		}
 	}
