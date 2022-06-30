@@ -1182,10 +1182,31 @@ func (sc *ServerContext) fetchAndLoadConfigs(isInitialStartup bool) (count int, 
 		return 0, err
 	}
 
+	// check if we need to update the set of databases before we have to acquire the write lock to do so
+	var deletedDatabases []string
+	sc.lock.RLock()
+	for _, dbName := range sc.bucketDbName {
+		if _, foundMatchingDb := fetchedConfigs[dbName]; !foundMatchingDb {
+			deletedDatabases = append(deletedDatabases, dbName)
+		}
+	}
+	for dbName, fetchedConfig := range fetchedConfigs {
+		if dbConfig, ok := sc.dbConfigs[dbName]; ok && dbConfig.cas >= fetchedConfig.cas {
+			base.DebugfCtx(context.TODO(), base.KeyConfig, "Database %q bucket %q config has not changed since last update", fetchedConfig.Name, *fetchedConfig.Bucket)
+			delete(fetchedConfigs, dbName)
+		}
+	}
+	sc.lock.RUnlock()
+
+	// nothing to do, we can bail out
+	if len(deletedDatabases) == 0 && len(fetchedConfigs) == 0 {
+		return 0, nil
+	}
+
+	// we have databases to update/remove
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
-
-	for _, dbName := range sc.bucketDbName {
+	for _, dbName := range deletedDatabases {
 		if _, foundMatchingDb := fetchedConfigs[dbName]; !foundMatchingDb {
 			base.InfofCtx(context.TODO(), base.KeyConfig, "Database %q was running on this node, but config was not found on the server - removing database", base.MD(dbName))
 			sc._removeDatabase(dbName)
