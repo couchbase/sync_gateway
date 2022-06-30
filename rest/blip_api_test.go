@@ -330,10 +330,10 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 				}
 
 				// Verify doc id and rev id have expected vals
-				docId := change[1].(string)
-				assert.True(t, strings.HasPrefix(docId, "preOneShot"))
+				docID := change[1].(string)
+				assert.True(t, strings.HasPrefix(docID, "preOneShot"))
 				assert.Equal(t, "1-abc", change[2]) // Rev id of pushed rev
-				docIdsReceived[docId] = true
+				docIdsReceived[docID] = true
 				receivedChangesWg.Done()
 			}
 
@@ -495,18 +495,18 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 				}
 
 				// Verify doc id and rev id have expected vals
-				docId := change[1].(string)
-				assert.True(t, strings.HasPrefix(docId, "docIDFiltered"))
+				docID := change[1].(string)
+				assert.True(t, strings.HasPrefix(docID, "docIDFiltered"))
 				assert.Equal(t, "1-abc", change[2]) // Rev id of pushed rev
-				log.Printf("Changes got docID: %s", docId)
+				log.Printf("Changes got docID: %s", docID)
 
 				// Ensure we only receive expected docs
-				_, isExpected := docIDsReceived[docId]
+				_, isExpected := docIDsReceived[docID]
 				if !isExpected {
-					t.Errorf(fmt.Sprintf("Received unexpected docId: %s", docId))
+					t.Errorf(fmt.Sprintf("Received unexpected docId: %s", docID))
 				} else {
 					// Add to received set, to ensure we get all expected docs
-					docIDsReceived[docId] = true
+					docIDsReceived[docID] = true
 					receivedChangesWg.Done()
 				}
 
@@ -1924,8 +1924,8 @@ func TestGetRemovedDoc(t *testing.T) {
 	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	// Delete any temp revisions in case this prevents the bug from showing up (didn't make a difference)
-	tempRevisionDocId := base.RevPrefix + "foo:5:3-cde"
-	err = rt.GetDatabase().Bucket.Delete(tempRevisionDocId)
+	tempRevisionDocID := base.RevPrefix + "foo:5:3-cde"
+	err = rt.GetDatabase().Bucket.Delete(tempRevisionDocID)
 	assert.NoError(t, err, "Unexpected Error")
 
 	// Try to get rev 3 via BLIP API and assert that _removed == true
@@ -1963,9 +1963,9 @@ func TestMissingNoRev(t *testing.T) {
 
 	// Create 5 docs
 	for i := 0; i < 5; i++ {
-		docId := fmt.Sprintf("doc-%d", i)
+		docID := fmt.Sprintf("doc-%d", i)
 		docRev := fmt.Sprintf("1-abc%d", i)
-		sent, _, resp, err := bt.SendRev(docId, docRev, []byte(`{"key": "val", "channels": ["ABC"]}`), blip.Properties{})
+		sent, _, resp, err := bt.SendRev(docID, docRev, []byte(`{"key": "val", "channels": ["ABC"]}`), blip.Properties{})
 		assert.True(t, sent)
 		log.Printf("resp: %v, err: %v", resp, err)
 	}
@@ -3013,23 +3013,23 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 	btc.ClientDeltas = true
 	err = btc.StartPull()
 	assert.NoError(t, err)
-	const docId = "doc1"
+	const docID = "doc1"
 
 	// Create doc1 rev 1-77d9041e49931ceef58a1eef5fd032e8 on SG with an attachment
 	bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
-	response := rt.SendAdminRequest(http.MethodPut, "/db/"+docId, bodyText)
+	response := rt.SendAdminRequest(http.MethodPut, "/db/"+docID, bodyText)
 	assert.Equal(t, http.StatusCreated, response.Code)
 
 	// Wait for the document to be replicated at the client
 	revId := respRevID(t, response)
-	data, ok := btc.WaitForRev(docId, revId)
+	data, ok := btc.WaitForRev(docID, revId)
 	assert.True(t, ok)
 	bodyTextExpected := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
 	require.JSONEq(t, bodyTextExpected, string(data))
 
 	// Update the replicated doc at client by adding another attachment.
 	bodyText = `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="},"world.txt":{"data":"bGVsbG8gd29ybGQ="}}}`
-	revId, err = btc.PushRev(docId, revId, []byte(bodyText))
+	revId, err = btc.PushRev(docID, revId, []byte(bodyText))
 	require.NoError(t, err)
 	assert.Equal(t, "2-abc", revId)
 
@@ -3037,12 +3037,12 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 	_, ok = btc.pushReplication.WaitForMessage(2)
 	assert.True(t, ok)
 
-	resp := rt.SendAdminRequest(http.MethodGet, "/db/"+docId+"?rev="+revId, "")
+	resp := rt.SendAdminRequest(http.MethodGet, "/db/"+docID+"?rev="+revId, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 	var respBody db.Body
 	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
 
-	assert.Equal(t, docId, respBody[db.BodyId])
+	assert.Equal(t, docID, respBody[db.BodyId])
 	assert.Equal(t, "2-abc", respBody[db.BodyRev])
 	greetings := respBody["greetings"].([]interface{})
 	assert.Len(t, greetings, 1)
@@ -3095,23 +3095,23 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 
 	err = btc.StartPull()
 	assert.NoError(t, err)
-	const docId = "doc1"
+	const docID = "doc1"
 
 	// Create doc revision with attachment on SG.
 	bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
-	response := rt.SendAdminRequest(http.MethodPut, "/db/"+docId, bodyText)
+	response := rt.SendAdminRequest(http.MethodPut, "/db/"+docID, bodyText)
 	assert.Equal(t, http.StatusCreated, response.Code)
 
 	// Wait for the document to be replicated to client.
 	revId := respRevID(t, response)
-	data, ok := btc.WaitForRev(docId, revId)
+	data, ok := btc.WaitForRev(docID, revId)
 	assert.True(t, ok)
 	bodyTextExpected := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
 	require.JSONEq(t, bodyTextExpected, string(data))
 
 	// Update the replicated doc at client along with keeping the same attachment stub.
 	bodyText = `{"greetings":[{"hi":"bob"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
-	revId, err = btc.PushRev(docId, revId, []byte(bodyText))
+	revId, err = btc.PushRev(docID, revId, []byte(bodyText))
 	require.NoError(t, err)
 	assert.Equal(t, "2-abc", revId)
 
@@ -3119,12 +3119,12 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 	_, ok = btc.pushReplication.WaitForMessage(2)
 	assert.True(t, ok)
 
-	resp := rt.SendAdminRequest(http.MethodGet, "/db/"+docId+"?rev="+revId, "")
+	resp := rt.SendAdminRequest(http.MethodGet, "/db/"+docID+"?rev="+revId, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 	var respBody db.Body
 	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
 
-	assert.Equal(t, docId, respBody[db.BodyId])
+	assert.Equal(t, docID, respBody[db.BodyId])
 	assert.Equal(t, "2-abc", respBody[db.BodyRev])
 	greetings := respBody["greetings"].([]interface{})
 	assert.Len(t, greetings, 1)
@@ -3171,23 +3171,23 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 
 	err = btc.StartPull()
 	assert.NoError(t, err)
-	const docId = "doc1"
+	const docID = "doc1"
 
 	// Create doc revision with attachment on SG.
 	bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
-	response := rt.SendAdminRequest(http.MethodPut, "/db/"+docId, bodyText)
+	response := rt.SendAdminRequest(http.MethodPut, "/db/"+docID, bodyText)
 	assert.Equal(t, http.StatusCreated, response.Code)
 
 	// Wait for the document to be replicated to client.
 	revId := respRevID(t, response)
-	data, ok := btc.WaitForRev(docId, revId)
+	data, ok := btc.WaitForRev(docID, revId)
 	assert.True(t, ok)
 	bodyTextExpected := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
 	require.JSONEq(t, bodyTextExpected, string(data))
 
 	// Update the replicated doc at client along with keeping the same attachment stub.
 	bodyText = `{"greetings":[{"hi":"bob"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
-	revId, err = btc.PushRev(docId, revId, []byte(bodyText))
+	revId, err = btc.PushRev(docID, revId, []byte(bodyText))
 	require.NoError(t, err)
 	assert.Equal(t, "2-abc", revId)
 
@@ -3195,12 +3195,12 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 	_, ok = btc.pushReplication.WaitForMessage(2)
 	assert.True(t, ok)
 
-	resp := rt.SendAdminRequest(http.MethodGet, "/db/"+docId+"?rev="+revId, "")
+	resp := rt.SendAdminRequest(http.MethodGet, "/db/"+docID+"?rev="+revId, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 	var respBody db.Body
 	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
 
-	assert.Equal(t, docId, respBody[db.BodyId])
+	assert.Equal(t, docID, respBody[db.BodyId])
 	assert.Equal(t, "2-abc", respBody[db.BodyRev])
 	greetings := respBody["greetings"].([]interface{})
 	assert.Len(t, greetings, 1)
@@ -3631,7 +3631,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 
 	docRevID := rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"channels": []string{"A", "B"}})
 
-	changes, err := rt.WaitForChanges(1, "/db/_changes?since=0&revocations=true", "user", true)
+	changes, err := rt.waitForChanges(1, "/db/_changes?since=0&revocations=true", "user", true)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(changes.Results))
 	assert.Equal(t, "doc", changes.Results[0].ID)
@@ -3645,7 +3645,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 
 	docRevID = rt.createDocReturnRev(t, "doc", docRevID, map[string]interface{}{"channels": []string{"B"}})
 
-	changes, err = rt.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
+	changes, err = rt.waitForChanges(1, fmt.Sprintf("/db/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(changes.Results))
 	assert.Equal(t, "doc", changes.Results[0].ID)
@@ -3660,7 +3660,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	_ = rt.createDocReturnRev(t, "doc", docRevID, map[string]interface{}{"channels": []string{}})
 	_ = rt.createDocReturnRev(t, "docmarker", "", map[string]interface{}{"channels": []string{"!"}})
 
-	changes, err = rt.WaitForChanges(2, fmt.Sprintf("/db/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
+	changes, err = rt.waitForChanges(2, fmt.Sprintf("/db/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
 	require.NoError(t, err)
 	assert.Len(t, changes.Results, 2)
 	assert.Equal(t, "doc", changes.Results[0].ID)
@@ -3720,15 +3720,15 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 
 	err = btc.StartPull()
 	assert.NoError(t, err)
-	const docId = "doc1"
+	const docID = "doc1"
 
 	// CBL creates revisions 1-abc,2-abc on the client, with an attachment associated with rev 2.
 	bodyText := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
-	err = btc.StoreRevOnClient(docId, "2-abc", []byte(bodyText))
+	err = btc.StoreRevOnClient(docID, "2-abc", []byte(bodyText))
 	require.NoError(t, err)
 
 	bodyText = `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":2,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
-	revId, err := btc.PushRevWithHistory(docId, "", []byte(bodyText), 2, 0)
+	revId, err := btc.PushRevWithHistory(docID, "", []byte(bodyText), 2, 0)
 	require.NoError(t, err)
 	assert.Equal(t, "2-abc", revId)
 
@@ -3736,13 +3736,13 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 	_, ok := btc.pushReplication.WaitForMessage(2)
 	assert.True(t, ok)
 
-	resp := rt.SendAdminRequest(http.MethodGet, "/db/"+docId+"?rev="+revId, "")
+	resp := rt.SendAdminRequest(http.MethodGet, "/db/"+docID+"?rev="+revId, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 
 	// CBL updates the doc w/ two more revisions, 3-abc, 4-abc,
 	// these are sent to SG as 4-abc, history:[4-abc,3-abc,2-abc], the attachment has revpos=2
 	bodyText = `{"greetings":[{"hi":"bob"}],"_attachments":{"hello.txt":{"revpos":2,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
-	revId, err = btc.PushRevWithHistory(docId, revId, []byte(bodyText), 2, 0)
+	revId, err = btc.PushRevWithHistory(docID, revId, []byte(bodyText), 2, 0)
 	require.NoError(t, err)
 	assert.Equal(t, "4-abc", revId)
 
@@ -3750,13 +3750,13 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 	_, ok = btc.pushReplication.WaitForMessage(4)
 	assert.True(t, ok)
 
-	resp = rt.SendAdminRequest(http.MethodGet, "/db/"+docId+"?rev="+revId, "")
+	resp = rt.SendAdminRequest(http.MethodGet, "/db/"+docID+"?rev="+revId, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 
 	var respBody db.Body
 	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
 
-	assert.Equal(t, docId, respBody[db.BodyId])
+	assert.Equal(t, docID, respBody[db.BodyId])
 	assert.Equal(t, "4-abc", respBody[db.BodyRev])
 	greetings := respBody["greetings"].([]interface{})
 	assert.Len(t, greetings, 1)
@@ -3792,17 +3792,17 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 
 	err = btc.StartPull()
 	assert.NoError(t, err)
-	const docId = "doc1"
+	const docID = "doc1"
 
 	// CBL creates revisions 1-abc, 2-abc, 3-abc, 4-abc on the client, with an attachment associated with rev 2.
 	// rev tree pruning on the CBL side, so 1-abc no longer exists.
 	// CBL replicates, sends to client as 4-abc history:[4-abc, 3-abc, 2-abc], attachment has revpos=2
 	bodyText := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
-	err = btc.StoreRevOnClient(docId, "2-abc", []byte(bodyText))
+	err = btc.StoreRevOnClient(docID, "2-abc", []byte(bodyText))
 	require.NoError(t, err)
 
 	bodyText = `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":2,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
-	revId, err := btc.PushRevWithHistory(docId, "2-abc", []byte(bodyText), 2, 0)
+	revId, err := btc.PushRevWithHistory(docID, "2-abc", []byte(bodyText), 2, 0)
 	require.NoError(t, err)
 	assert.Equal(t, "4-abc", revId)
 
@@ -3810,13 +3810,13 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 	_, ok := btc.pushReplication.WaitForMessage(2)
 	assert.True(t, ok)
 
-	resp := rt.SendAdminRequest(http.MethodGet, "/db/"+docId+"?rev="+revId, "")
+	resp := rt.SendAdminRequest(http.MethodGet, "/db/"+docID+"?rev="+revId, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 
 	var respBody db.Body
 	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
 
-	assert.Equal(t, docId, respBody[db.BodyId])
+	assert.Equal(t, docID, respBody[db.BodyId])
 	assert.Equal(t, "4-abc", respBody[db.BodyRev])
 	greetings := respBody["greetings"].([]interface{})
 	assert.Len(t, greetings, 1)
@@ -4162,7 +4162,7 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 			// Wait for rev to be received on RT
 			err = rt.WaitForPendingChanges()
 			require.NoError(t, err)
-			changes, err = rt.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq), "", true)
+			changes, err = rt.waitForChanges(1, fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq), "", true)
 			require.NoError(t, err)
 
 			var bucketDoc map[string]interface{}

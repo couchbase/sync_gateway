@@ -2467,7 +2467,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	assert.Equal(t, 9, changeCount)
 
 	expectedIDs := []string{"beta", "delta", "gamma", "a1", "b1", "d1", "g1", "alpha", "epsilon"}
-	changes, err = rt.WaitForChanges(len(expectedIDs), "/db/_changes", "alice", false)
+	changes, err = rt.waitForChanges(len(expectedIDs), "/db/_changes", "alice", false)
 	assert.NoError(t, err, "Unexpected error")
 	log.Printf("_changes looks like: %+v", changes)
 	assert.Equal(t, len(expectedIDs), len(changes.Results))
@@ -2858,14 +2858,14 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	}
 
 	limit := 50
-	changesResults, err := rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?limit=%d", limit), "user1", false)
+	changesResults, err := rt.waitForChanges(50, fmt.Sprintf("/db/_changes?limit=%d", limit), "user1", false)
 	assert.NoError(t, err, "Unexpected error")
 	require.Len(t, changesResults.Results, 50)
 	since := changesResults.Results[49].Seq
 	assert.Equal(t, "doc48", changesResults.Results[49].ID)
 
 	// // Check the _changes feed with  since and limit, to get second half of feed
-	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?since=\"%s\"&limit=%d", since, limit), "user1", false)
+	changesResults, err = rt.waitForChanges(50, fmt.Sprintf("/db/_changes?since=\"%s\"&limit=%d", since, limit), "user1", false)
 	assert.NoError(t, err, "Unexpected error")
 	require.Len(t, changesResults.Results, 50)
 	since = changesResults.Results[49].Seq
@@ -2876,7 +2876,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	// Retrieve all changes for user2 with no limits
-	changesResults, err = rt.WaitForChanges(101, fmt.Sprintf("/db/_changes"), "user2", false)
+	changesResults, err = rt.waitForChanges(101, fmt.Sprintf("/db/_changes"), "user2", false)
 	assert.NoError(t, err, "Unexpected error")
 	require.Len(t, changesResults.Results, 101)
 	assert.Equal(t, "doc99", changesResults.Results[99].ID)
@@ -2894,7 +2894,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	userSequence := user3.Sequence()
 
 	// Get first 50 document changes.
-	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?limit=%d", limit), "user3", false)
+	changesResults, err = rt.waitForChanges(50, fmt.Sprintf("/db/_changes?limit=%d", limit), "user3", false)
 	assert.NoError(t, err, "Unexpected error")
 	require.Len(t, changesResults.Results, 50)
 	since = changesResults.Results[49].Seq
@@ -2902,7 +2902,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equal(t, userSequence, since.TriggeredBy)
 
 	// // Get remainder of changes i.e. no limit parameter
-	changesResults, err = rt.WaitForChanges(51, fmt.Sprintf("/db/_changes?since=\"%s\"", since), "user3", false)
+	changesResults, err = rt.waitForChanges(51, fmt.Sprintf("/db/_changes?since=\"%s\"", since), "user3", false)
 	assert.NoError(t, err, "Unexpected error")
 	require.Len(t, changesResults.Results, 51)
 	assert.Equal(t, "doc99", changesResults.Results[49].ID)
@@ -2914,7 +2914,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	user4, _ := rt.GetDatabase().Authenticator(base.TestCtx(t)).GetUser("user4")
 	user4Sequence := user4.Sequence()
 
-	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?limit=%d", limit), "user4", false)
+	changesResults, err = rt.waitForChanges(50, fmt.Sprintf("/db/_changes?limit=%d", limit), "user4", false)
 	assert.NoError(t, err, "Unexpected error")
 	require.Len(t, changesResults.Results, 50)
 	since = changesResults.Results[49].Seq
@@ -2922,7 +2922,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equal(t, user4Sequence, since.TriggeredBy)
 
 	// // Check the _changes feed with  since and limit, to get second half of feed
-	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?since=%s&limit=%d", since, limit), "user4", false)
+	changesResults, err = rt.waitForChanges(50, fmt.Sprintf("/db/_changes?since=%s&limit=%d", since, limit), "user4", false)
 	assert.Equal(t, nil, err)
 	require.Len(t, changesResults.Results, 50)
 	assert.Equal(t, "doc99", changesResults.Results[49].ID)
@@ -7407,7 +7407,7 @@ func TestRevocationWithAdminChannels(t *testing.T) {
 	resp = rt.SendAdminRequest("PUT", "/db/doc", `{"channels": ["A"]}`)
 	assertStatus(t, resp, http.StatusCreated)
 
-	changes, err := rt.WaitForChanges(2, "/db/_changes?since=0&revocations=true", "user", false)
+	changes, err := rt.waitForChanges(2, "/db/_changes?since=0&revocations=true", "user", false)
 	require.NoError(t, err)
 	assert.Equal(t, 2, len(changes.Results))
 
@@ -7417,7 +7417,7 @@ func TestRevocationWithAdminChannels(t *testing.T) {
 	resp = rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_channels": [], "password": "letmein"}`)
 	assertStatus(t, resp, http.StatusOK)
 
-	changes, err = rt.WaitForChanges(2, fmt.Sprintf("/db/_changes?since=%d&revocations=true", 2), "user", false)
+	changes, err = rt.waitForChanges(2, fmt.Sprintf("/db/_changes?since=%d&revocations=true", 2), "user", false)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(changes.Results))
 
@@ -7440,7 +7440,7 @@ func TestRevocationWithAdminRoles(t *testing.T) {
 	resp = rt.SendAdminRequest("PUT", "/db/doc", `{"channels": ["A"]}`)
 	assertStatus(t, resp, http.StatusCreated)
 
-	changes, err := rt.WaitForChanges(2, "/db/_changes?since=0&revocations=true", "user", false)
+	changes, err := rt.waitForChanges(2, "/db/_changes?since=0&revocations=true", "user", false)
 	require.NoError(t, err)
 	assert.Equal(t, 2, len(changes.Results))
 
@@ -7450,7 +7450,7 @@ func TestRevocationWithAdminRoles(t *testing.T) {
 	resp = rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_roles": []}`)
 	assertStatus(t, resp, http.StatusOK)
 
-	changes, err = rt.WaitForChanges(2, fmt.Sprintf("/db/_changes?since=%d&revocations=true", 3), "user", false)
+	changes, err = rt.waitForChanges(2, fmt.Sprintf("/db/_changes?since=%d&revocations=true", 3), "user", false)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(changes.Results))
 
@@ -8810,7 +8810,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.NoError(t, err, "Unable to delete doc %q", docID)
 
 		// Wait until the "delete" mutation appears on the changes feed.
-		changes, err := rt.WaitForChanges(1, "/db/_changes", "", true)
+		changes, err := rt.waitForChanges(1, "/db/_changes", "", true)
 		assert.NoError(t, err, "Error waiting for changes")
 		log.Printf("changes: %+v", changes)
 		rt.requireDocNotFound(docID)
@@ -8863,7 +8863,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.NoError(t, err, "Error updating the document")
 
 		// Wait until the "update" mutation appears on the changes feed.
-		changes, err := rt.WaitForChanges(1, "/db/_changes", "", true)
+		changes, err := rt.waitForChanges(1, "/db/_changes", "", true)
 		assert.NoError(t, err, "Error waiting for changes")
 		log.Printf("changes: %+v", changes)
 

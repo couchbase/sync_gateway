@@ -221,7 +221,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	assert.NoError(t, ar.Start())
 
 	// wait for the document originally written to rt2 to arrive at rt1
-	changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err := rt1.waitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -310,7 +310,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	assert.NoError(t, ar.Start())
 
 	// wait for the document originally written to rt2 to arrive at rt1
-	changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err := rt1.waitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -331,7 +331,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	revID = respRevID(t, resp)
 
 	// wait for the new document written to rt2 to arrive at rt1
-	changesResults, err = rt1.WaitForChanges(2, "/db/_changes?since=0", "", true)
+	changesResults, err = rt1.waitForChanges(2, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 2)
 	assert.Equal(t, docID, changesResults.Results[1].ID)
@@ -500,7 +500,7 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 			rev1 := putDocResp.Rev
 
 			// wait for the document originally written to rt2 to arrive at rt1
-			changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
+			changesResults, err := rt1.waitForChanges(1, "/db/_changes?since=0", "", true)
 			require.NoError(t, err)
 			require.Len(t, changesResults.Results, 1)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -514,7 +514,7 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 			resp = rt1.SendAdminRequest(http.MethodPut, "/db/"+docID+"?rev="+rev1, test.localConflictingRevBody)
 			assertStatus(t, resp, http.StatusCreated)
 
-			changesResults, err = rt1.WaitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
+			changesResults, err = rt1.waitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
 			require.NoError(t, err)
 			assert.Len(t, changesResults.Results, 1)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -528,11 +528,11 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 
 			rt1.waitForReplicationStatus("repl1", db.ReplicationStateRunning)
 
-			changesResults, err = rt1.WaitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
+			changesResults, err = rt1.waitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
 			require.NoError(t, err)
 			assert.Len(t, changesResults.Results, 1)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
-			lastSeq = changesResults.Last_Seq.(string)
+			_ = changesResults.Last_Seq.(string)
 
 			doc, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
@@ -631,7 +631,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	assert.NoError(t, ar.Start())
 
 	// wait for all of the documents originally written to rt2 to arrive at rt1
-	changesResults, err := rt1.WaitForChanges(numRT2DocsInitial, "/db/_changes?since=0", "", true)
+	changesResults, err := rt1.waitForChanges(numRT2DocsInitial, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, numRT2DocsInitial)
 	docIDsSeen := make(map[string]bool, numRT2DocsInitial)
@@ -682,7 +682,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	assert.NoError(t, ar.Start())
 
 	// wait for all of the documents originally written to rt2 to arrive at rt1
-	changesResults, err = rt1.WaitForChanges(numRT2DocsTotal, "/db/_changes?since=0", "", true)
+	changesResults, err = rt1.waitForChanges(numRT2DocsTotal, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, numRT2DocsTotal)
 
@@ -805,7 +805,7 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 	assert.True(t, ok)
 
 	// wait for all of the documents originally written to rt2 to arrive at rt1
-	changesResults, err := rt1.WaitForChanges(numRT2DocsInitial, "/db/_changes?since=0", "", true)
+	changesResults, err := rt1.waitForChanges(numRT2DocsInitial, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, numRT2DocsInitial)
 	docIDsSeen := make(map[string]bool, numRT2DocsInitial)
@@ -1043,7 +1043,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	assert.NoError(t, ar.Start())
 
 	// wait for the document originally written to rt1 to arrive at rt2
-	changesResults, err := rt2.WaitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err := rt2.waitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -1130,7 +1130,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 	assert.NoError(t, ar.Start())
 
 	// wait for the document originally written to rt1 to arrive at rt2
-	changesResults, err := rt2.WaitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err := rt2.waitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -1152,7 +1152,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 	revID = respRevID(t, resp)
 
 	// wait for the new document written to rt1 to arrive at rt2
-	changesResults, err = rt2.WaitForChanges(2, "/db/_changes?since=0", "", true)
+	changesResults, err = rt2.waitForChanges(2, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 2)
 	assert.Equal(t, docID, changesResults.Results[1].ID)
@@ -1250,7 +1250,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	assert.NoError(t, ar.Start())
 
 	// wait for all of the documents originally written to rt1 to arrive at rt2
-	changesResults, err := rt2.WaitForChanges(numRT1DocsInitial, "/db/_changes?since=0", "", true)
+	changesResults, err := rt2.waitForChanges(numRT1DocsInitial, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, numRT1DocsInitial)
 	docIDsSeen := make(map[string]bool, numRT1DocsInitial)
@@ -1299,7 +1299,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	assert.NoError(t, ar.Start())
 
 	// wait for all of the documents originally written to rt1 to arrive at rt2
-	changesResults, err = rt2.WaitForChanges(numRT1DocsTotal, "/db/_changes?since=0", "", true)
+	changesResults, err = rt2.waitForChanges(numRT1DocsTotal, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, numRT1DocsTotal)
 
@@ -1412,7 +1412,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	assert.NoError(t, edge1Replicator.Start())
 
 	// wait for all of the documents originally written to rt1 to arrive at edge1
-	changesResults, err := edge1.WaitForChanges(numRT1DocsInitial, "/db/_changes?since=0", "", true)
+	changesResults, err := edge1.waitForChanges(numRT1DocsInitial, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	edge1LastSeq := changesResults.Last_Seq
 	require.Len(t, changesResults.Results, numRT1DocsInitial)
@@ -1467,7 +1467,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	edge2Replicator := db.NewActiveReplicator(&arConfig)
 	assert.NoError(t, edge2Replicator.Start())
 
-	changesResults, err = edge2.WaitForChanges(numRT1DocsInitial, "/db/_changes?since=0", "", true)
+	changesResults, err = edge2.waitForChanges(numRT1DocsInitial, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 
 	edge2Replicator.Pull.Checkpointer.CheckpointNow()
@@ -1493,7 +1493,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	edge1Replicator2 := db.NewActiveReplicator(&arConfig)
 	require.NoError(t, edge1Replicator2.Start())
 
-	changesResults, err = edge1.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%v", edge1LastSeq), "", true)
+	changesResults, err = edge1.waitForChanges(1, fmt.Sprintf("/db/_changes?since=%v", edge1LastSeq), "", true)
 	require.NoErrorf(t, err, "changesResults: %v", changesResults)
 	changesResults.requireDocIDs(t, []string{fmt.Sprintf("%s%d", docIDPrefix, numRT1DocsInitial)})
 
@@ -1808,7 +1808,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	assert.NoError(t, ar.Start())
 
 	// wait for the document originally written to rt2 to arrive at rt1
-	changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err := rt1.waitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -1828,7 +1828,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	revID = respRevID(t, resp)
 
 	// wait for the tombstone written to rt2 to arrive at rt1
-	changesResults, err = rt1.WaitForChanges(1, "/db/_changes?since="+strconv.FormatUint(doc.Sequence, 10), "", true)
+	changesResults, err = rt1.waitForChanges(1, "/db/_changes?since="+strconv.FormatUint(doc.Sequence, 10), "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -1909,7 +1909,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	assert.NoError(t, ar.Start())
 
 	// wait for the document originally written to rt2 to arrive at rt1
-	changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err := rt1.waitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -2118,7 +2118,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			}
 			// wait for the document originally written to rt2 to arrive at rt1.  Should end up as winner under default conflict resolution
 
-			changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
+			changesResults, err := rt1.waitForChanges(1, "/db/_changes?since=0", "", true)
 			require.NoError(t, err)
 			require.Len(t, changesResults.Results, 1)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -2337,7 +2337,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			log.Printf("========================Replication should be done, checking with changes")
 
 			// Validate results on the local (rt1)
-			changesResults, err := rt1.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%d", localDoc.Sequence), "", true)
+			changesResults, err := rt1.waitForChanges(1, fmt.Sprintf("/db/_changes?since=%d", localDoc.Sequence), "", true)
 			require.NoError(t, err)
 			require.Len(t, changesResults.Results, 1)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -2383,7 +2383,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 				// no changes should have been pushed back up to rt2, because this rev won.
 				rt2Since = 0
 			}
-			changesResults, err = rt2.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%d", rt2Since), "", true)
+			changesResults, err = rt2.waitForChanges(1, fmt.Sprintf("/db/_changes?since=%d", rt2Since), "", true)
 			require.NoError(t, err)
 			require.Len(t, changesResults.Results, 1)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -2482,7 +2482,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 	require.NoError(t, ar.Start())
 
 	// wait for the document originally written to rt1 to arrive at rt2
-	changesResults, err := rt2.WaitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err := rt2.waitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -2626,7 +2626,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	assert.NoError(t, ar.Start())
 
 	// wait for document originally written to rt2 to arrive at rt1
-	changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err := rt1.waitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -2681,7 +2681,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	assert.Equal(t, int64(0), ar.Pull.Checkpointer.Stats().GetCheckpointHitCount)
 
 	// wait for document originally written to rt2 to arrive at rt1
-	changesResults, err = rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err = rt1.waitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -2783,7 +2783,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	assert.NoError(t, ar.Start())
 
 	// wait for document originally written to rt1 to arrive at rt2
-	changesResults, err := rt2.WaitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err := rt2.waitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -2851,7 +2851,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	assert.Equal(t, int64(0), ar.Push.Checkpointer.Stats().GetCheckpointHitCount)
 
 	// wait for document originally written to rt1 to arrive at rt2
-	changesResults, err = rt2.WaitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err = rt2.waitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -2955,7 +2955,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	}, 1)
 
 	// wait for document originally written to rt1 to arrive at rt2
-	changesResults, err := rt2.WaitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err := rt2.waitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -2991,7 +2991,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	}, 2)
 
 	// wait for new document to arrive at rt2
-	changesResults, err = rt2.WaitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
+	changesResults, err = rt2.waitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID+"2", changesResults.Results[0].ID)
@@ -3024,7 +3024,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	assert.NoError(t, ar.Start())
 
 	// wait for new document to arrive at rt2 again
-	changesResults, err = rt2.WaitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
+	changesResults, err = rt2.waitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID+"2", changesResults.Results[0].ID)
@@ -3117,7 +3117,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	assert.NoError(t, rt1.WaitForPendingChanges())
 
 	// wait for document originally written to rt1 to arrive at rt2
-	changesResults, err := rt2.WaitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err := rt2.waitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -3129,7 +3129,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	assert.NoError(t, rt2.WaitForPendingChanges())
 
 	// wait for document originally written to rt2 to arrive at rt1
-	changesResults, err = rt1.WaitForChanges(1, "/db/_changes?since=1", "", true)
+	changesResults, err = rt1.waitForChanges(1, "/db/_changes?since=1", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -3210,7 +3210,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	assert.NoError(t, ar.Start())
 
 	// wait for the document originally written to rt1 to arrive at rt2
-	changesResults, err := rt2.WaitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err := rt2.waitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, rt1docID, changesResults.Results[0].ID)
@@ -3231,7 +3231,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	rt2revID := respRevID(t, resp)
 
 	// ... and wait to arrive at rt1
-	changesResults, err = rt1.WaitForChanges(2, "/db/_changes?since=0", "", true)
+	changesResults, err = rt1.waitForChanges(2, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 2)
 	assert.Equal(t, rt1docID, changesResults.Results[0].ID)
@@ -3326,7 +3326,7 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 	assert.NoError(t, ar.Start())
 
 	// wait for all of the documents originally written to rt2 to arrive at rt1
-	changesResults, err := rt1.WaitForChanges(numDocsPerChannelInitial, "/db/_changes?since=0", "", true)
+	changesResults, err := rt1.waitForChanges(numDocsPerChannelInitial, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, numDocsPerChannelInitial)
 	docIDsSeen := make(map[string]bool, numDocsPerChannelInitial)
@@ -3377,7 +3377,7 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 	expectedChan1Docs := numDocsPerChannelInitial
 	expectedChan2Docs := numDocsPerChannelTotal
 	expectedTotalDocs := expectedChan1Docs + expectedChan2Docs
-	changesResults, err = rt1.WaitForChanges(expectedTotalDocs, "/db/_changes?since=0", "", true)
+	changesResults, err = rt1.waitForChanges(expectedTotalDocs, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, expectedTotalDocs)
 
@@ -4040,7 +4040,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 
 			// Wait for the document originally written to rt2 to arrive at rt1.
 			// Should end up as winner under default conflict resolution.
-			changesResults, err := rt1.WaitForChanges(1, "/db/_changes?&since=0", "", true)
+			changesResults, err := rt1.waitForChanges(1, "/db/_changes?&since=0", "", true)
 			require.NoError(t, err)
 			require.Len(t, changesResults.Results, 1)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -4247,7 +4247,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			assert.NoError(t, err)
 
 			// Stop the replication
-			resp = localActiveRT.SendAdminRequest("PUT", "/db/_replicationStatus/replication?action=stop", "")
+			_ = localActiveRT.SendAdminRequest("PUT", "/db/_replicationStatus/replication?action=stop", "")
 			localActiveRT.waitForReplicationStatus("replication", db.ReplicationStateStopped)
 
 			// Delete on the short branch and make another doc on the longer branch before deleting it
@@ -4305,7 +4305,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			}
 
 			// Start up repl again
-			resp = localActiveRT.SendAdminRequest("PUT", "/db/_replicationStatus/replication?action=start", "")
+			_ = localActiveRT.SendAdminRequest("PUT", "/db/_replicationStatus/replication?action=start", "")
 			localActiveRT.waitForReplicationStatus("replication", db.ReplicationStateRunning)
 
 			// Wait for the recently longest branch to show up on both sides
@@ -4338,7 +4338,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			assert.NoError(t, err)
 
 			// Stop the replication
-			resp = localActiveRT.SendAdminRequest("PUT", "/db/_replicationStatus/replication?action=stop", "")
+			_ = localActiveRT.SendAdminRequest("PUT", "/db/_replicationStatus/replication?action=stop", "")
 			localActiveRT.waitForReplicationStatus("replication", db.ReplicationStateStopped)
 
 			// Resurrect Doc
@@ -4386,7 +4386,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			require.NoError(t, err)
 
 			// Start the replication
-			resp = localActiveRT.SendAdminRequest("PUT", "/db/_replicationStatus/replication?action=start", "")
+			_ = localActiveRT.SendAdminRequest("PUT", "/db/_replicationStatus/replication?action=start", "")
 			localActiveRT.waitForReplicationStatus("replication", db.ReplicationStateRunning)
 
 			// Wait for doc to replicate from side resurrection was done on to the other side
@@ -4989,10 +4989,7 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 	assertStatus(t, response, http.StatusCreated)
 
 	err = rt2.WaitForCondition(func() bool {
-		if base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value() == errorCountBefore+1 {
-			return true
-		}
-		return false
+		return base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value() == errorCountBefore+1
 	})
 	assert.NoError(t, err)
 
@@ -5324,7 +5321,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	_ = rt2.createDocReturnRev(t, "docC", "", map[string][]string{"channels": []string{"C"}})
 
 	// Wait for docs to turn up on local / rt1
-	changesResults, err := rt1.WaitForChanges(5, "/db/_changes?since=0", "", true)
+	changesResults, err := rt1.waitForChanges(5, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	assert.Len(t, changesResults.Results, 5)
 
@@ -5481,7 +5478,7 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 
 	require.NoError(t, ar.Start())
 
-	changesResults, err := rt1.WaitForChanges(4, "/db/_changes?since=0", "", true)
+	changesResults, err := rt1.waitForChanges(4, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	assert.Len(t, changesResults.Results, 4)
 
@@ -5565,7 +5562,7 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 
 	require.NoError(t, ar.Start())
 
-	changesResults, err := rt1.WaitForChanges(3, "/db/_changes?since=0", "", true)
+	changesResults, err := rt1.waitForChanges(3, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	assert.Len(t, changesResults.Results, 3)
 
@@ -5672,7 +5669,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 
 	require.NoError(t, ar.Start())
 
-	changesResults, err := rt1.WaitForChanges(17, "/db/_changes?since=0", "", true)
+	changesResults, err := rt1.waitForChanges(17, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	assert.Len(t, changesResults.Results, 17)
 
@@ -5696,7 +5693,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	require.NoError(t, ar.Start())
 	rt1.waitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
 
-	changesResults, err = rt1.WaitForChanges(8, fmt.Sprintf("/db/_changes?since=%v", changesResults.Last_Seq), "", true)
+	changesResults, err = rt1.waitForChanges(8, fmt.Sprintf("/db/_changes?since=%v", changesResults.Last_Seq), "", true)
 	require.NoError(t, err)
 	assert.Len(t, changesResults.Results, 8)
 
@@ -5725,7 +5722,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	err = rt2.WaitForPendingChanges()
 	assert.NoError(t, err)
 
-	changesResults, err = rt1.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%v", changesResults.Last_Seq), "", true)
+	changesResults, err = rt1.waitForChanges(1, fmt.Sprintf("/db/_changes?since=%v", changesResults.Last_Seq), "", true)
 	assert.NoError(t, err)
 	assert.Len(t, changesResults.Results, 1)
 
@@ -6057,7 +6054,7 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 	activeRT.waitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
 
 	// Confirm document is replicated
-	changesResults, err := passiveRT.WaitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err := passiveRT.waitForChanges(1, "/db/_changes?since=0", "", true)
 	assert.NoError(t, err)
 	assert.Len(t, changesResults.Results, 1)
 
@@ -6085,7 +6082,7 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 	require.NoError(t, ar.Start())
 	activeRT.waitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
 
-	changesResults, err = passiveRT.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%v", changesResults.Last_Seq), "", true)
+	changesResults, err = passiveRT.waitForChanges(1, fmt.Sprintf("/db/_changes?since=%v", changesResults.Last_Seq), "", true)
 	assert.NoError(t, err)
 	assert.Len(t, changesResults.Results, 1)
 

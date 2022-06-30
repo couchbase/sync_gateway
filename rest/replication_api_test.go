@@ -1600,7 +1600,7 @@ func TestReplicationConfigChange(t *testing.T) {
 
 	rt1.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
-	changesResults, err := rt2.WaitForChanges(4, "/db/_changes?since=0", "", true)
+	changesResults, err := rt2.waitForChanges(4, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 4)
 
@@ -1624,7 +1624,7 @@ func TestReplicationConfigChange(t *testing.T) {
 	assertStatus(t, resp, http.StatusOK)
 	rt1.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
-	changesResults, err = rt2.WaitForChanges(8, "/db/_changes?since=0", "", true)
+	changesResults, err = rt2.waitForChanges(8, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 8)
 }

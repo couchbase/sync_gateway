@@ -53,6 +53,7 @@ type blipHandler struct {
 	serialNumber uint64    // This blip handler's serial number to differentiate logs w/ other handlers
 }
 
+// BlipSyncContextClientType represents whether to replicate to another Sync Gateway or Couchbase Lite
 type BLIPSyncContextClientType string
 
 const (
