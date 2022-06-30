@@ -10,6 +10,7 @@ package db
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log"
 	"testing"
@@ -481,7 +482,8 @@ func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 		// Changes params: POST /pm/_changes?feed=normal&heartbeat=30000&style=all_docs&active_only=true
 		// Changes request of all docs (could also do GetDoc call, but misses other possible things). One shot, .. etc
 
-		options.Terminator = make(chan bool)
+		changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+		options.ChangesCtx = changesCtx
 		feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
 		if err != nil {
 			b.Fatalf("Error getting changes feed: %v", err)
@@ -492,7 +494,7 @@ func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 				break
 			}
 		}
-		close(options.Terminator)
+		changesCtxCancel()
 
 	}
 

@@ -43,6 +43,7 @@ func NewBlipSyncContext(bc *blip.Context, db *Database, contextID string, replic
 		replicationStats:        replicationStats,
 		inFlightChangesThrottle: make(chan struct{}, maxInFlightChangesBatches),
 	}
+	bsc.changesCtx, bsc.changesCtxCancel = context.WithCancel(context.Background())
 	if bsc.replicationStats == nil {
 		bsc.replicationStats = NewBlipSyncStats()
 	}
@@ -198,6 +199,13 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 
 func (bsc *BlipSyncContext) Close() {
 	bsc.terminatorOnce.Do(func() {
+		// Lock so that we don't close the changesCtx at the same time as handleSubChanges is creating it
+		bsc.lock.Lock()
+		defer bsc.lock.Unlock()
+
+		if bsc.changesCtxCancel != nil {
+			bsc.changesCtxCancel()
+		}
 		close(bsc.terminator)
 	})
 }

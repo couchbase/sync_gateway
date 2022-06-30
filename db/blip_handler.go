@@ -184,10 +184,6 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
 	bh.gotSubChanges = true
 
-	// Context to cancel subchanges from being sent
-	changesCtx := context.Background()
-	bh.changesCtx, bh.changesCtxCancel = context.WithCancel(changesCtx)
-
 	defaultSince := bh.db.CreateZeroSinceValue()
 	latestSeq := func() (SequenceID, error) {
 		seq, err := bh.db.LastSequence()
@@ -201,6 +197,11 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	// Ensure that only _one_ subChanges subscription can be open on this blip connection at any given time.  SG #3222.
 	if !bh.activeSubChanges.CASRetry(false, true) {
 		return fmt.Errorf("blipHandler already has an outstanding continous subChanges.  Cannot open another one")
+	}
+
+	// Create ctx if it does not exist or has been closed
+	if bh.changesCtx == nil || bh.changesCtx.Err() != nil {
+		bh.changesCtx, bh.changesCtxCancel = context.WithCancel(context.Background())
 	}
 
 	if len(subChangesParams.docIDs()) > 0 && subChangesParams.continuous() {
@@ -326,10 +327,9 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 		Continuous:  opts.continuous,
 		ActiveOnly:  opts.activeOnly,
 		Revocations: opts.revocations,
-		Terminator:  bh.BlipSyncContext.terminator,
 		LoggingCtx:  bh.loggingCtx,
 		clientType:  opts.clientType,
-		ChangesCtx:  bh.BlipSyncContext.changesCtx,
+		ChangesCtx:  bh.changesCtx,
 	}
 
 	channelSet := opts.channels

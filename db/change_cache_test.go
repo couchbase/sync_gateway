@@ -261,8 +261,9 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	// Start continuous changes feed
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	options.Terminator = make(chan bool)
-	defer close(options.Terminator)
+	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+	options.ChangesCtx = changesCtx
+	defer changesCtxCancel()
 	options.Continuous = true
 	options.Wait = true
 	feed, err := db.MultiChangesFeed(base.SetOf("ABC"), options)
@@ -374,7 +375,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 
 	caughtUpStart := db.DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
 
-	terminator := make(chan bool)
+	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
 	var changesFeedsWg sync.WaitGroup
 	var seq1Wg, seq2Wg, seq3Wg sync.WaitGroup
 	// Start 100 continuous changes feeds
@@ -387,7 +388,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 			defer changesFeedsWg.Done()
 			var options ChangesOptions
 			options.Since = SequenceID{Seq: 0}
-			options.Terminator = terminator
+			options.ChangesCtx = changesCtx
 			options.Continuous = true
 			options.Wait = true
 			channelName := fmt.Sprintf("chan_%d", i)
@@ -459,8 +460,8 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 	// Wait for everyone to be caught up again
 	require.NoError(t, db.WaitForCaughtUp(caughtUpStart+int64(100)))
 
-	// Close the terminator
-	close(terminator)
+	// Cancel the changes context
+	changesCtxCancel()
 
 	log.Printf("terminator is closed")
 
@@ -669,10 +670,11 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	// Start changes feed
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	options.Terminator = make(chan bool)
+	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+	options.ChangesCtx = changesCtx
 	options.Continuous = true
 	options.Wait = true
-	defer close(options.Terminator)
+	defer changesCtxCancel()
 
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
 	assert.True(t, err == nil)
@@ -773,8 +775,9 @@ func TestLowSequenceHandling(t *testing.T) {
 
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	options.Terminator = make(chan bool)
-	defer close(options.Terminator)
+	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+	options.ChangesCtx = changesCtx
+	defer changesCtxCancel()
 	options.Continuous = true
 	options.Wait = true
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
@@ -837,7 +840,8 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	options.Terminator = make(chan bool)
+	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+	options.ChangesCtx = changesCtx
 	options.Continuous = true
 	options.Wait = true
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
@@ -853,7 +857,7 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 	_, err = verifySequencesInFeed(feed, []uint64{9})
 	assert.True(t, err == nil)
 
-	close(options.Terminator)
+	changesCtxCancel()
 }
 
 // Test low sequence handling of late arriving sequences to a continuous changes feed, when the
@@ -893,7 +897,8 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	options.Terminator = make(chan bool)
+	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+	options.ChangesCtx = changesCtx
 	options.Continuous = true
 	options.Wait = true
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
@@ -930,7 +935,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	// 2. The duplicate send of sequence '6' is the standard behaviour when a channel is added - we don't know
 	// whether the user has already seen the documents on the channel previously, so it gets resent
 
-	close(options.Terminator)
+	changesCtxCancel()
 }
 
 // Tests channel cache backfill with slow query, validates that a request that is terminated while
@@ -1022,13 +1027,13 @@ func TestChannelQueryCancellation(t *testing.T) {
 	initialPendingQueries := db.DbStats.Cache().ChannelCachePendingQueries.Value()
 
 	// Start a second goroutine that should block waiting for the view lock
-	changesTerminator := make(chan bool)
+	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
 	changesWg.Add(1)
 	go func() {
 		defer changesWg.Done()
 		var options ChangesOptions
 		options.Since = SequenceID{Seq: 0}
-		options.Terminator = changesTerminator
+		options.ChangesCtx = changesCtx
 		options.Continuous = false
 		options.Limit = 2
 		options.Wait = false
@@ -1048,7 +1053,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 	assert.True(t, pendingQueries > initialPendingQueries, "Pending queries (%d) didn't exceed initialPendingQueries (%d) after 10s", pendingQueries, initialPendingQueries)
 
 	// Terminate the second changes request
-	close(changesTerminator)
+	changesCtxCancel()
 
 	// Unblock the first goroutine
 	queryWg.Done()
@@ -1096,8 +1101,9 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	options.Terminator = make(chan bool)
-	defer close(options.Terminator)
+	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+	options.ChangesCtx = changesCtx
+	defer changesCtxCancel()
 	options.Continuous = true
 	options.Wait = true
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
@@ -1185,7 +1191,8 @@ func TestChannelRace(t *testing.T) {
 
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	options.Terminator = make(chan bool)
+	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+	options.ChangesCtx = changesCtx
 	options.Continuous = true
 	options.Wait = true
 	feed, err := db.MultiChangesFeed(base.SetOf("Even", "Odd"), options)
@@ -1241,7 +1248,7 @@ func TestChannelRace(t *testing.T) {
 	}
 	fmt.Println("changes: ", changesString)
 
-	close(options.Terminator)
+	changesCtxCancel()
 }
 
 // Test retrieval of skipped sequence using view.  Unit test catches panic, but we don't currently have a way
@@ -1302,7 +1309,7 @@ func TestSkippedViewRetrieval(t *testing.T) {
 
 	// Validate expected entries
 	require.NoError(t, db.changeCache.waitForSequence(base.TestCtx(t), 15, base.DefaultWaitForSequence))
-	entries, err := db.changeCache.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 2}})
+	entries, err := db.changeCache.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 2}, ChangesCtx: context.Background()})
 	assert.NoError(t, err, "Get Changes returned error")
 	assert.Equal(t, 6, len(entries))
 	log.Printf("entries: %v", entries)

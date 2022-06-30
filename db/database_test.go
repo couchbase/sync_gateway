@@ -9,6 +9,7 @@
 package db
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -824,8 +825,9 @@ func TestAllDocsOnly(t *testing.T) {
 
 	// Now check the changes feed:
 	var options ChangesOptions
-	options.Terminator = make(chan bool)
-	defer close(options.Terminator)
+	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+	options.ChangesCtx = changesCtx
+	defer changesCtxCancel()
 	changes, err := db.GetChanges(channels.SetOf(t, "all"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
 	require.Len(t, changes, 100)

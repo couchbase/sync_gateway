@@ -32,7 +32,6 @@ type ChangesOptions struct {
 	IncludeDocs bool            // Include doc body of each change?
 	Wait        bool            // Wait for results, instead of immediately returning empty result?
 	Continuous  bool            // Run continuously until terminated?
-	Terminator  chan bool       // Caller can close this channel to terminate the feed
 	HeartbeatMs uint64          // How often to send a heartbeat to the client
 	TimeoutMs   uint64          // After this amount of time, close the longpoll connection
 	ActiveOnly  bool            // If true, only return information on non-deleted, non-removed revisions
@@ -278,7 +277,7 @@ func (db *Database) buildRevokedFeed(channelName string, options ChangesOptions,
 				base.DebugfCtx(db.Ctx, base.KeyChanges, "Channel feed processing revocation seq: %v in channel %s ", seqID, base.UD(singleChannelCache.ChannelName()))
 
 				select {
-				case <-options.Terminator:
+				case <-options.ChangesCtx.Done():
 					base.DebugfCtx(db.Ctx, base.KeyChanges, "Terminating revocation channel feed %s", base.UD(to))
 					return
 
@@ -435,7 +434,7 @@ func (db *Database) changesFeed(singleChannelCache SingleChannelCache, options C
 
 				base.DebugfCtx(db.Ctx, base.KeyChanges, "Channel feed processing seq:%v in channel %s %s", seqID, base.UD(singleChannelCache.ChannelName()), base.UD(to))
 				select {
-				case <-options.Terminator:
+				case <-options.ChangesCtx.Done():
 					base.DebugfCtx(db.Ctx, base.KeyChanges, "Terminating channel feed %s", base.UD(to))
 					return
 				case feed <- &change:
@@ -525,8 +524,9 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 		return nil, nil
 	}
 
-	if (options.Continuous || options.Wait) && options.Terminator == nil {
-		base.WarnfCtx(db.Ctx, "MultiChangesFeed: Terminator missing for Continuous/Wait mode")
+	if options.ChangesCtx == nil {
+		base.ErrorfCtx(db.Ctx, "MultiChangesFeed: Changes Context not provided")
+		return nil, fmt.Errorf("changes Context not provided when starting multi changes feed")
 	}
 	base.DebugfCtx(db.Ctx, base.KeyChanges, "Int sequence multi changes feed...")
 	return db.SimpleMultiChangesFeed(chans, options)
@@ -925,7 +925,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				base.DebugfCtx(db.Ctx, base.KeyChanges, "MultiChangesFeed sending %+v %s", base.UD(minEntry), base.UD(to))
 
 				select {
-				case <-options.Terminator:
+				case <-options.ChangesCtx.Done():
 					return
 				case output <- minEntry:
 				}
@@ -968,8 +968,8 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				// visible to the user), and so ChangeWaiter.Wait() would block until the next user-visible doc arrives.  Use a hardcoded wait instead
 				// Similar handling for when we see sequences later than the stable sequence.
 				if deferredBackfill || postStableSeqsFound {
-					terminate := db.waitForCacheUpdate(options.Terminator, currentCachedSequence)
-					if terminate {
+					cancelled := db.waitForCacheUpdate(options.ChangesCtx, currentCachedSequence)
+					if cancelled {
 						return
 					}
 					break waitForChanges
@@ -984,7 +984,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					break outer
 				} else if waitResponse == WaiterHasChanges {
 					select {
-					case <-options.Terminator:
+					case <-options.ChangesCtx.Done():
 						return
 					default:
 						break waitForChanges
@@ -992,7 +992,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				} else if waitResponse == WaiterCheckTerminated {
 					// Check whether I was terminated while waiting for a change.  If not, resume wait.
 					select {
-					case <-options.Terminator:
+					case <-options.ChangesCtx.Done():
 						return
 					default:
 					}
@@ -1035,13 +1035,13 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 	return output, nil
 }
 
-func (db *Database) waitForCacheUpdate(terminator chan bool, currentCachedSequence uint64) (terminated bool) {
+func (db *Database) waitForCacheUpdate(ctx context.Context, currentCachedSequence uint64) (cancelled bool) {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	for retry := 0; retry <= 50; retry++ {
 		select {
 		// Check if feed has been terminated regardless of if any changes have happened
-		case <-terminator:
+		case <-ctx.Done():
 			return true
 		case <-ticker.C:
 			if db.changeCache.getChannelCache().GetHighCacheSequence() != currentCachedSequence {
@@ -1055,9 +1055,10 @@ func (db *Database) waitForCacheUpdate(terminator chan bool, currentCachedSequen
 // Synchronous convenience function that returns all changes as a simple array, FOR TEST USE ONLY
 // Returns error if initial feed creation fails, or if an error is returned with the changes entries
 func (db *Database) GetChanges(channels base.Set, options ChangesOptions) ([]*ChangeEntry, error) {
-	if options.Terminator == nil {
-		options.Terminator = make(chan bool)
-		defer close(options.Terminator)
+	if options.ChangesCtx == nil {
+		changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+		options.ChangesCtx = changesCtx
+		defer changesCtxCancel()
 	}
 
 	var changes = make([]*ChangeEntry, 0, 50)
@@ -1308,9 +1309,6 @@ func generateBlipSyncChanges(database *Database, inChannels base.Set, options Ch
 	isOneShot := !options.Continuous
 	// Use the context if provided in the options
 	ctx := options.ChangesCtx
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	err, forceClose = GenerateChanges(ctx, database, inChannels, options, docIDFilter, send)
 
 	if _, ok := err.(*ChangesSendErr); ok {
@@ -1458,14 +1456,10 @@ loop:
 		case <-timeout:
 			forceClose = true
 			break loop
-		case <-cancelCtx.Done():
-			base.DebugfCtx(database.Ctx, base.KeyChanges, "Client connection lost")
-			forceClose = true
-			break loop
 		case <-database.ExitChanges:
 			forceClose = true
 			break loop
-		case <-options.Terminator:
+		case <-cancelCtx.Done():
 			forceClose = true
 			break loop
 		}
