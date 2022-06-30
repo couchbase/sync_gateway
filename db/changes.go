@@ -1309,9 +1309,7 @@ func generateBlipSyncChanges(database *Database, inChannels base.Set, options Ch
 
 	// Store one-shot here to protect
 	isOneShot := !options.Continuous
-	// Use the context if provided in the options
-	ctx := options.ChangesCtx
-	err, forceClose = GenerateChanges(ctx, database, inChannels, options, docIDFilter, send)
+	err, forceClose = GenerateChanges(options.ChangesCtx, database, inChannels, options, docIDFilter, send)
 
 	if _, ok := err.(*ChangesSendErr); ok {
 		return nil, forceClose // error is probably because the client closed the connection
