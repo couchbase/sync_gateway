@@ -50,7 +50,7 @@ func (j JWTConfigCommon) ValidFor(issuer string, audiences audience) bool {
 	if j.Issuer != issuer {
 		return false
 	}
-	// Validation enforces that ClientID is non-nil for OIDC.
+	// Nil ClientID is invalid (checked by config validation), but empty-string disables audience checking
 	if j.ClientID == nil || *j.ClientID == "" {
 		return true
 	}
