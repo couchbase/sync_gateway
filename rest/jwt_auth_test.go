@@ -6,6 +6,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/square/go-jose.v2"
@@ -254,6 +256,114 @@ func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 		`eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOlsidGVzdEF1ZCJdLCJpc3MiOiJ0ZXN0SXNzIn0.gbdmOrzJ2CT01ABybPN-_dwXwv8_8iMEj4HNPtBqQjI`,
 		testUsername,
 		http.StatusUnauthorized))
+}
+
+func TestLocalJWTAndOIDCCoexistence(t *testing.T) {
+	const (
+		clientID          = "aud1"
+		localIssuer       = "iss_local"
+		subject           = "noah"
+		oidcProviderName  = "testOIDC"
+		localProviderName = "testLocal"
+		oidcUserPrefix    = "oidc"
+		localUserPrefix   = "local"
+	)
+
+	testRSAKeypair, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	testRSAJWK := jose.JSONWebKey{
+		Key:       testRSAKeypair.Public(),
+		Use:       "sig",
+		Algorithm: "RS256",
+		KeyID:     "rsa",
+	}
+
+	mockAuthServer, err := newMockAuthServer()
+	require.NoError(t, err, "Error creating mock oauth2 server")
+	mockAuthServer.Start()
+	defer mockAuthServer.Shutdown()
+	mockAuthServer.options.issuer = mockAuthServer.URL + "/" + oidcProviderName
+
+	runTest := func(t *testing.T, token string, expectedUsername, expectedIssuer string) {
+		config := &DbConfig{
+			OIDCConfig: &auth.OIDCOptions{
+				Providers: auth.OIDCProviderMap{
+					oidcProviderName: &auth.OIDCProvider{
+						JWTConfigCommon: auth.JWTConfigCommon{
+							Issuer:     "TEST", // replaced by refreshProviderConfig
+							ClientID:   base.StringPtr(clientID),
+							Register:   true,
+							UserPrefix: oidcUserPrefix,
+						},
+					},
+				},
+			},
+			LocalJWTConfig: auth.LocalJWTConfig{
+				localProviderName: &auth.LocalJWTAuthProvider{
+					JWTConfigCommon: auth.JWTConfigCommon{
+						Issuer:     localIssuer,
+						ClientID:   base.StringPtr(clientID),
+						Register:   true,
+						UserPrefix: localUserPrefix,
+					},
+					Algorithms: []string{"RS256"},
+					Keys:       auth.JSONWebKeys{testRSAJWK},
+				},
+			},
+			Unsupported: &db.UnsupportedOptions{
+				OidcTestProvider: &db.OidcTestProviderOptions{
+					Enabled: true,
+				},
+			},
+		}
+
+		refreshProviderConfig(config.OIDCConfig.Providers, mockAuthServer.URL)
+
+		base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth, base.KeyHTTP)
+
+		restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: *config}}
+		restTester := NewRestTester(t, &restTesterConfig)
+		require.NoError(t, restTester.SetAdminParty(false))
+		defer restTester.Close()
+
+		mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
+		defer mockSyncGateway.Close()
+		mockSyncGatewayURL := mockSyncGateway.URL
+
+		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/%s/_session", mockSyncGatewayURL, restTester.GetDatabase().Name), bytes.NewBufferString("{}"))
+		require.NoError(t, err)
+		req.Header.Set("Authorization", BearerToken+" "+token)
+		res, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer res.Body.Close()
+		require.Equal(t, http.StatusOK, res.StatusCode)
+
+		user, err := restTester.GetDatabase().Authenticator(base.TestCtx(t)).GetUser(expectedUsername)
+		require.NoError(t, err)
+		require.NotNil(t, user, "User not found")
+		require.Equal(t, expectedIssuer, user.JWTIssuer())
+	}
+
+	t.Run("OIDC", func(t *testing.T) {
+		token, err := mockAuthServer.makeToken(claimsAuthentic())
+		require.NoError(t, err)
+		t.Log(token)
+		runTest(t, token, oidcUserPrefix+"_"+subject, mockAuthServer.options.issuer)
+	})
+
+	t.Run("Local", func(t *testing.T) {
+		token := auth.CreateTestJWT(t, "RS256", testRSAKeypair, auth.JWTHeaders{
+			"kid": testRSAJWK.KeyID,
+			"alg": testRSAJWK.Algorithm,
+		}, map[string]interface{}{
+			"iss": localIssuer,
+			"sub": subject,
+			"aud": []string{clientID},
+			"exp": time.Now().Add(time.Hour).Unix(),
+		})
+
+		runTest(t, token, localUserPrefix+"_"+subject, localIssuer)
+	})
 }
 
 // Sanity checks that roles_claim/channels_claim also work with Local-JWTs. More extensive coverage in oidc_api_test.go.

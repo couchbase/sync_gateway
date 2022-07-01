@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -639,8 +640,8 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(rawToken string, oidcProvide
 		authenticatorName string
 		authenticator     jwtAuthenticator
 	)
-	// can't do `authenticator, ok = getProviderWhenSingle()` because it'll return a non-nil pointer to a nil OIDCProvider
-	if single, ok := oidcProviders.getProviderWhenSingle(); ok {
+
+	if single, ok := oidcProviders.getProviderWhenSingle(); ok && len(localJWT) == 0 {
 		authenticator = single
 		authenticatorName = single.Name
 	}
@@ -673,7 +674,7 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(rawToken string, oidcProvide
 	identity, err = authenticator.verifyToken(context.TODO(), rawToken, callbackURLFunc)
 	if err != nil {
 		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "JWT invalid: %v", err)
-		return nil, PrincipalConfig{}, err
+		return nil, PrincipalConfig{}, base.HTTPErrorf(http.StatusUnauthorized, "Invalid JWT")
 	}
 
 	// OIDC will perform InitUserPrefix as part of initClient, but Local-JWT won't
