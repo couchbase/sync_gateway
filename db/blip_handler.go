@@ -716,7 +716,7 @@ func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID, de
 	bsc.replicationStats.SendRevDeltaRequestedCount.Add(1)
 
 	revDelta, redactedRev, err := handleChangesResponseDb.GetDelta(docID, deltaSrcRevID, revID)
-	if err == ErrForbidden { //nolint: gocritic // can't convert if/else if to switch since base.IsFleeceDeltaError is not switchable
+	if err == ErrForbidden { // nolint: gocritic // can't convert if/else if to switch since base.IsFleeceDeltaError is not switchable
 		return err
 	} else if base.IsFleeceDeltaError(err) {
 		// Something went wrong in the diffing library. We want to know about this!

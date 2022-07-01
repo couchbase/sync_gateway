@@ -94,6 +94,18 @@ func (dc *DbConfig) MakeBucketSpec() base.BucketSpec {
 		tlsPort = bc.KvTLSPort
 	}
 
+	// FIXME: This is a hack to get named collection tests working.
+	// Grab one scope/collection name.
+	// Phase 2 means DbConfig needs to contain a set of collections, not just one...
+	var scope, collection *string
+	for scopeName, scopeConfig := range dc.Scopes {
+		scope = &scopeName
+		for collectionName := range scopeConfig.Collections {
+			collection = &collectionName
+			break
+		}
+	}
+
 	return base.BucketSpec{
 		Server:                server,
 		BucketName:            bucketName,
@@ -103,6 +115,8 @@ func (dc *DbConfig) MakeBucketSpec() base.BucketSpec {
 		KvTLSPort:             tlsPort,
 		Auth:                  bc,
 		MaxConcurrentQueryOps: bc.MaxConcurrentQueryOps,
+		Scope:                 scope,
+		Collection:            collection,
 	}
 }
 
@@ -1347,7 +1361,7 @@ func (sc *ServerContext) fetchConfigs(isInitialStartup bool) (dbNameConfigs map[
 			cnf.KeyPath = sc.config.Bootstrap.X509KeyPath
 		}
 
-		base.DebugfCtx(logCtx, base.KeyConfig, "Got config for group %q from bucket %q with cas %d", sc.config.Bootstrap.ConfigGroupID, bucket, cas)
+		base.TracefCtx(logCtx, base.KeyConfig, "Got config for group %q from bucket %q with cas %d", sc.config.Bootstrap.ConfigGroupID, bucket, cas)
 		fetchedConfigs[cnf.Name] = cnf
 	}
 

@@ -57,7 +57,8 @@ func TestAttachmentMark(t *testing.T) {
 		assert.NoError(t, err)
 
 		compactIDSection, ok := attachmentData[CompactionIDKey]
-		assert.True(t, ok)
+		require.True(t, ok)
+		require.NotNil(t, compactIDSection)
 
 		_, ok = compactIDSection.(map[string]interface{})[t.Name()]
 		assert.True(t, ok)

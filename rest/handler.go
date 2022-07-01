@@ -241,29 +241,22 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	// user credentials
 	shouldCheckAdminAuth := (h.privs == adminPrivs && *h.server.config.API.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.config.API.MetricsInterfaceAuthentication)
 
-	dbName := h.PathVar("db")
-	keyspaceScope := base.DefaultScope // TODO: Change to scope defined in db config
-	keyspaceCollection := base.DefaultCollection
-	// If there is a "keyspace" path variable, determine the fully qualified collection:
+	keyspaceDb := h.PathVar("db")
+	var keyspaceScope, keyspaceCollection *string
+
+	// If there is a "keyspace" path variable in the route, parse the keyspace:
 	if ks := h.PathVar("keyspace"); ks != "" {
-		parsedDb, parsedScope, parsedCollection, err := parseKeyspace(ks)
+		keyspaceDb, keyspaceScope, keyspaceCollection, err = parseKeyspace(ks)
 		if err != nil {
 			return err
 		}
-		dbName = parsedDb
-		if parsedScope != nil {
-			keyspaceScope = *parsedScope
-		}
-		if parsedCollection != nil {
-			keyspaceCollection = *parsedCollection
-		}
 	}
 
-	// If there is a "db" path variable, look up the database context:
+	// look up the database context:
 	var dbContext *db.DatabaseContext
-	if dbName != "" {
-		if dbContext, err = h.server.GetDatabase(dbName); err != nil {
-			base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(dbName), err)
+	if keyspaceDb != "" {
+		if dbContext, err = h.server.GetDatabase(keyspaceDb); err != nil {
+			base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
 
 			if shouldCheckAdminAuth {
 				if httpError, ok := err.(*base.HTTPError); ok && httpError.Status == http.StatusNotFound {
@@ -280,6 +273,28 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 			}
 
 			return err
+		}
+	}
+
+	// Collections handling
+	if dbc := h.server.GetDbConfig(keyspaceDb); dbc != nil && len(dbc.Scopes) > 0 {
+		// Allow an empty scope to refer to the one SG is running with, rather than falling back to _default
+		if keyspaceScope == nil {
+			keyspaceScope = dbContext.BucketSpec.Scope
+		}
+		if keyspaceCollection == nil {
+			// _default doesn't make sense for a non-default scope (so what should we even choose here if running with more than one collection?)
+			keyspaceCollection = dbContext.BucketSpec.Collection
+			// keyspaceCollection = base.StringPtr(base.DefaultCollection)
+		}
+
+		scope, foundScope := dbc.Scopes[*keyspaceScope]
+		var foundCollection bool
+		if foundScope {
+			_, foundCollection = scope.Collections[*keyspaceCollection]
+		}
+		if !foundScope || !foundCollection {
+			return base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", base.MD(keyspaceDb), base.MD(*keyspaceScope), base.MD(*keyspaceCollection))
 		}
 	}
 
@@ -415,7 +430,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 
 	// Now set the request's Database (i.e. context + user)
 	if dbContext != nil {
-		// TODO: Set keyspace fields in h.db/DatabaseContext for access in API handlers
+		// TODO: Set keyspace fields in h for access in API handlers
 		_, _ = keyspaceScope, keyspaceCollection
 
 		h.db, err = db.GetDatabase(dbContext, h.user)

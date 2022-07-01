@@ -116,8 +116,17 @@ func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilR
 	// Safe to get first node as there will always be at least one node in the list and cluster compat is uniform across all nodes.
 	clusterCompatMajor, clusterCompatMinor := decodeClusterVersion(nodesMetadata[0].ClusterCompatibility)
 
+	c := bucket.DefaultCollection()
+	if spec.Collection != nil {
+		if spec.Scope != nil {
+			c = bucket.Scope(*spec.Scope).Collection(*spec.Collection)
+		} else {
+			c = bucket.Collection(*spec.Collection)
+		}
+	}
+
 	collection := &Collection{
-		Collection:                bucket.DefaultCollection(),
+		Collection:                c,
 		Spec:                      spec,
 		cluster:                   cluster,
 		clusterCompatMajorVersion: uint64(clusterCompatMajor),
@@ -698,7 +707,7 @@ func (c *Collection) BucketItemCount() (itemCount int, err error) {
 
 	// TODO: implement APIBucketItemCount for collections as part of CouchbaseStore refactoring.  Until then, give flush a moment to finish
 	time.Sleep(1 * time.Second)
-	//itemCount, err = bucket.APIBucketItemCount()
+	// itemCount, err = bucket.APIBucketItemCount()
 	return 0, err
 }
 
