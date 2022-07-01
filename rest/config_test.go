@@ -356,6 +356,11 @@ func TestConfigValidationJWTAndOIDC(t *testing.T) {
 			configJSON: `{"name": "test", "local_jwt": { "test": { "issuer": "test", "client_id": "", "keys": [` + testRSA256JWK + `], "algorithms": ["RS256"] } }}`,
 		},
 		{
+			name:          "Local JWT: no keys",
+			configJSON:    `{"name": "test", "local_jwt": { "test": { "issuer": "test", "client_id": "", "algorithms": ["RS256"] } }}`,
+			expectedError: `either 'keys' or 'jwks_uri' must be specified for Local JWT provider test`,
+		},
+		{
 			name:          "Local JWT: private key",
 			configJSON:    `{"name": "test", "local_jwt": { "test": { "issuer": "test", "client_id": "", "keys": [` + testPrivateRSA256JWK + `], "algorithms": ["RS256"] } }}`,
 			expectedError: `key "rsa-priv" is not a public key`,

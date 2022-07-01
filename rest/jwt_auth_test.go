@@ -6,6 +6,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -151,7 +152,6 @@ func TestLocalJWTAuthenticationE2E(t *testing.T) {
 	}
 }
 
-// Tests a subset of the cases covered by auth.TestJWTVerifyToken.
 func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 	testRSAKeypair, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
@@ -162,6 +162,16 @@ func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 		KeyID:     "rsa",
 	}
 
+	// only present on JWKS server, to ensure we don't accidentally reuse testRSAKeypair
+	testJWKSRSAKeypair, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	testJWKSRSAJWK := jose.JSONWebKey{
+		Key:       testJWKSRSAKeypair.Public(),
+		Use:       "sig",
+		Algorithm: "RS256",
+		KeyID:     "rsa-jwks",
+	}
+
 	testECKeypair, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 	testECJWK := jose.JSONWebKey{
@@ -170,6 +180,18 @@ func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 		Algorithm: "ES256",
 		KeyID:     "ec",
 	}
+
+	testJWKS := jose.JSONWebKeySet{
+		Keys: []jose.JSONWebKey{testJWKSRSAJWK},
+	}
+	testJWKSServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/jwks" {
+			_ = json.NewEncoder(w).Encode(&testJWKS)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer testJWKSServer.Close()
 
 	const (
 		testProviderName = "test"
@@ -186,6 +208,11 @@ func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 		JWTConfigCommon: common,
 		Algorithms:      []string{"RS256", "ES256"},
 		Keys:            []jose.JSONWebKey{testRSAJWK, testECJWK},
+	}
+	jwksProvider := auth.LocalJWTAuthConfig{
+		JWTConfigCommon: common,
+		Algorithms:      []string{"RS256"},
+		JWKSURI:         testJWKSServer.URL + "/jwks",
 	}
 
 	runTest := func(cfg auth.LocalJWTAuthConfig, token string, createUserName string, expectedStatus int) func(*testing.T) {
@@ -236,6 +263,16 @@ func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 	t.Run("valid - EC", runTest(baseProvider, auth.CreateTestJWT(t, jose.ES256, testECKeypair, auth.JWTHeaders{
 		"alg": jose.ES256,
 		"kid": testECJWK.KeyID,
+	}, map[string]interface{}{
+		"iss": testIssuer,
+		"aud": []string{testClientID},
+		"sub": testSubject,
+		"exp": time.Now().Add(time.Hour).Unix(),
+	}), testUsername, http.StatusOK))
+
+	t.Run("valid - RSA from JWKS", runTest(jwksProvider, auth.CreateTestJWT(t, jose.RS256, testJWKSRSAKeypair, auth.JWTHeaders{
+		"alg": jose.RS256,
+		"kid": testJWKSRSAJWK.KeyID,
 	}, map[string]interface{}{
 		"iss": testIssuer,
 		"aud": []string{testClientID},

@@ -746,9 +746,16 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		if local.ClientID == nil {
 			multiError = multiError.Append(fmt.Errorf("Client ID required for Local JWT provider %s (set to \"\" to disable audience validation)", name))
 		}
-		if len(local.Keys) == 0 || len(local.Algorithms) == 0 {
-			multiError = multiError.Append(fmt.Errorf("Keys and Algorithms required for Local JWT provider %s", name))
+		if len(local.Algorithms) == 0 {
+			multiError = multiError.Append(fmt.Errorf("algorithms required for Local JWT provider %s", name))
 		}
+		if len(local.Keys) == 0 && len(local.JWKSURI) == 0 {
+			multiError = multiError.Append(fmt.Errorf("either 'keys' or 'jwks_uri' must be specified for Local JWT provider %s", name))
+		}
+		if len(local.Keys) > 0 && len(local.JWKSURI) > 0 {
+			multiError = multiError.Append(fmt.Errorf("'keys' and 'jwks_uri' are mutually exclusive for Local JWT provider %s", name))
+		}
+
 		didReportKIDError := false
 		for i, key := range local.Keys {
 			if key.KeyID == "" && len(local.Keys) > 1 && !didReportKIDError {

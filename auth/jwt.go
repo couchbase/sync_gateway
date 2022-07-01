@@ -130,15 +130,26 @@ type LocalJWTAuthConfig struct {
 	JWTConfigCommon
 	Algorithms      []string    `json:"algorithms"`
 	Keys            JSONWebKeys `json:"keys"`
+	JWKSURI         string      `json:"jwks_uri"`
 	SkipExpiryCheck *bool       `json:"skip_expiry_check"`
 }
 
 // BuildProvider prepares a LocalJWTAuthProvider from this config, initialising keySet.
 func (l LocalJWTAuthConfig) BuildProvider(name string) *LocalJWTAuthProvider {
-	prov := &LocalJWTAuthProvider{
-		LocalJWTAuthConfig: l,
-		name_:              name,
-		keySet:             l.Keys,
+	var prov *LocalJWTAuthProvider
+	// validation ensures these are truly mutually exclusive
+	if len(l.Keys) > 0 {
+		prov = &LocalJWTAuthProvider{
+			LocalJWTAuthConfig: l,
+			name_:              name,
+			keySet:             l.Keys,
+		}
+	} else {
+		prov = &LocalJWTAuthProvider{
+			LocalJWTAuthConfig: l,
+			name_:              name,
+			keySet:             oidc.NewRemoteKeySet(context.Background(), l.JWKSURI),
+		}
 	}
 	prov.initUserPrefix()
 	return prov
