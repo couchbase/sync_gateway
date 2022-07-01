@@ -454,10 +454,10 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 	}(time.Now())
 
 	// If oidc enabled, check for bearer ID token
-	if dbCtx.Options.OIDCOptions != nil || len(dbCtx.Options.LocalJWTConfig) > 0 {
+	if dbCtx.Options.OIDCOptions != nil || len(dbCtx.LocalJWTProviders) > 0 {
 		if token := h.getBearerToken(); token != "" {
 			var updates auth.PrincipalConfig
-			h.user, updates, err = dbCtx.Authenticator(h.ctx()).AuthenticateUntrustedJWT(token, dbCtx.OIDCProviders, dbCtx.Options.LocalJWTConfig, h.getOIDCCallbackURL)
+			h.user, updates, err = dbCtx.Authenticator(h.ctx()).AuthenticateUntrustedJWT(token, dbCtx.OIDCProviders, dbCtx.LocalJWTProviders, h.getOIDCCallbackURL)
 			if h.user == nil || err != nil {
 				return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 			}
@@ -547,7 +547,7 @@ func checkJWTIssuerStillValid(ctx context.Context, dbCtx *db.DatabaseContext, us
 			break
 		}
 	}
-	for _, provider := range dbCtx.Options.LocalJWTConfig {
+	for _, provider := range dbCtx.LocalJWTProviders {
 		if provider.Issuer == issuer {
 			providerStillValid = true
 			break

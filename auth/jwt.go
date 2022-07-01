@@ -11,6 +11,11 @@ import (
 	"gopkg.in/square/go-jose.v2"
 )
 
+type jwtAuthenticator interface {
+	verifyToken(ctx context.Context, token string, callbackURLFunc OIDCCallbackURLFunc) (*Identity, error)
+	common() JWTConfigCommon
+}
+
 // SupportedAlgorithms is list of signing algorithms explicitly supported
 // by github.com/coreos/go-oidc package. If a provider supports other algorithms,
 // such as HS256 or none, those values won't be passed to the IDTokenVerifier.
@@ -121,16 +126,34 @@ func (j JSONWebKeys) VerifySignature(ctx context.Context, jwt string) (payload [
 	return nil, errors.New("failed to verify id token signature")
 }
 
-type LocalJWTAuthProvider struct {
+type LocalJWTAuthConfig struct {
 	JWTConfigCommon
-
 	Algorithms      []string    `json:"algorithms"`
 	Keys            JSONWebKeys `json:"keys"`
 	SkipExpiryCheck *bool       `json:"skip_expiry_check"`
 }
 
+// BuildProvider prepares a LocalJWTAuthProvider from this config, initialising keySet.
+func (l LocalJWTAuthConfig) BuildProvider(name string) *LocalJWTAuthProvider {
+	prov := &LocalJWTAuthProvider{
+		LocalJWTAuthConfig: l,
+		name_:              name,
+		keySet:             l.Keys,
+	}
+	prov.initUserPrefix()
+	return prov
+}
+
+type LocalJWTAuthProvider struct {
+	LocalJWTAuthConfig
+
+	name_ string
+	// keySet has the keys for this config, either in-memory or from oidc.NewRemoteKeySet.
+	keySet oidc.KeySet
+}
+
 func (l *LocalJWTAuthProvider) verifyToken(ctx context.Context, token string, _ OIDCCallbackURLFunc) (*Identity, error) {
-	verifier := oidc.NewVerifier(l.Issuer, l.Keys, &oidc.Config{
+	verifier := oidc.NewVerifier(l.Issuer, l.keySet, &oidc.Config{
 		ClientID:             *l.ClientID,
 		SkipClientIDCheck:    *l.ClientID == "",
 		SupportedSigningAlgs: l.Algorithms,
@@ -163,15 +186,15 @@ func (l *LocalJWTAuthProvider) common() JWTConfigCommon {
 	return l.JWTConfigCommon
 }
 
-func (l *LocalJWTAuthProvider) InitUserPrefix(ctx context.Context, name string) {
+func (l *LocalJWTAuthProvider) initUserPrefix() {
 	if l.UserPrefix != "" || l.UsernameClaim != "" {
 		return
 	}
 
 	issuerURL, err := url.ParseRequestURI(l.Issuer)
 	if err != nil {
-		base.WarnfCtx(ctx, "Unable to parse issuer URI when initializing user prefix - using provider name")
-		l.UserPrefix = name
+		base.WarnfCtx(context.TODO(), "Unable to parse issuer URI when initializing user prefix - using provider name")
+		l.UserPrefix = l.name_
 		return
 	}
 	l.UserPrefix = issuerURL.Host + issuerURL.Path
@@ -182,9 +205,5 @@ func (l *LocalJWTAuthProvider) InitUserPrefix(ctx context.Context, name string) 
 	l.UserPrefix = url.QueryEscape(l.UserPrefix)
 }
 
-type LocalJWTConfig map[string]*LocalJWTAuthProvider
-
-type jwtAuthenticator interface {
-	verifyToken(ctx context.Context, token string, callbackURLFunc OIDCCallbackURLFunc) (*Identity, error)
-	common() JWTConfigCommon
-}
+type LocalJWTConfig map[string]LocalJWTAuthConfig
+type LocalJWTProviderMap map[string]*LocalJWTAuthProvider

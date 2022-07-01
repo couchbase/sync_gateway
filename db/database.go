@@ -104,8 +104,9 @@ type DatabaseContext struct {
 	ResyncManager                *BackgroundManager
 	TombstoneCompactionManager   *BackgroundManager
 	AttachmentCompactionManager  *BackgroundManager
-	ExitChanges                  chan struct{}            // Active _changes feeds on the DB will close when this channel is closed
-	OIDCProviders                auth.OIDCProviderMap     // OIDC clients
+	ExitChanges                  chan struct{}        // Active _changes feeds on the DB will close when this channel is closed
+	OIDCProviders                auth.OIDCProviderMap // OIDC clients
+	LocalJWTProviders            auth.LocalJWTProviderMap
 	PurgeInterval                time.Duration            // Metadata purge interval
 	serverUUID                   string                   // UUID of the server, if available
 	DbStats                      *base.DbStats            // stats that correspond to this database context
@@ -512,6 +513,11 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 			dbContext.OIDCProviders[name] = provider
 		}
+	}
+
+	dbContext.LocalJWTProviders = make(auth.LocalJWTProviderMap, len(options.LocalJWTConfig))
+	for name, cfg := range options.LocalJWTConfig {
+		dbContext.LocalJWTProviders[name] = cfg.BuildProvider(name)
 	}
 
 	if dbContext.UseXattrs() {

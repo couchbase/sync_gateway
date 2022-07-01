@@ -60,7 +60,7 @@ func TestLocalJWTAuthenticationE2E(t *testing.T) {
 			t.Logf("TEST: expected username %q", expectedUsername)
 
 			providers := auth.LocalJWTConfig{
-				testProviderName: &auth.LocalJWTAuthProvider{
+				testProviderName: auth.LocalJWTAuthConfig{
 					JWTConfigCommon: auth.JWTConfigCommon{
 						Issuer:        testIssuer,
 						ClientID:      base.StringPtr(testClientID),
@@ -182,17 +182,17 @@ func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 		Issuer:   testIssuer,
 		ClientID: base.StringPtr(testClientID),
 	}
-	baseProvider := auth.LocalJWTAuthProvider{
+	baseProvider := auth.LocalJWTAuthConfig{
 		JWTConfigCommon: common,
 		Algorithms:      []string{"RS256", "ES256"},
 		Keys:            []jose.JSONWebKey{testRSAJWK, testECJWK},
 	}
 
-	runTest := func(provider *auth.LocalJWTAuthProvider, token string, createUserName string, expectedStatus int) func(*testing.T) {
+	runTest := func(cfg auth.LocalJWTAuthConfig, token string, createUserName string, expectedStatus int) func(*testing.T) {
 		return func(t *testing.T) {
 			base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth, base.KeyHTTP)
 			restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{LocalJWTConfig: auth.LocalJWTConfig{
-				testProviderName: provider,
+				testProviderName: cfg,
 			}}}}
 			restTester := NewRestTester(t, &restTesterConfig)
 			require.NoError(t, restTester.SetAdminParty(false))
@@ -223,7 +223,7 @@ func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 
 	testUsername := testProviderName + "_" + testSubject
 
-	t.Run("valid - RSA", runTest(&baseProvider, auth.CreateTestJWT(t, jose.RS256, testRSAKeypair, auth.JWTHeaders{
+	t.Run("valid - RSA", runTest(baseProvider, auth.CreateTestJWT(t, jose.RS256, testRSAKeypair, auth.JWTHeaders{
 		"alg": jose.RS256,
 		"kid": testRSAJWK.KeyID,
 	}, map[string]interface{}{
@@ -233,7 +233,7 @@ func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 		"exp": time.Now().Add(time.Hour).Unix(),
 	}), testUsername, http.StatusOK))
 
-	t.Run("valid - EC", runTest(&baseProvider, auth.CreateTestJWT(t, jose.ES256, testECKeypair, auth.JWTHeaders{
+	t.Run("valid - EC", runTest(baseProvider, auth.CreateTestJWT(t, jose.ES256, testECKeypair, auth.JWTHeaders{
 		"alg": jose.ES256,
 		"kid": testECJWK.KeyID,
 	}, map[string]interface{}{
@@ -243,16 +243,16 @@ func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 		"exp": time.Now().Add(time.Hour).Unix(),
 	}), testUsername, http.StatusOK))
 
-	t.Run("garbage", runTest(&baseProvider, "garbage", testUsername, http.StatusUnauthorized))
+	t.Run("garbage", runTest(baseProvider, "garbage", testUsername, http.StatusUnauthorized))
 
 	// header: alg=none
 	t.Run("valid JWT with alg none", runTest(
-		&baseProvider,
+		baseProvider,
 		`eyJhbGciOiJub25lIn0.eyJhdWQiOlsidGVzdEF1ZCJdLCJpc3MiOiJ0ZXN0SXNzIn0.`,
 		testUsername,
 		http.StatusUnauthorized))
 	// header: alg=HS256
-	t.Run("valid JWT with alg HS256", runTest(&baseProvider,
+	t.Run("valid JWT with alg HS256", runTest(baseProvider,
 		`eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOlsidGVzdEF1ZCJdLCJpc3MiOiJ0ZXN0SXNzIn0.gbdmOrzJ2CT01ABybPN-_dwXwv8_8iMEj4HNPtBqQjI`,
 		testUsername,
 		http.StatusUnauthorized))
@@ -299,7 +299,7 @@ func TestLocalJWTAndOIDCCoexistence(t *testing.T) {
 				},
 			},
 			LocalJWTConfig: auth.LocalJWTConfig{
-				localProviderName: &auth.LocalJWTAuthProvider{
+				localProviderName: auth.LocalJWTAuthConfig{
 					JWTConfigCommon: auth.JWTConfigCommon{
 						Issuer:     localIssuer,
 						ClientID:   base.StringPtr(clientID),
@@ -384,7 +384,7 @@ func TestLocalJWTRolesChannels(t *testing.T) {
 		testClientID     = "testAud"
 	)
 
-	baseProvider := auth.LocalJWTAuthProvider{
+	baseProvider := auth.LocalJWTAuthConfig{
 		JWTConfigCommon: auth.JWTConfigCommon{
 			Issuer:        testIssuer,
 			ClientID:      base.StringPtr(testClientID),
@@ -397,7 +397,7 @@ func TestLocalJWTRolesChannels(t *testing.T) {
 	}
 
 	restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{LocalJWTConfig: auth.LocalJWTConfig{
-		testProviderName: &baseProvider,
+		testProviderName: baseProvider,
 	}}}}
 	restTester := NewRestTester(t, &restTesterConfig)
 	require.NoError(t, restTester.SetAdminParty(false))

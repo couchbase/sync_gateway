@@ -23,7 +23,7 @@ const anyError = "SGW_TEST_ANY_ERROR"
 func TestJWTVerifyToken(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
 
-	test := func(provider LocalJWTAuthProvider, token string, expectedError string) func(t *testing.T) {
+	test := func(provider *LocalJWTAuthProvider, token string, expectedError string) func(t *testing.T) {
 		return func(t *testing.T) {
 			_, err := provider.verifyToken(base.TestCtx(t), token, dummyCallbackURL)
 			switch expectedError {
@@ -83,18 +83,18 @@ func TestJWTVerifyToken(t *testing.T) {
 		Issuer:   testIssuer,
 		ClientID: base.StringPtr(testClientID),
 	}
-	baseProvider := LocalJWTAuthProvider{
+	baseProvider := LocalJWTAuthConfig{
 		JWTConfigCommon: common,
 		Algorithms:      []string{"RS256", "ES256"},
 		Keys:            []jose.JSONWebKey{testRSAJWK, testECJWK, testEncRSAJWK},
 		SkipExpiryCheck: base.BoolPtr(true),
-	}
-	providerWithExpiryCheck := LocalJWTAuthProvider{
+	}.BuildProvider("test")
+	providerWithExpiryCheck := LocalJWTAuthConfig{
 		JWTConfigCommon: common,
 		Algorithms:      []string{"RS256", "ES256"},
 		Keys:            []jose.JSONWebKey{testRSAJWK, testECJWK, testEncRSAJWK},
 		SkipExpiryCheck: base.BoolPtr(false),
-	}
+	}.BuildProvider("test")
 
 	t.Run("garbage", test(baseProvider, "INVALID", anyError))
 
