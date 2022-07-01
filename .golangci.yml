@@ -59,12 +59,14 @@ linters:
     - whitespace # Tool for detection of leading and trailing whitespace
     - wsl # Whitespace Linter - Forces you to use empty lines!
 
+linters-settings:
+  govet:
+    enable:
+      - fieldalignment # detect Go structs that would take less memory if their fields were sorted
+
 # Disable goconst in test files, often we have duplicated strings across tests, but don't make sense as constants.
 issues:
   exclude-rules:
     - path: (_test\.go|utilities_testing\.go)
       linters:
         - goconst
-  govet:
-    enable:
-      - fieldalignment # detect Go structs that would take less memory if their fields were sorted
