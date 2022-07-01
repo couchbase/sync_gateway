@@ -10,6 +10,7 @@ package auth
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -104,12 +105,63 @@ func (role *roleImpl) initRole(name string, channels base.Set) error {
 // IsValidPrincipalName checks if the given user/role name would be valid. Valid names must be valid UTF-8, containing
 // at least one alphanumeric (except for the guest user), and no colons, commas, backticks, or slashes.
 func IsValidPrincipalName(name string) bool {
-	if len(name) == 0 {
-		return true // guest user
+	/*
+		if len(name) == 0 {
+			return true // guest user
+		}
+		if !utf8.ValidString(name) {
+			return false
+		}
+		seenAnAlphanum := false
+		for _, char := range name {
+			// Reasons for forbidding each of these:
+			// colons: basic authentication uses them to separate usernames from passwords
+			// commas: fails channels.IsValidChannel, which channels.compileAccessMap uses via SetFromArray
+			// slashes: would need to make many (possibly breaking) changes to routing
+			// backticks: MB-50619
+			if char == '/' || char == ':' || char == ',' || char == '`' {
+				return false
+			}
+			if !seenAnAlphanum && (unicode.IsLetter(char) || unicode.IsNumber(char)) {
+				seenAnAlphanum = true
+			}
+		}
+		return seenAnAlphanum
+	*/
+	return ValidatePrincipalName(name, true) == nil
+}
+
+// ValidatePrincipalName checks if the given user/role name would be valid. Valid names must be valid UTF-8, containing
+// at least one alphanumeric (except for the guest user), and no colons, commas, backticks, or slashes.  Names should
+// have a max length of 250 chars, including SG internal prefixes.  If failFast is true, the function will return when
+// the first requirement not satisfied.  This is done to maintain similar performance with previous implementation.
+// If failFast is false, it will gather all validation errors and return them as one concatenated error message.
+func ValidatePrincipalName(name string, failFast bool) error {
+	namelen := len(name)
+	if namelen == 0 {
+		return nil // guest user
 	}
+
+	const validationMsg = "invalid name: "
+	msgs := make([]string, 0, 4)
+
+	if namelen > base.MaxPrincipalNameLen {
+		const msg = "length exceeds 250" // leaving as const to avoid fmt performance (21% slower)
+		if failFast {
+			return errors.New(validationMsg + msg)
+		}
+		msgs = append(msgs, msg)
+	}
+
 	if !utf8.ValidString(name) {
-		return false
+		const msg = "non UTF-8 encoding"
+		if failFast {
+			return errors.New(validationMsg + msg)
+		}
+		msgs = append(msgs, msg)
 	}
+
+	seenAnInvalid := false
 	seenAnAlphanum := false
 	for _, char := range name {
 		// Reasons for forbidding each of these:
@@ -117,14 +169,37 @@ func IsValidPrincipalName(name string) bool {
 		// commas: fails channels.IsValidChannel, which channels.compileAccessMap uses via SetFromArray
 		// slashes: would need to make many (possibly breaking) changes to routing
 		// backticks: MB-50619
-		if char == '/' || char == ':' || char == ',' || char == '`' {
-			return false
+		if (char == '/' || char == ':' || char == ',' || char == '`') && !seenAnInvalid {
+			seenAnInvalid = true
+			const msg = "contains '/', ':', ',', or '`'"
+			if failFast {
+				return errors.New(validationMsg + msg)
+			}
+			msgs = append(msgs, msg)
+			if seenAnAlphanum {
+				break
+			}
 		}
 		if !seenAnAlphanum && (unicode.IsLetter(char) || unicode.IsNumber(char)) {
 			seenAnAlphanum = true
+			if seenAnInvalid {
+				break
+			}
 		}
 	}
-	return seenAnAlphanum
+
+	if !seenAnAlphanum {
+		const msg = "must contain alphanumeric"
+		if failFast {
+			return errors.New(validationMsg + msg)
+		}
+		msgs = append(msgs, msg)
+	}
+
+	if len(msgs) > 0 {
+		return errors.New(validationMsg + strings.Join(msgs, "; "))
+	}
+	return nil
 }
 
 // Creates a new Role object.
