@@ -1063,15 +1063,40 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 // fetchAndLoadConfigs retrieves all database configs from the ServerContext's bootstrapConnection, and loads them into the ServerContext.
 // It will remove any databases currently running that are not found in the bucket.
 func (sc *ServerContext) fetchAndLoadConfigs(isInitialStartup bool) (count int, err error) {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
-
 	fetchedConfigs, err := sc.fetchConfigs(isInitialStartup)
 	if err != nil {
 		return 0, err
 	}
 
-	for _, dbName := range sc.bucketDbName {
+	// Check if we need to update the set of databases before we have to acquire the write lock to do so
+	// we don't need to do this two-stage lock on initial startup as the REST APIs aren't even online yet.
+	var deletedDatabases []string
+	if !isInitialStartup {
+		sc.lock.RLock()
+		for _, dbName := range sc.bucketDbName {
+			if _, foundMatchingDb := fetchedConfigs[dbName]; !foundMatchingDb {
+				deletedDatabases = append(deletedDatabases, dbName)
+			}
+		}
+		for dbName, fetchedConfig := range fetchedConfigs {
+			if dbConfig, ok := sc.dbConfigs[dbName]; ok && dbConfig.cas >= fetchedConfig.cas {
+				base.DebugfCtx(context.TODO(), base.KeyConfig, "Database %q bucket %q config has not changed since last update", fetchedConfig.Name, *fetchedConfig.Bucket)
+				delete(fetchedConfigs, dbName)
+			}
+		}
+		sc.lock.RUnlock()
+
+		// nothing to do, we can bail out without needing the write lock
+		if len(deletedDatabases) == 0 && len(fetchedConfigs) == 0 {
+			base.TracefCtx(context.TODO(), base.KeyConfig, "No persistent config changes to make")
+			return 0, nil
+		}
+	}
+
+	// we have databases to update/remove
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+	for _, dbName := range deletedDatabases {
 		if _, foundMatchingDb := fetchedConfigs[dbName]; !foundMatchingDb {
 			base.InfofCtx(context.TODO(), base.KeyConfig, "Database %q was running on this node, but config was not found on the server - removing database", base.MD(dbName))
 			sc._removeDatabase(dbName)
