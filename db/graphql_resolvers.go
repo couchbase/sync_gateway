@@ -11,11 +11,13 @@ package db
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/graphql-go/graphql"
+	"github.com/graphql-go/graphql/language/ast"
 	"github.com/robertkrimen/otto"
 	_ "github.com/robertkrimen/otto/underscore"
 )
@@ -27,6 +29,7 @@ type jsResolveInfo struct {
 	FieldName      string                 `json:"fieldName"`
 	RootValue      interface{}            `json:"rootValue"`
 	VariableValues map[string]interface{} `json:"variableValues"`
+	Subfields      []string               `json:"subfields"`
 }
 
 type jsResolveContext struct {
@@ -59,6 +62,18 @@ func NewGraphQLResolver(name string, fnSource string) *GraphQLResolver {
 // and mutationAllowed is true iff the resolver is allowed to make changes to the database;
 // the `save` callback checks this.
 func (res *GraphQLResolver) Resolve(db *Database, params *graphql.ResolveParams, mutationAllowed bool) (interface{}, error) {
+	// Collect the 'subfields', the fields the query wants from the value being resolved:
+	subfields := []string{}
+	if len(params.Info.FieldASTs) > 0 {
+		for _, sel := range params.Info.FieldASTs[0].SelectionSet.Selections {
+			if subfield, ok := sel.(*ast.Field); ok {
+				if subfield.Name.Kind == "Name" {
+					subfields = append(subfields, subfield.Name.Value)
+				}
+			}
+		}
+	}
+	//log.Printf("-- %q : subfields = %v", params.Info.FieldName, subfields)
 	context := jsResolveContext{}
 	if db.user != nil {
 		name := db.user.Name()
@@ -68,6 +83,7 @@ func (res *GraphQLResolver) Resolve(db *Database, params *graphql.ResolveParams,
 		FieldName:      params.Info.FieldName,
 		RootValue:      params.Info.RootValue,
 		VariableValues: params.Info.VariableValues,
+		Subfields:      subfields,
 	}
 
 	return res.WithTask(func(task sgbucket.JSServerTask) (interface{}, error) {
@@ -81,23 +97,24 @@ func (res *GraphQLResolver) Resolve(db *Database, params *graphql.ResolveParams,
 //////// RUNNER:
 
 // The outermost JavaScript code. Evaluating it returns a function, which is then called by the
-// Runner every time it's invoked.
+// Runner every time it's invoked. (The reason the first few lines are ""-style strings is to make
+// sure the resolver code ends up on line 1, which makes line numbers reported in syntax errors
+// accurate.)
 // `%s` is replaced with the resolver.
-const kGraphQLResolverFuncWrapper = `
-	function() {
-		function resolveFn(parent, args, context, info) {
-			%s; // <-- The actual JS code from the config file goes here
-		}
-
-		// The "context.app" object the resolver script calls:
-		var _app = {
-			get: _get,
-			query: _query,
-			save: _save
-		};
+const kGraphQLResolverFuncWrapper = "function() {" +
+	"	function resolveFn(parent, args, context, info) {" +
+	"		%s;" + // <-- The actual JS code from the config file goes here
+	`	}
 
 		// This is the JS function invoked by the 'Call(...)' in GraphQLResolver.Resolve(), above
 		return function (parent, args, context, info) {
+			// The "context.app" object the resolver script calls:
+			var _app = {
+				get: _get,
+				query: _query,
+				save: _save
+			};
+
 			if (context)
 				context.app = _app;
 			else
@@ -159,7 +176,7 @@ func NewGraphQLResolverRunner(name string, funcSource string) (*graphQLResolverR
 
 	// Set (and compile) the function:
 	if _, err := runner.SetFunction(funcSource); err != nil {
-		fmt.Printf("*** Error: Resolver fn failed to compile: %v", err) //TEMP
+		log.Printf("*** Error: Resolver fn %s failed to compile: %v", name, err) //TEMP
 		return nil, base.HTTPErrorf(http.StatusInternalServerError, "Error compiling GraphQL resolver %s: %v", name, err)
 	}
 
@@ -168,17 +185,17 @@ func NewGraphQLResolverRunner(name string, funcSource string) (*graphQLResolverR
 		if runner.currentDB == nil {
 			panic("GraphQLResolverRunner can't run without a currentDB")
 		}
-		fmt.Printf("*** GQ runner %s about to run\n", runner.name)
+		//log.Printf("*** GQ runner %s about to run", runner.name)
 	}
 	// Function that runs after every call:
 	runner.After = func(jsResult otto.Value, err error) (interface{}, error) {
 		runner.currentDB = nil
 		if err != nil {
-			fmt.Printf("*** GQ runner %s failed: %+v\n", runner.name, err)
+			log.Printf("*** GQ runner %s failed: %+v", runner.name, err)
 			return nil, err
 		}
 		result, _ := jsResult.Export()
-		fmt.Printf("*** GQ runner %s finished: %v\n", runner.name, result)
+		//log.Printf("*** GQ runner %s finished: %v", runner.name, result)
 		return result, nil
 	}
 
@@ -192,7 +209,7 @@ func (runner *graphQLResolverRunner) SetFunction(funcSource string) (bool, error
 
 // Implementation of JS `app.get(docID, docType)` function
 func (runner *graphQLResolverRunner) do_get(docID string, docType *string) (interface{}, error) {
-	fmt.Printf("*** GQ get(%q)\n", docID)
+	//log.Printf("*** GQ get(%q)", docID)
 	rev, err := runner.currentDB.GetRev(docID, "", false, nil)
 	if err != nil {
 		status, _ := base.ErrorAsHTTPStatus(err)
@@ -215,13 +232,7 @@ func (runner *graphQLResolverRunner) do_get(docID string, docType *string) (inte
 
 // Implementation of JS `app.query(name, params)` function
 func (runner *graphQLResolverRunner) do_query(queryName string, params map[string]interface{}) ([]interface{}, error) {
-	fmt.Printf("*** GQ query(%q, %+v)\n", queryName, params)
-
-	// defer func() {
-	// 	if x := recover(); x != nil {
-	// 		fmt.Printf("*** run time panic: %+v\n", pkgerrors.WithStack(x.(error)))
-	// 	}
-	// }()
+	//log.Printf("*** GQ query(%q, %+v)", queryName, params)
 
 	results, err := runner.currentDB.UserQuery(queryName, params)
 	if err != nil {
@@ -240,7 +251,7 @@ func (runner *graphQLResolverRunner) do_query(queryName string, params map[strin
 
 // Implementation of JS `app.save(docID, body)` function
 func (runner *graphQLResolverRunner) do_save(docID string, body map[string]interface{}) error {
-	fmt.Printf("*** GQ save(%q, %v)\n", docID, body)
+	//log.Printf("*** GQ save(%q, %v)", docID, body)
 	if !runner.mutationAllowed {
 		return fmt.Errorf("a read-only request is not allowed to mutate the database")
 	}
