@@ -25,6 +25,6 @@ licenses/APL2.txt.
 
 
   <!-- Sync Gateway -->
-   <project name="sync_gateway" path="sync_gateway" remote="couchbase" />
+   <project name="sync_gateway" path="sync_gateway" remote="couchbase" revision="toybuild-CBG-2171_principal-name-length" />
 
 </manifest>
