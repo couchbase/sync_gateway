@@ -207,20 +207,10 @@ type ImportOptions struct {
 	ImportPartitions uint16                // Number of partitions for import
 }
 
-// Defines a N1QL query that a client can invoke by name.
-// (The name is the key in the map DatabaseContextOptions.UserQueries.)
-type UserQuery struct {
-	Statement  string   `json:"statement"`            // N1QL / SQL++ query string
-	Parameters []string `json:"parameters,omitempty"` // Names of '$'-prefixed parameters in query
-	Channels   base.Set `json:"channels"`             // Names of channel(s) that grant access to query
-}
-
-type UserQueryMap = map[string]*UserQuery
-
 // Configuration for GraphQL.
 type GraphQLConfig struct {
-	Schema     *string                    `json:"schema,omitempty"`     // Schema in SDL syntax
-	SchemaFile *string                    `json:"schemaFile,omitempty"` // Path of schema file
+	Schema     *string                          `json:"schema,omitempty"`     // Schema in SDL syntax
+	SchemaFile *string                          `json:"schemaFile,omitempty"` // Path of schema file
 	Resolvers  map[string]GraphQLResolverConfig `json:"resolvers"`            // Defines query/mutation code
 }
 
