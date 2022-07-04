@@ -1009,7 +1009,8 @@ func TestConflicts(t *testing.T) {
 
 	// Verify the _changes feed:
 	options := ChangesOptions{
-		Conflicts: true,
+		Conflicts:  true,
+		ChangesCtx: context.Background(),
 	}
 	changes, err := db.GetChanges(channels.SetOf(t, "all"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")

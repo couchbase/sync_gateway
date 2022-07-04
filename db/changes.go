@@ -525,11 +525,9 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 	}
 
 	if options.ChangesCtx == nil {
-		if options.Continuous || options.Wait {
-			base.WarnfCtx(db.Ctx, "MultiChangesFeed: Changes Context missing for Continuous/Wait mode")
-		}
-		options.ChangesCtx = context.Background()
+		base.ErrorfCtx(db.Ctx, "MultiChangesFeed: Changes Context missing")
 	}
+
 	base.DebugfCtx(db.Ctx, base.KeyChanges, "Int sequence multi changes feed...")
 	return db.SimpleMultiChangesFeed(chans, options)
 
@@ -1054,7 +1052,7 @@ func (db *Database) waitForCacheUpdate(ctx context.Context, currentCachedSequenc
 	return false
 }
 
-// Synchronous convenience function that returns all changes as a simple array, FOR TEST USE ONLY
+// FOR TEST USE ONLY: Synchronous convenience function that returns all changes as a simple array,
 // Returns error if initial feed creation fails, or if an error is returned with the changes entries
 func (db *Database) GetChanges(channels base.Set, options ChangesOptions) ([]*ChangeEntry, error) {
 	if options.ChangesCtx == nil {

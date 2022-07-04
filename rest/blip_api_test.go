@@ -4610,7 +4610,8 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 	}
 }
 
-func TestUnsubChanged(t *testing.T) {
+func TestUnsubChanges(t *testing.T) {
+	const noSubchangesError = "No subChanges subscription active to unsubscribe from"
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
 	defer rt.Close()
@@ -4618,6 +4619,11 @@ func TestUnsubChanged(t *testing.T) {
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
 	defer btc.Close()
+
+	// Confirm correct error message returned when no subchanges active
+	response, err := btc.UnsubPullChanges()
+	assert.NoError(t, err)
+	assert.EqualValues(t, noSubchangesError, response)
 
 	// Sub changes
 	err = btc.StartPull()
@@ -4630,13 +4636,9 @@ func TestUnsubChanged(t *testing.T) {
 	require.EqualValues(t, 1, activeReplStat.Value())
 
 	// Unsub changes
-	unsubChangesRequest := blip.NewRequest()
-	unsubChangesRequest.SetProfile(db.MessageUnsubChanges)
-	err = btc.pullReplication.sendMsg(unsubChangesRequest)
-	require.NoError(t, err)
-	unsubChangesResponse := unsubChangesRequest.Response()
-	_, err = unsubChangesResponse.Body()
-	require.NoError(t, err)
+	response, err = btc.UnsubPullChanges()
+	assert.NoError(t, err)
+	assert.Empty(t, response)
 	// Wait for unsub changes to stop the sub changes being sent before sending document up
 	activeReplVal, _ := base.WaitForStat(activeReplStat.Value, 0)
 	assert.EqualValues(t, 0, activeReplVal)
@@ -4648,6 +4650,11 @@ func TestUnsubChanged(t *testing.T) {
 		return found
 	}, 10, 100)
 	assert.Error(t, err)
+
+	// Confirm correct error message is still returned when no subchanges active
+	response, err = btc.UnsubPullChanges()
+	assert.NoError(t, err)
+	assert.EqualValues(t, noSubchangesError, response)
 
 	// Confirm the pull replication can be restarted and it syncs doc2
 	err = btc.StartPull()

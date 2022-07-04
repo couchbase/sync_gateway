@@ -199,8 +199,8 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		return fmt.Errorf("blipHandler already has an outstanding continous subChanges.  Cannot open another one")
 	}
 
-	// Create ctx if it does not exist or has been closed
-	if bh.changesCtx == nil || bh.changesCtx.Err() != nil {
+	// Create ctx if it has been cancelled
+	if bh.changesCtx.Err() != nil {
 		bh.changesCtx, bh.changesCtxCancel = context.WithCancel(context.Background())
 	}
 
@@ -272,7 +272,7 @@ func (bh *blipHandler) handleUnsubChanges(rq *blip.Message) error {
 	bh.lock.Lock()
 	defer bh.lock.Unlock()
 
-	if bh.changesCtx == nil || bh.changesCtxCancel == nil || bh.changesCtx.Err() != nil {
+	if !bh.activeSubChanges.IsTrue() {
 		return base.HTTPErrorf(http.StatusBadRequest, "No subChanges subscription active to unsubscribe from")
 	}
 	bh.changesCtxCancel()

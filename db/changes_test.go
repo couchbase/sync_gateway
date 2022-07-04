@@ -72,7 +72,7 @@ func TestFilterToAvailableChannels(t *testing.T) {
 			db.user, err = auth.GetUser("test")
 			require.NoError(t, err)
 
-			ch, err := db.GetChanges(testCase.accessChans, getZeroSequence())
+			ch, err := db.GetChanges(testCase.accessChans, getChangesOptionsWithZeroSeq())
 			require.NoError(t, err)
 			require.Len(t, ch, len(testCase.expectedDocsReturned))
 
@@ -125,7 +125,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 	// Check the _changes feed:
 	db.user, _ = authenticator.GetUser("naomi")
-	changes, err := db.GetChanges(base.SetOf("*"), getZeroSequence())
+	changes, err := db.GetChanges(base.SetOf("*"), getChangesOptionsWithZeroSeq())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
 	require.Len(t, changes, 3)
@@ -153,7 +153,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 2 (the user doc) and isn't stuck waiting for it.
 	cacheWaiter.AddAndWait(1)
-	changes, err = db.GetChanges(base.SetOf("*"), ChangesOptions{Since: lastSeq})
+	changes, err = db.GetChanges(base.SetOf("*"), getChangesOptionsWithSeq(lastSeq))
 
 	assert.NoError(t, err, "Couldn't GetChanges (2nd)")
 
@@ -162,7 +162,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	assert.Equal(t, []ChangeRev{{"rev": revid}}, changes[0].Changes)
 
 	// validate from zero
-	changes, err = db.GetChanges(base.SetOf("*"), getZeroSequence())
+	changes, err = db.GetChanges(base.SetOf("*"), getChangesOptionsWithZeroSeq())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
 
@@ -181,8 +181,19 @@ func getLastSeq(changes []*ChangeEntry) SequenceID {
 	return SequenceID{}
 }
 
-func getZeroSequence() ChangesOptions {
-	return ChangesOptions{Since: SequenceID{Seq: 0}}
+// Makes changes options starting at sequence 0, with a new changes context
+func getChangesOptionsWithZeroSeq() ChangesOptions {
+	return ChangesOptions{Since: SequenceID{Seq: 0}, ChangesCtx: context.Background()}
+}
+
+// Makes changes options with a since value of seq and a new changes context
+func getChangesOptionsWithSeq(seq SequenceID) ChangesOptions {
+	return ChangesOptions{Since: seq, ChangesCtx: context.Background()}
+}
+
+// Makes changes options a new changes context
+func getChangesOptionsWithCtxOnly() ChangesOptions {
+	return ChangesOptions{ChangesCtx: context.Background()}
 }
 
 func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
@@ -215,7 +226,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	cacheWaiter.AddAndWait(1)
 
 	db.user, _ = authenticator.GetUser("alice")
-	changes, err := db.GetChanges(base.SetOf("*"), getZeroSequence())
+	changes, err := db.GetChanges(base.SetOf("*"), getChangesOptionsWithZeroSeq())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
 	assert.Equal(t, 1, len(changes))
@@ -257,7 +268,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 3 and isn't stuck waiting for it.
 	cacheWaiter.AddAndWait(1)
-	changes, err = db.GetChanges(base.SetOf("*"), ChangesOptions{Since: lastSeq})
+	changes, err = db.GetChanges(base.SetOf("*"), getChangesOptionsWithSeq(lastSeq))
 
 	assert.NoError(t, err, "Couldn't GetChanges (2nd)")
 
@@ -300,7 +311,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	cacheWaiter.AddAndWait(1)
 
 	db.user, _ = authenticator.GetUser("alice")
-	changes, err := db.GetChanges(base.SetOf("*"), getZeroSequence())
+	changes, err := db.GetChanges(base.SetOf("*"), getChangesOptionsWithZeroSeq())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
 
@@ -340,7 +351,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	// sequence 3 (the modified document) and isn't stuck waiting for it.
 	cacheWaiter.AddAndWait(1)
 
-	changes, err = db.GetChanges(base.SetOf("*"), ChangesOptions{Since: lastSeq})
+	changes, err = db.GetChanges(base.SetOf("*"), getChangesOptionsWithSeq(lastSeq))
 
 	assert.NoError(t, err, "Couldn't GetChanges (2nd)")
 
@@ -382,6 +393,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 	changesOptions := ChangesOptions{
 		Since:      SequenceID{Seq: 0},
 		ActiveOnly: true,
+		ChangesCtx: context.Background(),
 	}
 
 	initQueryCount := db.DbStats.Cache().ViewQueries.Value()

@@ -203,9 +203,7 @@ func (bsc *BlipSyncContext) Close() {
 		bsc.lock.Lock()
 		defer bsc.lock.Unlock()
 
-		if bsc.changesCtxCancel != nil {
-			bsc.changesCtxCancel()
-		}
+		bsc.changesCtxCancel()
 		close(bsc.terminator)
 	})
 }

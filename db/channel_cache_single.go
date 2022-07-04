@@ -405,7 +405,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 
 	// Check whether the changes process has been terminated while we waited for the view lock, to avoid the view
 	// overhead in that case (and prevent feedback loop on query backlog)
-	if options.ChangesCtx != nil && options.ChangesCtx.Err() != nil {
+	if options.ChangesCtx.Err() != nil {
 		return nil, fmt.Errorf("Changes feed cancelled while waiting for view lock")
 	}
 
