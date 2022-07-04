@@ -258,12 +258,7 @@ func TestGetGuestUser(t *testing.T) {
 	auth := NewAuthenticator(bucket, nil, DefaultAuthenticatorOptions())
 	user, err := auth.GetUser("")
 	require.Equal(t, nil, err)
-
-	guestUser := auth.defaultGuestUser()
-	err = auth.rebuildChannels(guestUser)
-	require.NoError(t, err)
-
-	assert.Equal(t, guestUser, user)
+	assert.Equal(t, auth.defaultGuestUser(), user)
 }
 
 func TestSaveUsers(t *testing.T) {
