@@ -2548,7 +2548,8 @@ func TestConfigRedaction(t *testing.T) {
 
 // Reproduces panic seen in CBG-1053
 func TestAdhocReplicationStatus(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll, base.KeyReplicate)
+	// FIXME: DO NOT MERGE at trace level
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll, base.KeyReplicate)
 	rt := NewRestTester(t, &RestTesterConfig{sgReplicateEnabled: true})
 	defer rt.Close()
 
