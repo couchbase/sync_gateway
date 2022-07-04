@@ -107,6 +107,10 @@ func (auth *Authenticator) GetUser(name string) (User, error) {
 	} else if princ == nil {
 		if name == "" {
 			princ = auth.defaultGuestUser()
+			err := auth.rebuildChannels(princ)
+			if err != nil {
+				return nil, err
+			}
 		} else {
 			return nil, nil
 		}

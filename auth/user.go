@@ -75,7 +75,6 @@ func (auth *Authenticator) defaultGuestUser() User {
 		auth: auth,
 	}
 	user.Channels_ = user.ExplicitChannels_.Copy()
-	user.Channels_.AddChannel(ch.DocumentStarChannel, 1)
 	return user
 }
 
