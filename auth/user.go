@@ -74,7 +74,6 @@ func (auth *Authenticator) defaultGuestUser() User {
 		},
 		auth: auth,
 	}
-	user.Channels_ = user.ExplicitChannels_.Copy()
 	return user
 }
 

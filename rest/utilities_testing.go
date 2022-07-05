@@ -227,8 +227,10 @@ func (rt *RestTester) Bucket() base.Bucket {
 		// testBucket's closeFn
 		rt.testBucket.Bucket = rt.RestTesterServerContext.Database("db").Bucket
 
-		if err := rt.SetAdminParty(rt.guestEnabled); err != nil {
-			rt.tb.Fatalf("Error from SetAdminParty %v", err)
+		if rt.DatabaseConfig.Guest == nil {
+			if err := rt.SetAdminParty(rt.guestEnabled); err != nil {
+				rt.tb.Fatalf("Error from SetAdminParty %v", err)
+			}
 		}
 	}
 

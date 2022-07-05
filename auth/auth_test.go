@@ -252,12 +252,12 @@ func TestGetMissingRole(t *testing.T) {
 }
 
 func TestGetGuestUser(t *testing.T) {
-
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
+
 	auth := NewAuthenticator(bucket, nil, DefaultAuthenticatorOptions())
 	user, err := auth.GetUser("")
-	assert.Equal(t, nil, err)
+	require.Equal(t, nil, err)
 	assert.Equal(t, auth.defaultGuestUser(), user)
 }
 
