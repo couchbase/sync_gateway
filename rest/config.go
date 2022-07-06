@@ -793,6 +793,12 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		multiError = multiError.Append(fmt.Errorf("only one named scope is supported, but had %d (%v)", len(dbConfig.Scopes), dbConfig.Scopes))
 	} else {
 		for scopeName, scopeConfig := range dbConfig.Scopes {
+			// WIP: Collections Phase 1 - Only allow a single collection
+			if len(scopeConfig.Collections) != 1 {
+				multiError = multiError.Append(fmt.Errorf("WIP Collections Phase 1 only supports a single collection - had %d", len(scopeConfig.Collections)))
+				continue
+			}
+
 			if len(scopeConfig.Collections) == 0 {
 				multiError = multiError.Append(fmt.Errorf("must specify at least one collection in scope %v", scopeName))
 				continue
