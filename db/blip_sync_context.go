@@ -541,8 +541,10 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 // Pushes a revision body to the client
 func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseDb *Database) error {
 	rev, err := handleChangesResponseDb.GetRev(docID, revID, true, nil)
-	if err != nil {
+	if base.IsDocNotFoundError(err) {
 		return bsc.sendNoRev(sender, docID, revID, seq, err)
+	} else if err != nil {
+		return err
 	}
 
 	base.TracefCtx(bsc.loggingCtx, base.KeySync, "sendRevision, rev attachments for %s/%s are %v", base.UD(docID), revID, base.UD(rev.Attachments))

@@ -4532,3 +4532,65 @@ func TestBlipRevokeNonExistentRole(t *testing.T) {
 		return rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
 	}, 1)
 }
+
+// Tests changes made in CBG-2151 to return errors from sendRevision unless it's a document not found error,
+// in which case a noRev should be sent.
+func TestSendRevisionNoRevHandling(t *testing.T) {
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("Skip LeakyBucket test when running in integration")
+	}
+	rt := NewRestTester(t, &RestTesterConfig{
+		guestEnabled: true,
+		TestBucket:   base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{}),
+	})
+	defer rt.Close()
+
+	leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
+	require.True(t, ok)
+
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	require.NoError(t, err)
+	defer btc.Close()
+
+	// Confirm no_rev is sent when a document is not found
+	resp := rt.SendAdminRequest(http.MethodPut, "/db/no_rev", `{"foo":"bar"}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	leakyBucket.SetGetRawCallback(func(key string) error {
+		return gocb.ErrDocumentNotFound
+	})
+
+	// Flush cache so document has to be retrieved from bucket
+	rt.GetDatabase().FlushRevisionCacheForTest()
+
+	err = btc.StartPull()
+	err = rt.WaitForCondition(func() bool {
+		messages := btc.pullReplication.GetMessages()
+		lastMessageNumber := blip.MessageNumber(len(messages))
+		lastMessage := messages[lastMessageNumber]
+		if lastMessage.Profile() == db.MessageNoRev && lastMessage.Properties["id"] == "no_rev" && lastMessage.Properties["rev"] == respRevID(t, resp) {
+			return true
+		}
+		return false
+	})
+	assert.NoError(t, err)
+
+	// Confirm other errors do not send no rev
+	resp = rt.SendAdminRequest(http.MethodPut, "/db/overload_error", `{"foo":"bar"}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	leakyBucket.SetGetRawCallback(func(key string) error {
+		return gocb.ErrOverload
+	})
+	rt.GetDatabase().FlushRevisionCacheForTest()
+
+	waitForRev := func() (shouldRetry bool, err error, value interface{}) {
+		_, found := btc.GetRev("overload_error", respRevID(t, resp))
+		if found {
+			return false, nil, nil
+		}
+		return true, nil, nil
+	}
+	err, _ = base.RetryLoop("making sure rev does not get replicated", waitForRev, base.CreateSleeperFunc(25, 100))
+	assert.Error(t, err)
+}

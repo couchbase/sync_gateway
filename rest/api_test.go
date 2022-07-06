@@ -7816,8 +7816,9 @@ func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
 	leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
 	require.True(t, ok)
 
-	leakyBucket.SetGetRawCallback(func(s string) {
+	leakyBucket.SetGetRawCallback(func(s string) error {
 		assert.NoError(t, leakyBucket.Delete("doc"))
+		return nil
 	})
 
 	changes = revocationTester.getChanges(changes.Last_Seq, 1)
