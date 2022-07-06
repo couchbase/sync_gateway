@@ -25,56 +25,58 @@ func TestExpandChannel(t *testing.T) {
 		"YEAR":  2020,
 		"WORDS": []string{"ouais", "fromage", "amour"},
 		"user": &userQueryUserInfo{
-			name:     "maurice",
-			email:    "maurice@academie.fr",
-			channels: []string{"x", "y"},
-			roles:    []string{"a", "b"},
+			Name:     "maurice",
+			Email:    "maurice@academie.fr",
+			Channels: []string{"x", "y"},
+			Roles:    []string{"a", "b"},
 		},
 	}
 
-	ch, err := expandChannelPattern("query", "someChannel", params)
+	allow := UserQueryAllow{}
+
+	ch, err := allow.expandPattern("someChannel", params)
 	require.NoError(t, err)
 	assert.Equal(t, ch, "someChannel")
 
-	ch, err = expandChannelPattern("query", "sales-$CITY-all", params)
+	ch, err = allow.expandPattern("sales-$CITY-all", params)
 	require.NoError(t, err)
 	assert.Equal(t, ch, "sales-Paris-all")
 
-	ch, err = expandChannelPattern("query", "sales$(CITY)All", params)
+	ch, err = allow.expandPattern("sales$(CITY)All", params)
 	require.NoError(t, err)
 	assert.Equal(t, ch, "salesParisAll")
 
-	ch, err = expandChannelPattern("query", "sales$CITY-$BREAD", params)
+	ch, err = allow.expandPattern("sales$CITY-$BREAD", params)
 	require.NoError(t, err)
 	assert.Equal(t, ch, "salesParis-Baguette")
 
-	ch, err = expandChannelPattern("query", "sales-upTo-$YEAR", params)
+	ch, err = allow.expandPattern("sales-upTo-$YEAR", params)
 	require.NoError(t, err)
 	assert.Equal(t, ch, "sales-upTo-2020")
 
-	ch, err = expandChannelPattern("query", "employee-$user", params)
+	ch, err = allow.expandPattern("employee-$user", params)
 	require.NoError(t, err)
 	assert.Equal(t, ch, "employee-maurice")
 
 	// Should replace `$$` with `$`
-	ch, err = expandChannelPattern("query", "expen$$ive", params)
+	ch, err = allow.expandPattern("expen$$ive", params)
 	require.NoError(t, err)
 	assert.Equal(t, ch, "expen$ive")
 
 	// No-ops since the `$` does not match a pattern:
-	ch, err = expandChannelPattern("query", "$+wow", params)
+	ch, err = allow.expandPattern("$+wow", params)
 	require.NoError(t, err)
 	assert.Equal(t, ch, "$+wow")
 
-	ch, err = expandChannelPattern("query", "foobar$", params)
+	ch, err = allow.expandPattern("foobar$", params)
 	require.NoError(t, err)
 	assert.Equal(t, ch, "foobar$")
 
 	// error: param value is not a string
-	ch, err = expandChannelPattern("query", "knows-$WORDS", params)
+	ch, err = allow.expandPattern("knows-$WORDS", params)
 	assert.NotNil(t, err)
 
 	// error: undefined parameter
-	ch, err = expandChannelPattern("query", "sales-upTo-$FOO", params)
+	ch, err = allow.expandPattern("sales-upTo-$FOO", params)
 	assert.NotNil(t, err)
 }
