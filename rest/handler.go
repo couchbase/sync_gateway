@@ -300,6 +300,9 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		if !foundScope || !foundCollection {
 			return base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", base.MD(keyspaceDb), base.MD(*keyspaceScope), base.MD(*keyspaceCollection))
 		}
+	} else {
+		keyspaceScope = base.StringPtr(base.DefaultScope)
+		keyspaceCollection = base.StringPtr(base.DefaultCollection)
 	}
 
 	// If this call is in the context of a DB make sure the DB is in a valid state
