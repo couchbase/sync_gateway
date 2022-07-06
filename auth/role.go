@@ -128,7 +128,7 @@ func IsValidPrincipalName(name string) bool {
 	return seenAnAlphanum
 }
 
-// ValidatePrincipalName performs the same checks as IsValidPrincipalName, but adds legth check and retuns a more
+// ValidatePrincipalName performs the same checks as IsValidPrincipalName, but adds length check and retuns a more
 // verbose error message.  This function is slower than IsValidPrincipalName, and should be used only for user
 // and role creation.  Names should have a max length of 239 chars, to account for SG prefixes.  If failFast is
 // true, the function will return at the first requirement not satisfied.  If false, it will gather all validation
