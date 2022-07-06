@@ -76,8 +76,8 @@ type BlipSyncContext struct {
 	blipContextDb                    *Database       // 'master' database instance for the replication, used as source when creating handler-specific databases
 	loggingCtx                       context.Context // logging context for connection
 	dbUserLock                       sync.RWMutex    // Must be held when refreshing the db user
-	gotSubChanges                    bool            //nolint: structcheck // false structcheck positive due to https://github.com/golangci/golangci-lint/issues/826
-	continuous                       bool            //nolint: structcheck // false structcheck positive due to https://github.com/golangci/golangci-lint/issues/826
+	gotSubChanges                    bool            // nolint: structcheck // false structcheck positive due to https://github.com/golangci/golangci-lint/issues/826
+	continuous                       bool            // nolint: structcheck // false structcheck positive due to https://github.com/golangci/golangci-lint/issues/826
 	lock                             sync.Mutex
 	allowedAttachments               map[string]AllowedAttachment
 	handlerSerialNumber              uint64                                    // Each handler within a context gets a unique serial number for logging

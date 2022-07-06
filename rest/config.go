@@ -94,13 +94,14 @@ func (dc *DbConfig) MakeBucketSpec() base.BucketSpec {
 		tlsPort = bc.KvTLSPort
 	}
 
-	// FIXME: This is a hack to get named collection tests working.
-	// Grab one scope/collection name.
-	// Phase 2 means DbConfig needs to contain a set of collections, not just one...
+	// FIXME: This is a hack to get a single named collection working.
+	// Grab just one scope/collection from the defined set.
+	// Phase 2 (multi collection) means DatabaseContext needs a set of BucketSpec/Collections, not just one...
 	var scope, collection *string
 	for scopeName, scopeConfig := range dc.Scopes {
 		scope = &scopeName
 		for collectionName := range scopeConfig.Collections {
+			base.WarnfCtx(context.TODO(), "WIP Collections (Phase 1) - Running db %q in scope %q collection %q", dc.Name, scopeName, collectionName)
 			collection = &collectionName
 			break
 		}
