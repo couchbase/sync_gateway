@@ -4539,58 +4539,75 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("Skip LeakyBucket test when running in integration")
 	}
-	rt := NewRestTester(t, &RestTesterConfig{
-		guestEnabled: true,
-		TestBucket:   base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{}),
-	})
-	defer rt.Close()
-
-	leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
-	require.True(t, ok)
-
-	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
-	require.NoError(t, err)
-	defer btc.Close()
-
-	// Confirm no_rev is sent when a document is not found
-	resp := rt.SendAdminRequest(http.MethodPut, "/db/no_rev", `{"foo":"bar"}`)
-	assertStatus(t, resp, http.StatusCreated)
-
-	leakyBucket.SetGetRawCallback(func(key string) error {
-		return gocb.ErrDocumentNotFound
-	})
-
-	// Flush cache so document has to be retrieved from bucket
-	rt.GetDatabase().FlushRevisionCacheForTest()
-
-	err = btc.StartPull()
-	err = rt.WaitForCondition(func() bool {
-		messages := btc.pullReplication.GetMessages()
-		lastMessageNumber := blip.MessageNumber(len(messages))
-		lastMessage := messages[lastMessageNumber]
-		if lastMessage.Profile() == db.MessageNoRev && lastMessage.Properties["id"] == "no_rev" && lastMessage.Properties["rev"] == respRevID(t, resp) {
-			return true
-		}
-		return false
-	})
-	assert.NoError(t, err)
-
-	// Confirm other errors do not send no rev
-	resp = rt.SendAdminRequest(http.MethodPut, "/db/overload_error", `{"foo":"bar"}`)
-	assertStatus(t, resp, http.StatusCreated)
-
-	leakyBucket.SetGetRawCallback(func(key string) error {
-		return gocb.ErrOverload
-	})
-	rt.GetDatabase().FlushRevisionCacheForTest()
-
-	waitForRev := func() (shouldRetry bool, err error, value interface{}) {
-		_, found := btc.GetRev("overload_error", respRevID(t, resp))
-		if found {
-			return false, nil, nil
-		}
-		return true, nil, nil
+	testCases := []struct {
+		name        string
+		error       error
+		expectNoRev bool
+	}{
+		{
+			name:        "not_found",
+			error:       gocb.ErrDocumentNotFound,
+			expectNoRev: true,
+		},
+		{
+			name:        "overload",
+			error:       gocb.ErrOverload,
+			expectNoRev: false,
+		},
 	}
-	err, _ = base.RetryLoop("making sure rev does not get replicated", waitForRev, base.CreateSleeperFunc(25, 100))
-	assert.Error(t, err)
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			rt := NewRestTester(t, &RestTesterConfig{
+				guestEnabled: true,
+				TestBucket:   base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{}),
+			})
+			defer rt.Close()
+
+			leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
+			require.True(t, ok)
+
+			btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+			require.NoError(t, err)
+			defer btc.Close()
+
+			// Change noRev handler so it's known when a noRev is received
+			recievedNoRevs := make(chan *blip.Message)
+			btc.pullReplication.bt.blipContext.HandlerForProfile[db.MessageNoRev] = func(msg *blip.Message) {
+				fmt.Println("Received noRev")
+				recievedNoRevs <- msg
+			}
+
+			resp := rt.SendAdminRequest(http.MethodPut, "/db/"+test.name, `{"foo":"bar"}`)
+			assertStatus(t, resp, http.StatusCreated)
+
+			// Make the LeakyBucket return an error
+			leakyBucket.SetGetRawCallback(func(key string) error {
+				return test.error
+			})
+
+			// Flush cache so document has to be retrieved from the leaky bucket
+			rt.GetDatabase().FlushRevisionCacheForTest()
+
+			err = btc.StartPull()
+			assert.NoError(t, err)
+
+			// Wait 3 seconds for noRev to be received
+			select {
+			case msg := <-recievedNoRevs:
+				if test.expectNoRev {
+					assert.Equal(t, test.name, msg.Properties["id"])
+				} else {
+					require.Fail(t, "Received unexpected noRev message", msg)
+				}
+			case <-time.After(3 * time.Second):
+				if test.expectNoRev {
+					require.Fail(t, "Didn't receive expected noRev")
+				}
+			}
+
+			// Make sure document did not get replicated
+			_, found := btc.GetRev(test.name, respRevID(t, resp))
+			assert.False(t, found)
+		})
+	}
 }
