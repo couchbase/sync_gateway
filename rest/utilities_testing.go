@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -26,6 +27,7 @@ import (
 	"time"
 
 	"github.com/couchbase/go-blip"
+	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -57,6 +59,7 @@ type RestTesterConfig struct {
 	useTLSServer                    bool // If true, TLS will be required for communications with CBS. Default: false
 	persistentConfig                bool
 	groupID                         *string
+	createScopesAndCollections      bool // If true, will automatically create any defined scopes and collections on startup.
 }
 
 // RestTester provides a fake server for testing endpoints
@@ -197,6 +200,12 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.DatabaseConfig.UseViews = base.BoolPtr(true)
 		}
 
+		if rt.createScopesAndCollections {
+			if err := createTestBucketScopesAndCollections(rt.testBucket, rt.DatabaseConfig.Scopes); err != nil {
+				rt.tb.Fatalf("Error creating test scopes/collections: %v", err)
+			}
+		}
+
 		// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
 		numReplicas := uint(0)
 		rt.DatabaseConfig.NumIndexReplicas = &numReplicas
@@ -238,6 +247,51 @@ func (rt *RestTester) Bucket() base.Bucket {
 	close(rt.RestTesterServerContext.hasStarted)
 
 	return rt.testBucket.Bucket
+}
+
+// createTestBucketScopesAndCollections will create the given scopes and collections within the given test bucket.
+func createTestBucketScopesAndCollections(tb *base.TestBucket, scopesConfig ScopesConfig) error {
+	atLeastOneScope := false
+	for _, scopeConfig := range scopesConfig {
+		for range scopeConfig.Collections {
+			atLeastOneScope = true
+			break
+		}
+		break
+	}
+	if !atLeastOneScope {
+		// nothing to do here
+		return nil
+	}
+
+	un, pw, _ := tb.BucketSpec.Auth.GetCredentials()
+	cluster, err := gocb.Connect(tb.BucketSpec.Server, gocb.ClusterOptions{
+		Username: un,
+		Password: pw,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to connect to cluster: %w", err)
+	}
+	defer func() { _ = cluster.Close(nil) }()
+
+	cm := cluster.Bucket(tb.GetName()).Collections()
+
+	for scopeName, scopeConfig := range scopesConfig {
+		if err := cm.CreateScope(scopeName, nil); err != nil && !errors.Is(err, gocb.ErrScopeExists) {
+			return fmt.Errorf("failed to create scope %s: %w", scopeName, err)
+		}
+		for collectionName := range scopeConfig.Collections {
+			if err := cm.CreateCollection(
+				gocb.CollectionSpec{
+					Name:      collectionName,
+					ScopeName: scopeName,
+				}, nil); err != nil {
+				return fmt.Errorf("failed to create collection %s in scope %s: %w", collectionName, scopeName, err)
+			}
+		}
+	}
+
+	return nil
 }
 
 func (rt *RestTester) ServerContext() *ServerContext {
