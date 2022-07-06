@@ -119,6 +119,15 @@ type DatabaseContext struct {
 	ServeInsecureAttachmentTypes bool                     // Attachment content type will bypass the content-disposition handling, default false
 	NoX509HTTPClient             *http.Client             // A HTTP Client from gocb to use the management endpoints
 	ServerContextHasStarted      chan struct{}            // Closed via PostStartup once the server has fully started
+	Scopes                       map[string]Scope         // A map keyed by scope name containing a set of scopes/collections.
+}
+
+type Scope struct {
+	Collections map[string]Collection
+}
+
+type Collection struct {
+	Datastore base.Bucket // Where data is stored for the collection
 }
 
 type DatabaseContextOptions struct {

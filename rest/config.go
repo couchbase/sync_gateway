@@ -94,8 +94,7 @@ func (dc *DbConfig) MakeBucketSpec() base.BucketSpec {
 		tlsPort = bc.KvTLSPort
 	}
 
-	// FIXME: This is a hack to get a single named collection working.
-	// Grab just one scope/collection from the defined set.
+	// WIP: Collections Phase 1 - Grab just one scope/collection from the defined set.
 	// Phase 2 (multi collection) means DatabaseContext needs a set of BucketSpec/Collections, not just one...
 	var scope, collection *string
 	for scopeName, scopeConfig := range dc.Scopes {
