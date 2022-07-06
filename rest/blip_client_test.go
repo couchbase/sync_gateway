@@ -817,6 +817,8 @@ func (btr *BlipTesterReplicator) GetMessages() map[blip.MessageNumber]blip.Messa
 
 	messages := make(map[blip.MessageNumber]blip.Message, len(btr.messages))
 	for k, v := range btr.messages {
+		// Read the body before copying, since it might be read asynchronously
+		_, _ = v.Body()
 		messages[k] = *v
 	}
 
