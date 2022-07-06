@@ -276,19 +276,21 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		}
 	}
 
-	// Collections handling
+	// Named collections handling
 	if dbc := h.server.GetDbConfig(keyspaceDb); dbc != nil && len(dbc.Scopes) > 0 {
 		// Allow an empty scope to refer to the one SG is running with, rather than falling back to _default
 		if keyspaceScope == nil {
 			keyspaceScope = dbContext.BucketSpec.Scope
 		}
 		if keyspaceCollection == nil {
-			// _default doesn't make sense for a non-default scope (so what should we even choose here if running with more than one collection?)
+			if len(dbc.Scopes[*keyspaceScope].Collections) > 1 {
+				// _default doesn't exist for a non-default scope - so make it a required element if it's ambiguous
+				return base.HTTPErrorf(http.StatusBadRequest, "Ambiguous keyspace: %s.%s", keyspaceDb, *keyspaceScope)
+			}
 			keyspaceCollection = dbContext.BucketSpec.Collection
-			// keyspaceCollection = base.StringPtr(base.DefaultCollection)
 		}
 
-		scope, foundScope := dbc.Scopes[*keyspaceScope]
+		scope, foundScope := dbContext.Scopes[*keyspaceScope]
 		var foundCollection bool
 		if foundScope {
 			_, foundCollection = scope.Collections[*keyspaceCollection]

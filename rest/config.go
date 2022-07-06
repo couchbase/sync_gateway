@@ -1361,7 +1361,7 @@ func (sc *ServerContext) fetchConfigs(isInitialStartup bool) (dbNameConfigs map[
 			cnf.KeyPath = sc.config.Bootstrap.X509KeyPath
 		}
 
-		base.TracefCtx(logCtx, base.KeyConfig, "Got config for group %q from bucket %q with cas %d", sc.config.Bootstrap.ConfigGroupID, bucket, cas)
+		base.DebugfCtx(logCtx, base.KeyConfig, "Got config for group %q from bucket %q with cas %d", sc.config.Bootstrap.ConfigGroupID, bucket, cas)
 		fetchedConfigs[cnf.Name] = cnf
 	}
 
