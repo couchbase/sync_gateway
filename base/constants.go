@@ -165,8 +165,8 @@ const (
 	// RedactedStr can be substituted in place of any sensitive data being returned by an API. The 'xxxxx' pattern is the same used by Go's url.Redacted() method.
 	RedactedStr = "xxxxx"
 
-	// MaxPrincipalNameLen indicates the maximum lenght for user or role names, and is used to validate CRUD operations
-	MaxPrincipalNameLen = 250
+	// MaxPrincipalNameLen indicates the maximum lenght for user or role names (250 minus prefix), and is used to validate CRUD
+	MaxPrincipalNameLen = 239
 )
 
 const (

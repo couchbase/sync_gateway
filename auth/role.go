@@ -105,37 +105,34 @@ func (role *roleImpl) initRole(name string, channels base.Set) error {
 // IsValidPrincipalName checks if the given user/role name would be valid. Valid names must be valid UTF-8, containing
 // at least one alphanumeric (except for the guest user), and no colons, commas, backticks, or slashes.
 func IsValidPrincipalName(name string) bool {
-	/*
-		if len(name) == 0 {
-			return true // guest user
-		}
-		if !utf8.ValidString(name) {
+	if len(name) == 0 {
+		return true // guest user
+	}
+	if !utf8.ValidString(name) {
+		return false
+	}
+	seenAnAlphanum := false
+	for _, char := range name {
+		// Reasons for forbidding each of these:
+		// colons: basic authentication uses them to separate usernames from passwords
+		// commas: fails channels.IsValidChannel, which channels.compileAccessMap uses via SetFromArray
+		// slashes: would need to make many (possibly breaking) changes to routing
+		// backticks: MB-50619
+		if char == '/' || char == ':' || char == ',' || char == '`' {
 			return false
 		}
-		seenAnAlphanum := false
-		for _, char := range name {
-			// Reasons for forbidding each of these:
-			// colons: basic authentication uses them to separate usernames from passwords
-			// commas: fails channels.IsValidChannel, which channels.compileAccessMap uses via SetFromArray
-			// slashes: would need to make many (possibly breaking) changes to routing
-			// backticks: MB-50619
-			if char == '/' || char == ':' || char == ',' || char == '`' {
-				return false
-			}
-			if !seenAnAlphanum && (unicode.IsLetter(char) || unicode.IsNumber(char)) {
-				seenAnAlphanum = true
-			}
+		if !seenAnAlphanum && (unicode.IsLetter(char) || unicode.IsNumber(char)) {
+			seenAnAlphanum = true
 		}
-		return seenAnAlphanum
-	*/
-	return ValidatePrincipalName(name, true) == nil
+	}
+	return seenAnAlphanum
 }
 
-// ValidatePrincipalName checks if the given user/role name would be valid. Valid names must be valid UTF-8, containing
-// at least one alphanumeric (except for the guest user), and no colons, commas, backticks, or slashes.  Names should
-// have a max length of 250 chars, including SG internal prefixes.  If failFast is true, the function will return when
-// the first requirement not satisfied.  This is done to maintain similar performance with previous implementation.
-// If failFast is false, it will gather all validation errors and return them as one concatenated error message.
+// ValidatePrincipalName performs the same checks as IsValidPrincipalName, but adds legth check and retuns a more
+// verbose error message.  This function is slower than IsValidPrincipalName, and should be used only for user
+// and role creation.  Names should have a max length of 239 chars, to account for SG prefixes.  If failFast is
+// true, the function will return at the first requirement not satisfied.  If false, it will gather all validation
+// errors and return them as one concatenated error message.
 func ValidatePrincipalName(name string, failFast bool) error {
 	namelen := len(name)
 	if namelen == 0 {
@@ -146,7 +143,7 @@ func ValidatePrincipalName(name string, failFast bool) error {
 	msgs := make([]string, 0, 4)
 
 	if namelen > base.MaxPrincipalNameLen {
-		const msg = "length exceeds 250" // leaving as const to avoid fmt performance (21% slower)
+		const msg = "length exceeds 239" // leaving as const to avoid fmt performance (21% slower)
 		if failFast {
 			return errors.New(validationMsg + msg)
 		}
