@@ -127,7 +127,7 @@ type Scope struct {
 }
 
 type Collection struct {
-	Datastore base.Bucket // Where data is stored for the collection
+	Datastore base.Bucket // Where data is stored for the collection - This should be changed to allow multiple collections to share the same underlying SDK connection once support for >1 collection is added.
 }
 
 type DatabaseContextOptions struct {
