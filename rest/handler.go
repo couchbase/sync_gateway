@@ -89,6 +89,8 @@ type handler struct {
 	statusMessage         string
 	requestBody           io.ReadCloser
 	db                    *db.Database
+	keyspaceScope         string
+	keyspaceCollection    string
 	user                  auth.User
 	authorizedAdminUser   string
 	privs                 handlerPrivs
@@ -432,9 +434,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 
 	// Now set the request's Database (i.e. context + user)
 	if dbContext != nil {
-		// TODO: Set keyspace fields in h for access in API handlers
-		_, _ = keyspaceScope, keyspaceCollection
-
+		h.keyspaceScope, h.keyspaceCollection = *keyspaceScope, *keyspaceCollection
 		h.db, err = db.GetDatabase(dbContext, h.user)
 		if err != nil {
 			return err
