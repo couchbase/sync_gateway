@@ -4576,7 +4576,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 			}
 
 			resp := rt.SendAdminRequest(http.MethodPut, "/db/"+docName, `{"foo":"bar"}`)
-			assertStatus(t, resp, http.StatusCreated)
+			requireStatus(t, resp, http.StatusCreated)
 
 			// Make the LeakyBucket return an error
 			leakyBucket.SetGetRawCallback(func(key string) error {
