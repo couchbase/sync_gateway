@@ -51,7 +51,11 @@ func (j JWTConfigCommon) ValidFor(issuer string, audiences audience) bool {
 		return false
 	}
 	// Nil ClientID is invalid (checked by config validation), but empty-string disables audience checking
-	if j.ClientID == nil || *j.ClientID == "" {
+	if j.ClientID == nil {
+		base.ErrorfCtx(context.Background(), "JWTConfigCommon.ClientID nil - should never happen (for issuer %v)", base.UD(j.Issuer))
+		return false
+	}
+	if *j.ClientID == "" {
 		return true
 	}
 	for _, aud := range audiences {
