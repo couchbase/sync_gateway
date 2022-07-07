@@ -93,6 +93,18 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 
 }
 
+// bucketSpecScopeAndCollection returns a scope and collection for the given bucket spec.
+func bucketSpecScopeAndCollection(spec BucketSpec) (scope string, collection string) {
+	scope, collection = DefaultScope, DefaultCollection
+	if spec.Scope != nil {
+		scope = *spec.Scope
+	}
+	if spec.Collection != nil {
+		collection = *spec.Collection
+	}
+	return scope, collection
+}
+
 func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilReadySeconds int) (*Collection, error) {
 
 	// Connect to bucket
@@ -116,14 +128,8 @@ func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilR
 	// Safe to get first node as there will always be at least one node in the list and cluster compat is uniform across all nodes.
 	clusterCompatMajor, clusterCompatMinor := decodeClusterVersion(nodesMetadata[0].ClusterCompatibility)
 
-	c := bucket.DefaultCollection()
-	if spec.Collection != nil {
-		if spec.Scope != nil {
-			c = bucket.Scope(*spec.Scope).Collection(*spec.Collection)
-		} else {
-			c = bucket.Collection(*spec.Collection)
-		}
-	}
+	specScope, specCollection := bucketSpecScopeAndCollection(spec)
+	c := cluster.Bucket(spec.BucketName).Scope(specScope).Collection(specCollection)
 
 	collection := &Collection{
 		Collection:                c,
