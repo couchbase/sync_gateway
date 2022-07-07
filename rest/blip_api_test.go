@@ -4495,6 +4495,7 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 	}
 }
 
+// Regression test for CBG-2183.
 func TestBlipRevokeNonExistentRole(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		guestEnabled: false,
