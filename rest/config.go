@@ -700,7 +700,7 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		}
 	}
 
-	seenIssuers := base.Set{}
+	seenIssuers := make(map[string]int)
 	if dbConfig.OIDCConfig != nil {
 		validProviders := len(dbConfig.OIDCConfig.Providers)
 		for name, oidc := range dbConfig.OIDCConfig.Providers {
@@ -719,13 +719,7 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 				validProviders--
 				continue
 			}
-			if _, ok := seenIssuers[oidc.Issuer]; ok {
-				multiError = multiError.Append(fmt.Errorf("duplicate OIDC/JWT issuer: %s", oidc.Issuer))
-				validProviders--
-				continue
-			} else {
-				seenIssuers.Add(oidc.Issuer)
-			}
+			seenIssuers[oidc.Issuer]++
 			if validateOIDCConfig {
 				_, _, err := oidc.DiscoverConfig(ctx)
 				if err != nil {
@@ -767,10 +761,20 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 				multiError = multiError.Append(fmt.Errorf("%s: signing algorithm %q invalid or unsupported", name, algo))
 			}
 		}
-		if _, ok := seenIssuers[local.Issuer]; ok {
-			multiError = multiError.Append(fmt.Errorf("duplicate OIDC/JWT issuer: %s", local.Issuer))
-		} else {
-			seenIssuers.Add(local.Issuer)
+		seenIssuers[local.Issuer]++
+	}
+
+	if len(seenIssuers) > 0 {
+		// CBG-2143: This should be an error but having duplicate configs is valid so this would be a breaking change
+		duplicateIssuers := make([]string, 0, len(seenIssuers))
+		for iss, count := range seenIssuers {
+			if count > 1 {
+				duplicateIssuers = append(duplicateIssuers, iss)
+			}
+		}
+		if len(duplicateIssuers) > 0 {
+			// issuer names are not UD - see https://github.com/couchbase/sync_gateway/pull/5513#discussion_r856335452 for context
+			base.WarnfCtx(ctx, "Multiple OIDC/JWT issuers have the same provider - Implicit Grant flow may use incorrect providers. Duplicate issuers: %v", duplicateIssuers)
 		}
 	}
 
