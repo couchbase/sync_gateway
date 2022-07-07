@@ -242,29 +242,29 @@ User:
       description: |-
         All the roles that the user has been granted access to.
 
-        Access could have been granted through the sync function, OpenID Connect, or explicitly on the user under the `admin_roles` property.
+        Access could have been granted through the sync function, roles_claim, or explicitly on the user under the `admin_roles` property.
       type: array
       items:
         type: string
       readOnly: true
-    oidc_roles:
-      description: The roles that the user has been added to through OpenID Connect.
+    jwt_roles:
+      description: The roles that the user has been added to through roles_claim.
       type: array
       items:
         type: string
       readOnly: true
-    oidc_channels:
-      description: The channels that the user has been granted access to through OpenID Connect.
+    jwt_channels:
+      description: The channels that the user has been granted access to through channels_claim.
       type: array
       items:
         type: string
       readOnly: true
-    oidc_issuer:
-      description: The OpenID Connect issuer that the user last used to sign in.
+    jwt_issuer:
+      description: The issuer of the last JSON Web Token that the user last used to sign in.
       type: string
       readOnly: true
-    oidc_last_updated:
-      description: The last time that the user's OIDC roles/channels were updated.
+    jwt_last_updated:
+      description: The last time that the user's JWT roles/channels were updated.
       type: string
       format: date-time
       readOnly: true

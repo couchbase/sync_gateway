@@ -753,7 +753,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			IssuedAt: jwt.NewNumericDate(time.Now()),
 			Expiry:   jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
 		}
-		wantUsername, err := getOIDCUsername(provider, &Identity{Subject: claims.Subject})
+		wantUsername, err := getJWTUsername(provider.common(), &Identity{Subject: claims.Subject})
 		assert.NoError(t, err, "Error retrieving OpenID Connect username")
 		builder := jwt.Signed(signer).Claims(claims)
 		token, err := builder.CompactSerialize()
@@ -901,7 +901,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Expiry:    jwt.NewNumericDate(time.Now().Add(1 * time.Minute)),
 			NotBefore: jwt.NewNumericDate(time.Now().Add(1 * time.Minute)),
 		}
-		wantUsername, err := getOIDCUsername(provider, &Identity{Subject: claims.Subject})
+		wantUsername, err := getJWTUsername(provider.common(), &Identity{Subject: claims.Subject})
 		assert.NoError(t, err, "Error retrieving OpenID Connect username")
 		builder := jwt.Signed(signer).Claims(claims)
 		token, err := builder.CompactSerialize()
@@ -1190,28 +1190,28 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 
 	t.Run("no provider malformed token with bad header no payload", func(t *testing.T) {
 		var providers OIDCProviderMap
-		user, _, err := auth.AuthenticateUntrustedJWT("DmBb9C5", providers, callbackURLFunc)
+		user, _, err := auth.AuthenticateUntrustedJWT("DmBb9C5", providers, LocalJWTConfig{}, callbackURLFunc)
 		assert.Error(t, err, "No provider found to authenticate token")
 		assert.Nil(t, user, "User shouldn't be created or retrieved")
 	})
 
 	t.Run("single provider malformed token with bad header no payload", func(t *testing.T) {
 		providers := OIDCProviderMap{providerGoogle.Name: providerGoogle}
-		user, _, err := auth.AuthenticateUntrustedJWT("DmBb9C5", providers, callbackURLFunc)
+		user, _, err := auth.AuthenticateUntrustedJWT("DmBb9C5", providers, LocalJWTConfig{}, callbackURLFunc)
 		assert.Error(t, err, "Error parsing malformed token")
 		assert.Nil(t, user, "User shouldn't be created or retrieved")
 	})
 
 	t.Run("multiple providers malformed token with bad header no payload", func(t *testing.T) {
 		providers := OIDCProviderMap{providerGoogle.Name: providerGoogle, providerFacebook.Name: providerFacebook}
-		user, _, err := auth.AuthenticateUntrustedJWT("DmBb9C5", providers, callbackURLFunc)
+		user, _, err := auth.AuthenticateUntrustedJWT("DmBb9C5", providers, LocalJWTConfig{}, callbackURLFunc)
 		assert.Error(t, err, "Error parsing malformed token")
 		assert.Nil(t, user, "User shouldn't be created or retrieved")
 	})
 
 	t.Run("multiple providers malformed token with bad header bad payload", func(t *testing.T) {
 		providers := OIDCProviderMap{providerGoogle.Name: providerGoogle, providerFacebook.Name: providerFacebook}
-		user, _, err := auth.AuthenticateUntrustedJWT("DmBb9C5.C#m7G#7", providers, callbackURLFunc)
+		user, _, err := auth.AuthenticateUntrustedJWT("DmBb9C5.C#m7G#7", providers, LocalJWTConfig{}, callbackURLFunc)
 		assert.Error(t, err, "Error parsing malformed token")
 		assert.Nil(t, user, "User shouldn't be created or retrieved")
 	})
@@ -1219,7 +1219,7 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 	t.Run("multiple providers malformed token with bad header bad base64 payload", func(t *testing.T) {
 		providers := OIDCProviderMap{providerGoogle.Name: providerGoogle, providerFacebook.Name: providerFacebook}
 		token := "DmBb9C5." + ToBase64String(`{"unknown":"value"}`)
-		user, _, err := auth.AuthenticateUntrustedJWT(token, providers, callbackURLFunc)
+		user, _, err := auth.AuthenticateUntrustedJWT(token, providers, LocalJWTConfig{}, callbackURLFunc)
 		assert.Error(t, err, "Error parsing malformed token")
 		assert.Nil(t, user, "User shouldn't be created or retrieved")
 	})
@@ -1229,7 +1229,7 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 		builder := jwt.Signed(signer).Claims(jwt.Claims{})
 		token, err := builder.CompactSerialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
-		user, _, err := auth.AuthenticateUntrustedJWT(token, providers, callbackURLFunc)
+		user, _, err := auth.AuthenticateUntrustedJWT(token, providers, LocalJWTConfig{}, callbackURLFunc)
 		require.Error(t, err, "Error getting issuer and audience from token")
 		assert.Nil(t, user, "User shouldn't be created or retrieved")
 	})
@@ -1239,7 +1239,7 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 		builder := jwt.Signed(signer).Claims(jwt.Claims{Issuer: issuerGoogleAccounts})
 		token, err := builder.CompactSerialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
-		user, _, err := auth.AuthenticateUntrustedJWT(token, providers, callbackURLFunc)
+		user, _, err := auth.AuthenticateUntrustedJWT(token, providers, LocalJWTConfig{}, callbackURLFunc)
 		require.Error(t, err, "Error getting issuer and audience from token")
 		assert.Nil(t, user, "User shouldn't be created or retrieved")
 	})
@@ -1249,7 +1249,7 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 		builder := jwt.Signed(signer).Claims(jwt.Claims{Issuer: issuerGoogleAccounts, Audience: jwt.Audience{}})
 		token, err := builder.CompactSerialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
-		user, _, err := auth.AuthenticateUntrustedJWT(token, providers, callbackURLFunc)
+		user, _, err := auth.AuthenticateUntrustedJWT(token, providers, LocalJWTConfig{}, callbackURLFunc)
 		require.Error(t, err, "Error getting issuer and audience from token")
 		assert.Nil(t, user, "User shouldn't be created or retrieved")
 	})
@@ -1259,7 +1259,7 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 		builder := jwt.Signed(signer).Claims(jwt.Claims{Audience: jwt.Audience{"aud1", "aud2", "aud3"}})
 		token, err := builder.CompactSerialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
-		user, _, err := auth.AuthenticateUntrustedJWT(token, providers, callbackURLFunc)
+		user, _, err := auth.AuthenticateUntrustedJWT(token, providers, LocalJWTConfig{}, callbackURLFunc)
 		require.Error(t, err, "Error getting issuer and audience from token")
 		assert.Nil(t, user, "User shouldn't be created or retrieved")
 	})
@@ -1269,7 +1269,7 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 		builder := jwt.Signed(signer).Claims(jwt.Claims{Issuer: issuerAmazonAccounts, Audience: jwt.Audience{"aud1"}})
 		token, err := builder.CompactSerialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
-		user, _, err := auth.AuthenticateUntrustedJWT(token, providers, callbackURLFunc)
+		user, _, err := auth.AuthenticateUntrustedJWT(token, providers, LocalJWTConfig{}, callbackURLFunc)
 		require.Error(t, err, "No provider found against the configured issuer")
 		assert.Nil(t, user, "User shouldn't be created or retrieved")
 	})
@@ -1279,7 +1279,7 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 		builder := jwt.Signed(signer).Claims(jwt.Claims{Issuer: issuerGoogleAccounts, Audience: jwt.Audience{"aud2"}})
 		token, err := builder.CompactSerialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
-		user, _, err := auth.AuthenticateUntrustedJWT(token, providers, callbackURLFunc)
+		user, _, err := auth.AuthenticateUntrustedJWT(token, providers, LocalJWTConfig{}, callbackURLFunc)
 		require.Error(t, err, "No provider found against the configured issuer")
 		assert.Nil(t, user, "User shouldn't be created or retrieved")
 	})
@@ -1308,7 +1308,7 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 		builder := jwt.Signed(signer).Claims(claims)
 		token, err := builder.CompactSerialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
-		user, _, err := auth.AuthenticateUntrustedJWT(token, providers, callbackURLFunc)
+		user, _, err := auth.AuthenticateUntrustedJWT(token, providers, LocalJWTConfig{}, callbackURLFunc)
 		assert.Error(t, err, "Error authenticating with trusted JWT")
 		assert.Nil(t, user, "User shouldn't be returned without signature verification")
 	})

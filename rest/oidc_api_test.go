@@ -2369,11 +2369,11 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	base.DebugfCtx(base.TestCtx(t), base.KeyAll, "User data from admin API: %v", adminResult)
 
 	assert.Equal(t, subject, adminResult["name"])
-	assert.Equal(t, mockAuthServer.options.issuer, adminResult["oidc_issuer"])
-	assert.Equal(t, []interface{}{testChannelName}, adminResult["oidc_channels"])
-	assert.NotEmpty(t, adminResult["oidc_last_updated"])
+	assert.Equal(t, mockAuthServer.options.issuer, adminResult["jwt_issuer"])
+	assert.Equal(t, []interface{}{testChannelName}, adminResult["jwt_channels"])
+	assert.NotEmpty(t, adminResult["jwt_last_updated"])
 	// check it's a valid time
-	_, err = time.Parse(time.RFC3339Nano, adminResult["oidc_last_updated"].(string))
+	_, err = time.Parse(time.RFC3339Nano, adminResult["jwt_last_updated"].(string))
 	require.NoError(t, err)
 
 	// Now simulate deleting the provider from the config.
@@ -2401,7 +2401,7 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	require.NoError(t, json.NewDecoder(res.Body).Decode(&adminResult))
 	base.DebugfCtx(base.TestCtx(t), base.KeyAll, "User data from admin API: %v", adminResult)
 
-	assert.NotContains(t, adminResult, "oidc_issuer", "Expected to not have oidc_issuer in /_user response")
+	assert.NotContains(t, adminResult, "jwt_issuer", "Expected to not have jwt_issuer in /_user response")
 
 	// Check that the user can't authenticate anymore
 	req, err = http.NewRequest(http.MethodPost, bootstrapURL(publicPort)+"/db/_session", bytes.NewBufferString("{}"))

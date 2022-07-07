@@ -43,7 +43,7 @@ func (db *DatabaseContext) DeleteRole(ctx context.Context, name string, purge bo
 // UpdatePrincipal updates or creates a principal from a PrincipalConfig structure.
 func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.PrincipalConfig, isUser bool, allowReplace bool) (replaced bool, err error) {
 	// Sanity checking
-	if !base.AllOrNoneNil(updates.OIDCIssuer, updates.OIDCRoles, updates.OIDCChannels, updates.OIDCLastUpdated) {
+	if !base.AllOrNoneNil(updates.JWTIssuer, updates.JWTRoles, updates.JWTChannels, updates.JWTLastUpdated) {
 		return false, fmt.Errorf("must either specify all OIDC properties or none")
 	}
 
@@ -116,7 +116,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 			changed = true
 		}
 
-		var updatedExplicitRoles, updatedOIDCRoles, updatedOIDCChannels ch.TimedSet
+		var updatedExplicitRoles, updatedJWTRoles, updatedJWTChannels ch.TimedSet
 
 		// Then the user-specific fields like roles:
 		if isUser {
@@ -146,28 +146,28 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 				changed = true
 			}
 
-			if updates.OIDCIssuer != nil && *updates.OIDCIssuer != user.OIDCIssuer() {
-				user.SetOIDCIssuer(*updates.OIDCIssuer)
+			if updates.JWTIssuer != nil && *updates.JWTIssuer != user.JWTIssuer() {
+				user.SetJWTIssuer(*updates.JWTIssuer)
 				changed = true
 			}
 
-			updatedOIDCRoles = user.OIDCRoles()
-			if updatedOIDCRoles == nil {
-				updatedOIDCRoles = ch.TimedSet{}
+			updatedJWTRoles = user.JWTRoles()
+			if updatedJWTRoles == nil {
+				updatedJWTRoles = ch.TimedSet{}
 			}
-			if updates.OIDCRoles != nil && !updatedOIDCRoles.Equals(updates.OIDCRoles) {
+			if updates.JWTRoles != nil && !updatedJWTRoles.Equals(updates.JWTRoles) {
 				changed = true
 			}
 
-			updatedOIDCChannels = user.OIDCChannels()
-			if updatedOIDCChannels == nil {
-				updatedOIDCChannels = ch.TimedSet{}
+			updatedJWTChannels = user.JWTChannels()
+			if updatedJWTChannels == nil {
+				updatedJWTChannels = ch.TimedSet{}
 			}
-			if updates.OIDCChannels != nil && !updatedOIDCChannels.Equals(updates.OIDCChannels) {
+			if updates.JWTChannels != nil && !updatedJWTChannels.Equals(updates.JWTChannels) {
 				changed = true
 			}
 
-			if updates.OIDCLastUpdated != nil && !user.OIDCLastUpdated().Equal(*updates.OIDCLastUpdated) {
+			if updates.JWTLastUpdated != nil && !user.JWTLastUpdated().Equal(*updates.JWTLastUpdated) {
 				changed = true
 			}
 		}
@@ -195,14 +195,14 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 			if updates.ExplicitRoleNames != nil && updatedExplicitRoles.UpdateAtSequence(updates.ExplicitRoleNames, nextSeq) {
 				user.SetExplicitRoles(updatedExplicitRoles, nextSeq)
 			}
-			if updates.OIDCRoles != nil && updatedOIDCRoles.UpdateAtSequence(updates.OIDCRoles, nextSeq) {
-				user.SetOIDCRoles(updatedOIDCRoles, nextSeq)
+			if updates.JWTRoles != nil && updatedJWTRoles.UpdateAtSequence(updates.JWTRoles, nextSeq) {
+				user.SetJWTRoles(updatedJWTRoles, nextSeq)
 			}
-			if updates.OIDCChannels != nil && updatedOIDCChannels.UpdateAtSequence(updates.OIDCChannels, nextSeq) {
-				user.SetOIDCChannels(updatedOIDCChannels, nextSeq)
+			if updates.JWTChannels != nil && updatedJWTChannels.UpdateAtSequence(updates.JWTChannels, nextSeq) {
+				user.SetJWTChannels(updatedJWTChannels, nextSeq)
 			}
-			if updates.OIDCLastUpdated != nil {
-				user.SetOIDCLastUpdated(*updates.OIDCLastUpdated)
+			if updates.JWTLastUpdated != nil {
+				user.SetJWTLastUpdated(*updates.JWTLastUpdated)
 			}
 		}
 		err = authenticator.Save(princ)

@@ -413,12 +413,12 @@ func (op *OIDCProvider) standardDiscovery(ctx context.Context, discoveryURL stri
 	return metadata, verifier, err
 }
 
-// getOIDCUsername returns the username to be used as the Sync Gateway username.
-func getOIDCUsername(provider *OIDCProvider, identity *Identity) (username string, err error) {
+// getJWTUsername returns the username to be used as the Sync Gateway username.
+func getJWTUsername(provider JWTConfigCommon, identity *Identity) (username string, err error) {
 	if provider.UsernameClaim != "" {
 		value, ok := identity.Claims[provider.UsernameClaim]
 		if !ok {
-			return "", fmt.Errorf("oidc: specified claim %q not found in id_token, identity: %v", provider.UsernameClaim, identity)
+			return "", fmt.Errorf("jwt: specified claim %q not found in id_token, identity: %v", provider.UsernameClaim, identity)
 		}
 		if username, err = formatUsername(value); err != nil {
 			return "", err
@@ -616,8 +616,37 @@ func (metadata *ProviderMetadata) endpoint() oauth2.Endpoint {
 	}
 }
 
+func (op *OIDCProvider) verifyToken(ctx context.Context, token string, callbackURLFunc OIDCCallbackURLFunc) (*Identity, error) {
+	// Get client for issuer
+	client, err := op.GetClient(ctx, callbackURLFunc)
+	if err != nil {
+		return nil, fmt.Errorf("OIDC initialization error: %w", err)
+	}
+
+	// Verify claims and signature on the JWT; ensure that it's been signed by the provider.
+	idToken, err := client.verifyJWT(token)
+	if err != nil {
+		base.DebugfCtx(ctx, base.KeyAuth, "Client %v could not verify JWT. Error: %v", base.UD(client), err)
+		return nil, err
+	}
+
+	identity, ok, err := getIdentity(idToken)
+	if err != nil {
+		base.DebugfCtx(ctx, base.KeyAuth, "Error getting identity from token (Identity: %v, Error: %v)", base.UD(identity), err)
+	}
+	if !ok {
+		return nil, err
+	}
+
+	return identity, nil
+}
+
+func (op *OIDCProvider) common() JWTConfigCommon {
+	return op.JWTConfigCommon
+}
+
 // getIssuerWithAudience returns "issuer" and "audiences" claims from the given JSON Web Token.
-// Returns malformed oidc token error when issuer/audience doesn't exist in token.
+// Returns an error if issuer is not present, returns an empty []string when audience is not present.
 func getIssuerWithAudience(token *jwt.JSONWebToken) (issuer string, audiences []string, err error) {
 	claims := &jwt.Claims{}
 	err = token.UnsafeClaimsWithoutVerification(claims)
@@ -625,10 +654,7 @@ func getIssuerWithAudience(token *jwt.JSONWebToken) (issuer string, audiences []
 		return issuer, audiences, pkgerrors.Wrapf(err, "failed to parse JWT claims")
 	}
 	if claims.Issuer == "" {
-		return issuer, audiences, fmt.Errorf("malformed oidc token %v, issuer claim doesn't exist", token)
-	}
-	if claims.Audience == nil || len(claims.Audience) == 0 {
-		return issuer, audiences, fmt.Errorf("malformed oidc token %v, audience claim doesn't exist", token)
+		return issuer, audiences, fmt.Errorf("malformed JWT %v, issuer claim doesn't exist", token)
 	}
 	return claims.Issuer, claims.Audience, err
 }

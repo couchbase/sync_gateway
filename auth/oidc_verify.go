@@ -16,9 +16,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/coreos/go-oidc"
 	"strings"
 	"time"
+
+	"github.com/coreos/go-oidc"
+	"gopkg.in/square/go-jose.v2/jwt"
 
 	"github.com/couchbase/sync_gateway/base"
 	pkgerrors "github.com/pkg/errors"
@@ -49,6 +51,20 @@ type IdentityJson struct {
 	NotBefore *jsonTime              `json:"nbf"`
 	Email     string                 `json:"email"`
 	Claims    map[string]interface{} `json:"-"`
+}
+
+func (i IdentityJson) ToClaims() jwt.Claims {
+	claims := jwt.Claims{
+		Issuer:   i.Issuer,
+		Subject:  i.Subject,
+		Audience: jwt.Audience(i.Audience),
+		Expiry:   jwt.NewNumericDate(time.Time(i.Expiry)),
+		IssuedAt: jwt.NewNumericDate(time.Time(i.IssuedAt)),
+	}
+	if i.NotBefore != nil {
+		claims.NotBefore = jwt.NewNumericDate(time.Time(*i.NotBefore))
+	}
+	return claims
 }
 
 // UnmarshalIdentityJSON raw claim bytes as IdentityJson

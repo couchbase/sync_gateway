@@ -323,8 +323,8 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	// If the user has OIDC roles/channels configured, we need to check if the OIDC issuer they came from is still valid.
 	// Note: checkAuth already does this check if the user authenticates with a bearer token, but we still need to recheck
 	// for users using session tokens / basic auth. However, updatePrincipal will be idempotent.
-	if h.user != nil && h.user.OIDCIssuer() != "" {
-		updates := checkOIDCIssuerStillValid(h.ctx(), dbContext, h.user)
+	if h.user != nil && h.user.JWTIssuer() != "" {
+		updates := checkJWTIssuerStillValid(h.ctx(), dbContext, h.user)
 		if updates != nil {
 			_, err := dbContext.UpdatePrincipal(h.ctx(), updates, true, true)
 			if err != nil {
@@ -503,14 +503,14 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 	}(time.Now())
 
 	// If oidc enabled, check for bearer ID token
-	if dbCtx.Options.OIDCOptions != nil {
+	if dbCtx.Options.OIDCOptions != nil || len(dbCtx.Options.LocalJWTConfig) > 0 {
 		if token := h.getBearerToken(); token != "" {
 			var updates auth.PrincipalConfig
-			h.user, updates, err = dbCtx.Authenticator(h.ctx()).AuthenticateUntrustedJWT(token, dbCtx.OIDCProviders, h.getOIDCCallbackURL)
+			h.user, updates, err = dbCtx.Authenticator(h.ctx()).AuthenticateUntrustedJWT(token, dbCtx.OIDCProviders, dbCtx.Options.LocalJWTConfig, h.getOIDCCallbackURL)
 			if h.user == nil || err != nil {
 				return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 			}
-			if changes := checkOIDCIssuerStillValid(h.ctx(), dbCtx, h.user); changes != nil {
+			if changes := checkJWTIssuerStillValid(h.ctx(), dbCtx, h.user); changes != nil {
 				updates = updates.Merge(*changes)
 			}
 			_, err := dbCtx.UpdatePrincipal(h.ctx(), &updates, true, true)
@@ -583,8 +583,8 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 	return nil
 }
 
-func checkOIDCIssuerStillValid(ctx context.Context, dbCtx *db.DatabaseContext, user auth.User) *auth.PrincipalConfig {
-	issuer := user.OIDCIssuer()
+func checkJWTIssuerStillValid(ctx context.Context, dbCtx *db.DatabaseContext, user auth.User) *auth.PrincipalConfig {
+	issuer := user.JWTIssuer()
 	if issuer == "" {
 		return nil
 	}
@@ -596,13 +596,19 @@ func checkOIDCIssuerStillValid(ctx context.Context, dbCtx *db.DatabaseContext, u
 			break
 		}
 	}
+	for _, provider := range dbCtx.Options.LocalJWTConfig {
+		if provider.Issuer == issuer {
+			providerStillValid = true
+			break
+		}
+	}
 	if !providerStillValid {
 		base.InfofCtx(ctx, base.KeyAuth, "User %v uses OIDC issuer %v which is no longer configured. Revoking OIDC roles/channels.", base.UD(user.Name()), base.UD(issuer))
 		return &auth.PrincipalConfig{
-			Name:         base.StringPtr(user.Name()),
-			OIDCIssuer:   base.StringPtr(""),
-			OIDCRoles:    base.Set{},
-			OIDCChannels: base.Set{},
+			Name:        base.StringPtr(user.Name()),
+			JWTIssuer:   base.StringPtr(""),
+			JWTRoles:    base.Set{},
+			JWTChannels: base.Set{},
 		}
 	}
 	return nil

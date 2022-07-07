@@ -193,14 +193,14 @@ func TestOIDCUsername(t *testing.T) {
 
 	// test username suffix
 	identity := Identity{Subject: "bernard"}
-	oidcUsername, err := getOIDCUsername(&provider, &identity)
+	oidcUsername, err := getJWTUsername(provider.common(), &identity)
 	assert.NoError(t, err, "Error retrieving OpenID Connect username")
 	assert.Equal(t, "www.someprovider.com_bernard", oidcUsername)
 	assert.Equal(t, true, IsValidPrincipalName(oidcUsername))
 
 	// test char escaping
 	identity.Subject = "{bernard}"
-	oidcUsername, err = getOIDCUsername(&provider, &identity)
+	oidcUsername, err = getJWTUsername(provider.common(), &identity)
 	assert.NoError(t, err, "Error retrieving OpenID Connect username")
 	assert.Equal(t, "www.someprovider.com_%7Bbernard%7D", oidcUsername)
 	assert.Equal(t, true, IsValidPrincipalName(oidcUsername))
@@ -1000,7 +1000,7 @@ func TestFormatUsername(t *testing.T) {
 	}
 }
 
-func TestOIDCRolesChannels(t *testing.T) {
+func TestJWTRolesChannels(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth, base.KeyAccess)
 	const (
 		testUserPrefix = "foo"
@@ -1231,12 +1231,12 @@ func TestOIDCRolesChannels(t *testing.T) {
 					Claims:  login.claims,
 				}
 				var updates PrincipalConfig
-				user, updates, _, err = auth.authenticateOIDCIdentity(identity, provider)
+				user, updates, _, err = auth.authenticateJWTIdentity(identity, provider.common())
 				require.NoError(t, err, "error on authenticateOIDCIdentity")
 				require.NotNil(t, user, "nil user")
-				user.SetOIDCChannels(ch.AtSequence(updates.OIDCChannels, user.Sequence()), user.Sequence())
-				user.SetOIDCRoles(ch.AtSequence(updates.OIDCRoles, user.Sequence()), user.Sequence())
-				user.SetOIDCLastUpdated(*updates.OIDCLastUpdated)
+				user.SetJWTChannels(ch.AtSequence(updates.JWTChannels, user.Sequence()), user.Sequence())
+				user.SetJWTRoles(ch.AtSequence(updates.JWTRoles, user.Sequence()), user.Sequence())
+				user.SetJWTLastUpdated(*updates.JWTLastUpdated)
 
 				require.NoError(t, auth.rebuildRoles(user))
 				require.NoError(t, auth.rebuildChannels(user))
@@ -1248,8 +1248,8 @@ func TestOIDCRolesChannels(t *testing.T) {
 				}
 				require.Equal(t, base.SetFromArray(login.expectedChannels), user.Channels().AsSet())
 
-				require.Greater(t, user.OIDCLastUpdated(), lastUpdateTime)
-				lastUpdateTime = user.OIDCLastUpdated()
+				require.Greater(t, user.JWTLastUpdated(), lastUpdateTime)
+				lastUpdateTime = user.JWTLastUpdated()
 			}
 		})
 	}

@@ -1,6 +1,13 @@
 package auth
 
 import (
+	"context"
+	"errors"
+	"fmt"
+	"net/url"
+
+	"github.com/coreos/go-oidc"
+	"github.com/couchbase/sync_gateway/base"
 	"gopkg.in/square/go-jose.v2"
 )
 
@@ -38,16 +45,150 @@ type JWTConfigCommon struct {
 	ChannelsClaim string `json:"channels_claim"`
 }
 
+// ValidFor returns whether the issuer matches, and one of the audiences matches
+func (j JWTConfigCommon) ValidFor(issuer string, audiences audience) bool {
+	if j.Issuer != issuer {
+		return false
+	}
+	// Nil ClientID is invalid (checked by config validation), but empty-string disables audience checking
+	if j.ClientID == nil {
+		base.ErrorfCtx(context.Background(), "JWTConfigCommon.ClientID nil - should never happen (for issuer %v)", base.UD(j.Issuer))
+		return false
+	}
+	if *j.ClientID == "" {
+		return true
+	}
+	for _, aud := range audiences {
+		if aud == *j.ClientID {
+			return true
+		}
+	}
+	return false
+}
+
+var ErrNoMatchingProvider = errors.New("no matching OIDC/JWT provider")
+
 type (
 	JWTAlgorithm string
 	JWTAlgList   []JWTAlgorithm
 )
 
+// JWK 'use' value
+const keyUseSigning = "sig"
+
+// JSONWebKeys implements oidc.KeySet for an in-memory JSONWebKey array.
+type JSONWebKeys []jose.JSONWebKey
+
+func (j JSONWebKeys) VerifySignature(ctx context.Context, jwt string) (payload []byte, err error) {
+	jws, err := jose.ParseSigned(jwt)
+	if err != nil {
+		return nil, err
+	}
+
+	switch len(jws.Signatures) {
+	case 0:
+		base.DebugfCtx(ctx, base.KeyAuth, "Rejecting JWT - not signed")
+		return nil, fmt.Errorf("JWT not signed")
+	case 1:
+	default:
+		base.DebugfCtx(ctx, base.KeyAuth, "Rejecting JWT - multiple signatures on JWT not supported")
+		return nil, fmt.Errorf("multiple signatures on JWT not supported")
+	}
+
+	jwtHeaderKID := jws.Signatures[0].Header.KeyID
+	jwtHeaderALG := jws.Signatures[0].Header.Algorithm
+
+	if jwtHeaderKID == "" && len(j) != 1 {
+		base.DebugfCtx(ctx, base.KeyAuth, "Rejecting JWT - no 'kid' specified and multiple keys configured")
+		return nil, fmt.Errorf("no 'kid' specified and multiple keys configured")
+	}
+
+	for i, key := range j {
+		if jwtHeaderKID != "" && jwtHeaderKID != key.KeyID {
+			continue
+		}
+		if jwtHeaderALG != key.Algorithm {
+			continue
+		}
+		if key.Use != "" && key.Use != keyUseSigning {
+			continue
+		}
+		payload, err := jws.Verify(&j[i])
+		if err != nil {
+			base.DebugfCtx(ctx, base.KeyAuth, "Rejecting JWT - JWS verify failed: %v", err)
+			return nil, err
+		}
+		return payload, nil
+	}
+
+	base.DebugfCtx(ctx, base.KeyAuth, "Rejecting JWT - no matching keys found (token alg: %s, kid: %v)", jwtHeaderALG, base.UD(jwtHeaderKID))
+	return nil, errors.New("failed to verify id token signature")
+}
+
 type LocalJWTAuthProvider struct {
 	JWTConfigCommon
 
-	Algorithms JWTAlgList        `json:"algorithms"`
-	Keys       []jose.JSONWebKey `json:"keys"`
+	Algorithms      []string    `json:"algorithms"`
+	Keys            JSONWebKeys `json:"keys"`
+	SkipExpiryCheck *bool       `json:"skip_expiry_check"`
+}
+
+func (l *LocalJWTAuthProvider) verifyToken(ctx context.Context, token string, _ OIDCCallbackURLFunc) (*Identity, error) {
+	verifier := oidc.NewVerifier(l.Issuer, l.Keys, &oidc.Config{
+		ClientID:             *l.ClientID,
+		SkipClientIDCheck:    *l.ClientID == "",
+		SupportedSigningAlgs: l.Algorithms,
+		SkipExpiryCheck:      base.BoolDefault(l.SkipExpiryCheck, false),
+	})
+
+	idToken, err := verifier.Verify(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+	base.DebugfCtx(ctx, base.KeyAuth, "Local JWT ID Token successfully parsed and verified (iss: %v; sub: %v)", base.UD(idToken.Issuer), base.UD(idToken.Subject))
+
+	var claims map[string]interface{}
+	if err := idToken.Claims(&claims); err != nil {
+		base.WarnfCtx(ctx, "Failed to unmarshal ID token claims: %v", err)
+	}
+	email, _ := claims["email"].(string)
+	return &Identity{
+		Issuer:   idToken.Issuer,
+		Audience: idToken.Audience,
+		Subject:  idToken.Subject,
+		Expiry:   idToken.Expiry,
+		IssuedAt: idToken.IssuedAt,
+		Email:    email,
+		Claims:   claims,
+	}, nil
+}
+
+func (l *LocalJWTAuthProvider) common() JWTConfigCommon {
+	return l.JWTConfigCommon
+}
+
+func (l *LocalJWTAuthProvider) InitUserPrefix(ctx context.Context, name string) {
+	if l.UserPrefix != "" || l.UsernameClaim != "" {
+		return
+	}
+
+	issuerURL, err := url.ParseRequestURI(l.Issuer)
+	if err != nil {
+		base.WarnfCtx(ctx, "Unable to parse issuer URI when initializing user prefix - using provider name")
+		l.UserPrefix = name
+		return
+	}
+	l.UserPrefix = issuerURL.Host + issuerURL.Path
+
+	// If the prefix contains forward slash or underscore, it's not valid as-is for a username: forward slash
+	// breaks the REST API, underscore breaks uniqueness of "[prefix]_[sub]".  URL encode the prefix to cover
+	// this scenario
+	l.UserPrefix = url.QueryEscape(l.UserPrefix)
 }
 
 type LocalJWTConfig map[string]*LocalJWTAuthProvider
+
+type jwtAuthenticator interface {
+	verifyToken(ctx context.Context, token string, callbackURLFunc OIDCCallbackURLFunc) (*Identity, error)
+	common() JWTConfigCommon
+}

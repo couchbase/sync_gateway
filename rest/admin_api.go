@@ -1198,12 +1198,12 @@ func marshalPrincipal(princ auth.Principal, includeDynamicGrantInfo bool) auth.P
 		if includeDynamicGrantInfo {
 			info.Channels = user.InheritedChannels().AsSet()
 			info.RoleNames = user.RoleNames().AllKeys()
-			info.OIDCIssuer = base.StringPtr(user.OIDCIssuer())
-			info.OIDCRoles = user.OIDCRoles().AsSet()
-			info.OIDCChannels = user.OIDCChannels().AsSet()
-			lastUpdated := user.OIDCLastUpdated()
+			info.JWTIssuer = base.StringPtr(user.JWTIssuer())
+			info.JWTRoles = user.JWTRoles().AsSet()
+			info.JWTChannels = user.JWTChannels().AsSet()
+			lastUpdated := user.JWTLastUpdated()
 			if !lastUpdated.IsZero() {
-				info.OIDCLastUpdated = &lastUpdated
+				info.JWTLastUpdated = &lastUpdated
 			}
 		}
 	} else {
@@ -1240,7 +1240,7 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	}
 
 	// NB: other read-only properties are ignored but no error is returned for backwards-compatibility
-	if newInfo.OIDCIssuer != nil || len(newInfo.OIDCRoles) > 0 || len(newInfo.OIDCChannels) > 0 {
+	if newInfo.JWTIssuer != nil || len(newInfo.JWTRoles) > 0 || len(newInfo.JWTChannels) > 0 {
 		return base.HTTPErrorf(http.StatusBadRequest, "Can't change read-only properties")
 	}
 
@@ -1317,19 +1317,19 @@ func (h *handler) getUserInfo() error {
 	info := marshalPrincipal(user, includeDynamicGrantInfo)
 	// If the user's OIDC issuer is no longer valid, remove the OIDC information to avoid confusing users
 	// (it'll get removed permanently the next time the user signs in)
-	if info.OIDCIssuer != nil {
+	if info.JWTIssuer != nil {
 		issuerValid := false
 		for _, provider := range h.db.OIDCProviders {
-			if provider.Issuer == *info.OIDCIssuer {
+			if provider.Issuer == *info.JWTIssuer {
 				issuerValid = true
 				break
 			}
 		}
 		if !issuerValid {
-			info.OIDCIssuer = nil
-			info.OIDCLastUpdated = nil
-			info.OIDCRoles = nil
-			info.OIDCChannels = nil
+			info.JWTIssuer = nil
+			info.JWTLastUpdated = nil
+			info.JWTRoles = nil
+			info.JWTChannels = nil
 		}
 	}
 	bytes, err := base.JSONMarshal(info)

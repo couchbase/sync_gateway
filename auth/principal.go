@@ -26,7 +26,7 @@ type Principal interface {
 
 	// The set of channels the Principal belongs to, and what sequence access was granted.
 	// Returns nil if invalidated.
-	// For both roles and users, the set of channels is the union of ExplicitChannels, OIDCChannels, and any channels
+	// For both roles and users, the set of channels is the union of ExplicitChannels, JWTChannels, and any channels
 	// they are granted through a sync function.
 	//
 	// NOTE: channels a user has access to through a role are *not* included in Channels(), so the user could have
@@ -108,7 +108,7 @@ type User interface {
 	// Changes the user's password.
 	SetPassword(password string) error
 
-	// The set of Roles the user belongs to (including ones given to it by the sync function and by OIDC)
+	// The set of Roles the user belongs to (including ones given to it by the sync function and by OIDC/JWT)
 	// Returns nil if invalidated
 	RoleNames() ch.TimedSet
 
@@ -118,14 +118,14 @@ type User interface {
 	// Sets the explicit roles the user belongs to.
 	SetExplicitRoles(ch.TimedSet, uint64)
 
-	OIDCRoles() ch.TimedSet
-	SetOIDCRoles(ch.TimedSet, uint64)
-	OIDCChannels() ch.TimedSet
-	SetOIDCChannels(ch.TimedSet, uint64)
-	OIDCIssuer() string
-	SetOIDCIssuer(string)
-	OIDCLastUpdated() time.Time
-	SetOIDCLastUpdated(time.Time)
+	JWTRoles() ch.TimedSet
+	SetJWTRoles(ch.TimedSet, uint64)
+	JWTChannels() ch.TimedSet
+	SetJWTChannels(ch.TimedSet, uint64)
+	JWTIssuer() string
+	SetJWTIssuer(string)
+	JWTLastUpdated() time.Time
+	SetJWTLastUpdated(time.Time)
 
 	GetRoleInvalSeq() uint64
 
@@ -174,12 +174,12 @@ type PrincipalConfig struct {
 	Password          *string  `json:"password,omitempty"`
 	ExplicitRoleNames base.Set `json:"admin_roles,omitempty"`
 	// Fields below are read-only
-	Channels        base.Set   `json:"all_channels,omitempty"`
-	RoleNames       []string   `json:"roles,omitempty"`
-	OIDCIssuer      *string    `json:"oidc_issuer,omitempty"`
-	OIDCRoles       base.Set   `json:"oidc_roles,omitempty"`
-	OIDCChannels    base.Set   `json:"oidc_channels,omitempty"`
-	OIDCLastUpdated *time.Time `json:"oidc_last_updated,omitempty"`
+	Channels       base.Set   `json:"all_channels,omitempty"`
+	RoleNames      []string   `json:"roles,omitempty"`
+	JWTIssuer      *string    `json:"jwt_issuer,omitempty"`
+	JWTRoles       base.Set   `json:"jwt_roles,omitempty"`
+	JWTChannels    base.Set   `json:"jwt_channels,omitempty"`
+	JWTLastUpdated *time.Time `json:"jwt_last_updated,omitempty"`
 }
 
 // IsPasswordValid checks if the passwords in this PrincipalConfig is valid.  Only allows
@@ -225,9 +225,9 @@ func (u PrincipalConfig) Merge(other PrincipalConfig) PrincipalConfig {
 		Password:          base.CoalesceStrings(other.Password, u.Password),
 		Disabled:          base.CoalesceBools(other.Disabled, u.Disabled),
 		ExplicitRoleNames: base.CoalesceSets(other.ExplicitRoleNames, u.ExplicitRoleNames),
-		OIDCIssuer:        base.CoalesceStrings(other.OIDCIssuer, u.OIDCIssuer),
-		OIDCRoles:         base.CoalesceSets(other.OIDCRoles, u.OIDCRoles),
-		OIDCChannels:      base.CoalesceSets(other.OIDCChannels, u.OIDCChannels),
-		OIDCLastUpdated:   base.CoalesceTimes(other.OIDCLastUpdated, u.OIDCLastUpdated),
+		JWTIssuer:         base.CoalesceStrings(other.JWTIssuer, u.JWTIssuer),
+		JWTRoles:          base.CoalesceSets(other.JWTRoles, u.JWTRoles),
+		JWTChannels:       base.CoalesceSets(other.JWTChannels, u.JWTChannels),
+		JWTLastUpdated:    base.CoalesceTimes(other.JWTLastUpdated, u.JWTLastUpdated),
 	}
 }
