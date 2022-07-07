@@ -1444,7 +1444,7 @@ func TestOnDemandWriteImportReplacingNullDoc(t *testing.T) {
 	mobileBodyMarshalled, err := base.JSONMarshal(mobileBody)
 	assert.NoError(t, err, "Error marshalling body")
 	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", key), string(mobileBodyMarshalled))
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 
 }
 
@@ -2359,9 +2359,9 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 				return
 			}
 			if test.expectedStatusCode != nil {
-				assertStatus(rt.tb, resp, *test.expectedStatusCode)
+				requireStatus(rt.tb, resp, *test.expectedStatusCode)
 			} else {
-				assertStatus(rt.tb, resp, 200)
+				requireStatus(rt.tb, resp, 200)
 			}
 			var body db.Body
 			require.NoError(rt.tb, base.JSONUnmarshal(resp.Body.Bytes(), &body))

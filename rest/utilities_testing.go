@@ -629,7 +629,7 @@ func (rt *RestTester) WaitForViewAvailable(viewURLPath string) (err error) {
 func (rt *RestTester) GetDBState() string {
 	var body db.Body
 	resp := rt.SendAdminRequest("GET", "/db/", "")
-	assertStatus(rt.tb, resp, 200)
+	requireStatus(rt.tb, resp, 200)
 	require.NoError(rt.tb, base.JSONUnmarshal(resp.Body.Bytes(), &body))
 	return body["state"].(string)
 }
@@ -756,7 +756,7 @@ func requestByUser(method, resource, body, username string) *http.Request {
 	return r
 }
 
-func assertStatus(t testing.TB, response *TestResponse, expectedStatus int) {
+func requireStatus(t testing.TB, response *TestResponse, expectedStatus int) {
 	require.Equalf(t, expectedStatus, response.Code,
 		"Response status %d %q (expected %d %q)\nfor %s <%s> : %s",
 		response.Code, http.StatusText(response.Code),

@@ -27,19 +27,19 @@ type putDocResponse struct {
 
 func (rt *RestTester) getDoc(docID string) (body db.Body) {
 	rawResponse := rt.SendAdminRequest("GET", "/db/"+docID, "")
-	assertStatus(rt.tb, rawResponse, 200)
+	requireStatus(rt.tb, rawResponse, 200)
 	require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
 	return body
 }
 
 func (rt *RestTester) requireDocNotFound(docID string) {
 	rawResponse := rt.SendAdminRequest(http.MethodGet, "/db/"+docID, "")
-	assertStatus(rt.tb, rawResponse, http.StatusNotFound)
+	requireStatus(rt.tb, rawResponse, http.StatusNotFound)
 }
 
 func (rt *RestTester) putDoc(docID string, body string) (response putDocResponse) {
 	rawResponse := rt.SendAdminRequest("PUT", "/db/"+docID, body)
-	assertStatus(rt.tb, rawResponse, 201)
+	requireStatus(rt.tb, rawResponse, 201)
 	require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &response))
 	require.True(rt.tb, response.Ok)
 	require.NotEmpty(rt.tb, response.Rev)
@@ -49,7 +49,7 @@ func (rt *RestTester) putDoc(docID string, body string) (response putDocResponse
 func (rt *RestTester) updateDoc(docID, revID, body string) (response putDocResponse) {
 	resource := fmt.Sprintf("/db/%s?rev=%s", docID, revID)
 	rawResponse := rt.SendAdminRequest(http.MethodPut, resource, body)
-	assertStatus(rt.tb, rawResponse, http.StatusCreated)
+	requireStatus(rt.tb, rawResponse, http.StatusCreated)
 	require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &response))
 	require.True(rt.tb, response.Ok)
 	require.NotEmpty(rt.tb, response.Rev)
@@ -58,7 +58,7 @@ func (rt *RestTester) updateDoc(docID, revID, body string) (response putDocRespo
 
 func (rt *RestTester) tombstoneDoc(docID string, revID string) {
 	rawResponse := rt.SendAdminRequest("DELETE", "/db/"+docID+"?rev="+revID, "")
-	assertStatus(rt.tb, rawResponse, 200)
+	requireStatus(rt.tb, rawResponse, 200)
 }
 
 func (rt *RestTester) upsertDoc(docID string, body string) (response putDocResponse) {
@@ -73,7 +73,7 @@ func (rt *RestTester) upsertDoc(docID string, body string) (response putDocRespo
 	require.True(rt.tb, ok)
 
 	rawResponse := rt.SendAdminRequest("PUT", "/db/"+docID+"?rev="+revID, body)
-	assertStatus(rt.tb, rawResponse, 200)
+	requireStatus(rt.tb, rawResponse, 200)
 	require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &response))
 	require.True(rt.tb, response.Ok)
 	require.NotEmpty(rt.tb, response.Rev)
@@ -81,14 +81,14 @@ func (rt *RestTester) upsertDoc(docID string, body string) (response putDocRespo
 }
 
 func (rt *RestTester) deleteDoc(docID, revID string) {
-	assertStatus(rt.tb, rt.SendAdminRequest(http.MethodDelete,
+	requireStatus(rt.tb, rt.SendAdminRequest(http.MethodDelete,
 		fmt.Sprintf("/db/%s?rev=%s", docID, revID), ""), http.StatusOK)
 }
 
 // prugeDoc removes all the revisions (active and tombstones) of the specified document.
 func (rt *RestTester) purgeDoc(docID string) {
 	response := rt.SendAdminRequest(http.MethodPost, "/db/_purge", fmt.Sprintf(`{"%s":["*"]}`, docID))
-	assertStatus(rt.tb, response, http.StatusOK)
+	requireStatus(rt.tb, response, http.StatusOK)
 	var body map[string]interface{}
 	require.NoError(rt.tb, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	require.Equal(rt.tb, body, map[string]interface{}{"purged": map[string]interface{}{docID: []interface{}{"*"}}})
@@ -104,7 +104,7 @@ func (rt *RestTester) putNewEditsFalse(docID string, newRevID string, parentRevI
 
 	rawResponse, err := rt.PutDocumentWithRevID(docID, newRevID, parentRevID, body)
 	require.NoError(rt.tb, err)
-	assertStatus(rt.tb, rawResponse, 201)
+	requireStatus(rt.tb, rawResponse, 201)
 	require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &response))
 	require.True(rt.tb, response.Ok)
 	require.NotEmpty(rt.tb, response.Rev)

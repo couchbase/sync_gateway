@@ -39,7 +39,7 @@ func TestX509RoundtripUsingIP(t *testing.T) {
 
 	// write a doc to ensure bucket ops work
 	tr := rt.SendAdminRequest(http.MethodPut, "/db/"+t.Name(), `{"sgwrite":true}`)
-	assertStatus(t, tr, http.StatusCreated)
+	requireStatus(t, tr, http.StatusCreated)
 
 	// wait for doc to come back over DCP
 	err := rt.WaitForDoc(t.Name())
@@ -60,7 +60,7 @@ func TestX509RoundtripUsingDomain(t *testing.T) {
 
 	// write a doc to ensure bucket ops work
 	tr := rt.SendAdminRequest(http.MethodPut, "/db/"+t.Name(), `{"sgwrite":true}`)
-	assertStatus(t, tr, http.StatusCreated)
+	requireStatus(t, tr, http.StatusCreated)
 
 	// wait for doc to come back over DCP
 	err := rt.WaitForDoc(t.Name())
@@ -109,7 +109,7 @@ func TestAttachmentCompactionRun(t *testing.T) {
 	}
 
 	resp := rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	status := rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
 	assert.Equal(t, int64(20), status.MarkedAttachments)

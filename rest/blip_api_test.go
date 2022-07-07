@@ -859,7 +859,7 @@ function(doc, oldDoc) {
 
 	// Update the user to grant them access to ABC
 	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{"admin_channels":["ABC"]}`)
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	// Wait for notification
 	require.True(t, db.WaitForUserWaiterChange(userWaiter))
@@ -875,7 +875,7 @@ function(doc, oldDoc) {
 
 	// Validate that the doc was written (GET request doesn't get a 404)
 	getResponse := rt.SendAdminRequest("GET", "/db/foo", "")
-	assertStatus(t, getResponse, 200)
+	requireStatus(t, getResponse, 200)
 
 }
 
@@ -992,7 +992,7 @@ function(doc, oldDoc) {
 	receivedChangesWg.Add(1)
 	revsFinishedWg.Add(1)
 	response := rt.SendAdminRequest("PUT", "/db/grantDoc", `{"accessUser":"user1", "accessChannel":"ABC", "channels":["ABC"]}`)
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 	require.NoError(t, rt.WaitForPendingChanges())
 
 	// Wait until all expected changes are received by change handler
@@ -1172,7 +1172,7 @@ func TestBlipSendAndGetRev(t *testing.T) {
 
 	// Get non-deleted rev
 	response := bt.restTester.SendAdminRequest("GET", "/db/sendAndGetRev?rev=1-abc", "")
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 	var responseBody RestDocument
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody), "Error unmarshalling GET doc response")
 	_, ok := responseBody[db.BodyDeleted]
@@ -1187,7 +1187,7 @@ func TestBlipSendAndGetRev(t *testing.T) {
 
 	// Get the tombstoned document
 	response = bt.restTester.SendAdminRequest("GET", "/db/sendAndGetRev?rev=2-bcd", "")
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 	responseBody = RestDocument{}
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody), "Error unmarshalling GET doc response")
 	deletedValue, deletedOK := responseBody[db.BodyDeleted].(bool)
@@ -1219,7 +1219,7 @@ func TestBlipSendAndGetLargeNumberRev(t *testing.T) {
 
 	// Get non-deleted rev
 	response := bt.restTester.SendAdminRequest("GET", "/db/largeNumberRev?rev=1-abc", "")
-	assertStatus(t, response, 200) // Check the raw bytes, because unmarshalling the response would be another opportunity for the number to get modified
+	requireStatus(t, response, 200) // Check the raw bytes, because unmarshalling the response would be another opportunity for the number to get modified
 	responseString := string(response.Body.Bytes())
 	if !strings.Contains(responseString, `9223372036854775807`) {
 		t.Errorf("Response does not contain the expected number format.  Response: %s", responseString)
@@ -1279,7 +1279,7 @@ func TestBlipSetCheckpoint(t *testing.T) {
 
 	// Validate checkpoint existence in bucket (local file name "/" needs to be URL encoded as %252F)
 	response := rt.SendAdminRequest("GET", "/db/_local/checkpoint%252Ftestclient", "")
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 	var responseBody map[string]interface{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &responseBody)
 	assert.Equal(t, "1000", responseBody["client_seq"])
@@ -1343,7 +1343,7 @@ func TestReloadUser(t *testing.T) {
 
 	// Put document that triggers access grant for user to channel PBS
 	response := rt.SendAdminRequest("PUT", "/db/access1", `{"accessUser":"user1", "accessChannel":["PBS"]}`)
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 
 	// Wait for notification
 	require.True(t, db.WaitForUserWaiterChange(userWaiter))
@@ -1397,7 +1397,7 @@ func TestAccessGrantViaSyncFunction(t *testing.T) {
 
 	// Put document that triggers access grant for user to channel PBS
 	response := rt.SendAdminRequest("PUT", "/db/access1", `{"accessUser":"user1", "accessChannel":["PBS"]}`)
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 
 	// Add another doc in the PBS channel
 	_, _, _, _ = bt.SendRev(
@@ -1438,7 +1438,7 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 
 	// Update the user doc to grant access to PBS
 	response := bt.restTester.SendAdminRequest("PUT", "/db/_user/user1", `{"admin_channels":["user1", "PBS"]}`)
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	// Add another doc in the PBS channel
 	_, _, _, _ = bt.SendRev(
@@ -2853,7 +2853,7 @@ func TestActiveOnlyContinuous(t *testing.T) {
 	defer btc.Close()
 
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"test":true}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	var docResp struct {
 		Rev string `json:"rev"`
 	}
@@ -2868,7 +2868,7 @@ func TestActiveOnlyContinuous(t *testing.T) {
 
 	// delete the doc and make sure the client still gets the tombstone replicated
 	resp = rt.SendAdminRequest(http.MethodDelete, "/db/doc1?rev="+docResp.Rev, ``)
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &docResp))
 
 	rev, found = btc.WaitForRev("doc1", docResp.Rev)
@@ -3235,10 +3235,10 @@ func TestUpdateExistingAttachment(t *testing.T) {
 
 	// Add doc1 and doc2
 	req := rt.SendAdminRequest("PUT", "/db/doc1", `{}`)
-	assertStatus(t, req, http.StatusCreated)
+	requireStatus(t, req, http.StatusCreated)
 	doc1Bytes := req.BodyBytes()
 	req = rt.SendAdminRequest("PUT", "/db/doc2", `{}`)
-	assertStatus(t, req, http.StatusCreated)
+	requireStatus(t, req, http.StatusCreated)
 	doc2Bytes := req.BodyBytes()
 
 	require.NoError(t, rt.WaitForPendingChanges())
@@ -3305,10 +3305,10 @@ func TestCBLRevposHandling(t *testing.T) {
 
 	// Add doc1 and doc2
 	req := rt.SendAdminRequest("PUT", "/db/doc1", `{}`)
-	assertStatus(t, req, http.StatusCreated)
+	requireStatus(t, req, http.StatusCreated)
 	doc1Bytes := req.BodyBytes()
 	req = rt.SendAdminRequest("PUT", "/db/doc2", `{}`)
-	assertStatus(t, req, http.StatusCreated)
+	requireStatus(t, req, http.StatusCreated)
 	doc2Bytes := req.BodyBytes()
 
 	require.NoError(t, rt.WaitForPendingChanges())
@@ -3389,7 +3389,7 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 
 	// Add doc1 and doc2
 	req := rt.SendAdminRequest("PUT", "/db/doc1", `{}`)
-	assertStatus(t, req, http.StatusCreated)
+	requireStatus(t, req, http.StatusCreated)
 	doc1Bytes := req.BodyBytes()
 
 	require.NoError(t, rt.WaitForPendingChanges())
@@ -3618,7 +3618,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_channels": ["A", "B"], "password": "test"}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
 		Username:        "user",
@@ -4037,7 +4037,7 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 
 	// Get the attachment and ensure the data is updated
 	resp := rt.SendAdminRequest(http.MethodGet, "/db/doc/hello.txt", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	assert.Equal(t, "goodbye cruel world", string(resp.BodyBytes()))
 }
 
@@ -4230,7 +4230,7 @@ func TestProveAttachmentNotFound(t *testing.T) {
 	body := rt.getDoc("doc1")
 	assert.Equal(t, "2-abc", body.ExtractRev())
 	resp := rt.SendAdminRequest("GET", "/db/doc1/attach", "")
-	assertStatus(t, resp, 200)
+	requireStatus(t, resp, 200)
 	assert.EqualValues(t, attachmentData, resp.BodyBytes())
 }
 
@@ -4370,7 +4370,7 @@ func TestBlipAttachNameChange(t *testing.T) {
 	assert.Equal(t, bucketAttachmentA, attachmentA)
 
 	resp := rt.SendAdminRequest("GET", "/db/doc/attach", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	assert.Equal(t, attachmentA, resp.BodyBytes())
 }
 
@@ -4422,7 +4422,7 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 	require.NoError(t, err)
 
 	resp := rt.SendAdminRequest("GET", "/db/doc/attach", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	assert.Equal(t, attBody, resp.BodyBytes())
 }
 
@@ -4474,7 +4474,7 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 	require.NoError(t, err)
 
 	resp := rt.SendAdminRequest("GET", "/db/doc/"+attName, "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	assert.Equal(t, attBody, resp.BodyBytes())
 
 	// Validate that the attachment hasn't been migrated to V2

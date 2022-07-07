@@ -109,11 +109,11 @@ func TestDocumentNumbers(t *testing.T) {
 		t.Run(test.name, func(ts *testing.T) {
 			//Create document
 			response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", test.name), test.body)
-			assertStatus(ts, response, 201)
+			requireStatus(ts, response, 201)
 
 			// Get document, validate number value
 			getResponse := rt.SendAdminRequest("GET", fmt.Sprintf("/db/%s", test.name), "")
-			assertStatus(ts, getResponse, 200)
+			requireStatus(ts, getResponse, 200)
 
 			// Check the raw bytes, because unmarshalling the response would be another opportunity for the number to get modified
 			responseString := string(getResponse.Body.Bytes())
@@ -150,15 +150,15 @@ func TestGuestReadOnly(t *testing.T) {
 	rt.GetDatabase()
 	// Write a document as admin
 	response := rt.SendAdminRequest("PUT", "/db/doc", "{}")
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	// Attempt to read as guest
 	response = rt.SendRequest("GET", "/db/doc", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	assert.Equal(t, `{"_id":"doc","_rev":"1-ca9ad22802b66f662ff171f226211d5c"}`, string(response.BodyBytes()))
 
 	// Attempt to write as guest
 	response = rt.SendRequest("PUT", "/db/doc?rev=1-ca9ad22802b66f662ff171f226211d5c", `{"val": "newval"}`)
-	assertStatus(t, response, http.StatusForbidden)
+	requireStatus(t, response, http.StatusForbidden)
 
 }

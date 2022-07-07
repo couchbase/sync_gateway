@@ -178,7 +178,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 
 	docID := t.Name() + "rt2doc1"
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","channels":["`+username+`"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
 
 	remoteDoc, err := rt2.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
@@ -270,7 +270,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 
 	docID := t.Name() + "rt2doc1"
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","doc_num":1,`+attachment+`,"channels":["alice"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
@@ -327,7 +327,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 
 	docID = t.Name() + "rt2doc2"
 	resp = rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","doc_num":2,`+attachment+`,"channels":["alice"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	revID = respRevID(t, resp)
 
 	// wait for the new document written to rt2 to arrive at rt1
@@ -507,12 +507,12 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 			lastSeq := changesResults.Last_Seq.(string)
 
 			resp := rt1.SendAdminRequest(http.MethodPut, "/db/_replicationStatus/repl1?action=stop", "")
-			assertStatus(t, resp, http.StatusOK)
+			requireStatus(t, resp, http.StatusOK)
 
 			rt1.waitForReplicationStatus("repl1", db.ReplicationStateStopped)
 
 			resp = rt1.SendAdminRequest(http.MethodPut, "/db/"+docID+"?rev="+rev1, test.localConflictingRevBody)
-			assertStatus(t, resp, http.StatusCreated)
+			requireStatus(t, resp, http.StatusCreated)
 
 			changesResults, err = rt1.waitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
 			require.NoError(t, err)
@@ -521,10 +521,10 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 			lastSeq = changesResults.Last_Seq.(string)
 
 			resp = rt2.SendAdminRequest(http.MethodPut, "/db/"+docID+"?rev="+rev1, test.remoteConflictingRevBody)
-			assertStatus(t, resp, http.StatusCreated)
+			requireStatus(t, resp, http.StatusCreated)
 
 			resp = rt1.SendAdminRequest(http.MethodPut, "/db/_replicationStatus/repl1?action=start", "")
-			assertStatus(t, resp, http.StatusOK)
+			requireStatus(t, resp, http.StatusOK)
 
 			rt1.waitForReplicationStatus("repl1", db.ReplicationStateRunning)
 
@@ -591,7 +591,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	docIDPrefix := t.Name() + "rt2doc"
 	for i := 0; i < numRT2DocsInitial; i++ {
 		resp := rt2.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"source":"rt2","channels":["alice"]}`)
-		assertStatus(t, resp, http.StatusCreated)
+		requireStatus(t, resp, http.StatusCreated)
 	}
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
@@ -673,7 +673,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	// Second batch of docs
 	for i := numRT2DocsInitial; i < numRT2DocsTotal; i++ {
 		resp := rt2.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"source":"rt2","channels":["alice"]}`)
-		assertStatus(t, resp, http.StatusCreated)
+		requireStatus(t, resp, http.StatusCreated)
 	}
 
 	// Create a new replicator using the same config, which should use the checkpoint set from the first.
@@ -763,10 +763,10 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 	docIDPrefix := t.Name() + "doc"
 	for i := 0; i < numRT2DocsInitial; i++ {
 		resp := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
-		assertStatus(t, resp, http.StatusCreated)
+		requireStatus(t, resp, http.StatusCreated)
 		rt1RevID := respRevID(t, resp)
 		resp = rt2.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
-		assertStatus(t, resp, http.StatusCreated)
+		requireStatus(t, resp, http.StatusCreated)
 		rt2RevID := respRevID(t, resp)
 		require.Equal(t, rt1RevID, rt2RevID)
 	}
@@ -843,10 +843,10 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 	// Second batch of docs
 	for i := numRT2DocsInitial; i < numRT2DocsTotal; i++ {
 		resp := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
-		assertStatus(t, resp, http.StatusCreated)
+		requireStatus(t, resp, http.StatusCreated)
 		rt1RevID := respRevID(t, resp)
 		resp = rt2.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
-		assertStatus(t, resp, http.StatusCreated)
+		requireStatus(t, resp, http.StatusCreated)
 		rt2RevID := respRevID(t, resp)
 		require.Equal(t, rt1RevID, rt2RevID)
 	}
@@ -908,7 +908,7 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 
 	docID := t.Name() + "rt2doc1"
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","channels":["alice"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
 
 	remoteDoc, err := rt2.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
@@ -1009,7 +1009,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 
 	docID := t.Name() + "rt1doc1"
 	resp := rt1.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt1","channels":["alice"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
 
 	localDoc, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
@@ -1098,7 +1098,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 
 	docID := t.Name() + "rt1doc1"
 	resp := rt1.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt1","doc_num":1,`+attachment+`,"channels":["alice"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
@@ -1148,7 +1148,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 
 	docID = t.Name() + "rt1doc2"
 	resp = rt1.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt1","doc_num":2,`+attachment+`,"channels":["alice"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	revID = respRevID(t, resp)
 
 	// wait for the new document written to rt1 to arrive at rt2
@@ -1202,7 +1202,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	docIDPrefix := t.Name() + "rt2doc"
 	for i := 0; i < numRT1DocsInitial; i++ {
 		resp := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"source":"rt1","channels":["alice"]}`)
-		assertStatus(t, resp, http.StatusCreated)
+		requireStatus(t, resp, http.StatusCreated)
 	}
 
 	// Passive
@@ -1289,7 +1289,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	// Second batch of docs
 	for i := numRT1DocsInitial; i < numRT1DocsTotal; i++ {
 		resp := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"source":"rt1","channels":["alice"]}`)
-		assertStatus(t, resp, http.StatusCreated)
+		requireStatus(t, resp, http.StatusCreated)
 	}
 
 	// Create a new replicator using the same config, which should use the checkpoint set from the first.
@@ -1371,7 +1371,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	docIDPrefix := t.Name() + "rt1doc"
 	for i := 0; i < numRT1DocsInitial; i++ {
 		resp := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"source":"rt1","channels":["alice"]}`)
-		assertStatus(t, resp, http.StatusCreated)
+		requireStatus(t, resp, http.StatusCreated)
 	}
 
 	// Make rt1 listen on an actual HTTP port, so it can receive the blipsync request from edges
@@ -1480,7 +1480,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	assert.NoError(t, edge2Replicator.Stop())
 
 	resp := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, numRT1DocsInitial), `{"source":"rt1","channels":["alice"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	require.NoError(t, rt1.WaitForPendingChanges())
 
 	// run a replicator on edge1 again to make sure that edge2 didn't blow away its checkpoint
@@ -1549,10 +1549,10 @@ func TestActiveReplicatorPushFromCheckpointIgnored(t *testing.T) {
 	docIDPrefix := t.Name() + "doc"
 	for i := 0; i < numRT1DocsInitial; i++ {
 		resp := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
-		assertStatus(t, resp, http.StatusCreated)
+		requireStatus(t, resp, http.StatusCreated)
 		rt1RevID := respRevID(t, resp)
 		resp = rt2.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
-		assertStatus(t, resp, http.StatusCreated)
+		requireStatus(t, resp, http.StatusCreated)
 		rt2RevID := respRevID(t, resp)
 		require.Equal(t, rt1RevID, rt2RevID)
 	}
@@ -1610,10 +1610,10 @@ func TestActiveReplicatorPushFromCheckpointIgnored(t *testing.T) {
 	// Second batch of docs
 	for i := numRT1DocsInitial; i < numRT1DocsTotal; i++ {
 		resp := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
-		assertStatus(t, resp, http.StatusCreated)
+		requireStatus(t, resp, http.StatusCreated)
 		rt1RevID := respRevID(t, resp)
 		resp = rt2.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
-		assertStatus(t, resp, http.StatusCreated)
+		requireStatus(t, resp, http.StatusCreated)
 		rt2RevID := respRevID(t, resp)
 		require.Equal(t, rt1RevID, rt2RevID)
 	}
@@ -1683,7 +1683,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 
 	docID := t.Name() + "rt1doc1"
 	resp := rt1.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt1","channels":["alice"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
 
 	localDoc, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
@@ -1770,7 +1770,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 
 	docID := t.Name() + "rt2doc1"
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","channels":["alice"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
@@ -1824,7 +1824,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 
 	// Tombstone the doc in rt2
 	resp = rt2.SendAdminRequest(http.MethodDelete, "/db/"+docID+"?rev="+revID, ``)
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	revID = respRevID(t, resp)
 
 	// wait for the tombstone written to rt2 to arrive at rt1
@@ -1870,7 +1870,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 
 	docID := t.Name() + "rt2doc1"
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","channels":["alice"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
@@ -1924,7 +1924,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	assert.Equal(t, "rt2", body["source"])
 
 	resp = rt2.SendAdminRequest(http.MethodPut, "/db/"+docID+"?rev="+revID, `{"source":"rt2","channels":["bob"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 
 	// wait for the channel removal written to rt2 to arrive at rt1 - we can't monitor _changes, because we've purged, not removed. But we can monitor the associated stat.
 	base.WaitForStat(func() int64 {
@@ -2048,7 +2048,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			docID := test.name
 			resp, err := rt2.PutDocumentWithRevID(docID, test.remoteRevID, "", test.remoteRevisionBody)
 			assert.NoError(t, err)
-			assertStatus(t, resp, http.StatusCreated)
+			requireStatus(t, resp, http.StatusCreated)
 			rt2revID := respRevID(t, resp)
 			assert.Equal(t, test.remoteRevID, rt2revID)
 
@@ -2073,7 +2073,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			// Create revision on rt1 (local)
 			resp, err = rt1.PutDocumentWithRevID(docID, test.localRevID, "", test.localRevisionBody)
 			assert.NoError(t, err)
-			assertStatus(t, resp, http.StatusCreated)
+			requireStatus(t, resp, http.StatusCreated)
 			rt1revID := respRevID(t, resp)
 			assert.Equal(t, test.localRevID, rt1revID)
 
@@ -2264,14 +2264,14 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			if test.commonAncestorRevID != "" {
 				resp, err := rt2.PutDocumentWithRevID(docID, test.commonAncestorRevID, "", remoteRevisionBody)
 				assert.NoError(t, err)
-				assertStatus(t, resp, http.StatusCreated)
+				requireStatus(t, resp, http.StatusCreated)
 				rt2revID := respRevID(t, resp)
 				assert.Equal(t, test.commonAncestorRevID, rt2revID)
 			}
 
 			resp, err := rt2.PutDocumentWithRevID(docID, test.remoteRevID, test.commonAncestorRevID, remoteRevisionBody)
 			assert.NoError(t, err)
-			assertStatus(t, resp, http.StatusCreated)
+			requireStatus(t, resp, http.StatusCreated)
 			rt2revID := respRevID(t, resp)
 			assert.Equal(t, test.remoteRevID, rt2revID)
 
@@ -2298,14 +2298,14 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			if test.commonAncestorRevID != "" {
 				resp, err = rt1.PutDocumentWithRevID(docID, test.commonAncestorRevID, "", localRevisionBody)
 				assert.NoError(t, err)
-				assertStatus(t, resp, http.StatusCreated)
+				requireStatus(t, resp, http.StatusCreated)
 				rt1revID := respRevID(t, resp)
 				assert.Equal(t, test.commonAncestorRevID, rt1revID)
 			}
 
 			resp, err = rt1.PutDocumentWithRevID(docID, test.localRevID, test.commonAncestorRevID, localRevisionBody)
 			assert.NoError(t, err)
-			assertStatus(t, resp, http.StatusCreated)
+			requireStatus(t, resp, http.StatusCreated)
 			rt1revID := respRevID(t, resp)
 			assert.Equal(t, test.localRevID, rt1revID)
 
@@ -2451,7 +2451,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 
 	docID := t.Name() + "rt1doc1"
 	resp := rt1.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt1","channels":["alice"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
@@ -2528,7 +2528,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 
 	docID := t.Name() + "rt1doc1"
 	resp := rt1.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt1","channels":["alice"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 	srv := httptest.NewTLSServer(rt2.TestPublicHandler())
@@ -2587,7 +2587,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	// Create doc on rt2
 	docID := t.Name() + "rt2doc"
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","channels":["alice"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 
 	assert.NoError(t, rt2.WaitForPendingChanges())
 
@@ -2757,7 +2757,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	// Create doc on rt1
 	docID := t.Name() + "rt1doc"
 	resp := rt1.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt1","channels":["alice"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 
 	assert.NoError(t, rt1.WaitForPendingChanges())
 
@@ -2929,7 +2929,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	// Create doc1 on rt1
 	docID := t.Name() + "rt1doc"
 	resp := rt1.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt1","channels":["alice"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 
 	assert.NoError(t, rt1.WaitForPendingChanges())
 
@@ -2982,7 +2982,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 
 	// Create doc2 on rt1
 	resp = rt1.SendAdminRequest(http.MethodPut, "/db/"+docID+"2", `{"source":"rt1","channels":["alice"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 
 	assert.NoError(t, rt1.WaitForPendingChanges())
 
@@ -3113,7 +3113,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	// Create doc1 on rt1
 	docID := t.Name() + "rt1doc"
 	resp := rt1.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt1","channels":["alice"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	assert.NoError(t, rt1.WaitForPendingChanges())
 
 	// wait for document originally written to rt1 to arrive at rt2
@@ -3125,7 +3125,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	// Create doc2 on rt2
 	docID = t.Name() + "rt2doc"
 	resp = rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","channels":["alice"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	assert.NoError(t, rt2.WaitForPendingChanges())
 
 	// wait for document originally written to rt2 to arrive at rt1
@@ -3178,7 +3178,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 
 	rt1docID := t.Name() + "rt1doc1"
 	resp := rt1.SendAdminRequest(http.MethodPut, "/db/"+rt1docID, `{"source":"rt1","channels":["alice"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	rt1revID := respRevID(t, resp)
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
@@ -3227,7 +3227,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	// write a doc on rt2 ...
 	rt2docID := t.Name() + "rt2doc1"
 	resp = rt2.SendAdminRequest(http.MethodPut, "/db/"+rt2docID, `{"source":"rt2","channels":["alice"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	rt2revID := respRevID(t, resp)
 
 	// ... and wait to arrive at rt1
@@ -3628,7 +3628,7 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 	}, "Expecting NumConnectAttempts > 3")
 
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/_user/alice", `{"password":"pass"}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 
 	waitAndRequireCondition(t, func() bool {
 		state, errMsg := ar.State()
@@ -3983,7 +3983,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			}
 			resp, err := rt2.PutDocumentWithRevID(docID, test.remoteRevID, test.commonAncestorRevID, test.remoteRevisionBody)
 			assert.NoError(t, err)
-			assertStatus(t, resp, http.StatusCreated)
+			requireStatus(t, resp, http.StatusCreated)
 			rt2revID := respRevID(t, resp)
 			assert.Equal(t, test.remoteRevID, rt2revID)
 
@@ -4012,7 +4012,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			}
 			resp, err = rt1.PutDocumentWithRevID(docID, test.localRevID, test.commonAncestorRevID, test.localRevisionBody)
 			assert.NoError(t, err)
-			assertStatus(t, resp, http.StatusCreated)
+			requireStatus(t, resp, http.StatusCreated)
 			rt1revID := respRevID(t, resp)
 			assert.Equal(t, test.localRevID, rt1revID)
 
@@ -4183,7 +4183,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			makeDoc := func(rt *RestTester, docid string, rev string, value string) string {
 				var body db.Body
 				resp := rt.SendAdminRequest("PUT", "/db/"+docid+"?rev="+rev, value)
-				assertStatus(t, resp, http.StatusCreated)
+				requireStatus(t, resp, http.StatusCreated)
 				err := json.Unmarshal(resp.BodyBytes(), &body)
 				assert.NoError(t, err)
 				return body["rev"].(string)
@@ -4217,11 +4217,11 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Send up replication
 			resp := localActiveRT.SendAdminRequest("PUT", "/db/_replication/replication", replConf)
-			assertStatus(t, resp, http.StatusCreated)
+			requireStatus(t, resp, http.StatusCreated)
 
 			// Create a doc with 3-revs
 			resp = localActiveRT.SendAdminRequest("POST", "/db/_bulk_docs", `{"docs":[{"_id": "docid2", "_rev": "1-abc"}, {"_id": "docid2", "_rev": "2-abc", "_revisions": {"start": 2, "ids": ["abc", "abc"]}}, {"_id": "docid2", "_rev": "3-abc", "val":"test", "_revisions": {"start": 3, "ids": ["abc", "abc", "abc"]}}], "new_edits":false}`)
-			assertStatus(t, resp, http.StatusCreated)
+			requireStatus(t, resp, http.StatusCreated)
 
 			// Wait for the replication to be started
 			localActiveRT.waitForReplicationStatus("replication", db.ReplicationStateRunning)
@@ -4254,7 +4254,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			if test.longestBranchLocal {
 				// Delete doc on remote
 				resp = remotePassiveRT.SendAdminRequest("PUT", "/db/docid2?rev=3-abc", `{"_deleted": true}`)
-				assertStatus(t, resp, http.StatusCreated)
+				requireStatus(t, resp, http.StatusCreated)
 
 				// Validate document revision created to prevent race conditions
 				err = remotePassiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
@@ -4280,7 +4280,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			} else {
 				// Delete doc on localActiveRT (active / local)
 				resp = localActiveRT.SendAdminRequest("PUT", "/db/docid2?rev=3-abc", `{"_deleted": true}`)
-				assertStatus(t, resp, http.StatusCreated)
+				requireStatus(t, resp, http.StatusCreated)
 
 				// Validate document revision created to prevent race conditions
 				err = localActiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
@@ -4354,7 +4354,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 					assert.NoError(t, getErr, "Unable to retrieve resurrected doc docid2")
 				} else {
 					resp = localActiveRT.SendAdminRequest("PUT", "/db/docid2", `{"resurrection": true}`)
-					assertStatus(t, resp, http.StatusCreated)
+					requireStatus(t, resp, http.StatusCreated)
 				}
 			} else {
 				if test.sdkResurrect {
@@ -4366,7 +4366,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 					assert.NoError(t, getErr, "Unable to retrieve resurrected doc docid2")
 				} else {
 					resp = remotePassiveRT.SendAdminRequest("PUT", "/db/docid2", `{"resurrection": true}`)
-					assertStatus(t, resp, http.StatusCreated)
+					requireStatus(t, resp, http.StatusCreated)
 				}
 			}
 
@@ -4520,7 +4520,7 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 
 			// Tombstone the document on rt1 to mark the tip of the revision history for deletion.
 			resp := rt1.SendAdminRequest(http.MethodDelete, "/db/"+docID+"?rev="+rt1RevIDUpdated, ``)
-			assertStatus(t, resp, http.StatusOK)
+			requireStatus(t, resp, http.StatusOK)
 
 			// Ensure that the tombstone revision is written to rt1 bucket with an empty body.
 			waitForTombstone(t, rt1, docID)
@@ -4672,7 +4672,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 
 			// Tombstone the document on rt2 to mark the tip of the revision history for deletion.
 			resp := rt2.SendAdminRequest(http.MethodDelete, "/db/"+docID+"?rev="+rt2RevIDUpdated, ``)
-			assertStatus(t, resp, http.StatusOK)
+			requireStatus(t, resp, http.StatusOK)
 			rt2RevID := respRevID(t, resp)
 			log.Printf("rt2RevID: %s", rt2RevID)
 
@@ -4840,7 +4840,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 
 			// Stop the replication
 			response := activeRT.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=stop", "")
-			assertStatus(t, response, http.StatusOK)
+			requireStatus(t, response, http.StatusOK)
 			activeRT.waitForReplicationStatus(replicationID, db.ReplicationStateStopped)
 
 			rawResponse := activeRT.SendAdminRequest("GET", "/db/_raw/"+docID, "")
@@ -4896,7 +4896,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 
 			// Restart the replication
 			response = activeRT.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=start", "")
-			assertStatus(t, response, http.StatusOK)
+			requireStatus(t, response, http.StatusOK)
 
 			// Wait for expected property value on remote to determine replication complete
 			waitErr := remoteRT.WaitForCondition(func() bool {
@@ -4986,7 +4986,7 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 	assert.Equal(t, errorCountBefore, base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value())
 
 	response := rt1.SendAdminRequest("PUT", "/db/doc1", "{}")
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	err = rt2.WaitForCondition(func() bool {
 		return base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value() == errorCountBefore+1
@@ -5049,7 +5049,7 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 			assert.NoError(t, remoteRT.waitForRev(docID, newRevID))
 
 			response := activeRT.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=stop", "")
-			assertStatus(t, response, http.StatusOK)
+			requireStatus(t, response, http.StatusOK)
 			activeRT.waitForReplicationStatus(replicationID, db.ReplicationStateStopped)
 
 			nextGen := 4
@@ -5078,7 +5078,7 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 			resp = remoteRT.putNewEditsFalse(docID, newRemoteRevID, remoteParentRevID, fmt.Sprintf(`{"_attachments": {"attach": {"stub": true, "revpos": %d, "digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`, remoteGen-1))
 
 			response = activeRT.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=start", "")
-			assertStatus(t, response, http.StatusOK)
+			requireStatus(t, response, http.StatusOK)
 
 			waitErr := activeRT.waitForRev(docID, test.expectedFinalRev)
 			assert.NoError(t, waitErr)
@@ -5118,7 +5118,7 @@ func TestReplicatorRevocations(t *testing.T) {
 	revocationTester.addRoleChannel("foo", "chanA")
 
 	resp := rt2.SendAdminRequest("PUT", "/db/doc1", `{"channels": "chanA"}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 
 	srv := httptest.NewServer(rt2.TestPublicHandler())
 	defer srv.Close()
@@ -5144,7 +5144,7 @@ func TestReplicatorRevocations(t *testing.T) {
 	rt1.waitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 
 	resp = rt1.SendAdminRequest("GET", "/db/doc1", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	revocationTester.removeRole("user", "foo")
 
@@ -5152,7 +5152,7 @@ func TestReplicatorRevocations(t *testing.T) {
 	rt1.waitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 
 	resp = rt1.SendAdminRequest("GET", "/db/doc1", "")
-	assertStatus(t, resp, http.StatusNotFound)
+	requireStatus(t, resp, http.StatusNotFound)
 }
 
 func TestReplicatorRevocationsNoRev(t *testing.T) {
@@ -5197,7 +5197,7 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 	rt1.waitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 
 	resp := rt1.SendAdminRequest("GET", "/db/doc1", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	revocationTester.removeRole("user", "foo")
 
@@ -5207,7 +5207,7 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 	rt1.waitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 
 	resp = rt1.SendAdminRequest("GET", "/db/doc1", "")
-	assertStatus(t, resp, http.StatusNotFound)
+	requireStatus(t, resp, http.StatusNotFound)
 }
 
 func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
@@ -5227,7 +5227,7 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 	revocationTester.addRoleChannel("foo", "chanA")
 
 	resp := rt2.SendAdminRequest("PUT", "/db/_role/foo2", `{}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 
 	revocationTester.addRole("user", "foo2")
 	revocationTester.addRoleChannel("foo2", "chanB")
@@ -5258,7 +5258,7 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 	rt1.waitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 
 	resp = rt1.SendAdminRequest("GET", "/db/doc1", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	revocationTester.removeRole("user", "foo")
 
@@ -5268,7 +5268,7 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 	rt1.waitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 
 	resp = rt1.SendAdminRequest("GET", "/db/doc1", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 }
 
 func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
@@ -5307,10 +5307,10 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	require.NoError(t, ar.Start())
 
 	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein"}`)
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", `{"admin_channels": ["A", "B", "C"]}`)
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	revocationTester.addRole("user", "foo")
 
@@ -5327,7 +5327,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 
 	// Revoke C and ensure docC gets purged from local
 	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", `{"admin_channels": ["A", "B"]}`)
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	err = rt1.WaitForCondition(func() bool {
 		resp := rt1.SendAdminRequest("GET", "/db/docC", "")
@@ -5337,7 +5337,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 
 	// Revoke B and ensure docB gets purged from local
 	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", `{"admin_channels": ["A"]}`)
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	err = rt1.WaitForCondition(func() bool {
 		resp := rt1.SendAdminRequest("GET", "/db/docB", "")
@@ -5347,7 +5347,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 
 	// Revoke A and ensure docA, docAB, docABC gets purged from local
 	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", `{"admin_channels": []}`)
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	err = rt1.WaitForCondition(func() bool {
 		resp := rt1.SendAdminRequest("GET", "/db/docA", "")
@@ -5413,11 +5413,11 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 	})
 
 	resp := rt2.SendAdminRequest("PUT", "/db/doc", "{}")
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	require.NoError(t, rt2.WaitForPendingChanges())
 
 	resp = rt1.SendAdminRequest("PUT", "/db/doc", `{"some_val": "val"}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	require.NoError(t, rt1.WaitForPendingChanges())
 
 	require.NoError(t, ar.Start())
@@ -5447,7 +5447,7 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 	defer rt1.Close()
 
 	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein", "admin_channels": ["A", "B"]}`)
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	// Setup replicator
 	srv := httptest.NewServer(rt2.TestPublicHandler())
@@ -5486,13 +5486,13 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 	rt1.waitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
 	resp = rt2.SendAdminRequest("DELETE", "/db/docA?rev="+docARev, "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	resp = rt2.SendAdminRequest("DELETE", "/db/docA1?rev="+docA1Rev, "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein", "admin_channels": ["B"]}`)
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	require.NoError(t, ar.Start())
 
@@ -5531,7 +5531,7 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 	defer rt1.Close()
 
 	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein", "admin_channels": ["A", "B"]}`)
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	// Setup replicator
 	srv := httptest.NewServer(rt2.TestPublicHandler())
@@ -5591,7 +5591,7 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 	require.NoError(t, ar.Reset())
 
 	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein", "admin_channels": ["B"]}`)
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	require.NoError(t, ar.Start())
 
@@ -5634,7 +5634,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	defer rt1.Close()
 
 	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein", "admin_channels": ["A", "B"]}`)
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	// Setup replicator
 	srv := httptest.NewServer(rt2.TestPublicHandler())
@@ -5679,7 +5679,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	rt1.waitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
 	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein", "admin_channels": ["B"]}`)
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	// Add another few docs to 'bump' rt1's seq no. Otherwise it'll end up revoking next time as the above user PUT is
 	// not processed by the rt1 receiver.
@@ -5728,12 +5728,12 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 
 	for i := 0; i < 10; i++ {
 		resp = rt1.SendAdminRequest("GET", fmt.Sprintf("/db/docA%d", i), "")
-		assertStatus(t, resp, http.StatusOK)
+		requireStatus(t, resp, http.StatusOK)
 	}
 
 	for i := 0; i < 7; i++ {
 		resp = rt1.SendAdminRequest("GET", fmt.Sprintf("/db/docB%d", i), "")
-		assertStatus(t, resp, http.StatusOK)
+		requireStatus(t, resp, http.StatusOK)
 	}
 
 	// Shutdown replicator to close out
@@ -5783,7 +5783,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 
 	// Create a document //
 	resp := activeRT.SendAdminRequest(http.MethodPut, "/db/test", `{"field1":"f1_1","field2":"f2_1"}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
 	err := activeRT.waitForRev("test", revID)
 	require.NoError(t, err)
@@ -5813,7 +5813,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 
 	// Delete active document
 	resp = activeRT.SendAdminRequest(http.MethodDelete, "/db/test?rev="+revID, "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	revID = respRevID(t, resp)
 
 	// Replicate tombstone to passive
@@ -5825,7 +5825,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 
 	// Resurrect tombstoned document
 	resp = activeRT.SendAdminRequest(http.MethodPut, "/db/test?rev="+revID, `{"field2":"f2_2"}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	revID = respRevID(t, resp)
 
 	// Replicate resurrection to passive
@@ -5882,7 +5882,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 
 	// Create a document //
 	resp := activeRT.SendAdminRequest(http.MethodPut, "/db/test", `{"field1":"f1_1","field2":"f2_1"}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
 	err := activeRT.waitForRev("test", revID)
 	require.NoError(t, err)
@@ -5914,7 +5914,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 
 	// Make 2nd revision
 	resp = activeRT.SendAdminRequest(http.MethodPut, "/db/test?rev="+revID, `{"field1":"f1_2","field2":"f2_2"}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	revID = respRevID(t, resp)
 	err = activeRT.WaitForPendingChanges()
 	require.NoError(t, err)
@@ -5961,21 +5961,21 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	// Create the docs //
 	// Doc rev 1
 	resp := activeRT.SendAdminRequest(http.MethodPut, "/db/"+t.Name(), `{"key":"12","channels": ["rev1chan"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	rev1ID := respRevID(t, resp)
 	err := activeRT.waitForRev(t.Name(), rev1ID)
 	require.NoError(t, err)
 
 	// doc rev 2
 	resp = activeRT.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s?rev=%s", t.Name(), rev1ID), `{"key":"12","channels":["rev2+3chan"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	rev2ID := respRevID(t, resp)
 	err = activeRT.waitForRev(t.Name(), rev2ID)
 	require.NoError(t, err)
 
 	// Doc rev 3
 	resp = activeRT.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s?rev=%s", t.Name(), rev2ID), `{"key":"3","channels":["rev2+3chan"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	rev3ID := respRevID(t, resp)
 	err = activeRT.waitForRev(t.Name(), rev3ID)
 	require.NoError(t, err)
@@ -6070,7 +6070,7 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 	assert.EqualValues(t, false, doc["true"]) // Sanity check normal keys
 	// Confirm attachment was created successfully
 	resp := passiveRT.SendAdminRequest("GET", "/db/"+t.Name()+"/bar", "")
-	assertStatus(t, resp, 200)
+	requireStatus(t, resp, 200)
 
 	// Edit existing document
 	rev := doc["_rev"]
@@ -6096,17 +6096,17 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 	assert.EqualValues(t, true, doc["test"])
 	// Confirm attachment was removed successfully in latest revision
 	resp = passiveRT.SendAdminRequest("GET", "/db/"+docID+"/bar", "")
-	assertStatus(t, resp, 404)
+	requireStatus(t, resp, 404)
 
 	// Add disallowed _removed tag in document
 	rawDoc = fmt.Sprintf(`{"_rev": "%s","_removed": false}`, doc["_rev"])
 	resp = activeRT.SendAdminRequest("PUT", "/db/"+docID, rawDoc)
-	assertStatus(t, resp, 404)
+	requireStatus(t, resp, 404)
 
 	// Add disallowed _purged tag in document
 	rawDoc = fmt.Sprintf(`{"_rev": "%s","_purged": true}`, doc["_rev"])
 	resp = activeRT.SendAdminRequest("PUT", "/db/"+docID, rawDoc)
-	assertStatus(t, resp, 400)
+	requireStatus(t, resp, 400)
 }
 
 func getTestRevpos(t *testing.T, doc db.Body, attachmentKey string) (revpos int) {
@@ -6133,7 +6133,7 @@ func createOrUpdateDoc(t *testing.T, rt *RestTester, docID, revID, bodyValue str
 		dbURL = "/db/" + docID + "?rev=" + revID
 	}
 	resp := rt.SendAdminRequest(http.MethodPut, dbURL, body)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	require.NoError(t, rt.WaitForPendingChanges())
 	return respRevID(t, resp)
 }

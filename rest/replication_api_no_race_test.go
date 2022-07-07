@@ -86,7 +86,7 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 	dbConfig.Sync = base.StringPtr(`function(doc){channel(doc.channels);}`)
 	resp, err := rt2.ReplaceDbConfig("db", dbConfig)
 	require.NoError(t, err)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 
 	shouldCreateDocs.Set(false)
 
