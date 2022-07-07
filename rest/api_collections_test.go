@@ -95,7 +95,7 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 			docID := fmt.Sprintf("doc%d", i)
 			path := fmt.Sprintf("/%s/%s", test.keyspace, docID)
 			resp := rt.SendUserRequestWithHeaders(http.MethodPut, path, `{"test":true}`, nil, username, password)
-			assertStatus(t, resp, test.expectedStatus)
+			requireStatus(t, resp, test.expectedStatus)
 
 			if test.expectedStatus == http.StatusCreated {
 				// go and check that the doc didn't just end up in the default collection of the test bucket
