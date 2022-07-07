@@ -279,28 +279,34 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	}
 
 	// Named collections handling
-	if dbc := h.server.GetDbConfig(keyspaceDb); dbc != nil && len(dbc.Scopes) > 0 {
+	if dbContext.Scopes != nil {
 		// Allow an empty scope to refer to the one SG is running with, rather than falling back to _default
 		if keyspaceScope == nil {
-			keyspaceScope = dbContext.BucketSpec.Scope
+			// TODO: There could be a configurable dbContext.defaultNamedScope if we allow >1 scope
+			//       for now we don't need it - just use the one we're running with.
+			for scopeName := range dbContext.Scopes {
+				keyspaceScope = &scopeName
+				break
+			}
 		}
+		scope, foundScope := dbContext.Scopes[*keyspaceScope]
+		if !foundScope {
+			return base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", base.MD(keyspaceDb), base.MD(*keyspaceScope), base.MD(*keyspaceCollection))
+		}
+
 		if keyspaceCollection == nil {
-			if len(dbc.Scopes[*keyspaceScope].Collections) > 1 {
+			if len(scope.Collections) > 1 {
 				// _default doesn't exist for a non-default scope - so make it a required element if it's ambiguous
 				return base.HTTPErrorf(http.StatusBadRequest, "Ambiguous keyspace: %s.%s", keyspaceDb, *keyspaceScope)
 			}
 			keyspaceCollection = dbContext.BucketSpec.Collection
 		}
-
-		scope, foundScope := dbContext.Scopes[*keyspaceScope]
-		var foundCollection bool
-		if foundScope {
-			_, foundCollection = scope.Collections[*keyspaceCollection]
-		}
-		if !foundScope || !foundCollection {
+		_, foundCollection := scope.Collections[*keyspaceCollection]
+		if !foundCollection {
 			return base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", base.MD(keyspaceDb), base.MD(*keyspaceScope), base.MD(*keyspaceCollection))
 		}
 	} else {
+		// Set these for handlers that expect a scope/collection to be set, even if not using named collections.
 		keyspaceScope = base.StringPtr(base.DefaultScope)
 		keyspaceCollection = base.StringPtr(base.DefaultCollection)
 	}
