@@ -419,6 +419,14 @@ func (user *userImpl) ChannelGrantedPeriods(chanName string) ([]GrantHistorySequ
 		if err != nil {
 			return nil, err
 		}
+		if role == nil {
+			// In most cases, this means the role never existed (and therefore didn't affect access).
+			// However, it's also possible (though rare) that the role used to exist but was explicitly purged, and thus
+			// could have granted access to channels before it was purged - but we can't determine what those channels were.
+			// We can't distinguish these cases, so log to be safe.
+			base.WarnfCtx(user.auth.LogCtx, "Unable to determine complete access history for user %v because role %v doesn't exist or has been purged (for channel %v).", base.UD(user.Name()), base.UD(roleName), base.UD(chanName))
+			continue
+		}
 
 		// Iterate over channel history on old roles
 		roleChannelHistory, ok := role.ChannelHistory()[chanName]
