@@ -207,16 +207,6 @@ type ImportOptions struct {
 	ImportPartitions uint16                // Number of partitions for import
 }
 
-// Configuration for GraphQL.
-type GraphQLConfig struct {
-	Schema     *string                          `json:"schema,omitempty"`     // Schema in SDL syntax
-	SchemaFile *string                          `json:"schemaFile,omitempty"` // Path of schema file
-	Resolvers  map[string]GraphQLResolverConfig `json:"resolvers"`            // Defines query/mutation code
-}
-
-// Maps GraphQL query/mutation names to the JS source code that implements them.
-type GraphQLResolverConfig map[string]string
-
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,
 // so this struct does not have to be thread-safe.
 type Database struct {

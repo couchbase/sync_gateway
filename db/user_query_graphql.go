@@ -21,16 +21,26 @@ import (
 	"github.com/graphql-go/graphql"
 )
 
-type gqContextKey string
+// Configuration for GraphQL.
+type GraphQLConfig struct {
+	Schema     *string                          `json:"schema,omitempty"`     // Schema in SDL syntax
+	SchemaFile *string                          `json:"schemaFile,omitempty"` // Path of schema file
+	Resolvers  map[string]GraphQLResolverConfig `json:"resolvers"`            // Defines query/mutation code
+}
 
-var dbKey = gqContextKey("db")                 // Context key to access the Database instance
-var mutAllowedKey = gqContextKey("mutAllowed") // Context key to access `mutationAllowed`
+// Maps GraphQL query/mutation names to the JS source code that implements them.
+type GraphQLResolverConfig map[string]string
 
 // GraphQL query handler for a Database.
 type GraphQL struct {
 	dbc    *DatabaseContext
 	schema graphql.Schema // The compiled GraphQL schema object
 }
+
+type gqContextKey string
+
+var dbKey = gqContextKey("db")                 // Context key to access the Database instance
+var mutAllowedKey = gqContextKey("mutAllowed") // Context key to access `mutationAllowed`
 
 // Top-level public method to run a GraphQL query on a Database.
 func (db *Database) UserGraphQLQuery(query string, operationName string, variables map[string]interface{}, mutationAllowed bool) (*graphql.Result, error) {
