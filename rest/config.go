@@ -155,7 +155,8 @@ type DbConfig struct {
 	ClientPartitionWindowSecs        *int                             `json:"client_partition_window_secs,omitempty"`         // How long clients can remain offline for without losing replication metadata. Default 30 days (in seconds)
 	Guest                            *db.PrincipalConfig              `json:"guest,omitempty"`                                // Guest user settings
 	UserQueries                      db.UserQueryMap                  `json:"queries,omitempty"`                              // Queries for connected clients to invoke by name
-	GraphQL                          *db.GraphQLConfig                `json:"graphql,omitempty"`                              // Queries for connected clients to invoke by name
+	GraphQL                          *db.GraphQLConfig                `json:"graphql,omitempty"`                              // GraphQL configuration & resolver fns
+	UserFunctions                    db.UserFunctionMap               `json:"functions,omitempty"`                            // Named JS fns for clients to call
 }
 
 type DeltaSyncConfig struct {

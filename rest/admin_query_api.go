@@ -15,19 +15,6 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 )
 
-func (h *handler) getDBConfig() (config *DbConfig, etagVersion string, err error) {
-	h.assertAdminOnly()
-	if h.server.bootstrapContext.connection == nil {
-		return h.server.GetDbConfig(h.db.Name), "", nil
-	} else if found, databaseConfig, err := h.server.fetchDatabase(h.db.Name); err != nil {
-		return nil, "", err
-	} else if !found {
-		return nil, "", base.HTTPErrorf(http.StatusNotFound, "database config not found")
-	} else {
-		return &databaseConfig.DbConfig, databaseConfig.Version, nil
-	}
-}
-
 // GET database config user queries (or a single query)
 func (h *handler) handleGetDbConfigQueries() error {
 	config, etagVersion, err := h.getDBConfig()
@@ -46,10 +33,26 @@ func (h *handler) handleGetDbConfigQueries() error {
 	return nil
 }
 
+// GET database config user functions (or a single function)
+func (h *handler) handleGetDbConfigFunctions() error {
+	config, etagVersion, err := h.getDBConfig()
+	if err != nil {
+		return err
+	} else if config.UserFunctions == nil {
+		return base.HTTPErrorf(http.StatusNotFound, "no functions configured")
+	} else if functionName := h.PathVar("function"); functionName == "" {
+		h.writeJSON(config.UserFunctions)
+	} else if functionConfig, found := config.UserFunctions[functionName]; found {
+		h.writeJSON(functionConfig)
+	} else {
+		return base.HTTPErrorf(http.StatusNotFound, "no such function")
+	}
+	h.response.Header().Set("ETag", etagVersion)
+	return nil
+}
+
 // PUT database config user queries (or a single query)
 func (h *handler) handlePutDbConfigQueries() error {
-	h.assertAdminOnly()
-
 	// Read the new config, either the entire UserQueryMap, or a single UserQuery:
 	var queriesConfig db.UserQueryMap
 	var queryConfig db.UserQuery
@@ -63,62 +66,41 @@ func (h *handler) handlePutDbConfigQueries() error {
 	if err != nil {
 		return err
 	}
-
-	bucket := h.db.Bucket.GetName()
-	var updatedDbConfig *DatabaseConfig
-	cas, err := h.server.bootstrapContext.connection.UpdateConfig(
-		bucket, h.server.config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte) (newConfig []byte, err error) {
-			var bucketDbConfig DatabaseConfig
-			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
-				return nil, err
+	return h.mutateDbConfig(func(dbConfig *DbConfig) {
+		if queryName == "" {
+			dbConfig.UserQueries = queriesConfig
+		} else {
+			if dbConfig.UserQueries == nil {
+				dbConfig.UserQueries = db.UserQueryMap{}
 			}
+			dbConfig.UserQueries[queryName] = &queryConfig
+		}
+	})
+}
 
-			headerVersion := h.rq.Header.Get("If-Match")
-			if headerVersion != "" && headerVersion != bucketDbConfig.Version {
-				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
-			}
-
-			// Update the config:
-			if queryName == "" {
-				bucketDbConfig.UserQueries = queriesConfig
-			} else {
-				if bucketDbConfig.UserQueries == nil {
-					bucketDbConfig.UserQueries = db.UserQueryMap{}
-				}
-				bucketDbConfig.UserQueries[queryName] = &queryConfig
-			}
-
-			if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation)); err != nil {
-				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
-			}
-
-			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
-			if err != nil {
-				return nil, err
-			}
-
-			updatedDbConfig = &bucketDbConfig
-			return base.JSONMarshal(bucketDbConfig)
-		})
+// PUT database config user functions (or a single function)
+func (h *handler) handlePutDbConfigFunctions() error {
+	// Read the new config, either the entire UserFunctionMap, or a single UserFunction:
+	var functionsConfig db.UserFunctionMap
+	var functionConfig db.UserFunctionConfig
+	var err error
+	functionName := h.PathVar("function")
+	if functionName == "" {
+		err = h.readJSONInto(&functionsConfig)
+	} else {
+		err = h.readJSONInto(&functionConfig)
+	}
 	if err != nil {
 		return err
 	}
-	updatedDbConfig.cas = cas
-
-	dbName := h.db.Name
-	dbCreds := h.server.config.DatabaseCredentials[dbName]
-	if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap, dbCreds); err != nil {
-		return err
-	}
-
-	h.server.lock.Lock()
-	defer h.server.lock.Unlock()
-
-	// TODO: Dynamic update instead of reload
-	if err := h.server._reloadDatabaseWithConfig(*updatedDbConfig, false); err != nil {
-		return err
-	}
-
-	return base.HTTPErrorf(http.StatusOK, "updated")
+	return h.mutateDbConfig(func(dbConfig *DbConfig) {
+		if functionName == "" {
+			dbConfig.UserFunctions = functionsConfig
+		} else {
+			if dbConfig.UserFunctions == nil {
+				dbConfig.UserFunctions = db.UserFunctionMap{}
+			}
+			dbConfig.UserFunctions[functionName] = &functionConfig
+		}
+	})
 }

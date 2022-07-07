@@ -106,8 +106,10 @@ func createCommonRouter(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mu
 
 	dbr.Handle("/_blipsync", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handleBLIPSync)).Methods("GET")
 
-	dbr.Handle("/_query/{name}", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleUserQuery)).Methods("GET", "POST")
+	// Queries & functions
+	dbr.Handle("/_function/{name}", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleUserFunction)).Methods("GET", "POST")
 	dbr.Handle("/_graphql", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleGraphQL)).Methods("GET", "POST")
+	dbr.Handle("/_query/{name}", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleUserQuery)).Methods("GET", "POST")
 
 	return r, dbr
 }
@@ -281,6 +283,15 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutDbConfigQueries)).Methods("PUT")
 	dbr.Handle("/_config/queries/{query}",
 		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutDbConfigQueries)).Methods("PUT")
+
+	dbr.Handle("/_config/functions",
+		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfigFunctions)).Methods("GET")
+	dbr.Handle("/_config/functions/{function}",
+		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfigFunctions)).Methods("GET")
+	dbr.Handle("/_config/functions",
+		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutDbConfigFunctions)).Methods("PUT")
+	dbr.Handle("/_config/functions/{function}",
+		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutDbConfigFunctions)).Methods("PUT")
 
 	dbr.Handle("/_resync",
 		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetResync)).Methods("GET")

@@ -20,35 +20,10 @@ import (
 
 // HTTP handler for GET or POST `/$db/_query/$name`
 func (h *handler) handleUserQuery() error {
-	queryName := h.PathVar("name")
-
-	queryParams := map[string]interface{}{}
-	if h.rq.Method == "POST" {
-		// POST: Params come from the request body in JSON format:
-		if err := h.readJSONInto(&queryParams); err != nil {
-			return err
-		}
-	} else {
-		// GET: Params come from the URL queries (`?key=value`):
-		for key, values := range h.getQueryValues() {
-			// `values` is an array of strings, one per instance of the key in the URL
-			if len(values) > 1 {
-				return base.HTTPErrorf(http.StatusBadRequest, "Duplicate parameter '%s'", key)
-			}
-			value := values[0]
-			// Parse value as JSON if it looks like JSON, else just as a raw string:
-			if len(value) > 0 && strings.IndexByte(`0123456789-"[{`, value[0]) >= 0 {
-				var jsonValue interface{}
-				if err := base.JSONUnmarshal([]byte(value), &jsonValue); err != nil {
-					return base.HTTPErrorf(http.StatusBadRequest, "Value of ?%s is not valid JSON", key)
-				}
-				queryParams[key] = jsonValue
-			} else {
-				queryParams[key] = value
-			}
-		}
+	queryName, queryParams, err := h.getUserFunctionParams()
+	if err != nil {
+		return err
 	}
-
 	// Run the query:
 	results, err := h.db.UserQuery(queryName, queryParams)
 	if err != nil {
@@ -75,6 +50,52 @@ func (h *handler) handleUserQuery() error {
 	}
 	_, _ = h.response.Write([]byte(`]` + "\n"))
 	return nil
+}
+
+// HTTP handler for GET or POST `/$db/_function/$name`
+func (h *handler) handleUserFunction() error {
+	fnName, fnParams, err := h.getUserFunctionParams()
+	if err != nil {
+		return err
+	}
+	canMutate := h.rq.Method != "GET"
+	result, err := h.db.CallUserFunction(fnName, fnParams, canMutate)
+	if err == nil {
+		h.writeJSON(result)
+	}
+	return err
+}
+
+// Common subroutine for reading query name and parameters from a request
+func (h *handler) getUserFunctionParams() (name string, params map[string]interface{}, err error) {
+	name = h.PathVar("name")
+	params = map[string]interface{}{}
+	if h.rq.Method == "POST" {
+		// POST: Params come from the request body in JSON format:
+		err = h.readJSONInto(&params)
+	} else {
+		// GET: Params come from the URL queries (`?key=value`):
+		for key, values := range h.getQueryValues() {
+			// `values` is an array of strings, one per instance of the key in the URL
+			if len(values) > 1 {
+				err = base.HTTPErrorf(http.StatusBadRequest, "Duplicate parameter '%s'", key)
+				return
+			}
+			value := values[0]
+			// Parse value as JSON if it looks like JSON, else just as a raw string:
+			if len(value) > 0 && strings.IndexByte(`0123456789-"[{`, value[0]) >= 0 {
+				var jsonValue interface{}
+				if base.JSONUnmarshal([]byte(value), &jsonValue) != nil {
+					err = base.HTTPErrorf(http.StatusBadRequest, "Value of ?%s is not valid JSON", key)
+					return
+				}
+				params[key] = jsonValue
+			} else {
+				params[key] = value
+			}
+		}
+	}
+	return
 }
 
 // HTTP handler for GET or POST `/$db/_graphql`

@@ -1,0 +1,106 @@
+//  Copyright 2022-Present Couchbase, Inc.
+//
+//  Use of this software is governed by the Business Source License included
+//  in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+//  in that file, in accordance with the Business Source License, use of this
+//  software will be governed by the Apache License, Version 2.0, included in
+//  the file licenses/APL2.txt.
+
+package rest
+
+import (
+	"net/http"
+
+	"github.com/couchbase/sync_gateway/base"
+)
+
+// Returns the current database config object for this request
+func (h *handler) getDBConfig() (config *DbConfig, etagVersion string, err error) {
+	h.assertAdminOnly()
+	if h.server.bootstrapContext.connection == nil {
+		return h.server.GetDbConfig(h.db.Name), "", nil
+	} else if found, databaseConfig, err := h.server.fetchDatabase(h.db.Name); err != nil {
+		return nil, "", err
+	} else if !found {
+		return nil, "", base.HTTPErrorf(http.StatusNotFound, "database config not found")
+	} else {
+		return &databaseConfig.DbConfig, databaseConfig.Version, nil
+	}
+}
+
+// Updates the database config via a callback function that can modify a `DbConfig`.
+// Note: This always returns a non-nil error; on success it's an HTTPError with status OK.
+// The calling handler method is expected to simply return the result.
+func (h *handler) mutateDbConfig(mutator func(*DbConfig)) error {
+	h.assertAdminOnly()
+	dbName := h.db.Name
+	validateOIDC := !h.getBoolQuery(paramDisableOIDCValidation)
+
+	if h.server.persistentConfig {
+		// Update persistently-stored config:
+		bucket := h.db.Bucket.GetName()
+		var updatedDbConfig *DatabaseConfig
+		cas, err := h.server.bootstrapContext.connection.UpdateConfig(
+			bucket, h.server.config.Bootstrap.ConfigGroupID,
+			func(rawBucketConfig []byte) (newConfig []byte, err error) {
+				var bucketDbConfig DatabaseConfig
+				if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
+					return nil, err
+				}
+
+				headerVersion := h.rq.Header.Get("If-Match")
+				if headerVersion != "" && headerVersion != bucketDbConfig.Version {
+					return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
+				}
+
+				mutator(&bucketDbConfig.DbConfig) // Call the mutator function!
+
+				if err := bucketDbConfig.validate(h.ctx(), validateOIDC); err != nil {
+					return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
+				}
+
+				bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+				if err != nil {
+					return nil, err
+				}
+
+				updatedDbConfig = &bucketDbConfig
+				return base.JSONMarshal(bucketDbConfig)
+			})
+		if err != nil {
+			return err
+		}
+		updatedDbConfig.cas = cas
+
+		dbCreds := h.server.config.DatabaseCredentials[dbName]
+		if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap, dbCreds); err != nil {
+			return err
+		}
+
+		h.server.lock.Lock()
+		defer h.server.lock.Unlock()
+
+		// TODO: Dynamic update instead of reload
+		if err := h.server._reloadDatabaseWithConfig(*updatedDbConfig, false); err != nil {
+			return err
+		}
+
+	} else {
+		// Update in-memory config read from JSON file:
+		databaseConfig := DatabaseConfig{DbConfig: *h.server.GetDbConfig(dbName)}
+
+		mutator(&databaseConfig.DbConfig) // Call the mutator function!
+
+		if err := databaseConfig.validate(h.ctx(), validateOIDC); err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
+		}
+		dbCreds := h.server.config.DatabaseCredentials[dbName]
+		if err := databaseConfig.setup(dbName, h.server.config.Bootstrap, dbCreds); err != nil {
+			return err
+		}
+		if err := h.server.ReloadDatabaseWithConfig(databaseConfig); err != nil {
+			return err
+		}
+	}
+	return base.HTTPErrorf(http.StatusOK, "updated")
+}

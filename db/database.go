@@ -138,6 +138,7 @@ type DatabaseContextOptions struct {
 	SessionCookieName             string           // Pass-through DbConfig.SessionCookieName
 	SessionCookieHttpOnly         bool             // Pass-through DbConfig.SessionCookieHTTPOnly
 	UserQueries                   UserQueryMap     // Pass-through DbConfig.UserQueries
+	UserFunctions                 UserFunctionMap  // Pass-through DbConfig.UserFunctions
 	GraphQL                       *GraphQLConfig   // Pass-through DbConfig.GraphQL
 	AllowConflicts                *bool            // False forbids creating conflicts
 	SendWWWAuthenticateHeader     *bool            // False disables setting of 'WWW-Authenticate' header

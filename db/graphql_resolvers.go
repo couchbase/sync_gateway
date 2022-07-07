@@ -25,7 +25,7 @@ import (
 // Note: This source file was originally adapted from channels/channelmapper.go and channels/sync_runner.go
 
 // Subset of graphql.ResolveInfo, which is marshalable to JSON (and thereby to Otto)
-type jsResolveInfo struct {
+type jsGQResolveInfo struct {
 	FieldName      string                 `json:"fieldName"`
 	RootValue      interface{}            `json:"rootValue"`
 	VariableValues map[string]interface{} `json:"variableValues"`
@@ -79,7 +79,7 @@ func (res *GraphQLResolver) Resolve(db *Database, params *graphql.ResolveParams,
 		name := db.user.Name()
 		context.User = &name
 	}
-	info := jsResolveInfo{
+	info := jsGQResolveInfo{
 		FieldName:      params.Info.FieldName,
 		RootValue:      params.Info.RootValue,
 		VariableValues: params.Info.VariableValues,
@@ -265,44 +265,4 @@ func (runner *graphQLResolverRunner) do_save(docID string, body map[string]inter
 
 	_, _, err = runner.currentDB.Put(docID, body)
 	return err
-}
-
-//////// OTTO UTILITIES:
-
-// Returns a parameter of `call` as a Go string, or throws a JS exception if it's not a string.
-func ottoStringParam(call otto.FunctionCall, arg int, what string) string {
-	val := call.Argument(arg)
-	if !val.IsString() {
-		panic(call.Otto.MakeTypeError(fmt.Sprintf("%s() param %d must be a string", what, arg+1)))
-	}
-	return val.String()
-
-}
-
-// Returns a parameter of `call` as a Go map, or throws a JS exception if it's not a map.
-// If `optional` is true, the parameter is allowed not to exist, in which case `nil` is returned.
-func ottoObjectParam(call otto.FunctionCall, arg int, optional bool, what string) map[string]interface{} {
-	val := call.Argument(arg)
-	if !val.IsObject() {
-		if optional && val.IsUndefined() {
-			return nil
-		}
-		panic(call.Otto.MakeTypeError(fmt.Sprintf("%s() param %d must be an object", what, arg+1)))
-	}
-	obj, err := val.Export()
-	if err != nil {
-		panic(call.Otto.MakeTypeError("Yikes, couldn't export JS value"))
-	}
-	return obj.(map[string]interface{})
-
-}
-
-// Returns `result` back to Otto; or if `err` is non-nil, throws it.
-func ottoResult(call otto.FunctionCall, result interface{}, err error) otto.Value {
-	if err == nil {
-		val, _ := call.Otto.ToValue(result)
-		return val
-	} else {
-		panic(call.Otto.MakeCustomError("GoError", err.Error())) //TODO: Improve
-	}
 }

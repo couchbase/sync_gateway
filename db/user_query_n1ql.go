@@ -29,7 +29,7 @@ import (
 type UserQueryMap = map[string]*UserQuery
 
 // Defines a N1QL query that a client can invoke by name.
-// (The name is the key in the map DatabaseContextOptions.UserQueries.)
+// (The name is the key in the UserQueryMap.)
 type UserQuery struct {
 	Statement  string          `json:"statement"`            // N1QL / SQL++ query string
 	Parameters []string        `json:"parameters,omitempty"` // Names of N1QL '$'-parameters
@@ -64,44 +64,57 @@ func (db *Database) UserQuery(name string, params map[string]interface{}) (sgbuc
 		return nil, base.HTTPErrorf(http.StatusNotFound, "No such query '%s'", name)
 	}
 
+	// Check that the user is authorized:
+	if err := query.Allow.authorize(db.user, params, "query", name); err != nil {
+		return nil, err
+	}
+
+	// Check that the config does not use the reserved parameter name "user":
+	if _, found := params[userQueryUserParam]; found {
+		logCtx := context.TODO()
+		base.WarnfCtx(logCtx, "Bad config: query %q uses reserved parameter name '$%s'", name, userQueryUserParam)
+		return nil, base.HTTPErrorf(http.StatusInternalServerError, "Server %s configuration is invalid")
+	}
+
 	// Make sure each specified parameter has a value in `params`:
-	for _, paramName := range query.Parameters {
-		if paramName == userQueryUserParam {
-			logCtx := context.TODO()
-			base.WarnfCtx(logCtx, "Bad config: Query %q uses reserved parameter name '$user'", name)
-			return nil, base.HTTPErrorf(http.StatusInternalServerError, "Server query configuration is invalid")
-		}
-		if _, found := params[paramName]; !found {
-			return nil, base.HTTPErrorf(http.StatusBadRequest, "Parameter '%s' is missing", paramName)
-		}
+	if err := checkQueryArguments(params, query.Parameters, "query", name); err != nil {
+		return nil, err
 	}
 
-	// Any extra parameters in `params` are illegal:
-	if len(params) != len(query.Parameters) {
-		for _, paramName := range query.Parameters {
-			delete(params, paramName)
-		}
-		for badKey, _ := range params {
-			return nil, base.HTTPErrorf(http.StatusBadRequest, "Unknown parameter '%s'", badKey)
-		}
-	}
-
+	// Add `user` parameter, for query's use in filtering the output:
 	if user := db.user; user != nil {
-		// Add `user` parameter, for query's use in filtering the output:
 		params[userQueryUserParam] = &userQueryUserInfo{
 			Name:     user.Name(),
 			Email:    user.Email(),
 			Channels: user.Channels().AllKeys(),
 			Roles:    user.RoleNames().AllKeys(),
 		}
-		if err := query.Allow.authorize(user, params); err != nil {
-			return nil, err
-		}
 	}
 
 	// Run the query:
 	return db.N1QLQueryWithStats(db.Ctx, QueryTypeUserPrefix+name, query.Statement, params,
 		base.RequestPlus, false)
+}
+
+// Checks that `params` contains exactly the same keys as the list `parameterNames`.
+// `queryType` and `queryName` are used in generating the error messages.
+func checkQueryArguments(params map[string]interface{}, parameterNames []string, queryType string, queryName string) error {
+	// Make sure each specified parameter has a value in `params`:
+	for _, paramName := range parameterNames {
+		if _, found := params[paramName]; !found {
+			return base.HTTPErrorf(http.StatusBadRequest, "%s %q parameter %q is missing", queryType, queryName, paramName)
+		}
+	}
+	// Any extra parameters in `params` are illegal:
+	if len(params) != len(parameterNames) {
+		for _, paramName := range parameterNames {
+			delete(params, paramName)
+		}
+		for badKey, _ := range params {
+			return base.HTTPErrorf(http.StatusBadRequest, "%s %q has no parameter %q", queryType, queryName, badKey)
+		}
+	}
+	return nil
 }
 
 //////// AUTHORIZATION:
@@ -111,19 +124,19 @@ func (db *Database) UserQuery(name string, params map[string]interface{}) (sgbuc
 // - The user must have a role contained in Roles, OR
 // - The user must have access to a channel contained in Channels.
 // In Roles and Channels, patterns of the form `$param` or `$(param)` are expanded using `params`.
-func (allow *UserQueryAllow) authorize(user auth.User, params map[string]interface{}) error {
+func (allow *UserQueryAllow) authorize(user auth.User, params map[string]interface{}, queryType string, queryName string) error {
 	if user == nil {
-		return nil // Admin
-	} else if allow != nil {
+		return nil // User is admin
+	} else if allow != nil { // No Allow object means admin-only
 		if allow.Users.Contains(user.Name()) {
-			return nil // user is explicitly allowed
+			return nil // User is explicitly allowed
 		}
 		userRoles := user.RoleNames()
 		for _, rolePattern := range allow.Roles {
 			if role, err := allow.expandPattern(rolePattern, params); err != nil {
 				return err
 			} else if userRoles.Contains(role) {
-				return nil // user has one of the allowed roles
+				return nil // User has one of the allowed roles
 			}
 		}
 		// Check if the user has access to one of the given channels.
@@ -131,11 +144,11 @@ func (allow *UserQueryAllow) authorize(user auth.User, params map[string]interfa
 			if channel, err := allow.expandPattern(channelPattern, params); err != nil {
 				return err
 			} else if user.CanSeeChannel(channel) {
-				return nil // user has access to one of the allowed channels
+				return nil // User has access to one of the allowed channels
 			}
 		}
 	}
-	return user.UnauthError("You do not have access to this")
+	return user.UnauthError(fmt.Sprintf("Unauthorized call to %s %q", queryType, queryName))
 }
 
 // Expands patterns of the form `$param` or `$(param)` in `pattern`, looking up each such
