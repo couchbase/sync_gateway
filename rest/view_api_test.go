@@ -26,30 +26,30 @@ func TestDesignDocs(t *testing.T) {
 	defer rt.Close()
 
 	response := rt.SendRequest(http.MethodGet, "/db/_design/foo", "")
-	assertStatus(t, response, http.StatusForbidden)
+	requireStatus(t, response, http.StatusForbidden)
 	response = rt.SendRequest(http.MethodPut, "/db/_design/foo", `{}`)
-	assertStatus(t, response, http.StatusForbidden)
+	requireStatus(t, response, http.StatusForbidden)
 	response = rt.SendRequest(http.MethodDelete, "/db/_design/foo", "")
-	assertStatus(t, response, http.StatusForbidden)
+	requireStatus(t, response, http.StatusForbidden)
 
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_design/foo", "")
-	assertStatus(t, response, http.StatusNotFound)
+	requireStatus(t, response, http.StatusNotFound)
 	response = rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_design/foo", "")
 
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_design%2ffoo", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_design%2Ffoo", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	response = rt.SendAdminRequest(http.MethodDelete, "/db/_design/foo", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 
 	response = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/_design/%s", db.DesignDocSyncGateway()), "{}")
-	assertStatus(t, response, http.StatusForbidden)
+	requireStatus(t, response, http.StatusForbidden)
 	response = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/db/_design/%s", db.DesignDocSyncGateway()), "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 }
 
 func TestViewQuery(t *testing.T) {
@@ -57,11 +57,11 @@ func TestViewQuery(t *testing.T) {
 	defer rt.Close()
 
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}"}}}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 	response = rt.SendRequest(http.MethodPut, "/db/doc1", `{"key":10, "value":"ten"}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 	response = rt.SendRequest(http.MethodPut, "/db/doc2", `{"key":7, "value":"seven"}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	// The wait is needed here because the query does not have stale=false.
 	// TODO: update the query to use stale=false and remove the wait
@@ -97,11 +97,11 @@ func TestViewQueryMultipleViews(t *testing.T) {
 
 	// Define three views
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"views": {"by_fname": {"map": "function (doc, meta) { emit(doc.fname, null); }"},"by_lname": {"map": "function (doc, meta) { emit(doc.lname, null); }"},"by_age": {"map": "function (doc, meta) { emit(doc.age, null); }"}}}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 	response = rt.SendRequest(http.MethodPut, "/db/doc1", `{"fname": "Alice", "lname":"Ten", "age":10}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 	response = rt.SendRequest(http.MethodPut, "/db/doc2", `{"fname": "Bob", "lname":"Seven", "age":7}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/by_age")
 	assert.NoError(t, err, "Unexpected error")
@@ -125,11 +125,11 @@ func TestViewQueryWithParams(t *testing.T) {
 	defer rt.Close()
 
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foodoc", `{"views": {"foobarview": {"map": "function(doc, meta) {if (doc.value == \"foo\") {emit(doc.key, null);}}"}}}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 	response = rt.SendRequest(http.MethodPut, "/db/doc1", `{"value": "foo", "key": "test1"}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 	response = rt.SendRequest(http.MethodPut, "/db/doc2", `{"value": "foo", "key": "test2"}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	result, err := rt.WaitForNAdminViewResults(2, `/db/_design/foodoc/_view/foobarview?conflicts=true&descending=false&endkey="test2"&endkey_docid=doc2&end_key_doc_id=doc2&startkey="test1"&startkey_docid=doc1`)
 	assert.NoError(t, err, "Unexpected error")
@@ -150,13 +150,13 @@ func TestViewQueryUserAccess(t *testing.T) {
 
 	rt.ServerContext().Database("db").SetUserViewsEnabled(true)
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"views":{"bar": {"map":"function (doc, meta) { if (doc.type != 'type1') { return; } if (doc.state == 'state1' || doc.state == 'state2' || doc.state == 'state3') { emit(doc.state, meta.id); }}"}}}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 	response = rt.SendRequest(http.MethodPut, "/db/doc1", `{"type":"type1", "state":"state1"}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 	response = rt.SendRequest(http.MethodPut, "/db/doc2", `{"type":"type1", "state":"state2"}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 	response = rt.SendRequest(http.MethodPut, "/db/doc3", `{"type":"type2", "state":"state2"}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?stale=false")
 	assert.NoError(t, err, "Unexpected error in WaitForNAdminViewResults")
@@ -189,7 +189,7 @@ func TestViewQueryUserAccess(t *testing.T) {
 	request, _ := http.NewRequest(http.MethodGet, "/db/_design/foo/_view/bar?stale=false", nil)
 	request.SetBasicAuth(testUser.Name(), password)
 	userResponse := rt.Send(request)
-	assertStatus(t, userResponse, http.StatusForbidden)
+	requireStatus(t, userResponse, http.StatusForbidden)
 }
 
 func TestViewQueryMultipleViewsInterfaceValues(t *testing.T) {
@@ -202,14 +202,14 @@ func TestViewQueryMultipleViewsInterfaceValues(t *testing.T) {
 
 	// Define three views
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"views": {"by_fname": {"map": "function (doc, meta) { emit(doc.fname, null); }"},"by_lname": {"map": "function (doc, meta) { emit(doc.lname, null); }"},"by_age": {"map": "function (doc, meta) { emit(doc.age, doc); }"}}}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 	response = rt.SendRequest(http.MethodPut, "/db/doc1", `{"fname": "Alice", "lname":"Ten", "age":10}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 	response = rt.SendRequest(http.MethodPut, "/db/doc2", `{"fname": "Bob", "lname":"Seven", "age":7}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_design/foo/_view/by_age", ``)
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	var result sgbucket.ViewResult
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 	require.Len(t, result.Rows, 2)
@@ -217,14 +217,14 @@ func TestViewQueryMultipleViewsInterfaceValues(t *testing.T) {
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: interface{}(nil)}, result.Rows[1])
 
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_design/foo/_view/by_fname", ``)
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 	require.Len(t, result.Rows, 2)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: "Alice", Value: interface{}(nil)}, result.Rows[0])
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "Bob", Value: interface{}(nil)}, result.Rows[1])
 
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_design/foo/_view/by_lname", ``)
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 	require.Len(t, result.Rows, 2)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "Seven", Value: interface{}(nil)}, result.Rows[0])
@@ -244,13 +244,13 @@ func TestUserViewQuery(t *testing.T) {
 
 	// Create a view:
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}"}}}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	// Create docs:
 	response = rt.SendRequest(http.MethodPut, "/db/doc1", `{"key":10, "value":"ten", "channel":"W"}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 	response = rt.SendRequest(http.MethodPut, "/db/doc2", `{"key":7, "value":"seven", "channel":"Q"}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	// Create a user:
 	password := "123456"
@@ -300,7 +300,7 @@ func TestUserViewQuery(t *testing.T) {
 	request, _ := http.NewRequest(http.MethodGet, "/db/_design/sync_gateway/_view/access", nil)
 	request.SetBasicAuth(quinn.Name(), password)
 	response = rt.Send(request)
-	assertStatus(t, response, http.StatusForbidden)
+	requireStatus(t, response, http.StatusForbidden)
 }
 
 // This includes a fix for #857
@@ -314,16 +314,16 @@ func TestAdminReduceViewQuery(t *testing.T) {
 
 	// Create a view with a reduce:
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}", "reduce": "_count"}}}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	for i := 0; i < 9; i++ {
 		// Create docs:
 		response = rt.SendRequest(http.MethodPut, fmt.Sprintf("/db/doc%v", i), `{"key":0, "value":"0", "channel":"W"}`)
-		assertStatus(t, response, http.StatusCreated)
+		requireStatus(t, response, http.StatusCreated)
 
 	}
 	response = rt.SendRequest(http.MethodPut, fmt.Sprintf("/db/doc%v", 10), `{"key":1, "value":"0", "channel":"W"}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	// Wait for all created documents to avoid race when using "reduce"
 	_, err := rt.WaitForNAdminViewResults(10, "/db/_design/foo/_view/bar?reduce=false")
@@ -343,7 +343,7 @@ func TestAdminReduceViewQuery(t *testing.T) {
 	// todo support group reduce, see #955
 	// // test group=true
 	// response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true&group=true", ``)
-	// assertStatus(t, response, 200)
+	// requireStatus(t, response, 200)
 	// base.JSONUnmarshal(response.Body.Bytes(), &result)
 	// // we should get 2 rows with the reduce result
 	// goassert.Equals(t, len(result.Rows), 2)
@@ -365,15 +365,15 @@ func TestAdminReduceSumQuery(t *testing.T) {
 
 	// Create a view with a reduce:
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"options":{"raw":true},"views":{"bar": {"map": "function(doc) {if (doc.key && doc.value) emit(doc.key, doc.value);}", "reduce": "_sum"}}}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	for i := 0; i < 9; i++ {
 		// Create docs:
 		response = rt.SendRequest(http.MethodPut, fmt.Sprintf("/db/doc%v", i), `{"key":"A", "value":1}`)
-		assertStatus(t, response, http.StatusCreated)
+		requireStatus(t, response, http.StatusCreated)
 	}
 	response = rt.SendRequest(http.MethodPut, fmt.Sprintf("/db/doc%v", 10), `{"key":"B", "value":99}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	// Wait for all created documents to avoid race when using "reduce"
 	_, err := rt.WaitForNAdminViewResults(10, "/db/_design/foo/_view/bar?reduce=false")
@@ -401,16 +401,16 @@ func TestAdminGroupReduceSumQuery(t *testing.T) {
 
 	// Create a view with a reduce:
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"options":{"raw":true},"views":{"bar": {"map": "function(doc) {if (doc.key && doc.value) emit(doc.key, doc.value);}", "reduce": "_sum"}}}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	for i := 0; i < 9; i++ {
 		// Create docs:
 		response = rt.SendRequest(http.MethodPut, fmt.Sprintf("/db/doc%v", i), `{"key":"A", "value":1}`)
-		assertStatus(t, response, http.StatusCreated)
+		requireStatus(t, response, http.StatusCreated)
 
 	}
 	response = rt.SendRequest(http.MethodPut, fmt.Sprintf("/db/doc%v", 10), `{"key":"B", "value":99}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	var result sgbucket.ViewResult
 
@@ -438,17 +438,17 @@ func TestViewQueryWithKeys(t *testing.T) {
 
 	// Create a view
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}"}}}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 	assert.NoError(t, rt.WaitForViewAvailable("/db/_design/foo/_view/bar"), "Error waiting for view availability")
 
 	// Create a doc
 	response = rt.SendAdminRequest(http.MethodPut, "/db/query_with_keys", `{"key":"channel_a", "value":99}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	// Admin view query:
 	viewUrlPath := "/db/_design/foo/_view/bar?keys=%5B%22channel_a%22%5D&stale=false"
 	response = rt.SendAdminRequest(http.MethodGet, viewUrlPath, ``)
-	assertStatus(t, response, http.StatusOK) // Query string was parsed properly
+	requireStatus(t, response, http.StatusOK) // Query string was parsed properly
 
 	var result sgbucket.ViewResult
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
@@ -457,7 +457,7 @@ func TestViewQueryWithKeys(t *testing.T) {
 	// Ensure that query for non-existent keys returns no rows
 	viewUrlPath = "/db/_design/foo/_view/bar?keys=%5B%22channel_b%22%5D&stale=false"
 	response = rt.SendAdminRequest(http.MethodGet, viewUrlPath, ``)
-	assertStatus(t, response, http.StatusOK) // Query string was parsed properly
+	requireStatus(t, response, http.StatusOK) // Query string was parsed properly
 
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 	require.Len(t, result.Rows, 0)
@@ -475,18 +475,18 @@ func TestViewQueryWithCompositeKeys(t *testing.T) {
 
 	// Create a view
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"views":{"composite_key_test": {"map": "function(doc) {emit([doc.key, doc.seq], doc.value);}"}}}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 	assert.NoError(t, rt.WaitForViewAvailable("/db/_design/foo/_view/composite_key_test"), "Error waiting for view availability")
 
 	// Create a doc
 	response = rt.SendAdminRequest(http.MethodPut, "/db/doc_composite_key", `{"key":"channel_a", "seq":55, "value":99}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	// Admin view query:
 	//   keys:[["channel_a", 55]]
 	viewUrlPath := "/db/_design/foo/_view/composite_key_test?keys=%5B%5B%22channel_a%22%2C%2055%5D%5D&stale=false"
 	response = rt.SendAdminRequest(http.MethodGet, viewUrlPath, ``)
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	var result sgbucket.ViewResult
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 	require.Len(t, result.Rows, 1)
@@ -494,7 +494,7 @@ func TestViewQueryWithCompositeKeys(t *testing.T) {
 	// Ensure that a query for non-existent key returns no rows
 	viewUrlPath = "/db/_design/foo/_view/composite_key_test?keys=%5B%5B%22channel_b%22%2C%2055%5D%5D&stale=false"
 	response = rt.SendAdminRequest(http.MethodGet, viewUrlPath, ``)
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 	require.Len(t, result.Rows, 0)
@@ -512,18 +512,18 @@ func TestViewQueryWithIntKeys(t *testing.T) {
 
 	// Create a view
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"views":{"int_key_test": {"map": "function(doc) {emit(doc.seq, doc.value);}"}}}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 	assert.NoError(t, rt.WaitForViewAvailable("/db/_design/foo/_view/int_key_test"), "Error waiting for view availability")
 
 	// Create a doc
 	response = rt.SendAdminRequest(http.MethodPut, "/db/doc_int_key", `{"key":"channel_a", "seq":55, "value":99}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	// Admin view query:
 	//   keys:[55,65]
 	viewUrlPath := "/db/_design/foo/_view/int_key_test?keys=%5B55,65%5D&stale=false"
 	response = rt.SendAdminRequest(http.MethodGet, viewUrlPath, ``)
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	var result sgbucket.ViewResult
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 	require.Len(t, result.Rows, 1)
@@ -532,7 +532,7 @@ func TestViewQueryWithIntKeys(t *testing.T) {
 	//   keys:[65,75]
 	viewUrlPath = "/db/_design/foo/_view/int_key_test?keys=%5B65,75%5D&stale=false"
 	response = rt.SendAdminRequest(http.MethodGet, viewUrlPath, ``)
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 	require.Len(t, result.Rows, 0)
@@ -548,16 +548,16 @@ func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
 
 	// Create a view with a reduce:
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"options":{"raw":true},"views":{"bar": {"map": "function(doc) {if (doc.key && doc.value) emit(doc.key, doc.value);}", "reduce": "_sum"}}}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	for i := 0; i < 9; i++ {
 		// Create docs:
 		response = rt.SendRequest(http.MethodPut, fmt.Sprintf("/db/doc%v", i), fmt.Sprintf(`{"key":["A",{},%v], "value":1}`, i))
-		assertStatus(t, response, http.StatusCreated)
+		requireStatus(t, response, http.StatusCreated)
 
 	}
 	response = rt.SendRequest(http.MethodPut, fmt.Sprintf("/db/doc%v", 10), `{"key":["B",4,1], "value":99}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	var result sgbucket.ViewResult
 
@@ -601,7 +601,7 @@ func TestPostInstallCleanup(t *testing.T) {
 	// Run post-upgrade in preview mode
 	var postUpgradeResponse PostUpgradeResponse
 	response := rt.SendAdminRequest(http.MethodPost, "/_post_upgrade?preview=true", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
 	assert.True(t, postUpgradeResponse.Preview)
 	require.Lenf(t, postUpgradeResponse.Result["db"].RemovedDDocs, 2, "Response: %#v", postUpgradeResponse)
@@ -609,7 +609,7 @@ func TestPostInstallCleanup(t *testing.T) {
 	// Run post-upgrade in non-preview mode
 	postUpgradeResponse = PostUpgradeResponse{}
 	response = rt.SendAdminRequest(http.MethodPost, "/_post_upgrade", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
 	assert.False(t, postUpgradeResponse.Preview)
 	require.Len(t, postUpgradeResponse.Result["db"].RemovedDDocs, 2)
@@ -617,7 +617,7 @@ func TestPostInstallCleanup(t *testing.T) {
 	// Run post-upgrade in preview mode again, expect no results for database
 	postUpgradeResponse = PostUpgradeResponse{}
 	response = rt.SendAdminRequest(http.MethodPost, "/_post_upgrade?preview=true", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
 	assert.True(t, postUpgradeResponse.Preview)
 	require.Len(t, postUpgradeResponse.Result["db"].RemovedDDocs, 0)
@@ -625,7 +625,7 @@ func TestPostInstallCleanup(t *testing.T) {
 	// Run post-upgrade in non-preview mode again, expect no results for database
 	postUpgradeResponse = PostUpgradeResponse{}
 	response = rt.SendAdminRequest(http.MethodPost, "/_post_upgrade", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
 	assert.False(t, postUpgradeResponse.Preview)
 	require.Len(t, postUpgradeResponse.Result["db"].RemovedDDocs, 0)
@@ -638,11 +638,11 @@ func TestViewQueryWrappers(t *testing.T) {
 	rt.ServerContext().Database("db").SetUserViewsEnabled(true)
 
 	response := rt.SendAdminRequest(http.MethodPut, "/db/admindoc", `{"value":"foo"}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 	response = rt.SendAdminRequest(http.MethodPut, "/db/admindoc2", `{"value":"foo"}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 	response = rt.SendAdminRequest(http.MethodPut, "/db/userdoc", `{"value":"foo", "channels": ["userchannel"]}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	response = rt.SendAdminRequest(http.MethodPut, "/db/_design/foodoc", `{"views": {"foobarview": {"map": "function(doc, meta) {if (doc.value == \"foo\") {emit(doc.key, null);}}"}}}`)
 	assert.Equal(t, http.StatusCreated, response.Code)
@@ -683,7 +683,7 @@ func TestViewQueryWithXattrAndNonXattr(t *testing.T) {
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/doc1", `{"value":"foo"}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	// Document with sync data in body
 	body := `{"_sync": { "rev": "1-fc2cf22c5e5007bd966869ebfe9e276a", "sequence": 2, "recent_sequences": [ 2 ], "history": { "revs": [ "1-fc2cf22c5e5007bd966869ebfe9e276a" ], "parents": [ -1], "channels": [ null ] }, "cas": "","value_crc32c": "", "time_saved": "2019-04-10T12:40:04.490083+01:00" }, "value": "foo"}`

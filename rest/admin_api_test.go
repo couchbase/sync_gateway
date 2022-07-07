@@ -87,7 +87,7 @@ func TestPutDocSpecialChar(t *testing.T) {
 				t.Skipf("Skipping enterprise-only test")
 			}
 			tr := rt.SendAdminRequest(testCase.method, fmt.Sprintf("/db/%s", testCase.pathDocID), testCase.body)
-			assertStatus(t, tr, testCase.expectedResp)
+			requireStatus(t, tr, testCase.expectedResp)
 			var body map[string]interface{}
 			err := json.Unmarshal(tr.BodyBytes(), &body)
 			assert.NoError(t, err)
@@ -96,7 +96,7 @@ func TestPutDocSpecialChar(t *testing.T) {
 
 	t.Run("Delete Double quote Doc ID", func(t *testing.T) { // Should be done for Local Document deletion when it returns response
 		tr := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", `del"ete"Me`), "{}") // Create the doc to delete
-		assertStatus(t, tr, http.StatusCreated)
+		requireStatus(t, tr, http.StatusCreated)
 		var putBody struct {
 			Rev string `json:"rev"`
 		}
@@ -104,7 +104,7 @@ func TestPutDocSpecialChar(t *testing.T) {
 		assert.NoError(t, err)
 
 		tr = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/%s?rev=%s", `del"ete"Me`, putBody.Rev), "{}")
-		assertStatus(t, tr, http.StatusOK)
+		requireStatus(t, tr, http.StatusOK)
 		var body map[string]interface{}
 		err = json.Unmarshal(tr.BodyBytes(), &body)
 		assert.NoError(t, err)
@@ -123,7 +123,7 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", docId), `{"value":"initial"}`)
 	response.DumpBody()
 
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	// Discover revision ID
 	// TODO: The schema for SG responses should be defined in our code somewhere to avoid this clunky approach
@@ -172,47 +172,47 @@ func TestUserPasswordValidation(t *testing.T) {
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 
 	// PUT a user without a password, should fail
 	response = rt.SendAdminRequest("PUT", "/db/_user/ajresnopassword", `{"email":"ajres@couchbase.com", "admin_channels":["foo", "bar"]}`)
-	assertStatus(t, response, 400)
+	requireStatus(t, response, 400)
 
 	// POST a user without a password, should fail
 	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"ajresnopassword", "email":"ajres@couchbase.com", "admin_channels":["foo", "bar"]}`)
-	assertStatus(t, response, 400)
+	requireStatus(t, response, 400)
 
 	// PUT a user with a two character password, should fail
 	response = rt.SendAdminRequest("PUT", "/db/_user/ajresnopassword", `{"email":"ajres@couchbase.com", "password":"in", "admin_channels":["foo", "bar"]}`)
-	assertStatus(t, response, 400)
+	requireStatus(t, response, 400)
 
 	// POST a user with a two character password, should fail
 	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"ajresnopassword", "email":"ajres@couchbase.com", "password":"an", "admin_channels":["foo", "bar"]}`)
-	assertStatus(t, response, 400)
+	requireStatus(t, response, 400)
 
 	// PUT a user with a zero character password, should fail
 	response = rt.SendAdminRequest("PUT", "/db/_user/ajresnopassword", `{"email":"ajres@couchbase.com", "password":"", "admin_channels":["foo", "bar"]}`)
-	assertStatus(t, response, 400)
+	requireStatus(t, response, 400)
 
 	// POST a user with a zero character password, should fail
 	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"ajresnopassword", "email":"ajres@couchbase.com", "password":"", "admin_channels":["foo", "bar"]}`)
-	assertStatus(t, response, 400)
+	requireStatus(t, response, 400)
 
 	// PUT update a user with a two character password, should fail
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"password":"an"}`)
-	assertStatus(t, response, 400)
+	requireStatus(t, response, 400)
 
 	// PUT update a user with a one character password, should fail
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"password":"a"}`)
-	assertStatus(t, response, 400)
+	requireStatus(t, response, 400)
 
 	// PUT update a user with a zero character password, should fail
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"password":""}`)
-	assertStatus(t, response, 400)
+	requireStatus(t, response, 400)
 
 	// PUT update a user with a three character password, should succeed
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"password":"abc"}`)
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 }
 
 func TestUserAllowEmptyPassword(t *testing.T) {
@@ -222,47 +222,47 @@ func TestUserAllowEmptyPassword(t *testing.T) {
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 
 	// PUT a user without a password, should succeed
 	response = rt.SendAdminRequest("PUT", "/db/_user/nopassword1", `{"email":"ajres@couchbase.com", "admin_channels":["foo", "bar"]}`)
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 
 	// POST a user without a password, should succeed
 	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"nopassword2", "email":"ajres@couchbase.com", "admin_channels":["foo", "bar"]}`)
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 
 	// PUT a user with a two character password, should fail
 	response = rt.SendAdminRequest("PUT", "/db/_user/nopassword3", `{"email":"ajres@couchbase.com", "password":"in", "admin_channels":["foo", "bar"]}`)
-	assertStatus(t, response, 400)
+	requireStatus(t, response, 400)
 
 	// POST a user with a two character password, should fail
 	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"nopassword4", "email":"ajres@couchbase.com", "password":"an", "admin_channels":["foo", "bar"]}`)
-	assertStatus(t, response, 400)
+	requireStatus(t, response, 400)
 
 	// PUT a user with a zero character password, should succeed
 	response = rt.SendAdminRequest("PUT", "/db/_user/nopassword5", `{"email":"ajres@couchbase.com", "password":"", "admin_channels":["foo", "bar"]}`)
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 
 	// POST a user with a zero character password, should succeed
 	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"nopassword6", "email":"ajres@couchbase.com", "password":"", "admin_channels":["foo", "bar"]}`)
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 
 	// PUT update a user with a two character password, should fail
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"password":"an"}`)
-	assertStatus(t, response, 400)
+	requireStatus(t, response, 400)
 
 	// PUT update a user with a one character password, should fail
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"password":"a"}`)
-	assertStatus(t, response, 400)
+	requireStatus(t, response, 400)
 
 	// PUT update a user with a zero character password, should succeed
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"password":""}`)
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	// PUT update a user with a three character password, should succeed
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"password":"abc"}`)
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 }
 
 func TestPrincipalForbidUpdatingChannels(t *testing.T) {
@@ -272,28 +272,28 @@ func TestPrincipalForbidUpdatingChannels(t *testing.T) {
 	// Users
 	// PUT admin_channels
 	response := rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 
 	// PUT all_channels - should fail
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "all_channels":["baz"]}`)
-	assertStatus(t, response, 400)
+	requireStatus(t, response, 400)
 
 	// PUT admin_roles
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_roles":["foo", "bar"]}`)
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	// PUT roles - should fail
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "roles":["baz"]}`)
-	assertStatus(t, response, 400)
+	requireStatus(t, response, 400)
 
 	// Roles
 	// PUT admin_channels
 	response = rt.SendAdminRequest("PUT", "/db/_role/test", `{"admin_channels":["foo", "bar"]}`)
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 
 	// PUT all_channels - should fail
 	response = rt.SendAdminRequest("PUT", "/db/_role/test", `{"all_channels":["baz"]}`)
-	assertStatus(t, response, 400)
+	requireStatus(t, response, 400)
 }
 
 // Test user access grant while that user has an active changes feed.  (see issue #880)
@@ -338,11 +338,11 @@ function(doc, oldDoc) {
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["profile-bernard"]}`)
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 
 	// Try to force channel initialisation for user bernard
 	response = rt.SendAdminRequest("GET", "/db/_user/bernard", "")
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	// Create list docs
 	input := `{"docs": [`
@@ -454,7 +454,7 @@ func TestLoggingKeys(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{}, logKeys)
 
 	// Set logKeys, Changes+ should enable Changes (PUT replaces any existing log keys)
-	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging", `{"Changes+":true, "Cache":true, "HTTP":true}`), 200)
+	requireStatus(t, rt.SendAdminRequest("PUT", "/_logging", `{"Changes+":true, "Cache":true, "HTTP":true}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var updatedLogKeys map[string]interface{}
@@ -462,7 +462,7 @@ func TestLoggingKeys(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{"Changes": true, "Cache": true, "HTTP": true}, updatedLogKeys)
 
 	// Disable Changes logKey which should also disable Changes+
-	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes":false}`), 200)
+	requireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes":false}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var deletedLogKeys map[string]interface{}
@@ -470,7 +470,7 @@ func TestLoggingKeys(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{"Cache": true, "HTTP": true}, deletedLogKeys)
 
 	// Enable Changes++, which should enable Changes (POST append logKeys)
-	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
+	requireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var appendedLogKeys map[string]interface{}
@@ -478,7 +478,7 @@ func TestLoggingKeys(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{"Changes": true, "Cache": true, "HTTP": true}, appendedLogKeys)
 
 	// Disable Changes++ (POST modifies logKeys)
-	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":false}`), 200)
+	requireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":false}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var disabledLogKeys map[string]interface{}
@@ -486,10 +486,10 @@ func TestLoggingKeys(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{"Cache": true, "HTTP": true}, disabledLogKeys)
 
 	// Re-Enable Changes++, which should enable Changes (POST append logKeys)
-	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
+	requireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
 
 	// Disable Changes+ which should disable Changes (POST modifies logKeys)
-	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes+":false}`), 200)
+	requireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes+":false}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var disabled2LogKeys map[string]interface{}
@@ -497,10 +497,10 @@ func TestLoggingKeys(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{"Cache": true, "HTTP": true}, disabled2LogKeys)
 
 	// Re-Enable Changes++, which should enable Changes (POST append logKeys)
-	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
+	requireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
 
 	// Disable Changes (POST modifies logKeys)
-	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes":false}`), 200)
+	requireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes":false}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var disabled3LogKeys map[string]interface{}
@@ -508,7 +508,7 @@ func TestLoggingKeys(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{"Cache": true, "HTTP": true}, disabled3LogKeys)
 
 	// Disable all logKeys by using PUT with an empty channel list
-	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging", `{}`), 200)
+	requireStatus(t, rt.SendAdminRequest("PUT", "/_logging", `{}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var noLogKeys map[string]interface{}
@@ -534,24 +534,24 @@ func TestLoggingLevels(t *testing.T) {
 	assert.Equal(t, map[string]bool{}, logKeys)
 
 	// Set log level via logLevel query parameter
-	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging?logLevel=error", ``), http.StatusOK)
-	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging?logLevel=invalidLogLevel", ``), http.StatusBadRequest)
-	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging?logLevel=", ``), http.StatusBadRequest)
+	requireStatus(t, rt.SendAdminRequest("PUT", "/_logging?logLevel=error", ``), http.StatusOK)
+	requireStatus(t, rt.SendAdminRequest("PUT", "/_logging?logLevel=invalidLogLevel", ``), http.StatusBadRequest)
+	requireStatus(t, rt.SendAdminRequest("PUT", "/_logging?logLevel=", ``), http.StatusBadRequest)
 
 	// Set log level via old level query parameter
-	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=1", ``), http.StatusOK)
-	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=2", ``), http.StatusOK)
-	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=3", ``), http.StatusOK)
-	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=10", ``), http.StatusOK) // Value is clamped to acceptable range, without returning an error
+	requireStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=1", ``), http.StatusOK)
+	requireStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=2", ``), http.StatusOK)
+	requireStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=3", ``), http.StatusOK)
+	requireStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=10", ``), http.StatusOK) // Value is clamped to acceptable range, without returning an error
 
-	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=0", ``), http.StatusBadRequest) // Zero-value is ignored and body is to be parsed
-	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=0", `{}`), http.StatusOK)       // Zero-value is ignored and body is to be parsed
+	requireStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=0", ``), http.StatusBadRequest) // Zero-value is ignored and body is to be parsed
+	requireStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=0", `{}`), http.StatusOK)       // Zero-value is ignored and body is to be parsed
 
-	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=invalidLogLevel", ``), http.StatusBadRequest)
-	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=", ``), http.StatusBadRequest)
+	requireStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=invalidLogLevel", ``), http.StatusBadRequest)
+	requireStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=", ``), http.StatusBadRequest)
 
 	// Trying to set log level via the body will not work (the endpoint expects a log key map)
-	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging", `{"logLevel": "debug"}`), http.StatusBadRequest)
+	requireStatus(t, rt.SendAdminRequest("PUT", "/_logging", `{"logLevel": "debug"}`), http.StatusBadRequest)
 }
 
 func TestLoggingCombined(t *testing.T) {
@@ -572,7 +572,7 @@ func TestLoggingCombined(t *testing.T) {
 	assert.Equal(t, map[string]bool{}, logKeys)
 
 	// Set log keys and log level in a single request
-	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging?logLevel=trace", `{"Changes":true, "Cache":true, "HTTP":true}`), http.StatusOK)
+	requireStatus(t, rt.SendAdminRequest("PUT", "/_logging?logLevel=trace", `{"Changes":true, "Cache":true, "HTTP":true}`), http.StatusOK)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &logKeys))
@@ -584,10 +584,10 @@ func TestGetStatus(t *testing.T) {
 	defer rt.Close()
 
 	response := rt.SendRequest("GET", "/_status", "")
-	assertStatus(t, response, 404)
+	requireStatus(t, response, 404)
 
 	response = rt.SendAdminRequest("GET", "/_status", "")
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 	var responseBody Status
 	err := base.JSONUnmarshal(response.Body.Bytes(), &responseBody)
 	assert.NoError(t, err)
@@ -595,7 +595,7 @@ func TestGetStatus(t *testing.T) {
 	assert.Equal(t, base.LongVersionString, responseBody.Version)
 
 	response = rt.SendAdminRequest("OPTIONS", "/_status", "")
-	assertStatus(t, response, 204)
+	requireStatus(t, response, 204)
 	assert.Equal(t, "GET", response.Header().Get("Allow"))
 }
 
@@ -609,7 +609,7 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["foo"]}`)
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -686,13 +686,13 @@ func TestRoleAPI(t *testing.T) {
 	defer rt.Close()
 
 	// PUT a role
-	assertStatus(t, rt.SendAdminRequest("GET", "/db/_role/hipster", ""), 404)
+	requireStatus(t, rt.SendAdminRequest("GET", "/db/_role/hipster", ""), 404)
 	response := rt.SendAdminRequest("PUT", "/db/_role/hipster", `{"admin_channels":["fedoras", "fixies"]}`)
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 
 	// GET the role and make sure the result is OK
 	response = rt.SendAdminRequest("GET", "/db/_role/hipster", "")
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, "hipster", body["name"])
@@ -700,24 +700,24 @@ func TestRoleAPI(t *testing.T) {
 	assert.Equal(t, nil, body["password"])
 
 	response = rt.SendAdminRequest("GET", "/db/_role/", "")
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 	assert.Equal(t, `["hipster"]`, string(response.Body.Bytes()))
 
 	// DELETE the role
-	assertStatus(t, rt.SendAdminRequest("DELETE", "/db/_role/hipster", ""), 200)
-	assertStatus(t, rt.SendAdminRequest("GET", "/db/_role/hipster", ""), 404)
+	requireStatus(t, rt.SendAdminRequest("DELETE", "/db/_role/hipster", ""), 200)
+	requireStatus(t, rt.SendAdminRequest("GET", "/db/_role/hipster", ""), 404)
 
 	// POST a role
 	response = rt.SendAdminRequest("POST", "/db/_role", `{"name":"hipster", "admin_channels":["fedoras", "fixies"]}`)
-	assertStatus(t, response, 301)
+	requireStatus(t, response, 301)
 	response = rt.SendAdminRequest("POST", "/db/_role/", `{"name":"hipster", "admin_channels":["fedoras", "fixies"]}`)
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 	response = rt.SendAdminRequest("GET", "/db/_role/hipster", "")
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 	body = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, "hipster", body["name"])
-	assertStatus(t, rt.SendAdminRequest("DELETE", "/db/_role/hipster", ""), 200)
+	requireStatus(t, rt.SendAdminRequest("DELETE", "/db/_role/hipster", ""), 200)
 }
 
 func TestGuestUser(t *testing.T) {
@@ -728,7 +728,7 @@ func TestGuestUser(t *testing.T) {
 	defer rt.Close()
 
 	response := rt.SendAdminRequest(http.MethodGet, guestUserEndpoint, "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, base.GuestUsername, body["name"])
@@ -737,11 +737,11 @@ func TestGuestUser(t *testing.T) {
 
 	// Disable the guest user:
 	response = rt.SendAdminRequest(http.MethodPut, guestUserEndpoint, `{"disabled":true}`)
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 
 	// Get guest user and verify it is now disabled:
 	response = rt.SendAdminRequest(http.MethodGet, guestUserEndpoint, "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, base.GuestUsername, body["name"])
 	assert.True(t, body["disabled"].(bool))
@@ -754,7 +754,7 @@ func TestGuestUser(t *testing.T) {
 
 	// We can't delete the guest user, but we should get a reasonable error back.
 	response = rt.SendAdminRequest(http.MethodDelete, guestUserEndpoint, "")
-	assertStatus(t, response, http.StatusMethodNotAllowed)
+	requireStatus(t, response, http.StatusMethodNotAllowed)
 }
 
 // Test that TTL values greater than the default max offset TTL 2592000 seconds are processed correctly
@@ -776,14 +776,14 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 	assert.True(t, user.Disabled())
 
 	response := rt.SendRequest("PUT", "/db/doc", `{"hi": "there"}`)
-	assertStatus(t, response, 401)
+	requireStatus(t, response, 401)
 
 	user, err = a.NewUser("pupshaw", "letmein", channels.SetOf(t, "*"))
 	assert.NoError(t, a.Save(user))
 
 	// create a session with the maximum offset ttl value (30days) 2592000 seconds
 	response = rt.SendAdminRequest("POST", "/db/_session", `{"name":"pupshaw", "ttl":2592000}`)
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	layout := "2006-01-02T15:04:05"
 
@@ -796,7 +796,7 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 
 	// create a session with a ttl value one second greater thatn the max offset ttl 2592001 seconds
 	response = rt.SendAdminRequest("POST", "/db/_session", `{"name":"pupshaw", "ttl":2592001}`)
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	body = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -836,12 +836,12 @@ func TestSessionExtension(t *testing.T) {
 
 	response := rt.SendRequestWithHeaders("PUT", "/db/doc1", `{"hi": "there"}`, reqHeaders)
 	log.Printf("PUT Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 	assert.Contains(t, response.Header().Get("Set-Cookie"), auth.DefaultCookieName+"="+fakeSession.ID)
 
 	response = rt.SendRequestWithHeaders("GET", "/db/doc1", "", reqHeaders)
 	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	assert.Equal(t, "", response.Header().Get("Set-Cookie"))
 
 	// Explicitly delete the fake session doc from the bucket to simulate the test
@@ -852,7 +852,7 @@ func TestSessionExtension(t *testing.T) {
 
 	response = rt.SendRequestWithHeaders("GET", "/db/doc1", "", reqHeaders)
 	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
-	assertStatus(t, response, http.StatusUnauthorized)
+	requireStatus(t, response, http.StatusUnauthorized)
 
 }
 
@@ -863,11 +863,11 @@ func TestSessionAPI(t *testing.T) {
 
 	// create session test users
 	response := rt.SendAdminRequest("POST", "/db/_user/", `{"name":"user1", "password":"1234"}`)
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"user2", "password":"1234"}`)
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"user3", "password":"1234"}`)
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 
 	// create multiple sessions for the users
 	user1sessions := make([]string, 5)
@@ -883,63 +883,63 @@ func TestSessionAPI(t *testing.T) {
 	// GET Tests
 	// 1. GET a session and make sure the result is OK
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user1sessions[0]), "")
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	// DELETE tests
 	// 1. DELETE a session by session id
 	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/_session/%s", user1sessions[0]), "")
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	// Attempt to GET the deleted session and make sure it's not found
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user1sessions[0]), "")
-	assertStatus(t, response, 404)
+	requireStatus(t, response, 404)
 
 	// 2. DELETE a session with user validation
 	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/_user/%s/_session/%s", "user1", user1sessions[1]), "")
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	// Attempt to GET the deleted session and make sure it's not found
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user1sessions[1]), "")
-	assertStatus(t, response, 404)
+	requireStatus(t, response, 404)
 
 	// 3. DELETE a session not belonging to the user (should fail)
 	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/_user/%s/_session/%s", "user1", user2sessions[0]), "")
-	assertStatus(t, response, 404)
+	requireStatus(t, response, 404)
 
 	// GET the session and make sure it still exists
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user2sessions[0]), "")
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	// 4. DELETE all sessions for a user
 	response = rt.SendAdminRequest("DELETE", "/db/_user/user2/_session", "")
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	// Validate that all sessions were deleted
 	for i := 0; i < 5; i++ {
 		response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user2sessions[i]), "")
-		assertStatus(t, response, 404)
+		requireStatus(t, response, 404)
 	}
 
 	// 5. DELETE sessions when password is changed
 	// Change password for user3
 	response = rt.SendAdminRequest("PUT", "/db/_user/user3", `{"password":"5678"}`)
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	// Validate that all sessions were deleted
 	for i := 0; i < 5; i++ {
 		response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user3sessions[i]), "")
-		assertStatus(t, response, 404)
+		requireStatus(t, response, 404)
 	}
 
 	// DELETE the users
-	assertStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/user1", ""), 200)
-	assertStatus(t, rt.SendAdminRequest("GET", "/db/_user/user1", ""), 404)
+	requireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/user1", ""), 200)
+	requireStatus(t, rt.SendAdminRequest("GET", "/db/_user/user1", ""), 404)
 
-	assertStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/user2", ""), 200)
-	assertStatus(t, rt.SendAdminRequest("GET", "/db/_user/user2", ""), 404)
+	requireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/user2", ""), 200)
+	requireStatus(t, rt.SendAdminRequest("GET", "/db/_user/user2", ""), 404)
 
-	assertStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/user3", ""), 200)
-	assertStatus(t, rt.SendAdminRequest("GET", "/db/_user/user3", ""), 404)
+	requireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/user3", ""), 200)
+	requireStatus(t, rt.SendAdminRequest("GET", "/db/_user/user3", ""), 404)
 
 }
 
@@ -954,17 +954,17 @@ func TestFlush(t *testing.T) {
 
 	rt.createDoc(t, "doc1")
 	rt.createDoc(t, "doc2")
-	assertStatus(t, rt.SendAdminRequest("GET", "/db/doc1", ""), 200)
-	assertStatus(t, rt.SendAdminRequest("GET", "/db/doc2", ""), 200)
+	requireStatus(t, rt.SendAdminRequest("GET", "/db/doc1", ""), 200)
+	requireStatus(t, rt.SendAdminRequest("GET", "/db/doc2", ""), 200)
 
 	log.Printf("Flushing db...")
-	assertStatus(t, rt.SendAdminRequest("POST", "/db/_flush", ""), 200)
+	requireStatus(t, rt.SendAdminRequest("POST", "/db/_flush", ""), 200)
 	require.NoError(t, rt.SetAdminParty(true)) // needs to be re-enabled after flush since guest user got wiped
 
 	// After the flush, the db exists but the documents are gone:
-	assertStatus(t, rt.SendAdminRequest("GET", "/db/", ""), 200)
-	assertStatus(t, rt.SendAdminRequest("GET", "/db/doc1", ""), 404)
-	assertStatus(t, rt.SendAdminRequest("GET", "/db/doc2", ""), 404)
+	requireStatus(t, rt.SendAdminRequest("GET", "/db/", ""), 200)
+	requireStatus(t, rt.SendAdminRequest("GET", "/db/doc1", ""), 404)
+	requireStatus(t, rt.SendAdminRequest("GET", "/db/doc2", ""), 404)
 }
 
 // Test a single call to take DB offline
@@ -980,7 +980,7 @@ func TestDBOfflineSingle(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Online")
 
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -1021,8 +1021,8 @@ func TestDBOfflineConcurrent(t *testing.T) {
 
 	err := WaitWithTimeout(&wg, time.Second*30)
 	assert.NoError(t, err, "Error waiting for waitgroup")
-	assertStatus(t, goroutineresponse1, http.StatusOK)
-	assertStatus(t, goroutineresponse2, http.StatusOK)
+	requireStatus(t, goroutineresponse1, http.StatusOK)
+	requireStatus(t, goroutineresponse2, http.StatusOK)
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
@@ -1044,7 +1044,7 @@ func TestStartDBOffline(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Online")
 
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -1065,14 +1065,14 @@ func TestDBOffline503Response(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Online")
 
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Offline")
 
-	assertStatus(t, rt.SendRequest("GET", "/db/doc1", ""), 503)
+	requireStatus(t, rt.SendRequest("GET", "/db/doc1", ""), 503)
 }
 
 // Take DB offline and ensure can put db config
@@ -1088,14 +1088,14 @@ func TestDBOfflinePutDbConfig(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Online")
 
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Offline")
 
-	assertStatus(t, rt.SendRequest("PUT", "/db/_config", ""), 404)
+	requireStatus(t, rt.SendRequest("PUT", "/db/_config", ""), 404)
 }
 
 // Tests that the users returned in the config endpoint have the correct names
@@ -1143,14 +1143,14 @@ func TestDBOfflinePostResync(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Online")
 
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Offline")
 
-	assertStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 200)
+	requireStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 200)
 	err := rt.WaitForCondition(func() bool {
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")
 		var status db.ResyncManagerResponse
@@ -1188,7 +1188,7 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Online")
 
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
@@ -1196,10 +1196,10 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Offline")
 
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 
 	// Send a second _resync request.  This must return a 400 since the first one is blocked processing
-	assertStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 503)
+	requireStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 503)
 
 	err := rt.WaitForCondition(func() bool {
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")
@@ -1268,10 +1268,10 @@ func TestResync(t *testing.T) {
 			}
 
 			response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-			assertStatus(t, response, http.StatusServiceUnavailable)
+			requireStatus(t, response, http.StatusServiceUnavailable)
 
 			response = rt.SendAdminRequest("POST", "/db/_offline", "")
-			assertStatus(t, response, http.StatusOK)
+			requireStatus(t, response, http.StatusOK)
 
 			waitAndAssertCondition(t, func() bool {
 				state := atomic.LoadUint32(&rt.GetDatabase().State)
@@ -1279,7 +1279,7 @@ func TestResync(t *testing.T) {
 			})
 
 			response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-			assertStatus(t, response, http.StatusOK)
+			requireStatus(t, response, http.StatusOK)
 
 			var resyncManagerStatus db.ResyncManagerResponse
 			err := rt.WaitForCondition(func() bool {
@@ -1342,7 +1342,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 			if useCallback {
 				callbackFired = true
 				response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-				assertStatus(t, response, http.StatusServiceUnavailable)
+				requireStatus(t, response, http.StatusServiceUnavailable)
 				useCallback = false
 			}
 		})
@@ -1351,7 +1351,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 			if useCallback {
 				callbackFired = true
 				response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-				assertStatus(t, response, http.StatusServiceUnavailable)
+				requireStatus(t, response, http.StatusServiceUnavailable)
 				useCallback = false
 			}
 		})
@@ -1362,16 +1362,16 @@ func TestResyncErrorScenarios(t *testing.T) {
 	}
 
 	response := rt.SendAdminRequest("GET", "/db/_resync", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-	assertStatus(t, response, http.StatusServiceUnavailable)
+	requireStatus(t, response, http.StatusServiceUnavailable)
 
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
-	assertStatus(t, response, http.StatusBadRequest)
+	requireStatus(t, response, http.StatusBadRequest)
 
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 
 	waitAndAssertCondition(t, func() bool {
 		state := atomic.LoadUint32(&rt.GetDatabase().State)
@@ -1380,7 +1380,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 
 	useCallback = true
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 
 	err := rt.WaitForCondition(func() bool {
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")
@@ -1392,14 +1392,14 @@ func TestResyncErrorScenarios(t *testing.T) {
 	assert.NoError(t, err)
 
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
-	assertStatus(t, response, http.StatusBadRequest)
+	requireStatus(t, response, http.StatusBadRequest)
 
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=invalid", "")
-	assertStatus(t, response, http.StatusBadRequest)
+	requireStatus(t, response, http.StatusBadRequest)
 
 	// Test empty action, should default to start
 	response = rt.SendAdminRequest("POST", "/db/_resync", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 
 	err = rt.WaitForCondition(func() bool {
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")
@@ -1451,7 +1451,7 @@ func TestResyncStop(t *testing.T) {
 			if useCallback {
 				callbackFired = true
 				response := rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
-				assertStatus(t, response, http.StatusOK)
+				requireStatus(t, response, http.StatusOK)
 				useCallback = false
 			}
 		})
@@ -1460,7 +1460,7 @@ func TestResyncStop(t *testing.T) {
 			if useCallback {
 				callbackFired = true
 				response := rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
-				assertStatus(t, response, http.StatusOK)
+				requireStatus(t, response, http.StatusOK)
 				useCallback = false
 			}
 		})
@@ -1476,7 +1476,7 @@ func TestResyncStop(t *testing.T) {
 	assert.NoError(t, err)
 
 	response := rt.SendAdminRequest("POST", "/db/_offline", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 
 	waitAndAssertCondition(t, func() bool {
 		state := atomic.LoadUint32(&rt.GetDatabase().State)
@@ -1485,7 +1485,7 @@ func TestResyncStop(t *testing.T) {
 
 	useCallback = true
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 
 	err = rt.WaitForCondition(func() bool {
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")
@@ -1552,11 +1552,11 @@ func TestResyncRegenerateSequences(t *testing.T) {
 
 	role := "role1"
 	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_role/%s", role), fmt.Sprintf(`{"name":"%s", "admin_channels":["channel_1"]}`, role))
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	username := "user1"
 	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_user/%s", username), fmt.Sprintf(`{"name":"%s", "password":"letmein", "admin_channels":["channel_1"], "admin_roles": ["%s"]}`, username, role))
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	_, err := rt.Bucket().Get(base.RolePrefix+"role1", &body)
 	assert.NoError(t, err)
@@ -1567,10 +1567,10 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	user1SeqBefore := body["sequence"].(float64)
 
 	response = rt.SendAdminRequest("PUT", "/db/userdoc", `{"userdoc": true}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	response = rt.SendAdminRequest("PUT", "/db/userdoc2", `{"userdoc": true}`)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	// Let everything catch up before opening changes feed
 	require.NoError(t, rt.WaitForPendingChanges())
@@ -1596,20 +1596,20 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	request, _ := http.NewRequest("GET", "/db/_changes", nil)
 	request.SetBasicAuth("user1", "letmein")
 	response = rt.Send(request)
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	err = json.Unmarshal(response.BodyBytes(), &changesResp)
 	assert.Len(t, changesResp.Results, 3)
 	assert.True(t, changesRespContains(changesResp, "userdoc"))
 	assert.True(t, changesRespContains(changesResp, "userdoc2"))
 
 	response = rt.SendAdminRequest("GET", "/db/_resync", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start&regenerate_sequences=true", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 
 	err = rt.WaitForCondition(func() bool {
 		return rt.GetDatabase().ResyncManager.GetRunState() == db.BackgroundProcessStateCompleted
@@ -1637,7 +1637,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	}
 
 	response = rt.SendAdminRequest("GET", "/db/_resync", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	var resyncStatus db.ResyncManagerResponse
 	err = base.JSONUnmarshal(response.BodyBytes(), &resyncStatus)
 	assert.NoError(t, err)
@@ -1645,7 +1645,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	assert.Equal(t, 12, resyncStatus.DocsProcessed)
 
 	response = rt.SendAdminRequest("POST", "/db/_online", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 
 	err = rt.WaitForCondition(func() bool {
 		state := atomic.LoadUint32(&rt.GetDatabase().State)
@@ -1657,7 +1657,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	request, _ = http.NewRequest("GET", "/db/_changes?since="+changesResp.LastSeq, nil)
 	request.SetBasicAuth("user1", "letmein")
 	response = rt.Send(request)
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	err = json.Unmarshal(response.BodyBytes(), &changesResp)
 	assert.Len(t, changesResp.Results, 3)
 	assert.True(t, changesRespContains(changesResp, "userdoc"))
@@ -1677,7 +1677,7 @@ func TestDBOnlineSingle(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Online")
 
 	rt.SendAdminRequest("POST", "/db/_offline", "")
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
@@ -1685,7 +1685,7 @@ func TestDBOnlineSingle(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Offline")
 
 	rt.SendAdminRequest("POST", "/db/_online", "")
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -1710,7 +1710,7 @@ func TestDBOnlineConcurrent(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Online")
 
 	rt.SendAdminRequest("POST", "/db/_offline", "")
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
@@ -1724,14 +1724,14 @@ func TestDBOnlineConcurrent(t *testing.T) {
 	go func(rt *RestTester) {
 		defer wg.Done()
 		goroutineresponse1 = rt.SendAdminRequest("POST", "/db/_online", "")
-		assertStatus(t, goroutineresponse1, 200)
+		requireStatus(t, goroutineresponse1, 200)
 	}(rt)
 
 	var goroutineresponse2 *TestResponse
 	go func(rt *RestTester) {
 		defer wg.Done()
 		goroutineresponse2 = rt.SendAdminRequest("POST", "/db/_online", "")
-		assertStatus(t, goroutineresponse2, 200)
+		requireStatus(t, goroutineresponse2, 200)
 	}(rt)
 
 	// This only waits until both _online requests have been posted
@@ -1762,7 +1762,7 @@ func TestSingleDBOnlineWithDelay(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Online")
 
 	rt.SendAdminRequest("POST", "/db/_offline", "")
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
@@ -1770,7 +1770,7 @@ func TestSingleDBOnlineWithDelay(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Offline")
 
 	rt.SendAdminRequest("POST", "/db/_online", "{\"delay\":1}")
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
@@ -1809,17 +1809,17 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 		require.Equal(t, "Online", rt.GetDBState())
 
 		response = rt.SendAdminRequest("POST", "/db/_offline", "")
-		assertStatus(t, response, 200)
+		requireStatus(t, response, 200)
 
 		// Bring DB online with delay of two seconds
 		response = rt.SendAdminRequest("POST", "/db/_online", "{\"delay\":1}")
-		assertStatus(t, response, 200)
+		requireStatus(t, response, 200)
 
 		require.Equal(t, "Offline", rt.GetDBState())
 
 		// Bring DB online immediately
 		response = rt.SendAdminRequest("POST", "/db/_online", "")
-		assertStatus(t, response, 200)
+		requireStatus(t, response, 200)
 
 		// Wait for DB to come online (retry loop)
 		errDBState = rt.WaitForDBOnline()
@@ -1853,7 +1853,7 @@ func TestDBOnlineWithTwoDelays(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Online")
 
 	rt.SendAdminRequest("POST", "/db/_offline", "")
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
@@ -1862,11 +1862,11 @@ func TestDBOnlineWithTwoDelays(t *testing.T) {
 
 	// Bring DB online with delay of one seconds
 	rt.SendAdminRequest("POST", "/db/_online", "{\"delay\":1}")
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	// Bring DB online with delay of two seconds
 	rt.SendAdminRequest("POST", "/db/_online", "{\"delay\":2}")
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
@@ -1891,7 +1891,7 @@ func TestDBOnlineWithTwoDelays(t *testing.T) {
 func (rt *RestTester) createSession(t *testing.T, username string) string {
 
 	response := rt.SendAdminRequest("POST", "/db/_session", fmt.Sprintf(`{"name":%q}`, username))
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -1906,7 +1906,7 @@ func TestPurgeWithBadJsonPayload(t *testing.T) {
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("POST", "/db/_purge", "foo")
-	assertStatus(t, response, 400)
+	requireStatus(t, response, 400)
 }
 
 func TestPurgeWithNonArrayRevisionList(t *testing.T) {
@@ -1915,7 +1915,7 @@ func TestPurgeWithNonArrayRevisionList(t *testing.T) {
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("POST", "/db/_purge", `{"foo":"list"}`)
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	var body map[string]interface{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -1928,7 +1928,7 @@ func TestPurgeWithEmptyRevisionList(t *testing.T) {
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("POST", "/db/_purge", `{"foo":[]}`)
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	var body map[string]interface{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -1941,7 +1941,7 @@ func TestPurgeWithGreaterThanOneRevision(t *testing.T) {
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("POST", "/db/_purge", `{"foo":["rev1","rev2"]}`)
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	var body map[string]interface{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -1954,7 +1954,7 @@ func TestPurgeWithNonStarRevision(t *testing.T) {
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("POST", "/db/_purge", `{"foo":["rev1"]}`)
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	var body map[string]interface{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -1965,35 +1965,35 @@ func TestPurgeWithStarRevision(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
+	requireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
 
 	response := rt.SendAdminRequest("POST", "/db/_purge", `{"doc1":["*"]}`)
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 	var body map[string]interface{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}}, body)
 
 	// Create new versions of the doc1 without conflicts
-	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
+	requireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
 }
 
 func TestPurgeWithMultipleValidDocs(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
-	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
+	requireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
+	requireStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
 
 	response := rt.SendAdminRequest("POST", "/db/_purge", `{"doc1":["*"],"doc2":["*"]}`)
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 
 	var body map[string]interface{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}, "doc2": []interface{}{"*"}}}, body)
 
 	// Create new versions of the docs without conflicts
-	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
-	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
+	requireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
+	requireStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
 }
 
 // TestPurgeWithChannelCache will make sure thant upon calling _purge, the channel caches are also cleaned
@@ -2002,8 +2002,8 @@ func TestPurgeWithChannelCache(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar", "channels": ["abc", "def"]}`), http.StatusCreated)
-	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car", "channels": ["abc"]}`), http.StatusCreated)
+	requireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar", "channels": ["abc", "def"]}`), http.StatusCreated)
+	requireStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car", "channels": ["abc"]}`), http.StatusCreated)
 
 	changes, err := rt.waitForChanges(2, "/db/_changes?filter=sync_gateway/bychannel&channels=abc,def", "", true)
 	assert.NoError(t, err, "Error waiting for changes")
@@ -2012,7 +2012,7 @@ func TestPurgeWithChannelCache(t *testing.T) {
 
 	// Purge "doc1"
 	resp := rt.SendAdminRequest("POST", "/db/_purge", `{"doc1":["*"]}`)
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	var body map[string]interface{}
 	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &body))
 	assert.Equal(t, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}}, body)
@@ -2027,20 +2027,20 @@ func TestPurgeWithSomeInvalidDocs(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
-	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
+	requireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
+	requireStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
 
 	response := rt.SendAdminRequest("POST", "/db/_purge", `{"doc1":["*"],"doc2":["1-123"]}`)
-	assertStatus(t, response, 200)
+	requireStatus(t, response, 200)
 	var body map[string]interface{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}}, body)
 
 	// Create new versions of the doc1 without conflicts
-	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
+	requireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
 
 	// Create new versions of the doc2 fails because it already exists
-	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car"}`), 409)
+	requireStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car"}`), 409)
 }
 
 func TestRawRedaction(t *testing.T) {
@@ -2048,7 +2048,7 @@ func TestRawRedaction(t *testing.T) {
 	defer rt.Close()
 
 	res := rt.SendAdminRequest("PUT", "/db/testdoc", `{"foo":"bar", "channels": ["achannel"]}`)
-	assertStatus(t, res, http.StatusCreated)
+	requireStatus(t, res, http.StatusCreated)
 
 	// Test redact being disabled by default
 	res = rt.SendAdminRequest("GET", "/db/_raw/testdoc", ``)
@@ -2083,7 +2083,7 @@ func TestRawRedaction(t *testing.T) {
 
 	// Test that you can't use include_doc and redact at the same time
 	res = rt.SendAdminRequest("GET", "/db/_raw/testdoc?include_doc=true&redact=true", ``)
-	assertStatus(t, res, http.StatusBadRequest)
+	requireStatus(t, res, http.StatusBadRequest)
 }
 
 func TestRawTombstone(t *testing.T) {
@@ -2094,7 +2094,7 @@ func TestRawTombstone(t *testing.T) {
 
 	// Create a doc
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"foo":"bar"}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/_raw/"+docID, ``)
@@ -2106,7 +2106,7 @@ func TestRawTombstone(t *testing.T) {
 
 	// Delete the doc
 	resp = rt.SendAdminRequest(http.MethodDelete, "/db/"+docID+"?rev="+revID, ``)
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	revID = respRevID(t, resp)
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/_raw/"+docID, ``)
@@ -2145,11 +2145,11 @@ func TestHandleCreateDB(t *testing.T) {
 	assert.NoError(t, err, "Error unmarshalling changes response")
 
 	resp := rt.SendAdminRequest(http.MethodPut, resource, string(reqBody))
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	assert.Empty(t, resp.Body.String())
 
 	resp = rt.SendAdminRequest(http.MethodGet, resource, string(reqBody))
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	assert.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
 	assert.Equal(t, bucket, respBody["db_name"].(string))
 	assert.Equal(t, "Online", respBody["state"].(string))
@@ -2158,7 +2158,7 @@ func TestHandleCreateDB(t *testing.T) {
 	// parsing error from the handler; handleCreateDB.
 	reqBodyJson := `"server":"walrus:","pool":"default","bucket":"albums","kv_tls_port":11207`
 	resp = rt.SendAdminRequest(http.MethodPut, "/photos/", reqBodyJson)
-	assertStatus(t, resp, http.StatusBadRequest)
+	requireStatus(t, resp, http.StatusBadRequest)
 }
 
 func TestHandlePutDbConfigWithBackticks(t *testing.T) {
@@ -2167,7 +2167,7 @@ func TestHandlePutDbConfigWithBackticks(t *testing.T) {
 
 	// Get database info before putting config.
 	resp := rt.SendAdminRequest(http.MethodGet, "/backticks/", "")
-	assertStatus(t, resp, http.StatusNotFound)
+	requireStatus(t, resp, http.StatusNotFound)
 
 	// Create database with valid JSON config that contains sync function enclosed in backticks.
 	syncFunc := `function(doc, oldDoc) { console.log("foo");}`
@@ -2177,11 +2177,11 @@ func TestHandlePutDbConfigWithBackticks(t *testing.T) {
         "sync": ` + "`" + syncFunc + "`" + `
 	}`
 	resp = rt.SendAdminRequest(http.MethodPut, "/backticks/", reqBodyWithBackticks)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 
 	// Get database config after putting config.
 	resp = rt.SendAdminRequest(http.MethodGet, "/backticks/_config?include_runtime=true", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	var respBody db.Body
 	require.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
 	assert.Equal(t, "walrus:", respBody["server"].(string))
@@ -2200,7 +2200,7 @@ func TestHandleDBConfig(t *testing.T) {
 
 	// Get database config before putting any config.
 	resp := rt.SendAdminRequest(http.MethodGet, resource, "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	var respBody db.Body
 	assert.NoError(t, respBody.Unmarshal(resp.Body.Bytes()))
 	assert.Nil(t, respBody["bucket"])
@@ -2226,12 +2226,12 @@ func TestHandleDBConfig(t *testing.T) {
 	reqBody, err := base.JSONMarshal(dbConfig)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	resp = rt.SendAdminRequest(http.MethodPut, resource, string(reqBody))
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	assert.Empty(t, resp.Body.String())
 
 	// Get database config after putting valid database config
 	resp = rt.SendAdminRequest(http.MethodGet, resource, "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	respBody = nil
 	assert.NoError(t, respBody.Unmarshal(resp.Body.Bytes()))
 
@@ -2283,19 +2283,19 @@ func TestHandleDeleteDB(t *testing.T) {
 
 	// Try to delete the database which doesn't exists
 	resp := rt.SendAdminRequest(http.MethodDelete, "/albums/", "{}")
-	assertStatus(t, resp, http.StatusNotFound)
+	requireStatus(t, resp, http.StatusNotFound)
 	assert.Contains(t, string(resp.BodyBytes()), "no such database")
 	var v map[string]interface{}
 	assert.NoError(t, json.Unmarshal(resp.BodyBytes(), &v), "couldn't unmarshal %s", string(resp.BodyBytes()))
 
 	// Create the database
 	resp = rt.SendAdminRequest(http.MethodPut, "/albums/", `{"server":"walrus:"}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	assert.Empty(t, resp.Body.String())
 
 	// Delete the database
 	resp = rt.SendAdminRequest(http.MethodDelete, "/albums/", "{}")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	assert.Contains(t, resp.Body.String(), "{}")
 }
 
@@ -2306,7 +2306,7 @@ func TestHandleGetConfig(t *testing.T) {
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest(http.MethodGet, "/_config", "{}")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	var respBody StartupConfig
 	assert.NoError(t, base.JSONUnmarshal([]byte(resp.Body.String()), &respBody))
@@ -2325,13 +2325,13 @@ func TestHandleGetRevTree(t *testing.T) {
     	{"_id": "foo", "type": "user", "updated_at": "2016-06-25T17:37:49.715Z", "status": "offline", "_rev": "1-789"}]}`
 
 	resp := rt.SendAdminRequest(http.MethodPost, "/db/_bulk_docs", reqBodyJson)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	respBodyExpected := `[{"id":"foo","rev":"1-123"},{"id":"foo","rev":"1-456"},{"id":"foo","rev":"1-789"}]`
 	assert.Equal(t, respBodyExpected, resp.Body.String())
 
 	// Get the revision tree  of the user foo
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/_revtree/foo", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	assert.Contains(t, resp.Body.String(), "1-123")
 	assert.Contains(t, resp.Body.String(), "1-456")
 	assert.Contains(t, resp.Body.String(), "1-789")
@@ -2346,17 +2346,17 @@ func TestHandleSGCollect(t *testing.T) {
 
 	// Check SGCollect status before triggering it; status should be stopped if no process is running.
 	resp := rt.SendAdminRequest(http.MethodGet, resource, reqBodyJson)
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	assert.Equal(t, resp.Body.String(), `{"status":"stopped"}`)
 
 	// Try to cancel SGCollect before triggering it; Error stopping sgcollect_info: not running
 	resp = rt.SendAdminRequest(http.MethodDelete, resource, reqBodyJson)
-	assertStatus(t, resp, http.StatusBadRequest)
+	requireStatus(t, resp, http.StatusBadRequest)
 	assert.Contains(t, resp.Body.String(), "Error stopping sgcollect_info: not running")
 
 	// Try to start SGCollect with invalid body; It should throw with unexpected end of JSON input error
 	resp = rt.SendAdminRequest(http.MethodPost, resource, reqBodyJson)
-	assertStatus(t, resp, http.StatusBadRequest)
+	requireStatus(t, resp, http.StatusBadRequest)
 }
 
 func TestSessionExpirationDateTimeFormat(t *testing.T) {
@@ -2370,7 +2370,7 @@ func TestSessionExpirationDateTimeFormat(t *testing.T) {
 
 	var body db.Body
 	response := rt.SendAdminRequest(http.MethodPost, "/db/_session", `{"name":"alice"}`)
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	expires, err := time.Parse(time.RFC3339, body["expires"].(string))
@@ -2380,7 +2380,7 @@ func TestSessionExpirationDateTimeFormat(t *testing.T) {
 	sessionId := body["session_id"].(string)
 	require.NotEmpty(t, sessionId, "Couldn't parse sessionID from response body")
 	response = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/db/_session/%s", sessionId), "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	expires, err = time.Parse(time.RFC3339, body["expires"].(string))
@@ -2564,7 +2564,7 @@ func TestAdhocReplicationStatus(t *testing.T) {
 	}`
 
 	resp := rt.SendAdminRequest("PUT", "/db/_replication/pushandpull-with-target-oneshot-adhoc", replConf)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 
 	// With the error hitting the replicationStatus endpoint will either return running, if not completed, and once
 	// completed panics. With the fix after running it'll return a 404 as replication no longer exists.
@@ -2603,7 +2603,7 @@ func TestUserXattrsRawGet(t *testing.T) {
 	}
 
 	resp := rt.SendAdminRequest("PUT", "/db/"+docKey, "{}")
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 	require.NoError(t, rt.WaitForPendingChanges())
 
 	_, err := userXattrStore.WriteUserXattr(docKey, xattrKey, "val")
@@ -2614,7 +2614,7 @@ func TestUserXattrsRawGet(t *testing.T) {
 	})
 
 	resp = rt.SendAdminRequest("GET", "/db/_raw/"+docKey, "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	var RawReturn struct {
 		Meta struct {
@@ -2633,15 +2633,15 @@ func TestRolePurge(t *testing.T) {
 
 	// Create role
 	resp := rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels":["channel"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 
 	// Delete role
 	resp = rt.SendAdminRequest("DELETE", "/db/_role/role", ``)
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	// Ensure role is gone
 	resp = rt.SendAdminRequest("GET", "/db/_role/role", ``)
-	assertStatus(t, resp, http.StatusNotFound)
+	requireStatus(t, resp, http.StatusNotFound)
 
 	// Ensure role is 'soft-deleted' and we can still get the doc
 	role, err := rt.GetDatabase().Authenticator(base.TestCtx(t)).GetRoleIncDeleted("role")
@@ -2650,11 +2650,11 @@ func TestRolePurge(t *testing.T) {
 
 	// Re-create role
 	resp = rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels":["channel"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 
 	// Delete role again but with purge flag
 	resp = rt.SendAdminRequest("DELETE", "/db/_role/role?purge=true", ``)
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	// Ensure role is purged, can't access at all
 	role, err = rt.GetDatabase().Authenticator(base.TestCtx(t)).GetRoleIncDeleted("role")
@@ -2663,7 +2663,7 @@ func TestRolePurge(t *testing.T) {
 
 	// Ensure role returns 404 via REST call
 	resp = rt.SendAdminRequest("GET", "/db/_role/role", ``)
-	assertStatus(t, resp, http.StatusNotFound)
+	requireStatus(t, resp, http.StatusNotFound)
 }
 
 func TestSoftDeleteCasMismatch(t *testing.T) {
@@ -2676,7 +2676,7 @@ func TestSoftDeleteCasMismatch(t *testing.T) {
 
 	// Create role
 	resp := rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels":["channel"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 
 	leakyBucket, ok := base.AsLeakyBucket(rt.testBucket)
 	require.True(t, ok)
@@ -2688,12 +2688,12 @@ func TestSoftDeleteCasMismatch(t *testing.T) {
 		if triggerCallback {
 			triggerCallback = false
 			resp = rt.SendAdminRequest("DELETE", "/db/_role/role", ``)
-			assertStatus(t, resp, http.StatusOK)
+			requireStatus(t, resp, http.StatusOK)
 		}
 	})
 
 	resp = rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels":["chan"]}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 }
 
 func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
@@ -2733,19 +2733,19 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 
 			// Create role
 			resp := rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels":["channel"]}`)
-			assertStatus(t, resp, http.StatusCreated)
+			requireStatus(t, resp, http.StatusCreated)
 
 			// Create user
 			resp = rt.SendAdminRequest("PUT", "/db/_user/user", `{"password": "pass"}`)
-			assertStatus(t, resp, http.StatusCreated)
+			requireStatus(t, resp, http.StatusCreated)
 
 			// Add channel to role
 			resp = rt.SendAdminRequest("PUT", "/db/roleChannels", `{"channels": "inherit"}`)
-			assertStatus(t, resp, http.StatusCreated)
+			requireStatus(t, resp, http.StatusCreated)
 
 			// Add role to user
 			resp = rt.SendAdminRequest("PUT", "/db/userRoles", `{"roles": "role:role"}`)
-			assertStatus(t, resp, http.StatusCreated)
+			requireStatus(t, resp, http.StatusCreated)
 
 			leakyBucket, ok := base.AsLeakyBucket(rt.testBucket)
 			require.True(t, ok)
@@ -2755,7 +2755,7 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 				if triggerCallback {
 					triggerCallback = false
 					resp = rt.SendAdminRequest("DELETE", "/db/_role/role", ``)
-					assertStatus(t, resp, http.StatusOK)
+					requireStatus(t, resp, http.StatusOK)
 				}
 			})
 
@@ -2852,7 +2852,7 @@ func TestChannelNameSizeWarningBoundaries(t *testing.T) {
 			chanName := strings.Repeat("A", test.channelLength)
 			tr := rt.SendAdminRequest("PUT", "/db/"+docId, `{"chan":"`+chanName+`"}`)
 
-			assertStatus(t, tr, http.StatusCreated)
+			requireStatus(t, tr, http.StatusCreated)
 			chanNameWarnCountAfter := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
 			if test.expectWarn {
 				assert.Equal(t, chanNameWarnCountBefore+1, chanNameWarnCountAfter)
@@ -2873,12 +2873,12 @@ func TestChannelNameSizeWarningUpdateExistingDoc(t *testing.T) {
 	chanName := strings.Repeat("B", int(base.DefaultWarnThresholdChannelNameSize)+5)
 	t.Run("Update doc without changing channel", func(t *testing.T) {
 		tr := rt.SendAdminRequest("PUT", "/db/replace", `{"chan":"`+chanName+`"}`) // init doc
-		assertStatus(t, tr, http.StatusCreated)
+		requireStatus(t, tr, http.StatusCreated)
 
 		before := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		revId := respRevID(t, tr)
 		tr = rt.SendAdminRequest("PUT", "/db/replace?rev="+revId, `{"chan":"`+chanName+`", "data":"test"}`)
-		assertStatus(t, tr, http.StatusCreated)
+		requireStatus(t, tr, http.StatusCreated)
 		after := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		assert.Equal(t, before+1, after)
 	})
@@ -2896,13 +2896,13 @@ func TestChannelNameSizeWarningDocChannelUpdate(t *testing.T) {
 
 		chanName := strings.Repeat("C", channelLength)
 		tr := rt.SendAdminRequest("PUT", "/db/replaceNewChannel", `{"chan":"`+chanName+`"}`) // init doc
-		assertStatus(t, tr, http.StatusCreated)
+		requireStatus(t, tr, http.StatusCreated)
 
 		before := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		revId := respRevID(t, tr)
 		chanName = strings.Repeat("D", channelLength+5)
 		tr = rt.SendAdminRequest("PUT", "/db/replaceNewChannel?rev="+revId, fmt.Sprintf(`{"chan":"`+chanName+`", "data":"test"}`))
-		assertStatus(t, tr, http.StatusCreated)
+		requireStatus(t, tr, http.StatusCreated)
 		after := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		assert.Equal(t, before+1, after)
 	})
@@ -2919,12 +2919,12 @@ func TestChannelNameSizeWarningDeleteChannel(t *testing.T) {
 	t.Run("Delete channel over max length", func(t *testing.T) {
 		chanName := strings.Repeat("F", channelLength)
 		tr := rt.SendAdminRequest("PUT", "/db/deleteme", `{"chan":"`+chanName+`"}`) // init channel
-		assertStatus(t, tr, http.StatusCreated)
+		requireStatus(t, tr, http.StatusCreated)
 
 		before := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		revId := respRevID(t, tr)
 		tr = rt.SendAdminRequest("DELETE", "/db/deleteme?rev="+revId, "")
-		assertStatus(t, tr, http.StatusOK)
+		requireStatus(t, tr, http.StatusOK)
 		after := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		assert.Equal(t, before, after)
 	})
@@ -3087,12 +3087,12 @@ func TestConfigEndpoint(t *testing.T) {
 			// Request to _config
 			resp := rt.SendAdminRequest("PUT", "/_config", testCase.Config)
 			if testCase.ExpectError {
-				assertStatus(t, resp, http.StatusBadRequest)
+				requireStatus(t, resp, http.StatusBadRequest)
 				t.Logf("got response: %s", resp.BodyBytes())
 				return
 			}
 
-			assertStatus(t, resp, http.StatusOK)
+			requireStatus(t, resp, http.StatusOK)
 
 			assert.Equal(t, testCase.ConsoleLevel, *base.ConsoleLogLevel())
 			assert.Equal(t, testCase.ConsoleLogKeys, base.ConsoleLogKey().EnabledLogKeys())
@@ -3112,18 +3112,18 @@ func TestLoggingDeprecationWarning(t *testing.T) {
 
 	// Create doc just to startup server and force any initial warnings
 	resp := rt.SendAdminRequest("PUT", "/db/doc", "{}")
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 
 	warnCountBefore := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
 
 	resp = rt.SendAdminRequest("GET", "/_logging", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	warnCountAfter := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
 	assert.Equal(t, int64(1), warnCountAfter-warnCountBefore)
 
 	resp = rt.SendAdminRequest("PUT", "/_logging", "{}")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	warnCountAfter2 := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
 	assert.Equal(t, int64(1), warnCountAfter2-warnCountAfter)
@@ -3138,7 +3138,7 @@ func TestInitialStartupConfig(t *testing.T) {
 
 	// Get config
 	resp := rt.SendAdminRequest("GET", "/_config", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	var initialStartupConfig StartupConfig
 	err := json.Unmarshal(resp.BodyBytes(), &initialStartupConfig)
@@ -3156,7 +3156,7 @@ func TestInitialStartupConfig(t *testing.T) {
 
 	// Get config
 	resp = rt.SendAdminRequest("GET", "/_config", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	initialStartupConfig = StartupConfig{}
 	err = json.Unmarshal(resp.BodyBytes(), &initialStartupConfig)
 	require.NoError(t, err)
@@ -3186,7 +3186,7 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 
 	// Get config
 	resp := rt.SendAdminRequest("GET", "/_config?include_runtime=true", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	var runtimeServerConfigResponse RunTimeServerConfigResponse
 	err = json.Unmarshal(resp.BodyBytes(), &runtimeServerConfigResponse)
@@ -3211,14 +3211,14 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 		}
 	}
 	`)
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	// Update revs limit too so we can check db config
 	dbConfig := rt.ServerContext().GetDatabaseConfig("db")
 	dbConfig.RevsLimit = base.Uint32Ptr(100)
 
 	resp = rt.SendAdminRequest("GET", "/_config?include_runtime=true", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	err = json.Unmarshal(resp.BodyBytes(), &runtimeServerConfigResponse)
 	require.NoError(t, err)
 
@@ -3230,7 +3230,7 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 	assert.Equal(t, "debug", runtimeServerConfigResponse.Logging.Console.LogLevel.String())
 
 	resp = rt.SendAdminRequest("GET", "/_config?include_runtime=true&redact=true", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	err = json.Unmarshal(resp.BodyBytes(), &runtimeServerConfigResponse)
 	require.NoError(t, err)
 
@@ -3246,10 +3246,10 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 	}`
 
 	response := rt.SendAdminRequest("PUT", "/db/_replication/repl", string(replicationConfig))
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	resp = rt.SendAdminRequest("GET", "/_config?include_runtime=true", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	err = json.Unmarshal(resp.BodyBytes(), &runtimeServerConfigResponse)
 	require.NoError(t, err)
 
@@ -3640,11 +3640,11 @@ func TestNotExistentDBRequest(t *testing.T) {
 
 	// Request to non-existent db with valid credentials
 	resp := rt.SendAdminRequestWithAuth("PUT", "/dbx/_config", "", "random", "password")
-	assertStatus(t, resp, http.StatusForbidden)
+	requireStatus(t, resp, http.StatusForbidden)
 
 	// Request to non-existent db with invalid credentials
 	resp = rt.SendAdminRequestWithAuth("PUT", "/dbx/_config", "", "random", "passwordx")
-	assertStatus(t, resp, http.StatusUnauthorized)
+	requireStatus(t, resp, http.StatusUnauthorized)
 }
 
 func TestConfigsIncludeDefaults(t *testing.T) {
@@ -4253,11 +4253,11 @@ func TestDisablePasswordAuthThroughAdminAPI(t *testing.T) {
 	defer rt.Close()
 
 	res := rt.SendAdminRequest(http.MethodPost, "/db/_config", `{"bucket":"`+rt.Bucket().GetName()+`","num_index_replicas":0,"disable_password_auth": true}`)
-	assertStatus(t, res, http.StatusCreated)
+	requireStatus(t, res, http.StatusCreated)
 	assert.True(t, rt.GetDatabase().Options.DisablePasswordAuthentication)
 
 	res = rt.SendAdminRequest(http.MethodPost, "/db/_config", `{"bucket":"`+rt.Bucket().GetName()+`","num_index_replicas":0,"disable_password_auth": false}`)
-	assertStatus(t, res, http.StatusCreated)
+	requireStatus(t, res, http.StatusCreated)
 	assert.False(t, rt.GetDatabase().Options.DisablePasswordAuthentication)
 }
 
@@ -4382,7 +4382,7 @@ func TestDeleteDatabasePointingAtSameBucket(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb})
 	defer rt.Close()
 	resp := rt.SendAdminRequest(http.MethodDelete, "/db/", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	// Make another database that uses import in-order to trigger the panic instantly instead of having to time.Sleep
 	resp = rt.SendAdminRequest(http.MethodPut, "/db1/", fmt.Sprintf(`{
 		"bucket": "%s",
@@ -4526,7 +4526,7 @@ function (doc) {
 }
 `
 			resp := senderRT.SendAdminRequest("POST", "/db/_bulk_docs", bulkDocsBody)
-			assertStatus(t, resp, http.StatusCreated)
+			requireStatus(t, resp, http.StatusCreated)
 
 			err := senderRT.WaitForPendingChanges()
 			require.NoError(t, err)
@@ -4545,7 +4545,7 @@ function (doc) {
 				}`
 
 			resp = activeRT.SendAdminRequest("PUT", "/db/_replication/"+replName, replConf)
-			assertStatus(t, resp, http.StatusCreated)
+			requireStatus(t, resp, http.StatusCreated)
 
 			err = activeRT.GetDatabase().SGReplicateMgr.StartReplications()
 			require.NoError(t, err)
@@ -4583,7 +4583,7 @@ function (doc) {
 					}`
 
 			resp = activeRT.SendAdminRequest("PUT", "/db/_replication/"+replName, replConf)
-			assertStatus(t, resp, http.StatusCreated)
+			requireStatus(t, resp, http.StatusCreated)
 			activeRT.waitForReplicationStatus(replName, db.ReplicationStateRunning)
 
 			value, _ = base.WaitForStat(receiverRT.GetDatabase().DbStats.Database().NumDocWrites.Value, 10)
@@ -4636,7 +4636,7 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 }
 `
 	resp := activeRT.SendAdminRequest("POST", "/db/_replication/", replConfig)
-	assertStatus(t, resp, 201)
+	requireStatus(t, resp, 201)
 
 	activeRT.waitForReplicationStatus(t.Name(), db.ReplicationStateRunning)
 
@@ -4644,7 +4644,7 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 	require.NoError(t, err)
 
 	resp = activeRT.SendAdminRequest("GET", "/db/_replication/"+t.Name(), "")
-	assertStatus(t, resp, 200)
+	requireStatus(t, resp, 200)
 
 	var config db.ReplicationConfig
 	err = json.Unmarshal(resp.BodyBytes(), &config)
@@ -4692,7 +4692,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 }
 `
 	resp := activeRT.SendAdminRequest("POST", "/db/_replication/", replConfig)
-	assertStatus(t, resp, 201)
+	requireStatus(t, resp, 201)
 
 	activeRT.waitForReplicationStatus(t.Name(), db.ReplicationStateRunning)
 
@@ -4796,10 +4796,10 @@ func TestApiInternalPropertiesHandling(t *testing.T) {
 
 			resp := rt.SendAdminRequest("PUT", "/db/"+docID, string(rawBody))
 			if test.expectedErrorStatus != nil {
-				assertStatus(t, resp, *test.expectedErrorStatus)
+				requireStatus(t, resp, *test.expectedErrorStatus)
 				return
 			}
-			assertStatus(t, resp, http.StatusCreated)
+			requireStatus(t, resp, http.StatusCreated)
 
 			var bucketDoc map[string]interface{}
 			_, err = rt.Bucket().Get(docID, &bucketDoc)
@@ -4872,7 +4872,7 @@ func TestPutIDRevMatchBody(t *testing.T) {
 	defer rt.Close()
 	// Create document to create rev from
 	resp := rt.SendAdminRequest("PUT", "/db/doc", "{}")
-	assertStatus(t, resp, 201)
+	requireStatus(t, resp, 201)
 	rev := respRevID(t, resp)
 
 	for _, test := range testCases {
@@ -4888,10 +4888,10 @@ func TestPutIDRevMatchBody(t *testing.T) {
 
 			resp = rt.SendAdminRequest("PUT", "/db/"+docID+"?rev="+docRev, docBody)
 			if test.expectError {
-				assertStatus(t, resp, 400)
+				requireStatus(t, resp, 400)
 				return
 			}
-			assertStatus(t, resp, 201)
+			requireStatus(t, resp, 201)
 			if test.docID == "" {
 				// Update rev to branch off for next test
 				rev = respRevID(t, resp)
@@ -4912,22 +4912,22 @@ func TestPublicChanGuestAccess(t *testing.T) {
 
 	// Create a document on the public channel
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc", `{"channels": ["!"], "foo": "bar"}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 
 	// Check guest user has access to public channel
 	resp = rt.SendRequest(http.MethodGet, "/db/doc", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	assert.EqualValues(t, "bar", resp.GetRestDocument()["foo"])
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/_user/GUEST", ``)
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	fmt.Println("GUEST user:", resp.Body.String())
 	assert.EqualValues(t, []interface{}{"!"}, resp.GetRestDocument()["all_channels"])
 
 	// Confirm guest user cannot access other channels it has no access too
 	resp = rt.SendAdminRequest(http.MethodPut, "/db/docNoAccess", `{"channels": ["cookie"], "foo": "bar"}`)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 
 	resp = rt.SendRequest(http.MethodGet, "/db/docNoAccess", "")
-	assertStatus(t, resp, http.StatusForbidden)
+	requireStatus(t, resp, http.StatusForbidden)
 }

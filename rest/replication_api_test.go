@@ -46,11 +46,11 @@ func TestReplicationAPI(t *testing.T) {
 
 	// PUT replication
 	response := rt.SendAdminRequest("PUT", "/db/_replication/replication1", marshalConfig(t, replicationConfig))
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	// GET replication for PUT
 	response = rt.SendAdminRequest("GET", "/db/_replication/replication1", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	var configResponse db.ReplicationConfig
 	err := json.Unmarshal(response.BodyBytes(), &configResponse)
 	log.Printf("configResponse direction type: %T", configResponse.Direction)
@@ -63,11 +63,11 @@ func TestReplicationAPI(t *testing.T) {
 	// POST replication
 	replicationConfig.ID = "replication2"
 	response = rt.SendAdminRequest("POST", "/db/_replication/", marshalConfig(t, replicationConfig))
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	// GET replication for POST
 	response = rt.SendAdminRequest("GET", "/db/_replication/replication2", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	configResponse = db.ReplicationConfig{}
 	err = json.Unmarshal(response.BodyBytes(), &configResponse)
 	require.NoError(t, err)
@@ -77,7 +77,7 @@ func TestReplicationAPI(t *testing.T) {
 
 	// GET all replications
 	response = rt.SendAdminRequest("GET", "/db/_replication/", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	var replicationsResponse map[string]db.ReplicationConfig
 	log.Printf("response: %s", response.BodyBytes())
 	err = json.Unmarshal(response.BodyBytes(), &replicationsResponse)
@@ -90,15 +90,15 @@ func TestReplicationAPI(t *testing.T) {
 
 	// DELETE replication
 	response = rt.SendAdminRequest("DELETE", "/db/_replication/replication1", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 
 	// Verify delete was successful
 	response = rt.SendAdminRequest("GET", "/db/_replication/replication1", "")
-	assertStatus(t, response, http.StatusNotFound)
+	requireStatus(t, response, http.StatusNotFound)
 
 	// DELETE non-existent replication
 	response = rt.SendAdminRequest("DELETE", "/db/_replication/replication3", "")
-	assertStatus(t, response, http.StatusNotFound)
+	requireStatus(t, response, http.StatusNotFound)
 
 }
 
@@ -168,7 +168,7 @@ func TestValidateReplicationAPI(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_replication/%s", test.ID), marshalConfig(t, test.config))
-			assertStatus(t, response, test.expectedResponseCode)
+			requireStatus(t, response, test.expectedResponseCode)
 			if test.expectedErrorContains != "" {
 				assert.Contains(t, string(response.Body.Bytes()), test.expectedErrorContains)
 			}
@@ -230,9 +230,9 @@ func TestValidateReplicationAPI_CE(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_replication/%s", test.ID), marshalConfig(t, test.config))
 			if base.IsEnterpriseEdition() {
-				assertStatus(t, response, 201)
+				requireStatus(t, response, 201)
 			} else {
-				assertStatus(t, response, 400)
+				requireStatus(t, response, 400)
 			}
 		})
 	}
@@ -246,7 +246,7 @@ func TestReplicationStatusAPI(t *testing.T) {
 
 	// GET replication status for non-existent replication ID
 	response := rt.SendAdminRequest("GET", "/db/_replicationStatus/replication1", "")
-	assertStatus(t, response, http.StatusNotFound)
+	requireStatus(t, response, http.StatusNotFound)
 
 	replicationConfig := db.ReplicationConfig{
 		ID:        "replication1",
@@ -256,11 +256,11 @@ func TestReplicationStatusAPI(t *testing.T) {
 
 	// PUT replication1
 	response = rt.SendAdminRequest("PUT", "/db/_replication/replication1", marshalConfig(t, replicationConfig))
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	// GET replication status for replication1
 	response = rt.SendAdminRequest("GET", "/db/_replicationStatus/replication1", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	var statusResponse db.ReplicationStatus
 	err := json.Unmarshal(response.BodyBytes(), &statusResponse)
 	require.NoError(t, err)
@@ -274,11 +274,11 @@ func TestReplicationStatusAPI(t *testing.T) {
 		Direction: "pull",
 	}
 	response = rt.SendAdminRequest("PUT", "/db/_replication/replication2", marshalConfig(t, replication2Config))
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	// GET replication status for all replications
 	response = rt.SendAdminRequest("GET", "/db/_replicationStatus/", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	var allStatusResponse []*db.ReplicationStatus
 	err = json.Unmarshal(response.BodyBytes(), &allStatusResponse)
 	require.NoError(t, err)
@@ -288,11 +288,11 @@ func TestReplicationStatusAPI(t *testing.T) {
 
 	// PUT replication status, no action
 	response = rt.SendAdminRequest("PUT", "/db/_replicationStatus/replication1", "")
-	assertStatus(t, response, http.StatusBadRequest)
+	requireStatus(t, response, http.StatusBadRequest)
 
 	// PUT replication status with action
 	response = rt.SendAdminRequest("PUT", "/db/_replicationStatus/replication1?action=start", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 }
 
 func TestReplicationStatusStopAdhoc(t *testing.T) {
@@ -302,7 +302,7 @@ func TestReplicationStatusStopAdhoc(t *testing.T) {
 
 	// GET replication status for non-existent replication ID
 	response := rt.SendAdminRequest("GET", "/db/_replicationStatus/replication1", "")
-	assertStatus(t, response, http.StatusNotFound)
+	requireStatus(t, response, http.StatusNotFound)
 
 	permanentReplicationConfig := db.ReplicationConfig{
 		ID:         "replication1",
@@ -321,15 +321,15 @@ func TestReplicationStatusStopAdhoc(t *testing.T) {
 
 	// PUT non-adhoc replication
 	response = rt.SendAdminRequest("PUT", "/db/_replication/replication1", marshalConfig(t, permanentReplicationConfig))
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	// PUT adhoc replication
 	response = rt.SendAdminRequest("PUT", "/db/_replication/replication2", marshalConfig(t, adhocReplicationConfig))
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	// GET replication status for all replications
 	response = rt.SendAdminRequest("GET", "/db/_replicationStatus/", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	var allStatusResponse []*db.ReplicationStatus
 	err := json.Unmarshal(response.BodyBytes(), &allStatusResponse)
 	require.NoError(t, err)
@@ -338,7 +338,7 @@ func TestReplicationStatusStopAdhoc(t *testing.T) {
 
 	// PUT _replicationStatus to stop non-adhoc replication
 	response = rt.SendAdminRequest("PUT", "/db/_replicationStatus/replication1?action=stop", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	var stopResponse *db.ReplicationStatus
 	err = json.Unmarshal(response.BodyBytes(), &stopResponse)
 	require.NoError(t, err)
@@ -346,7 +346,7 @@ func TestReplicationStatusStopAdhoc(t *testing.T) {
 
 	// PUT _replicationStatus to stop adhoc replication
 	response = rt.SendAdminRequest("PUT", "/db/_replicationStatus/replication2?action=stop", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	var stopAdhocResponse *db.ReplicationStatus
 	err = json.Unmarshal(response.BodyBytes(), &stopAdhocResponse)
 	require.NoError(t, err)
@@ -354,7 +354,7 @@ func TestReplicationStatusStopAdhoc(t *testing.T) {
 
 	// GET replication status for all replications
 	response = rt.SendAdminRequest("GET", "/db/_replicationStatus/", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	var updatedStatusResponse []*db.ReplicationStatus
 	err = json.Unmarshal(response.BodyBytes(), &updatedStatusResponse)
 	require.NoError(t, err)
@@ -370,7 +370,7 @@ func TestReplicationStatusAPIIncludeConfig(t *testing.T) {
 
 	// GET replication status for non-existent replication ID
 	response := rt.SendAdminRequest("GET", "/db/_replicationStatus/replication1?includeConfig=true", "")
-	assertStatus(t, response, http.StatusNotFound)
+	requireStatus(t, response, http.StatusNotFound)
 
 	replicationConfig := db.ReplicationConfig{
 		ID:        "replication1",
@@ -380,11 +380,11 @@ func TestReplicationStatusAPIIncludeConfig(t *testing.T) {
 
 	// PUT replication1
 	response = rt.SendAdminRequest("PUT", "/db/_replication/replication1", marshalConfig(t, replicationConfig))
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	// GET replication status for replication1
 	response = rt.SendAdminRequest("GET", "/db/_replicationStatus/replication1?includeConfig=true", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	var statusResponse db.ReplicationStatus
 	err := json.Unmarshal(response.BodyBytes(), &statusResponse)
 	require.NoError(t, err)
@@ -398,11 +398,11 @@ func TestReplicationStatusAPIIncludeConfig(t *testing.T) {
 		Direction: "pull",
 	}
 	response = rt.SendAdminRequest("PUT", "/db/_replication/replication2", marshalConfig(t, replication2Config))
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	// GET replication status for all replications
 	response = rt.SendAdminRequest("GET", "/db/_replicationStatus/?includeConfig=true", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	var allStatusResponse []*db.ReplicationStatus
 	err = json.Unmarshal(response.BodyBytes(), &allStatusResponse)
 	require.NoError(t, err)
@@ -412,11 +412,11 @@ func TestReplicationStatusAPIIncludeConfig(t *testing.T) {
 
 	// PUT replication status, no action
 	response = rt.SendAdminRequest("PUT", "/db/_replicationStatus/replication1", "")
-	assertStatus(t, response, http.StatusBadRequest)
+	requireStatus(t, response, http.StatusBadRequest)
 
 	// PUT replication status with action
 	response = rt.SendAdminRequest("PUT", "/db/_replicationStatus/replication1?action=start", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 
 }
 
@@ -497,7 +497,7 @@ func TestReplicationsFromConfig(t *testing.T) {
 
 			// Retrieve replications
 			response := rt.SendAdminRequest("GET", "/db/_replication/", "")
-			assertStatus(t, response, http.StatusOK)
+			requireStatus(t, response, http.StatusOK)
 			var configResponse map[string]*db.ReplicationConfig
 			err := json.Unmarshal(response.BodyBytes(), &configResponse)
 			require.NoError(t, err)
@@ -659,7 +659,7 @@ func TestReplicationStatusActions(t *testing.T) {
 
 	// Stop replication
 	response := rt1.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=stop", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 
 	// Wait for stopped.  Non-instant as config change needs to arrive over DCP
 	stateError := rt1.WaitForCondition(func() bool {
@@ -670,7 +670,7 @@ func TestReplicationStatusActions(t *testing.T) {
 
 	// Reset replication
 	response = rt1.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=reset", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 
 	resetErr := rt1.WaitForCondition(func() bool {
 		status := rt1.GetReplicationStatus(replicationID)
@@ -680,7 +680,7 @@ func TestReplicationStatusActions(t *testing.T) {
 
 	// Restart the replication
 	response = rt1.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=start", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 
 	// Verify replication has restarted from zero. Since docs have already been replicated,
 	// expect no docs read, two docs checked.
@@ -1098,7 +1098,7 @@ func (rt *RestTester) createReplication(replicationID string, remoteURLString st
 	payload, err := json.Marshal(replicationConfig)
 	require.NoError(rt.tb, err)
 	resp := rt.SendAdminRequest(http.MethodPost, "/db/_replication/", string(payload))
-	assertStatus(rt.tb, resp, http.StatusCreated)
+	requireStatus(rt.tb, resp, http.StatusCreated)
 }
 
 func (rt *RestTester) waitForAssignedReplications(count int) {
@@ -1119,21 +1119,21 @@ func (rt *RestTester) waitForReplicationStatus(replicationID string, targetStatu
 
 func (rt *RestTester) GetReplications() (replications map[string]db.ReplicationCfg) {
 	rawResponse := rt.SendAdminRequest("GET", "/db/_replication/", "")
-	assertStatus(rt.tb, rawResponse, 200)
+	requireStatus(rt.tb, rawResponse, 200)
 	require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &replications))
 	return replications
 }
 
 func (rt *RestTester) GetReplicationStatus(replicationID string) (status db.ReplicationStatus) {
 	rawResponse := rt.SendAdminRequest("GET", "/db/_replicationStatus/"+replicationID, "")
-	assertStatus(rt.tb, rawResponse, 200)
+	requireStatus(rt.tb, rawResponse, 200)
 	require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &status))
 	return status
 }
 
 func (rt *RestTester) GetReplicationStatuses(queryString string) (statuses []db.ReplicationStatus) {
 	rawResponse := rt.SendAdminRequest("GET", "/db/_replicationStatus/"+queryString, "")
-	assertStatus(rt.tb, rawResponse, 200)
+	requireStatus(rt.tb, rawResponse, 200)
 	require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &statuses))
 	return statuses
 }
@@ -1152,11 +1152,11 @@ func TestReplicationAPIWithAuthCredentials(t *testing.T) {
 		Adhoc:          true,
 	}
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_replication/replication1", marshalConfig(t, replication1Config))
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	// Check whether auth are credentials redacted from replication response
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/replication1", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	var configResponse db.ReplicationConfig
 	err := json.Unmarshal(response.BodyBytes(), &configResponse)
 	require.NoError(t, err, "Error un-marshalling replication response")
@@ -1182,11 +1182,11 @@ func TestReplicationAPIWithAuthCredentials(t *testing.T) {
 		Adhoc:     true,
 	}
 	response = rt.SendAdminRequest(http.MethodPost, "/db/_replication/", marshalConfig(t, replication2Config))
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	// Check whether auth are credentials redacted from replication response
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/replication2", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	configResponse = db.ReplicationConfig{}
 	err = json.Unmarshal(response.BodyBytes(), &configResponse)
 	require.NoError(t, err, "Error un-marshalling replication response")
@@ -1194,7 +1194,7 @@ func TestReplicationAPIWithAuthCredentials(t *testing.T) {
 
 	// Check whether auth are credentials redacted from all replications response
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	log.Printf("response: %s", response.BodyBytes())
 
 	var replicationsResponse map[string]db.ReplicationConfig
@@ -1212,7 +1212,7 @@ func TestReplicationAPIWithAuthCredentials(t *testing.T) {
 
 	// Check whether auth are credentials redacted replication status for all replications
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_replicationStatus/?includeConfig=true", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	var allStatusResponse []*db.ReplicationStatus
 	require.NoError(t, json.Unmarshal(response.BodyBytes(), &allStatusResponse))
 	require.Equal(t, 2, len(allStatusResponse), "Replication count mismatch")
@@ -1226,15 +1226,15 @@ func TestReplicationAPIWithAuthCredentials(t *testing.T) {
 
 	// Delete both replications
 	response = rt.SendAdminRequest(http.MethodDelete, "/db/_replication/replication1", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	response = rt.SendAdminRequest(http.MethodDelete, "/db/_replication/replication2", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 
 	// Verify deletes were successful
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/replication1", "")
-	assertStatus(t, response, http.StatusNotFound)
+	requireStatus(t, response, http.StatusNotFound)
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/replication2", "")
-	assertStatus(t, response, http.StatusNotFound)
+	requireStatus(t, response, http.StatusNotFound)
 }
 
 func TestValidateReplication(t *testing.T) {
@@ -1431,7 +1431,7 @@ func TestGetStatusWithReplication(t *testing.T) {
 		Adhoc:          true,
 	}
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_replication/replication1", marshalConfig(t, config1))
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	// Create another replication
 	config2 := db.ReplicationConfig{
@@ -1441,11 +1441,11 @@ func TestGetStatusWithReplication(t *testing.T) {
 		Adhoc:     true,
 	}
 	response = rt.SendAdminRequest(http.MethodPut, "/db/_replication/replication2", marshalConfig(t, config2))
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	// Check _status response
 	response = rt.SendAdminRequest(http.MethodGet, "/_status", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	var status Status
 	err := json.Unmarshal(response.BodyBytes(), &status)
 	require.NoError(t, err, "Error un-marshalling replication response")
@@ -1486,15 +1486,15 @@ func TestGetStatusWithReplication(t *testing.T) {
 
 	// Delete both replications
 	response = rt.SendAdminRequest(http.MethodDelete, "/db/_replication/replication1", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	response = rt.SendAdminRequest(http.MethodDelete, "/db/_replication/replication2", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 
 	// Verify deletes were successful
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/replication1", "")
-	assertStatus(t, response, http.StatusNotFound)
+	requireStatus(t, response, http.StatusNotFound)
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/replication2", "")
-	assertStatus(t, response, http.StatusNotFound)
+	requireStatus(t, response, http.StatusNotFound)
 
 	// Check _cluster response after replications are removed
 	status = Status{}
@@ -1522,10 +1522,10 @@ func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 	}`
 
 	response := rt.SendAdminRequest("PUT", "/db/_replication/replication1", string(replicationConfig))
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 
 	response = rt.SendAdminRequest("GET", "/db/_replicationStatus/", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 
 	var body []map[string]interface{}
 	err := base.JSONUnmarshal(response.BodyBytes(), &body)
@@ -1542,13 +1542,13 @@ func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 	}`
 
 	response = rt.SendAdminRequest("PUT", "/db/_replication/replication1", string(replicationConfigUpdate))
-	assertStatus(t, response, http.StatusBadRequest)
+	requireStatus(t, response, http.StatusBadRequest)
 
 	response = rt.SendAdminRequest("PUT", "/db/_replicationStatus/replication1?action=stop", "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 
 	response = rt.SendAdminRequest("PUT", "/db/_replication/replication1", string(replicationConfigUpdate))
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 
 }
 
@@ -1578,7 +1578,7 @@ func TestReplicationConfigChange(t *testing.T) {
 	}
 	`
 	resp := rt1.SendAdminRequest("POST", "/db/_bulk_docs", bulkDocs)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 
 	replicationID := "testRepl"
 
@@ -1596,7 +1596,7 @@ func TestReplicationConfigChange(t *testing.T) {
 
 	// Create replication for first channel
 	resp = rt1.SendAdminRequest("PUT", "/db/_replication/"+replicationID, replConf)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 
 	rt1.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
@@ -1605,7 +1605,7 @@ func TestReplicationConfigChange(t *testing.T) {
 	require.Len(t, changesResults.Results, 4)
 
 	resp = rt1.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=stop", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	rt1.waitForReplicationStatus(replicationID, db.ReplicationStateStopped)
 
 	// Upsert replication to use second channel
@@ -1618,10 +1618,10 @@ func TestReplicationConfigChange(t *testing.T) {
 			}`
 
 	resp = rt1.SendAdminRequest("PUT", "/db/_replication/"+replicationID, replConfUpdate)
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	resp = rt1.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=start", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	rt1.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
 	changesResults, err = rt2.waitForChanges(8, "/db/_changes?since=0", "", true)

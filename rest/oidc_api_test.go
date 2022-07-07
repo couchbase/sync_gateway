@@ -969,18 +969,18 @@ func createUser(t *testing.T, restTester *RestTester, name string) {
 	body := fmt.Sprintf(`{"name":"%s", "password":"pass", "email":"%s@couchbase.com"}`, name, name)
 	userEndpoint := fmt.Sprintf("/db/_user/%s", url.QueryEscape(name))
 	response := restTester.SendAdminRequest(http.MethodPut, userEndpoint, body)
-	assertStatus(t, response, http.StatusCreated)
+	requireStatus(t, response, http.StatusCreated)
 	response = restTester.SendAdminRequest(http.MethodGet, userEndpoint, "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 }
 
 // deleteUser deletes the specified user.
 func deleteUser(t *testing.T, restTester *RestTester, name string) {
 	userEndpoint := fmt.Sprintf("/db/_user/%s", name)
 	response := restTester.SendAdminRequest(http.MethodDelete, userEndpoint, "")
-	assertStatus(t, response, http.StatusOK)
+	requireStatus(t, response, http.StatusOK)
 	response = restTester.SendAdminRequest(http.MethodGet, userEndpoint, "")
-	assertStatus(t, response, http.StatusNotFound)
+	requireStatus(t, response, http.StatusNotFound)
 }
 
 // createOIDCRequest creates the request with the sessionEndpoint and token put in.
@@ -2228,7 +2228,7 @@ func TestOpenIDConnectRolesChannelsClaims(t *testing.T) {
 				payloadJSON, err := json.Marshal(payload)
 				require.NoError(t, err, "Failed to marshal role payload")
 				res := restTester.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/_role/%s", restTester.DatabaseConfig.Name, roleName), string(payloadJSON))
-				assertStatus(t, res, http.StatusCreated)
+				requireStatus(t, res, http.StatusCreated)
 			}
 
 			testDocBody := struct {
@@ -2239,7 +2239,7 @@ func TestOpenIDConnectRolesChannelsClaims(t *testing.T) {
 			testDocJSON, err := json.Marshal(testDocBody)
 			require.NoError(t, err, "Failed to marshal test doc payload")
 			res := restTester.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", restTester.DatabaseConfig.Name, testDocName), string(testDocJSON))
-			assertStatus(t, res, http.StatusCreated)
+			requireStatus(t, res, http.StatusCreated)
 
 			mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
 			defer mockSyncGateway.Close()
@@ -2495,7 +2495,7 @@ func TestOpenIDConnectIssuerChange(t *testing.T) {
 	updateReqJSON, err := json.Marshal(&newCfg)
 	require.NoError(t, err, "Failed to marshal update request body")
 	testRes := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/_config", rt1Config.DatabaseConfig.Name), string(updateReqJSON))
-	assertStatus(t, testRes, http.StatusCreated)
+	requireStatus(t, testRes, http.StatusCreated)
 
 	cookieJar, err := cookiejar.New(nil)
 	require.NoError(t, err)
@@ -2509,7 +2509,7 @@ func TestOpenIDConnectIssuerChange(t *testing.T) {
 	testDocJSON, err := json.Marshal(testDocBody)
 	require.NoError(t, err, "Failed to marshal test doc payload")
 	tdRes := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", rt1.DatabaseConfig.Name, testDocName), string(testDocJSON))
-	assertStatus(t, tdRes, http.StatusCreated)
+	requireStatus(t, tdRes, http.StatusCreated)
 
 	jwt, err := createJWTWithExtraClaims(subject, fmt.Sprintf("%s/%s/_oidc_testing", msg1.URL, rt1.DatabaseConfig.Name), AuthState{TokenTTL: time.Hour}, map[string]interface{}{
 		"username": "frodo",
