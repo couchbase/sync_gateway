@@ -4507,16 +4507,16 @@ func TestBlipRevokeNonExistentRole(t *testing.T) {
 	// 1. Create user with admin_roles including two roles not previously defined (a1 and a2, for example)
 	const testUsername = "bilbo"
 	res := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/_user/%s", rt.GetDatabase().Name, testUsername), fmt.Sprintf(`{"name": %q, "password": "test", "admin_roles": ["a1", "a2"], "admin_channels": ["c1"]}`, testUsername))
-	assertStatus(t, res, http.StatusCreated)
+	requireStatus(t, res, http.StatusCreated)
 
 	// Create a doc so we have something to replicate
 	res = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/testdoc", rt.GetDatabase().Name), `{"channels": ["c1"]}`)
-	assertStatus(t, res, http.StatusCreated)
+	requireStatus(t, res, http.StatusCreated)
 
 	// 3. Update the user to not reference one of the roles (update to ['a1'], for example)
 	// [also revoke channel c1 so the doc shows up in the revocation queries]
 	res = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/_user/%s", rt.GetDatabase().Name, testUsername), fmt.Sprintf(`{"name": %q, "password": "test", "admin_roles": ["a1"], "admin_channels": []}`, testUsername))
-	assertStatus(t, res, http.StatusOK)
+	requireStatus(t, res, http.StatusOK)
 
 	// 4. Try to sync
 	bt, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
