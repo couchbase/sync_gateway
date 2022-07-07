@@ -7817,7 +7817,7 @@ func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
 	require.True(t, ok)
 
 	leakyBucket.SetGetRawCallback(func(s string) error {
-		assert.NoError(t, leakyBucket.Delete("doc"))
+		require.NoError(t, leakyBucket.Delete("doc"))
 		return nil
 	})
 

@@ -4540,23 +4540,21 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 		t.Skip("Skip LeakyBucket test when running in integration")
 	}
 	testCases := []struct {
-		name        string
 		error       error
 		expectNoRev bool
 	}{
 		{
-			name:        "not_found",
 			error:       gocb.ErrDocumentNotFound,
 			expectNoRev: true,
 		},
 		{
-			name:        "overload",
 			error:       gocb.ErrOverload,
 			expectNoRev: false,
 		},
 	}
 	for _, test := range testCases {
-		t.Run(test.name, func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s", test.error), func(t *testing.T) {
+			docName := fmt.Sprintf("%s", test.error)
 			rt := NewRestTester(t, &RestTesterConfig{
 				guestEnabled: true,
 				TestBucket:   base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{}),
@@ -4573,11 +4571,11 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 			// Change noRev handler so it's known when a noRev is received
 			recievedNoRevs := make(chan *blip.Message)
 			btc.pullReplication.bt.blipContext.HandlerForProfile[db.MessageNoRev] = func(msg *blip.Message) {
-				fmt.Println("Received noRev")
+				fmt.Println("Received noRev", msg.Properties)
 				recievedNoRevs <- msg
 			}
 
-			resp := rt.SendAdminRequest(http.MethodPut, "/db/"+test.name, `{"foo":"bar"}`)
+			resp := rt.SendAdminRequest(http.MethodPut, "/db/"+docName, `{"foo":"bar"}`)
 			assertStatus(t, resp, http.StatusCreated)
 
 			// Make the LeakyBucket return an error
@@ -4589,13 +4587,13 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 			rt.GetDatabase().FlushRevisionCacheForTest()
 
 			err = btc.StartPull()
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			// Wait 3 seconds for noRev to be received
 			select {
 			case msg := <-recievedNoRevs:
 				if test.expectNoRev {
-					assert.Equal(t, test.name, msg.Properties["id"])
+					assert.Equal(t, docName, msg.Properties["id"])
 				} else {
 					require.Fail(t, "Received unexpected noRev message", msg)
 				}
@@ -4606,7 +4604,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 			}
 
 			// Make sure document did not get replicated
-			_, found := btc.GetRev(test.name, respRevID(t, resp))
+			_, found := btc.GetRev(docName, respRevID(t, resp))
 			assert.False(t, found)
 		})
 	}
