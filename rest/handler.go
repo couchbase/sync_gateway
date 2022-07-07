@@ -89,6 +89,8 @@ type handler struct {
 	statusMessage         string
 	requestBody           io.ReadCloser
 	db                    *db.Database
+	keyspaceScope         string
+	keyspaceCollection    string
 	user                  auth.User
 	authorizedAdminUser   string
 	privs                 handlerPrivs
@@ -241,29 +243,22 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	// user credentials
 	shouldCheckAdminAuth := (h.privs == adminPrivs && *h.server.config.API.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.config.API.MetricsInterfaceAuthentication)
 
-	dbName := h.PathVar("db")
-	keyspaceScope := base.DefaultScope // TODO: Change to scope defined in db config
-	keyspaceCollection := base.DefaultCollection
-	// If there is a "keyspace" path variable, determine the fully qualified collection:
+	keyspaceDb := h.PathVar("db")
+	var keyspaceScope, keyspaceCollection *string
+
+	// If there is a "keyspace" path variable in the route, parse the keyspace:
 	if ks := h.PathVar("keyspace"); ks != "" {
-		parsedDb, parsedScope, parsedCollection, err := parseKeyspace(ks)
+		keyspaceDb, keyspaceScope, keyspaceCollection, err = parseKeyspace(ks)
 		if err != nil {
 			return err
 		}
-		dbName = parsedDb
-		if parsedScope != nil {
-			keyspaceScope = *parsedScope
-		}
-		if parsedCollection != nil {
-			keyspaceCollection = *parsedCollection
-		}
 	}
 
-	// If there is a "db" path variable, look up the database context:
+	// look up the database context:
 	var dbContext *db.DatabaseContext
-	if dbName != "" {
-		if dbContext, err = h.server.GetDatabase(dbName); err != nil {
-			base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(dbName), err)
+	if keyspaceDb != "" {
+		if dbContext, err = h.server.GetDatabase(keyspaceDb); err != nil {
+			base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
 
 			if shouldCheckAdminAuth {
 				if httpError, ok := err.(*base.HTTPError); ok && httpError.Status == http.StatusNotFound {
@@ -285,6 +280,39 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 
 	// If this call is in the context of a DB make sure the DB is in a valid state
 	if dbContext != nil {
+		// Named collections handling
+		if dbContext.Scopes != nil {
+			// Allow an empty scope to refer to the one SG is running with, rather than falling back to _default
+			if keyspaceScope == nil {
+				// TODO: There could be a configurable dbContext.defaultNamedScope if we allow >1 scope
+				//       for now we don't need it - just use the one we're running with.
+				for scopeName := range dbContext.Scopes {
+					keyspaceScope = &scopeName
+					break
+				}
+			}
+			scope, foundScope := dbContext.Scopes[*keyspaceScope]
+			if !foundScope {
+				return base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", base.MD(keyspaceDb), base.MD(*keyspaceScope), base.MD(*keyspaceCollection))
+			}
+
+			if keyspaceCollection == nil {
+				if len(scope.Collections) > 1 {
+					// _default doesn't exist for a non-default scope - so make it a required element if it's ambiguous
+					return base.HTTPErrorf(http.StatusBadRequest, "Ambiguous keyspace: %s.%s", keyspaceDb, *keyspaceScope)
+				}
+				keyspaceCollection = dbContext.BucketSpec.Collection
+			}
+			_, foundCollection := scope.Collections[*keyspaceCollection]
+			if !foundCollection {
+				return base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", base.MD(keyspaceDb), base.MD(*keyspaceScope), base.MD(*keyspaceCollection))
+			}
+		} else {
+			// Set these for handlers that expect a scope/collection to be set, even if not using named collections.
+			keyspaceScope = base.StringPtr(base.DefaultScope)
+			keyspaceCollection = base.StringPtr(base.DefaultCollection)
+		}
+
 		if !h.runOffline {
 
 			// get a read lock on the dbContext
@@ -415,9 +443,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 
 	// Now set the request's Database (i.e. context + user)
 	if dbContext != nil {
-		// TODO: Set keyspace fields in h.db/DatabaseContext for access in API handlers
-		_, _ = keyspaceScope, keyspaceCollection
-
+		h.keyspaceScope, h.keyspaceCollection = *keyspaceScope, *keyspaceCollection
 		h.db, err = db.GetDatabase(dbContext, h.user)
 		if err != nil {
 			return err

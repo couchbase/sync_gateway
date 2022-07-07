@@ -93,6 +93,18 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 
 }
 
+// bucketSpecScopeAndCollection returns a scope and collection for the given bucket spec.
+func bucketSpecScopeAndCollection(spec BucketSpec) (scope string, collection string) {
+	scope, collection = DefaultScope, DefaultCollection
+	if spec.Scope != nil {
+		scope = *spec.Scope
+	}
+	if spec.Collection != nil {
+		collection = *spec.Collection
+	}
+	return scope, collection
+}
+
 func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilReadySeconds int) (*Collection, error) {
 
 	// Connect to bucket
@@ -116,8 +128,11 @@ func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilR
 	// Safe to get first node as there will always be at least one node in the list and cluster compat is uniform across all nodes.
 	clusterCompatMajor, clusterCompatMinor := decodeClusterVersion(nodesMetadata[0].ClusterCompatibility)
 
+	specScope, specCollection := bucketSpecScopeAndCollection(spec)
+	c := cluster.Bucket(spec.BucketName).Scope(specScope).Collection(specCollection)
+
 	collection := &Collection{
-		Collection:                bucket.DefaultCollection(),
+		Collection:                c,
 		Spec:                      spec,
 		cluster:                   cluster,
 		clusterCompatMajorVersion: uint64(clusterCompatMajor),
@@ -698,7 +713,7 @@ func (c *Collection) BucketItemCount() (itemCount int, err error) {
 
 	// TODO: implement APIBucketItemCount for collections as part of CouchbaseStore refactoring.  Until then, give flush a moment to finish
 	time.Sleep(1 * time.Second)
-	//itemCount, err = bucket.APIBucketItemCount()
+	// itemCount, err = bucket.APIBucketItemCount()
 	return 0, err
 }
 

@@ -509,6 +509,17 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	dbcontext.ServerContextHasStarted = sc.hasStarted
 	dbcontext.NoX509HTTPClient = sc.NoX509HTTPClient
 
+	// WIP: Collections Phase 1 - Hardcode the single scope/collection into DatabaseContext.
+	if spec.Scope != nil && spec.Collection != nil {
+		dbcontext.Scopes = map[string]db.Scope{
+			*spec.Scope: {
+				Collections: map[string]db.Collection{
+					*spec.Collection: {CollectionCtx: dbcontext}, // TODO: Prior to Phase 2 - move DatabaseContext methods like PutSpecial, etc. into CollectionContext
+				},
+			},
+		}
+	}
+
 	syncFn := ""
 	if config.Sync != nil {
 		syncFn = *config.Sync
