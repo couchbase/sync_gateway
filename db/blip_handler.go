@@ -178,8 +178,8 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 
 // Received a "subChanges" subscription request
 func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
-	bh.changesLock.Lock()
-	defer bh.changesLock.Unlock()
+	bh.changesCtxLock.Lock()
+	defer bh.changesCtxLock.Unlock()
 
 	defaultSince := bh.db.CreateZeroSinceValue()
 	latestSeq := func() (SequenceID, error) {
@@ -266,8 +266,8 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 }
 
 func (bh *blipHandler) handleUnsubChanges(rq *blip.Message) error {
-	bh.changesLock.Lock()
-	defer bh.changesLock.Unlock()
+	bh.changesCtxLock.Lock()
+	defer bh.changesCtxLock.Unlock()
 
 	if !bh.activeSubChanges.IsTrue() {
 		return base.HTTPErrorf(http.StatusBadRequest, "No subChanges subscription active to unsubscribe from")

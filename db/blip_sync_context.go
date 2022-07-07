@@ -97,7 +97,7 @@ type BlipSyncContext struct {
 	replicationStats                 *BlipSyncStats                            // Replication stats
 	purgeOnRemoval                   bool                                      // Purges the document when we pull a _removed:true revision.
 	conflictResolver                 *ConflictResolver                         // Conflict resolver for active replications
-	changesLock                      sync.Mutex
+	changesCtxLock                   sync.Mutex
 	changesCtx                       context.Context    // Used for the unsub changes Blip message to check if the subChanges feed should stop
 	changesCtxCancel                 context.CancelFunc // Cancel function for changesCtx to cancel subChanges being sent
 	changesPendingResponseCount      int64              // Number of changes messages pending changesResponse
@@ -199,8 +199,8 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 func (bsc *BlipSyncContext) Close() {
 	bsc.terminatorOnce.Do(func() {
 		// Lock so that we don't close the changesCtx at the same time as handleSubChanges is creating it
-		bsc.changesLock.Lock()
-		defer bsc.changesLock.Unlock()
+		bsc.changesCtxLock.Lock()
+		defer bsc.changesCtxLock.Unlock()
 
 		bsc.changesCtxCancel()
 		close(bsc.terminator)
