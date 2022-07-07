@@ -12,6 +12,7 @@ package base
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -37,8 +38,23 @@ type N1qlIndexOptions struct {
 
 var _ N1QLStore = &CouchbaseBucketGoCB{}
 
-// Keyspace for a bucket is bucket name
-func (bucket *CouchbaseBucketGoCB) Keyspace() string {
+// Keyspace for a bucket is just a bucket name
+func (bucket *CouchbaseBucketGoCB) EscapedFullyQualifiedKeyspace() string {
+	return fmt.Sprintf("`%s`", bucket.GetName())
+}
+
+// IndexMetaBucketID returns the value of bucket_id for the system:indexes table for the bucket.
+func (bucket *CouchbaseBucketGoCB) IndexMetaBucketID() string {
+	return ""
+}
+
+// IndexMetaScopeID returns the value of scope_id for the system:indexes table for the bucket.
+func (bucket *CouchbaseBucketGoCB) IndexMetaScopeID() string {
+	return ""
+}
+
+// IndexMetaKeyspaceID returns the value of keyspace_id for the system:indexes table for the bucket.
+func (bucket *CouchbaseBucketGoCB) IndexMetaKeyspaceID() string {
 	return bucket.GetName()
 }
 

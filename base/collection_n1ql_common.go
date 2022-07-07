@@ -41,11 +41,14 @@ type N1QLStore interface {
 	CreatePrimaryIndex(indexName string, options *N1qlIndexOptions) error
 	DropIndex(indexName string) error
 	ExplainQuery(statement string, params map[string]interface{}) (plan map[string]interface{}, err error)
-	Keyspace() string
 	GetIndexMeta(indexName string) (exists bool, meta *IndexMeta, err error)
 	Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (results sgbucket.QueryResultIterator, err error)
 	WaitForIndexOnline(indexName string) error
 	IsErrNoResults(error) bool
+	EscapedFullyQualifiedKeyspace() string
+	IndexMetaBucketID() string
+	IndexMetaScopeID() string
+	IndexMetaKeyspaceID() string
 
 	// executeQuery performs the specified query without any built-in retry handling and returns the resultset
 	executeQuery(statement string) (sgbucket.QueryResultIterator, error)
@@ -81,7 +84,7 @@ func ExplainQuery(store N1QLStore, statement string, params map[string]interface
 //     CreateIndex("myIndex", "field1, field2, nested.field", "field1 > 0", N1qlIndexOptions{numReplica:1})
 //   CREATE INDEX myIndex on myBucket(field1, field2, nested.field) WHERE field1 > 0 WITH {"numReplica":1}
 func CreateIndex(store N1QLStore, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
-	createStatement := fmt.Sprintf("CREATE INDEX `%s` ON `%s`(%s)", indexName, store.Keyspace(), expression)
+	createStatement := fmt.Sprintf("CREATE INDEX `%s` ON %s(%s)", indexName, store.EscapedFullyQualifiedKeyspace(), expression)
 
 	// Add filter expression, when present
 	if filterExpression != "" {
@@ -89,7 +92,7 @@ func CreateIndex(store N1QLStore, indexName string, expression string, filterExp
 	}
 
 	// Replace any KeyspaceQueryToken references in the index expression
-	createStatement = strings.Replace(createStatement, KeyspaceQueryToken, store.Keyspace(), -1)
+	createStatement = strings.Replace(createStatement, KeyspaceQueryToken, store.EscapedFullyQualifiedKeyspace(), -1)
 
 	createErr := createIndex(store, indexName, createStatement, options)
 	if createErr != nil {
@@ -101,7 +104,7 @@ func CreateIndex(store N1QLStore, indexName string, expression string, filterExp
 }
 
 func CreatePrimaryIndex(store N1QLStore, indexName string, options *N1qlIndexOptions) error {
-	createStatement := fmt.Sprintf("CREATE PRIMARY INDEX `%s` ON `%s`", indexName, store.Keyspace())
+	createStatement := fmt.Sprintf("CREATE PRIMARY INDEX `%s` ON %s", indexName, store.EscapedFullyQualifiedKeyspace())
 	return createIndex(store, indexName, createStatement, options)
 }
 
@@ -164,7 +167,7 @@ func waitForIndexExistence(store N1QLStore, indexName string, shouldExist bool) 
 	return nil
 }
 
-// Issues a build command for any deferred sync gateway indexes associated with the bucket.
+// BuildDeferredIndexes issues a build command for any deferred sync gateway indexes associated with the bucket.
 func BuildDeferredIndexes(s N1QLStore, indexSet []string) error {
 
 	if len(indexSet) == 0 {
@@ -172,11 +175,16 @@ func BuildDeferredIndexes(s N1QLStore, indexSet []string) error {
 	}
 
 	// Only build indexes that are in deferred state.  Query system:indexes to validate the provided set of indexes
-	statement := fmt.Sprintf("SELECT indexes.name, indexes.state "+
-		"FROM system:indexes "+
-		"WHERE indexes.keyspace_id = '%s' "+
-		"AND indexes.name IN [%s]",
-		s.Keyspace(), StringSliceToN1QLArray(indexSet, "'"))
+	statement := fmt.Sprintf("SELECT indexes.name, indexes.state FROM system:indexes WHERE indexes.keyspace_id = '%s'", s.IndexMetaKeyspaceID())
+
+	if s.IndexMetaBucketID() != "" {
+		statement += fmt.Sprintf("AND indexes.bucket_id = '%s' ", s.IndexMetaBucketID())
+	}
+	if s.IndexMetaScopeID() != "" {
+		statement += fmt.Sprintf("AND indexes.scope_id = '%s' ", s.IndexMetaScopeID())
+	}
+
+	statement += fmt.Sprintf("AND indexes.name IN [%s]", StringSliceToN1QLArray(indexSet, "'"))
 	// mod: bucket name
 
 	results, err := s.executeQuery(statement)
@@ -218,7 +226,7 @@ func buildIndexes(s N1QLStore, indexNames []string) error {
 	// Not using strings.Join because we want to escape each index name
 	indexNameList := StringSliceToN1QLArray(indexNames, "`")
 
-	buildStatement := fmt.Sprintf("BUILD INDEX ON `%s`(%s)", s.Keyspace(), indexNameList)
+	buildStatement := fmt.Sprintf("BUILD INDEX ON %s(%s)", s.EscapedFullyQualifiedKeyspace(), indexNameList)
 	err := s.executeStatement(buildStatement)
 
 	// If indexer reports build will be completed in the background, wait to validate build actually happens.
@@ -237,7 +245,7 @@ func buildIndexes(s N1QLStore, indexNames []string) error {
 	return err
 }
 
-// Waits for index state to be online
+// WaitForIndexOnline waits for index state to be online
 func WaitForIndexOnline(store N1QLStore, indexName string) error {
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		exists, indexMeta, getMetaErr := store.GetIndexMeta(indexName)
@@ -255,7 +263,7 @@ func WaitForIndexOnline(store N1QLStore, indexName string) error {
 	return nil
 }
 
-// IndexInfo represents a Couchbase GSI index.
+// IndexMeta represents a Couchbase GSI index.
 type IndexMeta struct {
 	Name      string   `json:"name"`
 	IsPrimary bool     `json:"is_primary"`
@@ -301,7 +309,13 @@ func GetIndexMeta(store N1QLStore, indexName string) (exists bool, meta *IndexMe
 }
 
 func getIndexMetaWithoutRetry(store N1QLStore, indexName string) (exists bool, meta *IndexMeta, err error) {
-	statement := fmt.Sprintf("SELECT state from system:indexes WHERE indexes.name = '%s' AND indexes.keyspace_id = '%s'", indexName, store.Keyspace())
+	statement := fmt.Sprintf("SELECT state from system:indexes WHERE indexes.name = '%s' AND indexes.keyspace_id = '%s'", indexName, store.IndexMetaKeyspaceID())
+	if store.IndexMetaBucketID() != "" {
+		statement += fmt.Sprintf(" AND indexes.bucket_id = '%s'", store.IndexMetaBucketID())
+	}
+	if store.IndexMetaScopeID() != "" {
+		statement += fmt.Sprintf(" AND indexes.scope_id = '%s'", store.IndexMetaScopeID())
+	}
 	results, queryErr := store.executeQuery(statement)
 	if queryErr != nil {
 		return false, nil, queryErr
@@ -321,7 +335,7 @@ func getIndexMetaWithoutRetry(store N1QLStore, indexName string) (exists bool, m
 
 // DropIndex drops the specified index from the current bucket.
 func DropIndex(store N1QLStore, indexName string) error {
-	statement := fmt.Sprintf("DROP INDEX `%s`.`%s`", store.Keyspace(), indexName)
+	statement := fmt.Sprintf("DROP INDEX %s.`%s`", store.EscapedFullyQualifiedKeyspace(), indexName)
 	err := store.executeStatement(statement)
 	if err != nil && !IsIndexerRetryIndexError(err) {
 		return err
