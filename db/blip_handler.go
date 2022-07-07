@@ -178,11 +178,8 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 
 // Received a "subChanges" subscription request
 func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
-
-	bh.lock.Lock()
-	defer bh.lock.Unlock()
-
-	bh.gotSubChanges = true
+	bh.changesLock.Lock()
+	defer bh.changesLock.Unlock()
 
 	defaultSince := bh.db.CreateZeroSinceValue()
 	latestSeq := func() (SequenceID, error) {
@@ -231,12 +228,11 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	}
 
 	continuous := subChangesParams.continuous()
-	// used for stats tracking
-	bh.continuous = continuous
+
 	// Start asynchronous changes goroutine
 	go func() {
 		// Pull replication stats by type
-		if bh.continuous {
+		if continuous {
 			bh.replicationStats.SubChangesContinuousActive.Add(1)
 			defer bh.replicationStats.SubChangesContinuousActive.Add(-1)
 			bh.replicationStats.SubChangesContinuousTotal.Add(1)
@@ -247,6 +243,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		}
 
 		defer func() {
+			bh.changesCtxCancel()
 			bh.activeSubChanges.Set(false)
 		}()
 		// sendChanges runs until blip context closes, or fails due to error
@@ -269,8 +266,8 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 }
 
 func (bh *blipHandler) handleUnsubChanges(rq *blip.Message) error {
-	bh.lock.Lock()
-	defer bh.lock.Unlock()
+	bh.changesLock.Lock()
+	defer bh.changesLock.Unlock()
 
 	if !bh.activeSubChanges.IsTrue() {
 		return base.HTTPErrorf(http.StatusBadRequest, "No subChanges subscription active to unsubscribe from")
@@ -1289,8 +1286,8 @@ func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []Attach
 		return
 	}
 
-	bsc.lock.Lock()
-	defer bsc.lock.Unlock()
+	bsc.allowedAttachmentsLock.Lock()
+	defer bsc.allowedAttachmentsLock.Unlock()
 
 	if bsc.allowedAttachments == nil {
 		bsc.allowedAttachments = make(map[string]AllowedAttachment, 100)
@@ -1320,8 +1317,8 @@ func (bsc *BlipSyncContext) removeAllowedAttachments(docID string, attMeta []Att
 		return
 	}
 
-	bsc.lock.Lock()
-	defer bsc.lock.Unlock()
+	bsc.allowedAttachmentsLock.Lock()
+	defer bsc.allowedAttachmentsLock.Unlock()
 
 	for _, attachment := range attMeta {
 		key := allowedAttachmentKey(docID, attachment.digest, activeSubprotocol)

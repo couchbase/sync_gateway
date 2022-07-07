@@ -400,7 +400,7 @@ func (db *Database) changesFeed(singleChannelCache SingleChannelCache, options C
 				paginationOptions.Limit = base.MinInt(remainingLimit, queryLimit)
 			}
 
-			// TODO: pass db.LoggingCtx down to changeCache?
+			// TODO: pass db.Ctx down to changeCache?
 			base.TracefCtx(db.Ctx, base.KeyChanges, "Querying channel %q with options: %+v", base.UD(singleChannelCache.ChannelName()), paginationOptions)
 			changes, err := singleChannelCache.GetChanges(paginationOptions)
 			if err != nil {

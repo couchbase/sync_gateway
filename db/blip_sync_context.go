@@ -77,10 +77,8 @@ type BlipSyncContext struct {
 	blipContextDb                    *Database       // 'master' database instance for the replication, used as source when creating handler-specific databases
 	loggingCtx                       context.Context // logging context for connection
 	dbUserLock                       sync.RWMutex    // Must be held when refreshing the db user
-	gotSubChanges                    bool            // nolint: structcheck // false structcheck positive due to https://github.com/golangci/golangci-lint/issues/826
-	continuous                       bool            // nolint: structcheck // false structcheck positive due to https://github.com/golangci/golangci-lint/issues/826
-	lock                             sync.Mutex
 	allowedAttachments               map[string]AllowedAttachment
+	allowedAttachmentsLock           sync.Mutex
 	handlerSerialNumber              uint64                                    // Each handler within a context gets a unique serial number for logging
 	terminatorOnce                   sync.Once                                 // Used to ensure the terminator channel below is only ever closed once.
 	terminator                       chan bool                                 // Closed during BlipSyncContext.close(). Ensures termination of async goroutines.
@@ -99,9 +97,10 @@ type BlipSyncContext struct {
 	replicationStats                 *BlipSyncStats                            // Replication stats
 	purgeOnRemoval                   bool                                      // Purges the document when we pull a _removed:true revision.
 	conflictResolver                 *ConflictResolver                         // Conflict resolver for active replications
-	changesCtx                       context.Context                           // Used for the unsub changes Blip message to check if the subChanges feed should stop
-	changesCtxCancel                 context.CancelFunc                        // Cancel function for changesCtx to cancel subChanges being sent
-	changesPendingResponseCount      int64                                     // Number of changes messages pending changesResponse
+	changesLock                      sync.Mutex
+	changesCtx                       context.Context    // Used for the unsub changes Blip message to check if the subChanges feed should stop
+	changesCtxCancel                 context.CancelFunc // Cancel function for changesCtx to cancel subChanges being sent
+	changesPendingResponseCount      int64              // Number of changes messages pending changesResponse
 	// TODO: For review, whether sendRevAllConflicts needs to be per sendChanges invocation
 	sendRevNoConflicts bool                      // Whether to set noconflicts=true when sending revisions
 	clientType         BLIPSyncContextClientType // Can perform client-specific replication behaviour based on this field
@@ -200,8 +199,8 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 func (bsc *BlipSyncContext) Close() {
 	bsc.terminatorOnce.Do(func() {
 		// Lock so that we don't close the changesCtx at the same time as handleSubChanges is creating it
-		bsc.lock.Lock()
-		defer bsc.lock.Unlock()
+		bsc.changesLock.Lock()
+		defer bsc.changesLock.Unlock()
 
 		bsc.changesCtxCancel()
 		close(bsc.terminator)
@@ -454,8 +453,8 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 }
 
 func (bsc *BlipSyncContext) allowedAttachment(digest string) AllowedAttachment {
-	bsc.lock.Lock()
-	defer bsc.lock.Unlock()
+	bsc.allowedAttachmentsLock.Lock()
+	defer bsc.allowedAttachmentsLock.Unlock()
 	return bsc.allowedAttachments[digest]
 }
 
