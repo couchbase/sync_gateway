@@ -2273,7 +2273,7 @@ func TestOpenIDConnectRolesChannelsClaims(t *testing.T) {
 			request.Header.Add("Authorization", BearerToken+" "+authResponseActual.IDToken)
 			response, err = client.Do(request)
 			require.NoError(t, err, "Error sending request with bearer token")
-			defer response.Body.Close()
+			assert.NoError(t, response.Body.Close())
 			if tc.expectAccess {
 				assert.Equal(t, http.StatusOK, response.StatusCode)
 			} else {
@@ -2356,16 +2356,16 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	req.Header.Set("Authorization", BearerToken+" "+jwt)
 	res, err = http.DefaultClient.Do(req)
 	require.NoError(t, err, "Performing auth request")
-	res.Body.Close()
+	assert.NoError(t, res.Body.Close())
 	require.Equal(t, http.StatusOK, res.StatusCode)
 
 	// Check that the user is present in the admin API
 	res = bootstrapAdminRequest(t, http.MethodGet, fmt.Sprintf("/db/_user/%s", subject), "")
-	defer res.Body.Close()
 	require.Equal(t, http.StatusOK, res.StatusCode)
 	var adminResult db.Body
 	err = json.NewDecoder(res.Body).Decode(&adminResult)
 	require.NoError(t, err)
+	assert.NoError(t, res.Body.Close())
 	base.DebugfCtx(base.TestCtx(t), base.KeyAll, "User data from admin API: %v", adminResult)
 
 	assert.Equal(t, subject, adminResult["name"])
@@ -2390,15 +2390,15 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	"num_index_replicas": 0,
 	"oidc":` + string(mustMarshalJSON(t, &oidcOptions)) + `}`
 	res = bootstrapAdminRequest(t, http.MethodPut, "/db/_config?disable_oidc_validation=true", dbConfig)
-	res.Body.Close()
+	assert.NoError(t, res.Body.Close())
 	require.Equal(t, http.StatusCreated, res.StatusCode)
 
 	// Check that the user is still present, but with no OIDC info
 	res = bootstrapAdminRequest(t, http.MethodGet, fmt.Sprintf("/db/_user/%s", subject), "")
-	defer res.Body.Close()
 	require.Equal(t, http.StatusOK, res.StatusCode)
 	adminResult = db.Body{}
 	require.NoError(t, json.NewDecoder(res.Body).Decode(&adminResult))
+	assert.NoError(t, res.Body.Close())
 	base.DebugfCtx(base.TestCtx(t), base.KeyAll, "User data from admin API: %v", adminResult)
 
 	assert.NotContains(t, adminResult, "jwt_issuer", "Expected to not have jwt_issuer in /_user response")
@@ -2409,12 +2409,12 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	req.Header.Set("Authorization", BearerToken+" "+jwt)
 	res, err = http.DefaultClient.Do(req)
 	require.NoError(t, err, "Performing second auth request")
-	res.Body.Close()
+	assert.NoError(t, res.Body.Close())
 	assert.Equal(t, http.StatusUnauthorized, res.StatusCode)
 
 	// Finally, check that the user can sign in through basic auth, but their OIDC roles/channels get revoked
 	res = bootstrapAdminRequest(t, http.MethodPut, fmt.Sprintf("/db/_user/%s", subject), `{"password": "hunter2"}`)
-	defer res.Body.Close()
+	assert.NoError(t, res.Body.Close())
 	require.Equal(t, http.StatusOK, res.StatusCode)
 
 	req, err = http.NewRequest(http.MethodPost, bootstrapURL(publicPort)+"/db/_session", bytes.NewBufferString("{}"))
@@ -2422,7 +2422,7 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	req.SetBasicAuth(subject, "hunter2")
 	res, err = http.DefaultClient.Do(req)
 	require.NoError(t, err, "Performing basic auth request")
-	defer res.Body.Close()
+	assert.NoError(t, res.Body.Close())
 	assert.Equal(t, http.StatusOK, res.StatusCode)
 
 	var sessionResponse struct {
@@ -2523,7 +2523,7 @@ func TestOpenIDConnectIssuerChange(t *testing.T) {
 	req.Header.Set("Authorization", BearerToken+" "+jwt)
 	res, err := httpClient.Do(req)
 	require.NoError(t, err, "Failed to execute test session request")
-	defer res.Body.Close()
+	assert.NoError(t, res.Body.Close())
 	require.Equal(t, http.StatusOK, res.StatusCode, "Bad session request status")
 
 	// Now, with that session, try to get the test doc
@@ -2532,7 +2532,7 @@ func TestOpenIDConnectIssuerChange(t *testing.T) {
 	req.Header.Add("Authorization", BearerToken+" "+jwt)
 	res, err = httpClient.Do(req)
 	require.NoError(t, err, "Failed to send test doc request")
-	defer res.Body.Close()
+	assert.NoError(t, res.Body.Close())
 	assert.Equal(t, http.StatusOK, res.StatusCode, "No access")
 
 	// Now sign in again with a different issuer but the same username
@@ -2547,7 +2547,7 @@ func TestOpenIDConnectIssuerChange(t *testing.T) {
 	req.Header.Set("Authorization", BearerToken+" "+jwt)
 	res, err = httpClient.Do(req)
 	require.NoError(t, err, "Failed to execute test session request")
-	defer res.Body.Close()
+	assert.NoError(t, res.Body.Close())
 	require.Equal(t, http.StatusOK, res.StatusCode, "Bad session request status")
 
 	req, err = http.NewRequest(http.MethodGet, fmt.Sprintf("%s/%s/%s", msg1.URL, rt1.DatabaseConfig.Name, testDocName), nil)
@@ -2555,6 +2555,6 @@ func TestOpenIDConnectIssuerChange(t *testing.T) {
 	req.Header.Add("Authorization", BearerToken+" "+jwt)
 	res, err = httpClient.Do(req)
 	require.NoError(t, err, "Failed to send test doc request")
-	defer res.Body.Close()
+	assert.NoError(t, res.Body.Close())
 	assert.Equal(t, http.StatusForbidden, res.StatusCode, "Shouldn't have access")
 }
