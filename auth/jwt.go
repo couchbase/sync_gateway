@@ -145,13 +145,13 @@ func (l LocalJWTAuthConfig) BuildProvider(name string) *LocalJWTAuthProvider {
 	if len(l.Keys) > 0 {
 		prov = &LocalJWTAuthProvider{
 			LocalJWTAuthConfig: l,
-			name_:              name,
+			name:               name,
 			keySet:             l.Keys,
 		}
 	} else {
 		prov = &LocalJWTAuthProvider{
 			LocalJWTAuthConfig: l,
-			name_:              name,
+			name:               name,
 			keySet:             oidc.NewRemoteKeySet(context.Background(), l.JWKSURI),
 		}
 	}
@@ -162,7 +162,7 @@ func (l LocalJWTAuthConfig) BuildProvider(name string) *LocalJWTAuthProvider {
 type LocalJWTAuthProvider struct {
 	LocalJWTAuthConfig
 
-	name_ string
+	name string
 	// keySet has the keys for this config, either in-memory or from oidc.NewRemoteKeySet.
 	keySet oidc.KeySet
 }
@@ -209,7 +209,7 @@ func (l *LocalJWTAuthProvider) initUserPrefix() {
 	issuerURL, err := url.ParseRequestURI(l.Issuer)
 	if err != nil {
 		base.WarnfCtx(context.TODO(), "Unable to parse issuer URI when initializing user prefix - using provider name")
-		l.UserPrefix = l.name_
+		l.UserPrefix = l.name
 		return
 	}
 	l.UserPrefix = issuerURL.Host + issuerURL.Path
