@@ -122,6 +122,7 @@ pipeline {
                         script {
                             try {
                                 githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'Running', status: 'PENDING')
+                                sh "which gofmt" // check if gofmt is installed
                                 sh "gofmt -d -e . | tee gofmt.out"
                                 sh "test -z \"\$(cat gofmt.out)\""
                                 githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'OK', status: 'SUCCESS')
@@ -156,6 +157,7 @@ pipeline {
                         script {
                             try {
                                 githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'Running', status: 'PENDING')
+                                sh "which errcheck" // check if errcheck is installed
                                 sh "errcheck ./... | tee errcheck.out"
                                 sh "test -z \"\$(cat errcheck.out)\""
                                 githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'OK', status: 'SUCCESS')
@@ -196,6 +198,7 @@ pipeline {
                                     sh 'LC_CTYPE=C tr -dc [:print:][:space:] < verbose_ce.out.raw > verbose_ce.out'
 
                                     // Generate Cobertura XML report that can be parsed by the Jenkins Cobertura Plugin
+                                    sh 'which gocov' // check if gocov is installed
                                     sh 'gocov convert cover_ce.out | gocov-xml > reports/coverage-ce.xml'
 
                                     // Grab test fail/total counts so we can print them later
@@ -213,6 +216,7 @@ pipeline {
                                     // Generate junit-formatted test report
                                     script {
                                         try {
+                                            sh 'which go2xunit' // check if go2xunit is installed
                                             sh 'go2xunit -fail -suite-name-prefix="CE-" -input verbose_ce.out -output reports/test-ce.xml'
                                             githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_PASS+'/'+env.TEST_CE_TOTAL+' passed ('+env.TEST_CE_SKIP+' skipped)', status: 'SUCCESS')
                                         } catch (Exception e) {
@@ -226,6 +230,7 @@ pipeline {
                                     // Publish CE coverage to coveralls.io
                                     // Replace covermode values with set just for coveralls to reduce the variability in reports.
                                     sh 'awk \'NR==1{print "mode: set";next} $NF>0{$NF=1} {print}\' cover_ce.out > cover_ce_coveralls.out'
+                                    sh 'which goveralls' // check if goveralls is installed
                                     sh "goveralls -coverprofile=cover_ce_coveralls.out -service=uberjenkins -repotoken=${COVERALLS_TOKEN} || true"
                                 }
                             }
