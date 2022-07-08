@@ -157,8 +157,10 @@ pipeline {
                         script {
                             try {
                                 githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'Running', status: 'PENDING')
-                                sh "which errcheck" // check if errcheck is installed
-                                sh "errcheck ./... | tee errcheck.out"
+                                withEnv(["PATH+GO=${env.GOTOOLS}/bin"]) {
+                                    sh "which errcheck" // check if errcheck is installed
+                                    sh "errcheck ./... | tee errcheck.out"
+                                }
                                 sh "test -z \"\$(cat errcheck.out)\""
                                 githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'OK', status: 'SUCCESS')
                             } catch (Exception e) {
