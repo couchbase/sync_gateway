@@ -108,7 +108,7 @@ func TestLocalJWTAuthenticationE2E(t *testing.T) {
 
 			res, err := http.DefaultClient.Do(req)
 			require.NoError(t, err)
-			defer res.Body.Close()
+			assert.NoError(t, res.Body.Close())
 
 			if !preExistingUser && !register {
 				require.Equal(t, http.StatusUnauthorized, res.StatusCode)
@@ -215,7 +215,7 @@ func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 
 			res, err := http.DefaultClient.Do(req)
 			require.NoError(t, err)
-			defer res.Body.Close()
+			assert.NoError(t, res.Body.Close())
 
 			assert.Equal(t, expectedStatus, res.StatusCode)
 		}
@@ -335,7 +335,7 @@ func TestLocalJWTAndOIDCCoexistence(t *testing.T) {
 		req.Header.Set("Authorization", BearerToken+" "+token)
 		res, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
-		defer res.Body.Close()
+		assert.NoError(t, res.Body.Close())
 		require.Equal(t, http.StatusOK, res.StatusCode)
 
 		user, err := restTester.GetDatabase().Authenticator(base.TestCtx(t)).GetUser(expectedUsername)
