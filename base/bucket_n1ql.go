@@ -22,11 +22,12 @@ import (
 	"gopkg.in/couchbase/gocb.v1"
 )
 
-const KeyspaceQueryToken = "$_keyspace" // Token used for bucket name replacement in query statements
-const MaxQueryRetries = 30              // Maximum query retries on indexer error
-const IndexStateOnline = "online"       // bucket state value, as returned by SELECT FROM system:indexes.  Index has been created and built.
-const IndexStateDeferred = "deferred"   // bucket state value, as returned by SELECT FROM system:indexes.  Index has been created but not built.
-const IndexStatePending = "pending"     // bucket state value, as returned by SELECT FROM system:indexes.  Index has been created, build is in progress
+const KeyspaceQueryToken = "$_keyspace"    // Token used for bucket name replacement in query statements
+const KeyspaceAlias = "queryKeyspaceAlias" // Keyspace alias set for the keyspace in FROM statements in queries
+const MaxQueryRetries = 30                 // Maximum query retries on indexer error
+const IndexStateOnline = "online"          // bucket state value, as returned by SELECT FROM system:indexes.  Index has been created and built.
+const IndexStateDeferred = "deferred"      // bucket state value, as returned by SELECT FROM system:indexes.  Index has been created but not built.
+const IndexStatePending = "pending"        // bucket state value, as returned by SELECT FROM system:indexes.  Index has been created, build is in progress
 const PrimaryIndexName = "#primary"
 
 // IndexOptions used to build the 'with' clause
