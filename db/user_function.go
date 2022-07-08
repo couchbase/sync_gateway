@@ -19,6 +19,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/robertkrimen/otto"
+	_ "github.com/robertkrimen/otto/underscore"
 )
 
 //////// USER FUNCTION CONFIGURATION:
@@ -33,12 +34,12 @@ type UserFunctionConfig struct {
 	Parameters []string        `json:"parameters,omitempty"` // Names of parameters
 	Allow      *UserQueryAllow `json:"allow,omitempty"`      // Permissions (admin-only if nil)
 
-	compiled *userFunction // Compiled form of the function (instantiated lazily)
+	compiled *sgbucket.JSServer // Compiled form of the function (instantiated lazily)
 }
 
 //////// RUNNING A USER FUNCTION:
 
-func (db *Database) CallUserFunction(name string, params map[string]interface{}, canMutate bool) (interface{}, error) {
+func (db *Database) CallUserFunction(name string, params map[string]interface{}, mutationAllowed bool) (interface{}, error) {
 	config, found := db.Options.UserFunctions[name]
 	if !found {
 		return nil, base.HTTPErrorf(http.StatusNotFound, "No such user function")
@@ -57,55 +58,42 @@ func (db *Database) CallUserFunction(name string, params map[string]interface{},
 	// Compile and run the function:
 	compiled := config.compiled
 	if compiled == nil {
-		compiled = NewUserFunction(name, config)
+		compiled = sgbucket.NewJSServer(config.SourceCode, kUserFnTaskCacheSize,
+			func(fnSource string) (sgbucket.JSServerTask, error) {
+				return NewUserFunctionRunner(name, "user function", kUserFunctionFuncWrapper, fnSource)
+			})
 		// This is a race condition if two threads find the script uncompiled and both compile it.
 		// However, the effect is simply that two identical UserFunction instances are created and
 		// one of them (the first one stored to config.compiled) is thrown away; harmless.
 		config.compiled = compiled
 	}
-	return compiled.Run(db, params, canMutate)
+
+	return compiled.WithTask(func(task sgbucket.JSServerTask) (interface{}, error) {
+		runner := task.(*userFunctionRunner)
+		runner.currentDB = db
+		runner.mutationAllowed = mutationAllowed
+		return task.Call(params, newUserFunctionJSContext(db))
+	})
 }
 
-// Number of userFunctionRunner tasks (and Otto contexts) to cache, per function
-const kUserFnTaskCacheSize = 2
-
-//////// JAVASCRIPT RUNNER:
-
-// An object that can run a JavaScript function, as found in the UserFunctionConfig.
-type userFunction struct {
-	*sgbucket.JSServer        // "Superclass"
-	Name               string // Name of function
+// The `context` parameter passed to the JS function
+type userFunctionJSContext struct {
+	User *string `json:"user,omitempty"`
 }
 
-// Creates a userFunction given its name and JavaScript source code.
-func NewUserFunction(name string, config *UserFunctionConfig) *userFunction {
-	return &userFunction{
-		JSServer: sgbucket.NewJSServer(config.SourceCode, kUserFnTaskCacheSize,
-			func(fnSource string) (sgbucket.JSServerTask, error) {
-				return NewUserFunctionRunner(name, fnSource)
-			}),
-		Name: name,
-	}
-}
-
-// Calls a UserFunction. `params` is the parameter struct passed by the go-graphql API,
-// and mutationAllowed is true iff the resolver is allowed to make changes to the database;
-// the `save` callback checks this.
-func (res *userFunction) Run(db *Database, params map[string]interface{}, mutationAllowed bool) (interface{}, error) {
-	context := jsResolveContext{}
+func newUserFunctionJSContext(db *Database) *userFunctionJSContext {
+	context := &userFunctionJSContext{}
 	if db.user != nil {
 		name := db.user.Name()
 		context.User = &name
 	}
-	return res.WithTask(func(task sgbucket.JSServerTask) (interface{}, error) {
-		runner := task.(*userFunctionRunner)
-		runner.currentDB = db
-		runner.mutationAllowed = mutationAllowed
-		return task.Call(params, &context)
-	})
+	return context
 }
 
-//////// RUNNER:
+//////// JAVASCRIPT RUNNER:
+
+// Number of userFunctionRunner tasks (and Otto contexts) to cache, per function
+const kUserFnTaskCacheSize = 2
 
 // The outermost JavaScript code. Evaluating it returns a function, which is then called by the
 // Runner every time it's invoked. (The reason the first few lines are ""-style strings is to make
@@ -128,29 +116,31 @@ const kUserFunctionFuncWrapper = "function() {" +
 		}
 	}()`
 
-func wrappedUserFuncSource(funcSource string) string {
-	return fmt.Sprintf(kUserFunctionFuncWrapper, funcSource)
-}
-
 // An object that runs a specific JS GraphQuery resolver function. Not thread-safe!
 // Owned by a UserFunction, which arbitrates access to it.
 type userFunctionRunner struct {
 	sgbucket.JSRunner           // "Superclass"
-	name              string    // Name of the resolver
-	currentDB         *Database // Database instance for this call
-	mutationAllowed   bool      // Whether save() is allowed during this call
+	kind              string    // "user function", "GraphQL resolver", etc
+	name              string    // Name of this function or resolver
+	funcWrapper       string    // JS code that wraps around the user function
+	currentDB         *Database // Database instance (updated before every call)
+	mutationAllowed   bool      // Whether save() is allowed (updated before every call)
 }
 
 // Creates a userFunctionRunner given its name and JavaScript source code.
-func NewUserFunctionRunner(name string, funcSource string) (*userFunctionRunner, error) {
+func NewUserFunctionRunner(name string, kind string, funcWrapper string, funcSource string) (*userFunctionRunner, error) {
 	ctx := context.Background()
-	runner := &userFunctionRunner{name: name}
+	runner := &userFunctionRunner{
+		name:        name,
+		kind:        kind,
+		funcWrapper: funcWrapper,
+	}
 	err := runner.InitWithLogging("",
 		func(s string) {
-			base.ErrorfCtx(ctx, base.KeyJavascript.String()+": UserFunction %s: %s", name, base.UD(s))
+			base.ErrorfCtx(ctx, base.KeyJavascript.String()+": %s %s: %s", kind, name, base.UD(s))
 		},
 		func(s string) {
-			base.InfofCtx(ctx, base.KeyJavascript, "UserFunction %s: %s", name, base.UD(s))
+			base.InfofCtx(ctx, base.KeyJavascript, "%s %s: %s", kind, name, base.UD(s))
 		})
 	if err != nil {
 		return nil, err
@@ -179,10 +169,10 @@ func NewUserFunctionRunner(name string, funcSource string) (*userFunctionRunner,
 		return ottoResult(call, nil, err)
 	})
 
-	// Set (and compile) the function:
-	if _, err := runner.SetFunction(funcSource); err != nil {
-		log.Printf("*** Error: User JS fn %s failed to compile: %v", name, err) //TEMP
-		return nil, base.HTTPErrorf(http.StatusInternalServerError, "Error compiling user function %q: %v", name, err)
+	// Set (and compile) the JS function:
+	if _, err := runner.JSRunner.SetFunction(fmt.Sprintf(runner.funcWrapper, funcSource)); err != nil {
+		log.Printf("*** Error: %s %s failed to compile: %v", kind, name, err) //TEMP
+		return nil, base.HTTPErrorf(http.StatusInternalServerError, "Error compiling %s %q: %v", kind, name, err)
 	}
 
 	// Function that runs before every call:
@@ -196,21 +186,16 @@ func NewUserFunctionRunner(name string, funcSource string) (*userFunctionRunner,
 	runner.After = func(jsResult otto.Value, err error) (interface{}, error) {
 		runner.currentDB = nil
 		if err != nil {
-			log.Printf("*** UserFn runner %s failed: %+v", runner.name, err)
+			log.Printf("*** %s %s failed: %+v", runner.kind, runner.name, err)
 			return nil, err
 		}
-		result, _ := jsResult.Export()
-		//log.Printf("*** UserFn runner %s finished: %v", runner.name, result)
-		return result, nil
+		return jsResult.Export()
 	}
 
 	return runner, nil
 }
 
-func (runner *userFunctionRunner) SetFunction(funcSource string) (bool, error) {
-	funcSource = wrappedUserFuncSource(funcSource)
-	return runner.JSRunner.SetFunction(funcSource)
-}
+//////// CALLBACK FUNCTION IMPLEMENTATIONS:
 
 // Implementation of JS `app.get(docID, docType)` function
 func (runner *userFunctionRunner) do_get(docID string, docType *string) (interface{}, error) {

@@ -17,8 +17,10 @@ import (
 	"os"
 
 	gqltools "github.com/bhoriuchi/graphql-go-tools"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/graphql-go/graphql"
+	"github.com/graphql-go/graphql/language/ast"
 )
 
 // Configuration for GraphQL.
@@ -120,11 +122,98 @@ func NewGraphQL(dbc *DatabaseContext) (*GraphQL, error) {
 	return gq, nil
 }
 
+//////// GRAPHQL RESOLVER:
+
+// Creates a graphQLResolver for the given JavaScript code, and returns a graphql-go FieldResolveFn
+// that invokes it.
 func (gq *GraphQL) compileResolver(resolverName string, fieldName string, jsCode string) (graphql.FieldResolveFn, error) {
-	resolver := NewGraphQLResolver(resolverName+"."+fieldName, jsCode)
+	name := resolverName + "." + fieldName
+	resolver := &graphQLResolver{
+		JSServer: sgbucket.NewJSServer(jsCode, kGQTaskCacheSize,
+			func(fnSource string) (sgbucket.JSServerTask, error) {
+				return NewUserFunctionRunner(name, "GraphQL resolver", kGraphQLResolverFuncWrapper, fnSource)
+			}),
+		Name: name,
+	}
 	return func(params graphql.ResolveParams) (interface{}, error) {
 		db := params.Context.Value(dbKey).(*Database)
 		mutationAllowed := params.Context.Value(mutAllowedKey).(bool)
 		return resolver.Resolve(db, &params, mutationAllowed)
 	}, nil
 }
+
+// An object that can run a JavaScript GraphQL resolve function, as found in the GraphQL config.
+type graphQLResolver struct {
+	*sgbucket.JSServer // "Superclass"
+	Name               string
+}
+
+// Calls a GraphQLResolver. `params` is the parameter struct passed by the go-graphql API,
+// and mutationAllowed is true iff the resolver is allowed to make changes to the database;
+// the `save` callback checks this.
+func (res *graphQLResolver) Resolve(db *Database, params *graphql.ResolveParams, mutationAllowed bool) (interface{}, error) {
+	// Collect the 'subfields', the fields the query wants from the value being resolved:
+	subfields := []string{}
+	if len(params.Info.FieldASTs) > 0 {
+		for _, sel := range params.Info.FieldASTs[0].SelectionSet.Selections {
+			if subfield, ok := sel.(*ast.Field); ok {
+				if subfield.Name.Kind == "Name" {
+					subfields = append(subfields, subfield.Name.Value)
+				}
+			}
+		}
+	}
+	//log.Printf("-- %q : subfields = %v", params.Info.FieldName, subfields)
+
+	// The `info` parameter passed to the JS function.
+	// The fields are a subset of graphql.ResolveInfo.
+	type jsGQResolveInfo struct {
+		FieldName      string                 `json:"fieldName"`
+		RootValue      interface{}            `json:"rootValue"`
+		VariableValues map[string]interface{} `json:"variableValues"`
+		Subfields      []string               `json:"subfields"`
+	}
+	info := jsGQResolveInfo{
+		FieldName:      params.Info.FieldName,
+		RootValue:      params.Info.RootValue,
+		VariableValues: params.Info.VariableValues,
+		Subfields:      subfields,
+	}
+
+	return res.WithTask(func(task sgbucket.JSServerTask) (interface{}, error) {
+		runner := task.(*userFunctionRunner)
+		runner.currentDB = db
+		runner.mutationAllowed = mutationAllowed
+		return task.Call(params.Source, params.Args, newUserFunctionJSContext(db), &info)
+	})
+}
+
+// Number of ResolverRunner tasks (and Otto contexts) to cache for this resolver
+const kGQTaskCacheSize = 2
+
+// The outermost JavaScript code. Evaluating it returns a function, which is then called by the
+// Runner every time it's invoked. (The reason the first few lines are ""-style strings is to make
+// sure the resolver code ends up on line 1, which makes line numbers reported in syntax errors
+// accurate.)
+// `%s` is replaced with the resolver.
+const kGraphQLResolverFuncWrapper = "function() {" +
+	"	function resolveFn(parent, args, context, info) {" +
+	"		%s;" + // <-- The actual JS code from the config file goes here
+	`	}
+
+		// This is the JS function invoked by the 'Call(...)' in GraphQLResolver.Resolve(), above
+		return function (parent, args, context, info) {
+			// The "context.app" object the resolver script calls:
+			var _app = {
+				get: _get,
+				query: _query,
+				save: _save
+			};
+
+			if (context)
+				context.app = _app;
+			else
+				context = {app: _app};
+			return resolveFn(parent, args, context, info);
+		}
+	}()`
