@@ -764,13 +764,11 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		seenIssuers[local.Issuer]++
 	}
 
-	if len(seenIssuers) > 0 {
-		// CBG-2185: This should be an error but having duplicate configs is valid so this would be a breaking change
-		for iss, count := range seenIssuers {
-			if count > 1 {
-				// issuer names are not UD - see https://github.com/couchbase/sync_gateway/pull/5513#discussion_r856335452 for context
-				base.WarnfCtx(ctx, "Found multiple OIDC/JWT providers using the same issuer (%s) - Implicit Grant flow may use incorrect providers.", iss)
-			}
+	// CBG-2185: This should be an error but having duplicate configs is valid so this would be a breaking change
+	for iss, count := range seenIssuers {
+		if count > 1 {
+			// issuer names are not UD - see https://github.com/couchbase/sync_gateway/pull/5513#discussion_r856335452 for context
+			base.WarnfCtx(ctx, "Found multiple OIDC/JWT providers using the same issuer (%s) - Implicit Grant flow may use incorrect providers.", iss)
 		}
 	}
 
