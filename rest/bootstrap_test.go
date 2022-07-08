@@ -183,7 +183,7 @@ func TestBootstrapDuplicateBucket(t *testing.T) {
 	// CBG-1785 - Check the error has been changed from the original misleading error to a more informative one.
 	respBody, err := ioutil.ReadAll(resp.Body)
 	assert.NoError(t, err)
-	_ = resp.Body.Close()
+	require.NoError(t, resp.Body.Close())
 	assert.NotContains(t, string(respBody), fmt.Sprintf(`Database \"%s\" already exists`, "db2"))
 	assert.Contains(t, string(respBody), fmt.Sprintf(`Bucket \"%s\" already in use by database \"%s\"`, tb.GetName(), "db1"))
 }
@@ -233,7 +233,7 @@ func TestBootstrapDuplicateDatabase(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	respBody, err := ioutil.ReadAll(resp.Body)
 	assert.NoError(t, err)
-	_ = resp.Body.Close()
+	require.NoError(t, resp.Body.Close())
 	assert.Contains(t, string(respBody), `"num_doc_writes":1`)
 
 	// Create db1 again and expect it to fail
@@ -241,7 +241,7 @@ func TestBootstrapDuplicateDatabase(t *testing.T) {
 	assert.Equal(t, http.StatusPreconditionFailed, resp.StatusCode)
 	respBody, err = ioutil.ReadAll(resp.Body)
 	assert.NoError(t, err)
-	_ = resp.Body.Close()
+	require.NoError(t, resp.Body.Close())
 	assert.Contains(t, string(respBody), fmt.Sprintf(`Duplicate database name \"%s\"`, "db1"))
 
 	// check to see we still have a doc written stat (as a proxy to determine if the database restarted)
@@ -249,7 +249,7 @@ func TestBootstrapDuplicateDatabase(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	respBody, err = ioutil.ReadAll(resp.Body)
 	assert.NoError(t, err)
-	_ = resp.Body.Close()
+	require.NoError(t, resp.Body.Close())
 	assert.Contains(t, string(respBody), `"num_doc_writes":1`)
 }
 
