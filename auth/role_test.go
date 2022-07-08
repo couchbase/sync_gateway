@@ -97,34 +97,29 @@ func TestValidatePrincipalName(t *testing.T) {
 	noAlpha := "!@#$%"
 
 	testcases := []struct {
-		desc    string
-		name    string
-		fast    bool
-		isValid bool
-		expect  string
+		desc   string
+		name   string
+		expect string
 	}{
-		{desc: "valid name", name: name50, expect: "", isValid: true},
-		{desc: "valid guest", name: "", expect: "", isValid: true},
-		{desc: "invalid char", name: name25 + "/" + name25, fast: false, expect: "contains '/', ':', ',', or '`'", isValid: false},
-		{desc: "invalid char fast", name: name25 + "/" + name25, fast: true, expect: "contains '/', ':', ',', or '`'", isValid: false},
-		{desc: "invalid length", name: name240, fast: false, expect: "length exceeds", isValid: true},
-		{desc: "invalid length fast", name: name240, fast: true, expect: "length exceeds", isValid: true},
-		{desc: "invalid utf-8", name: nonUTF, fast: false, expect: "non UTF-8 encoding", isValid: false},
-		{desc: "invalid utf-8 fast", name: nonUTF, fast: true, expect: "non UTF-8 encoding", isValid: false},
-		{desc: "invalid no alpha", name: noAlpha, fast: false, expect: "must contain alphanumeric", isValid: false},
-		{desc: "invalid no alpha fast", name: noAlpha, fast: true, expect: "must contain alphanumeric", isValid: false},
+		{desc: "valid name", name: name50, expect: ""},
+		{desc: "valid guest", name: "", expect: ""},
+		{desc: "invalid char", name: name25 + "/" + name25, expect: "contains '/', ':', ',', or '`'"},
+		{desc: "invalid length", name: name240, expect: "length exceeds"},
+		{desc: "invalid utf-8", name: nonUTF, expect: "non UTF-8 encoding"},
+		{desc: "invalid no alpha", name: noAlpha, expect: "must contain alphanumeric"},
 	}
 
 	for _, tc := range testcases {
 		t.Run(tc.desc, func(t *testing.T) {
-			err := ValidatePrincipalName(tc.name, tc.fast)
+			err := ValidatePrincipalName(tc.name)
 			if tc.expect == "" {
 				assert.Nil(t, err)
+				assert.True(t, IsValidPrincipalName(tc.name)) // assert compatible with older function
 			} else if assert.NotNil(t, err) {
 				t.Log("msg: ", err.Error())
 				assert.Contains(t, err.Error(), tc.expect)
+				assert.False(t, IsValidPrincipalName(tc.name))
 			}
-			assert.Equal(t, tc.isValid, IsValidPrincipalName(tc.name)) // assert compatible with older function
 		})
 	}
 }
@@ -144,20 +139,17 @@ func BenchmarkValidatePrincipalName(b *testing.B) {
 	testcases := []struct {
 		desc string
 		name string
-		fast bool
 	}{
 		{desc: "valid name", name: name50},
-		{desc: "invalid char", name: name25 + "/" + name25, fast: false},
-		{desc: "invalid char fast", name: name25 + "/" + name25, fast: true},
-		{desc: "invalid length", name: name251, fast: false},
-		{desc: "invalid length fast", name: name251, fast: true},
+		{desc: "invalid char", name: name25 + "/" + name25},
+		{desc: "invalid length", name: name251},
 	}
 
 	b.ResetTimer()
 	for _, tc := range testcases {
 		b.Run(tc.desc, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				ValidatePrincipalName(tc.name, tc.fast)
+				ValidatePrincipalName(tc.name)
 			}
 		})
 

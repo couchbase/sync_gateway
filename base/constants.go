@@ -164,9 +164,6 @@ const (
 
 	// RedactedStr can be substituted in place of any sensitive data being returned by an API. The 'xxxxx' pattern is the same used by Go's url.Redacted() method.
 	RedactedStr = "xxxxx"
-
-	// MaxPrincipalNameLen is the maximum lenght for user or role names (250 minus UserPrefix / RolePrefix), and is used to validate CRUD
-	MaxPrincipalNameLen = 239
 )
 
 const (
@@ -205,6 +202,9 @@ var (
 
 	// ErrUnknownField is marked as the cause of the error when trying to decode a JSON snippet with unknown fields
 	ErrUnknownField = errors.New("unrecognized JSON field")
+
+	// MaxPrincipalNameLen is the maximum length for user and role names, accounting for internal prefixes, and is used to validate CRUD
+	MaxPrincipalNameLen = 250 - MaxInt(len(UserPrefix), len(RolePrefix))
 )
 
 func DCPCheckpointPrefixWithGroupID(groupID string) string {

@@ -105,8 +105,12 @@ func (role *roleImpl) initRole(name string, channels base.Set) error {
 // IsValidPrincipalName checks if the given user/role name would be valid. Valid names must be valid UTF-8, containing
 // at least one alphanumeric (except for the guest user), and no colons, commas, backticks, or slashes.
 func IsValidPrincipalName(name string) bool {
-	if len(name) == 0 {
+	namelen := len(name)
+	if namelen == 0 {
 		return true // guest user
+	}
+	if namelen > base.MaxPrincipalNameLen {
+		return false
 	}
 	if !utf8.ValidString(name) {
 		return false
@@ -130,10 +134,9 @@ func IsValidPrincipalName(name string) bool {
 
 // ValidatePrincipalName performs the same checks as IsValidPrincipalName, but adds length check and retuns a more
 // verbose error message.  This function is slower than IsValidPrincipalName, and should be used only for user
-// and role creation.  Names should have a max length of 239 chars, to account for SG prefixes.  If failFast is
-// true, the function will return at the first requirement not satisfied.  If false, it will gather all validation
-// errors and return them as one concatenated error message.
-func ValidatePrincipalName(name string, failFast bool) error {
+// and role creation.  Names should have a max length of 239 chars, to account for SG prefixes.  All validation
+// errors are concatenated and returned as one error message.
+func ValidatePrincipalName(name string) error {
 	namelen := len(name)
 	if namelen == 0 {
 		return nil // guest user
@@ -144,17 +147,11 @@ func ValidatePrincipalName(name string, failFast bool) error {
 
 	if namelen > base.MaxPrincipalNameLen {
 		const msg = "length exceeds 239" // leaving as const to avoid fmt performance (21% slower)
-		if failFast {
-			return errors.New(validationMsg + msg)
-		}
 		msgs = append(msgs, msg)
 	}
 
 	if !utf8.ValidString(name) {
 		const msg = "non UTF-8 encoding"
-		if failFast {
-			return errors.New(validationMsg + msg)
-		}
 		msgs = append(msgs, msg)
 	}
 
@@ -169,9 +166,6 @@ func ValidatePrincipalName(name string, failFast bool) error {
 		if (char == '/' || char == ':' || char == ',' || char == '`') && !seenAnInvalid {
 			seenAnInvalid = true
 			const msg = "contains '/', ':', ',', or '`'"
-			if failFast {
-				return errors.New(validationMsg + msg)
-			}
 			msgs = append(msgs, msg)
 			if seenAnAlphanum {
 				break
@@ -187,9 +181,6 @@ func ValidatePrincipalName(name string, failFast bool) error {
 
 	if !seenAnAlphanum {
 		const msg = "must contain alphanumeric"
-		if failFast {
-			return errors.New(validationMsg + msg)
-		}
 		msgs = append(msgs, msg)
 	}
 

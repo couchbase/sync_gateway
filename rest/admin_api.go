@@ -1245,7 +1245,7 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	}
 
 	internalName := internalUserName(*newInfo.Name)
-	if err = auth.ValidatePrincipalName(internalName, false); err != nil {
+	if err = auth.ValidatePrincipalName(internalName); err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, err.Error())
 	}
 
