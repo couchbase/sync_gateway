@@ -275,6 +275,11 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	dbr.Handle("/_config/import_filter",
 		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleDeleteDbConfigImportFilter)).Methods("DELETE")
 
+	dbr.Handle("/_config/graphql",
+		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfigGraphQL)).Methods("GET")
+	dbr.Handle("/_config/graphql",
+		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutDbConfigGraphQL)).Methods("PUT")
+
 	dbr.Handle("/_config/queries",
 		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfigQueries)).Methods("GET")
 	dbr.Handle("/_config/queries/{query}",

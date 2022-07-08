@@ -15,23 +15,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 )
 
-// GET database config user queries (or a single query)
-func (h *handler) handleGetDbConfigQueries() error {
-	config, etagVersion, err := h.getDBConfig()
-	if err != nil {
-		return err
-	} else if config.UserQueries == nil {
-		return base.HTTPErrorf(http.StatusNotFound, "no queries configured")
-	} else if queryName := h.PathVar("query"); queryName == "" {
-		h.writeJSON(config.UserQueries)
-	} else if queryConfig, found := config.UserQueries[queryName]; found {
-		h.writeJSON(queryConfig)
-	} else {
-		return base.HTTPErrorf(http.StatusNotFound, "no such query")
-	}
-	h.response.Header().Set("ETag", etagVersion)
-	return nil
-}
+//////// JS FUNCTIONS:
 
 // GET database config user functions (or a single function)
 func (h *handler) handleGetDbConfigFunctions() error {
@@ -46,6 +30,79 @@ func (h *handler) handleGetDbConfigFunctions() error {
 		h.writeJSON(functionConfig)
 	} else {
 		return base.HTTPErrorf(http.StatusNotFound, "no such function")
+	}
+	h.response.Header().Set("ETag", etagVersion)
+	return nil
+}
+
+// PUT database config user functions (or a single function)
+func (h *handler) handlePutDbConfigFunctions() error {
+	// Read the new config, either the entire UserFunctionMap, or a single UserFunction:
+	var functionsConfig db.UserFunctionMap
+	var functionConfig db.UserFunctionConfig
+	var err error
+	functionName := h.PathVar("function")
+	if functionName == "" {
+		err = h.readJSONInto(&functionsConfig)
+	} else {
+		err = h.readJSONInto(&functionConfig)
+	}
+	if err != nil {
+		return err
+	}
+	return h.mutateDbConfig(func(dbConfig *DbConfig) {
+		if functionName == "" {
+			dbConfig.UserFunctions = functionsConfig
+		} else {
+			if dbConfig.UserFunctions == nil {
+				dbConfig.UserFunctions = db.UserFunctionMap{}
+			}
+			dbConfig.UserFunctions[functionName] = &functionConfig
+		}
+	})
+}
+
+//////// GRAPHQL:
+
+// GET database config user functions (or a single function)
+func (h *handler) handleGetDbConfigGraphQL() error {
+	if config, etagVersion, err := h.getDBConfig(); err != nil {
+		return err
+	} else if config.GraphQL == nil {
+		return base.HTTPErrorf(http.StatusNotFound, "no graphql configured")
+	} else {
+		h.writeJSON(config.GraphQL)
+		h.response.Header().Set("ETag", etagVersion)
+		return nil
+	}
+}
+
+// PUT database config user functions (or a single function)
+func (h *handler) handlePutDbConfigGraphQL() error {
+	var newConfig *db.GraphQLConfig
+	if err := h.readJSONInto(&newConfig); err != nil {
+		return err
+	}
+	return h.mutateDbConfig(func(dbConfig *DbConfig) {
+		dbConfig.GraphQL = newConfig
+	})
+}
+
+//////// QUERIES:
+
+// GET database config user queries (or a single query)
+func (h *handler) handleGetDbConfigQueries() error {
+	config, etagVersion, err := h.getDBConfig()
+	if err != nil {
+		return err
+	} else if config.UserQueries == nil {
+		return base.HTTPErrorf(http.StatusNotFound, "no queries configured")
+	} else if queryName := h.PathVar("query"); queryName == "" {
+		h.writeJSON(config.UserQueries)
+	} else if queryConfig, found := config.UserQueries[queryName]; found {
+		h.writeJSON(queryConfig)
+	} else {
+		return base.HTTPErrorf(http.StatusNotFound, "no such query")
 	}
 	h.response.Header().Set("ETag", etagVersion)
 	return nil
@@ -74,33 +131,6 @@ func (h *handler) handlePutDbConfigQueries() error {
 				dbConfig.UserQueries = db.UserQueryMap{}
 			}
 			dbConfig.UserQueries[queryName] = &queryConfig
-		}
-	})
-}
-
-// PUT database config user functions (or a single function)
-func (h *handler) handlePutDbConfigFunctions() error {
-	// Read the new config, either the entire UserFunctionMap, or a single UserFunction:
-	var functionsConfig db.UserFunctionMap
-	var functionConfig db.UserFunctionConfig
-	var err error
-	functionName := h.PathVar("function")
-	if functionName == "" {
-		err = h.readJSONInto(&functionsConfig)
-	} else {
-		err = h.readJSONInto(&functionConfig)
-	}
-	if err != nil {
-		return err
-	}
-	return h.mutateDbConfig(func(dbConfig *DbConfig) {
-		if functionName == "" {
-			dbConfig.UserFunctions = functionsConfig
-		} else {
-			if dbConfig.UserFunctions == nil {
-				dbConfig.UserFunctions = db.UserFunctionMap{}
-			}
-			dbConfig.UserFunctions[functionName] = &functionConfig
 		}
 	})
 }
