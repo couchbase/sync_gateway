@@ -95,7 +95,7 @@ pipeline {
                     // TODO: Remove skip
                     when { expression { return false } }
                     steps {
-                        withEnv(["PATH+=${GO}"]) {
+                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
                             echo 'TODO: figure out why build issues are caused by gosigar'
                             sh "GOOS=darwin go build -o sync_gateway_ce-darwin -v ${SGW_REPO}"
                         }
@@ -105,7 +105,7 @@ pipeline {
                     // TODO: Remove skip
                     when { expression { return false } }
                     steps {
-                        withEnv(["PATH+=${GO}"]) {
+                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
                             echo 'TODO: figure out why build issues are caused by gosigar'
                             sh "GOOS=darwin go build -o sync_gateway_ee-darwin -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
                         }
@@ -136,6 +136,7 @@ pipeline {
                         script {
                             try {
                                 githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'Running', status: 'PENDING')
+                                sh "which gofmt" // check if gofmt is installed
                                 sh "gofmt -d -e ${GOPATH}/src/${SGW_REPO} | tee gofmt.out"
                                 sh "test -z \"\$(cat gofmt.out)\""
                                 githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'OK', status: 'SUCCESS')
@@ -167,21 +168,22 @@ pipeline {
                 }
                 stage('errcheck') {
                     steps {
-                        withEnv(["PATH+=${GOTOOLS}/bin"]) {
-                            script {
-                                try {
-                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'Running', status: 'PENDING')
+                        script {
+                            try {
+                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'Running', status: 'PENDING')
+                                withEnv(["PATH+GO=${env.GOTOOLS}/bin"]) {
+                                    sh "which errcheck" // check if errcheck is installed
                                     sh "errcheck ${SGW_REPO}/... | tee errcheck.out"
-                                    sh "test -z \"\$(cat errcheck.out)\""
-                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'OK', status: 'SUCCESS')
-                                } catch (Exception e) {
-                                    sh "wc -l < errcheck.out | awk '{printf \$1}' > errcheck.count"
-                                    script {
-                                        env.ERRCHECK_COUNT = readFile 'errcheck.count'
-                                    }
-                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: "found "+env.ERRCHECK_COUNT+" unhandled errors", status: 'FAILURE')
-                                    unstable("errcheck failed")
                                 }
+                                sh "test -z \"\$(cat errcheck.out)\""
+                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'OK', status: 'SUCCESS')
+                            } catch (Exception e) {
+                                sh "wc -l < errcheck.out | awk '{printf \$1}' > errcheck.count"
+                                script {
+                                    env.ERRCHECK_COUNT = readFile 'errcheck.count'
+                                }
+                                githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: "found "+env.ERRCHECK_COUNT+" unhandled errors", status: 'FAILURE')
+                                unstable("errcheck failed")
                             }
                         }
                     }
@@ -197,7 +199,7 @@ pipeline {
                             when { branch 'master' }
                             steps{
                                 // Travis-related variables are required as coveralls.io only officially supports a certain set of CI tools.
-                                withEnv(["PATH+=${env.GOTOOLS}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
+                                withEnv(["PATH+GO=${env.GOTOOLS}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: 'CE Unit Tests Running', status: 'PENDING')
 
                                     // Build CE coverprofiles
@@ -212,6 +214,7 @@ pipeline {
                                     sh 'LC_CTYPE=C tr -dc [:print:][:space:] < verbose_ce.out.raw > verbose_ce.out'
 
                                     // Generate Cobertura XML report that can be parsed by the Jenkins Cobertura Plugin
+                                    sh 'which gocov' // check if gocov is installed
                                     sh 'gocov convert cover_ce.out | gocov-xml > reports/coverage-ce.xml'
 
                                     // Grab test fail/total counts so we can print them later
@@ -229,6 +232,7 @@ pipeline {
                                     // Generate junit-formatted test report
                                     script {
                                         try {
+                                            sh 'which go2xunit' // check if go2xunit is installed
                                             sh 'go2xunit -fail -suite-name-prefix="CE-" -input verbose_ce.out -output reports/test-ce.xml'
                                             githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_PASS+'/'+env.TEST_CE_TOTAL+' passed ('+env.TEST_CE_SKIP+' skipped)', status: 'SUCCESS')
                                         } catch (Exception e) {
@@ -242,6 +246,7 @@ pipeline {
                                     // Publish CE coverage to coveralls.io
                                     // Replace covermode values with set just for coveralls to reduce the variability in reports.
                                     sh 'awk \'NR==1{print "mode: set";next} $NF>0{$NF=1} {print}\' cover_ce.out > cover_ce_coveralls.out'
+                                    sh 'which goveralls' // check if goveralls is installed
                                     sh "goveralls -coverprofile=cover_ce_coveralls.out -service=uberjenkins -repotoken=${COVERALLS_TOKEN} || true"
                                 }
                             }
@@ -249,7 +254,7 @@ pipeline {
 
                         stage('EE') {
                             steps {
-                                withEnv(["PATH+=${env.GOTOOLS}/bin"]) {
+                                withEnv(["PATH+GO=${env.GOTOOLS}/bin"]) {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: 'EE Unit Tests Running', status: 'PENDING')
 
                                     // Build EE coverprofiles
@@ -309,7 +314,6 @@ pipeline {
                                 githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'Running LiteCore Tests', status: 'PENDING')
                                 sh 'touch verbose_litecore.out'
                                 sh 'touch verbose_litecore-sg_trace.out'
-
                                 script {
                                     withCredentials([sshUserPrivateKey(credentialsId: 'CB SG Robot Github SSH Key', keyFileVariable: 'KEY')]) {
                                         try {
