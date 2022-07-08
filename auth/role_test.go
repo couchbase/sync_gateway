@@ -149,7 +149,7 @@ func BenchmarkValidatePrincipalName(b *testing.B) {
 	for _, tc := range testcases {
 		b.Run(tc.desc, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				ValidatePrincipalName(tc.name)
+				_ = ValidatePrincipalName(tc.name)
 			}
 		})
 
