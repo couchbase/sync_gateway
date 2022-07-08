@@ -765,7 +765,7 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 	}
 
 	if len(seenIssuers) > 0 {
-		// CBG-2143: This should be an error but having duplicate configs is valid so this would be a breaking change
+		// CBG-2185: This should be an error but having duplicate configs is valid so this would be a breaking change
 		for iss, count := range seenIssuers {
 			if count > 1 {
 				// issuer names are not UD - see https://github.com/couchbase/sync_gateway/pull/5513#discussion_r856335452 for context
