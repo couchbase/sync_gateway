@@ -697,12 +697,16 @@ func (c *Collection) Flush() error {
 	bucketManager := c.cluster.Buckets()
 
 	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
-		err = bucketManager.FlushBucket(c.Bucket().Name(), nil)
-		if err != nil {
-			WarnfCtx(context.TODO(), "Error flushing bucket %s: %v  Will retry.", MD(c.Bucket().Name()).Redact(), err)
-			shouldRetry = true
+		if err := c.dropAllScopesAndCollections(); err != nil {
+			return true, err, nil
 		}
-		return shouldRetry, err, nil
+
+		if err := bucketManager.FlushBucket(c.Bucket().Name(), nil); err != nil {
+			WarnfCtx(context.TODO(), "Error flushing bucket %s: %v  Will retry.", MD(c.Bucket().Name()).Redact(), err)
+			return true, err, nil
+		}
+
+		return false, nil, nil
 	}
 
 	err, _ := RetryLoop("EmptyTestBucket", workerFlush, CreateDoublingSleeperFunc(12, 10))
