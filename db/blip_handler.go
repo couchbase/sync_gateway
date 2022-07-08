@@ -269,9 +269,6 @@ func (bh *blipHandler) handleUnsubChanges(rq *blip.Message) error {
 	bh.changesCtxLock.Lock()
 	defer bh.changesCtxLock.Unlock()
 
-	if !bh.activeSubChanges.IsTrue() {
-		return base.HTTPErrorf(http.StatusBadRequest, "No subChanges subscription active to unsubscribe from")
-	}
 	bh.changesCtxCancel()
 	return nil
 }

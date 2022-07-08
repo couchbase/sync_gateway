@@ -4611,7 +4611,6 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 }
 
 func TestUnsubChanges(t *testing.T) {
-	const noSubchangesError = "No subChanges subscription active to unsubscribe from"
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
 	defer rt.Close()
@@ -4620,10 +4619,10 @@ func TestUnsubChanges(t *testing.T) {
 	require.NoError(t, err)
 	defer btc.Close()
 
-	// Confirm correct error message returned when no subchanges active
+	// Confirm no error message or panic is returned in response
 	response, err := btc.UnsubPullChanges()
 	assert.NoError(t, err)
-	assert.EqualValues(t, noSubchangesError, response)
+	assert.Empty(t, response)
 
 	// Sub changes
 	err = btc.StartPull()
@@ -4651,10 +4650,10 @@ func TestUnsubChanges(t *testing.T) {
 	}, 10, 100)
 	assert.Error(t, err)
 
-	// Confirm correct error message is still returned when no subchanges active
+	// Confirm no error message is still returned when no subchanges active
 	response, err = btc.UnsubPullChanges()
 	assert.NoError(t, err)
-	assert.EqualValues(t, noSubchangesError, response)
+	assert.Empty(t, response)
 
 	// Confirm the pull replication can be restarted and it syncs doc2
 	err = btc.StartPull()
