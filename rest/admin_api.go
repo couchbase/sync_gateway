@@ -1220,6 +1220,10 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	}
 
 	internalName := internalUserName(*newInfo.Name)
+	if err = auth.ValidatePrincipalName(internalName); err != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, err.Error())
+	}
+
 	newInfo.Name = &internalName
 	replaced, err := h.db.UpdatePrincipal(newInfo, isUser, h.rq.Method != "POST")
 	if err != nil {
