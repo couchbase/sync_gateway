@@ -2422,7 +2422,6 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	req.SetBasicAuth(subject, "hunter2")
 	res, err = http.DefaultClient.Do(req)
 	require.NoError(t, err, "Performing basic auth request")
-	assert.NoError(t, res.Body.Close())
 	assert.Equal(t, http.StatusOK, res.StatusCode)
 
 	var sessionResponse struct {
@@ -2430,6 +2429,7 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	}
 	require.NoError(t, json.NewDecoder(res.Body).Decode(&sessionResponse))
 	require.NotContains(t, sessionResponse.UserCtx["channels"], testChannelName)
+	assert.NoError(t, res.Body.Close())
 }
 
 // This test verifies the edge case of having two different OIDC providers with different role/channel configurations
