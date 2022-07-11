@@ -4532,3 +4532,80 @@ func TestBlipRevokeNonExistentRole(t *testing.T) {
 		return rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
 	}, 1)
 }
+
+// Tests changes made in CBG-2151 to return errors from sendRevision unless it's a document not found error,
+// in which case a noRev should be sent.
+func TestSendRevisionNoRevHandling(t *testing.T) {
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("Skip LeakyBucket test when running in integration")
+	}
+	testCases := []struct {
+		error       error
+		expectNoRev bool
+	}{
+		{
+			error:       gocb.ErrDocumentNotFound,
+			expectNoRev: true,
+		},
+		{
+			error:       gocb.ErrOverload,
+			expectNoRev: false,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(fmt.Sprintf("%s", test.error), func(t *testing.T) {
+			docName := fmt.Sprintf("%s", test.error)
+			rt := NewRestTester(t, &RestTesterConfig{
+				guestEnabled: true,
+				TestBucket:   base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{}),
+			})
+			defer rt.Close()
+
+			leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
+			require.True(t, ok)
+
+			btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+			require.NoError(t, err)
+			defer btc.Close()
+
+			// Change noRev handler so it's known when a noRev is received
+			recievedNoRevs := make(chan *blip.Message)
+			btc.pullReplication.bt.blipContext.HandlerForProfile[db.MessageNoRev] = func(msg *blip.Message) {
+				fmt.Println("Received noRev", msg.Properties)
+				recievedNoRevs <- msg
+			}
+
+			resp := rt.SendAdminRequest(http.MethodPut, "/db/"+docName, `{"foo":"bar"}`)
+			requireStatus(t, resp, http.StatusCreated)
+
+			// Make the LeakyBucket return an error
+			leakyBucket.SetGetRawCallback(func(key string) error {
+				return test.error
+			})
+
+			// Flush cache so document has to be retrieved from the leaky bucket
+			rt.GetDatabase().FlushRevisionCacheForTest()
+
+			err = btc.StartPull()
+			require.NoError(t, err)
+
+			// Wait 3 seconds for noRev to be received
+			select {
+			case msg := <-recievedNoRevs:
+				if test.expectNoRev {
+					assert.Equal(t, docName, msg.Properties["id"])
+				} else {
+					require.Fail(t, "Received unexpected noRev message", msg)
+				}
+			case <-time.After(3 * time.Second):
+				if test.expectNoRev {
+					require.Fail(t, "Didn't receive expected noRev")
+				}
+			}
+
+			// Make sure document did not get replicated
+			_, found := btc.GetRev(docName, respRevID(t, resp))
+			assert.False(t, found)
+		})
+	}
+}

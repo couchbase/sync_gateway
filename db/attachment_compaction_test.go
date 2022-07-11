@@ -303,7 +303,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 
 	triggerCallback := false
 	triggerStopCallback := false
-	leakyBucket.SetGetRawCallback(func(s string) {
+	leakyBucket.SetGetRawCallback(func(s string) error {
 		if triggerCallback {
 			err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2})
 			assert.Error(t, err)
@@ -315,6 +315,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 			err = testDB2.AttachmentCompactionManager.Stop()
 			assert.NoError(t, err)
 		}
+		return nil
 	})
 
 	// Trigger start with immediate abort. Then resume, ensure that dry run is resumed
@@ -447,7 +448,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 
 	triggerCallback := false
 	triggerStopCallback := false
-	leakyBucket.SetGetRawCallback(func(s string) {
+	leakyBucket.SetGetRawCallback(func(s string) error {
 		if triggerCallback {
 			err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2})
 			assert.Error(t, err)
@@ -459,6 +460,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 			err = testDB2.AttachmentCompactionManager.Stop()
 			assert.NoError(t, err)
 		}
+		return nil
 	})
 
 	// Trigger start with immediate abort. Then resume, ensure that dry run is resumed

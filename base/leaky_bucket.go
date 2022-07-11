@@ -64,7 +64,7 @@ type LeakyBucketConfig struct {
 
 	// GetRawCallback issues a callback prior to running GetRaw. Allows tests to issue a doc mutation or deletion prior
 	// to GetRaw being ran.
-	GetRawCallback func(key string)
+	GetRawCallback func(key string) error
 
 	PostUpdateCallback func(key string)
 
@@ -105,13 +105,16 @@ func (b *LeakyBucket) Get(k string, rv interface{}) (cas uint64, err error) {
 	return b.bucket.Get(k, rv)
 }
 
-func (b *LeakyBucket) SetGetRawCallback(callback func(string)) {
+func (b *LeakyBucket) SetGetRawCallback(callback func(string) error) {
 	b.config.GetRawCallback = callback
 }
 
 func (b *LeakyBucket) GetRaw(k string) (v []byte, cas uint64, err error) {
 	if b.config.GetRawCallback != nil {
-		b.config.GetRawCallback(k)
+		err = b.config.GetRawCallback(k)
+		if err != nil {
+			return nil, 0, err
+		}
 	}
 	return b.bucket.GetRaw(k)
 }
