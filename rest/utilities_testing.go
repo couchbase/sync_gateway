@@ -196,8 +196,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.DatabaseConfig = &DatabaseConfig{}
 		}
 
-		if base.TestsDisableGSI() {
-			rt.DatabaseConfig.UseViews = base.BoolPtr(true)
+		if rt.DatabaseConfig.UseViews == nil {
+			rt.DatabaseConfig.UseViews = base.BoolPtr(base.TestsDisableGSI())
 		}
 
 		if rt.createScopesAndCollections {
