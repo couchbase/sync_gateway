@@ -22,7 +22,7 @@ import (
 	"gopkg.in/couchbase/gocb.v1"
 )
 
-const KeyspaceQueryToken = "$_keyspace"    // Token used for bucket name replacement in query statements
+const KeyspaceQueryToken = "$_keyspace"    // Token used for keyspace name replacement in query statement. The replacement will be an escaped keyspace.
 const KeyspaceAlias = "queryKeyspaceAlias" // Keyspace alias set for the keyspace in FROM statements in queries
 const MaxQueryRetries = 30                 // Maximum query retries on indexer error
 const IndexStateOnline = "online"          // bucket state value, as returned by SELECT FROM system:indexes.  Index has been created and built.
@@ -39,7 +39,7 @@ type N1qlIndexOptions struct {
 
 var _ N1QLStore = &CouchbaseBucketGoCB{}
 
-// Keyspace for a bucket is just a bucket name
+// Keyspace for a bucket in the default scope and collection can just be a bucket name
 func (bucket *CouchbaseBucketGoCB) EscapedFullyQualifiedKeyspace() string {
 	return fmt.Sprintf("`%s`", bucket.GetName())
 }
