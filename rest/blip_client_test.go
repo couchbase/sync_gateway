@@ -556,6 +556,30 @@ func (btc *BlipTesterClient) StartPullSince(continuous, since, activeOnly string
 	return nil
 }
 
+func (btc *BlipTesterClient) UnsubPullChanges() (response []byte, err error) {
+	unsubChangesRequest := blip.NewRequest()
+	unsubChangesRequest.SetProfile(db.MessageUnsubChanges)
+	err = btc.pullReplication.sendMsg(unsubChangesRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	response, err = unsubChangesRequest.Response().Body()
+	return response, err
+}
+
+func (btc *BlipTesterClient) UnsubPushChanges() (response []byte, err error) {
+	unsubChangesRequest := blip.NewRequest()
+	unsubChangesRequest.SetProfile(db.MessageUnsubChanges)
+	err = btc.pushReplication.sendMsg(unsubChangesRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	response, err = unsubChangesRequest.Response().Body()
+	return response, err
+}
+
 // Close will empty the stored docs and close the underlying replications.
 func (btc *BlipTesterClient) Close() {
 	btc.docsLock.Lock()

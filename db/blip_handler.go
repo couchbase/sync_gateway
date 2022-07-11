@@ -178,11 +178,8 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 
 // Received a "subChanges" subscription request
 func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
-
-	bh.lock.Lock()
-	defer bh.lock.Unlock()
-
-	bh.gotSubChanges = true
+	bh.changesCtxLock.Lock()
+	defer bh.changesCtxLock.Unlock()
 
 	defaultSince := bh.db.CreateZeroSinceValue()
 	latestSeq := func() (SequenceID, error) {
@@ -197,6 +194,11 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	// Ensure that only _one_ subChanges subscription can be open on this blip connection at any given time.  SG #3222.
 	if !bh.activeSubChanges.CASRetry(false, true) {
 		return fmt.Errorf("blipHandler already has an outstanding continous subChanges.  Cannot open another one")
+	}
+
+	// Create ctx if it has been cancelled
+	if bh.changesCtx.Err() != nil {
+		bh.changesCtx, bh.changesCtxCancel = context.WithCancel(context.Background())
 	}
 
 	if len(subChangesParams.docIDs()) > 0 && subChangesParams.continuous() {
@@ -226,12 +228,11 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	}
 
 	continuous := subChangesParams.continuous()
-	// used for stats tracking
-	bh.continuous = continuous
+
 	// Start asynchronous changes goroutine
 	go func() {
 		// Pull replication stats by type
-		if bh.continuous {
+		if continuous {
 			bh.replicationStats.SubChangesContinuousActive.Add(1)
 			defer bh.replicationStats.SubChangesContinuousActive.Add(-1)
 			bh.replicationStats.SubChangesContinuousTotal.Add(1)
@@ -242,6 +243,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		}
 
 		defer func() {
+			bh.changesCtxCancel()
 			bh.activeSubChanges.Set(false)
 		}()
 		// sendChanges runs until blip context closes, or fails due to error
@@ -264,8 +266,11 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 }
 
 func (bh *blipHandler) handleUnsubChanges(rq *blip.Message) error {
-	return base.HTTPErrorf(http.StatusNotImplemented, "unsubChanges not implemented yet")
-	// TODO: Implement unsubChanges
+	bh.changesCtxLock.Lock()
+	defer bh.changesCtxLock.Unlock()
+
+	bh.changesCtxCancel()
+	return nil
 }
 
 type clientType uint8
@@ -316,9 +321,9 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 		Continuous:  opts.continuous,
 		ActiveOnly:  opts.activeOnly,
 		Revocations: opts.revocations,
-		Terminator:  bh.BlipSyncContext.terminator,
-		Ctx:         bh.loggingCtx,
+		LoggingCtx:  bh.loggingCtx,
 		clientType:  opts.clientType,
+		ChangesCtx:  bh.changesCtx,
 	}
 
 	channelSet := opts.channels
@@ -1278,8 +1283,8 @@ func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []Attach
 		return
 	}
 
-	bsc.lock.Lock()
-	defer bsc.lock.Unlock()
+	bsc.allowedAttachmentsLock.Lock()
+	defer bsc.allowedAttachmentsLock.Unlock()
 
 	if bsc.allowedAttachments == nil {
 		bsc.allowedAttachments = make(map[string]AllowedAttachment, 100)
@@ -1309,8 +1314,8 @@ func (bsc *BlipSyncContext) removeAllowedAttachments(docID string, attMeta []Att
 		return
 	}
 
-	bsc.lock.Lock()
-	defer bsc.lock.Unlock()
+	bsc.allowedAttachmentsLock.Lock()
+	defer bsc.allowedAttachmentsLock.Unlock()
 
 	for _, attachment := range attMeta {
 		key := allowedAttachmentKey(docID, attachment.digest, activeSubprotocol)

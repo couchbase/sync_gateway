@@ -4609,3 +4609,55 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 		})
 	}
 }
+
+func TestUnsubChanges(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	require.NoError(t, err)
+	defer btc.Close()
+
+	// Confirm no error message or panic is returned in response
+	response, err := btc.UnsubPullChanges()
+	assert.NoError(t, err)
+	assert.Empty(t, response)
+
+	// Sub changes
+	err = btc.StartPull()
+	require.NoError(t, err)
+	resp := rt.updateDoc("doc1", "", `{"key":"val1"}`)
+	_, found := btc.WaitForRev("doc1", resp.Rev)
+	require.True(t, found)
+
+	activeReplStat := rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplActiveContinuous
+	require.EqualValues(t, 1, activeReplStat.Value())
+
+	// Unsub changes
+	response, err = btc.UnsubPullChanges()
+	assert.NoError(t, err)
+	assert.Empty(t, response)
+	// Wait for unsub changes to stop the sub changes being sent before sending document up
+	activeReplVal, _ := base.WaitForStat(activeReplStat.Value, 0)
+	assert.EqualValues(t, 0, activeReplVal)
+
+	// Confirm no more changes are being sent
+	resp = rt.updateDoc("doc2", "", `{"key":"val1"}`)
+	err = rt.WaitForConditionWithOptions(func() bool {
+		_, found = btc.GetRev("doc2", resp.Rev)
+		return found
+	}, 10, 100)
+	assert.Error(t, err)
+
+	// Confirm no error message is still returned when no subchanges active
+	response, err = btc.UnsubPullChanges()
+	assert.NoError(t, err)
+	assert.Empty(t, response)
+
+	// Confirm the pull replication can be restarted and it syncs doc2
+	err = btc.StartPull()
+	require.NoError(t, err)
+	_, found = btc.WaitForRev("doc2", resp.Rev)
+	assert.True(t, found)
+}
