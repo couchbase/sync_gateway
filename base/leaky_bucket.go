@@ -485,12 +485,12 @@ func (b *LeakyBucket) IsSupported(feature sgbucket.DataStoreFeature) bool {
 	return b.bucket.IsSupported(feature)
 }
 
-func (b *LeakyBucket) EscapedFullyQualifiedKeyspace() string {
+func (b *LeakyBucket) EscapedKeyspace() string {
 	n1qlStore, ok := AsN1QLStore(b.bucket)
 	if !ok {
 		return ""
 	}
-	return n1qlStore.EscapedFullyQualifiedKeyspace()
+	return n1qlStore.EscapedKeyspace()
 }
 
 func (b *LeakyBucket) IndexMetaKeyspaceID() string {

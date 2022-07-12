@@ -24,9 +24,12 @@ import (
 
 var _ N1QLStore = &Collection{}
 
-// EscapedFullyQualifiedKeyspace returns the escaped fully-qualified identifier for the keyspace (e.g. `bucket`.`scope`.`collection`)
-func (c *Collection) EscapedFullyQualifiedKeyspace() string {
-	return fmt.Sprintf("`%s`.`%s`.`%s`", c.BucketName(), c.ScopeName(), c.Name())
+// EscapedKeyspace returns the escaped fully-qualified identifier for the keyspace (e.g. `bucket`.`scope`.`collection`)
+func (c *Collection) EscapedKeyspace() string {
+	if c.ScopeName() != DefaultScope && c.Name() != DefaultCollection {
+		return fmt.Sprintf("`%s`.`%s`.`%s`", c.BucketName(), c.ScopeName(), c.Name())
+	}
+	return fmt.Sprintf("`%s`", c.BucketName())
 }
 
 // IndexMetaBucketID returns the value of bucket_id for the system:indexes table for the collection.
@@ -56,7 +59,7 @@ func (c *Collection) IndexMetaKeyspaceID() string {
 func (c *Collection) Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (resultsIterator sgbucket.QueryResultIterator, err error) {
 	logCtx := context.TODO()
 
-	keyspaceStatement := strings.Replace(statement, KeyspaceQueryToken, c.EscapedFullyQualifiedKeyspace(), -1)
+	keyspaceStatement := strings.Replace(statement, KeyspaceQueryToken, c.EscapedKeyspace(), -1)
 
 	n1qlOptions := &gocb.QueryOptions{
 		ScanConsistency: gocb.QueryScanConsistency(consistency),

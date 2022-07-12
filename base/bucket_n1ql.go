@@ -40,7 +40,7 @@ type N1qlIndexOptions struct {
 var _ N1QLStore = &CouchbaseBucketGoCB{}
 
 // Keyspace for a bucket in the default scope and collection can just be a bucket name
-func (bucket *CouchbaseBucketGoCB) EscapedFullyQualifiedKeyspace() string {
+func (bucket *CouchbaseBucketGoCB) EscapedKeyspace() string {
 	return fmt.Sprintf("`%s`", bucket.GetName())
 }
 
