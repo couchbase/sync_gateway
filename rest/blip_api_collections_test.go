@@ -33,7 +33,7 @@ func TestBlipGetCollections(t *testing.T) {
 	defer btc.Close()
 
 	checkpointID1 := "checkpoint1"
-	checkpoint1Body := db.Body{"seq" : "123"}
+	checkpoint1Body := db.Body{"seq": "123"}
 	dbInstance := db.Database{DatabaseContext: rt.GetDatabase()}
 	revID, err := dbInstance.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
 	require.NoError(t, err)
