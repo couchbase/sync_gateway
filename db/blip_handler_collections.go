@@ -47,7 +47,6 @@ func (bh *blipHandler) handleGetCollections(rq *blip.Message) error {
 	bh.logEndpointEntry(rq.Profile(), requestBody.String())
 
 	if len(requestBody.Collections) != len(requestBody.CheckpointIDs) {
-		// TODO: can I send the information back to the client, is this leaking data? Should I log?
 		return base.HTTPErrorf(http.StatusBadRequest, "Length of collections must match length of checkpoint ids. Request body: %v", requestBody)
 	}
 	// assert that collections and checkpoint ids match len
@@ -73,10 +72,12 @@ func (bh *blipHandler) handleGetCollections(rq *blip.Message) error {
 
 		value, err := db.GetSpecial(DocTypeLocal, CheckpointDocIDPrefix+requestBody.CheckpointIDs[i])
 		if err != nil {
-			checkpoints[i] = nil
+			// handle key not found here specially
+			// this will return key "_sync:local:checkpoint/id" missing if collection exists but not present
+			checkpoints[i] = Body{}
 			continue
 		}
-		delete(value, BodyRev)
+		delete(value, BodyId)
 		checkpoints[i] = value
 	}
 	response := rq.Response()
