@@ -73,9 +73,17 @@ func (h *handler) handleGetDoc() error {
 				base.DebugfCtx(h.ctx(), base.KeyImport, fmt.Sprintf("Import cancelled as document %v is purged", base.UD(docid)))
 				return nil
 			}
+			if h.db.ForceAPIForbiddenErrors() && base.IsDocNotFoundError(err) {
+				base.InfofCtx(h.ctx(), base.KeyCRUD, "Doc %q not found: %v", base.UD(docid), err)
+				return db.ErrForbidden
+			}
 			return err
 		}
 		if value == nil {
+			if h.db.ForceAPIForbiddenErrors() {
+				base.InfofCtx(h.ctx(), base.KeyCRUD, "Doc %q missing", base.UD(docid))
+				return db.ErrForbidden
+			}
 			return kNotFoundError
 		}
 		h.setHeader("Etag", strconv.Quote(value[db.BodyRev].(string)))

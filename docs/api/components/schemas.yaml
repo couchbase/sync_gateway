@@ -1302,6 +1302,9 @@ Database:
         guest_read_only:
           description: Restrict GUEST document access to read-only.
           type: boolean
+        force_api_forbidden_errors:
+          description: Force REST API errors to return forbidden
+          type: boolean
     local_jwt:
       description: Configuration for Local JWT authentication.
       type: object

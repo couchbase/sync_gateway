@@ -33,6 +33,9 @@ const (
 // this is different from a client specifically requesting a revision they know about, which are treated as a _removal.
 var ErrForbidden = base.HTTPErrorf(403, "forbidden")
 
+var ErrMissing = base.HTTPErrorf(404, "missing")
+var ErrDeleted = base.HTTPErrorf(404, "deleted")
+
 // ////// READING DOCUMENTS:
 
 func realDocID(docid string) string {
@@ -269,7 +272,11 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 	}
 
 	if revision.BodyBytes == nil {
-		return DocumentRevision{}, base.HTTPErrorf(404, "missing")
+		if db.ForceAPIForbiddenErrors() {
+			base.InfofCtx(db.Ctx, base.KeyCRUD, "Doc: %s %s is missing", docid, revid)
+			return DocumentRevision{}, ErrForbidden
+		}
+		return DocumentRevision{}, ErrMissing
 	}
 
 	// RequestedHistory is the _revisions returned in the body.  Avoids mutating revision.History, in case it's needed
@@ -284,6 +291,10 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 
 	isAuthorized, redactedRev := db.authorizeUserForChannels(docid, revision.RevID, revision.Channels, revision.Deleted, requestedHistory)
 	if !isAuthorized {
+		if db.ForceAPIForbiddenErrors() {
+			base.InfofCtx(db.Ctx, base.KeyCRUD, "Not authorized to view doc: %s %s", docid, revid)
+			return DocumentRevision{}, ErrForbidden
+		}
 		if revid == "" {
 			return DocumentRevision{}, ErrForbidden
 		}
@@ -293,11 +304,11 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 	// If the revision is a removal cache entry (no body), but the user has access to that removal, then just
 	// return 404 missing to indicate that the body of the revision is no longer available.
 	if revision.Removed {
-		return DocumentRevision{}, base.HTTPErrorf(404, "missing")
+		return DocumentRevision{}, ErrMissing
 	}
 
 	if revision.Deleted && revid == "" {
-		return DocumentRevision{}, base.HTTPErrorf(404, "deleted")
+		return DocumentRevision{}, ErrDeleted
 	}
 
 	return revision, nil
@@ -317,7 +328,7 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 	// return 404 missing to indicate that the body of the revision is no longer available.
 	// Delta can't be generated if we don't have the fromRevision body.
 	if fromRevision.Removed {
-		return nil, nil, base.HTTPErrorf(404, "missing")
+		return nil, nil, ErrMissing
 	}
 
 	// If the fromRevision was a tombstone, then return error to tell delta sync to send full body replication
@@ -366,7 +377,7 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 		}
 
 		if toRevision.Removed {
-			return nil, nil, base.HTTPErrorf(404, "missing")
+			return nil, nil, ErrMissing
 		}
 
 		// If the revision we're generating a delta to is a tombstone, mark it as such and don't bother generating a delta
@@ -495,7 +506,7 @@ func (db *DatabaseContext) getRevision(ctx context.Context, doc *Document, revid
 	// No inline body, so look for separate doc:
 	if bodyBytes == nil {
 		if !doc.History.contains(revid) {
-			return nil, nil, nil, base.HTTPErrorf(404, "missing")
+			return nil, nil, nil, ErrMissing
 		}
 
 		bodyBytes, err = db.getOldRevisionJSON(ctx, doc.ID, revid)
@@ -642,7 +653,7 @@ func (db *Database) get1xRevFromDoc(doc *Document, revid string, listRevisions b
 		if revid == "" {
 			revid = doc.CurrentRev
 			if doc.History[revid].Deleted == true {
-				return nil, false, base.HTTPErrorf(404, "deleted")
+				return nil, false, ErrDeleted
 			}
 		}
 		if bodyBytes, _, attachments, err = db.getRevision(db.Ctx, doc, revid); err != nil {
@@ -686,7 +697,7 @@ func (db *Database) getAvailableRev(doc *Document, revid string) ([]byte, string
 			return bodyBytes, revid, attachments, nil
 		}
 	}
-	return nil, "", nil, base.HTTPErrorf(404, "missing")
+	return nil, "", nil, ErrMissing
 }
 
 // Returns the 1x-style body of the asked-for revision or the most recent available ancestor.
@@ -828,7 +839,6 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 
 	allowImport := db.UseXattrs()
 	doc, newRevID, err = db.updateAndReturnDoc(newDoc.ID, allowImport, expiry, nil, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
-
 		var isSgWrite bool
 		var crc32Match bool
 
@@ -845,31 +855,31 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 		if doc != nil && !isSgWrite && db.UseXattrs() {
 			err := db.OnDemandImportForWrite(newDoc.ID, doc, deleted)
 			if err != nil {
+				if db.ForceAPIForbiddenErrors() {
+					base.InfofCtx(db.Ctx, base.KeyCRUD, "Importing doc %q prior to write caused error", base.UD(newDoc.ID))
+					return nil, nil, false, nil, ErrForbidden
+				}
 				return nil, nil, false, nil, err
 			}
 		}
 
-		// First, make sure matchRev matches an existing leaf revision:
+		var docExistsConflict bool
+		var docRevConflict bool
+		// Make sure matchRev matches an existing leaf revision:
 		if matchRev == "" {
 			matchRev = doc.CurrentRev
 			if matchRev != "" {
 				// PUT with no parent rev given, but there is an existing current revision.
 				// This is OK as long as the current one is deleted.
 				if !doc.History[matchRev].Deleted {
-					return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document exists")
+					docExistsConflict = true
+				} else {
+					generation, _ = ParseRevID(matchRev)
+					generation++
 				}
-				generation, _ = ParseRevID(matchRev)
-				generation++
 			}
 		} else if !doc.History.isLeaf(matchRev) || db.IsIllegalConflict(doc, matchRev, deleted, false, nil) {
-			return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
-		}
-
-		// Process the attachments, and populate _sync with metadata. This alters 'body' so it has to
-		// be done before calling CreateRevID (the ID is based on the digest of the body.)
-		newAttachments, err := db.storeAttachments(doc, newDoc.DocAttachments, generation, matchRev, nil)
-		if err != nil {
-			return nil, nil, false, nil, err
+			docRevConflict = true
 		}
 
 		// Make up a new _rev, and add it to the history:
@@ -893,6 +903,48 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 		// body.  In this scenario, store canonical bytes as newDoc._rawBody
 		if !wasStripped && !isDeleted {
 			newDoc._rawBody = canonicalBytesForRevID
+		}
+
+		// Handle telling the user if there is a conflict
+		if docExistsConflict {
+			if db.ForceAPIForbiddenErrors() {
+				// Make sure the user has permission to modify the document before confirming doc existence
+				mutableBody, metaMap, newRevID, err := db.prepareSyncFn(doc, newDoc)
+				if err != nil {
+					return nil, nil, false, nil, err
+				}
+
+				_, _, _, _, _, err = db.runSyncFn(doc, mutableBody, metaMap, newRevID)
+				if err != nil {
+					err = ErrForbidden
+					base.DebugfCtx(db.Ctx, base.KeyCRUD, "Could not modify doc %q due to document exists conflict and sync func rejection: %v", base.UD(doc.ID), err)
+					return nil, nil, false, nil, err
+				}
+			}
+			return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document exists")
+		}
+		if docRevConflict {
+			if db.ForceAPIForbiddenErrors() {
+				// Make sure the user has permission to modify the document before confirming doc existence
+				mutableBody, metaMap, newRevID, err := db.prepareSyncFn(doc, newDoc)
+				if err != nil {
+					return nil, nil, false, nil, err
+				}
+
+				_, _, _, _, _, err = db.runSyncFn(doc, mutableBody, metaMap, newRevID)
+				if err != nil {
+					base.DebugfCtx(db.Ctx, base.KeyCRUD, "Could not modify doc %q due to document revision conflict and sync func rejection: %v", base.UD(doc.ID), err)
+					return nil, nil, false, nil, ErrForbidden
+				}
+			}
+			return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+		}
+
+		// Process the attachments, and populate _sync with metadata. This alters 'body' so it has to
+		// be done before calling CreateRevID (the ID is based on the digest of the body.)
+		newAttachments, err := db.storeAttachments(doc, newDoc.DocAttachments, generation, matchRev, nil)
+		if err != nil {
+			return nil, nil, false, nil, err
 		}
 
 		if err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
@@ -1392,6 +1444,34 @@ func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCur
 	}
 }
 
+func (db *Database) prepareSyncFn(doc *Document, newDoc *Document) (mutableBody Body, metaMap map[string]interface{}, newRevID string, err error) {
+	// Marshal raw user xattrs for use in Sync Fn. If this fails we can bail out so we should do early as possible.
+	metaMap, err = doc.GetMetaMap(db.Options.UserXattrKey)
+	if err != nil {
+		return
+	}
+
+	mutableBody, err = newDoc.GetDeepMutableBody()
+	if err != nil {
+		return
+	}
+
+	err = validateNewBody(mutableBody)
+	if err != nil {
+		return
+	}
+
+	newRevID = newDoc.RevID
+
+	mutableBody[BodyId] = doc.ID
+	mutableBody[BodyRev] = newRevID
+	if newDoc.Deleted {
+		mutableBody[BodyDeleted] = true
+	}
+
+	return
+}
+
 // Run the sync function on the given document and body. Need to inject the document ID and rev ID temporarily to run
 // the sync function.
 func (db *Database) runSyncFn(doc *Document, body Body, metaMap map[string]interface{}, newRevId string) (*uint32, string, base.Set, channels.AccessMap, channels.AccessMap, error) {
@@ -1611,36 +1691,23 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 		return
 	}
 
-	// Marshal raw user xattrs for use in Sync Fn. If this fails we can bail out so we should do early as possible.
-	metaMap, err := doc.GetMetaMap(db.Options.UserXattrKey)
+	mutableBody, metaMap, newRevID, err := db.prepareSyncFn(doc, newDoc)
 	if err != nil {
 		return
 	}
 
-	syncFnBody, err := newDoc.GetDeepMutableBody()
-	if err != nil {
-		return
-	}
-
-	err = validateNewBody(syncFnBody)
-	if err != nil {
-		return
-	}
-
-	newRevID := newDoc.RevID
 	prevCurrentRev := doc.CurrentRev
 	doc.updateWinningRevAndSetDocFlags()
 	newDocHasAttachments := len(newAttachments) > 0
 	db.storeOldBodyInRevTreeAndUpdateCurrent(doc, prevCurrentRev, newRevID, newDoc, newDocHasAttachments)
 
-	syncFnBody[BodyId] = doc.ID
-	syncFnBody[BodyRev] = newRevID
-	if newDoc.Deleted {
-		syncFnBody[BodyDeleted] = true
-	}
-
-	syncExpiry, oldBodyJSON, channelSet, access, roles, err := db.runSyncFn(doc, syncFnBody, metaMap, newRevID)
+	syncExpiry, oldBodyJSON, channelSet, access, roles, err := db.runSyncFn(doc, mutableBody, metaMap, newRevID)
 	if err != nil {
+		if db.ForceAPIForbiddenErrors() {
+			base.InfofCtx(db.Ctx, base.KeyCRUD, "Sync function rejected update to %s %s due to %v",
+				base.UD(doc.ID), base.MD(doc.RevID), err)
+			err = ErrForbidden
+		}
 		return
 	}
 

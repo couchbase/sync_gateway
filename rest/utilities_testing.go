@@ -818,6 +818,26 @@ func requireStatus(t testing.TB, response *TestResponse, expectedStatus int) {
 		response.Req.Method, response.Req.URL, response.Body)
 }
 
+func assertStatus(t testing.TB, response *TestResponse, expectedStatus int) {
+	assert.Equalf(t, expectedStatus, response.Code,
+		"Response status %d %q (expected %d %q)\nfor %s <%s> : %s",
+		response.Code, http.StatusText(response.Code),
+		expectedStatus, http.StatusText(expectedStatus),
+		response.Req.Method, response.Req.URL, response.Body)
+}
+
+func assertHTTPErrorReason(t testing.TB, response *TestResponse, expectedStatus int, expectedReason string) {
+	var httpError struct {
+		Reason string `json:"reason"`
+	}
+	err := base.JSONUnmarshal(response.BodyBytes(), &httpError)
+	require.NoError(t, err, "Failed to unmarshal HTTP error: %v", response.BodyBytes())
+
+	assertStatus(t, response, expectedStatus)
+
+	assert.Equal(t, expectedReason, httpError.Reason)
+}
+
 // gocb V2 accepts expiry as a duration and converts to a uint32 epoch time, then does the reverse on retrieval.
 // Sync Gateway's bucket interface uses uint32 expiry. The net result is that expiry values written and then read via SG's
 // bucket API go through a transformation based on time.Now (or time.Until) that can result in inexact matches.

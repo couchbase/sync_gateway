@@ -198,6 +198,7 @@ type UnsupportedOptions struct {
 	SgrTlsSkipVerify          bool                     `json:"sgr_tls_skip_verify,omitempty"`           // Config option to enable self-signed certs for SG-Replicate testing.
 	RemoteConfigTlsSkipVerify bool                     `json:"remote_config_tls_skip_verify,omitempty"` // Config option to enable self signed certificates for external JavaScript load.
 	GuestReadOnly             bool                     `json:"guest_read_only,omitempty"`               // Config option to restrict GUEST document access to read-only
+	ForceAPIForbiddenErrors   bool                     `json:"force_api_forbidden_errors,omitempty"`    // Config option to force the REST API to return forbidden errors
 }
 
 type WarningThresholds struct {
@@ -1715,5 +1716,8 @@ func (context *DatabaseContext) LastSequence() (uint64, error) {
 // Helpers for unsupported options
 func (context *DatabaseContext) IsGuestReadOnly() bool {
 	return context.Options.UnsupportedOptions != nil && context.Options.UnsupportedOptions.GuestReadOnly
+}
 
+func (context *DatabaseContext) ForceAPIForbiddenErrors() bool {
+	return context.Options.UnsupportedOptions != nil && context.Options.UnsupportedOptions.ForceAPIForbiddenErrors
 }
