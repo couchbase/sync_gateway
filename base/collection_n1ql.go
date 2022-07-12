@@ -13,6 +13,7 @@ package base
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -23,15 +24,42 @@ import (
 
 var _ N1QLStore = &Collection{}
 
-// Keyspace for a collection is bucket name until wider collection support is added
-func (c *Collection) Keyspace() string {
-	return c.Bucket().Name()
+// EscapedKeyspace returns the escaped fully-qualified identifier for the keyspace (e.g. `bucket`.`scope`.`collection`)
+func (c *Collection) EscapedKeyspace() string {
+	if c.ScopeName() == DefaultScope && c.Name() == DefaultCollection {
+		return fmt.Sprintf("`%s`", c.BucketName())
+	}
+	return fmt.Sprintf("`%s`.`%s`.`%s`", c.BucketName(), c.ScopeName(), c.Name())
+}
+
+// IndexMetaBucketID returns the value of bucket_id for the system:indexes table for the collection.
+func (c *Collection) IndexMetaBucketID() string {
+	if c.ScopeName() == DefaultScope && c.Name() == DefaultCollection {
+		return ""
+	}
+	return c.BucketName()
+}
+
+// IndexMetaScopeID returns the value of scope_id for the system:indexes table for the collection.
+func (c *Collection) IndexMetaScopeID() string {
+	if c.ScopeName() == DefaultScope && c.Name() == DefaultCollection {
+		return ""
+	}
+	return c.ScopeName()
+}
+
+// IndexMetaKeyspaceID returns the value of keyspace_id for the system:indexes table for the collection.
+func (c *Collection) IndexMetaKeyspaceID() string {
+	if c.ScopeName() == DefaultScope && c.Name() == DefaultCollection {
+		return c.BucketName()
+	}
+	return c.Name()
 }
 
 func (c *Collection) Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (resultsIterator sgbucket.QueryResultIterator, err error) {
 	logCtx := context.TODO()
 
-	bucketStatement := strings.Replace(statement, KeyspaceQueryToken, c.Keyspace(), -1)
+	keyspaceStatement := strings.Replace(statement, KeyspaceQueryToken, c.EscapedKeyspace(), -1)
 
 	n1qlOptions := &gocb.QueryOptions{
 		ScanConsistency: gocb.QueryScanConsistency(consistency),
@@ -41,8 +69,8 @@ func (c *Collection) Query(statement string, params map[string]interface{}, cons
 
 	waitTime := 10 * time.Millisecond
 	for i := 1; i <= MaxQueryRetries; i++ {
-		TracefCtx(logCtx, KeyQuery, "Executing N1QL query: %v - %+v", UD(bucketStatement), UD(params))
-		queryResults, queryErr := c.runQuery(bucketStatement, n1qlOptions)
+		TracefCtx(logCtx, KeyQuery, "Executing N1QL query: %v - %+v", UD(keyspaceStatement), UD(params))
+		queryResults, queryErr := c.runQuery(keyspaceStatement, n1qlOptions)
 		if queryErr == nil {
 			resultsIterator := &gocbRawIterator{
 				rawResult:                  queryResults.Raw(),
@@ -58,7 +86,7 @@ func (c *Collection) Query(statement string, params map[string]interface{}, cons
 
 		// Non-retry error - return
 		if !isTransientIndexerError(queryErr) {
-			WarnfCtx(logCtx, "Error when querying index using statement: [%s] parameters: [%+v] error:%v", UD(bucketStatement), UD(params), queryErr)
+			WarnfCtx(logCtx, "Error when querying index using statement: [%s] parameters: [%+v] error:%v", UD(keyspaceStatement), UD(params), queryErr)
 			return resultsIterator, pkgerrors.WithStack(queryErr)
 		}
 
@@ -70,7 +98,7 @@ func (c *Collection) Query(statement string, params map[string]interface{}, cons
 		waitTime = waitTime * 2
 	}
 
-	WarnfCtx(logCtx, "Exceeded max retries for query when querying index using statement: [%s] parameters: [%+v], err:%v", UD(bucketStatement), UD(params), err)
+	WarnfCtx(logCtx, "Exceeded max retries for query when querying index using statement: [%s] parameters: [%+v], err:%v", UD(keyspaceStatement), UD(params), err)
 	return nil, err
 }
 
