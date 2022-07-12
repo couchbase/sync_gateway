@@ -37,7 +37,7 @@ const (
 // This gets replaced before the statement is sent to N1QL by the replaceSyncTokens methods.
 var syncNoXattr = fmt.Sprintf("%s.%s", base.KeyspaceQueryToken, base.SyncPropertyName)
 var syncXattr = "meta().xattrs." + base.SyncXattrName
-var syncXattrQuery = fmt.Sprintf("meta(%s).xattrs.%s", base.KeyspaceAlias, base.SyncXattrName) // Replacement for $sync token for xattr queries
+var syncXattrQuery = fmt.Sprintf("meta(%s).xattrs.%s", base.KeyspaceQueryAlias, base.SyncXattrName) // Replacement for $sync token for xattr queries
 
 type SGIndexType int
 
@@ -155,7 +155,7 @@ func init() {
 		readinessQuery, ok := readinessQueries[i]
 		if ok {
 			sgIndex.required = true
-			sgIndex.readinessQuery = fmt.Sprintf(readinessQuery, base.KeyspaceQueryToken, base.KeyspaceAlias)
+			sgIndex.readinessQuery = fmt.Sprintf(readinessQuery, base.KeyspaceQueryToken, base.KeyspaceQueryAlias)
 		}
 
 		sgIndexes[i] = sgIndex

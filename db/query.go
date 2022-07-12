@@ -55,7 +55,7 @@ var QueryAccess = SGQuery{
 			"FROM %s AS %s "+
 			"USE INDEX ($idx) "+
 			"WHERE any op in object_pairs($sync.access) satisfies op.name = $userName end;",
-		base.KeyspaceQueryToken, base.KeyspaceAlias),
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias),
 	adhoc: true,
 }
 
@@ -66,7 +66,7 @@ var QueryRoleAccess = SGQuery{
 			"FROM %s AS %s "+
 			"USE INDEX ($idx) "+
 			"WHERE any op in object_pairs($sync.role_access) satisfies op.name = $userName end;",
-		base.KeyspaceQueryToken, base.KeyspaceAlias),
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias),
 	adhoc: true,
 }
 
@@ -99,8 +99,8 @@ var QueryChannels = SGQuery{
 			"BETWEEN  [$channelName, $startSeq] AND [$channelName, $endSeq]) "+
 			"%s"+
 			"ORDER BY [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)]",
-		base.KeyspaceAlias,
-		base.KeyspaceQueryToken, base.KeyspaceAlias,
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
 		activeOnlyFilter),
 	adhoc: false,
 }
@@ -117,8 +117,8 @@ var QueryStarChannel = SGQuery{
 			"WHERE $sync.sequence >= $startSeq AND $sync.sequence < $endSeq "+
 			"AND META().id NOT LIKE '%s' %s"+
 			"ORDER BY $sync.sequence",
-		base.KeyspaceAlias,
-		base.KeyspaceQueryToken, base.KeyspaceAlias,
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
 		SyncDocWildcard, activeOnlyFilter),
 	adhoc: false,
 }
@@ -134,8 +134,8 @@ var QuerySequences = SGQuery{
 			"USE INDEX($idx) "+
 			"WHERE $sync.sequence IN $inSequences "+
 			"AND META().id NOT LIKE '%s'",
-		base.KeyspaceAlias,
-		base.KeyspaceQueryToken, base.KeyspaceAlias,
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
 		SyncDocWildcard),
 	adhoc: false,
 }
@@ -160,13 +160,13 @@ var QueryPrincipals = SGQuery{
 			"OR META(%s).id LIKE '%s') "+
 			"AND META(%s).id >= $%s "+ // Uses >= for inclusive startKey
 			"ORDER BY META(%s).id",
-		base.KeyspaceAlias,
-		base.KeyspaceQueryToken, base.KeyspaceAlias,
-		base.KeyspaceAlias, SyncDocWildcard,
-		base.KeyspaceAlias, `\\_sync:user:%`,
-		base.KeyspaceAlias, `\\_sync:role:%`,
-		base.KeyspaceAlias, QueryParamStartKey,
-		base.KeyspaceAlias),
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, SyncDocWildcard,
+		base.KeyspaceQueryAlias, `\\_sync:user:%`,
+		base.KeyspaceQueryAlias, `\\_sync:role:%`,
+		base.KeyspaceQueryAlias, QueryParamStartKey,
+		base.KeyspaceQueryAlias),
 	adhoc: false,
 }
 
@@ -187,13 +187,13 @@ var QueryUsers = SGQuery{
 			"WHERE META(%s).id LIKE '%s' "+
 			"AND META(%s).id >= $%s "+ // Using >= to match QueryPrincipals startKey handling
 			"ORDER BY META(%s).id",
-		base.KeyspaceAlias,
-		base.KeyspaceAlias,
-		base.KeyspaceAlias,
-		base.KeyspaceQueryToken, base.KeyspaceAlias,
-		base.KeyspaceAlias, `\\_sync:user:%`,
-		base.KeyspaceAlias, QueryParamStartKey,
-		base.KeyspaceAlias),
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, `\\_sync:user:%`,
+		base.KeyspaceQueryAlias, QueryParamStartKey,
+		base.KeyspaceQueryAlias),
 	adhoc: false,
 }
 
@@ -206,10 +206,10 @@ var QuerySessions = SGQuery{
 			"WHERE META(%s).id LIKE '%s' "+
 			"AND META(%s).id LIKE '%s' "+
 			"AND username = $userName",
-		base.KeyspaceAlias,
-		base.KeyspaceQueryToken, base.KeyspaceAlias,
-		base.KeyspaceAlias, SyncDocWildcard,
-		base.KeyspaceAlias, `\\_sync:session:%`),
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, SyncDocWildcard,
+		base.KeyspaceQueryAlias, `\\_sync:session:%`),
 	adhoc: false,
 }
 var QueryTombstones = SGQuery{
@@ -219,8 +219,8 @@ var QueryTombstones = SGQuery{
 			"FROM %s AS %s "+
 			"USE INDEX ($idx) "+
 			"WHERE $sync.tombstoned_at BETWEEN 0 AND $olderThan",
-		base.KeyspaceAlias,
-		base.KeyspaceQueryToken, base.KeyspaceAlias),
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias),
 	adhoc: false,
 }
 
@@ -243,9 +243,9 @@ var QueryAllDocs = SGQuery{
 			"META(%s).id NOT LIKE '%s' "+
 			"AND $sync IS NOT MISSING "+
 			"AND ($sync.flags IS MISSING OR BITTEST($sync.flags,1) = false)",
-		base.KeyspaceAlias,
-		base.KeyspaceQueryToken, base.KeyspaceAlias,
-		base.KeyspaceAlias, SyncDocWildcard),
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, SyncDocWildcard),
 	adhoc: false,
 }
 
