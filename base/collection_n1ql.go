@@ -26,34 +26,34 @@ var _ N1QLStore = &Collection{}
 
 // EscapedKeyspace returns the escaped fully-qualified identifier for the keyspace (e.g. `bucket`.`scope`.`collection`)
 func (c *Collection) EscapedKeyspace() string {
-	if c.ScopeName() != DefaultScope && c.Name() != DefaultCollection {
-		return fmt.Sprintf("`%s`.`%s`.`%s`", c.BucketName(), c.ScopeName(), c.Name())
+	if c.ScopeName() == DefaultScope && c.Name() == DefaultCollection {
+		return fmt.Sprintf("`%s`", c.BucketName())
 	}
-	return fmt.Sprintf("`%s`", c.BucketName())
+	return fmt.Sprintf("`%s`.`%s`.`%s`", c.BucketName(), c.ScopeName(), c.Name())
 }
 
 // IndexMetaBucketID returns the value of bucket_id for the system:indexes table for the collection.
 func (c *Collection) IndexMetaBucketID() string {
-	if c.ScopeName() != DefaultScope && c.Name() != DefaultCollection {
-		return c.BucketName()
+	if c.ScopeName() == DefaultScope && c.Name() == DefaultCollection {
+		return ""
 	}
-	return ""
+	return c.BucketName()
 }
 
 // IndexMetaScopeID returns the value of scope_id for the system:indexes table for the collection.
 func (c *Collection) IndexMetaScopeID() string {
-	if c.ScopeName() != DefaultScope && c.Name() != DefaultCollection {
-		return c.ScopeName()
+	if c.ScopeName() == DefaultScope && c.Name() == DefaultCollection {
+		return ""
 	}
-	return ""
+	return c.ScopeName()
 }
 
 // IndexMetaKeyspaceID returns the value of keyspace_id for the system:indexes table for the collection.
 func (c *Collection) IndexMetaKeyspaceID() string {
-	if c.ScopeName() != DefaultScope && c.Name() != DefaultCollection {
-		return c.Name()
+	if c.ScopeName() == DefaultScope && c.Name() == DefaultCollection {
+		return c.BucketName()
 	}
-	return c.BucketName()
+	return c.Name()
 }
 
 func (c *Collection) Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (resultsIterator sgbucket.QueryResultIterator, err error) {
