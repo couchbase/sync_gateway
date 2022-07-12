@@ -11,6 +11,9 @@ import (
 )
 
 func TestBlipGetCollections(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Can not run createScopesAndCollections with walrus")
+	}
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
