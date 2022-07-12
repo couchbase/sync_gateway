@@ -158,6 +158,7 @@ type DatabaseContextOptions struct {
 	ClientPartitionWindow         time.Duration
 	BcryptCost                    int
 	GroupID                       string
+	skipRegisterImportPIndex      bool // if set, skips the global gocb PIndex registration
 }
 
 type SGReplicateOptions struct {
@@ -294,7 +295,7 @@ func ConnectToBucket(spec base.BucketSpec) (base.Bucket, error) {
 type DBOnlineCallback func(dbContext *DatabaseContext)
 
 // Creates a new DatabaseContext on a bucket. The bucket will be closed when this context closes.
-func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, skipRegisterImportPindex bool, options DatabaseContextOptions) (dbc *DatabaseContext, returnedError error) {
+func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, options DatabaseContextOptions) (dbc *DatabaseContext, returnedError error) {
 	cleanupFunctions := make([]func(), 0)
 
 	defer func() {
@@ -309,8 +310,8 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, skip
 		return nil, err
 	}
 
-	if !skipRegisterImportPindex {
-		// Register the cbgt pindex type for the configGroup
+	// Register the cbgt pindex type for the configGroup
+	if !options.skipRegisterImportPIndex {
 		RegisterImportPindexImpl(options.GroupID)
 	}
 

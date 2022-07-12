@@ -649,7 +649,7 @@ func TestReplicateGroupIDAssignedNodes(t *testing.T) {
 	require.NoError(t, err)
 
 	// Set up replicators
-	dbDefault, err := NewDatabaseContext("default", tb, false, false, DatabaseContextOptions{GroupID: ""})
+	dbDefault, err := NewDatabaseContext("default", tb, false, DatabaseContextOptions{GroupID: ""})
 	require.NoError(t, err)
 	managerDefault, err := NewSGReplicateManager(dbDefault, cfgDefault)
 	require.NoError(t, err)
@@ -663,7 +663,7 @@ func TestReplicateGroupIDAssignedNodes(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	dbGroupA, err := NewDatabaseContext("groupa", tb, false, false, DatabaseContextOptions{GroupID: "GroupA"})
+	dbGroupA, err := NewDatabaseContext("groupa", tb, false, DatabaseContextOptions{GroupID: "GroupA"})
 	require.NoError(t, err)
 	managerGroupA, err := NewSGReplicateManager(dbGroupA, cfgGroupA)
 	require.NoError(t, err)
@@ -677,7 +677,7 @@ func TestReplicateGroupIDAssignedNodes(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	dbGroupB, err := NewDatabaseContext("groupb", tb, false, false, DatabaseContextOptions{GroupID: "GroupB"})
+	dbGroupB, err := NewDatabaseContext("groupb", tb, false, DatabaseContextOptions{GroupID: "GroupB"})
 	require.NoError(t, err)
 	managerGroupB, err := NewSGReplicateManager(dbGroupB, cfgGGroupB)
 	require.NoError(t, err)

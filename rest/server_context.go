@@ -501,7 +501,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	contextOptions.UseViews = useViews
 
 	// Create the DB Context
-	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, false, contextOptions)
+	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, contextOptions)
 	if err != nil {
 		return nil, err
 	}
