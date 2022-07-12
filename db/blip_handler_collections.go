@@ -1,13 +1,11 @@
 package db
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/couchbase/go-blip"
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -75,9 +73,8 @@ func (bh *blipHandler) handleGetCollections(rq *blip.Message) error {
 		key := CheckpointDocIDPrefix + requestBody.CheckpointIDs[i]
 		value, err := db.GetSpecial(DocTypeLocal, key)
 		if err != nil {
-
-			var missingError sgbucket.MissingError
-			if errors.As(err, &missingError) {
+			status, _ := base.ErrorAsHTTPStatus(err)
+			if status == http.StatusNotFound {
 				checkpoints[i] = Body{}
 			} else {
 				checkpoints[i] = nil
