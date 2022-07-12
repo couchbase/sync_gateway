@@ -31,17 +31,26 @@ func (c *Collection) EscapedFullyQualifiedKeyspace() string {
 
 // IndexMetaBucketID returns the value of bucket_id for the system:indexes table for the collection.
 func (c *Collection) IndexMetaBucketID() string {
-	return c.BucketName()
+	if c.ScopeName() != DefaultScope && c.Name() != DefaultCollection {
+		return c.BucketName()
+	}
+	return ""
 }
 
 // IndexMetaScopeID returns the value of scope_id for the system:indexes table for the collection.
 func (c *Collection) IndexMetaScopeID() string {
-	return c.ScopeName()
+	if c.ScopeName() != DefaultScope && c.Name() != DefaultCollection {
+		return c.ScopeName()
+	}
+	return ""
 }
 
 // IndexMetaKeyspaceID returns the value of keyspace_id for the system:indexes table for the collection.
 func (c *Collection) IndexMetaKeyspaceID() string {
-	return c.Name()
+	if c.ScopeName() != DefaultScope && c.Name() != DefaultCollection {
+		return c.Name()
+	}
+	return c.BucketName()
 }
 
 func (c *Collection) Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (resultsIterator sgbucket.QueryResultIterator, err error) {
