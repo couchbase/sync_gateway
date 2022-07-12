@@ -31,12 +31,12 @@ func TestBlipGetCollections(t *testing.T) {
 			},
 		},
 		createScopesAndCollections: true,
-		// This code will not work until leaky bucket works with collections
+		// This code will not work until leaky bucket works with collections CBG-2201
 		// TestBucket:                 base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{}),
 	})
 
 	defer rt.Close()
-	// This code will not work until leaky bucket works with collections
+	// This code will not work until leaky bucket works with collections CBG-2201
 	// checkpointIDWithError := "checkpointError"
 	// leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
 	// require.True(t, ok)
@@ -119,7 +119,7 @@ func TestBlipGetCollections(t *testing.T) {
 			resultBody: []db.Body{db.Body{}},
 			errorCode:  "",
 		},
-		// This code will not work until leaky bucket works with collections
+		// This code will not work until leaky bucket works with collections CBG-2201
 		//{
 		//	name: "checkpointExistsWithErrorInNonDefaultCollection",
 		//	requestBody: db.GetCollectionsRequestBody{
