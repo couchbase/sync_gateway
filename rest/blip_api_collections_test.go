@@ -27,7 +27,22 @@ func TestBlipGetCollections(t *testing.T) {
 				},
 			},
 		},
+		createScopesAndCollections: true,
+		TestBucket:                 base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{}),
 	})
+
+	defer rt.Close()
+	// This code will not work until leaky bucket works with collections
+	checkpointIDWithError := "checkpointError"
+	leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
+	require.True(t, ok)
+	leakyBucket.SetGetRawCallback(func(key string) error {
+		if key == db.CheckpointDocIDPrefix+checkpointIDWithError {
+			return fmt.Errorf("a unique error")
+		}
+		return nil
+	})
+
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
 	defer btc.Close()
@@ -100,6 +115,16 @@ func TestBlipGetCollections(t *testing.T) {
 			resultBody: []db.Body{db.Body{}},
 			errorCode:  "",
 		},
+		// This code will not work until leaky bucket works with collections
+		//{
+		//	name: "checkpointExistsWithErrorInNonDefaultCollection",
+		//	requestBody: db.GetCollectionsRequestBody{
+		//		CheckpointIDs: []string{checkpointIDWithError},
+		//		Collections:   []string{"fooScope.fooCollection"},
+		//	},
+		//	resultBody: []db.Body{nil},
+		//	errorCode:  "",
+		//},
 	}
 
 	for _, testCase := range testCases {
