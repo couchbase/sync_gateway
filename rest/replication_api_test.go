@@ -900,6 +900,8 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 		docIDs[i] = docID
 	}
 
+	require.NoError(t, remoteRT.WaitForPendingChanges())
+
 	// Create oneshot replication, verify running
 	replicationID := t.Name()
 	activeRT.createReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, false, db.ConflictResolverDefault)
