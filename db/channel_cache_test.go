@@ -29,7 +29,7 @@ func TestChannelCacheMaxSize(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 
-	dbCtx, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+	dbCtx, err := NewDatabaseContext("db", bucket, false, false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer dbCtx.Close()
 	cache := dbCtx.changeCache.getChannelCache()

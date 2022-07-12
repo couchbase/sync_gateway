@@ -294,7 +294,7 @@ func ConnectToBucket(spec base.BucketSpec) (base.Bucket, error) {
 type DBOnlineCallback func(dbContext *DatabaseContext)
 
 // Creates a new DatabaseContext on a bucket. The bucket will be closed when this context closes.
-func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, options DatabaseContextOptions) (dbc *DatabaseContext, returnedError error) {
+func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, skipRegisterImportPindex bool, options DatabaseContextOptions) (dbc *DatabaseContext, returnedError error) {
 	cleanupFunctions := make([]func(), 0)
 
 	defer func() {
@@ -309,8 +309,10 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		return nil, err
 	}
 
-	// Register the cbgt pindex type for the configGroup
-	RegisterImportPindexImpl(options.GroupID)
+	if !skipRegisterImportPindex {
+		// Register the cbgt pindex type for the configGroup
+		RegisterImportPindexImpl(options.GroupID)
+	}
 
 	dbContext := &DatabaseContext{
 		Name:       dbName,

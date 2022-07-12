@@ -58,7 +58,7 @@ func setupTestDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) *Da
 
 func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions DatabaseContextOptions) *Database {
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	context, err := NewDatabaseContext("db", tBucket, false, dbcOptions)
+	context, err := NewDatabaseContext("db", tBucket, false, false, dbcOptions)
 	require.NoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	require.NoError(t, err, "Couldn't create database 'db'")
@@ -70,7 +70,7 @@ func setupTestDBWithOptionsAndImport(t testing.TB, dbcOptions DatabaseContextOpt
 	if dbcOptions.GroupID == "" && base.IsEnterpriseEdition() {
 		dbcOptions.GroupID = t.Name()
 	}
-	context, err := NewDatabaseContext("db", base.GetTestBucket(t), true, dbcOptions)
+	context, err := NewDatabaseContext("db", base.GetTestBucket(t), true, false, dbcOptions)
 	require.NoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	require.NoError(t, err, "Couldn't create database 'db'")
@@ -107,7 +107,7 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) *Database {
 	_, incrErr := tBucket.Incr(base.SyncSeqKey, customSeq, customSeq, 0)
 	assert.NoError(t, incrErr, fmt.Sprintf("Couldn't increment %s seq by %d", base.SyncSeqPrefix, customSeq))
 
-	context, err := NewDatabaseContext("db", tBucket, false, dbcOptions)
+	context, err := NewDatabaseContext("db", tBucket, false, false, dbcOptions)
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assert.NoError(t, err, "Couldn't create database 'db'")
@@ -124,7 +124,7 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	testBucket := base.GetTestBucket(t)
 	leakyBucket := base.NewLeakyBucket(testBucket, leakyOptions)
-	context, err := NewDatabaseContext("db", leakyBucket, false, dbcOptions)
+	context, err := NewDatabaseContext("db", leakyBucket, false, false, dbcOptions)
 	if err != nil {
 		testBucket.Close()
 		t.Fatalf("Unable to create database context: %v", err)
@@ -1721,7 +1721,7 @@ func BenchmarkDatabase(b *testing.B) {
 			Server:          base.UnitTestUrl(),
 			CouchbaseDriver: base.ChooseCouchbaseDriver(base.DataBucket),
 			BucketName:      fmt.Sprintf("b-%d", i)})
-		context, _ := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+		context, _ := NewDatabaseContext("db", bucket, false, false, DatabaseContextOptions{})
 		db, _ := CreateDatabase(context)
 
 		body := Body{"key1": "value1", "key2": 1234}
@@ -1738,7 +1738,7 @@ func BenchmarkPut(b *testing.B) {
 		Server:          base.UnitTestUrl(),
 		CouchbaseDriver: base.ChooseCouchbaseDriver(base.DataBucket),
 		BucketName:      "Bucket"})
-	context, _ := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+	context, _ := NewDatabaseContext("db", bucket, false, false, DatabaseContextOptions{})
 	db, _ := CreateDatabase(context)
 
 	body := Body{"key1": "value1", "key2": 1234}
@@ -1908,7 +1908,7 @@ func TestNewDatabaseContextWithOIDCProviderOptions(t *testing.T) {
 				OIDCOptions: tc.inputOptions,
 			}
 			AddOptionsFromEnvironmentVariables(&options)
-			context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, options)
+			context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, false, options)
 			assert.NoError(t, err, "Couldn't create context for database 'db'")
 			defer context.Close()
 			assert.NotNil(t, context, "Database context should be created")
