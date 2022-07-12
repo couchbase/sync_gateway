@@ -1,11 +1,13 @@
 package db
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/couchbase/go-blip"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -70,11 +72,16 @@ func (bh *blipHandler) handleGetCollections(rq *blip.Message) error {
 		}
 		db = &Database{DatabaseContext: collection.CollectionCtx}
 
-		value, err := db.GetSpecial(DocTypeLocal, CheckpointDocIDPrefix+requestBody.CheckpointIDs[i])
+		key := CheckpointDocIDPrefix + requestBody.CheckpointIDs[i]
+		value, err := db.GetSpecial(DocTypeLocal, key)
 		if err != nil {
-			// handle key not found here specially
-			// this will return key "_sync:local:checkpoint/id" missing if collection exists but not present
-			checkpoints[i] = Body{}
+
+			var missingError sgbucket.MissingError
+			if errors.As(err, &missingError) {
+				checkpoints[i] = Body{}
+			} else {
+				checkpoints[i] = nil
+			}
 			continue
 		}
 		delete(value, BodyId)
