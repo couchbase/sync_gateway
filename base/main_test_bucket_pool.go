@@ -58,7 +58,8 @@ const (
 	tbpEnvVerbose = "SG_TEST_BUCKET_POOL_DEBUG"
 
 	// wait this long when requesting a test bucket from the pool before giving up and failing the test.
-	waitForReadyBucketTimeout = time.Minute
+	defaultWaitForReadyBucketTimeout = time.Minute
+	tbpEnvBucketTimeout              = "SG_TEST_BUCKET_TIMEOUT"
 )
 
 // TestBucketPool is used to manage a pool of gocb buckets on a Couchbase Server for testing purposes.
@@ -88,6 +89,9 @@ type TestBucketPool struct {
 	// keep track of tests that don't close their buckets, map of test names to bucket names
 	unclosedBuckets     map[string]map[string]struct{}
 	unclosedBucketsLock sync.Mutex
+
+	// waitForReadyBucketTimeout is set by tbpBucketTimeout on initialization - can be overridden with tbpEnvBucketTimeout
+	waitForReadyBucketTimeout time.Duration
 }
 
 // NewTestBucketPool initializes a new TestBucketPool. To be called from TestMain for packages requiring test buckets.
@@ -117,14 +121,15 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 	preserveBuckets, _ := strconv.ParseBool(os.Getenv(tbpEnvPreserve))
 
 	tbp := TestBucketPool{
-		integrationMode:        true,
-		readyBucketPool:        make(chan Bucket, numBuckets),
-		bucketReadierQueue:     make(chan tbpBucketName, numBuckets),
-		bucketReadierWaitGroup: &sync.WaitGroup{},
-		ctxCancelFunc:          ctxCancelFunc,
-		preserveBuckets:        preserveBuckets,
-		bucketInitFunc:         bucketInitFunc,
-		unclosedBuckets:        make(map[string]map[string]struct{}),
+		integrationMode:           true,
+		readyBucketPool:           make(chan Bucket, numBuckets),
+		bucketReadierQueue:        make(chan tbpBucketName, numBuckets),
+		bucketReadierWaitGroup:    &sync.WaitGroup{},
+		ctxCancelFunc:             ctxCancelFunc,
+		preserveBuckets:           preserveBuckets,
+		bucketInitFunc:            bucketInitFunc,
+		unclosedBuckets:           make(map[string]map[string]struct{}),
+		waitForReadyBucketTimeout: tbpBucketTimeout(),
 	}
 
 	tbp.cluster = newTestCluster(UnitTestUrl(), tbp.Logf)
@@ -289,9 +294,9 @@ func (tbp *TestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s Bucke
 	var bucket Bucket
 	select {
 	case bucket = <-tbp.readyBucketPool:
-	case <-time.After(waitForReadyBucketTimeout):
-		tbp.Logf(ctx, "Timed out after %s waiting for a bucket to become available.", waitForReadyBucketTimeout)
-		t.Fatalf("TEST: Timed out after %s waiting for a bucket to become available.", waitForReadyBucketTimeout)
+	case <-time.After(tbp.waitForReadyBucketTimeout):
+		tbp.Logf(ctx, "Timed out after %s waiting for a bucket to become available.", tbp.waitForReadyBucketTimeout)
+		t.Fatalf("TEST: Timed out after %s waiting for a bucket to become available.", tbp.waitForReadyBucketTimeout)
 	}
 	atomic.AddInt64(&tbp.stats.TotalWaitingForReadyBucketNano, time.Since(waitingBucketStart).Nanoseconds())
 	ctx = bucketCtx(ctx, bucket)
@@ -746,6 +751,19 @@ func tbpBucketQuotaMB() int {
 func tbpVerbose() bool {
 	verbose, _ := strconv.ParseBool(os.Getenv(tbpEnvVerbose))
 	return verbose
+}
+
+// tbpBucketTimeout returns the configured test bucket timeout.
+func tbpBucketTimeout() time.Duration {
+	timeout := defaultWaitForReadyBucketTimeout
+	if envTimeout := os.Getenv(tbpEnvBucketTimeout); envTimeout != "" {
+		var err error
+		timeout, err = time.ParseDuration(envTimeout)
+		if err != nil {
+			FatalfCtx(context.TODO(), "Couldn't parse %s: %v", tbpEnvBucketTimeout, err)
+		}
+	}
+	return timeout
 }
 
 // TestClusterUsername returns the configured cluster username.
