@@ -273,7 +273,7 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 
 	if revision.BodyBytes == nil {
 		if db.ForceAPIForbiddenErrors() {
-			base.InfofCtx(db.Ctx, base.KeyCRUD, "Doc: %s %s is missing", docid, revid)
+			base.InfofCtx(db.Ctx, base.KeyCRUD, "Doc: %s %s is missing", base.UD(docid), base.MD(revid))
 			return DocumentRevision{}, ErrForbidden
 		}
 		return DocumentRevision{}, ErrMissing
@@ -292,7 +292,7 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 	isAuthorized, redactedRev := db.authorizeUserForChannels(docid, revision.RevID, revision.Channels, revision.Deleted, requestedHistory)
 	if !isAuthorized {
 		if db.ForceAPIForbiddenErrors() {
-			base.InfofCtx(db.Ctx, base.KeyCRUD, "Not authorized to view doc: %s %s", docid, revid)
+			base.InfofCtx(db.Ctx, base.KeyCRUD, "Not authorized to view doc: %s %s", base.UD(docid), base.MD(revid))
 			return DocumentRevision{}, ErrForbidden
 		}
 		if revid == "" {
@@ -863,8 +863,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 			}
 		}
 
-		var docExistsConflict bool
-		var docRevConflict bool
+		var conflictErr error
 		// Make sure matchRev matches an existing leaf revision:
 		if matchRev == "" {
 			matchRev = doc.CurrentRev
@@ -872,14 +871,14 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 				// PUT with no parent rev given, but there is an existing current revision.
 				// This is OK as long as the current one is deleted.
 				if !doc.History[matchRev].Deleted {
-					docExistsConflict = true
+					conflictErr = base.HTTPErrorf(http.StatusConflict, "Document exists")
 				} else {
 					generation, _ = ParseRevID(matchRev)
 					generation++
 				}
 			}
 		} else if !doc.History.isLeaf(matchRev) || db.IsIllegalConflict(doc, matchRev, deleted, false, nil) {
-			docRevConflict = true
+			conflictErr = base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 		}
 
 		// Make up a new _rev, and add it to the history:
@@ -906,38 +905,22 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 		}
 
 		// Handle telling the user if there is a conflict
-		if docExistsConflict {
+		if conflictErr != nil {
 			if db.ForceAPIForbiddenErrors() {
 				// Make sure the user has permission to modify the document before confirming doc existence
 				mutableBody, metaMap, newRevID, err := db.prepareSyncFn(doc, newDoc)
 				if err != nil {
-					return nil, nil, false, nil, err
+					base.InfofCtx(db.Ctx, base.KeyCRUD, "Failed to prepare to run sync function: %v", err)
+					return nil, nil, false, nil, ErrForbidden
 				}
 
 				_, _, _, _, _, err = db.runSyncFn(doc, mutableBody, metaMap, newRevID)
 				if err != nil {
-					err = ErrForbidden
-					base.DebugfCtx(db.Ctx, base.KeyCRUD, "Could not modify doc %q due to document exists conflict and sync func rejection: %v", base.UD(doc.ID), err)
-					return nil, nil, false, nil, err
-				}
-			}
-			return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document exists")
-		}
-		if docRevConflict {
-			if db.ForceAPIForbiddenErrors() {
-				// Make sure the user has permission to modify the document before confirming doc existence
-				mutableBody, metaMap, newRevID, err := db.prepareSyncFn(doc, newDoc)
-				if err != nil {
-					return nil, nil, false, nil, err
-				}
-
-				_, _, _, _, _, err = db.runSyncFn(doc, mutableBody, metaMap, newRevID)
-				if err != nil {
-					base.DebugfCtx(db.Ctx, base.KeyCRUD, "Could not modify doc %q due to document revision conflict and sync func rejection: %v", base.UD(doc.ID), err)
+					base.DebugfCtx(db.Ctx, base.KeyCRUD, "Could not modify doc %q due to %s and sync func rejection: %v", base.UD(doc.ID), conflictErr, err)
 					return nil, nil, false, nil, ErrForbidden
 				}
 			}
-			return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+			return nil, nil, false, nil, conflictErr
 		}
 
 		// Process the attachments, and populate _sync with metadata. This alters 'body' so it has to
