@@ -85,10 +85,32 @@ func (bh *blipHandler) handleGetCollections(rq *blip.Message) error {
 		}
 		delete(value, BodyId)
 		checkpoints[i] = value
+		// Should we add this if connection is nil?
+		bh.collectionMapping = append(bh.collectionMapping, &Database{
+			DatabaseContext: collection.CollectionCtx,
+			user:            bh.blipContextDb.User(), Ctx: bh.db.Ctx,
+		})
 	}
 	response := rq.Response()
 	if response == nil {
 		return fmt.Errorf("Internal go-blip error generating request response")
 	}
 	return response.SetJSONBody(checkpoints)
+}
+
+func (bh *blipHandler) getCollectionDatabase(scopeAndCollection string) (*Database, error) {
+	scope, collectionName, err := parseScopeAndCollection(scopeAndCollection)
+	if err != nil {
+		return nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid specification for collection %q %s", scopeAndCollection, err)
+	}
+
+	scopeOnDb, ok := bh.db.Scopes[*scope]
+	if !ok {
+		return nil, base.HTTPErrorf(http.StatusNotFound, "%q does not exist for a scope", *scope)
+	}
+	collection, ok := scopeOnDb.Collections[*collectionName]
+	if !ok {
+		return nil, base.HTTPErrorf(http.StatusNotFound, "%q does not exist for a collection", scopeAndCollection)
+	}
+	return &Database{DatabaseContext: collection.CollectionCtx, user: bh.blipContextDb.User(), Ctx: bh.db.Ctx}, nil
 }

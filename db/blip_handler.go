@@ -30,20 +30,20 @@ import (
 
 // handlersByProfile defines the routes for each message profile (verb) of an incoming request to the function that handles it.
 var handlersByProfile = map[string]blipHandlerFunc{
-	MessageGetCheckpoint:   (*blipHandler).handleGetCheckpoint,
-	MessageSetCheckpoint:   (*blipHandler).handleSetCheckpoint,
-	MessageSubChanges:      userBlipHandler((*blipHandler).handleSubChanges),
-	MessageUnsubChanges:    userBlipHandler((*blipHandler).handleUnsubChanges),
-	MessageChanges:         userBlipHandler((*blipHandler).handleChanges),
-	MessageRev:             userBlipHandler((*blipHandler).handleRev),
-	MessageNoRev:           (*blipHandler).handleNoRev,
-	MessageGetAttachment:   userBlipHandler((*blipHandler).handleGetAttachment),
-	MessageProveAttachment: userBlipHandler((*blipHandler).handleProveAttachment),
-	MessageProposeChanges:  (*blipHandler).handleProposeChanges,
-	MessageGetRev:          userBlipHandler((*blipHandler).handleGetRev),
-	MessagePutRev:          userBlipHandler((*blipHandler).handlePutRev),
+	MessageGetCheckpoint:   collectionBlipHandler((*blipHandler).handleGetCheckpoint),
+	MessageSetCheckpoint:   collectionBlipHandler((*blipHandler).handleSetCheckpoint),
+	MessageSubChanges:      userBlipHandler(collectionBlipHandler((*blipHandler).handleSubChanges)),
+	MessageUnsubChanges:    userBlipHandler(collectionBlipHandler((*blipHandler).handleUnsubChanges)),
+	MessageChanges:         userBlipHandler(collectionBlipHandler((*blipHandler).handleChanges)),
+	MessageRev:             userBlipHandler(collectionBlipHandler((*blipHandler).handleRev)),
+	MessageNoRev:           collectionBlipHandler((*blipHandler).handleNoRev),
+	MessageGetAttachment:   userBlipHandler(collectionBlipHandler((*blipHandler).handleGetAttachment)),
+	MessageProveAttachment: userBlipHandler(collectionBlipHandler((*blipHandler).handleProveAttachment)),
+	MessageProposeChanges:  collectionBlipHandler((*blipHandler).handleProposeChanges),
+	MessageGetRev:          userBlipHandler(collectionBlipHandler((*blipHandler).handleGetRev)),
+	MessagePutRev:          userBlipHandler(collectionBlipHandler((*blipHandler).handlePutRev)),
 
-	MessageGetCollections: userBlipHandler((*blipHandler).handleGetCollections),
+	MessageGetCollections: userBlipHandler(collectionBlipHandler((*blipHandler).handleGetCollections)),
 }
 
 // maxInFlightChangesBatches is the maximum number of in-flight changes batches a client is allowed to send without being throttled.
@@ -51,8 +51,11 @@ const maxInFlightChangesBatches = 2
 
 type blipHandler struct {
 	*BlipSyncContext
-	db           *Database // Handler-specific copy of the BlipSyncContext's blipContextDb
-	serialNumber uint64    // This blip handler's serial number to differentiate logs w/ other handlers
+	db                *Database   // Handler-specific copy of the BlipSyncContext's blipContextDb
+	collection        *Database   // Handler-specific copy of the BlipSyncContext's collection specific DB
+	collectionMapping []*Database // Mapping of array id to collection mapping
+
+	serialNumber uint64 // This blip handler's serial number to differentiate logs w/ other handlers
 }
 
 // BlipSyncContextClientType represents whether to replicate to another Sync Gateway or Couchbase Lite
@@ -124,6 +127,32 @@ func (bh *blipHandler) refreshUser() error {
 	return nil
 }
 
+// userBlipHandler wraps another blip handler to specify a collection
+func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
+	return func(bh *blipHandler, bm *blip.Message) error {
+		collectionIndexStr, ok := bm.Properties[BlipCollection]
+		if !ok {
+			bh.collection = bh.db
+			return next(bh, bm)
+		}
+		collectionIndex, err := strconv.Atoi(collectionIndexStr)
+		if err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, "collection property needs to be an int, was %q", collectionIndexStr)
+		}
+
+		if len(bh.collectionMapping) == 0 {
+			return base.HTTPErrorf(http.StatusBadRequest, "Passing collection requires calling GetCollections first")
+		}
+
+		if len(bh.collectionMapping) <= collectionIndex {
+			return base.HTTPErrorf(http.StatusBadRequest, "Collection index %d does not match a collection set by GetCollections", collectionIndex)
+		}
+		bh.collection = bh.collectionMapping[collectionIndex]
+		// Call down to the underlying handler and return it's value
+		return next(bh, bm)
+	}
+}
+
 // ////// CHECKPOINTS
 
 // Received a "getCheckpoint" request
@@ -137,7 +166,7 @@ func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 		return nil
 	}
 
-	value, err := bh.db.GetSpecial(DocTypeLocal, CheckpointDocIDPrefix+client)
+	value, err := bh.collection.GetSpecial(DocTypeLocal, CheckpointDocIDPrefix+client)
 	if err != nil {
 		return err
 	}
@@ -165,7 +194,7 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 	if revID := checkpointMessage.rev(); revID != "" {
 		checkpoint[BodyRev] = revID
 	}
-	revID, err := bh.db.PutSpecial(DocTypeLocal, CheckpointDocIDPrefix+checkpointMessage.client(), checkpoint)
+	revID, err := bh.collection.PutSpecial(DocTypeLocal, CheckpointDocIDPrefix+checkpointMessage.client(), checkpoint)
 	if err != nil {
 		return err
 	}
@@ -183,12 +212,12 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	bh.changesCtxLock.Lock()
 	defer bh.changesCtxLock.Unlock()
 
-	defaultSince := bh.db.CreateZeroSinceValue()
+	defaultSince := bh.collection.CreateZeroSinceValue()
 	latestSeq := func() (SequenceID, error) {
-		seq, err := bh.db.LastSequence()
+		seq, err := bh.collection.LastSequence()
 		return SequenceID{Seq: seq}, err
 	}
-	subChangesParams, err := NewSubChangesParams(bh.loggingCtx, rq, defaultSince, latestSeq, bh.db.ParseSequenceID)
+	subChangesParams, err := NewSubChangesParams(bh.loggingCtx, rq, defaultSince, latestSeq, bh.collection.ParseSequenceID)
 	if err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid subChanges parameters")
 	}
@@ -365,7 +394,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 						}
 
 						// If the user has access to the doc through another channel don't send change
-						userHasAccessToDoc, err := UserHasDocAccess(bh.db, change.ID, item["rev"])
+						userHasAccessToDoc, err := UserHasDocAccess(bh.collection, change.ID, item["rev"])
 						if err == nil && userHasAccessToDoc {
 							continue
 						}
@@ -408,10 +437,10 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	// On forceClose, send notify to trigger immediate exit from change waiter
 	if forceClose {
 		user := ""
-		if bh.db.User() != nil {
-			user = bh.db.User().Name()
+		if bh.collection.User() != nil {
+			user = bh.collection.User().Name()
 		}
-		bh.db.DatabaseContext.NotifyTerminatedChanges(user)
+		bh.collection.DatabaseContext.NotifyTerminatedChanges(user)
 	}
 
 	return !forceClose
@@ -515,7 +544,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 		ignoreNoConflicts = val == trueProperty
 	}
 
-	if !ignoreNoConflicts && !bh.db.AllowConflicts() {
+	if !ignoreNoConflicts && !bh.collection.AllowConflicts() {
 		return ErrUseProposeChanges
 	}
 
@@ -556,7 +585,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	for _, change := range changeList {
 		docID := change[1].(string)
 		revID := change[2].(string)
-		missing, possible := bh.db.RevDiff(docID, []string{revID})
+		missing, possible := bh.collection.RevDiff(docID, []string{revID})
 		if nWritten > 0 {
 			output.Write([]byte(","))
 		}
@@ -582,7 +611,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 
 		if bh.purgeOnRemoval && bh.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV3 &&
 			(deletedFlags.HasFlag(changesDeletedFlagRevoked) || deletedFlags.HasFlag(changesDeletedFlagRemoved)) {
-			err := bh.db.Purge(docID)
+			err := bh.collection.Purge(docID)
 			if err != nil {
 				base.WarnfCtx(bh.loggingCtx, "Failed to purge document: %v", err)
 			}
@@ -681,7 +710,7 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 		if len(change) > 2 {
 			parentRevID = change[2].(string)
 		}
-		status, currentRev := bh.db.CheckProposedRev(docID, revID, parentRevID)
+		status, currentRev := bh.collection.CheckProposedRev(docID, revID, parentRevID)
 		if status != 0 {
 			// Skip writing trailing zeroes; but if we write a number afterwards we have to catch up
 			if nWritten > 0 {
@@ -838,7 +867,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		}
 		if removed, ok := body[BodyRemoved].(bool); ok && removed {
 			base.InfofCtx(bh.loggingCtx, base.KeySync, "Purging doc %v - removed at rev %v", base.UD(docID), revID)
-			if err := bh.db.Purge(docID); err != nil {
+			if err := bh.collection.Purge(docID); err != nil {
 				return err
 			}
 			stats.docsPurgedCount.Add(1)
@@ -871,7 +900,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		//       while retrieving deltaSrcRevID.  Couchbase Lite replication guarantees client has access to deltaSrcRevID,
 		//       due to no-conflict write restriction, but we still need to enforce security here to prevent leaking data about previous
 		//       revisions to malicious actors (in the scenario where that user has write but not read access).
-		deltaSrcRev, err := bh.db.GetRev(docID, deltaSrcRevID, false, nil)
+		deltaSrcRev, err := bh.collection.GetRev(docID, deltaSrcRevID, false, nil)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Can't fetch doc %s for deltaSrc=%s %v", base.UD(docID), deltaSrcRevID, err)
 		}
@@ -951,7 +980,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		// Look at attachments with revpos > the last common ancestor's
 		minRevpos := 1
 		if len(history) > 0 {
-			currentDoc, rawDoc, err := bh.db.GetDocumentWithRaw(bh.loggingCtx, docID, DocUnmarshalSync)
+			currentDoc, rawDoc, err := bh.collection.GetDocumentWithRaw(bh.loggingCtx, docID, DocUnmarshalSync)
 			// If we're able to obtain current doc data then we should use the common ancestor generation++ for min revpos
 			// as we will already have any attachments on the common ancestor so don't need to ask for them.
 			// Otherwise we'll have to go as far back as we can in the doc history and choose the last entry in there.
@@ -1044,9 +1073,9 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	// bh.conflictResolver != nil represents an active SGR2 and BLIPClientTypeSGR2 represents a passive SGR2
 	forceAllowConflictingTombstone := newDoc.Deleted && (bh.conflictResolver != nil || bh.clientType == BLIPClientTypeSGR2)
 	if bh.conflictResolver != nil {
-		_, _, err = bh.db.PutExistingRevWithConflictResolution(newDoc, history, true, bh.conflictResolver, forceAllowConflictingTombstone, rawBucketDoc)
+		_, _, err = bh.collection.PutExistingRevWithConflictResolution(newDoc, history, true, bh.conflictResolver, forceAllowConflictingTombstone, rawBucketDoc)
 	} else {
-		_, _, err = bh.db.PutExistingRev(newDoc, history, revNoConflicts, forceAllowConflictingTombstone, rawBucketDoc)
+		_, _, err = bh.collection.PutExistingRev(newDoc, history, revNoConflicts, forceAllowConflictingTombstone, rawBucketDoc)
 	}
 	if err != nil {
 		return err
@@ -1089,12 +1118,12 @@ func (bh *blipHandler) handleProveAttachment(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusBadRequest, "no digest sent with proveAttachment")
 	}
 
-	attData, err := bh.db.GetAttachment(base.AttPrefix + digest)
+	attData, err := bh.collection.GetAttachment(base.AttPrefix + digest)
 	if err != nil {
 		if bh.clientType == BLIPClientTypeSGR2 {
 			return ErrAttachmentNotFound
 		}
-		if base.IsKeyNotFoundError(bh.db.Bucket, err) {
+		if base.IsKeyNotFoundError(bh.collection.Bucket, err) {
 			return ErrAttachmentNotFound
 		}
 		return base.HTTPErrorf(http.StatusInternalServerError, fmt.Sprintf("Error getting client attachment: %v", err))
@@ -1141,7 +1170,7 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	}
 
 	attachmentKey := MakeAttachmentKey(allowedAttachment.version, docID, digest)
-	attachment, err := bh.db.GetAttachment(attachmentKey)
+	attachment, err := bh.collection.GetAttachment(attachmentKey)
 	if err != nil {
 		return err
 
@@ -1248,7 +1277,7 @@ func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, dig
 // For each attachment in the revision, makes sure it's in the database, asking the client to
 // upload it if necessary. This method blocks until all the attachments have been processed.
 func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Body, minRevpos int, docID string, currentDigests map[string]string) error {
-	return bh.db.ForEachStubAttachment(body, minRevpos, docID, currentDigests,
+	return bh.collection.ForEachStubAttachment(body, minRevpos, docID, currentDigests,
 		func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
 			// Request attachment if we don't have it
 			if knownData == nil {
