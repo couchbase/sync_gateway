@@ -899,7 +899,7 @@ All-replications:
   properties:
     replication_id:
       $ref: '#/Retrieved-replication'
-  title: All-replications
+  title: All replications
 Replication-status:
   type: object
   properties:
@@ -963,6 +963,29 @@ Replication-status:
   required:
     - replication_id
   title: Replication-status
+Scopes:
+  description: A map of all the collections with their corrosponding configs for this scope
+  type: object
+  properties:
+    collection_name:
+      $ref: '#/CollectionConfig'
+  title: Scopes
+CollectionConfig:
+  description: The configuration for the individual collection
+  type: object
+  properties:
+    SyncFn:
+      description: The Javascript function that newly created documents in this collection are ran through.
+      type: string
+      default: 'function(doc){channel(doc.channels);}'
+    ImportFilter:
+      description: |-
+        This is the function that all imported documents in this collection are ran through in order to filter out what to import and what not to import. This allows you to control what is made available to Couchbase Mobile clients. If it is not set, then no documents are filtered when imported.
+
+        `import_docs` in the database config must be true to make this field applicable.
+      type: string
+      example: 'function(doc) { if (doc.type != ''mobile'') { return false; } return true; }'
+  title: Collection config
 Database:
   description: The properties of a database configuration.
   type: object
@@ -1002,11 +1025,17 @@ Database:
       description: The maximum amount of query operations that can be running at any one point.
       type: integer
       default: 1000
+    scopes:
+      description: Scope and collection specific config.
+      type: object
+      properties:
+        scope_name:
+          $ref: '#/Scopes'
     name:
       description: The name of the database.
       type: string
     sync:
-      description: The Javascript function that newly created documents are ran through.
+      description: The Javascript function that newly created documents are ran through for the _default scope and collection.
       type: string
       default: 'function(doc){channel(doc.channels);}'
     users:
@@ -1042,7 +1071,7 @@ Database:
       default: 16
     import_filter:
       description: |-
-        This is the function that all imported documents are ran through in order to filter out what to import and what not to import. This allows you to control what is made available to Couchbase Mobile clients. If it is not set, then no documents are filtered when imported.
+        This is the function that all imported documents in the _default scope and collection are ran through in order to filter out what to import and what not to import. This allows you to control what is made available to Couchbase Mobile clients. If it is not set, then no documents are filtered when imported.
 
         `import_docs` must be true to make this field applicable.
       type: string
@@ -1268,6 +1297,9 @@ Database:
           type: boolean
         remote_config_tls_skip_verify:
           description: Enable self-signed certificates for external JavaScript load.
+          type: boolean
+        guest_read_only:
+          description: Restrict GUEST document access to read-only.
           type: boolean
     local_jwt:
       description: Configuration for Local JWT authentication.
