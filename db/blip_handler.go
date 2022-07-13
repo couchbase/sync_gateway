@@ -43,7 +43,7 @@ var handlersByProfile = map[string]blipHandlerFunc{
 	MessageGetRev:          userBlipHandler(collectionBlipHandler((*blipHandler).handleGetRev)),
 	MessagePutRev:          userBlipHandler(collectionBlipHandler((*blipHandler).handlePutRev)),
 
-	MessageGetCollections: userBlipHandler(collectionBlipHandler((*blipHandler).handleGetCollections)),
+	MessageGetCollections: userBlipHandler((*blipHandler).handleGetCollections),
 }
 
 // maxInFlightChangesBatches is the maximum number of in-flight changes batches a client is allowed to send without being throttled.
@@ -135,19 +135,22 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 			bh.collection = bh.db
 			return next(bh, bm)
 		}
+		if len(bh.collectionMapping) == 0 {
+			return base.HTTPErrorf(http.StatusBadRequest, "Passing collection requires calling GetCollections first")
+		}
+
 		collectionIndex, err := strconv.Atoi(collectionIndexStr)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "collection property needs to be an int, was %q", collectionIndexStr)
 		}
 
-		if len(bh.collectionMapping) == 0 {
-			return base.HTTPErrorf(http.StatusBadRequest, "Passing collection requires calling GetCollections first")
-		}
-
 		if len(bh.collectionMapping) <= collectionIndex {
-			return base.HTTPErrorf(http.StatusBadRequest, "Collection index %d does not match a collection set by GetCollections", collectionIndex)
+			return base.HTTPErrorf(http.StatusBadRequest, "Collection index %d is outside indexes set by GetCollections", collectionIndex)
 		}
 		bh.collection = bh.collectionMapping[collectionIndex]
+		if bh.collection == nil {
+			return base.HTTPErrorf(http.StatusBadRequest, "Collection index %d does not match a valid collection from GetCollections", collectionIndex)
+		}
 		// Call down to the underlying handler and return it's value
 		return next(bh, bm)
 	}

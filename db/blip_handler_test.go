@@ -89,6 +89,17 @@ func TestCollectionBlipHandler(t *testing.T) {
 			collectionMapping: []*Database{realCollectionDB0, realCollectionDB1},
 		},
 		{
+			name: "collectionPassedInGetCollectionsButHitErrorInGetCollections",
+			blipMessage: &blip.Message{
+				Properties: blip.Properties{
+					BlipCollection: "1",
+				},
+			},
+			err:               &base.HTTPError{Status: http.StatusBadRequest},
+			collection:        nil,
+			collectionMapping: []*Database{realCollectionDB0, nil},
+		},
+		{
 			name: "outOfRangeCollections",
 			blipMessage: &blip.Message{
 				Properties: blip.Properties{
