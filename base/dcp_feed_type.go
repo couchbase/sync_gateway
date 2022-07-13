@@ -19,7 +19,10 @@ type cbgtCreds struct {
 	password string
 }
 
-const SOURCE_GOCOUCHBASE_DCP_SG = "couchbase-dcp-sg"
+const (
+	SOURCE_GOCOUCHBASE_DCP_SG = "couchbase-dcp-sg"
+	SOURCE_GOCB_DCP_SG        = "gocb-dcp-sg"
+)
 
 // When SG isn't using x.509 authentication, it's necessary to pass bucket credentials
 // to cbgt for use when setting up the DCP feed.  These need to be passed as AuthUser and
@@ -40,6 +43,17 @@ func init() {
 		Description: "general/" + SOURCE_GOCOUCHBASE_DCP_SG +
 			" - a Couchbase Server bucket will be the data source," +
 			" via DCP protocol",
+		StartSample: cbgt.NewDCPFeedParams(),
+	})
+	cbgt.RegisterFeedType(SOURCE_GOCB_DCP_SG, &cbgt.FeedType{
+		Start:         SGGoCBFeedStartDCPFeed,
+		Partitions:    SGGoCBFeedPartitions,
+		PartitionSeqs: SGGoCBFeedPartitionSeqs,
+		Stats:         SGGoCBFeedStats,
+		Public:        false,
+		Description: "general/" + SOURCE_GOCB_DCP_SG +
+			" - a Couchbase Server bucket will be the data source," +
+			" via DCP protocol and GoCB",
 		StartSample: cbgt.NewDCPFeedParams(),
 	})
 }
@@ -130,6 +144,39 @@ func SGFeedSourceUUIDLookUp(sourceName, sourceParams, serverIn string, options m
 }
 
 */
+
+func SGGoCBFeedStartDCPFeed(mgr *cbgt.Manager, feedName, indexName, indexUUID,
+	sourceType, sourceName, bucketUUID, params string,
+	dests map[string]cbgt.Dest) error {
+
+	paramsWithAuth := addCbgtAuthToDCPParams(params)
+	return cbgt.StartGocbcoreDCPFeed(mgr, feedName, indexName, indexUUID, sourceType, sourceName, bucketUUID,
+		paramsWithAuth, dests)
+}
+
+func SGGoCBFeedPartitions(sourceType, sourceName, sourceUUID, sourceParams,
+	serverIn string, options map[string]string) (partitions []string, err error) {
+
+	sourceParamsWithAuth := addCbgtAuthToDCPParams(sourceParams)
+	return cbgt.CBPartitions(sourceType, sourceName, sourceUUID, sourceParamsWithAuth,
+		serverIn, options)
+}
+
+func SGGoCBFeedPartitionSeqs(sourceType, sourceName, sourceUUID,
+	sourceParams, serverIn string, options map[string]string) (map[string]cbgt.UUIDSeq, error) {
+
+	sourceParamsWithAuth := addCbgtAuthToDCPParams(sourceParams)
+	return cbgt.CBPartitionSeqs(sourceType, sourceName, sourceUUID, sourceParamsWithAuth,
+		serverIn, options)
+}
+
+func SGGoCBFeedStats(sourceType, sourceName, sourceUUID, sourceParams, serverIn string, options map[string]string,
+	statsKind string) (map[string]interface{}, error) {
+
+	sourceParamsWithAuth := addCbgtAuthToDCPParams(sourceParams)
+	return cbgt.CBStats(sourceType, sourceName, sourceUUID,
+		sourceParamsWithAuth, serverIn, options, statsKind)
+}
 
 // addCbgtAuthToDCPParams gets the dbName from the incoming dcpParams, and checks for credentials
 // stored in databaseCredentials.  If found, adds those to the params as authUser/authPassword.

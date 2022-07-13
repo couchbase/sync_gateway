@@ -88,7 +88,8 @@ func GenerateLegacyIndexName(dbName string) string {
 // will receive PIndexImpl callbacks (New, Open) for assigned PIndex to initiate DCP processing.
 func createCBGTIndex(c *CbgtContext, dbName string, configGroupID string, bucket Bucket, spec BucketSpec, numPartitions uint16) error {
 
-	sourceType := SOURCE_GOCOUCHBASE_DCP_SG
+	// FIXME: only use gocb on 7.0+
+	sourceType := SOURCE_GOCB_DCP_SG
 
 	bucketUUID, err := bucket.UUID()
 	if err != nil {
@@ -205,7 +206,7 @@ func dcpSafeIndexName(c *CbgtContext, dbName string) (safeIndexName, previousUUI
 
 	// Otherwise, remove legacy if it exists, and return new format
 	if legacyIndexUUID != "" {
-		deleteErr := c.Manager.DeleteIndexEx(legacyIndexName, "")
+		_, deleteErr := c.Manager.DeleteIndexEx(legacyIndexName, "")
 		if deleteErr != nil {
 			WarnfCtx(c.loggingCtx, "Error removing legacy import feed index: %v", deleteErr)
 		}
