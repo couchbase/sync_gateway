@@ -49,7 +49,7 @@ func (bh *blipHandler) handleGetCollections(rq *blip.Message) error {
 	if len(requestBody.Collections) != len(requestBody.CheckpointIDs) {
 		return base.HTTPErrorf(http.StatusBadRequest, "Length of collections must match length of checkpoint ids. Request body: %v", requestBody)
 	}
-	// assert that collections and checkpoint ids match len
+
 	checkpoints := make([]Body, len(requestBody.Collections))
 	for i, collection := range requestBody.Collections {
 		scope, collectionName, err := parseScopeAndCollection(collection)
@@ -77,6 +77,8 @@ func (bh *blipHandler) handleGetCollections(rq *blip.Message) error {
 			if status == http.StatusNotFound {
 				checkpoints[i] = Body{}
 			} else {
+				// TODO: CBG-2203 - should we return an error such that the client disconnects here?
+				base.WarnfCtx(bh.loggingCtx, "Unable to fetch client checkpoint %q for collection %s.%s", key, *scope, *collectionName)
 				checkpoints[i] = nil
 			}
 			continue
