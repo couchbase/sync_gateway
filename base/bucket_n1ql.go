@@ -12,6 +12,7 @@ package base
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -21,11 +22,12 @@ import (
 	"gopkg.in/couchbase/gocb.v1"
 )
 
-const KeyspaceQueryToken = "$_keyspace" // Token used for bucket name replacement in query statements
-const MaxQueryRetries = 30              // Maximum query retries on indexer error
-const IndexStateOnline = "online"       // bucket state value, as returned by SELECT FROM system:indexes.  Index has been created and built.
-const IndexStateDeferred = "deferred"   // bucket state value, as returned by SELECT FROM system:indexes.  Index has been created but not built.
-const IndexStatePending = "pending"     // bucket state value, as returned by SELECT FROM system:indexes.  Index has been created, build is in progress
+const KeyspaceQueryToken = "$_keyspace"           // Token used for keyspace name replacement in query statement. The replacement will be an escaped keyspace.
+const KeyspaceQueryAlias = "sgQueryKeyspaceAlias" // Keyspace alias set for the keyspace in FROM statements in queries
+const MaxQueryRetries = 30                        // Maximum query retries on indexer error
+const IndexStateOnline = "online"                 // bucket state value, as returned by SELECT FROM system:indexes.  Index has been created and built.
+const IndexStateDeferred = "deferred"             // bucket state value, as returned by SELECT FROM system:indexes.  Index has been created but not built.
+const IndexStatePending = "pending"               // bucket state value, as returned by SELECT FROM system:indexes.  Index has been created, build is in progress
 const PrimaryIndexName = "#primary"
 
 // IndexOptions used to build the 'with' clause
@@ -37,8 +39,23 @@ type N1qlIndexOptions struct {
 
 var _ N1QLStore = &CouchbaseBucketGoCB{}
 
-// Keyspace for a bucket is bucket name
-func (bucket *CouchbaseBucketGoCB) Keyspace() string {
+// Keyspace for a bucket in the default scope and collection can just be a bucket name
+func (bucket *CouchbaseBucketGoCB) EscapedKeyspace() string {
+	return fmt.Sprintf("`%s`", bucket.GetName())
+}
+
+// IndexMetaBucketID returns the value of bucket_id for the system:indexes table for the bucket.
+func (bucket *CouchbaseBucketGoCB) IndexMetaBucketID() string {
+	return ""
+}
+
+// IndexMetaScopeID returns the value of scope_id for the system:indexes table for the bucket.
+func (bucket *CouchbaseBucketGoCB) IndexMetaScopeID() string {
+	return ""
+}
+
+// IndexMetaKeyspaceID returns the value of keyspace_id for the system:indexes table for the bucket.
+func (bucket *CouchbaseBucketGoCB) IndexMetaKeyspaceID() string {
 	return bucket.GetName()
 }
 

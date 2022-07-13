@@ -103,12 +103,17 @@ if [ "${RUN_WALRUS}" == "true" ]; then
     go test -coverprofile=coverage_walrus_ce.out -coverpkg=github.com/couchbase/sync_gateway/... $GO_TEST_FLAGS github.com/couchbase/sync_gateway/${TARGET_PACKAGE} > verbose_unit_ce.out.raw 2>&1 | true
 fi
 
+DOCKER_CBS_ROOT_DIR="$(pwd)"
+if [ "${CBS_ROOT_DIR:-}" != "" ]; then
+    DOCKER_CBS_ROOT_DIR="${CBS_ROOT_DIR}"
+fi
+
 export SG_TEST_COUCHBASE_SERVER_DOCKER_NAME=couchbase
 # Start CBS
 docker stop ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} || true
 docker rm ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} || true
 # --volume: Makes and mounts a CBS folder for storing a CBCollect if needed
-docker run -d --name ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} --volume $(pwd)/cbs:/root --net=host couchbase/server:${COUCHBASE_SERVER_VERSION}
+docker run -d --name ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} --volume ${DOCKER_CBS_ROOT_DIR}/cbs:/root --net=host couchbase/server:${COUCHBASE_SERVER_VERSION}
 
 # Test to see if Couchbase Server is up
 # Each retry min wait 5s, max 10s. Retry 20 times with exponential backoff (delay 0), fail at 120s

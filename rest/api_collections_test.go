@@ -16,10 +16,11 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestCollectionsPutDocInKeyspace creates a collection and starts up a RestTester instance on it.
-// Ensures that various keyspaces can be used to insert a doc in the collection.
+// Ensures that various keyspaces can or can't be used to insert a doc in the collection.
 func TestCollectionsPutDocInKeyspace(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Walrus does not support scopes and collections")
@@ -104,4 +105,209 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCollectionsDCP(t *testing.T) {
+	t.Skip("Collections-aware DCP not implemented yet")
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Walrus does not support scopes and collections")
+	}
+
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		createScopesAndCollections: true,
+		TestBucket:                 tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				Scopes: ScopesConfig{
+					"foo": ScopeConfig{
+						Collections: map[string]CollectionConfig{
+							"bar": {},
+						},
+					},
+				},
+			},
+		},
+	})
+	defer rt.Close()
+
+	const docID = "doc1"
+
+	ok, err := tb.AddRaw(docID, 0, []byte(`{"test":true}`))
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	// ensure the doc is picked up by the import DCP feed and actually gets imported
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 1
+	})
+	require.NoError(t, err)
+
+	// ensure the doc comes back over the caching feed after import
+	assert.NoError(t, rt.WaitForDoc(docID))
+}
+
+// TestCollectionsBasicIndexQuery ensures that the bucket API is able to create an index on a collection
+// and query documents written to the collection.
+func TestCollectionsBasicIndexQuery(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Walrus does not support scopes and collections")
+	}
+
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		createScopesAndCollections: true,
+		TestBucket:                 tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				Scopes: ScopesConfig{
+					"foo": ScopeConfig{
+						Collections: map[string]CollectionConfig{
+							"bar": {},
+						},
+					},
+				},
+			},
+		},
+	})
+	defer rt.Close()
+
+	const (
+		scope      = "foo"
+		collection = "bar"
+		keyspace   = "db." + scope + "." + collection
+		docID      = "doc1"
+	)
+
+	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", keyspace, docID), `{"test":true}`)
+	requireStatus(t, resp, http.StatusCreated)
+
+	// use the rt.Bucket which has got the foo.bar scope/collection set up
+	n1qlStore, ok := base.AsN1QLStore(rt.Bucket())
+	require.True(t, ok)
+
+	idxName := t.Name() + "_primary"
+	require.NoError(t, n1qlStore.CreatePrimaryIndex(idxName, nil))
+	require.NoError(t, n1qlStore.WaitForIndexOnline(idxName))
+
+	res, err := n1qlStore.Query("SELECT keyspace_id, bucket_id, scope_id from system:indexes WHERE name = $idxName",
+		map[string]interface{}{"idxName": idxName}, base.RequestPlus, true)
+	require.NoError(t, err)
+
+	var indexMetaResult struct {
+		BucketID   *string `json:"bucket_id"`
+		ScopeID    *string `json:"scope_id"`
+		KeyspaceID *string `json:"keyspace_id"`
+	}
+	require.NoError(t, res.One(&indexMetaResult))
+	require.NotNil(t, indexMetaResult)
+
+	// if the index was created on the _default collection in the bucket, keyspace_id is the bucket name, and the other fields are not present.
+	assert.NotNilf(t, indexMetaResult.BucketID, "bucket_id was not present - index was created on the _default collection!")
+	assert.NotNilf(t, indexMetaResult.ScopeID, "scope_id was not present - index was created on the _default collection!")
+	require.NotNilf(t, indexMetaResult.KeyspaceID, "keyspace_id should be present")
+	assert.NotEqualf(t, tb.Bucket.GetName(), *indexMetaResult.KeyspaceID, "keyspace_id was the bucket name - index was created on the _default collection!")
+
+	// if the index was created on a collection, the keyspace_id becomes the collection, along with additional fields for bucket and scope.
+	assert.Equal(t, tb.Bucket.GetName(), *indexMetaResult.BucketID)
+	assert.Equal(t, scope, *indexMetaResult.ScopeID)
+	assert.Equal(t, collection, *indexMetaResult.KeyspaceID)
+
+	// try and query the document that we wrote via SG
+	res, err = n1qlStore.Query("SELECT test FROM "+base.KeyspaceQueryToken+" WHERE test = true", nil, base.RequestPlus, true)
+	require.NoError(t, err)
+
+	var primaryQueryResult struct {
+		Test *bool `json:"test"`
+	}
+	require.NoError(t, res.One(&primaryQueryResult))
+	require.NotNil(t, primaryQueryResult)
+
+	assert.True(t, *primaryQueryResult.Test)
+}
+
+// TestCollectionsSGIndexQuery is more of an end-to-end test to ensure SG indexes are built correctly,
+// and the channel access query is able to run when pulling a document as a user, and backfill the channel cache.
+func TestCollectionsSGIndexQuery(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Walrus does not support scopes and collections")
+	}
+
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeyHTTP, base.KeyQuery, base.KeyCRUD)
+
+	// force GSI for this one test
+	useViews := base.BoolPtr(false)
+
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
+	const (
+		username       = "alice"
+		password       = "letmein"
+		validChannel   = "valid"
+		invalidChannel = "invalid"
+
+		scope      = "foo"
+		collection = "bar"
+		keyspace   = "db." + scope + "." + collection
+
+		validDocID   = "doc1"
+		invalidDocID = "doc2"
+	)
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		createScopesAndCollections: true,
+		TestBucket:                 tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				UseViews: useViews,
+				Users: map[string]*auth.PrincipalConfig{
+					username: {
+						ExplicitChannels: base.SetOf(validChannel),
+						Password:         base.StringPtr(password),
+					},
+				},
+				Scopes: ScopesConfig{
+					scope: ScopeConfig{
+						Collections: map[string]CollectionConfig{
+							collection: {},
+						},
+					},
+				},
+			},
+		},
+	})
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", keyspace, validDocID), `{"test": true, "channels": ["`+validChannel+`"]}`)
+	requireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", keyspace, invalidDocID), `{"test": true, "channels": ["`+invalidChannel+`"]}`)
+	requireStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/_all_docs", ``, nil, username, password)
+	requireStatus(t, resp, http.StatusOK)
+	var allDocsResponse struct {
+		TotalRows int `json:"total_rows"`
+		Rows      []struct {
+			ID string `json:"id"`
+		} `json:"rows"`
+	}
+	require.NoError(t, base.JSONDecoder(resp.Body).Decode(&allDocsResponse))
+	assert.Equal(t, 1, allDocsResponse.TotalRows)
+	require.Len(t, allDocsResponse.Rows, 1)
+	assert.Equal(t, validDocID, allDocsResponse.Rows[0].ID)
+
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, fmt.Sprintf("/%s/%s", keyspace, validDocID), ``, nil, username, password)
+	requireStatus(t, resp, http.StatusOK)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, fmt.Sprintf("/%s/%s", keyspace, invalidDocID), ``, nil, username, password)
+	requireStatus(t, resp, http.StatusForbidden)
+
+	// TODO: This will fail until the caching DCP feed is working on the collection, as the changes feed falls into a deferred backfill.
+	// _, err := rt.waitForChanges(1, "/db/_changes", username, false)
+	// assert.NoError(t, err)
 }

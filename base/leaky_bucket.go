@@ -488,12 +488,36 @@ func (b *LeakyBucket) IsSupported(feature sgbucket.DataStoreFeature) bool {
 	return b.bucket.IsSupported(feature)
 }
 
-func (b *LeakyBucket) Keyspace() string {
+func (b *LeakyBucket) EscapedKeyspace() string {
 	n1qlStore, ok := AsN1QLStore(b.bucket)
 	if !ok {
 		return ""
 	}
-	return n1qlStore.Keyspace()
+	return n1qlStore.EscapedKeyspace()
+}
+
+func (b *LeakyBucket) IndexMetaKeyspaceID() string {
+	n1qlStore, ok := AsN1QLStore(b.bucket)
+	if !ok {
+		return ""
+	}
+	return n1qlStore.IndexMetaKeyspaceID()
+}
+
+func (b *LeakyBucket) IndexMetaScopeID() string {
+	n1qlStore, ok := AsN1QLStore(b.bucket)
+	if !ok {
+		return ""
+	}
+	return n1qlStore.IndexMetaScopeID()
+}
+
+func (b *LeakyBucket) IndexMetaBucketID() string {
+	n1qlStore, ok := AsN1QLStore(b.bucket)
+	if !ok {
+		return ""
+	}
+	return n1qlStore.IndexMetaBucketID()
 }
 
 func (b *LeakyBucket) Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (results sgbucket.QueryResultIterator, err error) {
