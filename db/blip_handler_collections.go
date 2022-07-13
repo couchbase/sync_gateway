@@ -9,10 +9,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-func isDefaultScopeAndCollection(scope, collection string) bool {
-	return scope == base.DefaultScope && collection == base.DefaultCollection
-}
-
 func parseScopeAndCollection(sc string) (scope, collection *string, err error) {
 
 	parts := strings.Split(sc, base.ScopeCollectionSeparator)
@@ -57,34 +53,37 @@ func (bh *blipHandler) handleGetCollections(rq *blip.Message) error {
 			return base.HTTPErrorf(http.StatusBadRequest, "Invalid specification for collection: %s", err)
 		}
 
-		var db *Database
 		scopeOnDb, ok := bh.db.Scopes[*scope]
 		if !ok {
 			checkpoints[i] = nil
+			bh.collectionMapping = append(bh.collectionMapping, nil)
 			continue
 		}
 		collection, ok := scopeOnDb.Collections[*collectionName]
 		if !ok {
 			checkpoints[i] = nil
+			bh.collectionMapping = append(bh.collectionMapping, nil)
 			continue
 		}
-		db = &Database{DatabaseContext: collection.CollectionCtx}
-
 		key := CheckpointDocIDPrefix + requestBody.CheckpointIDs[i]
-		value, err := db.GetSpecial(DocTypeLocal, key)
+		collectionDB := &Database{DatabaseContext: collection.CollectionCtx, user: bh.blipContextDb.User(), Ctx: bh.db.Ctx}
+		value, err := collectionDB.GetSpecial(DocTypeLocal, key)
 		if err != nil {
 			status, _ := base.ErrorAsHTTPStatus(err)
 			if status == http.StatusNotFound {
 				checkpoints[i] = Body{}
+				bh.collectionMapping = append(bh.collectionMapping, collectionDB)
 			} else {
 				// TODO: CBG-2203 - should we return an error such that the client disconnects here?
 				base.WarnfCtx(bh.loggingCtx, "Unable to fetch client checkpoint %q for collection %s.%s", key, *scope, *collectionName)
 				checkpoints[i] = nil
+				bh.collectionMapping = append(bh.collectionMapping, nil)
 			}
 			continue
 		}
 		delete(value, BodyId)
 		checkpoints[i] = value
+		bh.collectionMapping = append(bh.collectionMapping, collectionDB)
 	}
 	response := rq.Response()
 	if response == nil {

@@ -1,7 +1,6 @@
 package db
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -57,36 +56,6 @@ func TestParseScopeCollection(t *testing.T) {
 			require.Equal(t, testCase.scope, scope)
 			require.Equal(t, testCase.collection, collection)
 
-		})
-	}
-}
-
-func TestIsDefaultCollection(t *testing.T) {
-	testCases := []struct {
-		scope      string
-		collection string
-		isDefault  bool
-	}{
-		{
-			scope:      "foo",
-			collection: "bar",
-			isDefault:  false,
-		},
-		{
-			scope:      "_default",
-			collection: "bar",
-			isDefault:  false,
-		},
-
-		{
-			scope:      "_default",
-			collection: "_default",
-			isDefault:  true,
-		},
-	}
-	for _, testCase := range testCases {
-		t.Run(fmt.Sprintf("%s.%s", testCase.scope, testCase.collection), func(t *testing.T) {
-			require.Equal(t, testCase.isDefault, isDefaultScopeAndCollection(testCase.scope, testCase.collection))
 		})
 	}
 }
