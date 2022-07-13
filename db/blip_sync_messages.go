@@ -36,6 +36,8 @@ const (
 	MessageGetRev          = "getRev"       // Connected Client API
 	MessagePutRev          = "putRev"       // Connected Client API
 	MessageUnsubChanges    = "unsubChanges" // Connected Client API
+
+	MessageGetCollections = "getCollections" // Connected Client API
 )
 
 // Message properties
@@ -114,6 +116,8 @@ const (
 	BlipErrorDomain = "Error-Domain"
 	BlipErrorCode   = "Error-Code"
 )
+
+const CheckpointDocIDPrefix = "checkpoint/"
 
 const falseProperty = "false"
 const trueProperty = "true"
@@ -479,4 +483,25 @@ func (g *getAttachmentParams) String() string {
 type IncludeConflictRevEntry struct {
 	Status ProposedRevStatus `json:"status"`
 	Rev    string            `json:"rev"`
+}
+
+// GetCollectionsRequestBody contains matching length arrays of [scope]/collection names and checkpoint IDs
+type GetCollectionsRequestBody struct {
+	Collections   []string `json:"collections"`
+	CheckpointIDs []string `json:"checkpoint_ids"`
+}
+
+func (b *GetCollectionsRequestBody) String() string {
+	return fmt.Sprintf("Collections: %v, CheckpointIds: %v", b.Collections, b.CheckpointIDs)
+}
+
+// NewGetCollectionsMessage constructs a message request from a clientID provided by API, and keyspaces that match collections
+func NewGetCollectionsMessage(body GetCollectionsRequestBody) (*blip.Message, error) {
+	msg := blip.NewRequest()
+	msg.SetProfile(MessageGetCollections)
+	err := msg.SetJSONBody(body)
+	if err != nil {
+		return nil, err
+	}
+	return msg, nil
 }

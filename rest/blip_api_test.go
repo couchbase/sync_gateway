@@ -4613,12 +4613,12 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 func TestUnsubChanges(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
+
 	defer rt.Close()
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
 	defer btc.Close()
-
 	// Confirm no error message or panic is returned in response
 	response, err := btc.UnsubPullChanges()
 	assert.NoError(t, err)

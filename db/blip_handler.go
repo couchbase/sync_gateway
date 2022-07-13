@@ -42,6 +42,8 @@ var handlersByProfile = map[string]blipHandlerFunc{
 	MessageProposeChanges:  (*blipHandler).handleProposeChanges,
 	MessageGetRev:          userBlipHandler((*blipHandler).handleGetRev),
 	MessagePutRev:          userBlipHandler((*blipHandler).handlePutRev),
+
+	MessageGetCollections: userBlipHandler((*blipHandler).handleGetCollections),
 }
 
 // maxInFlightChangesBatches is the maximum number of in-flight changes batches a client is allowed to send without being throttled.
@@ -135,7 +137,7 @@ func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 		return nil
 	}
 
-	value, err := bh.db.GetSpecial(DocTypeLocal, checkpointDocIDPrefix+client)
+	value, err := bh.db.GetSpecial(DocTypeLocal, CheckpointDocIDPrefix+client)
 	if err != nil {
 		return err
 	}
@@ -163,7 +165,7 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 	if revID := checkpointMessage.rev(); revID != "" {
 		checkpoint[BodyRev] = revID
 	}
-	revID, err := bh.db.PutSpecial(DocTypeLocal, checkpointDocIDPrefix+checkpointMessage.client(), checkpoint)
+	revID, err := bh.db.PutSpecial(DocTypeLocal, CheckpointDocIDPrefix+checkpointMessage.client(), checkpoint)
 	if err != nil {
 		return err
 	}
