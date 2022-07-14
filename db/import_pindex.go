@@ -42,7 +42,6 @@ func RegisterImportPindexImpl(configGroup string) {
 // getListenerForIndex looks up the importListener for the dbName specified in the index params
 func getListenerImportDest(indexParams string) (cbgt.Dest, error) {
 
-	// FIXME
 	var outerParams struct {
 		Params string `json:"params"`
 	}

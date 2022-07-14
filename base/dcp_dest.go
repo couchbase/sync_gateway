@@ -48,7 +48,7 @@ func init() {
 	for i := 0; i < len(vbucketIdStrings); i++ {
 		vbucketIdStrings[i] = fmt.Sprintf("%d", i)
 	}
-	feedType = cbgtFeedType_gocb // FIXME: only use gocb on v7.0+
+	feedType = cbgtFeedType_gocb // TODO(CBG-2196): only use gocb on v7.0+
 	cbgt.DCPFeedPrefix = "sg:"
 }
 
