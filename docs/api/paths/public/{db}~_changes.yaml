@@ -148,6 +148,7 @@ post:
   tags:
     - Database Management
 head:
+  summary: /{db}/_changes
   responses:
     '200':
       description: OK

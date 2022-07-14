@@ -106,6 +106,7 @@ delete:
     - Public only endpoints
     - Session
 head:
+  summary: /{db}/_session
   responses:
     '200':
       description: OK

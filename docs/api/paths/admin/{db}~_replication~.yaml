@@ -45,6 +45,7 @@ post:
     - Admin only endpoints
     - Replication
 head:
+  summary: /{db}/_replication/
   responses:
     '200':
       description: OK

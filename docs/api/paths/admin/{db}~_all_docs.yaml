@@ -67,6 +67,7 @@ post:
   tags:
     - Document
 head:
+  summary: /{db}/_all_docs
   responses:
     '200':
       description: OK

@@ -18,6 +18,7 @@ get:
     - Admin only endpoints
     - Database Management
 head:
+  summary: /_all_dbs
   description: |-
     Required Sync Gateway RBAC roles:
     * Sync Gateway Dev Ops

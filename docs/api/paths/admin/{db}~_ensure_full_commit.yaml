@@ -1,7 +1,7 @@
 parameters:
   - $ref: ../../components/parameters.yaml#/db
 post:
-  summary: ''
+  summary: '/{db}/_ensure_full_commit'
   description: |-
     This endpoint is non-functional but is present for CouchDB compatibility.
 
