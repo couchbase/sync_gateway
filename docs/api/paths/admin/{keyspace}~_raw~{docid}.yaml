@@ -105,6 +105,7 @@ get:
     - Admin only endpoints
     - Document
 head:
+  summary: /{keyspace}/_raw/{docid}
   responses:
     '200':
       description: Document exists

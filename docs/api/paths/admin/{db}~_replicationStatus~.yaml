@@ -27,6 +27,7 @@ get:
     - Admin only endpoints
     - Replication
 head:
+  summary: /{db}/_replicationStatus/
   responses:
     '200':
       description: OK

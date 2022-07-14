@@ -51,6 +51,7 @@ post:
     - Admin only endpoints
     - Database Security
 head:
+  summary: /{db}/_users/
   responses:
     '200':
       description: OK

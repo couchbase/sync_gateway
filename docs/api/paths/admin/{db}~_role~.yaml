@@ -50,6 +50,7 @@ post:
     - Admin only endpoints
     - Database Security
 head:
+  summary: /{db}/_role/
   responses:
     '200':
       description: OK
