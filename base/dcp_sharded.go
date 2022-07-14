@@ -286,7 +286,7 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 		}
 		serverURL = strings.Join(serverURLs, ";")
 	} else {
-		serverURL, err = spec.GetGoCBConnString()
+		serverURL, err = spec.GetGoCBConnString(true)
 		if err != nil {
 			return nil, err
 		}

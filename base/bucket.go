@@ -197,7 +197,7 @@ func (spec BucketSpec) UseClientCert() bool {
 }
 
 // GetGoCBConnString builds a gocb (v1 or v2 depending on the BucketSpec.CouchbaseDriver) connection string based on BucketSpec.Server.
-func (spec *BucketSpec) GetGoCBConnString() (string, error) {
+func (spec *BucketSpec) GetGoCBConnString(dcp bool) (string, error) {
 	connSpec, err := gocbconnstr.Parse(spec.Server)
 	if err != nil {
 		return "", err
@@ -210,12 +210,16 @@ func (spec *BucketSpec) GetGoCBConnString() (string, error) {
 	asValues := url.Values(connSpec.Options)
 
 	// Add kv_pool_size as used in both GoCB versions
-	poolSizeFromConnStr := asValues.Get("kv_pool_size")
-	if poolSizeFromConnStr == "" {
-		asValues.Set("kv_pool_size", DefaultGocbKvPoolSize)
-		spec.KvPoolSize, _ = strconv.Atoi(DefaultGocbKvPoolSize)
+	if dcp {
+		spec.KvPoolSize = 1
 	} else {
-		spec.KvPoolSize, _ = strconv.Atoi(poolSizeFromConnStr)
+		poolSizeFromConnStr := asValues.Get("kv_pool_size")
+		if poolSizeFromConnStr == "" {
+			asValues.Set("kv_pool_size", DefaultGocbKvPoolSize)
+			spec.KvPoolSize, _ = strconv.Atoi(DefaultGocbKvPoolSize)
+		} else {
+			spec.KvPoolSize, _ = strconv.Atoi(poolSizeFromConnStr)
+		}
 	}
 
 	if spec.CouchbaseDriver == GoCBv2 {

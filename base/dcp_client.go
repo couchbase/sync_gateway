@@ -175,7 +175,7 @@ func (dc *DCPClient) close() {
 }
 
 func (dc *DCPClient) initAgent(spec BucketSpec) error {
-	connStr, err := spec.GetGoCBConnString()
+	connStr, err := spec.GetGoCBConnString(true)
 	if err != nil {
 		return err
 	}

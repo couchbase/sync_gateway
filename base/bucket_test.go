@@ -112,7 +112,7 @@ func TestGetGoCBConnString(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			actualConnStr, err := test.bucketSpec.GetGoCBConnString()
+			actualConnStr, err := test.bucketSpec.GetGoCBConnString(false)
 			assert.NoError(t, err, "Unexpected error creating connection string for bucket spec")
 			assert.Equal(t, test.expectedConnStr, actualConnStr)
 		})
