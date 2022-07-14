@@ -2387,6 +2387,8 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
+	require.NoError(t, db.WaitForPendingChanges(base.TestCtx(t)))
+
 	leakyBucket, ok := base.AsLeakyBucket(db.Bucket)
 	require.True(t, ok)
 
