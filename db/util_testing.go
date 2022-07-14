@@ -179,8 +179,9 @@ func emptyAllDocsIndex(ctx context.Context, b base.Bucket, tbp *base.TestBucketP
 	purgeBody := Body{"_purged": true}
 
 	dbCtx, err := NewDatabaseContext(b.GetName(), base.NoCloseClone(b), false, DatabaseContextOptions{
-		UseViews:    base.TestsDisableGSI(),
-		EnableXattr: base.TestUseXattrs(),
+		UseViews:                 base.TestsDisableGSI(),
+		EnableXattr:              base.TestUseXattrs(),
+		skipRegisterImportPIndex: true,
 	})
 	if err != nil {
 		return 0, err

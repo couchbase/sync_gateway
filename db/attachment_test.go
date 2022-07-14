@@ -47,18 +47,13 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	xattrsEnabled := base.TestUseXattrs()
 
 	bucket := base.GetTestBucket(t)
-	dbCtx, err := NewDatabaseContext(
-		"db",
-		bucket,
-		false,
-		DatabaseContextOptions{
-			EnableXattr: xattrsEnabled,
-			DeltaSyncOptions: DeltaSyncOptions{
-				Enabled:          deltasEnabled,
-				RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
-			},
+	dbCtx, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{
+		EnableXattr: xattrsEnabled,
+		DeltaSyncOptions: DeltaSyncOptions{
+			Enabled:          deltasEnabled,
+			RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
 		},
-	)
+	})
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	defer dbCtx.Close()
 	db, err := CreateDatabase(dbCtx)
