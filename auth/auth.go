@@ -625,7 +625,7 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) (U
 	return user, nil
 }
 
-func (auth *Authenticator) AuthenticateUntrustedJWT(rawToken string, oidcProviders OIDCProviderMap, localJWT LocalJWTConfig, callbackURLFunc OIDCCallbackURLFunc) (User, PrincipalConfig, error) {
+func (auth *Authenticator) AuthenticateUntrustedJWT(rawToken string, oidcProviders OIDCProviderMap, localJWT LocalJWTProviderMap, callbackURLFunc OIDCCallbackURLFunc) (User, PrincipalConfig, error) {
 	token, err := jwt.ParseSigned(rawToken)
 	if err != nil {
 		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error parsing JWT in AuthenticateUntrustedJWT: %v", err)
@@ -637,31 +637,25 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(rawToken string, oidcProvide
 		return nil, PrincipalConfig{}, err
 	}
 
-	var (
-		authenticatorName string
-		authenticator     jwtAuthenticator
-	)
+	var authenticator jwtAuthenticator
 
 	if single, ok := oidcProviders.getProviderWhenSingle(); ok && len(localJWT) == 0 {
 		authenticator = single
-		authenticatorName = single.Name
 	}
 	if authenticator == nil {
-		for name, provider := range oidcProviders {
+		for _, provider := range oidcProviders {
 			if provider.ValidFor(issuer, audiences) {
 				base.TracefCtx(auth.LogCtx, base.KeyAuth, "Using OIDC provider %v", base.UD(provider.Issuer))
-				authenticatorName = name
 				authenticator = provider
 				break
 			}
 		}
 	}
 	if authenticator == nil {
-		for name, provider := range localJWT {
+		for _, provider := range localJWT {
 			if provider.ValidFor(issuer, audiences) {
 				base.TracefCtx(auth.LogCtx, base.KeyAuth, "Using local JWT provider %v", base.UD(provider.Issuer))
 				authenticator = provider
-				authenticatorName = name
 				break
 			}
 		}
@@ -676,11 +670,6 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(rawToken string, oidcProvide
 	if err != nil {
 		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "JWT invalid: %v", err)
 		return nil, PrincipalConfig{}, base.HTTPErrorf(http.StatusUnauthorized, "Invalid JWT")
-	}
-
-	// OIDC will perform InitUserPrefix as part of initClient, but Local-JWT won't
-	if local, ok := authenticator.(*LocalJWTAuthProvider); ok {
-		local.InitUserPrefix(context.TODO(), authenticatorName)
 	}
 
 	user, updates, _, err := auth.authenticateJWTIdentity(identity, authenticator.common())
