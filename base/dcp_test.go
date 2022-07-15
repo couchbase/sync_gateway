@@ -79,6 +79,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server bucket")
 	}
+	SetUpTestLogging(t, LevelTrace, KeyDCP, KeyCluster, KeyGoCB, KeyHTTP)
 
 	shortDbName := "testDB"
 	longDbName := "testDB" +
