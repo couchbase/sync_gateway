@@ -177,8 +177,10 @@ func validateUsersNameOnlyFalse(t *testing.T, rt *RestTester) {
 		// Check property values, and validate no duplicate users returned in response
 		userMap := make(map[string]interface{})
 		for _, principal := range responseUsers {
+			require.NotNil(t, principal.Name)
 			if *principal.Name != "user5" {
-				assert.Equal(t, *principal.Name+"@foo.com", principal.Email)
+				require.NotNil(t, principal.Email)
+				assert.Equal(t, *principal.Name+"@foo.com", *principal.Email)
 			}
 			if *principal.Name == "user3" || *principal.Name == "user8" {
 				assert.Equal(t, true, *principal.Disabled)
