@@ -65,8 +65,8 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/", ``)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	var dbRootResp DatabaseRoot
-	require.NoError(t, base.JSONDecoder(resp.Body).Decode(&dbRootResp))
-	require.NoError(t, resp.Body.Close())
+	resp.requireStatus(http.StatusOK)
+	require.NoError(t, base.JSONUnmarshal([]byte(resp.Body), &dbRootResp))
 	assert.Equal(t, "db1", dbRootResp.DBName)
 	assert.Equal(t, db.RunStateString[db.DBOnline], dbRootResp.State)
 
@@ -74,8 +74,7 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/_config", ``)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	var dbConfigResp DatabaseConfig
-	require.NoError(t, base.JSONDecoder(resp.Body).Decode(&dbConfigResp))
-	require.NoError(t, resp.Body.Close())
+	require.NoError(t, base.JSONUnmarshal([]byte(resp.Body), &dbConfigResp))
 	assert.Equal(t, "db1", dbConfigResp.Name)
 	require.NotNil(t, dbConfigResp.Bucket)
 	assert.Equal(t, tb.GetName(), *dbConfigResp.Bucket)
@@ -87,9 +86,9 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 
 	// Sanity check to use the database
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db1/doc1", `{"foo":"bar"}`)
-	assertResp(t, resp, http.StatusCreated, `{"id":"doc1","ok":true,"rev":"1-cd809becc169215072fd567eebd8b8de"}`)
+	resp.requireResponse(http.StatusCreated, `{"id":"doc1","ok":true,"rev":"1-cd809becc169215072fd567eebd8b8de"}`)
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/doc1", ``)
-	assertResp(t, resp, http.StatusOK, `{"_id":"doc1","_rev":"1-cd809becc169215072fd567eebd8b8de","foo":"bar"}`)
+	resp.requireResponse(http.StatusOK, `{"_id":"doc1","_rev":"1-cd809becc169215072fd567eebd8b8de","foo":"bar"}`)
 
 	// Restart Sync Gateway
 	sc.Close()
@@ -111,8 +110,7 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/", ``)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	dbRootResp = DatabaseRoot{}
-	require.NoError(t, base.JSONDecoder(resp.Body).Decode(&dbRootResp))
-	require.NoError(t, resp.Body.Close())
+	require.NoError(t, base.JSONUnmarshal([]byte(resp.Body), &dbRootResp))
 	assert.Equal(t, "db1", dbRootResp.DBName)
 	assert.Equal(t, db.RunStateString[db.DBOnline], dbRootResp.State)
 
@@ -120,8 +118,7 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/_config", ``)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	dbConfigResp = DatabaseConfig{}
-	require.NoError(t, base.JSONDecoder(resp.Body).Decode(&dbConfigResp))
-	require.NoError(t, resp.Body.Close())
+	require.NoError(t, base.JSONUnmarshal([]byte(resp.Body), &dbConfigResp))
 	assert.Equal(t, "db1", dbConfigResp.Name)
 	require.NotNil(t, dbConfigResp.Bucket)
 	assert.Equal(t, tb.GetName(), *dbConfigResp.Bucket)
@@ -133,7 +130,7 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 
 	// Ensure it's _actually_ the same bucket
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/doc1", ``)
-	assertResp(t, resp, http.StatusOK, `{"_id":"doc1","_rev":"1-cd809becc169215072fd567eebd8b8de","foo":"bar"}`)
+	resp.requireResponse(http.StatusOK, `{"_id":"doc1","_rev":"1-cd809becc169215072fd567eebd8b8de","foo":"bar"}`)
 }
 
 // TestBootstrapDuplicateBucket will attempt to create two databases sharing the same bucket and ensure this isn't allowed.
@@ -178,14 +175,11 @@ func TestBootstrapDuplicateBucket(t *testing.T) {
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	assert.Equal(t, http.StatusConflict, resp.StatusCode)
+	resp.requireStatus(http.StatusConflict)
 
 	// CBG-1785 - Check the error has been changed from the original misleading error to a more informative one.
-	respBody, err := ioutil.ReadAll(resp.Body)
-	assert.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
-	assert.NotContains(t, string(respBody), fmt.Sprintf(`Database \"%s\" already exists`, "db2"))
-	assert.Contains(t, string(respBody), fmt.Sprintf(`Bucket \"%s\" already in use by database \"%s\"`, tb.GetName(), "db1"))
+	assert.NotContains(t, resp.Body, fmt.Sprintf(`Database \"%s\" already exists`, "db2"))
+	assert.Contains(t, resp.Body, fmt.Sprintf(`Bucket \"%s\" already in use by database \"%s\"`, tb.GetName(), "db1"))
 }
 
 // TestBootstrapDuplicateDatabase will attempt to create a second database and ensure this isn't allowed.
@@ -230,27 +224,18 @@ func TestBootstrapDuplicateDatabase(t *testing.T) {
 
 	// check to see we have a doc written stat
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/_expvar", "")
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	respBody, err := ioutil.ReadAll(resp.Body)
-	assert.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
-	assert.Contains(t, string(respBody), `"num_doc_writes":1`)
+	resp.requireStatus(http.StatusOK)
+	assert.Contains(t, resp.Body, `"num_doc_writes":1`)
 
 	// Create db1 again and expect it to fail
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db1/", dbConfig)
-	assert.Equal(t, http.StatusPreconditionFailed, resp.StatusCode)
-	respBody, err = ioutil.ReadAll(resp.Body)
-	assert.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
-	assert.Contains(t, string(respBody), fmt.Sprintf(`Duplicate database name \"%s\"`, "db1"))
+	resp.requireStatus(http.StatusPreconditionFailed)
+	assert.Contains(t, resp.Body, fmt.Sprintf(`Duplicate database name \"%s\"`, "db1"))
 
 	// check to see we still have a doc written stat (as a proxy to determine if the database restarted)
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/_expvar", "")
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	respBody, err = ioutil.ReadAll(resp.Body)
-	assert.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
-	assert.Contains(t, string(respBody), `"num_doc_writes":1`)
+	resp.requireStatus(http.StatusOK)
+	assert.Contains(t, resp.Body, `"num_doc_writes":1`)
 }
 
 func bootstrapStartupConfigForTest(t *testing.T) StartupConfig {
@@ -292,33 +277,31 @@ func bootstrapURL(basePort int) string {
 	return "http://localhost:" + strconv.Itoa(basePort+bootstrapTestPortOffset)
 }
 
-func bootstrapAdminRequest(t *testing.T, method, path, body string) *http.Response {
-	url := "http://localhost:" + strconv.FormatInt(4985+bootstrapTestPortOffset, 10) + path
-
-	buf := bytes.NewBufferString(body)
-	req, err := http.NewRequest(method, url, buf)
-	require.NoError(t, err)
-
-	resp, err := http.DefaultClient.Do(req)
-	require.NoError(t, err)
-
-	return resp
+type bootstrapAdminResponse struct {
+	StatusCode int
+	Body       string
+	Header     http.Header
+	t          *testing.T
 }
 
-func bootstrapAdminRequestCustomHost(t *testing.T, method, host, path, body string) *http.Response {
-	url := host + path
-
-	buf := bytes.NewBufferString(body)
-	req, err := http.NewRequest(method, url, buf)
-	require.NoError(t, err)
-
-	resp, err := http.DefaultClient.Do(req)
-	require.NoError(t, err)
-
-	return resp
+func (r *bootstrapAdminResponse) requireStatus(status int) {
+	require.Equal(r.t, status, r.StatusCode, "unexpected status code - body: %s", r.Body)
 }
 
-func bootstrapAdminRequestWithHeaders(t *testing.T, method, path, body string, headers map[string]string) *http.Response {
+func (r *bootstrapAdminResponse) requireResponse(status int, body string) {
+	require.Equal(r.t, status, r.StatusCode, "unexpected status code - body: %s", r.Body)
+	require.Equal(r.t, body, r.Body, "unexpected body")
+}
+
+func bootstrapAdminRequest(t *testing.T, method, path, body string) bootstrapAdminResponse {
+	return bootstrapAdminRequestWithHeaders(t, method, path, body, nil)
+}
+
+func bootstrapAdminRequestCustomHost(t *testing.T, method, host, path, body string) bootstrapAdminResponse {
+	return bootstrapAdminRequest(t, method, host+path, body)
+}
+
+func bootstrapAdminRequestWithHeaders(t *testing.T, method, path, body string, headers map[string]string) bootstrapAdminResponse {
 	url := "http://localhost:" + strconv.FormatInt(4985+bootstrapTestPortOffset, 10) + path
 
 	buf := bytes.NewBufferString(body)
@@ -332,11 +315,14 @@ func bootstrapAdminRequestWithHeaders(t *testing.T, method, path, body string, h
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 
-	return resp
-}
+	rBody, err := ioutil.ReadAll(resp.Body)
+	require.NoError(t, err)
 
-func assertResp(t *testing.T, resp *http.Response, status int, body string) {
-	assert.Equal(t, status, resp.StatusCode)
-	b, _ := ioutil.ReadAll(resp.Body)
-	assert.Equal(t, body, string(b))
+	require.NoError(t, resp.Body.Close())
+
+	return bootstrapAdminResponse{
+		t:          t,
+		StatusCode: resp.StatusCode,
+		Body:       string(rBody),
+	}
 }
