@@ -284,9 +284,8 @@ func TestObtainManagementEndpointsFromServerContextWithX509(t *testing.T) {
 	if !base.ServerIsTLS(serverURL) {
 		t.Skipf("URI %s needs to start with couchbases://", serverURL)
 	}
-	tb, teardownFn, caCertPath, certPath, keyPath := setupX509Tests(t, true)
+	tb, caCertPath, certPath, keyPath := setupX509Tests(t, true)
 	defer tb.Close()
-	defer teardownFn()
 
 	ctx := NewServerContext(&StartupConfig{
 		Bootstrap: BootstrapConfig{
@@ -622,8 +621,7 @@ func TestLogFlush(t *testing.T) {
 			base.InitializeMemoryLoggers()
 
 			// Add temp dir to save log files to
-			tempPath, err := ioutil.TempDir("", "logs"+testCase.Name)
-			require.NoError(t, err)
+			tempPath := t.TempDir()
 			testDirName := filepath.Base(tempPath)
 
 			// Log some stuff (which will go into the memory loggers)
@@ -639,7 +637,7 @@ func TestLogFlush(t *testing.T) {
 			config = testCase.EnableFunc(config)
 
 			// Setup logging
-			err = config.SetupAndValidateLogging()
+			err := config.SetupAndValidateLogging()
 			assert.NoError(t, err)
 
 			// Flush memory loggers

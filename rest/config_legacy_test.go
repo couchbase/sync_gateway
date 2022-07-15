@@ -314,12 +314,10 @@ func TestLegacyGuestUserMigration(t *testing.T) {
 		tb.GetName(),
 	)
 
-	tmpDir, err := ioutil.TempDir("", t.Name())
-	require.NoError(t, err)
-	defer func() { require.NoError(t, os.RemoveAll(tmpDir)) }()
+	tmpDir := t.TempDir()
 
 	configPath := filepath.Join(tmpDir, "config.json")
-	err = ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
+	err := ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
 	require.NoError(t, err)
 
 	sc, _, _, _, err := automaticConfigUpgrade(configPath)
@@ -415,9 +413,7 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 	}`
 	config = fmt.Sprintf(config, base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), rt.Bucket().GetName())
 
-	tmpDir, err := ioutil.TempDir("", t.Name())
-	require.NoError(t, err)
-	defer func() { require.NoError(t, os.RemoveAll(tmpDir)) }()
+	tmpDir := t.TempDir()
 
 	configPath := filepath.Join(tmpDir, "config.json")
 	err = ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))

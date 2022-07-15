@@ -190,9 +190,8 @@ func TestCheckPermissionsWithX509(t *testing.T) {
 	if !base.ServerIsTLS(serverURL) {
 		t.Skipf("URI %s needs to start with couchbases://", serverURL)
 	}
-	tb, teardownFn, caCertPath, certPath, keyPath := setupX509Tests(t, true)
+	tb, caCertPath, certPath, keyPath := setupX509Tests(t, true)
 	defer tb.Close()
-	defer teardownFn()
 
 	ctx := NewServerContext(&StartupConfig{
 		Bootstrap: BootstrapConfig{
@@ -483,9 +482,8 @@ func TestAdminAuthWithX509(t *testing.T) {
 	if !base.ServerIsTLS(serverURL) {
 		t.Skipf("URI %s needs to start with couchbases://", serverURL)
 	}
-	tb, teardownFn, caCertPath, certPath, keyPath := setupX509Tests(t, true)
+	tb, caCertPath, certPath, keyPath := setupX509Tests(t, true)
 	defer tb.Close()
-	defer teardownFn()
 
 	ctx := NewServerContext(&StartupConfig{
 		Bootstrap: BootstrapConfig{

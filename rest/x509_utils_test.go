@@ -64,12 +64,11 @@ func x509TestsEnabled() bool {
 }
 
 // saveX509Files creates temp files for the given certs/keys and returns the full filepaths for each.
-func saveX509Files(t *testing.T, ca *caPair, node *nodePair, sg *sgPair) (teardownFn func()) {
-	dirName, err := ioutil.TempDir("", t.Name())
-	require.NoError(t, err)
+func saveX509Files(t *testing.T, ca *caPair, node *nodePair, sg *sgPair) {
+	dirName := t.TempDir()
 
 	caPEMFilepath := filepath.Join(dirName, "ca.pem")
-	err = ioutil.WriteFile(caPEMFilepath, ca.PEM.Bytes(), os.FileMode(0777))
+	err := ioutil.WriteFile(caPEMFilepath, ca.PEM.Bytes(), os.FileMode(0777))
 	require.NoError(t, err)
 	ca.PEMFilepath = caPEMFilepath
 
@@ -90,10 +89,6 @@ func saveX509Files(t *testing.T, ca *caPair, node *nodePair, sg *sgPair) (teardo
 	err = ioutil.WriteFile(sgKeyFilepath, sg.Key.Bytes(), os.FileMode(0777))
 	require.NoError(t, err)
 	sg.KeyFilePath = sgKeyFilepath
-
-	return func() {
-		require.NoError(t, os.RemoveAll(dirName), "unexpected error when trying to clean up cert files")
-	}
 }
 
 // A set of types for sets of specific certs/keys so we can provide strongly-typed hints for their use (to prevent mixups)

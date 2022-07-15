@@ -17,7 +17,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
-	"io/ioutil"
 	"math"
 	"math/big"
 	"os"
@@ -359,9 +358,8 @@ func TestGetViewQueryTimeout(t *testing.T) {
 	assert.Equal(t, expectedViewQueryTimeout, fakeBucketSpec.GetViewQueryTimeout())
 }
 
-func mockCertificatesAndKeys(t *testing.T) (certPath, clientCertPath, clientKeyPath, rootCertPath, rootKeyPath string) {
-	certPath, err := ioutil.TempDir("", "certs")
-	require.NoError(t, err, "Temp directory should be created")
+func mockCertificatesAndKeys(t *testing.T) (clientCertPath, clientKeyPath, rootCertPath, rootKeyPath string) {
+	certPath := t.TempDir()
 
 	rootKeyPath = filepath.Join(certPath, "root.key")
 	rootCertPath = filepath.Join(certPath, "root.pem")
@@ -422,7 +420,7 @@ func mockCertificatesAndKeys(t *testing.T) (certPath, clientCertPath, clientKeyP
 	require.True(t, FileExists(clientKeyPath), "File %v should exists", clientKeyPath)
 	require.True(t, FileExists(clientCertPath), "File %v should exists", clientCertPath)
 
-	return certPath, clientCertPath, clientKeyPath, rootCertPath, rootKeyPath
+	return clientCertPath, clientKeyPath, rootCertPath, rootKeyPath
 }
 
 func saveAsKeyFile(t *testing.T, filename string, key *ecdsa.PrivateKey) {
@@ -446,13 +444,7 @@ func saveAsCertFile(t *testing.T, filename string, derBytes []byte) {
 
 func TestTLSConfig(t *testing.T) {
 	// Mock fake root CA and client certificates for verification
-	certPath, clientCertPath, clientKeyPath, rootCertPath, rootKeyPath := mockCertificatesAndKeys(t)
-
-	// Remove the keys and certificates after verification
-	defer func() {
-		assert.NoError(t, os.RemoveAll(certPath))
-		assert.False(t, DirExists(certPath), "Directory: %v shouldn't exists", certPath)
-	}()
+	clientCertPath, clientKeyPath, rootCertPath, rootKeyPath := mockCertificatesAndKeys(t)
 
 	// Simulate error creating tlsConfig for DCP processing
 	spec := BucketSpec{

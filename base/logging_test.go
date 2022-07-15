@@ -11,7 +11,6 @@ package base
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -84,8 +83,7 @@ func BenchmarkLogRotation(b *testing.B) {
 			_, err := rand.Read(data)
 			require.NoError(bm, err)
 
-			logPath, err := ioutil.TempDir("", "benchmark-logrotate")
-			require.NoError(bm, err)
+			logPath := b.TempDir()
 			logger := lumberjack.Logger{Filename: filepath.Join(logPath, "output.log"), Compress: test.compress}
 
 			bm.ResetTimer()

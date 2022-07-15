@@ -43,11 +43,10 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 		tb.GetName(),
 	)
 
-	tmpDir, err := ioutil.TempDir("", t.Name())
-	require.NoError(t, err)
+	tmpDir := t.TempDir()
 
 	configPath := filepath.Join(tmpDir, "config.json")
-	err = ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
+	err := ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
 	require.NoError(t, err)
 
 	startupConfig, _, _, _, err := automaticConfigUpgrade(configPath)
@@ -136,17 +135,17 @@ func TestAutomaticConfigUpgradeError(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
+		// Create tempdir here to avoid slash operator in t.Name()
+		tmpDir := t.TempDir()
+
 		t.Run(testCase.Name, func(t *testing.T) {
 			tb := base.GetTestBucket(t)
 			defer tb.Close()
 
 			config := fmt.Sprintf(testCase.Config, base.TestTLSSkipVerify(), base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), tb.GetName())
 
-			tmpDir, err := ioutil.TempDir("", strings.ReplaceAll(t.Name(), "/", ""))
-			require.NoError(t, err)
-
 			configPath := filepath.Join(tmpDir, "config.json")
-			err = ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
+			err := ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
 			require.NoError(t, err)
 
 			_, _, _, _, err = automaticConfigUpgrade(configPath)
@@ -163,8 +162,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	tmpDir, err := ioutil.TempDir("", t.Name())
-	require.NoError(t, err)
+	tmpDir := t.TempDir()
 
 	config := fmt.Sprintf(`{
 	"server_tls_skip_verify": %t,
@@ -184,7 +182,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 		tb.GetName(),
 	)
 	configPath := filepath.Join(tmpDir, "config.json")
-	err = ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
+	err := ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
 	require.NoError(t, err)
 
 	// Run migration once

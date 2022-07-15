@@ -112,7 +112,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	var dirContents []os.FileInfo
 
 	//Regular Test With multiple files above high and low watermark
-	dir, _ := ioutil.TempDir("", "tempdir1")
+	dir := t.TempDir()
 
 	err := makeTestFile(2, logFilePrefix+"error-2019-02-01T12-00-00.log.gz", dir)
 	assert.NoError(t, err)
@@ -148,7 +148,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	assert.NoError(t, os.RemoveAll(dir))
 
 	//Hit low watermark but not high watermark
-	dir, _ = ioutil.TempDir("", "tempdir2")
+	dir = t.TempDir()
 	err = makeTestFile(3, logFilePrefix+"error.log.gz", dir)
 	assert.NoError(t, err)
 	err = runLogDeletion(dir, "error", 2, 4)
@@ -158,7 +158,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	assert.NoError(t, os.RemoveAll(dir))
 
 	//Single file hitting low and high watermark
-	dir, _ = ioutil.TempDir("", "tempdir3")
+	dir = t.TempDir()
 	err = makeTestFile(5, logFilePrefix+"error.log.gz", dir)
 	assert.NoError(t, err)
 	err = runLogDeletion(dir, "error", 2, 4)
@@ -168,7 +168,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	assert.NoError(t, os.RemoveAll(dir))
 
 	//Not hitting low or high therefore no deletion
-	dir, _ = ioutil.TempDir("", "tempdir4")
+	dir = t.TempDir()
 	err = makeTestFile(1, logFilePrefix+"error.log.gz", dir)
 	assert.NoError(t, err)
 	err = runLogDeletion(dir, "error", 2, 4)
@@ -178,7 +178,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	assert.NoError(t, os.RemoveAll(dir))
 
 	//Test deletion with files at the end of date boundaries
-	dir, _ = ioutil.TempDir("", "tempdir5")
+	dir = t.TempDir()
 	err = makeTestFile(1, logFilePrefix+"error-2018-12-31T23-59-59.log.gz", dir)
 	assert.NoError(t, err)
 	err = makeTestFile(1, logFilePrefix+"error-2019-01-01T00-00-00.log.gz", dir)
@@ -204,7 +204,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	assert.NoError(t, os.RemoveAll(dir))
 
 	//Test deletion with no .gz files to ensure nothing is deleted
-	dir, _ = ioutil.TempDir("", "tempdir6")
+	dir = t.TempDir()
 	err = makeTestFile(1, logFilePrefix+"error", dir)
 	assert.NoError(t, err)
 	err = makeTestFile(1, logFilePrefix+"info", dir)

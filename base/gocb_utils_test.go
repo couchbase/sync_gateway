@@ -2,7 +2,6 @@ package base
 
 import (
 	"crypto/x509"
-	"os"
 	"runtime"
 	"testing"
 
@@ -13,13 +12,7 @@ import (
 
 func TestGoCBv2SecurityConfig(t *testing.T) {
 	// Mock fake root CA and client certificates for verification
-	certPath, _, _, rootCertPath, _ := mockCertificatesAndKeys(t)
-
-	// Remove the keys and certificates after verification
-	defer func() {
-		require.NoError(t, os.RemoveAll(certPath))
-		require.False(t, DirExists(certPath), "Directory: %v shouldn't exists", certPath)
-	}()
+	_, _, rootCertPath, _ := mockCertificatesAndKeys(t)
 
 	tests := []struct {
 		name           string
