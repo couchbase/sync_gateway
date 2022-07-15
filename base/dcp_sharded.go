@@ -14,6 +14,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -306,6 +307,8 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 	options := make(map[string]string)
 	options[cbgt.FeedAllotmentOption] = cbgt.FeedAllotmentOnePerPIndex
 	options["managerLoadDataDir"] = "false"
+	// Ensure we always use TLS if configured - cbgt defaults to non-TLS on initial connection
+	options["feedInitialBootstrapNonTLS"] = strconv.FormatBool(!spec.IsTLS())
 
 	// Creates a new cbgt manager.
 	mgr := cbgt.NewManagerEx(
