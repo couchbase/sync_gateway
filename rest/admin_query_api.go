@@ -17,59 +17,86 @@ import (
 
 //////// JS FUNCTIONS:
 
-// GET database config user functions (or a single function)
+// GET database config user functions.
 func (h *handler) handleGetDbConfigFunctions() error {
-	config, etagVersion, err := h.getDBConfig()
-	if err != nil {
+	if config, etagVersion, err := h.getDBConfig(); err != nil {
 		return err
-	} else if config.UserFunctions == nil {
-		return base.HTTPErrorf(http.StatusNotFound, "no functions configured")
-	} else if functionName := h.PathVar("function"); functionName == "" {
-		h.writeJSON(config.UserFunctions)
-	} else if functionConfig, found := config.UserFunctions[functionName]; found {
-		h.writeJSON(functionConfig)
 	} else {
-		return base.HTTPErrorf(http.StatusNotFound, "no such function")
+		if config.UserFunctions != nil {
+			h.writeJSON(config.UserFunctions)
+		} else {
+			h.writeRawJSON([]byte("{}"))
+		}
+		h.response.Header().Set("ETag", etagVersion)
+		return nil
 	}
-	h.response.Header().Set("ETag", etagVersion)
-	return nil
 }
 
-// PUT database config user functions (or a single function)
-func (h *handler) handlePutDbConfigFunctions() error {
-	// Read the new config, either the entire UserFunctionMap, or a single UserFunction:
-	var functionsConfig db.UserFunctionMap
-	var functionConfig db.UserFunctionConfig
-	var err error
+// GET database config, a single user function
+func (h *handler) handleGetDbConfigFunction() error {
 	functionName := h.PathVar("function")
-	if functionName == "" {
-		err = h.readJSONInto(&functionsConfig)
-	} else {
-		err = h.readJSONInto(&functionConfig)
-	}
-	if err != nil {
+	if config, etagVersion, err := h.getDBConfig(); err != nil {
 		return err
+	} else if functionConfig, found := config.UserFunctions[functionName]; !found {
+		return base.HTTPErrorf(http.StatusNotFound, "")
+	} else {
+		h.writeJSON(functionConfig)
+		h.response.Header().Set("ETag", etagVersion)
+		return nil
 	}
-	return h.mutateDbConfig(func(dbConfig *DbConfig) {
-		if functionName == "" {
-			dbConfig.UserFunctions = functionsConfig
-		} else {
+}
+
+// PUT/DELETE database config user function(s)
+func (h *handler) handlePutDbConfigFunctions() error {
+	var functionsConfig db.UserFunctionMap
+	if h.rq.Method != "DELETE" {
+		if err := h.readJSONInto(&functionsConfig); err != nil {
+			return err
+		}
+	}
+	return h.mutateDbConfig(func(dbConfig *DbConfig) error {
+		if functionsConfig == nil && dbConfig.UserFunctions == nil {
+			return base.HTTPErrorf(http.StatusNotFound, "")
+		}
+		dbConfig.UserFunctions = functionsConfig
+		return nil
+	})
+}
+
+// PUT/DELETE database config, a single user function
+func (h *handler) handlePutDbConfigFunction() error {
+	functionName := h.PathVar("function")
+	if h.rq.Method != "DELETE" {
+		var functionConfig *db.UserFunctionConfig
+		if err := h.readJSONInto(&functionConfig); err != nil {
+			return err
+		}
+		return h.mutateDbConfig(func(dbConfig *DbConfig) error {
 			if dbConfig.UserFunctions == nil {
 				dbConfig.UserFunctions = db.UserFunctionMap{}
 			}
-			dbConfig.UserFunctions[functionName] = &functionConfig
-		}
-	})
+			dbConfig.UserFunctions[functionName] = functionConfig
+			return nil
+		})
+	} else {
+		return h.mutateDbConfig(func(dbConfig *DbConfig) error {
+			if dbConfig.UserFunctions[functionName] == nil {
+				return base.HTTPErrorf(http.StatusNotFound, "")
+			}
+			delete(dbConfig.UserFunctions, functionName)
+			return nil
+		})
+	}
 }
 
 //////// GRAPHQL:
 
-// GET database config user functions (or a single function)
+// GET database GraphQL config.
 func (h *handler) handleGetDbConfigGraphQL() error {
 	if config, etagVersion, err := h.getDBConfig(); err != nil {
 		return err
 	} else if config.GraphQL == nil {
-		return base.HTTPErrorf(http.StatusNotFound, "no graphql configured")
+		return base.HTTPErrorf(http.StatusNotFound, "")
 	} else {
 		h.writeJSON(config.GraphQL)
 		h.response.Header().Set("ETag", etagVersion)
@@ -77,60 +104,95 @@ func (h *handler) handleGetDbConfigGraphQL() error {
 	}
 }
 
-// PUT database config user functions (or a single function)
+// PUT/DELETE database GraphQL config.
 func (h *handler) handlePutDbConfigGraphQL() error {
 	var newConfig *db.GraphQLConfig
-	if err := h.readJSONInto(&newConfig); err != nil {
-		return err
+	if h.rq.Method != "DELETE" {
+		if err := h.readJSONInto(&newConfig); err != nil {
+			return err
+		}
 	}
-	return h.mutateDbConfig(func(dbConfig *DbConfig) {
+	return h.mutateDbConfig(func(dbConfig *DbConfig) error {
+		if newConfig == nil && dbConfig.GraphQL == nil {
+			return base.HTTPErrorf(http.StatusNotFound, "")
+		}
 		dbConfig.GraphQL = newConfig
+		return nil
 	})
 }
 
 //////// QUERIES:
 
-// GET database config user queries (or a single query)
+// TODO: This is mostly a copy/paste of the functions code above; would be cleaner to use generics.
+
+// GET database config user queries.
 func (h *handler) handleGetDbConfigQueries() error {
-	config, etagVersion, err := h.getDBConfig()
-	if err != nil {
+	if config, etagVersion, err := h.getDBConfig(); err != nil {
 		return err
-	} else if config.UserQueries == nil {
-		return base.HTTPErrorf(http.StatusNotFound, "no queries configured")
-	} else if queryName := h.PathVar("query"); queryName == "" {
-		h.writeJSON(config.UserQueries)
-	} else if queryConfig, found := config.UserQueries[queryName]; found {
-		h.writeJSON(queryConfig)
 	} else {
-		return base.HTTPErrorf(http.StatusNotFound, "no such query")
+		if config.UserQueries != nil {
+			h.writeJSON(config.UserQueries)
+		} else {
+			h.writeRawJSON([]byte("{}"))
+		}
+		h.response.Header().Set("ETag", etagVersion)
+		return nil
 	}
-	h.response.Header().Set("ETag", etagVersion)
-	return nil
 }
 
-// PUT database config user queries (or a single query)
-func (h *handler) handlePutDbConfigQueries() error {
-	// Read the new config, either the entire UserQueryMap, or a single UserQuery:
-	var queriesConfig db.UserQueryMap
-	var queryConfig db.UserQuery
-	var err error
+// GET database config, a single user query
+func (h *handler) handleGetDbConfigQuery() error {
 	queryName := h.PathVar("query")
-	if queryName == "" {
-		err = h.readJSONInto(&queriesConfig)
-	} else {
-		err = h.readJSONInto(&queryConfig)
-	}
-	if err != nil {
+	if config, etagVersion, err := h.getDBConfig(); err != nil {
 		return err
+	} else if queryConfig, found := config.UserQueries[queryName]; !found {
+		return base.HTTPErrorf(http.StatusNotFound, "")
+	} else {
+		h.writeJSON(queryConfig)
+		h.response.Header().Set("ETag", etagVersion)
+		return nil
 	}
-	return h.mutateDbConfig(func(dbConfig *DbConfig) {
-		if queryName == "" {
-			dbConfig.UserQueries = queriesConfig
-		} else {
+}
+
+// PUT/DELETE database config user query(s)
+func (h *handler) handlePutDbConfigQueries() error {
+	var queriesConfig db.UserQueryMap
+	if h.rq.Method != "DELETE" {
+		if err := h.readJSONInto(&queriesConfig); err != nil {
+			return err
+		}
+	}
+	return h.mutateDbConfig(func(dbConfig *DbConfig) error {
+		if queriesConfig == nil && dbConfig.UserQueries == nil {
+			return base.HTTPErrorf(http.StatusNotFound, "")
+		}
+		dbConfig.UserQueries = queriesConfig
+		return nil
+	})
+}
+
+// PUT/DELETE database config, a single user query
+func (h *handler) handlePutDbConfigQuery() error {
+	queryName := h.PathVar("query")
+	if h.rq.Method != "DELETE" {
+		var queryConfig *db.UserQuery
+		if err := h.readJSONInto(&queryConfig); err != nil {
+			return err
+		}
+		return h.mutateDbConfig(func(dbConfig *DbConfig) error {
 			if dbConfig.UserQueries == nil {
 				dbConfig.UserQueries = db.UserQueryMap{}
 			}
-			dbConfig.UserQueries[queryName] = &queryConfig
-		}
-	})
+			dbConfig.UserQueries[queryName] = queryConfig
+			return nil
+		})
+	} else {
+		return h.mutateDbConfig(func(dbConfig *DbConfig) error {
+			if dbConfig.UserQueries[queryName] == nil {
+				return base.HTTPErrorf(http.StatusNotFound, "")
+			}
+			delete(dbConfig.UserQueries, queryName)
+			return nil
+		})
+	}
 }

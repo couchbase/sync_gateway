@@ -31,7 +31,7 @@ func (h *handler) getDBConfig() (config *DbConfig, etagVersion string, err error
 // Updates the database config via a callback function that can modify a `DbConfig`.
 // Note: This always returns a non-nil error; on success it's an HTTPError with status OK.
 // The calling handler method is expected to simply return the result.
-func (h *handler) mutateDbConfig(mutator func(*DbConfig)) error {
+func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 	h.assertAdminOnly()
 	dbName := h.db.Name
 	validateOIDC := !h.getBoolQuery(paramDisableOIDCValidation)
@@ -53,7 +53,10 @@ func (h *handler) mutateDbConfig(mutator func(*DbConfig)) error {
 					return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 				}
 
-				mutator(&bucketDbConfig.DbConfig) // Call the mutator function!
+				// Now call the mutator function:
+				if err := mutator(&bucketDbConfig.DbConfig); err != nil {
+					return nil, err
+				}
 
 				if err := bucketDbConfig.validate(h.ctx(), validateOIDC); err != nil {
 					return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
@@ -89,7 +92,10 @@ func (h *handler) mutateDbConfig(mutator func(*DbConfig)) error {
 		// Update in-memory config read from JSON file:
 		databaseConfig := DatabaseConfig{DbConfig: *h.server.GetDbConfig(dbName)}
 
-		mutator(&databaseConfig.DbConfig) // Call the mutator function!
+		// Now call the mutator function:
+		if err := mutator(&databaseConfig.DbConfig); err != nil {
+			return err
+		}
 
 		if err := databaseConfig.validate(h.ctx(), validateOIDC); err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
