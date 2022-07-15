@@ -129,11 +129,8 @@ func NewGraphQL(dbc *DatabaseContext) (*GraphQL, error) {
 func (gq *GraphQL) compileResolver(resolverName string, fieldName string, jsCode string) (graphql.FieldResolveFn, error) {
 	name := resolverName + "." + fieldName
 	resolver := &graphQLResolver{
-		JSServer: sgbucket.NewJSServer(jsCode, kGQTaskCacheSize,
-			func(fnSource string) (sgbucket.JSServerTask, error) {
-				return NewUserFunctionRunner(name, "GraphQL resolver", kGraphQLResolverFuncWrapper, fnSource)
-			}),
-		Name: name,
+		JSServer: newUserFunctionJSServer(name, "GraphQL resolver", "parent, args, context, info", jsCode),
+		Name:     name,
 	}
 	return func(params graphql.ResolveParams) (interface{}, error) {
 		db := params.Context.Value(dbKey).(*Database)
@@ -190,30 +187,3 @@ func (res *graphQLResolver) Resolve(db *Database, params *graphql.ResolveParams,
 
 // Number of ResolverRunner tasks (and Otto contexts) to cache for this resolver
 const kGQTaskCacheSize = 2
-
-// The outermost JavaScript code. Evaluating it returns a function, which is then called by the
-// Runner every time it's invoked. (The reason the first few lines are ""-style strings is to make
-// sure the resolver code ends up on line 1, which makes line numbers reported in syntax errors
-// accurate.)
-// `%s` is replaced with the resolver.
-const kGraphQLResolverFuncWrapper = "function() {" +
-	"	function resolveFn(parent, args, context, info) {" +
-	"		%s;" + // <-- The actual JS code from the config file goes here
-	`	}
-
-		// This is the JS function invoked by the 'Call(...)' in GraphQLResolver.Resolve(), above
-		return function (parent, args, context, info) {
-			// The "context.app" object the resolver script calls:
-			var _app = {
-				get: _get,
-				query: _query,
-				save: _save
-			};
-
-			if (context)
-				context.app = _app;
-			else
-				context = {app: _app};
-			return resolveFn(parent, args, context, info);
-		}
-	}()`

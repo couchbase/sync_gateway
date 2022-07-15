@@ -13,8 +13,10 @@ package db
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
+	"regexp"
+	"strconv"
+	"strings"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -22,7 +24,7 @@ import (
 	_ "github.com/robertkrimen/otto/underscore"
 )
 
-//////// USER FUNCTION CONFIGURATION:
+//////// USER JS FUNCTION CONFIGURATION:
 
 // Top level user-function config object: the map of names to queries.
 type UserFunctionMap = map[string]*UserFunctionConfig
@@ -40,13 +42,14 @@ type UserFunctionConfig struct {
 //////// RUNNING A USER FUNCTION:
 
 func (db *Database) CallUserFunction(name string, params map[string]interface{}, mutationAllowed bool) (interface{}, error) {
+	// Look up the function by name:
 	config, found := db.Options.UserFunctions[name]
 	if !found {
-		return nil, base.HTTPErrorf(http.StatusNotFound, "No such user function")
+		return nil, missingError(db.user)
 	}
 
 	// Check that the user is authorized:
-	if err := config.Allow.authorize(db.user, params, "function", name); err != nil {
+	if err := config.Allow.authorize(db.user, params); err != nil {
 		return nil, err
 	}
 
@@ -58,10 +61,7 @@ func (db *Database) CallUserFunction(name string, params map[string]interface{},
 	// Compile and run the function:
 	compiled := config.compiled
 	if compiled == nil {
-		compiled = sgbucket.NewJSServer(config.SourceCode, kUserFnTaskCacheSize,
-			func(fnSource string) (sgbucket.JSServerTask, error) {
-				return NewUserFunctionRunner(name, "user function", kUserFunctionFuncWrapper, fnSource)
-			})
+		compiled = newUserFunctionJSServer(name, "user function", "args, context", config.SourceCode)
 		// This is a race condition if two threads find the script uncompiled and both compile it.
 		// However, the effect is simply that two identical UserFunction instances are created and
 		// one of them (the first one stored to config.compiled) is thrown away; harmless.
@@ -76,21 +76,21 @@ func (db *Database) CallUserFunction(name string, params map[string]interface{},
 	})
 }
 
-// The `context` parameter passed to the JS function
-type userFunctionJSContext struct {
-	User *string `json:"user,omitempty"`
+func newUserFunctionJSContext(db *Database) map[string]interface{} {
+	return map[string]interface{}{"user": makeUserCtx(db.user)}
 }
 
-func newUserFunctionJSContext(db *Database) *userFunctionJSContext {
-	context := &userFunctionJSContext{}
-	if db.user != nil {
-		name := db.user.Name()
-		context.User = &name
-	}
-	return context
+func newUserFunctionJSServer(name string, what string, argList string, sourceCode string) *sgbucket.JSServer {
+	js := fmt.Sprintf(kUserFunctionJSWrapper, argList, sourceCode)
+	return sgbucket.NewJSServer(js, kUserFnTaskCacheSize,
+		func(fnSource string) (sgbucket.JSServerTask, error) {
+			return newJSFunctionRunner(name, what, fnSource)
+		})
 }
 
 //////// JAVASCRIPT RUNNER:
+
+// Note: This code is also used by GraphQL resolvers.
 
 // Number of userFunctionRunner tasks (and Otto contexts) to cache, per function
 const kUserFnTaskCacheSize = 2
@@ -99,41 +99,107 @@ const kUserFnTaskCacheSize = 2
 // Runner every time it's invoked. (The reason the first few lines are ""-style strings is to make
 // sure the resolver code ends up on line 1, which makes line numbers reported in syntax errors
 // accurate.)
-// `%s` is replaced with the resolver.
-const kUserFunctionFuncWrapper = "function() {" +
-	"	function userFn(args, context) {" +
-	"		%s;" + // <-- The actual JS code from the config file goes here
+// `%[1]s` is replaced with the function's parameter list.
+// `%[2]s` is replaced with the function's body.
+const kUserFunctionJSWrapper = "function() {" +
+	"	function userFn(%[1]s) {" + // <-- The parameter list of the JS function goes here
+	"		%[2]s" + // <-- The actual JS code from the config file goes here
 	`	}
 
-		// This is the JS function invoked by the 'Call(...)' in UserFunction.Resolve(), above
-		return function (args, context) {
-			context.app = {
-				get: _get,
-				query: _query,
-				save: _save
-			};
-			return userFn(args, context);
+		// Prototype of the user object:
+		function User(info) {
+			this.name = info.name;
+			this.roles = info.roles;
+			this.channels = info.channels;
 		}
+
+		User.prototype.requireAdmin = function() {
+			throw("FORBIDDEN");
+		}
+
+		User.prototype.requireName = function(name) {
+			var allowed;
+			if (Array.isArray(name)) {
+				allowed = name.indexOf(this.name) != -1;
+			} else {
+				allowed = this.name == name;
+			}
+			if (!allowed)
+				throw("UNAUTHORIZED");
+		}
+
+		User.prototype.requireRole = function(role) {
+			if (Array.isArray(role)) {
+				for (var i = 0; i < role.length; ++i) {
+					if (this.roles[role[i]] !== undefined)
+						return;
+				}
+			} else {
+				if (this.roles[role] !== undefined)
+					return;
+			}
+			throw("UNAUTHORIZED");
+		}
+
+		User.prototype.requireAccess = function(channel) {
+			if (Array.isArray(channel)) {
+				for (var i = 0; i < channel.length; ++i) {
+					if (this.channels.indexOf(channel[i]) != -1)
+						return;
+				}
+			} else {
+				if (this.channels.indexOf(channel) != -1)
+					return;
+			}
+			throw("UNAUTHORIZED");
+		}
+
+		// Admin prototype makes all the "require..." functions no-ops:
+		function Admin() { }
+		Admin.prototype.requireAdmin = Admin.prototype.requireName =
+			Admin.prototype.requireRole = Admin.prototype.requireAccess = function() { }
+
+		function MakeUser(info) {
+			if (info && info.name !== undefined) {
+				return new User(info);
+			} else {
+				return new Admin();
+			}
+		}
+
+		// App object contains the native Go functions to access the database:
+		var App = {
+			func:    _func,
+			get:     _get,
+			graphql: _graphql,
+			query:   _query,
+			save:    _save
+		};
+
+		// Return the JS function that will be invoked repeatedly by the runner:
+		return function (%[1]s) {
+			context.user = MakeUser(context.user);
+			context.app = Object.create(App);
+			return userFn(%[1]s);
+		};
 	}()`
 
-// An object that runs a specific JS GraphQuery resolver function. Not thread-safe!
-// Owned by a UserFunction, which arbitrates access to it.
+// An object that runs a specific JS function (user function or GraphQL resolver).
+// Not thread-safe! Owned by a JSServer, which arbitrates access to it.
 type userFunctionRunner struct {
 	sgbucket.JSRunner           // "Superclass"
 	kind              string    // "user function", "GraphQL resolver", etc
 	name              string    // Name of this function or resolver
-	funcWrapper       string    // JS code that wraps around the user function
 	currentDB         *Database // Database instance (updated before every call)
 	mutationAllowed   bool      // Whether save() is allowed (updated before every call)
 }
 
 // Creates a userFunctionRunner given its name and JavaScript source code.
-func NewUserFunctionRunner(name string, kind string, funcWrapper string, funcSource string) (*userFunctionRunner, error) {
+func newJSFunctionRunner(name string, kind string, funcSource string) (*userFunctionRunner, error) {
 	ctx := context.Background()
 	runner := &userFunctionRunner{
-		name:        name,
-		kind:        kind,
-		funcWrapper: funcWrapper,
+		name: name,
+		kind: kind,
 	}
 	err := runner.InitWithLogging("",
 		func(s string) {
@@ -146,11 +212,27 @@ func NewUserFunctionRunner(name string, kind string, funcWrapper string, funcSou
 		return nil, err
 	}
 
+	// Implementation of the 'func(name,params)' callback:
+	runner.DefineNativeFunction("_func", func(call otto.FunctionCall) otto.Value {
+		funcName := ottoStringParam(call, 0, "app.func")
+		params := ottoObjectParam(call, 1, true, "app.func")
+		result, err := runner.do_func(funcName, params)
+		return ottoResult(call, result, err)
+	})
+
 	// Implementation of the 'get(docID)' callback:
 	runner.DefineNativeFunction("_get", func(call otto.FunctionCall) otto.Value {
 		docID := ottoStringParam(call, 0, "app.get")
 		doc, err := runner.do_get(docID, nil)
 		return ottoResult(call, doc, err)
+	})
+
+	// Implementation of the 'graphql(query,params)' callback:
+	runner.DefineNativeFunction("_graphql", func(call otto.FunctionCall) otto.Value {
+		query := ottoStringParam(call, 0, "app.graphql")
+		params := ottoObjectParam(call, 1, true, "app.graphql")
+		result, err := runner.do_graphql(query, params)
+		return ottoResult(call, result, err)
 	})
 
 	// Implementation of the 'query(n1ql,params)' callback:
@@ -170,8 +252,7 @@ func NewUserFunctionRunner(name string, kind string, funcWrapper string, funcSou
 	})
 
 	// Set (and compile) the JS function:
-	if _, err := runner.JSRunner.SetFunction(fmt.Sprintf(runner.funcWrapper, funcSource)); err != nil {
-		log.Printf("*** Error: %s %s failed to compile: %v", kind, name, err) //TEMP
+	if _, err := runner.JSRunner.SetFunction(funcSource); err != nil {
 		return nil, base.HTTPErrorf(http.StatusInternalServerError, "Error compiling %s %q: %v", kind, name, err)
 	}
 
@@ -184,10 +265,10 @@ func NewUserFunctionRunner(name string, kind string, funcWrapper string, funcSou
 	}
 	// Function that runs after every call:
 	runner.After = func(jsResult otto.Value, err error) (interface{}, error) {
-		runner.currentDB = nil
+		defer func() { runner.currentDB = nil }()
 		if err != nil {
-			log.Printf("*** %s %s failed: %+v", runner.kind, runner.name, err)
-			return nil, err
+			base.ErrorfCtx(context.Background(), base.KeyJavascript.String()+": %s %s failed: %#v", runner.kind, runner.name, err)
+			return nil, runner.convertError(err)
 		}
 		return jsResult.Export()
 	}
@@ -195,7 +276,49 @@ func NewUserFunctionRunner(name string, kind string, funcWrapper string, funcSou
 	return runner, nil
 }
 
+var HttpErrRE = regexp.MustCompile(`^HTTP:\s*(\d+)\s+(.*)`)
+
+func (runner *userFunctionRunner) convertError(err error) error {
+	if ottoErr, ok := err.(*otto.Error); ok {
+		// Unfortunately there is no API on otto.Error to get the name & message separately.
+		// Instead, look for the name as a prefix. (See the `ottoResult` function below)
+		str := ottoErr.Error()
+		if strings.HasPrefix(str, "HTTP:") {
+			m := HttpErrRE.FindStringSubmatch(str)
+			status, _ := strconv.ParseInt(m[1], 10, 0)
+			message := m[2]
+			err = base.HTTPErrorf(int(status), "%s (while calling %s %q)", message, runner.kind, runner.name)
+		} else if strings.HasPrefix(str, "Go:") {
+			err = fmt.Errorf("%s (while calling %s %q)", str[3:], runner.kind, runner.name)
+		}
+	} else {
+		status := 0
+		switch err.Error() {
+		case "FORBIDDEN":
+			status = http.StatusForbidden
+		case "UNAUTHORIZED":
+			if runner.currentDB.user != nil && runner.currentDB.user.Name() == "" {
+				status = http.StatusUnauthorized // Guest
+			} else {
+				status = http.StatusForbidden
+			}
+		}
+		if status != 0 {
+			err = base.HTTPErrorf(status, "Not allowed to call %s %q", runner.kind, runner.name)
+		} else {
+			err = fmt.Errorf("%w (while calling %s %q)", err, runner.kind, runner.name)
+		}
+	}
+	return err
+}
+
 //////// CALLBACK FUNCTION IMPLEMENTATIONS:
+
+// Implementation of JS `app.func(name, params)` function
+func (runner *userFunctionRunner) do_func(funcName string, params map[string]interface{}) (interface{}, error) {
+	//log.Printf("*** UserFn func(%q, %+v)", funcName, params)
+	return runner.currentDB.CallUserFunction(funcName, params, runner.mutationAllowed)
+}
 
 // Implementation of JS `app.get(docID, docType)` function
 func (runner *userFunctionRunner) do_get(docID string, docType *string) (interface{}, error) {
@@ -218,6 +341,12 @@ func (runner *userFunctionRunner) do_get(docID string, docType *string) (interfa
 	}
 	body["id"] = docID
 	return body, nil
+}
+
+// Implementation of JS `app.graphql(name, params)` function
+func (runner *userFunctionRunner) do_graphql(query string, params map[string]interface{}) (interface{}, error) {
+	//log.Printf("*** UserFn graphql(%q, %+v)", funcName, params)
+	return runner.currentDB.UserGraphQLQuery(query, "", params, runner.mutationAllowed)
 }
 
 // Implementation of JS `app.query(name, params)` function
@@ -243,7 +372,7 @@ func (runner *userFunctionRunner) do_query(queryName string, params map[string]i
 func (runner *userFunctionRunner) do_save(docID string, body map[string]interface{}) error {
 	//log.Printf("*** UserFn save(%q, %v)", docID, body)
 	if !runner.mutationAllowed {
-		return fmt.Errorf("a read-only request is not allowed to mutate the database")
+		return base.HTTPErrorf(http.StatusForbidden, "a read-only request is not allowed to mutate the database")
 	}
 
 	// TODO: Currently this is "last writer wins": get the current revision if any, and pass it
@@ -287,12 +416,17 @@ func ottoObjectParam(call otto.FunctionCall, arg int, optional bool, what string
 
 }
 
-// Returns `result` back to Otto; or if `err` is non-nil, throws it.
+// Returns `result` back to Otto; or if `err` is non-nil, "throws" it via a Go panic
 func ottoResult(call otto.FunctionCall, result interface{}, err error) otto.Value {
 	if err == nil {
 		val, _ := call.Otto.ToValue(result)
 		return val
 	} else {
-		panic(call.Otto.MakeCustomError("GoError", err.Error())) //TODO: Improve
+		// The method userFunctionRunner.convertError clumsily takes these apart back into errors
+		if status, msg := base.ErrorAsHTTPStatus(err); status != 500 && status != 200 {
+			panic(call.Otto.MakeCustomError("HTTP", fmt.Sprintf("%d %s", status, msg)))
+		} else {
+			panic(call.Otto.MakeCustomError("Go", err.Error()))
+		}
 	}
 }

@@ -21,6 +21,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 )
 
 //////// QUERY CONFIGURATION:
@@ -61,11 +62,11 @@ func (db *Database) UserQuery(name string, params map[string]interface{}) (sgbuc
 	// Look up the query name in the server config:
 	query, found := db.Options.UserQueries[name]
 	if !found {
-		return nil, base.HTTPErrorf(http.StatusNotFound, "No such query '%s'", name)
+		return nil, missingError(db.user)
 	}
 
 	// Check that the user is authorized:
-	if err := query.Allow.authorize(db.user, params, "query", name); err != nil {
+	if err := query.Allow.authorize(db.user, params); err != nil {
 		return nil, err
 	}
 
@@ -124,7 +125,7 @@ func checkQueryArguments(params map[string]interface{}, parameterNames []string,
 // - The user must have a role contained in Roles, OR
 // - The user must have access to a channel contained in Channels.
 // In Roles and Channels, patterns of the form `$param` or `$(param)` are expanded using `params`.
-func (allow *UserQueryAllow) authorize(user auth.User, params map[string]interface{}, queryType string, queryName string) error {
+func (allow *UserQueryAllow) authorize(user auth.User, params map[string]interface{}) error {
 	if user == nil {
 		return nil // User is admin
 	} else if allow != nil { // No Allow object means admin-only
@@ -141,18 +142,32 @@ func (allow *UserQueryAllow) authorize(user auth.User, params map[string]interfa
 		}
 		// Check if the user has access to one of the given channels.
 		for _, channelPattern := range allow.Channels {
-			if channel, err := allow.expandPattern(channelPattern, params); err != nil {
+			if channelPattern == channels.AllChannelWildcard {
+				return nil
+			} else if channel, err := allow.expandPattern(channelPattern, params); err != nil {
 				return err
 			} else if user.CanSeeChannel(channel) {
 				return nil // User has access to one of the allowed channels
 			}
 		}
 	}
-	return user.UnauthError(fmt.Sprintf("Unauthorized call to %s %q", queryType, queryName))
+	return user.UnauthError("")
+}
+
+// Returns the appropriate HTTP error for when a function/query doesn't exist.
+// For security reasons, we don't let a non-admin user know what function names exist;
+// so instead of a 404 we return the same 401/403 error as if they didn't have access to it.
+func missingError(user auth.User) error {
+	if user == nil {
+		return base.HTTPErrorf(http.StatusNotFound, "")
+	} else {
+		return user.UnauthError("")
+	}
 }
 
 // Expands patterns of the form `$param` or `$(param)` in `pattern`, looking up each such
-// `param` in the `params` map and substituting its value. `$$` is replaced with `$`.
+// `param` in the `params` map and substituting its value.
+// (`$$` is replaced with `$`.)
 // It is an error if any `param` has no value, or if its value is not a string or integer.
 func (allow *UserQueryAllow) expandPattern(pattern string, params map[string]interface{}) (string, error) {
 	if strings.IndexByte(pattern, '$') < 0 {
@@ -177,9 +192,9 @@ func (allow *UserQueryAllow) expandPattern(pattern string, params map[string]int
 			return valueStr
 		} else if reflect.ValueOf(value).CanInt() || reflect.ValueOf(value).CanUint() {
 			return fmt.Sprintf("%v", value)
-		} else if param == userQueryUserParam {
-			// Special case: for `$user`, get value of params["user"]["name"]
-			return value.(*userQueryUserInfo).Name
+		} else if userInfo, ok := value.(*userQueryUserInfo); ok {
+			// Special case: value of `$user` is a `userQueryUserInfo` struct; return its `Name`
+			return userInfo.Name
 		} else {
 			err = base.HTTPErrorf(http.StatusBadRequest, "Value of parameter '%s' must be a string or int", param)
 			return ""
