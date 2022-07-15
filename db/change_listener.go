@@ -52,7 +52,7 @@ func (listener *changeListener) Init(name string, groupID string) {
 }
 
 // Starts a changeListener on a given Bucket.
-func (listener *changeListener) Start(bucket base.Bucket, dbStats *expvar.Map) error {
+func (listener *changeListener) Start(bucket base.Bucket, dbStats *expvar.Map, dcpStarted chan error) error {
 
 	listener.terminator = make(chan bool)
 	listener.bucket = bucket
@@ -62,6 +62,7 @@ func (listener *changeListener) Start(bucket base.Bucket, dbStats *expvar.Map) e
 		Backfill:   sgbucket.FeedNoBackfill,
 		Terminator: listener.terminator,
 		DoneChan:   make(chan struct{}),
+		Started:    dcpStarted,
 	}
 
 	return listener.StartMutationFeed(bucket, dbStats)

@@ -154,9 +154,8 @@ func DefaultCacheOptions() CacheOptions {
 // Initializes a new changeCache.
 // lastSequence is the last known database sequence assigned.
 // notifyChange is an optional function that will be called to notify of channel changes.
-// After calling Init(), you must call .Start() to start useing the cache, otherwise it will be in a locked state
-// and callers will block on trying to obtain the lock.
-func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Set), options *CacheOptions) error {
+// After calling Init(), you must call .Start() to start useing the cache.
+func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Set), options *CacheOptions, dcpStarted chan error) error {
 	c.context = dbcontext
 
 	c.notifyChange = notifyChange
@@ -184,29 +183,34 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 
 	heap.Init(&c.pendingLogs)
 
-	// background tasks that perform housekeeping duties on the cache
-	bgt, err := NewBackgroundTask("InsertPendingEntries", c.context.Name, c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2, c.terminator)
-	if err != nil {
-		return err
-	}
-	c.backgroundTasks = append(c.backgroundTasks, bgt)
+	go func() {
+		dcpStartedErr := <-dcpStarted
+		// TODO: how to test this error condition?
+		if dcpStartedErr != nil {
+			// error is handled in StartGOCB2DCPFeed
+			return
+		}
+		// background tasks that perform housekeeping duties on the cache
+		bgt, err := NewBackgroundTask("InsertPendingEntries", c.context.Name, c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2, c.terminator)
+		// TODO: how to test this error condition?
+		if err != nil {
+			base.ErrorfCtx(context.TODO(), "Failed to initialize task %w", err)
+			dbcontext.Close()
+		}
+		c.backgroundTasks = append(c.backgroundTasks, bgt)
 
-	bgt, err = NewBackgroundTask("CleanSkippedSequenceQueue", c.context.Name, c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2, c.terminator)
-	if err != nil {
-		return err
-	}
-	c.backgroundTasks = append(c.backgroundTasks, bgt)
-
-	// Lock the cache -- not usable until .Start() called.  This fixes the DCP startup race condition documented in SG #3558.
-	c.lock.Lock()
+		bgt, err = NewBackgroundTask("CleanSkippedSequenceQueue", c.context.Name, c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2, c.terminator)
+		// TODO: how to test this error condition?
+		if err != nil {
+			base.ErrorfCtx(context.TODO(), "Failed to initialize task %w", err)
+			dbcontext.Close()
+		}
+		c.backgroundTasks = append(c.backgroundTasks, bgt)
+	}()
 	return nil
 }
 
 func (c *changeCache) Start(initialSequence uint64) error {
-
-	// Unlock the cache after this function returns.
-	defer c.lock.Unlock()
-
 	// Set initial sequence for sequence buffering
 	c._setInitialSequence(initialSequence)
 

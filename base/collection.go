@@ -532,7 +532,7 @@ func (c *Collection) Incr(k string, amt, def uint64, exp uint32) (uint64, error)
 }
 
 func (c *Collection) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
-	return StartDCPFeed(c, c.Spec, args, callback, dbStats)
+	return StartGOCB2DCPFeed(c, c.Spec, args, callback, dbStats)
 }
 func (c *Collection) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
 	return nil, errors.New("StartTapFeed not implemented")

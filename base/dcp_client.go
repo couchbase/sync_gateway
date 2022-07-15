@@ -49,6 +49,7 @@ type DCPClientOptions struct {
 	FailOnRollback             bool           // When true, the DCP client will terminate on DCP rollback
 	InitialMetadata            []DCPMetadata  // When set, will be used as initial metadata for the DCP feed.  Will override any persisted metadata
 	CheckpointPersistFrequency *time.Duration // Overrides metadata persistence frequency - intended for test use
+	MetadataType               int            // Overrides metadata persistence frequency - intended for test use
 }
 
 func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket Bucket, groupID string) (*DCPClient, error) {
@@ -87,8 +88,14 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 	}
 
 	checkpointPrefix := fmt.Sprintf("%s:%v", client.checkpointPrefix, ID)
-	client.metadata = NewDCPMetadataCS(bucket, numVbuckets, numWorkers, checkpointPrefix)
-
+	switch options.MetadataType {
+	case DCPMetadataDB:
+		client.metadata = NewDCPMetadataCS(bucket, numVbuckets, numWorkers, checkpointPrefix)
+	case DCPMetadataInMemory:
+		client.metadata = NewDCPMetadataMem(numVbuckets)
+	default:
+		panic(fmt.Sprintf("Unknown Metadatatype: %d", options.MetadataType))
+	}
 	if options.InitialMetadata != nil {
 		for vbID, meta := range options.InitialMetadata {
 			client.metadata.SetMeta(uint16(vbID), meta)

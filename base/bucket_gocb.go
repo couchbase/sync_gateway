@@ -1500,7 +1500,7 @@ func (bucket *CouchbaseBucketGoCB) StartTapFeed(args sgbucket.FeedArguments, dbS
 func (bucket *CouchbaseBucketGoCB) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
 
 	// TODO: Evaluate whether to use cbgt for non-sharded caching feed, as a way to push concurrency upstream
-	return StartDCPFeed(bucket, bucket.Spec, args, callback, dbStats)
+	return StartGOCB2DCPFeed(bucket, bucket.Spec, args, callback, dbStats)
 
 }
 

@@ -8,6 +8,13 @@ import (
 	"github.com/couchbase/gocbcore/v10"
 )
 
+const (
+	// DCPMetadataDB uses database backed metadata storage
+	DCPMetadataDB = iota
+	// DCPMetadataInMemory uses in memory metadata storage
+	DCPMetadataInMemory
+)
+
 type DCPMetadata struct {
 	VbUUID          gocbcore.VbUUID
 	StartSeqNo      gocbcore.SeqNo
