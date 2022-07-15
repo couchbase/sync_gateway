@@ -227,9 +227,9 @@ var QueryTombstones = SGQuery{
 // QueryAllDocs is using the star channel's index, which is indexed by sequence, then ordering the results by doc id.
 // We currently don't have a performance-tuned use of AllDocs today - if needed, should create a custom index indexed by doc id.
 // Note: QueryAllDocs function may appends additional filter and ordering of the form:
-//    AND META(`bucket`).id >= '%s'
-//    AND META(`bucket`).id <= '%s'
-//    ORDER BY META(`bucket`).id
+//    AND META(base.KeyspaceQueryAlias).id >= '%s'
+//    AND META(base.KeyspaceQueryAlias).id <= '%s'
+//    ORDER BY META(base.KeyspaceQueryAlias).id
 var QueryAllDocs = SGQuery{
 	name: QueryTypeAllDocs,
 	statement: fmt.Sprintf(
@@ -555,26 +555,24 @@ func (context *DatabaseContext) QueryAllDocs(ctx context.Context, startKey strin
 		return context.ViewQueryWithStats(ctx, DesignDocSyncHousekeeping(), ViewAllDocs, opts)
 	}
 
-	bucketName := context.Bucket.GetName()
-
 	// N1QL Query
 	allDocsQueryStatement := replaceSyncTokensQuery(QueryAllDocs.statement, context.UseXattrs())
 	allDocsQueryStatement = replaceIndexTokensQuery(allDocsQueryStatement, sgIndexes[IndexAllDocs], context.UseXattrs())
 
 	params := make(map[string]interface{}, 0)
 	if startKey != "" {
-		allDocsQueryStatement = fmt.Sprintf("%s AND META(`%s`).id >= $startkey",
-			allDocsQueryStatement, bucketName)
+		allDocsQueryStatement = fmt.Sprintf("%s AND META(%s).id >= $startkey",
+			allDocsQueryStatement, base.KeyspaceQueryAlias)
 		params[QueryParamStartKey] = startKey
 	}
 	if endKey != "" {
-		allDocsQueryStatement = fmt.Sprintf("%s AND META(`%s`).id <= $endkey",
-			allDocsQueryStatement, bucketName)
+		allDocsQueryStatement = fmt.Sprintf("%s AND META(%s).id <= $endkey",
+			allDocsQueryStatement, base.KeyspaceQueryAlias)
 		params[QueryParamEndKey] = endKey
 	}
 
-	allDocsQueryStatement = fmt.Sprintf("%s ORDER BY META(`%s`).id",
-		allDocsQueryStatement, bucketName)
+	allDocsQueryStatement = fmt.Sprintf("%s ORDER BY META(%s).id",
+		allDocsQueryStatement, base.KeyspaceQueryAlias)
 
 	return context.N1QLQueryWithStats(ctx, QueryTypeAllDocs, allDocsQueryStatement, params, base.RequestPlus, QueryAllDocs.adhoc)
 }
