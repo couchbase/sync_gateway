@@ -5218,9 +5218,7 @@ func TestHandleProfiling(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	dirPath, err := ioutil.TempDir("", "pprof")
-	require.NoError(t, err, "Temp directory should be created")
-	defer func() { assert.NoError(t, os.RemoveAll(dirPath)) }()
+	dirPath := t.TempDir()
 
 	tests := []struct {
 		inputProfile string
@@ -5292,9 +5290,7 @@ func TestHandleHeapProfiling(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	dirPath, err := ioutil.TempDir("", "heap-pprof")
-	require.NoError(t, err, "Temp directory should be created")
-	defer func() { assert.NoError(t, os.RemoveAll(dirPath)) }()
+	dirPath := t.TempDir()
 
 	// Send a valid request for heap profiling
 	filePath := filepath.Join(dirPath, "heap.pprof")
