@@ -2363,6 +2363,7 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	res = bootstrapAdminRequest(t, http.MethodGet, fmt.Sprintf("/db/_user/%s", subject), "")
 	require.Equal(t, http.StatusOK, res.StatusCode)
 	var adminResult db.Body
+	require.NoError(t, base.JSONUnmarshal([]byte(res.Body), &adminResult))
 	base.DebugfCtx(base.TestCtx(t), base.KeyAll, "User data from admin API: %v", adminResult)
 
 	assert.Equal(t, subject, adminResult["name"])

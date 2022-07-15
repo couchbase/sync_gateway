@@ -294,15 +294,22 @@ func (r *bootstrapAdminResponse) requireResponse(status int, body string) {
 }
 
 func bootstrapAdminRequest(t *testing.T, method, path, body string) bootstrapAdminResponse {
-	return bootstrapAdminRequestWithHeaders(t, method, path, body, nil)
+	return doBootstrapAdminRequest(t, method, "", path, body, nil)
 }
 
 func bootstrapAdminRequestCustomHost(t *testing.T, method, host, path, body string) bootstrapAdminResponse {
-	return bootstrapAdminRequest(t, method, host+path, body)
+	return doBootstrapAdminRequest(t, method, host, path, body, nil)
 }
 
 func bootstrapAdminRequestWithHeaders(t *testing.T, method, path, body string, headers map[string]string) bootstrapAdminResponse {
-	url := "http://localhost:" + strconv.FormatInt(4985+bootstrapTestPortOffset, 10) + path
+	return doBootstrapAdminRequest(t, method, "", path, body, headers)
+}
+
+func doBootstrapAdminRequest(t *testing.T, method, host, path, body string, headers map[string]string) bootstrapAdminResponse {
+	if host == "" {
+		host = "http://localhost:" + strconv.FormatInt(4985+bootstrapTestPortOffset, 10)
+	}
+	url := host + path
 
 	buf := bytes.NewBufferString(body)
 	req, err := http.NewRequest(method, url, buf)
@@ -324,5 +331,6 @@ func bootstrapAdminRequestWithHeaders(t *testing.T, method, path, body string, h
 		t:          t,
 		StatusCode: resp.StatusCode,
 		Body:       string(rBody),
+		Header:     resp.Header,
 	}
 }
