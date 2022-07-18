@@ -73,10 +73,10 @@ func TestExpandChannel(t *testing.T) {
 	assert.Equal(t, ch, "foobar$")
 
 	// error: param value is not a string
-	ch, err = allow.expandPattern("knows-$WORDS", params)
+	_, err = allow.expandPattern("knows-$WORDS", params)
 	assert.NotNil(t, err)
 
 	// error: undefined parameter
-	ch, err = allow.expandPattern("sales-upTo-$FOO", params)
+	_, err = allow.expandPattern("sales-upTo-$FOO", params)
 	assert.NotNil(t, err)
 }
