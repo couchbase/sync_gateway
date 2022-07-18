@@ -32,7 +32,8 @@ func (h *handler) handleGetDesignDoc() error {
 		filter := "ok"
 		if h.db.DatabaseContext.ChannelMapper != nil {
 			hash := sha1.New()
-			_, _ = io.WriteString(hash, h.db.DatabaseContext.ChannelMapper.Function())
+			fn, _ := h.db.DatabaseContext.ChannelMapper.Function()
+			_, _ = io.WriteString(hash, fn)
 			filter = fmt.Sprint(hash.Sum(nil))
 		}
 		result = db.Body{"filters": db.Body{"bychannel": filter}}

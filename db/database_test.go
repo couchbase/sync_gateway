@@ -1312,7 +1312,7 @@ func TestSyncFnOnPush(t *testing.T) {
 		if (oldDoc)
 			log("oldDoc _id = "+oldDoc._id+", _rev = "+oldDoc._rev);
 		channel(doc.channels);
-	}`)
+	}`, 0)
 
 	// Create first revision:
 	body := Body{"key1": "value1", "key2": 1234, "channels": []string{"public"}}
@@ -1358,7 +1358,7 @@ func TestAccessFunctionValidation(t *testing.T) {
 	defer db.Close()
 
 	var err error
-	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`)
+	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`, 0)
 
 	body := Body{"users": []string{"username"}, "userChannels": []string{"BBC1"}}
 	_, _, err = db.Put("doc1", body)
@@ -1393,7 +1393,7 @@ func TestAccessFunctionDb(t *testing.T) {
 	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
 
 	var err error
-	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`)
+	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`, 0)
 
 	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "Netflix"))
 	user.SetExplicitRoles(channels.TimedSet{"animefan": channels.NewVbSimpleSequence(1), "tumblr": channels.NewVbSimpleSequence(1)}, 1)
@@ -1953,7 +1953,7 @@ func TestSyncFnMutateBody(t *testing.T) {
 		doc.key1 = "mutatedValue"
 		doc.key2.subkey1 = "mutatedSubValue"
 		channel(doc.channels);
-	}`)
+	}`, 0)
 
 	// Create first revision:
 	body := Body{"key1": "value1", "key2": Body{"subkey1": "subvalue1"}, "channels": []string{"public"}}

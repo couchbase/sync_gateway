@@ -2585,7 +2585,7 @@ func TestSyncFnBodyProperties(t *testing.T) {
 		}
 	}`
 
-	rtConfig := RestTesterConfig{SyncFn: syncFn}
+	rtConfig := RestTesterConfig{SyncFn: syncFn, DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{JavascriptTimeoutSecs: base.Uint32Ptr(0)}}}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -9510,4 +9510,48 @@ func rawDocWithAttachmentAndSyncMeta() []byte {
    },
   "key": "value"
 }`)
+}
+
+func TestSyncFnTimeout(t *testing.T) {
+	syncFn := `function(doc) { while(true) {} }`
+
+	rtConfig := RestTesterConfig{SyncFn: syncFn, DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{JavascriptTimeoutSecs: base.Uint32Ptr(1)}}}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	syncFnFinishedWG := sync.WaitGroup{}
+	syncFnFinishedWG.Add(1)
+	go func() {
+		response := rt.SendAdminRequest("PUT", "/db/doc", `{"foo": "bar"}`)
+		requireStatus(t, response, 500) // TODO: Change to assertStatus when CBG-2143 merged maybe with response matching if response is changed
+		syncFnFinishedWG.Done()
+	}()
+	timeoutErr := WaitWithTimeout(&syncFnFinishedWG, time.Second*5)
+	assert.NoError(t, timeoutErr)
+}
+
+func TestImportFilterTimeout(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Import not supported by Walrus")
+	}
+
+	importFilter := `function(doc) { while(true) { } }`
+
+	rtConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{ImportFilter: &importFilter, AutoImport: false, JavascriptTimeoutSecs: base.Uint32Ptr(1)}}}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	added, err := rt.Bucket().AddRaw("doc", 0, []byte(fmt.Sprintf(`{"foo": "bar"}`)))
+	require.True(t, added)
+	require.NoError(t, err)
+
+	syncFnFinishedWG := sync.WaitGroup{}
+	syncFnFinishedWG.Add(1)
+	go func() {
+		response := rt.SendAdminRequest("GET", "/db/doc", ``)
+		requireStatus(t, response, 404) // TODO: Change to assertStatus when CBG-2143 merged
+		syncFnFinishedWG.Done()
+	}()
+	timeoutErr := WaitWithTimeout(&syncFnFinishedWG, time.Second*5)
+	assert.NoError(t, timeoutErr)
 }

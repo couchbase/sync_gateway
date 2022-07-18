@@ -132,6 +132,7 @@ func DefaultDbConfig(sc *StartupConfig) *DbConfig {
 		QueryPaginationLimit:             base.IntPtr(db.DefaultQueryPaginationLimit),
 		UserXattrKey:                     "",
 		ClientPartitionWindowSecs:        base.IntPtr(int(base.DefaultClientPartitionWindow.Seconds())),
+		JavascriptTimeoutSecs:            base.Uint32Ptr(base.DefaultJavascriptTimeoutSecs),
 	}
 
 	revsLimit := db.DefaultRevsLimitNoConflicts

@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -113,7 +114,7 @@ type jsEventTask struct {
 // Compiles a JavaScript event function to a jsEventTask object.
 func newJsEventTask(funcSource string) (sgbucket.JSServerTask, error) {
 	eventTask := &jsEventTask{}
-	err := eventTask.InitWithLogging(funcSource,
+	err := eventTask.InitWithLogging(funcSource, 0,
 		func(s string) {
 			base.ErrorfCtx(context.Background(), base.KeyJavascript.String()+": Webhook %s", base.UD(s))
 		},
@@ -156,8 +157,8 @@ func NewJSEventFunction(fnSource string) *JSEventFunction {
 
 	base.InfofCtx(context.Background(), base.KeyEvents, "Creating new JSEventFunction")
 	return &JSEventFunction{
-		JSServer: sgbucket.NewJSServer(fnSource, kTaskCacheSize,
-			func(fnSource string) (sgbucket.JSServerTask, error) {
+		JSServer: sgbucket.NewJSServer(fnSource, 0, kTaskCacheSize,
+			func(fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
 				return newJsEventTask(fnSource)
 			}),
 	}

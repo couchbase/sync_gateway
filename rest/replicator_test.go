@@ -2077,7 +2077,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			rt1revID := respRevID(t, resp)
 			assert.Equal(t, test.localRevID, rt1revID)
 
-			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver)
+			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
 			require.NoError(t, err)
 			replicationStats := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name())
 			ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
@@ -2312,7 +2312,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			localDoc, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalSync)
 			require.NoError(t, err)
 
-			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver)
+			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
 			require.NoError(t, err)
 			ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
 				ID:          t.Name(),
@@ -4016,7 +4016,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			rt1revID := respRevID(t, resp)
 			assert.Equal(t, test.localRevID, rt1revID)
 
-			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver)
+			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
 			require.NoError(t, err)
 			replicationStats := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name())
 			ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
@@ -4480,7 +4480,7 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 			defer rt1.Close()
 
 			defaultConflictResolver, err := db.NewCustomConflictResolver(
-				`function(conflict) { return defaultPolicy(conflict); }`)
+				`function(conflict) { return defaultPolicy(conflict); }`, rt1.GetDatabase().Options.JavascriptTimeout)
 			require.NoError(t, err, "Error creating custom conflict resolver")
 
 			config := db.ActiveReplicatorConfig{
@@ -4632,7 +4632,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			defer rt1.Close()
 
 			defaultConflictResolver, err := db.NewCustomConflictResolver(
-				`function(conflict) { return defaultPolicy(conflict); }`)
+				`function(conflict) { return defaultPolicy(conflict); }`, rt1.GetDatabase().Options.JavascriptTimeout)
 			require.NoError(t, err, "Error creating custom conflict resolver")
 
 			config := db.ActiveReplicatorConfig{
@@ -5396,7 +5396,7 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 			mutatedLocal["_deleted"] = true;
 			mutatedLocal["_rev"] = "";
 			return mutatedLocal;
-		}`)
+		}`, rt1.GetDatabase().Options.JavascriptTimeout)
 	require.NoError(t, err)
 
 	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{

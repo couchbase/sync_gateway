@@ -172,6 +172,7 @@ type DbConfig struct {
 	UserXattrKey                     string                           `json:"user_xattr_key,omitempty"`                       // Key of user xattr that will be accessible from the Sync Function. If empty the feature will be disabled.
 	ClientPartitionWindowSecs        *int                             `json:"client_partition_window_secs,omitempty"`         // How long clients can remain offline for without losing replication metadata. Default 30 days (in seconds)
 	Guest                            *auth.PrincipalConfig            `json:"guest,omitempty"`                                // Guest user settings
+	JavascriptTimeoutSecs            *uint32                          `json:"javascript_timeout_secs,omitempty"`              // The amount of seconds a Javascript function can run for. Set to 0 for no timeout.
 }
 
 type ScopesConfig map[string]ScopeConfig
@@ -928,7 +929,7 @@ func (dbConfig *DbConfig) deprecatedConfigCacheFallback() (warnings []string) {
 // validateJavascriptFunction returns an error if the javascript function was invalid, if set.
 func validateJavascriptFunction(jsFunc *string) (isEmpty bool, err error) {
 	if jsFunc != nil && strings.TrimSpace(*jsFunc) != "" {
-		if _, err := sgbucket.NewJSRunner(*jsFunc); err != nil {
+		if _, err := sgbucket.NewJSRunner(*jsFunc, 0); err != nil {
 			return false, fmt.Errorf("invalid javascript syntax: %w", err)
 		}
 		return false, nil
