@@ -22,7 +22,7 @@ func (bh *blipHandler) handleGetRev(rq *blip.Message) error {
 	docID := rq.Properties[GetRevMessageId]
 	ifNotRev := rq.Properties[GetRevIfNotRev]
 
-	rev, err := bh.db.GetRev(docID, "", false, nil)
+	rev, err := bh.collection.GetRev(docID, "", false, nil)
 	if err != nil {
 		status, reason := base.ErrorAsHTTPStatus(err)
 		return &base.HTTPError{Status: status, Message: reason}
