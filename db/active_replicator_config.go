@@ -99,6 +99,10 @@ type ActiveReplicatorConfig struct {
 	// Map corresponding to db.replications.[replicationID] in Sync Gateway's expvars.  Populated with
 	// replication stats in blip_sync_stats.go
 	ReplicationStatsMap *base.DbReplicatorStats
+
+	// Returns an error from ActiveReplicator.Stop() if the replicator encountered any recovered panics inside handlers.
+	// Intended for test usage only, enabled by default but disabled for the prod-ISGR codepath.
+	reportHandlerPanicsOnStop *bool
 }
 
 // SetCheckpointPrefix is a cross-package way of defining a checkpoint prefix for an ActiveReplicatorConfig intended for test usage.
