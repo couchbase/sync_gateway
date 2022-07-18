@@ -116,40 +116,35 @@ func newJavaScriptRunner(name string, kind string, funcSource string) (*javaScri
 	return runner, nil
 }
 
+type jsError struct {
+	err    error
+	runner *javaScriptRunner
+}
+
+func (jserr *jsError) Error() string {
+	return fmt.Sprintf("%v (while calling %s %q)", jserr.err, jserr.runner.kind, jserr.runner.name)
+}
+
+func (jserr *jsError) Unwrap() error {
+	return jserr.err
+}
+
 var HttpErrRE = regexp.MustCompile(`^HTTP:\s*(\d+)\s+(.*)`)
 
 func (runner *javaScriptRunner) convertError(err error) error {
-	if ottoErr, ok := err.(*otto.Error); ok {
-		// Unfortunately there is no API on otto.Error to get the name & message separately.
-		// Instead, look for the name as a prefix. (See the `ottoResult` function below)
-		str := ottoErr.Error()
-		if strings.HasPrefix(str, "HTTP:") {
-			m := HttpErrRE.FindStringSubmatch(str)
-			status, _ := strconv.ParseInt(m[1], 10, 0)
-			message := m[2]
-			err = base.HTTPErrorf(int(status), "%s (while calling %s %q)", message, runner.kind, runner.name)
-		} else if strings.HasPrefix(str, "Go:") {
-			err = fmt.Errorf("%s (while calling %s %q)", str[3:], runner.kind, runner.name)
-		}
-	} else {
-		status := 0
-		switch err.Error() {
-		case "FORBIDDEN":
+	// Unfortunately there is no API on otto.Error to get the name & message separately.
+	// Instead, look for the name as a prefix. (See the `ottoResult` function below)
+	str := err.Error()
+	if strings.HasPrefix(str, "HTTP:") {
+		m := HttpErrRE.FindStringSubmatch(str)
+		status, _ := strconv.ParseInt(m[1], 10, 0)
+		message := m[2]
+		if status == http.StatusUnauthorized && (runner.currentDB.user == nil || runner.currentDB.user.Name() != "") {
 			status = http.StatusForbidden
-		case "UNAUTHORIZED":
-			if runner.currentDB.user != nil && runner.currentDB.user.Name() == "" {
-				status = http.StatusUnauthorized // Guest
-			} else {
-				status = http.StatusForbidden
-			}
 		}
-		if status != 0 {
-			err = base.HTTPErrorf(status, "Not allowed to call %s %q", runner.kind, runner.name)
-		} else {
-			err = fmt.Errorf("%w (while calling %s %q)", err, runner.kind, runner.name)
-		}
+		return base.HTTPErrorf(int(status), "%s (while calling %s %q)", message, runner.kind, runner.name)
 	}
-	return err
+	return &jsError{err, runner}
 }
 
 //////// DATABASE CALLBACK FUNCTION IMPLEMENTATIONS:
@@ -292,7 +287,7 @@ const kJavaScriptWrapper = "function() {" +
 		}
 
 		User.prototype.requireAdmin = function() {
-			throw("FORBIDDEN");
+			throw("HTTP: 403 Forbidden");
 		}
 
 		User.prototype.requireName = function(name) {
@@ -303,7 +298,7 @@ const kJavaScriptWrapper = "function() {" +
 				allowed = this.name == name;
 			}
 			if (!allowed)
-				throw("UNAUTHORIZED");
+				throw("HTTP: 401 Unauthorized");
 		}
 
 		User.prototype.requireRole = function(role) {
@@ -316,7 +311,7 @@ const kJavaScriptWrapper = "function() {" +
 				if (this.roles[role] !== undefined)
 					return;
 			}
-			throw("UNAUTHORIZED");
+			throw("HTTP: 401 Unauthorized");
 		}
 
 		User.prototype.requireAccess = function(channel) {
@@ -329,7 +324,7 @@ const kJavaScriptWrapper = "function() {" +
 				if (this.channels.indexOf(channel) != -1)
 					return;
 			}
-			throw("UNAUTHORIZED");
+			throw("HTTP: 401 Unauthorized");
 		}
 
 		// Admin prototype makes all the "require..." functions no-ops:

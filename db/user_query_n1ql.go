@@ -62,11 +62,11 @@ func (db *Database) UserQuery(name string, params map[string]interface{}) (sgbuc
 	// Look up the query name in the server config:
 	query, found := db.Options.UserQueries[name]
 	if !found {
-		return nil, missingError(db.user)
+		return nil, missingError(db.user, "query", name)
 	}
 
 	// Check that the user is authorized:
-	if err := query.Allow.authorize(db.user, params); err != nil {
+	if err := query.Allow.authorize(db.user, params, "query", name); err != nil {
 		return nil, err
 	}
 
@@ -125,7 +125,7 @@ func checkQueryArguments(params map[string]interface{}, parameterNames []string,
 // - The user must have a role contained in Roles, OR
 // - The user must have access to a channel contained in Channels.
 // In Roles and Channels, patterns of the form `$param` or `$(param)` are expanded using `params`.
-func (allow *UserQueryAllow) authorize(user auth.User, params map[string]interface{}) error {
+func (allow *UserQueryAllow) authorize(user auth.User, params map[string]interface{}, what string, name string) error {
 	if user == nil {
 		return nil // User is admin
 	} else if allow != nil { // No Allow object means admin-only
@@ -151,17 +151,17 @@ func (allow *UserQueryAllow) authorize(user auth.User, params map[string]interfa
 			}
 		}
 	}
-	return user.UnauthError("")
+	return user.UnauthError(fmt.Sprintf("you are not allowed to call %s %q", what, name))
 }
 
 // Returns the appropriate HTTP error for when a function/query doesn't exist.
 // For security reasons, we don't let a non-admin user know what function names exist;
 // so instead of a 404 we return the same 401/403 error as if they didn't have access to it.
-func missingError(user auth.User) error {
+func missingError(user auth.User, what string, name string) error {
 	if user == nil {
-		return base.HTTPErrorf(http.StatusNotFound, "")
+		return base.HTTPErrorf(http.StatusNotFound, "no such %s %q", what, name)
 	} else {
-		return user.UnauthError("")
+		return user.UnauthError(fmt.Sprintf("you are not allowed to call %s %q", what, name))
 	}
 }
 

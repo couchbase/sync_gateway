@@ -38,11 +38,11 @@ func (db *Database) CallUserFunction(name string, params map[string]interface{},
 	// Look up the function by name:
 	config, found := db.Options.UserFunctions[name]
 	if !found {
-		return nil, missingError(db.user)
+		return nil, missingError(db.user, "function", name)
 	}
 
 	// Check that the user is authorized:
-	if err := config.Allow.authorize(db.user, params); err != nil {
+	if err := config.Allow.authorize(db.user, params, "function", name); err != nil {
 		return nil, err
 	}
 

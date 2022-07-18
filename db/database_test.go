@@ -148,10 +148,11 @@ func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
 	}
 }
 
-func assertHTTPError(t *testing.T, err error, status int) {
+func assertHTTPError(t *testing.T, err error, status int) bool {
 	var httpErr *base.HTTPError
-	assert.ErrorAs(t, err, &httpErr)
-	assert.Equal(t, status, httpErr.Status)
+	return assert.Error(t, err) &&
+		assert.ErrorAs(t, err, &httpErr) &&
+		assert.Equal(t, status, httpErr.Status)
 }
 
 func TestDatabase(t *testing.T) {
