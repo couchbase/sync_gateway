@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -43,12 +44,27 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 	il.bucketName = bucket.GetName()
 	il.database = Database{DatabaseContext: dbContext, user: nil}
 	il.stats = dbStats.Database()
+	collections := make(map[string][]string)
+	// FIXME: remove once both sharded and non-sharded DCP feeds support more than one collection (CBG-2182, CBG-2193)
+	if len(dbContext.Scopes) > 1 {
+		return fmt.Errorf("more than one collection not supported")
+	}
+	for scopeName, scope := range dbContext.Scopes {
+		if len(scope.Collections) > 1 {
+			return fmt.Errorf("more than one collection not supported")
+		}
+		collections[scopeName] = make([]string, 0, len(scope.Collections))
+		for collName := range scope.Collections {
+			collections[scopeName] = append(collections[scopeName], collName)
+		}
+	}
 	feedArgs := sgbucket.FeedArguments{
 		ID:               base.DCPImportFeedID,
 		Backfill:         sgbucket.FeedResume,
 		Terminator:       il.terminator,
 		DoneChan:         make(chan struct{}),
 		CheckpointPrefix: il.checkpointPrefix,
+		Scopes:           collections,
 	}
 
 	base.InfofCtx(context.TODO(), base.KeyDCP, "Attempting to start import DCP feed %v...", base.MD(base.ImportDestKey(il.database.Name)))
@@ -67,7 +83,7 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 		// Non-couchbase bucket or CE, start a non-sharded feed
 		return bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
 	} else {
-		il.cbgtContext, err = base.StartShardedDCPFeed(dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater, bucket, cbStore.GetSpec(), dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
+		il.cbgtContext, err = base.StartShardedDCPFeed(dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater, bucket, cbStore.GetSpec(), feedArgs.Scopes, dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
 		return err
 	}
 
