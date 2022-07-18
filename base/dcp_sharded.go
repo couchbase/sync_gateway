@@ -335,6 +335,14 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 		addCbgtCredentials(dbName, username, password)
 	}
 
+	if spec.CACertPath != "" {
+		bucketUUID, err := bucket.UUID()
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch UUID of bucket %v: %w", MD(bucket.GetName()).Redact(), err)
+		}
+		setCbgtRootCertsForBucket(bucketUUID, spec.CACertPath)
+	}
+
 	return cbgtContext, nil
 }
 

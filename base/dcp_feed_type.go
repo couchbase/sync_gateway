@@ -2,6 +2,8 @@ package base
 
 import (
 	"context"
+	"crypto/x509"
+	"io/ioutil"
 	"sync"
 
 	"github.com/couchbase/cbgt"
@@ -12,6 +14,9 @@ import (
 // Cannot use the serverContext to retrieve this information, as the cbgt manager for a database is initialized
 // before the database is added to the server context's set of databases
 var cbgtCredentials map[string]cbgtCreds
+
+// cbgtRootCertPools is a map of bucket UUIDs to cert pools for its CA certs.
+var cbgtRootCertPools map[string]*x509.CertPool
 var cbgtCredentialsLock sync.Mutex
 
 type cbgtCreds struct {
@@ -24,6 +29,24 @@ const (
 	SOURCE_GOCB_DCP_SG        = "gocb-dcp-sg"
 )
 
+func cbgtRootCAsProvider(bucketName, bucketUUID string) func() *x509.CertPool {
+	if pool, ok := cbgtRootCertPools[bucketUUID]; ok {
+		return func() *x509.CertPool {
+			return pool
+		}
+	}
+	DebugfCtx(context.TODO(), KeyDCP, "Bucket %v not found in root cert pools, using system certs", MD(bucketName))
+	return func() *x509.CertPool {
+		pool, err := x509.SystemCertPool()
+		if err != nil {
+			// Panic here is appropriate to ensure we fail closed and don't return a nil pool, which would disable
+			// cert validation. Code inspection suggests that, as of Go 1.18.2, SystemCertPool always returns a nil err.
+			PanicfCtx(context.TODO(), "Failed to load system X509 cert pool! %v", err)
+		}
+		return pool
+	}
+}
+
 // When SG isn't using x.509 authentication, it's necessary to pass bucket credentials
 // to cbgt for use when setting up the DCP feed.  These need to be passed as AuthUser and
 // AuthPassword in the DCP source parameters.
@@ -32,6 +55,7 @@ const (
 // the credential information to the DCP parameters before calling the underlying method.
 func init() {
 	cbgtCredentials = make(map[string]cbgtCreds)
+	cbgtRootCertPools = make(map[string]*x509.CertPool)
 	cbgt.RegisterFeedType(SOURCE_GOCOUCHBASE_DCP_SG, &cbgt.FeedType{
 		Start:           SGFeedStartDCPFeed,
 		Partitions:      SGFeedPartitions,
@@ -56,6 +80,7 @@ func init() {
 			" via DCP protocol and GoCB",
 		StartSample: cbgt.NewDCPFeedParams(),
 	})
+	cbgt.RootCAsProvider = cbgtRootCAsProvider
 }
 
 type SGFeedSourceParams struct {
@@ -65,6 +90,12 @@ type SGFeedSourceParams struct {
 
 	// Used to pass the SG database name to SGFeed* shims
 	DbName string `json:"sg_dbname,omitempty"`
+
+	// Scope within the bucket to stream data from.
+	Scope string `json:"scope,omitempty"`
+
+	// Collections within the scope that the feed would cover.
+	Collections []string `json:"collections,omitempty"`
 }
 
 type SGFeedIndexParams struct {
@@ -82,10 +113,16 @@ func cbgtFeedParams(spec BucketSpec, dbName string) (string, error) {
 		feedParams.IncludeXAttrs = true
 	}
 
+	if spec.Scope != nil && spec.Collection != nil {
+		feedParams.Scope = *spec.Scope
+		feedParams.Collections = []string{*spec.Collection}
+	}
+
 	paramBytes, err := JSONMarshal(feedParams)
 	if err != nil {
 		return "", err
 	}
+	TracefCtx(context.TODO(), KeyDCP, "CBGT feed params: %v", UD(string(paramBytes)))
 	return string(paramBytes), nil
 }
 
@@ -246,4 +283,20 @@ func getCbgtCredentials(dbName string) (username, password string, ok bool) {
 	}
 	cbgtCredentialsLock.Unlock()
 	return username, password, found
+}
+
+func setCbgtRootCertsForBucket(bucketUUID string, caCertPath string) {
+	cbgtCredentialsLock.Lock()
+	defer cbgtCredentialsLock.Unlock()
+	pool := x509.NewCertPool()
+	certs, err := ioutil.ReadFile(caCertPath)
+	if err != nil {
+		ErrorfCtx(context.TODO(), "Failed to load CA certificate for bucket %v from %v: %v", MD(bucketUUID), MD(caCertPath), err)
+		return
+	}
+	ok := pool.AppendCertsFromPEM(certs)
+	if !ok {
+		WarnfCtx(context.TODO(), "Did not load any valid certificates for bucket %v from file %v", MD(bucketUUID), MD(caCertPath))
+	}
+	cbgtRootCertPools[bucketUUID] = pool
 }
