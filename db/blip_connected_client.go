@@ -76,30 +76,31 @@ func (bh *blipHandler) handlePutRev(rq *blip.Message) error {
 	return bh.processRev(rq, &stats)
 }
 
-// Handles a Connected-Client "query" request.
-func (bh *blipHandler) handleQuery(rq *blip.Message) error {
-	// Look up the query by name:
-	if _, found := rq.Properties[QuerySource]; found {
-		return base.HTTPErrorf(http.StatusForbidden, "Only named queries allowed")
-	}
-
-	name, found := rq.Properties[QueryName]
-	if !found {
-		return base.HTTPErrorf(http.StatusBadRequest, "Missing 'name'")
-	}
-
-	// Read the parameters out of the request body:
-	var requestParams map[string]interface{}
-	bodyBytes, err := rq.Body()
+// Handles a Connected-Client "function" request.
+func (bh *blipHandler) handleFunction(rq *blip.Message) error {
+	name, requestParams, err := bh.parseQueryNameAndParams(rq)
 	if err != nil {
 		return err
 	}
-	if len(bodyBytes) > 0 {
-		if err = json.Unmarshal(bodyBytes, &requestParams); err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "Invalid query parameters")
-		}
+	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("name: %s", name))
+	results, err := bh.db.CallUserFunction(name, requestParams, true)
+	if err != nil {
+		return base.HTTPErrorf(http.StatusInternalServerError, "Error running function: %v", err)
 	}
 
+	// Write the result to the response:
+	response := rq.Response()
+	response.SetCompressed(true)
+	response.SetJSONBody(results)
+	return nil
+}
+
+// Handles a Connected-Client "query" request.
+func (bh *blipHandler) handleQuery(rq *blip.Message) error {
+	name, requestParams, err := bh.parseQueryNameAndParams(rq)
+	if err != nil {
+		return err
+	}
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("name: %s", name))
 
 	// Run the query:
@@ -131,15 +132,32 @@ func (bh *blipHandler) handleQuery(rq *blip.Message) error {
 	return nil
 }
 
+func (bh *blipHandler) parseQueryNameAndParams(rq *blip.Message) (name string, params map[string]interface{}, err error) {
+	var found bool
+	name, found = rq.Properties[QueryName]
+	if !found {
+		err = base.HTTPErrorf(http.StatusBadRequest, "Missing 'name'")
+		return
+	}
+	var bodyBytes []byte
+	bodyBytes, err = rq.Body()
+	if len(bodyBytes) > 0 && err == nil {
+		if json.Unmarshal(bodyBytes, &params) != nil {
+			err = base.HTTPErrorf(http.StatusBadRequest, "Invalid function parameters")
+		}
+	}
+	return
+}
+
 // Handles a Connected-Client "graphql" request.
 // - Request string is in the body of the request.
 // - Response JSON is returned in the body of the response in GraphQL format (including errors.)
 func (bh *blipHandler) handleGraphQL(rq *blip.Message) error {
-	query, found := rq.Properties["query"]
+	query, found := rq.Properties[GraphQLQuery]
 	if !found {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing 'query'")
 	}
-	operationName := rq.Properties["operationName"]
+	operationName := rq.Properties[GraphQLOperationName]
 
 	bodyBytes, err := rq.Body()
 	if err != nil {

@@ -43,6 +43,7 @@ var kHandlersByProfile = map[string]blipHandlerFunc{
 	MessageGetRev:          userBlipHandler((*blipHandler).handleGetRev),
 	MessagePutRev:          userBlipHandler((*blipHandler).handlePutRev),
 	MessageQuery:           userBlipHandler((*blipHandler).handleQuery),
+	MessageFunction:        userBlipHandler((*blipHandler).handleFunction),
 	MessageGraphQL:         userBlipHandler((*blipHandler).handleGraphQL),
 }
 

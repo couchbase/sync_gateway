@@ -74,7 +74,7 @@ func (db *Database) UserQuery(name string, params map[string]interface{}) (sgbuc
 	if _, found := params[userQueryUserParam]; found {
 		logCtx := context.TODO()
 		base.WarnfCtx(logCtx, "Bad config: query %q uses reserved parameter name '$%s'", name, userQueryUserParam)
-		return nil, base.HTTPErrorf(http.StatusInternalServerError, "Server %s configuration is invalid")
+		return nil, base.HTTPErrorf(http.StatusInternalServerError, "Server configuration is invalid")
 	}
 
 	// Make sure each specified parameter has a value in `params`:
