@@ -40,7 +40,15 @@ type CbgtContext struct {
 
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
 // dbName is used to define a unique path name for local file storage of pindex files
-func StartShardedDCPFeed(dbName string, configGroup string, uuid string, heartbeater Heartbeater, bucket Bucket, spec BucketSpec, numPartitions uint16, cfg cbgt.Cfg) (*CbgtContext, error) {
+func StartShardedDCPFeed(dbName string, configGroup string, uuid string, heartbeater Heartbeater, bucket Bucket, spec BucketSpec, scopes map[string][]string, numPartitions uint16, cfg cbgt.Cfg) (*CbgtContext, error) {
+	if len(scopes) > 1 {
+		return nil, fmt.Errorf("multiple scopes not supported")
+	}
+	for _, colls := range scopes {
+		if len(colls) > 1 {
+			return nil, fmt.Errorf("multiple collections not supported")
+		}
+	}
 
 	cbgtContext, err := initCBGTManager(bucket, spec, cfg, uuid, dbName)
 	if err != nil {
@@ -53,7 +61,7 @@ func StartShardedDCPFeed(dbName string, configGroup string, uuid string, heartbe
 	)
 
 	// Start Manager.  Registers this node in the cfg
-	err = cbgtContext.StartManager(dbName, configGroup, bucket, spec, numPartitions)
+	err = cbgtContext.StartManager(dbName, configGroup, bucket, spec, scopes, numPartitions)
 	if err != nil {
 		return nil, err
 	}
@@ -364,7 +372,7 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 }
 
 // StartManager registers this node with cbgt, and the janitor will start feeds on this node.
-func (c *CbgtContext) StartManager(dbName string, configGroup string, bucket Bucket, spec BucketSpec, numPartitions uint16) (err error) {
+func (c *CbgtContext) StartManager(dbName string, configGroup string, bucket Bucket, spec BucketSpec, scopes map[string][]string, numPartitions uint16) (err error) {
 
 	// TODO: Clarify the functional difference between registering the manager as 'wanted' vs 'known'.
 	registerType := cbgt.NODE_DEFS_WANTED
