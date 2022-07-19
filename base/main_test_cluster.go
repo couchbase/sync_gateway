@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/couchbase/gocb/v2"
@@ -270,4 +271,21 @@ func (c *tbpClusterV2) closeCluster(cluster *gocb.Cluster) {
 	if err := cluster.Close(nil); err != nil {
 		c.logger(context.Background(), "Couldn't close cluster connection: %v", err)
 	}
+}
+
+func (c *tbpClusterV2) getMinClusterCompatVersion() int {
+	cluster := getCluster(c.server)
+	defer c.closeCluster(cluster)
+
+	nodesMeta, err := cluster.Internal().GetNodesMetadata(nil)
+	if err != nil {
+		FatalfCtx(context.Background(), "TEST: failed to fetch nodes metadata: %v", err)
+	}
+	minVal := math.MaxInt
+	for _, node := range nodesMeta {
+		if node.ClusterCompatibility < minVal {
+			minVal = node.ClusterCompatibility
+		}
+	}
+	return minVal
 }

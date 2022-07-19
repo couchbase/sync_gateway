@@ -22,9 +22,7 @@ import (
 // TestCollectionsPutDocInKeyspace creates a collection and starts up a RestTester instance on it.
 // Ensures that various keyspaces can or can't be used to insert a doc in the collection.
 func TestCollectionsPutDocInKeyspace(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Walrus does not support scopes and collections")
-	}
+	base.TestRequiresCollections(t)
 
 	const (
 		scopeName      = "foo"
@@ -110,9 +108,7 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 func TestCollectionsDCP(t *testing.T) {
 	t.Skip("Collections-aware DCP not implemented yet")
 
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Walrus does not support scopes and collections")
-	}
+	base.TestRequiresCollections(t)
 
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
@@ -153,10 +149,7 @@ func TestCollectionsDCP(t *testing.T) {
 // TestCollectionsBasicIndexQuery ensures that the bucket API is able to create an index on a collection
 // and query documents written to the collection.
 func TestCollectionsBasicIndexQuery(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Walrus does not support scopes and collections")
-	}
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	base.TestRequiresCollections(t)
 
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
@@ -235,9 +228,7 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 // TestCollectionsSGIndexQuery is more of an end-to-end test to ensure SG indexes are built correctly,
 // and the channel access query is able to run when pulling a document as a user, and backfill the channel cache.
 func TestCollectionsSGIndexQuery(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Walrus does not support scopes and collections")
-	}
+	base.TestRequiresCollections(t)
 
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyHTTP, base.KeyQuery, base.KeyCRUD)
 
