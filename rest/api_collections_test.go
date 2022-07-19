@@ -106,9 +106,8 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 }
 
 func TestCollectionsDCP(t *testing.T) {
-	t.Skip("Collections-aware DCP not implemented yet")
-
 	base.TestRequiresCollections(t)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyDCP, base.KeyImport)
 
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
@@ -132,7 +131,7 @@ func TestCollectionsDCP(t *testing.T) {
 
 	const docID = "doc1"
 
-	ok, err := tb.AddRaw(docID, 0, []byte(`{"test":true}`))
+	ok, err := rt.Bucket().AddRaw(docID, 0, []byte(`{"test":true}`))
 	require.NoError(t, err)
 	require.True(t, ok)
 
@@ -143,7 +142,8 @@ func TestCollectionsDCP(t *testing.T) {
 	require.NoError(t, err)
 
 	// ensure the doc comes back over the caching feed after import
-	assert.NoError(t, rt.WaitForDoc(docID))
+	t.Log("Not performing caching feed check - CBG-1143")
+	//assert.NoError(t, rt.WaitForDoc(docID))
 }
 
 // TestCollectionsBasicIndexQuery ensures that the bucket API is able to create an index on a collection
