@@ -35,7 +35,7 @@ var _ CouchbaseStore = &Collection{}
 func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 
 	logCtx := context.TODO()
-	connString, err := spec.GetGoCBConnString(false)
+	connString, err := spec.GetGoCBConnString(nil)
 	if err != nil {
 		WarnfCtx(logCtx, "Unable to parse server value: %s error: %v", SD(spec.Server), err)
 		return nil, err

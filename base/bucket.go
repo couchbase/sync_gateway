@@ -196,8 +196,24 @@ func (spec BucketSpec) UseClientCert() bool {
 	return true
 }
 
+type GoCBConnStringParams struct {
+	// The KV pool size, as passed down to gocbcore. Defaults to DefaultGocbKvPoolSize.
+	KVPoolSize int
+}
+
+// FillDefaults replaces any unset fields in this GoCBConnStringParams with their default values.
+func (p *GoCBConnStringParams) FillDefaults() {
+	if p.KVPoolSize == 0 {
+		p.KVPoolSize = DefaultGocbKvPoolSize
+	}
+}
+
 // GetGoCBConnString builds a gocb (v1 or v2 depending on the BucketSpec.CouchbaseDriver) connection string based on BucketSpec.Server.
-func (spec *BucketSpec) GetGoCBConnString(dcp bool) (string, error) {
+func (spec *BucketSpec) GetGoCBConnString(params *GoCBConnStringParams) (string, error) {
+	if params == nil {
+		params = &GoCBConnStringParams{}
+	}
+	params.FillDefaults()
 	connSpec, err := gocbconnstr.Parse(spec.Server)
 	if err != nil {
 		return "", err
@@ -210,16 +226,12 @@ func (spec *BucketSpec) GetGoCBConnString(dcp bool) (string, error) {
 	asValues := url.Values(connSpec.Options)
 
 	// Add kv_pool_size as used in both GoCB versions
-	if dcp {
-		spec.KvPoolSize = 1
+	poolSizeFromConnStr := asValues.Get("kv_pool_size")
+	if poolSizeFromConnStr == "" {
+		asValues.Set("kv_pool_size", strconv.Itoa(params.KVPoolSize))
+		spec.KvPoolSize = params.KVPoolSize
 	} else {
-		poolSizeFromConnStr := asValues.Get("kv_pool_size")
-		if poolSizeFromConnStr == "" {
-			asValues.Set("kv_pool_size", DefaultGocbKvPoolSize)
-			spec.KvPoolSize, _ = strconv.Atoi(DefaultGocbKvPoolSize)
-		} else {
-			spec.KvPoolSize, _ = strconv.Atoi(poolSizeFromConnStr)
-		}
+		spec.KvPoolSize, _ = strconv.Atoi(poolSizeFromConnStr)
 	}
 
 	if spec.CouchbaseDriver == GoCBv2 {
