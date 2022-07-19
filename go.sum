@@ -80,6 +80,8 @@ github.com/couchbase/sg-bucket v0.0.0-20220503150833-9e9c21fba8ce h1:kyEHMzRq2A5
 github.com/couchbase/sg-bucket v0.0.0-20220503150833-9e9c21fba8ce/go.mod h1:9XQoB1t+elPP+yEjHGOX3xcC3Z0/qDgOI7h/fc9XjlU=
 github.com/couchbase/sg-bucket v0.0.0-20220714163049-dadc844229ff h1:VawfxJ9AfxKJ7UEfViXbU6Pr/KhghNd4//un1lbQ7G8=
 github.com/couchbase/sg-bucket v0.0.0-20220714163049-dadc844229ff/go.mod h1:9XQoB1t+elPP+yEjHGOX3xcC3Z0/qDgOI7h/fc9XjlU=
+github.com/couchbase/sg-bucket v0.0.0-20220719132317-78e3f489cbce h1:0/c06fGDCzlOdSpVTPd5ekUWK4MuRclDj/dBCQU++kE=
+github.com/couchbase/sg-bucket v0.0.0-20220719132317-78e3f489cbce/go.mod h1:9XQoB1t+elPP+yEjHGOX3xcC3Z0/qDgOI7h/fc9XjlU=
 github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f h1:al5DxXEBAUmINnP5dR950gL47424WzncuRpNdg0TWR0=
 github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f/go.mod h1:daOs69VstinwoALl3wwWxjBf1nD4lIe3wwYhKHKDapY=
 github.com/couchbaselabs/gocaves/client v0.0.0-20211209111208-6db33aa50187/go.mod h1:AVekAZwIY2stsJOMWLAS/0uA/+qdp7pjO8EHnl61QkY=
