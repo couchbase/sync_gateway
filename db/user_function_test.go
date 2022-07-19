@@ -1,5 +1,5 @@
 /*
-Copyright 2017-Present Couchbase, Inc.
+Copyright 2022-Present Couchbase, Inc.
 
 Use of this software is governed by the Business Source License included in
 the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
@@ -81,19 +81,9 @@ var kUserFunctionConfig = UserFunctionMap{
 	},
 }
 
-func TestUserFunctions(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	cacheOptions := DefaultCacheOptions()
-	db := setupTestDBWithOptions(t, DatabaseContextOptions{
-		CacheOptions:  &cacheOptions,
-		UserFunctions: kUserFunctionConfig,
-	})
-	defer db.Close()
-
-	// First run the tests as an admin:
-	t.Run("AsAdmin", func(t *testing.T) { testUserFunctionsAsAdmin(t, db) })
-
-	// Now create a user and make it current:
+// Adds a user "alice" to the database, with role "hero"
+// and access to channels "wonderland" and "lookingglass".
+func addUserAlice(t *testing.T, db *Database) auth.User {
 	var err error
 	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
 	hero, err := authenticator.NewRole("hero", base.SetOf("heroes"))
@@ -107,8 +97,28 @@ func TestUserFunctions(t *testing.T) {
 	assert.NoError(t, err)
 	user.SetExplicitRoles(channels.TimedSet{"hero": channels.NewVbSimpleSequence(1)}, 1)
 	assert.NoError(t, authenticator.Save(user), "Save")
-	db.user, err = authenticator.GetUser("alice")
+
+	// Have to call GetUser to get a user object that's properly configured:
+	user, err = authenticator.GetUser("alice")
 	assert.NoError(t, err)
+	return user
+}
+
+// Unit test for JS user functions.
+func TestUserFunctions(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	cacheOptions := DefaultCacheOptions()
+	db := setupTestDBWithOptions(t, DatabaseContextOptions{
+		CacheOptions:  &cacheOptions,
+		UserFunctions: kUserFunctionConfig,
+	})
+	defer db.Close()
+
+	// First run the tests as an admin:
+	t.Run("AsAdmin", func(t *testing.T) { testUserFunctionsAsAdmin(t, db) })
+
+	// Now create a user and make it current:
+	db.user = addUserAlice(t, db)
 	assert.True(t, db.user.RoleNames().Contains("hero"))
 
 	// Repeat the tests as user "alice":
