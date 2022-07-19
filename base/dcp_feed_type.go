@@ -3,7 +3,6 @@ package base
 import (
 	"context"
 	"crypto/x509"
-	"io/ioutil"
 	"sync"
 
 	"github.com/couchbase/cbgt"
@@ -15,7 +14,8 @@ import (
 // before the database is added to the server context's set of databases
 var cbgtCredentials map[string]cbgtCreds
 
-// cbgtRootCertPools is a map of bucket UUIDs to cert pools for its CA certs.
+// cbgtRootCertPools is a map of bucket UUIDs to cert pools for its CA certs. The documentation comment of
+// cbgtRootCAsProvider describes the behaviour of different values.
 var cbgtRootCertPools map[string]*x509.CertPool
 var cbgtCredentialsLock sync.Mutex
 
@@ -29,22 +29,18 @@ const (
 	SOURCE_GOCB_DCP_SG        = "gocb-dcp-sg"
 )
 
+// cbgtRootCAsProvider implements cbgt.RootCAsProvider. It returns a x509.CertPool factory with the root certificates
+// for the given bucket. Edge cases:
+// * If it returns a function that returns nil, TLS is used but certificate validation is disabled.
+// * If it returns a nil function, TLS is disabled altogether.
 func cbgtRootCAsProvider(bucketName, bucketUUID string) func() *x509.CertPool {
 	if pool, ok := cbgtRootCertPools[bucketUUID]; ok {
 		return func() *x509.CertPool {
 			return pool
 		}
 	}
-	DebugfCtx(context.TODO(), KeyDCP, "Bucket %v not found in root cert pools, using system certs", MD(bucketName))
-	return func() *x509.CertPool {
-		pool, err := x509.SystemCertPool()
-		if err != nil {
-			// Panic here is appropriate to ensure we fail closed and don't return a nil pool, which would disable
-			// cert validation. Code inspection suggests that, as of Go 1.18.2, SystemCertPool always returns a nil err.
-			PanicfCtx(context.TODO(), "Failed to load system X509 cert pool! %v", err)
-		}
-		return pool
-	}
+	TracefCtx(context.TODO(), KeyDCP, "Bucket %v not found in root cert pools, not using TLS.", MD(bucketName))
+	return nil
 }
 
 // When SG isn't using x.509 authentication, it's necessary to pass bucket credentials
@@ -285,18 +281,9 @@ func getCbgtCredentials(dbName string) (username, password string, ok bool) {
 	return username, password, found
 }
 
-func setCbgtRootCertsForBucket(bucketUUID string, caCertPath string) {
+// See the comment of cbgtRootCAsProvider for usage details.
+func setCbgtRootCertsForBucket(bucketUUID string, pool *x509.CertPool) {
 	cbgtCredentialsLock.Lock()
 	defer cbgtCredentialsLock.Unlock()
-	pool := x509.NewCertPool()
-	certs, err := ioutil.ReadFile(caCertPath)
-	if err != nil {
-		ErrorfCtx(context.TODO(), "Failed to load CA certificate for bucket %v from %v: %v", MD(bucketUUID), MD(caCertPath), err)
-		return
-	}
-	ok := pool.AppendCertsFromPEM(certs)
-	if !ok {
-		WarnfCtx(context.TODO(), "Did not load any valid certificates for bucket %v from file %v", MD(bucketUUID), MD(caCertPath))
-	}
 	cbgtRootCertPools[bucketUUID] = pool
 }
