@@ -619,7 +619,7 @@ type TBPBucketReadierFunc func(ctx context.Context, b Bucket, tbp *TestBucketPoo
 var FlushBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b Bucket, tbp *TestBucketPool) error {
 
 	if c, ok := b.(*Collection); ok {
-		if err := c.dropAllScopesAndCollections(); err != nil {
+		if err := c.dropAllScopesAndCollections(); err != nil && !errors.Is(err, ErrCollectionsUnsupported) {
 			return err
 		}
 	}
