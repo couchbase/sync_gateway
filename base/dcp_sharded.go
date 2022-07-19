@@ -21,6 +21,7 @@ import (
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/go-couchbase/cbdatasource"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/pkg/errors"
 	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 )
@@ -309,6 +310,12 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 	options["managerLoadDataDir"] = "false"
 	// Ensure we always use TLS if configured - cbgt defaults to non-TLS on initial connection
 	options["feedInitialBootstrapNonTLS"] = strconv.FormatBool(!spec.IsTLS())
+
+	// Disable collections if unsupported
+	if !bucket.IsSupported(sgbucket.DataStoreFeatureCollections) {
+		options["disableCollectionsSupport"] = "true"
+		options["disableStreamIDs"] = "true"
+	}
 
 	// Creates a new cbgt manager.
 	mgr := cbgt.NewManagerEx(

@@ -227,7 +227,7 @@ func (c *Collection) IsSupported(feature sgbucket.DataStoreFeature) bool {
 			return false
 		}
 		return status == gocb.CapabilityStatusSupported
-	case sgbucket.DataStoreFeaturePreserveExpiry:
+	case sgbucket.DataStoreFeaturePreserveExpiry, sgbucket.DataStoreFeatureCollections:
 		// TODO: Change to capability check when GOCBC-1218 merged
 		return isMinimumVersion(c.clusterCompatMajorVersion, c.clusterCompatMinorVersion, 7, 0)
 	default:
