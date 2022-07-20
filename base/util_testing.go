@@ -671,11 +671,11 @@ func ForAllDataStores(t *testing.T, testCallback func(*testing.T, sgbucket.DataS
 	}
 }
 
-// clusterCompatibility = MajorVersion * 65536 + MinorVersion
-const minCompatVersionForCollections = 7 * 65536
+// CB Server compat version for the integration test server
+var testClusterCompatVersion int
+var getTestClusterCompatVersionOnce sync.Once
 
-// map of server names to cluster compat versions (string->int)
-var serverClusterCompat sync.Map
+var minCompatVersionForCollections = encodeClusterVersion(7, 0)
 
 // TestRequiresCollections will skip the current test if the Couchbase Server version it is running against does not
 // support collections.
@@ -688,15 +688,12 @@ func TestRequiresCollections(t *testing.T) {
 	if !ok {
 		t.Skipf("GTestBucketPool cluster is %T, can't support collections", GTestBucketPool.cluster)
 	}
-	var compatVersion int
-	if compatVersionRaw, ok := serverClusterCompat.Load(c.server); ok {
-		compatVersion = compatVersionRaw.(int)
-	} else {
-		compatVersion = c.getMinClusterCompatVersion()
-		serverClusterCompat.Store(c.server, compatVersion)
-	}
 
-	if compatVersion < minCompatVersionForCollections {
+	getTestClusterCompatVersionOnce.Do(func() {
+		testClusterCompatVersion = c.getMinClusterCompatVersion()
+	})
+
+	if testClusterCompatVersion < minCompatVersionForCollections {
 		t.Skip("Collections not supported")
 	}
 }

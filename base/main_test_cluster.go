@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/couchbase/gocb/v2"
@@ -281,11 +280,8 @@ func (c *tbpClusterV2) getMinClusterCompatVersion() int {
 	if err != nil {
 		FatalfCtx(context.Background(), "TEST: failed to fetch nodes metadata: %v", err)
 	}
-	minVal := math.MaxInt
-	for _, node := range nodesMeta {
-		if node.ClusterCompatibility < minVal {
-			minVal = node.ClusterCompatibility
-		}
+	if len(nodesMeta) < 1 {
+		panic("invalid NodesMetadata: no nodes")
 	}
-	return minVal
+	return nodesMeta[0].ClusterCompatibility
 }
