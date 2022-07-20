@@ -341,7 +341,7 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 
 	if spec.Auth != nil && spec.Certpath == "" {
 		username, password, _ := spec.Auth.GetCredentials()
-		addCbgtCredentials(dbName, username, password)
+		addCbgtCredentials(dbName, bucket.GetName(), username, password)
 	}
 
 	if spec.IsTLS() {
