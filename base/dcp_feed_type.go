@@ -59,6 +59,7 @@ func cbgtRootCAsProvider(bucketName, bucketUUID string) func() *x509.CertPool {
 func init() {
 	cbgtCredentials = make(map[string]cbgtCreds)
 	cbgtRootCertPools = make(map[string]*x509.CertPool)
+	cbgtBucketToDBName = make(map[string]string)
 	cbgt.RegisterFeedType(SOURCE_GOCOUCHBASE_DCP_SG, &cbgt.FeedType{
 		Start:           SGFeedStartDCPFeed,
 		Partitions:      SGFeedPartitions,
