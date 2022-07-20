@@ -12,6 +12,8 @@ package rest
 
 import (
 	"bytes"
+	"context"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -201,7 +203,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		}
 
 		if rt.createScopesAndCollections {
-			if err := createTestBucketScopesAndCollections(rt.testBucket, rt.DatabaseConfig.Scopes); err != nil {
+			if err := createTestBucketScopesAndCollections(base.TestCtx(rt.tb), rt.testBucket, rt.DatabaseConfig.Scopes); err != nil {
 				rt.tb.Fatalf("Error creating test scopes/collections: %v", err)
 			}
 		}
@@ -250,7 +252,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 }
 
 // createTestBucketScopesAndCollections will create the given scopes and collections within the given test bucket.
-func createTestBucketScopesAndCollections(tb *base.TestBucket, scopesConfig ScopesConfig) error {
+func createTestBucketScopesAndCollections(ctx context.Context, tb *base.TestBucket, scopesConfig ScopesConfig) error {
 	atLeastOneScope := false
 	for _, scopeConfig := range scopesConfig {
 		for range scopeConfig.Collections {
@@ -265,9 +267,17 @@ func createTestBucketScopesAndCollections(tb *base.TestBucket, scopesConfig Scop
 	}
 
 	un, pw, _ := tb.BucketSpec.Auth.GetCredentials()
+	var rootCAs *x509.CertPool
+	if tlsConfig := tb.BucketSpec.TLSConfig(); tlsConfig != nil {
+		rootCAs = tlsConfig.RootCAs
+	}
 	cluster, err := gocb.Connect(tb.BucketSpec.Server, gocb.ClusterOptions{
 		Username: un,
 		Password: pw,
+		SecurityConfig: gocb.SecurityConfig{
+			TLSSkipVerify: tb.BucketSpec.TLSSkipVerify,
+			TLSRootCAs:    rootCAs,
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("failed to connect to cluster: %w", err)
@@ -280,6 +290,7 @@ func createTestBucketScopesAndCollections(tb *base.TestBucket, scopesConfig Scop
 		if err := cm.CreateScope(scopeName, nil); err != nil && !errors.Is(err, gocb.ErrScopeExists) {
 			return fmt.Errorf("failed to create scope %s: %w", scopeName, err)
 		}
+		base.DebugfCtx(ctx, base.KeySGTest, "Created scope %s", scopeName)
 		for collectionName := range scopeConfig.Collections {
 			if err := cm.CreateCollection(
 				gocb.CollectionSpec{
@@ -288,6 +299,7 @@ func createTestBucketScopesAndCollections(tb *base.TestBucket, scopesConfig Scop
 				}, nil); err != nil {
 				return fmt.Errorf("failed to create collection %s in scope %s: %w", collectionName, scopeName, err)
 			}
+			base.DebugfCtx(ctx, base.KeySGTest, "Created collection %s.%s", scopeName, collectionName)
 		}
 	}
 

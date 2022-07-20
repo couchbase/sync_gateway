@@ -26,6 +26,8 @@ import (
 	pkgerrors "github.com/pkg/errors"
 )
 
+var ErrCollectionsUnsupported = errors.New("collections not supported")
+
 var _ sgbucket.KVStore = &Collection{}
 var _ CouchbaseStore = &Collection{}
 
@@ -662,6 +664,9 @@ func (c *Collection) dropAllScopesAndCollections() error {
 	cm := c.Bucket().Collections()
 	scopes, err := cm.GetAllScopes(nil)
 	if err != nil {
+		if httpErr, ok := err.(gocb.HTTPError); ok && httpErr.StatusCode == 404 {
+			return ErrCollectionsUnsupported
+		}
 		WarnfCtx(context.TODO(), "Error getting scopes on bucket %s: %v  Will retry.", MD(c.Bucket().Name()).Redact(), err)
 		return err
 	}
@@ -697,7 +702,7 @@ func (c *Collection) Flush() error {
 	bucketManager := c.cluster.Buckets()
 
 	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
-		if err := c.dropAllScopesAndCollections(); err != nil {
+		if err := c.dropAllScopesAndCollections(); err != nil && !errors.Is(err, ErrCollectionsUnsupported) {
 			return true, err, nil
 		}
 
