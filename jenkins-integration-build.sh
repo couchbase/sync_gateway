@@ -150,7 +150,7 @@ if [ "${PIPESTATUS[0]}" -ne "0" ]; then # If test exit code is not 0 (failed)
 fi
 
 # Collect CBS logs if server error occurred
-if grep -q "server logs for details\|Timed out after 1m0s waiting for a bucket to become available" "${INT_LOG_FILE_NAME}.out.raw"; then
+if grep -q "server logs for details\|Timed out after 1m0s waiting for a bucket to become available\|unambiguous timeout" "${INT_LOG_FILE_NAME}.out.raw"; then
     docker exec -t couchbase /opt/couchbase/bin/cbcollect_info /root/cbcollect.zip
 fi
 
