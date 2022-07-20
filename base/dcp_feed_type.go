@@ -341,5 +341,6 @@ func getCbgtCredentials(dbName string) (username, password string, ok bool) {
 func setCbgtRootCertsForBucket(bucketUUID string, pool *x509.CertPool) {
 	cbgtCredentialsLock.Lock()
 	defer cbgtCredentialsLock.Unlock()
+	fmt.Printf("REMOVE ME: setting root pool for %s to %+v", bucketUUID, pool) //FIXME
 	cbgtRootCertPools[bucketUUID] = pool
 }
