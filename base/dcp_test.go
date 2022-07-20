@@ -159,6 +159,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 			registerType := cbgt.NODE_DEFS_WANTED
 			err = context.Manager.Start(registerType)
 			require.NoError(t, err)
+			defer context.Manager.Stop()
 
 			// Define index type
 			configGroup := "configGroup" + t.Name()
@@ -168,6 +169,9 @@ func TestCBGTIndexCreation(t *testing.T) {
 
 			// Create existing index in legacy format
 			if tc.existingLegacyIndex {
+				// initCBGTManager will set up the manager with a couchbase:// connection string,
+				// while go-couchbase expects a http:// string, causing test setup to fail.
+				t.Skip("TODO: can't create indexes of type cbgt.SOURCE_GOCOUCHBASE")
 				// Define a CBGT index with legacy naming
 				bucketUUID, _ := bucket.UUID()
 				sourceParams, err := legacyFeedParams(spec)
@@ -180,16 +184,15 @@ func TestCBGTIndexCreation(t *testing.T) {
 				}
 
 				err = context.Manager.CreateIndex(
-					// TODO: this should be cbgt.SOURCE_GOCOUCHBASE but this causes test setup to fail
-					cbgt.SOURCE_GOCBCORE, // sourceType
-					bucket.GetName(),     // sourceName
-					bucketUUID,           // sourceUUID
-					sourceParams,         // sourceParams
-					indexType,            // indexType
-					legacyIndexName,      // indexName
-					indexParams,          // indexParams
-					planParams,           // planParams
-					"",                   // prevIndexUUID
+					cbgt.SOURCE_GOCOUCHBASE, // sourceType
+					bucket.GetName(),        // sourceName
+					bucketUUID,              // sourceUUID
+					sourceParams,            // sourceParams
+					indexType,               // indexType
+					legacyIndexName,         // indexName
+					indexParams,             // indexParams
+					planParams,              // planParams
+					"",                      // prevIndexUUID
 				)
 				require.NoError(t, err, "Unable to create legacy-style index")
 			}
