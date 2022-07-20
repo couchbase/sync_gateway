@@ -50,6 +50,53 @@ func cbgtRootCAsProvider(bucketName, bucketUUID string) func() *x509.CertPool {
 	return nil
 }
 
+// cbgt's default GetPoolsDefaultForBucket only works with cbauth
+func cbgtGetPoolsDefaultForBucket(server, bucket string, scopes bool) ([]byte, error) {
+	cbgtCredentialsLock.Lock()
+	dbName, ok := cbgtBucketToDBName[bucket]
+	if !ok {
+		cbgtCredentialsLock.Unlock()
+		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: no DB for bucket %v", MD(bucket).Redact())
+	}
+	creds, ok := cbgtCredentials[dbName]
+	if !ok {
+		cbgtCredentialsLock.Unlock()
+		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: no credentials for DB %v (bucket %v)", MD(dbName).Redact(), MD(bucket).Redact())
+	}
+	// creds is not a pointer, safe to unlock
+	cbgtCredentialsLock.Unlock()
+
+	url := server + "/pools/default/buckets/" + bucket
+	if scopes {
+		url += "/scopes"
+	}
+
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: failed to init request: %v", err)
+	}
+	req.SetBasicAuth(creds.username, creds.password)
+
+	res, err := cbgt.HttpClient().Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: failed request: %v", err)
+	}
+	defer func() {
+		if err := res.Body.Close(); err != nil {
+			WarnfCtx(context.TODO(), "Failed to close %v request body: %v", MD(url).Redact(), err)
+		}
+	}()
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: failed to read body: %v", err)
+	}
+	if len(body) == 0 {
+		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: empty body")
+	}
+	return body, nil
+}
+
 // When SG isn't using x.509 authentication, it's necessary to pass bucket credentials
 // to cbgt for use when setting up the DCP feed.  These need to be passed as AuthUser and
 // AuthPassword in the DCP source parameters.
@@ -86,48 +133,7 @@ func init() {
 	})
 	cbgt.RootCAsProvider = cbgtRootCAsProvider
 	cbgt.UserAgentStr = VersionString
-	// cbgt's default GetPoolsDefaultForBucket only works with cbauth
-	cbgt.GetPoolsDefaultForBucket = func(server, bucket string, scopes bool) ([]byte, error) {
-		cbgtCredentialsLock.Lock()
-		dbName, ok := cbgtBucketToDBName[bucket]
-		if !ok {
-			cbgtCredentialsLock.Unlock()
-			return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: no DB for bucket %v", MD(bucket).Redact())
-		}
-		creds, ok := cbgtCredentials[dbName]
-		if !ok {
-			cbgtCredentialsLock.Unlock()
-			return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: no credentials for DB %v (bucket %v)", MD(dbName).Redact(), MD(bucket).Redact())
-		}
-		// creds is not a pointer, safe to unlock
-		cbgtCredentialsLock.Unlock()
-
-		url := server + "/pools/default/buckets/" + bucket
-		if scopes {
-			url += "/scopes"
-		}
-
-		req, err := http.NewRequest(http.MethodGet, url, nil)
-		if err != nil {
-			return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: failed to init request: %v", err)
-		}
-		req.SetBasicAuth(creds.username, creds.password)
-
-		res, err := cbgt.HttpClient().Do(req)
-		if err != nil {
-			return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: failed request: %v", err)
-		}
-		defer res.Body.Close()
-
-		body, err := io.ReadAll(res.Body)
-		if err != nil {
-			return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: failed to read body: %v", err)
-		}
-		if len(body) == 0 {
-			return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: empty body")
-		}
-		return body, nil
-	}
+	cbgt.GetPoolsDefaultForBucket = cbgtGetPoolsDefaultForBucket
 }
 
 type SGFeedSourceParams struct {
