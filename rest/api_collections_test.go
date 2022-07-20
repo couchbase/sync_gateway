@@ -156,6 +156,7 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Walrus does not support scopes and collections")
 	}
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
