@@ -159,7 +159,6 @@ type DatabaseContextOptions struct {
 	ClientPartitionWindow         time.Duration
 	BcryptCost                    int
 	GroupID                       string
-	skipRegisterImportPIndex      bool // if set, skips the global gocb PIndex registration
 }
 
 type SGReplicateOptions struct {
@@ -312,9 +311,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}
 
 	// Register the cbgt pindex type for the configGroup
-	if !options.skipRegisterImportPIndex {
-		RegisterImportPindexImpl(options.GroupID)
-	}
+	RegisterImportPindexImpl(options.GroupID)
 
 	dbContext := &DatabaseContext{
 		Name:       dbName,
