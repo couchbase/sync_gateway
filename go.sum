@@ -60,6 +60,8 @@ github.com/couchbase/cbauth v0.1.1 h1:J31gYUf8ITgnlVFgnnl6DnbXXF21DL5la6GDhVefu6
 github.com/couchbase/cbauth v0.1.1/go.mod h1:overPK2NvYkkZBWX0eqmuHB82nhhs8rt7A4wi5u7c2g=
 github.com/couchbase/cbgt v1.2.1 h1:DR23e21AP8VDKw8EjJLP7AYriCYT2bBE3Vg59aJzeUA=
 github.com/couchbase/cbgt v1.2.1/go.mod h1:ZdDUUIWp/A4QM0QsDelwzrB5gMDdJfHiQSsj9MIyy1U=
+github.com/couchbase/cbgt v1.2.2 h1:HVWBZl9Wq6QpqVaWrW7g6YKgRY8qFvIxL5B2KzBb9OE=
+github.com/couchbase/cbgt v1.2.2/go.mod h1:LD4MfTFybw0MTD10AczKbGB8zmBku0Ax4jRxZFI5RKg=
 github.com/couchbase/clog v0.1.0 h1:4Kh/YHkhRjMCbdQuvRVsm39XZh4FtL1d8fAwJsHrEPY=
 github.com/couchbase/clog v0.1.0/go.mod h1:7tzUpEOsE+fgU81yfcjy5N1H6XtbVC8SgOz/3mCjmd4=
 github.com/couchbase/go-blip v0.0.0-20220617161408-6dfb3a7df872 h1:fMP4nbp/zuMqTv7/60Fb3Jv4u2kbh8bhwLZteSQXlLQ=
