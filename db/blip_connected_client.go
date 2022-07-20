@@ -13,12 +13,10 @@ package db
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/couchbase/go-blip"
-	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -106,14 +104,7 @@ func (bh *blipHandler) handleQuery(rq *blip.Message) error {
 	// Run the query:
 	results, err := bh.db.UserQuery(name, requestParams)
 	if err != nil {
-		var qe *gocb.QueryError
-		if errors.As(err, &qe) {
-			base.WarnfCtx(bh.loggingCtx, "Error running query %q: %v", name, err)
-			return base.HTTPErrorf(http.StatusInternalServerError, "Query error: %s", qe.Errors[0].Message)
-		} else {
-			base.WarnfCtx(bh.loggingCtx, "Unknown error running query %q: %T %#v", name, err, err)
-			return base.HTTPErrorf(http.StatusInternalServerError, "Unknown error running query")
-		}
+		return err
 	}
 
 	// Write the results to the response:

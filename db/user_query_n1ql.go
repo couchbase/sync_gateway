@@ -12,12 +12,14 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"reflect"
 	"regexp"
 	"strings"
 
+	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -84,6 +86,9 @@ func (db *Database) UserQuery(name string, params map[string]interface{}) (sgbuc
 
 	// Add `user` parameter, for query's use in filtering the output:
 	if user := db.user; user != nil {
+		if params == nil {
+			params = map[string]interface{}{}
+		}
 		params[userQueryUserParam] = &userQueryUserInfo{
 			Name:     user.Name(),
 			Email:    user.Email(),
@@ -93,8 +98,20 @@ func (db *Database) UserQuery(name string, params map[string]interface{}) (sgbuc
 	}
 
 	// Run the query:
-	return db.N1QLQueryWithStats(db.Ctx, QueryTypeUserPrefix+name, query.Statement, params,
+	iter, err := db.N1QLQueryWithStats(db.Ctx, QueryTypeUserPrefix+name, query.Statement, params,
 		base.RequestPlus, false)
+	if err != nil {
+		logCtx := context.TODO()
+		var qe *gocb.QueryError
+		if errors.As(err, &qe) {
+			base.WarnfCtx(logCtx, "Error running query %q: %v", name, err)
+			err = base.HTTPErrorf(http.StatusInternalServerError, "Query %q: %s", name, qe.Errors[0].Message)
+		} else {
+			base.WarnfCtx(logCtx, "Unknown error running query %q: %T %#v", name, err, err)
+			err = base.HTTPErrorf(http.StatusInternalServerError, "Unknown error running query %q", name)
+		}
+	}
+	return iter, err
 }
 
 // Checks that `params` contains exactly the same keys as the list `parameterNames`.

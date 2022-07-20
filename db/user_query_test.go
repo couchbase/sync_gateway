@@ -11,72 +11,134 @@ licenses/APL2.txt.
 package db
 
 import (
+	"encoding/json"
 	"testing"
 
+	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-// Test channel-name parameter expansion for user query specifications
-func TestExpandChannel(t *testing.T) {
-	params := map[string]interface{}{
-		"CITY":  "Paris",
-		"BREAD": "Baguette",
-		"YEAR":  2020,
-		"WORDS": []string{"ouais", "fromage", "amour"},
-		"user": &userQueryUserInfo{
-			Name:     "maurice",
-			Email:    "maurice@academie.fr",
-			Channels: []string{"x", "y"},
-			Roles:    []string{"a", "b"},
-		},
+var kUserQueriesConfig = UserQueryMap{
+	"airports_in_city": &UserQuery{
+		Statement:  `SELECT $city as city`,
+		Parameters: []string{"city"},
+		Allow:      &UserQueryAllow{Channels: []string{"city-$city", "allcities"}},
+	},
+	"square": &UserQuery{
+		Statement:  "SELECT $numero * $numero as square",
+		Parameters: []string{"numero"},
+		Allow:      &UserQueryAllow{Channels: []string{"wonderland"}},
+	},
+	"syntax_error": &UserQuery{
+		Statement: "SELEKT OOK? FR0M OOK!",
+		Allow:     allowAll,
+	},
+	"admin_only": &UserQuery{
+		Statement: `SELECT "ok" as status`,
+		Allow:     nil, // no 'allow' property means admin-only
+	},
+}
+
+func assertQueryResults(t *testing.T, expected string, iter sgbucket.QueryResultIterator) {
+	if iter == nil {
+		return
 	}
+	result := []interface{}{}
+	var row interface{}
+	for iter.Next(&row) {
+		result = append(result, row)
+	}
+	assert.NoError(t, iter.Close())
+	j, err := json.Marshal(result)
+	assert.NoError(t, err)
+	assert.Equal(t, expected, string(j))
+}
 
-	allow := UserQueryAllow{}
+// Unit test for user N1QL queries.
+func TestUserQueries(t *testing.T) {
+	// if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
+	// 	t.Skip("This test is Couchbase Server only")
+	// }
 
-	ch, err := allow.expandPattern("someChannel", params)
-	require.NoError(t, err)
-	assert.Equal(t, ch, "someChannel")
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	cacheOptions := DefaultCacheOptions()
+	db := setupTestDBWithOptions(t, DatabaseContextOptions{
+		CacheOptions: &cacheOptions,
+		UserQueries:  kUserQueriesConfig,
+	})
+	defer db.Close()
 
-	ch, err = allow.expandPattern("sales-$CITY-all", params)
-	require.NoError(t, err)
-	assert.Equal(t, ch, "sales-Paris-all")
+	// First run the tests as an admin:
+	t.Run("AsAdmin", func(t *testing.T) { testUserQueriesAsAdmin(t, db) })
 
-	ch, err = allow.expandPattern("sales$(CITY)All", params)
-	require.NoError(t, err)
-	assert.Equal(t, ch, "salesParisAll")
+	// Now create a user and make it current:
+	db.user = addUserAlice(t, db)
+	assert.True(t, db.user.RoleNames().Contains("hero"))
 
-	ch, err = allow.expandPattern("sales$CITY-$BREAD", params)
-	require.NoError(t, err)
-	assert.Equal(t, ch, "salesParis-Baguette")
+	// Repeat the tests as user "alice":
+	t.Run("AsUser", func(t *testing.T) { testUserQueriesAsUser(t, db) })
+}
 
-	ch, err = allow.expandPattern("sales-upTo-$YEAR", params)
-	require.NoError(t, err)
-	assert.Equal(t, ch, "sales-upTo-2020")
+func testUserQueriesCommon(t *testing.T, db *Database) {
+	// dynamic channel list
+	iter, err := db.UserQuery("airports_in_city", map[string]interface{}{"city": "London"})
+	assert.NoError(t, err)
+	assertQueryResults(t, `[{"city":"London"}]`, iter)
 
-	ch, err = allow.expandPattern("employee-$user", params)
-	require.NoError(t, err)
-	assert.Equal(t, ch, "employee-maurice")
+	iter, err = db.UserQuery("square", map[string]interface{}{"numero": 16})
+	assert.NoError(t, err)
+	assertQueryResults(t, `[{"square":256}]`, iter)
 
-	// Should replace `$$` with `$`
-	ch, err = allow.expandPattern("expen$$ive", params)
-	require.NoError(t, err)
-	assert.Equal(t, ch, "expen$ive")
+	// ERRORS:
 
-	// No-ops since the `$` does not match a pattern:
-	ch, err = allow.expandPattern("$+wow", params)
-	require.NoError(t, err)
-	assert.Equal(t, ch, "$+wow")
+	// Missing a parameter:
+	_, err = db.UserQuery("square", nil)
+	assertHTTPError(t, err, 400)
+	assert.ErrorContains(t, err, "numero")
+	assert.ErrorContains(t, err, "square")
 
-	ch, err = allow.expandPattern("foobar$", params)
-	require.NoError(t, err)
-	assert.Equal(t, ch, "foobar$")
+	// Extra parameter:
+	_, err = db.UserQuery("square", map[string]interface{}{"numero": 42, "number": 0})
+	assertHTTPError(t, err, 400)
+	assert.ErrorContains(t, err, "number")
+	assert.ErrorContains(t, err, "square")
 
-	// error: param value is not a string
-	_, err = allow.expandPattern("knows-$WORDS", params)
-	assert.NotNil(t, err)
+	// Function definition has a syntax error:
+	_, err = db.UserQuery("syntax_error", nil)
+	assertHTTPError(t, err, 500)
+	assert.ErrorContains(t, err, "syntax_error")
+}
 
-	// error: undefined parameter
-	_, err = allow.expandPattern("sales-upTo-$FOO", params)
-	assert.NotNil(t, err)
+func testUserQueriesAsAdmin(t *testing.T, db *Database) {
+	testUserQueriesCommon(t, db)
+
+	// admin only:
+	iter, err := db.UserQuery("admin_only", nil)
+	assert.NoError(t, err)
+	assertQueryResults(t, `[{"status":"ok"}]`, iter)
+
+	// ERRORS:
+
+	// No such query:
+	_, err = db.UserQuery("xxxx", nil)
+	assertHTTPError(t, err, 404)
+}
+
+func testUserQueriesAsUser(t *testing.T, db *Database) {
+	testUserQueriesCommon(t, db)
+
+	// ERRORS:
+
+	// Not allowed (admin only):
+	_, err := db.UserQuery("admin_only", nil)
+	assertHTTPError(t, err, 403)
+
+	// Not allowed (dynamic channel list):
+	_, err = db.UserQuery("airports_in_city", map[string]interface{}{"city": "Chicago"})
+	assertHTTPError(t, err, 403)
+
+	// No such query:
+	_, err = db.UserQuery("xxxx", nil)
+	assertHTTPError(t, err, 403) // not 404 as for an admin
 }
