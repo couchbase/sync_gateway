@@ -12,6 +12,7 @@ package rest
 
 import (
 	"bytes"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -265,9 +266,18 @@ func createTestBucketScopesAndCollections(tb *base.TestBucket, scopesConfig Scop
 	}
 
 	un, pw, _ := tb.BucketSpec.Auth.GetCredentials()
+	var rootCAs *x509.CertPool
+	tlsConfig := tb.BucketSpec.TLSConfig()
+	if tlsConfig != nil {
+		rootCAs = tlsConfig.RootCAs
+	}
 	cluster, err := gocb.Connect(tb.BucketSpec.Server, gocb.ClusterOptions{
 		Username: un,
 		Password: pw,
+		SecurityConfig: gocb.SecurityConfig{
+			TLSSkipVerify: tb.BucketSpec.TLSSkipVerify,
+			TLSRootCAs:    rootCAs,
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("failed to connect to cluster: %w", err)
