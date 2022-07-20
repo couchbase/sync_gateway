@@ -670,3 +670,30 @@ func ForAllDataStores(t *testing.T, testCallback func(*testing.T, sgbucket.DataS
 		})
 	}
 }
+
+// CB Server compat version for the integration test server
+var testClusterCompatVersion int
+var getTestClusterCompatVersionOnce sync.Once
+
+var minCompatVersionForCollections = encodeClusterVersion(7, 0)
+
+// TestRequiresCollections will skip the current test if the Couchbase Server version it is running against does not
+// support collections.
+func TestRequiresCollections(t *testing.T) {
+	if UnitTestUrlIsWalrus() {
+		t.Skip("Walrus does not support scopes and collections")
+	}
+
+	c, ok := GTestBucketPool.cluster.(*tbpClusterV2)
+	if !ok {
+		t.Skipf("GTestBucketPool cluster is %T, can't support collections", GTestBucketPool.cluster)
+	}
+
+	getTestClusterCompatVersionOnce.Do(func() {
+		testClusterCompatVersion = c.getMinClusterCompatVersion()
+	})
+
+	if testClusterCompatVersion < minCompatVersionForCollections {
+		t.Skip("Collections not supported")
+	}
+}

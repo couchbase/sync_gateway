@@ -271,3 +271,17 @@ func (c *tbpClusterV2) closeCluster(cluster *gocb.Cluster) {
 		c.logger(context.Background(), "Couldn't close cluster connection: %v", err)
 	}
 }
+
+func (c *tbpClusterV2) getMinClusterCompatVersion() int {
+	cluster := getCluster(c.server)
+	defer c.closeCluster(cluster)
+
+	nodesMeta, err := cluster.Internal().GetNodesMetadata(nil)
+	if err != nil {
+		FatalfCtx(context.Background(), "TEST: failed to fetch nodes metadata: %v", err)
+	}
+	if len(nodesMeta) < 1 {
+		panic("invalid NodesMetadata: no nodes")
+	}
+	return nodesMeta[0].ClusterCompatibility
+}
