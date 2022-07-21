@@ -154,7 +154,8 @@ func DefaultCacheOptions() CacheOptions {
 // Initializes a new changeCache.
 // lastSequence is the last known database sequence assigned.
 // notifyChange is an optional function that will be called to notify of channel changes.
-// After calling Init(), you must call .Start() to start useing the cache.
+// After calling Init(), you must call .Start() to start useing the cache, otherwise it will be in a locked state
+// and callers will block on trying to obtain the lock.
 func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Set), options *CacheOptions, dcpStarted chan error) error {
 	c.context = dbcontext
 
@@ -182,13 +183,15 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 	base.InfofCtx(context.TODO(), base.KeyCache, "Initializing changes cache for database %s with options %+v", base.UD(dbcontext.Name), c.options)
 
 	heap.Init(&c.pendingLogs)
-
 	go func() {
-		dcpStartedErr := <-dcpStarted
-		// TODO: how to test this error condition?
-		if dcpStartedErr != nil {
-			// error is handled in StartGOCB2DCPFeed
-			return
+		// dcpStarted is only nil in testing
+		if dcpStarted != nil {
+			dcpStartedErr := <-dcpStarted
+			// TODO: how to test this error condition?
+			if dcpStartedErr != nil {
+				// error is handled in StartGOCB2DCPFeed
+				return
+			}
 		}
 		// background tasks that perform housekeeping duties on the cache
 		bgt, err := NewBackgroundTask("InsertPendingEntries", c.context.Name, c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2, c.terminator)
@@ -207,10 +210,17 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 		}
 		c.backgroundTasks = append(c.backgroundTasks, bgt)
 	}()
+
+	// Lock the cache -- not usable until .Start() called.  This fixes the DCP startup race condition documented in SG #3558.
+	c.lock.Lock()
 	return nil
 }
 
 func (c *changeCache) Start(initialSequence uint64) error {
+
+	// Unlock the cache after this function returns.
+	defer c.lock.Unlock()
+
 	// Set initial sequence for sequence buffering
 	c._setInitialSequence(initialSequence)
 
