@@ -44,8 +44,8 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 	il.bucketName = bucket.GetName()
 	il.database = Database{DatabaseContext: dbContext, user: nil}
 	il.stats = dbStats.Database()
-	collections := make(map[string][]string)
-	// FIXME: remove once both sharded and non-sharded DCP feeds support more than one collection (CBG-2182, CBG-2193)
+	scopes := make(map[string][]string)
+	// TODO: remove once both sharded and non-sharded DCP feeds support more than one collection (CBG-2182, CBG-2193)
 	if len(dbContext.Scopes) > 1 {
 		return fmt.Errorf("more than one collection not supported")
 	}
@@ -53,9 +53,9 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 		if len(scope.Collections) > 1 {
 			return fmt.Errorf("more than one collection not supported")
 		}
-		collections[scopeName] = make([]string, 0, len(scope.Collections))
+		scopes[scopeName] = make([]string, 0, len(scope.Collections))
 		for collName := range scope.Collections {
-			collections[scopeName] = append(collections[scopeName], collName)
+			scopes[scopeName] = append(scopes[scopeName], collName)
 		}
 	}
 	feedArgs := sgbucket.FeedArguments{
@@ -64,7 +64,7 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 		Terminator:       il.terminator,
 		DoneChan:         make(chan struct{}),
 		CheckpointPrefix: il.checkpointPrefix,
-		Scopes:           collections,
+		Scopes:           scopes,
 	}
 
 	base.InfofCtx(context.TODO(), base.KeyDCP, "Attempting to start import DCP feed %v...", base.MD(base.ImportDestKey(il.database.Name)))
