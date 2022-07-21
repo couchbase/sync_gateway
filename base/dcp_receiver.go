@@ -261,8 +261,9 @@ func StartGOCB2DCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgumen
 	doneChan, err := dcpClient.Start()
 	loggingCtx := context.TODO()
 	if err != nil {
-		ErrorfCtx(loggingCtx, "Failed to start caching DCP Feed %q for bucket %q", feedName, MD(bucketName))
-		_ = dcpClient.Close()
+		ErrorfCtx(loggingCtx, "Failed to start caching DCP Feed %q for bucket %q: %w", feedName, MD(bucketName), err)
+		closeErr := dcpClient.Close()
+		ErrorfCtx(loggingCtx, "Close error from caching DCP Feed %q for bucket %q: %w", feedName, MD(bucketName), closeErr)
 		args.Started <- err
 		close(args.Started)
 		return err
@@ -278,13 +279,20 @@ func StartGOCB2DCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgumen
 			TracefCtx(loggingCtx, KeyDCP, "Closed caching DCP Feed %q for %q", feedName, MD(bucketName))
 			// wait for channel close
 			<-doneChan
-			WarnfCtx(loggingCtx, "Error on closing caching DCP Feed %q for %q: %w", feedName, MD(bucketName), dcpCloseError)
+			if dcpCloseError != nil {
+				WarnfCtx(loggingCtx, "Error on closing caching DCP Feed %q for %q: %w", feedName, MD(bucketName), dcpCloseError)
+			}
 			break
 		case <-args.Terminator:
 			InfofCtx(loggingCtx, KeyDCP, "Closing caching DCP Feed %q for bucket %q based on termination notification", feedName, MD(bucketName))
-			dcpClient.Close()
-			dcpCloseError := <-doneChan
-			WarnfCtx(loggingCtx, "Error on closing caching DCP Feed %q for %q: %w", feedName, MD(bucketName), dcpCloseError)
+			dcpCloseErr := dcpClient.Close()
+			if dcpCloseErr != nil {
+				WarnfCtx(loggingCtx, "Error on closing caching DCP Feed %q for %q: %w", feedName, MD(bucketName), dcpCloseErr)
+			}
+			dcpCloseErr = <-doneChan
+			if dcpCloseErr != nil {
+				WarnfCtx(loggingCtx, "Error on closing caching DCP Feed %q for %q: %w", feedName, MD(bucketName), dcpCloseErr)
+			}
 			break
 		}
 		if args.DoneChan != nil {
