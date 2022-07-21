@@ -35,6 +35,11 @@ const (
 	QueryTombstoneBatch           = 250              // Max number of tombstones checked per query during Compact
 )
 
+type backgroundTasks struct {
+	tasks []BackgroundTask // List of background tasks.
+	lock  sync.Mutex       // mutex
+}
+
 var SkippedSeqCleanViewBatch = 50 // Max number of sequences checked per query during CleanSkippedSequence.  Var to support testing
 
 // Enable keeping a channel-log for the "*" channel (channel.UserStarChannel). The only time this channel is needed is if
@@ -61,7 +66,7 @@ type changeCache struct {
 	lock               sync.RWMutex            // Coordinates access to struct fields
 	options            CacheOptions            // Cache config
 	terminator         chan bool               // Signal termination of background goroutines
-	backgroundTasks    []BackgroundTask        // List of background tasks.
+	backgroundTasks    backgroundTasks         // List of background tasks.
 	initTime           time.Time               // Cache init time - used for latency calculations
 	channelCache       ChannelCache            // Underlying channel cache
 	lastAddPendingTime int64                   // The most recent time _addPendingLogs was run, as epoch time
@@ -192,6 +197,13 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 				return
 			}
 		}
+		// Lock backgroundTasks in case we are stopping while this code is running
+		c.backgroundTasks.lock.Lock()
+		defer c.backgroundTasks.lock.Unlock()
+		if c.IsStopped() {
+			return
+		}
+
 		// background tasks that perform housekeeping duties on the cache
 		bgt, err := NewBackgroundTask("InsertPendingEntries", c.context.Name, c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2, c.terminator)
 		// TODO: how to test this error condition?
@@ -200,7 +212,7 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 			dbcontext.Close()
 			return
 		}
-		c.backgroundTasks = append(c.backgroundTasks, bgt)
+		c.backgroundTasks.tasks = append(c.backgroundTasks.tasks, bgt)
 
 		bgt, err = NewBackgroundTask("CleanSkippedSequenceQueue", c.context.Name, c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2, c.terminator)
 		// TODO: how to test this error condition?
@@ -209,7 +221,7 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 			dbcontext.Close()
 			return
 		}
-		c.backgroundTasks = append(c.backgroundTasks, bgt)
+		c.backgroundTasks.tasks = append(c.backgroundTasks.tasks, bgt)
 	}()
 
 	// Lock the cache -- not usable until .Start() called.  This fixes the DCP startup race condition documented in SG #3558.
@@ -243,7 +255,9 @@ func (c *changeCache) Stop() {
 	close(c.terminator)
 
 	// Wait for changeCache background tasks to finish.
-	waitForBGTCompletion(BGTCompletionMaxWait, c.backgroundTasks, c.context.Name)
+	c.backgroundTasks.lock.Lock()
+	waitForBGTCompletion(BGTCompletionMaxWait, c.backgroundTasks.tasks, c.context.Name)
+	c.backgroundTasks.lock.Unlock()
 
 	// Stop the channel cache and it's background tasks.
 	c.channelCache.Stop()
