@@ -169,6 +169,11 @@ func cbgtFeedParams(spec BucketSpec, dbName string) (string, error) {
 		feedParams.IncludeXAttrs = true
 	}
 
+	if spec.Scope != nil && spec.Collection != nil {
+		feedParams.Scope = *spec.Scope
+		feedParams.Collections = []string{*spec.Collection}
+	}
+
 	paramBytes, err := JSONMarshal(feedParams)
 	if err != nil {
 		return "", err
