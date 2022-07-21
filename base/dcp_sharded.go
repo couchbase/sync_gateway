@@ -89,8 +89,6 @@ func GenerateLegacyIndexName(dbName string) string {
 // RegisterPIndexImplType (see importListener.RegisterImportPindexImpl)
 // will receive PIndexImpl callbacks (New, Open) for assigned PIndex to initiate DCP processing.
 func createCBGTIndex(c *CbgtContext, dbName string, configGroupID string, bucket Bucket, spec BucketSpec, numPartitions uint16) error {
-
-	// TODO(CBG-2196): only use gocb on 7.0+
 	sourceType := SOURCE_GOCB_DCP_SG
 
 	bucketUUID, err := bucket.UUID()
