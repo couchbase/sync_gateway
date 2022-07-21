@@ -1225,6 +1225,7 @@ func (sc *ServerContext) fetchAndLoadConfigs(isInitialStartup bool) (count int, 
 		for _, dbName := range sc.bucketDbName {
 			if _, foundMatchingDb := fetchedConfigs[dbName]; !foundMatchingDb {
 				deletedDatabases = append(deletedDatabases, dbName)
+				delete(fetchedConfigs, dbName)
 			}
 		}
 		for dbName, fetchedConfig := range fetchedConfigs {
@@ -1246,9 +1247,17 @@ func (sc *ServerContext) fetchAndLoadConfigs(isInitialStartup bool) (count int, 
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
 	for _, dbName := range deletedDatabases {
-		if _, foundMatchingDb := fetchedConfigs[dbName]; !foundMatchingDb {
+		// It's possible that the "deleted" database was not written to the server until after sc.fetchConfigs had returned...
+		// we'll need to pay for the cost of getting the config again now that we've got the write lock to double-check this db is definitely ok to remove...
+		found, _, err := sc.fetchDatabase(dbName)
+		if err != nil {
+			base.InfofCtx(context.TODO(), base.KeyConfig, "Error fetching config for database %q to check whether we need to remove it: %v", dbName, err)
+		}
+		if !found {
 			base.InfofCtx(context.TODO(), base.KeyConfig, "Database %q was running on this node, but config was not found on the server - removing database", base.MD(dbName))
 			sc._removeDatabase(dbName)
+		} else {
+			base.DebugfCtx(context.TODO(), base.KeyConfig, "Found config for database %q after acquiring write lock - not removing database", base.MD(dbName))
 		}
 	}
 
