@@ -24,7 +24,7 @@ var cbgtBucketToDBName map[string]string
 // cbgtRootCertPools is a map of bucket UUIDs to cert pools for its CA certs. The documentation comment of
 // cbgtRootCAsProvider describes the behaviour of different values.
 var cbgtRootCertPools map[string]*x509.CertPool
-var cbgtCredentialsLock sync.Mutex
+var cbgtGlobalsLock sync.Mutex
 
 type cbgtCreds struct {
 	username string
@@ -41,7 +41,10 @@ const (
 // * If it returns a function that returns nil, TLS is used but certificate validation is disabled.
 // * If it returns a nil function, TLS is disabled altogether.
 func cbgtRootCAsProvider(bucketName, bucketUUID string) func() *x509.CertPool {
-	if pool, ok := cbgtRootCertPools[bucketUUID]; ok {
+	cbgtGlobalsLock.Lock()
+	pool, ok := cbgtRootCertPools[bucketUUID]
+	cbgtGlobalsLock.Unlock()
+	if ok {
 		return func() *x509.CertPool {
 			return pool
 		}
@@ -52,19 +55,19 @@ func cbgtRootCAsProvider(bucketName, bucketUUID string) func() *x509.CertPool {
 
 // cbgt's default GetPoolsDefaultForBucket only works with cbauth
 func cbgtGetPoolsDefaultForBucket(server, bucket string, scopes bool) ([]byte, error) {
-	cbgtCredentialsLock.Lock()
+	cbgtGlobalsLock.Lock()
 	dbName, ok := cbgtBucketToDBName[bucket]
 	if !ok {
-		cbgtCredentialsLock.Unlock()
+		cbgtGlobalsLock.Unlock()
 		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: no DB for bucket %v", MD(bucket).Redact())
 	}
 	creds, ok := cbgtCredentials[dbName]
 	if !ok {
-		cbgtCredentialsLock.Unlock()
+		cbgtGlobalsLock.Unlock()
 		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: no credentials for DB %v (bucket %v)", MD(dbName).Redact(), MD(bucket).Redact())
 	}
 	// creds is not a pointer, safe to unlock
-	cbgtCredentialsLock.Unlock()
+	cbgtGlobalsLock.Unlock()
 
 	url := server + "/pools/default/buckets/" + bucket
 	if scopes {
@@ -313,40 +316,40 @@ func addCbgtAuthToDCPParams(dcpParams string) string {
 }
 
 func addCbgtCredentials(dbName, bucketName, username, password string) {
-	cbgtCredentialsLock.Lock()
+	cbgtGlobalsLock.Lock()
 	cbgtCredentials[dbName] = cbgtCreds{
 		username: username,
 		password: password,
 	}
 	cbgtBucketToDBName[bucketName] = dbName
-	cbgtCredentialsLock.Unlock()
+	cbgtGlobalsLock.Unlock()
 }
 
 func removeCbgtCredentials(dbName string) {
-	cbgtCredentialsLock.Lock()
+	cbgtGlobalsLock.Lock()
 	delete(cbgtCredentials, dbName)
 	for bucket, db := range cbgtBucketToDBName {
 		if db == dbName {
 			delete(cbgtBucketToDBName, bucket)
 		}
 	}
-	cbgtCredentialsLock.Unlock()
+	cbgtGlobalsLock.Unlock()
 }
 
 func getCbgtCredentials(dbName string) (username, password string, ok bool) {
-	cbgtCredentialsLock.Lock()
+	cbgtGlobalsLock.Lock()
 	creds, found := cbgtCredentials[dbName]
 	if found {
 		username = creds.username
 		password = creds.password
 	}
-	cbgtCredentialsLock.Unlock()
+	cbgtGlobalsLock.Unlock()
 	return username, password, found
 }
 
 // See the comment of cbgtRootCAsProvider for usage details.
 func setCbgtRootCertsForBucket(bucketUUID string, pool *x509.CertPool) {
-	cbgtCredentialsLock.Lock()
-	defer cbgtCredentialsLock.Unlock()
+	cbgtGlobalsLock.Lock()
+	defer cbgtGlobalsLock.Unlock()
 	cbgtRootCertPools[bucketUUID] = pool
 }
