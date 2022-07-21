@@ -272,7 +272,7 @@ type CBLReplicationPullStats struct {
 	AttachmentPullCount *SgwIntStat `json:"attachment_pull_count"`
 	// The high watermark for the number of documents buffered during feed processing, waiting on a missing earlier sequence.
 	MaxPending *SgwIntStat `json:"max_pending"`
-	/// The total number of active replications. This metric only counts continuous pull replications.
+	// The total number of active replications. This metric only counts continuous pull replications.
 	NumReplicationsActive *SgwIntStat `json:"num_replications_active"`
 	// The total number of continuous pull replications in the active state.
 	NumPullReplActiveContinuous *SgwIntStat `json:"num_pull_repl_active_continuous"`
@@ -532,6 +532,9 @@ type DbReplicatorStats struct {
 	ConflictResolvedRemoteCount *SgwIntStat `json:"sgr_conflict_resolved_remote_count"`
 	// The total number of conflicting documents that were resolved successfully by a merge action (by the active replicator)
 	ConflictResolvedMergedCount *SgwIntStat `json:"sgr_conflict_resolved_merge_count"`
+
+	// The number of times a handler panicked and didn't know how to recover from it.
+	NumHandlersPanicked *SgwIntStat `json:"-"`
 }
 
 type SecurityStats struct {
@@ -1114,6 +1117,7 @@ func (d *DbStats) DBReplicatorStats(replicationID string) *DbReplicatorStats {
 			ConflictResolvedMergedCount: NewIntStat(SubsystemReplication, "sgr_conflict_resolved_merge_count", labelKeys, labelVals, prometheus.CounterValue, 0),
 			NumConnectAttemptsPull:      NewIntStat(SubsystemReplication, "sgr_num_connect_attempts_pull", labelKeys, labelVals, prometheus.CounterValue, 0),
 			NumReconnectsAbortedPull:    NewIntStat(SubsystemReplication, "sgr_num_reconnects_aborted_pull", labelKeys, labelVals, prometheus.CounterValue, 0),
+			NumHandlersPanicked:         NewIntStat(SubsystemReplication, "sgr_num_handlers_panicked", labelKeys, labelVals, prometheus.CounterValue, 0),
 		}
 	}
 

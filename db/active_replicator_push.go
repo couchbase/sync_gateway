@@ -88,6 +88,7 @@ func (apr *ActivePushReplicator) _connect() error {
 	bh := blipHandler{
 		BlipSyncContext: apr.blipSyncContext,
 		db:              apr.config.ActiveDB,
+		collection:      apr.config.ActiveDB,
 		serialNumber:    apr.blipSyncContext.incrementSerialNumber(),
 	}
 
