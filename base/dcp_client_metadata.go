@@ -8,8 +8,10 @@ import (
 	"github.com/couchbase/gocbcore/v10"
 )
 
+type DCPMetadataStoreType int
+
 const (
-	// DCPMetadataDB uses database backed metadata storage
+	// DCPMetadataDB uses CouchbaseStore interface backed metadata storage
 	DCPMetadataDB = iota
 	// DCPMetadataInMemory uses in memory metadata storage
 	DCPMetadataInMemory

@@ -242,13 +242,16 @@ func StartGOCB2DCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgumen
 		return err
 	}
 	bucketName := spec.BucketName
-	// TODO: does this need to be more unique, if two sync gateways connect to same server, will this reject the second DCP feed?
-	feedName := fmt.Sprintf("%s-%s:%s", args.ID, ProductAPIVersion, bucketName)
-	dcpClient, err := NewDCPClient(feedName,
+	feedName, err := GenerateDcpStreamName(args.ID)
+	if err != nil {
+		return err
+	}
+	dcpClient, err := NewDCPClient(
+		feedName,
 		callback,
 		DCPClientOptions{
-			MetadataType:    DCPMetadataInMemory,
-			InitialMetadata: metadata},
+			MetadataStoreType: DCPMetadataInMemory,
+			InitialMetadata:   metadata},
 		bucket,
 		"")
 	if err != nil {
@@ -258,7 +261,7 @@ func StartGOCB2DCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgumen
 	doneChan, err := dcpClient.Start()
 	loggingCtx := context.TODO()
 	if err != nil {
-		ErrorfCtx(loggingCtx, "Failed to start DCP Feed [%s]", MD(feedName))
+		ErrorfCtx(loggingCtx, "Failed to start caching DCP Feed %q for bucket %q", feedName, MD(bucketName))
 		_ = dcpClient.Close()
 		args.Started <- err
 		close(args.Started)
@@ -268,17 +271,20 @@ func StartGOCB2DCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgumen
 		args.Started <- nil
 		close(args.Started)
 	}
-	InfofCtx(loggingCtx, KeyDCP, "Started DCP Feed [%s]", MD(feedName))
+	InfofCtx(loggingCtx, KeyDCP, "Started caching DCP Feed %q for bucket %q", feedName, MD(bucketName))
 	go func() {
 		select {
-		case <-doneChan:
-			TracefCtx(loggingCtx, KeyDCP, "Closed DCP Feed [%s-%s].", MD(feedName))
-			err = <-doneChan
+		case dcpCloseError := <-doneChan:
+			TracefCtx(loggingCtx, KeyDCP, "Closed caching DCP Feed %q for %q", feedName, MD(bucketName))
+			// wait for channel close
+			<-doneChan
+			WarnfCtx(loggingCtx, "Error on closing caching DCP Feed %q for %q: %w", feedName, MD(bucketName), dcpCloseError)
 			break
 		case <-args.Terminator:
-			InfofCtx(loggingCtx, KeyDCP, "Closing DCP Feed [%s] based on termination notification", MD(feedName))
+			InfofCtx(loggingCtx, KeyDCP, "Closing caching DCP Feed %q for bucket %q based on termination notification", feedName, MD(bucketName))
 			dcpClient.Close()
-			err = <-doneChan
+			dcpCloseError := <-doneChan
+			WarnfCtx(loggingCtx, "Error on closing caching DCP Feed %q for %q: %w", feedName, MD(bucketName), dcpCloseError)
 			break
 		}
 		if args.DoneChan != nil {

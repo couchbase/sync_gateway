@@ -187,7 +187,6 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 		// dcpStarted is only nil in testing
 		if dcpStarted != nil {
 			dcpStartedErr := <-dcpStarted
-			// TODO: how to test this error condition?
 			if dcpStartedErr != nil {
 				// error is handled in StartGOCB2DCPFeed
 				return
@@ -199,6 +198,7 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 		if err != nil {
 			base.ErrorfCtx(context.TODO(), "Failed to initialize task %w", err)
 			dbcontext.Close()
+			return
 		}
 		c.backgroundTasks = append(c.backgroundTasks, bgt)
 
@@ -207,6 +207,7 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 		if err != nil {
 			base.ErrorfCtx(context.TODO(), "Failed to initialize task %w", err)
 			dbcontext.Close()
+			return
 		}
 		c.backgroundTasks = append(c.backgroundTasks, bgt)
 	}()
