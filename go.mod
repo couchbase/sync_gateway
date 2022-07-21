@@ -12,9 +12,8 @@ require (
 	github.com/couchbase/gocbcore/v10 v10.1.1-0.20220221125514-72ee6aaebe8d
 	github.com/couchbase/gomemcached v0.1.3
 	github.com/couchbase/goutils v0.1.2
-	github.com/couchbase/sg-bucket v0.0.0-20220720165638-500bf67d6a88
+	github.com/couchbase/sg-bucket v0.0.0-20220721160118-29ae27b3d9d0
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f
-	github.com/couchbaselabs/walrus v0.0.0-20220504093911-d35b0fda185e
 	github.com/elastic/gosigar v0.14.2
 	github.com/felixge/fgprof v0.9.2
 	github.com/google/uuid v1.3.0
@@ -43,6 +42,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/couchbase/blance v0.1.1 // indirect
 	github.com/couchbase/cbauth v0.0.0-20190926094514-82614adbe4d4 // indirect
+	github.com/couchbaselabs/walrus v0.0.0-20220721163442-ef4559d9d4da // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
