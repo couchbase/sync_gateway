@@ -599,7 +599,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		// No cleanup necessary, stop heartbeater above will take care of it
 	}
 
-	dbContext.ResyncManager = NewResyncManager()
+	dbContext.ResyncManager = NewResyncManager(bucket)
 	dbContext.TombstoneCompactionManager = NewTombstoneCompactionManager()
 	dbContext.AttachmentCompactionManager = NewAttachmentCompactionManager(bucket)
 

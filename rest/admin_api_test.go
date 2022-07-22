@@ -4963,3 +4963,56 @@ func TestTombstoneCompactionPurgeInterval(t *testing.T) {
 		})
 	}
 }
+
+// CBG-2150: Tests that resync status is cluster aware
+func TestResyncPersistence(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	tb := base.GetTestBucket(t)
+	noCloseTB := tb.NoCloseClone()
+
+	rt1 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: noCloseTB,
+	})
+
+	rt2 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb,
+	})
+
+	defer rt2.Close()
+	defer rt1.Close()
+
+	// Create a document to process through resync
+	rt1.createDoc(t, "doc1")
+
+	// Start resync
+	resp := rt1.SendAdminRequest("POST", "/db/_offline", "")
+	requireStatus(t, resp, http.StatusOK)
+
+	waitAndAssertCondition(t, func() bool {
+		state := atomic.LoadUint32(&rt1.GetDatabase().State)
+		return state == db.DBOffline
+	})
+
+	resp = rt1.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	requireStatus(t, resp, http.StatusOK)
+
+	// Wait for resync to complete
+	var resyncManagerStatus db.ResyncManagerResponse
+	err := rt1.WaitForCondition(func() bool {
+		resp = rt1.SendAdminRequest("GET", "/db/_resync", "")
+		err := json.Unmarshal(resp.BodyBytes(), &resyncManagerStatus)
+		assert.NoError(t, err)
+		return resyncManagerStatus.State == db.BackgroundProcessStateCompleted
+	})
+	require.NoError(t, err)
+
+	// Check statuses match
+	resp2 := rt2.SendAdminRequest("GET", "/db/_resync", "")
+	requireStatus(t, resp, http.StatusOK)
+	fmt.Printf("RT1 Resync Status: %s\n", resp.BodyBytes())
+	fmt.Printf("RT2 Resync Status: %s\n", resp2.BodyBytes())
+	assert.Equal(t, resp.BodyBytes(), resp2.BodyBytes())
+}
