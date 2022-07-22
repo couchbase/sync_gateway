@@ -317,11 +317,11 @@ func TestImportFilterEndpoint(t *testing.T) {
 			tb.GetName(), base.TestsDisableGSI(),
 		),
 	)
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 
 	// Ensure we won't fail with an empty import filter
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db1/_config/import_filter", "")
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.requireStatus(http.StatusOK)
 
 	// Add a document
 	err = tb.Bucket.Set("importDoc1", 0, nil, []byte("{}"))
@@ -329,11 +329,11 @@ func TestImportFilterEndpoint(t *testing.T) {
 
 	// Ensure document is imported based on default import filter
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/importDoc1", "")
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.requireStatus(http.StatusOK)
 
 	// Modify the import filter to always reject import
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db1/_config/import_filter", `function(){return false}`)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.requireStatus(http.StatusOK)
 
 	// Add a document
 	err = tb.Bucket.Set("importDoc2", 0, nil, []byte("{}"))
@@ -341,11 +341,11 @@ func TestImportFilterEndpoint(t *testing.T) {
 
 	// Ensure document is not imported and is rejected based on updated filter
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/importDoc2", "")
-	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	resp.requireStatus(http.StatusNotFound)
 	assert.Contains(t, resp.Body, "Not imported")
 
 	resp = bootstrapAdminRequest(t, http.MethodDelete, "/db1/_config/import_filter", "")
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.requireStatus(http.StatusOK)
 
 	// Add a document
 	err = tb.Bucket.Set("importDoc3", 0, nil, []byte("{}"))
@@ -353,5 +353,5 @@ func TestImportFilterEndpoint(t *testing.T) {
 
 	// Ensure document is imported based on default import filter
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/importDoc3", "")
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.requireStatus(http.StatusOK)
 }

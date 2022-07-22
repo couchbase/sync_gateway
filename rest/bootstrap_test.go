@@ -54,25 +54,24 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 
 	// upsert 1 config field
 	resp = bootstrapAdminRequest(t, http.MethodPost, "/db1/_config",
 		`{"cache": {"rev_cache":{"size":1234}}}`,
 	)
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/", ``)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	var dbRootResp DatabaseRoot
 	resp.requireStatus(http.StatusOK)
+	var dbRootResp DatabaseRoot
 	require.NoError(t, base.JSONUnmarshal([]byte(resp.Body), &dbRootResp))
 	assert.Equal(t, "db1", dbRootResp.DBName)
 	assert.Equal(t, db.RunStateString[db.DBOnline], dbRootResp.State)
 
 	// Inspect the config
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/_config", ``)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.requireStatus(http.StatusOK)
 	var dbConfigResp DatabaseConfig
 	require.NoError(t, base.JSONUnmarshal([]byte(resp.Body), &dbConfigResp))
 	assert.Equal(t, "db1", dbConfigResp.Name)
@@ -108,7 +107,7 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 
 	// Ensure the database was bootstrapped on startup
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/", ``)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.requireStatus(http.StatusOK)
 	dbRootResp = DatabaseRoot{}
 	require.NoError(t, base.JSONUnmarshal([]byte(resp.Body), &dbRootResp))
 	assert.Equal(t, "db1", dbRootResp.DBName)
@@ -116,7 +115,7 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 
 	// Inspect config again, and ensure no changes since bootstrap
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/_config", ``)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.requireStatus(http.StatusOK)
 	dbConfigResp = DatabaseConfig{}
 	require.NoError(t, base.JSONUnmarshal([]byte(resp.Body), &dbConfigResp))
 	assert.Equal(t, "db1", dbConfigResp.Name)
@@ -166,7 +165,7 @@ func TestBootstrapDuplicateBucket(t *testing.T) {
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 
 	// Create db2 using the same bucket and expect it to fail
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db2/",
@@ -216,11 +215,11 @@ func TestBootstrapDuplicateDatabase(t *testing.T) {
 	)
 
 	resp := bootstrapAdminRequest(t, http.MethodPut, "/db1/", dbConfig)
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 
 	// Write a doc, we'll rely on it for later stat assertions to ensure the database isn't being reloaded.
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db1/doc1", `{"test": true}`)
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 
 	// check to see we have a doc written stat
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/_expvar", "")
