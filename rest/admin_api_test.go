@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -3297,30 +3296,29 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 
 	// Get config
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-
+	resp.requireStatus(http.StatusOK)
 	eTag := resp.Header.Get("ETag")
 	assert.NotEqual(t, "", eTag)
 
 	resp = bootstrapAdminRequestWithHeaders(t, http.MethodPost, "/db/_config", "{}", map[string]string{"If-Match": eTag})
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 
 	resp = bootstrapAdminRequest(t, http.MethodPost, "/db/_config", "{}")
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 	putETag := resp.Header.Get("ETag")
 	assert.NotEqual(t, "", putETag)
 
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.requireStatus(http.StatusOK)
 	getETag := resp.Header.Get("ETag")
 	assert.Equal(t, putETag, getETag)
 
 	resp = bootstrapAdminRequestWithHeaders(t, http.MethodPost, "/db/_config", "{}", map[string]string{"If-Match": "x"})
-	assert.Equal(t, http.StatusPreconditionFailed, resp.StatusCode)
+	resp.requireStatus(http.StatusPreconditionFailed)
 }
 
 func TestDbConfigCredentials(t *testing.T) {
@@ -3358,17 +3356,13 @@ func TestDbConfigCredentials(t *testing.T) {
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 
 	var dbConfig DatabaseConfig
 
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	body, err := ioutil.ReadAll(resp.Body)
-	require.NoError(t, err)
-	assert.NoError(t, resp.Body.Close())
-
-	err = base.JSONUnmarshal(body, &dbConfig)
+	resp.requireStatus(http.StatusOK)
+	err = base.JSONUnmarshal([]byte(resp.Body), &dbConfig)
 	require.NoError(t, err)
 
 	// non-runtime config, we don't expect to see any credentials present
@@ -3379,12 +3373,8 @@ func TestDbConfigCredentials(t *testing.T) {
 	assert.Equal(t, "", dbConfig.KeyPath)
 
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config?include_runtime=true", "")
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	body, err = ioutil.ReadAll(resp.Body)
-	require.NoError(t, err)
-	assert.NoError(t, resp.Body.Close())
-
-	err = base.JSONUnmarshal(body, &dbConfig)
+	resp.requireStatus(http.StatusOK)
+	err = base.JSONUnmarshal([]byte(resp.Body), &dbConfig)
 	require.NoError(t, err)
 
 	// runtime config, we expect to see the credentials used by the database (either bootstrap or per-db - but in this case, bootstrap)
@@ -3430,28 +3420,22 @@ func TestInvalidDBConfig(t *testing.T) {
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 
 	// Put db config with invalid sync fn
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config", `{"sync": "function(){"}`)
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-	body, err := ioutil.ReadAll(resp.Body)
-	require.NoError(t, err)
-	assert.True(t, strings.Contains(string(body), "invalid javascript syntax"))
+	resp.requireStatus(http.StatusBadRequest)
+	assert.True(t, strings.Contains(resp.Body, "invalid javascript syntax"))
 
 	// Put invalid sync fn via sync specific endpoint
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config/sync", `function(){`)
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-	body, err = ioutil.ReadAll(resp.Body)
-	require.NoError(t, err)
-	assert.True(t, strings.Contains(string(body), "invalid javascript syntax"))
+	resp.requireStatus(http.StatusBadRequest)
+	assert.True(t, strings.Contains(resp.Body, "invalid javascript syntax"))
 
 	// Put invalid import fn via import specific endpoint
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config/import_filter", `function(){`)
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-	body, err = ioutil.ReadAll(resp.Body)
-	require.NoError(t, err)
-	assert.True(t, strings.Contains(string(body), "invalid javascript syntax"))
+	resp.requireStatus(http.StatusBadRequest)
+	assert.True(t, strings.Contains(resp.Body, "invalid javascript syntax"))
 }
 
 func TestCreateDbOnNonExistentBucket(t *testing.T) {
@@ -3478,18 +3462,12 @@ func TestCreateDbOnNonExistentBucket(t *testing.T) {
 	require.NoError(t, sc.waitForRESTAPIs())
 
 	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/", `{"bucket": "nonexistentbucket"}`)
-	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
-	body, err := ioutil.ReadAll(resp.Body)
-	require.NoError(t, err)
-	assert.NoError(t, resp.Body.Close())
-	assert.Contains(t, string(body), "auth failure accessing provided bucket: nonexistentbucket")
+	resp.requireStatus(http.StatusForbidden)
+	assert.Contains(t, resp.Body, "auth failure accessing provided bucket: nonexistentbucket")
 
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/nonexistentbucket/", `{}`)
-	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
-	body, err = ioutil.ReadAll(resp.Body)
-	require.NoError(t, err)
-	assert.NoError(t, resp.Body.Close())
-	assert.Contains(t, string(body), "auth failure accessing provided bucket: nonexistentbucket")
+	resp.requireStatus(http.StatusForbidden)
+	assert.Contains(t, resp.Body, "auth failure accessing provided bucket: nonexistentbucket")
 }
 
 func TestPutDbConfigChangeName(t *testing.T) {
@@ -3527,10 +3505,10 @@ func TestPutDbConfigChangeName(t *testing.T) {
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config", `{"name": "test"}`)
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	resp.requireStatus(http.StatusBadRequest)
 }
 
 func TestPutDBConfigOIDC(t *testing.T) {
@@ -3568,7 +3546,7 @@ func TestPutDBConfigOIDC(t *testing.T) {
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 
 	// Attempt to update the config with an invalid OIDC issuer - should fail
 	invalidOIDCConfig := fmt.Sprintf(
@@ -3590,11 +3568,11 @@ func TestPutDBConfigOIDC(t *testing.T) {
 	)
 
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config", invalidOIDCConfig)
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	resp.requireStatus(http.StatusBadRequest)
 
 	// Now pass the parameter to skip the validation
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config?disable_oidc_validation=true", invalidOIDCConfig)
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 
 	// Now check with a valid OIDC issuer
 	validOIDCConfig := fmt.Sprintf(
@@ -3621,7 +3599,7 @@ func TestPutDBConfigOIDC(t *testing.T) {
 	)
 
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config", validOIDCConfig)
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 }
 
 func TestNotExistentDBRequest(t *testing.T) {
@@ -3684,16 +3662,12 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 
 	var dbConfig DatabaseConfig
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config?include_runtime=true", "")
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	body, err := ioutil.ReadAll(resp.Body)
-	assert.NoError(t, err)
-	assert.NoError(t, resp.Body.Close())
-
-	err = base.JSONUnmarshal(body, &dbConfig)
+	resp.requireStatus(http.StatusOK)
+	err = base.JSONUnmarshal([]byte(resp.Body), &dbConfig)
 	assert.NoError(t, err)
 
 	// Validate a few default values to ensure they are set
@@ -3705,12 +3679,8 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 
 	var runtimeServerConfigResponse RunTimeServerConfigResponse
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/_config?include_runtime=true", "")
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	body, err = ioutil.ReadAll(resp.Body)
-	assert.NoError(t, err)
-	assert.NoError(t, resp.Body.Close())
-
-	err = base.JSONUnmarshal(body, &runtimeServerConfigResponse)
+	resp.requireStatus(http.StatusOK)
+	err = base.JSONUnmarshal([]byte(resp.Body), &runtimeServerConfigResponse)
 	assert.NoError(t, err)
 
 	require.Contains(t, runtimeServerConfigResponse.Databases, "db")
@@ -3730,15 +3700,11 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db2/",
 		`{"bucket": "`+tb2.GetName()+`", "num_index_replicas": 0, "unsupported": {"disable_clean_skipped_query": true}}`,
 	)
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/_config?include_runtime=true", "")
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	body, err = ioutil.ReadAll(resp.Body)
-	assert.NoError(t, err)
-	assert.NoError(t, resp.Body.Close())
-
-	err = base.JSONUnmarshal(body, &runtimeServerConfigResponse)
+	resp.requireStatus(http.StatusOK)
+	err = base.JSONUnmarshal([]byte(resp.Body), &runtimeServerConfigResponse)
 	assert.NoError(t, err)
 
 	require.Contains(t, runtimeServerConfigResponse.Databases, "db2")
@@ -3780,13 +3746,13 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	resp.requireStatus(http.StatusForbidden)
 
 	// Wrong credentials should fail
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db2/",
 		`{"bucket": "`+tb.GetName()+`", "username": "test", "password": "invalid_password"}`,
 	)
-	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	resp.requireStatus(http.StatusForbidden)
 
 	// Proper credentials should pass
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db3/",
@@ -3795,7 +3761,7 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(), base.TestClusterUsername(), base.TestClusterPassword(),
 		),
 	)
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 }
 
 func TestDbOfflineConfigLegacy(t *testing.T) {
@@ -3877,39 +3843,32 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 
 	// Persist config
 	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
-	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 
 	// Get config values before taking db offline
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	dbConfigBeforeOffline, err := ioutil.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
+	resp.requireStatus(http.StatusOK)
+	dbConfigBeforeOffline := resp.Body
 
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
-	assertResp(t, resp, http.StatusOK, importFilter)
-	require.NoError(t, resp.Body.Close())
+	resp.requireResponse(http.StatusOK, importFilter)
 
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/sync", "")
-	assertResp(t, resp, http.StatusOK, syncFunc)
-	require.NoError(t, resp.Body.Close())
+	resp.requireResponse(http.StatusOK, syncFunc)
 
 	// Take DB offline
 	resp = bootstrapAdminRequest(t, http.MethodPost, "/db/_offline", "")
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.requireStatus(http.StatusOK)
 
 	// Check offline config matches online config
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
-	assertResp(t, resp, http.StatusOK, string(dbConfigBeforeOffline))
-	require.NoError(t, resp.Body.Close())
+	resp.requireResponse(http.StatusOK, dbConfigBeforeOffline)
 
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
-	assertResp(t, resp, http.StatusOK, importFilter)
-	require.NoError(t, resp.Body.Close())
+	resp.requireResponse(http.StatusOK, importFilter)
 
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/sync", "")
-	assertResp(t, resp, http.StatusOK, syncFunc)
-	require.NoError(t, resp.Body.Close())
+	resp.requireResponse(http.StatusOK, syncFunc)
 }
 
 // TestDbConfigPersistentSGVersions ensures that cluster-wide config updates are not applied to older nodes to avoid pushing invalid configuration.
@@ -4073,29 +4032,28 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 
 	// Create initial database
 	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
-	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 
 	// Make sure import and sync fail
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/TestSyncDoc", "{}")
-	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	resp.requireStatus(http.StatusForbidden)
 
 	// Take DB offline
 	resp = bootstrapAdminRequest(t, http.MethodPost, "/db/_offline", "")
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.requireStatus(http.StatusOK)
 
 	resp = bootstrapAdminRequest(t, http.MethodDelete, "/db/_config/sync", "")
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.requireStatus(http.StatusOK)
 
 	// Take DB online
 	resp = bootstrapAdminRequest(t, http.MethodPost, "/db/_online", "")
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.requireStatus(http.StatusOK)
 
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/sync", "")
-	assertResp(t, resp, http.StatusOK, "")
-	require.NoError(t, resp.Body.Close())
+	resp.requireResponse(http.StatusOK, "")
 
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/TestSyncDoc", "{}")
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 
 	if base.TestUseXattrs() {
 		add, err := tb.Add("TestImportDoc", 0, db.Document{ID: "TestImportDoc", RevID: "1-abc"})
@@ -4104,20 +4062,19 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 
 		// On-demand import - rejected doc
 		resp = bootstrapAdminRequest(t, http.MethodGet, "/db/TestImportDoc", "")
-		require.Equal(t, http.StatusNotFound, resp.StatusCode)
+		resp.requireStatus(http.StatusNotFound)
 
 		// Persist configs
 		resp = bootstrapAdminRequest(t, http.MethodDelete, "/db/_config/import_filter", "")
-		require.Equal(t, http.StatusOK, resp.StatusCode)
+		resp.requireStatus(http.StatusOK)
 
 		// Check configs match
 		resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
-		assertResp(t, resp, http.StatusOK, "")
-		require.NoError(t, resp.Body.Close())
+		resp.requireResponse(http.StatusOK, "")
 
 		// On-demand import - allowed doc after restored default import filter
 		resp = bootstrapAdminRequest(t, http.MethodGet, "/db/TestImportDoc", "")
-		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		resp.requireStatus(http.StatusOK)
 	}
 }
 
@@ -4160,31 +4117,29 @@ func TestSetFunctionsWhileDbOffline(t *testing.T) {
 
 	// Create initial database
 	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
-	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 
 	// Take DB offline
 	resp = bootstrapAdminRequest(t, http.MethodPost, "/db/_offline", "")
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.requireStatus(http.StatusOK)
 
 	// Persist configs
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config/import_filter", importFilter)
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.requireStatus(http.StatusOK)
 
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config/sync", syncFunc)
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.requireStatus(http.StatusOK)
 
 	// Take DB online
 	resp = bootstrapAdminRequest(t, http.MethodPost, "/db/_online", "")
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.requireStatus(http.StatusOK)
 
 	// Check configs match
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
-	assertResp(t, resp, http.StatusOK, importFilter)
-	require.NoError(t, resp.Body.Close())
+	resp.requireResponse(http.StatusOK, importFilter)
 
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/sync", "")
-	assertResp(t, resp, http.StatusOK, syncFunc)
-	require.NoError(t, resp.Body.Close())
+	resp.requireResponse(http.StatusOK, syncFunc)
 }
 
 func TestEmptyStringJavascriptFunctions(t *testing.T) {
@@ -4223,8 +4178,7 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	assert.NoError(t, resp.Body.Close())
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 
 	// db config put with empty sync func and import filter
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config",
@@ -4233,8 +4187,7 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	assert.NoError(t, resp.Body.Close())
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 
 	// db config post, with empty sync func and import filter
 	resp = bootstrapAdminRequest(t, http.MethodPost, "/db/_config",
@@ -4243,8 +4196,7 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	assert.NoError(t, resp.Body.Close())
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 }
 
 // Regression test for CBG-2119 - ensure that the disable_password_auth bool field is handled correctly both when set as true and as false
@@ -4323,7 +4275,7 @@ func TestGroupIDReplications(t *testing.T) {
 				activeBucket.GetName(), base.TestsDisableGSI(), channels.DefaultSyncFunction,
 			),
 		)
-		require.Equal(t, http.StatusCreated, resp.StatusCode)
+		resp.requireStatus(http.StatusCreated)
 	}
 
 	// Start replicators
@@ -4340,7 +4292,7 @@ func TestGroupIDReplications(t *testing.T) {
 			ConflictResolutionType: db.ConflictResolverDefault,
 		}
 		resp := bootstrapAdminRequestCustomHost(t, http.MethodPost, adminHosts[i], "/db/_replication/", marshalConfig(t, replicationConfig))
-		require.Equal(t, http.StatusCreated, resp.StatusCode)
+		resp.requireStatus(http.StatusCreated)
 	}
 
 	for groupNum, group := range groupIDs {
@@ -4354,7 +4306,7 @@ func TestGroupIDReplications(t *testing.T) {
 		// Force on-demand import and cache
 		for _, host := range adminHosts {
 			resp := bootstrapAdminRequestCustomHost(t, http.MethodGet, host, "/db/"+key, "")
-			require.Equal(t, http.StatusOK, resp.StatusCode)
+			resp.requireStatus(http.StatusOK)
 		}
 
 		for scNum, sc := range serverContexts {
@@ -4427,14 +4379,14 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
    "num_index_replicas": 0 }`
 
 	resp := bootstrapAdminRequest(t, http.MethodPut, "/db1/", fmt.Sprintf(dbConfig, "db1"))
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 
 	resp = bootstrapAdminRequest(t, http.MethodDelete, "/db1/", "")
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.requireStatus(http.StatusOK)
 
 	// Make another database that uses import in-order to trigger the panic instantly instead of having to time.Sleep
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db2/", fmt.Sprintf(dbConfig, "db2"))
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 
 	// Validate that deleted database is no longer in dest factory set
 	_, fetchDb1DestErr := base.FetchDestFactory(base.ImportDestKey("db1"))

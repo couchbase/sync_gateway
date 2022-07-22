@@ -2354,18 +2354,16 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	req, err := http.NewRequest(http.MethodPost, bootstrapURL(publicPort)+"/db/_session", bytes.NewBufferString("{}"))
 	require.NoError(t, err, "Initializing auth request")
 	req.Header.Set("Authorization", BearerToken+" "+jwt)
-	res, err = http.DefaultClient.Do(req)
+	httpRes, err := http.DefaultClient.Do(req)
 	require.NoError(t, err, "Performing auth request")
-	assert.NoError(t, res.Body.Close())
-	require.Equal(t, http.StatusOK, res.StatusCode)
+	assert.NoError(t, httpRes.Body.Close())
+	require.Equal(t, http.StatusOK, httpRes.StatusCode)
 
 	// Check that the user is present in the admin API
 	res = bootstrapAdminRequest(t, http.MethodGet, fmt.Sprintf("/db/_user/%s", subject), "")
 	require.Equal(t, http.StatusOK, res.StatusCode)
 	var adminResult db.Body
-	err = json.NewDecoder(res.Body).Decode(&adminResult)
-	require.NoError(t, err)
-	assert.NoError(t, res.Body.Close())
+	require.NoError(t, base.JSONUnmarshal([]byte(res.Body), &adminResult))
 	base.DebugfCtx(base.TestCtx(t), base.KeyAll, "User data from admin API: %v", adminResult)
 
 	assert.Equal(t, subject, adminResult["name"])
@@ -2390,15 +2388,13 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	"num_index_replicas": 0,
 	"oidc":` + string(mustMarshalJSON(t, &oidcOptions)) + `}`
 	res = bootstrapAdminRequest(t, http.MethodPut, "/db/_config?disable_oidc_validation=true", dbConfig)
-	assert.NoError(t, res.Body.Close())
-	require.Equal(t, http.StatusCreated, res.StatusCode)
+	res.requireStatus(http.StatusCreated)
 
 	// Check that the user is still present, but with no OIDC info
 	res = bootstrapAdminRequest(t, http.MethodGet, fmt.Sprintf("/db/_user/%s", subject), "")
 	require.Equal(t, http.StatusOK, res.StatusCode)
 	adminResult = db.Body{}
-	require.NoError(t, json.NewDecoder(res.Body).Decode(&adminResult))
-	assert.NoError(t, res.Body.Close())
+	require.NoError(t, base.JSONUnmarshal([]byte(res.Body), &adminResult))
 	base.DebugfCtx(base.TestCtx(t), base.KeyAll, "User data from admin API: %v", adminResult)
 
 	assert.NotContains(t, adminResult, "jwt_issuer", "Expected to not have jwt_issuer in /_user response")
@@ -2407,29 +2403,26 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	req, err = http.NewRequest(http.MethodPost, bootstrapURL(publicPort)+"/db/_session", bytes.NewBufferString("{}"))
 	require.NoError(t, err, "Initializing second auth request")
 	req.Header.Set("Authorization", BearerToken+" "+jwt)
-	res, err = http.DefaultClient.Do(req)
+	httpRes, err = http.DefaultClient.Do(req)
 	require.NoError(t, err, "Performing second auth request")
-	assert.NoError(t, res.Body.Close())
-	assert.Equal(t, http.StatusUnauthorized, res.StatusCode)
+	assert.Equal(t, http.StatusUnauthorized, httpRes.StatusCode)
 
 	// Finally, check that the user can sign in through basic auth, but their OIDC roles/channels get revoked
 	res = bootstrapAdminRequest(t, http.MethodPut, fmt.Sprintf("/db/_user/%s", subject), `{"password": "hunter2"}`)
-	assert.NoError(t, res.Body.Close())
 	require.Equal(t, http.StatusOK, res.StatusCode)
 
 	req, err = http.NewRequest(http.MethodPost, bootstrapURL(publicPort)+"/db/_session", bytes.NewBufferString("{}"))
 	require.NoError(t, err, "Initializing basic auth request")
 	req.SetBasicAuth(subject, "hunter2")
-	res, err = http.DefaultClient.Do(req)
+	httpRes, err = http.DefaultClient.Do(req)
 	require.NoError(t, err, "Performing basic auth request")
-	assert.Equal(t, http.StatusOK, res.StatusCode)
+	assert.Equal(t, http.StatusOK, httpRes.StatusCode)
 
 	var sessionResponse struct {
 		UserCtx db.Body `json:"userCtx"`
 	}
-	require.NoError(t, json.NewDecoder(res.Body).Decode(&sessionResponse))
+	require.NoError(t, json.NewDecoder(httpRes.Body).Decode(&sessionResponse))
 	require.NotContains(t, sessionResponse.UserCtx["channels"], testChannelName)
-	assert.NoError(t, res.Body.Close())
 }
 
 // This test verifies the edge case of having two different OIDC providers with different role/channel configurations
