@@ -213,9 +213,9 @@ func NewSyncRunner(funcSource string, timeout time.Duration) (*SyncRunner, error
 	return runner, nil
 }
 
-func (runner *SyncRunner) SetFunction(funcSource string, timeout time.Duration) (bool, error) {
+func (runner *SyncRunner) SetFunction(funcSource string) (bool, error) {
 	funcSource = wrappedFuncSource(funcSource)
-	return runner.JSRunner.SetFunction(funcSource, timeout)
+	return runner.JSRunner.SetFunction(funcSource)
 }
 
 // Common implementation of 'access()' and 'role()' callbacks

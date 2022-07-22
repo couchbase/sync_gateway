@@ -2194,9 +2194,10 @@ func (db *Database) getChannelsAndAccess(doc *Document, body Body, metaMap map[s
 
 		} else {
 			base.WarnfCtx(db.Ctx, "Sync fn exception: %+v; doc = %s", err, base.UD(body))
-			err = base.HTTPErrorf(500, "Exception in JS sync function")
 			if errors.Is(err, sgbucket.ErrJSTimeout) {
 				err = base.HTTPErrorf(500, "JS sync function timed out")
+			} else {
+				err = base.HTTPErrorf(500, "Exception in JS sync function")
 			}
 		}
 

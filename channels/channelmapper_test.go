@@ -363,7 +363,7 @@ func TestSetFunction(t *testing.T) {
 	mapper := NewChannelMapper(`function(doc) {channel(doc.channels);}`, 0)
 	output, err := mapper.MapToChannelsAndAccess(parse(`{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	changed, err := mapper.SetFunction(`function(doc) {channel("all");}`, 0)
+	changed, err := mapper.SetFunction(`function(doc) {channel("all");}`)
 	assert.True(t, changed, "SetFunction failed")
 	assert.NoError(t, err, "SetFunction failed")
 	output, err = mapper.MapToChannelsAndAccess(parse(`{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
