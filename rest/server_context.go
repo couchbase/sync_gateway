@@ -344,7 +344,7 @@ func GetBucketSpec(config *DatabaseConfig, serverConfig *StartupConfig) (spec ba
 
 	spec.FeedType = strings.ToLower(config.FeedType)
 
-	spec.CouchbaseDriver = base.ChooseCouchbaseDriver(base.DataBucket)
+	spec.CouchbaseDriver = base.ChooseCouchbaseDriver(base.DataBucket, serverConfig.Unsupported.LegacyServerCompat)
 
 	if config.ViewQueryTimeoutSecs != nil {
 		spec.ViewQueryTimeoutSecs = config.ViewQueryTimeoutSecs
@@ -1475,12 +1475,15 @@ func (sc *ServerContext) Database(name string) *db.DatabaseContext {
 }
 
 func (sc *ServerContext) initializeCouchbaseServerConnections() error {
-	goCBAgent, err := sc.initializeGoCBAgent()
-	if err != nil {
-		return err
+	if !sc.config.Unsupported.LegacyServerCompat {
+		goCBAgent, err := sc.initializeGoCBAgent()
+		if err != nil {
+			return err
+		}
+		sc.GoCBAgent = goCBAgent
 	}
-	sc.GoCBAgent = goCBAgent
 
+	var err error
 	sc.NoX509HTTPClient, err = sc.initializeNoX509HttpClient()
 	if err != nil {
 		return err

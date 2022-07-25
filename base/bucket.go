@@ -95,19 +95,22 @@ func GetBaseBucket(b Bucket) Bucket {
 	return b
 }
 
-func ChooseCouchbaseDriver(bucketType CouchbaseBucketType) CouchbaseDriver {
+func ChooseCouchbaseDriver(bucketType CouchbaseBucketType, legacyCompat bool) CouchbaseDriver {
+	if !legacyCompat {
+		return GoCBv2
+	}
 
 	// Otherwise use the default driver for the bucket type
 	// return DefaultDriverForBucketType[bucketType]
 	switch bucketType {
 	case DataBucket:
-		return GoCBv2
+		return GoCBCustomSGTranscoder
 	case IndexBucket:
-		return GoCBv2
+		return GoCB
 	default:
 		// If a new bucket type is added and this method isn't updated, flag a warning (or, could panic)
 		Warnf("Unexpected bucket type: %v", bucketType)
-		return GoCBv2
+		return GoCB
 	}
 
 }

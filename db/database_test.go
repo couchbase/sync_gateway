@@ -1720,7 +1720,7 @@ func BenchmarkDatabase(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		bucket, _ := ConnectToBucket(base.BucketSpec{
 			Server:          base.UnitTestUrl(),
-			CouchbaseDriver: base.ChooseCouchbaseDriver(base.DataBucket),
+			CouchbaseDriver: base.ChooseCouchbaseDriver(base.DataBucket, false),
 			BucketName:      fmt.Sprintf("b-%d", i)})
 		context, _ := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
 		db, _ := CreateDatabase(context)
@@ -1737,7 +1737,7 @@ func BenchmarkPut(b *testing.B) {
 
 	bucket, _ := ConnectToBucket(base.BucketSpec{
 		Server:          base.UnitTestUrl(),
-		CouchbaseDriver: base.ChooseCouchbaseDriver(base.DataBucket),
+		CouchbaseDriver: base.ChooseCouchbaseDriver(base.DataBucket, false),
 		BucketName:      "Bucket"})
 	context, _ := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
 	db, _ := CreateDatabase(context)

@@ -97,6 +97,7 @@ type UnsupportedServerConfigLegacy struct {
 	Http2Config           *HTTP2Config `json:"http2,omitempty"`               // Config settings for HTTP2
 	StatsLogFrequencySecs *uint        `json:"stats_log_freq_secs,omitempty"` // How often should stats be written to stats logs
 	UseStdlibJSON         *bool        `json:"use_stdlib_json,omitempty"`     // Bypass the jsoniter package and use Go's stdlib instead
+	LegacyServerCompat    *bool        `json:"legacy_server_compatibility"`   // Disable use of gocb v2 (CBG-2218)
 }
 
 // ToStartupConfig returns the given LegacyServerConfig as a StartupConfig and a set of DBConfigs.
@@ -189,6 +190,9 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 			sc.Unsupported.HTTP2 = &HTTP2Config{
 				Enabled: lc.Unsupported.Http2Config.Enabled,
 			}
+		}
+		if lc.Unsupported.LegacyServerCompat != nil {
+			sc.Unsupported.LegacyServerCompat = *lc.Unsupported.LegacyServerCompat
 		}
 	}
 
