@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -43,12 +44,27 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 	il.bucketName = bucket.GetName()
 	il.database = Database{DatabaseContext: dbContext, user: nil}
 	il.stats = dbStats.Database()
+	scopes := make(map[string][]string)
+	// TODO: remove once both sharded and non-sharded DCP feeds support more than one collection (CBG-2182, CBG-2193)
+	if len(dbContext.Scopes) > 1 {
+		return fmt.Errorf("more than one collection not supported")
+	}
+	for scopeName, scope := range dbContext.Scopes {
+		if len(scope.Collections) > 1 {
+			return fmt.Errorf("more than one collection not supported")
+		}
+		scopes[scopeName] = make([]string, 0, len(scope.Collections))
+		for collName := range scope.Collections {
+			scopes[scopeName] = append(scopes[scopeName], collName)
+		}
+	}
 	feedArgs := sgbucket.FeedArguments{
 		ID:               base.DCPImportFeedID,
 		Backfill:         sgbucket.FeedResume,
 		Terminator:       il.terminator,
 		DoneChan:         make(chan struct{}),
 		CheckpointPrefix: il.checkpointPrefix,
+		Scopes:           scopes,
 	}
 
 	base.InfofCtx(context.TODO(), base.KeyDCP, "Attempting to start import DCP feed %v...", base.MD(base.ImportDestKey(il.database.Name)))

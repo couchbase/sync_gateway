@@ -41,7 +41,6 @@ type CbgtContext struct {
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
 // dbName is used to define a unique path name for local file storage of pindex files
 func StartShardedDCPFeed(dbName string, configGroup string, uuid string, heartbeater Heartbeater, bucket Bucket, spec BucketSpec, numPartitions uint16, cfg cbgt.Cfg) (*CbgtContext, error) {
-
 	cbgtContext, err := initCBGTManager(bucket, spec, cfg, uuid, dbName)
 	if err != nil {
 		return nil, err

@@ -58,8 +58,6 @@ github.com/couchbase/blance v0.1.1 h1:R2vilE+GJBN6z/EMhB1kyVsLylb6/1S3qcorMbhUG1
 github.com/couchbase/blance v0.1.1/go.mod h1:2Sa/nsJSieN/r3T9LsrUYWeQ015qDsuHybhz4F4JcHU=
 github.com/couchbase/cbauth v0.1.1 h1:J31gYUf8ITgnlVFgnnl6DnbXXF21DL5la6GDhVefu6g=
 github.com/couchbase/cbauth v0.1.1/go.mod h1:overPK2NvYkkZBWX0eqmuHB82nhhs8rt7A4wi5u7c2g=
-github.com/couchbase/cbgt v1.2.1 h1:DR23e21AP8VDKw8EjJLP7AYriCYT2bBE3Vg59aJzeUA=
-github.com/couchbase/cbgt v1.2.1/go.mod h1:ZdDUUIWp/A4QM0QsDelwzrB5gMDdJfHiQSsj9MIyy1U=
 github.com/couchbase/cbgt v1.2.2 h1:HVWBZl9Wq6QpqVaWrW7g6YKgRY8qFvIxL5B2KzBb9OE=
 github.com/couchbase/cbgt v1.2.2/go.mod h1:LD4MfTFybw0MTD10AczKbGB8zmBku0Ax4jRxZFI5RKg=
 github.com/couchbase/clog v0.1.0 h1:4Kh/YHkhRjMCbdQuvRVsm39XZh4FtL1d8fAwJsHrEPY=
@@ -78,10 +76,7 @@ github.com/couchbase/gomemcached v0.1.4 h1:5n5wmr4dBu+X7XteP8QHP5S9inK9MBjNpN9b7
 github.com/couchbase/gomemcached v0.1.4/go.mod h1:mxliKQxOv84gQ0bJWbI+w9Wxdpt9HjDvgW9MjCym5Vo=
 github.com/couchbase/goutils v0.1.2 h1:gWr8B6XNWPIhfalHNog3qQKfGiYyh4K4VhO3P2o9BCs=
 github.com/couchbase/goutils v0.1.2/go.mod h1:h89Ek/tiOxxqjz30nPPlwZdQbdB8BwgnuBxeoUe/ViE=
-github.com/couchbase/sg-bucket v0.0.0-20220503150833-9e9c21fba8ce h1:kyEHMzRq2A53Ty9aon1hEtmurG5UvKh+wUkxf5VPNOs=
 github.com/couchbase/sg-bucket v0.0.0-20220503150833-9e9c21fba8ce/go.mod h1:9XQoB1t+elPP+yEjHGOX3xcC3Z0/qDgOI7h/fc9XjlU=
-github.com/couchbase/sg-bucket v0.0.0-20220714163049-dadc844229ff h1:VawfxJ9AfxKJ7UEfViXbU6Pr/KhghNd4//un1lbQ7G8=
-github.com/couchbase/sg-bucket v0.0.0-20220714163049-dadc844229ff/go.mod h1:9XQoB1t+elPP+yEjHGOX3xcC3Z0/qDgOI7h/fc9XjlU=
 github.com/couchbase/sg-bucket v0.0.0-20220719132317-78e3f489cbce h1:0/c06fGDCzlOdSpVTPd5ekUWK4MuRclDj/dBCQU++kE=
 github.com/couchbase/sg-bucket v0.0.0-20220719132317-78e3f489cbce/go.mod h1:9XQoB1t+elPP+yEjHGOX3xcC3Z0/qDgOI7h/fc9XjlU=
 github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f h1:al5DxXEBAUmINnP5dR950gL47424WzncuRpNdg0TWR0=
