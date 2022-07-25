@@ -152,6 +152,7 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 				}
 
 				// This is a panic we don't know about - so continue to log at warn with a generic 500 response via go-blip
+				bsc.replicationStats.NumHandlersPanicked.Add(1)
 				base.WarnfCtx(bsc.loggingCtx, "PANIC handling BLIP request %v: %v\n%s", rq, err, debug.Stack())
 				panic(err)
 			}
@@ -231,6 +232,7 @@ func (bsc *BlipSyncContext) _copyContextDatabase() *Database {
 func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, requestSent time.Time, handleChangesResponseDb *Database) error {
 	defer func() {
 		if panicked := recover(); panicked != nil {
+			bsc.replicationStats.NumHandlersPanicked.Add(1)
 			base.WarnfCtx(bsc.loggingCtx, "PANIC handling 'changes' response: %v\n%s", panicked, debug.Stack())
 		}
 	}()
@@ -396,6 +398,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 		go func(activeSubprotocol string) {
 			defer func() {
 				if panicked := recover(); panicked != nil {
+					bsc.replicationStats.NumHandlersPanicked.Add(1)
 					base.WarnfCtx(bsc.loggingCtx, "PANIC handling 'sendRevision' response: %v\n%s", panicked, debug.Stack())
 					bsc.Close()
 				}

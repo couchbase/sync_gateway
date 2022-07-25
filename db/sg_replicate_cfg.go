@@ -662,6 +662,9 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 	allReplicationsStatsMap := m.dbContext.DbStats.DBReplicatorStats(rc.ID)
 	rc.ReplicationStatsMap = allReplicationsStatsMap
 
+	// disable recovered panic reporting (test only)
+	rc.reportHandlerPanicsOnStop = base.BoolPtr(false)
+
 	replicator = NewActiveReplicator(rc)
 
 	return replicator, nil

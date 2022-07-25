@@ -60,6 +60,7 @@ type BlipSyncStats struct {
 	SendChangesCount                 *base.SgwIntStat // sendChanges
 	NumConnectAttempts               *base.SgwIntStat
 	NumReconnectsAborted             *base.SgwIntStat
+	NumHandlersPanicked              *base.SgwIntStat
 }
 
 func NewBlipSyncStats() *BlipSyncStats {
@@ -107,6 +108,7 @@ func NewBlipSyncStats() *BlipSyncStats {
 		SendChangesCount:                 &base.SgwIntStat{},
 		NumConnectAttempts:               &base.SgwIntStat{},
 		NumReconnectsAborted:             &base.SgwIntStat{},
+		NumHandlersPanicked:              &base.SgwIntStat{},
 	}
 }
 
@@ -166,6 +168,8 @@ func BlipSyncStatsForSGRPush(replicationStats *base.DbReplicatorStats) *BlipSync
 	blipStats.NumConnectAttempts = replicationStats.NumConnectAttemptsPush
 	blipStats.NumReconnectsAborted = replicationStats.NumReconnectsAbortedPush
 
+	blipStats.NumHandlersPanicked = replicationStats.NumHandlersPanicked
+
 	return blipStats
 }
 
@@ -182,6 +186,8 @@ func BlipSyncStatsForSGRPull(replicationStats *base.DbReplicatorStats) *BlipSync
 	blipStats.HandleChangesCount = replicationStats.DocsCheckedReceived
 	blipStats.NumConnectAttempts = replicationStats.NumConnectAttemptsPull
 	blipStats.NumReconnectsAborted = replicationStats.NumReconnectsAbortedPull
+
+	blipStats.NumHandlersPanicked = replicationStats.NumHandlersPanicked
 
 	return blipStats
 }
