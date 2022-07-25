@@ -4390,7 +4390,7 @@ func TestBlipRevokeNonExistentRole(t *testing.T) {
 	})
 	defer rt.Close()
 
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
 	// 1. Create user with admin_roles including two roles not previously defined (a1 and a2, for example)
 	const testUsername = "bilbo"
