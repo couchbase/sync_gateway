@@ -887,7 +887,6 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 		if err != nil {
 			return nil, nil, false, nil, err
 		}
-		newRev := CreateRevIDWithBytes(generation, matchRev, canonicalBytesForRevID)
 
 		// We needed to keep _deleted around in the body until we generated a rev ID, but now we can ditch it.
 		_, isDeleted := body[BodyDeleted]
@@ -929,6 +928,8 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 		if err != nil {
 			return nil, nil, false, nil, err
 		}
+
+		newRev := CreateRevIDWithBytes(generation, matchRev, canonicalBytesForRevID)
 
 		if err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
 			base.InfofCtx(db.Ctx, base.KeyCRUD, "Failed to add revision ID: %s, for doc: %s, error: %v", newRev, base.UD(docid), err)
