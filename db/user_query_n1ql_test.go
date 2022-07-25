@@ -57,9 +57,9 @@ func assertQueryResults(t *testing.T, expected string, iter sgbucket.QueryResult
 
 // Unit test for user N1QL queries.
 func TestUserQueries(t *testing.T) {
-	// if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
-	// 	t.Skip("This test is Couchbase Server only")
-	// }
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test is Couchbase Server only (requires N1QL)")
+	}
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	cacheOptions := DefaultCacheOptions()

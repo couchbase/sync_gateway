@@ -117,7 +117,7 @@ func NewGraphQL(dbc *DatabaseContext) (*GraphQL, error) {
 		Resolvers: resolvers,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error in GraphQL config: %w", err)
 	}
 	return gq, nil
 }
@@ -152,10 +152,12 @@ func (res *graphQLResolver) Resolve(db *Database, params *graphql.ResolveParams,
 	// Collect the 'subfields', the fields the query wants from the value being resolved:
 	subfields := []string{}
 	if len(params.Info.FieldASTs) > 0 {
-		for _, sel := range params.Info.FieldASTs[0].SelectionSet.Selections {
-			if subfield, ok := sel.(*ast.Field); ok {
-				if subfield.Name.Kind == "Name" {
-					subfields = append(subfields, subfield.Name.Value)
+		if set := params.Info.FieldASTs[0].SelectionSet; set != nil {
+			for _, sel := range set.Selections {
+				if subfield, ok := sel.(*ast.Field); ok {
+					if subfield.Name.Kind == "Name" {
+						subfields = append(subfields, subfield.Name.Value)
+					}
 				}
 			}
 		}
