@@ -432,7 +432,7 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 
 			// StartManager starts the manager and creates the index
 			log.Printf("Starting manager for %s", managerUUID)
-			startErr := context.StartManager(testDBName, configGroup, bucket, spec, nil, DefaultImportPartitions)
+			startErr := context.StartManager(testDBName, configGroup, bucket, spec, DefaultImportPartitions)
 			assert.NoError(t, startErr)
 
 			managerWg.Done()

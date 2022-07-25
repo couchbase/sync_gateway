@@ -83,7 +83,7 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 		// Non-couchbase bucket or CE, start a non-sharded feed
 		return bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
 	} else {
-		il.cbgtContext, err = base.StartShardedDCPFeed(dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater, bucket, cbStore.GetSpec(), feedArgs.Scopes, dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
+		il.cbgtContext, err = base.StartShardedDCPFeed(dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater, bucket, cbStore.GetSpec(), dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
 		return err
 	}
 
