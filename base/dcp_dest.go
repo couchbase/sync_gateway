@@ -48,7 +48,7 @@ func init() {
 	for i := 0; i < len(vbucketIdStrings); i++ {
 		vbucketIdStrings[i] = fmt.Sprintf("%d", i)
 	}
-	feedType = cbgtFeedType_cbdatasource
+	feedType = cbgtFeedType_gocb
 	cbgt.DCPFeedPrefix = "sg:"
 }
 
@@ -127,8 +127,8 @@ func (d *DCPDest) DataUpdateEx(partition string, key []byte, seq uint64, val []b
 			return errors.New("Unable to cast extras of type DEST_EXTRAS_TYPE_MCREQUEST to *gomemcached.MCRequest")
 		}
 		event = makeFeedEventForMCRequest(mcReq, sgbucket.FeedOpMutation)
-	} else if extrasType == cbgt.DEST_EXTRAS_TYPE_GOCB_DCP {
-		dcpExtras, ok := req.(cbgt.GocbDCPExtras)
+	} else if extrasType == cbgt.DEST_EXTRAS_TYPE_GOCBCORE_DCP {
+		dcpExtras, ok := req.(cbgt.GocbcoreDCPExtras)
 		if !ok {
 			return errors.New("Unable to cast extras of type DEST_EXTRAS_TYPE_GOCB_DCP to cbgt.GocbExtras")
 		}
@@ -165,8 +165,8 @@ func (d *DCPDest) DataDeleteEx(partition string, key []byte, seq uint64,
 			return errors.New("Unable to cast extras of type DEST_EXTRAS_TYPE_MCREQUEST to gomemcached.MCRequest")
 		}
 		event = makeFeedEventForMCRequest(mcReq, sgbucket.FeedOpDeletion)
-	} else if extrasType == cbgt.DEST_EXTRAS_TYPE_GOCB_DCP {
-		dcpExtras, ok := req.(cbgt.GocbDCPExtras)
+	} else if extrasType == cbgt.DEST_EXTRAS_TYPE_GOCBCORE_DCP {
+		dcpExtras, ok := req.(cbgt.GocbcoreDCPExtras)
 		if !ok {
 			return errors.New("Unable to cast extras of type DEST_EXTRAS_TYPE_GOCB_DCP to cbgt.GocbExtras")
 		}

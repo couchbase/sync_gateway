@@ -40,9 +40,6 @@ func NewImportListener(groupID string) *importListener {
 // StartImportFeed starts an import DCP feed.  Always starts the feed based on previous checkpoints (Backfill:FeedResume).
 // Writes DCP stats into the StatKeyImportDcpStats map
 func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbStats, dbContext *DatabaseContext) (err error) {
-
-	base.InfofCtx(context.TODO(), base.KeyDCP, "Attempting to start import DCP feed...")
-
 	il.bucketName = bucket.GetName()
 	il.database = Database{DatabaseContext: dbContext, user: nil}
 	il.stats = dbStats.Database()
@@ -53,6 +50,8 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 		DoneChan:         make(chan struct{}),
 		CheckpointPrefix: il.checkpointPrefix,
 	}
+
+	base.InfofCtx(context.TODO(), base.KeyDCP, "Attempting to start import DCP feed %v...", base.MD(base.ImportDestKey(il.database.Name)))
 
 	importFeedStatsMap := dbContext.DbStats.Database().ImportFeedMapStats
 

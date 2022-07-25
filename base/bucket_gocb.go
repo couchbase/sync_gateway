@@ -77,7 +77,7 @@ var _ CouchbaseStore = &CouchbaseBucketGoCB{}
 // Creates a Bucket that talks to a real live Couchbase server.
 func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err error) {
 	logCtx := context.TODO()
-	connString, err := spec.GetGoCBConnString()
+	connString, err := spec.GetGoCBConnString(nil)
 	if err != nil {
 		WarnfCtx(logCtx, "Unable to parse server value: %s error: %v", SD(spec.Server), err)
 		return nil, err
