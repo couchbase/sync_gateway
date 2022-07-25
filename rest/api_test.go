@@ -477,7 +477,7 @@ func TestFunkyUsernames(t *testing.T) {
 			rt := NewRestTester(t, nil)
 			defer rt.Close()
 
-			a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+			a := rt.ServerContext().Database("db").Authenticator()
 
 			// Create a test user
 			user, err := a.NewUser(tc.UserName, "letmein", channels.SetOf(t, "foo"))
@@ -537,7 +537,7 @@ func TestFunkyRoleNames(t *testing.T) {
 			})
 			defer rt.Close()
 
-			a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+			a := rt.ServerContext().Database("db").Authenticator()
 
 			// Create a test user
 			user, err := a.NewUser(username, "letmein", channels.SetOf(t))
