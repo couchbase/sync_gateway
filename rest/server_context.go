@@ -26,9 +26,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/couchbase/gocbcore/v10"
 	"github.com/couchbase/sync_gateway/auth"
 
-	"github.com/couchbase/gocbcore/v10"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -59,6 +59,7 @@ type ServerContext struct {
 	cpuPprofFile         *os.File        // An open file descriptor holds the reference during CPU profiling
 	_httpServers         []*http.Server  // A list of HTTP servers running under the ServerContext
 	GoCBAgent            *gocbcore.Agent // GoCB Agent to use when obtaining management endpoints
+	legacyMgmtEndpoints  []string        // Management endpoints for use when GoCBAgent is unavailable (only if LegacyServerCompat is enabled)
 	NoX509HTTPClient     *http.Client    // httpClient for the cluster that doesn't include x509 credentials, even if they are configured for the cluster
 	hasStarted           chan struct{}   // A channel that is closed via PostStartup once the ServerContext has fully started
 }
@@ -106,6 +107,11 @@ func NewServerContext(config *StartupConfig, persistentConfig bool) *ServerConte
 		statsContext:     &statsContext{},
 		bootstrapContext: &bootstrapContext{},
 		hasStarted:       make(chan struct{}),
+	}
+
+	if config.Unsupported.LegacyServerCompat {
+		base.Warnf("legacy_server_compatibility is enabled. This flag is unsupported and will be removed in the next version of Sync Gateway." +
+			" Please upgrade to Couchbase Server 6.5 or above before upgrading Sync Gateway.")
 	}
 
 	if base.ServerIsWalrus(sc.config.Bootstrap.Server) {
@@ -1314,6 +1320,10 @@ func (sc *ServerContext) initializeNoX509HttpClient() (*http.Client, error) {
 }
 
 func (sc *ServerContext) ObtainManagementEndpointsAndHTTPClient() ([]string, *http.Client, error) {
+	if sc.legacyMgmtEndpoints != nil {
+		return sc.legacyMgmtEndpoints, sc.NoX509HTTPClient, nil
+	}
+
 	if sc.GoCBAgent == nil {
 		return nil, nil, fmt.Errorf("unable to obtain agent")
 	}
@@ -1475,7 +1485,26 @@ func (sc *ServerContext) Database(name string) *db.DatabaseContext {
 }
 
 func (sc *ServerContext) initializeCouchbaseServerConnections() error {
-	if !sc.config.Unsupported.LegacyServerCompat {
+	if sc.config.Unsupported.LegacyServerCompat {
+		// HACK: In legacy compat we can't use gocb to retrieve the management endpoints, instead parse the connection
+		// string and bootstrap by hand.
+		cs, err := base.ParseConnectionString(sc.config.Bootstrap.Server)
+		if err != nil {
+			return err
+		}
+		resolved, err := cs.Resolve()
+		if err != nil {
+			return err
+		}
+		scheme := "http"
+		if resolved.UseSSL {
+			scheme = "https"
+		}
+		sc.legacyMgmtEndpoints = make([]string, 0, len(resolved.Addresses))
+		for _, addr := range resolved.Addresses {
+			sc.legacyMgmtEndpoints = append(sc.legacyMgmtEndpoints, scheme+"://"+net.JoinHostPort(addr.Host, strconv.Itoa(int(addr.Port))))
+		}
+	} else {
 		goCBAgent, err := sc.initializeGoCBAgent()
 		if err != nil {
 			return err
