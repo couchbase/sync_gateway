@@ -1487,22 +1487,10 @@ func (sc *ServerContext) Database(name string) *db.DatabaseContext {
 func (sc *ServerContext) initializeCouchbaseServerConnections() error {
 	if sc.config.Unsupported.LegacyServerCompat {
 		// HACK: In legacy compat we can't use gocb to retrieve the management endpoints, instead parse the connection
-		// string and bootstrap by hand.
-		cs, err := base.ParseConnectionString(sc.config.Bootstrap.Server)
+		// string and use those endpoints.
+		err := sc.resolveManagementEndpoints()
 		if err != nil {
 			return err
-		}
-		resolved, err := cs.Resolve()
-		if err != nil {
-			return err
-		}
-		scheme := "http"
-		if resolved.UseSSL {
-			scheme = "https"
-		}
-		sc.legacyMgmtEndpoints = make([]string, 0, len(resolved.Addresses))
-		for _, addr := range resolved.Addresses {
-			sc.legacyMgmtEndpoints = append(sc.legacyMgmtEndpoints, scheme+"://"+net.JoinHostPort(addr.Host, strconv.Itoa(int(addr.Port))))
 		}
 	} else {
 		goCBAgent, err := sc.initializeGoCBAgent()
@@ -1569,5 +1557,67 @@ func (sc *ServerContext) initializeCouchbaseServerConnections() error {
 		}
 	}
 
+	return nil
+}
+
+func (sc *ServerContext) resolveManagementEndpoints() error {
+	cs, err := base.ParseConnectionString(sc.config.Bootstrap.Server)
+	if err != nil {
+		return err
+	}
+	resolved, err := cs.Resolve()
+	if err != nil {
+		return err
+	}
+
+	for _, addr := range resolved.Addresses {
+		err := sc.findManagementEndpointsFromNode(addr, resolved.UseSSL)
+		if err != nil {
+			base.Warnf("Failed to find management endpoints from node %v: %v - trying next node", base.MD(addr.Host), err)
+		}
+		return nil
+	}
+	return fmt.Errorf("failed to resolve management endpoints from any node")
+}
+
+func (sc *ServerContext) findManagementEndpointsFromNode(addr base.Address, useSSL bool) error {
+	scheme := "http"
+	if useSSL {
+		scheme = "https"
+	}
+
+	nodesURL := fmt.Sprintf("%s://%s/pools/nodes", scheme, net.JoinHostPort(addr.Host, strconv.Itoa(int(addr.Port))))
+	req, err := http.NewRequest(http.MethodGet, nodesURL, nil)
+	if err != nil {
+		return err
+	}
+	req.SetBasicAuth(sc.config.Bootstrap.Username, sc.config.Bootstrap.Password)
+	res, err := sc.HTTPClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = res.Body.Close() }()
+	var nodesData struct {
+		Nodes []struct {
+			Hostname string         `json:"hostname"`
+			Ports    map[string]int `json:"ports"`
+		} `json:"nodes"`
+	}
+	if err := base.JSONDecoder(res.Body).Decode(&nodesData); err != nil {
+		return err
+	}
+	sc.legacyMgmtEndpoints = make([]string, 0, len(nodesData.Nodes))
+	for _, node := range nodesData.Nodes {
+		host, portStr, err := net.SplitHostPort(node.Hostname)
+		if err != nil {
+			base.Fatalf("Received invalid node hostname from CB Server: %v; %v", base.MD(node.Hostname), err)
+		}
+		port, _ := strconv.Atoi(portStr)
+		if tlsPort, ok := node.Ports["httpsMgmt"]; ok && useSSL {
+			port = tlsPort
+		}
+		addr := scheme + "://" + net.JoinHostPort(host, strconv.Itoa(port))
+		sc.legacyMgmtEndpoints = append(sc.legacyMgmtEndpoints, addr)
+	}
 	return nil
 }
