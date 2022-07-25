@@ -14,12 +14,14 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/go-couchbase/cbdatasource"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/pkg/errors"
 	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 )
@@ -38,7 +40,15 @@ type CbgtContext struct {
 
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
 // dbName is used to define a unique path name for local file storage of pindex files
-func StartShardedDCPFeed(dbName string, configGroup string, uuid string, heartbeater Heartbeater, bucket Bucket, spec BucketSpec, numPartitions uint16, cfg cbgt.Cfg) (*CbgtContext, error) {
+func StartShardedDCPFeed(dbName string, configGroup string, uuid string, heartbeater Heartbeater, bucket Bucket, spec BucketSpec, scopes map[string][]string, numPartitions uint16, cfg cbgt.Cfg) (*CbgtContext, error) {
+	if len(scopes) > 1 {
+		return nil, fmt.Errorf("multiple scopes not supported")
+	}
+	for _, colls := range scopes {
+		if len(colls) > 1 {
+			return nil, fmt.Errorf("multiple collections not supported")
+		}
+	}
 
 	cbgtContext, err := initCBGTManager(bucket, spec, cfg, uuid, dbName)
 	if err != nil {
@@ -51,7 +61,7 @@ func StartShardedDCPFeed(dbName string, configGroup string, uuid string, heartbe
 	)
 
 	// Start Manager.  Registers this node in the cfg
-	err = cbgtContext.StartManager(dbName, configGroup, bucket, spec, numPartitions)
+	err = cbgtContext.StartManager(dbName, configGroup, bucket, spec, scopes, numPartitions)
 	if err != nil {
 		return nil, err
 	}
@@ -87,8 +97,7 @@ func GenerateLegacyIndexName(dbName string) string {
 // RegisterPIndexImplType (see importListener.RegisterImportPindexImpl)
 // will receive PIndexImpl callbacks (New, Open) for assigned PIndex to initiate DCP processing.
 func createCBGTIndex(c *CbgtContext, dbName string, configGroupID string, bucket Bucket, spec BucketSpec, numPartitions uint16) error {
-
-	sourceType := SOURCE_GOCOUCHBASE_DCP_SG
+	sourceType := SOURCE_GOCB_DCP_SG
 
 	bucketUUID, err := bucket.UUID()
 	if err != nil {
@@ -205,7 +214,7 @@ func dcpSafeIndexName(c *CbgtContext, dbName string) (safeIndexName, previousUUI
 
 	// Otherwise, remove legacy if it exists, and return new format
 	if legacyIndexUUID != "" {
-		deleteErr := c.Manager.DeleteIndexEx(legacyIndexName, "")
+		_, deleteErr := c.Manager.DeleteIndexEx(legacyIndexName, "")
 		if deleteErr != nil {
 			WarnfCtx(c.loggingCtx, "Error removing legacy import feed index: %v", deleteErr)
 		}
@@ -285,7 +294,9 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 		}
 		serverURL = strings.Join(serverURLs, ";")
 	} else {
-		serverURL, err = spec.GetGoCBConnString()
+		serverURL, err = spec.GetGoCBConnString(&GoCBConnStringParams{
+			KVPoolSize: GoCBPoolSizeDCP,
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -305,6 +316,14 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 	options := make(map[string]string)
 	options[cbgt.FeedAllotmentOption] = cbgt.FeedAllotmentOnePerPIndex
 	options["managerLoadDataDir"] = "false"
+	// Ensure we always use TLS if configured - cbgt defaults to non-TLS on initial connection
+	options["feedInitialBootstrapNonTLS"] = strconv.FormatBool(!spec.IsTLS())
+
+	// Disable collections if unsupported
+	if !bucket.IsSupported(sgbucket.DataStoreFeatureCollections) {
+		options["disableCollectionsSupport"] = "true"
+		options["disableStreamIDs"] = "true"
+	}
 
 	// Creates a new cbgt manager.
 	mgr := cbgt.NewManagerEx(
@@ -328,14 +347,32 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 
 	if spec.Auth != nil && spec.Certpath == "" {
 		username, password, _ := spec.Auth.GetCredentials()
-		addCbgtCredentials(dbName, username, password)
+		addCbgtCredentials(dbName, bucket.GetName(), username, password)
+	}
+
+	if spec.IsTLS() {
+		bucketUUID, err := bucket.UUID()
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch UUID of bucket %v: %w", MD(bucket.GetName()).Redact(), err)
+		}
+		if spec.CACertPath != "" {
+			certs, err := loadCertificatesFromFile(spec.CACertPath)
+			if err != nil {
+				return nil, err
+			}
+			setCbgtRootCertsForBucket(bucketUUID, certs)
+		} else if spec.TLSSkipVerify {
+			setCbgtRootCertsForBucket(bucketUUID, nil)
+		} else {
+			setCbgtRootCertsForBucket(bucketUUID, getSystemCertPool())
+		}
 	}
 
 	return cbgtContext, nil
 }
 
 // StartManager registers this node with cbgt, and the janitor will start feeds on this node.
-func (c *CbgtContext) StartManager(dbName string, configGroup string, bucket Bucket, spec BucketSpec, numPartitions uint16) (err error) {
+func (c *CbgtContext) StartManager(dbName string, configGroup string, bucket Bucket, spec BucketSpec, scopes map[string][]string, numPartitions uint16) (err error) {
 
 	// TODO: Clarify the functional difference between registering the manager as 'wanted' vs 'known'.
 	registerType := cbgt.NODE_DEFS_WANTED

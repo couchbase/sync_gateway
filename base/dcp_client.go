@@ -175,7 +175,9 @@ func (dc *DCPClient) close() {
 }
 
 func (dc *DCPClient) initAgent(spec BucketSpec) error {
-	connStr, err := spec.GetGoCBConnString()
+	connStr, err := spec.GetGoCBConnString(&GoCBConnStringParams{
+		KVPoolSize: GoCBPoolSizeDCP,
+	})
 	if err != nil {
 		return err
 	}
