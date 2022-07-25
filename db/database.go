@@ -372,11 +372,13 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	// Initialize the active channel counter
 	dbContext.activeChannels = channels.NewActiveChannels(dbContext.DbStats.Cache().NumActiveChannels)
 
+	dcpStarted := make(chan error)
 	// Initialize the ChangeCache.  Will be locked and unusable until .Start() is called (SG #3558)
 	err = dbContext.changeCache.Init(
 		dbContext,
 		notifyChange,
 		options.CacheOptions,
+		dcpStarted,
 	)
 	if err != nil {
 		base.DebugfCtx(logCtx, base.KeyDCP, "Error initializing the change cache", err)
@@ -448,7 +450,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	// Start DCP feed
 	base.InfofCtx(logCtx, base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import)", base.MD(bucket.GetName()))
 	cacheFeedStatsMap := dbContext.DbStats.Database().CacheFeedMapStats
-	err = dbContext.mutationListener.Start(bucket, cacheFeedStatsMap.Map)
+	err = dbContext.mutationListener.Start(bucket, cacheFeedStatsMap.Map, dcpStarted)
 
 	// Check if there is an error starting the DCP feed
 	if err != nil {
@@ -715,7 +717,7 @@ func (context *DatabaseContext) RestartListener() error {
 	time.Sleep(2 * time.Second)
 	context.mutationListener.Init(context.Bucket.GetName(), context.Options.GroupID)
 	cacheFeedStatsMap := context.DbStats.Database().CacheFeedMapStats
-	if err := context.mutationListener.Start(context.Bucket, cacheFeedStatsMap.Map); err != nil {
+	if err := context.mutationListener.Start(context.Bucket, cacheFeedStatsMap.Map, nil); err != nil {
 		return err
 	}
 	return nil
