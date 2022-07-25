@@ -192,7 +192,7 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 			}
 		}
 		if lc.Unsupported.LegacyServerCompat != nil {
-			sc.Unsupported.LegacyServerCompat = *lc.Unsupported.LegacyServerCompat
+			sc.Unsupported.LegacyServerCompat = lc.Unsupported.LegacyServerCompat
 		}
 	}
 

@@ -109,7 +109,7 @@ func NewServerContext(config *StartupConfig, persistentConfig bool) *ServerConte
 		hasStarted:       make(chan struct{}),
 	}
 
-	if config.Unsupported.LegacyServerCompat {
+	if base.BoolDefault(config.Unsupported.LegacyServerCompat, false) {
 		base.Warnf("legacy_server_compatibility is enabled. This flag is unsupported and will be removed in the next version of Sync Gateway." +
 			" Please upgrade to Couchbase Server 6.5 or above before upgrading Sync Gateway.")
 	}
@@ -350,7 +350,7 @@ func GetBucketSpec(config *DatabaseConfig, serverConfig *StartupConfig) (spec ba
 
 	spec.FeedType = strings.ToLower(config.FeedType)
 
-	spec.CouchbaseDriver = base.ChooseCouchbaseDriver(base.DataBucket, serverConfig.Unsupported.LegacyServerCompat)
+	spec.CouchbaseDriver = base.ChooseCouchbaseDriver(base.DataBucket, base.BoolDefault(serverConfig.Unsupported.LegacyServerCompat, false))
 
 	if config.ViewQueryTimeoutSecs != nil {
 		spec.ViewQueryTimeoutSecs = config.ViewQueryTimeoutSecs
@@ -1485,7 +1485,7 @@ func (sc *ServerContext) Database(name string) *db.DatabaseContext {
 }
 
 func (sc *ServerContext) initializeCouchbaseServerConnections() error {
-	if sc.config.Unsupported.LegacyServerCompat {
+	if base.BoolDefault(sc.config.Unsupported.LegacyServerCompat, false) {
 		// HACK: In legacy compat we can't use gocb to retrieve the management endpoints, instead parse the connection
 		// string and use those endpoints.
 		err := sc.resolveManagementEndpoints()
