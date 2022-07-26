@@ -29,11 +29,11 @@ import (
 //////// QUERY CONFIGURATION:
 
 // Top level user-query config object: the map of names to queries.
-type UserQueryMap = map[string]*UserQuery
+type UserQueryMap = map[string]*UserQueryConfig
 
 // Defines a N1QL query that a client can invoke by name.
 // (The name is the key in the UserQueryMap.)
-type UserQuery struct {
+type UserQueryConfig struct {
 	Statement  string          `json:"statement"`            // N1QL / SQL++ query string
 	Parameters []string        `json:"parameters,omitempty"` // Names of N1QL '$'-parameters
 	Allow      *UserQueryAllow `json:"allow,omitempty"`      // Permissions (admin-only if nil)

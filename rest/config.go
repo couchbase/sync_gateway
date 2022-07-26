@@ -708,6 +708,12 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		}
 	}
 
+	if dbConfig.GraphQL != nil {
+		if err := dbConfig.GraphQL.Validate(); err != nil {
+			multiError = multiError.Append(err)
+		}
+	}
+
 	return multiError.ErrorOrNil()
 }
 

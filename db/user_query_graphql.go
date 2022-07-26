@@ -70,6 +70,15 @@ func (gq *GraphQL) Query(db *Database, query string, operationName string, varia
 	return result, nil
 }
 
+// The type of error returned by NewGraphQL().
+type GraphQLConfigError struct {
+	err error
+}
+
+func (e *GraphQLConfigError) Error() string {
+	return fmt.Sprintf("GraphQL configuration error: %v", e.err)
+}
+
 // Creates a new GraphQL instance for this DatabaseContext, using the config from `dbc.Options`.
 // Called once, when the database opens.
 func NewGraphQL(dbc *DatabaseContext) (*GraphQL, error) {
@@ -79,21 +88,9 @@ func NewGraphQL(dbc *DatabaseContext) (*GraphQL, error) {
 	opts := dbc.Options.GraphQL
 
 	// Get the schema source, from either `schema` or `schemaFile`:
-	var schemaSource string
-	if opts.Schema != nil {
-		if opts.SchemaFile != nil {
-			return nil, fmt.Errorf("config error in `graphql`: Only one of `schema` and `schemaFile` may be used")
-		}
-		schemaSource = *opts.Schema
-	} else {
-		if opts.SchemaFile == nil {
-			return nil, fmt.Errorf("config error in `graphql`: Either `schema` or `schemaFile` must be defined")
-		}
-		src, err := os.ReadFile(*opts.SchemaFile)
-		if err != nil {
-			return nil, fmt.Errorf("config error in `graphql`: Can't read schemaFile %s", *opts.SchemaFile)
-		}
-		schemaSource = string(src)
+	schemaSource, err := opts.getSchema()
+	if err != nil {
+		return nil, err
 	}
 
 	// Assemble the resolvers:
@@ -104,22 +101,54 @@ func NewGraphQL(dbc *DatabaseContext) (*GraphQL, error) {
 			if fn, err := gq.compileResolver(name, fieldName, jsCode); err == nil {
 				fieldMap[fieldName] = &gqltools.FieldResolve{Resolve: fn}
 			} else {
-				return nil, err
+				return nil, &GraphQLConfigError{err}
 			}
 		}
 		resolvers[name] = &gqltools.ObjectResolver{Fields: fieldMap}
 	}
 
 	// Now compile the schema and create the graphql.Schema object:
-	var err error
 	gq.schema, err = gqltools.MakeExecutableSchema(gqltools.ExecutableSchema{
 		TypeDefs:  schemaSource,
 		Resolvers: resolvers,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("Error in GraphQL config: %w", err)
+		return nil, &GraphQLConfigError{err}
 	}
 	return gq, nil
+}
+
+func (config *GraphQLConfig) Validate() error {
+	if schemaSource, err := config.getSchema(); err != nil {
+		return err
+	} else {
+		_, err = gqltools.MakeExecutableSchema(gqltools.ExecutableSchema{
+			TypeDefs:  schemaSource,
+			Resolvers: nil,
+		})
+		if err != nil {
+			return &GraphQLConfigError{err}
+		}
+		return nil
+	}
+}
+
+func (config *GraphQLConfig) getSchema() (string, error) {
+	if config.Schema != nil {
+		if config.SchemaFile != nil {
+			return "", &GraphQLConfigError{fmt.Errorf("Only one of `schema` and `schemaFile` may be used")}
+		}
+		return *config.Schema, nil
+	} else {
+		if config.SchemaFile == nil {
+			return "", &GraphQLConfigError{fmt.Errorf("Either `schema` or `schemaFile` must be defined")}
+		}
+		src, err := os.ReadFile(*config.SchemaFile)
+		if err != nil {
+			return "", &GraphQLConfigError{fmt.Errorf("Can't read schemaFile %s: %w", *config.SchemaFile, err)}
+		}
+		return string(src), nil
+	}
 }
 
 //////// GRAPHQL RESOLVER:

@@ -20,21 +20,21 @@ import (
 )
 
 var kUserQueriesConfig = UserQueryMap{
-	"airports_in_city": &UserQuery{
+	"airports_in_city": &UserQueryConfig{
 		Statement:  `SELECT $city as city`,
 		Parameters: []string{"city"},
 		Allow:      &UserQueryAllow{Channels: []string{"city-$city", "allcities"}},
 	},
-	"square": &UserQuery{
+	"square": &UserQueryConfig{
 		Statement:  "SELECT $numero * $numero as square",
 		Parameters: []string{"numero"},
 		Allow:      &UserQueryAllow{Channels: []string{"wonderland"}},
 	},
-	"syntax_error": &UserQuery{
+	"syntax_error": &UserQueryConfig{
 		Statement: "SELEKT OOK? FR0M OOK!",
 		Allow:     allowAll,
 	},
-	"admin_only": &UserQuery{
+	"admin_only": &UserQueryConfig{
 		Statement: `SELECT "ok" as status`,
 		Allow:     nil, // no 'allow' property means admin-only
 	},

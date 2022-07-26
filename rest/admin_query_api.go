@@ -112,13 +112,17 @@ func (h *handler) handlePutDbConfigGraphQL() error {
 			return err
 		}
 	}
-	return h.mutateDbConfig(func(dbConfig *DbConfig) error {
+	err := h.mutateDbConfig(func(dbConfig *DbConfig) error {
 		if newConfig == nil && dbConfig.GraphQL == nil {
 			return base.HTTPErrorf(http.StatusNotFound, "")
 		}
 		dbConfig.GraphQL = newConfig
 		return nil
 	})
+	if _, ok := err.(*db.GraphQLConfigError); ok {
+		return base.HTTPErrorf(http.StatusBadRequest, err.Error())
+	}
+	return err
 }
 
 //////// QUERIES:
@@ -175,7 +179,7 @@ func (h *handler) handlePutDbConfigQueries() error {
 func (h *handler) handlePutDbConfigQuery() error {
 	queryName := h.PathVar("query")
 	if h.rq.Method != "DELETE" {
-		var queryConfig *db.UserQuery
+		var queryConfig *db.UserQueryConfig
 		if err := h.readJSONInto(&queryConfig); err != nil {
 			return err
 		}
