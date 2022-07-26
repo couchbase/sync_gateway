@@ -136,10 +136,16 @@ func TestDBConfigUserFunctionPutOne(t *testing.T) {
 	}}
 
 	t.Run("Non-Admin", func(t *testing.T) {
-		response := rt.SendRequest("PUT", "/db/_config/function/square", "{}")
+		response := rt.SendRequest("PUT", "/db/_config/functions/square", "{}")
 		assert.Equal(t, 404, response.Result().StatusCode)
 		response = rt.SendRequest("DELETE", "/db/_config/function/square", "{}")
 		assert.Equal(t, 404, response.Result().StatusCode)
+	})
+	t.Run("Bogus", func(t *testing.T) {
+		response := rt.SendAdminRequest("PUT", "/db/_config/functions/square", `[]`)
+		assert.Equal(t, 400, response.Result().StatusCode)
+		response = rt.SendAdminRequest("PUT", "/db/_config/functions/square", `{"ruby": "foo"}`)
+		assert.Equal(t, 400, response.Result().StatusCode)
 	})
 	t.Run("Add", func(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/functions/sum", `{
@@ -213,6 +219,12 @@ func TestDBConfigUserQueryGet(t *testing.T) {
 				Parameters: []string{"numero"},
 				Allow:      &db.UserQueryAllow{Channels: []string{"wonderland"}},
 			},
+			"xxx": {
+				Statement: "SELECT 42",
+			},
+			"yyy": {
+				Statement: "SELECT 23",
+			},
 		},
 	}}
 
@@ -225,6 +237,8 @@ func TestDBConfigUserQueryGet(t *testing.T) {
 		var body db.UserQueryMap
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 		assert.NotNil(t, body["square"])
+		assert.NotNil(t, body["xxx"])
+		assert.NotNil(t, body["yyy"])
 	})
 	t.Run("Single", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/queries/square", "")
@@ -249,6 +263,12 @@ func TestDBConfigUserQueryPut(t *testing.T) {
 				Parameters: []string{"numero"},
 				Allow:      &db.UserQueryAllow{Channels: []string{"wonderland"}},
 			},
+			"xxx": {
+				Statement: "SELECT 42",
+			},
+			"yyy": {
+				Statement: "SELECT 23",
+			},
 		},
 	}}
 
@@ -258,6 +278,14 @@ func TestDBConfigUserQueryPut(t *testing.T) {
 		response = rt.SendRequest("DELETE", "/db/_config/queries", "{}")
 		assert.Equal(t, 404, response.Result().StatusCode)
 	})
+	t.Run("Bogus", func(t *testing.T) {
+		response := rt.SendAdminRequest("PUT", "/db/_config/queries", `[]`)
+		assert.Equal(t, 400, response.Result().StatusCode)
+		response = rt.SendAdminRequest("PUT", "/db/_config/queries", `{
+			"sum": {"StaTEmént": "SELECT $numero + $numero"}
+		}`)
+		assert.Equal(t, 400, response.Result().StatusCode)
+	})
 	t.Run("ReplaceAll", func(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/queries", `{
 			"sum": {"statement": "SELECT $numero + $numero",
@@ -266,9 +294,12 @@ func TestDBConfigUserQueryPut(t *testing.T) {
 		}`)
 		assert.Equal(t, 200, response.Result().StatusCode)
 
+		assert.Equal(t, 1, len(rt.GetDatabase().Options.UserQueries))
 		assert.NotNil(t, rt.GetDatabase().Options.UserQueries["sum"])
-		assert.Nil(t, rt.GetDatabase().Options.UserQueries["square"])
 
+		if base.UnitTestUrlIsWalrus() {
+			t.Skip("This test is Couchbase Server only (requires N1QL)")
+		}
 		response = rt.SendAdminRequest("GET", "/db/_query/sum?numero=13", "")
 		assert.Equal(t, 200, response.Result().StatusCode)
 		assert.Equal(t, "[{\"$1\":26}\n]\n", string(response.BodyBytes()))
@@ -302,10 +333,16 @@ func TestDBConfigUserQueryPutOne(t *testing.T) {
 	}}
 
 	t.Run("Non-Admin", func(t *testing.T) {
-		response := rt.SendRequest("PUT", "/db/_config/query/square", "{}")
+		response := rt.SendRequest("PUT", "/db/_config/queries/square", "{}")
 		assert.Equal(t, 404, response.Result().StatusCode)
-		response = rt.SendRequest("DELETE", "/db/_config/query/square", "{}")
+		response = rt.SendRequest("DELETE", "/db/_config/queries/square", "{}")
 		assert.Equal(t, 404, response.Result().StatusCode)
+	})
+	t.Run("Bogus", func(t *testing.T) {
+		response := rt.SendAdminRequest("PUT", "/db/_config/queries/square", `[]`)
+		assert.Equal(t, 400, response.Result().StatusCode)
+		response = rt.SendAdminRequest("PUT", "/db/_config/queries/square", `{"StaTEmént": "SELECT $numero + $numero"}`)
+		assert.Equal(t, 400, response.Result().StatusCode)
 	})
 	t.Run("Add", func(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/queries/sum", `{
@@ -318,6 +355,9 @@ func TestDBConfigUserQueryPutOne(t *testing.T) {
 		assert.NotNil(t, rt.GetDatabase().Options.UserQueries["sum"])
 		assert.NotNil(t, rt.GetDatabase().Options.UserQueries["square"])
 
+		if base.UnitTestUrlIsWalrus() {
+			t.Skip("This test is Couchbase Server only (requires N1QL)")
+		}
 		response = rt.SendAdminRequest("GET", "/db/_query/sum?numero=13", "")
 		assert.Equal(t, "[{\"$1\":26}\n]\n", string(response.BodyBytes()))
 	})
@@ -332,6 +372,9 @@ func TestDBConfigUserQueryPutOne(t *testing.T) {
 		assert.NotNil(t, rt.GetDatabase().Options.UserQueries["sum"])
 		assert.NotNil(t, rt.GetDatabase().Options.UserQueries["square"])
 
+		if base.UnitTestUrlIsWalrus() {
+			t.Skip("This test is Couchbase Server only (requires N1QL)")
+		}
 		response = rt.SendAdminRequest("GET", "/db/_query/square?n=13", "")
 		assert.Equal(t, "[{\"$1\":-169}\n]\n", string(response.BodyBytes()))
 	})
@@ -364,11 +407,7 @@ func TestDBConfigUserGraphQLGetEmpty(t *testing.T) {
 	})
 	t.Run("All", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/graphql", "")
-		var body db.GraphQLConfig
-		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-		assert.Nil(t, body.Schema)
-		assert.Nil(t, body.SchemaFile)
-		assert.Nil(t, body.Resolvers)
+		assert.Equal(t, 404, response.Result().StatusCode)
 	})
 }
 func TestDBConfigUserGraphQLGet(t *testing.T) {
