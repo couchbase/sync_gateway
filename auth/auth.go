@@ -128,6 +128,7 @@ func (auth *Authenticator) GetRoleIncDeleted(name string) (Role, error) {
 }
 
 // Common implementation of GetUser and GetRole. factory() parameter returns a new empty instance.
+// Returns (nil, nil) if the principal doesn't exist, or (nil, error) if getting it failed for some reason.
 func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) (Principal, error) {
 	var princ Principal
 
