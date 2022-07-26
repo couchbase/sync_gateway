@@ -10,12 +10,14 @@ package auth
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
@@ -93,8 +95,6 @@ func (pair *GrantHistorySequencePair) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-var kValidNameRegexp = regexp.MustCompile(`^[-+.@%\w]*$`)
-
 func (role *roleImpl) initRole(name string, channels base.Set) error {
 	channels = ch.ExpandingStar(channels)
 	role.Name_ = name
@@ -102,9 +102,92 @@ func (role *roleImpl) initRole(name string, channels base.Set) error {
 	return role.validate()
 }
 
-// Is this string a valid name for a User/Role? (Valid chars are alphanumeric and any of "_-+.@")
+// IsValidPrincipalName checks if the given user/role name would be valid. Valid names must be valid UTF-8, containing
+// at least one alphanumeric (except for the guest user), and no colons, commas, backticks, or slashes.
 func IsValidPrincipalName(name string) bool {
-	return kValidNameRegexp.Copy().MatchString(name)
+	namelen := len(name)
+	if namelen == 0 {
+		return true // guest user
+	}
+	if namelen > base.MaxPrincipalNameLen {
+		return false
+	}
+	if !utf8.ValidString(name) {
+		return false
+	}
+	seenAnAlphanum := false
+	for _, char := range name {
+		// Reasons for forbidding each of these:
+		// colons: basic authentication uses them to separate usernames from passwords
+		// commas: fails channels.IsValidChannel, which channels.compileAccessMap uses via SetFromArray
+		// slashes: would need to make many (possibly breaking) changes to routing
+		// backticks: MB-50619
+		if char == '/' || char == ':' || char == ',' || char == '`' {
+			return false
+		}
+		if !seenAnAlphanum && (unicode.IsLetter(char) || unicode.IsNumber(char)) {
+			seenAnAlphanum = true
+		}
+	}
+	return seenAnAlphanum
+}
+
+// ValidatePrincipalName performs the same checks as IsValidPrincipalName, but adds length check and retuns a more
+// verbose error message.  This function is slower than IsValidPrincipalName, and should be used only for user
+// and role creation.  Names should have a max length of 239 chars, to account for SG prefixes.  All validation
+// errors are concatenated and returned as one error message.
+func ValidatePrincipalName(name string) error {
+	namelen := len(name)
+	if namelen == 0 {
+		return nil // guest user
+	}
+
+	const validationMsg = "invalid name: "
+	msgs := make([]string, 0, 4)
+
+	if namelen > base.MaxPrincipalNameLen {
+		const msg = "length exceeds 239" // leaving as const to avoid fmt performance (21% slower)
+		msgs = append(msgs, msg)
+	}
+
+	if !utf8.ValidString(name) {
+		const msg = "non UTF-8 encoding"
+		msgs = append(msgs, msg)
+	}
+
+	seenAnInvalid := false
+	seenAnAlphanum := false
+	for _, char := range name {
+		// Reasons for forbidding each of these:
+		// colons: basic authentication uses them to separate usernames from passwords
+		// commas: fails channels.IsValidChannel, which channels.compileAccessMap uses via SetFromArray
+		// slashes: would need to make many (possibly breaking) changes to routing
+		// backticks: MB-50619
+		if (char == '/' || char == ':' || char == ',' || char == '`') && !seenAnInvalid {
+			seenAnInvalid = true
+			const msg = "contains '/', ':', ',', or '`'"
+			msgs = append(msgs, msg)
+			if seenAnAlphanum {
+				break
+			}
+		}
+		if !seenAnAlphanum && (unicode.IsLetter(char) || unicode.IsNumber(char)) {
+			seenAnAlphanum = true
+			if seenAnInvalid {
+				break
+			}
+		}
+	}
+
+	if !seenAnAlphanum {
+		const msg = "must contain alphanumeric"
+		msgs = append(msgs, msg)
+	}
+
+	if len(msgs) > 0 {
+		return errors.New(validationMsg + strings.Join(msgs, "; "))
+	}
+	return nil
 }
 
 // Creates a new Role object.
