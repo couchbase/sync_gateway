@@ -1127,7 +1127,6 @@ func TestDBGetConfigNames(t *testing.T) {
 
 // Take DB offline and ensure can post _resync
 func TestDBOfflinePostResync(t *testing.T) {
-
 	if testing.Short() {
 		t.Skip("skipping test in short mode")
 	}
@@ -1155,14 +1154,17 @@ func TestDBOfflinePostResync(t *testing.T) {
 		var status db.ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
-		return status.State == db.BackgroundProcessStateCompleted
+
+		var val interface{}
+		_, err = rt.Bucket().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
+
+		return status.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
 	})
 	assert.NoError(t, err)
 }
 
 // Take DB offline and ensure only one _resync can be in progress
 func TestDBOfflineSingleResync(t *testing.T) {
-
 	if testing.Short() {
 		t.Skip("skipping test in short mode")
 	}
@@ -1205,7 +1207,11 @@ func TestDBOfflineSingleResync(t *testing.T) {
 		var status db.ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
-		return status.State == db.BackgroundProcessStateCompleted
+
+		var val interface{}
+		_, err = rt.Bucket().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
+
+		return status.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
 	})
 	assert.NoError(t, err)
 
@@ -1213,8 +1219,6 @@ func TestDBOfflineSingleResync(t *testing.T) {
 }
 
 func TestResync(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
 	testCases := []struct {
 		name               string
 		docsCreated        int
@@ -1285,7 +1289,11 @@ func TestResync(t *testing.T) {
 				response := rt.SendAdminRequest("GET", "/db/_resync", "")
 				err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
 				assert.NoError(t, err)
-				return resyncManagerStatus.State == db.BackgroundProcessStateCompleted
+
+				var val interface{}
+				_, err = rt.Bucket().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
+
+				return resyncManagerStatus.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
 			})
 			assert.NoError(t, err)
 
@@ -1386,7 +1394,11 @@ func TestResyncErrorScenarios(t *testing.T) {
 		var status db.ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
-		return status.State == db.BackgroundProcessStateCompleted
+
+		var val interface{}
+		_, err = rt.Bucket().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
+
+		return status.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
 	})
 	assert.NoError(t, err)
 
@@ -1405,7 +1417,11 @@ func TestResyncErrorScenarios(t *testing.T) {
 		var status db.ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
-		return status.State == db.BackgroundProcessStateCompleted
+
+		var val interface{}
+		_, err = rt.Bucket().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
+
+		return status.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
 	})
 	assert.NoError(t, err)
 
@@ -1494,7 +1510,11 @@ func TestResyncStop(t *testing.T) {
 		var resyncManagerStatus ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
 		assert.NoError(t, err)
-		return resyncManagerStatus.Status == db.BackgroundProcessStateStopped
+
+		var val interface{}
+		_, err = rt.Bucket().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
+
+		return resyncManagerStatus.Status == db.BackgroundProcessStateStopped && base.IsDocNotFoundError(err)
 	})
 	assert.NoError(t, err)
 
@@ -1611,7 +1631,10 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	requireStatus(t, response, http.StatusOK)
 
 	err = rt.WaitForCondition(func() bool {
-		return rt.GetDatabase().ResyncManager.GetRunState() == db.BackgroundProcessStateCompleted
+		var val interface{}
+		_, err = rt.Bucket().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
+
+		return rt.GetDatabase().ResyncManager.GetRunState(t) == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
 	})
 	assert.NoError(t, err)
 
