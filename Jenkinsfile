@@ -42,7 +42,7 @@ pipeline {
             }
         }
         stage('Setup') {
-            parallel {
+            stages {
                 stage('Bootstrap') {
                     steps {
                         echo "Bootstrapping commit ${SG_COMMIT}"
