@@ -47,7 +47,7 @@ type UserQueryAllow struct {
 }
 
 // Name of built-in user-info query parameter
-const userQueryUserParam = "user"
+const userQueryContextParam = "context"
 
 // Value of user-info query parameter
 type userQueryUserInfo struct {
@@ -72,10 +72,10 @@ func (db *Database) UserQuery(name string, params map[string]interface{}) (sgbuc
 		return nil, err
 	}
 
-	// Check that the config does not use the reserved parameter name "user":
-	if _, found := params[userQueryUserParam]; found {
+	// Check that the config does not use the reserved parameter name "context":
+	if _, found := params[userQueryContextParam]; found {
 		logCtx := context.TODO()
-		base.WarnfCtx(logCtx, "Bad config: query %q uses reserved parameter name '$%s'", name, userQueryUserParam)
+		base.WarnfCtx(logCtx, "Bad config: query %q uses reserved parameter name '$%s'", name, userQueryContextParam)
 		return nil, base.HTTPErrorf(http.StatusInternalServerError, "Server configuration is invalid")
 	}
 
@@ -89,7 +89,7 @@ func (db *Database) UserQuery(name string, params map[string]interface{}) (sgbuc
 		if params == nil {
 			params = map[string]interface{}{}
 		}
-		params[userQueryUserParam] = &userQueryUserInfo{
+		params[userQueryContextParam] = &userQueryUserInfo{
 			Name:     user.Name(),
 			Email:    user.Email(),
 			Channels: user.Channels().AllKeys(),
@@ -210,7 +210,7 @@ func (allow *UserQueryAllow) expandPattern(pattern string, params map[string]int
 		} else if reflect.ValueOf(value).CanInt() || reflect.ValueOf(value).CanUint() {
 			return fmt.Sprintf("%v", value)
 		} else if userInfo, ok := value.(*userQueryUserInfo); ok {
-			// Special case: value of `$user` is a `userQueryUserInfo` struct; return its `Name`
+			// Special case: value is a `userQueryUserInfo` struct; return its `Name`
 			return userInfo.Name
 		} else {
 			err = base.HTTPErrorf(http.StatusBadRequest, "Value of parameter '%s' must be a string or int", param)
