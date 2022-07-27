@@ -111,7 +111,10 @@ const (
 	DefaultHttpIdleConnTimeoutMilliseconds = "90000"
 
 	// Number of kv connections (pipelines) per Couchbase Server node
-	DefaultGocbKvPoolSize = "2"
+	DefaultGocbKvPoolSize = 2
+
+	// Number of connections used by DCP agents - must be 1
+	GoCBPoolSizeDCP = 1
 
 	// The limit in Couchbase Server for total system xattr size
 	couchbaseMaxSystemXattrSize = 1 * 1024 * 1024 // 1MB
@@ -164,6 +167,9 @@ const (
 
 	// RedactedStr can be substituted in place of any sensitive data being returned by an API. The 'xxxxx' pattern is the same used by Go's url.Redacted() method.
 	RedactedStr = "xxxxx"
+
+	// DefaultJavascriptTimeoutSecs is number of seconds before Javascript functions (i.e. the sync function or import filter) timeout
+	DefaultJavascriptTimeoutSecs = uint32(60)
 )
 
 const (

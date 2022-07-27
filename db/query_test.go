@@ -445,7 +445,7 @@ func TestAccessQuery(t *testing.T) {
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
 	access(doc.accessUser, doc.accessChannel)
-}`)
+}`, 0)
 	// Add docs with access grants assignment
 	for i := 1; i <= 5; i++ {
 		_, _, err := db.Put(fmt.Sprintf("accessTest%d", i), Body{"accessUser": "user1", "accessChannel": fmt.Sprintf("channel%d", i)})
@@ -466,7 +466,9 @@ func TestAccessQuery(t *testing.T) {
 
 	// Attempt to introduce syntax errors. Each of these should return zero rows and no error.
 	// Validates select clause protection
-	for _, username := range []string{"user1'", "user1`AND", "user1?", "user1 ! user2$"} {
+	usernames := []string{"user1'", "user1?", "user1 ! user2$"}
+	// usernames = append(usernames, "user1`AND") // TODO: MB-50619 - broken until Server 7.1.0
+	for _, username := range usernames {
 		results, queryErr = db.QueryAccess(base.TestCtx(t), username)
 		assert.NoError(t, queryErr, "Query error")
 		rowCount = 0
@@ -488,7 +490,7 @@ func TestRoleAccessQuery(t *testing.T) {
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
 	role(doc.accessUser, "role:" + doc.accessChannel)
-}`)
+}`, 0)
 	// Add docs with access grants assignment
 	for i := 1; i <= 5; i++ {
 		_, _, err := db.Put(fmt.Sprintf("accessTest%d", i), Body{"accessUser": "user1", "accessChannel": fmt.Sprintf("channel%d", i)})
@@ -509,7 +511,9 @@ func TestRoleAccessQuery(t *testing.T) {
 
 	// Attempt to introduce syntax errors. Each of these should return zero rows and no error.
 	// Validates select clause protection
-	for _, username := range []string{"user1'", "user1`AND", "user1?", "user1 ! user2$"} {
+	usernames := []string{"user1'", "user1?", "user1 ! user2$"}
+	// usernames = append(usernames, "user1`AND") // TODO: MB-50619 - broken until Server 7.1.0
+	for _, username := range usernames {
 		results, queryErr = db.QueryRoleAccess(base.TestCtx(t), username)
 		assert.NoError(t, queryErr, "Query error")
 		rowCount = 0

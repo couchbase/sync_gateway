@@ -4,16 +4,17 @@ go 1.17
 
 require (
 	github.com/coreos/go-oidc v2.2.1+incompatible
-	github.com/couchbase/cbgt v1.0.0
+	github.com/couchbase/cbgt v1.2.2
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20220617161408-6dfb3a7df872
-	github.com/couchbase/go-couchbase v0.1.1-0.20210622145704-74908f5398d1
+	github.com/couchbase/go-couchbase v0.1.1
 	github.com/couchbase/gocb/v2 v2.4.1-0.20220301090946-00fc8c0aa323
 	github.com/couchbase/gocbcore/v10 v10.1.1-0.20220221125514-72ee6aaebe8d
-	github.com/couchbase/gomemcached v0.1.3
+	github.com/couchbase/gomemcached v0.1.4
 	github.com/couchbase/goutils v0.1.2
-	github.com/couchbase/sg-bucket v0.0.0-20220721160118-29ae27b3d9d0
+	github.com/couchbase/sg-bucket v0.0.0-20220725152948-e1112ff01a3d
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f
+	github.com/couchbaselabs/walrus v0.0.0-20220725155239-d81b0db73299
 	github.com/elastic/gosigar v0.14.2
 	github.com/felixge/fgprof v0.9.2
 	github.com/google/uuid v1.3.0
@@ -28,8 +29,8 @@ require (
 	github.com/samuel/go-metrics v0.0.0-20150819231912-7ccf3e0e1fb1
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/stretchr/testify v1.7.1
-	golang.org/x/crypto v0.0.0-20211215153901-e495a2d5b3d3
-	golang.org/x/net v0.0.0-20220425223048-2871e0cb64e4
+	golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d
+	golang.org/x/net v0.0.0-20220708220712-1185a9018129
 	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
 	gopkg.in/couchbase/gocb.v1 v1.6.7
 	gopkg.in/couchbase/gocbcore.v7 v7.1.18
@@ -41,8 +42,8 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/couchbase/blance v0.1.1 // indirect
-	github.com/couchbase/cbauth v0.0.0-20190926094514-82614adbe4d4 // indirect
-	github.com/couchbaselabs/walrus v0.0.0-20220721163442-ef4559d9d4da // indirect
+	github.com/couchbase/cbauth v0.1.1 // indirect
+	github.com/couchbase/gocbcore/v9 v9.1.8 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
@@ -60,8 +61,9 @@ require (
 	github.com/prometheus/procfs v0.7.3 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
 	github.com/sergi/go-diff v1.2.0 // indirect
+	github.com/youmark/pkcs8 v0.0.0-20201027041543-1326539a0a0a // indirect
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
-	golang.org/x/sys v0.0.0-20220114195835-da31bd327af9 // indirect
+	golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a // indirect
 	golang.org/x/text v0.3.7 // indirect
 	google.golang.org/appengine v1.6.6 // indirect
 	google.golang.org/protobuf v1.26.0 // indirect

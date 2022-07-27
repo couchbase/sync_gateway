@@ -580,10 +580,10 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 	// Set conflict resolver for pull replications
 	if rc.Direction == ActiveReplicatorTypePull || rc.Direction == ActiveReplicatorTypePushAndPull {
 		if config.ConflictResolutionType == "" {
-			rc.ConflictResolverFunc, err = NewConflictResolverFunc(ConflictResolverDefault, "")
+			rc.ConflictResolverFunc, err = NewConflictResolverFunc(ConflictResolverDefault, "", m.dbContext.Options.JavascriptTimeout)
 
 		} else {
-			rc.ConflictResolverFunc, err = NewConflictResolverFunc(config.ConflictResolutionType, config.ConflictResolutionFn)
+			rc.ConflictResolverFunc, err = NewConflictResolverFunc(config.ConflictResolutionType, config.ConflictResolutionFn, m.dbContext.Options.JavascriptTimeout)
 			rc.ConflictResolverFuncSrc = config.ConflictResolutionFn
 		}
 		if err != nil {
@@ -661,6 +661,9 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 	// Retrieve or create an entry in db.replications expvar for this replication
 	allReplicationsStatsMap := m.dbContext.DbStats.DBReplicatorStats(rc.ID)
 	rc.ReplicationStatsMap = allReplicationsStatsMap
+
+	// disable recovered panic reporting (test only)
+	rc.reportHandlerPanicsOnStop = base.BoolPtr(false)
 
 	replicator = NewActiveReplicator(rc)
 

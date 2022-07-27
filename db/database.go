@@ -159,6 +159,8 @@ type DatabaseContextOptions struct {
 	ClientPartitionWindow         time.Duration
 	BcryptCost                    int
 	GroupID                       string
+	JavascriptTimeout             time.Duration // Max time the JS functions run for (ie. sync fn, import filter)
+	skipRegisterImportPIndex      bool          // if set, skips the global gocb PIndex registration
 }
 
 type SGReplicateOptions struct {
@@ -1241,7 +1243,7 @@ func (dbCtx *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err e
 	} else if dbCtx.ChannelMapper != nil {
 		_, err = dbCtx.ChannelMapper.SetFunction(syncFun)
 	} else {
-		dbCtx.ChannelMapper = channels.NewChannelMapper(syncFun)
+		dbCtx.ChannelMapper = channels.NewChannelMapper(syncFun, dbCtx.Options.JavascriptTimeout)
 	}
 	if err != nil {
 		base.WarnfCtx(context.TODO(), "Error setting sync function: %s", err)

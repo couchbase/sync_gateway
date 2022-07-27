@@ -598,10 +598,16 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 
 func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (db.DatabaseContextOptions, error) {
 
+	// Get timeout to use for import filter function and db context
+	javascriptTimeout := time.Duration(base.DefaultJavascriptTimeoutSecs) * time.Second
+	if config.JavascriptTimeoutSecs != nil {
+		javascriptTimeout = time.Duration(*config.JavascriptTimeoutSecs) * time.Second
+	}
+
 	// Identify import options
 	importOptions := db.ImportOptions{}
 	if config.ImportFilter != nil {
-		importOptions.ImportFilter = db.NewImportFilterFunction(*config.ImportFilter)
+		importOptions.ImportFilter = db.NewImportFilterFunction(*config.ImportFilter, javascriptTimeout)
 	}
 	importOptions.BackupOldRev = base.BoolDefault(config.ImportBackupOldRev, false)
 
@@ -819,6 +825,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		ClientPartitionWindow:     clientPartitionWindow,
 		BcryptCost:                bcryptCost,
 		GroupID:                   groupID,
+		JavascriptTimeout:         javascriptTimeout,
 	}
 
 	return contextOptions, nil

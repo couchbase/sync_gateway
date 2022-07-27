@@ -225,7 +225,7 @@ func TestAttachmentForRejectedDocument(t *testing.T) {
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
 		throw({forbidden: "None shall pass!"});
-	}`)
+	}`, 0)
 
 	docBody := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
 	var body Body

@@ -1596,6 +1596,10 @@ Database:
       default: 2592000
     guest:
       $ref: '#/User'
+    javascript_timeout_secs:
+      description: The maximum number of seconds the sync, import filter, and custom conflict resolver JavaScript functions are allowed to run for before timing out. Set to 0 to allow the JS functions to run uncapped.
+      type: number
+      default: 60
   title: Database-config
 Event-config:
   type: object

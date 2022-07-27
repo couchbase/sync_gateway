@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -115,11 +116,11 @@ type SyncRunner struct {
 	expiry            *uint32             // document expiry (in seconds) specified via expiry() callback
 }
 
-func NewSyncRunner(funcSource string) (*SyncRunner, error) {
+func NewSyncRunner(funcSource string, timeout time.Duration) (*SyncRunner, error) {
 	ctx := context.Background()
 	funcSource = wrappedFuncSource(funcSource)
 	runner := &SyncRunner{}
-	err := runner.InitWithLogging(funcSource,
+	err := runner.InitWithLogging(funcSource, timeout,
 		func(s string) { base.ErrorfCtx(ctx, base.KeyJavascript.String()+": Sync %s", base.UD(s)) },
 		func(s string) { base.InfofCtx(ctx, base.KeyJavascript, "Sync %s", base.UD(s)) })
 	if err != nil {

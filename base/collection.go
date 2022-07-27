@@ -35,7 +35,7 @@ var _ CouchbaseStore = &Collection{}
 func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 
 	logCtx := context.TODO()
-	connString, err := spec.GetGoCBConnString()
+	connString, err := spec.GetGoCBConnString(nil)
 	if err != nil {
 		WarnfCtx(logCtx, "Unable to parse server value: %s error: %v", SD(spec.Server), err)
 		return nil, err
@@ -227,7 +227,7 @@ func (c *Collection) IsSupported(feature sgbucket.DataStoreFeature) bool {
 			return false
 		}
 		return status == gocb.CapabilityStatusSupported
-	case sgbucket.DataStoreFeaturePreserveExpiry:
+	case sgbucket.DataStoreFeaturePreserveExpiry, sgbucket.DataStoreFeatureCollections:
 		// TODO: Change to capability check when GOCBC-1218 merged
 		return isMinimumVersion(c.clusterCompatMajorVersion, c.clusterCompatMinorVersion, 7, 0)
 	default:

@@ -343,6 +343,7 @@ func (flag changesDeletedFlag) HasFlag(deletedFlag changesDeletedFlag) bool {
 func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions) (isComplete bool) {
 	defer func() {
 		if panicked := recover(); panicked != nil {
+			bh.replicationStats.NumHandlersPanicked.Add(1)
 			base.WarnfCtx(bh.loggingCtx, "[%s] PANIC sending changes: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
 		}
 	}()
@@ -440,10 +441,10 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	// On forceClose, send notify to trigger immediate exit from change waiter
 	if forceClose {
 		user := ""
-		if bh.collection.User() != nil {
-			user = bh.collection.User().Name()
+		if bh.db.User() != nil {
+			user = bh.db.User().Name()
 		}
-		bh.collection.DatabaseContext.NotifyTerminatedChanges(user)
+		bh.db.DatabaseContext.NotifyTerminatedChanges(user)
 	}
 
 	return !forceClose
