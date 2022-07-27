@@ -51,9 +51,8 @@ const maxInFlightChangesBatches = 2
 
 type blipHandler struct {
 	*BlipSyncContext
-	db                *Database   // Handler-specific copy of the BlipSyncContext's blipContextDb
-	collection        *Database   // Handler-specific copy of the BlipSyncContext's collection specific DB
-	collectionMapping []*Database // Mapping of array id to collection mapping
+	db         *Database // Handler-specific copy of the BlipSyncContext's blipContextDb
+	collection *Database // Handler-specific copy of the BlipSyncContext's collection specific DB
 
 	serialNumber uint64 // This blip handler's serial number to differentiate logs w/ other handlers
 }
@@ -136,7 +135,7 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 			return next(bh, bm)
 		}
 		if len(bh.collectionMapping) == 0 {
-			return base.HTTPErrorf(http.StatusBadRequest, "Passing collection requires calling GetCollections first")
+			return base.HTTPErrorf(http.StatusBadRequest, "Passing collection requires calling %s first", MessageGetCollections)
 		}
 
 		collectionIndex, err := strconv.Atoi(collectionIndexStr)
