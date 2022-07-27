@@ -11,6 +11,7 @@ package channels
 import (
 	"encoding/json"
 	"strconv"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -39,17 +40,17 @@ const kTaskCacheSize = 16
 
 const DefaultSyncFunction = `function(doc){channel(doc.channels);}`
 
-func NewChannelMapper(fnSource string) *ChannelMapper {
+func NewChannelMapper(fnSource string, timeout time.Duration) *ChannelMapper {
 	return &ChannelMapper{
-		JSServer: sgbucket.NewJSServer(fnSource, kTaskCacheSize,
-			func(fnSource string) (sgbucket.JSServerTask, error) {
-				return NewSyncRunner(fnSource)
+		JSServer: sgbucket.NewJSServer(fnSource, timeout, kTaskCacheSize,
+			func(fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
+				return NewSyncRunner(fnSource, timeout)
 			}),
 	}
 }
 
 func NewDefaultChannelMapper() *ChannelMapper {
-	return NewChannelMapper(DefaultSyncFunction)
+	return NewChannelMapper(DefaultSyncFunction, time.Duration(base.DefaultJavascriptTimeoutSecs)*time.Second)
 }
 
 func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, metaMap map[string]interface{}, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {

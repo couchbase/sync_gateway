@@ -806,7 +806,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 	db := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), leakyConfig)
 	defer db.Close()
 
-	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {channel(doc.channels);}`)
+	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {channel(doc.channels);}`, 0)
 
 	// Create rev 1-a
 	log.Printf("Create rev 1-a")
@@ -973,7 +973,7 @@ func TestMalformedRevisionStorageRecovery(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {channel(doc.channels);}`)
+	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {channel(doc.channels);}`, 0)
 
 	// Create a document with a malformed revision body (due to https://github.com/couchbase/sync_gateway/issues/3692) in the bucket
 	// Document has the following rev tree, with a malformed body of revision 2-b remaining in the revision tree (same set of operations as

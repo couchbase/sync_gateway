@@ -167,6 +167,9 @@ const (
 
 	// RedactedStr can be substituted in place of any sensitive data being returned by an API. The 'xxxxx' pattern is the same used by Go's url.Redacted() method.
 	RedactedStr = "xxxxx"
+
+	// DefaultJavascriptTimeoutSecs is number of seconds before Javascript functions (i.e. the sync function or import filter) timeout
+	DefaultJavascriptTimeoutSecs = uint32(60)
 )
 
 const (

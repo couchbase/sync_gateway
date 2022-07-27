@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -169,7 +170,7 @@ func RemoteWinsConflictResolver(conflict Conflict) (winner Body, err error) {
 	return conflict.RemoteDocument, nil
 }
 
-func NewConflictResolverFunc(resolverType ConflictResolverType, customResolverSource string) (ConflictResolverFunc, error) {
+func NewConflictResolverFunc(resolverType ConflictResolverType, customResolverSource string, customResolverTimeout time.Duration) (ConflictResolverFunc, error) {
 	switch resolverType {
 	case ConflictResolverLocalWins:
 		return LocalWinsConflictResolver, nil
@@ -178,7 +179,7 @@ func NewConflictResolverFunc(resolverType ConflictResolverType, customResolverSo
 	case ConflictResolverDefault:
 		return DefaultConflictResolver, nil
 	case ConflictResolverCustom:
-		return NewCustomConflictResolver(customResolverSource)
+		return NewCustomConflictResolver(customResolverSource, customResolverTimeout)
 	default:
 		return nil, fmt.Errorf("Unknown Conflict Resolver type: %s", resolverType)
 	}
@@ -186,8 +187,8 @@ func NewConflictResolverFunc(resolverType ConflictResolverType, customResolverSo
 
 // NewCustomConflictResolver returns a ConflictResolverFunc that executes the
 // javascript conflict resolver specified by source
-func NewCustomConflictResolver(source string) (ConflictResolverFunc, error) {
-	conflictResolverJSServer := NewConflictResolverJSServer(source)
+func NewCustomConflictResolver(source string, timeout time.Duration) (ConflictResolverFunc, error) {
+	conflictResolverJSServer := NewConflictResolverJSServer(source, timeout)
 	return conflictResolverJSServer.EvaluateFunction, nil
 }
 
@@ -196,10 +197,10 @@ type ConflictResolverJSServer struct {
 	*sgbucket.JSServer
 }
 
-func NewConflictResolverJSServer(fnSource string) *ConflictResolverJSServer {
+func NewConflictResolverJSServer(fnSource string, timeout time.Duration) *ConflictResolverJSServer {
 	base.DebugfCtx(context.Background(), base.KeyReplicate, "Creating new ConflictResolverFunction")
 	return &ConflictResolverJSServer{
-		JSServer: sgbucket.NewJSServer(fnSource, kTaskCacheSize, newConflictResolverRunner),
+		JSServer: sgbucket.NewJSServer(fnSource, timeout, kTaskCacheSize, newConflictResolverRunner),
 	}
 }
 
@@ -235,9 +236,9 @@ func (i *ConflictResolverJSServer) EvaluateFunction(conflict Conflict) (Body, er
 }
 
 // Compiles a JavaScript event function to a conflictResolverRunner object.
-func newConflictResolverRunner(funcSource string) (sgbucket.JSServerTask, error) {
+func newConflictResolverRunner(funcSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
 	conflictResolverRunner := &sgbucket.JSRunner{}
-	err := conflictResolverRunner.InitWithLogging(funcSource,
+	err := conflictResolverRunner.InitWithLogging(funcSource, timeout,
 		func(s string) {
 			base.ErrorfCtx(context.Background(), base.KeyJavascript.String()+": ConflictResolver %s", base.UD(s))
 		},

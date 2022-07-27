@@ -445,7 +445,7 @@ func TestAccessQuery(t *testing.T) {
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
 	access(doc.accessUser, doc.accessChannel)
-}`)
+}`, 0)
 	// Add docs with access grants assignment
 	for i := 1; i <= 5; i++ {
 		_, _, err := db.Put(fmt.Sprintf("accessTest%d", i), Body{"accessUser": "user1", "accessChannel": fmt.Sprintf("channel%d", i)})
@@ -490,7 +490,7 @@ func TestRoleAccessQuery(t *testing.T) {
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
 	role(doc.accessUser, "role:" + doc.accessChannel)
-}`)
+}`, 0)
 	// Add docs with access grants assignment
 	for i := 1; i <= 5; i++ {
 		_, _, err := db.Put(fmt.Sprintf("accessTest%d", i), Body{"accessUser": "user1", "accessChannel": fmt.Sprintf("channel%d", i)})
