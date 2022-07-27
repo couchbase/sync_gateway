@@ -22,17 +22,19 @@ func getHighSeqMetadata(bucket Bucket) ([]DCPMetadata, error) {
 		return nil, fmt.Errorf("Unable to determine maxVbNo when creating DCP client: %w", err)
 	}
 
-	_, highSeqNos, statsErr := store.GetStatsVbSeqno(numVbuckets, true)
+	vbUUIDs, highSeqNos, statsErr := store.GetStatsVbSeqno(numVbuckets, true)
 	if statsErr != nil {
 		return nil, fmt.Errorf("Unable to obtain high seqnos for one-shot DCP feed: %w", statsErr)
 	}
 
 	metadata := make([]DCPMetadata, numVbuckets)
 	for vbNo := uint16(0); vbNo < numVbuckets; vbNo++ {
-		// TODO: should we/can we initialize VbUUID or other fields?
+		metadata[vbNo].VbUUID = gocbcore.VbUUID(vbUUIDs[vbNo])
 		metadata[vbNo].FailoverEntries = make([]gocbcore.FailoverEntry, 0)
 		metadata[vbNo].StartSeqNo = gocbcore.SeqNo(highSeqNos[vbNo])
 		metadata[vbNo].EndSeqNo = gocbcore.SeqNo(uint64(0xFFFFFFFFFFFFFFFF))
+		metadata[vbNo].SnapStartSeqNo = gocbcore.SeqNo(highSeqNos[vbNo])
+		metadata[vbNo].SnapEndSeqNo = gocbcore.SeqNo(highSeqNos[vbNo])
 	}
 	return metadata, nil
 }
