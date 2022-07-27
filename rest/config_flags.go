@@ -122,6 +122,8 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 
 		"unsupported.http2.enabled": {&config.Unsupported.HTTP2.Enabled, fs.Bool("unsupported.http2.enabled", false, "Whether HTTP2 support is enabled")},
 
+		"unsupported.user_queries": {&config.Unsupported.UserQueries, fs.Bool("unsupported.user_queries", false, "Whether user-query APIs are enabled")},
+
 		"database_credentials": {&config.DatabaseCredentials, fs.String("database_credentials", "null", "JSON-encoded per-database credentials")},
 
 		"max_file_descriptors": {&config.MaxFileDescriptors, fs.Uint64("max_file_descriptors", 0, "Max # of open file descriptors (RLIMIT_NOFILE)")},

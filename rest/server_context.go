@@ -791,9 +791,6 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		SecureCookieOverride:          secureCookieOverride,
 		SessionCookieName:             config.SessionCookieName,
 		SessionCookieHttpOnly:         base.BoolDefault(config.SessionCookieHTTPOnly, false),
-		UserQueries:                   config.UserQueries,
-		UserFunctions:                 config.UserFunctions,
-		GraphQL:                       config.GraphQL,
 		AllowConflicts:                config.ConflictsAllowed(),
 		SendWWWAuthenticateHeader:     sendWWWAuthenticate,
 		DisablePasswordAuthentication: config.DisablePasswordAuth,
@@ -809,6 +806,17 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		ClientPartitionWindow:     clientPartitionWindow,
 		BcryptCost:                bcryptCost,
 		GroupID:                   groupID,
+		// UserQueries:               config.UserQueries,   // behind feature flag (see below)
+		// UserFunctions:             config.UserFunctions, // behind feature flag (see below)
+		// GraphQL:                   config.GraphQL,       // behind feature flag (see below)
+	}
+
+	if sc.config.Unsupported.UserQueries != nil && *sc.config.Unsupported.UserQueries {
+		contextOptions.UserQueries = config.UserQueries
+		contextOptions.UserFunctions = config.UserFunctions
+		contextOptions.GraphQL = config.GraphQL
+	} else if config.UserQueries != nil || config.UserFunctions != nil || config.GraphQL != nil {
+		base.WarnfCtx(context.TODO(), `Database config options "queries", "functions", "graphql" ignored because unsupported.user_queries feature flag is not enabled`)
 	}
 
 	return contextOptions, nil

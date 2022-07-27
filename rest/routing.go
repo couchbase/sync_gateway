@@ -106,10 +106,12 @@ func createCommonRouter(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mu
 
 	dbr.Handle("/_blipsync", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handleBLIPSync)).Methods("GET")
 
-	// Queries & functions
-	dbr.Handle("/_function/{name}", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleUserFunction)).Methods("GET", "POST")
-	dbr.Handle("/_graphql", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleGraphQL)).Methods("GET", "POST")
-	dbr.Handle("/_query/{name}", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleUserQuery)).Methods("GET", "POST")
+	// User queries & functions
+	if sc.config.Unsupported.UserQueries != nil && *sc.config.Unsupported.UserQueries {
+		dbr.Handle("/_function/{name}", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleUserFunction)).Methods("GET", "POST")
+		dbr.Handle("/_graphql", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleGraphQL)).Methods("GET", "POST")
+		dbr.Handle("/_query/{name}", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleUserQuery)).Methods("GET", "POST")
+	}
 
 	return r, dbr
 }
@@ -275,29 +277,6 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	dbr.Handle("/_config/import_filter",
 		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleDeleteDbConfigImportFilter)).Methods("DELETE")
 
-	dbr.Handle("/_config/functions",
-		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfigFunctions)).Methods("GET")
-	dbr.Handle("/_config/functions/{function}",
-		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfigFunction)).Methods("GET")
-	dbr.Handle("/_config/functions",
-		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutDbConfigFunctions)).Methods("PUT", "DELETE")
-	dbr.Handle("/_config/functions/{function}",
-		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutDbConfigFunction)).Methods("PUT", "DELETE")
-
-	dbr.Handle("/_config/graphql",
-		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfigGraphQL)).Methods("GET")
-	dbr.Handle("/_config/graphql",
-		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutDbConfigGraphQL)).Methods("PUT", "DELETE")
-
-	dbr.Handle("/_config/queries",
-		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfigQueries)).Methods("GET")
-	dbr.Handle("/_config/queries/{query}",
-		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfigQuery)).Methods("GET")
-	dbr.Handle("/_config/queries",
-		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutDbConfigQueries)).Methods("PUT", "DELETE")
-	dbr.Handle("/_config/queries/{query}",
-		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutDbConfigQuery)).Methods("PUT", "DELETE")
-
 	dbr.Handle("/_resync",
 		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetResync)).Methods("GET")
 	dbr.Handle("/_resync",
@@ -318,6 +297,32 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleDumpChannel)).Methods("GET")
 	dbr.Handle("/_repair",
 		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleRepair)).Methods("POST")
+
+	// User query config APIs:
+	if sc.config.Unsupported.UserQueries != nil && *sc.config.Unsupported.UserQueries {
+		dbr.Handle("/_config/functions",
+			makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfigFunctions)).Methods("GET")
+		dbr.Handle("/_config/functions/{function}",
+			makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfigFunction)).Methods("GET")
+		dbr.Handle("/_config/functions",
+			makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutDbConfigFunctions)).Methods("PUT", "DELETE")
+		dbr.Handle("/_config/functions/{function}",
+			makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutDbConfigFunction)).Methods("PUT", "DELETE")
+
+		dbr.Handle("/_config/graphql",
+			makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfigGraphQL)).Methods("GET")
+		dbr.Handle("/_config/graphql",
+			makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutDbConfigGraphQL)).Methods("PUT", "DELETE")
+
+		dbr.Handle("/_config/queries",
+			makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfigQueries)).Methods("GET")
+		dbr.Handle("/_config/queries/{query}",
+			makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfigQuery)).Methods("GET")
+		dbr.Handle("/_config/queries",
+			makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutDbConfigQueries)).Methods("PUT", "DELETE")
+		dbr.Handle("/_config/queries/{query}",
+			makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutDbConfigQuery)).Methods("PUT", "DELETE")
+	}
 
 	// The routes below are part of the CouchDB REST API but should only be available to admins,
 	// so the handlers are moved to the admin port.

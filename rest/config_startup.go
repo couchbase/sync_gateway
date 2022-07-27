@@ -139,6 +139,8 @@ type UnsupportedConfig struct {
 	UseStdlibJSON     *bool                `json:"use_stdlib_json,omitempty"        help:"Bypass the jsoniter package and use Go's stdlib instead"`
 
 	HTTP2 *HTTP2Config `json:"http2,omitempty"`
+
+	UserQueries *bool `json:"connected_client,omitempty" help:"Feature flag for user N1QL/JS/GraphQL queries"`
 }
 
 type HTTP2Config struct {

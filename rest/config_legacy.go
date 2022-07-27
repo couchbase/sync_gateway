@@ -506,6 +506,7 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*LegacyServer
 	_ = flagSet.Bool("api.admin_interface_authentication", true, "")
 	_ = flagSet.Bool("api.metrics_interface_authentication", true, "")
 	_ = flagSet.Bool("bootstrap.use_tls_server", true, "")
+	_ = flagSet.Bool("unsupported.user_queries", true, "")
 
 	addr := flagSet.String("interface", DefaultPublicInterface, "Address to bind to")
 	authAddr := flagSet.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
