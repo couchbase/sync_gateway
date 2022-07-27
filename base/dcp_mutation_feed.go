@@ -80,12 +80,14 @@ func StartGOCB2DCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgumen
 	go func() {
 		select {
 		case dcpCloseError := <-doneChan:
-			TracefCtx(loggingCtx, KeyDCP, "Closed caching DCP Feed %q for %q", feedName, MD(bucketName))
+			// This is a close because DCP client closed on its own
+			InfofCtx(loggingCtx, KeyDCP, "Forced closed caching DCP Feed %q for %q", feedName, MD(bucketName))
 			// wait for channel close
 			<-doneChan
 			if dcpCloseError != nil {
 				WarnfCtx(loggingCtx, "Error on closing caching DCP Feed %q for %q: %w", feedName, MD(bucketName), dcpCloseError)
 			}
+			// FIXME: close dbContext here
 			break
 		case <-args.Terminator:
 			InfofCtx(loggingCtx, KeyDCP, "Closing caching DCP Feed %q for bucket %q based on termination notification", feedName, MD(bucketName))
