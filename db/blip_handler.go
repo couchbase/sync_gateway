@@ -40,11 +40,14 @@ var kHandlersByProfile = map[string]blipHandlerFunc{
 	MessageGetAttachment:   userBlipHandler((*blipHandler).handleGetAttachment),
 	MessageProveAttachment: userBlipHandler((*blipHandler).handleProveAttachment),
 	MessageProposeChanges:  (*blipHandler).handleProposeChanges,
-	MessageGetRev:          userBlipHandler((*blipHandler).handleGetRev),
-	MessagePutRev:          userBlipHandler((*blipHandler).handlePutRev),
-	MessageQuery:           userBlipHandler((*blipHandler).handleQuery),
-	MessageFunction:        userBlipHandler((*blipHandler).handleFunction),
-	MessageGraphQL:         userBlipHandler((*blipHandler).handleGraphQL),
+}
+
+var kConnectedClientHandlersByProfile = map[string]blipHandlerFunc{
+	MessageGetRev:   userBlipHandler((*blipHandler).handleGetRev),
+	MessagePutRev:   userBlipHandler((*blipHandler).handlePutRev),
+	MessageQuery:    userBlipHandler((*blipHandler).handleQuery),
+	MessageFunction: userBlipHandler((*blipHandler).handleFunction),
+	MessageGraphQL:  userBlipHandler((*blipHandler).handleGraphQL),
 }
 
 // maxInFlightChangesBatches is the maximum number of in-flight changes batches a client is allowed to send without being throttled.

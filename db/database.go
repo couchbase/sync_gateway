@@ -191,6 +191,7 @@ type UnsupportedOptions struct {
 	SgrTlsSkipVerify          bool                     `json:"sgr_tls_skip_verify,omitempty"`           // Config option to enable self-signed certs for SG-Replicate testing.
 	RemoteConfigTlsSkipVerify bool                     `json:"remote_config_tls_skip_verify,omitempty"` // Config option to enable self signed certificates for external JavaScript load.
 	GuestReadOnly             bool                     `json:"guest_read_only,omitempty"`               // Config option to restrict GUEST document access to read-only
+	ConnectedClient           bool                     `json:"connected_client,omitempty"`              // Enables BLIP connected-client APIs
 }
 
 type WarningThresholds struct {
