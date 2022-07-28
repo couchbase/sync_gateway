@@ -35,11 +35,6 @@ const (
 	QueryTombstoneBatch           = 250              // Max number of tombstones checked per query during Compact
 )
 
-type backgroundTasks struct {
-	tasks []BackgroundTask // List of background tasks.
-	lock  sync.Mutex       // mutex
-}
-
 var SkippedSeqCleanViewBatch = 50 // Max number of sequences checked per query during CleanSkippedSequence.  Var to support testing
 
 // Enable keeping a channel-log for the "*" channel (channel.UserStarChannel). The only time this channel is needed is if
@@ -66,7 +61,7 @@ type changeCache struct {
 	lock               sync.RWMutex            // Coordinates access to struct fields
 	options            CacheOptions            // Cache config
 	terminator         chan bool               // Signal termination of background goroutines
-	backgroundTasks    backgroundTasks         // List of background tasks.
+	backgroundTasks    []BackgroundTask        // List of background tasks.
 	initTime           time.Time               // Cache init time - used for latency calculations
 	channelCache       ChannelCache            // Underlying channel cache
 	lastAddPendingTime int64                   // The most recent time _addPendingLogs was run, as epoch time
@@ -161,7 +156,7 @@ func DefaultCacheOptions() CacheOptions {
 // notifyChange is an optional function that will be called to notify of channel changes.
 // After calling Init(), you must call .Start() to start useing the cache, otherwise it will be in a locked state
 // and callers will block on trying to obtain the lock.
-func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Set), options *CacheOptions, dcpStarted chan error) error {
+func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Set), options *CacheOptions) error {
 	c.context = dbcontext
 
 	c.notifyChange = notifyChange
@@ -188,41 +183,19 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 	base.InfofCtx(context.TODO(), base.KeyCache, "Initializing changes cache for database %s with options %+v", base.UD(dbcontext.Name), c.options)
 
 	heap.Init(&c.pendingLogs)
-	go func() {
-		// dcpStarted is only nil in testing
-		if dcpStarted != nil {
-			dcpStartedErr := <-dcpStarted
-			if dcpStartedErr != nil {
-				// error is handled in StartGOCB2DCPFeed
-				return
-			}
-		}
-		// Lock backgroundTasks in case we are stopping while this code is running
-		c.backgroundTasks.lock.Lock()
-		defer c.backgroundTasks.lock.Unlock()
-		if c.IsStopped() {
-			return
-		}
 
-		// background tasks that perform housekeeping duties on the cache
-		bgt, err := NewBackgroundTask("InsertPendingEntries", c.context.Name, c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2, c.terminator)
-		// TODO: how to test this error condition?
-		if err != nil {
-			base.ErrorfCtx(context.TODO(), "Failed to initialize task %w", err)
-			dbcontext.Close()
-			return
-		}
-		c.backgroundTasks.tasks = append(c.backgroundTasks.tasks, bgt)
+	// background tasks that perform housekeeping duties on the cache
+	bgt, err := NewBackgroundTask("InsertPendingEntries", c.context.Name, c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2, c.terminator)
+	if err != nil {
+		return err
+	}
+	c.backgroundTasks = append(c.backgroundTasks, bgt)
 
-		bgt, err = NewBackgroundTask("CleanSkippedSequenceQueue", c.context.Name, c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2, c.terminator)
-		// TODO: how to test this error condition?
-		if err != nil {
-			base.ErrorfCtx(context.TODO(), "Failed to initialize task %w", err)
-			dbcontext.Close()
-			return
-		}
-		c.backgroundTasks.tasks = append(c.backgroundTasks.tasks, bgt)
-	}()
+	bgt, err = NewBackgroundTask("CleanSkippedSequenceQueue", c.context.Name, c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2, c.terminator)
+	if err != nil {
+		return err
+	}
+	c.backgroundTasks = append(c.backgroundTasks, bgt)
 
 	// Lock the cache -- not usable until .Start() called.  This fixes the DCP startup race condition documented in SG #3558.
 	c.lock.Lock()
@@ -255,9 +228,7 @@ func (c *changeCache) Stop() {
 	close(c.terminator)
 
 	// Wait for changeCache background tasks to finish.
-	c.backgroundTasks.lock.Lock()
-	waitForBGTCompletion(BGTCompletionMaxWait, c.backgroundTasks.tasks, c.context.Name)
-	c.backgroundTasks.lock.Unlock()
+	waitForBGTCompletion(BGTCompletionMaxWait, c.backgroundTasks, c.context.Name)
 
 	// Stop the channel cache and it's background tasks.
 	c.channelCache.Stop()

@@ -68,13 +68,7 @@ func StartGOCB2DCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgumen
 		ErrorfCtx(loggingCtx, "Failed to start caching DCP Feed %q for bucket %q: %w", feedName, MD(bucketName), err)
 		closeErr := dcpClient.Close()
 		ErrorfCtx(loggingCtx, "Close error from caching DCP Feed %q for bucket %q: %w", feedName, MD(bucketName), closeErr)
-		args.Started <- err
-		close(args.Started)
 		return err
-	}
-	if args.Started != nil {
-		args.Started <- nil
-		close(args.Started)
 	}
 	InfofCtx(loggingCtx, KeyDCP, "Started caching DCP Feed %q for bucket %q", feedName, MD(bucketName))
 	go func() {
