@@ -5,12 +5,17 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"time"
 
 	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/gocbcore/v10"
 )
+
+// GocbcoreAgentTimeout is the time alloted to obtain a response from
+// the server for a request.
+var GocbcoreAgentTimeout = 60 * time.Second
 
 // GoCBv2SecurityConfig returns a gocb.SecurityConfig to use when connecting given a CA Cert path.
 func GoCBv2SecurityConfig(tlsSkipVerify *bool, caCertPath string) (sc gocb.SecurityConfig, err error) {
@@ -152,4 +157,53 @@ func getRootCAs(caCertPath string) (*x509.CertPool, error) {
 		WarnfCtx(context.Background(), "Could not retrieve root CAs: %v", err)
 	}
 	return rootCAs, nil
+}
+
+// waitForGoCB response waits for a response from a gocb.Agent
+func waitForGoCBResponse(signal <-chan error, op gocbcore.PendingOp, timeout time.Duration) error {
+	timeoutTmr := gocbcore.AcquireTimer(timeout)
+	select {
+	case err := <-signal:
+		gocbcore.ReleaseTimer(timeoutTmr, false)
+		return err
+	case <-timeoutTmr.C:
+		gocbcore.ReleaseTimer(timeoutTmr, true)
+		WarnfCtx(context.TODO(), "gocbcore: Request has timed out, canceling op")
+		if op != nil {
+			op.Cancel()
+			// wait for confirmation after canceling the PendingOp
+			<-signal
+		}
+		return gocbcore.ErrTimeout
+	}
+}
+
+func getCollectionIDs(scope, collection string, agent *gocbcore.Agent) ([]uint32, error) {
+	signal := make(chan error, 1)
+	var collectionIDs []uint32
+	op, err := agent.GetCollectionID(scope, collection, gocbcore.GetCollectionIDOptions{},
+		func(res *gocbcore.GetCollectionIDResult, getCollectionErr error) {
+			if getCollectionErr != nil {
+				signal <- getCollectionErr
+				return
+			}
+			if res == nil {
+				signal <- fmt.Errorf("getCollectionID not retrieved")
+				return
+			}
+
+			collectionIDs = append(collectionIDs, res.CollectionID)
+
+			signal <- nil
+		})
+
+	if err != nil {
+		return nil, fmt.Errorf("GetCollectionManifest, err: %v", err)
+	}
+
+	err = waitForGoCBResponse(signal, op, GocbcoreAgentTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get manifest, err: %v", err)
+	}
+	return collectionIDs, nil
 }

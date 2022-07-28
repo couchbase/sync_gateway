@@ -117,6 +117,7 @@ func TestCollectionsDCP(t *testing.T) {
 		TestBucket:                 tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
+				AutoImport: true,
 				Scopes: ScopesConfig{
 					"foo": ScopeConfig{
 						Collections: map[string]CollectionConfig{

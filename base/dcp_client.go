@@ -41,6 +41,7 @@ type DCPClient struct {
 	failOnRollback             bool                           // When true, close when rollback detected
 	checkpointPrefix           string                         // DCP checkpoint key prefix
 	checkpointPersistFrequency *time.Duration                 // Used to override the default checkpoint persistence frequency
+	bucket                     Bucket
 }
 
 type DCPClientOptions struct {
@@ -75,6 +76,7 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 		callback:         callback,
 		ID:               ID,
 		spec:             store.GetSpec(),
+		bucket:           bucket,
 		terminator:       make(chan bool),
 		doneChannel:      make(chan error, 1),
 		failOnRollback:   options.FailOnRollback,
@@ -213,6 +215,11 @@ func (dc *DCPClient) initAgent(spec BucketSpec) error {
 	agentConfig.SecurityConfig.TLSRootCAProvider = tlsRootCAProvider
 	agentConfig.UserAgent = "SyncGatewayDCP"
 
+	if dc.spec.Scope != nil && dc.spec.Collection != nil {
+		agentConfig.IoConfig = gocbcore.IoConfig{
+			UseCollections: true,
+		}
+	}
 	flags := memd.DcpOpenFlagProducer
 	flags |= memd.DcpOpenFlagIncludeXattrs
 	var agentErr error
@@ -329,15 +336,38 @@ func (dc *DCPClient) rollback(vbID uint16) (err error) {
 	return nil
 }
 
+func (dc *DCPClient) getOpenStreamOptions() (*gocbcore.OpenStreamOptions, error) {
+	options := &gocbcore.OpenStreamOptions{}
+	if dc.spec.Scope == nil || dc.spec.Collection == nil {
+		return options, nil
+	}
+	collection, ok := dc.bucket.(*Collection)
+	if !ok {
+		return nil, fmt.Errorf("bucket is not a collection")
+	}
+	agent, err := collection.GetGoCBAgent()
+	if err != nil {
+		return nil, err
+	}
+	collectionIDs, err := getCollectionIDs(*dc.spec.Scope, *dc.spec.Collection, agent)
+	if err != nil {
+		return nil, err
+	}
+	options.FilterOptions = &gocbcore.OpenStreamFilterOptions{CollectionIDs: collectionIDs}
+
+	return options, nil
+}
+
 // openStreamRequest issues the OpenStream request, but doesn't perform any error handling.  Callers
 // should generally use openStream() for error and retry handling
 func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 
 	vbMeta := dc.metadata.GetMeta(vbID)
 
-	// filter options are only scope + collection selection
-	options := gocbcore.OpenStreamOptions{}
-
+	options, err := dc.getOpenStreamOptions()
+	if err != nil {
+		return err
+	}
 	openStreamError := make(chan error)
 	openStreamCallback := func(f []gocbcore.FailoverEntry, err error) {
 		if err == nil {
@@ -362,7 +392,7 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 		vbMeta.SnapStartSeqNo,
 		vbMeta.SnapEndSeqNo,
 		dc,
-		options,
+		*options,
 		openStreamCallback)
 
 	if openErr != nil {

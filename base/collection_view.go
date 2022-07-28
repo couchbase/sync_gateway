@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/couchbase/gocb/v2"
+	"github.com/couchbase/gocbcore/v10"
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
 )
@@ -377,5 +378,11 @@ func asViewConsistency(value interface{}) gocb.ViewScanConsistency {
 		WarnfCtx(context.Background(), "asViewConsistency called with unknown type: %T.  defaulting to RequestPlus", typeValue)
 		return gocb.ViewScanConsistencyRequestPlus
 	}
+
+}
+
+// GetGoCBAgent returns the underlying agent from gocbcore
+func (c *Collection) GetGoCBAgent() (*gocbcore.Agent, error) {
+	return c.Bucket().Internal().IORouter()
 
 }
