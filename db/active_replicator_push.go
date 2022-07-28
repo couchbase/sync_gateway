@@ -207,10 +207,10 @@ func (apr *ActivePushReplicator) _initCheckpointer() error {
 func (apr *ActivePushReplicator) GetStatus() *ReplicationStatus {
 	var lastSeqPushed string
 	apr.lock.RLock()
+	defer apr.lock.RUnlock()
 	if apr.Checkpointer != nil {
 		lastSeqPushed = apr.Checkpointer.calculateSafeProcessedSeq()
 	}
-	apr.lock.RUnlock()
 	status := apr.getPushStatus(lastSeqPushed)
 	return status
 }
