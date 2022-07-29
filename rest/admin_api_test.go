@@ -4883,3 +4883,78 @@ func TestPublicChanGuestAccess(t *testing.T) {
 	resp = rt.SendRequest(http.MethodGet, "/db/docNoAccess", "")
 	requireStatus(t, resp, http.StatusForbidden)
 }
+
+func setServerPurgeInterval(t *testing.T, rt *RestTester, newPurgeInterval string) {
+	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
+	require.NoError(t, err)
+
+	settings := url.Values{}
+	settings.Add("purgeInterval", newPurgeInterval)
+	settings.Add("autoCompactionDefined", "true")
+	settings.Add("parallelDBAndViewCompaction", "false")
+
+	req, err := http.NewRequest("POST", eps[0]+"/pools/default/buckets/"+rt.Bucket().GetName(), strings.NewReader(settings.Encode()))
+	require.NoError(t, err)
+	req.SetBasicAuth(base.TestClusterUsername(), base.TestClusterPassword())
+	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := httpClient.Do(req)
+	require.NoError(t, err)
+
+	require.Equal(t, resp.StatusCode, http.StatusOK)
+}
+
+func TestTombstoneCompactionPurgeInterval(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Server compaction metadata purge interval can only be changed on Couchbase Server")
+	}
+	testCases := []struct {
+		name                              string
+		newServerInterval                 string
+		dbPurgeInterval                   time.Duration
+		expectedPurgeIntervalAfterCompact time.Duration
+	}{
+		{
+			name:                              "Default purge interval updated after db creation",
+			newServerInterval:                 "1",
+			dbPurgeInterval:                   db.DefaultPurgeInterval,
+			expectedPurgeIntervalAfterCompact: time.Hour * 24,
+		},
+		{
+			name:                              "Ignore server interval",
+			newServerInterval:                 "1",
+			dbPurgeInterval:                   0,
+			expectedPurgeIntervalAfterCompact: 0,
+		},
+		{
+			name:                              "Purge interval updated after db creation",
+			newServerInterval:                 "1",
+			dbPurgeInterval:                   time.Hour,
+			expectedPurgeIntervalAfterCompact: time.Hour * 24,
+		},
+	}
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	dbc := rt.GetDatabase()
+
+	cbStore, _ := base.AsCouchbaseStore(rt.Bucket())
+	serverPurgeInterval, err := cbStore.MetadataPurgeInterval()
+	require.NoError(t, err)
+	// Set server purge interval back to what it was for bucket reuse
+	defer setServerPurgeInterval(t, rt, fmt.Sprintf("%.2f", serverPurgeInterval.Hours()/24))
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			// Set intervals on server and client
+			dbc.PurgeInterval = test.dbPurgeInterval
+			setServerPurgeInterval(t, rt, test.newServerInterval)
+
+			// Start compact to modify purge interval
+			database, _ := db.GetDatabase(dbc, nil)
+			_, err = database.Compact(false, func(purgedDocCount *int) {}, base.NewSafeTerminator())
+			require.NoError(t, err)
+
+			// Check purge interval is as expected
+			assert.EqualValues(t, test.expectedPurgeIntervalAfterCompact, dbc.PurgeInterval)
+		})
+	}
+}
