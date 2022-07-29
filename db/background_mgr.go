@@ -116,7 +116,7 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 	}
 
 	if b.isClusterAware() {
-		go func() {
+		go func(terminator *base.SafeTerminator) {
 			ticker := time.NewTicker(BackgroundManagerStatusUpdateIntervalSecs * time.Second)
 			for {
 				select {
@@ -126,12 +126,12 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 						base.WarnfCtx(logCtx, "Failed to update background manager status: %v", err)
 					}
 
-				case <-b.terminator.Done():
+				case <-terminator.Done():
 					ticker.Stop()
 					return
 				}
 			}
-		}()
+		}(b.terminator)
 	}
 
 	go func() {
@@ -201,7 +201,7 @@ func (b *BackgroundManager) markStart() error {
 		// We need to instantiate these before we setup the below goroutine as it relies upon the terminator
 		b.terminator = base.NewSafeTerminator()
 
-		go func() {
+		go func(terminator *base.SafeTerminator) {
 			ticker := time.NewTicker(BackgroundManagerHeartbeatIntervalSecs * time.Second)
 			for {
 				select {
@@ -211,12 +211,12 @@ func (b *BackgroundManager) markStart() error {
 						base.ErrorfCtx(context.TODO(), "Failed to update expiry on heartbeat doc: %v", err)
 						b.SetError(err)
 					}
-				case <-b.terminator.Done():
+				case <-terminator.Done():
 					ticker.Stop()
 					return
 				}
 			}
-		}()
+		}(b.terminator)
 
 		b.State = BackgroundProcessStateRunning
 		return nil
