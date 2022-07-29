@@ -22,29 +22,41 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestInitializeIndexes ensures all of SG's indexes can be built using both values of xattrs
 func TestInitializeIndexes(t *testing.T) {
 	if base.TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
-	db := setupTestDB(t)
-	defer db.Close()
+	tests := []struct {
+		xattrs bool
+	}{
+		{true},
+		{false},
+	}
 
-	n1qlStore, isGoCBBucket := base.AsN1QLStore(db.Bucket)
-	require.True(t, isGoCBBucket)
+	for _, test := range tests {
+		t.Run(fmt.Sprintf("xattrs=%v", test.xattrs), func(t *testing.T) {
+			db := setupTestDB(t)
+			defer db.Close()
 
-	dropErr := base.DropAllBucketIndexes(n1qlStore)
-	assert.NoError(t, dropErr, "Error dropping all indexes")
+			n1qlStore, isGoCBBucket := base.AsN1QLStore(db.Bucket)
+			require.True(t, isGoCBBucket)
 
-	initErr := InitializeIndexes(n1qlStore, db.UseXattrs(), 0)
-	assert.NoError(t, initErr, "Error initializing all indexes")
+			dropErr := base.DropAllBucketIndexes(n1qlStore)
+			require.NoError(t, dropErr, "Error dropping all indexes")
 
-	// Recreate the primary index required by the test bucket pooling framework
-	err := n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
-	assert.NoError(t, err)
+			initErr := InitializeIndexes(n1qlStore, test.xattrs, 0)
+			assert.NoError(t, initErr, "Error initializing all indexes")
 
-	validateErr := validateAllIndexesOnline(db.Bucket)
-	assert.NoError(t, validateErr, "Error validating indexes online")
+			// Recreate the primary index required by the test bucket pooling framework
+			err := n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
+			assert.NoError(t, err)
+
+			validateErr := validateAllIndexesOnline(db.Bucket)
+			require.NoError(t, validateErr, "Error validating indexes online")
+		})
+	}
 
 }
 
