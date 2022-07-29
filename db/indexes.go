@@ -281,7 +281,7 @@ func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, useXattrs bool, numRepli
 }
 
 // Initializes Sync Gateway indexes for bucket.  Creates required indexes if not found, then waits for index readiness.
-func InitializeIndexes(bucket base.N1QLStore, useXattrs bool, numReplicas uint) error {
+func InitializeIndexes(bucket base.N1QLStore, useXattrs bool, numReplicas uint, failFast bool) error {
 
 	base.InfofCtx(context.TODO(), base.KeyAll, "Initializing indexes with numReplicas: %d...", numReplicas)
 
@@ -316,11 +316,11 @@ func InitializeIndexes(bucket base.N1QLStore, useXattrs bool, numReplicas uint) 
 	}
 
 	// Wait for initial readiness queries to complete
-	return waitForIndexes(bucket, useXattrs)
+	return waitForIndexes(bucket, useXattrs, failFast)
 }
 
 // Issue a consistency=request_plus query against critical indexes to guarantee indexing is complete and indexes are ready.
-func waitForIndexes(bucket base.N1QLStore, useXattrs bool) error {
+func waitForIndexes(bucket base.N1QLStore, useXattrs, failFast bool) error {
 	var indexesWg sync.WaitGroup
 	logCtx := context.TODO()
 	base.InfofCtx(logCtx, base.KeyAll, "Verifying index availability for bucket %s...", base.MD(bucket.GetName()))
@@ -338,7 +338,7 @@ func waitForIndexes(bucket base.N1QLStore, useXattrs bool) error {
 				}
 				queryStatement = replaceSyncTokensQuery(queryStatement, useXattrs)
 				queryStatement = replaceIndexTokensQuery(queryStatement, index, useXattrs)
-				queryErr := waitForIndex(bucket, index.fullIndexName(useXattrs), queryStatement)
+				queryErr := waitForIndex(bucket, index.fullIndexName(useXattrs), queryStatement, failFast)
 				if queryErr != nil {
 					base.WarnfCtx(logCtx, "Query error for statement [%s], err:%v", queryStatement, queryErr)
 					indexErrors <- queryErr
@@ -361,12 +361,16 @@ func waitForIndexes(bucket base.N1QLStore, useXattrs bool) error {
 
 // Issues adhoc consistency=request_plus query to determine if specified index is ready.
 // Retries indefinitely on timeout, backoff retry on all other errors.
-func waitForIndex(bucket base.N1QLStore, indexName string, queryStatement string) error {
+func waitForIndex(bucket base.N1QLStore, indexName string, queryStatement string, failFast bool) error {
 
 	logCtx := context.TODO()
 
 	// For non-timeout errors, backoff retry up to ~15m, to handle large initial indexing times
-	retrySleeper := base.CreateMaxDoublingSleeperFunc(180, 100, 5000)
+	maxNumAttempts := 180
+	if failFast {
+		maxNumAttempts = 1
+	}
+	retrySleeper := base.CreateMaxDoublingSleeperFunc(maxNumAttempts, 100, 5000)
 	retryCount := 0
 	for {
 		resultSet, resultsError := bucket.Query(queryStatement, nil, base.RequestPlus, true)

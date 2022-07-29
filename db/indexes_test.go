@@ -46,7 +46,7 @@ func TestInitializeIndexes(t *testing.T) {
 			dropErr := base.DropAllBucketIndexes(n1qlStore)
 			require.NoError(t, dropErr, "Error dropping all indexes")
 
-			initErr := InitializeIndexes(n1qlStore, test.xattrs, 0)
+			initErr := InitializeIndexes(n1qlStore, test.xattrs, 0, true)
 			assert.NoError(t, initErr, "Error initializing all indexes")
 
 			// Recreate the primary index required by the test bucket pooling framework
@@ -117,7 +117,7 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in setup case")
 
-	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0)
+	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false)
 	assert.NoError(t, err)
 
 	// Running w/ opposite xattrs flag should preview removal of the indexes associated with this db context
@@ -136,7 +136,7 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in post-cleanup no-op")
 
 	// Restore indexes after test
-	err = InitializeIndexes(n1qlStore, db.UseXattrs(), 0)
+	err = InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false)
 	assert.NoError(t, err)
 }
 
@@ -178,7 +178,7 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes with hacked sgIndexes")
 
 	// Restore indexes after test
-	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0)
+	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false)
 	assert.NoError(t, err)
 
 	validateErr := validateAllIndexesOnline(db.Bucket)
@@ -234,7 +234,7 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Restore indexes after test
-	err = InitializeIndexes(n1QLStore, db.UseXattrs(), 0)
+	err = InitializeIndexes(n1QLStore, db.UseXattrs(), 0, false)
 	assert.NoError(t, err)
 
 	validateErr := validateAllIndexesOnline(db.Bucket)
@@ -255,7 +255,7 @@ func TestRemoveObsoleteIndexOnError(t *testing.T) {
 	require.True(t, db.Bucket.IsSupported(sgbucket.DataStoreFeatureN1ql))
 
 	// Use existing versions of IndexAccess and IndexChannels and create an old version that will be removed by obsolete
-	//indexes. Resulting from the removal candidates for removeObsoleteIndexes will be:
+	// indexes. Resulting from the removal candidates for removeObsoleteIndexes will be:
 	// All previous versions and opposite of current xattr setting eg. for this test ran with non-xattrs:
 	// [sg_channels_x2 sg_channels_x1 sg_channels_1 sg_access_x2 sg_access_x1 sg_access_1]
 	testIndexes := map[SGIndexType]SGIndex{}
@@ -281,7 +281,7 @@ func TestRemoveObsoleteIndexOnError(t *testing.T) {
 
 	// Restore indexes after test
 	n1qlStore, _ := base.AsN1QLStore(db.Bucket)
-	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0)
+	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false)
 	assert.NoError(t, err)
 
 	validateErr := validateAllIndexesOnline(db.Bucket)
