@@ -36,6 +36,7 @@ const (
 // When running w/out xattrs, it's just replaced by the doc path `bucketname`._sync
 // This gets replaced before the statement is sent to N1QL by the replaceSyncTokens methods.
 var syncNoXattr = fmt.Sprintf("%s.%s", base.KeyspaceQueryToken, base.SyncPropertyName)
+var syncNoXattrQuery = fmt.Sprintf("%s.%s", base.KeyspaceQueryAlias, base.SyncPropertyName)
 var syncXattr = "meta().xattrs." + base.SyncXattrName
 var syncXattrQuery = fmt.Sprintf("meta(%s).xattrs.%s", base.KeyspaceQueryAlias, base.SyncXattrName) // Replacement for $sync token for xattr queries
 
@@ -483,7 +484,7 @@ func replaceSyncTokensQuery(statement string, useXattrs bool) string {
 	if useXattrs {
 		return strings.Replace(statement, syncToken, syncXattrQuery, -1)
 	} else {
-		return strings.Replace(statement, syncToken, syncNoXattr, -1)
+		return strings.Replace(statement, syncToken, syncNoXattrQuery, -1)
 	}
 }
 

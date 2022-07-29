@@ -37,7 +37,7 @@ func TestInitializeIndexes(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(fmt.Sprintf("xattrs=%v", test.xattrs), func(t *testing.T) {
-			db := setupTestDB(t)
+			db := setupTestDBWithOptions(t, DatabaseContextOptions{EnableXattr: test.xattrs})
 			defer db.Close()
 
 			n1qlStore, isGoCBBucket := base.AsN1QLStore(db.Bucket)
