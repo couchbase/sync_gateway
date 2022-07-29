@@ -4954,6 +4954,11 @@ func TestTombstoneCompactionPurgeInterval(t *testing.T) {
 			require.NoError(t, err)
 
 			// Check purge interval is as expected
+			if !base.TestUseXattrs() {
+				// Not using xattrs should cause compaction to not run therefore not changing purge interval
+				assert.EqualValues(t, test.dbPurgeInterval, dbc.PurgeInterval)
+				return
+			}
 			assert.EqualValues(t, test.expectedPurgeIntervalAfterCompact, dbc.PurgeInterval)
 		})
 	}
