@@ -157,11 +157,9 @@ func DefaultCacheOptions() CacheOptions {
 // notifyChange is an optional function that will be called to notify of channel changes.
 // After calling Init(), you must call .Start() to start useing the cache, otherwise it will be in a locked state
 // and callers will block on trying to obtain the lock.
-func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Set), options *CacheOptions) error {
+func (c *changeCache) Init(logCtx context.Context, dbcontext *DatabaseContext, notifyChange func(base.Set), options *CacheOptions) error {
 	c.context = dbcontext
-	c.logCtx = context.WithValue(context.Background(), base.LogContextKey{}, base.LogContext{
-		CorrelationID: "changeCache:" + base.MD(dbcontext.Name).Redact(),
-	})
+	c.logCtx = logCtx
 
 	c.notifyChange = notifyChange
 	c.receivedSeqs = make(map[uint64]struct{})
