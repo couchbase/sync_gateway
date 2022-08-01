@@ -10,7 +10,7 @@ name: ci
 
 on:
   push:
-    branches: 
+    branches:
       - 'master'
       - 'release/*'
       - 'CBG*'
@@ -36,6 +36,8 @@ jobs:
         run: go vet "./..."
       - name: go-build
         run: go build "./..."
+      - name: golangci-lint
+        run: golangci-lint run ./...
 
   test:
     runs-on: ${{ matrix.os }}
