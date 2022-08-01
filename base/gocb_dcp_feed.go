@@ -24,7 +24,7 @@ func getHighSeqMetadata(bucket Bucket) ([]DCPMetadata, error) {
 
 	vbUUIDs, highSeqNos, statsErr := store.GetStatsVbSeqno(numVbuckets, true)
 	if statsErr != nil {
-		return nil, fmt.Errorf("Unable to obtain high seqnos for one-shot DCP feed: %w", statsErr)
+		return nil, fmt.Errorf("Unable to obtain high seqnos for DCP feed: %w", statsErr)
 	}
 
 	metadata := make([]DCPMetadata, numVbuckets)
@@ -39,8 +39,8 @@ func getHighSeqMetadata(bucket Bucket) ([]DCPMetadata, error) {
 	return metadata, nil
 }
 
-// StartGOCB2DCPFeed starts a DCP Feed.
-func StartGOCB2DCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
+// StartGocbDCPFeed starts a DCP Feed.
+func StartGocbDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
 	metadata, err := getHighSeqMetadata(bucket)
 	if err != nil {
 		return err
@@ -65,33 +65,33 @@ func StartGOCB2DCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgumen
 	doneChan, err := dcpClient.Start()
 	loggingCtx := context.TODO()
 	if err != nil {
-		ErrorfCtx(loggingCtx, "Failed to start caching DCP Feed %q for bucket %q: %w", feedName, MD(bucketName), err)
+		ErrorfCtx(loggingCtx, "Failed to start DCP Feed %q for bucket %q: %w", feedName, MD(bucketName), err)
 		closeErr := dcpClient.Close()
-		ErrorfCtx(loggingCtx, "Close error from caching DCP Feed %q for bucket %q: %w", feedName, MD(bucketName), closeErr)
+		ErrorfCtx(loggingCtx, "Close error from DCP Feed %q for bucket %q: %w", feedName, MD(bucketName), closeErr)
 		return err
 	}
-	InfofCtx(loggingCtx, KeyDCP, "Started caching DCP Feed %q for bucket %q", feedName, MD(bucketName))
+	InfofCtx(loggingCtx, KeyDCP, "Started DCP Feed %q for bucket %q", feedName, MD(bucketName))
 	go func() {
 		select {
 		case dcpCloseError := <-doneChan:
 			// This is a close because DCP client closed on its own
-			InfofCtx(loggingCtx, KeyDCP, "Forced closed caching DCP Feed %q for %q", feedName, MD(bucketName))
+			InfofCtx(loggingCtx, KeyDCP, "Forced closed DCP Feed %q for %q", feedName, MD(bucketName))
 			// wait for channel close
 			<-doneChan
 			if dcpCloseError != nil {
-				WarnfCtx(loggingCtx, "Error on closing caching DCP Feed %q for %q: %w", feedName, MD(bucketName), dcpCloseError)
+				WarnfCtx(loggingCtx, "Error on closing DCP Feed %q for %q: %w", feedName, MD(bucketName), dcpCloseError)
 			}
 			// FIXME: close dbContext here
 			break
 		case <-args.Terminator:
-			InfofCtx(loggingCtx, KeyDCP, "Closing caching DCP Feed %q for bucket %q based on termination notification", feedName, MD(bucketName))
+			InfofCtx(loggingCtx, KeyDCP, "Closing DCP Feed %q for bucket %q based on termination notification", feedName, MD(bucketName))
 			dcpCloseErr := dcpClient.Close()
 			if dcpCloseErr != nil {
-				WarnfCtx(loggingCtx, "Error on closing caching DCP Feed %q for %q: %w", feedName, MD(bucketName), dcpCloseErr)
+				WarnfCtx(loggingCtx, "Error on closing DCP Feed %q for %q: %w", feedName, MD(bucketName), dcpCloseErr)
 			}
 			dcpCloseErr = <-doneChan
 			if dcpCloseErr != nil {
-				WarnfCtx(loggingCtx, "Error on closing caching DCP Feed %q for %q: %w", feedName, MD(bucketName), dcpCloseErr)
+				WarnfCtx(loggingCtx, "Error on closing DCP Feed %q for %q: %w", feedName, MD(bucketName), dcpCloseErr)
 			}
 			break
 		}
