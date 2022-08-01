@@ -94,7 +94,7 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 	case DCPMetadataInMemory:
 		client.metadata = NewDCPMetadataMem(numVbuckets)
 	default:
-		panic(fmt.Sprintf("Unknown Metadatatype: %d", options.MetadataStoreType))
+		return nil, fmt.Errorf("Unknown Metadatatype: %d", options.MetadataStoreType)
 	}
 	if options.InitialMetadata != nil {
 		for vbID, meta := range options.InitialMetadata {
