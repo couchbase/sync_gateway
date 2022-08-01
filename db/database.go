@@ -344,7 +344,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	)
 
 	dbContext.EventMgr = NewEventManager()
-	logCtx := context.TODO()
+	logCtx := context.WithValue(context.Background(), base.LogContextKey{}, base.LogContext{
+		CorrelationID: "db:" + base.MD(dbName).Redact(),
+	})
 
 	var err error
 	dbContext.sequences, err = newSequenceAllocator(bucket, dbContext.DbStats.Database())
@@ -376,6 +378,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	// Initialize the ChangeCache.  Will be locked and unusable until .Start() is called (SG #3558)
 	err = dbContext.changeCache.Init(
+		logCtx,
 		dbContext,
 		notifyChange,
 		options.CacheOptions,
