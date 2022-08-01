@@ -63,6 +63,7 @@ func StartGocbDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgument
 			// address in CBG-2232
 			MetadataStoreType: DCPMetadataInMemory,
 			InitialMetadata:   metadata,
+			DbStats:           dbStats,
 		},
 		bucket,
 		"")

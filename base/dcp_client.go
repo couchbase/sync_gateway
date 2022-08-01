@@ -3,6 +3,7 @@ package base
 import (
 	"context"
 	"errors"
+	"expvar"
 	"fmt"
 	"math"
 	"sync"
@@ -44,6 +45,7 @@ type DCPClient struct {
 	failOnRollback             bool                           // When true, close when rollback detected
 	checkpointPrefix           string                         // DCP checkpoint key prefix
 	checkpointPersistFrequency *time.Duration                 // Used to override the default checkpoint persistence frequency
+	dbStats                    *expvar.Map                    // Stats for database
 }
 
 type DCPClientOptions struct {
@@ -53,6 +55,7 @@ type DCPClientOptions struct {
 	InitialMetadata            []DCPMetadata        // When set, will be used as initial metadata for the DCP feed.  Will override any persisted metadata
 	CheckpointPersistFrequency *time.Duration       // Overrides metadata persistence frequency - intended for test use
 	MetadataStoreType          DCPMetadataStoreType // Option for metadata storage model, in memory or peristent.
+	DbStats                    *expvar.Map          // Optional stats
 }
 
 func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket Bucket, groupID string) (*DCPClient, error) {
@@ -82,6 +85,7 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 		doneChannel:      make(chan error, 1),
 		failOnRollback:   options.FailOnRollback,
 		checkpointPrefix: DCPCheckpointPrefixWithGroupID(groupID),
+		dbStats:          options.DbStats,
 	}
 
 	// Initialize active vbuckets
@@ -335,6 +339,9 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) (err error) {
 }
 
 func (dc *DCPClient) rollback(vbID uint16) (err error) {
+	if dc.dbStats != nil {
+		dc.dbStats.Add("dcp_rollback_count", 1)
+	}
 	dc.metadata.Rollback(vbID)
 	return nil
 }
