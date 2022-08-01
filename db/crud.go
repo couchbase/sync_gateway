@@ -291,11 +291,11 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 
 	isAuthorized, redactedRev := db.authorizeUserForChannels(docid, revision.RevID, revision.Channels, revision.Deleted, requestedHistory)
 	if !isAuthorized {
-		if db.ForceAPIForbiddenErrors() {
-			base.InfofCtx(db.Ctx, base.KeyCRUD, "Not authorized to view doc: %s %s", base.UD(docid), base.MD(revid))
+		if revid == "" {
 			return DocumentRevision{}, ErrForbidden
 		}
-		if revid == "" {
+		if db.ForceAPIForbiddenErrors() {
+			base.InfofCtx(db.Ctx, base.KeyCRUD, "Not authorized to view doc: %s %s", base.UD(docid), base.MD(revid))
 			return DocumentRevision{}, ErrForbidden
 		}
 		return redactedRev, nil
