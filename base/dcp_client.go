@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -15,8 +16,10 @@ import (
 //
 
 const openStreamTimeout = 30 * time.Second
-const openRetryCount = 10
+const openRetryCount = uint32(10)
 const defaultNumWorkers = 8
+
+const infiniteOpenStreamRetries = uint32(math.MaxUint32)
 
 type endStreamCallbackFunc func(e endStreamEvent)
 
@@ -131,7 +134,7 @@ func (dc *DCPClient) Start() (doneChan chan error, err error) {
 	dc.startWorkers()
 
 	for i := uint16(0); i < dc.numVbuckets; i++ {
-		openErr := dc.openStream(i)
+		openErr := dc.openStream(i, openRetryCount)
 		if openErr != nil {
 			return dc.doneChannel, fmt.Errorf("Unable to start DCP client, error opening stream for vb %d: %w", i, openErr)
 		}
@@ -282,11 +285,12 @@ func (dc *DCPClient) startWorkers() {
 	}
 }
 
-func (dc *DCPClient) openStream(vbID uint16) (err error) {
+func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) (err error) {
 
 	logCtx := context.TODO()
 	var openStreamErr error
-	for i := 0; i < openRetryCount; i++ {
+	var attempts uint32
+	for {
 		// Cancel open for stopped client
 		select {
 		case <-dc.terminator:
@@ -319,6 +323,12 @@ func (dc *DCPClient) openStream(vbID uint16) (err error) {
 			WarnfCtx(logCtx, "Error opening stream for vbID %d: %v", vbID, openStreamErr)
 			return openStreamErr
 		}
+		if maxRetries == infiniteOpenStreamRetries {
+			continue
+		} else if attempts > maxRetries {
+			break
+		}
+		attempts++
 	}
 
 	return fmt.Errorf("openStream failed to complete after %d attempts, last error: %w", openRetryCount, openStreamErr)
@@ -428,7 +438,11 @@ func (dc *DCPClient) onStreamEnd(e endStreamEvent) {
 	if errors.Is(e.err, gocbcore.ErrDCPStreamStateChanged) || errors.Is(e.err, gocbcore.ErrDCPStreamTooSlow) ||
 		errors.Is(e.err, gocbcore.ErrDCPStreamDisconnected) {
 		InfofCtx(logCtx, KeyDCP, "Stream (vb:%d) closed by server, will reconnect.  Reason: %v", e.vbID, e.err)
-		err := dc.openStream(e.vbID)
+		retries := infiniteOpenStreamRetries
+		if dc.oneShot {
+			retries = openRetryCount
+		}
+		err := dc.openStream(e.vbID, retries)
 		if err != nil {
 			dc.fatalError(fmt.Errorf("Stream (vb:%d) failed to reopen: %w", e.vbID, err))
 		}
