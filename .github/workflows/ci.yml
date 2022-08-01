@@ -28,12 +28,6 @@ jobs:
         with:
           go-version: 1.17.11
       - uses: actions/checkout@v2
-      - name: gofmt
-        run: |
-          gofmt -d -e . | tee gofmt.out
-          test -z "$(cat gofmt.out)"
-      - name: vet
-        run: go vet "./..."
       - name: go-build
         run: go build "./..."
       - name: golangci-lint
