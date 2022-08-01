@@ -84,3 +84,10 @@ func TestGoCBv2SecurityConfig(t *testing.T) {
 		})
 	}
 }
+
+// Regression test for CBG-2230. Ensure that we return an error, rather than nil/nil, when given an invalid path to
+// x.509 certs.
+func TestGoCBCoreAuthConfigInvalidPaths(t *testing.T) {
+	_, err := GoCBCoreAuthConfig("", "", "/non/existent/cert", "/non/existent/key")
+	assert.Error(t, err)
+}
