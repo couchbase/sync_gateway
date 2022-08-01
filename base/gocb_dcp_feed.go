@@ -29,12 +29,18 @@ func getHighSeqMetadata(bucket Bucket) ([]DCPMetadata, error) {
 
 	metadata := make([]DCPMetadata, numVbuckets)
 	for vbNo := uint16(0); vbNo < numVbuckets; vbNo++ {
+		highSeqNo := gocbcore.SeqNo(highSeqNos[vbNo])
 		metadata[vbNo].VbUUID = gocbcore.VbUUID(vbUUIDs[vbNo])
-		metadata[vbNo].FailoverEntries = make([]gocbcore.FailoverEntry, 0)
-		metadata[vbNo].StartSeqNo = gocbcore.SeqNo(highSeqNos[vbNo])
+		metadata[vbNo].FailoverEntries = []gocbcore.FailoverEntry{
+			{
+				VbUUID: gocbcore.VbUUID(vbUUIDs[vbNo]),
+				SeqNo:  highSeqNo,
+			},
+		}
+		metadata[vbNo].StartSeqNo = highSeqNo
 		metadata[vbNo].EndSeqNo = gocbcore.SeqNo(uint64(0xFFFFFFFFFFFFFFFF))
-		metadata[vbNo].SnapStartSeqNo = gocbcore.SeqNo(highSeqNos[vbNo])
-		metadata[vbNo].SnapEndSeqNo = gocbcore.SeqNo(highSeqNos[vbNo])
+		metadata[vbNo].SnapStartSeqNo = highSeqNo
+		metadata[vbNo].SnapEndSeqNo = highSeqNo
 	}
 	return metadata, nil
 }
