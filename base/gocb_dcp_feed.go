@@ -60,8 +60,10 @@ func StartGocbDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgument
 		feedName,
 		callback,
 		DCPClientOptions{
+			// address in CBG-2232
 			MetadataStoreType: DCPMetadataInMemory,
-			InitialMetadata:   metadata},
+			InitialMetadata:   metadata,
+		},
 		bucket,
 		"")
 	if err != nil {
@@ -72,15 +74,20 @@ func StartGocbDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgument
 	loggingCtx := context.TODO()
 	if err != nil {
 		ErrorfCtx(loggingCtx, "Failed to start DCP Feed %q for bucket %q: %w", feedName, MD(bucketName), err)
+		// simplify in CBG-2234
 		closeErr := dcpClient.Close()
-		ErrorfCtx(loggingCtx, "Close error from DCP Feed %q for bucket %q: %w", feedName, MD(bucketName), closeErr)
+		if closeErr != nil {
+			ErrorfCtx(loggingCtx, "Close error from DCP Feed %q for bucket %q: %w", feedName, MD(bucketName), closeErr)
+		}
 		return err
 	}
 	InfofCtx(loggingCtx, KeyDCP, "Started DCP Feed %q for bucket %q", feedName, MD(bucketName))
 	go func() {
 		select {
 		case dcpCloseError := <-doneChan:
-			// This is a close because DCP client closed on its own
+			// simplify close in CBG-2234
+			// This is a close because DCP client closed on its own, which should never happen since once
+			// DCP feed is started, there is nothing that will close it
 			InfofCtx(loggingCtx, KeyDCP, "Forced closed DCP Feed %q for %q", feedName, MD(bucketName))
 			// wait for channel close
 			<-doneChan
