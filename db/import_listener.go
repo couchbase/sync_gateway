@@ -80,8 +80,7 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 	// TODO: need to clean up StartDCPFeed to push bucket dependencies down
 	cbStore, ok := base.AsCouchbaseStore(bucket)
 	if !ok || !base.IsEnterpriseEdition() {
-		// Non-couchbase bucket or CE, start a non-sharded feed
-		return bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
+		return base.StartDCPFeed(bucket, cbStore.GetSpec(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
 	} else {
 		il.cbgtContext, err = base.StartShardedDCPFeed(dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater, bucket, cbStore.GetSpec(), dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
 		return err
