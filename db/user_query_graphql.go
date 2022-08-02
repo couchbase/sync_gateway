@@ -136,16 +136,16 @@ func (config *GraphQLConfig) Validate() error {
 func (config *GraphQLConfig) getSchema() (string, error) {
 	if config.Schema != nil {
 		if config.SchemaFile != nil {
-			return "", &GraphQLConfigError{fmt.Errorf("Only one of `schema` and `schemaFile` may be used")}
+			return "", &GraphQLConfigError{fmt.Errorf("only one of `schema` and `schemaFile` may be used")}
 		}
 		return *config.Schema, nil
 	} else {
 		if config.SchemaFile == nil {
-			return "", &GraphQLConfigError{fmt.Errorf("Either `schema` or `schemaFile` must be defined")}
+			return "", &GraphQLConfigError{fmt.Errorf("either `schema` or `schemaFile` must be defined")}
 		}
 		src, err := os.ReadFile(*config.SchemaFile)
 		if err != nil {
-			return "", &GraphQLConfigError{fmt.Errorf("Can't read schemaFile %s: %w", *config.SchemaFile, err)}
+			return "", &GraphQLConfigError{fmt.Errorf("can't read schemaFile %s: %w", *config.SchemaFile, err)}
 		}
 		return string(src), nil
 	}
@@ -198,23 +198,17 @@ func (res *graphQLResolver) Resolve(db *Database, params *graphql.ResolveParams,
 	//   `resultFields` is not provided (directly) by ResolveInfo; it contains the fields of the
 	// resolver's result that will be used by the query (other fields will just be ignored.)
 	// This enables some important optimizations.
-	type jsGQResolveInfo struct {
-		// FieldName      string                 `json:"fieldName"`
-		// RootValue      interface{}            `json:"rootValue"`
-		// VariableValues map[string]interface{} `json:"variableValues"`
-		ResultFields []string `json:"resultFields"`
-	}
-	info := jsGQResolveInfo{
+	info := map[string]interface{}{
 		// FieldName:      params.Info.FieldName,
 		// RootValue:      params.Info.RootValue,
 		// VariableValues: params.Info.VariableValues,
-		ResultFields: resultFields,
+		"resultFields": resultFields,
 	}
 
 	return res.WithTask(func(task sgbucket.JSServerTask) (interface{}, error) {
 		runner := task.(*javaScriptRunner)
 		runner.currentDB = db
 		runner.mutationAllowed = mutationAllowed
-		return task.Call(params.Source, params.Args, newUserFunctionJSContext(db), &info)
+		return task.Call(params.Source, params.Args, newUserFunctionJSContext(db), info)
 	})
 }

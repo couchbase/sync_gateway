@@ -44,21 +44,45 @@ var kTestGraphQLConfig = GraphQLConfig{
 	Schema: &kTestGraphQLSchema,
 	Resolvers: map[string]GraphQLResolverConfig{
 		"Query": {
-			"task": `var all = context.app.func("all");
+			"task": `if (Object.keys(parent).length != 0) throw "Unexpected parent";
+					 if (Object.keys(args).length != 1) throw "Unexpected args";
+					 if (Object.keys(info) != "resultFields") throw "Unexpected info";
+					 if (!context.user) throw "Missing context.user";
+					 if (!context.app) throw "Missing context.app";
+					 var all = context.app.func("all");
 					 for (var i = 0; i < all.length; i++)
 					  	if (all[i].id == args.id) return all[i];
 					 return undefined;`,
-			"tasks": `return context.app.func("all");`,
-			"toDo": `var result=new Array(); var all = context.app.func("all");
+			"tasks": `if (Object.keys(parent).length != 0) throw "Unexpected parent";
+		  			  if (Object.keys(args).length != 0) throw "Unexpected args";
+					  if (Object.keys(info) != "resultFields") throw "Unexpected info";
+					  if (!context.user) throw "Missing context.user";
+					  if (!context.app) throw "Missing context.app";
+					  return context.app.func("all");`,
+			"toDo": `if (Object.keys(parent).length != 0) throw "Unexpected parent";
+					 if (Object.keys(args).length != 1) throw "Unexpected args";
+					 if (Object.keys(info) != "resultFields") throw "Unexpected info";
+					 if (!context.user) throw "Missing context.user";
+					 if (!context.app) throw "Missing context.app";
+					 var result=new Array(); var all = context.app.func("all");
 					 for (var i = 0; i < all.length; i++)
 						if (!all[i].done) result.push(all[i]);
 					 return result;`,
 		},
 		"Mutation": {
-			"complete": `context.app.save(args.id, {id:args.id,done:true}); return args.id;`,
+			"complete": `if (Object.keys(parent).length != 0) throw "Unexpected parent";
+						 if (Object.keys(args).length != 1) throw "Unexpected args";
+						 if (Object.keys(info) != "resultFields") throw "Unexpected info";
+						 if (!context.user) throw "Missing context.user";
+						 if (!context.app) throw "Missing context.app";
+						 context.app.save(args.id, {id:args.id,done:true}); return args.id;`,
 		},
 		"Task": {
-			"secretNotes": `if (typeof(parent) != "object") throw "Invalid parent";
+			"secretNotes": `if (!parent.id) throw "Invalid parent";
+							if (Object.keys(args).length != 0) throw "Unexpected args";
+							if (Object.keys(info) != "resultFields") throw "Unexpected info";
+							if (!context.user) throw "Missing context.user";
+							if (!context.app) throw "Missing context.app";
 							context.user.requireAdmin();
 							return "TOP SECRET!";`,
 		},
@@ -94,6 +118,8 @@ func assertGraphQLResult(t *testing.T, expected string, result *graphql.Result, 
 	assert.Equal(t, expected, string(j))
 }
 
+// Per the spec, GraphQL errors are not indicated via `err`, rather through an `errors`
+// property in the `result` object.
 func assertGraphQLError(t *testing.T, expectedErrorText string, result *graphql.Result, err error) {
 	if !assert.NoError(t, err) || !assert.NotNil(t, result) {
 		return
