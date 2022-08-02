@@ -231,7 +231,7 @@ func (db *DatabaseContext) getOldRevisionJSON(ctx context.Context, docid string,
 	data, _, err := db.Bucket.GetRaw(oldRevisionKey(docid, revid))
 	if base.IsDocNotFoundError(err) {
 		base.DebugfCtx(ctx, base.KeyCRUD, "No old revision %q / %q", base.UD(docid), revid)
-		err = base.HTTPErrorf(404, "missing")
+		err = ErrMissing
 	}
 	if data != nil {
 		// Strip out the non-JSON prefix
