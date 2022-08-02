@@ -25,7 +25,7 @@ func (h *handler) handleUserQuery() error {
 		return err
 	}
 	// Run the query:
-	results, err := h.db.UserQuery(queryName, queryParams)
+	results, err := h.db.UserN1QLQuery(queryName, queryParams)
 	if err != nil {
 		return err
 	}

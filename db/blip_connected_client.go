@@ -102,7 +102,7 @@ func (bh *blipHandler) handleQuery(rq *blip.Message) error {
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("name: %s", name))
 
 	// Run the query:
-	results, err := bh.db.UserQuery(name, requestParams)
+	results, err := bh.db.UserN1QLQuery(name, requestParams)
 	if err != nil {
 		return err
 	}

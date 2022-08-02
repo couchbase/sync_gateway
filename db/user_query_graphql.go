@@ -178,14 +178,14 @@ type graphQLResolver struct {
 // and mutationAllowed is true iff the resolver is allowed to make changes to the database;
 // the `save` callback checks this.
 func (res *graphQLResolver) Resolve(db *Database, params *graphql.ResolveParams, mutationAllowed bool) (interface{}, error) {
-	// Collect the 'subfields', the fields the query wants from the value being resolved:
-	subfields := []string{}
+	// Collect the 'resultFields', the fields the query wants from the value being resolved:
+	resultFields := []string{}
 	if len(params.Info.FieldASTs) > 0 {
 		if set := params.Info.FieldASTs[0].SelectionSet; set != nil {
 			for _, sel := range set.Selections {
 				if subfield, ok := sel.(*ast.Field); ok {
 					if subfield.Name.Kind == "Name" {
-						subfields = append(subfields, subfield.Name.Value)
+						resultFields = append(resultFields, subfield.Name.Value)
 					}
 				}
 			}
@@ -193,19 +193,22 @@ func (res *graphQLResolver) Resolve(db *Database, params *graphql.ResolveParams,
 	}
 	//log.Printf("-- %q : subfields = %v", params.Info.FieldName, subfields)
 
-	// The `info` parameter passed to the JS function.
-	// The fields are a subset of graphql.ResolveInfo.
+	// The `info` parameter passed to the JS function; fields are a subset of graphql.ResolveInfo.
+	// NOTE: We've removed these fields until we get feedback that they're needed by developers.
+	//   `resultFields` is not provided (directly) by ResolveInfo; it contains the fields of the
+	// resolver's result that will be used by the query (other fields will just be ignored.)
+	// This enables some important optimizations.
 	type jsGQResolveInfo struct {
-		FieldName      string                 `json:"fieldName"`
-		RootValue      interface{}            `json:"rootValue"`
-		VariableValues map[string]interface{} `json:"variableValues"`
-		Subfields      []string               `json:"subfields"`
+		// FieldName      string                 `json:"fieldName"`
+		// RootValue      interface{}            `json:"rootValue"`
+		// VariableValues map[string]interface{} `json:"variableValues"`
+		ResultFields []string `json:"resultFields"`
 	}
 	info := jsGQResolveInfo{
-		FieldName:      params.Info.FieldName,
-		RootValue:      params.Info.RootValue,
-		VariableValues: params.Info.VariableValues,
-		Subfields:      subfields,
+		// FieldName:      params.Info.FieldName,
+		// RootValue:      params.Info.RootValue,
+		// VariableValues: params.Info.VariableValues,
+		ResultFields: resultFields,
 	}
 
 	return res.WithTask(func(task sgbucket.JSServerTask) (interface{}, error) {
@@ -215,6 +218,3 @@ func (res *graphQLResolver) Resolve(db *Database, params *graphql.ResolveParams,
 		return task.Call(params.Source, params.Args, newUserFunctionJSContext(db), &info)
 	})
 }
-
-// Number of ResolverRunner tasks (and Otto contexts) to cache for this resolver
-const kGQTaskCacheSize = 2

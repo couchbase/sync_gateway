@@ -188,7 +188,7 @@ func (runner *javaScriptRunner) do_graphql(query string, params map[string]inter
 func (runner *javaScriptRunner) do_query(queryName string, params map[string]interface{}) ([]interface{}, error) {
 	//log.Printf("*** UserFn query(%q, %+v)", queryName, params)
 
-	results, err := runner.currentDB.UserQuery(queryName, params)
+	results, err := runner.currentDB.UserN1QLQuery(queryName, params)
 	if err != nil {
 		return nil, err
 	}

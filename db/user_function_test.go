@@ -57,7 +57,7 @@ var kUserFunctionConfig = UserFunctionMap{
 	},
 	"user_only": &UserFunctionConfig{
 		SourceCode: `if (!context.user.name) throw "No user"; return context.user.name;`,
-		Allow:      allowAll,
+		Allow:      &UserQueryAllow{Channels: []string{"user-$(context.user.name)"}},
 	},
 	"alice_only": &UserFunctionConfig{
 		SourceCode: `context.user.requireName("alice"); return "OK";`,
@@ -97,7 +97,7 @@ func addUserAlice(t *testing.T, db *Database) auth.User {
 	assert.NoError(t, err)
 	assert.NoError(t, authenticator.Save(villain))
 
-	user, err := authenticator.NewUser("alice", "pass", base.SetOf("wonderland", "lookingglass", "city-London"))
+	user, err := authenticator.NewUser("alice", "pass", base.SetOf("wonderland", "lookingglass", "city-London", "user-alice"))
 	assert.NoError(t, err)
 	user.SetExplicitRoles(channels.TimedSet{"hero": channels.NewVbSimpleSequence(1)}, 1)
 	assert.NoError(t, authenticator.Save(user), "Save")
@@ -264,11 +264,13 @@ func TestUserFunctionAllow(t *testing.T) {
 		"BREAD": "Baguette",
 		"YEAR":  2020,
 		"WORDS": []string{"ouais", "fromage", "amour"},
-		"user": &userQueryUserInfo{
-			Name:     "maurice",
-			Email:    "maurice@academie.fr",
-			Channels: []string{"x", "y"},
-			Roles:    []string{"a", "b"},
+		"context": &userQueryContextValue{
+			User: &userQueryUserInfo{
+				Name:     "maurice",
+				Email:    "maurice@academie.fr",
+				Channels: []string{"x", "y"},
+				Roles:    []string{"a", "b"},
+			},
 		},
 	}
 
@@ -294,7 +296,7 @@ func TestUserFunctionAllow(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, ch, "sales-upTo-2020")
 
-	ch, err = allow.expandPattern("employee-$user", params)
+	ch, err = allow.expandPattern("employee-$(context.user.name)", params)
 	assert.NoError(t, err)
 	assert.Equal(t, ch, "employee-maurice")
 

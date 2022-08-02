@@ -12,6 +12,7 @@ package db
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -21,28 +22,36 @@ import (
 
 var kUserQueriesConfig = UserQueryMap{
 	"airports_in_city": &UserQueryConfig{
-		Statement:  `SELECT $city as city`,
+		Statement:  `SELECT $city AS city`,
 		Parameters: []string{"city"},
 		Allow:      &UserQueryAllow{Channels: []string{"city-$city", "allcities"}},
 	},
 	"square": &UserQueryConfig{
-		Statement:  "SELECT $numero * $numero as square",
+		Statement:  "SELECT $numero * $numero AS square",
 		Parameters: []string{"numero"},
 		Allow:      &UserQueryAllow{Channels: []string{"wonderland"}},
+	},
+	"context": &UserQueryConfig{
+		Statement: "SELECT $context AS context",
+		Allow:     &UserQueryAllow{Channels: []string{"*"}},
 	},
 	"syntax_error": &UserQueryConfig{
 		Statement: "SELEKT OOK? FR0M OOK!",
 		Allow:     allowAll,
 	},
+	"user_only": &UserQueryConfig{
+		Statement: "SELECT $context.`user`.name AS name,  $context.`user`.email AS email",
+		Allow:     &UserQueryAllow{Channels: []string{"user-$(context.user.name)"}},
+	},
 	"admin_only": &UserQueryConfig{
-		Statement: `SELECT "ok" as status`,
+		Statement: `SELECT "ok" AS status`,
 		Allow:     nil, // no 'allow' property means admin-only
 	},
 }
 
-func assertQueryResults(t *testing.T, expected string, iter sgbucket.QueryResultIterator) {
+func queryResultString(t *testing.T, iter sgbucket.QueryResultIterator) string {
 	if iter == nil {
-		return
+		return ""
 	}
 	result := []interface{}{}
 	var row interface{}
@@ -51,8 +60,16 @@ func assertQueryResults(t *testing.T, expected string, iter sgbucket.QueryResult
 	}
 	assert.NoError(t, iter.Close())
 	j, err := json.Marshal(result)
-	assert.NoError(t, err)
-	assert.Equal(t, expected, string(j))
+	if !assert.NoError(t, err) {
+		return ""
+	}
+	return string(j)
+}
+
+func assertQueryResults(t *testing.T, expected string, iter sgbucket.QueryResultIterator) {
+	if actual := queryResultString(t, iter); actual != "" {
+		assert.Equal(t, expected, actual)
+	}
 }
 
 // Unit test for user N1QL queries.
@@ -82,30 +99,30 @@ func TestUserQueries(t *testing.T) {
 
 func testUserQueriesCommon(t *testing.T, db *Database) {
 	// dynamic channel list
-	iter, err := db.UserQuery("airports_in_city", map[string]interface{}{"city": "London"})
+	iter, err := db.UserN1QLQuery("airports_in_city", map[string]interface{}{"city": "London"})
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{"city":"London"}]`, iter)
 
-	iter, err = db.UserQuery("square", map[string]interface{}{"numero": 16})
+	iter, err = db.UserN1QLQuery("square", map[string]interface{}{"numero": 16})
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{"square":256}]`, iter)
 
 	// ERRORS:
 
 	// Missing a parameter:
-	_, err = db.UserQuery("square", nil)
+	_, err = db.UserN1QLQuery("square", nil)
 	assertHTTPError(t, err, 400)
 	assert.ErrorContains(t, err, "numero")
 	assert.ErrorContains(t, err, "square")
 
 	// Extra parameter:
-	_, err = db.UserQuery("square", map[string]interface{}{"numero": 42, "number": 0})
+	_, err = db.UserN1QLQuery("square", map[string]interface{}{"numero": 42, "number": 0})
 	assertHTTPError(t, err, 400)
 	assert.ErrorContains(t, err, "number")
 	assert.ErrorContains(t, err, "square")
 
 	// Function definition has a syntax error:
-	_, err = db.UserQuery("syntax_error", nil)
+	_, err = db.UserN1QLQuery("syntax_error", nil)
 	assertHTTPError(t, err, 500)
 	assert.ErrorContains(t, err, "syntax_error")
 }
@@ -113,32 +130,52 @@ func testUserQueriesCommon(t *testing.T, db *Database) {
 func testUserQueriesAsAdmin(t *testing.T, db *Database) {
 	testUserQueriesCommon(t, db)
 
+	iter, err := db.UserN1QLQuery("context", nil)
+	assert.NoError(t, err)
+	assertQueryResults(t, `[{"context":{}}]`, iter)
+
 	// admin only:
-	iter, err := db.UserQuery("admin_only", nil)
+	iter, err = db.UserN1QLQuery("admin_only", nil)
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{"status":"ok"}]`, iter)
+
+	iter, err = db.UserN1QLQuery("user_only", nil)
+	assert.NoError(t, err)
+	assertQueryResults(t, `[{}]`, iter)
 
 	// ERRORS:
 
 	// No such query:
-	_, err = db.UserQuery("xxxx", nil)
+	_, err = db.UserN1QLQuery("xxxx", nil)
 	assertHTTPError(t, err, 404)
 }
 
 func testUserQueriesAsUser(t *testing.T, db *Database) {
 	testUserQueriesCommon(t, db)
 
+	iter, err := db.UserN1QLQuery("context", nil)
+	assert.NoError(t, err)
+	// (Can't compare the entire result string because the order of items in the "channels" array
+	// is undefined and can change from one run to another.)
+	resultStr := queryResultString(t, iter)
+	assert.True(t, strings.HasPrefix(resultStr, `[{"context":{"user":{"channels":["`))
+	assert.True(t, strings.HasSuffix(resultStr, `"],"email":"","name":"alice","roles":["hero"]}}}]`))
+
+	iter, err = db.UserN1QLQuery("user_only", nil)
+	assert.NoError(t, err)
+	assertQueryResults(t, `[{"email":"","name":"alice"}]`, iter)
+
 	// ERRORS:
 
 	// Not allowed (admin only):
-	_, err := db.UserQuery("admin_only", nil)
+	_, err = db.UserN1QLQuery("admin_only", nil)
 	assertHTTPError(t, err, 403)
 
 	// Not allowed (dynamic channel list):
-	_, err = db.UserQuery("airports_in_city", map[string]interface{}{"city": "Chicago"})
+	_, err = db.UserN1QLQuery("airports_in_city", map[string]interface{}{"city": "Chicago"})
 	assertHTTPError(t, err, 403)
 
 	// No such query:
-	_, err = db.UserQuery("xxxx", nil)
+	_, err = db.UserN1QLQuery("xxxx", nil)
 	assertHTTPError(t, err, 403) // not 404 as for an admin
 }

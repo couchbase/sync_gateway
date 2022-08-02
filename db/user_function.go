@@ -34,20 +34,23 @@ type UserFunctionConfig struct {
 
 //////// RUNNING A USER FUNCTION:
 
-func (db *Database) CallUserFunction(name string, params map[string]interface{}, mutationAllowed bool) (interface{}, error) {
+func (db *Database) CallUserFunction(name string, args map[string]interface{}, mutationAllowed bool) (interface{}, error) {
 	// Look up the function by name:
 	config, found := db.Options.UserFunctions[name]
 	if !found {
 		return nil, missingError(db.user, "function", name)
 	}
 
-	// Check that the user is authorized:
-	if err := config.Allow.authorize(db.user, params, "function", name); err != nil {
+	// Validate the query arguments:
+	if args == nil {
+		args = map[string]interface{}{}
+	}
+	if err := db.checkQueryArguments(args, config.Parameters, "function", name); err != nil {
 		return nil, err
 	}
 
-	// Make sure each specified parameter has a value in `params`:
-	if err := checkQueryArguments(params, config.Parameters, "function", name); err != nil {
+	// Check that the user is authorized:
+	if err := config.Allow.authorize(db.user, args, "function", name); err != nil {
 		return nil, err
 	}
 
@@ -65,7 +68,7 @@ func (db *Database) CallUserFunction(name string, params map[string]interface{},
 		runner := task.(*javaScriptRunner)
 		runner.currentDB = db
 		runner.mutationAllowed = mutationAllowed
-		return task.Call(params, newUserFunctionJSContext(db))
+		return task.Call(args, newUserFunctionJSContext(db))
 	})
 }
 
