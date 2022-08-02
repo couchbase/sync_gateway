@@ -4346,8 +4346,8 @@ func TestDeleteDatabasePointingAtSameBucket(t *testing.T) {
 }
 
 func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
+	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
+		t.Skip("This test only works against Couchbase Server with xattrs")
 	}
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 	// Start SG with no databases in bucket(s)
