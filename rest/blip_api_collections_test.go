@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/require"
@@ -152,4 +153,78 @@ func TestBlipGetCollections(t *testing.T) {
 			require.Equal(t, testCase.resultBody, checkpoints)
 		})
 	}
+}
+
+func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		guestEnabled: true,
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				Scopes: ScopesConfig{
+					"fooScope": ScopeConfig{
+						Collections: map[string]CollectionConfig{
+							"fooCollection": {},
+						},
+					},
+				},
+			},
+		},
+		createScopesAndCollections: true,
+	})
+
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	require.NoError(t, err)
+	defer btc.Close()
+
+	checkpointID1 := "checkpoint1"
+	checkpoint1Body := db.Body{"seq": "123"}
+	dbInstance := db.Database{DatabaseContext: rt.GetDatabase()}
+	revID, err := dbInstance.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
+	require.NoError(t, err)
+	checkpoint1RevID := "0-1"
+	require.Equal(t, checkpoint1RevID, revID)
+	getCollectionsRequest, err := db.NewGetCollectionsMessage(db.GetCollectionsRequestBody{
+		CheckpointIDs: []string{checkpointID1},
+		Collections:   []string{"fooScope.fooCollection"},
+	})
+
+	require.NoError(t, err)
+
+	require.NoError(t, btc.pushReplication.sendMsg(getCollectionsRequest))
+
+	// Check that the response we got back was processed by the GetCollections
+	resp := getCollectionsRequest.Response()
+	require.NotNil(t, resp)
+	errorCode, hasErrorCode := resp.Properties[db.BlipErrorCode]
+	require.False(t, hasErrorCode)
+	require.Equal(t, errorCode, "")
+	var checkpoints []db.Body
+	err = resp.ReadJSONBody(&checkpoints)
+	require.NoErrorf(t, err, "Actual error %+v", checkpoints)
+	require.Equal(t, []db.Body{checkpoint1Body}, checkpoints)
+
+	// make sure other functions get called
+
+	requestGetCheckpoint := blip.NewRequest()
+	requestGetCheckpoint.SetProfile(db.MessageGetCheckpoint)
+	requestGetCheckpoint.Properties[db.BlipClient] = checkpointID1
+	requestGetCheckpoint.Properties[db.BlipCollection] = "0"
+	require.NoError(t, btc.pushReplication.sendMsg(requestGetCheckpoint))
+	resp = requestGetCheckpoint.Response()
+	require.NotNil(t, resp)
+	errorCode, hasErrorCode = resp.Properties[db.BlipErrorCode]
+	require.Equal(t, errorCode, "")
+	require.False(t, hasErrorCode)
+	var checkpoint db.Body
+	err = resp.ReadJSONBody(&checkpoint)
+	require.NoErrorf(t, err, "Actual error %+v", checkpoint)
+
+	require.Equal(t, db.Body{"seq": "123"}, checkpoint)
+
 }

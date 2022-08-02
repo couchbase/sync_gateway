@@ -344,7 +344,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	)
 
 	dbContext.EventMgr = NewEventManager()
-	logCtx := context.TODO()
+	logCtx := context.WithValue(context.Background(), base.LogContextKey{}, base.LogContext{
+		CorrelationID: "db:" + base.MD(dbName).Redact(),
+	})
 
 	var err error
 	dbContext.sequences, err = newSequenceAllocator(bucket, dbContext.DbStats.Database())
@@ -376,6 +378,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	// Initialize the ChangeCache.  Will be locked and unusable until .Start() is called (SG #3558)
 	err = dbContext.changeCache.Init(
+		logCtx,
 		dbContext,
 		notifyChange,
 		options.CacheOptions,
@@ -596,7 +599,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		// No cleanup necessary, stop heartbeater above will take care of it
 	}
 
-	dbContext.ResyncManager = NewResyncManager()
+	dbContext.ResyncManager = NewResyncManager(bucket)
 	dbContext.TombstoneCompactionManager = NewTombstoneCompactionManager()
 	dbContext.AttachmentCompactionManager = NewAttachmentCompactionManager(bucket)
 
@@ -1157,6 +1160,21 @@ func (db *Database) Compact(skipRunningStateCheck bool, callback compactCallback
 	ctx := db.Ctx
 
 	base.InfofCtx(ctx, base.KeyAll, "Starting compaction of purged tombstones for %s ...", base.MD(db.Name))
+
+	// Update metadata purge interval if not explicitly set to 0 (used in testing)
+	if db.PurgeInterval > 0 {
+		cbStore, ok := base.AsCouchbaseStore(db.Bucket)
+		if ok {
+			serverPurgeInterval, err := cbStore.MetadataPurgeInterval()
+			if err != nil {
+				base.WarnfCtx(ctx, "Unable to retrieve server's metadata purge interval - using existing purge interval. %s", err)
+			} else if serverPurgeInterval > 0 {
+				db.PurgeInterval = serverPurgeInterval
+			}
+		}
+	}
+	base.InfofCtx(ctx, base.KeyAll, "Tombstone compaction using the metadata purge interval of %.2f days.", db.PurgeInterval.Hours()/24)
+
 	purgeBody := Body{"_purged": true}
 	for {
 		purgedDocs := make([]string, 0)
@@ -1183,7 +1201,7 @@ func (db *Database) Compact(skipRunningStateCheck bool, callback compactCallback
 			purgeErr := db.Purge(tombstonesRow.Id)
 			if purgeErr == nil {
 				purgedDocs = append(purgedDocs, tombstonesRow.Id)
-			} else if base.IsKeyNotFoundError(db.Bucket, purgeErr) {
+			} else if base.IsDocNotFoundError(purgeErr) {
 				// If key no longer exists, need to add and remove to trigger removal from view
 				_, addErr := db.Bucket.Add(tombstonesRow.Id, 0, purgeBody)
 				if addErr != nil {

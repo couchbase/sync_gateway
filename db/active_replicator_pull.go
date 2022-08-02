@@ -171,10 +171,10 @@ func (apr *ActivePullReplicator) _initCheckpointer() error {
 func (apr *ActivePullReplicator) GetStatus() *ReplicationStatus {
 	var lastSeqPulled string
 	apr.lock.RLock()
+	defer apr.lock.RUnlock()
 	if apr.Checkpointer != nil {
 		lastSeqPulled = apr.Checkpointer.calculateSafeProcessedSeq()
 	}
-	apr.lock.RUnlock()
 	status := apr.getPullStatus(lastSeqPulled)
 	return status
 }

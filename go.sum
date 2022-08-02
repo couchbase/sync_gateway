@@ -83,8 +83,8 @@ github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f/go.mo
 github.com/couchbaselabs/gocaves/client v0.0.0-20211209111208-6db33aa50187/go.mod h1:AVekAZwIY2stsJOMWLAS/0uA/+qdp7pjO8EHnl61QkY=
 github.com/couchbaselabs/gocaves/client v0.0.0-20211209113245-27e13f721acf h1:Pd0DPZFJwOdCOeHE0SnpAkEJHeqvsMUfeBJVgCOZs5I=
 github.com/couchbaselabs/gocaves/client v0.0.0-20211209113245-27e13f721acf/go.mod h1:AVekAZwIY2stsJOMWLAS/0uA/+qdp7pjO8EHnl61QkY=
-github.com/couchbaselabs/walrus v0.0.0-20220725155239-d81b0db73299 h1:98ld7hcNMo1b4MPZfBcVYs7d1t8l7uLV18Hw1xDkH78=
-github.com/couchbaselabs/walrus v0.0.0-20220725155239-d81b0db73299/go.mod h1:C5TylJ1hRbYFgPnc/6gKUUPkLvkt7xDotgApqzd3dbg=
+github.com/couchbaselabs/walrus v0.0.0-20220726144228-c44d71d14a7a h1:hiVwAQnRHvo1oTYaOhNmxNg1KB0dTC9Htw/zDj0L0TU=
+github.com/couchbaselabs/walrus v0.0.0-20220726144228-c44d71d14a7a/go.mod h1:C5TylJ1hRbYFgPnc/6gKUUPkLvkt7xDotgApqzd3dbg=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

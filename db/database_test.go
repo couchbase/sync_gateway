@@ -2413,7 +2413,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 	assert.NoError(t, db.TombstoneCompactionManager.Start(map[string]interface{}{"database": db}))
 
 	waitAndAssertConditionWithOptions(t, func() bool {
-		return db.TombstoneCompactionManager.GetRunState() == BackgroundProcessStateStopped
+		return db.TombstoneCompactionManager.GetRunState(t) == BackgroundProcessStateStopped
 	}, 60, 1000)
 
 	var tombstoneCompactionStatus TombstoneManagerResponse
@@ -2479,7 +2479,7 @@ func TestImportCompactPanic(t *testing.T) {
 		CompactInterval: 1,
 	})
 	defer db.Close()
-	db.PurgeInterval = time.Millisecond
+	db.PurgeInterval = 0
 
 	// Create a document, then delete it, to create a tombstone
 	rev, doc, err := db.Put("test", Body{})
