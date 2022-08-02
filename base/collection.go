@@ -31,6 +31,11 @@ var ErrCollectionsUnsupported = errors.New("collections not supported")
 var _ sgbucket.KVStore = &Collection{}
 var _ CouchbaseStore = &Collection{}
 
+type Keyspace struct {
+	Scope      string
+	Collection string
+}
+
 // Connect to the default collection for the specified bucket
 func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 
@@ -532,7 +537,7 @@ func (c *Collection) Incr(k string, amt, def uint64, exp uint32) (uint64, error)
 }
 
 func (c *Collection) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
-	return StartGOCB2DCPFeed(c, c.Spec, args, callback, dbStats)
+	return StartGocbDCPFeed(c, c.Spec, args, callback, dbStats)
 }
 func (c *Collection) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
 	return nil, errors.New("StartTapFeed not implemented")

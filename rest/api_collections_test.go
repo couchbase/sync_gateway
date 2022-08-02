@@ -301,6 +301,6 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 	requireStatus(t, resp, http.StatusForbidden)
 
 	// TODO: This will fail until the caching DCP feed is working on the collection, as the changes feed falls into a deferred backfill.
-	// _, err := rt.waitForChanges(1, "/db/_changes", username, false)
-	// assert.NoError(t, err)
+	_, err := rt.waitForChanges(1, "/db/_changes", username, false)
+	require.NoError(t, err)
 }

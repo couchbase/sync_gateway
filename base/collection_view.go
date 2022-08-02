@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/gocbcore/v10"
@@ -139,7 +140,7 @@ type NoNameDesignDocument struct {
 
 func (c *Collection) putDDocForTombstones(ddoc *gocb.DesignDocument) error {
 	username, password, _ := c.Spec.Auth.GetCredentials()
-	agent, err := c.Bucket().Internal().IORouter()
+	agent, err := c.getGoCBAgent()
 	if err != nil {
 		return fmt.Errorf("Unable to get handle for bucket router: %v", err)
 	}
@@ -382,7 +383,48 @@ func asViewConsistency(value interface{}) gocb.ViewScanConsistency {
 }
 
 // GetGoCBAgent returns the underlying agent from gocbcore
-func (c *Collection) GetGoCBAgent() (*gocbcore.Agent, error) {
+func (c *Collection) getGoCBAgent() (*gocbcore.Agent, error) {
 	return c.Bucket().Internal().IORouter()
 
+}
+
+// getCollectionID returns the gocbcore CollectionID for the current collection
+func (c *Collection) getCollectionID() (uint32, error) {
+	agent, err := c.getGoCBAgent()
+	if err != nil {
+		return 0, err
+	}
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	var collectionID uint32
+	var callbackErr error
+	scope := *c.Spec.Scope
+	collection := *c.Spec.Collection
+	callbackFunc := func(res *gocbcore.GetCollectionIDResult, getCollectionErr error) {
+		defer wg.Done()
+		if getCollectionErr != nil {
+			callbackErr = getCollectionErr
+			return
+		}
+		if res == nil {
+			callbackErr = fmt.Errorf("getCollectionID not retrieved for %s.%s", scope, collection)
+			return
+		}
+
+		collectionID = res.CollectionID
+	}
+	_, err = agent.GetCollectionID(scope,
+		collection,
+		gocbcore.GetCollectionIDOptions{}, // FIXME: make sure to add a timeout for this operation
+		callbackFunc)
+
+	if err != nil {
+		wg.Done()
+		return 0, fmt.Errorf("GetCollectionID for %s.%s, err: %v", scope, collection, err)
+	}
+	wg.Wait()
+	if callbackErr != nil {
+		return 0, callbackErr
+	}
+	return collectionID, nil
 }
