@@ -219,7 +219,7 @@ func (dc *DCPClient) initAgent(spec BucketSpec) error {
 	agentConfig.SecurityConfig.Auth = auth
 	agentConfig.SecurityConfig.TLSRootCAProvider = tlsRootCAProvider
 	agentConfig.UserAgent = "SyncGatewayDCP"
-
+	agentConfig.IoConfig = gocbcore.IoConfig{UseCollections: true}
 	flags := memd.DcpOpenFlagProducer
 	flags |= memd.DcpOpenFlagIncludeXattrs
 	var agentErr error
