@@ -9452,6 +9452,202 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 
 }
 
+// CBG-2143: Make sure the REST API is returning forbidden errors if when unsupported config option is set
+func TestForceAPIForbiddenErrors(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyHTTP)
+	testCases := []struct {
+		forceForbiddenErrors bool
+	}{
+		{
+			forceForbiddenErrors: true,
+		},
+		{
+			forceForbiddenErrors: false,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(fmt.Sprintf("Forbidden errors %v", test.forceForbiddenErrors), func(t *testing.T) {
+			// assertRespStatus changes behaviour depending on if forcing forbidden errors
+			assertRespStatus := func(resp *TestResponse, statusIfForbiddenErrorsFalse int) {
+				if test.forceForbiddenErrors {
+					assertHTTPErrorReason(t, resp, http.StatusForbidden, "forbidden")
+					return
+				}
+				assertStatus(t, resp, statusIfForbiddenErrorsFalse)
+			}
+
+			rt := NewRestTester(t, &RestTesterConfig{
+				SyncFn: `
+				function(doc, oldDoc) {
+					if (!doc.doNotSync) {
+						access("NoPerms", "chan2");
+						access("Perms", "chan2");
+						requireAccess("chan");
+						channel(doc.channels);
+					}
+				}`,
+				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+					Unsupported: &db.UnsupportedOptions{
+						ForceAPIForbiddenErrors: test.forceForbiddenErrors,
+					},
+					Guest: &auth.PrincipalConfig{
+						Disabled: base.BoolPtr(false),
+					},
+					Users: map[string]*auth.PrincipalConfig{
+						"NoPerms": {
+							Password: base.StringPtr("password"),
+						},
+						"Perms": {
+							ExplicitChannels: base.SetOf("chan"),
+							Password:         base.StringPtr("password"),
+						},
+					},
+				}},
+			})
+			defer rt.Close()
+
+			// Create the initial document
+			resp := rt.SendAdminRequest(http.MethodPut, "/db/doc", `{"doNotSync": true, "foo": "bar", "channels": "chan", "_attachment":{"attach": {"data": "`+base64.StdEncoding.EncodeToString([]byte("attachmentA"))+`"}}}`)
+			requireStatus(t, resp, http.StatusCreated)
+			rev := respRevID(t, resp)
+
+			// GET requests
+			// User has no permissions to access document
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/doc", "", nil, "NoPerms", "password")
+			assertRespStatus(resp, http.StatusForbidden)
+
+			// Guest has no permissions to access document
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/doc", "", nil, "", "")
+			assertRespStatus(resp, http.StatusForbidden)
+
+			// User has no permissions to access rev
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/doc?rev="+rev, "", nil, "NoPerms", "password")
+			assertRespStatus(resp, http.StatusOK)
+
+			// Guest has no permissions to access rev
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/doc?rev="+rev, "", nil, "", "")
+			assertRespStatus(resp, http.StatusOK)
+
+			// Attachments should be forbidden as well
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/doc/attach", "", nil, "NoPerms", "password")
+			assertRespStatus(resp, http.StatusForbidden)
+
+			// Attachment revs should be forbidden as well
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/doc/attach?rev="+rev, "", nil, "NoPerms", "password")
+			assertRespStatus(resp, http.StatusNotFound)
+
+			// Attachments should be forbidden for guests as well
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/doc/attach", "", nil, "", "")
+			assertRespStatus(resp, http.StatusForbidden)
+
+			// Attachment revs should be forbidden for guests as well
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/doc/attach?rev="+rev, "", nil, "", "")
+			assertRespStatus(resp, http.StatusNotFound)
+
+			// Document does not exist should cause 403
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/notfound", "", nil, "NoPerms", "password")
+			assertRespStatus(resp, http.StatusNotFound)
+
+			// Document does not exist for guest should cause 403
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/notfound", "", nil, "", "")
+			assertRespStatus(resp, http.StatusNotFound)
+
+			// PUT requests
+			// PUT doc with user with no write perms
+			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/db/doc", `{}`, nil, "NoPerms", "password")
+			assertRespStatus(resp, http.StatusConflict)
+
+			// PUT with rev
+			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/db/doc?rev="+rev, `{}`, nil, "NoPerms", "password")
+			assertRespStatus(resp, http.StatusForbidden)
+
+			// PUT with incorrect rev
+			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/db/doc?rev=1-abc", `{}`, nil, "NoPerms", "password")
+			assertRespStatus(resp, http.StatusConflict)
+
+			// PUT request as Guest
+			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/db/doc", `{}`, nil, "", "")
+			assertRespStatus(resp, http.StatusConflict)
+
+			// PUT with rev as Guest
+			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/db/doc?rev="+rev, `{}`, nil, "", "")
+			assertRespStatus(resp, http.StatusForbidden)
+
+			// PUT with incorrect rev as Guest
+			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/db/doc?rev=1-abc", `{}`, nil, "", "")
+			assertRespStatus(resp, http.StatusConflict)
+
+			// PUT with access but no rev
+			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/db/doc", `{}`, nil, "Perms", "password")
+			assertHTTPErrorReason(t, resp, http.StatusConflict, "Document exists")
+
+			// PUT with access but wrong rev
+			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/db/doc?rev=1-abc", `{}`, nil, "Perms", "password")
+			assertHTTPErrorReason(t, resp, http.StatusConflict, "Document revision conflict")
+
+			// Confirm no access grants where granted
+			resp = rt.SendAdminRequest(http.MethodGet, "/db/_user/NoPerms", ``)
+			requireStatus(t, resp, http.StatusOK)
+			var allChannels struct {
+				Channels []string `json:"all_channels"`
+			}
+			err := json.Unmarshal(resp.BodyBytes(), &allChannels)
+			require.NoError(t, err)
+			assert.NotContains(t, allChannels.Channels, "chan2")
+
+			resp = rt.SendAdminRequest(http.MethodGet, "/db/_user/Perms", ``)
+			requireStatus(t, resp, http.StatusOK)
+			err = json.Unmarshal(resp.BodyBytes(), &allChannels)
+			require.NoError(t, err)
+			assert.NotContains(t, allChannels.Channels, "chan2")
+
+			// Successful PUT which will grant access grants
+			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/db/doc?rev="+rev, `{"channels": "chan"}`, nil, "Perms", "password")
+			assertStatus(t, resp, http.StatusCreated)
+
+			// Make sure channel access grant was successful
+			resp = rt.SendAdminRequest(http.MethodGet, "/db/_user/Perms", ``)
+			requireStatus(t, resp, http.StatusOK)
+			err = json.Unmarshal(resp.BodyBytes(), &allChannels)
+			require.NoError(t, err)
+			assert.Contains(t, allChannels.Channels, "chan2")
+
+			// DELETE requests
+			// Attempt to delete document with no permissions
+			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/db/doc", "", nil, "NoPerms", "password")
+			assertRespStatus(resp, http.StatusConflict)
+
+			// Attempt to delete document rev with no permissions
+			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/db/doc?rev="+rev, "", nil, "NoPerms", "password")
+			assertRespStatus(resp, http.StatusConflict)
+
+			// Attempt to delete document with wrong rev
+			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/db/doc?rev=1-abc", "", nil, "NoPerms", "password")
+			assertRespStatus(resp, http.StatusConflict)
+
+			// Attempt to delete document document that does not exist
+			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/db/notfound", "", nil, "NoPerms", "password")
+			assertRespStatus(resp, http.StatusForbidden)
+
+			// Attempt to delete document with no permissions as guest
+			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/db/doc", "", nil, "", "")
+			assertRespStatus(resp, http.StatusConflict)
+
+			// Attempt to delete document rev with no write perms as guest
+			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/db/doc?rev="+rev, "", nil, "", "")
+			assertRespStatus(resp, http.StatusConflict)
+
+			// Attempt to delete document with wrong rev as guest
+			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/db/doc?rev=1-abc", "", nil, "", "")
+			assertRespStatus(resp, http.StatusConflict)
+
+			// Attempt to delete document that does not exist as guest
+			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/db/notfound", "", nil, "", "")
+			assertRespStatus(resp, http.StatusForbidden)
+		})
+	}
+}
+
 func createDocWithLegacyAttachment(t *testing.T, rt *RestTester, docID string, rawDoc []byte, attKey string, attBody []byte) {
 	// Write attachment directly to the bucket.
 	_, err := rt.Bucket().Add(attKey, 0, attBody)

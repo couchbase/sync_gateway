@@ -36,7 +36,7 @@ func (t *testBackingStore) GetDocument(ctx context.Context, docid string, unmars
 
 	for _, d := range t.notFoundDocIDs {
 		if docid == d {
-			return nil, base.HTTPErrorf(404, "missing")
+			return nil, ErrMissing
 		}
 	}
 
