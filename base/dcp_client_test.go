@@ -78,7 +78,7 @@ func TestOneShotDCP(t *testing.T) {
 	require.NoError(t, startErr)
 
 	defer func() {
-		_ = dcpClient.Close()
+		require.NoError(t, dcpClient.Close())
 	}()
 
 	// Add additional documents in a separate goroutine, to verify one-shot behaviour
@@ -158,10 +158,7 @@ func TestTerminateDCPFeed(t *testing.T) {
 
 	// Wait for some processing to complete, then close the feed
 	time.Sleep(10 * time.Millisecond)
-	log.Printf("Closing DCP Client")
-	err = dcpClient.Close()
-	log.Printf("DCP Client closed, waiting for feed close notification")
-	require.NoError(t, err)
+	require.NoError(t, dcpClient.Close())
 
 	// wait for done
 	timeout := time.After(oneShotDCPTimeout)
@@ -278,9 +275,8 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 
 			doneChan2, startErr2 := dcpClient2.Start()
 			require.Error(t, startErr2)
-
+			require.NotNil(t, doneChan2)
 			require.NoError(t, dcpClient2.Close())
-			<-doneChan2
 			log.Printf("Starting third feed")
 			// Perform a third DCP feed - mismatched VbUUID, failOnRollback=false
 			atomic.StoreUint64(&mutationCount, 0)
@@ -320,8 +316,6 @@ func TestResumeStoppedFeed(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	SetUpTestLogging(t, LevelDebug, KeyAll)
-
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
@@ -333,8 +327,10 @@ func TestResumeStoppedFeed(t *testing.T) {
 		if bytes.HasPrefix(event.Key, []byte(t.Name())) {
 			count := atomic.AddUint64(&mutationCount, 1)
 			if count > 5000 {
-				err := dcpClient.Close()
-				assert.NoError(t, err)
+				// use go routine to not deadlock, since this callback will prevent a close from happening
+				go func() {
+					require.NoError(t, dcpClient.Close())
+				}()
 			}
 		}
 		return false
@@ -380,6 +376,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 	timeout := time.After(oneShotDCPTimeout)
 	select {
 	case <-doneChan:
+		require.NoError(t, dcpClient.getCloseError())
 		mutationCount := atomic.LoadUint64(&mutationCount)
 		require.Greater(t, int(mutationCount), 5000)
 		log.Printf("Total processed first feed: %v", mutationCount)
