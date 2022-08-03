@@ -288,8 +288,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 		if bytes.HasPrefix(event.Key, []byte(t.Name())) {
 			count := atomic.AddUint64(&mutationCount, 1)
 			if count > 5000 {
-				err := dcpClient.Close()
-				assert.NoError(t, err)
+				go dcpClient.Close()
 			}
 		}
 		return false
@@ -324,6 +323,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 	timeout := time.After(oneShotDCPTimeout)
 	select {
 	case <-doneChan:
+		require.NoError(t, dcpClient.getCloseError())
 		mutationCount := atomic.LoadUint64(&mutationCount)
 		require.Greater(t, int(mutationCount), 5000)
 		log.Printf("Total processed first feed: %v", mutationCount)
