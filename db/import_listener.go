@@ -84,7 +84,7 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 		return bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
 	}
 	if !base.IsEnterpriseEdition() {
-		return base.StartDCPFeed(bucket, cbStore.GetSpec(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
+		return base.StartGocbDCPFeed(bucket, cbStore.GetSpec(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataDB)
 	} else {
 		il.cbgtContext, err = base.StartShardedDCPFeed(dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater, bucket, cbStore.GetSpec(), dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
 		return err
