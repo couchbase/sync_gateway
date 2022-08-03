@@ -170,6 +170,27 @@ var QueryPrincipals = SGQuery{
 	adhoc: false,
 }
 
+var QueryPrincipalsExcludeDeleted = SGQuery{
+	name: QueryTypePrincipals,
+	statement: fmt.Sprintf(
+		"SELECT META(%s).id "+
+			"FROM %s AS %s "+
+			"USE INDEX($idx) "+
+			"WHERE META(%s).id LIKE '%s' "+
+			"AND (META(%s).id LIKE '%s' "+
+			"OR (META(%s).id LIKE '%s' AND (%s.deleted IS MISSING OR %s.deleted = false))) "+
+			"AND META(%s).id >= $%s "+ // Uses >= for inclusive startKey
+			"ORDER BY META(%s).id",
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, SyncDocWildcard,
+		base.KeyspaceQueryAlias, `\\_sync:user:%`,
+		base.KeyspaceQueryAlias, `\\_sync:role:%`, base.KeyspaceQueryAlias, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, QueryParamStartKey,
+		base.KeyspaceQueryAlias),
+	adhoc: false,
+}
+
 type QueryUsersRow struct {
 	Name     string `json:"name"`
 	Email    string `json:"email,omitempty"`
@@ -454,7 +475,7 @@ func (context *DatabaseContext) QueryResync(ctx context.Context, limit int, star
 }
 
 // Query to retrieve the set of user and role doc ids, using the syncDocs index
-func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey string, limit int) (sgbucket.QueryResultIterator, error) {
+func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey string, limit int, excludeDeleted bool) (sgbucket.QueryResultIterator, error) {
 
 	// View Query
 	if context.Options.UseViews {
@@ -471,7 +492,11 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewPrincipals, opts)
 	}
 
-	queryStatement := replaceIndexTokensQuery(QueryPrincipals.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+	query := &QueryPrincipals
+	if excludeDeleted {
+		query = &QueryPrincipalsExcludeDeleted
+	}
+	queryStatement := replaceIndexTokensQuery(query.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
 
 	params := make(map[string]interface{})
 	params[QueryParamStartKey] = startKey
@@ -481,7 +506,7 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 	}
 
 	// N1QL Query
-	return context.N1QLQueryWithStats(ctx, QueryTypePrincipals, queryStatement, params, base.RequestPlus, QueryPrincipals.adhoc)
+	return context.N1QLQueryWithStats(ctx, QueryTypePrincipals, queryStatement, params, base.RequestPlus, query.adhoc)
 }
 
 // Query to retrieve user details, using the syncDocs index

@@ -1370,7 +1370,7 @@ func (h *handler) getUsers() error {
 	var bytes []byte
 	var marshalErr error
 	if nameOnly {
-		users, _, err := h.db.AllPrincipalIDs(h.db.Ctx)
+		users, _, err := h.db.AllPrincipalIDs(h.db.Ctx, true)
 		if err != nil {
 			return err
 		}
@@ -1394,7 +1394,7 @@ func (h *handler) getUsers() error {
 }
 
 func (h *handler) getRoles() error {
-	_, roles, err := h.db.AllPrincipalIDs(h.db.Ctx)
+	_, roles, err := h.db.AllPrincipalIDs(h.db.Ctx, true)
 	if err != nil {
 		return err
 	}

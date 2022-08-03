@@ -953,7 +953,7 @@ func (db *Database) processForEachDocIDResults(callback ForEachDocIDFunc, limit 
 }
 
 // Returns the IDs of all users and roles
-func (db *DatabaseContext) AllPrincipalIDs(ctx context.Context) (users, roles []string, err error) {
+func (db *DatabaseContext) AllPrincipalIDs(ctx context.Context, excludeDeleted bool) (users, roles []string, err error) {
 
 	startKey := ""
 	limit := db.Options.QueryPaginationLimit
@@ -963,7 +963,7 @@ func (db *DatabaseContext) AllPrincipalIDs(ctx context.Context) (users, roles []
 
 outerLoop:
 	for {
-		results, err := db.QueryPrincipals(ctx, startKey, limit)
+		results, err := db.QueryPrincipals(ctx, startKey, limit, excludeDeleted)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -1495,7 +1495,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 	}
 
 	if regenerateSequences {
-		users, roles, err := db.AllPrincipalIDs(db.Ctx)
+		users, roles, err := db.AllPrincipalIDs(db.Ctx, false)
 		if err != nil {
 			return docsChanged, err
 		}
@@ -1544,7 +1544,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 	if docsChanged > 0 {
 		// Now invalidate channel cache of all users/roles:
 		base.InfofCtx(db.Ctx, base.KeyAll, "Invalidating channel caches of users/roles...")
-		users, roles, _ := db.AllPrincipalIDs(db.Ctx)
+		users, roles, _ := db.AllPrincipalIDs(db.Ctx, false)
 		for _, name := range users {
 			db.invalUserChannels(name, endSeq)
 		}
