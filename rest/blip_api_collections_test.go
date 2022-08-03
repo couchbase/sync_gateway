@@ -8,6 +8,7 @@ import (
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -119,7 +120,7 @@ func TestBlipGetCollections(t *testing.T) {
 			errorCode:  "",
 		},
 		// This code will not work until leaky bucket works with collections CBG-2201
-		//{
+		// {
 		//	name: "checkpointExistsWithErrorInNonDefaultCollection",
 		//	requestBody: db.GetCollectionsRequestBody{
 		//		CheckpointIDs: []string{checkpointIDWithError},
@@ -127,7 +128,7 @@ func TestBlipGetCollections(t *testing.T) {
 		//	},
 		//	resultBody: []db.Body{nil},
 		//	errorCode:  "",
-		//},
+		// },
 	}
 
 	for _, testCase := range testCases {
@@ -135,7 +136,7 @@ func TestBlipGetCollections(t *testing.T) {
 			getCollectionsRequest, err := db.NewGetCollectionsMessage(testCase.requestBody)
 			require.NoError(t, err)
 
-			require.NoError(t, btc.pushReplication.sendMsg(getCollectionsRequest))
+			require.NoError(t, btc.PushReplication().sendMsg(getCollectionsRequest))
 
 			// Check that the response we got back was processed by the norev handler
 			resp := getCollectionsRequest.Response()
@@ -196,7 +197,7 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 
 	require.NoError(t, err)
 
-	require.NoError(t, btc.pushReplication.sendMsg(getCollectionsRequest))
+	require.NoError(t, btc.PushReplication().sendMsg(getCollectionsRequest))
 
 	// Check that the response we got back was processed by the GetCollections
 	resp := getCollectionsRequest.Response()
@@ -215,7 +216,7 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 	requestGetCheckpoint.SetProfile(db.MessageGetCheckpoint)
 	requestGetCheckpoint.Properties[db.BlipClient] = checkpointID1
 	requestGetCheckpoint.Properties[db.BlipCollection] = "0"
-	require.NoError(t, btc.pushReplication.sendMsg(requestGetCheckpoint))
+	require.NoError(t, btc.PushReplication().sendMsg(requestGetCheckpoint))
 	resp = requestGetCheckpoint.Response()
 	require.NotNil(t, resp)
 	errorCode, hasErrorCode = resp.Properties[db.BlipErrorCode]
@@ -227,4 +228,84 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 
 	require.Equal(t, db.Body{"seq": "123"}, checkpoint)
 
+}
+
+func TestCollectionsPeerDoesNotHave(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	const (
+		scopeKey      = "fooScope"
+		collectionKey = "fooCollection"
+	)
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		guestEnabled: true,
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				Scopes: ScopesConfig{
+					scopeKey: ScopeConfig{
+						Collections: map[string]CollectionConfig{
+							collectionKey: {},
+						},
+					},
+				},
+			},
+		},
+		createScopesAndCollections: true,
+	})
+	defer rt.Close()
+
+	_, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
+		Collections: []string{"barScope.barCollection"},
+	})
+	require.Error(t, err)
+
+	assert.Equal(t, "collection doesn't exist on peer barScope.barCollection", err.Error())
+}
+
+func TestCollectionsReplication(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	const (
+		scopeKey              = "fooScope"
+		collectionKey         = "fooCollection"
+		scopeAndCollectionKey = scopeKey + "." + collectionKey
+	)
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		guestEnabled: true,
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				Scopes: ScopesConfig{
+					scopeKey: ScopeConfig{
+						Collections: map[string]CollectionConfig{
+							collectionKey: {},
+						},
+					},
+				},
+			},
+		},
+		createScopesAndCollections: true,
+	})
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
+		Collections: []string{scopeAndCollectionKey},
+	})
+	require.NoError(t, err)
+	defer btc.Close()
+
+	resp := rt.SendAdminRequest(http.MethodPut, "/db."+scopeAndCollectionKey+"/doc1", "{}")
+	requireStatus(t, resp, http.StatusCreated)
+
+	require.NoError(t, rt.WaitForPendingChanges())
+
+	btcCollection, err := btc.GetCollection(scopeAndCollectionKey)
+	assert.NoError(t, err)
+
+	err = btcCollection.StartOneshotPull()
+	assert.NoError(t, err)
+
+	_, ok := btcCollection.WaitForRev("doc1", "1-ca9ad22802b66f662ff171f226211d5c")
+	require.True(t, ok)
 }
