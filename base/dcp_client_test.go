@@ -236,11 +236,10 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			dcpClient2, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, bucket, "")
 			require.NoError(t, err)
 
-			doneChan2, startErr2 := dcpClient2.Start()
+			_, startErr2 := dcpClient2.Start()
 			require.Error(t, startErr2)
 
 			require.NoError(t, dcpClient2.Close())
-			<-doneChan2
 			log.Printf("Starting third feed")
 			// Perform a third DCP feed - mismatched VbUUID, failOnRollback=false
 			atomic.StoreUint64(&mutationCount, 0)
