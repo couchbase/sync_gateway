@@ -52,7 +52,7 @@ func (listener *changeListener) Init(name string, groupID string) {
 }
 
 // Starts a changeListener on a given Bucket.
-func (listener *changeListener) Start(bucket base.Bucket, dbStats *expvar.Map) error {
+func (listener *changeListener) Start(bucket base.Bucket, dbStats *expvar.Map, groupID string) error {
 
 	listener.terminator = make(chan bool)
 	listener.bucket = bucket
@@ -64,10 +64,10 @@ func (listener *changeListener) Start(bucket base.Bucket, dbStats *expvar.Map) e
 		DoneChan:   make(chan struct{}),
 	}
 
-	return listener.StartMutationFeed(bucket, dbStats)
+	return listener.StartMutationFeed(bucket, dbStats, groupID)
 }
 
-func (listener *changeListener) StartMutationFeed(bucket base.Bucket, dbStats *expvar.Map) error {
+func (listener *changeListener) StartMutationFeed(bucket base.Bucket, dbStats *expvar.Map, groupID string) error {
 
 	// Uses DCP by default, unless TAP is explicitly specified
 	feedType := base.GetFeedType(bucket)
@@ -99,7 +99,7 @@ func (listener *changeListener) StartMutationFeed(bucket base.Bucket, dbStats *e
 		// DCP Feed
 		//    DCP receiver isn't go-channel based - DCPReceiver calls ProcessEvent directly.
 		base.InfofCtx(context.TODO(), base.KeyDCP, "Using DCP feed for bucket: %q (based on feed_type specified in config file)", base.MD(bucket.GetName()))
-		return bucket.StartDCPFeed(listener.FeedArgs, listener.ProcessFeedEvent, dbStats)
+		return base.StartGocbDCPFeed(bucket, listener.bucketName, listener.FeedArgs, listener.ProcessFeedEvent, dbStats, groupID)
 	}
 }
 

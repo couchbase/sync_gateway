@@ -46,12 +46,11 @@ func getHighSeqMetadata(bucket Bucket) ([]DCPMetadata, error) {
 }
 
 // StartGocbDCPFeed starts a DCP Feed.
-func StartGocbDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
+func StartGocbDCPFeed(bucket Bucket, bucketName string, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map, groupID string) error {
 	metadata, err := getHighSeqMetadata(bucket)
 	if err != nil {
 		return err
 	}
-	bucketName := spec.BucketName
 	feedName, err := GenerateDcpStreamName(args.ID)
 	if err != nil {
 		return err
@@ -66,7 +65,7 @@ func StartGocbDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgument
 			DbStats:           dbStats,
 		},
 		bucket,
-		"")
+		groupID)
 	if err != nil {
 		return err
 	}

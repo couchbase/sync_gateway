@@ -454,7 +454,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	// Start DCP feed
 	base.InfofCtx(logCtx, base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import)", base.MD(bucket.GetName()))
 	cacheFeedStatsMap := dbContext.DbStats.Database().CacheFeedMapStats
-	err = dbContext.mutationListener.Start(bucket, cacheFeedStatsMap.Map)
+	err = dbContext.mutationListener.Start(bucket, cacheFeedStatsMap.Map, options.GroupID)
 
 	// Check if there is an error starting the DCP feed
 	if err != nil {
@@ -721,7 +721,7 @@ func (context *DatabaseContext) RestartListener() error {
 	time.Sleep(2 * time.Second)
 	context.mutationListener.Init(context.Bucket.GetName(), context.Options.GroupID)
 	cacheFeedStatsMap := context.DbStats.Database().CacheFeedMapStats
-	if err := context.mutationListener.Start(context.Bucket, cacheFeedStatsMap.Map); err != nil {
+	if err := context.mutationListener.Start(context.Bucket, cacheFeedStatsMap.Map, context.Options.GroupID); err != nil {
 		return err
 	}
 	return nil
