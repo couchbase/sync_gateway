@@ -161,6 +161,7 @@ type DatabaseContextOptions struct {
 	GroupID                       string
 	JavascriptTimeout             time.Duration // Max time the JS functions run for (ie. sync fn, import filter)
 	skipRegisterImportPIndex      bool          // if set, skips the global gocb PIndex registration
+	skipStartHeartbeatChecking    bool          // if set, does not automatically call StartCheckingHeartbeats
 }
 
 type SGReplicateOptions struct {
@@ -592,7 +593,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	// Start checking heartbeats for other nodes.  Must be done after caching feed starts, to ensure any removals
 	// are detected and processed by this node.
-	if dbContext.Heartbeater != nil {
+	if dbContext.Heartbeater != nil && !options.skipStartHeartbeatChecking {
 		err = dbContext.Heartbeater.StartCheckingHeartbeats()
 		if err != nil {
 			return nil, err

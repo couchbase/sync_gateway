@@ -14,6 +14,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -29,6 +30,15 @@ import (
 const CBGTIndexTypeSyncGatewayImport = "syncGateway-import-"
 const DefaultImportPartitions = 16
 
+const (
+	nodeVersionHelium  = 1
+	currentNodeVersion = nodeVersionHelium
+)
+
+type nodeExtras struct {
+	Version uint `json:"v"`
+}
+
 // CbgtContext holds the two handles we have for CBGT-related functionality.
 type CbgtContext struct {
 	Manager           *cbgt.Manager            // Manager is main entry point for initialization, registering indexes
@@ -36,6 +46,7 @@ type CbgtContext struct {
 	heartbeater       Heartbeater              // Heartbeater used for failed node detection
 	heartbeatListener *importHeartbeatListener // Listener subscribed to failed node alerts from heartbeater
 	loggingCtx        context.Context          // Context for cbgt logging
+	LithiumCompat     *AtomicBool              // set on startup if there are pre-Helium nodes in the cluster, later reset once all pre-Lithium nodes are gone
 }
 
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
@@ -46,11 +57,11 @@ func StartShardedDCPFeed(dbName string, configGroup string, uuid string, heartbe
 		return nil, err
 	}
 
-	dcpContextID := MD(spec.BucketName).Redact() + "-" + DCPImportFeedID
-	cbgtContext.loggingCtx = context.WithValue(context.Background(), LogContextKey{},
-		LogContext{CorrelationID: dcpContextID},
-	)
-
+	if cbgtContext.LithiumCompat.IsTrue() {
+		if spec.Scope != nil || spec.Collection != nil {
+			return nil, fmt.Errorf("cannot start DCP feed on non-default collection with legacy nodes present in the cluster")
+		}
+	}
 	// Start Manager.  Registers this node in the cfg
 	err = cbgtContext.StartManager(dbName, configGroup, bucket, spec, numPartitions)
 	if err != nil {
@@ -88,7 +99,7 @@ func GenerateLegacyIndexName(dbName string) string {
 // RegisterPIndexImplType (see importListener.RegisterImportPindexImpl)
 // will receive PIndexImpl callbacks (New, Open) for assigned PIndex to initiate DCP processing.
 func createCBGTIndex(c *CbgtContext, dbName string, configGroupID string, bucket Bucket, spec BucketSpec, numPartitions uint16) error {
-	sourceType := SOURCE_GOCB_DCP_SG
+	sourceType := SOURCE_DCP_SG
 
 	bucketUUID, err := bucket.UUID()
 	if err != nil {
@@ -233,6 +244,12 @@ func getCBGTIndexUUID(manager *cbgt.Manager, indexName string) (exists bool, pre
 // Inline comments below provide additional detail on how cbgt uses each manager
 // parameter, and the implications for SG
 func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID string, dbName string) (*CbgtContext, error) {
+	// Check if there are pre-Helium nodes, and if so, set the LithiumCompat flag to ensure we don't try to start a
+	// collections-enabled feed when some nodes won't support it.
+	minVersion, err := getMinNodeVersion(cfgSG)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get minimum node version in cluster: %w", err)
+	}
 
 	// uuid: Unique identifier for the node. Used to identify the node in the config.
 	//       Without UUID persistence across SG restarts, a restarted SG node relies on heartbeater to remove
@@ -261,9 +278,12 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 	// container: Used by cbgt to determine node hierarchy.  Not needed by Sync Gateway
 	container := ""
 
-	// extras: Can be used to pass Sync Gateway specific node information to callbacks.  Not
-	//         currently needed by Sync Gateway.
-	extras := ""
+	// extras: Can be used to pass Sync Gateway specific node information to callbacks. Used to detect node upgrades -
+	// currently pre-Helium to Helium.
+	extras, err := JSONMarshal(&nodeExtras{Version: currentNodeVersion})
+	if err != nil {
+		return nil, err
+	}
 
 	// bindHttp: Used for REST binding (not needed by Sync Gateway), but also as a unique identifier
 	//           in some circumstances.  See below for additional information.
@@ -274,23 +294,11 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 	//   		https://github.com/couchbaselabs/cbgt/issues/25
 	bindHttp := uuid
 
-	// serverURL: Passing gocb connect string.
-	var serverURL string
-	var err error
-	if feedType == cbgtFeedType_cbdatasource {
-		// cbdatasource expects server URL in http format
-		serverURLs, errConvertServerSpec := CouchbaseURIToHttpURL(bucket, spec.Server, nil)
-		if errConvertServerSpec != nil {
-			return nil, errConvertServerSpec
-		}
-		serverURL = strings.Join(serverURLs, ";")
-	} else {
-		serverURL, err = spec.GetGoCBConnString(&GoCBConnStringParams{
-			KVPoolSize: GoCBPoolSizeDCP,
-		})
-		if err != nil {
-			return nil, err
-		}
+	serverURL, err := spec.GetGoCBConnString(&GoCBConnStringParams{
+		KVPoolSize: GoCBPoolSizeDCP,
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	// dataDir: file system location for files persisted by cbgt.  Not required by SG, setting to empty
@@ -324,7 +332,7 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 		tags,
 		container,
 		weight,
-		extras,
+		string(extras),
 		bindHttp,
 		dataDir,
 		serverURL,
@@ -332,8 +340,16 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 		options)
 
 	cbgtContext := &CbgtContext{
-		Manager: mgr,
-		Cfg:     cfgSG,
+		loggingCtx: context.WithValue(context.Background(), LogContextKey{},
+			LogContext{CorrelationID: MD(spec.BucketName).Redact() + "-" + DCPImportFeedID},
+		),
+		Manager:       mgr,
+		Cfg:           cfgSG,
+		LithiumCompat: NewAtomicBool(minVersion < nodeVersionHelium),
+	}
+	if cbgtContext.LithiumCompat.IsTrue() {
+		WarnfCtx(cbgtContext.loggingCtx, "Found old Sync Gateway nodes in cluster - entering compatibility mode."+
+			" Starting a DCP feed on non-default collections will not be possible until all nodes are upgraded.")
 	}
 
 	if spec.Auth != nil || (spec.Certpath != "" && spec.Keypath != "") {
@@ -384,6 +400,34 @@ func (c *CbgtContext) StartManager(dbName string, configGroup string, bucket Buc
 	}
 
 	return nil
+}
+
+func getMinNodeVersion(cfg cbgt.Cfg) (uint, error) {
+	nodes, _, err := cbgt.CfgGetNodeDefs(cfg, cbgt.NODE_DEFS_KNOWN)
+	if err != nil {
+		return 0, err
+	}
+	if nodes == nil || len(nodes.NodeDefs) == 0 {
+		// If there are no nodes at all, it's likely we're the first node in the cluster.
+		return currentNodeVersion, nil
+	}
+	minVersion := uint(math.MaxUint)
+	for _, node := range nodes.NodeDefs {
+		var nodeVersion uint
+		if len(node.Extras) == 0 {
+			nodeVersion = 0
+		} else {
+			var versionData nodeExtras
+			if err := JSONUnmarshal([]byte(node.Extras), &versionData); err != nil {
+				return 0, err
+			}
+			nodeVersion = versionData.Version
+		}
+		if nodeVersion < minVersion {
+			minVersion = nodeVersion
+		}
+	}
+	return minVersion, nil
 }
 
 // StopHeartbeatListener unregisters the listener from the heartbeater, and stops it.
@@ -441,7 +485,7 @@ func registerHeartbeatListener(heartbeater Heartbeater, cbgtContext *CbgtContext
 	}
 
 	// Register listener for import, uses cfg and manager to manage set of participating nodes
-	importHeartbeatListener, err := NewImportHeartbeatListener(cbgtContext.Cfg, cbgtContext.Manager)
+	importHeartbeatListener, err := NewImportHeartbeatListener(cbgtContext)
 	if err != nil {
 		return nil, err
 	}
@@ -458,25 +502,27 @@ func registerHeartbeatListener(heartbeater Heartbeater, cbgtContext *CbgtContext
 type importHeartbeatListener struct {
 	cfg        cbgt.Cfg      // cbgt cfg being used for import
 	mgr        *cbgt.Manager // cbgt manager associated with this import node
+	ctx        *CbgtContext
 	terminator chan struct{} // close cfg subscription on close
 	nodeIDs    []string      // Set of nodes from the latest retrieval
 	lock       sync.RWMutex  // lock for nodeIDs access
 }
 
-func NewImportHeartbeatListener(cfg cbgt.Cfg, mgr *cbgt.Manager) (*importHeartbeatListener, error) {
+func NewImportHeartbeatListener(ctx *CbgtContext) (*importHeartbeatListener, error) {
 
-	if cfg == nil {
-		return nil, errors.New("Cfg must not be nil for ImportHeartbeatListener")
+	if ctx == nil {
+		return nil, errors.New("ctx must not be nil for ImportHeartbeatListener")
 	}
 
 	listener := &importHeartbeatListener{
-		cfg:        cfg,
-		mgr:        mgr,
+		ctx:        ctx,
+		mgr:        ctx.Manager,
+		cfg:        ctx.Cfg,
 		terminator: make(chan struct{}),
 	}
 
 	// Initialize the node set
-	_, err := listener.reloadNodes()
+	_, _, err := listener.reloadNodes()
 	if err != nil {
 		return nil, err
 	}
@@ -525,7 +571,7 @@ func (l *importHeartbeatListener) subscribeNodeChanges() error {
 		for {
 			select {
 			case <-cfgEvents:
-				localNodeRegistered, err := l.reloadNodes()
+				minVersion, localNodeRegistered, err := l.reloadNodes()
 				if err != nil {
 					WarnfCtx(logCtx, "Error while reloading heartbeat node definitions: %v", err)
 				}
@@ -536,6 +582,12 @@ func (l *importHeartbeatListener) subscribeNodeChanges() error {
 					}
 				}
 
+				if l.ctx.LithiumCompat.IsTrue() && minVersion >= nodeVersionHelium {
+					// Can now exit compat mode as all nodes are at least Helium
+					InfofCtx(logCtx, KeyDCP, "Exiting compatibility mode - can now start DCP feed on non-default collections.")
+					l.ctx.LithiumCompat.CompareAndSwap(true, false)
+				}
+
 			case <-l.terminator:
 				return
 			}
@@ -544,20 +596,32 @@ func (l *importHeartbeatListener) subscribeNodeChanges() error {
 	return nil
 }
 
-func (l *importHeartbeatListener) reloadNodes() (localNodePresent bool, err error) {
+func (l *importHeartbeatListener) reloadNodes() (minVersion uint, localNodePresent bool, err error) {
 
 	nodeUUIDs := make([]string, 0)
 	nodeDefTypes := []string{cbgt.NODE_DEFS_KNOWN, cbgt.NODE_DEFS_WANTED}
+	minVersion = uint(math.MaxUint)
 	for _, nodeDefType := range nodeDefTypes {
 		nodeSet, _, err := cbgt.CfgGetNodeDefs(l.cfg, nodeDefType)
 		if err != nil {
-			return false, err
+			return 0, false, err
 		}
 		if nodeSet != nil {
 			for _, nodeDef := range nodeSet.NodeDefs {
 				nodeUUIDs = append(nodeUUIDs, nodeDef.UUID)
 				if nodeDef.UUID == l.mgr.UUID() {
 					localNodePresent = true
+				}
+				var nodeVersion uint
+				if len(nodeDef.Extras) > 0 {
+					var extras nodeExtras
+					if err := JSONUnmarshal([]byte(nodeDef.Extras), &extras); err != nil {
+						return 0, false, err
+					}
+					nodeVersion = extras.Version
+				}
+				if nodeVersion < minVersion {
+					minVersion = nodeVersion
 				}
 			}
 		}
@@ -566,7 +630,7 @@ func (l *importHeartbeatListener) reloadNodes() (localNodePresent bool, err erro
 	l.nodeIDs = nodeUUIDs
 	l.lock.Unlock()
 
-	return localNodePresent, nil
+	return minVersion, localNodePresent, nil
 }
 
 // GetNodes returns a copy of the in-memory node set
