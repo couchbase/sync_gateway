@@ -1080,7 +1080,7 @@ func (sc *ServerContext) fetchAndLoadConfigs(isInitialStartup bool) (count int, 
 			}
 		}
 		for dbName, fetchedConfig := range fetchedConfigs {
-			if dbConfig, ok := sc.dbConfigs[dbName]; ok && dbConfig.cas >= fetchedConfig.cas {
+			if dbConfig, ok := sc.dbConfigs[dbName]; ok && dbConfig.cfgCas >= fetchedConfig.cfgCas {
 				base.DebugfCtx(context.TODO(), base.KeyConfig, "Database %q bucket %q config has not changed since last update", fetchedConfig.Name, *fetchedConfig.Bucket)
 				delete(fetchedConfigs, dbName)
 			}
