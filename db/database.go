@@ -1176,7 +1176,7 @@ func (db *Database) Compact(skipRunningStateCheck bool, callback compactCallback
 			purgeErr := db.Purge(tombstonesRow.Id)
 			if purgeErr == nil {
 				purgedDocs = append(purgedDocs, tombstonesRow.Id)
-			} else if base.IsKeyNotFoundError(db.Bucket, purgeErr) {
+			} else if base.IsDocNotFoundError(purgeErr) {
 				// If key no longer exists, need to add and remove to trigger removal from view
 				_, addErr := db.Bucket.Add(tombstonesRow.Id, 0, purgeBody)
 				if addErr != nil {
