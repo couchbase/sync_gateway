@@ -18,7 +18,14 @@ import (
 func (h *handler) getDBConfig() (config *DbConfig, etagVersion string, err error) {
 	h.assertAdminOnly()
 	if h.server.bootstrapContext.connection == nil {
-		return h.server.GetDbConfig(h.db.Name), "", nil
+		if dbConfig := h.server.GetDatabaseConfig(h.db.Name); dbConfig != nil {
+			etagVersion = dbConfig.Version
+			if etagVersion == "" {
+				etagVersion = "0-"
+			}
+			return &dbConfig.DbConfig, etagVersion, nil
+		}
+		return nil, "", nil
 	} else if found, databaseConfig, err := h.server.fetchDatabase(h.db.Name); err != nil {
 		return nil, "", err
 	} else if !found {
@@ -48,8 +55,7 @@ func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 					return nil, err
 				}
 
-				headerVersion := h.rq.Header.Get("If-Match")
-				if headerVersion != "" && headerVersion != bucketDbConfig.Version {
+				if h.headerDoesNotMatchEtag("If-Match", bucketDbConfig.Version) {
 					return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 				}
 
@@ -87,13 +93,25 @@ func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 		if err := h.server._reloadDatabaseWithConfig(*updatedDbConfig, false); err != nil {
 			return err
 		}
+		h.setEtag(updatedDbConfig.Version)
 
 	} else {
 		// Update in-memory config read from JSON file:
-		databaseConfig := DatabaseConfig{DbConfig: *h.server.GetDbConfig(dbName)}
+		databaseConfig := *h.server.GetDatabaseConfig(dbName)
+
+		if h.headerDoesNotMatchEtag("If-Match", databaseConfig.Version) {
+			return base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
+		}
 
 		// Now call the mutator function:
 		if err := mutator(&databaseConfig.DbConfig); err != nil {
+			return err
+		}
+
+		// Bump the Version (Etag):
+		var err error
+		databaseConfig.Version, err = GenerateDatabaseConfigVersionID(databaseConfig.Version, &databaseConfig.DbConfig)
+		if err != nil {
 			return err
 		}
 
@@ -107,6 +125,7 @@ func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 		if err := h.server.ReloadDatabaseWithConfig(databaseConfig); err != nil {
 			return err
 		}
+		h.setEtag(databaseConfig.Version)
 	}
 	return base.HTTPErrorf(http.StatusOK, "updated")
 }
