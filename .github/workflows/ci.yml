@@ -26,7 +26,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v2
         with:
-          go-version: 1.17.11
+          go-version: 1.18.5
       - uses: actions/checkout@v2
       - name: go-build
         run: go build "./..."
@@ -37,7 +37,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v3
         with:
-          go-version: 1.17.11
+          go-version: 1.18.5
       - uses: actions/checkout@v3
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v3
@@ -56,7 +56,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v2
         with:
-          go-version: 1.17.11
+          go-version: 1.18.5
       - uses: actions/checkout@v2
       - name: Build
         run: go build -v "./..."
@@ -76,7 +76,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v2
         with:
-          go-version: 1.17.11
+          go-version: 1.18.5
       - uses: actions/checkout@v2
       - name: Run Tests
         run: go test -race -timeout=30m -count=1 -json -v "./..." | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
