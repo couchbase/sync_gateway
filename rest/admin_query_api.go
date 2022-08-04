@@ -17,7 +17,7 @@ import (
 
 //////// JS FUNCTIONS:
 
-// GET database config user functions.
+// GET config: user functions.
 func (h *handler) handleGetDbConfigFunctions() error {
 	if config, etagVersion, err := h.getDBConfig(); err != nil {
 		return err
@@ -27,12 +27,12 @@ func (h *handler) handleGetDbConfigFunctions() error {
 		} else {
 			h.writeRawJSON([]byte("{}"))
 		}
-		h.response.Header().Set("ETag", etagVersion)
+		h.setEtag(etagVersion)
 		return nil
 	}
 }
 
-// GET database config, a single user function
+// GET config: a single user function
 func (h *handler) handleGetDbConfigFunction() error {
 	functionName := h.PathVar("function")
 	if config, etagVersion, err := h.getDBConfig(); err != nil {
@@ -41,12 +41,12 @@ func (h *handler) handleGetDbConfigFunction() error {
 		return base.HTTPErrorf(http.StatusNotFound, "")
 	} else {
 		h.writeJSON(functionConfig)
-		h.response.Header().Set("ETag", etagVersion)
+		h.setEtag(etagVersion)
 		return nil
 	}
 }
 
-// PUT/DELETE database config user function(s)
+// PUT/DELETE config: user function(s)
 func (h *handler) handlePutDbConfigFunctions() error {
 	var functionsConfig db.UserFunctionMap
 	if h.rq.Method != "DELETE" {
@@ -63,7 +63,7 @@ func (h *handler) handlePutDbConfigFunctions() error {
 	})
 }
 
-// PUT/DELETE database config, a single user function
+// PUT/DELETE config: a single user function
 func (h *handler) handlePutDbConfigFunction() error {
 	functionName := h.PathVar("function")
 	if h.rq.Method != "DELETE" {
@@ -99,7 +99,7 @@ func (h *handler) handleGetDbConfigGraphQL() error {
 		return base.HTTPErrorf(http.StatusNotFound, "")
 	} else {
 		h.writeJSON(config.GraphQL)
-		h.response.Header().Set("ETag", etagVersion)
+		h.setEtag(etagVersion)
 		return nil
 	}
 }
@@ -129,7 +129,7 @@ func (h *handler) handlePutDbConfigGraphQL() error {
 
 // TODO: This is mostly a copy/paste of the functions code above; would be cleaner to use generics.
 
-// GET database config user queries.
+// GET config: user queries.
 func (h *handler) handleGetDbConfigQueries() error {
 	if config, etagVersion, err := h.getDBConfig(); err != nil {
 		return err
@@ -139,12 +139,12 @@ func (h *handler) handleGetDbConfigQueries() error {
 		} else {
 			h.writeRawJSON([]byte("{}"))
 		}
-		h.response.Header().Set("ETag", etagVersion)
+		h.setEtag(etagVersion)
 		return nil
 	}
 }
 
-// GET database config, a single user query
+// GET config: a single user query
 func (h *handler) handleGetDbConfigQuery() error {
 	queryName := h.PathVar("query")
 	if config, etagVersion, err := h.getDBConfig(); err != nil {
@@ -153,12 +153,12 @@ func (h *handler) handleGetDbConfigQuery() error {
 		return base.HTTPErrorf(http.StatusNotFound, "")
 	} else {
 		h.writeJSON(queryConfig)
-		h.response.Header().Set("ETag", etagVersion)
+		h.setEtag(etagVersion)
 		return nil
 	}
 }
 
-// PUT/DELETE database config user query(s)
+// PUT/DELETE config: user query(s)
 func (h *handler) handlePutDbConfigQueries() error {
 	var queriesConfig db.UserQueryMap
 	if h.rq.Method != "DELETE" {
@@ -175,7 +175,7 @@ func (h *handler) handlePutDbConfigQueries() error {
 	})
 }
 
-// PUT/DELETE database config, a single user query
+// PUT/DELETE config: a single user query
 func (h *handler) handlePutDbConfigQuery() error {
 	queryName := h.PathVar("query")
 	if h.rq.Method != "DELETE" {

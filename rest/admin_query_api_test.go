@@ -17,6 +17,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+//////// ALL USER QUERY APIS:
+
 // When feature flag is not enabled, all API calls return 404:
 func TestDBConfigUserFunctionGetWithoutFeatureFlag(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: false})
@@ -57,6 +59,104 @@ func TestDBConfigUserFunctionGetWithoutFeatureFlag(t *testing.T) {
 		assert.Equal(t, 404, response.Result().StatusCode)
 	})
 }
+
+// Test use of "Etag" and "If-Match" headers to safely update function/query/graphql config.
+func TestDBConfigUserFunctionMVCC(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: true})
+	defer rt.Close()
+
+	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
+		UserFunctions: map[string]*db.UserFunctionConfig{
+			"xxx": {
+				SourceCode: "return 42;",
+			},
+		},
+		UserQueries: map[string]*db.UserQueryConfig{
+			"xxx": {
+				Statement: "SELECT 42",
+			},
+		},
+		GraphQL: &db.GraphQLConfig{
+			Schema:    base.StringPtr(kDummyGraphQLSchema),
+			Resolvers: nil,
+		},
+	}}
+
+	runTest := func(t *testing.T, uri string, newValue string) {
+		// Get initial etag:
+		response := rt.SendAdminRequest("GET", uri, "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		etag := response.HeaderMap.Get("Etag")
+		assert.Regexp(t, `"[^"]+"`, etag)
+
+		// Update config, just to change its etag:
+		response = rt.SendAdminRequest("PUT", uri, newValue)
+		assert.Equal(t, 200, response.Result().StatusCode)
+		newEtag := response.HeaderMap.Get("Etag")
+		assert.Regexp(t, `"[^"]+"`, newEtag)
+		assert.NotEqual(t, etag, newEtag)
+
+		// A GET should also return the new etag:
+		response = rt.SendAdminRequest("GET", uri, "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Equal(t, newEtag, response.HeaderMap.Get("Etag"))
+
+		// Try to update using If-Match with the old etag:
+		headers := map[string]string{"If-Match": etag}
+		response = rt.SendAdminRequestWithHeaders("PUT", uri, newValue, headers)
+		assert.Equal(t, 412, response.Result().StatusCode)
+
+		// Now update successfully using the current etag:
+		headers["If-Match"] = newEtag
+		response = rt.SendAdminRequestWithHeaders("PUT", uri, newValue, headers)
+		assert.Equal(t, 200, response.Result().StatusCode)
+		newestEtag := response.HeaderMap.Get("Etag")
+		assert.Regexp(t, `"[^"]+"`, newestEtag)
+		assert.NotEqual(t, etag, newestEtag)
+		assert.NotEqual(t, newEtag, newestEtag)
+
+		// Try to delete using If-Match with the previous etag:
+		response = rt.SendAdminRequestWithHeaders("DELETE", uri, newValue, headers)
+		assert.Equal(t, 412, response.Result().StatusCode)
+
+		// Now delete successfully using the current etag:
+		headers["If-Match"] = newestEtag
+		response = rt.SendAdminRequestWithHeaders("DELETE", uri, newValue, headers)
+		assert.Equal(t, 200, response.Result().StatusCode)
+	}
+
+	t.Run("Function", func(t *testing.T) {
+		runTest(t, "/db/_config/functions/xxx", `{
+			"javascript": "return 69;"
+		}`)
+	})
+
+	t.Run("Functions", func(t *testing.T) {
+		runTest(t, "/db/_config/functions", `{
+			"yyy": {"javascript": "return 69;"}
+		}`)
+	})
+
+	t.Run("Query", func(t *testing.T) {
+		runTest(t, "/db/_config/queries/xxx", `{
+			"statement": "select 69"
+		}`)
+	})
+
+	t.Run("Queries", func(t *testing.T) {
+		runTest(t, "/db/_config/queries", `{
+			"yyy": {"statement": "select 69"}
+		}`)
+	})
+
+	t.Run("GraphQL", func(t *testing.T) {
+		runTest(t, "/db/_config/graphql", `{
+			"schema": "type Query {square(n: Int!) : Int!}", "resolvers":{}
+		}`)
+	})
+}
+
+//////// JAVASCRIPT FUNCTIONS:
 
 // When there's no existing config, API calls return 404 or empty objects:
 func TestDBConfigUserFunctionGetNoConfig(t *testing.T) {
@@ -456,10 +556,9 @@ func TestDBConfigUserGraphQLGet(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: true})
 	defer rt.Close()
 
-	schema := kDummyGraphQLSchema
 	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
 		GraphQL: &db.GraphQLConfig{
-			Schema:    &schema,
+			Schema:    base.StringPtr(kDummyGraphQLSchema),
 			Resolvers: nil,
 		},
 	}}
@@ -472,7 +571,7 @@ func TestDBConfigUserGraphQLGet(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/graphql", "")
 		var body db.GraphQLConfig
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-		assert.Equal(t, &schema, body.Schema)
+		assert.Equal(t, base.StringPtr(kDummyGraphQLSchema), body.Schema)
 	})
 }
 

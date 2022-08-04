@@ -25,20 +25,23 @@ import (
 // than running it 100 times in succession. A low bar indeed, but can detect some serious
 // bottlenecks, or of course deadlocks.
 func testConcurrently(t *testing.T, rt *RestTester, testFunc func() bool) bool {
+	const numTasks = 100
+
 	// Run testFunc once to prime the pump:
 	if !testFunc() {
 		return false
 	}
 
-	// Run once to get a baseline time:
+	// 100 sequential calls:
 	startTime := time.Now()
-	if !testFunc() {
-		return false
+	for i := 0; i < numTasks; i++ {
+		if !testFunc() {
+			return false
+		}
 	}
-	singleDuration := time.Since(startTime)
+	sequentialDuration := time.Since(startTime)
 
 	// Now run 100 concurrent calls:
-	const numTasks = 100
 	var wg sync.WaitGroup
 	startTime = time.Now()
 	for i := 0; i < numTasks; i++ {
@@ -49,12 +52,12 @@ func testConcurrently(t *testing.T, rt *RestTester, testFunc func() bool) bool {
 		}()
 	}
 	wg.Wait()
-	multiDuration := time.Since(startTime)
+	concurrentDuration := time.Since(startTime)
 
-	log.Printf("---- One call took %v, %d calls took %v ... speedup is %f",
-		singleDuration, numTasks, multiDuration,
-		float64(singleDuration)/(float64(multiDuration)/numTasks))
-	return assert.LessOrEqual(t, multiDuration, 1.1*numTasks*singleDuration)
+	log.Printf("---- %d sequential took %v, concurrent took %v ... speedup is %f",
+		numTasks, sequentialDuration, concurrentDuration,
+		float64(sequentialDuration)/float64(concurrentDuration))
+	return assert.LessOrEqual(t, concurrentDuration, 1.1*numTasks*sequentialDuration)
 }
 
 func TestConcurrentQueries(t *testing.T) {
@@ -93,19 +96,23 @@ func TestConcurrentQueries(t *testing.T) {
 		})
 	})
 
-	t.Run("Query", func(t *testing.T) {
-		testConcurrently(t, rt, func() bool {
-			response := rt.SendRequest("GET", "/db/_query/square?n=13", "")
-			return assert.Equal(t, 200, response.Result().StatusCode) &&
-				assert.Equal(t, "[{\"square\":169}\n]\n", string(response.BodyBytes()))
-		})
-	})
-
 	t.Run("GraphQL", func(t *testing.T) {
 		testConcurrently(t, rt, func() bool {
 			response := rt.SendRequest("POST", "/db/_graphql", `{"query":"query{ square(n:13) }"}`)
 			return assert.Equal(t, 200, response.Result().StatusCode) &&
 				assert.Equal(t, "{\"data\":{\"square\":169}}", string(response.BodyBytes()))
 		})
+	})
+
+	t.Run("Query", func(t *testing.T) {
+		if base.UnitTestUrlIsWalrus() {
+			t.Skip("Skipping query subtest")
+		} else {
+			testConcurrently(t, rt, func() bool {
+				response := rt.SendRequest("GET", "/db/_query/square?n=13", "")
+				return assert.Equal(t, 200, response.Result().StatusCode) &&
+					assert.Equal(t, "[{\"square\":169}\n]\n", string(response.BodyBytes()))
+			})
+		}
 	})
 }
