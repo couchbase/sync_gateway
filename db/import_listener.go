@@ -79,12 +79,12 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 
 	// TODO: need to clean up StartDCPFeed to push bucket dependencies down
 	cbStore, ok := base.AsCouchbaseStore(bucket)
-	if !ok {
-		// walrus is not a couchbasestore
-		return bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
-	}
-	if !base.IsEnterpriseEdition() {
-		return base.StartGocbDCPFeed(bucket, cbStore.GetSpec(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataDB)
+	if !ok || !base.IsEnterpriseEdition() {
+		metadataConfig := base.DCPMetadataConfig{
+			StoreType: base.DCPMetadataDB,
+			GroupID:   "",
+		}
+		return base.StartGocbDCPFeed(bucket, bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, metadataConfig)
 	} else {
 		il.cbgtContext, err = base.StartShardedDCPFeed(dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater, bucket, cbStore.GetSpec(), dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
 		return err

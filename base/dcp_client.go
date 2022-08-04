@@ -51,14 +51,14 @@ type DCPClient struct {
 type DCPClientOptions struct {
 	NumWorkers                 int
 	OneShot                    bool
-	FailOnRollback             bool                 // When true, the DCP client will terminate on DCP rollback
-	InitialMetadata            []DCPMetadata        // When set, will be used as initial metadata for the DCP feed.  Will override any persisted metadata
-	CheckpointPersistFrequency *time.Duration       // Overrides metadata persistence frequency - intended for test use
-	MetadataStoreType          DCPMetadataStoreType // Option for metadata storage model, in memory or peristent.
-	DbStats                    *expvar.Map          // Optional stats
+	FailOnRollback             bool              // When true, the DCP client will terminate on DCP rollback
+	InitialMetadata            []DCPMetadata     // When set, will be used as initial metadata for the DCP feed.  Will override any persisted metadata
+	CheckpointPersistFrequency *time.Duration    // Overrides metadata persistence frequency - intended for test use
+	MetadataConfig             DCPMetadataConfig // Option for metadata storage model, in memory or peristent.
+	DbStats                    *expvar.Map       // Optional stats
 }
 
-func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket Bucket, groupID string) (*DCPClient, error) {
+func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket Bucket) (*DCPClient, error) {
 
 	numWorkers := defaultNumWorkers
 	if options.NumWorkers > 0 {
@@ -84,7 +84,7 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 		terminator:       make(chan bool),
 		doneChannel:      make(chan error, 1),
 		failOnRollback:   options.FailOnRollback,
-		checkpointPrefix: DCPCheckpointPrefixWithGroupID(groupID),
+		checkpointPrefix: DCPCheckpointPrefixWithGroupID(options.MetadataConfig.GroupID),
 		dbStats:          options.DbStats,
 	}
 
@@ -95,13 +95,13 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 	}
 
 	checkpointPrefix := fmt.Sprintf("%s:%v", client.checkpointPrefix, ID)
-	switch options.MetadataStoreType {
+	switch options.MetadataConfig.StoreType {
 	case DCPMetadataDB:
 		client.metadata = NewDCPMetadataCS(bucket, numVbuckets, numWorkers, checkpointPrefix)
 	case DCPMetadataInMemory:
 		client.metadata = NewDCPMetadataMem(numVbuckets)
 	default:
-		return nil, fmt.Errorf("Unknown Metadatatype: %d", options.MetadataStoreType)
+		return nil, fmt.Errorf("Unknown Metadatatype: %d", options.MetadataConfig.StoreType)
 	}
 	if options.InitialMetadata != nil {
 		for vbID, meta := range options.InitialMetadata {

@@ -118,11 +118,15 @@ func attachmentCompactMarkPhase(db *Database, compactionID string, terminator *b
 	clientOptions := base.DCPClientOptions{
 		OneShot:        true,
 		FailOnRollback: true,
+		MetadataConfig: base.DCPMetadataConfig{
+			StoreType: base.DCPMetadataDB,
+			GroupID:   db.Options.GroupID,
+		},
 	}
 
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for mark phase of attachment compaction", compactionLoggingID)
 	dcpFeedKey := compactionID + "_mark"
-	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, db.Bucket, db.Options.GroupID)
+	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, db.Bucket)
 	if err != nil {
 		base.WarnfCtx(db.Ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)
 		return 0, nil, err
@@ -337,11 +341,15 @@ func attachmentCompactSweepPhase(db *Database, compactionID string, vbUUIDs []ui
 		OneShot:         true,
 		FailOnRollback:  true,
 		InitialMetadata: base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs),
+		MetadataConfig: base.DCPMetadataConfig{
+			StoreType: base.DCPMetadataDB,
+			GroupID:   db.Options.GroupID,
+		},
 	}
 
 	dcpFeedKey := compactionID + "_sweep"
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed %q for sweep phase of attachment compaction", compactionLoggingID, dcpFeedKey)
-	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, db.Bucket, db.Options.GroupID)
+	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, db.Bucket)
 	if err != nil {
 		base.WarnfCtx(db.Ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)
 		return 0, err
@@ -467,11 +475,15 @@ func attachmentCompactCleanupPhase(db *Database, compactionID string, vbUUIDs []
 		OneShot:         true,
 		FailOnRollback:  true,
 		InitialMetadata: base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs),
+		MetadataConfig: base.DCPMetadataConfig{
+			StoreType: base.DCPMetadataDB,
+			GroupID:   db.Options.GroupID,
+		},
 	}
 
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for cleanup phase of attachment compaction", compactionLoggingID)
 	dcpFeedKey := compactionID + "_cleanup"
-	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, db.Bucket, db.Options.GroupID)
+	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, db.Bucket)
 	if err != nil {
 		base.WarnfCtx(db.Ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)
 		return err
