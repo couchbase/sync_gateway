@@ -43,6 +43,11 @@ var kUserQueriesConfig = UserQueryMap{
 		Statement: `SELECT "ok" AS status`,
 		Allow:     nil, // no 'allow' property means admin-only
 	},
+	"inject": &UserQueryConfig{
+		Statement:  `SELECT $foo`,
+		Parameters: []string{"foo"},
+		Allow:      &UserQueryAllow{Channels: []string{"*"}},
+	},
 	"syntax_error": &UserQueryConfig{
 		Statement: "SELEKT OOK? FR0M OOK!",
 		Allow:     allowAll,
@@ -106,6 +111,10 @@ func testUserQueriesCommon(t *testing.T, db *Database) {
 	iter, err = db.UserN1QLQuery("square", map[string]interface{}{"numero": 16})
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{"square":256}]`, iter)
+
+	iter, err = db.UserN1QLQuery("inject", map[string]interface{}{"foo": "1337 as pwned"})
+	assert.NoError(t, err)
+	assertQueryResults(t, `[{"$1":"1337 as pwned"}]`, iter)
 
 	// ERRORS:
 
