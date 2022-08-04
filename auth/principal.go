@@ -219,15 +219,15 @@ func (u PrincipalConfig) IsPasswordValid(allowEmptyPass bool) (isValid bool, rea
 // If any changes conflict, those of the other take precedence.
 func (u PrincipalConfig) Merge(other PrincipalConfig) PrincipalConfig {
 	return PrincipalConfig{
-		Name:              base.CoalesceStrings(other.Name, u.Name),
+		Name:              base.Coalesce(other.Name, u.Name),
 		ExplicitChannels:  base.CoalesceSets(other.ExplicitChannels, u.ExplicitChannels),
-		Email:             base.CoalesceStrings(other.Email, u.Email),
-		Password:          base.CoalesceStrings(other.Password, u.Password),
-		Disabled:          base.CoalesceBools(other.Disabled, u.Disabled),
+		Email:             base.Coalesce(other.Email, u.Email),
+		Password:          base.Coalesce(other.Password, u.Password),
+		Disabled:          base.Coalesce(other.Disabled, u.Disabled),
 		ExplicitRoleNames: base.CoalesceSets(other.ExplicitRoleNames, u.ExplicitRoleNames),
-		JWTIssuer:         base.CoalesceStrings(other.JWTIssuer, u.JWTIssuer),
+		JWTIssuer:         base.Coalesce(other.JWTIssuer, u.JWTIssuer),
 		JWTRoles:          base.CoalesceSets(other.JWTRoles, u.JWTRoles),
 		JWTChannels:       base.CoalesceSets(other.JWTChannels, u.JWTChannels),
-		JWTLastUpdated:    base.CoalesceTimes(other.JWTLastUpdated, u.JWTLastUpdated),
+		JWTLastUpdated:    base.Coalesce(other.JWTLastUpdated, u.JWTLastUpdated),
 	}
 }
