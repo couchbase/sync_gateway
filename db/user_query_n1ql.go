@@ -50,6 +50,11 @@ func (db *Database) UserN1QLQuery(name string, args map[string]interface{}) (sgb
 	if err := db.checkQueryArguments(args, query.Parameters, "query", name); err != nil {
 		return nil, err
 	}
+	if userArg := db.createUserArgument(); userArg != nil {
+		args["user"] = userArg
+	} else {
+		args["user"] = map[string]interface{}{}
+	}
 
 	// Check that the user is authorized:
 	if err := query.Allow.authorize(db.user, args, "query", name); err != nil {

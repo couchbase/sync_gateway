@@ -58,19 +58,21 @@ func (db *Database) checkQueryArguments(args map[string]interface{}, parameterNa
 			return base.HTTPErrorf(http.StatusBadRequest, "%s %q has no parameter %q", queryType, queryName, badKey)
 		}
 	}
+	return nil
+}
 
-	// Add `context` parameter with `user` object, for query's use in filtering the output:
-	var contextParam userQueryContextValue
+func (db *Database) createUserArgument() *userQueryUserInfo {
 	if user := db.user; user != nil {
-		contextParam.User = &userQueryUserInfo{
+		return &userQueryUserInfo{
 			Name:     user.Name(),
 			Email:    user.Email(),
 			Channels: user.Channels().AllKeys(),
 			Roles:    user.RoleNames().AllKeys(),
 		}
+	} else {
+		return nil
 	}
-	args["context"] = &contextParam
-	return nil
+
 }
 
 //////// AUTHORIZATION:
@@ -96,7 +98,7 @@ func (allow *UserQueryAllow) authorize(user auth.User, args map[string]interface
 		}
 		userRoles := user.RoleNames()
 		for _, rolePattern := range allow.Roles {
-			if role, err := allow.expandPattern(rolePattern, args); err != nil {
+			if role, err := allow.expandPattern(rolePattern, args, user); err != nil {
 				return err
 			} else if userRoles.Contains(role) {
 				return nil // User has one of the allowed roles
@@ -106,7 +108,7 @@ func (allow *UserQueryAllow) authorize(user auth.User, args map[string]interface
 		for _, channelPattern := range allow.Channels {
 			if channelPattern == channels.AllChannelWildcard {
 				return nil
-			} else if channel, err := allow.expandPattern(channelPattern, args); err != nil {
+			} else if channel, err := allow.expandPattern(channelPattern, args, user); err != nil {
 				return err
 			} else if user.CanSeeChannel(channel) {
 				return nil // User has access to one of the allowed channels
@@ -131,7 +133,7 @@ func missingError(user auth.User, what string, name string) error {
 // `param` in the `args` map and substituting its value.
 // (`$$` is replaced with `$`.)
 // It is an error if any `param` has no value, or if its value is not a string or integer.
-func (allow *UserQueryAllow) expandPattern(pattern string, args map[string]interface{}) (string, error) {
+func (allow *UserQueryAllow) expandPattern(pattern string, args map[string]interface{}, user auth.User) (string, error) {
 	if strings.IndexByte(pattern, '$') < 0 {
 		return pattern, nil
 	}
@@ -145,14 +147,20 @@ func (allow *UserQueryAllow) expandPattern(pattern string, args map[string]inter
 			arg = arg[1 : len(arg)-1]
 		}
 		// Look up the parameter:
+		if strings.HasPrefix(arg, "user.") {
+			// Treat "user." the same as "context.user.":
+			arg = "context." + arg
+		}
 		if strings.HasPrefix(arg, "context.user.") {
-			// Hacky special case for "context.user...":
-			userInfo := args["context"].(*userQueryContextValue).User
+			// Hacky special case for "context.user.":
+			if user == nil {
+				return ""
+			}
 			switch arg {
 			case "context.user.name":
-				return userInfo.Name
+				return user.Name()
 			case "context.user.email":
-				return userInfo.Email
+				return user.Email()
 			}
 		}
 		if value, found := args[arg]; !found {

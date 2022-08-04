@@ -31,22 +31,21 @@ var kUserQueriesConfig = UserQueryMap{
 		Parameters: []string{"numero"},
 		Allow:      &UserQueryAllow{Channels: []string{"wonderland"}},
 	},
-	"context": &UserQueryConfig{
-		Statement: "SELECT $context AS context",
+	"user": &UserQueryConfig{
+		Statement: "SELECT $user AS `user`",
 		Allow:     &UserQueryAllow{Channels: []string{"*"}},
 	},
-	"syntax_error": &UserQueryConfig{
-		Statement: "SELEKT OOK? FR0M OOK!",
-		Allow:     allowAll,
-	},
-	"user_only": &UserQueryConfig{
-		Statement: "SELECT $context.`user`.name AS name,  $context.`user`.email AS email",
-		// Note: "user" is a reserved word in N1QL, so it has to be back-quoted in a query
-		Allow: &UserQueryAllow{Channels: []string{"user-$(context.user.name)"}},
+	"user_parts": &UserQueryConfig{
+		Statement: "SELECT $user.name AS name, $user.email AS email",
+		Allow:     &UserQueryAllow{Channels: []string{"user-$(user.name)"}},
 	},
 	"admin_only": &UserQueryConfig{
 		Statement: `SELECT "ok" AS status`,
 		Allow:     nil, // no 'allow' property means admin-only
+	},
+	"syntax_error": &UserQueryConfig{
+		Statement: "SELEKT OOK? FR0M OOK!",
+		Allow:     allowAll,
 	},
 }
 
@@ -74,7 +73,7 @@ func assertQueryResults(t *testing.T, expected string, iter sgbucket.QueryResult
 }
 
 // Unit test for user N1QL queries.
-func TestUserQueries(t *testing.T) {
+func TestUserN1QLQueries(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test is Couchbase Server only (requires N1QL)")
 	}
@@ -131,18 +130,18 @@ func testUserQueriesCommon(t *testing.T, db *Database) {
 func testUserQueriesAsAdmin(t *testing.T, db *Database) {
 	testUserQueriesCommon(t, db)
 
-	iter, err := db.UserN1QLQuery("context", nil)
+	iter, err := db.UserN1QLQuery("user", nil)
 	assert.NoError(t, err)
-	assertQueryResults(t, `[{"context":{}}]`, iter)
+	assertQueryResults(t, `[{"user":{}}]`, iter)
+
+	iter, err = db.UserN1QLQuery("user_parts", nil)
+	assert.NoError(t, err)
+	assertQueryResults(t, `[{}]`, iter)
 
 	// admin only:
 	iter, err = db.UserN1QLQuery("admin_only", nil)
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{"status":"ok"}]`, iter)
-
-	iter, err = db.UserN1QLQuery("user_only", nil)
-	assert.NoError(t, err)
-	assertQueryResults(t, `[{}]`, iter)
 
 	// ERRORS:
 
@@ -154,15 +153,15 @@ func testUserQueriesAsAdmin(t *testing.T, db *Database) {
 func testUserQueriesAsUser(t *testing.T, db *Database) {
 	testUserQueriesCommon(t, db)
 
-	iter, err := db.UserN1QLQuery("context", nil)
+	iter, err := db.UserN1QLQuery("user", nil)
 	assert.NoError(t, err)
 	// (Can't compare the entire result string because the order of items in the "channels" array
 	// is undefined and can change from one run to another.)
 	resultStr := queryResultString(t, iter)
-	assert.True(t, strings.HasPrefix(resultStr, `[{"context":{"user":{"channels":["`))
-	assert.True(t, strings.HasSuffix(resultStr, `"],"email":"","name":"alice","roles":["hero"]}}}]`))
+	assert.True(t, strings.HasPrefix(resultStr, `[{"user":{"channels":["`))
+	assert.True(t, strings.HasSuffix(resultStr, `"],"email":"","name":"alice","roles":["hero"]}}]`))
 
-	iter, err = db.UserN1QLQuery("user_only", nil)
+	iter, err = db.UserN1QLQuery("user_parts", nil)
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{"email":"","name":"alice"}]`, iter)
 
