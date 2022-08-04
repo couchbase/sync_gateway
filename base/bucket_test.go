@@ -485,7 +485,7 @@ func TestTLSConfig(t *testing.T) {
 	assert.NotEmpty(t, conf)
 	assert.False(t, conf.InsecureSkipVerify)
 	require.NotNil(t, conf.RootCAs)
-	assert.Equal(t, x509.NewCertPool(), conf.RootCAs)
+	assert.NotEqual(t, x509.NewCertPool(), conf.RootCAs)
 
 	// Check TLSConfig by providing invalid root CA certificate; provide root certificate key path
 	// instead of root CA certificate. It should throw "can't append certs from PEM" error.
