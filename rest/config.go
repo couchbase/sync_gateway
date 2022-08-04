@@ -1063,18 +1063,52 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 // fetchAndLoadConfigs retrieves all database configs from the ServerContext's bootstrapConnection, and loads them into the ServerContext.
 // It will remove any databases currently running that are not found in the bucket.
 func (sc *ServerContext) fetchAndLoadConfigs(isInitialStartup bool) (count int, err error) {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
-
 	fetchedConfigs, err := sc.fetchConfigs(isInitialStartup)
 	if err != nil {
 		return 0, err
 	}
 
-	for _, dbName := range sc.bucketDbName {
-		if _, foundMatchingDb := fetchedConfigs[dbName]; !foundMatchingDb {
+	// Check if we need to update the set of databases before we have to acquire the write lock to do so
+	// we don't need to do this two-stage lock on initial startup as the REST APIs aren't even online yet.
+	var deletedDatabases []string
+	if !isInitialStartup {
+		sc.lock.RLock()
+		for _, dbName := range sc.bucketDbName {
+			if _, foundMatchingDb := fetchedConfigs[dbName]; !foundMatchingDb {
+				deletedDatabases = append(deletedDatabases, dbName)
+				delete(fetchedConfigs, dbName)
+			}
+		}
+		for dbName, fetchedConfig := range fetchedConfigs {
+			if dbConfig, ok := sc.dbConfigs[dbName]; ok && dbConfig.cfgCas >= fetchedConfig.cfgCas {
+				base.DebugfCtx(context.TODO(), base.KeyConfig, "Database %q bucket %q config has not changed since last update", fetchedConfig.Name, *fetchedConfig.Bucket)
+				delete(fetchedConfigs, dbName)
+			}
+		}
+		sc.lock.RUnlock()
+
+		// nothing to do, we can bail out without needing the write lock
+		if len(deletedDatabases) == 0 && len(fetchedConfigs) == 0 {
+			base.TracefCtx(context.TODO(), base.KeyConfig, "No persistent config changes to make")
+			return 0, nil
+		}
+	}
+
+	// we have databases to update/remove
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+	for _, dbName := range deletedDatabases {
+		// It's possible that the "deleted" database was not written to the server until after sc.fetchConfigs had returned...
+		// we'll need to pay for the cost of getting the config again now that we've got the write lock to double-check this db is definitely ok to remove...
+		found, _, err := sc.fetchDatabase(dbName)
+		if err != nil {
+			base.InfofCtx(context.TODO(), base.KeyConfig, "Error fetching config for database %q to check whether we need to remove it: %v", dbName, err)
+		}
+		if !found {
 			base.InfofCtx(context.TODO(), base.KeyConfig, "Database %q was running on this node, but config was not found on the server - removing database", base.MD(dbName))
 			sc._removeDatabase(dbName)
+		} else {
+			base.DebugfCtx(context.TODO(), base.KeyConfig, "Found config for database %q after acquiring write lock - not removing database", base.MD(dbName))
 		}
 	}
 
