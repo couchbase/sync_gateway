@@ -23,7 +23,20 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 )
 
-//////// QUERY PARAMETERS:
+//////// QUERY PARAMETERS/ARGUMENTS:
+
+// Value of query parameter "context"
+type userQueryContextValue struct {
+	User *userQueryUserInfo `json:"user,omitempty"`
+}
+
+// Value of query parameter "context.user"
+type userQueryUserInfo struct {
+	Name     string   `json:"name"`
+	Email    string   `json:"email"`
+	Channels []string `json:"channels"`
+	Roles    []string `json:"roles"`
+}
 
 // Checks that `args` contains exactly the same keys as the list `parameterNames`.
 // Adds the special "context" parameter containing user data.
@@ -61,6 +74,13 @@ func (db *Database) checkQueryArguments(args map[string]interface{}, parameterNa
 }
 
 //////// AUTHORIZATION:
+
+// Permissions for a user query
+type UserQueryAllow struct {
+	Channels []string `json:"channels,omitempty"` // Names of channel(s) that grant access to query
+	Roles    []string `json:"roles,omitempty"`    // Names of role(s) that have access to query
+	Users    base.Set `json:"users,omitempty"`    // Names of user(s) that have access to query
+}
 
 // Authorizes a User against the UserQueryAllow object:
 // - The user's name must be contained in Users, OR

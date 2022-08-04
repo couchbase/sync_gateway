@@ -41,7 +41,8 @@ var kUserQueriesConfig = UserQueryMap{
 	},
 	"user_only": &UserQueryConfig{
 		Statement: "SELECT $context.`user`.name AS name,  $context.`user`.email AS email",
-		Allow:     &UserQueryAllow{Channels: []string{"user-$(context.user.name)"}},
+		// Note: "user" is a reserved word in N1QL, so it has to be back-quoted in a query
+		Allow: &UserQueryAllow{Channels: []string{"user-$(context.user.name)"}},
 	},
 	"admin_only": &UserQueryConfig{
 		Statement: `SELECT "ok" AS status`,

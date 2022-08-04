@@ -33,26 +33,6 @@ type UserQueryConfig struct {
 	Allow      *UserQueryAllow `json:"allow,omitempty"`      // Permissions (admin-only if nil)
 }
 
-// Permissions for a user query
-type UserQueryAllow struct {
-	Channels []string `json:"channels,omitempty"` // Names of channel(s) that grant access to query
-	Roles    []string `json:"roles,omitempty"`    // Names of role(s) that have access to query
-	Users    base.Set `json:"users,omitempty"`    // Names of user(s) that have access to query
-}
-
-// Value of query parameter "context.user"
-type userQueryUserInfo struct {
-	Name     string   `json:"name"`
-	Email    string   `json:"email"`
-	Channels []string `json:"channels"`
-	Roles    []string `json:"roles"`
-}
-
-// Value of query parameter "context"
-type userQueryContextValue struct {
-	User *userQueryUserInfo `json:"user,omitempty"`
-}
-
 //////// RUNNING A QUERY:
 
 // Runs a named N1QL query on behalf of a user, presumably invoked via a REST or BLIP API.
@@ -87,7 +67,7 @@ func (db *Database) UserN1QLQuery(name string, args map[string]interface{}) (sgb
 			err = base.HTTPErrorf(http.StatusInternalServerError, "Query %q: %s", name, qe.Errors[0].Message)
 		} else {
 			base.WarnfCtx(logCtx, "Unknown error running query %q: %T %#v", name, err, err)
-			err = base.HTTPErrorf(http.StatusInternalServerError, "Unknown error running query %q", name)
+			err = base.HTTPErrorf(http.StatusInternalServerError, "Unknown error running query %q (see logs)", name)
 		}
 	}
 	return iter, err

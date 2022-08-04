@@ -17,8 +17,50 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDBConfigUserFunctionGetNone(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
+// When feature flag is not enabled, all API calls return 404:
+func TestDBConfigUserFunctionGetWithoutFeatureFlag(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: false})
+	defer rt.Close()
+
+	t.Run("Functions, Non-Admin", func(t *testing.T) {
+		response := rt.SendRequest("GET", "/db/_config/functions", "")
+		assert.Equal(t, 404, response.Result().StatusCode)
+	})
+	t.Run("All Functions", func(t *testing.T) {
+		response := rt.SendAdminRequest("GET", "/db/_config/functions", "")
+		assert.Equal(t, 404, response.Result().StatusCode)
+	})
+	t.Run("Single Function", func(t *testing.T) {
+		response := rt.SendAdminRequest("GET", "/db/_config/functions/cube", "")
+		assert.Equal(t, 404, response.Result().StatusCode)
+	})
+
+	t.Run("Queries, Non-Admin", func(t *testing.T) {
+		response := rt.SendRequest("GET", "/db/_config/queries", "")
+		assert.Equal(t, 404, response.Result().StatusCode)
+	})
+	t.Run("All Queries", func(t *testing.T) {
+		response := rt.SendAdminRequest("GET", "/db/_config/queries", "")
+		assert.Equal(t, 404, response.Result().StatusCode)
+	})
+	t.Run("Single Query", func(t *testing.T) {
+		response := rt.SendAdminRequest("GET", "/db/_config/queries/cube", "")
+		assert.Equal(t, 404, response.Result().StatusCode)
+	})
+
+	t.Run("GraphQL, Non-Admin", func(t *testing.T) {
+		response := rt.SendRequest("GET", "/db/_config/graphql", "")
+		assert.Equal(t, 404, response.Result().StatusCode)
+	})
+	t.Run("GraphQL", func(t *testing.T) {
+		response := rt.SendAdminRequest("GET", "/db/_config/graphql", "")
+		assert.Equal(t, 404, response.Result().StatusCode)
+	})
+}
+
+// When there's no existing config, API calls return 404 or empty objects:
+func TestDBConfigUserFunctionGetNoConfig(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: true})
 	defer rt.Close()
 
 	t.Run("Non-Admin", func(t *testing.T) {
@@ -37,7 +79,7 @@ func TestDBConfigUserFunctionGetNone(t *testing.T) {
 	})
 }
 func TestDBConfigUserFunctionGet(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
+	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: true})
 	defer rt.Close()
 
 	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
@@ -73,7 +115,7 @@ func TestDBConfigUserFunctionGet(t *testing.T) {
 }
 
 func TestDBConfigUserFunctionPut(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
+	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: true})
 	defer rt.Close()
 
 	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
@@ -122,7 +164,7 @@ func TestDBConfigUserFunctionPut(t *testing.T) {
 }
 
 func TestDBConfigUserFunctionPutOne(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
+	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: true})
 	defer rt.Close()
 
 	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
@@ -190,7 +232,7 @@ func TestDBConfigUserFunctionPutOne(t *testing.T) {
 //////// N1QL QUERIES
 
 func TestDBConfigUserQueryGetEmpty(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
+	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: true})
 	defer rt.Close()
 
 	t.Run("Non-Admin", func(t *testing.T) {
@@ -209,7 +251,7 @@ func TestDBConfigUserQueryGetEmpty(t *testing.T) {
 	})
 }
 func TestDBConfigUserQueryGet(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
+	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: true})
 	defer rt.Close()
 
 	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
@@ -253,7 +295,7 @@ func TestDBConfigUserQueryGet(t *testing.T) {
 }
 
 func TestDBConfigUserQueryPut(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
+	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: true})
 	defer rt.Close()
 
 	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
@@ -319,7 +361,7 @@ func TestDBConfigUserQueryPut(t *testing.T) {
 }
 
 func TestDBConfigUserQueryPutOne(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
+	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: true})
 	defer rt.Close()
 
 	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
@@ -398,7 +440,7 @@ const kDummyGraphQLSchema = `
 	}`
 
 func TestDBConfigUserGraphQLGetEmpty(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
+	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: true})
 	defer rt.Close()
 
 	t.Run("Non-Admin", func(t *testing.T) {
@@ -411,7 +453,7 @@ func TestDBConfigUserGraphQLGetEmpty(t *testing.T) {
 	})
 }
 func TestDBConfigUserGraphQLGet(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
+	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: true})
 	defer rt.Close()
 
 	schema := kDummyGraphQLSchema
@@ -435,7 +477,7 @@ func TestDBConfigUserGraphQLGet(t *testing.T) {
 }
 
 func TestDBConfigUserGraphQLPut(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
+	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: true})
 	defer rt.Close()
 
 	schema := kDummyGraphQLSchema

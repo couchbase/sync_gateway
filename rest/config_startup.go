@@ -140,7 +140,7 @@ type UnsupportedConfig struct {
 
 	HTTP2 *HTTP2Config `json:"http2,omitempty"`
 
-	UserQueries *bool `json:"connected_client,omitempty" help:"Feature flag for user N1QL/JS/GraphQL queries"`
+	UserQueries *bool `json:"user_queries,omitempty" help:"Feature flag for user N1QL/JS/GraphQL queries"`
 }
 
 type HTTP2Config struct {
