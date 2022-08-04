@@ -79,7 +79,10 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 
 	// TODO: need to clean up StartDCPFeed to push bucket dependencies down
 	cbStore, ok := base.AsCouchbaseStore(bucket)
-	if !ok || !base.IsEnterpriseEdition() {
+	if !ok {
+		// walrus is not a couchbasestore
+		return bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
+	} else if !base.IsEnterpriseEdition() {
 		metadataConfig := base.DCPMetadataConfig{
 			StoreType: base.DCPMetadataDB,
 			GroupID:   "",
