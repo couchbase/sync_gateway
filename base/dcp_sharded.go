@@ -46,7 +46,7 @@ type CbgtContext struct {
 	heartbeater       Heartbeater              // Heartbeater used for failed node detection
 	heartbeatListener *importHeartbeatListener // Listener subscribed to failed node alerts from heartbeater
 	loggingCtx        context.Context          // Context for cbgt logging
-	LithiumCompat     *AtomicBool              // set on startup if there are pre-Helium nodes in the cluster, later reset once all pre-Lithium nodes are gone
+	LithiumCompat     *AtomicBool              // set on startup if there are pre-Helium nodes in the cluster, later reset once all pre-Helium nodes are gone
 }
 
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
@@ -348,8 +348,8 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 		LithiumCompat: NewAtomicBool(minVersion < nodeVersionHelium),
 	}
 	if cbgtContext.LithiumCompat.IsTrue() {
-		WarnfCtx(cbgtContext.loggingCtx, "Found old Sync Gateway nodes in cluster - entering compatibility mode."+
-			" Starting a DCP feed on non-default collections will not be possible until all nodes are upgraded.")
+		WarnfCtx(cbgtContext.loggingCtx, "Found old (3.0.x or below) Sync Gateway nodes in cluster - entering compatibility mode."+
+			" Importing documents from non-default collections will not be possible until all nodes are upgraded.")
 	}
 
 	if spec.Auth != nil || (spec.Certpath != "" && spec.Keypath != "") {
@@ -584,7 +584,7 @@ func (l *importHeartbeatListener) subscribeNodeChanges() error {
 
 				if l.ctx.LithiumCompat.IsTrue() && minVersion >= nodeVersionHelium {
 					// Can now exit compat mode as all nodes are at least Helium
-					InfofCtx(logCtx, KeyDCP, "Exiting compatibility mode - can now start DCP feed on non-default collections.")
+					InfofCtx(logCtx, KeyDCP, "Exiting compatibility mode - can now start import feed on non-default collections.")
 					l.ctx.LithiumCompat.CompareAndSwap(true, false)
 				}
 
