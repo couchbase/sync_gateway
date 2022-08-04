@@ -29,17 +29,18 @@ type QueryIdRow struct {
 }
 
 const (
-	QueryTypeAccess       = "access"
-	QueryTypeRoleAccess   = "roleAccess"
-	QueryTypeChannels     = "channels"
-	QueryTypeChannelsStar = "channelsStar"
-	QueryTypeSequences    = "sequences"
-	QueryTypePrincipals   = "principals"
-	QueryTypeSessions     = "sessions"
-	QueryTypeTombstones   = "tombstones"
-	QueryTypeResync       = "resync"
-	QueryTypeAllDocs      = "allDocs"
-	QueryTypeUsers        = "users"
+	QueryTypeAccess                   = "access"
+	QueryTypeRoleAccess               = "roleAccess"
+	QueryTypeChannels                 = "channels"
+	QueryTypeChannelsStar             = "channelsStar"
+	QueryTypeSequences                = "sequences"
+	QueryTypePrincipals               = "principals"
+	QueryTypePrincipalsExcludeDeleted = "principalsExcludeDeleted"
+	QueryTypeSessions                 = "sessions"
+	QueryTypeTombstones               = "tombstones"
+	QueryTypeResync                   = "resync"
+	QueryTypeAllDocs                  = "allDocs"
+	QueryTypeUsers                    = "users"
 )
 
 type SGQuery struct {
@@ -171,7 +172,7 @@ var QueryPrincipals = SGQuery{
 }
 
 var QueryPrincipalsExcludeDeleted = SGQuery{
-	name: QueryTypePrincipals,
+	name: QueryTypePrincipalsExcludeDeleted,
 	statement: fmt.Sprintf(
 		"SELECT META(%s).id "+
 			"FROM %s AS %s "+
@@ -510,7 +511,7 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 	}
 
 	// N1QL Query
-	return context.N1QLQueryWithStats(ctx, QueryTypePrincipals, queryStatement, params, base.RequestPlus, query.adhoc)
+	return context.N1QLQueryWithStats(ctx, query.name, queryStatement, params, base.RequestPlus, query.adhoc)
 }
 
 // Query to retrieve user details, using the syncDocs index

@@ -2470,10 +2470,6 @@ func TestGetAllUsers(t *testing.T) {
 }
 
 func TestAllPrincipalIDs(t *testing.T) {
-	if base.TestsDisableGSI() {
-		t.Skip("This test only works with Couchbase Server and UseViews=false")
-	}
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
 	ctx := base.TestCtx(t)
