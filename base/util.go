@@ -1681,6 +1681,7 @@ func TerminateAndWaitForClose(terminator chan struct{}, done chan struct{}, time
 	return nil
 }
 
+// Coalesce returns the first non-nil argument, or nil if both are nil.
 func Coalesce[T any](a, b *T) *T {
 	if a != nil {
 		return a
