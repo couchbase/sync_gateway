@@ -717,6 +717,11 @@ func TestRoleAPI(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, "hipster", body["name"])
 	requireStatus(t, rt.SendAdminRequest("DELETE", "/db/_role/hipster", ""), 200)
+
+	// GET including deleted
+	response = rt.SendAdminRequest("GET", "/db/_role/?deleted=true", "")
+	requireStatus(t, response, 200)
+	assert.Equal(t, `["hipster"]`, response.Body.String())
 }
 
 func TestGuestUser(t *testing.T) {
