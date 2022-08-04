@@ -178,7 +178,8 @@ var QueryPrincipalsExcludeDeleted = SGQuery{
 			"USE INDEX($idx) "+
 			"WHERE META(%s).id LIKE '%s' "+
 			"AND (META(%s).id LIKE '%s' "+
-			"OR (META(%s).id LIKE '%s' AND (%s.deleted IS MISSING OR %s.deleted = false))) "+
+			"OR META(%s).id LIKE '%s') "+
+			"AND (%s.deleted IS MISSING OR %s.deleted = false) "+
 			"AND META(%s).id >= $%s "+ // Uses >= for inclusive startKey
 			"ORDER BY META(%s).id",
 		base.KeyspaceQueryAlias,
@@ -475,7 +476,7 @@ func (context *DatabaseContext) QueryResync(ctx context.Context, limit int, star
 }
 
 // Query to retrieve the set of user and role doc ids, using the syncDocs index
-func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey string, limit int, excludeDeleted bool) (sgbucket.QueryResultIterator, error) {
+func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey string, limit int, includeDeleted bool) (sgbucket.QueryResultIterator, error) {
 
 	// View Query
 	if context.Options.UseViews {
@@ -489,12 +490,15 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 			opts[QueryParamStartKey] = startKey
 		}
 
-		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewPrincipals, opts)
+		if includeDeleted {
+			return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewPrincipals, opts)
+		}
+		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewPrincipalsExcludeDeleted, opts)
 	}
 
-	query := &QueryPrincipals
-	if excludeDeleted {
-		query = &QueryPrincipalsExcludeDeleted
+	query := &QueryPrincipalsExcludeDeleted
+	if includeDeleted {
+		query = &QueryPrincipals
 	}
 	queryStatement := replaceIndexTokensQuery(query.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
 
