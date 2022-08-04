@@ -39,6 +39,7 @@ import (
 	"github.com/couchbase/gomemcached"
 	"github.com/gorilla/mux"
 	pkgerrors "github.com/pkg/errors"
+	"golang.org/x/exp/constraints"
 	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 )
 
@@ -1495,25 +1496,18 @@ func FatalPanicHandler() {
 	}
 }
 
-func MinInt(x, y int) int {
-	if x < y {
-		return x
+func Min[T constraints.Ordered](a, b T) T {
+	if a < b {
+		return a
 	}
-	return y
+	return b
 }
 
-func MaxInt(x, y int) int {
-	if x > y {
-		return x
+func Max[T constraints.Ordered](a, b T) T {
+	if a > b {
+		return a
 	}
-	return y
-}
-
-func MinUint64(x, y uint64) uint64 {
-	if x < y {
-		return x
-	}
-	return y
+	return b
 }
 
 func MaxUint64(x, y uint64) uint64 {

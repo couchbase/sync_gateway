@@ -283,10 +283,10 @@ func CalculateMaxHistoryEntriesPerGrant(channelCount int) int {
 	}
 
 	// Even if we can fit it limit entries to 10
-	maxEntries = base.MinInt(maxEntries, maxHistoryEntriesPerGrant)
+	maxEntries = base.Min(maxEntries, maxHistoryEntriesPerGrant)
 
 	// In the event maxEntries is negative or 0 we should set a floor of 1 entry
-	maxEntries = base.MaxInt(maxEntries, minHistoryEntriesPerGrant)
+	maxEntries = base.Max(maxEntries, minHistoryEntriesPerGrant)
 
 	return maxEntries
 }

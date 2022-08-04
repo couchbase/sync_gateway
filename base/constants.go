@@ -210,7 +210,7 @@ var (
 	ErrUnknownField = errors.New("unrecognized JSON field")
 
 	// MaxPrincipalNameLen is the maximum length for user and role names, accounting for internal prefixes, and is used to validate CRUD
-	MaxPrincipalNameLen = 250 - MaxInt(len(UserPrefix), len(RolePrefix))
+	MaxPrincipalNameLen = 250 - Max(len(UserPrefix), len(RolePrefix))
 )
 
 func DCPCheckpointPrefixWithGroupID(groupID string) string {
