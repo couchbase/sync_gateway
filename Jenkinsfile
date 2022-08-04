@@ -2,7 +2,7 @@ pipeline {
     agent { label 'sgw-pipeline-ec2' }
 
     options {
-        timeout(time: 60)
+        timeout(time: 60, unit: 'MINUTES')
     }
 
     environment {
