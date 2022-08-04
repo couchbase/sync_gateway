@@ -21,7 +21,6 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 	"time"
 
@@ -486,11 +485,7 @@ func TestTLSConfig(t *testing.T) {
 	assert.NotEmpty(t, conf)
 	assert.False(t, conf.InsecureSkipVerify)
 	require.NotNil(t, conf.RootCAs)
-	if runtime.GOOS != "windows" {
-		assert.NotEqual(t, x509.NewCertPool(), conf.RootCAs)
-	} else {
-		assert.Equal(t, x509.NewCertPool(), conf.RootCAs)
-	}
+	assert.Equal(t, x509.NewCertPool(), conf.RootCAs)
 
 	// Check TLSConfig by providing invalid root CA certificate; provide root certificate key path
 	// instead of root CA certificate. It should throw "can't append certs from PEM" error.
