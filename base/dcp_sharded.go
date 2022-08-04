@@ -402,6 +402,17 @@ func (c *CbgtContext) StartManager(dbName string, configGroup string, bucket Buc
 	return nil
 }
 
+func getNodeVersion(def *cbgt.NodeDef) (uint, error) {
+	if len(def.Extras) == 0 {
+		return 0, nil
+	}
+	var extras nodeExtras
+	if err := JSONUnmarshal([]byte(def.Extras), &extras); err != nil {
+		return 0, fmt.Errorf("parsing node extras: %w", err)
+	}
+	return extras.Version, nil
+}
+
 func getMinNodeVersion(cfg cbgt.Cfg) (uint, error) {
 	nodes, _, err := cbgt.CfgGetNodeDefs(cfg, cbgt.NODE_DEFS_KNOWN)
 	if err != nil {
@@ -413,15 +424,9 @@ func getMinNodeVersion(cfg cbgt.Cfg) (uint, error) {
 	}
 	minVersion := uint(math.MaxUint)
 	for _, node := range nodes.NodeDefs {
-		var nodeVersion uint
-		if len(node.Extras) == 0 {
-			nodeVersion = 0
-		} else {
-			var versionData nodeExtras
-			if err := JSONUnmarshal([]byte(node.Extras), &versionData); err != nil {
-				return 0, err
-			}
-			nodeVersion = versionData.Version
+		nodeVersion, err := getNodeVersion(node)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get version of node %v: %w", MD(node.HostPort).Redact(), err)
 		}
 		if nodeVersion < minVersion {
 			minVersion = nodeVersion
@@ -612,13 +617,9 @@ func (l *importHeartbeatListener) reloadNodes() (minVersion uint, localNodePrese
 				if nodeDef.UUID == l.mgr.UUID() {
 					localNodePresent = true
 				}
-				var nodeVersion uint
-				if len(nodeDef.Extras) > 0 {
-					var extras nodeExtras
-					if err := JSONUnmarshal([]byte(nodeDef.Extras), &extras); err != nil {
-						return 0, false, err
-					}
-					nodeVersion = extras.Version
+				nodeVersion, err := getNodeVersion(nodeDef)
+				if err != nil {
+					return 0, false, fmt.Errorf("failed to get version of node %v: %w", MD(nodeDef.HostPort).Redact(), err)
 				}
 				if nodeVersion < minVersion {
 					minVersion = nodeVersion
