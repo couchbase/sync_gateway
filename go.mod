@@ -4,7 +4,7 @@ go 1.17
 
 require (
 	github.com/coreos/go-oidc v2.2.1+incompatible
-	github.com/couchbase/cbgt v1.2.3
+	github.com/couchbase/cbgt v1.2.4
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20220617161408-6dfb3a7df872
 	github.com/couchbase/go-couchbase v0.1.1

@@ -273,16 +273,6 @@ func SGGoCBFeedStats(sourceType, sourceName, sourceUUID, sourceParams, serverIn 
 		sourceParamsWithAuth, serverIn, options, statsKind)
 }
 
-type FeedParams struct {
-	cbgt.DCPFeedParams
-
-	AuthUser     string `json:"authUser"`
-	AuthPassword string `json:"authPassword"`
-
-	ClientCertPath string `json:"client_cert_path"`
-	ClientKeyPath  string `json:"client_key_path"`
-}
-
 // addCbgtAuthToDCPParams gets the dbName from the incoming dcpParams, and checks for credentials
 // stored in databaseCredentials.  If found, adds those to the params as authUser/authPassword.
 // If dbname is present,
@@ -307,7 +297,7 @@ func addCbgtAuthToDCPParams(dcpParams string) string {
 		return dcpParams
 	}
 
-	var feedParamsWithAuth FeedParams
+	var feedParamsWithAuth cbgt.DCPFeedParams
 	unmarshalDCPErr := JSONUnmarshal([]byte(dcpParams), &feedParamsWithAuth)
 	if unmarshalDCPErr != nil {
 		WarnfCtx(context.Background(), "Unable to unmarshal params provided by cbgt as dcpFeedParams: %v", unmarshalDCPErr)
