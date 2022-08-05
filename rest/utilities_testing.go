@@ -104,11 +104,13 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	// If we have a TestBucket defined on the RestTesterConfig, use that instead of requesting a new one.
 	testBucket := rt.RestTesterConfig.TestBucket
+	isLeaky := false
 	if testBucket == nil {
 		testBucket = base.GetTestBucket(rt.tb)
 	} else {
 		// If using a leaky bucket, make sure it ignores attempted closures to avoid double closing panic
-		leakyBucket, isLeaky := base.AsLeakyBucket(testBucket)
+		var leakyBucket *base.LeakyBucket
+		leakyBucket, isLeaky = base.AsLeakyBucket(testBucket)
 		if isLeaky {
 			leakyBucket.SetIgnoreClose(true)
 		}
@@ -237,9 +239,15 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 		rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(rt.RestTesterConfig.sgReplicateEnabled)
 
-		_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithConnectFn(*rt.DatabaseConfig, func(spec base.BucketSpec) (base.Bucket, error) {
-			return testBucket.Bucket, nil
-		})
+		if isLeaky {
+			_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithConnectFn(*rt.DatabaseConfig, func(spec base.BucketSpec) (base.Bucket, error) {
+				// Use LeakyBucket for database instead of creating new bucket
+				return testBucket.Bucket, nil
+			})
+		} else {
+			_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(*rt.DatabaseConfig)
+		}
+
 		if err != nil {
 			rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)
 		}
