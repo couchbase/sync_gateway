@@ -21,6 +21,16 @@ func TestBlipGetCollections(t *testing.T) {
 	//bucket := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
 	//defer bucket.Close()
 
+	//checkpointIDWithError := "checkpointError"
+	//leakyBucket, ok := base.AsLeakyBucket(bucket)
+	//require.True(t, ok)
+	//leakyBucket.SetGetRawCallback(func(key string) error {
+	//	if key == db.CheckpointDocIDPrefix+checkpointIDWithError {
+	//		return fmt.Errorf("a unique error")
+	//	}
+	//	return nil
+	//})
+
 	rt := NewRestTester(t, &RestTesterConfig{
 		guestEnabled: true,
 		DatabaseConfig: &DatabaseConfig{
@@ -35,19 +45,10 @@ func TestBlipGetCollections(t *testing.T) {
 			},
 		},
 		createScopesAndCollections: true,
-		//TestBucket:                 bucket,
+		// useLeakyTBForDB:        	   true,
+		// TestBucket:                 bucket,
 	})
-
 	defer rt.Close()
-	//checkpointIDWithError := "checkpointError"
-	//leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
-	//require.True(t, ok)
-	//leakyBucket.SetGetRawCallback(func(key string) error {
-	//	if key == db.CheckpointDocIDPrefix+checkpointIDWithError {
-	//		return fmt.Errorf("a unique error")
-	//	}
-	//	return nil
-	//})
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)

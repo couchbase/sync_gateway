@@ -59,6 +59,7 @@ type RestTesterConfig struct {
 	persistentConfig                bool
 	groupID                         *string
 	createScopesAndCollections      bool // If true, will automatically create any defined scopes and collections on startup.
+	useLeakyTBForDB                 bool // If true, the leaky test bucket will be used on the database. Useful for using a LeakyBucket on the DB context for integration tests.
 }
 
 // RestTester provides a fake server for testing endpoints
@@ -104,16 +105,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	// If we have a TestBucket defined on the RestTesterConfig, use that instead of requesting a new one.
 	testBucket := rt.RestTesterConfig.TestBucket
-	isLeaky := false
 	if testBucket == nil {
 		testBucket = base.GetTestBucket(rt.tb)
-	} else {
-		// If using a leaky bucket, make sure it ignores attempted closures to avoid double closing panic
-		var leakyBucket *base.LeakyBucket
-		leakyBucket, isLeaky = base.AsLeakyBucket(testBucket)
-		if isLeaky {
-			leakyBucket.SetIgnoreClose(true)
-		}
 	}
 	rt.testBucket = testBucket
 
@@ -239,9 +232,16 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 		rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(rt.RestTesterConfig.sgReplicateEnabled)
 
-		if isLeaky {
+		if rt.useLeakyTBForDB {
+			// If using a leaky bucket, make sure it ignores attempted closures to avoid double closures panic
+			// due to closing both RestTesterServerContext and testBucket in rt.Close()
+			leakyBucket, isLeaky := base.AsLeakyBucket(testBucket)
+			if isLeaky {
+				leakyBucket.SetIgnoreClose(true)
+			}
+
 			_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithConnectFn(*rt.DatabaseConfig, func(spec base.BucketSpec) (base.Bucket, error) {
-				// Use LeakyBucket for database instead of creating new bucket
+				// Use testBucket for database bucket instead of creating new bucket
 				return testBucket.Bucket, nil
 			})
 		} else {
