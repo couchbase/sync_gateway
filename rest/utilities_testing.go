@@ -238,6 +238,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 			leakyBucket, isLeaky := base.AsLeakyBucket(testBucket)
 			if isLeaky {
 				leakyBucket.SetIgnoreClose(true)
+			} else {
+				panic("Using option useLeakyTBForDB but testBucket is not a leaky bucket")
 			}
 
 			_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithConnectFn(*rt.DatabaseConfig, func(spec base.BucketSpec) (base.Bucket, error) {
