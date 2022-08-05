@@ -27,8 +27,10 @@ var cbgtRootCertPools map[string]*x509.CertPool
 var cbgtGlobalsLock sync.Mutex
 
 type cbgtCreds struct {
-	username string
-	password string
+	username       string
+	password       string
+	clientCertPath string
+	clientKeyPath  string
 }
 
 const (
@@ -271,6 +273,16 @@ func SGGoCBFeedStats(sourceType, sourceName, sourceUUID, sourceParams, serverIn 
 		sourceParamsWithAuth, serverIn, options, statsKind)
 }
 
+type FeedParams struct {
+	cbgt.DCPFeedParams
+
+	AuthUser     string `json:"authUser"`
+	AuthPassword string `json:"authPassword"`
+
+	ClientCertPath string `json:"client_cert_path"`
+	ClientKeyPath  string `json:"client_key_path"`
+}
+
 // addCbgtAuthToDCPParams gets the dbName from the incoming dcpParams, and checks for credentials
 // stored in databaseCredentials.  If found, adds those to the params as authUser/authPassword.
 // If dbname is present,
@@ -289,22 +301,26 @@ func addCbgtAuthToDCPParams(dcpParams string) string {
 		return dcpParams
 	}
 
-	username, password, ok := getCbgtCredentials(sgSourceParams.DbName)
+	creds, ok := getCbgtCredentials(sgSourceParams.DbName)
 	if !ok {
-		// no stored credentials includes the valid x.509 auth case
 		InfofCtx(context.Background(), KeyImport, "No feed credentials stored for db from sourceParams: %s", MD(sgSourceParams.DbName))
 		return dcpParams
 	}
 
-	var feedParamsWithAuth cbgt.DCPFeedParams
+	var feedParamsWithAuth FeedParams
 	unmarshalDCPErr := JSONUnmarshal([]byte(dcpParams), &feedParamsWithAuth)
 	if unmarshalDCPErr != nil {
 		WarnfCtx(context.Background(), "Unable to unmarshal params provided by cbgt as dcpFeedParams: %v", unmarshalDCPErr)
 	}
 
 	// Add creds to params
-	feedParamsWithAuth.AuthUser = username
-	feedParamsWithAuth.AuthPassword = password
+	if creds.clientCertPath != "" && creds.clientKeyPath != "" {
+		feedParamsWithAuth.ClientCertPath = creds.clientCertPath
+		feedParamsWithAuth.ClientKeyPath = creds.clientKeyPath
+	} else {
+		feedParamsWithAuth.AuthUser = creds.username
+		feedParamsWithAuth.AuthPassword = creds.password
+	}
 
 	marshalledParamsWithAuth, marshalErr := JSONMarshal(feedParamsWithAuth)
 	if marshalErr != nil {
@@ -315,11 +331,13 @@ func addCbgtAuthToDCPParams(dcpParams string) string {
 	return string(marshalledParamsWithAuth)
 }
 
-func addCbgtCredentials(dbName, bucketName, username, password string) {
+func addCbgtCredentials(dbName, bucketName, username, password, clientCertPath, clientKeyPath string) {
 	cbgtGlobalsLock.Lock()
 	cbgtCredentials[dbName] = cbgtCreds{
-		username: username,
-		password: password,
+		username:       username,
+		password:       password,
+		clientCertPath: clientCertPath,
+		clientKeyPath:  clientKeyPath,
 	}
 	cbgtBucketToDBName[bucketName] = dbName
 	cbgtGlobalsLock.Unlock()
@@ -336,15 +354,11 @@ func removeCbgtCredentials(dbName string) {
 	cbgtGlobalsLock.Unlock()
 }
 
-func getCbgtCredentials(dbName string) (username, password string, ok bool) {
+func getCbgtCredentials(dbName string) (cbgtCreds, bool) {
 	cbgtGlobalsLock.Lock()
 	creds, found := cbgtCredentials[dbName]
-	if found {
-		username = creds.username
-		password = creds.password
-	}
-	cbgtGlobalsLock.Unlock()
-	return username, password, found
+	cbgtGlobalsLock.Unlock() // cbgtCreds is not a pointer type, safe to unlock
+	return creds, found
 }
 
 // See the comment of cbgtRootCAsProvider for usage details.
