@@ -248,10 +248,9 @@ func (set TimedSet) CompareKeys(other TimedSet) ChangedKeys {
 }
 
 // TimedSet can unmarshal from either:
-//  1. The regular format {"channel":vbSequence, ...}
-//  2. The sequence-only format {"channel":uint64, ...} or
-//  3. An array of channel names.
-//
+//   1. The regular format {"channel":vbSequence, ...}
+//   2. The sequence-only format {"channel":uint64, ...} or
+//   3. An array of channel names.
 // In the last two cases, all vbNos will be 0.
 // In the latter case all the sequences will be 0.
 func (setPtr *TimedSet) UnmarshalJSON(data []byte) error {

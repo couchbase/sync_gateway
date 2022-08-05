@@ -2754,13 +2754,12 @@ func TestSyncFnOldDocBodyPropertiesTombstoneResurrect(t *testing.T) {
 
 // TestSyncFnDocBodyPropertiesSwitchActiveTombstone creates a branched revtree, where the first tombstone created becomes active again after the shorter b branch is tombstoned.
 // The test makes sure that in this scenario, the "doc" body of the sync function when switching from (T) 3-b to (T) 4-a contains a _deleted property (stamped by getAvailable1xRev)
-//
-//	1-a
-//	├── 2-a
-//	│   └── 3-a
-//	│       └──────── (T) 4-a
-//	└──────────── 2-b
-//	              └────────────── (T) 3-b
+//     1-a
+//     ├── 2-a
+//     │   └── 3-a
+//     │       └──────── (T) 4-a
+//     └──────────── 2-b
+//                   └────────────── (T) 3-b
 func TestSyncFnDocBodyPropertiesSwitchActiveTombstone(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyJavascript)

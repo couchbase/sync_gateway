@@ -215,9 +215,7 @@ type CacheConfig struct {
 }
 
 // ***************************************************************
-//
 //	Kept around for CBG-356 backwards compatability
-//
 // ***************************************************************
 type DeprecatedCacheConfig struct {
 	DeprecatedCachePendingSeqMaxWait *uint32 `json:"max_wait_pending,omitempty"`         // Max wait for pending sequence before skipping
