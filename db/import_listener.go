@@ -82,17 +82,16 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 	if !ok {
 		// walrus is not a couchbasestore
 		return bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
-	} else if !base.IsEnterpriseEdition() {
+	}
+	if !base.IsEnterpriseEdition() {
 		metadataConfig := base.DCPMetadataConfig{
 			StoreType: base.DCPMetadataDB,
 			GroupID:   "",
 		}
 		return base.StartGocbDCPFeed(bucket, bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, metadataConfig)
-	} else {
-		il.cbgtContext, err = base.StartShardedDCPFeed(dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater, bucket, cbStore.GetSpec(), dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
-		return err
 	}
-
+	il.cbgtContext, err = base.StartShardedDCPFeed(dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater, bucket, cbStore.GetSpec(), dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
+	return err
 }
 
 // ProcessFeedEvent is invoked for each mutate or delete event seen on the server's mutation feed.  It may be
