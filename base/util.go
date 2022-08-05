@@ -326,11 +326,11 @@ func CbsExpiryToDuration(expiry uint32) time.Duration {
 }
 
 // ReflectExpiry attempts to convert expiry from one of the following formats to a Couchbase Server expiry value:
-//   1. Numeric JSON values are converted to uint32 and returned as-is
-//   2. JSON numbers are converted to uint32 and returned as-is
-//   3. String JSON values that are numbers are converted to int32 and returned as-is
-//   4. String JSON values that are ISO-8601 dates are converted to UNIX time and returned
-//   5. Null JSON values return 0
+//  1. Numeric JSON values are converted to uint32 and returned as-is
+//  2. JSON numbers are converted to uint32 and returned as-is
+//  3. String JSON values that are numbers are converted to int32 and returned as-is
+//  4. String JSON values that are ISO-8601 dates are converted to UNIX time and returned
+//  5. Null JSON values return 0
 func ReflectExpiry(rawExpiry interface{}) (*uint32, error) {
 	switch expiry := rawExpiry.(type) {
 	case int64:

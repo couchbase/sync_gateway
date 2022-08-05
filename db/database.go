@@ -756,7 +756,8 @@ func (dbCtx *DatabaseContext) RemoveObsoleteIndexes(previewOnly bool) (removedIn
 
 // Trigger terminate check handling for connected continuous replications.
 // TODO: The underlying code (NotifyCheckForTermination) doesn't actually leverage the specific username - should be refactored
-//    to remove
+//
+//	to remove
 func (context *DatabaseContext) NotifyTerminatedChanges(username string) {
 	context.mutationListener.NotifyCheckForTermination(base.SetOf(base.UserPrefix + username))
 }

@@ -334,6 +334,7 @@ func AsSingleChannelCache(cacheValue interface{}) *singleChannelCacheImpl {
 }
 
 // Adds a new channel to the channel cache.  Locking seqLock is required here to prevent missed data in the following scenario:
+//
 //	//     1. addChannelCache issued for channel A
 //	//     2. addChannelCache obtains stable sequence, seq=10
 //	//     3. addToCache (from another goroutine) receives sequence 11 in channel A, but detects that it's inactive (not in c.channelCaches)

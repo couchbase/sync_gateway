@@ -1401,13 +1401,16 @@ func initializeScenario(t *testing.T, auth *Authenticator) (*userImpl, Principal
 // Scenario 1
 // Initiate user and role
 // Grant role channel and role
-//  - Changes Request - Seq 25 - Has channel 1 access, no history
+//   - Changes Request - Seq 25 - Has channel 1 access, no history
+//
 // No changes
-//  - Changes Request - Seq 40 - Has channel 1 access, no history
+//   - Changes Request - Seq 40 - Has channel 1 access, no history
+//
 // Role revoke, role channel revoke then role re-grant and role channel re-grant
-//  - Changes Request - Seq 80 - Has channel 1 access, no history
+//   - Changes Request - Seq 80 - Has channel 1 access, no history
+//
 // Role revoke, role channel revoke
-//  - Changes Request - Seq 110 - Doesn't have channel access, history added for both role and channel
+//   - Changes Request - Seq 110 - Doesn't have channel access, history added for both role and channel
 func TestRevocationScenario1(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -1492,13 +1495,16 @@ func TestRevocationScenario1(t *testing.T) {
 // Scenario 2
 // Initiate user and role
 // Grant role channel and role
-//  - Changes Request - Seq 25 - Has channel 1 access, no history
+//   - Changes Request - Seq 25 - Has channel 1 access, no history
+//
 // Revoke role
-//  - Changes Request - Seq 50 - Doesn't have channel access, role history added
+//   - Changes Request - Seq 50 - Doesn't have channel access, role history added
+//
 // Revoke channel, re-grant role, re-grant channel
-//  - Changes Request - Seq 80 - Has channel access, retains role history
+//   - Changes Request - Seq 80 - Has channel access, retains role history
+//
 // Role revoke, role channel revoke
-//  - Changes Request - Seq 110 - Doesn't have channel access, history added for both role and channel
+//   - Changes Request - Seq 110 - Doesn't have channel access, history added for both role and channel
 func TestRevocationScenario2(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -1589,13 +1595,16 @@ func TestRevocationScenario2(t *testing.T) {
 // Scenario 3
 // Initiate user and role
 // Grant role channel and role
-//  - Changes Request - Seq 25 - Has channel 1 access, no history
+//   - Changes Request - Seq 25 - Has channel 1 access, no history
+//
 // Revoke role, revoke role channel
-//  - Changes Request - Seq 60 - Doesn't have channel access, history added for both role and channel
+//   - Changes Request - Seq 60 - Doesn't have channel access, history added for both role and channel
+//
 // Grant role channel and role
-//  - Changes Request - Seq 80 - Has channel access, retains history
+//   - Changes Request - Seq 80 - Has channel access, retains history
+//
 // Role revoke, role channel revoke
-//  - Changes Request - Seq 110 - Doesn't have channel access, history added for both role and channel
+//   - Changes Request - Seq 110 - Doesn't have channel access, history added for both role and channel
 func TestRevocationScenario3(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -1695,13 +1704,16 @@ func TestRevocationScenario3(t *testing.T) {
 // Scenario 4
 // Initiate user and role
 // Grant role channel and role
-//  - Changes Request - Seq 25 - Has channel 1 access, no history
+//   - Changes Request - Seq 25 - Has channel 1 access, no history
+//
 // Revoke role, revoke role channel, re-grant role
-//  - Changes Request - Seq 70 - Doesn't have channel access, history added for role channel
+//   - Changes Request - Seq 70 - Doesn't have channel access, history added for role channel
+//
 // Grant role
-//  - Changes Request - Seq 80 - Has channel access, retains history
+//   - Changes Request - Seq 80 - Has channel access, retains history
+//
 // Role revoke, role channel revoke
-//  - Changes Request - Seq 110 - Doesn't have channel access, history added for both role and channel
+//   - Changes Request - Seq 110 - Doesn't have channel access, history added for both role and channel
 func TestRevocationScenario4(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -1790,11 +1802,13 @@ func TestRevocationScenario4(t *testing.T) {
 // Scenario 5
 // Initiate user and role
 // Grant role channel and role
-//  - Changes Request - Seq 25 - Has channel 1 access, no history
+//   - Changes Request - Seq 25 - Has channel 1 access, no history
+//
 // Revoke role, revoke role channel, re-grant role, re-grant channel
-//  - Changes Request - Seq 80 - Has channel 1 access, no history
+//   - Changes Request - Seq 80 - Has channel 1 access, no history
+//
 // Revoke role and role channel
-//  - Changes Request - Seq 110 - Doesn't have channel access, history added for both role and channel
+//   - Changes Request - Seq 110 - Doesn't have channel access, history added for both role and channel
 func TestRevocationScenario5(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -1867,11 +1881,13 @@ func TestRevocationScenario5(t *testing.T) {
 // Scenario 6
 // Initiate user and role
 // Grant role channel and role
-//  - Changes Request - Seq 25 - Has channel 1 access, no history
+//   - Changes Request - Seq 25 - Has channel 1 access, no history
+//
 // Revoke role, revoke role channel, re-grant role, re-grant channel, re-revoke channel
-//  - Changes Request - Seq 90 - Doesn't have channel 1 access, history added for role channel
+//   - Changes Request - Seq 90 - Doesn't have channel 1 access, history added for role channel
+//
 // Revoke role
-//  - Changes Request - Seq 110 - Doesn't have channel access, history added for role
+//   - Changes Request - Seq 110 - Doesn't have channel access, history added for role
 func TestRevocationScenario6(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -1948,11 +1964,13 @@ func TestRevocationScenario6(t *testing.T) {
 // Scenario 7
 // Initiate user and role
 // Grant role channel and role
-//  - Changes Request - Seq 25 - Has channel 1 access, no history
+//   - Changes Request - Seq 25 - Has channel 1 access, no history
+//
 // Revoke role, revoke role channel, re-grant role, re-grant channel, re-revoke channel, re-revoke role
-//  - Changes Request - Seq 100 - Doesn't have channel 1 access, history added for role channel and role
+//   - Changes Request - Seq 100 - Doesn't have channel 1 access, history added for role channel and role
+//
 // No Change
-//  - Changes Request - Seq 110 - Doesn't have channel access, history retained
+//   - Changes Request - Seq 110 - Doesn't have channel access, history retained
 func TestRevocationScenario7(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -2028,9 +2046,10 @@ func TestRevocationScenario7(t *testing.T) {
 // Scenario 8
 // Initiate user and role
 // Grant role channel and role, revoke role
-//  - Changes Request - Seq 50 - Doesn't have channel 1 access, no history
+//   - Changes Request - Seq 50 - Doesn't have channel 1 access, no history
+//
 // Revoke role channel, re-grant role, re-grant channel, re-revoke channel, re-revoke role
-//  - Changes Request - Seq 110 - Doesn't have channel 1 access, no history
+//   - Changes Request - Seq 110 - Doesn't have channel 1 access, no history
 func TestRevocationScenario8(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -2087,9 +2106,10 @@ func TestRevocationScenario8(t *testing.T) {
 // Scenario 9
 // Initiate user and role
 // Grant role channel and role, revoke role and role channel
-//  - Changes Request - Seq 60 - Doesn't have channel 1 access, no history
+//   - Changes Request - Seq 60 - Doesn't have channel 1 access, no history
+//
 // Re-grant role, re-grant channel, re-revoke channel, re-revoke role
-//  - Changes Request - Seq 110 - Doesn't have channel 1 access, no history
+//   - Changes Request - Seq 110 - Doesn't have channel 1 access, no history
 func TestRevocationScenario9(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -2143,9 +2163,10 @@ func TestRevocationScenario9(t *testing.T) {
 // Scenario 10
 // Initiate user and role
 // Grant role channel and role, revoke role and role channel, re-grant role
-//  - Changes Request - Seq 70 - Doesn't have channel 1 access, no history
+//   - Changes Request - Seq 70 - Doesn't have channel 1 access, no history
+//
 // Re-grant channel, re-revoke channel, re-revoke role
-//  - Changes Request - Seq 110 - Doesn't have channel 1 access, no history
+//   - Changes Request - Seq 110 - Doesn't have channel 1 access, no history
 func TestRevocationScenario10(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -2202,9 +2223,10 @@ func TestRevocationScenario10(t *testing.T) {
 // Scenario 11
 // Initiate user and role
 // Grant role channel and role, revoke role and role channel, re-grant role, re-grant channel
-//  - Changes Request - Seq 80 - Has channel 1 access, no history
+//   - Changes Request - Seq 80 - Has channel 1 access, no history
+//
 // Revoke channel, revoke role
-//  - Changes Request - Seq 110 - Doesn't have channel 1 access, adds role and channel history
+//   - Changes Request - Seq 110 - Doesn't have channel 1 access, adds role and channel history
 func TestRevocationScenario11(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -2267,9 +2289,10 @@ func TestRevocationScenario11(t *testing.T) {
 // Scenario 12
 // Initiate user and role
 // Grant role channel and role, revoke role and role channel, re-grant role, re-grant channel, re-revoke channel
-//  - Changes Request - Seq 90 - Doesn't have channel 1 access, no history
+//   - Changes Request - Seq 90 - Doesn't have channel 1 access, no history
+//
 // Revoke role
-//  - Changes Request - Seq 110 - Doesn't have channel 1 access, no history
+//   - Changes Request - Seq 110 - Doesn't have channel 1 access, no history
 func TestRevocationScenario12(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -2326,9 +2349,10 @@ func TestRevocationScenario12(t *testing.T) {
 // Scenario 13
 // Initiate user and role
 // Grant role channel and role, revoke role and role channel, re-grant role, re-grant channel, re-revoke channel, re-revoke role
-//  - Changes Request - Seq 100 - Doesn't have channel 1 access, no history
+//   - Changes Request - Seq 100 - Doesn't have channel 1 access, no history
+//
 // No changes
-//  - Changes Request - Seq 110 - Doesn't have channel 1 access, no history
+//   - Changes Request - Seq 110 - Doesn't have channel 1 access, no history
 func TestRevocationScenario13(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -2382,10 +2406,11 @@ func TestRevocationScenario13(t *testing.T) {
 // Scenario 14
 // Initiate user and role
 // Grant role channel and role
-//  - Changes Request - Seq 25 - Has channel access no history
+//   - Changes Request - Seq 25 - Has channel access no history
+//
 // Revoke role
-//  - Changes Request Seq 45 since 25. Ensure revocation.
-// 	- Changes Request Seq 45 since 45 same seq as revocation. Ensure no revocation message.
+//   - Changes Request Seq 45 since 25. Ensure revocation.
+//   - Changes Request Seq 45 since 45 same seq as revocation. Ensure no revocation message.
 func TestRevocationScenario14(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
