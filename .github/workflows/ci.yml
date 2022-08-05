@@ -42,7 +42,8 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v3
         with:
-          args: --config=.golangci-strict.yml
+          version: v1.48.0
+          args: --config=.golangci-strict.yml --timeout=3m
   test:
     runs-on: ${{ matrix.os }}
     strategy:
