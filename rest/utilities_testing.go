@@ -92,7 +92,6 @@ func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
 }
 
 func (rt *RestTester) Bucket() base.Bucket {
-
 	if rt.tb == nil {
 		panic("RestTester not properly initialized please use NewRestTester function")
 	} else if rt.closed {
@@ -107,6 +106,12 @@ func (rt *RestTester) Bucket() base.Bucket {
 	testBucket := rt.RestTesterConfig.TestBucket
 	if testBucket == nil {
 		testBucket = base.GetTestBucket(rt.tb)
+	} else {
+		// If using a leaky bucket, make sure it ignores attempted closures to avoid double closing panic
+		leakyBucket, isLeaky := base.AsLeakyBucket(testBucket)
+		if isLeaky {
+			leakyBucket.SetIgnoreClose(true)
+		}
 	}
 	rt.testBucket = testBucket
 
@@ -232,7 +237,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 		rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(rt.RestTesterConfig.sgReplicateEnabled)
 
-		_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(*rt.DatabaseConfig)
+		_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithConnectFn(*rt.DatabaseConfig, func(spec base.BucketSpec) (base.Bucket, error) {
+			return testBucket.Bucket, nil
+		})
 		if err != nil {
 			rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)
 		}

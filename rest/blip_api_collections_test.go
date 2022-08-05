@@ -13,9 +13,13 @@ import (
 )
 
 func TestBlipGetCollections(t *testing.T) {
+	// FIXME as part of CBG-2203 to enable subtest checkpointExistsWithErrorInNonDefaultCollection
 	base.TestRequiresCollections(t)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	//bucket := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
+	//defer bucket.Close()
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		guestEnabled: true,
@@ -31,21 +35,19 @@ func TestBlipGetCollections(t *testing.T) {
 			},
 		},
 		createScopesAndCollections: true,
-		// This code will not work until leaky bucket works with collections CBG-2201
-		// TestBucket:                 base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{}),
+		//TestBucket:                 bucket,
 	})
 
 	defer rt.Close()
-	// This code will not work until leaky bucket works with collections CBG-2201
-	// checkpointIDWithError := "checkpointError"
-	// leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
-	// require.True(t, ok)
-	// leakyBucket.SetGetRawCallback(func(key string) error {
-	//		if key == db.CheckpointDocIDPrefix+checkpointIDWithError {
-	//			return fmt.Errorf("a unique error")
-	//		}
+	//checkpointIDWithError := "checkpointError"
+	//leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
+	//require.True(t, ok)
+	//leakyBucket.SetGetRawCallback(func(key string) error {
+	//	if key == db.CheckpointDocIDPrefix+checkpointIDWithError {
+	//		return fmt.Errorf("a unique error")
+	//	}
 	//	return nil
-	//	})
+	//})
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
@@ -119,8 +121,7 @@ func TestBlipGetCollections(t *testing.T) {
 			resultBody: []db.Body{db.Body{}},
 			errorCode:  "",
 		},
-		// This code will not work until leaky bucket works with collections CBG-2201
-		// {
+		//{
 		//	name: "checkpointExistsWithErrorInNonDefaultCollection",
 		//	requestBody: db.GetCollectionsRequestBody{
 		//		CheckpointIDs: []string{checkpointIDWithError},

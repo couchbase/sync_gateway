@@ -162,7 +162,7 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 
 	// Get or add database name from config without valid database name; throws 400 Illegal database name error
 	dbConfig := DbConfig{OldRevExpirySeconds: &oldRevExpirySeconds, LocalDocExpirySecs: &localDocExpirySecs}
-	dbContext, err := serverContext._getOrAddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig}, false, false)
+	dbContext, err := serverContext._getOrAddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig}, false, false, nil)
 	assert.Nil(t, dbContext, "Can't create database context without a valid database name")
 	assert.Error(t, err, "It should throw 400 Illegal database name")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
@@ -181,7 +181,7 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 		BucketConfig:        BucketConfig{Server: &server, Bucket: &bucketName},
 	}
 
-	dbContext, err = serverContext._getOrAddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig}, false, false)
+	dbContext, err = serverContext._getOrAddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig}, false, false, nil)
 	assert.Nil(t, dbContext, "Can't create database context from config with unrecognized value for import_docs")
 	assert.Error(t, err, "It should throw Unrecognized value for import_docs")
 
@@ -208,14 +208,14 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 		AutoImport:          false,
 	}
 
-	dbContext, err = serverContext._getOrAddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig}, false, false)
+	dbContext, err = serverContext._getOrAddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig}, false, false, nil)
 	assert.Nil(t, dbContext, "Can't create database context with duplicate database name")
 	assert.Error(t, err, "It should throw 412 Duplicate database names")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusPreconditionFailed))
 
 	// Get or add database from config with duplicate database name and useExisting as true
 	// Existing database context should be returned
-	dbContext, err = serverContext._getOrAddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig}, true, false)
+	dbContext, err = serverContext._getOrAddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig}, true, false, nil)
 	assert.NoError(t, err, "No error while trying to get the existing database name")
 	assert.Equal(t, server, dbContext.BucketSpec.Server)
 	assert.Equal(t, bucketName, dbContext.BucketSpec.BucketName)

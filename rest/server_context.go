@@ -72,7 +72,7 @@ type bootstrapContext struct {
 func (sc *ServerContext) CreateLocalDatabase(dbs DbConfigMap) error {
 	for _, dbConfig := range dbs {
 		dbc := dbConfig.ToDatabaseConfig()
-		_, err := sc._getOrAddDatabaseFromConfig(*dbc, false, false)
+		_, err := sc._getOrAddDatabaseFromConfig(*dbc, false, false, nil)
 		if err != nil {
 			return err
 		}
@@ -297,7 +297,7 @@ func (sc *ServerContext) PostUpgrade(preview bool) (postUpgradeResults PostUpgra
 func (sc *ServerContext) _reloadDatabase(reloadDbName string, failFast bool) (*db.DatabaseContext, error) {
 	sc._unloadDatabase(reloadDbName)
 	config := sc.dbConfigs[reloadDbName]
-	return sc._getOrAddDatabaseFromConfig(*config, true, failFast)
+	return sc._getOrAddDatabaseFromConfig(*config, true, failFast, nil)
 }
 
 // Removes and re-adds a database to the ServerContext.
@@ -318,18 +318,18 @@ func (sc *ServerContext) ReloadDatabaseWithConfig(config DatabaseConfig) error {
 
 func (sc *ServerContext) _reloadDatabaseWithConfig(config DatabaseConfig, failFast bool) error {
 	sc._removeDatabase(config.Name)
-	_, err := sc._getOrAddDatabaseFromConfig(config, false, failFast)
+	_, err := sc._getOrAddDatabaseFromConfig(config, false, failFast, nil)
 	return err
 }
 
 // Adds a database to the ServerContext.  Attempts a read after it gets the write
 // lock to see if it's already been added by another process. If so, returns either the
 // existing DatabaseContext or an error based on the useExisting flag.
-func (sc *ServerContext) getOrAddDatabaseFromConfig(config DatabaseConfig, useExisting bool, failFast bool) (*db.DatabaseContext, error) {
+func (sc *ServerContext) getOrAddDatabaseFromConfig(config DatabaseConfig, useExisting, failFast bool, connectFn func(spec base.BucketSpec) (base.Bucket, error)) (*db.DatabaseContext, error) {
 	// Obtain write lock during add database, to avoid race condition when creating based on ConfigServer
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
-	return sc._getOrAddDatabaseFromConfig(config, useExisting, failFast)
+	return sc._getOrAddDatabaseFromConfig(config, useExisting, failFast, connectFn)
 }
 
 func GetBucketSpec(config *DatabaseConfig, serverConfig *StartupConfig) (spec base.BucketSpec, err error) {
@@ -367,7 +367,8 @@ func GetBucketSpec(config *DatabaseConfig, serverConfig *StartupConfig) (spec ba
 // Adds a database to the ServerContext.  Attempts a read after it gets the write
 // lock to see if it's already been added by another process. If so, returns either the
 // existing DatabaseContext or an error based on the useExisting flag.
-func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useExisting, failFast bool) (*db.DatabaseContext, error) {
+// Pass in a connectFn to replace the default ConnectToBucket function. This will cause the failFast argument to be ignored
+func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useExisting, failFast bool, connectFn func(spec base.BucketSpec) (base.Bucket, error)) (*db.DatabaseContext, error) {
 
 	// Generate bucket spec and validate whether db already exists
 	spec, err := GetBucketSpec(&config, sc.config)
@@ -400,7 +401,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	base.InfofCtx(context.TODO(), base.KeyAll, "Opening db /%s as bucket %q, pool %q, server <%s>",
 		base.MD(dbName), base.MD(spec.BucketName), base.SD(base.DefaultPool), base.SD(spec.Server))
 	connectToBucketFn := db.ConnectToBucket
-	if failFast {
+	if connectFn != nil {
+		connectToBucketFn = connectFn
+	} else if failFast {
 		connectToBucketFn = db.ConnectToBucketFailFast
 	}
 	bucket, err := connectToBucketFn(spec)
@@ -949,13 +952,19 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 // Adds a database to the ServerContext given its configuration.  If an existing config is found
 // for the name, returns an error.
 func (sc *ServerContext) AddDatabaseFromConfig(config DatabaseConfig) (*db.DatabaseContext, error) {
-	return sc.getOrAddDatabaseFromConfig(config, false, false)
+	return sc.getOrAddDatabaseFromConfig(config, false, false, nil)
 }
 
 // AddDatabaseFromConfigFailFast adds a database to the ServerContext given its configuration and fails fast.
 // If an existing config is found for the name, returns an error.
 func (sc *ServerContext) AddDatabaseFromConfigFailFast(config DatabaseConfig) (*db.DatabaseContext, error) {
-	return sc.getOrAddDatabaseFromConfig(config, false, true)
+	return sc.getOrAddDatabaseFromConfig(config, false, true, nil)
+}
+
+// AddDatabaseFromConfigFailFast adds a database to the ServerContext given its configuration and fails fast.
+// If an existing config is found for the name, returns an error.
+func (sc *ServerContext) AddDatabaseFromConfigWithConnectFn(config DatabaseConfig, connectFn func(spec base.BucketSpec) (base.Bucket, error)) (*db.DatabaseContext, error) {
+	return sc.getOrAddDatabaseFromConfig(config, false, false, connectFn)
 }
 
 func (sc *ServerContext) processEventHandlersForEvent(events []*EventConfig, eventType db.EventType, dbcontext *db.DatabaseContext) error {
