@@ -99,13 +99,15 @@ func newJavaScriptRunner(name string, kind string, funcSource string) (*javaScri
 	// Function that runs before every call:
 	runner.Before = func() {
 		if runner.currentDB == nil {
-			panic("UserFunctionRunner can't run without a currentDB")
+			panic("javaScriptRunner can't run without a currentCtx or currentDB")
 		}
-		//log.Printf("*** UserFn runner %s about to run", runner.name)
+		//log.Printf("*** javaScriptRunner %s about to run", runner.name)
 	}
 	// Function that runs after every call:
 	runner.After = func(jsResult otto.Value, err error) (interface{}, error) {
-		defer func() { runner.currentDB = nil }()
+		defer func() {
+			runner.currentDB = nil
+		}()
 		if err != nil {
 			base.ErrorfCtx(context.Background(), base.KeyJavascript.String()+": %s %s failed: %#v", runner.kind, runner.name, err)
 			return nil, runner.convertError(err)
@@ -158,6 +160,9 @@ func (runner *javaScriptRunner) do_func(funcName string, params map[string]inter
 // Implementation of JS `app.get(docID, docType)` function
 func (runner *javaScriptRunner) do_get(docID string, docType *string) (interface{}, error) {
 	//log.Printf("*** UserFn get(%q)", docID)
+	if err := runner.currentDB.CheckTimeout(); err != nil {
+		return nil, err
+	}
 	rev, err := runner.currentDB.GetRev(docID, "", false, nil)
 	if err != nil {
 		status, _ := base.ErrorAsHTTPStatus(err)
@@ -206,6 +211,9 @@ func (runner *javaScriptRunner) do_query(queryName string, params map[string]int
 // Implementation of JS `app.save(docID, body)` function
 func (runner *javaScriptRunner) do_save(docID string, body map[string]interface{}) error {
 	//log.Printf("*** UserFn save(%q, %v)", docID, body)
+	if err := runner.currentDB.CheckTimeout(); err != nil {
+		return err
+	}
 	if !runner.mutationAllowed {
 		return base.HTTPErrorf(http.StatusForbidden, "a read-only request is not allowed to mutate the database")
 	}

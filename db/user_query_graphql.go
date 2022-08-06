@@ -54,6 +54,9 @@ func (db *Database) UserGraphQLQuery(query string, operationName string, variabl
 
 // Runs a GraphQL query on behalf of a user, presumably invoked via a REST or BLIP API.
 func (gq *GraphQL) Query(db *Database, query string, operationName string, variables map[string]interface{}, mutationAllowed bool) (*graphql.Result, error) {
+	if err := db.CheckTimeout(); err != nil {
+		return nil, err
+	}
 	ctx := context.WithValue(db.Ctx, dbKey, db)
 	ctx = context.WithValue(ctx, mutAllowedKey, mutationAllowed)
 	result := graphql.Do(graphql.Params{

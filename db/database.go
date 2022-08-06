@@ -1729,3 +1729,35 @@ func (context *DatabaseContext) IsGuestReadOnly() bool {
 	return context.Options.UnsupportedOptions != nil && context.Options.UnsupportedOptions.GuestReadOnly
 
 }
+
+//////// TIMEOUTS
+
+// Calls a function, synchronously, while imposing a timeout on the Database's Context. Any call to CheckTimeout while the function is running will return an error if the timeout has expired.
+// The function will *not* be aborted automatically! Its code must check for timeouts by calling CheckTimeout periodically, returning once that produces an error.
+func (db *Database) WithTimeout(timeout time.Duration, operation func() error) error {
+	oldCtx := db.Ctx
+	newCtx, cancel := context.WithTimeout(oldCtx, timeout)
+	db.Ctx = newCtx // Push a new Context with the timeout
+	defer func() {
+		db.Ctx = oldCtx // On the way out, restore the previous Context
+		cancel()
+	}()
+	if err := operation(); err != nil {
+		return err
+	}
+	// Check for timeout again, in case the operation's last check was before the deadline but it kept running till the deadline passed. Returning an error will keep the caller from doing any more work.
+	return db.CheckTimeout()
+}
+
+// Returns an HTTP timeout (408) error if the Database's Context has an expired timeout or has been explicitly canceled. (See WithTimeout.)
+func (db *Database) CheckTimeout() error {
+	if db.Ctx == nil {
+		return nil
+	}
+	select {
+	case <-db.Ctx.Done():
+		return base.HTTPErrorf(http.StatusRequestTimeout, "Request timed out")
+	default:
+		return nil
+	}
+}

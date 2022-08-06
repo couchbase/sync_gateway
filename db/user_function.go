@@ -35,6 +35,9 @@ type UserFunctionConfig struct {
 //////// RUNNING A USER FUNCTION:
 
 func (db *Database) CallUserFunction(name string, args map[string]interface{}, mutationAllowed bool) (interface{}, error) {
+	if err := db.CheckTimeout(); err != nil {
+		return nil, err
+	}
 	// Look up the function by name:
 	config, found := db.Options.UserFunctions[name]
 	if !found {

@@ -14,9 +14,16 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/graphql-go/graphql"
 )
+
+// Timeout for N1QL, JavaScript and GraphQL queries.
+// TODO: Make this a configurable parameter?
+const QueryTimeout = 60 * time.Second
 
 // HTTP handler for GET or POST `/$db/_query/$name`
 func (h *handler) handleUserQuery() error {
@@ -25,7 +32,11 @@ func (h *handler) handleUserQuery() error {
 		return err
 	}
 	// Run the query:
-	results, err := h.db.UserN1QLQuery(queryName, queryParams)
+	var results sgbucket.QueryResultIterator
+	err = h.db.WithTimeout(QueryTimeout, func() error {
+		results, err = h.db.UserN1QLQuery(queryName, queryParams)
+		return err
+	})
 	if err != nil {
 		return err
 	}
@@ -59,7 +70,11 @@ func (h *handler) handleUserFunction() error {
 		return err
 	}
 	canMutate := h.rq.Method != "GET"
-	result, err := h.db.CallUserFunction(fnName, fnParams, canMutate)
+	var result interface{}
+	err = h.db.WithTimeout(QueryTimeout, func() error {
+		result, err = h.db.CallUserFunction(fnName, fnParams, canMutate)
+		return err
+	})
 	if err == nil {
 		h.writeJSON(result)
 	}
@@ -146,7 +161,11 @@ func (h *handler) handleGraphQL() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing/empty `query` property")
 	}
 
-	result, err := h.db.UserGraphQLQuery(queryString, operationName, variables, canMutate)
+	var result *graphql.Result
+	err = h.db.WithTimeout(QueryTimeout, func() error {
+		result, err = h.db.UserGraphQLQuery(queryString, operationName, variables, canMutate)
+		return err
+	})
 	if err == nil {
 		h.writeJSON(result)
 	}

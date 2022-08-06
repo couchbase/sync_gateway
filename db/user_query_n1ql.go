@@ -11,7 +11,6 @@ licenses/APL2.txt.
 package db
 
 import (
-	"context"
 	"errors"
 	"net/http"
 
@@ -37,6 +36,9 @@ type UserQueryConfig struct {
 
 // Runs a named N1QL query on behalf of a user, presumably invoked via a REST or BLIP API.
 func (db *Database) UserN1QLQuery(name string, args map[string]interface{}) (sgbucket.QueryResultIterator, error) {
+	if err := db.CheckTimeout(); err != nil {
+		return nil, err
+	}
 	// Look up the query name in the server config:
 	query, found := db.Options.UserQueries[name]
 	if !found {
@@ -65,13 +67,12 @@ func (db *Database) UserN1QLQuery(name string, args map[string]interface{}) (sgb
 	iter, err := db.N1QLQueryWithStats(db.Ctx, QueryTypeUserPrefix+name, query.Statement, args,
 		base.RequestPlus, false)
 	if err != nil {
-		logCtx := context.TODO()
 		var qe *gocb.QueryError
 		if errors.As(err, &qe) {
-			base.WarnfCtx(logCtx, "Error running query %q: %v", name, err)
+			base.WarnfCtx(db.Ctx, "Error running query %q: %v", name, err)
 			err = base.HTTPErrorf(http.StatusInternalServerError, "Query %q: %s", name, qe.Errors[0].Message)
 		} else {
-			base.WarnfCtx(logCtx, "Unknown error running query %q: %T %#v", name, err, err)
+			base.WarnfCtx(db.Ctx, "Unknown error running query %q: %T %#v", name, err, err)
 			err = base.HTTPErrorf(http.StatusInternalServerError, "Unknown error running query %q (see logs)", name)
 		}
 	}
