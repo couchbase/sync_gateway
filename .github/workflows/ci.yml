@@ -10,7 +10,7 @@ name: ci
 
 on:
   push:
-    branches: 
+    branches:
       - 'master'
       - 'release/*'
       - 'CBG*'
@@ -28,15 +28,22 @@ jobs:
         with:
           go-version: 1.17.11
       - uses: actions/checkout@v2
-      - name: gofmt
-        run: |
-          gofmt -d -e . | tee gofmt.out
-          test -z "$(cat gofmt.out)"
-      - name: vet
-        run: go vet "./..."
       - name: go-build
         run: go build "./..."
 
+  golangci:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-go@v3
+        with:
+          go-version: 1.17.11
+      - uses: actions/checkout@v3
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: v1.48.0
+          args: --config=.golangci-strict.yml --timeout=3m
   test:
     runs-on: ${{ matrix.os }}
     strategy:

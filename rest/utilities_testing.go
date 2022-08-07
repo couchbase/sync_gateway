@@ -300,10 +300,26 @@ func createTestBucketScopesAndCollections(ctx context.Context, tb *base.TestBuck
 				return fmt.Errorf("failed to create collection %s in scope %s: %w", collectionName, scopeName, err)
 			}
 			base.DebugfCtx(ctx, base.KeySGTest, "Created collection %s.%s", scopeName, collectionName)
+			if err := waitUntilScopeAndCollectionExists(cluster.Bucket(tb.GetName()).Scope(scopeName).Collection(collectionName)); err != nil {
+				return err
+			}
+			base.DebugfCtx(ctx, base.KeySGTest, "Collection now exists %s.%s", scopeName, collectionName)
 		}
 	}
 
 	return nil
+}
+
+func waitUntilScopeAndCollectionExists(collection *gocb.Collection) error {
+	err, _ := base.RetryLoop("wait for scope and collection to exist", func() (shouldRetry bool, err error, value interface{}) {
+		_, err = collection.Exists("waitUntilScopeAndCollectionExists", nil)
+		if err != nil {
+			base.WarnfCtx(context.TODO(), "Error checking if collection exists: %v", err)
+			return true, err, nil
+		}
+		return false, nil, nil
+	}, base.CreateMaxDoublingSleeperFunc(30, 10, 1000))
+	return err
 }
 
 func (rt *RestTester) ServerContext() *ServerContext {
