@@ -151,7 +151,6 @@ func (dc *DCPClient) Start() (doneChan chan error, err error) {
 // Close is used externally to stop the DCP client. If the client was already closed due to error, returns that error. This function blocks until close.
 func (dc *DCPClient) Close() error {
 	dc.close()
-	<-dc.doneChannel
 	return dc.getCloseError()
 }
 

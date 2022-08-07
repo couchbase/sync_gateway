@@ -143,7 +143,8 @@ func attachmentCompactMarkPhase(db *Database, compactionID string, terminator *b
 		}
 	case <-terminator.Done():
 		base.DebugfCtx(db.Ctx, base.KeyAll, "[%s] Terminator closed. Stopping mark phase.", compactionLoggingID)
-		closeErr := dcpClient.Close()
+		_ = dcpClient.Close()
+		closeErr := <-doneChan
 		if closeErr != nil {
 			base.WarnfCtx(db.Ctx, "[%s] Mark phase DCP feed close error %w", compactionLoggingID, closeErr)
 		}
@@ -347,20 +348,17 @@ func attachmentCompactSweepPhase(db *Database, compactionID string, vbUUIDs []ui
 	base.DebugfCtx(db.Ctx, base.KeyAll, "[%s] DCP client started.", compactionLoggingID)
 
 	select {
-	case <-doneChan:
+	case dcpCloseErr := <-doneChan:
 		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Sweep phase of attachment compaction completed. Deleted %d attachments", compactionLoggingID, purgedAttachmentCount.Value())
-		err = dcpClient.Close()
+		if dcpCloseErr != nil {
+			base.WarnfCtx(db.Ctx, "[%s] Failed to close attachment compaction DCP client! %v", compactionLoggingID, dcpCloseErr)
+		}
 	case <-terminator.Done():
 		base.DebugfCtx(db.Ctx, base.KeyAll, "[%s] Terminator closed. Ending sweep phase.", compactionLoggingID)
-		err = dcpClient.Close()
-		if err != nil {
-			base.WarnfCtx(db.Ctx, "[%s] Failed to close attachment compaction DCP client! %v", compactionLoggingID, err)
-			return purgedAttachmentCount.Value(), err
-		}
-
-		err = <-doneChan
-		if err != nil {
-			return purgedAttachmentCount.Value(), err
+		dcpClient.Close()
+		dcpCloseErr := <-doneChan
+		if dcpCloseErr != nil {
+			base.WarnfCtx(db.Ctx, "[%s] Failed to close attachment compaction DCP client! %v", compactionLoggingID, dcpCloseErr)
 		}
 
 		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Sweep phase of attachment compaction was terminated. Deleted %d attachments", compactionLoggingID, purgedAttachmentCount.Value())
@@ -477,19 +475,11 @@ func attachmentCompactCleanupPhase(db *Database, compactionID string, vbUUIDs []
 	select {
 	case <-doneChan:
 		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Cleanup phase of attachment compaction completed", compactionLoggingID)
-		// simplify close in CBG-2234
-		err = dcpClient.Close()
 	case <-terminator.Done():
-		// simplify close in CBG-2234
-		err = dcpClient.Close()
-		if err != nil {
+		dcpCloseErr := <-doneChan
+		if dcpCloseErr != nil {
 			base.WarnfCtx(db.Ctx, "[%s] Failed to close attachment compaction DCP client! %v", compactionLoggingID, err)
-			return err
-		}
-
-		err = <-doneChan
-		if err != nil {
-			return err
+			return dcpCloseErr
 		}
 
 		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Cleanup phase of attachment compaction was terminated", compactionLoggingID)
