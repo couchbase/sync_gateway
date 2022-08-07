@@ -133,7 +133,8 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 func (dc *DCPClient) Start() (doneChan chan error, err error) {
 	err = dc.initAgent(dc.spec)
 	if err != nil {
-		_ = dc.Close()
+		dc.Close()
+		<-dc.doneChannel
 		return nil, err
 	}
 	dc.startWorkers()
@@ -141,7 +142,8 @@ func (dc *DCPClient) Start() (doneChan chan error, err error) {
 	for i := uint16(0); i < dc.numVbuckets; i++ {
 		openErr := dc.openStream(i, openRetryCount)
 		if openErr != nil {
-			_ = dc.Close()
+			dc.Close()
+			<-dc.doneChannel
 			return nil, fmt.Errorf("Unable to start DCP client, error opening stream for vb %d: %w", i, openErr)
 		}
 	}
