@@ -11,10 +11,10 @@ import (
 type DCPMetadataStoreType int
 
 const (
-	// DCPMetadataDB uses CouchbaseStore interface backed metadata storage
-	DCPMetadataDB = iota
+	// DCPMetadataCS uses CouchbaseStore interface backed metadata storage
+	DCPMetadataStoreCS = iota
 	// DCPMetadataInMemory uses in memory metadata storage
-	DCPMetadataInMemory
+	DCPMetadataStoreInMemory
 )
 
 type DCPMetadata struct {

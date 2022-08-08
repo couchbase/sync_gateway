@@ -46,12 +46,11 @@ func getHighSeqMetadata(bucket Bucket) ([]DCPMetadata, error) {
 }
 
 // StartGocbDCPFeed starts a DCP Feed.
-func StartGocbDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
+func StartGocbDCPFeed(bucket Bucket, bucketName string, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map, metadataStoreType DCPMetadataStoreType, groupID string) error {
 	metadata, err := getHighSeqMetadata(bucket)
 	if err != nil {
 		return err
 	}
-	bucketName := spec.BucketName
 	feedName, err := GenerateDcpStreamName(args.ID)
 	if err != nil {
 		return err
@@ -60,13 +59,12 @@ func StartGocbDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgument
 		feedName,
 		callback,
 		DCPClientOptions{
-			// address in CBG-2232
-			MetadataStoreType: DCPMetadataInMemory,
+			MetadataStoreType: metadataStoreType,
+			GroupID:           groupID,
 			InitialMetadata:   metadata,
 			DbStats:           dbStats,
 		},
-		bucket,
-		"")
+		bucket)
 	if err != nil {
 		return err
 	}
@@ -74,12 +72,15 @@ func StartGocbDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgument
 	doneChan, err := dcpClient.Start()
 	loggingCtx := context.TODO()
 	if err != nil {
-		ErrorfCtx(loggingCtx, "Failed to start DCP Feed %q for bucket %q: %w", feedName, MD(bucketName), err)
+		ErrorfCtx(loggingCtx, "!!! Failed to start DCP Feed %q for bucket %q: %w", feedName, MD(bucketName), err)
 		// simplify in CBG-2234
 		closeErr := dcpClient.Close()
+		ErrorfCtx(loggingCtx, "!!! Finished called async close error from DCP Feed %q for bucket %q", feedName, MD(bucketName))
 		if closeErr != nil {
-			ErrorfCtx(loggingCtx, "Close error from DCP Feed %q for bucket %q: %w", feedName, MD(bucketName), closeErr)
+			ErrorfCtx(loggingCtx, "!!! Close error from DCP Feed %q for bucket %q: %w", feedName, MD(bucketName), closeErr)
 		}
+		asyncCloseErr := <-doneChan
+		ErrorfCtx(loggingCtx, "!!! Finished calling async close error from DCP Feed %q for bucket %q: %w", feedName, MD(bucketName), asyncCloseErr)
 		return err
 	}
 	InfofCtx(loggingCtx, KeyDCP, "Started DCP Feed %q for bucket %q", feedName, MD(bucketName))
