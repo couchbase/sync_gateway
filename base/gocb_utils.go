@@ -100,11 +100,11 @@ func (ca CertificateAuthenticator) Credentials(req gocbcore.AuthCredsRequest) ([
 }
 
 // GoCBCoreAuthConfig returns a gocbcore.AuthProvider to use when connecting given a set of credentials via a gocbcore agent.
-func GoCBCoreAuthConfig(username, password, certPath, keyPath string) (a gocbcore.AuthProvider, err error) {
+func GoCBCoreAuthConfig(username, password, certPath, keyPath string) (gocbcore.AuthProvider, error) {
 	if certPath != "" && keyPath != "" {
 		cert, certLoadErr := tls.LoadX509KeyPair(certPath, keyPath)
 		if certLoadErr != nil {
-			return nil, err
+			return nil, certLoadErr
 		}
 		return CertificateAuthenticator{
 			ClientCertificate: &cert,

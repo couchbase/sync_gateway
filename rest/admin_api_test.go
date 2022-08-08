@@ -1127,7 +1127,6 @@ func TestDBGetConfigNames(t *testing.T) {
 
 // Take DB offline and ensure can post _resync
 func TestDBOfflinePostResync(t *testing.T) {
-
 	if testing.Short() {
 		t.Skip("skipping test in short mode")
 	}
@@ -1155,14 +1154,17 @@ func TestDBOfflinePostResync(t *testing.T) {
 		var status db.ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
-		return status.State == db.BackgroundProcessStateCompleted
+
+		var val interface{}
+		_, err = rt.Bucket().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
+
+		return status.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
 	})
 	assert.NoError(t, err)
 }
 
 // Take DB offline and ensure only one _resync can be in progress
 func TestDBOfflineSingleResync(t *testing.T) {
-
 	if testing.Short() {
 		t.Skip("skipping test in short mode")
 	}
@@ -1205,7 +1207,11 @@ func TestDBOfflineSingleResync(t *testing.T) {
 		var status db.ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
-		return status.State == db.BackgroundProcessStateCompleted
+
+		var val interface{}
+		_, err = rt.Bucket().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
+
+		return status.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
 	})
 	assert.NoError(t, err)
 
@@ -1213,8 +1219,6 @@ func TestDBOfflineSingleResync(t *testing.T) {
 }
 
 func TestResync(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
 	testCases := []struct {
 		name               string
 		docsCreated        int
@@ -1285,7 +1289,11 @@ func TestResync(t *testing.T) {
 				response := rt.SendAdminRequest("GET", "/db/_resync", "")
 				err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
 				assert.NoError(t, err)
-				return resyncManagerStatus.State == db.BackgroundProcessStateCompleted
+
+				var val interface{}
+				_, err = rt.Bucket().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
+
+				return resyncManagerStatus.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
 			})
 			assert.NoError(t, err)
 
@@ -1386,7 +1394,11 @@ func TestResyncErrorScenarios(t *testing.T) {
 		var status db.ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
-		return status.State == db.BackgroundProcessStateCompleted
+
+		var val interface{}
+		_, err = rt.Bucket().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
+
+		return status.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
 	})
 	assert.NoError(t, err)
 
@@ -1405,7 +1417,11 @@ func TestResyncErrorScenarios(t *testing.T) {
 		var status db.ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
-		return status.State == db.BackgroundProcessStateCompleted
+
+		var val interface{}
+		_, err = rt.Bucket().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
+
+		return status.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
 	})
 	assert.NoError(t, err)
 
@@ -1494,7 +1510,11 @@ func TestResyncStop(t *testing.T) {
 		var resyncManagerStatus ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
 		assert.NoError(t, err)
-		return resyncManagerStatus.Status == db.BackgroundProcessStateStopped
+
+		var val interface{}
+		_, err = rt.Bucket().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
+
+		return resyncManagerStatus.Status == db.BackgroundProcessStateStopped && base.IsDocNotFoundError(err)
 	})
 	assert.NoError(t, err)
 
@@ -1611,7 +1631,10 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	requireStatus(t, response, http.StatusOK)
 
 	err = rt.WaitForCondition(func() bool {
-		return rt.GetDatabase().ResyncManager.GetRunState() == db.BackgroundProcessStateCompleted
+		var val interface{}
+		_, err = rt.Bucket().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
+
+		return rt.GetDatabase().ResyncManager.GetRunState(t) == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
 	})
 	assert.NoError(t, err)
 
@@ -4346,8 +4369,8 @@ func TestDeleteDatabasePointingAtSameBucket(t *testing.T) {
 }
 
 func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
+	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
+		t.Skip("This test only works against Couchbase Server with xattrs")
 	}
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 	// Start SG with no databases in bucket(s)
@@ -4882,4 +4905,137 @@ func TestPublicChanGuestAccess(t *testing.T) {
 
 	resp = rt.SendRequest(http.MethodGet, "/db/docNoAccess", "")
 	requireStatus(t, resp, http.StatusForbidden)
+}
+
+func setServerPurgeInterval(t *testing.T, rt *RestTester, newPurgeInterval string) {
+	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
+	require.NoError(t, err)
+
+	settings := url.Values{}
+	settings.Add("purgeInterval", newPurgeInterval)
+	settings.Add("autoCompactionDefined", "true")
+	settings.Add("parallelDBAndViewCompaction", "false")
+
+	req, err := http.NewRequest("POST", eps[0]+"/pools/default/buckets/"+rt.Bucket().GetName(), strings.NewReader(settings.Encode()))
+	require.NoError(t, err)
+	req.SetBasicAuth(base.TestClusterUsername(), base.TestClusterPassword())
+	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := httpClient.Do(req)
+	require.NoError(t, err)
+
+	require.Equal(t, resp.StatusCode, http.StatusOK)
+}
+
+func TestTombstoneCompactionPurgeInterval(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Server compaction metadata purge interval can only be changed on Couchbase Server")
+	}
+	testCases := []struct {
+		name                              string
+		newServerInterval                 string
+		dbPurgeInterval                   time.Duration
+		expectedPurgeIntervalAfterCompact time.Duration
+	}{
+		{
+			name:                              "Default purge interval updated after db creation",
+			newServerInterval:                 "1",
+			dbPurgeInterval:                   db.DefaultPurgeInterval,
+			expectedPurgeIntervalAfterCompact: time.Hour * 24,
+		},
+		{
+			name:                              "Ignore server interval",
+			newServerInterval:                 "1",
+			dbPurgeInterval:                   0,
+			expectedPurgeIntervalAfterCompact: 0,
+		},
+		{
+			name:                              "Purge interval updated after db creation",
+			newServerInterval:                 "1",
+			dbPurgeInterval:                   time.Hour,
+			expectedPurgeIntervalAfterCompact: time.Hour * 24,
+		},
+	}
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	dbc := rt.GetDatabase()
+
+	cbStore, _ := base.AsCouchbaseStore(rt.Bucket())
+	serverPurgeInterval, err := cbStore.MetadataPurgeInterval()
+	require.NoError(t, err)
+	// Set server purge interval back to what it was for bucket reuse
+	defer setServerPurgeInterval(t, rt, fmt.Sprintf("%.2f", serverPurgeInterval.Hours()/24))
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			// Set intervals on server and client
+			dbc.PurgeInterval = test.dbPurgeInterval
+			setServerPurgeInterval(t, rt, test.newServerInterval)
+
+			// Start compact to modify purge interval
+			database, _ := db.GetDatabase(dbc, nil)
+			_, err = database.Compact(false, func(purgedDocCount *int) {}, base.NewSafeTerminator())
+			require.NoError(t, err)
+
+			// Check purge interval is as expected
+			if !base.TestUseXattrs() {
+				// Not using xattrs should cause compaction to not run therefore not changing purge interval
+				assert.EqualValues(t, test.dbPurgeInterval, dbc.PurgeInterval)
+				return
+			}
+			assert.EqualValues(t, test.expectedPurgeIntervalAfterCompact, dbc.PurgeInterval)
+		})
+	}
+}
+
+// CBG-2150: Tests that resync status is cluster aware
+func TestResyncPersistence(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	tb := base.GetTestBucket(t)
+	noCloseTB := tb.NoCloseClone()
+
+	rt1 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: noCloseTB,
+	})
+
+	rt2 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb,
+	})
+
+	defer rt2.Close()
+	defer rt1.Close()
+
+	// Create a document to process through resync
+	rt1.createDoc(t, "doc1")
+
+	// Start resync
+	resp := rt1.SendAdminRequest("POST", "/db/_offline", "")
+	requireStatus(t, resp, http.StatusOK)
+
+	waitAndAssertCondition(t, func() bool {
+		state := atomic.LoadUint32(&rt1.GetDatabase().State)
+		return state == db.DBOffline
+	})
+
+	resp = rt1.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	requireStatus(t, resp, http.StatusOK)
+
+	// Wait for resync to complete
+	var resyncManagerStatus db.ResyncManagerResponse
+	err := rt1.WaitForCondition(func() bool {
+		resp = rt1.SendAdminRequest("GET", "/db/_resync", "")
+		err := json.Unmarshal(resp.BodyBytes(), &resyncManagerStatus)
+		assert.NoError(t, err)
+		return resyncManagerStatus.State == db.BackgroundProcessStateCompleted
+	})
+	require.NoError(t, err)
+
+	// Check statuses match
+	resp2 := rt2.SendAdminRequest("GET", "/db/_resync", "")
+	requireStatus(t, resp, http.StatusOK)
+	fmt.Printf("RT1 Resync Status: %s\n", resp.BodyBytes())
+	fmt.Printf("RT2 Resync Status: %s\n", resp2.BodyBytes())
+	assert.Equal(t, resp.BodyBytes(), resp2.BodyBytes())
 }

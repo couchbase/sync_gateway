@@ -221,8 +221,7 @@ func (dc *DCPClient) initAgent(spec BucketSpec) error {
 	agentConfig.SecurityConfig.Auth = auth
 	agentConfig.SecurityConfig.TLSRootCAProvider = tlsRootCAProvider
 	agentConfig.UserAgent = "SyncGatewayDCP"
-
-	if dc.spec.Scope != nil && dc.spec.Collection != nil {
+	if dc.CollectionIDs {
 		agentConfig.IoConfig = gocbcore.IoConfig{
 			UseCollections: true,
 		}

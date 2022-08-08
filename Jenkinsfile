@@ -1,7 +1,9 @@
 pipeline {
-    // Build on this uberjenkins node, as it has the Go environment set up in a known-state
-    // We could potentially change this to use a dockerfile agent instead so it can be portable.
     agent { label 'sgw-pipeline-ec2' }
+
+    options {
+        timeout(time: 60, unit: 'MINUTES')
+    }
 
     environment {
         BRANCH = "${BRANCH_NAME}"
@@ -14,7 +16,7 @@ pipeline {
     }
 
     tools {
-        go '1.17.11'
+        go '1.18.5'
     }
 
     stages {
@@ -296,6 +298,8 @@ pipeline {
                             }
                         }
                         stage('against EE') {
+                            // CBG-2237 skipping stage due to regular litecore test segfaults
+                            when { expression { return false } }
                             steps {
                                 githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'Running LiteCore Tests', status: 'PENDING')
                                 sh 'touch verbose_litecore.out'

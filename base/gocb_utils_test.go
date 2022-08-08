@@ -1,8 +1,6 @@
 package base
 
 import (
-	"crypto/x509"
-	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -76,11 +74,16 @@ func TestGoCBv2SecurityConfig(t *testing.T) {
 			assert.Equal(t, expectTLSSkipVerify, sc.TLSSkipVerify)
 			if test.expectCertPool == false {
 				assert.Nil(t, sc.TLSRootCAs)
-			} else if runtime.GOOS == "windows" && test.caCertPath == "" { // expect empty cert pool when getting root pool on windows
-				assert.Equal(t, x509.NewCertPool(), sc.TLSRootCAs)
 			} else { // Expect populated cert pool
 				assert.NotEmpty(t, sc.TLSRootCAs)
 			}
 		})
 	}
+}
+
+// Regression test for CBG-2230. Ensure that we return an error, rather than nil/nil, when given an invalid path to
+// x.509 certs.
+func TestGoCBCoreAuthConfigInvalidPaths(t *testing.T) {
+	_, err := GoCBCoreAuthConfig("", "", "/non/existent/cert", "/non/existent/key")
+	assert.Error(t, err)
 }

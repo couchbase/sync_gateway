@@ -39,6 +39,7 @@ import (
 	"github.com/couchbase/gomemcached"
 	"github.com/gorilla/mux"
 	pkgerrors "github.com/pkg/errors"
+	"golang.org/x/exp/constraints"
 	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 )
 
@@ -1495,25 +1496,18 @@ func FatalPanicHandler() {
 	}
 }
 
-func MinInt(x, y int) int {
-	if x < y {
-		return x
+func Min[T constraints.Ordered](a, b T) T {
+	if a < b {
+		return a
 	}
-	return y
+	return b
 }
 
-func MaxInt(x, y int) int {
-	if x > y {
-		return x
+func Max[T constraints.Ordered](a, b T) T {
+	if a > b {
+		return a
 	}
-	return y
-}
-
-func MinUint64(x, y uint64) uint64 {
-	if x < y {
-		return x
-	}
-	return y
+	return b
 }
 
 func MaxUint64(x, y uint64) uint64 {
@@ -1687,10 +1681,8 @@ func TerminateAndWaitForClose(terminator chan struct{}, done chan struct{}, time
 	return nil
 }
 
-// TODO: replace these with a generic implementation once we upgrade to Go 1.18
-
-// CoalesceStrings returns the first non-nil argument, or nil if both are nil.
-func CoalesceStrings(a, b *string) *string {
+// Coalesce returns the first non-nil argument, or nil if both are nil.
+func Coalesce[T any](a, b *T) *T {
 	if a != nil {
 		return a
 	}
@@ -1699,6 +1691,8 @@ func CoalesceStrings(a, b *string) *string {
 	}
 	return nil
 }
+
+// Coalesce cannot be used with sets because though they are pointer types, they aren't pointers.
 
 // CoalesceSets returns the first non-nil argument, or nil if both are nil.
 func CoalesceSets(a, b Set) Set {
@@ -1711,39 +1705,9 @@ func CoalesceSets(a, b Set) Set {
 	return nil
 }
 
-// CoalesceBools returns the first non-nil argument, or nil if both are nil.
-func CoalesceBools(a, b *bool) *bool {
-	if a != nil {
-		return a
-	}
-	if b != nil {
-		return b
-	}
-	return nil
-}
-
-// CoalesceTimes returns the first non-nil argument, or nil if both are nil.
-func CoalesceTimes(a, b *time.Time) *time.Time {
-	if a != nil {
-		return a
-	}
-	if b != nil {
-		return b
-	}
-	return nil
-}
-
-// StringsCut is a backport of the Go 1.18 strings.Cut function. This can be removed once we're running on Go 1.18
-func StringsCut(s, sep string) (before, after string, found bool) {
-	if i := strings.Index(s, sep); i >= 0 {
-		return s[:i], s[i+len(sep):], true
-	}
-	return s, "", false
-}
-
 // safeCutBefore returns the value up to the first instance of sep if it exists, and the remaining part of the string after sep.
 func safeCutBefore(s, sep string) (value, remainder string) {
-	val, after, ok := StringsCut(s, sep)
+	val, after, ok := strings.Cut(s, sep)
 	if !ok {
 		return "", s
 	}
@@ -1752,7 +1716,7 @@ func safeCutBefore(s, sep string) (value, remainder string) {
 
 // safeCutAfter returns the value after the first instance of sep if it exists, and the remaining part of the string before sep.
 func safeCutAfter(s, sep string) (value, remainder string) {
-	before, val, ok := StringsCut(s, sep)
+	before, val, ok := strings.Cut(s, sep)
 	if !ok {
 		return "", s
 	}

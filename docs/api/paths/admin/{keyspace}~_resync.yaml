@@ -3,7 +3,7 @@ parameters:
 get:
   summary: Get resync status
   description: |-
-    This will retrieve the status of last resync operation (whether it is running or not).
+    This will retrieve the status of last resync operation (whether it is running or not) in the Sync Gateway cluster.
 
     Required Sync Gateway RBAC roles:
     * Sync Gateway Architect

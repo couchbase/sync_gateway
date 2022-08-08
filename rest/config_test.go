@@ -1655,7 +1655,7 @@ func TestLoadJavaScript(t *testing.T) {
 			}()
 			js, err := loadJavaScript(inputJavaScriptOrPath, test.insecureSkipVerify)
 			if test.errExpected != nil {
-				require.True(t, errors.As(err, &test.errExpected))
+				require.True(t, errors.As(err, &test.errExpected)) // nolint: govet // CBG-2242
 			}
 			assert.Equal(t, test.jsExpected, js)
 		})
@@ -1820,7 +1820,7 @@ func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 			}
 			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil)
 			if test.errExpected != nil {
-				require.True(t, errors.As(err, &test.errExpected))
+				require.True(t, errors.As(err, &test.errExpected)) // nolint: govet // CBG-2242
 			} else {
 				assert.Equal(t, test.jsSyncFnExpected, *dbConfig.Sync)
 			}
@@ -1920,7 +1920,7 @@ func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
 			}
 			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil)
 			if test.errExpected != nil {
-				require.True(t, errors.As(err, &test.errExpected))
+				require.True(t, errors.As(err, &test.errExpected)) // nolint: govet // CBG-2242
 			} else {
 				assert.Equal(t, test.jsImportFilterExpected, *dbConfig.ImportFilter)
 			}
@@ -2032,7 +2032,7 @@ func TestSetupDbConfigWithConflictResolutionFunction(t *testing.T) {
 			}
 			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil)
 			if test.errExpected != nil {
-				require.True(t, errors.As(err, &test.errExpected))
+				require.True(t, errors.As(err, &test.errExpected)) // nolint: govet // CBG-2242
 			} else {
 				require.NotNil(t, dbConfig.Replications["replication1"])
 				conflictResolutionFnActual := dbConfig.Replications["replication1"].ConflictResolutionFn
@@ -2138,7 +2138,7 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 			sc := &ServerContext{}
 			err := sc.initEventHandlers(ctx, &dbConfig)
 			if test.errExpected != nil {
-				require.True(t, errors.As(err, &test.errExpected))
+				require.True(t, errors.As(err, &test.errExpected)) // nolint: govet // CBG-2242
 			}
 		})
 	}

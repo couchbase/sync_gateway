@@ -45,17 +45,7 @@ func getHighSeqMetadata(bucket Bucket) ([]DCPMetadata, error) {
 	return metadata, nil
 }
 
-// StartGocbDCPFeed starts a DCP Feed.
-func StartGocbDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
-	metadata, err := getHighSeqMetadata(bucket)
-	if err != nil {
-		return err
-	}
-	bucketName := spec.BucketName
-	feedName, err := GenerateDcpStreamName(args.ID)
-	if err != nil {
-		return err
-	}
+func getCollectionIDs(bucket Bucket, scope, collection *string) []uint32 {
 	collection, ok := bucket.(*Collection)
 	if !ok {
 		return fmt.Errorf("bucket is not a collection")
@@ -68,6 +58,20 @@ func StartGocbDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgument
 		}
 		collectionIDs = append(collectionIDs, collectionID)
 	}
+	return collectionIDs
+}
+
+// StartGocbDCPFeed starts a DCP Feed.
+func StartGocbDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
+	metadata, err := getHighSeqMetadata(bucket)
+	if err != nil {
+		return err
+	}
+	bucketName := spec.BucketName
+	feedName, err := GenerateDcpStreamName(args.ID)
+	if err != nil {
+		return err
+	}
 	dcpClient, err := NewDCPClient(
 		feedName,
 		callback,
@@ -76,7 +80,7 @@ func StartGocbDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgument
 			MetadataStoreType: DCPMetadataInMemory,
 			InitialMetadata:   metadata,
 			DbStats:           dbStats,
-			collectionIDS:     collectionIDs,
+			CollectionIDS:     getCollectionIDs(bucket, spec.Scope, spec.Collection),
 		},
 		bucket,
 		"")
