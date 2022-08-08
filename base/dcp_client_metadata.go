@@ -19,6 +19,7 @@ const (
 
 type DCPMetadataConfig struct {
 	StoreType DCPMetadataStoreType // define storage type for DCPMetadata
+	GroupID   string               // specify GroupID, only used when StoreType is DCPMetadataDB
 }
 
 type DCPMetadata struct {

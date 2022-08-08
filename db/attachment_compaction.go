@@ -120,8 +120,8 @@ func attachmentCompactMarkPhase(db *Database, compactionID string, terminator *b
 		FailOnRollback: true,
 		MetadataConfig: base.DCPMetadataConfig{
 			StoreType: base.DCPMetadataDB,
+			GroupID:   db.Options.GroupID,
 		},
-		GroupID: db.Options.GroupID,
 	}
 
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for mark phase of attachment compaction", compactionLoggingID)
@@ -343,8 +343,8 @@ func attachmentCompactSweepPhase(db *Database, compactionID string, vbUUIDs []ui
 		InitialMetadata: base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs),
 		MetadataConfig: base.DCPMetadataConfig{
 			StoreType: base.DCPMetadataDB,
+			GroupID:   db.Options.GroupID,
 		},
-		GroupID: db.Options.GroupID,
 	}
 
 	dcpFeedKey := compactionID + "_sweep"
@@ -477,8 +477,8 @@ func attachmentCompactCleanupPhase(db *Database, compactionID string, vbUUIDs []
 		InitialMetadata: base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs),
 		MetadataConfig: base.DCPMetadataConfig{
 			StoreType: base.DCPMetadataDB,
+			GroupID:   db.Options.GroupID,
 		},
-		GroupID: db.Options.GroupID,
 	}
 
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for cleanup phase of attachment compaction", compactionLoggingID)
