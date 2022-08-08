@@ -203,7 +203,14 @@ func (rt *RestTester) Bucket() base.Bucket {
 		}
 
 		if rt.createScopesAndCollections {
-			if err := createTestBucketScopesAndCollections(base.TestCtx(rt.tb), rt.testBucket, rt.DatabaseConfig.Scopes); err != nil {
+			scopes := make(map[string][]string)
+			for scopeName, scopeCfg := range rt.DatabaseConfig.Scopes {
+				scopes[scopeName] = make([]string, 0, len(scopeCfg.Collections))
+				for collName := range scopeCfg.Collections {
+					scopes[scopeName] = append(scopes[scopeName], collName)
+				}
+			}
+			if err := base.CreateTestBucketScopesAndCollections(base.TestCtx(rt.tb), rt.testBucket, scopes); err != nil {
 				rt.tb.Fatalf("Error creating test scopes/collections: %v", err)
 			}
 		}
