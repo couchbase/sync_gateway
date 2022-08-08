@@ -53,7 +53,7 @@ func TestBlipGetCollections(t *testing.T) {
 	checkpointID1 := "checkpoint1"
 	checkpoint1Body := db.Body{"seq": "123"}
 	dbInstance := db.Database{DatabaseContext: rt.GetDatabase()}
-	revID, err := dbInstance.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
+	revID, err := dbInstance.PutLocal(db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
 	require.NoError(t, err)
 	checkpoint1RevID := "0-1"
 	require.Equal(t, checkpoint1RevID, revID)
@@ -119,7 +119,7 @@ func TestBlipGetCollections(t *testing.T) {
 			errorCode:  "",
 		},
 		// This code will not work until leaky bucket works with collections CBG-2201
-		//{
+		// {
 		//	name: "checkpointExistsWithErrorInNonDefaultCollection",
 		//	requestBody: db.GetCollectionsRequestBody{
 		//		CheckpointIDs: []string{checkpointIDWithError},
@@ -127,7 +127,7 @@ func TestBlipGetCollections(t *testing.T) {
 		//	},
 		//	resultBody: []db.Body{nil},
 		//	errorCode:  "",
-		//},
+		// },
 	}
 
 	for _, testCase := range testCases {
@@ -185,7 +185,7 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 	checkpointID1 := "checkpoint1"
 	checkpoint1Body := db.Body{"seq": "123"}
 	dbInstance := db.Database{DatabaseContext: rt.GetDatabase()}
-	revID, err := dbInstance.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
+	revID, err := dbInstance.PutLocal(db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
 	require.NoError(t, err)
 	checkpoint1RevID := "0-1"
 	require.Equal(t, checkpoint1RevID, revID)

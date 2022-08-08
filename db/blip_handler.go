@@ -168,7 +168,7 @@ func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 		return nil
 	}
 
-	value, err := bh.collection.GetSpecial(DocTypeLocal, CheckpointDocIDPrefix+client)
+	value, err := bh.collection.GetLocal(CheckpointDocIDPrefix + client)
 	if err != nil {
 		return err
 	}
@@ -196,7 +196,7 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 	if revID := checkpointMessage.rev(); revID != "" {
 		checkpoint[BodyRev] = revID
 	}
-	revID, err := bh.collection.PutSpecial(DocTypeLocal, CheckpointDocIDPrefix+checkpointMessage.client(), checkpoint)
+	revID, err := bh.collection.PutLocal(CheckpointDocIDPrefix+checkpointMessage.client(), checkpoint)
 	if err != nil {
 		return err
 	}

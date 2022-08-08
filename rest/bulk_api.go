@@ -90,7 +90,7 @@ func (h *handler) handleAllDocs() error {
 		}
 		for ch, rm := range channelMap {
 			if availableChannels == nil || availableChannels.Contains(ch) {
-				//Do not include channels doc removed from in this rev
+				// Do not include channels doc removed from in this rev
 				if rm == nil {
 					result = append(result, ch)
 				}
@@ -201,8 +201,8 @@ func (h *handler) handleAllDocs() error {
 	// Now it's time to actually write the response!
 	lastSeq, _ := h.db.LastSequence()
 	h.setHeader("Content-Type", "application/json")
-	//response.Write below would set Status OK implicitly. We manually do it here to ensure that our handler knows
-	//that the header has been written to, meaning we can prevent it from attempting to set the header again later on.
+	// response.Write below would set Status OK implicitly. We manually do it here to ensure that our handler knows
+	// that the header has been written to, meaning we can prevent it from attempting to set the header again later on.
 	h.writeStatus(http.StatusOK, http.StatusText(http.StatusOK))
 	_, _ = h.response.Write([]byte(`{"rows":[` + "\n"))
 	if explicitDocIDs != nil {
@@ -537,7 +537,7 @@ func (h *handler) handleBulkDocs() error {
 		offset := len("_local/")
 		docid, _ := doc[db.BodyId].(string)
 		idslug := docid[offset:]
-		revid, err = h.db.PutSpecial(db.DocTypeLocal, idslug, doc)
+		revid, err = h.db.PutLocal(idslug, doc)
 		status := db.Body{}
 		status["id"] = docid
 		if err != nil {

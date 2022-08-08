@@ -1872,7 +1872,7 @@ func TestLocalDocExpiry(t *testing.T) {
 	cbStore, ok := base.AsCouchbaseStore(rt.Bucket())
 	require.True(t, ok)
 
-	localDocKey := db.RealSpecialDocID(db.DocTypeLocal, "loc1")
+	localDocKey := db.LocalDocID("loc1")
 	expiry, getMetaError := cbStore.GetExpiry(localDocKey)
 	log.Printf("Expiry after PUT is %v", expiry)
 	assert.True(t, expiry > timeNow, "expiry is not greater than current time")

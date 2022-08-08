@@ -514,7 +514,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 		dbcontext.Scopes = map[string]db.Scope{
 			*spec.Scope: {
 				Collections: map[string]db.Collection{
-					*spec.Collection: {CollectionCtx: dbcontext}, // TODO: Prior to Phase 2 - move DatabaseContext methods like PutSpecial, etc. into CollectionContext
+					*spec.Collection: {CollectionCtx: dbcontext}, // TODO: Prior to Phase 2 - move DatabaseContext methods like PutLocal, etc. into CollectionContext
 				},
 			},
 		}
