@@ -70,11 +70,12 @@ func (db *Database) UserN1QLQuery(name string, args map[string]interface{}) (sgb
 		var qe *gocb.QueryError
 		if errors.As(err, &qe) {
 			base.WarnfCtx(db.Ctx, "Error running query %q: %v", name, err)
-			err = base.HTTPErrorf(http.StatusInternalServerError, "Query %q: %s", name, qe.Errors[0].Message)
+			return nil, base.HTTPErrorf(http.StatusInternalServerError, "Query %q: %s", name, qe.Errors[0].Message)
 		} else {
 			base.WarnfCtx(db.Ctx, "Unknown error running query %q: %T %#v", name, err, err)
-			err = base.HTTPErrorf(http.StatusInternalServerError, "Unknown error running query %q (see logs)", name)
+			return nil, base.HTTPErrorf(http.StatusInternalServerError, "Unknown error running query %q (see logs)", name)
 		}
 	}
-	return iter, err
+	// Do a final timeout check, so the caller will know not to do any more work if time's up:
+	return iter, db.CheckTimeout()
 }

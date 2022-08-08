@@ -16,10 +16,10 @@ import (
 	"strings"
 	"time"
 
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/graphql-go/graphql"
 )
+
+//////// N1QL QUERIES:
 
 // Timeout for N1QL, JavaScript and GraphQL queries.
 // TODO: Make this a configurable parameter?
@@ -32,36 +32,40 @@ func (h *handler) handleUserQuery() error {
 		return err
 	}
 	// Run the query:
-	var results sgbucket.QueryResultIterator
-	err = h.db.WithTimeout(QueryTimeout, func() error {
-		results, err = h.db.UserN1QLQuery(queryName, queryParams)
-		return err
-	})
-	if err != nil {
-		return err
-	}
-
-	// Write the query results to the response, as a JSON array of objects:
-	h.setHeader("Content-Type", "application/json")
-	_, _ = h.response.Write([]byte(`[`))
-	first := true
-	var row interface{}
-	for results.Next(&row) {
-		if first {
-			first = false
-		} else {
-			h.response.Write([]byte(`,`))
-		}
-		if err := h.addJSON(row); err != nil {
+	return h.db.WithTimeout(QueryTimeout, func() error {
+		results, err := h.db.UserN1QLQuery(queryName, queryParams)
+		if err != nil {
 			return err
 		}
-	}
-	if err = results.Close(); err != nil {
-		return err
-	}
-	_, _ = h.response.Write([]byte(`]` + "\n"))
-	return nil
+
+		// Write the query results to the response, as a JSON array of objects.
+		h.setHeader("Content-Type", "application/json")
+		_, _ = h.response.Write([]byte(`[`))
+		first := true
+		var row interface{}
+		for results.Next(&row) {
+			if first {
+				first = false
+			} else {
+				h.response.Write([]byte(`,`))
+			}
+			if err = h.addJSON(row); err != nil {
+				return err
+			}
+			// The iterator streams results as the query engine produces them, so this loop may take most of the query's time; check for timeout after each iteration:
+			if err = h.db.CheckTimeout(); err != nil {
+				return err
+			}
+		}
+		if err = results.Close(); err != nil {
+			return err
+		}
+		_, _ = h.response.Write([]byte("]\n"))
+		return nil
+	})
 }
+
+//////// JAVASCRIPT FUNCTIONS:
 
 // HTTP handler for GET or POST `/$db/_function/$name`
 func (h *handler) handleUserFunction() error {
@@ -70,15 +74,14 @@ func (h *handler) handleUserFunction() error {
 		return err
 	}
 	canMutate := h.rq.Method != "GET"
-	var result interface{}
-	err = h.db.WithTimeout(QueryTimeout, func() error {
-		result, err = h.db.CallUserFunction(fnName, fnParams, canMutate)
+
+	return h.db.WithTimeout(QueryTimeout, func() error {
+		result, err := h.db.CallUserFunction(fnName, fnParams, canMutate)
+		if err == nil {
+			h.writeJSON(result)
+		}
 		return err
 	})
-	if err == nil {
-		h.writeJSON(result)
-	}
-	return err
 }
 
 // Common subroutine for reading query name and parameters from a request
@@ -113,13 +116,14 @@ func (h *handler) getUserFunctionParams() (name string, params map[string]interf
 	return
 }
 
+//////// GRAPHQL QUERIES:
+
 // HTTP handler for GET or POST `/$db/_graphql`
 // See <https://graphql.org/learn/serving-over-http/#http-methods-headers-and-body>
 func (h *handler) handleGraphQL() error {
 	var queryString string
 	var operationName string
 	var variables map[string]interface{}
-	var err error
 	canMutate := false
 
 	if h.rq.Method == "POST" {
@@ -161,13 +165,11 @@ func (h *handler) handleGraphQL() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing/empty `query` property")
 	}
 
-	var result *graphql.Result
-	err = h.db.WithTimeout(QueryTimeout, func() error {
-		result, err = h.db.UserGraphQLQuery(queryString, operationName, variables, canMutate)
+	return h.db.WithTimeout(QueryTimeout, func() error {
+		result, err := h.db.UserGraphQLQuery(queryString, operationName, variables, canMutate)
+		if err == nil {
+			h.writeJSON(result)
+		}
 		return err
 	})
-	if err == nil {
-		h.writeJSON(result)
-	}
-	return err
 }
