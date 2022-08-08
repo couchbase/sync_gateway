@@ -559,17 +559,12 @@ func createBlipTesterClientOpts(tb testing.TB, rt *RestTester, opts *BlipTesterC
 		getCollectionsRequest := blip.NewRequest()
 		getCollectionsRequest.SetProfile(db.MessageGetCollections)
 
-		type CollectionsRequest struct {
-			Collections   []string `json:"collections"`
-			CheckpointIDs []string `json:"checkpoint_ids"`
-		}
-
 		checkpointIDs := make([]string, len(btc.Collections))
 		for i := range checkpointIDs {
 			checkpointIDs[i] = btc.pullReplication.id
 		}
 
-		requestBody := CollectionsRequest{
+		requestBody := db.GetCollectionsRequestBody{
 			Collections:   btc.Collections,
 			CheckpointIDs: checkpointIDs,
 		}

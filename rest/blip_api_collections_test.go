@@ -301,10 +301,10 @@ func TestCollectionsReplication(t *testing.T) {
 	require.NoError(t, rt.WaitForPendingChanges())
 
 	btcCollection, err := btc.GetCollection(scopeAndCollectionKey)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = btcCollection.StartOneshotPull()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	_, ok := btcCollection.WaitForRev("doc1", "1-ca9ad22802b66f662ff171f226211d5c")
 	require.True(t, ok)
