@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -105,8 +104,9 @@ type DatabaseContext struct {
 	ResyncManager                *BackgroundManager
 	TombstoneCompactionManager   *BackgroundManager
 	AttachmentCompactionManager  *BackgroundManager
-	ExitChanges                  chan struct{}            // Active _changes feeds on the DB will close when this channel is closed
-	OIDCProviders                auth.OIDCProviderMap     // OIDC clients
+	ExitChanges                  chan struct{}        // Active _changes feeds on the DB will close when this channel is closed
+	OIDCProviders                auth.OIDCProviderMap // OIDC clients
+	LocalJWTProviders            auth.LocalJWTProviderMap
 	PurgeInterval                time.Duration            // Metadata purge interval
 	serverUUID                   string                   // UUID of the server, if available
 	DbStats                      *base.DbStats            // stats that correspond to this database context
@@ -121,6 +121,15 @@ type DatabaseContext struct {
 	NoX509HTTPClient             *http.Client             // A HTTP Client from gocb to use the management endpoints
 	ServerContextHasStarted      chan struct{}            // Closed via PostStartup once the server has fully started
 	graphQL                      *GraphQL                 // GraphQL query evaluator
+	Scopes                       map[string]Scope         // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
+}
+
+type Scope struct {
+	Collections map[string]Collection
+}
+
+type Collection struct {
+	CollectionCtx *DatabaseContext // SG Database operations (e.g. GetDocument) for this collection.
 }
 
 type DatabaseContextOptions struct {
@@ -130,6 +139,7 @@ type DatabaseContextOptions struct {
 	AdminInterface                *string
 	UnsupportedOptions            *UnsupportedOptions
 	OIDCOptions                   *auth.OIDCOptions
+	LocalJWTConfig                auth.LocalJWTConfig
 	DBOnlineCallback              DBOnlineCallback // Callback function to take the DB back online
 	ImportOptions                 ImportOptions
 	EnableXattr                   bool             // Use xattr for _sync
@@ -153,6 +163,8 @@ type DatabaseContextOptions struct {
 	ClientPartitionWindow         time.Duration
 	BcryptCost                    int
 	GroupID                       string
+	JavascriptTimeout             time.Duration // Max time the JS functions run for (ie. sync fn, import filter)
+	skipRegisterImportPIndex      bool          // if set, skips the global gocb PIndex registration
 }
 
 type SGReplicateOptions struct {
@@ -191,6 +203,7 @@ type UnsupportedOptions struct {
 	SgrTlsSkipVerify          bool                     `json:"sgr_tls_skip_verify,omitempty"`           // Config option to enable self-signed certs for SG-Replicate testing.
 	RemoteConfigTlsSkipVerify bool                     `json:"remote_config_tls_skip_verify,omitempty"` // Config option to enable self signed certificates for external JavaScript load.
 	GuestReadOnly             bool                     `json:"guest_read_only,omitempty"`               // Config option to restrict GUEST document access to read-only
+	ForceAPIForbiddenErrors   bool                     `json:"force_api_forbidden_errors,omitempty"`    // Config option to force the REST API to return forbidden errors
 	ConnectedClient           bool                     `json:"connected_client,omitempty"`              // Enables BLIP connected-client APIs
 }
 
@@ -337,7 +350,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	)
 
 	dbContext.EventMgr = NewEventManager()
-	logCtx := context.TODO()
+	logCtx := context.WithValue(context.Background(), base.LogContextKey{}, base.LogContext{
+		CorrelationID: "db:" + base.MD(dbName).Redact(),
+	})
 
 	var err error
 	dbContext.sequences, err = newSequenceAllocator(bucket, dbContext.DbStats.Database())
@@ -369,6 +384,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	// Initialize the ChangeCache.  Will be locked and unusable until .Start() is called (SG #3558)
 	err = dbContext.changeCache.Init(
+		logCtx,
 		dbContext,
 		notifyChange,
 		options.CacheOptions,
@@ -488,22 +504,12 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		dbContext.OIDCProviders = make(auth.OIDCProviderMap)
 
 		for name, provider := range options.OIDCOptions.Providers {
-			if provider.Issuer == "" || provider.ClientID == "" {
-				base.WarnfCtx(logCtx, "Issuer and ClientID required for OIDC Provider - skipping provider %q", base.UD(name))
+			if provider.Issuer == "" || base.StringDefault(provider.ClientID, "") == "" {
+				// TODO: this duplicates a check in DbConfig.validate to avoid a backwards compatibility issue
+				base.WarnfCtx(logCtx, "Issuer and Client ID not defined for provider %q - skipping", base.UD(name))
 				continue
 			}
-
-			if provider.ValidationKey == nil {
-				base.WarnfCtx(logCtx, "Validation Key not defined in config for provider %q - auth code flow will not be supported for this provider", base.UD(name))
-			}
-
-			if strings.Contains(name, "_") {
-				return nil, base.RedactErrorf("OpenID Connect provider names cannot contain underscore:%s", base.UD(name))
-			}
 			provider.Name = name
-			if _, ok := dbContext.OIDCProviders[provider.Issuer]; ok {
-				return nil, base.RedactErrorf("Multiple OIDC providers defined for issuer %v", base.UD(provider.Issuer))
-			}
 
 			// If this is the default provider, or there's only one provider defined, set IsDefault
 			if (options.OIDCOptions.DefaultProvider != nil && name == *options.OIDCOptions.DefaultProvider) || len(options.OIDCOptions.Providers) == 1 {
@@ -527,11 +533,11 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 			dbContext.OIDCProviders[name] = provider
 		}
-		if len(dbContext.OIDCProviders) == 0 {
-			return nil, errors.New("OpenID Connect defined in config, but no valid OpenID Connect providers specified")
+	}
 
-		}
-
+	dbContext.LocalJWTProviders = make(auth.LocalJWTProviderMap, len(options.LocalJWTConfig))
+	for name, cfg := range options.LocalJWTConfig {
+		dbContext.LocalJWTProviders[name] = cfg.BuildProvider(name)
 	}
 
 	if dbContext.UseXattrs() {
@@ -599,7 +605,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		// No cleanup necessary, stop heartbeater above will take care of it
 	}
 
-	dbContext.ResyncManager = NewResyncManager()
+	dbContext.ResyncManager = NewResyncManager(bucket)
 	dbContext.TombstoneCompactionManager = NewTombstoneCompactionManager()
 	dbContext.AttachmentCompactionManager = NewAttachmentCompactionManager(bucket)
 
@@ -1035,7 +1041,7 @@ outerLoop:
 }
 
 // Returns user information for all users (ID, disabled, email)
-func (db *DatabaseContext) GetUsers(ctx context.Context, limit int) (users []PrincipalConfig, err error) {
+func (db *DatabaseContext) GetUsers(ctx context.Context, limit int) (users []auth.PrincipalConfig, err error) {
 
 	if db.Options.UseViews {
 		return nil, errors.New("GetUsers not supported when running with useViews=true")
@@ -1056,7 +1062,7 @@ func (db *DatabaseContext) GetUsers(ctx context.Context, limit int) (users []Pri
 		paginationLimit = limit
 	}
 
-	users = []PrincipalConfig{}
+	users = []auth.PrincipalConfig{}
 
 	totalCount := 0
 
@@ -1083,9 +1089,9 @@ outerLoop:
 			startKey = base.UserPrefix + queryRow.Name
 			resultCount++
 			if queryRow.Name != "" && !skipAddition {
-				principal := PrincipalConfig{
+				principal := auth.PrincipalConfig{
 					Name:     &queryRow.Name,
-					Email:    queryRow.Email,
+					Email:    &queryRow.Email,
 					Disabled: &queryRow.Disabled,
 				}
 				users = append(users, principal)
@@ -1167,6 +1173,21 @@ func (db *Database) Compact(skipRunningStateCheck bool, callback compactCallback
 	ctx := db.Ctx
 
 	base.InfofCtx(ctx, base.KeyAll, "Starting compaction of purged tombstones for %s ...", base.MD(db.Name))
+
+	// Update metadata purge interval if not explicitly set to 0 (used in testing)
+	if db.PurgeInterval > 0 {
+		cbStore, ok := base.AsCouchbaseStore(db.Bucket)
+		if ok {
+			serverPurgeInterval, err := cbStore.MetadataPurgeInterval()
+			if err != nil {
+				base.WarnfCtx(ctx, "Unable to retrieve server's metadata purge interval - using existing purge interval. %s", err)
+			} else if serverPurgeInterval > 0 {
+				db.PurgeInterval = serverPurgeInterval
+			}
+		}
+	}
+	base.InfofCtx(ctx, base.KeyAll, "Tombstone compaction using the metadata purge interval of %.2f days.", db.PurgeInterval.Hours()/24)
+
 	purgeBody := Body{"_purged": true}
 	for {
 		purgedDocs := make([]string, 0)
@@ -1193,7 +1214,7 @@ func (db *Database) Compact(skipRunningStateCheck bool, callback compactCallback
 			purgeErr := db.Purge(tombstonesRow.Id)
 			if purgeErr == nil {
 				purgedDocs = append(purgedDocs, tombstonesRow.Id)
-			} else if base.IsKeyNotFoundError(db.Bucket, purgeErr) {
+			} else if base.IsDocNotFoundError(purgeErr) {
 				// If key no longer exists, need to add and remove to trigger removal from view
 				_, addErr := db.Bucket.Add(tombstonesRow.Id, 0, purgeBody)
 				if addErr != nil {
@@ -1251,7 +1272,7 @@ func (dbCtx *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err e
 	} else if dbCtx.ChannelMapper != nil {
 		_, err = dbCtx.ChannelMapper.SetFunction(syncFun)
 	} else {
-		dbCtx.ChannelMapper = channels.NewChannelMapper(syncFun)
+		dbCtx.ChannelMapper = channels.NewChannelMapper(syncFun, dbCtx.Options.JavascriptTimeout)
 	}
 	if err != nil {
 		base.WarnfCtx(context.TODO(), "Error setting sync function: %s", err)
@@ -1727,7 +1748,10 @@ func (context *DatabaseContext) LastSequence() (uint64, error) {
 // Helpers for unsupported options
 func (context *DatabaseContext) IsGuestReadOnly() bool {
 	return context.Options.UnsupportedOptions != nil && context.Options.UnsupportedOptions.GuestReadOnly
+}
 
+func (context *DatabaseContext) ForceAPIForbiddenErrors() bool {
+	return context.Options.UnsupportedOptions != nil && context.Options.UnsupportedOptions.ForceAPIForbiddenErrors
 }
 
 //////// TIMEOUTS

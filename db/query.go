@@ -53,10 +53,10 @@ var QueryAccess = SGQuery{
 	name: QueryTypeAccess,
 	statement: fmt.Sprintf(
 		"SELECT $sync.access.`$$selectUserName` as `value` "+
-			"FROM %s "+
+			"FROM %s AS %s "+
 			"USE INDEX ($idx) "+
 			"WHERE any op in object_pairs($sync.access) satisfies op.name = $userName end;",
-		base.KeyspaceQueryToken),
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias),
 	adhoc: true,
 }
 
@@ -64,10 +64,10 @@ var QueryRoleAccess = SGQuery{
 	name: QueryTypeRoleAccess,
 	statement: fmt.Sprintf(
 		"SELECT $sync.role_access.`$$selectUserName` as `value` "+
-			"FROM %s "+
+			"FROM %s AS %s "+
 			"USE INDEX ($idx) "+
 			"WHERE any op in object_pairs($sync.role_access) satisfies op.name = $userName end;",
-		base.KeyspaceQueryToken),
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias),
 	adhoc: true,
 }
 
@@ -93,14 +93,16 @@ var QueryChannels = SGQuery{
 			"$sync.rev AS rev, "+
 			"$sync.flags AS flags, "+
 			"META(%s).id AS id "+
-			"FROM %s "+
+			"FROM %s AS %s "+
 			"USE INDEX ($idx) "+
 			"UNNEST OBJECT_PAIRS($sync.channels) AS op "+
 			"WHERE ([op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)]  "+
 			"BETWEEN  [$channelName, $startSeq] AND [$channelName, $endSeq]) "+
 			"%s"+
 			"ORDER BY [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)]",
-		base.KeyspaceQueryToken, base.KeyspaceQueryToken, activeOnlyFilter),
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		activeOnlyFilter),
 	adhoc: false,
 }
 
@@ -111,12 +113,14 @@ var QueryStarChannel = SGQuery{
 			"$sync.rev AS rev, "+
 			"$sync.flags AS flags, "+
 			"META(%s).id AS id "+
-			"FROM %s "+
+			"FROM %s AS %s "+
 			"USE INDEX ($idx) "+
 			"WHERE $sync.sequence >= $startSeq AND $sync.sequence < $endSeq "+
 			"AND META().id NOT LIKE '%s' %s"+
 			"ORDER BY $sync.sequence",
-		base.KeyspaceQueryToken, base.KeyspaceQueryToken, SyncDocWildcard, activeOnlyFilter),
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		SyncDocWildcard, activeOnlyFilter),
 	adhoc: false,
 }
 
@@ -127,11 +131,13 @@ var QuerySequences = SGQuery{
 			"$sync.rev AS rev, "+
 			"$sync.flags AS flags, "+
 			"META(%s).id AS id "+
-			"FROM %s "+
+			"FROM %s AS %s "+
 			"USE INDEX($idx) "+
 			"WHERE $sync.sequence IN $inSequences "+
 			"AND META().id NOT LIKE '%s'",
-		base.KeyspaceQueryToken, base.KeyspaceQueryToken, SyncDocWildcard),
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		SyncDocWildcard),
 	adhoc: false,
 }
 
@@ -148,20 +154,20 @@ var QueryPrincipals = SGQuery{
 	name: QueryTypePrincipals,
 	statement: fmt.Sprintf(
 		"SELECT META(%s).id "+
-			"FROM %s "+
+			"FROM %s AS %s "+
 			"USE INDEX($idx) "+
 			"WHERE META(%s).id LIKE '%s' "+
 			"AND (META(%s).id LIKE '%s' "+
 			"OR META(%s).id LIKE '%s') "+
 			"AND META(%s).id >= $%s "+ // Uses >= for inclusive startKey
 			"ORDER BY META(%s).id",
-		base.KeyspaceQueryToken,
-		base.KeyspaceQueryToken,
-		base.KeyspaceQueryToken, SyncDocWildcard,
-		base.KeyspaceQueryToken, `\\_sync:user:%`,
-		base.KeyspaceQueryToken, `\\_sync:role:%`,
-		base.KeyspaceQueryToken, QueryParamStartKey,
-		base.KeyspaceQueryToken),
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, SyncDocWildcard,
+		base.KeyspaceQueryAlias, `\\_sync:user:%`,
+		base.KeyspaceQueryAlias, `\\_sync:role:%`,
+		base.KeyspaceQueryAlias, QueryParamStartKey,
+		base.KeyspaceQueryAlias),
 	adhoc: false,
 }
 
@@ -177,18 +183,18 @@ var QueryUsers = SGQuery{
 		"SELECT %s.name, "+
 			"%s.email, "+
 			"%s.disabled "+
-			"FROM %s "+
+			"FROM %s as %s "+
 			"USE INDEX($idx) "+
 			"WHERE META(%s).id LIKE '%s' "+
 			"AND META(%s).id >= $%s "+ // Using >= to match QueryPrincipals startKey handling
 			"ORDER BY META(%s).id",
-		base.KeyspaceQueryToken,
-		base.KeyspaceQueryToken,
-		base.KeyspaceQueryToken,
-		base.KeyspaceQueryToken,
-		base.KeyspaceQueryToken, `\\_sync:user:%`,
-		base.KeyspaceQueryToken, QueryParamStartKey,
-		base.KeyspaceQueryToken),
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, `\\_sync:user:%`,
+		base.KeyspaceQueryAlias, QueryParamStartKey,
+		base.KeyspaceQueryAlias),
 	adhoc: false,
 }
 
@@ -196,47 +202,35 @@ var QuerySessions = SGQuery{
 	name: QueryTypeSessions,
 	statement: fmt.Sprintf(
 		"SELECT META(%s).id "+
-			"FROM %s "+
+			"FROM %s AS %s "+
 			"USE INDEX($idx) "+
 			"WHERE META(%s).id LIKE '%s' "+
 			"AND META(%s).id LIKE '%s' "+
 			"AND username = $userName",
-		base.KeyspaceQueryToken, base.KeyspaceQueryToken, base.KeyspaceQueryToken, SyncDocWildcard, base.KeyspaceQueryToken, `\\_sync:session:%`),
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, SyncDocWildcard,
+		base.KeyspaceQueryAlias, `\\_sync:session:%`),
 	adhoc: false,
 }
 var QueryTombstones = SGQuery{
 	name: QueryTypeTombstones,
 	statement: fmt.Sprintf(
 		"SELECT META(%s).id "+
-			"FROM %s "+
+			"FROM %s AS %s "+
 			"USE INDEX ($idx) "+
 			"WHERE $sync.tombstoned_at BETWEEN 0 AND $olderThan",
-		base.KeyspaceQueryToken, base.KeyspaceQueryToken),
-	adhoc: false,
-}
-
-// QueryResync and QueryImport both use IndexAllDocs.  If these need to be revisited for performance reasons,
-// they could be retooled to use covering indexes, where the id filtering is done at indexing time.  Given that this code
-// doesn't even do pagination currently, it's likely that this functionality should just be replaced by an ad-hoc
-// DCP stream.
-var QueryResync = SGQuery{
-	name: QueryTypeResync,
-	statement: fmt.Sprintf(
-		"SELECT META(%s).id "+
-			"FROM %s "+
-			"USE INDEX ($idx) "+
-			"WHERE META(%s).id NOT LIKE '%s' "+
-			"AND $sync.sequence > 0", // Required to use IndexAllDocs
-		base.KeyspaceQueryToken, base.KeyspaceQueryToken, base.KeyspaceQueryToken, SyncDocWildcard),
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias),
 	adhoc: false,
 }
 
 // QueryAllDocs is using the star channel's index, which is indexed by sequence, then ordering the results by doc id.
 // We currently don't have a performance-tuned use of AllDocs today - if needed, should create a custom index indexed by doc id.
 // Note: QueryAllDocs function may appends additional filter and ordering of the form:
-//    AND META(`bucket`).id >= '%s'
-//    AND META(`bucket`).id <= '%s'
-//    ORDER BY META(`bucket`).id
+//    AND META(base.KeyspaceQueryAlias).id >= '%s'
+//    AND META(base.KeyspaceQueryAlias).id <= '%s'
+//    ORDER BY META(base.KeyspaceQueryAlias).id
 var QueryAllDocs = SGQuery{
 	name: QueryTypeAllDocs,
 	statement: fmt.Sprintf(
@@ -244,13 +238,15 @@ var QueryAllDocs = SGQuery{
 			"$sync.rev as r, "+
 			"$sync.sequence as s, "+
 			"$sync.channels as c "+
-			"FROM %s "+
+			"FROM %s AS %s "+
 			"USE INDEX ($idx) "+
 			"WHERE $sync.sequence > 0 AND "+ // Required to use IndexAllDocs
 			"META(%s).id NOT LIKE '%s' "+
 			"AND $sync IS NOT MISSING "+
 			"AND ($sync.flags IS MISSING OR BITTEST($sync.flags,1) = false)",
-		base.KeyspaceQueryToken, base.KeyspaceQueryToken, base.KeyspaceQueryToken, SyncDocWildcard),
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, SyncDocWildcard),
 	adhoc: false,
 }
 
@@ -560,26 +556,24 @@ func (context *DatabaseContext) QueryAllDocs(ctx context.Context, startKey strin
 		return context.ViewQueryWithStats(ctx, DesignDocSyncHousekeeping(), ViewAllDocs, opts)
 	}
 
-	bucketName := context.Bucket.GetName()
-
 	// N1QL Query
 	allDocsQueryStatement := replaceSyncTokensQuery(QueryAllDocs.statement, context.UseXattrs())
 	allDocsQueryStatement = replaceIndexTokensQuery(allDocsQueryStatement, sgIndexes[IndexAllDocs], context.UseXattrs())
 
 	params := make(map[string]interface{}, 0)
 	if startKey != "" {
-		allDocsQueryStatement = fmt.Sprintf("%s AND META(`%s`).id >= $startkey",
-			allDocsQueryStatement, bucketName)
+		allDocsQueryStatement = fmt.Sprintf("%s AND META(%s).id >= $startkey",
+			allDocsQueryStatement, base.KeyspaceQueryAlias)
 		params[QueryParamStartKey] = startKey
 	}
 	if endKey != "" {
-		allDocsQueryStatement = fmt.Sprintf("%s AND META(`%s`).id <= $endkey",
-			allDocsQueryStatement, bucketName)
+		allDocsQueryStatement = fmt.Sprintf("%s AND META(%s).id <= $endkey",
+			allDocsQueryStatement, base.KeyspaceQueryAlias)
 		params[QueryParamEndKey] = endKey
 	}
 
-	allDocsQueryStatement = fmt.Sprintf("%s ORDER BY META(`%s`).id",
-		allDocsQueryStatement, bucketName)
+	allDocsQueryStatement = fmt.Sprintf("%s ORDER BY META(%s).id",
+		allDocsQueryStatement, base.KeyspaceQueryAlias)
 
 	return context.N1QLQueryWithStats(ctx, QueryTypeAllDocs, allDocsQueryStatement, params, base.RequestPlus, QueryAllDocs.adhoc)
 }

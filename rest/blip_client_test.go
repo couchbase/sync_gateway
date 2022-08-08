@@ -35,7 +35,8 @@ type BlipTesterClientOpts struct {
 	SendRevocations        bool
 	SupportedBLIPProtocols []string
 
-	rejectDeltasForSrcRev string // a deltaSrc rev ID for which to reject a delta
+	// a deltaSrc rev ID for which to reject a delta
+	rejectDeltasForSrcRev string //nolint: structcheck // false structcheck positive due to https://github.com/golangci/golangci-lint/issues/826
 }
 
 // BlipTesterClient is a fully fledged client to emulate CBL behaviour on both push and pull replications through methods on this type.
@@ -209,7 +210,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 	btr.bt.blipContext.HandlerForProfile[db.MessageRev] = func(msg *blip.Message) {
 		btc.pullReplication.storeMessage(msg)
 
-		docID := msg.Properties[db.RevMessageId]
+		docID := msg.Properties[db.RevMessageID]
 		revID := msg.Properties[db.RevMessageRev]
 		deltaSrc := msg.Properties[db.RevMessageDeltaSrc]
 
@@ -248,9 +249,8 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 					response := msg.Response()
 					response.SetError("HTTP", http.StatusUnprocessableEntity, "test code intentionally rejected delta")
 					return
-				} else {
-					panic("expected delta rev message to be sent without noreply flag")
 				}
+				panic("expected delta rev message to be sent without noreply flag")
 			}
 
 			// unmarshal body to extract deltaSrc
@@ -399,7 +399,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 }
 
 // saveAttachment takes a content-type, and base64 encoded data and stores the attachment on the client
-func (btc *BlipTesterClient) saveAttachment(contentType, base64data string) (dataLength int, digest string, err error) {
+func (btc *BlipTesterClient) saveAttachment(_, base64data string) (dataLength int, digest string, err error) {
 	btc.attachmentsLock.Lock()
 	defer btc.attachmentsLock.Unlock()
 
@@ -556,6 +556,30 @@ func (btc *BlipTesterClient) StartPullSince(continuous, since, activeOnly string
 	return nil
 }
 
+func (btc *BlipTesterClient) UnsubPullChanges() (response []byte, err error) {
+	unsubChangesRequest := blip.NewRequest()
+	unsubChangesRequest.SetProfile(db.MessageUnsubChanges)
+	err = btc.pullReplication.sendMsg(unsubChangesRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	response, err = unsubChangesRequest.Response().Body()
+	return response, err
+}
+
+func (btc *BlipTesterClient) UnsubPushChanges() (response []byte, err error) {
+	unsubChangesRequest := blip.NewRequest()
+	unsubChangesRequest.SetProfile(db.MessageUnsubChanges)
+	err = btc.pushReplication.sendMsg(unsubChangesRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	response, err = unsubChangesRequest.Response().Body()
+	return response, err
+}
+
 // Close will empty the stored docs and close the underlying replications.
 func (btc *BlipTesterClient) Close() {
 	btc.docsLock.Lock()
@@ -658,7 +682,7 @@ func (btc *BlipTesterClient) PushRevWithHistory(docID, parentRev string, body []
 	// send msg rev with new doc
 	revRequest := blip.NewRequest()
 	revRequest.SetProfile(db.MessageRev)
-	revRequest.Properties[db.RevMessageId] = docID
+	revRequest.Properties[db.RevMessageID] = docID
 	revRequest.Properties[db.RevMessageRev] = newRevID
 	revRequest.Properties[db.RevMessageHistory] = strings.Join(revisionHistory, ",")
 
@@ -817,6 +841,8 @@ func (btr *BlipTesterReplicator) GetMessages() map[blip.MessageNumber]blip.Messa
 
 	messages := make(map[blip.MessageNumber]blip.Message, len(btr.messages))
 	for k, v := range btr.messages {
+		// Read the body before copying, since it might be read asynchronously
+		_, _ = v.Body()
 		messages[k] = *v
 	}
 
@@ -846,28 +872,28 @@ func (btr *BlipTesterReplicator) storeMessage(msg *blip.Message) {
 	btr.messages[msg.SerialNumber()] = msg
 }
 
-func (btc *BlipTesterClient) WaitForBlipRevMessage(docId, revId string) (msg *blip.Message, found bool) {
+func (btc *BlipTesterClient) WaitForBlipRevMessage(docID, revID string) (msg *blip.Message, found bool) {
 	ticker := time.NewTicker(50 * time.Millisecond)
 	timeout := time.After(10 * time.Second)
 	for {
 		select {
 		case <-timeout:
-			btc.rt.tb.Fatalf("BlipTesterClient timed out waiting for BLIP message docId: %v, revId: %v", docId, revId)
+			btc.rt.tb.Fatalf("BlipTesterClient timed out waiting for BLIP message docID: %v, revID: %v", docID, revID)
 			return nil, false
 		case <-ticker.C:
-			if data, found := btc.GetBlipRevMessage(docId, revId); found {
+			if data, found := btc.GetBlipRevMessage(docID, revID); found {
 				return data, found
 			}
 		}
 	}
 }
 
-func (btc *BlipTesterClient) GetBlipRevMessage(docId, revId string) (msg *blip.Message, found bool) {
+func (btc *BlipTesterClient) GetBlipRevMessage(docID, revID string) (msg *blip.Message, found bool) {
 	btc.docsLock.RLock()
 	defer btc.docsLock.RUnlock()
 
-	if rev, ok := btc.docs[docId]; ok {
-		if pair, found := rev[revId]; found {
+	if rev, ok := btc.docs[docID]; ok {
+		if pair, found := rev[revID]; found {
 			found = pair.message != nil
 			return pair.message, found
 		}

@@ -1,6 +1,5 @@
-# /{db}/_google
 parameters:
-- $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/db
 post:
   summary: Create a new Google-based session
   description: |-
@@ -17,15 +16,14 @@ post:
               description: Google ID token to base the new session on.
               type: string
           required:
-          - id_token
+            - id_token
   responses:
-    "200":
+    '200':
       description: Session created successfully
-    "400":
+    '400':
       $ref: ../../components/responses.yaml#/Invalid-CORS
-    "401":
-      description: Received error from Google token verifier or invalid application
-        ID in the config
+    '401':
+      description: Received error from Google token verifier or invalid application ID in the config
       content:
         application/json:
           schema:
@@ -35,9 +33,9 @@ post:
                 type: string
               reason:
                 type: string
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
-    "502":
+    '502':
       description: Received invalid response from the Google token verifier
       content:
         application/json:
@@ -48,8 +46,8 @@ post:
                 type: string
               reason:
                 type: string
-    "504":
+    '504':
       description: Unable to send request to the Google token verifier
   deprecated: true
   tags:
-  - OpenID Connect
+    - OpenID Connect

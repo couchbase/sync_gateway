@@ -45,11 +45,11 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 
 	// Put several documents in channel PBS
 	response := rt.SendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/db/pbs2", `{"value":2, "channel":["PBS"]}`)
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/db/pbs3", `{"value":3, "channel":["PBS"]}`)
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 
 	caughtUpWaiter := rt.GetDatabase().NewPullReplicationCaughtUpWaiter(t)
 	// Start longpoll changes request
@@ -72,7 +72,7 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 
 	// Put document that triggers access grant for user, PBS
 	response = rt.SendAdminRequest("PUT", "/db/access1", `{"accessUser":"bernard", "accessChannel":["PBS"]}`)
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 
 	wg.Wait()
 }
@@ -94,12 +94,12 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 
 	// Create user:
 	userResponse := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["ABC"]}`)
-	assertStatus(t, userResponse, 201)
+	requireStatus(t, userResponse, 201)
 
 	// Get user, to trigger all_channels calculation and bump the user change count BEFORE we write the PBS docs - otherwise the user key count
 	// will still be higher than the latest change count.
 	userResponse = rt.SendAdminRequest("GET", "/db/_user/bernard", "")
-	assertStatus(t, userResponse, 200)
+	requireStatus(t, userResponse, 200)
 
 	/*
 		a := it.ServerContext().Database("db").Authenticator(base.TestCtx(t))
@@ -110,11 +110,11 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 
 	// Put several documents in channel PBS
 	response := rt.SendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/db/pbs2", `{"value":2, "channel":["PBS"]}`)
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/db/pbs3", `{"value":3, "channel":["PBS"]}`)
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 
 	// Run an initial changes request to get the user doc, and update since based on last_seq:
 	var initialChanges struct {
@@ -157,7 +157,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 
 	// Put public document that triggers termination of the longpoll
 	response = rt.SendAdminRequest("PUT", "/db/abc1", `{"value":3, "channel":["ABC"]}`)
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 	wg.Wait()
 }
 

@@ -264,12 +264,17 @@ func (h *handler) handleOIDCRefresh() error {
 }
 
 func (h *handler) createSessionForTrustedIdToken(rawIDToken string, provider *auth.OIDCProvider) (username string, sessionID string, err error) {
-	user, tokenExpiryTime, err := h.db.Authenticator(h.db.Ctx).AuthenticateTrustedJWT(rawIDToken, provider, h.getOIDCCallbackURL)
+	user, updates, tokenExpiryTime, err := h.db.Authenticator(h.db.Ctx).AuthenticateTrustedJWT(rawIDToken, provider, h.getOIDCCallbackURL)
 	if err != nil {
 		return "", "", err
 	}
 	if user == nil {
 		return "", "", base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
+	}
+
+	_, err = h.db.UpdatePrincipal(h.ctx(), &updates, true, true)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to update user: %w", err)
 	}
 
 	if !provider.DisableSession {

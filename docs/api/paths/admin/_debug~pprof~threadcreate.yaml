@@ -1,23 +1,22 @@
-# /_debug/pprof/threadcreate
 get:
   summary: Get the threadcreate pprof debug file
-  responses:
-    "200":
-      $ref: ../../components/responses.yaml#/pprof-binary
-  tags:
-  - Admin only endpoints
-  - Profiling
   description: |-
     Required Sync Gateway RBAC roles:
     * Sync Gateway Dev Ops
+  responses:
+    '200':
+      $ref: ../../components/responses.yaml#/pprof-binary
+  tags:
+    - Admin only endpoints
+    - Profiling
 post:
   summary: Get the threadcreate pprof debug file
-  responses:
-    "200":
-      $ref: ../../components/responses.yaml#/pprof-binary
-  tags:
-  - Admin only endpoints
-  - Profiling
   description: |-
     Required Sync Gateway RBAC roles:
     * Sync Gateway Dev Ops
+  responses:
+    '200':
+      $ref: ../../components/responses.yaml#/pprof-binary
+  tags:
+    - Admin only endpoints
+    - Profiling

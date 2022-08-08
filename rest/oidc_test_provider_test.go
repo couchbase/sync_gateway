@@ -127,10 +127,12 @@ func TestExtractSubjectFromRefreshToken(t *testing.T) {
 func restTesterConfigWithTestProviderEnabled() RestTesterConfig {
 	providers := auth.OIDCProviderMap{
 		"test": &auth.OIDCProvider{
-			Register:      true,
-			Issuer:        "${baseURL}/db/_oidc_testing",
+			JWTConfigCommon: auth.JWTConfigCommon{
+				Register: true,
+				Issuer:   "${baseURL}/db/_oidc_testing",
+				ClientID: base.StringPtr("sync_gateway"),
+			},
 			Name:          "test",
-			ClientID:      "sync_gateway",
 			ValidationKey: base.StringPtr("qux"),
 			CallbackURL:   base.StringPtr("${baseURL}/db/_oidc_callback"),
 		},
@@ -281,13 +283,15 @@ func TestOpenIDConnectTestProviderWithRealWorldToken(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			providers := auth.OIDCProviderMap{
 				"test": &auth.OIDCProvider{
-					Register:      true,
-					Issuer:        "${baseURL}/db/_oidc_testing",
+					JWTConfigCommon: auth.JWTConfigCommon{
+						Register:   true,
+						Issuer:     "${baseURL}/db/_oidc_testing",
+						ClientID:   base.StringPtr("sync_gateway"),
+						UserPrefix: "foo",
+					},
 					Name:          "test",
-					ClientID:      "sync_gateway",
 					ValidationKey: base.StringPtr("qux"),
 					CallbackURL:   base.StringPtr("${baseURL}/db/_oidc_callback"),
-					UserPrefix:    "foo",
 				},
 			}
 			defaultProvider := "test"
@@ -379,13 +383,15 @@ func TestOpenIDConnectTestProviderWithRealWorldToken(t *testing.T) {
 func TestOIDCWithBasicAuthDisabled(t *testing.T) {
 	providers := auth.OIDCProviderMap{
 		"test": &auth.OIDCProvider{
-			Register:      true,
-			Issuer:        "${baseURL}/db/_oidc_testing",
+			JWTConfigCommon: auth.JWTConfigCommon{
+				Register:   true,
+				Issuer:     "${baseURL}/db/_oidc_testing",
+				ClientID:   base.StringPtr("sync_gateway"),
+				UserPrefix: "foo",
+			},
 			Name:          "test",
-			ClientID:      "sync_gateway",
 			ValidationKey: base.StringPtr("qux"),
 			CallbackURL:   base.StringPtr("${baseURL}/db/_oidc_callback"),
-			UserPrefix:    "foo",
 		},
 	}
 	defaultProvider := "test"
@@ -399,7 +405,7 @@ func TestOIDCWithBasicAuthDisabled(t *testing.T) {
 					Enabled: true,
 				},
 			},
-			DisablePasswordAuth: true,
+			DisablePasswordAuth: base.BoolPtr(true),
 		}}}
 	restTester := NewRestTester(t, &restTesterConfig)
 	require.NoError(t, restTester.SetAdminParty(false))

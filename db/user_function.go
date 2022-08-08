@@ -12,6 +12,7 @@ package db
 
 import (
 	"fmt"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	_ "github.com/robertkrimen/otto/underscore"
@@ -79,8 +80,8 @@ func newUserFunctionJSContext(db *Database) map[string]interface{} {
 
 func newUserFunctionJSServer(name string, what string, argList string, sourceCode string) *sgbucket.JSServer {
 	js := fmt.Sprintf(kJavaScriptWrapper, argList, sourceCode)
-	return sgbucket.NewJSServer(js, kUserFunctionCacheSize,
-		func(fnSource string) (sgbucket.JSServerTask, error) {
+	return sgbucket.NewJSServer(js, 0, kUserFunctionCacheSize,
+		func(fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
 			return newJavaScriptRunner(name, what, fnSource)
 		})
 }

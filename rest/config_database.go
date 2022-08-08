@@ -16,6 +16,9 @@ type DatabaseConfig struct {
 	// Version is a generated Rev ID used for optimistic concurrency control using ETags/If-Match headers.
 	Version string `json:"version,omitempty"`
 
+	// SGVersion is a base.ComparableVersion of the Sync Gateway node that wrote the config.
+	SGVersion string `json:"sg_version,omitempty"`
+
 	// DbConfig embeds database config properties
 	DbConfig
 }
@@ -129,6 +132,7 @@ func DefaultDbConfig(sc *StartupConfig) *DbConfig {
 		QueryPaginationLimit:             base.IntPtr(db.DefaultQueryPaginationLimit),
 		UserXattrKey:                     "",
 		ClientPartitionWindowSecs:        base.IntPtr(int(base.DefaultClientPartitionWindow.Seconds())),
+		JavascriptTimeoutSecs:            base.Uint32Ptr(base.DefaultJavascriptTimeoutSecs),
 	}
 
 	revsLimit := db.DefaultRevsLimitNoConflicts

@@ -1,6 +1,5 @@
-# /{db}/_replicationStatus
 parameters:
-- $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/db
 get:
   summary: Get all replication statuses
   description: |-
@@ -9,12 +8,12 @@ get:
     Required Sync Gateway RBAC roles:
     * Sync Gateway Replicator
   parameters:
-  - $ref: ../../components/parameters.yaml#/replication-active-only
-  - $ref: ../../components/parameters.yaml#/replication-local-only
-  - $ref: ../../components/parameters.yaml#/replication-include-error
-  - $ref: ../../components/parameters.yaml#/replication-include-config
+    - $ref: ../../components/parameters.yaml#/replication-active-only
+    - $ref: ../../components/parameters.yaml#/replication-local-only
+    - $ref: ../../components/parameters.yaml#/replication-include-error
+    - $ref: ../../components/parameters.yaml#/replication-include-config
   responses:
-    "200":
+    '200':
       description: Successfully retrieved all replication statuses.
       content:
         application/json:
@@ -22,20 +21,21 @@ get:
             type: array
             items:
               $ref: ../../components/schemas.yaml#/Replication-status
-    "400":
+    '400':
       $ref: ../../components/responses.yaml#/request-problem
   tags:
-  - Admin only endpoints
-  - Replication
+    - Admin only endpoints
+    - Replication
 head:
+  summary: /{db}/_replicationStatus/
   responses:
-    "200":
+    '200':
       description: OK
-    "400":
+    '400':
       description: Bad Request
   tags:
-  - Admin only endpoints
-  - Replication
+    - Admin only endpoints
+    - Replication
   description: |-
     Required Sync Gateway RBAC roles:
     * Sync Gateway Replicator

@@ -1,7 +1,6 @@
-# /{db}/_dump/{view}
 parameters:
-- $ref: ../../components/parameters.yaml#/db
-- $ref: ../../components/parameters.yaml#/view
+  - $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/view
 get:
   summary: Dump a view | Unsupported
   description: |-
@@ -13,20 +12,20 @@ get:
     * Sync Gateway Application
     * Sync Gateway Application Read Only
   responses:
-    "200":
+    '200':
       description: Retrieved view successfully
       content:
         text/html:
           schema:
             type: string
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
-    "500":
+    '500':
       description: Internal Server Error
       content:
         application/json:
           schema:
             $ref: ../../components/schemas.yaml#/HTTP-Error
   tags:
-  - Admin only endpoints
-  - Unsupported
+    - Admin only endpoints
+    - Unsupported

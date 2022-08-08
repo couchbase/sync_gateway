@@ -77,7 +77,7 @@ var _ CouchbaseStore = &CouchbaseBucketGoCB{}
 // Creates a Bucket that talks to a real live Couchbase server.
 func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err error) {
 	logCtx := context.TODO()
-	connString, err := spec.GetGoCBConnString()
+	connString, err := spec.GetGoCBConnString(nil)
 	if err != nil {
 		WarnfCtx(logCtx, "Unable to parse server value: %s error: %v", SD(spec.Server), err)
 		return nil, err
@@ -1498,10 +1498,8 @@ func (bucket *CouchbaseBucketGoCB) StartTapFeed(args sgbucket.FeedArguments, dbS
 }
 
 func (bucket *CouchbaseBucketGoCB) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
-
 	// TODO: Evaluate whether to use cbgt for non-sharded caching feed, as a way to push concurrency upstream
 	return StartDCPFeed(bucket, bucket.Spec, args, callback, dbStats)
-
 }
 
 func (bucket *CouchbaseBucketGoCB) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {

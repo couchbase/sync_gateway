@@ -1,6 +1,5 @@
-# /{db}/_flush
 parameters:
-- $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/db
 post:
   summary: Flush the entire database bucket | Unsupported
   description: |-
@@ -13,16 +12,16 @@ post:
     Required Sync Gateway RBAC roles:
     * Sync Gateway Dev Ops
   responses:
-    "200":
+    '200':
       description: Successfully flushed the bucket
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
-    "503":
+    '503':
       description: The bucket does not support flush or delete
       content:
         application/json:
           schema:
             $ref: ../../components/schemas.yaml#/HTTP-Error
   tags:
-  - Admin only endpoints
-  - Unsupported
+    - Admin only endpoints
+    - Unsupported

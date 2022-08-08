@@ -47,18 +47,13 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	xattrsEnabled := base.TestUseXattrs()
 
 	bucket := base.GetTestBucket(t)
-	dbCtx, err := NewDatabaseContext(
-		"db",
-		bucket,
-		false,
-		DatabaseContextOptions{
-			EnableXattr: xattrsEnabled,
-			DeltaSyncOptions: DeltaSyncOptions{
-				Enabled:          deltasEnabled,
-				RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
-			},
+	dbCtx, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{
+		EnableXattr: xattrsEnabled,
+		DeltaSyncOptions: DeltaSyncOptions{
+			Enabled:          deltasEnabled,
+			RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
 		},
-	)
+	})
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	defer dbCtx.Close()
 	db, err := CreateDatabase(dbCtx)
@@ -230,7 +225,7 @@ func TestAttachmentForRejectedDocument(t *testing.T) {
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
 		throw({forbidden: "None shall pass!"});
-	}`)
+	}`, 0)
 
 	docBody := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
 	var body Body
@@ -759,8 +754,8 @@ func TestStoreAttachments(t *testing.T) {
 	revId, doc, err = db.Put("doc5", revBody)
 	assert.Empty(t, revId, "The revId should be empty since revpos is not included in attachment")
 	assert.Empty(t, doc, "The doc should be empty since revpos is not included in attachment")
-	assert.Error(t, err, "It should throw 400 Missing/invalid revpos in stub attachment error")
-	assert.Contains(t, err.Error(), "400 Missing/invalid revpos in stub attachment")
+	assert.Error(t, err, "It should throw 400 Missing digest in stub attachment")
+	assert.Contains(t, err.Error(), "400 Missing digest in stub attachment")
 }
 
 // TestMigrateBodyAttachments will set up a document with an attachment in pre-2.5 metadata format, and test various upgrade scenarios.

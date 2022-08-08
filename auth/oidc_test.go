@@ -26,6 +26,7 @@ import (
 
 	"github.com/coreos/go-oidc"
 	"github.com/couchbase/sync_gateway/base"
+	ch "github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/square/go-jose.v2"
@@ -110,19 +111,25 @@ func TestOIDCProviderMap_GetProviderForIssuer(t *testing.T) {
 
 	clientID := "SGW-TEST"
 	cbProvider := OIDCProvider{
-		Name:     "Couchbase",
-		Issuer:   "http://127.0.0.1:1234",
-		ClientID: clientID,
+		Name: "Couchbase",
+		JWTConfigCommon: JWTConfigCommon{
+			Issuer:   "http://127.0.0.1:1234",
+			ClientID: &clientID,
+		},
 	}
 	glProvider := OIDCProvider{
-		Name:     "Gügul",
-		Issuer:   "http://127.0.0.1:1235",
-		ClientID: clientID,
+		Name: "Gügul",
+		JWTConfigCommon: JWTConfigCommon{
+			Issuer:   "http://127.0.0.1:1235",
+			ClientID: &clientID,
+		},
 	}
 	fbProvider := OIDCProvider{
-		Name:     "Fæsbuk",
-		Issuer:   "http://127.0.0.1:1236",
-		ClientID: clientID,
+		Name: "Fæsbuk",
+		JWTConfigCommon: JWTConfigCommon{
+			Issuer:   "http://127.0.0.1:1236",
+			ClientID: &clientID,
+		},
 	}
 	providerMap := OIDCProviderMap{
 		"gl": &glProvider,
@@ -172,8 +179,10 @@ func TestOIDCProviderMap_GetProviderForIssuer(t *testing.T) {
 
 func TestOIDCUsername(t *testing.T) {
 	provider := OIDCProvider{
-		Name:   "Some_Provider",
-		Issuer: "http://www.someprovider.com",
+		Name: "Some_Provider",
+		JWTConfigCommon: JWTConfigCommon{
+			Issuer: "http://www.someprovider.com",
+		},
 	}
 
 	ctx := base.TestCtx(t)
@@ -184,14 +193,14 @@ func TestOIDCUsername(t *testing.T) {
 
 	// test username suffix
 	identity := Identity{Subject: "bernard"}
-	oidcUsername, err := getOIDCUsername(&provider, &identity)
+	oidcUsername, err := getJWTUsername(provider.common(), &identity)
 	assert.NoError(t, err, "Error retrieving OpenID Connect username")
 	assert.Equal(t, "www.someprovider.com_bernard", oidcUsername)
 	assert.Equal(t, true, IsValidPrincipalName(oidcUsername))
 
 	// test char escaping
 	identity.Subject = "{bernard}"
-	oidcUsername, err = getOIDCUsername(&provider, &identity)
+	oidcUsername, err = getJWTUsername(provider.common(), &identity)
 	assert.NoError(t, err, "Error retrieving OpenID Connect username")
 	assert.Equal(t, "www.someprovider.com_%7Bbernard%7D", oidcUsername)
 	assert.Equal(t, true, IsValidPrincipalName(oidcUsername))
@@ -228,7 +237,9 @@ func TestInitOIDCClient(t *testing.T) {
 
 	t.Run("initialize openid connect client with unavailable issuer", func(t *testing.T) {
 		provider := &OIDCProvider{
-			Issuer:      "http://127.0.0.1:12345/auth",
+			JWTConfigCommon: JWTConfigCommon{
+				Issuer: "http://127.0.0.1:12345/auth",
+			},
 			CallbackURL: base.StringPtr("http://127.0.0.1:12345/callback"),
 		}
 		err := provider.initOIDCClient(ctx)
@@ -238,8 +249,10 @@ func TestInitOIDCClient(t *testing.T) {
 
 	t.Run("initialize openid connect client with valid provider config", func(t *testing.T) {
 		provider := &OIDCProvider{
-			ClientID:    "foo",
-			Issuer:      "https://accounts.google.com",
+			JWTConfigCommon: JWTConfigCommon{
+				ClientID: base.StringPtr("foo"),
+				Issuer:   "https://accounts.google.com",
+			},
 			CallbackURL: base.StringPtr("http://sgw-test:4984/_callback"),
 		}
 		err := provider.initOIDCClient(ctx)
@@ -251,8 +264,10 @@ func TestInitOIDCClient(t *testing.T) {
 func TestConcurrentSetConfig(t *testing.T) {
 	providerLock := sync.Mutex{}
 	provider := &OIDCProvider{
-		ClientID:    "foo",
-		Issuer:      "https://accounts.google.com",
+		JWTConfigCommon: JWTConfigCommon{
+			ClientID: base.StringPtr("foo"),
+			Issuer:   "https://accounts.google.com",
+		},
 		CallbackURL: base.StringPtr("http://sgw-test:4984/_callback"),
 	}
 
@@ -410,7 +425,7 @@ func TestFetchCustomProviderConfig(t *testing.T) {
 				issuer += "/"
 			}
 			discoveryURL := GetStandardDiscoveryEndpoint(issuer)
-			op := &OIDCProvider{Issuer: issuer}
+			op := &OIDCProvider{JWTConfigCommon: JWTConfigCommon{Issuer: issuer}}
 			metadata, _, _, err := op.fetchCustomProviderConfig(base.TestCtx(t), discoveryURL)
 			if err != nil {
 				assert.True(t, test.wantErr, "Unexpected Error!")
@@ -981,6 +996,261 @@ func TestFormatUsername(t *testing.T) {
 			username, err := formatUsername(tc.username)
 			assert.Equal(t, tc.errorExpected, err)
 			assert.Equal(t, tc.usernameExpected, username)
+		})
+	}
+}
+
+func TestJWTRolesChannels(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth, base.KeyAccess)
+	const (
+		testUserPrefix = "foo"
+		testIssuer     = "https://example.com"
+		testSubject    = "frodo"
+	)
+	type simulatedLogin struct {
+		explicitRoles, explicitChannels []string
+		claims                          map[string]interface{}
+		expectedRoles, expectedChannels []string
+	}
+	type testCase struct {
+		name                              string
+		rolesClaimName, channelsClaimName string
+		logins                            []simulatedLogin
+	}
+	cases := []testCase{
+		{
+			name: "base",
+			logins: []simulatedLogin{
+				{
+					expectedRoles:    []string{},
+					expectedChannels: []string{"!"},
+				},
+			},
+		},
+		{
+			name:           "roles from OIDC",
+			rolesClaimName: "roles",
+			logins: []simulatedLogin{
+				{
+					claims:           map[string]interface{}{"roles": []string{"foo"}},
+					expectedRoles:    []string{"foo"},
+					expectedChannels: []string{"!"},
+				},
+			},
+		},
+		{
+			name:           "claim is missing",
+			rolesClaimName: "roles",
+			logins: []simulatedLogin{
+				{
+					claims:           map[string]interface{}{},
+					expectedRoles:    []string{},
+					expectedChannels: []string{"!"},
+				},
+			},
+		},
+		{
+			name:           "combine explicit and OIDC roles",
+			rolesClaimName: "roles",
+			logins: []simulatedLogin{
+				{
+					explicitRoles:    []string{"bar"},
+					claims:           map[string]interface{}{"roles": []string{"foo"}},
+					expectedRoles:    []string{"foo", "bar"},
+					expectedChannels: []string{"!"},
+				},
+			},
+		},
+		{
+			name:           "grant, then revoke, OIDC roles",
+			rolesClaimName: "roles",
+			logins: []simulatedLogin{
+				{
+					claims:           map[string]interface{}{"roles": []string{"foo"}},
+					expectedRoles:    []string{"foo"},
+					expectedChannels: []string{"!"},
+				},
+				{
+					claims:           map[string]interface{}{"roles": []string{}},
+					expectedRoles:    []string{},
+					expectedChannels: []string{"!"},
+				},
+			},
+		},
+		{
+			name:           "same role explicit and OIDC",
+			rolesClaimName: "roles",
+			logins: []simulatedLogin{
+				{
+					explicitRoles:    []string{"foo"},
+					claims:           map[string]interface{}{"roles": []string{"foo"}},
+					expectedRoles:    []string{"foo"},
+					expectedChannels: []string{"!"},
+				},
+			},
+		},
+		{
+			name:           "grant, then revoke, OIDC role which is also explicit",
+			rolesClaimName: "roles",
+			logins: []simulatedLogin{
+				{
+					explicitRoles:    []string{"foo"},
+					claims:           map[string]interface{}{"roles": []string{"foo"}},
+					expectedRoles:    []string{"foo"},
+					expectedChannels: []string{"!"},
+				},
+				{
+					explicitRoles:    []string{"foo"},
+					claims:           map[string]interface{}{"roles": []string{}},
+					expectedRoles:    []string{"foo"},
+					expectedChannels: []string{"!"},
+				},
+			},
+		},
+		{
+			name:           "grant OIDC role, then revoke and grant another",
+			rolesClaimName: "roles",
+			logins: []simulatedLogin{
+				{
+					claims:           map[string]interface{}{"roles": []string{"foo"}},
+					expectedRoles:    []string{"foo"},
+					expectedChannels: []string{"!"},
+				},
+				{
+					claims:           map[string]interface{}{"roles": []string{"bar"}},
+					expectedRoles:    []string{"bar"},
+					expectedChannels: []string{"!"},
+				},
+			},
+		},
+		{
+			name:              "channels from OIDC",
+			channelsClaimName: "channels",
+			logins: []simulatedLogin{
+				{
+					claims:           map[string]interface{}{"channels": []string{"foo"}},
+					expectedRoles:    []string{},
+					expectedChannels: []string{"!", "foo"},
+				},
+			},
+		},
+		{
+			name:              "combine explicit and OIDC channels",
+			channelsClaimName: "channels",
+			logins: []simulatedLogin{
+				{
+					explicitChannels: []string{"bar"},
+					claims:           map[string]interface{}{"channels": []string{"foo"}},
+					expectedRoles:    []string{},
+					expectedChannels: []string{"!", "foo", "bar"},
+				},
+			},
+		},
+		{
+			name:              "combine OIDC roles and channels",
+			rolesClaimName:    "roles",
+			channelsClaimName: "channels",
+			logins: []simulatedLogin{
+				{
+					claims:           map[string]interface{}{"roles": []string{"rFoo"}, "channels": []string{"cBar"}},
+					expectedRoles:    []string{"rFoo"},
+					expectedChannels: []string{"!", "cBar"},
+				},
+			},
+		},
+		{
+			name:              "combine OIDC and explicit roles and channels",
+			rolesClaimName:    "roles",
+			channelsClaimName: "channels",
+			logins: []simulatedLogin{
+				{
+					claims:           map[string]interface{}{"roles": []string{"rFoo"}, "channels": []string{"cBar"}},
+					explicitRoles:    []string{"rBaz"},
+					explicitChannels: []string{"cQux"},
+					expectedRoles:    []string{"rFoo", "rBaz"},
+					expectedChannels: []string{"!", "cBar", "cQux"},
+				},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Greater(t, len(tc.logins), 0, "Test case is missing simulated logins")
+
+			testBucket := base.GetTestBucket(t)
+			defer testBucket.Close()
+
+			testMockComputer := mockComputerV2{
+				roles:        map[string]ch.TimedSet{},
+				channels:     map[string]ch.TimedSet{},
+				roleChannels: map[string]ch.TimedSet{},
+			}
+
+			auth := NewAuthenticator(testBucket, &testMockComputer, DefaultAuthenticatorOptions())
+
+			provider := &OIDCProvider{
+				Name: "foo",
+				JWTConfigCommon: JWTConfigCommon{
+					Issuer:        testIssuer,
+					RolesClaim:    tc.rolesClaimName,
+					ChannelsClaim: tc.channelsClaimName,
+					UserPrefix:    testUserPrefix,
+				},
+			}
+
+			for i, login := range tc.logins {
+				var (
+					user           User
+					err            error
+					lastUpdateTime time.Time
+				)
+				if i == 0 {
+					user, err = auth.NewUser(testUserPrefix+"_"+testSubject, "test", base.SetFromArray(login.explicitChannels))
+					require.NoError(t, err, "Failed to register test user")
+				} else {
+					user, err = auth.GetUser(testUserPrefix + "_" + testSubject)
+					require.NoError(t, err, "Failed to get test user")
+				}
+				seq := user.Sequence() + 1
+				if !user.ExplicitRoles().Equals(base.SetFromArray(login.explicitRoles)) {
+					base.DebugfCtx(base.TestCtx(t), base.KeyAll, "setting explicit roles to %v", login.explicitRoles)
+					user.SetExplicitRoles(ch.AtSequence(base.SetFromArray(login.explicitRoles), seq), seq)
+					user.SetRoleInvalSeq(seq)
+				}
+				if !user.ExplicitChannels().Equals(base.SetFromArray(login.explicitChannels)) {
+					base.DebugfCtx(base.TestCtx(t), base.KeyAll, "setting explicit channels to %v", login.explicitRoles)
+					user.SetExplicitChannels(ch.AtSequence(base.SetFromArray(login.explicitChannels), seq), seq)
+					user.SetChannelInvalSeq(seq)
+				}
+				user.SetSequence(seq)
+				require.NoError(t, auth.Save(user), "Failed to save test user")
+
+				identity := &Identity{
+					Issuer:  testIssuer,
+					Subject: testSubject,
+					Claims:  login.claims,
+				}
+				var updates PrincipalConfig
+				user, updates, _, err = auth.authenticateJWTIdentity(identity, provider.common())
+				require.NoError(t, err, "error on authenticateOIDCIdentity")
+				require.NotNil(t, user, "nil user")
+				user.SetJWTChannels(ch.AtSequence(updates.JWTChannels, user.Sequence()), user.Sequence())
+				user.SetJWTRoles(ch.AtSequence(updates.JWTRoles, user.Sequence()), user.Sequence())
+				user.SetJWTLastUpdated(*updates.JWTLastUpdated)
+
+				require.NoError(t, auth.rebuildRoles(user))
+				require.NoError(t, auth.rebuildChannels(user))
+
+				if user.RoleNames() == nil {
+					require.Empty(t, login.expectedRoles, "user's roles were nil when we expected roles")
+				} else {
+					require.Equal(t, base.SetFromArray(login.expectedRoles), user.RoleNames().AsSet())
+				}
+				require.Equal(t, base.SetFromArray(login.expectedChannels), user.Channels().AsSet())
+
+				require.Greater(t, user.JWTLastUpdated(), lastUpdateTime)
+				lastUpdateTime = user.JWTLastUpdated()
+			}
 		})
 	}
 }

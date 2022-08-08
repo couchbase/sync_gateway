@@ -29,19 +29,19 @@ func TestChannelCacheMaxSize(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 
-	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+	dbCtx, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
 	require.NoError(t, err)
-	defer context.Close()
-	cache := context.changeCache.getChannelCache()
+	defer dbCtx.Close()
+	cache := dbCtx.changeCache.getChannelCache()
 
 	// Make channels active
-	_, err = cache.GetChanges("TestA", ChangesOptions{})
+	_, err = cache.GetChanges("TestA", getChangesOptionsWithCtxOnly())
 	require.NoError(t, err)
-	_, err = cache.GetChanges("TestB", ChangesOptions{})
+	_, err = cache.GetChanges("TestB", getChangesOptionsWithCtxOnly())
 	require.NoError(t, err)
-	_, err = cache.GetChanges("TestC", ChangesOptions{})
+	_, err = cache.GetChanges("TestC", getChangesOptionsWithCtxOnly())
 	require.NoError(t, err)
-	_, err = cache.GetChanges("TestD", ChangesOptions{})
+	_, err = cache.GetChanges("TestD", getChangesOptionsWithCtxOnly())
 	require.NoError(t, err)
 
 	// Add some entries to caches, leaving some empty caches
@@ -50,9 +50,9 @@ func TestChannelCacheMaxSize(t *testing.T) {
 	cache.AddToCache(logEntry(3, "doc3", "1-a", []string{"TestB", "TestC", "TestD"}))
 	cache.AddToCache(logEntry(4, "doc4", "1-a", []string{"TestC"}))
 
-	context.UpdateCalculatedStats()
+	dbCtx.UpdateCalculatedStats()
 
-	maxEntries := context.DbStats.Cache().ChannelCacheMaxEntries.Value()
+	maxEntries := dbCtx.DbStats.Cache().ChannelCacheMaxEntries.Value()
 	assert.Equal(t, 4, int(maxEntries))
 }
 
@@ -300,7 +300,7 @@ func TestChannelCacheHighLoadCacheHit(t *testing.T) {
 			for i := 0; i < getChangesCount; i++ {
 				channelNumber := rand.Intn(channelCount) + 1
 				channelName := fmt.Sprintf("chan_%d", channelNumber)
-				options := ChangesOptions{}
+				options := getChangesOptionsWithCtxOnly()
 				changes, err := cache.GetChanges(channelName, options)
 				if len(changes) == 1 {
 					changesSuccessCount++
@@ -370,7 +370,7 @@ func TestChannelCacheHighLoadCacheMiss(t *testing.T) {
 			for i := 0; i < getChangesCount; i++ {
 				channelNumber := rand.Intn(channelCount) + 1
 				channelName := fmt.Sprintf("chan_%d", channelNumber)
-				options := ChangesOptions{}
+				options := getChangesOptionsWithCtxOnly()
 				changes, err := cache.GetChanges(channelName, options)
 				if len(changes) == 1 {
 					changesSuccessCount++
@@ -426,7 +426,7 @@ func TestChannelCacheBypass(t *testing.T) {
 	// Issue queries for all channels.  First 20 should end up in the cache, remaining 80 should trigger bypass
 	for c := 1; c <= channelCount; c++ {
 		channelName := fmt.Sprintf("chan_%d", c)
-		options := ChangesOptions{}
+		options := getChangesOptionsWithCtxOnly()
 		changes, err := cache.GetChanges(channelName, options)
 		assert.NoError(t, err, fmt.Sprintf("Error getting changes for channel %s", channelName))
 		assert.True(t, len(changes) == 1, "Expected one change per channel")

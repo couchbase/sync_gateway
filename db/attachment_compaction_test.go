@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -56,7 +57,8 @@ func TestAttachmentMark(t *testing.T) {
 		assert.NoError(t, err)
 
 		compactIDSection, ok := attachmentData[CompactionIDKey]
-		assert.True(t, ok)
+		require.True(t, ok)
+		require.NotNil(t, compactIDSection)
 
 		_, ok = compactIDSection.(map[string]interface{})[t.Name()]
 		assert.True(t, ok)
@@ -301,7 +303,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 
 	triggerCallback := false
 	triggerStopCallback := false
-	leakyBucket.SetGetRawCallback(func(s string) {
+	leakyBucket.SetGetRawCallback(func(s string) error {
 		if triggerCallback {
 			err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2})
 			assert.Error(t, err)
@@ -313,6 +315,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 			err = testDB2.AttachmentCompactionManager.Stop()
 			assert.NoError(t, err)
 		}
+		return nil
 	})
 
 	// Trigger start with immediate abort. Then resume, ensure that dry run is resumed
@@ -445,7 +448,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 
 	triggerCallback := false
 	triggerStopCallback := false
-	leakyBucket.SetGetRawCallback(func(s string) {
+	leakyBucket.SetGetRawCallback(func(s string) error {
 		if triggerCallback {
 			err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2})
 			assert.Error(t, err)
@@ -457,6 +460,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 			err = testDB2.AttachmentCompactionManager.Stop()
 			assert.NoError(t, err)
 		}
+		return nil
 	})
 
 	// Trigger start with immediate abort. Then resume, ensure that dry run is resumed
@@ -804,9 +808,9 @@ func createDocWithInBodyAttachment(t *testing.T, docID string, docBody []byte, a
 }
 
 // Check for regression of CBG-1980 caused by DCP closing timing issue for the mark and sweep stage
-// May sometimes pass even if there is a regression of the timing issue
+// May sometimes fail if docsToCreate is not high enough
 func TestAttachmentCompactIncorrectStat(t *testing.T) {
-	const docsToCreate = 500
+	const docsToCreate = 10_000
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Requires CBS")
 	}
@@ -818,17 +822,16 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	for i := 0; i < docsToCreate; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		_, _, err := testDb.Put(key, body)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
-	attKeys := make([]string, 0, docsToCreate)
 	for i := 0; i < docsToCreate; i++ {
 		docID := fmt.Sprintf("testDoc-%d", i)
 		attKey := fmt.Sprintf("att-%d", i)
 		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
-		assert.NoError(t, err)
-		attKeys = append(attKeys, CreateLegacyAttachmentDoc(t, testDb, docID, []byte("{}"), attKey, attJSONBody))
+		require.NoError(t, err)
+		CreateLegacyAttachmentDoc(t, testDb, docID, []byte("{}"), attKey, attJSONBody)
 	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
@@ -836,9 +839,9 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	terminator := base.NewSafeTerminator()
 	stat := &base.AtomicInt{}
 	count := int64(0)
-	var err error
 	go func() {
-		count, _, err = attachmentCompactMarkPhase(testDb, "mark", terminator, stat)
+		attachmentCount, _, err := attachmentCompactMarkPhase(testDb, "mark", terminator, stat)
+		atomic.StoreInt64(&count, attachmentCount)
 		require.NoError(t, err)
 	}()
 
@@ -850,47 +853,51 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	}
 
 	compactionFuncReturnedRetryFunc := func() (shouldRetry bool, err error, value interface{}) {
-		if count == 0 {
+		if atomic.LoadInt64(&count) == 0 {
 			return true, nil, nil
 		}
 		return false, nil, nil
 	}
 
-	err, _ = base.RetryLoop("wait for marking to start", statAboveZeroRetryFunc, base.CreateSleeperFunc(1000, 1))
+	const (
+		maxAttempts = 3_000
+		// The timeToSleepMs here is low to ensure that this retry loop finishes after the mark starts, but before it has time to finish
+		timeToSleepMs = 10
+	)
+	err, _ := base.RetryLoop("wait for marking to start", statAboveZeroRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
 	require.NoError(t, err)
 
 	terminator.Close() // Terminate mark function
-	err, _ = base.RetryLoop("wait for marking function to return", compactionFuncReturnedRetryFunc, base.CreateSleeperFunc(200, 100))
+	err, _ = base.RetryLoop("wait for marking function to return", compactionFuncReturnedRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
 	require.NoError(t, err)
 	// Allow time for timing issue to be hit where stat increments when it shouldn't
 	time.Sleep(time.Second * 1)
 
-	assert.Equal(t, count, stat.Value())
-	fmt.Println("Count:", count, "stat:", stat.Value())
-	if count == docsToCreate && stat.Value() == docsToCreate {
-		fmt.Println("Attachment compaction ran too fast, causing it to process all documents instead of terminating mid-way. Consider upping the docsToCreate")
-	}
+	require.Equal(t, count, stat.Value())
+	require.False(t, count == docsToCreate && stat.Value() == docsToCreate,
+		"Attachment compaction ran too fast, causing it to process all documents instead of terminating mid-way. Consider upping the docsToCreate")
 
 	// Start sweeping with different compact ID so all documents get swept
 	stat = &base.AtomicInt{}
+	count = 0
 	terminator = base.NewSafeTerminator()
 	go func() {
-		count, err = attachmentCompactSweepPhase(testDb, "sweep", nil, false, terminator, stat)
+		attachmentCount, err := attachmentCompactSweepPhase(testDb, "sweep", nil, false, terminator, stat)
+		atomic.StoreInt64(&count, attachmentCount)
 		require.NoError(t, err)
 	}()
 
-	err, _ = base.RetryLoop("wait for sweeping to start", statAboveZeroRetryFunc, base.CreateSleeperFunc(1000, 1))
+	// The timeToSleepMs here is low to ensure that this retry loop finishes after the sweep starts, but before it has time to finish
+	err, _ = base.RetryLoop("wait for sweeping to start", statAboveZeroRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
 	require.NoError(t, err)
 
 	terminator.Close() // Terminate sweep function
-	err, _ = base.RetryLoop("wait for sweeping function to return", compactionFuncReturnedRetryFunc, base.CreateSleeperFunc(200, 100))
+	err, _ = base.RetryLoop("wait for sweeping function to return", compactionFuncReturnedRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
 	require.NoError(t, err)
 	// Allow time for timing issue to be hit where stat increments when it shouldn't
 	time.Sleep(time.Second * 1)
 
-	assert.Equal(t, count, stat.Value())
-	fmt.Println("Count:", count, "stat:", stat.Value())
-	if count == docsToCreate && stat.Value() == docsToCreate {
-		fmt.Println("Attachment compaction ran too fast, causing it to process all documents instead of terminating mid-way. Consider upping the docsToCreate")
-	}
+	require.Equal(t, count, stat.Value())
+	require.False(t, count == docsToCreate && stat.Value() == docsToCreate,
+		"Attachment compaction ran too fast, causing it to process all documents instead of terminating mid-way. Consider upping the docsToCreate")
 }

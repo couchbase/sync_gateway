@@ -79,7 +79,8 @@ func (h *handler) handleCreateDB() error {
 		}
 
 		loadedConfig := DatabaseConfig{Version: version, DbConfig: *config}
-		persistedConfig := DatabaseConfig{Version: version, DbConfig: persistedDbConfig}
+
+		persistedConfig := DatabaseConfig{Version: version, DbConfig: persistedDbConfig, SGVersion: base.ProductVersion.String()}
 
 		h.server.lock.Lock()
 		defer h.server.lock.Unlock()
@@ -89,7 +90,7 @@ func (h *handler) handleCreateDB() error {
 				"Duplicate database name %q", dbName)
 		}
 
-		_, err = h.server._applyConfig(loadedConfig, true)
+		_, err = h.server._applyConfig(loadedConfig, true, false)
 		if err != nil {
 			if errors.Is(err, base.ErrAuthError) {
 				return base.HTTPErrorf(http.StatusForbidden, "auth failure accessing provided bucket: %s", bucket)
@@ -551,6 +552,8 @@ func (h *handler) handlePutDbConfig() (err error) {
 				return nil, err
 			}
 
+			bucketDbConfig.SGVersion = base.ProductVersion.String()
+
 			updatedDbConfig = &bucketDbConfig
 
 			// take a copy to stamp credentials and load before we persist
@@ -645,6 +648,8 @@ func (h *handler) handleDeleteDbConfigSync() error {
 				return nil, err
 			}
 
+			bucketDbConfig.SGVersion = base.ProductVersion.String()
+
 			updatedDbConfig = &bucketDbConfig
 			return base.JSONMarshal(bucketDbConfig)
 		})
@@ -705,10 +710,11 @@ func (h *handler) handlePutDbConfigSync() error {
 			}
 
 			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
-
 			if err != nil {
 				return nil, err
 			}
+
+			bucketDbConfig.SGVersion = base.ProductVersion.String()
 
 			updatedDbConfig = &bucketDbConfig
 			return base.JSONMarshal(bucketDbConfig)
@@ -792,6 +798,8 @@ func (h *handler) handleDeleteDbConfigImportFilter() error {
 				return nil, err
 			}
 
+			bucketDbConfig.SGVersion = base.ProductVersion.String()
+
 			updatedDbConfig = &bucketDbConfig
 			return base.JSONMarshal(bucketDbConfig)
 		})
@@ -856,6 +864,8 @@ func (h *handler) handlePutDbConfigImportFilter() error {
 			if err != nil {
 				return nil, err
 			}
+
+			bucketDbConfig.SGVersion = base.ProductVersion.String()
 
 			updatedDbConfig = &bucketDbConfig
 			return base.JSONMarshal(bucketDbConfig)
@@ -1013,7 +1023,7 @@ func (h *handler) handleGetStatus() error {
 	// This handler is supposed to be admin-only anyway, but being defensive if this is opened up in the routes file.
 	if h.shouldShowProductVersion() {
 		status.Version = base.LongVersionString
-		status.Vendor.Version = base.ProductVersionNumber
+		status.Vendor.Version = base.ProductAPIVersion
 	}
 
 	for _, database := range h.server.databases_ {
@@ -1174,26 +1184,34 @@ func externalUserName(name string) string {
 	return name
 }
 
-func marshalPrincipal(princ auth.Principal, includeDynamicGrantInfo bool) ([]byte, error) {
+func marshalPrincipal(princ auth.Principal, includeDynamicGrantInfo bool) auth.PrincipalConfig {
 	name := externalUserName(princ.Name())
-	info := db.PrincipalConfig{
+	info := auth.PrincipalConfig{
 		Name:             &name,
 		ExplicitChannels: princ.ExplicitChannels().AsSet(),
 	}
 	if user, ok := princ.(auth.User); ok {
-		info.Email = user.Email()
+		email := user.Email()
+		info.Email = &email
 		info.Disabled = base.BoolPtr(user.Disabled())
-		info.ExplicitRoleNames = user.ExplicitRoles().AllKeys()
+		info.ExplicitRoleNames = user.ExplicitRoles().AsSet()
 		if includeDynamicGrantInfo {
 			info.Channels = user.InheritedChannels().AsSet()
 			info.RoleNames = user.RoleNames().AllKeys()
+			info.JWTIssuer = base.StringPtr(user.JWTIssuer())
+			info.JWTRoles = user.JWTRoles().AsSet()
+			info.JWTChannels = user.JWTChannels().AsSet()
+			lastUpdated := user.JWTLastUpdated()
+			if !lastUpdated.IsZero() {
+				info.JWTLastUpdated = &lastUpdated
+			}
 		}
 	} else {
 		if includeDynamicGrantInfo {
 			info.Channels = princ.Channels().AsSet()
 		}
 	}
-	return base.JSONMarshal(info)
+	return info
 }
 
 // Handles PUT and POST for a user or a role.
@@ -1201,7 +1219,7 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	h.assertAdminOnly()
 	// Unmarshal the request body into a PrincipalConfig struct:
 	body, _ := h.readBody()
-	var newInfo db.PrincipalConfig
+	var newInfo auth.PrincipalConfig
 	var err error
 	if err = base.JSONUnmarshal(body, &newInfo); err != nil {
 		return err
@@ -1221,9 +1239,18 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 		}
 	}
 
+	// NB: other read-only properties are ignored but no error is returned for backwards-compatibility
+	if newInfo.JWTIssuer != nil || len(newInfo.JWTRoles) > 0 || len(newInfo.JWTChannels) > 0 {
+		return base.HTTPErrorf(http.StatusBadRequest, "Can't change read-only properties")
+	}
+
 	internalName := internalUserName(*newInfo.Name)
+	if err = auth.ValidatePrincipalName(internalName); err != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, err.Error())
+	}
+
 	newInfo.Name = &internalName
-	replaced, err := h.db.UpdatePrincipal(h.db.Ctx, newInfo, isUser, h.rq.Method != "POST")
+	replaced, err := h.db.UpdatePrincipal(h.db.Ctx, &newInfo, isUser, h.rq.Method != "POST")
 	if err != nil {
 		return err
 	} else if replaced {
@@ -1291,7 +1318,25 @@ func (h *handler) getUserInfo() error {
 	}
 	// If not specified will default to false
 	includeDynamicGrantInfo := h.permissionsResults[PermReadPrincipalAppData.PermissionName]
-	bytes, err := marshalPrincipal(user, includeDynamicGrantInfo)
+	info := marshalPrincipal(user, includeDynamicGrantInfo)
+	// If the user's OIDC issuer is no longer valid, remove the OIDC information to avoid confusing users
+	// (it'll get removed permanently the next time the user signs in)
+	if info.JWTIssuer != nil {
+		issuerValid := false
+		for _, provider := range h.db.OIDCProviders {
+			if provider.Issuer == *info.JWTIssuer {
+				issuerValid = true
+				break
+			}
+		}
+		if !issuerValid {
+			info.JWTIssuer = nil
+			info.JWTLastUpdated = nil
+			info.JWTRoles = nil
+			info.JWTChannels = nil
+		}
+	}
+	bytes, err := base.JSONMarshal(info)
 	h.writeRawJSON(bytes)
 	return err
 }
@@ -1307,7 +1352,8 @@ func (h *handler) getRoleInfo() error {
 	}
 	// If not specified will default to false
 	includeDynamicGrantInfo := h.permissionsResults[PermReadPrincipalAppData.PermissionName]
-	bytes, err := marshalPrincipal(role, includeDynamicGrantInfo)
+	info := marshalPrincipal(role, includeDynamicGrantInfo)
+	bytes, err := base.JSONMarshal(info)
 	_, _ = h.response.Write(bytes)
 	return err
 }

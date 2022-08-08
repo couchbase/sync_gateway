@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+Copyright 2020-Present Couchbase, Inc.
+
+Use of this software is governed by the Business Source License included in
+the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
+file, in accordance with the Business Source License, use of this software will
+be governed by the Apache License, Version 2.0, included in the file
+licenses/APL2.txt.
+-->
+
+<manifest>
+
+    <remote fetch="https://github.com/couchbase/" name="couchbase"/>
+    <remote fetch="https://github.com/couchbaselabs/" name="couchbaselabs"/>
+    <remote fetch="https://github.com/couchbasedeps/" name="couchbasedeps"/>
+
+    <remote fetch="https://github.com/tleyden/" name="tleyden"/>
+
+    <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private" />
+
+    <default remote="couchbase" revision="master"/>
+
+    <!-- Build Scripts (required on CI servers) -->
+    <project name="product-texts" path="product-texts" remote="couchbase"/>
+    <project name="build" path="cbbuild" remote="couchbase" revision="0fc38ccd909e027412260c1d5905cfcd50c268d4">
+        <annotation name="VERSION" value="2.8.3"     keep="true"/>
+        <annotation name="BLD_NUM" value="@BLD_NUM@" keep="true"/>
+        <annotation name="RELEASE" value="@RELEASE@" keep="true"/>
+    </project>
+
+
+    <!-- Sync Gateway -->
+    <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" revision="f3290c5cd250f766251019f542c5041f286ff701"/>
+
+    <!-- Dependencies for Sync Gateway (and possibly Sync Gateway Accel too) -->
+
+    <project name="go.assert" path="godeps/src/github.com/couchbaselabs/go.assert" remote="couchbaselabs" revision="cfb33e3a0dac05ae1ecbc0e97188c5cf746a1b78"/>
+
+    <project name="retriever" path="godeps/src/github.com/couchbase/retriever" remote="couchbase" revision="19c5a5d92a2f34fb96ae91d26901e4a7076b8020"/>
+
+    <project name="sync_gateway_admin_ui" path="godeps/src/github.com/couchbaselabs/sync_gateway_admin_ui" revision="93c74bac9ddc2979ab895a37087c225c998b03bf" remote="couchbaselabs"/>
+
+    <project name="walrus" path="godeps/src/github.com/couchbaselabs/walrus" remote="couchbaselabs" revision="b1349276dedea51b9aec41dc86dd6598bcfc5e01"/>
+
+    <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="fb2c298255fcbffc24f1cb824ef9d06defcda199"/>
+
+    <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="a6e1124eba0e2910e0e4a20cce8dc84e272efea8" />
+    <project name="gocb" path="godeps/src/gopkg.in/couchbase/gocb.v1" remote="couchbase" revision="a6e1124eba0e2910e0e4a20cce8dc84e272efea8" />
+
+    <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v7" remote="couchbase" revision="a01296b76db4c54811679634f70ce6a5683dbda2"/>
+
+    <project name="jsonx" path="godeps/src/gopkg.in/couchbaselabs/jsonx.v1" remote="couchbaselabs" revision="5b7baa20429a46a5543ee259664cc86502738cad"/>
+
+    <project name="gocbconnstr" path="godeps/src/gopkg.in/couchbaselabs/gocbconnstr.v1" remote="couchbaselabs" revision="8f9a894d174b836c6362de9af75545cf585fc278"/>
+
+    <project name="gomemcached" path="godeps/src/github.com/couchbase/gomemcached" remote="couchbase" revision="db06807997e6f778fe135571140a0c4f1f59723c"/>
+
+    <project name="sg-bucket" path="godeps/src/github.com/couchbase/sg-bucket" remote="couchbase" revision="d4ee4b62887856071adfae0b36636add1946d0c9"/>
+
+    <project name="go-bindata-assetfs" path="godeps/src/github.com/elazarl/go-bindata-assetfs" remote="couchbasedeps" revision="30f82fa23fd844bd5bb1e5f216db87fd77b5eb43"/>
+
+    <project name="context" path="godeps/src/github.com/gorilla/context" remote="couchbasedeps" revision="215affda49addc4c8ef7e2534915df2c8c35c6cd"/>
+
+    <project name="mux" path="godeps/src/github.com/gorilla/mux" remote="couchbasedeps" revision="043ee6597c29786140136a5747b6a886364f5282"/>
+
+    <project name="npipe" path="godeps/src/github.com/natefinch/npipe" remote="couchbasedeps" revision="0938d701e50e580f5925c773055eb6d6b32a0cbc"/>
+
+    <project name="lumberjack" path="godeps/src/github.com/natefinch/lumberjack" remote="couchbasedeps" revision="aee4629129445bbdfb69aa565537dcfa16544311"/>
+
+    <project name="otto" path="godeps/src/github.com/robertkrimen/otto" remote="couchbasedeps" revision="a813c59b1b4471ff7ecd3b533bac2f7e7d178784"/>
+
+    <project name="go-metrics-1" path="godeps/src/github.com/samuel/go-metrics" remote="couchbasedeps" revision="52e6232924c9e785c3c4117b63a3e58b1f724544"/>
+
+    <project name="fakehttp" path="godeps/src/github.com/tleyden/fakehttp" remote="tleyden" revision="084795c8f01f195a88c0ca4af0d7228a5ef40c83"/>
+
+    <project name="text" path="godeps/src/golang.org/x/text" remote="couchbasedeps" revision="release-branch.go1.11"/>
+
+    <project name="net" path="godeps/src/golang.org/x/net" remote="couchbasedeps" revision="release-branch.go1.11"/>
+
+    <project name="sys" path="godeps/src/golang.org/x/sys" remote="couchbasedeps" revision="release-branch.go1.11"/>
+
+    <project name="crypto" path="godeps/src/golang.org/x/crypto" remote="couchbasedeps" revision="release-branch.go1.11"/>
+
+    <project name="sg-replicate" path="godeps/src/github.com/couchbaselabs/sg-replicate" remote="couchbaselabs" revision="6fb5493d6168e70813dd27208456cc36f1394cfd"/>
+
+    <project name="clog" path="godeps/src/github.com/couchbase/clog" remote="couchbase" revision="dcae66272b24600ae0005fa06b511cfae8914d3d"/>
+
+    <project name="service" path="godeps/src/github.com/kardianos/service" remote="couchbasedeps" revision="2954cfdd7b0c8ab45ef2aa22a44b5f086201836f"/>
+
+    <project name="osext" path="godeps/src/github.com/kardianos/osext" remote="couchbasedeps" revision="29ae4ffbc9a6fe9fb2bc5029050ce6996ea1d3bc"/>
+
+    <!--OpenID Connect, OAuth2 dependencies-->
+    <project name="go-oidc" path="godeps/src/github.com/coreos/go-oidc" remote="couchbasedeps" revision="8d771559cf6e5111c9b9159810d0e4538e7cdc82"/>
+    <project name="go-jose" path="godeps/src/gopkg.in/square/go-jose.v2" remote="couchbasedeps" revision="4ef0f1b175ccd65472d154e1207c4d7b8102545f"/>
+    <project name="oauth2" path="godeps/src/golang.org/x/oauth2" remote="couchbasedeps" revision="bf48bf16ab8d622ce64ec6ce98d2c98f916b6303"/>
+    <project name="cachecontrol" path="godeps/src/github.com/pquerna/cachecontrol" remote="couchbasedeps" revision="1555304b9b35fdd2b425bccf1a5613677705e7d0"/>
+
+    <project name="go-systemd" path="godeps/src/github.com/coreos/go-systemd" remote="couchbasedeps" revision="1d9051fe7a349daf6dac904c0b277c3520c09368"/>
+
+    <project name="pkg" path="godeps/src/github.com/coreos/pkg" remote="couchbasedeps" revision="160ae6282d8c48a33d8c150e4e4817fdef8a5cde"/>
+
+    <project name="clockwork" path="godeps/src/github.com/jonboulle/clockwork" remote="couchbasedeps" revision="ed104f61ea4877bea08af6f759805674861e968d"/>
+
+    <project name="goutils" path="godeps/src/github.com/couchbase/goutils" remote="couchbase" revision="f98adca8eb365032cab838ef4d99453931afa112"/>
+
+    <project name="go-blip" path="godeps/src/github.com/couchbase/go-blip" remote="couchbase" revision="73600c7628b2f93657bfa60083289a6b403615b3"/>
+
+    <project name="errors" path="godeps/src/github.com/pkg/errors" remote="couchbasedeps" revision="f15c970de5b76fac0b59abb32d62c17cc7bed265"/>
+
+    <project name="sourcemap" path="godeps/src/gopkg.in/sourcemap.v1" remote="couchbasedeps" revision="6e83acea0053641eff084973fee085f0c193c61a"/>
+
+    <project name="uuid" path="godeps/src/github.com/google/uuid" remote="couchbasedeps" revision="e704694aed0ea004bb7eb1fc2e911d048a54606a"/>
+
+    <project name="opentracing-go" path="godeps/src/github.com/opentracing/opentracing-go" remote="couchbasedeps" revision="6c572c00d1830223701e155de97408483dfcd14a"/>
+
+    <project name="testify" path="godeps/src/github.com/stretchr/testify" remote="couchbasedeps" revision="04af85275a5c7ac09d16bb3b9b2e751ed45154e5"/>
+
+    <project name="cbgt" path="godeps/src/github.com/couchbase/cbgt" remote="couchbase" revision="ca12da6727d4fb25c91d282beadc7706e28dfbc4"/>
+
+    <project name="blance" path="godeps/src/github.com/couchbase/blance" remote="couchbase" revision="5cd1345cca3ed72f1e63d41d622fcda73e63fea8" />
+
+    <project name="cbauth" path="godeps/src/github.com/couchbase/cbauth" remote="couchbase" revision="82614adbe4d480de5675d8eee9b21a180a779222" />
+
+    <project name="go-metrics" path="godeps/src/github.com/rcrowley/go-metrics" remote="couchbasedeps" revision="dee209f2455f101a5e4e593dea94872d2c62d85d" />
+
+    <!-- Enterprise edition dependencies -->
+    <project groups="notdefault,cb_sg_enterprise" name="go-fleecedelta" path="godeps/src/github.com/couchbaselabs/go-fleecedelta" remote="couchbaselabs_private" revision="2ed3f45fde8f1745eece72968cf673da69f0fd24"/>
+    <project groups="notdefault,cb_sg_enterprise" name="go-diff" path="godeps/src/github.com/sergi/go-diff" remote="couchbasedeps" revision="da645544ed44df016359bd4c0e3dc60ee3a0da43"/>
+
+    <project groups="notdefault,cb_sg_enterprise" name="json-iterator-go" path="godeps/src/github.com/json-iterator/go" remote="couchbasedeps" revision="819acad769e54806c920726ac93537ba4e2c22ad"/>
+    <project groups="notdefault,cb_sg_enterprise" name="concurrent" path="godeps/src/github.com/modern-go/concurrent" remote="couchbasedeps" revision="bacd9c7ef1dd9b15be4a9909b8ac7a4e313eec94"/>
+    <project groups="notdefault,cb_sg_enterprise" name="reflect2" path="godeps/src/github.com/modern-go/reflect2" remote="couchbasedeps" revision="94122c33edd36123c84d5368cfb2b69df93a0ec8"/>
+
+    <!-- gozip tools -->
+    <project name="ns_server" path="godeps/src/github.com/couchbase/ns_server" remote="couchbase" revision="6d835931f574f25e3781192c09e45a3ee30deb51"/>
+
+    <!-- gosigar -->
+    <project name="gosigar" path="godeps/src/github.com/elastic/gosigar" remote="couchbasedeps" revision="f498c67133bcded80f5966ee63acfe68cff4e6bf"/>
+    <project name="wmi" path="godeps/src/github.com/StackExchange/wmi" remote="couchbasedeps" revision="b12b22c5341f0c26d88c4d66176330500e84db68"/>
+    <project name="go-ole" path="godeps/src/github.com/go-ole/go-ole" remote="couchbasedeps" revision="ae2e2a20879aabdd3a51104ab6a4328af2773948"/>
+
+    <project name="gopsutil" path="godeps/src/github.com/shirou/gopsutil" remote="couchbasedeps" revision="cce2d16538b41615132a07ec08d5bdc91c1851e3"/>
+
+    <project name="fgprof" path="godeps/src/github.com/felixge/fgprof" remote="couchbasedeps" revision="033348e0f0e4a38fea34ec259398ee3d336c716a"/>
+    <project name="pprof" path="godeps/src/github.com/google/pprof" remote="couchbasedeps" revision="03e1cf38a040dd596c700aa260c3eddc2bf38987"/>
+
+    <!-- prometheus -->
+    <project name="golang_protobuf_extensions" path="godeps/src/github.com/matttproud/golang_protobuf_extensions" remote="couchbasedeps" revision="c182affec369e30f25d3eb8cd8a478dee585ae7d"/>
+    <project name="client_golang" path="godeps/src/github.com/prometheus/client_golang" remote="couchbasedeps" revision="d3accfda2168b0e253f98cff3ef81586e8b88d9f"/>
+    <project name="client_model" path="godeps/src/github.com/prometheus/client_model" remote="couchbasedeps" revision="60555c9708c786597e6b07bf846d0dc5c2a46f54"/>
+    <project name="common" path="godeps/src/github.com/prometheus/common" remote="couchbasedeps" revision="546f1fd8d7df61d94633b254641f9f8f48248ada"/>
+    <project name="procfs" path="godeps/src/github.com/prometheus/procfs" remote="couchbasedeps" revision="869cfc74c3b4eea1f80f29819f1dab68ed3c780e"/>
+    <project name="perks" path="godeps/src/github.com/beorn7/perks" remote="couchbasedeps" revision="37c8de3658fcb183f997c4e13e8337516ab753e6"/>
+    <project name="xxhash" path="godeps/src/github.com/cespare/xxhash" remote="couchbasedeps" revision="d7df74196a9e781ede915320c11c378c1b2f3a1f"/>
+    <project name="protobuf" path="godeps/src/github.com/golang/protobuf" remote="couchbasedeps" revision="b5d812f8a3706043e23a9cd5babf2e5423744d30"/>
+    <project name="protobuf-go" path="godeps/src/google.golang.org/protobuf" remote="couchbasedeps" revision="1ecb1f411c1f2ce65a2db6ea4a8ae927182d342e"/>
+
+</manifest>

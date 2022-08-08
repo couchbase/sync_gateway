@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // This test exists because there have been problems with builds of Go being unable to make HTTPS
@@ -22,11 +24,9 @@ func TestVerifyHTTPSSupport(t *testing.T) {
 	}
 
 	resp, err := http.Get("https://google.com")
-	defer func() {
-		if resp != nil {
-			_ = resp.Body.Close()
-		}
-	}()
+	if resp != nil {
+		assert.NoError(t, resp.Body.Close())
+	}
 
 	if err != nil {
 		// Skip test if dial tcp fails with no such host.

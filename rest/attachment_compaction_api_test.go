@@ -24,7 +24,7 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 
 	// Perform GET before compact has been ran, ensure it starts in valid 'stopped' state
 	resp := rt.SendAdminRequest("GET", "/db/_compact?type=attachment", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	var response db.AttachmentManagerResponse
 	err := base.JSONUnmarshal(resp.BodyBytes(), &response)
@@ -36,18 +36,18 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 
 	// Kick off compact
 	resp = rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	// Attempt to kick off again and validate it correctly errors
 	resp = rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
-	assertStatus(t, resp, http.StatusServiceUnavailable)
+	requireStatus(t, resp, http.StatusServiceUnavailable)
 
 	// Wait for run to complete
 	err = rt.WaitForCondition(func() bool {
 		time.Sleep(1 * time.Second)
 
 		resp := rt.SendAdminRequest("GET", "/db/_compact?type=attachment", "")
-		assertStatus(t, resp, http.StatusOK)
+		requireStatus(t, resp, http.StatusOK)
 
 		var response db.AttachmentManagerResponse
 		err = base.JSONUnmarshal(resp.BodyBytes(), &response)
@@ -80,14 +80,14 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 
 	// Start attachment compaction run
 	resp = rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	// Wait for run to complete
 	err = rt.WaitForCondition(func() bool {
 		time.Sleep(1 * time.Second)
 
 		resp := rt.SendAdminRequest("GET", "/db/_compact?type=attachment", "")
-		assertStatus(t, resp, http.StatusOK)
+		requireStatus(t, resp, http.StatusOK)
 
 		var response db.AttachmentManagerResponse
 		err = base.JSONUnmarshal(resp.BodyBytes(), &response)
@@ -99,7 +99,7 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 
 	// Validate results of GET
 	resp = rt.SendAdminRequest("GET", "/db/_compact?type=attachment", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	err = base.JSONUnmarshal(resp.BodyBytes(), &response)
 	assert.NoError(t, err)
@@ -110,18 +110,18 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 
 	// Start another run
 	resp = rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	// Attempt to terminate that run
 	resp = rt.SendAdminRequest("POST", "/db/_compact?type=attachment&action=stop", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	// Verify it has been marked as 'stopping' --> its possible we'll get stopped instead based on timing of persisted doc update
 	err = rt.WaitForCondition(func() bool {
 		time.Sleep(1 * time.Second)
 
 		resp := rt.SendAdminRequest("GET", "/db/_compact?type=attachment", "")
-		assertStatus(t, resp, http.StatusOK)
+		requireStatus(t, resp, http.StatusOK)
 
 		var response db.AttachmentManagerResponse
 		err = base.JSONUnmarshal(resp.BodyBytes(), &response)
@@ -155,39 +155,39 @@ func TestAttachmentCompactionPersistence(t *testing.T) {
 
 	// Start attachment compaction on one SGW
 	resp := rt1.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	_ = rt1.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
 
 	// Ensure compaction is marked complete on the other node too
 	var rt2AttachmentStatus db.AttachmentManagerResponse
 	resp = rt2.SendAdminRequest("GET", "/db/_compact?type=attachment", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	err := base.JSONUnmarshal(resp.BodyBytes(), &rt2AttachmentStatus)
 	assert.NoError(t, err)
 	assert.Equal(t, rt2AttachmentStatus.State, db.BackgroundProcessStateCompleted)
 
 	// Start compaction again
 	resp = rt1.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	status := rt1.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateRunning)
 	compactID := status.CompactID
 
 	// Abort process early from rt1
 	resp = rt1.SendAdminRequest("POST", "/db/_compact?type=attachment&action=stop", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	status = rt2.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateStopped)
 
 	// Ensure aborted status is present on rt2
 	resp = rt2.SendAdminRequest("GET", "/db/_compact?type=attachment", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	err = base.JSONUnmarshal(resp.BodyBytes(), &rt2AttachmentStatus)
 	assert.NoError(t, err)
 	assert.Equal(t, db.BackgroundProcessStateStopped, rt2AttachmentStatus.State)
 
 	// Attempt to start again from rt2 --> Should resume based on aborted state (same compactionID)
 	resp = rt2.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	status = rt2.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateRunning)
 	assert.Equal(t, compactID, status.CompactID)
 
@@ -217,7 +217,7 @@ func TestAttachmentCompactionDryRun(t *testing.T) {
 	}
 
 	resp := rt.SendAdminRequest("POST", "/db/_compact?type=attachment&dry_run=true", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	status := rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
 	assert.True(t, status.DryRun)
 	assert.Equal(t, int64(5), status.PurgedAttachments)
@@ -228,7 +228,7 @@ func TestAttachmentCompactionDryRun(t *testing.T) {
 	}
 
 	resp = rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	status = rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
 	assert.False(t, status.DryRun)
 	assert.Equal(t, int64(5), status.PurgedAttachments)
@@ -250,18 +250,18 @@ func TestAttachmentCompactionReset(t *testing.T) {
 
 	// Start compaction
 	resp := rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	status := rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateRunning)
 	compactID := status.CompactID
 
 	// Stop compaction before complete -- enters aborted state
 	resp = rt.SendAdminRequest("POST", "/db/_compact?type=attachment&action=stop", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	status = rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateStopped)
 
 	// Ensure status is aborted
 	resp = rt.SendAdminRequest("GET", "/db/_compact?type=attachment", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	var attachmentStatus db.AttachmentManagerResponse
 	err := base.JSONUnmarshal(resp.BodyBytes(), &attachmentStatus)
 	assert.NoError(t, err)
@@ -269,7 +269,7 @@ func TestAttachmentCompactionReset(t *testing.T) {
 
 	// Start compaction again but with reset=true --> meaning it shouldn't try to resume
 	resp = rt.SendAdminRequest("POST", "/db/_compact?type=attachment&reset=true", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	status = rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateRunning)
 	assert.NotEqual(t, compactID, status.CompactID)
 
@@ -306,11 +306,11 @@ func TestAttachmentCompactionInvalidDocs(t *testing.T) {
 
 	// Write a normal doc to ensure this passes through fine
 	resp := rt.SendAdminRequest("PUT", "/db/normal-doc", "{}")
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 
 	// Start compaction
 	resp = rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	status := rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
 
 	assert.Equal(t, int64(2), status.PurgedAttachments)
@@ -334,7 +334,7 @@ func TestAttachmentCompactionStartTimeAndStats(t *testing.T) {
 
 	// Start compaction
 	resp := rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	status := rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
 
 	// Check stats and start time response is correct
@@ -346,7 +346,7 @@ func TestAttachmentCompactionStartTimeAndStats(t *testing.T) {
 
 	// Start compaction again
 	resp = rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 	status = rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
 
 	// Check that stats have been updated to new run and previous attachment count stat remains
@@ -373,10 +373,10 @@ func TestAttachmentCompactionAbort(t *testing.T) {
 	}
 
 	resp := rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	resp = rt.SendAdminRequest("POST", "/db/_compact?type=attachment&action=stop", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	status := rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateStopped)
 	assert.Equal(t, int64(0), status.PurgedAttachments)
@@ -386,7 +386,7 @@ func (rt *RestTester) WaitForAttachmentCompactionStatus(t *testing.T, state db.B
 	var response db.AttachmentManagerResponse
 	err := rt.WaitForConditionWithOptions(func() bool {
 		resp := rt.SendAdminRequest("GET", "/db/_compact?type=attachment", "")
-		assertStatus(t, resp, http.StatusOK)
+		requireStatus(t, resp, http.StatusOK)
 
 		err := base.JSONUnmarshal(resp.BodyBytes(), &response)
 		assert.NoError(t, err)

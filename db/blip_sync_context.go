@@ -15,7 +15,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"runtime/debug"
 	"strconv"
 	"sync"
@@ -31,22 +30,6 @@ const (
 	BlipMinimumBatchSize = uint64(10) // Not in the replication spec - is this required?
 )
 
-var (
-	// kCompressedTypes are MIME types that explicitly indicate they're compressed:
-	kCompressedTypes = regexp.MustCompile(`(?i)\bg?zip\b`)
-
-	// kGoodTypes are MIME types that are compressible:
-	kGoodTypes = regexp.MustCompile(`(?i)(^text)|(xml\b)|(\b(html|json|yaml)\b)`)
-
-	// kBadTypes are MIME types that are generally incompressible:
-	kBadTypes = regexp.MustCompile(`(?i)^(audio|image|video)/`)
-	// An interesting type is SVG (image/svg+xml) which matches _both_! (It's compressible.)
-	// See <http://www.iana.org/assignments/media-types/media-types.xhtml>
-
-	// kBadFilenames are filename extensions of incompressible types:
-	kBadFilenames = regexp.MustCompile(`(?i)\.(zip|t?gz|rar|7z|jpe?g|png|gif|svgz|mp3|m4a|ogg|wav|aiff|mp4|mov|avi|theora)$`)
-)
-
 var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
 
 func NewBlipSyncContext(bc *blip.Context, db *Database, contextID string, replicationStats *BlipSyncStats) *BlipSyncContext {
@@ -60,6 +43,7 @@ func NewBlipSyncContext(bc *blip.Context, db *Database, contextID string, replic
 		replicationStats:        replicationStats,
 		inFlightChangesThrottle: make(chan struct{}, maxInFlightChangesBatches),
 	}
+	bsc.changesCtx, bsc.changesCtxCancel = context.WithCancel(context.Background())
 	if bsc.replicationStats == nil {
 		bsc.replicationStats = NewBlipSyncStats()
 	}
@@ -79,7 +63,7 @@ func NewBlipSyncContext(bc *blip.Context, db *Database, contextID string, replic
 	}
 
 	// Register 2.x replicator handlers
-	for profile, handlerFn := range kHandlersByProfile {
+	for profile, handlerFn := range handlersByProfile {
 		bsc.register(profile, handlerFn)
 	}
 
@@ -100,10 +84,8 @@ type BlipSyncContext struct {
 	blipContextDb                    *Database       // 'master' database instance for the replication, used as source when creating handler-specific databases
 	loggingCtx                       context.Context // logging context for connection
 	dbUserLock                       sync.RWMutex    // Must be held when refreshing the db user
-	gotSubChanges                    bool
-	continuous                       bool
-	lock                             sync.Mutex
 	allowedAttachments               map[string]AllowedAttachment
+	allowedAttachmentsLock           sync.Mutex
 	handlerSerialNumber              uint64                                    // Each handler within a context gets a unique serial number for logging
 	terminatorOnce                   sync.Once                                 // Used to ensure the terminator channel below is only ever closed once.
 	terminator                       chan bool                                 // Closed during BlipSyncContext.close(). Ensures termination of async goroutines.
@@ -122,7 +104,10 @@ type BlipSyncContext struct {
 	replicationStats                 *BlipSyncStats                            // Replication stats
 	purgeOnRemoval                   bool                                      // Purges the document when we pull a _removed:true revision.
 	conflictResolver                 *ConflictResolver                         // Conflict resolver for active replications
-	changesPendingResponseCount      int64                                     // Number of changes messages pending changesResponse
+	changesCtxLock                   sync.Mutex
+	changesCtx                       context.Context    // Used for the unsub changes Blip message to check if the subChanges feed should stop
+	changesCtxCancel                 context.CancelFunc // Cancel function for changesCtx to cancel subChanges being sent
+	changesPendingResponseCount      int64              // Number of changes messages pending changesResponse
 	// TODO: For review, whether sendRevAllConflicts needs to be per sendChanges invocation
 	sendRevNoConflicts bool                      // Whether to set noconflicts=true when sending revisions
 	clientType         BLIPSyncContextClientType // Can perform client-specific replication behaviour based on this field
@@ -138,6 +123,8 @@ type BlipSyncContext struct {
 
 	// when readOnly is true, handleRev requests are rejected
 	readOnly bool
+
+	collectionMapping []*Database // Mapping of array id to collection mapping
 }
 
 // AllowedAttachment contains the metadata for handling allowed attachments
@@ -174,6 +161,7 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 				}
 
 				// This is a panic we don't know about - so continue to log at warn with a generic 500 response via go-blip
+				bsc.replicationStats.NumHandlersPanicked.Add(1)
 				base.WarnfCtx(bsc.loggingCtx, "PANIC handling BLIP request %v: %v\n%s", rq, err, debug.Stack())
 				panic(err)
 			}
@@ -198,11 +186,9 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 				response.SetError("HTTP", status, msg)
 			}
 			base.InfofCtx(bsc.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> %d %s Time:%v", handler.serialNumber, profile, status, msg, time.Since(startTime))
-		} else {
+		} else if profile != "subChanges" {
 			// Log the fact that the handler has finished, except for the "subChanges" special case which does it's own termination related logging
-			if profile != "subChanges" {
-				base.DebugfCtx(bsc.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> OK Time:%v", handler.serialNumber, profile, time.Since(startTime))
-			}
+			base.DebugfCtx(bsc.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> OK Time:%v", handler.serialNumber, profile, time.Since(startTime))
 		}
 
 		// Trace log the full response body and properties
@@ -222,6 +208,11 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 
 func (bsc *BlipSyncContext) Close() {
 	bsc.terminatorOnce.Do(func() {
+		// Lock so that we don't close the changesCtx at the same time as handleSubChanges is creating it
+		bsc.changesCtxLock.Lock()
+		defer bsc.changesCtxLock.Unlock()
+
+		bsc.changesCtxCancel()
 		close(bsc.terminator)
 	})
 }
@@ -250,6 +241,7 @@ func (bsc *BlipSyncContext) _copyContextDatabase() *Database {
 func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, requestSent time.Time, handleChangesResponseDb *Database) error {
 	defer func() {
 		if panicked := recover(); panicked != nil {
+			bsc.replicationStats.NumHandlersPanicked.Add(1)
 			base.WarnfCtx(bsc.loggingCtx, "PANIC handling 'changes' response: %v\n%s", panicked, debug.Stack())
 		}
 	}()
@@ -261,7 +253,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 	}
 
 	if response.Type() == blip.ErrorType {
-		return errors.New(fmt.Sprintf("Client returned error in changesResponse: %s", respBody))
+		return fmt.Errorf("Client returned error in changesResponse: %s", respBody)
 	}
 
 	var answer []interface{}
@@ -285,7 +277,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 
 	// Set useDeltas if the client has delta support and has it enabled
 	if clientDeltasStr, ok := response.Properties[ChangesResponseDeltas]; ok {
-		bsc.setUseDeltas(clientDeltasStr == "true")
+		bsc.setUseDeltas(clientDeltasStr == trueProperty)
 	} else {
 		base.TracefCtx(bsc.loggingCtx, base.KeySync, "Client didn't specify 'deltas' property in 'changes' response. useDeltas: %v", bsc.useDeltas)
 	}
@@ -307,7 +299,6 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 
 		if knownRevsArray, ok := knownRevsArrayInterface.([]interface{}); ok {
 			deltaSrcRevID := ""
-			//deleted := changeArray[i][3].(bool)
 			knownRevs := knownRevsByDoc[docID]
 			if knownRevs == nil {
 				knownRevs = make(map[string]bool, len(knownRevsArray))
@@ -416,6 +407,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 		go func(activeSubprotocol string) {
 			defer func() {
 				if panicked := recover(); panicked != nil {
+					bsc.replicationStats.NumHandlersPanicked.Add(1)
 					base.WarnfCtx(bsc.loggingCtx, "PANIC handling 'sendRevision' response: %v\n%s", panicked, debug.Stack())
 					bsc.Close()
 				}
@@ -434,7 +426,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 				bsc.replicationStats.SendRevErrorTotal.Add(1)
 				base.InfofCtx(bsc.loggingCtx, base.KeySync, "error %s in response to rev: %s", resp.Properties["Error-Code"], respBody)
 
-				if resp.Properties["Error-Domain"] == "HTTP" {
+				if errorDomainIsHTTP(resp) {
 					switch resp.Properties["Error-Code"] {
 					case "409":
 						bsc.replicationStats.SendRevErrorConflictCount.Add(1)
@@ -473,8 +465,8 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 }
 
 func (bsc *BlipSyncContext) allowedAttachment(digest string) AllowedAttachment {
-	bsc.lock.Lock()
-	defer bsc.lock.Unlock()
+	bsc.allowedAttachmentsLock.Lock()
+	defer bsc.allowedAttachmentsLock.Unlock()
 	return bsc.allowedAttachments[digest]
 }
 
@@ -568,8 +560,10 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 // Pushes a revision body to the client
 func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseDb *Database) error {
 	rev, err := handleChangesResponseDb.GetRev(docID, revID, true, nil)
-	if err != nil {
+	if base.IsDocNotFoundError(err) {
 		return bsc.sendNoRev(sender, docID, revID, seq, err)
+	} else if err != nil {
+		return fmt.Errorf("failed to GetRev for doc %s with rev %s: %w", base.UD(docID).Redact(), base.MD(revID).Redact(), err)
 	}
 
 	base.TracefCtx(bsc.loggingCtx, base.KeySync, "sendRevision, rev attachments for %s/%s are %v", base.UD(docID), revID, base.UD(rev.Attachments))

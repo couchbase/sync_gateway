@@ -202,6 +202,7 @@ type NoPasswordAuthHandler struct {
 
 func (nph NoPasswordAuthHandler) GetCredentials() (username string, password string, bucketname string) {
 	_, _, bucketname = nph.Handler.GetCredentials()
+
 	return "", "", bucketname
 }
 

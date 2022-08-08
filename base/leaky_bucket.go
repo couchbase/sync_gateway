@@ -64,7 +64,7 @@ type LeakyBucketConfig struct {
 
 	// GetRawCallback issues a callback prior to running GetRaw. Allows tests to issue a doc mutation or deletion prior
 	// to GetRaw being ran.
-	GetRawCallback func(key string)
+	GetRawCallback func(key string) error
 
 	PostUpdateCallback func(key string)
 
@@ -105,13 +105,16 @@ func (b *LeakyBucket) Get(k string, rv interface{}) (cas uint64, err error) {
 	return b.bucket.Get(k, rv)
 }
 
-func (b *LeakyBucket) SetGetRawCallback(callback func(string)) {
+func (b *LeakyBucket) SetGetRawCallback(callback func(string) error) {
 	b.config.GetRawCallback = callback
 }
 
 func (b *LeakyBucket) GetRaw(k string) (v []byte, cas uint64, err error) {
 	if b.config.GetRawCallback != nil {
-		b.config.GetRawCallback(k)
+		err = b.config.GetRawCallback(k)
+		if err != nil {
+			return nil, 0, err
+		}
 	}
 	return b.bucket.GetRaw(k)
 }
@@ -485,12 +488,36 @@ func (b *LeakyBucket) IsSupported(feature sgbucket.DataStoreFeature) bool {
 	return b.bucket.IsSupported(feature)
 }
 
-func (b *LeakyBucket) Keyspace() string {
+func (b *LeakyBucket) EscapedKeyspace() string {
 	n1qlStore, ok := AsN1QLStore(b.bucket)
 	if !ok {
 		return ""
 	}
-	return n1qlStore.Keyspace()
+	return n1qlStore.EscapedKeyspace()
+}
+
+func (b *LeakyBucket) IndexMetaKeyspaceID() string {
+	n1qlStore, ok := AsN1QLStore(b.bucket)
+	if !ok {
+		return ""
+	}
+	return n1qlStore.IndexMetaKeyspaceID()
+}
+
+func (b *LeakyBucket) IndexMetaScopeID() string {
+	n1qlStore, ok := AsN1QLStore(b.bucket)
+	if !ok {
+		return ""
+	}
+	return n1qlStore.IndexMetaScopeID()
+}
+
+func (b *LeakyBucket) IndexMetaBucketID() string {
+	n1qlStore, ok := AsN1QLStore(b.bucket)
+	if !ok {
+		return ""
+	}
+	return n1qlStore.IndexMetaBucketID()
 }
 
 func (b *LeakyBucket) Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (results sgbucket.QueryResultIterator, err error) {

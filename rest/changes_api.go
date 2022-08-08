@@ -295,7 +295,8 @@ func (h *handler) handleChanges() error {
 	h.db.DatabaseContext.DbStats.Database().NumReplicationsTotal.Add(1)
 	defer h.db.DatabaseContext.DbStats.Database().NumReplicationsActive.Add(-1)
 
-	options.Terminator = make(chan bool)
+	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+	options.ChangesCtx = changesCtx
 
 	forceClose := false
 
@@ -320,7 +321,7 @@ func (h *handler) handleChanges() error {
 		forceClose = false
 	}
 
-	close(options.Terminator)
+	changesCtxCancel()
 
 	// On forceClose, send notify to trigger immediate exit from change waiter
 	if forceClose {
@@ -507,10 +508,10 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 			}
 		}
 
-		//Copy options.Terminator to new WebSocket options
-		//options.Terminator will be closed automatically when
+		//Copy options.ChangesCtx to new WebSocket options
+		//options.ChangesCtx will be cancelled automatically when
 		//changes feed completes
-		wsoptions.Terminator = options.Terminator
+		wsoptions.ChangesCtx = options.ChangesCtx
 
 		// Set up GZip compression
 		var writer *bytes.Buffer

@@ -69,18 +69,13 @@ You can control the Couchbase Sync Gateway service by using the following comman
   ${SERVICE_CMD}
 
 That's it! Sync Gateway is now running on port 4984. We've setup a simple in-memory database
-which works great for exploring Sync Gateway's capabilities. A limited console is available
-by opening your browser to http://localhost:4985/_admin/.
+which works great for exploring Sync Gateway's capabilities.
 
-The command-line options are:
+Some command-line options are:
 
   -adminInterface=":4985": Address to bind admin interface to
-  -bucket="@@PRODUCT_EXEC@@": Name of bucket
-  -dbname="": Name of CouchDB database (defaults to name of bucket)
   -interface=":4984": Address to bind to
   -log="": Log keywords, comma separated
-  -personaOrigin="": Base URL that clients use to connect to the server
-  -pool="default": Name of pool
   -pretty=false: Pretty-print JSON responses
   -url="walrus:": Address of Couchbase server
   -verbose=false: Log more info about requests

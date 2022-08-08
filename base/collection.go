@@ -26,6 +26,8 @@ import (
 	pkgerrors "github.com/pkg/errors"
 )
 
+var ErrCollectionsUnsupported = errors.New("collections not supported")
+
 var _ sgbucket.KVStore = &Collection{}
 var _ CouchbaseStore = &Collection{}
 
@@ -33,7 +35,7 @@ var _ CouchbaseStore = &Collection{}
 func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 
 	logCtx := context.TODO()
-	connString, err := spec.GetGoCBConnString()
+	connString, err := spec.GetGoCBConnString(nil)
 	if err != nil {
 		WarnfCtx(logCtx, "Unable to parse server value: %s error: %v", SD(spec.Server), err)
 		return nil, err
@@ -93,6 +95,18 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 
 }
 
+// bucketSpecScopeAndCollection returns a scope and collection for the given bucket spec.
+func bucketSpecScopeAndCollection(spec BucketSpec) (scope string, collection string) {
+	scope, collection = DefaultScope, DefaultCollection
+	if spec.Scope != nil {
+		scope = *spec.Scope
+	}
+	if spec.Collection != nil {
+		collection = *spec.Collection
+	}
+	return scope, collection
+}
+
 func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilReadySeconds int) (*Collection, error) {
 
 	// Connect to bucket
@@ -116,8 +130,11 @@ func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilR
 	// Safe to get first node as there will always be at least one node in the list and cluster compat is uniform across all nodes.
 	clusterCompatMajor, clusterCompatMinor := decodeClusterVersion(nodesMetadata[0].ClusterCompatibility)
 
+	specScope, specCollection := bucketSpecScopeAndCollection(spec)
+	c := cluster.Bucket(spec.BucketName).Scope(specScope).Collection(specCollection)
+
 	collection := &Collection{
-		Collection:                bucket.DefaultCollection(),
+		Collection:                c,
 		Spec:                      spec,
 		cluster:                   cluster,
 		clusterCompatMajorVersion: uint64(clusterCompatMajor),
@@ -210,7 +227,7 @@ func (c *Collection) IsSupported(feature sgbucket.DataStoreFeature) bool {
 			return false
 		}
 		return status == gocb.CapabilityStatusSupported
-	case sgbucket.DataStoreFeaturePreserveExpiry:
+	case sgbucket.DataStoreFeaturePreserveExpiry, sgbucket.DataStoreFeatureCollections:
 		// TODO: Change to capability check when GOCBC-1218 merged
 		return isMinimumVersion(c.clusterCompatMajorVersion, c.clusterCompatMinorVersion, 7, 0)
 	default:
@@ -515,7 +532,8 @@ func (c *Collection) Incr(k string, amt, def uint64, exp uint32) (uint64, error)
 }
 
 func (c *Collection) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
-	return StartDCPFeed(c, c.Spec, args, callback, dbStats)
+	groupID := ""
+	return StartGocbDCPFeed(c, c.Spec.BucketName, args, callback, dbStats, DCPMetadataStoreInMemory, groupID)
 }
 func (c *Collection) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
 	return nil, errors.New("StartTapFeed not implemented")
@@ -642,18 +660,59 @@ func (c *Collection) isRecoverableWriteError(err error) bool {
 	return false
 }
 
+// dropAllScopesAndCollections attempts to drop *all* non-_default scopes and collections from the bucket associated with the collection.  Intended for test usage only.
+func (c *Collection) dropAllScopesAndCollections() error {
+	cm := c.Bucket().Collections()
+	scopes, err := cm.GetAllScopes(nil)
+	if err != nil {
+		if httpErr, ok := err.(gocb.HTTPError); ok && httpErr.StatusCode == 404 {
+			return ErrCollectionsUnsupported
+		}
+		WarnfCtx(context.TODO(), "Error getting scopes on bucket %s: %v  Will retry.", MD(c.Bucket().Name()).Redact(), err)
+		return err
+	}
+
+	// For each non-default scope, drop them.
+	// For each collection within the default scope, drop them.
+	for _, scope := range scopes {
+		if scope.Name != DefaultScope {
+			if err := cm.DropScope(scope.Name, nil); err != nil {
+				WarnfCtx(context.TODO(), "Error dropping scope %s on bucket %s: %v  Will retry.", MD(scope).Redact(), MD(c.Bucket().Name()).Redact(), err)
+				return err
+			}
+			continue
+		}
+
+		// can't delete _default scope - but we can delete the non-_default collections within it
+		for _, collection := range scope.Collections {
+			if collection.Name != DefaultCollection {
+				if err := cm.DropCollection(collection, nil); err != nil {
+					WarnfCtx(context.TODO(), "Error dropping collection %s in scope %s on bucket %s: %v  Will retry.", MD(collection.Name).Redact(), MD(scope).Redact(), MD(c.Bucket().Name()).Redact(), err)
+					return err
+				}
+			}
+		}
+
+	}
+	return nil
+}
+
 // This flushes the *entire* bucket associated with the collection (not just the collection).  Intended for test usage only.
 func (c *Collection) Flush() error {
 
 	bucketManager := c.cluster.Buckets()
 
 	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
-		err = bucketManager.FlushBucket(c.Bucket().Name(), nil)
-		if err != nil {
-			WarnfCtx(context.TODO(), "Error flushing bucket %s: %v  Will retry.", MD(c.Bucket().Name()).Redact(), err)
-			shouldRetry = true
+		if err := c.dropAllScopesAndCollections(); err != nil && !errors.Is(err, ErrCollectionsUnsupported) {
+			return true, err, nil
 		}
-		return shouldRetry, err, nil
+
+		if err := bucketManager.FlushBucket(c.Bucket().Name(), nil); err != nil {
+			WarnfCtx(context.TODO(), "Error flushing bucket %s: %v  Will retry.", MD(c.Bucket().Name()).Redact(), err)
+			return true, err, nil
+		}
+
+		return false, nil, nil
 	}
 
 	err, _ := RetryLoop("EmptyTestBucket", workerFlush, CreateDoublingSleeperFunc(12, 10))
@@ -698,7 +757,7 @@ func (c *Collection) BucketItemCount() (itemCount int, err error) {
 
 	// TODO: implement APIBucketItemCount for collections as part of CouchbaseStore refactoring.  Until then, give flush a moment to finish
 	time.Sleep(1 * time.Second)
-	//itemCount, err = bucket.APIBucketItemCount()
+	// itemCount, err = bucket.APIBucketItemCount()
 	return 0, err
 }
 

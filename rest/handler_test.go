@@ -11,9 +11,11 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -77,5 +79,162 @@ func TestParseHTTPRangeHeader(t *testing.T) {
 			assert.Equal(t, expected.start, start)
 			assert.Equal(t, expected.end, end)
 		}
+	}
+}
+
+func TestHTTPLoggingRedaction(t *testing.T) {
+	cases := []struct {
+		name, method, path, expectedLog string
+		admin                           bool
+	}{
+		{
+			name:        "docid",
+			method:      http.MethodGet,
+			path:        "/db/test",
+			expectedLog: "/db/<ud>test</ud>",
+		},
+		{
+			name:        "local",
+			method:      http.MethodGet,
+			path:        "/db/_local/test",
+			expectedLog: "/db/_local/<ud>test</ud>",
+		},
+		{
+			name:        "raw-docid",
+			method:      http.MethodGet,
+			path:        "/db/_raw/test",
+			expectedLog: "/db/_raw/<ud>test</ud>",
+			admin:       true,
+		},
+		{
+			name:        "revtree-docid",
+			method:      http.MethodGet,
+			path:        "/db/_revtree/test",
+			expectedLog: "/db/_revtree/<ud>test</ud>",
+			admin:       true,
+		},
+		{
+			name:        "docid-attach",
+			method:      http.MethodGet,
+			path:        "/db/test/attach",
+			expectedLog: "/db/<ud>test</ud>/<ud>attach</ud>",
+		},
+		{
+			name:        "docid-attach-equalnames",
+			method:      http.MethodGet,
+			path:        "/db/test/test",
+			expectedLog: "/db/<ud>test</ud>/<ud>test</ud>",
+		},
+		{
+			name:        "user",
+			method:      http.MethodGet,
+			path:        "/db/_user/foo",
+			expectedLog: "/db/_user/<ud>foo</ud>",
+			admin:       true,
+		},
+		{
+			name:        "userSession",
+			method:      http.MethodDelete,
+			path:        "/db/_user/foo/_session",
+			expectedLog: "/db/_user/<ud>foo</ud>/_session",
+			admin:       true,
+		},
+		{
+			name:        "role",
+			method:      http.MethodGet,
+			path:        "/db/_role/foo",
+			expectedLog: "/db/_role/<ud>foo</ud>",
+			admin:       true,
+		},
+		{
+			name:        "CBG-2059",
+			method:      http.MethodGet,
+			path:        "/db/db",
+			expectedLog: "/db/<ud>db</ud>",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rt := NewRestTester(t, nil)
+			defer rt.Close()
+
+			base.AssertLogContains(t, tc.expectedLog, func() {
+				if tc.admin {
+					_ = rt.SendAdminRequest(tc.method, tc.path, "")
+				} else {
+					_ = rt.SendRequest(tc.method, tc.path, "")
+				}
+			})
+		})
+	}
+}
+
+func Test_parseKeyspace(t *testing.T) {
+	tests := []struct {
+		ks             string
+		wantDb         string
+		wantScope      *string
+		wantCollection *string
+		wantErr        assert.ErrorAssertionFunc
+	}{
+		{
+			ks:             "db",
+			wantDb:         "db",
+			wantScope:      nil,
+			wantCollection: nil,
+			wantErr:        assert.NoError,
+		},
+		{
+			ks:             "d.c",
+			wantDb:         "d",
+			wantScope:      nil,
+			wantCollection: base.StringPtr("c"),
+			wantErr:        assert.NoError,
+		},
+		{
+			ks:             "d.s.c",
+			wantDb:         "d",
+			wantScope:      base.StringPtr("s"),
+			wantCollection: base.StringPtr("c"),
+			wantErr:        assert.NoError,
+		},
+		{
+			ks:      "",
+			wantErr: assert.Error,
+		},
+		{
+			ks:      "d.s.c.z",
+			wantErr: assert.Error,
+		},
+		{
+			ks:      ".s.",
+			wantErr: assert.Error,
+		},
+		{
+			ks:      "d..c",
+			wantErr: assert.Error,
+		},
+		{
+			ks:      "d.",
+			wantErr: assert.Error,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.ks, func(t *testing.T) {
+			gotDb, gotScope, gotCollection, err := parseKeyspace(tt.ks)
+			if !tt.wantErr(t, err, fmt.Sprintf("parseKeyspace(%v)", tt.ks)) {
+				return
+			}
+			assert.Equalf(t, tt.wantDb, gotDb, "parseKeyspace(%v)", tt.ks)
+			assert.Equalf(t, tt.wantScope, gotScope, "parseKeyspace(%v)", tt.ks)
+			assert.Equalf(t, tt.wantCollection, gotCollection, "parseKeyspace(%v)", tt.ks)
+		})
+	}
+}
+
+func Benchmark_parseKeyspace(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _, _, _ = parseKeyspace("d.s.c")
 	}
 }

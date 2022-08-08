@@ -6,15 +6,15 @@ get:
     Required Sync Gateway RBAC roles:
     * Sync Gateway Dev Ops
   responses:
-    "200":
+    '200':
       description: OK
       content:
         text/plain:
           schema:
             type: string
   tags:
-  - Admin only endpoints
-  - Profiling
+    - Admin only endpoints
+    - Profiling
 post:
   summary: Get passed in command line parameters
   description: |-
@@ -23,12 +23,12 @@ post:
     Required Sync Gateway RBAC roles:
     * Sync Gateway Dev Ops
   responses:
-    "200":
+    '200':
       description: OK
       content:
         text/plain:
           schema:
             type: string
   tags:
-  - Admin only endpoints
-  - Profiling
+    - Admin only endpoints
+    - Profiling

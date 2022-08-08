@@ -173,65 +173,55 @@ func WaitForUserWaiterChange(userWaiter *ChangeWaiter) bool {
 	return isChanged
 }
 
-// emptyAllDocsIndex ensures the AllDocs index for the given bucket is empty. Works similarly to db.Compact, except on a different index.
+// emptyAllDocsIndex ensures the AllDocs index for the given bucket is empty. Works similarly to db.Compact, except on a different index and without a DatabaseContext
 func emptyAllDocsIndex(ctx context.Context, b base.Bucket, tbp *base.TestBucketPool) (numCompacted int, err error) {
 	purgedDocCount := 0
 	purgeBody := Body{"_purged": true}
 
-	dbCtx, err := NewDatabaseContext(b.GetName(), base.NoCloseClone(b), false, DatabaseContextOptions{
-		UseViews:    base.TestsDisableGSI(),
-		EnableXattr: base.TestUseXattrs(),
-	})
-	if err != nil {
-		return 0, err
-	}
-	defer dbCtx.Close()
-
-	database, err := GetDatabase(dbCtx, nil)
-	if err != nil {
-		return 0, err
+	n1qlStore, ok := base.AsN1QLStore(b)
+	if !ok {
+		return 0, fmt.Errorf("bucket was not a n1ql store")
 	}
 
 	// A stripped down version of db.Compact() that works on AllDocs instead of tombstones
-	for {
-		results, err := database.QueryChannels(ctx, "*", 0, 0, 0, false)
-		if err != nil {
-			return 0, err
-		}
-		var tombstonesRow QueryIdRow
-		var resultCount int
-		for results.Next(&tombstonesRow) {
-			resultCount++
-			tbp.Logf(ctx, "compactTestBucket deleting %q", tombstonesRow.Id)
-			// First, attempt to purge.
-			purgeErr := database.Purge(tombstonesRow.Id)
-			if purgeErr == nil {
-			} else if base.IsKeyNotFoundError(b, purgeErr) {
-				// If key no longer exists, need to add and remove to trigger removal from view
-				_, addErr := b.Add(tombstonesRow.Id, 0, purgeBody)
-				if addErr != nil {
-					tbp.Logf(ctx, "Error compacting key %s (add) - will not be compacted.  %v", tombstonesRow.Id, addErr)
-					continue
-				}
+	statement := `SELECT META(ks).id AS id
+FROM ` + base.KeyspaceQueryToken + ` AS ks USE INDEX (sg_allDocs_x1)
+WHERE META(ks).xattrs._sync.sequence >= 0
+    AND META(ks).xattrs._sync.sequence < 9223372036854775807
+    AND META(ks).id NOT LIKE '\\_sync:%'`
+	results, err := n1qlStore.Query(statement, nil, base.RequestPlus, true)
+	if err != nil {
+		return 0, err
+	}
 
-				if delErr := b.Delete(tombstonesRow.Id); delErr != nil {
-					tbp.Logf(ctx, "Error compacting key %s (delete) - will not be compacted.  %v", tombstonesRow.Id, delErr)
-				}
-				purgedDocCount++
-			} else {
-				tbp.Logf(ctx, "Error compacting key %s (purge) - will not be compacted.  %v", tombstonesRow.Id, purgeErr)
+	var tombstonesRow QueryIdRow
+	for results.Next(&tombstonesRow) {
+		// First, attempt to purge.
+		var purgeErr error
+		if base.TestUseXattrs() {
+			purgeErr = b.DeleteWithXattr(tombstonesRow.Id, base.SyncXattrName)
+		} else {
+			purgeErr = b.Delete(tombstonesRow.Id)
+		}
+		if base.IsKeyNotFoundError(b, purgeErr) {
+			// If key no longer exists, need to add and remove to trigger removal from view
+			_, addErr := b.Add(tombstonesRow.Id, 0, purgeBody)
+			if addErr != nil {
+				tbp.Logf(ctx, "Error compacting key %s (add) - will not be compacted.  %v", tombstonesRow.Id, addErr)
+				continue
 			}
-		}
-		err = results.Close()
-		if err != nil {
-			return 0, err
-		}
 
-		tbp.Logf(ctx, "Compacted %v docs in batch", purgedDocCount)
-
-		if resultCount < QueryTombstoneBatch {
-			break
+			if delErr := b.Delete(tombstonesRow.Id); delErr != nil {
+				tbp.Logf(ctx, "Error compacting key %s (delete) - will not be compacted.  %v", tombstonesRow.Id, delErr)
+			}
+			purgedDocCount++
+		} else if purgeErr != nil {
+			tbp.Logf(ctx, "Error compacting key %s (purge) - will not be compacted.  %v", tombstonesRow.Id, purgeErr)
 		}
+	}
+	err = results.Close()
+	if err != nil {
+		return 0, err
 	}
 
 	tbp.Logf(ctx, "Finished compaction ... Total docs purged: %d", purgedDocCount)
@@ -280,8 +270,7 @@ var ViewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 
 // ViewsAndGSIBucketInit is run synchronously only once per-bucket to do any initial setup. For non-integration Walrus buckets, this is run for each new Walrus bucket.
 var ViewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b base.Bucket, tbp *base.TestBucketPool) error {
-	n1qlStore, ok := base.AsN1QLStore(b)
-	if !ok {
+	if base.UnitTestUrlIsWalrus() {
 		// Check we're not running with an invalid combination of backing store and xattrs.
 		if base.TestUseXattrs() {
 			return fmt.Errorf("xattrs not supported when using Walrus buckets")
@@ -294,6 +283,11 @@ var ViewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 	// Exit early if we're not using GSI.
 	if base.TestsDisableGSI() {
 		return nil
+	}
+
+	n1qlStore, ok := base.AsN1QLStore(b)
+	if !ok {
+		return fmt.Errorf("bucket %T was not a N1QL store", b)
 	}
 
 	if empty, err := isIndexEmpty(n1qlStore, base.TestUseXattrs()); empty && err == nil {
@@ -377,7 +371,7 @@ func (dbc *DatabaseContext) ChannelViewForTest(tb testing.TB, channelName string
 }
 
 // Test-only version of GetPrincipal that doesn't trigger channel/role recalculation
-func (dbc *DatabaseContext) GetPrincipalForTest(tb testing.TB, name string, isUser bool) (info *PrincipalConfig, err error) {
+func (dbc *DatabaseContext) GetPrincipalForTest(tb testing.TB, name string, isUser bool) (info *auth.PrincipalConfig, err error) {
 	ctx := base.TestCtx(tb)
 	var princ auth.Principal
 	if isUser {
@@ -388,14 +382,15 @@ func (dbc *DatabaseContext) GetPrincipalForTest(tb testing.TB, name string, isUs
 	if princ == nil {
 		return
 	}
-	info = new(PrincipalConfig)
+	info = new(auth.PrincipalConfig)
 	info.Name = &name
 	info.ExplicitChannels = princ.ExplicitChannels().AsSet()
 	if user, ok := princ.(auth.User); ok {
 		info.Channels = user.InheritedChannels().AsSet()
-		info.Email = user.Email()
+		email := user.Email()
+		info.Email = &email
 		info.Disabled = base.BoolPtr(user.Disabled())
-		info.ExplicitRoleNames = user.ExplicitRoles().AllKeys()
+		info.ExplicitRoleNames = user.ExplicitRoles().AsSet()
 		info.RoleNames = user.RoleNames().AllKeys()
 	} else {
 		info.Channels = princ.Channels().AsSet()

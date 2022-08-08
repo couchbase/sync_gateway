@@ -186,13 +186,16 @@ func TestCheckPermissions(t *testing.T) {
 }
 
 func TestCheckPermissionsWithX509(t *testing.T) {
-	tb, teardownFn, caCertPath, certPath, keyPath := setupX509Tests(t, true)
+	serverURL := base.UnitTestUrl()
+	if !base.ServerIsTLS(serverURL) {
+		t.Skipf("URI %s needs to start with couchbases://", serverURL)
+	}
+	tb, caCertPath, certPath, keyPath := setupX509Tests(t, true)
 	defer tb.Close()
-	defer teardownFn()
 
 	ctx := NewServerContext(&StartupConfig{
 		Bootstrap: BootstrapConfig{
-			Server:       base.UnitTestUrl(),
+			Server:       serverURL,
 			X509CertPath: certPath,
 			X509KeyPath:  keyPath,
 			CACertPath:   caCertPath,
@@ -475,13 +478,16 @@ func TestAdminAuth(t *testing.T) {
 }
 
 func TestAdminAuthWithX509(t *testing.T) {
-	tb, teardownFn, caCertPath, certPath, keyPath := setupX509Tests(t, true)
+	serverURL := base.UnitTestUrl()
+	if !base.ServerIsTLS(serverURL) {
+		t.Skipf("URI %s needs to start with couchbases://", serverURL)
+	}
+	tb, caCertPath, certPath, keyPath := setupX509Tests(t, true)
 	defer tb.Close()
-	defer teardownFn()
 
 	ctx := NewServerContext(&StartupConfig{
 		Bootstrap: BootstrapConfig{
-			Server:       base.UnitTestUrl(),
+			Server:       serverURL,
 			X509CertPath: certPath,
 			X509KeyPath:  keyPath,
 			CACertPath:   caCertPath,
@@ -517,6 +523,10 @@ func TestAdminAPIAuth(t *testing.T) {
 
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
+	}
+	serverURL := base.UnitTestUrl()
+	if base.ServerIsTLS(serverURL) {
+		t.Skipf("URI %s can not start with couchbases://", serverURL)
 	}
 
 	rt := NewRestTester(t, &RestTesterConfig{
@@ -959,10 +969,10 @@ func TestAdminAPIAuth(t *testing.T) {
 		}
 		t.Run(endPoint.Method+formattedEndpoint, func(t *testing.T) {
 			resp := rt.SendAdminRequest(endPoint.Method, formattedEndpoint, body)
-			assertStatus(t, resp, http.StatusUnauthorized)
+			requireStatus(t, resp, http.StatusUnauthorized)
 
 			resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, body, "noaccess", "password")
-			assertStatus(t, resp, http.StatusForbidden)
+			requireStatus(t, resp, http.StatusForbidden)
 
 			if !endPoint.SkipSuccessTest {
 
@@ -977,7 +987,7 @@ func TestAdminAPIAuth(t *testing.T) {
 					if endPoint.Method == http.MethodGet || endPoint.Method == http.MethodHead || endPoint.Method == http.MethodOptions {
 						assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
 					} else {
-						assertStatus(t, resp, http.StatusForbidden)
+						requireStatus(t, resp, http.StatusForbidden)
 					}
 
 					resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, body, "ClusterAdminUser", "password")
@@ -1522,7 +1532,7 @@ func TestNewlyCreateSGWPermissions(t *testing.T) {
 
 				if !isAllowedUser {
 					resp := rt.SendAdminRequestWithAuth(endpoint.Method, endpoint.Endpoint, "", testUser, "password")
-					assertStatus(t, resp, http.StatusForbidden)
+					requireStatus(t, resp, http.StatusForbidden)
 				}
 			})
 		}
@@ -1554,5 +1564,5 @@ func TestCreateDBSpecificBucketPerm(t *testing.T) {
 	defer DeleteUser(t, httpClient, eps[0], mobileSyncGateway)
 
 	resp := rt.SendAdminRequestWithAuth("PUT", "/db2/", `{"bucket": "`+tb.GetName()+`", "username": "`+base.TestClusterUsername()+`", "password": "`+base.TestClusterPassword()+`", "num_index_replicas": 0, "use_views": `+strconv.FormatBool(base.TestsDisableGSI())+`}`, mobileSyncGateway, "password")
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 }

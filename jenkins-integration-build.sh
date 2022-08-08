@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 DEFAULT_PACKAGE_TIMEOUT="45m"
 
-if [ "$1" == "-m" ]; then
+set -u
+
+if [ "${1:-}" == "-m" ]; then
     echo "Running in automated master integration mode"
     # Set automated setting parameters
     SG_COMMIT="master"
@@ -26,7 +28,7 @@ set -e # Abort on errors
 set -x # Output all executed shell commands
 
 # Use Git SSH and define private repos
-git config --global --add url."git@github.com:".insteadOf "https://github.com/"
+git config --global --replace-all url."git@github.com:".insteadOf "https://github.com/"
 export GOPRIVATE=github.com/couchbaselabs/go-fleecedelta
 
 # Print commit
@@ -34,7 +36,7 @@ SG_COMMIT_HASH=$(git rev-parse HEAD)
 echo "Sync Gateway git commit hash: $SG_COMMIT_HASH"
 
 # Use Go modules (3.1 and above) or bootstrap for legacy Sync Gateway versions (3.0 and below)
-if [ ${USE_GO_MODULES} == "false" ]; then
+if [ "${USE_GO_MODULES:-}" == "false" ]; then
     mkdir -p sgw_int_testing # Make the directory if it does not exist
     cp bootstrap.sh sgw_int_testing/bootstrap.sh
     cd sgw_int_testing
@@ -51,17 +53,22 @@ else
     go install -v github.com/AlekSi/gocov-xml@latest
 fi
 
+if [ "${SG_TEST_X509:-}" == "true" -a "${COUCHBASE_SERVER_PROTOCOL}" != "couchbases" ]; then
+    echo "Setting SG_TEST_X509 requires using couchbases:// protocol, aborting integration tests"
+    exit 1
+fi
+
 # Set environment vars
-GO_TEST_FLAGS="-v -p 1 -count=${RUN_COUNT}"
+GO_TEST_FLAGS="-v -p 1 -count=${RUN_COUNT:-1}"
 INT_LOG_FILE_NAME="verbose_int"
 
 if [ -d "godeps" ]; then
-    export GOPATH=`pwd`/godeps
+    export GOPATH=$(pwd)/godeps
 fi
-export PATH=$PATH:`go env GOPATH`/bin
+export PATH=$PATH:$(go env GOPATH)/bin
 echo "PATH: $PATH"
 
-if [ "${TEST_DEBUG}" == "true" ]; then
+if [ "${TEST_DEBUG:-}" == "true" ]; then
     export SG_TEST_LOG_LEVEL="debug"
     export SG_TEST_BUCKET_POOL_DEBUG="true"
 fi
@@ -70,37 +77,43 @@ if [ "${TARGET_TEST}" != "ALL" ]; then
     GO_TEST_FLAGS="${GO_TEST_FLAGS} -run ${TARGET_TEST}"
 fi
 
-if [ "${PACKAGE_TIMEOUT}" != "" ]; then
+if [ "${PACKAGE_TIMEOUT:-}" != "" ]; then
     GO_TEST_FLAGS="${GO_TEST_FLAGS} -test.timeout=${PACKAGE_TIMEOUT}"
 else
     echo "Defaulting package timeout to ${DEFAULT_PACKAGE_TIMEOUT}"
     GO_TEST_FLAGS="${GO_TEST_FLAGS} -test.timeout=${DEFAULT_PACKAGE_TIMEOUT}"
 fi
 
-if [ "${DETECT_RACES}" == "true" ]; then
+if [ "${DETECT_RACES:-}" == "true" ]; then
     GO_TEST_FLAGS="${GO_TEST_FLAGS} -race"
 fi
 
-if [ "${FAIL_FAST}" == "true" ]; then
+if [ "${FAIL_FAST:-}" == "true" ]; then
     GO_TEST_FLAGS="${GO_TEST_FLAGS} -failfast"
 fi
 
-if [ "${SG_TEST_PROFILE_FREQUENCY}" == "true" ]; then
+if [ "${SG_TEST_PROFILE_FREQUENCY:-}" == "true" ]; then
     export SG_TEST_PROFILE_FREQUENCY=${SG_TEST_PROFILE_FREQUENCY}
-fi    
+fi
 
 if [ "${RUN_WALRUS}" == "true" ]; then
     # EE
-    go test -coverprofile=coverage_walrus_ee.out -coverpkg=github.com/couchbase/sync_gateway/... -tags cb_sg_enterprise $GO_TEST_FLAGS github.com/couchbase/sync_gateway/${TARGET_PACKAGE} >verbose_unit_ee.out.raw 2>&1 | true
+    go test -coverprofile=coverage_walrus_ee.out -coverpkg=github.com/couchbase/sync_gateway/... -tags cb_sg_enterprise $GO_TEST_FLAGS github.com/couchbase/sync_gateway/${TARGET_PACKAGE} > verbose_unit_ee.out.raw 2>&1 | true
     # CE
-    go test -coverprofile=coverage_walrus_ce.out -coverpkg=github.com/couchbase/sync_gateway/... $GO_TEST_FLAGS github.com/couchbase/sync_gateway/${TARGET_PACKAGE} >verbose_unit_ce.out.raw 2>&1 | true
+    go test -coverprofile=coverage_walrus_ce.out -coverpkg=github.com/couchbase/sync_gateway/... $GO_TEST_FLAGS github.com/couchbase/sync_gateway/${TARGET_PACKAGE} > verbose_unit_ce.out.raw 2>&1 | true
 fi
 
+DOCKER_CBS_ROOT_DIR="$(pwd)"
+if [ "${CBS_ROOT_DIR:-}" != "" ]; then
+    DOCKER_CBS_ROOT_DIR="${CBS_ROOT_DIR}"
+fi
+
+export SG_TEST_COUCHBASE_SERVER_DOCKER_NAME=couchbase
 # Start CBS
-docker stop couchbase || true
-docker rm couchbase || true
+docker stop ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} || true
+docker rm ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} || true
 # --volume: Makes and mounts a CBS folder for storing a CBCollect if needed
-docker run -d --name couchbase --volume `pwd`/cbs:/root --net=host couchbase/server:${COUCHBASE_SERVER_VERSION}
+docker run -d --name ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} --volume ${DOCKER_CBS_ROOT_DIR}/cbs:/root --net=host couchbase/server:${COUCHBASE_SERVER_VERSION}
 
 # Test to see if Couchbase Server is up
 # Each retry min wait 5s, max 10s. Retry 20 times with exponential backoff (delay 0), fail at 120s
@@ -113,7 +126,7 @@ curl -u Administrator:password -v -X POST http://127.0.0.1:8091/node/controller/
 curl -u Administrator:password -v -X POST http://127.0.0.1:8091/pools/default -d 'memoryQuota=3072' -d 'indexMemoryQuota=3072' -d 'ftsMemoryQuota=256'
 curl -u Administrator:password -v -X POST http://127.0.0.1:8091/settings/web -d 'password=password&username=Administrator&port=SAME'
 curl -u Administrator:password -v -X POST http://localhost:8091/settings/indexes -d indexerThreads=4 -d logLevel=verbose -d maxRollbackPoints=10 \
--d storageMode=plasma -d memorySnapshotInterval=150 -d stableSnapshotInterval=40000
+    -d storageMode=plasma -d memorySnapshotInterval=150 -d stableSnapshotInterval=40000
 
 sleep 10
 
@@ -130,17 +143,16 @@ if [ "${SG_EDITION}" == "EE" ]; then
     GO_TEST_FLAGS="${GO_TEST_FLAGS} -tags cb_sg_enterprise"
 fi
 
-go test ${GO_TEST_FLAGS} -coverprofile=coverage_int.out -coverpkg=github.com/couchbase/sync_gateway/... github.com/couchbase/sync_gateway/${TARGET_PACKAGE} 2>&1 | tee "${INT_LOG_FILE_NAME}.out.raw" | grep -E '(--- (FAIL|PASS|SKIP):|github.com/couchbase/sync_gateway(/.+)?\t|TEST: |panic: )'
+go test ${GO_TEST_FLAGS} -coverprofile=coverage_int.out -coverpkg=github.com/couchbase/sync_gateway/... github.com/couchbase/sync_gateway/${TARGET_PACKAGE} 2>&1 | stdbuf -oL tee "${INT_LOG_FILE_NAME}.out.raw" | stdbuf -oL grep -E '(--- (FAIL|PASS|SKIP):|github.com/couchbase/sync_gateway(/.+)?\t|TEST: |panic: )'
 if [ "${PIPESTATUS[0]}" -ne "0" ]; then # If test exit code is not 0 (failed)
     echo "Go test failed! Parsing logs to find cause..."
     TEST_FAILED=true
 fi
 
 # Collect CBS logs if server error occurred
-if grep -q "server logs for details\|Timed out after 1m0s waiting for a bucket to become available" "${INT_LOG_FILE_NAME}.out.raw"; then
+if grep -q "server logs for details\|Timed out after 1m0s waiting for a bucket to become available\|unambiguous timeout" "${INT_LOG_FILE_NAME}.out.raw"; then
     docker exec -t couchbase /opt/couchbase/bin/cbcollect_info /root/cbcollect.zip
 fi
-
 
 # Generate xunit test report that can be parsed by the JUnit Plugin
 LC_CTYPE=C tr -dc [:print:][:space:] < ${INT_LOG_FILE_NAME}.out.raw > ${INT_LOG_FILE_NAME}.out # Strip non-printable characters
@@ -160,7 +172,7 @@ if [ "${RUN_WALRUS}" == "true" ]; then
     ~/go/bin/gocov convert "coverage_walrus_ce.out" | ~/go/bin/gocov-xml > "coverage_walrus_ce.xml"
 fi
 
-if [ "${TEST_FAILED}" = true ] ; then
+if [ "${TEST_FAILED:-}" = true ]; then
     # If output contained `FAIL:`
     if grep -q 'FAIL:' "${INT_LOG_FILE_NAME}.out"; then
         # Test failure, so mark as unstable

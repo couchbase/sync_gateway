@@ -89,6 +89,8 @@ type handler struct {
 	statusMessage         string
 	requestBody           io.ReadCloser
 	db                    *db.Database
+	keyspaceScope         string
+	keyspaceCollection    string
 	user                  auth.User
 	authorizedAdminUser   string
 	privs                 handlerPrivs
@@ -174,6 +176,34 @@ func (h *handler) ctx() context.Context {
 	return h.rqCtx
 }
 
+// parseKeyspace will return a db, scope and collection for a given '.' separated keyspace string.
+// Returns nil for scope and/or collection if not present in the keyspace string.
+func parseKeyspace(ks string) (db string, scope, collection *string, err error) {
+	parts := strings.Split(ks, base.ScopeCollectionSeparator)
+	switch len(parts) {
+	case 1:
+		db = parts[0]
+	case 2:
+		db = parts[0]
+		collection = &parts[1]
+	case 3:
+		db = parts[0]
+		scope = &parts[1]
+		collection = &parts[2]
+	default:
+		return "", nil, nil, fmt.Errorf("unknown keyspace format: %q - expected 1-3 fields", ks)
+	}
+
+	// make sure all declared fields have stuff in them
+	if db == "" ||
+		collection != nil && *collection == "" ||
+		scope != nil && *scope == "" {
+		return "", nil, nil, fmt.Errorf("keyspace fields cannot be empty: %q", ks)
+	}
+
+	return db, scope, collection, nil
+}
+
 // Top-level handler call. It's passed a pointer to the specific method to run.
 func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, responsePermissions []Permission) error {
 	var err error
@@ -213,11 +243,22 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	// user credentials
 	shouldCheckAdminAuth := (h.privs == adminPrivs && *h.server.config.API.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.config.API.MetricsInterfaceAuthentication)
 
-	// If there is a "db" path variable, look up the database context:
+	keyspaceDb := h.PathVar("db")
+	var keyspaceScope, keyspaceCollection *string
+
+	// If there is a "keyspace" path variable in the route, parse the keyspace:
+	if ks := h.PathVar("keyspace"); ks != "" {
+		keyspaceDb, keyspaceScope, keyspaceCollection, err = parseKeyspace(ks)
+		if err != nil {
+			return err
+		}
+	}
+
+	// look up the database context:
 	var dbContext *db.DatabaseContext
-	if dbname := h.PathVar("db"); dbname != "" {
-		if dbContext, err = h.server.GetDatabase(dbname); err != nil {
-			base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(dbname), err)
+	if keyspaceDb != "" {
+		if dbContext, err = h.server.GetDatabase(keyspaceDb); err != nil {
+			base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
 
 			if shouldCheckAdminAuth {
 				if httpError, ok := err.(*base.HTTPError); ok && httpError.Status == http.StatusNotFound {
@@ -239,6 +280,39 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 
 	// If this call is in the context of a DB make sure the DB is in a valid state
 	if dbContext != nil {
+		// Named collections handling
+		if dbContext.Scopes != nil {
+			// Allow an empty scope to refer to the one SG is running with, rather than falling back to _default
+			if keyspaceScope == nil {
+				// TODO: There could be a configurable dbContext.defaultNamedScope if we allow >1 scope
+				//       for now we don't need it - just use the one we're running with.
+				for scopeName := range dbContext.Scopes {
+					keyspaceScope = &scopeName
+					break
+				}
+			}
+			scope, foundScope := dbContext.Scopes[*keyspaceScope]
+			if !foundScope {
+				return base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", base.MD(keyspaceDb), base.MD(*keyspaceScope), base.MD(*keyspaceCollection))
+			}
+
+			if keyspaceCollection == nil {
+				if len(scope.Collections) > 1 {
+					// _default doesn't exist for a non-default scope - so make it a required element if it's ambiguous
+					return base.HTTPErrorf(http.StatusBadRequest, "Ambiguous keyspace: %s.%s", keyspaceDb, *keyspaceScope)
+				}
+				keyspaceCollection = dbContext.BucketSpec.Collection
+			}
+			_, foundCollection := scope.Collections[*keyspaceCollection]
+			if !foundCollection {
+				return base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", base.MD(keyspaceDb), base.MD(*keyspaceScope), base.MD(*keyspaceCollection))
+			}
+		} else {
+			// Set these for handlers that expect a scope/collection to be set, even if not using named collections.
+			keyspaceScope = base.StringPtr(base.DefaultScope)
+			keyspaceCollection = base.StringPtr(base.DefaultCollection)
+		}
+
 		if !h.runOffline {
 
 			// get a read lock on the dbContext
@@ -271,6 +345,21 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 			if requiresWritePermission(accessPermissions) {
 				return base.HTTPErrorf(http.StatusForbidden, auth.GuestUserReadOnly)
 			}
+		}
+	}
+
+	// If the user has OIDC roles/channels configured, we need to check if the OIDC issuer they came from is still valid.
+	// Note: checkAuth already does this check if the user authenticates with a bearer token, but we still need to recheck
+	// for users using session tokens / basic auth. However, updatePrincipal will be idempotent.
+	if h.user != nil && h.user.JWTIssuer() != "" {
+		updates := checkJWTIssuerStillValid(h.ctx(), dbContext, h.user)
+		if updates != nil {
+			_, err := dbContext.UpdatePrincipal(h.ctx(), updates, true, true)
+			if err != nil {
+				return fmt.Errorf("failed to revoke stale OIDC roles/channels: %w", err)
+			}
+			// TODO: could avoid this extra fetch if UpdatePrincipal returned the new principal
+			h.user, err = dbContext.Authenticator(h.ctx()).GetUser(*updates.Name)
 		}
 	}
 
@@ -354,6 +443,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 
 	// Now set the request's Database (i.e. context + user)
 	if dbContext != nil {
+		h.keyspaceScope, h.keyspaceCollection = *keyspaceScope, *keyspaceCollection
 		h.db, err = db.GetDatabase(dbContext, h.user)
 		if err != nil {
 			return err
@@ -439,14 +529,25 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 	}(time.Now())
 
 	// If oidc enabled, check for bearer ID token
-	if dbCtx.Options.OIDCOptions != nil {
+	if dbCtx.Options.OIDCOptions != nil || len(dbCtx.LocalJWTProviders) > 0 {
 		if token := h.getBearerToken(); token != "" {
-			var authJwtErr error
-			h.user, authJwtErr = dbCtx.Authenticator(h.ctx()).AuthenticateUntrustedJWT(token, dbCtx.OIDCProviders, h.getOIDCCallbackURL)
-			if h.user == nil || authJwtErr != nil {
+			var updates auth.PrincipalConfig
+			h.user, updates, err = dbCtx.Authenticator(h.ctx()).AuthenticateUntrustedJWT(token, dbCtx.OIDCProviders, dbCtx.LocalJWTProviders, h.getOIDCCallbackURL)
+			if h.user == nil || err != nil {
 				return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 			}
-			return nil
+			if changes := checkJWTIssuerStillValid(h.ctx(), dbCtx, h.user); changes != nil {
+				updates = updates.Merge(*changes)
+			}
+			_, err := dbCtx.UpdatePrincipal(h.ctx(), &updates, true, true)
+			if err != nil {
+				return fmt.Errorf("failed to update OIDC user after sign-in: %w", err)
+			}
+			// TODO: could avoid this extra fetch if UpdatePrincipal returned the newly updated principal
+			if updates.Name != nil {
+				h.user, err = dbCtx.Authenticator(h.ctx()).GetUser(*updates.Name)
+			}
+			return err
 		}
 
 		/*
@@ -460,7 +561,7 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 			if username, password := h.getBasicAuth(); username != "" && password != "" {
 				provider := dbCtx.Options.OIDCOptions.Providers.GetProviderForIssuer(h.ctx(), issuerUrlForDB(h, dbCtx.Name), testProviderAudiences)
 				if provider != nil && provider.ValidationKey != nil {
-					if provider.ClientID == username && *provider.ValidationKey == password {
+					if base.StringDefault(provider.ClientID, "") == username && *provider.ValidationKey == password {
 						return nil
 					}
 				}
@@ -505,6 +606,37 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 		return base.HTTPErrorf(http.StatusUnauthorized, "Login required")
 	}
 
+	return nil
+}
+
+func checkJWTIssuerStillValid(ctx context.Context, dbCtx *db.DatabaseContext, user auth.User) *auth.PrincipalConfig {
+	issuer := user.JWTIssuer()
+	if issuer == "" {
+		return nil
+	}
+	providerStillValid := false
+	for _, provider := range dbCtx.OIDCProviders {
+		// No need to verify audiences, as that was done when the user was authenticated
+		if provider.Issuer == issuer {
+			providerStillValid = true
+			break
+		}
+	}
+	for _, provider := range dbCtx.LocalJWTProviders {
+		if provider.Issuer == issuer {
+			providerStillValid = true
+			break
+		}
+	}
+	if !providerStillValid {
+		base.InfofCtx(ctx, base.KeyAuth, "User %v uses OIDC issuer %v which is no longer configured. Revoking OIDC roles/channels.", base.UD(user.Name()), base.UD(issuer))
+		return &auth.PrincipalConfig{
+			Name:        base.StringPtr(user.Name()),
+			JWTIssuer:   base.StringPtr(""),
+			JWTRoles:    base.Set{},
+			JWTChannels: base.Set{},
+		}
+	}
 	return nil
 }
 

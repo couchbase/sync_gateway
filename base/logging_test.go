@@ -11,7 +11,6 @@ package base
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -22,18 +21,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// asserts that the logs produced by function f contain string s.
-func assertLogContains(t *testing.T, s string, f func()) {
-	b := bytes.Buffer{}
-
-	// temporarily override logger output for the given function call
-	consoleLogger.logger.SetOutput(&b)
-	f()
-	consoleLogger.logger.SetOutput(os.Stderr)
-
-	assert.Contains(t, b.String(), s)
-}
 
 func TestRedactedLogFuncs(t *testing.T) {
 	if GlobalTestLoggingSet.IsTrue() {
@@ -46,14 +33,14 @@ func TestRedactedLogFuncs(t *testing.T) {
 	defer func() { RedactUserData = false }()
 
 	RedactUserData = false
-	assertLogContains(t, "Username: alice", func() { InfofCtx(ctx, KeyAll, "Username: %s", username) })
+	AssertLogContains(t, "Username: alice", func() { InfofCtx(ctx, KeyAll, "Username: %s", username) })
 	RedactUserData = true
-	assertLogContains(t, "Username: <ud>alice</ud>", func() { InfofCtx(ctx, KeyAll, "Username: %s", username) })
+	AssertLogContains(t, "Username: <ud>alice</ud>", func() { InfofCtx(ctx, KeyAll, "Username: %s", username) })
 
 	RedactUserData = false
-	assertLogContains(t, "Username: alice", func() { WarnfCtx(ctx, "Username: %s", username) })
+	AssertLogContains(t, "Username: alice", func() { WarnfCtx(ctx, "Username: %s", username) })
 	RedactUserData = true
-	assertLogContains(t, "Username: <ud>alice</ud>", func() { WarnfCtx(ctx, "Username: %s", username) })
+	AssertLogContains(t, "Username: <ud>alice</ud>", func() { WarnfCtx(ctx, "Username: %s", username) })
 }
 
 func Benchmark_LoggingPerformance(b *testing.B) {
@@ -96,8 +83,7 @@ func BenchmarkLogRotation(b *testing.B) {
 			_, err := rand.Read(data)
 			require.NoError(bm, err)
 
-			logPath, err := ioutil.TempDir("", "benchmark-logrotate")
-			require.NoError(bm, err)
+			logPath := b.TempDir()
 			logger := lumberjack.Logger{Filename: filepath.Join(logPath, "output.log"), Compress: test.compress}
 
 			bm.ResetTimer()

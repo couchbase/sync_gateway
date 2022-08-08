@@ -229,7 +229,7 @@ def urlopen_with_basic_auth(url, username, password):
     else:
         return urllib.request.urlopen(url)
 
-def make_collect_logs_tasks(zip_dir, sg_url, sg_username, sg_password, salt, should_redact):
+def make_collect_logs_tasks(zip_dir, sg_url, sg_config_file_path, sg_username, sg_password, salt, should_redact):
 
     sg_log_files = {
         "sg_error.log": "sg_error.log",
@@ -255,11 +255,21 @@ def make_collect_logs_tasks(zip_dir, sg_url, sg_username, sg_password, salt, sho
         try:
             response = urlopen_with_basic_auth(config_url, sg_username, sg_password)
         except urllib.error.URLError:
+            print("Failed to load SG config from running SG.")
             config_str = ""
         else:
             config_str = response.read().decode('utf-8')
     else:
         config_str = ""
+    
+    # If SG isn't running, load the bootstrap config - it'll have the logging config in it
+    if config_str == "" and sg_config_file_path is not None and sg_config_file_path != "":
+        try:
+            with open(sg_config_file_path) as fd:
+                print("Loading SG config from path on disk.")
+                config_str = fd.read()
+        except Exception as e:
+            print("Failed to load SG config from disk: {0}".format(e))
 
     # Find log file path from old style top level config
     guessed_log_path = extract_element_from_config('LogFilePath', config_str)
@@ -550,9 +560,12 @@ def make_sg_tasks(zip_dir, sg_url, sg_username, sg_password, sync_gateway_config
         if not os.path.exists(sync_gateway_executable_path):
             raise Exception("Path to sync gateway executable passed in does not exist: {0}".format(sync_gateway_executable_path))
         sg_binary_path = sync_gateway_executable_path
+    
+    if sg_config_path is None and sync_gateway_config_path_option is not None and len(sync_gateway_config_path_option) > 0:
+        sg_config_path = sync_gateway_config_path_option
 
     # Collect logs
-    collect_logs_tasks = make_collect_logs_tasks(zip_dir, sg_url, sg_username, sg_password, salt, should_redact)
+    collect_logs_tasks = make_collect_logs_tasks(zip_dir, sg_url, sg_config_path, sg_username, sg_password, salt, should_redact)
 
     py_expvar_task = make_download_expvars_task(sg_url, sg_username, sg_password)
 

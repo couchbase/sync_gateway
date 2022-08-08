@@ -154,8 +154,6 @@ func (sc *ServerContext) PostStartup() {
 const serverContextStopMaxWait = 30 * time.Second
 
 func (sc *ServerContext) Close() {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
 
 	logCtx := context.TODO()
 	err := base.TerminateAndWaitForClose(sc.statsContext.terminator, sc.statsContext.doneChan, serverContextStopMaxWait)
@@ -167,6 +165,9 @@ func (sc *ServerContext) Close() {
 	if err != nil {
 		base.InfofCtx(logCtx, base.KeyAll, "Couldn't stop background config update worker: %v", err)
 	}
+
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
 
 	for _, ctx := range sc.databases_ {
 		ctx.Close()
@@ -508,6 +509,17 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	dbcontext.ServerContextHasStarted = sc.hasStarted
 	dbcontext.NoX509HTTPClient = sc.NoX509HTTPClient
 
+	// WIP: Collections Phase 1 - Hardcode the single scope/collection into DatabaseContext.
+	if spec.Scope != nil && spec.Collection != nil {
+		dbcontext.Scopes = map[string]db.Scope{
+			*spec.Scope: {
+				Collections: map[string]db.Collection{
+					*spec.Collection: {CollectionCtx: dbcontext}, // TODO: Prior to Phase 2 - move DatabaseContext methods like PutSpecial, etc. into CollectionContext
+				},
+			},
+		}
+	}
+
 	syncFn := ""
 	if config.Sync != nil {
 		syncFn = *config.Sync
@@ -549,7 +561,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	}
 
 	if config.Guest != nil {
-		guest := map[string]*db.PrincipalConfig{base.GuestUsername: config.Guest}
+		guest := map[string]*auth.PrincipalConfig{base.GuestUsername: config.Guest}
 		if err := sc.installPrincipals(dbcontext, guest, "user"); err != nil {
 			return nil, err
 		}
@@ -586,10 +598,16 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 
 func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (db.DatabaseContextOptions, error) {
 
+	// Get timeout to use for import filter function and db context
+	javascriptTimeout := time.Duration(base.DefaultJavascriptTimeoutSecs) * time.Second
+	if config.JavascriptTimeoutSecs != nil {
+		javascriptTimeout = time.Duration(*config.JavascriptTimeoutSecs) * time.Second
+	}
+
 	// Identify import options
 	importOptions := db.ImportOptions{}
 	if config.ImportFilter != nil {
-		importOptions.ImportFilter = db.NewImportFilterFunction(*config.ImportFilter)
+		importOptions.ImportFilter = db.NewImportFilterFunction(*config.ImportFilter, javascriptTimeout)
 	}
 	importOptions.BackupOldRev = base.BoolDefault(config.ImportBackupOldRev, false)
 
@@ -773,7 +791,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 
 	// If basic auth is disabled, it doesn't make sense to send WWW-Authenticate
 	sendWWWAuthenticate := config.SendWWWAuthenticateHeader
-	if config.DisablePasswordAuth {
+	if base.BoolDefault(config.DisablePasswordAuth, false) {
 		sendWWWAuthenticate = base.BoolPtr(false)
 	}
 
@@ -785,6 +803,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		AdminInterface:                &sc.config.API.AdminInterface,
 		UnsupportedOptions:            config.Unsupported,
 		OIDCOptions:                   config.OIDCConfig,
+		LocalJWTConfig:                config.LocalJWTConfig,
 		DBOnlineCallback:              dbOnlineCallback,
 		ImportOptions:                 importOptions,
 		EnableXattr:                   config.UseXattrs(),
@@ -793,7 +812,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		SessionCookieHttpOnly:         base.BoolDefault(config.SessionCookieHTTPOnly, false),
 		AllowConflicts:                config.ConflictsAllowed(),
 		SendWWWAuthenticateHeader:     sendWWWAuthenticate,
-		DisablePasswordAuthentication: config.DisablePasswordAuth,
+		DisablePasswordAuthentication: base.BoolDefault(config.DisablePasswordAuth, false),
 		DeltaSyncOptions:              deltaSyncOptions,
 		CompactInterval:               compactIntervalSecs,
 		QueryPaginationLimit:          queryPaginationLimit,
@@ -806,6 +825,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		ClientPartitionWindow:     clientPartitionWindow,
 		BcryptCost:                bcryptCost,
 		GroupID:                   groupID,
+		JavascriptTimeout:         javascriptTimeout,
 		// UserQueries:               config.UserQueries,   // behind feature flag (see below)
 		// UserFunctions:             config.UserFunctions, // behind feature flag (see below)
 		// GraphQL:                   config.GraphQL,       // behind feature flag (see below)
@@ -1011,7 +1031,7 @@ func (sc *ServerContext) _removeDatabase(dbName string) bool {
 	return true
 }
 
-func (sc *ServerContext) installPrincipals(dbc *db.DatabaseContext, spec map[string]*db.PrincipalConfig, what string) error {
+func (sc *ServerContext) installPrincipals(dbc *db.DatabaseContext, spec map[string]*auth.PrincipalConfig, what string) error {
 	for name, princ := range spec {
 		isGuest := name == base.GuestUsername
 		if isGuest {
@@ -1025,7 +1045,7 @@ func (sc *ServerContext) installPrincipals(dbc *db.DatabaseContext, spec map[str
 		logCtx := context.TODO()
 		createdPrincipal := true
 		worker := func() (shouldRetry bool, err error, value interface{}) {
-			_, err = dbc.UpdatePrincipal(context.Background(), *princ, (what == "user"), isGuest)
+			_, err = dbc.UpdatePrincipal(context.Background(), princ, (what == "user"), isGuest)
 			if err != nil {
 				if status, _ := base.ErrorAsHTTPStatus(err); status == http.StatusConflict {
 					// Ignore and absorb this error if it's a conflict error, which just means that updatePrincipal didn't overwrite an existing user.

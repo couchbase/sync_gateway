@@ -280,7 +280,7 @@ func TestLegacyGuestUserMigration(t *testing.T) {
 		t.Skip("CBS required")
 	}
 
-	expected := db.PrincipalConfig{
+	expected := auth.PrincipalConfig{
 		ExplicitChannels: base.SetFromArray([]string{"*"}),
 		Disabled:         base.BoolPtr(false),
 	}
@@ -314,12 +314,10 @@ func TestLegacyGuestUserMigration(t *testing.T) {
 		tb.GetName(),
 	)
 
-	tmpDir, err := ioutil.TempDir("", t.Name())
-	require.NoError(t, err)
-	defer func() { require.NoError(t, os.RemoveAll(tmpDir)) }()
+	tmpDir := t.TempDir()
 
 	configPath := filepath.Join(tmpDir, "config.json")
-	err = ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
+	err := ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
 	require.NoError(t, err)
 
 	sc, _, _, _, err := automaticConfigUpgrade(configPath)
@@ -358,7 +356,7 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 	}
 
 	// Add principles already on bucket before migration
-	existingUsers := map[string]*db.PrincipalConfig{
+	existingUsers := map[string]*auth.PrincipalConfig{
 		"ExistingUserStatic": {
 			Name:             base.StringPtr("ExistingUserStatic"),
 			ExplicitChannels: base.SetOf("*"),
@@ -371,7 +369,7 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 	err := rt.ServerContext().installPrincipals(rt.GetDatabase(), existingUsers, "user")
 	require.NoError(t, err)
 
-	existingRoles := map[string]*db.PrincipalConfig{
+	existingRoles := map[string]*auth.PrincipalConfig{
 		"ExistingRoleStatic": {
 			Name:             base.StringPtr("ExistingRoleStatic"),
 			ExplicitChannels: base.SetOf("*"),
@@ -415,9 +413,7 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 	}`
 	config = fmt.Sprintf(config, base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), rt.Bucket().GetName())
 
-	tmpDir, err := ioutil.TempDir("", t.Name())
-	require.NoError(t, err)
-	defer func() { require.NoError(t, os.RemoveAll(tmpDir)) }()
+	tmpDir := t.TempDir()
 
 	configPath := filepath.Join(tmpDir, "config.json")
 	err = ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))

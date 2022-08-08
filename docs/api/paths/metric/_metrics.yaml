@@ -8,11 +8,11 @@ get:
     * Sync Gateway Dev Ops
     * External Stats Reader
   responses:
-    "200":
+    '200':
       description: Successfully returned stats
       content:
         text/plain:
           schema:
             type: string
   tags:
-  - Prometheus
+    - Prometheus

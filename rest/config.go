@@ -23,10 +23,12 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 
 	"golang.org/x/crypto/bcrypt"
+	"gopkg.in/square/go-jose.v2"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
@@ -93,6 +95,18 @@ func (dc *DbConfig) MakeBucketSpec() base.BucketSpec {
 		tlsPort = bc.KvTLSPort
 	}
 
+	// WIP: Collections Phase 1 - Grab just one scope/collection from the defined set.
+	// Phase 2 (multi collection) means DatabaseContext needs a set of BucketSpec/Collections, not just one...
+	var scope, collection *string
+	for scopeName, scopeConfig := range dc.Scopes {
+		scope = &scopeName
+		for collectionName := range scopeConfig.Collections {
+			base.WarnfCtx(context.TODO(), "WIP Collections (Phase 1) - Running db %q in scope %q collection %q", dc.Name, scopeName, collectionName)
+			collection = &collectionName
+			break
+		}
+	}
+
 	return base.BucketSpec{
 		Server:                server,
 		BucketName:            bucketName,
@@ -102,6 +116,8 @@ func (dc *DbConfig) MakeBucketSpec() base.BucketSpec {
 		KvTLSPort:             tlsPort,
 		Auth:                  bc,
 		MaxConcurrentQueryOps: bc.MaxConcurrentQueryOps,
+		Scope:                 scope,
+		Collection:            collection,
 	}
 }
 
@@ -110,26 +126,28 @@ func (bucketConfig *BucketConfig) GetCredentials() (username string, password st
 	return base.TransformBucketCredentials(bucketConfig.Username, bucketConfig.Password, *bucketConfig.Bucket)
 }
 
-// JSON object that defines a database configuration within the LegacyServerConfig.
+// DbConfig defines a database configuration used in a config file or the REST API.
 type DbConfig struct {
 	BucketConfig
-	Name                             string                           `json:"name,omitempty"`                                 // Database name in REST API (stored as key in JSON)
-	Sync                             *string                          `json:"sync,omitempty"`                                 // Sync function defines which users can see which data
-	Users                            map[string]*db.PrincipalConfig   `json:"users,omitempty"`                                // Initial user accounts
-	Roles                            map[string]*db.PrincipalConfig   `json:"roles,omitempty"`                                // Initial roles
-	RevsLimit                        *uint32                          `json:"revs_limit,omitempty"`                           // Max depth a document's revision tree can grow to
-	AutoImport                       interface{}                      `json:"import_docs,omitempty"`                          // Whether to automatically import Couchbase Server docs into SG.  Xattrs must be enabled.  true or "continuous" both enable this.
-	ImportPartitions                 *uint16                          `json:"import_partitions,omitempty"`                    // Number of partitions for import sharding.  Impacts the total DCP concurrency for import
-	ImportFilter                     *string                          `json:"import_filter,omitempty"`                        // Filter function (import)
-	ImportBackupOldRev               *bool                            `json:"import_backup_old_rev,omitempty"`                // Whether import should attempt to create a temporary backup of the previous revision body, when available.
-	EventHandlers                    *EventHandlerConfig              `json:"event_handlers,omitempty"`                       // Event handlers (webhook)
-	FeedType                         string                           `json:"feed_type,omitempty"`                            // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
-	AllowEmptyPassword               *bool                            `json:"allow_empty_password,omitempty"`                 // Allow empty passwords?  Defaults to false
-	CacheConfig                      *CacheConfig                     `json:"cache,omitempty"`                                // Cache settings
-	DeprecatedRevCacheSize           *uint32                          `json:"rev_cache_size,omitempty"`                       // Maximum number of revisions to store in the revision cache (deprecated, CBG-356)
-	StartOffline                     *bool                            `json:"offline,omitempty"`                              // start the DB in the offline state, defaults to false
-	Unsupported                      *db.UnsupportedOptions           `json:"unsupported,omitempty"`                          // Config for unsupported features
-	OIDCConfig                       *auth.OIDCOptions                `json:"oidc,omitempty"`                                 // Config properties for OpenID Connect authentication
+	Scopes                           ScopesConfig                     `json:"scopes,omitempty"`                // Scopes and collection specific config
+	Name                             string                           `json:"name,omitempty"`                  // Database name in REST API (stored as key in JSON)
+	Sync                             *string                          `json:"sync,omitempty"`                  // The sync function applied to write operations in the _default scope and collection
+	Users                            map[string]*auth.PrincipalConfig `json:"users,omitempty"`                 // Initial user accounts
+	Roles                            map[string]*auth.PrincipalConfig `json:"roles,omitempty"`                 // Initial roles
+	RevsLimit                        *uint32                          `json:"revs_limit,omitempty"`            // Max depth a document's revision tree can grow to
+	AutoImport                       interface{}                      `json:"import_docs,omitempty"`           // Whether to automatically import Couchbase Server docs into SG.  Xattrs must be enabled.  true or "continuous" both enable this.
+	ImportPartitions                 *uint16                          `json:"import_partitions,omitempty"`     // Number of partitions for import sharding.  Impacts the total DCP concurrency for import
+	ImportFilter                     *string                          `json:"import_filter,omitempty"`         // The import filter applied to import operations in the _default scope and collection
+	ImportBackupOldRev               *bool                            `json:"import_backup_old_rev,omitempty"` // Whether import should attempt to create a temporary backup of the previous revision body, when available.
+	EventHandlers                    *EventHandlerConfig              `json:"event_handlers,omitempty"`        // Event handlers (webhook)
+	FeedType                         string                           `json:"feed_type,omitempty"`             // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
+	AllowEmptyPassword               *bool                            `json:"allow_empty_password,omitempty"`  // Allow empty passwords?  Defaults to false
+	CacheConfig                      *CacheConfig                     `json:"cache,omitempty"`                 // Cache settings
+	DeprecatedRevCacheSize           *uint32                          `json:"rev_cache_size,omitempty"`        // Maximum number of revisions to store in the revision cache (deprecated, CBG-356)
+	StartOffline                     *bool                            `json:"offline,omitempty"`               // start the DB in the offline state, defaults to false
+	Unsupported                      *db.UnsupportedOptions           `json:"unsupported,omitempty"`           // Config for unsupported features
+	OIDCConfig                       *auth.OIDCOptions                `json:"oidc,omitempty"`                  // Config properties for OpenID Connect authentication
+	LocalJWTConfig                   auth.LocalJWTConfig              `json:"local_jwt,omitempty"`
 	OldRevExpirySeconds              *uint32                          `json:"old_rev_expiry_seconds,omitempty"`               // The number of seconds before old revs are removed from CBS bucket
 	ViewQueryTimeoutSecs             *uint32                          `json:"view_query_timeout_secs,omitempty"`              // The view query timeout in seconds
 	LocalDocExpirySecs               *uint32                          `json:"local_doc_expiry_secs,omitempty"`                // The _local doc expiry time in seconds
@@ -141,7 +159,7 @@ type DbConfig struct {
 	NumIndexReplicas                 *uint                            `json:"num_index_replicas,omitempty"`                   // Number of GSI index replicas used for core indexes
 	UseViews                         *bool                            `json:"use_views,omitempty"`                            // Force use of views instead of GSI
 	SendWWWAuthenticateHeader        *bool                            `json:"send_www_authenticate_header,omitempty"`         // If false, disables setting of 'WWW-Authenticate' header in 401 responses. Implicitly false if disable_password_auth is true.
-	DisablePasswordAuth              bool                             `json:"disable_password_auth,omitempty"`                // If true, disables user/pass authentication, only permitting OIDC or guest access
+	DisablePasswordAuth              *bool                            `json:"disable_password_auth,omitempty"`                // If true, disables user/pass authentication, only permitting OIDC or guest access
 	BucketOpTimeoutMs                *uint32                          `json:"bucket_op_timeout_ms,omitempty"`                 // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
 	SlowQueryWarningThresholdMs      *uint32                          `json:"slow_query_warning_threshold,omitempty"`         // Log warnings if N1QL queries take this many ms
 	DeltaSync                        *DeltaSyncConfig                 `json:"delta_sync,omitempty"`                           // Config for delta sync
@@ -153,10 +171,22 @@ type DbConfig struct {
 	QueryPaginationLimit             *int                             `json:"query_pagination_limit,omitempty"`               // Query limit to be used during pagination of large queries
 	UserXattrKey                     string                           `json:"user_xattr_key,omitempty"`                       // Key of user xattr that will be accessible from the Sync Function. If empty the feature will be disabled.
 	ClientPartitionWindowSecs        *int                             `json:"client_partition_window_secs,omitempty"`         // How long clients can remain offline for without losing replication metadata. Default 30 days (in seconds)
-	Guest                            *db.PrincipalConfig              `json:"guest,omitempty"`                                // Guest user settings
+	Guest                            *auth.PrincipalConfig            `json:"guest,omitempty"`                                // Guest user settings
+	JavascriptTimeoutSecs            *uint32                          `json:"javascript_timeout_secs,omitempty"`              // The amount of seconds a Javascript function can run for. Set to 0 for no timeout.
 	UserQueries                      db.UserQueryMap                  `json:"queries,omitempty"`                              // N1QL queries for clients to invoke by name
 	GraphQL                          *db.GraphQLConfig                `json:"graphql,omitempty"`                              // GraphQL configuration & resolver fns
 	UserFunctions                    db.UserFunctionMap               `json:"functions,omitempty"`                            // Named JS fns for clients to call
+}
+
+type ScopesConfig map[string]ScopeConfig
+type ScopeConfig struct {
+	Collections CollectionsConfig `json:"collections,omitempty"` // Collection-specific config options.
+}
+
+type CollectionsConfig map[string]CollectionConfig
+type CollectionConfig struct {
+	SyncFn       *string `json:"sync,omitempty"`          // The sync function applied to write operations in this collection.
+	ImportFilter *string `json:"import_filter,omitempty"` // The import filter applied to import operations in this collection.
 }
 
 type DeltaSyncConfig struct {
@@ -631,26 +661,16 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		base.WarnfCtx(ctx, `"pool" config option is not supported. The pool will be set to "default". The option should be removed from config file.`)
 	}
 
-	if dbConfig.Sync != nil {
-		if strings.TrimSpace(*dbConfig.Sync) != "" {
-			_, err = sgbucket.NewJSRunner(*dbConfig.Sync)
-			if err != nil {
-				multiError = multiError.Append(fmt.Errorf("sync function contains invalid javascript syntax: %v", err))
-			}
-		} else {
-			dbConfig.Sync = nil
-		}
+	if isEmpty, err := validateJavascriptFunction(dbConfig.Sync); err != nil {
+		multiError = multiError.Append(fmt.Errorf("sync function error: %w", err))
+	} else if isEmpty {
+		dbConfig.Sync = nil
 	}
 
-	if dbConfig.ImportFilter != nil {
-		if strings.TrimSpace(*dbConfig.ImportFilter) != "" {
-			_, err = sgbucket.NewJSRunner(*dbConfig.ImportFilter)
-			if err != nil {
-				multiError = multiError.Append(fmt.Errorf("import filter function contains invalid javascript syntax: %v", err))
-			}
-		} else {
-			dbConfig.ImportFilter = nil
-		}
+	if isEmpty, err := validateJavascriptFunction(dbConfig.ImportFilter); err != nil {
+		multiError = multiError.Append(fmt.Errorf("import filter error: %w", err))
+	} else if isEmpty {
+		dbConfig.ImportFilter = nil
 	}
 
 	if err := db.ValidateDatabaseName(dbConfig.Name); err != nil {
@@ -699,11 +719,130 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		}
 	}
 
-	if validateOIDCConfig && dbConfig.OIDCConfig != nil {
-		for name, provider := range dbConfig.OIDCConfig.Providers {
-			_, _, err := provider.DiscoverConfig(ctx)
-			if err != nil {
-				multiError = multiError.Append(fmt.Errorf("failed to validate OIDC configuration for %s: %w", name, err))
+	seenIssuers := make(map[string]int)
+	if dbConfig.OIDCConfig != nil {
+		validProviders := len(dbConfig.OIDCConfig.Providers)
+		for name, oidc := range dbConfig.OIDCConfig.Providers {
+			if oidc.Issuer == "" || base.StringDefault(oidc.ClientID, "") == "" {
+				// TODO: rather than being an error, this skips the current provider to avoid a backwards compatibility issue (previously valid
+				// configs becoming invalid). This also means it's duplicated in NewDatabaseContext.
+				base.WarnfCtx(ctx, "Issuer and Client ID not defined for provider %q - skipping", base.UD(name))
+				validProviders--
+				continue
+			}
+			if oidc.ValidationKey == nil {
+				base.WarnfCtx(ctx, "Validation Key not defined in config for provider %q - auth code flow will not be supported for this provider", base.UD(name))
+			}
+			if strings.Contains(name, "_") {
+				multiError = multiError.Append(fmt.Errorf("OpenID Connect provider names cannot contain underscore: %s", name))
+				validProviders--
+				continue
+			}
+			seenIssuers[oidc.Issuer]++
+			if validateOIDCConfig {
+				_, _, err := oidc.DiscoverConfig(ctx)
+				if err != nil {
+					multiError = multiError.Append(fmt.Errorf("failed to validate OIDC configuration for %s: %w", name, err))
+					validProviders--
+				}
+			}
+		}
+		if validProviders == 0 {
+			multiError = multiError.Append(fmt.Errorf("OpenID Connect defined in config, but no valid providers specified"))
+		}
+	}
+	for name, local := range dbConfig.LocalJWTConfig {
+		if local.Issuer == "" {
+			multiError = multiError.Append(fmt.Errorf("Issuer required for Local JWT provider %s", name))
+		}
+		if local.ClientID == nil {
+			multiError = multiError.Append(fmt.Errorf("Client ID required for Local JWT provider %s (set to \"\" to disable audience validation)", name))
+		}
+		if len(local.Algorithms) == 0 {
+			multiError = multiError.Append(fmt.Errorf("algorithms required for Local JWT provider %s", name))
+		}
+		if len(local.Keys) == 0 && len(local.JWKSURI) == 0 {
+			multiError = multiError.Append(fmt.Errorf("either 'keys' or 'jwks_uri' must be specified for Local JWT provider %s", name))
+		}
+		if len(local.Keys) > 0 && len(local.JWKSURI) > 0 {
+			multiError = multiError.Append(fmt.Errorf("'keys' and 'jwks_uri' are mutually exclusive for Local JWT provider %s", name))
+		}
+
+		didReportKIDError := false
+		for i, key := range local.Keys {
+			if key.KeyID == "" && len(local.Keys) > 1 && !didReportKIDError {
+				multiError = multiError.Append(fmt.Errorf("%s: 'kid' property required on all keys when more than one key is defined", name))
+				didReportKIDError = true
+			}
+			var keyLabel string
+			if key.KeyID != "" {
+				keyLabel = "\"" + key.KeyID + "\""
+			} else {
+				keyLabel = strconv.Itoa(i)
+			}
+			if !key.Valid() {
+				multiError = multiError.Append(fmt.Errorf("%s: key %s invalid", name, keyLabel))
+			}
+			if key.Algorithm == "" {
+				multiError = multiError.Append(fmt.Errorf("%s: key %s has no 'alg' proeprty", name, keyLabel))
+			}
+			// This check is important to ensure private keys never make it into the DB config (because sgcollect will include them)
+			if !key.IsPublic() {
+				multiError = multiError.Append(fmt.Errorf("%s: key %s is not a public key", name, keyLabel))
+			}
+		}
+		for _, algo := range local.Algorithms {
+			if _, ok := auth.SupportedAlgorithms[jose.SignatureAlgorithm(algo)]; !ok {
+				multiError = multiError.Append(fmt.Errorf("%s: signing algorithm %q invalid or unsupported", name, algo))
+			}
+		}
+		seenIssuers[local.Issuer]++
+	}
+
+	// CBG-2185: This should be an error but having duplicate configs is valid so this would be a breaking change
+	for iss, count := range seenIssuers {
+		if count > 1 {
+			// issuer names are not UD - see https://github.com/couchbase/sync_gateway/pull/5513#discussion_r856335452 for context
+			base.WarnfCtx(ctx, "Found multiple OIDC/JWT providers using the same issuer (%s) - Implicit Grant flow may use incorrect providers.", iss)
+		}
+	}
+
+	// scopes and collections validation
+	if len(dbConfig.Scopes) > 1 {
+		multiError = multiError.Append(fmt.Errorf("only one named scope is supported, but had %d (%v)", len(dbConfig.Scopes), dbConfig.Scopes))
+	} else {
+		for scopeName, scopeConfig := range dbConfig.Scopes {
+			// WIP: Collections Phase 1 - Only allow a single collection
+			if len(scopeConfig.Collections) != 1 {
+				multiError = multiError.Append(fmt.Errorf("WIP Collections Phase 1 only supports a single collection - had %d", len(scopeConfig.Collections)))
+				continue
+			}
+
+			if len(scopeConfig.Collections) == 0 {
+				multiError = multiError.Append(fmt.Errorf("must specify at least one collection in scope %v", scopeName))
+				continue
+			}
+
+			if dbConfig.Sync != nil {
+				multiError = multiError.Append(errors.New("cannot specify a database-level sync function with named scopes and collections"))
+			}
+			if dbConfig.ImportFilter != nil {
+				multiError = multiError.Append(errors.New("cannot specify a database-level import filter with named scopes and collections"))
+			}
+
+			// validate each collection's config
+			for collectionName, collectionConfig := range scopeConfig.Collections {
+				if isEmpty, err := validateJavascriptFunction(collectionConfig.SyncFn); err != nil {
+					multiError = multiError.Append(fmt.Errorf("collection %q sync function error: %w", collectionName, err))
+				} else if isEmpty {
+					collectionConfig.SyncFn = nil
+				}
+
+				if isEmpty, err := validateJavascriptFunction(collectionConfig.ImportFilter); err != nil {
+					multiError = multiError.Append(fmt.Errorf("collection %q import filter error: %w", collectionName, err))
+				} else if isEmpty {
+					collectionConfig.ImportFilter = nil
+				}
 			}
 		}
 	}
@@ -794,6 +933,17 @@ func (dbConfig *DbConfig) deprecatedConfigCacheFallback() (warnings []string) {
 
 	return warnings
 
+}
+
+// validateJavascriptFunction returns an error if the javascript function was invalid, if set.
+func validateJavascriptFunction(jsFunc *string) (isEmpty bool, err error) {
+	if jsFunc != nil && strings.TrimSpace(*jsFunc) != "" {
+		if _, err := sgbucket.NewJSRunner(*jsFunc, 0); err != nil {
+			return false, fmt.Errorf("invalid javascript syntax: %w", err)
+		}
+		return false, nil
+	}
+	return true, nil
 }
 
 // Implementation of AuthHandler interface for DbConfig
@@ -1072,22 +1222,56 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 // fetchAndLoadConfigs retrieves all database configs from the ServerContext's bootstrapConnection, and loads them into the ServerContext.
 // It will remove any databases currently running that are not found in the bucket.
 func (sc *ServerContext) fetchAndLoadConfigs(isInitialStartup bool) (count int, err error) {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
-
 	fetchedConfigs, err := sc.fetchConfigs(isInitialStartup)
 	if err != nil {
 		return 0, err
 	}
 
-	for _, dbName := range sc.bucketDbName {
-		if _, foundMatchingDb := fetchedConfigs[dbName]; !foundMatchingDb {
-			base.InfofCtx(context.TODO(), base.KeyConfig, "Database %q was running on this node, but config was not found on the server - removing database", base.MD(dbName))
-			sc._removeDatabase(dbName)
+	// Check if we need to update the set of databases before we have to acquire the write lock to do so
+	// we don't need to do this two-stage lock on initial startup as the REST APIs aren't even online yet.
+	var deletedDatabases []string
+	if !isInitialStartup {
+		sc.lock.RLock()
+		for _, dbName := range sc.bucketDbName {
+			if _, foundMatchingDb := fetchedConfigs[dbName]; !foundMatchingDb {
+				deletedDatabases = append(deletedDatabases, dbName)
+				delete(fetchedConfigs, dbName)
+			}
+		}
+		for dbName, fetchedConfig := range fetchedConfigs {
+			if dbConfig, ok := sc.dbConfigs[dbName]; ok && dbConfig.cas >= fetchedConfig.cas {
+				base.DebugfCtx(context.TODO(), base.KeyConfig, "Database %q bucket %q config has not changed since last update", fetchedConfig.Name, *fetchedConfig.Bucket)
+				delete(fetchedConfigs, dbName)
+			}
+		}
+		sc.lock.RUnlock()
+
+		// nothing to do, we can bail out without needing the write lock
+		if len(deletedDatabases) == 0 && len(fetchedConfigs) == 0 {
+			base.TracefCtx(context.TODO(), base.KeyConfig, "No persistent config changes to make")
+			return 0, nil
 		}
 	}
 
-	return sc._applyConfigs(fetchedConfigs), nil
+	// we have databases to update/remove
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+	for _, dbName := range deletedDatabases {
+		// It's possible that the "deleted" database was not written to the server until after sc.fetchConfigs had returned...
+		// we'll need to pay for the cost of getting the config again now that we've got the write lock to double-check this db is definitely ok to remove...
+		found, _, err := sc.fetchDatabase(dbName)
+		if err != nil {
+			base.InfofCtx(context.TODO(), base.KeyConfig, "Error fetching config for database %q to check whether we need to remove it: %v", dbName, err)
+		}
+		if !found {
+			base.InfofCtx(context.TODO(), base.KeyConfig, "Database %q was running on this node, but config was not found on the server - removing database", base.MD(dbName))
+			sc._removeDatabase(dbName)
+		} else {
+			base.DebugfCtx(context.TODO(), base.KeyConfig, "Found config for database %q after acquiring write lock - not removing database", base.MD(dbName))
+		}
+	}
+
+	return sc._applyConfigs(fetchedConfigs, isInitialStartup), nil
 }
 
 func (sc *ServerContext) fetchAndLoadDatabase(dbName string) (found bool, err error) {
@@ -1103,7 +1287,7 @@ func (sc *ServerContext) _fetchAndLoadDatabase(dbName string) (found bool, err e
 	if err != nil || !found {
 		return false, err
 	}
-	sc._applyConfigs(map[string]DatabaseConfig{dbName: *dbConfig})
+	sc._applyConfigs(map[string]DatabaseConfig{dbName: *dbConfig}, false)
 
 	return true, nil
 }
@@ -1225,9 +1409,9 @@ func (sc *ServerContext) fetchConfigs(isInitialStartup bool) (dbNameConfigs map[
 }
 
 // _applyConfigs takes a map of dbName->DatabaseConfig and loads them into the ServerContext where necessary.
-func (sc *ServerContext) _applyConfigs(dbNameConfigs map[string]DatabaseConfig) (count int) {
+func (sc *ServerContext) _applyConfigs(dbNameConfigs map[string]DatabaseConfig, isInitialStartup bool) (count int) {
 	for dbName, cnf := range dbNameConfigs {
-		applied, err := sc._applyConfig(cnf, false)
+		applied, err := sc._applyConfig(cnf, false, isInitialStartup)
 		if err != nil {
 			base.ErrorfCtx(context.Background(), "Couldn't apply config for database %q: %v", base.MD(dbName), err)
 			continue
@@ -1243,11 +1427,31 @@ func (sc *ServerContext) _applyConfigs(dbNameConfigs map[string]DatabaseConfig) 
 func (sc *ServerContext) applyConfigs(dbNameConfigs map[string]DatabaseConfig) (count int) {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
-	return sc._applyConfigs(dbNameConfigs)
+	return sc._applyConfigs(dbNameConfigs, false)
 }
 
 // _applyConfig loads the given database, failFast=true will not attempt to retry connecting/loading
-func (sc *ServerContext) _applyConfig(cnf DatabaseConfig, failFast bool) (applied bool, err error) {
+func (sc *ServerContext) _applyConfig(cnf DatabaseConfig, failFast, isInitialStartup bool) (applied bool, err error) {
+	// 3.0.0 doesn't write a SGVersion, but everything else will
+	configSGVersionStr := "3.0.0"
+	if cnf.SGVersion != "" {
+		configSGVersionStr = cnf.SGVersion
+	}
+
+	configSGVersion, err := base.NewComparableVersionFromString(configSGVersionStr)
+	if err != nil {
+		return false, err
+	}
+
+	if !isInitialStartup {
+		// Skip applying if the config is from a newer SG version than this node and we're not just starting up
+		nodeSGVersion := base.ProductVersion
+		if nodeSGVersion.Less(configSGVersion) {
+			base.WarnfCtx(context.TODO(), "Cannot apply config update from server for db %q, this SG version is older than config's SG version (%s < %s)", cnf.Name, nodeSGVersion.String(), configSGVersion.String())
+			return false, nil
+		}
+	}
+
 	// skip if we already have this config loaded, and we've got a cas value to compare with
 	foundDbName, exists := sc.bucketDbName[*cnf.Bucket]
 	if exists {
@@ -1289,17 +1493,10 @@ func (sc *ServerContext) _applyConfig(cnf DatabaseConfig, failFast bool) (applie
 	return true, nil
 }
 
-// applyConfigs takes a map of bucket->DatabaseConfig and loads them into the ServerContext where necessary.
-func (sc *ServerContext) applyConfig(cnf DatabaseConfig) (applied bool, err error) {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
-	return sc._applyConfig(cnf, false)
-}
-
 // addLegacyPrincipals takes a map of databases that each have a map of names with principle configs.
 // Call this function to install the legacy principles to the upgraded database that use a persistent config.
 // Only call this function after the databases have been initalised via setupServerContext.
-func (sc *ServerContext) addLegacyPrincipals(legacyDbUsers, legacyDbRoles map[string]map[string]*db.PrincipalConfig) {
+func (sc *ServerContext) addLegacyPrincipals(legacyDbUsers, legacyDbRoles map[string]map[string]*auth.PrincipalConfig) {
 	for dbName, dbUser := range legacyDbUsers {
 		dbCtx, err := sc.GetDatabase(dbName)
 		if err != nil {

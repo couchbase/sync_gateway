@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/couchbase/gocbcore/v10/connstr"
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
 	pkgerrors "github.com/pkg/errors"
 )
 
@@ -631,7 +631,7 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*LegacyServer
 						CACertPath: *cacertpath,
 						KeyPath:    *keypath,
 					},
-					Users: map[string]*db.PrincipalConfig{
+					Users: map[string]*auth.PrincipalConfig{
 						base.GuestUsername: {
 							Disabled:         base.BoolPtr(false),
 							ExplicitChannels: base.SetFromArray([]string{"*"}),

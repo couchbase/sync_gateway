@@ -75,7 +75,7 @@ func TestBlipPusherUpdateDatabase(t *testing.T) {
 	}()
 
 	// and wait for a few to be done before we proceed with updating database config underneath replication
-	_, err = rt.WaitForChanges(5, "/db/_changes", "", true)
+	_, err = rt.waitForChanges(5, "/db/_changes", "", true)
 	require.NoError(t, err)
 
 	// just change the sync function to cause the database to reload
@@ -83,7 +83,7 @@ func TestBlipPusherUpdateDatabase(t *testing.T) {
 	dbConfig.Sync = base.StringPtr(`function(doc){console.log("update");}`)
 	resp, err := rt.ReplaceDbConfig("db", dbConfig)
 	require.NoError(t, err)
-	assertStatus(t, resp, http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 
 	// Did we tell the client to close the connection (via HTTP/503)?
 	// The BlipTesterClient doesn't implement reconnect - but CBL resets the replication connection.

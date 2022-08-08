@@ -8,10 +8,13 @@
 
 # This configuration file is read by the Redocly `openapi` CLI tool to validate/lint our specs (from GitHub Actions)
 
-apiDefinitions:
-  admin: ./docs/api/admin.yaml
-  public: ./docs/api/public.yaml
-  metric: ./docs/api/metric.yaml
+apis:
+  admin:
+    root: "./docs/api/admin.yaml"
+  public:
+    root: "./docs/api/public.yaml"
+  metric:
+    root: "./docs/api/metric.yaml"
 
 lint:
   extends:

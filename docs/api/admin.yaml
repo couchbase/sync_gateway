@@ -20,154 +20,153 @@ servers:
         description: The hostname to use
         default: localhost
 paths:
-  # Admin only paths
-  /{db}/_session:
+  '/{db}/_session':
     $ref: './paths/admin/{db}~_session.yaml'
-  /{db}/_session/{sessionid}:
+  '/{db}/_session/{sessionid}':
     $ref: './paths/admin/{db}~_session~{sessionid}.yaml'
-  /{db}/_raw/{docid}:
-    $ref: './paths/admin/{db}~_raw~{docid}.yaml'
-  /{db}/_revtree/{docid}:
-    $ref: './paths/admin/{db}~_revtree~{docid}.yaml'
-  /{db}/_user/:
+  '/{keyspace}/_raw/{docid}':
+    $ref: './paths/admin/{keyspace}~_raw~{docid}.yaml'
+  '/{keyspace}/_revtree/{docid}':
+    $ref: './paths/admin/{keyspace}~_revtree~{docid}.yaml'
+  '/{db}/_user/':
     $ref: './paths/admin/{db}~_user~.yaml'
-  /{db}/_user/{name}:
+  '/{db}/_user/{name}':
     $ref: './paths/admin/{db}~_user~{name}.yaml'
-  /{db}/_user/{name}/_session:
+  '/{db}/_user/{name}/_session':
     $ref: './paths/admin/{db}~_user~{name}~_session.yaml'
-  /{db}/_user/{name}/_session/{sessionid}:
+  '/{db}/_user/{name}/_session/{sessionid}':
     $ref: './paths/admin/{db}~_user~{name}~_session~{sessionid}.yaml'
-  /{db}/_role/:
+  '/{db}/_role/':
     $ref: './paths/admin/{db}~_role~.yaml'
-  /{db}/_role/{name}:
+  '/{db}/_role/{name}':
     $ref: './paths/admin/{db}~_role~{name}.yaml'
-  /{db}/_replication/:
+  '/{db}/_replication/':
     $ref: './paths/admin/{db}~_replication~.yaml'
-  /{db}/_replication/{replicationid}:
+  '/{db}/_replication/{replicationid}':
     $ref: './paths/admin/{db}~_replication~{replicationid}.yaml'
-  /{db}/_replicationStatus/:
+  '/{db}/_replicationStatus/':
     $ref: './paths/admin/{db}~_replicationStatus~.yaml'
-  /{db}/_replicationStatus/{replicationid}:
+  '/{db}/_replicationStatus/{replicationid}':
     $ref: './paths/admin/{db}~_replicationStatus~{replicationid}.yaml'
   /_logging:
-    $ref: './paths/admin/_logging.yaml'
-  /_profile/{profilename}:
+    $ref: ./paths/admin/_logging.yaml
+  '/_profile/{profilename}':
     $ref: './paths/admin/_profile~{profilename}.yaml'
   /_profile:
-    $ref: './paths/admin/_profile.yaml'
+    $ref: ./paths/admin/_profile.yaml
   /_heap:
-    $ref: './paths/admin/_heap.yaml'
+    $ref: ./paths/admin/_heap.yaml
   /_stats:
-    $ref: './paths/admin/_stats.yaml'
+    $ref: ./paths/admin/_stats.yaml
   /_config:
-    $ref: './paths/admin/_config.yaml'
+    $ref: ./paths/admin/_config.yaml
   /_status:
-    $ref: './paths/admin/_status.yaml'
+    $ref: ./paths/admin/_status.yaml
   /_sgcollect_info:
-    $ref: './paths/admin/_sgcollect_info.yaml'
+    $ref: ./paths/admin/_sgcollect_info.yaml
   /_debug/pprof/goroutine:
-    $ref: './paths/admin/_debug~pprof~goroutine.yaml'
+    $ref: ./paths/admin/_debug~pprof~goroutine.yaml
   /_debug/pprof/cmdline:
-    $ref: './paths/admin/_debug~pprof~cmdline.yaml'
+    $ref: ./paths/admin/_debug~pprof~cmdline.yaml
   /_debug/pprof/symbol:
-    $ref: './paths/admin/_debug~pprof~symbol.yaml'
+    $ref: ./paths/admin/_debug~pprof~symbol.yaml
   /_debug/pprof/heap:
-    $ref: './paths/admin/_debug~pprof~heap.yaml'
+    $ref: ./paths/admin/_debug~pprof~heap.yaml
   /_debug/pprof/profile:
-    $ref: './paths/admin/_debug~pprof~profile.yaml'
+    $ref: ./paths/admin/_debug~pprof~profile.yaml
   /_debug/pprof/block:
-    $ref: './paths/admin/_debug~pprof~block.yaml'
+    $ref: ./paths/admin/_debug~pprof~block.yaml
   /_debug/pprof/threadcreate:
-    $ref: './paths/admin/_debug~pprof~threadcreate.yaml'
+    $ref: ./paths/admin/_debug~pprof~threadcreate.yaml
   /_debug/pprof/mutex:
-    $ref: './paths/admin/_debug~pprof~mutex.yaml'
+    $ref: ./paths/admin/_debug~pprof~mutex.yaml
   /_debug/pprof/trace:
-    $ref: './paths/admin/_debug~pprof~trace.yaml'
+    $ref: ./paths/admin/_debug~pprof~trace.yaml
   /_debug/fgprof:
-    $ref: './paths/admin/_debug~fgprof.yaml'
+    $ref: ./paths/admin/_debug~fgprof.yaml
   /_post_upgrade:
-    $ref: './paths/admin/_post_upgrade.yaml'
-  /{db}/_config:
+    $ref: ./paths/admin/_post_upgrade.yaml
+  '/{db}/_config':
     $ref: './paths/admin/{db}~_config.yaml'
-  /{db}/_config/sync:
+  '/{db}/_config/sync':
     $ref: './paths/admin/{db}~_config~sync.yaml'
-  /{db}/_config/import_filter:
+  '/{db}/_config/import_filter':
     $ref: './paths/admin/{db}~_config~import_filter.yaml'
-  /{db}/_resync:
-    $ref: './paths/admin/{db}~_resync.yaml'
-  /{db}/_purge:
-    $ref: './paths/admin/{db}~_purge.yaml'
-  /{db}/_flush:
+  '/{keyspace}/_resync':
+    $ref: './paths/admin/{keyspace}~_resync.yaml'
+  '/{keyspace}/_purge':
+    $ref: './paths/admin/{keyspace}~_purge.yaml'
+  '/{db}/_flush':
     $ref: './paths/admin/{db}~_flush.yaml'
-  /{db}/_online:
+  '/{db}/_online':
     $ref: './paths/admin/{db}~_online.yaml'
-  /{db}/_offline:
+  '/{db}/_offline':
     $ref: './paths/admin/{db}~_offline.yaml'
-  /{db}/_dump/{view}:
+  '/{db}/_dump/{view}':
     $ref: './paths/admin/{db}~_dump~{view}.yaml'
-  /{db}/_view/{view}:
+  '/{db}/_view/{view}':
     $ref: './paths/admin/{db}~_view~{view}.yaml'
-  /{db}/_dumpchannel/{channel}:
+  '/{db}/_dumpchannel/{channel}':
     $ref: './paths/admin/{db}~_dumpchannel~{channel}.yaml'
-  /{db}/_repair:
+  '/{db}/_repair':
     $ref: './paths/admin/{db}~_repair.yaml'
   /_all_dbs:
-    $ref: './paths/admin/_all_dbs.yaml'
-  /{db}/_compact:
-    $ref: './paths/admin/{db}~_compact.yaml'
-  /{db}/:
+    $ref: ./paths/admin/_all_dbs.yaml
+  '/{keyspace}/_compact':
+    $ref: './paths/admin/{keyspace}~_compact.yaml'
+  '/{db}/':
     $ref: './paths/admin/{db}~.yaml'
-  # Metric and admin paths
+  '/{keyspace}/':
+    $ref: './paths/admin/{keyspace}~.yaml'
   /_expvar:
-    $ref: './paths/admin/_expvar.yaml'
-  # Common paths
+    $ref: ./paths/admin/_expvar.yaml
   /:
-    $ref: './paths/admin/~.yaml'
-  /{db}/_all_docs:
+    $ref: ./paths/admin/~.yaml
+  '/{db}/_all_docs':
     $ref: './paths/admin/{db}~_all_docs.yaml'
-  /{db}/_bulk_docs:
-    $ref: './paths/admin/{db}~_bulk_docs.yaml'
-  /{db}/_bulk_get:
-    $ref: './paths/admin/{db}~_bulk_get.yaml'
-  /{db}/_changes:
+  '/{keyspace}/_bulk_docs':
+    $ref: './paths/admin/{keyspace}~_bulk_docs.yaml'
+  '/{keyspace}/_bulk_get':
+    $ref: './paths/admin/{keyspace}~_bulk_get.yaml'
+  '/{db}/_changes':
     $ref: './paths/admin/{db}~_changes.yaml'
-  /{db}/_design/{ddoc}:
+  '/{db}/_design/{ddoc}':
     $ref: './paths/admin/{db}~_design~{ddoc}.yaml'
-  /{db}/_design/{ddoc}/_view/{view}:
+  '/{db}/_design/{ddoc}/_view/{view}':
     $ref: './paths/admin/{db}~_design~{ddoc}~_view~{view}.yaml'
-  /{db}/_ensure_full_commit:
+  '/{db}/_ensure_full_commit':
     $ref: './paths/admin/{db}~_ensure_full_commit.yaml'
-  /{db}/_revs_diff:
-    $ref: './paths/admin/{db}~_revs_diff.yaml'
-  /{db}/_local/{docid}:
-    $ref: './paths/admin/{db}~_local~{docid}.yaml'
-  /{db}/{docid}:
-    $ref: './paths/admin/{db}~{docid}.yaml'
-  /{db}/{docid}/{attach}:
-    $ref: './paths/admin/{db}~{docid}~{attach}.yaml'
-  /{db}/_facebook:
+  '/{keyspace}/_revs_diff':
+    $ref: './paths/admin/{keyspace}~_revs_diff.yaml'
+  '/{keyspace}/_local/{docid}':
+    $ref: './paths/admin/{keyspace}~_local~{docid}.yaml'
+  '/{keyspace}/{docid}':
+    $ref: './paths/admin/{keyspace}~{docid}.yaml'
+  '/{keyspace}/{docid}/{attach}':
+    $ref: './paths/admin/{keyspace}~{docid}~{attach}.yaml'
+  '/{db}/_facebook':
     $ref: './paths/admin/{db}~_facebook.yaml'
-  /{db}/_google:
+  '/{db}/_google':
     $ref: './paths/admin/{db}~_google.yaml'
-  /{db}/_oidc:
+  '/{db}/_oidc':
     $ref: './paths/admin/{db}~_oidc.yaml'
-  /{db}/_oidc_challenge:
+  '/{db}/_oidc_challenge':
     $ref: './paths/admin/{db}~_oidc_challenge.yaml'
-  /{db}/_oidc_callback:
+  '/{db}/_oidc_callback':
     $ref: './paths/admin/{db}~_oidc_callback.yaml'
-  /{db}/_oidc_refresh:
+  '/{db}/_oidc_refresh':
     $ref: './paths/admin/{db}~_oidc_refresh.yaml'
-  /{db}/_oidc_testing/.well-known/openid-configuration:
+  '/{db}/_oidc_testing/.well-known/openid-configuration':
     $ref: './paths/admin/{db}~_oidc_testing~.well-known~openid-configuration.yaml'
-  /{db}/_oidc_testing/authorize:
+  '/{db}/_oidc_testing/authorize':
     $ref: './paths/admin/{db}~_oidc_testing~authorize.yaml'
-  /{db}/_oidc_testing/token:
+  '/{db}/_oidc_testing/token':
     $ref: './paths/admin/{db}~_oidc_testing~token.yaml'
-  /{db}/_oidc_testing/certs:
+  '/{db}/_oidc_testing/certs':
     $ref: './paths/admin/{db}~_oidc_testing~certs.yaml'
-  /{db}/_oidc_testing/authenticate:
+  '/{db}/_oidc_testing/authenticate':
     $ref: './paths/admin/{db}~_oidc_testing~authenticate.yaml'
-  /{db}/_blipsync:
+  '/{db}/_blipsync':
     $ref: './paths/admin/{db}~_blipsync.yaml'
 tags:
   - name: Admin only endpoints

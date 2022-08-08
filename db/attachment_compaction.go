@@ -30,6 +30,7 @@ func attachmentCompactMarkPhase(db *Database, compactionID string, terminator *b
 
 	callback := func(event sgbucket.FeedEvent) bool {
 		docID := string(event.Key)
+		base.TracefCtx(db.Ctx, base.KeyAll, "[%s] Received DCP event %d for doc %v", compactionLoggingID, event.Opcode, base.UD(docID))
 
 		// We've had an error previously so no point doing work for any remaining items
 		if markProcessFailureErr != nil {
@@ -115,22 +116,27 @@ func attachmentCompactMarkPhase(db *Database, compactionID string, terminator *b
 	}
 
 	clientOptions := base.DCPClientOptions{
-		OneShot:        true,
-		FailOnRollback: true,
+		OneShot:           true,
+		FailOnRollback:    true,
+		MetadataStoreType: base.DCPMetadataStoreCS,
+		GroupID:           db.Options.GroupID,
 	}
 
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for mark phase of attachment compaction", compactionLoggingID)
 	dcpFeedKey := compactionID + "_mark"
-	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, db.Bucket, db.Options.GroupID)
+	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, db.Bucket)
 	if err != nil {
+		base.WarnfCtx(db.Ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)
 		return 0, nil, err
 	}
 
 	doneChan, err := dcpClient.Start()
 	if err != nil {
+		base.WarnfCtx(db.Ctx, "[%s] Failed to start attachment compaction DCP feed! %v", compactionLoggingID, err)
 		_ = dcpClient.Close()
 		return 0, nil, err
 	}
+	base.DebugfCtx(db.Ctx, base.KeyAll, "[%s] DCP feed started.", compactionLoggingID)
 
 	select {
 	case <-doneChan:
@@ -140,6 +146,7 @@ func attachmentCompactMarkPhase(db *Database, compactionID string, terminator *b
 			return markedAttachmentCount.Value(), nil, markProcessFailureErr
 		}
 	case <-terminator.Done():
+		base.DebugfCtx(db.Ctx, base.KeyAll, "[%s] Terminator closed. Stopping mark phase.", compactionLoggingID)
 		err = dcpClient.Close()
 		if markProcessFailureErr != nil {
 			return markedAttachmentCount.Value(), nil, markProcessFailureErr
@@ -274,6 +281,7 @@ func attachmentCompactSweepPhase(db *Database, compactionID string, vbUUIDs []ui
 	// be deleted.
 	callback := func(event sgbucket.FeedEvent) bool {
 		docID := string(event.Key)
+		base.TracefCtx(db.Ctx, base.KeyAll, "[%s] Received DCP event %d for doc %v", compactionLoggingID, event.Opcode, base.UD(docID))
 
 		// We only want to look over v1 attachment docs, skip otherwise
 		if !strings.HasPrefix(docID, base.AttPrefix) {
@@ -311,6 +319,7 @@ func attachmentCompactSweepPhase(db *Database, compactionID string, vbUUIDs []ui
 		// in compactionID
 		// Therefore, we want to purge the doc (unless running as dryRun mode)
 		if !dryRun {
+			base.TracefCtx(db.Ctx, base.KeyAll, "[%s] Purging attachment %s", compactionLoggingID, base.UD(docID))
 			_, err := db.Bucket.Remove(docID, event.Cas)
 			if err != nil {
 				base.WarnfCtx(db.Ctx, "[%s] Unable to purge attachment %s: %v", compactionLoggingID, base.UD(docID), err)
@@ -327,31 +336,38 @@ func attachmentCompactSweepPhase(db *Database, compactionID string, vbUUIDs []ui
 	}
 
 	clientOptions := base.DCPClientOptions{
-		OneShot:         true,
-		FailOnRollback:  true,
-		InitialMetadata: base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs),
+		OneShot:           true,
+		FailOnRollback:    true,
+		InitialMetadata:   base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs),
+		MetadataStoreType: base.DCPMetadataStoreCS,
+		GroupID:           db.Options.GroupID,
 	}
 
-	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for sweep phase of attachment compaction", compactionLoggingID)
 	dcpFeedKey := compactionID + "_sweep"
-	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, db.Bucket, db.Options.GroupID)
+	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed %q for sweep phase of attachment compaction", compactionLoggingID, dcpFeedKey)
+	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, db.Bucket)
 	if err != nil {
+		base.WarnfCtx(db.Ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)
 		return 0, err
 	}
 
 	doneChan, err := dcpClient.Start()
 	if err != nil {
+		base.WarnfCtx(db.Ctx, "[%s] Failed to start attachment compaction DCP feed! %v", compactionLoggingID, err)
 		_ = dcpClient.Close()
 		return 0, err
 	}
+	base.DebugfCtx(db.Ctx, base.KeyAll, "[%s] DCP client started.", compactionLoggingID)
 
 	select {
 	case <-doneChan:
 		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Sweep phase of attachment compaction completed. Deleted %d attachments", compactionLoggingID, purgedAttachmentCount.Value())
 		err = dcpClient.Close()
 	case <-terminator.Done():
+		base.DebugfCtx(db.Ctx, base.KeyAll, "[%s] Terminator closed. Ending sweep phase.", compactionLoggingID)
 		err = dcpClient.Close()
 		if err != nil {
+			base.WarnfCtx(db.Ctx, "[%s] Failed to close attachment compaction DCP client! %v", compactionLoggingID, err)
 			return purgedAttachmentCount.Value(), err
 		}
 
@@ -452,20 +468,25 @@ func attachmentCompactCleanupPhase(db *Database, compactionID string, vbUUIDs []
 	}
 
 	clientOptions := base.DCPClientOptions{
-		OneShot:         true,
-		FailOnRollback:  true,
-		InitialMetadata: base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs),
+		OneShot:           true,
+		FailOnRollback:    true,
+		InitialMetadata:   base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs),
+		MetadataStoreType: base.DCPMetadataStoreCS,
+		GroupID:           db.Options.GroupID,
 	}
 
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for cleanup phase of attachment compaction", compactionLoggingID)
 	dcpFeedKey := compactionID + "_cleanup"
-	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, db.Bucket, db.Options.GroupID)
+	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, db.Bucket)
 	if err != nil {
+		base.WarnfCtx(db.Ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)
 		return err
 	}
 
 	doneChan, err := dcpClient.Start()
 	if err != nil {
+		base.WarnfCtx(db.Ctx, "[%s] Failed to start attachment compaction DCP feed! %v", compactionLoggingID, err)
+		// simplify close in CBG-2234
 		_ = dcpClient.Close()
 		return err
 	}
@@ -473,10 +494,13 @@ func attachmentCompactCleanupPhase(db *Database, compactionID string, vbUUIDs []
 	select {
 	case <-doneChan:
 		base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Cleanup phase of attachment compaction completed", compactionLoggingID)
+		// simplify close in CBG-2234
 		err = dcpClient.Close()
 	case <-terminator.Done():
+		// simplify close in CBG-2234
 		err = dcpClient.Close()
 		if err != nil {
+			base.WarnfCtx(db.Ctx, "[%s] Failed to close attachment compaction DCP client! %v", compactionLoggingID, err)
 			return err
 		}
 

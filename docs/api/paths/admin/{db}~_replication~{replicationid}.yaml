@@ -1,7 +1,6 @@
-# /{db}/_replication/{replicationid}
 parameters:
-- $ref: ../../components/parameters.yaml#/db
-- $ref: ../../components/parameters.yaml#/replicationid
+  - $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/replicationid
 get:
   summary: Get a replication configuration
   description: |-
@@ -10,17 +9,17 @@ get:
     Required Sync Gateway RBAC roles:
     * Sync Gateway Replicator
   responses:
-    "200":
+    '200':
       description: Successfully retrieved the replication configuration
       content:
         application/json:
           schema:
             $ref: ../../components/schemas.yaml#/Retrieved-replication
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Admin only endpoints
-  - Replication
+    - Admin only endpoints
+    - Replication
 put:
   summary: Upsert a replication
   description: |-
@@ -35,17 +34,17 @@ put:
   requestBody:
     $ref: ../../components/requestBodies.yaml#/Replication-upsert
   responses:
-    "200":
+    '200':
       $ref: ../../components/responses.yaml#/Replicator-updated
-    "201":
+    '201':
       $ref: ../../components/responses.yaml#/Replicator-created
-    "400":
+    '400':
       $ref: ../../components/responses.yaml#/request-problem
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Admin only endpoints
-  - Replication
+    - Admin only endpoints
+    - Replication
 delete:
   summary: Stop and delete a replication
   description: |-
@@ -54,24 +53,24 @@ delete:
     Required Sync Gateway RBAC roles:
     * Sync Gateway Replicator
   responses:
-    "200":
+    '200':
       description: Replication successfully deleted
-    "400":
+    '400':
       $ref: ../../components/responses.yaml#/request-problem
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Admin only endpoints
-  - Replication
+    - Admin only endpoints
+    - Replication
 head:
   responses:
-    "200":
+    '200':
       description: Replication exists
-    "404":
+    '404':
       description: Replication does not exist
   tags:
-  - Admin only endpoints
-  - Replication
+    - Admin only endpoints
+    - Replication
   summary: Check if a replication exists
   description: |-
     Check if a replication exists.

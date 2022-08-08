@@ -43,11 +43,10 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 		tb.GetName(),
 	)
 
-	tmpDir, err := ioutil.TempDir("", t.Name())
-	require.NoError(t, err)
+	tmpDir := t.TempDir()
 
 	configPath := filepath.Join(tmpDir, "config.json")
-	err = ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
+	err := ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
 	require.NoError(t, err)
 
 	startupConfig, _, _, _, err := automaticConfigUpgrade(configPath)
@@ -136,17 +135,17 @@ func TestAutomaticConfigUpgradeError(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
+		// Create tempdir here to avoid slash operator in t.Name()
+		tmpDir := t.TempDir()
+
 		t.Run(testCase.Name, func(t *testing.T) {
 			tb := base.GetTestBucket(t)
 			defer tb.Close()
 
 			config := fmt.Sprintf(testCase.Config, base.TestTLSSkipVerify(), base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), tb.GetName())
 
-			tmpDir, err := ioutil.TempDir("", strings.ReplaceAll(t.Name(), "/", ""))
-			require.NoError(t, err)
-
 			configPath := filepath.Join(tmpDir, "config.json")
-			err = ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
+			err := ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
 			require.NoError(t, err)
 
 			_, _, _, _, err = automaticConfigUpgrade(configPath)
@@ -163,8 +162,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	tmpDir, err := ioutil.TempDir("", t.Name())
-	require.NoError(t, err)
+	tmpDir := t.TempDir()
 
 	config := fmt.Sprintf(`{
 	"server_tls_skip_verify": %t,
@@ -184,7 +182,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 		tb.GetName(),
 	)
 	configPath := filepath.Join(tmpDir, "config.json")
-	err = ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
+	err := ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
 	require.NoError(t, err)
 
 	// Run migration once
@@ -319,13 +317,11 @@ func TestImportFilterEndpoint(t *testing.T) {
 			tb.GetName(), base.TestsDisableGSI(),
 		),
 	)
-	assert.NoError(t, resp.Body.Close())
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.requireStatus(http.StatusCreated)
 
 	// Ensure we won't fail with an empty import filter
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db1/_config/import_filter", "")
-	assert.NoError(t, resp.Body.Close())
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.requireStatus(http.StatusOK)
 
 	// Add a document
 	err = tb.Bucket.Set("importDoc1", 0, nil, []byte("{}"))
@@ -333,13 +329,11 @@ func TestImportFilterEndpoint(t *testing.T) {
 
 	// Ensure document is imported based on default import filter
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/importDoc1", "")
-	assert.NoError(t, resp.Body.Close())
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.requireStatus(http.StatusOK)
 
 	// Modify the import filter to always reject import
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db1/_config/import_filter", `function(){return false}`)
-	assert.NoError(t, resp.Body.Close())
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.requireStatus(http.StatusOK)
 
 	// Add a document
 	err = tb.Bucket.Set("importDoc2", 0, nil, []byte("{}"))
@@ -347,15 +341,11 @@ func TestImportFilterEndpoint(t *testing.T) {
 
 	// Ensure document is not imported and is rejected based on updated filter
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/importDoc2", "")
-	responseBody, err := ioutil.ReadAll(resp.Body)
-	assert.NoError(t, resp.Body.Close())
-	assert.NoError(t, err)
-	assert.Contains(t, string(responseBody), "Not imported")
-	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	resp.requireStatus(http.StatusNotFound)
+	assert.Contains(t, resp.Body, "Not imported")
 
 	resp = bootstrapAdminRequest(t, http.MethodDelete, "/db1/_config/import_filter", "")
-	assert.NoError(t, resp.Body.Close())
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.requireStatus(http.StatusOK)
 
 	// Add a document
 	err = tb.Bucket.Set("importDoc3", 0, nil, []byte("{}"))
@@ -363,6 +353,5 @@ func TestImportFilterEndpoint(t *testing.T) {
 
 	// Ensure document is imported based on default import filter
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/importDoc3", "")
-	assert.NoError(t, resp.Body.Close())
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.requireStatus(http.StatusOK)
 }

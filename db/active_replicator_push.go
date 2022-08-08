@@ -88,6 +88,7 @@ func (apr *ActivePushReplicator) _connect() error {
 	bh := blipHandler{
 		BlipSyncContext: apr.blipSyncContext,
 		db:              apr.config.ActiveDB,
+		collection:      apr.config.ActiveDB,
 		serialNumber:    apr.blipSyncContext.incrementSerialNumber(),
 	}
 
@@ -206,10 +207,10 @@ func (apr *ActivePushReplicator) _initCheckpointer() error {
 func (apr *ActivePushReplicator) GetStatus() *ReplicationStatus {
 	var lastSeqPushed string
 	apr.lock.RLock()
+	defer apr.lock.RUnlock()
 	if apr.Checkpointer != nil {
 		lastSeqPushed = apr.Checkpointer.calculateSafeProcessedSeq()
 	}
-	apr.lock.RUnlock()
 	status := apr.getPushStatus(lastSeqPushed)
 	return status
 }

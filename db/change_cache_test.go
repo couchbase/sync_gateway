@@ -261,8 +261,9 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	// Start continuous changes feed
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	options.Terminator = make(chan bool)
-	defer close(options.Terminator)
+	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+	options.ChangesCtx = changesCtx
+	defer changesCtxCancel()
 	options.Continuous = true
 	options.Wait = true
 	feed, err := db.MultiChangesFeed(base.SetOf("ABC"), options)
@@ -374,7 +375,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 
 	caughtUpStart := db.DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
 
-	terminator := make(chan bool)
+	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
 	var changesFeedsWg sync.WaitGroup
 	var seq1Wg, seq2Wg, seq3Wg sync.WaitGroup
 	// Start 100 continuous changes feeds
@@ -387,7 +388,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 			defer changesFeedsWg.Done()
 			var options ChangesOptions
 			options.Since = SequenceID{Seq: 0}
-			options.Terminator = terminator
+			options.ChangesCtx = changesCtx
 			options.Continuous = true
 			options.Wait = true
 			channelName := fmt.Sprintf("chan_%d", i)
@@ -459,8 +460,8 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 	// Wait for everyone to be caught up again
 	require.NoError(t, db.WaitForCaughtUp(caughtUpStart+int64(100)))
 
-	// Close the terminator
-	close(terminator)
+	// Cancel the changes context
+	changesCtxCancel()
 
 	log.Printf("terminator is closed")
 
@@ -601,7 +602,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 	// Test that retrieval isn't blocked by skipped sequences
 	require.NoError(t, db.changeCache.waitForSequence(base.TestCtx(t), 6, base.DefaultWaitForSequence))
 	db.user, _ = authenticator.GetUser("naomi")
-	changes, err := db.GetChanges(base.SetOf("*"), ChangesOptions{Since: SequenceID{Seq: 0}})
+	changes, err := db.GetChanges(base.SetOf("*"), getChangesOptionsWithZeroSeq())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	assert.Equal(t, 4, len(changes))
 	assert.Equal(t, &ChangeEntry{
@@ -630,7 +631,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 
 	// verify changes has three entries (needs to resend all since previous LowSeq, which
 	// will be the late arriver (3) along with 5, 6)
-	changes, err = db.GetChanges(base.SetOf("*"), ChangesOptions{Since: lastSeq})
+	changes, err = db.GetChanges(base.SetOf("*"), getChangesOptionsWithSeq(lastSeq))
 	assert.Equal(t, 3, len(changes))
 	assert.Equal(t, &ChangeEntry{
 		Seq:     SequenceID{Seq: 3, LowSeq: 3},
@@ -669,10 +670,11 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	// Start changes feed
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	options.Terminator = make(chan bool)
+	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+	options.ChangesCtx = changesCtx
 	options.Continuous = true
 	options.Wait = true
-	defer close(options.Terminator)
+	defer changesCtxCancel()
 
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
 	assert.True(t, err == nil)
@@ -773,8 +775,9 @@ func TestLowSequenceHandling(t *testing.T) {
 
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	options.Terminator = make(chan bool)
-	defer close(options.Terminator)
+	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+	options.ChangesCtx = changesCtx
+	defer changesCtxCancel()
 	options.Continuous = true
 	options.Wait = true
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
@@ -837,7 +840,8 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	options.Terminator = make(chan bool)
+	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+	options.ChangesCtx = changesCtx
 	options.Continuous = true
 	options.Wait = true
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
@@ -853,7 +857,7 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 	_, err = verifySequencesInFeed(feed, []uint64{9})
 	assert.True(t, err == nil)
 
-	close(options.Terminator)
+	changesCtxCancel()
 }
 
 // Test low sequence handling of late arriving sequences to a continuous changes feed, when the
@@ -893,7 +897,8 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	options.Terminator = make(chan bool)
+	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+	options.ChangesCtx = changesCtx
 	options.Continuous = true
 	options.Wait = true
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
@@ -915,7 +920,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, userInfo)
 	userInfo.ExplicitChannels = base.SetOf("ABC", "PBS")
-	_, err = db.UpdatePrincipal(base.TestCtx(t), *userInfo, true, true)
+	_, err = db.UpdatePrincipal(base.TestCtx(t), userInfo, true, true)
 	require.NoError(t, err, "UpdatePrincipal failed")
 
 	WriteDirect(db, []string{"PBS"}, 9)
@@ -930,7 +935,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	// 2. The duplicate send of sequence '6' is the standard behaviour when a channel is added - we don't know
 	// whether the user has already seen the documents on the channel previously, so it gets resent
 
-	close(options.Terminator)
+	changesCtxCancel()
 }
 
 // Tests channel cache backfill with slow query, validates that a request that is terminated while
@@ -1004,6 +1009,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 		defer changesWg.Done()
 		var options ChangesOptions
 		options.Since = SequenceID{Seq: 0}
+		options.ChangesCtx = context.Background()
 		options.Continuous = false
 		options.Wait = false
 		options.Limit = 2 // Avoid prepending results in cache, as we don't want second changes to serve results from cache
@@ -1022,13 +1028,13 @@ func TestChannelQueryCancellation(t *testing.T) {
 	initialPendingQueries := db.DbStats.Cache().ChannelCachePendingQueries.Value()
 
 	// Start a second goroutine that should block waiting for the view lock
-	changesTerminator := make(chan bool)
+	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
 	changesWg.Add(1)
 	go func() {
 		defer changesWg.Done()
 		var options ChangesOptions
 		options.Since = SequenceID{Seq: 0}
-		options.Terminator = changesTerminator
+		options.ChangesCtx = changesCtx
 		options.Continuous = false
 		options.Limit = 2
 		options.Wait = false
@@ -1048,7 +1054,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 	assert.True(t, pendingQueries > initialPendingQueries, "Pending queries (%d) didn't exceed initialPendingQueries (%d) after 10s", pendingQueries, initialPendingQueries)
 
 	// Terminate the second changes request
-	close(changesTerminator)
+	changesCtxCancel()
 
 	// Unblock the first goroutine
 	queryWg.Done()
@@ -1096,8 +1102,9 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	options.Terminator = make(chan bool)
-	defer close(options.Terminator)
+	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+	options.ChangesCtx = changesCtx
+	defer changesCtxCancel()
 	options.Continuous = true
 	options.Wait = true
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
@@ -1185,7 +1192,8 @@ func TestChannelRace(t *testing.T) {
 
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	options.Terminator = make(chan bool)
+	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+	options.ChangesCtx = changesCtx
 	options.Continuous = true
 	options.Wait = true
 	feed, err := db.MultiChangesFeed(base.SetOf("Even", "Odd"), options)
@@ -1241,7 +1249,7 @@ func TestChannelRace(t *testing.T) {
 	}
 	fmt.Println("changes: ", changesString)
 
-	close(options.Terminator)
+	changesCtxCancel()
 }
 
 // Test retrieval of skipped sequence using view.  Unit test catches panic, but we don't currently have a way
@@ -1302,7 +1310,7 @@ func TestSkippedViewRetrieval(t *testing.T) {
 
 	// Validate expected entries
 	require.NoError(t, db.changeCache.waitForSequence(base.TestCtx(t), 15, base.DefaultWaitForSequence))
-	entries, err := db.changeCache.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 2}})
+	entries, err := db.changeCache.GetChanges("ABC", getChangesOptionsWithSeq(SequenceID{Seq: 2}))
 	assert.NoError(t, err, "Get Changes returned error")
 	assert.Equal(t, 6, len(entries))
 	log.Printf("entries: %v", entries)
@@ -1391,7 +1399,7 @@ func TestChannelCacheSize(t *testing.T) {
 	// Validate that retrieval returns expected sequences
 	require.NoError(t, db.changeCache.waitForSequence(base.TestCtx(t), 750, base.DefaultWaitForSequence))
 	db.user, _ = authenticator.GetUser("naomi")
-	changes, err := db.GetChanges(base.SetOf("ABC"), ChangesOptions{Since: SequenceID{Seq: 0}})
+	changes, err := db.GetChanges(base.SetOf("ABC"), getChangesOptionsWithZeroSeq())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	assert.Equal(t, 750, len(changes))
 
@@ -1694,7 +1702,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 	}
 
 	// Issue getChanges for empty channel
-	changes, err := db.GetChanges(channels.SetOf(t, "zero"), ChangesOptions{})
+	changes, err := db.GetChanges(channels.SetOf(t, "zero"), getChangesOptionsWithCtxOnly())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	changesCount := len(changes)
 	assert.Equal(t, 0, changesCount)
@@ -1712,7 +1720,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 	cacheWaiter.Add(docCount)
 	cacheWaiter.Wait()
 
-	changes, err = db.GetChanges(channels.SetOf(t, "zero"), ChangesOptions{})
+	changes, err = db.GetChanges(channels.SetOf(t, "zero"), getChangesOptionsWithCtxOnly())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	changesCount = len(changes)
 	assert.Equal(t, 10, changesCount)
@@ -1758,7 +1766,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 
 	// Wait for writes to be in progress, then getChanges for channel zero
 	writesInProgress.Wait()
-	changes, err := db.GetChanges(channels.SetOf(t, "zero"), ChangesOptions{})
+	changes, err := db.GetChanges(channels.SetOf(t, "zero"), getChangesOptionsWithCtxOnly())
 	require.NoError(t, err, "Couldn't GetChanges")
 	firstChangesCount := len(changes)
 	var lastSeq SequenceID
@@ -1769,7 +1777,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 	// Wait for all writes to be cached, then getChanges again
 	cacheWaiter.Wait()
 
-	changes, err = db.GetChanges(channels.SetOf(t, "zero"), ChangesOptions{Since: lastSeq})
+	changes, err = db.GetChanges(channels.SetOf(t, "zero"), getChangesOptionsWithSeq(lastSeq))
 	require.NoError(t, err, "Couldn't GetChanges")
 	secondChangesCount := len(changes)
 	assert.Equal(t, docCount, firstChangesCount+secondChangesCount)
@@ -1978,7 +1986,7 @@ func BenchmarkProcessEntry(b *testing.B) {
 			defer context.Close()
 
 			changeCache := &changeCache{}
-			if err := changeCache.Init(context, nil, nil); err != nil {
+			if err := changeCache.Init(base.TestCtx(b), context, nil, nil); err != nil {
 				log.Printf("Init failed for changeCache: %v", err)
 				b.Fail()
 			}
@@ -1992,7 +2000,7 @@ func BenchmarkProcessEntry(b *testing.B) {
 			if bm.warmCacheCount > 0 {
 				for i := 0; i < bm.warmCacheCount; i++ {
 					channelName := fmt.Sprintf("channel_%d", i)
-					_, err := changeCache.GetChanges(channelName, ChangesOptions{Since: SequenceID{Seq: 0}})
+					_, err := changeCache.GetChanges(channelName, getChangesOptionsWithZeroSeq())
 					if err != nil {
 						log.Printf("GetChanges failed for changeCache: %v", err)
 						b.Fail()
@@ -2204,7 +2212,7 @@ func BenchmarkDocChanged(b *testing.B) {
 			defer context.Close()
 
 			changeCache := &changeCache{}
-			if err := changeCache.Init(context, nil, nil); err != nil {
+			if err := changeCache.Init(base.TestCtx(b), context, nil, nil); err != nil {
 				log.Printf("Init failed for changeCache: %v", err)
 				b.Fail()
 			}
@@ -2217,7 +2225,7 @@ func BenchmarkDocChanged(b *testing.B) {
 			if bm.warmCacheCount > 0 {
 				for i := 0; i < bm.warmCacheCount; i++ {
 					channelName := fmt.Sprintf("channel_%d", i)
-					_, err := changeCache.GetChanges(channelName, ChangesOptions{Since: SequenceID{Seq: 0}})
+					_, err := changeCache.GetChanges(channelName, getChangesOptionsWithZeroSeq())
 					if err != nil {
 						log.Printf("GetChanges failed for changeCache: %v", err)
 						b.Fail()

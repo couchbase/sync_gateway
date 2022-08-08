@@ -40,6 +40,7 @@ import (
 // are available to any package that imports rest.  (if they were in a _test.go
 // file, they wouldn't be publicly exported to other packages)
 
+// RestTesterConfig represents configuration for sync gateway
 type RestTesterConfig struct {
 	guestEnabled                    bool             // If this is true, Admin Party is in full effect
 	SyncFn                          string           // put the sync() function source in here (optional)
@@ -47,7 +48,6 @@ type RestTesterConfig struct {
 	InitSyncSeq                     uint64           // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
 	EnableNoConflictsMode           bool             // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
 	EnableUserQueries               bool             // Enable the feature-flag for user N1QL/etc queries
-	distributedIndex                bool             // Test with walrus-based index bucket
 	TestBucket                      *base.TestBucket // If set, use this bucket instead of requesting a new one.
 	adminInterface                  string           // adminInterface overrides the default admin interface.
 	sgReplicateEnabled              bool             // sgReplicateManager disabled by default for RestTester
@@ -58,14 +58,14 @@ type RestTesterConfig struct {
 	useTLSServer                    bool // If true, TLS will be required for communications with CBS. Default: false
 	persistentConfig                bool
 	groupID                         *string
+	createScopesAndCollections      bool // If true, will automatically create any defined scopes and collections on startup.
 }
 
+// RestTester provides a fake server for testing endpoints
 type RestTester struct {
 	*RestTesterConfig
 	tb                      testing.TB
 	testBucket              *base.TestBucket
-	bucketInitOnce          sync.Once
-	bucketDone              base.AtomicBool
 	RestTesterServerContext *ServerContext
 	AdminHandler            http.Handler
 	adminHandlerOnce        sync.Once
@@ -87,6 +87,7 @@ func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
 	} else {
 		rt.RestTesterConfig = &RestTesterConfig{}
 	}
+	rt.RestTesterConfig.useTLSServer = base.ServerIsTLS(base.UnitTestUrl())
 	return &rt
 }
 
@@ -196,8 +197,21 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.DatabaseConfig = &DatabaseConfig{}
 		}
 
-		if base.TestsDisableGSI() {
-			rt.DatabaseConfig.UseViews = base.BoolPtr(true)
+		if rt.DatabaseConfig.UseViews == nil {
+			rt.DatabaseConfig.UseViews = base.BoolPtr(base.TestsDisableGSI())
+		}
+
+		if rt.createScopesAndCollections {
+			scopes := make(map[string][]string)
+			for scopeName, scopeCfg := range rt.DatabaseConfig.Scopes {
+				scopes[scopeName] = make([]string, 0, len(scopeCfg.Collections))
+				for collName := range scopeCfg.Collections {
+					scopes[scopeName] = append(scopes[scopeName], collName)
+				}
+			}
+			if err := base.CreateTestBucketScopesAndCollections(base.TestCtx(rt.tb), rt.testBucket, scopes); err != nil {
+				rt.tb.Fatalf("Error creating test scopes/collections: %v", err)
+			}
 		}
 
 		// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
@@ -230,8 +244,10 @@ func (rt *RestTester) Bucket() base.Bucket {
 		// testBucket's closeFn
 		rt.testBucket.Bucket = rt.RestTesterServerContext.Database("db").Bucket
 
-		if err := rt.SetAdminParty(rt.guestEnabled); err != nil {
-			rt.tb.Fatalf("Error from SetAdminParty %v", err)
+		if rt.DatabaseConfig.Guest == nil {
+			if err := rt.SetAdminParty(rt.guestEnabled); err != nil {
+				rt.tb.Fatalf("Error from SetAdminParty %v", err)
+			}
 		}
 	}
 
@@ -443,7 +459,7 @@ func (cr changesResults) requireDocIDs(t testing.TB, docIDs []string) {
 	}
 }
 
-func (rt *RestTester) CreateWaitForChangesRetryWorker(numChangesExpected int, changesUrl, username string, useAdminPort bool) (worker base.RetryWorker) {
+func (rt *RestTester) CreateWaitForChangesRetryWorker(numChangesExpected int, changesURL, username string, useAdminPort bool) (worker base.RetryWorker) {
 
 	waitForChangesWorker := func() (shouldRetry bool, err error, value interface{}) {
 
@@ -451,10 +467,10 @@ func (rt *RestTester) CreateWaitForChangesRetryWorker(numChangesExpected int, ch
 		var response *TestResponse
 
 		if useAdminPort {
-			response = rt.SendAdminRequest("GET", changesUrl, "")
+			response = rt.SendAdminRequest("GET", changesURL, "")
 
 		} else {
-			response = rt.Send(requestByUser("GET", changesUrl, "", username))
+			response = rt.Send(requestByUser("GET", changesURL, "", username))
 		}
 		err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 		if err != nil {
@@ -472,9 +488,11 @@ func (rt *RestTester) CreateWaitForChangesRetryWorker(numChangesExpected int, ch
 
 }
 
-func (rt *RestTester) WaitForChanges(numChangesExpected int, changesUrl, username string, useAdminPort bool) (changes changesResults, err error) {
+func (rt *RestTester) waitForChanges(numChangesExpected int, changesURL, username string, useAdminPort bool) (
+	changes changesResults,
+	err error) {
 
-	waitForChangesWorker := rt.CreateWaitForChangesRetryWorker(numChangesExpected, changesUrl, username, useAdminPort)
+	waitForChangesWorker := rt.CreateWaitForChangesRetryWorker(numChangesExpected, changesURL, username, useAdminPort)
 
 	sleeper := base.CreateSleeperFunc(200, 100)
 
@@ -569,7 +587,7 @@ func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath st
 		}
 
 		if response.Code != 200 {
-			return false, fmt.Errorf("Got response code: %d from view call.  Expected 200.", response.Code), sgbucket.ViewResult{}
+			return false, fmt.Errorf("Got response code: %d from view call.  Expected 200", response.Code), sgbucket.ViewResult{}
 		}
 		var result sgbucket.ViewResult
 		_ = base.JSONUnmarshal(response.Body.Bytes(), &result)
@@ -628,7 +646,7 @@ func (rt *RestTester) WaitForViewAvailable(viewURLPath string) (err error) {
 func (rt *RestTester) GetDBState() string {
 	var body db.Body
 	resp := rt.SendAdminRequest("GET", "/db/", "")
-	assertStatus(rt.tb, resp, 200)
+	requireStatus(rt.tb, resp, 200)
 	require.NoError(rt.tb, base.JSONUnmarshal(resp.Body.Bytes(), &body))
 	return body["state"].(string)
 }
@@ -727,14 +745,14 @@ func (r TestResponse) BodyBytes() []byte {
 }
 
 func (r TestResponse) DumpBody() {
-	log.Printf("%v", string(r.Body.Bytes()))
+	log.Printf("%v", r.Body.String())
 }
 
 func (r TestResponse) GetRestDocument() RestDocument {
 	restDoc := NewRestDocument()
 	err := base.JSONUnmarshal(r.Body.Bytes(), restDoc)
 	if err != nil {
-		panic(fmt.Sprintf("Error parsing body into RestDocument.  Body: %s.  Err: %v", string(r.Body.Bytes()), err))
+		panic(fmt.Sprintf("Error parsing body into RestDocument.  Body: %s.  Err: %v", r.Body.String(), err))
 	}
 	return *restDoc
 }
@@ -755,12 +773,32 @@ func requestByUser(method, resource, body, username string) *http.Request {
 	return r
 }
 
-func assertStatus(t testing.TB, response *TestResponse, expectedStatus int) {
+func requireStatus(t testing.TB, response *TestResponse, expectedStatus int) {
 	require.Equalf(t, expectedStatus, response.Code,
 		"Response status %d %q (expected %d %q)\nfor %s <%s> : %s",
 		response.Code, http.StatusText(response.Code),
 		expectedStatus, http.StatusText(expectedStatus),
 		response.Req.Method, response.Req.URL, response.Body)
+}
+
+func assertStatus(t testing.TB, response *TestResponse, expectedStatus int) {
+	assert.Equalf(t, expectedStatus, response.Code,
+		"Response status %d %q (expected %d %q)\nfor %s <%s> : %s",
+		response.Code, http.StatusText(response.Code),
+		expectedStatus, http.StatusText(expectedStatus),
+		response.Req.Method, response.Req.URL, response.Body)
+}
+
+func assertHTTPErrorReason(t testing.TB, response *TestResponse, expectedStatus int, expectedReason string) {
+	var httpError struct {
+		Reason string `json:"reason"`
+	}
+	err := base.JSONUnmarshal(response.BodyBytes(), &httpError)
+	require.NoError(t, err, "Failed to unmarshal HTTP error: %v", response.BodyBytes())
+
+	assertStatus(t, response, expectedStatus)
+
+	assert.Equal(t, expectedReason, httpError.Reason)
 }
 
 // gocb V2 accepts expiry as a duration and converts to a uint32 epoch time, then does the reverse on retrieval.
@@ -943,7 +981,7 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 		if err != nil {
 			return nil, err
 		}
-		adminChannelsStr := fmt.Sprintf("%s", adminChannelsJson)
+		adminChannelsStr := string(adminChannelsJson)
 
 		userDocBody := fmt.Sprintf(`{"name":"%s", "password":"%s", "admin_channels":%s}`,
 			spec.connectingUsername,
@@ -1070,35 +1108,8 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip
 
 }
 
-// Get a doc at a particular revision from Sync Gateway.
-//
-// Warning: this can only be called from a single goroutine, given the fact it registers profile handlers.
-//
-// If that is not found, it will return an empty resultDoc with no errors.
-//
-// - Call subChanges (continuous=false) endpoint to get all changes from Sync Gateway
-// - Respond to each "change" request telling the other side to send the revision
-//		- NOTE: this could be made more efficient by only requesting the revision for the docid/revid pair
-//              passed in the parameter.
-// - If the rev handler is called back with the desired docid/revid pair, save that into a variable that will be returned
-// - Block until all pending operations are complete
-// - Return the resultDoc or an empty resultDoc
-//
-func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resultDoc RestDocument, err error) {
-
-	docs := map[string]RestDocument{}
-	changesFinishedWg := sync.WaitGroup{}
-	revsFinishedWg := sync.WaitGroup{}
-
-	defer func() {
-		// Clean up all profile handlers that are registered as part of this test
-		delete(bt.blipContext.HandlerForProfile, "changes")
-		delete(bt.blipContext.HandlerForProfile, "rev")
-	}()
-
-	// -------- Changes handler callback --------
-	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
-
+func getChangesHandler(changesFinishedWg, revsFinishedWg *sync.WaitGroup) func(request *blip.Message) {
+	return func(request *blip.Message) {
 		// Send a response telling the other side we want ALL revisions
 
 		body, err := request.Body()
@@ -1137,12 +1148,45 @@ func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resul
 
 		}
 	}
+}
+
+// Get a doc at a particular revision from Sync Gateway.
+//
+// Warning: this can only be called from a single goroutine, given the fact it registers profile handlers.
+//
+// If that is not found, it will return an empty resultDoc with no errors.
+//
+// - Call subChanges (continuous=false) endpoint to get all changes from Sync Gateway
+// - Respond to each "change" request telling the other side to send the revision
+//		- NOTE: this could be made more efficient by only requesting the revision for the docid/revid pair
+//              passed in the parameter.
+// - If the rev handler is called back with the desired docid/revid pair, save that into a variable that will be returned
+// - Block until all pending operations are complete
+// - Return the resultDoc or an empty resultDoc
+//
+func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resultDoc RestDocument, err error) {
+
+	docs := map[string]RestDocument{}
+	changesFinishedWg := sync.WaitGroup{}
+	revsFinishedWg := sync.WaitGroup{}
+
+	defer func() {
+		// Clean up all profile handlers that are registered as part of this test
+		delete(bt.blipContext.HandlerForProfile, "changes")
+		delete(bt.blipContext.HandlerForProfile, "rev")
+	}()
+
+	// -------- Changes handler callback --------
+	bt.blipContext.HandlerForProfile["changes"] = getChangesHandler(&changesFinishedWg, &revsFinishedWg)
 
 	// -------- Rev handler callback --------
 	bt.blipContext.HandlerForProfile["rev"] = func(request *blip.Message) {
 
 		defer revsFinishedWg.Done()
 		body, err := request.Body()
+		if err != nil {
+			panic(fmt.Sprintf("Unexpected err getting request body: %v", err))
+		}
 		var doc RestDocument
 		err = base.JSONUnmarshal(body, &doc)
 		if err != nil {
@@ -1168,7 +1212,7 @@ func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resul
 
 	sent := bt.sender.Send(subChangesRequest)
 	if !sent {
-		panic(fmt.Sprintf("Unable to subscribe to changes."))
+		panic("Unable to subscribe to changes.")
 	}
 
 	changesFinishedWg.Wait()
@@ -1309,9 +1353,7 @@ func (bt *BlipTester) GetChanges() (changes [][]interface{}) {
 			panic(fmt.Sprintf("Error unmarshalling changes. Body: %vs.  Error: %v", string(body), err))
 		}
 
-		for _, change := range changesBatch {
-			collectedChanges = append(collectedChanges, change)
-		}
+		collectedChanges = append(collectedChanges, changesBatch...)
 
 	}
 
@@ -1369,52 +1411,16 @@ func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 
 	// -------- Changes handler callback --------
 	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
-	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
-
-		// Send a response telling the other side we want ALL revisions
-
-		body, err := request.Body()
-		if err != nil {
-			panic(fmt.Sprintf("Error getting request body: %v", err))
-		}
-
-		if string(body) == "null" {
-			changesFinishedWg.Done()
-			return
-		}
-
-		if !request.NoReply() {
-
-			// unmarshal into json array
-			changesBatch := [][]interface{}{}
-
-			if err := base.JSONUnmarshal(body, &changesBatch); err != nil {
-				panic(fmt.Sprintf("Error unmarshalling changes. Body: %vs.  Error: %v", string(body), err))
-			}
-
-			responseVal := [][]interface{}{}
-			for _, change := range changesBatch {
-				revId := change[2].(string)
-				responseVal = append(responseVal, []interface{}{revId})
-				revsFinishedWg.Add(1)
-			}
-
-			response := request.Response()
-			responseValBytes, err := base.JSONMarshal(responseVal)
-			log.Printf("responseValBytes: %s", responseValBytes)
-			if err != nil {
-				panic(fmt.Sprintf("Error marshalling response: %v", err))
-			}
-			response.SetBody(responseValBytes)
-
-		}
-	}
+	bt.blipContext.HandlerForProfile["changes"] = getChangesHandler(&changesFinishedWg, &revsFinishedWg)
 
 	// -------- Rev handler callback --------
 	bt.blipContext.HandlerForProfile["rev"] = func(request *blip.Message) {
 
 		defer revsFinishedWg.Done()
 		body, err := request.Body()
+		if err != nil {
+			panic(fmt.Sprintf("Unexpected err getting request body: %v", err))
+		}
 		var doc RestDocument
 		err = base.JSONUnmarshal(body, &doc)
 		if err != nil {
@@ -1445,7 +1451,7 @@ func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 			}
 			sent := bt.sender.Send(getAttachmentRequest)
 			if !sent {
-				panic(fmt.Sprintf("Unable to get attachment."))
+				panic("Unable to get attachment.")
 			}
 			getAttachmentResponse := getAttachmentRequest.Response()
 			getAttachmentBody, getAttachmentErr := getAttachmentResponse.Body()
@@ -1480,7 +1486,7 @@ func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 
 	sent := bt.sender.Send(subChangesRequest)
 	if !sent {
-		panic(fmt.Sprintf("Unable to subscribe to changes."))
+		panic("Unable to subscribe to changes.")
 	}
 
 	changesFinishedWg.Wait()
@@ -1523,7 +1529,7 @@ func (bt *BlipTester) SubscribeToChanges(continuous bool, changes chan<- *blip.M
 
 	sent := bt.sender.Send(subChangesRequest)
 	if !sent {
-		panic(fmt.Sprintf("Unable to subscribe to changes."))
+		panic("Unable to subscribe to changes.")
 	}
 	subChangesResponse := subChangesRequest.Response()
 	if subChangesResponse.SerialNumber() != subChangesRequest.SerialNumber() {
@@ -1668,7 +1674,7 @@ func (d RestDocument) IsRemoved() bool {
 	if !ok {
 		return false
 	}
-	return removed.(bool) == true
+	return removed.(bool)
 }
 
 // Wait for the WaitGroup, or return an error if the wg.Wait() doesn't return within timeout
@@ -1702,4 +1708,44 @@ func NewHTTPTestServerOnListener(h http.Handler, l net.Listener) *httptest.Serve
 	}
 	s.Start()
 	return s
+}
+
+func waitAndRequireCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
+	t.Log("starting waitAndRequireCondition")
+	for i := 0; i <= 20; i++ {
+		if i == 20 {
+			require.Fail(t, "Condition failed to be satisfied", failureMsgAndArgs...)
+		}
+		if fn() {
+			break
+		}
+		time.Sleep(time.Millisecond * 250)
+	}
+}
+
+func waitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
+	t.Log("starting waitAndAssertCondition")
+	for i := 0; i <= 20; i++ {
+		if i == 20 {
+			assert.Fail(t, "Condition failed to be satisfied", failureMsgAndArgs...)
+		}
+		if fn() {
+			break
+		}
+		time.Sleep(time.Millisecond * 250)
+	}
+}
+
+func waitAndAssertConditionTimeout(t *testing.T, timeout time.Duration, fn func() bool, failureMsgAndArgs ...interface{}) {
+	start := time.Now()
+	tick := time.NewTicker(timeout / 20)
+	defer tick.Stop()
+	for range tick.C {
+		if time.Since(start) > timeout {
+			assert.Fail(t, "Condition failed to be satisfied", failureMsgAndArgs...)
+		}
+		if fn() {
+			return
+		}
+	}
 }

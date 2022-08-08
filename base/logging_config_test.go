@@ -11,7 +11,6 @@ licenses/APL2.txt.
 package base
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -56,15 +55,13 @@ func TestLogFilePathWritable(t *testing.T) {
 		},
 	}
 	for _, test := range testCases {
+		// Create tempdir here to avoid slash operator in t.Name()
+		tmpPath := t.TempDir()
+		t.Logf("created tmpPath: %q", tmpPath)
+
 		t.Run(test.name, func(t *testing.T) {
-			tmpPath, err := ioutil.TempDir("", "TestLogFilePathWritable*") // Cannot use t.Name() due to slash separator
-			require.NoError(t, err)
-			defer func() { require.NoError(t, os.RemoveAll(tmpPath)) }()
-
-			t.Logf("created tmpPath: %q", tmpPath)
-
 			logFilePath := filepath.Join(tmpPath, "logs")
-			err = os.Mkdir(logFilePath, test.logFilePathPerms)
+			err := os.Mkdir(logFilePath, test.logFilePathPerms)
 			require.NoError(t, err)
 
 			err = validateLogFilePath(logFilePath)

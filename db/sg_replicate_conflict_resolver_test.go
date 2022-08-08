@@ -158,7 +158,7 @@ func TestCustomConflictResolver(t *testing.T) {
 				LocalDocument:  test.localDocument,
 				RemoteDocument: test.remoteDocument,
 			}
-			customConflictResolverFunc, err := NewCustomConflictResolver(test.resolverSource)
+			customConflictResolverFunc, err := NewCustomConflictResolver(test.resolverSource, 0)
 			require.NoError(tt, err)
 			result, err := customConflictResolverFunc(conflict)
 			if test.expectError {

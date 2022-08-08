@@ -17,12 +17,10 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
-	"io/ioutil"
 	"math"
 	"math/big"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 	"time"
 
@@ -113,7 +111,7 @@ func TestGetGoCBConnString(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			actualConnStr, err := test.bucketSpec.GetGoCBConnString()
+			actualConnStr, err := test.bucketSpec.GetGoCBConnString(nil)
 			assert.NoError(t, err, "Unexpected error creating connection string for bucket spec")
 			assert.Equal(t, test.expectedConnStr, actualConnStr)
 		})
@@ -359,9 +357,8 @@ func TestGetViewQueryTimeout(t *testing.T) {
 	assert.Equal(t, expectedViewQueryTimeout, fakeBucketSpec.GetViewQueryTimeout())
 }
 
-func mockCertificatesAndKeys(t *testing.T) (certPath, clientCertPath, clientKeyPath, rootCertPath, rootKeyPath string) {
-	certPath, err := ioutil.TempDir("", "certs")
-	require.NoError(t, err, "Temp directory should be created")
+func mockCertificatesAndKeys(t *testing.T) (clientCertPath, clientKeyPath, rootCertPath, rootKeyPath string) {
+	certPath := t.TempDir()
 
 	rootKeyPath = filepath.Join(certPath, "root.key")
 	rootCertPath = filepath.Join(certPath, "root.pem")
@@ -422,7 +419,7 @@ func mockCertificatesAndKeys(t *testing.T) (certPath, clientCertPath, clientKeyP
 	require.True(t, FileExists(clientKeyPath), "File %v should exists", clientKeyPath)
 	require.True(t, FileExists(clientCertPath), "File %v should exists", clientCertPath)
 
-	return certPath, clientCertPath, clientKeyPath, rootCertPath, rootKeyPath
+	return clientCertPath, clientKeyPath, rootCertPath, rootKeyPath
 }
 
 func saveAsKeyFile(t *testing.T, filename string, key *ecdsa.PrivateKey) {
@@ -446,13 +443,7 @@ func saveAsCertFile(t *testing.T, filename string, derBytes []byte) {
 
 func TestTLSConfig(t *testing.T) {
 	// Mock fake root CA and client certificates for verification
-	certPath, clientCertPath, clientKeyPath, rootCertPath, rootKeyPath := mockCertificatesAndKeys(t)
-
-	// Remove the keys and certificates after verification
-	defer func() {
-		assert.NoError(t, os.RemoveAll(certPath))
-		assert.False(t, DirExists(certPath), "Directory: %v shouldn't exists", certPath)
-	}()
+	clientCertPath, clientKeyPath, rootCertPath, rootKeyPath := mockCertificatesAndKeys(t)
 
 	// Simulate error creating tlsConfig for DCP processing
 	spec := BucketSpec{
@@ -494,11 +485,7 @@ func TestTLSConfig(t *testing.T) {
 	assert.NotEmpty(t, conf)
 	assert.False(t, conf.InsecureSkipVerify)
 	require.NotNil(t, conf.RootCAs)
-	if runtime.GOOS != "windows" {
-		assert.NotEqual(t, x509.NewCertPool(), conf.RootCAs)
-	} else {
-		assert.Equal(t, x509.NewCertPool(), conf.RootCAs)
-	}
+	assert.NotEqual(t, x509.NewCertPool(), conf.RootCAs)
 
 	// Check TLSConfig by providing invalid root CA certificate; provide root certificate key path
 	// instead of root CA certificate. It should throw "can't append certs from PEM" error.

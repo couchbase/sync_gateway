@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -40,19 +41,33 @@ func NewImportListener(groupID string) *importListener {
 // StartImportFeed starts an import DCP feed.  Always starts the feed based on previous checkpoints (Backfill:FeedResume).
 // Writes DCP stats into the StatKeyImportDcpStats map
 func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbStats, dbContext *DatabaseContext) (err error) {
-
-	base.InfofCtx(context.TODO(), base.KeyDCP, "Attempting to start import DCP feed...")
-
 	il.bucketName = bucket.GetName()
 	il.database = Database{DatabaseContext: dbContext, user: nil}
 	il.stats = dbStats.Database()
+	scopes := make(map[string][]string)
+	// TODO: remove once both sharded and non-sharded DCP feeds support more than one collection (CBG-2182, CBG-2193)
+	if len(dbContext.Scopes) > 1 {
+		return fmt.Errorf("more than one collection not supported")
+	}
+	for scopeName, scope := range dbContext.Scopes {
+		if len(scope.Collections) > 1 {
+			return fmt.Errorf("more than one collection not supported")
+		}
+		scopes[scopeName] = make([]string, 0, len(scope.Collections))
+		for collName := range scope.Collections {
+			scopes[scopeName] = append(scopes[scopeName], collName)
+		}
+	}
 	feedArgs := sgbucket.FeedArguments{
 		ID:               base.DCPImportFeedID,
 		Backfill:         sgbucket.FeedResume,
 		Terminator:       il.terminator,
 		DoneChan:         make(chan struct{}),
 		CheckpointPrefix: il.checkpointPrefix,
+		Scopes:           scopes,
 	}
+
+	base.InfofCtx(context.TODO(), base.KeyDCP, "Attempting to start import DCP feed %v...", base.MD(base.ImportDestKey(il.database.Name)))
 
 	importFeedStatsMap := dbContext.DbStats.Database().ImportFeedMapStats
 
@@ -64,14 +79,16 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 
 	// TODO: need to clean up StartDCPFeed to push bucket dependencies down
 	cbStore, ok := base.AsCouchbaseStore(bucket)
-	if !ok || !base.IsEnterpriseEdition() {
-		// Non-couchbase bucket or CE, start a non-sharded feed
+	if !ok {
+		// walrus is not a couchbasestore
 		return bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
-	} else {
-		il.cbgtContext, err = base.StartShardedDCPFeed(dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater, bucket, cbStore.GetSpec(), dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
-		return err
 	}
-
+	if !base.IsEnterpriseEdition() {
+		groupID := ""
+		return base.StartGocbDCPFeed(bucket, bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
+	}
+	il.cbgtContext, err = base.StartShardedDCPFeed(dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater, bucket, cbStore.GetSpec(), dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
+	return err
 }
 
 // ProcessFeedEvent is invoked for each mutate or delete event seen on the server's mutation feed.  It may be

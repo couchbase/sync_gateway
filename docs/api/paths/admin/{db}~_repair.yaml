@@ -1,16 +1,15 @@
-# /{db}/_repair
 parameters:
-- $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/db
 post:
-  summary: ""
+  summary: ''
   description: |-
     This endpoint is disabled.
 
     Required Sync Gateway RBAC roles:
     * Sync Gateway Architect
   responses:
-    "500":
+    '500':
       description: This endpoint is disabled
   tags:
-  - Admin only endpoints
-  - Unsupported
+    - Admin only endpoints
+    - Unsupported

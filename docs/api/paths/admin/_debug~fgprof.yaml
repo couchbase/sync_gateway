@@ -1,4 +1,3 @@
-# /_debug/fgprof
 get:
   summary: Get fgprof profile
   description: |-
@@ -7,17 +6,17 @@ get:
     Required Sync Gateway RBAC roles:
     * Sync Gateway Dev Ops
   parameters:
-  - $ref: ../../components/parameters.yaml#/debug-profile-seconds
+    - $ref: ../../components/parameters.yaml#/debug-profile-seconds
   responses:
-    "200":
+    '200':
       description: OK
       content:
         application/x-gzip:
           schema:
             type: string
   tags:
-  - Admin only endpoints
-  - Profiling
+    - Admin only endpoints
+    - Profiling
 post:
   summary: Get fgprof profile
   description: |-
@@ -26,14 +25,14 @@ post:
     Required Sync Gateway RBAC roles:
     * Sync Gateway Dev Ops
   parameters:
-  - $ref: ../../components/parameters.yaml#/debug-profile-seconds
+    - $ref: ../../components/parameters.yaml#/debug-profile-seconds
   responses:
-    "200":
+    '200':
       description: OK
       content:
         application/x-gzip:
           schema:
             type: string
   tags:
-  - Admin only endpoints
-  - Profiling
+    - Admin only endpoints
+    - Profiling

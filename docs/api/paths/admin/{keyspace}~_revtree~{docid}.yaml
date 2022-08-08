@@ -1,7 +1,6 @@
-# /{db}/_revtree/{docid}
 parameters:
-- $ref: ../../components/parameters.yaml#/db
-- $ref: ../../components/parameters.yaml#/docid
+  - $ref: ../../components/parameters.yaml#/keyspace
+  - $ref: ../../components/parameters.yaml#/docid
 get:
   summary: Revision tree structure in Graphviz Dot format | Unsupported
   description: |-
@@ -18,16 +17,15 @@ get:
 
     **Note: This endpoint is useful for debugging purposes only. It is not officially supported.**
   responses:
-    "200":
+    '200':
       description: Found document
       content:
         application/json:
           schema:
             type: string
-          example: digraph graphname{"1-d4d949b7feafc8c31215684baa45b6cd" -> "2-4f3f24143ea43d85a9a340ac016fdfc4";
-            }
-    "404":
+          example: 'digraph graphname{"1-d4d949b7feafc8c31215684baa45b6cd" -> "2-4f3f24143ea43d85a9a340ac016fdfc4"; }'
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Admin only endpoints
-  - Unsupported
+    - Admin only endpoints
+    - Unsupported

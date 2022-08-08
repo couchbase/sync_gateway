@@ -127,6 +127,9 @@ func (runner *javaScriptRunner) CallWithDB(db *Database, mutationAllowed bool, a
 	var timeout time.Duration
 	if deadline, exists := ctx.Deadline(); exists {
 		timeout = time.Until(deadline)
+		if timeout <= 0 {
+			return nil, sgbucket.ErrJSTimeout
+		}
 	}
 	runner.SetTimeout(timeout)
 	return runner.Call(args...)

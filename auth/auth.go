@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -131,6 +132,7 @@ func (auth *Authenticator) GetRoleIncDeleted(name string) (Role, error) {
 }
 
 // Common implementation of GetUser and GetRole. factory() parameter returns a new empty instance.
+// Returns (nil, nil) if the principal doesn't exist, or (nil, error) if getting it failed for some reason.
 func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) (Principal, error) {
 	var princ Principal
 
@@ -200,6 +202,13 @@ func (auth *Authenticator) rebuildChannels(princ Principal) error {
 		}
 		channels.Add(viewChannels)
 	}
+
+	if user, ok := princ.(User); ok {
+		if jwt := user.JWTChannels(); jwt != nil {
+			channels.Add(jwt)
+		}
+	}
+
 	// always grant access to the public document channel
 	channels.AddChannel(ch.DocumentStarChannel, 1)
 
@@ -274,10 +283,10 @@ func CalculateMaxHistoryEntriesPerGrant(channelCount int) int {
 	}
 
 	// Even if we can fit it limit entries to 10
-	maxEntries = base.MinInt(maxEntries, maxHistoryEntriesPerGrant)
+	maxEntries = base.Min(maxEntries, maxHistoryEntriesPerGrant)
 
 	// In the event maxEntries is negative or 0 we should set a floor of 1 entry
-	maxEntries = base.MaxInt(maxEntries, minHistoryEntriesPerGrant)
+	maxEntries = base.Max(maxEntries, minHistoryEntriesPerGrant)
 
 	return maxEntries
 }
@@ -298,6 +307,10 @@ func (auth *Authenticator) rebuildRoles(user User) error {
 
 	if explicit := user.ExplicitRoles(); explicit != nil {
 		roles.Add(explicit)
+	}
+
+	if jwt := user.JWTRoles(); jwt != nil {
+		roles.Add(jwt)
 	}
 
 	roleHistory := auth.calculateHistory(user.Name(), user.GetRoleInvalSeq(), user.InvalidatedRoles(), roles, user.RoleHistory())
@@ -612,78 +625,55 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) (U
 	return user, nil
 }
 
-// Authenticates a user based on a JWT token string and a set of providers.  Attempts to match the
-// issuer in the token with a provider.
-// Used to authenticate a JWT token coming from an insecure source (e.g. client request)
-// If the token is validated but the user for the username defined in the subject claim doesn't exist,
-// creates the user when autoRegister=true.
-func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDCProviderMap, callbackURLFunc OIDCCallbackURLFunc) (User, error) {
+func (auth *Authenticator) AuthenticateUntrustedJWT(rawToken string, oidcProviders OIDCProviderMap, localJWT LocalJWTProviderMap, callbackURLFunc OIDCCallbackURLFunc) (User, PrincipalConfig, error) {
+	token, err := jwt.ParseSigned(rawToken)
+	if err != nil {
+		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error parsing JWT in AuthenticateUntrustedJWT: %v", err)
+		return nil, PrincipalConfig{}, err
+	}
+	issuer, audiences, err := getIssuerWithAudience(token)
+	if err != nil {
+		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error extracting issuer/audiences in AuthenticateUntrustedJWT: %v", err)
+		return nil, PrincipalConfig{}, err
+	}
 
-	base.DebugfCtx(auth.LogCtx, base.KeyAuth, "AuthenticateUntrustedJWT called with token: %s", base.UD(token))
-	var provider *OIDCProvider
-	var issuer string
+	var authenticator jwtAuthenticator
 
-	provider, ok := providers.getProviderWhenSingle()
-
-	if !ok {
-		// Parse JWT (needed to determine issuer/provider)
-		jwt, err := jwt.ParseSigned(token)
-		if err != nil {
-			base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error parsing JWT in AuthenticateUntrustedJWT: %v", err)
-			return nil, err
+	if single, ok := oidcProviders.getProviderWhenSingle(); ok && len(localJWT) == 0 {
+		authenticator = single
+	}
+	if authenticator == nil {
+		for _, provider := range oidcProviders {
+			if provider.ValidFor(issuer, audiences) {
+				base.TracefCtx(auth.LogCtx, base.KeyAuth, "Using OIDC provider %v", base.UD(provider.Issuer))
+				authenticator = provider
+				break
+			}
 		}
-
-		// Extract issuer and audience(s) from JSON Web Token.
-		var audiences []string
-		issuer, audiences, err = getIssuerWithAudience(jwt)
-		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "JWT issuer: %v, audiences: %v", base.UD(issuer), base.UD(audiences))
-		if err != nil {
-			base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error getting issuer and audience from token: %v", err)
-			return nil, err
+	}
+	if authenticator == nil {
+		for _, provider := range localJWT {
+			if provider.ValidFor(issuer, audiences) {
+				base.TracefCtx(auth.LogCtx, base.KeyAuth, "Using local JWT provider %v", base.UD(provider.Issuer))
+				authenticator = provider
+				break
+			}
 		}
-
-		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Call GetProviderForIssuer w/ providers: %+v", base.UD(providers))
-		provider = providers.GetProviderForIssuer(auth.LogCtx, issuer, audiences)
-		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Provider for issuer: %+v", base.UD(provider))
+	}
+	if authenticator == nil {
+		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "No matching JWT/OIDC provider for issuer %v and audiences %v", base.UD(issuer), base.UD(audiences))
+		return nil, PrincipalConfig{}, ErrNoMatchingProvider
 	}
 
-	if provider == nil {
-		return nil, base.RedactErrorf("No provider found for issuer %v", base.UD(issuer))
-	}
-
-	identity, verifyErr := verifyToken(auth.LogCtx, token, provider, callbackURLFunc)
-	if verifyErr != nil {
-		return nil, verifyErr
-	}
-	user, _, err := auth.authenticateOIDCIdentity(identity, provider)
-	return user, err
-}
-
-// verifyToken verifies claims and signature on the token; ensure that it's been signed by the provider.
-// Returns identity claims extracted from the token if the verification is successful and an identity error if not.
-func verifyToken(ctx context.Context, token string, provider *OIDCProvider, callbackURLFunc OIDCCallbackURLFunc) (identity *Identity, err error) {
-	// Get client for issuer
-	client, err := provider.GetClient(ctx, callbackURLFunc)
+	var identity *Identity
+	identity, err = authenticator.verifyToken(context.TODO(), rawToken, callbackURLFunc)
 	if err != nil {
-		return nil, fmt.Errorf("OIDC initialization error: %w", err)
+		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "JWT invalid: %v", err)
+		return nil, PrincipalConfig{}, base.HTTPErrorf(http.StatusUnauthorized, "Invalid JWT")
 	}
 
-	// Verify claims and signature on the JWT; ensure that it's been signed by the provider.
-	idToken, err := client.verifyJWT(token)
-	if err != nil {
-		base.DebugfCtx(ctx, base.KeyAuth, "Client %v could not verify JWT. Error: %v", base.UD(client), err)
-		return nil, err
-	}
-
-	identity, ok, err := getIdentity(idToken)
-	if err != nil {
-		base.DebugfCtx(ctx, base.KeyAuth, "Error getting identity from token (Identity: %v, Error: %v)", base.UD(identity), err)
-	}
-	if !ok {
-		return nil, err
-	}
-
-	return identity, nil
+	user, updates, _, err := auth.authenticateJWTIdentity(identity, authenticator.common())
+	return user, updates, err
 }
 
 // Authenticates a user based on a JWT token obtained directly from a provider (auth code flow, refresh flow).
@@ -691,54 +681,67 @@ func verifyToken(ctx context.Context, token string, provider *OIDCProvider, call
 // If the token is validated but the user for the username defined in the subject claim doesn't exist,
 // creates the user when autoRegister=true.
 func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCProvider, callbackURLFunc OIDCCallbackURLFunc) (user User,
-	tokenExpiry time.Time, err error) {
+	updates PrincipalConfig, tokenExpiry time.Time, err error) {
 	base.DebugfCtx(auth.LogCtx, base.KeyAuth, "AuthenticateTrustedJWT called with token: %s", base.UD(token))
 
 	var identity *Identity
 	if provider.AllowUnsignedProviderTokens {
 		// Verify claims - ensures that the token we received from the provider is valid for Sync Gateway
-		identity, err = VerifyClaims(token, provider.ClientID, provider.Issuer)
+		identity, err = VerifyClaims(token, base.StringDefault(provider.ClientID, ""), provider.Issuer)
 		if err != nil {
 			base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error verifying raw token in AuthenticateTrustedJWT: %v", err)
-			return nil, time.Time{}, err
+			return nil, PrincipalConfig{}, time.Time{}, err
 		}
 	} else {
 		// Verify claims and signature on the JWT.
 		var verifyErr error
-		identity, verifyErr = verifyToken(auth.LogCtx, token, provider, callbackURLFunc)
+		identity, verifyErr = provider.verifyToken(auth.LogCtx, token, callbackURLFunc)
 		if verifyErr != nil {
-			return nil, time.Time{}, verifyErr
+			return nil, PrincipalConfig{}, time.Time{}, verifyErr
 		}
 	}
 
-	return auth.authenticateOIDCIdentity(identity, provider)
+	return auth.authenticateJWTIdentity(identity, provider.JWTConfigCommon)
 }
 
-// Obtains a Sync Gateway User for the JWT. Expects that the JWT has already been verified for OIDC compliance.
-func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider *OIDCProvider) (user User, tokenExpiry time.Time, err error) {
+// authenticateOIDCIdentity obtains a Sync Gateway User for the JWT. Expects that the JWT has already been verified for OIDC compliance.
+// TODO: possibly move this function to oidc.go
+func (auth *Authenticator) authenticateJWTIdentity(identity *Identity, provider JWTConfigCommon) (user User, updates PrincipalConfig, tokenExpiry time.Time, err error) {
+	// Note: any errors returned from this function will be converted to 403s with a generic message, so we need to
+	// separately log them to ensure they're preserved for debugging.
 	if identity == nil || identity.Subject == "" {
 		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Empty subject found in OIDC identity: %v", base.UD(identity))
-		return nil, time.Time{}, errors.New("subject not found in OIDC identity")
+		return nil, PrincipalConfig{}, time.Time{}, errors.New("subject not found in OIDC identity")
 	}
-	username, err := getOIDCUsername(provider, identity)
+	username, err := getJWTUsername(provider, identity)
 	if err != nil {
 		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error retrieving OIDCUsername: %v", err)
-		return nil, time.Time{}, err
+		return nil, PrincipalConfig{}, time.Time{}, err
 	}
 	base.DebugfCtx(auth.LogCtx, base.KeyAuth, "OIDCUsername: %v", base.UD(username))
+
+	var jwtRoles, jwtChannels base.Set
+	if provider.RolesClaim != "" {
+		jwtRoles, err = getJWTClaimAsSet(identity, provider.RolesClaim)
+		if err != nil {
+			return nil, PrincipalConfig{}, time.Time{}, fmt.Errorf("failed to find JWT roles: %w", err)
+		}
+	} else {
+		jwtRoles = base.Set{}
+	}
+	if provider.ChannelsClaim != "" {
+		jwtChannels, err = getJWTClaimAsSet(identity, provider.ChannelsClaim)
+		if err != nil {
+			return nil, PrincipalConfig{}, time.Time{}, fmt.Errorf("failed to find JWT channels: %w", err)
+		}
+	} else {
+		jwtChannels = base.Set{}
+	}
 
 	user, err = auth.GetUser(username)
 	if err != nil {
 		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error retrieving user for username %q: %v", base.UD(username), err)
-		return nil, time.Time{}, err
-	}
-
-	// If user found, check whether the email needs to be updated (e.g. user has changed email in external auth system)
-	if user != nil && identity.Email != "" && user.Email() != identity.Email {
-		err = auth.UpdateUserEmail(user, identity.Email)
-		if err != nil {
-			base.WarnfCtx(auth.LogCtx, "Unable to set user email to %v for OIDC", base.UD(identity.Email))
-		}
+		return nil, PrincipalConfig{}, time.Time{}, err
 	}
 
 	// Auto-registration. This will normally be done when token is originally returned
@@ -749,11 +752,23 @@ func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider
 		user, err = auth.RegisterNewUser(username, identity.Email)
 		if err != nil && !base.IsCasMismatch(err) {
 			base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error registering new user: %v", err)
-			return nil, time.Time{}, err
+			return nil, PrincipalConfig{}, time.Time{}, err
 		}
 	}
 
-	return user, identity.Expiry, nil
+	if user != nil {
+		now := time.Now()
+		updates = PrincipalConfig{
+			Name:           base.StringPtr(user.Name()),
+			Email:          &identity.Email,
+			JWTIssuer:      &provider.Issuer,
+			JWTRoles:       jwtRoles,
+			JWTChannels:    jwtChannels,
+			JWTLastUpdated: &now,
+		}
+	}
+
+	return user, updates, identity.Expiry, nil
 }
 
 // Registers a new user account based on the given verified username and optional email address.

@@ -77,6 +77,9 @@ const (
 	// If TestEnvX509Local=true, must use SG_TEST_X509_LOCAL_USER to set macOS username to locate CBS cert inbox
 	TestEnvX509LocalUser = "SG_TEST_X509_LOCAL_USER"
 
+	// If set, corresponds to name of the docker image of couchbase server
+	TestEnvCouchbaseServerDockerName = "SG_TEST_COUCHBASE_SERVER_DOCKER_NAME"
+
 	DefaultUseXattrs      = true // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
 	DefaultAllowConflicts = true // Whether Sync Gateway allows revision conflicts, if not specified in the config
 
@@ -85,7 +88,7 @@ const (
 	DefaultOldRevExpirySeconds = uint32(300)
 
 	// Default value of _local document expiry
-	DefaultLocalDocExpirySecs = uint32(60 * 60 * 24 * 90) //90 days in seconds
+	DefaultLocalDocExpirySecs = uint32(60 * 60 * 24 * 90) // 90 days in seconds
 
 	DefaultViewQueryPageSize = 5000 // This must be greater than 1, or the code won't work due to windowing method
 
@@ -108,12 +111,15 @@ const (
 	DefaultHttpIdleConnTimeoutMilliseconds = "90000"
 
 	// Number of kv connections (pipelines) per Couchbase Server node
-	DefaultGocbKvPoolSize = "2"
+	DefaultGocbKvPoolSize = 2
+
+	// Number of connections used by DCP agents - must be 1
+	GoCBPoolSizeDCP = 1
 
 	// The limit in Couchbase Server for total system xattr size
 	couchbaseMaxSystemXattrSize = 1 * 1024 * 1024 // 1MB
 
-	//==== Sync Prefix Documents & Keys ====
+	// ==== Sync Prefix Documents & Keys ====
 	SyncPrefix = "_sync:"
 
 	AttPrefix              = SyncPrefix + "att:"
@@ -161,6 +167,15 @@ const (
 
 	// RedactedStr can be substituted in place of any sensitive data being returned by an API. The 'xxxxx' pattern is the same used by Go's url.Redacted() method.
 	RedactedStr = "xxxxx"
+
+	// DefaultJavascriptTimeoutSecs is number of seconds before Javascript functions (i.e. the sync function or import filter) timeout
+	DefaultJavascriptTimeoutSecs = uint32(60)
+)
+
+const (
+	DefaultScope             = "_default"
+	DefaultCollection        = "_default"
+	ScopeCollectionSeparator = "."
 )
 
 const (
@@ -193,6 +208,9 @@ var (
 
 	// ErrUnknownField is marked as the cause of the error when trying to decode a JSON snippet with unknown fields
 	ErrUnknownField = errors.New("unrecognized JSON field")
+
+	// MaxPrincipalNameLen is the maximum length for user and role names, accounting for internal prefixes, and is used to validate CRUD
+	MaxPrincipalNameLen = 250 - Max(len(UserPrefix), len(RolePrefix))
 )
 
 func DCPCheckpointPrefixWithGroupID(groupID string) string {

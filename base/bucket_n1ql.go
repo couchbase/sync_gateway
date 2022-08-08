@@ -12,6 +12,7 @@ package base
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -21,11 +22,12 @@ import (
 	"gopkg.in/couchbase/gocb.v1"
 )
 
-const KeyspaceQueryToken = "$_keyspace" // Token used for bucket name replacement in query statements
-const MaxQueryRetries = 30              // Maximum query retries on indexer error
-const IndexStateOnline = "online"       // bucket state value, as returned by SELECT FROM system:indexes.  Index has been created and built.
-const IndexStateDeferred = "deferred"   // bucket state value, as returned by SELECT FROM system:indexes.  Index has been created but not built.
-const IndexStatePending = "pending"     // bucket state value, as returned by SELECT FROM system:indexes.  Index has been created, build is in progress
+const KeyspaceQueryToken = "$_keyspace"           // Token used for keyspace name replacement in query statement. The replacement will be an escaped keyspace.
+const KeyspaceQueryAlias = "sgQueryKeyspaceAlias" // Keyspace alias set for the keyspace in FROM statements in queries
+const MaxQueryRetries = 30                        // Maximum query retries on indexer error
+const IndexStateOnline = "online"                 // bucket state value, as returned by SELECT FROM system:indexes.  Index has been created and built.
+const IndexStateDeferred = "deferred"             // bucket state value, as returned by SELECT FROM system:indexes.  Index has been created but not built.
+const IndexStatePending = "pending"               // bucket state value, as returned by SELECT FROM system:indexes.  Index has been created, build is in progress
 const PrimaryIndexName = "#primary"
 
 // IndexOptions used to build the 'with' clause
@@ -37,21 +39,31 @@ type N1qlIndexOptions struct {
 
 var _ N1QLStore = &CouchbaseBucketGoCB{}
 
-// Keyspace for a bucket is bucket name
-func (bucket *CouchbaseBucketGoCB) Keyspace() string {
-	return bucket.GetName()
+// Keyspace for a bucket in the default scope and collection can just be a bucket name
+func (bucket *CouchbaseBucketGoCB) EscapedKeyspace() string {
+	return fmt.Sprintf("`%s`", bucket.GetName())
 }
 
-// Substitutes `keyspaceName` for the KeyspaceQueryToken in `statement`, returning the result.
-func SubstituteKeyspaceQueryToken(statement string, keyspaceName string) string {
-	return strings.Replace(statement, KeyspaceQueryToken, "`"+keyspaceName+"`", -1)
+// IndexMetaBucketID returns the value of bucket_id for the system:indexes table for the bucket.
+func (bucket *CouchbaseBucketGoCB) IndexMetaBucketID() string {
+	return ""
+}
+
+// IndexMetaScopeID returns the value of scope_id for the system:indexes table for the bucket.
+func (bucket *CouchbaseBucketGoCB) IndexMetaScopeID() string {
+	return ""
+}
+
+// IndexMetaKeyspaceID returns the value of keyspace_id for the system:indexes table for the bucket.
+func (bucket *CouchbaseBucketGoCB) IndexMetaKeyspaceID() string {
+	return bucket.GetName()
 }
 
 // Query accepts a parameterized statement,  optional list of params, and an optional flag to force adhoc query execution.
 // Params specified using the $param notation in the statement are intended to be used w/ N1QL prepared statements, and will be
 // passed through as params to n1ql.  e.g.:
 //   SELECT _sync.sequence FROM $_keyspace WHERE _sync.sequence > $minSeq
-// https://docs.couchbase.com/go-sdk/current/howtos/n1ql-queries-with-sdk.html for additional details.
+// https://developer.couchbase.com/documentation/server/current/sdk/go/n1ql-queries-with-sdk.html for additional details.
 // Will additionally replace all instances of KeyspaceQueryToken($_keyspace) in the statement
 // with the bucket name.  'bucket' should not be included in params.
 //
@@ -61,7 +73,7 @@ func SubstituteKeyspaceQueryToken(statement string, keyspaceName string) string 
 // Query retries on Indexer Errors, as these are normally transient
 func (bucket *CouchbaseBucketGoCB) Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (results sgbucket.QueryResultIterator, err error) {
 	logCtx := context.TODO()
-	bucketStatement := SubstituteKeyspaceQueryToken(statement, bucket.GetName())
+	bucketStatement := strings.Replace(statement, KeyspaceQueryToken, bucket.GetName(), -1)
 	n1qlQuery := gocb.NewN1qlQuery(bucketStatement)
 	n1qlQuery = n1qlQuery.AdHoc(adhoc)
 	n1qlQuery = n1qlQuery.Consistency(gocb.ConsistencyMode(consistency))

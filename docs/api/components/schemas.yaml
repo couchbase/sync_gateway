@@ -242,10 +242,31 @@ User:
       description: |-
         All the roles that the user has been granted access to.
 
-        Access could have been granted through the sync function, or explicitly on the user under the `admin_roles` property.
+        Access could have been granted through the sync function, roles_claim, or explicitly on the user under the `admin_roles` property.
       type: array
       items:
         type: string
+      readOnly: true
+    jwt_roles:
+      description: The roles that the user has been added to through roles_claim.
+      type: array
+      items:
+        type: string
+      readOnly: true
+    jwt_channels:
+      description: The channels that the user has been granted access to through channels_claim.
+      type: array
+      items:
+        type: string
+      readOnly: true
+    jwt_issuer:
+      description: The issuer of the last JSON Web Token that the user last used to sign in.
+      type: string
+      readOnly: true
+    jwt_last_updated:
+      description: The last time that the user's JWT roles/channels were updated.
+      type: string
+      format: date-time
       readOnly: true
   title: User
 Role:
@@ -387,17 +408,16 @@ Document:
             type: string
     _attachments:
       type: object
-      properties:
-        attachment_name:
-          description: The name of the attachment.
-          type: object
-          properties:
-            content_type:
-              description: Content type of the attachment.
-              type: string
-            data:
-              description: The data in the attachment in base64.
-              type: string
+      additionalProperties:
+        description: The name of the attachment.
+        type: object
+        properties:
+          content_type:
+            description: Content type of the attachment.
+            type: string
+          data:
+            description: The data in the attachment in base64.
+            type: string
 New-revision:
   description: Properties returned when a new document revision is created
   type: object
@@ -454,7 +474,8 @@ Design-doc:
     views:
       type: object
       properties:
-        view_name:
+        additionalProperties:
+          description: The name of the view.
           type: object
           properties:
             map:
@@ -878,7 +899,7 @@ All-replications:
   properties:
     replication_id:
       $ref: '#/Retrieved-replication'
-  title: All-replications
+  title: All replications
 Replication-status:
   type: object
   properties:
@@ -942,6 +963,28 @@ Replication-status:
   required:
     - replication_id
   title: Replication-status
+Scopes:
+  description: A map of all the collections with their corresponding configs for this scope
+  type: object
+  additionalProperties:
+    $ref: '#/CollectionConfig'
+  title: Scopes
+CollectionConfig:
+  description: The configuration for the individual collection
+  type: object
+  properties:
+    sync:
+      description: The Javascript function that newly created documents in this collection are ran through.
+      type: string
+      example: 'function(doc){channel(doc.channels);}'
+    import_filter:
+      description: |-
+        This is the function that all imported documents in this collection are ran through in order to filter out what to import and what not to import. This allows you to control what is made available to Couchbase Mobile clients. If it is not set, then no documents are filtered when imported.
+
+        `import_docs` in the database config must be true to make this field applicable.
+      type: string
+      example: 'function(doc) { if (doc.type != ''mobile'') { return false; } return true; }'
+  title: Collection config
 Database:
   description: The properties of a database configuration.
   type: object
@@ -981,17 +1024,25 @@ Database:
       description: The maximum amount of query operations that can be running at any one point.
       type: integer
       default: 1000
+    scopes:
+      description: Scope and collection specific config.
+      type: object
+      properties:
+        additionalProperties:
+          $ref: '#/Scopes'
     name:
       description: The name of the database.
       type: string
     sync:
-      description: The Javascript function that newly created documents are ran through.
+      description: The Javascript function that newly created documents are ran through for the _default scope and collection.
       type: string
       default: 'function(doc){channel(doc.channels);}'
     users:
-      $ref: '#/User'
+      additionalProperties:
+        $ref: '#/User'
     roles:
-      $ref: '#/Role'
+      additionalProperties:
+        $ref: '#/Role'
     revs_limit:
       description: |-
         The maximum depth a document's revision tree can grow too.
@@ -1021,7 +1072,7 @@ Database:
       default: 16
     import_filter:
       description: |-
-        This is the function that all imported documents are ran through in order to filter out what to import and what not to import. This allows you to control what is made available to Couchbase Mobile clients. If it is not set, then no documents are filtered when imported.
+        This is the function that all imported documents in the _default scope and collection are ran through in order to filter out what to import and what not to import. This allows you to control what is made available to Couchbase Mobile clients. If it is not set, then no documents are filtered when imported.
 
         `import_docs` must be true to make this field applicable.
       type: string
@@ -1248,6 +1299,94 @@ Database:
         remote_config_tls_skip_verify:
           description: Enable self-signed certificates for external JavaScript load.
           type: boolean
+        guest_read_only:
+          description: Restrict GUEST document access to read-only.
+          type: boolean
+        force_api_forbidden_errors:
+          description: Force REST API errors to return forbidden
+          type: boolean
+    local_jwt:
+      description: Configuration for Local JWT authentication.
+      type: object
+      additionalProperties:
+        description: The providers name.
+        type: object
+        required: ['issuer', 'client_id', 'algorithms', 'keys']
+        properties:
+          issuer:
+            description: The value to match against the "iss" claim of JWTs.
+            type: string
+          register:
+            description: If to register a new Sync Gateway user account when a user logs in with a JWT.
+            type: boolean
+          client_id:
+            description: The value to match against the "aud" claim of JWTs. Set to an empty string to disable audience validation.
+            type: string
+          algorithms:
+            description: The JWT signing algorithms to accept for authentication.
+            type: array
+            items:
+              type: string
+          keys:
+            description: The JSON Web Keys to use to validate JWTs.
+            type: array
+            items:
+              type: object
+              properties:
+                kty:
+                  type: string
+                  description: The cryptographic algorithm family used with the key, such as "RSA" or "EC"
+                  enum: [ 'RSA', 'EC' ]
+                use:
+                  type: string
+                  description: The intended use of the public key. Only 'sig' is accepted.
+                  enum: [ 'sig' ]
+                alg:
+                  type: string
+                  description: The algorithm intended for use with the key.
+                kid:
+                  type: string
+                  description: The Key ID, used to identify the key to use.
+                crv:
+                  type: string
+                  description: For Elliptic Curve keys, the name of the curve to use.
+                  enum: [ 'P-256', 'P-384', 'P-521' ]
+                x:
+                  type: string
+                  description: For Elliptic Curve keys, the X coordinate of the point, as a base64url string.
+                y:
+                  type: string
+                  description: For Elliptic Curve keys, the Y coordinate of the point, as a base64url string.
+                n:
+                  type: string
+                  description: For RSA keys, the modulus value of the key, as a Base64urlUInt-encoded value.
+                e:
+                  type: string
+                  description: For RSA keys, the exponent of the public key, as a Base64urlUInt-encoded value.
+          disable_session:
+            description: Disable Sync Gateway session creation on successful JWT authentication.
+            type: boolean
+          user_prefix:
+            description: This is the username prefix for all users created through this provider.
+            type: string
+          username_claim:
+            description: |-
+              Allows a different OpenID Connect field to be specified instead of the Subject (`sub`).
+              
+              The field name to use can be specified here.
+            type: string
+          roles_claim:
+            description: |-
+              If set, the value(s) of the given JSON Web Token claim will be added to the user's roles.
+              
+              The value of this claim must be either a string or an array of strings, any other type will result in an error.
+            type: string
+          channels_claim:
+            description: |-
+              If set, the value(s) of the given JSON Web Token claim will be added to the user's channels.
+              
+              The value of this claim must be either a string or an array of strings, any other type will result in an error.
+            type: string
     oidc:
       description: Configuration for OpenID Connect authentication.
       type: object
@@ -1255,76 +1394,87 @@ Database:
         providers:
           description: List of OpenID Connect issuers.
           type: object
-          properties:
-            provider_name:
-              description: The providers name.
-              type: object
-              properties:
-                issuer:
-                  description: The URL for the OpenID Connect issuer.
+          additionalProperties:
+            description: The providers name.
+            type: object
+            properties:
+              issuer:
+                description: The URL for the OpenID Connect issuer.
+                type: string
+              register:
+                description: If to register a new Sync Gateway user account when a user logs in with OpenID Connect.
+                type: boolean
+              client_id:
+                description: The OpenID Connect provider client ID.
+                type: string
+              validation_key:
+                description: The OpenID Connect provider client secret.
+                type: string
+              callback_url:
+                description: |-
+                  The URL that the OpenID Connect will redirect to after authentication.
+    
+                  If not provided, a callback URL will be generated.
+                type: string
+              disable_session:
+                description: Disable Sync Gateway session creation on successful OpenID Connect authentication.
+                type: boolean
+              scope:
+                description: The scope sent for the OpenID Connect request.
+                type: array
+                items:
                   type: string
-                register:
-                  description: If to register a new Sync Gateway user account when a user logs in with OpenID Connect.
-                  type: boolean
-                client_id:
-                  description: The OpenID Connect provider client ID.
-                  type: string
-                validation_key:
-                  description: The OpenID Connect provider client secret.
-                  type: string
-                callback_url:
-                  description: |-
-                    The URL that the OpenID Connect will redirect to after authentication.
-
-                    If not provided, a callback URL will be generated.
-                  type: string
-                disable_session:
-                  description: Disable Sync Gateway session creation on successful OpenID Connect authentication.
-                  type: boolean
-                scope:
-                  description: The scope sent for the OpenID Connect request.
-                  type: array
-                  items:
-                    type: string
-                include_access:
-                  description: 'This is whether the `_oidc_callback` response should include the OpenID Connect access token and associated fields (such as `token_type`, and `expires_in`).'
-                  type: boolean
-                user_prefix:
-                  description: This is the username prefix for all users created through this provider.
-                  type: string
-                discovery_url:
-                  description: The non-standard discovery endpoint.
-                  type: string
-                disable_cfg_validation:
-                  description: This bypasses the configuration validation based on the OpenID Connect specifications. This may be required for some OpenID providers that don't strictly adhere to the specifications.
-                  type: boolean
-                  default: false
-                disable_callback_state:
-                  description: |-
-                    Controls whether to maintain state between the auth request and callback endpoints (`/_oidc` and `/_oidc_callback`).
-
-                    **This is not recommended as it would cause OpenID Connect authentication to be vulnerable to Cross-Site Request Forgery (CSRF, XSRF).**
-                  type: boolean
-                  default: false
-                username_claim:
-                  description: |-
-                    Allows a different OpenID Connect field to be specified instead of the Subject (`sub`).
-
-                    The field name to use can be specified here.
-                  type: string
-                allow_unsigned_provider_tokens:
-                  description: Allows users accept unsigned tokens from providers.
-                  type: boolean
-                IsDefault:
-                  description: Indicates if this is the default OpenID Connect provider.
-                  type: boolean
-                Name:
-                  description: The name of the OpenID Connect Provider.
-                  type: string
-                InsecureSkipVerify:
-                  description: 'Determines whether the TLS certificate verification should be disabled for this provider. '
-                  type: boolean
-                  default: false
+              include_access:
+                description: 'This is whether the `_oidc_callback` response should include the OpenID Connect access token and associated fields (such as `token_type`, and `expires_in`).'
+                type: boolean
+              user_prefix:
+                description: This is the username prefix for all users created through this provider.
+                type: string
+              discovery_url:
+                description: The non-standard discovery endpoint.
+                type: string
+              disable_cfg_validation:
+                description: This bypasses the configuration validation based on the OpenID Connect specifications. This may be required for some OpenID providers that don't strictly adhere to the specifications.
+                type: boolean
+                default: false
+              disable_callback_state:
+                description: |-
+                  Controls whether to maintain state between the auth request and callback endpoints (`/_oidc` and `/_oidc_callback`).
+    
+                  **This is not recommended as it would cause OpenID Connect authentication to be vulnerable to Cross-Site Request Forgery (CSRF, XSRF).**
+                type: boolean
+                default: false
+              username_claim:
+                description: |-
+                  Allows a different OpenID Connect field to be specified instead of the Subject (`sub`).
+    
+                  The field name to use can be specified here.
+                type: string
+              roles_claim:
+                description: |-
+                  If set, the value(s) of the given OpenID Connect authentication token claim will be added to the user's roles.
+    
+                  The value of this claim must be either a string or an array of strings, any other type will result in an error.
+                type: string
+              channels_claim:
+                description: |-
+                  If set, the value(s) of the given OpenID Connect authentication token claim will be added to the user's channels.
+    
+                  The value of this claim must be either a string or an array of strings, any other type will result in an error.
+                type: string
+              allow_unsigned_provider_tokens:
+                description: Allows users accept unsigned tokens from providers.
+                type: boolean
+              IsDefault:
+                description: Indicates if this is the default OpenID Connect provider.
+                type: boolean
+              Name:
+                description: The name of the OpenID Connect Provider.
+                type: string
+              InsecureSkipVerify:
+                description: 'Determines whether the TLS certificate verification should be disabled for this provider. '
+                type: boolean
+                default: false
         default_provider:
           description: The default provider to use when the provider is not specified in the client.
           type: string
@@ -1449,6 +1599,10 @@ Database:
       default: 2592000
     guest:
       $ref: '#/User'
+    javascript_timeout_secs:
+      description: The maximum number of seconds the sync, import filter, and custom conflict resolver JavaScript functions are allowed to run for before timing out. Set to 0 to allow the JS functions to run uncapped.
+      type: number
+      default: 60
   title: Database-config
 Event-config:
   type: object
@@ -1471,7 +1625,7 @@ Event-config:
       description: The options for the event.
       type: object
       properties:
-        option_name:
+        additionalProperties:
           description: The option key and value.
   title: Event-config
 Resync-status:
@@ -1808,22 +1962,22 @@ Startup-config:
     database_credentials:
       description: 'A map of database name to credentials, that can be used instead of the bootstrap ones.'
       type: object
-      properties:
-        database_name:
-          type: object
-          properties:
-            username:
-              description: Username for authenticating to the bucket
-              type: string
-            password:
-              description: Password for authenticating to the bucket. This value is always redacted.
-              type: string
-            x509_cert_path:
-              description: Cert path (public key) for X.509 bucket auth
-              type: string
-            x509_key_path:
-              description: Key path (private key) for X.509 bucket auth
-              type: string
+      additionalProperties:
+        description: The name of the database.
+        type: object
+        properties:
+          username:
+            description: Username for authenticating to the bucket
+            type: string
+          password:
+            description: Password for authenticating to the bucket. This value is always redacted.
+            type: string
+          x509_cert_path:
+            description: Cert path (public key) for X.509 bucket auth
+            type: string
+          x509_key_path:
+            description: Key path (private key) for X.509 bucket auth
+            type: string
       readOnly: true
     max_file_descriptors:
       description: Max of open file descriptors (RLIMIT_NOFILE)
@@ -1925,52 +2079,52 @@ Status:
   type: object
   properties:
     databases:
-      description: Map of the databases in the node.
+      description: Contains a map of all the databases in the node along with their status.
       type: object
-      properties:
-        database_name:
-          type: object
-          properties:
-            seq:
-              description: The latest sequence number in the database.
-              type: number
-              minimum: 0
-            server_uuid:
-              description: The server unique identifier.
-              type: string
-            state:
-              description: Whether the database is online or offline.
-              type: string
-              enum:
-                - Online
-                - Offline
-            replication_status:
-              type: array
-              items:
-                $ref: '#/Replication-status'
-            cluster:
-              type: object
-              properties:
-                replication:
-                  description: Map of replication configs defined for the cluster.
-                  type: object
-                  properties:
-                    replication_id:
-                      $ref: '#/Retrieved-replication'
-                nodes:
-                  description: Map of all Sync Gateway nodes in the cluster.
-                  type: object
-                  properties:
-                    node_uuid:
-                      description: The nodes unique identifier.
-                      type: object
-                      properties:
-                        uuid:
-                          description: The nodes unique identifier.
-                          type: string
-                        host:
-                          description: The nodes host name.
-                          type: string
+      additionalProperties:
+        description: The name of the database.
+        type: object
+        properties:
+          seq:
+            description: The latest sequence number in the database.
+            type: number
+            minimum: 0
+          server_uuid:
+            description: The server unique identifier.
+            type: string
+          state:
+            description: Whether the database is online or offline.
+            type: string
+            enum:
+              - Online
+              - Offline
+          replication_status:
+            type: array
+            items:
+              $ref: '#/Replication-status'
+          cluster:
+            type: object
+            properties:
+              replication:
+                description: Map of replication configs defined for the cluster.
+                type: object
+                properties:
+                  replication_id:
+                    $ref: '#/Retrieved-replication'
+              nodes:
+                description: Map of all Sync Gateway nodes in the cluster.
+                type: object
+                properties:
+                  node_uuid:
+                    description: The nodes unique identifier.
+                    type: object
+                    properties:
+                      uuid:
+                        description: The nodes unique identifier.
+                        type: string
+                      host:
+                        description: The nodes host name.
+                        type: string
     version:
       description: |-
         The product version including the build number and edition (ie. `EE` or `CE`).

@@ -9,6 +9,7 @@
 package db
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -825,8 +826,9 @@ func TestAllDocsOnly(t *testing.T) {
 
 	// Now check the changes feed:
 	var options ChangesOptions
-	options.Terminator = make(chan bool)
-	defer close(options.Terminator)
+	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+	options.ChangesCtx = changesCtx
+	defer changesCtxCancel()
 	changes, err := db.GetChanges(channels.SetOf(t, "all"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
 	require.Len(t, changes, 100)
@@ -888,7 +890,7 @@ func TestUpdatePrincipal(t *testing.T) {
 	// Validate that a call to UpdatePrincipals with no changes to the user doesn't allocate a sequence
 	userInfo, err := db.GetPrincipalForTest(t, "naomi", true)
 	userInfo.ExplicitChannels = base.SetOf("ABC")
-	_, err = db.UpdatePrincipal(base.TestCtx(t), *userInfo, true, true)
+	_, err = db.UpdatePrincipal(base.TestCtx(t), userInfo, true, true)
 	assert.NoError(t, err, "Unable to update principal")
 
 	nextSeq, err := db.sequences.nextSequence()
@@ -897,7 +899,7 @@ func TestUpdatePrincipal(t *testing.T) {
 	// Validate that a call to UpdatePrincipals with changes to the user does allocate a sequence
 	userInfo, err = db.GetPrincipalForTest(t, "naomi", true)
 	userInfo.ExplicitChannels = base.SetOf("ABC", "PBS")
-	_, err = db.UpdatePrincipal(base.TestCtx(t), *userInfo, true, true)
+	_, err = db.UpdatePrincipal(base.TestCtx(t), userInfo, true, true)
 	assert.NoError(t, err, "Unable to update principal")
 
 	nextSeq, err = db.sequences.nextSequence()
@@ -1008,7 +1010,8 @@ func TestConflicts(t *testing.T) {
 
 	// Verify the _changes feed:
 	options := ChangesOptions{
-		Conflicts: true,
+		Conflicts:  true,
+		ChangesCtx: context.Background(),
 	}
 	changes, err := db.GetChanges(channels.SetOf(t, "all"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
@@ -1310,7 +1313,7 @@ func TestSyncFnOnPush(t *testing.T) {
 		if (oldDoc)
 			log("oldDoc _id = "+oldDoc._id+", _rev = "+oldDoc._rev);
 		channel(doc.channels);
-	}`)
+	}`, 0)
 
 	// Create first revision:
 	body := Body{"key1": "value1", "key2": 1234, "channels": []string{"public"}}
@@ -1356,7 +1359,7 @@ func TestAccessFunctionValidation(t *testing.T) {
 	defer db.Close()
 
 	var err error
-	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`)
+	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`, 0)
 
 	body := Body{"users": []string{"username"}, "userChannels": []string{"BBC1"}}
 	_, _, err = db.Put("doc1", body)
@@ -1391,7 +1394,7 @@ func TestAccessFunctionDb(t *testing.T) {
 	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
 
 	var err error
-	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`)
+	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`, 0)
 
 	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "Netflix"))
 	user.SetExplicitRoles(channels.TimedSet{"animefan": channels.NewVbSimpleSequence(1), "tumblr": channels.NewVbSimpleSequence(1)}, 1)
@@ -1759,37 +1762,45 @@ var (
 
 func mockOIDCProvider() auth.OIDCProvider {
 	return auth.OIDCProvider{
+		JWTConfigCommon: auth.JWTConfigCommon{
+			Issuer:   "https://accounts.google.com",
+			ClientID: base.StringPtr(clientID),
+		},
 		Name:          "Google",
-		Issuer:        "https://accounts.google.com",
 		CallbackURL:   &callbackURL,
-		ClientID:      clientID,
 		ValidationKey: &validationKey,
 	}
 }
 
 func mockOIDCProviderWithCallbackURLQuery() auth.OIDCProvider {
 	return auth.OIDCProvider{
+		JWTConfigCommon: auth.JWTConfigCommon{
+			Issuer:   "https://accounts.google.com",
+			ClientID: base.StringPtr(clientID),
+		},
 		Name:          "Google",
-		Issuer:        "https://accounts.google.com",
 		CallbackURL:   &callbackURLWithQuery,
-		ClientID:      clientID,
 		ValidationKey: &validationKey,
 	}
 }
 
 func mockOIDCProviderWithNoIss() auth.OIDCProvider {
 	return auth.OIDCProvider{
+		JWTConfigCommon: auth.JWTConfigCommon{
+			ClientID: base.StringPtr(clientID),
+		},
 		Name:          "Microsoft",
 		CallbackURL:   &callbackURL,
-		ClientID:      clientID,
 		ValidationKey: &validationKey,
 	}
 }
 
 func mockOIDCProviderWithNoClientID() auth.OIDCProvider {
 	return auth.OIDCProvider{
+		JWTConfigCommon: auth.JWTConfigCommon{
+			Issuer: "https://accounts.google.com",
+		},
 		Name:          "Amazon",
-		Issuer:        "https://accounts.amazon.com",
 		CallbackURL:   &callbackURL,
 		ValidationKey: &validationKey,
 	}
@@ -1798,9 +1809,11 @@ func mockOIDCProviderWithNoClientID() auth.OIDCProvider {
 func mockOIDCProviderWithNoValidationKey() auth.OIDCProvider {
 	return auth.OIDCProvider{
 		Name:        "Yahoo",
-		Issuer:      "https://accounts.yahoo.com",
 		CallbackURL: &callbackURL,
-		ClientID:    clientID,
+		JWTConfigCommon: auth.JWTConfigCommon{
+			Issuer:   "https://accounts.yahoo.com",
+			ClientID: base.StringPtr(clientID),
+		},
 	}
 }
 
@@ -1852,61 +1865,6 @@ func mockOIDCOptionsWithBadName() *auth.OIDCOptions {
 	provider := mockOIDCProvider()
 	providers := auth.OIDCProviderMap{provider.Name + "_": &provider}
 	return &auth.OIDCOptions{DefaultProvider: &defaultProvider, Providers: providers}
-}
-
-func TestNewDatabaseContextWithOIDCProviderOptionErrors(t *testing.T) {
-	// Enable prometheus stats. Ensures that we recover / cleanup stats if we fail to initialize a DatabaseContext
-	base.SkipPrometheusStatsRegistration = false
-	defer func() {
-		base.SkipPrometheusStatsRegistration = true
-	}()
-
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-
-	tests := []struct {
-		name          string
-		inputOptions  *auth.OIDCOptions
-		expectedError string
-	}{
-		// Provider should be skipped if no issuer is not provided in OIDCOptions. It should throw the error
-		// "OpenID Connect defined in config, but no valid OpenID Connect providers specified". Also a warning
-		// should be logged saying "Issuer and ClientID required for OIDC Provider - skipping provider"
-		{
-			name:          "TestWithNoIss",
-			inputOptions:  mockOIDCOptionsWithNoIss(),
-			expectedError: "OpenID Connect defined in config, but no valid OpenID Connect providers specified",
-		},
-		// Provider should be skipped if no client ID is not provided in OIDCOptions. It should throw the error
-		// "OpenID Connect defined in config, but no valid OpenID Connect providers specified". Also a warning
-		//	should be logged saying "Issuer and ClientID required for OIDC Provider - skipping provider"
-		{
-			name:          "TestWithNoClientID",
-			inputOptions:  mockOIDCOptionsWithNoClientID(),
-			expectedError: "OpenID Connect defined in config, but no valid OpenID Connect providers specified",
-		},
-		// If the provider name is illegal; meaning an underscore character in provider name is considered as
-		// illegal, it should throw an error stating OpenID Connect provider names cannot contain underscore.
-		{
-			name:          "TestWithWithBadName",
-			inputOptions:  mockOIDCOptionsWithBadName(),
-			expectedError: "OpenID Connect provider names cannot contain underscore",
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			options := DatabaseContextOptions{
-				OIDCOptions: tc.inputOptions,
-			}
-			AddOptionsFromEnvironmentVariables(&options)
-
-			context, err := NewDatabaseContext("db", testBucket, false, options)
-			assert.Error(t, err, "Couldn't create context for database 'db'")
-			assert.Contains(t, err.Error(), tc.expectedError)
-			assert.Nil(t, context, "Database context shouldn't be created")
-		})
-	}
 }
 
 func TestNewDatabaseContextWithOIDCProviderOptions(t *testing.T) {
@@ -1996,7 +1954,7 @@ func TestSyncFnMutateBody(t *testing.T) {
 		doc.key1 = "mutatedValue"
 		doc.key2.subkey1 = "mutatedSubValue"
 		channel(doc.channels);
-	}`)
+	}`, 0)
 
 	// Create first revision:
 	body := Body{"key1": "value1", "key2": Body{"subkey1": "subvalue1"}, "channels": []string{"public"}}
@@ -2430,6 +2388,8 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
+	require.NoError(t, db.WaitForPendingChanges(base.TestCtx(t)))
+
 	leakyBucket, ok := base.AsLeakyBucket(db.Bucket)
 	require.True(t, ok)
 
@@ -2454,7 +2414,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 	assert.NoError(t, db.TombstoneCompactionManager.Start(map[string]interface{}{"database": db}))
 
 	waitAndAssertConditionWithOptions(t, func() bool {
-		return db.TombstoneCompactionManager.GetRunState() == BackgroundProcessStateStopped
+		return db.TombstoneCompactionManager.GetRunState(t) == BackgroundProcessStateStopped
 	}, 60, 1000)
 
 	var tombstoneCompactionStatus TombstoneManagerResponse
@@ -2520,7 +2480,7 @@ func TestImportCompactPanic(t *testing.T) {
 		CompactInterval: 1,
 	})
 	defer db.Close()
-	db.PurgeInterval = time.Millisecond
+	db.PurgeInterval = 0
 
 	// Create a document, then delete it, to create a tombstone
 	rev, doc, err := db.Put("test", Body{})

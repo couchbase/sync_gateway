@@ -1,6 +1,8 @@
 package base
 
 import (
+	"time"
+
 	"github.com/couchbase/gocbcore/v10"
 	sgbucket "github.com/couchbase/sg-bucket"
 )
@@ -36,16 +38,22 @@ type mutationEvent struct {
 	value    []byte
 }
 
+type streamOpenEvent struct {
+	streamEventCommon
+	failoverLogs []gocbcore.FailoverEntry
+}
+
 func (e mutationEvent) asFeedEvent() sgbucket.FeedEvent {
 	return sgbucket.FeedEvent{
-		Opcode:   sgbucket.FeedOpMutation,
-		Flags:    e.flags,
-		Expiry:   e.expiry,
-		Key:      e.key,
-		Value:    e.value,
-		DataType: e.datatype,
-		Cas:      e.cas,
-		VbNo:     e.vbID,
+		Opcode:       sgbucket.FeedOpMutation,
+		Flags:        e.flags,
+		Expiry:       e.expiry,
+		Key:          e.key,
+		Value:        e.value,
+		DataType:     e.datatype,
+		Cas:          e.cas,
+		VbNo:         e.vbID,
+		TimeReceived: time.Now(),
 	}
 }
 
@@ -60,12 +68,13 @@ type deletionEvent struct {
 
 func (e deletionEvent) asFeedEvent() sgbucket.FeedEvent {
 	return sgbucket.FeedEvent{
-		Opcode:   sgbucket.FeedOpDeletion,
-		Key:      e.key,
-		Value:    e.value,
-		DataType: e.datatype,
-		Cas:      e.cas,
-		VbNo:     e.vbID,
+		Opcode:       sgbucket.FeedOpDeletion,
+		Key:          e.key,
+		Value:        e.value,
+		DataType:     e.datatype,
+		Cas:          e.cas,
+		VbNo:         e.vbID,
+		TimeReceived: time.Now(),
 	}
 }
 

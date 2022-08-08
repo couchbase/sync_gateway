@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"regexp"
 	"sync"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -42,6 +43,10 @@ type userImplBody struct {
 	PasswordHash_    []byte          `json:"passwordhash_bcrypt,omitempty"`
 	OldPasswordHash_ interface{}     `json:"passwordhash,omitempty"` // For pre-beta compatibility
 	ExplicitRoles_   ch.TimedSet     `json:"explicit_roles,omitempty"`
+	JWTRoles_        ch.TimedSet     `json:"jwt_roles,omitempty"`
+	JWTChannels_     ch.TimedSet     `json:"jwt_channels,omitempty"`
+	JWTIssuer_       string          `json:"jwt_issuer,omitempty"`
+	JWTLastUpdated_  time.Time       `json:"jwt_last_updated,omitempty"`
 	RolesSince_      ch.TimedSet     `json:"rolesSince"`
 	RoleInvalSeq     uint64          `json:"role_inval_seq,omitempty"` // Sequence at which the roles were invalidated. Data remains in RolesSince_ for history calculation.
 	RoleHistory_     TimedSetHistory `json:"role_history,omitempty"`   // Added to when a previously granted role is revoked. Calculated inside of rebuildRoles.
@@ -69,7 +74,6 @@ func (auth *Authenticator) defaultGuestUser() User {
 		},
 		auth: auth,
 	}
-	user.Channels_ = user.ExplicitChannels_.Copy()
 	return user
 }
 
@@ -182,6 +186,42 @@ func (user *userImpl) InvalidatedRoles() ch.TimedSet {
 		return user.RolesSince_
 	}
 	return nil
+}
+
+func (user *userImpl) JWTRoles() ch.TimedSet {
+	return user.JWTRoles_
+}
+
+func (user *userImpl) SetJWTRoles(channels ch.TimedSet, invalSeq uint64) {
+	user.JWTRoles_ = channels
+	// change to OIDC roles means roles need to be recomputed
+	user.SetRoleInvalSeq(invalSeq)
+}
+
+func (user *userImpl) JWTChannels() ch.TimedSet {
+	return user.JWTChannels_
+}
+
+func (user *userImpl) SetJWTChannels(channels ch.TimedSet, invalSeq uint64) {
+	user.JWTChannels_ = channels
+	// change to JWT channels means channels need to be recomputed
+	user.SetChannelInvalSeq(invalSeq)
+}
+
+func (user *userImpl) JWTIssuer() string {
+	return user.JWTIssuer_
+}
+
+func (user *userImpl) SetJWTIssuer(val string) {
+	user.JWTIssuer_ = val
+}
+
+func (user *userImpl) JWTLastUpdated() time.Time {
+	return user.JWTLastUpdated_
+}
+
+func (user *userImpl) SetJWTLastUpdated(val time.Time) {
+	user.JWTLastUpdated_ = val
 }
 
 func (user *userImpl) SetRoleHistory(history TimedSetHistory) {
@@ -340,8 +380,8 @@ func (user *userImpl) ChannelGrantedPeriods(chanName string) ([]GrantHistorySequ
 
 	// Small function which takes the two start seqs and two end seqs and calculates the intersection
 	compareAndAddPair := func(startSeq1, startSeq2, endSeq1, endSeq2 uint64) {
-		start := base.MaxUint64(startSeq1, startSeq2)
-		end := base.MinUint64(endSeq1, endSeq2)
+		start := base.Max(startSeq1, startSeq2)
+		end := base.Min(endSeq1, endSeq2)
 		if start < end {
 			resultPairs = append(resultPairs, GrantHistorySequencePair{
 				StartSeq: start,
@@ -378,6 +418,14 @@ func (user *userImpl) ChannelGrantedPeriods(chanName string) ([]GrantHistorySequ
 		role, err := user.auth.GetRoleIncDeleted(roleName)
 		if err != nil {
 			return nil, err
+		}
+		if role == nil {
+			// In most cases, this means the role never existed (and therefore didn't affect access).
+			// However, it's also possible (though rare) that the role used to exist but was explicitly purged, and thus
+			// could have granted access to channels before it was purged - but we can't determine what those channels were.
+			// We can't distinguish these cases, so log to be safe.
+			base.WarnfCtx(user.auth.LogCtx, "Unable to determine complete access history for user %v because role %v doesn't exist or has been purged (for channel %v).", base.UD(user.Name()), base.UD(roleName), base.UD(chanName))
+			continue
 		}
 
 		// Iterate over channel history on old roles

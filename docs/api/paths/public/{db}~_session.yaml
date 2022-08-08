@@ -1,16 +1,15 @@
-# /{db}/_session
 parameters:
-- $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/db
 get:
   summary: Get information about the current user
   description: This will get the information about the current user.
   responses:
-    "200":
+    '200':
       $ref: ../../components/responses.yaml#/User-session-information
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Session
+    - Session
 post:
   summary: Create a new user session
   description: |-
@@ -28,38 +27,34 @@ post:
               description: User name to generate the session for.
               type: string
             password:
-              description: 'Password of the user to generate the session for.'
+              description: Password of the user to generate the session for.
               type: string
   responses:
-    "200":
-      description: Session created successfully. Returned body is dependant on if
-        using Public or Admin APIs
+    '200':
+      description: Session created successfully. Returned body is dependant on if using Public or Admin APIs
       content:
         application/json:
           schema:
             type: object
             properties:
               authentication_handlers:
-                type: array
                 description: Used for CouchDB compatability. Always contains "default" and "cookie".
+                type: array
                 items:
                   type: string
                   enum:
                     - default
                     - cookie
               ok:
+                description: Used for CouchDB compatability. Always true.
                 type: boolean
                 default: true
-                description: Used for CouchDB compatability. Always true.
               userCtx:
                 type: object
-                required:
-                  - channels
-                  - name
                 properties:
                   channels:
-                    type: object
                     description: A map of the channels the user is in along with the sequence number the user was granted access.
+                    type: object
                     additionalProperties:
                       oneOf:
                         - type: number
@@ -67,9 +62,12 @@ post:
                       minimum: 1
                       description: The channel name (as the key) and the channel sequence number the user was granted access to that channel.
                   name:
+                    description: The name of the user.
                     type: string
                     minLength: 1
-                    description: The name of the user.
+                required:
+                  - channels
+                  - name
             required:
               - authentication_handlers
               - ok
@@ -78,19 +76,19 @@ post:
             Example:
               value:
                 authentication_handlers:
-                - default
-                - cookie
+                  - default
+                  - cookie
                 ok: true
                 userCtx:
                   channels:
                     '!': 1
                   name: Bob
-    "400":
+    '400':
       $ref: ../../components/responses.yaml#/Invalid-CORS
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Session
+    - Session
 delete:
   summary: Log out
   description: |-
@@ -98,20 +96,21 @@ delete:
 
     If CORS is enabled, the origin must match an allowed login origin otherwise an error will be returned.
   responses:
-    "200":
+    '200':
       description: Successfully removed session (logged out)
-    "400":
+    '400':
       description: Bad Request
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Public only endpoints
-  - Session
+    - Public only endpoints
+    - Session
 head:
+  summary: /{db}/_session
   responses:
-    "200":
+    '200':
       description: OK
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Session
+    - Session

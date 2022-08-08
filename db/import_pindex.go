@@ -42,12 +42,21 @@ func RegisterImportPindexImpl(configGroup string) {
 // getListenerForIndex looks up the importListener for the dbName specified in the index params
 func getListenerImportDest(indexParams string) (cbgt.Dest, error) {
 
+	var outerParams struct {
+		Params string `json:"params"`
+	}
+	err := base.JSONUnmarshal([]byte(indexParams), &outerParams)
+	if err != nil {
+		return nil, fmt.Errorf("error unmarshalling cbgt index params outer: %w", err)
+	}
+
 	var sgIndexParams base.SGFeedIndexParams
-	err := base.JSONUnmarshal([]byte(indexParams), &sgIndexParams)
+	err = base.JSONUnmarshal([]byte(outerParams.Params), &sgIndexParams)
 	if err != nil {
 		return nil, fmt.Errorf("error unmarshalling dbname from cbgt index params: %w", err)
 	}
 
+	base.DebugfCtx(context.TODO(), base.KeyDCP, "Fetching listener import dest for %v", base.MD(sgIndexParams.DestKey))
 	destFactory, fetchErr := base.FetchDestFactory(sgIndexParams.DestKey)
 	if fetchErr != nil {
 		return nil, fmt.Errorf("error retrieving listener for indexParams %v: %v", indexParams, fetchErr)

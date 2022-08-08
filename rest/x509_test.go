@@ -30,16 +30,15 @@ import (
 func TestX509RoundtripUsingIP(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	tb, teardownFn, _, _, _ := setupX509Tests(t, true)
+	tb, _, _, _ := setupX509Tests(t, true)
 	defer tb.Close()
-	defer teardownFn()
 
 	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb, useTLSServer: true})
 	defer rt.Close()
 
 	// write a doc to ensure bucket ops work
 	tr := rt.SendAdminRequest(http.MethodPut, "/db/"+t.Name(), `{"sgwrite":true}`)
-	assertStatus(t, tr, http.StatusCreated)
+	requireStatus(t, tr, http.StatusCreated)
 
 	// wait for doc to come back over DCP
 	err := rt.WaitForDoc(t.Name())
@@ -51,16 +50,15 @@ func TestX509RoundtripUsingIP(t *testing.T) {
 func TestX509RoundtripUsingDomain(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	tb, teardownFn, _, _, _ := setupX509Tests(t, false)
+	tb, _, _, _ := setupX509Tests(t, false)
 	defer tb.Close()
-	defer teardownFn()
 
 	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb, useTLSServer: true})
 	defer rt.Close()
 
 	// write a doc to ensure bucket ops work
 	tr := rt.SendAdminRequest(http.MethodPut, "/db/"+t.Name(), `{"sgwrite":true}`)
-	assertStatus(t, tr, http.StatusCreated)
+	requireStatus(t, tr, http.StatusCreated)
 
 	// wait for doc to come back over DCP
 	err := rt.WaitForDoc(t.Name())
@@ -70,9 +68,8 @@ func TestX509RoundtripUsingDomain(t *testing.T) {
 func TestX509UnknownAuthorityWrap(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	tb, teardownFn, _, _, _ := setupX509Tests(t, true)
+	tb, _, _, _ := setupX509Tests(t, true)
 	defer tb.Close()
-	defer teardownFn()
 
 	tb.BucketSpec.CACertPath = ""
 
@@ -92,9 +89,8 @@ func TestX509UnknownAuthorityWrap(t *testing.T) {
 }
 
 func TestAttachmentCompactionRun(t *testing.T) {
-	tb, teardownFn, _, _, _ := setupX509Tests(t, true)
+	tb, _, _, _ := setupX509Tests(t, true)
 	defer tb.Close()
-	defer teardownFn()
 
 	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb, useTLSServer: true})
 	defer rt.Close()
@@ -109,13 +105,13 @@ func TestAttachmentCompactionRun(t *testing.T) {
 	}
 
 	resp := rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
-	assertStatus(t, resp, http.StatusOK)
+	requireStatus(t, resp, http.StatusOK)
 
 	status := rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
 	assert.Equal(t, int64(20), status.MarkedAttachments)
 }
 
-func setupX509Tests(t *testing.T, useIPAddress bool) (testBucket *base.TestBucket, teardownFunc func(), caCertPath string, certPath string, keyPath string) {
+func setupX509Tests(t *testing.T, useIPAddress bool) (testBucket *base.TestBucket, caCertPath string, certPath string, keyPath string) {
 	if !x509TestsEnabled() {
 		t.Skipf("x509 tests not enabled via %s flag", x509TestFlag)
 	}
@@ -152,13 +148,18 @@ func setupX509Tests(t *testing.T, useIPAddress bool) (testBucket *base.TestBucke
 
 	nodePair := generateX509Node(t, ca, testIPs, testURls)
 	sgPair := generateX509SG(t, ca, base.TestClusterUsername(), time.Now().Add(time.Hour*24))
-	teardownFn := saveX509Files(t, ca, nodePair, sgPair)
+	saveX509Files(t, ca, nodePair, sgPair)
 
-	isLocalX509, localUserName := base.TestX509LocalServer()
-	if isLocalX509 {
-		err = loadCertsIntoLocalCouchbaseServer(*testURL, ca, nodePair, localUserName)
+	usingDocker, dockerName := base.TestUseCouchbaseServerDockerName()
+	if usingDocker {
+		err = loadCertsIntoCouchbaseServerDocker(*testURL, ca, nodePair, dockerName)
 	} else {
-		err = loadCertsIntoCouchbaseServer(*testURL, ca, nodePair)
+		isLocalX509, localUserName := base.TestX509LocalServer()
+		if isLocalX509 {
+			err = loadCertsIntoLocalCouchbaseServer(*testURL, ca, nodePair, localUserName)
+		} else {
+			err = loadCertsIntoCouchbaseServer(*testURL, ca, nodePair)
+		}
 	}
 	require.NoError(t, err)
 
@@ -181,5 +182,5 @@ func setupX509Tests(t *testing.T, useIPAddress bool) (testBucket *base.TestBucke
 	tb.BucketSpec.Certpath = certPath
 	tb.BucketSpec.Keypath = keyPath
 
-	return tb, teardownFn, caCertPath, certPath, keyPath
+	return tb, caCertPath, certPath, keyPath
 }

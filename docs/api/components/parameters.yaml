@@ -48,7 +48,28 @@ db:
   required: true
   schema:
     type: string
+  example: db1
   description: The name of the database to run the operation against.
+keyspace:
+  name: keyspace
+  in: path
+  required: true
+  schema:
+    type: string
+  examples:
+    Default scope and collection:
+      value: db1
+      description: Default scope and collection
+    Named collection within the default scope:
+      value: db1.collection1
+      description: Named collection within the default scope
+    Fully-qualified scope and collection:
+      value: db1.scope1.collection1
+      description: Fully-qualified scope and collection
+  description: |-
+    The keyspace to run the operation against.
+
+    A keyspace is a dot-separated string, comprised of a database name, and optionally a named scope and collection.
 ddoc:
   name: ddoc
   in: path
@@ -80,6 +101,7 @@ docid:
   required: true
   schema:
     type: string
+  example: doc1
   description: The document ID to run the operation against.
 endkey:
   name: endkey
@@ -114,7 +136,7 @@ includeAttachments:
   in: query
   required: false
   schema:
-    type: string
+    type: boolean
   description: Include attachment bodies in response.
 include_doc:
   name: include_doc
@@ -298,6 +320,7 @@ rev:
   required: false
   schema:
     type: string
+  example: 2-5145e1086bb8d1d71a531e9f6b543c58
   description: The document revision to target.
 revs_from:
   name: revs_from
@@ -341,7 +364,7 @@ show_exp:
   in: query
   required: false
   schema:
-    type: string
+    type: boolean
   description: Whether to show the expiry property (`_exp`) in the response.
 startkey:
   name: startkey
@@ -455,7 +478,7 @@ disable_oidc_validation:
   name: disable_oidc_validation
   in: query
   required: false
-  description: If set, will not attempt to validate the configured OpenID Connect providers are reachable.
+  description: 'If set, will not attempt to validate the configured OpenID Connect providers are reachable.'
   schema:
     type: boolean
     default: false
@@ -466,7 +489,7 @@ usersNameOnly:
   schema:
     type: boolean
     default: true
-  description: Whether to return user names only, or more detailed information for each user.
+  description: 'Whether to return user names only, or more detailed information for each user.'
 usersLimit:
   name: limit
   in: query
@@ -474,4 +497,3 @@ usersLimit:
   schema:
     type: integer
   description: How many results to return. Using a value of `0` results in no limit.
-

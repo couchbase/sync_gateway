@@ -9,6 +9,8 @@
 package auth
 
 import (
+	"time"
+
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 )
@@ -23,7 +25,12 @@ type Principal interface {
 	SetSequence(sequence uint64)
 
 	// The set of channels the Principal belongs to, and what sequence access was granted.
-	// Returns nil if invalidated
+	// Returns nil if invalidated.
+	// For both roles and users, the set of channels is the union of ExplicitChannels, JWTChannels, and any channels
+	// they are granted through a sync function.
+	//
+	// NOTE: channels a user has access to through a role are *not* included in Channels(), so the user could have
+	// access to more documents than included in Channels. CanSeeChannel will also check against the user's roles.
 	Channels() ch.TimedSet
 
 	// The channels the Principal was explicitly granted access to thru the admin API.
@@ -101,7 +108,7 @@ type User interface {
 	// Changes the user's password.
 	SetPassword(password string) error
 
-	// The set of Roles the user belongs to (including ones given to it by the sync function)
+	// The set of Roles the user belongs to (including ones given to it by the sync function and by OIDC/JWT)
 	// Returns nil if invalidated
 	RoleNames() ch.TimedSet
 
@@ -110,6 +117,15 @@ type User interface {
 
 	// Sets the explicit roles the user belongs to.
 	SetExplicitRoles(ch.TimedSet, uint64)
+
+	JWTRoles() ch.TimedSet
+	SetJWTRoles(ch.TimedSet, uint64)
+	JWTChannels() ch.TimedSet
+	SetJWTChannels(ch.TimedSet, uint64)
+	JWTIssuer() string
+	SetJWTIssuer(string)
+	JWTLastUpdated() time.Time
+	SetJWTLastUpdated(time.Time)
 
 	GetRoleInvalSeq() uint64
 
@@ -144,4 +160,74 @@ type User interface {
 	FilterToAvailableChannels(channels base.Set) (filtered ch.TimedSet, removed []string)
 
 	setRolesSince(ch.TimedSet)
+}
+
+// PrincipalConfig represents a user/role as a JSON object.
+// Used to define a user/role within DbConfig, and structures the request/response body in the admin REST API
+// for /db/_user/*
+type PrincipalConfig struct {
+	Name             *string  `json:"name,omitempty"`
+	ExplicitChannels base.Set `json:"admin_channels,omitempty"`
+	// Fields below only apply to Users, not Roles:
+	Email             *string  `json:"email,omitempty"`
+	Disabled          *bool    `json:"disabled,omitempty"`
+	Password          *string  `json:"password,omitempty"`
+	ExplicitRoleNames base.Set `json:"admin_roles,omitempty"`
+	// Fields below are read-only
+	Channels       base.Set   `json:"all_channels,omitempty"`
+	RoleNames      []string   `json:"roles,omitempty"`
+	JWTIssuer      *string    `json:"jwt_issuer,omitempty"`
+	JWTRoles       base.Set   `json:"jwt_roles,omitempty"`
+	JWTChannels    base.Set   `json:"jwt_channels,omitempty"`
+	JWTLastUpdated *time.Time `json:"jwt_last_updated,omitempty"`
+}
+
+// IsPasswordValid checks if the passwords in this PrincipalConfig is valid.  Only allows
+// empty passwords if allowEmptyPass is true.
+func (u PrincipalConfig) IsPasswordValid(allowEmptyPass bool) (isValid bool, reason string) {
+	// if it's an anon user, they should not have a password
+	if u.Name == nil {
+		if u.Password != nil {
+			return false, "Anonymous users should not have a password"
+		} else {
+			return true, ""
+		}
+	}
+
+	/*
+		if allowEmptyPass && ( u.Password == nil || len(*u.Password) == 0) {
+			return true, ""
+		}
+
+		if u.Password == nil || (u.Password != nil && len(*u.Password) < 3) {
+			return false, "Passwords must be at least three 3 characters"
+		}
+	*/
+
+	if u.Password == nil || len(*u.Password) == 0 {
+		if !allowEmptyPass {
+			return false, "Empty passwords are not allowed "
+		}
+	} else if len(*u.Password) < 3 {
+		return false, "Passwords must be at least three 3 characters"
+	}
+
+	return true, ""
+}
+
+// Merge returns a new PrincipalConfig that represents the combination of both this and other's changes.
+// If any changes conflict, those of the other take precedence.
+func (u PrincipalConfig) Merge(other PrincipalConfig) PrincipalConfig {
+	return PrincipalConfig{
+		Name:              base.Coalesce(other.Name, u.Name),
+		ExplicitChannels:  base.CoalesceSets(other.ExplicitChannels, u.ExplicitChannels),
+		Email:             base.Coalesce(other.Email, u.Email),
+		Password:          base.Coalesce(other.Password, u.Password),
+		Disabled:          base.Coalesce(other.Disabled, u.Disabled),
+		ExplicitRoleNames: base.CoalesceSets(other.ExplicitRoleNames, u.ExplicitRoleNames),
+		JWTIssuer:         base.Coalesce(other.JWTIssuer, u.JWTIssuer),
+		JWTRoles:          base.CoalesceSets(other.JWTRoles, u.JWTRoles),
+		JWTChannels:       base.CoalesceSets(other.JWTChannels, u.JWTChannels),
+		JWTLastUpdated:    base.Coalesce(other.JWTLastUpdated, u.JWTLastUpdated),
+	}
 }

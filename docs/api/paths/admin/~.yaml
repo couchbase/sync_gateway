@@ -1,9 +1,8 @@
-# /
 get:
   summary: Get server information
   description: Returns information about the Sync Gateway node.
   responses:
-    "200":
+    '200':
       description: Returned server information
       content:
         application/json:
@@ -11,8 +10,7 @@ get:
             type: object
             properties:
               ADMIN:
-                description: '`true` if the request is from the Admin API - otherwise
-                  omitted.'
+                description: '`true` if the request is from the Admin API - otherwise omitted.'
                 type: boolean
                 example: true
               couchdb:
@@ -34,7 +32,7 @@ get:
                     type: string
                     example: 3.1
                 required:
-                - name
+                  - name
               version:
                 description: |-
                   Product version, including the build number and edition (i.e. `EE` or `CE`)
@@ -42,15 +40,15 @@ get:
                 type: string
                 example: Couchbase Sync Gateway/3.1.0(1;a765231) EE
             required:
-            - couchdb
-            - vendor
+              - couchdb
+              - vendor
   tags:
-  - Server
+    - Server
 head:
   responses:
-    "200":
+    '200':
       description: Server is online
   tags:
-  - Server
+    - Server
   summary: Check if server online
   description: Check if the server is online by checking the status code of response.

@@ -1,4 +1,3 @@
-# /_config
 get:
   summary: Get server configuration
   description: |-
@@ -7,26 +6,25 @@ get:
     Required Sync Gateway RBAC roles:
     * Sync Gateway Dev Ops
   parameters:
-  - $ref: ../../components/parameters.yaml#/deprecated-redact
-  - name: include_runtime
-    in: query
-    description: Whether to include the values set at runtime, default values, and
-      all loaded databases.
-    schema:
-      type: boolean
-      default: false
+    - $ref: ../../components/parameters.yaml#/deprecated-redact
+    - name: include_runtime
+      in: query
+      description: 'Whether to include the values set at runtime, default values, and all loaded databases.'
+      schema:
+        type: boolean
+        default: false
   responses:
-    "200":
+    '200':
       description: Successfully returned server configuration
       content:
         application/json:
           schema:
             $ref: ../../components/schemas.yaml#/Startup-config
-    "400":
+    '400':
       $ref: ../../components/responses.yaml#/request-problem
   tags:
-  - Admin only endpoints
-  - Server
+    - Admin only endpoints
+    - Server
 put:
   summary: Set runtime configuration
   description: |-
@@ -44,10 +42,10 @@ put:
         schema:
           $ref: ../../components/schemas.yaml#/Startup-config
   responses:
-    "200":
+    '200':
       description: Successfully set runtime options
-    "400":
+    '400':
       $ref: ../../components/responses.yaml#/request-problem
   tags:
-  - Admin only endpoints
-  - Server
+    - Admin only endpoints
+    - Server

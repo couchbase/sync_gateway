@@ -1,6 +1,5 @@
-# /{db}/_compact
 parameters:
-- $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/keyspace
 post:
   summary: Manage a compact operation
   description: |-
@@ -15,49 +14,48 @@ post:
     Required Sync Gateway RBAC roles:
     * Sync Gateway Architect
   parameters:
-  - $ref: ../../components/parameters.yaml#/compact-type
-  - name: action
-    in: query
-    description: Defines whether the a compact operation is being started or stopped.
-    schema:
-      type: string
-      default: start
-      enum:
-      - start
-      - stop
-  - name: reset
-    in: query
-    description: |-
-      **Attachment compaction only**
+    - $ref: ../../components/parameters.yaml#/compact-type
+    - name: action
+      in: query
+      description: Defines whether the a compact operation is being started or stopped.
+      schema:
+        type: string
+        default: start
+        enum:
+          - start
+          - stop
+    - name: reset
+      in: query
+      description: |-
+        **Attachment compaction only**
 
-      This forces a fresh compact start instead of trying to resume the previous failed compact operation.
-    schema:
-      type: boolean
-  - name: dry_run
-    in: query
-    description: |-
-      **Attachment compaction only**
+        This forces a fresh compact start instead of trying to resume the previous failed compact operation.
+      schema:
+        type: boolean
+    - name: dry_run
+      in: query
+      description: |-
+        **Attachment compaction only**
 
-      This will run through all 3 stages of attachment compact but will not purge any attachments. This can be used to check how many attachments will be purged.'
-    schema:
-      type: boolean
+        This will run through all 3 stages of attachment compact but will not purge any attachments. This can be used to check how many attachments will be purged.'
+      schema:
+        type: boolean
   responses:
-    "200":
+    '200':
       description: Started or stopped compact operation successfully
-    "400":
+    '400':
       $ref: ../../components/responses.yaml#/request-problem
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
-    "503":
-      description: Cannot start compaction due to another compaction operation still
-        running.
+    '503':
+      description: Cannot start compaction due to another compaction operation still running.
       content:
         application/json:
           schema:
             $ref: ../../components/schemas.yaml#/HTTP-Error
   tags:
-  - Admin only endpoints
-  - Database Management
+    - Admin only endpoints
+    - Database Management
 get:
   summary: Get the status of the most recent compact operation
   description: |-
@@ -66,18 +64,18 @@ get:
     Required Sync Gateway RBAC roles:
     * Sync Gateway Architect
   parameters:
-  - $ref: ../../components/parameters.yaml#/compact-type
+    - $ref: ../../components/parameters.yaml#/compact-type
   responses:
-    "200":
+    '200':
       description: Compaction status retrieved successfully
       content:
         application/json:
           schema:
             $ref: ../../components/schemas.yaml#/Compact-status
-    "400":
+    '400':
       $ref: ../../components/responses.yaml#/request-problem
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-  - Admin only endpoints
-  - Database Management
+    - Admin only endpoints
+    - Database Management

@@ -1340,7 +1340,7 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Wait until the change appears on the changes feed to ensure that it's been imported by this point
-	changes, err := rt.WaitForChanges(2, "/db/_changes", "", true)
+	changes, err := rt.waitForChanges(2, "/db/_changes", "", true)
 	assert.NoError(t, err, "Error waiting for changes")
 
 	log.Printf("changes: %+v", changes)
@@ -1392,7 +1392,7 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 	// Wait for doc to appear on changes feed
 	// Wait until the change appears on the changes feed to ensure that it's been imported by this point
 	now := time.Now()
-	changes, err := rt.WaitForChanges(1, "/db/_changes", "", true)
+	changes, err := rt.waitForChanges(1, "/db/_changes", "", true)
 	assert.NoError(t, err, "Error waiting for changes")
 	changeEntry := changes.Results[0]
 	assert.Equal(t, key, changeEntry.ID)
@@ -1444,7 +1444,7 @@ func TestOnDemandWriteImportReplacingNullDoc(t *testing.T) {
 	mobileBodyMarshalled, err := base.JSONMarshal(mobileBody)
 	assert.NoError(t, err, "Error marshalling body")
 	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", key), string(mobileBodyMarshalled))
-	assertStatus(t, response, 201)
+	requireStatus(t, response, 201)
 
 }
 
@@ -1518,7 +1518,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 
 			// Wait until the change appears on the changes feed to ensure that it's been imported by this point.
 			// This is probably unnecessary in the case of on-demand imports, but it doesn't hurt to leave it in as a double check.
-			changes, err := rt.WaitForChanges(1, "/db/_changes", "", true)
+			changes, err := rt.waitForChanges(1, "/db/_changes", "", true)
 			require.NoError(t, err, "Error waiting for changes")
 			changeEntry := changes.Results[0]
 			assert.Equal(t, key, changeEntry.ID)
@@ -1726,7 +1726,7 @@ func TestImportZeroValueDecimalPlaces(t *testing.T) {
 		t.Logf("Inserting doc %s: %s", docID, string(docBody))
 	}
 
-	changes, err := rt.WaitForChanges((maxDecimalPlaces+1)-minDecimalPlaces, "/db/_changes", "", true)
+	changes, err := rt.waitForChanges((maxDecimalPlaces+1)-minDecimalPlaces, "/db/_changes", "", true)
 	assert.NoError(t, err, "Error waiting for changes")
 	require.Lenf(t, changes.Results, maxDecimalPlaces+1-minDecimalPlaces, "Expected %d changes in: %#v", (maxDecimalPlaces+1)-minDecimalPlaces, changes.Results)
 
@@ -1788,7 +1788,7 @@ func TestImportZeroValueDecimalPlacesScientificNotation(t *testing.T) {
 		t.Logf("Inserting doc %s: %s", docID, string(docBody))
 	}
 
-	changes, err := rt.WaitForChanges((maxDecimalPlaces+1)-minDecimalPlaces, "/db/_changes", "", true)
+	changes, err := rt.waitForChanges((maxDecimalPlaces+1)-minDecimalPlaces, "/db/_changes", "", true)
 	assert.NoError(t, err, "Error waiting for changes")
 	require.Lenf(t, changes.Results, maxDecimalPlaces+1-minDecimalPlaces, "Expected %d changes in: %#v", (maxDecimalPlaces+1)-minDecimalPlaces, changes.Results)
 
@@ -2359,9 +2359,9 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 				return
 			}
 			if test.expectedStatusCode != nil {
-				assertStatus(rt.tb, resp, *test.expectedStatusCode)
+				requireStatus(rt.tb, resp, *test.expectedStatusCode)
 			} else {
-				assertStatus(rt.tb, resp, 200)
+				requireStatus(rt.tb, resp, 200)
 			}
 			var body db.Body
 			require.NoError(rt.tb, base.JSONUnmarshal(resp.Body.Bytes(), &body))
