@@ -67,11 +67,9 @@ func (db *Database) CallUserFunction(name string, args map[string]interface{}, m
 		config.compiled = compiled
 	}
 
-	return compiled.WithTask(func(task sgbucket.JSServerTask) (interface{}, error) {
+	return compiled.WithTask(func(task sgbucket.JSServerTask) (result interface{}, err error) {
 		runner := task.(*javaScriptRunner)
-		runner.currentDB = db
-		runner.mutationAllowed = mutationAllowed
-		return task.Call(args, newUserFunctionJSContext(db))
+		return runner.CallWithDB(db, mutationAllowed, args, newUserFunctionJSContext(db))
 	})
 }
 

@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -41,7 +42,7 @@ func newJavaScriptRunner(name string, kind string, funcSource string) (*javaScri
 		name: name,
 		kind: kind,
 	}
-	err := runner.InitWithLogging("",
+	err := runner.InitWithLogging("", 0,
 		func(s string) {
 			base.ErrorfCtx(ctx, base.KeyJavascript.String()+": %s %s: %s", kind, name, base.UD(s))
 		},
@@ -118,6 +119,19 @@ func newJavaScriptRunner(name string, kind string, funcSource string) (*javaScri
 	return runner, nil
 }
 
+// Calls a javaScriptRunner's JavaScript function.
+func (runner *javaScriptRunner) CallWithDB(db *Database, mutationAllowed bool, args ...interface{}) (result interface{}, err error) {
+	runner.currentDB = db
+	runner.mutationAllowed = mutationAllowed
+	ctx := db.Ctx
+	var timeout time.Duration
+	if deadline, exists := ctx.Deadline(); exists {
+		timeout = time.Until(deadline)
+	}
+	runner.SetTimeout(timeout)
+	return runner.Call(args...)
+}
+
 type jsError struct {
 	err    error
 	runner *javaScriptRunner
@@ -134,6 +148,9 @@ func (jserr *jsError) Unwrap() error {
 var HttpErrRE = regexp.MustCompile(`^HTTP:\s*(\d+)\s+(.*)`)
 
 func (runner *javaScriptRunner) convertError(err error) error {
+	if err == sgbucket.ErrJSTimeout {
+		return base.HTTPErrorf(408, "Timeout in JavaScript")
+	}
 	// Unfortunately there is no API on otto.Error to get the name & message separately.
 	// Instead, look for the name as a prefix. (See the `ottoResult` function below)
 	str := err.Error()

@@ -210,8 +210,6 @@ func (res *graphQLResolver) Resolve(db *Database, params *graphql.ResolveParams,
 
 	return res.WithTask(func(task sgbucket.JSServerTask) (interface{}, error) {
 		runner := task.(*javaScriptRunner)
-		runner.currentDB = db
-		runner.mutationAllowed = mutationAllowed
-		return task.Call(params.Source, params.Args, newUserFunctionJSContext(db), info)
+		return runner.CallWithDB(db, mutationAllowed, params.Source, params.Args, newUserFunctionJSContext(db), info)
 	})
 }

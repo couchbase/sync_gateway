@@ -23,7 +23,7 @@ import (
 
 // Timeout for N1QL, JavaScript and GraphQL queries.
 // TODO: Make this a configurable parameter?
-const QueryTimeout = 60 * time.Second
+const QueryTimeout = 5 * time.Second
 
 // HTTP handler for GET or POST `/$db/_query/$name`
 func (h *handler) handleUserQuery() error {
@@ -35,6 +35,9 @@ func (h *handler) handleUserQuery() error {
 	return h.db.WithTimeout(QueryTimeout, func() error {
 		results, err := h.db.UserN1QLQuery(queryName, queryParams)
 		if err != nil {
+			return err
+		}
+		if err = h.db.CheckTimeout(); err != nil {
 			return err
 		}
 

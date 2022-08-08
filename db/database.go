@@ -1742,11 +1742,7 @@ func (db *Database) WithTimeout(timeout time.Duration, operation func() error) e
 		db.Ctx = oldCtx // On the way out, restore the previous Context
 		cancel()
 	}()
-	if err := operation(); err != nil {
-		return err
-	}
-	// Check for timeout again, in case the operation's last check was before the deadline but it kept running till the deadline passed. Returning an error will keep the caller from doing any more work.
-	return db.CheckTimeout()
+	return operation()
 }
 
 // Returns an HTTP timeout (408) error if the Database's Context has an expired timeout or has been explicitly canceled. (See WithTimeout.)
