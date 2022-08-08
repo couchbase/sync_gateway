@@ -108,6 +108,7 @@ func (db *Database) DeleteSpecial(doctype string, docid string, revid string) er
 	return err
 }
 
+// LocalDocID returns a document ID for a "local" (non-replicated) document.
 func RealSpecialDocID(doctype string, docid string) string {
-	return base.SyncPrefix + doctype + ":" + docid
+	return base.DocTypeLocalPrefix + docid
 }

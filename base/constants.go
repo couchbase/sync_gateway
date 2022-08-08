@@ -118,46 +118,51 @@ const (
 
 	// The limit in Couchbase Server for total system xattr size
 	couchbaseMaxSystemXattrSize = 1 * 1024 * 1024 // 1MB
+)
 
-	// ==== Sync Prefix Documents & Keys ====
+// A collection of Doc IDs and prefixes used by SG
+const (
+	// SyncPrefix is the common prefix for all SG metadata documents
 	SyncPrefix = "_sync:"
 
-	AttPrefix              = SyncPrefix + "att:"
-	Att2Prefix             = SyncPrefix + "att2:"
-	BackfillCompletePrefix = SyncPrefix + "backfill:complete:"
-	BackfillPendingPrefix  = SyncPrefix + "backfill:pending:"
-	DCPCheckpointPrefix    = SyncPrefix + "dcp_ck:"
-	RepairBackup           = SyncPrefix + "repair:backup:"
-	RepairDryRun           = SyncPrefix + "repair:dryrun:"
-	RevBodyPrefix          = SyncPrefix + "rb:"
-	RevPrefix              = SyncPrefix + "rev:"
-	RolePrefix             = SyncPrefix + "role:"
-	SessionPrefix          = SyncPrefix + "session:"
-	SGCfgPrefix            = SyncPrefix + "cfg"
-	SyncSeqPrefix          = SyncPrefix + "seq:"
-	UserEmailPrefix        = SyncPrefix + "useremail:"
-	UserPrefix             = SyncPrefix + "user:"
-	UnusedSeqPrefix        = SyncPrefix + "unusedSeq:"
-	UnusedSeqRangePrefix   = SyncPrefix + "unusedSeqs:"
+	AttPrefix                        = SyncPrefix + "att:"                           // AttPrefix is the doc ID prefix used for v1 attachments (digest-based keys only)
+	Att2Prefix                       = SyncPrefix + "att2:"                          // AttPrefix2 is the doc ID prefix used for v2 attachments (docID and digest-based keys)
+	DCPBackfillSeqKey                = SyncPrefix + "dcp_backfill"                   // TODO: Description
+	DCPCheckpointPrefix              = SyncPrefix + "dcp_ck:"                        // DCPCheckpointPrefix is the doc ID prefix used to when checkpointing the Import DCP feed
+	RepairBackup                     = SyncPrefix + "repair:backup:"                 // TODO: Description
+	RepairDryRun                     = SyncPrefix + "repair:dryrun:"                 // TODO: Description
+	RevBodyPrefix                    = SyncPrefix + "rb:"                            // RevBodyPrefix is the doc ID prefix used to store conflicting revision bodies
+	RevPrefix                        = SyncPrefix + "rev:"                           // RevPrefix is the doc ID prefix used to store a temporary copy of a previous revision
+	RolePrefix                       = SyncPrefix + "role:"                          // RolePrefix is the doc ID prefix used to store roles
+	SessionPrefix                    = SyncPrefix + "session:"                       // SessionPrefix is the doc ID prefix used to store user sessions
+	SGCfgPrefix                      = SyncPrefix + "cfg"                            // SGCfgPrefix is the doc ID prefix used to store cbgt documents (sharded import/ISGR)
+	UserEmailPrefix                  = SyncPrefix + "useremail:"                     // UserEmailPrefix is the doc ID prefix used to store an email->user mapping document
+	UserPrefix                       = SyncPrefix + "user:"                          // UserPrefix is the doc ID prefix used to store users
+	UnusedSeqPrefix                  = SyncPrefix + "unusedSeq:"                     // UnusedSeqPrefix is the doc ID prefix used to store unused sequence numbers
+	UnusedSeqRangePrefix             = SyncPrefix + "unusedSeqs:"                    // UnusedSeqRangePrefix is the doc ID prefix used to store unused sequence ranges
+	BackgroundProcessHeartbeatPrefix = SyncPrefix + ":background_process:heartbeat:" // BackgroundProcessHeartbeatPrefix is the doc ID prefix used to store background process heartbeats
+	BackgroundProcessStatusPrefix    = SyncPrefix + ":background_process:status:"    // BackgroundProcessStatusPrefix is the doc ID prefix used to store background process statuses
+	PersistentConfigPrefix           = SyncPrefix + "dbconfig:"                      // PersistentConfigPrefix is the doc ID prefix used for all persistent database configurations
+	DocTypeLocalPrefix               = SyncPrefix + "local:"                         // DocTypeLocalPrefix is the doc ID prefix used for local (non-replicated) documents
+	SGRStatusPrefix                  = SyncPrefix + "sgrStatus:"                     // SGRStatusPrefix is the doc ID prefix used to store ISGR status documents
 
-	DCPBackfillSeqKey = SyncPrefix + "dcp_backfill"
-	SyncDataKey       = SyncPrefix + "syncdata"
-	SyncSeqKey        = SyncPrefix + "seq"
+	SyncSeqPrefix          = SyncPrefix + "seq:"               // FIXME: Unused/Incorrect usage by caller
+	BackfillCompletePrefix = SyncPrefix + "backfill:complete:" // FIXME: Unused
+	BackfillPendingPrefix  = SyncPrefix + "backfill:pending:"  // FIXME: Unused
 
-	PersistentConfigPrefix = SyncPrefix + "dbconfig:"
+	SyncDataKey = SyncPrefix + "syncdata" // SyncDataKey is the doc ID prefix used to store a copy of the sync function
+	SyncSeqKey  = SyncPrefix + "seq"      // SyncSeqKey is the doc ID used to store the sequence number
+
+	TxnPrefix = "_txn:" // TxnPrefix is the doc ID prefix used to store Couchbase transaction metadata documents - used to filter DCP events
+)
+
+const (
+	MetaMapXattrsKey = "xattrs" // MetaMapXattrsKey is the key under which user-defined xattrs are accessed in the Sync Function
 
 	AttachmentCompactionXattrName = SyncXattrName + "-compact"
 
-	SyncPropertyName = "_sync"
-	SyncXattrName    = "_sync"
-
-	// Intended to be used in Meta Map and related tests
-	MetaMapXattrsKey = "xattrs"
-
-	SGRStatusPrefix = SyncPrefix + "sgrStatus:"
-
-	// Prefix for transaction metadata documents
-	TxnPrefix = "_txn:"
+	SyncPropertyName = "_sync" // SyncPropertyName is the name of the property used to store sync metadata when not running with xattrs
+	SyncXattrName    = "_sync" // SyncXattrName is the name of the xattr used to store sync metadata when running with xattrs
 
 	// Replication filter constants
 	ByChannelFilter = "sync_gateway/bychannel"
