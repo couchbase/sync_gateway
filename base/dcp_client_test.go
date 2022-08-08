@@ -238,7 +238,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 
 			doneChan2, startErr2 := dcpClient2.Start()
 			require.Error(t, startErr2)
-			require.Nil(t, doneChan2)
+			require.NotNil(t, doneChan2)
 			dcpClient2.Close()
 			<-doneChan2
 			log.Printf("Starting third feed")
