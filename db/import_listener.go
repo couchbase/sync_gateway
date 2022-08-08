@@ -84,11 +84,8 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 		return bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
 	}
 	if !base.IsEnterpriseEdition() {
-		metadataConfig := base.DCPMetadataConfig{
-			StoreType: base.DCPMetadataDB,
-			GroupID:   "",
-		}
-		return base.StartGocbDCPFeed(bucket, bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, metadataConfig)
+		groupID := ""
+		return base.StartGocbDCPFeed(bucket, bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
 	}
 	il.cbgtContext, err = base.StartShardedDCPFeed(dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater, bucket, cbStore.GetSpec(), dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
 	return err

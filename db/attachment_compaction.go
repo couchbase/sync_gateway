@@ -116,12 +116,10 @@ func attachmentCompactMarkPhase(db *Database, compactionID string, terminator *b
 	}
 
 	clientOptions := base.DCPClientOptions{
-		OneShot:        true,
-		FailOnRollback: true,
-		MetadataConfig: base.DCPMetadataConfig{
-			StoreType: base.DCPMetadataDB,
-			GroupID:   db.Options.GroupID,
-		},
+		OneShot:           true,
+		FailOnRollback:    true,
+		MetadataStoreType: base.DCPMetadataStoreCS,
+		GroupID:           db.Options.GroupID,
 	}
 
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for mark phase of attachment compaction", compactionLoggingID)
@@ -338,13 +336,11 @@ func attachmentCompactSweepPhase(db *Database, compactionID string, vbUUIDs []ui
 	}
 
 	clientOptions := base.DCPClientOptions{
-		OneShot:         true,
-		FailOnRollback:  true,
-		InitialMetadata: base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs),
-		MetadataConfig: base.DCPMetadataConfig{
-			StoreType: base.DCPMetadataDB,
-			GroupID:   db.Options.GroupID,
-		},
+		OneShot:           true,
+		FailOnRollback:    true,
+		InitialMetadata:   base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs),
+		MetadataStoreType: base.DCPMetadataStoreCS,
+		GroupID:           db.Options.GroupID,
 	}
 
 	dcpFeedKey := compactionID + "_sweep"
@@ -472,13 +468,11 @@ func attachmentCompactCleanupPhase(db *Database, compactionID string, vbUUIDs []
 	}
 
 	clientOptions := base.DCPClientOptions{
-		OneShot:         true,
-		FailOnRollback:  true,
-		InitialMetadata: base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs),
-		MetadataConfig: base.DCPMetadataConfig{
-			StoreType: base.DCPMetadataDB,
-			GroupID:   db.Options.GroupID,
-		},
+		OneShot:           true,
+		FailOnRollback:    true,
+		InitialMetadata:   base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs),
+		MetadataStoreType: base.DCPMetadataStoreCS,
+		GroupID:           db.Options.GroupID,
 	}
 
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for cleanup phase of attachment compaction", compactionLoggingID)
