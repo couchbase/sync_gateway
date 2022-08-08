@@ -380,8 +380,8 @@ func (user *userImpl) ChannelGrantedPeriods(chanName string) ([]GrantHistorySequ
 
 	// Small function which takes the two start seqs and two end seqs and calculates the intersection
 	compareAndAddPair := func(startSeq1, startSeq2, endSeq1, endSeq2 uint64) {
-		start := base.MaxUint64(startSeq1, startSeq2)
-		end := base.MinUint64(endSeq1, endSeq2)
+		start := base.Max(startSeq1, startSeq2)
+		end := base.Min(endSeq1, endSeq2)
 		if start < end {
 			resultPairs = append(resultPairs, GrantHistorySequencePair{
 				StartSeq: start,
