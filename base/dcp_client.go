@@ -55,12 +55,13 @@ type DCPClientOptions struct {
 	FailOnRollback             bool                 // When true, the DCP client will terminate on DCP rollback
 	InitialMetadata            []DCPMetadata        // When set, will be used as initial metadata for the DCP feed.  Will override any persisted metadata
 	CheckpointPersistFrequency *time.Duration       // Overrides metadata persistence frequency - intended for test use
-	MetadataStoreType          DCPMetadataStoreType // Option for metadata storage model, in memory or peristent.
+	MetadataStoreType          DCPMetadataStoreType // define storage type for DCPMetadata
+	GroupID                    string               // specify GroupID, only used when MetadataStoreType is DCPMetadataCS
 	DbStats                    *expvar.Map          // Optional stats
 	CollectionIDs              []uint32             // CollectionIDs used by gocbcore, if empty, uses default collections
 }
 
-func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket Bucket, groupID string) (*DCPClient, error) {
+func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket Bucket) (*DCPClient, error) {
 
 	numWorkers := defaultNumWorkers
 	if options.NumWorkers > 0 {
@@ -86,7 +87,7 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 		terminator:       make(chan bool),
 		doneChannel:      make(chan error, 1),
 		failOnRollback:   options.FailOnRollback,
-		checkpointPrefix: DCPCheckpointPrefixWithGroupID(groupID),
+		checkpointPrefix: DCPCheckpointPrefixWithGroupID(options.GroupID),
 		dbStats:          options.DbStats,
 	}
 
@@ -98,9 +99,9 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 
 	checkpointPrefix := fmt.Sprintf("%s:%v", client.checkpointPrefix, ID)
 	switch options.MetadataStoreType {
-	case DCPMetadataDB:
+	case DCPMetadataStoreCS:
 		client.metadata = NewDCPMetadataCS(bucket, numVbuckets, numWorkers, checkpointPrefix)
-	case DCPMetadataInMemory:
+	case DCPMetadataStoreInMemory:
 		client.metadata = NewDCPMetadataMem(numVbuckets)
 	default:
 		return nil, fmt.Errorf("Unknown Metadatatype: %d", options.MetadataStoreType)
