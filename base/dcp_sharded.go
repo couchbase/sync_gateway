@@ -14,7 +14,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,17 +29,18 @@ import (
 const CBGTIndexTypeSyncGatewayImport = "syncGateway-import-"
 const DefaultImportPartitions = 16
 
-const (
-	compatVersionHelium      = 1
-	currentNodeCompatVersion = compatVersionHelium
-)
+// firstVersionToSupportCollections represents the earliest Sync Gateway release that supports collections (codename "Helium").
+var firstVersionToSupportCollections = &ComparableVersion{
+	epoch: 0,
+	major: 3,
+	minor: 1,
+	patch: 0,
+}
 
 // nodeExtras is the contents of the JSON value of the cbgt.NodeDef.Extras field as used by Sync Gateway.
 type nodeExtras struct {
-	// CompatVersion is the node's "compatibility version", an integer that is incremented each time there is a cluster-wide
-	// behaviour change that nodes need to handle differently depending on if older nodes are present. For example, see
-	// CBG-2213.
-	CompatVersion uint `json:"v"`
+	// Version is the node's version.
+	Version *ComparableVersion `json:"v"`
 }
 
 // CbgtContext holds the two handles we have for CBGT-related functionality.
@@ -250,7 +250,7 @@ func getCBGTIndexUUID(manager *cbgt.Manager, indexName string) (exists bool, pre
 func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID string, dbName string) (*CbgtContext, error) {
 	// Check if there are pre-Helium nodes, and if so, set the LithiumCompat flag to ensure we don't try to start a
 	// collections-enabled feed when some nodes won't support it.
-	minVersion, err := getMinNodeCompatVersion(cfgSG)
+	minVersion, err := getMinNodeVersion(cfgSG)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get minimum node version in cluster: %w", err)
 	}
@@ -282,9 +282,9 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 	// container: Used by cbgt to determine node hierarchy.  Not needed by Sync Gateway
 	container := ""
 
-	// extras: Can be used to pass Sync Gateway specific node information to callbacks. Used to detect node upgrades -
-	// currently pre-Helium to Helium.
-	extras, err := JSONMarshal(&nodeExtras{CompatVersion: currentNodeCompatVersion})
+	// extras: Can be used to pass Sync Gateway specific node information to callbacks. Used to store the node version
+	// from Helium (3.1.0) onwards, empty for older versions.
+	extras, err := JSONMarshal(&nodeExtras{Version: ProductVersion})
 	if err != nil {
 		return nil, err
 	}
@@ -349,7 +349,7 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 		),
 		Manager:       mgr,
 		Cfg:           cfgSG,
-		LithiumCompat: NewAtomicBool(minVersion < compatVersionHelium),
+		LithiumCompat: NewAtomicBool(minVersion.Less(firstVersionToSupportCollections)),
 	}
 	if cbgtContext.LithiumCompat.IsTrue() {
 		WarnfCtx(cbgtContext.loggingCtx, "Found old (3.0.x or below) Sync Gateway nodes in cluster - entering compatibility mode."+
@@ -406,34 +406,39 @@ func (c *CbgtContext) StartManager(dbName string, configGroup string, bucket Buc
 	return nil
 }
 
-func getNodeCompatVersion(def *cbgt.NodeDef) (uint, error) {
+// getNodeVersion returns the version of the node from its Extras field, or nil if none is stored. Returns an error if
+// the extras could not be parsed.
+func getNodeVersion(def *cbgt.NodeDef) (*ComparableVersion, error) {
 	if len(def.Extras) == 0 {
-		return 0, nil
+		return nil, nil
 	}
 	var extras nodeExtras
 	if err := JSONUnmarshal([]byte(def.Extras), &extras); err != nil {
-		return 0, fmt.Errorf("parsing node extras: %w", err)
+		return nil, fmt.Errorf("parsing node extras: %w", err)
 	}
-	return extras.CompatVersion, nil
+	return extras.Version, nil
 }
 
-// getMinNodeCompatVersion returns the compatibility version value of the oldest node currently in the cluster.
-func getMinNodeCompatVersion(cfg cbgt.Cfg) (uint, error) {
+// getMinNodeVersion returns the version of the oldest node currently in the cluster.
+func getMinNodeVersion(cfg cbgt.Cfg) (*ComparableVersion, error) {
 	nodes, _, err := cbgt.CfgGetNodeDefs(cfg, cbgt.NODE_DEFS_KNOWN)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	if nodes == nil || len(nodes.NodeDefs) == 0 {
 		// If there are no nodes at all, it's likely we're the first node in the cluster.
-		return currentNodeCompatVersion, nil
+		return ProductVersion, nil
 	}
-	minVersion := uint(math.MaxUint)
+	var minVersion *ComparableVersion
 	for _, node := range nodes.NodeDefs {
-		nodeVersion, err := getNodeCompatVersion(node)
+		nodeVersion, err := getNodeVersion(node)
 		if err != nil {
-			return 0, fmt.Errorf("failed to get version of node %v: %w", MD(node.HostPort).Redact(), err)
+			return nil, fmt.Errorf("failed to get version of node %v: %w", MD(node.HostPort).Redact(), err)
 		}
-		if nodeVersion < minVersion {
+		if nodeVersion == nil {
+			nodeVersion = zeroComparableVersion
+		}
+		if minVersion == nil || nodeVersion.Less(minVersion) {
 			minVersion = nodeVersion
 		}
 	}
@@ -592,7 +597,7 @@ func (l *importHeartbeatListener) subscribeNodeChanges() error {
 					}
 				}
 
-				if l.ctx.LithiumCompat.IsTrue() && minCompatVersion >= compatVersionHelium {
+				if l.ctx.LithiumCompat.IsTrue() && !(minCompatVersion.Less(firstVersionToSupportCollections)) {
 					// Can now exit compat mode as all nodes are at least Helium
 					InfofCtx(logCtx, KeyDCP, "Exiting compatibility mode - can now start import feed on non-default collections.")
 					l.ctx.LithiumCompat.CompareAndSwap(true, false)
@@ -606,15 +611,14 @@ func (l *importHeartbeatListener) subscribeNodeChanges() error {
 	return nil
 }
 
-func (l *importHeartbeatListener) reloadNodes() (minCompatVersion uint, localNodePresent bool, err error) {
+func (l *importHeartbeatListener) reloadNodes() (minVersion *ComparableVersion, localNodePresent bool, err error) {
 
 	nodeUUIDs := make([]string, 0)
 	nodeDefTypes := []string{cbgt.NODE_DEFS_KNOWN, cbgt.NODE_DEFS_WANTED}
-	minCompatVersion = uint(math.MaxUint)
 	for _, nodeDefType := range nodeDefTypes {
 		nodeSet, _, err := cbgt.CfgGetNodeDefs(l.cfg, nodeDefType)
 		if err != nil {
-			return 0, false, err
+			return nil, false, err
 		}
 		if nodeSet != nil {
 			for _, nodeDef := range nodeSet.NodeDefs {
@@ -622,12 +626,15 @@ func (l *importHeartbeatListener) reloadNodes() (minCompatVersion uint, localNod
 				if nodeDef.UUID == l.mgr.UUID() {
 					localNodePresent = true
 				}
-				nodeVersion, err := getNodeCompatVersion(nodeDef)
+				nodeVersion, err := getNodeVersion(nodeDef)
 				if err != nil {
-					return 0, false, fmt.Errorf("failed to get version of node %v: %w", MD(nodeDef.HostPort).Redact(), err)
+					return nil, false, fmt.Errorf("failed to get version of node %v: %w", MD(nodeDef.HostPort).Redact(), err)
 				}
-				if nodeVersion < minCompatVersion {
-					minCompatVersion = nodeVersion
+				if nodeVersion == nil {
+					nodeVersion = zeroComparableVersion
+				}
+				if minVersion == nil || nodeVersion.Less(minVersion) {
+					minVersion = nodeVersion
 				}
 			}
 		}
@@ -636,7 +643,7 @@ func (l *importHeartbeatListener) reloadNodes() (minCompatVersion uint, localNod
 	l.nodeIDs = nodeUUIDs
 	l.lock.Unlock()
 
-	return minCompatVersion, localNodePresent, nil
+	return minVersion, localNodePresent, nil
 }
 
 // GetNodes returns a copy of the in-memory node set
