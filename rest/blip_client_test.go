@@ -122,7 +122,9 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		collection := msg.Properties[db.BlipCollection]
 
 		// FIXME: Remove when we have CBG-2264 implemented
-		collection = btc.Collections[0]
+		if len(btc.Collections) > 0 {
+			collection = btc.Collections[0]
+		}
 
 		btcr := btc.CollectionClients[collection]
 
@@ -144,7 +146,9 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		collection := msg.Properties[db.BlipCollection]
 
 		// FIXME: Remove when we have CBG-2264 implemented
-		collection = btc.Collections[0]
+		if len(btc.Collections) > 0 {
+			collection = btc.Collections[0]
+		}
 
 		btcr := btc.CollectionClients[collection]
 
@@ -244,7 +248,9 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		collection := msg.Properties[db.BlipCollection]
 
 		// FIXME: Remove when we have CBG-2264 implemented
-		collection = btc.Collections[0]
+		if len(btc.Collections) > 0 {
+			collection = btc.Collections[0]
+		}
 
 		btcr := btc.CollectionClients[collection]
 
@@ -420,7 +426,9 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		collection := msg.Properties[db.BlipCollection]
 
 		// FIXME: Remove when we have CBG-2264 implemented
-		collection = btc.Collections[0]
+		if len(btc.Collections) > 0 {
+			collection = btc.Collections[0]
+		}
 
 		btcr := btc.CollectionClients[collection]
 
