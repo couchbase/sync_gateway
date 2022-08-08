@@ -358,9 +358,9 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 
 	vbMeta := dc.metadata.GetMeta(vbID)
 
-	options := gocbcore.OpenStreamOptions{}
-	//FilterOptions: &gocbcore.OpenStreamFilterOptions{CollectionIDs: dc.collectionIDs},
-	//}
+	options := gocbcore.OpenStreamOptions{
+		FilterOptions: &gocbcore.OpenStreamFilterOptions{CollectionIDs: dc.collectionIDs},
+	}
 	openStreamError := make(chan error)
 	openStreamCallback := func(f []gocbcore.FailoverEntry, err error) {
 		if err == nil {
