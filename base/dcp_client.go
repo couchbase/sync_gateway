@@ -56,6 +56,7 @@ type DCPClientOptions struct {
 	CheckpointPersistFrequency *time.Duration    // Overrides metadata persistence frequency - intended for test use
 	MetadataConfig             DCPMetadataConfig // Option for metadata storage model, in memory or peristent.
 	DbStats                    *expvar.Map       // Optional stats
+	GroupID                    string            // Optional config group ID, empty string is ignored
 }
 
 func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket Bucket) (*DCPClient, error) {
@@ -84,7 +85,7 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 		terminator:       make(chan bool),
 		doneChannel:      make(chan error, 1),
 		failOnRollback:   options.FailOnRollback,
-		checkpointPrefix: DCPCheckpointPrefixWithGroupID(options.MetadataConfig.GroupID),
+		checkpointPrefix: DCPCheckpointPrefixWithGroupID(options.GroupID),
 		dbStats:          options.DbStats,
 	}
 

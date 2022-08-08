@@ -86,7 +86,6 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 	if !base.IsEnterpriseEdition() {
 		metadataConfig := base.DCPMetadataConfig{
 			StoreType: base.DCPMetadataDB,
-			GroupID:   "",
 		}
 		return base.StartGocbDCPFeed(bucket, bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, metadataConfig)
 	}
