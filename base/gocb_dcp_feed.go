@@ -86,8 +86,7 @@ func StartGocbDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgument
 			break
 		case <-args.Terminator:
 			InfofCtx(loggingCtx, KeyDCP, "Closing DCP Feed %q for bucket %q based on termination notification", feedName, MD(bucketName))
-			_ = dcpClient.Close()
-			dcpCloseErr := <-doneChan
+			dcpCloseErr := dcpClient.Close()
 			if dcpCloseErr != nil {
 				WarnfCtx(loggingCtx, "Error on closing DCP Feed %q for %q: %w", feedName, MD(bucketName), dcpCloseErr)
 			}
