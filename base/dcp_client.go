@@ -129,33 +129,33 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 	return client, nil
 }
 
+// Start returns an error and a channel to indicate when the DCPClient is done. If Start returns an error, channel will be nil
 func (dc *DCPClient) Start() (chan error, error) {
-	doneChan, err := dc.start()
+	err := dc.start()
 	if err != nil {
 		closeErr := dc.Close()
 		if closeErr != nil {
-			err = fmt.Errorf("Error closing DCPClient: %w after error starting DCPClient %w", closeErr, err)
+			err = fmt.Errorf("Error closing DCPClient: %s after error starting DCPClient %w", closeErr, err)
 		}
 		return nil, err
 	}
-	return doneChan, err
+	return dc.doneChannel, err
 }
 
-// Start returns an error and a channel to indicate when the DCPClient is done. If Start returns an error, channel will be nil
-func (dc *DCPClient) start() (doneChan chan error, err error) {
+func (dc *DCPClient) start() (err error) {
 	err = dc.initAgent(dc.spec)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	dc.startWorkers()
 
 	for i := uint16(0); i < dc.numVbuckets; i++ {
 		openErr := dc.openStream(i, openRetryCount)
 		if openErr != nil {
-			return nil, fmt.Errorf("Unable to start DCP client, error opening stream for vb %d: %w", i, openErr)
+			return fmt.Errorf("Unable to start DCP client, error opening stream for vb %d: %w", i, openErr)
 		}
 	}
-	return dc.doneChannel, nil
+	return nil
 }
 
 // Close is used externally to stop the DCP client. If the client was already closed due to error, returns that error. This function blocks until close.
