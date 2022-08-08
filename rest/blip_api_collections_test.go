@@ -127,7 +127,7 @@ func TestBlipGetCollections(t *testing.T) {
 		//	},
 		//	resultBody: []db.Body{nil},
 		//	errorCode:  "",
-		//},
+		// },
 	}
 
 	for _, testCase := range testCases {

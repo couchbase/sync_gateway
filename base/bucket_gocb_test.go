@@ -1698,7 +1698,7 @@ func TestGetXattr(t *testing.T) {
 
 	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 
-		//Doc 1
+		// Doc 1
 		key1 := t.Name() + "DocExistsXattrExists"
 		val1 := make(map[string]interface{})
 		val1["type"] = key1
@@ -1707,7 +1707,7 @@ func TestGetXattr(t *testing.T) {
 		xattrVal1["seq"] = float64(1)
 		xattrVal1["rev"] = "1-foo"
 
-		//Doc 2 - Tombstone
+		// Doc 2 - Tombstone
 		key2 := t.Name() + "TombstonedDocXattrExists"
 		val2 := make(map[string]interface{})
 		val2["type"] = key2
@@ -1715,7 +1715,7 @@ func TestGetXattr(t *testing.T) {
 		xattrVal2["seq"] = float64(1)
 		xattrVal2["rev"] = "1-foo"
 
-		//Doc 3 - To Delete
+		// Doc 3 - To Delete
 		key3 := t.Name() + "DeletedDocXattrExists"
 		val3 := make(map[string]interface{})
 		val3["type"] = key3
@@ -1726,7 +1726,7 @@ func TestGetXattr(t *testing.T) {
 
 		var err error
 
-		//Create w/ XATTR
+		// Create w/ XATTR
 		cas := uint64(0)
 		cas, err = bucket.WriteCasWithXattr(key1, xattrName1, 0, cas, nil, val1, xattrVal1)
 		if err != nil {
@@ -1737,36 +1737,36 @@ func TestGetXattr(t *testing.T) {
 
 		subdocStore, ok := AsSubdocXattrStore(bucket)
 
-		//Get Xattr From Existing Doc with Existing Xattr
+		// Get Xattr From Existing Doc with Existing Xattr
 		_, err = bucket.GetXattr(key1, xattrName1, &response)
 		assert.NoError(t, err)
 
 		assert.Equal(t, xattrVal1["seq"], response["seq"])
 		assert.Equal(t, xattrVal1["rev"], response["rev"])
 
-		//Get Xattr From Existing Doc With Non-Existent Xattr -> ErrSubDocBadMulti
+		// Get Xattr From Existing Doc With Non-Existent Xattr -> ErrSubDocBadMulti
 		_, err = bucket.GetXattr(key1, "non-exist", &response)
 		assert.Error(t, err)
 		assert.Equal(t, ErrXattrNotFound, pkgerrors.Cause(err))
 
-		//Get Xattr From Non-Existent Doc With Non-Existent Xattr
+		// Get Xattr From Non-Existent Doc With Non-Existent Xattr
 		_, err = bucket.GetXattr("non-exist", "non-exist", &response)
 		assert.Error(t, err)
 		assert.Equal(t, ErrNotFound, pkgerrors.Cause(err))
 
-		//Get Xattr From Tombstoned Doc With Existing System Xattr (ErrSubDocSuccessDeleted)
+		// Get Xattr From Tombstoned Doc With Existing System Xattr (ErrSubDocSuccessDeleted)
 		cas, err = bucket.WriteCasWithXattr(key2, SyncXattrName, 0, uint64(0), nil, val2, xattrVal2)
 		_, err = bucket.Remove(key2, cas)
 		require.NoError(t, err)
 		_, err = bucket.GetXattr(key2, SyncXattrName, &response)
 		assert.NoError(t, err)
 
-		//Get Xattr From Tombstoned Doc With Non-Existent System Xattr -> SubDocMultiPathFailureDeleted
+		// Get Xattr From Tombstoned Doc With Non-Existent System Xattr -> SubDocMultiPathFailureDeleted
 		_, err = bucket.GetXattr(key2, "_non-exist", &response)
 		assert.Error(t, err)
 		assert.Equal(t, ErrXattrNotFound, pkgerrors.Cause(err))
 
-		//Get Xattr and Body From Tombstoned Doc With Non-Existent System Xattr -> SubDocMultiPathFailureDeleted
+		// Get Xattr and Body From Tombstoned Doc With Non-Existent System Xattr -> SubDocMultiPathFailureDeleted
 		var v, xv, userXv map[string]interface{}
 		require.True(t, ok)
 		_, err = subdocStore.SubdocGetBodyAndXattr(key2, "_non-exist", "", &v, &xv, &userXv)
@@ -1790,7 +1790,7 @@ func TestGetXattrAndBody(t *testing.T) {
 
 	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 
-		//Doc 1
+		// Doc 1
 		key1 := t.Name() + "DocExistsXattrExists"
 		val1 := make(map[string]interface{})
 		val1["type"] = key1
@@ -1799,7 +1799,7 @@ func TestGetXattrAndBody(t *testing.T) {
 		xattrVal1["seq"] = float64(1)
 		xattrVal1["rev"] = "1-foo"
 
-		//Doc 2 - Tombstone
+		// Doc 2 - Tombstone
 		key2 := t.Name() + "TombstonedDocXattrExists"
 		val2 := make(map[string]interface{})
 		val2["type"] = key2
@@ -1807,7 +1807,7 @@ func TestGetXattrAndBody(t *testing.T) {
 		xattrVal2["seq"] = float64(1)
 		xattrVal2["rev"] = "1-foo"
 
-		//Doc 3 - To Delete
+		// Doc 3 - To Delete
 		key3 := t.Name() + "DeletedDocXattrExists"
 		val3 := make(map[string]interface{})
 		val3["type"] = key3
@@ -1818,7 +1818,7 @@ func TestGetXattrAndBody(t *testing.T) {
 
 		var err error
 
-		//Create w/ XATTR
+		// Create w/ XATTR
 		cas := uint64(0)
 		cas, err = bucket.WriteCasWithXattr(key1, xattrName1, 0, cas, nil, val1, xattrVal1)
 		if err != nil {
@@ -1828,7 +1828,7 @@ func TestGetXattrAndBody(t *testing.T) {
 		subdocStore, ok := AsSubdocXattrStore(bucket)
 		require.True(t, ok)
 
-		//Get Xattr From Existing Doc with Existing Xattr
+		// Get Xattr From Existing Doc with Existing Xattr
 		var v, xv, userXv map[string]interface{}
 		_, err = subdocStore.SubdocGetBodyAndXattr(key1, xattrName1, "", &v, &xv, &userXv)
 		assert.NoError(t, err)
@@ -1836,24 +1836,24 @@ func TestGetXattrAndBody(t *testing.T) {
 		assert.Equal(t, xattrVal1["seq"], xv["seq"])
 		assert.Equal(t, xattrVal1["rev"], xv["rev"])
 
-		//Get body and Xattr From Existing Doc With Non-Existent Xattr -> returns body only
+		// Get body and Xattr From Existing Doc With Non-Existent Xattr -> returns body only
 		_, err = subdocStore.SubdocGetBodyAndXattr(key1, "non-exist", "", &v, &xv, &userXv)
 		assert.NoError(t, err)
 		assert.Equal(t, val1["type"], v["type"])
 
-		//Get Xattr From Non-Existent Doc With Non-Existent Xattr
+		// Get Xattr From Non-Existent Doc With Non-Existent Xattr
 		_, err = subdocStore.SubdocGetBodyAndXattr("non-exist", "non-exist", "", &v, &xv, &userXv)
 		assert.Error(t, err)
 		assert.Equal(t, ErrNotFound, pkgerrors.Cause(err))
 
-		//Get Xattr From Tombstoned Doc With Existing System Xattr (ErrSubDocSuccessDeleted)
+		// Get Xattr From Tombstoned Doc With Existing System Xattr (ErrSubDocSuccessDeleted)
 		cas, err = bucket.WriteCasWithXattr(key2, SyncXattrName, 0, uint64(0), nil, val2, xattrVal2)
 		_, err = bucket.Remove(key2, cas)
 		require.NoError(t, err)
 		_, err = subdocStore.SubdocGetBodyAndXattr(key2, SyncXattrName, "", &v, &xv, &userXv)
 		assert.NoError(t, err)
 
-		//Get Xattr From Tombstoned Doc With Non-Existent System Xattr -> returns not found
+		// Get Xattr From Tombstoned Doc With Non-Existent System Xattr -> returns not found
 		_, err = subdocStore.SubdocGetBodyAndXattr(key2, "_non-exist", "", &v, &xv, &userXv)
 		assert.Error(t, err)
 		assert.Equal(t, ErrNotFound, pkgerrors.Cause(err))

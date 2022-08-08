@@ -126,7 +126,7 @@ func (h *handler) updateChangesOptionsFromQuery(feed *string, options *db.Change
 					docIdsArray = querydocidKeys
 				}
 			} else {
-				//This is not a JSON array so treat as a simple
+				// This is not a JSON array so treat as a simple
 				//comma separated list of doc id's
 				docIdsArray = strings.Split(docidsParam, ",")
 			}
@@ -195,7 +195,7 @@ func (h *handler) handleChanges() error {
 					docIdsArray = docidKeys
 				}
 			} else {
-				//This is not a JSON array so treat as a simple
+				// This is not a JSON array so treat as a simple
 				//comma separated list of doc id's
 				docIdsArray = strings.Split(docidsParam, ",")
 			}
@@ -508,7 +508,7 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 			}
 		}
 
-		//Copy options.ChangesCtx to new WebSocket options
+		// Copy options.ChangesCtx to new WebSocket options
 		//options.ChangesCtx will be cancelled automatically when
 		//changes feed completes
 		wsoptions.ChangesCtx = options.ChangesCtx
