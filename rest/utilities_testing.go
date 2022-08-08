@@ -236,16 +236,12 @@ func (rt *RestTester) Bucket() base.Bucket {
 			// If using a leaky bucket, make sure it ignores attempted closures to avoid double closures panic
 			// due to closing both RestTesterServerContext and testBucket in rt.Close()
 			leakyBucket, isLeaky := base.AsLeakyBucket(testBucket)
-			if isLeaky {
-				leakyBucket.SetIgnoreClose(true)
-			} else {
-				panic("Using option useLeakyTBForDB but testBucket is not a leaky bucket")
+			if !isLeaky {
+				rt.tb.Fatalf("Using option useLeakyTBForDB but testBucket is not a leaky bucket")
 			}
+			leakyBucket.SetIgnoreClose(true)
 
-			_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithConnectFn(*rt.DatabaseConfig, func(spec base.BucketSpec) (base.Bucket, error) {
-				// Use testBucket for database bucket instead of creating new bucket
-				return testBucket.Bucket, nil
-			})
+			_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithBucket(*rt.DatabaseConfig, testBucket.Bucket)
 		} else {
 			_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(*rt.DatabaseConfig)
 		}
