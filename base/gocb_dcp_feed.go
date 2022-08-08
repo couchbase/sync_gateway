@@ -76,10 +76,6 @@ func StartGocbDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgument
 	if err != nil {
 		ErrorfCtx(loggingCtx, "Failed to start DCP Feed %q for bucket %q: %w", feedName, MD(bucketName), err)
 		dcpClient.Close()
-		dcpCloseErr := <-doneChan
-		if dcpCloseErr != nil {
-			WarnfCtx(loggingCtx, "Error on closing non started DCP Feed %q for %q: %w", feedName, MD(bucketName), dcpCloseErr)
-		}
 		return err
 	}
 	InfofCtx(loggingCtx, KeyDCP, "Started DCP Feed %q for bucket %q", feedName, MD(bucketName))
