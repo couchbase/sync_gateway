@@ -213,7 +213,7 @@ func (db *Database) buildRevokedFeed(channelName string, options ChangesOptions,
 				paginationOptions.Limit = queryLimit
 			} else {
 				remainingLimit := requestLimit - itemsSent
-				paginationOptions.Limit = base.MinInt(remainingLimit, queryLimit)
+				paginationOptions.Limit = base.Min(remainingLimit, queryLimit)
 			}
 
 			// Get changes from 0 to latest seq
@@ -345,7 +345,7 @@ func (db *Database) wasDocInChannelPriorToRevocation(docID, chanName string, sin
 				continue
 			}
 
-			start := base.MaxUint64(docHistoryEntry.Start, accessPeriod.StartSeq)
+			start := base.Max(docHistoryEntry.Start, accessPeriod.StartSeq)
 
 			end := uint64(math.MaxUint64)
 			if docHistoryEntry.End != 0 {
@@ -353,7 +353,7 @@ func (db *Database) wasDocInChannelPriorToRevocation(docID, chanName string, sin
 			}
 
 			if accessPeriod.EndSeq != 0 {
-				end = base.MinUint64(end, accessPeriod.EndSeq)
+				end = base.Min(end, accessPeriod.EndSeq)
 			}
 
 			// If we have an overlap between when the doc was in the channel and when we had access to the channel
@@ -397,7 +397,7 @@ func (db *Database) changesFeed(singleChannelCache SingleChannelCache, options C
 				paginationOptions.Limit = queryLimit
 			} else {
 				remainingLimit := requestLimit - itemsSent
-				paginationOptions.Limit = base.MinInt(remainingLimit, queryLimit)
+				paginationOptions.Limit = base.Min(remainingLimit, queryLimit)
 			}
 
 			// TODO: pass db.Ctx down to changeCache?

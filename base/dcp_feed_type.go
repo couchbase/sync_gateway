@@ -27,8 +27,10 @@ var cbgtRootCertPools map[string]*x509.CertPool
 var cbgtGlobalsLock sync.Mutex
 
 type cbgtCreds struct {
-	username string
-	password string
+	username       string
+	password       string
+	clientCertPath string
+	clientKeyPath  string
 }
 
 const (
@@ -289,9 +291,8 @@ func addCbgtAuthToDCPParams(dcpParams string) string {
 		return dcpParams
 	}
 
-	username, password, ok := getCbgtCredentials(sgSourceParams.DbName)
+	creds, ok := getCbgtCredentials(sgSourceParams.DbName)
 	if !ok {
-		// no stored credentials includes the valid x.509 auth case
 		InfofCtx(context.Background(), KeyImport, "No feed credentials stored for db from sourceParams: %s", MD(sgSourceParams.DbName))
 		return dcpParams
 	}
@@ -303,8 +304,13 @@ func addCbgtAuthToDCPParams(dcpParams string) string {
 	}
 
 	// Add creds to params
-	feedParamsWithAuth.AuthUser = username
-	feedParamsWithAuth.AuthPassword = password
+	if creds.clientCertPath != "" && creds.clientKeyPath != "" {
+		feedParamsWithAuth.ClientCertPath = creds.clientCertPath
+		feedParamsWithAuth.ClientKeyPath = creds.clientKeyPath
+	} else {
+		feedParamsWithAuth.AuthUser = creds.username
+		feedParamsWithAuth.AuthPassword = creds.password
+	}
 
 	marshalledParamsWithAuth, marshalErr := JSONMarshal(feedParamsWithAuth)
 	if marshalErr != nil {
@@ -315,11 +321,13 @@ func addCbgtAuthToDCPParams(dcpParams string) string {
 	return string(marshalledParamsWithAuth)
 }
 
-func addCbgtCredentials(dbName, bucketName, username, password string) {
+func addCbgtCredentials(dbName, bucketName, username, password, clientCertPath, clientKeyPath string) {
 	cbgtGlobalsLock.Lock()
 	cbgtCredentials[dbName] = cbgtCreds{
-		username: username,
-		password: password,
+		username:       username,
+		password:       password,
+		clientCertPath: clientCertPath,
+		clientKeyPath:  clientKeyPath,
 	}
 	cbgtBucketToDBName[bucketName] = dbName
 	cbgtGlobalsLock.Unlock()
@@ -336,15 +344,11 @@ func removeCbgtCredentials(dbName string) {
 	cbgtGlobalsLock.Unlock()
 }
 
-func getCbgtCredentials(dbName string) (username, password string, ok bool) {
+func getCbgtCredentials(dbName string) (cbgtCreds, bool) {
 	cbgtGlobalsLock.Lock()
 	creds, found := cbgtCredentials[dbName]
-	if found {
-		username = creds.username
-		password = creds.password
-	}
-	cbgtGlobalsLock.Unlock()
-	return username, password, found
+	cbgtGlobalsLock.Unlock() // cbgtCreds is not a pointer type, safe to unlock
+	return creds, found
 }
 
 // See the comment of cbgtRootCAsProvider for usage details.

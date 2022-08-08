@@ -12,11 +12,8 @@ package rest
 
 import (
 	"bytes"
-	"context"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -29,7 +26,6 @@ import (
 	"time"
 
 	"github.com/couchbase/go-blip"
-	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -203,7 +199,14 @@ func (rt *RestTester) Bucket() base.Bucket {
 		}
 
 		if rt.createScopesAndCollections {
-			if err := createTestBucketScopesAndCollections(base.TestCtx(rt.tb), rt.testBucket, rt.DatabaseConfig.Scopes); err != nil {
+			scopes := make(map[string][]string)
+			for scopeName, scopeCfg := range rt.DatabaseConfig.Scopes {
+				scopes[scopeName] = make([]string, 0, len(scopeCfg.Collections))
+				for collName := range scopeCfg.Collections {
+					scopes[scopeName] = append(scopes[scopeName], collName)
+				}
+			}
+			if err := base.CreateTestBucketScopesAndCollections(base.TestCtx(rt.tb), rt.testBucket, scopes); err != nil {
 				rt.tb.Fatalf("Error creating test scopes/collections: %v", err)
 			}
 		}
@@ -249,61 +252,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 	close(rt.RestTesterServerContext.hasStarted)
 
 	return rt.testBucket.Bucket
-}
-
-// createTestBucketScopesAndCollections will create the given scopes and collections within the given test bucket.
-func createTestBucketScopesAndCollections(ctx context.Context, tb *base.TestBucket, scopesConfig ScopesConfig) error {
-	atLeastOneScope := false
-	for _, scopeConfig := range scopesConfig {
-		for range scopeConfig.Collections {
-			atLeastOneScope = true
-			break
-		}
-		break
-	}
-	if !atLeastOneScope {
-		// nothing to do here
-		return nil
-	}
-
-	un, pw, _ := tb.BucketSpec.Auth.GetCredentials()
-	var rootCAs *x509.CertPool
-	if tlsConfig := tb.BucketSpec.TLSConfig(); tlsConfig != nil {
-		rootCAs = tlsConfig.RootCAs
-	}
-	cluster, err := gocb.Connect(tb.BucketSpec.Server, gocb.ClusterOptions{
-		Username: un,
-		Password: pw,
-		SecurityConfig: gocb.SecurityConfig{
-			TLSSkipVerify: tb.BucketSpec.TLSSkipVerify,
-			TLSRootCAs:    rootCAs,
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("failed to connect to cluster: %w", err)
-	}
-	defer func() { _ = cluster.Close(nil) }()
-
-	cm := cluster.Bucket(tb.GetName()).Collections()
-
-	for scopeName, scopeConfig := range scopesConfig {
-		if err := cm.CreateScope(scopeName, nil); err != nil && !errors.Is(err, gocb.ErrScopeExists) {
-			return fmt.Errorf("failed to create scope %s: %w", scopeName, err)
-		}
-		base.DebugfCtx(ctx, base.KeySGTest, "Created scope %s", scopeName)
-		for collectionName := range scopeConfig.Collections {
-			if err := cm.CreateCollection(
-				gocb.CollectionSpec{
-					Name:      collectionName,
-					ScopeName: scopeName,
-				}, nil); err != nil {
-				return fmt.Errorf("failed to create collection %s in scope %s: %w", collectionName, scopeName, err)
-			}
-			base.DebugfCtx(ctx, base.KeySGTest, "Created collection %s.%s", scopeName, collectionName)
-		}
-	}
-
-	return nil
 }
 
 func (rt *RestTester) ServerContext() *ServerContext {
