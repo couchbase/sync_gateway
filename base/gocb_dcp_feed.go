@@ -71,12 +71,15 @@ func StartGocbDCPFeed(bucket Bucket, bucketName string, args sgbucket.FeedArgume
 	doneChan, err := dcpClient.Start()
 	loggingCtx := context.TODO()
 	if err != nil {
-		ErrorfCtx(loggingCtx, "Failed to start DCP Feed %q for bucket %q: %w", feedName, MD(bucketName), err)
+		ErrorfCtx(loggingCtx, "!!! Failed to start DCP Feed %q for bucket %q: %w", feedName, MD(bucketName), err)
 		// simplify in CBG-2234
 		closeErr := dcpClient.Close()
+		ErrorfCtx(loggingCtx, "!!! Finished called async close error from DCP Feed %q for bucket %q", feedName, MD(bucketName))
 		if closeErr != nil {
-			ErrorfCtx(loggingCtx, "Close error from DCP Feed %q for bucket %q: %w", feedName, MD(bucketName), closeErr)
+			ErrorfCtx(loggingCtx, "!!! Close error from DCP Feed %q for bucket %q: %w", feedName, MD(bucketName), closeErr)
 		}
+		asyncCloseErr := <-doneChan
+		ErrorfCtx(loggingCtx, "!!! Finished calling async close error from DCP Feed %q for bucket %q: %w", feedName, MD(bucketName), asyncCloseErr)
 		return err
 	}
 	InfofCtx(loggingCtx, KeyDCP, "Started DCP Feed %q for bucket %q", feedName, MD(bucketName))
