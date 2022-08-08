@@ -206,7 +206,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 					scopes[scopeName] = append(scopes[scopeName], collName)
 				}
 			}
-			if err := base.CreateTestBucketScopesAndCollections(base.TestCtx(rt.tb), rt.testBucket, scopes); err != nil {
+			if err := base.CreateTestBucketScopesAndCollections(base.TestCtx(rt.tb), rt.testBucket.BucketSpec, scopes); err != nil {
 				rt.tb.Fatalf("Error creating test scopes/collections: %v", err)
 			}
 		}

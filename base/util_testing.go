@@ -713,8 +713,8 @@ func waitUntilScopeAndCollectionExists(collection *gocb.Collection) error {
 	return err
 }
 
-// CreateTestBucketScopesAndCollections will create the given scopes and collections within the given test bucket.
-func CreateTestBucketScopesAndCollections(ctx context.Context, tb *TestBucket, scopes map[string][]string) error {
+// CreateTestBucketScopesAndCollections will create the given scopes and collections within the given bucket.
+func CreateTestBucketScopesAndCollections(ctx context.Context, spec BucketSpec, scopes map[string][]string) error {
 	atLeastOneScope := false
 	for _, collections := range scopes {
 		for range collections {
@@ -728,16 +728,16 @@ func CreateTestBucketScopesAndCollections(ctx context.Context, tb *TestBucket, s
 		return nil
 	}
 
-	un, pw, _ := tb.BucketSpec.Auth.GetCredentials()
+	un, pw, _ := spec.Auth.GetCredentials()
 	var rootCAs *x509.CertPool
-	if tlsConfig := tb.BucketSpec.TLSConfig(); tlsConfig != nil {
+	if tlsConfig := spec.TLSConfig(); tlsConfig != nil {
 		rootCAs = tlsConfig.RootCAs
 	}
-	cluster, err := gocb.Connect(tb.BucketSpec.Server, gocb.ClusterOptions{
+	cluster, err := gocb.Connect(spec.Server, gocb.ClusterOptions{
 		Username: un,
 		Password: pw,
 		SecurityConfig: gocb.SecurityConfig{
-			TLSSkipVerify: tb.BucketSpec.TLSSkipVerify,
+			TLSSkipVerify: spec.TLSSkipVerify,
 			TLSRootCAs:    rootCAs,
 		},
 	})
@@ -746,7 +746,7 @@ func CreateTestBucketScopesAndCollections(ctx context.Context, tb *TestBucket, s
 	}
 	defer func() { _ = cluster.Close(nil) }()
 
-	cm := cluster.Bucket(tb.GetName()).Collections()
+	cm := cluster.Bucket(spec.BucketName).Collections()
 
 	for scopeName, collections := range scopes {
 		if err := cm.CreateScope(scopeName, nil); err != nil && !errors.Is(err, gocb.ErrScopeExists) {
@@ -762,7 +762,7 @@ func CreateTestBucketScopesAndCollections(ctx context.Context, tb *TestBucket, s
 				return fmt.Errorf("failed to create collection %s in scope %s: %w", collectionName, scopeName, err)
 			}
 			DebugfCtx(ctx, KeySGTest, "Created collection %s.%s", scopeName, collectionName)
-			if err := waitUntilScopeAndCollectionExists(cluster.Bucket(tb.GetName()).Scope(scopeName).Collection(collectionName)); err != nil {
+			if err := waitUntilScopeAndCollectionExists(cluster.Bucket(spec.BucketName).Scope(scopeName).Collection(collectionName)); err != nil {
 				return err
 			}
 			DebugfCtx(ctx, KeySGTest, "Collection now exists %s.%s", scopeName, collectionName)

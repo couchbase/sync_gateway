@@ -43,6 +43,10 @@ const (
 	DefaultTestClusterPassword = DefaultCouchbasePassword
 	envTestClusterDriver       = "SG_TEST_DRIVER"
 
+	// Use fresh buckets instead of collections for testing
+	// TODO: Change this to instead check if using CBS < 7
+	tbpEnvUseBuckets = "SG_TEST_USE_BUCKETS"
+
 	// Creates this many buckets in the backing store to be pooled for testing.
 	tbpDefaultBucketPoolSize = 3
 	tbpEnvPoolSize           = "SG_TEST_BUCKET_POOL_SIZE"
@@ -67,6 +71,8 @@ type TestBucketPool struct {
 	// integrationMode should be true if using Couchbase Server. If this is false, Walrus buckets are returned instead of pooled buckets.
 	integrationMode bool
 
+	bucket Bucket
+
 	readyBucketPool        chan Bucket
 	cluster                tbpCluster
 	bucketReadierQueue     chan tbpBucketName
@@ -81,6 +87,9 @@ type TestBucketPool struct {
 	preserveBuckets bool
 	// preservedBucketCount keeps track of number of preserved buckets to prevent bucket exhaustion deadlock.
 	preservedBucketCount uint32
+
+	// useBuckets can be set true to use buckets instead of collections
+	useBuckets bool
 
 	// verbose flag controls debug test pool logging.
 	verbose AtomicBool
@@ -116,6 +125,8 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 
 	preserveBuckets, _ := strconv.ParseBool(os.Getenv(tbpEnvPreserve))
 
+	useBuckets, _ := strconv.ParseBool(os.Getenv(tbpEnvUseBuckets))
+
 	tbp := TestBucketPool{
 		integrationMode:        true,
 		readyBucketPool:        make(chan Bucket, numBuckets),
@@ -123,6 +134,7 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 		bucketReadierWaitGroup: &sync.WaitGroup{},
 		ctxCancelFunc:          ctxCancelFunc,
 		preserveBuckets:        preserveBuckets,
+		useBuckets:             useBuckets,
 		bucketInitFunc:         bucketInitFunc,
 		unclosedBuckets:        make(map[string]map[string]struct{}),
 	}
@@ -446,62 +458,97 @@ func (tbp *TestBucketPool) removeOldTestBuckets() error {
 
 // createTestBuckets creates a new set of integration test buckets and pushes them into the readier queue.
 func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, bucketInitFunc TBPBucketInitFunc) error {
-
 	// keep references to opened buckets for use later in this function
 	var (
 		openBuckets     = make(map[string]Bucket, numBuckets)
 		openBucketsLock sync.Mutex // protects openBuckets
 	)
 
-	wg := sync.WaitGroup{}
-	wg.Add(numBuckets)
-
 	// Append a timestamp to all of the bucket names to ensure uniqueness across a single package.
 	// Not strictly required, but can help to prevent (index) resources from being incorrectly reused on the server side for recently deleted buckets.
 	bucketNameTimestamp := time.Now().UnixNano()
 
-	// create required number of buckets (skipping any already existing ones)
-	for i := 0; i < numBuckets; i++ {
-		testBucketName := fmt.Sprintf(tbpBucketNameFormat, tbpBucketNamePrefix, i, bucketNameTimestamp)
-		ctx := bucketNameCtx(context.Background(), testBucketName)
+	if !tbp.useBuckets {
+		bucketName := "sg_int_testing"
+		ctx := bucketNameCtx(context.Background(), bucketName)
+		err := tbp.cluster.removeBucket(bucketName)
+		if err != nil {
+			WarnfCtx(ctx, "Could not remove bucket sg_int_testing: %v", err)
+		}
+		err = tbp.cluster.insertBucket(bucketName, bucketQuotaMB)
+		if err != nil {
+			tbp.Fatalf(ctx, "Couldn't create test bucket: %v", err)
+		}
 
-		// Bucket creation takes a few seconds for each bucket,
-		// so create and wait for readiness concurrently.
-		go func(bucketName string) {
-			tbp.Logf(ctx, "Creating new test bucket")
-			err := tbp.cluster.insertBucket(bucketName, bucketQuotaMB)
-			if err != nil {
-				tbp.Fatalf(ctx, "Couldn't create test bucket: %v", err)
-			}
+		tbp.bucket, err = tbp.cluster.openTestBucket(tbpBucketName(bucketName), 10)
+		if err != nil {
+			tbp.Fatalf(ctx, "Timed out trying to open new bucket: %v", err)
+		}
 
-			b, err := tbp.cluster.openTestBucket(tbpBucketName(bucketName), 10*numBuckets)
-			if err != nil {
-				tbp.Fatalf(ctx, "Timed out trying to open new bucket: %v", err)
-			}
-			openBucketsLock.Lock()
+		collectionNames := make([]string, numBuckets)
+		for i := 0; i < numBuckets; i++ {
+			//collectionNames[i] = "collection_" + strconv.Itoa(i)
+			collectionNames[i] = fmt.Sprintf(tbpBucketNameFormat, tbpBucketNamePrefix, i, bucketNameTimestamp)
+		}
+		err = CreateTestBucketScopesAndCollections(ctx, getBucketSpec(tbpBucketName(bucketName)), map[string][]string{
+			"testing": collectionNames,
+		})
+		if err != nil {
+			tbp.Fatalf(ctx, "ERRR while creating collections: %v", err)
+		}
+
+		for i := 0; i < numBuckets; i++ {
+			// Get each collection as a bucket and put it on the open buckets pool
+			fmt.Sprintf(tbpBucketNameFormat, tbpBucketNamePrefix, i, bucketNameTimestamp)
 			openBuckets[bucketName] = b
-			openBucketsLock.Unlock()
+		}
 
-			n1qlStore, ok := AsN1QLStore(b)
-			if !ok {
-				tbp.Fatalf(ctx, "Couldn't remove old prepared statements: %v", err)
-			}
-			queryRes, err := n1qlStore.Query(`DELETE FROM system:prepareds WHERE statement LIKE "%`+KeyspaceQueryToken+`%";`, nil, RequestPlus, true)
-			if err != nil {
-				tbp.Fatalf(ctx, "Couldn't remove old prepared statements: %v", err)
-			}
+	} else {
+		wg := sync.WaitGroup{}
+		wg.Add(numBuckets)
+		// create required number of buckets (skipping any already existing ones)
+		for i := 0; i < numBuckets; i++ {
+			testBucketName := fmt.Sprintf(tbpBucketNameFormat, tbpBucketNamePrefix, i, bucketNameTimestamp)
+			ctx := bucketNameCtx(context.Background(), testBucketName)
 
-			err = queryRes.Close()
-			if err != nil {
-				tbp.Fatalf(ctx, "Failed to close query: %v", err)
-			}
+			// Bucket creation takes a few seconds for each bucket,
+			// so create and wait for readiness concurrently.
+			go func(bucketName string) {
+				tbp.Logf(ctx, "Creating new test bucket")
+				err := tbp.cluster.insertBucket(bucketName, bucketQuotaMB)
+				if err != nil {
+					tbp.Fatalf(ctx, "Couldn't create test bucket: %v", err)
+				}
 
-			wg.Done()
-		}(testBucketName)
+				b, err := tbp.cluster.openTestBucket(tbpBucketName(bucketName), 10*numBuckets)
+				if err != nil {
+					tbp.Fatalf(ctx, "Timed out trying to open new bucket: %v", err)
+				}
+				openBucketsLock.Lock()
+				openBuckets[bucketName] = b
+				openBucketsLock.Unlock()
+
+				n1qlStore, ok := AsN1QLStore(b)
+				if !ok {
+					tbp.Fatalf(ctx, "Couldn't remove old prepared statements: %v", err)
+				}
+				queryRes, err := n1qlStore.Query(`DELETE FROM system:prepareds WHERE statement LIKE "%`+KeyspaceQueryToken+`%";`, nil, RequestPlus, true)
+				if err != nil {
+					tbp.Fatalf(ctx, "Couldn't remove old prepared statements: %v", err)
+				}
+
+				err = queryRes.Close()
+				if err != nil {
+					tbp.Fatalf(ctx, "Failed to close query: %v", err)
+				}
+
+				wg.Done()
+			}(testBucketName)
+		}
+
+		// wait for the async bucket creation and opening of buckets to finish
+		wg.Wait()
 	}
-
-	// wait for the async bucket creation and opening of buckets to finish
-	wg.Wait()
 
 	// All the buckets are created and opened, so now we can perform some synchronous setup (e.g. Creating GSI indexes)
 	for i := 0; i < numBuckets; i++ {
@@ -617,6 +664,10 @@ type TBPBucketReadierFunc func(ctx context.Context, b Bucket, tbp *TestBucketPoo
 
 // FlushBucketEmptierFunc ensures the bucket is empty by flushing. It is not recommended to use with GSI.
 var FlushBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b Bucket, tbp *TestBucketPool) error {
+	if !tbp.useBuckets {
+		b.Close()
+		return nil
+	}
 
 	if c, ok := b.(*Collection); ok {
 		if err := c.dropAllScopesAndCollections(); err != nil && !errors.Is(err, ErrCollectionsUnsupported) {

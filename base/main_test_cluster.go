@@ -285,3 +285,7 @@ func (c *tbpClusterV2) getMinClusterCompatVersion() int {
 	}
 	return nodesMeta[0].ClusterCompatibility
 }
+
+func (c *tbpClusterV2) insertScope() {
+
+}

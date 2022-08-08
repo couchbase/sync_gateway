@@ -36,3 +36,10 @@ func TestMain(m *testing.M) {
 
 	os.Exit(status)
 }
+
+func TestCollections(t *testing.T) {
+	b1 := GetTestBucket(t)
+	b2 := GetTestBucket(t)
+	b1.Add("lol", 0, nil)
+	b2.Add("lola", 0, nil)
+}
