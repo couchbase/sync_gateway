@@ -47,8 +47,8 @@ func (bh *blipHandler) handleGetCollections(rq *blip.Message) error {
 	}
 
 	checkpoints := make([]Body, len(requestBody.Collections))
-	for i, collection := range requestBody.Collections {
-		scope, collectionName, err := parseScopeAndCollection(collection)
+	for i, scopeAndCollection := range requestBody.Collections {
+		scope, collectionName, err := parseScopeAndCollection(scopeAndCollection)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Invalid specification for collection: %s", err)
 		}
@@ -74,10 +74,9 @@ func (bh *blipHandler) handleGetCollections(rq *blip.Message) error {
 				checkpoints[i] = Body{}
 				bh.collectionMapping = append(bh.collectionMapping, collectionDB)
 			} else {
-				// TODO: CBG-2203 - should we return an error such that the client disconnects here?
-				base.WarnfCtx(bh.loggingCtx, "Unable to fetch client checkpoint %q for collection %s.%s", key, *scope, *collectionName)
-				checkpoints[i] = nil
-				bh.collectionMapping = append(bh.collectionMapping, nil)
+				errMsg := fmt.Sprintf("Unable to fetch client checkpoint %q for collection %s: %s", key, scopeAndCollection, err)
+				base.WarnfCtx(bh.loggingCtx, errMsg)
+				return base.HTTPErrorf(status, errMsg)
 			}
 			continue
 		}
