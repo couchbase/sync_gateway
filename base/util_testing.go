@@ -701,6 +701,18 @@ func TestRequiresCollections(t *testing.T) {
 	}
 }
 
+func waitUntilScopeAndCollectionExists(collection *gocb.Collection) error {
+	err, _ := RetryLoop("wait for scope and collection to exist", func() (shouldRetry bool, err error, value interface{}) {
+		_, err = collection.Exists("waitUntilScopeAndCollectionExists", nil)
+		if err != nil {
+			WarnfCtx(context.TODO(), "Error checking if collection exists: %v", err)
+			return true, err, nil
+		}
+		return false, nil, nil
+	}, CreateMaxDoublingSleeperFunc(30, 10, 1000))
+	return err
+}
+
 // CreateTestBucketScopesAndCollections will create the given scopes and collections within the given test bucket.
 func CreateTestBucketScopesAndCollections(ctx context.Context, tb *TestBucket, scopes map[string][]string) error {
 	atLeastOneScope := false
@@ -750,6 +762,10 @@ func CreateTestBucketScopesAndCollections(ctx context.Context, tb *TestBucket, s
 				return fmt.Errorf("failed to create collection %s in scope %s: %w", collectionName, scopeName, err)
 			}
 			DebugfCtx(ctx, KeySGTest, "Created collection %s.%s", scopeName, collectionName)
+			if err := waitUntilScopeAndCollectionExists(cluster.Bucket(tb.GetName()).Scope(scopeName).Collection(collectionName)); err != nil {
+				return err
+			}
+			DebugfCtx(ctx, KeySGTest, "Collection now exists %s.%s", scopeName, collectionName)
 		}
 	}
 

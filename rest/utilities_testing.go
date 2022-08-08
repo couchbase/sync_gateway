@@ -12,11 +12,8 @@ package rest
 
 import (
 	"bytes"
-	"context"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -29,7 +26,6 @@ import (
 	"time"
 
 	"github.com/couchbase/go-blip"
-	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -256,77 +252,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 	close(rt.RestTesterServerContext.hasStarted)
 
 	return rt.testBucket.Bucket
-}
-
-// createTestBucketScopesAndCollections will create the given scopes and collections within the given test bucket.
-func createTestBucketScopesAndCollections(ctx context.Context, tb *base.TestBucket, scopesConfig ScopesConfig) error {
-	atLeastOneScope := false
-	for _, scopeConfig := range scopesConfig {
-		for range scopeConfig.Collections {
-			atLeastOneScope = true
-			break
-		}
-		break
-	}
-	if !atLeastOneScope {
-		// nothing to do here
-		return nil
-	}
-
-	un, pw, _ := tb.BucketSpec.Auth.GetCredentials()
-	var rootCAs *x509.CertPool
-	if tlsConfig := tb.BucketSpec.TLSConfig(); tlsConfig != nil {
-		rootCAs = tlsConfig.RootCAs
-	}
-	cluster, err := gocb.Connect(tb.BucketSpec.Server, gocb.ClusterOptions{
-		Username: un,
-		Password: pw,
-		SecurityConfig: gocb.SecurityConfig{
-			TLSSkipVerify: tb.BucketSpec.TLSSkipVerify,
-			TLSRootCAs:    rootCAs,
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("failed to connect to cluster: %w", err)
-	}
-	defer func() { _ = cluster.Close(nil) }()
-
-	cm := cluster.Bucket(tb.GetName()).Collections()
-
-	for scopeName, scopeConfig := range scopesConfig {
-		if err := cm.CreateScope(scopeName, nil); err != nil && !errors.Is(err, gocb.ErrScopeExists) {
-			return fmt.Errorf("failed to create scope %s: %w", scopeName, err)
-		}
-		base.DebugfCtx(ctx, base.KeySGTest, "Created scope %s", scopeName)
-		for collectionName := range scopeConfig.Collections {
-			if err := cm.CreateCollection(
-				gocb.CollectionSpec{
-					Name:      collectionName,
-					ScopeName: scopeName,
-				}, nil); err != nil {
-				return fmt.Errorf("failed to create collection %s in scope %s: %w", collectionName, scopeName, err)
-			}
-			base.DebugfCtx(ctx, base.KeySGTest, "Created collection %s.%s", scopeName, collectionName)
-			if err := waitUntilScopeAndCollectionExists(cluster.Bucket(tb.GetName()).Scope(scopeName).Collection(collectionName)); err != nil {
-				return err
-			}
-			base.DebugfCtx(ctx, base.KeySGTest, "Collection now exists %s.%s", scopeName, collectionName)
-		}
-	}
-
-	return nil
-}
-
-func waitUntilScopeAndCollectionExists(collection *gocb.Collection) error {
-	err, _ := base.RetryLoop("wait for scope and collection to exist", func() (shouldRetry bool, err error, value interface{}) {
-		_, err = collection.Exists("waitUntilScopeAndCollectionExists", nil)
-		if err != nil {
-			base.WarnfCtx(context.TODO(), "Error checking if collection exists: %v", err)
-			return true, err, nil
-		}
-		return false, nil, nil
-	}, base.CreateMaxDoublingSleeperFunc(30, 10, 1000))
-	return err
 }
 
 func (rt *RestTester) ServerContext() *ServerContext {
