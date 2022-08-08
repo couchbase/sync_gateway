@@ -13,6 +13,8 @@ package base
 import (
 	"bytes"
 	"context"
+	"crypto/x509"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -26,6 +28,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -696,4 +699,75 @@ func TestRequiresCollections(t *testing.T) {
 	if testClusterCompatVersion < minCompatVersionForCollections {
 		t.Skip("Collections not supported")
 	}
+}
+
+func waitUntilScopeAndCollectionExists(collection *gocb.Collection) error {
+	err, _ := RetryLoop("wait for scope and collection to exist", func() (shouldRetry bool, err error, value interface{}) {
+		_, err = collection.Exists("waitUntilScopeAndCollectionExists", nil)
+		if err != nil {
+			WarnfCtx(context.TODO(), "Error checking if collection exists: %v", err)
+			return true, err, nil
+		}
+		return false, nil, nil
+	}, CreateMaxDoublingSleeperFunc(30, 10, 1000))
+	return err
+}
+
+// CreateTestBucketScopesAndCollections will create the given scopes and collections within the given test bucket.
+func CreateTestBucketScopesAndCollections(ctx context.Context, tb *TestBucket, scopes map[string][]string) error {
+	atLeastOneScope := false
+	for _, collections := range scopes {
+		for range collections {
+			atLeastOneScope = true
+			break
+		}
+		break
+	}
+	if !atLeastOneScope {
+		// nothing to do here
+		return nil
+	}
+
+	un, pw, _ := tb.BucketSpec.Auth.GetCredentials()
+	var rootCAs *x509.CertPool
+	if tlsConfig := tb.BucketSpec.TLSConfig(); tlsConfig != nil {
+		rootCAs = tlsConfig.RootCAs
+	}
+	cluster, err := gocb.Connect(tb.BucketSpec.Server, gocb.ClusterOptions{
+		Username: un,
+		Password: pw,
+		SecurityConfig: gocb.SecurityConfig{
+			TLSSkipVerify: tb.BucketSpec.TLSSkipVerify,
+			TLSRootCAs:    rootCAs,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to connect to cluster: %w", err)
+	}
+	defer func() { _ = cluster.Close(nil) }()
+
+	cm := cluster.Bucket(tb.GetName()).Collections()
+
+	for scopeName, collections := range scopes {
+		if err := cm.CreateScope(scopeName, nil); err != nil && !errors.Is(err, gocb.ErrScopeExists) {
+			return fmt.Errorf("failed to create scope %s: %w", scopeName, err)
+		}
+		DebugfCtx(ctx, KeySGTest, "Created scope %s", scopeName)
+		for _, collectionName := range collections {
+			if err := cm.CreateCollection(
+				gocb.CollectionSpec{
+					Name:      collectionName,
+					ScopeName: scopeName,
+				}, nil); err != nil {
+				return fmt.Errorf("failed to create collection %s in scope %s: %w", collectionName, scopeName, err)
+			}
+			DebugfCtx(ctx, KeySGTest, "Created collection %s.%s", scopeName, collectionName)
+			if err := waitUntilScopeAndCollectionExists(cluster.Bucket(tb.GetName()).Scope(scopeName).Collection(collectionName)); err != nil {
+				return err
+			}
+			DebugfCtx(ctx, KeySGTest, "Collection now exists %s.%s", scopeName, collectionName)
+		}
+	}
+
+	return nil
 }
