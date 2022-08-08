@@ -50,7 +50,6 @@ type CbgtContext struct {
 	heartbeater       Heartbeater              // Heartbeater used for failed node detection
 	heartbeatListener *importHeartbeatListener // Listener subscribed to failed node alerts from heartbeater
 	loggingCtx        context.Context          // Context for cbgt logging
-	LithiumCompat     *AtomicBool              // set on startup if there are pre-Helium nodes in the cluster, later reset once all pre-Helium nodes are gone
 }
 
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
@@ -61,11 +60,6 @@ func StartShardedDCPFeed(dbName string, configGroup string, uuid string, heartbe
 		return nil, err
 	}
 
-	if cbgtContext.LithiumCompat.IsTrue() {
-		if spec.Scope != nil || spec.Collection != nil {
-			return nil, fmt.Errorf("cannot start DCP feed on non-default collection with legacy nodes present in the cluster")
-		}
-	}
 	// Start Manager.  Registers this node in the cfg
 	err = cbgtContext.StartManager(dbName, configGroup, bucket, spec, numPartitions)
 	if err != nil {
@@ -254,6 +248,11 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 	if err != nil {
 		return nil, fmt.Errorf("failed to get minimum node version in cluster: %w", err)
 	}
+	if minVersion.Less(firstVersionToSupportCollections) {
+		if spec.Scope != nil || spec.Collection != nil {
+			return nil, fmt.Errorf("cannot start DCP feed on non-default collection with legacy nodes present in the cluster")
+		}
+	}
 
 	// uuid: Unique identifier for the node. Used to identify the node in the config.
 	//       Without UUID persistence across SG restarts, a restarted SG node relies on heartbeater to remove
@@ -347,13 +346,8 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 		loggingCtx: context.WithValue(context.Background(), LogContextKey{},
 			LogContext{CorrelationID: MD(spec.BucketName).Redact() + "-" + DCPImportFeedID},
 		),
-		Manager:       mgr,
-		Cfg:           cfgSG,
-		LithiumCompat: NewAtomicBool(minVersion.Less(firstVersionToSupportCollections)),
-	}
-	if cbgtContext.LithiumCompat.IsTrue() {
-		WarnfCtx(cbgtContext.loggingCtx, "Found old (3.0.x or below) Sync Gateway nodes in cluster - entering compatibility mode."+
-			" Importing documents from non-default collections will not be possible until all nodes are upgraded.")
+		Manager: mgr,
+		Cfg:     cfgSG,
 	}
 
 	if spec.Auth != nil || (spec.Certpath != "" && spec.Keypath != "") {
@@ -537,7 +531,7 @@ func NewImportHeartbeatListener(ctx *CbgtContext) (*importHeartbeatListener, err
 	}
 
 	// Initialize the node set
-	_, _, err := listener.reloadNodes()
+	_, err := listener.reloadNodes()
 	if err != nil {
 		return nil, err
 	}
@@ -586,7 +580,7 @@ func (l *importHeartbeatListener) subscribeNodeChanges() error {
 		for {
 			select {
 			case <-cfgEvents:
-				minCompatVersion, localNodeRegistered, err := l.reloadNodes()
+				localNodeRegistered, err := l.reloadNodes()
 				if err != nil {
 					WarnfCtx(logCtx, "Error while reloading heartbeat node definitions: %v", err)
 				}
@@ -597,12 +591,6 @@ func (l *importHeartbeatListener) subscribeNodeChanges() error {
 					}
 				}
 
-				if l.ctx.LithiumCompat.IsTrue() && !(minCompatVersion.Less(firstVersionToSupportCollections)) {
-					// Can now exit compat mode as all nodes are at least Helium
-					InfofCtx(logCtx, KeyDCP, "Exiting compatibility mode - can now start import feed on non-default collections.")
-					l.ctx.LithiumCompat.CompareAndSwap(true, false)
-				}
-
 			case <-l.terminator:
 				return
 			}
@@ -611,30 +599,20 @@ func (l *importHeartbeatListener) subscribeNodeChanges() error {
 	return nil
 }
 
-func (l *importHeartbeatListener) reloadNodes() (minVersion *ComparableVersion, localNodePresent bool, err error) {
+func (l *importHeartbeatListener) reloadNodes() (localNodePresent bool, err error) {
 
 	nodeUUIDs := make([]string, 0)
 	nodeDefTypes := []string{cbgt.NODE_DEFS_KNOWN, cbgt.NODE_DEFS_WANTED}
 	for _, nodeDefType := range nodeDefTypes {
 		nodeSet, _, err := cbgt.CfgGetNodeDefs(l.cfg, nodeDefType)
 		if err != nil {
-			return nil, false, err
+			return false, err
 		}
 		if nodeSet != nil {
 			for _, nodeDef := range nodeSet.NodeDefs {
 				nodeUUIDs = append(nodeUUIDs, nodeDef.UUID)
 				if nodeDef.UUID == l.mgr.UUID() {
 					localNodePresent = true
-				}
-				nodeVersion, err := getNodeVersion(nodeDef)
-				if err != nil {
-					return nil, false, fmt.Errorf("failed to get version of node %v: %w", MD(nodeDef.HostPort).Redact(), err)
-				}
-				if nodeVersion == nil {
-					nodeVersion = zeroComparableVersion
-				}
-				if minVersion == nil || nodeVersion.Less(minVersion) {
-					minVersion = nodeVersion
 				}
 			}
 		}
@@ -643,7 +621,7 @@ func (l *importHeartbeatListener) reloadNodes() (minVersion *ComparableVersion, 
 	l.nodeIDs = nodeUUIDs
 	l.lock.Unlock()
 
-	return minVersion, localNodePresent, nil
+	return localNodePresent, nil
 }
 
 // GetNodes returns a copy of the in-memory node set

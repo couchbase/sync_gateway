@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/couchbase/cbgt"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -171,9 +171,7 @@ func TestShardedDCPUpgradeHelium(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping in short mode")
 	}
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Requires Couchbase Server")
-	}
+	base.TestRequiresCollections(t)
 	if !base.IsEnterpriseEdition() {
 		t.Skip("EE-only test")
 	}
@@ -182,6 +180,26 @@ func TestShardedDCPUpgradeHelium(t *testing.T) {
 	defer tb.Close()
 	bucketUUID, err := tb.UUID()
 	require.NoError(t, err, "get bucket UUID")
+
+	const (
+		testScopeName      = "foo"
+		testCollectionName = "bar"
+	)
+	err = base.CreateTestBucketScopesAndCollections(base.TestCtx(t), tb, map[string][]string{
+		testScopeName: {testCollectionName},
+	})
+	require.NoError(t, err, "create test bucket scopes and collections")
+
+	// We need to create a new bucket based on a spec with collections, rather than just adding them to the existing
+	// bucket's spec, otherwise they won't be reflected in the TestBucket's underlying bucket's spec, and so won't
+	// make it into StartShardedDCPFeed.
+	collectionsBucketSpec := tb.BucketSpec
+	collectionsBucketSpec.Scope = base.StringPtr(testScopeName)
+	collectionsBucketSpec.Collection = base.StringPtr(testCollectionName)
+
+	collectionsBucket, err := ConnectToBucket(collectionsBucketSpec)
+	require.NoError(t, err, "ConnectToBucket w/ collectionsBucketSpec")
+	defer collectionsBucket.Close()
 
 	numVBuckets, err := tb.GetMaxVbno()
 	require.NoError(t, err)
@@ -201,52 +219,66 @@ func TestShardedDCPUpgradeHelium(t *testing.T) {
 	)
 	require.NoError(t, tb.SetRaw(testDoc1, 0, nil, []byte(`{}`)))
 
-	t.Log("TEST: setup complete")
-
-	// Start this retry loop asynchronously because the change may happen before NewDatabaseContext returns
-	db, err := NewDatabaseContext(tb.GetName(), tb, true, DatabaseContextOptions{
-		GroupID:                    "",
-		EnableXattr:                true,
-		UseViews:                   base.TestsDisableGSI(),
+	// Check that the presence of an older node is picked up, and that we cannot start the feed with collections.
+	db, err := NewDatabaseContext(tb.GetName(), collectionsBucket, true, DatabaseContextOptions{
+		GroupID:     "",
+		EnableXattr: true,
+		UseViews:    base.TestsDisableGSI(),
+		ImportOptions: ImportOptions{
+			ImportPartitions: numPartitions,
+		},
 		skipStartHeartbeatChecking: true,
+	})
+	require.Error(t, err, "NewDatabaseContext with collections and old node present should error")
+
+	// Start it without collections
+	db, err = NewDatabaseContext(tb.GetName(), tb.NoCloseClone(), true, DatabaseContextOptions{
+		GroupID:     "",
+		EnableXattr: true,
+		UseViews:    base.TestsDisableGSI(),
 		ImportOptions: ImportOptions{
 			ImportPartitions: numPartitions,
 		},
 	})
-	require.NoError(t, err, "NewDatabaseContext")
+	require.NoError(t, err, "NewDatabaseContext *without* collections")
 	defer db.Close()
 
-	//pIndexes, _, err := cbgt.CfgGetPlanPIndexes(db.CfgSG)
-	//require.NoError(t, err)
-	// TODO: sometimes cbgt adds and immediately removes a PIndex causing this to fail
-	//assert.Len(t, pIndexes.PlanPIndexes, numPartitions, "number of planPIndexes should match partitions after DbContext start")
+	// Wait until cbgt removes the old (non-existent) node from the config
+	err, _ = base.RetryLoop("wait for non-existent node to be removed", func() (shouldRetry bool, err error, value interface{}) {
+		nodes, _, err := cbgt.CfgGetNodeDefs(db.CfgSG, cbgt.NODE_DEFS_KNOWN)
+		if err != nil {
+			return false, err, nil
+		}
+		for uuid := range nodes.NodeDefs {
+			if uuid != db.UUID {
+				return true, nil, nil
+			}
+		}
+		return false, nil, nil
+	}, base.CreateSleeperFunc(100, 100))
+	require.NoError(t, err, "node wait retry loop")
 
+	// assert that the doc we created before starting this node gets imported once all the pindexes are reassigned
 	require.NoError(t, db.WaitForPendingChanges(base.TestCtx(t)))
 	doc, err := db.GetDocument(base.TestCtx(t), testDoc1, DocUnmarshalAll)
 	require.NoError(t, err, "GetDocument 1")
 	require.NotNil(t, doc, "GetDocument 1")
 
-	assert.True(t, db.ImportListener.cbgtContext.LithiumCompat.IsTrue(), "LithiumCompat")
+	// verify that now we *can* re-create the db with collections
+	db.Close()
+	db, err = NewDatabaseContext(tb.GetName(), collectionsBucket, true, DatabaseContextOptions{
+		GroupID:     "",
+		EnableXattr: true,
+		UseViews:    base.TestsDisableGSI(),
+		ImportOptions: ImportOptions{
+			ImportPartitions: numPartitions,
+		},
+	})
+	require.NoError(t, err, "NewDatabaseContext *with* collections")
+	defer db.Close()
 
-	require.NoError(t, db.Heartbeater.StartCheckingHeartbeats())
-
-	// Now wait for it to pick up that the Lithium "node" isn't actually heartbeating
-	err, _ = base.RetryLoop("wait for LithiumCompat to become false", func() (shouldRetry bool, err error, value interface{}) {
-		if db == nil {
-			return true, nil, nil
-		}
-		return db.ImportListener.cbgtContext.LithiumCompat.IsTrue(), nil, nil
-		// will take around ~10 seconds at least
-	}, base.CreateSleeperFunc(200, 10))
-	assert.NoError(t, err, "LithiumCompat never became false")
-
-	//pIndexes, _, err = cbgt.CfgGetPlanPIndexes(db.CfgSG)
-	//require.NoError(t, err)
-	// TODO: sometimes cbgt adds and immediately removes a PIndex causing this to fail
-	//assert.Len(t, pIndexes.PlanPIndexes, numPartitions, "number of planPIndexes should match partitions after LithiumCompat change")
-
-	// And write another doc to check that import still works
-	require.NoError(t, tb.SetRaw(testDoc2, 0, nil, []byte(`{}`)))
+	// Write a doc to the test collection to check that import still works
+	require.NoError(t, collectionsBucket.SetRaw(testDoc2, 0, nil, []byte(`{}`)))
 	require.NoError(t, db.WaitForPendingChanges(base.TestCtx(t)))
 	doc, err = db.GetDocument(base.TestCtx(t), testDoc2, DocUnmarshalAll)
 	require.NoError(t, err, "GetDocument 2")
