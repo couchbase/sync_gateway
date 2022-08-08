@@ -131,6 +131,11 @@ func attachmentCompactMarkPhase(db *Database, compactionID string, terminator *b
 	doneChan, err := dcpClient.Start()
 	if err != nil {
 		base.WarnfCtx(db.Ctx, "[%s] Failed to start attachment compaction DCP feed! %v", compactionLoggingID, err)
+		dcpClient.Close()
+		closeErr := <-doneChan
+		if closeErr != nil {
+			base.WarnfCtx(db.Ctx, "[%s] Failed to close failed start mark phase DCP feed: %w", compactionLoggingID, closeErr)
+		}
 		return 0, nil, err
 	}
 	base.DebugfCtx(db.Ctx, base.KeyAll, "[%s] DCP feed started.", compactionLoggingID)
@@ -143,7 +148,8 @@ func attachmentCompactMarkPhase(db *Database, compactionID string, terminator *b
 		}
 	case <-terminator.Done():
 		base.DebugfCtx(db.Ctx, base.KeyAll, "[%s] Terminator closed. Stopping mark phase.", compactionLoggingID)
-		closeErr := dcpClient.Close()
+		dcpClient.Close()
+		closeErr := <-doneChan
 		if closeErr != nil {
 			base.WarnfCtx(db.Ctx, "[%s] Mark phase DCP feed close error %w", compactionLoggingID, closeErr)
 		}
@@ -354,7 +360,8 @@ func attachmentCompactSweepPhase(db *Database, compactionID string, vbUUIDs []ui
 		}
 	case <-terminator.Done():
 		base.DebugfCtx(db.Ctx, base.KeyAll, "[%s] Terminator closed. Ending sweep phase.", compactionLoggingID)
-		dcpCloseErr := dcpClient.Close()
+		dcpClient.Close()
+		dcpCloseErr := <-doneChan
 		if dcpCloseErr != nil {
 			base.WarnfCtx(db.Ctx, "[%s] Failed to close attachment compaction DCP client! %v", compactionLoggingID, dcpCloseErr)
 		}

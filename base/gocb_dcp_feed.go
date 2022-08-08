@@ -75,6 +75,11 @@ func StartGocbDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgument
 	loggingCtx := context.TODO()
 	if err != nil {
 		ErrorfCtx(loggingCtx, "Failed to start DCP Feed %q for bucket %q: %w", feedName, MD(bucketName), err)
+		dcpClient.Close()
+		dcpCloseErr := <-doneChan
+		if dcpCloseErr != nil {
+			WarnfCtx(loggingCtx, "Error on closing non started DCP Feed %q for %q: %w", feedName, MD(bucketName), dcpCloseErr)
+		}
 		return err
 	}
 	InfofCtx(loggingCtx, KeyDCP, "Started DCP Feed %q for bucket %q", feedName, MD(bucketName))
@@ -86,7 +91,8 @@ func StartGocbDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgument
 			break
 		case <-args.Terminator:
 			InfofCtx(loggingCtx, KeyDCP, "Closing DCP Feed %q for bucket %q based on termination notification", feedName, MD(bucketName))
-			dcpCloseErr := dcpClient.Close()
+			dcpClient.Close()
+			dcpCloseErr := <-doneChan
 			if dcpCloseErr != nil {
 				WarnfCtx(loggingCtx, "Error on closing DCP Feed %q for %q: %w", feedName, MD(bucketName), dcpCloseErr)
 			}

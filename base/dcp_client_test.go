@@ -69,7 +69,8 @@ func TestOneShotDCP(t *testing.T) {
 	require.NoError(t, startErr)
 
 	defer func() {
-		_ = dcpClient.Close()
+		dcpClient.Close()
+		<-doneChan
 	}()
 
 	// wait for done
@@ -130,9 +131,8 @@ func TestTerminateDCPFeed(t *testing.T) {
 	// Wait for some processing to complete, then close the feed
 	time.Sleep(10 * time.Millisecond)
 	log.Printf("Closing DCP Client")
-	err = dcpClient.Close()
-	log.Printf("DCP Client closed, waiting for feed close notification")
-	require.NoError(t, err)
+	dcpClient.Close()
+	log.Printf("Start DCP Client closing")
 
 	// wait for done
 	timeout := time.After(oneShotDCPTimeout)
@@ -239,7 +239,8 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			doneChan2, startErr2 := dcpClient2.Start()
 			require.Error(t, startErr2)
 			require.Nil(t, doneChan2)
-			require.NoError(t, dcpClient2.Close())
+			dcpClient2.Close()
+			<-doneChan2
 			log.Printf("Starting third feed")
 			// Perform a third DCP feed - mismatched VbUUID, failOnRollback=false
 			atomic.StoreUint64(&mutationCount, 0)
@@ -288,7 +289,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 		if bytes.HasPrefix(event.Key, []byte(t.Name())) {
 			count := atomic.AddUint64(&mutationCount, 1)
 			if count > 5000 {
-				go dcpClient.Close()
+				dcpClient.Close()
 			}
 		}
 		return false
