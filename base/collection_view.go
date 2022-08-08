@@ -15,7 +15,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
+	"time"
 
 	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/gocbcore/v10"
@@ -394,37 +394,49 @@ func (c *Collection) getCollectionID() (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
-	wg := sync.WaitGroup{}
-	wg.Add(1)
 	var collectionID uint32
-	var callbackErr error
 	scope := *c.Spec.Scope
 	collection := *c.Spec.Collection
+	finished := make(chan error, 1)
 	callbackFunc := func(res *gocbcore.GetCollectionIDResult, getCollectionErr error) {
-		defer wg.Done()
 		if getCollectionErr != nil {
-			callbackErr = getCollectionErr
+			finished <- getCollectionErr
 			return
 		}
 		if res == nil {
-			callbackErr = fmt.Errorf("getCollectionID not retrieved for %s.%s", scope, collection)
+			finished <- fmt.Errorf("getCollectionID not retrieved for %s.%s", scope, collection)
 			return
 		}
 
 		collectionID = res.CollectionID
 	}
-	_, err = agent.GetCollectionID(scope,
+	pendingOp, err := agent.GetCollectionID(scope,
 		collection,
-		gocbcore.GetCollectionIDOptions{}, // FIXME: make sure to add a timeout for this operation
+		gocbcore.GetCollectionIDOptions{}, // https://issues.couchbase.com/browse/GOCBC-1332 add deadline when available
 		callbackFunc)
 
+	err = waitForGocbPendingOp(finished, pendingOp, 5*time.Minute)
 	if err != nil {
-		wg.Done()
-		return 0, fmt.Errorf("GetCollectionID for %s.%s, err: %v", scope, collection, err)
-	}
-	wg.Wait()
-	if callbackErr != nil {
-		return 0, callbackErr
+		return 0, fmt.Errorf("GetCollectionID for %s.%s, err: %w", scope, collection, err)
 	}
 	return collectionID, nil
+}
+
+// this is not needed if gocb query supports deadline https://issues.couchbase.com/browse/GOCBC-1332
+func waitForGocbPendingOp(signal <-chan error, op gocbcore.PendingOp, timeout time.Duration) error {
+	timeoutTmr := gocbcore.AcquireTimer(timeout)
+	select {
+	case err := <-signal:
+		gocbcore.ReleaseTimer(timeoutTmr, false)
+		return err
+	case <-timeoutTmr.C:
+		gocbcore.ReleaseTimer(timeoutTmr, true)
+		WarnfCtx(context.TODO(), "gocbcore: Request has timed out, canceling op")
+		if op != nil {
+			op.Cancel()
+			// wait for confirmation after canceling the PendingOp
+			<-signal
+		}
+		return gocbcore.ErrTimeout
+	}
 }
