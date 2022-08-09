@@ -26,10 +26,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/couchbase/sync_gateway/auth"
-
 	"github.com/couchbase/gocbcore/v10"
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 )
@@ -521,7 +520,13 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	}
 
 	syncFn := ""
-	if config.Sync != nil {
+	// A DB-level sync function is forbidden if a collection-level one is defined (checked in NewDatabaseContext)
+	if len(dbcontext.Scopes) > 0 {
+		collSync := config.Scopes[*spec.Scope].Collections[*spec.Collection].SyncFn
+		if collSync != nil {
+			syncFn = *collSync
+		}
+	} else if config.Sync != nil {
 		syncFn = *config.Sync
 	}
 	if err := sc.applySyncFunction(dbcontext, syncFn); err != nil {

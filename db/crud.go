@@ -2253,14 +2253,24 @@ func (db *Database) getChannelsAndAccess(doc *Document, body Body, metaMap map[s
 		}
 
 	} else {
-		// No ChannelMapper so by default use the "channels" property:
-		value := body["channels"]
-		if value != nil {
-			array, nonStrings := base.ValueToStringArray(value)
-			if nonStrings != nil {
-				base.WarnfCtx(db.Ctx, "Channel names must be string values only. Ignoring non-string channels: %s", base.UD(nonStrings))
+		// With collections, assign the document to a channel named after its collection
+		if len(db.Scopes) > 0 {
+			coll, ok := base.GetBaseBucket(db.Bucket).(*base.Collection)
+			if !ok {
+				err = fmt.Errorf("internal error: collections specified on DbContext, but bucket is not a collection (is %T)", base.GetBaseBucket(db.Bucket))
+				return
 			}
-			result, err = channels.SetFromArray(array, channels.KeepStar)
+			result, err = channels.SetFromArray([]string{coll.Name()}, channels.KeepStar)
+		} else {
+			// Without a custom ChannelMapper and collections, by default use the "channels" property:
+			value := body["channels"]
+			if value != nil {
+				array, nonStrings := base.ValueToStringArray(value)
+				if nonStrings != nil {
+					base.WarnfCtx(db.Ctx, "Channel names must be string values only. Ignoring non-string channels: %s", base.UD(nonStrings))
+				}
+				result, err = channels.SetFromArray(array, channels.KeepStar)
+			}
 		}
 	}
 	return result, access, roles, expiry, oldJson, err

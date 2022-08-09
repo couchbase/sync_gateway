@@ -9751,3 +9751,89 @@ func TestImportFilterTimeout(t *testing.T) {
 	timeoutErr := WaitWithTimeout(&syncFnFinishedWG, time.Second*5)
 	assert.NoError(t, timeoutErr)
 }
+
+func TestNamedCollectionChannelMapper(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	const (
+		scopeName      = "foo"
+		collectionName = "bar"
+		testDocID      = "testDoc"
+	)
+
+	cases := []struct {
+		name               string
+		collectionSyncFn   *string // the sync fn defined on the collection
+		docChannel         string  // channel in document's `channels` property
+		expectedChannel    string  // channel that the document should have
+		notExpectedChannel string  // channel that the document should *not* have
+	}{
+		{
+			name:               "collection implicit sync fn",
+			collectionSyncFn:   nil,
+			docChannel:         "INVALID",
+			expectedChannel:    collectionName,
+			notExpectedChannel: "INVALID",
+		},
+		{
+			name: "custom sync fn, no doc channels",
+			collectionSyncFn: base.StringPtr(`function(doc) {
+				channel("collectionChan");
+			}`),
+			docChannel:         "INVALID",
+			expectedChannel:    "collectionChan",
+			notExpectedChannel: "INVALID",
+		},
+		{
+			name: "custom sync fn, doc channels property",
+			collectionSyncFn: base.StringPtr(`function(doc) {
+				channel(doc.channels);
+			}`),
+			docChannel:         "testDocChan",
+			expectedChannel:    "testDocChan",
+			notExpectedChannel: collectionName,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tb := base.GetTestBucket(t)
+			defer tb.Close()
+
+			err := base.CreateTestBucketScopesAndCollections(base.TestCtx(t), tb, map[string][]string{
+				scopeName: {collectionName},
+			})
+			require.NoError(t, err)
+
+			rt := NewRestTester(t, &RestTesterConfig{
+				TestBucket: tb,
+				DatabaseConfig: &DatabaseConfig{
+					DbConfig: DbConfig{
+						Scopes: ScopesConfig{
+							scopeName: {
+								Collections: CollectionsConfig{
+									collectionName: CollectionConfig{
+										SyncFn: tc.collectionSyncFn,
+									},
+								},
+							},
+						},
+						ImportPartitions: base.Uint16Ptr(1), // speed up test setup
+					},
+				},
+			})
+			defer rt.Close()
+
+			res := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db.%s.%s/%s", scopeName, collectionName, testDocID), fmt.Sprintf(`{"channels": [%q]}`, tc.docChannel))
+			requireStatus(t, res, http.StatusCreated)
+			err = rt.GetDatabase().WaitForPendingChanges(base.TestCtx(t))
+			require.NoError(t, err)
+
+			doc, err := rt.GetDatabase().Scopes[scopeName].Collections[collectionName].CollectionCtx.GetDocument(base.TestCtx(t), testDocID, db.DocUnmarshalAll)
+			require.NoError(t, err)
+			require.NotNil(t, doc)
+			assert.Contains(t, doc.Channels, tc.expectedChannel)
+			assert.NotContains(t, doc.Channels, tc.notExpectedChannel)
+		})
+	}
+}
