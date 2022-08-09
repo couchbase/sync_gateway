@@ -1763,7 +1763,7 @@ func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOp
 			QueryTypeChannelsStar,
 			QueryTypeSequences,
 			QueryTypePrincipals,
-			QueryTypePrincipalsExcludeDeleted,
+			QueryTypeRolesExcludeDeleted,
 			QueryTypeSessions,
 			QueryTypeTombstones,
 			QueryTypeResync,

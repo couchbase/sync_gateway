@@ -29,18 +29,18 @@ type QueryIdRow struct {
 }
 
 const (
-	QueryTypeAccess                   = "access"
-	QueryTypeRoleAccess               = "roleAccess"
-	QueryTypeChannels                 = "channels"
-	QueryTypeChannelsStar             = "channelsStar"
-	QueryTypeSequences                = "sequences"
-	QueryTypePrincipals               = "principals"
-	QueryTypePrincipalsExcludeDeleted = "principalsExcludeDeleted"
-	QueryTypeSessions                 = "sessions"
-	QueryTypeTombstones               = "tombstones"
-	QueryTypeResync                   = "resync"
-	QueryTypeAllDocs                  = "allDocs"
-	QueryTypeUsers                    = "users"
+	QueryTypeAccess              = "access"
+	QueryTypeRoleAccess          = "roleAccess"
+	QueryTypeChannels            = "channels"
+	QueryTypeChannelsStar        = "channelsStar"
+	QueryTypeSequences           = "sequences"
+	QueryTypePrincipals          = "principals"
+	QueryTypeRolesExcludeDeleted = "rolesExcludeDeleted"
+	QueryTypeSessions            = "sessions"
+	QueryTypeTombstones          = "tombstones"
+	QueryTypeResync              = "resync"
+	QueryTypeAllDocs             = "allDocs"
+	QueryTypeUsers               = "users"
 )
 
 type SGQuery struct {
@@ -172,7 +172,7 @@ var QueryPrincipals = SGQuery{
 }
 
 var QueryRolesExcludeDeleted = SGQuery{
-	name: QueryTypePrincipalsExcludeDeleted,
+	name: QueryTypeRolesExcludeDeleted,
 	statement: fmt.Sprintf(
 		"SELECT META(%s).id "+
 			"FROM %s AS %s "+
