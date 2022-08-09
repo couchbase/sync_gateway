@@ -20,6 +20,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
+//////// GETREV:
+
 // Handles a Connected-Client "getRev" request.
 func (bh *blipHandler) handleGetRev(rq *blip.Message) error {
 	docID := rq.Properties[GetRevMessageId]
@@ -63,6 +65,8 @@ func (bh *blipHandler) handleGetRev(rq *blip.Message) error {
 	return nil
 }
 
+//////// PUTREV:
+
 // Handles a Connected-Client "putRev" request.
 func (bh *blipHandler) handlePutRev(rq *blip.Message) error {
 	stats := processRevStats{
@@ -76,6 +80,8 @@ func (bh *blipHandler) handlePutRev(rq *blip.Message) error {
 	return bh.processRev(rq, &stats)
 }
 
+//////// FUNCTION:
+
 // Handles a Connected-Client "function" request.
 func (bh *blipHandler) handleFunction(rq *blip.Message) error {
 	name, requestParams, err := bh.parseQueryNameAndParams(rq)
@@ -83,17 +89,21 @@ func (bh *blipHandler) handleFunction(rq *blip.Message) error {
 		return err
 	}
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("name: %s", name))
-	results, err := bh.db.CallUserFunction(name, requestParams, true)
-	if err != nil {
-		return base.HTTPErrorf(http.StatusInternalServerError, "Error running function: %v", err)
-	}
+	return bh.db.WithTimeout(UserQueryTimeout, func() error {
+		results, err := bh.db.CallUserFunction(name, requestParams, true)
+		if err != nil {
+			return base.HTTPErrorf(http.StatusInternalServerError, "Error running function: %v", err)
+		}
 
-	// Write the result to the response:
-	response := rq.Response()
-	response.SetCompressed(true)
-	response.SetJSONBody(results)
-	return nil
+		// Write the result to the response:
+		response := rq.Response()
+		response.SetCompressed(true)
+		response.SetJSONBody(results)
+		return nil
+	})
 }
+
+//////// QUERY:
 
 // Handles a Connected-Client "query" request.
 func (bh *blipHandler) handleQuery(rq *blip.Message) error {
@@ -103,44 +113,34 @@ func (bh *blipHandler) handleQuery(rq *blip.Message) error {
 	}
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("name: %s", name))
 
-	// Run the query:
-	results, err := bh.db.UserN1QLQuery(name, requestParams)
-	if err != nil {
-		return err
-	}
-
-	// Write the results to the response:
-	var out bytes.Buffer
-	enc := base.JSONEncoder(&out)
-	var row interface{}
-	for results.Next(&row) {
-		enc.Encode(row) // always ends with a newline
-	}
-	if err = results.Close(); err != nil {
-		return err
-	}
-	response := rq.Response()
-	response.SetCompressed(true)
-	response.SetJSONBodyAsBytes(out.Bytes())
-	return nil
-}
-
-func (bh *blipHandler) parseQueryNameAndParams(rq *blip.Message) (name string, params map[string]interface{}, err error) {
-	var found bool
-	name, found = rq.Properties[QueryName]
-	if !found {
-		err = base.HTTPErrorf(http.StatusBadRequest, "Missing 'name'")
-		return
-	}
-	var bodyBytes []byte
-	bodyBytes, err = rq.Body()
-	if len(bodyBytes) > 0 && err == nil {
-		if json.Unmarshal(bodyBytes, &params) != nil {
-			err = base.HTTPErrorf(http.StatusBadRequest, "Invalid function parameters")
+	return bh.db.WithTimeout(UserQueryTimeout, func() error {
+		// Run the query:
+		results, err := bh.db.UserN1QLQuery(name, requestParams)
+		if err != nil {
+			return err
 		}
-	}
-	return
+
+		// Write the results to the response:
+		var out bytes.Buffer
+		enc := base.JSONEncoder(&out)
+		var row interface{}
+		for results.Next(&row) {
+			enc.Encode(row) // always ends with a newline
+			if err = bh.db.CheckTimeout(); err != nil {
+				return err
+			}
+		}
+		if err = results.Close(); err != nil {
+			return err
+		}
+		response := rq.Response()
+		response.SetCompressed(true)
+		response.SetJSONBodyAsBytes(out.Bytes())
+		return nil
+	})
 }
+
+//////// GRAPHQL:
 
 // Handles a Connected-Client "graphql" request.
 // - Request string is in the body of the request.
@@ -164,13 +164,31 @@ func (bh *blipHandler) handleGraphQL(rq *blip.Message) error {
 	}
 
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("query: %s", query))
-	result, err := bh.db.UserGraphQLQuery(query, operationName, variables, true)
-	if err != nil {
-		base.WarnfCtx(bh.loggingCtx, "Error running GraphQL query %q: %v", query, err)
-		return base.HTTPErrorf(http.StatusInternalServerError, "Internal GraphQL error")
+	return bh.db.WithTimeout(UserQueryTimeout, func() error {
+		result, err := bh.db.UserGraphQLQuery(query, operationName, variables, true)
+		if err != nil {
+			return err
+		}
+		response := rq.Response()
+		response.SetCompressed(true)
+		response.SetJSONBody(result)
+		return nil
+	})
+}
+
+func (bh *blipHandler) parseQueryNameAndParams(rq *blip.Message) (name string, params map[string]interface{}, err error) {
+	var found bool
+	name, found = rq.Properties[QueryName]
+	if !found {
+		err = base.HTTPErrorf(http.StatusBadRequest, "Missing 'name'")
+		return
 	}
-	response := rq.Response()
-	response.SetCompressed(true)
-	response.SetJSONBody(result)
-	return nil
+	var bodyBytes []byte
+	bodyBytes, err = rq.Body()
+	if len(bodyBytes) > 0 && err == nil {
+		if json.Unmarshal(bodyBytes, &params) != nil {
+			err = base.HTTPErrorf(http.StatusBadRequest, "Invalid function parameters")
+		}
+	}
+	return
 }
