@@ -49,7 +49,7 @@ func TestOneShotDCP(t *testing.T) {
 		OneShot: true,
 	}
 
-	dcpClient, err := NewDCPClient(feedID, counterCallback, clientOptions, asCollection(t, bucket))
+	dcpClient, err := NewDCPClient(feedID, counterCallback, clientOptions, asCollection(bucket))
 	require.NoError(t, err)
 
 	// Add additional documents in a separate goroutine, to verify afterEndSeq handling
@@ -104,7 +104,7 @@ func TestTerminateDCPFeed(t *testing.T) {
 	// start continuous feed with terminator
 	feedID := t.Name()
 
-	dcpClient, err := NewDCPClient(feedID, counterCallback, DCPClientOptions{}, asCollection(t, bucket))
+	dcpClient, err := NewDCPClient(feedID, counterCallback, DCPClientOptions{}, asCollection(bucket))
 	require.NoError(t, err)
 
 	// Add documents in a separate goroutine
@@ -203,7 +203,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				OneShot:        true,
 				FailOnRollback: true,
 			}
-			dcpClient, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, asCollection(t, bucket))
+			dcpClient, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, asCollection(bucket))
 			require.NoError(t, err)
 
 			doneChan, startErr := dcpClient.Start()
@@ -233,7 +233,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				FailOnRollback:  true,
 				OneShot:         true,
 			}
-			dcpClient2, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, asCollection(t, bucket))
+			dcpClient2, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, asCollection(bucket))
 			require.NoError(t, err)
 
 			doneChan2, startErr2 := dcpClient2.Start()
@@ -249,7 +249,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				FailOnRollback:  false,
 				OneShot:         true,
 			}
-			dcpClient3, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, asCollection(t, bucket))
+			dcpClient3, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, asCollection(bucket))
 			require.NoError(t, err)
 
 			doneChan3, startErr3 := dcpClient3.Start()
@@ -315,7 +315,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 		CheckpointPersistFrequency: &highFrequency,
 	}
 	var err error
-	dcpClient, err = NewDCPClient(feedID, counterCallback, dcpClientOpts, asCollection(t, bucket))
+	dcpClient, err = NewDCPClient(feedID, counterCallback, dcpClientOpts, asCollection(bucket))
 	require.NoError(t, err)
 
 	doneChan, startErr := dcpClient.Start()
@@ -346,7 +346,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 		FailOnRollback: false,
 		OneShot:        true,
 	}
-	dcpClient2, err := NewDCPClient(feedID, secondCallback, dcpClientOpts, asCollection(t, bucket))
+	dcpClient2, err := NewDCPClient(feedID, secondCallback, dcpClientOpts, asCollection(bucket))
 	require.NoError(t, err)
 
 	doneChan2, startErr2 := dcpClient2.Start()
@@ -366,12 +366,4 @@ func TestResumeStoppedFeed(t *testing.T) {
 		t.Errorf("timeout waiting for second one-shot feed to complete")
 	}
 
-}
-
-func asCollection(t *testing.T, bucket *TestBucket) *Collection {
-	collection, ok := GetBaseBucket(bucket).(*Collection)
-	if !ok {
-		t.Error("could not type assert TestBucket to a collection")
-	}
-	return collection
 }

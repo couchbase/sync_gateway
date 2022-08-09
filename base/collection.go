@@ -1054,3 +1054,22 @@ func (c *Collection) getCollectionID() (uint32, error) {
 	c.collectionID = Uint32Ptr(collectionID)
 	return collectionID, nil
 }
+
+// asCollection tries to return the given bucket as a Collection.
+func asCollection(bucket Bucket) *Collection {
+	var underlyingBucket Bucket
+	switch typedBucket := bucket.(type) {
+	case *Collection:
+		return typedBucket
+	case *LoggingBucket:
+		underlyingBucket = typedBucket.GetUnderlyingBucket()
+	case *LeakyBucket:
+		underlyingBucket = typedBucket.GetUnderlyingBucket()
+	case *TestBucket:
+		underlyingBucket = typedBucket.Bucket
+	default:
+		panic(fmt.Errorf("bucket %+v has unrecognized type %T", bucket, bucket))
+	}
+
+	return asCollection(underlyingBucket)
+}
