@@ -202,8 +202,6 @@ func TestShardedDCPUpgrade(t *testing.T) {
 	)
 	require.NoError(t, tb.SetRaw(testDoc1, 0, nil, []byte(`{}`)))
 
-	// Start a database context with heartbeating disabled, so we can check that the manager picks up the appropriate pindexes
-	// but does not yet kick out the old node
 	db, err := NewDatabaseContext(tb.GetName(), tb.NoCloseClone(), true, DatabaseContextOptions{
 		GroupID:     "",
 		EnableXattr: true,
@@ -211,12 +209,9 @@ func TestShardedDCPUpgrade(t *testing.T) {
 		ImportOptions: ImportOptions{
 			ImportPartitions: numPartitions,
 		},
-		skipStartHeartbeatChecking: true,
 	})
 	require.NoError(t, err, "NewDatabaseContext")
 	defer db.Close()
-
-	require.NoError(t, db.Heartbeater.StartCheckingHeartbeats(), "StartCheckingHeartbeats")
 
 	// Wait until cbgt removes the old (non-existent) node from the config
 	err, _ = base.RetryLoop("wait for non-existent node to be removed", func() (shouldRetry bool, err error, value interface{}) {
