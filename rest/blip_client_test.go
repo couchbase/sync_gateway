@@ -52,10 +52,10 @@ type BlipTesterClient struct {
 }
 
 type BlipTesterCollectionClient struct {
-	BlipTesterClientOpts                       // Copy of parents
-	pullReplication      *BlipTesterReplicator // Pointer to parents
-	pushReplication      *BlipTesterReplicator // Pointer to parents
-	rt                   *RestTester           // Pointer to parents to allow test failures
+	*BlipTesterClientOpts                       // Copy of parents
+	pullReplication       *BlipTesterReplicator // Pointer to parents
+	pushReplication       *BlipTesterReplicator // Pointer to parents
+	rt                    *RestTester           // Pointer to parents to allow test failures
 
 	collection    string
 	collectionIdx int
@@ -644,7 +644,7 @@ func (btc *BlipTesterClient) initCollectionReplication(collection string, collec
 		docs:                 make(map[string]map[string]*BodyMessagePair),
 		attachments:          make(map[string][]byte),
 		lastReplicatedRev:    make(map[string]string),
-		BlipTesterClientOpts: btc.BlipTesterClientOpts,
+		BlipTesterClientOpts: &btc.BlipTesterClientOpts,
 		pullReplication:      btc.pullReplication,
 		pushReplication:      btc.pushReplication,
 		rt:                   btc.rt,
