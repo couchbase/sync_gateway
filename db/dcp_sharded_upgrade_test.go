@@ -167,11 +167,11 @@ const planPIndexes = `{
   }
 }`
 
-func TestShardedDCPUpgradeHelium(t *testing.T) {
+// Check that, on a rolling upgrade, the existing index definitions are preserved and the DCP feed does not start from zero.
+func TestShardedDCPUpgrade(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping in short mode")
 	}
-	base.TestRequiresCollections(t)
 	if !base.IsEnterpriseEdition() {
 		t.Skip("EE-only test")
 	}
@@ -181,30 +181,13 @@ func TestShardedDCPUpgradeHelium(t *testing.T) {
 	bucketUUID, err := tb.UUID()
 	require.NoError(t, err, "get bucket UUID")
 
-	const (
-		testScopeName      = "foo"
-		testCollectionName = "bar"
-	)
-	err = base.CreateTestBucketScopesAndCollections(base.TestCtx(t), tb, map[string][]string{
-		testScopeName: {testCollectionName},
-	})
-	require.NoError(t, err, "create test bucket scopes and collections")
-
-	// We need to create a new bucket based on a spec with collections, rather than just adding them to the existing
-	// bucket's spec, otherwise they won't be reflected in the TestBucket's underlying bucket's spec, and so won't
-	// make it into StartShardedDCPFeed.
-	collectionsBucketSpec := tb.BucketSpec
-	collectionsBucketSpec.Scope = base.StringPtr(testScopeName)
-	collectionsBucketSpec.Collection = base.StringPtr(testCollectionName)
-
-	collectionsBucket, err := ConnectToBucket(collectionsBucketSpec)
-	require.NoError(t, err, "ConnectToBucket w/ collectionsBucketSpec")
-	defer collectionsBucket.Close()
-
 	numVBuckets, err := tb.GetMaxVbno()
 	require.NoError(t, err)
 
-	const numPartitions = 4
+	const (
+		numPartitions = 4
+		indexName     = "db0x2d9928b7_index"
+	)
 
 	require.NoError(t, tb.SetRaw(base.SyncPrefix+"cfgindexDefs", 0, nil, []byte(fmt.Sprintf(indexDefs, tb.GetName(), bucketUUID))))
 	require.NoError(t, tb.SetRaw(base.SyncPrefix+"cfgnodeDefs-known", 0, nil, []byte(nodeDefs)))
@@ -219,8 +202,9 @@ func TestShardedDCPUpgradeHelium(t *testing.T) {
 	)
 	require.NoError(t, tb.SetRaw(testDoc1, 0, nil, []byte(`{}`)))
 
-	// Check that the presence of an older node is picked up, and that we cannot start the feed with collections.
-	db, err := NewDatabaseContext(tb.GetName(), collectionsBucket, true, DatabaseContextOptions{
+	// Start a database context with heartbeating disabled, so we can check that the manager picks up the appropriate pindexes
+	// but does not yet kick out the old node
+	db, err := NewDatabaseContext(tb.GetName(), tb.NoCloseClone(), true, DatabaseContextOptions{
 		GroupID:     "",
 		EnableXattr: true,
 		UseViews:    base.TestsDisableGSI(),
@@ -229,19 +213,10 @@ func TestShardedDCPUpgradeHelium(t *testing.T) {
 		},
 		skipStartHeartbeatChecking: true,
 	})
-	require.Error(t, err, "NewDatabaseContext with collections and old node present should error")
-
-	// Start it without collections
-	db, err = NewDatabaseContext(tb.GetName(), tb.NoCloseClone(), true, DatabaseContextOptions{
-		GroupID:     "",
-		EnableXattr: true,
-		UseViews:    base.TestsDisableGSI(),
-		ImportOptions: ImportOptions{
-			ImportPartitions: numPartitions,
-		},
-	})
-	require.NoError(t, err, "NewDatabaseContext *without* collections")
+	require.NoError(t, err, "NewDatabaseContext")
 	defer db.Close()
+
+	require.NoError(t, db.Heartbeater.StartCheckingHeartbeats(), "StartCheckingHeartbeats")
 
 	// Wait until cbgt removes the old (non-existent) node from the config
 	err, _ = base.RetryLoop("wait for non-existent node to be removed", func() (shouldRetry bool, err error, value interface{}) {
@@ -264,21 +239,8 @@ func TestShardedDCPUpgradeHelium(t *testing.T) {
 	require.NoError(t, err, "GetDocument 1")
 	require.NotNil(t, doc, "GetDocument 1")
 
-	// verify that now we *can* re-create the db with collections
-	db.Close()
-	db, err = NewDatabaseContext(tb.GetName(), collectionsBucket, true, DatabaseContextOptions{
-		GroupID:     "",
-		EnableXattr: true,
-		UseViews:    base.TestsDisableGSI(),
-		ImportOptions: ImportOptions{
-			ImportPartitions: numPartitions,
-		},
-	})
-	require.NoError(t, err, "NewDatabaseContext *with* collections")
-	defer db.Close()
-
-	// Write a doc to the test collection to check that import still works
-	require.NoError(t, collectionsBucket.SetRaw(testDoc2, 0, nil, []byte(`{}`)))
+	// Write a doc to the test bucket to check that import still works
+	require.NoError(t, tb.SetRaw(testDoc2, 0, nil, []byte(`{}`)))
 	require.NoError(t, db.WaitForPendingChanges(base.TestCtx(t)))
 	doc, err = db.GetDocument(base.TestCtx(t), testDoc2, DocUnmarshalAll)
 	require.NoError(t, err, "GetDocument 2")
