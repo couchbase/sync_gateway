@@ -211,7 +211,7 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 		assert.NoError(t, node.RegisterListener(importListener))
 		importListeners[i] = importListener
 
-		//Create and register sgr listener on two nodes
+		// Create and register sgr listener on two nodes
 		if i < 2 {
 			sgrListener, err := NewDocumentBackedListener(testBucket, keyprefix+":sgr")
 			require.NoError(t, err)

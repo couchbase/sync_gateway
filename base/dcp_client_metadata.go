@@ -248,7 +248,7 @@ func (m *DCPMetadataCS) Persist(workerID int, vbIDs []uint16) {
 		InfofCtx(context.TODO(), KeyDCP, "Unable to persist DCP metadata: %v", err)
 	} else {
 		TracefCtx(context.TODO(), KeyDCP, "Persisted metadata for worker %d: %v", workerID, meta)
-		//log.Printf("Persisted metadata for worker %d (%s): %v", workerID, m.getMetadataKey(workerID), meta)
+		// log.Printf("Persisted metadata for worker %d (%s): %v", workerID, m.getMetadataKey(workerID), meta)
 	}
 	return
 }
@@ -264,7 +264,7 @@ func (m *DCPMetadataCS) load(workerID int) {
 	}
 
 	TracefCtx(context.TODO(), KeyDCP, "Loaded metadata for worker %d: %v", workerID, meta)
-	//log.Printf("Loaded metadata for worker %d (%s): %v", workerID, m.getMetadataKey(workerID), meta)
+	// log.Printf("Loaded metadata for worker %d (%s): %v", workerID, m.getMetadataKey(workerID), meta)
 	for vbID, metadata := range meta.DCPMeta {
 		m.metadata[vbID] = metadata
 	}

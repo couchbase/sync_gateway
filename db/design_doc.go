@@ -563,14 +563,14 @@ func installViews(bucket base.Bucket) error {
 	}
 
 	sleeper := base.CreateDoublingSleeperFunc(
-		11, //MaxNumRetries approx 10 seconds total retry duration
-		5,  //InitialRetrySleepTimeMS
+		11, // MaxNumRetries approx 10 seconds total retry duration
+		5,  // InitialRetrySleepTimeMS
 	)
 
 	// add all design docs from map into bucket
 	for designDocName, designDoc := range designDocMap {
 
-		//start a retry loop to put design document backing off double the delay each time
+		// start a retry loop to put design document backing off double the delay each time
 		worker := func() (shouldRetry bool, err error, value interface{}) {
 			err = bucket.PutDDoc(designDocName, designDoc)
 			if err != nil {

@@ -204,7 +204,7 @@ func (listener *changeListener) NotifyCheckForTermination(keys base.Set) {
 	}
 	listener.tapNotifier.L.Lock()
 
-	//Increment terminateCheckCounter, but loop back to zero
+	// Increment terminateCheckCounter, but loop back to zero
 	//if we have reached maximum value for uint64 type
 	if listener.terminateCheckCounter < math.MaxUint64 {
 		listener.terminateCheckCounter++
@@ -325,7 +325,7 @@ func (waiter *ChangeWaiter) Wait() uint32 {
 	}
 	countChanged := waiter.lastCounter > lastCounter
 
-	//Uses != to compare as value can cycle back through 0
+	// Uses != to compare as value can cycle back through 0
 	terminateCheckCountChanged := waiter.lastTerminateCheckCounter != lastTerminateCheckCounter
 
 	if countChanged {

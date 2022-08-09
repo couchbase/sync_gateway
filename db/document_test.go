@@ -161,7 +161,7 @@ func BenchmarkUnmarshalBody(b *testing.B) {
 				b.StartTimer()
 				var err error
 				if bm.useDecode {
-					//decoder := base.JSONDecoder(bytes.NewReader(doc1k_body))
+					// decoder := base.JSONDecoder(bytes.NewReader(doc1k_body))
 					decoder := base.JSONDecoder(docReader)
 					if bm.fixJSONNumbers {
 						decoder.UseNumber()
