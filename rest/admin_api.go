@@ -1371,7 +1371,7 @@ func (h *handler) getUsers() error {
 	var bytes []byte
 	var marshalErr error
 	if nameOnly {
-		users, _, err := h.db.AllPrincipalIDs(h.db.Ctx, true)
+		users, _, err := h.db.AllPrincipalIDs(h.db.Ctx)
 		if err != nil {
 			return err
 		}
@@ -1395,11 +1395,19 @@ func (h *handler) getUsers() error {
 }
 
 func (h *handler) getRoles() error {
+	var roles []string
+	var err error
+
 	includeDeleted, _ := h.getOptBoolQuery(paramDeleted, false)
-	_, roles, err := h.db.AllPrincipalIDs(h.db.Ctx, includeDeleted)
+	if includeDeleted {
+		_, roles, err = h.db.AllPrincipalIDs(h.db.Ctx)
+	} else {
+		roles, err = h.db.GetRoleIDs(h.db.Ctx)
+	}
 	if err != nil {
 		return err
 	}
+
 	bytes, err := base.JSONMarshal(roles)
 	h.writeRawJSON(bytes)
 	return err

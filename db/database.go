@@ -953,7 +953,7 @@ func (db *Database) processForEachDocIDResults(callback ForEachDocIDFunc, limit 
 }
 
 // Returns the IDs of all users and roles
-func (db *DatabaseContext) AllPrincipalIDs(ctx context.Context, includeDeleted bool) (users, roles []string, err error) {
+func (db *DatabaseContext) AllPrincipalIDs(ctx context.Context) (users, roles []string, err error) {
 
 	startKey := ""
 	limit := db.Options.QueryPaginationLimit
@@ -963,7 +963,7 @@ func (db *DatabaseContext) AllPrincipalIDs(ctx context.Context, includeDeleted b
 
 outerLoop:
 	for {
-		results, err := db.QueryPrincipals(ctx, startKey, limit, includeDeleted)
+		results, err := db.QueryPrincipals(ctx, startKey, limit)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -1106,6 +1106,74 @@ outerLoop:
 	}
 
 	return users, nil
+}
+
+// Returns the IDs of all roles, excluding deleted.
+func (db *DatabaseContext) GetRoleIDs(ctx context.Context) (roles []string, err error) {
+
+	startKey := ""
+	limit := db.Options.QueryPaginationLimit
+
+	roles = []string{}
+
+outerLoop:
+	for {
+		results, err := db.QueryRoles(ctx, startKey, limit)
+		if err != nil {
+			return nil, err
+		}
+
+		var roleName string
+		lenRoleKeyPrefix := len(base.RolePrefix)
+
+		resultCount := 0
+
+		for {
+			// startKey is inclusive for views, so need to skip first result if using non-empty startKey, as this results in an overlapping result
+			var skipAddition bool
+			if resultCount == 0 && startKey != "" {
+				skipAddition = true
+			}
+
+			if db.Options.UseViews {
+				var viewRow principalsViewRow
+				found := results.Next(&viewRow)
+				if !found {
+					break
+				}
+				roleName = viewRow.Key
+				startKey = roleName
+			} else {
+				var queryRow QueryIdRow
+				found := results.Next(&queryRow)
+				if !found {
+					break
+				}
+				if len(queryRow.Id) < lenRoleKeyPrefix {
+					continue
+				}
+				roleName = queryRow.Id[lenRoleKeyPrefix:]
+				startKey = queryRow.Id
+			}
+			resultCount++
+
+			if roleName != "" && !skipAddition {
+				roles = append(roles, roleName)
+			}
+		}
+
+		closeErr := results.Close()
+		if closeErr != nil {
+			return nil, closeErr
+		}
+
+		if resultCount < limit {
+			break outerLoop
+		}
+
+	}
+
+	return roles, nil
 }
 
 // ////// HOUSEKEEPING:
@@ -1495,7 +1563,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 	}
 
 	if regenerateSequences {
-		users, roles, err := db.AllPrincipalIDs(db.Ctx, true)
+		users, roles, err := db.AllPrincipalIDs(db.Ctx)
 		if err != nil {
 			return docsChanged, err
 		}
@@ -1544,7 +1612,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 	if docsChanged > 0 {
 		// Now invalidate channel cache of all users/roles:
 		base.InfofCtx(db.Ctx, base.KeyAll, "Invalidating channel caches of users/roles...")
-		users, roles, _ := db.AllPrincipalIDs(db.Ctx, true)
+		users, roles, _ := db.AllPrincipalIDs(db.Ctx)
 		for _, name := range users {
 			db.invalUserChannels(name, endSeq)
 		}
@@ -1679,7 +1747,7 @@ func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOp
 			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewAccessVbSeq),
 			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewChannels),
 			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewPrincipals),
-			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewPrincipalsExcludeDeleted),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewRolesExcludeDeleted),
 			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewRoleAccess),
 			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewRoleAccessVbSeq),
 			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewAllDocs),

@@ -43,12 +43,12 @@ const (
 	DesignDocSyncGatewayPrefix      = "sync_gateway"
 	DesignDocSyncHousekeepingPrefix = "sync_housekeeping"
 	ViewPrincipals                  = "principals"
-	ViewPrincipalsExcludeDeleted    = "principals_exclude_deleted"
 	ViewChannels                    = "channels"
 	ViewAccess                      = "access"
 	ViewAccessVbSeq                 = "access_vbseq"
 	ViewRoleAccess                  = "role_access"
 	ViewRoleAccessVbSeq             = "role_access_vbseq"
+	ViewRolesExcludeDeleted         = "roles_exclude_deleted"
 	ViewAllDocs                     = "all_docs"
 	ViewImport                      = "import"
 	ViewSessions                    = "sessions"
@@ -421,16 +421,16 @@ func installViews(bucket base.Bucket) error {
 	principals_map = fmt.Sprintf(principals_map, base.UserPrefix, base.RolePrefix,
 		len(base.UserPrefix))
 
-	// All-principals view, exclude deleted
-	// Key is name; value is true for user, false for role
-	principals_excludeDeleted_map :=
+	// All-roles view, excluding deleted
+	// Key is role name; value is not used
+	roles_excludeDeleted_map :=
 		`function (doc, meta) {
-			var prefix = meta.id.substring(0,11);
-			var isUser = (prefix == %q);
-			if ((isUser || prefix == %q) && (doc.deleted !== true))
-				emit(meta.id.substring(%d), isUser); 
+			var prefix = meta.id.substring(0,%d);
+			if (prefix == %q && doc.deleted !== true)
+				emit(meta.id.substring(%d), null); 
 		}`
-	principals_excludeDeleted_map = fmt.Sprintf(principals_excludeDeleted_map, base.UserPrefix, base.RolePrefix, len(base.UserPrefix))
+	rolePrefixLen := len(base.UserPrefix)
+	roles_excludeDeleted_map = fmt.Sprintf(roles_excludeDeleted_map, rolePrefixLen, base.RolePrefix, rolePrefixLen)
 
 	// By-channels view.
 	// Key is [channelname, sequence]; value is [docid, revid, flag?]
@@ -550,13 +550,13 @@ func installViews(bucket base.Bucket) error {
 	designDocMap := map[string]*sgbucket.DesignDoc{}
 	designDocMap[DesignDocSyncGateway()] = &sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
-			ViewChannels:                 sgbucket.ViewDef{Map: channels_map},
-			ViewAccess:                   sgbucket.ViewDef{Map: access_map},
-			ViewRoleAccess:               sgbucket.ViewDef{Map: roleAccess_map},
-			ViewAccessVbSeq:              sgbucket.ViewDef{Map: access_vbSeq_map},
-			ViewRoleAccessVbSeq:          sgbucket.ViewDef{Map: roleAccess_vbSeq_map},
-			ViewPrincipals:               sgbucket.ViewDef{Map: principals_map},
-			ViewPrincipalsExcludeDeleted: sgbucket.ViewDef{Map: principals_excludeDeleted_map},
+			ViewChannels:            sgbucket.ViewDef{Map: channels_map},
+			ViewAccess:              sgbucket.ViewDef{Map: access_map},
+			ViewRoleAccess:          sgbucket.ViewDef{Map: roleAccess_map},
+			ViewRolesExcludeDeleted: sgbucket.ViewDef{Map: roles_excludeDeleted_map},
+			ViewAccessVbSeq:         sgbucket.ViewDef{Map: access_vbSeq_map},
+			ViewRoleAccessVbSeq:     sgbucket.ViewDef{Map: roleAccess_vbSeq_map},
+			ViewPrincipals:          sgbucket.ViewDef{Map: principals_map},
 		},
 		Options: &sgbucket.DesignDocOptions{
 			IndexXattrOnTombstones: true,

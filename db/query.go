@@ -171,23 +171,22 @@ var QueryPrincipals = SGQuery{
 	adhoc: false,
 }
 
-var QueryPrincipalsExcludeDeleted = SGQuery{
+var QueryRolesExcludeDeleted = SGQuery{
 	name: QueryTypePrincipalsExcludeDeleted,
 	statement: fmt.Sprintf(
 		"SELECT META(%s).id "+
 			"FROM %s AS %s "+
 			"USE INDEX($idx) "+
 			"WHERE META(%s).id LIKE '%s' "+
-			"AND (META(%s).id LIKE '%s' "+
-			"OR META(%s).id LIKE '%s') "+
+			"AND META(%s).id LIKE '%s' "+
 			"AND (%s.deleted IS MISSING OR %s.deleted = false) "+
 			"AND META(%s).id >= $%s "+ // Uses >= for inclusive startKey
 			"ORDER BY META(%s).id",
 		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias, SyncDocWildcard,
-		base.KeyspaceQueryAlias, `\\_sync:user:%`,
-		base.KeyspaceQueryAlias, `\\_sync:role:%`, base.KeyspaceQueryAlias, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, `\\_sync:role:%`,
+		base.KeyspaceQueryAlias, base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias, QueryParamStartKey,
 		base.KeyspaceQueryAlias),
 	adhoc: false,
@@ -477,7 +476,7 @@ func (context *DatabaseContext) QueryResync(ctx context.Context, limit int, star
 }
 
 // Query to retrieve the set of user and role doc ids, using the syncDocs index
-func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey string, limit int, includeDeleted bool) (sgbucket.QueryResultIterator, error) {
+func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey string, limit int) (sgbucket.QueryResultIterator, error) {
 
 	// View Query
 	if context.Options.UseViews {
@@ -491,17 +490,10 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 			opts[QueryParamStartKey] = startKey
 		}
 
-		if includeDeleted {
-			return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewPrincipals, opts)
-		}
-		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewPrincipalsExcludeDeleted, opts)
+		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewPrincipals, opts)
 	}
 
-	query := &QueryPrincipalsExcludeDeleted
-	if includeDeleted {
-		query = &QueryPrincipals
-	}
-	queryStatement := replaceIndexTokensQuery(query.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+	queryStatement := replaceIndexTokensQuery(QueryPrincipals.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
 
 	params := make(map[string]interface{})
 	params[QueryParamStartKey] = startKey
@@ -511,7 +503,7 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 	}
 
 	// N1QL Query
-	return context.N1QLQueryWithStats(ctx, query.name, queryStatement, params, base.RequestPlus, query.adhoc)
+	return context.N1QLQueryWithStats(ctx, QueryPrincipals.name, queryStatement, params, base.RequestPlus, QueryPrincipals.adhoc)
 }
 
 // Query to retrieve user details, using the syncDocs index
@@ -533,6 +525,37 @@ func (context *DatabaseContext) QueryUsers(ctx context.Context, startKey string,
 
 	// N1QL Query
 	return context.N1QLQueryWithStats(ctx, QueryTypeUsers, queryStatement, params, base.RequestPlus, QueryUsers.adhoc)
+}
+
+// Retrieves role ids using the syncDocs index, excluding deleted roles
+func (context *DatabaseContext) QueryRoles(ctx context.Context, startKey string, limit int) (sgbucket.QueryResultIterator, error) {
+
+	// View Query
+	if context.Options.UseViews {
+		opts := map[string]interface{}{"stale": false}
+
+		if limit > 0 {
+			opts[QueryParamLimit] = limit
+		}
+
+		if startKey != "" {
+			opts[QueryParamStartKey] = startKey
+		}
+
+		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewRolesExcludeDeleted, opts)
+	}
+
+	queryStatement := replaceIndexTokensQuery(QueryRolesExcludeDeleted.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+
+	params := make(map[string]interface{})
+	params[QueryParamStartKey] = startKey
+
+	if limit > 0 {
+		queryStatement = fmt.Sprintf("%s LIMIT %d", queryStatement, limit)
+	}
+
+	// N1QL Query
+	return context.N1QLQueryWithStats(ctx, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc)
 }
 
 // Query to retrieve the set of sessions, using the syncDocs index

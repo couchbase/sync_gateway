@@ -2469,7 +2469,7 @@ func TestGetAllUsers(t *testing.T) {
 	assert.Equal(t, 2, len(limitedUsers))
 }
 
-func TestAllPrincipalIDs(t *testing.T) {
+func TestGetRoleIDs(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
 	ctx := base.TestCtx(t)
@@ -2507,15 +2507,15 @@ func TestAllPrincipalIDs(t *testing.T) {
 	t.Log("role1:", role1.Name())
 	t.Log("role2:", role2.Name())
 
-	users, roles, err := db.AllPrincipalIDs(ctx, false)
-	require.NoError(t, err)
-	assert.ElementsMatch(t, []string{user1.Name()}, users)
-	assert.ElementsMatch(t, []string{role1.Name()}, roles)
-
-	users, roles, err = db.AllPrincipalIDs(ctx, true)
+	// assert allprincipals still returns users and deleted roles
+	users, roles, err := db.AllPrincipalIDs(ctx)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{user1.Name()}, users)
 	assert.ElementsMatch(t, []string{role1.Name(), role2.Name()}, roles)
+
+	roles, err = db.GetRoleIDs(ctx)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{role1.Name()}, roles)
 }
 
 // Regression test for CBG-2058.
