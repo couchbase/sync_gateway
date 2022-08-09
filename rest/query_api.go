@@ -39,14 +39,18 @@ func (h *handler) handleUserQuery() error {
 
 		// Write the query results to the response, as a JSON array of objects.
 		h.setHeader("Content-Type", "application/json")
-		_, _ = h.response.Write([]byte(`[`))
+		if _, err = h.response.Write([]byte(`[`)); err != nil {
+			return err
+		}
 		first := true
 		var row interface{}
 		for results.Next(&row) {
 			if first {
 				first = false
 			} else {
-				h.response.Write([]byte(`,`))
+				if _, err = h.response.Write([]byte(`,`)); err != nil {
+					return err
+				}
 			}
 			if err = h.addJSON(row); err != nil {
 				return err
@@ -59,8 +63,8 @@ func (h *handler) handleUserQuery() error {
 		if err = results.Close(); err != nil {
 			return err
 		}
-		_, _ = h.response.Write([]byte("]\n"))
-		return nil
+		_, err = h.response.Write([]byte("]\n"))
+		return err
 	})
 }
 

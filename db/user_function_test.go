@@ -269,7 +269,7 @@ func TestUserFunctionAllow(t *testing.T) {
 
 	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
 	user, err := authenticator.NewUser("maurice", "pass", base.SetOf("city-Paris"))
-	user.SetEmail("maurice@academie.fr")
+	_ = user.SetEmail("maurice@academie.fr")
 	assert.NoError(t, err)
 
 	params := map[string]interface{}{

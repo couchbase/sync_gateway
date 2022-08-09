@@ -98,7 +98,7 @@ func (bh *blipHandler) handleFunction(rq *blip.Message) error {
 		// Write the result to the response:
 		response := rq.Response()
 		response.SetCompressed(true)
-		response.SetJSONBody(results)
+		_ = response.SetJSONBody(results)
 		return nil
 	})
 }
@@ -125,7 +125,9 @@ func (bh *blipHandler) handleQuery(rq *blip.Message) error {
 		enc := base.JSONEncoder(&out)
 		var row interface{}
 		for results.Next(&row) {
-			enc.Encode(row) // always ends with a newline
+			if err = enc.Encode(row); err != nil { // always ends with a newline
+				return err
+			}
 			if err = bh.db.CheckTimeout(); err != nil {
 				return err
 			}
@@ -171,7 +173,7 @@ func (bh *blipHandler) handleGraphQL(rq *blip.Message) error {
 		}
 		response := rq.Response()
 		response.SetCompressed(true)
-		response.SetJSONBody(result)
+		_ = response.SetJSONBody(result)
 		return nil
 	})
 }
