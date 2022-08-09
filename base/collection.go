@@ -818,7 +818,7 @@ func (c *Collection) GetExpiry(k string) (expiry uint32, getMetaError error) {
 	}
 	getMetaOptions := gocbcore.GetMetaOptions{
 		Key:      []byte(k),
-		Deadline: time.Now().Add(*c.Spec.BucketOpTimeout),
+		Deadline: c.getBucketOpDeadline(),
 	}
 
 	wg := sync.WaitGroup{}
@@ -991,6 +991,15 @@ func (t *SGRawTranscoder) Encode(value interface{}) ([]byte, uint32, error) {
 func (c *Collection) getGoCBAgent() (*gocbcore.Agent, error) {
 	return c.Bucket().Internal().IORouter()
 
+}
+
+func (c *Collection) getBucketOpDeadline() time.Time {
+	opTimeout := DefaultGocbV2OperationTimeout
+	configOpTimeout := c.Spec.BucketOpTimeout
+	if configOpTimeout != nil {
+		opTimeout = *configOpTimeout
+	}
+	return time.Now().Add(opTimeout)
 }
 
 // getCollectionID returns the gocbcore CollectionID for the current collection
