@@ -73,7 +73,9 @@ func (gq *GraphQL) Query(db *Database, query string, operationName string, varia
 	return result, nil
 }
 
-// The type of error returned by NewGraphQL().
+//////// GRAPHQL INITIALIZATION:
+
+// The type of error returned by NewGraphQL() and GraphQLConfig.Validate().
 type GraphQLConfigError struct {
 	err error
 }
@@ -85,57 +87,54 @@ func (e *GraphQLConfigError) Error() string {
 // Creates a new GraphQL instance for this DatabaseContext, using the config from `dbc.Options`.
 // Called once, when the database opens.
 func NewGraphQL(dbc *DatabaseContext) (*GraphQL, error) {
-	gq := &GraphQL{
-		dbc: dbc,
+	if schema, err := dbc.Options.GraphQL.CompileSchema(); err != nil {
+		return nil, &GraphQLConfigError{err}
+	} else {
+		gql := &GraphQL{
+			dbc:    dbc,
+			schema: schema,
+		}
+		return gql, nil
 	}
-	opts := dbc.Options.GraphQL
+}
 
+// Validates a GraphQL configuration by parsing the schema.
+func (config *GraphQLConfig) Validate() error {
+	if _, err := config.CompileSchema(); err != nil {
+		return &GraphQLConfigError{err}
+	}
+	return nil
+}
+
+func (config *GraphQLConfig) CompileSchema() (graphql.Schema, error) {
 	// Get the schema source, from either `schema` or `schemaFile`:
-	schemaSource, err := opts.getSchema()
+	schemaSource, err := config.getSchema()
 	if err != nil {
-		return nil, err
+		return graphql.Schema{}, err
 	}
 
 	// Assemble the resolvers:
 	resolvers := map[string]interface{}{}
-	for name, resolver := range opts.Resolvers {
+	for name, resolver := range config.Resolvers {
 		fieldMap := map[string]*gqltools.FieldResolve{}
 		for fieldName, jsCode := range resolver {
-			if fn, err := gq.compileResolver(name, fieldName, jsCode); err == nil {
+			if fn, err := config.compileResolver(name, fieldName, jsCode); err == nil {
 				fieldMap[fieldName] = &gqltools.FieldResolve{Resolve: fn}
 			} else {
-				return nil, &GraphQLConfigError{err}
+				return graphql.Schema{}, err
 			}
 		}
 		resolvers[name] = &gqltools.ObjectResolver{Fields: fieldMap}
 	}
 
 	// Now compile the schema and create the graphql.Schema object:
-	gq.schema, err = gqltools.MakeExecutableSchema(gqltools.ExecutableSchema{
+	return gqltools.MakeExecutableSchema(gqltools.ExecutableSchema{
 		TypeDefs:  schemaSource,
 		Resolvers: resolvers,
 	})
-	if err != nil {
-		return nil, &GraphQLConfigError{err}
-	}
-	return gq, nil
 }
 
-func (config *GraphQLConfig) Validate() error {
-	if schemaSource, err := config.getSchema(); err != nil {
-		return err
-	} else {
-		_, err = gqltools.MakeExecutableSchema(gqltools.ExecutableSchema{
-			TypeDefs:  schemaSource,
-			Resolvers: nil,
-		})
-		if err != nil {
-			return &GraphQLConfigError{err}
-		}
-		return nil
-	}
-}
-
+// Reads the schema, either directly from the config or from an external file.
 func (config *GraphQLConfig) getSchema() (string, error) {
 	if config.Schema != nil {
 		if config.SchemaFile != nil {
@@ -158,7 +157,7 @@ func (config *GraphQLConfig) getSchema() (string, error) {
 
 // Creates a graphQLResolver for the given JavaScript code, and returns a graphql-go FieldResolveFn
 // that invokes it.
-func (gq *GraphQL) compileResolver(resolverName string, fieldName string, jsCode string) (graphql.FieldResolveFn, error) {
+func (config *GraphQLConfig) compileResolver(resolverName string, fieldName string, jsCode string) (graphql.FieldResolveFn, error) {
 	name := resolverName + "." + fieldName
 	resolver := &graphQLResolver{
 		JSServer: newUserFunctionJSServer(name, "GraphQL resolver", "parent, args, context, info", jsCode),
@@ -194,7 +193,6 @@ func (res *graphQLResolver) Resolve(db *Database, params *graphql.ResolveParams,
 			}
 		}
 	}
-	//log.Printf("-- %q : subfields = %v", params.Info.FieldName, subfields)
 
 	// The `info` parameter passed to the JS function; fields are a subset of graphql.ResolveInfo.
 	// NOTE: We've removed these fields until we get feedback that they're needed by developers.
@@ -209,7 +207,7 @@ func (res *graphQLResolver) Resolve(db *Database, params *graphql.ResolveParams,
 	}
 
 	return res.WithTask(func(task sgbucket.JSServerTask) (interface{}, error) {
-		runner := task.(*javaScriptRunner)
+		runner := task.(*userJSRunner)
 		return runner.CallWithDB(db, mutationAllowed, params.Source, params.Args, newUserFunctionJSContext(db), info)
 	})
 }

@@ -14,16 +14,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 )
 
 //////// N1QL QUERIES:
-
-// Timeout for N1QL, JavaScript and GraphQL queries.
-// TODO: Make this a configurable parameter?
-const QueryTimeout = 5 * time.Second
 
 // HTTP handler for GET or POST `/$db/_query/$name`
 func (h *handler) handleUserQuery() error {
@@ -32,7 +28,7 @@ func (h *handler) handleUserQuery() error {
 		return err
 	}
 	// Run the query:
-	return h.db.WithTimeout(QueryTimeout, func() error {
+	return h.db.WithTimeout(db.UserQueryTimeout, func() error {
 		results, err := h.db.UserN1QLQuery(queryName, queryParams)
 		if err != nil {
 			return err
@@ -78,7 +74,7 @@ func (h *handler) handleUserFunction() error {
 	}
 	canMutate := h.rq.Method != "GET"
 
-	return h.db.WithTimeout(QueryTimeout, func() error {
+	return h.db.WithTimeout(db.UserQueryTimeout, func() error {
 		result, err := h.db.CallUserFunction(fnName, fnParams, canMutate)
 		if err == nil {
 			h.writeJSON(result)
@@ -168,7 +164,7 @@ func (h *handler) handleGraphQL() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing/empty `query` property")
 	}
 
-	return h.db.WithTimeout(QueryTimeout, func() error {
+	return h.db.WithTimeout(db.UserQueryTimeout, func() error {
 		result, err := h.db.UserGraphQLQuery(queryString, operationName, variables, canMutate)
 		if err == nil {
 			h.writeJSON(result)

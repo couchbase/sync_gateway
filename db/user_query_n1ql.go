@@ -67,6 +67,7 @@ func (db *Database) UserN1QLQuery(name string, args map[string]interface{}) (sgb
 	iter, err := db.N1QLQueryWithStats(db.Ctx, QueryTypeUserPrefix+name, query.Statement, args,
 		base.RequestPlus, false)
 	if err != nil {
+		// Return a friendlier error:
 		var qe *gocb.QueryError
 		if errors.As(err, &qe) {
 			base.WarnfCtx(db.Ctx, "Error running query %q: %v", name, err)

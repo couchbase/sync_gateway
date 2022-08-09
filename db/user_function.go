@@ -69,7 +69,7 @@ func (db *Database) CallUserFunction(name string, args map[string]interface{}, m
 	}
 
 	return compiled.WithTask(func(task sgbucket.JSServerTask) (result interface{}, err error) {
-		runner := task.(*javaScriptRunner)
+		runner := task.(*userJSRunner)
 		return runner.CallWithDB(db, mutationAllowed, args, newUserFunctionJSContext(db))
 	})
 }
@@ -82,9 +82,9 @@ func newUserFunctionJSServer(name string, what string, argList string, sourceCod
 	js := fmt.Sprintf(kJavaScriptWrapper, argList, sourceCode)
 	return sgbucket.NewJSServer(js, 0, kUserFunctionCacheSize,
 		func(fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
-			return newJavaScriptRunner(name, what, fnSource)
+			return newUserJavaScriptRunner(name, what, fnSource)
 		})
 }
 
-// Number of and Otto contexts to cache per function
+// Number of Otto contexts to cache per function, i.e. the number of goroutines that can be simultaneously running each function.
 const kUserFunctionCacheSize = 2

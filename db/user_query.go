@@ -17,18 +17,17 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 )
 
-//////// QUERY PARAMETERS/ARGUMENTS:
+// Timeout for N1QL, JavaScript and GraphQL queries. (Applies to REST and BLIP requests.)
+const UserQueryTimeout = 60 * time.Second
 
-// Value of query parameter "context"
-type userQueryContextValue struct {
-	User *userQueryUserInfo `json:"user,omitempty"`
-}
+//////// QUERY PARAMETERS/ARGUMENTS:
 
 // Value of query parameter "context.user"
 type userQueryUserInfo struct {
@@ -181,5 +180,5 @@ func (allow *UserQueryAllow) expandPattern(pattern string, args map[string]inter
 }
 
 // Regexp that matches a property pattern -- either `$xxx` or `$(xxx)` where `xxx` is one or more
-// alphanumeric characters or underscore. It also matches `$$` so it can be subtituted with `$`.
+// alphanumeric characters or underscore. It also matches `$$` so it can be replaced with `$`.
 var kChannelPropertyRegexp = regexp.MustCompile(`\$(\w+|\([^)]+\)|\$)`)

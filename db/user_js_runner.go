@@ -25,9 +25,9 @@ import (
 	_ "github.com/robertkrimen/otto/underscore"
 )
 
-// An object that runs a specific JS function (user function or GraphQL resolver).
+// An object that runs a user JavaScript function or a GraphQL resolver.
 // Not thread-safe! Owned by an sgbucket.JSServer, which arbitrates access to it.
-type javaScriptRunner struct {
+type userJSRunner struct {
 	sgbucket.JSRunner           // "Superclass"
 	kind              string    // "user function", "GraphQL resolver", etc
 	name              string    // Name of this function or resolver
@@ -35,10 +35,10 @@ type javaScriptRunner struct {
 	mutationAllowed   bool      // Whether save() is allowed (updated before every call)
 }
 
-// Creates a javaScriptRunner given its name and JavaScript source code.
-func newJavaScriptRunner(name string, kind string, funcSource string) (*javaScriptRunner, error) {
+// Creates a userJSRunner given its name and JavaScript source code.
+func newUserJavaScriptRunner(name string, kind string, funcSource string) (*userJSRunner, error) {
 	ctx := context.Background()
-	runner := &javaScriptRunner{
+	runner := &userJSRunner{
 		name: name,
 		kind: kind,
 	}
@@ -102,7 +102,6 @@ func newJavaScriptRunner(name string, kind string, funcSource string) (*javaScri
 		if runner.currentDB == nil {
 			panic("javaScriptRunner can't run without a currentCtx or currentDB")
 		}
-		//log.Printf("*** javaScriptRunner %s about to run", runner.name)
 	}
 	// Function that runs after every call:
 	runner.After = func(jsResult otto.Value, err error) (interface{}, error) {
@@ -120,7 +119,7 @@ func newJavaScriptRunner(name string, kind string, funcSource string) (*javaScri
 }
 
 // Calls a javaScriptRunner's JavaScript function.
-func (runner *javaScriptRunner) CallWithDB(db *Database, mutationAllowed bool, args ...interface{}) (result interface{}, err error) {
+func (runner *userJSRunner) CallWithDB(db *Database, mutationAllowed bool, args ...interface{}) (result interface{}, err error) {
 	runner.currentDB = db
 	runner.mutationAllowed = mutationAllowed
 	ctx := db.Ctx
@@ -137,13 +136,15 @@ func (runner *javaScriptRunner) CallWithDB(db *Database, mutationAllowed bool, a
 	return runner.Call(args...)
 }
 
+// JavaScript error returned by a userJavaScriptRunner
 type jsError struct {
-	err    error
-	runner *javaScriptRunner
+	err        error
+	runnerKind string
+	runnerName string
 }
 
 func (jserr *jsError) Error() string {
-	return fmt.Sprintf("%v (while calling %s %q)", jserr.err, jserr.runner.kind, jserr.runner.name)
+	return fmt.Sprintf("%v (while calling %s %q)", jserr.err, jserr.runnerKind, jserr.runnerName)
 }
 
 func (jserr *jsError) Unwrap() error {
@@ -152,7 +153,7 @@ func (jserr *jsError) Unwrap() error {
 
 var HttpErrRE = regexp.MustCompile(`^HTTP:\s*(\d+)\s+(.*)`)
 
-func (runner *javaScriptRunner) convertError(err error) error {
+func (runner *userJSRunner) convertError(err error) error {
 	if err == sgbucket.ErrJSTimeout {
 		return base.HTTPErrorf(408, "Timeout in JavaScript")
 	}
@@ -168,20 +169,18 @@ func (runner *javaScriptRunner) convertError(err error) error {
 		}
 		return base.HTTPErrorf(int(status), "%s (while calling %s %q)", message, runner.kind, runner.name)
 	}
-	return &jsError{err, runner}
+	return &jsError{err, runner.kind, runner.name}
 }
 
 //////// DATABASE CALLBACK FUNCTION IMPLEMENTATIONS:
 
 // Implementation of JS `app.func(name, params)` function
-func (runner *javaScriptRunner) do_func(funcName string, params map[string]interface{}) (interface{}, error) {
-	//log.Printf("*** UserFn func(%q, %+v)", funcName, params)
+func (runner *userJSRunner) do_func(funcName string, params map[string]interface{}) (interface{}, error) {
 	return runner.currentDB.CallUserFunction(funcName, params, runner.mutationAllowed)
 }
 
 // Implementation of JS `app.get(docID, docType)` function
-func (runner *javaScriptRunner) do_get(docID string, docType *string) (interface{}, error) {
-	//log.Printf("*** UserFn get(%q)", docID)
+func (runner *userJSRunner) do_get(docID string, docType *string) (interface{}, error) {
 	if err := runner.currentDB.CheckTimeout(); err != nil {
 		return nil, err
 	}
@@ -206,14 +205,12 @@ func (runner *javaScriptRunner) do_get(docID string, docType *string) (interface
 }
 
 // Implementation of JS `app.graphql(name, params)` function
-func (runner *javaScriptRunner) do_graphql(query string, params map[string]interface{}) (interface{}, error) {
-	//log.Printf("*** UserFn graphql(%q, %+v)", funcName, params)
+func (runner *userJSRunner) do_graphql(query string, params map[string]interface{}) (interface{}, error) {
 	return runner.currentDB.UserGraphQLQuery(query, "", params, runner.mutationAllowed)
 }
 
 // Implementation of JS `app.query(name, params)` function
-func (runner *javaScriptRunner) do_query(queryName string, params map[string]interface{}) ([]interface{}, error) {
-	//log.Printf("*** UserFn query(%q, %+v)", queryName, params)
+func (runner *userJSRunner) do_query(queryName string, params map[string]interface{}) ([]interface{}, error) {
 
 	results, err := runner.currentDB.UserN1QLQuery(queryName, params)
 	if err != nil {
@@ -231,8 +228,7 @@ func (runner *javaScriptRunner) do_query(queryName string, params map[string]int
 }
 
 // Implementation of JS `app.save(docID, body)` function
-func (runner *javaScriptRunner) do_save(docID string, body map[string]interface{}) error {
-	//log.Printf("*** UserFn save(%q, %v)", docID, body)
+func (runner *userJSRunner) do_save(docID string, body map[string]interface{}) error {
 	if err := runner.currentDB.CheckTimeout(); err != nil {
 		return err
 	}
