@@ -84,6 +84,7 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 		failOnRollback:   options.FailOnRollback,
 		checkpointPrefix: DCPCheckpointPrefixWithGroupID(options.GroupID),
 		dbStats:          options.DbStats,
+		collectionIDs:    options.CollectionIDs,
 	}
 
 	// Initialize active vbuckets
@@ -354,8 +355,9 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 
 	vbMeta := dc.metadata.GetMeta(vbID)
 
-	options := gocbcore.OpenStreamOptions{
-		FilterOptions: &gocbcore.OpenStreamFilterOptions{CollectionIDs: dc.collectionIDs},
+	options := gocbcore.OpenStreamOptions{}
+	if len(dc.collectionIDs) != 0 {
+		options.FilterOptions = &gocbcore.OpenStreamFilterOptions{CollectionIDs: dc.collectionIDs}
 	}
 	openStreamError := make(chan error)
 	openStreamCallback := func(f []gocbcore.FailoverEntry, err error) {

@@ -1013,6 +1013,7 @@ func (c *Collection) getCollectionID() (uint32, error) {
 	wg.Add(1)
 	var callbackErr error
 	callbackFunc := func(res *gocbcore.GetCollectionIDResult, getCollectionErr error) {
+		defer wg.Done()
 		if getCollectionErr != nil {
 			callbackErr = getCollectionErr
 			return
@@ -1041,6 +1042,6 @@ func (c *Collection) getCollectionID() (uint32, error) {
 		return 0, fmt.Errorf("GetCollectionID for %s.%s, err: %w", scope, collection, callbackErr)
 	}
 	// cache value for future use
-	*c.collectionID = collectionID
+	c.collectionID = Uint32Ptr(collectionID)
 	return collectionID, nil
 }

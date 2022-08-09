@@ -55,9 +55,13 @@ func StartGocbDCPFeed(collection *Collection, bucketName string, args sgbucket.F
 	if err != nil {
 		return err
 	}
-	collectionID, err := collection.getCollectionID()
-	if err != nil {
-		return err
+	var collectionIDs []uint32
+	if collection.Spec.Scope != nil && collection.Spec.Collection != nil {
+		collectionID, err := collection.getCollectionID()
+		if err != nil {
+			return err
+		}
+		collectionIDs = append(collectionIDs, collectionID)
 	}
 	dcpClient, err := NewDCPClient(
 		feedName,
@@ -67,7 +71,7 @@ func StartGocbDCPFeed(collection *Collection, bucketName string, args sgbucket.F
 			GroupID:           groupID,
 			InitialMetadata:   metadata,
 			DbStats:           dbStats,
-			CollectionIDs:     []uint32{collectionID},
+			CollectionIDs:     collectionIDs,
 		},
 		collection)
 	if err != nil {
