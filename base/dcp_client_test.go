@@ -369,7 +369,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 }
 
 func asCollection(t *testing.T, bucket *TestBucket) *Collection {
-	collection, ok := bucket.Bucket.(*Collection)
+	collection, ok := GetBaseBucket(bucket).(*Collection)
 	if !ok {
 		t.Error("could not type assert TestBucket to a collection")
 	}
