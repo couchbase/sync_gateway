@@ -12,10 +12,6 @@ import (
 	"github.com/couchbase/gocbcore/v10"
 )
 
-// GocbcoreAgentTimeout is the time alloted to obtain a response from
-// the server for a request.
-var GocbcoreAgentTimeout = 60 * time.Second
-
 // GoCBv2SecurityConfig returns a gocb.SecurityConfig to use when connecting given a CA Cert path.
 func GoCBv2SecurityConfig(tlsSkipVerify *bool, caCertPath string) (sc gocb.SecurityConfig, err error) {
 	var certPool *x509.CertPool = nil

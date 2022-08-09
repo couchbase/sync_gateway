@@ -61,19 +61,14 @@ type DCPClientOptions struct {
 	CollectionIDs              []uint32             // CollectionIDs used by gocbcore, if empty, uses default collections
 }
 
-func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket Bucket) (*DCPClient, error) {
+func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, collection *Collection) (*DCPClient, error) {
 
 	numWorkers := defaultNumWorkers
 	if options.NumWorkers > 0 {
 		numWorkers = options.NumWorkers
 	}
 
-	store, ok := AsCouchbaseStore(bucket)
-	if !ok {
-		return nil, errors.New("DCP Client requires bucket to be CouchbaseStore")
-	}
-
-	numVbuckets, err := store.GetMaxVbno()
+	numVbuckets, err := collection.GetMaxVbno()
 	if err != nil {
 		return nil, fmt.Errorf("Unable to determine maxVbNo when creating DCP client: %w", err)
 	}
@@ -83,7 +78,7 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 		numVbuckets:      numVbuckets,
 		callback:         callback,
 		ID:               ID,
-		spec:             store.GetSpec(),
+		spec:             collection.GetSpec(),
 		terminator:       make(chan bool),
 		doneChannel:      make(chan error, 1),
 		failOnRollback:   options.FailOnRollback,
@@ -100,7 +95,7 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 	checkpointPrefix := fmt.Sprintf("%s:%v", client.checkpointPrefix, ID)
 	switch options.MetadataStoreType {
 	case DCPMetadataStoreCS:
-		client.metadata = NewDCPMetadataCS(bucket, numVbuckets, numWorkers, checkpointPrefix)
+		client.metadata = NewDCPMetadataCS(collection, numVbuckets, numWorkers, checkpointPrefix)
 	case DCPMetadataStoreInMemory:
 		client.metadata = NewDCPMetadataMem(numVbuckets)
 	default:
@@ -113,7 +108,7 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 	}
 
 	if options.OneShot {
-		_, highSeqnos, statsErr := store.GetStatsVbSeqno(numVbuckets, true)
+		_, highSeqnos, statsErr := collection.GetStatsVbSeqno(numVbuckets, true)
 		if statsErr != nil {
 			return nil, fmt.Errorf("Unable to obtain high seqnos for one-shot DCP feed: %w", statsErr)
 		}

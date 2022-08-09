@@ -2,27 +2,27 @@ package base
 
 import (
 	"context"
-	"errors"
 	"expvar"
 	"fmt"
+	"time"
 
 	"github.com/couchbase/gocbcore/v10"
 	sgbucket "github.com/couchbase/sg-bucket"
 )
 
-// getHighSeqMetadata returns metadata to feed into a DCP client based on the last sequence numbers stored in memory
-func getHighSeqMetadata(bucket Bucket) ([]DCPMetadata, error) {
-	store, ok := AsCouchbaseStore(bucket)
-	if !ok {
-		return nil, errors.New("DCP Client requires bucket to be CouchbaseStore")
-	}
+// getDCPGoCBTimeout returnsis the time alloted to obtain a response from server for a request.
+func getDCPGoCBDeadline() time.Time {
+	return time.Now().Add(5 * time.Minute)
+}
 
-	numVbuckets, err := store.GetMaxVbno()
+// getHighSeqMetadata returns metadata to feed into a DCP client based on the last sequence numbers stored in memory
+func getHighSeqMetadata(collection *Collection) ([]DCPMetadata, error) {
+	numVbuckets, err := collection.GetMaxVbno()
 	if err != nil {
 		return nil, fmt.Errorf("Unable to determine maxVbNo when creating DCP client: %w", err)
 	}
 
-	vbUUIDs, highSeqNos, statsErr := store.GetStatsVbSeqno(numVbuckets, true)
+	vbUUIDs, highSeqNos, statsErr := collection.GetStatsVbSeqno(numVbuckets, true)
 	if statsErr != nil {
 		return nil, fmt.Errorf("Unable to obtain high seqnos for DCP feed: %w", statsErr)
 	}
@@ -45,25 +45,9 @@ func getHighSeqMetadata(bucket Bucket) ([]DCPMetadata, error) {
 	return metadata, nil
 }
 
-func getCollectionIDs(bucket Bucket, scope, collection *string) ([]uint32, error) {
-	c, ok := bucket.(*Collection)
-	if !ok {
-		return []uint32{}, fmt.Errorf("bucket is not a collection")
-	}
-	var collectionIDs []uint32
-	if scope != nil && collection != nil {
-		collectionID, err := c.getCollectionID()
-		if err != nil {
-			return []uint32{}, err
-		}
-		collectionIDs = append(collectionIDs, collectionID)
-	}
-	return collectionIDs, nil
-}
-
 // StartGocbDCPFeed starts a DCP Feed.
-func StartGocbDCPFeed(bucket Bucket, bucketName string, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map, metadataStoreType DCPMetadataStoreType, groupID string) error {
-	metadata, err := getHighSeqMetadata(bucket)
+func StartGocbDCPFeed(collection *Collection, bucketName string, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map, metadataStoreType DCPMetadataStoreType, groupID string) error {
+	metadata, err := getHighSeqMetadata(collection)
 	if err != nil {
 		return err
 	}
@@ -71,7 +55,7 @@ func StartGocbDCPFeed(bucket Bucket, bucketName string, args sgbucket.FeedArgume
 	if err != nil {
 		return err
 	}
-	collectionIDs, err := getCollectionIDs(bucket, spec.Scope, spec.Collection)
+	collectionID, err := collection.getCollectionID()
 	if err != nil {
 		return err
 	}
@@ -83,9 +67,9 @@ func StartGocbDCPFeed(bucket Bucket, bucketName string, args sgbucket.FeedArgume
 			GroupID:           groupID,
 			InitialMetadata:   metadata,
 			DbStats:           dbStats,
-			CollectionIDs:     collectionIDs,
+			CollectionIDs:     []uint32{collectionID},
 		},
-		bucket)
+		collection)
 	if err != nil {
 		return err
 	}

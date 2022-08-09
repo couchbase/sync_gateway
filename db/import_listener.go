@@ -85,7 +85,11 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 	}
 	if !base.IsEnterpriseEdition() {
 		groupID := ""
-		return base.StartGocbDCPFeed(bucket, bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
+		collection, ok := bucket.(*base.Collection)
+		if !ok {
+			return fmt.Errorf("bucket is not a collection")
+		}
+		return base.StartGocbDCPFeed(collection, bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
 	}
 	il.cbgtContext, err = base.StartShardedDCPFeed(dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater, bucket, cbStore.GetSpec(), dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
 	return err
