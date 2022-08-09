@@ -1028,7 +1028,7 @@ func (c *Collection) getCollectionID() (uint32, error) {
 	_, err = agent.GetCollectionID(scope,
 		collection,
 		gocbcore.GetCollectionIDOptions{
-			// Deadline: getDCPGoCBDeadline(), as soon as GOCBC-1332 fixed
+			Deadline: getDCPGoCBDeadline(),
 		},
 		callbackFunc)
 
