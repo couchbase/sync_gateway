@@ -301,7 +301,6 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	r.Handle("/_post_upgrade",
 		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePostUpgrade)).Methods("POST")
 
-
 	// User query config APIs:
 	if sc.config.Unsupported.UserQueries != nil && *sc.config.Unsupported.UserQueries {
 		dbr.Handle("/_config/functions",

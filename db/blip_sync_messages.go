@@ -33,13 +33,13 @@ const (
 	MessageGetAttachment   = "getAttachment"
 	MessageProposeChanges  = "proposeChanges"
 	MessageProveAttachment = "proveAttachment"
-	MessageGetRev          = "getRev"       // Connected Client API
-	MessagePutRev          = "putRev"       // Connected Client API
-	MessageUnsubChanges    = "unsubChanges" // Connected Client API
-	MessageGetCollections = "getCollections" // Connected Client API
-	MessageQuery           = "query"        // Connected Client API
-	MessageFunction        = "function"     // Connected Client API
-	MessageGraphQL         = "graphql"      // Connected Client API
+	MessageGetRev          = "getRev"         // Connected Client API
+	MessagePutRev          = "putRev"         // Connected Client API
+	MessageUnsubChanges    = "unsubChanges"   // Connected Client API
+	MessageGetCollections  = "getCollections" // Connected Client API
+	MessageQuery           = "query"          // Connected Client API
+	MessageFunction        = "function"       // Connected Client API
+	MessageGraphQL         = "graphql"        // Connected Client API
 )
 
 // Message properties
