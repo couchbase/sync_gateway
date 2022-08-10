@@ -63,6 +63,7 @@ func StartGocbDCPFeed(bucket Bucket, bucketName string, args sgbucket.FeedArgume
 			GroupID:           groupID,
 			InitialMetadata:   metadata,
 			DbStats:           dbStats,
+			AgentPriority:     gocbcore.DcpAgentPriorityMed,
 		},
 		bucket)
 	if err != nil {

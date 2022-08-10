@@ -46,17 +46,19 @@ type DCPClient struct {
 	checkpointPrefix           string                         // DCP checkpoint key prefix
 	checkpointPersistFrequency *time.Duration                 // Used to override the default checkpoint persistence frequency
 	dbStats                    *expvar.Map                    // Stats for database
+	agentPriority              gocbcore.DcpAgentPriority      // agentPriority specifies the priority level for a dcp stream
 }
 
 type DCPClientOptions struct {
 	NumWorkers                 int
 	OneShot                    bool
-	FailOnRollback             bool                 // When true, the DCP client will terminate on DCP rollback
-	InitialMetadata            []DCPMetadata        // When set, will be used as initial metadata for the DCP feed.  Will override any persisted metadata
-	CheckpointPersistFrequency *time.Duration       // Overrides metadata persistence frequency - intended for test use
-	MetadataStoreType          DCPMetadataStoreType // define storage type for DCPMetadata
-	GroupID                    string               // specify GroupID, only used when MetadataStoreType is DCPMetadataCS
-	DbStats                    *expvar.Map          // Optional stats
+	FailOnRollback             bool                      // When true, the DCP client will terminate on DCP rollback
+	InitialMetadata            []DCPMetadata             // When set, will be used as initial metadata for the DCP feed.  Will override any persisted metadata
+	CheckpointPersistFrequency *time.Duration            // Overrides metadata persistence frequency - intended for test use
+	MetadataStoreType          DCPMetadataStoreType      // define storage type for DCPMetadata
+	GroupID                    string                    // specify GroupID, only used when MetadataStoreType is DCPMetadataCS
+	DbStats                    *expvar.Map               // Optional stats
+	AgentPriority              gocbcore.DcpAgentPriority // agentPriority specifies the priority level for a dcp stream
 }
 
 func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket Bucket) (*DCPClient, error) {
@@ -76,6 +78,9 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 		return nil, fmt.Errorf("Unable to determine maxVbNo when creating DCP client: %w", err)
 	}
 
+	if options.AgentPriority == gocbcore.DcpAgentPriorityHigh {
+		return nil, fmt.Errorf("sync gateway should not set high proirity to DCP feeds")
+	}
 	client := &DCPClient{
 		workers:          make([]*DCPWorker, numWorkers),
 		numVbuckets:      numVbuckets,
@@ -87,6 +92,7 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 		failOnRollback:   options.FailOnRollback,
 		checkpointPrefix: DCPCheckpointPrefixWithGroupID(options.GroupID),
 		dbStats:          options.DbStats,
+		agentPriority:    options.AgentPriority,
 	}
 
 	// Initialize active vbuckets
@@ -216,7 +222,7 @@ func (dc *DCPClient) initAgent(spec BucketSpec) error {
 	// Force poolsize to 1, multiple clients results in DCP naming collision
 	agentConfig.KVConfig.PoolSize = 1
 	agentConfig.BucketName = spec.BucketName
-	agentConfig.DCPConfig.AgentPriority = gocbcore.DcpAgentPriorityLow
+	agentConfig.DCPConfig.AgentPriority = dc.agentPriority
 	agentConfig.SecurityConfig.Auth = auth
 	agentConfig.SecurityConfig.TLSRootCAProvider = tlsRootCAProvider
 	agentConfig.UserAgent = "SyncGatewayDCP"
