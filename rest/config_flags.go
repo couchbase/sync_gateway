@@ -117,6 +117,7 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"replicator.max_heartbeat":    {&config.Replicator.MaxHeartbeat, fs.String("replicator.max_heartbeat", "", "Max heartbeat value for _changes request")},
 		"replicator.blip_compression": {&config.Replicator.BLIPCompression, fs.Int("replicator.blip_compression", 0, "BLIP data compression level (0-9)")},
 
+		"unsupported.serverless":          {&config.Unsupported.Serverless, fs.Bool("unsupported.serverless", false, "Put SG in to serverless mode.")},
 		"unsupported.stats_log_frequency": {&config.Unsupported.StatsLogFrequency, fs.String("unsupported.stats_log_frequency", "", "How often should stats be written to stats logs")},
 		"unsupported.use_stdlib_json":     {&config.Unsupported.UseStdlibJSON, fs.Bool("unsupported.use_stdlib_json", false, "Bypass the jsoniter package and use Go's stdlib instead")},
 
@@ -125,8 +126,6 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"database_credentials": {&config.DatabaseCredentials, fs.String("database_credentials", "null", "JSON-encoded per-database credentials")},
 
 		"max_file_descriptors": {&config.MaxFileDescriptors, fs.Uint64("max_file_descriptors", 0, "Max # of open file descriptors (RLIMIT_NOFILE)")},
-
-		"serverless": {&config.Serverless, fs.Bool("serverless", false, "Put SG in to serverless mode.")},
 
 		"couchbase_keepalive_interval": {&config.CouchbaseKeepaliveInterval, fs.Int("couchbase_keepalive_interval", 0, "TCP keep-alive interval between SG and Couchbase server")},
 	}
