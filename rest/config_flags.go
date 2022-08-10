@@ -126,6 +126,8 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 
 		"max_file_descriptors": {&config.MaxFileDescriptors, fs.Uint64("max_file_descriptors", 0, "Max # of open file descriptors (RLIMIT_NOFILE)")},
 
+		"serverless": {&config.Serverless, fs.Bool("serverless", false, "Put SG in to serverless mode.")},
+
 		"couchbase_keepalive_interval": {&config.CouchbaseKeepaliveInterval, fs.Int("couchbase_keepalive_interval", 0, "TCP keep-alive interval between SG and Couchbase server")},
 	}
 }
