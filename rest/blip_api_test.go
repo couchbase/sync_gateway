@@ -2125,7 +2125,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":12345678901234567890}]}`, string(data))
 
-	msg, ok := client.PullReplication().WaitForMessage(5)
+	msg, ok := client.pullReplication.WaitForMessage(5)
 	assert.True(t, ok)
 
 	// Check the request was initially sent with the correct deltaSrc property
@@ -2187,7 +2187,7 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, `{"_removed":true}`, string(data))
 
-	msg, ok := client.PullReplication().WaitForMessage(5)
+	msg, ok := client.pullReplication.WaitForMessage(5)
 	assert.True(t, ok)
 	msgBody, err := msg.Body()
 	assert.NoError(t, err)
@@ -2253,7 +2253,7 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, `{}`, string(data))
 
-	msg, ok := client.PullReplication().WaitForMessage(5)
+	msg, ok := client.pullReplication.WaitForMessage(5)
 	assert.True(t, ok)
 	msgBody, err := msg.Body()
 	assert.NoError(t, err)
@@ -2368,17 +2368,17 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 	assert.True(t, ok)
 	if !assert.Equal(t, db.MessageRev, msg.Profile()) {
 		t.Logf("unexpected profile for message %v in %v",
-			msg.SerialNumber(), client1.PullReplication().GetMessages())
+			msg.SerialNumber(), client1.pullReplication.GetMessages())
 	}
 	msgBody, err := msg.Body()
 	assert.NoError(t, err)
 	if !assert.Equal(t, `{}`, string(msgBody)) {
 		t.Logf("unexpected body for message %v in %v",
-			msg.SerialNumber(), client1.PullReplication().GetMessages())
+			msg.SerialNumber(), client1.pullReplication.GetMessages())
 	}
 	if !assert.Equal(t, "1", msg.Properties[db.RevMessageDeleted]) {
 		t.Logf("unexpected deleted property for message %v in %v",
-			msg.SerialNumber(), client1.PullReplication().GetMessages())
+			msg.SerialNumber(), client1.pullReplication.GetMessages())
 	}
 
 	// Sync Gateway will have cached the tombstone delta, so client 2 should be able to retrieve it from the cache
@@ -2393,17 +2393,17 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 	assert.True(t, ok)
 	if !assert.Equal(t, db.MessageRev, msg.Profile()) {
 		t.Logf("unexpected profile for message %v in %v",
-			msg.SerialNumber(), client2.PullReplication().GetMessages())
+			msg.SerialNumber(), client2.pullReplication.GetMessages())
 	}
 	msgBody, err = msg.Body()
 	assert.NoError(t, err)
 	if !assert.Equal(t, `{}`, string(msgBody)) {
 		t.Logf("unexpected body for message %v in %v",
-			msg.SerialNumber(), client2.PullReplication().GetMessages())
+			msg.SerialNumber(), client2.pullReplication.GetMessages())
 	}
 	if !assert.Equal(t, "1", msg.Properties[db.RevMessageDeleted]) {
 		t.Logf("unexpected deleted property for message %v in %v",
-			msg.SerialNumber(), client2.PullReplication().GetMessages())
+			msg.SerialNumber(), client2.pullReplication.GetMessages())
 	}
 
 	var deltaCacheHitsEnd int64
@@ -2472,7 +2472,7 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":12345678901234567890}]}`, string(data))
 
-	msg, ok := client.PullReplication().WaitForMessage(5)
+	msg, ok := client.pullReplication.WaitForMessage(5)
 	assert.True(t, ok)
 	assert.Equal(t, "1-0335a345b6ffed05707ccc4cbc1b67f4", msg.Properties[db.RevMessageHistory])
 }
@@ -2613,7 +2613,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	assert.Equal(t, "2-abc", newRev)
 
 	// Check EE is delta, and CE is full-body replication
-	msg, ok := client.PushReplication().WaitForMessage(2)
+	msg, ok := client.pushReplication.WaitForMessage(2)
 	assert.True(t, ok)
 
 	if base.IsEnterpriseEdition() {
@@ -2724,7 +2724,7 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 	assert.Equal(t, "2-abc", newRev)
 
 	// Check EE is delta, and CE is full-body replication
-	msg, ok := client.PushReplication().WaitForMessage(2)
+	msg, ok := client.pushReplication.WaitForMessage(2)
 	assert.True(t, ok)
 
 	// Check the request was NOT sent with a deltaSrc property
@@ -2793,7 +2793,7 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 	assert.Equal(t, true, hello["stub"])
 
 	// message #3 is the getAttachment message that is sent in-between rev processing
-	msg, ok := client.PullReplication().WaitForMessage(3)
+	msg, ok := client.pullReplication.WaitForMessage(3)
 	assert.True(t, ok)
 	assert.NotEqual(t, blip.ErrorType, msg.Type(), "Expected non-error blip message type")
 
@@ -2902,7 +2902,7 @@ func TestBlipNorev(t *testing.T) {
 	// Request that the handler used to process the message is sent back in the response
 	norevMsg.Properties[db.SGShowHandler] = "true"
 
-	assert.NoError(t, btc.PushReplication().sendMsg(norevMsg.Message))
+	assert.NoError(t, btc.pushReplication.sendMsg(norevMsg.Message))
 
 	// Check that the response we got back was processed by the norev handler
 	resp := norevMsg.Response()
@@ -3034,7 +3034,7 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 	assert.Equal(t, "2-abc", revId)
 
 	// Wait for the document to be replicated at SG
-	_, ok = btc.PushReplication().WaitForMessage(2)
+	_, ok = btc.pushReplication.WaitForMessage(2)
 	assert.True(t, ok)
 
 	resp := rt.SendAdminRequest(http.MethodGet, "/db/"+docID+"?rev="+revId, "")
@@ -3116,7 +3116,7 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 	assert.Equal(t, "2-abc", revId)
 
 	// Wait for the document to be replicated at SG
-	_, ok = btc.PushReplication().WaitForMessage(2)
+	_, ok = btc.pushReplication.WaitForMessage(2)
 	assert.True(t, ok)
 
 	resp := rt.SendAdminRequest(http.MethodGet, "/db/"+docID+"?rev="+revId, "")
@@ -3192,7 +3192,7 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 	assert.Equal(t, "2-abc", revId)
 
 	// Wait for the document to be replicated at SG
-	_, ok = btc.PushReplication().WaitForMessage(2)
+	_, ok = btc.pushReplication.WaitForMessage(2)
 	assert.True(t, ok)
 
 	resp := rt.SendAdminRequest(http.MethodGet, "/db/"+docID+"?rev="+revId, "")
@@ -3475,7 +3475,7 @@ func TestRevocationMessage(t *testing.T) {
 	_, found := btc.WaitForRev("doc1", revID)
 	require.True(t, found)
 
-	messages := btc.PullReplication().GetMessages()
+	messages := btc.pullReplication.GetMessages()
 
 	testCases := []struct {
 		Name            string
@@ -3582,7 +3582,7 @@ func TestRevocationNoRev(t *testing.T) {
 	_, ok = btc.WaitForRev("docmarker", waitRevID)
 	require.True(t, ok)
 
-	messages := btc.PullReplication().GetMessages()
+	messages := btc.pullReplication.GetMessages()
 
 	var highestMsgSeq uint32
 	var highestSeqMsg blip.Message
@@ -3676,7 +3676,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	_, ok = btc.WaitForRev("docmarker", "1-999bcad4aab47f0a8a24bd9d3598060c")
 	assert.True(t, ok)
 
-	messages := btc.PullReplication().GetMessages()
+	messages := btc.pullReplication.GetMessages()
 
 	var highestMsgSeq uint32
 	var highestSeqMsg blip.Message
@@ -3733,7 +3733,7 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 	assert.Equal(t, "2-abc", revId)
 
 	// Wait for the documents to be replicated at SG
-	_, ok := btc.PushReplication().WaitForMessage(2)
+	_, ok := btc.pushReplication.WaitForMessage(2)
 	assert.True(t, ok)
 
 	resp := rt.SendAdminRequest(http.MethodGet, "/db/"+docID+"?rev="+revId, "")
@@ -3747,7 +3747,7 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 	assert.Equal(t, "4-abc", revId)
 
 	// Wait for the document to be replicated at SG
-	_, ok = btc.PushReplication().WaitForMessage(4)
+	_, ok = btc.pushReplication.WaitForMessage(4)
 	assert.True(t, ok)
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/"+docID+"?rev="+revId, "")
@@ -3773,9 +3773,9 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 	assert.True(t, hello["stub"].(bool))
 
 	// Check the number of sendProveAttachment/sendGetAttachment calls.
-	require.NotNil(t, btc.PushReplication().replicationStats)
-	assert.Equal(t, int64(1), btc.PushReplication().replicationStats.GetAttachment.Value())
-	assert.Equal(t, int64(0), btc.PushReplication().replicationStats.ProveAttachment.Value())
+	require.NotNil(t, btc.pushReplication.replicationStats)
+	assert.Equal(t, int64(1), btc.pushReplication.replicationStats.GetAttachment.Value())
+	assert.Equal(t, int64(0), btc.pushReplication.replicationStats.ProveAttachment.Value())
 }
 
 func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
@@ -3807,7 +3807,7 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 	assert.Equal(t, "4-abc", revId)
 
 	// Wait for the document to be replicated at SG
-	_, ok := btc.PushReplication().WaitForMessage(2)
+	_, ok := btc.pushReplication.WaitForMessage(2)
 	assert.True(t, ok)
 
 	resp := rt.SendAdminRequest(http.MethodGet, "/db/"+docID+"?rev="+revId, "")
@@ -3833,9 +3833,9 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 	assert.True(t, hello["stub"].(bool))
 
 	// Check the number of sendProveAttachment/sendGetAttachment calls.
-	require.NotNil(t, btc.PushReplication().replicationStats)
-	assert.Equal(t, int64(1), btc.PushReplication().replicationStats.GetAttachment.Value())
-	assert.Equal(t, int64(0), btc.PushReplication().replicationStats.ProveAttachment.Value())
+	require.NotNil(t, btc.pushReplication.replicationStats)
+	assert.Equal(t, int64(1), btc.pushReplication.replicationStats.GetAttachment.Value())
+	assert.Equal(t, int64(0), btc.pushReplication.replicationStats.ProveAttachment.Value())
 }
 
 func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
@@ -3867,16 +3867,16 @@ func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
 
 	// Push a revision with a bunch of history simulating doc updated on mobile device
 	// Note this references revpos 1 and therefore SGW has it - Shouldn't need proveAttachment
-	proveAttachmentBefore := btc.PushReplication().replicationStats.ProveAttachment.Value()
+	proveAttachmentBefore := btc.pushReplication.replicationStats.ProveAttachment.Value()
 	revid, err := btc.PushRevWithHistory("doc", initialRevID, []byte(`{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`), 25, 5)
 	assert.NoError(t, err)
-	proveAttachmentAfter := btc.PushReplication().replicationStats.ProveAttachment.Value()
+	proveAttachmentAfter := btc.pushReplication.replicationStats.ProveAttachment.Value()
 	assert.Equal(t, proveAttachmentBefore, proveAttachmentAfter)
 
 	// Push another bunch of history
 	_, err = btc.PushRevWithHistory("doc", revid, []byte(`{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`), 25, 5)
 	assert.NoError(t, err)
-	proveAttachmentAfter = btc.PushReplication().replicationStats.ProveAttachment.Value()
+	proveAttachmentAfter = btc.pushReplication.replicationStats.ProveAttachment.Value()
 	assert.Equal(t, proveAttachmentBefore, proveAttachmentAfter)
 }
 
@@ -4032,7 +4032,7 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 	require.NoError(t, err)
 
 	// Ensure message and attachment is pushed up
-	_, ok := btc.PushReplication().WaitForMessage(2)
+	_, ok := btc.pushReplication.WaitForMessage(2)
 	assert.True(t, ok)
 
 	// Get the attachment and ensure the data is updated
@@ -4570,7 +4570,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 
 			// Change noRev handler so it's known when a noRev is received
 			recievedNoRevs := make(chan *blip.Message)
-			btc.PullReplication().bt.blipContext.HandlerForProfile[db.MessageNoRev] = func(msg *blip.Message) {
+			btc.pullReplication.bt.blipContext.HandlerForProfile[db.MessageNoRev] = func(msg *blip.Message) {
 				fmt.Println("Received noRev", msg.Properties)
 				recievedNoRevs <- msg
 			}

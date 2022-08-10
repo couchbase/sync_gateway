@@ -136,7 +136,7 @@ func TestBlipGetCollections(t *testing.T) {
 			getCollectionsRequest, err := db.NewGetCollectionsMessage(testCase.requestBody)
 			require.NoError(t, err)
 
-			require.NoError(t, btc.PushReplication().sendMsg(getCollectionsRequest))
+			require.NoError(t, btc.pushReplication.sendMsg(getCollectionsRequest))
 
 			// Check that the response we got back was processed by the norev handler
 			resp := getCollectionsRequest.Response()
@@ -197,7 +197,7 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 
 	require.NoError(t, err)
 
-	require.NoError(t, btc.PushReplication().sendMsg(getCollectionsRequest))
+	require.NoError(t, btc.pushReplication.sendMsg(getCollectionsRequest))
 
 	// Check that the response we got back was processed by the GetCollections
 	resp := getCollectionsRequest.Response()
@@ -216,7 +216,7 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 	requestGetCheckpoint.SetProfile(db.MessageGetCheckpoint)
 	requestGetCheckpoint.Properties[db.BlipClient] = checkpointID1
 	requestGetCheckpoint.Properties[db.BlipCollection] = "0"
-	require.NoError(t, btc.PushReplication().sendMsg(requestGetCheckpoint))
+	require.NoError(t, btc.pushReplication.sendMsg(requestGetCheckpoint))
 	resp = requestGetCheckpoint.Response()
 	require.NotNil(t, resp)
 	errorCode, hasErrorCode = resp.Properties[db.BlipErrorCode]
@@ -303,7 +303,7 @@ func TestCollectionsReplication(t *testing.T) {
 
 	require.NoError(t, rt.WaitForPendingChanges())
 
-	btcCollection, err := btc.GetCollection(scopeAndCollectionKey)
+	btcCollection, err := btc.Collection(scopeAndCollectionKey)
 	require.NoError(t, err)
 
 	err = btcCollection.StartOneshotPull()
