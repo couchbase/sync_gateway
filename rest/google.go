@@ -45,7 +45,7 @@ func (h *handler) handleGooglePOST() error {
 		return err
 	}
 
-	//validate the google id token
+	// validate the google id token
 	googleResponse, err := verifyGoogle(params.IDToken, h.server.config.DeprecatedConfig.Google.AppClientID)
 	if err != nil {
 		return err

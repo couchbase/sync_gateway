@@ -242,7 +242,7 @@ func TestRemoveObsoleteIndexOnError(t *testing.T) {
 	copiedIndexes := copySGIndexes(sgIndexes)
 	require.True(t, db.Bucket.IsSupported(sgbucket.DataStoreFeatureN1ql))
 
-	//Use existing versions of IndexAccess and IndexChannels and create an old version that will be removed by obsolete
+	// Use existing versions of IndexAccess and IndexChannels and create an old version that will be removed by obsolete
 	//indexes. Resulting from the removal candidates for removeObsoleteIndexes will be:
 	// All previous versions and opposite of current xattr setting eg. for this test ran with non-xattrs:
 	// [sg_channels_x2 sg_channels_x1 sg_channels_1 sg_access_x2 sg_access_x1 sg_access_1]

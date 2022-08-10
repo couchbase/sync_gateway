@@ -706,8 +706,8 @@ func TestEncodeDecodeCompatVersion(t *testing.T) {
 			minor: 65535,
 		},
 		{
-			major: 32767, //Max size 15 bit integer
-			minor: 65535, //Max size 16 bit integer
+			major: 32767, // Max size 15 bit integer
+			minor: 65535, // Max size 16 bit integer
 		},
 	}
 

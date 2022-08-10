@@ -53,7 +53,7 @@ type Event interface {
 // Currently the AsyncEvent type only manages the Synchronous() check.  Future enhancements
 // around async processing would leverage this type.
 type AsyncEvent struct {
-	//EventImpl
+	// EventImpl
 }
 
 func (ae AsyncEvent) Synchronous() bool {
