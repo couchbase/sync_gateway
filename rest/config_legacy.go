@@ -98,6 +98,7 @@ type UnsupportedServerConfigLegacy struct {
 	Http2Config           *HTTP2Config `json:"http2,omitempty"`               // Config settings for HTTP2
 	StatsLogFrequencySecs *uint        `json:"stats_log_freq_secs,omitempty"` // How often should stats be written to stats logs
 	UseStdlibJSON         *bool        `json:"use_stdlib_json,omitempty"`     // Bypass the jsoniter package and use Go's stdlib instead
+	UserQueries           *bool        `json:"user_queries,omitempty"`        // Enable user N1QL/GraphQL/JS queries
 }
 
 // ToStartupConfig returns the given LegacyServerConfig as a StartupConfig and a set of DBConfigs.
@@ -272,6 +273,9 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 		}
 		if lc.Unsupported.UseStdlibJSON != nil {
 			sc.Unsupported.UseStdlibJSON = lc.Unsupported.UseStdlibJSON
+		}
+		if lc.Unsupported.UserQueries != nil {
+			sc.Unsupported.UserQueries = lc.Unsupported.UserQueries
 		}
 	}
 	if lc.MaxFileDescriptors != nil {
