@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"testing"
@@ -1020,6 +1021,15 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 	bt.blipContext, err = db.NewSGBlipContextWithProtocols(base.TestCtx(tb), "", protocols...)
 	if err != nil {
 		return nil, err
+	}
+
+	// Ensure that errors get correctly surfaced in tests
+	bt.blipContext.FatalErrorHandler = func(err error) {
+		tb.Fatalf("BLIP fatal error: %v", err)
+	}
+	bt.blipContext.HandlerPanicHandler = func(request, response *blip.Message, err interface{}) {
+		stack := debug.Stack()
+		tb.Fatalf("Panic while handling %s: %v\n%s", request.Profile(), err, string(stack))
 	}
 
 	config := blip.DialOptions{
