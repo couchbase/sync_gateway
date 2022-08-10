@@ -29,18 +29,29 @@ func TestInitializeIndexes(t *testing.T) {
 	}
 
 	tests := []struct {
-		xattrs bool
+		xattrs      bool
+		collections bool
 	}{
-		{true},
-		{false},
+		{true, false},
+		{false, false},
+		{true, true},
+		{false, true},
 	}
 
 	for _, test := range tests {
-		t.Run(fmt.Sprintf("xattrs=%v", test.xattrs), func(t *testing.T) {
+		t.Run(fmt.Sprintf("xattrs=%v collections=%v", test.xattrs, test.collections), func(t *testing.T) {
 			db := setupTestDBWithOptions(t, DatabaseContextOptions{EnableXattr: test.xattrs})
 			defer db.Close()
 
-			n1qlStore, isGoCBBucket := base.AsN1QLStore(db.Bucket)
+			var b base.Bucket = db.Bucket
+			if test.collections {
+				collection, isCollection := base.AsCollection(b)
+				require.True(t, isCollection)
+				// override underlying collection for test bucket
+				collection.Collection = collection.Bucket().Scope("foo").Collection("bar")
+			}
+
+			n1qlStore, isGoCBBucket := base.AsN1QLStore(b)
 			require.True(t, isGoCBBucket)
 
 			dropErr := base.DropAllBucketIndexes(n1qlStore)
@@ -53,7 +64,7 @@ func TestInitializeIndexes(t *testing.T) {
 			err := n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
 			assert.NoError(t, err)
 
-			validateErr := validateAllIndexesOnline(db.Bucket)
+			validateErr := validateAllIndexesOnline(b)
 			require.NoError(t, validateErr, "Error validating indexes online")
 		})
 	}

@@ -29,7 +29,8 @@ func (c *Collection) EscapedKeyspace() string {
 	if c.ScopeName() == DefaultScope && c.Name() == DefaultCollection {
 		return fmt.Sprintf("`%s`", c.BucketName())
 	}
-	return fmt.Sprintf("`%s`.`%s`.`%s`", c.BucketName(), c.ScopeName(), c.Name())
+	// "default:"" is the only valid keyspace namespace but it must be specified...
+	return fmt.Sprintf("default:`%s`.`%s`.`%s`", c.BucketName(), c.ScopeName(), c.Name())
 }
 
 // IndexMetaBucketID returns the value of bucket_id for the system:indexes table for the collection.
