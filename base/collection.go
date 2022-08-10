@@ -177,6 +177,25 @@ func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilR
 	return collection, nil
 }
 
+// AsCollection gets the underlying Collection from a bucket
+func AsCollection(bucket Bucket) (*Collection, bool) {
+	var underlyingBucket Bucket
+	switch typedBucket := bucket.(type) {
+	case *Collection:
+		return bucket.(*Collection), true
+	case *LeakyBucket:
+		underlyingBucket = typedBucket.GetUnderlyingBucket()
+	case *LoggingBucket:
+		underlyingBucket = typedBucket.GetUnderlyingBucket()
+	case *TestBucket:
+		underlyingBucket = typedBucket.GetUnderlyingBucket()
+	default:
+		// bail out for unrecognised/unsupported buckets
+		return nil, false
+	}
+	return AsCollection(underlyingBucket)
+}
+
 type Collection struct {
 	*gocb.Collection               // underlying gocb Collection
 	Spec             BucketSpec    // keep a copy of the BucketSpec for DCP usage

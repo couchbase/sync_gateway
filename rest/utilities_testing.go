@@ -234,12 +234,12 @@ func (rt *RestTester) Bucket() base.Bucket {
 		if rt.RestTesterConfig.TestBucket != nil {
 			// If using a leaky bucket, make sure it ignores attempted closures to avoid double closures panic
 			// due to closing both RestTesterServerContext and testBucket in rt.Close()
-			leakyBucket, isLeaky := base.AsLeakyBucket(testBucket)
-			if isLeaky {
+			if leakyBucket, isLeaky := base.AsLeakyBucket(testBucket); isLeaky {
 				leakyBucket.SetIgnoreClose(true)
 			}
 
-			// Set scopes and collections on bucket if set in DB Config
+			// WIP: Collections Phase 1 - Grab just one scope/collection from the defined set.
+			// Phase 2 (multi collection) means DatabaseContext needs a set of BucketSpec/Collections, not just one...
 			var scope, collection *string
 			for scopeName, scopeConfig := range rt.RestTesterConfig.DatabaseConfig.Scopes {
 				scope = &scopeName
@@ -249,7 +249,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 				}
 			}
 			if scope != nil && collection != nil {
-				collectionBucket, isCollection := base.AsCollectionStore(rt.tb, testBucket.Bucket)
+				collectionBucket, isCollection := base.AsCollection(testBucket.Bucket)
 				if !isCollection {
 					rt.tb.Fatalf("Could not get collection from bucket with type %T: %v", testBucket.Bucket, err)
 				}

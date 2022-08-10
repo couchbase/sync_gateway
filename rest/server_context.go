@@ -72,7 +72,7 @@ type bootstrapContext struct {
 func (sc *ServerContext) CreateLocalDatabase(dbs DbConfigMap) error {
 	for _, dbConfig := range dbs {
 		dbc := dbConfig.ToDatabaseConfig()
-		_, err := sc._getOrAddDatabaseFromConfig(*dbc, false, db.ConnectToBucket)
+		_, err := sc._getOrAddDatabaseFromConfig(*dbc, false, db.GetConnectToBucketFn(false))
 		if err != nil {
 			return err
 		}
@@ -946,13 +946,13 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 // Adds a database to the ServerContext given its configuration.  If an existing config is found
 // for the name, returns an error.
 func (sc *ServerContext) AddDatabaseFromConfig(config DatabaseConfig) (*db.DatabaseContext, error) {
-	return sc.getOrAddDatabaseFromConfig(config, false, db.ConnectToBucket)
+	return sc.getOrAddDatabaseFromConfig(config, false, db.GetConnectToBucketFn(false))
 }
 
 // AddDatabaseFromConfigFailFast adds a database to the ServerContext given its configuration and fails fast.
 // If an existing config is found for the name, returns an error.
 func (sc *ServerContext) AddDatabaseFromConfigFailFast(config DatabaseConfig) (*db.DatabaseContext, error) {
-	return sc.getOrAddDatabaseFromConfig(config, false, db.ConnectToBucketFailFast)
+	return sc.getOrAddDatabaseFromConfig(config, false, db.GetConnectToBucketFn(true))
 }
 
 func (sc *ServerContext) processEventHandlersForEvent(events []*EventConfig, eventType db.EventType, dbcontext *db.DatabaseContext) error {

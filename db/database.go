@@ -261,15 +261,15 @@ func connectToBucketErrorHandling(spec base.BucketSpec, gotErr error) (fatalErro
 
 type OpenBucketFn func(spec base.BucketSpec) (base.Bucket, error)
 
-// ConnectToBucketFailFast opens a Couchbase connect and return a specific bucket without retrying on failure.
-func ConnectToBucketFailFast(spec base.BucketSpec) (bucket base.Bucket, err error) {
+// connectToBucketFailFast opens a Couchbase connect and return a specific bucket without retrying on failure.
+func connectToBucketFailFast(spec base.BucketSpec) (bucket base.Bucket, err error) {
 	bucket, err = base.GetBucket(spec)
 	_, err = connectToBucketErrorHandling(spec, err)
 	return bucket, err
 }
 
-// ConnectToBucket opens a Couchbase connection and return a specific bucket.
-func ConnectToBucket(spec base.BucketSpec) (base.Bucket, error) {
+// connectToBucket opens a Couchbase connection and return a specific bucket.
+func connectToBucket(spec base.BucketSpec) (base.Bucket, error) {
 
 	// start a retry loop to connect to the bucket backing off double the delay each time
 	worker := func() (bool, error, interface{}) {
@@ -299,9 +299,9 @@ func ConnectToBucket(spec base.BucketSpec) (base.Bucket, error) {
 // GetConnectToBucketFn returns a different OpenBucketFn to connect to the bucket depending on the value of failFast
 func GetConnectToBucketFn(failFast bool) OpenBucketFn {
 	if failFast {
-		return ConnectToBucketFailFast
+		return connectToBucketFailFast
 	}
-	return ConnectToBucket
+	return connectToBucket
 }
 
 // Function type for something that calls NewDatabaseContext and wants a callback when the DB is detected
