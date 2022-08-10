@@ -18,6 +18,7 @@ import (
 	"io"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/gocb/v2"
@@ -182,7 +183,7 @@ type Collection struct {
 	cluster          *gocb.Cluster // Associated cluster - required for N1QL operations
 	queryOps         chan struct{} // Manages max concurrent query ops
 	kvOps            chan struct{} // Manages max concurrent kv ops
-	collectionID     *uint32       // cached copy of collectionID
+	collectionID     atomic.Value  // cached copy of collectionID
 
 	clusterCompatMajorVersion, clusterCompatMinorVersion uint64 // E.g: 6 and 0 for 6.0.3
 }
@@ -1005,8 +1006,13 @@ func (c *Collection) getBucketOpDeadline() time.Time {
 // getCollectionID returns the gocbcore CollectionID for the current collection
 func (c *Collection) getCollectionID() (uint32, error) {
 	// return cached value if present
-	if c.collectionID != nil {
-		return *c.collectionID, nil
+	collectionIDAtomic := c.collectionID.Load()
+	if collectionIDAtomic != nil {
+		collectionID, ok := collectionIDAtomic.(uint32)
+		if !ok {
+			return 0, fmt.Errorf("Expected Collection.collectionID to be uint32: %T", collectionID)
+		}
+		return collectionID, nil
 	}
 	if c.Spec.Scope == nil || c.Spec.Collection == nil {
 		return 0, fmt.Errorf("Calling getCollectionID without Collection.Spec not having collections configured")
@@ -1051,7 +1057,7 @@ func (c *Collection) getCollectionID() (uint32, error) {
 		return 0, fmt.Errorf("GetCollectionID for %s.%s, err: %w", scope, collection, callbackErr)
 	}
 	// cache value for future use
-	c.collectionID = Uint32Ptr(collectionID)
+	c.collectionID.Store(collectionID)
 	return collectionID, nil
 }
 
