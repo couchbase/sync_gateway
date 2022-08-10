@@ -142,9 +142,7 @@ func TestCollectionsDCP(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// ensure the doc comes back over the caching feed after import
-	t.Log("Not performing caching feed check - CBG-1143")
-	//assert.NoError(t, rt.WaitForDoc(docID))
+	require.NoError(t, rt.WaitForDoc(docID))
 }
 
 // TestCollectionsBasicIndexQuery ensures that the bucket API is able to create an index on a collection
