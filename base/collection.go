@@ -555,7 +555,7 @@ func (c *Collection) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuid
 
 	statsOptions := gocbcore.StatsOptions{
 		Key:      "vbucket-seqno",
-		Deadline: getDCPGoCBDeadline(),
+		Deadline: c.getBucketOpDeadline(),
 	}
 
 	statsResult := &gocbcore.StatsResult{}
@@ -994,6 +994,7 @@ func (c *Collection) getGoCBAgent() (*gocbcore.Agent, error) {
 
 }
 
+// GetBucketOpDeadline returns a deadline for use in gocbcore calls
 func (c *Collection) getBucketOpDeadline() time.Time {
 	opTimeout := DefaultGocbV2OperationTimeout
 	configOpTimeout := c.Spec.BucketOpTimeout
@@ -1043,7 +1044,7 @@ func (c *Collection) getCollectionID() (uint32, error) {
 	_, err = agent.GetCollectionID(scope,
 		collection,
 		gocbcore.GetCollectionIDOptions{
-			Deadline: getDCPGoCBDeadline(),
+			Deadline: c.getBucketOpDeadline(),
 		},
 		callbackFunc)
 

@@ -4,16 +4,10 @@ import (
 	"context"
 	"expvar"
 	"fmt"
-	"time"
 
 	"github.com/couchbase/gocbcore/v10"
 	sgbucket "github.com/couchbase/sg-bucket"
 )
-
-// getDCPGoCBTimeout returnsis the time alloted to obtain a response from server for a request.
-func getDCPGoCBDeadline() time.Time {
-	return time.Now().Add(5 * time.Minute)
-}
 
 // getHighSeqMetadata returns metadata to feed into a DCP client based on the last sequence numbers stored in memory
 func getHighSeqMetadata(collection *Collection) ([]DCPMetadata, error) {
