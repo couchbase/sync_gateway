@@ -59,7 +59,6 @@ type RestTesterConfig struct {
 	persistentConfig                bool
 	groupID                         *string
 	createScopesAndCollections      bool // If true, will automatically create any defined scopes and collections on startup.
-	useLeakyTBForDB                 bool // If true, the leaky test bucket will be used on the database. Useful for using a LeakyBucket on the DB context for integration tests.
 }
 
 // RestTester provides a fake server for testing endpoints
@@ -232,16 +231,35 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 		rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(rt.RestTesterConfig.sgReplicateEnabled)
 
-		if rt.useLeakyTBForDB {
+		if rt.RestTesterConfig.TestBucket != nil {
 			// If using a leaky bucket, make sure it ignores attempted closures to avoid double closures panic
 			// due to closing both RestTesterServerContext and testBucket in rt.Close()
 			leakyBucket, isLeaky := base.AsLeakyBucket(testBucket)
-			if !isLeaky {
-				rt.tb.Fatalf("Using option useLeakyTBForDB but testBucket is not a leaky bucket")
+			if isLeaky {
+				leakyBucket.SetIgnoreClose(true)
 			}
-			leakyBucket.SetIgnoreClose(true)
 
-			_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithBucket(*rt.DatabaseConfig, testBucket.Bucket)
+			// Set scopes and collections on bucket if set in DB Config
+			var scope, collection *string
+			for scopeName, scopeConfig := range rt.RestTesterConfig.DatabaseConfig.Scopes {
+				scope = &scopeName
+				for collectionName := range scopeConfig.Collections {
+					collection = &collectionName
+					break
+				}
+			}
+			if scope != nil && collection != nil {
+				collectionBucket, isCollection := base.AsCollectionStore(rt.tb, testBucket.Bucket)
+				if !isCollection {
+					rt.tb.Fatalf("Could not get collection from bucket with type %T: %v", testBucket.Bucket, err)
+				}
+
+				collectionBucket.Spec.Scope = scope
+				collectionBucket.Spec.Collection = collection
+				collectionBucket.Collection = collectionBucket.Collection.Bucket().Scope(*scope).Collection(*collection)
+			}
+
+			_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithBucket(rt.tb, *rt.DatabaseConfig, testBucket.Bucket)
 		} else {
 			_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(*rt.DatabaseConfig)
 		}
@@ -863,6 +881,14 @@ func (s *SlowResponseRecorder) Write(buf []byte) (int, error) {
 	s.responseFinished.Done()
 
 	return numBytesWritten, err
+}
+
+// AddDatabaseFromConfigWithBucket adds a database to the ServerContext and sets a specific bucket on the database context.
+// If an existing config is found for the name, returns an error.
+func (sc *ServerContext) AddDatabaseFromConfigWithBucket(tb testing.TB, config DatabaseConfig, bucket base.Bucket) (*db.DatabaseContext, error) {
+	return sc.getOrAddDatabaseFromConfig(config, false, func(spec base.BucketSpec) (base.Bucket, error) {
+		return bucket, nil
+	})
 }
 
 // The parameters used to create a BlipTester

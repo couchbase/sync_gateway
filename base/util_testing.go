@@ -64,6 +64,25 @@ func (tb *TestBucket) GetUnderlyingBucket() Bucket {
 	return tb.Bucket
 }
 
+// AsCollectionStore gets the underlying collection store from a bucket for test purposes
+func AsCollectionStore(t testing.TB, bucket Bucket) (*Collection, bool) {
+	var underlyingBucket Bucket
+	switch typedBucket := bucket.(type) {
+	case *Collection:
+		return bucket.(*Collection), true
+	case *LeakyBucket:
+		underlyingBucket = typedBucket.GetUnderlyingBucket()
+	case *LoggingBucket:
+		underlyingBucket = typedBucket.GetUnderlyingBucket()
+	case *TestBucket:
+		underlyingBucket = typedBucket.GetUnderlyingBucket()
+	default:
+		// bail out for unrecognised/unsupported buckets
+		return nil, false
+	}
+	return AsCollectionStore(t, underlyingBucket)
+}
+
 // LeakyBucketClone wraps the underlying bucket on the TestBucket with a LeakyBucket and returns a new TestBucket handle.
 func (tb *TestBucket) LeakyBucketClone(c LeakyBucketConfig) *TestBucket {
 	return &TestBucket{
