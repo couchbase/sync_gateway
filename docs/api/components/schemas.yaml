@@ -1989,6 +1989,10 @@ Startup-config:
       description: TCP keep-alive interval between SG and Couchbase server
       type: integer
       readOnly: true
+    serverless:
+      description: Put SG in to serverless mode
+      type: boolean
+      readOnly: true
   title: Startup-config
 File-logging-config:
   type: object
