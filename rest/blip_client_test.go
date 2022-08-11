@@ -111,11 +111,9 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			panic("no digest sent with proveAttachment")
 		}
 
-		collection := msg.Properties[db.BlipCollection]
-
-		// FIXME: Remove when we have CBG-2264 implemented
-		if len(btc.Collections) > 0 {
-			collection = btc.Collections[0]
+		collection, err := btc.getCollectionNameFromMessage(msg)
+		if err != nil {
+			panic(fmt.Sprintf("error occurred getting collection %v", err))
 		}
 
 		btcr := btc.CollectionClients[collection]
@@ -135,11 +133,9 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 	btr.bt.blipContext.HandlerForProfile[db.MessageChanges] = func(msg *blip.Message) {
 		btr.storeMessage(msg)
 
-		collection := msg.Properties[db.BlipCollection]
-
-		// FIXME: Remove when we have CBG-2264 implemented
-		if len(btc.Collections) > 0 {
-			collection = btc.Collections[0]
+		collection, err := btc.getCollectionNameFromMessage(msg)
+		if err != nil {
+			panic(fmt.Sprintf("error occurred getting collection %v", err))
 		}
 
 		btcr := btc.CollectionClients[collection]
@@ -237,11 +233,9 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 	btr.bt.blipContext.HandlerForProfile[db.MessageRev] = func(msg *blip.Message) {
 		btc.pullReplication.storeMessage(msg)
 
-		collection := msg.Properties[db.BlipCollection]
-
-		// FIXME: Remove when we have CBG-2264 implemented
-		if len(btc.Collections) > 0 {
-			collection = btc.Collections[0]
+		collection, err := btc.getCollectionNameFromMessage(msg)
+		if err != nil {
+			panic(fmt.Sprintf("error occurred getting collection %v", err))
 		}
 
 		btcr := btc.CollectionClients[collection]
@@ -350,9 +344,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 						outrq.Properties[db.GetAttachmentID] = docID
 					}
 
-					btcr.addCollectionProperty(msg)
-
-					err := btc.pullReplication.sendMsg(outrq)
+					err := btcr.sendPullMsg(outrq)
 					if err != nil {
 						panic(err)
 					}
@@ -415,11 +407,9 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			base.PanicfCtx(context.TODO(), "couldn't find digest in getAttachment message properties")
 		}
 
-		collection := msg.Properties[db.BlipCollection]
-
-		// FIXME: Remove when we have CBG-2264 implemented
-		if len(btc.Collections) > 0 {
-			collection = btc.Collections[0]
+		collection, err := btc.getCollectionNameFromMessage(msg)
+		if err != nil {
+			panic(fmt.Sprintf("error occurred getting collection %v", err))
 		}
 
 		btcr := btc.CollectionClients[collection]
@@ -626,6 +616,8 @@ func NewBlipTesterClientOptsWithRT(tb testing.TB, rt *RestTester, opts *BlipTest
 }
 
 func (btc *BlipTesterClient) Close() {
+	btc.pullReplication.Close()
+	btc.pushReplication.Close()
 	for _, collectionReplicator := range btc.CollectionClients {
 		collectionReplicator.Close()
 	}
@@ -682,9 +674,7 @@ func (btc *BlipTesterCollectionClient) StartPullSince(continuous, since, activeO
 		subChangesRequest.Properties[db.SubChangesRevocations] = "true"
 	}
 
-	btc.addCollectionProperty(subChangesRequest)
-
-	if err := btc.parent.pullReplication.sendMsg(subChangesRequest); err != nil {
+	if err := btc.sendPullMsg(subChangesRequest); err != nil {
 		return err
 	}
 
@@ -695,8 +685,7 @@ func (btc *BlipTesterCollectionClient) UnsubPullChanges() (response []byte, err 
 	unsubChangesRequest := blip.NewRequest()
 	unsubChangesRequest.SetProfile(db.MessageUnsubChanges)
 
-	btc.addCollectionProperty(unsubChangesRequest)
-	err = btc.parent.pullReplication.sendMsg(unsubChangesRequest)
+	err = btc.sendPullMsg(unsubChangesRequest)
 	if err != nil {
 		return nil, err
 	}
@@ -709,8 +698,7 @@ func (btc *BlipTesterCollectionClient) UnsubPushChanges() (response []byte, err 
 	unsubChangesRequest := blip.NewRequest()
 	unsubChangesRequest.SetProfile(db.MessageUnsubChanges)
 
-	btc.addCollectionProperty(unsubChangesRequest)
-	err = btc.parent.pushReplication.sendMsg(unsubChangesRequest)
+	err = btc.sendPushMsg(unsubChangesRequest)
 	if err != nil {
 		return nil, err
 	}
@@ -732,9 +720,6 @@ func (btc *BlipTesterCollectionClient) Close() {
 	btc.attachmentsLock.Lock()
 	btc.attachments = make(map[string][]byte, 0)
 	btc.attachmentsLock.Unlock()
-
-	btc.parent.pullReplication.Close()
-	btc.parent.pushReplication.Close()
 }
 
 func (btr *BlipTesterReplicator) sendMsg(msg *blip.Message) (err error) {
@@ -801,9 +786,8 @@ func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID, parentRev strin
 	proposeChangesRequest := blip.NewRequest()
 	proposeChangesRequest.SetProfile(db.MessageProposeChanges)
 	proposeChangesRequest.SetBody([]byte(fmt.Sprintf(`[["%s","%s","%s"]]`, docID, newRevID, parentRev)))
-	btc.addCollectionProperty(proposeChangesRequest)
 
-	if err := btc.parent.pushReplication.sendMsg(proposeChangesRequest); err != nil {
+	if err := btc.sendPushMsg(proposeChangesRequest); err != nil {
 		return "", err
 	}
 
@@ -853,8 +837,7 @@ func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID, parentRev strin
 
 	revRequest.SetBody(body)
 
-	btc.addCollectionProperty(revRequest)
-	if err := btc.parent.pushReplication.sendMsg(revRequest); err != nil {
+	if err := btc.sendPushMsg(revRequest); err != nil {
 		return "", err
 	}
 
@@ -1104,4 +1087,36 @@ func (btc *BlipTesterCollectionClient) addCollectionProperty(msg *blip.Message) 
 	}
 
 	return msg
+}
+
+func (btc *BlipTesterClient) getCollectionNameFromMessage(msg *blip.Message) (string, error) {
+	collectionIdx := msg.Properties[db.BlipCollection]
+	if len(btc.Collections) == 0 {
+		return "", nil
+	}
+
+	// FIXME: Remove when we have CBG-2264 implemented - Change this to return error
+	if collectionIdx == "" {
+		return btc.Collections[0], nil
+	}
+
+	idx, err := strconv.Atoi(collectionIdx)
+	if err != nil {
+		return "", err
+	}
+
+	if len(btc.Collections) < idx+1 {
+		return "", fmt.Errorf("idx not valid")
+	}
+	return btc.Collections[idx], nil
+}
+
+func (btc *BlipTesterCollectionClient) sendPullMsg(msg *blip.Message) error {
+	btc.addCollectionProperty(msg)
+	return btc.parent.pullReplication.sendMsg(msg)
+}
+
+func (btc *BlipTesterCollectionClient) sendPushMsg(msg *blip.Message) error {
+	btc.addCollectionProperty(msg)
+	return btc.parent.pushReplication.sendMsg(msg)
 }
