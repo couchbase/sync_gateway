@@ -85,9 +85,9 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 	}
 	if !base.IsEnterpriseEdition() {
 		groupID := ""
-		collection, ok := bucket.(*base.Collection)
-		if !ok {
-			return fmt.Errorf("bucket is not a collection")
+		collection, err := base.AsCollection(bucket)
+		if err != nil {
+			return err
 		}
 		return base.StartGocbDCPFeed(collection, bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
 	}
