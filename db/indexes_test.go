@@ -38,33 +38,41 @@ func TestInitializeIndexes(t *testing.T) {
 		{false, true},
 	}
 
+	scopeName := t.Name()
+
 	for _, test := range tests {
 		t.Run(fmt.Sprintf("xattrs=%v collections=%v", test.xattrs, test.collections), func(t *testing.T) {
 			db := setupTestDBWithOptions(t, DatabaseContextOptions{EnableXattr: test.xattrs})
 			defer db.Close()
 
-			var b base.Bucket = db.Bucket
+			collection, isCollection := base.AsCollection(db.Bucket)
+			require.True(t, isCollection)
+
+			collectionName, err := base.GenerateRandomID()
+			require.NoError(t, err)
+
 			if test.collections {
-				collection, isCollection := base.AsCollection(b)
-				require.True(t, isCollection)
+				err := base.CreateBucketScopesAndCollections(base.TestCtx(t), collection.Spec, map[string][]string{scopeName: {collectionName}})
+				require.NoError(t, err)
+
 				// override underlying collection for test bucket
-				collection.Collection = collection.Bucket().Scope("foo").Collection("bar")
+				collection.Collection = collection.Bucket().Scope(scopeName).Collection(collectionName)
 			}
 
-			n1qlStore, isGoCBBucket := base.AsN1QLStore(b)
+			n1qlStore, isGoCBBucket := base.AsN1QLStore(db.Bucket)
 			require.True(t, isGoCBBucket)
 
-			dropErr := base.DropAllBucketIndexes(n1qlStore)
+			dropErr := base.DropAllBucketIndexes(base.TestCtx(t), n1qlStore)
 			require.NoError(t, dropErr, "Error dropping all indexes")
 
 			initErr := InitializeIndexes(n1qlStore, test.xattrs, 0, true)
 			assert.NoError(t, initErr, "Error initializing all indexes")
 
 			// Recreate the primary index required by the test bucket pooling framework
-			err := n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
+			err = n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
 			assert.NoError(t, err)
 
-			validateErr := validateAllIndexesOnline(b)
+			validateErr := validateAllIndexesOnline(db.Bucket)
 			require.NoError(t, validateErr, "Error validating indexes online")
 		})
 	}
@@ -80,7 +88,13 @@ func validateAllIndexesOnline(bucket base.Bucket) error {
 	}
 
 	// Retrieve all indexes
-	getIndexesStatement := fmt.Sprintf("SELECT indexes.name, indexes.state from system:indexes where keyspace_id = %q", n1QLStore.GetName())
+	getIndexesStatement := fmt.Sprintf("SELECT indexes.name, indexes.state FROM system:indexes WHERE indexes.keyspace_id = '%s'", n1QLStore.IndexMetaKeyspaceID())
+	if n1QLStore.IndexMetaBucketID() != "" {
+		getIndexesStatement += fmt.Sprintf(" AND indexes.bucket_id = '%s'", n1QLStore.IndexMetaBucketID())
+	}
+	if n1QLStore.IndexMetaScopeID() != "" {
+		getIndexesStatement += fmt.Sprintf(" AND indexes.scope_id = '%s'", n1QLStore.IndexMetaScopeID())
+	}
 	results, err := n1QLStore.Query(getIndexesStatement, nil, base.RequestPlus, true)
 	if err != nil {
 		return err

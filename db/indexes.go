@@ -36,7 +36,7 @@ const (
 // When running w/out xattrs, it's just replaced by the doc path `bucketname`._sync
 // This gets replaced before the statement is sent to N1QL by the replaceSyncTokens methods.
 var syncNoXattr = fmt.Sprintf("%s.%s", base.KeyspaceQueryToken, base.SyncPropertyName)
-var syncNoXattrQuery = fmt.Sprintf("%s.%s", base.KeyspaceQueryAlias, base.SyncPropertyName)
+var syncNoXattrQuery = fmt.Sprintf("%s.%s", base.KeyspaceQueryToken, base.SyncPropertyName)
 var syncXattr = "meta().xattrs." + base.SyncXattrName
 var syncXattrQuery = fmt.Sprintf("meta(%s).xattrs.%s", base.KeyspaceQueryAlias, base.SyncXattrName) // Replacement for $sync token for xattr queries
 
@@ -409,8 +409,8 @@ func isIndexerError(err error) bool {
 }
 
 // Iterates over the index set, removing obsolete indexes:
-//  - indexes based on the inverse value of xattrs being used by the database
-//  - indexes associated with previous versions of the index, for either xattrs=true or xattrs=false
+//   - indexes based on the inverse value of xattrs being used by the database
+//   - indexes associated with previous versions of the index, for either xattrs=true or xattrs=false
 func removeObsoleteIndexes(bucket base.N1QLStore, previewOnly bool, useXattrs bool, useViews bool, indexMap map[SGIndexType]SGIndex) (removedIndexes []string, err error) {
 	removedIndexes = make([]string, 0)
 
