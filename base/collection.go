@@ -18,6 +18,7 @@ import (
 	"io"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/gocb/v2"
@@ -182,6 +183,7 @@ type Collection struct {
 	cluster          *gocb.Cluster // Associated cluster - required for N1QL operations
 	queryOps         chan struct{} // Manages max concurrent query ops
 	kvOps            chan struct{} // Manages max concurrent kv ops
+	collectionID     atomic.Value  // cached copy of collectionID
 
 	clusterCompatMajorVersion, clusterCompatMinorVersion uint64 // E.g: 6 and 0 for 6.0.3
 }
@@ -216,11 +218,11 @@ func (c *Collection) IsSupported(feature sgbucket.DataStoreFeature) bool {
 		// Available on all supported server versions
 		return true
 	case sgbucket.DataStoreFeatureN1ql:
-		router, routerErr := c.Bucket().Internal().IORouter()
-		if routerErr != nil {
+		agent, err := c.getGoCBAgent()
+		if err != nil {
 			return false
 		}
-		return len(router.N1qlEps()) > 0
+		return len(agent.N1qlEps()) > 0
 	case sgbucket.DataStoreFeatureCreateDeletedWithXattr:
 		status, err := c.Bucket().Internal().CapabilityStatus(gocb.CapabilityCreateAsDeleted)
 		if err != nil {
@@ -546,14 +548,14 @@ func (c *Collection) Dump() {
 
 func (c *Collection) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
 
-	agent, agentErr := c.Bucket().Internal().IORouter()
+	agent, agentErr := c.getGoCBAgent()
 	if agentErr != nil {
 		return nil, nil, agentErr
 	}
 
 	statsOptions := gocbcore.StatsOptions{
 		Key:      "vbucket-seqno",
-		Deadline: time.Now().Add(5 * time.Minute),
+		Deadline: c.getBucketOpDeadline(),
 	}
 
 	statsResult := &gocbcore.StatsResult{}
@@ -604,14 +606,14 @@ func (c *Collection) GetMaxVbno() (uint16, error) {
 }
 
 func (c *Collection) getConfigSnapshot() (*gocbcore.ConfigSnapshot, error) {
-	router, routerErr := c.Bucket().Internal().IORouter()
-	if routerErr != nil {
-		return nil, fmt.Errorf("no router: %w", routerErr)
+	agent, err := c.getGoCBAgent()
+	if err != nil {
+		return nil, fmt.Errorf("no gocbcore.Agent: %w", err)
 	}
 
-	config, configErr := router.ConfigSnapshot()
+	config, configErr := agent.ConfigSnapshot()
 	if configErr != nil {
-		return nil, fmt.Errorf("no router config snapshot: %w", configErr)
+		return nil, fmt.Errorf("no gocbcore.Agent config snapshot: %w", configErr)
 	}
 	return config, nil
 }
@@ -763,11 +765,11 @@ func (c *Collection) BucketItemCount() (itemCount int, err error) {
 
 func (c *Collection) MgmtEps() (url []string, err error) {
 
-	router, routerErr := c.Bucket().Internal().IORouter()
-	if routerErr != nil {
-		return url, routerErr
+	agent, err := c.getGoCBAgent()
+	if err != nil {
+		return url, err
 	}
-	mgmtEps := router.MgmtEps()
+	mgmtEps := agent.MgmtEps()
 	if len(mgmtEps) == 0 {
 		return nil, fmt.Errorf("No available Couchbase Server nodes")
 	}
@@ -775,12 +777,12 @@ func (c *Collection) MgmtEps() (url []string, err error) {
 }
 
 func (c *Collection) QueryEpsCount() (int, error) {
-	router, err := c.Bucket().Internal().IORouter()
+	agent, err := c.getGoCBAgent()
 	if err != nil {
 		return 0, err
 	}
 
-	return len(router.N1qlEps()), nil
+	return len(agent.N1qlEps()), nil
 }
 
 // Gets the metadata purge interval for the bucket.  First checks for a bucket-specific value.  If not
@@ -798,26 +800,26 @@ func (c *Collection) MaxTTL() (int, error) {
 }
 
 func (c *Collection) HttpClient() *http.Client {
-	router, routerErr := c.Bucket().Internal().IORouter()
-	if routerErr != nil {
-		WarnfCtx(context.TODO(), "Unable to obtain router while retrieving httpClient:%v", routerErr)
+	agent, err := c.getGoCBAgent()
+	if err != nil {
+		WarnfCtx(context.TODO(), "Unable to obtain gocbcore.Agent while retrieving httpClient:%v", err)
 		return nil
 	}
-	return router.HTTPClient()
+	return agent.HTTPClient()
 }
 
 // GetExpiry requires a full document retrieval in order to obtain the expiry, which is reasonable for
 // current use cases (on-demand import).  If there's a need for expiry as part of normal get, this shouldn't be
 // used - an enhanced version of Get() should be implemented to avoid two ops
 func (c *Collection) GetExpiry(k string) (expiry uint32, getMetaError error) {
-
-	router, routerErr := c.Bucket().Internal().IORouter()
-	if routerErr != nil {
-		WarnfCtx(context.TODO(), "Unable to obtain router while retrieving expiry:%v", routerErr)
-		return 0, routerErr
+	agent, err := c.getGoCBAgent()
+	if err != nil {
+		WarnfCtx(context.TODO(), "Unable to obtain gocbcore.Agent while retrieving expiry:%v", err)
+		return 0, err
 	}
 	getMetaOptions := gocbcore.GetMetaOptions{
-		Key: []byte(k),
+		Key:      []byte(k),
+		Deadline: c.getBucketOpDeadline(),
 	}
 
 	wg := sync.WaitGroup{}
@@ -832,7 +834,7 @@ func (c *Collection) GetExpiry(k string) (expiry uint32, getMetaError error) {
 		expiry = result.Expiry
 	}
 
-	_, err := router.GetMeta(getMetaOptions, getMetaCallback)
+	_, err = agent.GetMeta(getMetaOptions, getMetaCallback)
 	if err != nil {
 		wg.Done()
 		return 0, err
@@ -984,4 +986,97 @@ func (t *SGRawTranscoder) Decode(bytes []byte, flags uint32, out interface{}) er
 func (t *SGRawTranscoder) Encode(value interface{}) ([]byte, uint32, error) {
 	return gocb.NewRawBinaryTranscoder().Encode(value)
 
+}
+
+// GetGoCBAgent returns the underlying agent from gocbcore
+func (c *Collection) getGoCBAgent() (*gocbcore.Agent, error) {
+	return c.Bucket().Internal().IORouter()
+
+}
+
+// GetBucketOpDeadline returns a deadline for use in gocbcore calls
+func (c *Collection) getBucketOpDeadline() time.Time {
+	opTimeout := DefaultGocbV2OperationTimeout
+	configOpTimeout := c.Spec.BucketOpTimeout
+	if configOpTimeout != nil {
+		opTimeout = *configOpTimeout
+	}
+	return time.Now().Add(opTimeout)
+}
+
+// getCollectionID returns the gocbcore CollectionID for the current collection
+func (c *Collection) getCollectionID() (uint32, error) {
+	// return cached value if present
+	collectionIDAtomic := c.collectionID.Load()
+	if collectionIDAtomic != nil {
+		collectionID, ok := collectionIDAtomic.(uint32)
+		if !ok {
+			return 0, fmt.Errorf("Expected Collection.collectionID to be uint32: %T", collectionID)
+		}
+		return collectionID, nil
+	}
+	if c.Spec.Scope == nil || c.Spec.Collection == nil {
+		return 0, fmt.Errorf("Calling getCollectionID without Collection.Spec not having collections configured")
+	}
+	agent, err := c.getGoCBAgent()
+	if err != nil {
+		return 0, err
+	}
+	var collectionID uint32
+	scope := *c.Spec.Scope
+	collection := *c.Spec.Collection
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	var callbackErr error
+	callbackFunc := func(res *gocbcore.GetCollectionIDResult, getCollectionErr error) {
+		defer wg.Done()
+		if getCollectionErr != nil {
+			callbackErr = getCollectionErr
+			return
+		}
+		if res == nil {
+			callbackErr = fmt.Errorf("getCollectionID not retrieved for %s.%s", scope, collection)
+			return
+		}
+
+		collectionID = res.CollectionID
+	}
+	_, err = agent.GetCollectionID(scope,
+		collection,
+		gocbcore.GetCollectionIDOptions{
+			Deadline: c.getBucketOpDeadline(),
+		},
+		callbackFunc)
+
+	if err != nil {
+		wg.Done()
+		return 0, fmt.Errorf("GetCollectionID for %s.%s, err: %w", scope, collection, err)
+	}
+	wg.Wait()
+	if callbackErr != nil {
+		wg.Done()
+		return 0, fmt.Errorf("GetCollectionID for %s.%s, err: %w", scope, collection, callbackErr)
+	}
+	// cache value for future use
+	c.collectionID.Store(collectionID)
+	return collectionID, nil
+}
+
+// asCollection tries to return the given bucket as a Collection.
+func AsCollection(bucket Bucket) (*Collection, error) {
+	var underlyingBucket Bucket
+	switch typedBucket := bucket.(type) {
+	case *Collection:
+		return typedBucket, nil
+	case *LoggingBucket:
+		underlyingBucket = typedBucket.GetUnderlyingBucket()
+	case *LeakyBucket:
+		underlyingBucket = typedBucket.GetUnderlyingBucket()
+	case *TestBucket:
+		underlyingBucket = typedBucket.Bucket
+	default:
+		return nil, fmt.Errorf("bucket %+v has unrecognized type %T", bucket, bucket)
+	}
+
+	return AsCollection(underlyingBucket)
 }
