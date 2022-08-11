@@ -67,7 +67,7 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 		Authenticator:  authenticator,
 		SecurityConfig: securityConfig,
 		TimeoutsConfig: timeoutsConfig,
-		RetryStrategy:  &goCBv2FailFastRetryStrategy{},
+		RetryStrategy:  gocb.NewBestEffortRetryStrategy(nil),
 	}
 
 	if spec.KvPoolSize > 0 {

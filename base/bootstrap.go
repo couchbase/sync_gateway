@@ -102,7 +102,7 @@ func NewCouchbaseCluster(server, username, password,
 	clusterOptions := gocb.ClusterOptions{
 		Authenticator:  clusterAuthConfig,
 		SecurityConfig: securityConfig,
-		RetryStrategy:  &goCBv2FailFastRetryStrategy{},
+		RetryStrategy:  gocb.NewBestEffortRetryStrategy(nil),
 	}
 
 	cbCluster := &CouchbaseCluster{
