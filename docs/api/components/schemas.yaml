@@ -1942,6 +1942,10 @@ Startup-config:
       description: Settings that are not officially supported. It is highly recommended these are **not** used.
       type: object
       properties:
+        serverless:
+          description: Put SG in to serverless mode
+          type: boolean
+          readOnly: true
         stats_log_frequency:
           description: |-
             How often should stats be written to stats logs.
@@ -1988,10 +1992,6 @@ Startup-config:
     couchbase_keepalive_interval:
       description: TCP keep-alive interval between SG and Couchbase server
       type: integer
-      readOnly: true
-    serverless:
-      description: Put SG in to serverless mode
-      type: boolean
       readOnly: true
   title: Startup-config
 File-logging-config:
