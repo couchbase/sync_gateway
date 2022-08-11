@@ -705,10 +705,6 @@ func (c *Collection) Flush() error {
 	bucketManager := c.cluster.Buckets()
 
 	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
-		if err := c.DropAllScopesAndCollections(); err != nil && !errors.Is(err, ErrCollectionsUnsupported) {
-			return true, err, nil
-		}
-
 		if err := bucketManager.FlushBucket(c.Bucket().Name(), nil); err != nil {
 			WarnfCtx(context.TODO(), "Error flushing bucket %s: %v  Will retry.", MD(c.Bucket().Name()).Redact(), err)
 			return true, err, nil
