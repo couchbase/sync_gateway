@@ -398,7 +398,7 @@ func TestBadAgentPriority(t *testing.T) {
 	dcpClientOpts := DCPClientOptions{
 		AgentPriority: gocbcore.DcpAgentPriorityHigh,
 	}
-	dcpClient, err := NewDCPClient(feedID, panicCallback, dcpClientOpts, bucket)
+	dcpClient, err := NewDCPClient(feedID, panicCallback, dcpClientOpts, AsCollection(bucket))
 	require.Error(t, err)
 	require.Nil(t, dcpClient)
 }
