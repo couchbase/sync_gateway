@@ -1095,9 +1095,8 @@ func (btc *BlipTesterClient) getCollectionNameFromMessage(msg *blip.Message) (st
 		return "", nil
 	}
 
-	// FIXME: Remove when we have CBG-2264 implemented - Change this to return error
 	if collectionIdx == "" {
-		return btc.Collections[0], nil
+		return "", fmt.Errorf("no collection given in %q message", msg.Profile())
 	}
 
 	idx, err := strconv.Atoi(collectionIdx)
