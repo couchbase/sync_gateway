@@ -54,7 +54,7 @@ var QueryAccess = SGQuery{
 		"SELECT $sync.access.`$$selectUserName` as `value` "+
 			"FROM %s AS %s "+
 			"USE INDEX ($idx) "+
-			"WHERE any op in object_pairs($sync.access) satisfies op.name = $userName end;",
+			"WHERE any op in object_pairs($relativesync.access) satisfies op.name = $userName end;",
 		base.KeyspaceQueryToken, base.KeyspaceQueryAlias),
 	adhoc: true,
 }
@@ -65,7 +65,7 @@ var QueryRoleAccess = SGQuery{
 		"SELECT $sync.role_access.`$$selectUserName` as `value` "+
 			"FROM %s AS %s "+
 			"USE INDEX ($idx) "+
-			"WHERE any op in object_pairs($sync.role_access) satisfies op.name = $userName end;",
+			"WHERE any op in object_pairs($relativesync.role_access) satisfies op.name = $userName end;",
 		base.KeyspaceQueryToken, base.KeyspaceQueryAlias),
 	adhoc: true,
 }
@@ -94,7 +94,7 @@ var QueryChannels = SGQuery{
 			"META(%s).id AS id "+
 			"FROM %s AS %s "+
 			"USE INDEX ($idx) "+
-			"UNNEST OBJECT_PAIRS($sync.channels) AS op "+
+			"UNNEST OBJECT_PAIRS($relativesync.channels) AS op "+
 			"WHERE ([op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)]  "+
 			"BETWEEN  [$channelName, $startSeq] AND [$channelName, $endSeq]) "+
 			"%s"+
