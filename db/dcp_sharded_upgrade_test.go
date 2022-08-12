@@ -213,7 +213,6 @@ func TestShardedDCPUpgrade(t *testing.T) {
 	require.NoError(t, err, "NewDatabaseContext")
 	defer db.Close()
 
-	// Wait until cbgt removes the old (non-existent) node from the config
 	err, _ = base.RetryLoop("wait for non-existent node to be removed", func() (shouldRetry bool, err error, value interface{}) {
 		nodes, _, err := cbgt.CfgGetNodeDefs(db.CfgSG, cbgt.NODE_DEFS_KNOWN)
 		if err != nil {
@@ -228,7 +227,6 @@ func TestShardedDCPUpgrade(t *testing.T) {
 	}, base.CreateSleeperFunc(100, 100))
 	require.NoError(t, err)
 
-	// wait for all pindexes to be reassigned
 	err, _ = base.RetryLoop("wait for all pindexes to be reassigned", func() (shouldRetry bool, err error, value interface{}) {
 		pIndexes, _, err := cbgt.CfgGetPlanPIndexes(db.CfgSG)
 		if err != nil {
