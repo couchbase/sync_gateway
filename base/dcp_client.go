@@ -79,7 +79,7 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 	}
 
 	if options.AgentPriority == gocbcore.DcpAgentPriorityHigh {
-		return nil, fmt.Errorf("sync gateway should not set high proirity to DCP feeds")
+		return nil, fmt.Errorf("sync gateway should not set high priority for DCP feeds")
 	}
 	client := &DCPClient{
 		workers:          make([]*DCPWorker, numWorkers),
