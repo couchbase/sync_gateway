@@ -4758,20 +4758,19 @@ func TestWebhookProperties(t *testing.T) {
 	rt := NewRestTester(t, rtConfig)
 	defer rt.Close()
 
-	rt.SendAdminRequest("PUT", "/db/doc1", `{"foo": "bar"}`)
 	wg.Add(1)
+	rt.SendAdminRequest("PUT", "/db/doc1", `{"foo": "bar"}`)
 
 	if base.TestUseXattrs() {
+		wg.Add(1)
 		body := make(map[string]interface{})
 		body["foo"] = "bar"
 		added, err := rt.Bucket().Add("doc2", 0, body)
 		assert.True(t, added)
 		assert.NoError(t, err)
-		wg.Add(1)
 	}
 
-	wg.Wait()
-
+	require.NoError(t, WaitWithTimeout(&wg, 30*time.Second))
 }
 
 func TestBasicGetReplicator2(t *testing.T) {
