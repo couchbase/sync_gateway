@@ -189,7 +189,14 @@ func (c *Collection) IsErrNoResults(err error) bool {
 func (c *Collection) getIndexes() (indexes []string, err error) {
 
 	indexes = []string{}
-	indexInfo, err := c.cluster.QueryIndexes().GetAllIndexes(c.BucketName(), nil)
+	var opts *gocb.GetAllQueryIndexesOptions
+	if !c.isDefaultScopeCollection() {
+		opts = &gocb.GetAllQueryIndexesOptions{
+			ScopeName:      c.ScopeName(),
+			CollectionName: c.Name(),
+		}
+	}
+	indexInfo, err := c.cluster.QueryIndexes().GetAllIndexes(c.BucketName(), opts)
 	if err != nil {
 		return indexes, err
 	}

@@ -278,11 +278,11 @@ func (t TestAuthenticator) GetCredentials() (username, password, bucketname stri
 	return t.Username, t.Password, t.BucketName
 }
 
-// Reset bucket state
-func DropAllBucketIndexes(bucket N1QLStore) error {
+// DropAllIndexes removes all indexes defined on the bucket or collection
+func DropAllIndexes(ctx context.Context, n1QLStore N1QLStore) error {
 
-	// Retrieve all indexes
-	indexes, err := bucket.getIndexes()
+	// Retrieve all indexes on the bucket/collection
+	indexes, err := n1QLStore.getIndexes()
 	if err != nil {
 		return err
 	}
@@ -299,14 +299,14 @@ func DropAllBucketIndexes(bucket N1QLStore) error {
 
 			defer wg.Done()
 
-			log.Printf("Dropping index %s on bucket %s...", indexToDrop, bucket.GetName())
-			dropErr := bucket.DropIndex(indexToDrop)
+			InfofCtx(ctx, KeySGTest, "Dropping index %s on bucket %s...", indexToDrop, n1QLStore.GetName())
+			dropErr := n1QLStore.DropIndex(indexToDrop)
 			if dropErr != nil {
 				asyncErrors <- dropErr
-				log.Printf("...failed to drop index %s on bucket %s: %s", indexToDrop, bucket.GetName(), dropErr)
+				ErrorfCtx(ctx, "...failed to drop index %s on bucket %s: %s", indexToDrop, n1QLStore.GetName(), dropErr)
 				return
 			}
-			log.Printf("...successfully dropped index %s on bucket %s", indexToDrop, bucket.GetName())
+			InfofCtx(ctx, KeySGTest, "...successfully dropped index %s on bucket %s", indexToDrop, n1QLStore.GetName())
 		}(index)
 
 	}
