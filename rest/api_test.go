@@ -9719,10 +9719,10 @@ func TestSyncFnTimeout(t *testing.T) {
 	syncFnFinishedWG.Add(1)
 	go func() {
 		response := rt.SendAdminRequest("PUT", "/db/doc", `{"foo": "bar"}`)
-		requireStatus(t, response, 500) // TODO: Change to assertStatus when CBG-2143 merged maybe with response matching if response is changed
+		assertHTTPErrorReason(t, response, 500, "JS sync function timed out")
 		syncFnFinishedWG.Done()
 	}()
-	timeoutErr := WaitWithTimeout(&syncFnFinishedWG, time.Second*5)
+	timeoutErr := WaitWithTimeout(&syncFnFinishedWG, time.Second*15)
 	assert.NoError(t, timeoutErr)
 }
 
@@ -9745,9 +9745,9 @@ func TestImportFilterTimeout(t *testing.T) {
 	syncFnFinishedWG.Add(1)
 	go func() {
 		response := rt.SendAdminRequest("GET", "/db/doc", ``)
-		requireStatus(t, response, 404) // TODO: Change to assertStatus when CBG-2143 merged
+		assertStatus(t, response, 404)
 		syncFnFinishedWG.Done()
 	}()
-	timeoutErr := WaitWithTimeout(&syncFnFinishedWG, time.Second*5)
+	timeoutErr := WaitWithTimeout(&syncFnFinishedWG, time.Second*15)
 	assert.NoError(t, timeoutErr)
 }
