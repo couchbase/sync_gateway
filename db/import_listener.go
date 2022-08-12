@@ -84,12 +84,15 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 		return bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
 	}
 	if !base.IsEnterpriseEdition() {
-		return base.StartDCPFeed(bucket, cbStore.GetSpec(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
-	} else {
-		il.cbgtContext, err = base.StartShardedDCPFeed(dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater, bucket, cbStore.GetSpec(), dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
-		return err
+		groupID := ""
+		collection, err := base.AsCollection(bucket)
+		if err != nil {
+			return err
+		}
+		return base.StartGocbDCPFeed(collection, bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
 	}
-
+	il.cbgtContext, err = base.StartShardedDCPFeed(dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater, bucket, cbStore.GetSpec(), dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
+	return err
 }
 
 // ProcessFeedEvent is invoked for each mutate or delete event seen on the server's mutation feed.  It may be

@@ -46,6 +46,7 @@ type DCPClient struct {
 	checkpointPrefix           string                         // DCP checkpoint key prefix
 	checkpointPersistFrequency *time.Duration                 // Used to override the default checkpoint persistence frequency
 	dbStats                    *expvar.Map                    // Stats for database
+	collectionIDs              []uint32                       // collectionIDs used by gocbcore, if empty, uses default collections
 }
 
 type DCPClientOptions struct {
@@ -54,23 +55,20 @@ type DCPClientOptions struct {
 	FailOnRollback             bool                 // When true, the DCP client will terminate on DCP rollback
 	InitialMetadata            []DCPMetadata        // When set, will be used as initial metadata for the DCP feed.  Will override any persisted metadata
 	CheckpointPersistFrequency *time.Duration       // Overrides metadata persistence frequency - intended for test use
-	MetadataStoreType          DCPMetadataStoreType // Option for metadata storage model, in memory or peristent.
+	MetadataStoreType          DCPMetadataStoreType // define storage type for DCPMetadata
+	GroupID                    string               // specify GroupID, only used when MetadataStoreType is DCPMetadataCS
 	DbStats                    *expvar.Map          // Optional stats
+	CollectionIDs              []uint32             // CollectionIDs used by gocbcore, if empty, uses default collections
 }
 
-func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket Bucket, groupID string) (*DCPClient, error) {
+func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, collection *Collection) (*DCPClient, error) {
 
 	numWorkers := defaultNumWorkers
 	if options.NumWorkers > 0 {
 		numWorkers = options.NumWorkers
 	}
 
-	store, ok := AsCouchbaseStore(bucket)
-	if !ok {
-		return nil, errors.New("DCP Client requires bucket to be CouchbaseStore")
-	}
-
-	numVbuckets, err := store.GetMaxVbno()
+	numVbuckets, err := collection.GetMaxVbno()
 	if err != nil {
 		return nil, fmt.Errorf("Unable to determine maxVbNo when creating DCP client: %w", err)
 	}
@@ -80,12 +78,13 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 		numVbuckets:      numVbuckets,
 		callback:         callback,
 		ID:               ID,
-		spec:             store.GetSpec(),
+		spec:             collection.GetSpec(),
 		terminator:       make(chan bool),
 		doneChannel:      make(chan error, 1),
 		failOnRollback:   options.FailOnRollback,
-		checkpointPrefix: DCPCheckpointPrefixWithGroupID(groupID),
+		checkpointPrefix: DCPCheckpointPrefixWithGroupID(options.GroupID),
 		dbStats:          options.DbStats,
+		collectionIDs:    options.CollectionIDs,
 	}
 
 	// Initialize active vbuckets
@@ -96,9 +95,9 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 
 	checkpointPrefix := fmt.Sprintf("%s:%v", client.checkpointPrefix, ID)
 	switch options.MetadataStoreType {
-	case DCPMetadataDB:
-		client.metadata = NewDCPMetadataCS(bucket, numVbuckets, numWorkers, checkpointPrefix)
-	case DCPMetadataInMemory:
+	case DCPMetadataStoreCS:
+		client.metadata = NewDCPMetadataCS(collection, numVbuckets, numWorkers, checkpointPrefix)
+	case DCPMetadataStoreInMemory:
 		client.metadata = NewDCPMetadataMem(numVbuckets)
 	default:
 		return nil, fmt.Errorf("Unknown Metadatatype: %d", options.MetadataStoreType)
@@ -110,7 +109,7 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 	}
 
 	if options.OneShot {
-		_, highSeqnos, statsErr := store.GetStatsVbSeqno(numVbuckets, true)
+		_, highSeqnos, statsErr := collection.GetStatsVbSeqno(numVbuckets, true)
 		if statsErr != nil {
 			return nil, fmt.Errorf("Unable to obtain high seqnos for one-shot DCP feed: %w", statsErr)
 		}
@@ -219,7 +218,11 @@ func (dc *DCPClient) initAgent(spec BucketSpec) error {
 	agentConfig.SecurityConfig.Auth = auth
 	agentConfig.SecurityConfig.TLSRootCAProvider = tlsRootCAProvider
 	agentConfig.UserAgent = "SyncGatewayDCP"
-	agentConfig.IoConfig = gocbcore.IoConfig{UseCollections: true}
+	if len(dc.collectionIDs) != 0 {
+		agentConfig.IoConfig = gocbcore.IoConfig{
+			UseCollections: true,
+		}
+	}
 	flags := memd.DcpOpenFlagProducer
 	flags |= memd.DcpOpenFlagIncludeXattrs
 	var agentErr error
@@ -352,9 +355,10 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 
 	vbMeta := dc.metadata.GetMeta(vbID)
 
-	// filter options are only scope + collection selection
 	options := gocbcore.OpenStreamOptions{}
-
+	if len(dc.collectionIDs) != 0 {
+		options.FilterOptions = &gocbcore.OpenStreamFilterOptions{CollectionIDs: dc.collectionIDs}
+	}
 	openStreamError := make(chan error)
 	openStreamCallback := func(f []gocbcore.FailoverEntry, err error) {
 		if err == nil {

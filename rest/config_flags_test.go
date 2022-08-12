@@ -73,7 +73,7 @@ func TestFillConfigWithFlagsValidVals(t *testing.T) {
 		"-logging.redaction_level", "full", // RedactionLevel
 		"-logging.console.log_level", "warn", // *LogLevel
 		"-replicator.max_heartbeat", "5h2m33s", // base.ConfigDuration
-		"-max_file_descriptors", "12345", //uint64
+		"-max_file_descriptors", "12345", // uint64
 	})
 	require.NoError(t, err)
 

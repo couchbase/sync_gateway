@@ -107,7 +107,7 @@ func TestDocumentNumbers(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(ts *testing.T) {
-			//Create document
+			// Create document
 			response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", test.name), test.body)
 			requireStatus(ts, response, 201)
 

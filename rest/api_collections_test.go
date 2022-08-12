@@ -107,9 +107,6 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 
 func TestCollectionsDCP(t *testing.T) {
 	base.TestRequiresCollections(t)
-	if base.TestUseXattrs() {
-		t.Skip("This test does not work with XATTRs due to using DCP import feed")
-	}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyDCP, base.KeyImport)
 
 	tb := base.GetTestBucket(t)
@@ -120,6 +117,7 @@ func TestCollectionsDCP(t *testing.T) {
 		TestBucket:                 tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
+				AutoImport: true,
 				Scopes: ScopesConfig{
 					"foo": ScopeConfig{
 						Collections: map[string]CollectionConfig{
@@ -144,9 +142,7 @@ func TestCollectionsDCP(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// ensure the doc comes back over the caching feed after import
-	t.Log("Not performing caching feed check - CBG-1143")
-	//assert.NoError(t, rt.WaitForDoc(docID))
+	require.NoError(t, rt.WaitForDoc(docID))
 }
 
 // TestCollectionsBasicIndexQuery ensures that the bucket API is able to create an index on a collection
@@ -303,5 +299,5 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 	requireStatus(t, resp, http.StatusForbidden)
 
 	_, err := rt.waitForChanges(1, "/db/_changes", username, false)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }

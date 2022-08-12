@@ -19,6 +19,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strconv"
 	"sync"
 	"testing"
@@ -527,28 +528,31 @@ func TestWebhookBasic(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, int64(100), em.GetEventsProcessedSuccess())
 
-	// Test queue full, slow webhook.  Drops events
-	log.Println("Test queue full, slow webhook")
-	wr.Clear()
-	errCount := 0
-	em = NewEventManager()
-	em.Start(5, 1)
-	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/slow", url), "", nil, nil)
-	em.RegisterEventHandler(webhookHandler, DocumentChange)
-	for i := 0; i < 100; i++ {
-		body, docId, channels := eventForTest(i)
-		bodyBytes, _ := base.JSONMarshal(body)
-		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels, false)
-		if err != nil {
-			errCount++
+	// CBG-2281 skip test temporarily under windows
+	if runtime.GOOS != "windows" {
+		// Test queue full, slow webhook.  Drops events
+		log.Println("Test queue full, slow webhook")
+		wr.Clear()
+		errCount := 0
+		em = NewEventManager()
+		em.Start(5, 1)
+		webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/slow", url), "", nil, nil)
+		em.RegisterEventHandler(webhookHandler, DocumentChange)
+		for i := 0; i < 100; i++ {
+			body, docId, channels := eventForTest(i)
+			bodyBytes, _ := base.JSONMarshal(body)
+			err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels, false)
+			if err != nil {
+				errCount++
+			}
 		}
+		// Expect 21 to complete.  5 get goroutines immediately, 15 get queued, and one is blocked waiting
+		// for a goroutine.  The rest get discarded because the queue is full.
+		err = em.waitForProcessedTotal(base.TestCtx(t), 21, 10*time.Second)
+		assert.NoError(t, err)
+		assert.Equal(t, int64(21), em.GetEventsProcessedSuccess())
+		assert.Equal(t, 79, errCount)
 	}
-	// Expect 21 to complete.  5 get goroutines immediately, 15 get queued, and one is blocked waiting
-	// for a goroutine.  The rest get discarded because the queue is full.
-	err = em.waitForProcessedTotal(base.TestCtx(t), 21, 10*time.Second)
-	assert.NoError(t, err)
-	assert.Equal(t, int64(21), em.GetEventsProcessedSuccess())
-	assert.Equal(t, 79, errCount)
 
 	// Test queue full, slow webhook, long wait time.  Throttles events
 	log.Println("Test queue full, slow webhook, long wait")

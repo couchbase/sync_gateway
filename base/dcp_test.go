@@ -457,7 +457,7 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 //    BenchmarkPartitionToVbNo/parseUint-16   	300000000	         5.04 ns/op
 func BenchmarkPartitionToVbNo(b *testing.B) {
 
-	//Initialize lookup map
+	// Initialize lookup map
 	vbNos := make(map[string]uint16, 1024)
 	for i := 0; i < len(vbucketIdStrings); i++ {
 		vbucketIdStrings[i] = fmt.Sprintf("%d", i)

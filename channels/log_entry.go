@@ -80,7 +80,7 @@ func (channelMap ChannelMap) ChannelsRemovedAtSequence(seq uint64) (ChannelMap, 
 	for channel, removal := range channelMap {
 		if removal != nil && removal.Seq == seq {
 			channelsRemoved[channel] = removal
-			revIdRemoved = removal.RevID //Will be the same RevID for each removal
+			revIdRemoved = removal.RevID // Will be the same RevID for each removal
 		}
 	}
 	return channelsRemoved, revIdRemoved

@@ -111,7 +111,7 @@ func BenchmarkFileShouldLog(b *testing.B) {
 func TestRotatedLogDeletion(t *testing.T) {
 	var dirContents []os.FileInfo
 
-	//Regular Test With multiple files above high and low watermark
+	// Regular Test With multiple files above high and low watermark
 	dir := t.TempDir()
 
 	err := makeTestFile(2, logFilePrefix+"error-2019-02-01T12-00-00.log.gz", dir)
@@ -147,7 +147,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 
 	assert.NoError(t, os.RemoveAll(dir))
 
-	//Hit low watermark but not high watermark
+	// Hit low watermark but not high watermark
 	dir = t.TempDir()
 	err = makeTestFile(3, logFilePrefix+"error.log.gz", dir)
 	assert.NoError(t, err)
@@ -157,7 +157,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	require.Len(t, dirContents, 1)
 	assert.NoError(t, os.RemoveAll(dir))
 
-	//Single file hitting low and high watermark
+	// Single file hitting low and high watermark
 	dir = t.TempDir()
 	err = makeTestFile(5, logFilePrefix+"error.log.gz", dir)
 	assert.NoError(t, err)
@@ -167,7 +167,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	assert.Empty(t, dirContents)
 	assert.NoError(t, os.RemoveAll(dir))
 
-	//Not hitting low or high therefore no deletion
+	// Not hitting low or high therefore no deletion
 	dir = t.TempDir()
 	err = makeTestFile(1, logFilePrefix+"error.log.gz", dir)
 	assert.NoError(t, err)
@@ -177,7 +177,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	require.Len(t, dirContents, 1)
 	assert.NoError(t, os.RemoveAll(dir))
 
-	//Test deletion with files at the end of date boundaries
+	// Test deletion with files at the end of date boundaries
 	dir = t.TempDir()
 	err = makeTestFile(1, logFilePrefix+"error-2018-12-31T23-59-59.log.gz", dir)
 	assert.NoError(t, err)
@@ -203,7 +203,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 
 	assert.NoError(t, os.RemoveAll(dir))
 
-	//Test deletion with no .gz files to ensure nothing is deleted
+	// Test deletion with no .gz files to ensure nothing is deleted
 	dir = t.TempDir()
 	err = makeTestFile(1, logFilePrefix+"error", dir)
 	assert.NoError(t, err)
