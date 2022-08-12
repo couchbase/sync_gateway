@@ -662,8 +662,8 @@ func (c *Collection) isRecoverableWriteError(err error) bool {
 	return false
 }
 
-// dropAllScopesAndCollections attempts to drop *all* non-_default scopes and collections from the bucket associated with the collection.  Intended for test usage only.
-func (c *Collection) dropAllScopesAndCollections() error {
+// DropAllScopesAndCollections attempts to drop *all* non-_default scopes and collections from the bucket associated with the collection.  Intended for test usage only.
+func (c *Collection) DropAllScopesAndCollections() error {
 	cm := c.Bucket().Collections()
 	scopes, err := cm.GetAllScopes(nil)
 	if err != nil {
@@ -705,10 +705,6 @@ func (c *Collection) Flush() error {
 	bucketManager := c.cluster.Buckets()
 
 	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
-		if err := c.dropAllScopesAndCollections(); err != nil && !errors.Is(err, ErrCollectionsUnsupported) {
-			return true, err, nil
-		}
-
 		if err := bucketManager.FlushBucket(c.Bucket().Name(), nil); err != nil {
 			WarnfCtx(context.TODO(), "Error flushing bucket %s: %v  Will retry.", MD(c.Bucket().Name()).Redact(), err)
 			return true, err, nil
