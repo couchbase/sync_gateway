@@ -309,7 +309,7 @@ func GetIndexMeta(store N1QLStore, indexName string) (exists bool, meta *IndexMe
 }
 
 func getIndexMetaWithoutRetry(store N1QLStore, indexName string) (exists bool, meta *IndexMeta, err error) {
-	statement := fmt.Sprintf("SELECT state from system:indexes WHERE indexes.name = '%s' AND indexes.keyspace_id = '%s'", indexName, store.IndexMetaKeyspaceID())
+	statement := fmt.Sprintf("SELECT state FROM system:indexes WHERE indexes.name = '%s' AND indexes.keyspace_id = '%s'", indexName, store.IndexMetaKeyspaceID())
 	if store.IndexMetaBucketID() != "" {
 		statement += fmt.Sprintf(" AND indexes.bucket_id = '%s'", store.IndexMetaBucketID())
 	}

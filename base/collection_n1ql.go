@@ -24,9 +24,14 @@ import (
 
 var _ N1QLStore = &Collection{}
 
+// isDefaultScopeCollection returns true if the given Collection is on the _default._default scope and collection.
+func (c *Collection) isDefaultScopeCollection() bool {
+	return c.ScopeName() == DefaultScope && c.Name() == DefaultCollection
+}
+
 // EscapedKeyspace returns the escaped fully-qualified identifier for the keyspace (e.g. `bucket`.`scope`.`collection`)
 func (c *Collection) EscapedKeyspace() string {
-	if c.ScopeName() == DefaultScope && c.Name() == DefaultCollection {
+	if c.isDefaultScopeCollection() {
 		return fmt.Sprintf("`%s`", c.BucketName())
 	}
 	return fmt.Sprintf("`%s`.`%s`.`%s`", c.BucketName(), c.ScopeName(), c.Name())
@@ -34,7 +39,7 @@ func (c *Collection) EscapedKeyspace() string {
 
 // IndexMetaBucketID returns the value of bucket_id for the system:indexes table for the collection.
 func (c *Collection) IndexMetaBucketID() string {
-	if c.ScopeName() == DefaultScope && c.Name() == DefaultCollection {
+	if c.isDefaultScopeCollection() {
 		return ""
 	}
 	return c.BucketName()
@@ -42,7 +47,7 @@ func (c *Collection) IndexMetaBucketID() string {
 
 // IndexMetaScopeID returns the value of scope_id for the system:indexes table for the collection.
 func (c *Collection) IndexMetaScopeID() string {
-	if c.ScopeName() == DefaultScope && c.Name() == DefaultCollection {
+	if c.isDefaultScopeCollection() {
 		return ""
 	}
 	return c.ScopeName()
@@ -50,7 +55,7 @@ func (c *Collection) IndexMetaScopeID() string {
 
 // IndexMetaKeyspaceID returns the value of keyspace_id for the system:indexes table for the collection.
 func (c *Collection) IndexMetaKeyspaceID() string {
-	if c.ScopeName() == DefaultScope && c.Name() == DefaultCollection {
+	if c.isDefaultScopeCollection() {
 		return c.BucketName()
 	}
 	return c.Name()
@@ -184,7 +189,14 @@ func (c *Collection) IsErrNoResults(err error) bool {
 func (c *Collection) getIndexes() (indexes []string, err error) {
 
 	indexes = []string{}
-	indexInfo, err := c.cluster.QueryIndexes().GetAllIndexes(c.BucketName(), nil)
+	var opts *gocb.GetAllQueryIndexesOptions
+	if !c.isDefaultScopeCollection() {
+		opts = &gocb.GetAllQueryIndexesOptions{
+			ScopeName:      c.ScopeName(),
+			CollectionName: c.Name(),
+		}
+	}
+	indexInfo, err := c.cluster.QueryIndexes().GetAllIndexes(c.BucketName(), opts)
 	if err != nil {
 		return indexes, err
 	}
