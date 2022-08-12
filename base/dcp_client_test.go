@@ -388,6 +388,10 @@ func TestResumeStoppedFeed(t *testing.T) {
 
 // TestBadAgentPriority makes sure we can not specify agent priority as high
 func TestBadAgentPriority(t *testing.T) {
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server, since DCPClient requires collections")
+	}
+
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
@@ -398,7 +402,9 @@ func TestBadAgentPriority(t *testing.T) {
 	dcpClientOpts := DCPClientOptions{
 		AgentPriority: gocbcore.DcpAgentPriorityHigh,
 	}
-	dcpClient, err := NewDCPClient(feedID, panicCallback, dcpClientOpts, AsCollection(bucket))
+	collection, err := AsCollection(bucket)
+	require.NoError(t, err)
+	dcpClient, err := NewDCPClient(feedID, panicCallback, dcpClientOpts, collection)
 	require.Error(t, err)
 	require.Nil(t, dcpClient)
 }
