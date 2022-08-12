@@ -29,31 +29,45 @@ func TestInitializeIndexes(t *testing.T) {
 	}
 
 	tests := []struct {
-		xattrs bool
+		xattrs      bool
+		collections bool
 	}{
-		{true},
-		{false},
+		{true, false},
+		{false, false},
+		{true, true},
+		{false, true},
 	}
 
 	for _, test := range tests {
-		t.Run(fmt.Sprintf("xattrs=%v", test.xattrs), func(t *testing.T) {
-			db := setupTestDB(t)
+		t.Run(fmt.Sprintf("xattrs=%v collections=%v", test.xattrs, test.collections), func(t *testing.T) {
+			db := setupTestDBWithOptions(t, DatabaseContextOptions{EnableXattr: test.xattrs})
 			defer db.Close()
 
-			n1qlStore, isGoCBBucket := base.AsN1QLStore(db.Bucket)
+			var b base.Bucket = db.Bucket
+			if test.collections {
+				collection, err := base.AsCollection(b)
+				require.NoError(t, err)
+				// override underlying collection for test bucket
+				collection.Collection = collection.Bucket().Scope("foo").Collection("bar")
+
+				err = base.CreateBucketScopesAndCollections(base.TestCtx(t), collection.Spec, map[string][]string{"foo": {"bar"}})
+				require.NoError(t, err)
+			}
+
+			n1qlStore, isGoCBBucket := base.AsN1QLStore(b)
 			require.True(t, isGoCBBucket)
 
-			dropErr := base.DropAllBucketIndexes(n1qlStore)
+			dropErr := base.DropAllIndexes(base.TestCtx(t), n1qlStore)
 			require.NoError(t, dropErr, "Error dropping all indexes")
 
 			initErr := InitializeIndexes(n1qlStore, test.xattrs, 0, true)
-			assert.NoError(t, initErr, "Error initializing all indexes")
+			require.NoError(t, initErr, "Error initializing all indexes")
 
 			// Recreate the primary index required by the test bucket pooling framework
 			err := n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
-			validateErr := validateAllIndexesOnline(db.Bucket)
+			validateErr := validateAllIndexesOnline(b)
 			require.NoError(t, validateErr, "Error validating indexes online")
 		})
 	}
