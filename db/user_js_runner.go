@@ -200,7 +200,8 @@ func (runner *userJSRunner) do_get(docID string, docType *string) (interface{}, 
 	if docType != nil && body["type"] != *docType {
 		return nil, nil
 	}
-	body["id"] = docID
+	body["_id"] = docID
+	body["_rev"] = rev.RevID
 	return body, nil
 }
 
@@ -236,13 +237,17 @@ func (runner *userJSRunner) do_save(docID string, body map[string]interface{}) e
 		return base.HTTPErrorf(http.StatusForbidden, "a read-only request is not allowed to mutate the database")
 	}
 
-	// TODO: Currently this is "last writer wins": get the current revision if any, and pass it
-	// to Put so that the save always succeeds.
-	rev, err := runner.currentDB.GetRev(docID, "", false, []string{})
-	if err == nil {
-		body["_rev"] = rev.RevID
+	delete(body, "_id")
+	if _, found := body["_rev"]; !found {
+		// If caller didn't provide a `_rev` property, fall back to "last writer wins":
+		// get the current revision if any, and pass it to Put so that the save always succeeds.
+		rev, err := runner.currentDB.GetRev(docID, "", false, []string{})
+		if err == nil {
+			body["_rev"] = rev.RevID
+		}
 	}
 
+	var err error
 	_, _, err = runner.currentDB.Put(docID, body)
 	return err
 }
