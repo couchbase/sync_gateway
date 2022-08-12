@@ -117,7 +117,7 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"replicator.max_heartbeat":    {&config.Replicator.MaxHeartbeat, fs.String("replicator.max_heartbeat", "", "Max heartbeat value for _changes request")},
 		"replicator.blip_compression": {&config.Replicator.BLIPCompression, fs.Int("replicator.blip_compression", 0, "BLIP data compression level (0-9)")},
 
-		"unsupported.serverless":          {&config.Unsupported.Serverless, fs.Bool("unsupported.serverless", false, "Put SG in to serverless mode.")},
+		"unsupported.serverless":          {&config.Unsupported.Serverless, fs.Bool("unsupported.serverless", false, "Run SG in to serverless mode.")},
 		"unsupported.stats_log_frequency": {&config.Unsupported.StatsLogFrequency, fs.String("unsupported.stats_log_frequency", "", "How often should stats be written to stats logs")},
 		"unsupported.use_stdlib_json":     {&config.Unsupported.UseStdlibJSON, fs.Bool("unsupported.use_stdlib_json", false, "Bypass the jsoniter package and use Go's stdlib instead")},
 

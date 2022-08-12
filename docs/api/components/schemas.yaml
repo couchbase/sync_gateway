@@ -1943,7 +1943,7 @@ Startup-config:
       type: object
       properties:
         serverless:
-          description: Put SG in to serverless mode
+          description: Run SG in to serverless mode
           type: boolean
           readOnly: true
         stats_log_frequency:
