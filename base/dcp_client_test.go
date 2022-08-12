@@ -397,7 +397,7 @@ func TestBadAgentPriority(t *testing.T) {
 
 	feedID := "fakeID"
 	panicCallback := func(event sgbucket.FeedEvent) bool {
-		t.Fatal(t, "Should not hit this callback")
+		t.Error(t, "Should not hit this callback")
 		return false
 	}
 	dcpClientOpts := DCPClientOptions{
