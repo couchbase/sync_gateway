@@ -8,6 +8,7 @@ import (
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -119,7 +120,7 @@ func TestBlipGetCollections(t *testing.T) {
 			errorCode:  "",
 		},
 		// This code will not work until leaky bucket works with collections CBG-2201
-		//{
+		// {
 		//	name: "checkpointExistsWithErrorInNonDefaultCollection",
 		//	requestBody: db.GetCollectionsRequestBody{
 		//		CheckpointIDs: []string{checkpointIDWithError},
@@ -227,4 +228,87 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 
 	require.Equal(t, db.Body{"seq": "123"}, checkpoint)
 
+}
+
+func TestCollectionsPeerDoesNotHave(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	const (
+		scopeKey      = "fooScope"
+		collectionKey = "fooCollection"
+	)
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		guestEnabled: true,
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				Scopes: ScopesConfig{
+					scopeKey: ScopeConfig{
+						Collections: map[string]CollectionConfig{
+							collectionKey: {},
+						},
+					},
+				},
+			},
+		},
+		createScopesAndCollections: true,
+	})
+	defer rt.Close()
+
+	_, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
+		Collections: []string{"barScope.barCollection"},
+	})
+	require.Error(t, err)
+
+	assert.Equal(t, "collection doesn't exist on peer barScope.barCollection", err.Error())
+}
+
+func TestCollectionsReplication(t *testing.T) {
+	base.TestRequiresCollections(t)
+	if base.TestsDisableGSI() {
+		t.Skip("only works with GSI")
+	}
+
+	const (
+		scopeKey              = "fooScope"
+		collectionKey         = "fooCollection"
+		scopeAndCollectionKey = scopeKey + "." + collectionKey
+	)
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		guestEnabled: true,
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				Scopes: ScopesConfig{
+					scopeKey: ScopeConfig{
+						Collections: map[string]CollectionConfig{
+							collectionKey: {},
+						},
+					},
+				},
+			},
+		},
+		createScopesAndCollections: true,
+	})
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
+		Collections: []string{scopeAndCollectionKey},
+	})
+	require.NoError(t, err)
+	defer btc.Close()
+
+	resp := rt.SendAdminRequest(http.MethodPut, "/db."+scopeAndCollectionKey+"/doc1", "{}")
+	requireStatus(t, resp, http.StatusCreated)
+
+	require.NoError(t, rt.WaitForPendingChanges())
+
+	btcCollection, err := btc.Collection(scopeAndCollectionKey)
+	require.NoError(t, err)
+
+	err = btcCollection.StartOneshotPull()
+	require.NoError(t, err)
+
+	_, ok := btcCollection.WaitForRev("doc1", "1-ca9ad22802b66f662ff171f226211d5c")
+	require.True(t, ok)
 }
