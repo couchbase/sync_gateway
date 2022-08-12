@@ -36,7 +36,7 @@ type BlipTesterClientOpts struct {
 	SupportedBLIPProtocols []string
 
 	// a deltaSrc rev ID for which to reject a delta
-	rejectDeltasForSrcRev string //nolint: structcheck // false structcheck positive due to https://github.com/golangci/golangci-lint/issues/826
+	rejectDeltasForSrcRev string
 }
 
 // BlipTesterClient is a fully fledged client to emulate CBL behaviour on both push and pull replications through methods on this type.
