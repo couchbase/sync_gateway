@@ -226,7 +226,24 @@ func TestShardedDCPUpgrade(t *testing.T) {
 		}
 		return false, nil, nil
 	}, base.CreateSleeperFunc(100, 100))
-	require.NoError(t, err, "node wait retry loop")
+	require.NoError(t, err)
+
+	// wait for all pindexes to be reassigned
+	err, _ = base.RetryLoop("wait for all pindexes to be reassigned", func() (shouldRetry bool, err error, value interface{}) {
+		pIndexes, _, err := cbgt.CfgGetPlanPIndexes(db.CfgSG)
+		if err != nil {
+			return false, nil, err
+		}
+		for _, plan := range pIndexes.PlanPIndexes {
+			for nodeUUID := range plan.Nodes {
+				if nodeUUID != db.UUID {
+					return true, nil, nil
+				}
+			}
+		}
+		return false, nil, nil
+	}, base.CreateSleeperFunc(100, 100))
+	require.NoError(t, err)
 
 	// assert that the doc we created before starting this node gets imported once all the pindexes are reassigned
 	require.NoError(t, db.WaitForPendingChanges(base.TestCtx(t)))
@@ -255,7 +272,7 @@ func preparePlanPIndexesJSON(t *testing.T, tb *base.TestBucket, numVBuckets uint
 
 	for strings.Contains(planPIndexesJSON, "$SourcePartitions") {
 		if highestVBNo == int(numVBuckets) {
-			t.Fatalf("Test misconfigured = numPartitions is %d, but planPIndexes has more instances of '$SourcePartitions'", numPartitions)
+			t.Fatalf("Test misconfigured - numPartitions is %d, but planPIndexes has more instances of '$SourcePartitions'", numPartitions)
 		}
 		vBs := make([]string, 0, numVBsPerPartition)
 		prevHighestVBNo := highestVBNo
@@ -266,7 +283,7 @@ func preparePlanPIndexesJSON(t *testing.T, tb *base.TestBucket, numVBuckets uint
 		planPIndexesJSON = strings.Replace(planPIndexesJSON, "$SourcePartitions", sourcePartitionsStr, 1)
 	}
 	if highestVBNo != int(numVBuckets) {
-		t.Fatalf("Test misconfigured = numPartitions is %d, but planPIndexes doesn't have enough '$SourcePartitions'", numPartitions)
+		t.Fatalf("Test misconfigured - numPartitions is %d, but planPIndexes doesn't have enough '$SourcePartitions'", numPartitions)
 	}
 	return planPIndexesJSON
 }
