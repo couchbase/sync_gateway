@@ -1105,7 +1105,7 @@ func (btc *BlipTesterClient) getCollectionNameFromMessage(msg *blip.Message) (st
 	}
 
 	if len(btc.Collections) < idx+1 {
-		return "", fmt.Errorf("idx not valid")
+		return "", fmt.Errorf("idx %d not valid", idx)
 	}
 	return btc.Collections[idx], nil
 }
