@@ -22,6 +22,7 @@ if [ "${1:-}" == "-m" ]; then
     SG_TEST_BUCKET_POOL_DEBUG="true"
     GSI="false"
     TLS_SKIP_VERIFY="false"
+    SG_CBCOLLECT_ALWAYS="false"
 fi
 
 set -e # Abort on errors
@@ -103,6 +104,7 @@ if [ "${RUN_WALRUS}" == "true" ]; then
     go test -coverprofile=coverage_walrus_ce.out -coverpkg=github.com/couchbase/sync_gateway/... $GO_TEST_FLAGS github.com/couchbase/sync_gateway/${TARGET_PACKAGE} > verbose_unit_ce.out.raw 2>&1 | true
 fi
 
+WORKSPACE_ROOT="$(pwd)"
 DOCKER_CBS_ROOT_DIR="$(pwd)"
 if [ "${CBS_ROOT_DIR:-}" != "" ]; then
     DOCKER_CBS_ROOT_DIR="${CBS_ROOT_DIR}"
@@ -113,7 +115,7 @@ export SG_TEST_COUCHBASE_SERVER_DOCKER_NAME=couchbase
 docker stop ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} || true
 docker rm ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} || true
 # --volume: Makes and mounts a CBS folder for storing a CBCollect if needed
-docker run -d --name ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} --volume ${DOCKER_CBS_ROOT_DIR}/cbs:/root --net=host couchbase/server:${COUCHBASE_SERVER_VERSION}
+docker run -d --name ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} --volume ${DOCKER_CBS_ROOT_DIR}/cbs:/root --volume ${WORKSPACE_ROOT}:/workspace --net=host couchbase/server:${COUCHBASE_SERVER_VERSION}
 
 # Test to see if Couchbase Server is up
 # Each retry min wait 5s, max 10s. Retry 20 times with exponential backoff (delay 0), fail at 120s
@@ -150,8 +152,8 @@ if [ "${PIPESTATUS[0]}" -ne "0" ]; then # If test exit code is not 0 (failed)
 fi
 
 # Collect CBS logs if server error occurred
-if grep -q "server logs for details\|Timed out after 1m0s waiting for a bucket to become available\|unambiguous timeout" "${INT_LOG_FILE_NAME}.out.raw"; then
-    docker exec -t couchbase /opt/couchbase/bin/cbcollect_info /root/cbcollect.zip
+if [ "${SG_CBCOLLECT_ALWAYS:-}" == "true" ] || grep -q "server logs for details\|Timed out after 1m0s waiting for a bucket to become available\|unambiguous timeout" "${INT_LOG_FILE_NAME}.out.raw"; then
+    docker exec -t couchbase /opt/couchbase/bin/cbcollect_info /workspace/cbcollect.zip
 fi
 
 # Generate xunit test report that can be parsed by the JUnit Plugin
