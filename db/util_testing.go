@@ -303,13 +303,13 @@ var ViewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 	}
 
 	tbp.Logf(ctx, "dropping existing bucket indexes")
-	if err := base.DropAllBucketIndexes(n1qlStore); err != nil {
+	if err := base.DropAllIndexes(ctx, n1qlStore); err != nil {
 		tbp.Logf(ctx, "Failed to drop bucket indexes: %v", err)
 		return err
 	}
 
 	tbp.Logf(ctx, "creating SG bucket indexes")
-	if err := InitializeIndexes(n1qlStore, base.TestUseXattrs(), 0); err != nil {
+	if err := InitializeIndexes(n1qlStore, base.TestUseXattrs(), 0, false); err != nil {
 		return err
 	}
 

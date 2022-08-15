@@ -389,7 +389,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 // TestBadAgentPriority makes sure we can not specify agent priority as high
 func TestBadAgentPriority(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server, since DCPClient requires collections")
+		t.Skip("This test only works against Couchbase Server, since DCPClient requires a base.Collection")
 	}
 
 	bucket := GetTestBucket(t)

@@ -34,6 +34,7 @@ type BlipTesterClientOpts struct {
 	Channels               []string
 	SendRevocations        bool
 	SupportedBLIPProtocols []string
+	Collections            []string
 
 	// a deltaSrc rev ID for which to reject a delta
 	rejectDeltasForSrcRev string
@@ -43,7 +44,18 @@ type BlipTesterClientOpts struct {
 type BlipTesterClient struct {
 	BlipTesterClientOpts
 
-	rt *RestTester
+	rt              *RestTester
+	pullReplication *BlipTesterReplicator // SG -> CBL replications
+	pushReplication *BlipTesterReplicator // CBL -> SG replications
+
+	CollectionClients map[string]*BlipTesterCollectionClient
+}
+
+type BlipTesterCollectionClient struct {
+	parent *BlipTesterClient
+
+	collection    string
+	collectionIdx int
 
 	docs map[string]map[string]*BodyMessagePair // Client's local store of documents - Map of docID
 	// to rev ID to bytes
@@ -52,9 +64,6 @@ type BlipTesterClient struct {
 	docsLock              sync.RWMutex      // lock for docs map
 	attachmentsLock       sync.RWMutex      // lock for attachments map
 	lastReplicatedRevLock sync.RWMutex      // lock for lastReplicatedRev map
-
-	pullReplication *BlipTesterReplicator // SG -> CBL replications
-	pushReplication *BlipTesterReplicator // CBL -> SG replications
 }
 
 type BodyMessagePair struct {
@@ -102,7 +111,14 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			panic("no digest sent with proveAttachment")
 		}
 
-		attData, err := btc.getAttachment(digest)
+		collection, err := btc.getCollectionNameFromMessage(msg)
+		if err != nil {
+			panic(fmt.Sprintf("error occurred getting collection %v", err))
+		}
+
+		btcr := btc.CollectionClients[collection]
+
+		attData, err := btcr.getAttachment(digest)
 		if err != nil {
 			panic(fmt.Sprintf("error getting client attachment: %v", err))
 		}
@@ -116,6 +132,13 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 	btr.bt.blipContext.HandlerForProfile[db.MessageChanges] = func(msg *blip.Message) {
 		btr.storeMessage(msg)
+
+		collection, err := btc.getCollectionNameFromMessage(msg)
+		if err != nil {
+			panic(fmt.Sprintf("error occurred getting collection %v", err))
+		}
+
+		btcr := btc.CollectionClients[collection]
 
 		// Exit early when there's nothing to do
 		if msg.NoReply() {
@@ -138,7 +161,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 			knownRevs = make([]interface{}, len(changesReqs))
 			// changesReqs == [[sequence, docID, revID, {deleted}, {size (bytes)}], ...]
-			btc.docsLock.RLock() // TODO: Move locking to accessor methods
+			btcr.docsLock.RLock() // TODO: Move locking to accessor methods
 		outer:
 			for i, changesReq := range changesReqs {
 				docID := changesReq[1].(string)
@@ -154,11 +177,11 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 				// Build up a list of revisions known to the client for each change
 				// The first element of each revision list must be the parent revision of the change
-				if revs, haveDoc := btc.docs[docID]; haveDoc {
+				if revs, haveDoc := btcr.docs[docID]; haveDoc {
 					revList := make([]string, 0, len(revs))
 
 					// Insert the highest ancestor rev generation at the start of the revList
-					latest, ok := btc.getLastReplicatedRev(docID)
+					latest, ok := btcr.getLastReplicatedRev(docID)
 					if ok {
 						revList = append(revList, latest)
 					}
@@ -186,7 +209,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 				}
 
 			}
-			btc.docsLock.RUnlock()
+			btcr.docsLock.RUnlock()
 		}
 
 		response := msg.Response()
@@ -210,6 +233,13 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 	btr.bt.blipContext.HandlerForProfile[db.MessageRev] = func(msg *blip.Message) {
 		btc.pullReplication.storeMessage(msg)
 
+		collection, err := btc.getCollectionNameFromMessage(msg)
+		if err != nil {
+			panic(fmt.Sprintf("error occurred getting collection %v", err))
+		}
+
+		btcr := btc.CollectionClients[collection]
+
 		docID := msg.Properties[db.RevMessageID]
 		revID := msg.Properties[db.RevMessageRev]
 		deltaSrc := msg.Properties[db.RevMessageDeltaSrc]
@@ -220,16 +250,16 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		}
 
 		if msg.Properties[db.RevMessageDeleted] == "1" {
-			btc.docsLock.Lock()
-			defer btc.docsLock.Unlock()
-			if _, ok := btc.docs[docID]; ok {
+			btcr.docsLock.Lock()
+			defer btcr.docsLock.Unlock()
+			if _, ok := btcr.docs[docID]; ok {
 				bodyMessagePair := &BodyMessagePair{body: body, message: msg}
-				btc.docs[docID][revID] = bodyMessagePair
+				btcr.docs[docID][revID] = bodyMessagePair
 			} else {
 				bodyMessagePair := &BodyMessagePair{body: body, message: msg}
-				btc.docs[docID] = map[string]*BodyMessagePair{revID: bodyMessagePair}
+				btcr.docs[docID] = map[string]*BodyMessagePair{revID: bodyMessagePair}
 			}
-			btc.updateLastReplicatedRev(docID, revID)
+			btcr.updateLastReplicatedRev(docID, revID)
 
 			if !msg.NoReply() {
 				response := msg.Response()
@@ -260,9 +290,9 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			}
 
 			var old db.Body
-			btc.docsLock.RLock()
-			oldBytes := btc.docs[docID][deltaSrc].body
-			btc.docsLock.RUnlock()
+			btcr.docsLock.RLock()
+			oldBytes := btcr.docs[docID][deltaSrc].body
+			btcr.docsLock.RUnlock()
 			if err := old.Unmarshal(oldBytes); err != nil {
 				panic(err)
 			}
@@ -292,7 +322,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 				}
 
 				var missingDigests []string
-				btc.attachmentsLock.RLock()
+				btcr.attachmentsLock.RLock()
 				for _, attachment := range attsMap {
 					attMap, ok := attachment.(map[string]interface{})
 					if !ok {
@@ -300,11 +330,11 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 					}
 					digest := attMap["digest"].(string)
 
-					if _, found := btc.attachments[digest]; !found {
+					if _, found := btcr.attachments[digest]; !found {
 						missingDigests = append(missingDigests, digest)
 					}
 				}
-				btc.attachmentsLock.RUnlock()
+				btcr.attachmentsLock.RUnlock()
 
 				for _, digest := range missingDigests {
 					outrq := blip.NewRequest()
@@ -314,7 +344,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 						outrq.Properties[db.GetAttachmentID] = docID
 					}
 
-					err := btc.pullReplication.sendMsg(outrq)
+					err := btcr.sendPullMsg(outrq)
 					if err != nil {
 						panic(err)
 					}
@@ -336,9 +366,9 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 						}
 					}
 
-					btc.attachmentsLock.Lock()
-					btc.attachments[digest] = respBody
-					btc.attachmentsLock.Unlock()
+					btcr.attachmentsLock.Lock()
+					btcr.attachments[digest] = respBody
+					btcr.attachmentsLock.Unlock()
 				}
 			}
 
@@ -351,17 +381,17 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			}
 		}
 
-		btc.docsLock.Lock()
-		defer btc.docsLock.Unlock()
+		btcr.docsLock.Lock()
+		defer btcr.docsLock.Unlock()
 
-		if _, ok := btc.docs[docID]; ok {
+		if _, ok := btcr.docs[docID]; ok {
 			bodyMessagePair := &BodyMessagePair{body: body, message: msg}
-			btc.docs[docID][revID] = bodyMessagePair
+			btcr.docs[docID][revID] = bodyMessagePair
 		} else {
 			bodyMessagePair := &BodyMessagePair{body: body, message: msg}
-			btc.docs[docID] = map[string]*BodyMessagePair{revID: bodyMessagePair}
+			btcr.docs[docID] = map[string]*BodyMessagePair{revID: bodyMessagePair}
 		}
-		btc.updateLastReplicatedRev(docID, revID)
+		btcr.updateLastReplicatedRev(docID, revID)
 
 		if !msg.NoReply() {
 			response := msg.Response()
@@ -377,7 +407,14 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			base.PanicfCtx(context.TODO(), "couldn't find digest in getAttachment message properties")
 		}
 
-		attachment, err := btc.getAttachment(digest)
+		collection, err := btc.getCollectionNameFromMessage(msg)
+		if err != nil {
+			panic(fmt.Sprintf("error occurred getting collection %v", err))
+		}
+
+		btcr := btc.CollectionClients[collection]
+
+		attachment, err := btcr.getAttachment(digest)
 		if err != nil {
 			base.PanicfCtx(context.TODO(), "couldn't find attachment for digest: %v", digest)
 		}
@@ -399,7 +436,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 }
 
 // saveAttachment takes a content-type, and base64 encoded data and stores the attachment on the client
-func (btc *BlipTesterClient) saveAttachment(_, base64data string) (dataLength int, digest string, err error) {
+func (btc *BlipTesterCollectionClient) saveAttachment(_, base64data string) (dataLength int, digest string, err error) {
 	btc.attachmentsLock.Lock()
 	defer btc.attachmentsLock.Unlock()
 
@@ -417,7 +454,7 @@ func (btc *BlipTesterClient) saveAttachment(_, base64data string) (dataLength in
 	return len(data), digest, nil
 }
 
-func (btc *BlipTesterClient) getAttachment(digest string) (attachment []byte, err error) {
+func (btc *BlipTesterCollectionClient) getAttachment(digest string) (attachment []byte, err error) {
 	btc.attachmentsLock.RLock()
 	defer btc.attachmentsLock.RUnlock()
 
@@ -429,7 +466,7 @@ func (btc *BlipTesterClient) getAttachment(digest string) (attachment []byte, er
 	return attachment, nil
 }
 
-func (btc *BlipTesterClient) updateLastReplicatedRev(docID, revID string) {
+func (btc *BlipTesterCollectionClient) updateLastReplicatedRev(docID, revID string) {
 	btc.lastReplicatedRevLock.Lock()
 	defer btc.lastReplicatedRevLock.Unlock()
 
@@ -446,7 +483,7 @@ func (btc *BlipTesterClient) updateLastReplicatedRev(docID, revID string) {
 	}
 }
 
-func (btc *BlipTesterClient) getLastReplicatedRev(docID string) (revID string, ok bool) {
+func (btc *BlipTesterCollectionClient) getLastReplicatedRev(docID string) (revID string, ok bool) {
 	btc.lastReplicatedRevLock.RLock()
 	defer btc.lastReplicatedRevLock.RUnlock()
 
@@ -484,9 +521,6 @@ func createBlipTesterClientOpts(tb testing.TB, rt *RestTester, opts *BlipTesterC
 	btc := BlipTesterClient{
 		BlipTesterClientOpts: *opts,
 		rt:                   rt,
-		docs:                 make(map[string]map[string]*BodyMessagePair),
-		attachments:          make(map[string][]byte),
-		lastReplicatedRev:    make(map[string]string),
 	}
 
 	id, err := uuid.NewRandom()
@@ -494,11 +528,71 @@ func createBlipTesterClientOpts(tb testing.TB, rt *RestTester, opts *BlipTesterC
 		return nil, err
 	}
 
-	if btc.pushReplication, err = newBlipTesterReplication(tb, "push"+id.String(), &btc); err != nil {
+	if btc.pushReplication, err = newBlipTesterReplication(btc.rt.tb, "push"+id.String(), &btc); err != nil {
 		return nil, err
 	}
-	if btc.pullReplication, err = newBlipTesterReplication(tb, "pull"+id.String(), &btc); err != nil {
+	if btc.pullReplication, err = newBlipTesterReplication(btc.rt.tb, "pull"+id.String(), &btc); err != nil {
 		return nil, err
+	}
+
+	btc.CollectionClients = make(map[string]*BlipTesterCollectionClient)
+
+	if len(opts.Collections) != 0 {
+		getCollectionsRequest := blip.NewRequest()
+		getCollectionsRequest.SetProfile(db.MessageGetCollections)
+
+		checkpointIDs := make([]string, len(btc.Collections))
+		for i := range checkpointIDs {
+			checkpointIDs[i] = btc.pullReplication.id
+		}
+
+		requestBody := db.GetCollectionsRequestBody{
+			Collections:   btc.Collections,
+			CheckpointIDs: checkpointIDs,
+		}
+		body, err := base.JSONMarshal(requestBody)
+		if err != nil {
+			return nil, err
+		}
+
+		getCollectionsRequest.SetBody(body)
+		if err := btc.pullReplication.sendMsg(getCollectionsRequest); err != nil {
+			return nil, err
+		}
+
+		type CollectionsResponseEntry struct {
+			LastSequence *int    `json:"last_sequence"`
+			Rev          *string `json:"rev"`
+		}
+
+		response, err := getCollectionsRequest.Response().Body()
+		if err != nil {
+			return nil, err
+		}
+
+		var collectionResponse []*CollectionsResponseEntry
+		err = base.JSONUnmarshal(response, &collectionResponse)
+		if err != nil {
+			return nil, err
+		}
+
+		for i, perCollectionResponse := range collectionResponse {
+			if perCollectionResponse == nil {
+				return nil, fmt.Errorf("collection doesn't exist on peer %s", opts.Collections[i])
+			}
+		}
+	}
+
+	if len(opts.Collections) == 0 {
+		if err := btc.initCollectionReplication("", -1); err != nil {
+			return nil, err
+		}
+	} else {
+		for i, collection := range opts.Collections {
+			if err := btc.initCollectionReplication(collection, i); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	return &btc, nil
@@ -514,30 +608,61 @@ func NewBlipTesterClientOptsWithRT(tb testing.TB, rt *RestTester, opts *BlipTest
 	if err != nil {
 		return nil, err
 	}
+
 	client.pullReplication.bt.avoidRestTesterClose = true
 	client.pushReplication.bt.avoidRestTesterClose = true
 
 	return client, nil
 }
 
+func (btc *BlipTesterClient) Close() {
+	btc.pullReplication.Close()
+	btc.pushReplication.Close()
+	for _, collectionReplicator := range btc.CollectionClients {
+		collectionReplicator.Close()
+	}
+}
+
+func (btc *BlipTesterClient) initCollectionReplication(collection string, collectionIdx int) error {
+	btcReplicator := &BlipTesterCollectionClient{
+		docs:              make(map[string]map[string]*BodyMessagePair),
+		attachments:       make(map[string][]byte),
+		lastReplicatedRev: make(map[string]string),
+		parent:            btc,
+	}
+
+	btcReplicator.collection = collection
+	btcReplicator.collectionIdx = collectionIdx
+
+	btc.CollectionClients[collection] = btcReplicator
+	return nil
+}
+
+// DefaultCollection() just returns the client's default collection
+func (btc *BlipTesterClient) DefaultCollection() *BlipTesterCollectionClient {
+	return btc.CollectionClients[""]
+}
+
+func (btc *BlipTesterClient) Collection(collection string) (*BlipTesterCollectionClient, error) {
+	btcr, ok := btc.CollectionClients[collection]
+	if !ok {
+		return nil, fmt.Errorf("doesn't exist")
+	}
+
+	return btcr, nil
+}
+
 // StartPull will begin a continuous pull replication since 0 between the client and server
-func (btc *BlipTesterClient) StartPull() (err error) {
+func (btc *BlipTesterCollectionClient) StartPull() (err error) {
 	return btc.StartPullSince("true", "0", "false")
 }
 
-func (btc *BlipTesterClient) StartOneshotPull() (err error) {
+func (btc *BlipTesterCollectionClient) StartOneshotPull() (err error) {
 	return btc.StartPullSince("false", "0", "false")
 }
 
 // StartPullSince will begin a pull replication between the client and server with the given params.
-func (btc *BlipTesterClient) StartPullSince(continuous, since, activeOnly string) (err error) {
-	getCheckpointRequest := blip.NewRequest()
-	getCheckpointRequest.SetProfile(db.MessageGetCheckpoint)
-	getCheckpointRequest.Properties[db.BlipClient] = btc.pullReplication.id
-	if err := btc.pullReplication.sendMsg(getCheckpointRequest); err != nil {
-		return err
-	}
-
+func (btc *BlipTesterCollectionClient) StartPullSince(continuous, since, activeOnly string) (err error) {
 	subChangesRequest := blip.NewRequest()
 	subChangesRequest.SetProfile(db.MessageSubChanges)
 	subChangesRequest.Properties[db.SubChangesContinuous] = continuous
@@ -545,21 +670,22 @@ func (btc *BlipTesterClient) StartPullSince(continuous, since, activeOnly string
 	subChangesRequest.Properties[db.SubChangesActiveOnly] = activeOnly
 	subChangesRequest.SetNoReply(true)
 
-	if btc.BlipTesterClientOpts.SendRevocations {
+	if btc.parent.BlipTesterClientOpts.SendRevocations {
 		subChangesRequest.Properties[db.SubChangesRevocations] = "true"
 	}
 
-	if err := btc.pullReplication.sendMsg(subChangesRequest); err != nil {
+	if err := btc.sendPullMsg(subChangesRequest); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (btc *BlipTesterClient) UnsubPullChanges() (response []byte, err error) {
+func (btc *BlipTesterCollectionClient) UnsubPullChanges() (response []byte, err error) {
 	unsubChangesRequest := blip.NewRequest()
 	unsubChangesRequest.SetProfile(db.MessageUnsubChanges)
-	err = btc.pullReplication.sendMsg(unsubChangesRequest)
+
+	err = btc.sendPullMsg(unsubChangesRequest)
 	if err != nil {
 		return nil, err
 	}
@@ -568,10 +694,11 @@ func (btc *BlipTesterClient) UnsubPullChanges() (response []byte, err error) {
 	return response, err
 }
 
-func (btc *BlipTesterClient) UnsubPushChanges() (response []byte, err error) {
+func (btc *BlipTesterCollectionClient) UnsubPushChanges() (response []byte, err error) {
 	unsubChangesRequest := blip.NewRequest()
 	unsubChangesRequest.SetProfile(db.MessageUnsubChanges)
-	err = btc.pushReplication.sendMsg(unsubChangesRequest)
+
+	err = btc.sendPushMsg(unsubChangesRequest)
 	if err != nil {
 		return nil, err
 	}
@@ -581,7 +708,7 @@ func (btc *BlipTesterClient) UnsubPushChanges() (response []byte, err error) {
 }
 
 // Close will empty the stored docs and close the underlying replications.
-func (btc *BlipTesterClient) Close() {
+func (btc *BlipTesterCollectionClient) Close() {
 	btc.docsLock.Lock()
 	btc.docs = make(map[string]map[string]*BodyMessagePair, 0)
 	btc.docsLock.Unlock()
@@ -593,12 +720,10 @@ func (btc *BlipTesterClient) Close() {
 	btc.attachmentsLock.Lock()
 	btc.attachments = make(map[string][]byte, 0)
 	btc.attachmentsLock.Unlock()
-
-	btc.pullReplication.Close()
-	btc.pushReplication.Close()
 }
 
 func (btr *BlipTesterReplicator) sendMsg(msg *blip.Message) (err error) {
+
 	if !btr.bt.sender.Send(msg) {
 		return fmt.Errorf("error sending message")
 	}
@@ -608,12 +733,12 @@ func (btr *BlipTesterReplicator) sendMsg(msg *blip.Message) (err error) {
 
 // PushRev creates a revision on the client, and immediately sends a changes request for it.
 // The rev ID is always: "N-abc", where N is rev generation for predictability.
-func (btc *BlipTesterClient) PushRev(docID, parentRev string, body []byte) (revID string, err error) {
+func (btc *BlipTesterCollectionClient) PushRev(docID, parentRev string, body []byte) (revID string, err error) {
 	return btc.PushRevWithHistory(docID, parentRev, body, 1, 0)
 }
 
 // PushRevWithHistory creates a revision on the client with history, and immediately sends a changes request for it.
-func (btc *BlipTesterClient) PushRevWithHistory(docID, parentRev string, body []byte, revCount, prunedRevCount int) (revID string, err error) {
+func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID, parentRev string, body []byte, revCount, prunedRevCount int) (revID string, err error) {
 	parentRevGen, _ := db.ParseRevID(parentRev)
 	revGen := parentRevGen + revCount + prunedRevCount
 
@@ -661,7 +786,8 @@ func (btc *BlipTesterClient) PushRevWithHistory(docID, parentRev string, body []
 	proposeChangesRequest := blip.NewRequest()
 	proposeChangesRequest.SetProfile(db.MessageProposeChanges)
 	proposeChangesRequest.SetBody([]byte(fmt.Sprintf(`[["%s","%s","%s"]]`, docID, newRevID, parentRev)))
-	if err := btc.pushReplication.sendMsg(proposeChangesRequest); err != nil {
+
+	if err := btc.sendPushMsg(proposeChangesRequest); err != nil {
 		return "", err
 	}
 
@@ -686,7 +812,7 @@ func (btc *BlipTesterClient) PushRevWithHistory(docID, parentRev string, body []
 	revRequest.Properties[db.RevMessageRev] = newRevID
 	revRequest.Properties[db.RevMessageHistory] = strings.Join(revisionHistory, ",")
 
-	if btc.ClientDeltas && proposeChangesResponse.Properties[db.ProposeChangesResponseDeltas] == "true" {
+	if btc.parent.ClientDeltas && proposeChangesResponse.Properties[db.ProposeChangesResponseDeltas] == "true" {
 		base.DebugfCtx(context.TODO(), base.KeySync, "Sending deltas from test client")
 		var parentDocJSON, newDocJSON db.Body
 		err := parentDocJSON.Unmarshal(parentDocBody)
@@ -710,7 +836,8 @@ func (btc *BlipTesterClient) PushRevWithHistory(docID, parentRev string, body []
 	}
 
 	revRequest.SetBody(body)
-	if err := btc.pushReplication.sendMsg(revRequest); err != nil {
+
+	if err := btc.sendPushMsg(revRequest); err != nil {
 		return "", err
 	}
 
@@ -728,7 +855,7 @@ func (btc *BlipTesterClient) PushRevWithHistory(docID, parentRev string, body []
 	return newRevID, nil
 }
 
-func (btc *BlipTesterClient) StoreRevOnClient(docID, revID string, body []byte) error {
+func (btc *BlipTesterCollectionClient) StoreRevOnClient(docID, revID string, body []byte) error {
 	revGen, _ := db.ParseRevID(revID)
 	newBody, err := btc.ProcessInlineAttachments(body, revGen)
 	if err != nil {
@@ -739,7 +866,7 @@ func (btc *BlipTesterClient) StoreRevOnClient(docID, revID string, body []byte) 
 	return nil
 }
 
-func (btc *BlipTesterClient) ProcessInlineAttachments(inputBody []byte, revGen int) (outputBody []byte, err error) {
+func (btc *BlipTesterCollectionClient) ProcessInlineAttachments(inputBody []byte, revGen int) (outputBody []byte, err error) {
 	if bytes.Contains(inputBody, []byte(db.BodyAttachments)) {
 		var newDocJSON map[string]interface{}
 		if err := base.JSONUnmarshal(inputBody, &newDocJSON); err != nil {
@@ -792,7 +919,7 @@ func (btc *BlipTesterClient) ProcessInlineAttachments(inputBody []byte, revGen i
 }
 
 // GetRev returns the data stored in the Client under the given docID and revID
-func (btc *BlipTesterClient) GetRev(docID, revID string) (data []byte, found bool) {
+func (btc *BlipTesterCollectionClient) GetRev(docID, revID string) (data []byte, found bool) {
 	btc.docsLock.RLock()
 	defer btc.docsLock.RUnlock()
 
@@ -806,13 +933,13 @@ func (btc *BlipTesterClient) GetRev(docID, revID string) (data []byte, found boo
 }
 
 // WaitForRev blocks until the given doc ID and rev ID have been stored by the client, and returns the data when found.
-func (btc *BlipTesterClient) WaitForRev(docID, revID string) (data []byte, found bool) {
+func (btc *BlipTesterCollectionClient) WaitForRev(docID, revID string) (data []byte, found bool) {
 	ticker := time.NewTicker(50 * time.Millisecond)
 	timeout := time.After(10 * time.Second)
 	for {
 		select {
 		case <-timeout:
-			btc.rt.tb.Fatalf("BlipTesterClient timed out waiting for doc ID: %v rev ID: %v", docID, revID)
+			btc.parent.rt.tb.Fatalf("BlipTesterClient timed out waiting for doc ID: %v rev ID: %v", docID, revID)
 			return nil, false
 		case <-ticker.C:
 			if data, found := btc.GetRev(docID, revID); found {
@@ -872,13 +999,13 @@ func (btr *BlipTesterReplicator) storeMessage(msg *blip.Message) {
 	btr.messages[msg.SerialNumber()] = msg
 }
 
-func (btc *BlipTesterClient) WaitForBlipRevMessage(docID, revID string) (msg *blip.Message, found bool) {
+func (btc *BlipTesterCollectionClient) WaitForBlipRevMessage(docID, revID string) (msg *blip.Message, found bool) {
 	ticker := time.NewTicker(50 * time.Millisecond)
 	timeout := time.After(10 * time.Second)
 	for {
 		select {
 		case <-timeout:
-			btc.rt.tb.Fatalf("BlipTesterClient timed out waiting for BLIP message docID: %v, revID: %v", docID, revID)
+			btc.parent.rt.tb.Fatalf("BlipTesterClient timed out waiting for BLIP message docID: %v, revID: %v", docID, revID)
 			return nil, false
 		case <-ticker.C:
 			if data, found := btc.GetBlipRevMessage(docID, revID); found {
@@ -888,7 +1015,7 @@ func (btc *BlipTesterClient) WaitForBlipRevMessage(docID, revID string) (msg *bl
 	}
 }
 
-func (btc *BlipTesterClient) GetBlipRevMessage(docID, revID string) (msg *blip.Message, found bool) {
+func (btc *BlipTesterCollectionClient) GetBlipRevMessage(docID, revID string) (msg *blip.Message, found bool) {
 	btc.docsLock.RLock()
 	defer btc.docsLock.RUnlock()
 
@@ -900,4 +1027,96 @@ func (btc *BlipTesterClient) GetBlipRevMessage(docID, revID string) (msg *blip.M
 	}
 
 	return nil, false
+}
+
+func (btc *BlipTesterClient) StartPull() error {
+	return btc.DefaultCollection().StartPull()
+}
+
+func (btc *BlipTesterClient) WaitForRev(docID string, revID string) ([]byte, bool) {
+	return btc.DefaultCollection().WaitForRev(docID, revID)
+}
+
+func (btc *BlipTesterClient) WaitForBlipRevMessage(docID string, revID string) (*blip.Message, bool) {
+	return btc.DefaultCollection().WaitForBlipRevMessage(docID, revID)
+}
+
+func (btc *BlipTesterClient) StartOneshotPull() error {
+	return btc.DefaultCollection().StartOneshotPull()
+}
+
+func (btc *BlipTesterClient) PushRev(docID string, revID string, body []byte) (string, error) {
+	return btc.DefaultCollection().PushRev(docID, revID, body)
+}
+
+func (btc *BlipTesterClient) StartPullSince(continuous, since, activeOnly string) error {
+	return btc.DefaultCollection().StartPullSince(continuous, since, activeOnly)
+}
+
+func (btc *BlipTesterClient) GetRev(docID, revID string) ([]byte, bool) {
+	return btc.DefaultCollection().GetRev(docID, revID)
+}
+
+func (btc *BlipTesterClient) saveAttachment(contentType string, attachmentData string) (int, string, error) {
+	return btc.DefaultCollection().saveAttachment(contentType, attachmentData)
+}
+
+func (btc *BlipTesterClient) StoreRevOnClient(docID, revID string, body []byte) error {
+	return btc.DefaultCollection().StoreRevOnClient(docID, revID, body)
+}
+
+func (btc *BlipTesterClient) PushRevWithHistory(docID, revID string, body []byte, revCount, prunedRevCount int) (string, error) {
+	return btc.DefaultCollection().PushRevWithHistory(docID, revID, body, revCount, prunedRevCount)
+}
+
+func (btc *BlipTesterClient) AttachmentsLock() *sync.RWMutex {
+	return &btc.DefaultCollection().attachmentsLock
+}
+
+func (btc *BlipTesterClient) Attachments() map[string][]byte {
+	return btc.DefaultCollection().attachments
+}
+
+func (btc *BlipTesterClient) UnsubPullChanges() ([]byte, error) {
+	return btc.DefaultCollection().UnsubPullChanges()
+}
+
+func (btc *BlipTesterCollectionClient) addCollectionProperty(msg *blip.Message) *blip.Message {
+	if btc.collection != "" {
+		msg.Properties[db.BlipCollection] = strconv.Itoa(btc.collectionIdx)
+	}
+
+	return msg
+}
+
+func (btc *BlipTesterClient) getCollectionNameFromMessage(msg *blip.Message) (string, error) {
+	collectionIdx := msg.Properties[db.BlipCollection]
+	if len(btc.Collections) == 0 {
+		return "", nil
+	}
+
+	// FIXME: Remove when we have CBG-2264 implemented - Change this to return error
+	if collectionIdx == "" {
+		return btc.Collections[0], nil
+	}
+
+	idx, err := strconv.Atoi(collectionIdx)
+	if err != nil {
+		return "", err
+	}
+
+	if len(btc.Collections) < idx+1 {
+		return "", fmt.Errorf("idx not valid")
+	}
+	return btc.Collections[idx], nil
+}
+
+func (btc *BlipTesterCollectionClient) sendPullMsg(msg *blip.Message) error {
+	btc.addCollectionProperty(msg)
+	return btc.parent.pullReplication.sendMsg(msg)
+}
+
+func (btc *BlipTesterCollectionClient) sendPushMsg(msg *blip.Message) error {
+	btc.addCollectionProperty(msg)
+	return btc.parent.pushReplication.sendMsg(msg)
 }
