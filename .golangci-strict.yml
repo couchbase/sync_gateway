@@ -44,7 +44,6 @@ linters:
     - godox # Tool for detection of FIXME, TODO and other comment keywords
     - goerr113 # Golang linter to check the errors handling expressions
     - gofmt # Gofmt checks whether code was gofmt-ed. By default this tool runs with -s option to check for code simplification
-    - goimports # Goimports does everything that gofmt does. Additionally it checks unused imports
     - gomnd # An analyzer to detect magic numbers.
     - gomodguard # Allow and block list linter for direct Go module dependencies.
     - interfacer # Linter that suggests narrower interface types
