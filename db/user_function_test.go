@@ -21,15 +21,11 @@ import (
 
 var allowAll = &UserQueryAllow{Channels: []string{"*"}}
 
-var kUserFunctionConfig = UserFunctionMap{
+var kUserFunctionConfig = UserFunctionConfigMap{
 	"square": &UserFunctionConfig{
 		SourceCode: "return args.numero * args.numero;",
 		Parameters: []string{"numero"},
 		Allow:      &UserQueryAllow{Channels: []string{"wonderland"}},
-	},
-	"syntax_error": &UserFunctionConfig{
-		SourceCode: "returm )42(",
-		Allow:      allowAll,
 	},
 	"exceptional": &UserFunctionConfig{
 		SourceCode: `throw "oops";`,
@@ -170,11 +166,6 @@ func testUserFunctionsCommon(t *testing.T, db *Database) {
 	assert.ErrorContains(t, err, "number")
 	assert.ErrorContains(t, err, "square")
 
-	// Function definition has a syntax error:
-	_, err = db.CallUserFunction("syntax_error", nil, true)
-	assertHTTPError(t, err, 500)
-	assert.ErrorContains(t, err, "syntax_error")
-
 	// Function throws an exception:
 	_, err = db.CallUserFunction("exceptional", nil, true)
 	assert.ErrorContains(t, err, "oops")
@@ -255,6 +246,32 @@ func testUserFunctionsAsUser(t *testing.T, db *Database) {
 
 	_, err = db.CallUserFunction("villain_only", nil, true)
 	assertHTTPError(t, err, 403)
+}
+
+var kUserFunctionBadConfig = UserFunctionConfigMap{
+	"square": &UserFunctionConfig{
+		SourceCode: "return args.numero * args.numero;",
+		Parameters: []string{"numero"},
+		Allow:      &UserQueryAllow{Channels: []string{"wonderland"}},
+	},
+	"syntax_error": &UserFunctionConfig{
+		SourceCode: "returm )42(",
+		Allow:      allowAll,
+	},
+}
+
+// Test that JS syntax errors are detected when the db opens.
+func TestUserFunctionSyntaxError(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	cacheOptions := DefaultCacheOptions()
+	dbcOptions := DatabaseContextOptions{
+		CacheOptions:  &cacheOptions,
+		UserFunctions: kUserFunctionBadConfig,
+	}
+	tBucket := base.GetTestBucket(t)
+	AddOptionsFromEnvironmentVariables(&dbcOptions)
+	_, err := NewDatabaseContext("db", tBucket, false, dbcOptions)
+	assert.Error(t, err)
 }
 
 // Low-level test of channel-name parameter expansion for user query/function auth

@@ -19,6 +19,11 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 )
 
+const kFnNameParam = "name"
+const kGraphQLQueryParam = "query"
+const kGraphQLOperationNameParam = "operationName"
+const kGraphQLVariablesParam = "variables"
+
 //////// N1QL QUERIES:
 
 // HTTP handler for GET or POST `/$db/_query/$name`
@@ -29,13 +34,15 @@ func (h *handler) handleUserQuery() error {
 	}
 	// Run the query:
 	return h.db.WithTimeout(db.UserQueryTimeout, func() error {
-		results, err := h.db.UserN1QLQuery(queryName, queryParams)
+		rows, err := h.db.UserN1QLQuery(queryName, queryParams)
 		if err != nil {
 			return err
 		}
-		if err = h.db.CheckTimeout(); err != nil {
-			return err
-		}
+		defer func() {
+			if rows != nil {
+				rows.Close()
+			}
+		}()
 
 		// Write the query results to the response, as a JSON array of objects.
 		h.setHeader("Content-Type", "application/json")
@@ -44,7 +51,7 @@ func (h *handler) handleUserQuery() error {
 		}
 		first := true
 		var row interface{}
-		for results.Next(&row) {
+		for rows.Next(&row) {
 			if first {
 				first = false
 			} else {
@@ -60,7 +67,9 @@ func (h *handler) handleUserQuery() error {
 				return err
 			}
 		}
-		if err = results.Close(); err != nil {
+		err = rows.Close()
+		rows = nil // prevent 'defer' from closing again
+		if err != nil {
 			return err
 		}
 		_, err = h.response.Write([]byte("]\n"))
@@ -88,9 +97,10 @@ func (h *handler) handleUserFunction() error {
 }
 
 // Common subroutine for reading query name and parameters from a request
-func (h *handler) getUserFunctionParams() (name string, params map[string]interface{}, err error) {
-	name = h.PathVar("name")
-	params = map[string]interface{}{}
+func (h *handler) getUserFunctionParams() (string, map[string]interface{}, error) {
+	name := h.PathVar(kFnNameParam)
+	params := map[string]interface{}{}
+	var err error
 	if h.rq.Method == "POST" {
 		// POST: Params come from the request body in JSON format:
 		err = h.readJSONInto(&params)
@@ -99,16 +109,14 @@ func (h *handler) getUserFunctionParams() (name string, params map[string]interf
 		for key, values := range h.getQueryValues() {
 			// `values` is an array of strings, one per instance of the key in the URL
 			if len(values) > 1 {
-				err = base.HTTPErrorf(http.StatusBadRequest, "Duplicate parameter '%s'", key)
-				return
+				return "", nil, base.HTTPErrorf(http.StatusBadRequest, "Duplicate parameter '%s'", key)
 			}
 			value := values[0]
 			// Parse value as JSON if it looks like JSON, else just as a raw string:
 			if len(value) > 0 && strings.IndexByte(`0123456789-"[{`, value[0]) >= 0 {
 				var jsonValue interface{}
 				if base.JSONUnmarshal([]byte(value), &jsonValue) != nil {
-					err = base.HTTPErrorf(http.StatusBadRequest, "Value of ?%s is not valid JSON", key)
-					return
+					return "", nil, base.HTTPErrorf(http.StatusBadRequest, "Value of ?%s is not valid JSON", key)
 				}
 				params[key] = jsonValue
 			} else {
@@ -116,7 +124,7 @@ func (h *handler) getUserFunctionParams() (name string, params map[string]interf
 			}
 		}
 	}
-	return
+	return name, params, err
 }
 
 //////// GRAPHQL QUERIES:
@@ -144,9 +152,9 @@ func (h *handler) handleGraphQL() error {
 			if err != nil {
 				return err
 			}
-			queryString = body["query"].(string)
-			operationName, _ = body["operationName"].(string)
-			if variablesVal, _ := body["variables"]; variablesVal != nil {
+			queryString = body[kGraphQLQueryParam].(string)
+			operationName, _ = body[kGraphQLOperationNameParam].(string)
+			if variablesVal, _ := body[kGraphQLVariablesParam]; variablesVal != nil {
 				variables, _ = variablesVal.(map[string]interface{})
 				if variables == nil {
 					return base.HTTPErrorf(http.StatusBadRequest, "`variables` property must be an object")
@@ -155,9 +163,9 @@ func (h *handler) handleGraphQL() error {
 		}
 	} else {
 		// GET: Params come from the URL queries (`?query=...&operationName=...&variables=...`):
-		queryString = h.getQuery("query")
-		operationName = h.getQuery("operationName")
-		if varsJSON := h.getQuery("variables"); len(varsJSON) > 0 {
+		queryString = h.getQuery(kGraphQLQueryParam)
+		operationName = h.getQuery(kGraphQLOperationNameParam)
+		if varsJSON := h.getQuery(kGraphQLVariablesParam); len(varsJSON) > 0 {
 			if err := json.Unmarshal([]byte(varsJSON), &variables); err != nil {
 				return err
 			}

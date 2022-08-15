@@ -169,7 +169,7 @@ func (allow *UserQueryAllow) expandPattern(pattern string, args map[string]inter
 			return ""
 		} else if valueStr, ok := value.(string); ok {
 			return valueStr
-		} else if reflect.ValueOf(value).CanInt() || reflect.ValueOf(value).CanUint() {
+		} else if reflect.ValueOf(value).CanInt() || reflect.ValueOf(value).CanUint() || reflect.ValueOf(value).CanFloat() {
 			return fmt.Sprintf("%v", value)
 		} else {
 			err = base.HTTPErrorf(http.StatusBadRequest, "Value of parameter '%s' must be a string or int", arg)

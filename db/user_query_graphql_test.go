@@ -90,7 +90,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 }
 
 // JS function helpers:
-var kTestGraphQLUserFunctionsConfig = UserFunctionMap{
+var kTestGraphQLUserFunctionsConfig = UserFunctionConfigMap{
 	"all": &UserFunctionConfig{
 		SourceCode: `return [
 			{id: "a", "title": "Applesauce", done:true},

@@ -169,7 +169,7 @@ func TestDBConfigUserFunctionGetNoConfig(t *testing.T) {
 	})
 	t.Run("All", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/functions", "")
-		var body db.UserFunctionMap
+		var body db.UserFunctionConfigMap
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 		assert.Equal(t, 0, len(body))
 	})
@@ -198,7 +198,7 @@ func TestDBConfigUserFunctionGet(t *testing.T) {
 	})
 	t.Run("All", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/functions", "")
-		var body db.UserFunctionMap
+		var body db.UserFunctionConfigMap
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 		assert.NotNil(t, body["square"])
 	})

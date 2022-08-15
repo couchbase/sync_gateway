@@ -112,7 +112,8 @@ func createCommonRouter(sc *ServerContext, privs handlerPrivs) (root, db, keyspa
 	// User queries & functions
 	if sc.config.Unsupported.UserQueries != nil && *sc.config.Unsupported.UserQueries {
 		dbr.Handle("/_function/{name}", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleUserFunction)).Methods("GET", "POST")
-		dbr.Handle("/_graphql", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleGraphQL)).Methods("GET", "POST")
+		dbr.Handle("/_graphql", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleGraphQL)).Methods("GET")
+		dbr.Handle("/_graphql", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handleGraphQL)).Methods("POST")
 		dbr.Handle("/_query/{name}", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleUserQuery)).Methods("GET", "POST")
 	}
 

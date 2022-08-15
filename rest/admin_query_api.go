@@ -48,7 +48,7 @@ func (h *handler) handleGetDbConfigFunction() error {
 
 // PUT/DELETE config: user function(s)
 func (h *handler) handlePutDbConfigFunctions() error {
-	var functionsConfig db.UserFunctionMap
+	var functionsConfig db.UserFunctionConfigMap
 	if h.rq.Method != "DELETE" {
 		if err := h.readJSONInto(&functionsConfig); err != nil {
 			return err
@@ -73,7 +73,7 @@ func (h *handler) handlePutDbConfigFunction() error {
 		}
 		return h.mutateDbConfig(func(dbConfig *DbConfig) error {
 			if dbConfig.UserFunctions == nil {
-				dbConfig.UserFunctions = db.UserFunctionMap{}
+				dbConfig.UserFunctions = db.UserFunctionConfigMap{}
 			}
 			dbConfig.UserFunctions[functionName] = functionConfig
 			return nil
@@ -119,9 +119,6 @@ func (h *handler) handlePutDbConfigGraphQL() error {
 		dbConfig.GraphQL = newConfig
 		return nil
 	})
-	if _, ok := err.(*db.GraphQLConfigError); ok {
-		return base.HTTPErrorf(http.StatusBadRequest, err.Error())
-	}
 	return err
 }
 

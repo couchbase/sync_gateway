@@ -66,29 +66,16 @@ func (gq *GraphQL) Query(db *Database, query string, operationName string, varia
 		OperationName:  operationName,
 		Context:        ctx,
 	})
-	if len(result.Errors) > 0 {
-		// ??? Is this worth logging?
-		base.WarnfCtx(ctx, "GraphQL query produced errors: %#v", result.Errors)
-	}
 	return result, nil
 }
 
 //////// GRAPHQL INITIALIZATION:
 
-// The type of error returned by NewGraphQL() and GraphQLConfig.Validate().
-type GraphQLConfigError struct {
-	err error
-}
-
-func (e *GraphQLConfigError) Error() string {
-	return fmt.Sprintf("GraphQL configuration error: %v", e.err)
-}
-
 // Creates a new GraphQL instance for this DatabaseContext, using the config from `dbc.Options`.
 // Called once, when the database opens.
 func NewGraphQL(dbc *DatabaseContext) (*GraphQL, error) {
 	if schema, err := dbc.Options.GraphQL.CompileSchema(); err != nil {
-		return nil, &GraphQLConfigError{err}
+		return nil, err
 	} else {
 		gql := &GraphQL{
 			dbc:    dbc,
@@ -100,10 +87,8 @@ func NewGraphQL(dbc *DatabaseContext) (*GraphQL, error) {
 
 // Validates a GraphQL configuration by parsing the schema.
 func (config *GraphQLConfig) Validate() error {
-	if _, err := config.CompileSchema(); err != nil {
-		return &GraphQLConfigError{err}
-	}
-	return nil
+	_, err := config.CompileSchema()
+	return err
 }
 
 func (config *GraphQLConfig) CompileSchema() (graphql.Schema, error) {
@@ -113,6 +98,7 @@ func (config *GraphQLConfig) CompileSchema() (graphql.Schema, error) {
 		return graphql.Schema{}, err
 	}
 
+	var multiError *base.MultiError
 	// Assemble the resolvers:
 	resolvers := map[string]interface{}{}
 	for name, resolver := range config.Resolvers {
@@ -124,12 +110,12 @@ func (config *GraphQLConfig) CompileSchema() (graphql.Schema, error) {
 				// instance of an interface.
 				typeNameResolver, err = config.compileTypeNameResolver(name, jsCode)
 			} else {
-				if fn, err := config.compileFieldResolver(name, fieldName, jsCode); err == nil {
-					fieldMap[fieldName] = &gqltools.FieldResolve{Resolve: fn}
-				}
+				var fn graphql.FieldResolveFn
+				fn, err = config.compileFieldResolver(name, fieldName, jsCode)
+				fieldMap[fieldName] = &gqltools.FieldResolve{Resolve: fn}
 			}
 			if err != nil {
-				return graphql.Schema{}, err
+				multiError = multiError.Append(err)
 			}
 		}
 		if typeNameResolver == nil {
@@ -142,6 +128,9 @@ func (config *GraphQLConfig) CompileSchema() (graphql.Schema, error) {
 				ResolveType: typeNameResolver,
 			}
 		}
+	}
+	if multiError != nil {
+		return graphql.Schema{}, multiError.ErrorOrNil()
 	}
 
 	// Now compile the schema and create the graphql.Schema object:
@@ -162,16 +151,16 @@ func (config *GraphQLConfig) CompileSchema() (graphql.Schema, error) {
 func (config *GraphQLConfig) getSchema() (string, error) {
 	if config.Schema != nil {
 		if config.SchemaFile != nil {
-			return "", &GraphQLConfigError{fmt.Errorf("only one of `schema` and `schemaFile` may be used")}
+			return "", fmt.Errorf("GraphQL config: only one of `schema` and `schemaFile` may be used")
 		}
 		return *config.Schema, nil
 	} else {
 		if config.SchemaFile == nil {
-			return "", &GraphQLConfigError{fmt.Errorf("either `schema` or `schemaFile` must be defined")}
+			return "", fmt.Errorf("GraphQL config: either `schema` or `schemaFile` must be defined")
 		}
 		src, err := os.ReadFile(*config.SchemaFile)
 		if err != nil {
-			return "", &GraphQLConfigError{fmt.Errorf("can't read schemaFile %s: %w", *config.SchemaFile, err)}
+			return "", fmt.Errorf("GraphQL config: cann't read file %s: %w", *config.SchemaFile, err)
 		}
 		return string(src), nil
 	}
@@ -183,8 +172,12 @@ func (config *GraphQLConfig) getSchema() (string, error) {
 // that invokes it.
 func (config *GraphQLConfig) compileFieldResolver(resolverName string, fieldName string, jsCode string) (graphql.FieldResolveFn, error) {
 	name := resolverName + "." + fieldName
+	server, err := newUserFunctionJSServer(name, "GraphQL resolver", "parent, args, context, info", jsCode)
+	if err != nil {
+		return nil, err
+	}
 	resolver := &graphQLResolver{
-		JSServer: newUserFunctionJSServer(name, "GraphQL resolver", "parent, args, context, info", jsCode),
+		JSServer: server,
 		Name:     name,
 	}
 	return func(params graphql.ResolveParams) (interface{}, error) {
@@ -239,8 +232,12 @@ func (res *graphQLResolver) Resolve(db *Database, params *graphql.ResolveParams,
 //////// TYPE-NAME RESOLVER:
 
 func (config *GraphQLConfig) compileTypeNameResolver(interfaceName string, jsCode string) (graphql.ResolveTypeFn, error) {
+	server, err := newUserFunctionJSServer(interfaceName, "GraphQL type-name resolver", "value, context, info", jsCode)
+	if err != nil {
+		return nil, err
+	}
 	resolver := &graphQLResolver{
-		JSServer: newUserFunctionJSServer(interfaceName, "GraphQL type-name resolver", "value, context, info", jsCode),
+		JSServer: server,
 		Name:     interfaceName + ".__typename",
 	}
 	return func(params graphql.ResolveTypeParams) *graphql.Object {

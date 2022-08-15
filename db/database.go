@@ -120,6 +120,7 @@ type DatabaseContext struct {
 	ServeInsecureAttachmentTypes bool                     // Attachment content type will bypass the content-disposition handling, default false
 	NoX509HTTPClient             *http.Client             // A HTTP Client from gocb to use the management endpoints
 	ServerContextHasStarted      chan struct{}            // Closed via PostStartup once the server has fully started
+	userFunctions                UserFunctions            // client-callable JavaScript functions
 	graphQL                      *GraphQL                 // GraphQL query evaluator
 	Scopes                       map[string]Scope         // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
 }
@@ -142,20 +143,20 @@ type DatabaseContextOptions struct {
 	LocalJWTConfig                auth.LocalJWTConfig
 	DBOnlineCallback              DBOnlineCallback // Callback function to take the DB back online
 	ImportOptions                 ImportOptions
-	EnableXattr                   bool             // Use xattr for _sync
-	LocalDocExpirySecs            uint32           // The _local doc expiry time in seconds
-	SecureCookieOverride          bool             // Pass-through DBConfig.SecureCookieOverride
-	SessionCookieName             string           // Pass-through DbConfig.SessionCookieName
-	SessionCookieHttpOnly         bool             // Pass-through DbConfig.SessionCookieHTTPOnly
-	UserQueries                   UserQueryMap     // Pass-through DbConfig.UserQueries
-	UserFunctions                 UserFunctionMap  // Pass-through DbConfig.UserFunctions
-	GraphQL                       *GraphQLConfig   // Pass-through DbConfig.GraphQL
-	AllowConflicts                *bool            // False forbids creating conflicts
-	SendWWWAuthenticateHeader     *bool            // False disables setting of 'WWW-Authenticate' header
-	DisablePasswordAuthentication bool             // True enforces OIDC/guest only
-	UseViews                      bool             // Force use of views
-	DeltaSyncOptions              DeltaSyncOptions // Delta Sync Options
-	CompactInterval               uint32           // Interval in seconds between compaction is automatically ran - 0 means don't run
+	EnableXattr                   bool                  // Use xattr for _sync
+	LocalDocExpirySecs            uint32                // The _local doc expiry time in seconds
+	SecureCookieOverride          bool                  // Pass-through DBConfig.SecureCookieOverride
+	SessionCookieName             string                // Pass-through DbConfig.SessionCookieName
+	SessionCookieHttpOnly         bool                  // Pass-through DbConfig.SessionCookieHTTPOnly
+	UserQueries                   UserQueryMap          // Pass-through DbConfig.UserQueries
+	UserFunctions                 UserFunctionConfigMap // Pass-through DbConfig.UserFunctions
+	GraphQL                       *GraphQLConfig        // Pass-through DbConfig.GraphQL
+	AllowConflicts                *bool                 // False forbids creating conflicts
+	SendWWWAuthenticateHeader     *bool                 // False disables setting of 'WWW-Authenticate' header
+	DisablePasswordAuthentication bool                  // True enforces OIDC/guest only
+	UseViews                      bool                  // Force use of views
+	DeltaSyncOptions              DeltaSyncOptions      // Delta Sync Options
+	CompactInterval               uint32                // Interval in seconds between compaction is automatically ran - 0 means don't run
 	SGReplicateOptions            SGReplicateOptions
 	SlowQueryWarningThreshold     time.Duration
 	QueryPaginationLimit          int    // Limit used for pagination of queries. If not set defaults to DefaultQueryPaginationLimit
@@ -609,6 +610,12 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	dbContext.TombstoneCompactionManager = NewTombstoneCompactionManager()
 	dbContext.AttachmentCompactionManager = NewAttachmentCompactionManager(bucket)
 
+	if options.UserFunctions != nil {
+		dbContext.userFunctions, err = compileUserFunctions(options.UserFunctions)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if options.GraphQL != nil {
 		dbContext.graphQL, err = NewGraphQL(dbContext)
 		if err != nil {

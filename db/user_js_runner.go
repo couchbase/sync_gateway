@@ -25,6 +25,28 @@ import (
 	_ "github.com/robertkrimen/otto/underscore"
 )
 
+// Number of Otto contexts to cache per function, i.e. the number of goroutines that can be simultaneously running each function.
+const kUserFunctionCacheSize = 2
+
+// Creates a JSServer instance wrapping a userJSRunner, for user JS functions and GraphQL resolvers.
+func newUserFunctionJSServer(name string, what string, argList string, sourceCode string) (*sgbucket.JSServer, error) {
+	js := fmt.Sprintf(kJavaScriptWrapper, argList, sourceCode)
+	jsServer := sgbucket.NewJSServer(js, 0, kUserFunctionCacheSize,
+		func(fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
+			return newUserJavaScriptRunner(name, what, fnSource)
+		})
+	// Call WithTask to force a task to be instantiated, which will detect syntax errors in the script. Otherwise the error only gets detected the first time a client calls the function.
+	var err error
+	_, err = jsServer.WithTask(func(sgbucket.JSServerTask) (interface{}, error) {
+		return nil, nil
+	})
+	return jsServer, err
+}
+
+func newUserFunctionJSContext(db *Database) map[string]interface{} {
+	return map[string]interface{}{"user": makeUserCtx(db.user)}
+}
+
 // An object that runs a user JavaScript function or a GraphQL resolver.
 // Not thread-safe! Owned by an sgbucket.JSServer, which arbitrates access to it.
 type userJSRunner struct {
@@ -213,18 +235,22 @@ func (runner *userJSRunner) do_graphql(query string, params map[string]interface
 // Implementation of JS `app.query(name, params)` function
 func (runner *userJSRunner) do_query(queryName string, params map[string]interface{}) ([]interface{}, error) {
 
-	results, err := runner.currentDB.UserN1QLQuery(queryName, params)
+	rows, err := runner.currentDB.UserN1QLQuery(queryName, params)
 	if err != nil {
 		return nil, err
 	}
+	defer func() {
+		if rows != nil {
+			rows.Close()
+		}
+	}()
 	result := []interface{}{}
 	var row interface{}
-	for results.Next(&row) {
+	for rows.Next(&row) {
 		result = append(result, row)
 	}
-	if err = results.Close(); err != nil {
-		return nil, err
-	}
+	err = rows.Close()
+	rows = nil // prevent 'defer' from closing again
 	return result, err
 }
 
