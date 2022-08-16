@@ -175,6 +175,9 @@ func TestShardedDCPUpgrade(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skip("EE-only test")
 	}
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Heartbeat listener requires Couchbase Server")
+	}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyDCP, base.KeyImport, base.KeyCluster)
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
