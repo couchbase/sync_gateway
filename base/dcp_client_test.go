@@ -45,12 +45,21 @@ func TestOneShotDCP(t *testing.T) {
 
 	// start one shot feed
 	feedID := t.Name()
-	clientOptions := DCPClientOptions{
-		OneShot: true,
-	}
 
 	collection, err := AsCollection(bucket)
 	require.NoError(t, err)
+	var collectionIDs []uint32
+	if collection.Spec.Scope != nil && collection.Spec.Collection != nil {
+		collectionID, err := collection.GetCollectionID()
+		require.NoError(t, err)
+		collectionIDs = append(collectionIDs, collectionID)
+	}
+
+	clientOptions := DCPClientOptions{
+		OneShot:       true,
+		CollectionIDs: collectionIDs,
+	}
+
 	dcpClient, err := NewDCPClient(feedID, counterCallback, clientOptions, collection)
 	require.NoError(t, err)
 
@@ -201,14 +210,21 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				err := bucket.Set(key, 0, nil, updatedBody)
 				require.NoError(t, err)
 			}
+			collection, err := AsCollection(bucket)
+			require.NoError(t, err)
+			var collectionIDs []uint32
+			if collection.Spec.Scope != nil && collection.Spec.Collection != nil {
+				collectionID, err := collection.GetCollectionID()
+				require.NoError(t, err)
+				collectionIDs = append(collectionIDs, collectionID)
+			}
 
 			// Perform first one-shot DCP feed - normal one-shot
 			dcpClientOpts := DCPClientOptions{
 				OneShot:        true,
 				FailOnRollback: true,
+				CollectionIDs:  collectionIDs,
 			}
-			collection, err := AsCollection(bucket)
-			require.NoError(t, err)
 
 			dcpClient, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, collection)
 			require.NoError(t, err)
@@ -239,10 +255,8 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				InitialMetadata: uuidMismatchMetadata,
 				FailOnRollback:  true,
 				OneShot:         true,
+				CollectionIDs:   collectionIDs,
 			}
-			collection, err = AsCollection(bucket)
-			require.NoError(t, err)
-
 			dcpClient2, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, collection)
 			require.NoError(t, err)
 
@@ -258,6 +272,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				InitialMetadata: uuidMismatchMetadata,
 				FailOnRollback:  false,
 				OneShot:         true,
+				CollectionIDs:   collectionIDs,
 			}
 			collection, err = AsCollection(bucket)
 			require.NoError(t, err)
@@ -322,13 +337,22 @@ func TestResumeStoppedFeed(t *testing.T) {
 	// Start first one-shot DCP feed, will be stopped by callback after processing 5000 records
 	// Set metadata persistence frequency to zero to force persistence on every mutation
 	highFrequency := 0 * time.Second
+
+	collection, err := AsCollection(bucket)
+	require.NoError(t, err)
+	var collectionIDs []uint32
+	if collection.Spec.Scope != nil && collection.Spec.Collection != nil {
+		collectionID, err := collection.GetCollectionID()
+		require.NoError(t, err)
+		collectionIDs = append(collectionIDs, collectionID)
+	}
+
 	dcpClientOpts := DCPClientOptions{
 		OneShot:                    true,
 		FailOnRollback:             false,
 		CheckpointPersistFrequency: &highFrequency,
+		CollectionIDs:              collectionIDs,
 	}
-	collection, err := AsCollection(bucket)
-	require.NoError(t, err)
 
 	dcpClient, err = NewDCPClient(feedID, counterCallback, dcpClientOpts, collection)
 	require.NoError(t, err)
@@ -360,6 +384,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 	dcpClientOpts = DCPClientOptions{
 		FailOnRollback: false,
 		OneShot:        true,
+		CollectionIDs:  collectionIDs,
 	}
 	collection, err = AsCollection(bucket)
 	require.NoError(t, err)
