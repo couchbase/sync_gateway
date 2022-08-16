@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -56,6 +57,8 @@ const (
 	// Prints detailed debug logs from the test pooling framework.
 	tbpEnvVerbose = "SG_TEST_BUCKET_POOL_DEBUG"
 
+	tbpUseCollectionPool = "SG_TEST_COLLLECTION_POOL"
+
 	// wait this long when requesting a test bucket from the pool before giving up and failing the test.
 	waitForReadyBucketTimeout = time.Minute
 )
@@ -87,6 +90,8 @@ type TestBucketPool struct {
 	// keep track of tests that don't close their buckets, map of test names to bucket names
 	unclosedBuckets     map[string]map[string]struct{}
 	unclosedBucketsLock sync.Mutex
+
+	usingCollections bool
 }
 
 // NewTestBucketPool initializes a new TestBucketPool. To be called from TestMain for packages requiring test buckets.
@@ -124,6 +129,7 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 		preserveBuckets:        preserveBuckets,
 		bucketInitFunc:         bucketInitFunc,
 		unclosedBuckets:        make(map[string]map[string]struct{}),
+		usingCollections:       tbpUseCollection(),
 	}
 
 	tbp.cluster = newTestCluster(UnitTestUrl(), tbp.Logf)
@@ -312,14 +318,7 @@ func (tbp *TestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s Bucke
 		tbp.markBucketClosed(t, bucket)
 		bucket.Close()
 
-		if tbp.preserveBuckets && t.Failed() {
-			tbp.Logf(ctx, "Test using bucket failed. Preserving bucket for later inspection")
-			atomic.AddUint32(&tbp.preservedBucketCount, 1)
-			return
-		}
-
-		tbp.Logf(ctx, "Teardown called - Pushing into bucketReadier queue")
-		tbp.addBucketToReadierQueue(ctx, tbpBucketName(bucket.GetName()))
+		return
 	}
 }
 
@@ -583,6 +582,11 @@ loop:
 	tbp.Logf(context.Background(), "Stopped bucketReadier")
 }
 
+// Using named collections specifies whether the bucket pool is using named collections.
+func (tbp *TestBucketPool) UsingNamedCollections() bool {
+	return tbp.usingCollections
+}
+
 // TBPBucketInitFunc is a function that is run once (synchronously) when creating/opening a bucket.
 type TBPBucketInitFunc func(ctx context.Context, b Bucket, tbp *TestBucketPool) error
 
@@ -623,22 +627,19 @@ var FlushBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b Bu
 		if err := c.DropAllScopesAndCollections(); err != nil && !errors.Is(err, ErrCollectionsUnsupported) {
 			return err
 		}
-
-		err := createScopeAndCollections(ctx, c.Bucket().Collections(), c.Bucket(), map[string][]string{
-			*c.Spec.Scope: []string{*c.Spec.Collection},
-		})
-		if err != nil {
-			return err
+		if tbpUseCollection() {
+			err := CreateNamedCollection(ctx, b)
+			if err != nil {
+				return err
+			}
 		}
 
 	}
-	tbp.Logf(ctx, "Bucket is not a collection")
-	return nil
-	//flushableBucket, ok := b.(sgbucket.FlushableStore)
-	//if !ok {
-	//	return errors.New("FlushBucketEmptierFunc used with non-flushable bucket")
-	//}
-	//return flushableBucket.Flush()
+	flushableBucket, ok := b.(sgbucket.FlushableStore)
+	if !ok {
+		return errors.New("FlushBucketEmptierFunc used with non-flushable bucket")
+	}
+	return flushableBucket.Flush()
 }
 
 // N1QLBucketEmptierFunc ensures the bucket is empty by using N1QL deletes. This is the preferred approach when using GSI.
@@ -705,23 +706,24 @@ func getBucketSpec(testBucketName tbpBucketName) BucketSpec {
 	bucketSpec := tbpDefaultBucketSpec
 	bucketSpec.BucketName = string(testBucketName)
 	bucketSpec.TLSSkipVerify = TestTLSSkipVerify()
-	fmt.Printf("%+v\n", bucketSpec)
-	if bucketSpec.Scope == nil && bucketSpec.Collection == nil {
-		scopeName, err := GenerateRandomID()
-		if err != nil {
-			panic(err)
+	if tbpUseCollection() {
+		if bucketSpec.Scope == nil && bucketSpec.Collection == nil {
+			scopeName, err := GenerateRandomID()
+			if err != nil {
+				panic(err)
+			}
+			scopeName = "sg_test_scope_" + scopeName
+			collectionName, err := GenerateRandomID()
+			if err != nil {
+				panic(err)
+			}
+			collectionName = "sg_test_collection_" + collectionName
+			bucketSpec.Scope = &scopeName
+			bucketSpec.Collection = &collectionName
+			fmt.Printf("Scope.Collection=%s.%s", scopeName, collectionName)
 		}
-		scopeName = "sg_test_scope_" + scopeName
-		collectionName, err := GenerateRandomID()
-		if err != nil {
-			panic(err)
-		}
-		collectionName = "sg_test_collection_" + collectionName
-		bucketSpec.Scope = &scopeName
-		bucketSpec.Collection = &collectionName
-		fmt.Printf("Scope.Collection=%s.%s", scopeName, collectionName)
 	}
-	fmt.Printf("%+v\n", bucketSpec)
+
 	return bucketSpec
 }
 
@@ -775,6 +777,11 @@ func tbpVerbose() bool {
 	return verbose
 }
 
+func tbpUseCollection() bool {
+	verbose, _ := strconv.ParseBool(os.Getenv(tbpUseCollectionPool))
+	return verbose
+}
+
 // TestClusterUsername returns the configured cluster username.
 func TestClusterUsername() string {
 	username := DefaultTestClusterUsername
@@ -799,4 +806,20 @@ func TestClusterDriver() CouchbaseDriver {
 		driver = AsCouchbaseDriver(envClusterDriver)
 	}
 	return driver
+}
+
+func CreateNamedCollection(ctx context.Context, b Bucket) error {
+	c, ok := b.(*Collection)
+	if !ok {
+		return fmt.Errorf("Using named collections without a collection")
+	}
+	if c.Spec.Scope != nil && c.Spec.Collection != nil {
+		err := CreateScopeAndCollections(ctx, c.Bucket().Collections(), c.Bucket(), map[string][]string{
+			*c.Spec.Scope: []string{*c.Spec.Collection},
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

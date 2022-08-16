@@ -749,10 +749,10 @@ func CreateBucketScopesAndCollections(ctx context.Context, bucketSpec BucketSpec
 	bucket := cluster.Bucket(bucketSpec.BucketName)
 	cm := bucket.Collections()
 
-	return createScopeAndCollections(ctx, cm, bucket, scopes)
+	return CreateScopeAndCollections(ctx, cm, bucket, scopes)
 }
 
-func createScopeAndCollections(ctx context.Context, cm *gocb.CollectionManager, bucket *gocb.Bucket, scopesAndCollections map[string][]string) error {
+func CreateScopeAndCollections(ctx context.Context, cm *gocb.CollectionManager, bucket *gocb.Bucket, scopesAndCollections map[string][]string) error {
 	for scopeName, collections := range scopesAndCollections {
 		if err := cm.CreateScope(scopeName, nil); err != nil && !errors.Is(err, gocb.ErrScopeExists) {
 			return fmt.Errorf("failed to create scope %s: %w", scopeName, err)

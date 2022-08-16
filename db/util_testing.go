@@ -239,37 +239,57 @@ var ViewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 		return viewBucketReadier(ctx, b, tbp)
 	}
 
+	tbp.Logf(ctx, "Starting bucket ready function")
 	if c, ok := b.(*base.Collection); ok {
 		if err := c.DropAllScopesAndCollections(); err != nil && !errors.Is(err, base.ErrCollectionsUnsupported) {
 			return err
 		}
+		if tbp.UsingNamedCollections() {
+			err := base.CreateNamedCollection(ctx, b)
+			if err != nil {
+				return err
+			}
+		}
+
 	}
 
-	tbp.Logf(ctx, "emptying bucket via N1QL, readying views and indexes")
-	if err := base.N1QLBucketEmptierFunc(ctx, b, tbp); err != nil {
-		return err
-	}
+	if !tbp.UsingNamedCollections() {
+		tbp.Logf(ctx, "emptying bucket via N1QL, readying views and indexes")
+		if err := base.N1QLBucketEmptierFunc(ctx, b, tbp); err != nil {
+			return err
+		}
 
-	if _, err := emptyAllDocsIndex(ctx, b, tbp); err != nil {
-		return err
-	}
+		if _, err := emptyAllDocsIndex(ctx, b, tbp); err != nil {
+			return err
+		}
 
-	if err := viewBucketReadier(ctx, b, tbp); err != nil {
-		return err
+		if err := viewBucketReadier(ctx, b, tbp); err != nil {
+			return err
+		}
 	}
-
 	n1qlStore, ok := base.AsN1QLStore(b)
 	if !ok {
 		return errors.New("attempting to empty indexes with non-N1QL store")
 	}
-	tbp.Logf(ctx, "waiting for empty bucket indexes")
-	// we can't init indexes concurrently, so we'll just wait for them to be empty after emptying instead of recreating.
-	if err := WaitForIndexEmpty(n1qlStore, base.TestUseXattrs()); err != nil {
-		tbp.Logf(ctx, "WaitForIndexEmpty returned an error: %v", err)
-		return err
-	}
-	tbp.Logf(ctx, "bucket indexes empty")
+	if !tbp.UsingNamedCollections() {
+		tbp.Logf(ctx, "waiting for empty bucket indexes")
+		// we can't init indexes concurrently, so we'll just wait for them to be empty after emptying instead of recreating.
+		if err := WaitForIndexEmpty(n1qlStore, base.TestUseXattrs()); err != nil {
+			tbp.Logf(ctx, "WaitForIndexEmpty returned an error: %v", err)
+			return err
+		}
+		tbp.Logf(ctx, "bucket indexes empty")
+	} else {
+		tbp.Logf(ctx, "creating SG bucket indexes")
+		if err := InitializeIndexes(n1qlStore, base.TestUseXattrs(), 0, false); err != nil {
+			return err
+		}
 
+		err := n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -284,30 +304,37 @@ var ViewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 		tbp.Logf(ctx, "bucket not a gocb bucket... skipping GSI setup")
 		return viewBucketReadier(ctx, b, tbp)
 	}
+	tbp.Logf(ctx, "Starting bucket init function")
 
 	// Exit early if we're not using GSI.
 	if base.TestsDisableGSI() {
 		return nil
 	}
-
+	if tbp.UsingNamedCollections() {
+		err := base.CreateNamedCollection(ctx, b)
+		if err != nil {
+			return err
+		}
+	}
 	n1qlStore, ok := base.AsN1QLStore(b)
 	if !ok {
 		return fmt.Errorf("bucket %T was not a N1QL store", b)
 	}
 
-	if empty, err := isIndexEmpty(n1qlStore, base.TestUseXattrs()); empty && err == nil {
-		tbp.Logf(ctx, "indexes already created, and already empty - skipping")
-		return nil
-	} else {
-		tbp.Logf(ctx, "indexes not empty (or doesn't exist) - %v %v", empty, err)
-	}
+	if !tbp.UsingNamedCollections() {
+		if empty, err := isIndexEmpty(n1qlStore, base.TestUseXattrs()); empty && err == nil {
+			tbp.Logf(ctx, "indexes already created, and already empty - skipping")
+			return nil
+		} else {
+			tbp.Logf(ctx, "indexes not empty (or doesn't exist) - %v %v", empty, err)
+		}
 
-	tbp.Logf(ctx, "dropping existing bucket indexes")
-	if err := base.DropAllIndexes(ctx, n1qlStore); err != nil {
-		tbp.Logf(ctx, "Failed to drop bucket indexes: %v", err)
-		return err
+		tbp.Logf(ctx, "dropping existing bucket indexes")
+		if err := base.DropAllIndexes(ctx, n1qlStore); err != nil {
+			tbp.Logf(ctx, "Failed to drop bucket indexes: %v", err)
+			return err
+		}
 	}
-
 	tbp.Logf(ctx, "creating SG bucket indexes")
 	if err := InitializeIndexes(n1qlStore, base.TestUseXattrs(), 0, false); err != nil {
 		return err
