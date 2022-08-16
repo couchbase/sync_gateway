@@ -677,6 +677,7 @@ func (c *Collection) DropAllScopesAndCollections() error {
 	// For each non-default scope, drop them.
 	// For each collection within the default scope, drop them.
 	for _, scope := range scopes {
+		WarnfCtx(context.TODO(), "Dropping scope %s on bucket %s", MD(scope).Redact(), MD(c.Bucket().Name()).Redact())
 		if scope.Name != DefaultScope {
 			if err := cm.DropScope(scope.Name, nil); err != nil {
 				WarnfCtx(context.TODO(), "Error dropping scope %s on bucket %s: %v  Will retry.", MD(scope).Redact(), MD(c.Bucket().Name()).Redact(), err)
@@ -688,6 +689,7 @@ func (c *Collection) DropAllScopesAndCollections() error {
 		// can't delete _default scope - but we can delete the non-_default collections within it
 		for _, collection := range scope.Collections {
 			if collection.Name != DefaultCollection {
+				WarnfCtx(context.TODO(), "Dropping scope %s on bucket %s", MD(scope).Redact(), MD(c.Bucket().Name()).Redact())
 				if err := cm.DropCollection(collection, nil); err != nil {
 					WarnfCtx(context.TODO(), "Error dropping collection %s in scope %s on bucket %s: %v  Will retry.", MD(collection.Name).Redact(), MD(scope).Redact(), MD(c.Bucket().Name()).Redact(), err)
 					return err
@@ -813,9 +815,14 @@ func (c *Collection) GetExpiry(k string) (expiry uint32, getMetaError error) {
 		WarnfCtx(context.TODO(), "Unable to obtain gocbcore.Agent while retrieving expiry:%v", err)
 		return 0, err
 	}
+	collectionID, err := c.GetCollectionID()
+	if err != nil {
+		return 0, err
+	}
 	getMetaOptions := gocbcore.GetMetaOptions{
-		Key:      []byte(k),
-		Deadline: c.getBucketOpDeadline(),
+		Key:          []byte(k),
+		Deadline:     c.getBucketOpDeadline(),
+		CollectionID: collectionID,
 	}
 
 	wg := sync.WaitGroup{}
@@ -1001,7 +1008,7 @@ func (c *Collection) getBucketOpDeadline() time.Time {
 }
 
 // getCollectionID returns the gocbcore CollectionID for the current collection
-func (c *Collection) getCollectionID() (uint32, error) {
+func (c *Collection) GetCollectionID() (uint32, error) {
 	// return cached value if present
 	collectionIDAtomic := c.collectionID.Load()
 	if collectionIDAtomic != nil {

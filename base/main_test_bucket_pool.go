@@ -21,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -618,17 +617,28 @@ type TBPBucketReadierFunc func(ctx context.Context, b Bucket, tbp *TestBucketPoo
 // FlushBucketEmptierFunc ensures the bucket is empty by flushing. It is not recommended to use with GSI.
 var FlushBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b Bucket, tbp *TestBucketPool) error {
 
-	if c, ok := b.(*Collection); ok {
+	c, ok := b.(*Collection)
+	if ok {
+		tbp.Logf(ctx, "Bucket is a collection %+v %+v", c.Spec.Scope, c.Spec.Collection)
 		if err := c.DropAllScopesAndCollections(); err != nil && !errors.Is(err, ErrCollectionsUnsupported) {
 			return err
 		}
-	}
 
-	flushableBucket, ok := b.(sgbucket.FlushableStore)
-	if !ok {
-		return errors.New("FlushBucketEmptierFunc used with non-flushable bucket")
+		err := createScopeAndCollections(ctx, c.Bucket().Collections(), c.Bucket(), map[string][]string{
+			*c.Spec.Scope: []string{*c.Spec.Collection},
+		})
+		if err != nil {
+			return err
+		}
+
 	}
-	return flushableBucket.Flush()
+	tbp.Logf(ctx, "Bucket is not a collection")
+	return nil
+	//flushableBucket, ok := b.(sgbucket.FlushableStore)
+	//if !ok {
+	//	return errors.New("FlushBucketEmptierFunc used with non-flushable bucket")
+	//}
+	//return flushableBucket.Flush()
 }
 
 // N1QLBucketEmptierFunc ensures the bucket is empty by using N1QL deletes. This is the preferred approach when using GSI.
@@ -695,6 +705,23 @@ func getBucketSpec(testBucketName tbpBucketName) BucketSpec {
 	bucketSpec := tbpDefaultBucketSpec
 	bucketSpec.BucketName = string(testBucketName)
 	bucketSpec.TLSSkipVerify = TestTLSSkipVerify()
+	fmt.Printf("%+v\n", bucketSpec)
+	if bucketSpec.Scope == nil && bucketSpec.Collection == nil {
+		scopeName, err := GenerateRandomID()
+		if err != nil {
+			panic(err)
+		}
+		scopeName = "sg_test_scope_" + scopeName
+		collectionName, err := GenerateRandomID()
+		if err != nil {
+			panic(err)
+		}
+		collectionName = "sg_test_collection_" + collectionName
+		bucketSpec.Scope = &scopeName
+		bucketSpec.Collection = &collectionName
+		fmt.Printf("Scope.Collection=%s.%s", scopeName, collectionName)
+	}
+	fmt.Printf("%+v\n", bucketSpec)
 	return bucketSpec
 }
 

@@ -746,9 +746,14 @@ func CreateBucketScopesAndCollections(ctx context.Context, bucketSpec BucketSpec
 	}
 	defer func() { _ = cluster.Close(nil) }()
 
-	cm := cluster.Bucket(bucketSpec.BucketName).Collections()
+	bucket := cluster.Bucket(bucketSpec.BucketName)
+	cm := bucket.Collections()
 
-	for scopeName, collections := range scopes {
+	return createScopeAndCollections(ctx, cm, bucket, scopes)
+}
+
+func createScopeAndCollections(ctx context.Context, cm *gocb.CollectionManager, bucket *gocb.Bucket, scopesAndCollections map[string][]string) error {
+	for scopeName, collections := range scopesAndCollections {
 		if err := cm.CreateScope(scopeName, nil); err != nil && !errors.Is(err, gocb.ErrScopeExists) {
 			return fmt.Errorf("failed to create scope %s: %w", scopeName, err)
 		}
@@ -762,12 +767,11 @@ func CreateBucketScopesAndCollections(ctx context.Context, bucketSpec BucketSpec
 				return fmt.Errorf("failed to create collection %s in scope %s: %w", collectionName, scopeName, err)
 			}
 			DebugfCtx(ctx, KeySGTest, "Created collection %s.%s", scopeName, collectionName)
-			if err := waitUntilScopeAndCollectionExists(cluster.Bucket(bucketSpec.BucketName).Scope(scopeName).Collection(collectionName)); err != nil {
+			if err := waitUntilScopeAndCollectionExists(bucket.Scope(scopeName).Collection(collectionName)); err != nil {
 				return err
 			}
 			DebugfCtx(ctx, KeySGTest, "Collection now exists %s.%s", scopeName, collectionName)
 		}
 	}
-
 	return nil
 }
