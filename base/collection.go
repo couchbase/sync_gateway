@@ -813,9 +813,17 @@ func (c *Collection) GetExpiry(k string) (expiry uint32, getMetaError error) {
 		WarnfCtx(context.TODO(), "Unable to obtain gocbcore.Agent while retrieving expiry:%v", err)
 		return 0, err
 	}
+
 	getMetaOptions := gocbcore.GetMetaOptions{
 		Key:      []byte(k),
 		Deadline: c.getBucketOpDeadline(),
+	}
+	if !c.isDefaultScopeCollection() {
+		collectionID, err := c.getCollectionID()
+		if err != nil {
+			return 0, err
+		}
+		getMetaOptions.CollectionID = collectionID
 	}
 
 	wg := sync.WaitGroup{}
