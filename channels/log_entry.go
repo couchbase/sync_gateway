@@ -37,7 +37,6 @@ const (
 	Branched             // Revision tree is branched
 	Added                // Doc was added to this channel
 
-	kMaxFlag = (1 << iota) - 1
 )
 
 type LogEntry struct {

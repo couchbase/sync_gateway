@@ -39,7 +39,6 @@ import (
 
 var TestExternalRevStorage = false
 var numOpenBucketsByName map[string]int32
-var mutexNumOpenBucketsByName sync.Mutex
 
 func init() {
 

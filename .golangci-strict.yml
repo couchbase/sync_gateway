@@ -30,7 +30,7 @@ linters:
     - typecheck # Like the front-end of a Go compiler, parses and type-checks Go code
     #- unconvert # Remove unnecessary type conversions
     #- unparam # Reports unused function parameters
-    #- varcheck # Finds unused global variables and constants
+    - varcheck # Finds unused global variables and constants
   disable:
     - asciicheck # Simple linter to check that your code does not contain non-ASCII identifiers
     - depguard # Go linter that checks if package imports are in a list of acceptable packages
@@ -76,7 +76,6 @@ linters:
     - structcheck # Finds unused struct fields
     - unconvert # Remove unnecessary type conversions
     - unparam # Reports unused function parameters
-    - varcheck # Finds unused global variables and constants
 
 # Don't enable fieldalignment, changing the field alignment requires checking to see if anyone uses constructors
 # without names. If there is a memory issue on a specific field, that is best found with a heap profile.

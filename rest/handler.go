@@ -54,8 +54,6 @@ func init() {
 }
 
 var kNotFoundError = base.HTTPErrorf(http.StatusNotFound, "missing")
-var kBadMethodError = base.HTTPErrorf(http.StatusMethodNotAllowed, "Method Not Allowed")
-var kBadRequestError = base.HTTPErrorf(http.StatusMethodNotAllowed, "Bad Request")
 
 var wwwAuthenticateHeader = `Basic realm="` + base.ProductNameString + `"`
 
