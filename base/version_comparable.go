@@ -24,6 +24,16 @@ type ComparableVersion struct {
 	str                               string
 }
 
+var zeroComparableVersion = &ComparableVersion{
+	epoch:   0,
+	major:   0,
+	minor:   0,
+	patch:   0,
+	other:   0,
+	build:   0,
+	edition: "",
+}
+
 // NewComparableVersionFromString parses a ComparableVersion from the given version string.
 // Expected format: `[epoch:]major.minor.patch[.other][@build][-edition]`
 func NewComparableVersionFromString(version string) (*ComparableVersion, error) {
@@ -116,6 +126,21 @@ func (pv *ComparableVersion) String() string {
 		pv.str = pv.formatComparableVersion()
 	})
 	return pv.str
+}
+
+// MarshalJSON implements json.Marshaler for ComparableVersion. The JSON representation is the version string.
+func (pv *ComparableVersion) MarshalJSON() ([]byte, error) {
+	return JSONMarshal(pv.String())
+}
+
+func (pv *ComparableVersion) UnmarshalJSON(val []byte) error {
+	var strVal string
+	err := JSONUnmarshal(val, &strVal)
+	if err != nil {
+		return err
+	}
+	pv.epoch, pv.major, pv.minor, pv.patch, pv.other, pv.build, pv.edition, err = parseComparableVersion(strVal)
+	return err
 }
 
 const (
