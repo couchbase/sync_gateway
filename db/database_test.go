@@ -88,7 +88,9 @@ func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) *Database {
 // Forces UseViews:true in the database context.  Useful for testing w/ views while running
 // tests against Couchbase Server
 func setupTestDBWithViewsEnabled(t testing.TB) *Database {
-
+	if base.TestUsingNamedCollection() {
+		t.Skip("Skip test requiring Views and named collections")
+	}
 	dbcOptions := DatabaseContextOptions{
 		UseViews: true,
 	}

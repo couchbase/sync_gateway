@@ -204,7 +204,9 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	if base.TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
-
+	if base.TestUsingNamedCollection() {
+		t.Skip("Using views and named collections is not compatible")
+	}
 	db := setupTestDB(t)
 	defer db.Close()
 

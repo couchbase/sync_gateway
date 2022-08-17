@@ -239,7 +239,6 @@ var ViewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 		return viewBucketReadier(ctx, b, tbp)
 	}
 
-	tbp.Logf(ctx, "Starting bucket ready function")
 	if c, ok := b.(*base.Collection); ok {
 		if err := c.DropAllScopesAndCollections(); err != nil && !errors.Is(err, base.ErrCollectionsUnsupported) {
 			return err
@@ -344,6 +343,7 @@ var ViewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 	if err != nil {
 		return err
 	}
+	tbp.Logf(ctx, "finished creating SG bucket indexes")
 
 	return nil
 }

@@ -62,8 +62,6 @@ func getRevTreeList(bucket base.Bucket, key string, useXattrs bool) (revTreeList
 // Tests simple retrieval of rev not resident in the cache
 func TestRevisionCacheLoad(t *testing.T) {
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
 	db := setupTestDBWithViewsEnabled(t)
 	defer db.Close()
 

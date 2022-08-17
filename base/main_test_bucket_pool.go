@@ -129,7 +129,7 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 		preserveBuckets:        preserveBuckets,
 		bucketInitFunc:         bucketInitFunc,
 		unclosedBuckets:        make(map[string]map[string]struct{}),
-		usingCollections:       tbpUseCollection(),
+		usingCollections:       TestUsingNamedCollection(),
 	}
 
 	tbp.cluster = newTestCluster(UnitTestUrl(), tbp.Logf)
@@ -318,7 +318,14 @@ func (tbp *TestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s Bucke
 		tbp.markBucketClosed(t, bucket)
 		bucket.Close()
 
-		return
+		if tbp.preserveBuckets && t.Failed() {
+			tbp.Logf(ctx, "Test using bucket failed. Preserving bucket for later inspection")
+			atomic.AddUint32(&tbp.preservedBucketCount, 1)
+			return
+		}
+
+		tbp.Logf(ctx, "Teardown called - Pushing into bucketReadier queue")
+		tbp.addBucketToReadierQueue(ctx, tbpBucketName(bucket.GetName()))
 	}
 }
 
@@ -627,7 +634,7 @@ var FlushBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b Bu
 		if err := c.DropAllScopesAndCollections(); err != nil && !errors.Is(err, ErrCollectionsUnsupported) {
 			return err
 		}
-		if tbpUseCollection() {
+		if TestUsingNamedCollection() {
 			err := CreateNamedCollection(ctx, b)
 			if err != nil {
 				return err
@@ -706,7 +713,7 @@ func getBucketSpec(testBucketName tbpBucketName) BucketSpec {
 	bucketSpec := tbpDefaultBucketSpec
 	bucketSpec.BucketName = string(testBucketName)
 	bucketSpec.TLSSkipVerify = TestTLSSkipVerify()
-	if tbpUseCollection() {
+	if TestUsingNamedCollection() {
 		if bucketSpec.Scope == nil && bucketSpec.Collection == nil {
 			scopeName, err := GenerateRandomID()
 			if err != nil {
@@ -777,7 +784,7 @@ func tbpVerbose() bool {
 	return verbose
 }
 
-func tbpUseCollection() bool {
+func TestUsingNamedCollection() bool {
 	verbose, _ := strconv.ParseBool(os.Getenv(tbpUseCollectionPool))
 	return verbose
 }
