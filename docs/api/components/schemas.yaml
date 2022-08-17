@@ -1942,6 +1942,10 @@ Startup-config:
       description: Settings that are not officially supported. It is highly recommended these are **not** used.
       type: object
       properties:
+        serverless:
+          description: Run SG in to serverless mode
+          type: boolean
+          readOnly: true
         stats_log_frequency:
           description: |-
             How often should stats be written to stats logs.

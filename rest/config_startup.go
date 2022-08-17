@@ -51,6 +51,7 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			BcryptCost: auth.DefaultBcryptCost,
 		},
 		Unsupported: UnsupportedConfig{
+			Serverless:        base.BoolPtr(false),
 			StatsLogFrequency: base.NewConfigDuration(time.Minute),
 		},
 		MaxFileDescriptors: DefaultMaxFileDescriptors,
@@ -135,6 +136,7 @@ type ReplicatorConfig struct {
 }
 
 type UnsupportedConfig struct {
+	Serverless        *bool                `json:"serverless,omitempty" help:"Run SG in to serverless mode."`
 	StatsLogFrequency *base.ConfigDuration `json:"stats_log_frequency,omitempty"    help:"How often should stats be written to stats logs"`
 	UseStdlibJSON     *bool                `json:"use_stdlib_json,omitempty"        help:"Bypass the jsoniter package and use Go's stdlib instead"`
 
