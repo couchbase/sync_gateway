@@ -109,6 +109,12 @@ func (rt *RestTester) Bucket() base.Bucket {
 		testBucket = base.GetTestBucket(rt.tb)
 	}
 	rt.testBucket = testBucket
+	collection, err := base.AsCollection(rt.testBucket)
+	if err != nil {
+		rt.tb.Fatalf("%s", err)
+
+	}
+	fmt.Printf("HONK %+v\n", collection.Spec.Scope)
 
 	if rt.InitSyncSeq > 0 {
 		log.Printf("Initializing %s to %d", base.SyncSeqKey, rt.InitSyncSeq)
@@ -181,7 +187,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	}
 
 	// Copy this startup config at this point into initial startup config
-	err := base.DeepCopyInefficient(&rt.RestTesterServerContext.initialStartupConfig, &sc)
+	err = base.DeepCopyInefficient(&rt.RestTesterServerContext.initialStartupConfig, &sc)
 	if err != nil {
 		rt.tb.Fatalf("Unable to copy initial startup config: %v", err)
 	}
@@ -211,7 +217,17 @@ func (rt *RestTester) Bucket() base.Bucket {
 				rt.tb.Fatalf("Error creating test scopes/collections: %v", err)
 			}
 		}
-
+		collection, collectionErr := base.AsCollection(rt.testBucket)
+		if collectionErr == nil && collection.Spec.Scope != nil && collection.Spec.Collection != nil {
+			rt.DatabaseConfig.Scopes = ScopesConfig{
+				*collection.Spec.Scope: ScopeConfig{
+					Collections: map[string]CollectionConfig{
+						*collection.Spec.Collection: {},
+					},
+				},
+			}
+		}
+		fmt.Printf("HONK!! %+v\n", rt.DatabaseConfig.Scopes)
 		// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
 		numReplicas := uint(0)
 		rt.DatabaseConfig.NumIndexReplicas = &numReplicas
@@ -240,6 +256,14 @@ func (rt *RestTester) Bucket() base.Bucket {
 		// Update the testBucket Bucket to the one associated with the database context.  The new (dbContext) bucket
 		// will be closed when the rest tester closes the server context. The original bucket will be closed using the
 		// testBucket's closeFn
+		rt.testBucket = testBucket
+		collection, err = base.AsCollection(rt.testBucket)
+		if err != nil {
+			rt.tb.Fatalf("%s", err)
+
+		}
+		fmt.Printf("HONK2 %+v\n", collection.Spec.Scope)
+
 		rt.testBucket.Bucket = rt.RestTesterServerContext.Database("db").Bucket
 
 		if rt.DatabaseConfig.Guest == nil {
@@ -248,6 +272,13 @@ func (rt *RestTester) Bucket() base.Bucket {
 			}
 		}
 	}
+	rt.testBucket = testBucket
+	collection, err = base.AsCollection(rt.testBucket)
+	if err != nil {
+		rt.tb.Fatalf("%s", err)
+
+	}
+	fmt.Printf("HONK3 %+v\n", collection.Spec.Scope)
 
 	// PostStartup (without actually waiting 5 seconds)
 	close(rt.RestTesterServerContext.hasStarted)

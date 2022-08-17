@@ -318,11 +318,11 @@ func (tbp *TestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s Bucke
 		tbp.markBucketClosed(t, bucket)
 		bucket.Close()
 
-		if tbp.preserveBuckets && t.Failed() {
-			tbp.Logf(ctx, "Test using bucket failed. Preserving bucket for later inspection")
-			atomic.AddUint32(&tbp.preservedBucketCount, 1)
-			return
-		}
+		//if tbp.preserveBuckets && t.Failed() {
+		//	tbp.Logf(ctx, "Test using bucket failed. Preserving bucket for later inspection")
+		//		atomic.AddUint32(&tbp.preservedBucketCount, 1)
+		//		return
+		//	}
 
 		tbp.Logf(ctx, "Teardown called - Pushing into bucketReadier queue")
 		tbp.addBucketToReadierQueue(ctx, tbpBucketName(bucket.GetName()))

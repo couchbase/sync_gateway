@@ -156,6 +156,7 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s?new_edits=false", docId), input)
 	response.DumpBody()
 	if err := base.JSONUnmarshal(response.Body.Bytes(), &responseDoc); err != nil {
+
 		t.Fatalf("Error unmarshalling response: %v", err)
 	}
 	revId = responseDoc["rev"].(string)
@@ -169,7 +170,9 @@ func TestUserPasswordValidation(t *testing.T) {
 	// PUT a user
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
-
+	collection, ok := rt.Bucket().(*base.Collection)
+	require.True(t, ok)
+	fmt.Printf("HONK %+v\n", collection.Spec.Scope)
 	response := rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)
 	requireStatus(t, response, 201)
 
