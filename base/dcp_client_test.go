@@ -50,7 +50,7 @@ func TestOneShotDCP(t *testing.T) {
 	require.NoError(t, err)
 	var collectionIDs []uint32
 	if collection.Spec.Scope != nil && collection.Spec.Collection != nil {
-		collectionID, err := collection.getCollectionID()
+		collectionID, err := collection.GetCollectionID()
 		require.NoError(t, err)
 		collectionIDs = append(collectionIDs, collectionID)
 	}
@@ -214,7 +214,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			require.NoError(t, err)
 			var collectionIDs []uint32
 			if collection.Spec.Scope != nil && collection.Spec.Collection != nil {
-				collectionID, err := collection.getCollectionID()
+				collectionID, err := collection.GetCollectionID()
 				require.NoError(t, err)
 				collectionIDs = append(collectionIDs, collectionID)
 			}
@@ -342,7 +342,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 	require.NoError(t, err)
 	var collectionIDs []uint32
 	if collection.Spec.Scope != nil && collection.Spec.Collection != nil {
-		collectionID, err := collection.getCollectionID()
+		collectionID, err := collection.GetCollectionID()
 		require.NoError(t, err)
 		collectionIDs = append(collectionIDs, collectionID)
 	}
