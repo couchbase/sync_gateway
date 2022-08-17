@@ -67,7 +67,8 @@ type StartupConfig struct {
 	Replicator  ReplicatorConfig   `json:"replicator,omitempty"`
 	Unsupported UnsupportedConfig  `json:"unsupported,omitempty"`
 
-	DatabaseCredentials PerDatabaseCredentialsConfig `json:"database_credentials,omitempty" help:"A map of database name to credentials, that can be used instead of the bootstrap ones."`
+	DatabaseCredentials PerDatabaseCredentialsConfig `json:"database_credentials,omitempty" help:"A map of database name to credentials, that can be used instead of the bootstrap ones. Cannot be used in conjunction with bucket_credentials."`
+	BucketCredentials   PerBucketCredentialsConfig   `json:"bucket_credentials,omitempty" help:"A map of bucket names to credentials, that can be used instead of the bootstrap ones. Cannot be used in conjunction with database_credentials."`
 
 	MaxFileDescriptors         uint64 `json:"max_file_descriptors,omitempty" help:"Max # of open file descriptors (RLIMIT_NOFILE)"`
 	CouchbaseKeepaliveInterval *int   `json:"couchbase_keepalive_interval,omitempty" help:"TCP keep-alive interval between SG and Couchbase server"`
@@ -147,9 +148,11 @@ type HTTP2Config struct {
 	Enabled *bool `json:"enabled,omitempty" help:"Whether HTTP2 support is enabled"`
 }
 
-type PerDatabaseCredentialsConfig map[string]*DatabaseCredentialsConfig
+type PerDatabaseCredentialsConfig map[string]*CredentialsConfig
 
-type DatabaseCredentialsConfig struct {
+type PerBucketCredentialsConfig map[string]*CredentialsConfig
+
+type CredentialsConfig struct {
 	Username     string `json:"username,omitempty"       help:"Username for authenticating to the bucket"`
 	Password     string `json:"password,omitempty"       help:"Password for authenticating to the bucket"`
 	X509CertPath string `json:"x509_cert_path,omitempty" help:"Cert path (public key) for X.509 bucket auth"`
@@ -174,6 +177,12 @@ func (sc *StartupConfig) Redacted() (*StartupConfig, error) {
 	}
 
 	for _, credentialsConfig := range config.DatabaseCredentials {
+		if credentialsConfig != nil && credentialsConfig.Password != "" {
+			credentialsConfig.Password = base.RedactedStr
+		}
+	}
+
+	for _, credentialsConfig := range config.BucketCredentials {
 		if credentialsConfig != nil && credentialsConfig.Password != "" {
 			credentialsConfig.Password = base.RedactedStr
 		}
