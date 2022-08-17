@@ -1673,7 +1673,7 @@ func TestSetupDbConfigCredentials(t *testing.T) {
 		name              string
 		dbConfig          DbConfig
 		bootstrapConfig   BootstrapConfig
-		credentialsConfig *DatabaseCredentialsConfig
+		credentialsConfig *CredentialsConfig
 		expectX509        bool
 	}{
 		{
@@ -1686,26 +1686,26 @@ func TestSetupDbConfigCredentials(t *testing.T) {
 			name:              "db username/password override",
 			dbConfig:          DbConfig{Name: "db"},
 			bootstrapConfig:   BootstrapConfig{Server: "couchbase://example.org", Username: "bob", Password: "foobar"},
-			credentialsConfig: &DatabaseCredentialsConfig{Username: expectedUsername, Password: expectedPassword},
+			credentialsConfig: &CredentialsConfig{Username: expectedUsername, Password: expectedPassword},
 		},
 		{
 			name:              "db username/password override from x509",
 			dbConfig:          DbConfig{Name: "db"},
 			bootstrapConfig:   BootstrapConfig{Server: "couchbase://example.org", X509CertPath: "/tmp/x509cert", X509KeyPath: "/tmp/x509key"},
-			credentialsConfig: &DatabaseCredentialsConfig{Username: expectedUsername, Password: expectedPassword},
+			credentialsConfig: &CredentialsConfig{Username: expectedUsername, Password: expectedPassword},
 		},
 		{
 			name:              "db x509 override from username/password",
 			dbConfig:          DbConfig{Name: "db"},
 			bootstrapConfig:   BootstrapConfig{Server: "couchbase://example.org", Username: "bob", Password: "foobar"},
-			credentialsConfig: &DatabaseCredentialsConfig{X509CertPath: expectedX509Cert, X509KeyPath: expectedX509Key},
+			credentialsConfig: &CredentialsConfig{X509CertPath: expectedX509Cert, X509KeyPath: expectedX509Key},
 			expectX509:        true,
 		},
 		{
 			name:              "db x509 override",
 			dbConfig:          DbConfig{Name: "db"},
 			bootstrapConfig:   BootstrapConfig{Server: "couchbase://example.org", X509CertPath: "/tmp/bs-x509cert", X509KeyPath: "/tmp/bs-x509key"},
-			credentialsConfig: &DatabaseCredentialsConfig{X509CertPath: expectedX509Cert, X509KeyPath: expectedX509Key},
+			credentialsConfig: &CredentialsConfig{X509CertPath: expectedX509Cert, X509KeyPath: expectedX509Key},
 			expectX509:        true,
 		},
 	}
@@ -2407,6 +2407,125 @@ func Test_validateJavascriptFunction(t *testing.T) {
 				return
 			}
 			assert.Equalf(t, test.wantIsEmpty, gotIsEmpty, "validateJavascriptFunction(%v)", test.jsFunc)
+		})
+	}
+}
+
+func TestBucketCredentialsValidation(t *testing.T) {
+	bucketAndDBCredsError := "bucket_credentials and database_credentials cannot be used at the same time"
+	bucketCredsError := "bucket_credentials cannot use both x509 and basic auth"
+	bucketNoCredsServerless := "at least 1 bucket must be defined in bucket_credentials when running in serverless mode"
+	testCases := []struct {
+		name          string
+		startupConfig StartupConfig
+		expectedError *string
+	}{
+		{
+			name:          "No credentials provided",
+			startupConfig: StartupConfig{},
+		},
+		{
+			name: "Valid bucket using x509",
+			startupConfig: StartupConfig{
+				BucketCredentials: PerBucketCredentialsConfig{"bucket": &CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
+			},
+		},
+		{
+			name: "Valid bucket using basic auth",
+			startupConfig: StartupConfig{
+				BucketCredentials: PerBucketCredentialsConfig{"bucket": &CredentialsConfig{Username: "uname", Password: "pass"}}},
+		},
+		{
+			name: "Valid database using basic auth",
+			startupConfig: StartupConfig{
+				DatabaseCredentials: PerDatabaseCredentialsConfig{"db": &CredentialsConfig{Username: "uname", Password: "pword"}},
+			},
+		},
+		{
+			name: "Blank database and filled bucket creds provided",
+			startupConfig: StartupConfig{
+				DatabaseCredentials: PerDatabaseCredentialsConfig{},
+				BucketCredentials:   PerBucketCredentialsConfig{"bucket": &CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
+			},
+		},
+		{
+			name: "Filled database and blank bucket creds provided",
+			startupConfig: StartupConfig{
+				BucketCredentials:   PerBucketCredentialsConfig{},
+				DatabaseCredentials: PerDatabaseCredentialsConfig{"bucket": &CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
+			},
+		},
+		{
+			name: "Database and bucket creds provided",
+			startupConfig: StartupConfig{
+				DatabaseCredentials: PerDatabaseCredentialsConfig{"bucket": &CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
+				BucketCredentials:   PerBucketCredentialsConfig{"bucket": &CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
+			},
+			expectedError: &bucketAndDBCredsError,
+		},
+		{
+			name: "Bucket creds for x509 and basic auth",
+			startupConfig: StartupConfig{
+				BucketCredentials: PerBucketCredentialsConfig{"bucket": &CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key", Username: "uname", Password: "pword"}},
+			},
+			expectedError: &bucketCredsError,
+		},
+		{
+			name: "Bucket creds for x509 key and basic auth password only",
+			startupConfig: StartupConfig{
+				BucketCredentials: PerBucketCredentialsConfig{"bucket": &CredentialsConfig{X509KeyPath: "key", Password: "pword"}},
+			},
+			expectedError: &bucketCredsError,
+		},
+		{
+			name: "Bucket creds for x509 cert and basic auth username only",
+			startupConfig: StartupConfig{
+				BucketCredentials: PerBucketCredentialsConfig{"bucket": &CredentialsConfig{X509CertPath: "cert", Username: "uname"}},
+			},
+			expectedError: &bucketCredsError,
+		},
+		{
+			name: "Bucket creds for x509 cert and basic auth username only",
+			startupConfig: StartupConfig{
+				BucketCredentials: PerBucketCredentialsConfig{"bucket": &CredentialsConfig{X509CertPath: "cert", Username: "uname"}},
+			},
+			expectedError: &bucketCredsError,
+		},
+		{
+			name: "Nil bucket credentials provided when running in serverless mode",
+			startupConfig: StartupConfig{
+				Unsupported: UnsupportedConfig{Serverless: base.BoolPtr(true)},
+			},
+			expectedError: &bucketNoCredsServerless,
+		},
+		{
+			name: "No bucket credentials provided when running in serverless mode",
+			startupConfig: StartupConfig{
+				BucketCredentials: PerBucketCredentialsConfig{},
+				Unsupported:       UnsupportedConfig{Serverless: base.BoolPtr(true)},
+			},
+			expectedError: &bucketNoCredsServerless,
+		},
+		{
+			name: "Bucket credentials provided when running in serverless mode",
+			startupConfig: StartupConfig{
+				Unsupported:       UnsupportedConfig{Serverless: base.BoolPtr(true)},
+				BucketCredentials: PerBucketCredentialsConfig{"bucket": &CredentialsConfig{Username: "u", Password: "p"}},
+			},
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			err := test.startupConfig.validate(base.IsEnterpriseEdition())
+			if test.expectedError != nil {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), *test.expectedError)
+
+			} else if err != nil {
+				assert.NotContains(t, err.Error(), bucketCredsError)
+				assert.NotContains(t, err.Error(), bucketAndDBCredsError)
+				assert.NotContains(t, err.Error(), bucketNoCredsServerless)
+			}
 		})
 	}
 }
