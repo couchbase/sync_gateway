@@ -356,12 +356,13 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 }
 
 // Pushes a revision body to the client
-func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docID string, revID string,
+func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docID string, revID string, collectionIdx *int,
 	bodyBytes []byte, attMeta []AttachmentStorageMeta, properties blip.Properties, seq SequenceID, resendFullRevisionFunc func() error) error {
 
 	outrq := NewRevMessage()
 	outrq.SetID(docID)
 	outrq.SetRev(revID)
+	outrq.SetCollection(collectionIdx)
 	if bsc.sendRevNoConflicts {
 		outrq.SetNoConflicts(true)
 	}
@@ -500,13 +501,13 @@ func (bsc *BlipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
 	}
 }
 
-func (bsc *BlipSyncContext) sendDelta(sender *blip.Sender, docID, deltaSrcRevID string, revDelta *RevisionDelta, seq SequenceID, resendFullRevisionFunc func() error) error {
+func (bsc *BlipSyncContext) sendDelta(sender *blip.Sender, docID string, collectionIdx *int, deltaSrcRevID string, revDelta *RevisionDelta, seq SequenceID, resendFullRevisionFunc func() error) error {
 
 	properties := blipRevMessageProperties(revDelta.RevisionHistory, revDelta.ToDeleted, seq)
 	properties[RevMessageDeltaSrc] = deltaSrcRevID
 
 	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s", base.UD(docID), revDelta.ToRevID, deltaSrcRevID)
-	return bsc.sendRevisionWithProperties(sender, docID, revDelta.ToRevID, revDelta.DeltaBytes, revDelta.AttachmentStorageMeta,
+	return bsc.sendRevisionWithProperties(sender, docID, revDelta.ToRevID, collectionIdx, revDelta.DeltaBytes, revDelta.AttachmentStorageMeta,
 		properties, seq, resendFullRevisionFunc)
 }
 
@@ -520,12 +521,13 @@ func (bsc *BlipSyncContext) sendBLIPMessage(sender *blip.Sender, msg *blip.Messa
 	return ok
 }
 
-func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, seq SequenceID, err error) error {
+func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, collectionIdx *int, seq SequenceID, err error) error {
 	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending norev %q %s due to unavailable revision: %v", base.UD(docID), revID, err)
 
 	noRevRq := NewNoRevMessage()
 	noRevRq.SetId(docID)
 	noRevRq.SetRev(revID)
+	noRevRq.SetCollection(collectionIdx)
 	if bsc.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV2 && bsc.clientType == BLIPClientTypeSGR2 {
 		noRevRq.SetSeq(seq)
 	} else {
@@ -552,9 +554,14 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 
 // Pushes a revision body to the client
 func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseDb *Database) error {
+	var collectionIdx *int
+	if coll, ok := bsc.getCollectionIndexForDB(handleChangesResponseDb); ok {
+		collectionIdx = &coll
+	}
+
 	rev, err := handleChangesResponseDb.GetRev(docID, revID, true, nil)
 	if base.IsDocNotFoundError(err) {
-		return bsc.sendNoRev(sender, docID, revID, seq, err)
+		return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
 	} else if err != nil {
 		return fmt.Errorf("failed to GetRev for doc %s with rev %s: %w", base.UD(docID).Redact(), base.MD(revID).Redact(), err)
 	}
@@ -576,7 +583,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	} else {
 		body, err := rev.Body()
 		if err != nil {
-			return bsc.sendNoRev(sender, docID, revID, seq, err)
+			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
 		}
 
 		// Still need to stamp _attachments into BLIP messages
@@ -587,7 +594,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 
 		bodyBytes, err = base.JSONMarshalCanonical(body)
 		if err != nil {
-			return bsc.sendNoRev(sender, docID, revID, seq, err)
+			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
 		}
 	}
 
@@ -596,7 +603,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	if base.LogDebugEnabled(base.KeySync) {
 		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s based on %d known, digests: %v", base.UD(docID), revID, len(knownRevs), digests(attachmentStorageMeta))
 	}
-	return bsc.sendRevisionWithProperties(sender, docID, revID, bodyBytes, attachmentStorageMeta, properties, seq, nil)
+	return bsc.sendRevisionWithProperties(sender, docID, revID, collectionIdx, bodyBytes, attachmentStorageMeta, properties, seq, nil)
 }
 
 // digests returns a slice of digest extracted from the given attachment meta.
