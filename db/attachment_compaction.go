@@ -114,21 +114,22 @@ func attachmentCompactMarkPhase(db *Database, compactionID string, terminator *b
 		}
 		return true
 	}
-
-	clientOptions := base.DCPClientOptions{
-		OneShot:           true,
-		FailOnRollback:    true,
-		MetadataStoreType: base.DCPMetadataStoreCS,
-		GroupID:           db.Options.GroupID,
-	}
-
-	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for mark phase of attachment compaction", compactionLoggingID)
-	dcpFeedKey := compactionID + "_mark"
 	collection, err := base.AsCollection(db.Bucket)
 	if err != nil {
 		return 0, nil, err
 	}
-	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, collection)
+
+	clientOptions, err := getCompactionDCPClientOptions(collection, db.Options.GroupID)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for mark phase of attachment compaction", compactionLoggingID)
+	dcpFeedKey := compactionID + "_mark"
+	if err != nil {
+		return 0, nil, err
+	}
+	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, *clientOptions, collection)
 	if err != nil {
 		base.WarnfCtx(db.Ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)
 		return 0, nil, err
@@ -338,22 +339,20 @@ func attachmentCompactSweepPhase(db *Database, compactionID string, vbUUIDs []ui
 		purgedAttachmentCount.Add(1)
 		return true
 	}
-
-	clientOptions := base.DCPClientOptions{
-		OneShot:           true,
-		FailOnRollback:    true,
-		InitialMetadata:   base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs),
-		MetadataStoreType: base.DCPMetadataStoreCS,
-		GroupID:           db.Options.GroupID,
-	}
-
-	dcpFeedKey := compactionID + "_sweep"
-	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed %q for sweep phase of attachment compaction", compactionLoggingID, dcpFeedKey)
 	collection, err := base.AsCollection(db.Bucket)
 	if err != nil {
 		return 0, err
 	}
-	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, collection)
+
+	clientOptions, err := getCompactionDCPClientOptions(collection, db.Options.GroupID)
+	if err != nil {
+		return 0, err
+	}
+	clientOptions.InitialMetadata = base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs)
+
+	dcpFeedKey := compactionID + "_sweep"
+	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed %q for sweep phase of attachment compaction", compactionLoggingID, dcpFeedKey)
+	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, *clientOptions, collection)
 	if err != nil {
 		base.WarnfCtx(db.Ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)
 		return 0, err
@@ -474,22 +473,20 @@ func attachmentCompactCleanupPhase(db *Database, compactionID string, vbUUIDs []
 
 		return true
 	}
-
-	clientOptions := base.DCPClientOptions{
-		OneShot:           true,
-		FailOnRollback:    true,
-		InitialMetadata:   base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs),
-		MetadataStoreType: base.DCPMetadataStoreCS,
-		GroupID:           db.Options.GroupID,
-	}
-
-	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for cleanup phase of attachment compaction", compactionLoggingID)
-	dcpFeedKey := compactionID + "_cleanup"
 	collection, err := base.AsCollection(db.Bucket)
 	if err != nil {
 		return err
 	}
-	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, clientOptions, collection)
+
+	clientOptions, err := getCompactionDCPClientOptions(collection, db.Options.GroupID)
+	if err != nil {
+		return err
+	}
+	clientOptions.InitialMetadata = base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs)
+
+	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for cleanup phase of attachment compaction", compactionLoggingID)
+	dcpFeedKey := compactionID + "_cleanup"
+	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, *clientOptions, collection)
 	if err != nil {
 		base.WarnfCtx(db.Ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)
 		return err
@@ -531,4 +528,26 @@ func attachmentCompactCleanupPhase(db *Database, compactionID string, vbUUIDs []
 // compactionIDs
 func getCompactionIDSubDocPath(compactionID string) string {
 	return base.AttachmentCompactionXattrName + "." + CompactionIDKey + "." + compactionID
+}
+
+// getCompactionDCPClientOptions returns the default set of DCPClientOptions suitable for attachment compaction
+func getCompactionDCPClientOptions(collection *base.Collection, groupID string) (*base.DCPClientOptions, error) {
+	var collectionIDs []uint32
+	if collection.Spec.Scope != nil && collection.Spec.Collection != nil {
+		collectionID, err := collection.GetCollectionID()
+		if err != nil {
+			return nil, err
+		}
+		collectionIDs = append(collectionIDs, collectionID)
+	}
+
+	clientOptions := &base.DCPClientOptions{
+		OneShot:           true,
+		FailOnRollback:    true,
+		MetadataStoreType: base.DCPMetadataStoreCS,
+		GroupID:           groupID,
+		CollectionIDs:     collectionIDs,
+	}
+	return clientOptions, nil
+
 }

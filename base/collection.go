@@ -819,7 +819,7 @@ func (c *Collection) GetExpiry(k string) (expiry uint32, getMetaError error) {
 		Deadline: c.getBucketOpDeadline(),
 	}
 	if !c.isDefaultScopeCollection() {
-		collectionID, err := c.getCollectionID()
+		collectionID, err := c.GetCollectionID()
 		if err != nil {
 			return 0, err
 		}
@@ -1008,8 +1008,8 @@ func (c *Collection) getBucketOpDeadline() time.Time {
 	return time.Now().Add(opTimeout)
 }
 
-// getCollectionID returns the gocbcore CollectionID for the current collection
-func (c *Collection) getCollectionID() (uint32, error) {
+// GetCollectionID returns the gocbcore CollectionID for the current collection
+func (c *Collection) GetCollectionID() (uint32, error) {
 	// return cached value if present
 	collectionIDAtomic := c.collectionID.Load()
 	if collectionIDAtomic != nil {
