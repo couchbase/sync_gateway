@@ -346,9 +346,9 @@ func attachmentCompactSweepPhase(db *Database, compactionID string, vbUUIDs []ui
 
 	clientOptions, err := getCompactionDCPClientOptions(collection, db.Options.GroupID)
 	if err != nil {
-		return 0,  err
+		return 0, err
 	}
-	clientOptions.InitialMetadata =  base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs)
+	clientOptions.InitialMetadata = base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs)
 
 	dcpFeedKey := compactionID + "_sweep"
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed %q for sweep phase of attachment compaction", compactionLoggingID, dcpFeedKey)
@@ -482,7 +482,7 @@ func attachmentCompactCleanupPhase(db *Database, compactionID string, vbUUIDs []
 	if err != nil {
 		return err
 	}
-	clientOptions.InitialMetadata =   base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs)
+	clientOptions.InitialMetadata = base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs)
 
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for cleanup phase of attachment compaction", compactionLoggingID)
 	dcpFeedKey := compactionID + "_cleanup"
@@ -549,6 +549,5 @@ func getCompactionDCPClientOptions(collection *base.Collection, groupID string) 
 		CollectionIDs:     collectionIDs,
 	}
 	return clientOptions, nil
-
 
 }
