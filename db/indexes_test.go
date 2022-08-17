@@ -48,9 +48,11 @@ func TestInitializeIndexes(t *testing.T) {
 				collection, err := base.AsCollection(b)
 				require.NoError(t, err)
 				// override underlying collection for test bucket
-				collection.Collection = collection.Bucket().Scope("foo").Collection("bar")
+				scopeName := "foo_1"
+				collectionName := "bar_1"
+				collection.Collection = collection.Bucket().Scope(scopeName).Collection(collectionName)
 
-				err = base.CreateBucketScopesAndCollections(base.TestCtx(t), collection.Spec, map[string][]string{"foo": {"bar"}})
+				err = base.CreateBucketScopesAndCollections(base.TestCtx(t), collection.Spec, map[string][]string{scopeName: {collectionName}})
 				require.NoError(t, err)
 			}
 
@@ -69,6 +71,10 @@ func TestInitializeIndexes(t *testing.T) {
 
 			validateErr := validateAllIndexesOnline(b)
 			require.NoError(t, validateErr, "Error validating indexes online")
+
+			// Drop again
+			dropErr = base.DropAllIndexes(base.TestCtx(t), n1qlStore)
+			require.NoError(t, dropErr, "Error dropping all indexes")
 		})
 	}
 
