@@ -47,20 +47,22 @@ usage() {
 }
 
 ostype() {
-  ARCH=$(uname -m | sed 's/x86_//;s/i[3-6]86/32/')
-
-  if [ -f /etc/lsb-release ]; then
+  if command -v lsb_release; then
     OS=$(lsb_release -si)
     VER=$(lsb_release -sr)
-  elif [ -f /etc/debian_version ]; then
-    OS=Debian # XXX or Ubuntu??
-    VER=$(cat /etc/debian_version)
+  elif [ -f /etc/os-release ]; then
+    . /etc/os-release
+    OS=$(echo "${ID}" | sed "s/.*/\u&/")
+    if [ "${OS}" = "Rhel" ]; then
+      OS=RedHat
+    elif [ "${OS}" = "Debian" ]; then
+      VER=$(cat /etc/debian_version)
+    else
+      VER=$VERSION_ID
+    fi
   elif [ -f /etc/redhat-release ]; then
     OS=RedHat
     VER=$(cat /etc/redhat-release | sed s/.*release\ // | sed s/\ .*//)
-  elif [ -f /etc/os-release ]; then
-    OS=$(cat /etc/os-release | cut -d = -f 2 | sed -e 's/^"//' -e 's/"$//' | awk 'NR==1')
-    VER=$(cat /etc/os-release | cut -d = -f 2 | sed -e 's/^"//' -e 's/"$//' | awk 'NR==2')
   elif [ -f /etc/system-release ]; then
     OS=RedHat
     VER=5.0
