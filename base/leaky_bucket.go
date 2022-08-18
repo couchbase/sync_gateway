@@ -22,11 +22,9 @@ import (
 
 // A wrapper around a Bucket to support forced errors.  For testing use only.
 type LeakyBucket struct {
-	bucket               Bucket
-	incrCount            uint16
-	deleteDDocErrorCount int
-	getDDocErrorCount    int
-	config               LeakyBucketConfig
+	bucket    Bucket
+	incrCount uint16
+	config    LeakyBucketConfig
 }
 
 // The config object that controls the LeakyBucket behavior
@@ -78,6 +76,13 @@ type LeakyBucketConfig struct {
 
 	// When IgnoreClose is set to true, bucket.Close() is a no-op.  Used when multiple references to a bucket are active.
 	IgnoreClose bool
+}
+
+func (b *LeakyBucket) SetDDocDeleteErrorCount(i int) {
+	b.config.DDocDeleteErrorCount = i
+}
+func (b *LeakyBucket) SetDDocGetErrorCount(i int) {
+	b.config.DDocGetErrorCount = i
 }
 
 func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) *LeakyBucket {

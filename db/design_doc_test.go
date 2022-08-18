@@ -146,14 +146,7 @@ func TestRemoveDesignDocsUseViewsTrueAndFalse(t *testing.T) {
 func TestRemoveObsoleteDesignDocsErrors(t *testing.T) {
 	setDesignDocPreviousVersionsForTest(t, "test")
 
-	SetDesignDocPreviousVersionsForTest(t, "test")
-
-	leakyBucketConfig := base.LeakyBucketConfig{
-		DDocGetErrorCount:    1,
-		DDocDeleteErrorCount: 1,
-	}
-
-	bucket := base.NewLeakyBucket(base.GetTestBucket(t), leakyBucketConfig)
+	bucket := base.NewLeakyBucket(base.GetTestBucket(t), base.LeakyBucketConfig{})
 	defer bucket.Close()
 
 	mapFunction := `function (doc, meta){ emit(); }`
@@ -176,6 +169,11 @@ func TestRemoveObsoleteDesignDocsErrors(t *testing.T) {
 		assertDesignDocExists(t, bucket, DesignDocSyncGatewayPrefix+"_test"),
 		assertDesignDocExists(t, bucket, DesignDocSyncHousekeepingPrefix+"_test"),
 	)
+
+	lb, ok := base.AsLeakyBucket(bucket)
+	require.Truef(t, ok, "bucket is not a leaky bucket")
+	lb.SetDDocGetErrorCount(1)
+	lb.SetDDocDeleteErrorCount(1)
 
 	removedDDocsPreview, err := removeObsoleteDesignDocs(bucket, true, false)
 	assert.NoError(t, err)
