@@ -10,14 +10,12 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 =end
 
-# 
 ####    ./${PKGR} ${PREFIX} ${PREFIXP} ${REVISION} ${GITSPEC} ${PLATFORM} ${ARCH}
 
 require 'rubygems'
 require 'fileutils'
 require 'rake'
 
-PRODUCT         = "couchbase-sync-gateway"
 PRODUCT_BASE    = "couchbase"
 DEBEMAIL        = "build@couchbase.com"
 
@@ -47,10 +45,6 @@ FileUtils.mkdir_p "#{STAGE_DIR}/debian"
 FileUtils.mkdir_p "#{STAGE_DIR}/etc"
 FileUtils.mkdir_p "#{STAGE_DIR}/opt"
 
-Dir.chdir STAGE_DIR do
-# sh %{dh_make -e #{DEBEMAIL} --native --single --packagename #{PKGNAME}}
-end
-
 [["#{STARTDIR}", "#{STAGE_DIR}/debian"]].each do |src_dst|
     Dir.chdir(src_dst[0]) do
         Dir.glob("*.tmpl").each do |x|
@@ -66,7 +60,7 @@ end
                  sed -e s,@@PRODUCT_BASE_CAP@@,#{product_base_cap},g      |
                  sed -e s,@@PRODUCT_KIND@@,#{PRODUCT_KIND},g > #{target}}
             sh %{chmod a+x #{target}}
-        end 
+        end
     end
 end
 sh %{cp -R "#{PREFIXD}" "#{STAGE_DIR}/opt"}
