@@ -160,6 +160,7 @@ type DatabaseContextOptions struct {
 	BcryptCost                    int
 	GroupID                       string
 	JavascriptTimeout             time.Duration // Max time the JS functions run for (ie. sync fn, import filter)
+	Serverless                    bool          // If running in serverless mode
 	skipRegisterImportPIndex      bool          // if set, skips the global gocb PIndex registration
 }
 

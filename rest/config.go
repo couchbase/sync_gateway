@@ -284,7 +284,7 @@ func (dbc *DbConfig) inheritFromBootstrap(b BootstrapConfig) {
 	}
 }
 
-func (dbConfig *DbConfig) setPerDatabaseCredentials(dbCredentials DatabaseCredentialsConfig) {
+func (dbConfig *DbConfig) setPerDatabaseCredentials(dbCredentials CredentialsConfig) {
 	// X.509 overrides username/password
 	if dbCredentials.X509CertPath != "" || dbCredentials.X509KeyPath != "" {
 		dbConfig.CertPath = dbCredentials.X509CertPath
@@ -300,7 +300,7 @@ func (dbConfig *DbConfig) setPerDatabaseCredentials(dbCredentials DatabaseCreden
 }
 
 // setup populates fields in the dbConfig
-func (dbConfig *DbConfig) setup(dbName string, bootstrapConfig BootstrapConfig, dbCredentials *DatabaseCredentialsConfig) error {
+func (dbConfig *DbConfig) setup(dbName string, bootstrapConfig BootstrapConfig, dbCredentials *CredentialsConfig) error {
 
 	dbConfig.inheritFromBootstrap(bootstrapConfig)
 	if dbCredentials != nil {
@@ -808,6 +808,10 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 	if len(dbConfig.Scopes) > 1 {
 		multiError = multiError.Append(fmt.Errorf("only one named scope is supported, but had %d (%v)", len(dbConfig.Scopes), dbConfig.Scopes))
 	} else {
+		if len(dbConfig.Scopes) != 0 && dbConfig.UseViews != nil && *dbConfig.UseViews {
+			multiError = multiError.Append(fmt.Errorf("useViews=true is incompatible with collections which requires GSI"))
+		}
+
 		for scopeName, scopeConfig := range dbConfig.Scopes {
 			// WIP: Collections Phase 1 - Only allow a single collection
 			if len(scopeConfig.Collections) != 1 {
@@ -1157,6 +1161,34 @@ func (sc *StartupConfig) validate(isEnterpriseEdition bool) (errorMessages error
 		multiError = multiError.Append(fmt.Errorf("%v: %d outside allowed range: %d-%d", auth.ErrInvalidBcryptCost, sc.Auth.BcryptCost, auth.DefaultBcryptCost, bcrypt.MaxCost))
 	}
 
+	if len(sc.Bootstrap.ConfigGroupID) > persistentConfigGroupIDMaxLength {
+		multiError = multiError.Append(fmt.Errorf("group_id must be at most %d characters in length", persistentConfigGroupIDMaxLength))
+	}
+
+	if sc.BucketCredentials != nil && sc.DatabaseCredentials != nil && len(sc.BucketCredentials) > 0 && len(sc.DatabaseCredentials) > 0 {
+		multiError = multiError.Append(fmt.Errorf("bucket_credentials and database_credentials cannot be used at the same time"))
+	}
+
+	if sc.DatabaseCredentials != nil {
+		for dbName, creds := range sc.DatabaseCredentials {
+			if (creds.X509CertPath != "" || creds.X509KeyPath != "") && (creds.Username != "" || creds.Password != "") {
+				base.WarnfCtx(context.TODO(), "database %q in database_credentials cannot use both x509 and basic auth. Will use x509 only.", base.MD(dbName))
+			}
+		}
+	}
+
+	if base.BoolDefault(sc.Unsupported.Serverless, false) && len(sc.BucketCredentials) == 0 {
+		multiError = multiError.Append(fmt.Errorf("at least 1 bucket must be defined in bucket_credentials when running in serverless mode"))
+	}
+
+	if sc.BucketCredentials != nil {
+		for bucketName, creds := range sc.BucketCredentials {
+			if (creds.X509CertPath != "" || creds.X509KeyPath != "") && (creds.Username != "" || creds.Password != "") {
+				multiError = multiError.Append(fmt.Errorf("bucket %q in bucket_credentials cannot use both x509 and basic auth", base.MD(bucketName)))
+			}
+		}
+	}
+
 	// EE only features
 	if !isEnterpriseEdition {
 		if sc.API.EnableAdminAuthenticationPermissionsCheck != nil && *sc.API.EnableAdminAuthenticationPermissionsCheck {
@@ -1166,10 +1198,6 @@ func (sc *StartupConfig) validate(isEnterpriseEdition bool) (errorMessages error
 		if sc.Bootstrap.ConfigGroupID != persistentConfigDefaultGroupID {
 			multiError = multiError.Append(fmt.Errorf("customization of group_id is only supported in enterprise edition"))
 		}
-	}
-
-	if len(sc.Bootstrap.ConfigGroupID) > persistentConfigGroupIDMaxLength {
-		multiError = multiError.Append(fmt.Errorf("group_id must be at most %d characters in length", persistentConfigGroupIDMaxLength))
 	}
 
 	return multiError.ErrorOrNil()

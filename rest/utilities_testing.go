@@ -912,6 +912,10 @@ type BlipTester struct {
 
 	// The blip sender that can be used for sending messages over the websocket connection
 	sender *blip.Sender
+
+	// Set when we receive a reply to a getCollections request. Used to verify that all messages after that contain a
+	// `collection` property.
+	useCollections *base.AtomicBool
 }
 
 // Close the bliptester
@@ -964,7 +968,8 @@ func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) (*BlipTester, err
 // Create a BlipTester using the given spec
 func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester) (*BlipTester, error) {
 	bt := &BlipTester{
-		restTester: rt,
+		restTester:     rt,
+		useCollections: base.NewAtomicBool(false),
 	}
 
 	// Since blip requests all go over the public handler, wrap the public handler with the httptest server

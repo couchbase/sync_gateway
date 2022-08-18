@@ -90,3 +90,15 @@ func (bh *blipHandler) handleGetCollections(rq *blip.Message) error {
 	}
 	return response.SetJSONBody(checkpoints)
 }
+
+func (bsc *BlipSyncContext) getCollectionIndexForDB(db *Database) (int, bool) {
+	if bsc.collectionMapping == nil {
+		return 0, false
+	}
+	for i, iDB := range bsc.collectionMapping {
+		if iDB.BucketSpec.Scope == db.BucketSpec.Scope && iDB.BucketSpec.Collection == db.BucketSpec.Collection {
+			return i, true
+		}
+	}
+	return 0, false
+}

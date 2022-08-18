@@ -33,10 +33,8 @@ type cbgtCreds struct {
 	clientKeyPath  string
 }
 
-const (
-	SOURCE_GOCOUCHBASE_DCP_SG = "couchbase-dcp-sg"
-	SOURCE_GOCB_DCP_SG        = "gocb-dcp-sg"
-)
+// This used to be called SOURCE_GOCOUCHBASE_DCP_SG (with the same string value).
+const SOURCE_DCP_SG = "couchbase-dcp-sg"
 
 // cbgtRootCAsProvider implements cbgt.RootCAsProvider. It returns a x509.CertPool factory with the root certificates
 // for the given bucket. Edge cases:
@@ -106,34 +104,23 @@ func cbgtGetPoolsDefaultForBucket(server, bucket string, scopes bool) ([]byte, e
 // to cbgt for use when setting up the DCP feed.  These need to be passed as AuthUser and
 // AuthPassword in the DCP source parameters.
 // The dbname is stored in the cfg, and the credentials for that db retrieved from databaseCredentials.
-// The SOURCE_GOCOUCHBASE_DCP_SG feed type is a wrapper for SOURCE_GOCOUCHBASE_DCP that adds
+// The SOURCE_DCP_SG feed type is a wrapper for SOURCE_GOCB_DCP that adds
 // the credential information to the DCP parameters before calling the underlying method.
 func init() {
 	cbgtCredentials = make(map[string]cbgtCreds)
 	cbgtRootCertPools = make(map[string]*x509.CertPool)
 	cbgtBucketToDBName = make(map[string]string)
-	cbgt.RegisterFeedType(SOURCE_GOCOUCHBASE_DCP_SG, &cbgt.FeedType{
-		Start:           SGFeedStartDCPFeed,
-		Partitions:      SGFeedPartitions,
-		PartitionSeqs:   SGFeedPartitionSeqs,
-		Stats:           SGFeedStats,
-		PartitionLookUp: cbgt.CouchbaseSourceVBucketLookUp,
-		//SourceUUIDLookUp: SGFeedSourceUUIDLookUp,     // TODO: cbgt 1.2.0
+	// NB: we use the same feed type *name* as Lithium nodes, but run it using gocbcore rather than cbdatasource. If only
+	// streaming the default collection, there is no functional difference.
+	cbgt.RegisterFeedType(SOURCE_DCP_SG, &cbgt.FeedType{
+		Start:      SGGoCBFeedStartDCPFeed,
+		Partitions: SGGoCBFeedPartitions,
+		// PartitionSeqs is only necessary if we use the CBGT REST API or StopAfter in our FeedParams, which we don't
+		// Stats is only used by the CBGT REST API.
 		Public: false, // Won't be listed in /api/managerMeta output.
-		Description: "general/" + SOURCE_GOCOUCHBASE_DCP_SG +
+		Description: "general/" + SOURCE_DCP_SG +
 			" - a Couchbase Server bucket will be the data source," +
-			" via DCP protocol",
-		StartSample: cbgt.NewDCPFeedParams(),
-	})
-	cbgt.RegisterFeedType(SOURCE_GOCB_DCP_SG, &cbgt.FeedType{
-		Start:         SGGoCBFeedStartDCPFeed,
-		Partitions:    SGGoCBFeedPartitions,
-		PartitionSeqs: SGGoCBFeedPartitionSeqs,
-		Stats:         SGGoCBFeedStats,
-		Public:        false,
-		Description: "general/" + SOURCE_GOCB_DCP_SG +
-			" - a Couchbase Server bucket will be the data source," +
-			" via DCP protocol and GoCB",
+			" via DCP protocol.",
 		StartSample: cbgt.NewDCPFeedParams(),
 	})
 	cbgt.RootCAsProvider = cbgtRootCAsProvider
@@ -197,49 +184,6 @@ func cbgtIndexParams(destKey string) (string, error) {
 	return string(paramBytes), nil
 }
 
-// SGFeed* functions add credentials to sourceParams before calling the underlying
-// cbgt function
-func SGFeedStartDCPFeed(mgr *cbgt.Manager, feedName, indexName, indexUUID,
-	sourceType, sourceName, bucketUUID, params string,
-	dests map[string]cbgt.Dest) error {
-
-	paramsWithAuth := addCbgtAuthToDCPParams(params)
-	return cbgt.StartDCPFeed(mgr, feedName, indexName, indexUUID, sourceType, sourceName, bucketUUID,
-		paramsWithAuth, dests)
-}
-
-func SGFeedPartitions(sourceType, sourceName, sourceUUID, sourceParams,
-	serverIn string, options map[string]string) (partitions []string, err error) {
-
-	sourceParamsWithAuth := addCbgtAuthToDCPParams(sourceParams)
-	return cbgt.CouchbasePartitions(sourceType, sourceName, sourceUUID, sourceParamsWithAuth,
-		serverIn, options)
-}
-
-func SGFeedPartitionSeqs(sourceType, sourceName, sourceUUID,
-	sourceParams, serverIn string, options map[string]string) (map[string]cbgt.UUIDSeq, error) {
-
-	sourceParamsWithAuth := addCbgtAuthToDCPParams(sourceParams)
-	return cbgt.CouchbasePartitionSeqs(sourceType, sourceName, sourceUUID, sourceParamsWithAuth,
-		serverIn, options)
-}
-
-func SGFeedStats(sourceType, sourceName, sourceUUID, sourceParams, serverIn string, options map[string]string,
-	statsKind string) (map[string]interface{}, error) {
-
-	sourceParamsWithAuth := addCbgtAuthToDCPParams(sourceParams)
-	return cbgt.CouchbaseStats(sourceType, sourceName, sourceUUID,
-		sourceParamsWithAuth, serverIn, options, statsKind)
-}
-
-/*  TODO: enable when moving to cbgt 1.2.0
-func SGFeedSourceUUIDLookUp(sourceName, sourceParams, serverIn string, options map[string]string) (string, error) {
-	sourceParamsWithAuth := addCbgtAuthToDCPParams(sourceParams)
-	return cbgt.CouchbaseSourceUUIDLookUp(sourceName, sourceParamsWithAuth, serverIn, options)
-}
-
-*/
-
 func SGGoCBFeedStartDCPFeed(mgr *cbgt.Manager, feedName, indexName, indexUUID,
 	sourceType, sourceName, bucketUUID, params string,
 	dests map[string]cbgt.Dest) error {
@@ -255,22 +199,6 @@ func SGGoCBFeedPartitions(sourceType, sourceName, sourceUUID, sourceParams,
 	sourceParamsWithAuth := addCbgtAuthToDCPParams(sourceParams)
 	return cbgt.CBPartitions(sourceType, sourceName, sourceUUID, sourceParamsWithAuth,
 		serverIn, options)
-}
-
-func SGGoCBFeedPartitionSeqs(sourceType, sourceName, sourceUUID,
-	sourceParams, serverIn string, options map[string]string) (map[string]cbgt.UUIDSeq, error) {
-
-	sourceParamsWithAuth := addCbgtAuthToDCPParams(sourceParams)
-	return cbgt.CBPartitionSeqs(sourceType, sourceName, sourceUUID, sourceParamsWithAuth,
-		serverIn, options)
-}
-
-func SGGoCBFeedStats(sourceType, sourceName, sourceUUID, sourceParams, serverIn string, options map[string]string,
-	statsKind string) (map[string]interface{}, error) {
-
-	sourceParamsWithAuth := addCbgtAuthToDCPParams(sourceParams)
-	return cbgt.CBStats(sourceType, sourceName, sourceUUID,
-		sourceParamsWithAuth, serverIn, options, statsKind)
 }
 
 // addCbgtAuthToDCPParams gets the dbName from the incoming dcpParams, and checks for credentials

@@ -815,14 +815,17 @@ func (c *Collection) GetExpiry(k string) (expiry uint32, getMetaError error) {
 		WarnfCtx(context.TODO(), "Unable to obtain gocbcore.Agent while retrieving expiry:%v", err)
 		return 0, err
 	}
-	collectionID, err := c.GetCollectionID()
-	if err != nil {
-		return 0, err
-	}
+
 	getMetaOptions := gocbcore.GetMetaOptions{
-		Key:          []byte(k),
-		Deadline:     c.getBucketOpDeadline(),
-		CollectionID: collectionID,
+		Key:      []byte(k),
+		Deadline: c.getBucketOpDeadline(),
+	}
+	if !c.IsDefaultScopeCollection() {
+		collectionID, err := c.GetCollectionID()
+		if err != nil {
+			return 0, err
+		}
+		getMetaOptions.CollectionID = collectionID
 	}
 
 	wg := sync.WaitGroup{}
@@ -1007,7 +1010,7 @@ func (c *Collection) getBucketOpDeadline() time.Time {
 	return time.Now().Add(opTimeout)
 }
 
-// getCollectionID returns the gocbcore CollectionID for the current collection
+// GetCollectionID returns the gocbcore CollectionID for the current collection
 func (c *Collection) GetCollectionID() (uint32, error) {
 	// return cached value if present
 	collectionIDAtomic := c.collectionID.Load()
