@@ -3,6 +3,7 @@ package base
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"time"
 
@@ -25,16 +26,19 @@ type BootstrapConnection interface {
 
 // CouchbaseCluster is a GoCBv2 implementation of BootstrapConnection
 type CouchbaseCluster struct {
-	server         string
-	clusterOptions gocb.ClusterOptions
+	server             string
+	clusterOptions     gocb.ClusterOptions
+	forcePerBucketAuth bool // Forces perBucketAuth authenticators to be used to connect to the bucket
+	perBucketAuth      map[string]*gocb.Authenticator
 }
 
 var _ BootstrapConnection = &CouchbaseCluster{}
 
 // NewCouchbaseCluster creates and opens a Couchbase Server cluster connection.
 func NewCouchbaseCluster(server, username, password,
-	x509CertPath, x509KeyPath,
-	caCertPath string, tlsSkipVerify *bool) (*CouchbaseCluster, error) {
+	x509CertPath, x509KeyPath, caCertPath string,
+	forcePerBucketAuth bool, perBucketAuth map[string]*gocb.Authenticator,
+	tlsSkipVerify *bool) (*CouchbaseCluster, error) {
 
 	securityConfig, err := GoCBv2SecurityConfig(tlsSkipVerify, caCertPath)
 	if err != nil {
@@ -55,12 +59,18 @@ func NewCouchbaseCluster(server, username, password,
 		RetryStrategy:  &goCBv2FailFastRetryStrategy{},
 	}
 
-	return &CouchbaseCluster{server: server, clusterOptions: clusterOptions}, nil
+	cbCluster := &CouchbaseCluster{
+		server:             server,
+		forcePerBucketAuth: forcePerBucketAuth,
+		perBucketAuth:      perBucketAuth,
+		clusterOptions:     clusterOptions,
+	}
+	return cbCluster, nil
 }
 
-// connect attempts to open a gocb.Cluster connection. Callers will be responsible for closing the connection.
-func (cc *CouchbaseCluster) connect() (*gocb.Cluster, error) {
-	cluster, err := gocb.Connect(cc.server, cc.clusterOptions)
+// connectToCluster is used by CouchbaseCluster.connect and cc.connectWithAuth to attempt to open gocb.Cluster connection
+func connectToCluster(server string, opts gocb.ClusterOptions) (*gocb.Cluster, error) {
+	cluster, err := gocb.Connect(server, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -76,6 +86,25 @@ func (cc *CouchbaseCluster) connect() (*gocb.Cluster, error) {
 	}
 
 	return cluster, nil
+}
+
+// connect attempts to open a gocb.Cluster connection. Callers will be responsible for closing the connection.
+func (cc *CouchbaseCluster) connect() (*gocb.Cluster, error) {
+	return connectToCluster(cc.server, cc.clusterOptions)
+}
+
+// connectWithAuth attempts to open a gocb.Cluster connection using the supplied authenticator. Callers will be responsible for closing the connection.
+func (cc *CouchbaseCluster) connectWithAuth(authenticator *gocb.Authenticator) (*gocb.Cluster, error) {
+	if authenticator == nil {
+		return nil, fmt.Errorf("cannot use nil authenticator when attempting to open cluster connection")
+	}
+
+	clusterOptions := cc.clusterOptions
+	clusterOptions.Authenticator = *authenticator
+	clusterOptions.Username = ""
+	clusterOptions.Password = ""
+
+	return connectToCluster(cc.server, clusterOptions)
 }
 
 func (cc *CouchbaseCluster) GetConfigBuckets() ([]string, error) {
@@ -220,7 +249,15 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 
 // getBucket returns the bucket after waiting for it to be ready.
 func (cc *CouchbaseCluster) getBucket(bucketName string) (b *gocb.Bucket, teardownFn func(), err error) {
-	connection, err := cc.connect()
+	var connection *gocb.Cluster
+	if bucketAuth, set := cc.perBucketAuth[bucketName]; set {
+		connection, err = cc.connectWithAuth(bucketAuth)
+	} else if cc.forcePerBucketAuth {
+		return nil, nil, fmt.Errorf("unable to get bucket %q since credentials are not defined in bucket_credentials", MD(bucketName).Redact())
+	} else {
+		connection, err = cc.connect()
+	}
+
 	if err != nil {
 		return nil, nil, err
 	}

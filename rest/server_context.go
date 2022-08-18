@@ -1516,7 +1516,6 @@ func (sc *ServerContext) initializeCouchbaseServerConnections() error {
 		if err != nil {
 			return err
 		}
-
 		sc.bootstrapContext.connection = couchbaseCluster
 
 		count, err := sc.fetchAndLoadConfigs(true)

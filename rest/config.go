@@ -1368,9 +1368,22 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 
 // fetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
 func (sc *ServerContext) fetchConfigs(isInitialStartup bool) (dbNameConfigs map[string]DatabaseConfig, err error) {
-	buckets, err := sc.bootstrapContext.connection.GetConfigBuckets()
-	if err != nil {
-		return nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
+	var buckets []string
+	// If serverless, return buckets that have credentials set that do not have a db associated with them
+	if base.BoolDefault(sc.config.Unsupported.Serverless, false) {
+		buckets = make([]string, len(sc.config.BucketCredentials)-len(sc.bucketDbName))
+		for bucket := range sc.config.BucketCredentials {
+			i := 0
+			if sc.bucketDbName[bucket] == "" {
+				buckets[i] = bucket
+				i++
+			}
+		}
+	} else {
+		buckets, err = sc.bootstrapContext.connection.GetConfigBuckets()
+		if err != nil {
+			return nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
+		}
 	}
 
 	logCtx := context.TODO()
