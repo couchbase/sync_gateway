@@ -59,22 +59,21 @@ func TestInitializeIndexes(t *testing.T) {
 			n1qlStore, isGoCBBucket := base.AsN1QLStore(b)
 			require.True(t, isGoCBBucket)
 
-			dropErr := base.DropAllIndexes(base.TestCtx(t), n1qlStore)
-			require.NoError(t, dropErr, "Error dropping all indexes")
+			// Make sure we can drop and reinitialize twice
+			for i := 0; i < 2; i++ {
+				dropErr := base.DropAllIndexes(base.TestCtx(t), n1qlStore)
+				require.NoError(t, dropErr, "Error dropping all indexes")
 
-			initErr := InitializeIndexes(n1qlStore, test.xattrs, 0, true)
-			require.NoError(t, initErr, "Error initializing all indexes")
+				initErr := InitializeIndexes(n1qlStore, test.xattrs, 0, true)
+				require.NoError(t, initErr, "Error initializing all indexes")
 
-			// Recreate the primary index required by the test bucket pooling framework
-			err := n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
-			require.NoError(t, err)
+				// Recreate the primary index required by the test bucket pooling framework
+				err := n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
+				require.NoError(t, err)
 
-			validateErr := validateAllIndexesOnline(b)
-			require.NoError(t, validateErr, "Error validating indexes online")
-
-			// Drop again
-			dropErr = base.DropAllIndexes(base.TestCtx(t), n1qlStore)
-			require.NoError(t, dropErr, "Error dropping all indexes")
+				validateErr := validateAllIndexesOnline(b)
+				require.NoError(t, validateErr, "Error validating indexes online")
+			}
 		})
 	}
 
