@@ -783,6 +783,7 @@ func RequireAllAssertions(t *testing.T, assertionResults ...bool) {
 	for _, ok := range assertionResults {
 		if !ok {
 			failed = true
+			break
 		}
 	}
 	require.Falsef(t, failed, "One or more assertions failed: %v", assertionResults)
