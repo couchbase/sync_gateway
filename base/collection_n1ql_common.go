@@ -335,12 +335,7 @@ func getIndexMetaWithoutRetry(store N1QLStore, indexName string) (exists bool, m
 
 // DropIndex drops the specified index from the current bucket.
 func DropIndex(store N1QLStore, indexName string) error {
-	if indexName == "" {
-		panic("Can't drop an empty index")
-	}
 	statement := fmt.Sprintf("DROP INDEX default:%s.`%s`", store.EscapedKeyspace(), indexName)
-	fmt.Printf("HONK +%v\n", statement)
-	//statement := fmt.Sprintf("DROP INDEX `%s` ON %s", indexName, store.EscapedKeyspace())
 	err := store.executeStatement(statement)
 	if err != nil && !IsIndexerRetryIndexError(err) {
 		return err

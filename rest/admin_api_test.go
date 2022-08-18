@@ -170,9 +170,6 @@ func TestUserPasswordValidation(t *testing.T) {
 	// PUT a user
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
-	collection, ok := rt.Bucket().(*base.Collection)
-	require.True(t, ok)
-	fmt.Printf("HONK %+v\n", collection.Spec.Scope)
 	response := rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)
 	requireStatus(t, response, 201)
 

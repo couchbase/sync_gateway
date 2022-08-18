@@ -109,12 +109,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 		testBucket = base.GetTestBucket(rt.tb)
 	}
 	rt.testBucket = testBucket
-	collection, err := base.AsCollection(rt.testBucket)
-	if err != nil {
-		rt.tb.Fatalf("%s", err)
-
-	}
-	fmt.Printf("HONK %+v\n", collection.Spec.Scope)
 
 	if rt.InitSyncSeq > 0 {
 		log.Printf("Initializing %s to %d", base.SyncSeqKey, rt.InitSyncSeq)
@@ -187,7 +181,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	}
 
 	// Copy this startup config at this point into initial startup config
-	err = base.DeepCopyInefficient(&rt.RestTesterServerContext.initialStartupConfig, &sc)
+	err := base.DeepCopyInefficient(&rt.RestTesterServerContext.initialStartupConfig, &sc)
 	if err != nil {
 		rt.tb.Fatalf("Unable to copy initial startup config: %v", err)
 	}
@@ -227,7 +221,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 				},
 			}
 		}
-		fmt.Printf("HONK!! %+v\n", rt.DatabaseConfig.Scopes)
 		// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
 		numReplicas := uint(0)
 		rt.DatabaseConfig.NumIndexReplicas = &numReplicas
@@ -256,14 +249,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 		// Update the testBucket Bucket to the one associated with the database context.  The new (dbContext) bucket
 		// will be closed when the rest tester closes the server context. The original bucket will be closed using the
 		// testBucket's closeFn
-		rt.testBucket = testBucket
-		collection, err = base.AsCollection(rt.testBucket)
-		if err != nil {
-			rt.tb.Fatalf("%s", err)
-
-		}
-		fmt.Printf("HONK2 %+v\n", collection.Spec.Scope)
-
 		rt.testBucket.Bucket = rt.RestTesterServerContext.Database("db").Bucket
 
 		if rt.DatabaseConfig.Guest == nil {
@@ -272,14 +257,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 			}
 		}
 	}
-	rt.testBucket = testBucket
-	collection, err = base.AsCollection(rt.testBucket)
-	if err != nil {
-		rt.tb.Fatalf("%s", err)
-
-	}
-	fmt.Printf("HONK3 %+v\n", collection.Spec.Scope)
-
 	// PostStartup (without actually waiting 5 seconds)
 	close(rt.RestTesterServerContext.hasStarted)
 
@@ -580,7 +557,6 @@ func (rt *RestTester) SendAdminRequest(method, resource string, body string) *Te
 	require.NoError(rt.tb, err)
 
 	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
-	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
 
 	rt.TestAdminHandler().ServeHTTP(response, request)
 	return response

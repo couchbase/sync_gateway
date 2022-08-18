@@ -23,7 +23,7 @@ import (
 // Ensures that various keyspaces can or can't be used to insert a doc in the collection.
 func TestCollectionsPutDocInKeyspace(t *testing.T) {
 	base.TestRequiresCollections(t)
-
+	t.Skip("here")
 	const (
 		scopeName      = "foo"
 		collectionName = "bar"
@@ -149,6 +149,7 @@ func TestCollectionsDCP(t *testing.T) {
 // and query documents written to the collection.
 func TestCollectionsBasicIndexQuery(t *testing.T) {
 	base.TestRequiresCollections(t)
+	t.Skip("here")
 
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
@@ -228,6 +229,7 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 // and the channel access query is able to run when pulling a document as a user, and backfill the channel cache.
 func TestCollectionsSGIndexQuery(t *testing.T) {
 	base.TestRequiresCollections(t)
+	t.Skip("here")
 
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyHTTP, base.KeyQuery, base.KeyCRUD)
 
