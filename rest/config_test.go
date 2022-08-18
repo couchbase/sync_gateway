@@ -12,6 +12,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -2526,6 +2527,95 @@ func TestBucketCredentialsValidation(t *testing.T) {
 				assert.NotContains(t, err.Error(), bucketAndDBCredsError)
 				assert.NotContains(t, err.Error(), bucketNoCredsServerless)
 			}
+		})
+	}
+}
+
+func TestCollectionsValidation(t *testing.T) {
+	testCases := []struct {
+		name          string
+		dbConfig      DbConfig
+		expectedError *string
+	}{
+		{
+			name: "views=true,collections=false",
+			dbConfig: DbConfig{
+				Name:     "db",
+				UseViews: base.BoolPtr(true),
+			},
+			expectedError: nil,
+		},
+		{
+			name: "views=true,collections=true",
+			dbConfig: DbConfig{
+				Name:     "db",
+				UseViews: base.BoolPtr(true),
+				Scopes: ScopesConfig{
+					"fooScope": ScopeConfig{
+						map[string]CollectionConfig{
+							"fooCollection:": {},
+						},
+					},
+				},
+			},
+			expectedError: base.StringPtr("requires GSI"),
+		},
+		{
+			name: "views_specified=false,collections=false",
+			dbConfig: DbConfig{
+				Name:     "db",
+				UseViews: base.BoolPtr(false),
+			},
+			expectedError: nil,
+		},
+		{
+			name: "views_specified=false,collections=true",
+			dbConfig: DbConfig{
+				Name:     "db",
+				UseViews: base.BoolPtr(false),
+				Scopes: ScopesConfig{
+					"fooScope": ScopeConfig{
+						map[string]CollectionConfig{
+							"fooCollection:": {},
+						},
+					},
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			name: "views_unspecified,collections=false",
+			dbConfig: DbConfig{
+				Name: "db",
+			},
+			expectedError: nil,
+		},
+		{
+			name: "views_unspecified,collections=true",
+			dbConfig: DbConfig{
+				Name: "db",
+				Scopes: ScopesConfig{
+					"fooScope": ScopeConfig{
+						map[string]CollectionConfig{
+							"fooCollection:": {},
+						},
+					},
+				},
+			},
+			expectedError: nil,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			validateOIDCConfig := false
+			err := test.dbConfig.validate(context.TODO(), validateOIDCConfig)
+			if test.expectedError != nil {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), *test.expectedError)
+			} else {
+				require.NoError(t, err)
+			}
+
 		})
 	}
 }

@@ -808,6 +808,10 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 	if len(dbConfig.Scopes) > 1 {
 		multiError = multiError.Append(fmt.Errorf("only one named scope is supported, but had %d (%v)", len(dbConfig.Scopes), dbConfig.Scopes))
 	} else {
+		if len(dbConfig.Scopes) != 0 && dbConfig.UseViews != nil && *dbConfig.UseViews {
+			multiError = multiError.Append(fmt.Errorf("useViews=true is incompatible with collections which requires GSI"))
+		}
+
 		for scopeName, scopeConfig := range dbConfig.Scopes {
 			// WIP: Collections Phase 1 - Only allow a single collection
 			if len(scopeConfig.Collections) != 1 {
