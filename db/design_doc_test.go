@@ -85,7 +85,7 @@ func TestRemoveObsoleteDesignDocs(t *testing.T) {
 }
 
 func TestRemoveDesignDocsUseViewsTrueAndFalse(t *testing.T) {
-	DesignDocPreviousVersions = []string{"2.0"}
+	setDesignDocPreviousVersionsForTest(t, "2.0")
 
 	base.ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 
@@ -144,8 +144,9 @@ func TestRemoveDesignDocsUseViewsTrueAndFalse(t *testing.T) {
 
 // Test remove obsolete design docs returns the same in both preview and non-preview
 func TestRemoveObsoleteDesignDocsErrors(t *testing.T) {
+	setDesignDocPreviousVersionsForTest(t, "test")
 
-	DesignDocPreviousVersions = []string{"test"}
+	SetDesignDocPreviousVersionsForTest(t, "test")
 
 	leakyBucketConfig := base.LeakyBucketConfig{
 		DDocGetErrorCount:    1,
@@ -182,17 +183,4 @@ func TestRemoveObsoleteDesignDocsErrors(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equalf(t, removedDDocsPreview, removedDDocsNonPreview, "preview and non-preview should return the same design docs")
-}
-
-func assertDesignDocExists(t testing.TB, bucket base.Bucket, ddocName string) bool {
-	_, err := bucket.GetDDoc(ddocName)
-	return assert.NoErrorf(t, err, "Design doc %s should exist but got an error fetching it: %v", ddocName, err)
-}
-
-func assertDesignDocNotExists(t testing.TB, bucket base.Bucket, ddocName string) bool {
-	ddoc, err := bucket.GetDDoc(ddocName)
-	if err == nil {
-		return assert.Failf(t, "Design doc %s should not exist but but it did: %v", ddocName, ddoc)
-	}
-	return assert.Truef(t, IsMissingDDocError(err), "Design doc %s should not exist but got a different error fetching it: %v", ddocName, err)
 }
