@@ -726,6 +726,10 @@ func IsMissingDDocError(err error) bool {
 		return true
 	}
 
+	if errors.Is(err, base.ErrNotFound) {
+		return true
+	}
+
 	return false
 
 }
