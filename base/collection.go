@@ -818,7 +818,7 @@ func (c *Collection) GetExpiry(k string) (expiry uint32, getMetaError error) {
 		Key:      []byte(k),
 		Deadline: c.getBucketOpDeadline(),
 	}
-	if !c.isDefaultScopeCollection() {
+	if !c.IsDefaultScopeCollection() {
 		collectionID, err := c.GetCollectionID()
 		if err != nil {
 			return 0, err
