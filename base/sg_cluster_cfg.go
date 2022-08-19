@@ -45,9 +45,10 @@ var ErrCfgCasError = &cbgt.CfgCASError{}
 func NewCfgSG(bucket Bucket, groupID string) (*CfgSG, error) {
 
 	cfgContextID := MD(bucket.GetName()).Redact() + "-cfgSG"
-	loggingCtx := context.WithValue(context.Background(), LogContextKey{},
-		LogContext{CorrelationID: cfgContextID},
-	)
+	// loggingCtx := context.WithValue(context.Background(), LogContextKey{},
+	// 	LogContext{CorrelationID: cfgContextID},
+	// )
+	loggingCtx := NewLogContext(context.Background(), &LogContext{CorrelationID: cfgContextID})
 
 	c := &CfgSG{
 		bucket:        bucket,

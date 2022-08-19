@@ -299,9 +299,17 @@ func addPrefixes(format string, ctx context.Context, logLevel LogLevel, logKey L
 	}
 
 	if ctx != nil {
-		if ctxVal := ctx.Value(LogContextKey{}); ctxVal != nil {
-			if logCtx, ok := ctxVal.(LogContext); ok {
-				format = logCtx.addContext(format)
+		var ctxVal any
+		// if ctxVal = ctx.Value(LogContextKey{}); ctxVal != nil {
+		// 	if logCtx, ok := ctxVal.(LogContext); ok {
+		// 		format = logCtx.addContext(format)
+		// 	}
+		// }
+		for _, k := range allContextAdderKeys {
+			if ctxVal = ctx.Value(k); ctxVal != nil {
+				if logCtx, ok := ctxVal.(ContextAdder); ok {
+					format = "ok! " + logCtx.addContext(format)
+				}
 			}
 		}
 	}

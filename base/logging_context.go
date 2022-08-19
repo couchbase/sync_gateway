@@ -81,3 +81,35 @@ func bucketNameCtx(parent context.Context, bucketName string) context.Context {
 	}
 	return context.WithValue(parent, LogContextKey{}, newCtx)
 }
+
+type ContextAdder interface {
+	addContext(format string) string
+}
+
+type ContextAdderKey int
+
+const (
+	logContextKey ContextAdderKey = iota
+	serverLogContextKey
+)
+
+var allContextAdderKeys = [...]ContextAdderKey{logContextKey, serverLogContextKey}
+
+func NewLogContext(parent context.Context, lc *LogContext) context.Context {
+	return context.WithValue(parent, logContextKey, lc)
+}
+
+type ServerLogContext struct {
+	ConfigGroupID string
+}
+
+func (c *ServerLogContext) addContext(format string) string {
+	if c != nil && c.ConfigGroupID != "" {
+		format = "g:" + c.ConfigGroupID + " " + format
+	}
+	return format
+}
+
+func NewServerLogContext(parent context.Context, slc *ServerLogContext) context.Context {
+	return context.WithValue(parent, serverLogContextKey, slc)
+}

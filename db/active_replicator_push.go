@@ -48,7 +48,8 @@ func (apr *ActivePushReplicator) Start() error {
 	}
 
 	apr.setState(ReplicationStateStarting)
-	logCtx := context.WithValue(context.Background(), base.LogContextKey{}, base.LogContext{CorrelationID: apr.config.ID + "-" + string(ActiveReplicatorTypePush)})
+	// logCtx := context.WithValue(context.Background(), base.LogContextKey{}, base.LogContext{CorrelationID: apr.config.ID + "-" + string(ActiveReplicatorTypePush)})
+	logCtx := base.NewLogContext(context.Background(), &base.LogContext{CorrelationID: apr.config.ID + "-" + string(ActiveReplicatorTypePush)})
 	apr.ctx, apr.ctxCancel = context.WithCancel(logCtx)
 
 	err := apr._connect()
