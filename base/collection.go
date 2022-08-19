@@ -690,7 +690,7 @@ func (c *Collection) DropAllScopesAndCollections() error {
 		// can't delete _default scope - but we can delete the non-_default collections within it
 		for _, collection := range scope.Collections {
 			if collection.Name != DefaultCollection {
-				collectionName := fmt.Sprintf("collection %s in scope %s on bucket %s: %v  Will retry.", MD(collection.Name).Redact(), MD(scope).Redact(), MD(c.Bucket().Name()).Redact())
+				collectionName := fmt.Sprintf("collection %s in scope %s on bucket %s", MD(collection.Name).Redact(), MD(scope).Redact(), MD(c.Bucket().Name()).Redact())
 				TracefCtx(context.TODO(), KeyAll, "Dropping %s", collectionName)
 				if err := cm.DropCollection(collection, nil); err != nil {
 					WarnfCtx(context.TODO(), "Error dropping %s: %v  Will retry.", collectionName, err)
