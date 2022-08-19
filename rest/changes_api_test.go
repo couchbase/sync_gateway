@@ -3616,13 +3616,16 @@ func TestChangesLargeSequences(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("TestChangesLargeSequences doesn't support walrus - needs to customize " + base.SyncSeqKey + " prior to db creation")
 	}
+	if !base.TestsDisableGSI() {
+		t.Skip("Requires N1QL due to CBG-361")
 
+	}
 	initialSeq := uint64(9223372036854775807)
 	rtConfig := RestTesterConfig{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
 		 }`,
 		InitSyncSeq:    initialSeq,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{}},
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{UseViews: base.BoolPtr(true)}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
