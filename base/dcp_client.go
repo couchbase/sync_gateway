@@ -93,6 +93,7 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 		dbStats:             options.DbStats,
 		agentPriority:       options.AgentPriority,
 		collectionIDs:       options.CollectionIDs,
+		oneShot:             options.OneShot,
 	}
 
 	// Initialize active vbuckets
@@ -117,6 +118,7 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 	}
 
 	if options.OneShot {
+		// FIXME(CBG-2313): This needs cleaning up - but we need to decide what to do with afterEndSeq first
 		_, highSeqnos, statsErr := collection.GetStatsVbSeqno(numVbuckets, true)
 		if statsErr != nil {
 			return nil, fmt.Errorf("Unable to obtain high seqnos for one-shot DCP feed: %w", statsErr)
@@ -373,6 +375,11 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 		}
 		options.FilterOptions = &gocbcore.OpenStreamFilterOptions{CollectionIDs: collIds}
 	}
+	flags := memd.DcpStreamAddFlagActiveOnly
+	if dc.oneShot {
+		flags |= memd.DcpStreamAddFlagLatest
+	}
+
 	openStreamError := make(chan error)
 	openStreamCallback := func(f []gocbcore.FailoverEntry, err error) {
 		if err == nil {
@@ -390,7 +397,7 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 		openStreamError <- err
 	}
 	_, openErr := dc.agent.OpenStream(vbID,
-		memd.DcpStreamAddFlagActiveOnly,
+		flags,
 		vbMeta.VbUUID,
 		vbMeta.StartSeqNo,
 		vbMeta.EndSeqNo,
