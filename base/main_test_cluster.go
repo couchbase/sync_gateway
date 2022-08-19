@@ -257,6 +257,7 @@ func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilRea
 
 	cluster := getCluster(c.server)
 	bucketSpec := getBucketSpec(testBucketName)
+
 	return GetCollectionFromCluster(cluster, bucketSpec, waitUntilReadySeconds)
 }
 
