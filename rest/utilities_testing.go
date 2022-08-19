@@ -207,12 +207,13 @@ func (rt *RestTester) Bucket() base.Bucket {
 					scopes[scopeName] = append(scopes[scopeName], collName)
 				}
 			}
+			fmt.Printf("HONK Creating collections")
 			if err := base.CreateBucketScopesAndCollections(base.TestCtx(rt.tb), rt.testBucket.BucketSpec, scopes); err != nil {
 				rt.tb.Fatalf("Error creating test scopes/collections: %v", err)
 			}
 		}
 		collection, collectionErr := base.AsCollection(rt.testBucket)
-		if collectionErr == nil && collection.Spec.Scope != nil && collection.Spec.Collection != nil {
+		if collectionErr == nil && rt.DatabaseConfig.Scopes == nil && collection.Spec.Scope != nil && collection.Spec.Collection != nil {
 			rt.DatabaseConfig.Scopes = ScopesConfig{
 				*collection.Spec.Scope: ScopeConfig{
 					Collections: map[string]CollectionConfig{
@@ -257,6 +258,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 			}
 		}
 	}
+
 	// PostStartup (without actually waiting 5 seconds)
 	close(rt.RestTesterServerContext.hasStarted)
 
@@ -1177,12 +1179,12 @@ func getChangesHandler(changesFinishedWg, revsFinishedWg *sync.WaitGroup) func(r
 //
 // - Call subChanges (continuous=false) endpoint to get all changes from Sync Gateway
 // - Respond to each "change" request telling the other side to send the revision
-//		- NOTE: this could be made more efficient by only requesting the revision for the docid/revid pair
-//              passed in the parameter.
+//   - NOTE: this could be made more efficient by only requesting the revision for the docid/revid pair
+//     passed in the parameter.
+//
 // - If the rev handler is called back with the desired docid/revid pair, save that into a variable that will be returned
 // - Block until all pending operations are complete
 // - Return the resultDoc or an empty resultDoc
-//
 func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resultDoc RestDocument, err error) {
 
 	docs := map[string]RestDocument{}
