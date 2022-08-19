@@ -678,7 +678,7 @@ func (c *Collection) DropAllScopesAndCollections() error {
 	// For each collection within the default scope, drop them.
 	for _, scope := range scopes {
 		if scope.Name != DefaultScope {
-			scopeName := fmt.Sprintf("scope %s on bucket %s: %v  Will retry.", MD(scope).Redact(), MD(c.Bucket().Name()).Redact())
+			scopeName := fmt.Sprintf("scope %s on bucket %s", MD(scope).Redact(), MD(c.Bucket().Name()).Redact())
 			TracefCtx(context.TODO(), KeyAll, "Dropping %s", scopeName)
 			if err := cm.DropScope(scope.Name, nil); err != nil {
 				WarnfCtx(context.TODO(), "Error dropping %s: %v  Will retry.", scopeName, err)

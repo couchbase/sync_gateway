@@ -784,6 +784,7 @@ func tbpVerbose() bool {
 	return verbose
 }
 
+// TestUsingUsingNamedCollections returns whether the test bucket pool is made up of named collection.
 func TestUsingNamedCollection() bool {
 	verbose, _ := strconv.ParseBool(os.Getenv(tbpUseCollectionPool))
 	return verbose
@@ -815,6 +816,7 @@ func TestClusterDriver() CouchbaseDriver {
 	return driver
 }
 
+// CreateNamedCollection creates a single named collection on Couchbase Server as specified by the bucket's Spec.
 func CreateNamedCollection(ctx context.Context, b Bucket) error {
 	c, ok := b.(*Collection)
 	if !ok {
