@@ -95,7 +95,7 @@ func (sg *sgCollect) Start(logFilePath string, ctxSerialNumber uint64, zipFilena
 	args = append(args, zipPath)
 
 	// ctx := context.WithValue(context.Background(), base.LogContextKey{}, base.LogContext{CorrelationID: fmt.Sprintf("SGCollect-%03d", ctxSerialNumber)})
-	ctx := base.NewLogContext(context.Background(), &base.LogContext{CorrelationID: fmt.Sprintf("SGCollect-%03d", ctxSerialNumber)})
+	ctx := base.LogContextWith(context.Background(), &base.LogContext{CorrelationID: fmt.Sprintf("SGCollect-%03d", ctxSerialNumber)})
 
 	sg.context, sg.cancel = context.WithCancel(ctx)
 	cmd := exec.CommandContext(sg.context, sgCollectPath, args...)

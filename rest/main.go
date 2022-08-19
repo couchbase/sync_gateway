@@ -127,7 +127,7 @@ func serverMainPersistentConfig(ctx context.Context, fs *flag.FlagSet, flagStart
 	if err != nil {
 		return false, err
 	}
-	ctx = base.NewServerLogContext(ctx, &base.ServerLogContext{ConfigGroupID: redactedConfig.Bootstrap.ConfigGroupID})
+	ctx = base.LogServerContextWith(ctx, &base.LogServerContext{ConfigGroupID: redactedConfig.Bootstrap.ConfigGroupID})
 	base.TracefCtx(ctx, base.KeyAll, "final config: %#v", redactedConfig)
 
 	initialStartupConfig, err := getInitialStartupConfig(fileStartupConfig, flagStartupConfig)

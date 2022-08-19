@@ -95,21 +95,21 @@ const (
 
 var allContextAdderKeys = [...]ContextAdderKey{logContextKey, serverLogContextKey}
 
-func NewLogContext(parent context.Context, lc *LogContext) context.Context {
+func LogContextWith(parent context.Context, lc *LogContext) context.Context {
 	return context.WithValue(parent, logContextKey, lc)
 }
 
-type ServerLogContext struct {
+type LogServerContext struct {
 	ConfigGroupID string
 }
 
-func (c *ServerLogContext) addContext(format string) string {
+func (c *LogServerContext) addContext(format string) string {
 	if c != nil && c.ConfigGroupID != "" {
 		format = "g:" + c.ConfigGroupID + " " + format
 	}
 	return format
 }
 
-func NewServerLogContext(parent context.Context, slc *ServerLogContext) context.Context {
+func LogServerContextWith(parent context.Context, slc *LogServerContext) context.Context {
 	return context.WithValue(parent, serverLogContextKey, slc)
 }

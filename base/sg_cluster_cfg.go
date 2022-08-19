@@ -48,7 +48,7 @@ func NewCfgSG(bucket Bucket, groupID string) (*CfgSG, error) {
 	// loggingCtx := context.WithValue(context.Background(), LogContextKey{},
 	// 	LogContext{CorrelationID: cfgContextID},
 	// )
-	loggingCtx := NewLogContext(context.Background(), &LogContext{CorrelationID: cfgContextID})
+	loggingCtx := LogContextWith(context.Background(), &LogContext{CorrelationID: cfgContextID})
 
 	c := &CfgSG{
 		bucket:        bucket,

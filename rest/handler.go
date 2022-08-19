@@ -172,7 +172,7 @@ func (h *handler) ctx() context.Context {
 		// h.rqCtx = context.WithValue(h.rq.Context(), base.LogContextKey{},
 		// 	base.LogContext{CorrelationID: h.formatSerialNumber()},
 		// )
-		h.rqCtx = base.NewLogContext(h.rq.Context(), &base.LogContext{CorrelationID: h.formatSerialNumber()})
+		h.rqCtx = base.LogContextWith(h.rq.Context(), &base.LogContext{CorrelationID: h.formatSerialNumber()})
 	}
 	return h.rqCtx
 }

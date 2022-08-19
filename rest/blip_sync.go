@@ -46,7 +46,7 @@ func (h *handler) handleBLIPSync() error {
 	// h.db.Ctx = context.WithValue(h.db.Ctx, base.LogContextKey{},
 	// 	base.LogContext{CorrelationID: base.FormatBlipContextID(blipContext.ID)},
 	// )
-	h.db.Ctx = base.NewLogContext(h.db.Ctx, &base.LogContext{CorrelationID: base.FormatBlipContextID(blipContext.ID)})
+	h.db.Ctx = base.LogContextWith(h.db.Ctx, &base.LogContext{CorrelationID: base.FormatBlipContextID(blipContext.ID)})
 
 	// Create a new BlipSyncContext attached to the given blipContext.
 	ctx := db.NewBlipSyncContext(blipContext, h.db, h.formatSerialNumber(), db.BlipSyncStatsForCBL(h.db.DbStats))
