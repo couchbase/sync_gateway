@@ -34,9 +34,10 @@ const DesignDocVersion = "2.1"
 const DesignDocFormat = "%s_%s" // Design doc prefix, view version
 
 // DesignDocPreviousVersions defines the set of versions included during removal of obsolete
-// design docs.  Must be updated whenever DesignDocVersion is incremented.
-// Uses a hardcoded list instead of version comparison to simpify the processing
+// design docs in removeObsoleteDesignDocs.  Must be updated whenever DesignDocVersion is incremented.
+// Uses a hardcoded list instead of version comparison to simplify the processing
 // (particularly since there aren't expected to be many view versions before moving to GSI).
+// See setDesignDocPreviousVersionsForTest for a way to temporarily override this during tests.
 var DesignDocPreviousVersions = []string{"", "2.0"}
 
 const (
@@ -723,6 +724,10 @@ func IsMissingDDocError(err error) bool {
 
 	// gocb v2
 	if errors.Is(err, gocb.ErrDesignDocumentNotFound) {
+		return true
+	}
+
+	if errors.Is(err, base.ErrNotFound) {
 		return true
 	}
 

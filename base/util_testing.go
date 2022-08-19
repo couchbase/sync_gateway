@@ -771,3 +771,20 @@ func CreateBucketScopesAndCollections(ctx context.Context, bucketSpec BucketSpec
 
 	return nil
 }
+
+// RequireAllAssertions ensures that all assertion results were true/ok, and fails the test if any were not.
+// Usage:
+//     RequireAllAssertions(t,
+//         assert.True(t, condition1),
+//         assert.True(t, condition2),
+//     )
+func RequireAllAssertions(t *testing.T, assertionResults ...bool) {
+	var failed bool
+	for _, ok := range assertionResults {
+		if !ok {
+			failed = true
+			break
+		}
+	}
+	require.Falsef(t, failed, "One or more assertions failed: %v", assertionResults)
+}
