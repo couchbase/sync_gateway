@@ -38,7 +38,7 @@ func TestAllConfigFlags(t *testing.T) {
 				val = "trace"
 			case *PerDatabaseCredentialsConfig:
 				val = `{"db1":{"password":"foo"}}`
-			case *PerBucketCredentialsConfig:
+			case *base.PerBucketCredentialsConfig:
 				val = `{"bucket":{"password":"foo"}}`
 			}
 			flags = append(flags, "-"+name, val)

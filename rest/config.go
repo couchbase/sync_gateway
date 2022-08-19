@@ -27,6 +27,8 @@ import (
 	"strings"
 	"syscall"
 
+	"golang.org/x/exp/maps"
+
 	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/square/go-jose.v2"
 
@@ -284,7 +286,7 @@ func (dbc *DbConfig) inheritFromBootstrap(b BootstrapConfig) {
 	}
 }
 
-func (dbConfig *DbConfig) setPerDatabaseCredentials(dbCredentials CredentialsConfig) {
+func (dbConfig *DbConfig) setPerDatabaseCredentials(dbCredentials base.CredentialsConfig) {
 	// X.509 overrides username/password
 	if dbCredentials.X509CertPath != "" || dbCredentials.X509KeyPath != "" {
 		dbConfig.CertPath = dbCredentials.X509CertPath
@@ -300,7 +302,7 @@ func (dbConfig *DbConfig) setPerDatabaseCredentials(dbCredentials CredentialsCon
 }
 
 // setup populates fields in the dbConfig
-func (dbConfig *DbConfig) setup(dbName string, bootstrapConfig BootstrapConfig, dbCredentials *CredentialsConfig) error {
+func (dbConfig *DbConfig) setup(dbName string, bootstrapConfig BootstrapConfig, dbCredentials *base.CredentialsConfig) error {
 
 	dbConfig.inheritFromBootstrap(bootstrapConfig)
 	if dbCredentials != nil {
@@ -1173,7 +1175,7 @@ func (sc *StartupConfig) validate(isEnterpriseEdition bool) (errorMessages error
 		}
 	}
 
-	if base.BoolDefault(sc.Unsupported.Serverless, false) && len(sc.BucketCredentials) == 0 {
+	if sc.IsServerless() && len(sc.BucketCredentials) == 0 {
 		multiError = multiError.Append(fmt.Errorf("at least 1 bucket must be defined in bucket_credentials when running in serverless mode"))
 	}
 
@@ -1368,9 +1370,24 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 
 // fetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
 func (sc *ServerContext) fetchConfigs(isInitialStartup bool) (dbNameConfigs map[string]DatabaseConfig, err error) {
-	buckets, err := sc.bootstrapContext.connection.GetConfigBuckets()
-	if err != nil {
-		return nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
+	var buckets []string
+	if sc.config.IsServerless() {
+		buckets = maps.Keys(sc.config.BucketCredentials)
+		// TODO: Enable code as part of CBG-2280
+		// Return buckets that have credentials set that do not have a db associated with them
+		//buckets = make([]string, len(sc.config.BucketCredentials)-len(sc.bucketDbName))
+		//for bucket := range sc.config.BucketCredentials {
+		//	i := 0
+		//	if sc.bucketDbName[bucket] == "" {
+		//		buckets[i] = bucket
+		//		i++
+		//	}
+		//}
+	} else {
+		buckets, err = sc.bootstrapContext.connection.GetConfigBuckets()
+		if err != nil {
+			return nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
+		}
 	}
 
 	logCtx := context.TODO()
