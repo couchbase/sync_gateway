@@ -1711,7 +1711,7 @@ func TestSetupDbConfigCredentials(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := test.dbConfig.setup(test.dbConfig.Name, test.bootstrapConfig, test.credentialsConfig)
+			err := test.dbConfig.setup(test.dbConfig.Name, test.bootstrapConfig, test.credentialsConfig, nil, false)
 			require.NoError(t, err)
 			if test.expectX509 {
 				assert.Equal(t, "", test.dbConfig.Username)
@@ -1818,7 +1818,7 @@ func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 					Err:        test.errExpected,
 				}
 			}
-			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil)
+			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil, nil, false)
 			if test.errExpected != nil {
 				require.True(t, errors.As(err, &test.errExpected)) // nolint: govet // CBG-2242
 			} else {
@@ -1918,7 +1918,7 @@ func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
 					Err:        test.errExpected,
 				}
 			}
-			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil)
+			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil, nil, false)
 			if test.errExpected != nil {
 				require.True(t, errors.As(err, &test.errExpected)) // nolint: govet // CBG-2242
 			} else {
@@ -2030,7 +2030,7 @@ func TestSetupDbConfigWithConflictResolutionFunction(t *testing.T) {
 					Err:        test.errExpected,
 				}
 			}
-			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil)
+			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil, nil, false)
 			if test.errExpected != nil {
 				require.True(t, errors.As(err, &test.errExpected)) // nolint: govet // CBG-2242
 			} else {
