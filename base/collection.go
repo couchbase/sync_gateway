@@ -677,10 +677,11 @@ func (c *Collection) DropAllScopesAndCollections() error {
 	// For each non-default scope, drop them.
 	// For each collection within the default scope, drop them.
 	for _, scope := range scopes {
-		WarnfCtx(context.TODO(), "Dropping scope %s on bucket %s", MD(scope).Redact(), MD(c.Bucket().Name()).Redact())
 		if scope.Name != DefaultScope {
+			scopeName := fmt.Sprintf("scope %s on bucket %s: %v  Will retry.", MD(scope).Redact(), MD(c.Bucket().Name()).Redact())
+			TracefCtx(context.TODO(), KeyAll, "Dropping %s", scopeName)
 			if err := cm.DropScope(scope.Name, nil); err != nil {
-				WarnfCtx(context.TODO(), "Error dropping scope %s on bucket %s: %v  Will retry.", MD(scope).Redact(), MD(c.Bucket().Name()).Redact(), err)
+				WarnfCtx(context.TODO(), "Error dropping %s: %v  Will retry.", scopeName, err)
 				return err
 			}
 			continue
@@ -689,9 +690,10 @@ func (c *Collection) DropAllScopesAndCollections() error {
 		// can't delete _default scope - but we can delete the non-_default collections within it
 		for _, collection := range scope.Collections {
 			if collection.Name != DefaultCollection {
-				WarnfCtx(context.TODO(), "Dropping scope %s on bucket %s", MD(scope).Redact(), MD(c.Bucket().Name()).Redact())
+				collectionName := fmt.Sprintf("collection %s in scope %s on bucket %s: %v  Will retry.", MD(collection.Name).Redact(), MD(scope).Redact(), MD(c.Bucket().Name()).Redact())
+				TracefCtx(context.TODO(), KeyAll, "Dropping %s", collectionName)
 				if err := cm.DropCollection(collection, nil); err != nil {
-					WarnfCtx(context.TODO(), "Error dropping collection %s in scope %s on bucket %s: %v  Will retry.", MD(collection.Name).Redact(), MD(scope).Redact(), MD(c.Bucket().Name()).Redact(), err)
+					WarnfCtx(context.TODO(), "Error dropping %s: %v  Will retry.", collectionName, err)
 					return err
 				}
 			}

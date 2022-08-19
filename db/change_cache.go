@@ -46,8 +46,8 @@ var EnableStarChannelLog = true
 // Core responsibilities:
 //
 // - Receive DCP changes via callbacks
-//   - Perform sequence buffering to ensure documents are received in sequence order
-//   - Propagating DCP changes down to appropriate channel caches
+//    - Perform sequence buffering to ensure documents are received in sequence order
+//    - Propagating DCP changes down to appropriate channel caches
 type changeCache struct {
 	context            *DatabaseContext
 	logCtx             context.Context
@@ -768,7 +768,6 @@ func (c *changeCache) _addToCache(change *LogEntry) []string {
 	}
 	delete(c.receivedSeqs, change.Sequence)
 
-	fmt.Sprintf("HONK %+v\n", change)
 	// If unused sequence or principal, we're done after updating sequence
 	if change.DocID == "" {
 		return nil

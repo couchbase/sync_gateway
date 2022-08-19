@@ -66,7 +66,7 @@ func TestSetGet(t *testing.T) {
 		assert.Error(t, err, "Key should not exist yet, expected error but got nil")
 
 		err = bucket.Set(key, 0, nil, val)
-		require.NoError(t, err, "Error calling Set()")
+		assert.NoError(t, err, "Error calling Set()")
 
 		_, err = bucket.Get(key, &rVal)
 		require.NoError(t, err, "Error calling Get()")

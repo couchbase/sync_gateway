@@ -1776,7 +1776,6 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 
 	// Wait for all writes to be cached, then getChanges again
 	cacheWaiter.Wait()
-	time.Sleep(1 * time.Second)
 
 	changes, err = db.GetChanges(channels.SetOf(t, "zero"), getChangesOptionsWithSeq(lastSeq))
 	require.NoError(t, err, "Couldn't GetChanges")
