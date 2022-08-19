@@ -1673,7 +1673,7 @@ func TestSetupDbConfigCredentials(t *testing.T) {
 		name              string
 		dbConfig          DbConfig
 		bootstrapConfig   BootstrapConfig
-		credentialsConfig *CredentialsConfig
+		credentialsConfig *base.CredentialsConfig
 		expectX509        bool
 	}{
 		{
@@ -1686,26 +1686,26 @@ func TestSetupDbConfigCredentials(t *testing.T) {
 			name:              "db username/password override",
 			dbConfig:          DbConfig{Name: "db"},
 			bootstrapConfig:   BootstrapConfig{Server: "couchbase://example.org", Username: "bob", Password: "foobar"},
-			credentialsConfig: &CredentialsConfig{Username: expectedUsername, Password: expectedPassword},
+			credentialsConfig: &base.CredentialsConfig{Username: expectedUsername, Password: expectedPassword},
 		},
 		{
 			name:              "db username/password override from x509",
 			dbConfig:          DbConfig{Name: "db"},
 			bootstrapConfig:   BootstrapConfig{Server: "couchbase://example.org", X509CertPath: "/tmp/x509cert", X509KeyPath: "/tmp/x509key"},
-			credentialsConfig: &CredentialsConfig{Username: expectedUsername, Password: expectedPassword},
+			credentialsConfig: &base.CredentialsConfig{Username: expectedUsername, Password: expectedPassword},
 		},
 		{
 			name:              "db x509 override from username/password",
 			dbConfig:          DbConfig{Name: "db"},
 			bootstrapConfig:   BootstrapConfig{Server: "couchbase://example.org", Username: "bob", Password: "foobar"},
-			credentialsConfig: &CredentialsConfig{X509CertPath: expectedX509Cert, X509KeyPath: expectedX509Key},
+			credentialsConfig: &base.CredentialsConfig{X509CertPath: expectedX509Cert, X509KeyPath: expectedX509Key},
 			expectX509:        true,
 		},
 		{
 			name:              "db x509 override",
 			dbConfig:          DbConfig{Name: "db"},
 			bootstrapConfig:   BootstrapConfig{Server: "couchbase://example.org", X509CertPath: "/tmp/bs-x509cert", X509KeyPath: "/tmp/bs-x509key"},
-			credentialsConfig: &CredentialsConfig{X509CertPath: expectedX509Cert, X509KeyPath: expectedX509Key},
+			credentialsConfig: &base.CredentialsConfig{X509CertPath: expectedX509Cert, X509KeyPath: expectedX509Key},
 			expectX509:        true,
 		},
 	}
@@ -2427,67 +2427,67 @@ func TestBucketCredentialsValidation(t *testing.T) {
 		{
 			name: "Valid bucket using x509",
 			startupConfig: StartupConfig{
-				BucketCredentials: PerBucketCredentialsConfig{"bucket": &CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
+				BucketCredentials: base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
 			},
 		},
 		{
 			name: "Valid bucket using basic auth",
 			startupConfig: StartupConfig{
-				BucketCredentials: PerBucketCredentialsConfig{"bucket": &CredentialsConfig{Username: "uname", Password: "pass"}}},
+				BucketCredentials: base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{Username: "uname", Password: "pass"}}},
 		},
 		{
 			name: "Valid database using basic auth",
 			startupConfig: StartupConfig{
-				DatabaseCredentials: PerDatabaseCredentialsConfig{"db": &CredentialsConfig{Username: "uname", Password: "pword"}},
+				DatabaseCredentials: PerDatabaseCredentialsConfig{"db": &base.CredentialsConfig{Username: "uname", Password: "pword"}},
 			},
 		},
 		{
 			name: "Blank database and filled bucket creds provided",
 			startupConfig: StartupConfig{
 				DatabaseCredentials: PerDatabaseCredentialsConfig{},
-				BucketCredentials:   PerBucketCredentialsConfig{"bucket": &CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
+				BucketCredentials:   base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
 			},
 		},
 		{
 			name: "Filled database and blank bucket creds provided",
 			startupConfig: StartupConfig{
-				BucketCredentials:   PerBucketCredentialsConfig{},
-				DatabaseCredentials: PerDatabaseCredentialsConfig{"bucket": &CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
+				BucketCredentials:   base.PerBucketCredentialsConfig{},
+				DatabaseCredentials: PerDatabaseCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
 			},
 		},
 		{
 			name: "Database and bucket creds provided",
 			startupConfig: StartupConfig{
-				DatabaseCredentials: PerDatabaseCredentialsConfig{"bucket": &CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
-				BucketCredentials:   PerBucketCredentialsConfig{"bucket": &CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
+				DatabaseCredentials: PerDatabaseCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
+				BucketCredentials:   base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
 			},
 			expectedError: &bucketAndDBCredsError,
 		},
 		{
 			name: "Bucket creds for x509 and basic auth",
 			startupConfig: StartupConfig{
-				BucketCredentials: PerBucketCredentialsConfig{"bucket": &CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key", Username: "uname", Password: "pword"}},
+				BucketCredentials: base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key", Username: "uname", Password: "pword"}},
 			},
 			expectedError: &bucketCredsError,
 		},
 		{
 			name: "Bucket creds for x509 key and basic auth password only",
 			startupConfig: StartupConfig{
-				BucketCredentials: PerBucketCredentialsConfig{"bucket": &CredentialsConfig{X509KeyPath: "key", Password: "pword"}},
+				BucketCredentials: base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{X509KeyPath: "key", Password: "pword"}},
 			},
 			expectedError: &bucketCredsError,
 		},
 		{
 			name: "Bucket creds for x509 cert and basic auth username only",
 			startupConfig: StartupConfig{
-				BucketCredentials: PerBucketCredentialsConfig{"bucket": &CredentialsConfig{X509CertPath: "cert", Username: "uname"}},
+				BucketCredentials: base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", Username: "uname"}},
 			},
 			expectedError: &bucketCredsError,
 		},
 		{
 			name: "Bucket creds for x509 cert and basic auth username only",
 			startupConfig: StartupConfig{
-				BucketCredentials: PerBucketCredentialsConfig{"bucket": &CredentialsConfig{X509CertPath: "cert", Username: "uname"}},
+				BucketCredentials: base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", Username: "uname"}},
 			},
 			expectedError: &bucketCredsError,
 		},
@@ -2501,7 +2501,7 @@ func TestBucketCredentialsValidation(t *testing.T) {
 		{
 			name: "No bucket credentials provided when running in serverless mode",
 			startupConfig: StartupConfig{
-				BucketCredentials: PerBucketCredentialsConfig{},
+				BucketCredentials: base.PerBucketCredentialsConfig{},
 				Unsupported:       UnsupportedConfig{Serverless: base.BoolPtr(true)},
 			},
 			expectedError: &bucketNoCredsServerless,
@@ -2510,7 +2510,7 @@ func TestBucketCredentialsValidation(t *testing.T) {
 			name: "Bucket credentials provided when running in serverless mode",
 			startupConfig: StartupConfig{
 				Unsupported:       UnsupportedConfig{Serverless: base.BoolPtr(true)},
-				BucketCredentials: PerBucketCredentialsConfig{"bucket": &CredentialsConfig{Username: "u", Password: "p"}},
+				BucketCredentials: base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{Username: "u", Password: "p"}},
 			},
 		},
 	}
@@ -2528,86 +2528,4 @@ func TestBucketCredentialsValidation(t *testing.T) {
 			}
 		})
 	}
-}
-
-// Tests behaviour of CBG-2257 to poll only buckets in BucketCredentials that don't currently have a database
-func TestServerlessPollBuckets(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
-	// Get test bucket
-	tb1 := base.GetTestBucket(t)
-	defer tb1.Close()
-
-	config := bootstrapStartupConfigForTest(t)
-	config.Unsupported.Serverless = base.BoolPtr(true)
-	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
-	// Use invalid bucket to get past validation stage - will cause warnings throughout test
-	config.BucketCredentials = map[string]*CredentialsConfig{"invalid_bucket": {}}
-
-	sc, err := setupServerContext(&config, true)
-	require.NoError(t, err)
-
-	serverErr := make(chan error, 0)
-	defer func() {
-		sc.Close()
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- startServer(&config, sc)
-	}()
-	require.NoError(t, sc.waitForRESTAPIs())
-
-	// Confirm fetch does not return any configs due to no databases existing
-	configs, err := sc.fetchConfigs(false)
-	require.NoError(t, err)
-	assert.Empty(t, configs)
-
-	// Create a database
-	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb1, groupID: base.StringPtr(config.Bootstrap.ConfigGroupID), persistentConfig: true})
-	defer rt.Close()
-	// Create a new db on the RT to confirm fetch won't retrieve it (due to bucket not being in BucketCredentials)
-	resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{
-		"bucket": "%s",
-		"use_views": %t,
-		"num_index_replicas": 0
-	}`, tb1.GetName(), base.TestsDisableGSI()))
-	requireStatus(t, resp, http.StatusCreated)
-
-	// Confirm fetch does not return any configs due to no databases in the bucket credentials config
-	configs, err = sc.fetchConfigs(false)
-	require.NoError(t, err)
-	assert.Empty(t, configs)
-
-	// Add test bucket to bucket credentials config
-	sc.config.BucketCredentials = map[string]*CredentialsConfig{
-		tb1.GetName(): {
-			Username: base.TestClusterUsername(),
-			Password: base.TestClusterPassword(),
-		},
-	}
-
-	// Update the CouchbaseCluster to include the new bucket credentials
-	couchbaseCluster, err := createCouchbaseClusterFromStartupConfig(sc.config)
-	require.NoError(t, err)
-	sc.bootstrapContext.connection = couchbaseCluster
-
-	// Confirm fetch does return config for db in tb1
-	configs, err = sc.fetchConfigs(false)
-	require.NoError(t, err)
-	require.Len(t, configs, 1)
-	assert.NotNil(t, configs["db"])
-	count, err := sc.fetchAndLoadConfigs(false)
-	require.NoError(t, err)
-	assert.Equal(t, 1, count)
-
-	// Confirm fetch does not return any configs due to db being known about already (so existing db does not get polled)
-	configs, err = sc.fetchConfigs(false)
-	require.NoError(t, err)
-	assert.Empty(t, configs)
-	count, err = sc.fetchAndLoadConfigs(false)
-	require.NoError(t, err)
-	assert.Equal(t, 0, count)
 }

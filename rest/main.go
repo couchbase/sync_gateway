@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	pkgerrors "github.com/pkg/errors"
@@ -360,22 +359,9 @@ func backupCurrentConfigFile(sourcePath string) (string, error) {
 }
 
 func createCouchbaseClusterFromStartupConfig(config *StartupConfig) (*base.CouchbaseCluster, error) {
-	// Populate individual bucket credentials
-	perBucketAuth := make(map[string]*gocb.Authenticator, len(config.BucketCredentials))
-	for bucket, credentials := range config.BucketCredentials {
-		authenticator, err := base.GoCBv2Authenticator(
-			credentials.Username, credentials.Password,
-			credentials.X509CertPath, credentials.X509KeyPath,
-		)
-		if err != nil {
-			return nil, err
-		}
-		perBucketAuth[bucket] = &authenticator
-	}
-
 	cluster, err := base.NewCouchbaseCluster(config.Bootstrap.Server, config.Bootstrap.Username, config.Bootstrap.Password,
 		config.Bootstrap.X509CertPath, config.Bootstrap.X509KeyPath, config.Bootstrap.CACertPath,
-		base.BoolDefault(config.Unsupported.Serverless, false), perBucketAuth, config.Bootstrap.ServerTLSSkipVerify)
+		config.IsServerless(), config.BucketCredentials, config.Bootstrap.ServerTLSSkipVerify)
 	if err != nil {
 		base.InfofCtx(context.Background(), base.KeyConfig, "Couldn't create couchbase cluster instance: %v", err)
 		return nil, err
