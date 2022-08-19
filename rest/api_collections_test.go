@@ -84,6 +84,7 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 						},
 					},
 				},
+				UseViews: base.BoolPtr(false),
 			},
 		},
 	})
@@ -125,6 +126,7 @@ func TestCollectionsDCP(t *testing.T) {
 						},
 					},
 				},
+				UseViews: base.BoolPtr(false),
 			},
 		},
 	})
@@ -165,6 +167,7 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 						},
 					},
 				},
+				UseViews: base.BoolPtr(false),
 			},
 		},
 	})
@@ -231,9 +234,6 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyHTTP, base.KeyQuery, base.KeyCRUD)
 
-	// force GSI for this one test
-	useViews := base.BoolPtr(false)
-
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
@@ -256,7 +256,7 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 		TestBucket:                 tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
-				UseViews: useViews,
+				UseViews: base.BoolPtr(false),
 				Users: map[string]*auth.PrincipalConfig{
 					username: {
 						ExplicitChannels: base.SetOf(validChannel),
