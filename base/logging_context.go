@@ -18,7 +18,7 @@ import (
 )
 
 // LogContextKey is used to key a LogContext value
-type LogContextKey struct{}
+// type LogContextKey struct{}
 
 // LogContext stores values which may be useful to include in logs
 type LogContext struct {
@@ -54,6 +54,10 @@ func (lc *LogContext) addContext(format string) string {
 	return format
 }
 
+func (lc *LogContext) getContextKey() ContextAdderKey {
+	return logContextKey
+}
+
 func FormatBlipContextID(contextID string) string {
 	return "[" + contextID + "]"
 }
@@ -64,7 +68,7 @@ func NewTaskID(contextID string, taskName string) string {
 
 // TestCtx creates a log context for the given test.
 func TestCtx(t testing.TB) context.Context {
-	return context.WithValue(context.Background(), LogContextKey{}, LogContext{TestName: t.Name()})
+	return LogContextWith(context.Background(), &LogContext{TestName: t.Name()})
 }
 
 // bucketCtx extends the parent context with a bucket name.
@@ -74,10 +78,69 @@ func bucketCtx(parent context.Context, b Bucket) context.Context {
 
 // bucketNameCtx extends the parent context with a bucket name.
 func bucketNameCtx(parent context.Context, bucketName string) context.Context {
-	parentLogCtx, _ := parent.Value(LogContextKey{}).(LogContext)
+	parentLogCtx, _ := parent.Value(logContextKey).(LogContext)
 	newCtx := LogContext{
 		TestName:       parentLogCtx.TestName,
 		TestBucketName: bucketName,
 	}
-	return context.WithValue(parent, LogContextKey{}, newCtx)
+	return LogContextWith(parent, &newCtx)
+}
+
+// ContextAdderKey is the type used to store custom data in the go context
+type ContextAdderKey int
+
+const (
+	logContextKey ContextAdderKey = iota
+	serverLogContextKey
+	databaseLogContextKey
+)
+
+// ContextAdder interface should be implemented by all custom contexts.
+// The custom context should provide its own key to be used with go contexts,
+// and be able to add its custom info to the log format msg.
+type ContextAdder interface {
+	getContextKey() ContextAdderKey
+	addContext(format string) string
+}
+
+// allContextAdderKeys contains the keys of all custom contexts,
+// and is used when writing log prefixes (addPrefixes)
+var allContextAdderKeys = [...]ContextAdderKey{logContextKey, serverLogContextKey, databaseLogContextKey}
+
+// LogContextWith is called to add custom context to the go context.
+// All custom contexts should implement ContextAdder interface
+func LogContextWith(parent context.Context, adder ContextAdder) context.Context {
+	return context.WithValue(parent, adder.getContextKey(), adder)
+}
+
+// ServerLogContext stores server context data for logging
+type ServerLogContext struct {
+	ConfigGroupID string
+}
+
+func (c *ServerLogContext) getContextKey() ContextAdderKey {
+	return serverLogContextKey
+}
+
+func (c *ServerLogContext) addContext(format string) string {
+	if c != nil && c.ConfigGroupID != "" {
+		format = "g:" + c.ConfigGroupID + " " + format
+	}
+	return format
+}
+
+// DatabaseLogContext provides database context data for logging
+type DatabaseLogContext struct {
+	DatabaseName string
+}
+
+func (c *DatabaseLogContext) getContextKey() ContextAdderKey {
+	return databaseLogContextKey
+}
+
+func (c *DatabaseLogContext) addContext(format string) string {
+	if c != nil && c.DatabaseName != "" {
+		format = "db:" + c.DatabaseName + " " + format
+	}
+	return format
 }
