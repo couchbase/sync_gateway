@@ -1511,37 +1511,37 @@ func (sc *ServerContext) _applyConfig(cnf DatabaseConfig, failFast, isInitialSta
 // addLegacyPrincipals takes a map of databases that each have a map of names with principle configs.
 // Call this function to install the legacy principles to the upgraded database that use a persistent config.
 // Only call this function after the databases have been initalised via setupServerContext.
-func (sc *ServerContext) addLegacyPrincipals(legacyDbUsers, legacyDbRoles map[string]map[string]*auth.PrincipalConfig) {
+func (sc *ServerContext) addLegacyPrincipals(ctx context.Context, legacyDbUsers, legacyDbRoles map[string]map[string]*auth.PrincipalConfig) {
 	for dbName, dbUser := range legacyDbUsers {
 		dbCtx, err := sc.GetDatabase(dbName)
 		if err != nil {
-			base.ErrorfCtx(context.Background(), "Couldn't get database context to install user principles: %v", err)
+			base.ErrorfCtx(ctx, "Couldn't get database context to install user principles: %v", err)
 			continue
 		}
 		err = sc.installPrincipals(dbCtx, dbUser, "user")
 		if err != nil {
-			base.ErrorfCtx(context.Background(), "Couldn't install user principles: %v", err)
+			base.ErrorfCtx(ctx, "Couldn't install user principles: %v", err)
 		}
 	}
 
 	for dbName, dbRole := range legacyDbRoles {
 		dbCtx, err := sc.GetDatabase(dbName)
 		if err != nil {
-			base.ErrorfCtx(context.Background(), "Couldn't get database context to install role principles: %v", err)
+			base.ErrorfCtx(ctx, "Couldn't get database context to install role principles: %v", err)
 			continue
 		}
 		err = sc.installPrincipals(dbCtx, dbRole, "role")
 		if err != nil {
-			base.ErrorfCtx(context.Background(), "Couldn't install role principles: %v", err)
+			base.ErrorfCtx(ctx, "Couldn't install role principles: %v", err)
 		}
 	}
 }
 
 // startServer starts and runs the server with the given configuration. (This function never returns.)
-func startServer(config *StartupConfig, sc *ServerContext) error {
+func startServer(ctx context.Context, config *StartupConfig, sc *ServerContext) error {
 	if config.API.ProfileInterface != "" {
 		// runtime.MemProfileRate = 10 * 1024
-		base.InfofCtx(context.TODO(), base.KeyAll, "Starting profile server on %s", base.UD(config.API.ProfileInterface))
+		base.InfofCtx(ctx, base.KeyAll, "Starting profile server on %s", base.UD(config.API.ProfileInterface))
 		go func() {
 			_ = http.ListenAndServe(config.API.ProfileInterface, nil)
 		}()
@@ -1552,14 +1552,14 @@ func startServer(config *StartupConfig, sc *ServerContext) error {
 	base.Consolef(base.LevelInfo, base.KeyAll, "Starting metrics server on %s", config.API.MetricsInterface)
 	go func() {
 		if err := sc.Serve(config, config.API.MetricsInterface, CreateMetricHandler(sc)); err != nil {
-			base.ErrorfCtx(context.TODO(), "Error serving the Metrics API: %v", err)
+			base.ErrorfCtx(ctx, "Error serving the Metrics API: %v", err)
 		}
 	}()
 
 	base.Consolef(base.LevelInfo, base.KeyAll, "Starting admin server on %s", config.API.AdminInterface)
 	go func() {
 		if err := sc.Serve(config, config.API.AdminInterface, CreateAdminHandler(sc)); err != nil {
-			base.ErrorfCtx(context.TODO(), "Error serving the Admin API: %v", err)
+			base.ErrorfCtx(ctx, "Error serving the Admin API: %v", err)
 		}
 	}()
 

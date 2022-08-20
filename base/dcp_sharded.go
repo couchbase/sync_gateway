@@ -343,9 +343,6 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 		options)
 
 	cbgtContext := &CbgtContext{
-		// loggingCtx: context.WithValue(context.Background(), LogContextKey{},
-		// 	LogContext{CorrelationID: MD(spec.BucketName).Redact() + "-" + DCPImportFeedID},
-		// ),
 		loggingCtx: LogContextWith(context.Background(), &LogContext{CorrelationID: MD(spec.BucketName).Redact() + "-" + DCPImportFeedID}),
 		Manager:    mgr,
 		Cfg:        cfgSG,

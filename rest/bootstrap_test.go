@@ -35,10 +35,13 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
 
+	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{
+		ConfigGroupID: sc.config.Bootstrap.ConfigGroupID,
+	})
 	// sc closed and serverErr read later in the test
 	serverErr := make(chan error, 0)
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 
@@ -96,8 +99,11 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	sc, err = setupServerContext(&config, true)
 	require.NoError(t, err)
 	serverErr = make(chan error, 0)
+	ctx = base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{
+		ConfigGroupID: sc.config.Bootstrap.ConfigGroupID,
+	})
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 	defer func() {
@@ -151,8 +157,11 @@ func TestBootstrapDuplicateBucket(t *testing.T) {
 		require.NoError(t, <-serverErr)
 	}()
 
+	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{
+		ConfigGroupID: sc.config.Bootstrap.ConfigGroupID,
+	})
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 
@@ -200,8 +209,11 @@ func TestBootstrapDuplicateDatabase(t *testing.T) {
 		require.NoError(t, <-serverErr)
 	}()
 
+	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{
+		ConfigGroupID: sc.config.Bootstrap.ConfigGroupID,
+	})
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 

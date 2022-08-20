@@ -346,10 +346,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	)
 
 	dbContext.EventMgr = NewEventManager()
-	// logCtx := context.WithValue(context.Background(), base.LogContextKey{}, base.LogContext{
-	// 	CorrelationID: "db:" + base.MD(dbName).Redact(),
-	// })
-	logCtx := base.LogContextWith(context.Background(), &base.LogContext{CorrelationID: "db:" + base.MD(dbName).Redact()})
+	logCtx := base.LogContextWith(context.Background(), &base.DatabaseLogContext{DatabaseName: base.MD(dbName).Redact()})
 
 	var err error
 	dbContext.sequences, err = newSequenceAllocator(bucket, dbContext.DbStats.Database())

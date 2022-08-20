@@ -2317,8 +2317,11 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	sc, err := setupServerContext(&startupConfig, true)
 	require.NoError(t, err)
 	serverErr := make(chan error, 0)
+	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{
+		ConfigGroupID: sc.config.Bootstrap.ConfigGroupID,
+	})
 	go func() {
-		serverErr <- startServer(&startupConfig, sc)
+		serverErr <- startServer(ctx, &startupConfig, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 	defer func() {

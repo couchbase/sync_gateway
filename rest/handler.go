@@ -169,9 +169,6 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 // ctx returns the request-scoped context for logging/cancellation.
 func (h *handler) ctx() context.Context {
 	if h.rqCtx == nil {
-		// h.rqCtx = context.WithValue(h.rq.Context(), base.LogContextKey{},
-		// 	base.LogContext{CorrelationID: h.formatSerialNumber()},
-		// )
 		h.rqCtx = base.LogContextWith(h.rq.Context(), &base.LogContext{CorrelationID: h.formatSerialNumber()})
 	}
 	return h.rqCtx
@@ -256,10 +253,11 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	}
 
 	// look up the database context:
+	var ctx context.Context = h.ctx()
 	var dbContext *db.DatabaseContext
 	if keyspaceDb != "" {
 		if dbContext, err = h.server.GetDatabase(keyspaceDb); err != nil {
-			base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
+			base.InfofCtx(ctx, base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
 
 			if shouldCheckAdminAuth {
 				if httpError, ok := err.(*base.HTTPError); ok && httpError.Status == http.StatusNotFound {
@@ -392,7 +390,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 			authScope = ""
 		}
 		if err != nil {
-			base.WarnfCtx(h.ctx(), "An error occurred whilst obtaining management endpoints: %v", err)
+			base.WarnfCtx(ctx, "An error occurred whilst obtaining management endpoints: %v", err)
 			return base.HTTPErrorf(http.StatusInternalServerError, "")
 		}
 
@@ -417,19 +415,19 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 			managementEndpoints, *h.server.config.API.EnableAdminAuthenticationPermissionsCheck, accessPermissions,
 			responsePermissions)
 		if err != nil {
-			base.WarnfCtx(h.ctx(), "An error occurred whilst checking whether a user was authorized: %v", err)
+			base.WarnfCtx(ctx, "An error occurred whilst checking whether a user was authorized: %v", err)
 			return base.HTTPErrorf(http.StatusInternalServerError, "")
 		}
 
 		if statusCode != http.StatusOK {
-			base.InfofCtx(h.ctx(), base.KeyAuth, "%s: User %s failed to auth as an admin statusCode: %d", h.formatSerialNumber(), base.UD(username), statusCode)
+			base.InfofCtx(ctx, base.KeyAuth, "%s: User %s failed to auth as an admin statusCode: %d", h.formatSerialNumber(), base.UD(username), statusCode)
 			return base.HTTPErrorf(statusCode, "")
 		}
 
 		h.authorizedAdminUser = username
 		h.permissionsResults = permissions
 
-		base.InfofCtx(h.ctx(), base.KeyAuth, "%s: User %s was successfully authorized as an admin", h.formatSerialNumber(), base.UD(username))
+		base.InfofCtx(ctx, base.KeyAuth, "%s: User %s was successfully authorized as an admin", h.formatSerialNumber(), base.UD(username))
 	} else {
 		// If admin auth is not enabled we should set any responsePermissions to true so that any handlers checking for
 		// these still pass
@@ -449,7 +447,9 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		if err != nil {
 			return err
 		}
-		h.db.Ctx = h.ctx()
+		// h.db.Ctx = h.ctx()
+		ctx = base.LogContextWith(ctx, &base.DatabaseLogContext{DatabaseName: base.MD(h.db.Name).Redact()})
+		h.db.Ctx = ctx
 	}
 
 	return method(h) // Call the actual handler code

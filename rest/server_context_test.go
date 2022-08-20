@@ -352,9 +352,12 @@ func TestStartAndStopHTTPServers(t *testing.T) {
 	sc, err := setupServerContext(&config, false)
 	require.NoError(t, err)
 
+	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{
+		ConfigGroupID: sc.config.Bootstrap.ConfigGroupID,
+	})
 	serveErr := make(chan error, 0)
 	go func() {
-		serveErr <- startServer(&config, sc)
+		serveErr <- startServer(ctx, &config, sc)
 	}()
 
 	defer func() {

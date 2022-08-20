@@ -320,7 +320,7 @@ func TestLegacyGuestUserMigration(t *testing.T) {
 	err := ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
 	require.NoError(t, err)
 
-	sc, _, _, _, err := automaticConfigUpgrade(configPath)
+	sc, _, _, _, err := automaticConfigUpgrade(base.TestCtx(t), configPath)
 	require.NoError(t, err)
 
 	cluster, err := createCouchbaseClusterFromStartupConfig(sc)
@@ -342,6 +342,9 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 	defer rt.Close()
 	bucket := rt.Bucket()
 	rt.GetDatabase().AllowEmptyPassword = true // So users don't have to have password set
+	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{
+		ConfigGroupID: rt.RestTesterServerContext.config.Bootstrap.ConfigGroupID,
+	})
 
 	// Expected principle names that should exist on bucket after migration
 	expectedUsers := []string{
@@ -420,9 +423,9 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 	require.NoError(t, err)
 
 	// Copy behaviour of serverMainPersistentConfig - upgrade config, pass legacy users and roles in to addLegacyPrinciples (after server context is created)
-	_, _, users, roles, err := automaticConfigUpgrade(configPath)
+	_, _, users, roles, err := automaticConfigUpgrade(base.TestCtx(t), configPath)
 	require.NoError(t, err)
-	rt.ServerContext().addLegacyPrincipals(users, roles)
+	rt.ServerContext().addLegacyPrincipals(ctx, users, roles)
 
 	// Check that principles all exist on bucket
 	authenticator := auth.NewAuthenticator(bucket, nil, auth.DefaultAuthenticatorOptions())

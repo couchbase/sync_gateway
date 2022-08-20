@@ -214,9 +214,6 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 	}
 
 	bsc = NewBlipSyncContext(blipContext, arc.config.ActiveDB, blipContext.ID, arc.replicationStats)
-	// bsc.loggingCtx = context.WithValue(context.Background(), base.LogContextKey{},
-	// 	base.LogContext{CorrelationID: arc.config.ID + idSuffix},
-	// )
 	bsc.loggingCtx = base.LogContextWith(context.Background(), &base.LogContext{CorrelationID: arc.config.ID + idSuffix})
 
 	// NewBlipSyncContext has already set deltas as disabled/enabled based on config.ActiveDB.
