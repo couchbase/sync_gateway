@@ -308,7 +308,7 @@ func addPrefixes(format string, ctx context.Context, logLevel LogLevel, logKey L
 		for _, k := range allContextAdderKeys {
 			if ctxVal = ctx.Value(k); ctxVal != nil {
 				if logCtx, ok := ctxVal.(ContextAdder); ok {
-					format = "ok! " + logCtx.addContext(format)
+					format = logCtx.addContext(format)
 				}
 			}
 		}

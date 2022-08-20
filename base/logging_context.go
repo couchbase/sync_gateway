@@ -54,6 +54,10 @@ func (lc *LogContext) addContext(format string) string {
 	return format
 }
 
+func (lc *LogContext) getContextKey() ContextAdderKey {
+	return logContextKey
+}
+
 func FormatBlipContextID(contextID string) string {
 	return "[" + contextID + "]"
 }
@@ -82,34 +86,51 @@ func bucketNameCtx(parent context.Context, bucketName string) context.Context {
 	return context.WithValue(parent, LogContextKey{}, newCtx)
 }
 
-type ContextAdder interface {
-	addContext(format string) string
-}
-
 type ContextAdderKey int
 
 const (
 	logContextKey ContextAdderKey = iota
 	serverLogContextKey
+	databaseLogContextKey
 )
 
-var allContextAdderKeys = [...]ContextAdderKey{logContextKey, serverLogContextKey}
-
-func LogContextWith(parent context.Context, lc *LogContext) context.Context {
-	return context.WithValue(parent, logContextKey, lc)
+type ContextAdder interface {
+	getContextKey() ContextAdderKey
+	addContext(format string) string
 }
 
-type LogServerContext struct {
+var allContextAdderKeys = [...]ContextAdderKey{logContextKey, serverLogContextKey, databaseLogContextKey}
+
+func LogContextWith(parent context.Context, adder ContextAdder) context.Context {
+	return context.WithValue(parent, adder.getContextKey(), adder)
+}
+
+type ServerLogContext struct {
 	ConfigGroupID string
 }
 
-func (c *LogServerContext) addContext(format string) string {
+func (c *ServerLogContext) getContextKey() ContextAdderKey {
+	return serverLogContextKey
+}
+
+func (c *ServerLogContext) addContext(format string) string {
 	if c != nil && c.ConfigGroupID != "" {
 		format = "g:" + c.ConfigGroupID + " " + format
 	}
 	return format
 }
 
-func LogServerContextWith(parent context.Context, slc *LogServerContext) context.Context {
-	return context.WithValue(parent, serverLogContextKey, slc)
+type DatabaseLogContext struct {
+	DatabaseName string
+}
+
+func (c *DatabaseLogContext) getContextKey() ContextAdderKey {
+	return databaseLogContextKey
+}
+
+func (c *DatabaseLogContext) addContext(format string) string {
+	if c != nil && c.DatabaseName != "" {
+		format = "db:" + c.DatabaseName + " " + format
+	}
+	return format
 }
