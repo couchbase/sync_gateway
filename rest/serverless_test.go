@@ -174,5 +174,5 @@ func TestServerlessBucketCredentialsFetchDatabases(t *testing.T) {
 	// Make sure fetch fails as it cannot see all buckets in cluster
 	found, _, err = rt.ServerContext().fetchDatabase("db")
 	assert.NoError(t, err)
-	assert.True(t, found)
+	assert.False(t, found)
 }
