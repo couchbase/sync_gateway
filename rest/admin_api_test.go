@@ -688,6 +688,9 @@ func TestRoleAPI(t *testing.T) {
 	requireStatus(t, rt.SendAdminRequest("GET", "/db/_role/hipster", ""), 404)
 	response := rt.SendAdminRequest("PUT", "/db/_role/hipster", `{"admin_channels":["fedoras", "fixies"]}`)
 	requireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/db/_role/testdeleted", `{"admin_channels":["fedoras", "fixies"]}`)
+	requireStatus(t, response, 201)
+	requireStatus(t, rt.SendAdminRequest("DELETE", "/db/_role/testdeleted", ""), 200)
 
 	// GET the role and make sure the result is OK
 	response = rt.SendAdminRequest("GET", "/db/_role/hipster", "")
@@ -700,7 +703,7 @@ func TestRoleAPI(t *testing.T) {
 
 	response = rt.SendAdminRequest("GET", "/db/_role/", "")
 	requireStatus(t, response, 200)
-	assert.Equal(t, `["hipster"]`, string(response.Body.Bytes()))
+	assert.Equal(t, `["hipster"]`, response.Body.String())
 
 	// DELETE the role
 	requireStatus(t, rt.SendAdminRequest("DELETE", "/db/_role/hipster", ""), 200)
@@ -717,6 +720,11 @@ func TestRoleAPI(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, "hipster", body["name"])
 	requireStatus(t, rt.SendAdminRequest("DELETE", "/db/_role/hipster", ""), 200)
+
+	// GET including deleted
+	response = rt.SendAdminRequest("GET", "/db/_role/?deleted=true", "")
+	requireStatus(t, response, 200)
+	assert.Equal(t, `["hipster","testdeleted"]`, response.Body.String())
 }
 
 func TestGuestUser(t *testing.T) {

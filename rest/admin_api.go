@@ -33,6 +33,7 @@ const paramDisableOIDCValidation = "disable_oidc_validation"
 // GetUsers  - GET /{db}/_user/
 const paramNameOnly = "name_only"
 const paramLimit = "limit"
+const paramDeleted = "deleted"
 
 // ////// DATABASE MAINTENANCE:
 
@@ -1394,10 +1395,19 @@ func (h *handler) getUsers() error {
 }
 
 func (h *handler) getRoles() error {
-	_, roles, err := h.db.AllPrincipalIDs(h.db.Ctx)
+	var roles []string
+	var err error
+
+	includeDeleted, _ := h.getOptBoolQuery(paramDeleted, false)
+	if includeDeleted {
+		_, roles, err = h.db.AllPrincipalIDs(h.db.Ctx)
+	} else {
+		roles, err = h.db.GetRoleIDs(h.db.Ctx)
+	}
 	if err != nil {
 		return err
 	}
+
 	bytes, err := base.JSONMarshal(roles)
 	h.writeRawJSON(bytes)
 	return err

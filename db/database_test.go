@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -2468,6 +2469,55 @@ func TestGetAllUsers(t *testing.T) {
 	limitedUsers, err := db.GetUsers(base.TestCtx(t), 2)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(limitedUsers))
+}
+
+func TestGetRoleIDs(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
+
+	ctx := base.TestCtx(t)
+	db := setupTestDB(t)
+	defer db.Close()
+
+	db.Options.QueryPaginationLimit = 100
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	authenticator := db.Authenticator(ctx)
+
+	rolename1 := uuid.NewString()
+	rolename2 := uuid.NewString()
+	username := uuid.NewString()
+
+	user1, err := authenticator.NewUser(username, "letmein", nil)
+	require.NoError(t, err)
+	user1.SetExplicitRoles(channels.TimedSet{rolename1: channels.NewVbSimpleSequence(1), rolename2: channels.NewVbSimpleSequence(1)}, 1)
+	require.NoError(t, authenticator.Save(user1))
+
+	role1, err := authenticator.NewRole(rolename1, nil)
+	require.NoError(t, err)
+	require.NoError(t, authenticator.Save(role1))
+
+	role2, err := authenticator.NewRole(rolename2, nil)
+	require.NoError(t, err)
+	require.NoError(t, authenticator.Save(role2))
+
+	err = db.DeleteRole(ctx, role2.Name(), false)
+	require.NoError(t, err)
+	roleGet, err := authenticator.GetRoleIncDeleted(role2.Name())
+	require.NoError(t, err)
+	assert.True(t, roleGet.IsDeleted())
+
+	t.Log("user1:", user1.Name())
+	t.Log("role1:", role1.Name())
+	t.Log("role2:", role2.Name())
+
+	// assert allprincipals still returns users and deleted roles
+	users, roles, err := db.AllPrincipalIDs(ctx)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{user1.Name()}, users)
+	assert.ElementsMatch(t, []string{role1.Name(), role2.Name()}, roles)
+
+	roles, err = db.GetRoleIDs(ctx)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{role1.Name()}, roles)
 }
 
 // Regression test for CBG-2058.

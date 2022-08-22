@@ -191,7 +191,10 @@ type Collection struct {
 // DataStore
 func (c *Collection) GetName() string {
 	// Returning bucket name until full collection support is implemented
-	return c.Collection.Bucket().Name()
+	if c.IsDefaultScopeCollection() {
+		return c.Collection.Bucket().Name()
+	}
+	return fmt.Sprintf("%s.%s.%s", c.Collection.Bucket().Name(), c.Collection.ScopeName(), c.Collection.Name())
 }
 
 func (c *Collection) UUID() (string, error) {

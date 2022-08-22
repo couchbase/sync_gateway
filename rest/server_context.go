@@ -826,7 +826,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		BcryptCost:                bcryptCost,
 		GroupID:                   groupID,
 		JavascriptTimeout:         javascriptTimeout,
-		Serverless:                base.BoolDefault(sc.config.Unsupported.Serverless, false),
+		Serverless:                sc.config.IsServerless(),
 	}
 
 	return contextOptions, nil
@@ -1516,7 +1516,6 @@ func (sc *ServerContext) initializeCouchbaseServerConnections() error {
 		if err != nil {
 			return err
 		}
-
 		sc.bootstrapContext.connection = couchbaseCluster
 
 		count, err := sc.fetchAndLoadConfigs(true)

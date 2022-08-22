@@ -207,9 +207,9 @@ func fillConfigWithFlags(fs *flag.FlagSet, flags map[string]configFlag) error {
 					return
 				}
 				*val.config.(*PerDatabaseCredentialsConfig) = dbCredentials
-			case *PerBucketCredentialsConfig:
+			case *base.PerBucketCredentialsConfig:
 				str := *val.flagValue.(*string)
-				var bucketCredentials PerBucketCredentialsConfig
+				var bucketCredentials base.PerBucketCredentialsConfig
 				d := base.JSONDecoder(strings.NewReader(str))
 				d.DisallowUnknownFields()
 				err := d.Decode(&bucketCredentials)
@@ -218,7 +218,7 @@ func fillConfigWithFlags(fs *flag.FlagSet, flags map[string]configFlag) error {
 					errorMessages = errorMessages.Append(err)
 					return
 				}
-				*val.config.(*PerBucketCredentialsConfig) = bucketCredentials
+				*val.config.(*base.PerBucketCredentialsConfig) = bucketCredentials
 			default:
 				errorMessages = errorMessages.Append(fmt.Errorf("Unknown type %v for flag %v\n", rval.Type(), f.Name))
 			}
