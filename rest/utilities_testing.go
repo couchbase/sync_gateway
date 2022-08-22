@@ -43,14 +43,15 @@ import (
 
 // RestTesterConfig represents configuration for sync gateway
 type RestTesterConfig struct {
-	guestEnabled                    bool             // If this is true, Admin Party is in full effect
-	SyncFn                          string           // put the sync() function source in here (optional)
-	DatabaseConfig                  *DatabaseConfig  // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
-	InitSyncSeq                     uint64           // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
-	EnableNoConflictsMode           bool             // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
-	TestBucket                      *base.TestBucket // If set, use this bucket instead of requesting a new one.
-	adminInterface                  string           // adminInterface overrides the default admin interface.
-	sgReplicateEnabled              bool             // sgReplicateManager disabled by default for RestTester
+	guestEnabled                    bool                    // If this is true, Admin Party is in full effect
+	SyncFn                          string                  // put the sync() function source in here (optional)
+	DatabaseConfig                  *DatabaseConfig         // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
+	InitSyncSeq                     uint64                  // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
+	EnableNoConflictsMode           bool                    // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
+	TestBucket                      *base.TestBucket        // If set, use this bucket instead of requesting a new one.
+	leakyBucketConfig               *base.LeakyBucketConfig // Set to create and use a leaky bucket on the RT and DB. A test bucket cannot be passed in if using this option.
+	adminInterface                  string                  // adminInterface overrides the default admin interface.
+	sgReplicateEnabled              bool                    // sgReplicateManager disabled by default for RestTester
 	hideProductInfo                 bool
 	adminInterfaceAuthentication    bool
 	metricsInterfaceAuthentication  bool
@@ -106,6 +107,14 @@ func (rt *RestTester) Bucket() base.Bucket {
 	testBucket := rt.RestTesterConfig.TestBucket
 	if testBucket == nil {
 		testBucket = base.GetTestBucket(rt.tb)
+		if rt.leakyBucketConfig != nil {
+			leakyConfig := *rt.leakyBucketConfig
+			// Ignore closures to avoid double closing panics
+			leakyConfig.IgnoreClose = true
+			testBucket = testBucket.LeakyBucketClone(leakyConfig)
+		}
+	} else if rt.leakyBucketConfig != nil {
+		rt.tb.Fatalf("A passed in TestBucket cannot be used on the RestTester when defining a leakyBucketConfig")
 	}
 	rt.testBucket = testBucket
 
@@ -231,32 +240,29 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 		rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(rt.RestTesterConfig.sgReplicateEnabled)
 
-		if rt.RestTesterConfig.TestBucket != nil {
-			// If using a leaky bucket, make sure it ignores attempted closures to avoid double closures panic
-			// due to closing both RestTesterServerContext and testBucket in rt.Close()
-			if leakyBucket, isLeaky := base.AsLeakyBucket(testBucket); isLeaky {
-				leakyBucket.SetIgnoreClose(true)
-			}
-
-			// WIP: Collections Phase 1 - Grab just one scope/collection from the defined set.
-			// Phase 2 (multi collection) means DatabaseContext needs a set of BucketSpec/Collections, not just one...
-			var scope, collection *string
-			for scopeName, scopeConfig := range rt.RestTesterConfig.DatabaseConfig.Scopes {
-				scope = &scopeName
-				for collectionName := range scopeConfig.Collections {
-					collection = &collectionName
-					break
+		if rt.leakyBucketConfig != nil {
+			// Scopes and collections have to be set on the bucket being passed in for the db to use.
+			if rt.createScopesAndCollections {
+				// WIP: Collections Phase 1 - Grab just one scope/collection from the defined set.
+				// Phase 2 (multi collection) means DatabaseContext needs a set of BucketSpec/Collections, not just one...
+				var scope, collection *string
+				for scopeName, scopeConfig := range rt.RestTesterConfig.DatabaseConfig.Scopes {
+					scope = &scopeName
+					for collectionName := range scopeConfig.Collections {
+						collection = &collectionName
+						break
+					}
 				}
-			}
-			if scope != nil && collection != nil {
-				collectionBucket, isCollection := base.AsCollection(testBucket.Bucket)
-				if !isCollection {
-					rt.tb.Fatalf("Could not get collection from bucket with type %T: %v", testBucket.Bucket, err)
-				}
+				if scope != nil && collection != nil {
+					collectionBucket, err := base.AsCollection(testBucket.Bucket)
+					if err != nil {
+						rt.tb.Fatalf("Could not get collection from bucket with type %T: %v", testBucket.Bucket, err)
+					}
 
-				collectionBucket.Spec.Scope = scope
-				collectionBucket.Spec.Collection = collection
-				collectionBucket.Collection = collectionBucket.Collection.Bucket().Scope(*scope).Collection(*collection)
+					collectionBucket.Spec.Scope = scope
+					collectionBucket.Spec.Collection = collection
+					collectionBucket.Collection = collectionBucket.Collection.Bucket().Scope(*scope).Collection(*collection)
+				}
 			}
 
 			_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithBucket(rt.tb, *rt.DatabaseConfig, testBucket.Bucket)
@@ -282,8 +288,21 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	// PostStartup (without actually waiting 5 seconds)
 	close(rt.RestTesterServerContext.hasStarted)
-
 	return rt.testBucket.Bucket
+}
+
+// LeakyBucket gets the bucket from the RestTester as a leaky bucket allowing for callbacks to be set on the fly.
+// The RestTester must have been set up to create and use a leaky bucket by setting leakyBucketConfig in the RT
+// config when calling NewRestTester.
+func (rt *RestTester) LeakyBucket() *base.LeakyBucket {
+	if rt.leakyBucketConfig == nil {
+		rt.tb.Fatalf("Cannot get leaky bucket when leakyBucketConfig was not set on RestTester initialisation")
+	}
+	leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
+	if !ok {
+		rt.tb.Fatalf("Could not get bucket (type %T) as a leaky bucket", rt.Bucket())
+	}
+	return leakyBucket
 }
 
 func (rt *RestTester) ServerContext() *ServerContext {
