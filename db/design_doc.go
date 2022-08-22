@@ -325,7 +325,10 @@ func stripSyncProperty(row *sgbucket.ViewRow) {
 }
 
 func InitializeViews(bucket base.Bucket) error {
-
+	collection, ok := bucket.(*base.Collection)
+	if ok && !collection.IsDefaultScopeCollection() {
+		return fmt.Errorf("Can not initialize views on a non default collection")
+	}
 	// Check whether design docs are already present
 	ddocsExist := checkExistingDDocs(bucket)
 

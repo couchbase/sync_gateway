@@ -24,8 +24,8 @@ import (
 
 var _ N1QLStore = &Collection{}
 
-// isDefaultScopeCollection returns true if the given Collection is on the _default._default scope and collection.
-func (c *Collection) isDefaultScopeCollection() bool {
+// IsDefaultScopeCollection returns true if the given Collection is on the _default._default scope and collection.
+func (c *Collection) IsDefaultScopeCollection() bool {
 	return c.ScopeName() == DefaultScope && c.Name() == DefaultCollection
 }
 
@@ -39,7 +39,7 @@ func (c *Collection) EscapedKeyspace() string {
 
 // IndexMetaBucketID returns the value of bucket_id for the system:indexes table for the collection.
 func (c *Collection) IndexMetaBucketID() string {
-	if c.isDefaultScopeCollection() {
+	if c.IsDefaultScopeCollection() {
 		return ""
 	}
 	return c.BucketName()
@@ -47,7 +47,7 @@ func (c *Collection) IndexMetaBucketID() string {
 
 // IndexMetaScopeID returns the value of scope_id for the system:indexes table for the collection.
 func (c *Collection) IndexMetaScopeID() string {
-	if c.isDefaultScopeCollection() {
+	if c.IsDefaultScopeCollection() {
 		return ""
 	}
 	return c.ScopeName()
@@ -55,7 +55,7 @@ func (c *Collection) IndexMetaScopeID() string {
 
 // IndexMetaKeyspaceID returns the value of keyspace_id for the system:indexes table for the collection.
 func (c *Collection) IndexMetaKeyspaceID() string {
-	if c.isDefaultScopeCollection() {
+	if c.IsDefaultScopeCollection() {
 		return c.BucketName()
 	}
 	return c.Name()
@@ -190,7 +190,7 @@ func (c *Collection) getIndexes() (indexes []string, err error) {
 
 	indexes = []string{}
 	var opts *gocb.GetAllQueryIndexesOptions
-	if !c.isDefaultScopeCollection() {
+	if !c.IsDefaultScopeCollection() {
 		opts = &gocb.GetAllQueryIndexesOptions{
 			ScopeName:      c.ScopeName(),
 			CollectionName: c.Name(),
