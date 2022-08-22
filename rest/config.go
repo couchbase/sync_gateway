@@ -28,7 +28,6 @@ import (
 	"syscall"
 
 	"golang.org/x/crypto/bcrypt"
-	"golang.org/x/exp/maps"
 	"gopkg.in/square/go-jose.v2"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -1314,7 +1313,10 @@ func (sc *ServerContext) _fetchAndLoadDatabase(dbName string) (found bool, err e
 func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *DatabaseConfig, err error) {
 	var buckets []string
 	if sc.config.IsServerless() {
-		buckets = maps.Keys(sc.config.BucketCredentials)
+		buckets = make([]string, len(sc.config.BucketCredentials))
+		for bucket, _ := range sc.config.BucketCredentials {
+			buckets = append(buckets, bucket)
+		}
 	} else {
 		buckets, err = sc.bootstrapContext.connection.GetConfigBuckets()
 		if err != nil {
@@ -1380,7 +1382,10 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 func (sc *ServerContext) fetchConfigs(isInitialStartup bool) (dbNameConfigs map[string]DatabaseConfig, err error) {
 	var buckets []string
 	if sc.config.IsServerless() {
-		buckets = maps.Keys(sc.config.BucketCredentials)
+		buckets = make([]string, len(sc.config.BucketCredentials))
+		for bucket, _ := range sc.config.BucketCredentials {
+			buckets = append(buckets, bucket)
+		}
 		// TODO: Enable code as part of CBG-2280
 		// Return buckets that have credentials set that do not have a db associated with them
 		//buckets = make([]string, len(sc.config.BucketCredentials)-len(sc.bucketDbName))
