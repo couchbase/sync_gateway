@@ -22,7 +22,16 @@ import (
 
 func TestView(t *testing.T) {
 	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
-
+		testBucket, ok := bucket.(*TestBucket)
+		require.True(t, ok)
+		if ok {
+			c, err := AsCollection(testBucket)
+			if err == nil {
+				if !c.IsDefaultScopeCollection() {
+					t.Skip("Views tests can not be run on a collection")
+				}
+			}
+		}
 		ddocName := "testDDoc"
 		viewName := "testView"
 		// Create design doc and view
