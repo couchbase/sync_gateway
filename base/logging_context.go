@@ -54,8 +54,8 @@ func (lc *LogContext) addContext(format string) string {
 	return format
 }
 
-func (lc *LogContext) getContextKey() ContextAdderKey {
-	return logContextKey
+func (lc *LogContext) getContextKey() LogContextKey {
+	return requestContextKey
 }
 
 func FormatBlipContextID(contextID string) string {
@@ -78,7 +78,7 @@ func bucketCtx(parent context.Context, b Bucket) context.Context {
 
 // bucketNameCtx extends the parent context with a bucket name.
 func bucketNameCtx(parent context.Context, bucketName string) context.Context {
-	parentLogCtx, _ := parent.Value(logContextKey).(LogContext)
+	parentLogCtx, _ := parent.Value(requestContextKey).(LogContext)
 	newCtx := LogContext{
 		TestName:       parentLogCtx.TestName,
 		TestBucketName: bucketName,
@@ -86,11 +86,11 @@ func bucketNameCtx(parent context.Context, bucketName string) context.Context {
 	return LogContextWith(parent, &newCtx)
 }
 
-// ContextAdderKey is the type used to store custom data in the go context
-type ContextAdderKey int
+// LogContextKey is the type used to store custom data in the go context
+type LogContextKey int
 
 const (
-	logContextKey ContextAdderKey = iota
+	requestContextKey LogContextKey = iota
 	serverLogContextKey
 	databaseLogContextKey
 )
@@ -99,13 +99,13 @@ const (
 // The custom context should provide its own key to be used with go contexts,
 // and be able to add its custom info to the log format msg.
 type ContextAdder interface {
-	getContextKey() ContextAdderKey
+	getContextKey() LogContextKey
 	addContext(format string) string
 }
 
-// allContextAdderKeys contains the keys of all custom contexts,
+// allLogContextKeys contains the keys of all custom contexts,
 // and is used when writing log prefixes (addPrefixes)
-var allContextAdderKeys = [...]ContextAdderKey{logContextKey, serverLogContextKey, databaseLogContextKey}
+var allLogContextKeys = [...]LogContextKey{requestContextKey, serverLogContextKey, databaseLogContextKey}
 
 // LogContextWith is called to add custom context to the go context.
 // All custom contexts should implement ContextAdder interface
@@ -118,7 +118,7 @@ type ServerLogContext struct {
 	ConfigGroupID string
 }
 
-func (c *ServerLogContext) getContextKey() ContextAdderKey {
+func (c *ServerLogContext) getContextKey() LogContextKey {
 	return serverLogContextKey
 }
 
@@ -134,7 +134,7 @@ type DatabaseLogContext struct {
 	DatabaseName string
 }
 
-func (c *DatabaseLogContext) getContextKey() ContextAdderKey {
+func (c *DatabaseLogContext) getContextKey() LogContextKey {
 	return databaseLogContextKey
 }
 
