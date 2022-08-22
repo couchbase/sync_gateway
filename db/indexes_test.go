@@ -48,27 +48,32 @@ func TestInitializeIndexes(t *testing.T) {
 				collection, err := base.AsCollection(b)
 				require.NoError(t, err)
 				// override underlying collection for test bucket
-				collection.Collection = collection.Bucket().Scope("foo").Collection("bar")
+				scopeName := "foo_1"
+				collectionName := "bar_1"
+				collection.Collection = collection.Bucket().Scope(scopeName).Collection(collectionName)
 
-				err = base.CreateBucketScopesAndCollections(base.TestCtx(t), collection.Spec, map[string][]string{"foo": {"bar"}})
+				err = base.CreateBucketScopesAndCollections(base.TestCtx(t), collection.Spec, map[string][]string{scopeName: {collectionName}})
 				require.NoError(t, err)
 			}
 
 			n1qlStore, isGoCBBucket := base.AsN1QLStore(b)
 			require.True(t, isGoCBBucket)
 
-			dropErr := base.DropAllIndexes(base.TestCtx(t), n1qlStore)
-			require.NoError(t, dropErr, "Error dropping all indexes")
+			// Make sure we can drop and reinitialize twice
+			for i := 0; i < 2; i++ {
+				dropErr := base.DropAllIndexes(base.TestCtx(t), n1qlStore)
+				require.NoError(t, dropErr, "Error dropping all indexes")
 
-			initErr := InitializeIndexes(n1qlStore, test.xattrs, 0, true)
-			require.NoError(t, initErr, "Error initializing all indexes")
+				initErr := InitializeIndexes(n1qlStore, test.xattrs, 0, true)
+				require.NoError(t, initErr, "Error initializing all indexes")
 
-			// Recreate the primary index required by the test bucket pooling framework
-			err := n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
-			require.NoError(t, err)
+				// Recreate the primary index required by the test bucket pooling framework
+				err := n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
+				require.NoError(t, err)
 
-			validateErr := validateAllIndexesOnline(b)
-			require.NoError(t, validateErr, "Error validating indexes online")
+				validateErr := validateAllIndexesOnline(b)
+				require.NoError(t, validateErr, "Error validating indexes online")
+			}
 		})
 	}
 

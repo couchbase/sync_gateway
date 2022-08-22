@@ -31,7 +31,7 @@ func (c *Collection) IsDefaultScopeCollection() bool {
 
 // EscapedKeyspace returns the escaped fully-qualified identifier for the keyspace (e.g. `bucket`.`scope`.`collection`)
 func (c *Collection) EscapedKeyspace() string {
-	if c.IsDefaultScopeCollection() {
+	if !c.IsSupported(sgbucket.DataStoreFeatureCollections) {
 		return fmt.Sprintf("`%s`", c.BucketName())
 	}
 	return fmt.Sprintf("`%s`.`%s`.`%s`", c.BucketName(), c.ScopeName(), c.Name())

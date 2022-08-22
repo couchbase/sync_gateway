@@ -346,9 +346,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	)
 
 	dbContext.EventMgr = NewEventManager()
-	logCtx := context.WithValue(context.Background(), base.LogContextKey{}, base.LogContext{
-		CorrelationID: "db:" + base.MD(dbName).Redact(),
-	})
+	logCtx := base.LogContextWith(context.Background(), &base.LogContext{CorrelationID: "db:" + base.MD(dbName).Redact()})
 
 	var err error
 	dbContext.sequences, err = newSequenceAllocator(bucket, dbContext.DbStats.Database())
@@ -1109,6 +1107,74 @@ outerLoop:
 	return users, nil
 }
 
+// Returns the IDs of all roles, excluding deleted.
+func (db *DatabaseContext) GetRoleIDs(ctx context.Context) (roles []string, err error) {
+
+	startKey := ""
+	limit := db.Options.QueryPaginationLimit
+
+	roles = []string{}
+
+outerLoop:
+	for {
+		results, err := db.QueryRoles(ctx, startKey, limit)
+		if err != nil {
+			return nil, err
+		}
+
+		var roleName string
+		lenRoleKeyPrefix := len(base.RolePrefix)
+
+		resultCount := 0
+
+		for {
+			// startKey is inclusive for views, so need to skip first result if using non-empty startKey, as this results in an overlapping result
+			var skipAddition bool
+			if resultCount == 0 && startKey != "" {
+				skipAddition = true
+			}
+
+			if db.Options.UseViews {
+				var viewRow principalsViewRow
+				found := results.Next(&viewRow)
+				if !found {
+					break
+				}
+				roleName = viewRow.Key
+				startKey = roleName
+			} else {
+				var queryRow QueryIdRow
+				found := results.Next(&queryRow)
+				if !found {
+					break
+				}
+				if len(queryRow.Id) < lenRoleKeyPrefix {
+					continue
+				}
+				roleName = queryRow.Id[lenRoleKeyPrefix:]
+				startKey = queryRow.Id
+			}
+			resultCount++
+
+			if roleName != "" && !skipAddition {
+				roles = append(roles, roleName)
+			}
+		}
+
+		closeErr := results.Close()
+		if closeErr != nil {
+			return nil, closeErr
+		}
+
+		if resultCount < limit {
+			break outerLoop
+		}
+
+	}
+
+	return roles, nil
+}
+
 // ////// HOUSEKEEPING:
 
 // Deletes all session documents for a user
@@ -1680,6 +1746,7 @@ func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOp
 			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewAccessVbSeq),
 			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewChannels),
 			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewPrincipals),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewRolesExcludeDeleted),
 			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewRoleAccess),
 			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewRoleAccessVbSeq),
 			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewAllDocs),
@@ -1695,6 +1762,7 @@ func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOp
 			QueryTypeChannelsStar,
 			QueryTypeSequences,
 			QueryTypePrincipals,
+			QueryTypeRolesExcludeDeleted,
 			QueryTypeSessions,
 			QueryTypeTombstones,
 			QueryTypeResync,

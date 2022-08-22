@@ -102,9 +102,7 @@ func NewDCPCommon(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbN
 	}
 
 	dcpContextID := fmt.Sprintf("%s-%s", MD(bucket.GetName()).Redact(), feedID)
-	c.loggingCtx = context.WithValue(context.Background(), LogContextKey{},
-		LogContext{CorrelationID: dcpContextID},
-	)
+	c.loggingCtx = LogContextWith(context.Background(), &LogContext{CorrelationID: dcpContextID})
 
 	return c
 }

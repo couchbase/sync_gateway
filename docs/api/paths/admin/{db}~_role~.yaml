@@ -9,6 +9,16 @@ get:
     * Sync Gateway Architect
     * Sync Gateway Application
     * Sync Gateway Application Read Only
+  parameters:
+    - name: deleted
+      in: query
+      description: Indicates that roles marked as deleted should be included in the result.
+      schema:
+        type: boolean
+        default: false
+        enum:
+          - true
+          - false
   responses:
     '200':
       description: Roles retrieved successfully

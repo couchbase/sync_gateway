@@ -34,9 +34,10 @@ const DesignDocVersion = "2.1"
 const DesignDocFormat = "%s_%s" // Design doc prefix, view version
 
 // DesignDocPreviousVersions defines the set of versions included during removal of obsolete
-// design docs.  Must be updated whenever DesignDocVersion is incremented.
-// Uses a hardcoded list instead of version comparison to simpify the processing
+// design docs in removeObsoleteDesignDocs.  Must be updated whenever DesignDocVersion is incremented.
+// Uses a hardcoded list instead of version comparison to simplify the processing
 // (particularly since there aren't expected to be many view versions before moving to GSI).
+// See setDesignDocPreviousVersionsForTest for a way to temporarily override this during tests.
 var DesignDocPreviousVersions = []string{"", "2.0"}
 
 const (
@@ -48,6 +49,7 @@ const (
 	ViewAccessVbSeq                 = "access_vbseq"
 	ViewRoleAccess                  = "role_access"
 	ViewRoleAccessVbSeq             = "role_access_vbseq"
+	ViewRolesExcludeDeleted         = "roles_exclude_deleted"
 	ViewAllDocs                     = "all_docs"
 	ViewImport                      = "import"
 	ViewSessions                    = "sessions"
@@ -423,6 +425,17 @@ func installViews(bucket base.Bucket) error {
 	principals_map = fmt.Sprintf(principals_map, base.UserPrefix, base.RolePrefix,
 		len(base.UserPrefix))
 
+	// All-roles view, excluding deleted
+	// Key is role name; value is not used
+	roles_excludeDeleted_map :=
+		`function (doc, meta) {
+			var prefix = meta.id.substring(0,%d);
+			if (prefix == %q && doc.deleted !== true)
+				emit(meta.id.substring(%d), null); 
+		}`
+	rolePrefixLen := len(base.UserPrefix)
+	roles_excludeDeleted_map = fmt.Sprintf(roles_excludeDeleted_map, rolePrefixLen, base.RolePrefix, rolePrefixLen)
+
 	// By-channels view.
 	// Key is [channelname, sequence]; value is [docid, revid, flag?]
 	// where flag is true for doc deletion, false for removed from channel, missing otherwise
@@ -541,12 +554,13 @@ func installViews(bucket base.Bucket) error {
 	designDocMap := map[string]*sgbucket.DesignDoc{}
 	designDocMap[DesignDocSyncGateway()] = &sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
-			ViewChannels:        sgbucket.ViewDef{Map: channels_map},
-			ViewAccess:          sgbucket.ViewDef{Map: access_map},
-			ViewRoleAccess:      sgbucket.ViewDef{Map: roleAccess_map},
-			ViewAccessVbSeq:     sgbucket.ViewDef{Map: access_vbSeq_map},
-			ViewRoleAccessVbSeq: sgbucket.ViewDef{Map: roleAccess_vbSeq_map},
-			ViewPrincipals:      sgbucket.ViewDef{Map: principals_map},
+			ViewChannels:            sgbucket.ViewDef{Map: channels_map},
+			ViewAccess:              sgbucket.ViewDef{Map: access_map},
+			ViewRoleAccess:          sgbucket.ViewDef{Map: roleAccess_map},
+			ViewRolesExcludeDeleted: sgbucket.ViewDef{Map: roles_excludeDeleted_map},
+			ViewAccessVbSeq:         sgbucket.ViewDef{Map: access_vbSeq_map},
+			ViewRoleAccessVbSeq:     sgbucket.ViewDef{Map: roleAccess_vbSeq_map},
+			ViewPrincipals:          sgbucket.ViewDef{Map: principals_map},
 		},
 		Options: &sgbucket.DesignDocOptions{
 			IndexXattrOnTombstones: true,
@@ -726,6 +740,10 @@ func IsMissingDDocError(err error) bool {
 
 	// gocb v2
 	if errors.Is(err, gocb.ErrDesignDocumentNotFound) {
+		return true
+	}
+
+	if errors.Is(err, base.ErrNotFound) {
 		return true
 	}
 
