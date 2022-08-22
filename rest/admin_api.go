@@ -75,7 +75,8 @@ func (h *handler) handleCreateDB() error {
 		}
 
 		dbCreds, _ := h.server.config.DatabaseCredentials[dbName]
-		if err := config.setup(dbName, h.server.config.Bootstrap, dbCreds); err != nil {
+		bucketCreds, _ := h.server.config.BucketCredentials[bucket]
+		if err := config.setup(dbName, h.server.config.Bootstrap, dbCreds, bucketCreds, h.server.config.IsServerless()); err != nil {
 			return err
 		}
 
@@ -122,7 +123,7 @@ func (h *handler) handleCreateDB() error {
 		h.server.dbConfigs[dbName].cas = cas
 	} else {
 		// Intentionally pass in an empty BootstrapConfig to avoid inheriting any credentials or server when running with a legacy config (CBG-1764)
-		if err := config.setup(dbName, BootstrapConfig{}, nil); err != nil {
+		if err := config.setup(dbName, BootstrapConfig{}, nil, nil, false); err != nil {
 			return err
 		}
 
@@ -508,7 +509,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 		}
 
 		dbCreds, _ := h.server.config.DatabaseCredentials[dbName]
-		if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap, dbCreds); err != nil {
+		if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap, dbCreds, nil, false); err != nil {
 			return err
 		}
 		if err := h.server.ReloadDatabaseWithConfig(*updatedDbConfig); err != nil {
@@ -563,7 +564,8 @@ func (h *handler) handlePutDbConfig() (err error) {
 				return nil, err
 			}
 			dbCreds, _ := h.server.config.DatabaseCredentials[dbName]
-			if err := tmpConfig.setup(dbName, h.server.config.Bootstrap, dbCreds); err != nil {
+			bucketCreds, _ := h.server.config.BucketCredentials[bucket]
+			if err := tmpConfig.setup(dbName, h.server.config.Bootstrap, dbCreds, bucketCreds, h.server.config.IsServerless()); err != nil {
 				return nil, err
 			}
 
@@ -661,7 +663,8 @@ func (h *handler) handleDeleteDbConfigSync() error {
 
 	dbName := h.db.Name
 	dbCreds, _ := h.server.config.DatabaseCredentials[dbName]
-	if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap, dbCreds); err != nil {
+	bucketCreds, _ := h.server.config.BucketCredentials[bucket]
+	if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap, dbCreds, bucketCreds, h.server.config.IsServerless()); err != nil {
 		return err
 	}
 
@@ -727,7 +730,8 @@ func (h *handler) handlePutDbConfigSync() error {
 
 	dbName := h.db.Name
 	dbCreds, _ := h.server.config.DatabaseCredentials[dbName]
-	if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap, dbCreds); err != nil {
+	bucketCreds, _ := h.server.config.BucketCredentials[bucket]
+	if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap, dbCreds, bucketCreds, h.server.config.IsServerless()); err != nil {
 		return err
 	}
 
@@ -811,7 +815,8 @@ func (h *handler) handleDeleteDbConfigImportFilter() error {
 
 	dbName := h.db.Name
 	dbCreds, _ := h.server.config.DatabaseCredentials[dbName]
-	if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap, dbCreds); err != nil {
+	bucketCreds, _ := h.server.config.BucketCredentials[bucket]
+	if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap, dbCreds, bucketCreds, h.server.config.IsServerless()); err != nil {
 		return err
 	}
 
@@ -878,7 +883,8 @@ func (h *handler) handlePutDbConfigImportFilter() error {
 
 	dbName := h.db.Name
 	dbCreds, _ := h.server.config.DatabaseCredentials[dbName]
-	if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap, dbCreds); err != nil {
+	bucketCreds, _ := h.server.config.BucketCredentials[bucket]
+	if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap, dbCreds, bucketCreds, h.server.config.IsServerless()); err != nil {
 		return err
 	}
 

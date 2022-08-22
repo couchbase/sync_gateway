@@ -92,3 +92,87 @@ func TestServerlessPollBuckets(t *testing.T) {
 	//require.NoError(t, err)
 	//assert.Equal(t, 0, count)
 }
+
+// Tests behaviour of CBG-2258 to force per bucket credentials to be used when setting up db in serverless mode
+func TestServerlessDBSetupForceCreds(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	tb1 := base.GetTestBucket(t)
+	defer tb1.Close()
+
+	testCases := []struct {
+		name                  string
+		bucketName            string // Bucket to attempt to create DB on
+		perBucketCreds        base.PerBucketCredentialsConfig
+		dbCreationRespAsserts func(resp *TestResponse)
+	}{
+		{
+			name:           "Correct credentials defined and force used",
+			bucketName:     tb1.GetName(),
+			perBucketCreds: nil,
+			dbCreationRespAsserts: func(resp *TestResponse) {
+				assertStatus(t, resp, http.StatusCreated)
+			},
+		},
+		{
+			name:           "Credentials not defined",
+			bucketName:     tb1.GetName(),
+			perBucketCreds: map[string]*base.CredentialsConfig{"invalid_bucket": {}},
+			dbCreationRespAsserts: func(resp *TestResponse) {
+				assertStatus(t, resp, http.StatusInternalServerError)
+				assert.Contains(t, string(resp.BodyBytes()), "credentials are not defined in bucket_credentials")
+			},
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb1, serverless: true, persistentConfig: true})
+			defer rt.Close()
+
+			if test.perBucketCreds != nil {
+				rt.ReplacePerBucketCredentials(test.perBucketCreds)
+			}
+
+			resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{
+				"bucket": "%s",
+				"use_views": %t,
+				"num_index_replicas": 0
+			}`, tb1.GetName(), base.TestsDisableGSI()))
+			test.dbCreationRespAsserts(resp)
+		})
+	}
+}
+
+// Tests behaviour of CBG-2258 to make sure fetch databases only uses buckets listed on StartupConfig.BucketCredentials
+// when running in serverless mode
+func TestServerlessBucketCredentialsFetchDatabases(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	tb1 := base.GetTestBucket(t)
+	defer tb1.Close()
+	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb1, persistentConfig: true, serverless: true})
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{
+				"bucket": "%s",
+				"use_views": %t,
+				"num_index_replicas": 0
+	}`, tb1.GetName(), base.TestsDisableGSI()))
+	requireStatus(t, resp, http.StatusCreated)
+
+	// Make sure DB can be fetched
+	found, _, err := rt.ServerContext().fetchDatabase("db")
+	assert.NoError(t, err)
+	assert.True(t, found)
+
+	// Limit SG to buckets defined on BucketCredentials map
+	rt.ReplacePerBucketCredentials(map[string]*base.CredentialsConfig{"invalid_bucket": {}})
+	// Make sure fetch fails as it cannot see all buckets in cluster
+	found, _, err = rt.ServerContext().fetchDatabase("db")
+	assert.NoError(t, err)
+	assert.False(t, found)
+}
