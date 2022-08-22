@@ -239,11 +239,18 @@ var ViewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 		return viewBucketReadier(ctx, b, tbp)
 	}
 
-	if c, ok := b.(*base.Collection); ok {
-		if err := c.DropAllScopesAndCollections(); err != nil && !errors.Is(err, base.ErrCollectionsUnsupported) {
-			return err
-		}
+	if _, ok := b.(*base.Collection); ok {
 		if tbp.UsingNamedCollections() {
+			n1qlStore, isGoCBBucket := base.AsN1QLStore(b)
+			if !isGoCBBucket {
+				return fmt.Errorf("bucket is not a gocb bucket")
+			}
+
+			dropErr := base.DropAllIndexes(ctx, n1qlStore)
+			if dropErr != nil {
+				return fmt.Errorf("Error dropping all indexes: %w", dropErr)
+			}
+
 			err := base.CreateNamedCollection(ctx, b)
 			if err != nil {
 				return err

@@ -630,15 +630,11 @@ var FlushBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b Bu
 
 	c, ok := b.(*Collection)
 	if ok {
-		tbp.Logf(ctx, "Bucket is a collection %+v %+v", c.Spec.Scope, c.Spec.Collection)
 		if err := c.DropAllScopesAndCollections(); err != nil && !errors.Is(err, ErrCollectionsUnsupported) {
 			return err
 		}
 		if TestUsingNamedCollection() {
-			err := CreateNamedCollection(ctx, b)
-			if err != nil {
-				return err
-			}
+			return CreateNamedCollection(ctx, b)
 		}
 
 	}
