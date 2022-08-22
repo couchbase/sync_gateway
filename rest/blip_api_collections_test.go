@@ -19,15 +19,6 @@ func TestBlipGetCollections(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	//checkpointIDWithError := "checkpointError"
-	//bucket := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{
-	//	GetRawCallback: func(key string) error {
-	//		if key == db.CheckpointDocIDPrefix+checkpointIDWithError {
-	//			return fmt.Errorf("a unique error")
-	//		}
-	//		return nil
-	//	},
-	//})
-	//defer bucket.Close()
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		guestEnabled: true,
@@ -43,7 +34,14 @@ func TestBlipGetCollections(t *testing.T) {
 			},
 		},
 		createScopesAndCollections: true,
-		//TestBucket:                 bucket,
+		//leakyBucketConfig: &base.LeakyBucketConfig{
+		//	GetRawCallback: func(key string) error {
+		//		if key == db.CheckpointDocIDPrefix+checkpointIDWithError {
+		//			return fmt.Errorf("a unique error")
+		//		}
+		//		return nil
+		//	},
+		//},
 	})
 	defer rt.Close()
 
@@ -127,7 +125,7 @@ func TestBlipGetCollections(t *testing.T) {
 		//	},
 		//	resultBody: []db.Body{nil},
 		//	errorCode:  "",
-		// },
+		//},
 	}
 
 	for _, testCase := range testCases {
