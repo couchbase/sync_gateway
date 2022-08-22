@@ -59,6 +59,7 @@ type RestTesterConfig struct {
 	persistentConfig                bool
 	groupID                         *string
 	createScopesAndCollections      bool // If true, will automatically create any defined scopes and collections on startup.
+	serverless                      bool // Runs SG in serverless mode. Should be used in conjunction with persistent config
 }
 
 // RestTester provides a fake server for testing endpoints
@@ -150,6 +151,15 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.API.EnableAdminAuthenticationPermissionsCheck = &rt.enableAdminAuthPermissionsCheck
 	sc.Bootstrap.UseTLSServer = &rt.RestTesterConfig.useTLSServer
 	sc.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
+	sc.Unsupported.Serverless = &rt.serverless
+	if rt.serverless {
+		sc.BucketCredentials = map[string]*base.CredentialsConfig{
+			testBucket.GetName(): {
+				Username: base.TestClusterUsername(),
+				Password: base.TestClusterPassword(),
+			},
+		}
+	}
 
 	if rt.RestTesterConfig.groupID != nil {
 		sc.Bootstrap.ConfigGroupID = *rt.RestTesterConfig.groupID
@@ -734,6 +744,16 @@ func (rt *RestTester) GetDocumentSequence(key string) (sequence uint64) {
 	var rawResponse RawResponse
 	_ = base.JSONUnmarshal(response.BodyBytes(), &rawResponse)
 	return rawResponse.Sync.Sequence
+}
+
+// ReplacePerBucketCredentials replaces buckets defined on StartupConfig.BucketCredentials then recreates the couchbase
+// cluster to pick up the changes
+func (rt *RestTester) ReplacePerBucketCredentials(config base.PerBucketCredentialsConfig) {
+	rt.ServerContext().config.BucketCredentials = config
+	// Update the CouchbaseCluster to include the new bucket credentials
+	couchbaseCluster, err := createCouchbaseClusterFromStartupConfig(rt.ServerContext().config)
+	require.NoError(rt.tb, err)
+	rt.ServerContext().bootstrapContext.connection = couchbaseCluster
 }
 
 type TestResponse struct {

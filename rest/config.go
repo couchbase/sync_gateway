@@ -27,8 +27,6 @@ import (
 	"strings"
 	"syscall"
 
-	"golang.org/x/exp/maps"
-
 	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/square/go-jose.v2"
 
@@ -286,32 +284,35 @@ func (dbc *DbConfig) inheritFromBootstrap(b BootstrapConfig) {
 	}
 }
 
-func (dbConfig *DbConfig) setPerDatabaseCredentials(dbCredentials base.CredentialsConfig) {
+func (dbConfig *DbConfig) setDatabaseCredentials(credentials base.CredentialsConfig) {
 	// X.509 overrides username/password
-	if dbCredentials.X509CertPath != "" || dbCredentials.X509KeyPath != "" {
-		dbConfig.CertPath = dbCredentials.X509CertPath
-		dbConfig.KeyPath = dbCredentials.X509KeyPath
+	if credentials.X509CertPath != "" || credentials.X509KeyPath != "" {
+		dbConfig.CertPath = credentials.X509CertPath
+		dbConfig.KeyPath = credentials.X509KeyPath
 		dbConfig.Username = ""
 		dbConfig.Password = ""
 	} else {
-		dbConfig.Username = dbCredentials.Username
-		dbConfig.Password = dbCredentials.Password
+		dbConfig.Username = credentials.Username
+		dbConfig.Password = credentials.Password
 		dbConfig.CertPath = ""
 		dbConfig.KeyPath = ""
 	}
 }
 
 // setup populates fields in the dbConfig
-func (dbConfig *DbConfig) setup(dbName string, bootstrapConfig BootstrapConfig, dbCredentials *base.CredentialsConfig) error {
-
-	dbConfig.inheritFromBootstrap(bootstrapConfig)
-	if dbCredentials != nil {
-		dbConfig.setPerDatabaseCredentials(*dbCredentials)
-	}
-
+func (dbConfig *DbConfig) setup(dbName string, bootstrapConfig BootstrapConfig, dbCredentials, bucketCredentials *base.CredentialsConfig, forcePerBucketAuth bool) error {
 	dbConfig.Name = dbName
 	if dbConfig.Bucket == nil {
 		dbConfig.Bucket = &dbConfig.Name
+	}
+
+	dbConfig.inheritFromBootstrap(bootstrapConfig)
+	if bucketCredentials != nil {
+		dbConfig.setDatabaseCredentials(*bucketCredentials)
+	} else if forcePerBucketAuth {
+		return fmt.Errorf("unable to setup database on bucket %q since credentials are not defined in bucket_credentials", base.MD(*dbConfig.Bucket).Redact())
+	} else if dbCredentials != nil {
+		dbConfig.setDatabaseCredentials(*dbCredentials)
 	}
 
 	if dbConfig.Server != nil {
@@ -1314,10 +1315,19 @@ func (sc *ServerContext) _fetchAndLoadDatabase(dbName string) (found bool, err e
 }
 
 func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *DatabaseConfig, err error) {
-	buckets, err := sc.bootstrapContext.connection.GetConfigBuckets()
-	if err != nil {
-		return false, nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
+	var buckets []string
+	if sc.config.IsServerless() {
+		buckets = make([]string, len(sc.config.BucketCredentials))
+		for bucket, _ := range sc.config.BucketCredentials {
+			buckets = append(buckets, bucket)
+		}
+	} else {
+		buckets, err = sc.bootstrapContext.connection.GetConfigBuckets()
+		if err != nil {
+			return false, nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
+		}
 	}
+
 	logCtx := context.TODO()
 
 	// move bucket matching dbName to the front so it's searched first
@@ -1376,7 +1386,10 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 func (sc *ServerContext) fetchConfigs(isInitialStartup bool) (dbNameConfigs map[string]DatabaseConfig, err error) {
 	var buckets []string
 	if sc.config.IsServerless() {
-		buckets = maps.Keys(sc.config.BucketCredentials)
+		buckets = make([]string, len(sc.config.BucketCredentials))
+		for bucket, _ := range sc.config.BucketCredentials {
+			buckets = append(buckets, bucket)
+		}
 		// TODO: Enable code as part of CBG-2280
 		// Return buckets that have credentials set that do not have a db associated with them
 		//buckets = make([]string, len(sc.config.BucketCredentials)-len(sc.bucketDbName))
@@ -1426,7 +1439,7 @@ func (sc *ServerContext) fetchConfigs(isInitialStartup bool) (dbNameConfigs map[
 
 		// stamp per-database credentials if set
 		if dbCredentials, ok := sc.config.DatabaseCredentials[cnf.Name]; ok && dbCredentials != nil {
-			cnf.setPerDatabaseCredentials(*dbCredentials)
+			cnf.setDatabaseCredentials(*dbCredentials)
 		}
 
 		// any authentication fields defined on the dbconfig take precedence over any in the bootstrap config

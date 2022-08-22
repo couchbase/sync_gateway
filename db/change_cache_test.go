@@ -394,9 +394,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 			channelName := fmt.Sprintf("chan_%d", i)
 			perRequestDb, err := CreateDatabase(db.DatabaseContext)
 			assert.NoError(t, err)
-			perRequestDb.Ctx = context.WithValue(base.TestCtx(t), base.LogContextKey{},
-				base.LogContext{CorrelationID: fmt.Sprintf("context_%s", channelName)},
-			)
+			perRequestDb.Ctx = base.LogContextWith(base.TestCtx(t), &base.LogContext{CorrelationID: fmt.Sprintf("context_%s", channelName)})
 			feed, err := perRequestDb.MultiChangesFeed(base.SetOf(channelName), options)
 			require.NoError(t, err, "Feed initialization error")
 
