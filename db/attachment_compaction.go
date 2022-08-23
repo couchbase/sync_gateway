@@ -3,6 +3,7 @@ package db
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -12,7 +13,12 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 )
 
-const CompactionIDKey = "compactID"
+const (
+	CompactionIDKey = "compactID"
+	MarkPhase       = "mark"
+	SweepPhase      = "sweep"
+	CleanupPhase    = "cleanup"
+)
 
 func attachmentCompactMarkPhase(db *Database, compactionID string, terminator *base.SafeTerminator, markedAttachmentCount *base.AtomicInt) (count int64, vbUUIDs []uint64, err error) {
 	base.InfofCtx(db.Ctx, base.KeyAll, "Starting first phase of attachment compaction (mark phase) with compactionID: %q", compactionID)
@@ -125,7 +131,8 @@ func attachmentCompactMarkPhase(db *Database, compactionID string, terminator *b
 	}
 
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for mark phase of attachment compaction", compactionLoggingID)
-	dcpFeedKey := compactionID + "_mark"
+
+	dcpFeedKey := generateCompactionDCPStreamName(compactionID, MarkPhase)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -350,7 +357,7 @@ func attachmentCompactSweepPhase(db *Database, compactionID string, vbUUIDs []ui
 	}
 	clientOptions.InitialMetadata = base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs)
 
-	dcpFeedKey := compactionID + "_sweep"
+	dcpFeedKey := generateCompactionDCPStreamName(compactionID, SweepPhase)
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed %q for sweep phase of attachment compaction", compactionLoggingID, dcpFeedKey)
 	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, *clientOptions, collection)
 	if err != nil {
@@ -485,7 +492,8 @@ func attachmentCompactCleanupPhase(db *Database, compactionID string, vbUUIDs []
 	clientOptions.InitialMetadata = base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs)
 
 	base.InfofCtx(db.Ctx, base.KeyAll, "[%s] Starting DCP feed for cleanup phase of attachment compaction", compactionLoggingID)
-	dcpFeedKey := compactionID + "_cleanup"
+
+	dcpFeedKey := generateCompactionDCPStreamName(compactionID, CleanupPhase)
 	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, *clientOptions, collection)
 	if err != nil {
 		base.WarnfCtx(db.Ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)
@@ -550,4 +558,13 @@ func getCompactionDCPClientOptions(collection *base.Collection, groupID string) 
 	}
 	return clientOptions, nil
 
+}
+
+func generateCompactionDCPStreamName(compactionID, compactionAction string) string {
+	return fmt.Sprintf(
+		"sg-%v:att_compaction:%v_%v",
+		base.ProductAPIVersion,
+		compactionID,
+		compactionAction,
+	)
 }

@@ -694,6 +694,9 @@ func TestRequiresCollections(t *testing.T) {
 	if testClusterCompatVersion < minCompatVersionForCollections {
 		t.Skip("Collections not supported")
 	}
+	if TestsDisableGSI() {
+		t.Skip("Collections requires GSI")
+	}
 }
 
 func waitUntilScopeAndCollectionExists(collection *gocb.Collection) error {
