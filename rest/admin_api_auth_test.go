@@ -193,7 +193,7 @@ func TestCheckPermissionsWithX509(t *testing.T) {
 	tb, caCertPath, certPath, keyPath := setupX509Tests(t, true)
 	defer tb.Close()
 
-	ctx := NewServerContext(&StartupConfig{
+	svrctx := NewServerContext(&StartupConfig{
 		Bootstrap: BootstrapConfig{
 			Server:       serverURL,
 			X509CertPath: certPath,
@@ -201,17 +201,18 @@ func TestCheckPermissionsWithX509(t *testing.T) {
 			CACertPath:   caCertPath,
 		},
 	}, false)
-	defer ctx.Close()
+	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: svrctx.config.Bootstrap.ConfigGroupID})
+	defer svrctx.Close(ctx)
 
-	goCBAgent, err := ctx.initializeGoCBAgent()
+	goCBAgent, err := svrctx.initializeGoCBAgent()
 	require.NoError(t, err)
-	ctx.GoCBAgent = goCBAgent
+	svrctx.GoCBAgent = goCBAgent
 
-	noX509HttpClient, err := ctx.initializeNoX509HttpClient()
+	noX509HttpClient, err := svrctx.initializeNoX509HttpClient()
 	require.NoError(t, err)
-	ctx.NoX509HTTPClient = noX509HttpClient
+	svrctx.NoX509HTTPClient = noX509HttpClient
 
-	eps, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()
+	eps, httpClient, err := svrctx.ObtainManagementEndpointsAndHTTPClient()
 	assert.NoError(t, err)
 
 	statusCode, _, err := CheckPermissions(httpClient, eps, "", base.TestClusterUsername(), base.TestClusterPassword(), []Permission{Permission{"!admin", false}}, nil)
@@ -485,7 +486,7 @@ func TestAdminAuthWithX509(t *testing.T) {
 	tb, caCertPath, certPath, keyPath := setupX509Tests(t, true)
 	defer tb.Close()
 
-	ctx := NewServerContext(&StartupConfig{
+	svrctx := NewServerContext(&StartupConfig{
 		Bootstrap: BootstrapConfig{
 			Server:       serverURL,
 			X509CertPath: certPath,
@@ -493,17 +494,18 @@ func TestAdminAuthWithX509(t *testing.T) {
 			CACertPath:   caCertPath,
 		},
 	}, false)
-	defer ctx.Close()
+	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: svrctx.config.Bootstrap.ConfigGroupID})
+	defer svrctx.Close(ctx)
 
-	goCBAgent, err := ctx.initializeGoCBAgent()
+	goCBAgent, err := svrctx.initializeGoCBAgent()
 	require.NoError(t, err)
-	ctx.GoCBAgent = goCBAgent
+	svrctx.GoCBAgent = goCBAgent
 
-	noX509HttpClient, err := ctx.initializeNoX509HttpClient()
+	noX509HttpClient, err := svrctx.initializeNoX509HttpClient()
 	require.NoError(t, err)
-	ctx.NoX509HTTPClient = noX509HttpClient
+	svrctx.NoX509HTTPClient = noX509HttpClient
 
-	managementEndpoints, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()
+	managementEndpoints, httpClient, err := svrctx.ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
 
 	var statusCode int

@@ -117,7 +117,8 @@ func TestAllDatabaseNames(t *testing.T) {
 		Bootstrap: BootstrapConfig{UseTLSServer: base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())), ServerTLSSkipVerify: base.BoolPtr(base.TestTLSSkipVerify())},
 		API:       APIConfig{CORS: &CORSConfig{}, AdminInterface: DefaultAdminInterface}}
 	serverContext := NewServerContext(serverConfig, false)
-	defer serverContext.Close()
+	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: serverContext.config.Bootstrap.ConfigGroupID})
+	defer serverContext.Close(ctx)
 
 	xattrs := base.TestUseXattrs()
 	useViews := base.TestsDisableGSI()
@@ -158,7 +159,8 @@ func TestAllDatabaseNames(t *testing.T) {
 func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 	serverConfig := &StartupConfig{API: APIConfig{CORS: &CORSConfig{}, AdminInterface: DefaultAdminInterface}}
 	serverContext := NewServerContext(serverConfig, false)
-	defer serverContext.Close()
+	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: serverContext.config.Bootstrap.ConfigGroupID})
+	defer serverContext.Close(ctx)
 
 	oldRevExpirySeconds := uint32(600)
 	localDocExpirySecs := uint32(60 * 60 * 24 * 10) // 10 days in seconds
@@ -230,13 +232,14 @@ func TestStatsLoggerStopped(t *testing.T) {
 	sc := DefaultStartupConfig("")
 
 	// Start up stats logger by creating server context
-	ctx := NewServerContext(&sc, false)
+	svrctx := NewServerContext(&sc, false)
 
 	// Close server context which will send signal to close stats logger
-	ctx.Close()
+	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: svrctx.config.Bootstrap.ConfigGroupID})
+	svrctx.Close(ctx)
 
 	// ensure stats terminator is closed
-	_, ok := <-ctx.statsContext.terminator
+	_, ok := <-svrctx.statsContext.terminator
 	assert.False(t, ok)
 
 	// sleep a bit to allow the "Stopping stats logging goroutine" debug logging to be printed
@@ -290,7 +293,7 @@ func TestObtainManagementEndpointsFromServerContextWithX509(t *testing.T) {
 	tb, caCertPath, certPath, keyPath := setupX509Tests(t, true)
 	defer tb.Close()
 
-	ctx := NewServerContext(&StartupConfig{
+	svrctx := NewServerContext(&StartupConfig{
 		Bootstrap: BootstrapConfig{
 			Server:       serverURL,
 			X509CertPath: certPath,
@@ -298,17 +301,18 @@ func TestObtainManagementEndpointsFromServerContextWithX509(t *testing.T) {
 			CACertPath:   caCertPath,
 		},
 	}, false)
-	defer ctx.Close()
+	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: svrctx.config.Bootstrap.ConfigGroupID})
+	svrctx.Close(ctx)
 
-	goCBAgent, err := ctx.initializeGoCBAgent()
+	goCBAgent, err := svrctx.initializeGoCBAgent()
 	require.NoError(t, err)
-	ctx.GoCBAgent = goCBAgent
+	svrctx.GoCBAgent = goCBAgent
 
-	noX509HttpClient, err := ctx.initializeNoX509HttpClient()
+	noX509HttpClient, err := svrctx.initializeNoX509HttpClient()
 	require.NoError(t, err)
-	ctx.NoX509HTTPClient = noX509HttpClient
+	svrctx.NoX509HTTPClient = noX509HttpClient
 
-	eps, _, err := ctx.ObtainManagementEndpointsAndHTTPClient()
+	eps, _, err := svrctx.ObtainManagementEndpointsAndHTTPClient()
 	assert.NoError(t, err)
 
 	baseSpec, err := connstr.Parse(base.UnitTestUrl())
@@ -354,6 +358,7 @@ func TestStartAndStopHTTPServers(t *testing.T) {
 
 	sc, err := setupServerContext(&config, false)
 	require.NoError(t, err)
+	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
 
 	serveErr := make(chan error, 0)
 	go func() {
@@ -361,7 +366,7 @@ func TestStartAndStopHTTPServers(t *testing.T) {
 	}()
 
 	defer func() {
-		sc.Close()
+		sc.Close(ctx)
 		require.NoError(t, <-serveErr)
 	}()
 

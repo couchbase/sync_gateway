@@ -2013,7 +2013,8 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 
 	h := &handler{}
 	h.server = NewServerContext(&StartupConfig{}, false)
-	defer h.server.Close()
+	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: h.server.config.Bootstrap.ConfigGroupID})
+	defer h.server.Close(ctx)
 
 	// Basic case, no heartbeat, no timeout
 	optStr := `{"feed":"longpoll", "since": "123456:78", "limit":123, "style": "all_docs",
@@ -3664,7 +3665,8 @@ func TestEventConfigValidationSuccess(t *testing.T) {
 	}
 
 	sc := NewServerContext(&StartupConfig{}, false)
-	defer sc.Close()
+	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
+	defer sc.Close(ctx)
 
 	// Valid config
 	configJSON := `{"name": "default",
@@ -4203,7 +4205,8 @@ func TestLongpollWithWildcard(t *testing.T) {
 func TestUnsupportedConfig(t *testing.T) {
 
 	sc := NewServerContext(&StartupConfig{}, false)
-	defer sc.Close()
+	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
+	defer sc.Close(ctx)
 	testProviderOnlyJSON := `{"name": "test_provider_only",
         			"server": "walrus:",
         			"bucket": "test_provider_only",

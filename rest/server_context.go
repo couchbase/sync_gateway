@@ -155,17 +155,16 @@ func (sc *ServerContext) PostStartup() {
 // background goroutines to terminate before the server is stopped.
 const serverContextStopMaxWait = 30 * time.Second
 
-func (sc *ServerContext) Close() {
+func (sc *ServerContext) Close(ctx context.Context) {
 
-	logCtx := context.TODO()
 	err := base.TerminateAndWaitForClose(sc.statsContext.terminator, sc.statsContext.doneChan, serverContextStopMaxWait)
 	if err != nil {
-		base.InfofCtx(logCtx, base.KeyAll, "Couldn't stop stats logger: %v", err)
+		base.InfofCtx(ctx, base.KeyAll, "Couldn't stop stats logger: %v", err)
 	}
 
 	err = base.TerminateAndWaitForClose(sc.bootstrapContext.terminator, sc.bootstrapContext.doneChan, serverContextStopMaxWait)
 	if err != nil {
-		base.InfofCtx(logCtx, base.KeyAll, "Couldn't stop background config update worker: %v", err)
+		base.InfofCtx(ctx, base.KeyAll, "Couldn't stop background config update worker: %v", err)
 	}
 
 	sc.lock.Lock()
@@ -178,16 +177,16 @@ func (sc *ServerContext) Close() {
 	sc.databases_ = nil
 
 	for _, s := range sc._httpServers {
-		base.InfofCtx(logCtx, base.KeyHTTP, "Closing HTTP Server: %v", s.Addr)
+		base.InfofCtx(ctx, base.KeyHTTP, "Closing HTTP Server: %v", s.Addr)
 		if err := s.Close(); err != nil {
-			base.WarnfCtx(logCtx, "Error closing HTTP server %q: %v", s.Addr, err)
+			base.WarnfCtx(ctx, "Error closing HTTP server %q: %v", s.Addr, err)
 		}
 	}
 	sc._httpServers = nil
 
 	if agent := sc.GoCBAgent; agent != nil {
 		if err := agent.Close(); err != nil {
-			base.WarnfCtx(logCtx, "Error closing agent connection: %v", err)
+			base.WarnfCtx(ctx, "Error closing agent connection: %v", err)
 		}
 	}
 }

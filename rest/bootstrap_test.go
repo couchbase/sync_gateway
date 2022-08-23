@@ -34,6 +34,7 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
+	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
 
 	// sc closed and serverErr read later in the test
 	serverErr := make(chan error, 0)
@@ -90,18 +91,20 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	resp.requireResponse(http.StatusOK, `{"_id":"doc1","_rev":"1-cd809becc169215072fd567eebd8b8de","foo":"bar"}`)
 
 	// Restart Sync Gateway
-	sc.Close()
+	sc.Close(ctx)
 	require.NoError(t, <-serverErr)
 
 	sc, err = setupServerContext(&config, true)
 	require.NoError(t, err)
+	ctx = base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
+
 	serverErr = make(chan error, 0)
 	go func() {
 		serverErr <- startServer(&config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 	defer func() {
-		sc.Close()
+		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
 	}()
 
@@ -146,8 +149,9 @@ func TestBootstrapDuplicateBucket(t *testing.T) {
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
+	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
 	defer func() {
-		sc.Close()
+		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
 	}()
 
@@ -195,8 +199,9 @@ func TestBootstrapDuplicateDatabase(t *testing.T) {
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
+	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
 	defer func() {
-		sc.Close()
+		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
 	}()
 

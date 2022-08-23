@@ -995,7 +995,8 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 	require.Nil(t, setupAndValidateDatabases(databases), "Unexpected error while validating databases")
 
 	sc := NewServerContext(config, false)
-	defer sc.Close()
+	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
+	defer sc.Close(ctx)
 	for _, dbConfig := range databases {
 		_, err := sc.AddDatabaseFromConfig(DatabaseConfig{DbConfig: *dbConfig})
 		require.NoError(t, err, "Couldn't add database from config")
@@ -1349,7 +1350,8 @@ func TestSetupServerContext(t *testing.T) {
 		config.Bootstrap.Username = base.TestClusterUsername()
 		config.Bootstrap.Password = base.TestClusterPassword()
 		sc, err := setupServerContext(&config, false)
-		defer sc.Close()
+		ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
+		defer sc.Close(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, sc)
 	})

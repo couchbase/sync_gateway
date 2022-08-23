@@ -295,8 +295,9 @@ func TestImportFilterEndpoint(t *testing.T) {
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
+	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
 	defer func() {
-		sc.Close()
+		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
 	}()
 
