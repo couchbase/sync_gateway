@@ -206,3 +206,10 @@ func (c *Collection) getIndexes() (indexes []string, err error) {
 	}
 	return indexes, nil
 }
+
+// waitUntilQueryServiceReady will wait for the specified duration until the query service is available.
+func (c *Collection) waitUntilQueryServiceReady(timeout time.Duration) error {
+	return c.cluster.WaitUntilReady(timeout,
+		&gocb.WaitUntilReadyOptions{ServiceTypes: []gocb.ServiceType{gocb.ServiceTypeQuery}},
+	)
+}
