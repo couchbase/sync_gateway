@@ -242,27 +242,25 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 		if rt.leakyBucketConfig != nil {
 			// Scopes and collections have to be set on the bucket being passed in for the db to use.
-			if rt.createScopesAndCollections {
-				// WIP: Collections Phase 1 - Grab just one scope/collection from the defined set.
-				// Phase 2 (multi collection) means DatabaseContext needs a set of BucketSpec/Collections, not just one...
-				var scope, collection *string
-				for scopeName, scopeConfig := range rt.RestTesterConfig.DatabaseConfig.Scopes {
-					scope = &scopeName
-					for collectionName := range scopeConfig.Collections {
-						collection = &collectionName
-						break
-					}
+			// WIP: Collections Phase 1 - Grab just one scope/collection from the defined set.
+			// Phase 2 (multi collection) means DatabaseContext needs a set of BucketSpec/Collections, not just one...
+			var scope, collection *string
+			for scopeName, scopeConfig := range rt.RestTesterConfig.DatabaseConfig.Scopes {
+				scope = &scopeName
+				for collectionName := range scopeConfig.Collections {
+					collection = &collectionName
+					break
 				}
-				if scope != nil && collection != nil {
-					collectionBucket, err := base.AsCollection(testBucket.Bucket)
-					if err != nil {
-						rt.tb.Fatalf("Could not get collection from bucket with type %T: %v", testBucket.Bucket, err)
-					}
+			}
+			if scope != nil && collection != nil {
+				collectionBucket, err := base.AsCollection(testBucket.Bucket)
+				if err != nil {
+					rt.tb.Fatalf("Could not get collection from bucket with type %T: %v", testBucket.Bucket, err)
+				}
 
-					collectionBucket.Spec.Scope = scope
-					collectionBucket.Spec.Collection = collection
-					collectionBucket.Collection = collectionBucket.Collection.Bucket().Scope(*scope).Collection(*collection)
-				}
+				collectionBucket.Spec.Scope = scope
+				collectionBucket.Spec.Collection = collection
+				collectionBucket.Collection = collectionBucket.Collection.Bucket().Scope(*scope).Collection(*collection)
 			}
 
 			_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithBucket(rt.tb, *rt.DatabaseConfig, testBucket.Bucket)
