@@ -58,6 +58,9 @@ type N1QLStore interface {
 
 	// getIndexes retrieves all index names, used by test harness
 	getIndexes() (indexes []string, err error)
+
+	// waitUntilQueryServiceReady waits until the query service is ready to accept requests
+	waitUntilQueryServiceReady(timeout time.Duration) error
 }
 
 func ExplainQuery(store N1QLStore, statement string, params map[string]interface{}) (plan map[string]interface{}, err error) {
