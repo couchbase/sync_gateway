@@ -660,11 +660,6 @@ func ForAllDataStores(t *testing.T, testCallback func(*testing.T, sgbucket.DataS
 		})
 	}
 
-	dataStores = append(dataStores, dataStore{
-		name:   "gocb.v1",
-		driver: GoCBCustomSGTranscoder,
-	})
-
 	for _, dataStore := range dataStores {
 		t.Run(dataStore.name, func(t *testing.T) {
 			bucket := GetTestBucketForDriver(t, dataStore.driver)
@@ -746,14 +741,9 @@ func CreateBucketScopesAndCollections(ctx context.Context, bucketSpec BucketSpec
 	}
 	defer func() { _ = cluster.Close(nil) }()
 
-	bucket := cluster.Bucket(bucketSpec.BucketName)
-	cm := bucket.Collections()
+	cm := cluster.Bucket(bucketSpec.BucketName).Collections()
 
-	return CreateScopeAndCollections(ctx, cm, bucket, scopes)
-}
-
-func CreateScopeAndCollections(ctx context.Context, cm *gocb.CollectionManager, bucket *gocb.Bucket, scopesAndCollections map[string][]string) error {
-	for scopeName, collections := range scopesAndCollections {
+	for scopeName, collections := range scopes {
 		if err := cm.CreateScope(scopeName, nil); err != nil && !errors.Is(err, gocb.ErrScopeExists) {
 			return fmt.Errorf("failed to create scope %s: %w", scopeName, err)
 		}
@@ -767,21 +757,23 @@ func CreateScopeAndCollections(ctx context.Context, cm *gocb.CollectionManager, 
 				return fmt.Errorf("failed to create collection %s in scope %s: %w", collectionName, scopeName, err)
 			}
 			DebugfCtx(ctx, KeySGTest, "Created collection %s.%s", scopeName, collectionName)
-			if err := waitUntilScopeAndCollectionExists(bucket.Scope(scopeName).Collection(collectionName)); err != nil {
+			if err := waitUntilScopeAndCollectionExists(cluster.Bucket(bucketSpec.BucketName).Scope(scopeName).Collection(collectionName)); err != nil {
 				return err
 			}
 			DebugfCtx(ctx, KeySGTest, "Collection now exists %s.%s", scopeName, collectionName)
 		}
 	}
+
 	return nil
 }
 
 // RequireAllAssertions ensures that all assertion results were true/ok, and fails the test if any were not.
 // Usage:
-//     RequireAllAssertions(t,
-//         assert.True(t, condition1),
-//         assert.True(t, condition2),
-//     )
+//
+//	RequireAllAssertions(t,
+//	    assert.True(t, condition1),
+//	    assert.True(t, condition2),
+//	)
 func RequireAllAssertions(t *testing.T, assertionResults ...bool) {
 	var failed bool
 	for _, ok := range assertionResults {

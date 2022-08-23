@@ -258,6 +258,33 @@ func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilRea
 	cluster := getCluster(c.server)
 	bucketSpec := getBucketSpec(testBucketName)
 
+	// Create scope and collection on server, first drop any scope and collect in the bucket and then create
+	// new scope + collection
+	bucket := cluster.Bucket(bucketSpec.BucketName)
+	err := bucket.WaitUntilReady(time.Duration(waitUntilReadySeconds*4)*time.Second, nil)
+	if err != nil {
+		panic(fmt.Sprintf("here %+v", err))
+		return nil, err
+	}
+	DebugfCtx(context.TODO(), KeySGTest, "Got bucket %s", testBucketName)
+
+	if err := DropAllScopesAndCollections(bucket); err != nil && !errors.Is(err, ErrCollectionsUnsupported) {
+		return nil, err
+	}
+
+	specScope, specCollection := bucketSpecScopeAndCollection(bucketSpec)
+	if specScope != "" || specCollection != "" {
+		err := CreateBucketScopesAndCollections(context.TODO(), bucketSpec,
+			map[string][]string{
+				specScope: []string{specCollection},
+			})
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Return a Collection object
+
 	return GetCollectionFromCluster(cluster, bucketSpec, waitUntilReadySeconds)
 }
 
@@ -284,4 +311,45 @@ func (c *tbpClusterV2) getMinClusterCompatVersion() int {
 		panic("invalid NodesMetadata: no nodes")
 	}
 	return nodesMeta[0].ClusterCompatibility
+}
+
+// DropAllScopesAndCollections attempts to drop *all* non-_default scopes and collections from the bucket associated with the collection.  Intended for test usage only.
+func DropAllScopesAndCollections(bucket *gocb.Bucket) error {
+	cm := bucket.Collections()
+	scopes, err := cm.GetAllScopes(nil)
+	if err != nil {
+		if httpErr, ok := err.(gocb.HTTPError); ok && httpErr.StatusCode == 404 {
+			return ErrCollectionsUnsupported
+		}
+		WarnfCtx(context.TODO(), "Error getting scopes on bucket %s: %v  Will retry.", MD(bucket.Name()).Redact(), err)
+		return err
+	}
+
+	// For each non-default scope, drop them.
+	// For each collection within the default scope, drop them.
+	for _, scope := range scopes {
+		if scope.Name != DefaultScope {
+			scopeName := fmt.Sprintf("scope %s on bucket %s", MD(scope).Redact(), MD(bucket.Name()).Redact())
+			TracefCtx(context.TODO(), KeyAll, "Dropping %s", scopeName)
+			if err := cm.DropScope(scope.Name, nil); err != nil {
+				WarnfCtx(context.TODO(), "Error dropping %s: %v  Will retry.", scopeName, err)
+				return err
+			}
+			continue
+		}
+
+		// can't delete _default scope - but we can delete the non-_default collections within it
+		for _, collection := range scope.Collections {
+			if collection.Name != DefaultCollection {
+				collectionName := fmt.Sprintf("collection %s in scope %s on bucket %s", MD(collection.Name).Redact(), MD(scope).Redact(), MD(bucket.Name()).Redact())
+				TracefCtx(context.TODO(), KeyAll, "Dropping %s", collectionName)
+				if err := cm.DropCollection(collection, nil); err != nil {
+					WarnfCtx(context.TODO(), "Error dropping %s: %v  Will retry.", collectionName, err)
+					return err
+				}
+			}
+		}
+
+	}
+	return nil
 }
