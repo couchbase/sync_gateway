@@ -263,7 +263,6 @@ func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilRea
 	bucket := cluster.Bucket(bucketSpec.BucketName)
 	err := bucket.WaitUntilReady(time.Duration(waitUntilReadySeconds*4)*time.Second, nil)
 	if err != nil {
-		panic(fmt.Sprintf("here %+v", err))
 		return nil, err
 	}
 	DebugfCtx(context.TODO(), KeySGTest, "Got bucket %s", testBucketName)

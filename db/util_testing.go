@@ -239,26 +239,6 @@ var ViewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 		return viewBucketReadier(ctx, b, tbp)
 	}
 
-	//	if _, ok := b.(*base.Collection); ok {
-	//		if tbp.UsingNamedCollections() {
-	//			n1qlStore, isGoCBBucket := base.AsN1QLStore(b)
-	//			if !isGoCBBucket {
-	//				return fmt.Errorf("bucket is not a gocb bucket")
-	//			}
-	//
-	//			dropErr := base.DropAllIndexes(ctx, n1qlStore)
-	//			if dropErr != nil {
-	//				return fmt.Errorf("Error dropping all indexes: %w", dropErr)
-	//			}
-
-	//			err := base.CreateNamedCollection(ctx, b)
-	//			if err != nil {
-	//				return err
-	//			}
-	//		}
-
-	//	}
-
 	if !tbp.UsingNamedCollections() {
 		tbp.Logf(ctx, "emptying bucket via N1QL, readying views and indexes")
 		if err := base.N1QLBucketEmptierFunc(ctx, b, tbp); err != nil {
@@ -316,12 +296,6 @@ var ViewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 	if base.TestsDisableGSI() {
 		return nil
 	}
-	//if tbp.UsingNamedCollections() {
-	//	err := base.CreateNamedCollection(ctx, b)
-	//	if err != nil {
-	//		return err
-	//	}
-	//}
 	n1qlStore, ok := base.AsN1QLStore(b)
 	if !ok {
 		return fmt.Errorf("bucket %T was not a N1QL store", b)

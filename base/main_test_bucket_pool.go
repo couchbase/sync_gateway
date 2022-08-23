@@ -580,13 +580,12 @@ loop:
 					return
 				}
 
-				tbp.Logf(ctx, "Bucket ready, putting back into ready pool")
 				c, err := AsCollection(b)
-				if err != nil {
-					panic("not a collection")
+				if err == nil && !c.IsDefaultScopeCollection() {
+					tbp.Logf(ctx, "Collection %s.%s.%s ready, putting back into ready pool", c.Bucket().Name(), c.ScopeName(), c.Name())
+				} else {
+					tbp.Logf(ctx, "Bucket ready, putting back into ready pool")
 				}
-				fmt.Printf("HONK Using Scope and Collection %+v\n %s.%s\n", c.Spec, *c.Spec.Scope, *c.Spec.Collection)
-				fmt.Printf("HONK Using defaults %+v\n", c.IsDefaultScopeCollection())
 				tbp.readyBucketPool <- b
 				atomic.AddInt64(&tbp.stats.TotalBucketReadierDurationNano, time.Since(start).Nanoseconds())
 			}(testBucketName)
