@@ -146,6 +146,7 @@ func attachmentCompactMarkPhase(db *Database, compactionID string, terminator *b
 	if err != nil {
 		base.WarnfCtx(db.Ctx, "[%s] Failed to start attachment compaction DCP feed! %v", compactionLoggingID, err)
 		dcpClient.Close()
+		<-doneChan
 		return 0, nil, err
 	}
 	base.DebugfCtx(db.Ctx, base.KeyAll, "[%s] DCP feed started.", compactionLoggingID)
@@ -368,7 +369,7 @@ func attachmentCompactSweepPhase(db *Database, compactionID string, vbUUIDs []ui
 	if err != nil {
 		base.WarnfCtx(db.Ctx, "[%s] Failed to start attachment compaction DCP feed! %v", compactionLoggingID, err)
 		dcpClient.Close()
-		// FIXME: wait on close
+		<-doneChan
 		return 0, err
 	}
 	base.DebugfCtx(db.Ctx, base.KeyAll, "[%s] DCP client started.", compactionLoggingID)
@@ -502,7 +503,7 @@ func attachmentCompactCleanupPhase(db *Database, compactionID string, vbUUIDs []
 	if err != nil {
 		base.WarnfCtx(db.Ctx, "[%s] Failed to start attachment compaction DCP feed! %v", compactionLoggingID, err)
 		dcpClient.Close()
-		// FIXME: add <- doneChan here
+		<-doneChan
 		return err
 	}
 
