@@ -629,6 +629,14 @@ func (b *LeakyBucket) getIndexes() ([]string, error) {
 	return n1qlStore.getIndexes()
 }
 
+func (b *LeakyBucket) waitUntilQueryServiceReady(timeout time.Duration) error {
+	n1qlStore, ok := AsN1QLStore(b.bucket)
+	if !ok {
+		return fmt.Errorf("bucket is not an N1QL bucket")
+	}
+	return n1qlStore.waitUntilQueryServiceReady(timeout)
+}
+
 func (b *LeakyBucket) IsErrNoResults(err error) bool {
 	n1qlStore, ok := AsN1QLStore(b.bucket)
 	if !ok {

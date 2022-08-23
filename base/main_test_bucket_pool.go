@@ -482,18 +482,22 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, 
 			openBuckets[bucketName] = b
 			openBucketsLock.Unlock()
 
-			n1qlStore, ok := AsN1QLStore(b)
-			if !ok {
-				tbp.Fatalf(ctx, "Couldn't remove old prepared statements: %v", err)
-			}
-			queryRes, err := n1qlStore.Query(`DELETE FROM system:prepareds WHERE statement LIKE "%`+KeyspaceQueryToken+`%";`, nil, RequestPlus, true)
-			if err != nil {
-				tbp.Fatalf(ctx, "Couldn't remove old prepared statements: %v", err)
-			}
+			// if the bucket is a N1QLStore, clean up prepared statements as-per the advice from the query team.
+			if n1qlStore, ok := AsN1QLStore(b); ok {
+				err = n1qlStore.waitUntilQueryServiceReady(time.Minute)
+				if err != nil {
+					tbp.Fatalf(ctx, "Timed out waiting for query service to be ready: %v", err)
+				}
 
-			err = queryRes.Close()
-			if err != nil {
-				tbp.Fatalf(ctx, "Failed to close query: %v", err)
+				queryRes, err := n1qlStore.Query(`DELETE FROM system:prepareds WHERE statement LIKE "%`+KeyspaceQueryToken+`%";`, nil, RequestPlus, true)
+				if err != nil {
+					tbp.Fatalf(ctx, "Couldn't remove old prepared statements: %v", err)
+				}
+
+				err = queryRes.Close()
+				if err != nil {
+					tbp.Fatalf(ctx, "Failed to close query: %v", err)
+				}
 			}
 
 			wg.Done()
