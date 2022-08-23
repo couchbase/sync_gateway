@@ -154,7 +154,7 @@ func makeHandlerSpecificAuthScope(server *ServerContext, privs handlerPrivs, acc
 }
 
 func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter, rq *http.Request, runOffline bool) *handler {
-	return &handler{
+	h := &handler{
 		server:       server,
 		privs:        privs,
 		rq:           rq,
@@ -164,6 +164,13 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 		startTime:    time.Now(),
 		runOffline:   runOffline,
 	}
+
+	h.rqCtx = base.LogContextWith(h.rq.Context(), &base.LogContext{CorrelationID: h.formatSerialNumber()})
+	if h.server != nil && h.server.config != nil && h.server.config.Bootstrap.ConfigGroupID != "" {
+		h.rqCtx = base.LogContextWith(h.rqCtx, &base.ServerLogContext{ConfigGroupID: h.server.config.Bootstrap.ConfigGroupID})
+	}
+
+	return h
 }
 
 // ctx returns the request-scoped context for logging/cancellation.
@@ -172,6 +179,12 @@ func (h *handler) ctx() context.Context {
 		h.rqCtx = base.LogContextWith(h.rq.Context(), &base.LogContext{CorrelationID: h.formatSerialNumber()})
 	}
 	return h.rqCtx
+}
+
+func (h *handler) addDatabaseLogContext(dbName string) {
+	if dbName != "" {
+		h.rqCtx = base.LogContextWith(h.ctx(), &base.DatabaseLogContext{DatabaseName: dbName})
+	}
 }
 
 // parseKeyspace will return a db, scope and collection for a given '.' separated keyspace string.
@@ -255,6 +268,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	// look up the database context:
 	var dbContext *db.DatabaseContext
 	if keyspaceDb != "" {
+		h.addDatabaseLogContext(keyspaceDb)
 		if dbContext, err = h.server.GetDatabase(keyspaceDb); err != nil {
 			base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
 
