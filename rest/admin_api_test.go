@@ -2036,9 +2036,11 @@ func TestPurgeWithChannelCache(t *testing.T) {
 	requireStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car", "channels": ["abc"]}`), http.StatusCreated)
 
 	changes, err := rt.waitForChanges(2, "/db/_changes?filter=sync_gateway/bychannel&channels=abc,def", "", true)
-	assert.NoError(t, err, "Error waiting for changes")
-	assert.Equal(t, "doc1", changes.Results[0].ID)
-	assert.Equal(t, "doc2", changes.Results[1].ID)
+	require.NoError(t, err, "Error waiting for changes")
+	base.RequireAllAssertions(t,
+		assert.Equal(t, "doc1", changes.Results[0].ID),
+		assert.Equal(t, "doc2", changes.Results[1].ID),
+	)
 
 	// Purge "doc1"
 	resp := rt.SendAdminRequest("POST", "/db/_purge", `{"doc1":["*"]}`)
@@ -2048,7 +2050,7 @@ func TestPurgeWithChannelCache(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}}, body)
 
 	changes, err = rt.waitForChanges(1, "/db/_changes?filter=sync_gateway/bychannel&channels=abc,def", "", true)
-	assert.NoError(t, err, "Error waiting for changes")
+	require.NoError(t, err, "Error waiting for changes")
 	assert.Equal(t, "doc2", changes.Results[0].ID)
 
 }
