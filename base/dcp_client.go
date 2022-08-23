@@ -151,10 +151,9 @@ func (dc *DCPClient) Start() (doneChan chan error, err error) {
 	return dc.doneChannel, nil
 }
 
-// Close is used externally to stop the DCP client. If the client was already closed due to error, returns that error
-func (dc *DCPClient) Close() error {
+// Close is used externally to stop the DCP client. Close is asynchronous and may not be finished until DCPClient.doneChannel is closed.
+func (dc *DCPClient) Close() {
 	dc.close()
-	return dc.getCloseError()
 }
 
 // GetMetadata returns metadata for all vbuckets
