@@ -23,8 +23,13 @@ func TestServerlessPollBuckets(t *testing.T) {
 	config := bootstrapStartupConfigForTest(t)
 	config.Unsupported.Serverless = base.BoolPtr(true)
 	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
-	// Use invalid bucket to get past validation stage - will cause warnings throughout test
-	config.BucketCredentials = map[string]*base.CredentialsConfig{"invalid_bucket": {}}
+	// Use valid bucket to get past validation stage
+	config.BucketCredentials = map[string]*base.CredentialsConfig{
+		tb1.GetName(): {
+			Username: base.TestClusterUsername(),
+			Password: base.TestClusterPassword(),
+		},
+	}
 
 	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
@@ -39,6 +44,12 @@ func TestServerlessPollBuckets(t *testing.T) {
 		serverErr <- startServer(&config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
+
+	// Now SC is set up and past StartupConfig validation stage, blank out all per-bucket creds and recreate the CB Cluster
+	sc.config.BucketCredentials = map[string]*base.CredentialsConfig{}
+	couchbaseCluster, err := createCouchbaseClusterFromStartupConfig(sc.config)
+	require.NoError(t, err)
+	sc.bootstrapContext.connection = couchbaseCluster
 
 	// Confirm fetch does not return any configs due to no databases existing
 	configs, err := sc.fetchConfigs(false)
@@ -61,7 +72,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, configs)
 
-	// Add test bucket to bucket credentials config
+	// Add the test bucket to bucket credentials config
 	sc.config.BucketCredentials = map[string]*base.CredentialsConfig{
 		tb1.GetName(): {
 			Username: base.TestClusterUsername(),
@@ -70,7 +81,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 	}
 
 	// Update the CouchbaseCluster to include the new bucket credentials
-	couchbaseCluster, err := createCouchbaseClusterFromStartupConfig(sc.config)
+	couchbaseCluster, err = createCouchbaseClusterFromStartupConfig(sc.config)
 	require.NoError(t, err)
 	sc.bootstrapContext.connection = couchbaseCluster
 
