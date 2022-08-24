@@ -169,7 +169,7 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 	case *RetryTimeoutError:
 		return http.StatusGatewayTimeout, unwrappedErr.Error()
 	}
-	return http.StatusInternalServerError, fmt.Sprintf("Internal error: %v", unwrappedErr)
+	return http.StatusInternalServerError, fmt.Sprintf("Internal error: %v", err)
 }
 
 // Returns the standard CouchDB error string for an HTTP error status.
