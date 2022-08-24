@@ -369,7 +369,7 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 		// If no collection IDs specified, filter to the default collection
 		collIds := dc.collectionIDs
 		if len(collIds) == 0 {
-			collIds = []uint32{0}
+			collIds = []uint32{DefaultCollectionID}
 		}
 		options.FilterOptions = &gocbcore.OpenStreamFilterOptions{CollectionIDs: collIds}
 	}
