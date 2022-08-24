@@ -480,6 +480,7 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, 
 			}
 
 			b, err := tbp.cluster.openTestBucket(tbpBucketName(bucketName), 10*numBuckets)
+			ctx = updateContextWithKeyspace(ctx, b)
 			if err != nil {
 				tbp.Fatalf(ctx, "Timed out trying to open new bucket: %v", err)
 			}
@@ -520,16 +521,21 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, 
 		tbp.Logf(ctx, "running bucketInitFunc")
 		b := openBuckets[testBucketName]
 
+		itemName := "bucket"
+		if tbp.UsingNamedCollections() {
+			itemName = "collection"
+		}
 		if err, _ := RetryLoop(b.GetName()+"bucketInitRetry", func() (bool, error, interface{}) {
-			tbp.Logf(ctx, "Running bucket through init function")
+			tbp.Logf(ctx, "Running %s through init function", itemName)
+			ctx = updateContextWithKeyspace(ctx, b)
 			err := bucketInitFunc(ctx, b, tbp)
 			if err != nil {
-				tbp.Logf(ctx, "Couldn't init bucket, got error: %v - Retrying", err)
+				tbp.Logf(ctx, "Couldn't init %s, got error: %v - Retrying", itemName, err)
 				return true, err, nil
 			}
 			return false, nil, nil
 		}, CreateSleeperFunc(5, 1000)); err != nil {
-			tbp.Fatalf(ctx, "Couldn't init bucket, got error: %v - Aborting", err)
+			tbp.Fatalf(ctx, "Couldn't init %s, got error: %v - Aborting", itemName, err)
 		}
 
 		b.Close()
@@ -564,6 +570,7 @@ loop:
 
 				start := time.Now()
 				b, err := tbp.cluster.openTestBucket(testBucketName, 5)
+				ctx = updateContextWithKeyspace(ctx, b)
 				if err != nil {
 					tbp.Logf(ctx, "Couldn't open bucket to get ready, got error: %v", err)
 					return
@@ -822,4 +829,12 @@ func TestClusterDriver() CouchbaseDriver {
 		driver = AsCouchbaseDriver(envClusterDriver)
 	}
 	return driver
+}
+
+func updateContextWithKeyspace(ctx context.Context, b Bucket) context.Context {
+	c, ok := b.(*Collection)
+	if ok {
+		ctx = keyspaceNameCtx(ctx, b.GetName(), c.Name(), c.ScopeName())
+	}
+	return ctx
 }
