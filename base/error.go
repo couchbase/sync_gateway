@@ -81,6 +81,18 @@ func HTTPErrorf(status int, format string, args ...interface{}) *HTTPError {
 	return &HTTPError{status, fmt.Sprintf(format, args...)}
 }
 
+// unwrap returns the underlying error of err, following the chain of wrapped errors until it finds one that does not wrap
+// another. This differs from the standard library errors.Unwrap, which returns nil if the passed err doesn't wrap another.
+func unwrap(err error) error {
+	wrapper, ok := err.(interface {
+		Unwrap() error
+	})
+	if !ok {
+		return err
+	}
+	return unwrap(wrapper.Unwrap())
+}
+
 // Attempts to map an error to an HTTP status code and message.
 // Defaults to 500 if it doesn't recognize the error. Returns 200 for a nil error.
 func ErrorAsHTTPStatus(err error) (int, string) {
@@ -88,7 +100,7 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		return 200, "OK"
 	}
 
-	unwrappedErr := errors.Unwrap(err)
+	unwrappedErr := unwrap(err)
 
 	// Check for SGErrors
 	switch unwrappedErr {
