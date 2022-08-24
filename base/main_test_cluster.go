@@ -272,7 +272,7 @@ func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilRea
 	}
 
 	specScope, specCollection := bucketSpecScopeAndCollection(bucketSpec)
-	if specScope != "" || specCollection != "" {
+	if specScope != DefaultScope || specCollection != DefaultCollection {
 		err := CreateBucketScopesAndCollections(context.TODO(), bucketSpec,
 			map[string][]string{
 				specScope: []string{specCollection},
