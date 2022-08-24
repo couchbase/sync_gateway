@@ -1,6 +1,8 @@
 package base
 
 import (
+	"context"
+
 	"github.com/couchbase/gocbcore/v10"
 )
 
@@ -87,6 +89,7 @@ func (dc *DCPClient) End(end gocbcore.DcpStreamEnd, err error) {
 func (dc *DCPClient) Expiration(expiration gocbcore.DcpExpiration) {
 	// SG doesn't opt in to expirations, so they'll come through as deletion events
 	// (cf.https://github.com/couchbase/kv_engine/blob/master/docs/dcp/documentation/expiry-opcode-output.md)
+	WarnfCtx(context.TODO(), "Unexpected DCP expiration event (vb:%d) for key %v", expiration.VbID, UD(string(expiration.Key)))
 }
 
 func (dc *DCPClient) CreateCollection(creation gocbcore.DcpCollectionCreation) {
