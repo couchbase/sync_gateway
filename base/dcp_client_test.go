@@ -49,7 +49,7 @@ func TestOneShotDCP(t *testing.T) {
 	collection, err := AsCollection(bucket)
 	require.NoError(t, err)
 	var collectionIDs []uint32
-	if collection.Spec.Scope != nil && collection.Spec.Collection != nil {
+	if collection.IsSupported(sgbucket.DataStoreFeatureCollections) {
 		collectionID, err := collection.GetCollectionID()
 		require.NoError(t, err)
 		collectionIDs = append(collectionIDs, collectionID)
@@ -213,7 +213,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			collection, err := AsCollection(bucket)
 			require.NoError(t, err)
 			var collectionIDs []uint32
-			if collection.Spec.Scope != nil && collection.Spec.Collection != nil {
+			if collection.IsSupported(sgbucket.DataStoreFeatureCollections) {
 				collectionID, err := collection.GetCollectionID()
 				require.NoError(t, err)
 				collectionIDs = append(collectionIDs, collectionID)
@@ -341,7 +341,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 	collection, err := AsCollection(bucket)
 	require.NoError(t, err)
 	var collectionIDs []uint32
-	if collection.Spec.Scope != nil && collection.Spec.Collection != nil {
+	if collection.IsSupported(sgbucket.DataStoreFeatureCollections) {
 		collectionID, err := collection.GetCollectionID()
 		require.NoError(t, err)
 		collectionIDs = append(collectionIDs, collectionID)
