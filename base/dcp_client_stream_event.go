@@ -78,7 +78,27 @@ func (e deletionEvent) asFeedEvent() sgbucket.FeedEvent {
 	}
 }
 
+type expirationEvent struct {
+	streamEventCommon
+	seq uint64
+	key []byte
+}
+
+func (e expirationEvent) asFeedEvent() sgbucket.FeedEvent {
+	return sgbucket.FeedEvent{
+		Opcode:       sgbucket.FeedOpExpiration,
+		Key:          e.key,
+		VbNo:         e.vbID,
+		TimeReceived: time.Now(),
+	}
+}
+
 type endStreamEvent struct {
 	streamEventCommon
 	err error
+}
+
+type seqnoAdvancedEvent struct {
+	streamEventCommon
+	seq uint64
 }

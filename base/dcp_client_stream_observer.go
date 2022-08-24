@@ -85,7 +85,14 @@ func (dc *DCPClient) End(end gocbcore.DcpStreamEnd, err error) {
 }
 
 func (dc *DCPClient) Expiration(expiration gocbcore.DcpExpiration) {
-	// Not used by SG at this time
+	dc.workerForVbno(expiration.VbID).Send(expirationEvent{
+		streamEventCommon: streamEventCommon{
+			vbID:     expiration.VbID,
+			streamID: expiration.StreamID,
+		},
+		seq: expiration.SeqNo,
+		key: expiration.Key,
+	})
 }
 
 func (dc *DCPClient) CreateCollection(creation gocbcore.DcpCollectionCreation) {
@@ -117,7 +124,13 @@ func (dc *DCPClient) OSOSnapshot(snapshot gocbcore.DcpOSOSnapshot) {
 }
 
 func (dc *DCPClient) SeqNoAdvanced(seqNoAdvanced gocbcore.DcpSeqNoAdvanced) {
-	// Not used by SG at this time
+	dc.workerForVbno(seqNoAdvanced.VbID).Send(seqnoAdvancedEvent{
+		streamEventCommon: streamEventCommon{
+			vbID:     seqNoAdvanced.VbID,
+			streamID: seqNoAdvanced.StreamID,
+		},
+		seq: seqNoAdvanced.SeqNo,
+	})
 }
 
 // A one-shot DCP feed specifies the endSeq when opening the stream, but Couchbase Server only ends the DCP stream

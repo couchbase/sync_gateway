@@ -31,6 +31,7 @@ type DCPClient struct {
 	workers                    []*DCPWorker                   // Workers for concurrent processing of incoming mutations and callback.  vbuckets are partitioned across workers
 	workersWg                  sync.WaitGroup                 // Active workers WG - used for signaling when the DCPClient workers have all stopped so the doneChannel can be closed
 	spec                       BucketSpec                     // Bucket spec for the target data store
+	supportsCollections        bool                           // Whether the target data store supports collections
 	numVbuckets                uint16                         // number of vbuckets on target data store
 	terminator                 chan bool                      // Used to close worker goroutines spawned by the DCPClient
 	doneChannel                chan error                     // Returns nil on successful completion of one-shot feed or external close of feed, error otherwise
@@ -79,18 +80,19 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 		return nil, fmt.Errorf("sync gateway should not set high priority for DCP feeds")
 	}
 	client := &DCPClient{
-		workers:          make([]*DCPWorker, numWorkers),
-		numVbuckets:      numVbuckets,
-		callback:         callback,
-		ID:               ID,
-		spec:             collection.GetSpec(),
-		terminator:       make(chan bool),
-		doneChannel:      make(chan error, 1),
-		failOnRollback:   options.FailOnRollback,
-		checkpointPrefix: DCPCheckpointPrefixWithGroupID(options.GroupID),
-		dbStats:          options.DbStats,
-		agentPriority:    options.AgentPriority,
-		collectionIDs:    options.CollectionIDs,
+		workers:             make([]*DCPWorker, numWorkers),
+		numVbuckets:         numVbuckets,
+		callback:            callback,
+		ID:                  ID,
+		spec:                collection.GetSpec(),
+		supportsCollections: collection.IsSupported(sgbucket.DataStoreFeatureCollections),
+		terminator:          make(chan bool),
+		doneChannel:         make(chan error, 1),
+		failOnRollback:      options.FailOnRollback,
+		checkpointPrefix:    DCPCheckpointPrefixWithGroupID(options.GroupID),
+		dbStats:             options.DbStats,
+		agentPriority:       options.AgentPriority,
+		collectionIDs:       options.CollectionIDs,
 	}
 
 	// Initialize active vbuckets
@@ -224,7 +226,7 @@ func (dc *DCPClient) initAgent(spec BucketSpec) error {
 	agentConfig.SecurityConfig.Auth = auth
 	agentConfig.SecurityConfig.TLSRootCAProvider = tlsRootCAProvider
 	agentConfig.UserAgent = "SyncGatewayDCP"
-	if len(dc.collectionIDs) != 0 {
+	if dc.supportsCollections {
 		agentConfig.IoConfig = gocbcore.IoConfig{
 			UseCollections: true,
 		}
@@ -362,8 +364,14 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 	vbMeta := dc.metadata.GetMeta(vbID)
 
 	options := gocbcore.OpenStreamOptions{}
-	if len(dc.collectionIDs) != 0 {
-		options.FilterOptions = &gocbcore.OpenStreamFilterOptions{CollectionIDs: dc.collectionIDs}
+	// Always use a collection-aware feed if supported
+	if dc.supportsCollections {
+		// If no collection IDs specified, filter to the default collection
+		collIds := dc.collectionIDs
+		if len(collIds) == 0 {
+			collIds = []uint32{0}
+		}
+		options.FilterOptions = &gocbcore.OpenStreamFilterOptions{CollectionIDs: collIds}
 	}
 	openStreamError := make(chan error)
 	openStreamCallback := func(f []gocbcore.FailoverEntry, err error) {
