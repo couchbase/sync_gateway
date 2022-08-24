@@ -85,14 +85,8 @@ func (dc *DCPClient) End(end gocbcore.DcpStreamEnd, err error) {
 }
 
 func (dc *DCPClient) Expiration(expiration gocbcore.DcpExpiration) {
-	dc.workerForVbno(expiration.VbID).Send(expirationEvent{
-		streamEventCommon: streamEventCommon{
-			vbID:     expiration.VbID,
-			streamID: expiration.StreamID,
-		},
-		seq: expiration.SeqNo,
-		key: expiration.Key,
-	})
+	// SG doesn't opt in to expirations, so they'll come through as deletion events
+	// (cf.https://github.com/couchbase/kv_engine/blob/master/docs/dcp/documentation/expiry-opcode-output.md)
 }
 
 func (dc *DCPClient) CreateCollection(creation gocbcore.DcpCollectionCreation) {

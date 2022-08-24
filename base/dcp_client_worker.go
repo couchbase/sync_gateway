@@ -118,11 +118,6 @@ func (w *DCPWorker) Start(wg *sync.WaitGroup) {
 						w.mutationCallback(e.asFeedEvent())
 					}
 					w.updateSeq(e.key, vbID, e.seq)
-				case expirationEvent:
-					if w.mutationCallback != nil && !w.ignoreDeletes {
-						w.mutationCallback(e.asFeedEvent())
-					}
-					w.updateSeq(e.key, vbID, e.seq)
 				case seqnoAdvancedEvent:
 					w.updateSeq(nil, vbID, e.seq)
 				case endStreamEvent:
