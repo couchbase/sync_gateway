@@ -525,7 +525,7 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 	// Attempt to retrieve via view.  Above operations were all synchronous (on-demand import of SDK delete, SG delete), so
 	// stale=false view results should be immediately updated.
 	results, err := rt.GetDatabase().ChannelViewForTest(t, "ABC", 0, 1000)
-	assert.NoError(t, err, "Error issuing channel view query")
+	require.NoError(t, err, "Error issuing channel view query")
 	for _, entry := range results {
 		log.Printf("Got view result: %v", entry)
 	}
@@ -1341,7 +1341,7 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 
 	// Wait until the change appears on the changes feed to ensure that it's been imported by this point
 	changes, err := rt.waitForChanges(2, "/db/_changes", "", true)
-	assert.NoError(t, err, "Error waiting for changes")
+	require.NoError(t, err, "Error waiting for changes")
 
 	log.Printf("changes: %+v", changes)
 	changeEntry := changes.Results[0]
@@ -1393,7 +1393,7 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 	// Wait until the change appears on the changes feed to ensure that it's been imported by this point
 	now := time.Now()
 	changes, err := rt.waitForChanges(1, "/db/_changes", "", true)
-	assert.NoError(t, err, "Error waiting for changes")
+	require.NoError(t, err, "Error waiting for changes")
 	changeEntry := changes.Results[0]
 	assert.Equal(t, key, changeEntry.ID)
 	log.Printf("Saw doc on changes feed after %v", time.Since(now))
