@@ -40,7 +40,7 @@ func NewImportListener(groupID string) *importListener {
 
 // StartImportFeed starts an import DCP feed.  Always starts the feed based on previous checkpoints (Backfill:FeedResume).
 // Writes DCP stats into the StatKeyImportDcpStats map
-func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbStats, dbContext *DatabaseContext) (err error) {
+func (il *importListener) StartImportFeed(ctx context.Context, bucket base.Bucket, dbStats *base.DbStats, dbContext *DatabaseContext) (err error) {
 	il.bucketName = bucket.GetName()
 	il.database = Database{DatabaseContext: dbContext, user: nil}
 	il.stats = dbStats.Database()
@@ -67,15 +67,15 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 		Scopes:           scopes,
 	}
 
-	base.InfofCtx(context.TODO(), base.KeyDCP, "Attempting to start import DCP feed %v...", base.MD(base.ImportDestKey(il.database.Name)))
+	base.InfofCtx(ctx, base.KeyDCP, "Attempting to start import DCP feed %v...", base.MD(base.ImportDestKey(il.database.Name)))
 
 	importFeedStatsMap := dbContext.DbStats.Database().ImportFeedMapStats
 
 	// Store the listener in global map for dbname-based retrieval by cbgt prior to index registration
-	base.StoreDestFactory(base.ImportDestKey(il.database.Name), il.NewImportDest)
+	base.StoreDestFactory(ctx, base.ImportDestKey(il.database.Name), il.NewImportDest)
 
 	// Start DCP mutation feed
-	base.InfofCtx(context.TODO(), base.KeyDCP, "Starting DCP import feed for bucket: %q ", base.UD(bucket.GetName()))
+	base.InfofCtx(ctx, base.KeyDCP, "Starting DCP import feed for bucket: %q ", base.UD(bucket.GetName()))
 
 	// TODO: need to clean up StartDCPFeed to push bucket dependencies down
 	cbStore, ok := base.AsCouchbaseStore(bucket)

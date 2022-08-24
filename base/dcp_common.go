@@ -82,7 +82,7 @@ type DCPCommon struct {
 	checkpointPrefix       string                         // DCP checkpoint key prefix
 }
 
-func NewDCPCommon(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID, checkpointPrefix string) *DCPCommon {
+func NewDCPCommon(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID, checkpointPrefix string) *DCPCommon {
 	newBackfillStatus := backfillStatus{}
 
 	c := &DCPCommon{
@@ -102,7 +102,7 @@ func NewDCPCommon(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbN
 	}
 
 	dcpContextID := fmt.Sprintf("%s-%s", MD(bucket.GetName()).Redact(), feedID)
-	c.loggingCtx = LogContextWith(context.Background(), &LogContext{CorrelationID: dcpContextID})
+	c.loggingCtx = LogContextWith(ctx, &LogContext{CorrelationID: dcpContextID})
 
 	return c
 }

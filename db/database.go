@@ -330,8 +330,11 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		return nil, err
 	}
 
+	// TODO: receive ctx param from (sc *ServerContext) _getOrAddDatabaseFromConfig
+	logCtx := base.LogContextWith(context.TODO(), &base.DatabaseLogContext{DatabaseName: base.MD(dbName).Redact()})
+
 	// Register the cbgt pindex type for the configGroup
-	RegisterImportPindexImpl(options.GroupID)
+	RegisterImportPindexImpl(logCtx, options.GroupID)
 
 	dbContext := &DatabaseContext{
 		Name:       dbName,
@@ -362,7 +365,6 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	)
 
 	dbContext.EventMgr = NewEventManager(dbContext.terminator)
-	logCtx := base.LogContextWith(context.Background(), &base.LogContext{CorrelationID: "db:" + base.MD(dbName).Redact()})
 
 	var err error
 	dbContext.sequences, err = newSequenceAllocator(bucket, dbContext.DbStats.Database())
@@ -497,7 +499,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	// subscription relies on the caching feed.
 	if importEnabled {
 		dbContext.ImportListener = NewImportListener(dbContext.Options.GroupID)
-		if importFeedErr := dbContext.ImportListener.StartImportFeed(bucket, dbContext.DbStats, dbContext); importFeedErr != nil {
+		if importFeedErr := dbContext.ImportListener.StartImportFeed(logCtx, bucket, dbContext.DbStats, dbContext); importFeedErr != nil {
 			return nil, importFeedErr
 		}
 

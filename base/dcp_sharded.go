@@ -644,13 +644,13 @@ type CbgtDestFactoryFunc = func() (cbgt.Dest, error)
 var cbgtDestFactories = make(map[string]CbgtDestFactoryFunc)
 var cbgtDestFactoriesLock sync.Mutex
 
-func StoreDestFactory(destKey string, dest CbgtDestFactoryFunc) {
+func StoreDestFactory(ctx context.Context, destKey string, dest CbgtDestFactoryFunc) {
 	cbgtDestFactoriesLock.Lock()
 	_, ok := cbgtDestFactories[destKey]
 
 	// We don't expect duplicate destKey registration - log a warning if it already exists
 	if ok {
-		WarnfCtx(context.Background(), "destKey %s already exists in cbgtDestFactories - new value will replace the existing dest", destKey)
+		WarnfCtx(ctx, "destKey %s already exists in cbgtDestFactories - new value will replace the existing dest", destKey)
 	}
 	cbgtDestFactories[destKey] = dest
 	cbgtDestFactoriesLock.Unlock()
