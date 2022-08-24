@@ -541,7 +541,7 @@ func getCompactionIDSubDocPath(compactionID string) string {
 // getCompactionDCPClientOptions returns the default set of DCPClientOptions suitable for attachment compaction
 func getCompactionDCPClientOptions(collection *base.Collection, groupID string) (*base.DCPClientOptions, error) {
 	var collectionIDs []uint32
-	if collection.Spec.Scope != nil && collection.Spec.Collection != nil {
+	if collection.IsSupported(sgbucket.DataStoreFeatureCollections) {
 		collectionID, err := collection.GetCollectionID()
 		if err != nil {
 			return nil, err
