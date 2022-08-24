@@ -88,7 +88,7 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		return 200, "OK"
 	}
 
-	unwrappedErr := pkgerrors.Cause(err)
+	unwrappedErr := errors.Unwrap(err)
 
 	// Check for SGErrors
 	switch unwrappedErr {
