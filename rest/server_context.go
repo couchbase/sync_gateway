@@ -71,10 +71,10 @@ type bootstrapContext struct {
 	doneChan   chan struct{} // doneChan is closed when the stats logger goroutine finishes.
 }
 
-func (sc *ServerContext) CreateLocalDatabase(dbs DbConfigMap) error {
+func (sc *ServerContext) CreateLocalDatabase(ctx context.Context, dbs DbConfigMap) error {
 	for _, dbConfig := range dbs {
 		dbc := dbConfig.ToDatabaseConfig()
-		_, err := sc._getOrAddDatabaseFromConfig(*dbc, false, db.GetConnectToBucketFn(false))
+		_, err := sc._getOrAddDatabaseFromConfig(ctx, *dbc, false, db.GetConnectToBucketFn(false))
 		if err != nil {
 			return err
 		}
@@ -192,7 +192,7 @@ func (sc *ServerContext) Close(ctx context.Context) {
 }
 
 // Returns the DatabaseContext with the given name
-func (sc *ServerContext) GetDatabase(name string) (*db.DatabaseContext, error) {
+func (sc *ServerContext) GetDatabase(ctx context.Context, name string) (*db.DatabaseContext, error) {
 	sc.lock.RLock()
 	dbc := sc.databases_[name]
 	sc.lock.RUnlock()
@@ -206,7 +206,7 @@ func (sc *ServerContext) GetDatabase(name string) (*db.DatabaseContext, error) {
 		sc.lock.Lock()
 		defer sc.lock.Unlock()
 		// database not loaded, go look for it in the cluster
-		found, err := sc._fetchAndLoadDatabase(name)
+		found, err := sc._fetchAndLoadDatabase(ctx, name)
 		if err != nil {
 			return nil, base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
 		}
@@ -295,42 +295,42 @@ func (sc *ServerContext) PostUpgrade(preview bool) (postUpgradeResults PostUpgra
 }
 
 // Removes and re-adds a database to the ServerContext.
-func (sc *ServerContext) _reloadDatabase(reloadDbName string, failFast bool) (*db.DatabaseContext, error) {
+func (sc *ServerContext) _reloadDatabase(ctx context.Context, reloadDbName string, failFast bool) (*db.DatabaseContext, error) {
 	sc._unloadDatabase(reloadDbName)
 	config := sc.dbConfigs[reloadDbName]
-	return sc._getOrAddDatabaseFromConfig(*config, true, db.GetConnectToBucketFn(failFast))
+	return sc._getOrAddDatabaseFromConfig(ctx, *config, true, db.GetConnectToBucketFn(failFast))
 }
 
 // Removes and re-adds a database to the ServerContext.
-func (sc *ServerContext) ReloadDatabase(reloadDbName string) (*db.DatabaseContext, error) {
+func (sc *ServerContext) ReloadDatabase(ctx context.Context, reloadDbName string) (*db.DatabaseContext, error) {
 	// Obtain write lock during add database, to avoid race condition when creating based on ConfigServer
 	sc.lock.Lock()
-	dbContext, err := sc._reloadDatabase(reloadDbName, false)
+	dbContext, err := sc._reloadDatabase(ctx, reloadDbName, false)
 	sc.lock.Unlock()
 
 	return dbContext, err
 }
 
-func (sc *ServerContext) ReloadDatabaseWithConfig(config DatabaseConfig) error {
+func (sc *ServerContext) ReloadDatabaseWithConfig(ctx context.Context, config DatabaseConfig) error {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
-	return sc._reloadDatabaseWithConfig(config, true)
+	return sc._reloadDatabaseWithConfig(ctx, config, true)
 }
 
-func (sc *ServerContext) _reloadDatabaseWithConfig(config DatabaseConfig, failFast bool) error {
+func (sc *ServerContext) _reloadDatabaseWithConfig(ctx context.Context, config DatabaseConfig, failFast bool) error {
 	sc._removeDatabase(config.Name)
-	_, err := sc._getOrAddDatabaseFromConfig(config, false, db.GetConnectToBucketFn(failFast))
+	_, err := sc._getOrAddDatabaseFromConfig(ctx, config, false, db.GetConnectToBucketFn(failFast))
 	return err
 }
 
 // Adds a database to the ServerContext.  Attempts a read after it gets the write
 // lock to see if it's already been added by another process. If so, returns either the
 // existing DatabaseContext or an error based on the useExisting flag.
-func (sc *ServerContext) getOrAddDatabaseFromConfig(config DatabaseConfig, useExisting bool, openBucketFn db.OpenBucketFn) (*db.DatabaseContext, error) {
+func (sc *ServerContext) getOrAddDatabaseFromConfig(ctx context.Context, config DatabaseConfig, useExisting bool, openBucketFn db.OpenBucketFn) (*db.DatabaseContext, error) {
 	// Obtain write lock during add database, to avoid race condition when creating based on ConfigServer
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
-	return sc._getOrAddDatabaseFromConfig(config, useExisting, openBucketFn)
+	return sc._getOrAddDatabaseFromConfig(ctx, config, useExisting, openBucketFn)
 }
 
 func GetBucketSpec(config *DatabaseConfig, serverConfig *StartupConfig) (spec base.BucketSpec, err error) {
@@ -369,7 +369,7 @@ func GetBucketSpec(config *DatabaseConfig, serverConfig *StartupConfig) (spec ba
 // lock to see if it's already been added by another process. If so, returns either the
 // existing DatabaseContext or an error based on the useExisting flag.
 // Pass in a bucketFromBucketSpecFn to replace the default ConnectToBucket function. This will cause the failFast argument to be ignored
-func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useExisting bool, openBucketFn db.OpenBucketFn) (*db.DatabaseContext, error) {
+func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config DatabaseConfig, useExisting bool, openBucketFn db.OpenBucketFn) (*db.DatabaseContext, error) {
 
 	// Generate bucket spec and validate whether db already exists
 	spec, err := GetBucketSpec(&config, sc.config)
@@ -399,7 +399,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	}
 
 	// Connect to bucket
-	base.InfofCtx(context.TODO(), base.KeyAll, "Opening db /%s as bucket %q, pool %q, server <%s>",
+	base.InfofCtx(ctx, base.KeyAll, "Opening db /%s as bucket %q, pool %q, server <%s>",
 		base.MD(dbName), base.MD(spec.BucketName), base.SD(base.DefaultPool), base.SD(spec.Server))
 	bucket, err := openBucketFn(spec)
 	if err != nil {
@@ -409,7 +409,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	// If using a walrus bucket, force use of views
 	useViews := base.BoolDefault(config.UseViews, false)
 	if !useViews && spec.IsWalrusBucket() {
-		base.WarnfCtx(context.TODO(), "Using GSI is not supported when using a walrus bucket - switching to use views.  Set 'use_views':true in Sync Gateway's database config to avoid this warning.")
+		base.WarnfCtx(ctx, "Using GSI is not supported when using a walrus bucket - switching to use views.  Set 'use_views':true in Sync Gateway's database config to avoid this warning.")
 		useViews = true
 	}
 
@@ -498,7 +498,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	}
 
 	// Generate database context options from config and server context
-	contextOptions, err := dbcOptionsFromConfig(sc, &config.DbConfig, dbName)
+	contextOptions, err := dbcOptionsFromConfig(ctx, sc, &config.DbConfig, dbName)
 	if err != nil {
 		return nil, err
 	}
@@ -553,7 +553,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	dbcontext.ServeInsecureAttachmentTypes = base.BoolDefault(config.ServeInsecureAttachmentTypes, false)
 
 	if dbcontext.ChannelMapper == nil {
-		base.InfofCtx(context.TODO(), base.KeyAll, "Using default sync function 'channel(doc.channels)' for database %q", base.MD(dbName))
+		base.InfofCtx(ctx, base.KeyAll, "Using default sync function 'channel(doc.channels)' for database %q", base.MD(dbName))
 	}
 
 	// Create default users & roles:
@@ -600,7 +600,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	return dbcontext, nil
 }
 
-func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (db.DatabaseContextOptions, error) {
+func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConfig, dbName string) (db.DatabaseContextOptions, error) {
 
 	// Get timeout to use for import filter function and db context
 	javascriptTimeout := time.Duration(base.DefaultJavascriptTimeoutSecs) * time.Second
@@ -624,7 +624,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 	// Check for deprecated cache options. If new are set they will take priority but will still log warnings
 	warnings := config.deprecatedConfigCacheFallback()
 	for _, warnLog := range warnings {
-		base.WarnfCtx(context.TODO(), warnLog)
+		base.WarnfCtx(ctx, warnLog)
 	}
 	// Set cache properties, if present
 	cacheOptions := db.DefaultCacheOptions()
@@ -677,7 +677,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 	// Create a callback function that will be invoked if the database goes offline and comes
 	// back online again
 	dbOnlineCallback := func(dbContext *db.DatabaseContext) {
-		sc.TakeDbOnline(dbContext)
+		sc.TakeDbOnline(ctx, dbContext)
 	}
 
 	oldRevExpirySeconds := base.DefaultOldRevExpirySeconds
@@ -704,7 +704,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 			deltaSyncOptions.RevMaxAgeSeconds = *revMaxAge
 		}
 	}
-	base.InfofCtx(context.TODO(), base.KeyAll, "delta_sync enabled=%t with rev_max_age_seconds=%d for database %s", deltaSyncOptions.Enabled, deltaSyncOptions.RevMaxAgeSeconds, dbName)
+	base.InfofCtx(ctx, base.KeyAll, "delta_sync enabled=%t with rev_max_age_seconds=%d for database %s", deltaSyncOptions.Enabled, deltaSyncOptions.RevMaxAgeSeconds, dbName)
 
 	compactIntervalSecs := db.DefaultCompactInterval
 	if config.CompactIntervalDays != nil {
@@ -722,10 +722,10 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 	if config.CacheConfig != nil && config.CacheConfig.ChannelCacheConfig != nil && config.CacheConfig.ChannelCacheConfig.DeprecatedQueryLimit != nil {
 		// If QueryPaginationLimit has not been set use the deprecated option
 		if queryPaginationLimit == 0 {
-			base.WarnfCtx(context.TODO(), "Using deprecated config parameter 'cache.channel_cache.query_limit'. Use 'query_pagination_limit' instead")
+			base.WarnfCtx(ctx, "Using deprecated config parameter 'cache.channel_cache.query_limit'. Use 'query_pagination_limit' instead")
 			queryPaginationLimit = *config.CacheConfig.ChannelCacheConfig.DeprecatedQueryLimit
 		} else {
-			base.WarnfCtx(context.TODO(), "Both query_pagination_limit and the deprecated cache.channel_cache.query_limit have been specified in config - using query_pagination_limit")
+			base.WarnfCtx(ctx, "Both query_pagination_limit and the deprecated cache.channel_cache.query_limit have been specified in config - using query_pagination_limit")
 		}
 	}
 
@@ -790,7 +790,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 	}
 
 	if config.AllowConflicts != nil && *config.AllowConflicts {
-		base.WarnfCtx(context.TODO(), `Deprecation notice: setting database configuration option "allow_conflicts" to true is due to be removed. In the future, conflicts will not be allowed.`)
+		base.WarnfCtx(ctx, `Deprecation notice: setting database configuration option "allow_conflicts" to true is due to be removed. In the future, conflicts will not be allowed.`)
 	}
 
 	// If basic auth is disabled, it doesn't make sense to send WWW-Authenticate
@@ -847,7 +847,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 	return contextOptions, nil
 }
 
-func (sc *ServerContext) TakeDbOnline(database *db.DatabaseContext) {
+func (sc *ServerContext) TakeDbOnline(ctx context.Context, database *db.DatabaseContext) {
 
 	// Take a write lock on the Database context, so that we can cycle the underlying Database
 	// without any other call running concurrently
@@ -856,9 +856,9 @@ func (sc *ServerContext) TakeDbOnline(database *db.DatabaseContext) {
 
 	// We can only transition to Online from Offline state
 	if atomic.CompareAndSwapUint32(&database.State, db.DBOffline, db.DBStarting) {
-		reloadedDb, err := sc.ReloadDatabase(database.Name)
+		reloadedDb, err := sc.ReloadDatabase(ctx, database.Name)
 		if err != nil {
-			base.ErrorfCtx(context.TODO(), "Error reloading database from config: %v", err)
+			base.ErrorfCtx(ctx, "Error reloading database from config: %v", err)
 			return
 		}
 
@@ -867,7 +867,7 @@ func (sc *ServerContext) TakeDbOnline(database *db.DatabaseContext) {
 		atomic.StoreUint32(&reloadedDb.State, db.DBOnline)
 
 	} else {
-		base.InfofCtx(context.TODO(), base.KeyCRUD, "Unable to take Database : %v online , database must be in Offline state", base.UD(database.Name))
+		base.InfofCtx(ctx, base.KeyCRUD, "Unable to take Database : %v online , database must be in Offline state", base.UD(database.Name))
 	}
 
 }
@@ -962,14 +962,14 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 
 // Adds a database to the ServerContext given its configuration.  If an existing config is found
 // for the name, returns an error.
-func (sc *ServerContext) AddDatabaseFromConfig(config DatabaseConfig) (*db.DatabaseContext, error) {
-	return sc.getOrAddDatabaseFromConfig(config, false, db.GetConnectToBucketFn(false))
+func (sc *ServerContext) AddDatabaseFromConfig(ctx context.Context, config DatabaseConfig) (*db.DatabaseContext, error) {
+	return sc.getOrAddDatabaseFromConfig(ctx, config, false, db.GetConnectToBucketFn(false))
 }
 
 // AddDatabaseFromConfigFailFast adds a database to the ServerContext given its configuration and fails fast.
 // If an existing config is found for the name, returns an error.
-func (sc *ServerContext) AddDatabaseFromConfigFailFast(config DatabaseConfig) (*db.DatabaseContext, error) {
-	return sc.getOrAddDatabaseFromConfig(config, false, db.GetConnectToBucketFn(true))
+func (sc *ServerContext) AddDatabaseFromConfigFailFast(ctx context.Context, config DatabaseConfig) (*db.DatabaseContext, error) {
+	return sc.getOrAddDatabaseFromConfig(ctx, config, false, db.GetConnectToBucketFn(true))
 }
 
 func (sc *ServerContext) processEventHandlersForEvent(events []*EventConfig, eventType db.EventType, dbcontext *db.DatabaseContext) error {
@@ -1504,15 +1504,15 @@ func doHTTPAuthRequest(httpClient *http.Client, username, password, method, path
 }
 
 // For test use
-func (sc *ServerContext) Database(name string) *db.DatabaseContext {
-	db, err := sc.GetDatabase(name)
+func (sc *ServerContext) Database(ctx context.Context, name string) *db.DatabaseContext {
+	db, err := sc.GetDatabase(ctx, name)
 	if err != nil {
 		panic(fmt.Sprintf("Unexpected error getting db %q: %v", name, err))
 	}
 	return db
 }
 
-func (sc *ServerContext) initializeCouchbaseServerConnections() error {
+func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Context) error {
 	goCBAgent, err := sc.initializeGoCBAgent()
 	if err != nil {
 		return err
@@ -1532,48 +1532,54 @@ func (sc *ServerContext) initializeCouchbaseServerConnections() error {
 		}
 		sc.bootstrapContext.connection = couchbaseCluster
 
-		count, err := sc.fetchAndLoadConfigs(true)
+		count, err := sc.fetchAndLoadConfigs(ctx, true)
 		if err != nil {
 			return err
 		}
 
-		logCtx := context.TODO()
 		if count > 0 {
-			base.InfofCtx(logCtx, base.KeyConfig, "Successfully fetched %d database configs from buckets in cluster", count)
+			base.InfofCtx(ctx, base.KeyConfig, "Successfully fetched %d database configs from buckets in cluster", count)
 		} else {
-			base.WarnfCtx(logCtx, "Config: No database configs for group %q. Continuing startup to allow REST API database creation", sc.config.Bootstrap.ConfigGroupID)
+			base.WarnfCtx(ctx, "Config: No database configs for group %q. Continuing startup to allow REST API database creation", sc.config.Bootstrap.ConfigGroupID)
 		}
 
 		if sc.config.Bootstrap.ConfigUpdateFrequency.Value() > 0 {
 			sc.bootstrapContext.terminator = make(chan struct{})
 			sc.bootstrapContext.doneChan = make(chan struct{})
 
-			base.InfofCtx(logCtx, base.KeyConfig, "Starting background polling for new configs/buckets: %s", sc.config.Bootstrap.ConfigUpdateFrequency.Value().String())
+			base.InfofCtx(ctx, base.KeyConfig, "Starting background polling for new configs/buckets: %s", sc.config.Bootstrap.ConfigUpdateFrequency.Value().String())
 			go func() {
 				defer close(sc.bootstrapContext.doneChan)
 				t := time.NewTicker(sc.config.Bootstrap.ConfigUpdateFrequency.Value())
 				for {
 					select {
 					case <-sc.bootstrapContext.terminator:
-						base.InfofCtx(logCtx, base.KeyConfig, "Stopping background config polling loop")
+						base.InfofCtx(ctx, base.KeyConfig, "Stopping background config polling loop")
 						t.Stop()
 						return
 					case <-t.C:
-						base.DebugfCtx(logCtx, base.KeyConfig, "Fetching configs from buckets in cluster for group %q", sc.config.Bootstrap.ConfigGroupID)
-						count, err := sc.fetchAndLoadConfigs(false)
+						base.DebugfCtx(ctx, base.KeyConfig, "Fetching configs from buckets in cluster for group %q", sc.config.Bootstrap.ConfigGroupID)
+						count, err := sc.fetchAndLoadConfigs(ctx, false)
 						if err != nil {
-							base.WarnfCtx(logCtx, "Couldn't load configs from bucket when polled: %v", err)
+							base.WarnfCtx(ctx, "Couldn't load configs from bucket when polled: %v", err)
 						}
 						if count > 0 {
-							base.InfofCtx(logCtx, base.KeyConfig, "Successfully fetched %d database configs from buckets in cluster", count)
+							base.InfofCtx(ctx, base.KeyConfig, "Successfully fetched %d database configs from buckets in cluster", count)
 						}
 					}
 				}
 			}()
 		} else {
-			base.InfofCtx(logCtx, base.KeyConfig, "Disabled background polling for new configs/buckets")
+			base.InfofCtx(ctx, base.KeyConfig, "Disabled background polling for new configs/buckets")
 		}
 	}
 
 	return nil
+}
+
+func (sc *ServerContext) AddServerLogContext(ctx context.Context) context.Context {
+	if sc != nil && sc.config != nil && sc.config.Bootstrap.ConfigGroupID != "" {
+		return base.LogContextWith(ctx, &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
+	}
+	return ctx
 }

@@ -269,7 +269,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	var dbContext *db.DatabaseContext
 	if keyspaceDb != "" {
 		h.addDatabaseLogContext(keyspaceDb)
-		if dbContext, err = h.server.GetDatabase(keyspaceDb); err != nil {
+		if dbContext, err = h.server.GetDatabase(h.ctx(), keyspaceDb); err != nil {
 			base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
 
 			if shouldCheckAdminAuth {

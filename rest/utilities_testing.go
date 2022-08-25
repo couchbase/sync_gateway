@@ -12,6 +12,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -193,6 +194,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.Auth.BcryptCost = bcrypt.MinCost
 
 	rt.RestTesterServerContext = NewServerContext(&sc, rt.RestTesterConfig.persistentConfig)
+	ctx := rt.Context()
 
 	if !base.ServerIsWalrus(sc.Bootstrap.Server) {
 		// Copy any testbucket cert info into boostrap server config
@@ -204,7 +206,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 		rt.testBucket.BucketSpec.TLSSkipVerify = base.TestTLSSkipVerify()
 
-		if err := rt.RestTesterServerContext.initializeCouchbaseServerConnections(); err != nil {
+		if err := rt.RestTesterServerContext.initializeCouchbaseServerConnections(ctx); err != nil {
 			panic("Couldn't initialize Couchbase Server connection: " + err.Error())
 		}
 	}
@@ -290,19 +292,20 @@ func (rt *RestTester) Bucket() base.Bucket {
 				collectionBucket.Collection = collectionBucket.Collection.Bucket().Scope(*scope).Collection(*collection)
 			}
 
-			_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithBucket(rt.tb, *rt.DatabaseConfig, testBucket.Bucket)
+			_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithBucket(ctx, rt.tb, *rt.DatabaseConfig, testBucket.Bucket)
 		} else {
-			_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(*rt.DatabaseConfig)
+			_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(ctx, *rt.DatabaseConfig)
 		}
 
 		if err != nil {
 			rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)
 		}
+		ctx = rt.Context()
 
 		// Update the testBucket Bucket to the one associated with the database context.  The new (dbContext) bucket
 		// will be closed when the rest tester closes the server context. The original bucket will be closed using the
 		// testBucket's closeFn
-		rt.testBucket.Bucket = rt.RestTesterServerContext.Database("db").Bucket
+		rt.testBucket.Bucket = rt.RestTesterServerContext.Database(ctx, "db").Bucket
 
 		if rt.DatabaseConfig.Guest == nil {
 			if err := rt.SetAdminParty(rt.guestEnabled); err != nil {
@@ -417,7 +420,8 @@ func (rt *RestTester) WaitForPendingChanges() error {
 }
 
 func (rt *RestTester) SetAdminParty(partyTime bool) error {
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(rt.tb))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	guest, err := a.GetUser("")
 	if err != nil {
 		return err
@@ -812,6 +816,17 @@ func (rt *RestTester) ReplacePerBucketCredentials(config base.PerBucketCredentia
 	rt.ServerContext().bootstrapContext.connection = couchbaseCluster
 }
 
+func (rt *RestTester) Context() context.Context {
+	ctx := base.TestCtx(rt.tb)
+	if svrctx := rt.ServerContext(); svrctx != nil {
+		ctx = svrctx.AddServerLogContext(ctx)
+	}
+	if dbctx := rt.GetDatabase(); dbctx != nil {
+		ctx = dbctx.AddDatabaseLogContext(ctx)
+	}
+	return ctx
+}
+
 type TestResponse struct {
 	*httptest.ResponseRecorder
 	Req *http.Request
@@ -939,8 +954,8 @@ func (s *SlowResponseRecorder) Write(buf []byte) (int, error) {
 
 // AddDatabaseFromConfigWithBucket adds a database to the ServerContext and sets a specific bucket on the database context.
 // If an existing config is found for the name, returns an error.
-func (sc *ServerContext) AddDatabaseFromConfigWithBucket(tb testing.TB, config DatabaseConfig, bucket base.Bucket) (*db.DatabaseContext, error) {
-	return sc.getOrAddDatabaseFromConfig(config, false, func(spec base.BucketSpec) (base.Bucket, error) {
+func (sc *ServerContext) AddDatabaseFromConfigWithBucket(ctx context.Context, tb testing.TB, config DatabaseConfig, bucket base.Bucket) (*db.DatabaseContext, error) {
+	return sc.getOrAddDatabaseFromConfig(ctx, config, false, func(spec base.BucketSpec) (base.Bucket, error) {
 		return bucket, nil
 	})
 }

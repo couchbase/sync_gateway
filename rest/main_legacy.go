@@ -13,8 +13,8 @@ import (
 const flagDeprecated = `Flag "%s" is deprecated. Please use "%s" in future.`
 
 // legacyServerMain runs the pre-3.0 Sync Gateway server.
-func legacyServerMain(osArgs []string, flagStartupConfig *StartupConfig) error {
-	base.WarnfCtx(context.Background(), "Running in legacy config mode")
+func legacyServerMain(ctx context.Context, osArgs []string, flagStartupConfig *StartupConfig) error {
+	base.WarnfCtx(ctx, "Running in legacy config mode")
 
 	lc, err := setupServerConfig(osArgs)
 	if err != nil {
@@ -36,7 +36,7 @@ func legacyServerMain(osArgs []string, flagStartupConfig *StartupConfig) error {
 	}
 
 	if flagStartupConfig != nil {
-		base.TracefCtx(context.Background(), base.KeyAll, "got config from flags: %#v", flagStartupConfig)
+		base.TracefCtx(ctx, base.KeyAll, "got config from flags: %#v", flagStartupConfig)
 		err := sc.Merge(flagStartupConfig)
 		if err != nil {
 			return err
@@ -48,19 +48,20 @@ func legacyServerMain(osArgs []string, flagStartupConfig *StartupConfig) error {
 		return err
 	}
 
-	ctx, err := setupServerContext(&sc, false)
+	svrctx, err := setupServerContext(ctx, &sc, false)
+	if err != nil {
+		return err
+	}
+	ctx = svrctx.AddServerLogContext(ctx)
+
+	svrctx.initialStartupConfig = initialStartupConfig
+
+	err = svrctx.CreateLocalDatabase(ctx, databases)
 	if err != nil {
 		return err
 	}
 
-	ctx.initialStartupConfig = initialStartupConfig
-
-	err = ctx.CreateLocalDatabase(databases)
-	if err != nil {
-		return err
-	}
-
-	return startServer(&sc, ctx)
+	return startServer(ctx, &sc, svrctx)
 }
 
 type legacyConfigFlag struct {

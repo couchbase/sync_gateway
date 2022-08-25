@@ -1867,3 +1867,13 @@ func (db *Database) CheckTimeout() error {
 		return nil
 	}
 }
+
+/// LOGGING
+
+// AddDatabaseLogContext adds database name to the parent context for logging
+func (dbCtx *DatabaseContext) AddDatabaseLogContext(ctx context.Context) context.Context {
+	if dbCtx != nil && dbCtx.Name != "" {
+		return base.LogContextWith(ctx, &base.DatabaseLogContext{DatabaseName: dbCtx.Name})
+	}
+	return ctx
+}

@@ -233,7 +233,7 @@ func (h *handler) handleFlush() error {
 		}
 
 		// Re-open database and add to Sync Gateway
-		_, err2 := h.server.AddDatabaseFromConfig(*config)
+		_, err2 := h.server.AddDatabaseFromConfig(h.ctx(), *config)
 		if err2 != nil {
 			return err2
 		}
@@ -246,7 +246,7 @@ func (h *handler) handleFlush() error {
 		config := h.server.GetDatabaseConfig(name)
 		h.server.RemoveDatabase(name)
 		err := bucket.CloseAndDelete()
-		_, err2 := h.server.AddDatabaseFromConfig(*config)
+		_, err2 := h.server.AddDatabaseFromConfig(h.ctx(), *config)
 		if err == nil {
 			err = err2
 		}
@@ -423,7 +423,7 @@ func (h *handler) handleGetDB() error {
 // fixes issue #562
 func (h *handler) handleCreateTarget() error {
 	dbname := h.PathVar("targetdb")
-	if _, err := h.server.GetDatabase(dbname); err != nil {
+	if _, err := h.server.GetDatabase(h.ctx(), dbname); err != nil {
 		return base.HTTPErrorf(http.StatusForbidden, "Creating a DB over the public API is unsupported")
 	} else {
 		return base.HTTPErrorf(http.StatusPreconditionFailed, "Database already exists")

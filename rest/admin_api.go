@@ -92,7 +92,7 @@ func (h *handler) handleCreateDB() error {
 				"Duplicate database name %q", dbName)
 		}
 
-		_, err = h.server._applyConfig(loadedConfig, true, false)
+		_, err = h.server._applyConfig(h.ctx(), loadedConfig, true, false)
 		if err != nil {
 			var httpErr *base.HTTPError
 			if errors.As(err, &httpErr) {
@@ -116,7 +116,7 @@ func (h *handler) handleCreateDB() error {
 				return base.HTTPErrorf(http.StatusForbidden, "auth failure accessing provided bucket using bootstrap credentials: %s", bucket)
 			} else if errors.Is(err, base.ErrAlreadyExists) {
 				// on-demand config load if someone else beat us to db creation
-				if _, err := h.server._fetchAndLoadDatabase(dbName); err != nil {
+				if _, err := h.server._fetchAndLoadDatabase(h.ctx(), dbName); err != nil {
 					base.WarnfCtx(h.rq.Context(), "Couldn't load database after conflicting create: %v", err)
 				}
 				return base.HTTPErrorf(http.StatusPreconditionFailed, // what CouchDB returns
@@ -133,7 +133,7 @@ func (h *handler) handleCreateDB() error {
 		}
 
 		// load database in-memory for non-persistent nodes
-		if _, err := h.server.AddDatabaseFromConfigFailFast(DatabaseConfig{DbConfig: *config}); err != nil {
+		if _, err := h.server.AddDatabaseFromConfigFailFast(h.ctx(), DatabaseConfig{DbConfig: *config}); err != nil {
 			if errors.Is(err, base.ErrAuthError) {
 				return base.HTTPErrorf(http.StatusForbidden, "auth failure using provided bucket credentials for database %s", base.MD(config.Name))
 			}
@@ -192,7 +192,7 @@ func (h *handler) handleDbOnline() error {
 	base.InfofCtx(h.ctx(), base.KeyCRUD, "Taking Database : %v, online in %v seconds", base.MD(h.db.Name), input.Delay)
 	go func() {
 		time.Sleep(time.Duration(input.Delay) * time.Second)
-		h.server.TakeDbOnline(h.db.DatabaseContext)
+		h.server.TakeDbOnline(h.ctx(), h.db.DatabaseContext)
 	}()
 
 	return nil
@@ -236,7 +236,7 @@ func (h *handler) handleGetDbConfig() error {
 		if h.getBoolQuery("refresh_config") && h.server.bootstrapContext.connection != nil {
 			// set cas=0 to force a refresh
 			dbConfig.cas = 0
-			h.server.applyConfigs(map[string]DatabaseConfig{h.db.Name: *dbConfig})
+			h.server.applyConfigs(h.ctx(), map[string]DatabaseConfig{h.db.Name: *dbConfig})
 		}
 
 		responseConfig = &dbConfig.DbConfig
@@ -335,7 +335,7 @@ func (h *handler) handleGetConfig() error {
 		}
 
 		for dbName, dbConfig := range databaseMap {
-			database, err := h.server.GetDatabase(dbName)
+			database, err := h.server.GetDatabase(h.ctx(), dbName)
 			if err != nil {
 				return err
 			}
@@ -517,7 +517,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 		if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap, dbCreds, nil, false); err != nil {
 			return err
 		}
-		if err := h.server.ReloadDatabaseWithConfig(*updatedDbConfig); err != nil {
+		if err := h.server.ReloadDatabaseWithConfig(h.ctx(), *updatedDbConfig); err != nil {
 			return err
 		}
 		return base.HTTPErrorf(http.StatusCreated, "updated")
@@ -577,7 +577,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 			}
 
 			// Load the new dbConfig before we persist the update.
-			err = h.server.ReloadDatabaseWithConfig(tmpConfig)
+			err = h.server.ReloadDatabaseWithConfig(h.ctx(), tmpConfig)
 			if err != nil {
 				return nil, err
 			}
@@ -587,7 +587,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 	if err != nil {
 		base.WarnfCtx(h.rq.Context(), "Couldn't update config for database - rolling back: %v", err)
 		// failed to start the new database config - rollback and return the original error for the user
-		if _, err := h.server.fetchAndLoadDatabase(dbName); err != nil {
+		if _, err := h.server.fetchAndLoadDatabase(h.ctx(), dbName); err != nil {
 			base.WarnfCtx(h.rq.Context(), "got error rolling back database %q after failed update: %v", base.UD(dbName), err)
 		}
 		return err
@@ -679,7 +679,7 @@ func (h *handler) handleDeleteDbConfigSync() error {
 	defer h.server.lock.Unlock()
 
 	// TODO: Dynamic update instead of reload
-	if err := h.server._reloadDatabaseWithConfig(*updatedDbConfig, false); err != nil {
+	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false); err != nil {
 		return err
 	}
 
@@ -746,7 +746,7 @@ func (h *handler) handlePutDbConfigSync() error {
 	defer h.server.lock.Unlock()
 
 	// TODO: Dynamic update instead of reload
-	if err := h.server._reloadDatabaseWithConfig(*updatedDbConfig, false); err != nil {
+	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false); err != nil {
 		return err
 	}
 
@@ -831,7 +831,7 @@ func (h *handler) handleDeleteDbConfigImportFilter() error {
 	defer h.server.lock.Unlock()
 
 	// TODO: Dynamic update instead of reload
-	if err := h.server._reloadDatabaseWithConfig(*updatedDbConfig, false); err != nil {
+	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false); err != nil {
 		return err
 	}
 
@@ -899,7 +899,7 @@ func (h *handler) handlePutDbConfigImportFilter() error {
 	defer h.server.lock.Unlock()
 
 	// TODO: Dynamic update instead of reload
-	if err := h.server._reloadDatabaseWithConfig(*updatedDbConfig, false); err != nil {
+	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false); err != nil {
 		return err
 	}
 

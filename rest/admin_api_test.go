@@ -3929,12 +3929,13 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	// enable the background update worker for this test only
 	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Millisecond * 250)
 
-	sc, err := setupServerContext(&config, true)
+	ctx := base.TestCtx(t)
+	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
+	ctx = sc.AddServerLogContext(ctx)
 
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 
