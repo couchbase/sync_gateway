@@ -206,10 +206,10 @@ func (h *handler) handleFlush() error {
 		config := h.server.GetDatabaseConfig(name)
 
 		// This needs to first call RemoveDatabase since flushing the bucket under Sync Gateway might cause issues.
-		h.server.RemoveDatabase(name)
+		h.server.RemoveDatabase(h.ctx(), name)
 
 		// Create a bucket connection spec from the database config
-		spec, err := GetBucketSpec(config, h.server.config)
+		spec, err := GetBucketSpec(h.ctx(), config, h.server.config)
 		if err != nil {
 			return err
 		}
@@ -244,7 +244,7 @@ func (h *handler) handleFlush() error {
 
 		name := h.db.Name
 		config := h.server.GetDatabaseConfig(name)
-		h.server.RemoveDatabase(name)
+		h.server.RemoveDatabase(h.ctx(), name)
 		err := bucket.CloseAndDelete()
 		_, err2 := h.server.AddDatabaseFromConfig(h.ctx(), *config)
 		if err == nil {
@@ -459,7 +459,7 @@ func (h *handler) handleProfiling() error {
 		if isCPUProfile {
 			base.InfofCtx(h.ctx(), base.KeyAll, "... ending CPU profile")
 			pprof.StopCPUProfile()
-			h.server.CloseCpuPprofFile()
+			h.server.CloseCpuPprofFile(h.ctx())
 			return nil
 		}
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing JSON 'file' parameter")

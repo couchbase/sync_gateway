@@ -111,7 +111,7 @@ func (h *handler) handleCreateDB() error {
 		cas, err := h.server.bootstrapContext.connection.InsertConfig(bucket, h.server.config.Bootstrap.ConfigGroupID, persistedConfig)
 		if err != nil {
 			// unload the requested database config to prevent the cluster being in an inconsistent state
-			h.server._removeDatabase(dbName)
+			h.server._removeDatabase(h.ctx(), dbName)
 			if errors.Is(err, base.ErrAuthError) {
 				return base.HTTPErrorf(http.StatusForbidden, "auth failure accessing provided bucket using bootstrap credentials: %s", bucket)
 			} else if errors.Is(err, base.ErrAlreadyExists) {
@@ -221,7 +221,7 @@ func (h *handler) handleGetDbConfig() error {
 	// - Returning if include_runtime=false
 	var responseConfig *DbConfig
 	if h.server.bootstrapContext.connection != nil {
-		found, dbConfig, err := h.server.fetchDatabase(h.db.Name)
+		found, dbConfig, err := h.server.fetchDatabase(h.ctx(), h.db.Name)
 		if err != nil {
 			return err
 		}
@@ -608,7 +608,7 @@ func (h *handler) handleGetDbConfigSync() error {
 	)
 
 	if h.server.bootstrapContext.connection != nil {
-		found, dbConfig, err := h.server.fetchDatabase(h.db.Name)
+		found, dbConfig, err := h.server.fetchDatabase(h.ctx(), h.db.Name)
 		if err != nil {
 			return err
 		}
@@ -762,7 +762,7 @@ func (h *handler) handleGetDbConfigImportFilter() error {
 	)
 
 	if h.server.bootstrapContext.connection != nil {
-		found, dbConfig, err := h.server.fetchDatabase(h.db.Name)
+		found, dbConfig, err := h.server.fetchDatabase(h.ctx(), h.db.Name)
 		if err != nil {
 			return err
 		}
@@ -921,7 +921,7 @@ func (h *handler) handleDeleteDB() error {
 		}
 	}
 
-	if !h.server.RemoveDatabase(h.db.Name) {
+	if !h.server.RemoveDatabase(h.ctx(), h.db.Name) {
 		return base.HTTPErrorf(http.StatusNotFound, "missing")
 	}
 	_, _ = h.response.Write([]byte("{}"))

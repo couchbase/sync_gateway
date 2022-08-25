@@ -754,7 +754,8 @@ func TestGuestUser(t *testing.T) {
 	assert.True(t, body["disabled"].(bool))
 
 	// Check that the actual User object is correct:
-	user, _ := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t)).GetUser("")
+	ctx := rt.Context()
+	user, _ := rt.ServerContext().Database(ctx, "db").Authenticator(ctx).GetUser("")
 	assert.Empty(t, user.Name())
 	assert.Nil(t, user.ExplicitChannels())
 	assert.True(t, user.Disabled())
@@ -2878,14 +2879,15 @@ func TestChannelNameSizeWarningBoundaries(t *testing.T) {
 			})
 			defer rt.Close()
 
-			chanNameWarnCountBefore := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
+			ctx := rt.Context()
+			chanNameWarnCountBefore := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
 
 			docId := fmt.Sprintf("doc%v", test.channelLength)
 			chanName := strings.Repeat("A", test.channelLength)
 			tr := rt.SendAdminRequest("PUT", "/db/"+docId, `{"chan":"`+chanName+`"}`)
 
 			requireStatus(t, tr, http.StatusCreated)
-			chanNameWarnCountAfter := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
+			chanNameWarnCountAfter := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
 			if test.expectWarn {
 				assert.Equal(t, chanNameWarnCountBefore+1, chanNameWarnCountAfter)
 			} else {
@@ -2907,11 +2909,12 @@ func TestChannelNameSizeWarningUpdateExistingDoc(t *testing.T) {
 		tr := rt.SendAdminRequest("PUT", "/db/replace", `{"chan":"`+chanName+`"}`) // init doc
 		requireStatus(t, tr, http.StatusCreated)
 
-		before := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
+		ctx := rt.Context()
+		before := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		revId := respRevID(t, tr)
 		tr = rt.SendAdminRequest("PUT", "/db/replace?rev="+revId, `{"chan":"`+chanName+`", "data":"test"}`)
 		requireStatus(t, tr, http.StatusCreated)
-		after := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
+		after := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		assert.Equal(t, before+1, after)
 	})
 }
@@ -2930,12 +2933,13 @@ func TestChannelNameSizeWarningDocChannelUpdate(t *testing.T) {
 		tr := rt.SendAdminRequest("PUT", "/db/replaceNewChannel", `{"chan":"`+chanName+`"}`) // init doc
 		requireStatus(t, tr, http.StatusCreated)
 
-		before := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
+		ctx := rt.Context()
+		before := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		revId := respRevID(t, tr)
 		chanName = strings.Repeat("D", channelLength+5)
 		tr = rt.SendAdminRequest("PUT", "/db/replaceNewChannel?rev="+revId, fmt.Sprintf(`{"chan":"`+chanName+`", "data":"test"}`))
 		requireStatus(t, tr, http.StatusCreated)
-		after := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
+		after := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		assert.Equal(t, before+1, after)
 	})
 }
@@ -2953,11 +2957,12 @@ func TestChannelNameSizeWarningDeleteChannel(t *testing.T) {
 		tr := rt.SendAdminRequest("PUT", "/db/deleteme", `{"chan":"`+chanName+`"}`) // init channel
 		requireStatus(t, tr, http.StatusCreated)
 
-		before := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
+		ctx := rt.Context()
+		before := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		revId := respRevID(t, tr)
 		tr = rt.SendAdminRequest("DELETE", "/db/deleteme?rev="+revId, "")
 		requireStatus(t, tr, http.StatusOK)
-		after := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
+		after := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		assert.Equal(t, before, after)
 	})
 }
@@ -3305,16 +3310,17 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 
 	// Start SG with no databases
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true)
+	ctx := base.TestCtx(t)
+	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
+	ctx = sc.AddServerLogContext(ctx)
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
 	}()
 
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 
@@ -3365,17 +3371,18 @@ func TestDbConfigCredentials(t *testing.T) {
 	serverErr := make(chan error, 0)
 
 	// Start SG with no databases
+	ctx := base.TestCtx(t)
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true)
+	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
+	ctx = sc.AddServerLogContext(ctx)
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
 	}()
 
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 
@@ -3430,17 +3437,18 @@ func TestInvalidDBConfig(t *testing.T) {
 	serverErr := make(chan error, 0)
 
 	// Start SG with no databases
+	ctx := base.TestCtx(t)
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true)
+	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
+	ctx = sc.AddServerLogContext(ctx)
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
 	}()
 
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 
@@ -3484,17 +3492,18 @@ func TestCreateDbOnNonExistentBucket(t *testing.T) {
 	serverErr := make(chan error, 0)
 
 	// Start SG with no databases
+	ctx := base.TestCtx(t)
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true)
+	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
+	ctx = sc.AddServerLogContext(ctx)
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
 	}()
 
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 
@@ -3517,17 +3526,18 @@ func TestPutDbConfigChangeName(t *testing.T) {
 	serverErr := make(chan error, 0)
 
 	// Start SG with no databases
+	ctx := base.TestCtx(t)
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true)
+	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
+	ctx = sc.AddServerLogContext(ctx)
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
 	}()
 
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 
@@ -3559,17 +3569,18 @@ func TestPutDBConfigOIDC(t *testing.T) {
 	serverErr := make(chan error, 0)
 
 	// Start SG with no databases
+	ctx := base.TestCtx(t)
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true)
+	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
+	ctx = sc.AddServerLogContext(ctx)
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
 	}()
 
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 
@@ -3676,17 +3687,18 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	serverErr := make(chan error, 0)
 
 	// Start SG with no databases
+	ctx := base.TestCtx(t)
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true)
+	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
+	ctx = sc.AddServerLogContext(ctx)
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
 	}()
 
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 
@@ -3762,17 +3774,18 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 	serverErr := make(chan error, 0)
 
 	// Start SG with no databases
+	ctx := base.TestCtx(t)
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, false)
+	sc, err := setupServerContext(ctx, &config, false)
 	require.NoError(t, err)
-	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
+	ctx = sc.AddServerLogContext(ctx)
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
 	}()
 
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 
@@ -3850,17 +3863,18 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 	serverErr := make(chan error, 0)
 
 	// Start SG with no databases
+	ctx := base.TestCtx(t)
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true)
+	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
+	ctx = sc.AddServerLogContext(ctx)
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
 	}()
 
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 
@@ -3965,7 +3979,7 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 
 	assertRevsLimit := func(sc *ServerContext, revsLimit uint32) {
 		waitAndAssertCondition(t, func() bool {
-			dbc, err := sc.GetDatabase("db")
+			dbc, err := sc.GetDatabase(ctx, "db")
 			if err != nil {
 				t.Logf("expected database with RevsLimit=%v but got err=%v", revsLimit, err)
 				return false
@@ -4018,7 +4032,7 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	require.NoError(t, <-serverErr)
 
 	// Start a new SG node and ensure we *can* load the "newer" config version on initial startup, to support downgrade
-	sc, err = setupServerContext(&config, true)
+	sc, err = setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
 	defer func() {
 		sc.Close(ctx)
@@ -4026,7 +4040,7 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	}()
 
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 
@@ -4045,13 +4059,14 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	// Start SG with bootstrap credentials filled
+	ctx := base.TestCtx(t)
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true)
+	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
+	ctx = sc.AddServerLogContext(ctx)
 	serverErr := make(chan error, 0)
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 	defer func() {
@@ -4131,13 +4146,14 @@ func TestSetFunctionsWhileDbOffline(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	// Start SG with bootstrap credentials filled
+	ctx := base.TestCtx(t)
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true)
+	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
+	ctx = sc.AddServerLogContext(ctx)
 	serverErr := make(chan error, 0)
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 	defer func() {
@@ -4197,17 +4213,18 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 	serverErr := make(chan error, 0)
 
 	// Start SG with no databases
+	ctx := base.TestCtx(t)
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true)
+	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
+	ctx = sc.AddServerLogContext(ctx)
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
 	}()
 
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 
@@ -4305,16 +4322,17 @@ func TestGroupIDReplications(t *testing.T) {
 			config.Bootstrap.ConfigGroupID = persistentConfigDefaultGroupID
 		}
 
-		sc, err := setupServerContext(&config, true)
+		ctx := base.TestCtx(t)
+		sc, err := setupServerContext(ctx, &config, true)
 		require.NoError(t, err)
 		serverContexts = append(serverContexts, sc)
-		ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
+		ctx = sc.AddServerLogContext(ctx)
 		defer func() {
 			sc.Close(ctx)
 			require.NoError(t, <-serverErr)
 		}()
 		go func() {
-			serverErr <- startServer(&config, sc)
+			serverErr <- startServer(ctx, &config, sc)
 		}()
 		require.NoError(t, sc.waitForRESTAPIs())
 
@@ -4366,7 +4384,8 @@ func TestGroupIDReplications(t *testing.T) {
 				expectedPushed = 1
 			}
 
-			dbContext, err := sc.GetDatabase("db")
+			ctx := sc.AddServerLogContext(base.TestCtx(t))
+			dbContext, err := sc.GetDatabase(ctx, "db")
 			require.NoError(t, err)
 			actualPushed, _ := base.WaitForStat(dbContext.DbStats.DBReplicatorStats("repl").NumDocPushed.Value, expectedPushed)
 			assert.Equal(t, expectedPushed, actualPushed)
@@ -4401,17 +4420,18 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	}
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 	// Start SG with no databases in bucket(s)
+	ctx := base.TestCtx(t)
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true)
+	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
+	ctx = sc.AddServerLogContext(ctx)
 	serverErr := make(chan error, 0)
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
 	}()
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 	// Get a test bucket, and use it to create the database.

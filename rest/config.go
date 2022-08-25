@@ -1277,7 +1277,7 @@ func setupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 		return nil, err
 	}
 
-	sc := NewServerContext(config, persistentConfig)
+	sc := NewServerContext(ctx, config, persistentConfig)
 	ctx = sc.AddServerLogContext(ctx)
 	if !base.ServerIsWalrus(config.Bootstrap.Server) {
 		if err := sc.initializeCouchbaseServerConnections(ctx); err != nil {
@@ -1327,13 +1327,13 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 	for _, dbName := range deletedDatabases {
 		// It's possible that the "deleted" database was not written to the server until after sc.fetchConfigs had returned...
 		// we'll need to pay for the cost of getting the config again now that we've got the write lock to double-check this db is definitely ok to remove...
-		found, _, err := sc.fetchDatabase(dbName)
+		found, _, err := sc.fetchDatabase(ctx, dbName)
 		if err != nil {
 			base.InfofCtx(ctx, base.KeyConfig, "Error fetching config for database %q to check whether we need to remove it: %v", dbName, err)
 		}
 		if !found {
 			base.InfofCtx(ctx, base.KeyConfig, "Database %q was running on this node, but config was not found on the server - removing database", base.MD(dbName))
-			sc._removeDatabase(dbName)
+			sc._removeDatabase(ctx, dbName)
 		} else {
 			base.DebugfCtx(ctx, base.KeyConfig, "Found config for database %q after acquiring write lock - not removing database", base.MD(dbName))
 		}
@@ -1351,7 +1351,7 @@ func (sc *ServerContext) fetchAndLoadDatabase(ctx context.Context, dbName string
 // _fetchAndLoadDatabase will attempt to find the given database name first in a matching bucket name,
 // but then fall back to searching through configs in each bucket to try and find a config.
 func (sc *ServerContext) _fetchAndLoadDatabase(ctx context.Context, dbName string) (found bool, err error) {
-	found, dbConfig, err := sc.fetchDatabase(dbName)
+	found, dbConfig, err := sc.fetchDatabase(ctx, dbName)
 	if err != nil || !found {
 		return false, err
 	}
@@ -1360,7 +1360,7 @@ func (sc *ServerContext) _fetchAndLoadDatabase(ctx context.Context, dbName strin
 	return true, nil
 }
 
-func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *DatabaseConfig, err error) {
+func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (found bool, dbConfig *DatabaseConfig, err error) {
 	var buckets []string
 	if sc.config.IsServerless() {
 		buckets = make([]string, len(sc.config.BucketCredentials))
@@ -1374,8 +1374,6 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 		}
 	}
 
-	logCtx := context.TODO()
-
 	// move bucket matching dbName to the front so it's searched first
 	for i, bucket := range buckets {
 		if bucket == dbName {
@@ -1387,11 +1385,11 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 		var cnf DatabaseConfig
 		cas, err := sc.bootstrapContext.connection.GetConfig(bucket, sc.config.Bootstrap.ConfigGroupID, &cnf)
 		if err == base.ErrNotFound {
-			base.DebugfCtx(logCtx, base.KeyConfig, "%q did not contain config in group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
+			base.DebugfCtx(ctx, base.KeyConfig, "%q did not contain config in group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
 			continue
 		}
 		if err != nil {
-			base.DebugfCtx(logCtx, base.KeyConfig, "unable to fetch config in group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
+			base.DebugfCtx(ctx, base.KeyConfig, "unable to fetch config in group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
 			continue
 		}
 
@@ -1400,7 +1398,7 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 		}
 
 		if cnf.Name != dbName {
-			base.TracefCtx(logCtx, base.KeyConfig, "%q did not contain config in group %q for db %q", bucket, sc.config.Bootstrap.ConfigGroupID, dbName)
+			base.TracefCtx(ctx, base.KeyConfig, "%q did not contain config in group %q for db %q", bucket, sc.config.Bootstrap.ConfigGroupID, dbName)
 			continue
 		}
 
@@ -1421,7 +1419,7 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 			cnf.CertPath = sc.config.Bootstrap.X509CertPath
 			cnf.KeyPath = sc.config.Bootstrap.X509KeyPath
 		}
-		base.TracefCtx(logCtx, base.KeyConfig, "Got config for bucket %q with cas %d", bucket, cas)
+		base.TracefCtx(ctx, base.KeyConfig, "Got config for bucket %q with cas %d", bucket, cas)
 		return true, &cnf, nil
 	}
 
@@ -1598,7 +1596,7 @@ func (sc *ServerContext) addLegacyPrincipals(ctx context.Context, legacyDbUsers,
 			base.ErrorfCtx(ctx, "Couldn't get database context to install user principles: %v", err)
 			continue
 		}
-		err = sc.installPrincipals(dbCtx, dbUser, "user")
+		err = sc.installPrincipals(ctx, dbCtx, dbUser, "user")
 		if err != nil {
 			base.ErrorfCtx(ctx, "Couldn't install user principles: %v", err)
 		}
@@ -1610,7 +1608,7 @@ func (sc *ServerContext) addLegacyPrincipals(ctx context.Context, legacyDbUsers,
 			base.ErrorfCtx(ctx, "Couldn't get database context to install role principles: %v", err)
 			continue
 		}
-		err = sc.installPrincipals(dbCtx, dbRole, "role")
+		err = sc.installPrincipals(ctx, dbCtx, dbRole, "role")
 		if err != nil {
 			base.ErrorfCtx(ctx, "Couldn't install role principles: %v", err)
 		}
@@ -1712,13 +1710,13 @@ func HandleSighup() {
 // - SIGHUP causes Sync Gateway to rotate log files.
 // - SIGINT or SIGTERM causes Sync Gateway to exit cleanly.
 // - SIGKILL cannot be handled by the application.
-func RegisterSignalHandler() {
+func RegisterSignalHandler(ctx context.Context) {
 	signalChannel := make(chan os.Signal, 1)
 	signal.Notify(signalChannel, syscall.SIGHUP, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
 		for sig := range signalChannel {
-			base.InfofCtx(context.TODO(), base.KeyAll, "Handling signal: %v", sig)
+			base.InfofCtx(ctx, base.KeyAll, "Handling signal: %v", sig)
 			switch sig {
 			case syscall.SIGHUP:
 				HandleSighup()

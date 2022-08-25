@@ -88,16 +88,16 @@ func (sc *ServerContext) SetCpuPprofFile(file *os.File) {
 	sc.cpuPprofFileMutex.Unlock()
 }
 
-func (sc *ServerContext) CloseCpuPprofFile() {
+func (sc *ServerContext) CloseCpuPprofFile(ctx context.Context) {
 	sc.cpuPprofFileMutex.Lock()
 	if err := sc.cpuPprofFile.Close(); err != nil {
-		base.WarnfCtx(context.TODO(), "Error closing CPU profile file: %v", err)
+		base.WarnfCtx(ctx, "Error closing CPU profile file: %v", err)
 	}
 	sc.cpuPprofFile = nil
 	sc.cpuPprofFileMutex.Unlock()
 }
 
-func NewServerContext(config *StartupConfig, persistentConfig bool) *ServerContext {
+func NewServerContext(ctx context.Context, config *StartupConfig, persistentConfig bool) *ServerContext {
 	sc := &ServerContext{
 		config:           config,
 		persistentConfig: persistentConfig,
@@ -121,7 +121,8 @@ func NewServerContext(config *StartupConfig, persistentConfig bool) *ServerConte
 		}
 	}
 
-	sc.startStatsLogger()
+	ctx = sc.AddServerLogContext(ctx) // add server log info before passing donwn
+	sc.startStatsLogger(ctx)
 
 	return sc
 }
@@ -296,7 +297,7 @@ func (sc *ServerContext) PostUpgrade(preview bool) (postUpgradeResults PostUpgra
 
 // Removes and re-adds a database to the ServerContext.
 func (sc *ServerContext) _reloadDatabase(ctx context.Context, reloadDbName string, failFast bool) (*db.DatabaseContext, error) {
-	sc._unloadDatabase(reloadDbName)
+	sc._unloadDatabase(ctx, reloadDbName)
 	config := sc.dbConfigs[reloadDbName]
 	return sc._getOrAddDatabaseFromConfig(ctx, *config, true, db.GetConnectToBucketFn(failFast))
 }
@@ -318,7 +319,7 @@ func (sc *ServerContext) ReloadDatabaseWithConfig(ctx context.Context, config Da
 }
 
 func (sc *ServerContext) _reloadDatabaseWithConfig(ctx context.Context, config DatabaseConfig, failFast bool) error {
-	sc._removeDatabase(config.Name)
+	sc._removeDatabase(ctx, config.Name)
 	_, err := sc._getOrAddDatabaseFromConfig(ctx, config, false, db.GetConnectToBucketFn(failFast))
 	return err
 }
@@ -333,7 +334,7 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(ctx context.Context, config 
 	return sc._getOrAddDatabaseFromConfig(ctx, config, useExisting, openBucketFn)
 }
 
-func GetBucketSpec(config *DatabaseConfig, serverConfig *StartupConfig) (spec base.BucketSpec, err error) {
+func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *StartupConfig) (spec base.BucketSpec, err error) {
 
 	spec = config.MakeBucketSpec()
 
@@ -355,7 +356,7 @@ func GetBucketSpec(config *DatabaseConfig, serverConfig *StartupConfig) (spec ba
 
 	spec.UseXattrs = config.UseXattrs()
 	if !spec.UseXattrs {
-		base.WarnfCtx(context.TODO(), "Running Sync Gateway without shared bucket access is deprecated. Recommendation: set enable_shared_bucket_access=true")
+		base.WarnfCtx(ctx, "Running Sync Gateway without shared bucket access is deprecated. Recommendation: set enable_shared_bucket_access=true")
 	}
 
 	if config.BucketOpTimeoutMs != nil {
@@ -372,7 +373,7 @@ func GetBucketSpec(config *DatabaseConfig, serverConfig *StartupConfig) (spec ba
 func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config DatabaseConfig, useExisting bool, openBucketFn db.OpenBucketFn) (*db.DatabaseContext, error) {
 
 	// Generate bucket spec and validate whether db already exists
-	spec, err := GetBucketSpec(&config, sc.config)
+	spec, err := GetBucketSpec(ctx, &config, sc.config)
 	if err != nil {
 		return nil, err
 	}
@@ -528,7 +529,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	if config.Sync != nil {
 		syncFn = *config.Sync
 	}
-	if err := sc.applySyncFunction(dbcontext, syncFn); err != nil {
+	if err := sc.applySyncFunction(ctx, dbcontext, syncFn); err != nil {
 		return nil, err
 	}
 
@@ -540,7 +541,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			}
 
 			if dbcontext.RevsLimit < db.DefaultRevsLimitConflicts {
-				base.WarnfCtx(context.TODO(), "Setting the revs_limit (%v) to less than %d, whilst having allow_conflicts set to true, may have unwanted results when documents are frequently updated. Please see documentation for details.", dbcontext.RevsLimit, db.DefaultRevsLimitConflicts)
+				base.WarnfCtx(ctx, "Setting the revs_limit (%v) to less than %d, whilst having allow_conflicts set to true, may have unwanted results when documents are frequently updated. Please see documentation for details.", dbcontext.RevsLimit, db.DefaultRevsLimitConflicts)
 			}
 		} else {
 			if dbcontext.RevsLimit <= 0 {
@@ -557,22 +558,22 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 
 	// Create default users & roles:
-	if err := sc.installPrincipals(dbcontext, config.Roles, "role"); err != nil {
+	if err := sc.installPrincipals(ctx, dbcontext, config.Roles, "role"); err != nil {
 		return nil, err
 	}
-	if err := sc.installPrincipals(dbcontext, config.Users, "user"); err != nil {
+	if err := sc.installPrincipals(ctx, dbcontext, config.Users, "user"); err != nil {
 		return nil, err
 	}
 
 	if config.Guest != nil {
 		guest := map[string]*auth.PrincipalConfig{base.GuestUsername: config.Guest}
-		if err := sc.installPrincipals(dbcontext, guest, "user"); err != nil {
+		if err := sc.installPrincipals(ctx, dbcontext, guest, "user"); err != nil {
 			return nil, err
 		}
 	}
 
 	// Initialize event handlers
-	if err := sc.initEventHandlers(dbcontext, &config.DbConfig); err != nil {
+	if err := sc.initEventHandlers(ctx, dbcontext, &config.DbConfig); err != nil {
 		return nil, err
 	}
 
@@ -908,7 +909,7 @@ func validateEventConfigOptions(eventType db.EventType, eventConfig *EventConfig
 }
 
 // Initialize event handlers, if present
-func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config *DbConfig) (err error) {
+func (sc *ServerContext) initEventHandlers(ctx context.Context, dbcontext *db.DatabaseContext, config *DbConfig) (err error) {
 	if config.EventHandlers == nil {
 		return nil
 	}
@@ -941,7 +942,7 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 		}
 
 		// Register event handlers
-		if err = sc.processEventHandlersForEvent(handlers, eventType, dbcontext); err != nil {
+		if err = sc.processEventHandlersForEvent(ctx, handlers, eventType, dbcontext); err != nil {
 			return err
 		}
 	}
@@ -952,7 +953,7 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 		customWaitTime, err = strconv.ParseInt(config.EventHandlers.WaitForProcess, 10, 0)
 		if err != nil {
 			customWaitTime = -1
-			base.WarnfCtx(context.TODO(), "Error parsing wait_for_process from config, using default %s", err)
+			base.WarnfCtx(ctx, "Error parsing wait_for_process from config, using default %s", err)
 		}
 	}
 	dbcontext.EventMgr.Start(config.EventHandlers.MaxEventProc, int(customWaitTime))
@@ -972,14 +973,14 @@ func (sc *ServerContext) AddDatabaseFromConfigFailFast(ctx context.Context, conf
 	return sc.getOrAddDatabaseFromConfig(ctx, config, false, db.GetConnectToBucketFn(true))
 }
 
-func (sc *ServerContext) processEventHandlersForEvent(events []*EventConfig, eventType db.EventType, dbcontext *db.DatabaseContext) error {
+func (sc *ServerContext) processEventHandlersForEvent(ctx context.Context, events []*EventConfig, eventType db.EventType, dbcontext *db.DatabaseContext) error {
 
 	for _, event := range events {
 		switch event.HandlerType {
 		case "webhook":
 			wh, err := db.NewWebhook(event.Url, event.Filter, event.Timeout, event.Options)
 			if err != nil {
-				base.WarnfCtx(context.TODO(), "Error creating webhook %v", err)
+				base.WarnfCtx(ctx, "Error creating webhook %v", err)
 				return err
 			}
 			dbcontext.EventMgr.RegisterEventHandler(wh, eventType)
@@ -991,43 +992,43 @@ func (sc *ServerContext) processEventHandlersForEvent(events []*EventConfig, eve
 	return nil
 }
 
-func (sc *ServerContext) applySyncFunction(dbcontext *db.DatabaseContext, syncFn string) error {
+func (sc *ServerContext) applySyncFunction(ctx context.Context, dbcontext *db.DatabaseContext, syncFn string) error {
 	changed, err := dbcontext.UpdateSyncFun(syncFn)
 	if err != nil || !changed {
 		return err
 	}
 	// Sync function has changed:
-	base.InfofCtx(context.TODO(), base.KeyAll, "**NOTE:** %q's sync function has changed. The new function may assign different channels to documents, or permissions to users. You may want to re-sync the database to update these.", base.MD(dbcontext.Name))
+	base.InfofCtx(ctx, base.KeyAll, "**NOTE:** %q's sync function has changed. The new function may assign different channels to documents, or permissions to users. You may want to re-sync the database to update these.", base.MD(dbcontext.Name))
 	return nil
 }
 
-func (sc *ServerContext) RemoveDatabase(dbName string) bool {
+func (sc *ServerContext) RemoveDatabase(ctx context.Context, dbName string) bool {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
 
-	return sc._removeDatabase(dbName)
+	return sc._removeDatabase(ctx, dbName)
 }
 
 // _unloadDatabase unloads and stops the database, but does not remove the in-memory config.
-func (sc *ServerContext) _unloadDatabase(dbName string) bool {
+func (sc *ServerContext) _unloadDatabase(ctx context.Context, dbName string) bool {
 	dbCtx := sc.databases_[dbName]
 	if dbCtx == nil {
 		return false
 	}
-	base.InfofCtx(context.TODO(), base.KeyAll, "Closing db /%s (bucket %q)", base.MD(dbCtx.Name), base.MD(dbCtx.Bucket.GetName()))
+	base.InfofCtx(ctx, base.KeyAll, "Closing db /%s (bucket %q)", base.MD(dbCtx.Name), base.MD(dbCtx.Bucket.GetName()))
 	dbCtx.Close()
 	delete(sc.databases_, dbName)
 	return true
 }
 
 // _removeDatabase unloads and removes all references to the given database.
-func (sc *ServerContext) _removeDatabase(dbName string) bool {
+func (sc *ServerContext) _removeDatabase(ctx context.Context, dbName string) bool {
 	dbCtx := sc.databases_[dbName]
 	if dbCtx == nil {
 		return false
 	}
 	bucket := dbCtx.Bucket.GetName()
-	if ok := sc._unloadDatabase(dbName); !ok {
+	if ok := sc._unloadDatabase(ctx, dbName); !ok {
 		return ok
 	}
 	delete(sc.dbConfigs, dbName)
@@ -1035,7 +1036,7 @@ func (sc *ServerContext) _removeDatabase(dbName string) bool {
 	return true
 }
 
-func (sc *ServerContext) installPrincipals(dbc *db.DatabaseContext, spec map[string]*auth.PrincipalConfig, what string) error {
+func (sc *ServerContext) installPrincipals(ctx context.Context, dbc *db.DatabaseContext, spec map[string]*auth.PrincipalConfig, what string) error {
 	for name, princ := range spec {
 		isGuest := name == base.GuestUsername
 		if isGuest {
@@ -1046,10 +1047,9 @@ func (sc *ServerContext) installPrincipals(dbc *db.DatabaseContext, spec map[str
 			princ.Name = &n
 		}
 
-		logCtx := context.TODO()
 		createdPrincipal := true
 		worker := func() (shouldRetry bool, err error, value interface{}) {
-			_, err = dbc.UpdatePrincipal(context.Background(), princ, (what == "user"), isGuest)
+			_, err = dbc.UpdatePrincipal(ctx, princ, (what == "user"), isGuest)
 			if err != nil {
 				if status, _ := base.ErrorAsHTTPStatus(err); status == http.StatusConflict {
 					// Ignore and absorb this error if it's a conflict error, which just means that updatePrincipal didn't overwrite an existing user.
@@ -1060,7 +1060,7 @@ func (sc *ServerContext) installPrincipals(dbc *db.DatabaseContext, spec map[str
 
 				if err == base.ErrViewTimeoutError {
 					// Timeout error, possibly due to view re-indexing, so retry
-					base.InfofCtx(logCtx, base.KeyAuth, "Error calling UpdatePrincipal(): %v.  Will retry in case this is a temporary error", err)
+					base.InfofCtx(ctx, base.KeyAuth, "Error calling UpdatePrincipal(): %v.  Will retry in case this is a temporary error", err)
 					return true, err, nil
 				}
 
@@ -1079,9 +1079,9 @@ func (sc *ServerContext) installPrincipals(dbc *db.DatabaseContext, spec map[str
 		}
 
 		if isGuest {
-			base.InfofCtx(logCtx, base.KeyAll, "Reset guest user to config")
+			base.InfofCtx(ctx, base.KeyAll, "Reset guest user to config")
 		} else if createdPrincipal {
-			base.InfofCtx(logCtx, base.KeyAll, "Created %s %q", what, base.UD(name))
+			base.InfofCtx(ctx, base.KeyAll, "Created %s %q", what, base.UD(name))
 		}
 
 	}
@@ -1096,7 +1096,7 @@ type statsWrapper struct {
 	RFC3339            string          `json:"rfc3339_timestamp"`
 }
 
-func (sc *ServerContext) startStatsLogger() {
+func (sc *ServerContext) startStatsLogger(ctx context.Context) {
 
 	if sc.config.Unsupported.StatsLogFrequency == nil || sc.config.Unsupported.StatsLogFrequency.Value() == 0 {
 		// don't start the stats logger when explicitly zero
@@ -1113,29 +1113,29 @@ func (sc *ServerContext) startStatsLogger() {
 		for {
 			select {
 			case <-sc.statsContext.statsLoggingTicker.C:
-				err := sc.logStats()
+				err := sc.logStats(ctx)
 				if err != nil {
-					base.WarnfCtx(context.TODO(), "Error logging stats: %v", err)
+					base.WarnfCtx(ctx, "Error logging stats: %v", err)
 				}
 			case <-sc.statsContext.terminator:
-				base.DebugfCtx(context.TODO(), base.KeyAll, "Stopping stats logging goroutine")
+				base.DebugfCtx(ctx, base.KeyAll, "Stopping stats logging goroutine")
 				sc.statsContext.statsLoggingTicker.Stop()
 				return
 			}
 		}
 	}()
-	base.InfofCtx(context.TODO(), base.KeyAll, "Logging stats with frequency: %v", interval)
+	base.InfofCtx(ctx, base.KeyAll, "Logging stats with frequency: %v", interval)
 
 }
 
-func (sc *ServerContext) logStats() error {
+func (sc *ServerContext) logStats(ctx context.Context) error {
 
 	AddGoRuntimeStats()
 
-	sc.logNetworkInterfaceStats()
+	sc.logNetworkInterfaceStats(ctx)
 
 	if err := sc.statsContext.addGoSigarStats(); err != nil {
-		base.WarnfCtx(context.TODO(), "Error getting sigar based system resource stats: %v", err)
+		base.WarnfCtx(ctx, "Error getting sigar based system resource stats: %v", err)
 	}
 
 	sc.updateCalculatedStats()
@@ -1159,14 +1159,14 @@ func (sc *ServerContext) logStats() error {
 
 }
 
-func (sc *ServerContext) logNetworkInterfaceStats() {
+func (sc *ServerContext) logNetworkInterfaceStats(ctx context.Context) {
 
 	if err := sc.statsContext.addPublicNetworkInterfaceStatsForHostnamePort(sc.config.API.PublicInterface); err != nil {
-		base.WarnfCtx(context.TODO(), "Error getting public network interface resource stats: %v", err)
+		base.WarnfCtx(ctx, "Error getting public network interface resource stats: %v", err)
 	}
 
 	if err := sc.statsContext.addAdminNetworkInterfaceStatsForHostnamePort(sc.config.API.AdminInterface); err != nil {
-		base.WarnfCtx(context.TODO(), "Error getting admin network interface resource stats: %v", err)
+		base.WarnfCtx(ctx, "Error getting admin network interface resource stats: %v", err)
 	}
 
 }
@@ -1181,7 +1181,7 @@ func (sc *ServerContext) updateCalculatedStats() {
 
 }
 
-func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPath, caCertPath string, tlsSkipVerify *bool) (*gocbcore.Agent, error) {
+func initClusterAgent(ctx context.Context, clusterAddress, clusterUser, clusterPass, certPath, keyPath, caCertPath string, tlsSkipVerify *bool) (*gocbcore.Agent, error) {
 	authenticator, err := base.GoCBCoreAuthConfig(clusterUser, clusterPass, certPath, keyPath)
 	if err != nil {
 		return nil, err
@@ -1213,7 +1213,7 @@ func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPat
 	defer func() {
 		if shouldCloseAgent {
 			if err := agent.Close(); err != nil {
-				base.WarnfCtx(context.TODO(), "unable to close gocb agent: %v", err)
+				base.WarnfCtx(ctx, "unable to close gocb agent: %v", err)
 			}
 		}
 	}()
@@ -1247,13 +1247,14 @@ func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPat
 
 // initializeGoCBAgent Obtains a gocb agent from the current server connection. Requires the agent to be closed after use.
 // Uses retry loop
-func (sc *ServerContext) initializeGoCBAgent() (*gocbcore.Agent, error) {
+func (sc *ServerContext) initializeGoCBAgent(ctx context.Context) (*gocbcore.Agent, error) {
 	err, a := base.RetryLoop("Initialize Cluster Agent", func() (shouldRetry bool, err error, value interface{}) {
 		agent, err := initClusterAgent(
+			ctx,
 			sc.config.Bootstrap.Server, sc.config.Bootstrap.Username, sc.config.Bootstrap.Password,
 			sc.config.Bootstrap.X509CertPath, sc.config.Bootstrap.X509KeyPath, sc.config.Bootstrap.CACertPath, sc.config.Bootstrap.ServerTLSSkipVerify)
 		if err != nil {
-			base.InfofCtx(context.TODO(), base.KeyConfig, "Couldn't initialize cluster agent: %v - will retry...", err)
+			base.InfofCtx(ctx, base.KeyConfig, "Couldn't initialize cluster agent: %v - will retry...", err)
 			return true, err, nil
 		}
 
@@ -1263,7 +1264,7 @@ func (sc *ServerContext) initializeGoCBAgent() (*gocbcore.Agent, error) {
 		return nil, err
 	}
 
-	base.InfofCtx(context.TODO(), base.KeyConfig, "Successfully initialized cluster agent")
+	base.InfofCtx(ctx, base.KeyConfig, "Successfully initialized cluster agent")
 	agent := a.(*gocbcore.Agent)
 	return agent, nil
 }
@@ -1513,7 +1514,7 @@ func (sc *ServerContext) Database(ctx context.Context, name string) *db.Database
 }
 
 func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Context) error {
-	goCBAgent, err := sc.initializeGoCBAgent()
+	goCBAgent, err := sc.initializeGoCBAgent(ctx)
 	if err != nil {
 		return err
 	}

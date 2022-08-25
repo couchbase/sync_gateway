@@ -29,7 +29,7 @@ func ServerMain() {
 
 // TODO: Pass ctx down into HTTP servers so that serverMain can be stopped.
 func serverMain(ctx context.Context, osArgs []string) error {
-	RegisterSignalHandler()
+	RegisterSignalHandler(ctx)
 	defer base.FatalPanicHandler()
 
 	base.InitializeMemoryLoggers()

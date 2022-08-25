@@ -193,7 +193,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	// Post-validation, we can lower the bcrypt cost beyond SG limits to reduce test runtime.
 	sc.Auth.BcryptCost = bcrypt.MinCost
 
-	rt.RestTesterServerContext = NewServerContext(&sc, rt.RestTesterConfig.persistentConfig)
+	rt.RestTesterServerContext = NewServerContext(base.TestCtx(rt.tb), &sc, rt.RestTesterConfig.persistentConfig)
 	ctx := rt.Context()
 
 	if !base.ServerIsWalrus(sc.Bootstrap.Server) {
