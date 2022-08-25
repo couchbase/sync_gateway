@@ -117,11 +117,10 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"replicator.max_heartbeat":    {&config.Replicator.MaxHeartbeat, fs.String("replicator.max_heartbeat", "", "Max heartbeat value for _changes request")},
 		"replicator.blip_compression": {&config.Replicator.BLIPCompression, fs.Int("replicator.blip_compression", 0, "BLIP data compression level (0-9)")},
 
-		"unsupported.serverless":          {&config.Unsupported.Serverless, fs.Bool("unsupported.serverless", false, "Run SG in to serverless mode.")},
 		"unsupported.stats_log_frequency": {&config.Unsupported.StatsLogFrequency, fs.String("unsupported.stats_log_frequency", "", "How often should stats be written to stats logs")},
 		"unsupported.use_stdlib_json":     {&config.Unsupported.UseStdlibJSON, fs.Bool("unsupported.use_stdlib_json", false, "Bypass the jsoniter package and use Go's stdlib instead")},
-
-		"unsupported.http2.enabled": {&config.Unsupported.HTTP2.Enabled, fs.Bool("unsupported.http2.enabled", false, "Whether HTTP2 support is enabled")},
+		"unsupported.http2.enabled":       {&config.Unsupported.HTTP2.Enabled, fs.Bool("unsupported.http2.enabled", false, "Whether HTTP2 support is enabled")},
+		"unsupported.serverless.enabled":  {&config.Unsupported.Serverless.Enabled, fs.Bool("unsupported.serverless.enabled", false, "Settings for running Sync Gateway in serverless mode.")},
 
 		"database_credentials": {&config.DatabaseCredentials, fs.String("database_credentials", "null", "JSON-encoded per-database credentials, that can be used instead of the bootstrap ones. Cannot be used in conjunction with bucket_credentials.")},
 		"bucket_credentials":   {&config.BucketCredentials, fs.String("bucket_credentials", "null", "JSON-encoded per-bucket credentials, that can be used instead of the bootstrap ones. Cannot be used in conjunction with database_credentials.")},

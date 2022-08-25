@@ -21,7 +21,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 	defer tb1.Close()
 
 	config := bootstrapStartupConfigForTest(t)
-	config.Unsupported.Serverless = base.BoolPtr(true)
+	config.Unsupported.Serverless = ServerlessConfig{Enabled: base.BoolPtr(true)}
 	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
 	// Use invalid bucket to get past validation stage - will cause warnings throughout test
 	config.BucketCredentials = map[string]*base.CredentialsConfig{"invalid_bucket": {}}
