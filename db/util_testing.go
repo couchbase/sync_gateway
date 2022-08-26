@@ -271,10 +271,6 @@ var ViewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 			return err
 		}
 
-		err := n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
-		if err != nil {
-			return err
-		}
 	}
 	return nil
 }
@@ -320,9 +316,11 @@ var ViewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 		return err
 	}
 
-	err := n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
-	if err != nil {
-		return err
+	if !tbp.UsingNamedCollections() {
+		err := n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
+		if err != nil {
+			return err
+		}
 	}
 	tbp.Logf(ctx, "finished creating SG bucket indexes")
 
