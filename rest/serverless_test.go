@@ -30,13 +30,14 @@ func TestServerlessPollBuckets(t *testing.T) {
 	})
 	defer rt.Close()
 	sc := rt.ServerContext()
+	ctx := rt.Context()
 
 	// Blank out all per-bucket creds
 	perBucketCreds := sc.config.BucketCredentials
 	rt.ReplacePerBucketCredentials(map[string]*base.CredentialsConfig{})
 
 	// Confirm fetch does not return any configs due to no databases existing
-	configs, err := sc.fetchConfigs(false)
+	configs, err := sc.fetchConfigs(ctx, false)
 	require.NoError(t, err)
 	assert.Empty(t, configs)
 
@@ -52,7 +53,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 	requireStatus(t, resp, http.StatusCreated)
 
 	// Confirm fetch does not return any configs due to no databases in the bucket credentials config
-	configs, err = sc.fetchConfigs(false)
+	configs, err = sc.fetchConfigs(ctx, false)
 	require.NoError(t, err)
 	assert.Empty(t, configs)
 
@@ -60,11 +61,11 @@ func TestServerlessPollBuckets(t *testing.T) {
 	rt.ReplacePerBucketCredentials(perBucketCreds)
 
 	// Confirm fetch does return config for db in tb1
-	configs, err = sc.fetchConfigs(false)
+	configs, err = sc.fetchConfigs(ctx, false)
 	require.NoError(t, err)
 	require.Len(t, configs, 1)
 	assert.NotNil(t, configs["db"])
-	count, err := sc.fetchAndLoadConfigs(false)
+	count, err := sc.fetchAndLoadConfigs(ctx, false)
 	require.NoError(t, err)
 	assert.Equal(t, 1, count)
 
@@ -145,6 +146,7 @@ func TestServerlessBucketCredentialsFetchDatabases(t *testing.T) {
 		},
 	})
 	defer rt.Close()
+	ctx := rt.Context()
 
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{
 				"bucket": "%s",
@@ -154,14 +156,14 @@ func TestServerlessBucketCredentialsFetchDatabases(t *testing.T) {
 	requireStatus(t, resp, http.StatusCreated)
 
 	// Make sure DB can be fetched
-	found, _, err := rt.ServerContext().fetchDatabase("db")
+	found, _, err := rt.ServerContext().fetchDatabase(ctx, "db")
 	assert.NoError(t, err)
 	assert.True(t, found)
 
 	// Limit SG to buckets defined on BucketCredentials map
 	rt.ReplacePerBucketCredentials(map[string]*base.CredentialsConfig{"invalid_bucket": {}})
 	// Make sure fetch fails as it cannot see all buckets in cluster
-	found, _, err = rt.ServerContext().fetchDatabase("db")
+	found, _, err = rt.ServerContext().fetchDatabase(ctx, "db")
 	assert.NoError(t, err)
 	assert.False(t, found)
 }

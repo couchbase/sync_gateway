@@ -2051,7 +2051,7 @@ func TestDcpBackfill(t *testing.T) {
 	}
 	assert.True(t, backfillComplete, fmt.Sprintf("Backfill didn't complete after 20s. Latest: %d/%d", completedBackfill, expectedBackfill))
 
-	log.Printf("done...%s  (%d/%d)", newRt.ServerContext().Database("db").Name, completedBackfill, expectedBackfill)
+	log.Printf("done...%s  (%d/%d)", newRt.ServerContext().Database(newRt.Context(), "db").Name, completedBackfill, expectedBackfill)
 
 }
 

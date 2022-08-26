@@ -84,7 +84,7 @@ func TestLocalJWTAuthenticationE2E(t *testing.T) {
 			defer mockSyncGateway.Close()
 			mockSyncGatewayURL := mockSyncGateway.URL
 
-			authenticator := restTester.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+			authenticator := restTester.ServerContext().Database(restTester.Context(), "db").Authenticator(base.TestCtx(t))
 			if preExistingUser {
 				user, err := authenticator.RegisterNewUser(expectedUsername, "")
 				require.NoError(t, err, "Failed to create test user")

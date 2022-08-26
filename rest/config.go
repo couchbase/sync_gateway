@@ -1278,7 +1278,7 @@ func setupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 	}
 
 	sc := NewServerContext(ctx, config, persistentConfig)
-	ctx = sc.AddServerLogContext(ctx)
+	ctx = sc.AddServerLogContext(ctx) // add server log info before passing donwn
 	if !base.ServerIsWalrus(config.Bootstrap.Server) {
 		if err := sc.initializeCouchbaseServerConnections(ctx); err != nil {
 			return nil, err
@@ -1290,7 +1290,7 @@ func setupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 // fetchAndLoadConfigs retrieves all database configs from the ServerContext's bootstrapConnection, and loads them into the ServerContext.
 // It will remove any databases currently running that are not found in the bucket.
 func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStartup bool) (count int, err error) {
-	fetchedConfigs, err := sc.fetchConfigs(isInitialStartup)
+	fetchedConfigs, err := sc.fetchConfigs(ctx, isInitialStartup)
 	if err != nil {
 		return 0, err
 	}
@@ -1427,7 +1427,7 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 }
 
 // fetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
-func (sc *ServerContext) fetchConfigs(isInitialStartup bool) (dbNameConfigs map[string]DatabaseConfig, err error) {
+func (sc *ServerContext) fetchConfigs(ctx context.Context, isInitialStartup bool) (dbNameConfigs map[string]DatabaseConfig, err error) {
 	var buckets []string
 	if sc.config.IsServerless() {
 		buckets = make([]string, len(sc.config.BucketCredentials))
@@ -1451,24 +1451,23 @@ func (sc *ServerContext) fetchConfigs(isInitialStartup bool) (dbNameConfigs map[
 		}
 	}
 
-	logCtx := context.TODO()
 	fetchedConfigs := make(map[string]DatabaseConfig, len(buckets))
 
 	for _, bucket := range buckets {
-		base.TracefCtx(logCtx, base.KeyConfig, "Checking for config for group %q from bucket %q", sc.config.Bootstrap.ConfigGroupID, bucket)
+		base.TracefCtx(ctx, base.KeyConfig, "Checking for config for group %q from bucket %q", sc.config.Bootstrap.ConfigGroupID, bucket)
 		var cnf DatabaseConfig
 		cas, err := sc.bootstrapContext.connection.GetConfig(bucket, sc.config.Bootstrap.ConfigGroupID, &cnf)
 		if err == base.ErrNotFound {
-			base.DebugfCtx(logCtx, base.KeyConfig, "Bucket %q did not contain config for group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
+			base.DebugfCtx(ctx, base.KeyConfig, "Bucket %q did not contain config for group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
 			continue
 		}
 		if err != nil {
 			// Unexpected error fetching config - SDK has already performed retries, so we'll treat it as a database removal
 			// this could be due to invalid JSON or some other non-recoverable error.
 			if isInitialStartup {
-				base.WarnfCtx(logCtx, "Unable to fetch config for group %q from bucket %q on startup: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
+				base.WarnfCtx(ctx, "Unable to fetch config for group %q from bucket %q on startup: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
 			} else {
-				base.DebugfCtx(logCtx, base.KeyConfig, "Unable to fetch config for group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
+				base.DebugfCtx(ctx, base.KeyConfig, "Unable to fetch config for group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
 			}
 			continue
 		}
@@ -1494,7 +1493,7 @@ func (sc *ServerContext) fetchConfigs(isInitialStartup bool) (dbNameConfigs map[
 			cnf.KeyPath = sc.config.Bootstrap.X509KeyPath
 		}
 
-		base.DebugfCtx(logCtx, base.KeyConfig, "Got config for group %q from bucket %q with cas %d", sc.config.Bootstrap.ConfigGroupID, bucket, cas)
+		base.DebugfCtx(ctx, base.KeyConfig, "Got config for group %q from bucket %q with cas %d", sc.config.Bootstrap.ConfigGroupID, bucket, cas)
 		fetchedConfigs[cnf.Name] = cnf
 	}
 

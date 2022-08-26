@@ -122,7 +122,7 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 	}
 
 	ctx = sc.AddServerLogContext(ctx) // add server log info before passing donwn
-	sc.startStatsLogger(ctx)
+	sc.startStatsLogger(ctx)          // TODO: move to setupServerContext ?
 
 	return sc
 }

@@ -81,7 +81,7 @@ func TestX509UnknownAuthorityWrap(t *testing.T) {
 	sc.Bootstrap.Username = username
 	sc.Bootstrap.Password = password
 
-	_, err := initClusterAgent(sc.Bootstrap.Server, sc.Bootstrap.Username, sc.Bootstrap.Password,
+	_, err := initClusterAgent(base.TestCtx(t), sc.Bootstrap.Server, sc.Bootstrap.Username, sc.Bootstrap.Password,
 		sc.Bootstrap.X509CertPath, sc.Bootstrap.X509KeyPath, sc.Bootstrap.CACertPath, sc.Bootstrap.ServerTLSSkipVerify)
 	assert.Error(t, err)
 

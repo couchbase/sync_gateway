@@ -2022,6 +2022,7 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 	h := &handler{}
 	h.server = NewServerContext(ctx, &StartupConfig{}, false)
 	defer h.server.Close(ctx)
+	ctx = h.server.AddServerLogContext(ctx)
 
 	// Basic case, no heartbeat, no timeout
 	optStr := `{"feed":"longpoll", "since": "123456:78", "limit":123, "style": "all_docs",

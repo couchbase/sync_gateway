@@ -164,7 +164,8 @@ func TestViewQueryUserAccess(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
 	defer rt.Close()
 
-	rt.ServerContext().Database("db").SetUserViewsEnabled(true)
+	ctx := rt.Context()
+	rt.ServerContext().Database(ctx, "db").SetUserViewsEnabled(true)
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"views":{"bar": {"map":"function (doc, meta) { if (doc.type != 'type1') { return; } if (doc.state == 'state1' || doc.state == 'state2' || doc.state == 'state3') { emit(doc.state, meta.id); }}"}}}`)
 	requireStatus(t, response, http.StatusCreated)
 	response = rt.SendRequest(http.MethodPut, "/db/doc1", `{"type":"type1", "state":"state1"}`)
@@ -188,7 +189,7 @@ func TestViewQueryUserAccess(t *testing.T) {
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"}, result.Rows[1])
 
 	// Create a user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(base.TestCtx(t))
 	password := "123456"
 	testUser, _ := a.NewUser("testUser", password, channels.SetOf(t, "*"))
 	assert.NoError(t, a.Save(testUser))
@@ -201,7 +202,7 @@ func TestViewQueryUserAccess(t *testing.T) {
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"}, result.Rows[1])
 
 	// Disable user view access, retry
-	rt.ServerContext().Database("db").SetUserViewsEnabled(false)
+	rt.ServerContext().Database(ctx, "db").SetUserViewsEnabled(false)
 	request, _ := http.NewRequest(http.MethodGet, "/db/_design/foo/_view/bar?stale=false", nil)
 	request.SetBasicAuth(testUser.Name(), password)
 	userResponse := rt.Send(request)
@@ -259,8 +260,9 @@ func TestUserViewQuery(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
-	rt.ServerContext().Database("db").SetUserViewsEnabled(true)
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
+	rt.ServerContext().Database(ctx, "db").SetUserViewsEnabled(true)
 
 	// Create a view:
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}"}}}`)
@@ -684,7 +686,8 @@ func TestViewQueryWrappers(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	rt.ServerContext().Database("db").SetUserViewsEnabled(true)
+	ctx := rt.Context()
+	rt.ServerContext().Database(ctx, "db").SetUserViewsEnabled(true)
 
 	response := rt.SendAdminRequest(http.MethodPut, "/db/admindoc", `{"value":"foo"}`)
 	requireStatus(t, response, http.StatusCreated)
@@ -700,7 +703,7 @@ func TestViewQueryWrappers(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 3, result.Len())
 
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(base.TestCtx(t))
 	testUser, err := a.NewUser("testUser", "password", channels.SetOf(t, "userchannel"))
 	assert.NoError(t, err)
 	err = a.Save(testUser)

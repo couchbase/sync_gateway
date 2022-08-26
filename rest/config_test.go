@@ -994,11 +994,12 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 
 	require.Nil(t, setupAndValidateDatabases(databases), "Unexpected error while validating databases")
 
-	sc := NewServerContext(config, false)
-	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
+	ctx := base.TestCtx(t)
+	sc := NewServerContext(ctx, config, false)
 	defer sc.Close(ctx)
+	ctx = sc.AddServerLogContext(ctx)
 	for _, dbConfig := range databases {
-		_, err := sc.AddDatabaseFromConfig(DatabaseConfig{DbConfig: *dbConfig})
+		_, err := sc.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: *dbConfig})
 		require.NoError(t, err, "Couldn't add database from config")
 	}
 
@@ -1349,9 +1350,10 @@ func TestSetupServerContext(t *testing.T) {
 		config.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
 		config.Bootstrap.Username = base.TestClusterUsername()
 		config.Bootstrap.Password = base.TestClusterPassword()
-		sc, err := setupServerContext(&config, false)
-		ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
+		ctx := base.TestCtx(t)
+		sc, err := setupServerContext(ctx, &config, false)
 		defer sc.Close(ctx)
+		ctx = sc.AddServerLogContext(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, sc)
 	})
@@ -2119,7 +2121,7 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 			defer close(terminator)
 			ctx := &db.DatabaseContext{EventMgr: db.NewEventManager(terminator)}
 			sc := &ServerContext{}
-			err := sc.initEventHandlers(ctx, &dbConfig)
+			err := sc.initEventHandlers(base.TestCtx(t), ctx, &dbConfig)
 			if test.errExpected != nil {
 				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
 			} else {

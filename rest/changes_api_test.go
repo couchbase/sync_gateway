@@ -40,12 +40,13 @@ func TestReproduce2383(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	user, err := a.NewUser("ben", "letmein", channels.SetOf(t, "PBS"))
 	assert.NoError(t, err, "Error creating new user")
 	assert.NoError(t, a.Save(user))
 
-	testDb := rt.ServerContext().Database("db")
+	testDb := rt.ServerContext().Database(ctx, "db")
 
 	// Put several documents
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
@@ -125,7 +126,8 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 
 	// Create user:
 	alice, _ := a.NewUser("alice", "letmein", channels.SetOf(t, "zero"))
@@ -195,7 +197,8 @@ func TestPostChanges(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -228,7 +231,8 @@ func TestPostChangesUserTiming(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "bernard"))
 	assert.True(t, err == nil)
 	assert.NoError(t, a.Save(bernard))
@@ -401,7 +405,8 @@ func TestPostChangesChannelFilterInteger(t *testing.T) {
 func postChangesChannelFilter(t *testing.T, rt *RestTester) {
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -464,7 +469,8 @@ func TestPostChangesAdminChannelGrant(t *testing.T) {
 	defer rt.Close()
 
 	// Create user with access to channel ABC:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -549,7 +555,8 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	defer rt.Close()
 
 	// Create user with access to channel ABC:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -703,7 +710,8 @@ func TestPostChangesAdminChannelGrantRemovalWithLimit(t *testing.T) {
 	defer rt.Close()
 
 	// Create user with access to channel ABC:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -773,7 +781,8 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 	defer rt.Close()
 
 	// Create user with access to channel NBC:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	alice, err := a.NewUser("alice", "letmein", channels.SetOf(t, "NBC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(alice))
@@ -980,7 +989,8 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	testDb := rt.ServerContext().Database("db")
+	ctx := rt.Context()
+	testDb := rt.ServerContext().Database(ctx, "db")
 
 	// Create user:
 	requireStatus(t, rt.SendAdminRequest("GET", "/db/_user/bernard", ""), 404)
@@ -1071,7 +1081,8 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	testDb := rt.ServerContext().Database("db")
+	ctx := rt.Context()
+	testDb := rt.ServerContext().Database(ctx, "db")
 
 	// Create user:
 	requireStatus(t, rt.SendAdminRequest("GET", "/db/_user/bernard", ""), 404)
@@ -1205,7 +1216,8 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	testDb := rt.ServerContext().Database("db")
+	ctx := rt.Context()
+	testDb := rt.ServerContext().Database(ctx, "db")
 
 	// Simulate 5 non-skipped writes (seq 1,2,3,4,5)
 	WriteDirect(testDb, []string{"PBS"}, 1)
@@ -1336,7 +1348,8 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	testDb := rt.ServerContext().Database("db")
+	ctx := rt.Context()
+	testDb := rt.ServerContext().Database(ctx, "db")
 
 	// Create user:
 	requireStatus(t, rt.SendAdminRequest("GET", "/db/_user/bernard", ""), 404)
@@ -1608,7 +1621,8 @@ func TestChangesActiveOnlyInteger(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS", "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -2166,12 +2180,13 @@ func TestChangesViewBackfillFromQueryOnly(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
 
-	testDb := rt.ServerContext().Database("db")
+	testDb := rt.ServerContext().Database(ctx, "db")
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
 	// Write 30 docs to the bucket, 10 from channel PBS.  Expected sequence assignment:
 	//  1, 4, 7, ...   ABC
@@ -2238,12 +2253,13 @@ func TestChangesViewBackfillNonContiguousQueryResults(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
 
-	testDb := rt.ServerContext().Database("db")
+	testDb := rt.ServerContext().Database(ctx, "db")
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
 
 	// Write 30 docs to the bucket, 10 from channel PBS.  Expected sequence assignment:
@@ -2337,12 +2353,13 @@ func TestChangesViewBackfillFromPartialQueryOnly(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
 
-	testDb := rt.ServerContext().Database("db")
+	testDb := rt.ServerContext().Database(ctx, "db")
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
 
 	// Write 30 docs to the bucket, 10 from channel PBS.  Expected sequence assignment:
@@ -2421,12 +2438,13 @@ func TestChangesViewBackfillNoOverlap(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
 
-	testDb := rt.ServerContext().Database("db")
+	testDb := rt.ServerContext().Database(ctx, "db")
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
 
 	// Write 30 docs to the bucket, 10 from channel PBS.  Expected sequence assignment:
@@ -2507,12 +2525,13 @@ func TestChangesViewBackfill(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS", "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
 
-	testDb := rt.ServerContext().Database("db")
+	testDb := rt.ServerContext().Database(ctx, "db")
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
 
 	// Put several documents
@@ -2578,12 +2597,13 @@ func TestChangesViewBackfillStarChannel(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "*"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
 
-	testDb := rt.ServerContext().Database("db")
+	testDb := rt.ServerContext().Database(ctx, "db")
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
 
 	// Put several documents
@@ -2895,12 +2915,13 @@ func TestChangesQueryStarChannelBackfillLimit(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "*"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
 
-	testDb := rt.ServerContext().Database("db")
+	testDb := rt.ServerContext().Database(ctx, "db")
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
 
 	// Put 10 documents
@@ -2946,12 +2967,13 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
 
-	testDb := rt.ServerContext().Database("db")
+	testDb := rt.ServerContext().Database(ctx, "db")
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
 	cacheWaiter.Add(1)
 
@@ -3050,7 +3072,8 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
 
-	testDb := rt.ServerContext().Database("db")
+	ctx := rt.Context()
+	testDb := rt.ServerContext().Database(ctx, "db")
 
 	// Create user:
 	a := testDb.Authenticator(base.TestCtx(t))
@@ -3233,12 +3256,13 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS", "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
 
-	cacheWaiter := rt.ServerContext().Database("db").NewDCPCachingCountWaiter(t)
+	cacheWaiter := rt.ServerContext().Database(ctx, "db").NewDCPCachingCountWaiter(t)
 	// Put several documents
 	var body db.Body
 	response := rt.SendAdminRequest("PUT", "/db/deletedDoc", `{"channel":["PBS"]}`)
@@ -3326,7 +3350,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	}
 
 	// Active only NO Limit, POST
-	testDb := rt.ServerContext().Database("db")
+	testDb := rt.ServerContext().Database(ctx, "db")
 	assert.NoError(t, testDb.FlushChannelCache())
 
 	changesJSON = `{"style":"all_docs", "active_only":true}`
@@ -3436,7 +3460,8 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 	// defer it.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS", "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -3667,7 +3692,8 @@ func TestIncludeDocsWithPrincipals(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	testDb := rt.ServerContext().Database("db")
+	ctx := rt.Context()
+	testDb := rt.ServerContext().Database(ctx, "db")
 
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
 
@@ -3722,7 +3748,8 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 	defer rt.Close()
 
 	// Create user with access to channel ABC:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
