@@ -47,23 +47,26 @@ var errCollectionsUnsupported = base.HTTPErrorf(http.StatusBadRequest, "Named co
 // This struct is accessed from HTTP handlers running on multiple goroutines, so it needs to
 // be thread-safe.
 type ServerContext struct {
-	config               *StartupConfig // The current runtime configuration of the node
-	initialStartupConfig *StartupConfig // The configuration at startup of the node. Built from config file + flags
-	persistentConfig     bool
-	bucketDbName         map[string]string              // bucketDbName is a map of bucket to database name
-	dbConfigs            map[string]*DatabaseConfig     // dbConfigs is a map of db name to DatabaseConfig
-	databases_           map[string]*db.DatabaseContext // databases_ is a map of dbname to db.DatabaseContext
-	lock                 sync.RWMutex
-	statsContext         *statsContext
-	bootstrapContext     *bootstrapContext
-	HTTPClient           *http.Client
-	cpuPprofFileMutex    sync.Mutex      // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
-	cpuPprofFile         *os.File        // An open file descriptor holds the reference during CPU profiling
-	_httpServers         []*http.Server  // A list of HTTP servers running under the ServerContext
-	GoCBAgent            *gocbcore.Agent // GoCB Agent to use when obtaining management endpoints
-	NoX509HTTPClient     *http.Client    // httpClient for the cluster that doesn't include x509 credentials, even if they are configured for the cluster
-	hasStarted           chan struct{}   // A channel that is closed via PostStartup once the ServerContext has fully started
-	LogContextID         string          // ID to differentiate log messages from different server context
+	config                   *StartupConfig // The current runtime configuration of the node
+	initialStartupConfig     *StartupConfig // The configuration at startup of the node. Built from config file + flags
+	persistentConfig         bool
+	bucketDbName             map[string]string              // bucketDbName is a map of bucket to database name
+	dbConfigs                map[string]*DatabaseConfig     // dbConfigs is a map of db name to DatabaseConfig
+	databases_               map[string]*db.DatabaseContext // databases_ is a map of dbname to db.DatabaseContext
+	lock                     sync.RWMutex
+	statsContext             *statsContext
+	bootstrapContext         *bootstrapContext
+	HTTPClient               *http.Client
+	cpuPprofFileMutex        sync.Mutex                // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
+	cpuPprofFile             *os.File                  // An open file descriptor holds the reference during CPU profiling
+	_httpServers             []*http.Server            // A list of HTTP servers running under the ServerContext
+	GoCBAgent                *gocbcore.Agent           // GoCB Agent to use when obtaining management endpoints
+	NoX509HTTPClient         *http.Client              // httpClient for the cluster that doesn't include x509 credentials, even if they are configured for the cluster
+	hasStarted               chan struct{}             // A channel that is closed via PostStartup once the ServerContext has fully started
+	LogContextID             string                    // ID to differentiate log messages from different server context 	// A channel that is closed via PostStartup once the ServerContext has fully started
+	fetchedConfigsCache      map[string]DatabaseConfig // Stores fetched configs for fetchConfigsCache()
+	fetchConfigsCacheUpdated time.Time                 // The last time fetchConfigsCache() updated fetchedConfigsCache
+
 }
 
 type bootstrapContext struct {
@@ -213,6 +216,51 @@ func (sc *ServerContext) GetDatabase(ctx context.Context, name string) (*db.Data
 		}
 		if found {
 			dbc := sc.databases_[name]
+			if dbc != nil {
+				return dbc, nil
+			}
+		}
+	}
+
+	return nil, base.HTTPErrorf(http.StatusNotFound, "no such database %q", name)
+}
+
+// GetServerlessDatabase returns a DatabaseContext with a given name. This function will first check if the db already
+// exists and if not, will attempt to unsuspend the db. If that fails, a fallback to fetching the configs will be done.
+func (sc *ServerContext) GetServerlessDatabase(name string) (*db.DatabaseContext, error) {
+	sc.lock.RLock()
+	dbc := sc.databases_[name]
+	sc.lock.RUnlock()
+	if dbc != nil {
+		return dbc, nil
+	} else if db.ValidateDatabaseName(name) != nil {
+		return nil, base.HTTPErrorf(http.StatusBadRequest, "invalid database name %q", name)
+	}
+
+	dbc, err := sc.unsuspendDatabase(name)
+	if err != base.ErrNotFound {
+		return nil, err
+	}
+
+	// Fallback to fetching configs from buckets if database not found
+	if sc.bootstrapContext.connection != nil {
+		sc.lock.Lock()
+		defer sc.lock.Unlock()
+
+		dbConfigs, err := sc.fetchConfigsCache()
+		if err != nil {
+			return nil, base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
+		}
+
+		if dbConfig, ok := dbConfigs[name]; ok {
+			applied, err := sc._applyConfig(dbConfig, false, false)
+			if err != nil {
+				return nil, err
+			} else if !applied {
+				return nil, base.HTTPErrorf(http.StatusInternalServerError, "there was a problem loading the database")
+			}
+
+			dbc = sc.databases_[name]
 			if dbc != nil {
 				return dbc, nil
 			}
@@ -1034,6 +1082,65 @@ func (sc *ServerContext) _removeDatabase(ctx context.Context, dbName string) boo
 	delete(sc.dbConfigs, dbName)
 	delete(sc.bucketDbName, bucket)
 	return true
+}
+
+func (sc *ServerContext) suspendDatabase(dbName string) bool {
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+
+	return sc._suspendDatabase(dbName)
+}
+func (sc *ServerContext) _suspendDatabase(dbName string) bool {
+	dbCtx := sc.databases_[dbName]
+	if dbCtx == nil {
+		return false
+	}
+	bucket := dbCtx.Bucket.GetName()
+	base.InfofCtx(context.TODO(), base.KeyAll, "Suspending db %q (bucket %q)", base.MD(dbName), base.MD(bucket).Redact())
+
+	if !sc._unloadDatabase(dbName) {
+		return false
+	}
+	delete(sc.bucketDbName, bucket)
+	return true
+}
+
+func (sc *ServerContext) unsuspendDatabase(dbName string) (*db.DatabaseContext, error) {
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+
+	return sc._unsuspendDatabase(dbName)
+}
+func (sc *ServerContext) _unsuspendDatabase(dbName string) (*db.DatabaseContext, error) {
+	dbCtx := sc.databases_[dbName]
+	if dbCtx != nil {
+		// Database is active so no need to unsuspend
+		return dbCtx, nil
+	}
+	// Check if database is in dbConfigs so no need to search through buckets
+	if dbConfig, ok := sc.dbConfigs[dbName]; ok {
+		bucket := dbName
+		if dbConfig.Bucket != nil {
+			bucket = *dbConfig.Bucket
+		}
+		cas, err := sc.bootstrapContext.connection.GetConfig(bucket, sc.config.Bootstrap.ConfigGroupID, dbConfig)
+		if err == base.ErrNotFound {
+			// Database no longer exists, so clean up dbConfigs
+			base.InfofCtx(context.TODO(), base.KeyConfig, "Database %q has been removed while suspended from bucket %q", base.MD(dbName).Redact(), base.MD(bucket).Redact())
+			delete(sc.dbConfigs, dbName)
+			return nil, err
+		} else if err != nil {
+			return nil, fmt.Errorf("unsuspending db %q failed due to an error while trying to retrieve latest config from bucket %q: %w", base.MD(dbName).Redact(), base.MD(bucket).Redact(), err)
+		}
+		dbConfig.cas = cas
+		dbCtx, err = sc._getOrAddDatabaseFromConfig(*dbConfig, false, db.GetConnectToBucketFn(false))
+		if err != nil {
+			return nil, err
+		}
+		return dbCtx, nil
+	}
+
+	return nil, base.ErrNotFound
 }
 
 func (sc *ServerContext) installPrincipals(ctx context.Context, dbc *db.DatabaseContext, spec map[string]*auth.PrincipalConfig, what string) error {

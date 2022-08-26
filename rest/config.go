@@ -26,6 +26,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/square/go-jose.v2"
@@ -61,6 +62,8 @@ const (
 	DefaultNumIndexReplicas = uint(1)
 
 	DefaultUseTLSServer = true
+
+	DefaultFetchConfigsCacheTTL = time.Second
 )
 
 // Bucket configuration elements - used by db, index
@@ -1420,6 +1423,25 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 	}
 
 	return false, nil, nil
+}
+
+// fetchConfigsCache returns cached configs in the buckets. This cache is refreshed before returning if the configs are older
+// than the duration set in the FetchConfigsCacheTTL startup config option.
+func (sc *ServerContext) fetchConfigsCache() (dbNameConfigs map[string]DatabaseConfig, err error) {
+	cacheTimeLimit := DefaultFetchConfigsCacheTTL
+	if sc.config.Unsupported.Serverless.FetchConfigsCacheTTL != nil {
+		cacheTimeLimit = sc.config.Unsupported.Serverless.FetchConfigsCacheTTL.Value()
+	}
+
+	if sc.fetchConfigsCacheUpdated.IsZero() || time.Now().Sub(sc.fetchConfigsCacheUpdated) >= cacheTimeLimit {
+		sc.fetchedConfigsCache, err = sc.fetchConfigs(false)
+		if err != nil {
+			return nil, err
+		}
+		sc.fetchConfigsCacheUpdated = time.Now()
+	}
+
+	return sc.fetchedConfigsCache, nil
 }
 
 // fetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
