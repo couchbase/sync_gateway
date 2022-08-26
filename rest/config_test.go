@@ -996,8 +996,8 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 
 	ctx := base.TestCtx(t)
 	sc := NewServerContext(ctx, config, false)
-	defer sc.Close(ctx)
 	ctx = sc.AddServerLogContext(ctx)
+	defer sc.Close(ctx)
 	for _, dbConfig := range databases {
 		_, err := sc.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: *dbConfig})
 		require.NoError(t, err, "Couldn't add database from config")
@@ -1352,8 +1352,8 @@ func TestSetupServerContext(t *testing.T) {
 		config.Bootstrap.Password = base.TestClusterPassword()
 		ctx := base.TestCtx(t)
 		sc, err := setupServerContext(ctx, &config, false)
-		defer sc.Close(ctx)
 		ctx = sc.AddServerLogContext(ctx)
+		defer sc.Close(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, sc)
 	})

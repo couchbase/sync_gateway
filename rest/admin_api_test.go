@@ -4034,6 +4034,7 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	// Start a new SG node and ensure we *can* load the "newer" config version on initial startup, to support downgrade
 	sc, err = setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
+	ctx = sc.AddServerLogContext(ctx)
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)

@@ -2021,8 +2021,8 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 	ctx := base.TestCtx(t)
 	h := &handler{}
 	h.server = NewServerContext(ctx, &StartupConfig{}, false)
-	defer h.server.Close(ctx)
 	ctx = h.server.AddServerLogContext(ctx)
+	defer h.server.Close(ctx)
 
 	// Basic case, no heartbeat, no timeout
 	optStr := `{"feed":"longpoll", "since": "123456:78", "limit":123, "style": "all_docs",
@@ -3681,6 +3681,7 @@ func TestEventConfigValidationSuccess(t *testing.T) {
 
 	ctx := base.TestCtx(t)
 	sc := NewServerContext(ctx, &StartupConfig{}, false)
+	ctx = sc.AddServerLogContext(ctx)
 	defer sc.Close(ctx)
 
 	// Valid config
@@ -3704,7 +3705,6 @@ func TestEventConfigValidationSuccess(t *testing.T) {
 	err := base.JSONUnmarshal([]byte(configJSON), &dbConfig)
 	assert.True(t, err == nil)
 
-	ctx = sc.AddServerLogContext(ctx)
 	_, err = sc.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig})
 	assert.True(t, err == nil)
 }
@@ -4223,8 +4223,8 @@ func TestUnsupportedConfig(t *testing.T) {
 
 	ctx := base.TestCtx(t)
 	sc := NewServerContext(ctx, &StartupConfig{}, false)
-	defer sc.Close(ctx)
 	ctx = sc.AddServerLogContext(ctx)
+	defer sc.Close(ctx)
 
 	testProviderOnlyJSON := `{"name": "test_provider_only",
         			"server": "walrus:",
