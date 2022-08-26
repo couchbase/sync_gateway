@@ -193,7 +193,8 @@ func TestCheckPermissionsWithX509(t *testing.T) {
 	tb, caCertPath, certPath, keyPath := setupX509Tests(t, true)
 	defer tb.Close()
 
-	svrctx := NewServerContext(&StartupConfig{
+	ctx := base.TestCtx(t)
+	svrctx := NewServerContext(ctx, &StartupConfig{
 		Bootstrap: BootstrapConfig{
 			Server:       serverURL,
 			X509CertPath: certPath,
@@ -201,10 +202,10 @@ func TestCheckPermissionsWithX509(t *testing.T) {
 			CACertPath:   caCertPath,
 		},
 	}, false)
-	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: svrctx.config.Bootstrap.ConfigGroupID})
 	defer svrctx.Close(ctx)
 
-	goCBAgent, err := svrctx.initializeGoCBAgent()
+	ctx = svrctx.AddServerLogContext(ctx)
+	goCBAgent, err := svrctx.initializeGoCBAgent(ctx)
 	require.NoError(t, err)
 	svrctx.GoCBAgent = goCBAgent
 
@@ -486,7 +487,8 @@ func TestAdminAuthWithX509(t *testing.T) {
 	tb, caCertPath, certPath, keyPath := setupX509Tests(t, true)
 	defer tb.Close()
 
-	svrctx := NewServerContext(&StartupConfig{
+	ctx := base.TestCtx(t)
+	svrctx := NewServerContext(ctx, &StartupConfig{
 		Bootstrap: BootstrapConfig{
 			Server:       serverURL,
 			X509CertPath: certPath,
@@ -494,10 +496,10 @@ func TestAdminAuthWithX509(t *testing.T) {
 			CACertPath:   caCertPath,
 		},
 	}, false)
-	ctx := base.LogContextWith(base.TestCtx(t), &base.ServerLogContext{ConfigGroupID: svrctx.config.Bootstrap.ConfigGroupID})
 	defer svrctx.Close(ctx)
 
-	goCBAgent, err := svrctx.initializeGoCBAgent()
+	ctx = svrctx.AddServerLogContext(ctx)
+	goCBAgent, err := svrctx.initializeGoCBAgent(ctx)
 	require.NoError(t, err)
 	svrctx.GoCBAgent = goCBAgent
 

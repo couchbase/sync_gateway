@@ -1971,7 +1971,8 @@ func TestMissingNoRev(t *testing.T) {
 	}
 
 	// Get a reference to the database
-	targetDbContext, err := rt.ServerContext().GetDatabase("db")
+	ctx := rt.Context()
+	targetDbContext, err := rt.ServerContext().GetDatabase(ctx, "db")
 	assert.NoError(t, err, "failed")
 	targetDb, err := db.GetDatabase(targetDbContext, nil)
 	assert.NoError(t, err, "failed")
