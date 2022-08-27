@@ -456,11 +456,10 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	// Now set the request's Database (i.e. context + user)
 	if dbContext != nil {
 		h.keyspaceScope, h.keyspaceCollection = *keyspaceScope, *keyspaceCollection
-		h.db, err = db.GetDatabase(dbContext, h.user)
+		h.db, err = db.GetDatabase(h.ctx(), dbContext, h.user)
 		if err != nil {
 			return err
 		}
-		h.db.Ctx = h.ctx()
 	}
 
 	return method(h) // Call the actual handler code

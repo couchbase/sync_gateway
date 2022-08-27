@@ -826,6 +826,10 @@ func (dc *DatabaseContext) TakeDbOffline(ctx context.Context, reason string) err
 	}
 }
 
+func (db *Database) TakeDbOffline(reason string) error {
+	return db.DatabaseContext.TakeDbOffline(db.Ctx, reason)
+}
+
 func (context *DatabaseContext) Authenticator(ctx context.Context) *auth.Authenticator {
 	context.BucketLock.RLock()
 	defer context.BucketLock.RUnlock()
@@ -853,11 +857,13 @@ func (context *DatabaseContext) Authenticator(ctx context.Context) *auth.Authent
 }
 
 // Makes a Database object given its name and bucket.
-func GetDatabase(context *DatabaseContext, user auth.User) (*Database, error) {
-	return &Database{DatabaseContext: context, user: user}, nil
+func GetDatabase(ctx context.Context, dbCtx *DatabaseContext, user auth.User) (*Database, error) {
+	ctx = dbCtx.AddDatabaseLogContext(ctx) // add db log info before passing ctx down
+	return &Database{Ctx: ctx, DatabaseContext: dbCtx, user: user}, nil
 }
 
 func CreateDatabase(ctx context.Context, dbCtx *DatabaseContext) (*Database, error) {
+	ctx = dbCtx.AddDatabaseLogContext(ctx) // add db log info before passing ctx down
 	return &Database{Ctx: ctx, DatabaseContext: dbCtx}, nil
 }
 
@@ -876,6 +882,10 @@ func (db *Database) User() auth.User {
 
 func (db *Database) SetUser(user auth.User) {
 	db.user = user
+}
+
+func (db *Database) Close() {
+	db.DatabaseContext.Close(db.Ctx)
 }
 
 // Reloads the database's User object, in case its persistent properties have been changed.
@@ -1389,6 +1399,10 @@ func (dbCtx *DatabaseContext) UpdateSyncFun(ctx context.Context, syncFun string)
 		err = nil
 	}
 	return
+}
+
+func (db *Database) UpdateSyncFun(syncFun string) (changed bool, err error) {
+	return db.DatabaseContext.UpdateSyncFun(db.Ctx, syncFun)
 }
 
 // Re-runs the sync function on every current document in the database (if doCurrentDocs==true)
