@@ -242,18 +242,18 @@ func ValidateDatabaseName(dbName string) error {
 }
 
 // connectToBucketErrorHandling takes the given spec and error and returns a formatted error, along with whether it was a fatal error.
-func connectToBucketErrorHandling(spec base.BucketSpec, gotErr error) (fatalError bool, err error) {
+func connectToBucketErrorHandling(ctx context.Context, spec base.BucketSpec, gotErr error) (fatalError bool, err error) {
 	if gotErr != nil {
 		if errors.Is(gotErr, base.ErrAuthError) {
 			username, _, _ := spec.Auth.GetCredentials()
-			base.WarnfCtx(context.TODO(), "Unable to authenticate as user %q: %v", base.UD(username), gotErr)
+			base.WarnfCtx(ctx, "Unable to authenticate as user %q: %v", base.UD(username), gotErr)
 			// auth errors will be wrapped with HTTPError further up the stack where appropriate. Return the raw error that can still be checked.
 			return false, gotErr
 		}
 
 		// Fatal errors get an additional log message, but are otherwise still transformed below.
 		if errors.Is(gotErr, base.ErrFatalBucketConnection) {
-			base.WarnfCtx(context.TODO(), "Fatal error connecting to bucket: %v", gotErr)
+			base.WarnfCtx(ctx, "Fatal error connecting to bucket: %v", gotErr)
 			fatalError = true
 		}
 
@@ -265,24 +265,24 @@ func connectToBucketErrorHandling(spec base.BucketSpec, gotErr error) (fatalErro
 	return false, nil
 }
 
-type OpenBucketFn func(spec base.BucketSpec) (base.Bucket, error)
+type OpenBucketFn func(ctx context.Context, spec base.BucketSpec) (base.Bucket, error)
 
 // connectToBucketFailFast opens a Couchbase connect and return a specific bucket without retrying on failure.
-func connectToBucketFailFast(spec base.BucketSpec) (bucket base.Bucket, err error) {
+func connectToBucketFailFast(ctx context.Context, spec base.BucketSpec) (bucket base.Bucket, err error) {
 	bucket, err = base.GetBucket(spec)
-	_, err = connectToBucketErrorHandling(spec, err)
+	_, err = connectToBucketErrorHandling(ctx, spec, err)
 	return bucket, err
 }
 
 // connectToBucket opens a Couchbase connection and return a specific bucket.
-func connectToBucket(spec base.BucketSpec) (base.Bucket, error) {
+func connectToBucket(ctx context.Context, spec base.BucketSpec) (base.Bucket, error) {
 
 	// start a retry loop to connect to the bucket backing off double the delay each time
 	worker := func() (bool, error, interface{}) {
 		bucket, err := base.GetBucket(spec)
 
 		// Retry if there was a non-fatal error
-		fatalError, newErr := connectToBucketErrorHandling(spec, err)
+		fatalError, newErr := connectToBucketErrorHandling(ctx, spec, err)
 		shouldRetry := newErr != nil && !fatalError
 
 		return shouldRetry, newErr, bucket
@@ -315,7 +315,7 @@ func GetConnectToBucketFn(failFast bool) OpenBucketFn {
 type DBOnlineCallback func(dbContext *DatabaseContext)
 
 // Creates a new DatabaseContext on a bucket. The bucket will be closed when this context closes.
-func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, options DatabaseContextOptions) (dbc *DatabaseContext, returnedError error) {
+func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, autoImport bool, options DatabaseContextOptions) (dbc *DatabaseContext, returnedError error) {
 	cleanupFunctions := make([]func(), 0)
 
 	defer func() {
@@ -330,11 +330,11 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		return nil, err
 	}
 
-	// TODO: receive ctx param from (sc *ServerContext) _getOrAddDatabaseFromConfig
-	logCtx := base.LogContextWith(context.TODO(), &base.DatabaseLogContext{DatabaseName: base.MD(dbName).Redact()})
+	// add db info to ctx before passing it down
+	ctx = base.LogContextWith(ctx, &base.DatabaseLogContext{DatabaseName: dbName})
 
 	// Register the cbgt pindex type for the configGroup
-	RegisterImportPindexImpl(logCtx, options.GroupID)
+	RegisterImportPindexImpl(ctx, options.GroupID)
 
 	dbContext := &DatabaseContext{
 		Name:       dbName,
@@ -396,13 +396,13 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	// Initialize the ChangeCache.  Will be locked and unusable until .Start() is called (SG #3558)
 	err = dbContext.changeCache.Init(
-		logCtx,
+		ctx,
 		dbContext,
 		notifyChange,
 		options.CacheOptions,
 	)
 	if err != nil {
-		base.DebugfCtx(logCtx, base.KeyDCP, "Error initializing the change cache", err)
+		base.DebugfCtx(ctx, base.KeyDCP, "Error initializing the change cache", err)
 	}
 
 	// Set the DB Context notifyChange callback to call back the changecache DocChanged callback
@@ -466,7 +466,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}
 
 	// Start DCP feed
-	base.InfofCtx(logCtx, base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import)", base.MD(bucket.GetName()))
+	base.InfofCtx(ctx, base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import)", base.MD(bucket.GetName()))
 	cacheFeedStatsMap := dbContext.DbStats.Database().CacheFeedMapStats
 	err = dbContext.mutationListener.Start(bucket, cacheFeedStatsMap.Map)
 
@@ -499,7 +499,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	// subscription relies on the caching feed.
 	if importEnabled {
 		dbContext.ImportListener = NewImportListener(dbContext.Options.GroupID)
-		if importFeedErr := dbContext.ImportListener.StartImportFeed(logCtx, bucket, dbContext.DbStats, dbContext); importFeedErr != nil {
+		if importFeedErr := dbContext.ImportListener.StartImportFeed(ctx, bucket, dbContext.DbStats, dbContext); importFeedErr != nil {
 			return nil, importFeedErr
 		}
 
@@ -515,7 +515,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		for name, provider := range options.OIDCOptions.Providers {
 			if provider.Issuer == "" || base.StringDefault(provider.ClientID, "") == "" {
 				// TODO: this duplicates a check in DbConfig.validate to avoid a backwards compatibility issue
-				base.WarnfCtx(logCtx, "Issuer and Client ID not defined for provider %q - skipping", base.UD(name))
+				base.WarnfCtx(ctx, "Issuer and Client ID not defined for provider %q - skipping", base.UD(name))
 				continue
 			}
 			provider.Name = name
@@ -556,12 +556,12 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		if ok {
 			serverPurgeInterval, err := cbStore.MetadataPurgeInterval()
 			if err != nil {
-				base.WarnfCtx(logCtx, "Unable to retrieve server's metadata purge interval - will use default value. %s", err)
+				base.WarnfCtx(ctx, "Unable to retrieve server's metadata purge interval - will use default value. %s", err)
 			} else if serverPurgeInterval > 0 {
 				dbContext.PurgeInterval = serverPurgeInterval
 			}
 		}
-		base.InfofCtx(logCtx, base.KeyAll, "Using metadata purge interval of %.2f days for tombstone compaction.", dbContext.PurgeInterval.Hours()/24)
+		base.InfofCtx(ctx, base.KeyAll, "Using metadata purge interval of %.2f days for tombstone compaction.", dbContext.PurgeInterval.Hours()/24)
 
 		if dbContext.Options.CompactInterval != 0 {
 			if autoImport {
@@ -584,7 +584,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 				}
 				db.backgroundTasks = append(db.backgroundTasks, bgt)
 			} else {
-				base.WarnfCtx(logCtx, "Automatic compaction can only be enabled on nodes running an Import process")
+				base.WarnfCtx(ctx, "Automatic compaction can only be enabled on nodes running an Import process")
 			}
 		}
 
@@ -662,7 +662,7 @@ func (context *DatabaseContext) SetOnChangeCallback(callback DocChangedFunc) {
 	context.mutationListener.OnDocChanged = callback
 }
 
-func (dbCtx *DatabaseContext) GetServerUUID() string {
+func (dbCtx *DatabaseContext) GetServerUUID(ctx context.Context) string {
 
 	dbCtx.BucketLock.RLock()
 	defer dbCtx.BucketLock.RUnlock()
@@ -671,17 +671,17 @@ func (dbCtx *DatabaseContext) GetServerUUID() string {
 	if dbCtx.serverUUID == "" {
 		cbs, ok := base.AsCouchbaseStore(dbCtx.Bucket)
 		if !ok {
-			base.WarnfCtx(context.TODO(), "Database %v: Unable to get server UUID. Underlying bucket type was not GoCBBucket.", base.MD(dbCtx.Name))
+			base.WarnfCtx(ctx, "Database %v: Unable to get server UUID. Underlying bucket type was not GoCBBucket.", base.MD(dbCtx.Name))
 			return ""
 		}
 
 		uuid, err := cbs.ServerUUID()
 		if err != nil {
-			base.WarnfCtx(context.TODO(), "Database %v: Unable to get server UUID: %v", base.MD(dbCtx.Name), err)
+			base.WarnfCtx(ctx, "Database %v: Unable to get server UUID: %v", base.MD(dbCtx.Name), err)
 			return ""
 		}
 
-		base.DebugfCtx(context.TODO(), base.KeyAll, "Database %v: Got server UUID %v", base.MD(dbCtx.Name), base.MD(uuid))
+		base.DebugfCtx(ctx, base.KeyAll, "Database %v: Got server UUID %v", base.MD(dbCtx.Name), base.MD(uuid))
 		dbCtx.serverUUID = uuid
 	}
 
@@ -693,14 +693,15 @@ func (context *DatabaseContext) GetChangeCache() *changeCache {
 	return context.changeCache
 }
 
-func (context *DatabaseContext) Close() {
+func (context *DatabaseContext) Close(ctx context.Context) {
 	context.BucketLock.Lock()
 	defer context.BucketLock.Unlock()
 
+	ctx = context.AddDatabaseLogContext(ctx) // add db info to ctx before passing it down
 	context.OIDCProviders.Stop()
 	close(context.terminator)
 	// Wait for database background tasks to finish.
-	waitForBGTCompletion(BGTCompletionMaxWait, context.backgroundTasks, context.Name)
+	waitForBGTCompletion(ctx, BGTCompletionMaxWait, context.backgroundTasks, context.Name)
 	context.sequences.Stop()
 	context.mutationListener.Stop()
 	context.changeCache.Stop()
@@ -719,7 +720,7 @@ func (context *DatabaseContext) Close() {
 }
 
 // waitForBGTCompletion waits for all the background tasks to finish.
-func waitForBGTCompletion(waitTimeMax time.Duration, tasks []BackgroundTask, dbName string) {
+func waitForBGTCompletion(ctx context.Context, waitTimeMax time.Duration, tasks []BackgroundTask, dbName string) {
 	waitTime := waitTimeMax
 	for _, t := range tasks {
 		start := time.Now()
@@ -730,7 +731,7 @@ func waitForBGTCompletion(waitTimeMax time.Duration, tasks []BackgroundTask, dbN
 		case <-time.After(waitTime):
 			// Timeout after waiting for background task to terminate.
 		}
-		base.InfofCtx(context.TODO(), base.KeyAll, "Timeout after %v of waiting for background task %q to "+
+		base.InfofCtx(ctx, base.KeyAll, "Timeout after %v of waiting for background task %q to "+
 			"terminate, database: %s", waitTimeMax, t.taskName, dbName)
 	}
 }
@@ -755,8 +756,8 @@ func (context *DatabaseContext) RestartListener() error {
 }
 
 // Cache flush support.  Currently test-only - added for unit test access from rest package
-func (dbCtx *DatabaseContext) FlushChannelCache() error {
-	base.InfofCtx(context.TODO(), base.KeyCache, "Flushing channel cache")
+func (dbCtx *DatabaseContext) FlushChannelCache(ctx context.Context) error {
+	base.InfofCtx(ctx, base.KeyCache, "Flushing channel cache")
 	return dbCtx.changeCache.Clear()
 }
 
@@ -766,7 +767,7 @@ func (context *DatabaseContext) RemoveObsoleteDesignDocs(previewOnly bool) (remo
 }
 
 // Removes previous versions of Sync Gateway's indexes found on the server
-func (dbCtx *DatabaseContext) RemoveObsoleteIndexes(previewOnly bool) (removedIndexes []string, err error) {
+func (dbCtx *DatabaseContext) RemoveObsoleteIndexes(ctx context.Context, previewOnly bool) (removedIndexes []string, err error) {
 
 	if !dbCtx.Bucket.IsSupported(sgbucket.DataStoreFeatureN1ql) {
 		return removedIndexes, nil
@@ -774,7 +775,7 @@ func (dbCtx *DatabaseContext) RemoveObsoleteIndexes(previewOnly bool) (removedIn
 
 	n1qlStore, ok := base.AsN1QLStore(dbCtx.Bucket)
 	if !ok {
-		base.WarnfCtx(context.TODO(), "Cannot remove obsolete indexes for non-gocb bucket - skipping.")
+		base.WarnfCtx(ctx, "Cannot remove obsolete indexes for non-gocb bucket - skipping.")
 		return make([]string, 0), nil
 	}
 
@@ -788,7 +789,7 @@ func (context *DatabaseContext) NotifyTerminatedChanges(username string) {
 	context.mutationListener.NotifyCheckForTermination(base.SetOf(base.UserPrefix + username))
 }
 
-func (dc *DatabaseContext) TakeDbOffline(reason string) error {
+func (dc *DatabaseContext) TakeDbOffline(ctx context.Context, reason string) error {
 
 	if atomic.CompareAndSwapUint32(&dc.State, DBOnline, DBStopping) {
 		// notify all active _changes feeds to close
@@ -804,7 +805,7 @@ func (dc *DatabaseContext) TakeDbOffline(reason string) error {
 		atomic.StoreUint32(&dc.State, DBOffline)
 
 		if err := dc.EventMgr.RaiseDBStateChangeEvent(dc.Name, "offline", reason, dc.Options.AdminInterface); err != nil {
-			base.DebugfCtx(context.TODO(), base.KeyCRUD, "Error raising database state change event: %v", err)
+			base.DebugfCtx(ctx, base.KeyCRUD, "Error raising database state change event: %v", err)
 		}
 
 		return nil
@@ -820,7 +821,7 @@ func (dc *DatabaseContext) TakeDbOffline(reason string) error {
 			msg = "Unable to take Database offline, another operation was already in progress. Please try again."
 		}
 
-		base.InfofCtx(context.TODO(), base.KeyCRUD, msg)
+		base.InfofCtx(ctx, base.KeyCRUD, msg)
 		return base.HTTPErrorf(http.StatusServiceUnavailable, msg)
 	}
 }
@@ -856,8 +857,8 @@ func GetDatabase(context *DatabaseContext, user auth.User) (*Database, error) {
 	return &Database{DatabaseContext: context, user: user}, nil
 }
 
-func CreateDatabase(context *DatabaseContext) (*Database, error) {
-	return &Database{DatabaseContext: context}, nil
+func CreateDatabase(ctx context.Context, dbCtx *DatabaseContext) (*Database, error) {
+	return &Database{Ctx: ctx, DatabaseContext: dbCtx}, nil
 }
 
 func (db *Database) SameAs(otherdb *Database) bool {
@@ -1349,7 +1350,7 @@ func (db *Database) Compact(skipRunningStateCheck bool, callback compactCallback
 // Returns a boolean indicating whether the function is different from the saved one.
 // If multiple gateway instances try to update the function at the same time (to the same new
 // value) only one of them will get a changed=true result.
-func (dbCtx *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err error) {
+func (dbCtx *DatabaseContext) UpdateSyncFun(ctx context.Context, syncFun string) (changed bool, err error) {
 	if syncFun == "" {
 		dbCtx.ChannelMapper = nil
 	} else if dbCtx.ChannelMapper != nil {
@@ -1358,7 +1359,7 @@ func (dbCtx *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err e
 		dbCtx.ChannelMapper = channels.NewChannelMapper(syncFun, dbCtx.Options.JavascriptTimeout)
 	}
 	if err != nil {
-		base.WarnfCtx(context.TODO(), "Error setting sync function: %s", err)
+		base.WarnfCtx(ctx, "Error setting sync function: %s", err)
 		return
 	}
 
@@ -1682,20 +1683,20 @@ func (db *Database) invalUserOrRoleChannels(name string, invalSeq uint64) {
 	}
 }
 
-func (dbCtx *DatabaseContext) ObtainManagementEndpoints() ([]string, error) {
+func (dbCtx *DatabaseContext) ObtainManagementEndpoints(ctx context.Context) ([]string, error) {
 	cbStore, ok := base.AsCouchbaseStore(dbCtx.Bucket)
 	if !ok {
-		base.WarnfCtx(context.TODO(), "Database %v: Unable to get server management endpoints. Underlying bucket type was not GoCBBucket.", base.MD(dbCtx.Name))
+		base.WarnfCtx(ctx, "Database %v: Unable to get server management endpoints. Underlying bucket type was not GoCBBucket.", base.MD(dbCtx.Name))
 		return nil, nil
 	}
 
 	return base.GoCBBucketMgmtEndpoints(cbStore)
 }
 
-func (dbCtx *DatabaseContext) ObtainManagementEndpointsAndHTTPClient() ([]string, *http.Client, error) {
+func (dbCtx *DatabaseContext) ObtainManagementEndpointsAndHTTPClient(ctx context.Context) ([]string, *http.Client, error) {
 	cbStore, ok := base.AsCouchbaseStore(dbCtx.Bucket)
 	if !ok {
-		base.WarnfCtx(context.TODO(), "Database %v: Unable to get server management endpoints. Underlying bucket type was not GoCBBucket.", base.MD(dbCtx.Name))
+		base.WarnfCtx(ctx, "Database %v: Unable to get server management endpoints. Underlying bucket type was not GoCBBucket.", base.MD(dbCtx.Name))
 		return nil, nil, nil
 	}
 

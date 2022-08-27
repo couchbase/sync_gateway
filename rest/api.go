@@ -215,7 +215,7 @@ func (h *handler) handleFlush() error {
 		}
 
 		// Manually re-open a temporary bucket connection just for flushing purposes
-		tempBucketForFlush, err := db.GetConnectToBucketFn(false)(spec)
+		tempBucketForFlush, err := db.GetConnectToBucketFn(false)(h.ctx(), spec)
 		if err != nil {
 			return err
 		}
@@ -339,7 +339,7 @@ func (h *handler) handlePostUpgrade() error {
 
 	preview := h.getBoolQuery("preview")
 
-	postUpgradeResults, err := h.server.PostUpgrade(preview)
+	postUpgradeResults, err := h.server.PostUpgrade(h.ctx(), preview)
 	if err != nil {
 		return err
 	}
@@ -402,7 +402,7 @@ func (h *handler) handleGetDB() error {
 		PurgeSequenceNumber:           0, // TODO: Should track this value
 		DiskFormatVersion:             0, // Probably meaningless, but add for compatibility
 		State:                         runState,
-		ServerUUID:                    h.db.DatabaseContext.GetServerUUID(),
+		ServerUUID:                    h.db.DatabaseContext.GetServerUUID(h.ctx()),
 		// TODO: If running with multiple scope/collections
 		// Scopes: map[string]databaseRootScope{
 		// 	"scope1": {

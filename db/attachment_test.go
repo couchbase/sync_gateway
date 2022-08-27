@@ -46,17 +46,19 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	deltasEnabled := base.IsEnterpriseEdition()
 	xattrsEnabled := base.TestUseXattrs()
 
+	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
-	dbCtx, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{
+	dbCtx, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
 		EnableXattr: xattrsEnabled,
 		DeltaSyncOptions: DeltaSyncOptions{
 			Enabled:          deltasEnabled,
 			RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
 		},
 	})
+	ctx = dbCtx.AddDatabaseLogContext(ctx)
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	defer dbCtx.Close()
-	db, err := CreateDatabase(dbCtx)
+	db, err := CreateDatabase(ctx, dbCtx)
 	assert.NoError(t, err, "Couldn't create database 'db'")
 
 	docID := "doc1"
@@ -104,11 +106,12 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 
 func TestAttachments(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
-	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	defer context.Close()
-	db, err := CreateDatabase(context)
+	db, err := CreateDatabase(ctx, context)
 	assert.NoError(t, err, "Couldn't create database 'db'")
 
 	// Test creating & updating a document:
@@ -216,11 +219,12 @@ func TestAttachments(t *testing.T) {
 
 func TestAttachmentForRejectedDocument(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
-	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	defer context.Close()
-	db, err := CreateDatabase(context)
+	db, err := CreateDatabase(ctx, context)
 	assert.NoError(t, err, "Couldn't create database 'db'")
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
@@ -243,11 +247,12 @@ func TestAttachmentForRejectedDocument(t *testing.T) {
 
 func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
-	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	defer context.Close()
-	db, err := CreateDatabase(context)
+	db, err := CreateDatabase(ctx, context)
 	assert.NoError(t, err, "Couldn't create database 'db'")
 
 	// Test creating & updating a document:
@@ -421,11 +426,12 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 }
 
 func TestForEachStubAttachmentErrors(t *testing.T) {
+	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
-	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	defer context.Close()
-	db, err := CreateDatabase(context)
+	db, err := CreateDatabase(ctx, context)
 	assert.NoError(t, err, "Couldn't create database 'db'")
 
 	var body Body
@@ -568,11 +574,12 @@ func TestDecodeAttachmentError(t *testing.T) {
 }
 
 func TestSetAttachment(t *testing.T) {
+	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
-	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	assert.NoError(t, err, "The database context should be created for database 'db'")
 	defer context.Close()
-	db, err := CreateDatabase(context)
+	db, err := CreateDatabase(ctx, context)
 	assert.NoError(t, err, "The database 'db' should be created")
 
 	// Set attachment with a valid attachment
@@ -586,11 +593,12 @@ func TestSetAttachment(t *testing.T) {
 }
 
 func TestRetrieveAncestorAttachments(t *testing.T) {
+	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
-	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	assert.NoError(t, err, "The database context should be created for database 'db'")
 	defer context.Close()
-	db, err := CreateDatabase(context)
+	db, err := CreateDatabase(ctx, context)
 	assert.NoError(t, err, "The database 'db' should be created")
 
 	var body Body
@@ -655,11 +663,12 @@ func TestRetrieveAncestorAttachments(t *testing.T) {
 }
 
 func TestStoreAttachments(t *testing.T) {
+	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
-	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	assert.NoError(t, err, "The database context should be created for database 'db'")
 	defer context.Close()
-	db, err := CreateDatabase(context)
+	db, err := CreateDatabase(ctx, context)
 	assert.NoError(t, err, "The database 'db' should be created")
 	var revBody Body
 
@@ -770,13 +779,14 @@ func TestMigrateBodyAttachments(t *testing.T) {
 	const docKey = "TestAttachmentMigrate"
 
 	setupFn := func(t *testing.T) (db *Database, teardownFn func()) {
+		ctx := base.TestCtx(t)
 		bucket := base.GetTestBucket(t)
-		dbCtx, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{
+		dbCtx, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
 			EnableXattr: base.TestUseXattrs(),
 		})
 
 		assert.NoError(t, err, "The database context should be created for database 'db'")
-		db, err = CreateDatabase(dbCtx)
+		db, err = CreateDatabase(ctx, dbCtx)
 		assert.NoError(t, err, "The database 'db' should be created")
 
 		// Put a document with hello.txt attachment, to write attachment to the bucket
@@ -1049,14 +1059,15 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 
 	const docKey = "TestAttachmentMigrate"
 
+	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
-	dbCtx, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{
+	dbCtx, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
 		EnableXattr: base.TestUseXattrs(),
 	})
 	require.NoError(t, err, "The database context should be created for database 'db'")
 	defer dbCtx.Close()
 
-	db, err := CreateDatabase(dbCtx)
+	db, err := CreateDatabase(ctx, dbCtx)
 	require.NoError(t, err, "The database 'db' should be created")
 
 	// Put a document 2 attachments, to write attachment to the bucket
@@ -1212,14 +1223,15 @@ func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
 
 	const docKey = "TestAttachmentMigrate"
 
+	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
-	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{
+	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
 		EnableXattr: base.TestUseXattrs(),
 	})
 	require.NoError(t, err, "The database context should be created for database 'db'")
 	defer context.Close()
 
-	db, err := CreateDatabase(context)
+	db, err := CreateDatabase(ctx, context)
 	require.NoError(t, err, "The database 'db' should be created")
 
 	// Put a document with 3 attachments, to write attachments to the bucket
@@ -1566,10 +1578,11 @@ func TestGetAttVersion(t *testing.T) {
 }
 
 func TestLargeAttachments(t *testing.T) {
-	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
+	ctx := base.TestCtx(t)
+	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	defer context.Close()
-	db, err := CreateDatabase(context)
+	db, err := CreateDatabase(ctx, context)
 	assert.NoError(t, err, "Couldn't create database 'db'")
 
 	normalAttachment := make([]byte, 15*1024*1024)   // permissible size

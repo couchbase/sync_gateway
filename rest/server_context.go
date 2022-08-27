@@ -171,9 +171,9 @@ func (sc *ServerContext) Close(ctx context.Context) {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
 
-	for _, ctx := range sc.databases_ {
-		ctx.Close()
-		_ = ctx.EventMgr.RaiseDBStateChangeEvent(ctx.Name, "offline", "Database context closed", &sc.config.API.AdminInterface)
+	for _, db := range sc.databases_ {
+		db.Close(ctx)
+		_ = db.EventMgr.RaiseDBStateChangeEvent(db.Name, "offline", "Database context closed", &sc.config.API.AdminInterface)
 	}
 	sc.databases_ = nil
 
@@ -271,7 +271,7 @@ type PostUpgradeDatabaseResult struct {
 }
 
 // PostUpgrade performs post-upgrade processing for each database
-func (sc *ServerContext) PostUpgrade(preview bool) (postUpgradeResults PostUpgradeResult, err error) {
+func (sc *ServerContext) PostUpgrade(ctx context.Context, preview bool) (postUpgradeResults PostUpgradeResult, err error) {
 	sc.lock.RLock()
 	defer sc.lock.RUnlock()
 
@@ -284,7 +284,7 @@ func (sc *ServerContext) PostUpgrade(preview bool) (postUpgradeResults PostUpgra
 		// Index cleanup
 		var removedIndexes []string
 		if !base.TestsDisableGSI() {
-			removedIndexes, _ = database.RemoveObsoleteIndexes(preview)
+			removedIndexes, _ = database.RemoveObsoleteIndexes(ctx, preview)
 		}
 
 		postUpgradeResults[name] = PostUpgradeDatabaseResult{
@@ -402,7 +402,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	// Connect to bucket
 	base.InfofCtx(ctx, base.KeyAll, "Opening db /%s as bucket %q, pool %q, server <%s>",
 		base.MD(dbName), base.MD(spec.BucketName), base.SD(base.DefaultPool), base.SD(spec.Server))
-	bucket, err := openBucketFn(spec)
+	bucket, err := openBucketFn(ctx, spec)
 	if err != nil {
 		return nil, err
 	}
@@ -506,7 +506,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	contextOptions.UseViews = useViews
 
 	// Create the DB Context
-	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, contextOptions)
+	dbcontext, err := db.NewDatabaseContext(ctx, dbName, bucket, autoImport, contextOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -993,7 +993,7 @@ func (sc *ServerContext) processEventHandlersForEvent(ctx context.Context, event
 }
 
 func (sc *ServerContext) applySyncFunction(ctx context.Context, dbcontext *db.DatabaseContext, syncFn string) error {
-	changed, err := dbcontext.UpdateSyncFun(syncFn)
+	changed, err := dbcontext.UpdateSyncFun(ctx, syncFn)
 	if err != nil || !changed {
 		return err
 	}
@@ -1016,7 +1016,7 @@ func (sc *ServerContext) _unloadDatabase(ctx context.Context, dbName string) boo
 		return false
 	}
 	base.InfofCtx(ctx, base.KeyAll, "Closing db /%s (bucket %q)", base.MD(dbCtx.Name), base.MD(dbCtx.Bucket.GetName()))
-	dbCtx.Close()
+	dbCtx.Close(ctx)
 	delete(sc.databases_, dbName)
 	return true
 }

@@ -215,22 +215,14 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 		AutoImport:          false,
 	}
 
-<<<<<<< HEAD
-	dbContext, err = serverContext._getOrAddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig}, false, db.GetConnectToBucketFn(false))
-=======
-	dbContext, err = serverContext._getOrAddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig}, false, false)
->>>>>>> 270f801b (CBG-2314: svr ctx tests pt 2)
+	dbContext, err = serverContext._getOrAddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig}, false, db.GetConnectToBucketFn(false))
 	assert.Nil(t, dbContext, "Can't create database context with duplicate database name")
 	assert.Error(t, err, "It should throw 412 Duplicate database names")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusPreconditionFailed))
 
 	// Get or add database from config with duplicate database name and useExisting as true
 	// Existing database context should be returned
-<<<<<<< HEAD
-	dbContext, err = serverContext._getOrAddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig}, true, db.GetConnectToBucketFn(false))
-=======
-	dbContext, err = serverContext._getOrAddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig}, true, false)
->>>>>>> 270f801b (CBG-2314: svr ctx tests pt 2)
+	dbContext, err = serverContext._getOrAddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig}, true, db.GetConnectToBucketFn(false))
 	assert.NoError(t, err, "No error while trying to get the existing database name")
 	assert.Equal(t, server, dbContext.BucketSpec.Server)
 	assert.Equal(t, bucketName, dbContext.BucketSpec.BucketName)

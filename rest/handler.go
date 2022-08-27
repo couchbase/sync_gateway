@@ -396,7 +396,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		var authScope string
 
 		if dbContext != nil {
-			managementEndpoints, httpClient, err = dbContext.ObtainManagementEndpointsAndHTTPClient()
+			managementEndpoints, httpClient, err = dbContext.ObtainManagementEndpointsAndHTTPClient(h.ctx())
 			authScope = dbContext.Bucket.GetName()
 		} else {
 			managementEndpoints, httpClient, err = h.server.ObtainManagementEndpointsAndHTTPClient()

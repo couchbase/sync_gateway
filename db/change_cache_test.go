@@ -182,8 +182,9 @@ func TestLateSequenceHandling(t *testing.T) {
 
 func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	b := base.GetTestBucket(t)
-	context, err := NewDatabaseContext("db", b, false, DatabaseContextOptions{})
+	context, err := NewDatabaseContext(ctx, "db", b, false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close()
 

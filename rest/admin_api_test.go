@@ -4705,7 +4705,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 	err := activeRT.GetDatabase().SGReplicateMgr.StartReplications()
 	require.NoError(t, err)
 
-	database, err := db.CreateDatabase(activeRT.GetDatabase())
+	database, err := db.CreateDatabase(activeRT.Context(), activeRT.GetDatabase())
 	require.NoError(t, err)
 	rev, doc, err := database.Put("test", db.Body{})
 	require.NoError(t, err)

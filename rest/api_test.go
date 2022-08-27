@@ -7618,7 +7618,7 @@ func TestMetricsHandler(t *testing.T) {
 
 	// Create and remove a database
 	// This ensures that creation and removal of a DB is possible without a re-registration issue ( the below rest tester will re-register "db")
-	context, err := db.NewDatabaseContext("db", base.GetTestBucket(t), false, db.DatabaseContextOptions{})
+	context, err := db.NewDatabaseContext(base.TestCtx(t), "db", base.GetTestBucket(t), false, db.DatabaseContextOptions{})
 	require.NoError(t, err)
 	context.Close()
 
@@ -7643,7 +7643,7 @@ func TestMetricsHandler(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Initialize another database to ensure both are registered successfully
-	context, err = db.NewDatabaseContext("db2", base.GetTestBucket(t), false, db.DatabaseContextOptions{})
+	context, err = db.NewDatabaseContext(rt.Context(), "db2", base.GetTestBucket(t), false, db.DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close()
 
@@ -7787,7 +7787,7 @@ func TestUserHasDocAccessDocNotFound(t *testing.T) {
 	requireStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
 
-	database, err := db.CreateDatabase(rt.GetDatabase())
+	database, err := db.CreateDatabase(rt.Context(), rt.GetDatabase())
 	assert.NoError(t, err)
 
 	userHasDocAccess, err := db.UserHasDocAccess(database, "doc", revID)
