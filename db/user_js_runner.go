@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -80,14 +81,14 @@ func newUserJavaScriptRunner(name string, kind string, funcSource string) (*user
 		funcName := ottoStringParam(call, 0, "app.func")
 		params := ottoObjectParam(call, 1, true, "app.func")
 		result, err := runner.do_func(funcName, params)
-		return ottoResult(call, result, err)
+		return ottoJSONResult(call, result, err)
 	})
 
 	// Implementation of the 'get(docID)' callback:
 	runner.DefineNativeFunction("_get", func(call otto.FunctionCall) otto.Value {
 		docID := ottoStringParam(call, 0, "app.get")
 		doc, err := runner.do_get(docID, nil)
-		return ottoResult(call, doc, err)
+		return ottoJSONResult(call, doc, err)
 	})
 
 	// Implementation of the 'graphql(query,params)' callback:
@@ -95,7 +96,7 @@ func newUserJavaScriptRunner(name string, kind string, funcSource string) (*user
 		query := ottoStringParam(call, 0, "app.graphql")
 		params := ottoObjectParam(call, 1, true, "app.graphql")
 		result, err := runner.do_graphql(query, params)
-		return ottoResult(call, result, err)
+		return ottoJSONResult(call, result, err)
 	})
 
 	// Implementation of the 'query(n1ql,params)' callback:
@@ -103,7 +104,7 @@ func newUserJavaScriptRunner(name string, kind string, funcSource string) (*user
 		queryName := ottoStringParam(call, 0, "app.query")
 		params := ottoObjectParam(call, 1, true, "app.query")
 		result, err := runner.do_query(queryName, params)
-		return ottoResult(call, result, err)
+		return ottoJSONResult(call, result, err)
 	})
 
 	// Implementation of the 'save(docID,doc)' callback:
@@ -227,7 +228,7 @@ func (runner *userJSRunner) do_get(docID string, docType *string) (interface{}, 
 	return body, nil
 }
 
-// Implementation of JS `app.graphql(name, params)` function
+// Implementation of JS `app.graphql(query, params)` function
 func (runner *userJSRunner) do_graphql(query string, params map[string]interface{}) (interface{}, error) {
 	return runner.currentDB.UserGraphQLQuery(query, "", params, runner.mutationAllowed)
 }
@@ -305,7 +306,6 @@ func ottoObjectParam(call otto.FunctionCall, arg int, optional bool, what string
 		panic(call.Otto.MakeTypeError("Yikes, couldn't export JS value"))
 	}
 	return obj.(map[string]interface{})
-
 }
 
 // Returns `result` back to Otto; or if `err` is non-nil, "throws" it via a Go panic
@@ -321,6 +321,17 @@ func ottoResult(call otto.FunctionCall, result interface{}, err error) otto.Valu
 			panic(call.Otto.MakeCustomError("Go", err.Error()))
 		}
 	}
+}
+
+// Returns `result` back to Otto in JSON form; or if `err` is non-nil, "throws" it via a Go panic
+func ottoJSONResult(call otto.FunctionCall, result interface{}, err error) otto.Value {
+	if err == nil && result != nil {
+		if j, err := json.Marshal(result); err == nil {
+			val, _ := call.Otto.ToValue(string(j))
+			return val
+		}
+	}
+	return ottoResult(call, result, err)
 }
 
 //////// JAVASCRIPT CODE:
@@ -397,12 +408,25 @@ const kJavaScriptWrapper = "function() {" +
 			}
 		}
 
+		if (!Array.from) {
+			Array.from = function(v) {
+				var len = v.length;
+				if (typeof(len) !== 'number') throw TypeError("Array.from")
+				var a = new Array(len);
+				for (i = 0; i < len; ++i)
+					a[i] = v[i];
+				return a;
+			}
+		}
+
+		function unmarshal(v) {return (typeof(v)==='string') ? JSON.parse(v) : v;}
+
 		// App object contains the native Go functions to access the database:
 		var App = {
-			func:    _func,
-			get:     _get,
-			graphql: _graphql,
-			query:   _query,
+			func:    function(name, args){return unmarshal(_func(name, args));},
+			get:     function(docID)     {return unmarshal(_get(docID));},
+			graphql: function(q,args)    {return unmarshal(_graphql(q,args));},
+			query:   function(name,args) {return unmarshal(_query(name,args));},
 			save:    _save
 		};
 
