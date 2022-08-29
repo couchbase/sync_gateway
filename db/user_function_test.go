@@ -269,6 +269,7 @@ func TestUserFunctionSyntaxError(t *testing.T) {
 		UserFunctions: kUserFunctionBadConfig,
 	}
 	tBucket := base.GetTestBucket(t)
+	defer tBucket.Close()
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	_, err := NewDatabaseContext("db", tBucket, false, dbcOptions)
 	assert.Error(t, err)
