@@ -28,12 +28,10 @@ func TestUserWaiter(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	ctx := base.TestCtx(t)
-
 	// Create user
 	username := "bob"
-	authenticator := db.Authenticator(ctx)
-	require.NotNil(t, authenticator, "db.Authenticator(base.TestCtx(t)) returned nil")
+	authenticator := db.Authenticator(db.Ctx)
+	require.NotNil(t, authenticator, "db.Authenticator(db.Ctx) returned nil")
 	user, err := authenticator.NewUser(username, "letmein", channels.SetOf(t, "ABC"))
 	require.NoError(t, err, "Error creating new user")
 
@@ -58,7 +56,7 @@ func TestUserWaiter(t *testing.T) {
 		Name:             &username,
 		ExplicitChannels: base.SetFromArray([]string{"ABC", "DEF"}),
 	}
-	_, err = db.UpdatePrincipal(ctx, &updatedUser, true, true)
+	_, err = db.UpdatePrincipal(db.Ctx, &updatedUser, true, true)
 	require.NoError(t, err, "Error updating user")
 
 	// Wait for notification from grant
@@ -73,19 +71,17 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	ctx := base.TestCtx(t)
-
 	// Create role
 	roleName := "good_egg"
-	authenticator := db.Authenticator(ctx)
-	require.NotNil(t, authenticator, "db.Authenticator(base.TestCtx(t)) returned nil")
+	authenticator := db.Authenticator(db.Ctx)
+	require.NotNil(t, authenticator, "db.Authenticator(db.Ctx) returned nil")
 	role, err := authenticator.NewRole(roleName, channels.SetOf(t, "ABC"))
 	require.NoError(t, err, "Error creating new role")
 	require.NoError(t, authenticator.Save(role))
 
 	// Create user
 	username := "bob"
-	require.NotNil(t, authenticator, "db.Authenticator(base.TestCtx(t)) returned nil")
+	require.NotNil(t, authenticator, "db.Authenticator(db.Ctx) returned nil")
 	user, err := authenticator.NewUser(username, "letmein", nil)
 	require.NoError(t, err, "Error creating new user")
 
@@ -110,7 +106,7 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 		Name:              &username,
 		ExplicitRoleNames: base.SetOf(roleName),
 	}
-	_, err = db.UpdatePrincipal(ctx, &updatedUser, true, true)
+	_, err = db.UpdatePrincipal(db.Ctx, &updatedUser, true, true)
 	require.NoError(t, err, "Error updating user")
 
 	// Wait for notify from updated user
@@ -131,7 +127,7 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 		Name:             &roleName,
 		ExplicitChannels: base.SetFromArray([]string{"ABC", "DEF"}),
 	}
-	_, err = db.UpdatePrincipal(ctx, &updatedRole, false, true)
+	_, err = db.UpdatePrincipal(db.Ctx, &updatedRole, false, true)
 	require.NoError(t, err, "Error updating role")
 
 	// Wait for user notification of updated role

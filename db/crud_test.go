@@ -130,7 +130,7 @@ func TestHasAttachmentsFlag(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 2-a...")
-	gotDoc, err := db.GetDocument(base.TestCtx(t), "doc1", DocUnmarshalSync)
+	gotDoc, err := db.GetDocument(db.Ctx, "doc1", DocUnmarshalSync)
 	assert.NoError(t, err)
 	require.Contains(t, gotDoc.Attachments, "hello.txt")
 	attachmentData, ok := gotDoc.Attachments["hello.txt"].(map[string]interface{})
@@ -156,7 +156,7 @@ func TestHasAttachmentsFlag(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc, verify rev 2-b")
-	gotDoc, err = db.GetDocument(base.TestCtx(t), "doc1", DocUnmarshalSync)
+	gotDoc, err = db.GetDocument(db.Ctx, "doc1", DocUnmarshalSync)
 	assert.NoError(t, err)
 	require.Contains(t, gotDoc.Attachments, "hello.txt")
 	attachmentData, ok = gotDoc.Attachments["hello.txt"].(map[string]interface{})
@@ -941,7 +941,7 @@ func TestLargeSequence(t *testing.T) {
 	_, _, err := db.PutExistingRevWithBody("largeSeqDoc", body, []string{"1-a"}, false)
 	assert.NoError(t, err, "add largeSeqDoc")
 
-	syncData, err := db.GetDocSyncData(base.TestCtx(t), "largeSeqDoc")
+	syncData, err := db.GetDocSyncData(db.Ctx, "largeSeqDoc")
 	assert.NoError(t, err, "Error retrieving document sync data")
 	assert.Equal(t, uint64(9223372036854775808), syncData.Sequence)
 }
@@ -1183,7 +1183,6 @@ func TestGetAvailableRevAttachments(t *testing.T) {
 	ctx := base.TestCtx(t)
 	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
-	ctx = context.AddDatabaseLogContext(ctx)
 	defer context.Close(ctx)
 	db, err := CreateDatabase(ctx, context)
 	assert.NoError(t, err, "Couldn't create database 'db'")
@@ -1225,7 +1224,6 @@ func TestGet1xRevAndChannels(t *testing.T) {
 	ctx := base.TestCtx(t)
 	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
-	ctx = context.AddDatabaseLogContext(ctx)
 	defer context.Close(ctx)
 	db, err := CreateDatabase(ctx, context)
 	assert.NoError(t, err, "Couldn't create database 'db'")
@@ -1290,7 +1288,6 @@ func TestGet1xRevFromDoc(t *testing.T) {
 	ctx := base.TestCtx(t)
 	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
-	ctx = context.AddDatabaseLogContext(ctx)
 	defer context.Close(ctx)
 	db, err := CreateDatabase(ctx, context)
 	assert.NoError(t, err, "Couldn't create database 'db'")
