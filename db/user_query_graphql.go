@@ -170,8 +170,8 @@ func (config *GraphQLConfig) getSchema() (string, error) {
 
 // Creates a graphQLResolver for the given JavaScript code, and returns a graphql-go FieldResolveFn
 // that invokes it.
-func (config *GraphQLConfig) compileFieldResolver(resolverName string, fieldName string, jsCode string) (graphql.FieldResolveFn, error) {
-	name := resolverName + "." + fieldName
+func (config *GraphQLConfig) compileFieldResolver(typeName string, fieldName string, jsCode string) (graphql.FieldResolveFn, error) {
+	name := typeName + "." + fieldName
 	server, err := newUserFunctionJSServer(name, "GraphQL resolver", "parent, args, context, info", jsCode)
 	if err != nil {
 		return nil, err
@@ -180,9 +180,13 @@ func (config *GraphQLConfig) compileFieldResolver(resolverName string, fieldName
 		JSServer: server,
 		Name:     name,
 	}
+	isMutation := typeName == "Mutation"
 	return func(params graphql.ResolveParams) (interface{}, error) {
 		db := params.Context.Value(dbKey).(*Database)
 		mutationAllowed := params.Context.Value(mutAllowedKey).(bool)
+		if isMutation && !mutationAllowed {
+			return nil, base.HTTPErrorf(http.StatusForbidden, "a read-only request is not allowed to call a GraphQL mutation")
+		}
 		return resolver.Resolve(db, &params, mutationAllowed)
 	}, nil
 }

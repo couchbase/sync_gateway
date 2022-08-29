@@ -27,6 +27,7 @@ var kTestGraphQLSchema = `
 		title: String!
 		description: String
 		done: Boolean
+		tags: [String!]
 		secretNotes: String		# Admin-only
 	}
 	type Query {
@@ -36,6 +37,7 @@ var kTestGraphQLSchema = `
 	}
 	type Mutation {
 		complete(id: ID!): Task
+		addTag(id: ID!, tag: String!): Task
 	}
 `
 
@@ -49,10 +51,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 					 if (Object.keys(info) != "resultFields") throw "Unexpected info";
 					 if (!context.user) throw "Missing context.user";
 					 if (!context.app) throw "Missing context.app";
-					 var all = context.app.func("all");
-					 for (var i = 0; i < all.length; i++)
-					  	if (all[i].id == args.id) return all[i];
-					 return undefined;`,
+					 return context.app.func("getTask", {id: args.id});`,
 			"tasks": `if (Object.keys(parent).length != 0) throw "Unexpected parent";
 		  			  if (Object.keys(args).length != 0) throw "Unexpected args";
 					  if (Object.keys(info) != "resultFields") throw "Unexpected info";
@@ -75,7 +74,16 @@ var kTestGraphQLConfig = GraphQLConfig{
 						 if (Object.keys(info) != "resultFields") throw "Unexpected info";
 						 if (!context.user) throw "Missing context.user";
 						 if (!context.app) throw "Missing context.app";
-						 context.app.save(args.id, {id:args.id,done:true}); return args.id;`,
+						 var task = context.app.func("getTask", {id: args.id});
+						 if (!task) return undefined;
+						 task.done = true;
+						 return task;`,
+			"addTag": `var task = context.app.func("getTask", {id: args.id});
+						 if (!task) return undefined;
+						 var tags = Array.from(task.tags);
+						 tags.push(args.tag);
+						 task.tags = tags;
+						 return task;`,
 		},
 		"Task": {
 			"secretNotes": `if (!parent.id) throw "Invalid parent";
@@ -93,10 +101,18 @@ var kTestGraphQLConfig = GraphQLConfig{
 var kTestGraphQLUserFunctionsConfig = UserFunctionConfigMap{
 	"all": &UserFunctionConfig{
 		SourceCode: `return [
-			{id: "a", "title": "Applesauce", done:true},
+			{id: "a", "title": "Applesauce", done:true, tags:["fruit","soft"]},
 			{id: "b", "title": "Beer", description: "Bass ale please"},
 			{id: "m", "title": "Mangoes"} ];`,
 		Allow: &UserQueryAllow{Channels: []string{"*"}},
+	},
+	"getTask": &UserFunctionConfig{
+		SourceCode: `var all = context.app.func("all");
+					for (var i = 0; i < all.length; i++)
+			 		 	if (all[i].id == args.id) return all[i];
+					return undefined;`,
+		Parameters: []string{"id"},
+		Allow:      &UserQueryAllow{Channels: []string{"*"}},
 	},
 }
 
@@ -124,11 +140,10 @@ func assertGraphQLError(t *testing.T, expectedErrorText string, result *graphql.
 	if !assert.NoError(t, err) || !assert.NotNil(t, result) {
 		return
 	}
-	if len(result.Errors) == 0 {
+	if !assert.NotZero(t, len(result.Errors)) {
 		data, err := json.Marshal(result.Data)
 		assert.NoError(t, err)
 		t.Logf("Expected GraphQL error but got none; data is %s", string(data))
-		t.Fail()
 		return
 	}
 	for _, err := range result.Errors {
@@ -165,8 +180,11 @@ func TestUserGraphQL(t *testing.T) {
 
 func testUserGraphQLCommon(t *testing.T, db *Database) {
 	// Successful query:
-	result, err := db.UserGraphQLQuery(`query{ task(id:"a") {id,title,done} }`, "", nil, false)
-	assertGraphQLResult(t, `{"task":{"done":true,"id":"a","title":"Applesauce"}}`, result, err)
+	result, err := db.UserGraphQLQuery(`query{ task(id:"a") {id,title,done,tags} }`, "", nil, false)
+	assertGraphQLResult(t, `{"task":{"done":true,"id":"a","tags":["fruit","soft"],"title":"Applesauce"}}`, result, err)
+
+	result, err = db.UserGraphQLQuery(`mutation{ addTag(id:"a", tag:"cold") {id,title,done,tags} }`, "", nil, true)
+	assertGraphQLResult(t, `{"addTag":{"done":true,"id":"a","tags":["fruit","soft","cold"],"title":"Applesauce"}}`, result, err)
 
 	// ERRORS:
 
