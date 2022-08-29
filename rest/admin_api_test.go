@@ -5025,7 +5025,8 @@ func TestTombstoneCompactionPurgeInterval(t *testing.T) {
 			setServerPurgeInterval(t, rt, test.newServerInterval)
 
 			// Start compact to modify purge interval
-			database, _ := db.GetDatabase(dbc, nil)
+			ctx := rt.Context()
+			database, _ := db.GetDatabase(ctx, dbc, nil)
 			_, err = database.Compact(false, func(purgedDocCount *int) {}, base.NewSafeTerminator())
 			require.NoError(t, err)
 

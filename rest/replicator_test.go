@@ -2910,6 +2910,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 		}},
 	})
 	defer rt2.Close()
+	ctx2 := rt2.Context()
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
 	srv := httptest.NewServer(rt2.TestPublicHandler())
@@ -2996,7 +2997,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID+"2", changesResults.Results[0].ID)
 
-	doc, err = rt2.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
+	doc, err = rt2.GetDatabase().GetDocument(ctx2, docID, db.DocUnmarshalAll)
 	require.NoError(t, err)
 
 	body, err = doc.GetDeepMutableBody()
@@ -3013,12 +3014,12 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	err = rt2.Bucket().Set(checkpointDocID, 0, nil, firstCheckpoint)
 	assert.NoError(t, err)
 
-	rt2db, err := db.GetDatabase(rt2.GetDatabase(), nil)
+	rt2db, err := db.GetDatabase(ctx2, rt2.GetDatabase(), nil)
 	require.NoError(t, err)
 	err = rt2db.Purge(docID + "2")
 	assert.NoError(t, err)
 
-	require.NoError(t, rt2.GetDatabase().FlushChannelCache())
+	require.NoError(t, rt2.GetDatabase().FlushChannelCache(ctx2))
 	rt2.GetDatabase().FlushRevisionCacheForTest()
 
 	assert.NoError(t, ar.Start())
@@ -3029,7 +3030,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID+"2", changesResults.Results[0].ID)
 
-	doc, err = rt2.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
+	doc, err = rt2.GetDatabase().GetDocument(ctx2, docID, db.DocUnmarshalAll)
 	require.NoError(t, err)
 
 	body, err = doc.GetDeepMutableBody()

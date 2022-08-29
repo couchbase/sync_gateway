@@ -163,7 +163,7 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 
 	// Get db.Database to perform PurgeOldRevisionJSON
 	dbc := rt.GetDatabase()
-	database, err := db.GetDatabase(dbc, nil)
+	database, err := db.GetDatabase(rt.Context(), dbc, nil)
 	assert.NoError(t, err)
 
 	for i := 0; i < 10; i++ {

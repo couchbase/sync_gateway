@@ -452,8 +452,9 @@ func TestAdminAuth(t *testing.T) {
 		var httpClient *http.Client
 		var err error
 
+		ctx := rt.Context()
 		if testCase.BucketName != "" {
-			managementEndpoints, httpClient, err = rt.GetDatabase().ObtainManagementEndpointsAndHTTPClient()
+			managementEndpoints, httpClient, err = rt.GetDatabase().ObtainManagementEndpointsAndHTTPClient(ctx)
 		} else {
 			managementEndpoints, httpClient, err = rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 		}

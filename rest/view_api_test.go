@@ -189,7 +189,7 @@ func TestViewQueryUserAccess(t *testing.T) {
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"}, result.Rows[1])
 
 	// Create a user:
-	a := rt.ServerContext().Database(ctx, "db").Authenticator(base.TestCtx(t))
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	password := "123456"
 	testUser, _ := a.NewUser("testUser", password, channels.SetOf(t, "*"))
 	assert.NoError(t, a.Save(testUser))
@@ -703,7 +703,7 @@ func TestViewQueryWrappers(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 3, result.Len())
 
-	a := rt.ServerContext().Database(ctx, "db").Authenticator(base.TestCtx(t))
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	testUser, err := a.NewUser("testUser", "password", channels.SetOf(t, "userchannel"))
 	assert.NoError(t, err)
 	err = a.Save(testUser)

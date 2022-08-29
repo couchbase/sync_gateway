@@ -830,6 +830,7 @@ function(doc, oldDoc) {
 	rtConfig := RestTesterConfig{SyncFn: syncFunction}
 	var rt = NewRestTester(t, &rtConfig)
 	defer rt.Close()
+	ctx := rt.Context()
 
 	// Create bliptester that is connected as user1, with no access to channel ABC
 	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
@@ -849,10 +850,10 @@ function(doc, oldDoc) {
 
 	// Set up a ChangeWaiter for this test, to block until the user change notification happens
 	dbc := rt.GetDatabase()
-	user1, err := dbc.Authenticator(base.TestCtx(t)).GetUser("user1")
+	user1, err := dbc.Authenticator(ctx).GetUser("user1")
 	require.NoError(t, err)
 
-	userDb, err := db.GetDatabase(dbc, user1)
+	userDb, err := db.GetDatabase(ctx, dbc, user1)
 	require.NoError(t, err)
 
 	userWaiter := userDb.NewUserWaiter()
@@ -1324,6 +1325,7 @@ func TestReloadUser(t *testing.T) {
 	rtConfig := RestTesterConfig{SyncFn: syncFn}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
+	ctx := rt.Context()
 	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
 		connectingUsername: "user1",
 		connectingPassword: "1234",
@@ -1333,10 +1335,10 @@ func TestReloadUser(t *testing.T) {
 
 	// Set up a ChangeWaiter for this test, to block until the user change notification happens
 	dbc := rt.GetDatabase()
-	user1, err := dbc.Authenticator(base.TestCtx(t)).GetUser("user1")
+	user1, err := dbc.Authenticator(ctx).GetUser("user1")
 	require.NoError(t, err)
 
-	userDb, err := db.GetDatabase(dbc, user1)
+	userDb, err := db.GetDatabase(ctx, dbc, user1)
 	require.NoError(t, err)
 
 	userWaiter := userDb.NewUserWaiter()
@@ -1974,7 +1976,7 @@ func TestMissingNoRev(t *testing.T) {
 	ctx := rt.Context()
 	targetDbContext, err := rt.ServerContext().GetDatabase(ctx, "db")
 	assert.NoError(t, err, "failed")
-	targetDb, err := db.GetDatabase(targetDbContext, nil)
+	targetDb, err := db.GetDatabase(ctx, targetDbContext, nil)
 	assert.NoError(t, err, "failed")
 
 	// Pull docs, expect to pull 5 docs since none of them has purged yet.

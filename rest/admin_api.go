@@ -117,7 +117,7 @@ func (h *handler) handleCreateDB() error {
 			} else if errors.Is(err, base.ErrAlreadyExists) {
 				// on-demand config load if someone else beat us to db creation
 				if _, err := h.server._fetchAndLoadDatabase(h.ctx(), dbName); err != nil {
-					base.WarnfCtx(h.rq.Context(), "Couldn't load database after conflicting create: %v", err)
+					base.WarnfCtx(h.ctx(), "Couldn't load database after conflicting create: %v", err)
 				}
 				return base.HTTPErrorf(http.StatusPreconditionFailed, // what CouchDB returns
 					"Duplicate database name %q", dbName)
@@ -202,7 +202,7 @@ func (h *handler) handleDbOnline() error {
 func (h *handler) handleDbOffline() error {
 	h.assertAdminOnly()
 	var err error
-	if err = h.db.TakeDbOffline(h.ctx(), "ADMIN Request"); err != nil {
+	if err = h.db.TakeDbOffline("ADMIN Request"); err != nil {
 		base.InfofCtx(h.ctx(), base.KeyCRUD, "Unable to take Database : %v, offline", base.MD(h.db.Name))
 	}
 
@@ -540,12 +540,12 @@ func (h *handler) handlePutDbConfig() (err error) {
 			oldBucketDbConfig := bucketDbConfig.DbConfig
 
 			if h.rq.Method == http.MethodPost {
-				base.TracefCtx(h.rq.Context(), base.KeyConfig, "merging upserted config into bucket config")
+				base.TracefCtx(h.ctx(), base.KeyConfig, "merging upserted config into bucket config")
 				if err := base.ConfigMerge(&bucketDbConfig.DbConfig, dbConfig); err != nil {
 					return nil, err
 				}
 			} else {
-				base.TracefCtx(h.rq.Context(), base.KeyConfig, "using config as-is without merge")
+				base.TracefCtx(h.ctx(), base.KeyConfig, "using config as-is without merge")
 				bucketDbConfig.DbConfig = *dbConfig
 			}
 
@@ -585,10 +585,10 @@ func (h *handler) handlePutDbConfig() (err error) {
 			return base.JSONMarshal(bucketDbConfig)
 		})
 	if err != nil {
-		base.WarnfCtx(h.rq.Context(), "Couldn't update config for database - rolling back: %v", err)
+		base.WarnfCtx(h.ctx(), "Couldn't update config for database - rolling back: %v", err)
 		// failed to start the new database config - rollback and return the original error for the user
 		if _, err := h.server.fetchAndLoadDatabase(h.ctx(), dbName); err != nil {
-			base.WarnfCtx(h.rq.Context(), "got error rolling back database %q after failed update: %v", base.UD(dbName), err)
+			base.WarnfCtx(h.ctx(), "got error rolling back database %q after failed update: %v", base.UD(dbName), err)
 		}
 		return err
 	}

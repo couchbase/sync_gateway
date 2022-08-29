@@ -643,19 +643,20 @@ func TestReplicateGroupIDAssignedNodes(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
+	ctx := base.TestCtx(t)
 
 	// Set up databases
-	dbDefault, err := NewDatabaseContext("default", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: ""})
+	dbDefault, err := NewDatabaseContext(ctx, "default", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: ""})
 	require.NoError(t, err)
-	defer dbDefault.Close()
+	defer dbDefault.Close(ctx)
 
-	dbGroupA, err := NewDatabaseContext("groupa", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "GroupA"})
+	dbGroupA, err := NewDatabaseContext(ctx, "groupa", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "GroupA"})
 	require.NoError(t, err)
-	defer dbGroupA.Close()
+	defer dbGroupA.Close(ctx)
 
-	dbGroupB, err := NewDatabaseContext("groupb", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "GroupB"})
+	dbGroupB, err := NewDatabaseContext(ctx, "groupb", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "GroupB"})
 	require.NoError(t, err)
-	defer dbGroupB.Close()
+	defer dbGroupB.Close(ctx)
 
 	// Set up replicators
 	err = dbDefault.SGReplicateMgr.RegisterNode("nodeDefault")

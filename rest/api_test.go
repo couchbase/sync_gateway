@@ -2467,7 +2467,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	// be changed while the database is in use (only when it's re-opened) but for testing purposes
 	// we do it now because we can't close and re-open an ephemeral Walrus database.
 	dbc := rt.ServerContext().Database(ctx, "db")
-	database, _ := db.GetDatabase(dbc, nil)
+	database, _ := db.GetDatabase(ctx, dbc, nil)
 
 	changed, err := database.UpdateSyncFun(`function(doc) {access("alice", "beta");channel("beta");}`)
 	assert.NoError(t, err)
@@ -7618,9 +7618,10 @@ func TestMetricsHandler(t *testing.T) {
 
 	// Create and remove a database
 	// This ensures that creation and removal of a DB is possible without a re-registration issue ( the below rest tester will re-register "db")
-	context, err := db.NewDatabaseContext(base.TestCtx(t), "db", base.GetTestBucket(t), false, db.DatabaseContextOptions{})
+	ctx := base.TestCtx(t)
+	context, err := db.NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, db.DatabaseContextOptions{})
 	require.NoError(t, err)
-	context.Close()
+	context.Close(context.AddDatabaseLogContext(ctx))
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -7643,9 +7644,9 @@ func TestMetricsHandler(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Initialize another database to ensure both are registered successfully
-	context, err = db.NewDatabaseContext(rt.Context(), "db2", base.GetTestBucket(t), false, db.DatabaseContextOptions{})
+	context, err = db.NewDatabaseContext(ctx, "db2", base.GetTestBucket(t), false, db.DatabaseContextOptions{})
 	require.NoError(t, err)
-	defer context.Close()
+	defer context.Close(context.AddDatabaseLogContext(ctx))
 
 	// Validate that metrics still works with both db and db2 databases and that they have entries
 	resp, err = httpClient.Get(srv.URL + "/_metrics")

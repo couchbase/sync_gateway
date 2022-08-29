@@ -238,7 +238,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 					scopes[scopeName] = append(scopes[scopeName], collName)
 				}
 			}
-			if err := base.CreateBucketScopesAndCollections(base.TestCtx(rt.tb), rt.testBucket.BucketSpec, scopes); err != nil {
+			if err := base.CreateBucketScopesAndCollections(ctx, rt.testBucket.BucketSpec, scopes); err != nil {
 				rt.tb.Fatalf("Error creating test scopes/collections: %v", err)
 			}
 		}
@@ -300,7 +300,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		if err != nil {
 			rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)
 		}
-		ctx = rt.Context()
+		ctx = rt.Context() // get new ctx with db info before passing it down
 
 		// Update the testBucket Bucket to the one associated with the database context.  The new (dbContext) bucket
 		// will be closed when the rest tester closes the server context. The original bucket will be closed using the
@@ -659,7 +659,7 @@ func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath st
 		// If the view is undefined, it might be a race condition where the view is still being created
 		// See https://github.com/couchbase/sync_gateway/issues/3570#issuecomment-390487982
 		if strings.Contains(response.Body.String(), "view_undefined") {
-			base.InfofCtx(response.Req.Context(), base.KeyAll, "view_undefined error: %v.  Retrying", response.Body.String())
+			base.InfofCtx(rt.Context(), base.KeyAll, "view_undefined error: %v.  Retrying", response.Body.String())
 			return true, nil, nil
 		}
 

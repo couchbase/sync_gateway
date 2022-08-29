@@ -186,7 +186,8 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 	b := base.GetTestBucket(t)
 	context, err := NewDatabaseContext(ctx, "db", b, false, DatabaseContextOptions{})
 	require.NoError(t, err)
-	defer context.Close()
+	ctx = context.AddDatabaseLogContext(ctx)
+	defer context.Close(ctx)
 
 	stats := base.NewSyncGatewayStats()
 	cacheStats := stats.NewDBStats("", false, false, false).CacheStats
@@ -376,7 +377,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 
 	caughtUpStart := db.DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
 
-	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+	changesCtx, changesCtxCancel := context.WithCancel(db.Ctx)
 	var changesFeedsWg sync.WaitGroup
 	var seq1Wg, seq2Wg, seq3Wg sync.WaitGroup
 	// Start 100 continuous changes feeds
@@ -393,7 +394,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 			options.Continuous = true
 			options.Wait = true
 			channelName := fmt.Sprintf("chan_%d", i)
-			perRequestDb, err := CreateDatabase(db.DatabaseContext)
+			perRequestDb, err := CreateDatabase(changesCtx, db.DatabaseContext)
 			assert.NoError(t, err)
 			perRequestDb.Ctx = base.LogContextWith(base.TestCtx(t), &base.LogContext{CorrelationID: fmt.Sprintf("context_%s", channelName)})
 			feed, err := perRequestDb.MultiChangesFeed(base.SetOf(channelName), options)
@@ -998,7 +999,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 	require.NoError(t, db.changeCache.waitForSequence(base.TestCtx(t), 4, base.DefaultWaitForSequence))
 
 	// Flush the cache, to ensure view query on subsequent changes requests
-	require.NoError(t, db.FlushChannelCache())
+	require.NoError(t, db.FlushChannelCache(db.Ctx))
 
 	// Issue two one-shot since=0 changes request.  Both will attempt a view query.  The first will block based on queryWg,
 	// the second will block waiting for the view lock
@@ -1980,9 +1981,11 @@ func BenchmarkProcessEntry(b *testing.B) {
 
 	for _, bm := range processEntryBenchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-			context, err := NewDatabaseContext("db", base.GetTestBucket(b), false, DatabaseContextOptions{})
+			ctx := base.TestCtx(b)
+			context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 			require.NoError(b, err)
-			defer context.Close()
+			ctx = context.AddDatabaseLogContext(ctx)
+			defer context.Close(ctx)
 
 			changeCache := &changeCache{}
 			if err := changeCache.Init(base.TestCtx(b), context, nil, nil); err != nil {
@@ -2206,9 +2209,11 @@ func BenchmarkDocChanged(b *testing.B) {
 
 	for _, bm := range processEntryBenchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-			context, err := NewDatabaseContext("db", base.GetTestBucket(b), false, DatabaseContextOptions{})
+			ctx := base.TestCtx(b)
+			context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 			require.NoError(b, err)
-			defer context.Close()
+			ctx = context.AddDatabaseLogContext(ctx)
+			defer context.Close(ctx)
 
 			changeCache := &changeCache{}
 			if err := changeCache.Init(base.TestCtx(b), context, nil, nil); err != nil {

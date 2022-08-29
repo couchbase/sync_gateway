@@ -232,7 +232,7 @@ func (bsc *BlipSyncContext) copyContextDatabase() *Database {
 }
 
 func (bsc *BlipSyncContext) _copyContextDatabase() *Database {
-	databaseCopy, _ := GetDatabase(bsc.blipContextDb.DatabaseContext, bsc.blipContextDb.User())
+	databaseCopy, _ := GetDatabase(context.TODO(), bsc.blipContextDb.DatabaseContext, bsc.blipContextDb.User())
 	databaseCopy.Ctx = bsc.loggingCtx
 	return databaseCopy
 }

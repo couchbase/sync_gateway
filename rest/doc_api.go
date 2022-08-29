@@ -93,7 +93,7 @@ func (h *handler) handleGetDoc() error {
 		if h.requestAccepts("multipart/") && (hasBodies || !h.requestAccepts("application/json")) {
 			canCompress := strings.Contains(h.rq.Header.Get("X-Accept-Part-Encoding"), "gzip")
 			return h.writeMultipart("related", func(writer *multipart.Writer) error {
-				WriteMultipartDocument(h.rq.Context(), h.db.DatabaseContext.DbStats.CBLReplicationPull(), value, writer, canCompress)
+				WriteMultipartDocument(h.ctx(), h.db.DatabaseContext.DbStats.CBLReplicationPull(), value, writer, canCompress)
 				return nil
 			})
 		} else {
@@ -128,7 +128,7 @@ func (h *handler) handleGetDoc() error {
 					if err != nil {
 						revBody = db.Body{"missing": revid} // TODO: More specific error
 					}
-					_ = WriteRevisionAsPart(h.rq.Context(), h.db.DatabaseContext.DbStats.CBLReplicationPull(), revBody, err != nil, false, writer)
+					_ = WriteRevisionAsPart(h.ctx(), h.db.DatabaseContext.DbStats.CBLReplicationPull(), revBody, err != nil, false, writer)
 					h.db.DbStats.Database().NumDocReadsRest.Add(1)
 				}
 				return nil
@@ -418,7 +418,7 @@ func (h *handler) handlePutDoc() error {
 	}
 
 	if doc != nil && roundTrip {
-		if err := h.db.WaitForSequenceNotSkipped(h.rq.Context(), doc.Sequence); err != nil {
+		if err := h.db.WaitForSequenceNotSkipped(h.ctx(), doc.Sequence); err != nil {
 			return err
 		}
 	}
@@ -495,7 +495,7 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 	}
 
 	if doc != nil && roundTrip {
-		if err := h.db.WaitForSequenceNotSkipped(h.rq.Context(), doc.Sequence); err != nil {
+		if err := h.db.WaitForSequenceNotSkipped(h.ctx(), doc.Sequence); err != nil {
 			return err
 		}
 	}
@@ -522,7 +522,7 @@ func (h *handler) handlePostDoc() error {
 	}
 
 	if doc != nil && roundTrip {
-		err := h.db.WaitForSequenceNotSkipped(h.rq.Context(), doc.Sequence)
+		err := h.db.WaitForSequenceNotSkipped(h.ctx(), doc.Sequence)
 		if err != nil {
 			return err
 		}

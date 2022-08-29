@@ -205,7 +205,8 @@ func TestShardedDCPUpgrade(t *testing.T) {
 	)
 	require.NoError(t, tb.SetRaw(testDoc1, 0, nil, []byte(`{}`)))
 
-	db, err := NewDatabaseContext(tb.GetName(), tb.NoCloseClone(), true, DatabaseContextOptions{
+	ctx := base.TestCtx(t)
+	db, err := NewDatabaseContext(ctx, tb.GetName(), tb.NoCloseClone(), true, DatabaseContextOptions{
 		GroupID:     "",
 		EnableXattr: true,
 		UseViews:    base.TestsDisableGSI(),
@@ -214,7 +215,8 @@ func TestShardedDCPUpgrade(t *testing.T) {
 		},
 	})
 	require.NoError(t, err, "NewDatabaseContext")
-	defer db.Close()
+	ctx = db.AddDatabaseLogContext(ctx)
+	defer db.Close(ctx)
 
 	err, _ = base.RetryLoop("wait for non-existent node to be removed", func() (shouldRetry bool, err error, value interface{}) {
 		nodes, _, err := cbgt.CfgGetNodeDefs(db.CfgSG, cbgt.NODE_DEFS_KNOWN)
