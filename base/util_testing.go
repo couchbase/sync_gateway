@@ -660,11 +660,6 @@ func ForAllDataStores(t *testing.T, testCallback func(*testing.T, sgbucket.DataS
 		})
 	}
 
-	dataStores = append(dataStores, dataStore{
-		name:   "gocb.v1",
-		driver: GoCBCustomSGTranscoder,
-	})
-
 	for _, dataStore := range dataStores {
 		t.Run(dataStore.name, func(t *testing.T) {
 			bucket := GetTestBucketForDriver(t, dataStore.driver)
