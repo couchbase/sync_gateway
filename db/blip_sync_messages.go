@@ -15,6 +15,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 
 	"github.com/couchbase/go-blip"
@@ -33,13 +34,14 @@ const (
 	MessageGetAttachment   = "getAttachment"
 	MessageProposeChanges  = "proposeChanges"
 	MessageProveAttachment = "proveAttachment"
-	MessageGetRev          = "getRev"         // Connected Client API
-	MessagePutRev          = "putRev"         // Connected Client API
-	MessageUnsubChanges    = "unsubChanges"   // Connected Client API
-	MessageGetCollections  = "getCollections" // Connected Client API
-	MessageQuery           = "query"          // Connected Client API
-	MessageFunction        = "function"       // Connected Client API
-	MessageGraphQL         = "graphql"        // Connected Client API
+	MessageGetCollections  = "getCollections"
+
+	MessageGetRev       = "getRev"       // Connected Client API
+	MessagePutRev       = "putRev"       // Connected Client API
+	MessageUnsubChanges = "unsubChanges" // Connected Client API
+	MessageQuery        = "query"        // Connected Client API
+	MessageFunction     = "function"     // Connected Client API
+	MessageGraphQL      = "graphql"      // Connected Client API
 )
 
 // Message properties
@@ -402,6 +404,26 @@ func (rm *RevMessage) SetNoConflicts(noConflicts bool) {
 	}
 }
 
+func (rm *RevMessage) Collection() (int, bool) {
+	val, ok := rm.Properties[BlipCollection]
+	if !ok {
+		return 0, false
+	}
+	intVal, err := strconv.Atoi(val)
+	if err != nil {
+		panic(fmt.Errorf("rev message has invalid %q %q: %w", BlipCollection, val, err))
+	}
+	return intVal, true
+}
+
+func (rm *RevMessage) SetCollection(val *int) {
+	if val != nil {
+		rm.Properties[BlipCollection] = strconv.Itoa(*val)
+	} else {
+		delete(rm.Properties, BlipCollection)
+	}
+}
+
 // setProperties will add the given properties to the blip message, overwriting any that already exist.
 func (rm *RevMessage) SetProperties(properties blip.Properties) {
 	for k, v := range properties {
@@ -415,6 +437,10 @@ func (rm *RevMessage) String() string {
 
 	if id, foundId := rm.ID(); foundId {
 		buffer.WriteString(fmt.Sprintf("Id:%v ", base.UD(id).Redact()))
+	}
+
+	if coll, ok := rm.Collection(); ok {
+		buffer.WriteString(fmt.Sprintf("Collection:%v ", coll))
 	}
 
 	if rev, foundRev := rm.Rev(); foundRev {
@@ -469,6 +495,14 @@ func (nrm *noRevMessage) SetReason(reason string) {
 
 func (nrm *noRevMessage) SetError(message string) {
 	nrm.Properties[NorevMessageError] = message
+}
+
+func (nrm *noRevMessage) SetCollection(val *int) {
+	if val != nil {
+		nrm.Properties[BlipCollection] = strconv.Itoa(*val)
+	} else {
+		delete(nrm.Properties, BlipCollection)
+	}
 }
 
 type getAttachmentParams struct {

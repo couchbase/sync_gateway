@@ -985,6 +985,23 @@ CollectionConfig:
       type: string
       example: 'function(doc) { if (doc.type != ''mobile'') { return false; } return true; }'
   title: Collection config
+CredentialsConfig:
+  description: The configuration for the credentials set.
+  type: object
+  properties:
+    username:
+      description: Username for authenticating to the bucket
+      type: string
+    password:
+      description: Password for authenticating to the bucket. This value is always redacted.
+      type: string
+    x509_cert_path:
+      description: Cert path (public key) for X.509 bucket auth
+      type: string
+    x509_key_path:
+      description: Key path (private key) for X.509 bucket auth
+      type: string
+  title: Credentials config
 Database:
   description: The properties of a database configuration.
   type: object
@@ -1942,6 +1959,10 @@ Startup-config:
       description: Settings that are not officially supported. It is highly recommended these are **not** used.
       type: object
       properties:
+        serverless:
+          description: Run SG in to serverless mode
+          type: boolean
+          readOnly: true
         stats_log_frequency:
           description: |-
             How often should stats be written to stats logs.
@@ -1963,21 +1984,13 @@ Startup-config:
       description: 'A map of database name to credentials, that can be used instead of the bootstrap ones.'
       type: object
       additionalProperties:
-        description: The name of the database.
-        type: object
-        properties:
-          username:
-            description: Username for authenticating to the bucket
-            type: string
-          password:
-            description: Password for authenticating to the bucket. This value is always redacted.
-            type: string
-          x509_cert_path:
-            description: Cert path (public key) for X.509 bucket auth
-            type: string
-          x509_key_path:
-            description: Key path (private key) for X.509 bucket auth
-            type: string
+        $ref: '#/CredentialsConfig'
+      readOnly: true
+    bucket_credentials:
+      description: 'A map of bucket names to credentials, that can be used instead of the bootstrap ones.'
+      type: object
+      additionalProperties:
+        $ref: '#/CredentialsConfig'
       readOnly: true
     max_file_descriptors:
       description: Max of open file descriptors (RLIMIT_NOFILE)

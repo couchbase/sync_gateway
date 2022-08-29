@@ -2,7 +2,6 @@ package base
 
 import (
 	"context"
-	"errors"
 	"expvar"
 	"fmt"
 
@@ -11,18 +10,13 @@ import (
 )
 
 // getHighSeqMetadata returns metadata to feed into a DCP client based on the last sequence numbers stored in memory
-func getHighSeqMetadata(bucket Bucket) ([]DCPMetadata, error) {
-	store, ok := AsCouchbaseStore(bucket)
-	if !ok {
-		return nil, errors.New("DCP Client requires bucket to be CouchbaseStore")
-	}
-
-	numVbuckets, err := store.GetMaxVbno()
+func getHighSeqMetadata(collection *Collection) ([]DCPMetadata, error) {
+	numVbuckets, err := collection.GetMaxVbno()
 	if err != nil {
 		return nil, fmt.Errorf("Unable to determine maxVbNo when creating DCP client: %w", err)
 	}
 
-	vbUUIDs, highSeqNos, statsErr := store.GetStatsVbSeqno(numVbuckets, true)
+	vbUUIDs, highSeqNos, statsErr := collection.GetStatsVbSeqno(numVbuckets, true)
 	if statsErr != nil {
 		return nil, fmt.Errorf("Unable to obtain high seqnos for DCP feed: %w", statsErr)
 	}
@@ -46,14 +40,22 @@ func getHighSeqMetadata(bucket Bucket) ([]DCPMetadata, error) {
 }
 
 // StartGocbDCPFeed starts a DCP Feed.
-func StartGocbDCPFeed(bucket Bucket, bucketName string, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map, metadataStoreType DCPMetadataStoreType, groupID string) error {
-	metadata, err := getHighSeqMetadata(bucket)
+func StartGocbDCPFeed(collection *Collection, bucketName string, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map, metadataStoreType DCPMetadataStoreType, groupID string) error {
+	metadata, err := getHighSeqMetadata(collection)
 	if err != nil {
 		return err
 	}
 	feedName, err := GenerateDcpStreamName(args.ID)
 	if err != nil {
 		return err
+	}
+	var collectionIDs []uint32
+	if collection.Spec.Scope != nil && collection.Spec.Collection != nil {
+		collectionID, err := collection.GetCollectionID()
+		if err != nil {
+			return err
+		}
+		collectionIDs = append(collectionIDs, collectionID)
 	}
 	dcpClient, err := NewDCPClient(
 		feedName,
@@ -63,8 +65,10 @@ func StartGocbDCPFeed(bucket Bucket, bucketName string, args sgbucket.FeedArgume
 			GroupID:           groupID,
 			InitialMetadata:   metadata,
 			DbStats:           dbStats,
+			CollectionIDs:     collectionIDs,
+			AgentPriority:     gocbcore.DcpAgentPriorityMed,
 		},
-		bucket)
+		collection)
 	if err != nil {
 		return err
 	}
@@ -72,15 +76,15 @@ func StartGocbDCPFeed(bucket Bucket, bucketName string, args sgbucket.FeedArgume
 	doneChan, err := dcpClient.Start()
 	loggingCtx := context.TODO()
 	if err != nil {
-		ErrorfCtx(loggingCtx, "!!! Failed to start DCP Feed %q for bucket %q: %w", feedName, MD(bucketName), err)
+		ErrorfCtx(loggingCtx, "Failed to start DCP Feed %q for bucket %q: %v", feedName, MD(bucketName), err)
 		// simplify in CBG-2234
 		closeErr := dcpClient.Close()
-		ErrorfCtx(loggingCtx, "!!! Finished called async close error from DCP Feed %q for bucket %q", feedName, MD(bucketName))
+		ErrorfCtx(loggingCtx, "Finished called async close error from DCP Feed %q for bucket %q", feedName, MD(bucketName))
 		if closeErr != nil {
-			ErrorfCtx(loggingCtx, "!!! Close error from DCP Feed %q for bucket %q: %w", feedName, MD(bucketName), closeErr)
+			ErrorfCtx(loggingCtx, "Close error from DCP Feed %q for bucket %q: %v", feedName, MD(bucketName), closeErr)
 		}
 		asyncCloseErr := <-doneChan
-		ErrorfCtx(loggingCtx, "!!! Finished calling async close error from DCP Feed %q for bucket %q: %w", feedName, MD(bucketName), asyncCloseErr)
+		ErrorfCtx(loggingCtx, "Finished calling async close error from DCP Feed %q for bucket %q: %v", feedName, MD(bucketName), asyncCloseErr)
 		return err
 	}
 	InfofCtx(loggingCtx, KeyDCP, "Started DCP Feed %q for bucket %q", feedName, MD(bucketName))
@@ -94,7 +98,7 @@ func StartGocbDCPFeed(bucket Bucket, bucketName string, args sgbucket.FeedArgume
 			// wait for channel close
 			<-doneChan
 			if dcpCloseError != nil {
-				WarnfCtx(loggingCtx, "Error on closing DCP Feed %q for %q: %w", feedName, MD(bucketName), dcpCloseError)
+				WarnfCtx(loggingCtx, "Error on closing DCP Feed %q for %q: %v", feedName, MD(bucketName), dcpCloseError)
 			}
 			// FIXME: close dbContext here
 			break
@@ -102,11 +106,11 @@ func StartGocbDCPFeed(bucket Bucket, bucketName string, args sgbucket.FeedArgume
 			InfofCtx(loggingCtx, KeyDCP, "Closing DCP Feed %q for bucket %q based on termination notification", feedName, MD(bucketName))
 			dcpCloseErr := dcpClient.Close()
 			if dcpCloseErr != nil {
-				WarnfCtx(loggingCtx, "Error on closing DCP Feed %q for %q: %w", feedName, MD(bucketName), dcpCloseErr)
+				WarnfCtx(loggingCtx, "Error on closing DCP Feed %q for %q: %v", feedName, MD(bucketName), dcpCloseErr)
 			}
 			dcpCloseErr = <-doneChan
 			if dcpCloseErr != nil {
-				WarnfCtx(loggingCtx, "Error on closing DCP Feed %q for %q: %w", feedName, MD(bucketName), dcpCloseErr)
+				WarnfCtx(loggingCtx, "Error on closing DCP Feed %q for %q: %v", feedName, MD(bucketName), dcpCloseErr)
 			}
 			break
 		}

@@ -688,6 +688,9 @@ func TestRoleAPI(t *testing.T) {
 	requireStatus(t, rt.SendAdminRequest("GET", "/db/_role/hipster", ""), 404)
 	response := rt.SendAdminRequest("PUT", "/db/_role/hipster", `{"admin_channels":["fedoras", "fixies"]}`)
 	requireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/db/_role/testdeleted", `{"admin_channels":["fedoras", "fixies"]}`)
+	requireStatus(t, response, 201)
+	requireStatus(t, rt.SendAdminRequest("DELETE", "/db/_role/testdeleted", ""), 200)
 
 	// GET the role and make sure the result is OK
 	response = rt.SendAdminRequest("GET", "/db/_role/hipster", "")
@@ -700,7 +703,7 @@ func TestRoleAPI(t *testing.T) {
 
 	response = rt.SendAdminRequest("GET", "/db/_role/", "")
 	requireStatus(t, response, 200)
-	assert.Equal(t, `["hipster"]`, string(response.Body.Bytes()))
+	assert.Equal(t, `["hipster"]`, response.Body.String())
 
 	// DELETE the role
 	requireStatus(t, rt.SendAdminRequest("DELETE", "/db/_role/hipster", ""), 200)
@@ -717,6 +720,11 @@ func TestRoleAPI(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, "hipster", body["name"])
 	requireStatus(t, rt.SendAdminRequest("DELETE", "/db/_role/hipster", ""), 200)
+
+	// GET including deleted
+	response = rt.SendAdminRequest("GET", "/db/_role/?deleted=true", "")
+	requireStatus(t, response, 200)
+	assert.Equal(t, `["hipster","testdeleted"]`, response.Body.String())
 }
 
 func TestGuestUser(t *testing.T) {
@@ -2028,9 +2036,11 @@ func TestPurgeWithChannelCache(t *testing.T) {
 	requireStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car", "channels": ["abc"]}`), http.StatusCreated)
 
 	changes, err := rt.waitForChanges(2, "/db/_changes?filter=sync_gateway/bychannel&channels=abc,def", "", true)
-	assert.NoError(t, err, "Error waiting for changes")
-	assert.Equal(t, "doc1", changes.Results[0].ID)
-	assert.Equal(t, "doc2", changes.Results[1].ID)
+	require.NoError(t, err, "Error waiting for changes")
+	base.RequireAllAssertions(t,
+		assert.Equal(t, "doc1", changes.Results[0].ID),
+		assert.Equal(t, "doc2", changes.Results[1].ID),
+	)
 
 	// Purge "doc1"
 	resp := rt.SendAdminRequest("POST", "/db/_purge", `{"doc1":["*"]}`)
@@ -2040,7 +2050,7 @@ func TestPurgeWithChannelCache(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}}, body)
 
 	changes, err = rt.waitForChanges(1, "/db/_changes?filter=sync_gateway/bychannel&channels=abc,def", "", true)
-	assert.NoError(t, err, "Error waiting for changes")
+	require.NoError(t, err, "Error waiting for changes")
 	assert.Equal(t, "doc2", changes.Results[0].ID)
 
 }

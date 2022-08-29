@@ -61,16 +61,20 @@ func init() {
 
 		versionString := versionAndBuild[0]
 		versions := strings.Split(versionString, ".")
-		if len(versions) >= 0 {
-			majorStr = versions[0]
-		} else if len(versions) >= 1 {
-			minorStr = versions[1]
-		} else if len(versions) >= 2 {
-			patchStr = versions[2]
-		} else if len(versions) >= 3 {
-			otherStr = versions[3]
-		} else {
+		if len(versions) == 0 || len(versions) > 4 {
 			PanicfCtx(context.Background(), "unknown version format (expected major.minor.patch[.other]) got %v", versionString)
+		}
+		if len(versions) > 0 {
+			majorStr = versions[0]
+		}
+		if len(versions) > 1 {
+			minorStr = versions[1]
+		}
+		if len(versions) > 2 {
+			patchStr = versions[2]
+		}
+		if len(versions) > 3 {
+			otherStr = versions[3]
 		}
 
 		var formattedBuildStr string

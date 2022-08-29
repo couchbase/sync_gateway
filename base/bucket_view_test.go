@@ -25,7 +25,7 @@ func TestView(t *testing.T) {
 
 		ddocName := "testDDoc"
 		viewName := "testView"
-		//Create design doc and view
+		// Create design doc and view
 		view := sgbucket.ViewDef{
 			Map: `function (doc, meta) { emit(doc.type, null); }`,
 		}

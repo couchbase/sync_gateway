@@ -287,32 +287,35 @@ func (dbc *DbConfig) inheritFromBootstrap(b BootstrapConfig) {
 	}
 }
 
-func (dbConfig *DbConfig) setPerDatabaseCredentials(dbCredentials DatabaseCredentialsConfig) {
+func (dbConfig *DbConfig) setDatabaseCredentials(credentials base.CredentialsConfig) {
 	// X.509 overrides username/password
-	if dbCredentials.X509CertPath != "" || dbCredentials.X509KeyPath != "" {
-		dbConfig.CertPath = dbCredentials.X509CertPath
-		dbConfig.KeyPath = dbCredentials.X509KeyPath
+	if credentials.X509CertPath != "" || credentials.X509KeyPath != "" {
+		dbConfig.CertPath = credentials.X509CertPath
+		dbConfig.KeyPath = credentials.X509KeyPath
 		dbConfig.Username = ""
 		dbConfig.Password = ""
 	} else {
-		dbConfig.Username = dbCredentials.Username
-		dbConfig.Password = dbCredentials.Password
+		dbConfig.Username = credentials.Username
+		dbConfig.Password = credentials.Password
 		dbConfig.CertPath = ""
 		dbConfig.KeyPath = ""
 	}
 }
 
 // setup populates fields in the dbConfig
-func (dbConfig *DbConfig) setup(dbName string, bootstrapConfig BootstrapConfig, dbCredentials *DatabaseCredentialsConfig) error {
-
-	dbConfig.inheritFromBootstrap(bootstrapConfig)
-	if dbCredentials != nil {
-		dbConfig.setPerDatabaseCredentials(*dbCredentials)
-	}
-
+func (dbConfig *DbConfig) setup(dbName string, bootstrapConfig BootstrapConfig, dbCredentials, bucketCredentials *base.CredentialsConfig, forcePerBucketAuth bool) error {
 	dbConfig.Name = dbName
 	if dbConfig.Bucket == nil {
 		dbConfig.Bucket = &dbConfig.Name
+	}
+
+	dbConfig.inheritFromBootstrap(bootstrapConfig)
+	if bucketCredentials != nil {
+		dbConfig.setDatabaseCredentials(*bucketCredentials)
+	} else if forcePerBucketAuth {
+		return fmt.Errorf("unable to setup database on bucket %q since credentials are not defined in bucket_credentials", base.MD(*dbConfig.Bucket).Redact())
+	} else if dbCredentials != nil {
+		dbConfig.setDatabaseCredentials(*dbCredentials)
 	}
 
 	if dbConfig.Server != nil {
@@ -811,6 +814,10 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 	if len(dbConfig.Scopes) > 1 {
 		multiError = multiError.Append(fmt.Errorf("only one named scope is supported, but had %d (%v)", len(dbConfig.Scopes), dbConfig.Scopes))
 	} else {
+		if len(dbConfig.Scopes) != 0 && dbConfig.UseViews != nil && *dbConfig.UseViews {
+			multiError = multiError.Append(fmt.Errorf("useViews=true is incompatible with collections which requires GSI"))
+		}
+
 		for scopeName, scopeConfig := range dbConfig.Scopes {
 			// WIP: Collections Phase 1 - Only allow a single collection
 			if len(scopeConfig.Collections) != 1 {
@@ -1171,6 +1178,34 @@ func (sc *StartupConfig) validate(isEnterpriseEdition bool) (errorMessages error
 		multiError = multiError.Append(fmt.Errorf("%v: %d outside allowed range: %d-%d", auth.ErrInvalidBcryptCost, sc.Auth.BcryptCost, auth.DefaultBcryptCost, bcrypt.MaxCost))
 	}
 
+	if len(sc.Bootstrap.ConfigGroupID) > persistentConfigGroupIDMaxLength {
+		multiError = multiError.Append(fmt.Errorf("group_id must be at most %d characters in length", persistentConfigGroupIDMaxLength))
+	}
+
+	if sc.BucketCredentials != nil && sc.DatabaseCredentials != nil && len(sc.BucketCredentials) > 0 && len(sc.DatabaseCredentials) > 0 {
+		multiError = multiError.Append(fmt.Errorf("bucket_credentials and database_credentials cannot be used at the same time"))
+	}
+
+	if sc.DatabaseCredentials != nil {
+		for dbName, creds := range sc.DatabaseCredentials {
+			if (creds.X509CertPath != "" || creds.X509KeyPath != "") && (creds.Username != "" || creds.Password != "") {
+				base.WarnfCtx(context.TODO(), "database %q in database_credentials cannot use both x509 and basic auth. Will use x509 only.", base.MD(dbName))
+			}
+		}
+	}
+
+	if sc.IsServerless() && len(sc.BucketCredentials) == 0 {
+		multiError = multiError.Append(fmt.Errorf("at least 1 bucket must be defined in bucket_credentials when running in serverless mode"))
+	}
+
+	if sc.BucketCredentials != nil {
+		for bucketName, creds := range sc.BucketCredentials {
+			if (creds.X509CertPath != "" || creds.X509KeyPath != "") && (creds.Username != "" || creds.Password != "") {
+				multiError = multiError.Append(fmt.Errorf("bucket %q in bucket_credentials cannot use both x509 and basic auth", base.MD(bucketName)))
+			}
+		}
+	}
+
 	// EE only features
 	if !isEnterpriseEdition {
 		if sc.API.EnableAdminAuthenticationPermissionsCheck != nil && *sc.API.EnableAdminAuthenticationPermissionsCheck {
@@ -1180,10 +1215,6 @@ func (sc *StartupConfig) validate(isEnterpriseEdition bool) (errorMessages error
 		if sc.Bootstrap.ConfigGroupID != persistentConfigDefaultGroupID {
 			multiError = multiError.Append(fmt.Errorf("customization of group_id is only supported in enterprise edition"))
 		}
-	}
-
-	if len(sc.Bootstrap.ConfigGroupID) > persistentConfigGroupIDMaxLength {
-		multiError = multiError.Append(fmt.Errorf("group_id must be at most %d characters in length", persistentConfigGroupIDMaxLength))
 	}
 
 	return multiError.ErrorOrNil()
@@ -1298,10 +1329,19 @@ func (sc *ServerContext) _fetchAndLoadDatabase(dbName string) (found bool, err e
 }
 
 func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *DatabaseConfig, err error) {
-	buckets, err := sc.bootstrapContext.connection.GetConfigBuckets()
-	if err != nil {
-		return false, nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
+	var buckets []string
+	if sc.config.IsServerless() {
+		buckets = make([]string, len(sc.config.BucketCredentials))
+		for bucket, _ := range sc.config.BucketCredentials {
+			buckets = append(buckets, bucket)
+		}
+	} else {
+		buckets, err = sc.bootstrapContext.connection.GetConfigBuckets()
+		if err != nil {
+			return false, nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
+		}
 	}
+
 	logCtx := context.TODO()
 
 	// move bucket matching dbName to the front so it's searched first
@@ -1358,9 +1398,27 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 
 // fetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
 func (sc *ServerContext) fetchConfigs(isInitialStartup bool) (dbNameConfigs map[string]DatabaseConfig, err error) {
-	buckets, err := sc.bootstrapContext.connection.GetConfigBuckets()
-	if err != nil {
-		return nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
+	var buckets []string
+	if sc.config.IsServerless() {
+		buckets = make([]string, len(sc.config.BucketCredentials))
+		for bucket, _ := range sc.config.BucketCredentials {
+			buckets = append(buckets, bucket)
+		}
+		// TODO: Enable code as part of CBG-2280
+		// Return buckets that have credentials set that do not have a db associated with them
+		//buckets = make([]string, len(sc.config.BucketCredentials)-len(sc.bucketDbName))
+		//for bucket := range sc.config.BucketCredentials {
+		//	i := 0
+		//	if sc.bucketDbName[bucket] == "" {
+		//		buckets[i] = bucket
+		//		i++
+		//	}
+		//}
+	} else {
+		buckets, err = sc.bootstrapContext.connection.GetConfigBuckets()
+		if err != nil {
+			return nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
+		}
 	}
 
 	logCtx := context.TODO()
@@ -1395,7 +1453,7 @@ func (sc *ServerContext) fetchConfigs(isInitialStartup bool) (dbNameConfigs map[
 
 		// stamp per-database credentials if set
 		if dbCredentials, ok := sc.config.DatabaseCredentials[cnf.Name]; ok && dbCredentials != nil {
-			cnf.setPerDatabaseCredentials(*dbCredentials)
+			cnf.setDatabaseCredentials(*dbCredentials)
 		}
 
 		// any authentication fields defined on the dbconfig take precedence over any in the bootstrap config

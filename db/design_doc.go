@@ -34,9 +34,10 @@ const DesignDocVersion = "2.1"
 const DesignDocFormat = "%s_%s" // Design doc prefix, view version
 
 // DesignDocPreviousVersions defines the set of versions included during removal of obsolete
-// design docs.  Must be updated whenever DesignDocVersion is incremented.
-// Uses a hardcoded list instead of version comparison to simpify the processing
+// design docs in removeObsoleteDesignDocs.  Must be updated whenever DesignDocVersion is incremented.
+// Uses a hardcoded list instead of version comparison to simplify the processing
 // (particularly since there aren't expected to be many view versions before moving to GSI).
+// See setDesignDocPreviousVersionsForTest for a way to temporarily override this during tests.
 var DesignDocPreviousVersions = []string{"", "2.0"}
 
 const (
@@ -48,6 +49,7 @@ const (
 	ViewAccessVbSeq                 = "access_vbseq"
 	ViewRoleAccess                  = "role_access"
 	ViewRoleAccessVbSeq             = "role_access_vbseq"
+	ViewRolesExcludeDeleted         = "roles_exclude_deleted"
 	ViewAllDocs                     = "all_docs"
 	ViewImport                      = "import"
 	ViewSessions                    = "sessions"
@@ -323,7 +325,10 @@ func stripSyncProperty(row *sgbucket.ViewRow) {
 }
 
 func InitializeViews(bucket base.Bucket) error {
-
+	collection, ok := bucket.(*base.Collection)
+	if ok && !collection.IsDefaultScopeCollection() {
+		return fmt.Errorf("Can not initialize views on a non default collection")
+	}
 	// Check whether design docs are already present
 	ddocsExist := checkExistingDDocs(bucket)
 
@@ -419,6 +424,17 @@ func installViews(bucket base.Bucket) error {
 			                     emit(meta.id.substring(%d), isUser); }`
 	principals_map = fmt.Sprintf(principals_map, base.UserPrefix, base.RolePrefix,
 		len(base.UserPrefix))
+
+	// All-roles view, excluding deleted
+	// Key is role name; value is not used
+	roles_excludeDeleted_map :=
+		`function (doc, meta) {
+			var prefix = meta.id.substring(0,%d);
+			if (prefix == %q && doc.deleted !== true)
+				emit(meta.id.substring(%d), null); 
+		}`
+	rolePrefixLen := len(base.UserPrefix)
+	roles_excludeDeleted_map = fmt.Sprintf(roles_excludeDeleted_map, rolePrefixLen, base.RolePrefix, rolePrefixLen)
 
 	// By-channels view.
 	// Key is [channelname, sequence]; value is [docid, revid, flag?]
@@ -538,12 +554,13 @@ func installViews(bucket base.Bucket) error {
 	designDocMap := map[string]*sgbucket.DesignDoc{}
 	designDocMap[DesignDocSyncGateway()] = &sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
-			ViewChannels:        sgbucket.ViewDef{Map: channels_map},
-			ViewAccess:          sgbucket.ViewDef{Map: access_map},
-			ViewRoleAccess:      sgbucket.ViewDef{Map: roleAccess_map},
-			ViewAccessVbSeq:     sgbucket.ViewDef{Map: access_vbSeq_map},
-			ViewRoleAccessVbSeq: sgbucket.ViewDef{Map: roleAccess_vbSeq_map},
-			ViewPrincipals:      sgbucket.ViewDef{Map: principals_map},
+			ViewChannels:            sgbucket.ViewDef{Map: channels_map},
+			ViewAccess:              sgbucket.ViewDef{Map: access_map},
+			ViewRoleAccess:          sgbucket.ViewDef{Map: roleAccess_map},
+			ViewRolesExcludeDeleted: sgbucket.ViewDef{Map: roles_excludeDeleted_map},
+			ViewAccessVbSeq:         sgbucket.ViewDef{Map: access_vbSeq_map},
+			ViewRoleAccessVbSeq:     sgbucket.ViewDef{Map: roleAccess_vbSeq_map},
+			ViewPrincipals:          sgbucket.ViewDef{Map: principals_map},
 		},
 		Options: &sgbucket.DesignDocOptions{
 			IndexXattrOnTombstones: true,
@@ -563,14 +580,14 @@ func installViews(bucket base.Bucket) error {
 	}
 
 	sleeper := base.CreateDoublingSleeperFunc(
-		11, //MaxNumRetries approx 10 seconds total retry duration
-		5,  //InitialRetrySleepTimeMS
+		11, // MaxNumRetries approx 10 seconds total retry duration
+		5,  // InitialRetrySleepTimeMS
 	)
 
 	// add all design docs from map into bucket
 	for designDocName, designDoc := range designDocMap {
 
-		//start a retry loop to put design document backing off double the delay each time
+		// start a retry loop to put design document backing off double the delay each time
 		worker := func() (shouldRetry bool, err error, value interface{}) {
 			err = bucket.PutDDoc(designDocName, designDoc)
 			if err != nil {
@@ -723,6 +740,10 @@ func IsMissingDDocError(err error) bool {
 
 	// gocb v2
 	if errors.Is(err, gocb.ErrDesignDocumentNotFound) {
+		return true
+	}
+
+	if errors.Is(err, base.ErrNotFound) {
 		return true
 	}
 

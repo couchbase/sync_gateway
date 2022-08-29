@@ -4758,20 +4758,19 @@ func TestWebhookProperties(t *testing.T) {
 	rt := NewRestTester(t, rtConfig)
 	defer rt.Close()
 
-	rt.SendAdminRequest("PUT", "/db/doc1", `{"foo": "bar"}`)
 	wg.Add(1)
+	rt.SendAdminRequest("PUT", "/db/doc1", `{"foo": "bar"}`)
 
 	if base.TestUseXattrs() {
+		wg.Add(1)
 		body := make(map[string]interface{})
 		body["foo"] = "bar"
 		added, err := rt.Bucket().Add("doc2", 0, body)
 		assert.True(t, added)
 		assert.NoError(t, err)
-		wg.Add(1)
 	}
 
-	wg.Wait()
-
+	require.NoError(t, WaitWithTimeout(&wg, 30*time.Second))
 }
 
 func TestBasicGetReplicator2(t *testing.T) {
@@ -9719,10 +9718,10 @@ func TestSyncFnTimeout(t *testing.T) {
 	syncFnFinishedWG.Add(1)
 	go func() {
 		response := rt.SendAdminRequest("PUT", "/db/doc", `{"foo": "bar"}`)
-		requireStatus(t, response, 500) // TODO: Change to assertStatus when CBG-2143 merged maybe with response matching if response is changed
+		assertHTTPErrorReason(t, response, 500, "JS sync function timed out")
 		syncFnFinishedWG.Done()
 	}()
-	timeoutErr := WaitWithTimeout(&syncFnFinishedWG, time.Second*5)
+	timeoutErr := WaitWithTimeout(&syncFnFinishedWG, time.Second*15)
 	assert.NoError(t, timeoutErr)
 }
 
@@ -9745,9 +9744,9 @@ func TestImportFilterTimeout(t *testing.T) {
 	syncFnFinishedWG.Add(1)
 	go func() {
 		response := rt.SendAdminRequest("GET", "/db/doc", ``)
-		requireStatus(t, response, 404) // TODO: Change to assertStatus when CBG-2143 merged
+		assertStatus(t, response, 404)
 		syncFnFinishedWG.Done()
 	}()
-	timeoutErr := WaitWithTimeout(&syncFnFinishedWG, time.Second*5)
+	timeoutErr := WaitWithTimeout(&syncFnFinishedWG, time.Second*15)
 	assert.NoError(t, timeoutErr)
 }

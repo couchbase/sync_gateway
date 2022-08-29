@@ -45,11 +45,22 @@ func TestOneShotDCP(t *testing.T) {
 
 	// start one shot feed
 	feedID := t.Name()
-	clientOptions := DCPClientOptions{
-		OneShot: true,
+
+	collection, err := AsCollection(bucket)
+	require.NoError(t, err)
+	var collectionIDs []uint32
+	if collection.Spec.Scope != nil && collection.Spec.Collection != nil {
+		collectionID, err := collection.GetCollectionID()
+		require.NoError(t, err)
+		collectionIDs = append(collectionIDs, collectionID)
 	}
 
-	dcpClient, err := NewDCPClient(feedID, counterCallback, clientOptions, bucket)
+	clientOptions := DCPClientOptions{
+		OneShot:       true,
+		CollectionIDs: collectionIDs,
+	}
+
+	dcpClient, err := NewDCPClient(feedID, counterCallback, clientOptions, collection)
 	require.NoError(t, err)
 
 	// Add additional documents in a separate goroutine, to verify afterEndSeq handling
@@ -104,7 +115,9 @@ func TestTerminateDCPFeed(t *testing.T) {
 	// start continuous feed with terminator
 	feedID := t.Name()
 
-	dcpClient, err := NewDCPClient(feedID, counterCallback, DCPClientOptions{}, bucket)
+	collection, err := AsCollection(bucket)
+	require.NoError(t, err)
+	dcpClient, err := NewDCPClient(feedID, counterCallback, DCPClientOptions{}, collection)
 	require.NoError(t, err)
 
 	// Add documents in a separate goroutine
@@ -197,13 +210,23 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				err := bucket.Set(key, 0, nil, updatedBody)
 				require.NoError(t, err)
 			}
+			collection, err := AsCollection(bucket)
+			require.NoError(t, err)
+			var collectionIDs []uint32
+			if collection.Spec.Scope != nil && collection.Spec.Collection != nil {
+				collectionID, err := collection.GetCollectionID()
+				require.NoError(t, err)
+				collectionIDs = append(collectionIDs, collectionID)
+			}
 
 			// Perform first one-shot DCP feed - normal one-shot
 			dcpClientOpts := DCPClientOptions{
 				OneShot:        true,
 				FailOnRollback: true,
+				CollectionIDs:  collectionIDs,
 			}
-			dcpClient, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, bucket)
+
+			dcpClient, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, collection)
 			require.NoError(t, err)
 
 			doneChan, startErr := dcpClient.Start()
@@ -232,8 +255,9 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				InitialMetadata: uuidMismatchMetadata,
 				FailOnRollback:  true,
 				OneShot:         true,
+				CollectionIDs:   collectionIDs,
 			}
-			dcpClient2, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, bucket)
+			dcpClient2, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, collection)
 			require.NoError(t, err)
 
 			doneChan2, startErr2 := dcpClient2.Start()
@@ -248,8 +272,12 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				InitialMetadata: uuidMismatchMetadata,
 				FailOnRollback:  false,
 				OneShot:         true,
+				CollectionIDs:   collectionIDs,
 			}
-			dcpClient3, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, bucket)
+			collection, err = AsCollection(bucket)
+			require.NoError(t, err)
+
+			dcpClient3, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, collection)
 			require.NoError(t, err)
 
 			doneChan3, startErr3 := dcpClient3.Start()
@@ -309,13 +337,24 @@ func TestResumeStoppedFeed(t *testing.T) {
 	// Start first one-shot DCP feed, will be stopped by callback after processing 5000 records
 	// Set metadata persistence frequency to zero to force persistence on every mutation
 	highFrequency := 0 * time.Second
+
+	collection, err := AsCollection(bucket)
+	require.NoError(t, err)
+	var collectionIDs []uint32
+	if collection.Spec.Scope != nil && collection.Spec.Collection != nil {
+		collectionID, err := collection.GetCollectionID()
+		require.NoError(t, err)
+		collectionIDs = append(collectionIDs, collectionID)
+	}
+
 	dcpClientOpts := DCPClientOptions{
 		OneShot:                    true,
 		FailOnRollback:             false,
 		CheckpointPersistFrequency: &highFrequency,
+		CollectionIDs:              collectionIDs,
 	}
-	var err error
-	dcpClient, err = NewDCPClient(feedID, counterCallback, dcpClientOpts, bucket)
+
+	dcpClient, err = NewDCPClient(feedID, counterCallback, dcpClientOpts, collection)
 	require.NoError(t, err)
 
 	doneChan, startErr := dcpClient.Start()
@@ -345,8 +384,12 @@ func TestResumeStoppedFeed(t *testing.T) {
 	dcpClientOpts = DCPClientOptions{
 		FailOnRollback: false,
 		OneShot:        true,
+		CollectionIDs:  collectionIDs,
 	}
-	dcpClient2, err := NewDCPClient(feedID, secondCallback, dcpClientOpts, bucket)
+	collection, err = AsCollection(bucket)
+	require.NoError(t, err)
+
+	dcpClient2, err := NewDCPClient(feedID, secondCallback, dcpClientOpts, collection)
 	require.NoError(t, err)
 
 	doneChan2, startErr2 := dcpClient2.Start()
@@ -366,4 +409,28 @@ func TestResumeStoppedFeed(t *testing.T) {
 		t.Errorf("timeout waiting for second one-shot feed to complete")
 	}
 
+}
+
+// TestBadAgentPriority makes sure we can not specify agent priority as high
+func TestBadAgentPriority(t *testing.T) {
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server, since DCPClient requires a base.Collection")
+	}
+
+	bucket := GetTestBucket(t)
+	defer bucket.Close()
+
+	feedID := "fakeID"
+	panicCallback := func(event sgbucket.FeedEvent) bool {
+		t.Error(t, "Should not hit this callback")
+		return false
+	}
+	dcpClientOpts := DCPClientOptions{
+		AgentPriority: gocbcore.DcpAgentPriorityHigh,
+	}
+	collection, err := AsCollection(bucket)
+	require.NoError(t, err)
+	dcpClient, err := NewDCPClient(feedID, panicCallback, dcpClientOpts, collection)
+	require.Error(t, err)
+	require.Nil(t, dcpClient)
 }

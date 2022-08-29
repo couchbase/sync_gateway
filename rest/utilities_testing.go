@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"testing"
@@ -42,15 +43,16 @@ import (
 
 // RestTesterConfig represents configuration for sync gateway
 type RestTesterConfig struct {
-	guestEnabled                    bool             // If this is true, Admin Party is in full effect
-	SyncFn                          string           // put the sync() function source in here (optional)
-	DatabaseConfig                  *DatabaseConfig  // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
-	InitSyncSeq                     uint64           // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
-	EnableNoConflictsMode           bool             // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
-	EnableUserQueries               bool             // Enable the feature-flag for user N1QL/etc queries
-	TestBucket                      *base.TestBucket // If set, use this bucket instead of requesting a new one.
-	adminInterface                  string           // adminInterface overrides the default admin interface.
-	sgReplicateEnabled              bool             // sgReplicateManager disabled by default for RestTester
+	guestEnabled                    bool                    // If this is true, Admin Party is in full effect
+	SyncFn                          string                  // put the sync() function source in here (optional)
+	DatabaseConfig                  *DatabaseConfig         // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
+	InitSyncSeq                     uint64                  // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
+	EnableNoConflictsMode           bool                    // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
+	EnableUserQueries               bool                    // Enable the feature-flag for user N1QL/etc queries
+	TestBucket                      *base.TestBucket        // If set, use this bucket instead of requesting a new one.
+	leakyBucketConfig               *base.LeakyBucketConfig // Set to create and use a leaky bucket on the RT and DB. A test bucket cannot be passed in if using this option.
+	adminInterface                  string                  // adminInterface overrides the default admin interface.
+	sgReplicateEnabled              bool                    // sgReplicateManager disabled by default for RestTester
 	hideProductInfo                 bool
 	adminInterfaceAuthentication    bool
 	metricsInterfaceAuthentication  bool
@@ -59,6 +61,7 @@ type RestTesterConfig struct {
 	persistentConfig                bool
 	groupID                         *string
 	createScopesAndCollections      bool // If true, will automatically create any defined scopes and collections on startup.
+	serverless                      bool // Runs SG in serverless mode. Should be used in conjunction with persistent config
 }
 
 // RestTester provides a fake server for testing endpoints
@@ -92,7 +95,6 @@ func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
 }
 
 func (rt *RestTester) Bucket() base.Bucket {
-
 	if rt.tb == nil {
 		panic("RestTester not properly initialized please use NewRestTester function")
 	} else if rt.closed {
@@ -107,6 +109,14 @@ func (rt *RestTester) Bucket() base.Bucket {
 	testBucket := rt.RestTesterConfig.TestBucket
 	if testBucket == nil {
 		testBucket = base.GetTestBucket(rt.tb)
+		if rt.leakyBucketConfig != nil {
+			leakyConfig := *rt.leakyBucketConfig
+			// Ignore closures to avoid double closing panics
+			leakyConfig.IgnoreClose = true
+			testBucket = testBucket.LeakyBucketClone(leakyConfig)
+		}
+	} else if rt.leakyBucketConfig != nil {
+		rt.tb.Fatalf("A passed in TestBucket cannot be used on the RestTester when defining a leakyBucketConfig")
 	}
 	rt.testBucket = testBucket
 
@@ -150,6 +160,15 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.API.EnableAdminAuthenticationPermissionsCheck = &rt.enableAdminAuthPermissionsCheck
 	sc.Bootstrap.UseTLSServer = &rt.RestTesterConfig.useTLSServer
 	sc.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
+	sc.Unsupported.Serverless = &rt.serverless
+	if rt.serverless {
+		sc.BucketCredentials = map[string]*base.CredentialsConfig{
+			testBucket.GetName(): {
+				Username: base.TestClusterUsername(),
+				Password: base.TestClusterPassword(),
+			},
+		}
+	}
 
 	if rt.RestTesterConfig.groupID != nil {
 		sc.Bootstrap.ConfigGroupID = *rt.RestTesterConfig.groupID
@@ -209,7 +228,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 					scopes[scopeName] = append(scopes[scopeName], collName)
 				}
 			}
-			if err := base.CreateTestBucketScopesAndCollections(base.TestCtx(rt.tb), rt.testBucket, scopes); err != nil {
+			if err := base.CreateBucketScopesAndCollections(base.TestCtx(rt.tb), rt.testBucket.BucketSpec, scopes); err != nil {
 				rt.tb.Fatalf("Error creating test scopes/collections: %v", err)
 			}
 		}
@@ -234,7 +253,34 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 		rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(rt.RestTesterConfig.sgReplicateEnabled)
 
-		_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(*rt.DatabaseConfig)
+		if rt.leakyBucketConfig != nil {
+			// Scopes and collections have to be set on the bucket being passed in for the db to use.
+			// WIP: Collections Phase 1 - Grab just one scope/collection from the defined set.
+			// Phase 2 (multi collection) means DatabaseContext needs a set of BucketSpec/Collections, not just one...
+			var scope, collection *string
+			for scopeName, scopeConfig := range rt.RestTesterConfig.DatabaseConfig.Scopes {
+				scope = &scopeName
+				for collectionName := range scopeConfig.Collections {
+					collection = &collectionName
+					break
+				}
+			}
+			if scope != nil && collection != nil {
+				collectionBucket, err := base.AsCollection(testBucket.Bucket)
+				if err != nil {
+					rt.tb.Fatalf("Could not get collection from bucket with type %T: %v", testBucket.Bucket, err)
+				}
+
+				collectionBucket.Spec.Scope = scope
+				collectionBucket.Spec.Collection = collection
+				collectionBucket.Collection = collectionBucket.Collection.Bucket().Scope(*scope).Collection(*collection)
+			}
+
+			_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithBucket(rt.tb, *rt.DatabaseConfig, testBucket.Bucket)
+		} else {
+			_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(*rt.DatabaseConfig)
+		}
+
 		if err != nil {
 			rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)
 		}
@@ -253,8 +299,21 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	// PostStartup (without actually waiting 5 seconds)
 	close(rt.RestTesterServerContext.hasStarted)
-
 	return rt.testBucket.Bucket
+}
+
+// LeakyBucket gets the bucket from the RestTester as a leaky bucket allowing for callbacks to be set on the fly.
+// The RestTester must have been set up to create and use a leaky bucket by setting leakyBucketConfig in the RT
+// config when calling NewRestTester.
+func (rt *RestTester) LeakyBucket() *base.LeakyBucket {
+	if rt.leakyBucketConfig == nil {
+		rt.tb.Fatalf("Cannot get leaky bucket when leakyBucketConfig was not set on RestTester initialisation")
+	}
+	leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
+	if !ok {
+		rt.tb.Fatalf("Could not get bucket (type %T) as a leaky bucket", rt.Bucket())
+	}
+	return leakyBucket
 }
 
 func (rt *RestTester) ServerContext() *ServerContext {
@@ -729,6 +788,16 @@ func (rt *RestTester) GetDocumentSequence(key string) (sequence uint64) {
 	return rawResponse.Sync.Sequence
 }
 
+// ReplacePerBucketCredentials replaces buckets defined on StartupConfig.BucketCredentials then recreates the couchbase
+// cluster to pick up the changes
+func (rt *RestTester) ReplacePerBucketCredentials(config base.PerBucketCredentialsConfig) {
+	rt.ServerContext().config.BucketCredentials = config
+	// Update the CouchbaseCluster to include the new bucket credentials
+	couchbaseCluster, err := createCouchbaseClusterFromStartupConfig(rt.ServerContext().config)
+	require.NoError(rt.tb, err)
+	rt.ServerContext().bootstrapContext.connection = couchbaseCluster
+}
+
 type TestResponse struct {
 	*httptest.ResponseRecorder
 	Req *http.Request
@@ -854,6 +923,14 @@ func (s *SlowResponseRecorder) Write(buf []byte) (int, error) {
 	return numBytesWritten, err
 }
 
+// AddDatabaseFromConfigWithBucket adds a database to the ServerContext and sets a specific bucket on the database context.
+// If an existing config is found for the name, returns an error.
+func (sc *ServerContext) AddDatabaseFromConfigWithBucket(tb testing.TB, config DatabaseConfig, bucket base.Bucket) (*db.DatabaseContext, error) {
+	return sc.getOrAddDatabaseFromConfig(config, false, func(spec base.BucketSpec) (base.Bucket, error) {
+		return bucket, nil
+	})
+}
+
 // The parameters used to create a BlipTester
 type BlipTesterSpec struct {
 
@@ -907,6 +984,10 @@ type BlipTester struct {
 
 	// The blip sender that can be used for sending messages over the websocket connection
 	sender *blip.Sender
+
+	// Set when we receive a reply to a getCollections request. Used to verify that all messages after that contain a
+	// `collection` property.
+	useCollections *base.AtomicBool
 }
 
 // Close the bliptester
@@ -959,7 +1040,8 @@ func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) (*BlipTester, err
 // Create a BlipTester using the given spec
 func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester) (*BlipTester, error) {
 	bt := &BlipTester{
-		restTester: rt,
+		restTester:     rt,
+		useCollections: base.NewAtomicBool(false),
 	}
 
 	// Since blip requests all go over the public handler, wrap the public handler with the httptest server
@@ -1023,6 +1105,15 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 	bt.blipContext, err = db.NewSGBlipContextWithProtocols(base.TestCtx(tb), "", protocols...)
 	if err != nil {
 		return nil, err
+	}
+
+	// Ensure that errors get correctly surfaced in tests
+	bt.blipContext.FatalErrorHandler = func(err error) {
+		tb.Fatalf("BLIP fatal error: %v", err)
+	}
+	bt.blipContext.HandlerPanicHandler = func(request, response *blip.Message, err interface{}) {
+		stack := debug.Stack()
+		tb.Fatalf("Panic while handling %s: %v\n%s", request.Profile(), err, string(stack))
 	}
 
 	config := blip.DialOptions{

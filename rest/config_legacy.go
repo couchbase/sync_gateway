@@ -408,7 +408,7 @@ func setupServerConfig(args []string) (config *LegacyServerConfig, err error) {
 
 func setupAndValidateDatabases(databases DbConfigMap) error {
 	for name, dbConfig := range databases {
-		if err := dbConfig.setup(name, BootstrapConfig{}, nil); err != nil {
+		if err := dbConfig.setup(name, BootstrapConfig{}, nil, nil, false); err != nil {
 			return err
 		}
 		if err := dbConfig.validate(context.Background(), false); err != nil {

@@ -51,6 +51,7 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			BcryptCost: auth.DefaultBcryptCost,
 		},
 		Unsupported: UnsupportedConfig{
+			Serverless:        base.BoolPtr(false),
 			StatsLogFrequency: base.NewConfigDuration(time.Minute),
 		},
 		MaxFileDescriptors: DefaultMaxFileDescriptors,
@@ -66,7 +67,8 @@ type StartupConfig struct {
 	Replicator  ReplicatorConfig   `json:"replicator,omitempty"`
 	Unsupported UnsupportedConfig  `json:"unsupported,omitempty"`
 
-	DatabaseCredentials PerDatabaseCredentialsConfig `json:"database_credentials,omitempty" help:"A map of database name to credentials, that can be used instead of the bootstrap ones."`
+	DatabaseCredentials PerDatabaseCredentialsConfig    `json:"database_credentials,omitempty" help:"A map of database name to credentials, that can be used instead of the bootstrap ones. Cannot be used in conjunction with bucket_credentials."`
+	BucketCredentials   base.PerBucketCredentialsConfig `json:"bucket_credentials,omitempty" help:"A map of bucket names to credentials, that can be used instead of the bootstrap ones. Cannot be used in conjunction with database_credentials."`
 
 	MaxFileDescriptors         uint64 `json:"max_file_descriptors,omitempty" help:"Max # of open file descriptors (RLIMIT_NOFILE)"`
 	CouchbaseKeepaliveInterval *int   `json:"couchbase_keepalive_interval,omitempty" help:"TCP keep-alive interval between SG and Couchbase server"`
@@ -135,6 +137,7 @@ type ReplicatorConfig struct {
 }
 
 type UnsupportedConfig struct {
+	Serverless        *bool                `json:"serverless,omitempty" help:"Run SG in to serverless mode."`
 	StatsLogFrequency *base.ConfigDuration `json:"stats_log_frequency,omitempty"    help:"How often should stats be written to stats logs"`
 	UseStdlibJSON     *bool                `json:"use_stdlib_json,omitempty"        help:"Bypass the jsoniter package and use Go's stdlib instead"`
 
@@ -147,14 +150,7 @@ type HTTP2Config struct {
 	Enabled *bool `json:"enabled,omitempty" help:"Whether HTTP2 support is enabled"`
 }
 
-type PerDatabaseCredentialsConfig map[string]*DatabaseCredentialsConfig
-
-type DatabaseCredentialsConfig struct {
-	Username     string `json:"username,omitempty"       help:"Username for authenticating to the bucket"`
-	Password     string `json:"password,omitempty"       help:"Password for authenticating to the bucket"`
-	X509CertPath string `json:"x509_cert_path,omitempty" help:"Cert path (public key) for X.509 bucket auth"`
-	X509KeyPath  string `json:"x509_key_path,omitempty"  help:"Key path (private key) for X.509 bucket auth"`
-}
+type PerDatabaseCredentialsConfig map[string]*base.CredentialsConfig
 
 type DeprecatedConfig struct {
 	Facebook *FacebookConfigLegacy `json:"-" help:""`
@@ -179,7 +175,17 @@ func (sc *StartupConfig) Redacted() (*StartupConfig, error) {
 		}
 	}
 
+	for _, credentialsConfig := range config.BucketCredentials {
+		if credentialsConfig != nil && credentialsConfig.Password != "" {
+			credentialsConfig.Password = base.RedactedStr
+		}
+	}
+
 	return &config, nil
+}
+
+func (sc *StartupConfig) IsServerless() bool {
+	return base.BoolDefault(sc.Unsupported.Serverless, false)
 }
 
 func LoadStartupConfigFromPath(path string) (*StartupConfig, error) {

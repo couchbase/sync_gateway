@@ -211,7 +211,7 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 		assert.NoError(t, node.RegisterListener(importListener))
 		importListeners[i] = importListener
 
-		//Create and register sgr listener on two nodes
+		// Create and register sgr listener on two nodes
 		if i < 2 {
 			sgrListener, err := NewDocumentBackedListener(testBucket, keyprefix+":sgr")
 			require.NoError(t, err)
@@ -343,15 +343,27 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 		"some-datasource",
 		eventHandlers,
 		options)
-	listener1, err := NewImportHeartbeatListener(cfgCB, testManager)
+	listener1, err := NewImportHeartbeatListener(&CbgtContext{
+		Cfg:        cfgCB,
+		Manager:    testManager,
+		loggingCtx: TestCtx(t),
+	})
 	assert.NoError(t, err)
 	assert.NoError(t, node1.RegisterListener(listener1))
 
-	listener2, err := NewImportHeartbeatListener(cfgCB, testManager)
+	listener2, err := NewImportHeartbeatListener(&CbgtContext{
+		Cfg:        cfgCB,
+		Manager:    testManager,
+		loggingCtx: TestCtx(t),
+	})
 	assert.NoError(t, err)
 	assert.NoError(t, node2.RegisterListener(listener2))
 
-	listener3, err := NewImportHeartbeatListener(cfgCB, testManager)
+	listener3, err := NewImportHeartbeatListener(&CbgtContext{
+		Cfg:        cfgCB,
+		Manager:    testManager,
+		loggingCtx: TestCtx(t),
+	})
 	assert.NoError(t, err)
 	assert.NoError(t, node3.RegisterListener(listener3))
 

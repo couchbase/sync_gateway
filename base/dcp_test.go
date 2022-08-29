@@ -210,15 +210,15 @@ func TestCBGTIndexCreation(t *testing.T) {
 				}
 
 				err = context.Manager.CreateIndex(
-					SOURCE_GOCB_DCP_SG, // sourceType
-					bucket.GetName(),   // sourceName
-					bucketUUID,         // sourceUUID
-					sourceParams,       // sourceParams
-					indexType,          // indexType
-					legacyIndexName,    // indexName
-					indexParams,        // indexParams
-					planParams,         // planParams
-					"",                 // prevIndexUUID
+					SOURCE_DCP_SG,    // sourceType
+					bucket.GetName(), // sourceName
+					bucketUUID,       // sourceUUID
+					sourceParams,     // sourceParams
+					indexType,        // indexType
+					legacyIndexName,  // indexName
+					indexParams,      // indexParams
+					planParams,       // planParams
+					"",               // prevIndexUUID
 				)
 				require.NoError(t, err, "Unable to create legacy-style index")
 			}
@@ -281,15 +281,15 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 	}
 
 	err = context.Manager.CreateIndex(
-		SOURCE_GOCB_DCP_SG, // sourceType
-		bucket.GetName(),   // sourceName
-		bucketUUID,         // sourceUUID
-		sourceParams,       // sourceParams
-		indexType,          // indexType
-		legacyIndexName,    // indexName
-		indexParams,        // indexParams
-		planParams,         // planParams
-		"",                 // prevIndexUUID
+		SOURCE_DCP_SG,    // sourceType
+		bucket.GetName(), // sourceName
+		bucketUUID,       // sourceUUID
+		sourceParams,     // sourceParams
+		indexType,        // indexType
+		legacyIndexName,  // indexName
+		indexParams,      // indexParams
+		planParams,       // planParams
+		"",               // prevIndexUUID
 	)
 	require.NoError(t, err, "Unable to create legacy-style index")
 
@@ -357,15 +357,15 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	}
 
 	err = context.Manager.CreateIndex(
-		SOURCE_GOCB_DCP_SG, // sourceType
-		bucket.GetName(),   // sourceName
-		bucketUUID,         // sourceUUID
-		sourceParams,       // sourceParams
-		indexType,          // indexType
-		legacyIndexName,    // indexName
-		indexParams,        // indexParams
-		planParams,         // planParams
-		"",                 // prevIndexUUID
+		SOURCE_DCP_SG,    // sourceType
+		bucket.GetName(), // sourceName
+		bucketUUID,       // sourceUUID
+		sourceParams,     // sourceParams
+		indexType,        // indexType
+		legacyIndexName,  // indexName
+		indexParams,      // indexParams
+		planParams,       // planParams
+		"",               // prevIndexUUID
 	)
 	require.NoError(t, err, "Unable to create legacy-style index")
 
@@ -457,7 +457,7 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 //    BenchmarkPartitionToVbNo/parseUint-16   	300000000	         5.04 ns/op
 func BenchmarkPartitionToVbNo(b *testing.B) {
 
-	//Initialize lookup map
+	// Initialize lookup map
 	vbNos := make(map[string]uint16, 1024)
 	for i := 0; i < len(vbucketIdStrings); i++ {
 		vbucketIdStrings[i] = fmt.Sprintf("%d", i)

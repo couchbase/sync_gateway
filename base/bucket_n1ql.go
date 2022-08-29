@@ -124,6 +124,19 @@ func (bucket *CouchbaseBucketGoCB) BuildDeferredIndexes(indexSet []string) error
 	return BuildDeferredIndexes(bucket, indexSet)
 }
 
+func (bucket *CouchbaseBucketGoCB) waitUntilQueryServiceReady(_ time.Duration) error {
+	pr, err := bucket.Bucket.Ping([]gocb.ServiceType{gocb.N1qlService})
+	if err != nil {
+		return err
+	}
+	for _, service := range pr.Services {
+		if service.Service == gocb.N1qlService && service.Success {
+			return nil
+		}
+	}
+	return fmt.Errorf("Couldn't ping N1QL service: %v", pr)
+}
+
 func (bucket *CouchbaseBucketGoCB) runQuery(n1qlQuery *gocb.N1qlQuery, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
 	bucket.waitForAvailQueryOp()
 	defer bucket.releaseQueryOp()

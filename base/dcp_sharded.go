@@ -29,6 +29,20 @@ import (
 const CBGTIndexTypeSyncGatewayImport = "syncGateway-import-"
 const DefaultImportPartitions = 16
 
+// firstVersionToSupportCollections represents the earliest Sync Gateway release that supports collections (codename "Helium").
+var firstVersionToSupportCollections = &ComparableVersion{
+	epoch: 0,
+	major: 3,
+	minor: 1,
+	patch: 0,
+}
+
+// nodeExtras is the contents of the JSON value of the cbgt.NodeDef.Extras field as used by Sync Gateway.
+type nodeExtras struct {
+	// Version is the node's version.
+	Version *ComparableVersion `json:"v"`
+}
+
 // CbgtContext holds the two handles we have for CBGT-related functionality.
 type CbgtContext struct {
 	Manager           *cbgt.Manager            // Manager is main entry point for initialization, registering indexes
@@ -45,11 +59,6 @@ func StartShardedDCPFeed(dbName string, configGroup string, uuid string, heartbe
 	if err != nil {
 		return nil, err
 	}
-
-	dcpContextID := MD(spec.BucketName).Redact() + "-" + DCPImportFeedID
-	cbgtContext.loggingCtx = context.WithValue(context.Background(), LogContextKey{},
-		LogContext{CorrelationID: dcpContextID},
-	)
 
 	// Start Manager.  Registers this node in the cfg
 	err = cbgtContext.StartManager(dbName, configGroup, bucket, spec, numPartitions)
@@ -88,7 +97,7 @@ func GenerateLegacyIndexName(dbName string) string {
 // RegisterPIndexImplType (see importListener.RegisterImportPindexImpl)
 // will receive PIndexImpl callbacks (New, Open) for assigned PIndex to initiate DCP processing.
 func createCBGTIndex(c *CbgtContext, dbName string, configGroupID string, bucket Bucket, spec BucketSpec, numPartitions uint16) error {
-	sourceType := SOURCE_GOCB_DCP_SG
+	sourceType := SOURCE_DCP_SG
 
 	bucketUUID, err := bucket.UUID()
 	if err != nil {
@@ -233,6 +242,17 @@ func getCBGTIndexUUID(manager *cbgt.Manager, indexName string) (exists bool, pre
 // Inline comments below provide additional detail on how cbgt uses each manager
 // parameter, and the implications for SG
 func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID string, dbName string) (*CbgtContext, error) {
+	// Check if there are pre-Helium nodes, and if so, set the LithiumCompat flag to ensure we don't try to start a
+	// collections-enabled feed when some nodes won't support it.
+	minVersion, err := getMinNodeVersion(cfgSG)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get minimum node version in cluster: %w", err)
+	}
+	if minVersion.Less(firstVersionToSupportCollections) {
+		if spec.Scope != nil || spec.Collection != nil {
+			return nil, fmt.Errorf("cannot start DCP feed on non-default collection with legacy nodes present in the cluster")
+		}
+	}
 
 	// uuid: Unique identifier for the node. Used to identify the node in the config.
 	//       Without UUID persistence across SG restarts, a restarted SG node relies on heartbeater to remove
@@ -261,9 +281,12 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 	// container: Used by cbgt to determine node hierarchy.  Not needed by Sync Gateway
 	container := ""
 
-	// extras: Can be used to pass Sync Gateway specific node information to callbacks.  Not
-	//         currently needed by Sync Gateway.
-	extras := ""
+	// extras: Can be used to pass Sync Gateway specific node information to callbacks. Used to store the node version
+	// from Helium (3.1.0) onwards, empty for older versions.
+	extras, err := JSONMarshal(&nodeExtras{Version: ProductVersion})
+	if err != nil {
+		return nil, err
+	}
 
 	// bindHttp: Used for REST binding (not needed by Sync Gateway), but also as a unique identifier
 	//           in some circumstances.  See below for additional information.
@@ -274,23 +297,11 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 	//   		https://github.com/couchbaselabs/cbgt/issues/25
 	bindHttp := uuid
 
-	// serverURL: Passing gocb connect string.
-	var serverURL string
-	var err error
-	if feedType == cbgtFeedType_cbdatasource {
-		// cbdatasource expects server URL in http format
-		serverURLs, errConvertServerSpec := CouchbaseURIToHttpURL(bucket, spec.Server, nil)
-		if errConvertServerSpec != nil {
-			return nil, errConvertServerSpec
-		}
-		serverURL = strings.Join(serverURLs, ";")
-	} else {
-		serverURL, err = spec.GetGoCBConnString(&GoCBConnStringParams{
-			KVPoolSize: GoCBPoolSizeDCP,
-		})
-		if err != nil {
-			return nil, err
-		}
+	serverURL, err := spec.GetGoCBConnString(&GoCBConnStringParams{
+		KVPoolSize: GoCBPoolSizeDCP,
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	// dataDir: file system location for files persisted by cbgt.  Not required by SG, setting to empty
@@ -324,7 +335,7 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 		tags,
 		container,
 		weight,
-		extras,
+		string(extras),
 		bindHttp,
 		dataDir,
 		serverURL,
@@ -332,8 +343,9 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 		options)
 
 	cbgtContext := &CbgtContext{
-		Manager: mgr,
-		Cfg:     cfgSG,
+		loggingCtx: LogContextWith(context.Background(), &LogContext{CorrelationID: MD(spec.BucketName).Redact() + "-" + DCPImportFeedID}),
+		Manager:    mgr,
+		Cfg:        cfgSG,
 	}
 
 	if spec.Auth != nil || (spec.Certpath != "" && spec.Keypath != "") {
@@ -384,6 +396,45 @@ func (c *CbgtContext) StartManager(dbName string, configGroup string, bucket Buc
 	}
 
 	return nil
+}
+
+// getNodeVersion returns the version of the node from its Extras field, or nil if none is stored. Returns an error if
+// the extras could not be parsed.
+func getNodeVersion(def *cbgt.NodeDef) (*ComparableVersion, error) {
+	if len(def.Extras) == 0 {
+		return nil, nil
+	}
+	var extras nodeExtras
+	if err := JSONUnmarshal([]byte(def.Extras), &extras); err != nil {
+		return nil, fmt.Errorf("parsing node extras: %w", err)
+	}
+	return extras.Version, nil
+}
+
+// getMinNodeVersion returns the version of the oldest node currently in the cluster.
+func getMinNodeVersion(cfg cbgt.Cfg) (*ComparableVersion, error) {
+	nodes, _, err := cbgt.CfgGetNodeDefs(cfg, cbgt.NODE_DEFS_KNOWN)
+	if err != nil {
+		return nil, err
+	}
+	if nodes == nil || len(nodes.NodeDefs) == 0 {
+		// If there are no nodes at all, it's likely we're the first node in the cluster.
+		return ProductVersion, nil
+	}
+	var minVersion *ComparableVersion
+	for _, node := range nodes.NodeDefs {
+		nodeVersion, err := getNodeVersion(node)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get version of node %v: %w", MD(node.HostPort).Redact(), err)
+		}
+		if nodeVersion == nil {
+			nodeVersion = zeroComparableVersion
+		}
+		if minVersion == nil || nodeVersion.Less(minVersion) {
+			minVersion = nodeVersion
+		}
+	}
+	return minVersion, nil
 }
 
 // StopHeartbeatListener unregisters the listener from the heartbeater, and stops it.
@@ -441,7 +492,7 @@ func registerHeartbeatListener(heartbeater Heartbeater, cbgtContext *CbgtContext
 	}
 
 	// Register listener for import, uses cfg and manager to manage set of participating nodes
-	importHeartbeatListener, err := NewImportHeartbeatListener(cbgtContext.Cfg, cbgtContext.Manager)
+	importHeartbeatListener, err := NewImportHeartbeatListener(cbgtContext)
 	if err != nil {
 		return nil, err
 	}
@@ -458,20 +509,22 @@ func registerHeartbeatListener(heartbeater Heartbeater, cbgtContext *CbgtContext
 type importHeartbeatListener struct {
 	cfg        cbgt.Cfg      // cbgt cfg being used for import
 	mgr        *cbgt.Manager // cbgt manager associated with this import node
+	ctx        *CbgtContext
 	terminator chan struct{} // close cfg subscription on close
 	nodeIDs    []string      // Set of nodes from the latest retrieval
 	lock       sync.RWMutex  // lock for nodeIDs access
 }
 
-func NewImportHeartbeatListener(cfg cbgt.Cfg, mgr *cbgt.Manager) (*importHeartbeatListener, error) {
+func NewImportHeartbeatListener(ctx *CbgtContext) (*importHeartbeatListener, error) {
 
-	if cfg == nil {
-		return nil, errors.New("Cfg must not be nil for ImportHeartbeatListener")
+	if ctx == nil {
+		return nil, errors.New("ctx must not be nil for ImportHeartbeatListener")
 	}
 
 	listener := &importHeartbeatListener{
-		cfg:        cfg,
-		mgr:        mgr,
+		ctx:        ctx,
+		mgr:        ctx.Manager,
+		cfg:        ctx.Cfg,
 		terminator: make(chan struct{}),
 	}
 

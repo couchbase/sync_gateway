@@ -22,9 +22,10 @@ import (
 )
 
 const (
-	indexNameFormat = "sg_%s_%s%d" // Name, xattrs, version.  e.g. "sg_channels_x1"
-	syncToken       = "$sync"      // Sync token, used to swap between xattr/non-xattr handling in n1ql statements
-	indexToken      = "$idx"       // Index token, used to hint which index should be used for the query
+	indexNameFormat   = "sg_%s_%s%d"    // Name, xattrs, version.  e.g. "sg_channels_x1"
+	syncRelativeToken = "$relativesync" // Relative sync token (no keyspace), used to swap between xattr/non-xattr handling in n1ql statements
+	syncToken         = "$sync"         // Sync token, used to swap between xattr/non-xattr handling in n1ql statements
+	indexToken        = "$idx"          // Index token, used to hint which index should be used for the query
 
 	// N1ql-encoded wildcard expression matching the '_sync:' prefix used for all sync gateway's system documents.
 	// Need to escape the underscore in '_sync' to prevent it being treated as a N1QL wildcard
@@ -35,7 +36,8 @@ const (
 // When running with xattrs, that gets replaced with META().xattrs._sync (or META(bucketname).xattrs._sync for query).
 // When running w/out xattrs, it's just replaced by the doc path `bucketname`._sync
 // This gets replaced before the statement is sent to N1QL by the replaceSyncTokens methods.
-var syncNoXattr = fmt.Sprintf("%s.%s", base.KeyspaceQueryToken, base.SyncPropertyName)
+var syncNoXattr = base.SyncPropertyName
+var syncNoXattrQuery = fmt.Sprintf("%s.%s", base.KeyspaceQueryAlias, base.SyncPropertyName)
 var syncXattr = "meta().xattrs." + base.SyncXattrName
 var syncXattrQuery = fmt.Sprintf("meta(%s).xattrs.%s", base.KeyspaceQueryAlias, base.SyncXattrName) // Replacement for $sync token for xattr queries
 
@@ -120,17 +122,17 @@ var (
 		IndexAccess: "SELECT $sync.access.foo as val " +
 			"FROM %s AS %s " +
 			"USE INDEX ($idx) " +
-			"WHERE ANY op in OBJECT_PAIRS($sync.access) SATISFIES op.name = 'foo' end " +
+			"WHERE ANY op in OBJECT_PAIRS($relativesync.access) SATISFIES op.name = 'foo' end " +
 			"LIMIT 1",
 		IndexRoleAccess: "SELECT $sync.role_access.foo as val " +
 			"FROM %s AS %s " +
 			"USE INDEX ($idx) " +
-			"WHERE ANY op in OBJECT_PAIRS($sync.role_access) SATISFIES op.name = 'foo' end " +
+			"WHERE ANY op in OBJECT_PAIRS($relativesync.role_access) SATISFIES op.name = 'foo' end " +
 			"LIMIT 1",
 		IndexChannels: "SELECT  [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null), IFMISSING(op.val.del,null)][1] AS sequence " +
 			"FROM %s AS %s " +
 			"USE INDEX ($idx) " +
-			"UNNEST OBJECT_PAIRS($sync.channels) AS op " +
+			"UNNEST OBJECT_PAIRS($relativesync.channels) AS op " +
 			"WHERE [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null), IFMISSING(op.val.del,null)]  BETWEEN  ['foo', 0] AND ['foo', 1] " +
 			"ORDER BY [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)] " +
 			"LIMIT 1",
@@ -281,7 +283,7 @@ func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, useXattrs bool, numRepli
 }
 
 // Initializes Sync Gateway indexes for bucket.  Creates required indexes if not found, then waits for index readiness.
-func InitializeIndexes(bucket base.N1QLStore, useXattrs bool, numReplicas uint) error {
+func InitializeIndexes(bucket base.N1QLStore, useXattrs bool, numReplicas uint, failFast bool) error {
 
 	base.InfofCtx(context.TODO(), base.KeyAll, "Initializing indexes with numReplicas: %d...", numReplicas)
 
@@ -316,11 +318,11 @@ func InitializeIndexes(bucket base.N1QLStore, useXattrs bool, numReplicas uint) 
 	}
 
 	// Wait for initial readiness queries to complete
-	return waitForIndexes(bucket, useXattrs)
+	return waitForIndexes(bucket, useXattrs, failFast)
 }
 
 // Issue a consistency=request_plus query against critical indexes to guarantee indexing is complete and indexes are ready.
-func waitForIndexes(bucket base.N1QLStore, useXattrs bool) error {
+func waitForIndexes(bucket base.N1QLStore, useXattrs, failFast bool) error {
 	var indexesWg sync.WaitGroup
 	logCtx := context.TODO()
 	base.InfofCtx(logCtx, base.KeyAll, "Verifying index availability for bucket %s...", base.MD(bucket.GetName()))
@@ -338,7 +340,7 @@ func waitForIndexes(bucket base.N1QLStore, useXattrs bool) error {
 				}
 				queryStatement = replaceSyncTokensQuery(queryStatement, useXattrs)
 				queryStatement = replaceIndexTokensQuery(queryStatement, index, useXattrs)
-				queryErr := waitForIndex(bucket, index.fullIndexName(useXattrs), queryStatement)
+				queryErr := waitForIndex(bucket, index.fullIndexName(useXattrs), queryStatement, failFast)
 				if queryErr != nil {
 					base.WarnfCtx(logCtx, "Query error for statement [%s], err:%v", queryStatement, queryErr)
 					indexErrors <- queryErr
@@ -361,12 +363,16 @@ func waitForIndexes(bucket base.N1QLStore, useXattrs bool) error {
 
 // Issues adhoc consistency=request_plus query to determine if specified index is ready.
 // Retries indefinitely on timeout, backoff retry on all other errors.
-func waitForIndex(bucket base.N1QLStore, indexName string, queryStatement string) error {
+func waitForIndex(bucket base.N1QLStore, indexName string, queryStatement string, failFast bool) error {
 
 	logCtx := context.TODO()
 
 	// For non-timeout errors, backoff retry up to ~15m, to handle large initial indexing times
-	retrySleeper := base.CreateMaxDoublingSleeperFunc(180, 100, 5000)
+	maxNumAttempts := 180
+	if failFast {
+		maxNumAttempts = 1
+	}
+	retrySleeper := base.CreateMaxDoublingSleeperFunc(maxNumAttempts, 100, 5000)
 	retryCount := 0
 	for {
 		resultSet, resultsError := bucket.Query(queryStatement, nil, base.RequestPlus, true)
@@ -465,21 +471,25 @@ func removeObsoleteIndex(bucket base.N1QLStore, indexName string, previewOnly bo
 
 }
 
-// Replace sync tokens ($sync) in the provided createIndex statement with the appropriate token, depending on whether xattrs should be used.
+// Replace sync tokens ($sync and $relativesync) in the provided createIndex statement with the appropriate token, depending on whether xattrs should be used.
 func replaceSyncTokensIndex(statement string, useXattrs bool) string {
 	if useXattrs {
-		return strings.Replace(statement, syncToken, syncXattr, -1)
+		str := strings.ReplaceAll(statement, syncRelativeToken, syncXattr)
+		return strings.ReplaceAll(str, syncToken, syncXattr)
 	} else {
-		return strings.Replace(statement, syncToken, syncNoXattr, -1)
+		str := strings.ReplaceAll(statement, syncRelativeToken, syncNoXattr)
+		return strings.ReplaceAll(str, syncToken, syncNoXattr)
 	}
 }
 
 // Replace sync tokens ($sync) in the provided createIndex statement with the appropriate token, depending on whether xattrs should be used.
 func replaceSyncTokensQuery(statement string, useXattrs bool) string {
 	if useXattrs {
-		return strings.Replace(statement, syncToken, syncXattrQuery, -1)
+		str := strings.ReplaceAll(statement, syncRelativeToken, syncXattrQuery)
+		return strings.ReplaceAll(str, syncToken, syncXattrQuery)
 	} else {
-		return strings.Replace(statement, syncToken, syncNoXattr, -1)
+		str := strings.ReplaceAll(statement, syncRelativeToken, syncNoXattrQuery)
+		return strings.ReplaceAll(str, syncToken, syncNoXattrQuery)
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -466,5 +467,8 @@ func TestLocalJWTRolesChannels(t *testing.T) {
 	assert.Contains(t, user.RoleNames(), "jwt_only_role")
 	assert.Contains(t, user.Channels().AllKeys(), "jwt_only_channel")
 	assert.Equal(t, testIssuer, user.JWTIssuer())
-	assert.Greater(t, user.JWTLastUpdated(), reqTime)
+	// FIXME: Temporary skip prior to CBG-2214 - Windows time resolution is not good enough to do this greater (but not equals) assertion
+	if runtime.GOOS != "windows" {
+		assert.Greater(t, user.JWTLastUpdated(), reqTime)
+	}
 }

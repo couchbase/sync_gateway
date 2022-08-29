@@ -284,7 +284,7 @@ func (r RepairBucket) WriteRepairedDocsToBucket(docId string, originalDoc, updat
 		return backupOrDryRunDocId, err
 	}
 
-	//If the RepairedFileTTL is explicitly set to 0 then don't write the doc at all
+	// If the RepairedFileTTL is explicitly set to 0 then don't write the doc at all
 	if int(r.RepairedFileTTL.Seconds()) == 0 {
 		base.InfofCtx(context.TODO(), base.KeyCRUD, "Repair Doc: Doc %v repaired, TTL set to 0, doc will not be written to bucket", base.UD(backupOrDryRunDocId))
 		return backupOrDryRunDocId, nil

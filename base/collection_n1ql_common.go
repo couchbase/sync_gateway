@@ -58,6 +58,9 @@ type N1QLStore interface {
 
 	// getIndexes retrieves all index names, used by test harness
 	getIndexes() (indexes []string, err error)
+
+	// waitUntilQueryServiceReady waits until the query service is ready to accept requests
+	waitUntilQueryServiceReady(timeout time.Duration) error
 }
 
 func ExplainQuery(store N1QLStore, statement string, params map[string]interface{}) (plan map[string]interface{}, err error) {
@@ -309,7 +312,7 @@ func GetIndexMeta(store N1QLStore, indexName string) (exists bool, meta *IndexMe
 }
 
 func getIndexMetaWithoutRetry(store N1QLStore, indexName string) (exists bool, meta *IndexMeta, err error) {
-	statement := fmt.Sprintf("SELECT state from system:indexes WHERE indexes.name = '%s' AND indexes.keyspace_id = '%s'", indexName, store.IndexMetaKeyspaceID())
+	statement := fmt.Sprintf("SELECT state FROM system:indexes WHERE indexes.name = '%s' AND indexes.keyspace_id = '%s'", indexName, store.IndexMetaKeyspaceID())
 	if store.IndexMetaBucketID() != "" {
 		statement += fmt.Sprintf(" AND indexes.bucket_id = '%s'", store.IndexMetaBucketID())
 	}
@@ -335,7 +338,8 @@ func getIndexMetaWithoutRetry(store N1QLStore, indexName string) (exists bool, m
 
 // DropIndex drops the specified index from the current bucket.
 func DropIndex(store N1QLStore, indexName string) error {
-	statement := fmt.Sprintf("DROP INDEX %s.`%s`", store.EscapedKeyspace(), indexName)
+	statement := fmt.Sprintf("DROP INDEX default:%s.`%s`", store.EscapedKeyspace(), indexName)
+
 	err := store.executeStatement(statement)
 	if err != nil && !IsIndexerRetryIndexError(err) {
 		return err

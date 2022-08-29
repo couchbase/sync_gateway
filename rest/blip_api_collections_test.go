@@ -8,13 +8,17 @@ import (
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestBlipGetCollections(t *testing.T) {
+	// FIXME as part of CBG-2203 to enable subtest checkpointExistsWithErrorInNonDefaultCollection
 	base.TestRequiresCollections(t)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	//checkpointIDWithError := "checkpointError"
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		guestEnabled: true,
@@ -30,21 +34,16 @@ func TestBlipGetCollections(t *testing.T) {
 			},
 		},
 		createScopesAndCollections: true,
-		// This code will not work until leaky bucket works with collections CBG-2201
-		// TestBucket:                 base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{}),
+		//leakyBucketConfig: &base.LeakyBucketConfig{
+		//	GetRawCallback: func(key string) error {
+		//		if key == db.CheckpointDocIDPrefix+checkpointIDWithError {
+		//			return fmt.Errorf("a unique error")
+		//		}
+		//		return nil
+		//	},
+		//},
 	})
-
 	defer rt.Close()
-	// This code will not work until leaky bucket works with collections CBG-2201
-	// checkpointIDWithError := "checkpointError"
-	// leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
-	// require.True(t, ok)
-	// leakyBucket.SetGetRawCallback(func(key string) error {
-	//		if key == db.CheckpointDocIDPrefix+checkpointIDWithError {
-	//			return fmt.Errorf("a unique error")
-	//		}
-	//	return nil
-	//	})
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
@@ -118,7 +117,6 @@ func TestBlipGetCollections(t *testing.T) {
 			resultBody: []db.Body{db.Body{}},
 			errorCode:  "",
 		},
-		// This code will not work until leaky bucket works with collections CBG-2201
 		//{
 		//	name: "checkpointExistsWithErrorInNonDefaultCollection",
 		//	requestBody: db.GetCollectionsRequestBody{
@@ -227,4 +225,87 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 
 	require.Equal(t, db.Body{"seq": "123"}, checkpoint)
 
+}
+
+func TestCollectionsPeerDoesNotHave(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	const (
+		scopeKey      = "fooScope"
+		collectionKey = "fooCollection"
+	)
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		guestEnabled: true,
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				Scopes: ScopesConfig{
+					scopeKey: ScopeConfig{
+						Collections: map[string]CollectionConfig{
+							collectionKey: {},
+						},
+					},
+				},
+			},
+		},
+		createScopesAndCollections: true,
+	})
+	defer rt.Close()
+
+	_, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
+		Collections: []string{"barScope.barCollection"},
+	})
+	require.Error(t, err)
+
+	assert.Equal(t, "collection doesn't exist on peer barScope.barCollection", err.Error())
+}
+
+func TestCollectionsReplication(t *testing.T) {
+	base.TestRequiresCollections(t)
+	if base.TestsDisableGSI() {
+		t.Skip("only works with GSI")
+	}
+
+	const (
+		scopeKey              = "fooScope"
+		collectionKey         = "fooCollection"
+		scopeAndCollectionKey = scopeKey + "." + collectionKey
+	)
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		guestEnabled: true,
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				Scopes: ScopesConfig{
+					scopeKey: ScopeConfig{
+						Collections: map[string]CollectionConfig{
+							collectionKey: {},
+						},
+					},
+				},
+			},
+		},
+		createScopesAndCollections: true,
+	})
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
+		Collections: []string{scopeAndCollectionKey},
+	})
+	require.NoError(t, err)
+	defer btc.Close()
+
+	resp := rt.SendAdminRequest(http.MethodPut, "/db."+scopeAndCollectionKey+"/doc1", "{}")
+	requireStatus(t, resp, http.StatusCreated)
+
+	require.NoError(t, rt.WaitForPendingChanges())
+
+	btcCollection, err := btc.Collection(scopeAndCollectionKey)
+	require.NoError(t, err)
+
+	err = btcCollection.StartOneshotPull()
+	require.NoError(t, err)
+
+	_, ok := btcCollection.WaitForRev("doc1", "1-ca9ad22802b66f662ff171f226211d5c")
+	require.True(t, ok)
 }

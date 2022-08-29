@@ -299,9 +299,12 @@ func addPrefixes(format string, ctx context.Context, logLevel LogLevel, logKey L
 	}
 
 	if ctx != nil {
-		if ctxVal := ctx.Value(LogContextKey{}); ctxVal != nil {
-			if logCtx, ok := ctxVal.(LogContext); ok {
-				format = logCtx.addContext(format)
+		var ctxVal any
+		for _, k := range allLogContextKeys {
+			if ctxVal = ctx.Value(k); ctxVal != nil {
+				if logCtx, ok := ctxVal.(ContextAdder); ok {
+					format = logCtx.addContext(format)
+				}
 			}
 		}
 	}
@@ -374,10 +377,18 @@ func LogTraceEnabled(logKey LogKey) bool {
 func AssertLogContains(t *testing.T, s string, f func()) {
 	b := bytes.Buffer{}
 
-	// temporarily override logger output for the given function call
+	// Temporarily override logger output for the given function call
 	consoleLogger.logger.SetOutput(&b)
 	f()
+	// Allow time for logs to be printed
+	retry := func() (shouldRetry bool, err error, value interface{}) {
+		if strings.Contains(b.String(), s) {
+			return false, nil, nil
+		}
+		return true, nil, nil
+	}
+	err, _ := RetryLoop("wait for logs", retry, CreateSleeperFunc(10, 100))
 	consoleLogger.logger.SetOutput(os.Stderr)
 
-	assert.Contains(t, b.String(), s)
+	assert.NoError(t, err, "Console logs did not contain %q", s)
 }

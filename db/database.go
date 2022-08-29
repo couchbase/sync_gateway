@@ -165,6 +165,7 @@ type DatabaseContextOptions struct {
 	BcryptCost                    int
 	GroupID                       string
 	JavascriptTimeout             time.Duration // Max time the JS functions run for (ie. sync fn, import filter)
+	Serverless                    bool          // If running in serverless mode
 	skipRegisterImportPIndex      bool          // if set, skips the global gocb PIndex registration
 }
 
@@ -264,15 +265,17 @@ func connectToBucketErrorHandling(spec base.BucketSpec, gotErr error) (fatalErro
 	return false, nil
 }
 
-// ConnectToBucketFailFast opens a Couchbase connect and return a specific bucket without retrying on failure.
-func ConnectToBucketFailFast(spec base.BucketSpec) (bucket base.Bucket, err error) {
+type OpenBucketFn func(spec base.BucketSpec) (base.Bucket, error)
+
+// connectToBucketFailFast opens a Couchbase connect and return a specific bucket without retrying on failure.
+func connectToBucketFailFast(spec base.BucketSpec) (bucket base.Bucket, err error) {
 	bucket, err = base.GetBucket(spec)
 	_, err = connectToBucketErrorHandling(spec, err)
 	return bucket, err
 }
 
-// ConnectToBucket opens a Couchbase connection and return a specific bucket.
-func ConnectToBucket(spec base.BucketSpec) (base.Bucket, error) {
+// connectToBucket opens a Couchbase connection and return a specific bucket.
+func connectToBucket(spec base.BucketSpec) (base.Bucket, error) {
 
 	// start a retry loop to connect to the bucket backing off double the delay each time
 	worker := func() (bool, error, interface{}) {
@@ -297,6 +300,14 @@ func ConnectToBucket(spec base.BucketSpec) (base.Bucket, error) {
 	}
 
 	return ibucket.(base.Bucket), nil
+}
+
+// GetConnectToBucketFn returns a different OpenBucketFn to connect to the bucket depending on the value of failFast
+func GetConnectToBucketFn(failFast bool) OpenBucketFn {
+	if failFast {
+		return connectToBucketFailFast
+	}
+	return connectToBucket
 }
 
 // Function type for something that calls NewDatabaseContext and wants a callback when the DB is detected
@@ -351,9 +362,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	)
 
 	dbContext.EventMgr = NewEventManager()
-	logCtx := context.WithValue(context.Background(), base.LogContextKey{}, base.LogContext{
-		CorrelationID: "db:" + base.MD(dbName).Redact(),
-	})
+	logCtx := base.LogContextWith(context.Background(), &base.LogContext{CorrelationID: "db:" + base.MD(dbName).Redact()})
 
 	var err error
 	dbContext.sequences, err = newSequenceAllocator(bucket, dbContext.DbStats.Database())
@@ -1127,6 +1136,74 @@ outerLoop:
 	return users, nil
 }
 
+// Returns the IDs of all roles, excluding deleted.
+func (db *DatabaseContext) GetRoleIDs(ctx context.Context) (roles []string, err error) {
+
+	startKey := ""
+	limit := db.Options.QueryPaginationLimit
+
+	roles = []string{}
+
+outerLoop:
+	for {
+		results, err := db.QueryRoles(ctx, startKey, limit)
+		if err != nil {
+			return nil, err
+		}
+
+		var roleName string
+		lenRoleKeyPrefix := len(base.RolePrefix)
+
+		resultCount := 0
+
+		for {
+			// startKey is inclusive for views, so need to skip first result if using non-empty startKey, as this results in an overlapping result
+			var skipAddition bool
+			if resultCount == 0 && startKey != "" {
+				skipAddition = true
+			}
+
+			if db.Options.UseViews {
+				var viewRow principalsViewRow
+				found := results.Next(&viewRow)
+				if !found {
+					break
+				}
+				roleName = viewRow.Key
+				startKey = roleName
+			} else {
+				var queryRow QueryIdRow
+				found := results.Next(&queryRow)
+				if !found {
+					break
+				}
+				if len(queryRow.Id) < lenRoleKeyPrefix {
+					continue
+				}
+				roleName = queryRow.Id[lenRoleKeyPrefix:]
+				startKey = queryRow.Id
+			}
+			resultCount++
+
+			if roleName != "" && !skipAddition {
+				roles = append(roles, roleName)
+			}
+		}
+
+		closeErr := results.Close()
+		if closeErr != nil {
+			return nil, closeErr
+		}
+
+		if resultCount < limit {
+			break outerLoop
+		}
+
+	}
+
+	return roles, nil
+}
+
 // ////// HOUSEKEEPING:
 
 // Deletes all session documents for a user
@@ -1698,6 +1775,7 @@ func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOp
 			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewAccessVbSeq),
 			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewChannels),
 			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewPrincipals),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewRolesExcludeDeleted),
 			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewRoleAccess),
 			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewRoleAccessVbSeq),
 			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewAllDocs),
@@ -1713,6 +1791,7 @@ func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOp
 			QueryTypeChannelsStar,
 			QueryTypeSequences,
 			QueryTypePrincipals,
+			QueryTypeRolesExcludeDeleted,
 			QueryTypeSessions,
 			QueryTypeTombstones,
 			QueryTypeResync,

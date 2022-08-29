@@ -270,8 +270,8 @@ func newLumberjackOutput(filename string, maxSize, maxAge int) *lumberjack.Logge
 // logDirectory is the supplied directory where the logs are stored.
 func runLogDeletion(logDirectory string, logLevel string, sizeLimitMBLowWatermark int, sizeLimitMBHighWatermark int) (err error) {
 
-	sizeLimitMBLowWatermark = sizeLimitMBLowWatermark * 1024 * 1024   //Convert MB input to bytes
-	sizeLimitMBHighWatermark = sizeLimitMBHighWatermark * 1024 * 1024 //Convert MB input to bytes
+	sizeLimitMBLowWatermark = sizeLimitMBLowWatermark * 1024 * 1024   // Convert MB input to bytes
+	sizeLimitMBHighWatermark = sizeLimitMBHighWatermark * 1024 * 1024 // Convert MB input to bytes
 
 	files, err := ioutil.ReadDir(logDirectory)
 

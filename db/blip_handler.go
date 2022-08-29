@@ -57,8 +57,9 @@ const maxInFlightChangesBatches = 2
 
 type blipHandler struct {
 	*BlipSyncContext
-	db         *Database // Handler-specific copy of the BlipSyncContext's blipContextDb
-	collection *Database // Handler-specific copy of the BlipSyncContext's collection specific DB
+	db            *Database // Handler-specific copy of the BlipSyncContext's blipContextDb
+	collection    *Database // Handler-specific copy of the BlipSyncContext's collection specific DB
+	collectionIdx *int      // index into BlipSyncContext.collectionMapping for the collection
 
 	serialNumber uint64 // This blip handler's serial number to differentiate logs w/ other handlers
 }
@@ -149,6 +150,7 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 			return base.HTTPErrorf(http.StatusBadRequest, "collection property needs to be an int, was %q", collectionIndexStr)
 		}
 
+		bh.collectionIdx = &collectionIndex
 		if len(bh.collectionMapping) <= collectionIndex {
 			return base.HTTPErrorf(http.StatusBadRequest, "Collection index %d is outside indexes set by GetCollections", collectionIndex)
 		}
@@ -491,6 +493,9 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 	if ignoreNoConflicts {
 		outrq.Properties[ChangesMessageIgnoreNoConflicts] = trueProperty
 	}
+	if bh.collectionIdx != nil {
+		outrq.Properties[BlipCollection] = strconv.Itoa(*bh.collectionIdx)
+	}
 	err := outrq.SetJSONBody(changeArray)
 	if err != nil {
 		base.InfofCtx(bh.loggingCtx, base.KeyAll, "Error setting changes: %v", err)
@@ -756,7 +761,11 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 
 // ////// DOCUMENTS:
 
-func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID, deltaSrcRevID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseDb *Database) error {
+func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID string, deltaSrcRevID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseDb *Database) error {
+	var collectionIdx *int
+	if coll, ok := bsc.getCollectionIndexForDB(handleChangesResponseDb); ok {
+		collectionIdx = &coll
+	}
 
 	bsc.replicationStats.SendRevDeltaRequestedCount.Add(1)
 
@@ -778,7 +787,7 @@ func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID, de
 	if redactedRev != nil {
 		history := toHistory(redactedRev.History, knownRevs, maxHistory)
 		properties := blipRevMessageProperties(history, redactedRev.Deleted, seq)
-		return bsc.sendRevisionWithProperties(sender, docID, revID, redactedRev.BodyBytes, nil, properties, seq, nil)
+		return bsc.sendRevisionWithProperties(sender, docID, revID, collectionIdx, redactedRev.BodyBytes, nil, properties, seq, nil)
 	}
 
 	if revDelta == nil {
@@ -792,7 +801,7 @@ func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID, de
 	}
 
 	base.TracefCtx(bsc.loggingCtx, base.KeySync, "docID: %s - delta: %v", base.UD(docID), base.UD(string(revDelta.DeltaBytes)))
-	if err := bsc.sendDelta(sender, docID, deltaSrcRevID, revDelta, seq, resendFullRevisionFunc); err != nil {
+	if err := bsc.sendDelta(sender, docID, collectionIdx, deltaSrcRevID, revDelta, seq, resendFullRevisionFunc); err != nil {
 		return err
 	}
 
@@ -1200,7 +1209,11 @@ var errNoBlipHandler = fmt.Errorf("404 - No handler for BLIP request")
 func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name string, digest string, meta map[string]interface{}) ([]byte, error) {
 	base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Asking for attachment %q for doc %s (digest %s)", base.UD(name), base.UD(docID), digest)
 	outrq := blip.NewRequest()
-	outrq.Properties = map[string]string{BlipProfile: MessageGetAttachment, GetAttachmentDigest: digest}
+	outrq.SetProfile(MessageGetAttachment)
+	outrq.Properties[GetAttachmentDigest] = digest
+	if bh.collectionIdx != nil {
+		outrq.Properties[BlipCollection] = strconv.Itoa(*bh.collectionIdx)
+	}
 	if isCompressible(name, meta) {
 		outrq.Properties[BlipCompress] = trueProperty
 	}
@@ -1246,7 +1259,11 @@ func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, dig
 		return err
 	}
 	outrq := blip.NewRequest()
-	outrq.Properties = map[string]string{BlipProfile: MessageProveAttachment, ProveAttachmentDigest: digest}
+	outrq.SetProfile(MessageProveAttachment)
+	outrq.Properties[ProveAttachmentDigest] = digest
+	if bh.collectionIdx != nil {
+		outrq.Properties[BlipCollection] = strconv.Itoa(*bh.collectionIdx)
+	}
 	outrq.SetBody(nonce)
 	if !bh.sendBLIPMessage(sender, outrq) {
 		return ErrClosedBLIPSender

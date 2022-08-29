@@ -278,11 +278,11 @@ func (t TestAuthenticator) GetCredentials() (username, password, bucketname stri
 	return t.Username, t.Password, t.BucketName
 }
 
-// Reset bucket state
-func DropAllBucketIndexes(bucket N1QLStore) error {
+// DropAllIndexes removes all indexes defined on the bucket or collection
+func DropAllIndexes(ctx context.Context, n1QLStore N1QLStore) error {
 
-	// Retrieve all indexes
-	indexes, err := bucket.getIndexes()
+	// Retrieve all indexes on the bucket/collection
+	indexes, err := n1QLStore.getIndexes()
 	if err != nil {
 		return err
 	}
@@ -299,14 +299,14 @@ func DropAllBucketIndexes(bucket N1QLStore) error {
 
 			defer wg.Done()
 
-			log.Printf("Dropping index %s on bucket %s...", indexToDrop, bucket.GetName())
-			dropErr := bucket.DropIndex(indexToDrop)
+			InfofCtx(ctx, KeySGTest, "Dropping index %s on bucket %s...", indexToDrop, n1QLStore.GetName())
+			dropErr := n1QLStore.DropIndex(indexToDrop)
 			if dropErr != nil {
 				asyncErrors <- dropErr
-				log.Printf("...failed to drop index %s on bucket %s: %s", indexToDrop, bucket.GetName(), dropErr)
+				ErrorfCtx(ctx, "...failed to drop index %s on bucket %s: %s", indexToDrop, n1QLStore.GetName(), dropErr)
 				return
 			}
-			log.Printf("...successfully dropped index %s on bucket %s", indexToDrop, bucket.GetName())
+			InfofCtx(ctx, KeySGTest, "...successfully dropped index %s on bucket %s", indexToDrop, n1QLStore.GetName())
 		}(index)
 
 	}
@@ -699,6 +699,9 @@ func TestRequiresCollections(t *testing.T) {
 	if testClusterCompatVersion < minCompatVersionForCollections {
 		t.Skip("Collections not supported")
 	}
+	if TestsDisableGSI() {
+		t.Skip("Collections requires GSI")
+	}
 }
 
 func waitUntilScopeAndCollectionExists(collection *gocb.Collection) error {
@@ -713,8 +716,8 @@ func waitUntilScopeAndCollectionExists(collection *gocb.Collection) error {
 	return err
 }
 
-// CreateTestBucketScopesAndCollections will create the given scopes and collections within the given test bucket.
-func CreateTestBucketScopesAndCollections(ctx context.Context, tb *TestBucket, scopes map[string][]string) error {
+// CreateBucketScopesAndCollections will create the given scopes and collections within the given BucketSpec.
+func CreateBucketScopesAndCollections(ctx context.Context, bucketSpec BucketSpec, scopes map[string][]string) error {
 	atLeastOneScope := false
 	for _, collections := range scopes {
 		for range collections {
@@ -728,16 +731,16 @@ func CreateTestBucketScopesAndCollections(ctx context.Context, tb *TestBucket, s
 		return nil
 	}
 
-	un, pw, _ := tb.BucketSpec.Auth.GetCredentials()
+	un, pw, _ := bucketSpec.Auth.GetCredentials()
 	var rootCAs *x509.CertPool
-	if tlsConfig := tb.BucketSpec.TLSConfig(); tlsConfig != nil {
+	if tlsConfig := bucketSpec.TLSConfig(); tlsConfig != nil {
 		rootCAs = tlsConfig.RootCAs
 	}
-	cluster, err := gocb.Connect(tb.BucketSpec.Server, gocb.ClusterOptions{
+	cluster, err := gocb.Connect(bucketSpec.Server, gocb.ClusterOptions{
 		Username: un,
 		Password: pw,
 		SecurityConfig: gocb.SecurityConfig{
-			TLSSkipVerify: tb.BucketSpec.TLSSkipVerify,
+			TLSSkipVerify: bucketSpec.TLSSkipVerify,
 			TLSRootCAs:    rootCAs,
 		},
 	})
@@ -746,7 +749,7 @@ func CreateTestBucketScopesAndCollections(ctx context.Context, tb *TestBucket, s
 	}
 	defer func() { _ = cluster.Close(nil) }()
 
-	cm := cluster.Bucket(tb.GetName()).Collections()
+	cm := cluster.Bucket(bucketSpec.BucketName).Collections()
 
 	for scopeName, collections := range scopes {
 		if err := cm.CreateScope(scopeName, nil); err != nil && !errors.Is(err, gocb.ErrScopeExists) {
@@ -762,7 +765,7 @@ func CreateTestBucketScopesAndCollections(ctx context.Context, tb *TestBucket, s
 				return fmt.Errorf("failed to create collection %s in scope %s: %w", collectionName, scopeName, err)
 			}
 			DebugfCtx(ctx, KeySGTest, "Created collection %s.%s", scopeName, collectionName)
-			if err := waitUntilScopeAndCollectionExists(cluster.Bucket(tb.GetName()).Scope(scopeName).Collection(collectionName)); err != nil {
+			if err := waitUntilScopeAndCollectionExists(cluster.Bucket(bucketSpec.BucketName).Scope(scopeName).Collection(collectionName)); err != nil {
 				return err
 			}
 			DebugfCtx(ctx, KeySGTest, "Collection now exists %s.%s", scopeName, collectionName)
@@ -770,4 +773,21 @@ func CreateTestBucketScopesAndCollections(ctx context.Context, tb *TestBucket, s
 	}
 
 	return nil
+}
+
+// RequireAllAssertions ensures that all assertion results were true/ok, and fails the test if any were not.
+// Usage:
+//     RequireAllAssertions(t,
+//         assert.True(t, condition1),
+//         assert.True(t, condition2),
+//     )
+func RequireAllAssertions(t *testing.T, assertionResults ...bool) {
+	var failed bool
+	for _, ok := range assertionResults {
+		if !ok {
+			failed = true
+			break
+		}
+	}
+	require.Falsef(t, failed, "One or more assertions failed: %v", assertionResults)
 }

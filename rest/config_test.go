@@ -12,6 +12,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -1673,7 +1674,7 @@ func TestSetupDbConfigCredentials(t *testing.T) {
 		name              string
 		dbConfig          DbConfig
 		bootstrapConfig   BootstrapConfig
-		credentialsConfig *DatabaseCredentialsConfig
+		credentialsConfig *base.CredentialsConfig
 		expectX509        bool
 	}{
 		{
@@ -1686,32 +1687,32 @@ func TestSetupDbConfigCredentials(t *testing.T) {
 			name:              "db username/password override",
 			dbConfig:          DbConfig{Name: "db"},
 			bootstrapConfig:   BootstrapConfig{Server: "couchbase://example.org", Username: "bob", Password: "foobar"},
-			credentialsConfig: &DatabaseCredentialsConfig{Username: expectedUsername, Password: expectedPassword},
+			credentialsConfig: &base.CredentialsConfig{Username: expectedUsername, Password: expectedPassword},
 		},
 		{
 			name:              "db username/password override from x509",
 			dbConfig:          DbConfig{Name: "db"},
 			bootstrapConfig:   BootstrapConfig{Server: "couchbase://example.org", X509CertPath: "/tmp/x509cert", X509KeyPath: "/tmp/x509key"},
-			credentialsConfig: &DatabaseCredentialsConfig{Username: expectedUsername, Password: expectedPassword},
+			credentialsConfig: &base.CredentialsConfig{Username: expectedUsername, Password: expectedPassword},
 		},
 		{
 			name:              "db x509 override from username/password",
 			dbConfig:          DbConfig{Name: "db"},
 			bootstrapConfig:   BootstrapConfig{Server: "couchbase://example.org", Username: "bob", Password: "foobar"},
-			credentialsConfig: &DatabaseCredentialsConfig{X509CertPath: expectedX509Cert, X509KeyPath: expectedX509Key},
+			credentialsConfig: &base.CredentialsConfig{X509CertPath: expectedX509Cert, X509KeyPath: expectedX509Key},
 			expectX509:        true,
 		},
 		{
 			name:              "db x509 override",
 			dbConfig:          DbConfig{Name: "db"},
 			bootstrapConfig:   BootstrapConfig{Server: "couchbase://example.org", X509CertPath: "/tmp/bs-x509cert", X509KeyPath: "/tmp/bs-x509key"},
-			credentialsConfig: &DatabaseCredentialsConfig{X509CertPath: expectedX509Cert, X509KeyPath: expectedX509Key},
+			credentialsConfig: &base.CredentialsConfig{X509CertPath: expectedX509Cert, X509KeyPath: expectedX509Key},
 			expectX509:        true,
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := test.dbConfig.setup(test.dbConfig.Name, test.bootstrapConfig, test.credentialsConfig)
+			err := test.dbConfig.setup(test.dbConfig.Name, test.bootstrapConfig, test.credentialsConfig, nil, false)
 			require.NoError(t, err)
 			if test.expectX509 {
 				assert.Equal(t, "", test.dbConfig.Username)
@@ -1818,7 +1819,7 @@ func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 					Err:        test.errExpected,
 				}
 			}
-			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil)
+			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil, nil, false)
 			if test.errExpected != nil {
 				require.True(t, errors.As(err, &test.errExpected)) // nolint: govet // CBG-2242
 			} else {
@@ -1918,7 +1919,7 @@ func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
 					Err:        test.errExpected,
 				}
 			}
-			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil)
+			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil, nil, false)
 			if test.errExpected != nil {
 				require.True(t, errors.As(err, &test.errExpected)) // nolint: govet // CBG-2242
 			} else {
@@ -2030,7 +2031,7 @@ func TestSetupDbConfigWithConflictResolutionFunction(t *testing.T) {
 					Err:        test.errExpected,
 				}
 			}
-			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil)
+			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil, nil, false)
 			if test.errExpected != nil {
 				require.True(t, errors.As(err, &test.errExpected)) // nolint: govet // CBG-2242
 			} else {
@@ -2407,6 +2408,214 @@ func Test_validateJavascriptFunction(t *testing.T) {
 				return
 			}
 			assert.Equalf(t, test.wantIsEmpty, gotIsEmpty, "validateJavascriptFunction(%v)", test.jsFunc)
+		})
+	}
+}
+
+func TestBucketCredentialsValidation(t *testing.T) {
+	bucketAndDBCredsError := "bucket_credentials and database_credentials cannot be used at the same time"
+	bucketCredsError := "bucket_credentials cannot use both x509 and basic auth"
+	bucketNoCredsServerless := "at least 1 bucket must be defined in bucket_credentials when running in serverless mode"
+	testCases := []struct {
+		name          string
+		startupConfig StartupConfig
+		expectedError *string
+	}{
+		{
+			name:          "No credentials provided",
+			startupConfig: StartupConfig{},
+		},
+		{
+			name: "Valid bucket using x509",
+			startupConfig: StartupConfig{
+				BucketCredentials: base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
+			},
+		},
+		{
+			name: "Valid bucket using basic auth",
+			startupConfig: StartupConfig{
+				BucketCredentials: base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{Username: "uname", Password: "pass"}}},
+		},
+		{
+			name: "Valid database using basic auth",
+			startupConfig: StartupConfig{
+				DatabaseCredentials: PerDatabaseCredentialsConfig{"db": &base.CredentialsConfig{Username: "uname", Password: "pword"}},
+			},
+		},
+		{
+			name: "Blank database and filled bucket creds provided",
+			startupConfig: StartupConfig{
+				DatabaseCredentials: PerDatabaseCredentialsConfig{},
+				BucketCredentials:   base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
+			},
+		},
+		{
+			name: "Filled database and blank bucket creds provided",
+			startupConfig: StartupConfig{
+				BucketCredentials:   base.PerBucketCredentialsConfig{},
+				DatabaseCredentials: PerDatabaseCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
+			},
+		},
+		{
+			name: "Database and bucket creds provided",
+			startupConfig: StartupConfig{
+				DatabaseCredentials: PerDatabaseCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
+				BucketCredentials:   base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
+			},
+			expectedError: &bucketAndDBCredsError,
+		},
+		{
+			name: "Bucket creds for x509 and basic auth",
+			startupConfig: StartupConfig{
+				BucketCredentials: base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key", Username: "uname", Password: "pword"}},
+			},
+			expectedError: &bucketCredsError,
+		},
+		{
+			name: "Bucket creds for x509 key and basic auth password only",
+			startupConfig: StartupConfig{
+				BucketCredentials: base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{X509KeyPath: "key", Password: "pword"}},
+			},
+			expectedError: &bucketCredsError,
+		},
+		{
+			name: "Bucket creds for x509 cert and basic auth username only",
+			startupConfig: StartupConfig{
+				BucketCredentials: base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", Username: "uname"}},
+			},
+			expectedError: &bucketCredsError,
+		},
+		{
+			name: "Bucket creds for x509 cert and basic auth username only",
+			startupConfig: StartupConfig{
+				BucketCredentials: base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", Username: "uname"}},
+			},
+			expectedError: &bucketCredsError,
+		},
+		{
+			name: "Nil bucket credentials provided when running in serverless mode",
+			startupConfig: StartupConfig{
+				Unsupported: UnsupportedConfig{Serverless: base.BoolPtr(true)},
+			},
+			expectedError: &bucketNoCredsServerless,
+		},
+		{
+			name: "No bucket credentials provided when running in serverless mode",
+			startupConfig: StartupConfig{
+				BucketCredentials: base.PerBucketCredentialsConfig{},
+				Unsupported:       UnsupportedConfig{Serverless: base.BoolPtr(true)},
+			},
+			expectedError: &bucketNoCredsServerless,
+		},
+		{
+			name: "Bucket credentials provided when running in serverless mode",
+			startupConfig: StartupConfig{
+				Unsupported:       UnsupportedConfig{Serverless: base.BoolPtr(true)},
+				BucketCredentials: base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{Username: "u", Password: "p"}},
+			},
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			err := test.startupConfig.validate(base.IsEnterpriseEdition())
+			if test.expectedError != nil {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), *test.expectedError)
+
+			} else if err != nil {
+				assert.NotContains(t, err.Error(), bucketCredsError)
+				assert.NotContains(t, err.Error(), bucketAndDBCredsError)
+				assert.NotContains(t, err.Error(), bucketNoCredsServerless)
+			}
+		})
+	}
+}
+
+func TestCollectionsValidation(t *testing.T) {
+	testCases := []struct {
+		name          string
+		dbConfig      DbConfig
+		expectedError *string
+	}{
+		{
+			name: "views=true,collections=false",
+			dbConfig: DbConfig{
+				Name:     "db",
+				UseViews: base.BoolPtr(true),
+			},
+			expectedError: nil,
+		},
+		{
+			name: "views=true,collections=true",
+			dbConfig: DbConfig{
+				Name:     "db",
+				UseViews: base.BoolPtr(true),
+				Scopes: ScopesConfig{
+					"fooScope": ScopeConfig{
+						map[string]CollectionConfig{
+							"fooCollection:": {},
+						},
+					},
+				},
+			},
+			expectedError: base.StringPtr("requires GSI"),
+		},
+		{
+			name: "views_specified=false,collections=false",
+			dbConfig: DbConfig{
+				Name:     "db",
+				UseViews: base.BoolPtr(false),
+			},
+			expectedError: nil,
+		},
+		{
+			name: "views_specified=false,collections=true",
+			dbConfig: DbConfig{
+				Name:     "db",
+				UseViews: base.BoolPtr(false),
+				Scopes: ScopesConfig{
+					"fooScope": ScopeConfig{
+						map[string]CollectionConfig{
+							"fooCollection:": {},
+						},
+					},
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			name: "views_unspecified,collections=false",
+			dbConfig: DbConfig{
+				Name: "db",
+			},
+			expectedError: nil,
+		},
+		{
+			name: "views_unspecified,collections=true",
+			dbConfig: DbConfig{
+				Name: "db",
+				Scopes: ScopesConfig{
+					"fooScope": ScopeConfig{
+						map[string]CollectionConfig{
+							"fooCollection:": {},
+						},
+					},
+				},
+			},
+			expectedError: nil,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			validateOIDCConfig := false
+			err := test.dbConfig.validate(context.TODO(), validateOIDCConfig)
+			if test.expectedError != nil {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), *test.expectedError)
+			} else {
+				require.NoError(t, err)
+			}
+
 		})
 	}
 }

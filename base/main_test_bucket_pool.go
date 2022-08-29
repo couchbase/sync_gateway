@@ -400,10 +400,15 @@ func (tbp *TestBucketPool) printStats() {
 	tbp.Logf(ctx, "==========================")
 
 	tbp.unclosedBucketsLock.Lock()
+	unclosedBucketWarnings := ""
 	for testName, buckets := range tbp.unclosedBuckets {
 		for bucketName := range buckets {
 			tbp.Logf(ctx, "WARNING: %s left %s bucket unclosed!", testName, bucketName)
+			unclosedBucketWarnings += fmt.Sprintf("%s left %s bucket unclosed!\n", testName, bucketName)
 		}
+	}
+	if unclosedBucketWarnings != "" {
+		panic(unclosedBucketWarnings)
 	}
 	tbp.unclosedBucketsLock.Unlock()
 
@@ -482,18 +487,22 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, 
 			openBuckets[bucketName] = b
 			openBucketsLock.Unlock()
 
-			n1qlStore, ok := AsN1QLStore(b)
-			if !ok {
-				tbp.Fatalf(ctx, "Couldn't remove old prepared statements: %v", err)
-			}
-			queryRes, err := n1qlStore.Query(`DELETE FROM system:prepareds WHERE statement LIKE "%`+KeyspaceQueryToken+`%";`, nil, RequestPlus, true)
-			if err != nil {
-				tbp.Fatalf(ctx, "Couldn't remove old prepared statements: %v", err)
-			}
+			// if the bucket is a N1QLStore, clean up prepared statements as-per the advice from the query team.
+			if n1qlStore, ok := AsN1QLStore(b); ok {
+				err = n1qlStore.waitUntilQueryServiceReady(time.Minute)
+				if err != nil {
+					tbp.Fatalf(ctx, "Timed out waiting for query service to be ready: %v", err)
+				}
 
-			err = queryRes.Close()
-			if err != nil {
-				tbp.Fatalf(ctx, "Failed to close query: %v", err)
+				queryRes, err := n1qlStore.Query(`DELETE FROM system:prepareds WHERE statement LIKE "%`+KeyspaceQueryToken+`%";`, nil, RequestPlus, true)
+				if err != nil {
+					tbp.Fatalf(ctx, "Couldn't remove old prepared statements: %v", err)
+				}
+
+				err = queryRes.Close()
+				if err != nil {
+					tbp.Fatalf(ctx, "Failed to close query: %v", err)
+				}
 			}
 
 			wg.Done()
@@ -619,7 +628,7 @@ type TBPBucketReadierFunc func(ctx context.Context, b Bucket, tbp *TestBucketPoo
 var FlushBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b Bucket, tbp *TestBucketPool) error {
 
 	if c, ok := b.(*Collection); ok {
-		if err := c.dropAllScopesAndCollections(); err != nil && !errors.Is(err, ErrCollectionsUnsupported) {
+		if err := c.DropAllScopesAndCollections(); err != nil && !errors.Is(err, ErrCollectionsUnsupported) {
 			return err
 		}
 	}

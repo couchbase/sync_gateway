@@ -24,9 +24,14 @@ import (
 
 var _ N1QLStore = &Collection{}
 
+// IsDefaultScopeCollection returns true if the given Collection is on the _default._default scope and collection.
+func (c *Collection) IsDefaultScopeCollection() bool {
+	return c.ScopeName() == DefaultScope && c.Name() == DefaultCollection
+}
+
 // EscapedKeyspace returns the escaped fully-qualified identifier for the keyspace (e.g. `bucket`.`scope`.`collection`)
 func (c *Collection) EscapedKeyspace() string {
-	if c.ScopeName() == DefaultScope && c.Name() == DefaultCollection {
+	if !c.IsSupported(sgbucket.DataStoreFeatureCollections) {
 		return fmt.Sprintf("`%s`", c.BucketName())
 	}
 	return fmt.Sprintf("`%s`.`%s`.`%s`", c.BucketName(), c.ScopeName(), c.Name())
@@ -34,7 +39,7 @@ func (c *Collection) EscapedKeyspace() string {
 
 // IndexMetaBucketID returns the value of bucket_id for the system:indexes table for the collection.
 func (c *Collection) IndexMetaBucketID() string {
-	if c.ScopeName() == DefaultScope && c.Name() == DefaultCollection {
+	if c.IsDefaultScopeCollection() {
 		return ""
 	}
 	return c.BucketName()
@@ -42,7 +47,7 @@ func (c *Collection) IndexMetaBucketID() string {
 
 // IndexMetaScopeID returns the value of scope_id for the system:indexes table for the collection.
 func (c *Collection) IndexMetaScopeID() string {
-	if c.ScopeName() == DefaultScope && c.Name() == DefaultCollection {
+	if c.IsDefaultScopeCollection() {
 		return ""
 	}
 	return c.ScopeName()
@@ -50,7 +55,7 @@ func (c *Collection) IndexMetaScopeID() string {
 
 // IndexMetaKeyspaceID returns the value of keyspace_id for the system:indexes table for the collection.
 func (c *Collection) IndexMetaKeyspaceID() string {
-	if c.ScopeName() == DefaultScope && c.Name() == DefaultCollection {
+	if c.IsDefaultScopeCollection() {
 		return c.BucketName()
 	}
 	return c.Name()
@@ -184,7 +189,14 @@ func (c *Collection) IsErrNoResults(err error) bool {
 func (c *Collection) getIndexes() (indexes []string, err error) {
 
 	indexes = []string{}
-	indexInfo, err := c.cluster.QueryIndexes().GetAllIndexes(c.BucketName(), nil)
+	var opts *gocb.GetAllQueryIndexesOptions
+	if !c.IsDefaultScopeCollection() {
+		opts = &gocb.GetAllQueryIndexesOptions{
+			ScopeName:      c.ScopeName(),
+			CollectionName: c.Name(),
+		}
+	}
+	indexInfo, err := c.cluster.QueryIndexes().GetAllIndexes(c.BucketName(), opts)
 	if err != nil {
 		return indexes, err
 	}
@@ -193,4 +205,11 @@ func (c *Collection) getIndexes() (indexes []string, err error) {
 		indexes = append(indexes, indexInfo.Name)
 	}
 	return indexes, nil
+}
+
+// waitUntilQueryServiceReady will wait for the specified duration until the query service is available.
+func (c *Collection) waitUntilQueryServiceReady(timeout time.Duration) error {
+	return c.cluster.WaitUntilReady(timeout,
+		&gocb.WaitUntilReadyOptions{ServiceTypes: []gocb.ServiceType{gocb.ServiceTypeQuery}},
+	)
 }

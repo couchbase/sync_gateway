@@ -29,18 +29,19 @@ type QueryIdRow struct {
 }
 
 const (
-	QueryTypeAccess       = "access"
-	QueryTypeRoleAccess   = "roleAccess"
-	QueryTypeChannels     = "channels"
-	QueryTypeChannelsStar = "channelsStar"
-	QueryTypeSequences    = "sequences"
-	QueryTypePrincipals   = "principals"
-	QueryTypeSessions     = "sessions"
-	QueryTypeTombstones   = "tombstones"
-	QueryTypeResync       = "resync"
-	QueryTypeAllDocs      = "allDocs"
-	QueryTypeUsers        = "users"
-	QueryTypeUserPrefix   = "userquery:" // Prefix applied to named user queries from config file
+	QueryTypeAccess              = "access"
+	QueryTypeRoleAccess          = "roleAccess"
+	QueryTypeChannels            = "channels"
+	QueryTypeChannelsStar        = "channelsStar"
+	QueryTypeSequences           = "sequences"
+	QueryTypePrincipals          = "principals"
+	QueryTypeRolesExcludeDeleted = "rolesExcludeDeleted"
+	QueryTypeSessions            = "sessions"
+	QueryTypeTombstones          = "tombstones"
+	QueryTypeResync              = "resync"
+	QueryTypeAllDocs             = "allDocs"
+	QueryTypeUsers               = "users"
+	QueryTypeUserPrefix          = "userquery:" // Prefix applied to named user queries from config file
 )
 
 type SGQuery struct {
@@ -55,7 +56,7 @@ var QueryAccess = SGQuery{
 		"SELECT $sync.access.`$$selectUserName` as `value` "+
 			"FROM %s AS %s "+
 			"USE INDEX ($idx) "+
-			"WHERE any op in object_pairs($sync.access) satisfies op.name = $userName end;",
+			"WHERE any op in object_pairs($relativesync.access) satisfies op.name = $userName end;",
 		base.KeyspaceQueryToken, base.KeyspaceQueryAlias),
 	adhoc: true,
 }
@@ -66,7 +67,7 @@ var QueryRoleAccess = SGQuery{
 		"SELECT $sync.role_access.`$$selectUserName` as `value` "+
 			"FROM %s AS %s "+
 			"USE INDEX ($idx) "+
-			"WHERE any op in object_pairs($sync.role_access) satisfies op.name = $userName end;",
+			"WHERE any op in object_pairs($relativesync.role_access) satisfies op.name = $userName end;",
 		base.KeyspaceQueryToken, base.KeyspaceQueryAlias),
 	adhoc: true,
 }
@@ -95,7 +96,7 @@ var QueryChannels = SGQuery{
 			"META(%s).id AS id "+
 			"FROM %s AS %s "+
 			"USE INDEX ($idx) "+
-			"UNNEST OBJECT_PAIRS($sync.channels) AS op "+
+			"UNNEST OBJECT_PAIRS($relativesync.channels) AS op "+
 			"WHERE ([op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)]  "+
 			"BETWEEN  [$channelName, $startSeq] AND [$channelName, $endSeq]) "+
 			"%s"+
@@ -166,6 +167,27 @@ var QueryPrincipals = SGQuery{
 		base.KeyspaceQueryAlias, SyncDocWildcard,
 		base.KeyspaceQueryAlias, `\\_sync:user:%`,
 		base.KeyspaceQueryAlias, `\\_sync:role:%`,
+		base.KeyspaceQueryAlias, QueryParamStartKey,
+		base.KeyspaceQueryAlias),
+	adhoc: false,
+}
+
+var QueryRolesExcludeDeleted = SGQuery{
+	name: QueryTypeRolesExcludeDeleted,
+	statement: fmt.Sprintf(
+		"SELECT META(%s).id "+
+			"FROM %s AS %s "+
+			"USE INDEX($idx) "+
+			"WHERE META(%s).id LIKE '%s' "+
+			"AND META(%s).id LIKE '%s' "+
+			"AND (%s.deleted IS MISSING OR %s.deleted = false) "+
+			"AND META(%s).id >= $%s "+ // Uses >= for inclusive startKey
+			"ORDER BY META(%s).id",
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, SyncDocWildcard,
+		base.KeyspaceQueryAlias, `\\_sync:role:%`,
+		base.KeyspaceQueryAlias, base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias, QueryParamStartKey,
 		base.KeyspaceQueryAlias),
 	adhoc: false,
@@ -482,7 +504,7 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 	}
 
 	// N1QL Query
-	return context.N1QLQueryWithStats(ctx, QueryTypePrincipals, queryStatement, params, base.RequestPlus, QueryPrincipals.adhoc)
+	return context.N1QLQueryWithStats(ctx, QueryPrincipals.name, queryStatement, params, base.RequestPlus, QueryPrincipals.adhoc)
 }
 
 // Query to retrieve user details, using the syncDocs index
@@ -504,6 +526,37 @@ func (context *DatabaseContext) QueryUsers(ctx context.Context, startKey string,
 
 	// N1QL Query
 	return context.N1QLQueryWithStats(ctx, QueryTypeUsers, queryStatement, params, base.RequestPlus, QueryUsers.adhoc)
+}
+
+// Retrieves role ids using the syncDocs index, excluding deleted roles
+func (context *DatabaseContext) QueryRoles(ctx context.Context, startKey string, limit int) (sgbucket.QueryResultIterator, error) {
+
+	// View Query
+	if context.Options.UseViews {
+		opts := map[string]interface{}{"stale": false}
+
+		if limit > 0 {
+			opts[QueryParamLimit] = limit
+		}
+
+		if startKey != "" {
+			opts[QueryParamStartKey] = startKey
+		}
+
+		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewRolesExcludeDeleted, opts)
+	}
+
+	queryStatement := replaceIndexTokensQuery(QueryRolesExcludeDeleted.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+
+	params := make(map[string]interface{})
+	params[QueryParamStartKey] = startKey
+
+	if limit > 0 {
+		queryStatement = fmt.Sprintf("%s LIMIT %d", queryStatement, limit)
+	}
+
+	// N1QL Query
+	return context.N1QLQueryWithStats(ctx, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc)
 }
 
 // Query to retrieve the set of sessions, using the syncDocs index

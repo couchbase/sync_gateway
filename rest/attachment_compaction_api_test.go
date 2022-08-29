@@ -28,11 +28,11 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 
 	var response db.AttachmentManagerResponse
 	err := base.JSONUnmarshal(resp.BodyBytes(), &response)
-	assert.NoError(t, err)
-	assert.Equal(t, db.BackgroundProcessStateCompleted, response.State)
-	assert.Equal(t, int64(0), response.MarkedAttachments)
-	assert.Equal(t, int64(0), response.PurgedAttachments)
-	assert.Empty(t, response.LastErrorMessage)
+	require.NoError(t, err)
+	require.Equal(t, db.BackgroundProcessStateCompleted, response.State)
+	require.Equal(t, int64(0), response.MarkedAttachments)
+	require.Equal(t, int64(0), response.PurgedAttachments)
+	require.Empty(t, response.LastErrorMessage)
 
 	// Kick off compact
 	resp = rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
@@ -51,11 +51,11 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 
 		var response db.AttachmentManagerResponse
 		err = base.JSONUnmarshal(resp.BodyBytes(), &response)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		return response.State == db.BackgroundProcessStateCompleted
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Create some legacy attachments to be marked but not compacted
 	for i := 0; i < 20; i++ {
@@ -63,14 +63,14 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 		attID := fmt.Sprintf("testAtt-%d", i)
 		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		CreateLegacyAttachmentDoc(t, &db.Database{DatabaseContext: rt.GetDatabase()}, docID, []byte("{}"), attID, attJSONBody)
 	}
 
 	// Create some 'unmarked' attachments
 	makeUnmarkedDoc := func(docid string) {
 		err := rt.GetDatabase().Bucket.SetRaw(docid, 0, nil, []byte("{}"))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	for i := 0; i < 5; i++ {
@@ -91,22 +91,22 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 
 		var response db.AttachmentManagerResponse
 		err = base.JSONUnmarshal(resp.BodyBytes(), &response)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		return response.State == db.BackgroundProcessStateCompleted
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Validate results of GET
 	resp = rt.SendAdminRequest("GET", "/db/_compact?type=attachment", "")
 	requireStatus(t, resp, http.StatusOK)
 
 	err = base.JSONUnmarshal(resp.BodyBytes(), &response)
-	assert.NoError(t, err)
-	assert.Equal(t, db.BackgroundProcessStateCompleted, response.State)
-	assert.Equal(t, int64(20), response.MarkedAttachments)
-	assert.Equal(t, int64(5), response.PurgedAttachments)
-	assert.Empty(t, response.LastErrorMessage)
+	require.NoError(t, err)
+	require.Equal(t, db.BackgroundProcessStateCompleted, response.State)
+	require.Equal(t, int64(20), response.MarkedAttachments)
+	require.Equal(t, int64(5), response.PurgedAttachments)
+	require.Empty(t, response.LastErrorMessage)
 
 	// Start another run
 	resp = rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
@@ -125,11 +125,11 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 
 		var response db.AttachmentManagerResponse
 		err = base.JSONUnmarshal(resp.BodyBytes(), &response)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		return response.State == db.BackgroundProcessStateStopping || response.State == db.BackgroundProcessStateStopped
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Wait for run to complete
 	_ = rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateStopped)

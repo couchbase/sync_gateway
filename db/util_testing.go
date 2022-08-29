@@ -230,7 +230,6 @@ WHERE META(ks).xattrs._sync.sequence >= 0
 
 // ViewsAndGSIBucketReadier empties the bucket, initializes Views, and waits until GSI indexes are empty. It is run asynchronously as soon as a test is finished with a bucket.
 var ViewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Context, b base.Bucket, tbp *base.TestBucketPool) error {
-
 	if base.TestsDisableGSI() {
 		tbp.Logf(ctx, "flushing bucket and readying views")
 		if err := base.FlushBucketEmptierFunc(ctx, b, tbp); err != nil {
@@ -238,6 +237,12 @@ var ViewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 		}
 		// Exit early if we're not using GSI.
 		return viewBucketReadier(ctx, b, tbp)
+	}
+
+	if c, ok := b.(*base.Collection); ok {
+		if err := c.DropAllScopesAndCollections(); err != nil && !errors.Is(err, base.ErrCollectionsUnsupported) {
+			return err
+		}
 	}
 
 	tbp.Logf(ctx, "emptying bucket via N1QL, readying views and indexes")
@@ -298,13 +303,13 @@ var ViewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 	}
 
 	tbp.Logf(ctx, "dropping existing bucket indexes")
-	if err := base.DropAllBucketIndexes(n1qlStore); err != nil {
+	if err := base.DropAllIndexes(ctx, n1qlStore); err != nil {
 		tbp.Logf(ctx, "Failed to drop bucket indexes: %v", err)
 		return err
 	}
 
 	tbp.Logf(ctx, "creating SG bucket indexes")
-	if err := InitializeIndexes(n1qlStore, base.TestUseXattrs(), 0); err != nil {
+	if err := InitializeIndexes(n1qlStore, base.TestUseXattrs(), 0, false); err != nil {
 		return err
 	}
 

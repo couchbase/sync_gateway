@@ -4023,9 +4023,9 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 	assert.True(t, found)
 
 	// Add an attachment to client
-	btc.attachmentsLock.Lock()
-	btc.attachments["sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc="] = []byte("goodbye cruel world")
-	btc.attachmentsLock.Unlock()
+	btc.AttachmentsLock().Lock()
+	btc.Attachments()["sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc="] = []byte("goodbye cruel world")
+	btc.AttachmentsLock().Unlock()
 
 	// Put doc with an erroneous revpos 1 but with a different digest, referring to the above attachment
 	_, err = btc.PushRevWithHistory("doc", revid, []byte(`{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"length": 19,"digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc="}}}`), 1, 0)
@@ -4404,9 +4404,9 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 	// Store the document and attachment on the test client
 	err = client1.StoreRevOnClient(docID, revID, rawDoc)
 	require.NoError(t, err)
-	client1.attachmentsLock.Lock()
-	client1.attachments[digest] = attBody
-	client1.attachmentsLock.Unlock()
+	client1.AttachmentsLock().Lock()
+	client1.Attachments()[digest] = attBody
+	client1.AttachmentsLock().Unlock()
 
 	// Confirm attachment is in the bucket
 	attachmentAKey := db.MakeAttachmentKey(1, "doc", digest)
@@ -4457,9 +4457,9 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 	// Store the document and attachment on the test client
 	err = client1.StoreRevOnClient(docID, revID, rawDoc)
 	require.NoError(t, err)
-	client1.attachmentsLock.Lock()
-	client1.attachments[digest] = attBody
-	client1.attachmentsLock.Unlock()
+	client1.AttachmentsLock().Lock()
+	client1.Attachments()[digest] = attBody
+	client1.AttachmentsLock().Unlock()
 
 	// Confirm attachment is in the bucket
 	attachmentAKey := db.MakeAttachmentKey(1, "doc", digest)
