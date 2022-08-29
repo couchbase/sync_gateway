@@ -15,7 +15,9 @@ func TestServerlessPollBuckets(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
-
+	if !base.TestsDisableGSI() {
+		t.Skip("This tests panics with GSI CBG-2356")
+	}
 	// Get test bucket
 	tb1 := base.GetTestBucket(t)
 	defer tb1.Close()
@@ -109,7 +111,9 @@ func TestServerlessDBSetupForceCreds(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
-
+	if !base.TestsDisableGSI() {
+		t.Skip("This tests panics with GSI CBG-2356")
+	}
 	tb1 := base.GetTestBucket(t)
 	defer tb1.Close()
 
