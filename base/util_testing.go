@@ -653,16 +653,9 @@ type dataStore struct {
 func ForAllDataStores(t *testing.T, testCallback func(*testing.T, sgbucket.DataStore)) {
 	dataStores := make([]dataStore, 0)
 
-	if TestUseCouchbaseServer() {
-		dataStores = append(dataStores, dataStore{
-			name:   "gocb.v2",
-			driver: GoCBv2,
-		})
-	}
-
 	dataStores = append(dataStores, dataStore{
-		name:   "gocb.v1",
-		driver: GoCBCustomSGTranscoder,
+		name:   "gocb.v2",
+		driver: GoCBv2,
 	})
 
 	for _, dataStore := range dataStores {
