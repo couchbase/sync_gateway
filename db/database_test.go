@@ -1720,7 +1720,7 @@ func BenchmarkDatabase(b *testing.B) {
 	base.DisableTestLogging(b)
 
 	for i := 0; i < b.N; i++ {
-		bucket, _ := ConnectToBucket(base.BucketSpec{
+		bucket, _ := connectToBucket(base.BucketSpec{
 			Server:          base.UnitTestUrl(),
 			CouchbaseDriver: base.ChooseCouchbaseDriver(base.DataBucket),
 			BucketName:      fmt.Sprintf("b-%d", i)})
@@ -1737,7 +1737,7 @@ func BenchmarkDatabase(b *testing.B) {
 func BenchmarkPut(b *testing.B) {
 	base.DisableTestLogging(b)
 
-	bucket, _ := ConnectToBucket(base.BucketSpec{
+	bucket, _ := connectToBucket(base.BucketSpec{
 		Server:          base.UnitTestUrl(),
 		CouchbaseDriver: base.ChooseCouchbaseDriver(base.DataBucket),
 		BucketName:      "Bucket"})

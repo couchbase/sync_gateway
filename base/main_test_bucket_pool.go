@@ -405,10 +405,15 @@ func (tbp *TestBucketPool) printStats() {
 	tbp.Logf(ctx, "==========================")
 
 	tbp.unclosedBucketsLock.Lock()
+	unclosedBucketWarnings := ""
 	for testName, buckets := range tbp.unclosedBuckets {
 		for bucketName := range buckets {
 			tbp.Logf(ctx, "WARNING: %s left %s bucket unclosed!", testName, bucketName)
+			unclosedBucketWarnings += fmt.Sprintf("%s left %s bucket unclosed!\n", testName, bucketName)
 		}
+	}
+	if unclosedBucketWarnings != "" {
+		panic(unclosedBucketWarnings)
 	}
 	tbp.unclosedBucketsLock.Unlock()
 
