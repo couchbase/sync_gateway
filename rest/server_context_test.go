@@ -589,6 +589,7 @@ func TestServerContextSetupCollectionsSupport(t *testing.T) {
 		t.Skip("Only runs on datastores without collections support")
 	}
 
+	ctx := base.TestCtx(t)
 	serverConfig := &StartupConfig{
 		Bootstrap: BootstrapConfig{
 			UseTLSServer:        base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())),
@@ -596,8 +597,8 @@ func TestServerContextSetupCollectionsSupport(t *testing.T) {
 		},
 		API: APIConfig{CORS: &CORSConfig{}, AdminInterface: DefaultAdminInterface},
 	}
-	serverContext := NewServerContext(serverConfig, false)
-	defer serverContext.Close()
+	serverContext := NewServerContext(ctx, serverConfig, false)
+	defer serverContext.Close(ctx)
 
 	dbConfig := DbConfig{
 		BucketConfig: BucketConfig{
@@ -617,7 +618,7 @@ func TestServerContextSetupCollectionsSupport(t *testing.T) {
 			},
 		},
 	}
-	_, err := serverContext._getOrAddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig}, false, db.GetConnectToBucketFn(true))
+	_, err := serverContext._getOrAddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig}, false, db.GetConnectToBucketFn(true))
 	require.ErrorIs(t, err, errCollectionsUnsupported)
 }
 
