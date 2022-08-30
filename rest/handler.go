@@ -167,7 +167,7 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 
 	h.rqCtx = base.LogContextWith(h.rq.Context(), &base.LogContext{CorrelationID: h.formatSerialNumber()})
 	if h.server != nil && h.server.config != nil && h.server.config.Bootstrap.ConfigGroupID != "" {
-		h.rqCtx = base.LogContextWith(h.rqCtx, &base.ServerLogContext{ConfigGroupID: h.server.config.Bootstrap.ConfigGroupID})
+		h.rqCtx = base.LogContextWith(h.rqCtx, &base.ServerLogContext{})
 	}
 
 	return h

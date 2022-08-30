@@ -1580,7 +1580,7 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 
 func (sc *ServerContext) AddServerLogContext(ctx context.Context) context.Context {
 	if sc != nil && sc.config != nil && sc.config.Bootstrap.ConfigGroupID != "" {
-		return base.LogContextWith(ctx, &base.ServerLogContext{ConfigGroupID: sc.config.Bootstrap.ConfigGroupID})
+		return base.LogContextWith(ctx, &base.ServerLogContext{})
 	}
 	return ctx
 }
