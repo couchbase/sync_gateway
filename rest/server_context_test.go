@@ -606,7 +606,7 @@ func TestServerContextSetupCollectionsSupport(t *testing.T) {
 			},
 		},
 	}
-	_, err := serverContext._getOrAddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig}, false, true)
+	_, err := serverContext._getOrAddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig}, false, db.GetConnectToBucketFn(true))
 	require.ErrorIs(t, err, errCollectionsUnsupported)
 }
 
