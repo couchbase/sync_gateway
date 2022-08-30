@@ -955,7 +955,7 @@ func (s *SlowResponseRecorder) Write(buf []byte) (int, error) {
 // AddDatabaseFromConfigWithBucket adds a database to the ServerContext and sets a specific bucket on the database context.
 // If an existing config is found for the name, returns an error.
 func (sc *ServerContext) AddDatabaseFromConfigWithBucket(ctx context.Context, tb testing.TB, config DatabaseConfig, bucket base.Bucket) (*db.DatabaseContext, error) {
-	return sc.getOrAddDatabaseFromConfig(ctx, config, false, func(spec base.BucketSpec) (base.Bucket, error) {
+	return sc.getOrAddDatabaseFromConfig(ctx, config, false, func(ctx context.Context, spec base.BucketSpec) (base.Bucket, error) {
 		return bucket, nil
 	})
 }
