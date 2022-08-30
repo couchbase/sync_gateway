@@ -850,8 +850,8 @@ func requireStatus(t testing.TB, response *TestResponse, expectedStatus int) {
 		response.Req.Method, response.Req.URL, response.Body)
 }
 
-func assertStatus(t testing.TB, response *TestResponse, expectedStatus int) {
-	assert.Equalf(t, expectedStatus, response.Code,
+func assertStatus(t testing.TB, response *TestResponse, expectedStatus int) bool {
+	return assert.Equalf(t, expectedStatus, response.Code,
 		"Response status %d %q (expected %d %q)\nfor %s <%s> : %s",
 		response.Code, http.StatusText(response.Code),
 		expectedStatus, http.StatusText(expectedStatus),

@@ -82,7 +82,7 @@ func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 		updatedDbConfig.cas = cas
 
 		dbCreds := h.server.config.DatabaseCredentials[dbName]
-		bucketCreds, _ := h.server.config.BucketCredentials[bucket]
+		bucketCreds := h.server.config.BucketCredentials[bucket]
 		if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap, dbCreds, bucketCreds, h.server.config.IsServerless()); err != nil {
 			return err
 		}
@@ -95,38 +95,9 @@ func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 			return err
 		}
 		h.setEtag(updatedDbConfig.Version)
+		return base.HTTPErrorf(http.StatusOK, "updated")
 
 	} else {
-		// Update in-memory config read from JSON file:
-		databaseConfig := *h.server.GetDatabaseConfig(dbName)
-
-		if h.headerDoesNotMatchEtag("If-Match", databaseConfig.Version) {
-			return base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
-		}
-
-		// Now call the mutator function:
-		if err := mutator(&databaseConfig.DbConfig); err != nil {
-			return err
-		}
-
-		// Bump the Version (Etag):
-		var err error
-		databaseConfig.Version, err = GenerateDatabaseConfigVersionID(databaseConfig.Version, &databaseConfig.DbConfig)
-		if err != nil {
-			return err
-		}
-
-		if err := databaseConfig.validate(h.ctx(), validateOIDC); err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
-		}
-		dbCreds := h.server.config.DatabaseCredentials[dbName]
-		if err := databaseConfig.setup(dbName, h.server.config.Bootstrap, dbCreds, nil, false); err != nil {
-			return err
-		}
-		if err := h.server.ReloadDatabaseWithConfig(databaseConfig); err != nil {
-			return err
-		}
-		h.setEtag(databaseConfig.Version)
+		return base.HTTPErrorf(http.StatusServiceUnavailable, "Unavailable")
 	}
-	return base.HTTPErrorf(http.StatusOK, "updated")
 }

@@ -9,7 +9,9 @@
 package rest
 
 import (
+	"log"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -20,7 +22,7 @@ import (
 //////// ALL USER QUERY APIS:
 
 // When feature flag is not enabled, all API calls return 404:
-func TestDBConfigUserFunctionGetWithoutFeatureFlag(t *testing.T) {
+func TestUserQueryDBConfigGetWithoutFeatureFlag(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: false})
 	defer rt.Close()
 
@@ -61,11 +63,8 @@ func TestDBConfigUserFunctionGetWithoutFeatureFlag(t *testing.T) {
 }
 
 // Test use of "Etag" and "If-Match" headers to safely update function/query/graphql config.
-func TestDBConfigUserFunctionMVCC(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: true})
-	defer rt.Close()
-
-	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
+func TestUserQueryDBConfigMVCC(t *testing.T) {
+	rt := newRestTesterForUserQueries(t, DbConfig{
 		UserFunctions: map[string]*db.UserFunctionConfig{
 			"xxx": {
 				SourceCode: "return 42;",
@@ -80,7 +79,8 @@ func TestDBConfigUserFunctionMVCC(t *testing.T) {
 			Schema:    base.StringPtr(kDummyGraphQLSchema),
 			Resolvers: nil,
 		},
-	}}
+	})
+	defer rt.Close()
 
 	runTest := func(t *testing.T, uri string, newValue string) {
 		// Get initial etag:
@@ -159,8 +159,8 @@ func TestDBConfigUserFunctionMVCC(t *testing.T) {
 //////// JAVASCRIPT FUNCTIONS:
 
 // When there's no existing config, API calls return 404 or empty objects:
-func TestDBConfigUserFunctionGetNoConfig(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: true})
+func TestUserQueryDBConfigGetMissing(t *testing.T) {
+	rt := newRestTesterForUserQueries(t, DbConfig{})
 	defer rt.Close()
 
 	t.Run("Non-Admin", func(t *testing.T) {
@@ -178,11 +178,8 @@ func TestDBConfigUserFunctionGetNoConfig(t *testing.T) {
 		assert.Equal(t, 404, response.Result().StatusCode)
 	})
 }
-func TestDBConfigUserFunctionGet(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: true})
-	defer rt.Close()
-
-	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
+func TestUserQueryDBConfigGet(t *testing.T) {
+	rt := newRestTesterForUserQueries(t, DbConfig{
 		UserFunctions: map[string]*db.UserFunctionConfig{
 			"square": {
 				SourceCode: "return args.numero * args.numero;",
@@ -190,7 +187,8 @@ func TestDBConfigUserFunctionGet(t *testing.T) {
 				Allow:      &db.UserQueryAllow{Channels: []string{"wonderland"}},
 			},
 		},
-	}}
+	})
+	defer rt.Close()
 
 	t.Run("Non-Admin", func(t *testing.T) {
 		response := rt.SendRequest("GET", "/db/_config/functions", "")
@@ -214,11 +212,8 @@ func TestDBConfigUserFunctionGet(t *testing.T) {
 	})
 }
 
-func TestDBConfigUserFunctionPut(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: true})
-	defer rt.Close()
-
-	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
+func TestUserQueryDBConfigPut(t *testing.T) {
+	rt := newRestTesterForUserQueries(t, DbConfig{
 		UserFunctions: map[string]*db.UserFunctionConfig{
 			"square": {
 				SourceCode: "return args.numero * args.numero;",
@@ -226,7 +221,8 @@ func TestDBConfigUserFunctionPut(t *testing.T) {
 				Allow:      &db.UserQueryAllow{Channels: []string{"wonderland"}},
 			},
 		},
-	}}
+	})
+	defer rt.Close()
 
 	t.Run("Non-Admin", func(t *testing.T) {
 		response := rt.SendRequest("PUT", "/db/_config/functions", "{}")
@@ -263,11 +259,8 @@ func TestDBConfigUserFunctionPut(t *testing.T) {
 	})
 }
 
-func TestDBConfigUserFunctionPutOne(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: true})
-	defer rt.Close()
-
-	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
+func TestUserQueryDBConfigPutOne(t *testing.T) {
+	rt := newRestTesterForUserQueries(t, DbConfig{
 		UserFunctions: map[string]*db.UserFunctionConfig{
 			"square": {
 				SourceCode: "return args.numero * args.numero;",
@@ -275,7 +268,8 @@ func TestDBConfigUserFunctionPutOne(t *testing.T) {
 				Allow:      &db.UserQueryAllow{Channels: []string{"wonderland"}},
 			},
 		},
-	}}
+	})
+	defer rt.Close()
 
 	t.Run("Non-Admin", func(t *testing.T) {
 		response := rt.SendRequest("PUT", "/db/_config/functions/square", "{}")
@@ -332,7 +326,7 @@ func TestDBConfigUserFunctionPutOne(t *testing.T) {
 //////// N1QL QUERIES
 
 func TestDBConfigUserQueryGetEmpty(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: true})
+	rt := newRestTesterForUserQueries(t, DbConfig{})
 	defer rt.Close()
 
 	t.Run("Non-Admin", func(t *testing.T) {
@@ -351,10 +345,7 @@ func TestDBConfigUserQueryGetEmpty(t *testing.T) {
 	})
 }
 func TestDBConfigUserQueryGet(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: true})
-	defer rt.Close()
-
-	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
+	rt := newRestTesterForUserQueries(t, DbConfig{
 		UserQueries: map[string]*db.UserQueryConfig{
 			"square": {
 				Statement:  "SELECT $numero * $numero",
@@ -368,7 +359,8 @@ func TestDBConfigUserQueryGet(t *testing.T) {
 				Statement: "SELECT 23",
 			},
 		},
-	}}
+	})
+	defer rt.Close()
 
 	t.Run("Non-Admin", func(t *testing.T) {
 		response := rt.SendRequest("GET", "/db/_config/queries", "")
@@ -395,10 +387,7 @@ func TestDBConfigUserQueryGet(t *testing.T) {
 }
 
 func TestDBConfigUserQueryPut(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: true})
-	defer rt.Close()
-
-	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
+	rt := newRestTesterForUserQueries(t, DbConfig{
 		UserQueries: map[string]*db.UserQueryConfig{
 			"square": {
 				Statement:  "SELECT $numero * $numero",
@@ -412,7 +401,8 @@ func TestDBConfigUserQueryPut(t *testing.T) {
 				Statement: "SELECT 23",
 			},
 		},
-	}}
+	})
+	defer rt.Close()
 
 	t.Run("Non-Admin", func(t *testing.T) {
 		response := rt.SendRequest("PUT", "/db/_config/queries", "{}")
@@ -461,10 +451,7 @@ func TestDBConfigUserQueryPut(t *testing.T) {
 }
 
 func TestDBConfigUserQueryPutOne(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: true})
-	defer rt.Close()
-
-	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
+	rt := newRestTesterForUserQueries(t, DbConfig{
 		UserQueries: map[string]*db.UserQueryConfig{
 			"square": {
 				Statement:  "SELECT $numero * $numero",
@@ -472,7 +459,8 @@ func TestDBConfigUserQueryPutOne(t *testing.T) {
 				Allow:      &db.UserQueryAllow{Channels: []string{"wonderland"}},
 			},
 		},
-	}}
+	})
+	defer rt.Close()
 
 	t.Run("Non-Admin", func(t *testing.T) {
 		response := rt.SendRequest("PUT", "/db/_config/queries/square", "{}")
@@ -540,7 +528,7 @@ const kDummyGraphQLSchema = `
 	}`
 
 func TestDBConfigUserGraphQLGetEmpty(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: true})
+	rt := newRestTesterForUserQueries(t, DbConfig{})
 	defer rt.Close()
 
 	t.Run("Non-Admin", func(t *testing.T) {
@@ -553,15 +541,13 @@ func TestDBConfigUserGraphQLGetEmpty(t *testing.T) {
 	})
 }
 func TestDBConfigUserGraphQLGet(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: true})
-	defer rt.Close()
-
-	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
+	rt := newRestTesterForUserQueries(t, DbConfig{
 		GraphQL: &db.GraphQLConfig{
 			Schema:    base.StringPtr(kDummyGraphQLSchema),
 			Resolvers: nil,
 		},
-	}}
+	})
+	defer rt.Close()
 
 	t.Run("Non-Admin", func(t *testing.T) {
 		response := rt.SendRequest("GET", "/db/_config/graphql", "")
@@ -576,16 +562,13 @@ func TestDBConfigUserGraphQLGet(t *testing.T) {
 }
 
 func TestDBConfigUserGraphQLPut(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: true})
-	defer rt.Close()
-
-	schema := kDummyGraphQLSchema
-	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
+	rt := newRestTesterForUserQueries(t, DbConfig{
 		GraphQL: &db.GraphQLConfig{
-			Schema:    &schema,
+			Schema:    base.StringPtr(kDummyGraphQLSchema),
 			Resolvers: nil,
 		},
-	}}
+	})
+	defer rt.Close()
 
 	t.Run("Non-Admin", func(t *testing.T) {
 		response := rt.SendRequest("PUT", "/db/_config/graphql", "{}")
@@ -623,4 +606,36 @@ func TestDBConfigUserGraphQLPut(t *testing.T) {
 		response = rt.SendAdminRequest("POST", "/db/_graphql", `{"query": "query{ sum(n:3) }"}`)
 		assert.Equal(t, 503, response.Result().StatusCode)
 	})
+}
+
+//////// UTILITIES:
+
+func newRestTesterForUserQueries(t *testing.T, queryConfig DbConfig) *RestTester {
+	// NOTE: The Sleep call and logging here are temporary.
+	// Tests do not reliably pass without the Sleep call; without it, sometimes a database
+	// is created on a background thread before the call to CreateDatabase below, causing
+	// it to fail with a 412.
+	// I'm committing with this band-aid so others can help troubleshoot the problem.
+	// --Jens, 30-Aug-2022
+	log.Printf("======== Waiting before creating RestTester ========")
+	time.Sleep(2 * time.Second)
+	log.Printf("======== Creating RestTester ========")
+	rt := NewRestTester(t, &RestTesterConfig{
+		EnableUserQueries: true,
+		persistentConfig:  true,
+	})
+	_ = rt.Bucket() // This is necessary, to initialize the bucket
+	dbConfig := dbConfigForTestBucket(rt.testBucket)
+	dbConfig.UserFunctions = queryConfig.UserFunctions
+	dbConfig.UserQueries = queryConfig.UserQueries
+	dbConfig.GraphQL = queryConfig.GraphQL
+	log.Printf("======== Creating db ========")
+	resp, err := rt.CreateDatabase("db", dbConfig)
+	if !assert.NoError(t, err) || !assertStatus(t, resp, 201) {
+		rt.Close()
+		t.FailNow()
+		return nil // (never reached)
+	}
+	log.Printf("======== Finished creating db ========")
+	return rt
 }
