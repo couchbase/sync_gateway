@@ -12,6 +12,7 @@ package base
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"expvar"
 	"fmt"
@@ -105,8 +106,7 @@ func (d *DCPDest) DataUpdate(partition string, key []byte, seq uint64,
 	if !dcpKeyFilter(key) {
 		return nil
 	}
-	// FIXME: CBGT _does_ encode the collection ID in the extras, so we could get it out here - but is it worth the effort, given it'll call DataUpdateEx anyway
-	event := makeFeedEventForDest(key, val, cas, partitionToVbNo(partition), 0, 0, 0, sgbucket.FeedOpMutation)
+	event := makeFeedEventForDest(key, val, cas, partitionToVbNo(partition), collectionIDFromExtras(extras), 0, 0, sgbucket.FeedOpMutation)
 	d.dataUpdate(seq, event)
 	return nil
 }
@@ -145,8 +145,7 @@ func (d *DCPDest) DataDelete(partition string, key []byte, seq uint64,
 		return nil
 	}
 
-	// FIXME: CBGT _does_ encode the collection ID in the extras, so we could get it out here - but is it worth the effort, given it'll call DataUpdateEx anyway
-	event := makeFeedEventForDest(key, nil, cas, partitionToVbNo(partition), 0, 0, 0, sgbucket.FeedOpDeletion)
+	event := makeFeedEventForDest(key, nil, cas, partitionToVbNo(partition), collectionIDFromExtras(extras), 0, 0, sgbucket.FeedOpDeletion)
 	d.dataUpdate(seq, event)
 	return nil
 }
@@ -249,6 +248,13 @@ func partitionToVbNo(partition string) uint16 {
 
 func vbNoToPartition(vbNo uint16) string {
 	return vbucketIdStrings[vbNo]
+}
+
+func collectionIDFromExtras(extras []byte) uint32 {
+	if len(extras) != 8 {
+		return 0
+	}
+	return binary.LittleEndian.Uint32(extras[4:])
 }
 
 /* Not in use, retaining as reference for future enhancement

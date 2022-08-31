@@ -50,34 +50,37 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 	il.stats = dbStats.Database()
 
 	collectionNamesByScope := make(map[string][]string)
-
-	if len(dbContext.Scopes) > 1 {
-		return fmt.Errorf("multiple scopes not supported")
-	}
 	var scopeName string
-	for sn := range dbContext.Scopes {
-		scopeName = sn
-	}
 
-	coll, err := base.AsCollection(bucket)
-	if err != nil {
-		return fmt.Errorf("FIXME: no collection %w", err)
-	}
-	collectionManifest, err := coll.GetCollectionManifest()
-	if err != nil {
-		return fmt.Errorf("failed to load collection manifest: %w", err)
-	}
-
-	collectionNamesByScope[scopeName] = make([]string, 0, len(dbContext.Scopes[scopeName].Collections))
-	for collName, collCtx := range dbContext.Scopes[scopeName].Collections {
-		collectionNamesByScope[scopeName] = append(collectionNamesByScope[scopeName], collName)
-
-		collID, ok := collectionManifest.GetIDForCollection(scopeName, collName)
-		if !ok {
-			return fmt.Errorf("failed to find ID for collection %s.%s", base.MD(scopeName).Redact(), base.MD(collName).Redact())
+	if len(dbContext.Scopes) > 0 {
+		if len(dbContext.Scopes) > 1 {
+			return fmt.Errorf("multiple scopes not supported")
 		}
-		il.collections[collID] = Database{DatabaseContext: collCtx.CollectionCtx, user: nil}
+		for sn := range dbContext.Scopes {
+			scopeName = sn
+		}
+
+		coll, err := base.AsCollection(bucket)
+		if err != nil {
+			return fmt.Errorf("configured with named collections, but bucket is not collection: %w", err)
+		}
+		collectionManifest, err := coll.GetCollectionManifest()
+		if err != nil {
+			return fmt.Errorf("failed to load collection manifest: %w", err)
+		}
+
+		collectionNamesByScope[scopeName] = make([]string, 0, len(dbContext.Scopes[scopeName].Collections))
+		for collName, collCtx := range dbContext.Scopes[scopeName].Collections {
+			collectionNamesByScope[scopeName] = append(collectionNamesByScope[scopeName], collName)
+
+			collID, ok := collectionManifest.GetIDForCollection(scopeName, collName)
+			if !ok {
+				return fmt.Errorf("failed to find ID for collection %s.%s", base.MD(scopeName).Redact(), base.MD(collName).Redact())
+			}
+			il.collections[collID] = Database{DatabaseContext: collCtx.CollectionCtx, user: nil}
+		}
 	}
+
 	feedArgs := sgbucket.FeedArguments{
 		ID:               base.DCPImportFeedID,
 		Backfill:         sgbucket.FeedResume,
