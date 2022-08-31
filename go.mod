@@ -12,7 +12,8 @@ require (
 	github.com/couchbase/gocbcore/v10 v10.1.5-0.20220809160836-bf53e9527651
 	github.com/couchbase/gomemcached v0.1.4
 	github.com/couchbase/goutils v0.1.2
-	github.com/couchbase/sg-bucket v0.0.0-20220725152948-e1112ff01a3d
+	// FIXME: references an un-merged branch (https://github.com/couchbase/sg-bucket/pull/81)
+	github.com/couchbase/sg-bucket v0.0.0-20220831114430-ca9ad184e517
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f
 	github.com/couchbaselabs/walrus v0.0.0-20220726144228-c44d71d14a7a
 	github.com/elastic/gosigar v0.14.2
