@@ -78,6 +78,9 @@ func TestUserQueryDBConfigMVCC(t *testing.T) {
 			Resolvers: nil,
 		},
 	})
+	if rt == nil {
+		return
+	}
 	defer rt.Close()
 
 	runTest := func(t *testing.T, uri string, newValue string) {
@@ -159,6 +162,9 @@ func TestUserQueryDBConfigMVCC(t *testing.T) {
 // When there's no existing config, API calls return 404 or empty objects:
 func TestUserQueryDBConfigGetMissing(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{})
+	if rt == nil {
+		return
+	}
 	defer rt.Close()
 
 	t.Run("Non-Admin", func(t *testing.T) {
@@ -186,6 +192,9 @@ func TestUserQueryDBConfigGet(t *testing.T) {
 			},
 		},
 	})
+	if rt == nil {
+		return
+	}
 	defer rt.Close()
 
 	t.Run("Non-Admin", func(t *testing.T) {
@@ -220,6 +229,9 @@ func TestUserQueryDBConfigPut(t *testing.T) {
 			},
 		},
 	})
+	if rt == nil {
+		return
+	}
 	defer rt.Close()
 
 	t.Run("Non-Admin", func(t *testing.T) {
@@ -267,6 +279,9 @@ func TestUserQueryDBConfigPutOne(t *testing.T) {
 			},
 		},
 	})
+	if rt == nil {
+		return
+	}
 	defer rt.Close()
 
 	t.Run("Non-Admin", func(t *testing.T) {
@@ -325,6 +340,9 @@ func TestUserQueryDBConfigPutOne(t *testing.T) {
 
 func TestDBConfigUserQueryGetEmpty(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{})
+	if rt == nil {
+		return
+	}
 	defer rt.Close()
 
 	t.Run("Non-Admin", func(t *testing.T) {
@@ -358,6 +376,9 @@ func TestDBConfigUserQueryGet(t *testing.T) {
 			},
 		},
 	})
+	if rt == nil {
+		return
+	}
 	defer rt.Close()
 
 	t.Run("Non-Admin", func(t *testing.T) {
@@ -400,6 +421,9 @@ func TestDBConfigUserQueryPut(t *testing.T) {
 			},
 		},
 	})
+	if rt == nil {
+		return
+	}
 	defer rt.Close()
 
 	t.Run("Non-Admin", func(t *testing.T) {
@@ -458,6 +482,9 @@ func TestDBConfigUserQueryPutOne(t *testing.T) {
 			},
 		},
 	})
+	if rt == nil {
+		return
+	}
 	defer rt.Close()
 
 	t.Run("Non-Admin", func(t *testing.T) {
@@ -527,6 +554,9 @@ const kDummyGraphQLSchema = `
 
 func TestDBConfigUserGraphQLGetEmpty(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{})
+	if rt == nil {
+		return
+	}
 	defer rt.Close()
 
 	t.Run("Non-Admin", func(t *testing.T) {
@@ -545,6 +575,9 @@ func TestDBConfigUserGraphQLGet(t *testing.T) {
 			Resolvers: nil,
 		},
 	})
+	if rt == nil {
+		return
+	}
 	defer rt.Close()
 
 	t.Run("Non-Admin", func(t *testing.T) {
@@ -566,6 +599,9 @@ func TestDBConfigUserGraphQLPut(t *testing.T) {
 			Resolvers: nil,
 		},
 	})
+	if rt == nil {
+		return
+	}
 	defer rt.Close()
 
 	t.Run("Non-Admin", func(t *testing.T) {
@@ -611,6 +647,11 @@ func TestDBConfigUserGraphQLPut(t *testing.T) {
 // Creates a new RestTester using persistent config, and a database "db".
 // Only the user-query-related fields are copied from `queryConfig`; the rest are ignored.
 func newRestTesterForUserQueries(t *testing.T, queryConfig DbConfig) *RestTester {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test requires persistent configs")
+		return nil
+	}
+
 	rt := NewRestTester(t, &RestTesterConfig{
 		groupID:           base.StringPtr(t.Name()), // Avoids race conditions between tests
 		EnableUserQueries: true,
