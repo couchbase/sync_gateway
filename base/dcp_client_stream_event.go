@@ -29,13 +29,14 @@ type snapshotEvent struct {
 
 type mutationEvent struct {
 	streamEventCommon
-	seq      uint64
-	flags    uint32
-	expiry   uint32
-	cas      uint64
-	datatype uint8
-	key      []byte
-	value    []byte
+	seq        uint64
+	flags      uint32
+	expiry     uint32
+	cas        uint64
+	datatype   uint8
+	collection uint32
+	key        []byte
+	value      []byte
 }
 
 type streamOpenEvent struct {
@@ -48,6 +49,7 @@ func (e mutationEvent) asFeedEvent() sgbucket.FeedEvent {
 		Opcode:       sgbucket.FeedOpMutation,
 		Flags:        e.flags,
 		Expiry:       e.expiry,
+		CollectionID: e.collection,
 		Key:          e.key,
 		Value:        e.value,
 		DataType:     e.datatype,
@@ -59,16 +61,18 @@ func (e mutationEvent) asFeedEvent() sgbucket.FeedEvent {
 
 type deletionEvent struct {
 	streamEventCommon
-	seq      uint64
-	cas      uint64
-	datatype uint8
-	key      []byte
-	value    []byte
+	seq        uint64
+	cas        uint64
+	datatype   uint8
+	collection uint32
+	key        []byte
+	value      []byte
 }
 
 func (e deletionEvent) asFeedEvent() sgbucket.FeedEvent {
 	return sgbucket.FeedEvent{
 		Opcode:       sgbucket.FeedOpDeletion,
+		CollectionID: e.collection,
 		Key:          e.key,
 		Value:        e.value,
 		DataType:     e.datatype,

@@ -29,7 +29,7 @@ import (
 const CBGTIndexTypeSyncGatewayImport = "syncGateway-import-"
 const DefaultImportPartitions = 16
 
-// firstVersionToSupportCollections represents the earliest Sync Gateway release that supports collections (codename "Helium").
+// firstVersionToSupportCollections represents the earliest Sync Gateway release that supports collections (codename "Elixir").
 var firstVersionToSupportCollections = &ComparableVersion{
 	epoch: 0,
 	major: 3,
@@ -54,14 +54,14 @@ type CbgtContext struct {
 
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
 // dbName is used to define a unique path name for local file storage of pindex files
-func StartShardedDCPFeed(dbName string, configGroup string, uuid string, heartbeater Heartbeater, bucket Bucket, spec BucketSpec, numPartitions uint16, cfg cbgt.Cfg) (*CbgtContext, error) {
+func StartShardedDCPFeed(dbName string, configGroup string, uuid string, heartbeater Heartbeater, bucket Bucket, spec BucketSpec, scope string, collections []string, numPartitions uint16, cfg cbgt.Cfg) (*CbgtContext, error) {
 	cbgtContext, err := initCBGTManager(bucket, spec, cfg, uuid, dbName)
 	if err != nil {
 		return nil, err
 	}
 
 	// Start Manager.  Registers this node in the cfg
-	err = cbgtContext.StartManager(dbName, configGroup, bucket, spec, numPartitions)
+	err = cbgtContext.StartManager(dbName, configGroup, bucket, spec, scope, collections, numPartitions)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +96,7 @@ func GenerateLegacyIndexName(dbName string) string {
 // to the manager's cbgt cfg.  Nodes that have registered for this indexType with the manager via
 // RegisterPIndexImplType (see importListener.RegisterImportPindexImpl)
 // will receive PIndexImpl callbacks (New, Open) for assigned PIndex to initiate DCP processing.
-func createCBGTIndex(c *CbgtContext, dbName string, configGroupID string, bucket Bucket, spec BucketSpec, numPartitions uint16) error {
+func createCBGTIndex(c *CbgtContext, dbName string, configGroupID string, bucket Bucket, spec BucketSpec, scope string, collections []string, numPartitions uint16) error {
 	sourceType := SOURCE_DCP_SG
 
 	bucketUUID, err := bucket.UUID()
@@ -104,7 +104,7 @@ func createCBGTIndex(c *CbgtContext, dbName string, configGroupID string, bucket
 		return err
 	}
 
-	sourceParams, err := cbgtFeedParams(spec, dbName)
+	sourceParams, err := cbgtFeedParams(spec, scope, collections, dbName)
 	if err != nil {
 		return err
 	}
@@ -373,7 +373,7 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 }
 
 // StartManager registers this node with cbgt, and the janitor will start feeds on this node.
-func (c *CbgtContext) StartManager(dbName string, configGroup string, bucket Bucket, spec BucketSpec, numPartitions uint16) (err error) {
+func (c *CbgtContext) StartManager(dbName string, configGroup string, bucket Bucket, spec BucketSpec, scope string, collections []string, numPartitions uint16) (err error) {
 
 	// TODO: Clarify the functional difference between registering the manager as 'wanted' vs 'known'.
 	registerType := cbgt.NODE_DEFS_WANTED
@@ -383,7 +383,7 @@ func (c *CbgtContext) StartManager(dbName string, configGroup string, bucket Buc
 	}
 
 	// Add the index definition for this feed to the cbgt cfg, in case it's not already present.
-	err = createCBGTIndex(c, dbName, configGroup, bucket, spec, numPartitions)
+	err = createCBGTIndex(c, dbName, configGroup, bucket, spec, scope, collections, numPartitions)
 	if err != nil {
 		if strings.Contains(err.Error(), "an index with the same name already exists") {
 			InfofCtx(c.loggingCtx, KeyCluster, "Duplicate cbgt index detected during index creation (concurrent creation), using existing")

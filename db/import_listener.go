@@ -22,9 +22,11 @@ import (
 // ImportListener manages the import DCP feed.  ProcessFeedEvent is triggered for each feed events,
 // and invokes ImportFeedEvent for any event that's eligible for import handling.
 type importListener struct {
-	bucketName       string              // Used for logging
-	terminator       chan bool           // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
-	database         Database            // Admin database instance to be used for import
+	bucketName       string    // Used for logging
+	terminator       chan bool // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
+	dbCtx            *DatabaseContext
+	metaStore        base.Bucket         // collection to store DCP metadata
+	collections      map[uint32]Database // Admin databases used for import, keyed by collection ID (CB-server-side)
 	stats            *base.DatabaseStats // Database stats group
 	cbgtContext      *base.CbgtContext   // Handle to cbgt manager,cfg
 	checkpointPrefix string              // DCP checkpoint key prefix
@@ -42,21 +44,39 @@ func NewImportListener(groupID string) *importListener {
 // Writes DCP stats into the StatKeyImportDcpStats map
 func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbStats, dbContext *DatabaseContext) (err error) {
 	il.bucketName = bucket.GetName()
-	il.database = Database{DatabaseContext: dbContext, user: nil}
+	il.dbCtx = dbContext
+	il.metaStore = dbContext.Bucket // FIXME(CBG-2266): use proper metadata collection
+	il.collections = make(map[uint32]Database)
 	il.stats = dbStats.Database()
-	scopes := make(map[string][]string)
-	// TODO: remove once both sharded and non-sharded DCP feeds support more than one collection (CBG-2182, CBG-2193)
+
+	collectionNamesByScope := make(map[string][]string)
+
 	if len(dbContext.Scopes) > 1 {
-		return fmt.Errorf("more than one collection not supported")
+		return fmt.Errorf("multiple scopes not supported")
 	}
-	for scopeName, scope := range dbContext.Scopes {
-		if len(scope.Collections) > 1 {
-			return fmt.Errorf("more than one collection not supported")
+	var scopeName string
+	for sn := range dbContext.Scopes {
+		scopeName = sn
+	}
+
+	coll, err := base.AsCollection(bucket)
+	if err != nil {
+		return fmt.Errorf("FIXME: no collection %w", err)
+	}
+	collectionManifest, err := coll.GetCollectionManifest()
+	if err != nil {
+		return fmt.Errorf("failed to load collection manifest: %w", err)
+	}
+
+	collectionNamesByScope[scopeName] = make([]string, 0, len(dbContext.Scopes[scopeName].Collections))
+	for collName, collCtx := range dbContext.Scopes[scopeName].Collections {
+		collectionNamesByScope[scopeName] = append(collectionNamesByScope[scopeName], collName)
+
+		collID, ok := collectionManifest.GetIDForCollection(scopeName, collName)
+		if !ok {
+			return fmt.Errorf("failed to find ID for collection %s.%s", base.MD(scopeName).Redact(), base.MD(collName).Redact())
 		}
-		scopes[scopeName] = make([]string, 0, len(scope.Collections))
-		for collName := range scope.Collections {
-			scopes[scopeName] = append(scopes[scopeName], collName)
-		}
+		il.collections[collID] = Database{DatabaseContext: collCtx.CollectionCtx, user: nil}
 	}
 	feedArgs := sgbucket.FeedArguments{
 		ID:               base.DCPImportFeedID,
@@ -64,15 +84,15 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 		Terminator:       il.terminator,
 		DoneChan:         make(chan struct{}),
 		CheckpointPrefix: il.checkpointPrefix,
-		Scopes:           scopes,
+		Scopes:           collectionNamesByScope,
 	}
 
-	base.InfofCtx(context.TODO(), base.KeyDCP, "Attempting to start import DCP feed %v...", base.MD(base.ImportDestKey(il.database.Name)))
+	base.InfofCtx(context.TODO(), base.KeyDCP, "Attempting to start import DCP feed %v...", base.MD(base.ImportDestKey(il.dbCtx.Name)))
 
 	importFeedStatsMap := dbContext.DbStats.Database().ImportFeedMapStats
 
 	// Store the listener in global map for dbname-based retrieval by cbgt prior to index registration
-	base.StoreDestFactory(base.ImportDestKey(il.database.Name), il.NewImportDest)
+	base.StoreDestFactory(base.ImportDestKey(il.dbCtx.Name), il.NewImportDest)
 
 	// Start DCP mutation feed
 	base.InfofCtx(context.TODO(), base.KeyDCP, "Starting DCP import feed for bucket: %q ", base.UD(bucket.GetName()))
@@ -91,7 +111,8 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 		}
 		return base.StartGocbDCPFeed(collection, bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
 	}
-	il.cbgtContext, err = base.StartShardedDCPFeed(dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater, bucket, cbStore.GetSpec(), dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
+	il.cbgtContext, err = base.StartShardedDCPFeed(dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater,
+		bucket, cbStore.GetSpec(), scopeName, collectionNamesByScope[scopeName], dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
 	return err
 }
 
@@ -133,8 +154,14 @@ func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPers
 func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 	logCtx := context.TODO()
 
+	collectionCtx, ok := il.collections[event.CollectionID]
+	if !ok {
+		base.WarnfCtx(logCtx, "Received import event for unrecognised collection 0x%x", event.CollectionID)
+		return
+	}
+
 	// Unmarshal the doc metadata (if present) to determine if this mutation requires import.
-	syncData, rawBody, rawXattr, rawUserXattr, err := UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, il.database.Options.UserXattrKey, false)
+	syncData, rawBody, rawXattr, rawUserXattr, err := UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, collectionCtx.Options.UserXattrKey, false)
 	if err != nil {
 		base.DebugfCtx(logCtx, base.KeyImport, "Found sync metadata, but unable to unmarshal for feed document %q.  Will not be imported.  Error: %v", base.UD(event.Key), err)
 		if err == base.ErrEmptyMetadata {
@@ -168,7 +195,7 @@ func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 		default:
 		}
 
-		_, err := il.database.ImportDocRaw(docID, rawBody, rawXattr, rawUserXattr, isDelete, event.Cas, &event.Expiry, ImportFromFeed)
+		_, err := collectionCtx.ImportDocRaw(docID, rawBody, rawXattr, rawUserXattr, isDelete, event.Cas, &event.Expiry, ImportFromFeed)
 		if err != nil {
 			if err == base.ErrImportCasFailure {
 				base.DebugfCtx(logCtx, base.KeyImport, "Not importing mutation - document %s has been subsequently updated and will be imported based on that mutation.", base.UD(docID))
@@ -196,10 +223,10 @@ func (il *importListener) Stop() {
 			}
 			// ClosePIndex calls are synchronous, so can stop manager once they've completed
 			il.cbgtContext.Manager.Stop()
-			il.cbgtContext.RemoveFeedCredentials(il.database.Name)
+			il.cbgtContext.RemoveFeedCredentials(il.dbCtx.Name)
 
 			// Remove entry from global listener directory
-			base.RemoveDestFactory(base.ImportDestKey(il.database.Name))
+			base.RemoveDestFactory(base.ImportDestKey(il.dbCtx.Name))
 
 			// TODO: Shut down the cfg (when cfg supports)
 		}

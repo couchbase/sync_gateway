@@ -105,7 +105,7 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 	}
 }
 
-func TestCollectionsDCP(t *testing.T) {
+func TestSingleCollectionDCP(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyDCP, base.KeyImport)
 
@@ -143,6 +143,50 @@ func TestCollectionsDCP(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, rt.WaitForDoc(docID))
+}
+
+func TestMultiCollectionDCP(t *testing.T) {
+	base.TestRequiresCollections(t)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyDCP, base.KeyImport)
+
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		createScopesAndCollections: true,
+		TestBucket:                 tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				AutoImport: true,
+				Scopes: ScopesConfig{
+					"foo": ScopeConfig{
+						Collections: map[string]CollectionConfig{
+							"bar": {},
+							"baz": {},
+						},
+					},
+				},
+			},
+		},
+	})
+	defer rt.Close()
+
+	underlying, ok := base.GetBaseBucket(rt.Bucket()).(*base.Collection)
+	require.True(t, ok, "rt bucket was not a Collection")
+
+	_, err := underlying.Collection.Bucket().Scope("foo").Collection("bar").Insert("testDocBar", map[string]any{"test": true}, nil)
+	require.NoError(t, err)
+	_, err = underlying.Collection.Bucket().Scope("foo").Collection("baz").Insert("testDocBaz", map[string]any{"test": true}, nil)
+	require.NoError(t, err)
+
+	// ensure the doc is picked up by the import DCP feed and actually gets imported
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 2
+	})
+	require.NoError(t, err)
+
+	// TODO(CBG-2329): collection-aware caching
+	//require.NoError(t, rt.WaitForDoc(docID))
 }
 
 // TestCollectionsBasicIndexQuery ensures that the bucket API is able to create an index on a collection

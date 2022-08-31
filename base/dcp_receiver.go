@@ -94,7 +94,7 @@ func (r *DCPReceiver) DataDelete(vbucketId uint16, key []byte, seq uint64,
 
 // Make a feed event for a gomemcached request.  Extracts expiry from extras
 func makeFeedEventForMCRequest(rq *gomemcached.MCRequest, opcode sgbucket.FeedOpcode) sgbucket.FeedEvent {
-	return makeFeedEvent(rq.Key, rq.Body, rq.DataType, rq.Cas, ExtractExpiryFromDCPMutation(rq), rq.VBucket, opcode)
+	return makeFeedEvent(rq.Key, rq.Body, rq.DataType, rq.Cas, ExtractExpiryFromDCPMutation(rq), rq.VBucket, 0, opcode)
 }
 
 func (r *DCPReceiver) SnapshotStart(vbNo uint16,

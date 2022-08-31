@@ -161,8 +161,17 @@ type DatabaseContextOptions struct {
 	GroupID                       string
 	JavascriptTimeout             time.Duration // Max time the JS functions run for (ie. sync fn, import filter)
 	Serverless                    bool          // If running in serverless mode
-	skipRegisterImportPIndex      bool          // if set, skips the global gocb PIndex registration
+	Scopes                        ScopesOptions
+	skipRegisterImportPIndex      bool // if set, skips the global gocb PIndex registration
 }
+
+type ScopesOptions map[string]ScopeOptions
+
+type ScopeOptions struct {
+	Collections map[string]CollectionOptions
+}
+
+type CollectionOptions struct{}
 
 type SGReplicateOptions struct {
 	Enabled               bool          // Whether this node can be assigned sg-replicate replications
@@ -340,6 +349,20 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	cleanupFunctions = append(cleanupFunctions, func() {
 		base.SyncGatewayStats.ClearDBStats(dbName)
 	})
+
+	if len(options.Scopes) > 0 {
+		dbContext.Scopes = make(map[string]Scope, len(options.Scopes))
+		for scopeName, scope := range options.Scopes {
+			dbContext.Scopes[scopeName] = Scope{
+				Collections: make(map[string]Collection, len(scope.Collections)),
+			}
+			for collName := range scope.Collections {
+				dbContext.Scopes[scopeName].Collections[collName] = Collection{
+					CollectionCtx: dbContext, // TODO: Prior to Phase 2 - move DatabaseContext methods like PutSpecial, etc. into CollectionContext
+				}
+			}
+		}
+	}
 
 	if dbContext.AllowConflicts() {
 		dbContext.RevsLimit = DefaultRevsLimitConflicts
