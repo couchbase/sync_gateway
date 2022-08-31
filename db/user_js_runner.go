@@ -265,18 +265,35 @@ func (runner *userJSRunner) do_save(docID string, body map[string]interface{}) e
 	}
 
 	delete(body, "_id")
-	if _, found := body["_rev"]; !found {
+	if _, found := body["_rev"]; found {
+		// If caller provided `_rev` property, use MVCC as normal:
+		_, _, err := runner.currentDB.Put(docID, body)
+		return err
+	} else {
 		// If caller didn't provide a `_rev` property, fall back to "last writer wins":
 		// get the current revision if any, and pass it to Put so that the save always succeeds.
-		rev, err := runner.currentDB.GetRev(docID, "", false, []string{})
-		if err == nil {
-			body["_rev"] = rev.RevID
+		for {
+			rev, err := runner.currentDB.GetRev(docID, "", false, []string{})
+			if err != nil {
+				if status, _ := base.ErrorAsHTTPStatus(err); status != http.StatusNotFound {
+					return err
+				}
+			}
+			if rev.RevID == "" {
+				delete(body, "_rev")
+			} else {
+				body["_rev"] = rev.RevID
+			}
+
+			_, _, err = runner.currentDB.Put(docID, body)
+			if err == nil {
+				return nil
+			} else if status, _ := base.ErrorAsHTTPStatus(err); status != http.StatusConflict {
+				return err
+			}
+			// on conflict (race condition), retry...
 		}
 	}
-
-	var err error
-	_, _, err = runner.currentDB.Put(docID, body)
-	return err
 }
 
 //////// OTTO UTILITIES:

@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/auth"
@@ -77,6 +78,17 @@ var kUserFunctionConfig = UserFunctionConfigMap{
 	},
 	"villain_only": &UserFunctionConfig{
 		SourceCode: `context.user.requireRole(["villain"]); return "OK";`,
+		Allow:      allowAll,
+	},
+
+	"getDoc": &UserFunctionConfig{
+		SourceCode: `return context.app.get(args.docID);`,
+		Parameters: []string{"docID"},
+		Allow:      allowAll,
+	},
+	"putDoc": &UserFunctionConfig{
+		SourceCode: `return context.app.save(args.docID, args.doc);`,
+		Parameters: []string{"docID", "doc"},
 		Allow:      allowAll,
 	},
 }
@@ -246,6 +258,69 @@ func testUserFunctionsAsUser(t *testing.T, db *Database) {
 
 	_, err = db.CallUserFunction("villain_only", nil, true)
 	assertHTTPError(t, err, 403)
+}
+
+// Test CRUD operations
+func TestUserFunctionsCRUD(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	cacheOptions := DefaultCacheOptions()
+	db := setupTestDBWithOptions(t, DatabaseContextOptions{
+		CacheOptions:  &cacheOptions,
+		UserFunctions: kUserFunctionConfig,
+	})
+	defer db.Close()
+
+	docID := "foo"
+
+	// Missing document:
+	result, err := db.CallUserFunction("getDoc", map[string]interface{}{"docID": docID}, false)
+	assert.NoError(t, err)
+	assert.EqualValues(t, nil, result)
+
+	doc := map[string]interface{}{"key": "value"}
+
+	docParams := map[string]interface{}{
+		"docID": docID,
+		"doc":   doc,
+	}
+
+	// Illegal mutation:
+	_, err = db.CallUserFunction("putDoc", docParams, false)
+	assertHTTPError(t, err, 403)
+
+	// Successful save:
+	result, err = db.CallUserFunction("putDoc", docParams, true)
+	assert.NoError(t, err)
+	assert.EqualValues(t, nil, result)
+
+	// Existing document:
+	result, err = db.CallUserFunction("getDoc", map[string]interface{}{"docID": docID}, false)
+	assert.NoError(t, err)
+	revID, ok := result.(map[string]interface{})["_rev"].(string)
+	assert.True(t, ok)
+	assert.NotEmpty(t, revID)
+	assert.True(t, strings.HasPrefix(revID, "1-"))
+	doc["_id"] = docID
+	doc["_rev"] = revID
+	assert.EqualValues(t, doc, result)
+
+	// Update document with revID:
+	doc["key2"] = 2
+	_, err = db.CallUserFunction("putDoc", docParams, true)
+	assert.NoError(t, err)
+
+	// Update document without revID:
+	doc["key3"] = 3
+	delete(doc, "_revid")
+	result, err = db.CallUserFunction("putDoc", docParams, true)
+	assert.NoError(t, err)
+
+	// Get doc again to verify revision:
+	result, err = db.CallUserFunction("getDoc", map[string]interface{}{"docID": docID}, false)
+	revID, ok = result.(map[string]interface{})["_rev"].(string)
+	assert.True(t, ok)
+	assert.NotEmpty(t, revID)
+	assert.True(t, strings.HasPrefix(revID, "3-"))
 }
 
 var kUserFunctionBadConfig = UserFunctionConfigMap{
