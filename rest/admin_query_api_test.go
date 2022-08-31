@@ -9,9 +9,7 @@
 package rest
 
 import (
-	"log"
 	"testing"
-	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -610,32 +608,26 @@ func TestDBConfigUserGraphQLPut(t *testing.T) {
 
 //////// UTILITIES:
 
+// Creates a new RestTester using persistent config, and a database "db".
+// Only the user-query-related fields are copied from `queryConfig`; the rest are ignored.
 func newRestTesterForUserQueries(t *testing.T, queryConfig DbConfig) *RestTester {
-	// NOTE: The Sleep call and logging here are temporary.
-	// Tests do not reliably pass without the Sleep call; without it, sometimes a database
-	// is created on a background thread before the call to CreateDatabase below, causing
-	// it to fail with a 412.
-	// I'm committing with this band-aid so others can help troubleshoot the problem.
-	// --Jens, 30-Aug-2022
-	log.Printf("======== Waiting before creating RestTester ========")
-	time.Sleep(2 * time.Second)
-	log.Printf("======== Creating RestTester ========")
 	rt := NewRestTester(t, &RestTesterConfig{
+		groupID:           base.StringPtr(t.Name()), // Avoids race conditions between tests
 		EnableUserQueries: true,
 		persistentConfig:  true,
 	})
-	_ = rt.Bucket() // This is necessary, to initialize the bucket
+
+	_ = rt.Bucket() // initializes the bucket as a side effect
 	dbConfig := dbConfigForTestBucket(rt.testBucket)
 	dbConfig.UserFunctions = queryConfig.UserFunctions
 	dbConfig.UserQueries = queryConfig.UserQueries
 	dbConfig.GraphQL = queryConfig.GraphQL
-	log.Printf("======== Creating db ========")
+
 	resp, err := rt.CreateDatabase("db", dbConfig)
 	if !assert.NoError(t, err) || !assertStatus(t, resp, 201) {
 		rt.Close()
 		t.FailNow()
 		return nil // (never reached)
 	}
-	log.Printf("======== Finished creating db ========")
 	return rt
 }
