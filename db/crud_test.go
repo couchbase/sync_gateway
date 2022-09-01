@@ -65,7 +65,8 @@ func TestRevisionCacheLoad(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	db := setupTestDBWithViewsEnabled(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	base.TestExternalRevStorage = true
 
@@ -104,7 +105,8 @@ func TestRevisionCacheLoad(t *testing.T) {
 func TestHasAttachmentsFlag(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db := setupTestDB(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	base.TestExternalRevStorage = true
 	prop_1000_bytes := base.CreateProperty(1000)
@@ -182,7 +184,8 @@ func TestHasAttachmentsFlagForLegacyAttachments(t *testing.T) {
 	}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db := setupTestDB(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	base.TestExternalRevStorage = true
 	prop_1000_bytes := base.CreateProperty(1000)
@@ -303,7 +306,8 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	db := setupTestDB(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	base.TestExternalRevStorage = true
 
@@ -486,7 +490,8 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	db := setupTestDB(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	base.TestExternalRevStorage = true
 
@@ -643,7 +648,8 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 func TestOldRevisionStorage(t *testing.T) {
 
 	db := setupTestDB(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	prop_1000_bytes := base.CreateProperty(1000)
 
@@ -804,7 +810,8 @@ func TestOldRevisionStorageError(t *testing.T) {
 		ForceErrorSetRawKeys: []string{forceErrorKey},
 	}
 	db := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), leakyConfig)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {channel(doc.channels);}`, 0)
 
@@ -932,7 +939,8 @@ func TestOldRevisionStorageError(t *testing.T) {
 func TestLargeSequence(t *testing.T) {
 
 	db := setupTestDBWithCustomSyncSeq(t, 9223372036854775807)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -971,7 +979,8 @@ const rawDocMalformedRevisionStorage = `
 
 func TestMalformedRevisionStorageRecovery(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {channel(doc.channels);}`, 0)
 
@@ -1021,7 +1030,8 @@ func BenchmarkDatabaseGet1xRev(b *testing.B) {
 	base.DisableTestLogging(b)
 
 	db := setupTestDB(b)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(b))
+	defer db.Close(ctx)
 
 	body := Body{"foo": "bar", "rev": "1-a"}
 	_, _, _ = db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
@@ -1077,7 +1087,8 @@ func BenchmarkDatabaseGetRev(b *testing.B) {
 	base.DisableTestLogging(b)
 
 	db := setupTestDB(b)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(b))
+	defer db.Close(ctx)
 
 	body := Body{"foo": "bar", "rev": "1-a"}
 	_, _, _ = db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
@@ -1134,7 +1145,8 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 	base.DisableTestLogging(b)
 
 	db := setupTestDB(b)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(b))
+	defer db.Close(ctx)
 
 	body := Body{"foo": "bar"}
 	_, _, _ = db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)

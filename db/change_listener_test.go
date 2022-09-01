@@ -26,7 +26,8 @@ func TestUserWaiter(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
 	db := setupTestDB(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	// Create user
 	username := "bob"
@@ -69,7 +70,8 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
 	db := setupTestDB(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	// Create role
 	roleName := "good_egg"

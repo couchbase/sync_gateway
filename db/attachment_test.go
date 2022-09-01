@@ -330,7 +330,8 @@ func TestAttachmentCASRetryAfterNewAttachment(t *testing.T) {
 	}
 
 	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	// Test creating & updating a document:
 
@@ -389,7 +390,8 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 	}
 
 	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	// Test creating & updating a document:
 
@@ -887,7 +889,8 @@ func TestMigrateBodyAttachments(t *testing.T) {
 	// Reading the active rev of a doc containing pre 2.5 meta. Make sure the rev ID is not changed, and the metadata is appearing in syncData.
 	t.Run("2.1 meta, read active rev", func(t *testing.T) {
 		db := setupFn(t)
-		defer db.Close()
+		ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+		defer db.Close(ctx)
 
 		rev, err := db.GetRev(docKey, "", true, nil)
 		require.NoError(t, err)
@@ -916,7 +919,8 @@ func TestMigrateBodyAttachments(t *testing.T) {
 	// Reading a non-active revision shouldn't perform an upgrade, but should transform the metadata in memory for the returned rev.
 	t.Run("2.1 meta, read non-active rev", func(t *testing.T) {
 		db := setupFn(t)
-		defer db.Close()
+		ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+		defer db.Close(ctx)
 
 		rev, err := db.GetRev(docKey, "3-a", true, nil)
 		require.NoError(t, err)
@@ -945,7 +949,8 @@ func TestMigrateBodyAttachments(t *testing.T) {
 	// Writing a new rev should migrate the metadata and write that upgrade back to the bucket.
 	t.Run("2.1 meta, write new rev", func(t *testing.T) {
 		db := setupFn(t)
-		defer db.Close()
+		ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+		defer db.Close(ctx)
 
 		// Update the doc with a the same body as rev 3-a, and make sure attachments are migrated.
 		newBody := Body{
@@ -988,7 +993,8 @@ func TestMigrateBodyAttachments(t *testing.T) {
 	// Adding a new attachment should migrate existing attachments, without losing any.
 	t.Run("2.1 meta, add new attachment", func(t *testing.T) {
 		db := setupFn(t)
-		defer db.Close()
+		ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+		defer db.Close(ctx)
 
 		rev, err := db.GetRev(docKey, "3-a", true, nil)
 		require.NoError(t, err)

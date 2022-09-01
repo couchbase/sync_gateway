@@ -104,7 +104,7 @@ func (apr *ActivePullReplicator) _connect() error {
 	apr.setState(ReplicationStateRunning)
 
 	if apr.blipSyncContext.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV2 && apr.config.PurgeOnRemoval {
-		base.ErrorfCtx(apr.config.ActiveDB.Ctx, "Pull replicator ID:%s running with revocations enabled but target does not support revocations. Sync Gateway 3.0 required.", apr.config.ID)
+		base.ErrorfCtx(apr.ctx, "Pull replicator ID:%s running with revocations enabled but target does not support revocations. Sync Gateway 3.0 required.", apr.config.ID)
 	}
 
 	return nil

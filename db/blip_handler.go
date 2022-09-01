@@ -388,7 +388,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	// Create a distinct database instance for changes, to avoid races between reloadUser invocation in changes.go
 	// and BlipSyncContext user access.
 	changesDb := bh.copyContextDatabase()
-	_, forceClose := generateBlipSyncChanges(changesDb, channelSet, options, opts.docIDs, func(changes []*ChangeEntry) error {
+	_, forceClose := generateBlipSyncChanges(bh.loggingCtx, changesDb, channelSet, options, opts.docIDs, func(changes []*ChangeEntry) error {
 		base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Sending %d changes", len(changes))
 		for _, change := range changes {
 			if !strings.HasPrefix(change.ID, "_") {
@@ -405,7 +405,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 						}
 
 						// If the user has access to the doc through another channel don't send change
-						userHasAccessToDoc, err := UserHasDocAccess(bh.collection, change.ID, item["rev"])
+						userHasAccessToDoc, err := UserHasDocAccess(bh.loggingCtx, bh.collection, change.ID, item["rev"])
 						if err == nil && userHasAccessToDoc {
 							continue
 						}

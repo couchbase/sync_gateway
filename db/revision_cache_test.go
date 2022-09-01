@@ -179,7 +179,8 @@ func TestBackingStore(t *testing.T) {
 func TestRevisionCacheInternalProperties(t *testing.T) {
 
 	db := setupTestDB(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	// Invalid _revisions property will be stripped.  Should also not be present in the rev cache.
 	rev1body := Body{
@@ -227,7 +228,8 @@ func TestBypassRevisionCache(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	db := setupTestDB(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	docBody := Body{
 		"value": 1234,
@@ -288,7 +290,8 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	db := setupTestDB(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	rev1body := Body{
 		"value":         1234,
@@ -329,7 +332,8 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	db := setupTestDB(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	docKey := "doc1"
 	rev1body := Body{
@@ -440,7 +444,8 @@ func TestConcurrentLoad(t *testing.T) {
 
 func TestInvalidate(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	rev1id, _, err := db.Put("doc", Body{"val": 123})
 	assert.NoError(t, err)

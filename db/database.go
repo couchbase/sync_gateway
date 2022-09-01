@@ -229,7 +229,7 @@ type ImportOptions struct {
 type Database struct {
 	*DatabaseContext
 	user auth.User
-	Ctx  context.Context
+	// Ctx  context.Context
 }
 
 func ValidateDatabaseName(dbName string) error {
@@ -573,7 +573,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 					bgtTerminator.Close()
 				}()
 				bgt, err := NewBackgroundTask("Compact", dbContext.Name, func(ctx context.Context) error {
-					_, err := db.Compact(false, func(purgedDocCount *int) {}, bgtTerminator)
+					_, err := db.Compact(ctx, false, func(purgedDocCount *int) {}, bgtTerminator)
 					if err != nil {
 						base.WarnfCtx(ctx, "Error trying to compact tombstoned documents for %q with error: %v", dbContext.Name, err)
 					}
@@ -826,8 +826,8 @@ func (dc *DatabaseContext) TakeDbOffline(ctx context.Context, reason string) err
 	}
 }
 
-func (db *Database) TakeDbOffline(reason string) error {
-	return db.DatabaseContext.TakeDbOffline(db.Ctx, reason)
+func (db *Database) TakeDbOffline(ctx context.Context, reason string) error {
+	return db.DatabaseContext.TakeDbOffline(ctx, reason)
 }
 
 func (context *DatabaseContext) Authenticator(ctx context.Context) *auth.Authenticator {
@@ -857,14 +857,12 @@ func (context *DatabaseContext) Authenticator(ctx context.Context) *auth.Authent
 }
 
 // Makes a Database object given its name and bucket.
-func GetDatabase(ctx context.Context, dbCtx *DatabaseContext, user auth.User) (*Database, error) {
-	ctx = dbCtx.AddDatabaseLogContext(ctx) // add db log info before passing ctx down
-	return &Database{Ctx: ctx, DatabaseContext: dbCtx, user: user}, nil
+func GetDatabase(context *DatabaseContext, user auth.User) (*Database, error) {
+	return &Database{DatabaseContext: context, user: user}, nil
 }
 
-func CreateDatabase(ctx context.Context, dbCtx *DatabaseContext) (*Database, error) {
-	ctx = dbCtx.AddDatabaseLogContext(ctx) // add db log info before passing ctx down
-	return &Database{Ctx: ctx, DatabaseContext: dbCtx}, nil
+func CreateDatabase(context *DatabaseContext) (*Database, error) {
+	return &Database{DatabaseContext: context}, nil
 }
 
 func (db *Database) SameAs(otherdb *Database) bool {
@@ -884,16 +882,12 @@ func (db *Database) SetUser(user auth.User) {
 	db.user = user
 }
 
-func (db *Database) Close() {
-	db.DatabaseContext.Close(db.Ctx)
-}
-
 // Reloads the database's User object, in case its persistent properties have been changed.
-func (db *Database) ReloadUser() error {
+func (db *Database) ReloadUser(ctx context.Context) error {
 	if db.user == nil {
 		return nil
 	}
-	user, err := db.Authenticator(db.Ctx).GetUser(db.user.Name())
+	user, err := db.Authenticator(ctx).GetUser(db.user.Name())
 	if err != nil {
 		return err
 	}
@@ -923,9 +917,9 @@ type ForEachDocIDOptions struct {
 type ForEachDocIDFunc func(id IDRevAndSequence, channels []string) (bool, error)
 
 // Iterates over all documents in the database, calling the callback function on each
-func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachDocIDOptions) error {
+func (db *Database) ForEachDocID(ctx context.Context, callback ForEachDocIDFunc, resultsOpts ForEachDocIDOptions) error {
 
-	results, err := db.QueryAllDocs(db.Ctx, resultsOpts.Startkey, resultsOpts.Endkey)
+	results, err := db.QueryAllDocs(ctx, resultsOpts.Startkey, resultsOpts.Endkey)
 	if err != nil {
 		return err
 	}
@@ -1242,7 +1236,7 @@ func (db *DatabaseContext) DeleteUserSessions(ctx context.Context, userName stri
 // the document to accomplish the same result.
 type compactCallbackFunc func(purgedDocCount *int)
 
-func (db *Database) Compact(skipRunningStateCheck bool, callback compactCallbackFunc, terminator *base.SafeTerminator) (int, error) {
+func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, callback compactCallbackFunc, terminator *base.SafeTerminator) (int, error) {
 	if !skipRunningStateCheck {
 		if !atomic.CompareAndSwapUint32(&db.CompactState, DBCompactNotRunning, DBCompactRunning) {
 			return 0, base.HTTPErrorf(http.StatusServiceUnavailable, "Compaction already running")
@@ -1263,8 +1257,6 @@ func (db *Database) Compact(skipRunningStateCheck bool, callback compactCallback
 	purgedDocCount := 0
 
 	defer callback(&purgedDocCount)
-
-	ctx := db.Ctx
 
 	base.InfofCtx(ctx, base.KeyAll, "Starting compaction of purged tombstones for %s ...", base.MD(db.Name))
 
@@ -1401,8 +1393,8 @@ func (dbCtx *DatabaseContext) UpdateSyncFun(ctx context.Context, syncFun string)
 	return
 }
 
-func (db *Database) UpdateSyncFun(syncFun string) (changed bool, err error) {
-	return db.DatabaseContext.UpdateSyncFun(db.Ctx, syncFun)
+func (db *Database) UpdateSyncFun(ctx context.Context, syncFun string) (changed bool, err error) {
+	return db.DatabaseContext.UpdateSyncFun(ctx, syncFun)
 }
 
 // Re-runs the sync function on every current document in the database (if doCurrentDocs==true)
@@ -1410,9 +1402,9 @@ func (db *Database) UpdateSyncFun(syncFun string) (changed bool, err error) {
 // To be used when the JavaScript sync function changes.
 type updateAllDocChannelsCallbackFunc func(docsProcessed, docsChanged *int)
 
-func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback updateAllDocChannelsCallbackFunc, terminator *base.SafeTerminator) (int, error) {
-	base.InfofCtx(db.Ctx, base.KeyAll, "Recomputing document channels...")
-	base.InfofCtx(db.Ctx, base.KeyAll, "Re-running sync function on all documents...")
+func (db *Database) UpdateAllDocChannels(ctx context.Context, regenerateSequences bool, callback updateAllDocChannelsCallbackFunc, terminator *base.SafeTerminator) (int, error) {
+	base.InfofCtx(ctx, base.KeyAll, "Recomputing document channels...")
+	base.InfofCtx(ctx, base.KeyAll, "Re-running sync function on all documents...")
 
 	queryLimit := db.Options.QueryPaginationLimit
 	startSeq := uint64(0)
@@ -1431,7 +1423,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 	var unusedSequences []uint64
 
 	for {
-		results, err := db.QueryResync(db.Ctx, queryLimit, startSeq, endSeq)
+		results, err := db.QueryResync(ctx, queryLimit, startSeq, endSeq)
 		if err != nil {
 			return 0, err
 		}
@@ -1443,7 +1435,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 		for results.Next(&importRow) {
 			select {
 			case <-terminator.Done():
-				base.InfofCtx(db.Ctx, base.KeyAll, "Resync was stopped before the operation could be completed. System "+
+				base.InfofCtx(ctx, base.KeyAll, "Resync was stopped before the operation could be completed. System "+
 					"may be in an inconsistent state. Docs changed: %d Docs Processed: %d", docsChanged, docsProcessed)
 				closeErr := results.Close()
 				if closeErr != nil {
@@ -1464,7 +1456,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 					// This is a document not known to the sync gateway. Ignore it:
 					return nil, false, nil, base.ErrUpdateCancel
 				} else {
-					base.DebugfCtx(db.Ctx, base.KeyCRUD, "\tRe-syncing document %q", base.UD(docid))
+					base.DebugfCtx(ctx, base.KeyCRUD, "\tRe-syncing document %q", base.UD(docid))
 				}
 
 				// Run the sync fn over each current/leaf revision, in case there are conflicts:
@@ -1472,11 +1464,11 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 				doc.History.forEachLeaf(func(rev *RevInfo) {
 					bodyBytes, _, err := db.get1xRevFromDoc(doc, rev.ID, false)
 					if err != nil {
-						base.WarnfCtx(db.Ctx, "Error getting rev from doc %s/%s %s", base.UD(docid), rev.ID, err)
+						base.WarnfCtx(ctx, "Error getting rev from doc %s/%s %s", base.UD(docid), rev.ID, err)
 					}
 					var body Body
 					if err := body.Unmarshal(bodyBytes); err != nil {
-						base.WarnfCtx(db.Ctx, "Error unmarshalling body %s/%s for sync function %s", base.UD(docid), rev.ID, err)
+						base.WarnfCtx(ctx, "Error unmarshalling body %s/%s for sync function %s", base.UD(docid), rev.ID, err)
 						return
 					}
 					metaMap, err := doc.GetMetaMap(db.Options.UserXattrKey)
@@ -1486,7 +1478,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 					channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(doc, body, metaMap, rev.ID)
 					if err != nil {
 						// Probably the validator rejected the doc
-						base.WarnfCtx(db.Ctx, "Error calling sync() on doc %q: %v", base.UD(docid), err)
+						base.WarnfCtx(ctx, "Error calling sync() on doc %q: %v", base.UD(docid), err)
 						access = nil
 						channels = nil
 					}
@@ -1497,12 +1489,12 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 						if regenerateSequences {
 							unusedSequences, err = db.assignSequence(0, doc, unusedSequences)
 							if err != nil {
-								base.WarnfCtx(db.Ctx, "Unable to assign a sequence number: %v", err)
+								base.WarnfCtx(ctx, "Unable to assign a sequence number: %v", err)
 							}
 							forceUpdate = true
 						}
 
-						changedChannels, err := doc.updateChannels(db.Ctx, channels)
+						changedChannels, err := doc.updateChannels(ctx, channels)
 						changed = len(doc.Access.updateAccess(doc, access)) +
 							len(doc.RoleAccess.updateAccess(doc, roles)) +
 							len(changedChannels)
@@ -1537,7 +1529,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 						return nil, nil, deleteDoc, nil, err
 					}
 					if shouldUpdate {
-						base.InfofCtx(db.Ctx, base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
+						base.InfofCtx(ctx, base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
 						if updatedExpiry != nil {
 							updatedDoc.UpdateExpiry(*updatedExpiry)
 						}
@@ -1565,7 +1557,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 						return nil, nil, false, err
 					}
 					if shouldUpdate {
-						base.InfofCtx(db.Ctx, base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
+						base.InfofCtx(ctx, base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
 						if updatedExpiry != nil {
 							updatedDoc.UpdateExpiry(*updatedExpiry)
 						}
@@ -1580,7 +1572,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 			if err == nil {
 				docsChanged++
 			} else if err != base.ErrUpdateCancel {
-				base.WarnfCtx(db.Ctx, "Error updating doc %q: %v", base.UD(docid), err)
+				base.WarnfCtx(ctx, "Error updating doc %q: %v", base.UD(docid), err)
 			}
 		}
 
@@ -1601,17 +1593,17 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 	for _, sequence := range unusedSequences {
 		err := db.sequences.releaseSequence(sequence)
 		if err != nil {
-			base.WarnfCtx(db.Ctx, "Error attempting to release sequence %d. Error %v", sequence, err)
+			base.WarnfCtx(ctx, "Error attempting to release sequence %d. Error %v", sequence, err)
 		}
 	}
 
 	if regenerateSequences {
-		users, roles, err := db.AllPrincipalIDs(db.Ctx)
+		users, roles, err := db.AllPrincipalIDs(ctx)
 		if err != nil {
 			return docsChanged, err
 		}
 
-		authr := db.Authenticator(db.Ctx)
+		authr := db.Authenticator(ctx)
 		regeneratePrincipalSequences := func(princ auth.Principal) error {
 			nextSeq, err := db.DatabaseContext.sequences.nextSequence()
 			if err != nil {
@@ -1650,50 +1642,50 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 
 	}
 
-	base.InfofCtx(db.Ctx, base.KeyAll, "Finished re-running sync function; %d/%d docs changed", docsChanged, docsProcessed)
+	base.InfofCtx(ctx, base.KeyAll, "Finished re-running sync function; %d/%d docs changed", docsChanged, docsProcessed)
 
 	if docsChanged > 0 {
 		// Now invalidate channel cache of all users/roles:
-		base.InfofCtx(db.Ctx, base.KeyAll, "Invalidating channel caches of users/roles...")
-		users, roles, _ := db.AllPrincipalIDs(db.Ctx)
+		base.InfofCtx(ctx, base.KeyAll, "Invalidating channel caches of users/roles...")
+		users, roles, _ := db.AllPrincipalIDs(ctx)
 		for _, name := range users {
-			db.invalUserChannels(name, endSeq)
+			db.invalUserChannels(ctx, name, endSeq)
 		}
 		for _, name := range roles {
-			db.invalRoleChannels(name, endSeq)
+			db.invalRoleChannels(ctx, name, endSeq)
 		}
 	}
 	return docsChanged, nil
 }
 
-func (db *Database) invalUserRoles(username string, invalSeq uint64) {
-	authr := db.Authenticator(db.Ctx)
+func (db *Database) invalUserRoles(ctx context.Context, username string, invalSeq uint64) {
+	authr := db.Authenticator(ctx)
 	if err := authr.InvalidateRoles(username, invalSeq); err != nil {
-		base.WarnfCtx(db.Ctx, "Error invalidating roles for user %s: %v", base.UD(username), err)
+		base.WarnfCtx(ctx, "Error invalidating roles for user %s: %v", base.UD(username), err)
 	}
 }
 
-func (db *Database) invalUserChannels(username string, invalSeq uint64) {
-	authr := db.Authenticator(db.Ctx)
+func (db *Database) invalUserChannels(ctx context.Context, username string, invalSeq uint64) {
+	authr := db.Authenticator(ctx)
 	if err := authr.InvalidateChannels(username, true, invalSeq); err != nil {
-		base.WarnfCtx(db.Ctx, "Error invalidating channels for user %s: %v", base.UD(username), err)
+		base.WarnfCtx(ctx, "Error invalidating channels for user %s: %v", base.UD(username), err)
 	}
 }
 
-func (db *Database) invalRoleChannels(rolename string, invalSeq uint64) {
-	authr := db.Authenticator(db.Ctx)
+func (db *Database) invalRoleChannels(ctx context.Context, rolename string, invalSeq uint64) {
+	authr := db.Authenticator(ctx)
 	if err := authr.InvalidateChannels(rolename, false, invalSeq); err != nil {
-		base.WarnfCtx(db.Ctx, "Error invalidating channels for role %s: %v", base.UD(rolename), err)
+		base.WarnfCtx(ctx, "Error invalidating channels for role %s: %v", base.UD(rolename), err)
 	}
 }
 
-func (db *Database) invalUserOrRoleChannels(name string, invalSeq uint64) {
+func (db *Database) invalUserOrRoleChannels(ctx context.Context, name string, invalSeq uint64) {
 
 	principalName, isRole := channels.AccessNameToPrincipalName(name)
 	if isRole {
-		db.invalRoleChannels(principalName, invalSeq)
+		db.invalRoleChannels(ctx, principalName, invalSeq)
 	} else {
-		db.invalUserChannels(principalName, invalSeq)
+		db.invalUserChannels(ctx, principalName, invalSeq)
 	}
 }
 

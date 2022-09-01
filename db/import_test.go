@@ -42,7 +42,8 @@ func TestMigrateMetadata(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
 
 	db := setupTestDB(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	key := "TestMigrateMetadata"
 	bodyBytes := rawDocWithSyncMeta()
@@ -112,7 +113,8 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
 
 	db := setupTestDB(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	type testcase struct {
 		docBody            []byte
@@ -301,7 +303,8 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 	for _, testcase := range testcases {
 		t.Run(fmt.Sprintf("%s", testcase.docname), func(t *testing.T) {
 			db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{WriteWithXattrCallback: testcase.callback})
-			defer db.Close()
+			ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+			defer db.Close(ctx)
 
 			bodyBytes := rawDocWithSyncMeta()
 			body := Body{}
@@ -384,7 +387,8 @@ func TestImportNullDoc(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyImport)
 
 	db := setupTestDB(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	key := "TestImportNullDoc"
 	var body Body
@@ -401,7 +405,8 @@ func TestImportNullDocRaw(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyImport)
 
 	db := setupTestDB(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	// Feed import of null doc
 	exp := uint32(0)
@@ -425,7 +430,8 @@ func assertXattrSyncMetaRevGeneration(t *testing.T, bucket base.Bucket, key stri
 func TestEvaluateFunction(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyImport)
 	db := setupTestDB(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	// Simulate unexpected error invoking import filter for document
 	body := Body{"key": "value", "version": "1a"}

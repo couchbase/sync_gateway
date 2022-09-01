@@ -202,7 +202,7 @@ func (h *handler) handleDbOnline() error {
 func (h *handler) handleDbOffline() error {
 	h.assertAdminOnly()
 	var err error
-	if err = h.db.TakeDbOffline("ADMIN Request"); err != nil {
+	if err = h.db.TakeDbOffline(h.ctx(), "ADMIN Request"); err != nil {
 		base.InfofCtx(h.ctx(), base.KeyCRUD, "Unable to take Database : %v, offline", base.MD(h.db.Name))
 	}
 

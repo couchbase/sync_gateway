@@ -31,7 +31,8 @@ func TestQueryChannelsStatsView(t *testing.T) {
 	}
 
 	db := setupTestDB(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	// docID -> Sequence
 	docSeqMap := make(map[string]uint64, 3)
@@ -85,7 +86,8 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 	}
 
 	db := setupTestDB(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	// docID -> Sequence
 	docSeqMap := make(map[string]uint64, 3)
@@ -133,7 +135,8 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 func TestQuerySequencesStatsView(t *testing.T) {
 
 	db := setupTestDBWithViewsEnabled(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	// docID -> Sequence
 	docSeqMap := make(map[string]uint64, 20)
@@ -228,7 +231,8 @@ func TestQuerySequencesStatsN1ql(t *testing.T) {
 	}
 
 	db := setupTestDB(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	// docID -> Sequence
 	docSeqMap := make(map[string]uint64, 20)
@@ -321,7 +325,8 @@ func TestCoveringQueries(t *testing.T) {
 	}
 
 	db := setupTestDB(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	n1QLStore, ok := base.AsN1QLStore(db.Bucket)
 	if !ok {
@@ -375,7 +380,8 @@ func TestAllDocsQuery(t *testing.T) {
 	}
 
 	db := setupTestDB(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	// Add docs with channel assignment
 	for i := 1; i <= 10; i++ {
@@ -441,7 +447,8 @@ func TestAccessQuery(t *testing.T) {
 	}
 
 	db := setupTestDB(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
 	access(doc.accessUser, doc.accessChannel)
@@ -486,7 +493,8 @@ func TestRoleAccessQuery(t *testing.T) {
 	}
 
 	db := setupTestDB(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
 	role(doc.accessUser, "role:" + doc.accessChannel)
@@ -572,7 +580,8 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 	}
 
 	db := setupTestDB(t)
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	docIdFlagMap := make(map[string]uint8)
 	var startSeq, endSeq uint64

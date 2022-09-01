@@ -53,7 +53,7 @@ func NewActiveReplicator(config *ActiveReplicatorConfig) *ActiveReplicator {
 		}
 	}
 
-	base.InfofCtx(config.ActiveDB.Ctx, base.KeyReplicate, "Created active replicator ID:%s statusKey: %s", config.ID, ar.statusKey)
+	base.InfofCtx(ar.Push.ctx, base.KeyReplicate, "Created active replicator ID:%s statusKey: %s", config.ID, ar.statusKey)
 	return ar
 }
 

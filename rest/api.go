@@ -120,7 +120,7 @@ func (h *handler) handleCompact() error {
 	if compactionType == "tombstone" {
 		if action == string(db.BackgroundProcessActionStart) {
 			if atomic.CompareAndSwapUint32(&h.db.CompactState, db.DBCompactNotRunning, db.DBCompactRunning) {
-				err := h.db.TombstoneCompactionManager.Start(map[string]interface{}{
+				err := h.db.TombstoneCompactionManager.Start(h.ctx(), map[string]interface{}{
 					"database": h.db,
 				})
 				if err != nil {
@@ -156,7 +156,7 @@ func (h *handler) handleCompact() error {
 
 	if compactionType == "attachment" {
 		if action == string(db.BackgroundProcessActionStart) {
-			err := h.db.AttachmentCompactionManager.Start(map[string]interface{}{
+			err := h.db.AttachmentCompactionManager.Start(h.ctx(), map[string]interface{}{
 				"database": h.db,
 				"reset":    h.getBoolQuery("reset"),
 				"dryRun":   h.getBoolQuery("dry_run"),
@@ -285,7 +285,7 @@ func (h *handler) handlePostResync() error {
 
 	if action == string(db.BackgroundProcessActionStart) {
 		if atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBResyncing) {
-			err := h.db.ResyncManager.Start(map[string]interface{}{
+			err := h.db.ResyncManager.Start(h.ctx(), map[string]interface{}{
 				"database":            h.db,
 				"regenerateSequences": regenerateSequences,
 			})

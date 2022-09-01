@@ -20,7 +20,8 @@ func TestAttachmentMark(t *testing.T) {
 	}
 
 	testDb := setupTestDB(t)
-	defer testDb.Close()
+	ctx := testDb.AddDatabaseLogContext(base.TestCtx(t))
+	defer testDb.Close(ctx)
 
 	body := map[string]interface{}{"foo": "bar"}
 	for i := 0; i < 10; i++ {
@@ -71,7 +72,8 @@ func TestAttachmentSweep(t *testing.T) {
 	}
 
 	testDb := setupTestDB(t)
-	defer testDb.Close()
+	ctx := testDb.AddDatabaseLogContext(base.TestCtx(t))
+	defer testDb.Close(ctx)
 
 	makeMarkedDoc := func(docid string, compactID string) {
 		err := testDb.Bucket.SetRaw(docid, 0, nil, []byte("{}"))
@@ -116,7 +118,8 @@ func TestAttachmentCleanup(t *testing.T) {
 	}
 
 	testDb := setupTestDB(t)
-	defer testDb.Close()
+	ctx := testDb.AddDatabaseLogContext(base.TestCtx(t))
+	defer testDb.Close(ctx)
 
 	makeMarkedDoc := func(docid string, compactID string) {
 		err := testDb.Bucket.SetRaw(docid, 0, nil, []byte("{}"))
@@ -220,7 +223,8 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 	}
 
 	testDb := setupTestDB(t)
-	defer testDb.Close()
+	ctx := testDb.AddDatabaseLogContext(base.TestCtx(t))
+	defer testDb.Close(ctx)
 
 	attKeys := make([]string, 0, 15)
 	for i := 0; i < 10; i++ {
@@ -291,10 +295,12 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	defer b.Close()
 
 	testDB1 := setupTestDBForBucket(t, b)
-	defer testDB1.Close()
+	ctx1 := testDB1.AddDatabaseLogContext(base.TestCtx(t))
+	defer testDB1.Close(ctx1)
 
 	testDB2 := setupTestDBForBucket(t, b.NoCloseClone())
-	defer testDB2.Close()
+	ctx2 := testDB2.AddDatabaseLogContext(base.TestCtx(t))
+	defer testDB2.Close(ctx2)
 
 	var err error
 
@@ -436,10 +442,12 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	defer b.Close()
 
 	testDB1 := setupTestDBForBucket(t, b)
-	defer testDB1.Close()
+	ctx1 := testDB1.AddDatabaseLogContext(base.TestCtx(t))
+	defer testDB1.Close(ctx1)
 
 	testDB2 := setupTestDBForBucket(t, b.NoCloseClone())
-	defer testDB2.Close()
+	ctx2 := testDB2.AddDatabaseLogContext(base.TestCtx(t))
+	defer testDB2.Close(ctx2)
 
 	var err error
 
@@ -542,7 +550,8 @@ func TestAttachmentProcessError(t *testing.T) {
 	defer b.Close()
 
 	testDB1 := setupTestDBForBucket(t, b)
-	defer testDB1.Close()
+	ctx1 := testDB1.AddDatabaseLogContext(base.TestCtx(t))
+	defer testDB1.Close(ctx1)
 
 	CreateLegacyAttachmentDoc(t, testDB1, "docID", []byte("{}"), "attKey", []byte("{}"))
 
@@ -573,7 +582,8 @@ func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 	}
 
 	testDB := setupTestDB(t)
-	defer testDB.Close()
+	ctx1 := testDB.AddDatabaseLogContext(base.TestCtx(t))
+	defer testDB.Close(ctx1)
 
 	// Run mark phase as usual
 	terminator := base.NewSafeTerminator()
@@ -816,7 +826,8 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	}
 
 	testDb := setupTestDB(t)
-	defer testDb.Close()
+	ctx1 := testDb.AddDatabaseLogContext(base.TestCtx(t))
+	defer testDb.Close(ctx1)
 	// Create the docs that will be marked and not swept
 	body := map[string]interface{}{"foo": "bar"}
 	for i := 0; i < docsToCreate; i++ {

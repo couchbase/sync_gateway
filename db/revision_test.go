@@ -106,7 +106,8 @@ func TestBackupOldRevision(t *testing.T) {
 		Enabled:          deltasEnabled,
 		RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
 	}})
-	defer db.Close()
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	defer db.Close(ctx)
 
 	docID := t.Name()
 
