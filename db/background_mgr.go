@@ -46,12 +46,12 @@ const (
 // BackgroundManager this is the over-arching type which is exposed in DatabaseContext
 type BackgroundManager struct {
 	BackgroundManagerStatus
-	lastError           error
-	terminator          *base.SafeTerminator
-	terminatorWaitGroup sync.WaitGroup
-	clusterAwareOptions *ClusterAwareBackgroundManagerOptions
-	lock                sync.Mutex
-	Process             BackgroundManagerProcessI
+	lastError                              error
+	terminator                             *base.SafeTerminator
+	backgroundManagerStatusUpdateWaitGroup sync.WaitGroup
+	clusterAwareOptions                    *ClusterAwareBackgroundManagerOptions
+	lock                                   sync.Mutex
+	Process                                BackgroundManagerProcessI
 }
 
 const (
@@ -118,9 +118,9 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 	}
 
 	if b.isClusterAware() {
-		b.terminatorWaitGroup.Add(1)
+		b.backgroundManagerStatusUpdateWaitGroup.Add(1)
 		go func(terminator *base.SafeTerminator) {
-			defer b.terminatorWaitGroup.Done()
+			defer b.backgroundManagerStatusUpdateWaitGroup.Done()
 			ticker := time.NewTicker(BackgroundManagerStatusUpdateIntervalSecs * time.Second)
 			for {
 				select {
@@ -341,7 +341,7 @@ func (b *BackgroundManager) Stop() error {
 // Only to be used internally to this file and by tests.
 func (b *BackgroundManager) Terminate() {
 	b.terminator.Close()
-	b.terminatorWaitGroup.Wait()
+	b.backgroundManagerStatusUpdateWaitGroup.Wait()
 }
 
 func (b *BackgroundManager) markStop() error {
