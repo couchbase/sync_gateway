@@ -127,7 +127,7 @@ func (db *Database) addDocToChangeEntry(ctx context.Context, entry *ChangeEntry,
 	} else if options.IncludeDocs {
 		// Retrieve document via rev cache
 		revID := entry.Changes[0]["rev"]
-		err := db.AddDocToChangeEntryUsingRevCache(entry, revID)
+		err := db.AddDocToChangeEntryUsingRevCache(ctx, entry, revID)
 		if err != nil {
 			base.WarnfCtx(ctx, "Changes feed: error getting revision body for %q (%s): %v", base.UD(entry.ID), revID, err)
 		}
@@ -135,8 +135,8 @@ func (db *Database) addDocToChangeEntry(ctx context.Context, entry *ChangeEntry,
 
 }
 
-func (db *Database) AddDocToChangeEntryUsingRevCache(entry *ChangeEntry, revID string) (err error) {
-	rev, err := db.getRev(entry.ID, revID, 0, nil, RevCacheIncludeBody)
+func (db *Database) AddDocToChangeEntryUsingRevCache(ctx context.Context, entry *ChangeEntry, revID string) (err error) {
+	rev, err := db.getRev(ctx, entry.ID, revID, 0, nil, RevCacheIncludeBody)
 	if err != nil {
 		return err
 	}
@@ -164,7 +164,7 @@ func (db *Database) AddDocInstanceToChangeEntry(ctx context.Context, entry *Chan
 	}
 	if options.IncludeDocs {
 		var err error
-		entry.Doc, _, err = db.get1xRevFromDoc(doc, revID, false)
+		entry.Doc, _, err = db.get1xRevFromDoc(ctx, doc, revID, false)
 		db.DbStats.Database().NumDocReadsRest.Add(1)
 		if err != nil {
 			base.WarnfCtx(ctx, "Changes feed: error getting doc %q/%q: %v", base.UD(doc.ID), revID, err)

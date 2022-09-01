@@ -86,7 +86,7 @@ type BackgroundManagerStatus struct {
 // BackgroundManagerProcessI is an interface satisfied by any of the background processes
 // Examples of this: ReSync, Compaction
 type BackgroundManagerProcessI interface {
-	Init(options map[string]interface{}, clusterStatus []byte) error
+	Init(ctx context.Context, options map[string]interface{}, clusterStatus []byte) error
 	Run(ctx context.Context, options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error
 	GetProcessStatus(status BackgroundManagerStatus) (statusOut []byte, meta []byte, err error)
 	ResetStatus()
@@ -111,7 +111,7 @@ func (b *BackgroundManager) Start(ctx context.Context, options map[string]interf
 	b.resetStatus()
 	b.StartTime = time.Now().UTC()
 
-	err = b.Process.Init(options, processClusterStatus)
+	err = b.Process.Init(ctx, options, processClusterStatus)
 	if err != nil {
 		return err
 	}

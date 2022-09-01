@@ -311,7 +311,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	triggerStopCallback := false
 	leakyBucket.SetGetRawCallback(func(s string) error {
 		if triggerCallback {
-			err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2})
+			err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]interface{}{"database": testDB2})
 			assert.Error(t, err)
 			assert.Contains(t, err.Error(), "Process already running")
 			triggerCallback = false
@@ -326,7 +326,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 
 	// Trigger start with immediate abort. Then resume, ensure that dry run is resumed
 	triggerStopCallback = true
-	err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2, "dryRun": true})
+	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]interface{}{"database": testDB2, "dryRun": true})
 	assert.NoError(t, err)
 
 	err = WaitForConditionWithOptions(func() bool {
@@ -351,7 +351,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, testStatus.DryRun)
 
-	err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2, "dryRun": false})
+	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]interface{}{"database": testDB2, "dryRun": false})
 	assert.NoError(t, err)
 
 	err = WaitForConditionWithOptions(func() bool {
@@ -377,7 +377,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 
 	// Trigger start with immediate stop (stopped from db2)
 	triggerStopCallback = true
-	err = testDB1.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB1})
+	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]interface{}{"database": testDB1})
 	assert.NoError(t, err)
 
 	err = WaitForConditionWithOptions(func() bool {
@@ -396,7 +396,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 
 	// Kick off another run with an attempted start from the other node, checks for error on other node
 	triggerCallback = true
-	err = testDB1.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB1})
+	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]interface{}{"database": testDB1})
 	assert.NoError(t, err)
 
 	err = WaitForConditionWithOptions(func() bool {
@@ -458,7 +458,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	triggerStopCallback := false
 	leakyBucket.SetGetRawCallback(func(s string) error {
 		if triggerCallback {
-			err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2})
+			err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]interface{}{"database": testDB2})
 			assert.Error(t, err)
 			assert.Contains(t, err.Error(), "Process already running")
 			triggerCallback = false
@@ -473,7 +473,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 
 	// Trigger start with immediate abort. Then resume, ensure that dry run is resumed
 	triggerStopCallback = true
-	err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2, "dryRun": true})
+	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]interface{}{"database": testDB2, "dryRun": true})
 	assert.NoError(t, err)
 
 	err = WaitForConditionWithOptions(func() bool {
@@ -498,7 +498,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, testStatus.DryRun)
 
-	err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2, "dryRun": false})
+	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]interface{}{"database": testDB2, "dryRun": false})
 	assert.NoError(t, err)
 
 	err = WaitForConditionWithOptions(func() bool {
@@ -524,15 +524,15 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 
 	// Trigger start with immediate stop (stopped from db2)
 	triggerStopCallback = true
-	err = testDB1.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB1})
+	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]interface{}{"database": testDB1})
 	assert.NoError(t, err)
 
 	// Kick off another run with an attempted start, verify we don't get 'process already running' error
-	err = testDB1.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB1})
+	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]interface{}{"database": testDB1})
 	// Hitting this error may be racy (depending on when heartbeat is polled from previous stop), but we should never
 	// get a 'process already running' error
 	if err != nil {
-		err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2})
+		err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]interface{}{"database": testDB2})
 		assert.NotContains(t, err.Error(), "Process already running")
 	}
 }
@@ -555,7 +555,7 @@ func TestAttachmentProcessError(t *testing.T) {
 
 	CreateLegacyAttachmentDoc(t, testDB1, "docID", []byte("{}"), "attKey", []byte("{}"))
 
-	err := testDB1.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB1})
+	err := testDB1.AttachmentCompactionManager.Start(ctx1, map[string]interface{}{"database": testDB1})
 	assert.NoError(t, err)
 
 	var status AttachmentManagerResponse

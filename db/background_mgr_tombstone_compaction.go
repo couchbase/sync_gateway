@@ -33,7 +33,7 @@ func NewTombstoneCompactionManager() *BackgroundManager {
 	}
 }
 
-func (t *TombstoneCompactionManager) Init(options map[string]interface{}, clusterStatus []byte) error {
+func (t *TombstoneCompactionManager) Init(ctx context.Context, options map[string]interface{}, clusterStatus []byte) error {
 	database := options["database"].(*Database)
 	database.DbStats.Database().CompactionAttachmentStartTime.Set(time.Now().UTC().Unix())
 

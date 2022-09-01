@@ -9,6 +9,7 @@
 package db
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 
@@ -38,18 +39,18 @@ func NewResyncManager(bucket base.Bucket) *BackgroundManager {
 	}
 }
 
-func (r *ResyncManager) Init(options map[string]interface{}, clusterStatus []byte) error {
+func (r *ResyncManager) Init(ctx context.Context, options map[string]interface{}, clusterStatus []byte) error {
 	return nil
 }
 
-func (r *ResyncManager) Run(options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+func (r *ResyncManager) Run(ctx context.Context, options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	database := options["database"].(*Database)
 	regenerateSequences := options["regenerateSequences"].(bool)
 
 	persistClusterStatus := func() {
 		err := persistClusterStatusCallback()
 		if err != nil {
-			base.WarnfCtx(database.Ctx, "Failed to persist cluster status on-demand for resync operation: %v", err)
+			base.WarnfCtx(ctx, "Failed to persist cluster status on-demand for resync operation: %v", err)
 		}
 	}
 	defer persistClusterStatus()
@@ -60,7 +61,7 @@ func (r *ResyncManager) Run(options map[string]interface{}, persistClusterStatus
 		persistClusterStatus()
 	}
 
-	_, err := database.UpdateAllDocChannels(regenerateSequences, callback, terminator)
+	_, err := database.UpdateAllDocChannels(ctx, regenerateSequences, callback, terminator)
 	if err != nil {
 		return err
 	}

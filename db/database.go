@@ -229,7 +229,6 @@ type ImportOptions struct {
 type Database struct {
 	*DatabaseContext
 	user auth.User
-	// Ctx  context.Context
 }
 
 func ValidateDatabaseName(dbName string) error {
@@ -1297,7 +1296,7 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 			resultCount++
 			base.DebugfCtx(ctx, base.KeyCRUD, "\tDeleting %q", tombstonesRow.Id)
 			// First, attempt to purge.
-			purgeErr := db.Purge(tombstonesRow.Id)
+			purgeErr := db.Purge(ctx, tombstonesRow.Id)
 			if purgeErr == nil {
 				purgedDocs = append(purgedDocs, tombstonesRow.Id)
 			} else if base.IsDocNotFoundError(purgeErr) {
@@ -1462,7 +1461,7 @@ func (db *Database) UpdateAllDocChannels(ctx context.Context, regenerateSequence
 				// Run the sync fn over each current/leaf revision, in case there are conflicts:
 				changed := 0
 				doc.History.forEachLeaf(func(rev *RevInfo) {
-					bodyBytes, _, err := db.get1xRevFromDoc(doc, rev.ID, false)
+					bodyBytes, _, err := db.get1xRevFromDoc(ctx, doc, rev.ID, false)
 					if err != nil {
 						base.WarnfCtx(ctx, "Error getting rev from doc %s/%s %s", base.UD(docid), rev.ID, err)
 					}
@@ -1475,7 +1474,7 @@ func (db *Database) UpdateAllDocChannels(ctx context.Context, regenerateSequence
 					if err != nil {
 						return
 					}
-					channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(doc, body, metaMap, rev.ID)
+					channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, rev.ID)
 					if err != nil {
 						// Probably the validator rejected the doc
 						base.WarnfCtx(ctx, "Error calling sync() on doc %q: %v", base.UD(docid), err)
@@ -1487,7 +1486,7 @@ func (db *Database) UpdateAllDocChannels(ctx context.Context, regenerateSequence
 					if rev.ID == doc.CurrentRev {
 
 						if regenerateSequences {
-							unusedSequences, err = db.assignSequence(0, doc, unusedSequences)
+							unusedSequences, err = db.assignSequence(ctx, 0, doc, unusedSequences)
 							if err != nil {
 								base.WarnfCtx(ctx, "Unable to assign a sequence number: %v", err)
 							}

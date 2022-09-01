@@ -31,7 +31,7 @@ const (
 )
 
 // Imports a document that was written by someone other than sync gateway, given the existing state of the doc in raw bytes
-func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, userXattrValue []byte, isDelete bool, cas uint64, expiry *uint32, mode ImportMode) (docOut *Document, err error) {
+func (db *Database) ImportDocRaw(ctx context.Context, docid string, value []byte, xattrValue []byte, userXattrValue []byte, isDelete bool, cas uint64, expiry *uint32, mode ImportMode) (docOut *Document, err error) {
 
 	var body Body
 	if isDelete {
@@ -39,7 +39,7 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 	} else {
 		err := body.Unmarshal(value)
 		if err != nil {
-			base.InfofCtx(db.Ctx, base.KeyImport, "Unmarshal error during importDoc %v", err)
+			base.InfofCtx(ctx, base.KeyImport, "Unmarshal error during importDoc %v", err)
 			return nil, err
 		}
 
@@ -57,11 +57,11 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 		Cas:       cas,
 	}
 
-	return db.importDoc(docid, body, expiry, isDelete, existingBucketDoc, mode)
+	return db.importDoc(ctx, docid, body, expiry, isDelete, existingBucketDoc, mode)
 }
 
 // Import a document, given the existing state of the doc in *document format.
-func (db *Database) ImportDoc(docid string, existingDoc *Document, isDelete bool, expiry *uint32, mode ImportMode) (docOut *Document, err error) {
+func (db *Database) ImportDoc(ctx context.Context, docid string, existingDoc *Document, isDelete bool, expiry *uint32, mode ImportMode) (docOut *Document, err error) {
 
 	if existingDoc == nil {
 		return nil, base.RedactErrorf("No existing doc present when attempting to import %s", base.UD(docid))
@@ -91,7 +91,7 @@ func (db *Database) ImportDoc(docid string, existingDoc *Document, isDelete bool
 		return nil, err
 	}
 
-	return db.importDoc(docid, existingDoc.Body(), expiry, isDelete, existingBucketDoc, mode)
+	return db.importDoc(ctx, docid, existingDoc.Body(), expiry, isDelete, existingBucketDoc, mode)
 }
 
 // Import document
@@ -100,9 +100,9 @@ func (db *Database) ImportDoc(docid string, existingDoc *Document, isDelete bool
 //   isDelete - whether the document to be imported is a delete
 //   existingDoc - bytes/cas/expiry of the  document to be imported (including xattr when available)
 //   mode - ImportMode - ImportFromFeed or ImportOnDemand
-func (db *Database) importDoc(docid string, body Body, expiry *uint32, isDelete bool, existingDoc *sgbucket.BucketDocument, mode ImportMode) (docOut *Document, err error) {
+func (db *Database) importDoc(ctx context.Context, docid string, body Body, expiry *uint32, isDelete bool, existingDoc *sgbucket.BucketDocument, mode ImportMode) (docOut *Document, err error) {
 
-	base.DebugfCtx(db.Ctx, base.KeyImport, "Attempting to import doc %q...", base.UD(docid))
+	base.DebugfCtx(ctx, base.KeyImport, "Attempting to import doc %q...", base.UD(docid))
 	importStartTime := time.Now()
 
 	if existingDoc == nil {
@@ -139,7 +139,7 @@ func (db *Database) importDoc(docid string, body Body, expiry *uint32, isDelete 
 		existingDoc.Expiry = *expiry
 	}
 
-	docOut, _, err = db.updateAndReturnDoc(newDoc.ID, true, existingDoc.Expiry, &mutationOptions, existingDoc, func(doc *Document) (resultDocument *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	docOut, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, true, existingDoc.Expiry, &mutationOptions, existingDoc, func(doc *Document) (resultDocument *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// Perform cas mismatch check first, as we want to identify cas mismatch before triggering migrate handling.
 		// If there's a cas mismatch, the doc has been updated since the version that triggered the import.  Handling depends on import mode.
 		if doc.Cas != existingDoc.Cas {
@@ -185,7 +185,7 @@ func (db *Database) importDoc(docid string, body Body, expiry *uint32, isDelete 
 		// If the existing doc is a legacy SG write (_sync in body), check for migrate instead of import.
 		_, ok := body[base.SyncPropertyName]
 		if ok || doc.inlineSyncData {
-			migratedDoc, requiresImport, migrateErr := db.migrateMetadata(newDoc.ID, body, existingDoc, &mutationOptions)
+			migratedDoc, requiresImport, migrateErr := db.migrateMetadata(ctx, newDoc.ID, body, existingDoc, &mutationOptions)
 			if migrateErr != nil {
 				return nil, nil, false, updatedExpiry, migrateErr
 			}
@@ -198,24 +198,24 @@ func (db *Database) importDoc(docid string, body Body, expiry *uint32, isDelete 
 			// If document still requires import post-migration attempt, continue with import processing based on the body returned by migrate
 			doc = migratedDoc
 			body = migratedDoc.Body()
-			base.InfofCtx(db.Ctx, base.KeyMigrate, "Falling back to import with cas: %v", doc.Cas)
+			base.InfofCtx(ctx, base.KeyMigrate, "Falling back to import with cas: %v", doc.Cas)
 		}
 
 		// Check if the doc has been deleted
 		if doc.Cas == 0 {
-			base.DebugfCtx(db.Ctx, base.KeyImport, "Document has been removed from the bucket before it could be imported - cancelling import.")
+			base.DebugfCtx(ctx, base.KeyImport, "Document has been removed from the bucket before it could be imported - cancelling import.")
 			return nil, nil, false, updatedExpiry, base.ErrImportCancelled
 		}
 
 		// If this is a delete, and there is no xattr on the existing doc,
 		// we shouldn't import.  (SG purge arriving over DCP feed)
 		if isDelete && doc.CurrentRev == "" {
-			base.DebugfCtx(db.Ctx, base.KeyImport, "Import not required for delete mutation with no existing SG xattr (SG purge): %s", base.UD(newDoc.ID))
+			base.DebugfCtx(ctx, base.KeyImport, "Import not required for delete mutation with no existing SG xattr (SG purge): %s", base.UD(newDoc.ID))
 			return nil, nil, false, updatedExpiry, base.ErrImportCancelled
 		}
 
 		// Is this doc an SG Write?
-		isSgWrite, crc32Match, bodyChanged := doc.IsSGWrite(db.Ctx, existingDoc.Body)
+		isSgWrite, crc32Match, bodyChanged := doc.IsSGWrite(ctx, existingDoc.Body)
 		if crc32Match {
 			db.DbStats.Database().Crc32MatchCount.Add(1)
 		}
@@ -223,7 +223,7 @@ func (db *Database) importDoc(docid string, body Body, expiry *uint32, isDelete 
 		// If the current version of the doc is an SG write, document has been updated by SG subsequent to the update that triggered this import.
 		// Cancel import
 		if isSgWrite {
-			base.DebugfCtx(db.Ctx, base.KeyImport, "During import, existing doc (%s) identified as SG write.  Canceling import.", base.UD(docid))
+			base.DebugfCtx(ctx, base.KeyImport, "During import, existing doc (%s) identified as SG write.  Canceling import.", base.UD(docid))
 			alreadyImportedDoc = doc
 			return nil, nil, false, updatedExpiry, base.ErrAlreadyImported
 		}
@@ -235,21 +235,21 @@ func (db *Database) importDoc(docid string, body Body, expiry *uint32, isDelete 
 
 			if isDelete && body == nil {
 				deleteBody := Body{BodyDeleted: true}
-				shouldImport, importErr = db.DatabaseContext.Options.ImportOptions.ImportFilter.EvaluateFunction(db.Ctx, deleteBody)
+				shouldImport, importErr = db.DatabaseContext.Options.ImportOptions.ImportFilter.EvaluateFunction(ctx, deleteBody)
 			} else if isDelete && body != nil {
 				deleteBody := body.ShallowCopy()
 				deleteBody[BodyDeleted] = true
-				shouldImport, importErr = db.DatabaseContext.Options.ImportOptions.ImportFilter.EvaluateFunction(db.Ctx, deleteBody)
+				shouldImport, importErr = db.DatabaseContext.Options.ImportOptions.ImportFilter.EvaluateFunction(ctx, deleteBody)
 			} else {
-				shouldImport, importErr = db.DatabaseContext.Options.ImportOptions.ImportFilter.EvaluateFunction(db.Ctx, body)
+				shouldImport, importErr = db.DatabaseContext.Options.ImportOptions.ImportFilter.EvaluateFunction(ctx, body)
 			}
 
 			if importErr != nil {
-				base.DebugfCtx(db.Ctx, base.KeyImport, "Error returned for doc %s while evaluating import function - will not be imported.", base.UD(docid))
+				base.DebugfCtx(ctx, base.KeyImport, "Error returned for doc %s while evaluating import function - will not be imported.", base.UD(docid))
 				return nil, nil, false, updatedExpiry, base.ErrImportCancelledFilter
 			}
 			if !shouldImport {
-				base.DebugfCtx(db.Ctx, base.KeyImport, "Doc %s excluded by document import function - will not be imported.", base.UD(docid))
+				base.DebugfCtx(ctx, base.KeyImport, "Doc %s excluded by document import function - will not be imported.", base.UD(docid))
 				// TODO: If this document has a current revision (this is a document that was previously mobile-enabled), do additional opt-out processing
 				// pending https://github.com/couchbase/sync_gateway/issues/2750
 				return nil, nil, false, updatedExpiry, base.ErrImportCancelledFilter
@@ -282,20 +282,20 @@ func (db *Database) importDoc(docid string, body Body, expiry *uint32, isDelete 
 			if err != nil {
 				return nil, nil, false, updatedExpiry, err
 			}
-			base.DebugfCtx(db.Ctx, base.KeyImport, "Created new rev ID for doc %q / %q", base.UD(newDoc.ID), newRev)
+			base.DebugfCtx(ctx, base.KeyImport, "Created new rev ID for doc %q / %q", base.UD(newDoc.ID), newRev)
 			// body[BodyRev] = newRev
 			newDoc.RevID = newRev
 			err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete})
 			if err != nil {
-				base.InfofCtx(db.Ctx, base.KeyImport, "Error adding new rev ID for doc %q / %q, Error: %v", base.UD(newDoc.ID), newRev, err)
+				base.InfofCtx(ctx, base.KeyImport, "Error adding new rev ID for doc %q / %q, Error: %v", base.UD(newDoc.ID), newRev, err)
 			}
 
 			// If the previous revision body is available in the rev cache,
 			// make a temporary copy in the bucket for other nodes/clusters
 			if db.DatabaseContext.Options.ImportOptions.BackupOldRev && doc.CurrentRev != "" {
-				backupErr := db.backupPreImportRevision(newDoc.ID, doc.CurrentRev)
+				backupErr := db.backupPreImportRevision(ctx, newDoc.ID, doc.CurrentRev)
 				if backupErr != nil {
-					base.InfofCtx(db.Ctx, base.KeyImport, "Optimistic backup of previous revision failed due to %s", backupErr)
+					base.InfofCtx(ctx, base.KeyImport, "Optimistic backup of previous revision failed due to %s", backupErr)
 				}
 			}
 		} else {
@@ -330,7 +330,7 @@ func (db *Database) importDoc(docid string, body Body, expiry *uint32, isDelete 
 		db.DbStats.SharedBucketImport().ImportCount.Add(1)
 		db.DbStats.SharedBucketImport().ImportHighSeq.Set(int64(docOut.SyncData.Sequence))
 		db.DbStats.SharedBucketImport().ImportProcessingTime.Add(time.Since(importStartTime).Nanoseconds())
-		base.DebugfCtx(db.Ctx, base.KeyImport, "Imported %s (delete=%v) as rev %s", base.UD(newDoc.ID), isDelete, newRev)
+		base.DebugfCtx(ctx, base.KeyImport, "Imported %s (delete=%v) as rev %s", base.UD(newDoc.ID), isDelete, newRev)
 	case base.ErrImportCancelled:
 		// Import was cancelled (SG purge) - don't return error.
 	case base.ErrImportCancelledFilter:
@@ -344,7 +344,7 @@ func (db *Database) importDoc(docid string, body Body, expiry *uint32, isDelete 
 		// Import ignored
 		return nil, err
 	default:
-		base.InfofCtx(db.Ctx, base.KeyImport, "Error importing doc %q: %v", base.UD(newDoc.ID), err)
+		base.InfofCtx(ctx, base.KeyImport, "Error importing doc %q: %v", base.UD(newDoc.ID), err)
 		db.DbStats.SharedBucketImport().ImportErrorCount.Add(1)
 		return nil, err
 
@@ -355,7 +355,7 @@ func (db *Database) importDoc(docid string, body Body, expiry *uint32, isDelete 
 
 // Migrates document metadata from document body to system xattr.  On CAS failure, retrieves current doc body and retries
 // migration if _sync property exists.  If _sync property is not found, returns doc and sets requiresImport to true
-func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbucket.BucketDocument, opts *sgbucket.MutateInOptions) (docOut *Document, requiresImport bool, err error) {
+func (db *Database) migrateMetadata(ctx context.Context, docid string, body Body, existingDoc *sgbucket.BucketDocument, opts *sgbucket.MutateInOptions) (docOut *Document, requiresImport bool, err error) {
 
 	// Unmarshal the existing doc in legacy SG format
 	doc, unmarshalErr := unmarshalDocument(docid, existingDoc.Body)
@@ -366,14 +366,14 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 
 	// If no sync metadata is present, return for import handling
 	if !doc.HasValidSyncData() {
-		base.InfofCtx(db.Ctx, base.KeyMigrate, "During migrate, doc %q doesn't have valid sync data.  Falling back to import handling.  (cas=%d)", base.UD(docid), doc.Cas)
+		base.InfofCtx(ctx, base.KeyMigrate, "During migrate, doc %q doesn't have valid sync data.  Falling back to import handling.  (cas=%d)", base.UD(docid), doc.Cas)
 		return doc, true, nil
 	}
 
 	// Move any large revision bodies to external storage
 	err = doc.migrateRevisionBodies(db.Bucket)
 	if err != nil {
-		base.InfofCtx(db.Ctx, base.KeyMigrate, "Error migrating revision bodies to external storage, doc %q, (cas=%d), Error: %v", base.UD(docid), doc.Cas, err)
+		base.InfofCtx(ctx, base.KeyMigrate, "Error migrating revision bodies to external storage, doc %q, (cas=%d), Error: %v", base.UD(docid), doc.Cas, err)
 	}
 
 	// Persist the document in xattr format
@@ -388,7 +388,7 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 	casOut, writeErr := db.Bucket.WriteWithXattr(docid, base.SyncXattrName, existingDoc.Expiry, existingDoc.Cas, opts, value, xattrValue, isDelete, deleteBody)
 	if writeErr == nil {
 		doc.Cas = casOut
-		base.InfofCtx(db.Ctx, base.KeyMigrate, "Successfully migrated doc %q", base.UD(docid))
+		base.InfofCtx(ctx, base.KeyMigrate, "Successfully migrated doc %q", base.UD(docid))
 		return doc, false, nil
 	}
 
@@ -407,14 +407,14 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 // the temporary revision bodies made during SG writes.  Allows in-flight replications on
 // other Sync Gateway nodes to serve the previous revision
 // (https://github.com/couchbase/sync_gateway/issues/3740)
-func (db *Database) backupPreImportRevision(docid, revid string) error {
+func (db *Database) backupPreImportRevision(ctx context.Context, docid, revid string) error {
 
 	// If Delta Sync is enabled, this will already be handled by the backup handling used for delta generation
 	if db.DeltaSyncEnabled() {
 		return nil
 	}
 
-	previousRev, ok := db.revisionCache.Peek(db.Ctx, docid, revid)
+	previousRev, ok := db.revisionCache.Peek(ctx, docid, revid)
 	if !ok {
 		return nil
 	}
@@ -434,7 +434,7 @@ func (db *Database) backupPreImportRevision(docid, revid string) error {
 		return err
 	}
 
-	setOldRevErr := db.setOldRevisionJSON(docid, revid, oldRevJSON, db.Options.OldRevExpirySeconds)
+	setOldRevErr := db.setOldRevisionJSON(ctx, docid, revid, oldRevJSON, db.Options.OldRevExpirySeconds)
 	if setOldRevErr != nil {
 		return fmt.Errorf("Persistence error: %v", setOldRevErr)
 	}
