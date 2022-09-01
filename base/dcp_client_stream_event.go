@@ -82,3 +82,8 @@ type endStreamEvent struct {
 	streamEventCommon
 	err error
 }
+
+type seqnoAdvancedEvent struct {
+	streamEventCommon
+	seq uint64
+}

@@ -69,6 +69,12 @@ pipeline {
 
         stage('Builds') {
             parallel {
+                stage('Test compile') {
+                    steps {
+                        // run no tests but force them to be compiled
+                        sh "go test -run=- -count=1 ./..."
+                    }
+                }
                 stage('CE Linux') {
                     steps {
                         sh "GOOS=linux go build -o sync_gateway_ce-linux -v ${SGW_REPO}"

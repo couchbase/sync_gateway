@@ -29,6 +29,8 @@ import (
 
 var ErrCollectionsUnsupported = errors.New("collections not supported")
 
+const DefaultCollectionID = 0x0
+
 var _ sgbucket.KVStore = &Collection{}
 var _ CouchbaseStore = &Collection{}
 
@@ -781,7 +783,7 @@ func (c *Collection) GetExpiry(k string) (expiry uint32, getMetaError error) {
 		Key:      []byte(k),
 		Deadline: c.getBucketOpDeadline(),
 	}
-	if !c.IsDefaultScopeCollection() {
+	if c.IsSupported(sgbucket.DataStoreFeatureCollections) {
 		collectionID, err := c.GetCollectionID()
 		if err != nil {
 			return 0, err
@@ -973,6 +975,13 @@ func (c *Collection) getBucketOpDeadline() time.Time {
 
 // GetCollectionID returns the gocbcore CollectionID for the current collection
 func (c *Collection) GetCollectionID() (uint32, error) {
+	if !c.IsSupported(sgbucket.DataStoreFeatureCollections) {
+		return 0, fmt.Errorf("Couchbase server does not support collections")
+	}
+	// default collection has a known ID
+	if c.IsDefaultScopeCollection() {
+		return DefaultCollectionID, nil
+	}
 	// return cached value if present
 	collectionIDAtomic := c.collectionID.Load()
 	if collectionIDAtomic != nil {
@@ -982,16 +991,14 @@ func (c *Collection) GetCollectionID() (uint32, error) {
 		}
 		return collectionID, nil
 	}
-	if c.Spec.Scope == nil || c.Spec.Collection == nil {
-		return 0, fmt.Errorf("Calling getCollectionID without Collection.Spec not having collections configured")
-	}
+
 	agent, err := c.getGoCBAgent()
 	if err != nil {
 		return 0, err
 	}
 	var collectionID uint32
-	scope := *c.Spec.Scope
-	collection := *c.Spec.Collection
+	scope := c.ScopeName()
+	collection := c.Name()
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	var callbackErr error
