@@ -754,7 +754,7 @@ func CreateBucketScopesAndCollections(ctx context.Context, bucketSpec BucketSpec
 				gocb.CollectionSpec{
 					Name:      collectionName,
 					ScopeName: scopeName,
-				}, nil); err != nil {
+				}, nil); err != nil && !errors.Is(err, gocb.ErrCollectionExists) {
 				return fmt.Errorf("failed to create collection %s in scope %s: %w", collectionName, scopeName, err)
 			}
 			DebugfCtx(ctx, KeySGTest, "Created collection %s.%s", scopeName, collectionName)

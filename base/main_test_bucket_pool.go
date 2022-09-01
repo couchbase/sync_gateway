@@ -32,10 +32,10 @@ var GTestBucketPool *TestBucketPool
 
 // Bucket names start with a fixed prefix and end with a sequential bucket number and a creation timestamp for uniqueness
 const (
-	tbpBucketNamePrefix  = "sg_int_"
-	tbpBucketNameFormat  = "%s%d_%d"
-	tbpScopePrefix       = "sg_test_"
-	tbptCollectionPrefix = "sg_test_"
+	tbpBucketNamePrefix = "sg_int_"
+	tbpBucketNameFormat = "%s%d_%d"
+	tbpScopePrefix      = "sg_test_"
+	tbpCollectionPrefix = "sg_test_"
 )
 
 const (
@@ -727,12 +727,12 @@ func addRandomScopeAndCollection(spec *BucketSpec) error {
 	if err != nil {
 		return err
 	}
-	scopeName = "sg_test_scope_" + scopeName
+	scopeName = tbpScopePrefix + "1"
 	collectionName, err := GenerateRandomID()
 	if err != nil {
 		return err
 	}
-	collectionName = "sg_test_collection_" + collectionName
+	collectionName = tbpCollectionPrefix + "1"
 	spec.Scope = &scopeName
 	spec.Collection = &collectionName
 	return nil
