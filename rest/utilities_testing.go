@@ -159,7 +159,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.API.EnableAdminAuthenticationPermissionsCheck = &rt.enableAdminAuthPermissionsCheck
 	sc.Bootstrap.UseTLSServer = &rt.RestTesterConfig.useTLSServer
 	sc.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
-	sc.Unsupported.Serverless = &rt.serverless
+	sc.Unsupported.Serverless.Enabled = &rt.serverless
 	if rt.serverless {
 		sc.BucketCredentials = map[string]*base.CredentialsConfig{
 			testBucket.GetName(): {
