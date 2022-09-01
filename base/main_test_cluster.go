@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/couchbase/gocb/v2"
@@ -318,7 +319,7 @@ func DropAllScopesAndCollections(bucket *gocb.Bucket) error {
 	// For each non-default scope, drop them.
 	// For each collection within the default scope, drop them.
 	for _, scope := range scopes {
-		if scope.Name != DefaultScope {
+		if scope.Name != DefaultScope && !strings.HasPrefix(scope.Name, tbpScopePrefix) {
 			scopeName := fmt.Sprintf("scope %s on bucket %s", MD(scope).Redact(), MD(bucket.Name()).Redact())
 			TracefCtx(context.TODO(), KeyAll, "Dropping %s", scopeName)
 			if err := cm.DropScope(scope.Name, nil); err != nil {
@@ -330,7 +331,7 @@ func DropAllScopesAndCollections(bucket *gocb.Bucket) error {
 
 		// can't delete _default scope - but we can delete the non-_default collections within it
 		for _, collection := range scope.Collections {
-			if collection.Name != DefaultCollection {
+			if collection.Name != DefaultCollection && !strings.HasPrefix(collection.Name, tbpCollectionPrefix) {
 				collectionName := fmt.Sprintf("collection %s in scope %s on bucket %s", MD(collection.Name).Redact(), MD(scope).Redact(), MD(bucket.Name()).Redact())
 				TracefCtx(context.TODO(), KeyAll, "Dropping %s", collectionName)
 				if err := cm.DropCollection(collection, nil); err != nil {

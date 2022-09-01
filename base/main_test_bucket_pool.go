@@ -32,8 +32,10 @@ var GTestBucketPool *TestBucketPool
 
 // Bucket names start with a fixed prefix and end with a sequential bucket number and a creation timestamp for uniqueness
 const (
-	tbpBucketNamePrefix = "sg_int_"
-	tbpBucketNameFormat = "%s%d_%d"
+	tbpBucketNamePrefix  = "sg_int_"
+	tbpBucketNameFormat  = "%s%d_%d"
+	tbpScopePrefix       = "sg_test_"
+	tbptCollectionPrefix = "sg_test_"
 )
 
 const (
