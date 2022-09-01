@@ -54,8 +54,8 @@ type CbgtContext struct {
 
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
 // dbName is used to define a unique path name for local file storage of pindex files
-func StartShardedDCPFeed(dbName string, configGroup string, uuid string, heartbeater Heartbeater, bucket Bucket, spec BucketSpec, numPartitions uint16, cfg cbgt.Cfg) (*CbgtContext, error) {
-	cbgtContext, err := initCBGTManager(bucket, spec, cfg, uuid, dbName)
+func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string, uuid string, heartbeater Heartbeater, bucket Bucket, spec BucketSpec, numPartitions uint16, cfg cbgt.Cfg) (*CbgtContext, error) {
+	cbgtContext, err := initCBGTManager(ctx, bucket, spec, cfg, uuid, dbName)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +241,7 @@ func getCBGTIndexUUID(manager *cbgt.Manager, indexName string) (exists bool, pre
 // createCBGTManager creates a new manager for a given bucket and bucketSpec
 // Inline comments below provide additional detail on how cbgt uses each manager
 // parameter, and the implications for SG
-func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID string, dbName string) (*CbgtContext, error) {
+func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID string, dbName string) (*CbgtContext, error) {
 	// Check if there are pre-Helium nodes, and if so, set the LithiumCompat flag to ensure we don't try to start a
 	// collections-enabled feed when some nodes won't support it.
 	minVersion, err := getMinNodeVersion(cfgSG)
@@ -343,7 +343,7 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 		options)
 
 	cbgtContext := &CbgtContext{
-		loggingCtx: LogContextWith(context.Background(), &LogContext{CorrelationID: MD(spec.BucketName).Redact() + "-" + DCPImportFeedID}),
+		loggingCtx: LogContextWith(ctx, &LogContext{CorrelationID: MD(spec.BucketName).Redact() + "-" + DCPImportFeedID}),
 		Manager:    mgr,
 		Cfg:        cfgSG,
 	}

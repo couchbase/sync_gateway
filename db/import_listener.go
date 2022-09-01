@@ -93,7 +93,7 @@ func (il *importListener) StartImportFeed(ctx context.Context, bucket base.Bucke
 		}
 		return base.StartGocbDCPFeed(collection, bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
 	}
-	il.cbgtContext, err = base.StartShardedDCPFeed(dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater, bucket, cbStore.GetSpec(), dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
+	il.cbgtContext, err = base.StartShardedDCPFeed(ctx, dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater, bucket, cbStore.GetSpec(), dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
 	return err
 }
 
