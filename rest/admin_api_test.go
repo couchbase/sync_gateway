@@ -4690,7 +4690,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 
 	// Check checkpoint document was wrote to bucket with correct status
 	// _sync:local:checkpoint/sgr2cp:push:TestReplicatorCheckpointOnStop
-	expectedCheckpointName := base.SyncPrefix + "local:checkpoint/" + db.PushCheckpointID(t.Name())
+	expectedCheckpointName := base.SyncDocPrefix + "local:checkpoint/" + db.PushCheckpointID(t.Name())
 	val, _, err := activeRT.Bucket().GetRaw(expectedCheckpointName)
 	require.NoError(t, err)
 	var config struct { // db.replicationCheckpoint

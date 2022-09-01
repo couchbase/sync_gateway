@@ -148,7 +148,8 @@ func (cc *CouchbaseCluster) GetConfig(location, groupID string, valuePtr interfa
 
 	defer teardown()
 
-	res, err := b.DefaultCollection().Get(PersistentConfigPrefix+groupID, &gocb.GetOptions{
+	docID := PersistentConfigPrefixWithGroupID(groupID)
+	res, err := b.DefaultCollection().Get(docID, &gocb.GetOptions{
 		Timeout:       time.Second * 10,
 		RetryStrategy: gocb.NewBestEffortRetryStrategy(nil),
 	})
@@ -177,7 +178,7 @@ func (cc *CouchbaseCluster) InsertConfig(location, groupID string, value interfa
 	}
 	defer teardown()
 
-	docID := PersistentConfigPrefix + groupID
+	docID := PersistentConfigPrefixWithGroupID(groupID)
 	res, err := b.DefaultCollection().Insert(docID, value, nil)
 	if err != nil {
 		if isKVError(err, memd.StatusKeyExists) {
@@ -202,7 +203,7 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 
 	collection := b.DefaultCollection()
 
-	docID := PersistentConfigPrefix + groupID
+	docID := PersistentConfigPrefixWithGroupID(groupID)
 	for {
 		res, err := collection.Get(docID, &gocb.GetOptions{
 			Transcoder: gocb.NewRawJSONTranscoder(),
