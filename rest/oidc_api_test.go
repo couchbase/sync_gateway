@@ -2428,6 +2428,8 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 // This test verifies the edge case of having two different OIDC providers with different role/channel configurations
 // but with UsernameClaim set in a way that means they create users with the same username, yet with different access.
 func TestOpenIDConnectIssuerChange(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth, base.KeyAccess, base.KeyHTTP)
 	const (
 		testDocName = "testDoc"

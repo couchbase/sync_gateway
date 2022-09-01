@@ -5746,6 +5746,9 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("Requires EE for delta sync")
 	}
+
+	base.RequireNumTestBuckets(t, 2)
+
 	defer db.SuspendSequenceBatching()()
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
@@ -5845,6 +5848,8 @@ func TestUnprocessableDeltas(t *testing.T) {
 		t.Skipf("Requires EE for some delta sync")
 	}
 
+	base.RequireNumTestBuckets(t, 2)
+
 	defer db.SuspendSequenceBatching()()
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
@@ -5936,6 +5941,9 @@ func TestUnprocessableDeltas(t *testing.T) {
 
 // CBG-1428 - check for regression of ISGR not ignoring _removed:true bodies when purgeOnRemoval is disabled
 func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
+
+	base.RequireNumTestBuckets(t, 2)
+
 	// Copies the behaviour of TestGetRemovedAsUser but with replication and no user
 	defer db.SuspendSequenceBatching()()
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
