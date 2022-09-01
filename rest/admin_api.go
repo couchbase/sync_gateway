@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -230,7 +231,8 @@ func (h *handler) handleGetDbConfig() error {
 			return base.HTTPErrorf(http.StatusNotFound, "database config not found")
 		}
 
-		h.response.Header().Set("ETag", dbConfig.Version)
+		quoteETag := strconv.Quote(dbConfig.Version)
+		h.response.Header().Set("ETag", quoteETag)
 
 		// refresh_config=true forces the config loaded out of the bucket to be applied on the node
 		if h.getBoolQuery("refresh_config") && h.server.bootstrapContext.connection != nil {
@@ -533,6 +535,10 @@ func (h *handler) handlePutDbConfig() (err error) {
 			}
 
 			headerVersion := h.rq.Header.Get("If-Match")
+			if headerVersion != "" {
+				headerVersion, _ = strconv.Unquote(headerVersion)
+			}
+
 			if headerVersion != "" && headerVersion != bucketDbConfig.Version {
 				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 			}
@@ -594,7 +600,8 @@ func (h *handler) handlePutDbConfig() (err error) {
 	}
 	// store the cas in the loaded config after a successful update
 	h.server.dbConfigs[dbName].cas = cas
-	h.response.Header().Set("ETag", updatedDbConfig.Version)
+	quoteETag := strconv.Quote(updatedDbConfig.Version)
+	h.response.Header().Set("ETag", quoteETag)
 	return base.HTTPErrorf(http.StatusCreated, "updated")
 
 }
@@ -623,7 +630,8 @@ func (h *handler) handleGetDbConfigSync() error {
 		}
 	}
 
-	h.response.Header().Set("ETag", etagVersion)
+	quoteETag := strconv.Quote(etagVersion)
+	h.response.Header().Set("ETag", quoteETag)
 	h.writeJavascript(syncFunction)
 	return nil
 }
@@ -648,6 +656,10 @@ func (h *handler) handleDeleteDbConfigSync() error {
 			}
 
 			headerVersion := h.rq.Header.Get("If-Match")
+			if headerVersion != "" {
+				headerVersion, _ = strconv.Unquote(headerVersion)
+			}
+
 			if headerVersion != "" && headerVersion != bucketDbConfig.Version {
 				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 			}
@@ -710,6 +722,10 @@ func (h *handler) handlePutDbConfigSync() error {
 			}
 
 			headerVersion := h.rq.Header.Get("If-Match")
+			if headerVersion != "" {
+				headerVersion, _ = strconv.Unquote(headerVersion)
+			}
+
 			if headerVersion != "" && headerVersion != bucketDbConfig.Version {
 				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 			}
@@ -775,7 +791,8 @@ func (h *handler) handleGetDbConfigImportFilter() error {
 		}
 	}
 
-	h.response.Header().Set("ETag", etagVersion)
+	quoteETag := strconv.Quote(etagVersion)
+	h.response.Header().Set("ETag", quoteETag)
 	h.writeJavascript(importFilterFunction)
 	return nil
 }
@@ -800,6 +817,10 @@ func (h *handler) handleDeleteDbConfigImportFilter() error {
 			}
 
 			headerVersion := h.rq.Header.Get("If-Match")
+			if headerVersion != "" {
+				headerVersion, _ = strconv.Unquote(headerVersion)
+			}
+
 			if headerVersion != "" && headerVersion != bucketDbConfig.Version {
 				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 			}
@@ -863,6 +884,10 @@ func (h *handler) handlePutDbConfigImportFilter() error {
 			}
 
 			headerVersion := h.rq.Header.Get("If-Match")
+			if headerVersion != "" {
+				headerVersion, _ = strconv.Unquote(headerVersion)
+			}
+
 			if headerVersion != "" && headerVersion != bucketDbConfig.Version {
 				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 			}

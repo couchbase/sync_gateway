@@ -304,6 +304,7 @@ func (h *handler) handlePutAttachment() error {
 	revid := h.getQuery("rev")
 	if revid == "" {
 		revid = h.rq.Header.Get("If-Match")
+		revid, _ = strconv.Unquote(revid)
 	}
 	attachmentData, err := h.readBody()
 	if err != nil {
@@ -394,6 +395,7 @@ func (h *handler) handlePutDoc() error {
 		if oldRev := h.getQuery("rev"); oldRev != "" {
 			body[db.BodyRev] = oldRev
 		} else if ifMatch := h.rq.Header.Get("If-Match"); ifMatch != "" {
+			ifMatch, _ = strconv.Unquote(ifMatch)
 			body[db.BodyRev] = ifMatch
 		}
 		if bodyRev != nil && bodyRev != body[db.BodyRev] {
@@ -452,6 +454,7 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 	if oldRev := h.getQuery("rev"); oldRev != "" {
 		parentRev = oldRev
 	} else if ifMatch := h.rq.Header.Get("If-Match"); ifMatch != "" {
+		ifMatch, _ = strconv.Unquote(ifMatch)
 		parentRev = ifMatch
 	}
 
@@ -540,6 +543,7 @@ func (h *handler) handleDeleteDoc() error {
 	revid := h.getQuery("rev")
 	if revid == "" {
 		revid = h.rq.Header.Get("If-Match")
+		revid, _ = strconv.Unquote(revid)
 	}
 	newRev, err := h.db.DeleteDoc(h.ctx(), docid, revid)
 	if err == nil {

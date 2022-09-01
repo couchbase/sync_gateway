@@ -843,7 +843,7 @@ func TestManualAttachment(t *testing.T) {
 	RequireStatus(t, response, 409)
 
 	// attach to existing document with wrong rev using If-Match header (should fail)
-	reqHeaders["If-Match"] = "1-dnf"
+	reqHeaders["If-Match"] = strconv.Quote("1-dnf")
 	response = rt.SendRequestWithHeaders("PUT", "/db/doc1/attach1", attachmentBody, reqHeaders)
 	RequireStatus(t, response, 409)
 	delete(reqHeaders, "If-Match")
@@ -890,7 +890,7 @@ func TestManualAttachment(t *testing.T) {
 
 	// try to overwrite that attachment again, this time using If-Match header
 	attachmentBody = "updated content again"
-	reqHeaders["If-Match"] = revIdAfterUpdateAttachment
+	reqHeaders["If-Match"] = strconv.Quote(revIdAfterUpdateAttachment)
 	response = rt.SendRequestWithHeaders("PUT", "/db/doc1/attach1", attachmentBody, reqHeaders)
 	RequireStatus(t, response, 201)
 	body = db.Body{}
@@ -963,7 +963,7 @@ func TestManualAttachmentNewDoc(t *testing.T) {
 	RequireStatus(t, response, 409)
 
 	// attach to new document using bogus rev using If-Match header (should fail)
-	reqHeaders["If-Match"] = "1-xyz"
+	reqHeaders["If-Match"] = strconv.Quote("1-xyz")
 	response = rt.SendAdminRequestWithHeaders("PUT", "/db/notexistyet/attach1", attachmentBody, reqHeaders)
 	RequireStatus(t, response, 409)
 	delete(reqHeaders, "If-Match")
