@@ -202,7 +202,6 @@ func TestCheckPermissionsWithX509(t *testing.T) {
 			CACertPath:   caCertPath,
 		},
 	}, false)
-	ctx = svrctx.AddServerLogContext(ctx)
 	defer svrctx.Close(ctx)
 
 	goCBAgent, err := svrctx.initializeGoCBAgent(ctx)
@@ -497,7 +496,6 @@ func TestAdminAuthWithX509(t *testing.T) {
 			CACertPath:   caCertPath,
 		},
 	}, false)
-	ctx = svrctx.AddServerLogContext(ctx)
 	defer svrctx.Close(ctx)
 
 	goCBAgent, err := svrctx.initializeGoCBAgent(ctx)

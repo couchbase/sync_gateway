@@ -3313,7 +3313,6 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 	ctx := base.TestCtx(t)
 	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx = sc.AddServerLogContext(ctx)
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
@@ -3375,7 +3374,6 @@ func TestDbConfigCredentials(t *testing.T) {
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx = sc.AddServerLogContext(ctx)
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
@@ -3441,7 +3439,6 @@ func TestInvalidDBConfig(t *testing.T) {
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx = sc.AddServerLogContext(ctx)
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
@@ -3496,7 +3493,6 @@ func TestCreateDbOnNonExistentBucket(t *testing.T) {
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx = sc.AddServerLogContext(ctx)
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
@@ -3530,7 +3526,6 @@ func TestPutDbConfigChangeName(t *testing.T) {
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx = sc.AddServerLogContext(ctx)
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
@@ -3573,7 +3568,6 @@ func TestPutDBConfigOIDC(t *testing.T) {
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx = sc.AddServerLogContext(ctx)
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
@@ -3691,7 +3685,6 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx = sc.AddServerLogContext(ctx)
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
@@ -3778,7 +3771,6 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(ctx, &config, false)
 	require.NoError(t, err)
-	ctx = sc.AddServerLogContext(ctx)
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
@@ -3867,7 +3859,6 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx = sc.AddServerLogContext(ctx)
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
@@ -3946,7 +3937,7 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	ctx := base.TestCtx(t)
 	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx = sc.AddServerLogContext(ctx)
+	ctx = sc.SetContextLogID(ctx, "initial")
 
 	go func() {
 		serverErr <- startServer(ctx, &config, sc)
@@ -4034,7 +4025,7 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	// Start a new SG node and ensure we *can* load the "newer" config version on initial startup, to support downgrade
 	sc, err = setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx = sc.AddServerLogContext(ctx)
+	ctx = sc.SetContextLogID(ctx, "newerconfig")
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
@@ -4064,7 +4055,6 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx = sc.AddServerLogContext(ctx)
 	serverErr := make(chan error, 0)
 	go func() {
 		serverErr <- startServer(ctx, &config, sc)
@@ -4151,7 +4141,6 @@ func TestSetFunctionsWhileDbOffline(t *testing.T) {
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx = sc.AddServerLogContext(ctx)
 	serverErr := make(chan error, 0)
 	go func() {
 		serverErr <- startServer(ctx, &config, sc)
@@ -4218,7 +4207,6 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx = sc.AddServerLogContext(ctx)
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
@@ -4327,7 +4315,7 @@ func TestGroupIDReplications(t *testing.T) {
 		sc, err := setupServerContext(ctx, &config, true)
 		require.NoError(t, err)
 		serverContexts = append(serverContexts, sc)
-		ctx = sc.AddServerLogContext(ctx)
+		ctx = sc.SetContextLogID(ctx, config.Bootstrap.ConfigGroupID)
 		defer func() {
 			sc.Close(ctx)
 			require.NoError(t, <-serverErr)
@@ -4385,7 +4373,7 @@ func TestGroupIDReplications(t *testing.T) {
 				expectedPushed = 1
 			}
 
-			ctx := sc.AddServerLogContext(base.TestCtx(t))
+			ctx := sc.SetContextLogID(base.TestCtx(t), sc.config.Bootstrap.ConfigGroupID)
 			dbContext, err := sc.GetDatabase(ctx, "db")
 			require.NoError(t, err)
 			actualPushed, _ := base.WaitForStat(dbContext.DbStats.DBReplicatorStats("repl").NumDocPushed.Value, expectedPushed)
@@ -4425,7 +4413,6 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx = sc.AddServerLogContext(ctx)
 	serverErr := make(chan error, 0)
 	defer func() {
 		sc.Close(ctx)

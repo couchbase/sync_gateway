@@ -139,7 +139,6 @@ func serverMainPersistentConfig(ctx context.Context, fs *flag.FlagSet, flagStart
 	if err != nil {
 		return false, err
 	}
-	ctx = svrctx.AddServerLogContext(ctx)
 
 	svrctx.initialStartupConfig = initialStartupConfig
 

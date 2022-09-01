@@ -52,7 +52,6 @@ func legacyServerMain(ctx context.Context, osArgs []string, flagStartupConfig *S
 	if err != nil {
 		return err
 	}
-	ctx = svrctx.AddServerLogContext(ctx)
 
 	svrctx.initialStartupConfig = initialStartupConfig
 

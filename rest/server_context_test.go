@@ -118,7 +118,6 @@ func TestAllDatabaseNames(t *testing.T) {
 		Bootstrap: BootstrapConfig{UseTLSServer: base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())), ServerTLSSkipVerify: base.BoolPtr(base.TestTLSSkipVerify())},
 		API:       APIConfig{CORS: &CORSConfig{}, AdminInterface: DefaultAdminInterface}}
 	serverContext := NewServerContext(ctx, serverConfig, false)
-	ctx = serverContext.AddServerLogContext(ctx)
 	defer serverContext.Close(ctx)
 
 	xattrs := base.TestUseXattrs()
@@ -161,7 +160,6 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 	ctx := base.TestCtx(t)
 	serverConfig := &StartupConfig{API: APIConfig{CORS: &CORSConfig{}, AdminInterface: DefaultAdminInterface}}
 	serverContext := NewServerContext(ctx, serverConfig, false)
-	ctx = serverContext.AddServerLogContext(ctx)
 	defer serverContext.Close(ctx)
 
 	oldRevExpirySeconds := uint32(600)
@@ -236,7 +234,6 @@ func TestStatsLoggerStopped(t *testing.T) {
 	// Start up stats logger by creating server context
 	ctx := base.TestCtx(t)
 	svrctx := NewServerContext(ctx, &sc, false)
-	ctx = svrctx.AddServerLogContext(ctx)
 
 	// Close server context which will send signal to close stats logger
 	svrctx.Close(ctx)
@@ -305,7 +302,6 @@ func TestObtainManagementEndpointsFromServerContextWithX509(t *testing.T) {
 			CACertPath:   caCertPath,
 		},
 	}, false)
-	ctx = svrctx.AddServerLogContext(ctx)
 	svrctx.Close(ctx)
 
 	goCBAgent, err := svrctx.initializeGoCBAgent(ctx)
@@ -363,7 +359,6 @@ func TestStartAndStopHTTPServers(t *testing.T) {
 	ctx := base.TestCtx(t)
 	sc, err := setupServerContext(ctx, &config, false)
 	require.NoError(t, err)
-	ctx = sc.AddServerLogContext(ctx)
 
 	serveErr := make(chan error, 0)
 	go func() {

@@ -1278,7 +1278,6 @@ func setupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 	}
 
 	sc := NewServerContext(ctx, config, persistentConfig)
-	ctx = sc.AddServerLogContext(ctx) // add server log info before passing donwn
 	if !base.ServerIsWalrus(config.Bootstrap.Server) {
 		if err := sc.initializeCouchbaseServerConnections(ctx); err != nil {
 			return nil, err

@@ -35,7 +35,7 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx = sc.AddServerLogContext(ctx)
+	ctx = sc.SetContextLogID(ctx, "initial")
 
 	// sc closed and serverErr read later in the test
 	serverErr := make(chan error, 0)
@@ -98,7 +98,7 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	ctx = base.TestCtx(t)
 	sc, err = setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx = sc.AddServerLogContext(ctx)
+	ctx = sc.SetContextLogID(ctx, "loaddatabase")
 
 	serverErr = make(chan error, 0)
 	go func() {
@@ -152,7 +152,6 @@ func TestBootstrapDuplicateBucket(t *testing.T) {
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx = sc.AddServerLogContext(ctx)
 
 	defer func() {
 		sc.Close(ctx)
@@ -204,7 +203,6 @@ func TestBootstrapDuplicateDatabase(t *testing.T) {
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-	ctx = sc.AddServerLogContext(ctx)
 
 	defer func() {
 		sc.Close(ctx)

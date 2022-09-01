@@ -2021,7 +2021,6 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 	ctx := base.TestCtx(t)
 	h := &handler{}
 	h.server = NewServerContext(ctx, &StartupConfig{}, false)
-	ctx = h.server.AddServerLogContext(ctx)
 	defer h.server.Close(ctx)
 
 	// Basic case, no heartbeat, no timeout
@@ -3681,7 +3680,6 @@ func TestEventConfigValidationSuccess(t *testing.T) {
 
 	ctx := base.TestCtx(t)
 	sc := NewServerContext(ctx, &StartupConfig{}, false)
-	ctx = sc.AddServerLogContext(ctx)
 	defer sc.Close(ctx)
 
 	// Valid config
@@ -4223,7 +4221,6 @@ func TestUnsupportedConfig(t *testing.T) {
 
 	ctx := base.TestCtx(t)
 	sc := NewServerContext(ctx, &StartupConfig{}, false)
-	ctx = sc.AddServerLogContext(ctx)
 	defer sc.Close(ctx)
 
 	testProviderOnlyJSON := `{"name": "test_provider_only",

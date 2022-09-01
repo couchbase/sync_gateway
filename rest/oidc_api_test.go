@@ -2318,7 +2318,6 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	startupConfig := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(ctx, &startupConfig, true)
 	require.NoError(t, err)
-	ctx = sc.AddServerLogContext(ctx)
 	serverErr := make(chan error, 0)
 	go func() {
 		serverErr <- startServer(ctx, &startupConfig, sc)

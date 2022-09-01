@@ -63,6 +63,7 @@ type ServerContext struct {
 	GoCBAgent            *gocbcore.Agent // GoCB Agent to use when obtaining management endpoints
 	NoX509HTTPClient     *http.Client    // httpClient for the cluster that doesn't include x509 credentials, even if they are configured for the cluster
 	hasStarted           chan struct{}   // A channel that is closed via PostStartup once the ServerContext has fully started
+	LogContextID         string          // ID to differentiate log messages from different server context
 }
 
 type bootstrapContext struct {
@@ -121,8 +122,7 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 		}
 	}
 
-	ctx = sc.AddServerLogContext(ctx) // add server log info before passing donwn
-	sc.startStatsLogger(ctx)          // TODO: move to setupServerContext ?
+	sc.startStatsLogger(ctx)
 
 	return sc
 }
@@ -1578,9 +1578,17 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 	return nil
 }
 
-func (sc *ServerContext) AddServerLogContext(ctx context.Context) context.Context {
-	if sc != nil && sc.config != nil && sc.config.Bootstrap.ConfigGroupID != "" {
-		return base.LogContextWith(ctx, &base.ServerLogContext{})
+func (sc *ServerContext) AddServerLogContext(parent context.Context) context.Context {
+	if sc != nil && sc.LogContextID != "" {
+		return base.LogContextWith(parent, &base.ServerLogContext{LogContextID: sc.LogContextID})
 	}
-	return ctx
+	return parent
+}
+
+func (sc *ServerContext) SetContextLogID(parent context.Context, id string) context.Context {
+	if sc != nil {
+		sc.LogContextID = id
+		return base.LogContextWith(parent, &base.ServerLogContext{LogContextID: sc.LogContextID})
+	}
+	return parent
 }
