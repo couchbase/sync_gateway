@@ -250,7 +250,10 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 		rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(rt.RestTesterConfig.sgReplicateEnabled)
 
-		rt.DatabaseConfig.ImportPartitions = base.Uint16Ptr(1)
+		if rt.DatabaseConfig.ImportPartitions != nil {
+			// Speed up test setup - most tests don't need more than one partition given we only have one node
+			rt.DatabaseConfig.ImportPartitions = base.Uint16Ptr(1)
+		}
 
 		if rt.leakyBucketConfig != nil {
 			// Scopes and collections have to be set on the bucket being passed in for the db to use.
