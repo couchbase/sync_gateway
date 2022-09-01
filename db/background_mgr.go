@@ -48,6 +48,7 @@ type BackgroundManager struct {
 	BackgroundManagerStatus
 	lastError           error
 	terminator          *base.SafeTerminator
+	terminatorWaitGroup sync.WaitGroup
 	clusterAwareOptions *ClusterAwareBackgroundManagerOptions
 	lock                sync.Mutex
 	Process             BackgroundManagerProcessI
@@ -117,7 +118,9 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 	}
 
 	if b.isClusterAware() {
+		b.terminatorWaitGroup.Add(1)
 		go func(terminator *base.SafeTerminator) {
+			defer b.terminatorWaitGroup.Done()
 			ticker := time.NewTicker(BackgroundManagerStatusUpdateIntervalSecs * time.Second)
 			for {
 				select {
@@ -126,7 +129,6 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 					if err != nil {
 						base.WarnfCtx(logCtx, "Failed to update background manager status: %v", err)
 					}
-
 				case <-terminator.Done():
 					ticker.Stop()
 					return
@@ -136,10 +138,7 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 	}
 
 	go func() {
-		updateStatusClusterAwareCallback := func() error {
-			return b.UpdateStatusClusterAware()
-		}
-		err := b.Process.Run(options, updateStatusClusterAwareCallback, b.terminator)
+		err := b.Process.Run(options, b.UpdateStatusClusterAware, b.terminator)
 		if err != nil {
 			base.ErrorfCtx(logCtx, "Error: %v", err)
 			b.SetError(err)
@@ -342,6 +341,7 @@ func (b *BackgroundManager) Stop() error {
 // Only to be used internally to this file and by tests.
 func (b *BackgroundManager) Terminate() {
 	b.terminator.Close()
+	b.terminatorWaitGroup.Wait()
 }
 
 func (b *BackgroundManager) markStop() error {
