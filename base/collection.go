@@ -1092,7 +1092,7 @@ func (c CollectionsManifest) GetIDForCollection(scopeName, collectionName string
 		}
 		for _, coll := range scope.Collections {
 			if coll.Name == collectionName {
-				cid, err := strconv.ParseUint(coll.UID, 10, 32)
+				cid, err := strconv.ParseUint(coll.UID, 16, 32)
 				if err != nil {
 					WarnfCtx(context.TODO(), "Unexpected error parsing collection ID %q: %v", coll.UID, err)
 					return 0, false
@@ -1131,7 +1131,8 @@ func (c *Collection) GetCollectionManifest() (CollectionsManifest, error) {
 	if err, ok := returned.(error); ok && err != nil {
 		return CollectionsManifest{}, err
 	}
-	return returned.(CollectionsManifest), nil
+	rv := returned.(CollectionsManifest)
+	return rv, nil
 }
 
 // asCollection tries to return the given bucket as a Collection.

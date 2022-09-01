@@ -79,6 +79,8 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 			}
 			il.collections[collID] = Database{DatabaseContext: collCtx.CollectionCtx, user: nil}
 		}
+	} else {
+		il.collections[0x0] = Database{DatabaseContext: dbContext, user: nil}
 	}
 
 	feedArgs := sgbucket.FeedArguments{
