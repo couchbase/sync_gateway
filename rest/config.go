@@ -532,6 +532,39 @@ func (dbConfig *DbConfig) validatePersistentDbConfig() (errorMessages error) {
 	return multiError.ErrorOrNil()
 }
 
+// validateConfigUpdate combines the results of validate and validateChanges.
+func (dbConfig *DbConfig) validateConfigUpdate(ctx context.Context, old db.DatabaseContextOptions, validateOIDCConfig bool) error {
+	err := dbConfig.validate(ctx, validateOIDCConfig)
+	var multiErr *base.MultiError
+	if !errors.As(err, &multiErr) {
+		multiErr = multiErr.Append(err)
+	}
+	multiErr = multiErr.Append(dbConfig.validateChanges(ctx, old))
+	return multiErr.ErrorOrNil()
+}
+
+// validateChanges compares the current DbConfig with the "old" config, and returns an error if any disallowed changes
+// are attempted.
+func (dbConfig *DbConfig) validateChanges(ctx context.Context, old db.DatabaseContextOptions) error {
+	if len(dbConfig.Scopes) != len(old.Scopes) {
+		return fmt.Errorf("cannot change scopes after database creation")
+	}
+	if len(dbConfig.Scopes) > 0 {
+		// Collections Phase 1/2 permits only one scope
+		var newScope, oldScope string
+		for name := range dbConfig.Scopes {
+			newScope = name
+		}
+		for name := range old.Scopes {
+			oldScope = name
+		}
+		if newScope != oldScope {
+			return fmt.Errorf("cannot change scopes after database creation")
+		}
+	}
+	return nil
+}
+
 func (dbConfig *DbConfig) validate(ctx context.Context, validateOIDCConfig bool) error {
 	return dbConfig.validateVersion(ctx, base.IsEnterpriseEdition(), validateOIDCConfig)
 }

@@ -301,3 +301,67 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 	_, err := rt.waitForChanges(1, "/db/_changes", username, false)
 	require.NoError(t, err)
 }
+
+func TestCollectionsChangeConfigScope(t *testing.T) {
+	base.TestRequiresCollections(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+	err := base.CreateBucketScopesAndCollections(base.TestCtx(t), tb.BucketSpec, map[string][]string{
+		"fooScope": {
+			"bar",
+		},
+		"quxScope": {
+			"quux",
+		},
+	})
+	require.NoError(t, err)
+
+	serverErr := make(chan error)
+	config := bootstrapStartupConfigForTest(t)
+	sc, err := setupServerContext(&config, true)
+	require.NoError(t, err)
+	defer func() {
+		sc.Close()
+		require.NoError(t, <-serverErr)
+	}()
+
+	go func() {
+		serverErr <- startServer(&config, sc)
+	}()
+	require.NoError(t, sc.waitForRESTAPIs())
+
+	// Create a DB configured with one scope
+	res := bootstrapAdminRequest(t, http.MethodPut, "/db/", string(mustMarshalJSON(t, map[string]any{
+		"bucket":                      tb.GetName(),
+		"num_index_replicas":          0,
+		"enable_shared_bucket_access": base.TestUseXattrs(),
+		"use_views":                   base.TestsDisableGSI(),
+		"scopes": ScopesConfig{
+			"fooScope": {
+				Collections: CollectionsConfig{
+					"bar": {},
+				},
+			},
+		},
+	})))
+	require.Equal(t, http.StatusCreated, res.StatusCode, "failed to create DB")
+
+	// Try updating its scopes
+	res = bootstrapAdminRequest(t, http.MethodPut, "/db/_config", string(mustMarshalJSON(t, map[string]any{
+		"bucket":                      tb.GetName(),
+		"num_index_replicas":          0,
+		"enable_shared_bucket_access": base.TestUseXattrs(),
+		"use_views":                   base.TestsDisableGSI(),
+		"scopes": ScopesConfig{
+			"quxScope": {
+				Collections: CollectionsConfig{
+					"quux": {},
+				},
+			},
+		},
+	})))
+	base.RequireAllAssertions(t,
+		assert.Equal(t, http.StatusBadRequest, res.StatusCode, "should not be able to change scope"),
+		assert.Contains(t, res.Body, "cannot change scopes after database creation"),
+	)
+}
