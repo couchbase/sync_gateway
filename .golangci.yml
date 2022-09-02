@@ -11,7 +11,6 @@
 linters:
   enable:
     - bodyclose # checks whether HTTP response body is closed successfully
-    - deadcode # Finds unused code
     - dupl # Tool for code clone detection
     - errcheck # Errcheck is a program for checking for unchecked errors in go programs. These unchecked errors can be critical bugs in some cases
     - goconst # Finds repeated strings that could be replaced by a constant
@@ -29,7 +28,7 @@ linters:
     - typecheck # Like the front-end of a Go compiler, parses and type-checks Go code
     - unconvert # Remove unnecessary type conversions
     - unparam # Reports unused function parameters
-    - varcheck # Finds unused global variables and constants
+    - unused
   disable:
     - asciicheck # Simple linter to check that your code does not contain non-ASCII identifiers
     - depguard # Go linter that checks if package imports are in a list of acceptable packages
@@ -54,7 +53,6 @@ linters:
     - scopelint # Scopelint checks for unpinned variables in go programs
     - stylecheck # Stylecheck is a replacement for golint
     - testpackage # linter that makes you use a separate _test package
-    - unused # (megacheck) Checks Go code for unused constants, variables, functions and types
     - whitespace # Tool for detection of leading and trailing whitespace
     - wsl # Whitespace Linter - Forces you to use empty lines!
 
