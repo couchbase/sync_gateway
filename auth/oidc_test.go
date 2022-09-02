@@ -33,7 +33,7 @@ import (
 	"gopkg.in/square/go-jose.v2/jwt"
 )
 
-// oidcProviderForTest automatically stops the prover once the test has stopped.
+// oidcProviderForTest automatically stops the provider once the test has stopped.
 func oidcProviderForTest(t *testing.T, op *OIDCProvider) *OIDCProvider {
 	t.Cleanup(op.stopDiscoverySync)
 	return op
