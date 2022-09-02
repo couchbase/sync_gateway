@@ -50,20 +50,20 @@ var kTestGraphQLConfig = GraphQLConfig{
 					 if (Object.keys(args).length != 1) throw "Unexpected args";
 					 if (Object.keys(info) != "resultFields") throw "Unexpected info";
 					 if (!context.user) throw "Missing context.user";
-					 if (!context.app) throw "Missing context.app";
-					 return context.app.func("getTask", {id: args.id});`,
+					 if (!context.admin) throw "Missing context.admin";
+					 return context.user.func("getTask", {id: args.id});`,
 			"tasks": `if (Object.keys(parent).length != 0) throw "Unexpected parent";
 		  			  if (Object.keys(args).length != 0) throw "Unexpected args";
 					  if (Object.keys(info) != "resultFields") throw "Unexpected info";
 					  if (!context.user) throw "Missing context.user";
-					  if (!context.app) throw "Missing context.app";
-					  return context.app.func("all");`,
+					  if (!context.admin) throw "Missing context.admin";
+					  return context.user.func("all");`,
 			"toDo": `if (Object.keys(parent).length != 0) throw "Unexpected parent";
 					 if (Object.keys(args).length != 1) throw "Unexpected args";
 					 if (Object.keys(info) != "resultFields") throw "Unexpected info";
 					 if (!context.user) throw "Missing context.user";
-					 if (!context.app) throw "Missing context.app";
-					 var result=new Array(); var all = context.app.func("all");
+					 if (!context.admin) throw "Missing context.admin";
+					 var result=new Array(); var all = context.user.func("all");
 					 for (var i = 0; i < all.length; i++)
 						if (!all[i].done) result.push(all[i]);
 					 return result;`,
@@ -73,12 +73,12 @@ var kTestGraphQLConfig = GraphQLConfig{
 						 if (Object.keys(args).length != 1) throw "Unexpected args";
 						 if (Object.keys(info) != "resultFields") throw "Unexpected info";
 						 if (!context.user) throw "Missing context.user";
-						 if (!context.app) throw "Missing context.app";
-						 var task = context.app.func("getTask", {id: args.id});
+						 if (!context.admin) throw "Missing context.admin";
+						 var task = context.user.func("getTask", {id: args.id});
 						 if (!task) return undefined;
 						 task.done = true;
 						 return task;`,
-			"addTag": `var task = context.app.func("getTask", {id: args.id});
+			"addTag": `var task = context.user.func("getTask", {id: args.id});
 						 if (!task) return undefined;
 						 var tags = Array.from(task.tags);
 						 tags.push(args.tag);
@@ -90,8 +90,8 @@ var kTestGraphQLConfig = GraphQLConfig{
 							if (Object.keys(args).length != 0) throw "Unexpected args";
 							if (Object.keys(info) != "resultFields") throw "Unexpected info";
 							if (!context.user) throw "Missing context.user";
-							if (!context.app) throw "Missing context.app";
-							context.user.requireAdmin();
+							if (!context.admin) throw "Missing context.admin";
+							context.requireAdmin();
 							return "TOP SECRET!";`,
 		},
 	},
@@ -107,7 +107,7 @@ var kTestGraphQLUserFunctionsConfig = UserFunctionConfigMap{
 		Allow: &UserQueryAllow{Channels: []string{"*"}},
 	},
 	"getTask": &UserFunctionConfig{
-		SourceCode: `var all = context.app.func("all");
+		SourceCode: `var all = context.user.func("all");
 					for (var i = 0; i < all.length; i++)
 			 		 	if (all[i].id == args.id) return all[i];
 					return undefined;`,

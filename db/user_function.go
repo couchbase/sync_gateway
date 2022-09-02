@@ -43,7 +43,7 @@ func compileUserFunctions(config UserFunctionConfigMap) (UserFunctions, error) {
 	fns := UserFunctions{}
 	var multiError *base.MultiError
 	for name, fnConfig := range config {
-		compiled, err := newUserFunctionJSServer(name, "user function", "args, context", fnConfig.SourceCode)
+		compiled, err := newUserFunctionJSServer(name, "user function", "args", fnConfig.SourceCode)
 		if err == nil {
 			fns[name] = UserFunction{
 				UserFunctionConfig: fnConfig,
@@ -90,6 +90,6 @@ func (db *Database) CallUserFunction(name string, args map[string]interface{}, m
 	// Run the function:
 	return fn.compiled.WithTask(func(task sgbucket.JSServerTask) (result interface{}, err error) {
 		runner := task.(*userJSRunner)
-		return runner.CallWithDB(db, mutationAllowed, args, newUserFunctionJSContext(db))
+		return runner.CallWithDB(db, mutationAllowed, newUserFunctionJSContext(db), args)
 	})
 }

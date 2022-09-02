@@ -46,7 +46,7 @@ func newUserFunctionJSServer(name string, what string, argList string, sourceCod
 }
 
 func newUserFunctionJSContext(db *Database) map[string]interface{} {
-	return map[string]interface{}{"user": makeUserCtx(db.user)}
+	return makeUserCtx(db.user)
 }
 
 // An object that runs a user JavaScript function or a GraphQL resolver.
@@ -81,14 +81,16 @@ func newUserJavaScriptRunner(name string, kind string, funcSource string) (*user
 	runner.DefineNativeFunction("_func", func(call otto.FunctionCall) otto.Value {
 		funcName := ottoStringParam(call, 0, "app.func")
 		params := ottoObjectParam(call, 1, true, "app.func")
-		result, err := runner.do_func(funcName, params)
+		sudo := ottoBoolParam(call, 2)
+		result, err := runner.do_func(funcName, params, sudo)
 		return ottoJSONResult(call, result, err)
 	})
 
 	// Implementation of the 'get(docID)' callback:
 	runner.DefineNativeFunction("_get", func(call otto.FunctionCall) otto.Value {
 		docID := ottoStringParam(call, 0, "app.get")
-		doc, err := runner.do_get(docID, nil)
+		sudo := ottoBoolParam(call, 1)
+		doc, err := runner.do_get(docID, nil, sudo)
 		return ottoJSONResult(call, doc, err)
 	})
 
@@ -96,7 +98,8 @@ func newUserJavaScriptRunner(name string, kind string, funcSource string) (*user
 	runner.DefineNativeFunction("_graphql", func(call otto.FunctionCall) otto.Value {
 		query := ottoStringParam(call, 0, "app.graphql")
 		params := ottoObjectParam(call, 1, true, "app.graphql")
-		result, err := runner.do_graphql(query, params)
+		sudo := ottoBoolParam(call, 2)
+		result, err := runner.do_graphql(query, params, sudo)
 		return ottoJSONResult(call, result, err)
 	})
 
@@ -104,7 +107,8 @@ func newUserJavaScriptRunner(name string, kind string, funcSource string) (*user
 	runner.DefineNativeFunction("_query", func(call otto.FunctionCall) otto.Value {
 		queryName := ottoStringParam(call, 0, "app.query")
 		params := ottoObjectParam(call, 1, true, "app.query")
-		result, err := runner.do_query(queryName, params)
+		sudo := ottoBoolParam(call, 2)
+		result, err := runner.do_query(queryName, params, sudo)
 		return ottoJSONResult(call, result, err)
 	})
 
@@ -112,7 +116,8 @@ func newUserJavaScriptRunner(name string, kind string, funcSource string) (*user
 	runner.DefineNativeFunction("_save", func(call otto.FunctionCall) otto.Value {
 		docID := ottoStringParam(call, 0, "app.save")
 		doc := ottoObjectParam(call, 1, false, "app.save")
-		err := runner.do_save(docID, doc)
+		sudo := ottoBoolParam(call, 2)
+		err := runner.do_save(docID, doc, sudo)
 		return ottoResult(call, nil, err)
 	})
 
@@ -199,14 +204,24 @@ func (runner *userJSRunner) convertError(err error) error {
 //////// DATABASE CALLBACK FUNCTION IMPLEMENTATIONS:
 
 // Implementation of JS `app.func(name, params)` function
-func (runner *userJSRunner) do_func(funcName string, params map[string]interface{}) (interface{}, error) {
+func (runner *userJSRunner) do_func(funcName string, params map[string]interface{}, sudo bool) (interface{}, error) {
+	if sudo {
+		user := runner.currentDB.user
+		runner.currentDB.user = nil
+		defer func() { runner.currentDB.user = user }()
+	}
 	return runner.currentDB.CallUserFunction(funcName, params, runner.mutationAllowed)
 }
 
 // Implementation of JS `app.get(docID, docType)` function
-func (runner *userJSRunner) do_get(docID string, docType *string) (interface{}, error) {
+func (runner *userJSRunner) do_get(docID string, docType *string, sudo bool) (interface{}, error) {
 	if err := runner.currentDB.CheckTimeout(); err != nil {
 		return nil, err
+	}
+	if sudo {
+		user := runner.currentDB.user
+		runner.currentDB.user = nil
+		defer func() { runner.currentDB.user = user }()
 	}
 	rev, err := runner.currentDB.GetRev(docID, "", false, nil)
 	if err != nil {
@@ -230,12 +245,22 @@ func (runner *userJSRunner) do_get(docID string, docType *string) (interface{}, 
 }
 
 // Implementation of JS `app.graphql(query, params)` function
-func (runner *userJSRunner) do_graphql(query string, params map[string]interface{}) (interface{}, error) {
+func (runner *userJSRunner) do_graphql(query string, params map[string]interface{}, sudo bool) (interface{}, error) {
+	if sudo {
+		user := runner.currentDB.user
+		runner.currentDB.user = nil
+		defer func() { runner.currentDB.user = user }()
+	}
 	return runner.currentDB.UserGraphQLQuery(query, "", params, runner.mutationAllowed)
 }
 
 // Implementation of JS `app.query(name, params)` function
-func (runner *userJSRunner) do_query(queryName string, params map[string]interface{}) ([]interface{}, error) {
+func (runner *userJSRunner) do_query(queryName string, params map[string]interface{}, sudo bool) ([]interface{}, error) {
+	if sudo {
+		user := runner.currentDB.user
+		runner.currentDB.user = nil
+		defer func() { runner.currentDB.user = user }()
+	}
 
 	rows, err := runner.currentDB.UserN1QLQuery(queryName, params)
 	if err != nil {
@@ -257,12 +282,17 @@ func (runner *userJSRunner) do_query(queryName string, params map[string]interfa
 }
 
 // Implementation of JS `app.save(docID, body)` function
-func (runner *userJSRunner) do_save(docID string, body map[string]interface{}) error {
+func (runner *userJSRunner) do_save(docID string, body map[string]interface{}, sudo bool) error {
 	if err := runner.currentDB.CheckTimeout(); err != nil {
 		return err
 	}
 	if !runner.mutationAllowed {
 		return base.HTTPErrorf(http.StatusForbidden, "a read-only request is not allowed to mutate the database")
+	}
+	if sudo {
+		user := runner.currentDB.user
+		runner.currentDB.user = nil
+		defer func() { runner.currentDB.user = user }()
 	}
 
 	delete(body, "_id")
@@ -300,13 +330,18 @@ func (runner *userJSRunner) do_save(docID string, body map[string]interface{}) e
 //////// OTTO UTILITIES:
 
 // Returns a parameter of `call` as a Go string, or throws a JS exception if it's not a string.
+func ottoBoolParam(call otto.FunctionCall, arg int) bool {
+	result, _ := call.Argument(arg).ToBoolean()
+	return result
+}
+
+// Returns a parameter of `call` as a Go string, or throws a JS exception if it's not a string.
 func ottoStringParam(call otto.FunctionCall, arg int, what string) string {
 	val := call.Argument(arg)
 	if !val.IsString() {
 		panic(call.Otto.MakeTypeError(fmt.Sprintf("%s() param %d must be a string", what, arg+1)))
 	}
 	return val.String()
-
 }
 
 // Returns a parameter of `call` as a Go map, or throws a JS exception if it's not a map.

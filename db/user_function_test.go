@@ -33,7 +33,7 @@ var kUserFunctionConfig = UserFunctionConfigMap{
 		Allow:      allowAll,
 	},
 	"call_fn": &UserFunctionConfig{
-		SourceCode: `return context.app.func("square", {numero: 7});`,
+		SourceCode: `return context.user.func("square", {numero: 7});`,
 		Allow:      allowAll,
 	},
 	"great_and_terrible": &UserFunctionConfig{
@@ -41,7 +41,11 @@ var kUserFunctionConfig = UserFunctionConfigMap{
 		Allow:      &UserQueryAllow{Channels: []string{"oz", "narnia"}},
 	},
 	"call_forbidden": &UserFunctionConfig{
-		SourceCode: `return context.app.func("great_and_terrible");`,
+		SourceCode: `return context.user.func("great_and_terrible");`,
+		Allow:      allowAll,
+	},
+	"sudo_call_forbidden": &UserFunctionConfig{
+		SourceCode: `return context.admin.func("great_and_terrible");`,
 		Allow:      allowAll,
 	},
 	"admin_only": &UserFunctionConfig{
@@ -49,7 +53,7 @@ var kUserFunctionConfig = UserFunctionConfigMap{
 		Allow:      nil, // no 'allow' property means admin-only
 	},
 	"require_admin": &UserFunctionConfig{
-		SourceCode: `context.user.requireAdmin(); return "OK";`,
+		SourceCode: `context.requireAdmin(); return "OK";`,
 		Allow:      allowAll,
 	},
 	"user_only": &UserFunctionConfig{
@@ -57,37 +61,37 @@ var kUserFunctionConfig = UserFunctionConfigMap{
 		Allow:      &UserQueryAllow{Channels: []string{"user-$(context.user.name)"}},
 	},
 	"alice_only": &UserFunctionConfig{
-		SourceCode: `context.user.requireName("alice"); return "OK";`,
+		SourceCode: `context.requireUser("alice"); return "OK";`,
 		Allow:      allowAll,
 	},
 	"pevensies_only": &UserFunctionConfig{
-		SourceCode: `context.user.requireName(["peter","jane","eustace","lucy"]); return "OK";`,
+		SourceCode: `context.requireUser(["peter","jane","eustace","lucy"]); return "OK";`,
 		Allow:      allowAll,
 	},
 	"wonderland_only": &UserFunctionConfig{
-		SourceCode: `context.user.requireAccess("wonderland"); context.user.requireAccess(["wonderland", "snark"]); return "OK";`,
+		SourceCode: `context.requireAccess("wonderland"); context.requireAccess(["wonderland", "snark"]); return "OK";`,
 		Allow:      allowAll,
 	},
 	"narnia_only": &UserFunctionConfig{
-		SourceCode: `context.user.requireAccess("narnia"); return "OK";`,
+		SourceCode: `context.requireAccess("narnia"); return "OK";`,
 		Allow:      allowAll,
 	},
 	"hero_only": &UserFunctionConfig{
-		SourceCode: `context.user.requireRole(["hero", "antihero"]); return "OK";`,
+		SourceCode: `context.requireRole(["hero", "antihero"]); return "OK";`,
 		Allow:      allowAll,
 	},
 	"villain_only": &UserFunctionConfig{
-		SourceCode: `context.user.requireRole(["villain"]); return "OK";`,
+		SourceCode: `context.requireRole(["villain"]); return "OK";`,
 		Allow:      allowAll,
 	},
 
 	"getDoc": &UserFunctionConfig{
-		SourceCode: `return context.app.get(args.docID);`,
+		SourceCode: `return context.user.defaultCollection.get(args.docID);`,
 		Parameters: []string{"docID"},
 		Allow:      allowAll,
 	},
 	"putDoc": &UserFunctionConfig{
-		SourceCode: `return context.app.save(args.docID, args.doc);`,
+		SourceCode: `return context.user.defaultCollection.save(args.docID, args.doc);`,
 		Parameters: []string{"docID", "doc"},
 		Allow:      allowAll,
 	},
@@ -149,7 +153,7 @@ func testUserFunctionsCommon(t *testing.T, db *Database) {
 	assert.NoError(t, err)
 	assert.EqualValues(t, 7*7, result)
 
-	// `requireName` test that passes:
+	// `requireUser` test that passes:
 	result, err = db.CallUserFunction("alice_only", nil, true)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "OK", result)
@@ -232,6 +236,10 @@ func testUserFunctionsAsUser(t *testing.T, db *Database) {
 	result, err := db.CallUserFunction("user_only", nil, true)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "alice", result)
+
+	// Checking `context.admin.func`
+	_, err = db.CallUserFunction("sudo_call_forbidden", nil, true)
+	assert.NoError(t, err)
 
 	// No such function:
 	_, err = db.CallUserFunction("xxxx", nil, true)
