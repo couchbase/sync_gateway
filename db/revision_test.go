@@ -111,7 +111,7 @@ func TestBackupOldRevision(t *testing.T) {
 
 	docID := t.Name()
 
-	rev1ID, _, err := db.Put(docID, Body{"test": true})
+	rev1ID, _, err := db.Put(ctx, docID, Body{"test": true})
 	require.NoError(t, err)
 
 	// make sure we didn't accidentally store an empty old revision
@@ -130,7 +130,7 @@ func TestBackupOldRevision(t *testing.T) {
 
 	// create rev 2 and check backups for both revs
 	rev2ID := "2-abc"
-	_, _, err = db.PutExistingRevWithBody(docID, Body{"test": true, "updated": true}, []string{rev2ID, rev1ID}, true)
+	_, _, err = db.PutExistingRevWithBody(ctx, docID, Body{"test": true, "updated": true}, []string{rev2ID, rev1ID}, true)
 	require.NoError(t, err)
 
 	// now in all cases we'll have rev 1 backed up (for at least 5 minutes)

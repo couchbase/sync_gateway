@@ -3014,9 +3014,9 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	err = rt2.Bucket().Set(checkpointDocID, 0, nil, firstCheckpoint)
 	assert.NoError(t, err)
 
-	rt2db, err := db.GetDatabase(ctx2, rt2.GetDatabase(), nil)
+	rt2db, err := db.GetDatabase(rt2.GetDatabase(), nil)
 	require.NoError(t, err)
-	err = rt2db.Purge(docID + "2")
+	err = rt2db.Purge(ctx2, docID+"2")
 	assert.NoError(t, err)
 
 	require.NoError(t, rt2.GetDatabase().FlushChannelCache(ctx2))

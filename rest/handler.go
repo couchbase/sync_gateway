@@ -453,7 +453,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	// Now set the request's Database (i.e. context + user)
 	if dbContext != nil {
 		h.keyspaceScope, h.keyspaceCollection = *keyspaceScope, *keyspaceCollection
-		h.db, err = db.GetDatabase(h.ctx(), dbContext, h.user)
+		h.db, err = db.GetDatabase(dbContext, h.user)
 		if err != nil {
 			return err
 		}
@@ -1208,7 +1208,7 @@ func (h *handler) writeError(err error) {
 		if status >= 500 {
 			// Log additional context when the handler has a database reference
 			if h.db != nil {
-				base.ErrorfCtx(h.db.Ctx, "%s: %v", h.formatSerialNumber(), err)
+				base.ErrorfCtx(h.ctx(), "%s: %v", h.formatSerialNumber(), err)
 			} else {
 				base.ErrorfCtx(h.ctx(), "%s: %v", h.formatSerialNumber(), err)
 			}

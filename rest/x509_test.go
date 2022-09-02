@@ -94,6 +94,7 @@ func TestAttachmentCompactionRun(t *testing.T) {
 
 	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb, useTLSServer: true})
 	defer rt.Close()
+	ctx := rt.Context()
 
 	for i := 0; i < 20; i++ {
 		docID := fmt.Sprintf("testDoc-%d", i)
@@ -101,7 +102,7 @@ func TestAttachmentCompactionRun(t *testing.T) {
 		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
 		assert.NoError(t, err)
-		CreateLegacyAttachmentDoc(t, &db.Database{DatabaseContext: rt.GetDatabase()}, docID, []byte("{}"), attID, attJSONBody)
+		CreateLegacyAttachmentDoc(t, ctx, &db.Database{DatabaseContext: rt.GetDatabase()}, docID, []byte("{}"), attID, attJSONBody)
 	}
 
 	resp := rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")

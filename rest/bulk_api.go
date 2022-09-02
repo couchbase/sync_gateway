@@ -129,7 +129,7 @@ func (h *handler) handleAllDocs() error {
 
 		if explicitDocIDs != nil || includeDocs || includeAccess {
 			// Fetch the document body and other metadata that lives with it:
-			bodyBytes, channelSet, access, roleAccess, _, _, currentRevID, removed, err := h.db.Get1xRevAndChannels(doc.DocID, doc.RevID, includeRevs)
+			bodyBytes, channelSet, access, roleAccess, _, _, currentRevID, removed, err := h.db.Get1xRevAndChannels(h.ctx(), doc.DocID, doc.RevID, includeRevs)
 			if err != nil {
 				row.Status, _ = base.ErrorAsHTTPStatus(err)
 				return row
@@ -216,7 +216,7 @@ func (h *handler) handleAllDocs() error {
 
 		}
 	} else {
-		if err := h.db.ForEachDocID(writeDoc, options); err != nil {
+		if err := h.db.ForEachDocID(h.ctx(), writeDoc, options); err != nil {
 			return err
 		}
 	}
@@ -421,7 +421,7 @@ func (h *handler) handleBulkGet() error {
 			}
 
 			if err == nil {
-				body, err = h.db.Get1xRevBodyWithHistory(docid, revid, docRevsLimit, revsFrom, attsSince, showExp)
+				body, err = h.db.Get1xRevBodyWithHistory(h.ctx(), docid, revid, docRevsLimit, revsFrom, attsSince, showExp)
 			}
 
 			if err != nil {
@@ -496,9 +496,9 @@ func (h *handler) handleBulkDocs() error {
 		var revid string
 		if newEdits {
 			if docid != "" {
-				revid, _, err = h.db.Put(docid, doc)
+				revid, _, err = h.db.Put(h.ctx(), docid, doc)
 			} else {
-				docid, revid, _, err = h.db.Post(doc)
+				docid, revid, _, err = h.db.Post(h.ctx(), doc)
 			}
 		} else {
 			revisions := db.ParseRevisions(doc)
@@ -506,7 +506,7 @@ func (h *handler) handleBulkDocs() error {
 				err = base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 			} else {
 				revid = revisions[0]
-				_, _, err = h.db.PutExistingRevWithBody(docid, doc, revisions, false)
+				_, _, err = h.db.PutExistingRevWithBody(h.ctx(), docid, doc, revisions, false)
 			}
 		}
 

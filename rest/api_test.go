@@ -2466,12 +2466,12 @@ func TestChannelAccessChanges(t *testing.T) {
 	// be changed while the database is in use (only when it's re-opened) but for testing purposes
 	// we do it now because we can't close and re-open an ephemeral Walrus database.
 	dbc := rt.ServerContext().Database(ctx, "db")
-	database, _ := db.GetDatabase(ctx, dbc, nil)
+	database, _ := db.GetDatabase(dbc, nil)
 
-	changed, err := database.UpdateSyncFun(`function(doc) {access("alice", "beta");channel("beta");}`)
+	changed, err := database.UpdateSyncFun(ctx, `function(doc) {access("alice", "beta");channel("beta");}`)
 	assert.NoError(t, err)
 	assert.True(t, changed)
-	changeCount, err := database.UpdateAllDocChannels(false, func(docsProcessed, docsChanged *int) {}, base.NewSafeTerminator())
+	changeCount, err := database.UpdateAllDocChannels(ctx, false, func(docsProcessed, docsChanged *int) {}, base.NewSafeTerminator())
 	assert.NoError(t, err)
 	assert.Equal(t, 9, changeCount)
 
@@ -7780,22 +7780,23 @@ func TestUserHasDocAccessDocNotFound(t *testing.T) {
 		}},
 	})
 	defer rt.Close()
+	ctx := rt.Context()
 
 	resp := rt.SendAdminRequest("PUT", "/db/doc", `{"channels": ["A"]}`)
 	requireStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
 
-	database, err := db.CreateDatabase(rt.Context(), rt.GetDatabase())
+	database, err := db.CreateDatabase(rt.GetDatabase())
 	assert.NoError(t, err)
 
-	userHasDocAccess, err := db.UserHasDocAccess(database, "doc", revID)
+	userHasDocAccess, err := db.UserHasDocAccess(ctx, database, "doc", revID)
 	assert.NoError(t, err)
 	assert.True(t, userHasDocAccess)
 
 	err = rt.GetDatabase().Bucket.Delete("doc")
 	assert.NoError(t, err)
 
-	userHasDocAccess, err = db.UserHasDocAccess(database, "doc", revID)
+	userHasDocAccess, err = db.UserHasDocAccess(ctx, database, "doc", revID)
 	assert.NoError(t, err)
 	assert.False(t, userHasDocAccess)
 }

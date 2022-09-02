@@ -81,6 +81,7 @@ func TestMigrateMetadata(t *testing.T) {
 
 	// Call migrateMeta with stale args that have old stale expiry
 	_, _, err = db.migrateMetadata(
+		ctx,
 		key,
 		body,
 		existingBucketDoc,
@@ -178,7 +179,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			require.NoError(t, err)
 
 			// Import the doc (will migrate as part of the import since the doc contains sync meta)
-			_, errImportDoc := db.importDoc(key, body, &expiry, false, existingBucketDoc, ImportOnDemand)
+			_, errImportDoc := db.importDoc(ctx, key, body, &expiry, false, existingBucketDoc, ImportOnDemand)
 			assert.NoError(t, errImportDoc, "Unexpected error")
 
 			// Make sure the doc in the bucket has expected XATTR
@@ -327,7 +328,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 			runOnce = true
 
 			// Trigger import
-			_, err = db.importDoc(testcase.docname, bodyD, nil, false, existingBucketDoc, ImportOnDemand)
+			_, err = db.importDoc(ctx, testcase.docname, bodyD, nil, false, existingBucketDoc, ImportOnDemand)
 			assert.NoError(t, err)
 
 			// Check document has the rev and new body
@@ -396,7 +397,7 @@ func TestImportNullDoc(t *testing.T) {
 	existingDoc := &sgbucket.BucketDocument{Body: rawNull, Cas: 1}
 
 	// Import a null document
-	importedDoc, err := db.importDoc(key+"1", body, nil, false, existingDoc, ImportOnDemand)
+	importedDoc, err := db.importDoc(ctx, key+"1", body, nil, false, existingDoc, ImportOnDemand)
 	assert.Equal(t, base.ErrEmptyDocument, err)
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
 }
@@ -411,7 +412,7 @@ func TestImportNullDocRaw(t *testing.T) {
 	// Feed import of null doc
 	exp := uint32(0)
 
-	importedDoc, err := db.ImportDocRaw("TestImportNullDoc", []byte("null"), []byte("{}"), nil, false, 1, &exp, ImportFromFeed)
+	importedDoc, err := db.ImportDocRaw(ctx, "TestImportNullDoc", []byte("null"), []byte("{}"), nil, false, 1, &exp, ImportFromFeed)
 	assert.Equal(t, base.ErrEmptyDocument, err)
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
 }

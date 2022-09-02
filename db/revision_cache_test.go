@@ -187,7 +187,7 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 		"value":       1234,
 		BodyRevisions: "unexpected data",
 	}
-	rev1id, _, err := db.Put("doc1", rev1body)
+	rev1id, _, err := db.Put(ctx, "doc1", rev1body)
 	assert.NoError(t, err, "Put")
 
 	// Get the raw document directly from the bucket, validate _revisions property isn't found
@@ -200,7 +200,7 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 	}
 
 	// Get the doc while still resident in the rev cache w/ history=false, validate _revisions property isn't found
-	body, err := db.Get1xRevBody("doc1", rev1id, false, nil)
+	body, err := db.Get1xRevBody(ctx, "doc1", rev1id, false, nil)
 	assert.NoError(t, err, "Get1xRevBody")
 	badRevisions, ok := body[BodyRevisions]
 	if ok {
@@ -209,7 +209,7 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 
 	// Get the doc while still resident in the rev cache w/ history=true, validate _revisions property is returned with expected
 	// properties ("start", "ids")
-	bodyWithHistory, err := db.Get1xRevBody("doc1", rev1id, true, nil)
+	bodyWithHistory, err := db.Get1xRevBody(ctx, "doc1", rev1id, true, nil)
 	assert.NoError(t, err, "Get1xRevBody")
 	validRevisions, ok := bodyWithHistory[BodyRevisions]
 	if !ok {
@@ -235,12 +235,12 @@ func TestBypassRevisionCache(t *testing.T) {
 		"value": 1234,
 	}
 	key := "doc1"
-	rev1, _, err := db.Put(key, docBody)
+	rev1, _, err := db.Put(ctx, key, docBody)
 	assert.NoError(t, err)
 
 	docBody["_rev"] = rev1
 	docBody["value"] = 5678
-	rev2, _, err := db.Put(key, docBody)
+	rev2, _, err := db.Put(ctx, key, docBody)
 	assert.NoError(t, err)
 
 	bypassStat := base.SgwIntStat{}
@@ -298,7 +298,7 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 		BodyAttachments: map[string]interface{}{"myatt": map[string]interface{}{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
 	}
 	rev1key := "doc1"
-	rev1id, _, err := db.Put(rev1key, rev1body)
+	rev1id, _, err := db.Put(ctx, rev1key, rev1body)
 	assert.NoError(t, err, "Unexpected error calling db.Put")
 
 	// Get the raw document directly from the bucket, validate _attachments property isn't found
@@ -316,7 +316,7 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 	assert.True(t, ok, "'myatt' not found in revcache attachments metadata")
 
 	// db.getRev stamps _attachments back in from revcache Attachment metadata
-	body, err := db.Get1xRevBody(rev1key, rev1id, false, nil)
+	body, err := db.Get1xRevBody(ctx, rev1key, rev1id, false, nil)
 	assert.NoError(t, err, "Unexpected error calling db.Get1xRevBody")
 	atts, ok := body[BodyAttachments]
 	assert.True(t, ok, "_attachments property was not stamped back in body during db.Get1xRevBody: %#v", body)
@@ -339,7 +339,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 	rev1body := Body{
 		"value": 1234,
 	}
-	rev1id, _, err := db.Put(docKey, rev1body)
+	rev1id, _, err := db.Put(ctx, docKey, rev1body)
 	assert.NoError(t, err, "Unexpected error calling db.Put")
 
 	rev2id := "2-xxx"
@@ -347,7 +347,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 		"value":         1235,
 		BodyAttachments: map[string]interface{}{"myatt": map[string]interface{}{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
 	}
-	_, _, err = db.PutExistingRevWithBody(docKey, rev2body, []string{rev2id, rev1id}, false)
+	_, _, err = db.PutExistingRevWithBody(ctx, docKey, rev2body, []string{rev2id, rev1id}, false)
 	assert.NoError(t, err, "Unexpected error calling db.PutExistingRev")
 
 	// Get the raw document directly from the bucket, validate _attachments property isn't found
@@ -365,7 +365,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 	assert.True(t, ok, "'myatt' not found in revcache attachments metadata")
 
 	// db.getRev stamps _attachments back in from revcache Attachment metadata
-	body, err := db.Get1xRevBody(docKey, rev2id, false, nil)
+	body, err := db.Get1xRevBody(ctx, docKey, rev2id, false, nil)
 	assert.NoError(t, err, "Unexpected error calling db.Get1xRevBody")
 	atts, ok := body[BodyAttachments]
 	assert.True(t, ok, "_attachments property was not stamped back in body during db.Get1xRevBody: %#v", body)
@@ -447,7 +447,7 @@ func TestInvalidate(t *testing.T) {
 	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
 	defer db.Close(ctx)
 
-	rev1id, _, err := db.Put("doc", Body{"val": 123})
+	rev1id, _, err := db.Put(ctx, "doc", Body{"val": 123})
 	assert.NoError(t, err)
 
 	docRev, err := db.revisionCache.Get(base.TestCtx(t), "doc", rev1id, true, true)
@@ -470,13 +470,13 @@ func TestInvalidate(t *testing.T) {
 	assert.True(t, docRev.Invalid)
 	assert.Equal(t, int64(2), db.DbStats.Cache().RevisionCacheMisses.Value())
 
-	docRev, err = db.GetRev("doc", docRev.RevID, true, nil)
+	docRev, err = db.GetRev(ctx, "doc", docRev.RevID, true, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, rev1id, docRev.RevID)
 	assert.True(t, docRev.Invalid)
 	assert.Equal(t, int64(3), db.DbStats.Cache().RevisionCacheMisses.Value())
 
-	docRev, err = db.GetRev("doc", "", true, nil)
+	docRev, err = db.GetRev(ctx, "doc", "", true, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, rev1id, docRev.RevID)
 	assert.True(t, docRev.Invalid)

@@ -47,7 +47,7 @@ func (h *handler) handleRevsDiff() error {
 	_, _ = h.response.Write([]byte("{"))
 	first := true
 	for docid, revs := range input {
-		missing, possible := h.db.RevDiff(docid, revs)
+		missing, possible := h.db.RevDiff(h.ctx(), docid, revs)
 		if missing != nil {
 			docOutput := map[string]interface{}{"missing": missing}
 			if possible != nil {
@@ -238,7 +238,7 @@ func (h *handler) handleChanges() error {
 			to = fmt.Sprintf("  (to %s)", h.user.Name())
 		}
 
-		base.DebugfCtx(h.db.Ctx, base.KeyChanges, "Changes POST request.  URL: %v, feed: %v, options: %+v, filter: %v, bychannel: %v, docIds: %v %s",
+		base.DebugfCtx(h.ctx(), base.KeyChanges, "Changes POST request.  URL: %v, feed: %v, options: %+v, filter: %v, bychannel: %v, docIds: %v %s",
 			h.rq.URL, feed, options, filter, base.UD(channelsArray), base.UD(docIdsArray), base.UD(to))
 
 	}
@@ -341,9 +341,9 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 	var feed <-chan *db.ChangeEntry
 	var err error
 	if len(docids) > 0 {
-		feed, err = h.db.DocIDChangesFeed(channels, docids, options)
+		feed, err = h.db.DocIDChangesFeed(h.ctx(), channels, docids, options)
 	} else {
-		feed, err = h.db.MultiChangesFeed(channels, options)
+		feed, err = h.db.MultiChangesFeed(h.ctx(), channels, options)
 	}
 	if err != nil {
 		return err, false
@@ -382,7 +382,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 		if ok {
 			closeNotify = cn.CloseNotify()
 		} else {
-			base.InfofCtx(h.db.Ctx, base.KeyChanges, "simple changes cannot get Close Notifier from ResponseWriter")
+			base.InfofCtx(h.ctx(), base.KeyChanges, "simple changes cannot get Close Notifier from ResponseWriter")
 		}
 
 		encoder := base.JSONEncoderCanonical(h.response)
@@ -409,13 +409,13 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 			case <-heartbeat:
 				_, err = h.response.Write([]byte("\n"))
 				h.flush()
-				base.DebugfCtx(h.db.Ctx, base.KeyChanges, "heartbeat written to _changes feed for request received")
+				base.DebugfCtx(h.ctx(), base.KeyChanges, "heartbeat written to _changes feed for request received")
 			case <-timeout:
 				message = "OK (timeout)"
 				forceClose = true
 				break loop
 			case <-closeNotify:
-				base.InfofCtx(h.db.Ctx, base.KeyChanges, "Connection lost from client")
+				base.InfofCtx(h.ctx(), base.KeyChanges, "Connection lost from client")
 				forceClose = true
 				break loop
 			case <-h.db.ExitChanges:
@@ -443,7 +443,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 func (h *handler) generateContinuousChanges(inChannels base.Set, options db.ChangesOptions, send func([]*db.ChangeEntry) error) (error, bool) {
 	// Ensure continuous is set, since generateChanges now supports both continuous and one-shot
 	options.Continuous = true
-	err, forceClose := db.GenerateChanges(h.rq.Context(), h.db, inChannels, options, nil, send)
+	err, forceClose := db.GenerateChanges(h.ctx(), h.rq.Context(), h.db, inChannels, options, nil, send)
 	if sendErr, ok := err.(*db.ChangesSendErr); ok {
 		h.logStatus(http.StatusOK, fmt.Sprintf("0Write error: %v", sendErr))
 		return nil, forceClose // error is probably because the client closed the connection
@@ -487,9 +487,9 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 		h.logStatus(101, "Upgraded to WebSocket protocol")
 		defer func() {
 			if err := conn.Close(); err != nil {
-				base.WarnfCtx(h.db.Ctx, "WebSocket connection (%s) closed with error %v", h.formatSerialNumber(), err)
+				base.WarnfCtx(h.ctx(), "WebSocket connection (%s) closed with error %v", h.formatSerialNumber(), err)
 			}
-			base.InfofCtx(h.db.Ctx, base.KeyHTTP, "%s:     --> WebSocket closed", h.formatSerialNumber())
+			base.InfofCtx(h.ctx(), base.KeyHTTP, "%s:     --> WebSocket closed", h.formatSerialNumber())
 		}()
 
 		// Read changes-feed options from an initial incoming WebSocket message in JSON format:

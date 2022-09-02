@@ -163,13 +163,14 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 
 	// Get db.Database to perform PurgeOldRevisionJSON
 	dbc := rt.GetDatabase()
-	database, err := db.GetDatabase(rt.Context(), dbc, nil)
+	database, err := db.GetDatabase(dbc, nil)
 	assert.NoError(t, err)
 
+	ctx := rt.Context()
 	for i := 0; i < 10; i++ {
 		updateResponse := rt.updateDoc(docID, revID, fmt.Sprintf(`{"val":%d}`, i))
 		// Purge old revision JSON to simulate expiry, and to verify import doesn't attempt multiple retrievals
-		purgeErr := database.PurgeOldRevisionJSON(docID, revID)
+		purgeErr := database.PurgeOldRevisionJSON(ctx, docID, revID)
 		assert.NoError(t, purgeErr)
 		revID = updateResponse.Rev
 	}

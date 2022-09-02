@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -58,13 +59,14 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create some legacy attachments to be marked but not compacted
+	ctx := rt.Context()
 	for i := 0; i < 20; i++ {
 		docID := fmt.Sprintf("testDoc-%d", i)
 		attID := fmt.Sprintf("testAtt-%d", i)
 		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
 		require.NoError(t, err)
-		CreateLegacyAttachmentDoc(t, &db.Database{DatabaseContext: rt.GetDatabase()}, docID, []byte("{}"), attID, attJSONBody)
+		CreateLegacyAttachmentDoc(t, ctx, &db.Database{DatabaseContext: rt.GetDatabase()}, docID, []byte("{}"), attID, attJSONBody)
 	}
 
 	// Create some 'unmarked' attachments
@@ -284,6 +286,7 @@ func TestAttachmentCompactionInvalidDocs(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
+	ctx := rt.Context()
 
 	// Create a raw binary doc
 	_, err := rt.Bucket().AddRaw("binary", 0, []byte("binary doc"))
@@ -296,7 +299,7 @@ func TestAttachmentCompactionInvalidDocs(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Also create an actual legacy attachment to ensure they are still processed
-	CreateLegacyAttachmentDoc(t, &db.Database{DatabaseContext: rt.GetDatabase()}, "docID", []byte("{}"), "attKey", []byte("{}"))
+	CreateLegacyAttachmentDoc(t, ctx, &db.Database{DatabaseContext: rt.GetDatabase()}, "docID", []byte("{}"), "attKey", []byte("{}"))
 
 	// Create attachment with no doc reference
 	err = rt.GetDatabase().Bucket.SetRaw(base.AttPrefix+"test", 0, nil, []byte("{}"))
@@ -362,6 +365,7 @@ func TestAttachmentCompactionAbort(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
+	ctx := rt.Context()
 
 	for i := 0; i < 1000; i++ {
 		docID := fmt.Sprintf("testDoc-%d", i)
@@ -369,7 +373,7 @@ func TestAttachmentCompactionAbort(t *testing.T) {
 		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
 		assert.NoError(t, err)
-		CreateLegacyAttachmentDoc(t, &db.Database{DatabaseContext: rt.GetDatabase()}, docID, []byte("{}"), attID, attJSONBody)
+		CreateLegacyAttachmentDoc(t, ctx, &db.Database{DatabaseContext: rt.GetDatabase()}, docID, []byte("{}"), attID, attJSONBody)
 	}
 
 	resp := rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
@@ -398,7 +402,7 @@ func (rt *RestTester) WaitForAttachmentCompactionStatus(t *testing.T, state db.B
 	return response
 }
 
-func CreateLegacyAttachmentDoc(t *testing.T, testDB *db.Database, docID string, body []byte, attID string, attBody []byte) string {
+func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, testDB *db.Database, docID string, body []byte, attID string, attBody []byte) string {
 	if !base.TestUseXattrs() {
 		t.Skip("Requires xattrs")
 	}
@@ -413,7 +417,7 @@ func CreateLegacyAttachmentDoc(t *testing.T, testDB *db.Database, docID string, 
 	err = base.JSONUnmarshal(body, &unmarshalledBody)
 	require.NoError(t, err)
 
-	_, _, err = testDB.Put(docID, unmarshalledBody)
+	_, _, err = testDB.Put(ctx, docID, unmarshalledBody)
 	require.NoError(t, err)
 
 	_, err = testDB.Bucket.WriteUpdateWithXattr(docID, base.SyncXattrName, "", 0, nil, nil, func(doc []byte, xattr []byte, userXattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, err error) {

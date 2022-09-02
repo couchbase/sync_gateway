@@ -4692,9 +4692,10 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 	err := activeRT.GetDatabase().SGReplicateMgr.StartReplications()
 	require.NoError(t, err)
 
-	database, err := db.CreateDatabase(activeRT.Context(), activeRT.GetDatabase())
+	activeCtx := activeRT.Context()
+	database, err := db.CreateDatabase(activeRT.GetDatabase())
 	require.NoError(t, err)
-	rev, doc, err := database.Put("test", db.Body{})
+	rev, doc, err := database.Put(activeCtx, "test", db.Body{})
 	require.NoError(t, err)
 	seq := strconv.FormatUint(doc.Sequence, 10)
 
@@ -4999,6 +5000,7 @@ func TestTombstoneCompactionPurgeInterval(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	dbc := rt.GetDatabase()
+	ctx := rt.Context()
 
 	cbStore, _ := base.AsCouchbaseStore(rt.Bucket())
 	serverPurgeInterval, err := cbStore.MetadataPurgeInterval()
@@ -5012,9 +5014,8 @@ func TestTombstoneCompactionPurgeInterval(t *testing.T) {
 			setServerPurgeInterval(t, rt, test.newServerInterval)
 
 			// Start compact to modify purge interval
-			ctx := rt.Context()
-			database, _ := db.GetDatabase(ctx, dbc, nil)
-			_, err = database.Compact(false, func(purgedDocCount *int) {}, base.NewSafeTerminator())
+			database, _ := db.GetDatabase(dbc, nil)
+			_, err = database.Compact(ctx, false, func(purgedDocCount *int) {}, base.NewSafeTerminator())
 			require.NoError(t, err)
 
 			// Check purge interval is as expected

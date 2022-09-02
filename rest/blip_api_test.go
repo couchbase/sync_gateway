@@ -853,7 +853,7 @@ function(doc, oldDoc) {
 	user1, err := dbc.Authenticator(ctx).GetUser("user1")
 	require.NoError(t, err)
 
-	userDb, err := db.GetDatabase(ctx, dbc, user1)
+	userDb, err := db.GetDatabase(dbc, user1)
 	require.NoError(t, err)
 
 	userWaiter := userDb.NewUserWaiter()
@@ -1338,7 +1338,7 @@ func TestReloadUser(t *testing.T) {
 	user1, err := dbc.Authenticator(ctx).GetUser("user1")
 	require.NoError(t, err)
 
-	userDb, err := db.GetDatabase(ctx, dbc, user1)
+	userDb, err := db.GetDatabase(dbc, user1)
 	require.NoError(t, err)
 
 	userWaiter := userDb.NewUserWaiter()
@@ -1957,6 +1957,8 @@ func TestGetRemovedDoc(t *testing.T) {
 func TestMissingNoRev(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
 	defer rt.Close()
+	ctx := rt.Context()
+
 	bt, err := NewBlipTesterFromSpecWithRT(t, nil, rt)
 	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
@@ -1973,10 +1975,9 @@ func TestMissingNoRev(t *testing.T) {
 	}
 
 	// Get a reference to the database
-	ctx := rt.Context()
 	targetDbContext, err := rt.ServerContext().GetDatabase(ctx, "db")
 	assert.NoError(t, err, "failed")
-	targetDb, err := db.GetDatabase(ctx, targetDbContext, nil)
+	targetDb, err := db.GetDatabase(targetDbContext, nil)
 	assert.NoError(t, err, "failed")
 
 	// Pull docs, expect to pull 5 docs since none of them has purged yet.
@@ -1986,7 +1987,7 @@ func TestMissingNoRev(t *testing.T) {
 
 	// Purge one doc
 	doc0Id := fmt.Sprintf("doc-%d", 0)
-	err = targetDb.Purge(doc0Id)
+	err = targetDb.Purge(ctx, doc0Id)
 	assert.NoError(t, err, "failed")
 
 	// Flush rev cache
