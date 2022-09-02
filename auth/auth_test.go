@@ -681,14 +681,14 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 
 	var callbackURLFunc OIDCCallbackURLFunc
 	callbackURL := base.StringPtr("http://comcast:4984/_callback")
-	providerGoogle := &OIDCProvider{
+	providerGoogle := oidcProviderForTest(t, &OIDCProvider{
 		Name: "Google",
 		JWTConfigCommon: JWTConfigCommon{
 			ClientID: base.StringPtr("aud1"),
 			Issuer:   issuerGoogleAccounts,
 		},
 		CallbackURL: callbackURL,
-	}
+	})
 
 	// Make an RSA signer for signing tokens
 	signer, err := getRSASigner()
@@ -720,12 +720,13 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 		builder := jwt.Signed(signer).Claims(jwt.Claims{Issuer: issuerGoogleAccounts})
 		token, err := builder.CompactSerialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
-		provider := &OIDCProvider{
+		provider := oidcProviderForTest(t, &OIDCProvider{
 			Name: providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
 				Issuer: issuerGoogleAccounts,
 			},
-			CallbackURL: providerGoogle.CallbackURL}
+			CallbackURL: providerGoogle.CallbackURL,
+		})
 		user, _, expiry, err := auth.AuthenticateTrustedJWT(token, provider, callbackURLFunc)
 		assert.Error(t, err, "Error checking clientID config")
 		assert.Nil(t, user, "User shouldn't be created or retrieved")
@@ -733,7 +734,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	})
 
 	t.Run("issuer mismatch google provider valid token", func(t *testing.T) {
-		provider := &OIDCProvider{
+		provider := oidcProviderForTest(t, &OIDCProvider{
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
@@ -742,7 +743,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 				ClientID: base.StringPtr("aud1"),
 			},
 			AllowUnsignedProviderTokens: true,
-		}
+		})
 		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
@@ -765,7 +766,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	})
 
 	t.Run("issuer mismatch google provider invalid token", func(t *testing.T) {
-		provider := &OIDCProvider{
+		provider := oidcProviderForTest(t, &OIDCProvider{
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
@@ -773,7 +774,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 				Issuer:   issuerGoogleAccounts,
 				ClientID: base.StringPtr("aud1"),
 			},
-		}
+		})
 		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
@@ -794,7 +795,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	})
 
 	t.Run("token with audience mismatch", func(t *testing.T) {
-		provider := &OIDCProvider{
+		provider := oidcProviderForTest(t, &OIDCProvider{
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
@@ -802,7 +803,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 				Issuer:   issuerGoogleAccounts,
 				ClientID: base.StringPtr("aud4"),
 			},
-		}
+		})
 		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
@@ -823,7 +824,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	})
 
 	t.Run("token with no audience claim", func(t *testing.T) {
-		provider := &OIDCProvider{
+		provider := oidcProviderForTest(t, &OIDCProvider{
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
@@ -831,7 +832,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 				Issuer:   issuerGoogleAccounts,
 				ClientID: base.StringPtr("aud4"),
 			},
-		}
+		})
 		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
@@ -851,7 +852,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	})
 
 	t.Run("authenticate with expired token", func(t *testing.T) {
-		provider := &OIDCProvider{
+		provider := oidcProviderForTest(t, &OIDCProvider{
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
@@ -859,7 +860,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 				Issuer:   issuerGoogleAccounts,
 				ClientID: base.StringPtr("aud1"),
 			},
-		}
+		})
 		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
@@ -880,7 +881,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	})
 
 	t.Run("token with nbf (not before) claim", func(t *testing.T) {
-		provider := &OIDCProvider{
+		provider := oidcProviderForTest(t, &OIDCProvider{
 			CallbackURL:                 providerGoogle.CallbackURL,
 			Name:                        providerGoogle.Name,
 			AllowUnsignedProviderTokens: true,
@@ -889,7 +890,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 				Issuer:   issuerGoogleAccounts,
 				ClientID: base.StringPtr("aud1"),
 			},
-		}
+		})
 		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
@@ -913,7 +914,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	})
 
 	t.Run("token with expired nbf (not before) claim", func(t *testing.T) {
-		provider := &OIDCProvider{
+		provider := oidcProviderForTest(t, &OIDCProvider{
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
@@ -921,7 +922,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 				ClientID: base.StringPtr("aud1"),
 				Register: true,
 			},
-		}
+		})
 		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
@@ -943,7 +944,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	})
 
 	t.Run("token with no subject claim", func(t *testing.T) {
-		provider := &OIDCProvider{
+		provider := oidcProviderForTest(t, &OIDCProvider{
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
@@ -951,7 +952,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 				ClientID: base.StringPtr("aud1"),
 				Register: true,
 			},
-		}
+		})
 		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
@@ -977,7 +978,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 		require.NoError(t, err, "User registration failure")
 		assert.Equal(t, wantUsername, wantUser.Name())
 		assert.Equal(t, wantUserEmail, wantUser.Email())
-		provider := &OIDCProvider{
+		provider := oidcProviderForTest(t, &OIDCProvider{
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
@@ -987,7 +988,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 				Register:   true,
 			},
 			AllowUnsignedProviderTokens: true,
-		}
+		})
 		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
@@ -1018,7 +1019,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 		assert.Equal(t, wantUsername, wantUser.Name())
 		assert.Equal(t, wantUserEmail, wantUser.Email())
 
-		provider := &OIDCProvider{
+		provider := oidcProviderForTest(t, &OIDCProvider{
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
@@ -1028,7 +1029,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 				Register:   true,
 			},
 			AllowUnsignedProviderTokens: true,
-		}
+		})
 		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
@@ -1053,7 +1054,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 
 	t.Run("new user with valid token and invalid email", func(t *testing.T) {
 		wantUsername := strings.ToLower(providerGoogle.Name) + "_layla"
-		provider := &OIDCProvider{
+		provider := oidcProviderForTest(t, &OIDCProvider{
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
@@ -1063,7 +1064,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 				Register:   true,
 			},
 			AllowUnsignedProviderTokens: true,
-		}
+		})
 		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
@@ -1167,22 +1168,22 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 	issuerAmazonAccounts := "https://accounts.amazon.com"
 	callbackURL := base.StringPtr("http://comcast:4984/_callback")
 	var callbackURLFunc OIDCCallbackURLFunc
-	providerGoogle := &OIDCProvider{
+	providerGoogle := oidcProviderForTest(t, &OIDCProvider{
 		Name: "Google",
 		JWTConfigCommon: JWTConfigCommon{
 			ClientID: base.StringPtr("aud1"),
 			Issuer:   issuerGoogleAccounts,
 		},
 		CallbackURL: callbackURL,
-	}
-	providerFacebook := &OIDCProvider{
+	})
+	providerFacebook := oidcProviderForTest(t, &OIDCProvider{
 		Name: "Facebook",
 		JWTConfigCommon: JWTConfigCommon{
 			ClientID: base.StringPtr("aud1"),
 			Issuer:   issuerFacebookAccounts,
 		},
 		CallbackURL: callbackURL,
-	}
+	})
 
 	// Make an RSA signer for signing tokens
 	signer, err := getRSASigner()
@@ -1285,7 +1286,7 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 	})
 
 	t.Run("multiple providers with valid token signature verification failure", func(t *testing.T) {
-		providerGoogle := &OIDCProvider{
+		providerGoogle := oidcProviderForTest(t, &OIDCProvider{
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
@@ -1293,7 +1294,7 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 				ClientID: base.StringPtr("aud1"),
 				Register: true,
 			},
-		}
+		})
 		providers := OIDCProviderMap{providerGoogle.Name: providerGoogle, providerFacebook.Name: providerFacebook}
 		err = providerGoogle.InitUserPrefix(base.TestCtx(t))
 		assert.NoError(t, err, "Error initializing user prefix")
