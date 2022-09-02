@@ -533,7 +533,7 @@ func (dbConfig *DbConfig) validatePersistentDbConfig() (errorMessages error) {
 }
 
 // validateConfigUpdate combines the results of validate and validateChanges.
-func (dbConfig *DbConfig) validateConfigUpdate(ctx context.Context, old *db.DatabaseContext, validateOIDCConfig bool) error {
+func (dbConfig *DbConfig) validateConfigUpdate(ctx context.Context, old DbConfig, validateOIDCConfig bool) error {
 	err := dbConfig.validate(ctx, validateOIDCConfig)
 	var multiErr *base.MultiError
 	if !errors.As(err, &multiErr) {
@@ -545,7 +545,7 @@ func (dbConfig *DbConfig) validateConfigUpdate(ctx context.Context, old *db.Data
 
 // validateChanges compares the current DbConfig with the "old" config, and returns an error if any disallowed changes
 // are attempted.
-func (dbConfig *DbConfig) validateChanges(ctx context.Context, old *db.DatabaseContext) error {
+func (dbConfig *DbConfig) validateChanges(ctx context.Context, old DbConfig) error {
 	if len(dbConfig.Scopes) != len(old.Scopes) {
 		return fmt.Errorf("cannot change scopes after database creation")
 	}
