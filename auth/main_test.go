@@ -19,6 +19,7 @@ import (
 
 func TestMain(m *testing.M) {
 	// can't use defer because of os.Exit
+	// FIFO queue of teardown functions (note: opposite of defer's LIFO ordering)
 	teardownFuncs := make([]func(), 0)
 	teardownFuncs = append(teardownFuncs, base.SetUpGlobalTestLogging(m))
 	teardownFuncs = append(teardownFuncs, base.SetUpGlobalTestProfiling(m))
@@ -28,6 +29,9 @@ func TestMain(m *testing.M) {
 
 	base.GTestBucketPool = base.NewTestBucketPool(base.FlushBucketEmptierFunc, base.NoopInitFunc)
 	teardownFuncs = append(teardownFuncs, base.GTestBucketPool.Close)
+
+	// must be the last teardown function added to the list to correctly detect leaked goroutines
+	teardownFuncs = append(teardownFuncs, base.SetUpTestGoroutineDump(m))
 
 	// Run the test suite
 	status := m.Run()

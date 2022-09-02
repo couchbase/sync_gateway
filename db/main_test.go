@@ -29,6 +29,9 @@ func TestMain(m *testing.M) {
 	base.GTestBucketPool = base.NewTestBucketPool(ViewsAndGSIBucketReadier, ViewsAndGSIBucketInit)
 	teardownFuncs = append(teardownFuncs, base.GTestBucketPool.Close)
 
+	// must be the last teardown function added to the list to correctly detect leaked goroutines
+	teardownFuncs = append(teardownFuncs, base.SetUpTestGoroutineDump(m))
+
 	// Run the test suite
 	status := m.Run()
 
