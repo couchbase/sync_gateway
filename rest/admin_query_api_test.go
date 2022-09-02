@@ -364,7 +364,7 @@ func TestDBConfigUserQueryGet(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{
 		UserQueries: map[string]*db.UserQueryConfig{
 			"square": {
-				Statement:  "SELECT $numero * $numero",
+				Statement:  "SELECT $$numero * $$numero",
 				Parameters: []string{"numero"},
 				Allow:      &db.UserQueryAllow{Channels: []string{"wonderland"}},
 			},
@@ -409,7 +409,7 @@ func TestDBConfigUserQueryPut(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{
 		UserQueries: map[string]*db.UserQueryConfig{
 			"square": {
-				Statement:  "SELECT $numero * $numero",
+				Statement:  "SELECT $$numero * $$numero",
 				Parameters: []string{"numero"},
 				Allow:      &db.UserQueryAllow{Channels: []string{"wonderland"}},
 			},
@@ -476,7 +476,7 @@ func TestDBConfigUserQueryPutOne(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{
 		UserQueries: map[string]*db.UserQueryConfig{
 			"square": {
-				Statement:  "SELECT $numero * $numero",
+				Statement:  "SELECT $$numero * $$numero",
 				Parameters: []string{"numero"},
 				Allow:      &db.UserQueryAllow{Channels: []string{"wonderland"}},
 			},
