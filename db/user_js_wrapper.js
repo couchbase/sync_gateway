@@ -80,6 +80,12 @@ function() {
         }
     };
 
+    Object.freeze(Context);
+    Object.freeze(Context.admin);
+    Object.freeze(Context.admin.defaultCollection);
+    Object.preventExtensions(Context.user); // cannot freeze: name/roles/channels are set below
+    Object.freeze(Context.user.defaultCollection);
+
 
     // Standard JS function not implemented in Otto
     if (!Array.from) {

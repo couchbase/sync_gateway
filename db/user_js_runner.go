@@ -121,6 +121,14 @@ func newUserJavaScriptRunner(name string, kind string, funcSource string) (*user
 		return ottoResult(call, nil, err)
 	})
 
+	// Implementation of the 'delete(docID,doc)' callback:
+	runner.DefineNativeFunction("_delete", func(call otto.FunctionCall) otto.Value {
+		docID := ottoStringParam(call, 0, "app.delete")
+		sudo := ottoBoolParam(call, 1)
+		err := runner.do_delete(docID, sudo)
+		return ottoResult(call, nil, err)
+	})
+
 	// Set (and compile) the JS function:
 	if _, err := runner.JSRunner.SetFunction(funcSource); err != nil {
 		return nil, base.HTTPErrorf(http.StatusInternalServerError, "Error compiling %s %q: %v", kind, name, err)
@@ -325,6 +333,11 @@ func (runner *userJSRunner) do_save(docID string, body map[string]interface{}, s
 			// on conflict (race condition), retry...
 		}
 	}
+}
+
+// Implementation of JS `app.delete(docID)` function
+func (runner *userJSRunner) do_delete(docID string, sudo bool) error {
+	return runner.do_save(docID, map[string]interface{}{"_deleted": true}, sudo)
 }
 
 //////// OTTO UTILITIES:

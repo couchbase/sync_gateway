@@ -95,6 +95,11 @@ var kUserFunctionConfig = UserFunctionConfigMap{
 		Parameters: []string{"docID", "doc"},
 		Allow:      allowAll,
 	},
+	"delDoc": &UserFunctionConfig{
+		SourceCode: `return context.user.defaultCollection.delete(args.docID);`,
+		Parameters: []string{"docID"},
+		Allow:      allowAll,
+	},
 }
 
 // Adds a user "alice" to the database, with role "hero"
@@ -329,6 +334,10 @@ func TestUserFunctionsCRUD(t *testing.T) {
 	assert.True(t, ok)
 	assert.NotEmpty(t, revID)
 	assert.True(t, strings.HasPrefix(revID, "3-"))
+
+	// Delete doc:
+	_, err = db.CallUserFunction("delDoc", map[string]interface{}{"docID": docID}, false)
+	assert.NoError(t, err)
 }
 
 var kUserFunctionBadConfig = UserFunctionConfigMap{
