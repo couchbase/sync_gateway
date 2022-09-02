@@ -33,6 +33,12 @@ import (
 	"gopkg.in/square/go-jose.v2/jwt"
 )
 
+// oidcProviderForTest automatically stops the prover once the test has stopped.
+func oidcProviderForTest(t *testing.T, op *OIDCProvider) *OIDCProvider {
+	t.Cleanup(op.stopDiscoverySync)
+	return op
+}
+
 func TestOIDCProviderMap_GetDefaultProvider(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAuth)
 
@@ -229,47 +235,46 @@ func TestInitOIDCClient(t *testing.T) {
 	ctx := base.TestCtx(t)
 
 	t.Run("initialize openid connect client with nil provider", func(t *testing.T) {
-		provider := &OIDCProvider{}
+		provider := oidcProviderForTest(t, &OIDCProvider{})
 		err := provider.initOIDCClient(ctx)
 		require.Error(t, err, "initialized openid connect client with nil provider")
 		assert.Contains(t, err.Error(), "Issuer not defined")
 	})
 
 	t.Run("initialize openid connect client with unavailable issuer", func(t *testing.T) {
-		provider := &OIDCProvider{
+		provider := oidcProviderForTest(t, &OIDCProvider{
 			JWTConfigCommon: JWTConfigCommon{
 				Issuer: "http://127.0.0.1:12345/auth",
 			},
 			CallbackURL: base.StringPtr("http://127.0.0.1:12345/callback"),
-		}
+		})
 		err := provider.initOIDCClient(ctx)
 		require.Error(t, err, "openid connect client with unavailable issuer")
 		assert.Contains(t, err.Error(), ErrMsgUnableToDiscoverConfig)
 	})
 
 	t.Run("initialize openid connect client with valid provider config", func(t *testing.T) {
-		provider := &OIDCProvider{
+		provider := oidcProviderForTest(t, &OIDCProvider{
 			JWTConfigCommon: JWTConfigCommon{
 				ClientID: base.StringPtr("foo"),
 				Issuer:   "https://accounts.google.com",
 			},
 			CallbackURL: base.StringPtr("http://sgw-test:4984/_callback"),
-		}
+		})
 		err := provider.initOIDCClient(ctx)
 		require.NoError(t, err, "openid connect client with unavailable issuer")
-		provider.stopDiscoverySync()
 	})
 }
 
 func TestConcurrentSetConfig(t *testing.T) {
 	providerLock := sync.Mutex{}
-	provider := &OIDCProvider{
+	provider := oidcProviderForTest(t, &OIDCProvider{
 		JWTConfigCommon: JWTConfigCommon{
 			ClientID: base.StringPtr("foo"),
 			Issuer:   "https://accounts.google.com",
 		},
 		CallbackURL: base.StringPtr("http://sgw-test:4984/_callback"),
-	}
+	})
 
 	ctx := base.TestCtx(t)
 
@@ -317,7 +322,6 @@ func TestConcurrentSetConfig(t *testing.T) {
 	provider.client.mutex.RUnlock()
 	assert.Contains(t, expectedAuthURL, provider.client.Config().Endpoint.AuthURL)
 	assert.Contains(t, expectedTokenURL, provider.client.Config().Endpoint.TokenURL)
-	provider.stopDiscoverySync()
 }
 
 func TestFetchCustomProviderConfig(t *testing.T) {
@@ -425,7 +429,7 @@ func TestFetchCustomProviderConfig(t *testing.T) {
 				issuer += "/"
 			}
 			discoveryURL := GetStandardDiscoveryEndpoint(issuer)
-			op := &OIDCProvider{JWTConfigCommon: JWTConfigCommon{Issuer: issuer}}
+			op := oidcProviderForTest(t, &OIDCProvider{JWTConfigCommon: JWTConfigCommon{Issuer: issuer}})
 			metadata, _, _, err := op.fetchCustomProviderConfig(base.TestCtx(t), discoveryURL)
 			if err != nil {
 				assert.True(t, test.wantErr, "Unexpected Error!")
