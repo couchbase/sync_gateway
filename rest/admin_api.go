@@ -537,6 +537,8 @@ func (h *handler) handlePutDbConfig() (err error) {
 				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 			}
 
+			oldBucketDbConfig := bucketDbConfig.DbConfig
+
 			if h.rq.Method == http.MethodPost {
 				base.TracefCtx(h.rq.Context(), base.KeyConfig, "merging upserted config into bucket config")
 				if err := base.ConfigMerge(&bucketDbConfig.DbConfig, dbConfig); err != nil {
@@ -550,7 +552,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 			if err := dbConfig.validatePersistentDbConfig(); err != nil {
 				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 			}
-			if err := bucketDbConfig.validateConfigUpdate(h.ctx(), bucketDbConfig.DbConfig, validateOIDC); err != nil {
+			if err := bucketDbConfig.validateConfigUpdate(h.ctx(), oldBucketDbConfig, validateOIDC); err != nil {
 				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 			}
 
