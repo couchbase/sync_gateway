@@ -65,7 +65,7 @@ func TestUserQueryDBConfigMVCC(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{
 		UserFunctions: map[string]*db.UserFunctionConfig{
 			"xxx": {
-				SourceCode: "return 42;",
+				SourceCode: "function(){return 42;}",
 			},
 		},
 		UserQueries: map[string]*db.UserQueryConfig{
@@ -128,13 +128,13 @@ func TestUserQueryDBConfigMVCC(t *testing.T) {
 
 	t.Run("Function", func(t *testing.T) {
 		runTest(t, "/db/_config/functions/xxx", `{
-			"javascript": "return 69;"
+			"javascript": "function(){return 69;}"
 		}`)
 	})
 
 	t.Run("Functions", func(t *testing.T) {
 		runTest(t, "/db/_config/functions", `{
-			"yyy": {"javascript": "return 69;"}
+			"yyy": {"javascript": "function(){return 69;}"}
 		}`)
 	})
 
@@ -186,7 +186,7 @@ func TestUserQueryDBConfigGet(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{
 		UserFunctions: map[string]*db.UserFunctionConfig{
 			"square": {
-				SourceCode: "return args.numero * args.numero;",
+				SourceCode: "function(context,args){return args.numero * args.numero;}",
 				Parameters: []string{"numero"},
 				Allow:      &db.UserQueryAllow{Channels: []string{"wonderland"}},
 			},
@@ -211,7 +211,7 @@ func TestUserQueryDBConfigGet(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/functions/square", "")
 		var body db.UserFunctionConfig
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-		assert.Equal(t, "return args.numero * args.numero;", body.SourceCode)
+		assert.Equal(t, "function(context,args){return args.numero * args.numero;}", body.SourceCode)
 	})
 	t.Run("Missing", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/functions/bogus", "")
@@ -223,7 +223,7 @@ func TestUserQueryDBConfigPut(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{
 		UserFunctions: map[string]*db.UserFunctionConfig{
 			"square": {
-				SourceCode: "return args.numero * args.numero;",
+				SourceCode: "function(context,args){return args.numero * args.numero;}",
 				Parameters: []string{"numero"},
 				Allow:      &db.UserQueryAllow{Channels: []string{"wonderland"}},
 			},
@@ -242,7 +242,7 @@ func TestUserQueryDBConfigPut(t *testing.T) {
 	})
 	t.Run("ReplaceAll", func(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/functions", `{
-			"sum": {"javascript": "return args.numero + args.numero;",
+			"sum": {"javascript": "function(context,args){return args.numero + args.numero;}",
 					"parameters": ["numero"],
 					"allow": {"channels": ["*"]}}
 		}`)
@@ -273,7 +273,7 @@ func TestUserQueryDBConfigPutOne(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{
 		UserFunctions: map[string]*db.UserFunctionConfig{
 			"square": {
-				SourceCode: "return args.numero * args.numero;",
+				SourceCode: "function(context,args){return args.numero * args.numero;}",
 				Parameters: []string{"numero"},
 				Allow:      &db.UserQueryAllow{Channels: []string{"wonderland"}},
 			},
@@ -298,7 +298,7 @@ func TestUserQueryDBConfigPutOne(t *testing.T) {
 	})
 	t.Run("Add", func(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/functions/sum", `{
-			"javascript": "return args.numero + args.numero;",
+			"javascript": "function(context,args){return args.numero + args.numero;}",
 			"parameters": ["numero"],
 			"allow": {"channels": ["*"]}
 		}`)
@@ -312,7 +312,7 @@ func TestUserQueryDBConfigPutOne(t *testing.T) {
 	})
 	t.Run("ReplaceOne", func(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/functions/square", `{
-			"javascript": "return -args.n * args.n;",
+			"javascript": "function(context,args){return -args.n * args.n;}",
 			"parameters": ["n"],
 			"allow": {"channels": ["*"]}
 		}`)
@@ -621,7 +621,7 @@ func TestDBConfigUserGraphQLPut(t *testing.T) {
 			"schema": "type Query {sum(n: Int!) : Int!}",
 			"resolvers": {
 				"Query": {
-					"sum": "return args.n + args.n;"
+					"sum": "function(context,args){return args.n + args.n;}"
 				}
 			}
 		}`)

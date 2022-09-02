@@ -1,7 +1,7 @@
-function() {
-    function userFn(context, %[1]s) {  // <-- substitutes the parameter list of the JS function
-        %[2]s                 // <-- substitutes the actual JS code from the config file
-    }
+function() {    var userFn = (%s);  // <-- substitutes the JS function
+
+    if (typeof(userFn) !== "function")
+        throw "The JavaScript code is not a function";
 
     function unmarshal(v) {return (typeof(v)==='string') ? JSON.parse(v) : v;}
 
@@ -80,12 +80,6 @@ function() {
         }
     };
 
-    Object.freeze(Context);
-    Object.freeze(Context.admin);
-    Object.freeze(Context.admin.defaultCollection);
-    Object.preventExtensions(Context.user); // cannot freeze: name/roles/channels are set below
-    Object.freeze(Context.user.defaultCollection);
-
 
     // Standard JS function not implemented in Otto
     if (!Array.from) {
@@ -102,9 +96,11 @@ function() {
 
     // Return the JS function that will be invoked repeatedly by the runner:
     return function (userInfo, p1, p2, p3, p4) {
-        Context.user.name = userInfo.name;
-        Context.user.roles = userInfo.roles;
-        Context.user.channels = userInfo.channels;
-        return userFn(Context, p1, p2, p3, p4);
+        var context = Object.create(Context);
+        context.user = Object.create(Context.user);
+        context.user.name = userInfo.name;
+        context.user.roles = userInfo.roles;
+        context.user.channels = userInfo.channels;
+        return userFn(context, p1, p2, p3, p4);
     };
 }()

@@ -172,7 +172,7 @@ func (config *GraphQLConfig) getSchema() (string, error) {
 // that invokes it.
 func (config *GraphQLConfig) compileFieldResolver(typeName string, fieldName string, jsCode string) (graphql.FieldResolveFn, error) {
 	name := typeName + "." + fieldName
-	server, err := newUserFunctionJSServer(name, "GraphQL resolver", "parent, args, info", jsCode)
+	server, err := newUserFunctionJSServer(name, "GraphQL resolver", jsCode)
 	if err != nil {
 		return nil, err
 	}
@@ -229,14 +229,18 @@ func (res *graphQLResolver) Resolve(db *Database, params *graphql.ResolveParams,
 
 	return res.WithTask(func(task sgbucket.JSServerTask) (interface{}, error) {
 		runner := task.(*userJSRunner)
-		return runner.CallWithDB(db, mutationAllowed, newUserFunctionJSContext(db), params.Source, params.Args, info)
+		return runner.CallWithDB(db, mutationAllowed,
+			newUserFunctionJSContext(db),
+			params.Args,
+			params.Source,
+			info)
 	})
 }
 
 //////// TYPE-NAME RESOLVER:
 
 func (config *GraphQLConfig) compileTypeNameResolver(interfaceName string, jsCode string) (graphql.ResolveTypeFn, error) {
-	server, err := newUserFunctionJSServer(interfaceName, "GraphQL type-name resolver", "value, info", jsCode)
+	server, err := newUserFunctionJSServer(interfaceName, "GraphQL type-name resolver", jsCode)
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +258,10 @@ func (res *graphQLResolver) ResolveType(db *Database, params *graphql.ResolveTyp
 	info := map[string]interface{}{}
 	result, err := res.WithTask(func(task sgbucket.JSServerTask) (interface{}, error) {
 		runner := task.(*userJSRunner)
-		return runner.CallWithDB(db, false, newUserFunctionJSContext(db), params.Value, info)
+		return runner.CallWithDB(db, false,
+			newUserFunctionJSContext(db),
+			params.Value,
+			info)
 	})
 	if err != nil {
 		base.WarnfCtx(params.Context, "GraphQL resolver %q failed with error %v", res.Name, err)

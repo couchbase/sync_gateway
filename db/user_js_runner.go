@@ -30,9 +30,14 @@ import (
 // Number of Otto contexts to cache per function, i.e. the number of goroutines that can be simultaneously running each function.
 const kUserFunctionCacheSize = 2
 
+// The outermost JavaScript code. Evaluating it returns a function, which is then called by the
+// Runner every time it's invoked. Contains `%s` where the actual function source code goes.
+//go:embed user_js_wrapper.js
+var kJavaScriptWrapper string
+
 // Creates a JSServer instance wrapping a userJSRunner, for user JS functions and GraphQL resolvers.
-func newUserFunctionJSServer(name string, what string, argList string, sourceCode string) (*sgbucket.JSServer, error) {
-	js := fmt.Sprintf(kJavaScriptWrapper, argList, sourceCode)
+func newUserFunctionJSServer(name string, what string, sourceCode string) (*sgbucket.JSServer, error) {
+	js := fmt.Sprintf(kJavaScriptWrapper, sourceCode)
 	jsServer := sgbucket.NewJSServer(js, 0, kUserFunctionCacheSize,
 		func(fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
 			return newUserJavaScriptRunner(name, what, fnSource)
@@ -399,15 +404,3 @@ func ottoJSONResult(call otto.FunctionCall, result interface{}, err error) otto.
 	}
 	return ottoResult(call, result, err)
 }
-
-//////// JAVASCRIPT CODE:
-
-// The outermost JavaScript code. Evaluating it returns a function, which is then called by the
-// Runner every time it's invoked. (The reason the first few lines are ""-style strings is to make
-// sure the resolver code ends up on line 1, which makes line numbers reported in syntax errors
-// accurate.)
-// `%[1]s` is replaced with the function's parameter list.
-// `%[2]s` is replaced with the function's body.
-
-//go:embed user_js_wrapper.js
-var kJavaScriptWrapper string

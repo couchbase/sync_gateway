@@ -46,53 +46,59 @@ var kTestGraphQLConfig = GraphQLConfig{
 	Schema: &kTestGraphQLSchema,
 	Resolvers: map[string]GraphQLResolverConfig{
 		"Query": {
-			"task": `if (Object.keys(parent).length != 0) throw "Unexpected parent";
-					 if (Object.keys(args).length != 1) throw "Unexpected args";
-					 if (Object.keys(info) != "resultFields") throw "Unexpected info";
-					 if (!context.user) throw "Missing context.user";
-					 if (!context.admin) throw "Missing context.admin";
-					 return context.user.func("getTask", {id: args.id});`,
-			"tasks": `if (Object.keys(parent).length != 0) throw "Unexpected parent";
-		  			  if (Object.keys(args).length != 0) throw "Unexpected args";
-					  if (Object.keys(info) != "resultFields") throw "Unexpected info";
-					  if (!context.user) throw "Missing context.user";
-					  if (!context.admin) throw "Missing context.admin";
-					  return context.user.func("all");`,
-			"toDo": `if (Object.keys(parent).length != 0) throw "Unexpected parent";
-					 if (Object.keys(args).length != 1) throw "Unexpected args";
-					 if (Object.keys(info) != "resultFields") throw "Unexpected info";
-					 if (!context.user) throw "Missing context.user";
-					 if (!context.admin) throw "Missing context.admin";
-					 var result=new Array(); var all = context.user.func("all");
-					 for (var i = 0; i < all.length; i++)
-						if (!all[i].done) result.push(all[i]);
-					 return result;`,
+			"task": `function(context, args, parent, info) {
+						if (Object.keys(parent).length != 0) throw "Unexpected parent";
+						if (Object.keys(args).length != 1) throw "Unexpected args";
+						if (Object.keys(info) != "resultFields") throw "Unexpected info";
+						if (!context.user) throw "Missing context.user";
+						if (!context.admin) throw "Missing context.admin";
+						return context.user.func("getTask", {id: args.id});}`,
+			"tasks": `function(context, args, parent, info) {
+						if (Object.keys(parent).length != 0) throw "Unexpected parent";
+						if (Object.keys(args).length != 0) throw "Unexpected args";
+						if (Object.keys(info) != "resultFields") throw "Unexpected info";
+						if (!context.user) throw "Missing context.user";
+						if (!context.admin) throw "Missing context.admin";
+						return context.user.func("all");}`,
+			"toDo": `function(context, args, parent, info) {
+						if (Object.keys(parent).length != 0) throw "Unexpected parent";
+						if (Object.keys(args).length != 1) throw "Unexpected args";
+						if (Object.keys(info) != "resultFields") throw "Unexpected info";
+						if (!context.user) throw "Missing context.user";
+						if (!context.admin) throw "Missing context.admin";
+						var result=new Array(); var all = context.user.func("all");
+						for (var i = 0; i < all.length; i++)
+							if (!all[i].done) result.push(all[i]);
+						return result;}`,
 		},
 		"Mutation": {
-			"complete": `if (Object.keys(parent).length != 0) throw "Unexpected parent";
-						 if (Object.keys(args).length != 1) throw "Unexpected args";
-						 if (Object.keys(info) != "resultFields") throw "Unexpected info";
-						 if (!context.user) throw "Missing context.user";
-						 if (!context.admin) throw "Missing context.admin";
-						 var task = context.user.func("getTask", {id: args.id});
-						 if (!task) return undefined;
-						 task.done = true;
-						 return task;`,
-			"addTag": `var task = context.user.func("getTask", {id: args.id});
-						 if (!task) return undefined;
-						 var tags = Array.from(task.tags);
-						 tags.push(args.tag);
-						 task.tags = tags;
-						 return task;`,
-		},
-		"Task": {
-			"secretNotes": `if (!parent.id) throw "Invalid parent";
-							if (Object.keys(args).length != 0) throw "Unexpected args";
+			"complete": `function(context, args, parent, info) {
+							if (Object.keys(parent).length != 0) throw "Unexpected parent";
+							if (Object.keys(args).length != 1) throw "Unexpected args";
 							if (Object.keys(info) != "resultFields") throw "Unexpected info";
 							if (!context.user) throw "Missing context.user";
 							if (!context.admin) throw "Missing context.admin";
-							context.requireAdmin();
-							return "TOP SECRET!";`,
+							var task = context.user.func("getTask", {id: args.id});
+							if (!task) return undefined;
+							task.done = true;
+							return task;}`,
+			"addTag": `function(context, args, parent, info) {
+							var task = context.user.func("getTask", {id: args.id});
+							if (!task) return undefined;
+							var tags = Array.from(task.tags);
+							tags.push(args.tag);
+							task.tags = tags;
+							return task;}`,
+		},
+		"Task": {
+			"secretNotes": `function(context, args, parent, info) {
+								if (!parent.id) throw "Invalid parent";
+								if (Object.keys(args).length != 0) throw "Unexpected args";
+								if (Object.keys(info) != "resultFields") throw "Unexpected info";
+								if (!context.user) throw "Missing context.user";
+								if (!context.admin) throw "Missing context.admin";
+								context.requireAdmin();
+								return "TOP SECRET!";}`,
 		},
 	},
 }
@@ -100,17 +106,19 @@ var kTestGraphQLConfig = GraphQLConfig{
 // JS function helpers:
 var kTestGraphQLUserFunctionsConfig = UserFunctionConfigMap{
 	"all": &UserFunctionConfig{
-		SourceCode: `return [
-			{id: "a", "title": "Applesauce", done:true, tags:["fruit","soft"]},
-			{id: "b", "title": "Beer", description: "Bass ale please"},
-			{id: "m", "title": "Mangoes"} ];`,
+		SourceCode: `function(context, args) {
+						return [
+						{id: "a", "title": "Applesauce", done:true, tags:["fruit","soft"]},
+						{id: "b", "title": "Beer", description: "Bass ale please"},
+						{id: "m", "title": "Mangoes"} ];}`,
 		Allow: &UserQueryAllow{Channels: []string{"*"}},
 	},
 	"getTask": &UserFunctionConfig{
-		SourceCode: `var all = context.user.func("all");
-					for (var i = 0; i < all.length; i++)
-			 		 	if (all[i].id == args.id) return all[i];
-					return undefined;`,
+		SourceCode: `function(context, args, parent, info) {
+						var all = context.user.func("all");
+						for (var i = 0; i < all.length; i++)
+							if (all[i].id == args.id) return all[i];
+						return undefined;}`,
 		Parameters: []string{"id"},
 		Allow:      &UserQueryAllow{Channels: []string{"*"}},
 	},

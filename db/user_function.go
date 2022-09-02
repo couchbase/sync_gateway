@@ -43,7 +43,7 @@ func compileUserFunctions(config UserFunctionConfigMap) (UserFunctions, error) {
 	fns := UserFunctions{}
 	var multiError *base.MultiError
 	for name, fnConfig := range config {
-		compiled, err := newUserFunctionJSServer(name, "user function", "args", fnConfig.SourceCode)
+		compiled, err := newUserFunctionJSServer(name, "user function", fnConfig.SourceCode)
 		if err == nil {
 			fns[name] = UserFunction{
 				UserFunctionConfig: fnConfig,
