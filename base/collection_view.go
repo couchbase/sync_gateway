@@ -91,7 +91,18 @@ func (c *Collection) PutDDoc(docname string, sgDesignDoc *sgbucket.DesignDoc) er
 		return c.putDDocForTombstones(&gocbDesignDoc)
 	}
 
-	return manager.UpsertDesignDocument(gocbDesignDoc, gocb.DesignDocumentNamespaceProduction, nil)
+	// Retry for all errors (The view service sporadically returns 500 status codes with Erlang errors (for unknown reasons) - E.g: 500 {"error":"case_clause","reason":"false"})
+	var worker RetryWorker = func() (bool, error, interface{}) {
+		err := manager.UpsertDesignDocument(gocbDesignDoc, gocb.DesignDocumentNamespaceProduction, nil)
+		if err != nil {
+			WarnfCtx(context.Background(), "Got error from UpsertDesignDocument: %v - Retrying...", err)
+			return true, err, nil
+		}
+		return false, nil, nil
+	}
+
+	err, _ := RetryLoop("PutDDocRetryLoop", worker, CreateSleeperFunc(5, 100))
+	return err
 }
 
 // gocb doesn't have built-in support for the internal index_xattr_on_deleted_docs

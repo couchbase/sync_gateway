@@ -50,7 +50,7 @@ func StartGocbDCPFeed(collection *Collection, bucketName string, args sgbucket.F
 		return err
 	}
 	var collectionIDs []uint32
-	if collection.Spec.Scope != nil && collection.Spec.Collection != nil {
+	if collection.IsSupported(sgbucket.DataStoreFeatureCollections) {
 		collectionID, err := collection.GetCollectionID()
 		if err != nil {
 			return err

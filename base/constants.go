@@ -80,6 +80,9 @@ const (
 	// If set, corresponds to name of the docker image of couchbase server
 	TestEnvCouchbaseServerDockerName = "SG_TEST_COUCHBASE_SERVER_DOCKER_NAME"
 
+	// TestEnvGoroutineDump if set to true will capture a goroutine pprof profile and log the location at the end of each package
+	TestEnvGoroutineDump = "SG_TEST_GOROUTINE_DUMP"
+
 	DefaultUseXattrs      = true // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
 	DefaultAllowConflicts = true // Whether Sync Gateway allows revision conflicts, if not specified in the config
 

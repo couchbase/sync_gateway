@@ -160,7 +160,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.API.EnableAdminAuthenticationPermissionsCheck = &rt.enableAdminAuthPermissionsCheck
 	sc.Bootstrap.UseTLSServer = &rt.RestTesterConfig.useTLSServer
 	sc.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
-	sc.Unsupported.Serverless = &rt.serverless
+	sc.Unsupported.Serverless.Enabled = &rt.serverless
 	if rt.serverless {
 		sc.BucketCredentials = map[string]*base.CredentialsConfig{
 			testBucket.GetName(): {
@@ -252,6 +252,12 @@ func (rt *RestTester) Bucket() base.Bucket {
 		}
 
 		rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(rt.RestTesterConfig.sgReplicateEnabled)
+
+		autoImport, _ := rt.DatabaseConfig.AutoImportEnabled()
+		if rt.DatabaseConfig.ImportPartitions == nil && base.TestUseXattrs() && base.IsEnterpriseEdition() && autoImport {
+			// Speed up test setup - most tests don't need more than one partition given we only have one node
+			rt.DatabaseConfig.ImportPartitions = base.Uint16Ptr(1)
+		}
 
 		if rt.leakyBucketConfig != nil {
 			// Scopes and collections have to be set on the bucket being passed in for the db to use.

@@ -94,9 +94,14 @@ func (h *handler) handleCreateDB() error {
 
 		_, err = h.server._applyConfig(loadedConfig, true, false)
 		if err != nil {
+			var httpErr *base.HTTPError
+			if errors.As(err, &httpErr) {
+				return httpErr
+			}
 			if errors.Is(err, base.ErrAuthError) {
 				return base.HTTPErrorf(http.StatusForbidden, "auth failure accessing provided bucket: %s", bucket)
-			} else if errors.Is(err, base.ErrAlreadyExists) {
+			}
+			if errors.Is(err, base.ErrAlreadyExists) {
 				return base.HTTPErrorf(http.StatusConflict, "couldn't load database: %s", err)
 			}
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)

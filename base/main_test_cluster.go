@@ -148,6 +148,9 @@ func (c *tbpClusterV1) close() error {
 type tbpClusterV2 struct {
 	logger clusterLogFunc
 	server string
+
+	// cluster can be used to perform cluster-level operations (but not bucket-level operations)
+	cluster *gocb.Cluster
 }
 
 var _ tbpCluster = &tbpClusterV2{}
@@ -155,12 +158,13 @@ var _ tbpCluster = &tbpClusterV2{}
 func newTestClusterV2(server string, logger clusterLogFunc) *tbpClusterV2 {
 	tbpCluster := &tbpClusterV2{}
 	tbpCluster.logger = logger
+	tbpCluster.cluster = initV2Cluster(server)
 	tbpCluster.server = server
 	return tbpCluster
 }
 
-// getCluster makes cluster connection.  Callers must close.
-func getCluster(server string) *gocb.Cluster {
+// initV2Cluster makes cluster connection.  Callers must close.
+func initV2Cluster(server string) *gocb.Cluster {
 
 	testClusterTimeout := 10 * time.Second
 	spec := BucketSpec{
@@ -197,7 +201,7 @@ func getCluster(server string) *gocb.Cluster {
 	if err != nil {
 		FatalfCtx(context.TODO(), "Couldn't connect to %q: %v", server, err)
 	}
-	err = cluster.WaitUntilReady(15*time.Second, nil)
+	err = cluster.WaitUntilReady(1*time.Minute, nil)
 	if err != nil {
 		FatalfCtx(context.TODO(), "Cluster not ready: %v", err)
 	}
@@ -207,12 +211,7 @@ func getCluster(server string) *gocb.Cluster {
 
 func (c *tbpClusterV2) getBucketNames() ([]string, error) {
 
-	cluster := getCluster(c.server)
-	defer c.closeCluster(cluster)
-
-	manager := cluster.Buckets()
-
-	bucketSettings, err := manager.GetAllBuckets(nil)
+	bucketSettings, err := c.cluster.Buckets().GetAllBuckets(nil)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
 	}
@@ -227,8 +226,6 @@ func (c *tbpClusterV2) getBucketNames() ([]string, error) {
 
 func (c *tbpClusterV2) insertBucket(name string, quotaMB int) error {
 
-	cluster := getCluster(c.server)
-	defer c.closeCluster(cluster)
 	settings := gocb.CreateBucketSettings{
 		BucketSettings: gocb.BucketSettings{
 			Name:         name,
@@ -242,41 +239,35 @@ func (c *tbpClusterV2) insertBucket(name string, quotaMB int) error {
 	options := &gocb.CreateBucketOptions{
 		Timeout: 10 * time.Second,
 	}
-	return cluster.Buckets().CreateBucket(settings, options)
+	return c.cluster.Buckets().CreateBucket(settings, options)
 }
 
 func (c *tbpClusterV2) removeBucket(name string) error {
-	cluster := getCluster(c.server)
-	defer c.closeCluster(cluster)
-
-	return cluster.Buckets().DropBucket(name, nil)
+	return c.cluster.Buckets().DropBucket(name, nil)
 }
 
 // openTestBucket opens the bucket of the given name for the gocb cluster in the given TestBucketPool.
 func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilReadySeconds int) (Bucket, error) {
 
-	cluster := getCluster(c.server)
+	bucketCluster := initV2Cluster(c.server)
 	bucketSpec := getBucketSpec(testBucketName)
 
-	return GetCollectionFromCluster(cluster, bucketSpec, waitUntilReadySeconds)
+	return GetCollectionFromCluster(bucketCluster, bucketSpec, waitUntilReadySeconds)
 }
 
 func (c *tbpClusterV2) close() error {
 	// no close operations needed
+	if c.cluster != nil {
+		if err := c.cluster.Close(nil); err != nil {
+			c.logger(context.Background(), "Couldn't close cluster connection: %v", err)
+			return err
+		}
+	}
 	return nil
 }
 
-func (c *tbpClusterV2) closeCluster(cluster *gocb.Cluster) {
-	if err := cluster.Close(nil); err != nil {
-		c.logger(context.Background(), "Couldn't close cluster connection: %v", err)
-	}
-}
-
 func (c *tbpClusterV2) getMinClusterCompatVersion() int {
-	cluster := getCluster(c.server)
-	defer c.closeCluster(cluster)
-
-	nodesMeta, err := cluster.Internal().GetNodesMetadata(nil)
+	nodesMeta, err := c.cluster.Internal().GetNodesMetadata(nil)
 	if err != nil {
 		FatalfCtx(context.Background(), "TEST: failed to fetch nodes metadata: %v", err)
 	}

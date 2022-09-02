@@ -40,6 +40,8 @@ const kStatsReportInterval = time.Hour
 const kDefaultSlowQueryWarningThreshold = 500 // ms
 const KDefaultNumShards = 16
 
+var errCollectionsUnsupported = base.HTTPErrorf(http.StatusBadRequest, "Named collections specified in database config, but not supported by connected Couchbase Server.")
+
 // Shared context of HTTP handlers: primarily a registry of databases by name. It also stores
 // the configuration settings so handlers can refer to them.
 // This struct is accessed from HTTP handlers running on multiple goroutines, so it needs to
@@ -410,6 +412,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	if !useViews && spec.IsWalrusBucket() {
 		base.WarnfCtx(context.TODO(), "Using GSI is not supported when using a walrus bucket - switching to use views.  Set 'use_views':true in Sync Gateway's database config to avoid this warning.")
 		useViews = true
+	}
+
+	if len(config.Scopes) > 0 {
+		if !bucket.IsSupported(sgbucket.DataStoreFeatureCollections) {
+			return nil, errCollectionsUnsupported
+		}
 	}
 
 	// Initialize Views or GSI indexes for the bucket
