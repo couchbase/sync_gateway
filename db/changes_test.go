@@ -64,7 +64,7 @@ func TestFilterToAvailableChannels(t *testing.T) {
 
 			for i := 0; i < testCase.genChanAndDocs; i++ {
 				id := fmt.Sprintf("%d", i+1)
-				_, _, err = db.Put("doc"+id, Body{"channels": []string{"ch" + id}})
+				_, _, err = db.Put(ctx, "doc"+id, Body{"channels": []string{"ch" + id}})
 				require.NoError(t, err)
 			}
 			err = db.WaitForPendingChanges(base.TestCtx(t))
@@ -73,7 +73,7 @@ func TestFilterToAvailableChannels(t *testing.T) {
 			db.user, err = auth.GetUser("test")
 			require.NoError(t, err)
 
-			ch, err := db.GetChanges(testCase.accessChans, getChangesOptionsWithZeroSeq())
+			ch, err := db.GetChanges(ctx, testCase.accessChans, getChangesOptionsWithZeroSeq())
 			require.NoError(t, err)
 			require.Len(t, ch, len(testCase.expectedDocsReturned))
 
@@ -111,7 +111,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
 	// Create a doc on two channels (sequence 1):
-	revid, _, err := db.Put("doc1", Body{"channels": []string{"ABC", "PBS"}})
+	revid, _, err := db.Put(ctx, "doc1", Body{"channels": []string{"ABC", "PBS"}})
 	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
@@ -127,7 +127,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 	// Check the _changes feed:
 	db.user, _ = authenticator.GetUser("naomi")
-	changes, err := db.GetChanges(base.SetOf("*"), getChangesOptionsWithZeroSeq())
+	changes, err := db.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
 	require.Len(t, changes, 3)
@@ -149,13 +149,13 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	lastSeq, _ = db.ParseSequenceID(lastSeq.String())
 
 	// Add a new doc (sequence 3):
-	revid, _, err = db.Put("doc2", Body{"channels": []string{"PBS"}})
+	revid, _, err = db.Put(ctx, "doc2", Body{"channels": []string{"PBS"}})
 	require.NoError(t, err)
 
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 2 (the user doc) and isn't stuck waiting for it.
 	cacheWaiter.AddAndWait(1)
-	changes, err = db.GetChanges(base.SetOf("*"), getChangesOptionsWithSeq(lastSeq))
+	changes, err = db.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithSeq(lastSeq))
 
 	assert.NoError(t, err, "Couldn't GetChanges (2nd)")
 
@@ -164,7 +164,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	assert.Equal(t, []ChangeRev{{"rev": revid}}, changes[0].Changes)
 
 	// validate from zero
-	changes, err = db.GetChanges(base.SetOf("*"), getChangesOptionsWithZeroSeq())
+	changes, err = db.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
 
@@ -224,12 +224,12 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
 	// Create a doc on two channels (sequence 1):
-	revid, _, err := db.Put("alpha", Body{"channels": []string{"A", "B"}})
+	revid, _, err := db.Put(ctx, "alpha", Body{"channels": []string{"A", "B"}})
 	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
 	db.user, _ = authenticator.GetUser("alice")
-	changes, err := db.GetChanges(base.SetOf("*"), getChangesOptionsWithZeroSeq())
+	changes, err := db.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
 	assert.Equal(t, 1, len(changes))
@@ -271,7 +271,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 3 and isn't stuck waiting for it.
 	cacheWaiter.AddAndWait(1)
-	changes, err = db.GetChanges(base.SetOf("*"), getChangesOptionsWithSeq(lastSeq))
+	changes, err = db.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithSeq(lastSeq))
 
 	assert.NoError(t, err, "Couldn't GetChanges (2nd)")
 
@@ -310,12 +310,12 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
 	// Create a doc on two channels (sequence 1):
-	revid, _, err := db.Put("alpha", Body{"channels": []string{"A", "B"}})
+	revid, _, err := db.Put(ctx, "alpha", Body{"channels": []string{"A", "B"}})
 	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
 	db.user, _ = authenticator.GetUser("alice")
-	changes, err := db.GetChanges(base.SetOf("*"), getChangesOptionsWithZeroSeq())
+	changes, err := db.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
 
@@ -355,7 +355,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	// sequence 3 (the modified document) and isn't stuck waiting for it.
 	cacheWaiter.AddAndWait(1)
 
-	changes, err = db.GetChanges(base.SetOf("*"), getChangesOptionsWithSeq(lastSeq))
+	changes, err = db.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithSeq(lastSeq))
 
 	assert.NoError(t, err, "Couldn't GetChanges (2nd)")
 
@@ -381,14 +381,14 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 	for i := 1; i <= 10; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		body := Body{"foo": "bar"}
-		revId, _, err = db.Put(key, body)
+		revId, _, err = db.Put(ctx, key, body)
 		require.NoError(t, err, "Couldn't create document")
 	}
 
 	// Tombstone 5 documents
 	for i := 2; i <= 6; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		_, err = db.DeleteDoc(key, revId)
+		_, err = db.DeleteDoc(ctx, key, revId)
 		require.NoError(t, err, "Couldn't delete document")
 	}
 
@@ -404,7 +404,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 	initQueryCount := db.DbStats.Cache().ViewQueries.Value()
 
 	// Get changes with active_only=true
-	activeChanges, err := db.GetChanges(base.SetOf("*"), changesOptions)
+	activeChanges, err := db.GetChanges(ctx, base.SetOf("*"), changesOptions)
 	require.NoError(t, err, "Error getting changes with active_only true")
 	require.Equal(t, 5, len(activeChanges))
 
@@ -414,7 +414,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 
 	// Get changes with active_only=false, validate that triggers a new query
 	changesOptions.ActiveOnly = false
-	allChanges, err := db.GetChanges(base.SetOf("*"), changesOptions)
+	allChanges, err := db.GetChanges(ctx, base.SetOf("*"), changesOptions)
 	require.NoError(t, err, "Error getting changes with active_only true")
 	require.Equal(t, 10, len(allChanges))
 
@@ -423,7 +423,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 
 	// Get changes with active_only=false again, verify results are served from the cache
 	changesOptions.ActiveOnly = false
-	allChanges, err = db.GetChanges(base.SetOf("*"), changesOptions)
+	allChanges, err = db.GetChanges(ctx, base.SetOf("*"), changesOptions)
 	require.NoError(t, err, "Error getting changes with active_only true")
 	require.Equal(t, 10, len(allChanges))
 
@@ -467,21 +467,21 @@ func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 		docid, err := base.GenerateRandomID()
 		require.NoError(b, err)
 		docBody := createDoc(numKeys, valSizeBytes)
-		revId, _, err := db.Put(docid, docBody)
+		revId, _, err := db.Put(ctx, docid, docBody)
 		if err != nil {
 			b.Fatalf("Error creating doc: %v", err)
 		}
 
 		// Create child rev 1
 		docBody["child"] = "A"
-		_, _, err = db.PutExistingRevWithBody(docid, docBody, []string{"2-A", revId}, false)
+		_, _, err = db.PutExistingRevWithBody(ctx, docid, docBody, []string{"2-A", revId}, false)
 		if err != nil {
 			b.Fatalf("Error creating child1 rev: %v", err)
 		}
 
 		// Create child rev 2
 		docBody["child"] = "B"
-		_, _, err = db.PutExistingRevWithBody(docid, docBody, []string{"2-B", revId}, false)
+		_, _, err = db.PutExistingRevWithBody(ctx, docid, docBody, []string{"2-B", revId}, false)
 		if err != nil {
 			b.Fatalf("Error creating child2 rev: %v", err)
 		}
@@ -502,7 +502,7 @@ func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 
 		changesCtx, changesCtxCancel := context.WithCancel(context.Background())
 		options.ChangesCtx = changesCtx
-		feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
+		feed, err := db.MultiChangesFeed(ctx, base.SetOf("*"), options)
 		if err != nil {
 			b.Fatalf("Error getting changes feed: %v", err)
 		}

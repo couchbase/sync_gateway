@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -26,7 +27,7 @@ func TestAttachmentMark(t *testing.T) {
 	body := map[string]interface{}{"foo": "bar"}
 	for i := 0; i < 10; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		_, _, err := testDb.Put(key, body)
+		_, _, err := testDb.Put(ctx, key, body)
 		assert.NoError(t, err)
 	}
 
@@ -37,7 +38,7 @@ func TestAttachmentMark(t *testing.T) {
 		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
 		assert.NoError(t, err)
-		attKeys = append(attKeys, CreateLegacyAttachmentDoc(t, testDb, docID, []byte("{}"), attKey, attJSONBody))
+		attKeys = append(attKeys, CreateLegacyAttachmentDoc(t, ctx, testDb, docID, []byte("{}"), attKey, attJSONBody))
 	}
 
 	err := testDb.Bucket.SetRaw("testDocx", 0, nil, []byte("{}"))
@@ -45,10 +46,10 @@ func TestAttachmentMark(t *testing.T) {
 
 	attKeys = append(attKeys, createConflictingDocOneLeafHasAttachmentBodyMap(t, "conflictAtt", "attForConflict", []byte(`{"value": "att"}`), testDb))
 	attKeys = append(attKeys, createConflictingDocOneLeafHasAttachmentBodyKey(t, "conflictAttBodyKey", "attForConflict2", []byte(`{"val": "bodyKeyAtt"}`), testDb))
-	attKeys = append(attKeys, createDocWithInBodyAttachment(t, "inBodyDoc", []byte(`{}`), "attForInBodyRef", []byte(`{"val": "inBodyAtt"}`), testDb))
+	attKeys = append(attKeys, createDocWithInBodyAttachment(t, ctx, "inBodyDoc", []byte(`{}`), "attForInBodyRef", []byte(`{"val": "inBodyAtt"}`), testDb))
 
 	terminator := base.NewSafeTerminator()
-	attachmentsMarked, _, err := attachmentCompactMarkPhase(testDb, t.Name(), terminator, &base.AtomicInt{})
+	attachmentsMarked, _, err := attachmentCompactMarkPhase(ctx, testDb, t.Name(), terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(13), attachmentsMarked)
 
@@ -106,7 +107,7 @@ func TestAttachmentSweep(t *testing.T) {
 	}
 
 	terminator := base.NewSafeTerminator()
-	purged, err := attachmentCompactSweepPhase(testDb, t.Name(), nil, false, terminator, &base.AtomicInt{})
+	purged, err := attachmentCompactSweepPhase(ctx, testDb, t.Name(), nil, false, terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 
 	assert.Equal(t, int64(11), purged)
@@ -178,7 +179,7 @@ func TestAttachmentCleanup(t *testing.T) {
 	}
 
 	terminator := base.NewSafeTerminator()
-	err := attachmentCompactCleanupPhase(testDb, t.Name(), nil, terminator)
+	err := attachmentCompactCleanupPhase(ctx, testDb, t.Name(), nil, terminator)
 	assert.NoError(t, err)
 
 	for _, docID := range singleMarkedAttIDs {
@@ -233,7 +234,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
 		assert.NoError(t, err)
-		attKeys = append(attKeys, CreateLegacyAttachmentDoc(t, testDb, docID, []byte("{}"), attKey, attJSONBody))
+		attKeys = append(attKeys, CreateLegacyAttachmentDoc(t, ctx, testDb, docID, []byte("{}"), attKey, attJSONBody))
 	}
 
 	makeUnmarkedDoc := func(docid string) {
@@ -248,11 +249,11 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 	}
 
 	terminator := base.NewSafeTerminator()
-	attachmentsMarked, vbUUIDS, err := attachmentCompactMarkPhase(testDb, t.Name(), terminator, &base.AtomicInt{})
+	attachmentsMarked, vbUUIDS, err := attachmentCompactMarkPhase(ctx, testDb, t.Name(), terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(10), attachmentsMarked)
 
-	attachmentsPurged, err := attachmentCompactSweepPhase(testDb, t.Name(), vbUUIDS, false, terminator, &base.AtomicInt{})
+	attachmentsPurged, err := attachmentCompactSweepPhase(ctx, testDb, t.Name(), vbUUIDS, false, terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(5), attachmentsPurged)
 
@@ -270,7 +271,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 		}
 	}
 
-	err = attachmentCompactCleanupPhase(testDb, t.Name(), vbUUIDS, terminator)
+	err = attachmentCompactCleanupPhase(ctx, testDb, t.Name(), vbUUIDS, terminator)
 	assert.NoError(t, err)
 
 	for _, attDocKey := range attKeys {
@@ -553,7 +554,7 @@ func TestAttachmentProcessError(t *testing.T) {
 	ctx1 := testDB1.AddDatabaseLogContext(base.TestCtx(t))
 	defer testDB1.Close(ctx1)
 
-	CreateLegacyAttachmentDoc(t, testDB1, "docID", []byte("{}"), "attKey", []byte("{}"))
+	CreateLegacyAttachmentDoc(t, ctx1, testDB1, "docID", []byte("{}"), "attKey", []byte("{}"))
 
 	err := testDB1.AttachmentCompactionManager.Start(ctx1, map[string]interface{}{"database": testDB1})
 	assert.NoError(t, err)
@@ -582,18 +583,18 @@ func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 	}
 
 	testDB := setupTestDB(t)
-	ctx1 := testDB.AddDatabaseLogContext(base.TestCtx(t))
-	defer testDB.Close(ctx1)
+	ctx := testDB.AddDatabaseLogContext(base.TestCtx(t))
+	defer testDB.Close(ctx)
 
 	// Run mark phase as usual
 	terminator := base.NewSafeTerminator()
-	_, vbUUIDs, err := attachmentCompactMarkPhase(testDB, t.Name(), terminator, &base.AtomicInt{})
+	_, vbUUIDs, err := attachmentCompactMarkPhase(ctx, testDB, t.Name(), terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 
 	// Manually modify a vbUUID and ensure the Sweep phase errors
 	vbUUIDs[0] = 1
 
-	_, err = attachmentCompactSweepPhase(testDB, t.Name(), vbUUIDs, false, terminator, &base.AtomicInt{})
+	_, err = attachmentCompactSweepPhase(ctx, testDB, t.Name(), vbUUIDs, false, terminator, &base.AtomicInt{})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "error opening stream for vb 0: VbUUID mismatch when failOnRollback set")
 }
@@ -615,7 +616,7 @@ func WaitForConditionWithOptions(successFunc func() bool, maxNumAttempts, timeTo
 	return nil
 }
 
-func CreateLegacyAttachmentDoc(t *testing.T, db *Database, docID string, body []byte, attID string, attBody []byte) string {
+func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, db *Database, docID string, body []byte, attID string, attBody []byte) string {
 	if !base.TestUseXattrs() {
 		t.Skip("Requires xattrs")
 	}
@@ -630,7 +631,7 @@ func CreateLegacyAttachmentDoc(t *testing.T, db *Database, docID string, body []
 	err = base.JSONUnmarshal(body, &unmarshalledBody)
 	require.NoError(t, err)
 
-	_, _, err = db.Put(docID, unmarshalledBody)
+	_, _, err = db.Put(ctx, docID, unmarshalledBody)
 	require.NoError(t, err)
 
 	_, err = db.Bucket.WriteUpdateWithXattr(docID, base.SyncXattrName, "", 0, nil, nil, func(doc []byte, xattr []byte, userXattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, err error) {
@@ -773,12 +774,12 @@ func createConflictingDocOneLeafHasAttachmentBodyKey(t *testing.T, docID string,
 	return attDocID
 }
 
-func createDocWithInBodyAttachment(t *testing.T, docID string, docBody []byte, attID string, attBody []byte, db *Database) string {
+func createDocWithInBodyAttachment(t *testing.T, ctx context.Context, docID string, docBody []byte, attID string, attBody []byte, db *Database) string {
 	var body Body
 	err := base.JSONUnmarshal(docBody, &body)
 	assert.NoError(t, err)
 
-	_, _, err = db.Put(docID, body)
+	_, _, err = db.Put(ctx, docID, body)
 	assert.NoError(t, err)
 
 	attDigest := Sha1DigestKey(attBody)
@@ -832,7 +833,7 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	body := map[string]interface{}{"foo": "bar"}
 	for i := 0; i < docsToCreate; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		_, _, err := testDb.Put(key, body)
+		_, _, err := testDb.Put(ctx1, key, body)
 		require.NoError(t, err)
 	}
 
@@ -842,7 +843,7 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
 		require.NoError(t, err)
-		CreateLegacyAttachmentDoc(t, testDb, docID, []byte("{}"), attKey, attJSONBody)
+		CreateLegacyAttachmentDoc(t, ctx1, testDb, docID, []byte("{}"), attKey, attJSONBody)
 	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
@@ -851,7 +852,7 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	stat := &base.AtomicInt{}
 	count := int64(0)
 	go func() {
-		attachmentCount, _, err := attachmentCompactMarkPhase(testDb, "mark", terminator, stat)
+		attachmentCount, _, err := attachmentCompactMarkPhase(ctx1, testDb, "mark", terminator, stat)
 		atomic.StoreInt64(&count, attachmentCount)
 		require.NoError(t, err)
 	}()
@@ -893,7 +894,7 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	count = 0
 	terminator = base.NewSafeTerminator()
 	go func() {
-		attachmentCount, err := attachmentCompactSweepPhase(testDb, "sweep", nil, false, terminator, stat)
+		attachmentCount, err := attachmentCompactSweepPhase(ctx1, testDb, "sweep", nil, false, terminator, stat)
 		atomic.StoreInt64(&count, attachmentCount)
 		require.NoError(t, err)
 	}()
