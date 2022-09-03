@@ -4558,7 +4558,8 @@ function (doc) {
 			resp = activeRT.SendAdminRequest("PUT", "/db/_replication/"+replName, replConf)
 			requireStatus(t, resp, http.StatusCreated)
 
-			err = activeRT.GetDatabase().SGReplicateMgr.StartReplications()
+			activeCtx := activeRT.Context()
+			err = activeRT.GetDatabase().SGReplicateMgr.StartReplications(activeCtx)
 			require.NoError(t, err)
 			activeRT.waitForReplicationStatus(replName, db.ReplicationStateRunning)
 
@@ -4632,8 +4633,9 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 
 	activeRT := NewRestTester(t, nil)
 	defer activeRT.Close()
+	activeCtx := activeRT.Context()
 
-	err := activeRT.GetDatabase().SGReplicateMgr.StartReplications()
+	err := activeRT.GetDatabase().SGReplicateMgr.StartReplications(activeCtx)
 	require.NoError(t, err)
 
 	rev := activeRT.createDoc(t, "test")
@@ -4686,13 +4688,13 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 
 	activeRT := NewRestTester(t, nil)
 	defer activeRT.Close()
+	activeCtx := activeRT.Context()
 
 	// Disable checkpointing at an interval
 	activeRT.GetDatabase().SGReplicateMgr.CheckpointInterval = 0
-	err := activeRT.GetDatabase().SGReplicateMgr.StartReplications()
+	err := activeRT.GetDatabase().SGReplicateMgr.StartReplications(activeCtx)
 	require.NoError(t, err)
 
-	activeCtx := activeRT.Context()
 	database, err := db.CreateDatabase(activeRT.GetDatabase())
 	require.NoError(t, err)
 	rev, doc, err := database.Put(activeCtx, "test", db.Body{})

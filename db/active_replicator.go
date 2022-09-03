@@ -32,7 +32,7 @@ type ActiveReplicator struct {
 }
 
 // NewActiveReplicator returns a bidirectional active replicator for the given config.
-func NewActiveReplicator(config *ActiveReplicatorConfig) *ActiveReplicator {
+func NewActiveReplicator(ctx context.Context, config *ActiveReplicatorConfig) *ActiveReplicator {
 	ar := &ActiveReplicator{
 		ID:        config.ID,
 		config:    config,
@@ -53,11 +53,11 @@ func NewActiveReplicator(config *ActiveReplicatorConfig) *ActiveReplicator {
 		}
 	}
 
-	base.InfofCtx(ar.Push.ctx, base.KeyReplicate, "Created active replicator ID:%s statusKey: %s", config.ID, ar.statusKey)
+	base.InfofCtx(ctx, base.KeyReplicate, "Created active replicator ID:%s statusKey: %s", config.ID, ar.statusKey)
 	return ar
 }
 
-func (ar *ActiveReplicator) Start() error {
+func (ar *ActiveReplicator) Start(ctx context.Context) error {
 
 	if ar.Push == nil && ar.Pull == nil {
 		return fmt.Errorf("Attempted to start activeReplicator for %s with neither Push nor Pull defined", base.UD(ar.ID))
@@ -65,12 +65,12 @@ func (ar *ActiveReplicator) Start() error {
 
 	var pushErr error
 	if ar.Push != nil {
-		pushErr = ar.Push.Start()
+		pushErr = ar.Push.Start(ctx)
 	}
 
 	var pullErr error
 	if ar.Pull != nil {
-		pullErr = ar.Pull.Start()
+		pullErr = ar.Pull.Start(ctx)
 	}
 
 	if pushErr != nil {

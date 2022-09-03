@@ -4245,10 +4245,11 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 
 	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()
+	activeCtx := activeRT.Context()
 
 	remoteURL, _ := url.Parse(remoteURLString)
 
-	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+	ar := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
 		ID:                  t.Name(),
 		Direction:           db.ActiveReplicatorTypePull,
 		ActiveDB:            &db.Database{DatabaseContext: activeRT.GetDatabase()},
@@ -4265,7 +4266,7 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 
 	rev := remoteRT.createDoc(t, "doc")
 
-	assert.NoError(t, ar.Start())
+	assert.NoError(t, ar.Start(activeCtx))
 	defer func() { require.NoError(t, ar.Stop()) }()
 
 	err := activeRT.WaitForPendingChanges()

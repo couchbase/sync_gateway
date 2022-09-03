@@ -596,7 +596,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", &sc.config.API.AdminInterface)
 	}
 
-	dbcontext.StartReplications()
+	dbcontext.StartReplications(ctx)
 
 	return dbcontext, nil
 }

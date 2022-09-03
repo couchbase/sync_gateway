@@ -31,7 +31,7 @@ func NewPullReplicator(config *ActiveReplicatorConfig) *ActivePullReplicator {
 	return &apr
 }
 
-func (apr *ActivePullReplicator) Start() error {
+func (apr *ActivePullReplicator) Start(ctx context.Context) error {
 	apr.lock.Lock()
 	defer apr.lock.Unlock()
 
@@ -44,7 +44,7 @@ func (apr *ActivePullReplicator) Start() error {
 	}
 
 	apr.setState(ReplicationStateStarting)
-	logCtx := base.LogContextWith(context.Background(), &base.LogContext{CorrelationID: apr.config.ID + "-" + string(ActiveReplicatorTypePull)})
+	logCtx := base.LogContextWith(ctx, &base.LogContext{CorrelationID: apr.config.ID + "-" + string(ActiveReplicatorTypePull)})
 	apr.ctx, apr.ctxCancel = context.WithCancel(logCtx)
 
 	err := apr._connect()

@@ -424,7 +424,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	// Initialize sg-replicate manager
-	dbContext.SGReplicateMgr, err = NewSGReplicateManager(dbContext, dbContext.CfgSG)
+	dbContext.SGReplicateMgr, err = NewSGReplicateManager(ctx, dbContext, dbContext.CfgSG)
 	if err != nil {
 		return nil, err
 	}

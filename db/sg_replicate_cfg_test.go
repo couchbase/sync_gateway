@@ -29,7 +29,8 @@ func TestReplicateManagerReplications(t *testing.T) {
 	testCfg, err := base.NewCfgSG(testBucket, "")
 	require.NoError(t, err)
 
-	manager, err := NewSGReplicateManager(&DatabaseContext{Name: "test"}, testCfg)
+	ctx := base.TestCtx(t)
+	manager, err := NewSGReplicateManager(ctx, &DatabaseContext{Name: "test"}, testCfg)
 	require.NoError(t, err)
 	defer manager.Stop()
 
@@ -92,7 +93,8 @@ func TestReplicateManagerNodes(t *testing.T) {
 	testCfg, err := base.NewCfgSG(testBucket, "")
 	require.NoError(t, err)
 
-	manager, err := NewSGReplicateManager(&DatabaseContext{Name: "test"}, testCfg)
+	ctx := base.TestCtx(t)
+	manager, err := NewSGReplicateManager(ctx, &DatabaseContext{Name: "test"}, testCfg)
 	require.NoError(t, err)
 	defer manager.Stop()
 
@@ -144,10 +146,11 @@ func TestReplicateManagerConcurrentNodeOperations(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
+	ctx := base.TestCtx(t)
 	testCfg, err := base.NewCfgSG(testBucket, "")
 	require.NoError(t, err)
 
-	manager, err := NewSGReplicateManager(&DatabaseContext{Name: "test"}, testCfg)
+	manager, err := NewSGReplicateManager(ctx, &DatabaseContext{Name: "test"}, testCfg)
 	require.NoError(t, err)
 	defer manager.Stop()
 
@@ -188,10 +191,11 @@ func TestReplicateManagerConcurrentReplicationOperations(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
+	ctx := base.TestCtx(t)
 	testCfg, err := base.NewCfgSG(testBucket, "")
 	require.NoError(t, err)
 
-	manager, err := NewSGReplicateManager(&DatabaseContext{Name: "test"}, testCfg)
+	manager, err := NewSGReplicateManager(ctx, &DatabaseContext{Name: "test"}, testCfg)
 	require.NoError(t, err)
 	defer manager.Stop()
 
@@ -618,7 +622,7 @@ func TestIsCfgChanged(t *testing.T) {
 	testCfg, err := base.NewCfgSG(testBucket, "")
 	require.NoError(t, err)
 
-	mgr, err := NewSGReplicateManager(&DatabaseContext{Name: "test"}, testCfg)
+	mgr, err := NewSGReplicateManager(base.TestCtx(t), &DatabaseContext{Name: "test"}, testCfg)
 	require.NoError(t, err)
 	defer mgr.Stop()
 
