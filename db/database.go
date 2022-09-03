@@ -148,7 +148,6 @@ type DatabaseContextOptions struct {
 	SecureCookieOverride          bool                  // Pass-through DBConfig.SecureCookieOverride
 	SessionCookieName             string                // Pass-through DbConfig.SessionCookieName
 	SessionCookieHttpOnly         bool                  // Pass-through DbConfig.SessionCookieHTTPOnly
-	UserQueries                   UserQueryMap          // Pass-through DbConfig.UserQueries
 	UserFunctions                 UserFunctionConfigMap // Pass-through DbConfig.UserFunctions
 	GraphQL                       *GraphQLConfig        // Pass-through DbConfig.GraphQL
 	AllowConflicts                *bool                 // False forbids creating conflicts
@@ -1799,8 +1798,10 @@ func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOp
 			QueryTypeUsers,
 		}
 	}
-	for name, _ := range options.UserQueries {
-		queryNames = append(queryNames, QueryTypeUserPrefix+name)
+	for name, fn := range options.UserFunctions {
+		if fn.Type == "query" {
+			queryNames = append(queryNames, QueryTypeUserPrefix+name)
+		}
 	}
 
 	return base.SyncGatewayStats.NewDBStats(dbName, enabledDeltaSync, enabledImport, enabledViews, queryNames...)

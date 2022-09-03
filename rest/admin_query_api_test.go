@@ -37,19 +37,6 @@ func TestUserQueryDBConfigGetWithoutFeatureFlag(t *testing.T) {
 		assert.Equal(t, 404, response.Result().StatusCode)
 	})
 
-	t.Run("Queries, Non-Admin", func(t *testing.T) {
-		response := rt.SendRequest("GET", "/db/_config/queries", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
-	})
-	t.Run("All Queries", func(t *testing.T) {
-		response := rt.SendAdminRequest("GET", "/db/_config/queries", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
-	})
-	t.Run("Single Query", func(t *testing.T) {
-		response := rt.SendAdminRequest("GET", "/db/_config/queries/cube", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
-	})
-
 	t.Run("GraphQL, Non-Admin", func(t *testing.T) {
 		response := rt.SendRequest("GET", "/db/_config/graphql", "")
 		assert.Equal(t, 404, response.Result().StatusCode)
@@ -65,12 +52,12 @@ func TestUserQueryDBConfigMVCC(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{
 		UserFunctions: map[string]*db.UserFunctionConfig{
 			"xxx": {
-				SourceCode: "function(){return 42;}",
+				Type: "javascript",
+				Code: "function(){return 42;}",
 			},
-		},
-		UserQueries: map[string]*db.UserQueryConfig{
-			"xxx": {
-				Statement: "SELECT 42",
+			"xxxN1QL": {
+				Type: "query",
+				Code: "SELECT 42",
 			},
 		},
 		GraphQL: &db.GraphQLConfig{
@@ -128,25 +115,21 @@ func TestUserQueryDBConfigMVCC(t *testing.T) {
 
 	t.Run("Function", func(t *testing.T) {
 		runTest(t, "/db/_config/functions/xxx", `{
-			"javascript": "function(){return 69;}"
+			"type": "javascript",
+			"code": "function(){return 69;}"
+		}`)
+	})
+
+	t.Run("Query", func(t *testing.T) {
+		runTest(t, "/db/_config/functions/xxxN1QL", `{
+			"type": "query",
+			"code": "select 69"
 		}`)
 	})
 
 	t.Run("Functions", func(t *testing.T) {
 		runTest(t, "/db/_config/functions", `{
-			"yyy": {"javascript": "function(){return 69;}"}
-		}`)
-	})
-
-	t.Run("Query", func(t *testing.T) {
-		runTest(t, "/db/_config/queries/xxx", `{
-			"statement": "select 69"
-		}`)
-	})
-
-	t.Run("Queries", func(t *testing.T) {
-		runTest(t, "/db/_config/queries", `{
-			"yyy": {"statement": "select 69"}
+			"yyy": {"type": "javascript", "code": "function(){return 69;}"}
 		}`)
 	})
 
@@ -186,7 +169,8 @@ func TestUserQueryDBConfigGet(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{
 		UserFunctions: map[string]*db.UserFunctionConfig{
 			"square": {
-				SourceCode: "function(context,args){return args.numero * args.numero;}",
+				Type:       "javascript",
+				Code:       "function(context,args){return args.numero * args.numero;}",
 				Parameters: []string{"numero"},
 				Allow:      &db.UserQueryAllow{Channels: []string{"wonderland"}},
 			},
@@ -211,7 +195,7 @@ func TestUserQueryDBConfigGet(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/functions/square", "")
 		var body db.UserFunctionConfig
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-		assert.Equal(t, "function(context,args){return args.numero * args.numero;}", body.SourceCode)
+		assert.Equal(t, "function(context,args){return args.numero * args.numero;}", body.Code)
 	})
 	t.Run("Missing", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/functions/bogus", "")
@@ -223,7 +207,8 @@ func TestUserQueryDBConfigPut(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{
 		UserFunctions: map[string]*db.UserFunctionConfig{
 			"square": {
-				SourceCode: "function(context,args){return args.numero * args.numero;}",
+				Type:       "javascript",
+				Code:       "function(context,args){return args.numero * args.numero;}",
 				Parameters: []string{"numero"},
 				Allow:      &db.UserQueryAllow{Channels: []string{"wonderland"}},
 			},
@@ -242,7 +227,8 @@ func TestUserQueryDBConfigPut(t *testing.T) {
 	})
 	t.Run("ReplaceAll", func(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/functions", `{
-			"sum": {"javascript": "function(context,args){return args.numero + args.numero;}",
+			"sum": {"type": "javascript",
+					"code": "function(context,args){return args.numero + args.numero;}",
 					"parameters": ["numero"],
 					"allow": {"channels": ["*"]}}
 		}`)
@@ -273,7 +259,8 @@ func TestUserQueryDBConfigPutOne(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{
 		UserFunctions: map[string]*db.UserFunctionConfig{
 			"square": {
-				SourceCode: "function(context,args){return args.numero * args.numero;}",
+				Type:       "javascript",
+				Code:       "function(context,args){return args.numero * args.numero;}",
 				Parameters: []string{"numero"},
 				Allow:      &db.UserQueryAllow{Channels: []string{"wonderland"}},
 			},
@@ -298,7 +285,8 @@ func TestUserQueryDBConfigPutOne(t *testing.T) {
 	})
 	t.Run("Add", func(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/functions/sum", `{
-			"javascript": "function(context,args){return args.numero + args.numero;}",
+			"type": "javascript",
+			"code": "function(context,args){return args.numero + args.numero;}",
 			"parameters": ["numero"],
 			"allow": {"channels": ["*"]}
 		}`)
@@ -312,7 +300,8 @@ func TestUserQueryDBConfigPutOne(t *testing.T) {
 	})
 	t.Run("ReplaceOne", func(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/functions/square", `{
-			"javascript": "function(context,args){return -args.n * args.n;}",
+			"type": "javascript",
+			"code": "function(context,args){return -args.n * args.n;}",
 			"parameters": ["n"],
 			"allow": {"channels": ["*"]}
 		}`)
@@ -332,215 +321,6 @@ func TestUserQueryDBConfigPutOne(t *testing.T) {
 		assert.Equal(t, 1, len(rt.GetDatabase().Options.UserFunctions))
 
 		response = rt.SendAdminRequest("GET", "/db/_function/square?n=13", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
-	})
-}
-
-//////// N1QL QUERIES
-
-func TestDBConfigUserQueryGetEmpty(t *testing.T) {
-	rt := newRestTesterForUserQueries(t, DbConfig{})
-	if rt == nil {
-		return
-	}
-	defer rt.Close()
-
-	t.Run("Non-Admin", func(t *testing.T) {
-		response := rt.SendRequest("GET", "/db/_config/queries", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
-	})
-	t.Run("All", func(t *testing.T) {
-		response := rt.SendAdminRequest("GET", "/db/_config/queries", "")
-		var body db.UserQueryMap
-		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-		assert.Equal(t, 0, len(body))
-	})
-	t.Run("Missing", func(t *testing.T) {
-		response := rt.SendAdminRequest("GET", "/db/_config/queries/cube", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
-	})
-}
-func TestDBConfigUserQueryGet(t *testing.T) {
-	rt := newRestTesterForUserQueries(t, DbConfig{
-		UserQueries: map[string]*db.UserQueryConfig{
-			"square": {
-				Statement:  "SELECT $$numero * $$numero",
-				Parameters: []string{"numero"},
-				Allow:      &db.UserQueryAllow{Channels: []string{"wonderland"}},
-			},
-			"xxx": {
-				Statement: "SELECT 42",
-			},
-			"yyy": {
-				Statement: "SELECT 23",
-			},
-		},
-	})
-	if rt == nil {
-		return
-	}
-	defer rt.Close()
-
-	t.Run("Non-Admin", func(t *testing.T) {
-		response := rt.SendRequest("GET", "/db/_config/queries", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
-	})
-	t.Run("All", func(t *testing.T) {
-		response := rt.SendAdminRequest("GET", "/db/_config/queries", "")
-		var body db.UserQueryMap
-		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-		assert.NotNil(t, body["square"])
-		assert.NotNil(t, body["xxx"])
-		assert.NotNil(t, body["yyy"])
-	})
-	t.Run("Single", func(t *testing.T) {
-		response := rt.SendAdminRequest("GET", "/db/_config/queries/square", "")
-		var body db.UserQueryConfig
-		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-		assert.Equal(t, "SELECT $numero * $numero", body.Statement)
-	})
-	t.Run("Missing", func(t *testing.T) {
-		response := rt.SendAdminRequest("GET", "/db/_config/queries/bogus", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
-	})
-}
-
-func TestDBConfigUserQueryPut(t *testing.T) {
-	rt := newRestTesterForUserQueries(t, DbConfig{
-		UserQueries: map[string]*db.UserQueryConfig{
-			"square": {
-				Statement:  "SELECT $$numero * $$numero",
-				Parameters: []string{"numero"},
-				Allow:      &db.UserQueryAllow{Channels: []string{"wonderland"}},
-			},
-			"xxx": {
-				Statement: "SELECT 42",
-			},
-			"yyy": {
-				Statement: "SELECT 23",
-			},
-		},
-	})
-	if rt == nil {
-		return
-	}
-	defer rt.Close()
-
-	t.Run("Non-Admin", func(t *testing.T) {
-		response := rt.SendRequest("PUT", "/db/_config/queries", "{}")
-		assert.Equal(t, 404, response.Result().StatusCode)
-		response = rt.SendRequest("DELETE", "/db/_config/queries", "{}")
-		assert.Equal(t, 404, response.Result().StatusCode)
-	})
-	t.Run("Bogus", func(t *testing.T) {
-		response := rt.SendAdminRequest("PUT", "/db/_config/queries", `[]`)
-		assert.Equal(t, 400, response.Result().StatusCode)
-		response = rt.SendAdminRequest("PUT", "/db/_config/queries", `{
-			"sum": {"StaTEmént": "SELECT $numero + $numero"}
-		}`)
-		assert.Equal(t, 400, response.Result().StatusCode)
-	})
-	t.Run("ReplaceAll", func(t *testing.T) {
-		response := rt.SendAdminRequest("PUT", "/db/_config/queries", `{
-			"sum": {"statement": "SELECT $numero + $numero",
-					"parameters": ["numero"],
-					"allow": {"channels": ["*"]}}
-		}`)
-		assert.Equal(t, 200, response.Result().StatusCode)
-
-		assert.Equal(t, 1, len(rt.GetDatabase().Options.UserQueries))
-		assert.NotNil(t, rt.GetDatabase().Options.UserQueries["sum"])
-
-		if base.UnitTestUrlIsWalrus() {
-			t.Skip("This test is Couchbase Server only (requires N1QL)")
-		}
-		response = rt.SendAdminRequest("GET", "/db/_query/sum?numero=13", "")
-		assert.Equal(t, 200, response.Result().StatusCode)
-		assert.Equal(t, "[{\"$1\":26}\n]\n", string(response.BodyBytes()))
-
-		response = rt.SendAdminRequest("GET", "/db/_query/square?numero=13", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
-	})
-	t.Run("DeleteAll", func(t *testing.T) {
-		response := rt.SendAdminRequest("DELETE", "/db/_config/queries", "")
-		assert.Equal(t, 200, response.Result().StatusCode)
-
-		assert.Equal(t, 0, len(rt.GetDatabase().Options.UserQueries))
-
-		response = rt.SendAdminRequest("GET", "/db/_query/square?numero=13", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
-	})
-}
-
-func TestDBConfigUserQueryPutOne(t *testing.T) {
-	rt := newRestTesterForUserQueries(t, DbConfig{
-		UserQueries: map[string]*db.UserQueryConfig{
-			"square": {
-				Statement:  "SELECT $$numero * $$numero",
-				Parameters: []string{"numero"},
-				Allow:      &db.UserQueryAllow{Channels: []string{"wonderland"}},
-			},
-		},
-	})
-	if rt == nil {
-		return
-	}
-	defer rt.Close()
-
-	t.Run("Non-Admin", func(t *testing.T) {
-		response := rt.SendRequest("PUT", "/db/_config/queries/square", "{}")
-		assert.Equal(t, 404, response.Result().StatusCode)
-		response = rt.SendRequest("DELETE", "/db/_config/queries/square", "{}")
-		assert.Equal(t, 404, response.Result().StatusCode)
-	})
-	t.Run("Bogus", func(t *testing.T) {
-		response := rt.SendAdminRequest("PUT", "/db/_config/queries/square", `[]`)
-		assert.Equal(t, 400, response.Result().StatusCode)
-		response = rt.SendAdminRequest("PUT", "/db/_config/queries/square", `{"StaTEmént": "SELECT $numero + $numero"}`)
-		assert.Equal(t, 400, response.Result().StatusCode)
-	})
-	t.Run("Add", func(t *testing.T) {
-		response := rt.SendAdminRequest("PUT", "/db/_config/queries/sum", `{
-			"statement": "SELECT $numero + $numero",
-			"parameters": ["numero"],
-			"allow": {"channels": ["*"]}
-		}`)
-		assert.Equal(t, 200, response.Result().StatusCode)
-
-		assert.NotNil(t, rt.GetDatabase().Options.UserQueries["sum"])
-		assert.NotNil(t, rt.GetDatabase().Options.UserQueries["square"])
-
-		if base.UnitTestUrlIsWalrus() {
-			t.Skip("This test is Couchbase Server only (requires N1QL)")
-		}
-		response = rt.SendAdminRequest("GET", "/db/_query/sum?numero=13", "")
-		assert.Equal(t, "[{\"$1\":26}\n]\n", string(response.BodyBytes()))
-	})
-	t.Run("ReplaceOne", func(t *testing.T) {
-		response := rt.SendAdminRequest("PUT", "/db/_config/queries/square", `{
-			"statement": "SELECT -$n * $n",
-			"parameters": ["n"],
-			"allow": {"channels": ["*"]}
-		}`)
-		assert.Equal(t, 200, response.Result().StatusCode)
-
-		assert.NotNil(t, rt.GetDatabase().Options.UserQueries["sum"])
-		assert.NotNil(t, rt.GetDatabase().Options.UserQueries["square"])
-
-		if base.UnitTestUrlIsWalrus() {
-			t.Skip("This test is Couchbase Server only (requires N1QL)")
-		}
-		response = rt.SendAdminRequest("GET", "/db/_query/square?n=13", "")
-		assert.Equal(t, "[{\"$1\":-169}\n]\n", string(response.BodyBytes()))
-	})
-	t.Run("DeleteOne", func(t *testing.T) {
-		response := rt.SendAdminRequest("DELETE", "/db/_config/queries/square", "")
-		assert.Equal(t, 200, response.Result().StatusCode)
-
-		assert.Nil(t, rt.GetDatabase().Options.UserQueries["square"])
-		assert.Equal(t, 1, len(rt.GetDatabase().Options.UserQueries))
-
-		response = rt.SendAdminRequest("GET", "/db/_query/square?n=13", "")
 		assert.Equal(t, 404, response.Result().StatusCode)
 	})
 }
@@ -661,7 +441,6 @@ func newRestTesterForUserQueries(t *testing.T, queryConfig DbConfig) *RestTester
 	_ = rt.Bucket() // initializes the bucket as a side effect
 	dbConfig := dbConfigForTestBucket(rt.testBucket)
 	dbConfig.UserFunctions = queryConfig.UserFunctions
-	dbConfig.UserQueries = queryConfig.UserQueries
 	dbConfig.GraphQL = queryConfig.GraphQL
 
 	resp, err := rt.CreateDatabase("db", dbConfig)

@@ -24,79 +24,97 @@ var allowAll = &UserQueryAllow{Channels: []string{"*"}}
 
 var kUserFunctionConfig = UserFunctionConfigMap{
 	"square": &UserFunctionConfig{
-		SourceCode: "function(context, args) {return args.numero * args.numero;}",
+		Type:       "javascript",
+		Code:       "function(context, args) {return args.numero * args.numero;}",
 		Parameters: []string{"numero"},
 		Allow:      &UserQueryAllow{Channels: []string{"wonderland"}},
 	},
 	"exceptional": &UserFunctionConfig{
-		SourceCode: `function(context, args) {throw "oops";}`,
-		Allow:      allowAll,
+		Type:  "javascript",
+		Code:  `function(context, args) {throw "oops";}`,
+		Allow: allowAll,
 	},
 	"call_fn": &UserFunctionConfig{
-		SourceCode: `function(context, args) {return context.user.func("square", {numero: 7});}`,
-		Allow:      allowAll,
+		Type:  "javascript",
+		Code:  `function(context, args) {return context.user.func("square", {numero: 7});}`,
+		Allow: allowAll,
 	},
 	"great_and_terrible": &UserFunctionConfig{
-		SourceCode: `function(context, args) {return "I am OZ the great and terrible";}`,
-		Allow:      &UserQueryAllow{Channels: []string{"oz", "narnia"}},
+		Type:  "javascript",
+		Code:  `function(context, args) {return "I am OZ the great and terrible";}`,
+		Allow: &UserQueryAllow{Channels: []string{"oz", "narnia"}},
 	},
 	"call_forbidden": &UserFunctionConfig{
-		SourceCode: `function(context, args) {return context.user.func("great_and_terrible");}`,
-		Allow:      allowAll,
+		Type:  "javascript",
+		Code:  `function(context, args) {return context.user.func("great_and_terrible");}`,
+		Allow: allowAll,
 	},
 	"sudo_call_forbidden": &UserFunctionConfig{
-		SourceCode: `function(context, args) {return context.admin.func("great_and_terrible");}`,
-		Allow:      allowAll,
+		Type:  "javascript",
+		Code:  `function(context, args) {return context.admin.func("great_and_terrible");}`,
+		Allow: allowAll,
 	},
 	"admin_only": &UserFunctionConfig{
-		SourceCode: `function(context, args) {return "OK";}`,
-		Allow:      nil, // no 'allow' property means admin-only
+		Type:  "javascript",
+		Code:  `function(context, args) {return "OK";}`,
+		Allow: nil, // no 'allow' property means admin-only
 	},
 	"require_admin": &UserFunctionConfig{
-		SourceCode: `function(context, args) {context.requireAdmin(); return "OK";}`,
-		Allow:      allowAll,
+		Type:  "javascript",
+		Code:  `function(context, args) {context.requireAdmin(); return "OK";}`,
+		Allow: allowAll,
 	},
 	"user_only": &UserFunctionConfig{
-		SourceCode: `function(context, args) {if (!context.user.name) throw "No user"; return context.user.name;}`,
-		Allow:      &UserQueryAllow{Channels: []string{"user-$(context.user.name)"}},
+		Type:  "javascript",
+		Code:  `function(context, args) {if (!context.user.name) throw "No user"; return context.user.name;}`,
+		Allow: &UserQueryAllow{Channels: []string{"user-$(context.user.name)"}},
 	},
 	"alice_only": &UserFunctionConfig{
-		SourceCode: `function(context, args) {context.requireUser("alice"); return "OK";}`,
-		Allow:      allowAll,
+		Type:  "javascript",
+		Code:  `function(context, args) {context.requireUser("alice"); return "OK";}`,
+		Allow: allowAll,
 	},
 	"pevensies_only": &UserFunctionConfig{
-		SourceCode: `function(context, args) {context.requireUser(["peter","jane","eustace","lucy"]); return "OK";}`,
-		Allow:      allowAll,
+		Type:  "javascript",
+		Code:  `function(context, args) {context.requireUser(["peter","jane","eustace","lucy"]); return "OK";}`,
+		Allow: allowAll,
 	},
 	"wonderland_only": &UserFunctionConfig{
-		SourceCode: `function(context, args) {context.requireAccess("wonderland"); context.requireAccess(["wonderland", "snark"]); return "OK";}`,
-		Allow:      allowAll,
+		Type:  "javascript",
+		Code:  `function(context, args) {context.requireAccess("wonderland"); context.requireAccess(["wonderland", "snark"]); return "OK";}`,
+		Allow: allowAll,
 	},
 	"narnia_only": &UserFunctionConfig{
-		SourceCode: `function(context, args) {context.requireAccess("narnia"); return "OK";}`,
-		Allow:      allowAll,
+		Type:  "javascript",
+		Code:  `function(context, args) {context.requireAccess("narnia"); return "OK";}`,
+		Allow: allowAll,
 	},
 	"hero_only": &UserFunctionConfig{
-		SourceCode: `function(context, args) {context.requireRole(["hero", "antihero"]); return "OK";}`,
-		Allow:      allowAll,
+		Type:  "javascript",
+		Code:  `function(context, args) {context.requireRole(["hero", "antihero"]); return "OK";}`,
+		Allow: allowAll,
 	},
 	"villain_only": &UserFunctionConfig{
-		SourceCode: `function(context, args) {context.requireRole(["villain"]); return "OK";}`,
-		Allow:      allowAll,
+		Type:  "javascript",
+		Code:  `function(context, args) {context.requireRole(["villain"]); return "OK";}`,
+		Allow: allowAll,
 	},
 
 	"getDoc": &UserFunctionConfig{
-		SourceCode: `function(context, args) {return context.user.defaultCollection.get(args.docID);}`,
+		Type:       "javascript",
+		Code:       `function(context, args) {return context.user.defaultCollection.get(args.docID);}`,
 		Parameters: []string{"docID"},
 		Allow:      allowAll,
 	},
 	"putDoc": &UserFunctionConfig{
-		SourceCode: `function(context, args) {return context.user.defaultCollection.save(args.docID, args.doc);}`,
+		Type:       "javascript",
+		Code:       `function(context, args) {return context.user.defaultCollection.save(args.docID, args.doc);}`,
 		Parameters: []string{"docID", "doc"},
 		Allow:      allowAll,
 	},
 	"delDoc": &UserFunctionConfig{
-		SourceCode: `"function(context, args) {return context.user.defaultCollection.delete(args.docID);}"`,
+		Type:       "javascript",
+		Code:       `function(context, args) {return context.user.defaultCollection.delete(args.docID);}`,
 		Parameters: []string{"docID"},
 		Allow:      allowAll,
 	},
@@ -286,7 +304,7 @@ func TestUserFunctionsCRUD(t *testing.T) {
 	docID := "foo"
 
 	// Missing document:
-	result, err := db.CallUserFunction("getDoc", map[string]interface{}{"docID": docID}, false)
+	result, err := db.CallUserFunction("getDoc", map[string]interface{}{"docID": docID}, true)
 	assert.NoError(t, err)
 	assert.EqualValues(t, nil, result)
 
@@ -307,7 +325,7 @@ func TestUserFunctionsCRUD(t *testing.T) {
 	assert.EqualValues(t, nil, result)
 
 	// Existing document:
-	result, err = db.CallUserFunction("getDoc", map[string]interface{}{"docID": docID}, false)
+	result, err = db.CallUserFunction("getDoc", map[string]interface{}{"docID": docID}, true)
 	assert.NoError(t, err)
 	revID, ok := result.(map[string]interface{})["_rev"].(string)
 	assert.True(t, ok)
@@ -329,26 +347,26 @@ func TestUserFunctionsCRUD(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Get doc again to verify revision:
-	result, err = db.CallUserFunction("getDoc", map[string]interface{}{"docID": docID}, false)
+	result, err = db.CallUserFunction("getDoc", map[string]interface{}{"docID": docID}, true)
 	revID, ok = result.(map[string]interface{})["_rev"].(string)
 	assert.True(t, ok)
 	assert.NotEmpty(t, revID)
 	assert.True(t, strings.HasPrefix(revID, "3-"))
 
 	// Delete doc:
-	_, err = db.CallUserFunction("delDoc", map[string]interface{}{"docID": docID}, false)
+	_, err = db.CallUserFunction("delDoc", map[string]interface{}{"docID": docID}, true)
 	assert.NoError(t, err)
 }
 
 var kUserFunctionBadConfig = UserFunctionConfigMap{
 	"square": &UserFunctionConfig{
-		SourceCode: "return args.numero * args.numero;",
+		Code:       "return args.numero * args.numero;",
 		Parameters: []string{"numero"},
 		Allow:      &UserQueryAllow{Channels: []string{"wonderland"}},
 	},
 	"syntax_error": &UserFunctionConfig{
-		SourceCode: "returm )42(",
-		Allow:      allowAll,
+		Code:  "returm )42(",
+		Allow: allowAll,
 	},
 }
 

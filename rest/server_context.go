@@ -838,11 +838,10 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 	}
 
 	if sc.config.Unsupported.UserQueries != nil && *sc.config.Unsupported.UserQueries {
-		contextOptions.UserQueries = config.UserQueries
 		contextOptions.UserFunctions = config.UserFunctions
 		contextOptions.GraphQL = config.GraphQL
-	} else if config.UserQueries != nil || config.UserFunctions != nil || config.GraphQL != nil {
-		base.WarnfCtx(context.TODO(), `Database config options "queries", "functions", "graphql" ignored because unsupported.user_queries feature flag is not enabled`)
+	} else if config.UserFunctions != nil || config.GraphQL != nil {
+		base.WarnfCtx(context.TODO(), `Database config options "functions" and "graphql" ignored because unsupported.user_queries feature flag is not enabled`)
 	}
 
 	return contextOptions, nil

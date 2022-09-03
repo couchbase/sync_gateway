@@ -20,38 +20,49 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var kUserQueriesConfig = UserQueryMap{
-	"airports_in_city": &UserQueryConfig{
-		Statement:  `SELECT $city AS city`,
+var kUserN1QLFunctionsConfig = UserFunctionConfigMap{
+	"airports_in_city": &UserFunctionConfig{
+		Type:       "query",
+		Code:       `SELECT $city AS city`,
 		Parameters: []string{"city"},
 		Allow:      &UserQueryAllow{Channels: []string{"city-$city", "allcities"}},
 	},
-	"square": &UserQueryConfig{
-		Statement:  "SELECT $numero * $numero AS square",
+	"square": &UserFunctionConfig{
+		Type:       "query",
+		Code:       "SELECT $numero * $numero AS square",
 		Parameters: []string{"numero"},
 		Allow:      &UserQueryAllow{Channels: []string{"wonderland"}},
 	},
-	"user": &UserQueryConfig{
-		Statement: "SELECT $user AS `user`",
-		Allow:     &UserQueryAllow{Channels: []string{"*"}},
+	"user": &UserFunctionConfig{
+		Type:  "query",
+		Code:  "SELECT $user AS `user`",
+		Allow: &UserQueryAllow{Channels: []string{"*"}},
 	},
-	"user_parts": &UserQueryConfig{
-		Statement: "SELECT $user.name AS name, $user.email AS email",
-		Allow:     &UserQueryAllow{Channels: []string{"user-$(user.name)"}},
+	"user_parts": &UserFunctionConfig{
+		Type:  "query",
+		Code:  "SELECT $user.name AS name, $user.email AS email",
+		Allow: &UserQueryAllow{Channels: []string{"user-$(user.name)"}},
 	},
-	"admin_only": &UserQueryConfig{
-		Statement: `SELECT "ok" AS status`,
-		Allow:     nil, // no 'allow' property means admin-only
+	"admin_only": &UserFunctionConfig{
+		Type:  "query",
+		Code:  `SELECT "ok" AS status`,
+		Allow: nil, // no 'allow' property means admin-only
 	},
-	"inject": &UserQueryConfig{
-		Statement:  `SELECT $foo`,
+	"inject": &UserFunctionConfig{
+		Type:       "query",
+		Code:       `SELECT $foo`,
 		Parameters: []string{"foo"},
 		Allow:      &UserQueryAllow{Channels: []string{"*"}},
 	},
-	"syntax_error": &UserQueryConfig{
-		Statement: "SELEKT OOK? FR0M OOK!",
-		Allow:     allowAll,
+	"syntax_error": &UserFunctionConfig{
+		Type:  "query",
+		Code:  "SELEKT OOK? FR0M OOK!",
+		Allow: allowAll,
 	},
+}
+
+func callUserQuery(db *Database, name string, args map[string]interface{}) (interface{}, error) {
+	return db.CallUserFunction(name, args, false)
 }
 
 func queryResultString(t *testing.T, iter sgbucket.QueryResultIterator) string {
@@ -86,8 +97,8 @@ func TestUserN1QLQueries(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	cacheOptions := DefaultCacheOptions()
 	db := setupTestDBWithOptions(t, DatabaseContextOptions{
-		CacheOptions: &cacheOptions,
-		UserQueries:  kUserQueriesConfig,
+		CacheOptions:  &cacheOptions,
+		UserFunctions: kUserN1QLFunctionsConfig,
 	})
 	defer db.Close()
 
@@ -104,34 +115,40 @@ func TestUserN1QLQueries(t *testing.T) {
 
 func testUserQueriesCommon(t *testing.T, db *Database) {
 	// dynamic channel list
-	iter, err := db.UserN1QLQuery("airports_in_city", map[string]interface{}{"city": "London"})
+	fn, err := db.GetUserFunction("airports_in_city", map[string]interface{}{"city": "London"}, false)
+	assert.NoError(t, err)
+	iter, err := fn.Iterate()
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{"city":"London"}]`, iter)
 
-	iter, err = db.UserN1QLQuery("square", map[string]interface{}{"numero": 16})
+	fn, err = db.GetUserFunction("square", map[string]interface{}{"numero": 16}, false)
+	assert.NoError(t, err)
+	iter, err = fn.Iterate()
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{"square":256}]`, iter)
 
-	iter, err = db.UserN1QLQuery("inject", map[string]interface{}{"foo": "1337 as pwned"})
+	fn, err = db.GetUserFunction("inject", map[string]interface{}{"foo": "1337 as pwned"}, false)
+	assert.NoError(t, err)
+	iter, err = fn.Iterate()
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{"$1":"1337 as pwned"}]`, iter)
 
 	// ERRORS:
 
 	// Missing a parameter:
-	_, err = db.UserN1QLQuery("square", nil)
+	_, err = callUserQuery(db, "square", nil)
 	assertHTTPError(t, err, 400)
 	assert.ErrorContains(t, err, "numero")
 	assert.ErrorContains(t, err, "square")
 
 	// Extra parameter:
-	_, err = db.UserN1QLQuery("square", map[string]interface{}{"numero": 42, "number": 0})
+	_, err = callUserQuery(db, "square", map[string]interface{}{"numero": 42, "number": 0})
 	assertHTTPError(t, err, 400)
 	assert.ErrorContains(t, err, "number")
 	assert.ErrorContains(t, err, "square")
 
 	// Function definition has a syntax error:
-	_, err = db.UserN1QLQuery("syntax_error", nil)
+	_, err = callUserQuery(db, "syntax_error", nil)
 	assertHTTPError(t, err, 500)
 	assert.ErrorContains(t, err, "syntax_error")
 }
@@ -139,52 +156,62 @@ func testUserQueriesCommon(t *testing.T, db *Database) {
 func testUserQueriesAsAdmin(t *testing.T, db *Database) {
 	testUserQueriesCommon(t, db)
 
-	iter, err := db.UserN1QLQuery("user", nil)
+	fn, err := db.GetUserFunction("user", nil, false)
+	assert.NoError(t, err)
+	iter, err := fn.Iterate()
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{"user":{}}]`, iter)
 
-	iter, err = db.UserN1QLQuery("user_parts", nil)
+	fn, err = db.GetUserFunction("user_parts", nil, false)
+	assert.NoError(t, err)
+	iter, err = fn.Iterate()
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{}]`, iter)
 
 	// admin only:
-	iter, err = db.UserN1QLQuery("admin_only", nil)
+	fn, err = db.GetUserFunction("admin_only", nil, false)
+	assert.NoError(t, err)
+	iter, err = fn.Iterate()
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{"status":"ok"}]`, iter)
 
 	// ERRORS:
 
 	// No such query:
-	_, err = db.UserN1QLQuery("xxxx", nil)
+	_, err = callUserQuery(db, "xxxx", nil)
 	assertHTTPError(t, err, 404)
 }
 
 func testUserQueriesAsUser(t *testing.T, db *Database) {
 	testUserQueriesCommon(t, db)
 
-	iter, err := db.UserN1QLQuery("user", nil)
+	fn, err := db.GetUserFunction("user", nil, false)
 	assert.NoError(t, err)
 	// (Can't compare the entire result string because the order of items in the "channels" array
 	// is undefined and can change from one run to another.)
+	iter, err := fn.Iterate()
+	assert.NoError(t, err)
 	resultStr := queryResultString(t, iter)
 	assert.True(t, strings.HasPrefix(resultStr, `[{"user":{"channels":["`))
 	assert.True(t, strings.HasSuffix(resultStr, `"],"email":"","name":"alice","roles":["hero"]}}]`))
 
-	iter, err = db.UserN1QLQuery("user_parts", nil)
+	fn, err = db.GetUserFunction("user_parts", nil, false)
+	assert.NoError(t, err)
+	iter, err = fn.Iterate()
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{"email":"","name":"alice"}]`, iter)
 
 	// ERRORS:
 
 	// Not allowed (admin only):
-	_, err = db.UserN1QLQuery("admin_only", nil)
+	_, err = callUserQuery(db, "admin_only", nil)
 	assertHTTPError(t, err, 403)
 
 	// Not allowed (dynamic channel list):
-	_, err = db.UserN1QLQuery("airports_in_city", map[string]interface{}{"city": "Chicago"})
+	_, err = callUserQuery(db, "airports_in_city", map[string]interface{}{"city": "Chicago"})
 	assertHTTPError(t, err, 403)
 
 	// No such query:
-	_, err = db.UserN1QLQuery("xxxx", nil)
+	_, err = callUserQuery(db, "xxxx", nil)
 	assertHTTPError(t, err, 403) // not 404 as for an admin
 }

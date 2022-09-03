@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"strings"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 )
@@ -24,60 +25,7 @@ const kGraphQLQueryParam = "query"
 const kGraphQLOperationNameParam = "operationName"
 const kGraphQLVariablesParam = "variables"
 
-//////// N1QL QUERIES:
-
-// HTTP handler for GET or POST `/$db/_query/$name`
-func (h *handler) handleUserQuery() error {
-	queryName, queryParams, err := h.getUserFunctionParams()
-	if err != nil {
-		return err
-	}
-	// Run the query:
-	return h.db.WithTimeout(db.UserQueryTimeout, func() error {
-		rows, err := h.db.UserN1QLQuery(queryName, queryParams)
-		if err != nil {
-			return err
-		}
-		defer func() {
-			if rows != nil {
-				rows.Close()
-			}
-		}()
-
-		// Write the query results to the response, as a JSON array of objects.
-		h.setHeader("Content-Type", "application/json")
-		if _, err = h.response.Write([]byte(`[`)); err != nil {
-			return err
-		}
-		first := true
-		var row interface{}
-		for rows.Next(&row) {
-			if first {
-				first = false
-			} else {
-				if _, err = h.response.Write([]byte(`,`)); err != nil {
-					return err
-				}
-			}
-			if err = h.addJSON(row); err != nil {
-				return err
-			}
-			// The iterator streams results as the query engine produces them, so this loop may take most of the query's time; check for timeout after each iteration:
-			if err = h.db.CheckTimeout(); err != nil {
-				return err
-			}
-		}
-		err = rows.Close()
-		rows = nil // prevent 'defer' from closing again
-		if err != nil {
-			return err
-		}
-		_, err = h.response.Write([]byte("]\n"))
-		return err
-	})
-}
-
-//////// JAVASCRIPT FUNCTIONS:
+//////// FUNCTIONS:
 
 // HTTP handler for GET or POST `/$db/_function/$name`
 func (h *handler) handleUserFunction() error {
@@ -88,15 +36,25 @@ func (h *handler) handleUserFunction() error {
 	canMutate := h.rq.Method != "GET"
 
 	return h.db.WithTimeout(db.UserQueryTimeout, func() error {
-		result, err := h.db.CallUserFunction(fnName, fnParams, canMutate)
-		if err == nil {
-			h.writeJSON(result)
+		fn, err := h.db.GetUserFunction(fnName, fnParams, canMutate)
+		if err != nil {
+			return err
+		} else if rows, err := fn.Iterate(); err != nil {
+			return err
+		} else if rows != nil {
+			return h.writeQueryRows(rows)
+		} else {
+			// Write the single result to the response:
+			result, err := fn.Run()
+			if err == nil {
+				h.writeJSON(result)
+			}
+			return err
 		}
-		return err
 	})
 }
 
-// Common subroutine for reading query name and parameters from a request
+// Subroutine for reading query name and parameters from a request
 func (h *handler) getUserFunctionParams() (string, map[string]interface{}, error) {
 	name := h.PathVar(kFnNameParam)
 	params := map[string]interface{}{}
@@ -125,6 +83,48 @@ func (h *handler) getUserFunctionParams() (string, map[string]interface{}, error
 		}
 	}
 	return name, params, err
+}
+
+// Subroutine to write N1QL query results to a response
+func (h *handler) writeQueryRows(rows sgbucket.QueryResultIterator) error {
+	// Use iterator to write results one at a time to the response:
+	defer func() {
+		if rows != nil {
+			rows.Close()
+		}
+	}()
+
+	// Write the query results to the response, as a JSON array of objects.
+	h.setHeader("Content-Type", "application/json")
+	var err error
+	if _, err = h.response.Write([]byte(`[`)); err != nil {
+		return err
+	}
+	first := true
+	var row interface{}
+	for rows.Next(&row) {
+		if first {
+			first = false
+		} else {
+			if _, err = h.response.Write([]byte(`,`)); err != nil {
+				return err
+			}
+		}
+		if err = h.addJSON(row); err != nil {
+			return err
+		}
+		// The iterator streams results as the query engine produces them, so this loop may take most of the query's time; check for timeout after each iteration:
+		if err = h.db.CheckTimeout(); err != nil {
+			return err
+		}
+	}
+	err = rows.Close()
+	rows = nil // prevent 'defer' from closing again
+	if err != nil {
+		return err
+	}
+	_, err = h.response.Write([]byte("]\n"))
+	return err
 }
 
 //////// GRAPHQL QUERIES:

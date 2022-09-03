@@ -60,20 +60,20 @@ func testConcurrently(t *testing.T, rt *RestTester, testFunc func() bool) bool {
 	return assert.LessOrEqual(t, concurrentDuration, 1.1*numTasks*sequentialDuration)
 }
 
-func TestConcurrentQueries(t *testing.T) {
+func TestUserQueriesConcurrently(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true, EnableUserQueries: true})
 	defer rt.Close()
 	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
 		UserFunctions: map[string]*db.UserFunctionConfig{
 			"square": {
-				SourceCode: "return args.n * args.n;",
+				Type:       "javascript",
+				Code:       "function(context,args) {return args.n * args.n;}",
 				Parameters: []string{"n"},
 				Allow:      &db.UserQueryAllow{Channels: []string{"*"}},
 			},
-		},
-		UserQueries: db.UserQueryMap{
-			"square": &db.UserQueryConfig{
-				Statement:  "SELECT $n * $n AS square",
+			"squareN1QL": &db.UserFunctionConfig{
+				Type:       "query",
+				Code:       "SELECT $n * $n AS square",
 				Parameters: []string{"n"},
 				Allow:      &db.UserQueryAllow{Channels: []string{"*"}},
 			},
@@ -82,7 +82,7 @@ func TestConcurrentQueries(t *testing.T) {
 			Schema: base.StringPtr(`type Query { square(n: Int!): Int! }`),
 			Resolvers: map[string]db.GraphQLResolverConfig{
 				"Query": {
-					"square": `return args.n * args.n;`,
+					"square": `function(context,args) {return args.n * args.n;}`,
 				},
 			},
 		},
@@ -109,7 +109,7 @@ func TestConcurrentQueries(t *testing.T) {
 			t.Skip("Skipping query subtest")
 		} else {
 			testConcurrently(t, rt, func() bool {
-				response := rt.SendRequest("GET", "/db/_query/square?n=13", "")
+				response := rt.SendRequest("GET", "/db/_function/squareN1QL?n=13", "")
 				return assert.Equal(t, 200, response.Result().StatusCode) &&
 					assert.Equal(t, "[{\"square\":169}\n]\n", string(response.BodyBytes()))
 			})

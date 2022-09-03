@@ -47,7 +47,6 @@ var handlersByProfile = map[string]blipHandlerFunc{
 }
 
 var kConnectedClientHandlersByProfile = map[string]blipHandlerFunc{
-	MessageQuery:    userBlipHandler((*blipHandler).handleQuery),
 	MessageFunction: userBlipHandler((*blipHandler).handleFunction),
 	MessageGraphQL:  userBlipHandler((*blipHandler).handleGraphQL),
 }

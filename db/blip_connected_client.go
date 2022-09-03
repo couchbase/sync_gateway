@@ -90,55 +90,53 @@ func (bh *blipHandler) handleFunction(rq *blip.Message) error {
 	}
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("name: %s", name))
 	return bh.db.WithTimeout(UserQueryTimeout, func() error {
-		results, err := bh.db.CallUserFunction(name, requestParams, true)
-		if err != nil {
-			return base.HTTPErrorf(http.StatusInternalServerError, "Error running function: %v", err)
-		}
-
-		// Write the result to the response:
-		response := rq.Response()
-		response.SetCompressed(true)
-		_ = response.SetJSONBody(results)
-		return nil
-	})
-}
-
-//////// QUERY:
-
-// Handles a Connected-Client "query" request.
-func (bh *blipHandler) handleQuery(rq *blip.Message) error {
-	name, requestParams, err := bh.parseQueryNameAndParams(rq)
-	if err != nil {
-		return err
-	}
-	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("name: %s", name))
-
-	return bh.db.WithTimeout(UserQueryTimeout, func() error {
-		// Run the query:
-		results, err := bh.db.UserN1QLQuery(name, requestParams)
+		fn, err := bh.db.GetUserFunction(name, requestParams, true)
 		if err != nil {
 			return err
 		}
 
-		// Write the results to the response:
-		var out bytes.Buffer
-		enc := base.JSONEncoder(&out)
-		var row interface{}
-		for results.Next(&row) {
-			if err = enc.Encode(row); err != nil { // always ends with a newline
-				return err
-			}
-			if err = bh.db.CheckTimeout(); err != nil {
-				return err
-			}
-		}
-		if err = results.Close(); err != nil {
+		if iter, err := fn.Iterate(); err != nil {
 			return err
+
+		} else if iter != nil {
+			// Write each iterated result to the response:
+			defer func() {
+				if iter != nil {
+					iter.Close()
+				}
+			}()
+			var out bytes.Buffer
+			enc := base.JSONEncoder(&out)
+			var row interface{}
+			for iter.Next(&row) {
+				if err = enc.Encode(row); err != nil { // always ends with a newline
+					return err
+				}
+				if err = bh.db.CheckTimeout(); err != nil {
+					return err
+				}
+			}
+			err = iter.Close()
+			iter = nil
+			if err != nil {
+				return err
+			}
+			response := rq.Response()
+			response.SetCompressed(true)
+			response.SetJSONBodyAsBytes(out.Bytes())
+			return nil
+
+		} else {
+			// Write the single result to the response:
+			result, err := fn.Run()
+			if err != nil {
+				return err
+			}
+			response := rq.Response()
+			response.SetCompressed(true)
+			_ = response.SetJSONBody(result)
+			return nil
 		}
-		response := rq.Response()
-		response.SetCompressed(true)
-		response.SetJSONBodyAsBytes(out.Bytes())
-		return nil
 	})
 }
 

@@ -106,7 +106,8 @@ var kTestGraphQLConfig = GraphQLConfig{
 // JS function helpers:
 var kTestGraphQLUserFunctionsConfig = UserFunctionConfigMap{
 	"all": &UserFunctionConfig{
-		SourceCode: `function(context, args) {
+		Type: "javascript",
+		Code: `function(context, args) {
 						return [
 						{id: "a", "title": "Applesauce", done:true, tags:["fruit","soft"]},
 						{id: "b", "title": "Beer", description: "Bass ale please"},
@@ -114,7 +115,8 @@ var kTestGraphQLUserFunctionsConfig = UserFunctionConfigMap{
 		Allow: &UserQueryAllow{Channels: []string{"*"}},
 	},
 	"getTask": &UserFunctionConfig{
-		SourceCode: `function(context, args, parent, info) {
+		Type: "javascript",
+		Code: `function(context, args, parent, info) {
 						var all = context.user.func("all");
 						for (var i = 0; i < all.length; i++)
 							if (all[i].id == args.id) return all[i];

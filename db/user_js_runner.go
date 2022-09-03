@@ -108,15 +108,6 @@ func newUserJavaScriptRunner(name string, kind string, funcSource string) (*user
 		return ottoJSONResult(call, result, err)
 	})
 
-	// Implementation of the 'query(n1ql,params)' callback:
-	runner.DefineNativeFunction("_query", func(call otto.FunctionCall) otto.Value {
-		queryName := ottoStringParam(call, 0, "app.query")
-		params := ottoObjectParam(call, 1, true, "app.query")
-		sudo := ottoBoolParam(call, 2)
-		result, err := runner.do_query(queryName, params, sudo)
-		return ottoJSONResult(call, result, err)
-	})
-
 	// Implementation of the 'save(docID,doc)' callback:
 	runner.DefineNativeFunction("_save", func(call otto.FunctionCall) otto.Value {
 		docID := ottoStringParam(call, 0, "app.save")
@@ -265,33 +256,6 @@ func (runner *userJSRunner) do_graphql(query string, params map[string]interface
 		defer func() { runner.currentDB.user = user }()
 	}
 	return runner.currentDB.UserGraphQLQuery(query, "", params, runner.mutationAllowed)
-}
-
-// Implementation of JS `app.query(name, params)` function
-func (runner *userJSRunner) do_query(queryName string, params map[string]interface{}, sudo bool) ([]interface{}, error) {
-	if sudo {
-		user := runner.currentDB.user
-		runner.currentDB.user = nil
-		defer func() { runner.currentDB.user = user }()
-	}
-
-	rows, err := runner.currentDB.UserN1QLQuery(queryName, params)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		if rows != nil {
-			rows.Close()
-		}
-	}()
-	result := []interface{}{}
-	var row interface{}
-	for rows.Next(&row) {
-		result = append(result, row)
-	}
-	err = rows.Close()
-	rows = nil // prevent 'defer' from closing again
-	return result, err
 }
 
 // Implementation of JS `app.save(docID, body)` function

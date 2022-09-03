@@ -17,7 +17,6 @@ function() {    var userFn = (%s);  // <-- substitutes the JS function
                 delete: function(docID)         {return _delete(docID);},
             },
             func:       function(name, args)    {return unmarshal(_func(name, args));},
-            query:      function(name, args)    {return unmarshal(_query(name, args));},
             graphql:    function(q,args)        {return unmarshal(_graphql(q,args));},
         },
         admin: {
@@ -27,7 +26,6 @@ function() {    var userFn = (%s);  // <-- substitutes the JS function
                 delete: function(docID)         {return _delete(docID, true);},
             },
             func:       function(name, args)    {return unmarshal(_func(name, args, true));},
-            query:      function(name, args)    {return unmarshal(_query(name, args, true));},
             graphql:    function(q,args)        {return unmarshal(_graphql(q,args, true));},
         },
 
