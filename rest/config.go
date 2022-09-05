@@ -1362,7 +1362,7 @@ func (sc *ServerContext) _fetchAndLoadDatabase(ctx context.Context, dbName strin
 func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (found bool, dbConfig *DatabaseConfig, err error) {
 	var buckets []string
 	if sc.config.IsServerless() {
-		buckets = make([]string, len(sc.config.BucketCredentials))
+		buckets = make([]string, 0, len(sc.config.BucketCredentials))
 		for bucket, _ := range sc.config.BucketCredentials {
 			buckets = append(buckets, bucket)
 		}

@@ -165,7 +165,7 @@ func TestServerlessBucketCredentialsFetchDatabases(t *testing.T) {
 	assert.True(t, found)
 
 	// Limit SG to buckets defined on BucketCredentials map
-	rt.ReplacePerBucketCredentials(map[string]*base.CredentialsConfig{"invalid_bucket": {}})
+	rt.ReplacePerBucketCredentials(map[string]*base.CredentialsConfig{})
 	// Make sure fetch fails as it cannot see all buckets in cluster
 	found, _, err = rt.ServerContext().fetchDatabase(ctx, "db")
 	assert.NoError(t, err)
