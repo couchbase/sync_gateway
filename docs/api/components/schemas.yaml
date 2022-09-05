@@ -1735,6 +1735,21 @@ Compact-status:
     - start_time
     - last_error
   title: Compact-status
+Serverless:
+  description: Configuration for when SG is running in serverless mode
+  type: object
+  properties:
+    enabled:
+      description: Run SG in to serverless mode
+      type: boolean
+      readOnly: true
+    fetch_configs_cache_ttl:
+      description: |-
+        How long to cache configs fetched from the buckets for. This cache is used for requested databases that SG does not know about.
+        
+        This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+      type: string
+      default: 1s
 Startup-config:
   type: object
   properties:
@@ -1960,9 +1975,7 @@ Startup-config:
       type: object
       properties:
         serverless:
-          description: Run SG in to serverless mode
-          type: boolean
-          readOnly: true
+          $ref: '#/Serverless'
         stats_log_frequency:
           description: |-
             How often should stats be written to stats logs.
