@@ -549,18 +549,16 @@ func (dbConfig *DbConfig) validateChanges(ctx context.Context, old DbConfig) err
 	if len(dbConfig.Scopes) != len(old.Scopes) {
 		return fmt.Errorf("cannot change scopes after database creation")
 	}
-	if len(dbConfig.Scopes) > 0 {
-		// Collections Phase 1/2 permits only one scope
-		var newScope, oldScope string
-		for name := range dbConfig.Scopes {
-			newScope = name
-		}
-		for name := range old.Scopes {
-			oldScope = name
-		}
-		if newScope != oldScope {
-			return fmt.Errorf("cannot change scopes after database creation")
-		}
+	newScopes := make(base.Set, len(dbConfig.Scopes))
+	oldScopes := make(base.Set, len(old.Scopes))
+	for scopeName := range dbConfig.Scopes {
+		newScopes.Add(scopeName)
+	}
+	for scopeName := range old.Scopes {
+		oldScopes.Add(scopeName)
+	}
+	if !newScopes.Equals(oldScopes) {
+		return fmt.Errorf("cannot change scopes after database creation")
 	}
 	return nil
 }
