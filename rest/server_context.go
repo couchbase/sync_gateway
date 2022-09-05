@@ -1096,7 +1096,7 @@ func (sc *ServerContext) _suspendDatabase(dbName string) bool {
 		return false
 	}
 	bucket := dbCtx.Bucket.GetName()
-	base.InfofCtx(context.TODO(), base.KeyAll, "Suspending db %q (bucket %q)", base.MD(dbName), base.MD(bucket).Redact())
+	base.InfofCtx(context.TODO(), base.KeyAll, "Suspending db %q (bucket %q)", base.MD(dbName), base.MD(bucket))
 
 	if !sc._unloadDatabase(dbName) {
 		return false
@@ -1126,7 +1126,7 @@ func (sc *ServerContext) _unsuspendDatabase(dbName string) (*db.DatabaseContext,
 		cas, err := sc.bootstrapContext.connection.GetConfig(bucket, sc.config.Bootstrap.ConfigGroupID, dbConfig)
 		if err == base.ErrNotFound {
 			// Database no longer exists, so clean up dbConfigs
-			base.InfofCtx(context.TODO(), base.KeyConfig, "Database %q has been removed while suspended from bucket %q", base.MD(dbName).Redact(), base.MD(bucket).Redact())
+			base.InfofCtx(context.TODO(), base.KeyConfig, "Database %q has been removed while suspended from bucket %q", base.MD(dbName), base.MD(bucket))
 			delete(sc.dbConfigs, dbName)
 			return nil, err
 		} else if err != nil {
