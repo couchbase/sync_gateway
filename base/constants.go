@@ -122,42 +122,15 @@ const (
 	// The limit in Couchbase Server for total system xattr size
 	couchbaseMaxSystemXattrSize = 1 * 1024 * 1024 // 1MB
 
-	// ==== Sync Prefix Documents & Keys ====
-	SyncPrefix = "_sync:"
-
-	AttPrefix              = SyncPrefix + "att:"
-	Att2Prefix             = SyncPrefix + "att2:"
-	BackfillCompletePrefix = SyncPrefix + "backfill:complete:"
-	BackfillPendingPrefix  = SyncPrefix + "backfill:pending:"
-	DCPCheckpointPrefix    = SyncPrefix + "dcp_ck:"
-	RepairBackup           = SyncPrefix + "repair:backup:"
-	RepairDryRun           = SyncPrefix + "repair:dryrun:"
-	RevBodyPrefix          = SyncPrefix + "rb:"
-	RevPrefix              = SyncPrefix + "rev:"
-	RolePrefix             = SyncPrefix + "role:"
-	SessionPrefix          = SyncPrefix + "session:"
-	SGCfgPrefix            = SyncPrefix + "cfg"
-	SyncSeqPrefix          = SyncPrefix + "seq:"
-	UserEmailPrefix        = SyncPrefix + "useremail:"
-	UserPrefix             = SyncPrefix + "user:"
-	UnusedSeqPrefix        = SyncPrefix + "unusedSeq:"
-	UnusedSeqRangePrefix   = SyncPrefix + "unusedSeqs:"
-
-	DCPBackfillSeqKey = SyncPrefix + "dcp_backfill"
-	SyncDataKey       = SyncPrefix + "syncdata"
-	SyncSeqKey        = SyncPrefix + "seq"
-
-	PersistentConfigPrefix = SyncPrefix + "dbconfig:"
-
 	AttachmentCompactionXattrName = SyncXattrName + "-compact"
 
+	// SyncPropertyName is used when storing sync data inline in a document.
 	SyncPropertyName = "_sync"
-	SyncXattrName    = "_sync"
+	// SyncXattrName is used when storing sync data in a document's xattrs.
+	SyncXattrName = "_sync"
 
 	// Intended to be used in Meta Map and related tests
 	MetaMapXattrsKey = "xattrs"
-
-	SGRStatusPrefix = SyncPrefix + "sgrStatus:"
 
 	// Prefix for transaction metadata documents
 	TxnPrefix = "_txn:"
@@ -215,27 +188,6 @@ var (
 	// MaxPrincipalNameLen is the maximum length for user and role names, accounting for internal prefixes, and is used to validate CRUD
 	MaxPrincipalNameLen = 250 - Max(len(UserPrefix), len(RolePrefix))
 )
-
-func DCPCheckpointPrefixWithGroupID(groupID string) string {
-	if groupID != "" {
-		return DCPCheckpointPrefix + groupID + ":"
-	}
-	return DCPCheckpointPrefix
-}
-
-func SGCfgPrefixWithGroupID(groupID string) string {
-	if groupID != "" {
-		return SGCfgPrefix + ":" + groupID + ":"
-	}
-	return SGCfgPrefix
-}
-
-func SyncDataKeyWithGroupID(groupID string) string {
-	if groupID != "" {
-		return SyncDataKey + ":" + groupID
-	}
-	return SyncDataKey
-}
 
 // UnitTestUrl returns the configured test URL.
 func UnitTestUrl() string {

@@ -526,7 +526,7 @@ func dcpKeyFilter(key []byte) bool {
 	}
 
 	// If it's not a _sync doc, process
-	if !bytes.HasPrefix(key, []byte(SyncPrefix)) {
+	if !bytes.HasPrefix(key, []byte(SyncDocPrefix)) {
 		return true
 	}
 
@@ -535,7 +535,7 @@ func dcpKeyFilter(key []byte) bool {
 		bytes.HasPrefix(key, []byte(UnusedSeqRangePrefix)) ||
 		bytes.HasPrefix(key, []byte(UserPrefix)) ||
 		bytes.HasPrefix(key, []byte(RolePrefix)) ||
-		bytes.HasPrefix(key, []byte(SGCfgPrefix)) {
+		bytes.HasPrefix(key, []byte(SGCfgPrefixWithoutGroupID)) {
 		return true
 	}
 
