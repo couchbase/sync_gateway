@@ -1,5 +1,7 @@
 package base
 
+import "errors"
+
 // A list of constants that define Sync Gateway metadata document IDs/Prefixes
 
 /*
@@ -76,10 +78,10 @@ func HeartbeaterPrefixWithGroupID(groupID string) string {
 	return HeartbeaterPrefixWithoutGroupID
 }
 
-// PersistentConfigPrefixWithGroupID returns a document prefix to use to store database configs
-func PersistentConfigPrefixWithGroupID(groupID string) string {
-	if groupID != "" {
-		return PersistentConfigPrefixWithoutGroupID + groupID
+// PersistentConfigKey returns a document key to use to store database configs
+func PersistentConfigKey(groupID string) (string, error) {
+	if groupID == "" {
+		return "", errors.New("PersistentConfigKey requires a group ID, even if it's just `default`.")
 	}
-	return PersistentConfigPrefixWithoutGroupID
+	return PersistentConfigPrefixWithoutGroupID + groupID, nil
 }
