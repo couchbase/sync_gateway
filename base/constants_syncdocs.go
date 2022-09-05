@@ -1,9 +1,3 @@
-package base
-
-import "errors"
-
-// A list of constants that define Sync Gateway metadata document IDs/Prefixes
-
 /*
 Copyright 2022-Present Couchbase, Inc.
 
@@ -13,6 +7,10 @@ file, in accordance with the Business Source License, use of this software will
 be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
+
+package base
+
+import "errors"
 
 const SyncDocPrefix = "_sync:" // SyncDocPrefix is a common prefix for all Sync Gateway metadata documents
 
