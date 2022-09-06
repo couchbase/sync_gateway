@@ -82,7 +82,11 @@ func TestUserQueriesConcurrently(t *testing.T) {
 			Schema: base.StringPtr(`type Query { square(n: Int!): Int! }`),
 			Resolvers: map[string]db.GraphQLResolverConfig{
 				"Query": {
-					"square": `function(context,args) {return args.n * args.n;}`,
+					"square": db.UserFunctionConfig{
+						Type:  "javascript",
+						Code:  `function(context,args) {return args.n * args.n;}`,
+						Allow: &db.UserQueryAllow{Channels: []string{"*"}},
+					},
 				},
 			},
 		},

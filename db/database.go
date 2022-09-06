@@ -1798,11 +1798,8 @@ func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOp
 			QueryTypeUsers,
 		}
 	}
-	for name, fn := range options.UserFunctions {
-		if fn.Type == "query" {
-			queryNames = append(queryNames, QueryTypeUserPrefix+name)
-		}
-	}
+
+	queryNames = append(queryNames, allUserFunctionQueryNames(options)...)
 
 	return base.SyncGatewayStats.NewDBStats(dbName, enabledDeltaSync, enabledImport, enabledViews, queryNames...)
 }

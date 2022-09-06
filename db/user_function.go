@@ -39,31 +39,61 @@ type UserFunctions = map[string]*UserFunction
 
 type UserFunction struct {
 	*UserFunctionConfig
-	compiled *sgbucket.JSServer // Compiled form of the function
+	name      string
+	typeName  string
+	checkArgs bool
+	compiled  *sgbucket.JSServer // Compiled form of the function
 }
 
 //////// INITIALIZATION:
+
+// Returns all the query names in user functions and GraphQL resolvers.
+func allUserFunctionQueryNames(options DatabaseContextOptions) []string {
+	var queryNames []string
+	for name, fn := range options.UserFunctions {
+		if fn.Type == "query" {
+			queryNames = append(queryNames, QueryTypeUserFunctionPrefix+name)
+		}
+	}
+	if options.GraphQL != nil {
+		for typeName, resolvers := range options.GraphQL.Resolvers {
+			for fieldName, resolver := range resolvers {
+				if resolver.Type == "query" {
+					queryNames = append(queryNames, QueryTypeUserFunctionPrefix+typeName+"."+fieldName)
+				}
+			}
+		}
+	}
+	return queryNames
+}
+
+// Creates a UserFunction from a UserFunctionConfig.
+func compileUserFunction(name string, typeName string, fnConfig *UserFunctionConfig) (*UserFunction, error) {
+	userFn := &UserFunction{
+		UserFunctionConfig: fnConfig,
+		name:               name,
+		typeName:           typeName,
+		checkArgs:          true,
+	}
+	var err error
+	switch fnConfig.Type {
+	case "javascript":
+		userFn.compiled, err = newUserFunctionJSServer(name, typeName, fnConfig.Code)
+	case "query":
+		err = nil
+	default:
+		err = fmt.Errorf("%s %q has unrecognized 'type' %q", typeName, name, fnConfig.Type)
+	}
+	return userFn, err
+}
 
 // Compiles the JS functions in a UserFunctionMap, returning UserFunctions.
 func compileUserFunctions(config UserFunctionConfigMap) (UserFunctions, error) {
 	fns := UserFunctions{}
 	var multiError *base.MultiError
 	for name, fnConfig := range config {
-		var err error
-		var compiled *sgbucket.JSServer
-		switch fnConfig.Type {
-		case "javascript":
-			compiled, err = newUserFunctionJSServer(name, "user function", fnConfig.Code)
-		case "query":
-			compiled = nil
-		default:
-			err = fmt.Errorf("function %q has unrecognized 'type' %q", name, fnConfig.Type)
-		}
-		if err == nil {
-			fns[name] = &UserFunction{
-				UserFunctionConfig: fnConfig,
-				compiled:           compiled,
-			}
+		if userFn, err := compileUserFunction(name, "user function", fnConfig); err == nil {
+			fns[name] = userFn
 		} else {
 			multiError = multiError.Append(err)
 		}
@@ -80,53 +110,9 @@ func ValidateUserFunctions(config UserFunctionConfigMap) error {
 
 type UserFunctionInvocation struct {
 	*UserFunction
-	name            string
 	db              *Database
 	args            map[string]interface{}
 	mutationAllowed bool
-}
-
-// Looks up a user function by name.
-func (db *Database) GetUserFunction(name string, args map[string]interface{}, mutationAllowed bool) (UserFunctionInvocation, error) {
-	invocation := UserFunctionInvocation{
-		name:            name,
-		db:              db,
-		args:            args,
-		mutationAllowed: mutationAllowed,
-	}
-	if err := db.CheckTimeout(); err != nil {
-		return invocation, err
-	}
-	// Look up the function by name:
-	var found bool
-	invocation.UserFunction, found = db.userFunctions[name]
-	if !found {
-		return invocation, missingError(db.user, "function", name)
-	}
-
-	// Validate the query arguments:
-	if invocation.args == nil {
-		invocation.args = map[string]interface{}{}
-	}
-	if err := db.checkQueryArguments(invocation.args, invocation.Args, "function", name); err != nil {
-		return invocation, err
-	}
-
-	if invocation.compiled == nil {
-		userArg := db.createUserArgument()
-		if userArg != nil {
-			invocation.args["user"] = userArg
-		} else {
-			invocation.args["user"] = map[string]interface{}{}
-		}
-	}
-
-	// Check that the user is authorized:
-	if err := invocation.Allow.authorize(db.user, invocation.args, "function", name); err != nil {
-		return invocation, err
-	}
-
-	return invocation, nil
 }
 
 // Calls a user function by name, returning all the results at once.
@@ -138,6 +124,54 @@ func (db *Database) CallUserFunction(name string, args map[string]interface{}, m
 	return invocation.Run()
 }
 
+// Looks up a UserFunction by name and returns an Invocation.
+func (db *Database) GetUserFunction(name string, args map[string]interface{}, mutationAllowed bool) (UserFunctionInvocation, error) {
+	if fn, found := db.userFunctions[name]; found {
+		return fn.Invoke(db, args, mutationAllowed)
+	} else {
+		return UserFunctionInvocation{}, missingError(db.user, "function", name)
+	}
+}
+
+// Creates an Invocation of a UserFunction.
+func (fn *UserFunction) Invoke(db *Database, args map[string]interface{}, mutationAllowed bool) (UserFunctionInvocation, error) {
+	invocation := UserFunctionInvocation{
+		UserFunction:    fn,
+		db:              db,
+		args:            args,
+		mutationAllowed: mutationAllowed,
+	}
+
+	if err := db.CheckTimeout(); err != nil {
+		return invocation, err
+	}
+
+	if invocation.args == nil {
+		invocation.args = map[string]interface{}{}
+	}
+	if fn.checkArgs {
+		// Validate the query arguments:
+		if err := db.checkQueryArguments(invocation.args, invocation.Args, fn.typeName, fn.name); err != nil {
+			return invocation, err
+		}
+	}
+	if invocation.compiled == nil {
+		userArg := db.createUserArgument()
+		if userArg != nil {
+			invocation.args["user"] = userArg
+		} else {
+			invocation.args["user"] = map[string]interface{}{}
+		}
+	}
+
+	// Check that the user is authorized:
+	if err := invocation.Allow.authorize(db.user, invocation.args, fn.typeName, fn.name); err != nil {
+		return invocation, err
+	}
+
+	return invocation, nil
+}
+
 // Calls a user function, returning a query result iterator.
 // If this function does not support iteration, returns nil; then call `Run` instead.
 func (fn *UserFunctionInvocation) Iterate() (sgbucket.QueryResultIterator, error) {
@@ -146,7 +180,7 @@ func (fn *UserFunctionInvocation) Iterate() (sgbucket.QueryResultIterator, error
 		return nil, nil
 	} else {
 		// Return an iterator on the N1QL query results:
-		iter, err := fn.db.N1QLQueryWithStats(fn.db.Ctx, QueryTypeUserPrefix+fn.name, fn.Code, fn.args,
+		iter, err := fn.db.N1QLQueryWithStats(fn.db.Ctx, QueryTypeUserFunctionPrefix+fn.name, fn.Code, fn.args,
 			base.RequestPlus, false)
 		if err != nil {
 			// Return a friendlier error:
