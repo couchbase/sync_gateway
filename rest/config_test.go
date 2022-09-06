@@ -1659,11 +1659,7 @@ func TestLoadJavaScript(t *testing.T) {
 			if test.errExpected != nil {
 				errx509Type := x509.UnknownAuthorityError{}
 				if test.errExpected == errx509Type {
-					expectedErrorString := test.errExpected.Error()
-					if runtime.GOOS == "darwin" {
-						expectedErrorString = "certificate is not trusted"
-					}
-					require.ErrorContains(t, err, expectedErrorString)
+					require.ErrorContains(t, err, assertX509UnknownAuthority(test.errExpected))
 				} else {
 					require.ErrorContains(t, err, test.errExpected.Error())
 				}
@@ -1826,11 +1822,7 @@ func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 			if test.errExpected != nil {
 				errx509Type := x509.UnknownAuthorityError{}
 				if test.errExpected == errx509Type {
-					expectedErrorString := test.errExpected.Error()
-					if runtime.GOOS == "darwin" {
-						expectedErrorString = "certificate is not trusted"
-					}
-					require.ErrorContains(t, err, expectedErrorString)
+					require.ErrorContains(t, err, assertX509UnknownAuthority(test.errExpected))
 				} else {
 					require.ErrorContains(t, err, test.errExpected.Error())
 				}
@@ -1928,11 +1920,7 @@ func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
 			if test.errExpected != nil {
 				errx509Type := x509.UnknownAuthorityError{}
 				if test.errExpected == errx509Type {
-					expectedErrorString := test.errExpected.Error()
-					if runtime.GOOS == "darwin" {
-						expectedErrorString = "certificate is not trusted"
-					}
-					require.ErrorContains(t, err, expectedErrorString)
+					require.ErrorContains(t, err, assertX509UnknownAuthority(test.errExpected))
 				} else {
 					require.ErrorContains(t, err, test.errExpected.Error())
 				}
@@ -2042,11 +2030,7 @@ func TestSetupDbConfigWithConflictResolutionFunction(t *testing.T) {
 			if test.errExpected != nil {
 				errx509Type := x509.UnknownAuthorityError{}
 				if test.errExpected == errx509Type {
-					expectedErrorString := test.errExpected.Error()
-					if runtime.GOOS == "darwin" {
-						expectedErrorString = "certificate is not trusted"
-					}
-					require.ErrorContains(t, err, expectedErrorString)
+					require.ErrorContains(t, err, assertX509UnknownAuthority(test.errExpected))
 				} else {
 					require.ErrorContains(t, err, test.errExpected.Error())
 				}
@@ -2159,11 +2143,7 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 			if test.errExpected != nil {
 				errx509Type := x509.UnknownAuthorityError{}
 				if test.errExpected == errx509Type {
-					expectedErrorString := test.errExpected.Error()
-					if runtime.GOOS == "darwin" {
-						expectedErrorString = "certificate is not trusted"
-					}
-					require.ErrorContains(t, err, expectedErrorString)
+					require.ErrorContains(t, err, assertX509UnknownAuthority(test.errExpected))
 				} else {
 					require.ErrorContains(t, err, test.errExpected.Error())
 				}
@@ -2645,4 +2625,12 @@ func TestCollectionsValidation(t *testing.T) {
 
 		})
 	}
+}
+
+func assertX509UnknownAuthority(err error) string {
+	expectedErrorString := err.Error()
+	if runtime.GOOS == "darwin" {
+		expectedErrorString = "certificate is not trusted"
+	}
+	return expectedErrorString
 }
