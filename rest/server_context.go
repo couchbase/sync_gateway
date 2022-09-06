@@ -238,8 +238,10 @@ func (sc *ServerContext) GetServerlessDatabase(name string) (*db.DatabaseContext
 	}
 
 	dbc, err := sc.unsuspendDatabase(name)
-	if err != base.ErrNotFound {
+	if err != nil && err != base.ErrNotFound {
 		return nil, err
+	} else if err == nil {
+		return dbc, nil
 	}
 
 	// Fallback to fetching configs from buckets if database not found
