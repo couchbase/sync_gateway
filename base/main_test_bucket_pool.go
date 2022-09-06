@@ -851,7 +851,12 @@ func tbpVerbose() bool {
 
 // TestUsingUsingNamedCollections returns whether the test bucket pool is made up of named collection.
 func TestUsingNamedCollection() bool {
-	verbose, _ := strconv.ParseBool(os.Getenv(tbpUseCollectionPool))
+	useNamedCollection, isSet := os.LookupEnv(tbpUseCollectionPool)
+	if !isSet {
+		return !TestsDisableGSI()
+	}
+
+	verbose, _ := strconv.ParseBool(useNamedCollection)
 	return verbose
 }
 
