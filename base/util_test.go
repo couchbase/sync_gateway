@@ -9,6 +9,7 @@
 package base
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -1523,23 +1524,24 @@ func TestConfigDuration(t *testing.T) {
 }
 
 func TestTerminateAndWaitForClose(t *testing.T) {
+	SetUpTestLogging(t, LevelInfo, KeySGTest)
+
 	tests := []struct {
 		name       string
 		terminator chan struct{}
 		done       chan struct{}
-		fn         func(terminator chan struct{}, done chan struct{})
+		fn         func(ctx context.Context, terminator chan struct{}, done chan struct{})
 		timeout    time.Duration
 		wantErr    bool
 	}{
 		{
-			name:       "terminate and done",
+			name:       "terminate and done immediate",
 			terminator: make(chan struct{}),
 			done:       make(chan struct{}),
-			fn: func(t chan struct{}, d chan struct{}) {
-				select {
-				case <-t:
-					close(d)
-				}
+			fn: func(ctx context.Context, t chan struct{}, d chan struct{}) {
+				<-t
+				InfofCtx(ctx, KeySGTest, "got t closing d")
+				close(d)
 			},
 			timeout: time.Second * 3,
 			wantErr: false,
@@ -1548,11 +1550,15 @@ func TestTerminateAndWaitForClose(t *testing.T) {
 			name:       "terminate and done within timeout",
 			terminator: make(chan struct{}),
 			done:       make(chan struct{}),
-			fn: func(t chan struct{}, d chan struct{}) {
+			fn: func(ctx context.Context, t chan struct{}, d chan struct{}) {
+				<-t
+				InfofCtx(ctx, KeySGTest, "got t waiting to close d")
 				select {
-				case <-t:
-					time.Sleep(time.Second * 5)
+				case <-time.After(time.Second * 3):
+					InfofCtx(ctx, KeySGTest, "closing d")
 					close(d)
+				case <-ctx.Done():
+					InfofCtx(ctx, KeySGTest, "test context done")
 				}
 			},
 			timeout: time.Second * 10,
@@ -1562,11 +1568,15 @@ func TestTerminateAndWaitForClose(t *testing.T) {
 			name:       "terminate and done after timeout",
 			terminator: make(chan struct{}),
 			done:       make(chan struct{}),
-			fn: func(t chan struct{}, d chan struct{}) {
+			fn: func(ctx context.Context, t chan struct{}, d chan struct{}) {
+				<-t
+				InfofCtx(ctx, KeySGTest, "got t waiting to close d")
 				select {
-				case <-t:
-					time.Sleep(time.Second * 10)
+				case <-time.After(time.Second * 10):
+					InfofCtx(ctx, KeySGTest, "closing d")
 					close(d)
+				case <-ctx.Done():
+					InfofCtx(ctx, KeySGTest, "test context done")
 				}
 			},
 			timeout: time.Second * 3,
@@ -1576,10 +1586,10 @@ func TestTerminateAndWaitForClose(t *testing.T) {
 			name:       "terminate and no done",
 			terminator: make(chan struct{}),
 			done:       make(chan struct{}),
-			fn: func(t chan struct{}, d chan struct{}) {
-				select {
-				case <-t:
-				}
+			fn: func(ctx context.Context, t chan struct{}, d chan struct{}) {
+				// read t but don't close d
+				<-t
+				InfofCtx(ctx, KeySGTest, "got t not closing d")
 			},
 			timeout: time.Second * 3,
 			wantErr: true,
@@ -1588,9 +1598,11 @@ func TestTerminateAndWaitForClose(t *testing.T) {
 			name:       "no terminate",
 			terminator: make(chan struct{}),
 			done:       make(chan struct{}),
-			fn: func(t chan struct{}, d chan struct{}) {
-				// block forever
-				select {}
+			fn: func(ctx context.Context, t chan struct{}, d chan struct{}) {
+				// block "forever" without reading t or closing d
+				InfofCtx(ctx, KeySGTest, "not reading t")
+				<-ctx.Done()
+				InfofCtx(ctx, KeySGTest, "test context done")
 			},
 			timeout: time.Second * 3,
 			wantErr: true,
@@ -1598,7 +1610,7 @@ func TestTerminateAndWaitForClose(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			go test.fn(test.terminator, test.done)
+			go test.fn(TestCtx(t), test.terminator, test.done)
 			err := TerminateAndWaitForClose(test.terminator, test.done, test.timeout)
 			if test.wantErr {
 				assert.Error(t, err)

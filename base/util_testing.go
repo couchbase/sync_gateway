@@ -357,7 +357,7 @@ func SetUpTestGoroutineDump(m *testing.M) (teardownFn func()) {
 	}
 
 	return func() {
-		if n := runtime.NumGoroutine() - numExpected; n > 0 {
+		if n := runtime.NumGoroutine(); n > numExpected {
 			if err := pprof.Lookup("goroutine").WriteTo(os.Stderr, 2); err != nil {
 				panic(err)
 			}

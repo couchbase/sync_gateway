@@ -66,9 +66,11 @@ func NewTaskID(contextID string, taskName string) string {
 	return contextID + "-" + taskName + "-" + strconv.Itoa(rand.Intn(65536))
 }
 
-// TestCtx creates a log context for the given test.
+// TestCtx creates a context for the given test which is also cancelled once the test has completed.
 func TestCtx(t testing.TB) context.Context {
-	return LogContextWith(context.Background(), &LogContext{TestName: t.Name()})
+	ctx, cancelCtx := context.WithCancel(context.Background())
+	t.Cleanup(cancelCtx)
+	return LogContextWith(ctx, &LogContext{TestName: t.Name()})
 }
 
 // bucketCtx extends the parent context with a bucket name.
