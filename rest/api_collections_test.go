@@ -71,6 +71,7 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 	)
 
 	rt := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Users: map[string]*auth.PrincipalConfig{
@@ -114,6 +115,7 @@ func TestCollectionsDCP(t *testing.T) {
 	require.NoError(t, err)
 
 	rt := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				AutoImport: true,
@@ -159,6 +161,7 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 	collectionName := tc.Name()
 
 	rt := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Scopes: ScopesConfig{
@@ -252,6 +255,7 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 	keyspace := "db." + scopeName + "." + collectionName
 
 	rt := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				UseViews: useViews,
