@@ -244,19 +244,21 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 func TestCollectionsPeerDoesNotHave(t *testing.T) {
 	base.TestRequiresCollections(t)
 
-	const (
-		scopeKey      = "fooScope"
-		collectionKey = "fooCollection"
-	)
+	tb := base.GetTestBucketNamedCollection(t)
+	defer tb.Close()
+
+	tc, err := base.AsCollection(tb)
+	require.NoError(t, err)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		guestEnabled: true,
+		TestBucket:   tb,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Scopes: ScopesConfig{
-					scopeKey: ScopeConfig{
+					tc.ScopeName(): ScopeConfig{
 						Collections: map[string]CollectionConfig{
-							collectionKey: {},
+							tc.Name(): {},
 						},
 					},
 				},
@@ -265,7 +267,7 @@ func TestCollectionsPeerDoesNotHave(t *testing.T) {
 	})
 	defer rt.Close()
 
-	_, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
+	_, err = NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
 		Collections: []string{"barScope.barCollection"},
 	})
 	require.Error(t, err)

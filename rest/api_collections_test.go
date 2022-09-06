@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
@@ -38,6 +39,7 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 		keyspace       string
 		expectedStatus int
 	}{
+		// if a single scope and collection is defined, use that implicitly
 		{
 			name:           "implicit scope and collection",
 			keyspace:       "db",
@@ -99,7 +101,13 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 			if test.expectedStatus == http.StatusCreated {
 				// go and check that the doc didn't just end up in the default collection of the test bucket
 				docBody, _, err := tb.GetRaw(docID)
-				assert.Truef(t, base.IsDocNotFoundError(err), "didn't expect doc %q to be in the default collection but got body:%s err:%v", docID, docBody, err)
+				require.NoError(t, err)
+				require.NotNil(t, docBody)
+
+				tc, err := base.AsCollection(tb)
+				defaultCollection := tc.Collection.Bucket().DefaultCollection()
+				_, err = defaultCollection.Get(docID, &gocb.GetOptions{})
+				require.Error(t, err)
 			}
 		})
 	}
