@@ -645,15 +645,15 @@ func TestReplicateGroupIDAssignedNodes(t *testing.T) {
 	defer tb.Close()
 
 	// Set up databases
-	dbDefault, err := NewDatabaseContext("default", tb, false, DatabaseContextOptions{GroupID: ""})
+	dbDefault, err := NewDatabaseContext("default", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: ""})
 	require.NoError(t, err)
 	defer dbDefault.Close()
 
-	dbGroupA, err := NewDatabaseContext("groupa", tb, false, DatabaseContextOptions{GroupID: "GroupA"})
+	dbGroupA, err := NewDatabaseContext("groupa", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "GroupA"})
 	require.NoError(t, err)
 	defer dbGroupA.Close()
 
-	dbGroupB, err := NewDatabaseContext("groupb", tb, false, DatabaseContextOptions{GroupID: "GroupB"})
+	dbGroupB, err := NewDatabaseContext("groupb", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "GroupB"})
 	require.NoError(t, err)
 	defer dbGroupB.Close()
 
