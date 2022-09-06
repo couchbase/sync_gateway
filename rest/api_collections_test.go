@@ -308,7 +308,8 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 	base.TestRequiresCollections(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
-	err := base.CreateBucketScopesAndCollections(base.TestCtx(t), tb.BucketSpec, map[string][]string{
+	ctx := base.TestCtx(t)
+	err := base.CreateBucketScopesAndCollections(ctx, tb.BucketSpec, map[string][]string{
 		"fooScope": {
 			"bar",
 		},
@@ -320,15 +321,15 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 
 	serverErr := make(chan error)
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true)
+	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
 	defer func() {
-		sc.Close()
+		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
 	}()
 
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 
