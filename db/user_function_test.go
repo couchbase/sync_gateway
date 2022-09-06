@@ -24,10 +24,10 @@ var allowAll = &UserQueryAllow{Channels: []string{"*"}}
 
 var kUserFunctionConfig = UserFunctionConfigMap{
 	"square": &UserFunctionConfig{
-		Type:       "javascript",
-		Code:       "function(context, args) {return args.numero * args.numero;}",
-		Parameters: []string{"numero"},
-		Allow:      &UserQueryAllow{Channels: []string{"wonderland"}},
+		Type:  "javascript",
+		Code:  "function(context, args) {return args.numero * args.numero;}",
+		Args:  []string{"numero"},
+		Allow: &UserQueryAllow{Channels: []string{"wonderland"}},
 	},
 	"exceptional": &UserFunctionConfig{
 		Type:  "javascript",
@@ -101,22 +101,22 @@ var kUserFunctionConfig = UserFunctionConfigMap{
 	},
 
 	"getDoc": &UserFunctionConfig{
-		Type:       "javascript",
-		Code:       `function(context, args) {return context.user.defaultCollection.get(args.docID);}`,
-		Parameters: []string{"docID"},
-		Allow:      allowAll,
+		Type:  "javascript",
+		Code:  `function(context, args) {return context.user.defaultCollection.get(args.docID);}`,
+		Args:  []string{"docID"},
+		Allow: allowAll,
 	},
 	"putDoc": &UserFunctionConfig{
-		Type:       "javascript",
-		Code:       `function(context, args) {return context.user.defaultCollection.save(args.docID, args.doc);}`,
-		Parameters: []string{"docID", "doc"},
-		Allow:      allowAll,
+		Type:  "javascript",
+		Code:  `function(context, args) {return context.user.defaultCollection.save(args.docID, args.doc);}`,
+		Args:  []string{"docID", "doc"},
+		Allow: allowAll,
 	},
 	"delDoc": &UserFunctionConfig{
-		Type:       "javascript",
-		Code:       `function(context, args) {return context.user.defaultCollection.delete(args.docID);}`,
-		Parameters: []string{"docID"},
-		Allow:      allowAll,
+		Type:  "javascript",
+		Code:  `function(context, args) {return context.user.defaultCollection.delete(args.docID);}`,
+		Args:  []string{"docID"},
+		Allow: allowAll,
 	},
 }
 
@@ -360,9 +360,9 @@ func TestUserFunctionsCRUD(t *testing.T) {
 
 var kUserFunctionBadConfig = UserFunctionConfigMap{
 	"square": &UserFunctionConfig{
-		Code:       "return args.numero * args.numero;",
-		Parameters: []string{"numero"},
-		Allow:      &UserQueryAllow{Channels: []string{"wonderland"}},
+		Code:  "return args.numero * args.numero;",
+		Args:  []string{"numero"},
+		Allow: &UserQueryAllow{Channels: []string{"wonderland"}},
 	},
 	"syntax_error": &UserFunctionConfig{
 		Code:  "returm )42(",

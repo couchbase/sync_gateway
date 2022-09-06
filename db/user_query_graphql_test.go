@@ -121,8 +121,8 @@ var kTestGraphQLUserFunctionsConfig = UserFunctionConfigMap{
 						for (var i = 0; i < all.length; i++)
 							if (all[i].id == args.id) return all[i];
 						return undefined;}`,
-		Parameters: []string{"id"},
-		Allow:      &UserQueryAllow{Channels: []string{"*"}},
+		Args:  []string{"id"},
+		Allow: &UserQueryAllow{Channels: []string{"*"}},
 	},
 }
 

@@ -22,16 +22,16 @@ import (
 
 var kUserN1QLFunctionsConfig = UserFunctionConfigMap{
 	"airports_in_city": &UserFunctionConfig{
-		Type:       "query",
-		Code:       `SELECT $city AS city`,
-		Parameters: []string{"city"},
-		Allow:      &UserQueryAllow{Channels: []string{"city-$city", "allcities"}},
+		Type:  "query",
+		Code:  `SELECT $city AS city`,
+		Args:  []string{"city"},
+		Allow: &UserQueryAllow{Channels: []string{"city-$city", "allcities"}},
 	},
 	"square": &UserFunctionConfig{
-		Type:       "query",
-		Code:       "SELECT $numero * $numero AS square",
-		Parameters: []string{"numero"},
-		Allow:      &UserQueryAllow{Channels: []string{"wonderland"}},
+		Type:  "query",
+		Code:  "SELECT $numero * $numero AS square",
+		Args:  []string{"numero"},
+		Allow: &UserQueryAllow{Channels: []string{"wonderland"}},
 	},
 	"user": &UserFunctionConfig{
 		Type:  "query",
@@ -49,10 +49,10 @@ var kUserN1QLFunctionsConfig = UserFunctionConfigMap{
 		Allow: nil, // no 'allow' property means admin-only
 	},
 	"inject": &UserFunctionConfig{
-		Type:       "query",
-		Code:       `SELECT $foo`,
-		Parameters: []string{"foo"},
-		Allow:      &UserQueryAllow{Channels: []string{"*"}},
+		Type:  "query",
+		Code:  `SELECT $foo`,
+		Args:  []string{"foo"},
+		Allow: &UserQueryAllow{Channels: []string{"*"}},
 	},
 	"syntax_error": &UserFunctionConfig{
 		Type:  "query",

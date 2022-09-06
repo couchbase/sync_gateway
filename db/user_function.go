@@ -29,10 +29,10 @@ type UserFunctionConfigMap = map[string]*UserFunctionConfig
 // Defines a JavaScript or N1QL function that a client can invoke by name.
 // (The name is the key in the UserFunctionMap.)
 type UserFunctionConfig struct {
-	Type       string          `json:"type"`
-	Code       string          `json:"code"`                 // Javascript function or N1QL 'SELECT'
-	Parameters []string        `json:"parameters,omitempty"` // Names of parameters
-	Allow      *UserQueryAllow `json:"allow,omitempty"`      // Permissions (admin-only if nil)
+	Type  string          `json:"type"`
+	Code  string          `json:"code"`            // Javascript function or N1QL 'SELECT'
+	Args  []string        `json:"args,omitempty"`  // Names of parameters/arguments
+	Allow *UserQueryAllow `json:"allow,omitempty"` // Permissions (admin-only if nil)
 }
 
 type UserFunctions = map[string]*UserFunction
@@ -86,7 +86,7 @@ type UserFunctionInvocation struct {
 	mutationAllowed bool
 }
 
-// Invokes a user function by name.
+// Looks up a user function by name.
 func (db *Database) GetUserFunction(name string, args map[string]interface{}, mutationAllowed bool) (UserFunctionInvocation, error) {
 	invocation := UserFunctionInvocation{
 		name:            name,
@@ -108,7 +108,7 @@ func (db *Database) GetUserFunction(name string, args map[string]interface{}, mu
 	if invocation.args == nil {
 		invocation.args = map[string]interface{}{}
 	}
-	if err := db.checkQueryArguments(invocation.args, invocation.Parameters, "function", name); err != nil {
+	if err := db.checkQueryArguments(invocation.args, invocation.Args, "function", name); err != nil {
 		return invocation, err
 	}
 
@@ -129,6 +129,7 @@ func (db *Database) GetUserFunction(name string, args map[string]interface{}, mu
 	return invocation, nil
 }
 
+// Calls a user function by name, returning all the results at once.
 func (db *Database) CallUserFunction(name string, args map[string]interface{}, mutationAllowed bool) (interface{}, error) {
 	invocation, err := db.GetUserFunction(name, args, mutationAllowed)
 	if err != nil {
@@ -137,8 +138,8 @@ func (db *Database) CallUserFunction(name string, args map[string]interface{}, m
 	return invocation.Run()
 }
 
-// Returns a query result iterator. If this function does not support iteration, returns nil;
-// then call `run` instead.
+// Calls a user function, returning a query result iterator.
+// If this function does not support iteration, returns nil; then call `Run` instead.
 func (fn *UserFunctionInvocation) Iterate() (sgbucket.QueryResultIterator, error) {
 	if fn.compiled != nil {
 		// JS:
@@ -163,8 +164,8 @@ func (fn *UserFunctionInvocation) Iterate() (sgbucket.QueryResultIterator, error
 	}
 }
 
-// Runs the function and returns the result.
-// If this is a N1QL query, it will return all the result rows in an array.
+// Calls a user function, returning the entire result.
+// (If this is a N1QL query it will return all the result rows in an array, which is less efficient than iterating them, so try calling `Iterate` first.)
 func (fn *UserFunctionInvocation) Run() (interface{}, error) {
 	if fn.compiled != nil {
 		// Run the JavaScript function:

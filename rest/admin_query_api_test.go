@@ -169,10 +169,10 @@ func TestUserQueryDBConfigGet(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{
 		UserFunctions: map[string]*db.UserFunctionConfig{
 			"square": {
-				Type:       "javascript",
-				Code:       "function(context,args){return args.numero * args.numero;}",
-				Parameters: []string{"numero"},
-				Allow:      &db.UserQueryAllow{Channels: []string{"wonderland"}},
+				Type:  "javascript",
+				Code:  "function(context,args){return args.numero * args.numero;}",
+				Args:  []string{"numero"},
+				Allow: &db.UserQueryAllow{Channels: []string{"wonderland"}},
 			},
 		},
 	})
@@ -207,10 +207,10 @@ func TestUserQueryDBConfigPut(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{
 		UserFunctions: map[string]*db.UserFunctionConfig{
 			"square": {
-				Type:       "javascript",
-				Code:       "function(context,args){return args.numero * args.numero;}",
-				Parameters: []string{"numero"},
-				Allow:      &db.UserQueryAllow{Channels: []string{"wonderland"}},
+				Type:  "javascript",
+				Code:  "function(context,args){return args.numero * args.numero;}",
+				Args:  []string{"numero"},
+				Allow: &db.UserQueryAllow{Channels: []string{"wonderland"}},
 			},
 		},
 	})
@@ -229,7 +229,7 @@ func TestUserQueryDBConfigPut(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/functions", `{
 			"sum": {"type": "javascript",
 					"code": "function(context,args){return args.numero + args.numero;}",
-					"parameters": ["numero"],
+					"args": ["numero"],
 					"allow": {"channels": ["*"]}}
 		}`)
 		assert.Equal(t, 200, response.Result().StatusCode)
@@ -259,10 +259,10 @@ func TestUserQueryDBConfigPutOne(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{
 		UserFunctions: map[string]*db.UserFunctionConfig{
 			"square": {
-				Type:       "javascript",
-				Code:       "function(context,args){return args.numero * args.numero;}",
-				Parameters: []string{"numero"},
-				Allow:      &db.UserQueryAllow{Channels: []string{"wonderland"}},
+				Type:  "javascript",
+				Code:  "function(context,args){return args.numero * args.numero;}",
+				Args:  []string{"numero"},
+				Allow: &db.UserQueryAllow{Channels: []string{"wonderland"}},
 			},
 		},
 	})
@@ -287,7 +287,7 @@ func TestUserQueryDBConfigPutOne(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/functions/sum", `{
 			"type": "javascript",
 			"code": "function(context,args){return args.numero + args.numero;}",
-			"parameters": ["numero"],
+			"args": ["numero"],
 			"allow": {"channels": ["*"]}
 		}`)
 		assert.Equal(t, 200, response.Result().StatusCode)
@@ -302,7 +302,7 @@ func TestUserQueryDBConfigPutOne(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/functions/square", `{
 			"type": "javascript",
 			"code": "function(context,args){return -args.n * args.n;}",
-			"parameters": ["n"],
+			"args": ["n"],
 			"allow": {"channels": ["*"]}
 		}`)
 		assert.Equal(t, 200, response.Result().StatusCode)

@@ -66,16 +66,16 @@ func TestUserQueriesConcurrently(t *testing.T) {
 	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
 		UserFunctions: map[string]*db.UserFunctionConfig{
 			"square": {
-				Type:       "javascript",
-				Code:       "function(context,args) {return args.n * args.n;}",
-				Parameters: []string{"n"},
-				Allow:      &db.UserQueryAllow{Channels: []string{"*"}},
+				Type:  "javascript",
+				Code:  "function(context,args) {return args.n * args.n;}",
+				Args:  []string{"n"},
+				Allow: &db.UserQueryAllow{Channels: []string{"*"}},
 			},
 			"squareN1QL": &db.UserFunctionConfig{
-				Type:       "query",
-				Code:       "SELECT $n * $n AS square",
-				Parameters: []string{"n"},
-				Allow:      &db.UserQueryAllow{Channels: []string{"*"}},
+				Type:  "query",
+				Code:  "SELECT $n * $n AS square",
+				Args:  []string{"n"},
+				Allow: &db.UserQueryAllow{Channels: []string{"*"}},
 			},
 		},
 		GraphQL: &db.GraphQLConfig{
