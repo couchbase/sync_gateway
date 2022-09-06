@@ -26,9 +26,7 @@ func TestView(t *testing.T) {
 		require.True(t, ok)
 		if ok {
 			c, err := AsCollection(testBucket)
-			require.NoError(t, err)
 			if err == nil {
-				require.False(t, c.IsDefaultScopeCollection())
 				if !c.IsDefaultScopeCollection() {
 					t.Skip("Views tests can not be run on a collection")
 				}
