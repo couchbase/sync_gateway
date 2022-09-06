@@ -248,6 +248,10 @@ func TestViewQueryMultipleViewsInterfaceValues(t *testing.T) {
 }
 
 func TestUserViewQuery(t *testing.T) {
+	if !base.UnitTestUrlIsWalrus() && !base.TestsDisableGSI() {
+		t.Skip("views tests are not applicable under GSI")
+	}
+
 	rtConfig := RestTesterConfig{
 		SyncFn:       `function(doc) {channel(doc.channel)}`,
 		guestEnabled: true,
