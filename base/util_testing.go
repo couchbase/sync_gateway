@@ -88,8 +88,24 @@ func (tb *TestBucket) NoCloseClone() *TestBucket {
 	}
 }
 
+func getDefaultCollectionType() tbpCollectionType {
+	if TestUsingNamedCollection() {
+		return tbpCollectionNamed
+	}
+	return tbpCollectionDefault
+
+}
+
 func GetTestBucket(t testing.TB) *TestBucket {
-	bucket, spec, closeFn := GTestBucketPool.GetTestBucketAndSpec(t)
+	return getTestBucket(t, getDefaultCollectionType())
+}
+
+func GetTestBucketNamedCollection(t testing.TB) *TestBucket {
+	return getTestBucket(t, tbpCollectionNamed)
+}
+
+func getTestBucket(t testing.TB, collectionType tbpCollectionType) *TestBucket {
+	bucket, spec, closeFn := GTestBucketPool.getTestBucketAndSpec(t, collectionType)
 	return &TestBucket{
 		Bucket:     bucket,
 		BucketSpec: spec,
@@ -121,8 +137,7 @@ func GetPersistentWalrusBucket(t testing.TB) (*TestBucket, func()) {
 }
 
 func GetTestBucketForDriver(t testing.TB, driver CouchbaseDriver) *TestBucket {
-
-	bucket, spec, closeFn := GTestBucketPool.GetTestBucketAndSpec(t)
+	bucket, spec, closeFn := GTestBucketPool.getTestBucketAndSpec(t, getDefaultCollectionType())
 
 	// If walrus, use bucket as-is
 	if !TestUseCouchbaseServer() {
