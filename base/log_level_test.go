@@ -122,8 +122,12 @@ func TestLogLevelText(t *testing.T) {
 
 // This test has no assertions, but will flag any data races when run under `-race`.
 func TestLogLevelConcurrency(t *testing.T) {
-	logLevel := LevelWarn
+	const runFor = time.Millisecond * 100
+
 	stop := make(chan struct{})
+	defer close(stop)
+
+	logLevel := LevelWarn
 
 	go func() {
 		for {
@@ -158,8 +162,7 @@ func TestLogLevelConcurrency(t *testing.T) {
 		}
 	}()
 
-	time.Sleep(time.Millisecond * 100)
-	stop <- struct{}{}
+	time.Sleep(runFor)
 }
 
 func BenchmarkLogLevelName(b *testing.B) {
