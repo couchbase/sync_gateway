@@ -17,6 +17,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSequenceAllocator(t *testing.T) {
@@ -196,7 +197,8 @@ func TestReleaseSequenceWait(t *testing.T) {
 	testStats := sgw.NewDBStats("", false, false, false).Database()
 
 	a, err := newSequenceAllocator(bucket, testStats)
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	defer a.Stop()
 
 	startTime := time.Now().Add(-1 * time.Second)
 	amountWaited := a.waitForReleasedSequences(startTime)

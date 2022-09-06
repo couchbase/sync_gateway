@@ -460,7 +460,7 @@ func initCfgCB(bucket Bucket, spec BucketSpec) (*cbgt.CfgCB, error) {
 	// cfg: Implementation of cbgt.Cfg interface.  Responsible for configuration management
 	//      Sync Gateway uses bucket-based config management
 	options := map[string]interface{}{
-		"keyPrefix": SyncPrefix,
+		"keyPrefix": SyncDocPrefix,
 	}
 	urls, errConvertServerSpec := CouchbaseURIToHttpURL(bucket, spec.Server, nil)
 	if errConvertServerSpec != nil {

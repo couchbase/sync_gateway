@@ -159,7 +159,7 @@ func TestLogLevelConcurrency(t *testing.T) {
 	}()
 
 	time.Sleep(time.Millisecond * 100)
-	stop <- struct{}{}
+	close(stop)
 }
 
 func BenchmarkLogLevelName(b *testing.B) {

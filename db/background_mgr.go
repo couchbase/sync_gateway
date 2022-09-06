@@ -46,11 +46,12 @@ const (
 // BackgroundManager this is the over-arching type which is exposed in DatabaseContext
 type BackgroundManager struct {
 	BackgroundManagerStatus
-	lastError           error
-	terminator          *base.SafeTerminator
-	clusterAwareOptions *ClusterAwareBackgroundManagerOptions
-	lock                sync.Mutex
-	Process             BackgroundManagerProcessI
+	lastError                              error
+	terminator                             *base.SafeTerminator
+	backgroundManagerStatusUpdateWaitGroup sync.WaitGroup
+	clusterAwareOptions                    *ClusterAwareBackgroundManagerOptions
+	lock                                   sync.Mutex
+	Process                                BackgroundManagerProcessI
 }
 
 const (
@@ -67,11 +68,11 @@ type ClusterAwareBackgroundManagerOptions struct {
 }
 
 func (b *ClusterAwareBackgroundManagerOptions) HeartbeatDocID() string {
-	return base.SyncPrefix + ":background_process:heartbeat:" + b.processSuffix
+	return base.BackgroundProcessHeartbeatPrefix + b.processSuffix
 }
 
 func (b *ClusterAwareBackgroundManagerOptions) StatusDocID() string {
-	return base.SyncPrefix + ":background_process:status:" + b.processSuffix
+	return base.BackgroundProcessStatusPrefix + b.processSuffix
 }
 
 // BackgroundManagerStatus simply stores data used in BackgroundManager. This data can also be exposed to users over
@@ -117,7 +118,9 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 	}
 
 	if b.isClusterAware() {
+		b.backgroundManagerStatusUpdateWaitGroup.Add(1)
 		go func(terminator *base.SafeTerminator) {
+			defer b.backgroundManagerStatusUpdateWaitGroup.Done()
 			ticker := time.NewTicker(BackgroundManagerStatusUpdateIntervalSecs * time.Second)
 			for {
 				select {
@@ -126,7 +129,6 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 					if err != nil {
 						base.WarnfCtx(logCtx, "Failed to update background manager status: %v", err)
 					}
-
 				case <-terminator.Done():
 					ticker.Stop()
 					return
@@ -136,10 +138,7 @@ func (b *BackgroundManager) Start(options map[string]interface{}) error {
 	}
 
 	go func() {
-		updateStatusClusterAwareCallback := func() error {
-			return b.UpdateStatusClusterAware()
-		}
-		err := b.Process.Run(options, updateStatusClusterAwareCallback, b.terminator)
+		err := b.Process.Run(options, b.UpdateStatusClusterAware, b.terminator)
 		if err != nil {
 			base.ErrorfCtx(logCtx, "Error: %v", err)
 			b.SetError(err)
@@ -342,6 +341,7 @@ func (b *BackgroundManager) Stop() error {
 // Only to be used internally to this file and by tests.
 func (b *BackgroundManager) Terminate() {
 	b.terminator.Close()
+	b.backgroundManagerStatusUpdateWaitGroup.Wait()
 }
 
 func (b *BackgroundManager) markStop() error {

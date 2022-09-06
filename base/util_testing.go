@@ -350,6 +350,46 @@ func CreateProperty(size int) (result string) {
 	return string(resultBytes)
 }
 
+// SetUpTestGoroutineDump will collect a goroutine pprof profile when teardownFn is called. Intended to be run at the end of TestMain to give us insight into goroutine leaks.
+func SetUpTestGoroutineDump(m *testing.M) (teardownFn func()) {
+	const numExpected = 1
+
+	if ok, _ := strconv.ParseBool(os.Getenv(TestEnvGoroutineDump)); !ok {
+		return func() {}
+	}
+
+	timestamp := time.Now().Unix()
+	filename := fmt.Sprintf("test-pprof-%s-%d.pb.gz", "goroutine", timestamp)
+	// create the file upfront so we know we're able to write to it before we run tests
+	file, err := os.Create(filename)
+	if err != nil {
+		panic(err)
+	}
+
+	wd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+
+	return func() {
+		if n := runtime.NumGoroutine(); n > numExpected {
+			if err := pprof.Lookup("goroutine").WriteTo(os.Stderr, 2); err != nil {
+				panic(err)
+			}
+			if err := pprof.Lookup("goroutine").WriteTo(file, 0); err != nil {
+				panic(err)
+			}
+			log.Printf(color("\n"+
+				"TEST: =================================================\n"+
+				"TEST: Leaked goroutines after testing: got %d expected %d\n"+
+				"TEST: =================================================\n", LevelError), n, numExpected)
+			log.Printf("TEST: Written goroutine profile to: %s%c%s", wd, os.PathSeparator, file.Name())
+		} else {
+			log.Print(color("TEST: No leaked goroutines found", LevelDebug))
+		}
+	}
+}
+
 // SetUpGlobalTestMemoryWatermark will periodically write an in-use memory watermark,
 // and will cause the tests to fail on teardown if the watermark has exceeded the threshold.
 func SetUpGlobalTestMemoryWatermark(m *testing.M, memWatermarkThresholdMB uint64) (teardownFn func()) {

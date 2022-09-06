@@ -272,10 +272,10 @@ func (r RepairBucket) WriteRepairedDocsToBucket(docId string, originalDoc, updat
 	var contentToSave []byte
 
 	if r.DryRun {
-		backupOrDryRunDocId = base.RepairDryRun + docId
+		backupOrDryRunDocId = base.RepairDryRunPrefix + docId
 		contentToSave = updatedDoc
 	} else {
-		backupOrDryRunDocId = base.RepairBackup + docId
+		backupOrDryRunDocId = base.RepairBackupPrefix + docId
 		contentToSave = originalDoc
 	}
 

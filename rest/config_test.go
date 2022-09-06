@@ -2495,7 +2495,7 @@ func TestBucketCredentialsValidation(t *testing.T) {
 		{
 			name: "Nil bucket credentials provided when running in serverless mode",
 			startupConfig: StartupConfig{
-				Unsupported: UnsupportedConfig{Serverless: base.BoolPtr(true)},
+				Unsupported: UnsupportedConfig{Serverless: ServerlessConfig{Enabled: base.BoolPtr(true)}},
 			},
 			expectedError: &bucketNoCredsServerless,
 		},
@@ -2503,14 +2503,14 @@ func TestBucketCredentialsValidation(t *testing.T) {
 			name: "No bucket credentials provided when running in serverless mode",
 			startupConfig: StartupConfig{
 				BucketCredentials: base.PerBucketCredentialsConfig{},
-				Unsupported:       UnsupportedConfig{Serverless: base.BoolPtr(true)},
+				Unsupported:       UnsupportedConfig{Serverless: ServerlessConfig{Enabled: base.BoolPtr(true)}},
 			},
 			expectedError: &bucketNoCredsServerless,
 		},
 		{
 			name: "Bucket credentials provided when running in serverless mode",
 			startupConfig: StartupConfig{
-				Unsupported:       UnsupportedConfig{Serverless: base.BoolPtr(true)},
+				Unsupported:       UnsupportedConfig{Serverless: ServerlessConfig{Enabled: base.BoolPtr(true)}},
 				BucketCredentials: base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{Username: "u", Password: "p"}},
 			},
 		},
