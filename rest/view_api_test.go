@@ -56,6 +56,10 @@ func TestViewQuery(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
 	defer rt.Close()
 
+	if !base.UnitTestUrlIsWalrus() && !base.TestsDisableGSI() {
+		t.Skip("views tests are not applicable under GSI")
+	}
+
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}"}}}`)
 	requireStatus(t, response, http.StatusCreated)
 	response = rt.SendRequest(http.MethodPut, "/db/doc1", `{"key":10, "value":"ten"}`)
@@ -92,6 +96,10 @@ func TestViewQuery(t *testing.T) {
 
 // Tests #1109, wh ere design doc contains multiple views
 func TestViewQueryMultipleViews(t *testing.T) {
+	if !base.UnitTestUrlIsWalrus() && !base.TestsDisableGSI() {
+		t.Skip("views tests are not applicable under GSI")
+	}
+
 	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
 	defer rt.Close()
 
@@ -121,6 +129,10 @@ func TestViewQueryMultipleViews(t *testing.T) {
 }
 
 func TestViewQueryWithParams(t *testing.T) {
+	if !base.UnitTestUrlIsWalrus() && !base.TestsDisableGSI() {
+		t.Skip("views tests are not applicable under GSI")
+	}
+
 	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
 	defer rt.Close()
 
@@ -145,6 +157,10 @@ func TestViewQueryWithParams(t *testing.T) {
 }
 
 func TestViewQueryUserAccess(t *testing.T) {
+	if !base.UnitTestUrlIsWalrus() && !base.TestsDisableGSI() {
+		t.Skip("views tests are not applicable under GSI")
+	}
+
 	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
 	defer rt.Close()
 
@@ -305,6 +321,10 @@ func TestUserViewQuery(t *testing.T) {
 
 // This includes a fix for #857
 func TestAdminReduceViewQuery(t *testing.T) {
+	if !base.UnitTestUrlIsWalrus() && !base.TestsDisableGSI() {
+		t.Skip("views tests are not applicable under GSI")
+	}
+
 	rtConfig := RestTesterConfig{
 		SyncFn:       `function(doc) {channel(doc.channel)}`,
 		guestEnabled: true,
@@ -356,6 +376,10 @@ func TestAdminReduceViewQuery(t *testing.T) {
 }
 
 func TestAdminReduceSumQuery(t *testing.T) {
+	if !base.UnitTestUrlIsWalrus() && !base.TestsDisableGSI() {
+		t.Skip("views tests are not applicable under GSI")
+	}
+
 	rtConfig := RestTesterConfig{
 		SyncFn:       `function(doc) {channel(doc.channel)}`,
 		guestEnabled: true,
@@ -392,6 +416,10 @@ func TestAdminReduceSumQuery(t *testing.T) {
 }
 
 func TestAdminGroupReduceSumQuery(t *testing.T) {
+	if !base.UnitTestUrlIsWalrus() && !base.TestsDisableGSI() {
+		t.Skip("views tests are not applicable under GSI")
+	}
+
 	rtConfig := RestTesterConfig{
 		SyncFn:       `function(doc) {channel(doc.channel)}`,
 		guestEnabled: true,
@@ -431,6 +459,9 @@ func TestViewQueryWithKeys(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Walrus does not support the 'keys' view parameter")
 	}
+	if !base.TestsDisableGSI() {
+		t.Skip("views tests are not applicable under GSI")
+	}
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
 	rt := NewRestTester(t, &rtConfig)
@@ -469,6 +500,10 @@ func TestViewQueryWithCompositeKeys(t *testing.T) {
 		t.Skip("Walrus does not support the 'keys' view parameter")
 	}
 
+	if !base.TestsDisableGSI() {
+		t.Skip("views tests are not applicable under GSI")
+	}
+
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -505,6 +540,9 @@ func TestViewQueryWithIntKeys(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Walrus does not support the 'keys' view parameter")
 	}
+	if !base.TestsDisableGSI() {
+		t.Skip("views tests are not applicable under GSI")
+	}
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
 	rt := NewRestTester(t, &rtConfig)
@@ -539,6 +577,10 @@ func TestViewQueryWithIntKeys(t *testing.T) {
 }
 
 func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
+	if !base.UnitTestUrlIsWalrus() && !base.TestsDisableGSI() {
+		t.Skip("views tests are not applicable under GSI")
+	}
+
 	rtConfig := RestTesterConfig{
 		SyncFn:       `function(doc) {channel(doc.channel)}`,
 		guestEnabled: true,
@@ -632,6 +674,9 @@ func TestPostInstallCleanup(t *testing.T) {
 }
 
 func TestViewQueryWrappers(t *testing.T) {
+	if !base.TestsDisableGSI() {
+		t.Skip("views tests are not applicable under GSI")
+	}
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -673,12 +718,16 @@ func TestViewQueryWithXattrAndNonXattr(t *testing.T) {
 		t.Skip("Test requires xattrs to be enabled")
 	}
 
+	if !base.TestsDisableGSI() {
+		t.Skip("views tests are not applicable under GSI")
+	}
 	rtConfig := &RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: false,
 		}},
 	}
+
 	rt := NewRestTester(t, rtConfig)
 	defer rt.Close()
 

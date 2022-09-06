@@ -464,6 +464,10 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
+	if !base.UnitTestUrlIsWalrus() && !base.TestsDisableGSI() {
+		t.Skip("views tests are not applicable under GSI")
+	}
+
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
