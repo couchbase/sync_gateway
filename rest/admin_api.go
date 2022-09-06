@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -231,7 +230,10 @@ func (h *handler) handleGetDbConfig() error {
 			return base.HTTPErrorf(http.StatusNotFound, "database config not found")
 		}
 
-		quoteETag := strconv.Quote(dbConfig.Version)
+		quoteETag, err := h.setEtag(dbConfig.Version)
+		if err != nil {
+			return err
+		}
 		h.response.Header().Set("ETag", quoteETag)
 
 		// refresh_config=true forces the config loaded out of the bucket to be applied on the node
@@ -535,8 +537,9 @@ func (h *handler) handlePutDbConfig() (err error) {
 			}
 
 			headerVersion := h.rq.Header.Get("If-Match")
-			if headerVersion != "" {
-				headerVersion, _ = strconv.Unquote(headerVersion)
+			headerVersion, err = h.readETag(headerVersion)
+			if err != nil {
+				return nil, err
 			}
 
 			if headerVersion != "" && headerVersion != bucketDbConfig.Version {
@@ -600,7 +603,10 @@ func (h *handler) handlePutDbConfig() (err error) {
 	}
 	// store the cas in the loaded config after a successful update
 	h.server.dbConfigs[dbName].cas = cas
-	quoteETag := strconv.Quote(updatedDbConfig.Version)
+	quoteETag, err := h.setEtag(updatedDbConfig.Version)
+	if err != nil {
+		return err
+	}
 	h.response.Header().Set("ETag", quoteETag)
 	return base.HTTPErrorf(http.StatusCreated, "updated")
 
@@ -630,7 +636,10 @@ func (h *handler) handleGetDbConfigSync() error {
 		}
 	}
 
-	quoteETag := strconv.Quote(etagVersion)
+	quoteETag, err := h.setEtag(etagVersion)
+	if err != nil {
+		return err
+	}
 	h.response.Header().Set("ETag", quoteETag)
 	h.writeJavascript(syncFunction)
 	return nil
@@ -656,8 +665,9 @@ func (h *handler) handleDeleteDbConfigSync() error {
 			}
 
 			headerVersion := h.rq.Header.Get("If-Match")
-			if headerVersion != "" {
-				headerVersion, _ = strconv.Unquote(headerVersion)
+			headerVersion, err = h.readETag(headerVersion)
+			if err != nil {
+				return nil, err
 			}
 
 			if headerVersion != "" && headerVersion != bucketDbConfig.Version {
@@ -722,8 +732,9 @@ func (h *handler) handlePutDbConfigSync() error {
 			}
 
 			headerVersion := h.rq.Header.Get("If-Match")
-			if headerVersion != "" {
-				headerVersion, _ = strconv.Unquote(headerVersion)
+			headerVersion, err = h.readETag(headerVersion)
+			if err != nil {
+				return nil, err
 			}
 
 			if headerVersion != "" && headerVersion != bucketDbConfig.Version {
@@ -791,7 +802,10 @@ func (h *handler) handleGetDbConfigImportFilter() error {
 		}
 	}
 
-	quoteETag := strconv.Quote(etagVersion)
+	quoteETag, err := h.setEtag(etagVersion)
+	if err != nil {
+		return err
+	}
 	h.response.Header().Set("ETag", quoteETag)
 	h.writeJavascript(importFilterFunction)
 	return nil
@@ -817,8 +831,9 @@ func (h *handler) handleDeleteDbConfigImportFilter() error {
 			}
 
 			headerVersion := h.rq.Header.Get("If-Match")
-			if headerVersion != "" {
-				headerVersion, _ = strconv.Unquote(headerVersion)
+			headerVersion, err = h.readETag(headerVersion)
+			if err != nil {
+				return nil, err
 			}
 
 			if headerVersion != "" && headerVersion != bucketDbConfig.Version {
@@ -884,8 +899,9 @@ func (h *handler) handlePutDbConfigImportFilter() error {
 			}
 
 			headerVersion := h.rq.Header.Get("If-Match")
-			if headerVersion != "" {
-				headerVersion, _ = strconv.Unquote(headerVersion)
+			headerVersion, err = h.readETag(headerVersion)
+			if err != nil {
+				return nil, err
 			}
 
 			if headerVersion != "" && headerVersion != bucketDbConfig.Version {

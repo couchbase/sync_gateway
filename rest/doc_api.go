@@ -86,7 +86,11 @@ func (h *handler) handleGetDoc() error {
 			}
 			return kNotFoundError
 		}
-		h.setHeader("Etag", strconv.Quote(value[db.BodyRev].(string)))
+		quoteETag, err := h.setEtag(value[db.BodyRev].(string))
+		if err != nil {
+			return err
+		}
+		h.setHeader("Etag", quoteETag)
 
 		h.db.DbStats.Database().NumDocReadsRest.Add(1)
 		hasBodies := attachmentsSince != nil && value[db.BodyAttachments] != nil
@@ -232,7 +236,11 @@ func (h *handler) handleGetAttachment() error {
 	// #720
 	setContentDisposition := h.privs == adminPrivs
 
-	h.setHeader("Etag", strconv.Quote(digest))
+	quoteETag, err := h.setEtag(digest)
+	if err != nil {
+		return err
+	}
+	h.setHeader("Etag", quoteETag)
 
 	// Request will be returned with the same content type as is set on the attachment. The caveat to this is if the
 	// attachment has a content type which is vulnerable to a phishing attack. If this is the case we will return with
@@ -303,8 +311,12 @@ func (h *handler) handlePutAttachment() error {
 	}
 	revid := h.getQuery("rev")
 	if revid == "" {
+		var err error
 		revid = h.rq.Header.Get("If-Match")
-		revid, _ = strconv.Unquote(revid)
+		revid, err = h.readETag(revid)
+		if err != nil {
+			return err
+		}
 	}
 	attachmentData, err := h.readBody()
 	if err != nil {
@@ -347,7 +359,11 @@ func (h *handler) handlePutAttachment() error {
 	if err != nil {
 		return err
 	}
-	h.setHeader("Etag", strconv.Quote(newRev))
+	quoteETag, err := h.setEtag(newRev)
+	if err != nil {
+		return err
+	}
+	h.setHeader("Etag", quoteETag)
 
 	h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`"}`))
 	return nil
@@ -395,7 +411,10 @@ func (h *handler) handlePutDoc() error {
 		if oldRev := h.getQuery("rev"); oldRev != "" {
 			body[db.BodyRev] = oldRev
 		} else if ifMatch := h.rq.Header.Get("If-Match"); ifMatch != "" {
-			ifMatch, _ = strconv.Unquote(ifMatch)
+			ifMatch, err = h.readETag(ifMatch)
+			if err != nil {
+				return err
+			}
 			body[db.BodyRev] = ifMatch
 		}
 		if bodyRev != nil && bodyRev != body[db.BodyRev] {
@@ -406,7 +425,11 @@ func (h *handler) handlePutDoc() error {
 		if err != nil {
 			return err
 		}
-		h.setHeader("Etag", strconv.Quote(newRev))
+		quoteETag, err := h.setEtag(newRev)
+		if err != nil {
+			return err
+		}
+		h.setHeader("Etag", quoteETag)
 	} else {
 		// Replicator-style PUT with new_edits=false:
 		revisions := db.ParseRevisions(body)
@@ -454,7 +477,10 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 	if oldRev := h.getQuery("rev"); oldRev != "" {
 		parentRev = oldRev
 	} else if ifMatch := h.rq.Header.Get("If-Match"); ifMatch != "" {
-		ifMatch, _ = strconv.Unquote(ifMatch)
+		ifMatch, err = h.readETag(ifMatch)
+		if err != nil {
+			return err
+		}
 		parentRev = ifMatch
 	}
 
@@ -532,7 +558,11 @@ func (h *handler) handlePostDoc() error {
 	}
 
 	h.setHeader("Location", docid)
-	h.setHeader("Etag", strconv.Quote(newRev))
+	quoteETag, err := h.setEtag(newRev)
+	if err != nil {
+		return err
+	}
+	h.setHeader("Etag", quoteETag)
 	h.writeRawJSON([]byte(`{"id":"` + docid + `","ok":true,"rev":"` + newRev + `"}`))
 	return nil
 }
@@ -542,8 +572,12 @@ func (h *handler) handleDeleteDoc() error {
 	docid := h.PathVar("docid")
 	revid := h.getQuery("rev")
 	if revid == "" {
+		var err error
 		revid = h.rq.Header.Get("If-Match")
-		revid, _ = strconv.Unquote(revid)
+		revid, err = h.readETag(revid)
+		if err != nil {
+			return err
+		}
 	}
 	newRev, err := h.db.DeleteDoc(h.ctx(), docid, revid)
 	if err == nil {
