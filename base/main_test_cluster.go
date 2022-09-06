@@ -165,7 +165,7 @@ func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilRea
 		defaultSpec := getBucketSpec(testBucketName)
 		defaultSpec.Scope = nil
 		defaultSpec.Collection = nil
-		unnamedCollectionBucket, err := GetCollectionFromCluster(bucketCluster, bucketSpec, waitUntilReadySeconds)
+		unnamedCollectionBucket, err := GetCollectionFromCluster(bucketCluster, defaultSpec, waitUntilReadySeconds)
 		if err != nil {
 			return nil, nil, err
 		}

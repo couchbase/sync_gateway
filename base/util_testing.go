@@ -104,6 +104,10 @@ func GetTestBucketNamedCollection(t testing.TB) *TestBucket {
 	return getTestBucket(t, tbpCollectionNamed)
 }
 
+func GetTestBucketDefaultCollection(t testing.TB) *TestBucket {
+	return getTestBucket(t, tbpCollectionDefault)
+}
+
 func getTestBucket(t testing.TB, collectionType tbpCollectionType) *TestBucket {
 	bucket, spec, closeFn := GTestBucketPool.getTestBucketAndSpec(t, collectionType)
 	return &TestBucket{
