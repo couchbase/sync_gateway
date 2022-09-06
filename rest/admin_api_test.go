@@ -3298,7 +3298,6 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
 	resp.requireStatus(http.StatusOK)
 	eTag := resp.Header.Get("ETag")
-	//unquoteETag, _ := strconv.Unquote(eTag)
 	unquoteETag := strings.Trim(eTag, `"`)
 	assert.NotEqual(t, "", unquoteETag)
 
