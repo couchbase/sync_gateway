@@ -7585,6 +7585,8 @@ func TestRevocationResumeSameRoleAndLowSeqCheck(t *testing.T) {
 }
 
 func TestMetricsHandler(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+
 	base.SkipPrometheusStatsRegistration = false
 	defer func() {
 		base.SkipPrometheusStatsRegistration = true
