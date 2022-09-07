@@ -439,9 +439,10 @@ func (rt *RestTester) Close() {
 	if rt.tb == nil {
 		panic("RestTester not properly initialized please use NewRestTester function")
 	}
+	ctx := rt.Context() // capture ctx before closing rt
 	rt.closed = true
 	if rt.RestTesterServerContext != nil {
-		rt.RestTesterServerContext.Close(base.TestCtx(rt.tb))
+		rt.RestTesterServerContext.Close(ctx)
 	}
 	if rt.testBucket != nil {
 		rt.testBucket.Close()
