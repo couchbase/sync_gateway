@@ -2019,6 +2019,7 @@ func TestSetupDbConfigWithConflictResolutionFunction(t *testing.T) {
 			if test.errExpected != nil {
 				assertX509UnknownAuthority(t, err, test.errExpected)
 			} else {
+				require.NoError(t, err)
 				require.NotNil(t, dbConfig.Replications["replication1"])
 				conflictResolutionFnActual := dbConfig.Replications["replication1"].ConflictResolutionFn
 				assert.Equal(t, test.jsConflictResExpected, conflictResolutionFnActual)
