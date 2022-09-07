@@ -705,11 +705,7 @@ func (c *Collection) DropAllScopesAndCollections(ctx context.Context) error {
 }
 
 // This flushes the *entire* bucket associated with the collection (not just the collection).  Intended for test usage only.
-func (c *Collection) Flush() error {
-	return c.FlushCtx(context.TODO())
-}
-
-func (c *Collection) FlushCtx(ctx context.Context) error {
+func (c *Collection) Flush(ctx context.Context) error {
 
 	bucketManager := c.cluster.Buckets()
 

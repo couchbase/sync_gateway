@@ -227,7 +227,7 @@ func (h *handler) handleFlush() error {
 		if tempBucketForFlush, ok := tempBucketForFlush.(base.SGFlushableStore); ok {
 
 			// Flush
-			err := tempBucketForFlush.FlushCtx(h.ctx())
+			err := tempBucketForFlush.Flush(h.ctx())
 			if err != nil {
 				return err
 			}

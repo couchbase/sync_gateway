@@ -637,7 +637,7 @@ var FlushBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b Bu
 	if !ok {
 		return errors.New("FlushBucketEmptierFunc used with non-flushable bucket")
 	}
-	return flushableBucket.FlushCtx(ctx)
+	return flushableBucket.Flush(ctx)
 }
 
 // N1QLBucketEmptierFunc ensures the bucket is empty by using N1QL deletes. This is the preferred approach when using GSI.

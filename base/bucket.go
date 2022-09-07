@@ -57,8 +57,7 @@ const (
 const DefaultViewTimeoutSecs = 75 // 75s
 
 type SGFlushableStore interface {
-	Flush() error
-	FlushCtx(ctx context.Context) error
+	Flush(ctx context.Context) error
 }
 
 // WrappingBucket interface used to identify buckets that wrap an underlying
