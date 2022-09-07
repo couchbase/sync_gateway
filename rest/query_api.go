@@ -40,7 +40,7 @@ func (h *handler) handleUserQuery() error {
 		}
 		defer func() {
 			if rows != nil {
-				rows.Close()
+				_ = rows.Close()
 			}
 		}()
 

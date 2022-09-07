@@ -242,7 +242,7 @@ func (runner *userJSRunner) do_query(queryName string, params map[string]interfa
 	}
 	defer func() {
 		if rows != nil {
-			rows.Close()
+			_ = rows.Close()
 		}
 	}()
 	result := []interface{}{}
