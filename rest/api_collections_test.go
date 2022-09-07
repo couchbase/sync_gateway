@@ -107,7 +107,9 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 
 func TestCollectionsDCP(t *testing.T) {
 	base.TestRequiresCollections(t)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyDCP, base.KeyImport)
+	if !base.TestUseXattrs() {
+		t.Skip("Test does not provide inline _sync data for non xattrs")
+	}
 
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
