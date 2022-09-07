@@ -4251,6 +4251,8 @@ func TestGroupIDReplications(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
 		t.Skip("This test only works against Couchbase Server with xattrs enabled")
 	}
+	base.RequireNumTestBuckets(t, 2)
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	// Create test buckets to replicate between
@@ -4587,6 +4589,8 @@ function (doc) {
 // Test that the username and password fields in the replicator still work and get redacted appropriately.
 // This should log a deprecation notice.
 func TestReplicatorDeprecatedCredentials(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+
 	passiveRT := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{
 		DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
@@ -4648,6 +4652,8 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 
 // CBG-1581: Ensure activeReplicatorCommon does final checkpoint on stop/disconnect
 func TestReplicatorCheckpointOnStop(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+
 	passiveRT := NewRestTester(t, nil)
 	defer passiveRT.Close()
 
@@ -4690,7 +4696,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 
 	// Check checkpoint document was wrote to bucket with correct status
 	// _sync:local:checkpoint/sgr2cp:push:TestReplicatorCheckpointOnStop
-	expectedCheckpointName := base.SyncPrefix + "local:checkpoint/" + db.PushCheckpointID(t.Name())
+	expectedCheckpointName := base.SyncDocPrefix + "local:checkpoint/" + db.PushCheckpointID(t.Name())
 	val, _, err := activeRT.Bucket().GetRaw(expectedCheckpointName)
 	require.NoError(t, err)
 	var config struct { // db.replicationCheckpoint

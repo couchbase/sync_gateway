@@ -21,6 +21,9 @@ import (
 )
 
 func TestView(t *testing.T) {
+	if !TestsDisableGSI() {
+		t.Skip("GSI tests are not compatible with views")
+	}
 	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 
 		ddocName := "testDDoc"

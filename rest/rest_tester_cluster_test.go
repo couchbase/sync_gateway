@@ -193,7 +193,9 @@ func TestPersistentDbConfigWithInvalidUpsert(t *testing.T) {
 	assert.NotContains(t, string(resp.BodyBytes()), `"revs_limit":`)
 
 	// remove the db config directly from the bucket
-	require.NoError(t, rtc.testBucket.Delete(base.PersistentConfigPrefix+*rtc.config.groupID))
+	docID, err := base.PersistentConfigKey(*rtc.config.groupID)
+	require.NoError(t, err)
+	require.NoError(t, rtc.testBucket.Delete(docID))
 
 	// ensure all nodes remove the database
 	count, err = rtc.RefreshClusterDbConfigs()

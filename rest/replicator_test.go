@@ -2974,7 +2974,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	assert.Equal(t, int64(1), ar.Push.Checkpointer.Stats().SetCheckpointCount)
 
 	cID := ar.Push.CheckpointID
-	checkpointDocID := base.SyncPrefix + "local:checkpoint/" + cID
+	checkpointDocID := base.SyncDocPrefix + "local:checkpoint/" + cID
 
 	var firstCheckpoint interface{}
 	_, err = rt2.Bucket().Get(checkpointDocID, &firstCheckpoint)
@@ -3100,13 +3100,13 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	assert.NoError(t, ar.Start())
 
 	pushCheckpointID := ar.Push.CheckpointID
-	pushCheckpointDocID := base.SyncPrefix + "local:checkpoint/" + pushCheckpointID
+	pushCheckpointDocID := base.SyncDocPrefix + "local:checkpoint/" + pushCheckpointID
 	err = rt2.Bucket().Set(pushCheckpointDocID, 0, nil, map[string]interface{}{"last_sequence": "0", "_rev": "abc"})
 	require.NoError(t, err)
 
 	pullCheckpointID := ar.Pull.CheckpointID
 	require.NoError(t, err)
-	pullCheckpointDocID := base.SyncPrefix + "local:checkpoint/" + pullCheckpointID
+	pullCheckpointDocID := base.SyncDocPrefix + "local:checkpoint/" + pullCheckpointID
 	err = rt1.Bucket().Set(pullCheckpointDocID, 0, nil, map[string]interface{}{"last_sequence": "0", "_rev": "abc"})
 	require.NoError(t, err)
 
@@ -5746,6 +5746,9 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("Requires EE for delta sync")
 	}
+
+	base.RequireNumTestBuckets(t, 2)
+
 	defer db.SuspendSequenceBatching()()
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
@@ -5845,6 +5848,8 @@ func TestUnprocessableDeltas(t *testing.T) {
 		t.Skipf("Requires EE for some delta sync")
 	}
 
+	base.RequireNumTestBuckets(t, 2)
+
 	defer db.SuspendSequenceBatching()()
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
@@ -5936,6 +5941,9 @@ func TestUnprocessableDeltas(t *testing.T) {
 
 // CBG-1428 - check for regression of ISGR not ignoring _removed:true bodies when purgeOnRemoval is disabled
 func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
+
+	base.RequireNumTestBuckets(t, 2)
+
 	// Copies the behaviour of TestGetRemovedAsUser but with replication and no user
 	defer db.SuspendSequenceBatching()()
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)

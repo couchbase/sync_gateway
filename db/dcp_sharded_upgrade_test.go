@@ -192,11 +192,11 @@ func TestShardedDCPUpgrade(t *testing.T) {
 		indexName     = "db0x2d9928b7_index"
 	)
 
-	require.NoError(t, tb.SetRaw(base.SyncPrefix+"cfgindexDefs", 0, nil, []byte(fmt.Sprintf(indexDefs, tb.GetName(), bucketUUID))))
-	require.NoError(t, tb.SetRaw(base.SyncPrefix+"cfgnodeDefs-known", 0, nil, []byte(nodeDefs)))
-	require.NoError(t, tb.SetRaw(base.SyncPrefix+"cfgnodeDefs-wanted", 0, nil, []byte(nodeDefs)))
+	require.NoError(t, tb.SetRaw(base.SyncDocPrefix+"cfgindexDefs", 0, nil, []byte(fmt.Sprintf(indexDefs, tb.GetName(), bucketUUID))))
+	require.NoError(t, tb.SetRaw(base.SyncDocPrefix+"cfgnodeDefs-known", 0, nil, []byte(nodeDefs)))
+	require.NoError(t, tb.SetRaw(base.SyncDocPrefix+"cfgnodeDefs-wanted", 0, nil, []byte(nodeDefs)))
 	planPIndexesJSON := preparePlanPIndexesJSON(t, tb, numVBuckets, numPartitions)
-	require.NoError(t, tb.SetRaw(base.SyncPrefix+"cfgplanPIndexes", 0, nil, []byte(planPIndexesJSON)))
+	require.NoError(t, tb.SetRaw(base.SyncDocPrefix+"cfgplanPIndexes", 0, nil, []byte(planPIndexesJSON)))
 
 	// Write a doc before starting the dbContext to check that import works
 	const (
