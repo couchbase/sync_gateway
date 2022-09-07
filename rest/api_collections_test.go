@@ -107,7 +107,9 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 
 func TestCollectionsDCP(t *testing.T) {
 	base.TestRequiresCollections(t)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyDCP, base.KeyImport)
+	if !base.TestUseXattrs() {
+		t.Skip("Test relies on import - needs xattrs")
+	}
 
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
