@@ -36,7 +36,7 @@ var kUserFunctionConfig = UserFunctionConfigMap{
 	},
 	"call_fn": &UserFunctionConfig{
 		Type:  "javascript",
-		Code:  `function(context, args) {return context.user.func("square", {numero: 7});}`,
+		Code:  `function(context, args) {return context.user.function("square", {numero: 7});}`,
 		Allow: allowAll,
 	},
 	"great_and_terrible": &UserFunctionConfig{
@@ -46,12 +46,12 @@ var kUserFunctionConfig = UserFunctionConfigMap{
 	},
 	"call_forbidden": &UserFunctionConfig{
 		Type:  "javascript",
-		Code:  `function(context, args) {return context.user.func("great_and_terrible");}`,
+		Code:  `function(context, args) {return context.user.function("great_and_terrible");}`,
 		Allow: allowAll,
 	},
 	"sudo_call_forbidden": &UserFunctionConfig{
 		Type:  "javascript",
-		Code:  `function(context, args) {return context.admin.func("great_and_terrible");}`,
+		Code:  `function(context, args) {return context.admin.function("great_and_terrible");}`,
 		Allow: allowAll,
 	},
 	"admin_only": &UserFunctionConfig{

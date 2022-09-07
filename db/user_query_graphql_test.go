@@ -55,7 +55,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 						if (Object.keys(info) != "resultFields") throw "Unexpected info";
 						if (!context.user) throw "Missing context.user";
 						if (!context.admin) throw "Missing context.admin";
-						return context.user.func("getTask", {id: args.id});}`,
+						return context.user.function("getTask", {id: args.id});}`,
 				Allow: allowAll,
 			},
 			"tasks": UserFunctionConfig{
@@ -66,7 +66,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 						if (Object.keys(info) != "resultFields") throw "Unexpected info";
 						if (!context.user) throw "Missing context.user";
 						if (!context.admin) throw "Missing context.admin";
-						return context.user.func("all");}`,
+						return context.user.function("all");}`,
 				Allow: allowAll,
 			},
 			"toDo": UserFunctionConfig{
@@ -77,7 +77,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 						if (Object.keys(info) != "resultFields") throw "Unexpected info";
 						if (!context.user) throw "Missing context.user";
 						if (!context.admin) throw "Missing context.admin";
-						var result=new Array(); var all = context.user.func("all");
+						var result=new Array(); var all = context.user.function("all");
 						for (var i = 0; i < all.length; i++)
 							if (!all[i].done) result.push(all[i]);
 						return result;}`,
@@ -93,7 +93,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 							if (Object.keys(info) != "resultFields") throw "Unexpected info";
 							if (!context.user) throw "Missing context.user";
 							if (!context.admin) throw "Missing context.admin";
-							var task = context.user.func("getTask", {id: args.id});
+							var task = context.user.function("getTask", {id: args.id});
 							if (!task) return undefined;
 							task.done = true;
 							return task;}`,
@@ -102,7 +102,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 			"addTag": UserFunctionConfig{
 				Type: "javascript",
 				Code: `function(context, args, parent, info) {
-							var task = context.user.func("getTask", {id: args.id});
+							var task = context.user.function("getTask", {id: args.id});
 							if (!task) return undefined;
 							if (!task.tags) task.tags = [];
 							task.tags.push(args.tag);
@@ -140,7 +140,7 @@ var kTestGraphQLUserFunctionsConfig = UserFunctionConfigMap{
 	"getTask": &UserFunctionConfig{
 		Type: "javascript",
 		Code: `function(context, args, parent, info) {
-						var all = context.user.func("all");
+						var all = context.user.function("all");
 						for (var i = 0; i < all.length; i++)
 							if (all[i].id == args.id) return all[i];
 						return undefined;}`,
