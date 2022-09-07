@@ -89,7 +89,9 @@ func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) *Database {
 // Forces UseViews:true in the database context.  Useful for testing w/ views while running
 // tests against Couchbase Server
 func setupTestDBWithViewsEnabled(t testing.TB) *Database {
-
+	if !base.TestsDisableGSI() {
+		t.Skip("GSI is not compatible with views")
+	}
 	dbcOptions := DatabaseContextOptions{
 		UseViews: true,
 	}
