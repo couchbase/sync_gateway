@@ -70,10 +70,10 @@ type WrappingBucket interface {
 type CouchbaseStore interface {
 	BucketName() string
 	MgmtEps() ([]string, error)
-	MetadataPurgeInterval() (time.Duration, error)
-	ServerUUID() (uuid string, err error)
-	MaxTTL() (int, error)
-	HttpClient() *http.Client
+	MetadataPurgeInterval(ctx context.Context) (time.Duration, error)
+	ServerUUID(ctx context.Context) (uuid string, err error)
+	MaxTTL(ctx context.Context) (int, error)
+	HttpClient(ctx context.Context) *http.Client
 	GetExpiry(k string) (expiry uint32, getMetaError error)
 	GetSpec() BucketSpec
 	GetMaxVbno() (uint16, error)
@@ -83,7 +83,7 @@ type CouchbaseStore interface {
 	GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error)
 
 	// mgmtRequest uses the CouchbaseStore's http client to make an http request against a management endpoint.
-	mgmtRequest(method, uri, contentType string, body io.Reader) (*http.Response, error)
+	mgmtRequest(ctx context.Context, method, uri, contentType string, body io.Reader) (*http.Response, error)
 }
 
 func AsCouchbaseStore(b Bucket) (CouchbaseStore, bool) {
@@ -516,13 +516,13 @@ func GetFeedType(bucket Bucket) (feedType string) {
 
 // Gets the bucket max TTL, or 0 if no TTL was set.  Sync gateway should fail to bring the DB online if this is non-zero,
 // since it's not meant to operate against buckets that auto-delete data.
-func getMaxTTL(store CouchbaseStore) (int, error) {
+func getMaxTTL(ctx context.Context, store CouchbaseStore) (int, error) {
 	var bucketResponseWithMaxTTL struct {
 		MaxTTLSeconds int `json:"maxTTL,omitempty"`
 	}
 
 	uri := fmt.Sprintf("/pools/default/buckets/%s", store.GetSpec().BucketName)
-	resp, err := store.mgmtRequest(http.MethodGet, uri, "application/json", nil)
+	resp, err := store.mgmtRequest(ctx, http.MethodGet, uri, "application/json", nil)
 	if err != nil {
 		return -1, err
 	}
@@ -542,8 +542,8 @@ func getMaxTTL(store CouchbaseStore) (int, error) {
 }
 
 // Get the Server UUID of the bucket, this is also known as the Cluster UUID
-func getServerUUID(store CouchbaseStore) (uuid string, err error) {
-	resp, err := store.mgmtRequest(http.MethodGet, "/pools", "application/json", nil)
+func getServerUUID(ctx context.Context, store CouchbaseStore) (uuid string, err error) {
+	resp, err := store.mgmtRequest(ctx, http.MethodGet, "/pools", "application/json", nil)
 	if err != nil {
 		return "", err
 	}
@@ -568,18 +568,18 @@ func getServerUUID(store CouchbaseStore) (uuid string, err error) {
 
 // Gets the metadata purge interval for the bucket.  First checks for a bucket-specific value.  If not
 // found, retrieves the cluster-wide value.
-func getMetadataPurgeInterval(store CouchbaseStore) (time.Duration, error) {
+func getMetadataPurgeInterval(ctx context.Context, store CouchbaseStore) (time.Duration, error) {
 
 	// Bucket-specific settings
 	uri := fmt.Sprintf("/pools/default/buckets/%s", store.BucketName())
-	bucketPurgeInterval, err := retrievePurgeInterval(store, uri)
+	bucketPurgeInterval, err := retrievePurgeInterval(ctx, store, uri)
 	if bucketPurgeInterval > 0 || err != nil {
 		return bucketPurgeInterval, err
 	}
 
 	// Cluster-wide settings
 	uri = fmt.Sprintf("/settings/autoCompaction")
-	clusterPurgeInterval, err := retrievePurgeInterval(store, uri)
+	clusterPurgeInterval, err := retrievePurgeInterval(ctx, store, uri)
 	if clusterPurgeInterval > 0 || err != nil {
 		return clusterPurgeInterval, err
 	}
@@ -591,14 +591,14 @@ func getMetadataPurgeInterval(store CouchbaseStore) (time.Duration, error) {
 // Helper function to retrieve a Metadata Purge Interval from server and convert to hours.  Works for any uri
 // that returns 'purgeInterval' as a root-level property (which includes the two server endpoints for
 // bucket and server purge intervals).
-func retrievePurgeInterval(bucket CouchbaseStore, uri string) (time.Duration, error) {
+func retrievePurgeInterval(ctx context.Context, bucket CouchbaseStore, uri string) (time.Duration, error) {
 
 	// Both of the purge interval endpoints (cluster and bucket) return purgeInterval in the same way
 	var purgeResponse struct {
 		PurgeInterval float64 `json:"purgeInterval,omitempty"`
 	}
 
-	resp, err := bucket.mgmtRequest(http.MethodGet, uri, "application/json", nil)
+	resp, err := bucket.mgmtRequest(ctx, http.MethodGet, uri, "application/json", nil)
 	if err != nil {
 		return 0, err
 	}

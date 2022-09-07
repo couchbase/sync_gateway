@@ -632,7 +632,6 @@ var FlushBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b Bu
 		}
 	}
 
-	// flushableBucket, ok := b.(sgbucket.FlushableStore)
 	flushableBucket, ok := b.(SGFlushableStore)
 	if !ok {
 		return errors.New("FlushBucketEmptierFunc used with non-flushable bucket")

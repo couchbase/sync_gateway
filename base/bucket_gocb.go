@@ -220,26 +220,26 @@ func (bucket *CouchbaseBucketGoCB) GetBucketCredentials() (username, password st
 
 // Gets the metadata purge interval for the bucket.  First checks for a bucket-specific value.  If not
 // found, retrieves the cluster-wide value.
-func (bucket *CouchbaseBucketGoCB) MetadataPurgeInterval() (time.Duration, error) {
-	return getMetadataPurgeInterval(bucket)
+func (bucket *CouchbaseBucketGoCB) MetadataPurgeInterval(ctx context.Context) (time.Duration, error) {
+	return getMetadataPurgeInterval(ctx, bucket)
 }
 
 // Get the Server UUID of the bucket, this is also known as the Cluster UUID
-func (bucket *CouchbaseBucketGoCB) ServerUUID() (uuid string, err error) {
-	return getServerUUID(bucket)
+func (bucket *CouchbaseBucketGoCB) ServerUUID(ctx context.Context) (uuid string, err error) {
+	return getServerUUID(ctx, bucket)
 }
 
 // Gets the bucket max TTL, or 0 if no TTL was set.  Sync gateway should fail to bring the DB online if this is non-zero,
 // since it's not meant to operate against buckets that auto-delete data.
-func (bucket *CouchbaseBucketGoCB) MaxTTL() (int, error) {
-	return getMaxTTL(bucket)
+func (bucket *CouchbaseBucketGoCB) MaxTTL(ctx context.Context) (int, error) {
+	return getMaxTTL(ctx, bucket)
 }
 
 // mgmtRequest is a re-implementation of gocb's mgmtRequest
 // TODO: Request gocb to either:
 // - Make a public version of mgmtRequest for us to use
 // - Or add all of the neccesary APIs we need to use
-func (bucket *CouchbaseBucketGoCB) mgmtRequest(method, uri, contentType string, body io.Reader) (*http.Response, error) {
+func (bucket *CouchbaseBucketGoCB) mgmtRequest(ctx context.Context, method, uri, contentType string, body io.Reader) (*http.Response, error) {
 	if contentType == "" && body != nil {
 		// TODO: CBG-1948
 		panic("Content-type must be specified for non-null body.")
@@ -1562,7 +1562,7 @@ func (bucket *CouchbaseBucketGoCB) Close() {
 }
 
 // This flushes the bucket.
-func (bucket *CouchbaseBucketGoCB) Flush() error {
+func (bucket *CouchbaseBucketGoCB) Flush(ctx context.Context) error {
 
 	bucketManager, err := bucket.getBucketManager()
 	if err != nil {
@@ -1572,7 +1572,7 @@ func (bucket *CouchbaseBucketGoCB) Flush() error {
 	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
 		err = bucketManager.Flush()
 		if err != nil {
-			WarnfCtx(context.Background(), "Error flushing bucket %s: %v  Will retry.", MD(bucket.Spec.BucketName).Redact(), err)
+			WarnfCtx(ctx, "Error flushing bucket %s: %v  Will retry.", MD(bucket.Spec.BucketName).Redact(), err)
 			shouldRetry = true
 		}
 		return shouldRetry, err, nil
@@ -1585,7 +1585,7 @@ func (bucket *CouchbaseBucketGoCB) Flush() error {
 
 	// Wait until the bucket item count is 0, since flush is asynchronous
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-		itemCount, err := bucket.BucketItemCount()
+		itemCount, err := bucket.BucketItemCount(ctx)
 		if err != nil {
 			return false, err, nil
 		}
@@ -1612,22 +1612,22 @@ func (bucket *CouchbaseBucketGoCB) Flush() error {
 
 // BucketItemCount first tries to retrieve an accurate bucket count via N1QL,
 // but falls back to the REST API if that cannot be done (when there's no index to count all items in a bucket)
-func (bucket *CouchbaseBucketGoCB) BucketItemCount() (itemCount int, err error) {
+func (bucket *CouchbaseBucketGoCB) BucketItemCount(ctx context.Context) (itemCount int, err error) {
 	itemCount, err = QueryBucketItemCount(bucket)
 	if err == nil {
 		return itemCount, nil
 	}
 
-	itemCount, err = bucket.APIBucketItemCount()
+	itemCount, err = bucket.APIBucketItemCount(ctx)
 	return itemCount, err
 }
 
 // Get the number of items in the bucket.
 // GOCB doesn't currently offer a way to do this, and so this is a workaround to go directly
 // to Couchbase Server REST API.
-func (bucket *CouchbaseBucketGoCB) APIBucketItemCount() (itemCount int, err error) {
+func (bucket *CouchbaseBucketGoCB) APIBucketItemCount(ctx context.Context) (itemCount int, err error) {
 	uri := fmt.Sprintf("/pools/default/buckets/%s", bucket.Name())
-	resp, err := bucket.mgmtRequest(http.MethodGet, uri, "application/json", nil)
+	resp, err := bucket.mgmtRequest(ctx, http.MethodGet, uri, "application/json", nil)
 	if err != nil {
 		return -1, err
 	}
@@ -2015,7 +2015,7 @@ func (bucket *CouchbaseBucketGoCB) MgmtEps() (url []string, err error) {
 	return mgmtEps, nil
 }
 
-func (bucket *CouchbaseBucketGoCB) HttpClient() *http.Client {
+func (bucket *CouchbaseBucketGoCB) HttpClient(ctx context.Context) *http.Client {
 	return bucket.Bucket.IoRouter().HttpClient()
 }
 

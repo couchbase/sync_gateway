@@ -577,7 +577,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		dbContext.PurgeInterval = DefaultPurgeInterval
 		cbStore, ok := base.AsCouchbaseStore(bucket)
 		if ok {
-			serverPurgeInterval, err := cbStore.MetadataPurgeInterval()
+			serverPurgeInterval, err := cbStore.MetadataPurgeInterval(ctx)
 			if err != nil {
 				base.WarnfCtx(ctx, "Unable to retrieve server's metadata purge interval - will use default value. %s", err)
 			} else if serverPurgeInterval > 0 {
@@ -616,7 +616,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	// Make sure there is no MaxTTL set on the bucket (SG #3314)
 	cbs, ok := base.AsCouchbaseStore(bucket)
 	if ok {
-		maxTTL, err := cbs.MaxTTL()
+		maxTTL, err := cbs.MaxTTL(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -698,7 +698,7 @@ func (dbCtx *DatabaseContext) GetServerUUID(ctx context.Context) string {
 			return ""
 		}
 
-		uuid, err := cbs.ServerUUID()
+		uuid, err := cbs.ServerUUID(ctx)
 		if err != nil {
 			base.WarnfCtx(ctx, "Database %v: Unable to get server UUID: %v", base.MD(dbCtx.Name), err)
 			return ""
@@ -1287,7 +1287,7 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 	if db.PurgeInterval > 0 {
 		cbStore, ok := base.AsCouchbaseStore(db.Bucket)
 		if ok {
-			serverPurgeInterval, err := cbStore.MetadataPurgeInterval()
+			serverPurgeInterval, err := cbStore.MetadataPurgeInterval(ctx)
 			if err != nil {
 				base.WarnfCtx(ctx, "Unable to retrieve server's metadata purge interval - using existing purge interval. %s", err)
 			} else if serverPurgeInterval > 0 {

@@ -788,22 +788,22 @@ func (c *Collection) QueryEpsCount() (int, error) {
 
 // Gets the metadata purge interval for the bucket.  First checks for a bucket-specific value.  If not
 // found, retrieves the cluster-wide value.
-func (c *Collection) MetadataPurgeInterval() (time.Duration, error) {
-	return getMetadataPurgeInterval(c)
+func (c *Collection) MetadataPurgeInterval(ctx context.Context) (time.Duration, error) {
+	return getMetadataPurgeInterval(ctx, c)
 }
 
-func (c *Collection) ServerUUID() (uuid string, err error) {
-	return getServerUUID(c)
+func (c *Collection) ServerUUID(ctx context.Context) (uuid string, err error) {
+	return getServerUUID(ctx, c)
 }
 
-func (c *Collection) MaxTTL() (int, error) {
-	return getMaxTTL(c)
+func (c *Collection) MaxTTL(ctx context.Context) (int, error) {
+	return getMaxTTL(ctx, c)
 }
 
-func (c *Collection) HttpClient() *http.Client {
+func (c *Collection) HttpClient(ctx context.Context) *http.Client {
 	agent, err := c.getGoCBAgent()
 	if err != nil {
-		WarnfCtx(context.TODO(), "Unable to obtain gocbcore.Agent while retrieving httpClient:%v", err)
+		WarnfCtx(ctx, "Unable to obtain gocbcore.Agent while retrieving httpClient:%v", err)
 		return nil
 	}
 	return agent.HTTPClient()
@@ -866,7 +866,7 @@ func getTranscoder(value interface{}) gocb.Transcoder {
 	}
 }
 
-func (c *Collection) mgmtRequest(method, uri, contentType string, body io.Reader) (*http.Response, error) {
+func (c *Collection) mgmtRequest(ctx context.Context, method, uri, contentType string, body io.Reader) (*http.Response, error) {
 	if contentType == "" && body != nil {
 		// TODO: CBG-1948
 		panic("Content-type must be specified for non-null body.")
@@ -891,7 +891,7 @@ func (c *Collection) mgmtRequest(method, uri, contentType string, body io.Reader
 		req.SetBasicAuth(username, password)
 	}
 
-	return c.HttpClient().Do(req)
+	return c.HttpClient(ctx).Do(req)
 }
 
 // This prevents Sync Gateway from overflowing gocb's pipeline
