@@ -1819,6 +1819,7 @@ func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 			if test.errExpected != nil {
 				assertX509UnknownAuthority(t, err, test.errExpected)
 			} else {
+				require.NoError(t, err)
 				assert.Equal(t, test.jsSyncFnExpected, *dbConfig.Sync)
 			}
 		})
@@ -1912,6 +1913,7 @@ func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
 			if test.errExpected != nil {
 				assertX509UnknownAuthority(t, err, test.errExpected)
 			} else {
+				require.NoError(t, err)
 				assert.Equal(t, test.jsImportFilterExpected, *dbConfig.ImportFilter)
 			}
 		})
@@ -2124,6 +2126,8 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 			err := sc.initEventHandlers(ctx, &dbConfig)
 			if test.errExpected != nil {
 				assertX509UnknownAuthority(t, err, test.errExpected)
+			} else {
+				require.NoError(t, err)
 			}
 		})
 	}
