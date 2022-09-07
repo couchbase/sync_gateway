@@ -138,8 +138,9 @@ type ReplicatorConfig struct {
 type UnsupportedConfig struct {
 	StatsLogFrequency *base.ConfigDuration `json:"stats_log_frequency,omitempty"    help:"How often should stats be written to stats logs"`
 	UseStdlibJSON     *bool                `json:"use_stdlib_json,omitempty"        help:"Bypass the jsoniter package and use Go's stdlib instead"`
-	HTTP2             *HTTP2Config         `json:"http2,omitempty"`
 	Serverless        ServerlessConfig     `json:"serverless,omitempty"`
+	HTTP2             *HTTP2Config         `json:"http2,omitempty"`
+	UserQueries       *bool                `json:"user_queries,omitempty" help:"Feature flag for user N1QL/JS/GraphQL queries"`
 }
 
 type ServerlessConfig struct {

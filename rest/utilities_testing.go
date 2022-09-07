@@ -48,6 +48,7 @@ type RestTesterConfig struct {
 	DatabaseConfig                  *DatabaseConfig         // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
 	InitSyncSeq                     uint64                  // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
 	EnableNoConflictsMode           bool                    // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
+	EnableUserQueries               bool                    // Enable the feature-flag for user N1QL/etc queries
 	TestBucket                      *base.TestBucket        // If set, use this bucket instead of requesting a new one.
 	leakyBucketConfig               *base.LeakyBucketConfig // Set to create and use a leaky bucket on the RT and DB. A test bucket cannot be passed in if using this option.
 	adminInterface                  string                  // adminInterface overrides the default admin interface.
@@ -172,6 +173,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 	if rt.RestTesterConfig.groupID != nil {
 		sc.Bootstrap.ConfigGroupID = *rt.RestTesterConfig.groupID
 	}
+
+	sc.Unsupported.UserQueries = base.BoolPtr(rt.EnableUserQueries)
 
 	// Allow EE-only config even in CE for testing using group IDs.
 	if err := sc.validate(true); err != nil {
@@ -853,8 +856,8 @@ func requireStatus(t testing.TB, response *TestResponse, expectedStatus int) {
 		response.Req.Method, response.Req.URL, response.Body)
 }
 
-func assertStatus(t testing.TB, response *TestResponse, expectedStatus int) {
-	assert.Equalf(t, expectedStatus, response.Code,
+func assertStatus(t testing.TB, response *TestResponse, expectedStatus int) bool {
+	return assert.Equalf(t, expectedStatus, response.Code,
 		"Response status %d %q (expected %d %q)\nfor %s <%s> : %s",
 		response.Code, http.StatusText(response.Code),
 		expectedStatus, http.StatusText(expectedStatus),

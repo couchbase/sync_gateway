@@ -67,6 +67,13 @@ func NewBlipSyncContext(bc *blip.Context, db *Database, contextID string, replic
 		bsc.register(profile, handlerFn)
 	}
 
+	if db.Options.UnsupportedOptions.ConnectedClient {
+		// Register Connected Client handlers
+		for profile, handlerFn := range kConnectedClientHandlersByProfile {
+			bsc.register(profile, handlerFn)
+		}
+	}
+
 	return bsc
 }
 

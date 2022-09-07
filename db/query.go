@@ -41,6 +41,7 @@ const (
 	QueryTypeResync              = "resync"
 	QueryTypeAllDocs             = "allDocs"
 	QueryTypeUsers               = "users"
+	QueryTypeUserPrefix          = "userquery:" // Prefix applied to named user queries from config file
 )
 
 type SGQuery struct {

@@ -39,7 +39,9 @@ const (
 	MessageGetRev       = "getRev"       // Connected Client API
 	MessagePutRev       = "putRev"       // Connected Client API
 	MessageUnsubChanges = "unsubChanges" // Connected Client API
-
+	MessageQuery        = "query"        // Connected Client API
+	MessageFunction     = "function"     // Connected Client API
+	MessageGraphQL      = "graphql"      // Connected Client API
 )
 
 // Message properties
@@ -109,6 +111,14 @@ const (
 
 	// proveAttachment
 	ProveAttachmentDigest = "digest"
+
+	// query (Connected Client)
+	QueryName   = "name"
+	QuerySource = "src"
+
+	// graphQL (Connected Client)
+	GraphQLQuery         = "query"
+	GraphQLOperationName = "operationName"
 
 	// Sync Gateway specific properties (used for testing)
 	SGShowHandler = "sgShowHandler" // Used to request a response with sgHandler
