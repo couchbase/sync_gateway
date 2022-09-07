@@ -110,19 +110,20 @@ func newUserJavaScriptRunner(name string, kind string, funcSource string) (*user
 
 	// Implementation of the 'save(docID,doc)' callback:
 	runner.DefineNativeFunction("_save", func(call otto.FunctionCall) otto.Value {
-		docID := ottoStringParam(call, 0, "app.save")
+		docID := ottoOptionalStringParam(call, 0, "app.save")
 		doc := ottoObjectParam(call, 1, false, "app.save")
 		sudo := ottoBoolParam(call, 2)
-		err := runner.do_save(docID, doc, sudo)
-		return ottoResult(call, nil, err)
+		docID, err := runner.do_save(docID, doc, sudo)
+		return ottoResult(call, docID, err)
 	})
 
-	// Implementation of the 'delete(docID,doc)' callback:
+	// Implementation of the 'delete(docID)' callback:
 	runner.DefineNativeFunction("_delete", func(call otto.FunctionCall) otto.Value {
 		docID := ottoStringParam(call, 0, "app.delete")
-		sudo := ottoBoolParam(call, 1)
-		err := runner.do_delete(docID, sudo)
-		return ottoResult(call, nil, err)
+		doc := ottoObjectParam(call, 1, true, "app.delete")
+		sudo := ottoBoolParam(call, 2)
+		ok, err := runner.do_delete(docID, doc, sudo)
+		return ottoResult(call, ok, err)
 	})
 
 	// Set (and compile) the JS function:
@@ -259,12 +260,12 @@ func (runner *userJSRunner) do_graphql(query string, params map[string]interface
 }
 
 // Implementation of JS `app.save(docID, body)` function
-func (runner *userJSRunner) do_save(docID string, body map[string]interface{}, sudo bool) error {
+func (runner *userJSRunner) do_save(docIDPtr *string, body map[string]interface{}, sudo bool) (*string, error) {
 	if err := runner.currentDB.CheckTimeout(); err != nil {
-		return err
+		return nil, err
 	}
 	if !runner.mutationAllowed {
-		return base.HTTPErrorf(http.StatusForbidden, "a read-only request is not allowed to mutate the database")
+		return nil, base.HTTPErrorf(http.StatusForbidden, "a read-only request is not allowed to mutate the database")
 	}
 	if sudo {
 		user := runner.currentDB.user
@@ -272,11 +273,29 @@ func (runner *userJSRunner) do_save(docID string, body map[string]interface{}, s
 		defer func() { runner.currentDB.user = user }()
 	}
 
+	var docID string
+	if docIDPtr == nil {
+		var err error
+		docID, err = base.GenerateRandomID()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		docID = *docIDPtr
+	}
+
 	delete(body, "_id")
 	if _, found := body["_rev"]; found {
 		// If caller provided `_rev` property, use MVCC as normal:
 		_, _, err := runner.currentDB.Put(docID, body)
-		return err
+		if err == nil {
+			return &docID, err // success
+		} else if status, _ := base.ErrorAsHTTPStatus(err); status == http.StatusConflict {
+			return nil, nil // conflict: no error, but returns null
+		} else {
+			return nil, err
+		}
+
 	} else {
 		// If caller didn't provide a `_rev` property, fall back to "last writer wins":
 		// get the current revision if any, and pass it to Put so that the save always succeeds.
@@ -284,7 +303,7 @@ func (runner *userJSRunner) do_save(docID string, body map[string]interface{}, s
 			rev, err := runner.currentDB.GetRev(docID, "", false, []string{})
 			if err != nil {
 				if status, _ := base.ErrorAsHTTPStatus(err); status != http.StatusNotFound {
-					return err
+					return nil, err
 				}
 			}
 			if rev.RevID == "" {
@@ -295,18 +314,26 @@ func (runner *userJSRunner) do_save(docID string, body map[string]interface{}, s
 
 			_, _, err = runner.currentDB.Put(docID, body)
 			if err == nil {
-				return nil
+				break // success!
 			} else if status, _ := base.ErrorAsHTTPStatus(err); status != http.StatusConflict {
-				return err
+				return nil, err
 			}
 			// on conflict (race condition), retry...
 		}
 	}
+	return &docID, nil
 }
 
 // Implementation of JS `app.delete(docID)` function
-func (runner *userJSRunner) do_delete(docID string, sudo bool) error {
-	return runner.do_save(docID, map[string]interface{}{"_deleted": true}, sudo)
+func (runner *userJSRunner) do_delete(docID string, body map[string]interface{}, sudo bool) (bool, error) {
+	tombstone := map[string]interface{}{"_deleted": true}
+	if body != nil {
+		if revID, ok := body["_rev"]; ok {
+			tombstone["_rev"] = revID
+		}
+	}
+	id, err := runner.do_save(&docID, tombstone, sudo)
+	return (id != nil), err
 }
 
 //////// OTTO UTILITIES:
@@ -324,6 +351,18 @@ func ottoStringParam(call otto.FunctionCall, arg int, what string) string {
 		panic(call.Otto.MakeTypeError(fmt.Sprintf("%s() param %d must be a string", what, arg+1)))
 	}
 	return val.String()
+}
+
+// Returns a parameter of `call` as a Go string or nil.
+func ottoOptionalStringParam(call otto.FunctionCall, arg int, what string) *string {
+	val := call.Argument(arg)
+	if val.IsString() {
+		return base.StringPtr(val.String())
+	} else if val.IsNull() || val.IsUndefined() {
+		return nil
+	} else {
+		panic(call.Otto.MakeTypeError(fmt.Sprintf("%s() param %d must be a string or null", what, arg+1)))
+	}
 }
 
 // Returns a parameter of `call` as a Go map, or throws a JS exception if it's not a map.

@@ -301,28 +301,35 @@ func TestUserFunctionsCRUD(t *testing.T) {
 	})
 	defer db.Close()
 
+	body := map[string]interface{}{"key": "value"}
+
+	// Create a doc with random ID:
+	result, err := db.CallUserFunction("putDoc", map[string]interface{}{"docID": nil, "doc": body}, true)
+	assert.NoError(t, err)
+	assert.IsType(t, "", result)
+	_, err = db.CallUserFunction("getDoc", map[string]interface{}{"docID": result}, true)
+	assert.NoError(t, err)
+
 	docID := "foo"
 
 	// Missing document:
-	result, err := db.CallUserFunction("getDoc", map[string]interface{}{"docID": docID}, true)
+	result, err = db.CallUserFunction("getDoc", map[string]interface{}{"docID": docID}, true)
 	assert.NoError(t, err)
 	assert.EqualValues(t, nil, result)
 
-	doc := map[string]interface{}{"key": "value"}
-
 	docParams := map[string]interface{}{
 		"docID": docID,
-		"doc":   doc,
+		"doc":   body,
 	}
 
 	// Illegal mutation:
 	_, err = db.CallUserFunction("putDoc", docParams, false)
 	assertHTTPError(t, err, 403)
 
-	// Successful save:
+	// Successful save (as admin):
 	result, err = db.CallUserFunction("putDoc", docParams, true)
 	assert.NoError(t, err)
-	assert.EqualValues(t, nil, result)
+	assert.EqualValues(t, docID, result) // save() returns docID
 
 	// Existing document:
 	result, err = db.CallUserFunction("getDoc", map[string]interface{}{"docID": docID}, true)
@@ -331,23 +338,32 @@ func TestUserFunctionsCRUD(t *testing.T) {
 	assert.True(t, ok)
 	assert.NotEmpty(t, revID)
 	assert.True(t, strings.HasPrefix(revID, "1-"))
-	doc["_id"] = docID
-	doc["_rev"] = revID
-	assert.EqualValues(t, doc, result)
+	body["_id"] = docID
+	body["_rev"] = revID
+	assert.EqualValues(t, body, result)
 
 	// Update document with revID:
-	doc["key2"] = 2
+	body["key2"] = 2
 	_, err = db.CallUserFunction("putDoc", docParams, true)
 	assert.NoError(t, err)
 
-	// Update document without revID:
-	doc["key3"] = 3
-	delete(doc, "_revid")
+	// Save fails with conflict:
+	body["key3"] = 3
+	body["_rev"] = "9-9999"
 	result, err = db.CallUserFunction("putDoc", docParams, true)
 	assert.NoError(t, err)
+	assert.Nil(t, result)
+
+	// Update document without revID:
+	body["key3"] = 4
+	delete(body, "_revid")
+	result, err = db.CallUserFunction("putDoc", docParams, true)
+	assert.NoError(t, err)
+	assert.Equal(t, docID, result)
 
 	// Get doc again to verify revision:
 	result, err = db.CallUserFunction("getDoc", map[string]interface{}{"docID": docID}, true)
+	assert.NoError(t, err)
 	revID, ok = result.(map[string]interface{})["_rev"].(string)
 	assert.True(t, ok)
 	assert.NotEmpty(t, revID)
