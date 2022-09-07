@@ -57,7 +57,8 @@ const (
 const DefaultViewTimeoutSecs = 75 // 75s
 
 type SGFlushableStore interface {
-	Flush(ctx context.Context) error
+	Flush() error
+	FlushCtx(ctx context.Context) error
 }
 
 // WrappingBucket interface used to identify buckets that wrap an underlying
@@ -395,9 +396,9 @@ func GetStatsVbSeqno(stats map[string]map[string]string, maxVbno uint16, useAbsH
 
 }
 
-func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
+func GetBucket(ctx context.Context, spec BucketSpec) (bucket Bucket, err error) {
 	if spec.IsWalrusBucket() {
-		InfofCtx(context.TODO(), KeyAll, "Opening Walrus database %s on <%s>", MD(spec.BucketName), SD(spec.Server))
+		InfofCtx(ctx, KeyAll, "Opening Walrus database %s on <%s>", MD(spec.BucketName), SD(spec.Server))
 		sgbucket.SetLogging(ConsoleLogKey().Enabled(KeyBucket))
 		bucket, err = walrus.GetBucket(spec.Server, DefaultPool, spec.BucketName)
 		// If feed type is not specified (defaults to DCP) or isn't TAP, wrap with pseudo-vbucket handling for walrus
@@ -410,7 +411,7 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 		if spec.Auth != nil {
 			username, _, _ = spec.Auth.GetCredentials()
 		}
-		InfofCtx(context.TODO(), KeyAll, "%v Opening Couchbase database %s on <%s> as user %q", spec.CouchbaseDriver, MD(spec.BucketName), SD(spec.Server), UD(username))
+		InfofCtx(ctx, KeyAll, "%v Opening Couchbase database %s on <%s> as user %q", spec.CouchbaseDriver, MD(spec.BucketName), SD(spec.Server), UD(username))
 
 		switch spec.CouchbaseDriver {
 		case GoCB, GoCBCustomSGTranscoder:
@@ -420,7 +421,7 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 				bucket, err = GetCouchbaseBucketGoCB(spec)
 			}
 		case GoCBv2:
-			bucket, err = GetCouchbaseCollection(spec)
+			bucket, err = GetCouchbaseCollection(ctx, spec)
 		default:
 			return nil, fmt.Errorf("%w: unexpected CouchbaseDriver: %v", ErrFatalBucketConnection, spec.CouchbaseDriver)
 		}
@@ -433,7 +434,7 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 		// or later, otherwise refuse to connect to the bucket since pre 5.0 versions don't support XATTRs
 		if spec.UseXattrs {
 			if !bucket.IsSupported(sgbucket.DataStoreFeatureXattrs) {
-				WarnfCtx(context.Background(), "If using XATTRS, Couchbase Server version must be >= 5.0.")
+				WarnfCtx(ctx, "If using XATTRS, Couchbase Server version must be >= 5.0.")
 				return nil, ErrFatalBucketConnection
 			}
 		}

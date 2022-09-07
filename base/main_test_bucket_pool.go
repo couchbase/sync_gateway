@@ -467,7 +467,7 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, 
 	// create required number of buckets (skipping any already existing ones)
 	for i := 0; i < numBuckets; i++ {
 		testBucketName := fmt.Sprintf(tbpBucketNameFormat, tbpBucketNamePrefix, i, bucketNameTimestamp)
-		ctx := bucketNameCtx(context.Background(), testBucketName)
+		ctx := bucketNameCtx(context.TODO(), testBucketName)
 
 		// Bucket creation takes a few seconds for each bucket,
 		// so create and wait for readiness concurrently.
@@ -478,7 +478,7 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, 
 				tbp.Fatalf(ctx, "Couldn't create test bucket: %v", err)
 			}
 
-			b, err := tbp.cluster.openTestBucket(tbpBucketName(bucketName), 10*numBuckets)
+			b, err := tbp.cluster.openTestBucket(ctx, tbpBucketName(bucketName), 10*numBuckets)
 			if err != nil {
 				tbp.Fatalf(ctx, "Timed out trying to open new bucket: %v", err)
 			}
@@ -562,7 +562,7 @@ loop:
 				defer tbp.bucketReadierWaitGroup.Done()
 
 				start := time.Now()
-				b, err := tbp.cluster.openTestBucket(testBucketName, 5)
+				b, err := tbp.cluster.openTestBucket(ctx, testBucketName, 5)
 				if err != nil {
 					tbp.Logf(ctx, "Couldn't open bucket to get ready, got error: %v", err)
 					return
@@ -637,7 +637,7 @@ var FlushBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b Bu
 	if !ok {
 		return errors.New("FlushBucketEmptierFunc used with non-flushable bucket")
 	}
-	return flushableBucket.Flush(ctx)
+	return flushableBucket.FlushCtx(ctx)
 }
 
 // N1QLBucketEmptierFunc ensures the bucket is empty by using N1QL deletes. This is the preferred approach when using GSI.

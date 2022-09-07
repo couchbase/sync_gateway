@@ -35,12 +35,11 @@ var _ sgbucket.KVStore = &Collection{}
 var _ CouchbaseStore = &Collection{}
 
 // Connect to the default collection for the specified bucket
-func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
+func GetCouchbaseCollection(ctx context.Context, spec BucketSpec) (*Collection, error) {
 
-	logCtx := context.TODO()
 	connString, err := spec.GetGoCBConnString(nil)
 	if err != nil {
-		WarnfCtx(logCtx, "Unable to parse server value: %s error: %v", SD(spec.Server), err)
+		WarnfCtx(ctx, "Unable to parse server value: %s error: %v", SD(spec.Server), err)
 		return nil, err
 	}
 
@@ -55,13 +54,13 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 	}
 
 	if _, ok := authenticator.(gocb.CertificateAuthenticator); ok {
-		InfofCtx(logCtx, KeyAuth, "Using cert authentication for bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
+		InfofCtx(ctx, KeyAuth, "Using cert authentication for bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
 	} else {
-		InfofCtx(logCtx, KeyAuth, "Using credential authentication for bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
+		InfofCtx(ctx, KeyAuth, "Using credential authentication for bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
 	}
 
 	timeoutsConfig := GoCBv2TimeoutsConfig(spec.BucketOpTimeout, StdlibDurationPtr(spec.GetViewQueryTimeout()))
-	InfofCtx(logCtx, KeyAll, "Setting query timeouts for bucket %s to %v", spec.BucketName, timeoutsConfig.QueryTimeout)
+	InfofCtx(ctx, KeyAll, "Setting query timeouts for bucket %s to %v", spec.BucketName, timeoutsConfig.QueryTimeout)
 
 	clusterOptions := gocb.ClusterOptions{
 		Authenticator:  authenticator,
@@ -76,7 +75,7 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 
 	cluster, err := gocb.Connect(connString, clusterOptions)
 	if err != nil {
-		InfofCtx(logCtx, KeyAuth, "Unable to connect to cluster: %v", err)
+		InfofCtx(ctx, KeyAuth, "Unable to connect to cluster: %v", err)
 		return nil, err
 	}
 
@@ -90,11 +89,11 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 		if errors.Is(err, gocb.ErrAuthenticationFailure) {
 			return nil, ErrAuthError
 		}
-		WarnfCtx(context.TODO(), "Error waiting for cluster to be ready: %v", err)
+		WarnfCtx(ctx, "Error waiting for cluster to be ready: %v", err)
 		return nil, err
 	}
 
-	return GetCollectionFromCluster(cluster, spec, 30)
+	return GetCollectionFromCluster(ctx, cluster, spec, 30)
 
 }
 
@@ -110,7 +109,7 @@ func bucketSpecScopeAndCollection(spec BucketSpec) (scope string, collection str
 	return scope, collection
 }
 
-func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilReadySeconds int) (*Collection, error) {
+func GetCollectionFromCluster(ctx context.Context, cluster *gocb.Cluster, spec BucketSpec, waitUntilReadySeconds int) (*Collection, error) {
 
 	// Connect to bucket
 	bucket := cluster.Bucket(spec.BucketName)
@@ -120,7 +119,7 @@ func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilR
 		if errors.Is(err, gocb.ErrAuthenticationFailure) {
 			return nil, ErrAuthError
 		}
-		WarnfCtx(context.TODO(), "Error waiting for bucket to be ready: %v", err)
+		WarnfCtx(ctx, "Error waiting for bucket to be ready: %v", err)
 		return nil, err
 	}
 
@@ -157,7 +156,7 @@ func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilR
 
 	if maxConcurrentQueryOps > DefaultHttpMaxIdleConnsPerHost*queryNodeCount {
 		maxConcurrentQueryOps = DefaultHttpMaxIdleConnsPerHost * queryNodeCount
-		InfofCtx(context.TODO(), KeyAll, "Setting max_concurrent_query_ops to %d based on query node count (%d)", maxConcurrentQueryOps, queryNodeCount)
+		InfofCtx(ctx, KeyAll, "Setting max_concurrent_query_ops to %d based on query node count (%d)", maxConcurrentQueryOps, queryNodeCount)
 	}
 
 	collection.queryOps = make(chan struct{}, maxConcurrentQueryOps)
@@ -707,12 +706,16 @@ func (c *Collection) DropAllScopesAndCollections(ctx context.Context) error {
 
 // This flushes the *entire* bucket associated with the collection (not just the collection).  Intended for test usage only.
 func (c *Collection) Flush() error {
+	return c.FlushCtx(context.TODO())
+}
+
+func (c *Collection) FlushCtx(ctx context.Context) error {
 
 	bucketManager := c.cluster.Buckets()
 
 	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
 		if err := bucketManager.FlushBucket(c.Bucket().Name(), nil); err != nil {
-			WarnfCtx(context.TODO(), "Error flushing bucket %s: %v  Will retry.", MD(c.Bucket().Name()).Redact(), err)
+			WarnfCtx(ctx, "Error flushing bucket %s: %v  Will retry.", MD(c.Bucket().Name()).Redact(), err)
 			return true, err, nil
 		}
 

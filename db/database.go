@@ -277,7 +277,7 @@ type OpenBucketFn func(ctx context.Context, spec base.BucketSpec) (base.Bucket, 
 
 // connectToBucketFailFast opens a Couchbase connect and return a specific bucket without retrying on failure.
 func connectToBucketFailFast(ctx context.Context, spec base.BucketSpec) (bucket base.Bucket, err error) {
-	bucket, err = base.GetBucket(spec)
+	bucket, err = base.GetBucket(ctx, spec)
 	_, err = connectToBucketErrorHandling(ctx, spec, err)
 	return bucket, err
 }
@@ -287,7 +287,7 @@ func connectToBucket(ctx context.Context, spec base.BucketSpec) (base.Bucket, er
 
 	// start a retry loop to connect to the bucket backing off double the delay each time
 	worker := func() (bool, error, interface{}) {
-		bucket, err := base.GetBucket(spec)
+		bucket, err := base.GetBucket(ctx, spec)
 
 		// Retry if there was a non-fatal error
 		fatalError, newErr := connectToBucketErrorHandling(ctx, spec, err)

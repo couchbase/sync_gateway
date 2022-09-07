@@ -156,7 +156,7 @@ func GetTestBucketForDriver(t testing.TB, driver CouchbaseDriver) *TestBucket {
 		t.Fatalf("Server must use couchbase scheme for gocb testing")
 	}
 
-	store, err := GetBucket(spec)
+	store, err := GetBucket(TestCtx(t), spec)
 	if err != nil {
 		t.Fatalf("Unable to get store for driver %s: %v", driver, err)
 	}
