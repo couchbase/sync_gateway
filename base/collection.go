@@ -535,9 +535,13 @@ func (c *Collection) Incr(k string, amt, def uint64, exp uint32) (uint64, error)
 	return incrResult.Content(), nil
 }
 
+func (c *Collection) StartDCPFeedCtx(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
+	groupID := ""
+	return StartGocbDCPFeed(ctx, c, c.Spec.BucketName, args, callback, dbStats, DCPMetadataStoreInMemory, groupID)
+}
 func (c *Collection) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
 	groupID := ""
-	return StartGocbDCPFeed(c, c.Spec.BucketName, args, callback, dbStats, DCPMetadataStoreInMemory, groupID)
+	return StartGocbDCPFeed(context.TODO(), c, c.Spec.BucketName, args, callback, dbStats, DCPMetadataStoreInMemory, groupID)
 }
 func (c *Collection) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
 	return nil, errors.New("StartTapFeed not implemented")
@@ -665,14 +669,14 @@ func (c *Collection) isRecoverableWriteError(err error) bool {
 }
 
 // DropAllScopesAndCollections attempts to drop *all* non-_default scopes and collections from the bucket associated with the collection.  Intended for test usage only.
-func (c *Collection) DropAllScopesAndCollections() error {
+func (c *Collection) DropAllScopesAndCollections(ctx context.Context) error {
 	cm := c.Bucket().Collections()
 	scopes, err := cm.GetAllScopes(nil)
 	if err != nil {
 		if httpErr, ok := err.(gocb.HTTPError); ok && httpErr.StatusCode == 404 {
 			return ErrCollectionsUnsupported
 		}
-		WarnfCtx(context.TODO(), "Error getting scopes on bucket %s: %v  Will retry.", MD(c.Bucket().Name()).Redact(), err)
+		WarnfCtx(ctx, "Error getting scopes on bucket %s: %v  Will retry.", MD(c.Bucket().Name()).Redact(), err)
 		return err
 	}
 
@@ -681,7 +685,7 @@ func (c *Collection) DropAllScopesAndCollections() error {
 	for _, scope := range scopes {
 		if scope.Name != DefaultScope {
 			if err := cm.DropScope(scope.Name, nil); err != nil {
-				WarnfCtx(context.TODO(), "Error dropping scope %s on bucket %s: %v  Will retry.", MD(scope).Redact(), MD(c.Bucket().Name()).Redact(), err)
+				WarnfCtx(ctx, "Error dropping scope %s on bucket %s: %v  Will retry.", MD(scope).Redact(), MD(c.Bucket().Name()).Redact(), err)
 				return err
 			}
 			continue
@@ -691,7 +695,7 @@ func (c *Collection) DropAllScopesAndCollections() error {
 		for _, collection := range scope.Collections {
 			if collection.Name != DefaultCollection {
 				if err := cm.DropCollection(collection, nil); err != nil {
-					WarnfCtx(context.TODO(), "Error dropping collection %s in scope %s on bucket %s: %v  Will retry.", MD(collection.Name).Redact(), MD(scope).Redact(), MD(c.Bucket().Name()).Redact(), err)
+					WarnfCtx(ctx, "Error dropping collection %s in scope %s on bucket %s: %v  Will retry.", MD(collection.Name).Redact(), MD(scope).Redact(), MD(c.Bucket().Name()).Redact(), err)
 					return err
 				}
 			}

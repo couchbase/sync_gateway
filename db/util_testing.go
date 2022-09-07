@@ -240,7 +240,7 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 	}
 
 	if c, ok := b.(*base.Collection); ok {
-		if err := c.DropAllScopesAndCollections(); err != nil && !errors.Is(err, base.ErrCollectionsUnsupported) {
+		if err := c.DropAllScopesAndCollections(ctx); err != nil && !errors.Is(err, base.ErrCollectionsUnsupported) {
 			return err
 		}
 	}

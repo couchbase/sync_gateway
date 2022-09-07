@@ -21,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -628,16 +627,17 @@ type TBPBucketReadierFunc func(ctx context.Context, b Bucket, tbp *TestBucketPoo
 var FlushBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b Bucket, tbp *TestBucketPool) error {
 
 	if c, ok := b.(*Collection); ok {
-		if err := c.DropAllScopesAndCollections(); err != nil && !errors.Is(err, ErrCollectionsUnsupported) {
+		if err := c.DropAllScopesAndCollections(ctx); err != nil && !errors.Is(err, ErrCollectionsUnsupported) {
 			return err
 		}
 	}
 
-	flushableBucket, ok := b.(sgbucket.FlushableStore)
+	// flushableBucket, ok := b.(sgbucket.FlushableStore)
+	flushableBucket, ok := b.(SGFlushableStore)
 	if !ok {
 		return errors.New("FlushBucketEmptierFunc used with non-flushable bucket")
 	}
-	return flushableBucket.Flush()
+	return flushableBucket.Flush(ctx)
 }
 
 // N1QLBucketEmptierFunc ensures the bucket is empty by using N1QL deletes. This is the preferred approach when using GSI.

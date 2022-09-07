@@ -118,7 +118,7 @@ func (il *importListener) StartImportFeed(ctx context.Context, bucket base.Bucke
 		if err != nil {
 			return err
 		}
-		return base.StartGocbDCPFeed(collection, bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
+		return base.StartGocbDCPFeed(ctx, collection, bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
 	}
 	il.cbgtContext, err = base.StartShardedDCPFeed(ctx, dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater,
 		bucket, cbStore.GetSpec(), scopeName, collectionNamesByScope[scopeName], dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
