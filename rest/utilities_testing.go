@@ -441,7 +441,7 @@ func (rt *RestTester) Close() {
 	}
 	rt.closed = true
 	if rt.RestTesterServerContext != nil {
-		rt.RestTesterServerContext.Close(rt.Context())
+		rt.RestTesterServerContext.Close(base.TestCtx(rt.tb))
 	}
 	if rt.testBucket != nil {
 		rt.testBucket.Close()
