@@ -50,7 +50,7 @@ func attachmentCompactMarkPhase(db *Database, compactionID string, terminator *b
 		}
 
 		// We only want to process full docs. Not any sync docs.
-		if strings.HasPrefix(docID, base.SyncPrefix) {
+		if strings.HasPrefix(docID, base.SyncDocPrefix) {
 			return true
 		}
 

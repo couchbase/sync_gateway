@@ -363,7 +363,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	// Retrieve the raw revision body backup of 2-a, and verify it's intact
 	log.Printf("Verify document storage of 2-a")
 	var revisionBody Body
-	rawRevision, _, err := db.Bucket.GetRaw(base.SyncPrefix + "rb:4GctXhLVg13d59D0PUTPRD0i58Hbe1d0djgo1qOEpfI=")
+	rawRevision, _, err := db.Bucket.GetRaw(base.SyncDocPrefix + "rb:4GctXhLVg13d59D0PUTPRD0i58Hbe1d0djgo1qOEpfI=")
 	assert.NoError(t, err, "Couldn't get raw backup revision")
 	assert.NoError(t, base.JSONUnmarshal(rawRevision, &revisionBody))
 	assert.Equal(t, rev2a_body["version"], revisionBody["version"])
@@ -546,7 +546,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	// Retrieve the raw revision body backup of 2-a, and verify it's intact
 	log.Printf("Verify document storage of 2-a")
 	var revisionBody Body
-	rawRevision, _, err := db.Bucket.GetRaw(base.SyncPrefix + "rb:4GctXhLVg13d59D0PUTPRD0i58Hbe1d0djgo1qOEpfI=")
+	rawRevision, _, err := db.Bucket.GetRaw(base.SyncDocPrefix + "rb:4GctXhLVg13d59D0PUTPRD0i58Hbe1d0djgo1qOEpfI=")
 	assert.NoError(t, err, "Couldn't get raw backup revision")
 	assert.NoError(t, base.JSONUnmarshal(rawRevision, &revisionBody))
 	assert.Equal(t, rev2a_body["version"], revisionBody["version"])
@@ -634,7 +634,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	// Ensure previous tombstone body backup has been removed
 	log.Printf("Verify revision body doc has been removed from bucket")
-	_, _, err = db.Bucket.GetRaw(base.SyncPrefix + "rb:ULDLuEgDoKFJeET2hojeFANXM8SrHdVfAGONki+kPxM=")
+	_, _, err = db.Bucket.GetRaw(base.SyncDocPrefix + "rb:ULDLuEgDoKFJeET2hojeFANXM8SrHdVfAGONki+kPxM=")
 	assert.True(t, base.IsKeyNotFoundError(db.Bucket, err), "Revision should be not found")
 
 }

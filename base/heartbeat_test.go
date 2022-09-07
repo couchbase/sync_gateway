@@ -104,7 +104,7 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 
 	SetUpTestLogging(t, LevelDebug, KeyDCP)
 
-	keyprefix := SyncPrefix + t.Name()
+	keyprefix := SyncDocPrefix + t.Name()
 
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
@@ -183,7 +183,7 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 		t.Skip("Skipping heartbeattest in short mode")
 	}
 
-	keyprefix := SyncPrefix + t.Name()
+	keyprefix := SyncDocPrefix + t.Name()
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 
@@ -291,7 +291,7 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 		t.Skip("Skipping heartbeattest in short mode")
 	}
 
-	keyprefix := SyncPrefix + t.Name()
+	keyprefix := SyncDocPrefix + t.Name()
 
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()

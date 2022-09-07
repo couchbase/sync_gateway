@@ -109,7 +109,7 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 	requiresCheckpointPersistence := true
 	if event.Opcode == sgbucket.FeedOpMutation || event.Opcode == sgbucket.FeedOpDeletion {
 		key := string(event.Key)
-		if !strings.HasPrefix(key, base.SyncPrefix) { // Anything other than internal SG docs can go straight to OnDocChanged
+		if !strings.HasPrefix(key, base.SyncDocPrefix) { // Anything other than internal SG docs can go straight to OnDocChanged
 			if listener.OnDocChanged != nil {
 				listener.OnDocChanged(event)
 			}
@@ -123,7 +123,7 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 			if listener.OnDocChanged != nil && event.Opcode == sgbucket.FeedOpMutation {
 				listener.OnDocChanged(event)
 			}
-		} else if strings.HasPrefix(key, base.DCPCheckpointPrefix) { // SG DCP checkpoint docs (including other config group IDs)
+		} else if strings.HasPrefix(key, base.DCPCheckpointPrefixWithoutGroupID) { // SG DCP checkpoint docs (including other config group IDs)
 			// Do not require checkpoint persistence when DCP checkpoint docs come back over DCP - otherwise
 			// we'll end up in a feedback loop for their vbucket if persistence is enabled
 			// NOTE: checkpoint persistence is disabled altogether for the caching feed.  Leaving this check in place

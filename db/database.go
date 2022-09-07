@@ -435,10 +435,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	// sending heartbeats before registering itself to the cfg, to avoid triggering immediate removal by other active nodes.
 	if base.IsEnterpriseEdition() && (importEnabled || sgReplicateEnabled) {
 		// Create heartbeater
-		heartbeaterPrefix := base.SyncPrefix
-		if dbContext.Options.GroupID != "" {
-			heartbeaterPrefix = heartbeaterPrefix + dbContext.Options.GroupID + ":"
-		}
+		heartbeaterPrefix := base.HeartbeaterPrefixWithGroupID(dbContext.Options.GroupID)
 		heartbeater, err := base.NewCouchbaseHeartbeater(bucket, heartbeaterPrefix, dbContext.UUID)
 		if err != nil {
 			return nil, pkgerrors.Wrapf(err, "Error starting heartbeater for bucket %s", base.MD(bucket.GetName()).Redact())
@@ -1367,7 +1364,8 @@ func (dbCtx *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err e
 		Sync string
 	}
 
-	_, err = dbCtx.Bucket.Update(base.SyncDataKeyWithGroupID(dbCtx.Options.GroupID), 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
+	syncFunctionDocID := base.SyncFunctionKeyWithGroupID(dbCtx.Options.GroupID)
+	_, err = dbCtx.Bucket.Update(syncFunctionDocID, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
 		// The first time opening a new db, currentValue will be nil. Don't treat this as a change.
 		if currentValue != nil {
 			parseErr := base.JSONUnmarshal(currentValue, &syncData)

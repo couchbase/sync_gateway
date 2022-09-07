@@ -31,6 +31,7 @@ func TestReplicateManagerReplications(t *testing.T) {
 
 	manager, err := NewSGReplicateManager(&DatabaseContext{Name: "test"}, testCfg)
 	require.NoError(t, err)
+	defer manager.Stop()
 
 	replication1_id := "replication1"
 	err = manager.AddReplication(testReplicationCfg(replication1_id, ""))
@@ -93,6 +94,7 @@ func TestReplicateManagerNodes(t *testing.T) {
 
 	manager, err := NewSGReplicateManager(&DatabaseContext{Name: "test"}, testCfg)
 	require.NoError(t, err)
+	defer manager.Stop()
 
 	err = manager.registerNodeForHost("node1", "host1")
 	require.NoError(t, err)
@@ -144,8 +146,10 @@ func TestReplicateManagerConcurrentNodeOperations(t *testing.T) {
 
 	testCfg, err := base.NewCfgSG(testBucket, "")
 	require.NoError(t, err)
+
 	manager, err := NewSGReplicateManager(&DatabaseContext{Name: "test"}, testCfg)
 	require.NoError(t, err)
+	defer manager.Stop()
 
 	var nodeWg sync.WaitGroup
 
@@ -186,8 +190,10 @@ func TestReplicateManagerConcurrentReplicationOperations(t *testing.T) {
 
 	testCfg, err := base.NewCfgSG(testBucket, "")
 	require.NoError(t, err)
+
 	manager, err := NewSGReplicateManager(&DatabaseContext{Name: "test"}, testCfg)
 	require.NoError(t, err)
+	defer manager.Stop()
 
 	var replicationWg sync.WaitGroup
 
@@ -614,11 +620,13 @@ func TestIsCfgChanged(t *testing.T) {
 
 	mgr, err := NewSGReplicateManager(&DatabaseContext{Name: "test"}, testCfg)
 	require.NoError(t, err)
+	defer mgr.Stop()
 
 	for _, testCase := range testCases {
 		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
 			replicationCfg := getInitialCfg()
 			replicatorConfig, err := mgr.NewActiveReplicatorConfig(replicationCfg)
+			require.NoError(t, err)
 
 			replicationCfg.Upsert(testCase.updatedConfig)
 
@@ -636,24 +644,23 @@ func TestReplicateGroupIDAssignedNodes(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	// Set up SG Configs
-	cfgDefault, err := base.NewCfgSG(tb, "")
+	// Set up databases
+	dbDefault, err := NewDatabaseContext("default", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: ""})
 	require.NoError(t, err)
+	defer dbDefault.Close()
 
-	cfgGroupA, err := base.NewCfgSG(tb, "GroupA")
+	dbGroupA, err := NewDatabaseContext("groupa", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "GroupA"})
 	require.NoError(t, err)
+	defer dbGroupA.Close()
 
-	cfgGGroupB, err := base.NewCfgSG(tb, "GroupB")
+	dbGroupB, err := NewDatabaseContext("groupb", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "GroupB"})
 	require.NoError(t, err)
+	defer dbGroupB.Close()
 
 	// Set up replicators
-	dbDefault, err := NewDatabaseContext("default", tb, false, DatabaseContextOptions{GroupID: ""})
+	err = dbDefault.SGReplicateMgr.RegisterNode("nodeDefault")
 	require.NoError(t, err)
-	managerDefault, err := NewSGReplicateManager(dbDefault, cfgDefault)
-	require.NoError(t, err)
-	err = managerDefault.RegisterNode("nodeDefault")
-	require.NoError(t, err)
-	err = managerDefault.AddReplication(&ReplicationCfg{
+	err = dbDefault.SGReplicateMgr.AddReplication(&ReplicationCfg{
 		ReplicationConfig: ReplicationConfig{
 			ID:           "repl",
 			InitialState: ReplicationStateStopped,
@@ -661,13 +668,9 @@ func TestReplicateGroupIDAssignedNodes(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	dbGroupA, err := NewDatabaseContext("groupa", tb, false, DatabaseContextOptions{GroupID: "GroupA"})
+	err = dbGroupA.SGReplicateMgr.RegisterNode("nodeGroupA")
 	require.NoError(t, err)
-	managerGroupA, err := NewSGReplicateManager(dbGroupA, cfgGroupA)
-	require.NoError(t, err)
-	err = managerGroupA.RegisterNode("nodeGroupA")
-	require.NoError(t, err)
-	err = managerGroupA.AddReplication(&ReplicationCfg{
+	err = dbGroupA.SGReplicateMgr.AddReplication(&ReplicationCfg{
 		ReplicationConfig: ReplicationConfig{
 			ID:           "repl",
 			InitialState: ReplicationStateStopped,
@@ -675,13 +678,9 @@ func TestReplicateGroupIDAssignedNodes(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	dbGroupB, err := NewDatabaseContext("groupb", tb, false, DatabaseContextOptions{GroupID: "GroupB"})
+	err = dbGroupB.SGReplicateMgr.RegisterNode("nodeGroupB")
 	require.NoError(t, err)
-	managerGroupB, err := NewSGReplicateManager(dbGroupB, cfgGGroupB)
-	require.NoError(t, err)
-	err = managerGroupB.RegisterNode("nodeGroupB")
-	require.NoError(t, err)
-	err = managerGroupB.AddReplication(&ReplicationCfg{
+	err = dbGroupB.SGReplicateMgr.AddReplication(&ReplicationCfg{
 		ReplicationConfig: ReplicationConfig{
 			ID:           "repl",
 			InitialState: ReplicationStateStopped,
@@ -690,21 +689,21 @@ func TestReplicateGroupIDAssignedNodes(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check replications are assigned to correct nodes
-	replications, err := managerDefault.GetReplications()
+	replications, err := dbDefault.SGReplicateMgr.GetReplications()
 	require.NoError(t, err)
 	assert.Len(t, replications, 1)
 	cfg, exists := replications["repl"]
 	require.True(t, exists, "Replicator not found")
 	assert.Equal(t, "nodeDefault", cfg.AssignedNode)
 
-	replications, err = managerGroupA.GetReplications()
+	replications, err = dbGroupA.SGReplicateMgr.GetReplications()
 	require.NoError(t, err)
 	assert.Len(t, replications, 1)
 	cfg, exists = replications["repl"]
 	require.True(t, exists, "Replicator not found")
 	assert.Equal(t, "nodeGroupA", cfg.AssignedNode)
 
-	replications, err = managerGroupB.GetReplications()
+	replications, err = dbGroupB.SGReplicateMgr.GetReplications()
 	require.NoError(t, err)
 	assert.Len(t, replications, 1)
 	cfg, exists = replications["repl"]
