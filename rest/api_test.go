@@ -1848,6 +1848,7 @@ func TestLocalDocExpiry(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
+	ctx := rt.Context()
 
 	timeNow := uint32(time.Now().Unix())
 	oneMoreHour := uint32(time.Now().Add(time.Hour).Unix())
@@ -1863,7 +1864,7 @@ func TestLocalDocExpiry(t *testing.T) {
 	require.True(t, ok)
 
 	localDocKey := db.RealSpecialDocID(db.DocTypeLocal, "loc1")
-	expiry, getMetaError := cbStore.GetExpiry(localDocKey)
+	expiry, getMetaError := cbStore.GetExpiry(ctx, localDocKey)
 	log.Printf("Expiry after PUT is %v", expiry)
 	assert.True(t, expiry > timeNow, "expiry is not greater than current time")
 	assert.True(t, expiry < oneMoreHour, "expiry is not greater than current time")
@@ -1872,7 +1873,7 @@ func TestLocalDocExpiry(t *testing.T) {
 	// Retrieve local doc, ensure non-zero expiry is preserved
 	response = rt.SendAdminRequest("GET", "/db/_local/loc1", "")
 	RequireStatus(t, response, 200)
-	expiry, getMetaError = cbStore.GetExpiry(localDocKey)
+	expiry, getMetaError = cbStore.GetExpiry(ctx, localDocKey)
 	log.Printf("Expiry after GET is %v", expiry)
 	assert.True(t, expiry > timeNow, "expiry is not greater than current time")
 	assert.True(t, expiry < oneMoreHour, "expiry is not greater than current time")

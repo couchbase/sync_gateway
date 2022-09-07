@@ -74,7 +74,7 @@ type CouchbaseStore interface {
 	ServerUUID(ctx context.Context) (uuid string, err error)
 	MaxTTL(ctx context.Context) (int, error)
 	HttpClient(ctx context.Context) *http.Client
-	GetExpiry(k string) (expiry uint32, getMetaError error)
+	GetExpiry(ctx context.Context, k string) (expiry uint32, getMetaError error)
 	GetSpec() BucketSpec
 	GetMaxVbno() (uint16, error)
 
