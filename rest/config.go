@@ -311,7 +311,9 @@ func (dbConfig *DbConfig) setup(dbName string, bootstrapConfig BootstrapConfig, 
 		dbConfig.setDatabaseCredentials(*bucketCredentials)
 	} else if forcePerBucketAuth {
 		return fmt.Errorf("unable to setup database on bucket %q since credentials are not defined in bucket_credentials", base.MD(*dbConfig.Bucket).Redact())
-	} else if dbCredentials != nil {
+	}
+	// Per db credentials override bootstrap and bucket level credentials
+	if dbCredentials != nil {
 		dbConfig.setDatabaseCredentials(*dbCredentials)
 	}
 
@@ -1197,10 +1199,6 @@ func (sc *StartupConfig) validate(isEnterpriseEdition bool) (errorMessages error
 
 	if len(sc.Bootstrap.ConfigGroupID) > persistentConfigGroupIDMaxLength {
 		multiError = multiError.Append(fmt.Errorf("group_id must be at most %d characters in length", persistentConfigGroupIDMaxLength))
-	}
-
-	if sc.BucketCredentials != nil && sc.DatabaseCredentials != nil && len(sc.BucketCredentials) > 0 && len(sc.DatabaseCredentials) > 0 {
-		multiError = multiError.Append(fmt.Errorf("bucket_credentials and database_credentials cannot be used at the same time"))
 	}
 
 	if sc.DatabaseCredentials != nil {
