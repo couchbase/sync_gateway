@@ -1657,14 +1657,11 @@ func TestLoadJavaScript(t *testing.T) {
 			}()
 			js, err := loadJavaScript(inputJavaScriptOrPath, test.insecureSkipVerify)
 			if test.errExpected != nil {
-				errx509Type := x509.UnknownAuthorityError{}
-				if test.errExpected == errx509Type {
-					require.ErrorContains(t, err, assertX509UnknownAuthority(test.errExpected))
-				} else {
-					require.ErrorContains(t, err, test.errExpected.Error())
-				}
+				assertX509UnknownAuthority(t, err, test.errExpected)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, test.jsExpected, js)
 			}
-			assert.Equal(t, test.jsExpected, js)
 		})
 	}
 }
@@ -1820,12 +1817,7 @@ func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 			}
 			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil, nil, false)
 			if test.errExpected != nil {
-				errx509Type := x509.UnknownAuthorityError{}
-				if test.errExpected == errx509Type {
-					require.ErrorContains(t, err, assertX509UnknownAuthority(test.errExpected))
-				} else {
-					require.ErrorContains(t, err, test.errExpected.Error())
-				}
+				assertX509UnknownAuthority(t, err, test.errExpected)
 			} else {
 				assert.Equal(t, test.jsSyncFnExpected, *dbConfig.Sync)
 			}
@@ -1918,12 +1910,7 @@ func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
 			}
 			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil, nil, false)
 			if test.errExpected != nil {
-				errx509Type := x509.UnknownAuthorityError{}
-				if test.errExpected == errx509Type {
-					require.ErrorContains(t, err, assertX509UnknownAuthority(test.errExpected))
-				} else {
-					require.ErrorContains(t, err, test.errExpected.Error())
-				}
+				assertX509UnknownAuthority(t, err, test.errExpected)
 			} else {
 				assert.Equal(t, test.jsImportFilterExpected, *dbConfig.ImportFilter)
 			}
@@ -2028,12 +2015,7 @@ func TestSetupDbConfigWithConflictResolutionFunction(t *testing.T) {
 			}
 			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil, nil, false)
 			if test.errExpected != nil {
-				errx509Type := x509.UnknownAuthorityError{}
-				if test.errExpected == errx509Type {
-					require.ErrorContains(t, err, assertX509UnknownAuthority(test.errExpected))
-				} else {
-					require.ErrorContains(t, err, test.errExpected.Error())
-				}
+				assertX509UnknownAuthority(t, err, test.errExpected)
 			} else {
 				require.NotNil(t, dbConfig.Replications["replication1"])
 				conflictResolutionFnActual := dbConfig.Replications["replication1"].ConflictResolutionFn
@@ -2143,7 +2125,7 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 			if test.errExpected != nil {
 				errx509Type := x509.UnknownAuthorityError{}
 				if test.errExpected == errx509Type {
-					require.ErrorContains(t, err, assertX509UnknownAuthority(test.errExpected))
+					assertX509UnknownAuthority(t, err, test.errExpected)
 				} else {
 					require.ErrorContains(t, err, test.errExpected.Error())
 				}
@@ -2627,10 +2609,14 @@ func TestCollectionsValidation(t *testing.T) {
 	}
 }
 
-func assertX509UnknownAuthority(err error) string {
-	expectedErrorString := err.Error()
-	if runtime.GOOS == "darwin" {
-		expectedErrorString = "certificate is not trusted"
+func assertX509UnknownAuthority(t testing.TB, actual, expected error) {
+	expectedErrorString := expected.Error()
+	switch errorType := expected.(type) {
+	case x509.UnknownAuthorityError:
+		expectedErrorString = errorType.Error()
+		if runtime.GOOS == "darwin" {
+			expectedErrorString = "certificate is not trusted"
+		}
 	}
-	return expectedErrorString
+	require.ErrorContains(t, actual, expectedErrorString)
 }
