@@ -2123,12 +2123,7 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 			sc := &ServerContext{}
 			err := sc.initEventHandlers(ctx, &dbConfig)
 			if test.errExpected != nil {
-				errx509Type := x509.UnknownAuthorityError{}
-				if test.errExpected == errx509Type {
-					assertX509UnknownAuthority(t, err, test.errExpected)
-				} else {
-					require.ErrorContains(t, err, test.errExpected.Error())
-				}
+				assertX509UnknownAuthority(t, err, test.errExpected)
 			}
 		})
 	}
