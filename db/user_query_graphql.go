@@ -184,6 +184,8 @@ func (config *GraphQLConfig) compileFieldResolver(typeName string, fieldName str
 		return nil, err
 	}
 	userFn.checkArgs = false
+	userFn.allowByDefault = true
+
 	if fnConfig.Type == "javascript" {
 		// JavaScript resolver:
 		return func(params graphql.ResolveParams) (interface{}, error) {

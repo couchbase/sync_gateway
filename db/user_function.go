@@ -39,10 +39,11 @@ type UserFunctions = map[string]*UserFunction
 
 type UserFunction struct {
 	*UserFunctionConfig
-	name      string
-	typeName  string
-	checkArgs bool
-	compiled  *sgbucket.JSServer // Compiled form of the function
+	name           string
+	typeName       string
+	checkArgs      bool
+	allowByDefault bool
+	compiled       *sgbucket.JSServer // Compiled form of the function
 }
 
 //////// INITIALIZATION:
@@ -165,8 +166,10 @@ func (fn *UserFunction) Invoke(db *Database, args map[string]interface{}, mutati
 	}
 
 	// Check that the user is authorized:
-	if err := invocation.Allow.authorize(db.user, invocation.args, fn.typeName, fn.name); err != nil {
-		return invocation, err
+	if invocation.Allow != nil || !fn.allowByDefault {
+		if err := invocation.Allow.authorize(db.user, invocation.args, fn.typeName, fn.name); err != nil {
+			return invocation, err
+		}
 	}
 
 	return invocation, nil

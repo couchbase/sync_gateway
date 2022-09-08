@@ -56,7 +56,6 @@ var kTestGraphQLConfig = GraphQLConfig{
 						if (!context.user) throw "Missing context.user";
 						if (!context.admin) throw "Missing context.admin";
 						return context.user.function("getTask", {id: args.id});}`,
-				Allow: allowAll,
 			},
 			"tasks": UserFunctionConfig{
 				Type: "javascript",
@@ -67,7 +66,6 @@ var kTestGraphQLConfig = GraphQLConfig{
 						if (!context.user) throw "Missing context.user";
 						if (!context.admin) throw "Missing context.admin";
 						return context.user.function("all");}`,
-				Allow: allowAll,
 			},
 			"toDo": UserFunctionConfig{
 				Type: "javascript",
@@ -81,7 +79,6 @@ var kTestGraphQLConfig = GraphQLConfig{
 						for (var i = 0; i < all.length; i++)
 							if (!all[i].done) result.push(all[i]);
 						return result;}`,
-				Allow: allowAll,
 			},
 		},
 		"Mutation": {
@@ -97,7 +94,6 @@ var kTestGraphQLConfig = GraphQLConfig{
 							if (!task) return undefined;
 							task.done = true;
 							return task;}`,
-				Allow: allowAll,
 			},
 			"addTag": UserFunctionConfig{
 				Type: "javascript",
@@ -107,7 +103,6 @@ var kTestGraphQLConfig = GraphQLConfig{
 							if (!task.tags) task.tags = [];
 							task.tags.push(args.tag);
 							return task;}`,
-				Allow: allowAll,
 			},
 		},
 		"Task": {
@@ -120,7 +115,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 								if (!context.user) throw "Missing context.user";
 								if (!context.admin) throw "Missing context.admin";
 								return "TOP SECRET!";}`,
-				// No Allow, so only admins may call
+				Allow: &UserQueryAllow{Users: base.Set{}}, // only admins
 			},
 		},
 	},
@@ -271,17 +266,14 @@ var kTestGraphQLConfigWithN1QL = GraphQLConfig{
 							var task = context.user.defaultCollection.get(args.id);
 							if (task) task.id = args.id;
 							return task; }`,
-				Allow: allowAll,
 			},
 			"tasks": UserFunctionConfig{
-				Type:  "query",
-				Code:  `SELECT db.*, meta().id as id FROM $_keyspace AS db WHERE type = "task" ORDER BY title`,
-				Allow: allowAll,
+				Type: "query",
+				Code: `SELECT db.*, meta().id as id FROM $_keyspace AS db WHERE type = "task" ORDER BY title`,
 			},
 			"toDo": UserFunctionConfig{
-				Type:  "query",
-				Code:  `SELECT db.*, meta().id as id FROM $_keyspace AS db WHERE type = "task" AND NOT done ORDER BY title`,
-				Allow: allowAll,
+				Type: "query",
+				Code: `SELECT db.*, meta().id as id FROM $_keyspace AS db WHERE type = "task" AND NOT done ORDER BY title`,
 			},
 		},
 		"Mutation": {
@@ -296,7 +288,6 @@ var kTestGraphQLConfigWithN1QL = GraphQLConfig{
 					  context.user.defaultCollection.save(args.id, task);
 					}
 					return task;}`,
-				Allow: allowAll,
 			},
 			"addTag": UserFunctionConfig{
 				Type: "javascript",
@@ -308,7 +299,6 @@ var kTestGraphQLConfigWithN1QL = GraphQLConfig{
 							task.tags.push(args.tag);
 							context.user.defaultCollection.save(args.id, task);
 							return task;}`,
-				Allow: allowAll,
 			},
 		},
 		"Task": {
