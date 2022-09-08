@@ -534,10 +534,6 @@ func (c *Collection) Incr(k string, amt, def uint64, exp uint32) (uint64, error)
 	return incrResult.Content(), nil
 }
 
-func (c *Collection) StartDCPFeedCtx(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
-	groupID := ""
-	return StartGocbDCPFeed(ctx, c, c.Spec.BucketName, args, callback, dbStats, DCPMetadataStoreInMemory, groupID)
-}
 func (c *Collection) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
 	groupID := ""
 	return StartGocbDCPFeed(context.TODO(), c, c.Spec.BucketName, args, callback, dbStats, DCPMetadataStoreInMemory, groupID)
