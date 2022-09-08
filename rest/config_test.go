@@ -2136,6 +2136,7 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 				}
 			}
 			terminator := make(chan bool)
+			defer close(terminator)
 			ctx := &db.DatabaseContext{EventMgr: db.NewEventManager(terminator)}
 			sc := &ServerContext{}
 			err := sc.initEventHandlers(ctx, &dbConfig)
