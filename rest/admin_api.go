@@ -108,7 +108,7 @@ func (h *handler) handleCreateDB() error {
 		}
 
 		// now we've started the db successfully, we can persist it to the cluster
-		cas, err := h.server.BootstrapContext.Connection.InsertConfig(bucket, h.server.Config.Bootstrap.ConfigGroupID, persistedConfig)
+		cas, err := h.server.BootstrapContext.Connection.InsertConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, persistedConfig)
 		if err != nil {
 			// unload the requested database config to prevent the cluster being in an inconsistent state
 			h.server._removeDatabase(h.ctx(), dbName)
@@ -524,7 +524,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 
 	var updatedDbConfig *DatabaseConfig
 	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
-		bucket, h.server.Config.Bootstrap.ConfigGroupID,
+		h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID,
 		func(rawBucketConfig []byte) (newConfig []byte, err error) {
 			var bucketDbConfig DatabaseConfig
 			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
@@ -639,7 +639,7 @@ func (h *handler) handleDeleteDbConfigSync() error {
 
 	var updatedDbConfig *DatabaseConfig
 	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
-		bucket, h.server.Config.Bootstrap.ConfigGroupID,
+		h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID,
 		func(rawBucketConfig []byte) (newConfig []byte, err error) {
 			var bucketDbConfig DatabaseConfig
 			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
@@ -700,7 +700,7 @@ func (h *handler) handlePutDbConfigSync() error {
 
 	var updatedDbConfig *DatabaseConfig
 	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
-		bucket, h.server.Config.Bootstrap.ConfigGroupID,
+		h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID,
 		func(rawBucketConfig []byte) (newConfig []byte, err error) {
 			var bucketDbConfig DatabaseConfig
 			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
@@ -789,7 +789,7 @@ func (h *handler) handleDeleteDbConfigImportFilter() error {
 
 	var updatedDbConfig *DatabaseConfig
 	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
-		bucket, h.server.Config.Bootstrap.ConfigGroupID,
+		h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID,
 		func(rawBucketConfig []byte) (newConfig []byte, err error) {
 			var bucketDbConfig DatabaseConfig
 			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
@@ -851,7 +851,7 @@ func (h *handler) handlePutDbConfigImportFilter() error {
 
 	var updatedDbConfig *DatabaseConfig
 	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
-		bucket, h.server.Config.Bootstrap.ConfigGroupID,
+		h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID,
 		func(rawBucketConfig []byte) (newConfig []byte, err error) {
 			var bucketDbConfig DatabaseConfig
 			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
@@ -908,7 +908,7 @@ func (h *handler) handleDeleteDB() error {
 
 	if h.server.persistentConfig {
 		bucket := h.db.Bucket.GetName()
-		_, err := h.server.BootstrapContext.Connection.UpdateConfig(bucket, h.server.Config.Bootstrap.ConfigGroupID, func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
+		_, err := h.server.BootstrapContext.Connection.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
 			return nil, nil
 		})
 		if err != nil {

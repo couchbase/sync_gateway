@@ -22,6 +22,7 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
+	ctx := base.TestCtx(t)
 
 	config := fmt.Sprintf(`{
 	"server_tls_skip_verify": %t,
@@ -49,7 +50,7 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 	err := ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
 	require.NoError(t, err)
 
-	startupConfig, _, _, _, err := automaticConfigUpgrade(configPath)
+	startupConfig, _, _, _, err := automaticConfigUpgrade(ctx, configPath)
 	require.NoError(t, err)
 
 	assert.Equal(t, "", startupConfig.Bootstrap.ConfigGroupID)
@@ -92,7 +93,7 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 	require.NoError(t, err)
 
 	var dbConfig DbConfig
-	_, err = cbs.GetConfig(tb.GetName(), PersistentConfigDefaultGroupID, &dbConfig)
+	_, err = cbs.GetConfig(ctx, tb.GetName(), PersistentConfigDefaultGroupID, &dbConfig)
 	require.NoError(t, err)
 
 	assert.Equal(t, "db", dbConfig.Name)
@@ -141,6 +142,7 @@ func TestAutomaticConfigUpgradeError(t *testing.T) {
 		t.Run(testCase.Name, func(t *testing.T) {
 			tb := base.GetTestBucket(t)
 			defer tb.Close()
+			ctx := base.TestCtx(t)
 
 			config := fmt.Sprintf(testCase.Config, base.TestTLSSkipVerify(), base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), tb.GetName())
 
@@ -148,7 +150,7 @@ func TestAutomaticConfigUpgradeError(t *testing.T) {
 			err := ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
 			require.NoError(t, err)
 
-			_, _, _, _, err = automaticConfigUpgrade(configPath)
+			_, _, _, _, err = automaticConfigUpgrade(ctx, configPath)
 			assert.Error(t, err)
 		})
 	}
@@ -161,6 +163,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
+	ctx := base.TestCtx(t)
 
 	tmpDir := t.TempDir()
 
@@ -186,7 +189,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 	require.NoError(t, err)
 
 	// Run migration once
-	_, _, _, _, err = automaticConfigUpgrade(configPath)
+	_, _, _, _, err = automaticConfigUpgrade(ctx, configPath)
 	require.NoError(t, err)
 
 	updatedConfig := fmt.Sprintf(`{
@@ -212,14 +215,14 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 	require.NoError(t, err)
 
 	// Run migration again to ensure no error and validate it doesn't actually update db
-	startupConfig, _, _, _, err := automaticConfigUpgrade(updatedConfigPath)
+	startupConfig, _, _, _, err := automaticConfigUpgrade(ctx, updatedConfigPath)
 	require.NoError(t, err)
 
 	cbs, err := CreateCouchbaseClusterFromStartupConfig(startupConfig)
 	require.NoError(t, err)
 
 	var dbConfig DbConfig
-	originalDefaultDbConfigCAS, err := cbs.GetConfig(tb.GetName(), PersistentConfigDefaultGroupID, &dbConfig)
+	originalDefaultDbConfigCAS, err := cbs.GetConfig(ctx, tb.GetName(), PersistentConfigDefaultGroupID, &dbConfig)
 	assert.NoError(t, err)
 
 	// Ensure that revs limit hasn't actually been set
@@ -253,7 +256,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 	err = ioutil.WriteFile(importConfigPath, []byte(importConfig), os.FileMode(0644))
 	require.NoError(t, err)
 
-	startupConfig, _, _, _, err = automaticConfigUpgrade(importConfigPath)
+	startupConfig, _, _, _, err = automaticConfigUpgrade(ctx, importConfigPath)
 	// only supported in EE
 	if base.IsEnterpriseEdition() {
 		require.NoError(t, err)
@@ -263,12 +266,12 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 
 		// Ensure dbConfig is saved as the specified config group ID
 		var dbConfig DbConfig
-		_, err = cbs.GetConfig(tb.GetName(), configUpgradeGroupID, &dbConfig)
+		_, err = cbs.GetConfig(ctx, tb.GetName(), configUpgradeGroupID, &dbConfig)
 		assert.NoError(t, err)
 
 		// Ensure default has not changed
 		dbConfig = DbConfig{}
-		defaultDbConfigCAS, err := cbs.GetConfig(tb.GetName(), PersistentConfigDefaultGroupID, &dbConfig)
+		defaultDbConfigCAS, err := cbs.GetConfig(ctx, tb.GetName(), PersistentConfigDefaultGroupID, &dbConfig)
 		assert.NoError(t, err)
 		assert.Equal(t, originalDefaultDbConfigCAS, defaultDbConfigCAS)
 	} else {

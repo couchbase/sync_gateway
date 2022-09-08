@@ -1395,7 +1395,7 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 
 	for _, bucket := range buckets {
 		var cnf DatabaseConfig
-		cas, err := sc.BootstrapContext.Connection.GetConfig(bucket, sc.Config.Bootstrap.ConfigGroupID, &cnf)
+		cas, err := sc.BootstrapContext.Connection.GetConfig(ctx, bucket, sc.Config.Bootstrap.ConfigGroupID, &cnf)
 		if err == base.ErrNotFound {
 			base.DebugfCtx(ctx, base.KeyConfig, "%q did not contain config in group %q", bucket, sc.Config.Bootstrap.ConfigGroupID)
 			continue
@@ -1487,7 +1487,7 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 	for _, bucket := range buckets {
 		base.TracefCtx(ctx, base.KeyConfig, "Checking for config for group %q from bucket %q", sc.Config.Bootstrap.ConfigGroupID, bucket)
 		var cnf DatabaseConfig
-		cas, err := sc.BootstrapContext.Connection.GetConfig(bucket, sc.Config.Bootstrap.ConfigGroupID, &cnf)
+		cas, err := sc.BootstrapContext.Connection.GetConfig(ctx, bucket, sc.Config.Bootstrap.ConfigGroupID, &cnf)
 		if err == base.ErrNotFound {
 			base.DebugfCtx(ctx, base.KeyConfig, "Bucket %q did not contain config for group %q", bucket, sc.Config.Bootstrap.ConfigGroupID)
 			continue

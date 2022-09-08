@@ -79,7 +79,7 @@ func serverMainPersistentConfig(ctx context.Context, fs *flag.FlagSet, flagStart
 			base.InfofCtx(ctx, base.KeyAll, "Found unknown fields in startup config. Attempting to read as legacy config.")
 
 			var upgradeError error
-			fileStartupConfig, disablePersistentConfigFallback, legacyDbUsers, legacyDbRoles, upgradeError = automaticConfigUpgrade(configPath[0])
+			fileStartupConfig, disablePersistentConfigFallback, legacyDbUsers, legacyDbRoles, upgradeError = automaticConfigUpgrade(ctx, configPath[0])
 			if upgradeError != nil {
 
 				// We need to validate if the error was again, an unknown field error. If this is the case its possible
@@ -175,7 +175,7 @@ func getInitialStartupConfig(fileStartupConfig *StartupConfig, flagStartupConfig
 // automaticConfigUpgrade takes the config path of the current 2.x config and attempts to perform the update steps to
 // update it to a 3.x config
 // Returns the new startup config, a bool of whether to fallback to legacy config, map of users per database, map of roles per database, and an error
-func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersistentConfig bool, users map[string]map[string]*auth.PrincipalConfig, roles map[string]map[string]*auth.PrincipalConfig, err error) {
+func automaticConfigUpgrade(ctx context.Context, configPath string) (sc *StartupConfig, disablePersistentConfig bool, users map[string]map[string]*auth.PrincipalConfig, roles map[string]map[string]*auth.PrincipalConfig, err error) {
 	legacyServerConfig, err := LoadLegacyServerConfig(configPath)
 	if err != nil {
 		return nil, false, nil, nil, err
@@ -185,7 +185,7 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 		return nil, true, users, roles, nil
 	}
 
-	base.InfofCtx(context.Background(), base.KeyAll, "Config is a legacy config, and disable_persistent_config was not requested. Attempting automatic config upgrade.")
+	base.InfofCtx(ctx, base.KeyAll, "Config is a legacy config, and disable_persistent_config was not requested. Attempting automatic config upgrade.")
 
 	startupConfig, dbConfigs, err := legacyServerConfig.ToStartupConfig()
 	if err != nil {
@@ -227,16 +227,16 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 			configGroupID = startupConfig.Bootstrap.ConfigGroupID
 		}
 
-		_, err = cluster.InsertConfig(*dbc.Bucket, configGroupID, dbc)
+		_, err = cluster.InsertConfig(ctx, *dbc.Bucket, configGroupID, dbc)
 		if err != nil {
 			// If key already exists just continue
 			if errors.Is(err, base.ErrAlreadyExists) {
-				base.InfofCtx(context.Background(), base.KeyAll, "Skipping Couchbase Server persistence for config group %q in %s. Already exists.", configGroupID, base.UD(dbc.Name))
+				base.InfofCtx(ctx, base.KeyAll, "Skipping Couchbase Server persistence for config group %q in %s. Already exists.", configGroupID, base.UD(dbc.Name))
 				continue
 			}
 			return nil, false, nil, nil, err
 		}
-		base.InfofCtx(context.Background(), base.KeyAll, "Persisted database %s config for group %q to Couchbase Server bucket: %s", base.UD(dbc.Name), configGroupID, base.MD(*dbc.Bucket))
+		base.InfofCtx(ctx, base.KeyAll, "Persisted database %s config for group %q to Couchbase Server bucket: %s", base.UD(dbc.Name), configGroupID, base.MD(*dbc.Bucket))
 	}
 
 	// Attempt to backup current config
@@ -244,11 +244,11 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 	// Otherwise continue with startup but don't attempt to write migrated config and log warning
 	backupLocation, err := backupCurrentConfigFile(configPath)
 	if err != nil {
-		base.WarnfCtx(context.Background(), "Unable to write config file backup: %v. Won't write backup or updated config but will continue with startup.", err)
+		base.WarnfCtx(ctx, "Unable to write config file backup: %v. Won't write backup or updated config but will continue with startup.", err)
 		return startupConfig, false, users, roles, nil
 	}
 
-	base.InfofCtx(context.Background(), base.KeyAll, "Current config backed up to %s", base.MD(backupLocation))
+	base.InfofCtx(ctx, base.KeyAll, "Current config backed up to %s", base.MD(backupLocation))
 
 	// Overwrite old config with new migrated startup config
 	jsonStartupConfig, err := json.MarshalIndent(startupConfig, "", "  ")
@@ -261,11 +261,11 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 	// Otherwise continue with startup but log warning
 	err = ioutil.WriteFile(configPath, jsonStartupConfig, 0644)
 	if err != nil {
-		base.WarnfCtx(context.Background(), "Unable to write updated config file: %v -  but will continue with startup.", err)
+		base.WarnfCtx(ctx, "Unable to write updated config file: %v -  but will continue with startup.", err)
 		return startupConfig, false, users, roles, nil
 	}
 
-	base.InfofCtx(context.Background(), base.KeyAll, "Current config file overwritten by upgraded config at %s", base.MD(configPath))
+	base.InfofCtx(ctx, base.KeyAll, "Current config file overwritten by upgraded config at %s", base.MD(configPath))
 	return startupConfig, false, users, roles, nil
 }
 

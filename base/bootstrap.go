@@ -17,11 +17,11 @@ type BootstrapConnection interface {
 	// GetConfigBuckets returns a list of bucket names where a database config could belong. In the future we'll need to fetch collections (and possibly scopes).
 	GetConfigBuckets() ([]string, error)
 	// GetConfig fetches a database config for a given bucket and config group ID, along with the CAS of the config document.
-	GetConfig(bucket, groupID string, valuePtr interface{}) (cas uint64, err error)
+	GetConfig(ctx context.Context, bucket, groupID string, valuePtr interface{}) (cas uint64, err error)
 	// InsertConfig saves a new database config for a given bucket and config group ID.
-	InsertConfig(bucket, groupID string, value interface{}) (newCAS uint64, err error)
+	InsertConfig(ctx context.Context, bucket, groupID string, value interface{}) (newCAS uint64, err error)
 	// UpdateConfig updates an existing database config for a given bucket and config group ID. updateCallback can return nil to remove the config.
-	UpdateConfig(bucket, groupID string, updateCallback func(rawBucketConfig []byte) (updatedConfig []byte, err error)) (newCAS uint64, err error)
+	UpdateConfig(ctx context.Context, bucket, groupID string, updateCallback func(rawBucketConfig []byte) (updatedConfig []byte, err error)) (newCAS uint64, err error)
 }
 
 // CouchbaseCluster is a GoCBv2 implementation of BootstrapConnection
@@ -136,12 +136,12 @@ func (cc *CouchbaseCluster) GetConfigBuckets() ([]string, error) {
 	return bucketList, nil
 }
 
-func (cc *CouchbaseCluster) GetConfig(location, groupID string, valuePtr interface{}) (cas uint64, err error) {
+func (cc *CouchbaseCluster) GetConfig(ctx context.Context, location, groupID string, valuePtr interface{}) (cas uint64, err error) {
 	if cc == nil {
 		return 0, errors.New("nil CouchbaseCluster")
 	}
 
-	b, teardown, err := cc.getBucket(location)
+	b, teardown, err := cc.getBucket(ctx, location)
 	if err != nil {
 		return 0, err
 	}
@@ -170,12 +170,12 @@ func (cc *CouchbaseCluster) GetConfig(location, groupID string, valuePtr interfa
 	return uint64(res.Cas()), nil
 }
 
-func (cc *CouchbaseCluster) InsertConfig(location, groupID string, value interface{}) (newCAS uint64, err error) {
+func (cc *CouchbaseCluster) InsertConfig(ctx context.Context, location, groupID string, value interface{}) (newCAS uint64, err error) {
 	if cc == nil {
 		return 0, errors.New("nil CouchbaseCluster")
 	}
 
-	b, teardown, err := cc.getBucket(location)
+	b, teardown, err := cc.getBucket(ctx, location)
 	if err != nil {
 		return 0, err
 	}
@@ -196,12 +196,12 @@ func (cc *CouchbaseCluster) InsertConfig(location, groupID string, value interfa
 	return uint64(res.Cas()), nil
 }
 
-func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallback func(bucketConfig []byte) (newConfig []byte, err error)) (newCAS uint64, err error) {
+func (cc *CouchbaseCluster) UpdateConfig(ctx context.Context, location, groupID string, updateCallback func(bucketConfig []byte) (newConfig []byte, err error)) (newCAS uint64, err error) {
 	if cc == nil {
 		return 0, errors.New("nil CouchbaseCluster")
 	}
 
-	b, teardown, err := cc.getBucket(location)
+	b, teardown, err := cc.getBucket(ctx, location)
 	if err != nil {
 		return 0, err
 	}
@@ -260,7 +260,7 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 }
 
 // getBucket returns the bucket after waiting for it to be ready.
-func (cc *CouchbaseCluster) getBucket(bucketName string) (b *gocb.Bucket, teardownFn func(), err error) {
+func (cc *CouchbaseCluster) getBucket(ctx context.Context, bucketName string) (b *gocb.Bucket, teardownFn func(), err error) {
 	var connection *gocb.Cluster
 	if bucketAuth, set := cc.perBucketAuth[bucketName]; set {
 		connection, err = cc.connect(bucketAuth)
@@ -293,7 +293,7 @@ func (cc *CouchbaseCluster) getBucket(bucketName string) (b *gocb.Bucket, teardo
 	teardownFn = func() {
 		err := connection.Close(&gocb.ClusterCloseOptions{})
 		if err != nil {
-			WarnfCtx(context.Background(), "Failed to close cluster connection: %v", err)
+			WarnfCtx(ctx, "Failed to close cluster connection: %v", err)
 		}
 	}
 

@@ -287,6 +287,7 @@ func TestLegacyGuestUserMigration(t *testing.T) {
 
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
+	ctx := base.TestCtx(t)
 
 	config := fmt.Sprintf(`{
 	"server_tls_skip_verify": %t,
@@ -320,14 +321,14 @@ func TestLegacyGuestUserMigration(t *testing.T) {
 	err := ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
 	require.NoError(t, err)
 
-	sc, _, _, _, err := automaticConfigUpgrade(configPath)
+	sc, _, _, _, err := automaticConfigUpgrade(ctx, configPath)
 	require.NoError(t, err)
 
 	cluster, err := CreateCouchbaseClusterFromStartupConfig(sc)
 	require.NoError(t, err)
 
 	var dbConfig DbConfig
-	_, err = cluster.GetConfig(tb.GetName(), PersistentConfigDefaultGroupID, &dbConfig)
+	_, err = cluster.GetConfig(ctx, tb.GetName(), PersistentConfigDefaultGroupID, &dbConfig)
 	require.NoError(t, err)
 
 	assert.Equal(t, &expected, dbConfig.Guest)
@@ -421,7 +422,7 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 	require.NoError(t, err)
 
 	// Copy behaviour of serverMainPersistentConfig - upgrade config, pass legacy users and roles in to addLegacyPrinciples (after server context is created)
-	_, _, users, roles, err := automaticConfigUpgrade(configPath)
+	_, _, users, roles, err := automaticConfigUpgrade(ctx, configPath)
 	require.NoError(t, err)
 	rt.ServerContext().addLegacyPrincipals(ctx, users, roles)
 
