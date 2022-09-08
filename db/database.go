@@ -361,7 +361,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		dbContext.DbStats.Cache(),
 	)
 
-	dbContext.EventMgr = NewEventManager()
+	dbContext.EventMgr = NewEventManager(dbContext.terminator)
 	logCtx := base.LogContextWith(context.Background(), &base.LogContext{CorrelationID: "db:" + base.MD(dbName).Redact()})
 
 	var err error

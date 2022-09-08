@@ -913,7 +913,6 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 	if config.EventHandlers == nil {
 		return nil
 	}
-
 	// Load Webhook Filter Function.
 	eventHandlersByType := map[db.EventType][]*EventConfig{
 		db.DocumentChange: config.EventHandlers.DocumentChanged,
