@@ -20,36 +20,20 @@ func TestServerlessPollBuckets(t *testing.T) {
 	tb1 := base.GetTestBucket(t)
 	defer tb1.Close()
 
-	config := bootstrapStartupConfigForTest(t)
-	config.Unsupported.Serverless = ServerlessConfig{Enabled: base.BoolPtr(true)}
-	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
-	// Use valid bucket to get past validation stage
-	config.BucketCredentials = map[string]*base.CredentialsConfig{
-		tb1.GetName(): {
-			Username: base.TestClusterUsername(),
-			Password: base.TestClusterPassword(),
+	rt := NewRestTester(t, &RestTesterConfig{
+		TestBucket:       tb1,
+		serverless:       true,
+		persistentConfig: true,
+		MutateStartupConfig: func(config *StartupConfig) {
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
 		},
-	}
+	})
+	defer rt.Close()
+	sc := rt.ServerContext()
 
-	sc, err := setupServerContext(&config, true)
-	require.NoError(t, err)
-
-	serverErr := make(chan error, 0)
-	defer func() {
-		sc.Close()
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- startServer(&config, sc)
-	}()
-	require.NoError(t, sc.waitForRESTAPIs())
-
-	// Now SC is set up and past StartupConfig validation stage, blank out all per-bucket creds and recreate the CB Cluster
-	sc.config.BucketCredentials = map[string]*base.CredentialsConfig{}
-	couchbaseCluster, err := createCouchbaseClusterFromStartupConfig(sc.config)
-	require.NoError(t, err)
-	sc.bootstrapContext.connection = couchbaseCluster
+	// Blank out all per-bucket creds
+	perBucketCreds := sc.config.BucketCredentials
+	rt.ReplacePerBucketCredentials(map[string]*base.CredentialsConfig{})
 
 	// Confirm fetch does not return any configs due to no databases existing
 	configs, err := sc.fetchConfigs(false)
@@ -57,10 +41,10 @@ func TestServerlessPollBuckets(t *testing.T) {
 	assert.Empty(t, configs)
 
 	// Create a database
-	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb1, groupID: base.StringPtr(config.Bootstrap.ConfigGroupID), persistentConfig: true})
-	defer rt.Close()
+	rt2 := NewRestTester(t, &RestTesterConfig{TestBucket: tb1, persistentConfig: true})
+	defer rt2.Close()
 	// Create a new db on the RT to confirm fetch won't retrieve it (due to bucket not being in BucketCredentials)
-	resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{
+	resp := rt2.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{
 		"bucket": "%s",
 		"use_views": %t,
 		"num_index_replicas": 0
@@ -73,17 +57,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 	assert.Empty(t, configs)
 
 	// Add the test bucket to bucket credentials config
-	sc.config.BucketCredentials = map[string]*base.CredentialsConfig{
-		tb1.GetName(): {
-			Username: base.TestClusterUsername(),
-			Password: base.TestClusterPassword(),
-		},
-	}
-
-	// Update the CouchbaseCluster to include the new bucket credentials
-	couchbaseCluster, err = createCouchbaseClusterFromStartupConfig(sc.config)
-	require.NoError(t, err)
-	sc.bootstrapContext.connection = couchbaseCluster
+	rt.ReplacePerBucketCredentials(perBucketCreds)
 
 	// Confirm fetch does return config for db in tb1
 	configs, err = sc.fetchConfigs(false)
@@ -165,7 +139,11 @@ func TestServerlessBucketCredentialsFetchDatabases(t *testing.T) {
 
 	tb1 := base.GetTestBucket(t)
 	defer tb1.Close()
-	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb1, persistentConfig: true, serverless: true})
+	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb1, persistentConfig: true, serverless: true,
+		MutateStartupConfig: func(config *StartupConfig) {
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
+		},
+	})
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{
