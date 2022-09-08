@@ -170,10 +170,14 @@ func (config *GraphQLConfig) getSchema() (string, error) {
 
 //////// FIELD RESOLVER:
 
+func graphQLResolverName(typeName string, fieldName string) string {
+	return typeName + ":" + fieldName
+}
+
 // Creates a graphQLResolver for the given JavaScript code, and returns a graphql-go FieldResolveFn
 // that invokes it.
 func (config *GraphQLConfig) compileFieldResolver(typeName string, fieldName string, fnConfig UserFunctionConfig) (graphql.FieldResolveFn, error) {
-	name := typeName + "." + fieldName
+	name := graphQLResolverName(typeName, fieldName)
 	isMutation := typeName == "Mutation"
 	userFn, err := compileUserFunction(name, "GraphQL resolver", &fnConfig)
 	if err != nil {

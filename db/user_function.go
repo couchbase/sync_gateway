@@ -59,7 +59,7 @@ func allUserFunctionQueryNames(options DatabaseContextOptions) []string {
 		for typeName, resolvers := range options.GraphQL.Resolvers {
 			for fieldName, resolver := range resolvers {
 				if resolver.Type == "query" {
-					queryNames = append(queryNames, QueryTypeUserFunctionPrefix+typeName+"."+fieldName)
+					queryNames = append(queryNames, QueryTypeUserFunctionPrefix+graphQLResolverName(typeName, fieldName))
 				}
 			}
 		}
