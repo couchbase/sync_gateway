@@ -31,6 +31,7 @@ type EventManager struct {
 	waitTime               int
 	eventsProcessedSuccess int64
 	eventsProcessedFail    int64
+	terminator             chan bool
 }
 
 func (em *EventManager) GetEventsProcessedSuccess() int64 {
@@ -54,10 +55,11 @@ const kEventWaitTime = 100   // time (ms) to wait before dropping event, when ev
 
 // Creates a new event manager.  Sets up the event channel for async events, and the goroutine to
 // monitor and process that channel.
-func NewEventManager() *EventManager {
+func NewEventManager(terminator chan bool) *EventManager {
 	return &EventManager{
 		eventHandlers:    make(map[EventType][]EventHandler, 0),
 		activeEventTypes: make(map[EventType]bool),
+		terminator:       terminator,
 	}
 }
 
@@ -85,9 +87,14 @@ func (em *EventManager) Start(maxProcesses uint, waitTime int) {
 	// event.  Blocks if the activeCountChannel is full, to prevent spawning more than cap(activeCountChannel)
 	// goroutines.
 	go func() {
-		for event := range em.asyncEventChannel {
-			em.activeCountChannel <- true
-			go em.ProcessEvent(event)
+		for {
+			select {
+			case <-em.terminator:
+				return
+			case event := <-em.asyncEventChannel:
+				em.activeCountChannel <- true
+				go em.ProcessEvent(event)
+			}
 		}
 	}()
 
