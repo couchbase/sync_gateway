@@ -32,6 +32,7 @@ var kTestGraphQLSchema = `
 		secretNotes: String		# Admin-only
 	}
 	type Query {
+		square(n: Int!): Int!
 		task(id: ID!): Task
 		tasks: [Task!]!
 		toDo: [Task!]!
@@ -47,7 +48,11 @@ var kTestGraphQLConfig = GraphQLConfig{
 	Schema: &kTestGraphQLSchema,
 	Resolvers: map[string]GraphQLResolverConfig{
 		"Query": {
-			"task": UserFunctionConfig{
+			"square": {
+				Type: "javascript",
+				Code: `function(context,args) {return args.n * args.n;}`,
+			},
+			"task": {
 				Type: "javascript",
 				Code: `function(context, args, parent, info) {
 						if (Object.keys(parent).length != 0) throw "Unexpected parent";
@@ -57,7 +62,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 						if (!context.admin) throw "Missing context.admin";
 						return context.user.function("getTask", {id: args.id});}`,
 			},
-			"tasks": UserFunctionConfig{
+			"tasks": {
 				Type: "javascript",
 				Code: `function(context, args, parent, info) {
 						if (Object.keys(parent).length != 0) throw "Unexpected parent";
@@ -67,7 +72,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 						if (!context.admin) throw "Missing context.admin";
 						return context.user.function("all");}`,
 			},
-			"toDo": UserFunctionConfig{
+			"toDo": {
 				Type: "javascript",
 				Code: `function(context, args, parent, info) {
 						if (Object.keys(parent).length != 0) throw "Unexpected parent";
@@ -82,7 +87,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 			},
 		},
 		"Mutation": {
-			"complete": UserFunctionConfig{
+			"complete": {
 				Type: "javascript",
 				Code: `function(context, args, parent, info) {
 							if (Object.keys(parent).length != 0) throw "Unexpected parent";
@@ -95,7 +100,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 							task.done = true;
 							return task;}`,
 			},
-			"addTag": UserFunctionConfig{
+			"addTag": {
 				Type: "javascript",
 				Code: `function(context, args, parent, info) {
 							var task = context.user.function("getTask", {id: args.id});
@@ -106,7 +111,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 			},
 		},
 		"Task": {
-			"secretNotes": UserFunctionConfig{
+			"secretNotes": {
 				Type: "javascript",
 				Code: `function(context, args, parent, info) {
 								if (!parent.id) throw "Invalid parent";
@@ -206,7 +211,14 @@ func TestUserGraphQL(t *testing.T) {
 
 func testUserGraphQLCommon(t *testing.T, db *Database) {
 	// Successful query:
-	result, err := db.UserGraphQLQuery(`query{ task(id:"a") {id,title,done} }`, "", nil, false)
+	result, err := db.UserGraphQLQuery(`query{ square(n: 12) }`, "", nil, false)
+	assertGraphQLResult(t, `{"square":144}`, result, err)
+
+	result, err = db.UserGraphQLQuery(`query($num:Int!){ square(n: $num) }`, "",
+		map[string]interface{}{"num": 12}, false)
+	assertGraphQLResult(t, `{"square":144}`, result, err)
+
+	result, err = db.UserGraphQLQuery(`query{ task(id:"a") {id,title,done} }`, "", nil, false)
 	assertGraphQLResult(t, `{"task":{"done":true,"id":"a","title":"Applesauce"}}`, result, err)
 
 	result, err = db.UserGraphQLQuery(`query{ tasks {title} }`, "", nil, false)

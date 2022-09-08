@@ -21,6 +21,35 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+var kGraphQLTestConfig = &DatabaseConfig{DbConfig: DbConfig{
+	UserFunctions: map[string]*db.UserFunctionConfig{
+		"square": {
+			Type:  "javascript",
+			Code:  "function(context,args) {return args.n * args.n;}",
+			Args:  []string{"n"},
+			Allow: &db.UserQueryAllow{Channels: []string{"*"}},
+		},
+		"squareN1QL": {
+			Type:  "query",
+			Code:  "SELECT $n * $n AS square",
+			Args:  []string{"n"},
+			Allow: &db.UserQueryAllow{Channels: []string{"*"}},
+		},
+	},
+	GraphQL: &db.GraphQLConfig{
+		Schema: base.StringPtr(`type Query { square(n: Int!): Int! }`),
+		Resolvers: map[string]db.GraphQLResolverConfig{
+			"Query": {
+				"square": db.UserFunctionConfig{
+					Type:  "javascript",
+					Code:  `function(context,args) {return args.n * args.n;}`,
+					Allow: &db.UserQueryAllow{Channels: []string{"*"}},
+				},
+			},
+		},
+	},
+}}
+
 // Asserts that running testFunc in 100 concurrent goroutines is no more than 10% slower
 // than running it 100 times in succession. A low bar indeed, but can detect some serious
 // bottlenecks, or of course deadlocks.
@@ -60,37 +89,26 @@ func testConcurrently(t *testing.T, rt *RestTester, testFunc func() bool) bool {
 	return assert.LessOrEqual(t, concurrentDuration, 1.1*numTasks*sequentialDuration)
 }
 
+func TestUserQueries(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true, EnableUserQueries: true})
+	defer rt.Close()
+	rt.DatabaseConfig = kGraphQLTestConfig
+
+	t.Run("GraphQL with variables", func(t *testing.T) {
+		testConcurrently(t, rt, func() bool {
+			response := rt.SendRequest("POST", "/db/_graphql",
+				`{"query": "query($number:Int!){ square(n:$number) }",
+				  "variables": {"number": 13}}`)
+			return assert.Equal(t, 200, response.Result().StatusCode) &&
+				assert.Equal(t, "{\"data\":{\"square\":169}}", string(response.BodyBytes()))
+		})
+	})
+}
+
 func TestUserQueriesConcurrently(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true, EnableUserQueries: true})
 	defer rt.Close()
-	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
-		UserFunctions: map[string]*db.UserFunctionConfig{
-			"square": {
-				Type:  "javascript",
-				Code:  "function(context,args) {return args.n * args.n;}",
-				Args:  []string{"n"},
-				Allow: &db.UserQueryAllow{Channels: []string{"*"}},
-			},
-			"squareN1QL": &db.UserFunctionConfig{
-				Type:  "query",
-				Code:  "SELECT $n * $n AS square",
-				Args:  []string{"n"},
-				Allow: &db.UserQueryAllow{Channels: []string{"*"}},
-			},
-		},
-		GraphQL: &db.GraphQLConfig{
-			Schema: base.StringPtr(`type Query { square(n: Int!): Int! }`),
-			Resolvers: map[string]db.GraphQLResolverConfig{
-				"Query": {
-					"square": db.UserFunctionConfig{
-						Type:  "javascript",
-						Code:  `function(context,args) {return args.n * args.n;}`,
-						Allow: &db.UserQueryAllow{Channels: []string{"*"}},
-					},
-				},
-			},
-		},
-	}}
+	rt.DatabaseConfig = kGraphQLTestConfig
 
 	t.Run("Function", func(t *testing.T) {
 		testConcurrently(t, rt, func() bool {

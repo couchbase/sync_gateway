@@ -147,14 +147,15 @@ func (h *handler) handleGraphQL() error {
 			}
 			queryString = string(query)
 		} else {
-			// POST JSON: Get the "query", "operationName" and "variables" properties:
-			body, err := h.readJSON()
+			// POST JSON: Get the "query", "operationName" and "variables" properties.
+			// go-graphql does not like the Number type, so decode leaving numbers as float64:
+			body, err := h.readJSONWithoutNumber()
 			if err != nil {
 				return err
 			}
 			queryString = body[kGraphQLQueryParam].(string)
 			operationName, _ = body[kGraphQLOperationNameParam].(string)
-			if variablesVal, _ := body[kGraphQLVariablesParam]; variablesVal != nil {
+			if variablesVal := body[kGraphQLVariablesParam]; variablesVal != nil {
 				variables, _ = variablesVal.(map[string]interface{})
 				if variables == nil {
 					return base.HTTPErrorf(http.StatusBadRequest, "`variables` property must be an object")
