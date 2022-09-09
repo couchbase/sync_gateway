@@ -55,7 +55,7 @@ func TestTranscoder(t *testing.T) {
 }
 
 func TestSetGet(t *testing.T) {
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 
 		key := t.Name()
 		val := make(map[string]interface{}, 0)
@@ -82,7 +82,7 @@ func TestSetGet(t *testing.T) {
 }
 
 func TestSetGetRaw(t *testing.T) {
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 
 		key := t.Name()
 		val := []byte("bar")
@@ -109,7 +109,7 @@ func TestSetGetRaw(t *testing.T) {
 }
 
 func TestAddRaw(t *testing.T) {
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 		key := t.Name()
 		val := []byte("bar")
 
@@ -179,7 +179,7 @@ func TestAddRawTimeoutRetry(t *testing.T) {
 }
 
 func TestWriteCasBasic(t *testing.T) {
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 		key := t.Name()
 		val := []byte("bar2")
 
@@ -215,7 +215,7 @@ func TestWriteCasBasic(t *testing.T) {
 }
 
 func TestWriteCasAdvanced(t *testing.T) {
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 		key := t.Name()
 
 		_, _, err := bucket.GetRaw(key)
@@ -248,7 +248,7 @@ func TestWriteCasAdvanced(t *testing.T) {
 }
 
 func TestUpdate(t *testing.T) {
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 		key := t.Name()
 		valInitial := []byte(`{"state":"initial"}`)
 		valUpdated := []byte(`{"state":"updated"}`)
@@ -303,7 +303,7 @@ func TestUpdate(t *testing.T) {
 }
 
 func TestUpdateCASFailure(t *testing.T) {
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 		key := t.Name()
 		valInitial := []byte(`{"state":"initial"}`)
 		valCasMismatch := []byte(`{"state":"casMismatch"}`)
@@ -350,7 +350,7 @@ func TestUpdateCASFailure(t *testing.T) {
 }
 
 func TestUpdateCASFailureOnInsert(t *testing.T) {
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 		key := t.Name()
 		valCasMismatch := []byte(`{"state":"casMismatch"}`)
 		valInitial := []byte(`{"state":"initial"}`)
@@ -393,7 +393,7 @@ func TestUpdateCASFailureOnInsert(t *testing.T) {
 }
 
 func TestIncrCounter(t *testing.T) {
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 		key := t.Name()
 
 		defer func() {
@@ -429,7 +429,7 @@ func TestGetAndTouchRaw(t *testing.T) {
 
 	key := t.Name()
 	val := []byte("bar")
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 
 		defer func() {
 			err := bucket.Delete(key)
@@ -533,7 +533,7 @@ func TestXattrWriteCasSimple(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 		key := t.Name()
 		xattrName := SyncXattrName
 		val := make(map[string]interface{})
@@ -593,7 +593,7 @@ func TestXattrWriteCasUpsert(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 
 		key := t.Name()
 		xattrName := SyncXattrName
@@ -658,7 +658,7 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 
 		key := t.Name()
 		xattrName := SyncXattrName
@@ -725,7 +725,7 @@ func TestXattrWriteCasRaw(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 
 		key := t.Name()
 		xattrName := SyncXattrName
@@ -775,7 +775,7 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 
 		key := t.Name()
 		xattrName := SyncXattrName
@@ -852,7 +852,7 @@ func TestXattrWriteCasTombstoneUpdate(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 		key := t.Name()
 		xattrName := SyncXattrName
 		val := make(map[string]interface{})
@@ -929,7 +929,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 
 		key := t.Name()
 		xattrName := SyncXattrName
@@ -1036,7 +1036,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 
 		key := t.Name()
 		xattrKey := SyncXattrName
@@ -1114,7 +1114,7 @@ func TestXattrDeleteDocument(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 		// Create document with XATTR
 		xattrName := SyncXattrName
 		val := make(map[string]interface{})
@@ -1162,7 +1162,7 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 
 		// Create document with XATTR
 		xattrName := SyncXattrName
@@ -1230,7 +1230,7 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 		// Create document with XATTR
 		xattrName := SyncXattrName
 		val := make(map[string]interface{})
@@ -1279,7 +1279,7 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 
 		key1 := t.Name() + "DocExistsXattrExists"
 		key2 := t.Name() + "DocExistsNoXattr"
@@ -1375,7 +1375,7 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 
 		key1 := t.Name() + "DocExistsXattrExists"
 		key2 := t.Name() + "DocExistsNoXattr"
@@ -1454,7 +1454,7 @@ func TestDeleteWithXattrWithSimulatedRaceResurrect(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 
 		key := t.Name()
 		xattrName := SyncXattrName
@@ -1503,7 +1503,7 @@ func TestXattrRetrieveDocumentAndXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 
 		key1 := t.Name() + "DocExistsXattrExists"
 		key2 := t.Name() + "DocExistsNoXattr"
@@ -1589,7 +1589,7 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 
 		key1 := t.Name() + "DocExistsXattrExists"
 		key2 := t.Name() + "DocExistsNoXattr"
@@ -1696,7 +1696,7 @@ func TestGetXattr(t *testing.T) {
 
 	SetUpTestLogging(t, LevelDebug, KeyAll)
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 
 		// Doc 1
 		key1 := t.Name() + "DocExistsXattrExists"
@@ -1788,7 +1788,7 @@ func TestGetXattrAndBody(t *testing.T) {
 
 	SetUpTestLogging(t, LevelDebug, KeyAll)
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 
 		// Doc 1
 		key1 := t.Name() + "DocExistsXattrExists"
@@ -2181,7 +2181,7 @@ EKTcWGekdmdDPsHloRNtsiCa697B2O9IFA==
 	return certPath, keyPath, cleanupFn
 }
 
-func createTombstonedDoc(bucket sgbucket.DataStore, key, xattrName string) {
+func createTombstonedDoc(bucket Bucket, key, xattrName string) {
 
 	// Create document with XATTR
 
@@ -2259,7 +2259,7 @@ func TestUpdateXattrWithDeleteBodyAndIsDelete(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 
 		subdocXattrStore, ok := AsSubdocXattrStore(bucket)
 		require.True(t, ok)
@@ -2302,7 +2302,7 @@ func TestUserXattrGetWithXattr(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 
 		userXattrStore, ok := AsUserXattrStore(bucket)
 		require.True(t, ok)
@@ -2335,7 +2335,7 @@ func TestUserXattrGetWithXattrNil(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 
 		docKey := t.Name()
 
@@ -2362,7 +2362,7 @@ func TestInsertTombstoneWithXattr(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 
 		subdocXattrStore, ok := AsSubdocXattrStore(bucket)
 		require.True(t, ok)
@@ -2402,7 +2402,7 @@ func TestRawBackwardCompatibilityFromJSON(t *testing.T) {
 		t.Skip("RawBackwardCompatibility tests depend on couchbase transcoding")
 	}
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 
 		key := t.Name()
 		val := []byte(`{"foo":"bar"}`)
@@ -2441,7 +2441,7 @@ func TestRawBackwardCompatibilityFromBinary(t *testing.T) {
 		t.Skip("RawBackwardCompatibility tests depend on couchbase transcoding")
 	}
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 
 		key := t.Name()
 		val := []byte(`{{"foo":"bar"}`)
@@ -2478,7 +2478,7 @@ func TestGetExpiry(t *testing.T) {
 		t.Skip("Walrus doesn't support expiry")
 	}
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 
 		ctx := TestCtx(t)
 		store, ok := AsCouchbaseStore(bucket)
@@ -2525,7 +2525,7 @@ func TestGetStatsVbSeqNo(t *testing.T) {
 		t.Skip("Walrus doesn't support stats-vbseqno")
 	}
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 		maxVbNo, err := bucket.GetMaxVbno()
 		assert.NoError(t, err)
 

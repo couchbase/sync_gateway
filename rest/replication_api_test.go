@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/auth"
-	"github.com/couchbaselabs/walrus"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -1076,8 +1075,7 @@ func addActiveRT(t *testing.T, testBucket *base.TestBucket) (activeRT *RestTeste
 	// Instead, we need to modify the leaky bucket config (created for vbno handling) after the fact.
 	leakyBucket, ok := activeRT.GetDatabase().Bucket.(*base.LeakyBucket)
 	if ok {
-		underlyingBucket := leakyBucket.GetUnderlyingBucket()
-		if _, ok := underlyingBucket.(*walrus.WalrusBucket); ok {
+		if testBucket.BucketSpec.IsWalrusBucket() {
 			leakyBucket.SetIgnoreClose(true)
 		}
 	}

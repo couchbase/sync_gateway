@@ -21,7 +21,7 @@ import (
 
 func TestRemoveObsoleteDesignDocs(t *testing.T) {
 
-	base.ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	base.ForAllDataStores(t, func(t *testing.T, bucket base.Bucket) {
 		mapFunction := `function (doc, meta) { emit(); }`
 
 		// Add some design docs in the old format
@@ -87,7 +87,7 @@ func TestRemoveObsoleteDesignDocs(t *testing.T) {
 func TestRemoveDesignDocsUseViewsTrueAndFalse(t *testing.T) {
 	setDesignDocPreviousVersionsForTest(t, "2.0")
 
-	base.ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	base.ForAllDataStores(t, func(t *testing.T, bucket base.Bucket) {
 
 		mapFunction := `function (doc, meta){ emit(); }`
 

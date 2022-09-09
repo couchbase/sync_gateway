@@ -16,8 +16,6 @@ import (
 	"log"
 	"testing"
 
-	sgbucket "github.com/couchbase/sg-bucket"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/couchbase/gocb.v1"
@@ -36,7 +34,7 @@ func TestN1qlQuery(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 
 		n1qlStore, ok := AsN1QLStore(bucket)
 		if !ok {
@@ -144,7 +142,7 @@ func TestN1qlFilterExpression(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 		n1qlStore, ok := AsN1QLStore(bucket)
 		if !ok {
 			t.Fatalf("Requires bucket to be N1QLStore")
@@ -221,7 +219,7 @@ func TestIndexMeta(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 		n1qlStore, ok := AsN1QLStore(bucket)
 		if !ok {
 			t.Fatalf("Requires bucket to be N1QLStore")
@@ -265,7 +263,7 @@ func TestMalformedN1qlQuery(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 		n1qlStore, ok := AsN1QLStore(bucket)
 		if !ok {
 			t.Fatalf("Requires bucket to be N1QLStore")
@@ -337,7 +335,7 @@ func TestCreateAndDropIndex(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 		n1qlStore, ok := AsN1QLStore(bucket)
 		if !ok {
 			t.Fatalf("Requires bucket to be N1QLStore")
@@ -365,7 +363,7 @@ func TestCreateDuplicateIndex(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 		n1qlStore, ok := AsN1QLStore(bucket)
 		if !ok {
 			t.Fatalf("Requires bucket to be N1QLStore")
@@ -397,7 +395,7 @@ func TestCreateAndDropIndexSpecialCharacters(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 		n1qlStore, ok := AsN1QLStore(bucket)
 		if !ok {
 			t.Fatalf("Requires bucket to be N1QLStore")
@@ -425,7 +423,7 @@ func TestDeferredCreateIndex(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 		n1qlStore, ok := AsN1QLStore(bucket)
 		if !ok {
 			t.Fatalf("Requires bucket to be N1QLStore")
@@ -467,7 +465,7 @@ func TestBuildDeferredIndexes(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 		n1qlStore, ok := AsN1QLStore(bucket)
 		if !ok {
 			t.Fatalf("Requires bucket to be N1QLStore")
@@ -532,7 +530,7 @@ func TestCreateAndDropIndexErrors(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 		n1qlStore, ok := AsN1QLStore(bucket)
 		if !ok {
 			t.Fatalf("Requires bucket to be N1QLStore")
@@ -610,7 +608,7 @@ func TestWaitForBucketExistence(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket Bucket) {
 		n1qlStore, ok := AsN1QLStore(bucket)
 		if !ok {
 			t.Fatalf("Requires bucket to be N1QLStore")

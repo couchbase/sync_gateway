@@ -75,31 +75,30 @@ var _ sgbucket.KVStore = &CouchbaseBucketGoCB{}
 var _ CouchbaseStore = &CouchbaseBucketGoCB{}
 
 // Creates a Bucket that talks to a real live Couchbase server.
-func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err error) {
-	logCtx := context.TODO()
+func GetCouchbaseBucketGoCB(ctx context.Context, spec BucketSpec) (bucket *CouchbaseBucketGoCB, err error) {
 	connString, err := spec.GetGoCBConnString(nil)
 	if err != nil {
-		WarnfCtx(logCtx, "Unable to parse server value: %s error: %v", SD(spec.Server), err)
+		WarnfCtx(ctx, "Unable to parse server value: %s error: %v", SD(spec.Server), err)
 		return nil, err
 	}
 
 	cluster, err := gocb.Connect(connString)
 	if err != nil {
-		InfofCtx(logCtx, KeyAuth, "gocb connect returned error: %v", err)
+		InfofCtx(ctx, KeyAuth, "gocb connect returned error: %v", err)
 		return nil, err
 	}
 
 	bucketPassword := ""
 	// Check for client cert (x.509) authentication
 	if spec.Certpath != "" {
-		InfofCtx(logCtx, KeyAuth, "Attempting cert authentication against bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
+		InfofCtx(ctx, KeyAuth, "Attempting cert authentication against bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
 		certAuthErr := cluster.Authenticate(gocb.CertAuthenticator{})
 		if certAuthErr != nil {
-			InfofCtx(logCtx, KeyAuth, "Error Attempting certificate authentication %s", certAuthErr)
+			InfofCtx(ctx, KeyAuth, "Error Attempting certificate authentication %s", certAuthErr)
 			return nil, pkgerrors.WithStack(certAuthErr)
 		}
 	} else if spec.Auth != nil {
-		InfofCtx(logCtx, KeyAuth, "Attempting credential authentication against bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
+		InfofCtx(ctx, KeyAuth, "Attempting credential authentication against bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
 		user, pass, _ := spec.Auth.GetCredentials()
 		authErr := cluster.Authenticate(gocb.PasswordAuthenticator{
 			Username: user,
@@ -107,25 +106,24 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		})
 		// If RBAC authentication fails, revert to non-RBAC authentication by including the password to OpenBucket
 		if authErr != nil {
-			WarnfCtx(logCtx, "RBAC authentication against bucket %s as user %s failed - will re-attempt w/ bucketname, password", MD(spec.BucketName), UD(user))
+			WarnfCtx(ctx, "RBAC authentication against bucket %s as user %s failed - will re-attempt w/ bucketname, password", MD(spec.BucketName), UD(user))
 			bucketPassword = pass
 		}
 	}
 
-	return GetCouchbaseBucketGoCBFromAuthenticatedCluster(cluster, spec, bucketPassword)
+	return GetCouchbaseBucketGoCBFromAuthenticatedCluster(ctx, cluster, spec, bucketPassword)
 }
 
-func GetCouchbaseBucketGoCBFromAuthenticatedCluster(cluster *gocb.Cluster, spec BucketSpec, bucketPassword string) (bucket *CouchbaseBucketGoCB, err error) {
-	logCtx := context.TODO()
+func GetCouchbaseBucketGoCBFromAuthenticatedCluster(ctx context.Context, cluster *gocb.Cluster, spec BucketSpec, bucketPassword string) (bucket *CouchbaseBucketGoCB, err error) {
 	goCBBucket, err := cluster.OpenBucket(spec.BucketName, bucketPassword)
 	if err != nil {
-		InfofCtx(logCtx, KeyAll, "Error opening bucket %s: %v", spec.BucketName, err)
+		InfofCtx(ctx, KeyAll, "Error opening bucket %s: %v", spec.BucketName, err)
 		if pkgerrors.Cause(err) == gocb.ErrAuthError {
 			return nil, ErrAuthError
 		}
 		return nil, pkgerrors.WithStack(err)
 	}
-	InfofCtx(logCtx, KeyAll, "Successfully opened bucket %s", spec.BucketName)
+	InfofCtx(ctx, KeyAll, "Successfully opened bucket %s", spec.BucketName)
 
 	// Query node meta to find cluster compat version
 	user, pass, _ := spec.Auth.GetCredentials()
@@ -189,7 +187,7 @@ func GetCouchbaseBucketGoCBFromAuthenticatedCluster(cluster *gocb.Cluster, spec 
 
 	if maxConcurrentQueryOps > DefaultHttpMaxIdleConnsPerHost*queryNodeCount {
 		maxConcurrentQueryOps = DefaultHttpMaxIdleConnsPerHost * queryNodeCount
-		InfofCtx(logCtx, KeyAll, "Setting max_concurrent_query_ops to %d based on query node count (%d)", maxConcurrentQueryOps, queryNodeCount)
+		InfofCtx(ctx, KeyAll, "Setting max_concurrent_query_ops to %d based on query node count (%d)", maxConcurrentQueryOps, queryNodeCount)
 	}
 
 	viewOpsQueue := make(chan struct{}, maxConcurrentQueryOps)
@@ -207,7 +205,7 @@ func GetCouchbaseBucketGoCBFromAuthenticatedCluster(cluster *gocb.Cluster, spec 
 	bucket.Bucket.SetViewTimeout(bucket.Spec.GetViewQueryTimeout())
 	bucket.Bucket.SetN1qlTimeout(bucket.Spec.GetViewQueryTimeout())
 
-	InfofCtx(logCtx, KeyAll, "Set query timeouts for bucket %s to cluster:%v, bucket:%v", spec.BucketName, cluster.N1qlTimeout(), bucket.N1qlTimeout())
+	InfofCtx(ctx, KeyAll, "Set query timeouts for bucket %s to cluster:%v, bucket:%v", spec.BucketName, cluster.N1qlTimeout(), bucket.N1qlTimeout())
 	return bucket, err
 }
 
@@ -1466,7 +1464,7 @@ func (bucket *CouchbaseBucketGoCB) Refresh() error {
 	// If it's possible to call GetCouchbaseBucketGoCB without error, consider it "refreshed" and return a nil error which will cause the reconnect
 	// loop to stop.  otherwise, return an error which will cause it to keep retrying
 	// This fixes: https://github.com/couchbase/sync_gateway/issues/2423#issuecomment-294651245
-	bucketGoCb, err := GetCouchbaseBucketGoCB(bucket.Spec)
+	bucketGoCb, err := GetCouchbaseBucketGoCB(context.TODO(), bucket.Spec) //no refs to this func found, leaving as TODO to not change signature
 	if bucketGoCb != nil {
 		bucketGoCb.Close()
 	}
@@ -1477,8 +1475,12 @@ func (bucket *CouchbaseBucketGoCB) Refresh() error {
 
 // GoCB (and Server 5.0.0) don't support the TapFeed. For legacy support, start a DCP feed and stream over a single channel
 func (bucket *CouchbaseBucketGoCB) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
+	return bucket.StartTapFeedCtx(context.TODO(), args, dbStats)
+}
 
-	InfofCtx(context.TODO(), KeyDCP, "Using DCP to generate TAP-like stream")
+func (bucket *CouchbaseBucketGoCB) StartTapFeedCtx(ctx context.Context, args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
+
+	InfofCtx(ctx, KeyDCP, "Using DCP to generate TAP-like stream")
 	// Create the feed channel that will be passed back to the caller
 	eventFeed := make(chan sgbucket.FeedEvent, 10)
 	terminator := make(chan bool)
@@ -1496,13 +1498,17 @@ func (bucket *CouchbaseBucketGoCB) StartTapFeed(args sgbucket.FeedArguments, dbS
 		return false
 	}
 
-	err := bucket.StartDCPFeed(args, callback, dbStats)
+	err := bucket.StartDCPFeedCtx(ctx, args, callback, dbStats)
 	return feed, err
 }
 
 func (bucket *CouchbaseBucketGoCB) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
+	return bucket.StartDCPFeedCtx(context.TODO(), args, callback, dbStats)
+}
+
+func (bucket *CouchbaseBucketGoCB) StartDCPFeedCtx(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
 	// TODO: Evaluate whether to use cbgt for non-sharded caching feed, as a way to push concurrency upstream
-	return StartDCPFeed(bucket, bucket.Spec, args, callback, dbStats)
+	return StartDCPFeed(ctx, bucket, bucket.Spec, args, callback, dbStats)
 }
 
 func (bucket *CouchbaseBucketGoCB) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
@@ -1555,8 +1561,12 @@ func (bucket *CouchbaseBucketGoCB) UUID() (string, error) {
 }
 
 func (bucket *CouchbaseBucketGoCB) Close() {
+	bucket.CloseCtx(context.TODO())
+}
+
+func (bucket *CouchbaseBucketGoCB) CloseCtx(ctx context.Context) {
 	if err := bucket.Bucket.Close(); err != nil {
-		WarnfCtx(context.Background(), "Error closing GoCB bucket: %v.", err)
+		WarnfCtx(ctx, "Error closing GoCB bucket: %v.", err)
 		return
 	}
 }

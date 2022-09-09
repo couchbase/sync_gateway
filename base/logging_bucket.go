@@ -181,16 +181,27 @@ func (b *LoggingBucket) ViewQuery(ddoc, name string, params map[string]interface
 }
 
 func (b *LoggingBucket) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
+	return b.StartTapFeedCtx(context.TODO(), args, dbStats)
+}
+
+func (b *LoggingBucket) StartTapFeedCtx(ctx context.Context, args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
 	defer b.log(time.Now())
 	return b.bucket.StartTapFeed(args, dbStats)
 }
 
 func (b *LoggingBucket) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
+	return b.StartDCPFeedCtx(context.TODO(), args, callback, dbStats)
+}
+
+func (b *LoggingBucket) StartDCPFeedCtx(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
 	defer b.log(time.Now())
 	return b.bucket.StartDCPFeed(args, callback, dbStats)
 }
 
 func (b *LoggingBucket) Close() {
+	b.bucket.CloseCtx(context.TODO())
+}
+func (b *LoggingBucket) CloseCtx(ctx context.Context) {
 	defer b.log(time.Now())
 	b.bucket.Close()
 }

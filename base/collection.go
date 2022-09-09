@@ -204,6 +204,10 @@ func (c *Collection) UUID() (string, error) {
 }
 
 func (c *Collection) Close() {
+	c.CloseCtx(context.TODO())
+}
+
+func (c *Collection) CloseCtx(ctx context.Context) {
 	if c.cluster != nil {
 		if err := c.cluster.Close(nil); err != nil {
 			WarnfCtx(context.TODO(), "Error closing collection cluster: %v", err)
@@ -535,10 +539,19 @@ func (c *Collection) Incr(k string, amt, def uint64, exp uint32) (uint64, error)
 }
 
 func (c *Collection) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
-	groupID := ""
-	return StartGocbDCPFeed(context.TODO(), c, c.Spec.BucketName, args, callback, dbStats, DCPMetadataStoreInMemory, groupID)
+	return c.StartDCPFeedCtx(context.TODO(), args, callback, dbStats)
 }
+
+func (c *Collection) StartDCPFeedCtx(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
+	groupID := ""
+	return StartGocbDCPFeed(ctx, c, c.Spec.BucketName, args, callback, dbStats, DCPMetadataStoreInMemory, groupID)
+}
+
 func (c *Collection) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
+	return c.StartTapFeedCtx(context.TODO(), args, dbStats)
+}
+
+func (c *Collection) StartTapFeedCtx(ctx context.Context, args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
 	return nil, errors.New("StartTapFeed not implemented")
 }
 func (c *Collection) Dump() {

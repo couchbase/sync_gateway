@@ -118,7 +118,7 @@ func (c *tbpClusterV1) openTestBucket(ctx context.Context, testBucketName tbpBuc
 	bucketSpec := getBucketSpec(testBucketName)
 
 	waitForNewBucketWorker := func() (shouldRetry bool, err error, value interface{}) {
-		gocbBucket, err := GetCouchbaseBucketGoCBFromAuthenticatedCluster(c.cluster, bucketSpec, "")
+		gocbBucket, err := GetCouchbaseBucketGoCBFromAuthenticatedCluster(ctx, c.cluster, bucketSpec, "")
 		if err != nil {
 			c.logger(ctx, "Retrying OpenBucket")
 			return true, err, nil

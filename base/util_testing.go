@@ -29,7 +29,6 @@ import (
 	"time"
 
 	"github.com/couchbase/gocb/v2"
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -690,7 +689,7 @@ type dataStore struct {
 }
 
 // ForAllDataStores is used to run a test against multiple data stores (gocb bucket, gocb collection)
-func ForAllDataStores(t *testing.T, testCallback func(*testing.T, sgbucket.DataStore)) {
+func ForAllDataStores(t *testing.T, testCallback func(*testing.T, Bucket)) {
 	dataStores := make([]dataStore, 0)
 
 	dataStores = append(dataStores, dataStore{

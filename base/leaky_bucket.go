@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package base
 
 import (
+	"context"
 	"errors"
 	"expvar"
 	"fmt"
@@ -299,6 +300,10 @@ func (b *LeakyBucket) WriteSubDoc(k string, subdocKey string, cas uint64, value 
 }
 
 func (b *LeakyBucket) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
+	return b.StartTapFeedCtx(context.TODO(), args, dbStats)
+}
+
+func (b *LeakyBucket) StartTapFeedCtx(ctx context.Context, args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
 
 	if b.config.TapFeedDeDuplication {
 		return b.wrapFeedForDeduplication(args, dbStats)
@@ -314,6 +319,7 @@ func (b *LeakyBucket) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.
 		return b.wrapFeed(args, callback, dbStats)
 	} else if b.config.TapFeedVbuckets {
 		// kick off the wrapped sgbucket tap feed
+		DebugfCtx(ctx, KeyDCP, "LeakyBucket StartTapFeed for bucket %v ", b.GetName())
 		walrusTapFeed, err := b.bucket.StartTapFeed(args, dbStats)
 		if err != nil {
 			return walrusTapFeed, err
@@ -336,12 +342,18 @@ func (b *LeakyBucket) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.
 		return vbTapFeed, nil
 
 	} else {
+		DebugfCtx(ctx, KeyDCP, "LeakyBucket StartTapFeed for bucket %v ", b.GetName())
 		return b.bucket.StartTapFeed(args, dbStats)
 	}
 
 }
 
 func (b *LeakyBucket) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
+	return b.StartDCPFeedCtx(context.TODO(), args, callback, dbStats)
+}
+
+func (b *LeakyBucket) StartDCPFeedCtx(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
+	DebugfCtx(ctx, KeyDCP, "LeakyBucket StartDCPFeed for bucket %v ", b.GetName())
 	return b.bucket.StartDCPFeed(args, callback, dbStats)
 }
 
@@ -448,10 +460,15 @@ func (b *LeakyBucket) wrapFeedForDeduplication(args sgbucket.FeedArguments, dbSt
 }
 
 func (b *LeakyBucket) Close() {
+	b.CloseCtx(context.TODO())
+}
+func (b *LeakyBucket) CloseCtx(ctx context.Context) {
 	if !b.config.IgnoreClose {
+		DebugfCtx(ctx, KeyBucket, "LeakyBucket close for bucket %v", b.GetName())
 		b.bucket.Close()
 	}
 }
+
 func (b *LeakyBucket) Dump() {
 	b.bucket.Dump()
 }

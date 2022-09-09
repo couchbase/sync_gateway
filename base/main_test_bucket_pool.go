@@ -21,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbaselabs/walrus"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
@@ -223,7 +222,7 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 	id, err := GenerateRandomID()
 	require.NoError(t, err)
 
-	walrusBucket, err := walrus.GetBucket(url, DefaultPool, tbpBucketNamePrefix+"walrus_"+id)
+	walrusBucket, err := NewSGWalrusBucket(url, DefaultPool, tbpBucketNamePrefix+"walrus_"+id)
 	if err != nil {
 		tbp.Fatalf(testCtx, "couldn't get walrus bucket: %v", err)
 	}

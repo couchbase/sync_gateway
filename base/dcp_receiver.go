@@ -40,20 +40,20 @@ type DCPReceiver struct {
 	*DCPCommon
 }
 
-func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID string, checkpointPrefix string) (cbdatasource.Receiver, context.Context) {
+func NewDCPReceiver(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID string, checkpointPrefix string) cbdatasource.Receiver {
 
-	dcpCommon := NewDCPCommon(context.TODO(), callback, bucket, maxVbNo, persistCheckpoints, dbStats, feedID, checkpointPrefix)
+	dcpCommon := NewDCPCommon(ctx, callback, bucket, maxVbNo, persistCheckpoints, dbStats, feedID, checkpointPrefix)
 	r := &DCPReceiver{
 		DCPCommon: dcpCommon,
 	}
 
 	if LogDebugEnabled(KeyDCP) {
-		InfofCtx(r.loggingCtx, KeyDCP, "Using DCP Logging Receiver")
+		InfofCtx(ctx, KeyDCP, "Using DCP Logging Receiver")
 		logRec := &DCPLoggingReceiver{rec: r}
-		return logRec, r.loggingCtx
+		return logRec
 	}
 
-	return r, r.loggingCtx
+	return r
 }
 
 func (r *DCPReceiver) OnError(err error) {
@@ -208,7 +208,7 @@ func (nph NoPasswordAuthHandler) GetCredentials() (username string, password str
 
 // This starts a cbdatasource powered DCP Feed using an entirely separate connection to Couchbase Server than anything the existing
 // bucket is using, and it uses the go-couchbase cbdatasource DCP abstraction layer
-func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
+func StartDCPFeed(ctx context.Context, bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
 
 	connSpec, err := gocbconnstr.Parse(spec.Server)
 	if err != nil {
@@ -240,10 +240,10 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 
 	feedID := args.ID
 	if feedID == "" {
-		InfofCtx(context.TODO(), KeyDCP, "DCP feed started without feedID specified - defaulting to %s", DCPCachingFeedID)
+		InfofCtx(ctx, KeyDCP, "DCP feed started without feedID specified - defaulting to %s", DCPCachingFeedID)
 		feedID = DCPCachingFeedID
 	}
-	receiver, loggingCtx := NewDCPReceiver(callback, bucket, maxVbno, persistCheckpoints, dbStats, feedID, args.CheckpointPrefix)
+	receiver := NewDCPReceiver(ctx, callback, bucket, maxVbno, persistCheckpoints, dbStats, feedID, args.CheckpointPrefix)
 
 	var dcpReceiver *DCPReceiver
 	switch v := receiver.(type) {
@@ -267,11 +267,11 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 	}
 
 	dataSourceOptions.Logf = func(fmt string, v ...interface{}) {
-		DebugfCtx(loggingCtx, KeyDCP, fmt, v...)
+		DebugfCtx(ctx, KeyDCP, fmt, v...)
 	}
 
 	dataSourceOptions.Name, err = GenerateDcpStreamName(feedID)
-	InfofCtx(loggingCtx, KeyDCP, "DCP feed starting with name %s", dataSourceOptions.Name)
+	InfofCtx(ctx, KeyDCP, "DCP feed starting with name %s", dataSourceOptions.Name)
 	if err != nil {
 		return pkgerrors.Wrap(err, "unable to generate DCP stream name")
 	}
@@ -296,15 +296,15 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 	}
 
 	networkType := getNetworkTypeFromConnSpec(connSpec)
-	InfofCtx(loggingCtx, KeyDCP, "Using network type: %s", networkType)
+	InfofCtx(ctx, KeyDCP, "Using network type: %s", networkType)
 
 	// default (aka internal) networking is handled by cbdatasource, so we can avoid the shims altogether in this case, for all other cases we need shims to remap hosts.
 	if networkType != clusterNetworkDefault {
 		// A lookup of host dest to external alternate address hostnames
-		dataSourceOptions.ConnectBucket, dataSourceOptions.Connect, dataSourceOptions.ConnectTLS = alternateAddressShims(loggingCtx, spec.IsTLS(), connSpec.Addresses, networkType)
+		dataSourceOptions.ConnectBucket, dataSourceOptions.Connect, dataSourceOptions.ConnectTLS = alternateAddressShims(ctx, spec.IsTLS(), connSpec.Addresses, networkType)
 	}
 
-	DebugfCtx(loggingCtx, KeyDCP, "Connecting to new bucket datasource.  URLs:%s, pool:%s, bucket:%s", MD(urls), MD(poolName), MD(bucketName))
+	DebugfCtx(ctx, KeyDCP, "Connecting to new bucket datasource.  URLs:%s, pool:%s, bucket:%s", MD(urls), MD(poolName), MD(bucketName))
 
 	bds, err := cbdatasource.NewBucketDataSource(
 		urls,
@@ -329,9 +329,9 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 	if args.Terminator != nil {
 		go func() {
 			<-args.Terminator
-			TracefCtx(loggingCtx, KeyDCP, "Closing DCP Feed [%s-%s] based on termination notification", MD(bucketName), feedID)
+			TracefCtx(ctx, KeyDCP, "Closing DCP Feed [%s-%s] based on termination notification", MD(bucketName), feedID)
 			if err := bds.Close(); err != nil {
-				DebugfCtx(loggingCtx, KeyDCP, "Error closing DCP Feed [%s-%s] based on termination notification, Error: %v", MD(bucketName), feedID, err)
+				DebugfCtx(ctx, KeyDCP, "Error closing DCP Feed [%s-%s] based on termination notification, Error: %v", MD(bucketName), feedID, err)
 			}
 			if args.DoneChan != nil {
 				close(args.DoneChan)
