@@ -16,3 +16,4 @@ coverage*.xml
 verbose*.out*
 verbose*.xml
 sync_gateway
+*.pb.gz
