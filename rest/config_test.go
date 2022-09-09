@@ -1657,7 +1657,7 @@ func TestLoadJavaScript(t *testing.T) {
 			}()
 			js, err := loadJavaScript(inputJavaScriptOrPath, test.insecureSkipVerify)
 			if test.errExpected != nil {
-				assertX509UnknownAuthority(t, err, test.errExpected)
+				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
 			} else {
 				require.NoError(t, err)
 				assert.Equal(t, test.jsExpected, js)
@@ -1817,7 +1817,7 @@ func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 			}
 			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil, nil, false)
 			if test.errExpected != nil {
-				assertX509UnknownAuthority(t, err, test.errExpected)
+				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
 			} else {
 				require.NoError(t, err)
 				assert.Equal(t, test.jsSyncFnExpected, *dbConfig.Sync)
@@ -1911,7 +1911,7 @@ func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
 			}
 			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil, nil, false)
 			if test.errExpected != nil {
-				assertX509UnknownAuthority(t, err, test.errExpected)
+				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
 			} else {
 				require.NoError(t, err)
 				assert.Equal(t, test.jsImportFilterExpected, *dbConfig.ImportFilter)
@@ -2017,7 +2017,7 @@ func TestSetupDbConfigWithConflictResolutionFunction(t *testing.T) {
 			}
 			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil, nil, false)
 			if test.errExpected != nil {
-				assertX509UnknownAuthority(t, err, test.errExpected)
+				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
 			} else {
 				require.NoError(t, err)
 				require.NotNil(t, dbConfig.Replications["replication1"])
@@ -2126,7 +2126,7 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 			sc := &ServerContext{}
 			err := sc.initEventHandlers(ctx, &dbConfig)
 			if test.errExpected != nil {
-				assertX509UnknownAuthority(t, err, test.errExpected)
+				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
 			} else {
 				require.NoError(t, err)
 			}
@@ -2609,7 +2609,9 @@ func TestCollectionsValidation(t *testing.T) {
 	}
 }
 
-func assertX509UnknownAuthority(t testing.TB, actual, expected error) {
+// This function allows for error checking on both x509.UnknownAuthorityError non-x509.UnknownAuthorityError types as we switch on the expected error type
+// We get OS specific errors on x509.UnknownAuthorityError so we switch the expected error string if on darwin OS
+func requireErrorWithX509UnknownAuthority(t testing.TB, actual, expected error) {
 	expectedErrorString := expected.Error()
 	switch errorType := expected.(type) {
 	case x509.UnknownAuthorityError:
