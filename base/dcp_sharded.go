@@ -29,7 +29,7 @@ import (
 const CBGTIndexTypeSyncGatewayImport = "syncGateway-import-"
 const DefaultImportPartitions = 16
 
-// firstVersionToSupportCollections represents the earliest Sync Gateway release that supports collections (codename "Elixir").
+// firstVersionToSupportCollections represents the earliest Sync Gateway release that supports collections.
 var firstVersionToSupportCollections = &ComparableVersion{
 	epoch: 0,
 	major: 3,
