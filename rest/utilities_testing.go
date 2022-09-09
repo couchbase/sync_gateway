@@ -43,16 +43,17 @@ import (
 
 // RestTesterConfig represents configuration for sync gateway
 type RestTesterConfig struct {
-	guestEnabled                    bool                    // If this is true, Admin Party is in full effect
-	SyncFn                          string                  // put the sync() function source in here (optional)
-	DatabaseConfig                  *DatabaseConfig         // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
-	InitSyncSeq                     uint64                  // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
-	EnableNoConflictsMode           bool                    // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
-	EnableUserQueries               bool                    // Enable the feature-flag for user N1QL/etc queries
-	TestBucket                      *base.TestBucket        // If set, use this bucket instead of requesting a new one.
-	leakyBucketConfig               *base.LeakyBucketConfig // Set to create and use a leaky bucket on the RT and DB. A test bucket cannot be passed in if using this option.
-	adminInterface                  string                  // adminInterface overrides the default admin interface.
-	sgReplicateEnabled              bool                    // sgReplicateManager disabled by default for RestTester
+	guestEnabled                    bool                        // If this is true, Admin Party is in full effect
+	SyncFn                          string                      // put the sync() function source in here (optional)
+	DatabaseConfig                  *DatabaseConfig             // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
+	MutateStartupConfig             func(config *StartupConfig) // Function to mutate the startup configuration before the server context gets created. This overrides options the RT sets.
+	InitSyncSeq                     uint64                      // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
+	EnableNoConflictsMode           bool                        // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
+	EnableUserQueries               bool                        // Enable the feature-flag for user N1QL/etc queries
+	TestBucket                      *base.TestBucket            // If set, use this bucket instead of requesting a new one.
+	leakyBucketConfig               *base.LeakyBucketConfig     // Set to create and use a leaky bucket on the RT and DB. A test bucket cannot be passed in if using this option.
+	adminInterface                  string                      // adminInterface overrides the default admin interface.
+	sgReplicateEnabled              bool                        // sgReplicateManager disabled by default for RestTester
 	hideProductInfo                 bool
 	adminInterfaceAuthentication    bool
 	metricsInterfaceAuthentication  bool
@@ -61,7 +62,7 @@ type RestTesterConfig struct {
 	persistentConfig                bool
 	groupID                         *string
 	createScopesAndCollections      bool // If true, will automatically create any defined scopes and collections on startup.
-	serverless                      bool // Runs SG in serverless mode. Should be used in conjunction with persistent config
+	serverless                      bool // Runs SG in serverless mode. Must be used in conjunction with persistent config
 }
 
 // RestTester provides a fake server for testing endpoints
@@ -162,6 +163,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
 	sc.Unsupported.Serverless.Enabled = &rt.serverless
 	if rt.serverless {
+		if !rt.persistentConfig {
+			rt.tb.Fatalf("Persistent config must be used when running in serverless mode")
+		}
 		sc.BucketCredentials = map[string]*base.CredentialsConfig{
 			testBucket.GetName(): {
 				Username: base.TestClusterUsername(),
@@ -175,6 +179,10 @@ func (rt *RestTester) Bucket() base.Bucket {
 	}
 
 	sc.Unsupported.UserQueries = base.BoolPtr(rt.EnableUserQueries)
+
+	if rt.MutateStartupConfig != nil {
+		rt.MutateStartupConfig(&sc)
+	}
 
 	// Allow EE-only config even in CE for testing using group IDs.
 	if err := sc.validate(true); err != nil {
