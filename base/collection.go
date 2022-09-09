@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -1069,21 +1068,7 @@ func (c *Collection) GetCollectionID() (uint32, error) {
 	return collectionID, nil
 }
 
-type CollectionManifest struct {
-	Name string `json:"name"`
-	UID  string `json:"uid"`
-}
-
-type ScopeManifest struct {
-	Name        string               `json:"name"`
-	UID         string               `json:"uid"`
-	Collections []CollectionManifest `json:"collections"`
-}
-
-type CollectionsManifest struct {
-	UID    string          `json:"uid"`
-	Scopes []ScopeManifest `json:"scopes"`
-}
+type CollectionsManifest gocbcore.Manifest
 
 func (c CollectionsManifest) GetIDForCollection(scopeName, collectionName string) (uint32, bool) {
 	for _, scope := range c.Scopes {
@@ -1092,12 +1077,7 @@ func (c CollectionsManifest) GetIDForCollection(scopeName, collectionName string
 		}
 		for _, coll := range scope.Collections {
 			if coll.Name == collectionName {
-				cid, err := strconv.ParseUint(coll.UID, 16, 32)
-				if err != nil {
-					WarnfCtx(context.TODO(), "Unexpected error parsing collection ID %q: %v", coll.UID, err)
-					return 0, false
-				}
-				return uint32(cid), true
+				return coll.UID, true
 			}
 		}
 	}
@@ -1105,12 +1085,16 @@ func (c CollectionsManifest) GetIDForCollection(scopeName, collectionName string
 }
 
 func (c *Collection) GetCollectionManifest() (CollectionsManifest, error) {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
 	agent, err := c.Collection.Bucket().Internal().IORouter()
 	if err != nil {
 		return CollectionsManifest{}, fmt.Errorf("failed to get gocbcore agent: %w", err)
 	}
 	result := make(chan any) // either a CollectionsManifest or error
-	_, err = agent.GetCollectionManifest(gocbcore.GetCollectionManifestOptions{}, func(res *gocbcore.GetCollectionManifestResult, err error) {
+	_, err = agent.GetCollectionManifest(gocbcore.GetCollectionManifestOptions{
+		Deadline: c.getBucketOpDeadline(),
+	}, func(res *gocbcore.GetCollectionManifestResult, err error) {
 		defer close(result)
 		if err != nil {
 			result <- err
