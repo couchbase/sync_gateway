@@ -179,6 +179,10 @@ func graphQLResolverName(typeName string, fieldName string) string {
 func (config *GraphQLConfig) compileFieldResolver(typeName string, fieldName string, fnConfig UserFunctionConfig) (graphql.FieldResolveFn, error) {
 	name := graphQLResolverName(typeName, fieldName)
 	isMutation := typeName == "Mutation"
+	if isMutation && fnConfig.Type == "query" {
+		return nil, fmt.Errorf("GraphQL mutations must be implemented in JavaScript")
+	}
+
 	userFn, err := compileUserFunction(name, "GraphQL resolver", &fnConfig)
 	if err != nil {
 		return nil, err
@@ -186,34 +190,17 @@ func (config *GraphQLConfig) compileFieldResolver(typeName string, fieldName str
 	userFn.checkArgs = false
 	userFn.allowByDefault = true
 
-	if fnConfig.Type == "javascript" {
-		// JavaScript resolver:
-		return func(params graphql.ResolveParams) (interface{}, error) {
-			db := params.Context.Value(dbKey).(*Database)
-			if isMutation && !params.Context.Value(mutAllowedKey).(bool) {
-				return nil, base.HTTPErrorf(http.StatusForbidden, "a read-only request is not allowed to call a GraphQL mutation")
-			}
-			invocation, err := userFn.Invoke(db, params.Args, isMutation)
-			if err != nil {
-				return nil, err
-			}
-			return invocation.Resolve(params)
-		}, nil
-
-	} else {
-		// N1QL resolver:
-		if isMutation {
-			return nil, fmt.Errorf("GraphQL mutations must be implemented in JavaScript")
+	return func(params graphql.ResolveParams) (interface{}, error) {
+		db := params.Context.Value(dbKey).(*Database)
+		if isMutation && !params.Context.Value(mutAllowedKey).(bool) {
+			return nil, base.HTTPErrorf(http.StatusForbidden, "a read-only request is not allowed to call a GraphQL mutation")
 		}
-		return func(params graphql.ResolveParams) (interface{}, error) {
-			db := params.Context.Value(dbKey).(*Database)
-			invocation, err := userFn.Invoke(db, params.Args, false)
-			if err != nil {
-				return nil, err
-			}
-			return invocation.Run()
-		}, nil
-	}
+		invocation, err := userFn.Invoke(db, params.Args, isMutation)
+		if err != nil {
+			return nil, err
+		}
+		return invocation.Resolve(params)
+	}, nil
 }
 
 // Calls a UserFunctionInvocation as a GraphQL resolver, given the parameters passed by the go-graphql API.
@@ -244,14 +231,66 @@ func (fn *UserFunctionInvocation) Resolve(params graphql.ResolveParams) (interfa
 		"resultFields": resultFields,
 	}
 
-	return fn.compiled.WithTask(func(task sgbucket.JSServerTask) (interface{}, error) {
-		runner := task.(*userJSRunner)
-		return runner.CallWithDB(fn.db, fn.mutationAllowed,
-			newUserFunctionJSContext(fn.db),
-			params.Args,
-			params.Source,
-			info)
-	})
+	if fn.compiled != nil {
+		// JavaScript resolver:
+		return fn.compiled.WithTask(func(task sgbucket.JSServerTask) (interface{}, error) {
+			runner := task.(*userJSRunner)
+			return runner.CallWithDB(fn.db, fn.mutationAllowed,
+				newUserFunctionJSContext(fn.db),
+				params.Args,
+				params.Source,
+				info)
+		})
+
+	} else {
+		// N1QL resolver:
+		fn.args["parent"] = params.Source
+		fn.args["info"] = info
+		// Run the query:
+		result, err := fn.Run()
+		if err != nil {
+			return nil, err
+		}
+		if !isGraphQLListType(params.Info.ReturnType) {
+			// GraphQL result type is not a list (array), but N1QL always returns an array.
+			// So use the first row of the result as the value, if there is one.
+			if rows, ok := result.([]interface{}); ok {
+				if len(rows) > 0 {
+					result = rows[0]
+				} else {
+					return nil, nil
+				}
+			}
+			if isGraphQLScalarType(params.Info.ReturnType) {
+				// GraphQL result type is a scalar, but a N1QL row is always an object.
+				// Use the single field of the object, if any, as the result:
+				row := result.(map[string]interface{})
+				if len(row) != 1 {
+					return nil, base.HTTPErrorf(http.StatusInternalServerError, "resolver %q returns scalar type %s, but its N1QL query returns %d columns, not 1", fn.name, params.Info.ReturnType, len(row))
+				}
+				for _, value := range row {
+					result = value
+				}
+			}
+		}
+		return result, nil
+	}
+}
+
+func isGraphQLListType(typ graphql.Output) bool {
+	if nonnull, ok := typ.(*graphql.NonNull); ok {
+		typ = nonnull.OfType
+	}
+	_, isList := typ.(*graphql.List)
+	return isList
+}
+
+func isGraphQLScalarType(typ graphql.Output) bool {
+	if nonnull, ok := typ.(*graphql.NonNull); ok {
+		typ = nonnull.OfType
+	}
+	_, isScalar := typ.(*graphql.Scalar)
+	return isScalar
 }
 
 //////// TYPE-NAME RESOLVER:

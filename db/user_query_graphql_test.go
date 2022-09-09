@@ -128,7 +128,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 
 // JS function helpers:
 var kTestGraphQLUserFunctionsConfig = UserFunctionConfigMap{
-	"all": &UserFunctionConfig{
+	"all": {
 		Type: "javascript",
 		Code: `function(context, args) {
 						return [
@@ -137,7 +137,7 @@ var kTestGraphQLUserFunctionsConfig = UserFunctionConfigMap{
 						{id: "m", "title": "Mangoes"} ];}`,
 		Allow: &UserQueryAllow{Channels: []string{"*"}},
 	},
-	"getTask": &UserFunctionConfig{
+	"getTask": {
 		Type: "javascript",
 		Code: `function(context, args, parent, info) {
 						var all = context.user.function("all");
@@ -272,24 +272,27 @@ var kTestGraphQLConfigWithN1QL = GraphQLConfig{
 	Schema: &kTestGraphQLSchema,
 	Resolvers: map[string]GraphQLResolverConfig{
 		"Query": {
-			"task": UserFunctionConfig{
+			"square": {
 				Type: "javascript",
-				Code: `function(context, args, parent, info) {
-							var task = context.user.defaultCollection.get(args.id);
-							if (task) task.id = args.id;
-							return task; }`,
+				Code: `function(context,args) {return args.n * args.n;}`,
 			},
-			"tasks": UserFunctionConfig{
+			"task": {
+				// This tests the ability of the resolver to return the 1st result row when the
+				// GraphQL return type is not a List.
+				Type: "query",
+				Code: `SELECT db.*, meta().id as id FROM $_keyspace AS db WHERE meta().id = $id AND type = "task"`,
+			},
+			"tasks": {
 				Type: "query",
 				Code: `SELECT db.*, meta().id as id FROM $_keyspace AS db WHERE type = "task" ORDER BY title`,
 			},
-			"toDo": UserFunctionConfig{
+			"toDo": {
 				Type: "query",
 				Code: `SELECT db.*, meta().id as id FROM $_keyspace AS db WHERE type = "task" AND NOT done ORDER BY title`,
 			},
 		},
 		"Mutation": {
-			"complete": UserFunctionConfig{
+			"complete": {
 				Type: "javascript",
 				Code: `function(context, args, parent, info) {
 					var task = context.user.defaultCollection.get(args.id);
@@ -301,7 +304,7 @@ var kTestGraphQLConfigWithN1QL = GraphQLConfig{
 					}
 					return task;}`,
 			},
-			"addTag": UserFunctionConfig{
+			"addTag": {
 				Type: "javascript",
 				Code: `function(context, args, parent, info) {
 							var task = context.user.defaultCollection.get(args.id);
@@ -314,7 +317,7 @@ var kTestGraphQLConfigWithN1QL = GraphQLConfig{
 			},
 		},
 		"Task": {
-			"secretNotes": UserFunctionConfig{
+			"secretNotes": {
 				Type: "javascript",
 				Code: `function(context, args, parent, info) {
 								if (!parent.id) throw "Invalid parent";
@@ -323,7 +326,13 @@ var kTestGraphQLConfigWithN1QL = GraphQLConfig{
 								if (!context.user) throw "Missing context.user";
 								if (!context.admin) throw "Missing context.admin";
 								return "TOP SECRET!";}`,
-				// No Allow, so only admins may call
+				Allow: &UserQueryAllow{Users: base.Set{}}, // only admins
+			},
+			"description": {
+				// This tests the magic $parent parameter,
+				// and returning the single column of the single row when the result is a scalar.
+				Type: "query",
+				Code: `SELECT $parent.description`,
 			},
 		},
 	},
@@ -361,4 +370,8 @@ func TestUserGraphQLWithN1QL(t *testing.T) {
 
 	// Repeat the tests as user "alice":
 	t.Run("AsUser", func(t *testing.T) { testUserGraphQLAsUser(t, db) })
+
+	// Test the N1QL resolver that uses $parent:
+	result, err := db.UserGraphQLQuery(`query{ task(id:"b") {description,title} }`, "", nil, false)
+	assertGraphQLResult(t, `{"task":{"description":"Bass ale please","title":"Beer"}}`, result, err)
 }
