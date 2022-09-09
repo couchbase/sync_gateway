@@ -2113,13 +2113,6 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 					RemoteConfigTlsSkipVerify: true,
 				}
 			}
-			if test.errExpected != nil {
-				test.errExpected = &JavaScriptLoadError{
-					JSLoadType: WebhookFilter,
-					Path:       webhookFilter,
-					Err:        test.errExpected,
-				}
-			}
 			terminator := make(chan bool)
 			defer close(terminator)
 			ctx := &db.DatabaseContext{EventMgr: db.NewEventManager(terminator)}
