@@ -22,14 +22,15 @@ import (
 // ImportListener manages the import DCP feed.  ProcessFeedEvent is triggered for each feed events,
 // and invokes ImportFeedEvent for any event that's eligible for import handling.
 type importListener struct {
-	bucketName       string    // Used for logging
-	terminator       chan bool // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
-	dbCtx            *DatabaseContext
-	metaStore        base.Bucket         // collection to store DCP metadata
-	collections      map[uint32]Database // Admin databases used for import, keyed by collection ID (CB-server-side)
-	stats            *base.DatabaseStats // Database stats group
-	cbgtContext      *base.CbgtContext   // Handle to cbgt manager,cfg
-	checkpointPrefix string              // DCP checkpoint key prefix
+	bucketName       string                        // Used for logging
+	terminator       chan bool                     // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
+	dbName           string                        // used for naming the DCP feed
+	metaStore        base.Bucket                   // collection to store DCP metadata
+	collections      map[uint32]Database           // Admin databases used for import, keyed by collection ID (CB-server-side)
+	dbStats          *base.DatabaseStats           // Database stats group
+	importStats      *base.SharedBucketImportStats // import stats group
+	cbgtContext      *base.CbgtContext             // Handle to cbgt manager,cfg
+	checkpointPrefix string                        // DCP checkpoint key prefix
 }
 
 func NewImportListener(groupID string) *importListener {
@@ -44,10 +45,11 @@ func NewImportListener(groupID string) *importListener {
 // Writes DCP stats into the StatKeyImportDcpStats map
 func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbStats, dbContext *DatabaseContext) (err error) {
 	il.bucketName = bucket.GetName()
-	il.dbCtx = dbContext
+	il.dbName = dbContext.Name
 	il.metaStore = dbContext.Bucket // FIXME(CBG-2266): use proper metadata collection
 	il.collections = make(map[uint32]Database)
-	il.stats = dbStats.Database()
+	il.dbStats = dbStats.Database()
+	il.importStats = dbStats.SharedBucketImport()
 
 	collectionNamesByScope := make(map[string][]string)
 	var scopeName string
@@ -92,12 +94,12 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 		Scopes:           collectionNamesByScope,
 	}
 
-	base.InfofCtx(context.TODO(), base.KeyDCP, "Attempting to start import DCP feed %v...", base.MD(base.ImportDestKey(il.dbCtx.Name)))
+	base.InfofCtx(context.TODO(), base.KeyDCP, "Attempting to start import DCP feed %v...", base.MD(base.ImportDestKey(il.dbName)))
 
 	importFeedStatsMap := dbContext.DbStats.Database().ImportFeedMapStats
 
 	// Store the listener in global map for dbname-based retrieval by cbgt prior to index registration
-	base.StoreDestFactory(base.ImportDestKey(il.dbCtx.Name), il.NewImportDest)
+	base.StoreDestFactory(base.ImportDestKey(il.dbName), il.NewImportDest)
 
 	// Start DCP mutation feed
 	base.InfofCtx(context.TODO(), base.KeyDCP, "Starting DCP import feed for bucket: %q ", base.UD(bucket.GetName()))
@@ -180,7 +182,7 @@ func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 	if syncData != nil {
 		isSGWrite, crc32Match, _ = syncData.IsSGWrite(event.Cas, rawBody, rawUserXattr)
 		if crc32Match {
-			il.stats.Crc32MatchCount.Add(1)
+			il.dbStats.Crc32MatchCount.Add(1)
 		}
 	}
 
@@ -228,10 +230,10 @@ func (il *importListener) Stop() {
 			}
 			// ClosePIndex calls are synchronous, so can stop manager once they've completed
 			il.cbgtContext.Manager.Stop()
-			il.cbgtContext.RemoveFeedCredentials(il.dbCtx.Name)
+			il.cbgtContext.RemoveFeedCredentials(il.dbName)
 
 			// Remove entry from global listener directory
-			base.RemoveDestFactory(base.ImportDestKey(il.dbCtx.Name))
+			base.RemoveDestFactory(base.ImportDestKey(il.dbName))
 
 			// TODO: Shut down the cfg (when cfg supports)
 		}
