@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -35,8 +36,8 @@ type UserQueryConfig struct {
 //////// RUNNING A QUERY:
 
 // Runs a named N1QL query on behalf of a user, presumably invoked via a REST or BLIP API.
-func (db *Database) UserN1QLQuery(name string, args map[string]interface{}) (sgbucket.QueryResultIterator, error) {
-	if err := db.CheckTimeout(); err != nil {
+func (db *Database) UserN1QLQuery(ctx context.Context, name string, args map[string]interface{}) (sgbucket.QueryResultIterator, error) {
+	if err := db.CheckTimeout(ctx); err != nil {
 		return nil, err
 	}
 	// Look up the query name in the server config:
@@ -64,19 +65,19 @@ func (db *Database) UserN1QLQuery(name string, args map[string]interface{}) (sgb
 	}
 
 	// Run the query:
-	iter, err := db.N1QLQueryWithStats(db.Ctx, QueryTypeUserPrefix+name, query.Statement, args,
+	iter, err := db.N1QLQueryWithStats(ctx, QueryTypeUserPrefix+name, query.Statement, args,
 		base.RequestPlus, false)
 	if err != nil {
 		// Return a friendlier error:
 		var qe *gocb.QueryError
 		if errors.As(err, &qe) {
-			base.WarnfCtx(db.Ctx, "Error running query %q: %v", name, err)
+			base.WarnfCtx(ctx, "Error running query %q: %v", name, err)
 			return nil, base.HTTPErrorf(http.StatusInternalServerError, "Query %q: %s", name, qe.Errors[0].Message)
 		} else {
-			base.WarnfCtx(db.Ctx, "Unknown error running query %q: %T %#v", name, err, err)
+			base.WarnfCtx(ctx, "Unknown error running query %q: %T %#v", name, err, err)
 			return nil, base.HTTPErrorf(http.StatusInternalServerError, "Unknown error running query %q (see logs)", name)
 		}
 	}
 	// Do a final timeout check, so the caller will know not to do any more work if time's up:
-	return iter, db.CheckTimeout()
+	return iter, db.CheckTimeout(ctx)
 }

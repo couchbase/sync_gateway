@@ -26,7 +26,7 @@ func (h *handler) getDBConfig() (config *DbConfig, etagVersion string, err error
 			return &dbConfig.DbConfig, etagVersion, nil
 		}
 		return nil, "", nil
-	} else if found, databaseConfig, err := h.server.fetchDatabase(h.db.Name); err != nil {
+	} else if found, databaseConfig, err := h.server.fetchDatabase(h.ctx(), h.db.Name); err != nil {
 		return nil, "", err
 	} else if !found {
 		return nil, "", base.HTTPErrorf(http.StatusNotFound, "database config not found")
@@ -91,7 +91,7 @@ func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 		defer h.server.lock.Unlock()
 
 		// TODO: Dynamic update instead of reload
-		if err := h.server._reloadDatabaseWithConfig(*updatedDbConfig, false); err != nil {
+		if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false); err != nil {
 			return err
 		}
 		h.setEtag(updatedDbConfig.Version)

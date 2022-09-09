@@ -120,11 +120,12 @@ func addUserAlice(t *testing.T, db *Database) auth.User {
 func TestUserFunctions(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	cacheOptions := DefaultCacheOptions()
+	ctx := base.TestCtx(t)
 	db := setupTestDBWithOptions(t, DatabaseContextOptions{
 		CacheOptions:  &cacheOptions,
 		UserFunctions: kUserFunctionConfig,
 	})
-	defer db.Close()
+	defer db.Close(ctx)
 
 	// First run the tests as an admin:
 	t.Run("AsAdmin", func(t *testing.T) { testUserFunctionsAsAdmin(t, db) })
@@ -139,47 +140,49 @@ func TestUserFunctions(t *testing.T) {
 
 // User function tests that work the same for admin and non-admin user:
 func testUserFunctionsCommon(t *testing.T, db *Database) {
+	ctx := base.TestCtx(t)
+
 	// Basic call passing a parameter:
-	result, err := db.CallUserFunction("square", map[string]interface{}{"numero": 42}, true)
+	result, err := db.CallUserFunction(ctx, "square", map[string]interface{}{"numero": 42}, true)
 	assert.NoError(t, err)
 	assert.EqualValues(t, 42*42, result)
 
 	// Function that calls a function:
-	result, err = db.CallUserFunction("call_fn", nil, true)
+	result, err = db.CallUserFunction(ctx, "call_fn", nil, true)
 	assert.NoError(t, err)
 	assert.EqualValues(t, 7*7, result)
 
 	// `requireName` test that passes:
-	result, err = db.CallUserFunction("alice_only", nil, true)
+	result, err = db.CallUserFunction(ctx, "alice_only", nil, true)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "OK", result)
 
 	// `requireChannel` test that passes:
-	result, err = db.CallUserFunction("wonderland_only", nil, true)
+	result, err = db.CallUserFunction(ctx, "wonderland_only", nil, true)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "OK", result)
 
 	// `requireRole` test that passes:
-	result, err = db.CallUserFunction("hero_only", nil, true)
+	result, err = db.CallUserFunction(ctx, "hero_only", nil, true)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "OK", result)
 
 	// ERRORS:
 
 	// Missing a parameter:
-	_, err = db.CallUserFunction("square", nil, true)
+	_, err = db.CallUserFunction(ctx, "square", nil, true)
 	assertHTTPError(t, err, 400)
 	assert.ErrorContains(t, err, "numero")
 	assert.ErrorContains(t, err, "square")
 
 	// Extra parameter:
-	_, err = db.CallUserFunction("square", map[string]interface{}{"numero": 42, "number": 0}, true)
+	_, err = db.CallUserFunction(ctx, "square", map[string]interface{}{"numero": 42, "number": 0}, true)
 	assertHTTPError(t, err, 400)
 	assert.ErrorContains(t, err, "number")
 	assert.ErrorContains(t, err, "square")
 
 	// Function throws an exception:
-	_, err = db.CallUserFunction("exceptional", nil, true)
+	_, err = db.CallUserFunction(ctx, "exceptional", nil, true)
 	assert.ErrorContains(t, err, "oops")
 	assert.ErrorContains(t, err, "exceptional")
 	jserr := err.(*jsError)
@@ -189,91 +192,94 @@ func testUserFunctionsCommon(t *testing.T, db *Database) {
 // User-function tests, run as admin:
 func testUserFunctionsAsAdmin(t *testing.T, db *Database) {
 	testUserFunctionsCommon(t, db)
+	ctx := base.TestCtx(t)
 
 	// Admin-only (success):
-	result, err := db.CallUserFunction("admin_only", nil, true)
+	result, err := db.CallUserFunction(ctx, "admin_only", nil, true)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "OK", result)
 
-	result, err = db.CallUserFunction("require_admin", nil, true)
+	result, err = db.CallUserFunction(ctx, "require_admin", nil, true)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "OK", result)
 
-	result, err = db.CallUserFunction("pevensies_only", nil, true)
+	result, err = db.CallUserFunction(ctx, "pevensies_only", nil, true)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "OK", result)
 
-	result, err = db.CallUserFunction("narnia_only", nil, true)
+	result, err = db.CallUserFunction(ctx, "narnia_only", nil, true)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "OK", result)
 
-	result, err = db.CallUserFunction("villain_only", nil, true)
+	result, err = db.CallUserFunction(ctx, "villain_only", nil, true)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "OK", result)
 
 	// ERRORS:
 
 	// Checking `context.user.name`:
-	_, err = db.CallUserFunction("user_only", nil, true)
+	_, err = db.CallUserFunction(ctx, "user_only", nil, true)
 	assert.ErrorContains(t, err, "No user")
 	jserr := err.(*jsError)
 	assert.NotNil(t, jserr)
 
 	// No such function:
-	_, err = db.CallUserFunction("xxxx", nil, true)
+	_, err = db.CallUserFunction(ctx, "xxxx", nil, true)
 	assertHTTPError(t, err, 404)
 }
 
 // User-function tests, run as user "alice":
 func testUserFunctionsAsUser(t *testing.T, db *Database) {
 	testUserFunctionsCommon(t, db)
+	ctx := base.TestCtx(t)
 
 	// Checking `context.user.name`:
-	result, err := db.CallUserFunction("user_only", nil, true)
+	result, err := db.CallUserFunction(ctx, "user_only", nil, true)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "alice", result)
 
 	// No such function:
-	_, err = db.CallUserFunction("xxxx", nil, true)
+	_, err = db.CallUserFunction(ctx, "xxxx", nil, true)
 	assertHTTPError(t, err, 403) // not 404 as for an admin
 
-	_, err = db.CallUserFunction("great_and_terrible", nil, true)
+	_, err = db.CallUserFunction(ctx, "great_and_terrible", nil, true)
 	assertHTTPError(t, err, 403)
 
-	_, err = db.CallUserFunction("call_forbidden", nil, true)
+	_, err = db.CallUserFunction(ctx, "call_forbidden", nil, true)
 	assertHTTPError(t, err, 403)
 	assert.ErrorContains(t, err, "great_and_terrible") // failed fn name should appear in error
 
-	_, err = db.CallUserFunction("admin_only", nil, true)
+	_, err = db.CallUserFunction(ctx, "admin_only", nil, true)
 	assertHTTPError(t, err, 403)
 
-	_, err = db.CallUserFunction("require_admin", nil, true)
+	_, err = db.CallUserFunction(ctx, "require_admin", nil, true)
 	assertHTTPError(t, err, 403)
 
-	_, err = db.CallUserFunction("pevensies_only", nil, true)
+	_, err = db.CallUserFunction(ctx, "pevensies_only", nil, true)
 	assertHTTPError(t, err, 403)
 
-	_, err = db.CallUserFunction("narnia_only", nil, true)
+	_, err = db.CallUserFunction(ctx, "narnia_only", nil, true)
 	assertHTTPError(t, err, 403)
 
-	_, err = db.CallUserFunction("villain_only", nil, true)
+	_, err = db.CallUserFunction(ctx, "villain_only", nil, true)
 	assertHTTPError(t, err, 403)
 }
 
 // Test CRUD operations
 func TestUserFunctionsCRUD(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	ctx := base.TestCtx(t)
 	cacheOptions := DefaultCacheOptions()
 	db := setupTestDBWithOptions(t, DatabaseContextOptions{
 		CacheOptions:  &cacheOptions,
 		UserFunctions: kUserFunctionConfig,
 	})
-	defer db.Close()
+	defer db.Close(ctx)
 
 	docID := "foo"
 
 	// Missing document:
-	result, err := db.CallUserFunction("getDoc", map[string]interface{}{"docID": docID}, false)
+	result, err := db.CallUserFunction(ctx, "getDoc", map[string]interface{}{"docID": docID}, false)
 	assert.NoError(t, err)
 	assert.EqualValues(t, nil, result)
 
@@ -285,16 +291,16 @@ func TestUserFunctionsCRUD(t *testing.T) {
 	}
 
 	// Illegal mutation:
-	_, err = db.CallUserFunction("putDoc", docParams, false)
+	_, err = db.CallUserFunction(ctx, "putDoc", docParams, false)
 	assertHTTPError(t, err, 403)
 
 	// Successful save:
-	result, err = db.CallUserFunction("putDoc", docParams, true)
+	result, err = db.CallUserFunction(ctx, "putDoc", docParams, true)
 	assert.NoError(t, err)
 	assert.EqualValues(t, nil, result)
 
 	// Existing document:
-	result, err = db.CallUserFunction("getDoc", map[string]interface{}{"docID": docID}, false)
+	result, err = db.CallUserFunction(ctx, "getDoc", map[string]interface{}{"docID": docID}, false)
 	assert.NoError(t, err)
 	revID, ok := result.(map[string]interface{})["_rev"].(string)
 	assert.True(t, ok)
@@ -306,17 +312,17 @@ func TestUserFunctionsCRUD(t *testing.T) {
 
 	// Update document with revID:
 	doc["key2"] = 2
-	_, err = db.CallUserFunction("putDoc", docParams, true)
+	_, err = db.CallUserFunction(ctx, "putDoc", docParams, true)
 	assert.NoError(t, err)
 
 	// Update document without revID:
 	doc["key3"] = 3
 	delete(doc, "_revid")
-	result, err = db.CallUserFunction("putDoc", docParams, true)
+	result, err = db.CallUserFunction(ctx, "putDoc", docParams, true)
 	assert.NoError(t, err)
 
 	// Get doc again to verify revision:
-	result, err = db.CallUserFunction("getDoc", map[string]interface{}{"docID": docID}, false)
+	result, err = db.CallUserFunction(ctx, "getDoc", map[string]interface{}{"docID": docID}, false)
 	revID, ok = result.(map[string]interface{})["_rev"].(string)
 	assert.True(t, ok)
 	assert.NotEmpty(t, revID)
@@ -338,6 +344,7 @@ var kUserFunctionBadConfig = UserFunctionConfigMap{
 // Test that JS syntax errors are detected when the db opens.
 func TestUserFunctionSyntaxError(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	ctx := base.TestCtx(t)
 	cacheOptions := DefaultCacheOptions()
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions:  &cacheOptions,
@@ -346,19 +353,20 @@ func TestUserFunctionSyntaxError(t *testing.T) {
 	tBucket := base.GetTestBucket(t)
 	defer tBucket.Close()
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	_, err := NewDatabaseContext("db", tBucket, false, dbcOptions)
+	_, err := NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
 	assert.Error(t, err)
 }
 
 // Low-level test of channel-name parameter expansion for user query/function auth
 func TestUserFunctionAllow(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	ctx := base.TestCtx(t)
 	cacheOptions := DefaultCacheOptions()
 	db := setupTestDBWithOptions(t, DatabaseContextOptions{
 		CacheOptions:  &cacheOptions,
 		UserFunctions: kUserFunctionConfig,
 	})
-	defer db.Close()
+	defer db.Close(ctx)
 
 	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
 	user, err := authenticator.NewUser("maurice", "pass", base.SetOf("city-Paris"))

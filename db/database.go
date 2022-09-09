@@ -618,13 +618,13 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	dbContext.AttachmentCompactionManager = NewAttachmentCompactionManager(bucket)
 
 	if options.UserFunctions != nil {
-		dbContext.userFunctions, err = compileUserFunctions(options.UserFunctions)
+		dbContext.userFunctions, err = compileUserFunctions(ctx, options.UserFunctions)
 		if err != nil {
 			return nil, err
 		}
 	}
 	if options.GraphQL != nil {
-		dbContext.graphQL, err = NewGraphQL(dbContext)
+		dbContext.graphQL, err = NewGraphQL(ctx, dbContext)
 		if err != nil {
 			return nil, err
 		}
@@ -1850,24 +1850,21 @@ func (context *DatabaseContext) ForceAPIForbiddenErrors() bool {
 
 // Calls a function, synchronously, while imposing a timeout on the Database's Context. Any call to CheckTimeout while the function is running will return an error if the timeout has expired.
 // The function will *not* be aborted automatically! Its code must check for timeouts by calling CheckTimeout periodically, returning once that produces an error.
-func (db *Database) WithTimeout(timeout time.Duration, operation func() error) error {
-	oldCtx := db.Ctx
-	newCtx, cancel := context.WithTimeout(oldCtx, timeout)
-	db.Ctx = newCtx // Push a new Context with the timeout
+func (db *Database) WithTimeout(ctx context.Context, timeout time.Duration, operation func(tmCtx context.Context) error) error {
+	newCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer func() {
-		db.Ctx = oldCtx // On the way out, restore the previous Context
 		cancel()
 	}()
-	return operation()
+	return operation(newCtx)
 }
 
 // Returns an HTTP timeout (408) error if the Database's Context has an expired timeout or has been explicitly canceled. (See WithTimeout.)
-func (db *Database) CheckTimeout() error {
-	if db.Ctx == nil {
+func (db *Database) CheckTimeout(ctx context.Context) error {
+	if ctx == nil {
 		return nil
 	}
 	select {
-	case <-db.Ctx.Done():
+	case <-ctx.Done():
 		return base.HTTPErrorf(http.StatusRequestTimeout, "Request timed out")
 	default:
 		return nil

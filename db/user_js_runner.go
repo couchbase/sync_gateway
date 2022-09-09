@@ -30,11 +30,11 @@ import (
 const kUserFunctionCacheSize = 2
 
 // Creates a JSServer instance wrapping a userJSRunner, for user JS functions and GraphQL resolvers.
-func newUserFunctionJSServer(name string, what string, argList string, sourceCode string) (*sgbucket.JSServer, error) {
+func newUserFunctionJSServer(ctx context.Context, name string, what string, argList string, sourceCode string) (*sgbucket.JSServer, error) {
 	js := fmt.Sprintf(kJavaScriptWrapper, argList, sourceCode)
 	jsServer := sgbucket.NewJSServer(js, 0, kUserFunctionCacheSize,
 		func(fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
-			return newUserJavaScriptRunner(name, what, fnSource)
+			return newUserJavaScriptRunner(ctx, name, what, fnSource)
 		})
 	// Call WithTask to force a task to be instantiated, which will detect syntax errors in the script. Otherwise the error only gets detected the first time a client calls the function.
 	var err error
@@ -59,8 +59,7 @@ type userJSRunner struct {
 }
 
 // Creates a userJSRunner given its name and JavaScript source code.
-func newUserJavaScriptRunner(name string, kind string, funcSource string) (*userJSRunner, error) {
-	ctx := context.Background()
+func newUserJavaScriptRunner(ctx context.Context, name string, kind string, funcSource string) (*userJSRunner, error) {
 	runner := &userJSRunner{
 		name: name,
 		kind: kind,
@@ -80,14 +79,14 @@ func newUserJavaScriptRunner(name string, kind string, funcSource string) (*user
 	runner.DefineNativeFunction("_func", func(call otto.FunctionCall) otto.Value {
 		funcName := ottoStringParam(call, 0, "app.func")
 		params := ottoObjectParam(call, 1, true, "app.func")
-		result, err := runner.do_func(funcName, params)
+		result, err := runner.do_func(ctx, funcName, params)
 		return ottoJSONResult(call, result, err)
 	})
 
 	// Implementation of the 'get(docID)' callback:
 	runner.DefineNativeFunction("_get", func(call otto.FunctionCall) otto.Value {
 		docID := ottoStringParam(call, 0, "app.get")
-		doc, err := runner.do_get(docID, nil)
+		doc, err := runner.do_get(ctx, docID, nil)
 		return ottoJSONResult(call, doc, err)
 	})
 
@@ -95,7 +94,7 @@ func newUserJavaScriptRunner(name string, kind string, funcSource string) (*user
 	runner.DefineNativeFunction("_graphql", func(call otto.FunctionCall) otto.Value {
 		query := ottoStringParam(call, 0, "app.graphql")
 		params := ottoObjectParam(call, 1, true, "app.graphql")
-		result, err := runner.do_graphql(query, params)
+		result, err := runner.do_graphql(ctx, query, params)
 		return ottoJSONResult(call, result, err)
 	})
 
@@ -103,7 +102,7 @@ func newUserJavaScriptRunner(name string, kind string, funcSource string) (*user
 	runner.DefineNativeFunction("_query", func(call otto.FunctionCall) otto.Value {
 		queryName := ottoStringParam(call, 0, "app.query")
 		params := ottoObjectParam(call, 1, true, "app.query")
-		result, err := runner.do_query(queryName, params)
+		result, err := runner.do_query(ctx, queryName, params)
 		return ottoJSONResult(call, result, err)
 	})
 
@@ -111,7 +110,7 @@ func newUserJavaScriptRunner(name string, kind string, funcSource string) (*user
 	runner.DefineNativeFunction("_save", func(call otto.FunctionCall) otto.Value {
 		docID := ottoStringParam(call, 0, "app.save")
 		doc := ottoObjectParam(call, 1, false, "app.save")
-		err := runner.do_save(docID, doc)
+		err := runner.do_save(ctx, docID, doc)
 		return ottoResult(call, nil, err)
 	})
 
@@ -142,10 +141,9 @@ func newUserJavaScriptRunner(name string, kind string, funcSource string) (*user
 }
 
 // Calls a javaScriptRunner's JavaScript function.
-func (runner *userJSRunner) CallWithDB(db *Database, mutationAllowed bool, args ...interface{}) (result interface{}, err error) {
+func (runner *userJSRunner) CallWithDB(ctx context.Context, db *Database, mutationAllowed bool, args ...interface{}) (result interface{}, err error) {
 	runner.currentDB = db
 	runner.mutationAllowed = mutationAllowed
-	ctx := db.Ctx
 	var timeout time.Duration
 	if ctx != nil {
 		if deadline, exists := ctx.Deadline(); exists {
@@ -198,16 +196,16 @@ func (runner *userJSRunner) convertError(err error) error {
 //////// DATABASE CALLBACK FUNCTION IMPLEMENTATIONS:
 
 // Implementation of JS `app.func(name, params)` function
-func (runner *userJSRunner) do_func(funcName string, params map[string]interface{}) (interface{}, error) {
-	return runner.currentDB.CallUserFunction(funcName, params, runner.mutationAllowed)
+func (runner *userJSRunner) do_func(ctx context.Context, funcName string, params map[string]interface{}) (interface{}, error) {
+	return runner.currentDB.CallUserFunction(ctx, funcName, params, runner.mutationAllowed)
 }
 
 // Implementation of JS `app.get(docID, docType)` function
-func (runner *userJSRunner) do_get(docID string, docType *string) (interface{}, error) {
-	if err := runner.currentDB.CheckTimeout(); err != nil {
+func (runner *userJSRunner) do_get(ctx context.Context, docID string, docType *string) (interface{}, error) {
+	if err := runner.currentDB.CheckTimeout(ctx); err != nil {
 		return nil, err
 	}
-	rev, err := runner.currentDB.GetRev(docID, "", false, nil)
+	rev, err := runner.currentDB.GetRev(ctx, docID, "", false, nil)
 	if err != nil {
 		status, _ := base.ErrorAsHTTPStatus(err)
 		if status == http.StatusNotFound {
@@ -229,14 +227,14 @@ func (runner *userJSRunner) do_get(docID string, docType *string) (interface{}, 
 }
 
 // Implementation of JS `app.graphql(query, params)` function
-func (runner *userJSRunner) do_graphql(query string, params map[string]interface{}) (interface{}, error) {
-	return runner.currentDB.UserGraphQLQuery(query, "", params, runner.mutationAllowed)
+func (runner *userJSRunner) do_graphql(ctx context.Context, query string, params map[string]interface{}) (interface{}, error) {
+	return runner.currentDB.UserGraphQLQuery(ctx, query, "", params, runner.mutationAllowed)
 }
 
 // Implementation of JS `app.query(name, params)` function
-func (runner *userJSRunner) do_query(queryName string, params map[string]interface{}) ([]interface{}, error) {
+func (runner *userJSRunner) do_query(ctx context.Context, queryName string, params map[string]interface{}) ([]interface{}, error) {
 
-	rows, err := runner.currentDB.UserN1QLQuery(queryName, params)
+	rows, err := runner.currentDB.UserN1QLQuery(ctx, queryName, params)
 	if err != nil {
 		return nil, err
 	}
@@ -256,8 +254,8 @@ func (runner *userJSRunner) do_query(queryName string, params map[string]interfa
 }
 
 // Implementation of JS `app.save(docID, body)` function
-func (runner *userJSRunner) do_save(docID string, body map[string]interface{}) error {
-	if err := runner.currentDB.CheckTimeout(); err != nil {
+func (runner *userJSRunner) do_save(ctx context.Context, docID string, body map[string]interface{}) error {
+	if err := runner.currentDB.CheckTimeout(ctx); err != nil {
 		return err
 	}
 	if !runner.mutationAllowed {
@@ -267,13 +265,13 @@ func (runner *userJSRunner) do_save(docID string, body map[string]interface{}) e
 	delete(body, "_id")
 	if _, found := body["_rev"]; found {
 		// If caller provided `_rev` property, use MVCC as normal:
-		_, _, err := runner.currentDB.Put(docID, body)
+		_, _, err := runner.currentDB.Put(ctx, docID, body)
 		return err
 	} else {
 		// If caller didn't provide a `_rev` property, fall back to "last writer wins":
 		// get the current revision if any, and pass it to Put so that the save always succeeds.
 		for {
-			rev, err := runner.currentDB.GetRev(docID, "", false, []string{})
+			rev, err := runner.currentDB.GetRev(ctx, docID, "", false, []string{})
 			if err != nil {
 				if status, _ := base.ErrorAsHTTPStatus(err); status != http.StatusNotFound {
 					return err
@@ -285,7 +283,7 @@ func (runner *userJSRunner) do_save(docID string, body map[string]interface{}) e
 				body["_rev"] = rev.RevID
 			}
 
-			_, _, err = runner.currentDB.Put(docID, body)
+			_, _, err = runner.currentDB.Put(ctx, docID, body)
 			if err == nil {
 				return nil
 			} else if status, _ := base.ErrorAsHTTPStatus(err); status != http.StatusConflict {

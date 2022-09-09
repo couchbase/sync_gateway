@@ -886,12 +886,12 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 	}
 
 	if dbConfig.UserFunctions != nil {
-		if err := db.ValidateUserFunctions(dbConfig.UserFunctions); err != nil {
+		if err := db.ValidateUserFunctions(ctx, dbConfig.UserFunctions); err != nil {
 			multiError = multiError.Append(err)
 		}
 	}
 	if dbConfig.GraphQL != nil {
-		if err := dbConfig.GraphQL.Validate(); err != nil {
+		if err := dbConfig.GraphQL.Validate(ctx); err != nil {
 			multiError = multiError.Append(err)
 		}
 	}
