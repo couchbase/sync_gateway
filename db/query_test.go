@@ -30,8 +30,7 @@ func TestQueryChannelsStatsView(t *testing.T) {
 		t.Skip("This test is view only, but GSI is enabled")
 	}
 
-	db := setupTestDB(t)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
 	// docID -> Sequence
@@ -85,8 +84,7 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 		t.Skip("This test is Couchbase Server only")
 	}
 
-	db := setupTestDB(t)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
 	// docID -> Sequence
@@ -134,8 +132,7 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 // Validate query and stats for sequence view query
 func TestQuerySequencesStatsView(t *testing.T) {
 
-	db := setupTestDBWithViewsEnabled(t)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db, ctx := setupTestDBWithViewsEnabled(t)
 	defer db.Close(ctx)
 
 	// docID -> Sequence
@@ -230,8 +227,7 @@ func TestQuerySequencesStatsN1ql(t *testing.T) {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
-	db := setupTestDB(t)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
 	// docID -> Sequence
@@ -324,8 +320,7 @@ func TestCoveringQueries(t *testing.T) {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
-	db := setupTestDB(t)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
 	n1QLStore, ok := base.AsN1QLStore(db.Bucket)
@@ -379,8 +374,7 @@ func TestAllDocsQuery(t *testing.T) {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
-	db := setupTestDB(t)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
 	// Add docs with channel assignment
@@ -446,8 +440,7 @@ func TestAccessQuery(t *testing.T) {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
-	db := setupTestDB(t)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
@@ -492,8 +485,7 @@ func TestRoleAccessQuery(t *testing.T) {
 		t.Skip("This test is Couchbase Server only")
 	}
 
-	db := setupTestDB(t)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
@@ -579,8 +571,7 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
-	db := setupTestDB(t)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
 	docIdFlagMap := make(map[string]uint8)

@@ -424,7 +424,7 @@ func (ar *ActiveReplicator) alignState(ctx context.Context, targetState string) 
 
 func (dbc *DatabaseContext) StartReplications(ctx context.Context) {
 	if dbc.Options.SGReplicateOptions.Enabled {
-		base.DebugfCtx(ctx, base.KeyReplicate, "Will start Inter-Sync Gateway Replications for database %q", dbc.Name)
+		base.DebugfCtx(dbc.SGReplicateMgr.loggingCtx, base.KeyReplicate, "Will start Inter-Sync Gateway Replications for database %q", dbc.Name)
 		dbc.SGReplicateMgr.closeWg.Add(1)
 		go func() {
 			defer dbc.SGReplicateMgr.closeWg.Done()
@@ -442,7 +442,7 @@ func (dbc *DatabaseContext) StartReplications(ctx context.Context) {
 				return
 			}
 
-			err := dbc.SGReplicateMgr.StartReplications(ctx) // TODO: use dbc.SGReplicateMgr.loggingCtx, if that is not removed ?
+			err := dbc.SGReplicateMgr.StartReplications(dbc.SGReplicateMgr.loggingCtx) // TODO: use dbc.SGReplicateMgr.loggingCtx, if that is not removed ?
 			if err != nil {
 				base.ErrorfCtx(dbc.SGReplicateMgr.loggingCtx, "Error starting %q Inter-Sync Gateway Replications: %v", dbc.Name, err)
 			}

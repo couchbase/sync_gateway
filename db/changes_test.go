@@ -53,8 +53,7 @@ func TestFilterToAvailableChannels(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges)
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			db := setupTestDB(t)
-			ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+			db, ctx := setupTestDB(t)
 			defer db.Close(ctx)
 
 			auth := db.Authenticator(base.TestCtx(t))
@@ -95,8 +94,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	db := setupTestDB(t)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
@@ -210,8 +208,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
-	db := setupTestDB(t)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -296,8 +293,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 		t.Skip("This test is known to be failing against couchbase server with XATTRS enabled.  Same error as TestDocDeletionFromChannelCoalescedRemoved")
 	}
 
-	db := setupTestDB(t)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -370,8 +366,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 
 func TestActiveOnlyCacheUpdate(t *testing.T) {
 
-	db := setupTestDB(t)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
@@ -436,8 +431,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 	base.SetUpBenchmarkLogging(b, base.LevelWarn, base.KeyHTTP)
 
-	db := setupTestDB(b)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(b))
+	db, ctx := setupTestDB(b)
 	defer db.Close(ctx)
 
 	fieldVal := func(valSizeBytes int) string {

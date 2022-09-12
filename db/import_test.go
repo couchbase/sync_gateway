@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"testing"
@@ -41,8 +42,7 @@ func TestMigrateMetadata(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
 
-	db := setupTestDB(t)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
 	key := "TestMigrateMetadata"
@@ -113,8 +113,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
 
-	db := setupTestDB(t)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
 	type testcase struct {
@@ -204,6 +203,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 	var db *Database
 	var existingBucketDoc *sgbucket.BucketDocument
 	var runOnce bool
+	var ctx context.Context
 
 	type testcase struct {
 		callback func(key string)
@@ -303,8 +303,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 
 	for _, testcase := range testcases {
 		t.Run(fmt.Sprintf("%s", testcase.docname), func(t *testing.T) {
-			db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{WriteWithXattrCallback: testcase.callback})
-			ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+			db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{WriteWithXattrCallback: testcase.callback})
 			defer db.Close(ctx)
 
 			bodyBytes := rawDocWithSyncMeta()
@@ -387,8 +386,7 @@ func TestImportNullDoc(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyImport)
 
-	db := setupTestDB(t)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
 	key := "TestImportNullDoc"
@@ -405,8 +403,7 @@ func TestImportNullDoc(t *testing.T) {
 func TestImportNullDocRaw(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyImport)
 
-	db := setupTestDB(t)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
 	// Feed import of null doc
@@ -430,8 +427,7 @@ func assertXattrSyncMetaRevGeneration(t *testing.T, bucket base.Bucket, key stri
 
 func TestEvaluateFunction(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyImport)
-	db := setupTestDB(t)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
 	// Simulate unexpected error invoking import filter for document

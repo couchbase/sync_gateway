@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -120,28 +121,25 @@ func addUserAlice(t *testing.T, db *Database) auth.User {
 func TestUserFunctions(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	cacheOptions := DefaultCacheOptions()
-	ctx := base.TestCtx(t)
-	db := setupTestDBWithOptions(t, DatabaseContextOptions{
+	db, ctx := setupTestDBWithOptions(t, DatabaseContextOptions{
 		CacheOptions:  &cacheOptions,
 		UserFunctions: kUserFunctionConfig,
 	})
 	defer db.Close(ctx)
 
 	// First run the tests as an admin:
-	t.Run("AsAdmin", func(t *testing.T) { testUserFunctionsAsAdmin(t, db) })
+	t.Run("AsAdmin", func(t *testing.T) { testUserFunctionsAsAdmin(t, ctx, db) })
 
 	// Now create a user and make it current:
 	db.user = addUserAlice(t, db)
 	assert.True(t, db.user.RoleNames().Contains("hero"))
 
 	// Repeat the tests as user "alice":
-	t.Run("AsUser", func(t *testing.T) { testUserFunctionsAsUser(t, db) })
+	t.Run("AsUser", func(t *testing.T) { testUserFunctionsAsUser(t, ctx, db) })
 }
 
 // User function tests that work the same for admin and non-admin user:
-func testUserFunctionsCommon(t *testing.T, db *Database) {
-	ctx := base.TestCtx(t)
-
+func testUserFunctionsCommon(t *testing.T, ctx context.Context, db *Database) {
 	// Basic call passing a parameter:
 	result, err := db.CallUserFunction(ctx, "square", map[string]interface{}{"numero": 42}, true)
 	assert.NoError(t, err)
@@ -190,9 +188,8 @@ func testUserFunctionsCommon(t *testing.T, db *Database) {
 }
 
 // User-function tests, run as admin:
-func testUserFunctionsAsAdmin(t *testing.T, db *Database) {
-	testUserFunctionsCommon(t, db)
-	ctx := base.TestCtx(t)
+func testUserFunctionsAsAdmin(t *testing.T, ctx context.Context, db *Database) {
+	testUserFunctionsCommon(t, ctx, db)
 
 	// Admin-only (success):
 	result, err := db.CallUserFunction(ctx, "admin_only", nil, true)
@@ -229,9 +226,8 @@ func testUserFunctionsAsAdmin(t *testing.T, db *Database) {
 }
 
 // User-function tests, run as user "alice":
-func testUserFunctionsAsUser(t *testing.T, db *Database) {
-	testUserFunctionsCommon(t, db)
-	ctx := base.TestCtx(t)
+func testUserFunctionsAsUser(t *testing.T, ctx context.Context, db *Database) {
+	testUserFunctionsCommon(t, ctx, db)
 
 	// Checking `context.user.name`:
 	result, err := db.CallUserFunction(ctx, "user_only", nil, true)
@@ -268,9 +264,8 @@ func testUserFunctionsAsUser(t *testing.T, db *Database) {
 // Test CRUD operations
 func TestUserFunctionsCRUD(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	ctx := base.TestCtx(t)
 	cacheOptions := DefaultCacheOptions()
-	db := setupTestDBWithOptions(t, DatabaseContextOptions{
+	db, ctx := setupTestDBWithOptions(t, DatabaseContextOptions{
 		CacheOptions:  &cacheOptions,
 		UserFunctions: kUserFunctionConfig,
 	})
@@ -360,9 +355,8 @@ func TestUserFunctionSyntaxError(t *testing.T) {
 // Low-level test of channel-name parameter expansion for user query/function auth
 func TestUserFunctionAllow(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	ctx := base.TestCtx(t)
 	cacheOptions := DefaultCacheOptions()
-	db := setupTestDBWithOptions(t, DatabaseContextOptions{
+	db, ctx := setupTestDBWithOptions(t, DatabaseContextOptions{
 		CacheOptions:  &cacheOptions,
 		UserFunctions: kUserFunctionConfig,
 	})

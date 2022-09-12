@@ -64,8 +64,7 @@ func TestRevisionCacheLoad(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	db := setupTestDBWithViewsEnabled(t)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db, ctx := setupTestDBWithViewsEnabled(t)
 	defer db.Close(ctx)
 
 	base.TestExternalRevStorage = true
@@ -104,8 +103,7 @@ func TestRevisionCacheLoad(t *testing.T) {
 
 func TestHasAttachmentsFlag(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	db := setupTestDB(t)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
 	base.TestExternalRevStorage = true
@@ -183,8 +181,7 @@ func TestHasAttachmentsFlagForLegacyAttachments(t *testing.T) {
 		t.Skip("Test only works with a Couchbase server and Xattrs")
 	}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	db := setupTestDB(t)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
 	base.TestExternalRevStorage = true
@@ -305,8 +302,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	db := setupTestDB(t)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
 	base.TestExternalRevStorage = true
@@ -489,8 +485,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 // TestRevisionStoragePruneTombstone - tests cleanup of external tombstone bodies when pruned.
 func TestRevisionStoragePruneTombstone(t *testing.T) {
 
-	db := setupTestDB(t)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
 	base.TestExternalRevStorage = true
@@ -647,8 +642,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 // Checks for unwanted interaction between old revision body backups and revision cache
 func TestOldRevisionStorage(t *testing.T) {
 
-	db := setupTestDB(t)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
 	prop_1000_bytes := base.CreateProperty(1000)
@@ -809,8 +803,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 	leakyConfig := base.LeakyBucketConfig{
 		ForceErrorSetRawKeys: []string{forceErrorKey},
 	}
-	db := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), leakyConfig)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db, ctx := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), leakyConfig)
 	defer db.Close(ctx)
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {channel(doc.channels);}`, 0)
@@ -938,8 +931,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 // Validate JSON number handling for large sequence values
 func TestLargeSequence(t *testing.T) {
 
-	db := setupTestDBWithCustomSyncSeq(t, 9223372036854775807)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db, ctx := setupTestDBWithCustomSyncSeq(t, 9223372036854775807)
 	defer db.Close(ctx)
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -978,8 +970,7 @@ const rawDocMalformedRevisionStorage = `
     }`
 
 func TestMalformedRevisionStorageRecovery(t *testing.T) {
-	db := setupTestDB(t)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {channel(doc.channels);}`, 0)
@@ -1029,8 +1020,7 @@ func TestMalformedRevisionStorageRecovery(t *testing.T) {
 func BenchmarkDatabaseGet1xRev(b *testing.B) {
 	base.DisableTestLogging(b)
 
-	db := setupTestDB(b)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(b))
+	db, ctx := setupTestDB(b)
 	defer db.Close(ctx)
 
 	body := Body{"foo": "bar", "rev": "1-a"}
@@ -1086,8 +1076,7 @@ func BenchmarkDatabaseGet1xRev(b *testing.B) {
 func BenchmarkDatabaseGetRev(b *testing.B) {
 	base.DisableTestLogging(b)
 
-	db := setupTestDB(b)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(b))
+	db, ctx := setupTestDB(b)
 	defer db.Close(ctx)
 
 	body := Body{"foo": "bar", "rev": "1-a"}
@@ -1144,8 +1133,7 @@ func BenchmarkDatabaseGetRev(b *testing.B) {
 func BenchmarkHandleRevDelta(b *testing.B) {
 	base.DisableTestLogging(b)
 
-	db := setupTestDB(b)
-	ctx := db.AddDatabaseLogContext(base.TestCtx(b))
+	db, ctx := setupTestDB(b)
 	defer db.Close(ctx)
 
 	body := Body{"foo": "bar"}

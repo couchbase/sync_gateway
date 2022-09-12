@@ -43,7 +43,7 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 		replicationStats:        replicationStats,
 		inFlightChangesThrottle: make(chan struct{}, maxInFlightChangesBatches),
 	}
-	bsc.changesCtx, bsc.changesCtxCancel = context.WithCancel(context.Background())
+	bsc.changesCtx, bsc.changesCtxCancel = context.WithCancel(ctx)
 	if bsc.replicationStats == nil {
 		bsc.replicationStats = NewBlipSyncStats()
 	}

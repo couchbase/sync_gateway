@@ -11,11 +11,11 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
 
-	"github.com/couchbase/sync_gateway/base"
 	"github.com/graphql-go/graphql"
 	"github.com/stretchr/testify/assert"
 )
@@ -158,9 +158,8 @@ func assertGraphQLError(t *testing.T, expectedErrorText string, result *graphql.
 // Unit test for GraphQL queries.
 func TestUserGraphQL(t *testing.T) {
 	//base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	ctx := base.TestCtx(t)
 	cacheOptions := DefaultCacheOptions()
-	db := setupTestDBWithOptions(t, DatabaseContextOptions{
+	db, ctx := setupTestDBWithOptions(t, DatabaseContextOptions{
 		CacheOptions:  &cacheOptions,
 		GraphQL:       &kTestGraphQLConfig,
 		UserFunctions: kTestGraphQLUserFunctionsConfig,
@@ -168,19 +167,17 @@ func TestUserGraphQL(t *testing.T) {
 	defer db.Close(ctx)
 
 	// First run the tests as an admin:
-	t.Run("AsAdmin", func(t *testing.T) { testUserGraphQLAsAdmin(t, db) })
+	t.Run("AsAdmin", func(t *testing.T) { testUserGraphQLAsAdmin(t, ctx, db) })
 
 	// Now create a user and make it current:
 	db.user = addUserAlice(t, db)
 	assert.True(t, db.user.RoleNames().Contains("hero"))
 
 	// Repeat the tests as user "alice":
-	t.Run("AsUser", func(t *testing.T) { testUserGraphQLAsUser(t, db) })
+	t.Run("AsUser", func(t *testing.T) { testUserGraphQLAsUser(t, ctx, db) })
 }
 
-func testUserGraphQLCommon(t *testing.T, db *Database) {
-	ctx := base.TestCtx(t)
-
+func testUserGraphQLCommon(t *testing.T, ctx context.Context, db *Database) {
 	// Successful query:
 	result, err := db.UserGraphQLQuery(ctx, `query{ task(id:"a") {id,title,done,tags} }`, "", nil, false)
 	assertGraphQLResult(t, `{"task":{"done":true,"id":"a","tags":["fruit","soft"],"title":"Applesauce"}}`, result, err)
@@ -203,18 +200,16 @@ func testUserGraphQLCommon(t *testing.T, db *Database) {
 	assertGraphQLError(t, "403", result, err)
 }
 
-func testUserGraphQLAsAdmin(t *testing.T, db *Database) {
-	testUserGraphQLCommon(t, db)
-	ctx := base.TestCtx(t)
+func testUserGraphQLAsAdmin(t *testing.T, ctx context.Context, db *Database) {
+	testUserGraphQLCommon(t, ctx, db)
 
 	// Admin-only field:
 	result, err := db.UserGraphQLQuery(ctx, `query{ task(id:"a") {secretNotes} }`, "", nil, false)
 	assertGraphQLResult(t, `{"task":{"secretNotes":"TOP SECRET!"}}`, result, err)
 }
 
-func testUserGraphQLAsUser(t *testing.T, db *Database) {
-	testUserGraphQLCommon(t, db)
-	ctx := base.TestCtx(t)
+func testUserGraphQLAsUser(t *testing.T, ctx context.Context, db *Database) {
+	testUserGraphQLCommon(t, ctx, db)
 
 	// ERRORS:
 

@@ -165,7 +165,8 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 		runOffline:   runOffline,
 	}
 
-	h.rqCtx = base.LogContextWith(h.rq.Context(), &base.LogContext{CorrelationID: h.formatSerialNumber()})
+	// initialize h.rqCtx
+	_ = h.ctx()
 
 	return h
 }

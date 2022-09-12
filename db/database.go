@@ -329,7 +329,8 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		return nil, err
 	}
 
-	// add db info to ctx before passing it down
+	// add db info to ctx before having a DatabaseContext (cannot call AddDatabaseLogContext),
+	// in order to pass it to RegisterImportPindexImpl
 	ctx = base.LogContextWith(ctx, &base.DatabaseLogContext{DatabaseName: dbName})
 
 	// Register the cbgt pindex type for the configGroup
@@ -696,7 +697,6 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 	context.BucketLock.Lock()
 	defer context.BucketLock.Unlock()
 
-	ctx = context.AddDatabaseLogContext(ctx) // add db info to ctx before passing it down
 	context.OIDCProviders.Stop()
 	close(context.terminator)
 	// Wait for database background tasks to finish.

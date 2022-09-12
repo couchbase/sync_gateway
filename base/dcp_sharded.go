@@ -49,7 +49,6 @@ type CbgtContext struct {
 	Cfg               cbgt.Cfg                 // Cfg manages storage of the current pindex set and node assignment
 	heartbeater       Heartbeater              // Heartbeater used for failed node detection
 	heartbeatListener *importHeartbeatListener // Listener subscribed to failed node alerts from heartbeater
-	// loggingCtx        context.Context          // Context for cbgt logging
 }
 
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
@@ -59,6 +58,9 @@ func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string,
 	if err != nil {
 		return nil, err
 	}
+
+	// Add logging info before passing ctx down
+	ctx = cbgtContext.AddLogContext(ctx, spec.BucketName)
 
 	// Start Manager.  Registers this node in the cfg
 	err = cbgtContext.StartManager(ctx, dbName, configGroup, bucket, spec, numPartitions)
@@ -343,7 +345,6 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 		options)
 
 	cbgtContext := &CbgtContext{
-		// loggingCtx: LogContextWith(ctx, &LogContext{CorrelationID: MD(spec.BucketName).Redact() + "-" + DCPImportFeedID}),
 		Manager: mgr,
 		Cfg:     cfgSG,
 	}
@@ -372,9 +373,15 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 	return cbgtContext, nil
 }
 
+func (c *CbgtContext) AddLogContext(parent context.Context, bucketName string) context.Context {
+	if c != nil && bucketName != "" {
+		return LogContextWith(parent, &LogContext{CorrelationID: MD(bucketName).Redact() + "-" + DCPImportFeedID})
+	}
+	return parent
+}
+
 // StartManager registers this node with cbgt, and the janitor will start feeds on this node.
 func (c *CbgtContext) StartManager(ctx context.Context, dbName string, configGroup string, bucket Bucket, spec BucketSpec, numPartitions uint16) (err error) {
-
 	// TODO: Clarify the functional difference between registering the manager as 'wanted' vs 'known'.
 	registerType := cbgt.NODE_DEFS_WANTED
 	if err := c.Manager.Start(registerType); err != nil {

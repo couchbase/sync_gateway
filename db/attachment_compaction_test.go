@@ -20,8 +20,7 @@ func TestAttachmentMark(t *testing.T) {
 		t.Skip("Requires CBS")
 	}
 
-	testDb := setupTestDB(t)
-	ctx := testDb.AddDatabaseLogContext(base.TestCtx(t))
+	testDb, ctx := setupTestDB(t)
 	defer testDb.Close(ctx)
 
 	body := map[string]interface{}{"foo": "bar"}
@@ -72,8 +71,7 @@ func TestAttachmentSweep(t *testing.T) {
 		t.Skip("Requires CBS")
 	}
 
-	testDb := setupTestDB(t)
-	ctx := testDb.AddDatabaseLogContext(base.TestCtx(t))
+	testDb, ctx := setupTestDB(t)
 	defer testDb.Close(ctx)
 
 	makeMarkedDoc := func(docid string, compactID string) {
@@ -118,8 +116,7 @@ func TestAttachmentCleanup(t *testing.T) {
 		t.Skip("Requires CBS")
 	}
 
-	testDb := setupTestDB(t)
-	ctx := testDb.AddDatabaseLogContext(base.TestCtx(t))
+	testDb, ctx := setupTestDB(t)
 	defer testDb.Close(ctx)
 
 	makeMarkedDoc := func(docid string, compactID string) {
@@ -223,8 +220,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 		t.Skip("Requires CBS")
 	}
 
-	testDb := setupTestDB(t)
-	ctx := testDb.AddDatabaseLogContext(base.TestCtx(t))
+	testDb, ctx := setupTestDB(t)
 	defer testDb.Close(ctx)
 
 	attKeys := make([]string, 0, 15)
@@ -295,12 +291,10 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
 	defer b.Close()
 
-	testDB1 := setupTestDBForBucket(t, b)
-	ctx1 := testDB1.AddDatabaseLogContext(base.TestCtx(t))
+	testDB1, ctx1 := setupTestDB(t)
 	defer testDB1.Close(ctx1)
 
-	testDB2 := setupTestDBForBucket(t, b.NoCloseClone())
-	ctx2 := testDB2.AddDatabaseLogContext(base.TestCtx(t))
+	testDB2, ctx2 := setupTestDB(t)
 	defer testDB2.Close(ctx2)
 
 	var err error
@@ -442,12 +436,10 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
 	defer b.Close()
 
-	testDB1 := setupTestDBForBucket(t, b)
-	ctx1 := testDB1.AddDatabaseLogContext(base.TestCtx(t))
+	testDB1, ctx1 := setupTestDB(t)
 	defer testDB1.Close(ctx1)
 
-	testDB2 := setupTestDBForBucket(t, b.NoCloseClone())
-	ctx2 := testDB2.AddDatabaseLogContext(base.TestCtx(t))
+	testDB2, ctx2 := setupTestDB(t)
 	defer testDB2.Close(ctx2)
 
 	var err error
@@ -550,8 +542,7 @@ func TestAttachmentProcessError(t *testing.T) {
 	})
 	defer b.Close()
 
-	testDB1 := setupTestDBForBucket(t, b)
-	ctx1 := testDB1.AddDatabaseLogContext(base.TestCtx(t))
+	testDB1, ctx1 := setupTestDB(t)
 	defer testDB1.Close(ctx1)
 
 	CreateLegacyAttachmentDoc(t, ctx1, testDB1, "docID", []byte("{}"), "attKey", []byte("{}"))
@@ -582,8 +573,7 @@ func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	testDB := setupTestDB(t)
-	ctx := testDB.AddDatabaseLogContext(base.TestCtx(t))
+	testDB, ctx := setupTestDB(t)
 	defer testDB.Close(ctx)
 
 	// Run mark phase as usual
@@ -826,14 +816,13 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 		t.Skip("Requires CBS")
 	}
 
-	testDb := setupTestDB(t)
-	ctx1 := testDb.AddDatabaseLogContext(base.TestCtx(t))
-	defer testDb.Close(ctx1)
+	testDb, ctx := setupTestDB(t)
+	defer testDb.Close(ctx)
 	// Create the docs that will be marked and not swept
 	body := map[string]interface{}{"foo": "bar"}
 	for i := 0; i < docsToCreate; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		_, _, err := testDb.Put(ctx1, key, body)
+		_, _, err := testDb.Put(ctx, key, body)
 		require.NoError(t, err)
 	}
 
@@ -843,7 +832,7 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
 		require.NoError(t, err)
-		CreateLegacyAttachmentDoc(t, ctx1, testDb, docID, []byte("{}"), attKey, attJSONBody)
+		CreateLegacyAttachmentDoc(t, ctx, testDb, docID, []byte("{}"), attKey, attJSONBody)
 	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
@@ -852,7 +841,7 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	stat := &base.AtomicInt{}
 	count := int64(0)
 	go func() {
-		attachmentCount, _, err := attachmentCompactMarkPhase(ctx1, testDb, "mark", terminator, stat)
+		attachmentCount, _, err := attachmentCompactMarkPhase(ctx, testDb, "mark", terminator, stat)
 		atomic.StoreInt64(&count, attachmentCount)
 		require.NoError(t, err)
 	}()
@@ -894,7 +883,7 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	count = 0
 	terminator = base.NewSafeTerminator()
 	go func() {
-		attachmentCount, err := attachmentCompactSweepPhase(ctx1, testDb, "sweep", nil, false, terminator, stat)
+		attachmentCount, err := attachmentCompactSweepPhase(ctx, testDb, "sweep", nil, false, terminator, stat)
 		atomic.StoreInt64(&count, attachmentCount)
 		require.NoError(t, err)
 	}()

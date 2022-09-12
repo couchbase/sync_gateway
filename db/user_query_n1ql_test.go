@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -84,28 +85,25 @@ func TestUserN1QLQueries(t *testing.T) {
 	}
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	ctx := base.TestCtx(t)
 	cacheOptions := DefaultCacheOptions()
-	db := setupTestDBWithOptions(t, DatabaseContextOptions{
+	db, ctx := setupTestDBWithOptions(t, DatabaseContextOptions{
 		CacheOptions: &cacheOptions,
 		UserQueries:  kUserQueriesConfig,
 	})
 	defer db.Close(ctx)
 
 	// First run the tests as an admin:
-	t.Run("AsAdmin", func(t *testing.T) { testUserQueriesAsAdmin(t, db) })
+	t.Run("AsAdmin", func(t *testing.T) { testUserQueriesAsAdmin(t, ctx, db) })
 
 	// Now create a user and make it current:
 	db.user = addUserAlice(t, db)
 	assert.True(t, db.user.RoleNames().Contains("hero"))
 
 	// Repeat the tests as user "alice":
-	t.Run("AsUser", func(t *testing.T) { testUserQueriesAsUser(t, db) })
+	t.Run("AsUser", func(t *testing.T) { testUserQueriesAsUser(t, ctx, db) })
 }
 
-func testUserQueriesCommon(t *testing.T, db *Database) {
-	ctx := base.TestCtx(t)
-
+func testUserQueriesCommon(t *testing.T, ctx context.Context, db *Database) {
 	// dynamic channel list
 	iter, err := db.UserN1QLQuery(ctx, "airports_in_city", map[string]interface{}{"city": "London"})
 	assert.NoError(t, err)
@@ -139,9 +137,8 @@ func testUserQueriesCommon(t *testing.T, db *Database) {
 	assert.ErrorContains(t, err, "syntax_error")
 }
 
-func testUserQueriesAsAdmin(t *testing.T, db *Database) {
-	testUserQueriesCommon(t, db)
-	ctx := base.TestCtx(t)
+func testUserQueriesAsAdmin(t *testing.T, ctx context.Context, db *Database) {
+	testUserQueriesCommon(t, ctx, db)
 
 	iter, err := db.UserN1QLQuery(ctx, "user", nil)
 	assert.NoError(t, err)
@@ -163,9 +160,8 @@ func testUserQueriesAsAdmin(t *testing.T, db *Database) {
 	assertHTTPError(t, err, 404)
 }
 
-func testUserQueriesAsUser(t *testing.T, db *Database) {
-	testUserQueriesCommon(t, db)
-	ctx := base.TestCtx(t)
+func testUserQueriesAsUser(t *testing.T, ctx context.Context, db *Database) {
+	testUserQueriesCommon(t, ctx, db)
 
 	iter, err := db.UserN1QLQuery(ctx, "user", nil)
 	assert.NoError(t, err)

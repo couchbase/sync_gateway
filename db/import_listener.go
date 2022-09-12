@@ -28,7 +28,7 @@ type importListener struct {
 	stats            *base.DatabaseStats // Database stats group
 	cbgtContext      *base.CbgtContext   // Handle to cbgt manager,cfg
 	checkpointPrefix string              // DCP checkpoint key prefix
-	loggingCtx       context.Context     // ctx for logging, since function signatures without ctx are required by external dependency, for ex.: sgbucket.FeedEventCallbackFunc
+	loggingCtx       context.Context     // ctx for logging on event callbacks
 }
 
 func NewImportListener(groupID string) *importListener {

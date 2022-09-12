@@ -102,11 +102,10 @@ func TestBackupOldRevision(t *testing.T) {
 	deltasEnabled := base.IsEnterpriseEdition()
 	xattrsEnabled := base.TestUseXattrs()
 
-	db := setupTestDBWithOptions(t, DatabaseContextOptions{DeltaSyncOptions: DeltaSyncOptions{
+	db, ctx := setupTestDBWithOptions(t, DatabaseContextOptions{DeltaSyncOptions: DeltaSyncOptions{
 		Enabled:          deltasEnabled,
 		RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
 	}})
-	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
 	defer db.Close(ctx)
 
 	docID := t.Name()
