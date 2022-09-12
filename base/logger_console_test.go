@@ -92,12 +92,14 @@ var consoleShouldLogTests = []struct {
 }
 
 func TestConsoleShouldLog(t *testing.T) {
+	ctx := TestCtx(t)
+
 	for _, test := range consoleShouldLogTests {
 		name := fmt.Sprintf("logger{%s,%s}.shouldLog(%s,%s)",
 			test.loggerLevel.StringShort(), test.loggerKeys,
 			test.logToLevel.StringShort(), test.logToKey)
 
-		l := mustInitConsoleLogger(&ConsoleLoggerConfig{
+		l := mustInitConsoleLogger(ctx, &ConsoleLoggerConfig{
 			LogLevel: &test.loggerLevel,
 			LogKeys:  test.loggerKeys,
 			FileLoggerConfig: FileLoggerConfig{
@@ -113,12 +115,14 @@ func TestConsoleShouldLog(t *testing.T) {
 }
 
 func BenchmarkConsoleShouldLog(b *testing.B) {
+	ctx := TestCtx(b)
+
 	for _, test := range consoleShouldLogTests {
 		name := fmt.Sprintf("logger{%s,%s}.shouldLog(%s,%s)",
 			test.loggerLevel.StringShort(), test.loggerKeys,
 			test.logToLevel.StringShort(), test.logToKey)
 
-		l := mustInitConsoleLogger(&ConsoleLoggerConfig{
+		l := mustInitConsoleLogger(ctx, &ConsoleLoggerConfig{
 			LogLevel: &test.loggerLevel,
 			LogKeys:  test.loggerKeys,
 			FileLoggerConfig: FileLoggerConfig{
@@ -181,10 +185,10 @@ func TestConsoleLogDefaults(t *testing.T) {
 			},
 		},
 	}
-
+	ctx := TestCtx(t)
 	for _, test := range tests {
 		t.Run(test.name, func(tt *testing.T) {
-			logger, err := NewConsoleLogger(false, &test.config)
+			logger, err := NewConsoleLogger(ctx, false, &test.config)
 			assert.NoError(tt, err)
 			assert.Equal(tt, test.expected.Enabled, logger.Enabled)
 			assert.Equal(tt, *test.expected.LogLevel, *logger.LogLevel)

@@ -121,8 +121,9 @@ func init() {
 	// initialCollationBufferSize is set to zero for disabling log collation before
 	// initializing a logging config, and when running under a test scenario.
 	initialCollationBufferSize := 0
-
-	consoleLogger = mustInitConsoleLogger(&ConsoleLoggerConfig{FileLoggerConfig: FileLoggerConfig{Enabled: BoolPtr(true), CollationBufferSize: &initialCollationBufferSize}})
+	// As we disable the log buffer initialising the console logger, we don't need to provide a cancellable context here
+	ctx := context.Background()
+	consoleLogger = mustInitConsoleLogger(ctx, &ConsoleLoggerConfig{FileLoggerConfig: FileLoggerConfig{Enabled: BoolPtr(true), CollationBufferSize: &initialCollationBufferSize}})
 	initExternalLoggers()
 }
 

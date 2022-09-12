@@ -677,19 +677,21 @@ func TestMergeWith(t *testing.T) {
 
 func TestSetupAndValidateLogging(t *testing.T) {
 	t.Skip("Skipping TestSetupAndValidateLogging")
+	ctx := base.TestCtx(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	sc := &StartupConfig{}
-	err := sc.SetupAndValidateLogging()
+	err := sc.SetupAndValidateLogging(ctx)
 	assert.NoError(t, err, "Setup and validate logging should be successful")
 	assert.NotEmpty(t, sc.Logging)
 }
 
 func TestSetupAndValidateLoggingWithLoggingConfig(t *testing.T) {
 	t.Skip("Skipping TestSetupAndValidateLoggingWithLoggingConfig")
+	ctx := base.TestCtx(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	logFilePath := "/var/log/sync_gateway"
 	sc := &StartupConfig{Logging: base.LoggingConfig{LogFilePath: logFilePath, RedactionLevel: base.RedactFull}}
-	err := sc.SetupAndValidateLogging()
+	err := sc.SetupAndValidateLogging(ctx)
 	assert.NoError(t, err, "Setup and validate logging should be successful")
 	assert.Equal(t, base.RedactFull, sc.Logging.RedactionLevel)
 }
@@ -933,7 +935,7 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 
 func TestValidateServerContextSharedBuckets(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
-
+	ctx := base.TestCtx(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Skipping this test; requires Couchbase Bucket")
 	}
@@ -1324,18 +1326,18 @@ func deleteTempFile(t *testing.T, file *os.File) {
 
 func TestDefaultLogging(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-
+	ctx := base.TestCtx(t)
 	config := DefaultStartupConfig("")
 	assert.Equal(t, base.RedactPartial, config.Logging.RedactionLevel)
 	assert.Equal(t, true, base.RedactUserData)
 
-	require.NoError(t, config.SetupAndValidateLogging())
+	require.NoError(t, config.SetupAndValidateLogging(ctx))
 	assert.Equal(t, base.LevelNone, *base.ConsoleLogLevel())
 	assert.Equal(t, []string{"HTTP"}, base.ConsoleLogKey().EnabledLogKeys())
 
 	// setting just a log key should enable logging
 	config.Logging.Console = &base.ConsoleLoggerConfig{LogKeys: []string{"CRUD"}}
-	require.NoError(t, config.SetupAndValidateLogging())
+	require.NoError(t, config.SetupAndValidateLogging(ctx))
 	assert.Equal(t, base.LevelInfo, *base.ConsoleLogLevel())
 	assert.Equal(t, []string{"CRUD", "HTTP"}, base.ConsoleLogKey().EnabledLogKeys())
 }

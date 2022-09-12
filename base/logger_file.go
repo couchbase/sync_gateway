@@ -77,14 +77,14 @@ type logRotationConfig struct {
 }
 
 // NewFileLogger returns a new FileLogger from a config.
-func NewFileLogger(config *FileLoggerConfig, level LogLevel, name string, logFilePath string, minAge int, buffer *strings.Builder) (*FileLogger, error) {
+func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel, name string, logFilePath string, minAge int, buffer *strings.Builder) (*FileLogger, error) {
 
 	if config == nil {
 		config = &FileLoggerConfig{}
 	}
 
 	// validate and set defaults
-	if err := config.init(level, name, logFilePath, minAge); err != nil {
+	if err := config.init(ctx, level, name, logFilePath, minAge); err != nil {
 		return nil, err
 	}
 
@@ -109,7 +109,7 @@ func NewFileLogger(config *FileLoggerConfig, level LogLevel, name string, logFil
 		logger.collateBufferWg = &sync.WaitGroup{}
 
 		// Start up a single worker to consume messages from the buffer
-		go logCollationWorker(logger.collateBuffer, logger.flushChan, logger.collateBufferWg, logger.logger, *config.CollationBufferSize, fileLoggerCollateFlushTimeout)
+		go logCollationWorker(ctx, logger.collateBuffer, logger.flushChan, logger.collateBufferWg, logger.logger, *config.CollationBufferSize, fileLoggerCollateFlushTimeout)
 	}
 
 	return logger, nil
@@ -175,7 +175,7 @@ func (l *FileLogger) getFileLoggerConfig() *FileLoggerConfig {
 	return &fileLoggerConfig
 }
 
-func (lfc *FileLoggerConfig) init(level LogLevel, name string, logFilePath string, minAge int) error {
+func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name string, logFilePath string, minAge int) error {
 	if lfc == nil {
 		return errors.New("nil LogFileConfig")
 	}
@@ -220,6 +220,8 @@ func (lfc *FileLoggerConfig) init(level LogLevel, name string, logFilePath strin
 				if err != nil {
 					WarnfCtx(context.Background(), "%s", err)
 				}
+			case <-ctx.Done():
+				return
 			}
 		}
 	}()

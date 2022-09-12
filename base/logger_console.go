@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package base
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -49,7 +50,7 @@ type ConsoleLoggerConfig struct {
 }
 
 // NewConsoleLogger returns a new ConsoleLogger from a config.
-func NewConsoleLogger(shouldLogLocation bool, config *ConsoleLoggerConfig) (*ConsoleLogger, error) {
+func NewConsoleLogger(ctx context.Context, shouldLogLocation bool, config *ConsoleLoggerConfig) (*ConsoleLogger, error) {
 	if config == nil {
 		config = &ConsoleLoggerConfig{}
 	}
@@ -82,7 +83,7 @@ func NewConsoleLogger(shouldLogLocation bool, config *ConsoleLoggerConfig) (*Con
 		logger.collateBufferWg = &sync.WaitGroup{}
 
 		// Start up a single worker to consume messages from the buffer
-		go logCollationWorker(logger.collateBuffer, logger.flushChan, logger.collateBufferWg, logger.logger, *config.CollationBufferSize, consoleLoggerCollateFlushTimeout)
+		go logCollationWorker(ctx, logger.collateBuffer, logger.flushChan, logger.collateBufferWg, logger.logger, *config.CollationBufferSize, consoleLoggerCollateFlushTimeout)
 	}
 
 	// We can only log the console log location itself when logging has previously been set up and is being re-initialized from a config.
@@ -216,8 +217,8 @@ func (lcc *ConsoleLoggerConfig) init() error {
 	return nil
 }
 
-func mustInitConsoleLogger(config *ConsoleLoggerConfig) *ConsoleLogger {
-	logger, err := NewConsoleLogger(false, config)
+func mustInitConsoleLogger(ctx context.Context, config *ConsoleLoggerConfig) *ConsoleLogger {
+	logger, err := NewConsoleLogger(ctx, false, config)
 	if err != nil {
 		// TODO: CBG-1948
 		panic(err)

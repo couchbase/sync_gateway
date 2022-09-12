@@ -11,6 +11,7 @@ package rest
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -3060,11 +3061,12 @@ func TestConfigEndpoint(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
 			base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
 			base.InitializeMemoryLoggers()
 			tempDir := os.TempDir()
 			test := DefaultStartupConfig(tempDir)
-			err := test.SetupAndValidateLogging()
+			err := test.SetupAndValidateLogging(ctx)
 			assert.NoError(t, err)
 
 			rt := NewRestTester(t, nil)
@@ -3161,11 +3163,12 @@ func TestInitialStartupConfig(t *testing.T) {
 
 func TestIncludeRuntimeStartupConfig(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	base.InitializeMemoryLoggers()
 	tempDir := os.TempDir()
 	test := DefaultStartupConfig(tempDir)
-	err := test.SetupAndValidateLogging()
+	err := test.SetupAndValidateLogging(ctx)
 	assert.NoError(t, err)
 
 	rt := NewRestTester(t, nil)

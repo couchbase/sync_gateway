@@ -1110,7 +1110,7 @@ func envDefaultExpansion(key string, getEnvFn func(string) string) (value string
 }
 
 // SetupAndValidateLogging validates logging config and initializes all logging.
-func (sc *StartupConfig) SetupAndValidateLogging() (err error) {
+func (sc *StartupConfig) SetupAndValidateLogging(ctx context.Context) (err error) {
 
 	base.SetRedaction(sc.Logging.RedactionLevel)
 
@@ -1119,6 +1119,7 @@ func (sc *StartupConfig) SetupAndValidateLogging() (err error) {
 	}
 
 	return base.InitLogging(
+		ctx,
 		sc.Logging.LogFilePath,
 		sc.Logging.Console,
 		sc.Logging.Error,
@@ -1253,7 +1254,7 @@ func SetupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 	// Logging config will now have been loaded from command line
 	// or from a sync_gateway config file so we can validate the
 	// configuration and setup logging now
-	if err := config.SetupAndValidateLogging(); err != nil {
+	if err := config.SetupAndValidateLogging(ctx); err != nil {
 		// If we didn't set up logging correctly, we *probably* can't log via normal means...
 		// as a best-effort, last-ditch attempt, we'll log to stderr as well.
 		log.Printf("[ERR] Error setting up logging: %v", err)
