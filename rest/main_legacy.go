@@ -47,8 +47,9 @@ func legacyServerMain(ctx context.Context, osArgs []string, flagStartupConfig *S
 	if err != nil {
 		return err
 	}
-
-	svrctx, err := SetupServerContext(ctx, &sc, false)
+	canctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	svrctx, err := SetupServerContext(canctx, &sc, false)
 	if err != nil {
 		return err
 	}

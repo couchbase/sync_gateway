@@ -135,7 +135,9 @@ func serverMainPersistentConfig(ctx context.Context, fs *flag.FlagSet, flagStart
 	}
 
 	base.InfofCtx(ctx, base.KeyAll, "Config: Starting in persistent mode using config group %q", sc.Bootstrap.ConfigGroupID)
-	svrctx, err := SetupServerContext(ctx, &sc, true)
+	canctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	svrctx, err := SetupServerContext(canctx, &sc, true)
 	if err != nil {
 		return false, err
 	}

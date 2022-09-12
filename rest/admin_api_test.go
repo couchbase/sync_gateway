@@ -3061,8 +3061,7 @@ func TestConfigEndpoint(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
 			base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			ctx := base.TestCtx(t)
 			base.InitializeMemoryLoggers()
 			tempDir := os.TempDir()
 			test := DefaultStartupConfig(tempDir)
