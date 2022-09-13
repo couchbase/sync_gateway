@@ -109,6 +109,8 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 
+	DataStore := testBucket.DefaultDataStore()
+
 	// Setup heartbeaters and listeners
 	nodeCount := 3
 	nodes := make([]*couchbaseHeartBeater, nodeCount)
@@ -126,7 +128,7 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 
 		// Create and register listener.
 		// Simulates service starting on node, and self-registering the nodeUUID to that listener's node set
-		listener, err := NewDocumentBackedListener(testBucket, keyprefix)
+		listener, err := NewDocumentBackedListener(DataStore, keyprefix)
 		require.NoError(t, err)
 		assert.NoError(t, listener.AddNode(nodeUUID))
 		assert.NoError(t, node.RegisterListener(listener))
@@ -187,6 +189,8 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 
+	dataStore := testBucket.DefaultDataStore()
+
 	// Setup heartbeaters and listeners
 	nodeCount := 3
 	nodes := make([]*couchbaseHeartBeater, nodeCount)
@@ -205,7 +209,7 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 
 		// Create and register import listener on all nodes.
 		// Simulates service starting on node, and self-registering the nodeUUID to that listener's node set
-		importListener, err := NewDocumentBackedListener(testBucket, keyprefix+":import")
+		importListener, err := NewDocumentBackedListener(dataStore, keyprefix+":import")
 		require.NoError(t, err)
 		assert.NoError(t, importListener.AddNode(nodeUUID))
 		assert.NoError(t, node.RegisterListener(importListener))
@@ -213,7 +217,7 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 
 		// Create and register sgr listener on two nodes
 		if i < 2 {
-			sgrListener, err := NewDocumentBackedListener(testBucket, keyprefix+":sgr")
+			sgrListener, err := NewDocumentBackedListener(dataStore, keyprefix+":sgr")
 			require.NoError(t, err)
 			assert.NoError(t, sgrListener.AddNode(nodeUUID))
 			assert.NoError(t, node.RegisterListener(sgrListener))

@@ -30,7 +30,8 @@ func TestAuthenticationSpeed(t *testing.T) {
 
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	auth := NewAuthenticator(testBucket.Bucket, nil, DefaultAuthenticatorOptions())
+	dataStore := testBucket.DefaultDataStore()
+	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 	user, _ := auth.NewUser("me", "goIsKewl", nil)
 	assert.True(t, user.Authenticate("goIsKewl"))
 

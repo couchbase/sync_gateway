@@ -407,7 +407,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	assert.Equal(t, rev2a_body, gotbody)
 
 	// Ensure previous revision body backup has been removed
-	_, _, err = db.Bucket.GetRaw(base.RevBodyPrefix + "4GctXhLVg13d59D0PUTPRD0i58Hbe1d0djgo1qOEpfI=")
+	_, _, err = db.MetadataStore.GetRaw(base.RevBodyPrefix + "4GctXhLVg13d59D0PUTPRD0i58Hbe1d0djgo1qOEpfI=")
 	assert.True(t, base.IsKeyNotFoundError(db.Bucket, err), "Revision should be not found")
 
 	// Validate the tombstone is stored inline (due to small size)

@@ -26,7 +26,7 @@ var _ N1QLStore = &Collection{}
 
 // IsDefaultScopeCollection returns true if the given Collection is on the _default._default scope and collection.
 func (c *Collection) IsDefaultScopeCollection() bool {
-	return IsDefaultCollection(c.ScopeName(), c.Name())
+	return IsDefaultCollection(c.ScopeName(), c.CollectionName())
 }
 
 func IsDefaultCollection(scope, collection string) bool {
@@ -35,10 +35,10 @@ func IsDefaultCollection(scope, collection string) bool {
 
 // EscapedKeyspace returns the escaped fully-qualified identifier for the keyspace (e.g. `bucket`.`scope`.`collection`)
 func (c *Collection) EscapedKeyspace() string {
-	if !c.IsSupported(sgbucket.DataStoreFeatureCollections) {
+	if !c.Bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
 		return fmt.Sprintf("`%s`", c.BucketName())
 	}
-	return fmt.Sprintf("`%s`.`%s`.`%s`", c.BucketName(), c.ScopeName(), c.Name())
+	return fmt.Sprintf("`%s`.`%s`.`%s`", c.BucketName(), c.Collection.ScopeName(), c.Collection.Name())
 }
 
 // IndexMetaBucketID returns the value of bucket_id for the system:indexes table for the collection.
@@ -54,7 +54,11 @@ func (c *Collection) IndexMetaScopeID() string {
 	if c.IsDefaultScopeCollection() {
 		return ""
 	}
-	return c.ScopeName()
+	return c.Collection.ScopeName()
+}
+
+func (c *Collection) BucketName() string {
+	return c.Bucket.GetName()
 }
 
 // IndexMetaKeyspaceID returns the value of keyspace_id for the system:indexes table for the collection.
@@ -62,7 +66,7 @@ func (c *Collection) IndexMetaKeyspaceID() string {
 	if c.IsDefaultScopeCollection() {
 		return c.BucketName()
 	}
-	return c.Name()
+	return c.Collection.Name()
 }
 
 func (c *Collection) Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (resultsIterator sgbucket.QueryResultIterator, err error) {
@@ -79,11 +83,11 @@ func (c *Collection) Query(statement string, params map[string]interface{}, cons
 	waitTime := 10 * time.Millisecond
 	for i := 1; i <= MaxQueryRetries; i++ {
 		TracefCtx(logCtx, KeyQuery, "Executing N1QL query: %v - %+v", UD(keyspaceStatement), UD(params))
-		queryResults, queryErr := c.runQuery(keyspaceStatement, n1qlOptions)
+		queryResults, queryErr := c.Bucket.runQuery(keyspaceStatement, n1qlOptions)
 		if queryErr == nil {
 			resultsIterator := &gocbRawIterator{
 				rawResult:                  queryResults.Raw(),
-				concurrentQueryOpLimitChan: c.queryOps,
+				concurrentQueryOpLimitChan: c.Bucket.queryOps,
 			}
 			return resultsIterator, queryErr
 		}
@@ -126,7 +130,7 @@ func (c *Collection) CreatePrimaryIndex(indexName string, options *N1qlIndexOpti
 // WaitForIndexesOnline takes set of indexes and watches them till they're online.
 func (c *Collection) WaitForIndexesOnline(indexNames []string, failfast bool) error {
 	logCtx := context.TODO()
-	mgr := c.cluster.QueryIndexes()
+	mgr := c.Bucket.cluster.QueryIndexes()
 	maxNumAttempts := 180
 	if failfast {
 		maxNumAttempts = 1
@@ -138,7 +142,7 @@ func (c *Collection) WaitForIndexesOnline(indexNames []string, failfast bool) er
 
 	indexOption := gocb.GetAllQueryIndexesOptions{
 		ScopeName:      c.ScopeName(),
-		CollectionName: c.Name(),
+		CollectionName: c.CollectionName(),
 		RetryStrategy:  &goCBv2FailFastRetryStrategy{},
 	}
 
@@ -191,36 +195,36 @@ func (c *Collection) BuildDeferredIndexes(indexSet []string) error {
 	return BuildDeferredIndexes(c, indexSet)
 }
 
-func (c *Collection) runQuery(statement string, n1qlOptions *gocb.QueryOptions) (*gocb.QueryResult, error) {
-	c.waitForAvailQueryOp()
+func (b *GocbV2Bucket) runQuery(statement string, n1qlOptions *gocb.QueryOptions) (*gocb.QueryResult, error) {
+	b.waitForAvailQueryOp()
 
 	if n1qlOptions == nil {
 		n1qlOptions = &gocb.QueryOptions{}
 	}
-	queryResults, err := c.cluster.Query(statement, n1qlOptions)
+	queryResults, err := b.cluster.Query(statement, n1qlOptions)
 	// In the event that we get an error during query we should release a view op as Close() will not be called.
 	if err != nil {
-		c.releaseQueryOp()
+		b.releaseQueryOp()
 	}
 
 	return queryResults, err
 }
 
 func (c *Collection) executeQuery(statement string) (sgbucket.QueryResultIterator, error) {
-	queryResults, queryErr := c.runQuery(statement, nil)
+	queryResults, queryErr := c.Bucket.runQuery(statement, nil)
 	if queryErr != nil {
 		return nil, queryErr
 	}
 
 	resultsIterator := &gocbRawIterator{
 		rawResult:                  queryResults.Raw(),
-		concurrentQueryOpLimitChan: c.queryOps,
+		concurrentQueryOpLimitChan: c.Bucket.queryOps,
 	}
 	return resultsIterator, nil
 }
 
 func (c *Collection) executeStatement(statement string) error {
-	queryResults, queryErr := c.runQuery(statement, nil)
+	queryResults, queryErr := c.Bucket.runQuery(statement, nil)
 	if queryErr != nil {
 		return queryErr
 	}
@@ -229,7 +233,7 @@ func (c *Collection) executeStatement(statement string) error {
 	for queryResults.Next() {
 	}
 	closeErr := queryResults.Close()
-	c.releaseQueryOp()
+	c.Bucket.releaseQueryOp()
 	if closeErr != nil {
 		return closeErr
 	}
@@ -244,13 +248,13 @@ func (c *Collection) getIndexes() (indexes []string, err error) {
 
 	indexes = []string{}
 	var opts *gocb.GetAllQueryIndexesOptions
-	if c.IsSupported(sgbucket.DataStoreFeatureCollections) {
+	if c.Bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
 		opts = &gocb.GetAllQueryIndexesOptions{
-			ScopeName:      c.ScopeName(),
-			CollectionName: c.Name(),
+			ScopeName:      c.Collection.ScopeName(),
+			CollectionName: c.Collection.Name(),
 		}
 	}
-	indexInfo, err := c.cluster.QueryIndexes().GetAllIndexes(c.BucketName(), opts)
+	indexInfo, err := c.Bucket.cluster.QueryIndexes().GetAllIndexes(c.BucketName(), opts)
 	if err != nil {
 		return indexes, err
 	}
@@ -263,7 +267,7 @@ func (c *Collection) getIndexes() (indexes []string, err error) {
 
 // waitUntilQueryServiceReady will wait for the specified duration until the query service is available.
 func (c *Collection) waitUntilQueryServiceReady(timeout time.Duration) error {
-	return c.cluster.WaitUntilReady(timeout,
+	return c.Bucket.cluster.WaitUntilReady(timeout,
 		&gocb.WaitUntilReadyOptions{ServiceTypes: []gocb.ServiceType{gocb.ServiceTypeQuery}},
 	)
 }

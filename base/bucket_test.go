@@ -452,30 +452,18 @@ func TestBaseBucket(t *testing.T) {
 	}{
 		{
 			name:   "walrus",
-			bucket: &walrus.WalrusBucket{},
+			bucket: &walrus.CollectionBucket{},
 		},
 		{
 			name:   "leaky",
-			bucket: &LeakyBucket{bucket: &walrus.WalrusBucket{}},
-		},
-		{
-			name:   "logging",
-			bucket: &LoggingBucket{bucket: &walrus.WalrusBucket{}},
-		},
-		{
-			name:   "leakyLogging",
-			bucket: &LeakyBucket{bucket: &LoggingBucket{bucket: &walrus.WalrusBucket{}}},
-		},
-		{
-			name:   "loggingLeaky",
-			bucket: &LoggingBucket{bucket: &LeakyBucket{bucket: &walrus.WalrusBucket{}}},
+			bucket: &LeakyBucket{bucket: &walrus.CollectionBucket{}},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			baseBucket := GetBaseBucket(test.bucket)
-			_, ok := baseBucket.(*walrus.WalrusBucket)
+			_, ok := baseBucket.(*walrus.CollectionBucket)
 			assert.True(t, ok, "Base bucket wasn't walrus bucket")
 		})
 	}

@@ -35,12 +35,14 @@ func TestOneShotDCP(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
+	dataStore := bucket.DefaultDataStore()
+
 	numDocs := 1000
 	// write documents to bucket
 	body := map[string]interface{}{"foo": "bar"}
 	for i := 0; i < numDocs; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		err := bucket.Set(key, 0, nil, body)
+		err := dataStore.Set(key, 0, nil, body)
 		require.NoError(t, err)
 	}
 
@@ -57,10 +59,10 @@ func TestOneShotDCP(t *testing.T) {
 	// start one shot feed
 	feedID := t.Name()
 
-	collection, err := AsCollection(bucket)
-	require.NoError(t, err)
+	collection, ok := dataStore.(*Collection)
+	require.True(t, ok)
 	var collectionIDs []uint32
-	if collection.IsSupported(sgbucket.DataStoreFeatureCollections) {
+	if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
 		collectionIDs = append(collectionIDs, collection.GetCollectionID())
 	}
 
@@ -69,7 +71,7 @@ func TestOneShotDCP(t *testing.T) {
 		CollectionIDs: collectionIDs,
 	}
 
-	dcpClient, err := NewDCPClient(feedID, counterCallback, clientOptions, collection)
+	dcpClient, err := NewDCPClient(feedID, counterCallback, clientOptions, bucket, bucket.BucketSpec)
 	require.NoError(t, err)
 
 	doneChan, startErr := dcpClient.Start()
@@ -87,7 +89,7 @@ func TestOneShotDCP(t *testing.T) {
 		updatedBody := map[string]interface{}{"foo": "bar"}
 		for i := numDocs; i < numDocs*2; i++ {
 			key := fmt.Sprintf("%s_INVALID_%d", t.Name(), i)
-			err := bucket.Set(key, 0, nil, updatedBody)
+			err := dataStore.Set(key, 0, nil, updatedBody)
 			require.NoError(t, err)
 		}
 	}()
@@ -119,6 +121,8 @@ func TestTerminateDCPFeed(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
+	dataStore := bucket.DefaultDataStore()
+
 	// create callback
 	mutationCount := uint64(0)
 	counterCallback := func(event sgbucket.FeedEvent) bool {
@@ -129,9 +133,7 @@ func TestTerminateDCPFeed(t *testing.T) {
 	// start continuous feed with terminator
 	feedID := t.Name()
 
-	collection, err := AsCollection(bucket)
-	require.NoError(t, err)
-	dcpClient, err := NewDCPClient(feedID, counterCallback, DCPClientOptions{}, collection)
+	dcpClient, err := NewDCPClient(feedID, counterCallback, DCPClientOptions{}, bucket, bucket.BucketSpec)
 	require.NoError(t, err)
 
 	// Add documents in a separate goroutine
@@ -146,7 +148,7 @@ func TestTerminateDCPFeed(t *testing.T) {
 				break
 			}
 			key := fmt.Sprintf("%s_%d", t.Name(), i)
-			err := bucket.Set(key, 0, nil, updatedBody)
+			err := dataStore.Set(key, 0, nil, updatedBody)
 			assert.NoError(t, err)
 		}
 	}()
@@ -202,6 +204,8 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			bucket := GetTestBucket(t)
 			defer bucket.Close()
 
+			dataStore := bucket.DefaultDataStore()
+
 			// create callback
 			mutationCount := uint64(0)
 			vbucketZeroCount := uint64(0)
@@ -221,13 +225,13 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			updatedBody := map[string]interface{}{"foo": "bar"}
 			for i := 0; i < 10000; i++ {
 				key := fmt.Sprintf("%s_%d", t.Name(), i)
-				err := bucket.Set(key, 0, nil, updatedBody)
+				err := dataStore.Set(key, 0, nil, updatedBody)
 				require.NoError(t, err)
 			}
-			collection, err := AsCollection(bucket)
-			require.NoError(t, err)
+			collection, ok := dataStore.(*Collection)
+			require.True(t, ok)
 			var collectionIDs []uint32
-			if collection.IsSupported(sgbucket.DataStoreFeatureCollections) {
+			if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
 				collectionIDs = append(collectionIDs, collection.GetCollectionID())
 			}
 
@@ -238,7 +242,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				CollectionIDs:  collectionIDs,
 			}
 
-			dcpClient, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, collection)
+			dcpClient, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, bucket, bucket.BucketSpec)
 			require.NoError(t, err)
 
 			doneChan, startErr := dcpClient.Start()
@@ -269,7 +273,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				OneShot:         true,
 				CollectionIDs:   collectionIDs,
 			}
-			dcpClient2, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, collection)
+			dcpClient2, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, bucket, bucket.BucketSpec)
 			require.NoError(t, err)
 
 			doneChan2, startErr2 := dcpClient2.Start()
@@ -286,10 +290,8 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				OneShot:         true,
 				CollectionIDs:   collectionIDs,
 			}
-			collection, err = AsCollection(bucket)
-			require.NoError(t, err)
 
-			dcpClient3, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, collection)
+			dcpClient3, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, bucket, bucket.BucketSpec)
 			require.NoError(t, err)
 
 			doneChan3, startErr3 := dcpClient3.Start()
@@ -321,6 +323,8 @@ func TestResumeStoppedFeed(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
+	dataStore := bucket.DefaultDataStore()
+
 	var dcpClient *DCPClient
 
 	// create callback
@@ -342,7 +346,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 	updatedBody := map[string]interface{}{"foo": "bar"}
 	for i := 0; i < 10000; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		err := bucket.Set(key, 0, nil, updatedBody)
+		err := dataStore.Set(key, 0, nil, updatedBody)
 		require.NoError(t, err)
 	}
 
@@ -350,10 +354,10 @@ func TestResumeStoppedFeed(t *testing.T) {
 	// Set metadata persistence frequency to zero to force persistence on every mutation
 	highFrequency := 0 * time.Second
 
-	collection, err := AsCollection(bucket)
-	require.NoError(t, err)
+	collection, ok := dataStore.(*Collection)
+	require.True(t, ok)
 	var collectionIDs []uint32
-	if collection.IsSupported(sgbucket.DataStoreFeatureCollections) {
+	if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
 		collectionIDs = append(collectionIDs, collection.GetCollectionID())
 	}
 
@@ -364,7 +368,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 		CollectionIDs:              collectionIDs,
 	}
 
-	dcpClient, err = NewDCPClient(feedID, counterCallback, dcpClientOpts, collection)
+	dcpClient, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, bucket, bucket.BucketSpec)
 	require.NoError(t, err)
 
 	doneChan, startErr := dcpClient.Start()
@@ -396,10 +400,10 @@ func TestResumeStoppedFeed(t *testing.T) {
 		OneShot:        true,
 		CollectionIDs:  collectionIDs,
 	}
-	collection, err = AsCollection(bucket)
-	require.NoError(t, err)
+	collection, ok = dataStore.(*Collection)
+	require.True(t, ok)
 
-	dcpClient2, err := NewDCPClient(feedID, secondCallback, dcpClientOpts, collection)
+	dcpClient2, err := NewDCPClient(feedID, secondCallback, dcpClientOpts, bucket, bucket.BucketSpec)
 	require.NoError(t, err)
 
 	doneChan2, startErr2 := dcpClient2.Start()
@@ -438,9 +442,7 @@ func TestBadAgentPriority(t *testing.T) {
 	dcpClientOpts := DCPClientOptions{
 		AgentPriority: gocbcore.DcpAgentPriorityHigh,
 	}
-	collection, err := AsCollection(bucket)
-	require.NoError(t, err)
-	dcpClient, err := NewDCPClient(feedID, panicCallback, dcpClientOpts, collection)
+	dcpClient, err := NewDCPClient(feedID, panicCallback, dcpClientOpts, bucket, bucket.BucketSpec)
 	require.Error(t, err)
 	require.Nil(t, dcpClient)
 }

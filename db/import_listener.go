@@ -64,11 +64,12 @@ func (il *importListener) StartImportFeed(ctx context.Context, bucket base.Bucke
 	}
 
 	if !dbContext.onlyDefaultCollection() {
-		coll, err := base.AsCollection(bucket)
-		if err != nil {
-			return fmt.Errorf("configured with named collections, but bucket is not collection: %w", err)
+		gocbv2Bucket, ok := bucket.(*base.GocbV2Bucket)
+		if !ok {
+			return fmt.Errorf("configured with named collections, but bucket is not a gocb bucket: %w", err)
 		}
-		collectionManifest, err := coll.GetCollectionManifest()
+
+		collectionManifest, err := gocbv2Bucket.GetCollectionManifest()
 		if err != nil {
 			return fmt.Errorf("failed to load collection manifest: %w", err)
 		}
@@ -125,14 +126,12 @@ func (il *importListener) StartImportFeed(ctx context.Context, bucket base.Bucke
 		// walrus is not a couchbasestore
 		return bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
 	}
+
 	if !base.IsEnterpriseEdition() {
 		groupID := ""
-		collection, err := base.AsCollection(bucket)
-		if err != nil {
-			return err
-		}
-		return base.StartGocbDCPFeed(collection, bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
+		return base.StartGocbDCPFeed(bucket, bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
 	}
+
 	il.cbgtContext, err = base.StartShardedDCPFeed(ctx, dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater,
 		bucket, cbStore.GetSpec(), scopeName, collectionNamesByScope[scopeName], dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
 	return err

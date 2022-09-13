@@ -261,7 +261,7 @@ func (bsc *BlipSyncContext) _copyContextDatabase() *Database {
 }
 
 // Handles the response to a pushed "changes" message, i.e. the list of revisions the client wants
-func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, requestSent time.Time, handleChangesResponseDb *Database) error {
+func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, requestSent time.Time, handleChangesResponseDb *Database, collectionIdx *int) error {
 	defer func() {
 		if panicked := recover(); panicked != nil {
 			bsc.replicationStats.NumHandlersPanicked.Add(1)

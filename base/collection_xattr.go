@@ -27,6 +27,12 @@ var RemoveSpecXattr = &gocb.RemoveSpecOptions{IsXattr: true}
 var LookupOptsAccessDeleted *gocb.LookupInOptions
 
 var _ SubdocXattrStore = &Collection{}
+
+// IsSupported is a shim that queries the parent bucket's feature - required for implementing SubdocXattrStore
+func (c *Collection) IsSupported(feature sgbucket.BucketStoreFeature) bool {
+	return c.Bucket.IsSupported(feature)
+}
+
 var _ UserXattrStore = &Collection{}
 
 func init() {
@@ -34,8 +40,9 @@ func init() {
 	LookupOptsAccessDeleted.Internal.DocFlags = gocb.SubdocDocFlagAccessDeleted
 }
 
+// GetSpec required for SubdocXattrStore
 func (c *Collection) GetSpec() BucketSpec {
-	return c.Spec
+	return c.Bucket.Spec
 }
 
 // Implementation of the XattrStore interface primarily invokes common wrappers that in turn invoke SDK-specific SubdocXattrStore API
@@ -92,13 +99,13 @@ func (c *Collection) UpdateXattr(k string, xattrKey string, exp uint32, cas uint
 //   - gocb v2 returns subdoc errors at the op level, in the ContentAt response
 //   - 'successful' error codes, like SucDocSuccessDeleted, aren't returned, and instead just set the internal.Deleted property on the response
 func (c *Collection) SubdocGetXattr(k string, xattrKey string, xv interface{}) (casOut uint64, err error) {
-	c.waitForAvailKvOp()
-	defer c.releaseKvOp()
+	c.Bucket.waitForAvailKvOp()
+	defer c.Bucket.releaseKvOp()
 
 	ops := []gocb.LookupInSpec{
 		gocb.GetSpec(xattrKey, GetSpecXattr),
 	}
-	res, lookupErr := c.LookupIn(k, ops, LookupOptsAccessDeleted)
+	res, lookupErr := c.Collection.LookupIn(k, ops, LookupOptsAccessDeleted)
 	if lookupErr == nil {
 		xattrContErr := res.ContentAt(0, xv)
 		// On error here, treat as the xattr wasn't found
@@ -117,8 +124,8 @@ func (c *Collection) SubdocGetXattr(k string, xattrKey string, xv interface{}) (
 }
 
 func (c *Collection) SubdocGetRaw(k string, subdocKey string) ([]byte, uint64, error) {
-	c.waitForAvailKvOp()
-	defer c.releaseKvOp()
+	c.Bucket.waitForAvailKvOp()
+	defer c.Bucket.releaseKvOp()
 
 	var rawValue []byte
 
@@ -127,7 +134,7 @@ func (c *Collection) SubdocGetRaw(k string, subdocKey string) ([]byte, uint64, e
 			gocb.GetSpec(subdocKey, &gocb.GetSpecOptions{}),
 		}
 
-		res, lookupErr := c.LookupIn(k, ops, &gocb.LookupInOptions{})
+		res, lookupErr := c.Collection.LookupIn(k, ops, &gocb.LookupInOptions{})
 		if lookupErr != nil {
 			isRecoverable := c.isRecoverableReadError(lookupErr)
 			if isRecoverable {
@@ -149,7 +156,7 @@ func (c *Collection) SubdocGetRaw(k string, subdocKey string) ([]byte, uint64, e
 		return false, nil, uint64(res.Cas())
 	}
 
-	err, casOut := RetryLoopCas("SubdocGetRaw", worker, c.Spec.RetrySleeper())
+	err, casOut := RetryLoopCas("SubdocGetRaw", worker, c.Bucket.Spec.RetrySleeper())
 	if err != nil {
 		err = pkgerrors.Wrapf(err, "SubdocGetRaw with key %s and subdocKey %s", UD(k).Redact(), UD(subdocKey).Redact())
 	}
@@ -158,15 +165,15 @@ func (c *Collection) SubdocGetRaw(k string, subdocKey string) ([]byte, uint64, e
 }
 
 func (c *Collection) SubdocWrite(k string, subdocKey string, cas uint64, value []byte) (uint64, error) {
-	c.waitForAvailKvOp()
-	defer c.releaseKvOp()
+	c.Bucket.waitForAvailKvOp()
+	defer c.Bucket.releaseKvOp()
 
 	worker := func() (shouldRetry bool, err error, casOut uint64) {
 		mutateOps := []gocb.MutateInSpec{
 			gocb.UpsertSpec(subdocKey, bytesToRawMessage(value), &gocb.UpsertSpecOptions{CreatePath: true}),
 		}
 
-		result, err := c.MutateIn(k, mutateOps, &gocb.MutateInOptions{
+		result, err := c.Collection.MutateIn(k, mutateOps, &gocb.MutateInOptions{
 			Cas:           gocb.Cas(cas),
 			StoreSemantic: gocb.StoreSemanticsUpsert,
 		})
@@ -182,7 +189,7 @@ func (c *Collection) SubdocWrite(k string, subdocKey string, cas uint64, value [
 		return false, err, 0
 	}
 
-	err, casOut := RetryLoopCas("SubdocWrite", worker, c.Spec.RetrySleeper())
+	err, casOut := RetryLoopCas("SubdocWrite", worker, c.Bucket.Spec.RetrySleeper())
 	if err != nil {
 		err = pkgerrors.Wrapf(err, "SubdocWrite with key %s and subdocKey %s", UD(k).Redact(), UD(subdocKey).Redact())
 	}
@@ -194,15 +201,15 @@ func (c *Collection) SubdocWrite(k string, subdocKey string, cas uint64, value [
 func (c *Collection) SubdocGetBodyAndXattr(k string, xattrKey string, userXattrKey string, rv interface{}, xv interface{}, uxv interface{}) (cas uint64, err error) {
 	worker := func() (shouldRetry bool, err error, value uint64) {
 
-		c.waitForAvailKvOp()
-		defer c.releaseKvOp()
+		c.Bucket.waitForAvailKvOp()
+		defer c.Bucket.releaseKvOp()
 
 		// First, attempt to get the document and xattr in one shot.
 		ops := []gocb.LookupInSpec{
 			gocb.GetSpec(xattrKey, GetSpecXattr),
 			gocb.GetSpec("", &gocb.GetSpecOptions{}),
 		}
-		res, lookupErr := c.LookupIn(k, ops, LookupOptsAccessDeleted)
+		res, lookupErr := c.Collection.LookupIn(k, ops, LookupOptsAccessDeleted)
 
 		// There are two 'partial success' error codes:
 		//   ErrSubDocBadMulti - one of the subdoc operations failed.  Occurs when doc exists but xattr does not
@@ -271,7 +278,7 @@ func (c *Collection) SubdocGetBodyAndXattr(k string, xattrKey string, userXattrK
 	}
 
 	// Kick off retry loop
-	err, cas = RetryLoopCas("SubdocGetBodyAndXattr", worker, c.Spec.RetrySleeper())
+	err, cas = RetryLoopCas("SubdocGetBodyAndXattr", worker, c.Bucket.Spec.RetrySleeper())
 	if err != nil {
 		err = pkgerrors.Wrapf(err, "SubdocGetBodyAndXattr %v", UD(k).Redact())
 	}
@@ -282,10 +289,10 @@ func (c *Collection) SubdocGetBodyAndXattr(k string, xattrKey string, userXattrK
 // SubdocInsertXattr inserts a new server tombstone with an associated mobile xattr.  Writes cas and crc32c to the xattr using
 // macro expansion.
 func (c *Collection) SubdocInsertXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}) (casOut uint64, err error) {
-	c.waitForAvailKvOp()
-	defer c.releaseKvOp()
+	c.Bucket.waitForAvailKvOp()
+	defer c.Bucket.releaseKvOp()
 
-	supportsTombstoneCreation := c.IsSupported(sgbucket.DataStoreFeatureCreateDeletedWithXattr)
+	supportsTombstoneCreation := c.Bucket.IsSupported(sgbucket.BucketStoreFeatureCreateDeletedWithXattr)
 
 	var docFlags gocb.SubdocDocFlag
 	if supportsTombstoneCreation {
@@ -305,7 +312,7 @@ func (c *Collection) SubdocInsertXattr(k string, xattrKey string, exp uint32, ca
 		Cas:           gocb.Cas(cas),
 	}
 	options.Internal.DocFlags = docFlags
-	result, mutateErr := c.MutateIn(k, mutateOps, options)
+	result, mutateErr := c.Collection.MutateIn(k, mutateOps, options)
 	if mutateErr != nil {
 		return 0, mutateErr
 	}
@@ -315,8 +322,8 @@ func (c *Collection) SubdocInsertXattr(k string, xattrKey string, exp uint32, ca
 // SubdocInsertXattr inserts a document and associated mobile xattr in a single mutateIn operation.  Writes cas and crc32c to the xattr using
 // macro expansion.
 func (c *Collection) SubdocInsertBodyAndXattr(k string, xattrKey string, exp uint32, v interface{}, xv interface{}) (casOut uint64, err error) {
-	c.waitForAvailKvOp()
-	defer c.releaseKvOp()
+	c.Bucket.waitForAvailKvOp()
+	defer c.Bucket.releaseKvOp()
 
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
@@ -328,7 +335,7 @@ func (c *Collection) SubdocInsertBodyAndXattr(k string, xattrKey string, exp uin
 		Expiry:        CbsExpiryToDuration(exp),
 		StoreSemantic: gocb.StoreSemanticsInsert,
 	}
-	result, mutateErr := c.MutateIn(k, mutateOps, options)
+	result, mutateErr := c.Collection.MutateIn(k, mutateOps, options)
 	if mutateErr != nil {
 		return 0, mutateErr
 	}
@@ -338,8 +345,8 @@ func (c *Collection) SubdocInsertBodyAndXattr(k string, xattrKey string, exp uin
 
 // SubdocInsert performs a subdoc insert operation to the specified path in the document body.
 func (c *Collection) SubdocInsert(k string, fieldPath string, cas uint64, value interface{}) error {
-	c.waitForAvailKvOp()
-	defer c.releaseKvOp()
+	c.Bucket.waitForAvailKvOp()
+	defer c.Bucket.releaseKvOp()
 
 	mutateOps := []gocb.MutateInSpec{
 		gocb.InsertSpec(fieldPath, value, nil),
@@ -347,7 +354,7 @@ func (c *Collection) SubdocInsert(k string, fieldPath string, cas uint64, value 
 	options := &gocb.MutateInOptions{
 		Cas: gocb.Cas(cas),
 	}
-	_, mutateErr := c.MutateIn(k, mutateOps, options)
+	_, mutateErr := c.Collection.MutateIn(k, mutateOps, options)
 
 	if errors.Is(mutateErr, gocbcore.ErrDocumentNotFound) {
 		return ErrNotFound
@@ -371,7 +378,7 @@ func (c *Collection) SubdocSetXattr(k string, xattrKey string, xv interface{}) (
 	}
 	options.Internal.DocFlags = gocb.SubdocDocFlagAccessDeleted
 
-	result, mutateErr := c.MutateIn(k, mutateOps, options)
+	result, mutateErr := c.Collection.MutateIn(k, mutateOps, options)
 	if mutateErr != nil {
 		return 0, mutateErr
 	}
@@ -382,8 +389,8 @@ func (c *Collection) SubdocSetXattr(k string, xattrKey string, xv interface{}) (
 // SubdocUpdateXattr updates the xattr on an existing document. Writes cas and crc32c to the xattr using
 // macro expansion.
 func (c *Collection) SubdocUpdateXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}) (casOut uint64, err error) {
-	c.waitForAvailKvOp()
-	defer c.releaseKvOp()
+	c.Bucket.waitForAvailKvOp()
+	defer c.Bucket.releaseKvOp()
 
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
@@ -397,7 +404,7 @@ func (c *Collection) SubdocUpdateXattr(k string, xattrKey string, exp uint32, ca
 	}
 	options.Internal.DocFlags = gocb.SubdocDocFlagAccessDeleted
 
-	result, mutateErr := c.MutateIn(k, mutateOps, options)
+	result, mutateErr := c.Collection.MutateIn(k, mutateOps, options)
 	if mutateErr != nil {
 		return 0, mutateErr
 	}
@@ -407,8 +414,8 @@ func (c *Collection) SubdocUpdateXattr(k string, xattrKey string, exp uint32, ca
 // SubdocUpdateBodyAndXattr updates the document body and xattr of an existing document. Writes cas and crc32c to the xattr using
 // macro expansion.
 func (c *Collection) SubdocUpdateBodyAndXattr(k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v interface{}, xv interface{}) (casOut uint64, err error) {
-	c.waitForAvailKvOp()
-	defer c.releaseKvOp()
+	c.Bucket.waitForAvailKvOp()
+	defer c.Bucket.releaseKvOp()
 
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
@@ -422,7 +429,7 @@ func (c *Collection) SubdocUpdateBodyAndXattr(k string, xattrKey string, exp uin
 		Cas:           gocb.Cas(cas),
 	}
 	fillMutateInOptions(options, opts)
-	result, mutateErr := c.MutateIn(k, mutateOps, options)
+	result, mutateErr := c.Collection.MutateIn(k, mutateOps, options)
 	if mutateErr != nil {
 		return 0, mutateErr
 	}
@@ -432,8 +439,8 @@ func (c *Collection) SubdocUpdateBodyAndXattr(k string, xattrKey string, exp uin
 // SubdocUpdateBodyAndXattr deletes the document body and updates the xattr of an existing document. Writes cas and crc32c to the xattr using
 // macro expansion.
 func (c *Collection) SubdocUpdateXattrDeleteBody(k, xattrKey string, exp uint32, cas uint64, xv interface{}) (casOut uint64, err error) {
-	c.waitForAvailKvOp()
-	defer c.releaseKvOp()
+	c.Bucket.waitForAvailKvOp()
+	defer c.Bucket.releaseKvOp()
 
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
@@ -446,7 +453,7 @@ func (c *Collection) SubdocUpdateXattrDeleteBody(k, xattrKey string, exp uint32,
 		Expiry:        CbsExpiryToDuration(exp),
 		Cas:           gocb.Cas(cas),
 	}
-	result, mutateErr := c.MutateIn(k, mutateOps, options)
+	result, mutateErr := c.Collection.MutateIn(k, mutateOps, options)
 	if mutateErr != nil {
 		return 0, mutateErr
 	}
@@ -455,8 +462,8 @@ func (c *Collection) SubdocUpdateXattrDeleteBody(k, xattrKey string, exp uint32,
 
 // SubdocDeleteXattr deletes an xattr of an existing document (or document tombstone)
 func (c *Collection) SubdocDeleteXattr(k string, xattrKey string, cas uint64) (err error) {
-	c.waitForAvailKvOp()
-	defer c.releaseKvOp()
+	c.Bucket.waitForAvailKvOp()
+	defer c.Bucket.releaseKvOp()
 
 	mutateOps := []gocb.MutateInSpec{
 		gocb.RemoveSpec(xattrKey, RemoveSpecXattr),
@@ -466,29 +473,29 @@ func (c *Collection) SubdocDeleteXattr(k string, xattrKey string, cas uint64) (e
 	}
 	options.Internal.DocFlags = gocb.SubdocDocFlagAccessDeleted
 
-	_, mutateErr := c.MutateIn(k, mutateOps, options)
+	_, mutateErr := c.Collection.MutateIn(k, mutateOps, options)
 	return mutateErr
 }
 
 // SubdocDeleteXattrs will delete the supplied xattr keys from a document. Not a cas safe operation.
 func (c *Collection) SubdocDeleteXattrs(k string, xattrKeys ...string) error {
-	c.waitForAvailKvOp()
-	defer c.releaseKvOp()
+	c.Bucket.waitForAvailKvOp()
+	defer c.Bucket.releaseKvOp()
 
 	mutateOps := make([]gocb.MutateInSpec, 0, len(xattrKeys))
 	for _, xattrKey := range xattrKeys {
 		mutateOps = append(mutateOps, gocb.RemoveSpec(xattrKey, RemoveSpecXattr))
 	}
 
-	_, mutateErr := c.MutateIn(k, mutateOps, &gocb.MutateInOptions{})
+	_, mutateErr := c.Collection.MutateIn(k, mutateOps, &gocb.MutateInOptions{})
 
 	return mutateErr
 }
 
 // SubdocDeleteXattr deletes the document body and associated xattr of an existing document.
 func (c *Collection) SubdocDeleteBodyAndXattr(k string, xattrKey string) (err error) {
-	c.waitForAvailKvOp()
-	defer c.releaseKvOp()
+	c.Bucket.waitForAvailKvOp()
+	defer c.Bucket.releaseKvOp()
 
 	mutateOps := []gocb.MutateInSpec{
 		gocb.RemoveSpec(xattrKey, RemoveSpecXattr),
@@ -497,7 +504,7 @@ func (c *Collection) SubdocDeleteBodyAndXattr(k string, xattrKey string) (err er
 	options := &gocb.MutateInOptions{
 		StoreSemantic: gocb.StoreSemanticsReplace,
 	}
-	_, mutateErr := c.MutateIn(k, mutateOps, options)
+	_, mutateErr := c.Collection.MutateIn(k, mutateOps, options)
 	if mutateErr == nil {
 		return nil
 	}
@@ -516,8 +523,8 @@ func (c *Collection) SubdocDeleteBodyAndXattr(k string, xattrKey string) (err er
 
 // SubdocDeleteXattr deletes the document body of an existing document, and updates cas and crc32c in the associated xattr.
 func (c *Collection) SubdocDeleteBody(k string, xattrKey string, exp uint32, cas uint64) (casOut uint64, err error) {
-	c.waitForAvailKvOp()
-	defer c.releaseKvOp()
+	c.Bucket.waitForAvailKvOp()
+	defer c.Bucket.releaseKvOp()
 
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(xattrCasPath(xattrKey), gocb.MutationMacroCAS, UpsertSpecXattr),
@@ -529,7 +536,7 @@ func (c *Collection) SubdocDeleteBody(k string, xattrKey string, exp uint32, cas
 		Expiry:        CbsExpiryToDuration(exp),
 		Cas:           gocb.Cas(cas),
 	}
-	result, mutateErr := c.MutateIn(k, mutateOps, options)
+	result, mutateErr := c.Collection.MutateIn(k, mutateOps, options)
 	if mutateErr != nil {
 		return 0, mutateErr
 	}
@@ -579,8 +586,8 @@ func bytesToRawMessage(v interface{}) interface{} {
 }
 
 func (c *Collection) WriteUserXattr(k string, xattrKey string, xattrVal interface{}) (uint64, error) {
-	c.waitForAvailKvOp()
-	defer c.releaseKvOp()
+	c.Bucket.waitForAvailKvOp()
+	defer c.Bucket.releaseKvOp()
 
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xattrVal), UpsertSpecXattr),
@@ -589,7 +596,7 @@ func (c *Collection) WriteUserXattr(k string, xattrKey string, xattrVal interfac
 		StoreSemantic: gocb.StoreSemanticsUpsert,
 	}
 
-	result, mutateErr := c.MutateIn(k, mutateOps, options)
+	result, mutateErr := c.Collection.MutateIn(k, mutateOps, options)
 	if mutateErr != nil {
 		return 0, mutateErr
 	}
@@ -597,8 +604,8 @@ func (c *Collection) WriteUserXattr(k string, xattrKey string, xattrVal interfac
 }
 
 func (c *Collection) DeleteUserXattr(k string, xattrKey string) (uint64, error) {
-	c.waitForAvailKvOp()
-	defer c.releaseKvOp()
+	c.Bucket.waitForAvailKvOp()
+	defer c.Bucket.releaseKvOp()
 
 	mutateOps := []gocb.MutateInSpec{
 		gocb.RemoveSpec(xattrKey, RemoveSpecXattr),
@@ -608,7 +615,7 @@ func (c *Collection) DeleteUserXattr(k string, xattrKey string) (uint64, error) 
 	}
 	options.Internal.DocFlags = gocb.SubdocDocFlagAccessDeleted
 
-	result, mutateErr := c.MutateIn(k, mutateOps, options)
+	result, mutateErr := c.Collection.MutateIn(k, mutateOps, options)
 	if mutateErr != nil {
 		return 0, mutateErr
 	}

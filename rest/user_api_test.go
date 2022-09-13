@@ -306,7 +306,6 @@ func TestUserAPI(t *testing.T) {
 	// POST a user
 	response = rt.SendAdminRequest("POST", "/db/_user", `{"name":"snej", "password":"letmein", "admin_channels":["foo", "bar"]}`)
 	RequireStatus(t, response, 301)
-	rt.Bucket().Dump()
 
 	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"snej", "password":"letmein", "admin_channels":["foo", "bar"]}`)
 	RequireStatus(t, response, 201)

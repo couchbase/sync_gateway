@@ -43,7 +43,7 @@ func TestRoleQuery(t *testing.T) {
 			dbContextConfig := getDatabaseContextOptions(testCase.isServerless)
 
 			tBucket := base.GetTestBucketDefaultCollection(t)
-			database, ctx := db.SetupTestDBForBucketWithOptions(t, tBucket, dbContextConfig)
+			database, ctx := db.SetupTestDBForDataStoreWithOptions(t, tBucket, dbContextConfig)
 			defer database.Close(ctx)
 
 			n1QLStore, reset, err := setupN1QLStore(database.Bucket, testCase.isServerless)

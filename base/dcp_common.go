@@ -67,7 +67,8 @@ func (s *SimpleFeed) Close() error {
 type DCPCommon struct {
 	dbStatsExpvars         *expvar.Map
 	m                      sync.Mutex
-	metaStore              Bucket                         // For metadata persistence/retrieval
+	couchbaseStore         CouchbaseStore
+	metaStore              DataStore                      // For metadata persistence/retrieval
 	maxVbNo                uint16                         // Number of vbuckets being used for this feed
 	persistCheckpoints     bool                           // Whether this DCPReceiver should persist metadata to the bucket
 	seqs                   []uint64                       // To track max seq #'s we received per vbucketId.
@@ -82,11 +83,17 @@ type DCPCommon struct {
 	checkpointPrefix       string                         // DCP checkpoint key prefix
 }
 
-func NewDCPCommon(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, metaStore Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID, checkpointPrefix string) *DCPCommon {
+func NewDCPCommon(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bucket Bucket, metaStore DataStore, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID, checkpointPrefix string) (*DCPCommon, error) {
 	newBackfillStatus := backfillStatus{}
+
+	couchbaseStore, ok := AsCouchbaseStore(bucket)
+	if !ok {
+		return nil, errors.New("DCP not supported for non-Couchbase data source")
+	}
 
 	c := &DCPCommon{
 		dbStatsExpvars:         dbStats,
+		couchbaseStore:         couchbaseStore,
 		metaStore:              metaStore,
 		maxVbNo:                maxVbNo,
 		persistCheckpoints:     persistCheckpoints,
@@ -101,10 +108,10 @@ func NewDCPCommon(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, 
 		checkpointPrefix:       checkpointPrefix,
 	}
 
-	dcpContextID := fmt.Sprintf("%s-%s", MD(metaStore.GetName()).Redact(), feedID)
+	dcpContextID := fmt.Sprintf("%s-%s", MD(couchbaseStore.GetName()).Redact(), feedID)
 	c.loggingCtx = LogContextWith(ctx, &LogContext{CorrelationID: dcpContextID})
 
-	return c
+	return c, nil
 }
 
 func (c *DCPCommon) dataUpdate(seq uint64, event sgbucket.FeedEvent) {
@@ -315,13 +322,8 @@ func (c *DCPCommon) updateSeq(vbucketId uint16, seq uint64, warnOnLowerSeqNo boo
 // Initializes DCP Feed.  Determines starting position based on feed type.
 func (c *DCPCommon) initFeed(backfillType uint64) (highSeqnos map[uint16]uint64, err error) {
 
-	couchbaseBucket, ok := AsCouchbaseStore(c.metaStore)
-	if !ok {
-		return nil, errors.New("DCP not supported for non-Couchbase data source")
-	}
-
 	var statsUuids map[uint16]uint64
-	statsUuids, highSeqnos, err = couchbaseBucket.GetStatsVbSeqno(c.maxVbNo, false)
+	statsUuids, highSeqnos, err = c.couchbaseStore.GetStatsVbSeqno(c.maxVbNo, false)
 	if err != nil {
 		return nil, pkgerrors.Wrap(err, "Error retrieving stats-vbseqno - DCP not supported")
 	}
@@ -430,7 +432,7 @@ func (b *backfillStatus) snapshotStart(vbNo uint16, snapStart uint64, snapEnd ui
 	b.snapStart[vbNo] = snapStart
 	b.snapEnd[vbNo] = snapEnd
 }
-func (b *backfillStatus) updateStats(vbno uint16, previousVbSequence uint64, currentSequences []uint64, bucket Bucket) {
+func (b *backfillStatus) updateStats(vbno uint16, previousVbSequence uint64, currentSequences []uint64, datastore DataStore) {
 	if !b.vbActive[vbno] {
 		return
 	}
@@ -456,7 +458,7 @@ func (b *backfillStatus) updateStats(vbno uint16, previousVbSequence uint64, cur
 	// Check if it's time to persist and log backfill progress
 	if time.Since(b.lastPersistTime) > kBackfillPersistInterval {
 		b.lastPersistTime = time.Now()
-		err := b.persistBackfillSequences(bucket, currentSequences)
+		err := b.persistBackfillSequences(datastore, currentSequences)
 		if err != nil {
 			WarnfCtx(logCtx, "Error persisting back-fill sequences: %v", err)
 		}
@@ -467,7 +469,7 @@ func (b *backfillStatus) updateStats(vbno uint16, previousVbSequence uint64, cur
 	if b.receivedSequences >= b.expectedSequences {
 		InfofCtx(logCtx, KeyDCP, "Backfill complete")
 		b.active = false
-		err := b.purgeBackfillSequences(bucket)
+		err := b.purgeBackfillSequences(datastore)
 		if err != nil {
 			WarnfCtx(logCtx, "Error purging back-fill sequences: %v", err)
 		}
@@ -490,18 +492,18 @@ type BackfillSequences struct {
 	SnapEnd   []uint64
 }
 
-func (b *backfillStatus) persistBackfillSequences(bucket Bucket, currentSeqs []uint64) error {
+func (b *backfillStatus) persistBackfillSequences(datastore DataStore, currentSeqs []uint64) error {
 	backfillSeqs := &BackfillSequences{
 		Seqs:      currentSeqs,
 		SnapStart: b.snapStart,
 		SnapEnd:   b.snapEnd,
 	}
-	return bucket.Set(DCPBackfillSeqKey, 0, nil, backfillSeqs)
+	return datastore.Set(DCPBackfillSeqKey, 0, nil, backfillSeqs)
 }
 
-func (b *backfillStatus) loadBackfillSequences(bucket Bucket) (*BackfillSequences, error) {
+func (b *backfillStatus) loadBackfillSequences(datastore DataStore) (*BackfillSequences, error) {
 	var backfillSeqs BackfillSequences
-	_, err := bucket.Get(DCPBackfillSeqKey, &backfillSeqs)
+	_, err := datastore.Get(DCPBackfillSeqKey, &backfillSeqs)
 	if err != nil {
 		return nil, err
 	}
@@ -509,8 +511,8 @@ func (b *backfillStatus) loadBackfillSequences(bucket Bucket) (*BackfillSequence
 	return &backfillSeqs, nil
 }
 
-func (b *backfillStatus) purgeBackfillSequences(bucket Bucket) error {
-	return bucket.Delete(DCPBackfillSeqKey)
+func (b *backfillStatus) purgeBackfillSequences(datastore DataStore) error {
+	return datastore.Delete(DCPBackfillSeqKey)
 }
 
 // DCP-related utilities

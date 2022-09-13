@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"time"
 
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 	pkgerrors "github.com/pkg/errors"
@@ -25,7 +24,7 @@ import (
 
 /** Manages user authentication for a database. */
 type Authenticator struct {
-	bucket          base.Bucket
+	datastore       base.DataStore
 	channelComputer ChannelComputer
 	AuthenticatorOptions
 	bcryptCostChanged bool
@@ -69,9 +68,9 @@ const (
 )
 
 // Creates a new Authenticator that stores user info in the given Bucket.
-func NewAuthenticator(bucket base.Bucket, channelComputer ChannelComputer, options AuthenticatorOptions) *Authenticator {
+func NewAuthenticator(datastore base.DataStore, channelComputer ChannelComputer, options AuthenticatorOptions) *Authenticator {
 	return &Authenticator{
-		bucket:               bucket,
+		datastore:            datastore,
 		channelComputer:      channelComputer,
 		AuthenticatorOptions: options,
 	}
@@ -136,7 +135,7 @@ func (auth *Authenticator) GetRoleIncDeleted(name string) (Role, error) {
 func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) (Principal, error) {
 	var princ Principal
 
-	cas, err := auth.bucket.Update(docID, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
+	cas, err := auth.datastore.Update(docID, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		if currentValue == nil {
 			princ = nil
@@ -328,7 +327,7 @@ func (auth *Authenticator) rebuildRoles(user User) error {
 // Looks up a User by email address.
 func (auth *Authenticator) GetUserByEmail(email string) (User, error) {
 	var info userByEmailInfo
-	_, err := auth.bucket.Get(docIDForUserEmail(email), &info)
+	_, err := auth.datastore.Get(docIDForUserEmail(email), &info)
 	if base.IsDocNotFoundError(err) {
 		return nil, nil
 	} else if err != nil {
@@ -344,7 +343,7 @@ func (auth *Authenticator) Save(p Principal) error {
 		return err
 	}
 
-	casOut, writeErr := auth.bucket.WriteCas(p.DocID(), 0, 0, p.Cas(), p, 0)
+	casOut, writeErr := auth.datastore.WriteCas(p.DocID(), 0, 0, p.Cas(), p, 0)
 	if writeErr != nil {
 		return writeErr
 	}
@@ -353,7 +352,7 @@ func (auth *Authenticator) Save(p Principal) error {
 	if user, ok := p.(User); ok {
 		if user.Email() != "" {
 			info := userByEmailInfo{user.Name()}
-			if err := auth.bucket.Set(docIDForUserEmail(user.Email()), 0, nil, info); err != nil {
+			if err := auth.datastore.Set(docIDForUserEmail(user.Email()), 0, nil, info); err != nil {
 				return err
 			}
 			// FIX: Fail if email address is already registered to another user
@@ -367,7 +366,7 @@ func (auth *Authenticator) Save(p Principal) error {
 // Used for resync
 func (auth *Authenticator) UpdateSequenceNumber(p Principal, seq uint64) error {
 	p.SetSequence(seq)
-	casOut, writeErr := auth.bucket.WriteCas(p.DocID(), 0, 0, p.Cas(), p, 0)
+	casOut, writeErr := auth.datastore.WriteCas(p.DocID(), 0, 0, p.Cas(), p, 0)
 	if writeErr != nil {
 		return writeErr
 	}
@@ -391,15 +390,15 @@ func (auth *Authenticator) InvalidateChannels(name string, isUser bool, invalSeq
 
 	base.InfofCtx(auth.LogCtx, base.KeyAccess, "Invalidate access of %q", base.UD(name))
 
-	if auth.bucket.IsSupported(sgbucket.DataStoreFeatureSubdocOperations) {
-		err := auth.bucket.SubdocInsert(docID, "channel_inval_seq", 0, invalSeq)
+	if subdocStore, ok := base.AsSubdocStore(auth.datastore); ok {
+		err := subdocStore.SubdocInsert(docID, "channel_inval_seq", 0, invalSeq)
 		if err != nil && err != base.ErrNotFound && err != base.ErrAlreadyExists {
 			return err
 		}
 		return nil
 	}
 
-	_, err := auth.bucket.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+	_, err := auth.datastore.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
 		// If user/role doesn't exist cancel update
 		if current == nil {
 			return nil, nil, false, base.ErrUpdateCancel
@@ -434,15 +433,15 @@ func (auth *Authenticator) InvalidateRoles(username string, invalSeq uint64) err
 
 	base.InfofCtx(auth.LogCtx, base.KeyAccess, "Invalidate roles of %q", base.UD(username))
 
-	if auth.bucket.IsSupported(sgbucket.DataStoreFeatureSubdocOperations) {
-		err := auth.bucket.SubdocInsert(docID, "role_inval_seq", 0, invalSeq)
+	if subdocStore, ok := base.AsSubdocStore(auth.datastore); ok {
+		err := subdocStore.SubdocInsert(docID, "role_inval_seq", 0, invalSeq)
 		if err != nil && err != base.ErrNotFound && err != base.ErrAlreadyExists {
 			return err
 		}
 		return nil
 	}
 
-	_, err := auth.bucket.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+	_, err := auth.datastore.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
 		// If user doesn't exist cancel update
 		if current == nil {
 			return nil, nil, false, base.ErrUpdateCancel
@@ -582,16 +581,16 @@ func (auth *Authenticator) casUpdatePrincipal(p Principal, callback casUpdatePri
 
 func (auth *Authenticator) DeleteUser(user User) error {
 	if user.Email() != "" {
-		if err := auth.bucket.Delete(docIDForUserEmail(user.Email())); err != nil {
+		if err := auth.datastore.Delete(docIDForUserEmail(user.Email())); err != nil {
 			base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error deleting document ID for user email %s. Error: %v", base.UD(user.Email()), err)
 		}
 	}
-	return auth.bucket.Delete(user.DocID())
+	return auth.datastore.Delete(user.DocID())
 }
 
 func (auth *Authenticator) DeleteRole(role Role, purge bool, deleteSeq uint64) error {
 	if purge {
-		return auth.bucket.Delete(role.DocID())
+		return auth.datastore.Delete(role.DocID())
 	}
 	return auth.casUpdatePrincipal(role, func(p Principal) (updatedPrincipal Principal, err error) {
 		if p == nil || p.IsDeleted() {

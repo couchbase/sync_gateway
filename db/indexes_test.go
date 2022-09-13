@@ -111,7 +111,7 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	require.True(t, db.Bucket.IsSupported(sgbucket.DataStoreFeatureN1ql))
+	require.True(t, db.Bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql))
 
 	n1qlStore, ok := base.AsN1QLStore(db.Bucket)
 	assert.True(t, ok)
@@ -165,7 +165,7 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	require.True(t, db.Bucket.IsSupported(sgbucket.DataStoreFeatureN1ql))
+	require.True(t, db.Bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql))
 	n1qlStore, ok := base.AsN1QLStore(db.Bucket)
 	assert.True(t, ok)
 
@@ -208,10 +208,11 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	require.True(t, db.Bucket.IsSupported(sgbucket.DataStoreFeatureN1ql))
+	copiedIndexes := copySGIndexes(sgIndexes)
+
+	require.True(t, db.Bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql))
 	n1QLStore, ok := base.AsN1QLStore(db.Bucket)
 	assert.True(t, ok)
-	copiedIndexes := copySGIndexes(sgIndexes)
 
 	_, err := removeObsoleteDesignDocs(db.Bucket, !db.UseXattrs(), db.UseViews())
 	assert.NoError(t, err)
@@ -268,7 +269,7 @@ func TestRemoveObsoleteIndexOnError(t *testing.T) {
 
 	leakyBucket := base.NewLeakyBucket(db.Bucket, base.LeakyBucketConfig{DropIndexErrorNames: []string{"sg_access_1", "sg_access_x1"}})
 	copiedIndexes := copySGIndexes(sgIndexes)
-	require.True(t, db.Bucket.IsSupported(sgbucket.DataStoreFeatureN1ql))
+	require.True(t, db.Bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql))
 
 	// Use existing versions of IndexAccess and IndexChannels and create an old version that will be removed by obsolete
 	// indexes. Resulting from the removal candidates for removeObsoleteIndexes will be:

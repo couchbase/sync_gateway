@@ -55,7 +55,7 @@ type CbgtContext struct {
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
 // dbName is used to define a unique path name for local file storage of pindex files
 func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string, uuid string, heartbeater Heartbeater, bucket Bucket, spec BucketSpec, scope string, collections []string, numPartitions uint16, cfg cbgt.Cfg) (*CbgtContext, error) {
-	cbgtContext, err := initCBGTManager(ctx, bucket, spec, cfg, uuid, dbName)
+	cbgtContext, err := initCBGTManager(ctx, bucket, spec, scope, collections, cfg, uuid, dbName)
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +244,7 @@ func getCBGTIndexUUID(manager *cbgt.Manager, indexName string) (exists bool, pre
 // createCBGTManager creates a new manager for a given bucket and bucketSpec
 // Inline comments below provide additional detail on how cbgt uses each manager
 // parameter, and the implications for SG
-func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID string, dbName string) (*CbgtContext, error) {
+func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, scope string, collections []string, cfgSG cbgt.Cfg, dbUUID string, dbName string) (*CbgtContext, error) {
 	// Check if there are pre-Helium nodes, and if so, set the LithiumCompat flag to ensure we don't try to start a
 	// collections-enabled feed when some nodes won't support it.
 	minVersion, err := getMinNodeVersion(cfgSG)
@@ -252,7 +252,7 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 		return nil, fmt.Errorf("failed to get minimum node version in cluster: %w", err)
 	}
 	if minVersion.Less(firstVersionToSupportCollections) {
-		if spec.Scope != nil || spec.Collection != nil {
+		if scope != "" || len(collections) > 0 {
 			return nil, fmt.Errorf("cannot start DCP feed on non-default collection with legacy nodes present in the cluster")
 		}
 	}
@@ -325,7 +325,7 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 	options["feedInitialBootstrapNonTLS"] = strconv.FormatBool(!spec.IsTLS())
 
 	// Disable collections if unsupported
-	if !bucket.IsSupported(sgbucket.DataStoreFeatureCollections) {
+	if !bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
 		options["disableCollectionsSupport"] = "true"
 		options["disableStreamIDs"] = "true"
 	}

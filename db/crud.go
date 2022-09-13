@@ -82,7 +82,7 @@ func (db *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid stri
 			return nil, nil, base.HTTPErrorf(404, "Not imported")
 		}
 	} else {
-		rawDoc, cas, getErr := db.Bucket.GetRaw(key)
+		rawDoc, cas, getErr := db.dataStore.GetRaw(key)
 		if getErr != nil {
 			return nil, nil, getErr
 		}
@@ -113,7 +113,7 @@ func (db *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid stri
 func (db *DatabaseCollection) GetDocWithXattr(key string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
 	rawBucketDoc = &sgbucket.BucketDocument{}
 	var getErr error
-	rawBucketDoc.Cas, getErr = db.Bucket.GetWithXattr(key, base.SyncXattrName, db.userXattrKey(), &rawBucketDoc.Body, &rawBucketDoc.Xattr, &rawBucketDoc.UserXattr)
+	rawBucketDoc.Cas, getErr = db.dataStore.GetWithXattr(key, base.SyncXattrName, db.userXattrKey(), &rawBucketDoc.Body, &rawBucketDoc.Xattr, &rawBucketDoc.UserXattr)
 	if getErr != nil {
 		return nil, nil, getErr
 	}
@@ -140,7 +140,7 @@ func (db *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) 
 		// Retrieve doc and xattr from bucket, unmarshal only xattr.
 		// Triggers on-demand import when document xattr doesn't match cas.
 		var rawDoc, rawXattr, rawUserXattr []byte
-		cas, getErr := db.Bucket.GetWithXattr(key, base.SyncXattrName, db.userXattrKey(), &rawDoc, &rawXattr, &rawUserXattr)
+		cas, getErr := db.dataStore.GetWithXattr(key, base.SyncXattrName, db.userXattrKey(), &rawDoc, &rawXattr, &rawUserXattr)
 		if getErr != nil {
 			return emptySyncData, getErr
 		}
@@ -170,7 +170,7 @@ func (db *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) 
 
 	} else {
 		// Non-xattr.  Retrieve doc from bucket, unmarshal metadata only.
-		rawDocBytes, _, err := db.Bucket.GetRaw(key)
+		rawDocBytes, _, err := db.dataStore.GetRaw(key)
 		if err != nil {
 			return emptySyncData, err
 		}
@@ -1739,7 +1739,7 @@ func (db *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, do
 	}
 
 	updatedExpiry = doc.updateExpiry(syncExpiry, updatedExpiry, expiry)
-	err = doc.persistModifiedRevisionBodies(db.Bucket)
+	err = doc.persistModifiedRevisionBodies(db.dbCtx.MetadataStore)
 	if err != nil {
 		return
 	}
@@ -1780,7 +1780,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 
 	if !db.UseXattrs() {
 		// Update the document, storing metadata in _sync property
-		_, err = db.Bucket.Update(key, expiry, func(currentValue []byte) (raw []byte, syncFuncExpiry *uint32, isDelete bool, err error) {
+		_, err = db.dataStore.Update(key, expiry, func(currentValue []byte) (raw []byte, syncFuncExpiry *uint32, isDelete bool, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocument(docid, currentValue); err != nil {
 				return
@@ -1819,7 +1819,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	if db.UseXattrs() || upgradeInProgress {
 		var casOut uint64
 		// Update the document, storing metadata in extended attribute
-		casOut, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, db.userXattrKey(), expiry, opts, existingDoc, func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, err error) {
+		casOut, err = db.dataStore.WriteUpdateWithXattr(key, base.SyncXattrName, db.userXattrKey(), expiry, opts, existingDoc, func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocumentWithXattr(docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll); err != nil {
 				return
@@ -1985,7 +1985,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		var obsoleteAttachments []string
 		for previousAttachmentID := range previousAttachments {
 			if _, found := leafAttachments[previousAttachmentID]; !found {
-				err = db.Bucket.Delete(previousAttachmentID)
+				err = db.dataStore.Delete(previousAttachmentID)
 				if err != nil {
 					base.ErrorfCtx(ctx, "Error deleting obsolete attachment %q of doc %q, Error: %v", previousAttachmentID, base.UD(doc.ID), err)
 				} else {
@@ -1999,7 +1999,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	}
 
 	// Remove any obsolete non-winning revision bodies
-	doc.deleteRemovedRevisionBodies(db.Bucket)
+	doc.deleteRemovedRevisionBodies(db.dataStore)
 
 	// Mark affected users/roles as needing to recompute their channel access:
 	db.MarkPrincipalsChanged(ctx, docid, newRevID, changedAccessPrincipals, changedRoleAccessUsers, doc.Sequence)
@@ -2179,16 +2179,16 @@ func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string) err
 	}
 
 	for attachmentID := range attachments {
-		err = db.Bucket.Delete(attachmentID)
+		err = db.dataStore.Delete(attachmentID)
 		if err != nil {
 			base.WarnfCtx(ctx, "Unable to delete attachment %q. Error: %v", attachmentID, err)
 		}
 	}
 
 	if db.UseXattrs() {
-		return db.Bucket.DeleteWithXattr(key, base.SyncXattrName)
+		return db.dataStore.DeleteWithXattr(key, base.SyncXattrName)
 	} else {
-		return db.Bucket.Delete(key)
+		return db.dataStore.Delete(key)
 	}
 }
 
@@ -2364,7 +2364,7 @@ func (context *DatabaseContext) ComputeRolesForUser(ctx context.Context, user au
 // Checks whether a document has a mobile xattr.  Used when running in non-xattr mode to support no downtime upgrade.
 func (context *DatabaseCollection) checkForUpgrade(key string, unmarshalLevel DocumentUnmarshalLevel) (*Document, *sgbucket.BucketDocument) {
 	// If we are using xattrs or Couchbase Server doesn't support them, an upgrade isn't going to be in progress
-	if context.UseXattrs() || !context.Bucket.IsSupported(sgbucket.DataStoreFeatureXattrs) {
+	if context.UseXattrs() || !context.dataStore.IsSupported(sgbucket.BucketStoreFeatureXattrs) {
 		return nil, nil
 	}
 
@@ -2388,7 +2388,7 @@ func (db *DatabaseCollectionWithUser) RevDiff(ctx context.Context, docid string,
 
 	if db.UseXattrs() {
 		var xattrValue []byte
-		cas, err := db.Bucket.GetXattr(docid, base.SyncXattrName, &xattrValue)
+		cas, err := db.dataStore.GetXattr(docid, base.SyncXattrName, &xattrValue)
 
 		if err != nil {
 			if !base.IsDocNotFoundError(err) {

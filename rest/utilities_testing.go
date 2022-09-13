@@ -295,8 +295,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 					rt.TB.Fatalf("Could not get collection from bucket with type %T: %v", testBucket.Bucket, err)
 				}
 
-				collectionBucket.Spec.Scope = scope
-				collectionBucket.Spec.Collection = collection
+				collectionBucket.Bucket.Spec.Scope = scope
+				collectionBucket.Bucket.Spec.Collection = collection
 				collectionBucket.Collection = collectionBucket.Collection.Bucket().Scope(*scope).Collection(*collection)
 			}
 
@@ -330,7 +330,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 // LeakyBucket gets the bucket from the RestTester as a leaky bucket allowing for callbacks to be set on the fly.
 // The RestTester must have been set up to create and use a leaky bucket by setting leakyBucketConfig in the RT
 // config when calling NewRestTester.
-func (rt *RestTester) LeakyBucket() *base.LeakyBucket {
+func (rt *RestTester) LeakyBucket() *base.LeakyDataStore {
 	if rt.leakyBucketConfig == nil {
 		rt.TB.Fatalf("Cannot get leaky bucket when leakyBucketConfig was not set on RestTester initialisation")
 	}

@@ -188,8 +188,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			assertXattrSyncMetaRevGeneration(t, db.Bucket, key, testCase.expectedGeneration)
 
 			// Verify the expiry has been preserved after the import
-			cbStore, _ := base.AsCouchbaseStore(db.Bucket)
-			expiry, err = cbStore.GetExpiry(key)
+			expiry, err = db.Bucket.GetExpiry(key)
 			require.NoError(t, err, "Error calling GetExpiry()")
 			updatedExpiryDuration := base.CbsExpiryToDuration(expiry)
 			assert.True(t, updatedExpiryDuration > expiryDuration)

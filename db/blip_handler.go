@@ -532,7 +532,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 		bh.replicationStats.SendChangesCount.Add(int64(len(changeArray)))
 		// Spawn a goroutine to await the client's response:
 		go func(bh *blipHandler, sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, sendTime time.Time, database *Database) {
-			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, database); err != nil {
+			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, database, bh.collectionIdx); err != nil {
 				base.WarnfCtx(bh.loggingCtx, "Error from bh.handleChangesResponse: %v", err)
 				if bh.fatalErrorCallback != nil {
 					bh.fatalErrorCallback(err)
@@ -1154,7 +1154,7 @@ func (bh *blipHandler) handleProveAttachment(rq *blip.Message) error {
 		if bh.clientType == BLIPClientTypeSGR2 {
 			return ErrAttachmentNotFound
 		}
-		if base.IsKeyNotFoundError(bh.collection.Bucket, err) {
+		if base.IsKeyNotFoundError(bh.collection.dataStore, err) {
 			return ErrAttachmentNotFound
 		}
 		return base.HTTPErrorf(http.StatusInternalServerError, fmt.Sprintf("Error getting client attachment: %v", err))

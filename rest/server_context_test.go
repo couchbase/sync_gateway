@@ -580,7 +580,7 @@ func TestServerContextSetupCollectionsSupport(t *testing.T) {
 
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
-	if tb.IsSupported(sgbucket.DataStoreFeatureCollections) {
+	if tb.IsSupported(sgbucket.BucketStoreFeatureCollections) {
 		t.Skip("Only runs on datastores without collections support")
 	}
 

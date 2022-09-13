@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/couchbase/gocb/v2"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -37,22 +38,27 @@ import (
 // util_test.go, which is only accessible from the base package.
 
 var TestExternalRevStorage = false
-var numOpenBucketsByName map[string]int32
-var mutexNumOpenBucketsByName sync.Mutex
 
 func init() {
 
 	// Prevent https://issues.couchbase.com/browse/MB-24237
 	rand.Seed(time.Now().UTC().UnixNano())
-
-	numOpenBucketsByName = map[string]int32{}
-
 }
 
 type TestBucket struct {
 	Bucket
 	BucketSpec BucketSpec
 	closeFn    func()
+}
+
+var _ Bucket = &TestBucket{}
+
+func (b *TestBucket) DefaultDataStore() sgbucket.DataStore {
+	return b.Bucket.DefaultDataStore()
+}
+
+func (b *TestBucket) NamedDataStore(name sgbucket.DataStoreName) sgbucket.DataStore {
+	return b.Bucket.NamedDataStore(name)
 }
 
 func (tb TestBucket) Close() {
@@ -87,38 +93,23 @@ func (tb *TestBucket) NoCloseClone() *TestBucket {
 	}
 }
 
-func getDefaultCollectionType() tbpCollectionType {
-	if GTestBucketPool.UsingNamedCollections() {
-		return tbpCollectionNamed
-	}
-	return tbpCollectionDefault
-
-}
-
 // GetTestBucket returns a test bucket from a pool.
+// TODO: GetTestCollection?
 func GetTestBucket(t testing.TB) *TestBucket {
-	return getTestBucket(t, getDefaultCollectionType())
-}
-
-// GetTestBucketNamedCollection will return a TestBucket from a pool if using couchbase server that has a non default scope and scope.
-func GetTestBucketNamedCollection(t testing.TB) *TestBucket {
-	return getTestBucket(t, tbpCollectionNamed)
-}
-
-// GetTestBucketNamedCollection will return a TestBucket from a pool if using couchbase server that has _default._default scope and collection.
-func GetTestBucketDefaultCollection(t testing.TB) *TestBucket {
-	return getTestBucket(t, tbpCollectionDefault)
+	return getTestBucket(t)
 }
 
 // getTestBucket returns a bucket from the bucket pool
-func getTestBucket(t testing.TB, collectionType tbpCollectionType) *TestBucket {
-	bucket, spec, closeFn := GTestBucketPool.getTestBucketAndSpec(t, collectionType)
+func getTestBucket(t testing.TB) *TestBucket {
+	bucket, spec, closeFn := GTestBucketPool.getTestBucketAndSpec(t)
 	return &TestBucket{
 		Bucket:     bucket,
 		BucketSpec: spec,
 		closeFn:    closeFn,
 	}
 }
+
+// TODO: TestBucket.GetTestCollection?
 
 // Gets a Walrus bucket which will be persisted to a temporary directory
 // Returns both the test bucket which is persisted and a function which can be used to remove the created temporary
@@ -746,8 +737,11 @@ func CreateBucketScopesAndCollections(ctx context.Context, bucketSpec BucketSpec
 				return fmt.Errorf("failed to create collection %s in scope %s: %w", collectionName, scopeName, err)
 			}
 			DebugfCtx(ctx, KeySGTest, "Created collection %s.%s", scopeName, collectionName)
-			if err := WaitUntilScopeAndCollectionExists(cluster.Bucket(bucketSpec.BucketName).Scope(scopeName).Collection(collectionName)); err != nil {
+			if err := WaitForNoError(func() error {
+				_, err := cluster.Bucket(bucketSpec.BucketName).Scope(scopeName).Collection(collectionName).Exists("WaitForExists", nil)
 				return err
+			}); err != nil {
+				return fmt.Errorf("failed to wait for collection %s.%s to exist: %w", scopeName, collectionName, err)
 			}
 			DebugfCtx(ctx, KeySGTest, "Collection now exists %s.%s", scopeName, collectionName)
 		}

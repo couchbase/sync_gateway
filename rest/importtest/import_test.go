@@ -1333,8 +1333,7 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Verify the expiry is as expected
-	cbStore, _ := base.AsCouchbaseStore(bucket)
-	beforeExpiry, err := cbStore.GetExpiry(mobileKey)
+	beforeExpiry, err := bucket.GetExpiry(mobileKey)
 	require.NoError(t, err, "Error calling GetExpiry()")
 	assertExpiry(t, uint32(expiryUnixEpoch), beforeExpiry)
 
@@ -1355,12 +1354,12 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 	assertXattrSyncMetaRevGeneration(t, bucket, mobileKeyNoExpiry, 1)
 
 	// Verify the expiry has been preserved after the import
-	afterExpiry, err := cbStore.GetExpiry(mobileKey)
+	afterExpiry, err := bucket.GetExpiry(mobileKey)
 	assert.NoError(t, err, "Error calling GetExpiry()")
 	assertExpiry(t, beforeExpiry, afterExpiry)
 
 	// Negative test case -- make sure no expiry was erroneously added by the import
-	expiry, err := cbStore.GetExpiry(mobileKeyNoExpiry)
+	expiry, err := bucket.GetExpiry(mobileKeyNoExpiry)
 	assert.NoError(t, err, "Error calling GetExpiry()")
 	assert.True(t, expiry == 0)
 }
@@ -1405,8 +1404,7 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 	assertXattrSyncMetaRevGeneration(t, bucket, key, 1)
 
 	// Now get the doc expiry and validate that it has been migrated into the doc metadata
-	cbStore, _ := base.AsCouchbaseStore(bucket)
-	expiry, err := cbStore.GetExpiry(key)
+	expiry, err := bucket.GetExpiry(key)
 	assert.True(t, expiry > 0)
 	assert.NoError(t, err, "Error calling getExpiry()")
 	log.Printf("expiry: %v", expiry)
@@ -1512,8 +1510,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 			require.NoError(t, err, "Error writing SDK doc")
 
 			// Verify the expiry is as expected
-			cbStore, _ := base.AsCouchbaseStore(bucket)
-			beforeExpiry, err := cbStore.GetExpiry(key)
+			beforeExpiry, err := bucket.GetExpiry(key)
 			require.NoError(t, err, "Error calling GetExpiry()")
 			assertExpiry(t, uint32(expiryUnixEpoch), beforeExpiry)
 
@@ -1530,7 +1527,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 			assertXattrSyncMetaRevGeneration(t, bucket, key, testCase.expectedRevGeneration)
 
 			// Verify the expiry has not been changed from the original expiry value
-			afterExpiry, err := cbStore.GetExpiry(key)
+			afterExpiry, err := bucket.GetExpiry(key)
 			require.NoError(t, err, "Error calling GetExpiry()")
 			assertExpiry(t, beforeExpiry, afterExpiry)
 		})
@@ -1601,8 +1598,7 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 			assertXattrSyncMetaRevGeneration(t, bucket, key, testCase.expectedRevGeneration)
 
 			// Now get the doc expiry and validate that it has been migrated into the doc metadata
-			cbStore, _ := base.AsCouchbaseStore(bucket)
-			expiry, err := cbStore.GetExpiry(key)
+			expiry, err := bucket.GetExpiry(key)
 			assert.NoError(t, err, "Error calling GetExpiry()")
 			assert.True(t, expiry > 0)
 			log.Printf("expiry: %v", expiry)

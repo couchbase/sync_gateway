@@ -65,7 +65,7 @@ type HeartbeatListener interface {
 //	   n heartbeat reads per node per heartbeatPollInterval
 //	   e.g  Default for a 4 node cluster: 12 ops/second
 type couchbaseHeartBeater struct {
-	bucket                  Bucket
+	datastore               DataStore
 	nodeUUID                string
 	keyPrefix               string
 	groupID                 string
@@ -86,9 +86,9 @@ type couchbaseHeartBeater struct {
 // and the nodeUUID, which is an opaque identifier for the "thing" that is using this
 // library.  nodeUUID will be passed to listeners on stale node detection.
 func NewCouchbaseHeartbeater(bucket Bucket, keyPrefix, nodeUUID string) (heartbeater *couchbaseHeartBeater, err error) {
-
+	metadataStore := bucket.DefaultDataStore()
 	heartbeater = &couchbaseHeartBeater{
-		bucket:                 bucket,
+		datastore:              metadataStore,
 		keyPrefix:              keyPrefix,
 		nodeUUID:               nodeUUID,
 		terminator:             make(chan struct{}),
@@ -283,9 +283,9 @@ func (h *couchbaseHeartBeater) checkStaleHeartbeats() error {
 		}
 
 		timeoutDocID := heartbeatTimeoutDocID(heartbeatNodeUUID, h.keyPrefix)
-		_, _, err := h.bucket.GetRaw(timeoutDocID)
+		_, _, err := h.datastore.GetRaw(timeoutDocID)
 		if err != nil {
-			if !IsKeyNotFoundError(h.bucket, err) {
+			if !IsKeyNotFoundError(h.datastore, err) {
 				// unexpected error
 				return err
 			}
@@ -309,16 +309,16 @@ func (h *couchbaseHeartBeater) sendHeartbeat() error {
 
 	docID := heartbeatTimeoutDocID(h.nodeUUID, h.keyPrefix)
 
-	_, touchErr := h.bucket.Touch(docID, h.heartbeatExpirySeconds)
+	_, touchErr := h.datastore.Touch(docID, h.heartbeatExpirySeconds)
 	if touchErr == nil {
 		h.sendCount++
 		return nil
 	}
 
 	// On KeyNotFound, recreate heartbeat timeout doc
-	if IsKeyNotFoundError(h.bucket, touchErr) {
+	if IsKeyNotFoundError(h.datastore, touchErr) {
 		heartbeatDocBody := []byte(h.nodeUUID)
-		setErr := h.bucket.SetRaw(docID, h.heartbeatExpirySeconds, nil, heartbeatDocBody)
+		setErr := h.datastore.SetRaw(docID, h.heartbeatExpirySeconds, nil, heartbeatDocBody)
 		if setErr != nil {
 			return setErr
 		}
@@ -360,18 +360,18 @@ func (h *couchbaseHeartBeater) SetExpirySeconds(expiry uint32) error {
 // removes node from the list.  Primarily intended for test usage.
 type documentBackedListener struct {
 	nodeListKey            string     // key for the tracking document
-	bucket                 Bucket     // bucket used for document storage
+	datastore              DataStore  // bucket used for document storage
 	nodeIDs                []string   // Set of nodes from the latest retrieval
 	cas                    uint64     // CAS from latest retrieval of tracking document
 	lock                   sync.Mutex // lock for nodes access
 	staleNotificationCount uint64     // stats - counter for stale heartbeat notifications
 }
 
-func NewDocumentBackedListener(bucket Bucket, keyPrefix string) (*documentBackedListener, error) {
+func NewDocumentBackedListener(datastore DataStore, keyPrefix string) (*documentBackedListener, error) {
 
 	handler := &documentBackedListener{
 		nodeListKey: keyPrefix + ":HeartbeatNodeList",
-		bucket:      bucket,
+		datastore:   datastore,
 	}
 	return handler, nil
 }
@@ -448,7 +448,7 @@ func (dh *documentBackedListener) updateNodeList(nodeID string, remove bool) err
 
 		InfofCtx(context.TODO(), KeyCluster, "Updating nodeList document (%s) with node IDs: %v", dh.nodeListKey, dh.nodeIDs)
 
-		casOut, err := dh.bucket.WriteCas(dh.nodeListKey, 0, 0, dh.cas, dh.nodeIDs, 0)
+		casOut, err := dh.datastore.WriteCas(dh.nodeListKey, 0, 0, dh.cas, dh.nodeIDs, 0)
 
 		if err == nil { // Successful update
 			dh.cas = casOut
@@ -467,11 +467,11 @@ func (dh *documentBackedListener) updateNodeList(nodeID string, remove bool) err
 
 func (dh *documentBackedListener) loadNodeIDs() error {
 
-	docBytes, cas, err := dh.bucket.GetRaw(dh.nodeListKey)
+	docBytes, cas, err := dh.datastore.GetRaw(dh.nodeListKey)
 	if err != nil {
 		dh.cas = 0
 		dh.nodeIDs = []string{}
-		if !IsKeyNotFoundError(dh.bucket, err) {
+		if !IsKeyNotFoundError(dh.datastore, err) {
 			return err
 		}
 	}

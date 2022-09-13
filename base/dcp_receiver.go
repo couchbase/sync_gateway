@@ -40,9 +40,14 @@ type DCPReceiver struct {
 	*DCPCommon
 }
 
-func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID string, checkpointPrefix string) (cbdatasource.Receiver, context.Context) {
+func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID string, checkpointPrefix string) (cbdatasource.Receiver, context.Context, error) {
 
-	dcpCommon := NewDCPCommon(context.TODO(), callback, bucket, maxVbNo, persistCheckpoints, dbStats, feedID, checkpointPrefix)
+	metadataStore := bucket.DefaultDataStore()
+	dcpCommon, err := NewDCPCommon(context.TODO(), callback, bucket, metadataStore, maxVbNo, persistCheckpoints, dbStats, feedID, checkpointPrefix)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	r := &DCPReceiver{
 		DCPCommon: dcpCommon,
 	}
@@ -50,10 +55,10 @@ func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxV
 	if LogDebugEnabled(KeyDCP) {
 		InfofCtx(r.loggingCtx, KeyDCP, "Using DCP Logging Receiver")
 		logRec := &DCPLoggingReceiver{rec: r}
-		return logRec, r.loggingCtx
+		return logRec, r.loggingCtx, nil
 	}
 
-	return r, r.loggingCtx
+	return r, r.loggingCtx, nil
 }
 
 func (r *DCPReceiver) OnError(err error) {
@@ -243,7 +248,10 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		InfofCtx(context.TODO(), KeyDCP, "DCP feed started without feedID specified - defaulting to %s", DCPCachingFeedID)
 		feedID = DCPCachingFeedID
 	}
-	receiver, loggingCtx := NewDCPReceiver(callback, bucket, maxVbno, persistCheckpoints, dbStats, feedID, args.CheckpointPrefix)
+	receiver, loggingCtx, err := NewDCPReceiver(callback, bucket, maxVbno, persistCheckpoints, dbStats, feedID, args.CheckpointPrefix)
+	if err != nil {
+		return err
+	}
 
 	var dcpReceiver *DCPReceiver
 	switch v := receiver.(type) {

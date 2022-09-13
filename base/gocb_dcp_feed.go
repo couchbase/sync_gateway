@@ -18,13 +18,13 @@ import (
 )
 
 // getHighSeqMetadata returns metadata to feed into a DCP client based on the last sequence numbers stored in memory
-func getHighSeqMetadata(collection *Collection) ([]DCPMetadata, error) {
-	numVbuckets, err := collection.GetMaxVbno()
+func getHighSeqMetadata(cbstore CouchbaseStore) ([]DCPMetadata, error) {
+	numVbuckets, err := cbstore.GetMaxVbno()
 	if err != nil {
 		return nil, fmt.Errorf("Unable to determine maxVbNo when creating DCP client: %w", err)
 	}
 
-	vbUUIDs, highSeqNos, statsErr := collection.GetStatsVbSeqno(numVbuckets, true)
+	vbUUIDs, highSeqNos, statsErr := cbstore.GetStatsVbSeqno(numVbuckets, true)
 	if statsErr != nil {
 		return nil, fmt.Errorf("Unable to obtain high seqnos for DCP feed: %w", statsErr)
 	}
@@ -48,8 +48,9 @@ func getHighSeqMetadata(collection *Collection) ([]DCPMetadata, error) {
 }
 
 // StartGocbDCPFeed starts a DCP Feed.
-func StartGocbDCPFeed(collection *Collection, bucketName string, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map, metadataStoreType DCPMetadataStoreType, groupID string) error {
-	metadata, err := getHighSeqMetadata(collection)
+func StartGocbDCPFeed(bucket *GocbV2Bucket, bucketName string, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map, metadataStoreType DCPMetadataStoreType, groupID string) error {
+
+	metadata, err := getHighSeqMetadata(bucket)
 	if err != nil {
 		return err
 	}
@@ -58,8 +59,9 @@ func StartGocbDCPFeed(collection *Collection, bucketName string, args sgbucket.F
 		return err
 	}
 	var collectionIDs []uint32
-	if collection.IsSupported(sgbucket.DataStoreFeatureCollections) {
-		collectionIDs = append(collectionIDs, collection.GetCollectionID())
+	if bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
+		// FIXME (bbrks): why only 1 collection ID? How do we get the others in feed args?!
+		// collectionIDs = append(collectionIDs, collection.GetCollectionID())
 	}
 	dcpClient, err := NewDCPClient(
 		feedName,
@@ -72,7 +74,8 @@ func StartGocbDCPFeed(collection *Collection, bucketName string, args sgbucket.F
 			CollectionIDs:     collectionIDs,
 			AgentPriority:     gocbcore.DcpAgentPriorityMed,
 		},
-		collection)
+		bucket,
+		bucket.Spec)
 	if err != nil {
 		return err
 	}

@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
@@ -232,7 +233,11 @@ func (h *handler) handleDump() error {
 	viewName := h.PathVar("view")
 	base.InfofCtx(h.ctx(), base.KeyHTTP, "Dump view %q", base.MD(viewName))
 	opts := db.Body{"stale": false, "reduce": false}
-	result, err := h.db.Bucket.View(db.DesignDocSyncGateway(), viewName, opts)
+	vs, ok := h.db.Bucket.(sgbucket.ViewStore)
+	if !ok {
+		return base.HTTPErrorf(http.StatusInternalServerError, "bucket does not support views")
+	}
+	result, err := vs.View(db.DesignDocSyncGateway(), viewName, opts)
 	if err != nil {
 		return err
 	}

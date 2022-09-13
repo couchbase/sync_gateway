@@ -20,7 +20,7 @@ import (
 
 // DatabaseCollection provides a representation of a single collection of a database.
 type DatabaseCollection struct {
-	Bucket        base.Bucket      // Storage
+	dataStore     base.DataStore   // Storage
 	revisionCache RevisionCache    // Cache of recently-accessed doc revisions
 	changeCache   *changeCache     // Cache of recently-access channels
 	dbCtx         *DatabaseContext // pointer to database context to allow passthrough of functions
@@ -105,7 +105,7 @@ func (c *DatabaseCollection) exitChanges() chan struct{} {
 
 // GetCollectionID returns a collectionID. If couchbase server does not return collections, it will return base.DefaultCollectionID, like the default collection for a Couchbase Server that does support collections.
 func (c *DatabaseCollection) GetCollectionID() uint32 {
-	collection, err := base.AsCollection(c.Bucket)
+	collection, err := base.AsCollection(c.dataStore)
 	if err != nil {
 		return base.DefaultCollectionID
 	}
@@ -175,11 +175,11 @@ func (c *DatabaseCollection) mutationListener() *changeListener {
 
 // Name returns the name of the collection. If couchbase server is not aware of collections, it will return _default.
 func (c *DatabaseCollection) Name() string {
-	collection, err := base.AsCollection(c.Bucket)
+	collection, err := base.AsCollection(c.dataStore)
 	if err != nil {
 		return base.DefaultCollection
 	}
-	return collection.Name()
+	return collection.CollectionName()
 
 }
 
@@ -211,7 +211,7 @@ func (c *DatabaseCollectionWithUser) ReloadUser(ctx context.Context) error {
 
 // Name returns the name of the scope the collection is in. If couchbase server is not aware of collections, it will return _default.
 func (c *DatabaseCollection) ScopeName() string {
-	collection, err := base.AsCollection(c.Bucket)
+	collection, err := base.AsCollection(c.dataStore)
 	if err != nil {
 		return base.DefaultScope
 	}

@@ -1724,3 +1724,12 @@ func AllOrNoneNil(vals ...interface{}) bool {
 	}
 	return nonNil == 0 || nonNil == len(vals)
 }
+
+// WaitForNoError runs the callback until it no longer returns an error.
+func WaitForNoError(callback func() error) error {
+	err, _ := RetryLoop("wait for no error", func() (bool, error, interface{}) {
+		callbackErr := callback()
+		return callbackErr != nil, callbackErr, nil
+	}, CreateMaxDoublingSleeperFunc(30, 10, 1000))
+	return err
+}

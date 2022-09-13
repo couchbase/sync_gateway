@@ -35,7 +35,9 @@ func TestN1qlQuery(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
-	n1qlStore, ok := AsN1QLStore(bucket)
+	dataStore := bucket.DefaultDataStore()
+
+	n1qlStore, ok := AsN1QLStore(dataStore)
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}
@@ -44,7 +46,7 @@ func TestN1qlQuery(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		key := fmt.Sprintf("doc%d", i)
 		body := fmt.Sprintf(`{"val": %d}`, i)
-		added, err := bucket.AddRaw(key, 0, []byte(body))
+		added, err := dataStore.AddRaw(key, 0, []byte(body))
 		if err != nil {
 			t.Fatalf("Error adding doc for TestN1qlQuery: %v", err)
 		}
@@ -142,7 +144,8 @@ func TestN1qlFilterExpression(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	n1qlStore, ok := AsN1QLStore(bucket)
+	dataStore := bucket.DefaultDataStore()
+	n1qlStore, ok := AsN1QLStore(dataStore)
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}
@@ -151,7 +154,7 @@ func TestN1qlFilterExpression(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		key := fmt.Sprintf("doc%d", i)
 		body := fmt.Sprintf(`{"val": %d}`, i)
-		added, err := bucket.AddRaw(key, 0, []byte(body))
+		added, err := dataStore.AddRaw(key, 0, []byte(body))
 		if err != nil {
 			t.Fatalf("Error adding doc for TestIndexFilterExpression: %v", err)
 		}
@@ -219,7 +222,10 @@ func TestIndexMeta(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	n1qlStore, ok := AsN1QLStore(bucket)
+
+	dataStore := bucket.DefaultDataStore()
+
+	n1qlStore, ok := AsN1QLStore(dataStore)
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}
@@ -263,7 +269,10 @@ func TestMalformedN1qlQuery(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	n1qlStore, ok := AsN1QLStore(bucket)
+
+	dataStore := bucket.DefaultDataStore()
+
+	n1qlStore, ok := AsN1QLStore(dataStore)
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}
@@ -272,7 +281,7 @@ func TestMalformedN1qlQuery(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		key := fmt.Sprintf("doc%d", i)
 		body := fmt.Sprintf(`{"val": %d}`, i)
-		added, err := bucket.AddRaw(key, 0, []byte(body))
+		added, err := dataStore.AddRaw(key, 0, []byte(body))
 		if err != nil {
 			t.Fatalf("Error adding doc for TestN1qlQuery: %v", err)
 		}
@@ -335,7 +344,10 @@ func TestCreateAndDropIndex(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	n1qlStore, ok := AsN1QLStore(bucket)
+
+	dataStore := bucket.DefaultDataStore()
+
+	n1qlStore, ok := AsN1QLStore(dataStore)
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}
@@ -362,7 +374,10 @@ func TestCreateDuplicateIndex(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	n1qlStore, ok := AsN1QLStore(bucket)
+
+	dataStore := bucket.DefaultDataStore()
+
+	n1qlStore, ok := AsN1QLStore(dataStore)
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}
@@ -394,7 +409,10 @@ func TestCreateAndDropIndexSpecialCharacters(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	n1qlStore, ok := AsN1QLStore(bucket)
+
+	dataStore := bucket.DefaultDataStore()
+
+	n1qlStore, ok := AsN1QLStore(dataStore)
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}
@@ -422,7 +440,10 @@ func TestDeferredCreateIndex(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	n1qlStore, ok := AsN1QLStore(bucket)
+
+	dataStore := bucket.DefaultDataStore()
+
+	n1qlStore, ok := AsN1QLStore(dataStore)
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}
@@ -464,7 +485,10 @@ func TestBuildDeferredIndexes(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	n1qlStore, ok := AsN1QLStore(bucket)
+
+	dataStore := bucket.DefaultDataStore()
+
+	n1qlStore, ok := AsN1QLStore(dataStore)
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}
@@ -529,7 +553,10 @@ func TestCreateAndDropIndexErrors(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	n1qlStore, ok := AsN1QLStore(bucket)
+
+	dataStore := bucket.DefaultDataStore()
+
+	n1qlStore, ok := AsN1QLStore(dataStore)
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}
@@ -595,7 +622,10 @@ func TestWaitForBucketExistence(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	n1qlStore, ok := AsN1QLStore(bucket)
+
+	dataStore := bucket.DefaultDataStore()
+
+	n1qlStore, ok := AsN1QLStore(dataStore)
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}

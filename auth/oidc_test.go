@@ -1183,14 +1183,14 @@ func TestJWTRolesChannels(t *testing.T) {
 
 			testBucket := base.GetTestBucket(t)
 			defer testBucket.Close()
-
+			dataStore := testBucket.DefaultDataStore()
 			testMockComputer := mockComputerV2{
 				roles:        map[string]ch.TimedSet{},
 				channels:     map[string]ch.TimedSet{},
 				roleChannels: map[string]ch.TimedSet{},
 			}
 
-			auth := NewAuthenticator(testBucket, &testMockComputer, DefaultAuthenticatorOptions())
+			auth := NewAuthenticator(dataStore, &testMockComputer, DefaultAuthenticatorOptions())
 
 			provider := &OIDCProvider{
 				Name: "foo",

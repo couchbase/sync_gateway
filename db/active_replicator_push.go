@@ -243,7 +243,9 @@ func (apr *ActivePushReplicator) reset() error {
 	if apr.state != ReplicationStateStopped {
 		return fmt.Errorf("reset invoked for replication %s when the replication was not stopped", apr.config.ID)
 	}
-	if err := resetLocalCheckpoint(apr.config.ActiveDB, apr.CheckpointID); err != nil {
+	// TODO: this needs pointing at all collections the replicator is configured for!
+	collection := apr.config.ActiveDB.GetSingleDatabaseCollection()
+	if err := resetLocalCheckpoint(collection.dataStore, apr.CheckpointID); err != nil {
 		return err
 	}
 

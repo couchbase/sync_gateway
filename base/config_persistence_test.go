@@ -25,7 +25,9 @@ func TestConfigPersistence(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
-	sgCollection, ok := bucket.Bucket.(*Collection)
+	dataStore := bucket.DefaultDataStore()
+
+	sgCollection, ok := dataStore.(*Collection)
 	require.True(t, ok)
 
 	c := sgCollection.Collection
@@ -126,7 +128,9 @@ func TestXattrConfigPersistence(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
-	sgCollection, ok := bucket.Bucket.(*Collection)
+	dataStore := bucket.DefaultDataStore()
+
+	sgCollection, ok := dataStore.(*Collection)
 	require.True(t, ok)
 
 	// create config
@@ -144,7 +148,7 @@ func TestXattrConfigPersistence(t *testing.T) {
 	// modify the document body directly in the bucket
 	updatedBody := make(map[string]interface{})
 	updatedBody["unexpected"] = "value"
-	err := bucket.Set(configKey, 0, nil, updatedBody)
+	err := dataStore.Set(configKey, 0, nil, updatedBody)
 	require.NoError(t, err)
 
 	// attempt to re-insert, must return ErrAlreadyExists
@@ -159,7 +163,7 @@ func TestXattrConfigPersistence(t *testing.T) {
 	assert.Equal(t, configBody["sampleConfig"], loadedConfig["sampleConfig"])
 
 	// set the document to an empty body, shouldn't be treated as delete
-	err = bucket.Set(configKey, 0, nil, nil)
+	err = dataStore.Set(configKey, 0, nil, nil)
 	require.NoError(t, err)
 
 	// Retrieve the config, cas should still match insertCas
@@ -170,12 +174,12 @@ func TestXattrConfigPersistence(t *testing.T) {
 
 	// Fetch the document directly from the bucket to verify resurrect handling didn't occur
 	var docBody map[string]interface{}
-	_, err = bucket.Get(configKey, &docBody)
+	_, err = dataStore.Get(configKey, &docBody)
 	assert.NoError(t, err)
 	assert.True(t, docBody == nil)
 
 	// delete the document directly in the bucket (system xattr will be preserved)
-	deleteErr := bucket.Delete(configKey)
+	deleteErr := dataStore.Delete(configKey)
 	assert.NoError(t, deleteErr)
 
 	// Retrieve the config, cas should still match insertCas
@@ -185,7 +189,7 @@ func TestXattrConfigPersistence(t *testing.T) {
 	assert.Equal(t, configBody["sampleConfig"], loadedConfig["sampleConfig"])
 
 	// Fetch the document directly from the bucket to verify resurrect handling DID occur
-	_, err = bucket.Get(configKey, &docBody)
+	_, err = dataStore.Get(configKey, &docBody)
 	assert.NoError(t, err)
 	assert.True(t, docBody != nil)
 

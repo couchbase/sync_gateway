@@ -46,7 +46,7 @@ func setupTestDBForBucket(t testing.TB, bucket base.Bucket) (*Database, context.
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &cacheOptions,
 	}
-	return SetupTestDBForBucketWithOptions(t, bucket, dbcOptions)
+	return SetupTestDBForDataStoreWithOptions(t, bucket, dbcOptions)
 }
 
 func setupTestDBWithOptionsAndImport(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
@@ -134,7 +134,7 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 func setupTestNamedCollectionDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 
 	tBucket := base.GetTestBucketNamedCollection(t)
-	return SetupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
+	return SetupTestDBForDataStoreWithOptions(t, tBucket, dbcOptions)
 }
 
 // Sets up test db with the specified database context options in _default scope and collection.  Note that environment variables can
@@ -2374,10 +2374,10 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 	defer db.Close(ctx)
 	collection := db.GetSingleDatabaseCollectionWithUser()
 
-	//gocbBucket, _ := base.AsGoCBBucket(db.Bucket)
+	// gocbBucket, _ := base.AsGoCBBucket(db.Bucket)
 
 	// Set something lower than version required for CreateAsDeleted subdoc flag
-	//gocbBucket.OverrideClusterCompatVersion(5, 5)
+	// gocbBucket.OverrideClusterCompatVersion(5, 5)
 
 	// Ensure empty doc is imported correctly
 	added, err := db.Bucket.Add("doc1", 0, map[string]interface{}{})
@@ -2450,7 +2450,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 	}
 
 	bucket := base.NewLeakyBucket(base.GetTestBucket(t), base.LeakyBucketConfig{})
-	db, ctx := SetupTestDBForBucketWithOptions(t, bucket, DatabaseContextOptions{})
+	db, ctx := SetupTestDBForDataStoreWithOptions(t, bucket, DatabaseContextOptions{})
 	db.PurgeInterval = 0
 	defer db.Close(ctx)
 	collection := db.GetSingleDatabaseCollectionWithUser()

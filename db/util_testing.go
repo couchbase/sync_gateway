@@ -460,19 +460,20 @@ func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
 // override somedbcOptions properties.
 func SetupTestDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 	tBucket := base.GetTestBucket(t)
-	return SetupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
+	return SetupTestDBForDataStoreWithOptions(t, tBucket, dbcOptions)
 }
 
-func SetupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
+func SetupTestDBForDataStoreWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 	ctx := base.TestCtx(t)
+	dataStore := tBucket.DefaultDataStore()
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	if !base.TestsDisableGSI() {
-		collection, err := base.AsCollection(tBucket)
+		collection, err := base.AsCollection(dataStore)
 		if err == nil {
 			dbcOptions.Scopes = map[string]ScopeOptions{
 				collection.ScopeName(): ScopeOptions{
 					Collections: map[string]CollectionOptions{
-						collection.Name(): {},
+						collection.CollectionName(): {},
 					},
 				},
 			}

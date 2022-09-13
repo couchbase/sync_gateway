@@ -133,7 +133,7 @@ var kUserFunctionConfig = FunctionConfigMap{
 // and access to channels "wonderland" and "lookingglass".
 func addUserAlice(t *testing.T, db *db.Database) auth.User {
 	var err error
-	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
 	hero, err := authenticator.NewRole("hero", base.SetOf("heroes"))
 	assert.NoError(t, err)
 	assert.NoError(t, authenticator.Save(hero))
@@ -154,7 +154,7 @@ func addUserAlice(t *testing.T, db *db.Database) auth.User {
 
 // Unit test for JS user functions.
 func TestUserFunctions(t *testing.T) {
-	//base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	// base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDBWithFunctions(t, kUserFunctionConfig, nil)
 	defer db.Close(ctx)
 
@@ -310,7 +310,7 @@ func testUserFunctionsAsUser(t *testing.T, ctx context.Context, db *db.Database)
 
 // Test CRUD operations
 func TestUserFunctionsCRUD(t *testing.T) {
-	//base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	// base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDBWithFunctions(t, kUserFunctionConfig, nil)
 	defer db.Close(ctx)
 
@@ -407,11 +407,11 @@ func TestUserFunctionSyntaxError(t *testing.T) {
 
 // Low-level test of channel-name parameter expansion for user query/function auth
 func TestUserFunctionAllow(t *testing.T) {
-	//base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	// base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDBWithFunctions(t, kUserFunctionConfig, nil)
 	defer db.Close(ctx)
 
-	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
 	user, err := authenticator.NewUser("maurice", "pass", base.SetOf("city-Paris"))
 	_ = user.SetEmail("maurice@academie.fr")
 	assert.NoError(t, err)

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
