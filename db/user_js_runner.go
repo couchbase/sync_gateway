@@ -15,6 +15,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -29,6 +30,9 @@ import (
 
 // Number of Otto contexts to cache per function, i.e. the number of goroutines that can be simultaneously running each function.
 const kUserFunctionCacheSize = 2
+
+// Maximum nesting of JS user function calls (not the JS stack depth)
+var kUserFunctionMaxCallDepth = 20
 
 // The outermost JavaScript code. Evaluating it returns a function, which is then called by the
 // Runner every time it's invoked. Contains `%s` where the actual function source code goes.
@@ -57,11 +61,12 @@ func newUserFunctionJSContext(db *Database) map[string]interface{} {
 // An object that runs a user JavaScript function or a GraphQL resolver.
 // Not thread-safe! Owned by an sgbucket.JSServer, which arbitrates access to it.
 type userJSRunner struct {
-	sgbucket.JSRunner           // "Superclass"
-	kind              string    // "user function", "GraphQL resolver", etc
-	name              string    // Name of this function or resolver
-	currentDB         *Database // Database instance (updated before every call)
-	mutationAllowed   bool      // Whether save() is allowed (updated before every call)
+	sgbucket.JSRunner                 // "Superclass"
+	kind              string          // "user function", "GraphQL resolver", etc
+	name              string          // Name of this function or resolver
+	currentDB         *Database       // Database instance (updated before every call)
+	mutationAllowed   bool            // Whether save() is allowed (updated before every call)
+	ctx               context.Context // Context (updated before every call)
 }
 
 // Creates a userJSRunner given its name and JavaScript source code.
@@ -134,7 +139,7 @@ func newUserJavaScriptRunner(name string, kind string, funcSource string) (*user
 	// Function that runs before every call:
 	runner.Before = func() {
 		if runner.currentDB == nil {
-			panic("javaScriptRunner can't run without a currentCtx or currentDB")
+			panic("javaScriptRunner can't run without a currentDB")
 		}
 	}
 	// Function that runs after every call:
@@ -152,21 +157,40 @@ func newUserJavaScriptRunner(name string, kind string, funcSource string) (*user
 	return runner, nil
 }
 
+type jsRunnerContextKey string
+
+var ctxJSCallDepthKey = jsRunnerContextKey("call depth")
+
 // Calls a javaScriptRunner's JavaScript function.
-func (runner *userJSRunner) CallWithDB(db *Database, mutationAllowed bool, args ...interface{}) (result interface{}, err error) {
-	runner.currentDB = db
-	runner.mutationAllowed = mutationAllowed
-	ctx := db.Ctx
+func (runner *userJSRunner) CallWithDB(db *Database, mutationAllowed bool, ctx context.Context, args ...interface{}) (result interface{}, err error) {
+	if ctx == nil {
+		panic("missing context to userJSRunner")
+	}
+
 	var timeout time.Duration
-	if ctx != nil {
-		if deadline, exists := ctx.Deadline(); exists {
-			timeout = time.Until(deadline)
-			if timeout <= 0 {
-				return nil, sgbucket.ErrJSTimeout
-			}
+	if deadline, exists := ctx.Deadline(); exists {
+		timeout = time.Until(deadline)
+		if timeout <= 0 {
+			return nil, sgbucket.ErrJSTimeout
 		}
 	}
+
+	var depth int
+	var ok bool
+	if depth, ok = ctx.Value(ctxJSCallDepthKey).(int); ok {
+		log.Printf("#### context depth = %d", depth) //TEMP
+		if depth >= kUserFunctionMaxCallDepth {
+			base.ErrorfCtx(ctx, "User function recursion too deep, calling %s", runner.name)
+			return nil, base.HTTPErrorf(http.StatusLoopDetected, "User function recursion too deep")
+		}
+	}
+	ctx = context.WithValue(ctx, ctxJSCallDepthKey, depth+1)
+	log.Printf("#### Setting context depth to %d", depth+1) //TEMP
+
 	runner.SetTimeout(timeout)
+	runner.currentDB = db
+	runner.mutationAllowed = mutationAllowed
+	runner.ctx = ctx
 	return runner.Call(args...)
 }
 
@@ -215,7 +239,7 @@ func (runner *userJSRunner) do_func(funcName string, params map[string]interface
 		runner.currentDB.user = nil
 		defer func() { runner.currentDB.user = user }()
 	}
-	return runner.currentDB.CallUserFunction(funcName, params, runner.mutationAllowed)
+	return runner.currentDB.CallUserFunction(funcName, params, runner.mutationAllowed, runner.ctx)
 }
 
 // Implementation of JS `app.get(docID, docType)` function
@@ -256,7 +280,7 @@ func (runner *userJSRunner) do_graphql(query string, params map[string]interface
 		runner.currentDB.user = nil
 		defer func() { runner.currentDB.user = user }()
 	}
-	return runner.currentDB.UserGraphQLQuery(query, "", params, runner.mutationAllowed)
+	return runner.currentDB.UserGraphQLQuery(query, "", params, runner.mutationAllowed, runner.ctx)
 }
 
 // Implementation of JS `app.save(docID, body)` function

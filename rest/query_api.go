@@ -36,7 +36,7 @@ func (h *handler) handleUserFunction() error {
 	canMutate := h.rq.Method != "GET"
 
 	return h.db.WithTimeout(db.UserQueryTimeout, func() error {
-		fn, err := h.db.GetUserFunction(fnName, fnParams, canMutate)
+		fn, err := h.db.GetUserFunction(fnName, fnParams, canMutate, h.db.Ctx)
 		if err != nil {
 			return err
 		} else if rows, err := fn.Iterate(); err != nil {
@@ -178,7 +178,7 @@ func (h *handler) handleGraphQL() error {
 	}
 
 	return h.db.WithTimeout(db.UserQueryTimeout, func() error {
-		result, err := h.db.UserGraphQLQuery(queryString, operationName, variables, canMutate)
+		result, err := h.db.UserGraphQLQuery(queryString, operationName, variables, canMutate, h.db.Ctx)
 		if err == nil {
 			h.writeJSON(result)
 		}

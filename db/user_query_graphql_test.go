@@ -33,6 +33,7 @@ var kTestGraphQLSchema = `
 	}
 	type Query {
 		square(n: Int!): Int!
+		infinite: Int!
 		task(id: ID!): Task
 		tasks: [Task!]!
 		toDo: [Task!]!
@@ -51,6 +52,10 @@ var kTestGraphQLConfig = GraphQLConfig{
 			"square": {
 				Type: "javascript",
 				Code: `function(context,args) {return args.n * args.n;}`,
+			},
+			"infinite": {
+				Type: "javascript",
+				Code: `function(context,args) {return context.user.function("infinite");}`,
 			},
 			"task": {
 				Type: "javascript",
@@ -147,6 +152,14 @@ var kTestGraphQLUserFunctionsConfig = UserFunctionConfigMap{
 		Args:  []string{"id"},
 		Allow: &UserQueryAllow{Channels: []string{"*"}},
 	},
+	"infinite": {
+		Type: "javascript",
+		Code: `function(context, args, parent, info) {
+				var result = context.user.graphql("query{ infinite }");
+				if (result.errors) throw "GraphQL query failed:" + result.errors[0].message;
+				return -1;}`,
+		Allow: &UserQueryAllow{Channels: []string{"*"}},
+	},
 }
 
 func assertGraphQLResult(t *testing.T, expected string, result *graphql.Result, err error) {
@@ -182,7 +195,7 @@ func assertGraphQLError(t *testing.T, expectedErrorText string, result *graphql.
 			return
 		}
 	}
-	t.Logf("GraphQL error was not the one expected: %#v", result.Errors)
+	t.Logf("GraphQL error did not contain expected string %q: actually %#v", expectedErrorText, result.Errors)
 	t.Fail()
 }
 
@@ -211,43 +224,47 @@ func TestUserGraphQL(t *testing.T) {
 
 func testUserGraphQLCommon(t *testing.T, db *Database) {
 	// Successful query:
-	result, err := db.UserGraphQLQuery(`query{ square(n: 12) }`, "", nil, false)
+	result, err := db.UserGraphQLQuery(`query{ square(n: 12) }`, "", nil, false, db.Ctx)
 	assertGraphQLResult(t, `{"square":144}`, result, err)
 
 	result, err = db.UserGraphQLQuery(`query($num:Int!){ square(n: $num) }`, "",
-		map[string]interface{}{"num": 12}, false)
+		map[string]interface{}{"num": 12}, false, db.Ctx)
 	assertGraphQLResult(t, `{"square":144}`, result, err)
 
-	result, err = db.UserGraphQLQuery(`query{ task(id:"a") {id,title,done} }`, "", nil, false)
+	result, err = db.UserGraphQLQuery(`query{ task(id:"a") {id,title,done} }`, "", nil, false, db.Ctx)
 	assertGraphQLResult(t, `{"task":{"done":true,"id":"a","title":"Applesauce"}}`, result, err)
 
-	result, err = db.UserGraphQLQuery(`query{ tasks {title} }`, "", nil, false)
+	result, err = db.UserGraphQLQuery(`query{ tasks {title} }`, "", nil, false, db.Ctx)
 	assertGraphQLResult(t, `{"tasks":[{"title":"Applesauce"},{"title":"Beer"},{"title":"Mangoes"}]}`, result, err)
 
 	// ERRORS:
 
 	// Nonexistent query:
-	result, err = db.UserGraphQLQuery(`query{ bogus(id:"a") {id} }`, "", nil, false)
+	result, err = db.UserGraphQLQuery(`query{ bogus(id:"a") {id} }`, "", nil, false, db.Ctx)
 	assertGraphQLError(t, "Cannot query field \"bogus\" on type \"Query\"", result, err)
 
 	// Invalid argument:
-	result, err = db.UserGraphQLQuery(`query{ task(foo:69) {id,title,done} }`, "", nil, false)
+	result, err = db.UserGraphQLQuery(`query{ task(foo:69) {id,title,done} }`, "", nil, false, db.Ctx)
 	assertGraphQLError(t, "Unknown argument \"foo\"", result, err)
 
 	// Mutation when no mutations allowed:
-	result, err = db.UserGraphQLQuery(`mutation{ complete(id:"a") {done} }`, "", nil, false)
+	result, err = db.UserGraphQLQuery(`mutation{ complete(id:"a") {done} }`, "", nil, false, db.Ctx)
 	assertGraphQLError(t, "403", result, err)
+
+	// Infinite regress:
+	result, err = db.UserGraphQLQuery(`query{ infinite }`, "", nil, false, db.Ctx)
+	assertGraphQLError(t, "508", result, err)
 }
 
 func testUserGraphQLAsAdmin(t *testing.T, db *Database) {
 	testUserGraphQLCommon(t, db)
 
 	// Admin tests updating "a":
-	result, err := db.UserGraphQLQuery(`mutation{ addTag(id:"a", tag:"cold") {id,title,done,tags} }`, "", nil, true)
+	result, err := db.UserGraphQLQuery(`mutation{ addTag(id:"a", tag:"cold") {id,title,done,tags} }`, "", nil, true, db.Ctx)
 	assertGraphQLResult(t, `{"addTag":{"done":true,"id":"a","tags":["fruit","soft","cold"],"title":"Applesauce"}}`, result, err)
 
 	// Admin-only field:
-	result, err = db.UserGraphQLQuery(`query{ task(id:"a") {secretNotes} }`, "", nil, false)
+	result, err = db.UserGraphQLQuery(`query{ task(id:"a") {secretNotes} }`, "", nil, false, db.Ctx)
 	assertGraphQLResult(t, `{"task":{"secretNotes":"TOP SECRET!"}}`, result, err)
 }
 
@@ -255,13 +272,13 @@ func testUserGraphQLAsUser(t *testing.T, db *Database) {
 	testUserGraphQLCommon(t, db)
 
 	// Regular user tests updating "m":
-	result, err := db.UserGraphQLQuery(`mutation{ addTag(id:"m", tag:"ripe") {id,title,done,tags} }`, "", nil, true)
+	result, err := db.UserGraphQLQuery(`mutation{ addTag(id:"m", tag:"ripe") {id,title,done,tags} }`, "", nil, true, db.Ctx)
 	assertGraphQLResult(t, `{"addTag":{"done":null,"id":"m","tags":["ripe"],"title":"Mangoes"}}`, result, err)
 
 	// ERRORS:
 
 	// Can't get admin-only field:
-	result, err = db.UserGraphQLQuery(`query{ task(id:"a") {secretNotes} }`, "", nil, false)
+	result, err = db.UserGraphQLQuery(`query{ task(id:"a") {secretNotes} }`, "", nil, false, db.Ctx)
 	assertGraphQLError(t, "403", result, err)
 }
 
@@ -275,6 +292,13 @@ var kTestGraphQLConfigWithN1QL = GraphQLConfig{
 			"square": {
 				Type: "javascript",
 				Code: `function(context,args) {return args.n * args.n;}`,
+			},
+			"infinite": {
+				Type: "javascript",
+				Code: `function(context,args) {
+						var result = context.user.graphql("query{ infinite }");
+						if (result.errors) throw "GraphQL query failed: " + result.errors[0].message;
+						return -1;}`,
 			},
 			"task": {
 				// This tests the ability of the resolver to return the 1st result row when the
@@ -372,6 +396,6 @@ func TestUserGraphQLWithN1QL(t *testing.T) {
 	t.Run("AsUser", func(t *testing.T) { testUserGraphQLAsUser(t, db) })
 
 	// Test the N1QL resolver that uses $parent:
-	result, err := db.UserGraphQLQuery(`query{ task(id:"b") {description,title} }`, "", nil, false)
+	result, err := db.UserGraphQLQuery(`query{ task(id:"b") {description,title} }`, "", nil, false, db.Ctx)
 	assertGraphQLResult(t, `{"task":{"description":"Bass ale please","title":"Beer"}}`, result, err)
 }

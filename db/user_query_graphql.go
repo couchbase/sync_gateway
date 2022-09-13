@@ -45,19 +45,19 @@ var dbKey = gqContextKey("db")                 // Context key to access the Data
 var mutAllowedKey = gqContextKey("mutAllowed") // Context key to access `mutationAllowed`
 
 // Top-level public method to run a GraphQL query on a Database.
-func (db *Database) UserGraphQLQuery(query string, operationName string, variables map[string]interface{}, mutationAllowed bool) (*graphql.Result, error) {
+func (db *Database) UserGraphQLQuery(query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) (*graphql.Result, error) {
 	if db.graphQL == nil {
 		return nil, base.HTTPErrorf(http.StatusServiceUnavailable, "GraphQL is not configured")
 	}
-	return db.graphQL.Query(db, query, operationName, variables, mutationAllowed)
+	return db.graphQL.Query(db, query, operationName, variables, mutationAllowed, ctx)
 }
 
 // Runs a GraphQL query on behalf of a user, presumably invoked via a REST or BLIP API.
-func (gq *GraphQL) Query(db *Database, query string, operationName string, variables map[string]interface{}, mutationAllowed bool) (*graphql.Result, error) {
+func (gq *GraphQL) Query(db *Database, query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) (*graphql.Result, error) {
 	if err := db.CheckTimeout(); err != nil {
 		return nil, err
 	}
-	ctx := context.WithValue(db.Ctx, dbKey, db)
+	ctx = context.WithValue(ctx, dbKey, db)
 	ctx = context.WithValue(ctx, mutAllowedKey, mutationAllowed)
 	result := graphql.Do(graphql.Params{
 		Schema:         gq.schema,
@@ -195,7 +195,7 @@ func (config *GraphQLConfig) compileFieldResolver(typeName string, fieldName str
 		if isMutation && !params.Context.Value(mutAllowedKey).(bool) {
 			return nil, base.HTTPErrorf(http.StatusForbidden, "a read-only request is not allowed to call a GraphQL mutation")
 		}
-		invocation, err := userFn.Invoke(db, params.Args, isMutation)
+		invocation, err := userFn.Invoke(db, params.Args, isMutation, params.Context)
 		if err != nil {
 			return nil, err
 		}
@@ -235,7 +235,9 @@ func (fn *UserFunctionInvocation) Resolve(params graphql.ResolveParams) (interfa
 		// JavaScript resolver:
 		return fn.compiled.WithTask(func(task sgbucket.JSServerTask) (interface{}, error) {
 			runner := task.(*userJSRunner)
-			return runner.CallWithDB(fn.db, fn.mutationAllowed,
+			return runner.CallWithDB(fn.db,
+				fn.mutationAllowed,
+				fn.ctx,
 				newUserFunctionJSContext(fn.db),
 				params.Args,
 				params.Source,
@@ -313,7 +315,9 @@ func (config *GraphQLConfig) compileTypeNameResolver(interfaceName string, fnCon
 		info := map[string]interface{}{}
 		result, err := server.WithTask(func(task sgbucket.JSServerTask) (interface{}, error) {
 			runner := task.(*userJSRunner)
-			return runner.CallWithDB(db, false,
+			return runner.CallWithDB(db,
+				false,
+				params.Context,
 				newUserFunctionJSContext(db),
 				params.Value,
 				info)

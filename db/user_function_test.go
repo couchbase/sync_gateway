@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -37,6 +38,13 @@ var kUserFunctionConfig = UserFunctionConfigMap{
 	"call_fn": &UserFunctionConfig{
 		Type:  "javascript",
 		Code:  `function(context, args) {return context.user.function("square", {numero: 7});}`,
+		Allow: allowAll,
+	},
+	"factorial": &UserFunctionConfig{
+		Type: "javascript",
+		Args: []string{"n"},
+		Code: `function(context, args) {if (args.n <= 1) return 1;
+						else return args.n * context.user.function("factorial", {n: args.n-1});}`,
 		Allow: allowAll,
 	},
 	"great_and_terrible": &UserFunctionConfig{
@@ -152,6 +160,7 @@ func TestUserFunctions(t *testing.T) {
 		UserFunctions: kUserFunctionConfig,
 	})
 	defer db.Close()
+	db.Ctx = context.TODO()
 
 	// First run the tests as an admin:
 	t.Run("AsAdmin", func(t *testing.T) { testUserFunctionsAsAdmin(t, db) })
@@ -167,50 +176,60 @@ func TestUserFunctions(t *testing.T) {
 // User function tests that work the same for admin and non-admin user:
 func testUserFunctionsCommon(t *testing.T, db *Database) {
 	// Basic call passing a parameter:
-	result, err := db.CallUserFunction("square", map[string]interface{}{"numero": 42}, true)
+	result, err := db.CallUserFunction("square", map[string]interface{}{"numero": 42}, true, db.Ctx)
 	assert.NoError(t, err)
 	assert.EqualValues(t, 42*42, result)
 
 	// Function that calls a function:
-	result, err = db.CallUserFunction("call_fn", nil, true)
+	result, err = db.CallUserFunction("call_fn", nil, true, db.Ctx)
 	assert.NoError(t, err)
 	assert.EqualValues(t, 7*7, result)
 
 	// `requireUser` test that passes:
-	result, err = db.CallUserFunction("alice_only", nil, true)
+	result, err = db.CallUserFunction("alice_only", nil, true, db.Ctx)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "OK", result)
 
 	// `requireChannel` test that passes:
-	result, err = db.CallUserFunction("wonderland_only", nil, true)
+	result, err = db.CallUserFunction("wonderland_only", nil, true, db.Ctx)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "OK", result)
 
 	// `requireRole` test that passes:
-	result, err = db.CallUserFunction("hero_only", nil, true)
+	result, err = db.CallUserFunction("hero_only", nil, true, db.Ctx)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "OK", result)
+
+	// Max call depth:
+	result, err = db.CallUserFunction("factorial", map[string]interface{}{"n": 20}, true, db.Ctx)
+	assert.NoError(t, err)
+	assert.EqualValues(t, 2.43290200817664e+18, result)
 
 	// ERRORS:
 
 	// Missing a parameter:
-	_, err = db.CallUserFunction("square", nil, true)
+	_, err = db.CallUserFunction("square", nil, true, db.Ctx)
 	assertHTTPError(t, err, 400)
 	assert.ErrorContains(t, err, "numero")
 	assert.ErrorContains(t, err, "square")
 
 	// Extra parameter:
-	_, err = db.CallUserFunction("square", map[string]interface{}{"numero": 42, "number": 0}, true)
+	_, err = db.CallUserFunction("square", map[string]interface{}{"numero": 42, "number": 0}, true, db.Ctx)
 	assertHTTPError(t, err, 400)
 	assert.ErrorContains(t, err, "number")
 	assert.ErrorContains(t, err, "square")
 
 	// Function throws an exception:
-	_, err = db.CallUserFunction("exceptional", nil, true)
+	_, err = db.CallUserFunction("exceptional", nil, true, db.Ctx)
 	assert.ErrorContains(t, err, "oops")
 	assert.ErrorContains(t, err, "exceptional")
 	jserr := err.(*jsError)
 	assert.NotNil(t, jserr)
+
+	// Call depth limit:
+	_, err = db.CallUserFunction("factorial", map[string]interface{}{"n": kUserFunctionMaxCallDepth + 1}, true, db.Ctx)
+	assert.ErrorContains(t, err, "User function recursion too deep")
+	assert.ErrorContains(t, err, "factorial")
 }
 
 // User-function tests, run as admin:
@@ -218,36 +237,36 @@ func testUserFunctionsAsAdmin(t *testing.T, db *Database) {
 	testUserFunctionsCommon(t, db)
 
 	// Admin-only (success):
-	result, err := db.CallUserFunction("admin_only", nil, true)
+	result, err := db.CallUserFunction("admin_only", nil, true, db.Ctx)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "OK", result)
 
-	result, err = db.CallUserFunction("require_admin", nil, true)
+	result, err = db.CallUserFunction("require_admin", nil, true, db.Ctx)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "OK", result)
 
-	result, err = db.CallUserFunction("pevensies_only", nil, true)
+	result, err = db.CallUserFunction("pevensies_only", nil, true, db.Ctx)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "OK", result)
 
-	result, err = db.CallUserFunction("narnia_only", nil, true)
+	result, err = db.CallUserFunction("narnia_only", nil, true, db.Ctx)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "OK", result)
 
-	result, err = db.CallUserFunction("villain_only", nil, true)
+	result, err = db.CallUserFunction("villain_only", nil, true, db.Ctx)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "OK", result)
 
 	// ERRORS:
 
 	// Checking `context.user.name`:
-	_, err = db.CallUserFunction("user_only", nil, true)
+	_, err = db.CallUserFunction("user_only", nil, true, db.Ctx)
 	assert.ErrorContains(t, err, "No user")
 	jserr := err.(*jsError)
 	assert.NotNil(t, jserr)
 
 	// No such function:
-	_, err = db.CallUserFunction("xxxx", nil, true)
+	_, err = db.CallUserFunction("xxxx", nil, true, db.Ctx)
 	assertHTTPError(t, err, 404)
 }
 
@@ -256,38 +275,38 @@ func testUserFunctionsAsUser(t *testing.T, db *Database) {
 	testUserFunctionsCommon(t, db)
 
 	// Checking `context.user.name`:
-	result, err := db.CallUserFunction("user_only", nil, true)
+	result, err := db.CallUserFunction("user_only", nil, true, db.Ctx)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "alice", result)
 
 	// Checking `context.admin.func`
-	_, err = db.CallUserFunction("sudo_call_forbidden", nil, true)
+	_, err = db.CallUserFunction("sudo_call_forbidden", nil, true, db.Ctx)
 	assert.NoError(t, err)
 
 	// No such function:
-	_, err = db.CallUserFunction("xxxx", nil, true)
+	_, err = db.CallUserFunction("xxxx", nil, true, db.Ctx)
 	assertHTTPError(t, err, 403) // not 404 as for an admin
 
-	_, err = db.CallUserFunction("great_and_terrible", nil, true)
+	_, err = db.CallUserFunction("great_and_terrible", nil, true, db.Ctx)
 	assertHTTPError(t, err, 403)
 
-	_, err = db.CallUserFunction("call_forbidden", nil, true)
+	_, err = db.CallUserFunction("call_forbidden", nil, true, db.Ctx)
 	assertHTTPError(t, err, 403)
 	assert.ErrorContains(t, err, "great_and_terrible") // failed fn name should appear in error
 
-	_, err = db.CallUserFunction("admin_only", nil, true)
+	_, err = db.CallUserFunction("admin_only", nil, true, db.Ctx)
 	assertHTTPError(t, err, 403)
 
-	_, err = db.CallUserFunction("require_admin", nil, true)
+	_, err = db.CallUserFunction("require_admin", nil, true, db.Ctx)
 	assertHTTPError(t, err, 403)
 
-	_, err = db.CallUserFunction("pevensies_only", nil, true)
+	_, err = db.CallUserFunction("pevensies_only", nil, true, db.Ctx)
 	assertHTTPError(t, err, 403)
 
-	_, err = db.CallUserFunction("narnia_only", nil, true)
+	_, err = db.CallUserFunction("narnia_only", nil, true, db.Ctx)
 	assertHTTPError(t, err, 403)
 
-	_, err = db.CallUserFunction("villain_only", nil, true)
+	_, err = db.CallUserFunction("villain_only", nil, true, db.Ctx)
 	assertHTTPError(t, err, 403)
 }
 
@@ -300,20 +319,21 @@ func TestUserFunctionsCRUD(t *testing.T) {
 		UserFunctions: kUserFunctionConfig,
 	})
 	defer db.Close()
+	db.Ctx = context.TODO()
 
 	body := map[string]interface{}{"key": "value"}
 
 	// Create a doc with random ID:
-	result, err := db.CallUserFunction("putDoc", map[string]interface{}{"docID": nil, "doc": body}, true)
+	result, err := db.CallUserFunction("putDoc", map[string]interface{}{"docID": nil, "doc": body}, true, db.Ctx)
 	assert.NoError(t, err)
 	assert.IsType(t, "", result)
-	_, err = db.CallUserFunction("getDoc", map[string]interface{}{"docID": result}, true)
+	_, err = db.CallUserFunction("getDoc", map[string]interface{}{"docID": result}, true, db.Ctx)
 	assert.NoError(t, err)
 
 	docID := "foo"
 
 	// Missing document:
-	result, err = db.CallUserFunction("getDoc", map[string]interface{}{"docID": docID}, true)
+	result, err = db.CallUserFunction("getDoc", map[string]interface{}{"docID": docID}, true, db.Ctx)
 	assert.NoError(t, err)
 	assert.EqualValues(t, nil, result)
 
@@ -323,16 +343,16 @@ func TestUserFunctionsCRUD(t *testing.T) {
 	}
 
 	// Illegal mutation:
-	_, err = db.CallUserFunction("putDoc", docParams, false)
+	_, err = db.CallUserFunction("putDoc", docParams, false, db.Ctx)
 	assertHTTPError(t, err, 403)
 
 	// Successful save (as admin):
-	result, err = db.CallUserFunction("putDoc", docParams, true)
+	result, err = db.CallUserFunction("putDoc", docParams, true, db.Ctx)
 	assert.NoError(t, err)
 	assert.EqualValues(t, docID, result) // save() returns docID
 
 	// Existing document:
-	result, err = db.CallUserFunction("getDoc", map[string]interface{}{"docID": docID}, true)
+	result, err = db.CallUserFunction("getDoc", map[string]interface{}{"docID": docID}, true, db.Ctx)
 	assert.NoError(t, err)
 	revID, ok := result.(map[string]interface{})["_rev"].(string)
 	assert.True(t, ok)
@@ -344,25 +364,25 @@ func TestUserFunctionsCRUD(t *testing.T) {
 
 	// Update document with revID:
 	body["key2"] = 2
-	_, err = db.CallUserFunction("putDoc", docParams, true)
+	_, err = db.CallUserFunction("putDoc", docParams, true, db.Ctx)
 	assert.NoError(t, err)
 
 	// Save fails with conflict:
 	body["key3"] = 3
 	body["_rev"] = "9-9999"
-	result, err = db.CallUserFunction("putDoc", docParams, true)
+	result, err = db.CallUserFunction("putDoc", docParams, true, db.Ctx)
 	assert.NoError(t, err)
 	assert.Nil(t, result)
 
 	// Update document without revID:
 	body["key3"] = 4
 	delete(body, "_revid")
-	result, err = db.CallUserFunction("putDoc", docParams, true)
+	result, err = db.CallUserFunction("putDoc", docParams, true, db.Ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, docID, result)
 
 	// Get doc again to verify revision:
-	result, err = db.CallUserFunction("getDoc", map[string]interface{}{"docID": docID}, true)
+	result, err = db.CallUserFunction("getDoc", map[string]interface{}{"docID": docID}, true, db.Ctx)
 	assert.NoError(t, err)
 	revID, ok = result.(map[string]interface{})["_rev"].(string)
 	assert.True(t, ok)
@@ -370,7 +390,7 @@ func TestUserFunctionsCRUD(t *testing.T) {
 	assert.True(t, strings.HasPrefix(revID, "3-"))
 
 	// Delete doc:
-	_, err = db.CallUserFunction("delDoc", map[string]interface{}{"docID": docID}, true)
+	_, err = db.CallUserFunction("delDoc", map[string]interface{}{"docID": docID}, true, db.Ctx)
 	assert.NoError(t, err)
 }
 
@@ -410,6 +430,7 @@ func TestUserFunctionAllow(t *testing.T) {
 		UserFunctions: kUserFunctionConfig,
 	})
 	defer db.Close()
+	db.Ctx = context.TODO()
 
 	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
 	user, err := authenticator.NewUser("maurice", "pass", base.SetOf("city-Paris"))

@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -62,7 +63,7 @@ var kUserN1QLFunctionsConfig = UserFunctionConfigMap{
 }
 
 func callUserQuery(db *Database, name string, args map[string]interface{}) (interface{}, error) {
-	return db.CallUserFunction(name, args, false)
+	return db.CallUserFunction(name, args, false, db.Ctx)
 }
 
 func queryResultString(t *testing.T, iter sgbucket.QueryResultIterator) string {
@@ -101,6 +102,7 @@ func TestUserN1QLQueries(t *testing.T) {
 		UserFunctions: kUserN1QLFunctionsConfig,
 	})
 	defer db.Close()
+	db.Ctx = context.TODO()
 
 	// First run the tests as an admin:
 	t.Run("AsAdmin", func(t *testing.T) { testUserQueriesAsAdmin(t, db) })
@@ -115,19 +117,19 @@ func TestUserN1QLQueries(t *testing.T) {
 
 func testUserQueriesCommon(t *testing.T, db *Database) {
 	// dynamic channel list
-	fn, err := db.GetUserFunction("airports_in_city", map[string]interface{}{"city": "London"}, false)
+	fn, err := db.GetUserFunction("airports_in_city", map[string]interface{}{"city": "London"}, false, db.Ctx)
 	assert.NoError(t, err)
 	iter, err := fn.Iterate()
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{"city":"London"}]`, iter)
 
-	fn, err = db.GetUserFunction("square", map[string]interface{}{"numero": 16}, false)
+	fn, err = db.GetUserFunction("square", map[string]interface{}{"numero": 16}, false, db.Ctx)
 	assert.NoError(t, err)
 	iter, err = fn.Iterate()
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{"square":256}]`, iter)
 
-	fn, err = db.GetUserFunction("inject", map[string]interface{}{"foo": "1337 as pwned"}, false)
+	fn, err = db.GetUserFunction("inject", map[string]interface{}{"foo": "1337 as pwned"}, false, db.Ctx)
 	assert.NoError(t, err)
 	iter, err = fn.Iterate()
 	assert.NoError(t, err)
@@ -156,20 +158,20 @@ func testUserQueriesCommon(t *testing.T, db *Database) {
 func testUserQueriesAsAdmin(t *testing.T, db *Database) {
 	testUserQueriesCommon(t, db)
 
-	fn, err := db.GetUserFunction("user", nil, false)
+	fn, err := db.GetUserFunction("user", nil, false, db.Ctx)
 	assert.NoError(t, err)
 	iter, err := fn.Iterate()
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{"user":{}}]`, iter)
 
-	fn, err = db.GetUserFunction("user_parts", nil, false)
+	fn, err = db.GetUserFunction("user_parts", nil, false, db.Ctx)
 	assert.NoError(t, err)
 	iter, err = fn.Iterate()
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{}]`, iter)
 
 	// admin only:
-	fn, err = db.GetUserFunction("admin_only", nil, false)
+	fn, err = db.GetUserFunction("admin_only", nil, false, db.Ctx)
 	assert.NoError(t, err)
 	iter, err = fn.Iterate()
 	assert.NoError(t, err)
@@ -185,7 +187,7 @@ func testUserQueriesAsAdmin(t *testing.T, db *Database) {
 func testUserQueriesAsUser(t *testing.T, db *Database) {
 	testUserQueriesCommon(t, db)
 
-	fn, err := db.GetUserFunction("user", nil, false)
+	fn, err := db.GetUserFunction("user", nil, false, db.Ctx)
 	assert.NoError(t, err)
 	// (Can't compare the entire result string because the order of items in the "channels" array
 	// is undefined and can change from one run to another.)
@@ -195,7 +197,7 @@ func testUserQueriesAsUser(t *testing.T, db *Database) {
 	assert.True(t, strings.HasPrefix(resultStr, `[{"user":{"channels":["`))
 	assert.True(t, strings.HasSuffix(resultStr, `"],"email":"","name":"alice","roles":["hero"]}}]`))
 
-	fn, err = db.GetUserFunction("user_parts", nil, false)
+	fn, err = db.GetUserFunction("user_parts", nil, false, db.Ctx)
 	assert.NoError(t, err)
 	iter, err = fn.Iterate()
 	assert.NoError(t, err)

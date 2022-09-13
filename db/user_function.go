@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -114,11 +115,12 @@ type UserFunctionInvocation struct {
 	db              *Database
 	args            map[string]interface{}
 	mutationAllowed bool
+	ctx             context.Context
 }
 
 // Calls a user function by name, returning all the results at once.
-func (db *Database) CallUserFunction(name string, args map[string]interface{}, mutationAllowed bool) (interface{}, error) {
-	invocation, err := db.GetUserFunction(name, args, mutationAllowed)
+func (db *Database) CallUserFunction(name string, args map[string]interface{}, mutationAllowed bool, ctx context.Context) (interface{}, error) {
+	invocation, err := db.GetUserFunction(name, args, mutationAllowed, ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -126,21 +128,25 @@ func (db *Database) CallUserFunction(name string, args map[string]interface{}, m
 }
 
 // Looks up a UserFunction by name and returns an Invocation.
-func (db *Database) GetUserFunction(name string, args map[string]interface{}, mutationAllowed bool) (UserFunctionInvocation, error) {
+func (db *Database) GetUserFunction(name string, args map[string]interface{}, mutationAllowed bool, ctx context.Context) (UserFunctionInvocation, error) {
 	if fn, found := db.userFunctions[name]; found {
-		return fn.Invoke(db, args, mutationAllowed)
+		return fn.Invoke(db, args, mutationAllowed, ctx)
 	} else {
 		return UserFunctionInvocation{}, missingError(db.user, "function", name)
 	}
 }
 
 // Creates an Invocation of a UserFunction.
-func (fn *UserFunction) Invoke(db *Database, args map[string]interface{}, mutationAllowed bool) (UserFunctionInvocation, error) {
+func (fn *UserFunction) Invoke(db *Database, args map[string]interface{}, mutationAllowed bool, ctx context.Context) (UserFunctionInvocation, error) {
+	if ctx == nil {
+		panic("missing context to UserFunction.Invoke")
+	}
 	invocation := UserFunctionInvocation{
 		UserFunction:    fn,
 		db:              db,
 		args:            args,
 		mutationAllowed: mutationAllowed,
+		ctx:             ctx,
 	}
 
 	if err := db.CheckTimeout(); err != nil {
@@ -183,16 +189,16 @@ func (fn *UserFunctionInvocation) Iterate() (sgbucket.QueryResultIterator, error
 		return nil, nil
 	} else {
 		// Return an iterator on the N1QL query results:
-		iter, err := fn.db.N1QLQueryWithStats(fn.db.Ctx, QueryTypeUserFunctionPrefix+fn.name, fn.Code, fn.args,
+		iter, err := fn.db.N1QLQueryWithStats(fn.ctx, QueryTypeUserFunctionPrefix+fn.name, fn.Code, fn.args,
 			base.RequestPlus, false)
 		if err != nil {
 			// Return a friendlier error:
 			var qe *gocb.QueryError
 			if errors.As(err, &qe) {
-				base.WarnfCtx(fn.db.Ctx, "Error running query %q: %v", fn.name, err)
+				base.WarnfCtx(fn.ctx, "Error running query %q: %v", fn.name, err)
 				return nil, base.HTTPErrorf(http.StatusInternalServerError, "Query %q: %s", fn.name, qe.Errors[0].Message)
 			} else {
-				base.WarnfCtx(fn.db.Ctx, "Unknown error running query %q: %T %#v", fn.name, err, err)
+				base.WarnfCtx(fn.ctx, "Unknown error running query %q: %T %#v", fn.name, err, err)
 				return nil, base.HTTPErrorf(http.StatusInternalServerError, "Unknown error running query %q (see logs)", fn.name)
 			}
 		}
@@ -208,7 +214,11 @@ func (fn *UserFunctionInvocation) Run() (interface{}, error) {
 		// Run the JavaScript function:
 		return fn.compiled.WithTask(func(task sgbucket.JSServerTask) (result interface{}, err error) {
 			runner := task.(*userJSRunner)
-			return runner.CallWithDB(fn.db, fn.mutationAllowed, newUserFunctionJSContext(fn.db), fn.args)
+			return runner.CallWithDB(fn.db,
+				fn.mutationAllowed,
+				fn.ctx,
+				newUserFunctionJSContext(fn.db),
+				fn.args)
 		})
 	} else {
 		// Run the N1QL query. Result will be an array of rows.
