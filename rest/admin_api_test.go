@@ -5058,6 +5058,9 @@ func TestResyncPersistence(t *testing.T) {
 
 // Repros CBG-2416
 func TestDBReplicationStatsTeardown(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
 	// Test tests Prometheus stat registration
 	base.SkipPrometheusStatsRegistration = false
 	defer func() {
