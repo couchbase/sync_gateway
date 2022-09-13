@@ -21,12 +21,10 @@ import (
 func (h *handler) handleGetDbConfigFunctions() error {
 	if config, etagVersion, err := h.getDBConfig(); err != nil {
 		return err
+	} else if config.UserFunctions == nil {
+		return base.HTTPErrorf(http.StatusNotFound, "")
 	} else {
-		if config.UserFunctions != nil {
-			h.writeJSON(config.UserFunctions)
-		} else {
-			h.writeRawJSON([]byte("{}"))
-		}
+		h.writeJSON(config.UserFunctions)
 		h.setEtag(etagVersion)
 		return nil
 	}

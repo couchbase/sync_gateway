@@ -142,7 +142,7 @@ func TestUserQueryDBConfigMVCC(t *testing.T) {
 
 //////// JAVASCRIPT FUNCTIONS:
 
-// When there's no existing config, API calls return 404 or empty objects:
+// When there's no existing config, API calls return 404:
 func TestUserQueryDBConfigGetMissing(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{})
 	if rt == nil {
@@ -156,9 +156,7 @@ func TestUserQueryDBConfigGetMissing(t *testing.T) {
 	})
 	t.Run("All", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/functions", "")
-		var body db.UserFunctionConfigMap
-		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-		assert.Equal(t, 0, len(body))
+		assert.Equal(t, 404, response.Result().StatusCode)
 	})
 	t.Run("Missing", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/functions/cube", "")
