@@ -304,7 +304,7 @@ var kTestGraphQLConfigWithN1QL = GraphQLConfig{
 				// This tests the ability of the resolver to return the 1st result row when the
 				// GraphQL return type is not a List.
 				Type: "query",
-				Code: `SELECT db.*, meta().id as id FROM $_keyspace AS db WHERE meta().id = $id AND type = "task"`,
+				Code: `SELECT db.*, meta().id as id FROM $_keyspace AS db WHERE meta().id = $args.id AND type = "task"`,
 			},
 			"tasks": {
 				Type: "query",

@@ -13,6 +13,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 
@@ -208,6 +209,9 @@ func (fn *UserFunctionInvocation) Resolve(params graphql.ResolveParams) (interfa
 	// Collect the 'resultFields', the fields the query wants from the value being resolved:
 	resultFields := []string{}
 	if len(params.Info.FieldASTs) > 0 {
+		for i, f := range params.Info.FieldASTs {
+			log.Printf("### field %d is %#v", i, f) //TEMP
+		}
 		if set := params.Info.FieldASTs[0].SelectionSet; set != nil {
 			for _, sel := range set.Selections {
 				if subfield, ok := sel.(*ast.Field); ok {
@@ -246,8 +250,8 @@ func (fn *UserFunctionInvocation) Resolve(params graphql.ResolveParams) (interfa
 
 	} else {
 		// N1QL resolver:
-		fn.args["parent"] = params.Source
-		fn.args["info"] = info
+		fn.n1qlArgs["parent"] = params.Source
+		fn.n1qlArgs["info"] = info
 		// Run the query:
 		result, err := fn.Run()
 		if err != nil {

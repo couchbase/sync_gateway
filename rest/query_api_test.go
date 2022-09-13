@@ -31,7 +31,7 @@ var kGraphQLTestConfig = &DatabaseConfig{DbConfig: DbConfig{
 		},
 		"squareN1QL": {
 			Type:  "query",
-			Code:  "SELECT $n * $n AS square",
+			Code:  "SELECT $args.n * $args.n AS square",
 			Args:  []string{"n"},
 			Allow: &db.UserQueryAllow{Channels: []string{"*"}},
 		},

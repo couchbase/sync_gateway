@@ -24,13 +24,13 @@ import (
 var kUserN1QLFunctionsConfig = UserFunctionConfigMap{
 	"airports_in_city": &UserFunctionConfig{
 		Type:  "query",
-		Code:  `SELECT $city AS city`,
+		Code:  `SELECT $args.city AS city`,
 		Args:  []string{"city"},
 		Allow: &UserQueryAllow{Channels: []string{"city-$city", "allcities"}},
 	},
 	"square": &UserFunctionConfig{
 		Type:  "query",
-		Code:  "SELECT $numero * $numero AS square",
+		Code:  "SELECT $args.numero * $args.numero AS square",
 		Args:  []string{"numero"},
 		Allow: &UserQueryAllow{Channels: []string{"wonderland"}},
 	},
@@ -51,7 +51,7 @@ var kUserN1QLFunctionsConfig = UserFunctionConfigMap{
 	},
 	"inject": &UserFunctionConfig{
 		Type:  "query",
-		Code:  `SELECT $foo`,
+		Code:  `SELECT $args.foo`,
 		Args:  []string{"foo"},
 		Allow: &UserQueryAllow{Channels: []string{"*"}},
 	},
@@ -133,7 +133,7 @@ func testUserQueriesCommon(t *testing.T, db *Database) {
 	assert.NoError(t, err)
 	iter, err = fn.Iterate()
 	assert.NoError(t, err)
-	assertQueryResults(t, `[{"$1":"1337 as pwned"}]`, iter)
+	assertQueryResults(t, `[{"foo":"1337 as pwned"}]`, iter)
 
 	// ERRORS:
 

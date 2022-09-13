@@ -59,6 +59,10 @@ func TestUserQueryDBConfigMVCC(t *testing.T) {
 				Type: "query",
 				Code: "SELECT 42",
 			},
+			"yyy": {
+				Type: "query",
+				Code: "SELECT 999",
+			},
 		},
 		GraphQL: &db.GraphQLConfig{
 			Schema:    base.StringPtr(kDummyGraphQLSchema),
@@ -129,7 +133,7 @@ func TestUserQueryDBConfigMVCC(t *testing.T) {
 
 	t.Run("Functions", func(t *testing.T) {
 		runTest(t, "/db/_config/functions", `{
-			"yyy": {"type": "javascript", "code": "function(){return 69;}"}
+			"zzz": {"type": "javascript", "code": "function(){return 69;}"}
 		}`)
 	})
 

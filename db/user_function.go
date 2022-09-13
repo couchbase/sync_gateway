@@ -114,6 +114,7 @@ type UserFunctionInvocation struct {
 	*UserFunction
 	db              *Database
 	args            map[string]interface{}
+	n1qlArgs        map[string]interface{}
 	mutationAllowed bool
 	ctx             context.Context
 }
@@ -162,14 +163,6 @@ func (fn *UserFunction) Invoke(db *Database, args map[string]interface{}, mutati
 			return invocation, err
 		}
 	}
-	if invocation.compiled == nil {
-		userArg := db.createUserArgument()
-		if userArg != nil {
-			invocation.args["user"] = userArg
-		} else {
-			invocation.args["user"] = map[string]interface{}{}
-		}
-	}
 
 	// Check that the user is authorized:
 	if invocation.Allow != nil || !fn.allowByDefault {
@@ -178,6 +171,16 @@ func (fn *UserFunction) Invoke(db *Database, args map[string]interface{}, mutati
 		}
 	}
 
+	if fn.compiled == nil {
+		// Create the N1QL arguments, which have the fn args under "args":
+		var userArg interface{}
+		if db.user != nil {
+			userArg = db.createUserArgument()
+		} else {
+			userArg = map[string]interface{}{}
+		}
+		invocation.n1qlArgs = map[string]interface{}{"args": invocation.args, "user": userArg}
+	}
 	return invocation, nil
 }
 
@@ -188,9 +191,10 @@ func (fn *UserFunctionInvocation) Iterate() (sgbucket.QueryResultIterator, error
 		// JS:
 		return nil, nil
 	} else {
-		// Return an iterator on the N1QL query results:
-		iter, err := fn.db.N1QLQueryWithStats(fn.ctx, QueryTypeUserFunctionPrefix+fn.name, fn.Code, fn.args,
+		// N1QL:
+		iter, err := fn.db.N1QLQueryWithStats(fn.ctx, QueryTypeUserFunctionPrefix+fn.name, fn.Code, fn.n1qlArgs,
 			base.RequestPlus, false)
+
 		if err != nil {
 			// Return a friendlier error:
 			var qe *gocb.QueryError
