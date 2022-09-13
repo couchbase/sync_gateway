@@ -206,8 +206,8 @@ func (config *GraphQLConfig) compileFieldResolver(typeName string, fieldName str
 
 // Calls a UserFunctionInvocation as a GraphQL resolver, given the parameters passed by the go-graphql API.
 func (fn *UserFunctionInvocation) Resolve(params graphql.ResolveParams) (interface{}, error) {
-	// Collect the 'resultFields', the fields the query wants from the value being resolved:
-	resultFields := []string{}
+	// Collect the 'selectedFieldNames', the fields the query wants from the value being resolved:
+	selectedFieldNames := []string{}
 	if len(params.Info.FieldASTs) > 0 {
 		for i, f := range params.Info.FieldASTs {
 			log.Printf("### field %d is %#v", i, f) //TEMP
@@ -216,7 +216,7 @@ func (fn *UserFunctionInvocation) Resolve(params graphql.ResolveParams) (interfa
 			for _, sel := range set.Selections {
 				if subfield, ok := sel.(*ast.Field); ok {
 					if subfield.Name.Kind == "Name" {
-						resultFields = append(resultFields, subfield.Name.Value)
+						selectedFieldNames = append(selectedFieldNames, subfield.Name.Value)
 					}
 				}
 			}
@@ -225,14 +225,14 @@ func (fn *UserFunctionInvocation) Resolve(params graphql.ResolveParams) (interfa
 
 	// The `info` parameter passed to the JS function; fields are a subset of graphql.ResolveInfo.
 	// NOTE: We've removed these fields until we get feedback that they're needed by developers.
-	//   `resultFields` is not provided (directly) by ResolveInfo; it contains the fields of the
+	//   `selectedFieldNames` is not provided (directly) by ResolveInfo; it contains the fields of the
 	// resolver's result that will be used by the query (other fields will just be ignored.)
 	// This enables some important optimizations.
 	info := map[string]interface{}{
 		// FieldName:      params.Info.FieldName,
 		// RootValue:      params.Info.RootValue,
 		// VariableValues: params.Info.VariableValues,
-		"resultFields": resultFields,
+		"selectedFieldNames": selectedFieldNames,
 	}
 
 	if fn.compiled != nil {

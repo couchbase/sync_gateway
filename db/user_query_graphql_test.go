@@ -62,7 +62,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 				Code: `function(context, args, parent, info) {
 						if (Object.keys(parent).length != 0) throw "Unexpected parent";
 						if (Object.keys(args).length != 1) throw "Unexpected args";
-						if (Object.keys(info) != "resultFields") throw "Unexpected info";
+						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
 						if (!context.user) throw "Missing context.user";
 						if (!context.admin) throw "Missing context.admin";
 						return context.user.function("getTask", {id: args.id});}`,
@@ -72,7 +72,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 				Code: `function(context, args, parent, info) {
 						if (Object.keys(parent).length != 0) throw "Unexpected parent";
 						if (Object.keys(args).length != 0) throw "Unexpected args";
-						if (Object.keys(info) != "resultFields") throw "Unexpected info";
+						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
 						if (!context.user) throw "Missing context.user";
 						if (!context.admin) throw "Missing context.admin";
 						return context.user.function("all");}`,
@@ -82,7 +82,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 				Code: `function(context, args, parent, info) {
 						if (Object.keys(parent).length != 0) throw "Unexpected parent";
 						if (Object.keys(args).length != 1) throw "Unexpected args";
-						if (Object.keys(info) != "resultFields") throw "Unexpected info";
+						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
 						if (!context.user) throw "Missing context.user";
 						if (!context.admin) throw "Missing context.admin";
 						var result=new Array(); var all = context.user.function("all");
@@ -97,7 +97,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 				Code: `function(context, args, parent, info) {
 							if (Object.keys(parent).length != 0) throw "Unexpected parent";
 							if (Object.keys(args).length != 1) throw "Unexpected args";
-							if (Object.keys(info) != "resultFields") throw "Unexpected info";
+							if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
 							if (!context.user) throw "Missing context.user";
 							if (!context.admin) throw "Missing context.admin";
 							var task = context.user.function("getTask", {id: args.id});
@@ -121,7 +121,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 				Code: `function(context, args, parent, info) {
 								if (!parent.id) throw "Invalid parent";
 								if (Object.keys(args).length != 0) throw "Unexpected args";
-								if (Object.keys(info) != "resultFields") throw "Unexpected info";
+								if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
 								if (!context.user) throw "Missing context.user";
 								if (!context.admin) throw "Missing context.admin";
 								return "TOP SECRET!";}`,
@@ -346,7 +346,7 @@ var kTestGraphQLConfigWithN1QL = GraphQLConfig{
 				Code: `function(context, args, parent, info) {
 								if (!parent.id) throw "Invalid parent";
 								if (Object.keys(args).length != 0) throw "Unexpected args";
-								if (Object.keys(info) != "resultFields") throw "Unexpected info";
+								if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
 								if (!context.user) throw "Missing context.user";
 								if (!context.admin) throw "Missing context.admin";
 								return "TOP SECRET!";}`,
