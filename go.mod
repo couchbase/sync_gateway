@@ -76,3 +76,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 	nhooyr.io/websocket v1.8.7 // indirect
 )
+
+replace github.com/couchbase/sg-bucket => ../sg-bucket
+
+replace github.com/couchbaselabs/walrus => ../walrus

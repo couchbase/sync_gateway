@@ -147,8 +147,8 @@ func TestAddRaw(t *testing.T) {
 // to verify that timeout errors are returned, and the operation isn't retried (which would return a cas error).
 // (see CBG-463)
 func TestAddRawTimeoutRetry(t *testing.T) {
-	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	ctx, bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
 
 	gocbBucket, ok := bucket.Bucket.(*CouchbaseBucketGoCB)
 	if ok {
@@ -2054,8 +2054,8 @@ func TestCouchbaseServerMaxTTL(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	ctx, bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
 
 	cbStore, ok := AsCouchbaseStore(bucket)
 	require.True(t, ok)
@@ -2071,8 +2071,8 @@ func TestCouchbaseServerIncorrectLogin(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	testBucket := GetTestBucket(t)
-	defer testBucket.Close()
+	ctx, testBucket := GetTestBucket(t)
+	defer testBucket.Close(ctx)
 
 	// Override test bucket spec with invalid creds
 	testBucket.BucketSpec.Auth = TestAuthenticator{
@@ -2098,8 +2098,8 @@ func TestCouchbaseServerIncorrectX509Login(t *testing.T) {
 		t.Skip("This test doesn't work using GoCBv2")
 	}
 
-	testBucket := GetTestBucket(t)
-	defer testBucket.Close()
+	ctx, testBucket := GetTestBucket(t)
+	defer testBucket.Close(ctx)
 
 	// Remove existing password-based authentication
 	testBucket.BucketSpec.Auth = nil
@@ -2556,8 +2556,8 @@ func TestUpsertOptionPreserveExpiry(t *testing.T) {
 	if !TestUseCouchbaseServer() {
 		t.Skip("Test can only be ran against CBS due to GoCB v2 use")
 	}
-	bucket := GetTestBucketForDriver(t, GoCBv2)
-	defer bucket.Close()
+	ctx, bucket := GetTestBucketForDriver(t, GoCBv2)
+	defer bucket.Close(ctx)
 	if !bucket.IsSupported(sgbucket.DataStoreFeaturePreserveExpiry) {
 		t.Skip("Preserve expiry is not supported with this CBS version. Skipping test...")
 	}
@@ -2587,7 +2587,6 @@ func TestUpsertOptionPreserveExpiry(t *testing.T) {
 
 	for i, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			ctx := TestCtx(t)
 			cbStore, _ := AsCouchbaseStore(bucket)
 			key := fmt.Sprintf("test%d", i)
 			val := make(map[string]interface{}, 0)

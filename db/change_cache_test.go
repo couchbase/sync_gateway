@@ -182,8 +182,7 @@ func TestLateSequenceHandling(t *testing.T) {
 
 func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 
-	ctx := base.TestCtx(t)
-	b := base.GetTestBucket(t)
+	ctx, b := base.GetTestBucket(t)
 	context, err := NewDatabaseContext(ctx, "db", b, false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close(ctx)
@@ -1977,8 +1976,8 @@ func BenchmarkProcessEntry(b *testing.B) {
 
 	for _, bm := range processEntryBenchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-			ctx := base.TestCtx(b)
-			context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(b), false, DatabaseContextOptions{})
+			ctx, bucket := base.GetTestBucket(b)
+			context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 			require.NoError(b, err)
 			defer context.Close(ctx)
 
@@ -2205,8 +2204,8 @@ func BenchmarkDocChanged(b *testing.B) {
 
 	for _, bm := range processEntryBenchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-			ctx := base.TestCtx(b)
-			context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(b), false, DatabaseContextOptions{})
+			ctx, bucket := base.GetTestBucket(b)
+			context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 			require.NoError(b, err)
 			defer context.Close(ctx)
 

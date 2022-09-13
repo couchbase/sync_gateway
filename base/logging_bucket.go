@@ -19,6 +19,8 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 )
 
+var _ Bucket = &LoggingBucket{}
+
 // A wrapper around a Bucket that transparently adds logging of all the API calls.
 type LoggingBucket struct {
 	bucket     Bucket
@@ -28,7 +30,11 @@ type LoggingBucket struct {
 
 func (b *LoggingBucket) ctx() context.Context {
 	b.logCtxOnce.Do(func() {
-		b.logCtx = bucketCtx(context.Background(), b)
+		if b.logCtx == nil {
+			b.logCtx = bucketCtx(context.Background(), b)
+		} else {
+			b.logCtx = bucketCtx(b.logCtx, b)
+		}
 	})
 	return b.logCtx
 }
@@ -180,30 +186,19 @@ func (b *LoggingBucket) ViewQuery(ddoc, name string, params map[string]interface
 	return b.bucket.ViewQuery(ddoc, name, params)
 }
 
-func (b *LoggingBucket) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
-	return b.StartTapFeedCtx(context.TODO(), args, dbStats)
-}
-
-func (b *LoggingBucket) StartTapFeedCtx(ctx context.Context, args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
+func (b *LoggingBucket) StartTapFeed(ctx context.Context, args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
 	defer b.log(time.Now())
-	return b.bucket.StartTapFeed(args, dbStats)
+	return b.bucket.StartTapFeed(ctx, args, dbStats)
 }
 
-func (b *LoggingBucket) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
-	return b.StartDCPFeedCtx(context.TODO(), args, callback, dbStats)
-}
-
-func (b *LoggingBucket) StartDCPFeedCtx(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
+func (b *LoggingBucket) StartDCPFeed(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
 	defer b.log(time.Now())
-	return b.bucket.StartDCPFeed(args, callback, dbStats)
+	return b.bucket.StartDCPFeed(ctx, args, callback, dbStats)
 }
 
-func (b *LoggingBucket) Close() {
-	b.bucket.CloseCtx(context.TODO())
-}
-func (b *LoggingBucket) CloseCtx(ctx context.Context) {
+func (b *LoggingBucket) Close(ctx context.Context) {
 	defer b.log(time.Now())
-	b.bucket.Close()
+	b.bucket.Close(ctx)
 }
 func (b *LoggingBucket) Dump() {
 	defer b.log(time.Now())

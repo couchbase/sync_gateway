@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbaselabs/walrus"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
@@ -100,9 +101,10 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 		return &tbp
 	}
 
+	ctx := context.Background()
 	_, err := SetMaxFileDescriptors(5000)
 	if err != nil {
-		FatalfCtx(context.TODO(), "couldn't set max file descriptors: %v", err)
+		FatalfCtx(ctx, "couldn't set max file descriptors: %v", err)
 	}
 
 	numBuckets := tbpNumBuckets()
@@ -110,7 +112,7 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 	// That way, we can have unlimited buckets available in a single test pool... True horizontal scalability in tests!
 
 	// Used to manage cancellation of worker goroutines
-	ctx, ctxCancelFunc := context.WithCancel(context.Background())
+	ctx, ctxCancelFunc := context.WithCancel(ctx)
 
 	preserveBuckets, _ := strconv.ParseBool(os.Getenv(tbpEnvPreserve))
 
@@ -139,7 +141,7 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 
 	// Make sure the test buckets are created and put into the readier worker queue
 	start := time.Now()
-	if err := tbp.createTestBuckets(numBuckets, tbpBucketQuotaMB(), bucketInitFunc); err != nil {
+	if err := tbp.createTestBuckets(ctx, numBuckets, tbpBucketQuotaMB(), bucketInitFunc); err != nil {
 		tbp.Fatalf(ctx, "Couldn't create test buckets: %v", err)
 	}
 	atomic.AddInt64(&tbp.stats.TotalBucketInitDurationNano, time.Since(start).Nanoseconds())
@@ -213,7 +215,7 @@ func (tbp *TestBucketPool) checkForViewOpsQueueEmptied(ctx context.Context, buck
 	}
 }
 
-func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Bucket, s BucketSpec, teardown func()) {
+func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (ctx context.Context, b Bucket, s BucketSpec, teardown func()) {
 	testCtx := TestCtx(t)
 	if !UnitTestUrlIsWalrus() {
 		tbp.Fatalf(testCtx, "nil TestBucketPool, but not using a Walrus test URL")
@@ -222,7 +224,7 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 	id, err := GenerateRandomID()
 	require.NoError(t, err)
 
-	walrusBucket, err := NewSGWalrusBucket(url, DefaultPool, tbpBucketNamePrefix+"walrus_"+id)
+	walrusBucket, err := walrus.GetBucket(url, DefaultPool, tbpBucketNamePrefix+"walrus_"+id)
 	if err != nil {
 		tbp.Fatalf(testCtx, "couldn't get walrus bucket: %v", err)
 	}
@@ -230,7 +232,7 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 	// Wrap Walrus buckets with a leaky bucket to support vbucket IDs on feed.
 	b = &LeakyBucket{bucket: walrusBucket, config: LeakyBucketConfig{TapFeedVbuckets: true}}
 
-	ctx := bucketCtx(testCtx, b)
+	ctx = bucketCtx(testCtx, b)
 	tbp.Logf(ctx, "Creating new walrus test bucket")
 
 	initFuncStart := time.Now()
@@ -249,7 +251,7 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 	bucketSpec := getBucketSpec(tbpBucketName(b.GetName()))
 	bucketSpec.Server = url
 
-	return b, bucketSpec, func() {
+	return ctx, b, bucketSpec, func() {
 		if !bucketClosed.CompareAndSwap(false, true) {
 			tbp.Logf(ctx, "Bucket teardown was already called. Ignoring.")
 			return
@@ -259,16 +261,16 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 		atomic.AddInt32(&tbp.stats.NumBucketsClosed, 1)
 		atomic.AddInt64(&tbp.stats.TotalInuseBucketNano, time.Since(openedStart).Nanoseconds())
 		tbp.markBucketClosed(t, b)
-		b.Close()
+		b.Close(ctx)
 	}
 }
 
 // GetTestBucketAndSpec returns a bucket to be used during a test.
 // The returned teardownFn MUST be called once the test is done,
 // which closes the bucket, readies it for a new test, and releases back into the pool.
-func (tbp *TestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s BucketSpec, teardownFn func()) {
+func (tbp *TestBucketPool) GetTestBucketAndSpec(t testing.TB) (ctx context.Context, b Bucket, s BucketSpec, teardownFn func()) {
 
-	ctx := TestCtx(t)
+	ctx = TestCtx(t)
 
 	// Return a new Walrus bucket when tbp has not been initialized
 	if !tbp.integrationMode {
@@ -299,7 +301,7 @@ func (tbp *TestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s Bucke
 	atomic.AddInt32(&tbp.stats.NumBucketsOpened, 1)
 	bucketOpenStart := time.Now()
 	bucketClosed := &AtomicBool{}
-	return bucket, getBucketSpec(tbpBucketName(bucket.GetName())), func() {
+	return ctx, bucket, getBucketSpec(tbpBucketName(bucket.GetName())), func() {
 		if !bucketClosed.CompareAndSwap(false, true) {
 			tbp.Logf(ctx, "Bucket teardown was already called. Ignoring.")
 			return
@@ -309,7 +311,7 @@ func (tbp *TestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s Bucke
 		atomic.AddInt32(&tbp.stats.NumBucketsClosed, 1)
 		atomic.AddInt64(&tbp.stats.TotalInuseBucketNano, time.Since(bucketOpenStart).Nanoseconds())
 		tbp.markBucketClosed(t, bucket)
-		bucket.Close()
+		bucket.Close(ctx)
 
 		if tbp.preserveBuckets && t.Failed() {
 			tbp.Logf(ctx, "Test using bucket failed. Preserving bucket for later inspection")
@@ -448,7 +450,7 @@ func (tbp *TestBucketPool) removeOldTestBuckets() error {
 }
 
 // createTestBuckets creates a new set of integration test buckets and pushes them into the readier queue.
-func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, bucketInitFunc TBPBucketInitFunc) error {
+func (tbp *TestBucketPool) createTestBuckets(ctx context.Context, numBuckets int, bucketQuotaMB int, bucketInitFunc TBPBucketInitFunc) error {
 
 	// keep references to opened buckets for use later in this function
 	var (
@@ -466,7 +468,7 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, 
 	// create required number of buckets (skipping any already existing ones)
 	for i := 0; i < numBuckets; i++ {
 		testBucketName := fmt.Sprintf(tbpBucketNameFormat, tbpBucketNamePrefix, i, bucketNameTimestamp)
-		ctx := bucketNameCtx(context.TODO(), testBucketName)
+		ctx := bucketNameCtx(ctx, testBucketName)
 
 		// Bucket creation takes a few seconds for each bucket,
 		// so create and wait for readiness concurrently.
@@ -530,7 +532,7 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, 
 			tbp.Fatalf(ctx, "Couldn't init bucket, got error: %v - Aborting", err)
 		}
 
-		b.Close()
+		b.Close(ctx)
 		tbp.addBucketToReadierQueue(ctx, tbpBucketName(testBucketName))
 	}
 

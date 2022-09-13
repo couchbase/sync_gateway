@@ -1182,8 +1182,8 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 }
 
 func TestGetAvailableRevAttachments(t *testing.T) {
-	ctx := base.TestCtx(t)
-	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, DatabaseContextOptions{})
+	ctx, bucket := base.GetTestBucket(t)
+	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	defer context.Close(ctx)
 	db, err := CreateDatabase(context)
@@ -1223,8 +1223,8 @@ func TestGetAvailableRevAttachments(t *testing.T) {
 }
 
 func TestGet1xRevAndChannels(t *testing.T) {
-	ctx := base.TestCtx(t)
-	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, DatabaseContextOptions{})
+	ctx, bucket := base.GetTestBucket(t)
+	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	defer context.Close(ctx)
 	db, err := CreateDatabase(context)
@@ -1287,8 +1287,8 @@ func TestGet1xRevAndChannels(t *testing.T) {
 }
 
 func TestGet1xRevFromDoc(t *testing.T) {
-	ctx := base.TestCtx(t)
-	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, DatabaseContextOptions{})
+	ctx, bucket := base.GetTestBucket(t)
+	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	defer context.Close(ctx)
 	db, err := CreateDatabase(context)

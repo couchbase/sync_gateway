@@ -59,8 +59,8 @@ func TestBcryptDefaultCostTime(t *testing.T) {
 }
 
 func TestSetBcryptCost(t *testing.T) {
-	bucket := base.GetTestBucket(t)
-	defer bucket.Close()
+	ctx, bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
 
 	auth := NewAuthenticator(bucket, nil, DefaultAuthenticatorOptions())
 

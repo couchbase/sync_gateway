@@ -71,8 +71,8 @@ type CouchbaseBucketGoCB struct {
 	clusterCompatMajorVersion, clusterCompatMinorVersion uint64 // E.g: 6 and 0 for 6.0.3
 }
 
-var _ sgbucket.KVStore = &CouchbaseBucketGoCB{}
 var _ CouchbaseStore = &CouchbaseBucketGoCB{}
+var _ Bucket = &CouchbaseBucketGoCB{}
 
 // Creates a Bucket that talks to a real live Couchbase server.
 func GetCouchbaseBucketGoCB(ctx context.Context, spec BucketSpec) (bucket *CouchbaseBucketGoCB, err error) {
@@ -1459,14 +1459,14 @@ func getTotalRows(goCbViewResult gocb.ViewResults) int {
 
 // This is a "better-than-nothing" version of Refresh().
 // See https://forums.couchbase.com/t/equivalent-of-go-couchbase-bucket-refresh/12498/2
-func (bucket *CouchbaseBucketGoCB) Refresh() error {
+func (bucket *CouchbaseBucketGoCB) Refresh(ctx context.Context) error {
 
 	// If it's possible to call GetCouchbaseBucketGoCB without error, consider it "refreshed" and return a nil error which will cause the reconnect
 	// loop to stop.  otherwise, return an error which will cause it to keep retrying
 	// This fixes: https://github.com/couchbase/sync_gateway/issues/2423#issuecomment-294651245
 	bucketGoCb, err := GetCouchbaseBucketGoCB(context.TODO(), bucket.Spec) //no refs to this func found, leaving as TODO to not change signature
 	if bucketGoCb != nil {
-		bucketGoCb.Close()
+		bucketGoCb.Close(ctx)
 	}
 
 	return err
@@ -1474,11 +1474,7 @@ func (bucket *CouchbaseBucketGoCB) Refresh() error {
 }
 
 // GoCB (and Server 5.0.0) don't support the TapFeed. For legacy support, start a DCP feed and stream over a single channel
-func (bucket *CouchbaseBucketGoCB) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
-	return bucket.StartTapFeedCtx(context.TODO(), args, dbStats)
-}
-
-func (bucket *CouchbaseBucketGoCB) StartTapFeedCtx(ctx context.Context, args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
+func (bucket *CouchbaseBucketGoCB) StartTapFeed(ctx context.Context, args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
 
 	InfofCtx(ctx, KeyDCP, "Using DCP to generate TAP-like stream")
 	// Create the feed channel that will be passed back to the caller
@@ -1498,15 +1494,11 @@ func (bucket *CouchbaseBucketGoCB) StartTapFeedCtx(ctx context.Context, args sgb
 		return false
 	}
 
-	err := bucket.StartDCPFeedCtx(ctx, args, callback, dbStats)
+	err := bucket.StartDCPFeed(ctx, args, callback, dbStats)
 	return feed, err
 }
 
-func (bucket *CouchbaseBucketGoCB) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
-	return bucket.StartDCPFeedCtx(context.TODO(), args, callback, dbStats)
-}
-
-func (bucket *CouchbaseBucketGoCB) StartDCPFeedCtx(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
+func (bucket *CouchbaseBucketGoCB) StartDCPFeed(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
 	// TODO: Evaluate whether to use cbgt for non-sharded caching feed, as a way to push concurrency upstream
 	return StartDCPFeed(ctx, bucket, bucket.Spec, args, callback, dbStats)
 }
@@ -1560,11 +1552,7 @@ func (bucket *CouchbaseBucketGoCB) UUID() (string, error) {
 	return bucket.Bucket.IoRouter().BucketUUID(), nil
 }
 
-func (bucket *CouchbaseBucketGoCB) Close() {
-	bucket.CloseCtx(context.TODO())
-}
-
-func (bucket *CouchbaseBucketGoCB) CloseCtx(ctx context.Context) {
+func (bucket *CouchbaseBucketGoCB) Close(ctx context.Context) {
 	if err := bucket.Bucket.Close(); err != nil {
 		WarnfCtx(ctx, "Error closing GoCB bucket: %v.", err)
 		return

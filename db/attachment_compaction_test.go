@@ -288,8 +288,9 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
-	defer b.Close()
+	ctx, b := base.GetTestBucket(t)
+	b = b.LeakyBucketClone(ctx, base.LeakyBucketConfig{})
+	defer b.Close(ctx)
 
 	testDB1, ctx1 := setupTestDBForBucket(t, b)
 	defer testDB1.Close(ctx1)
@@ -433,8 +434,9 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
-	defer b.Close()
+	ctx, b := base.GetTestBucket(t)
+	b = b.LeakyBucketClone(ctx, base.LeakyBucketConfig{})
+	defer b.Close(ctx)
 
 	testDB1, ctx1 := setupTestDBForBucket(t, b)
 	defer testDB1.Close(ctx1)
@@ -535,12 +537,13 @@ func TestAttachmentProcessError(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{
+	ctx, b := base.GetTestBucket(t)
+	b = b.LeakyBucketClone(ctx, base.LeakyBucketConfig{
 		SetXattrCallback: func(key string) error {
 			return fmt.Errorf("some error")
 		},
 	})
-	defer b.Close()
+	defer b.Close(ctx)
 
 	testDB1, ctx1 := setupTestDBForBucket(t, b)
 	defer testDB1.Close(ctx1)

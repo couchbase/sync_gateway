@@ -1181,8 +1181,8 @@ func TestJWTRolesChannels(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Greater(t, len(tc.logins), 0, "Test case is missing simulated logins")
 
-			testBucket := base.GetTestBucket(t)
-			defer testBucket.Close()
+			ctx, testBucket := base.GetTestBucket(t)
+			defer testBucket.Close(ctx)
 
 			testMockComputer := mockComputerV2{
 				roles:        map[string]ch.TimedSet{},

@@ -31,8 +31,8 @@ var ErrCollectionsUnsupported = errors.New("collections not supported")
 
 const DefaultCollectionID = 0x0
 
-var _ sgbucket.KVStore = &Collection{}
 var _ CouchbaseStore = &Collection{}
+var _ Bucket = &Collection{}
 
 // Connect to the default collection for the specified bucket
 func GetCouchbaseCollection(ctx context.Context, spec BucketSpec) (*Collection, error) {
@@ -203,14 +203,10 @@ func (c *Collection) UUID() (string, error) {
 	return config.BucketUUID(), nil
 }
 
-func (c *Collection) Close() {
-	c.CloseCtx(context.TODO())
-}
-
-func (c *Collection) CloseCtx(ctx context.Context) {
+func (c *Collection) Close(ctx context.Context) {
 	if c.cluster != nil {
 		if err := c.cluster.Close(nil); err != nil {
-			WarnfCtx(context.TODO(), "Error closing collection cluster: %v", err)
+			WarnfCtx(ctx, "Error closing collection cluster: %v", err)
 		}
 	}
 	return
@@ -538,20 +534,12 @@ func (c *Collection) Incr(k string, amt, def uint64, exp uint32) (uint64, error)
 	return incrResult.Content(), nil
 }
 
-func (c *Collection) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
-	return c.StartDCPFeedCtx(context.TODO(), args, callback, dbStats)
-}
-
-func (c *Collection) StartDCPFeedCtx(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
+func (c *Collection) StartDCPFeed(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
 	groupID := ""
 	return StartGocbDCPFeed(ctx, c, c.Spec.BucketName, args, callback, dbStats, DCPMetadataStoreInMemory, groupID)
 }
 
-func (c *Collection) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
-	return c.StartTapFeedCtx(context.TODO(), args, dbStats)
-}
-
-func (c *Collection) StartTapFeedCtx(ctx context.Context, args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
+func (c *Collection) StartTapFeed(ctx context.Context, args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
 	return nil, errors.New("StartTapFeed not implemented")
 }
 func (c *Collection) Dump() {

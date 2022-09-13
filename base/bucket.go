@@ -13,7 +13,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
-	"expvar"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -151,39 +150,7 @@ func init() {
 	gomemcached.MaxBodyLen = int(20 * 1024 * 1024)
 }
 
-// type Bucket sgbucket.DataStore
-
-type Bucket interface {
-	sgbucket.DataStore
-	CloseCtx(ctx context.Context)
-	StartDCPFeedCtx(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error
-	StartTapFeedCtx(ctx context.Context, args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error)
-}
-
-type sgWalrusBucket struct {
-	*walrus.WalrusBucket
-}
-
-func NewSGWalrusBucket(url string, poolName string, bucketName string) (Bucket, error) {
-	b, err := walrus.GetBucket(url, poolName, bucketName)
-	if err != nil {
-		return nil, err
-	}
-	return &sgWalrusBucket{b}, nil
-}
-func (b *sgWalrusBucket) CloseCtx(ctx context.Context) {
-	DebugfCtx(ctx, KeyBucket, "walrus close for bucket %v", b.GetName())
-	b.Close()
-}
-func (b *sgWalrusBucket) StartDCPFeedCtx(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
-	DebugfCtx(ctx, KeyBucket, "walrus StartDCPFeed for bucket %v", b.GetName())
-	return b.StartDCPFeed(args, callback, dbStats)
-}
-func (b *sgWalrusBucket) StartTapFeedCtx(ctx context.Context, args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
-	DebugfCtx(ctx, KeyBucket, "walrus StartTapFeed for bucket %v", b.GetName())
-	return b.StartTapFeed(args, dbStats)
-}
-
+type Bucket sgbucket.DataStore
 type FeedArguments sgbucket.FeedArguments
 type TapFeed sgbucket.MutationFeed
 
@@ -432,7 +399,7 @@ func GetBucket(ctx context.Context, spec BucketSpec) (bucket Bucket, err error) 
 	if spec.IsWalrusBucket() {
 		InfofCtx(ctx, KeyAll, "Opening Walrus database %s on <%s>", MD(spec.BucketName), SD(spec.Server))
 		sgbucket.SetLogging(ConsoleLogKey().Enabled(KeyBucket))
-		bucket, err = NewSGWalrusBucket(spec.Server, DefaultPool, spec.BucketName)
+		bucket, err = walrus.GetBucket(spec.Server, DefaultPool, spec.BucketName)
 		if err != nil {
 			return nil, fmt.Errorf("unexpected walrus getbucket error: %w", err)
 		}
@@ -477,7 +444,7 @@ func GetBucket(ctx context.Context, spec BucketSpec) (bucket Bucket, err error) 
 	}
 
 	if LogDebugEnabled(KeyBucket) {
-		bucket = &LoggingBucket{bucket: bucket}
+		bucket = &LoggingBucket{logCtx: ctx, bucket: bucket}
 	}
 	return
 }

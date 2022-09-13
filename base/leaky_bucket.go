@@ -21,6 +21,8 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 )
 
+var _ Bucket = &LeakyBucket{}
+
 // A wrapper around a Bucket to support forced errors.  For testing use only.
 type LeakyBucket struct {
 	bucket    Bucket
@@ -299,14 +301,10 @@ func (b *LeakyBucket) WriteSubDoc(k string, subdocKey string, cas uint64, value 
 	return b.bucket.WriteSubDoc(k, subdocKey, cas, value)
 }
 
-func (b *LeakyBucket) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
-	return b.StartTapFeedCtx(context.TODO(), args, dbStats)
-}
-
-func (b *LeakyBucket) StartTapFeedCtx(ctx context.Context, args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
+func (b *LeakyBucket) StartTapFeed(ctx context.Context, args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
 
 	if b.config.TapFeedDeDuplication {
-		return b.wrapFeedForDeduplication(args, dbStats)
+		return b.wrapFeedForDeduplication(ctx, args, dbStats)
 	} else if len(b.config.TapFeedMissingDocs) > 0 {
 		callback := func(event *sgbucket.FeedEvent) bool {
 			for _, key := range b.config.TapFeedMissingDocs {
@@ -316,11 +314,11 @@ func (b *LeakyBucket) StartTapFeedCtx(ctx context.Context, args sgbucket.FeedArg
 			}
 			return true
 		}
-		return b.wrapFeed(args, callback, dbStats)
+		return b.wrapFeed(ctx, args, callback, dbStats)
 	} else if b.config.TapFeedVbuckets {
 		// kick off the wrapped sgbucket tap feed
 		DebugfCtx(ctx, KeyDCP, "LeakyBucket StartTapFeed for bucket %v ", b.GetName())
-		walrusTapFeed, err := b.bucket.StartTapFeed(args, dbStats)
+		walrusTapFeed, err := b.bucket.StartTapFeed(ctx, args, dbStats)
 		if err != nil {
 			return walrusTapFeed, err
 		}
@@ -343,26 +341,22 @@ func (b *LeakyBucket) StartTapFeedCtx(ctx context.Context, args sgbucket.FeedArg
 
 	} else {
 		DebugfCtx(ctx, KeyDCP, "LeakyBucket StartTapFeed for bucket %v ", b.GetName())
-		return b.bucket.StartTapFeed(args, dbStats)
+		return b.bucket.StartTapFeed(ctx, args, dbStats)
 	}
 
 }
 
-func (b *LeakyBucket) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
-	return b.StartDCPFeedCtx(context.TODO(), args, callback, dbStats)
-}
-
-func (b *LeakyBucket) StartDCPFeedCtx(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
+func (b *LeakyBucket) StartDCPFeed(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
 	DebugfCtx(ctx, KeyDCP, "LeakyBucket StartDCPFeed for bucket %v ", b.GetName())
-	return b.bucket.StartDCPFeed(args, callback, dbStats)
+	return b.bucket.StartDCPFeed(ctx, args, callback, dbStats)
 }
 
 type EventUpdateFunc func(event *sgbucket.FeedEvent) bool
 
-func (b *LeakyBucket) wrapFeed(args sgbucket.FeedArguments, callback EventUpdateFunc, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
+func (b *LeakyBucket) wrapFeed(ctx context.Context, args sgbucket.FeedArguments, callback EventUpdateFunc, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
 
 	// kick off the wrapped sgbucket tap feed
-	walrusTapFeed, err := b.bucket.StartTapFeed(args, dbStats)
+	walrusTapFeed, err := b.bucket.StartTapFeed(ctx, args, dbStats)
 	if err != nil {
 		return walrusTapFeed, err
 	}
@@ -389,7 +383,7 @@ func (b *LeakyBucket) wrapFeed(args sgbucket.FeedArguments, callback EventUpdate
 	return wrapperFeed, nil
 }
 
-func (b *LeakyBucket) wrapFeedForDeduplication(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
+func (b *LeakyBucket) wrapFeedForDeduplication(ctx context.Context, args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
 	// create an output channel
 	// start a goroutine which reads off the sgbucket tap feed
 	//   - de-duplicate certain events
@@ -403,7 +397,7 @@ func (b *LeakyBucket) wrapFeedForDeduplication(args sgbucket.FeedArguments, dbSt
 	deDuplicationTimeoutMs := time.Millisecond * 1000
 
 	// kick off the wrapped sgbucket tap feed
-	walrusTapFeed, err := b.bucket.StartTapFeed(args, dbStats)
+	walrusTapFeed, err := b.bucket.StartTapFeed(ctx, args, dbStats)
 	if err != nil {
 		return walrusTapFeed, err
 	}
@@ -459,13 +453,10 @@ func (b *LeakyBucket) wrapFeedForDeduplication(args sgbucket.FeedArguments, dbSt
 	return dupeTapFeed, nil
 }
 
-func (b *LeakyBucket) Close() {
-	b.CloseCtx(context.TODO())
-}
-func (b *LeakyBucket) CloseCtx(ctx context.Context) {
+func (b *LeakyBucket) Close(ctx context.Context) {
 	if !b.config.IgnoreClose {
 		DebugfCtx(ctx, KeyBucket, "LeakyBucket close for bucket %v", b.GetName())
-		b.bucket.Close()
+		b.bucket.Close(ctx)
 	}
 }
 
@@ -477,9 +468,9 @@ func (b *LeakyBucket) UUID() (string, error) {
 	return b.bucket.UUID()
 }
 
-func (b *LeakyBucket) CloseAndDelete() error {
+func (b *LeakyBucket) CloseAndDelete(ctx context.Context) error {
 	if bucket, ok := b.bucket.(sgbucket.DeleteableStore); ok {
-		return bucket.CloseAndDelete()
+		return bucket.CloseAndDelete(ctx)
 	}
 	return nil
 }

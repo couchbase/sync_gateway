@@ -79,7 +79,7 @@ func (listener *changeListener) StartMutationFeed(bucket base.Bucket, dbStats *e
 		//    TAP feed is a go-channel of Tap events served by the bucket.  Start the feed, then
 		//    start a goroutine to work the event channel, calling ProcessEvent for each event
 		var err error
-		listener.tapFeed, err = bucket.StartTapFeed(listener.FeedArgs, dbStats)
+		listener.tapFeed, err = bucket.StartTapFeed(listener.loggingCtx, listener.FeedArgs, dbStats)
 		if err != nil {
 			return err
 		}
@@ -101,7 +101,7 @@ func (listener *changeListener) StartMutationFeed(bucket base.Bucket, dbStats *e
 		// DCP Feed
 		//    DCP receiver isn't go-channel based - DCPReceiver calls ProcessEvent directly.
 		base.InfofCtx(listener.loggingCtx, base.KeyDCP, "Using DCP feed for bucket: %q (based on feed_type specified in config file)", base.MD(bucket.GetName()))
-		return bucket.StartDCPFeed(listener.FeedArgs, listener.ProcessFeedEvent, dbStats)
+		return bucket.StartDCPFeed(listener.loggingCtx, listener.FeedArgs, listener.ProcessFeedEvent, dbStats)
 	}
 }
 

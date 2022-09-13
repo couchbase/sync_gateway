@@ -24,8 +24,8 @@ func TestOneShotDCP(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	ctx, bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
 
 	numDocs := 1000
 	// write documents to bucket
@@ -105,8 +105,8 @@ func TestTerminateDCPFeed(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	ctx, bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
 
 	// create callback
 	mutationCount := uint64(0)
@@ -188,8 +188,8 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(fmt.Sprintf("metadata mismatch %+v", test), func(t *testing.T) {
 
-			bucket := GetTestBucket(t)
-			defer bucket.Close()
+			ctx, bucket := GetTestBucket(t)
+			defer bucket.Close(ctx)
 
 			// create callback
 			mutationCount := uint64(0)
@@ -309,8 +309,8 @@ func TestResumeStoppedFeed(t *testing.T) {
 
 	SetUpTestLogging(t, LevelDebug, KeyAll)
 
-	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	ctx, bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
 
 	var dcpClient *DCPClient
 
@@ -420,8 +420,8 @@ func TestBadAgentPriority(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server, since DCPClient requires a base.Collection")
 	}
 
-	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	ctx, bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
 
 	feedID := "fakeID"
 	panicCallback := func(event sgbucket.FeedEvent) bool {

@@ -49,13 +49,15 @@ func init() {
 
 }
 
+var _ Bucket = &TestBucket{}
+
 type TestBucket struct {
 	Bucket
 	BucketSpec BucketSpec
 	closeFn    func()
 }
 
-func (tb TestBucket) Close() {
+func (tb TestBucket) Close(ctx context.Context) {
 	tb.closeFn()
 }
 
@@ -64,11 +66,11 @@ func (tb *TestBucket) GetUnderlyingBucket() Bucket {
 }
 
 // LeakyBucketClone wraps the underlying bucket on the TestBucket with a LeakyBucket and returns a new TestBucket handle.
-func (tb *TestBucket) LeakyBucketClone(c LeakyBucketConfig) *TestBucket {
+func (tb *TestBucket) LeakyBucketClone(ctx context.Context, c LeakyBucketConfig) *TestBucket {
 	return &TestBucket{
 		Bucket:     NewLeakyBucket(tb.Bucket, c),
 		BucketSpec: tb.BucketSpec,
-		closeFn:    tb.Close,
+		closeFn:    func() { tb.Close(ctx) },
 	}
 }
 
@@ -79,17 +81,17 @@ func NoCloseClone(b Bucket) *LeakyBucket {
 
 // NoCloseClone returns a new test bucket referencing the same underlying bucket and bucketspec, but
 // with an IgnoreClose leaky bucket, and a no-op close function.  Used when multiple references to the same bucket are needed.
-func (tb *TestBucket) NoCloseClone() *TestBucket {
+func (tb *TestBucket) NoCloseClone(ctx context.Context) *TestBucket {
 	return &TestBucket{
 		Bucket:     NoCloseClone(tb.Bucket),
 		BucketSpec: tb.BucketSpec,
-		closeFn:    func() {},
+		closeFn:    func() { tb.Close(ctx) },
 	}
 }
 
-func GetTestBucket(t testing.TB) *TestBucket {
-	bucket, spec, closeFn := GTestBucketPool.GetTestBucketAndSpec(t)
-	return &TestBucket{
+func GetTestBucket(t testing.TB) (context.Context, *TestBucket) {
+	ctx, bucket, spec, closeFn := GTestBucketPool.GetTestBucketAndSpec(t)
+	return ctx, &TestBucket{
 		Bucket:     bucket,
 		BucketSpec: spec,
 		closeFn:    closeFn,
@@ -99,12 +101,12 @@ func GetTestBucket(t testing.TB) *TestBucket {
 // Gets a Walrus bucket which will be persisted to a temporary directory
 // Returns both the test bucket which is persisted and a function which can be used to remove the created temporary
 // directory once the test has finished with it.
-func GetPersistentWalrusBucket(t testing.TB) (*TestBucket, func()) {
+func GetPersistentWalrusBucket(t testing.TB) (context.Context, *TestBucket, func()) {
 	tempDir, err := ioutil.TempDir("", "walrustemp")
 	require.NoError(t, err)
 
 	walrusFile := fmt.Sprintf("walrus:%s", tempDir)
-	bucket, spec, closeFn := GTestBucketPool.GetWalrusTestBucket(t, walrusFile)
+	ctx, bucket, spec, closeFn := GTestBucketPool.GetWalrusTestBucket(t, walrusFile)
 
 	// Return this separate to closeFn as we want to avoid this being removed on database close (/_offline handling)
 	removeFileFunc := func() {
@@ -112,20 +114,20 @@ func GetPersistentWalrusBucket(t testing.TB) (*TestBucket, func()) {
 		require.NoError(t, err)
 	}
 
-	return &TestBucket{
+	return ctx, &TestBucket{
 		Bucket:     bucket,
 		BucketSpec: spec,
 		closeFn:    closeFn,
 	}, removeFileFunc
 }
 
-func GetTestBucketForDriver(t testing.TB, driver CouchbaseDriver) *TestBucket {
+func GetTestBucketForDriver(t testing.TB, driver CouchbaseDriver) (context.Context, *TestBucket) {
 
-	bucket, spec, closeFn := GTestBucketPool.GetTestBucketAndSpec(t)
+	ctx, bucket, spec, closeFn := GTestBucketPool.GetTestBucketAndSpec(t)
 
 	// If walrus, use bucket as-is
 	if !TestUseCouchbaseServer() {
-		return &TestBucket{
+		return ctx, &TestBucket{
 			Bucket:     bucket,
 			BucketSpec: spec,
 			closeFn:    closeFn,
@@ -137,7 +139,7 @@ func GetTestBucketForDriver(t testing.TB, driver CouchbaseDriver) *TestBucket {
 		closeAll := func() {
 			closeFn()
 		}
-		return &TestBucket{
+		return ctx, &TestBucket{
 			Bucket:     bucket,
 			BucketSpec: spec,
 			closeFn:    closeAll,
@@ -155,17 +157,17 @@ func GetTestBucketForDriver(t testing.TB, driver CouchbaseDriver) *TestBucket {
 		t.Fatalf("Server must use couchbase scheme for gocb testing")
 	}
 
-	store, err := GetBucket(TestCtx(t), spec)
+	store, err := GetBucket(ctx, spec)
 	if err != nil {
 		t.Fatalf("Unable to get store for driver %s: %v", driver, err)
 	}
 
 	closeAll := func() {
-		store.Close()
+		store.Close(ctx)
 		closeFn()
 	}
 
-	return &TestBucket{
+	return ctx, &TestBucket{
 		Bucket:     store,
 		BucketSpec: spec,
 		closeFn:    closeAll,
@@ -699,8 +701,8 @@ func ForAllDataStores(t *testing.T, testCallback func(*testing.T, Bucket)) {
 
 	for _, dataStore := range dataStores {
 		t.Run(dataStore.name, func(t *testing.T) {
-			bucket := GetTestBucketForDriver(t, dataStore.driver)
-			defer bucket.Close()
+			ctx, bucket := GetTestBucketForDriver(t, dataStore.driver)
+			defer bucket.Close(ctx)
 			testCallback(t, bucket)
 		})
 	}

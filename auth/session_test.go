@@ -25,8 +25,8 @@ func TestCreateSession(t *testing.T) {
 	var username string = "Alice"
 	const invalidSessionTTLError = "400 Invalid session time-to-live"
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
+	ctx, testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
 
 	auth := NewAuthenticator(testBucket, nil, DefaultAuthenticatorOptions())
 
@@ -65,8 +65,8 @@ func TestCreateSession(t *testing.T) {
 func TestDeleteSession(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
 	var username string = "Alice"
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
+	ctx, testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
 
 	auth := NewAuthenticator(testBucket, nil, DefaultAuthenticatorOptions())
 
@@ -94,8 +94,8 @@ func TestDeleteSession(t *testing.T) {
 // If nil is provided instead of valid login session, nil must be returned.
 func TestMakeSessionCookie(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
+	ctx, testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
 
 	auth := NewAuthenticator(testBucket, nil, DefaultAuthenticatorOptions())
 
@@ -120,8 +120,8 @@ func TestMakeSessionCookie(t *testing.T) {
 }
 
 func TestMakeSessionCookieProperties(t *testing.T) {
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
+	ctx, testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
 
 	auth := NewAuthenticator(testBucket, nil, DefaultAuthenticatorOptions())
 
@@ -155,8 +155,8 @@ func TestMakeSessionCookieProperties(t *testing.T) {
 func TestDeleteSessionForCookie(t *testing.T) {
 	const defaultEndpoint = "http://localhost/"
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
+	ctx, testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
 
 	auth := NewAuthenticator(testBucket, nil, DefaultAuthenticatorOptions())
 

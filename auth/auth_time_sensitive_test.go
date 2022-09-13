@@ -28,8 +28,8 @@ import (
 // is _extremely_ slow (~100ms!) so we use a cache to speed it up (see password_hash.go).
 func TestAuthenticationSpeed(t *testing.T) {
 
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
+	ctx, testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
 	auth := NewAuthenticator(testBucket.Bucket, nil, DefaultAuthenticatorOptions())
 	user, _ := auth.NewUser("me", "goIsKewl", nil)
 	assert.True(t, user.Authenticate("goIsKewl"))

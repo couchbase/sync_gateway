@@ -27,8 +27,8 @@ func TestDuplicateDocID(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	ctx := base.TestCtx(t)
-	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, DatabaseContextOptions{})
+	ctx, bucket := base.GetTestBucket(t)
+	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close(ctx)
 
@@ -75,8 +75,8 @@ func TestLateArrivingSequence(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	ctx := base.TestCtx(t)
-	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, DatabaseContextOptions{})
+	ctx, bucket := base.GetTestBucket(t)
+	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close(ctx)
 
@@ -109,8 +109,8 @@ func TestLateSequenceAsFirst(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	ctx := base.TestCtx(t)
-	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, DatabaseContextOptions{})
+	ctx, bucket := base.GetTestBucket(t)
+	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close(ctx)
 
@@ -143,8 +143,8 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	ctx := base.TestCtx(t)
-	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, DatabaseContextOptions{})
+	ctx, bucket := base.GetTestBucket(t)
+	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close(ctx)
 
@@ -218,8 +218,8 @@ func TestPrependChanges(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	ctx := base.TestCtx(t)
-	dbCtx, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, DatabaseContextOptions{})
+	ctx, bucket := base.GetTestBucket(t)
+	dbCtx, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer dbCtx.Close(ctx)
 
@@ -403,8 +403,8 @@ func TestChannelCacheRemove(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	ctx := base.TestCtx(t)
-	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, DatabaseContextOptions{})
+	ctx, bucket := base.GetTestBucket(t)
+	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close(ctx)
 	cache := newSingleChannelCache(context, "Test1", 0, (base.NewSyncGatewayStats()).NewDBStats("", false, false, false).Cache())
@@ -443,8 +443,8 @@ func TestChannelCacheStats(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	ctx := base.TestCtx(t)
-	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, DatabaseContextOptions{})
+	ctx, bucket := base.GetTestBucket(t)
+	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close(ctx)
 	testStats := (base.NewSyncGatewayStats()).NewDBStats("", false, false, false).Cache()
@@ -514,8 +514,8 @@ func TestChannelCacheStatsOnPrune(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	ctx := base.TestCtx(t)
-	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, DatabaseContextOptions{})
+	ctx, bucket := base.GetTestBucket(t)
+	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close(ctx)
 	testStats := (base.NewSyncGatewayStats()).NewDBStats("", false, false, false).Cache()
@@ -545,8 +545,8 @@ func TestChannelCacheStatsOnPrepend(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	ctx := base.TestCtx(t)
-	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, DatabaseContextOptions{})
+	ctx, bucket := base.GetTestBucket(t)
+	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close(ctx)
 	testStats := (base.NewSyncGatewayStats()).NewDBStats("", false, false, false).Cache()
@@ -635,8 +635,8 @@ func BenchmarkChannelCacheUniqueDocs_Ordered(b *testing.B) {
 
 	base.DisableTestLogging(b)
 
-	ctx := base.TestCtx(b)
-	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(b), false, DatabaseContextOptions{})
+	ctx, bucket := base.GetTestBucket(b)
+	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	require.NoError(b, err)
 	defer context.Close(ctx)
 	cache := newSingleChannelCache(context, "Benchmark", 0, (base.NewSyncGatewayStats()).NewDBStats("", false, false, false).Cache())
@@ -655,8 +655,8 @@ func BenchmarkChannelCacheRepeatedDocs5(b *testing.B) {
 
 	base.DisableTestLogging(b)
 
-	ctx := base.TestCtx(b)
-	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(b), false, DatabaseContextOptions{})
+	ctx, bucket := base.GetTestBucket(b)
+	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	require.NoError(b, err)
 	defer context.Close(ctx)
 	cache := newSingleChannelCache(context, "Benchmark", 0, (base.NewSyncGatewayStats()).NewDBStats("", false, false, false).Cache())
@@ -673,8 +673,8 @@ func BenchmarkChannelCacheRepeatedDocs20(b *testing.B) {
 
 	base.DisableTestLogging(b)
 
-	ctx := base.TestCtx(b)
-	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(b), false, DatabaseContextOptions{})
+	ctx, bucket := base.GetTestBucket(b)
+	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	require.NoError(b, err)
 	defer context.Close(ctx)
 	cache := newSingleChannelCache(context, "Benchmark", 0, (base.NewSyncGatewayStats()).NewDBStats("", false, false, false).Cache())
@@ -691,8 +691,8 @@ func BenchmarkChannelCacheRepeatedDocs50(b *testing.B) {
 
 	base.DisableTestLogging(b)
 
-	ctx := base.TestCtx(b)
-	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(b), false, DatabaseContextOptions{})
+	ctx, bucket := base.GetTestBucket(b)
+	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	require.NoError(b, err)
 	defer context.Close(ctx)
 	cache := newSingleChannelCache(context, "Benchmark", 0, (base.NewSyncGatewayStats()).NewDBStats("", false, false, false).Cache())
@@ -709,8 +709,8 @@ func BenchmarkChannelCacheRepeatedDocs80(b *testing.B) {
 
 	base.DisableTestLogging(b)
 
-	ctx := base.TestCtx(b)
-	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(b), false, DatabaseContextOptions{})
+	ctx, bucket := base.GetTestBucket(b)
+	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	require.NoError(b, err)
 	defer context.Close(ctx)
 	cache := newSingleChannelCache(context, "Benchmark", 0, (base.NewSyncGatewayStats()).NewDBStats("", false, false, false).Cache())
@@ -727,8 +727,8 @@ func BenchmarkChannelCacheRepeatedDocs95(b *testing.B) {
 
 	base.SetUpBenchmarkLogging(b, base.LevelInfo, base.KeyHTTP)
 
-	ctx := base.TestCtx(b)
-	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(b), false, DatabaseContextOptions{})
+	ctx, bucket := base.GetTestBucket(b)
+	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	require.NoError(b, err)
 	defer context.Close(ctx)
 	cache := newSingleChannelCache(context, "Benchmark", 0, (base.NewSyncGatewayStats()).NewDBStats("", false, false, false).Cache())
@@ -745,8 +745,8 @@ func BenchmarkChannelCacheUniqueDocs_Unordered(b *testing.B) {
 
 	base.DisableTestLogging(b)
 
-	ctx := base.TestCtx(b)
-	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(b), false, DatabaseContextOptions{})
+	ctx, bucket := base.GetTestBucket(b)
+	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	require.NoError(b, err)
 	defer context.Close(ctx)
 	cache := newSingleChannelCache(context, "Benchmark", 0, (base.NewSyncGatewayStats()).NewDBStats("", false, false, false).Cache())

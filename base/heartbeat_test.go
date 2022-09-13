@@ -106,8 +106,8 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 
 	keyprefix := SyncDocPrefix + t.Name()
 
-	testBucket := GetTestBucket(t)
-	defer testBucket.Close()
+	ctx, testBucket := GetTestBucket(t)
+	defer testBucket.Close(ctx)
 
 	// Setup heartbeaters and listeners
 	nodeCount := 3
@@ -184,8 +184,8 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 	}
 
 	keyprefix := SyncDocPrefix + t.Name()
-	testBucket := GetTestBucket(t)
-	defer testBucket.Close()
+	ctx, testBucket := GetTestBucket(t)
+	defer testBucket.Close(ctx)
 
 	// Setup heartbeaters and listeners
 	nodeCount := 3
@@ -293,8 +293,8 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 
 	keyprefix := SyncDocPrefix + t.Name()
 
-	testBucket := GetTestBucket(t)
-	defer testBucket.Close()
+	ctx, testBucket := GetTestBucket(t)
+	defer testBucket.Close(ctx)
 
 	// Initialize cfgCB
 	cfgCB, err := initCfgCB(testBucket, testBucket.BucketSpec)

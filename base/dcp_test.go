@@ -144,13 +144,13 @@ func TestCBGTIndexCreation(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			bucket := GetTestBucket(t)
-			defer bucket.Close()
+			ctx, bucket := GetTestBucket(t)
+			defer bucket.Close(ctx)
 
 			spec := bucket.BucketSpec
 
 			// Use an in-memory cfg, set up cbgt manager
-			ctx := LogContextWith(TestCtx(t), &DatabaseLogContext{DatabaseName: tc.dbName})
+			ctx = LogContextWith(ctx, &DatabaseLogContext{DatabaseName: tc.dbName})
 			cfg := cbgt.NewCfgMem()
 			context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", tc.dbName)
 			assert.NoError(t, err)
@@ -247,14 +247,13 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server bucket")
 	}
-	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	ctx, bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
 
 	spec := bucket.BucketSpec
 	testDbName := "testDB"
 
 	// Use an in-memory cfg, set up cbgt manager
-	ctx := TestCtx(t)
 	cfg := cbgt.NewCfgMem()
 	context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", testDbName)
 	assert.NoError(t, err)
@@ -321,8 +320,8 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server bucket")
 	}
-	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	ctx, bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
 
 	spec := bucket.BucketSpec
 	unsafeTestDBName := "testDB" +
@@ -331,7 +330,6 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 		"01234567890123456789012345678901234567890123456789"
 
 	// Use an in-memory cfg, set up cbgt manager
-	ctx := TestCtx(t)
 	cfg := cbgt.NewCfgMem()
 	context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", unsafeTestDBName)
 	assert.NoError(t, err)
@@ -400,8 +398,8 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server bucket")
 	}
-	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	ctx, bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
 
 	spec := bucket.BucketSpec
 	testDBName := "testDB"
