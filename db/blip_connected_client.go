@@ -90,7 +90,7 @@ func (bh *blipHandler) handleFunction(rq *blip.Message) error {
 		return err
 	}
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("name: %s", name))
-	return bh.db.WithTimeout(bh.changesCtx, UserQueryTimeout, func(ctx context.Context) error {
+	return bh.db.WithTimeout(bh.loggingCtx, UserQueryTimeout, func(ctx context.Context) error {
 		results, err := bh.db.CallUserFunction(ctx, name, requestParams, true)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "Error running function: %v", err)
@@ -114,7 +114,7 @@ func (bh *blipHandler) handleQuery(rq *blip.Message) error {
 	}
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("name: %s", name))
 
-	return bh.db.WithTimeout(bh.changesCtx, UserQueryTimeout, func(ctx context.Context) error {
+	return bh.db.WithTimeout(bh.loggingCtx, UserQueryTimeout, func(ctx context.Context) error {
 		// Run the query:
 		results, err := bh.db.UserN1QLQuery(ctx, name, requestParams)
 		if err != nil {
@@ -167,7 +167,7 @@ func (bh *blipHandler) handleGraphQL(rq *blip.Message) error {
 	}
 
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("query: %s", query))
-	return bh.db.WithTimeout(bh.changesCtx, UserQueryTimeout, func(ctx context.Context) error {
+	return bh.db.WithTimeout(bh.loggingCtx, UserQueryTimeout, func(ctx context.Context) error {
 		result, err := bh.db.UserGraphQLQuery(ctx, query, operationName, variables, true)
 		if err != nil {
 			return err
