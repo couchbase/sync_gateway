@@ -176,6 +176,11 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	if rt.RestTesterConfig.groupID != nil {
 		sc.Bootstrap.ConfigGroupID = *rt.RestTesterConfig.groupID
+	} else if rt.RestTesterConfig.persistentConfig {
+		// If running in persistent config mode, the database has to be manually created. If the db name is the same as a
+		// past tests db name, a db already exists error could happen if the past tests bucket is still flushing. Prevent this
+		// by setting the group ID as the current test bucket name by default.
+		sc.Bootstrap.ConfigGroupID = testBucket.GetName()
 	}
 
 	sc.Unsupported.UserQueries = base.BoolPtr(rt.EnableUserQueries)
