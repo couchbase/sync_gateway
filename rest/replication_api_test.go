@@ -1751,3 +1751,53 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 	activeRT2.GetDatabase().SGReplicateMgr.Stop()
 	activeRT2.GetDatabase().SGReplicateMgr = nil
 }
+
+// Repros CBG-2416
+func TestDBReplicationStatsTeardown(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+	// Test tests Prometheus stat registration
+	base.SkipPrometheusStatsRegistration = false
+	defer func() {
+		base.SkipPrometheusStatsRegistration = true
+	}()
+
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+	rt := NewRestTester(t, &RestTesterConfig{
+		persistentConfig: true,
+		TestBucket:       tb,
+	})
+	defer rt.Close()
+
+	srv := httptest.NewServer(rt.TestAdminHandler())
+	defer srv.Close()
+	db2Url, err := url.Parse(srv.URL + "/db2")
+	require.NoError(t, err)
+
+	resp := rt.SendAdminRequest(http.MethodPut, "/db2/", fmt.Sprintf(`{
+				"bucket": "%s",
+				"use_views": %t,
+				"num_index_replicas": 0
+	}`, tb.GetName(), base.TestsDisableGSI()))
+	assertStatus(t, resp, http.StatusCreated)
+
+	tb2 := base.GetTestBucket(t)
+	defer tb2.Close()
+	resp = rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{
+				"bucket": "%s",
+				"use_views": %t,
+				"num_index_replicas": 0
+	}`, tb2.GetName(), base.TestsDisableGSI()))
+	assertStatus(t, resp, http.StatusCreated)
+
+	rt.createReplication("repl1", db2Url.String(), db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+	rt.waitForReplicationStatus("repl1", db.ReplicationStateRunning)
+
+	// Force DB reload by modifying config
+	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config", `{"import_docs": false}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	rt.waitForReplicationStatus("repl1", db.ReplicationStateRunning)
+}
