@@ -11,7 +11,6 @@ package rest
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -2311,8 +2310,8 @@ func TestHandleGetRevTree(t *testing.T) {
 
 	// Create three revisions of the user foo with different status and updated_at values;
 	reqBodyJson := `{"new_edits": false, "docs": [
-    	{"_id": "foo", "type": "user", "updated_at": "2016-06-24T17:37:49.715Z", "status": "online", "_rev": "1-123"}, 
-    	{"_id": "foo", "type": "user", "updated_at": "2016-06-26T17:37:49.715Z", "status": "offline", "_rev": "1-456"}, 
+    	{"_id": "foo", "type": "user", "updated_at": "2016-06-24T17:37:49.715Z", "status": "online", "_rev": "1-123"},
+    	{"_id": "foo", "type": "user", "updated_at": "2016-06-26T17:37:49.715Z", "status": "offline", "_rev": "1-456"},
     	{"_id": "foo", "type": "user", "updated_at": "2016-06-25T17:37:49.715Z", "status": "offline", "_rev": "1-789"}]}`
 
 	resp := rt.SendAdminRequest(http.MethodPost, "/db/_bulk_docs", reqBodyJson)
@@ -3022,32 +3021,32 @@ func TestConfigEndpoint(t *testing.T) {
 		{
 			Name: "Enable All File Loggers",
 			Config: `
-			{
-				"logging": {
-					"console": {
-						"log_level": "info",
-						"log_keys": ["*"]
-					},
-					"error": {
-						"enabled": true
-					},
-					"warn": {
-						"enabled": true
-					},
-					"info": {
-						"enabled": true
-					},
-					"debug": {
-						"enabled": true
-					},
-					"trace": {
-						"enabled": true
-					},
-					"stats": {
-						"enabled": true
+				{
+					"logging": {
+						"console": {
+							"log_level": "info",
+							"log_keys": ["*"]
+						},
+						"error": {
+							"enabled": true
+						},
+						"warn": {
+							"enabled": true
+						},
+						"info": {
+							"enabled": true
+						},
+						"debug": {
+							"enabled": true
+						},
+						"trace": {
+							"enabled": true
+						},
+						"stats": {
+							"enabled": true
+						}
 					}
-				}
-			}`,
+				}`,
 			ConsoleLevel:   base.LevelInfo,
 			ConsoleLogKeys: []string{"*"},
 			ExpectError:    false,
@@ -3057,11 +3056,21 @@ func TestConfigEndpoint(t *testing.T) {
 			},
 		},
 	}
-
+	//ctx := base.TestCtx(t)
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 			ctx := base.TestCtx(t)
+			// Set file logger back to normal after test finishes
+			defer func() {
+				base.EnableErrorLogger(false)
+				base.EnableWarnLogger(false)
+				base.EnableInfoLogger(false)
+				base.EnableDebugLogger(false)
+				base.EnableTraceLogger(false)
+				base.EnableStatsLogger(false)
+			}()
+
+			base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 			base.InitializeMemoryLoggers()
 			tempDir := os.TempDir()
 			test := DefaultStartupConfig(tempDir)
@@ -3162,8 +3171,9 @@ func TestInitialStartupConfig(t *testing.T) {
 
 func TestIncludeRuntimeStartupConfig(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	//ctx, cancel := context.WithCancel(context.Background())
+	//defer cancel()
+	ctx := base.TestCtx(t)
 	base.InitializeMemoryLoggers()
 	tempDir := os.TempDir()
 	test := DefaultStartupConfig(tempDir)
@@ -3521,7 +3531,7 @@ func TestPutDBConfigOIDC(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	serverErr := make(chan error, 0)
-
+	ctx := base.TestCtx(t)
 	// Start SG with no databases
 	ctx := base.TestCtx(t)
 	config := bootstrapStartupConfigForTest(t)
@@ -3612,13 +3622,13 @@ func TestNotExistentDBRequest(t *testing.T) {
 
 	rt := NewRestTester(t, &RestTesterConfig{AdminInterfaceAuthentication: true})
 	defer rt.Close()
-
+	fmt.Println("Getts here")
 	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
-
+	fmt.Println("past server context")
 	MakeUser(t, httpClient, eps[0], "random", "password", nil)
 	defer DeleteUser(t, httpClient, eps[0], "random")
-
+	fmt.Println("past delete user")
 	// Request to non-existent db with valid credentials
 	resp := rt.SendAdminRequestWithAuth("PUT", "/dbx/_config", "", "random", "password")
 	RequireStatus(t, resp, http.StatusForbidden)

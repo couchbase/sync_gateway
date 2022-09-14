@@ -112,7 +112,7 @@ func TestAllDatabaseNames(t *testing.T) {
 	defer tb1.Close()
 	tb2 := base.GetTestBucket(t)
 	defer tb2.Close()
-	ctx := base.TestCtx(t)
+	//ctx := base.TestCtx(t)
 
 	ctx := base.TestCtx(t)
 	serverConfig := &StartupConfig{
@@ -231,7 +231,6 @@ func TestStatsLoggerStopped(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	sc := DefaultStartupConfig("")
-	ctx := base.TestCtx(t)
 
 	// Start up stats logger by creating server context
 	ctx := base.TestCtx(t)
@@ -579,7 +578,7 @@ func TestServerContextSetupCollectionsSupport(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Requires Couchbase Server")
 	}
-	ctx := base.TestCtx(t)
+	//ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 	if tb.IsSupported(sgbucket.DataStoreFeatureCollections) {
