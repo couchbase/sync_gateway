@@ -140,7 +140,7 @@ func (c *channelCacheImpl) Stop() {
 	close(c.terminator)
 
 	// Wait for channel cache background tasks to finish.
-	waitForBGTCompletion(BGTCompletionMaxWait, c.backgroundTasks, c.dbName)
+	waitForBGTCompletion(context.TODO(), BGTCompletionMaxWait, c.backgroundTasks, c.dbName)
 }
 
 func (c *channelCacheImpl) Init(initialSequence uint64) {

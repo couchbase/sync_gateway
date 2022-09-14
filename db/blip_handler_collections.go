@@ -66,7 +66,7 @@ func (bh *blipHandler) handleGetCollections(rq *blip.Message) error {
 			continue
 		}
 		key := CheckpointDocIDPrefix + requestBody.CheckpointIDs[i]
-		collectionDB := &Database{DatabaseContext: collection.CollectionCtx, user: bh.blipContextDb.User(), Ctx: bh.db.Ctx}
+		collectionDB := &Database{DatabaseContext: collection.CollectionCtx, user: bh.blipContextDb.User()}
 		value, err := collectionDB.GetSpecial(DocTypeLocal, key)
 		if err != nil {
 			status, _ := base.ErrorAsHTTPStatus(err)

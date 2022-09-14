@@ -166,10 +166,11 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 	database, err := db.GetDatabase(dbc, nil)
 	assert.NoError(t, err)
 
+	ctx := rt.Context()
 	for i := 0; i < 10; i++ {
 		updateResponse := rt.updateDoc(docID, revID, fmt.Sprintf(`{"val":%d}`, i))
 		// Purge old revision JSON to simulate expiry, and to verify import doesn't attempt multiple retrievals
-		purgeErr := database.PurgeOldRevisionJSON(docID, revID)
+		purgeErr := database.PurgeOldRevisionJSON(ctx, docID, revID)
 		assert.NoError(t, purgeErr)
 		revID = updateResponse.Rev
 	}
@@ -2051,7 +2052,7 @@ func TestDcpBackfill(t *testing.T) {
 	}
 	assert.True(t, backfillComplete, fmt.Sprintf("Backfill didn't complete after 20s. Latest: %d/%d", completedBackfill, expectedBackfill))
 
-	log.Printf("done...%s  (%d/%d)", newRt.ServerContext().Database("db").Name, completedBackfill, expectedBackfill)
+	log.Printf("done...%s  (%d/%d)", newRt.ServerContext().Database(newRt.Context(), "db").Name, completedBackfill, expectedBackfill)
 
 }
 

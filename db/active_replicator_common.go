@@ -267,7 +267,7 @@ func (a *activeReplicatorCommon) _publishStatus() {
 	if a.Checkpointer != nil {
 		a.Checkpointer.setLocalCheckpointStatus(status, errorMessage)
 	} else {
-		setLocalCheckpointStatus(a.config.ActiveDB, a.CheckpointID, status, errorMessage)
+		setLocalCheckpointStatus(a.ctx, a.config.ActiveDB, a.CheckpointID, status, errorMessage)
 	}
 
 }

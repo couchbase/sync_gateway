@@ -40,12 +40,13 @@ func TestReproduce2383(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	user, err := a.NewUser("ben", "letmein", channels.SetOf(t, "PBS"))
 	assert.NoError(t, err, "Error creating new user")
 	assert.NoError(t, a.Save(user))
 
-	testDb := rt.ServerContext().Database("db")
+	testDb := rt.ServerContext().Database(ctx, "db")
 
 	// Put several documents
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
@@ -58,7 +59,7 @@ func TestReproduce2383(t *testing.T) {
 	requireStatus(t, response, 201)
 
 	cacheWaiter.Wait()
-	assert.NoError(t, testDb.FlushChannelCache())
+	assert.NoError(t, testDb.FlushChannelCache(ctx))
 
 	var changes struct {
 		Results  []db.ChangeEntry
@@ -125,7 +126,8 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 
 	// Create user:
 	alice, _ := a.NewUser("alice", "letmein", channels.SetOf(t, "zero"))
@@ -195,7 +197,8 @@ func TestPostChanges(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -228,7 +231,8 @@ func TestPostChangesUserTiming(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "bernard"))
 	assert.True(t, err == nil)
 	assert.NoError(t, a.Save(bernard))
@@ -401,7 +405,8 @@ func TestPostChangesChannelFilterInteger(t *testing.T) {
 func postChangesChannelFilter(t *testing.T, rt *RestTester) {
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -464,7 +469,8 @@ func TestPostChangesAdminChannelGrant(t *testing.T) {
 	defer rt.Close()
 
 	// Create user with access to channel ABC:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -549,7 +555,8 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	defer rt.Close()
 
 	// Create user with access to channel ABC:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -703,7 +710,8 @@ func TestPostChangesAdminChannelGrantRemovalWithLimit(t *testing.T) {
 	defer rt.Close()
 
 	// Create user with access to channel ABC:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -773,7 +781,8 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 	defer rt.Close()
 
 	// Create user with access to channel NBC:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	alice, err := a.NewUser("alice", "letmein", channels.SetOf(t, "NBC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(alice))
@@ -980,7 +989,8 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	testDb := rt.ServerContext().Database("db")
+	ctx := rt.Context()
+	testDb := rt.ServerContext().Database(ctx, "db")
 
 	// Create user:
 	requireStatus(t, rt.SendAdminRequest("GET", "/db/_user/bernard", ""), 404)
@@ -991,7 +1001,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 2)
 	WriteDirect(testDb, []string{"PBS"}, 5)
 	WriteDirect(testDb, []string{"PBS"}, 6)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(base.TestCtx(t), 6))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(ctx, 6))
 
 	// Check the _changes feed:
 	var changes struct {
@@ -1030,7 +1040,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 
 	// Send a later doc - low sequence still 3, high sequence goes to 7
 	WriteDirect(testDb, []string{"PBS"}, 7)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(base.TestCtx(t), 7))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(ctx, 7))
 
 	// Send another changes request with the same since ("2::6") to ensure we see data once there are changes
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1071,7 +1081,8 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	testDb := rt.ServerContext().Database("db")
+	ctx := rt.Context()
+	testDb := rt.ServerContext().Database(ctx, "db")
 
 	// Create user:
 	requireStatus(t, rt.SendAdminRequest("GET", "/db/_user/bernard", ""), 404)
@@ -1083,7 +1094,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 3)
 	WriteDirect(testDb, []string{"PBS"}, 4)
 	WriteDirect(testDb, []string{"PBS"}, 5)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(base.TestCtx(t), 5))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(ctx, 5))
 
 	// Check the _changes feed:
 	var changes struct {
@@ -1103,7 +1114,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 8)
 	WriteDirect(testDb, []string{"PBS"}, 9)
 	WriteDirect(testDb, []string{"PBS"}, 10)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(base.TestCtx(t), 10))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(ctx, 10))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1117,7 +1128,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	// Write a few more docs
 	WriteDirect(testDb, []string{"PBS"}, 11)
 	WriteDirect(testDb, []string{"PBS"}, 12)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(base.TestCtx(t), 12))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(ctx, 12))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1205,7 +1216,8 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	testDb := rt.ServerContext().Database("db")
+	ctx := rt.Context()
+	testDb := rt.ServerContext().Database(ctx, "db")
 
 	// Simulate 5 non-skipped writes (seq 1,2,3,4,5)
 	WriteDirect(testDb, []string{"PBS"}, 1)
@@ -1213,7 +1225,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 3)
 	WriteDirect(testDb, []string{"PBS"}, 4)
 	WriteDirect(testDb, []string{"PBS"}, 5)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(base.TestCtx(t), 5))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(ctx, 5))
 
 	// Check the _changes feed:
 	var changes struct {
@@ -1233,7 +1245,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 8)
 	WriteDirect(testDb, []string{"PBS"}, 9)
 	WriteDirect(testDb, []string{"PBS"}, 10)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(base.TestCtx(t), 10))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(ctx, 10))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1247,7 +1259,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	// Write a few more docs
 	WriteDirect(testDb, []string{"PBS"}, 11)
 	WriteDirect(testDb, []string{"PBS"}, 12)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(base.TestCtx(t), 12))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(ctx, 12))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1336,7 +1348,8 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	testDb := rt.ServerContext().Database("db")
+	ctx := rt.Context()
+	testDb := rt.ServerContext().Database(ctx, "db")
 
 	// Create user:
 	requireStatus(t, rt.SendAdminRequest("GET", "/db/_user/bernard", ""), 404)
@@ -1348,7 +1361,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 3)
 	WriteDirect(testDb, []string{"PBS"}, 4)
 	WriteDirect(testDb, []string{"PBS"}, 5)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(base.TestCtx(t), 5))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(ctx, 5))
 
 	// Check the _changes feed:
 	var changes struct {
@@ -1368,7 +1381,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 8)
 	WriteDirect(testDb, []string{"PBS"}, 9)
 	WriteDirect(testDb, []string{"PBS"}, 10)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(base.TestCtx(t), 10))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(ctx, 10))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1382,7 +1395,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	// Write a few more docs
 	WriteDirect(testDb, []string{"PBS"}, 11)
 	WriteDirect(testDb, []string{"PBS"}, 12)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(base.TestCtx(t), 12))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(ctx, 12))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1608,7 +1621,8 @@ func TestChangesActiveOnlyInteger(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS", "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -2166,12 +2180,13 @@ func TestChangesViewBackfillFromQueryOnly(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
 
-	testDb := rt.ServerContext().Database("db")
+	testDb := rt.ServerContext().Database(ctx, "db")
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
 	// Write 30 docs to the bucket, 10 from channel PBS.  Expected sequence assignment:
 	//  1, 4, 7, ...   ABC
@@ -2190,7 +2205,7 @@ func TestChangesViewBackfillFromQueryOnly(t *testing.T) {
 	cacheWaiter.Wait()
 
 	// Flush the channel cache
-	assert.NoError(t, testDb.FlushChannelCache())
+	assert.NoError(t, testDb.FlushChannelCache(ctx))
 
 	var changes struct {
 		Results  []db.ChangeEntry
@@ -2238,12 +2253,13 @@ func TestChangesViewBackfillNonContiguousQueryResults(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
 
-	testDb := rt.ServerContext().Database("db")
+	testDb := rt.ServerContext().Database(ctx, "db")
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
 
 	// Write 30 docs to the bucket, 10 from channel PBS.  Expected sequence assignment:
@@ -2262,7 +2278,7 @@ func TestChangesViewBackfillNonContiguousQueryResults(t *testing.T) {
 	cacheWaiter.Wait()
 
 	// Flush the channel cache
-	assert.NoError(t, testDb.FlushChannelCache())
+	assert.NoError(t, testDb.FlushChannelCache(ctx))
 
 	// Issue a since=0 changes request, with limit less than the number of PBS documents
 	var changes struct {
@@ -2337,12 +2353,13 @@ func TestChangesViewBackfillFromPartialQueryOnly(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
 
-	testDb := rt.ServerContext().Database("db")
+	testDb := rt.ServerContext().Database(ctx, "db")
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
 
 	// Write 30 docs to the bucket, 10 from channel PBS.  Expected sequence assignment:
@@ -2362,7 +2379,7 @@ func TestChangesViewBackfillFromPartialQueryOnly(t *testing.T) {
 	cacheWaiter.Wait()
 
 	// Flush the channel cache
-	assert.NoError(t, testDb.FlushChannelCache())
+	assert.NoError(t, testDb.FlushChannelCache(ctx))
 
 	// Issue a since=n changes request, where n > 0 and is a non-PBS sequence.  Validate that there's a view-based backfill
 	var changes struct {
@@ -2421,12 +2438,13 @@ func TestChangesViewBackfillNoOverlap(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
 
-	testDb := rt.ServerContext().Database("db")
+	testDb := rt.ServerContext().Database(ctx, "db")
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
 
 	// Write 30 docs to the bucket, 10 from channel PBS.  Expected sequence assignment:
@@ -2446,7 +2464,7 @@ func TestChangesViewBackfillNoOverlap(t *testing.T) {
 	cacheWaiter.Wait()
 
 	// Flush the channel cache
-	assert.NoError(t, testDb.FlushChannelCache())
+	assert.NoError(t, testDb.FlushChannelCache(ctx))
 
 	// Write some more docs to the bucket, with a gap before the first PBS sequence
 	response := rt.SendAdminRequest("PUT", "/db/abc11", `{"channels":["ABC"]}`)
@@ -2507,12 +2525,13 @@ func TestChangesViewBackfill(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS", "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
 
-	testDb := rt.ServerContext().Database("db")
+	testDb := rt.ServerContext().Database(ctx, "db")
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
 
 	// Put several documents
@@ -2526,7 +2545,7 @@ func TestChangesViewBackfill(t *testing.T) {
 	cacheWaiter.AddAndWait(3)
 
 	// Flush the channel cache
-	assert.NoError(t, testDb.FlushChannelCache())
+	assert.NoError(t, testDb.FlushChannelCache(ctx))
 
 	// Add a few more docs (to increment the channel cache's validFrom)
 	response = rt.SendAdminRequest("PUT", "/db/doc4", `{"channels":["PBS"]}`)
@@ -2578,12 +2597,13 @@ func TestChangesViewBackfillStarChannel(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "*"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
 
-	testDb := rt.ServerContext().Database("db")
+	testDb := rt.ServerContext().Database(ctx, "db")
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
 
 	// Put several documents
@@ -2597,7 +2617,7 @@ func TestChangesViewBackfillStarChannel(t *testing.T) {
 	cacheWaiter.Wait()
 
 	// Flush the channel cache
-	assert.NoError(t, testDb.FlushChannelCache())
+	assert.NoError(t, testDb.FlushChannelCache(ctx))
 
 	// Add a few more docs (to increment the channel cache's validFrom)
 	response = rt.SendAdminRequest("PUT", "/db/doc2", `{"channels":["PBS"]}`)
@@ -2653,6 +2673,7 @@ func TestChangesQueryBackfillWithLimit(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	testDb := rt.GetDatabase()
+	ctx := rt.Context()
 
 	changesLimitTests := []struct {
 		name                string // test name
@@ -2767,7 +2788,7 @@ func TestChangesQueryBackfillWithLimit(t *testing.T) {
 
 			// Create user
 			username := "user_" + test.name
-			a := testDb.Authenticator(base.TestCtx(t))
+			a := testDb.Authenticator(ctx)
 			testUser, err := a.NewUser(username, "letmein", channels.SetOf(t, test.name))
 			assert.NoError(t, err)
 			assert.NoError(t, a.Save(testUser))
@@ -2784,7 +2805,7 @@ func TestChangesQueryBackfillWithLimit(t *testing.T) {
 			cacheWaiter.AddAndWait(test.totalDocuments * 2)
 
 			// Flush the channel cache
-			assert.NoError(t, testDb.FlushChannelCache())
+			assert.NoError(t, testDb.FlushChannelCache(ctx))
 			startQueryCount := testDb.GetChannelQueryCount()
 
 			// Issue a since=0 changes request.
@@ -2817,12 +2838,13 @@ func TestMultichannelChangesQueryBackfillWithLimit(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	testDb := rt.GetDatabase()
+	ctx := rt.Context()
 
 	testDb.Options.CacheOptions.ChannelQueryLimit = 5
 
 	// Create user with access to three channels
 	username := "user_" + t.Name()
-	a := testDb.Authenticator(base.TestCtx(t))
+	a := testDb.Authenticator(ctx)
 	testUser, err := a.NewUser(username, "letmein", channels.SetOf(t, "ch1", "ch2", "ch3"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(testUser))
@@ -2847,7 +2869,7 @@ func TestMultichannelChangesQueryBackfillWithLimit(t *testing.T) {
 	cacheWaiter.AddAndWait(50)
 
 	// Flush the channel cache
-	assert.NoError(t, testDb.FlushChannelCache())
+	assert.NoError(t, testDb.FlushChannelCache(ctx))
 
 	// 1. Issue a since=0 changes request, validate results
 	var changes struct {
@@ -2867,7 +2889,7 @@ func TestMultichannelChangesQueryBackfillWithLimit(t *testing.T) {
 	}
 
 	// 2. Same again, but with limit on the changes request
-	assert.NoError(t, testDb.FlushChannelCache())
+	assert.NoError(t, testDb.FlushChannelCache(ctx))
 	changes.Results = nil
 	changesJSON = fmt.Sprintf(`{"since":0, "limit":25}`)
 	changes.Results = nil
@@ -2895,12 +2917,13 @@ func TestChangesQueryStarChannelBackfillLimit(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "*"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
 
-	testDb := rt.ServerContext().Database("db")
+	testDb := rt.ServerContext().Database(ctx, "db")
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
 
 	// Put 10 documents
@@ -2913,7 +2936,7 @@ func TestChangesQueryStarChannelBackfillLimit(t *testing.T) {
 	cacheWaiter.AddAndWait(10)
 
 	// Flush the channel cache
-	assert.NoError(t, testDb.FlushChannelCache())
+	assert.NoError(t, testDb.FlushChannelCache(ctx))
 	startQueryCount := testDb.DbStats.Cache().ViewQueries.Value()
 
 	// Issue a since=0 changes request.  Validate that there's a view-based backfill
@@ -2946,12 +2969,13 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
 
-	testDb := rt.ServerContext().Database("db")
+	testDb := rt.ServerContext().Database(ctx, "db")
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
 	cacheWaiter.Add(1)
 
@@ -2966,7 +2990,7 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 	cacheWaiter.Wait()
 
 	// Flush the channel cache
-	assert.NoError(t, testDb.FlushChannelCache())
+	assert.NoError(t, testDb.FlushChannelCache(ctx))
 
 	// Write another doc, to initialize the cache (and guarantee overlap)
 	response = rt.SendAdminRequest("PUT", "/db/doc2", `{"channels":["PBS"]}`)
@@ -3050,10 +3074,11 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
 
-	testDb := rt.ServerContext().Database("db")
+	ctx := rt.Context()
+	testDb := rt.ServerContext().Database(ctx, "db")
 
 	// Create user:
-	a := testDb.Authenticator(base.TestCtx(t))
+	a := testDb.Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS", "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -3233,12 +3258,13 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS", "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
 
-	cacheWaiter := rt.ServerContext().Database("db").NewDCPCachingCountWaiter(t)
+	cacheWaiter := rt.ServerContext().Database(ctx, "db").NewDCPCachingCountWaiter(t)
 	// Put several documents
 	var body db.Body
 	response := rt.SendAdminRequest("PUT", "/db/deletedDoc", `{"channel":["PBS"]}`)
@@ -3326,8 +3352,8 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	}
 
 	// Active only NO Limit, POST
-	testDb := rt.ServerContext().Database("db")
-	assert.NoError(t, testDb.FlushChannelCache())
+	testDb := rt.ServerContext().Database(ctx, "db")
+	assert.NoError(t, testDb.FlushChannelCache(ctx))
 
 	changesJSON = `{"style":"all_docs", "active_only":true}`
 	changes.Results = nil
@@ -3344,7 +3370,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	}
 
 	// Active only with Limit, POST
-	assert.NoError(t, testDb.FlushChannelCache())
+	assert.NoError(t, testDb.FlushChannelCache(ctx))
 	changesJSON = `{"style":"all_docs", "active_only":true, "limit":5}`
 	changes.Results = nil
 	changesResponse = rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
@@ -3360,7 +3386,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	}
 
 	// Active only with Limit, GET
-	assert.NoError(t, testDb.FlushChannelCache())
+	assert.NoError(t, testDb.FlushChannelCache(ctx))
 	changes.Results = nil
 	changesResponse = rt.Send(requestByUser("GET", "/db/_changes?style=all_docs&active_only=true&limit=5", "", "bernard"))
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
@@ -3374,7 +3400,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	}
 
 	// Active only with Limit set higher than number of revisions, POST
-	assert.NoError(t, testDb.FlushChannelCache())
+	assert.NoError(t, testDb.FlushChannelCache(ctx))
 	changesJSON = `{"style":"all_docs", "active_only":true, "limit":15}`
 	changes.Results = nil
 	changesResponse = rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
@@ -3390,7 +3416,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	}
 
 	// No limit active only, GET, followed by normal (https://github.com/couchbase/sync_gateway/issues/2955)
-	assert.NoError(t, testDb.FlushChannelCache())
+	assert.NoError(t, testDb.FlushChannelCache(ctx))
 	changes.Results = nil
 	changesResponse = rt.Send(requestByUser("GET", "/db/_changes?style=all_docs&active_only=true", "", "bernard"))
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
@@ -3436,7 +3462,8 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 	// defer it.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS", "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -3667,7 +3694,8 @@ func TestIncludeDocsWithPrincipals(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	testDb := rt.ServerContext().Database("db")
+	ctx := rt.Context()
+	testDb := rt.ServerContext().Database(ctx, "db")
 
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
 
@@ -3722,7 +3750,8 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 	defer rt.Close()
 
 	// Create user with access to channel ABC:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))

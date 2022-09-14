@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -85,84 +86,84 @@ func TestUserN1QLQueries(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	cacheOptions := DefaultCacheOptions()
-	db := setupTestDBWithOptions(t, DatabaseContextOptions{
+	db, ctx := setupTestDBWithOptions(t, DatabaseContextOptions{
 		CacheOptions: &cacheOptions,
 		UserQueries:  kUserQueriesConfig,
 	})
-	defer db.Close()
+	defer db.Close(ctx)
 
 	// First run the tests as an admin:
-	t.Run("AsAdmin", func(t *testing.T) { testUserQueriesAsAdmin(t, db) })
+	t.Run("AsAdmin", func(t *testing.T) { testUserQueriesAsAdmin(t, ctx, db) })
 
 	// Now create a user and make it current:
 	db.user = addUserAlice(t, db)
 	assert.True(t, db.user.RoleNames().Contains("hero"))
 
 	// Repeat the tests as user "alice":
-	t.Run("AsUser", func(t *testing.T) { testUserQueriesAsUser(t, db) })
+	t.Run("AsUser", func(t *testing.T) { testUserQueriesAsUser(t, ctx, db) })
 }
 
-func testUserQueriesCommon(t *testing.T, db *Database) {
+func testUserQueriesCommon(t *testing.T, ctx context.Context, db *Database) {
 	// dynamic channel list
-	iter, err := db.UserN1QLQuery("airports_in_city", map[string]interface{}{"city": "London"})
+	iter, err := db.UserN1QLQuery(ctx, "airports_in_city", map[string]interface{}{"city": "London"})
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{"city":"London"}]`, iter)
 
-	iter, err = db.UserN1QLQuery("square", map[string]interface{}{"numero": 16})
+	iter, err = db.UserN1QLQuery(ctx, "square", map[string]interface{}{"numero": 16})
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{"square":256}]`, iter)
 
-	iter, err = db.UserN1QLQuery("inject", map[string]interface{}{"foo": "1337 as pwned"})
+	iter, err = db.UserN1QLQuery(ctx, "inject", map[string]interface{}{"foo": "1337 as pwned"})
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{"$1":"1337 as pwned"}]`, iter)
 
 	// ERRORS:
 
 	// Missing a parameter:
-	_, err = db.UserN1QLQuery("square", nil)
+	_, err = db.UserN1QLQuery(ctx, "square", nil)
 	assertHTTPError(t, err, 400)
 	assert.ErrorContains(t, err, "numero")
 	assert.ErrorContains(t, err, "square")
 
 	// Extra parameter:
-	_, err = db.UserN1QLQuery("square", map[string]interface{}{"numero": 42, "number": 0})
+	_, err = db.UserN1QLQuery(ctx, "square", map[string]interface{}{"numero": 42, "number": 0})
 	assertHTTPError(t, err, 400)
 	assert.ErrorContains(t, err, "number")
 	assert.ErrorContains(t, err, "square")
 
 	// Function definition has a syntax error:
-	_, err = db.UserN1QLQuery("syntax_error", nil)
+	_, err = db.UserN1QLQuery(ctx, "syntax_error", nil)
 	assertHTTPError(t, err, 500)
 	assert.ErrorContains(t, err, "syntax_error")
 }
 
-func testUserQueriesAsAdmin(t *testing.T, db *Database) {
-	testUserQueriesCommon(t, db)
+func testUserQueriesAsAdmin(t *testing.T, ctx context.Context, db *Database) {
+	testUserQueriesCommon(t, ctx, db)
 
-	iter, err := db.UserN1QLQuery("user", nil)
+	iter, err := db.UserN1QLQuery(ctx, "user", nil)
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{"user":{}}]`, iter)
 
-	iter, err = db.UserN1QLQuery("user_parts", nil)
+	iter, err = db.UserN1QLQuery(ctx, "user_parts", nil)
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{}]`, iter)
 
 	// admin only:
-	iter, err = db.UserN1QLQuery("admin_only", nil)
+	iter, err = db.UserN1QLQuery(ctx, "admin_only", nil)
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{"status":"ok"}]`, iter)
 
 	// ERRORS:
 
 	// No such query:
-	_, err = db.UserN1QLQuery("xxxx", nil)
+	_, err = db.UserN1QLQuery(ctx, "xxxx", nil)
 	assertHTTPError(t, err, 404)
 }
 
-func testUserQueriesAsUser(t *testing.T, db *Database) {
-	testUserQueriesCommon(t, db)
+func testUserQueriesAsUser(t *testing.T, ctx context.Context, db *Database) {
+	testUserQueriesCommon(t, ctx, db)
 
-	iter, err := db.UserN1QLQuery("user", nil)
+	iter, err := db.UserN1QLQuery(ctx, "user", nil)
 	assert.NoError(t, err)
 	// (Can't compare the entire result string because the order of items in the "channels" array
 	// is undefined and can change from one run to another.)
@@ -170,21 +171,21 @@ func testUserQueriesAsUser(t *testing.T, db *Database) {
 	assert.True(t, strings.HasPrefix(resultStr, `[{"user":{"channels":["`))
 	assert.True(t, strings.HasSuffix(resultStr, `"],"email":"","name":"alice","roles":["hero"]}}]`))
 
-	iter, err = db.UserN1QLQuery("user_parts", nil)
+	iter, err = db.UserN1QLQuery(ctx, "user_parts", nil)
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{"email":"","name":"alice"}]`, iter)
 
 	// ERRORS:
 
 	// Not allowed (admin only):
-	_, err = db.UserN1QLQuery("admin_only", nil)
+	_, err = db.UserN1QLQuery(ctx, "admin_only", nil)
 	assertHTTPError(t, err, 403)
 
 	// Not allowed (dynamic channel list):
-	_, err = db.UserN1QLQuery("airports_in_city", map[string]interface{}{"city": "Chicago"})
+	_, err = db.UserN1QLQuery(ctx, "airports_in_city", map[string]interface{}{"city": "Chicago"})
 	assertHTTPError(t, err, 403)
 
 	// No such query:
-	_, err = db.UserN1QLQuery("xxxx", nil)
+	_, err = db.UserN1QLQuery(ctx, "xxxx", nil)
 	assertHTTPError(t, err, 403) // not 404 as for an admin
 }

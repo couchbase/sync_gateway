@@ -1116,10 +1116,11 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 	require.NoError(t, restTester.SetAdminParty(false))
 	defer restTester.Close()
 
+	ctx := restTester.Context()
 	mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
 	defer mockSyncGateway.Close()
 	mockSyncGatewayURL := mockSyncGateway.URL
-	authenticator := restTester.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	authenticator := restTester.ServerContext().Database(ctx, "db").Authenticator(base.TestCtx(t))
 
 	sendAuthRequest := func(claimSet claimSet) (*http.Response, error) {
 		token, err := mockAuthServer.makeToken(claimSet)
@@ -1194,7 +1195,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		runGoodAuthTest(claimSet, username)
 
 		// Bad email shouldn't not be saved on successful authentication.
-		user, err := restTester.ServerContext().Database("db").Authenticator(base.TestCtx(t)).GetUser("foo_noah")
+		user, err := restTester.ServerContext().Database(ctx, "db").Authenticator(base.TestCtx(t)).GetUser("foo_noah")
 		require.NoError(t, err, "Error getting user from db")
 		assert.Equal(t, username, user.Name())
 		assert.Empty(t, user.Email(), "Bad email shouldn't be saved")
@@ -1208,7 +1209,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		runGoodAuthTest(claimSet, username)
 
 		// Bad email shouldn't not be saved on successful authentication.
-		user, err := restTester.ServerContext().Database("db").Authenticator(base.TestCtx(t)).GetUser(username)
+		user, err := restTester.ServerContext().Database(ctx, "db").Authenticator(base.TestCtx(t)).GetUser(username)
 		require.NoError(t, err, "Error getting user from db")
 		assert.Equal(t, username, user.Name())
 		assert.Equal(t, "foo_noah@couchbase.com", user.Email(), "Bad email shouldn't be saved")
@@ -1222,7 +1223,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		runGoodAuthTest(claimSet, username)
 
 		// Good email should be updated on successful authentication.
-		user, err := restTester.ServerContext().Database("db").Authenticator(base.TestCtx(t)).GetUser(username)
+		user, err := restTester.ServerContext().Database(ctx, "db").Authenticator(base.TestCtx(t)).GetUser(username)
 		require.NoError(t, err, "Error getting user from db")
 		assert.Equal(t, username, user.Name())
 		assert.Equal(t, "foo_noah@example.com", user.Email(), "Email is not updated")
@@ -2313,16 +2314,17 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	mockAuthServer.options.issuer = mockAuthServer.URL + "/" + providerName
 	refreshProviderConfig(providers, mockAuthServer.URL)
 
+	ctx := base.TestCtx(t)
 	startupConfig := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&startupConfig, true)
+	sc, err := setupServerContext(ctx, &startupConfig, true)
 	require.NoError(t, err)
 	serverErr := make(chan error, 0)
 	go func() {
-		serverErr <- startServer(&startupConfig, sc)
+		serverErr <- startServer(ctx, &startupConfig, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 	defer func() {
-		sc.Close()
+		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
 	}()
 

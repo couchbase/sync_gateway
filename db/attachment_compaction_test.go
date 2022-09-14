@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -19,13 +20,13 @@ func TestAttachmentMark(t *testing.T) {
 		t.Skip("Requires CBS")
 	}
 
-	testDb := setupTestDB(t)
-	defer testDb.Close()
+	testDb, ctx := setupTestDB(t)
+	defer testDb.Close(ctx)
 
 	body := map[string]interface{}{"foo": "bar"}
 	for i := 0; i < 10; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		_, _, err := testDb.Put(key, body)
+		_, _, err := testDb.Put(ctx, key, body)
 		assert.NoError(t, err)
 	}
 
@@ -36,7 +37,7 @@ func TestAttachmentMark(t *testing.T) {
 		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
 		assert.NoError(t, err)
-		attKeys = append(attKeys, CreateLegacyAttachmentDoc(t, testDb, docID, []byte("{}"), attKey, attJSONBody))
+		attKeys = append(attKeys, CreateLegacyAttachmentDoc(t, ctx, testDb, docID, []byte("{}"), attKey, attJSONBody))
 	}
 
 	err := testDb.Bucket.SetRaw("testDocx", 0, nil, []byte("{}"))
@@ -44,10 +45,10 @@ func TestAttachmentMark(t *testing.T) {
 
 	attKeys = append(attKeys, createConflictingDocOneLeafHasAttachmentBodyMap(t, "conflictAtt", "attForConflict", []byte(`{"value": "att"}`), testDb))
 	attKeys = append(attKeys, createConflictingDocOneLeafHasAttachmentBodyKey(t, "conflictAttBodyKey", "attForConflict2", []byte(`{"val": "bodyKeyAtt"}`), testDb))
-	attKeys = append(attKeys, createDocWithInBodyAttachment(t, "inBodyDoc", []byte(`{}`), "attForInBodyRef", []byte(`{"val": "inBodyAtt"}`), testDb))
+	attKeys = append(attKeys, createDocWithInBodyAttachment(t, ctx, "inBodyDoc", []byte(`{}`), "attForInBodyRef", []byte(`{"val": "inBodyAtt"}`), testDb))
 
 	terminator := base.NewSafeTerminator()
-	attachmentsMarked, _, err := attachmentCompactMarkPhase(testDb, t.Name(), terminator, &base.AtomicInt{})
+	attachmentsMarked, _, err := attachmentCompactMarkPhase(ctx, testDb, t.Name(), terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(13), attachmentsMarked)
 
@@ -70,8 +71,8 @@ func TestAttachmentSweep(t *testing.T) {
 		t.Skip("Requires CBS")
 	}
 
-	testDb := setupTestDB(t)
-	defer testDb.Close()
+	testDb, ctx := setupTestDB(t)
+	defer testDb.Close(ctx)
 
 	makeMarkedDoc := func(docid string, compactID string) {
 		err := testDb.Bucket.SetRaw(docid, 0, nil, []byte("{}"))
@@ -104,7 +105,7 @@ func TestAttachmentSweep(t *testing.T) {
 	}
 
 	terminator := base.NewSafeTerminator()
-	purged, err := attachmentCompactSweepPhase(testDb, t.Name(), nil, false, terminator, &base.AtomicInt{})
+	purged, err := attachmentCompactSweepPhase(ctx, testDb, t.Name(), nil, false, terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 
 	assert.Equal(t, int64(11), purged)
@@ -115,8 +116,8 @@ func TestAttachmentCleanup(t *testing.T) {
 		t.Skip("Requires CBS")
 	}
 
-	testDb := setupTestDB(t)
-	defer testDb.Close()
+	testDb, ctx := setupTestDB(t)
+	defer testDb.Close(ctx)
 
 	makeMarkedDoc := func(docid string, compactID string) {
 		err := testDb.Bucket.SetRaw(docid, 0, nil, []byte("{}"))
@@ -175,7 +176,7 @@ func TestAttachmentCleanup(t *testing.T) {
 	}
 
 	terminator := base.NewSafeTerminator()
-	err := attachmentCompactCleanupPhase(testDb, t.Name(), nil, terminator)
+	err := attachmentCompactCleanupPhase(ctx, testDb, t.Name(), nil, terminator)
 	assert.NoError(t, err)
 
 	for _, docID := range singleMarkedAttIDs {
@@ -219,8 +220,8 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 		t.Skip("Requires CBS")
 	}
 
-	testDb := setupTestDB(t)
-	defer testDb.Close()
+	testDb, ctx := setupTestDB(t)
+	defer testDb.Close(ctx)
 
 	attKeys := make([]string, 0, 15)
 	for i := 0; i < 10; i++ {
@@ -229,7 +230,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
 		assert.NoError(t, err)
-		attKeys = append(attKeys, CreateLegacyAttachmentDoc(t, testDb, docID, []byte("{}"), attKey, attJSONBody))
+		attKeys = append(attKeys, CreateLegacyAttachmentDoc(t, ctx, testDb, docID, []byte("{}"), attKey, attJSONBody))
 	}
 
 	makeUnmarkedDoc := func(docid string) {
@@ -244,11 +245,11 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 	}
 
 	terminator := base.NewSafeTerminator()
-	attachmentsMarked, vbUUIDS, err := attachmentCompactMarkPhase(testDb, t.Name(), terminator, &base.AtomicInt{})
+	attachmentsMarked, vbUUIDS, err := attachmentCompactMarkPhase(ctx, testDb, t.Name(), terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(10), attachmentsMarked)
 
-	attachmentsPurged, err := attachmentCompactSweepPhase(testDb, t.Name(), vbUUIDS, false, terminator, &base.AtomicInt{})
+	attachmentsPurged, err := attachmentCompactSweepPhase(ctx, testDb, t.Name(), vbUUIDS, false, terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(5), attachmentsPurged)
 
@@ -266,7 +267,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 		}
 	}
 
-	err = attachmentCompactCleanupPhase(testDb, t.Name(), vbUUIDS, terminator)
+	err = attachmentCompactCleanupPhase(ctx, testDb, t.Name(), vbUUIDS, terminator)
 	assert.NoError(t, err)
 
 	for _, attDocKey := range attKeys {
@@ -290,11 +291,11 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
 	defer b.Close()
 
-	testDB1 := setupTestDBForBucket(t, b)
-	defer testDB1.Close()
+	testDB1, ctx1 := setupTestDB(t)
+	defer testDB1.Close(ctx1)
 
-	testDB2 := setupTestDBForBucket(t, b.NoCloseClone())
-	defer testDB2.Close()
+	testDB2, ctx2 := setupTestDB(t)
+	defer testDB2.Close(ctx2)
 
 	var err error
 
@@ -305,7 +306,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	triggerStopCallback := false
 	leakyBucket.SetGetRawCallback(func(s string) error {
 		if triggerCallback {
-			err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2})
+			err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]interface{}{"database": testDB2})
 			assert.Error(t, err)
 			assert.Contains(t, err.Error(), "Process already running")
 			triggerCallback = false
@@ -320,7 +321,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 
 	// Trigger start with immediate abort. Then resume, ensure that dry run is resumed
 	triggerStopCallback = true
-	err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2, "dryRun": true})
+	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]interface{}{"database": testDB2, "dryRun": true})
 	assert.NoError(t, err)
 
 	err = WaitForConditionWithOptions(func() bool {
@@ -345,7 +346,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, testStatus.DryRun)
 
-	err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2, "dryRun": false})
+	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]interface{}{"database": testDB2, "dryRun": false})
 	assert.NoError(t, err)
 
 	err = WaitForConditionWithOptions(func() bool {
@@ -371,7 +372,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 
 	// Trigger start with immediate stop (stopped from db2)
 	triggerStopCallback = true
-	err = testDB1.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB1})
+	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]interface{}{"database": testDB1})
 	assert.NoError(t, err)
 
 	err = WaitForConditionWithOptions(func() bool {
@@ -390,7 +391,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 
 	// Kick off another run with an attempted start from the other node, checks for error on other node
 	triggerCallback = true
-	err = testDB1.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB1})
+	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]interface{}{"database": testDB1})
 	assert.NoError(t, err)
 
 	err = WaitForConditionWithOptions(func() bool {
@@ -435,11 +436,11 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
 	defer b.Close()
 
-	testDB1 := setupTestDBForBucket(t, b)
-	defer testDB1.Close()
+	testDB1, ctx1 := setupTestDB(t)
+	defer testDB1.Close(ctx1)
 
-	testDB2 := setupTestDBForBucket(t, b.NoCloseClone())
-	defer testDB2.Close()
+	testDB2, ctx2 := setupTestDB(t)
+	defer testDB2.Close(ctx2)
 
 	var err error
 
@@ -450,7 +451,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	triggerStopCallback := false
 	leakyBucket.SetGetRawCallback(func(s string) error {
 		if triggerCallback {
-			err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2})
+			err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]interface{}{"database": testDB2})
 			assert.Error(t, err)
 			assert.Contains(t, err.Error(), "Process already running")
 			triggerCallback = false
@@ -465,7 +466,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 
 	// Trigger start with immediate abort. Then resume, ensure that dry run is resumed
 	triggerStopCallback = true
-	err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2, "dryRun": true})
+	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]interface{}{"database": testDB2, "dryRun": true})
 	assert.NoError(t, err)
 
 	err = WaitForConditionWithOptions(func() bool {
@@ -490,7 +491,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, testStatus.DryRun)
 
-	err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2, "dryRun": false})
+	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]interface{}{"database": testDB2, "dryRun": false})
 	assert.NoError(t, err)
 
 	err = WaitForConditionWithOptions(func() bool {
@@ -516,15 +517,15 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 
 	// Trigger start with immediate stop (stopped from db2)
 	triggerStopCallback = true
-	err = testDB1.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB1})
+	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]interface{}{"database": testDB1})
 	assert.NoError(t, err)
 
 	// Kick off another run with an attempted start, verify we don't get 'process already running' error
-	err = testDB1.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB1})
+	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]interface{}{"database": testDB1})
 	// Hitting this error may be racy (depending on when heartbeat is polled from previous stop), but we should never
 	// get a 'process already running' error
 	if err != nil {
-		err = testDB2.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB2})
+		err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]interface{}{"database": testDB2})
 		assert.NotContains(t, err.Error(), "Process already running")
 	}
 }
@@ -541,12 +542,12 @@ func TestAttachmentProcessError(t *testing.T) {
 	})
 	defer b.Close()
 
-	testDB1 := setupTestDBForBucket(t, b)
-	defer testDB1.Close()
+	testDB1, ctx1 := setupTestDB(t)
+	defer testDB1.Close(ctx1)
 
-	CreateLegacyAttachmentDoc(t, testDB1, "docID", []byte("{}"), "attKey", []byte("{}"))
+	CreateLegacyAttachmentDoc(t, ctx1, testDB1, "docID", []byte("{}"), "attKey", []byte("{}"))
 
-	err := testDB1.AttachmentCompactionManager.Start(map[string]interface{}{"database": testDB1})
+	err := testDB1.AttachmentCompactionManager.Start(ctx1, map[string]interface{}{"database": testDB1})
 	assert.NoError(t, err)
 
 	var status AttachmentManagerResponse
@@ -572,18 +573,18 @@ func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	testDB := setupTestDB(t)
-	defer testDB.Close()
+	testDB, ctx := setupTestDB(t)
+	defer testDB.Close(ctx)
 
 	// Run mark phase as usual
 	terminator := base.NewSafeTerminator()
-	_, vbUUIDs, err := attachmentCompactMarkPhase(testDB, t.Name(), terminator, &base.AtomicInt{})
+	_, vbUUIDs, err := attachmentCompactMarkPhase(ctx, testDB, t.Name(), terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 
 	// Manually modify a vbUUID and ensure the Sweep phase errors
 	vbUUIDs[0] = 1
 
-	_, err = attachmentCompactSweepPhase(testDB, t.Name(), vbUUIDs, false, terminator, &base.AtomicInt{})
+	_, err = attachmentCompactSweepPhase(ctx, testDB, t.Name(), vbUUIDs, false, terminator, &base.AtomicInt{})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "error opening stream for vb 0: VbUUID mismatch when failOnRollback set")
 }
@@ -605,7 +606,7 @@ func WaitForConditionWithOptions(successFunc func() bool, maxNumAttempts, timeTo
 	return nil
 }
 
-func CreateLegacyAttachmentDoc(t *testing.T, db *Database, docID string, body []byte, attID string, attBody []byte) string {
+func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, db *Database, docID string, body []byte, attID string, attBody []byte) string {
 	if !base.TestUseXattrs() {
 		t.Skip("Requires xattrs")
 	}
@@ -620,7 +621,7 @@ func CreateLegacyAttachmentDoc(t *testing.T, db *Database, docID string, body []
 	err = base.JSONUnmarshal(body, &unmarshalledBody)
 	require.NoError(t, err)
 
-	_, _, err = db.Put(docID, unmarshalledBody)
+	_, _, err = db.Put(ctx, docID, unmarshalledBody)
 	require.NoError(t, err)
 
 	_, err = db.Bucket.WriteUpdateWithXattr(docID, base.SyncXattrName, "", 0, nil, nil, func(doc []byte, xattr []byte, userXattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, err error) {
@@ -763,12 +764,12 @@ func createConflictingDocOneLeafHasAttachmentBodyKey(t *testing.T, docID string,
 	return attDocID
 }
 
-func createDocWithInBodyAttachment(t *testing.T, docID string, docBody []byte, attID string, attBody []byte, db *Database) string {
+func createDocWithInBodyAttachment(t *testing.T, ctx context.Context, docID string, docBody []byte, attID string, attBody []byte, db *Database) string {
 	var body Body
 	err := base.JSONUnmarshal(docBody, &body)
 	assert.NoError(t, err)
 
-	_, _, err = db.Put(docID, body)
+	_, _, err = db.Put(ctx, docID, body)
 	assert.NoError(t, err)
 
 	attDigest := Sha1DigestKey(attBody)
@@ -815,13 +816,13 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 		t.Skip("Requires CBS")
 	}
 
-	testDb := setupTestDB(t)
-	defer testDb.Close()
+	testDb, ctx := setupTestDB(t)
+	defer testDb.Close(ctx)
 	// Create the docs that will be marked and not swept
 	body := map[string]interface{}{"foo": "bar"}
 	for i := 0; i < docsToCreate; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		_, _, err := testDb.Put(key, body)
+		_, _, err := testDb.Put(ctx, key, body)
 		require.NoError(t, err)
 	}
 
@@ -831,7 +832,7 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
 		require.NoError(t, err)
-		CreateLegacyAttachmentDoc(t, testDb, docID, []byte("{}"), attKey, attJSONBody)
+		CreateLegacyAttachmentDoc(t, ctx, testDb, docID, []byte("{}"), attKey, attJSONBody)
 	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
@@ -840,7 +841,7 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	stat := &base.AtomicInt{}
 	count := int64(0)
 	go func() {
-		attachmentCount, _, err := attachmentCompactMarkPhase(testDb, "mark", terminator, stat)
+		attachmentCount, _, err := attachmentCompactMarkPhase(ctx, testDb, "mark", terminator, stat)
 		atomic.StoreInt64(&count, attachmentCount)
 		require.NoError(t, err)
 	}()
@@ -882,7 +883,7 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	count = 0
 	terminator = base.NewSafeTerminator()
 	go func() {
-		attachmentCount, err := attachmentCompactSweepPhase(testDb, "sweep", nil, false, terminator, stat)
+		attachmentCount, err := attachmentCompactSweepPhase(ctx, testDb, "sweep", nil, false, terminator, stat)
 		atomic.StoreInt64(&count, attachmentCount)
 		require.NoError(t, err)
 	}()

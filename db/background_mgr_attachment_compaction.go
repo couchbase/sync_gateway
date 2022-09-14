@@ -9,6 +9,7 @@
 package db
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -43,7 +44,7 @@ func NewAttachmentCompactionManager(bucket base.Bucket) *BackgroundManager {
 	}
 }
 
-func (a *AttachmentCompactionManager) Init(options map[string]interface{}, clusterStatus []byte) error {
+func (a *AttachmentCompactionManager) Init(ctx context.Context, options map[string]interface{}, clusterStatus []byte) error {
 	database := options["database"].(*Database)
 	database.DbStats.Database().CompactionAttachmentStartTime.Set(time.Now().UTC().Unix())
 
@@ -55,12 +56,12 @@ func (a *AttachmentCompactionManager) Init(options map[string]interface{}, clust
 
 		dryRun, _ := options["dryRun"].(bool)
 		if dryRun {
-			base.InfofCtx(database.Ctx, base.KeyAll, "Attachment Compaction: Running as dry run. No attachments will be purged")
+			base.InfofCtx(ctx, base.KeyAll, "Attachment Compaction: Running as dry run. No attachments will be purged")
 		}
 
 		a.dryRun = dryRun
 		a.CompactID = uniqueUUID.String()
-		base.InfofCtx(database.Ctx, base.KeyAll, "Attachment Compaction: Starting new compaction run with compact ID: %q", a.CompactID)
+		base.InfofCtx(ctx, base.KeyAll, "Attachment Compaction: Starting new compaction run with compact ID: %q", a.CompactID)
 		return nil
 	}
 
@@ -70,7 +71,7 @@ func (a *AttachmentCompactionManager) Init(options map[string]interface{}, clust
 
 		reset, ok := options["reset"].(bool)
 		if reset && ok {
-			base.InfofCtx(database.Ctx, base.KeyAll, "Attachment Compaction: Resetting compaction process. Will not  resume any "+
+			base.InfofCtx(ctx, base.KeyAll, "Attachment Compaction: Resetting compaction process. Will not  resume any "+
 				"partially completed process")
 		}
 
@@ -87,7 +88,7 @@ func (a *AttachmentCompactionManager) Init(options map[string]interface{}, clust
 			a.PurgedAttachments.Set(statusDoc.PurgedAttachments)
 			a.VBUUIDs = statusDoc.VBUUIDs
 
-			base.InfofCtx(database.Ctx, base.KeyAll, "Attachment Compaction: Attempting to resume compaction with compact ID: %q phase %q", a.CompactID, a.Phase)
+			base.InfofCtx(ctx, base.KeyAll, "Attachment Compaction: Attempting to resume compaction with compact ID: %q phase %q", a.CompactID, a.Phase)
 		}
 
 		return nil
@@ -97,13 +98,13 @@ func (a *AttachmentCompactionManager) Init(options map[string]interface{}, clust
 	return newRunInit()
 }
 
-func (a *AttachmentCompactionManager) Run(options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	database := options["database"].(*Database)
 
 	persistClusterStatus := func() {
 		err := persistClusterStatusCallback()
 		if err != nil {
-			base.WarnfCtx(database.Ctx, "Failed to persist cluster status on-demand following completion of phase: %v", err)
+			base.WarnfCtx(ctx, "Failed to persist cluster status on-demand following completion of phase: %v", err)
 		}
 	}
 
@@ -116,7 +117,7 @@ func (a *AttachmentCompactionManager) Run(options map[string]interface{}, persis
 	case "mark", "":
 		a.SetPhase("mark")
 		persistClusterStatus()
-		_, a.VBUUIDs, err = attachmentCompactMarkPhase(database, a.CompactID, terminator, &a.MarkedAttachments)
+		_, a.VBUUIDs, err = attachmentCompactMarkPhase(ctx, database, a.CompactID, terminator, &a.MarkedAttachments)
 		if err != nil || terminator.IsClosed() {
 			return err
 		}
@@ -124,7 +125,7 @@ func (a *AttachmentCompactionManager) Run(options map[string]interface{}, persis
 	case "sweep":
 		a.SetPhase("sweep")
 		persistClusterStatus()
-		_, err := attachmentCompactSweepPhase(database, a.CompactID, a.VBUUIDs, a.dryRun, terminator, &a.PurgedAttachments)
+		_, err := attachmentCompactSweepPhase(ctx, database, a.CompactID, a.VBUUIDs, a.dryRun, terminator, &a.PurgedAttachments)
 		if err != nil || terminator.IsClosed() {
 			return err
 		}
@@ -132,7 +133,7 @@ func (a *AttachmentCompactionManager) Run(options map[string]interface{}, persis
 	case "cleanup":
 		a.SetPhase("cleanup")
 		persistClusterStatus()
-		err := attachmentCompactCleanupPhase(database, a.CompactID, a.VBUUIDs, terminator)
+		err := attachmentCompactCleanupPhase(ctx, database, a.CompactID, a.VBUUIDs, terminator)
 		if err != nil || terminator.IsClosed() {
 			return err
 		}

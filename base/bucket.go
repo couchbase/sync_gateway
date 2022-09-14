@@ -602,7 +602,7 @@ func retrievePurgeInterval(bucket CouchbaseStore, uri string) (time.Duration, er
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusForbidden {
-		WarnfCtx(resp.Request.Context(), "403 Forbidden attempting to access %s.  Bucket user must have Bucket Full Access and Bucket Admin roles to retrieve metadata purge interval.", UD(uri))
+		WarnfCtx(context.TODO(), "403 Forbidden attempting to access %s.  Bucket user must have Bucket Full Access and Bucket Admin roles to retrieve metadata purge interval.", UD(uri))
 	} else if resp.StatusCode != http.StatusOK {
 		return 0, errors.New(resp.Status)
 	}

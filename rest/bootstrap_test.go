@@ -31,14 +31,16 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	// Start SG with no databases
+	ctx := base.TestCtx(t)
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true)
+	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
+	ctx = sc.SetContextLogID(ctx, "initial")
 
 	// sc closed and serverErr read later in the test
 	serverErr := make(chan error, 0)
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 
@@ -90,18 +92,21 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	resp.requireResponse(http.StatusOK, `{"_id":"doc1","_rev":"1-cd809becc169215072fd567eebd8b8de","foo":"bar"}`)
 
 	// Restart Sync Gateway
-	sc.Close()
+	sc.Close(ctx)
 	require.NoError(t, <-serverErr)
 
-	sc, err = setupServerContext(&config, true)
+	ctx = base.TestCtx(t)
+	sc, err = setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
+	ctx = sc.SetContextLogID(ctx, "loaddatabase")
+
 	serverErr = make(chan error, 0)
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 	defer func() {
-		sc.Close()
+		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
 	}()
 
@@ -143,16 +148,18 @@ func TestBootstrapDuplicateBucket(t *testing.T) {
 	serverErr := make(chan error, 0)
 
 	// Start SG with no databases
+	ctx := base.TestCtx(t)
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true)
+	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
+
 	defer func() {
-		sc.Close()
+		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
 	}()
 
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 
@@ -192,16 +199,18 @@ func TestBootstrapDuplicateDatabase(t *testing.T) {
 	serverErr := make(chan error, 0)
 
 	// Start SG with no databases
+	ctx := base.TestCtx(t)
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true)
+	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
+
 	defer func() {
-		sc.Close()
+		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
 	}()
 
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 

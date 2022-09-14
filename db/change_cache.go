@@ -230,7 +230,7 @@ func (c *changeCache) Stop() {
 	close(c.terminator)
 
 	// Wait for changeCache background tasks to finish.
-	waitForBGTCompletion(BGTCompletionMaxWait, c.backgroundTasks, c.context.Name)
+	waitForBGTCompletion(context.TODO(), BGTCompletionMaxWait, c.backgroundTasks, c.context.Name)
 
 	// Stop the channel cache and it's background tasks.
 	c.channelCache.Stop()

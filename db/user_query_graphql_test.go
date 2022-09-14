@@ -159,62 +159,61 @@ func assertGraphQLError(t *testing.T, expectedErrorText string, result *graphql.
 func TestUserGraphQL(t *testing.T) {
 	//base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	cacheOptions := DefaultCacheOptions()
-	db := setupTestDBWithOptions(t, DatabaseContextOptions{
+	db, ctx := setupTestDBWithOptions(t, DatabaseContextOptions{
 		CacheOptions:  &cacheOptions,
 		GraphQL:       &kTestGraphQLConfig,
 		UserFunctions: kTestGraphQLUserFunctionsConfig,
 	})
-	db.Ctx = context.TODO()
-	defer db.Close()
+	defer db.Close(ctx)
 
 	// First run the tests as an admin:
-	t.Run("AsAdmin", func(t *testing.T) { testUserGraphQLAsAdmin(t, db) })
+	t.Run("AsAdmin", func(t *testing.T) { testUserGraphQLAsAdmin(t, ctx, db) })
 
 	// Now create a user and make it current:
 	db.user = addUserAlice(t, db)
 	assert.True(t, db.user.RoleNames().Contains("hero"))
 
 	// Repeat the tests as user "alice":
-	t.Run("AsUser", func(t *testing.T) { testUserGraphQLAsUser(t, db) })
+	t.Run("AsUser", func(t *testing.T) { testUserGraphQLAsUser(t, ctx, db) })
 }
 
-func testUserGraphQLCommon(t *testing.T, db *Database) {
+func testUserGraphQLCommon(t *testing.T, ctx context.Context, db *Database) {
 	// Successful query:
-	result, err := db.UserGraphQLQuery(`query{ task(id:"a") {id,title,done,tags} }`, "", nil, false)
+	result, err := db.UserGraphQLQuery(ctx, `query{ task(id:"a") {id,title,done,tags} }`, "", nil, false)
 	assertGraphQLResult(t, `{"task":{"done":true,"id":"a","tags":["fruit","soft"],"title":"Applesauce"}}`, result, err)
 
-	result, err = db.UserGraphQLQuery(`mutation{ addTag(id:"a", tag:"cold") {id,title,done,tags} }`, "", nil, true)
+	result, err = db.UserGraphQLQuery(ctx, `mutation{ addTag(id:"a", tag:"cold") {id,title,done,tags} }`, "", nil, true)
 	assertGraphQLResult(t, `{"addTag":{"done":true,"id":"a","tags":["fruit","soft","cold"],"title":"Applesauce"}}`, result, err)
 
 	// ERRORS:
 
 	// Nonexistent query:
-	result, err = db.UserGraphQLQuery(`query{ bogus(id:"a") {id} }`, "", nil, false)
+	result, err = db.UserGraphQLQuery(ctx, `query{ bogus(id:"a") {id} }`, "", nil, false)
 	assertGraphQLError(t, "Cannot query field \"bogus\" on type \"Query\"", result, err)
 
 	// Invalid argument:
-	result, err = db.UserGraphQLQuery(`query{ task(foo:69) {id,title,done} }`, "", nil, false)
+	result, err = db.UserGraphQLQuery(ctx, `query{ task(foo:69) {id,title,done} }`, "", nil, false)
 	assertGraphQLError(t, "Unknown argument \"foo\"", result, err)
 
 	// Mutation when no mutations allowed:
-	result, err = db.UserGraphQLQuery(`mutation{ complete(id:"a") {done} }`, "", nil, false)
+	result, err = db.UserGraphQLQuery(ctx, `mutation{ complete(id:"a") {done} }`, "", nil, false)
 	assertGraphQLError(t, "403", result, err)
 }
 
-func testUserGraphQLAsAdmin(t *testing.T, db *Database) {
-	testUserGraphQLCommon(t, db)
+func testUserGraphQLAsAdmin(t *testing.T, ctx context.Context, db *Database) {
+	testUserGraphQLCommon(t, ctx, db)
 
 	// Admin-only field:
-	result, err := db.UserGraphQLQuery(`query{ task(id:"a") {secretNotes} }`, "", nil, false)
+	result, err := db.UserGraphQLQuery(ctx, `query{ task(id:"a") {secretNotes} }`, "", nil, false)
 	assertGraphQLResult(t, `{"task":{"secretNotes":"TOP SECRET!"}}`, result, err)
 }
 
-func testUserGraphQLAsUser(t *testing.T, db *Database) {
-	testUserGraphQLCommon(t, db)
+func testUserGraphQLAsUser(t *testing.T, ctx context.Context, db *Database) {
+	testUserGraphQLCommon(t, ctx, db)
 
 	// ERRORS:
 
 	// Can't get admin-only field:
-	result, err := db.UserGraphQLQuery(`query{ task(id:"a") {secretNotes} }`, "", nil, false)
+	result, err := db.UserGraphQLQuery(ctx, `query{ task(id:"a") {secretNotes} }`, "", nil, false)
 	assertGraphQLError(t, "403", result, err)
 }

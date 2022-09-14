@@ -103,13 +103,14 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 		},
 	})
 	defer rt.Close()
+	ctx := rt.Context()
 
 	response := rt.SendRequest(http.MethodGet, "/db/", "")
 	requireStatus(t, response, http.StatusUnauthorized)
 	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
 
 	// Double-check that even if we provide valid credentials we still won't be let in
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	user, err := a.NewUser("user1", "letmein", channels.SetOf(t, "foo"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(user))
@@ -123,7 +124,7 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 	requireStatus(t, response, http.StatusUnauthorized)
 
 	// As a sanity check, ensure it does work when the setting is disabled
-	rt.ServerContext().Database("db").Options.DisablePasswordAuthentication = false
+	rt.ServerContext().Database(ctx, "db").Options.DisablePasswordAuthentication = false
 	response = rt.Send(requestByUser(http.MethodGet, "/db/", "", "user1"))
 	requireStatus(t, response, http.StatusOK)
 
@@ -347,7 +348,8 @@ func TestDocAttachmentOnRemovedRev(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	user, err := a.GetUser("")
 	assert.NoError(t, err)
 	user.SetDisabled(true)
@@ -385,7 +387,8 @@ func TestDocumentUpdateWithNullBody(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	user, err := a.GetUser("")
 	assert.NoError(t, err)
 	user.SetDisabled(true)
@@ -476,7 +479,8 @@ func TestFunkyUsernames(t *testing.T) {
 			rt := NewRestTester(t, nil)
 			defer rt.Close()
 
-			a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+			ctx := rt.Context()
+			a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 
 			// Create a test user
 			user, err := a.NewUser(tc.UserName, "letmein", channels.SetOf(t, "foo"))
@@ -536,7 +540,8 @@ func TestFunkyRoleNames(t *testing.T) {
 			})
 			defer rt.Close()
 
-			a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+			ctx := rt.Context()
+			a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 
 			// Create a test user
 			user, err := a.NewUser(username, "letmein", channels.SetOf(t))
@@ -1496,7 +1501,8 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	user, err := a.GetUser("")
 	assert.NoError(t, err)
 	user.SetDisabled(true)
@@ -1537,9 +1543,10 @@ func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 		}`}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
+	ctx := rt.Context()
 
 	// Create a role with no channels assigned to it
-	authenticator := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	authenticator := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	role, err := authenticator.NewRole("role1", nil)
 	assert.NoError(t, authenticator.Save(role))
 
@@ -2011,9 +2018,10 @@ func TestCustomCookieName(t *testing.T) {
 
 func TestReadChangesOptionsFromJSON(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	h := &handler{}
-	h.server = NewServerContext(&StartupConfig{}, false)
-	defer h.server.Close()
+	h.server = NewServerContext(ctx, &StartupConfig{}, false)
+	defer h.server.Close(ctx)
 
 	// Basic case, no heartbeat, no timeout
 	optStr := `{"feed":"longpoll", "since": "123456:78", "limit":123, "style": "all_docs",
@@ -2311,7 +2319,8 @@ func TestChannelAccessChanges(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	guest, err := a.GetUser("")
 	assert.NoError(t, err)
 	guest.SetDisabled(false)
@@ -2456,13 +2465,13 @@ func TestChannelAccessChanges(t *testing.T) {
 	// Finally, throw a wrench in the works by changing the sync fn. Note that normally this wouldn't
 	// be changed while the database is in use (only when it's re-opened) but for testing purposes
 	// we do it now because we can't close and re-open an ephemeral Walrus database.
-	dbc := rt.ServerContext().Database("db")
+	dbc := rt.ServerContext().Database(ctx, "db")
 	database, _ := db.GetDatabase(dbc, nil)
 
-	changed, err := database.UpdateSyncFun(`function(doc) {access("alice", "beta");channel("beta");}`)
+	changed, err := database.UpdateSyncFun(ctx, `function(doc) {access("alice", "beta");channel("beta");}`)
 	assert.NoError(t, err)
 	assert.True(t, changed)
-	changeCount, err := database.UpdateAllDocChannels(false, func(docsProcessed, docsChanged *int) {}, base.NewSafeTerminator())
+	changeCount, err := database.UpdateAllDocChannels(ctx, false, func(docsProcessed, docsChanged *int) {}, base.NewSafeTerminator())
 	assert.NoError(t, err)
 	assert.Equal(t, 9, changeCount)
 
@@ -2498,7 +2507,8 @@ func TestAccessOnTombstone(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	guest, err := a.GetUser("")
 	assert.NoError(t, err)
 	guest.SetDisabled(false)
@@ -2841,7 +2851,8 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	guest, err := a.GetUser("")
 	assert.NoError(t, err)
 	guest.SetDisabled(false)
@@ -2937,7 +2948,8 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	guest, err := a.GetUser("")
 	assert.NoError(t, err)
 	guest.SetDisabled(false)
@@ -2983,7 +2995,8 @@ func TestRoleAccessChanges(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	guest, err := a.GetUser("")
 	require.NoError(t, err)
 
@@ -3011,7 +3024,7 @@ func TestRoleAccessChanges(t *testing.T) {
 	*/
 
 	// Create some docs in the channels:
-	cacheWaiter := rt.ServerContext().Database("db").NewDCPCachingCountWaiter(t)
+	cacheWaiter := rt.ServerContext().Database(ctx, "db").NewDCPCachingCountWaiter(t)
 	cacheWaiter.Add(1)
 	response = rt.Send(request("PUT", "/db/fashion",
 		`{"user":"alice","role":["role:hipster","role:bogus"]}`))
@@ -3149,7 +3162,8 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	guest, err := a.GetUser("")
 	assert.NoError(t, err)
 	guest.SetDisabled(false)
@@ -3362,7 +3376,8 @@ func TestOldDocHandling(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	guest, err := a.GetUser("")
 	assert.NoError(t, err)
 	guest.SetDisabled(false)
@@ -3663,8 +3678,9 @@ func TestEventConfigValidationSuccess(t *testing.T) {
 		t.Skip("Skip this test under integration testing")
 	}
 
-	sc := NewServerContext(&StartupConfig{}, false)
-	defer sc.Close()
+	ctx := base.TestCtx(t)
+	sc := NewServerContext(ctx, &StartupConfig{}, false)
+	defer sc.Close(ctx)
 
 	// Valid config
 	configJSON := `{"name": "default",
@@ -3687,7 +3703,7 @@ func TestEventConfigValidationSuccess(t *testing.T) {
 	err := base.JSONUnmarshal([]byte(configJSON), &dbConfig)
 	assert.True(t, err == nil)
 
-	_, err = sc.AddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig})
+	_, err = sc.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig})
 	assert.True(t, err == nil)
 }
 
@@ -4160,7 +4176,8 @@ func TestLongpollWithWildcard(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 
 	// Create user:
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
@@ -4170,7 +4187,7 @@ func TestLongpollWithWildcard(t *testing.T) {
 	// Issue is only reproducible when the wait counter is zero for all requested channels (including the user channel) - the count=0
 	// triggers early termination of the changes loop.  This can only be reproduced if the feed is restarted after the user is created -
 	// otherwise the count for the user pseudo-channel will always be non-zero
-	db, _ := rt.ServerContext().GetDatabase("db")
+	db, _ := rt.ServerContext().GetDatabase(ctx, "db")
 	err = db.RestartListener()
 	assert.True(t, err == nil)
 	// Put a document to increment the counter for the * channel
@@ -4202,8 +4219,10 @@ func TestLongpollWithWildcard(t *testing.T) {
 
 func TestUnsupportedConfig(t *testing.T) {
 
-	sc := NewServerContext(&StartupConfig{}, false)
-	defer sc.Close()
+	ctx := base.TestCtx(t)
+	sc := NewServerContext(ctx, &StartupConfig{}, false)
+	defer sc.Close(ctx)
+
 	testProviderOnlyJSON := `{"name": "test_provider_only",
         			"server": "walrus:",
         			"bucket": "test_provider_only",
@@ -4222,7 +4241,7 @@ func TestUnsupportedConfig(t *testing.T) {
 	err := base.JSONUnmarshal([]byte(testProviderOnlyJSON), &testProviderOnlyConfig)
 	assert.True(t, err == nil)
 
-	_, err = sc.AddDatabaseFromConfig(DatabaseConfig{DbConfig: testProviderOnlyConfig})
+	_, err = sc.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: testProviderOnlyConfig})
 	assert.NoError(t, err, "Error adding testProviderOnly database.")
 
 	viewsOnlyJSON := `{"name": "views_only",
@@ -4242,7 +4261,7 @@ func TestUnsupportedConfig(t *testing.T) {
 	err = base.JSONUnmarshal([]byte(viewsOnlyJSON), &viewsOnlyConfig)
 	assert.True(t, err == nil)
 
-	_, err = sc.AddDatabaseFromConfig(DatabaseConfig{DbConfig: viewsOnlyConfig})
+	_, err = sc.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: viewsOnlyConfig})
 	assert.NoError(t, err, "Error adding viewsOnlyConfig database.")
 
 	viewsAndTestJSON := `{"name": "views_and_test",
@@ -4266,7 +4285,7 @@ func TestUnsupportedConfig(t *testing.T) {
 	err = base.JSONUnmarshal([]byte(viewsAndTestJSON), &viewsAndTestConfig)
 	assert.True(t, err == nil)
 
-	_, err = sc.AddDatabaseFromConfig(DatabaseConfig{DbConfig: viewsAndTestConfig})
+	_, err = sc.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: viewsAndTestConfig})
 	assert.NoError(t, err, "Error adding viewsAndTestConfig database.")
 }
 
@@ -4304,7 +4323,8 @@ func TestDocIDFilterResurrection(t *testing.T) {
 	defer rt.Close()
 
 	// Create User
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	jacques, err := a.NewUser("jacques", "letmein", channels.SetOf(t, "A", "B"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(jacques))
@@ -4642,7 +4662,8 @@ func TestNumAccessErrors(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 
 	// Create a test user
 	user, err := a.NewUser("user", "letmein", channels.SetOf(t, "A"))
@@ -7594,9 +7615,10 @@ func TestMetricsHandler(t *testing.T) {
 
 	// Create and remove a database
 	// This ensures that creation and removal of a DB is possible without a re-registration issue ( the below rest tester will re-register "db")
-	context, err := db.NewDatabaseContext("db", base.GetTestBucket(t), false, db.DatabaseContextOptions{})
+	ctx := base.TestCtx(t)
+	context, err := db.NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, db.DatabaseContextOptions{})
 	require.NoError(t, err)
-	context.Close()
+	context.Close(context.AddDatabaseLogContext(ctx))
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -7619,9 +7641,9 @@ func TestMetricsHandler(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Initialize another database to ensure both are registered successfully
-	context, err = db.NewDatabaseContext("db2", base.GetTestBucket(t), false, db.DatabaseContextOptions{})
+	context, err = db.NewDatabaseContext(ctx, "db2", base.GetTestBucket(t), false, db.DatabaseContextOptions{})
 	require.NoError(t, err)
-	defer context.Close()
+	defer context.Close(context.AddDatabaseLogContext(ctx))
 
 	// Validate that metrics still works with both db and db2 databases and that they have entries
 	resp, err = httpClient.Get(srv.URL + "/_metrics")
@@ -7758,6 +7780,7 @@ func TestUserHasDocAccessDocNotFound(t *testing.T) {
 		}},
 	})
 	defer rt.Close()
+	ctx := rt.Context()
 
 	resp := rt.SendAdminRequest("PUT", "/db/doc", `{"channels": ["A"]}`)
 	requireStatus(t, resp, http.StatusCreated)
@@ -7766,14 +7789,14 @@ func TestUserHasDocAccessDocNotFound(t *testing.T) {
 	database, err := db.CreateDatabase(rt.GetDatabase())
 	assert.NoError(t, err)
 
-	userHasDocAccess, err := db.UserHasDocAccess(database, "doc", revID)
+	userHasDocAccess, err := db.UserHasDocAccess(ctx, database, "doc", revID)
 	assert.NoError(t, err)
 	assert.True(t, userHasDocAccess)
 
 	err = rt.GetDatabase().Bucket.Delete("doc")
 	assert.NoError(t, err)
 
-	userHasDocAccess, err = db.UserHasDocAccess(database, "doc", revID)
+	userHasDocAccess, err = db.UserHasDocAccess(ctx, database, "doc", revID)
 	assert.NoError(t, err)
 	assert.False(t, userHasDocAccess)
 }

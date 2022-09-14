@@ -342,6 +342,7 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 	defer rt.Close()
 	bucket := rt.Bucket()
 	rt.GetDatabase().AllowEmptyPassword = true // So users don't have to have password set
+	ctx := rt.Context()
 
 	// Expected principle names that should exist on bucket after migration
 	expectedUsers := []string{
@@ -366,7 +367,7 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 			ExplicitChannels: base.SetOf("*"),
 		},
 	}
-	err := rt.ServerContext().installPrincipals(rt.GetDatabase(), existingUsers, "user")
+	err := rt.ServerContext().installPrincipals(ctx, rt.GetDatabase(), existingUsers, "user")
 	require.NoError(t, err)
 
 	existingRoles := map[string]*auth.PrincipalConfig{
@@ -379,7 +380,7 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 			ExplicitChannels: base.SetOf("*"),
 		},
 	}
-	err = rt.ServerContext().installPrincipals(rt.GetDatabase(), existingRoles, "role")
+	err = rt.ServerContext().installPrincipals(ctx, rt.GetDatabase(), existingRoles, "role")
 	require.NoError(t, err)
 
 	// Config to migrate to persistent config on bucket
@@ -422,7 +423,7 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 	// Copy behaviour of serverMainPersistentConfig - upgrade config, pass legacy users and roles in to addLegacyPrinciples (after server context is created)
 	_, _, users, roles, err := automaticConfigUpgrade(configPath)
 	require.NoError(t, err)
-	rt.ServerContext().addLegacyPrincipals(users, roles)
+	rt.ServerContext().addLegacyPrincipals(ctx, users, roles)
 
 	// Check that principles all exist on bucket
 	authenticator := auth.NewAuthenticator(bucket, nil, auth.DefaultAuthenticatorOptions())

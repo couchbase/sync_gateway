@@ -113,11 +113,12 @@ func TestAllDatabaseNames(t *testing.T) {
 	tb2 := base.GetTestBucket(t)
 	defer tb2.Close()
 
+	ctx := base.TestCtx(t)
 	serverConfig := &StartupConfig{
 		Bootstrap: BootstrapConfig{UseTLSServer: base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())), ServerTLSSkipVerify: base.BoolPtr(base.TestTLSSkipVerify())},
 		API:       APIConfig{CORS: &CORSConfig{}, AdminInterface: DefaultAdminInterface}}
-	serverContext := NewServerContext(serverConfig, false)
-	defer serverContext.Close()
+	serverContext := NewServerContext(ctx, serverConfig, false)
+	defer serverContext.Close(ctx)
 
 	xattrs := base.TestUseXattrs()
 	useViews := base.TestsDisableGSI()
@@ -129,7 +130,7 @@ func TestAllDatabaseNames(t *testing.T) {
 		EnableXattrs:       &xattrs,
 		UseViews:           &useViews,
 	}
-	_, err := serverContext.AddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig})
+	_, err := serverContext.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig})
 	assert.NoError(t, err, "No error while adding database to server context")
 	assert.Len(t, serverContext.AllDatabaseNames(), 1)
 	assert.Contains(t, serverContext.AllDatabaseNames(), "imdb1")
@@ -142,13 +143,13 @@ func TestAllDatabaseNames(t *testing.T) {
 		EnableXattrs:       &xattrs,
 		UseViews:           &useViews,
 	}
-	_, err = serverContext.AddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig})
+	_, err = serverContext.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig})
 	assert.NoError(t, err, "No error while adding database to server context")
 	assert.Len(t, serverContext.AllDatabaseNames(), 2)
 	assert.Contains(t, serverContext.AllDatabaseNames(), "imdb1")
 	assert.Contains(t, serverContext.AllDatabaseNames(), "imdb2")
 
-	status := serverContext.RemoveDatabase("imdb2")
+	status := serverContext.RemoveDatabase(ctx, "imdb2")
 	assert.True(t, status, "Database should be removed from server context")
 	assert.Len(t, serverContext.AllDatabaseNames(), 1)
 	assert.Contains(t, serverContext.AllDatabaseNames(), "imdb1")
@@ -156,16 +157,17 @@ func TestAllDatabaseNames(t *testing.T) {
 }
 
 func TestGetOrAddDatabaseFromConfig(t *testing.T) {
+	ctx := base.TestCtx(t)
 	serverConfig := &StartupConfig{API: APIConfig{CORS: &CORSConfig{}, AdminInterface: DefaultAdminInterface}}
-	serverContext := NewServerContext(serverConfig, false)
-	defer serverContext.Close()
+	serverContext := NewServerContext(ctx, serverConfig, false)
+	defer serverContext.Close(ctx)
 
 	oldRevExpirySeconds := uint32(600)
 	localDocExpirySecs := uint32(60 * 60 * 24 * 10) // 10 days in seconds
 
 	// Get or add database name from config without valid database name; throws 400 Illegal database name error
 	dbConfig := DbConfig{OldRevExpirySeconds: &oldRevExpirySeconds, LocalDocExpirySecs: &localDocExpirySecs}
-	dbContext, err := serverContext._getOrAddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig}, false, db.GetConnectToBucketFn(false))
+	dbContext, err := serverContext._getOrAddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig}, false, db.GetConnectToBucketFn(false))
 	assert.Nil(t, dbContext, "Can't create database context without a valid database name")
 	assert.Error(t, err, "It should throw 400 Illegal database name")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
@@ -184,7 +186,7 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 		BucketConfig:        BucketConfig{Server: &server, Bucket: &bucketName},
 	}
 
-	dbContext, err = serverContext._getOrAddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig}, false, db.GetConnectToBucketFn(false))
+	dbContext, err = serverContext._getOrAddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig}, false, db.GetConnectToBucketFn(false))
 	assert.Nil(t, dbContext, "Can't create database context from config with unrecognized value for import_docs")
 	assert.Error(t, err, "It should throw Unrecognized value for import_docs")
 
@@ -198,7 +200,7 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 		EnableXattrs:       &xattrs,
 		UseViews:           &useViews,
 	}
-	dbContext, err = serverContext.AddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig})
+	dbContext, err = serverContext.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig})
 
 	assert.NoError(t, err, "Unexpected error while adding database to server context")
 	assert.Equal(t, server, dbContext.BucketSpec.Server)
@@ -211,14 +213,14 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 		AutoImport:          false,
 	}
 
-	dbContext, err = serverContext._getOrAddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig}, false, db.GetConnectToBucketFn(false))
+	dbContext, err = serverContext._getOrAddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig}, false, db.GetConnectToBucketFn(false))
 	assert.Nil(t, dbContext, "Can't create database context with duplicate database name")
 	assert.Error(t, err, "It should throw 412 Duplicate database names")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusPreconditionFailed))
 
 	// Get or add database from config with duplicate database name and useExisting as true
 	// Existing database context should be returned
-	dbContext, err = serverContext._getOrAddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig}, true, db.GetConnectToBucketFn(false))
+	dbContext, err = serverContext._getOrAddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig}, true, db.GetConnectToBucketFn(false))
 	assert.NoError(t, err, "No error while trying to get the existing database name")
 	assert.Equal(t, server, dbContext.BucketSpec.Server)
 	assert.Equal(t, bucketName, dbContext.BucketSpec.BucketName)
@@ -230,13 +232,14 @@ func TestStatsLoggerStopped(t *testing.T) {
 	sc := DefaultStartupConfig("")
 
 	// Start up stats logger by creating server context
-	ctx := NewServerContext(&sc, false)
+	ctx := base.TestCtx(t)
+	svrctx := NewServerContext(ctx, &sc, false)
 
 	// Close server context which will send signal to close stats logger
-	ctx.Close()
+	svrctx.Close(ctx)
 
 	// ensure stats terminator is closed
-	_, ok := <-ctx.statsContext.terminator
+	_, ok := <-svrctx.statsContext.terminator
 	assert.False(t, ok)
 
 	// sleep a bit to allow the "Stopping stats logging goroutine" debug logging to be printed
@@ -290,7 +293,8 @@ func TestObtainManagementEndpointsFromServerContextWithX509(t *testing.T) {
 	tb, caCertPath, certPath, keyPath := setupX509Tests(t, true)
 	defer tb.Close()
 
-	ctx := NewServerContext(&StartupConfig{
+	ctx := base.TestCtx(t)
+	svrctx := NewServerContext(ctx, &StartupConfig{
 		Bootstrap: BootstrapConfig{
 			Server:       serverURL,
 			X509CertPath: certPath,
@@ -298,17 +302,17 @@ func TestObtainManagementEndpointsFromServerContextWithX509(t *testing.T) {
 			CACertPath:   caCertPath,
 		},
 	}, false)
-	defer ctx.Close()
+	svrctx.Close(ctx)
 
-	goCBAgent, err := ctx.initializeGoCBAgent()
+	goCBAgent, err := svrctx.initializeGoCBAgent(ctx)
 	require.NoError(t, err)
-	ctx.GoCBAgent = goCBAgent
+	svrctx.GoCBAgent = goCBAgent
 
-	noX509HttpClient, err := ctx.initializeNoX509HttpClient()
+	noX509HttpClient, err := svrctx.initializeNoX509HttpClient()
 	require.NoError(t, err)
-	ctx.NoX509HTTPClient = noX509HttpClient
+	svrctx.NoX509HTTPClient = noX509HttpClient
 
-	eps, _, err := ctx.ObtainManagementEndpointsAndHTTPClient()
+	eps, _, err := svrctx.ObtainManagementEndpointsAndHTTPClient()
 	assert.NoError(t, err)
 
 	baseSpec, err := connstr.Parse(base.UnitTestUrl())
@@ -352,16 +356,17 @@ func TestStartAndStopHTTPServers(t *testing.T) {
 	config.Bootstrap.Username = base.TestClusterUsername()
 	config.Bootstrap.Password = base.TestClusterPassword()
 
-	sc, err := setupServerContext(&config, false)
+	ctx := base.TestCtx(t)
+	sc, err := setupServerContext(ctx, &config, false)
 	require.NoError(t, err)
 
 	serveErr := make(chan error, 0)
 	go func() {
-		serveErr <- startServer(&config, sc)
+		serveErr <- startServer(ctx, &config, sc)
 	}()
 
 	defer func() {
-		sc.Close()
+		sc.Close(ctx)
 		require.NoError(t, <-serveErr)
 	}()
 
@@ -472,9 +477,10 @@ func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			startupConfig := &StartupConfig{Bootstrap: BootstrapConfig{ServerTLSSkipVerify: test.serverTLSSkipVerify}}
 			dbConfig := &DatabaseConfig{DbConfig: DbConfig{BucketConfig: BucketConfig{CACertPath: test.caCert}}}
-			spec, err := GetBucketSpec(dbConfig, startupConfig)
+			spec, err := GetBucketSpec(ctx, dbConfig, startupConfig)
 
 			assert.NoError(t, err)
 			assert.Equal(t, test.caCert, spec.CACertPath)
@@ -578,6 +584,7 @@ func TestServerContextSetupCollectionsSupport(t *testing.T) {
 		t.Skip("Only runs on datastores without collections support")
 	}
 
+	ctx := base.TestCtx(t)
 	serverConfig := &StartupConfig{
 		Bootstrap: BootstrapConfig{
 			UseTLSServer:        base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())),
@@ -585,8 +592,8 @@ func TestServerContextSetupCollectionsSupport(t *testing.T) {
 		},
 		API: APIConfig{CORS: &CORSConfig{}, AdminInterface: DefaultAdminInterface},
 	}
-	serverContext := NewServerContext(serverConfig, false)
-	defer serverContext.Close()
+	serverContext := NewServerContext(ctx, serverConfig, false)
+	defer serverContext.Close(ctx)
 
 	dbConfig := DbConfig{
 		BucketConfig: BucketConfig{
@@ -606,7 +613,7 @@ func TestServerContextSetupCollectionsSupport(t *testing.T) {
 			},
 		},
 	}
-	_, err := serverContext._getOrAddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig}, false, db.GetConnectToBucketFn(true))
+	_, err := serverContext._getOrAddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig}, false, db.GetConnectToBucketFn(true))
 	require.ErrorIs(t, err, errCollectionsUnsupported)
 }
 

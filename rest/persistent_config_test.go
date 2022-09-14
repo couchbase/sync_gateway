@@ -292,16 +292,17 @@ func TestImportFilterEndpoint(t *testing.T) {
 	serverErr := make(chan error, 0)
 
 	// Start SG with no databases
+	ctx := base.TestCtx(t)
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true)
+	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
 	defer func() {
-		sc.Close()
+		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
 	}()
 
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 

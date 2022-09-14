@@ -830,6 +830,7 @@ function(doc, oldDoc) {
 	rtConfig := RestTesterConfig{SyncFn: syncFunction}
 	var rt = NewRestTester(t, &rtConfig)
 	defer rt.Close()
+	ctx := rt.Context()
 
 	// Create bliptester that is connected as user1, with no access to channel ABC
 	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
@@ -849,7 +850,7 @@ function(doc, oldDoc) {
 
 	// Set up a ChangeWaiter for this test, to block until the user change notification happens
 	dbc := rt.GetDatabase()
-	user1, err := dbc.Authenticator(base.TestCtx(t)).GetUser("user1")
+	user1, err := dbc.Authenticator(ctx).GetUser("user1")
 	require.NoError(t, err)
 
 	userDb, err := db.GetDatabase(dbc, user1)
@@ -1324,6 +1325,7 @@ func TestReloadUser(t *testing.T) {
 	rtConfig := RestTesterConfig{SyncFn: syncFn}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
+	ctx := rt.Context()
 	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
 		connectingUsername: "user1",
 		connectingPassword: "1234",
@@ -1333,7 +1335,7 @@ func TestReloadUser(t *testing.T) {
 
 	// Set up a ChangeWaiter for this test, to block until the user change notification happens
 	dbc := rt.GetDatabase()
-	user1, err := dbc.Authenticator(base.TestCtx(t)).GetUser("user1")
+	user1, err := dbc.Authenticator(ctx).GetUser("user1")
 	require.NoError(t, err)
 
 	userDb, err := db.GetDatabase(dbc, user1)
@@ -1955,6 +1957,8 @@ func TestGetRemovedDoc(t *testing.T) {
 func TestMissingNoRev(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
 	defer rt.Close()
+	ctx := rt.Context()
+
 	bt, err := NewBlipTesterFromSpecWithRT(t, nil, rt)
 	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
@@ -1971,7 +1975,7 @@ func TestMissingNoRev(t *testing.T) {
 	}
 
 	// Get a reference to the database
-	targetDbContext, err := rt.ServerContext().GetDatabase("db")
+	targetDbContext, err := rt.ServerContext().GetDatabase(ctx, "db")
 	assert.NoError(t, err, "failed")
 	targetDb, err := db.GetDatabase(targetDbContext, nil)
 	assert.NoError(t, err, "failed")
@@ -1983,7 +1987,7 @@ func TestMissingNoRev(t *testing.T) {
 
 	// Purge one doc
 	doc0Id := fmt.Sprintf("doc-%d", 0)
-	err = targetDb.Purge(doc0Id)
+	err = targetDb.Purge(ctx, doc0Id)
 	assert.NoError(t, err, "failed")
 
 	// Flush rev cache
@@ -4241,10 +4245,11 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 
 	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()
+	activeCtx := activeRT.Context()
 
 	remoteURL, _ := url.Parse(remoteURLString)
 
-	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+	ar := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
 		ID:                  t.Name(),
 		Direction:           db.ActiveReplicatorTypePull,
 		ActiveDB:            &db.Database{DatabaseContext: activeRT.GetDatabase()},
@@ -4261,7 +4266,7 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 
 	rev := remoteRT.createDoc(t, "doc")
 
-	assert.NoError(t, ar.Start())
+	assert.NoError(t, ar.Start(activeCtx))
 	defer func() { require.NoError(t, ar.Stop()) }()
 
 	err := activeRT.WaitForPendingChanges()

@@ -11,6 +11,8 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
+
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	_ "github.com/robertkrimen/otto/underscore"
@@ -39,11 +41,11 @@ type UserFunction struct {
 //////// INITIALIZATION:
 
 // Compiles the JS functions in a UserFunctionMap, returning UserFunctions.
-func compileUserFunctions(config UserFunctionConfigMap) (UserFunctions, error) {
+func compileUserFunctions(ctx context.Context, config UserFunctionConfigMap) (UserFunctions, error) {
 	fns := UserFunctions{}
 	var multiError *base.MultiError
 	for name, fnConfig := range config {
-		compiled, err := newUserFunctionJSServer(name, "user function", "args, context", fnConfig.SourceCode)
+		compiled, err := newUserFunctionJSServer(ctx, name, "user function", "args, context", fnConfig.SourceCode)
 		if err == nil {
 			fns[name] = UserFunction{
 				UserFunctionConfig: fnConfig,
@@ -56,16 +58,16 @@ func compileUserFunctions(config UserFunctionConfigMap) (UserFunctions, error) {
 	return fns, multiError.ErrorOrNil()
 }
 
-func ValidateUserFunctions(config UserFunctionConfigMap) error {
-	_, err := compileUserFunctions(config)
+func ValidateUserFunctions(ctx context.Context, config UserFunctionConfigMap) error {
+	_, err := compileUserFunctions(ctx, config)
 	return err
 }
 
 //////// RUNNING A USER FUNCTION:
 
 // Invokes a JavaScript function by name.
-func (db *Database) CallUserFunction(name string, args map[string]interface{}, mutationAllowed bool) (interface{}, error) {
-	if err := db.CheckTimeout(); err != nil {
+func (db *Database) CallUserFunction(ctx context.Context, name string, args map[string]interface{}, mutationAllowed bool) (interface{}, error) {
+	if err := db.CheckTimeout(ctx); err != nil {
 		return nil, err
 	}
 	// Look up the function by name:
@@ -90,6 +92,6 @@ func (db *Database) CallUserFunction(name string, args map[string]interface{}, m
 	// Run the function:
 	return fn.compiled.WithTask(func(task sgbucket.JSServerTask) (result interface{}, err error) {
 		runner := task.(*userJSRunner)
-		return runner.CallWithDB(db, mutationAllowed, args, newUserFunctionJSContext(db))
+		return runner.CallWithDB(ctx, db, mutationAllowed, args, newUserFunctionJSContext(db))
 	})
 }

@@ -362,7 +362,7 @@ func (rc *ReplicationConfig) Redacted() *ReplicationConfig {
 // sgReplicateManager should be used for all interactions with the stored cluster definition.
 type sgReplicateManager struct {
 	cfg                        cbgt.Cfg                      // Key-value store implementation
-	loggingCtx                 context.Context               // logging context for manager operations
+	loggingCtx                 context.Context               // logging context for manager operations	// TODO: eval removing or adding custom LogContext
 	heartbeatListener          *ReplicationHeartbeatListener // node heartbeat listener for replication distribution
 	localNodeUUID              string                        // nodeUUID for this SG node
 	activeReplicators          map[string]*ActiveReplicator  // currently assigned replications
@@ -381,7 +381,7 @@ type sgReplicateManager struct {
 //     stopped -> resetting
 //     resetting -> stopped
 //     running -> stopped
-func (ar *ActiveReplicator) alignState(targetState string) error {
+func (ar *ActiveReplicator) alignState(ctx context.Context, targetState string) error {
 	if ar == nil {
 		return nil
 	}
@@ -393,7 +393,7 @@ func (ar *ActiveReplicator) alignState(targetState string) error {
 
 	switch targetState {
 	case ReplicationStateStopped:
-		base.InfofCtx(context.TODO(), base.KeyReplicate, "Stopping replication %s - previous state %s", ar.ID, currentState)
+		base.InfofCtx(ctx, base.KeyReplicate, "Stopping replication %s - previous state %s", ar.ID, currentState)
 		stopErr := ar.Stop()
 		if stopErr != nil {
 			return fmt.Errorf("Unable to gracefully stop active replicator for replication %s: %v", ar.ID, stopErr)
@@ -403,8 +403,8 @@ func (ar *ActiveReplicator) alignState(targetState string) error {
 			// a replicator in a reconnecting state is already running
 			return nil
 		}
-		base.InfofCtx(context.TODO(), base.KeyReplicate, "Starting replication %s - previous state %s", ar.ID, currentState)
-		startErr := ar.Start()
+		base.InfofCtx(ctx, base.KeyReplicate, "Starting replication %s - previous state %s", ar.ID, currentState)
+		startErr := ar.Start(ctx)
 		if startErr != nil {
 			return fmt.Errorf("Unable to start active replicator for replication %s: %v", ar.ID, startErr)
 		}
@@ -412,7 +412,7 @@ func (ar *ActiveReplicator) alignState(targetState string) error {
 		if currentState != ReplicationStateStopped {
 			return fmt.Errorf("Replication must be stopped before it can be reset")
 		}
-		base.InfofCtx(context.TODO(), base.KeyReplicate, "Resetting replication %s - previous state %s", ar.ID, currentState)
+		base.InfofCtx(ctx, base.KeyReplicate, "Resetting replication %s - previous state %s", ar.ID, currentState)
 		resetErr := ar.Reset()
 		if resetErr != nil {
 			return fmt.Errorf("Unable to reset active replicator for replication %s: %v", ar.ID, resetErr)
@@ -422,7 +422,7 @@ func (ar *ActiveReplicator) alignState(targetState string) error {
 
 }
 
-func (dbc *DatabaseContext) StartReplications() {
+func (dbc *DatabaseContext) StartReplications(ctx context.Context) {
 	if dbc.Options.SGReplicateOptions.Enabled {
 		base.DebugfCtx(dbc.SGReplicateMgr.loggingCtx, base.KeyReplicate, "Will start Inter-Sync Gateway Replications for database %q", dbc.Name)
 		dbc.SGReplicateMgr.closeWg.Add(1)
@@ -442,24 +442,24 @@ func (dbc *DatabaseContext) StartReplications() {
 				return
 			}
 
-			err := dbc.SGReplicateMgr.StartReplications()
+			err := dbc.SGReplicateMgr.StartReplications(dbc.SGReplicateMgr.loggingCtx) // TODO: use dbc.SGReplicateMgr.loggingCtx, if that is not removed ?
 			if err != nil {
 				base.ErrorfCtx(dbc.SGReplicateMgr.loggingCtx, "Error starting %q Inter-Sync Gateway Replications: %v", dbc.Name, err)
 			}
 		}()
 	} else {
-		base.DebugfCtx(context.TODO(), base.KeyReplicate, "Not starting Inter-Sync Gateway Replications for database %q - is disabled", dbc.Name)
+		base.DebugfCtx(ctx, base.KeyReplicate, "Not starting Inter-Sync Gateway Replications for database %q - is disabled", dbc.Name)
 	}
 }
 
-func NewSGReplicateManager(dbContext *DatabaseContext, cfg cbgt.Cfg) (*sgReplicateManager, error) {
+func NewSGReplicateManager(ctx context.Context, dbContext *DatabaseContext, cfg cbgt.Cfg) (*sgReplicateManager, error) {
 	if cfg == nil {
 		return nil, errors.New("Cfg must be provided for SGReplicateManager")
 	}
 
 	return &sgReplicateManager{
 		cfg:                        cfg,
-		loggingCtx:                 base.LogContextWith(context.Background(), &base.LogContext{CorrelationID: sgrClusterMgrContextID + dbContext.Name}),
+		loggingCtx:                 base.LogContextWith(ctx, &base.LogContext{CorrelationID: sgrClusterMgrContextID + dbContext.Name}),
 		clusterUpdateTerminator:    make(chan struct{}),
 		clusterSubscribeTerminator: make(chan struct{}),
 		dbContext:                  dbContext,
@@ -496,7 +496,7 @@ func (m *sgReplicateManager) StartLocalNode(nodeUUID string, heartbeater base.He
 
 // StartReplications performs an initial retrieval of the cluster config, starts any replications
 // assigned to this node, and starts the process to monitor future changes to the cluster config.
-func (m *sgReplicateManager) StartReplications() error {
+func (m *sgReplicateManager) StartReplications(ctx context.Context) error {
 
 	replications, err := m.GetReplications()
 	if err != nil {
@@ -514,13 +514,13 @@ func (m *sgReplicateManager) StartReplications() error {
 			m.activeReplicators[replicationID] = activeReplicator
 			m.activeReplicatorsLock.Unlock()
 			if replicationCfg.TargetState == "" || replicationCfg.TargetState == ReplicationStateRunning {
-				if startErr := activeReplicator.Start(); startErr != nil {
+				if startErr := activeReplicator.Start(ctx); startErr != nil {
 					base.WarnfCtx(m.loggingCtx, "Unable to start replication %s: %v", replicationID, startErr)
 				}
 			}
 		}
 	}
-	return m.SubscribeCfgChanges()
+	return m.SubscribeCfgChanges(ctx)
 }
 
 // NewActiveReplicatorConfig converts an incoming ReplicationCfg to an ActiveReplicatorConfig
@@ -664,7 +664,7 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 	// disable recovered panic reporting (test only)
 	rc.reportHandlerPanicsOnStop = base.BoolPtr(false)
 
-	replicator = NewActiveReplicator(rc)
+	replicator = NewActiveReplicator(m.loggingCtx, rc)
 
 	return replicator, nil
 }
@@ -706,7 +706,7 @@ func (m *sgReplicateManager) Stop() {
 
 // RefreshReplicationCfg is called when the cfg changes.  Checks whether replications
 // have been added to or removed from this node
-func (m *sgReplicateManager) RefreshReplicationCfg() error {
+func (m *sgReplicateManager) RefreshReplicationCfg(ctx context.Context) error {
 
 	base.InfofCtx(m.loggingCtx, base.KeyCluster, "Replication definitions changed - refreshing...")
 	configReplications, err := m.GetReplications()
@@ -752,7 +752,7 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 				}
 			}
 
-			stateErr := activeReplicator.alignState(replicationCfg.TargetState)
+			stateErr := activeReplicator.alignState(ctx, replicationCfg.TargetState)
 			if stateErr != nil {
 				base.WarnfCtx(m.loggingCtx, "Error updating active replication %s to state %s: %v", replicationID, replicationCfg.TargetState, stateErr)
 			}
@@ -782,7 +782,7 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 
 				if replicationCfg.TargetState == "" || replicationCfg.TargetState == ReplicationStateRunning {
 					base.InfofCtx(m.loggingCtx, base.KeyReplicate, "Starting newly assigned replication %s", replicationID)
-					if startErr := replicator.Start(); startErr != nil {
+					if startErr := replicator.Start(ctx); startErr != nil {
 						base.WarnfCtx(m.loggingCtx, "Unable to start replication after refresh %s: %v", replicationID, startErr)
 					}
 				}
@@ -792,7 +792,7 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 	return nil
 }
 
-func (m *sgReplicateManager) SubscribeCfgChanges() error {
+func (m *sgReplicateManager) SubscribeCfgChanges(ctx context.Context) error {
 	cfgEvents := make(chan cbgt.CfgEvent)
 
 	err := m.cfg.Subscribe(cfgKeySGRCluster, cfgEvents)
@@ -810,7 +810,7 @@ func (m *sgReplicateManager) SubscribeCfgChanges() error {
 				if !ok {
 					return
 				}
-				err := m.RefreshReplicationCfg()
+				err := m.RefreshReplicationCfg(ctx)
 				if err != nil {
 					base.WarnfCtx(m.loggingCtx, "Error while updating replications based on latest cfg: %v", err)
 				}

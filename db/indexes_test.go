@@ -40,8 +40,8 @@ func TestInitializeIndexes(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(fmt.Sprintf("xattrs=%v collections=%v", test.xattrs, test.collections), func(t *testing.T) {
-			db := setupTestDBWithOptions(t, DatabaseContextOptions{EnableXattr: test.xattrs})
-			defer db.Close()
+			db, ctx := setupTestDBWithOptions(t, DatabaseContextOptions{EnableXattr: test.xattrs})
+			defer db.Close(ctx)
 
 			var b base.Bucket = db.Bucket
 			if test.collections {
@@ -116,8 +116,8 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
-	db := setupTestDB(t)
-	defer db.Close()
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 
 	require.True(t, db.Bucket.IsSupported(sgbucket.DataStoreFeatureN1ql))
 
@@ -164,8 +164,8 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
-	db := setupTestDB(t)
-	defer db.Close()
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 
 	require.True(t, db.Bucket.IsSupported(sgbucket.DataStoreFeatureN1ql))
 	n1qlStore, ok := base.AsN1QLStore(db.Bucket)
@@ -210,8 +210,8 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
-	db := setupTestDB(t)
-	defer db.Close()
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 
 	copiedIndexes := copySGIndexes(sgIndexes)
 
@@ -266,8 +266,8 @@ func TestRemoveObsoleteIndexOnError(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
-	db := setupTestDB(t)
-	defer db.Close()
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 
 	leakyBucket := base.NewLeakyBucket(db.Bucket, base.LeakyBucketConfig{DropIndexErrorNames: []string{"sg_access_1", "sg_access_x1"}})
 	copiedIndexes := copySGIndexes(sgIndexes)

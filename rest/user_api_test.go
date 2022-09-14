@@ -302,6 +302,7 @@ func TestUserAPI(t *testing.T) {
 	// PUT a user
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
+	ctx := rt.Context()
 
 	requireStatus(t, rt.SendAdminRequest("GET", "/db/_user/snej", ""), 404)
 	response := rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)
@@ -324,7 +325,7 @@ func TestUserAPI(t *testing.T) {
 	assert.Equal(t, `["snej"]`, string(response.Body.Bytes()))
 
 	// Check that the actual User object is correct:
-	user, _ := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t)).GetUser("snej")
+	user, _ := rt.ServerContext().Database(ctx, "db").Authenticator(ctx).GetUser("snej")
 	assert.Equal(t, "snej", user.Name())
 	assert.Equal(t, "jens@couchbase.com", user.Email())
 	assert.Equal(t, channels.TimedSet{"bar": channels.NewVbSimpleSequence(0x1), "foo": channels.NewVbSimpleSequence(0x1)}, user.ExplicitChannels())
@@ -334,7 +335,7 @@ func TestUserAPI(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"123", "admin_channels":["foo", "bar"]}`)
 	requireStatus(t, response, 200)
 
-	user, _ = rt.ServerContext().Database("db").Authenticator(base.TestCtx(t)).GetUser("snej")
+	user, _ = rt.ServerContext().Database(ctx, "db").Authenticator(ctx).GetUser("snej")
 	assert.True(t, user.Authenticate("123"))
 
 	// DELETE the user

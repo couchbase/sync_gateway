@@ -388,7 +388,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	// Create a distinct database instance for changes, to avoid races between reloadUser invocation in changes.go
 	// and BlipSyncContext user access.
 	changesDb := bh.copyContextDatabase()
-	_, forceClose := generateBlipSyncChanges(changesDb, channelSet, options, opts.docIDs, func(changes []*ChangeEntry) error {
+	_, forceClose := generateBlipSyncChanges(bh.loggingCtx, changesDb, channelSet, options, opts.docIDs, func(changes []*ChangeEntry) error {
 		base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Sending %d changes", len(changes))
 		for _, change := range changes {
 			if !strings.HasPrefix(change.ID, "_") {
@@ -405,7 +405,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 						}
 
 						// If the user has access to the doc through another channel don't send change
-						userHasAccessToDoc, err := UserHasDocAccess(bh.collection, change.ID, item["rev"])
+						userHasAccessToDoc, err := UserHasDocAccess(bh.loggingCtx, bh.collection, change.ID, item["rev"])
 						if err == nil && userHasAccessToDoc {
 							continue
 						}
@@ -599,7 +599,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	for _, change := range changeList {
 		docID := change[1].(string)
 		revID := change[2].(string)
-		missing, possible := bh.collection.RevDiff(docID, []string{revID})
+		missing, possible := bh.collection.RevDiff(bh.loggingCtx, docID, []string{revID})
 		if nWritten > 0 {
 			output.Write([]byte(","))
 		}
@@ -625,7 +625,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 
 		if bh.purgeOnRemoval && bh.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV3 &&
 			(deletedFlags.HasFlag(changesDeletedFlagRevoked) || deletedFlags.HasFlag(changesDeletedFlagRemoved)) {
-			err := bh.collection.Purge(docID)
+			err := bh.collection.Purge(bh.loggingCtx, docID)
 			if err != nil {
 				base.WarnfCtx(bh.loggingCtx, "Failed to purge document: %v", err)
 			}
@@ -724,7 +724,7 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 		if len(change) > 2 {
 			parentRevID = change[2].(string)
 		}
-		status, currentRev := bh.collection.CheckProposedRev(docID, revID, parentRevID)
+		status, currentRev := bh.collection.CheckProposedRev(bh.loggingCtx, docID, revID, parentRevID)
 		if status != 0 {
 			// Skip writing trailing zeroes; but if we write a number afterwards we have to catch up
 			if nWritten > 0 {
@@ -769,7 +769,7 @@ func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID str
 
 	bsc.replicationStats.SendRevDeltaRequestedCount.Add(1)
 
-	revDelta, redactedRev, err := handleChangesResponseDb.GetDelta(docID, deltaSrcRevID, revID)
+	revDelta, redactedRev, err := handleChangesResponseDb.GetDelta(bsc.loggingCtx, docID, deltaSrcRevID, revID)
 	if err == ErrForbidden { // nolint: gocritic // can't convert if/else if to switch since base.IsFleeceDeltaError is not switchable
 		return err
 	} else if base.IsFleeceDeltaError(err) {
@@ -885,7 +885,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		}
 		if removed, ok := body[BodyRemoved].(bool); ok && removed {
 			base.InfofCtx(bh.loggingCtx, base.KeySync, "Purging doc %v - removed at rev %v", base.UD(docID), revID)
-			if err := bh.collection.Purge(docID); err != nil {
+			if err := bh.collection.Purge(bh.loggingCtx, docID); err != nil {
 				return err
 			}
 			stats.docsPurgedCount.Add(1)
@@ -918,7 +918,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		//       while retrieving deltaSrcRevID.  Couchbase Lite replication guarantees client has access to deltaSrcRevID,
 		//       due to no-conflict write restriction, but we still need to enforce security here to prevent leaking data about previous
 		//       revisions to malicious actors (in the scenario where that user has write but not read access).
-		deltaSrcRev, err := bh.collection.GetRev(docID, deltaSrcRevID, false, nil)
+		deltaSrcRev, err := bh.collection.GetRev(bh.loggingCtx, docID, deltaSrcRevID, false, nil)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Can't fetch doc %s for deltaSrc=%s %v", base.UD(docID), deltaSrcRevID, err)
 		}
@@ -1091,9 +1091,9 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	// bh.conflictResolver != nil represents an active SGR2 and BLIPClientTypeSGR2 represents a passive SGR2
 	forceAllowConflictingTombstone := newDoc.Deleted && (bh.conflictResolver != nil || bh.clientType == BLIPClientTypeSGR2)
 	if bh.conflictResolver != nil {
-		_, _, err = bh.collection.PutExistingRevWithConflictResolution(newDoc, history, true, bh.conflictResolver, forceAllowConflictingTombstone, rawBucketDoc)
+		_, _, err = bh.collection.PutExistingRevWithConflictResolution(bh.loggingCtx, newDoc, history, true, bh.conflictResolver, forceAllowConflictingTombstone, rawBucketDoc)
 	} else {
-		_, _, err = bh.collection.PutExistingRev(newDoc, history, revNoConflicts, forceAllowConflictingTombstone, rawBucketDoc)
+		_, _, err = bh.collection.PutExistingRev(bh.loggingCtx, newDoc, history, revNoConflicts, forceAllowConflictingTombstone, rawBucketDoc)
 	}
 	if err != nil {
 		return err

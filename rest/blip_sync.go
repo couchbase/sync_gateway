@@ -24,7 +24,7 @@ import (
 func (h *handler) handleBLIPSync() error {
 	// Exit early when the connection can't be switched to websocket protocol.
 	if _, ok := h.response.(http.Hijacker); !ok {
-		base.DebugfCtx(h.db.Ctx, base.KeyHTTP, "Non-upgradable request received for BLIP+WebSocket protocol")
+		base.DebugfCtx(h.ctx(), base.KeyHTTP, "Non-upgradable request received for BLIP+WebSocket protocol")
 		return base.HTTPErrorf(http.StatusUpgradeRequired, "Can't upgrade this request to websocket connection")
 	}
 
@@ -37,16 +37,16 @@ func (h *handler) handleBLIPSync() error {
 	}
 
 	// Create a BLIP context:
-	blipContext, err := db.NewSGBlipContext(h.db.Ctx, "")
+	blipContext, err := db.NewSGBlipContext(h.ctx(), "")
 	if err != nil {
 		return err
 	}
 
 	// Overwrite the existing logging context with the blip context ID
-	h.db.Ctx = base.LogContextWith(h.db.Ctx, &base.LogContext{CorrelationID: base.FormatBlipContextID(blipContext.ID)})
+	h.rqCtx = base.LogContextWith(h.ctx(), &base.LogContext{CorrelationID: base.FormatBlipContextID(blipContext.ID)})
 
 	// Create a new BlipSyncContext attached to the given blipContext.
-	ctx := db.NewBlipSyncContext(blipContext, h.db, h.formatSerialNumber(), db.BlipSyncStatsForCBL(h.db.DbStats))
+	ctx := db.NewBlipSyncContext(h.rqCtx, blipContext, h.db, h.formatSerialNumber(), db.BlipSyncStatsForCBL(h.db.DbStats))
 	defer ctx.Close()
 
 	if string(db.BLIPClientTypeSGR2) == h.getQuery(db.BLIPSyncClientTypeQueryParam) {
@@ -62,7 +62,7 @@ func (h *handler) handleBLIPSync() error {
 		return http.HandlerFunc(
 			func(w http.ResponseWriter, r *http.Request) {
 				h.logStatus(http.StatusSwitchingProtocols, fmt.Sprintf("[%s] Upgraded to WebSocket protocol %s+%s%s", blipContext.ID, blip.WebSocketSubProtocolPrefix, blipContext.ActiveSubprotocol(), h.formattedEffectiveUserName()))
-				defer base.InfofCtx(h.db.Ctx, base.KeyHTTP, "%s:    --> BLIP+WebSocket connection closed", h.formatSerialNumber())
+				defer base.InfofCtx(h.ctx(), base.KeyHTTP, "%s:    --> BLIP+WebSocket connection closed", h.formatSerialNumber())
 				next.ServeHTTP(w, r)
 			})
 	}
