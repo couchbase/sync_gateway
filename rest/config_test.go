@@ -935,7 +935,6 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 
 func TestValidateServerContextSharedBuckets(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
-	//ctx := base.TestCtx(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Skipping this test; requires Couchbase Bucket")
 	}

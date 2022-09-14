@@ -112,7 +112,6 @@ func TestAllDatabaseNames(t *testing.T) {
 	defer tb1.Close()
 	tb2 := base.GetTestBucket(t)
 	defer tb2.Close()
-	//ctx := base.TestCtx(t)
 
 	ctx := base.TestCtx(t)
 	serverConfig := &StartupConfig{
@@ -578,7 +577,6 @@ func TestServerContextSetupCollectionsSupport(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Requires Couchbase Server")
 	}
-	//ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 	if tb.IsSupported(sgbucket.DataStoreFeatureCollections) {

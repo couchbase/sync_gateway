@@ -2310,8 +2310,8 @@ func TestHandleGetRevTree(t *testing.T) {
 
 	// Create three revisions of the user foo with different status and updated_at values;
 	reqBodyJson := `{"new_edits": false, "docs": [
-    	{"_id": "foo", "type": "user", "updated_at": "2016-06-24T17:37:49.715Z", "status": "online", "_rev": "1-123"},
-    	{"_id": "foo", "type": "user", "updated_at": "2016-06-26T17:37:49.715Z", "status": "offline", "_rev": "1-456"},
+    	{"_id": "foo", "type": "user", "updated_at": "2016-06-24T17:37:49.715Z", "status": "online", "_rev": "1-123"}, 
+    	{"_id": "foo", "type": "user", "updated_at": "2016-06-26T17:37:49.715Z", "status": "offline", "_rev": "1-456"}, 
     	{"_id": "foo", "type": "user", "updated_at": "2016-06-25T17:37:49.715Z", "status": "offline", "_rev": "1-789"}]}`
 
 	resp := rt.SendAdminRequest(http.MethodPost, "/db/_bulk_docs", reqBodyJson)
@@ -3021,32 +3021,32 @@ func TestConfigEndpoint(t *testing.T) {
 		{
 			Name: "Enable All File Loggers",
 			Config: `
-				{
-					"logging": {
-						"console": {
-							"log_level": "info",
-							"log_keys": ["*"]
-						},
-						"error": {
-							"enabled": true
-						},
-						"warn": {
-							"enabled": true
-						},
-						"info": {
-							"enabled": true
-						},
-						"debug": {
-							"enabled": true
-						},
-						"trace": {
-							"enabled": true
-						},
-						"stats": {
-							"enabled": true
-						}
+			{
+				"logging": {
+					"console": {
+						"log_level": "info",
+						"log_keys": ["*"]
+					},
+					"error": {
+						"enabled": true
+					},
+					"warn": {
+						"enabled": true
+					},
+					"info": {
+						"enabled": true
+					},
+					"debug": {
+						"enabled": true
+					},
+					"trace": {
+						"enabled": true
+					},
+					"stats": {
+						"enabled": true
 					}
-				}`,
+				}
+			}`,
 			ConsoleLevel:   base.LevelInfo,
 			ConsoleLogKeys: []string{"*"},
 			ExpectError:    false,
@@ -3056,7 +3056,6 @@ func TestConfigEndpoint(t *testing.T) {
 			},
 		},
 	}
-	//ctx := base.TestCtx(t)
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
 			ctx := base.TestCtx(t)
@@ -3171,8 +3170,6 @@ func TestInitialStartupConfig(t *testing.T) {
 
 func TestIncludeRuntimeStartupConfig(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-	//ctx, cancel := context.WithCancel(context.Background())
-	//defer cancel()
 	ctx := base.TestCtx(t)
 	base.InitializeMemoryLoggers()
 	tempDir := os.TempDir()
@@ -3619,16 +3616,21 @@ func TestNotExistentDBRequest(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
+	ctx := base.TestCtx(t)
+	config := bootstrapStartupConfigForTest(t)
+	err := config.SetupAndValidateLogging(ctx)
+	assert.NoError(t, err)
+	//rt := NewRestTester(t, &RestTesterConfig{adminInterfaceAuthentication: true})
 
 	rt := NewRestTester(t, &RestTesterConfig{AdminInterfaceAuthentication: true})
 	defer rt.Close()
-	fmt.Println("Getts here")
+
 	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
-	fmt.Println("past server context")
+
 	MakeUser(t, httpClient, eps[0], "random", "password", nil)
 	defer DeleteUser(t, httpClient, eps[0], "random")
-	fmt.Println("past delete user")
+
 	// Request to non-existent db with valid credentials
 	resp := rt.SendAdminRequestWithAuth("PUT", "/dbx/_config", "", "random", "password")
 	RequireStatus(t, resp, http.StatusForbidden)
@@ -3780,6 +3782,11 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 }
 
 func TestDbOfflineConfigLegacy(t *testing.T) {
+	ctx := base.TestCtx(t)
+	config := bootstrapStartupConfigForTest(t)
+	err := config.SetupAndValidateLogging(ctx)
+	assert.NoError(t, err)
+
 	rt := NewRestTester(t, nil)
 	bucket := rt.Bucket()
 	defer rt.Close()
@@ -4223,6 +4230,11 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 
 // Regression test for CBG-2119 - ensure that the disable_password_auth bool field is handled correctly both when set as true and as false
 func TestDisablePasswordAuthThroughAdminAPI(t *testing.T) {
+	ctx := base.TestCtx(t)
+	config := bootstrapStartupConfigForTest(t)
+	err := config.SetupAndValidateLogging(ctx)
+	assert.NoError(t, err)
+
 	rt := NewRestTester(t, &RestTesterConfig{})
 	defer rt.Close()
 
@@ -4243,6 +4255,10 @@ func TestGroupIDReplications(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	ctx := base.TestCtx(t)
+	config := bootstrapStartupConfigForTest(t)
+	err := config.SetupAndValidateLogging(ctx)
+	assert.NoError(t, err)
 
 	// Create test buckets to replicate between
 	passiveBucket := base.GetTestBucket(t)
@@ -4357,6 +4373,11 @@ func TestDeleteDatabasePointingAtSameBucket(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server with xattrs")
 	}
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
+	ctx := base.TestCtx(t)
+	config := bootstrapStartupConfigForTest(t)
+	err := config.SetupAndValidateLogging(ctx)
+	assert.NoError(t, err)
+
 	tb := base.GetTestBucket(t)
 	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb})
 	defer rt.Close()
@@ -4442,6 +4463,11 @@ func TestSpecifyUserDocsToReplicate(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.direction, func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			config := bootstrapStartupConfigForTest(t)
+			err := config.SetupAndValidateLogging(ctx)
+			assert.NoError(t, err)
+
 			replName := test.direction
 			syncFunc := `
 function (doc) {
@@ -4510,7 +4536,7 @@ function (doc) {
 			resp := senderRT.SendAdminRequest("POST", "/db/_bulk_docs", bulkDocsBody)
 			RequireStatus(t, resp, http.StatusCreated)
 
-			err := senderRT.WaitForPendingChanges()
+			err = senderRT.WaitForPendingChanges()
 			require.NoError(t, err)
 
 			// Replicate just alices docs
@@ -4586,6 +4612,10 @@ function (doc) {
 // This should log a deprecation notice.
 func TestReplicatorDeprecatedCredentials(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
+	ctx := base.TestCtx(t)
+	cfg := bootstrapStartupConfigForTest(t)
+	err := cfg.SetupAndValidateLogging(ctx)
+	assert.NoError(t, err)
 
 	passiveRT := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{
 		DbConfig: DbConfig{
@@ -4650,6 +4680,10 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 // CBG-1581: Ensure activeReplicatorCommon does final checkpoint on stop/disconnect
 func TestReplicatorCheckpointOnStop(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
+	ctx := base.TestCtx(t)
+	cfg := bootstrapStartupConfigForTest(t)
+	err := cfg.SetupAndValidateLogging(ctx)
+	assert.NoError(t, err)
 
 	passiveRT := NewRestTester(t, nil)
 	defer passiveRT.Close()
@@ -4773,6 +4807,10 @@ func TestApiInternalPropertiesHandling(t *testing.T) {
 			},
 		},
 	}
+	ctx := base.TestCtx(t)
+	config := bootstrapStartupConfigForTest(t)
+	err := config.SetupAndValidateLogging(ctx)
+	assert.NoError(t, err)
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -4856,6 +4894,10 @@ func TestPutIDRevMatchBody(t *testing.T) {
 			expectError: false,
 		},
 	}
+	ctx := base.TestCtx(t)
+	config := bootstrapStartupConfigForTest(t)
+	err := config.SetupAndValidateLogging(ctx)
+	assert.NoError(t, err)
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -4890,6 +4932,11 @@ func TestPutIDRevMatchBody(t *testing.T) {
 }
 
 func TestPublicChanGuestAccess(t *testing.T) {
+	ctx := base.TestCtx(t)
+	config := bootstrapStartupConfigForTest(t)
+	err := config.SetupAndValidateLogging(ctx)
+	assert.NoError(t, err)
+
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Guest: &auth.PrincipalConfig{
@@ -4970,6 +5017,11 @@ func TestTombstoneCompactionPurgeInterval(t *testing.T) {
 			expectedPurgeIntervalAfterCompact: time.Hour * 24,
 		},
 	}
+	ctx := base.TestCtx(t)
+	config := bootstrapStartupConfigForTest(t)
+	err := config.SetupAndValidateLogging(ctx)
+	assert.NoError(t, err)
+
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	dbc := rt.GetDatabase()
@@ -5007,6 +5059,10 @@ func TestResyncPersistence(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
+	ctx := base.TestCtx(t)
+	config := bootstrapStartupConfigForTest(t)
+	err := config.SetupAndValidateLogging(ctx)
+	assert.NoError(t, err)
 
 	tb := base.GetTestBucket(t)
 	noCloseTB := tb.NoCloseClone()
@@ -5039,7 +5095,7 @@ func TestResyncPersistence(t *testing.T) {
 
 	// Wait for resync to complete
 	var resyncManagerStatus db.ResyncManagerResponse
-	err := rt1.WaitForCondition(func() bool {
+	err = rt1.WaitForCondition(func() bool {
 		resp = rt1.SendAdminRequest("GET", "/db/_resync", "")
 		err := json.Unmarshal(resp.BodyBytes(), &resyncManagerStatus)
 		assert.NoError(t, err)
