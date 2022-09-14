@@ -784,8 +784,8 @@ func (dbCtx *DatabaseContext) FlushChannelCache(ctx context.Context) error {
 }
 
 // Removes previous versions of Sync Gateway's design docs found on the server
-func (context *DatabaseContext) RemoveObsoleteDesignDocs(previewOnly bool) (removedDesignDocs []string, err error) {
-	return removeObsoleteDesignDocs(context.Bucket, previewOnly, context.UseViews())
+func (context *DatabaseContext) RemoveObsoleteDesignDocs(ctx context.Context, previewOnly bool) (removedDesignDocs []string, err error) {
+	return removeObsoleteDesignDocs(ctx, context.Bucket, previewOnly, context.UseViews())
 }
 
 // Removes previous versions of Sync Gateway's indexes found on the server

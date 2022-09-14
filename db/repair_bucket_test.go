@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -24,12 +25,12 @@ const (
 	docIdProblematicRevTree2 = "docIdProblematicRevTree2"
 )
 
-func testBucketWithViewsAndBrokenDoc(t testing.TB) (bucket *base.TestBucket, numDocs int) {
+func testBucketWithViewsAndBrokenDoc(t testing.TB) (ctx context.Context, bucket *base.TestBucket, numDocs int) {
 
 	numDocsAdded := 0
-	bucket = base.GetTestBucket(t)
+	ctx, bucket = base.GetTestBucket(t)
 
-	err := installViews(bucket)
+	err := installViews(ctx, bucket)
 	require.NoError(t, err)
 
 	// Add harmless docs
@@ -58,7 +59,7 @@ func testBucketWithViewsAndBrokenDoc(t testing.TB) (bucket *base.TestBucket, num
 	require.NoError(t, err)
 	numDocsAdded++
 
-	return bucket, numDocsAdded
+	return ctx, bucket, numDocsAdded
 
 }
 
@@ -69,8 +70,8 @@ func TestRepairBucket(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCRUD)
 
-	bucket, numDocs := testBucketWithViewsAndBrokenDoc(t)
-	defer bucket.Close()
+	ctx, bucket, numDocs := testBucketWithViewsAndBrokenDoc(t)
+	defer bucket.Close(ctx)
 
 	repairJob := func(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error) {
 		return nil, true, nil
@@ -79,7 +80,7 @@ func TestRepairBucket(t *testing.T) {
 		SetDryRun(true).
 		AddRepairJob(repairJob)
 
-	repairedDocs, err := repairBucket.RepairBucket()
+	repairedDocs, err := repairBucket.RepairBucket(ctx)
 
 	assert.NoError(t, err, fmt.Sprintf("Unexpected error: %v", err))
 
@@ -99,8 +100,8 @@ func TestRepairBucketRevTreeCycles(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCRUD)
 
-	bucket, _ := testBucketWithViewsAndBrokenDoc(t)
-	defer bucket.Close()
+	ctx, bucket, _ := testBucketWithViewsAndBrokenDoc(t)
+	defer bucket.Close(ctx)
 
 	repairBucket := NewRepairBucket(bucket)
 
@@ -113,7 +114,7 @@ func TestRepairBucketRevTreeCycles(t *testing.T) {
 		},
 	})
 
-	repairedDocs, err := repairBucket.RepairBucket()
+	repairedDocs, err := repairBucket.RepairBucket(ctx)
 
 	assert.NoError(t, err, fmt.Sprintf("Error repairing bucket: %v", err))
 	assert.True(t, len(repairedDocs) == 2)
@@ -148,8 +149,8 @@ func TestRepairBucketDryRun(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCRUD)
 
-	bucket, _ := testBucketWithViewsAndBrokenDoc(t)
-	defer bucket.Close()
+	ctx, bucket, _ := testBucketWithViewsAndBrokenDoc(t)
+	defer bucket.Close(ctx)
 
 	repairBucket := NewRepairBucket(bucket)
 
@@ -162,7 +163,7 @@ func TestRepairBucketDryRun(t *testing.T) {
 		},
 	})
 
-	repairedDocs, err := repairBucket.RepairBucket()
+	repairedDocs, err := repairBucket.RepairBucket(ctx)
 
 	assert.NoError(t, err, fmt.Sprintf("Error repairing bucket: %v", err))
 	assert.True(t, len(repairedDocs) == 2)

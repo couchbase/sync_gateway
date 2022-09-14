@@ -110,7 +110,7 @@ func (il *importListener) StartImportFeed(ctx context.Context, bucket base.Bucke
 	cbStore, ok := base.AsCouchbaseStore(bucket)
 	if !ok {
 		// walrus is not a couchbasestore
-		return bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
+		return bucket.StartDCPFeed(ctx, feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
 	}
 	if !base.IsEnterpriseEdition() {
 		groupID := ""

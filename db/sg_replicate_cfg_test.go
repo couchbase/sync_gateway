@@ -23,13 +23,12 @@ import (
 // Test node operations on SGReplicateManager
 func TestReplicateManagerReplications(t *testing.T) {
 
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
+	ctx, testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
 
 	testCfg, err := base.NewCfgSG(testBucket, "")
 	require.NoError(t, err)
 
-	ctx := base.TestCtx(t)
 	manager, err := NewSGReplicateManager(ctx, &DatabaseContext{Name: "test"}, testCfg)
 	require.NoError(t, err)
 	defer manager.Stop()
@@ -87,13 +86,12 @@ func TestReplicateManagerReplications(t *testing.T) {
 // Test node operations on SGReplicateManager
 func TestReplicateManagerNodes(t *testing.T) {
 
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
+	ctx, testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
 
 	testCfg, err := base.NewCfgSG(testBucket, "")
 	require.NoError(t, err)
 
-	ctx := base.TestCtx(t)
 	manager, err := NewSGReplicateManager(ctx, &DatabaseContext{Name: "test"}, testCfg)
 	require.NoError(t, err)
 	defer manager.Stop()
@@ -143,10 +141,9 @@ func TestReplicateManagerNodes(t *testing.T) {
 // Test concurrent node operations on SGReplicateManager
 func TestReplicateManagerConcurrentNodeOperations(t *testing.T) {
 
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
+	ctx, testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
 
-	ctx := base.TestCtx(t)
 	testCfg, err := base.NewCfgSG(testBucket, "")
 	require.NoError(t, err)
 
@@ -188,10 +185,9 @@ func TestReplicateManagerConcurrentNodeOperations(t *testing.T) {
 // Test concurrent replication operations on SGReplicateManager
 func TestReplicateManagerConcurrentReplicationOperations(t *testing.T) {
 
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
+	ctx, testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
 
-	ctx := base.TestCtx(t)
 	testCfg, err := base.NewCfgSG(testBucket, "")
 	require.NoError(t, err)
 
@@ -616,8 +612,8 @@ func TestIsCfgChanged(t *testing.T) {
 		},
 	}
 
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
+	ctx, testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
 
 	testCfg, err := base.NewCfgSG(testBucket, "")
 	require.NoError(t, err)
@@ -645,20 +641,19 @@ func TestIsCfgChanged(t *testing.T) {
 // Test replicators assigned nodes with different group IDs
 func TestReplicateGroupIDAssignedNodes(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
-	ctx := base.TestCtx(t)
+	ctx, tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
 
 	// Set up databases
-	dbDefault, err := NewDatabaseContext(ctx, "default", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: ""})
+	dbDefault, err := NewDatabaseContext(ctx, "default", tb.NoCloseClone(ctx), false, DatabaseContextOptions{GroupID: ""})
 	require.NoError(t, err)
 	defer dbDefault.Close(ctx)
 
-	dbGroupA, err := NewDatabaseContext(ctx, "groupa", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "GroupA"})
+	dbGroupA, err := NewDatabaseContext(ctx, "groupa", tb.NoCloseClone(ctx), false, DatabaseContextOptions{GroupID: "GroupA"})
 	require.NoError(t, err)
 	defer dbGroupA.Close(ctx)
 
-	dbGroupB, err := NewDatabaseContext(ctx, "groupb", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "GroupB"})
+	dbGroupB, err := NewDatabaseContext(ctx, "groupb", tb.NoCloseClone(ctx), false, DatabaseContextOptions{GroupID: "GroupB"})
 	require.NoError(t, err)
 	defer dbGroupB.Close(ctx)
 

@@ -22,8 +22,8 @@ import (
 
 func TestSequenceAllocator(t *testing.T) {
 
-	bucket := base.GetTestBucket(t)
-	defer bucket.Close()
+	ctx, bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
 
 	sgw := base.NewSyncGatewayStats()
 	testStats := sgw.NewDBStats("", false, false, false).Database()
@@ -87,8 +87,8 @@ func TestSequenceAllocator(t *testing.T) {
 
 func TestReleaseSequencesOnStop(t *testing.T) {
 
-	bucket := base.GetTestBucket(t)
-	defer bucket.Close()
+	ctx, bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
 
 	sgw := base.NewSyncGatewayStats()
 	testStats := sgw.NewDBStats("", false, false, false).Database()
@@ -161,8 +161,9 @@ func TestSequenceAllocatorDeadlock(t *testing.T) {
 		}
 	}
 
-	bucket := base.NewLeakyBucket(base.GetTestBucket(t), base.LeakyBucketConfig{IncrCallback: incrCallback})
-	defer bucket.Close()
+	ctx, tbucket := base.GetTestBucket(t)
+	bucket := base.NewLeakyBucket(tbucket, base.LeakyBucketConfig{IncrCallback: incrCallback})
+	defer bucket.Close(ctx)
 
 	sgw := base.NewSyncGatewayStats()
 	testStats := sgw.NewDBStats("", false, false, false).Database()
@@ -190,8 +191,8 @@ func TestSequenceAllocatorDeadlock(t *testing.T) {
 }
 
 func TestReleaseSequenceWait(t *testing.T) {
-	bucket := base.GetTestBucket(t)
-	defer bucket.Close()
+	ctx, bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
 
 	sgw := base.NewSyncGatewayStats()
 	testStats := sgw.NewDBStats("", false, false, false).Database()

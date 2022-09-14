@@ -326,7 +326,7 @@ func (context *DatabaseContext) ViewQueryWithStats(ctx context.Context, ddoc str
 
 	queryStat := context.DbStats.Query(fmt.Sprintf(base.StatViewFormat, ddoc, viewName))
 
-	results, err = context.Bucket.ViewQuery(ddoc, viewName, params)
+	results, err = context.Bucket.ViewQuery(ctx, ddoc, viewName, params)
 	if err != nil {
 		queryStat.QueryErrorCount.Add(1)
 	}

@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -17,14 +18,14 @@ func setDesignDocPreviousVersionsForTest(t testing.TB, versions ...string) {
 }
 
 // assertDesignDocExists ensures that the design doc exists in the bucket.
-func assertDesignDocExists(t testing.TB, bucket base.Bucket, ddocName string) bool {
-	_, err := bucket.GetDDoc(ddocName)
+func assertDesignDocExists(t testing.TB, ctx context.Context, bucket base.Bucket, ddocName string) bool {
+	_, err := bucket.GetDDoc(ctx, ddocName)
 	return assert.NoErrorf(t, err, "Design doc %s should exist but got an error fetching it: %v", ddocName, err)
 }
 
 // assertDesignDocDoesNotExist ensures that the design doc does not exist in the bucket.
-func assertDesignDocNotExists(t testing.TB, bucket base.Bucket, ddocName string) bool {
-	ddoc, err := bucket.GetDDoc(ddocName)
+func assertDesignDocNotExists(t testing.TB, ctx context.Context, bucket base.Bucket, ddocName string) bool {
+	ddoc, err := bucket.GetDDoc(ctx, ddocName)
 	if err == nil {
 		return assert.Failf(t, "Design doc %s should not exist but but it did: %v", ddocName, ddoc)
 	}

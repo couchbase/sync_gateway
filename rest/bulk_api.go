@@ -232,7 +232,7 @@ func (h *handler) handleDump() error {
 	viewName := h.PathVar("view")
 	base.InfofCtx(h.ctx(), base.KeyHTTP, "Dump view %q", base.MD(viewName))
 	opts := db.Body{"stale": false, "reduce": false}
-	result, err := h.db.Bucket.View(db.DesignDocSyncGateway(), viewName, opts)
+	result, err := h.db.Bucket.View(h.ctx(), db.DesignDocSyncGateway(), viewName, opts)
 	if err != nil {
 		return err
 	}
@@ -285,7 +285,7 @@ func (h *handler) handleRepair() error {
 
 	repairBucket.InitFrom(repairBucketParams)
 
-	repairBucketResult, repairDocsErr := repairBucket.RepairBucket()
+	repairBucketResult, repairDocsErr := repairBucket.RepairBucket(h.ctx())
 	if repairDocsErr != nil {
 		return err
 	}

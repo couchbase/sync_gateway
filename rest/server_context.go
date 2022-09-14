@@ -285,7 +285,7 @@ func (sc *ServerContext) PostUpgrade(ctx context.Context, preview bool) (postUpg
 
 	for name, database := range sc.databases_ {
 		// View cleanup
-		removedDDocs, _ := database.RemoveObsoleteDesignDocs(preview)
+		removedDDocs, _ := database.RemoveObsoleteDesignDocs(ctx, preview)
 
 		// Index cleanup
 		var removedIndexes []string
@@ -447,7 +447,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			return nil, indexErr
 		}
 	} else {
-		viewErr := db.InitializeViews(bucket)
+		viewErr := db.InitializeViews(ctx, bucket)
 		if viewErr != nil {
 			return nil, viewErr
 		}

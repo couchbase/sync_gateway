@@ -82,14 +82,14 @@ func (db *Database) checkDDocAccess(ddocName string) error {
 	return nil
 }
 
-func (db *Database) GetDesignDoc(ddocName string) (ddoc sgbucket.DesignDoc, err error) {
+func (db *Database) GetDesignDoc(ctx context.Context, ddocName string) (ddoc sgbucket.DesignDoc, err error) {
 	if err = db.checkDDocAccess(ddocName); err != nil {
 		return ddoc, err
 	}
-	return db.Bucket.GetDDoc(ddocName)
+	return db.Bucket.GetDDoc(ctx, ddocName)
 }
 
-func (db *Database) PutDesignDoc(ddocName string, ddoc sgbucket.DesignDoc) (err error) {
+func (db *Database) PutDesignDoc(ctx context.Context, ddocName string, ddoc sgbucket.DesignDoc) (err error) {
 	wrap := true
 	if opts := ddoc.Options; opts != nil {
 		if opts.Raw == true {
@@ -100,7 +100,7 @@ func (db *Database) PutDesignDoc(ddocName string, ddoc sgbucket.DesignDoc) (err 
 		wrapViews(&ddoc, db.GetUserViewsEnabled(), db.UseXattrs())
 	}
 	if err = db.checkDDocAccess(ddocName); err == nil {
-		err = db.Bucket.PutDDoc(ddocName, &ddoc)
+		err = db.Bucket.PutDDoc(ctx, ddocName, &ddoc)
 	}
 	return
 }
@@ -218,14 +218,14 @@ func wrapViews(ddoc *sgbucket.DesignDoc, enableUserViews bool, useXattrs bool) {
 	}
 }
 
-func (db *Database) DeleteDesignDoc(ddocName string) (err error) {
+func (db *Database) DeleteDesignDoc(ctx context.Context, ddocName string) (err error) {
 	if err = db.checkDDocAccess(ddocName); err == nil {
-		err = db.Bucket.DeleteDDoc(ddocName)
+		err = db.Bucket.DeleteDDoc(ctx, ddocName)
 	}
 	return
 }
 
-func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map[string]interface{}) (*sgbucket.ViewResult, error) {
+func (db *Database) QueryDesignDoc(ctx context.Context, ddocName string, viewName string, options map[string]interface{}) (*sgbucket.ViewResult, error) {
 
 	// Regular users have limitations on what they can query
 	if db.user != nil {
@@ -240,7 +240,7 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 		}
 	}
 
-	result, err := db.Bucket.View(ddocName, viewName, options)
+	result, err := db.Bucket.View(ctx, ddocName, viewName, options)
 	if err != nil {
 		return nil, err
 	}
@@ -324,44 +324,44 @@ func stripSyncProperty(row *sgbucket.ViewRow) {
 	}
 }
 
-func InitializeViews(bucket base.Bucket) error {
+func InitializeViews(ctx context.Context, bucket base.Bucket) error {
 	collection, ok := bucket.(*base.Collection)
 	if ok && !collection.IsDefaultScopeCollection() {
 		return fmt.Errorf("Can not initialize views on a non default collection")
 	}
 	// Check whether design docs are already present
-	ddocsExist := checkExistingDDocs(bucket)
+	ddocsExist := checkExistingDDocs(ctx, bucket)
 
 	// If not present, install design docs and views
 	if !ddocsExist {
-		base.InfofCtx(context.TODO(), base.KeyAll, "Design docs for current view version (%s) do not exist - creating...", DesignDocVersion)
-		if err := installViews(bucket); err != nil {
+		base.InfofCtx(ctx, base.KeyAll, "Design docs for current view version (%s) do not exist - creating...", DesignDocVersion)
+		if err := installViews(ctx, bucket); err != nil {
 			return err
 		}
 	}
 
 	// Wait for views to be indexed and available
-	return WaitForViews(bucket)
+	return WaitForViews(ctx, bucket)
 }
 
-func checkExistingDDocs(bucket base.Bucket) bool {
+func checkExistingDDocs(ctx context.Context, bucket base.Bucket) bool {
 
 	// Check whether design docs already exist
-	_, getDDocErr := bucket.GetDDoc(DesignDocSyncGateway())
+	_, getDDocErr := bucket.GetDDoc(ctx, DesignDocSyncGateway())
 	sgDDocExists := getDDocErr == nil
 
-	_, getDDocErr = bucket.GetDDoc(DesignDocSyncHousekeeping())
+	_, getDDocErr = bucket.GetDDoc(ctx, DesignDocSyncHousekeeping())
 	sgHousekeepingDDocExists := getDDocErr == nil
 
 	if sgDDocExists && sgHousekeepingDDocExists {
-		base.InfofCtx(context.TODO(), base.KeyAll, "Design docs for current SG view version (%s) found.", DesignDocVersion)
+		base.InfofCtx(ctx, base.KeyAll, "Design docs for current SG view version (%s) found.", DesignDocVersion)
 		return true
 	}
 
 	return false
 }
 
-func installViews(bucket base.Bucket) error {
+func installViews(ctx context.Context, bucket base.Bucket) error {
 
 	// syncData specifies the path to Sync Gateway sync metadata used in the map function -
 	// in the document body when xattrs available, in the mobile xattr when xattrs enabled.
@@ -589,9 +589,9 @@ func installViews(bucket base.Bucket) error {
 
 		// start a retry loop to put design document backing off double the delay each time
 		worker := func() (shouldRetry bool, err error, value interface{}) {
-			err = bucket.PutDDoc(designDocName, designDoc)
+			err = bucket.PutDDoc(ctx, designDocName, designDoc)
 			if err != nil {
-				base.WarnfCtx(context.TODO(), "Error installing Couchbase design doc: %v", err)
+				base.WarnfCtx(ctx, "Error installing Couchbase design doc: %v", err)
 			}
 			return err != nil, err, nil
 		}
@@ -604,24 +604,24 @@ func installViews(bucket base.Bucket) error {
 		}
 	}
 
-	base.InfofCtx(context.TODO(), base.KeyAll, "Design docs successfully created for view version %s.", DesignDocVersion)
+	base.InfofCtx(ctx, base.KeyAll, "Design docs successfully created for view version %s.", DesignDocVersion)
 
 	return nil
 }
 
 // Issue a stale=false queries against critical views to guarantee indexing is complete and views are ready
-func WaitForViews(bucket base.Bucket) error {
+func WaitForViews(ctx context.Context, bucket base.Bucket) error {
 	var viewsWg sync.WaitGroup
 	views := []string{ViewChannels, ViewAccess, ViewRoleAccess}
 	viewErrors := make(chan error, len(views))
 
-	base.InfofCtx(context.TODO(), base.KeyAll, "Verifying view availability for bucket %s...", base.UD(bucket.GetName()))
+	base.InfofCtx(ctx, base.KeyAll, "Verifying view availability for bucket %s...", base.UD(bucket.GetName()))
 
 	for _, viewName := range views {
 		viewsWg.Add(1)
 		go func(view string) {
 			defer viewsWg.Done()
-			viewErr := waitForViewIndexing(bucket, DesignDocSyncGateway(), view)
+			viewErr := waitForViewIndexing(ctx, bucket, DesignDocSyncGateway(), view)
 			if viewErr != nil {
 				viewErrors <- viewErr
 			}
@@ -635,13 +635,13 @@ func WaitForViews(bucket base.Bucket) error {
 		return err
 	}
 
-	base.InfofCtx(context.TODO(), base.KeyAll, "Views ready for bucket %s.", base.UD(bucket.GetName()))
+	base.InfofCtx(ctx, base.KeyAll, "Views ready for bucket %s.", base.UD(bucket.GetName()))
 	return nil
 
 }
 
 // Issues stale=false view queries to determine when view indexing is complete.  Retries on timeout
-func waitForViewIndexing(bucket base.Bucket, ddocName string, viewName string) error {
+func waitForViewIndexing(ctx context.Context, bucket base.Bucket, ddocName string, viewName string) error {
 	opts := map[string]interface{}{"stale": false, "key": fmt.Sprintf("view_%s_ready_check", viewName), "limit": 1}
 
 	// Not using standard retry loop here, because we want to retry indefinitely on view timeout (since view indexing could potentially take hours), and
@@ -650,7 +650,7 @@ func waitForViewIndexing(bucket base.Bucket, ddocName string, viewName string) e
 	retrySleep := float64(100)
 	maxRetry := 18
 	for {
-		results, err := bucket.ViewQuery(ddocName, viewName, opts)
+		results, err := bucket.ViewQuery(ctx, ddocName, viewName, opts)
 		if results != nil {
 			_ = results.Close()
 		}
@@ -660,14 +660,14 @@ func waitForViewIndexing(bucket base.Bucket, ddocName string, viewName string) e
 
 		// Retry on timeout or undefined view errors , otherwise return the error
 		if err == base.ErrViewTimeoutError {
-			base.InfofCtx(context.TODO(), base.KeyAll, "Timeout waiting for view %q to be ready for bucket %q - retrying...", viewName, base.UD(bucket.GetName()))
+			base.InfofCtx(ctx, base.KeyAll, "Timeout waiting for view %q to be ready for bucket %q - retrying...", viewName, base.UD(bucket.GetName()))
 		} else {
 			// For any other error, retry up to maxRetry, to wait for view initialization on the server
 			errRetryCount++
 			if errRetryCount > maxRetry {
 				return err
 			}
-			base.WarnfCtx(context.TODO(), "Error waiting for view %q to be ready for bucket %q - retrying...(%d/%d)", viewName, bucket.GetName(), errRetryCount, maxRetry)
+			base.WarnfCtx(ctx, "Error waiting for view %q to be ready for bucket %q - retrying...(%d/%d)", viewName, bucket.GetName(), errRetryCount, maxRetry)
 			time.Sleep(time.Duration(retrySleep) * time.Millisecond)
 			retrySleep *= float64(1.5)
 		}
@@ -675,7 +675,7 @@ func waitForViewIndexing(bucket base.Bucket, ddocName string, viewName string) e
 
 }
 
-func removeObsoleteDesignDocs(bucket base.Bucket, previewOnly bool, useViews bool) (removedDesignDocs []string, err error) {
+func removeObsoleteDesignDocs(ctx context.Context, bucket base.Bucket, previewOnly bool, useViews bool) (removedDesignDocs []string, err error) {
 
 	removedDesignDocs = make([]string, 0)
 	designDocPrefixes := []string{DesignDocSyncGatewayPrefix, DesignDocSyncHousekeepingPrefix}
@@ -696,7 +696,7 @@ func removeObsoleteDesignDocs(bucket base.Bucket, previewOnly bool, useViews boo
 			}
 
 			if !previewOnly {
-				removeDDocErr := bucket.DeleteDDoc(ddocName)
+				removeDDocErr := bucket.DeleteDDoc(ctx, ddocName)
 				if removeDDocErr != nil && !IsMissingDDocError(removeDDocErr) {
 					base.WarnfCtx(context.TODO(), "Unexpected error when removing design doc %q: %s", ddocName, removeDDocErr)
 				}
@@ -705,7 +705,7 @@ func removeObsoleteDesignDocs(bucket base.Bucket, previewOnly bool, useViews boo
 					removedDesignDocs = append(removedDesignDocs, ddocName)
 				}
 			} else {
-				_, existsDDocErr := bucket.GetDDoc(ddocName)
+				_, existsDDocErr := bucket.GetDDoc(ctx, ddocName)
 				if existsDDocErr != nil && !IsMissingDDocError(existsDDocErr) {
 					base.WarnfCtx(context.TODO(), "Unexpected error when checking existence of design doc %q: %s", ddocName, existsDDocErr)
 				}

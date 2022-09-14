@@ -324,20 +324,20 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 // viewBucketReadier removes any existing views and installs a new set into the given bucket.
 func viewBucketReadier(ctx context.Context, b base.Bucket, tbp *base.TestBucketPool) error {
 
-	ddocs, err := b.GetDDocs()
+	ddocs, err := b.GetDDocs(ctx)
 	if err != nil {
 		return err
 	}
 
 	for ddocName, _ := range ddocs {
 		tbp.Logf(ctx, "removing existing view: %s", ddocName)
-		if err := b.DeleteDDoc(ddocName); err != nil {
+		if err := b.DeleteDDoc(ctx, ddocName); err != nil {
 			return err
 		}
 	}
 
 	tbp.Logf(ctx, "initializing bucket views")
-	err = InitializeViews(b)
+	err = InitializeViews(ctx, b)
 	if err != nil {
 		return err
 	}

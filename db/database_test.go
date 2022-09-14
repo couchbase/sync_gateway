@@ -46,7 +46,7 @@ func setupTestDBForBucket(t testing.TB, bucket base.Bucket) (*Database, context.
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &cacheOptions,
 	}
-	return setupTestDBForBucketWithOptions(t, bucket, dbcOptions)
+	return setupTestDBForBucketWithOptions(t, base.TestCtx(t), bucket, dbcOptions)
 }
 
 // Sets up test db with the specified database context options.  Note that environment variables can
@@ -57,8 +57,7 @@ func setupTestDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*D
 	return setupTestDBForBucketWithOptions(t, ctx, tBucket, dbcOptions)
 }
 
-func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
-	ctx := base.TestCtx(t)
+func setupTestDBForBucketWithOptions(t testing.TB, ctx context.Context, tBucket base.Bucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
 	require.NoError(t, err, "Couldn't create context for database 'db'")
@@ -69,12 +68,12 @@ func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptio
 }
 
 func setupTestDBWithOptionsAndImport(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
-	ctx := base.TestCtx(t)
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	if dbcOptions.GroupID == "" && base.IsEnterpriseEdition() {
 		dbcOptions.GroupID = t.Name()
 	}
-	dbCtx, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), true, dbcOptions)
+	ctx, bucket := base.GetTestBucket(t)
+	dbCtx, err := NewDatabaseContext(ctx, "db", bucket, true, dbcOptions)
 	require.NoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(dbCtx)
 	require.NoError(t, err, "Couldn't create database 'db'")
@@ -106,10 +105,9 @@ func setupTestDBWithViewsEnabled(t testing.TB) (*Database, context.Context) {
 // issues with custom _sync:seq values without triggering skipped sequences between 0 and customSeq
 func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, context.Context) {
 
-	ctx := base.TestCtx(t)
 	dbcOptions := DatabaseContextOptions{}
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	tBucket := base.GetTestBucket(t)
+	ctx, tBucket := base.GetTestBucket(t)
 
 	log.Printf("Initializing test %s to %d", base.SyncSeqKey, customSeq)
 	_, incrErr := tBucket.Incr(base.SyncSeqKey, customSeq, customSeq, 0)
@@ -127,16 +125,15 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, co
 }
 
 func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyOptions base.LeakyBucketConfig) (*Database, context.Context) {
-	ctx := base.TestCtx(t)
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &options,
 	}
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	testBucket := base.GetTestBucket(t)
+	ctx, testBucket := base.GetTestBucket(t)
 	leakyBucket := base.NewLeakyBucket(testBucket, leakyOptions)
 	dbCtx, err := NewDatabaseContext(ctx, "db", leakyBucket, false, dbcOptions)
 	if err != nil {
-		testBucket.Close()
+		testBucket.Close(ctx)
 		t.Fatalf("Unable to create database context: %v", err)
 	}
 	db, err := CreateDatabase(dbCtx)
@@ -1471,7 +1468,7 @@ func TestUpdateDesignDoc(t *testing.T) {
 	defer db.Close(ctx)
 
 	mapFunction := `function (doc, meta) { emit(); }`
-	err := db.PutDesignDoc("official", sgbucket.DesignDoc{
+	err := db.PutDesignDoc(ctx, "official", sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"TestView": sgbucket.ViewDef{Map: mapFunction},
 		},
@@ -1480,7 +1477,7 @@ func TestUpdateDesignDoc(t *testing.T) {
 
 	// Validate retrieval of the design doc by admin
 	var result sgbucket.DesignDoc
-	result, err = db.GetDesignDoc("official")
+	result, err = db.GetDesignDoc(ctx, "official")
 	log.Printf("design doc: %+v", result)
 
 	assert.NoError(t, err, "retrieve design doc as admin")
@@ -1491,7 +1488,7 @@ func TestUpdateDesignDoc(t *testing.T) {
 
 	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
 	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "Netflix"))
-	err = db.PutDesignDoc("_design/pwn3d", sgbucket.DesignDoc{})
+	err = db.PutDesignDoc(ctx, "_design/pwn3d", sgbucket.DesignDoc{})
 	assertHTTPError(t, err, 403)
 }
 
@@ -1918,8 +1915,8 @@ func TestNewDatabaseContextWithOIDCProviderOptions(t *testing.T) {
 				OIDCOptions: tc.inputOptions,
 			}
 			AddOptionsFromEnvironmentVariables(&options)
-			ctx := base.TestCtx(t)
-			dbCtx, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, options)
+			ctx, bucket := base.GetTestBucket(t)
+			dbCtx, err := NewDatabaseContext(ctx, "db", bucket, false, options)
 			assert.NoError(t, err, "Couldn't create context for database 'db'")
 			defer dbCtx.Close(ctx)
 			assert.NotNil(t, dbCtx, "Database context should be created")
@@ -2391,8 +2388,9 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 		t.Skip("Compaction requires xattrs")
 	}
 
-	bucket := base.NewLeakyBucket(base.GetTestBucket(t), base.LeakyBucketConfig{})
-	db, ctx := setupTestDBForBucketWithOptions(t, bucket, DatabaseContextOptions{})
+	ctx, tbucket := base.GetTestBucket(t)
+	bucket := base.NewLeakyBucket(tbucket, base.LeakyBucketConfig{})
+	db, ctx := setupTestDBForBucketWithOptions(t, ctx, bucket, DatabaseContextOptions{})
 	db.PurgeInterval = 0
 	defer db.Close(ctx)
 

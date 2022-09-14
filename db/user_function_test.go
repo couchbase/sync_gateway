@@ -345,8 +345,8 @@ func TestUserFunctionSyntaxError(t *testing.T) {
 		CacheOptions:  &cacheOptions,
 		UserFunctions: kUserFunctionBadConfig,
 	}
-	tBucket := base.GetTestBucket(t)
-	defer tBucket.Close()
+	ctx, tBucket := base.GetTestBucket(t)
+	defer tBucket.Close(ctx)
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	_, err := NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
 	assert.Error(t, err)

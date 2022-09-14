@@ -38,7 +38,7 @@ func (h *handler) handleGetDesignDoc() error {
 		result = db.Body{"filters": db.Body{"bychannel": filter}}
 	} else {
 		var getErr error
-		result, getErr = h.db.GetDesignDoc(ddocID)
+		result, getErr = h.db.GetDesignDoc(h.ctx(), ddocID)
 		if getErr != nil {
 			return getErr
 		}
@@ -55,7 +55,7 @@ func (h *handler) handlePutDesignDoc() error {
 	if err != nil {
 		return err
 	}
-	if err = h.db.PutDesignDoc(ddocID, ddoc); err != nil {
+	if err = h.db.PutDesignDoc(h.ctx(), ddocID, ddoc); err != nil {
 		return err
 	}
 	h.writeStatus(http.StatusCreated, "OK")
@@ -65,7 +65,7 @@ func (h *handler) handlePutDesignDoc() error {
 // HTTP handler for DELETE _design/$ddoc
 func (h *handler) handleDeleteDesignDoc() error {
 	ddocID := h.PathVar("ddoc")
-	return h.db.DeleteDesignDoc(ddocID)
+	return h.db.DeleteDesignDoc(h.ctx(), ddocID)
 }
 
 // HTTP handler for GET _design/$ddoc/_view/$view
@@ -113,7 +113,7 @@ func (h *handler) handleView() error {
 
 	base.InfofCtx(h.ctx(), base.KeyHTTP, "JSON view %q/%q - opts %v", base.MD(ddocName), base.MD(viewName), base.MD(opts))
 
-	result, err := h.db.QueryDesignDoc(ddocName, viewName, opts)
+	result, err := h.db.QueryDesignDoc(h.ctx(), ddocName, viewName, opts)
 	if err != nil {
 		return err
 	}

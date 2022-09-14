@@ -219,9 +219,9 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	n1QLStore, ok := base.AsN1QLStore(db.Bucket)
 	assert.True(t, ok)
 
-	_, err := removeObsoleteDesignDocs(db.Bucket, !db.UseXattrs(), db.UseViews())
+	_, err := removeObsoleteDesignDocs(ctx, db.Bucket, !db.UseXattrs(), db.UseViews())
 	assert.NoError(t, err)
-	_, err = removeObsoleteDesignDocs(db.Bucket, !db.UseXattrs(), !db.UseViews())
+	_, err = removeObsoleteDesignDocs(ctx, db.Bucket, !db.UseXattrs(), !db.UseViews())
 	assert.NoError(t, err)
 
 	expectedIndexes := int(indexTypeCount)
@@ -239,17 +239,17 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	assert.NoError(t, removeErr)
 
 	// Cleanup design docs created during test
-	_, err = removeObsoleteDesignDocs(db.Bucket, db.UseXattrs(), db.UseViews())
+	_, err = removeObsoleteDesignDocs(ctx, db.Bucket, db.UseXattrs(), db.UseViews())
 	assert.NoError(t, err)
-	_, err = removeObsoleteDesignDocs(db.Bucket, db.UseXattrs(), !db.UseViews())
+	_, err = removeObsoleteDesignDocs(ctx, db.Bucket, db.UseXattrs(), !db.UseViews())
 	assert.NoError(t, err)
-	_, err = removeObsoleteDesignDocs(db.Bucket, !db.UseXattrs(), db.UseViews())
+	_, err = removeObsoleteDesignDocs(ctx, db.Bucket, !db.UseXattrs(), db.UseViews())
 	assert.NoError(t, err)
-	_, err = removeObsoleteDesignDocs(db.Bucket, !db.UseXattrs(), !db.UseViews())
+	_, err = removeObsoleteDesignDocs(ctx, db.Bucket, !db.UseXattrs(), !db.UseViews())
 	assert.NoError(t, err)
 
 	// Restore ddocs after test
-	err = InitializeViews(db.Bucket)
+	err = InitializeViews(ctx, db.Bucket)
 	assert.NoError(t, err)
 
 	// Restore indexes after test

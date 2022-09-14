@@ -179,8 +179,8 @@ func TestShardedDCPUpgrade(t *testing.T) {
 		t.Skip("Heartbeat listener requires Couchbase Server")
 	}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyDCP, base.KeyImport, base.KeyCluster)
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	ctx, tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
 	bucketUUID, err := tb.UUID()
 	require.NoError(t, err, "get bucket UUID")
 
@@ -205,8 +205,7 @@ func TestShardedDCPUpgrade(t *testing.T) {
 	)
 	require.NoError(t, tb.SetRaw(testDoc1, 0, nil, []byte(`{}`)))
 
-	ctx := base.TestCtx(t)
-	db, err := NewDatabaseContext(ctx, tb.GetName(), tb.NoCloseClone(), true, DatabaseContextOptions{
+	db, err := NewDatabaseContext(ctx, tb.GetName(), tb.NoCloseClone(ctx), true, DatabaseContextOptions{
 		GroupID:     "",
 		EnableXattr: true,
 		UseViews:    base.TestsDisableGSI(),

@@ -134,7 +134,7 @@ func (r *RepairBucket) InitFrom(params RepairBucketParams) *RepairBucket {
 // Since the start key is inclusive, it will see the start key twice (on first page, and on next page)
 // If it's iterating a result page and sees a doc with the start key (eg, doc3 in above), it will ignore it so it doesn't process it twice
 // Stop condition: if NumProcessed is 0, because the only doc in result set had already been processed.
-func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
+func (r RepairBucket) RepairBucket(ctx context.Context) (results []RepairBucketResult, err error) {
 
 	logCtx := context.TODO()
 	base.InfofCtx(logCtx, base.KeyCRUD, "RepairBucket() invoked")
@@ -154,7 +154,7 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 		options["limit"] = r.ViewQueryPageSize
 
 		base.InfofCtx(logCtx, base.KeyCRUD, "RepairBucket() querying view with options: %+v", options)
-		vres, err := r.Bucket.View(DesignDocSyncHousekeeping(), ViewImport, options)
+		vres, err := r.Bucket.View(ctx, DesignDocSyncHousekeeping(), ViewImport, options)
 		base.InfofCtx(logCtx, base.KeyCRUD, "RepairBucket() queried view and got %d results", len(vres.Rows))
 		if err != nil {
 			// TODO: Maybe we could retry if the view timed out (as seen in #3267)
