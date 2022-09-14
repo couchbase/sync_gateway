@@ -650,6 +650,9 @@ func (s *SgwStats) ClearDBStats(name string) {
 	s.DbStats[name].unregisterCacheStats()
 	s.DbStats[name].unregisterCBLReplicationPullStats()
 	s.DbStats[name].unregisterCBLReplicationPushStats()
+	for replName := range s.DbStats[name].DbReplicatorStats {
+		s.DbStats[name].unregisterReplicationStats(replName)
+	}
 	s.DbStats[name].unregisterDatabaseStats()
 	s.DbStats[name].unregisterSecurityStats()
 
@@ -929,6 +932,36 @@ func (d *DbStats) initSecurityStats() {
 			TotalAuthTime:    NewIntStat(SubsystemSecurity, "total_auth_time", labelKeys, labelVals, prometheus.GaugeValue, 0),
 		}
 	}
+}
+
+func (d *DbStats) unregisterReplicationStats(replicationID string) {
+	if d.DbReplicatorStats[replicationID] == nil {
+		return
+	}
+
+	prometheus.Unregister(d.DbReplicatorStats[replicationID].NumAttachmentBytesPushed)
+	prometheus.Unregister(d.DbReplicatorStats[replicationID].NumAttachmentPushed)
+	prometheus.Unregister(d.DbReplicatorStats[replicationID].NumDocPushed)
+	prometheus.Unregister(d.DbReplicatorStats[replicationID].NumDocsFailedToPush)
+	prometheus.Unregister(d.DbReplicatorStats[replicationID].PushConflictCount)
+	prometheus.Unregister(d.DbReplicatorStats[replicationID].PushRejectedCount)
+	prometheus.Unregister(d.DbReplicatorStats[replicationID].PushDeltaSentCount)
+	prometheus.Unregister(d.DbReplicatorStats[replicationID].DocsCheckedSent)
+	prometheus.Unregister(d.DbReplicatorStats[replicationID].NumConnectAttemptsPush)
+	prometheus.Unregister(d.DbReplicatorStats[replicationID].NumReconnectsAbortedPush)
+	prometheus.Unregister(d.DbReplicatorStats[replicationID].NumAttachmentBytesPulled)
+	prometheus.Unregister(d.DbReplicatorStats[replicationID].NumAttachmentsPulled)
+	prometheus.Unregister(d.DbReplicatorStats[replicationID].PulledCount)
+	prometheus.Unregister(d.DbReplicatorStats[replicationID].PurgedCount)
+	prometheus.Unregister(d.DbReplicatorStats[replicationID].FailedToPullCount)
+	prometheus.Unregister(d.DbReplicatorStats[replicationID].DeltaReceivedCount)
+	prometheus.Unregister(d.DbReplicatorStats[replicationID].DeltaRequestedCount)
+	prometheus.Unregister(d.DbReplicatorStats[replicationID].DocsCheckedReceived)
+	prometheus.Unregister(d.DbReplicatorStats[replicationID].ConflictResolvedLocalCount)
+	prometheus.Unregister(d.DbReplicatorStats[replicationID].ConflictResolvedRemoteCount)
+	prometheus.Unregister(d.DbReplicatorStats[replicationID].ConflictResolvedMergedCount)
+	prometheus.Unregister(d.DbReplicatorStats[replicationID].NumConnectAttemptsPull)
+	prometheus.Unregister(d.DbReplicatorStats[replicationID].NumReconnectsAbortedPull)
 }
 
 func (d *DbStats) unregisterSecurityStats() {
