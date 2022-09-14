@@ -5750,7 +5750,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
 	defer db.SuspendSequenceBatching()()
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	// Passive //
 	passiveBucket := base.GetTestBucket(t)
