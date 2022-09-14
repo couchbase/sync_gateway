@@ -48,7 +48,7 @@ func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 		bucket := h.db.Bucket.GetName()
 		var updatedDbConfig *DatabaseConfig
 		cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
-			bucket, h.server.Config.Bootstrap.ConfigGroupID,
+			h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID,
 			func(rawBucketConfig []byte) (newConfig []byte, err error) {
 				var bucketDbConfig DatabaseConfig
 				if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {

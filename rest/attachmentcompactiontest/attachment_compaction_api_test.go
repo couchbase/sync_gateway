@@ -142,8 +142,8 @@ func TestAttachmentCompactionPersistence(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	tb := base.GetTestBucket(t)
-	noCloseTB := tb.NoCloseClone()
+	tbctx, tb := base.GetTestBucket(t)
+	noCloseTB := tb.NoCloseClone(tbctx)
 
 	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: noCloseTB,

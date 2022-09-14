@@ -1335,7 +1335,8 @@ func TestResyncErrorScenarios(t *testing.T) {
 		channel("x")
 	}`
 
-	leakyTestBucket := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
+	ctx, tbucket := base.GetTestBucket(t)
+	leakyTestBucket := tbucket.LeakyBucketClone(ctx, base.LeakyBucketConfig{})
 
 	rt := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
@@ -1429,7 +1430,8 @@ func TestResyncStop(t *testing.T) {
 		channel("x")
 	}`
 
-	leakyTestBucket := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
+	ctx, tbucket := base.GetTestBucket(t)
+	leakyTestBucket := tbucket.LeakyBucketClone(ctx, base.LeakyBucketConfig{})
 
 	rt := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
@@ -1516,10 +1518,10 @@ func TestResyncRegenerateSequences(t *testing.T) {
 
 	if base.UnitTestUrlIsWalrus() {
 		var closeFn func()
-		testBucket, closeFn = base.GetPersistentWalrusBucket(t)
+		_, testBucket, closeFn = base.GetPersistentWalrusBucket(t)
 		defer closeFn()
 	} else {
-		testBucket = base.GetTestBucket(t)
+		_, testBucket = base.GetTestBucket(t)
 	}
 
 	rt := rest.NewRestTester(t,
@@ -2169,7 +2171,7 @@ func TestHandlePutDbConfigWithBackticks(t *testing.T) {
 }
 
 func TestHandleDBConfig(t *testing.T) {
-	tb := base.GetTestBucket(t)
+	_, tb := base.GetTestBucket(t)
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{CustomTestBucket: tb})
 	defer rt.Close()
@@ -3271,10 +3273,10 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
+	ctx, tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(ctx)
 	}()
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/",
 		fmt.Sprintf(
@@ -3334,10 +3336,10 @@ func TestDbConfigCredentials(t *testing.T) {
 	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
+	tbctx, tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(tbctx)
 	}()
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/",
 		fmt.Sprintf(
@@ -3399,10 +3401,10 @@ func TestInvalidDBConfig(t *testing.T) {
 	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
+	tbctx, tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(tbctx)
 	}()
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/",
 		fmt.Sprintf(
@@ -3486,10 +3488,10 @@ func TestPutDbConfigChangeName(t *testing.T) {
 	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
+	tbctx, tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(tbctx)
 	}()
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/",
 		fmt.Sprintf(
@@ -3528,10 +3530,10 @@ func TestPutDBConfigOIDC(t *testing.T) {
 	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
+	tbctx, tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(tbctx)
 	}()
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/",
 		fmt.Sprintf(
@@ -3645,10 +3647,10 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
+	tbctx, tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(tbctx)
 	}()
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/",
 		fmt.Sprintf(
@@ -3686,10 +3688,10 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	assert.Equal(t, db.DefaultCompactInterval, uint32(*runtimeServerConfigDatabase.CompactIntervalDays))
 
 	// Test unsupported options
-	tb2 := base.GetTestBucket(t)
+	tbctx2, tb2 := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket 2")
-		tb2.Close()
+		tb2.Close(tbctx2)
 	}()
 	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db2/",
 		`{"bucket": "`+tb2.GetName()+`", "num_index_replicas": 0, "unsupported": {"disable_clean_skipped_query": true}}`,
@@ -3731,8 +3733,8 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer func() { tb.Close() }()
+	tbctx, tb := base.GetTestBucket(t)
+	defer func() { tb.Close(tbctx) }()
 
 	// No credentials should fail
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db1/",
@@ -3819,8 +3821,8 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer func() { tb.Close() }()
+	tbctx, tb := base.GetTestBucket(t)
+	defer func() { tb.Close(tbctx) }()
 
 	importFilter := "function(doc) { return true }"
 	syncFunc := "function(doc){ channel(doc.channels); }"
@@ -3894,8 +3896,8 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer func() { tb.Close() }()
+	tbctx, tb := base.GetTestBucket(t)
+	defer func() { tb.Close(tbctx) }()
 
 	dbConfig := rest.DatabaseConfig{
 		SGVersion: "", // leave empty to emulate what 3.0.0 would've written to the bucket
@@ -4015,8 +4017,8 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 	}()
 
 	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer func() { tb.Close() }()
+	tbctx, tb := base.GetTestBucket(t)
+	defer func() { tb.Close(tbctx) }()
 
 	// Initial DB config
 	dbConfig := `{
@@ -4101,8 +4103,8 @@ func TestSetFunctionsWhileDbOffline(t *testing.T) {
 	}()
 
 	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer func() { tb.Close() }()
+	tbctx, tb := base.GetTestBucket(t)
+	defer func() { tb.Close(tbctx) }()
 
 	importFilter := "function(doc){ return true; }"
 	syncFunc := "function(doc){ channel(doc.channels); }"
@@ -4167,10 +4169,10 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
+	tbctx, tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(tbctx)
 	}()
 
 	// db put with empty sync func and import filter
@@ -4225,11 +4227,11 @@ func TestGroupIDReplications(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	// Create test buckets to replicate between
-	passiveBucket := base.GetTestBucket(t)
-	defer passiveBucket.Close()
+	pctx, passiveBucket := base.GetTestBucket(t)
+	defer passiveBucket.Close(pctx)
 
-	activeBucket := base.GetTestBucket(t)
-	defer activeBucket.Close()
+	actx, activeBucket := base.GetTestBucket(t)
+	defer activeBucket.Close(actx)
 
 	// Set up passive bucket RT
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{CustomTestBucket: passiveBucket})
@@ -4337,7 +4339,7 @@ func TestDeleteDatabasePointingAtSameBucket(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server with xattrs")
 	}
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
-	tb := base.GetTestBucket(t)
+	_, tb := base.GetTestBucket(t)
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{CustomTestBucket: tb})
 	defer rt.Close()
 	resp := rt.SendAdminRequest(http.MethodDelete, "/db/", "")
@@ -4372,10 +4374,10 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	}()
 	require.NoError(t, sc.WaitForRESTAPIs())
 	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
+	tbctx, tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(tbctx)
 	}()
 
 	dbConfig := `{
@@ -4988,8 +4990,8 @@ func TestResyncPersistence(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	tb := base.GetTestBucket(t)
-	noCloseTB := tb.NoCloseClone()
+	ctx, tb := base.GetTestBucket(t)
+	noCloseTB := tb.NoCloseClone(ctx)
 
 	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: noCloseTB,

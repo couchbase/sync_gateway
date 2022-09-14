@@ -35,13 +35,13 @@ func TestBlipPusherUpdateDatabase(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyHTTPResp, base.KeySync)
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	tbctx, tb := base.GetTestBucket(t)
+	defer tb.Close(tbctx)
 
 	rtConfig := RestTesterConfig{
 		DatabaseConfig:   &DatabaseConfig{},
 		GuestEnabled:     true,
-		CustomTestBucket: tb.NoCloseClone(),
+		CustomTestBucket: tb.NoCloseClone(tbctx),
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()

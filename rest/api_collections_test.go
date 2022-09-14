@@ -61,8 +61,8 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 		},
 	}
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	tbctx, tb := base.GetTestBucket(t)
+	defer tb.Close(tbctx)
 
 	const (
 		username = "alice"
@@ -71,7 +71,7 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		createScopesAndCollections: true,
-		CustomTestBucket:           tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
+		CustomTestBucket:           tb.NoCloseClone(tbctx), // Clone so scope/collection isn't set on tb from rt
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Users: map[string]*auth.PrincipalConfig{
@@ -111,12 +111,12 @@ func TestSingleCollectionDCP(t *testing.T) {
 		t.Skip("Test relies on import - needs xattrs")
 	}
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	tbctx, tb := base.GetTestBucket(t)
+	defer tb.Close(tbctx)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		createScopesAndCollections: true,
-		CustomTestBucket:           tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
+		CustomTestBucket:           tb.NoCloseClone(tbctx), // Clone so scope/collection isn't set on tb from rt
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				AutoImport: true,
@@ -196,12 +196,12 @@ func TestMultiCollectionDCP(t *testing.T) {
 func TestCollectionsBasicIndexQuery(t *testing.T) {
 	base.TestRequiresCollections(t)
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	tbctx, tb := base.GetTestBucket(t)
+	defer tb.Close(tbctx)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		createScopesAndCollections: true,
-		CustomTestBucket:           tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
+		CustomTestBucket:           tb.NoCloseClone(tbctx), // Clone so scope/collection isn't set on tb from rt
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Scopes: ScopesConfig{
@@ -280,8 +280,8 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 	// force GSI for this one test
 	useViews := base.BoolPtr(false)
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	tbctx, tb := base.GetTestBucket(t)
+	defer tb.Close(tbctx)
 
 	const (
 		username       = "alice"
@@ -299,7 +299,7 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		createScopesAndCollections: true,
-		CustomTestBucket:           tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
+		CustomTestBucket:           tb.NoCloseClone(tbctx), // Clone so scope/collection isn't set on tb from rt
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				UseViews: useViews,
@@ -350,8 +350,8 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 
 func TestCollectionsChangeConfigScope(t *testing.T) {
 	base.TestRequiresCollections(t)
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	tbctx, tb := base.GetTestBucket(t)
+	defer tb.Close(tbctx)
 	ctx := base.TestCtx(t)
 	err := base.CreateBucketScopesAndCollections(ctx, tb.BucketSpec, map[string][]string{
 		"fooScope": {

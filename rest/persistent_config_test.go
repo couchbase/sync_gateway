@@ -20,8 +20,8 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 		t.Skip("CBS required")
 	}
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	tbctx, tb := base.GetTestBucket(t)
+	defer tb.Close(tbctx)
 	ctx := base.TestCtx(t)
 
 	config := fmt.Sprintf(`{
@@ -140,9 +140,8 @@ func TestAutomaticConfigUpgradeError(t *testing.T) {
 		tmpDir := t.TempDir()
 
 		t.Run(testCase.Name, func(t *testing.T) {
-			tb := base.GetTestBucket(t)
-			defer tb.Close()
-			ctx := base.TestCtx(t)
+			ctx, tb := base.GetTestBucket(t)
+			defer tb.Close(ctx)
 
 			config := fmt.Sprintf(testCase.Config, base.TestTLSSkipVerify(), base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), tb.GetName())
 
@@ -161,9 +160,8 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 		t.Skip("CBS required")
 	}
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
-	ctx := base.TestCtx(t)
+	ctx, tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
 
 	tmpDir := t.TempDir()
 
@@ -310,10 +308,10 @@ func TestImportFilterEndpoint(t *testing.T) {
 	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
+	tbctx, tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(tbctx)
 	}()
 	resp := BootstrapAdminRequest(t, http.MethodPut, "/db1/",
 		fmt.Sprintf(

@@ -19,8 +19,8 @@ func TestServerlessPollBuckets(t *testing.T) {
 	}
 
 	// Get test bucket
-	tb1 := base.GetTestBucket(t)
-	defer tb1.Close()
+	tbctx1, tb1 := base.GetTestBucket(t)
+	defer tb1.Close(tbctx1)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb1,
@@ -87,8 +87,8 @@ func TestServerlessDBSetupForceCreds(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	tb1 := base.GetTestBucket(t)
-	defer tb1.Close()
+	tbctx1, tb1 := base.GetTestBucket(t)
+	defer tb1.Close(tbctx1)
 
 	testCases := []struct {
 		name                  string
@@ -142,8 +142,8 @@ func TestServerlessBucketCredentialsFetchDatabases(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	tb1 := base.GetTestBucket(t)
-	defer tb1.Close()
+	tbctx1, tb1 := base.GetTestBucket(t)
+	defer tb1.Close(tbctx1)
 	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1, persistentConfig: true, serverless: true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)

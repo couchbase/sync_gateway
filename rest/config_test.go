@@ -940,11 +940,11 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	tb1 := base.GetTestBucket(t)
-	defer tb1.Close()
+	tbctx1, tb1 := base.GetTestBucket(t)
+	defer tb1.Close(tbctx1)
 
-	tb2 := base.GetTestBucket(t)
-	defer tb2.Close()
+	tbctx2, tb2 := base.GetTestBucket(t)
+	defer tb2.Close(tbctx2)
 
 	tb1User, tb1Password, _ := tb1.BucketSpec.Auth.GetCredentials()
 	tb2User, tb2Password, _ := tb2.BucketSpec.Auth.GetCredentials()

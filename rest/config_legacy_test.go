@@ -285,9 +285,8 @@ func TestLegacyGuestUserMigration(t *testing.T) {
 		Disabled:         base.BoolPtr(false),
 	}
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
-	ctx := base.TestCtx(t)
+	ctx, tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
 
 	config := fmt.Sprintf(`{
 	"server_tls_skip_verify": %t,

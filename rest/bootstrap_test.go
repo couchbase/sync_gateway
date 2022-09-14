@@ -37,10 +37,10 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
+	tbctx, tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(tbctx)
 	}()
 	resp := BootstrapAdminRequest(t, http.MethodPut, "/db1/",
 		fmt.Sprintf(
@@ -156,8 +156,8 @@ func TestBootstrapDuplicateBucket(t *testing.T) {
 	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer func() { tb.Close() }()
+	tbctx, tb := base.GetTestBucket(t)
+	defer func() { tb.Close(tbctx) }()
 	resp := BootstrapAdminRequest(t, http.MethodPut, "/db1/",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
@@ -207,8 +207,8 @@ func TestBootstrapDuplicateDatabase(t *testing.T) {
 	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer func() { tb.Close() }()
+	tbctx, tb := base.GetTestBucket(t)
+	defer func() { tb.Close(tbctx) }()
 
 	dbConfig := fmt.Sprintf(
 		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,

@@ -110,12 +110,13 @@ func (rt *RestTester) Bucket() base.Bucket {
 	// If we have a TestBucket defined on the RestTesterConfig, use that instead of requesting a new one.
 	testBucket := rt.RestTesterConfig.CustomTestBucket
 	if testBucket == nil {
-		testBucket = base.GetTestBucket(rt.TB)
+		var ctx context.Context
+		ctx, testBucket = base.GetTestBucket(rt.TB)
 		if rt.leakyBucketConfig != nil {
 			leakyConfig := *rt.leakyBucketConfig
 			// Ignore closures to avoid double closing panics
 			leakyConfig.IgnoreClose = true
-			testBucket = testBucket.LeakyBucketClone(leakyConfig)
+			testBucket = testBucket.LeakyBucketClone(ctx, leakyConfig)
 		}
 	} else if rt.leakyBucketConfig != nil {
 		rt.TB.Fatalf("A passed in TestBucket cannot be used on the RestTester when defining a leakyBucketConfig")
@@ -450,7 +451,7 @@ func (rt *RestTester) Close() {
 		rt.RestTesterServerContext.Close(ctx)
 	}
 	if rt.TestBucket != nil {
-		rt.TestBucket.Close()
+		rt.TestBucket.Close(ctx)
 		rt.TestBucket = nil
 	}
 }

@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"context"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -55,11 +56,11 @@ func (rtc *RestTesterCluster) Node(i int) *RestTester {
 }
 
 // Close closes all of RestTester nodes and the shared TestBucket.
-func (rtc *RestTesterCluster) Close() {
+func (rtc *RestTesterCluster) Close(ctx context.Context) {
 	for _, rt := range rtc.restTesters {
 		rt.Close()
 	}
-	rtc.testBucket.Close()
+	rtc.testBucket.Close(ctx)
 }
 
 // var _ base.BootstrapConnection = &testBootstrapConnection{}
@@ -80,7 +81,7 @@ func defaultRestTesterClusterConfig(t *testing.T) *RestTesterClusterConfig {
 	}
 }
 
-func NewRestTesterCluster(t *testing.T, config *RestTesterClusterConfig) *RestTesterCluster {
+func NewRestTesterCluster(t *testing.T, config *RestTesterClusterConfig) (context.Context, *RestTesterCluster) {
 	if base.UnitTestUrlIsWalrus() {
 		// TODO: implementing a single bucket/mock base.BootstrapConnection might work here
 		t.Skip("Walrus not supported for RestTesterCluster")
@@ -100,11 +101,12 @@ func NewRestTesterCluster(t *testing.T, config *RestTesterClusterConfig) *RestTe
 	config.rtConfig.persistentConfig = true
 
 	// Make all RestTesters share the same unclosable TestBucket
+	ctx := base.TestCtx(t)
 	tb := config.testBucket
 	if tb == nil {
-		tb = base.GetTestBucket(t)
+		ctx, tb = base.GetTestBucket(t)
 	}
-	config.rtConfig.CustomTestBucket = tb.NoCloseClone()
+	config.rtConfig.CustomTestBucket = tb.NoCloseClone(ctx)
 
 	// Start up all rest testers in parallel
 	wg := sync.WaitGroup{}
@@ -121,7 +123,7 @@ func NewRestTesterCluster(t *testing.T, config *RestTesterClusterConfig) *RestTe
 	}
 	wg.Wait()
 
-	return &RestTesterCluster{
+	return ctx, &RestTesterCluster{
 		testBucket:  tb,
 		restTesters: restTesters,
 		config:      config,
@@ -145,8 +147,8 @@ func TestPersistentDbConfigWithInvalidUpsert(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
-	rtc := NewRestTesterCluster(t, nil)
-	defer rtc.Close()
+	ctx, rtc := NewRestTesterCluster(t, nil)
+	defer rtc.Close(ctx)
 
 	const db = "db"
 

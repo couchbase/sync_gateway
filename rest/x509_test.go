@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -30,8 +31,8 @@ import (
 func TestX509RoundtripUsingIP(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	tb, _, _, _ := setupX509Tests(t, true)
-	defer tb.Close()
+	ctx, tb, _, _, _ := setupX509Tests(t, true)
+	defer tb.Close(ctx)
 
 	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, useTLSServer: true})
 	defer rt.Close()
@@ -50,8 +51,8 @@ func TestX509RoundtripUsingIP(t *testing.T) {
 func TestX509RoundtripUsingDomain(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	tb, _, _, _ := setupX509Tests(t, false)
-	defer tb.Close()
+	ctx, tb, _, _, _ := setupX509Tests(t, false)
+	defer tb.Close(ctx)
 
 	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, useTLSServer: true})
 	defer rt.Close()
@@ -68,8 +69,8 @@ func TestX509RoundtripUsingDomain(t *testing.T) {
 func TestX509UnknownAuthorityWrap(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	tb, _, _, _ := setupX509Tests(t, true)
-	defer tb.Close()
+	ctx, tb, _, _, _ := setupX509Tests(t, true)
+	defer tb.Close(ctx)
 
 	tb.BucketSpec.CACertPath = ""
 
@@ -89,12 +90,11 @@ func TestX509UnknownAuthorityWrap(t *testing.T) {
 }
 
 func TestAttachmentCompactionRun(t *testing.T) {
-	tb, _, _, _ := setupX509Tests(t, true)
-	defer tb.Close()
+	ctx, tb, _, _, _ := setupX509Tests(t, true)
+	defer tb.Close(ctx)
 
 	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, useTLSServer: true})
 	defer rt.Close()
-	ctx := rt.Context()
 
 	for i := 0; i < 20; i++ {
 		docID := fmt.Sprintf("testDoc-%d", i)
@@ -112,7 +112,7 @@ func TestAttachmentCompactionRun(t *testing.T) {
 	assert.Equal(t, int64(20), status.MarkedAttachments)
 }
 
-func setupX509Tests(t *testing.T, useIPAddress bool) (testBucket *base.TestBucket, caCertPath string, certPath string, keyPath string) {
+func setupX509Tests(t *testing.T, useIPAddress bool) (ctx context.Context, testBucket *base.TestBucket, caCertPath string, certPath string, keyPath string) {
 	if !x509TestsEnabled() {
 		t.Skipf("x509 tests not enabled via %s flag", x509TestFlag)
 	}
@@ -164,7 +164,7 @@ func setupX509Tests(t *testing.T, useIPAddress bool) (testBucket *base.TestBucke
 	}
 	require.NoError(t, err)
 
-	tb := base.GetTestBucket(t)
+	ctx, tb := base.GetTestBucket(t)
 
 	// force couchbases:// scheme
 	if useIPAddress {
@@ -183,5 +183,5 @@ func setupX509Tests(t *testing.T, useIPAddress bool) (testBucket *base.TestBucke
 	tb.BucketSpec.Certpath = certPath
 	tb.BucketSpec.Keypath = keyPath
 
-	return tb, caCertPath, certPath, keyPath
+	return ctx, tb, caCertPath, certPath, keyPath
 }

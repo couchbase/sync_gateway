@@ -7598,10 +7598,11 @@ func TestMetricsHandler(t *testing.T) {
 
 	// Create and remove a database
 	// This ensures that creation and removal of a DB is possible without a re-registration issue ( the below rest tester will re-register "db")
-	ctx := base.TestCtx(t)
-	context, err := db.NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, db.DatabaseContextOptions{})
+	ctx, tbucket := base.GetTestBucket(t)
+	context, err := db.NewDatabaseContext(ctx, "db", tbucket, false, db.DatabaseContextOptions{})
 	require.NoError(t, err)
-	context.Close(context.AddDatabaseLogContext(ctx))
+	ctx = context.AddDatabaseLogContext(ctx)
+	context.Close(ctx)
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -7624,9 +7625,11 @@ func TestMetricsHandler(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Initialize another database to ensure both are registered successfully
-	context, err = db.NewDatabaseContext(ctx, "db2", base.GetTestBucket(t), false, db.DatabaseContextOptions{})
+	ctx, tbucket = base.GetTestBucket(t)
+	context, err = db.NewDatabaseContext(ctx, "db2", tbucket, false, db.DatabaseContextOptions{})
 	require.NoError(t, err)
-	defer context.Close(context.AddDatabaseLogContext(ctx))
+	ctx = context.AddDatabaseLogContext(ctx)
+	defer context.Close(ctx)
 
 	// Validate that metrics still works with both db and db2 databases and that they have entries
 	resp, err = httpClient.Get(srv.URL + "/_metrics")

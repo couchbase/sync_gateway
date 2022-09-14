@@ -1017,9 +1017,9 @@ func TestReplicationConcurrentPush(t *testing.T) {
 //	returned teardown function closes activeRT, passiveRT and the http server, should be invoked with defer
 func setupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, remoteDBURLString string, teardown func()) {
 	// Set up passive RestTester (rt2)
-	passiveTestBucket := base.GetTestBucket(t)
+	pctx, passiveTestBucket := base.GetTestBucket(t)
 	passiveRT = NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: passiveTestBucket.NoCloseClone(),
+		CustomTestBucket: passiveTestBucket.NoCloseClone(pctx),
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -1040,9 +1040,9 @@ func setupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	// Set up active RestTester (rt1)
-	activeTestBucket := base.GetTestBucket(t)
+	actx, activeTestBucket := base.GetTestBucket(t)
 	activeRT = NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket:   activeTestBucket.NoCloseClone(),
+		CustomTestBucket:   activeTestBucket.NoCloseClone(actx),
 		SgReplicateEnabled: true,
 	})
 	// Initalize RT and bucket
@@ -1050,10 +1050,10 @@ func setupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 
 	teardown = func() {
 		activeRT.Close()
-		activeTestBucket.Close()
+		activeTestBucket.Close(actx)
 		srv.Close()
 		passiveRT.Close()
-		passiveTestBucket.Close()
+		passiveTestBucket.Close(pctx)
 	}
 	return activeRT, passiveRT, passiveDBURL.String(), teardown
 }
@@ -1063,7 +1063,7 @@ func addActiveRT(t *testing.T, testBucket *base.TestBucket) (activeRT *RestTeste
 
 	// Create a new rest tester, using a NoCloseClone of testBucket, which disables the TestBucketPool teardown
 	activeRT = NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket:   testBucket.NoCloseClone(),
+		CustomTestBucket:   testBucket.NoCloseClone(base.TestCtx(t)),
 		SgReplicateEnabled: true,
 	})
 
@@ -1703,8 +1703,8 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 		base.SkipPrometheusStatsRegistration = true
 	}()
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	tbctx, tb := base.GetTestBucket(t)
+	defer tb.Close(tbctx)
 	rt := NewRestTester(t, &RestTesterConfig{
 		persistentConfig: true,
 		CustomTestBucket: tb,
@@ -1723,8 +1723,8 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 	}`, tb.GetName(), base.TestsDisableGSI()))
 	RequireStatus(t, resp, http.StatusCreated)
 
-	tb2 := base.GetTestBucket(t)
-	defer tb2.Close()
+	tbctx2, tb2 := base.GetTestBucket(t)
+	defer tb2.Close(tbctx2)
 	resp = rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{
 				"bucket": "%s",
 				"use_views": %t,

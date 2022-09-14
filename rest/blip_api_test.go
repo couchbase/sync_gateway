@@ -4563,12 +4563,13 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 			expectNoRev: false,
 		},
 	}
+	tbctx, tb := base.GetTestBucket(t)
 	for _, test := range testCases {
 		t.Run(fmt.Sprintf("%s", test.error), func(t *testing.T) {
 			docName := fmt.Sprintf("%s", test.error)
 			rt := NewRestTester(t, &RestTesterConfig{
 				GuestEnabled:     true,
-				CustomTestBucket: base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{}),
+				CustomTestBucket: tb.LeakyBucketClone(tbctx, base.LeakyBucketConfig{}),
 			})
 			defer rt.Close()
 

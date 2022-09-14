@@ -108,10 +108,10 @@ func bucketConfigFromTestBucket(tb *base.TestBucket) BucketConfig {
 func TestAllDatabaseNames(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
-	tb1 := base.GetTestBucket(t)
-	defer tb1.Close()
-	tb2 := base.GetTestBucket(t)
-	defer tb2.Close()
+	tbctx1, tb1 := base.GetTestBucket(t)
+	defer tb1.Close(tbctx1)
+	tbctx2, tb2 := base.GetTestBucket(t)
+	defer tb2.Close(tbctx2)
 
 	ctx := base.TestCtx(t)
 	serverConfig := &StartupConfig{
@@ -290,10 +290,9 @@ func TestObtainManagementEndpointsFromServerContextWithX509(t *testing.T) {
 	if !base.ServerIsTLS(serverURL) {
 		t.Skipf("URI %s needs to start with couchbases://", serverURL)
 	}
-	tb, caCertPath, certPath, keyPath := setupX509Tests(t, true)
-	defer tb.Close()
+	ctx, tb, caCertPath, certPath, keyPath := setupX509Tests(t, true)
+	defer tb.Close(ctx)
 
-	ctx := base.TestCtx(t)
 	svrctx := NewServerContext(ctx, &StartupConfig{
 		Bootstrap: BootstrapConfig{
 			Server:       serverURL,
@@ -340,8 +339,8 @@ outerLoop:
 func TestStartAndStopHTTPServers(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	ctx, tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
 
 	config := DefaultStartupConfig("")
 
@@ -356,7 +355,6 @@ func TestStartAndStopHTTPServers(t *testing.T) {
 	config.Bootstrap.Username = base.TestClusterUsername()
 	config.Bootstrap.Password = base.TestClusterPassword()
 
-	ctx := base.TestCtx(t)
 	sc, err := SetupServerContext(ctx, &config, false)
 	require.NoError(t, err)
 
@@ -578,13 +576,12 @@ func TestServerContextSetupCollectionsSupport(t *testing.T) {
 		t.Skip("Requires Couchbase Server")
 	}
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	ctx, tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
 	if tb.IsSupported(sgbucket.DataStoreFeatureCollections) {
 		t.Skip("Only runs on datastores without collections support")
 	}
 
-	ctx := base.TestCtx(t)
 	serverConfig := &StartupConfig{
 		Bootstrap: BootstrapConfig{
 			UseTLSServer:        base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())),

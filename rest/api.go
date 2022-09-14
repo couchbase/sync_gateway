@@ -221,7 +221,7 @@ func (h *handler) handleFlush() error {
 		if err != nil {
 			return err
 		}
-		defer tempBucketForFlush.Close() // Close the temporary connection to the bucket that was just for purposes of flushing it
+		defer tempBucketForFlush.Close(h.ctx()) // Close the temporary connection to the bucket that was just for purposes of flushing it
 
 		// Flush the bucket (assuming it conforms to sgbucket.DeleteableStore interface
 		if tempBucketForFlush, ok := tempBucketForFlush.(base.SGFlushableStore); ok {
@@ -247,7 +247,7 @@ func (h *handler) handleFlush() error {
 		name := h.db.Name
 		config := h.server.GetDatabaseConfig(name)
 		h.server.RemoveDatabase(h.ctx(), name)
-		err := bucket.CloseAndDelete()
+		err := bucket.CloseAndDelete(h.ctx())
 		_, err2 := h.server.AddDatabaseFromConfig(h.ctx(), *config)
 		if err == nil {
 			err = err2

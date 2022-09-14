@@ -158,7 +158,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
 
 	// Passive
-	tb2 := base.GetTestBucket(t)
+	_, tb2 := base.GetTestBucket(t)
 
 	const (
 		username = "AL_1c.e-@"
@@ -197,7 +197,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	passiveDBURL.User = url.UserPassword(username, password)
 
 	// Active
-	tb1 := base.GetTestBucket(t)
+	_, tb1 := base.GetTestBucket(t)
 
 	rt1 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb1,
@@ -254,7 +254,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
 
 	// Passive
-	tb2 := base.GetTestBucket(t)
+	_, tb2 := base.GetTestBucket(t)
 
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb2,
@@ -287,7 +287,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	// Active
-	tb1 := base.GetTestBucket(t)
+	_, tb1 := base.GetTestBucket(t)
 
 	rt1 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb1,
@@ -577,7 +577,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	)
 
 	// Passive
-	tb2 := base.GetTestBucket(t)
+	_, tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
@@ -608,7 +608,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	// Active
-	tb1 := base.GetTestBucket(t)
+	_, tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb1,
 	})
@@ -743,7 +743,7 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 	)
 
 	// Passive
-	tb2 := base.GetTestBucket(t)
+	_, tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
@@ -758,7 +758,7 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	tb1 := base.GetTestBucket(t)
+	_, tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb1,
 	})
@@ -897,7 +897,7 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyReplicate)
 
 	// Passive
-	tb2 := base.GetTestBucket(t)
+	_, tb2 := base.GetTestBucket(t)
 
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb2,
@@ -931,7 +931,7 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	// Active
-	tb1 := base.GetTestBucket(t)
+	_, tb1 := base.GetTestBucket(t)
 
 	rt1 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb1,
@@ -991,7 +991,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
 
 	// Passive
-	tb2 := base.GetTestBucket(t)
+	_, tb2 := base.GetTestBucket(t)
 
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb2,
@@ -1007,7 +1007,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	tb1 := base.GetTestBucket(t)
+	_, tb1 := base.GetTestBucket(t)
 
 	rt1 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb1,
@@ -1081,7 +1081,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
 
 	// Active
-	tb1 := base.GetTestBucket(t)
+	_, tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb1,
 	})
@@ -1089,7 +1089,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 	ctx1 := rt1.Context()
 
 	// Passive
-	tb2 := base.GetTestBucket(t)
+	_, tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
@@ -1201,7 +1201,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	)
 
 	// Active
-	tb1 := base.GetTestBucket(t)
+	_, tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb1,
 	})
@@ -1216,7 +1216,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	}
 
 	// Passive
-	tb2 := base.GetTestBucket(t)
+	_, tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
@@ -1363,7 +1363,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	)
 
 	// Central cluster
-	tb1 := base.GetTestBucket(t)
+	_, tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb1,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
@@ -1394,7 +1394,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	rt1DBURL.User = url.UserPassword("alice", "pass")
 
 	// Edge 1
-	edge1Bucket := base.GetTestBucket(t)
+	_, edge1Bucket := base.GetTestBucket(t)
 	edge1 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: edge1Bucket,
 	})
@@ -1463,7 +1463,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	assert.NoError(t, edge1Replicator.Stop())
 
 	// Edge 2
-	edge2Bucket := base.GetTestBucket(t)
+	_, edge2Bucket := base.GetTestBucket(t)
 	edge2 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: edge2Bucket,
 	})
@@ -1536,7 +1536,7 @@ func TestActiveReplicatorPushFromCheckpointIgnored(t *testing.T) {
 	)
 
 	// Active
-	tb1 := base.GetTestBucket(t)
+	_, tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb1,
 	})
@@ -1544,7 +1544,7 @@ func TestActiveReplicatorPushFromCheckpointIgnored(t *testing.T) {
 	ctx1 := rt1.Context()
 
 	// Passive
-	tb2 := base.GetTestBucket(t)
+	_, tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
@@ -1671,7 +1671,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
 
 	// Passive
-	tb2 := base.GetTestBucket(t)
+	_, tb2 := base.GetTestBucket(t)
 
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb2,
@@ -1687,7 +1687,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	tb1 := base.GetTestBucket(t)
+	_, tb1 := base.GetTestBucket(t)
 
 	rt1 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb1,
@@ -1767,7 +1767,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	// Passive
-	tb2 := base.GetTestBucket(t)
+	_, tb2 := base.GetTestBucket(t)
 
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb2,
@@ -1798,7 +1798,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	// Active
-	tb1 := base.GetTestBucket(t)
+	_, tb1 := base.GetTestBucket(t)
 
 	rt1 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb1,
@@ -1870,7 +1870,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyReplicate)
 
 	// Passive
-	tb2 := base.GetTestBucket(t)
+	_, tb2 := base.GetTestBucket(t)
 
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb2,
@@ -1901,7 +1901,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	// Active
-	tb1 := base.GetTestBucket(t)
+	_, tb1 := base.GetTestBucket(t)
 
 	rt1 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb1,
@@ -2048,7 +2048,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD)
 
 			// Passive
-			tb2 := base.GetTestBucket(t)
+			_, tb2 := base.GetTestBucket(t)
 
 			rt2 := NewRestTester(t, &RestTesterConfig{
 				CustomTestBucket: tb2,
@@ -2082,7 +2082,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			passiveDBURL.User = url.UserPassword("alice", "pass")
 
 			// Active
-			tb1 := base.GetTestBucket(t)
+			_, tb1 := base.GetTestBucket(t)
 
 			rt1 := NewRestTester(t, &RestTesterConfig{
 				CustomTestBucket: tb1,
@@ -2258,8 +2258,9 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD)
 
 			// Passive
+			_, tb2 := base.GetTestBucket(t)
 			rt2 := NewRestTester(t, &RestTesterConfig{
-				CustomTestBucket: base.GetTestBucket(t),
+				CustomTestBucket: tb2,
 				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 					Users: map[string]*auth.PrincipalConfig{
 						"alice": {
@@ -2311,8 +2312,9 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			passiveDBURL.User = url.UserPassword("alice", "pass")
 
 			// Active
+			_, tb1 := base.GetTestBucket(t)
 			rt1 := NewRestTester(t, &RestTesterConfig{
-				CustomTestBucket: base.GetTestBucket(t),
+				CustomTestBucket: tb1,
 			})
 			defer rt1.Close()
 			ctx1 := rt1.Context()
@@ -2453,8 +2455,9 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
 
 	// Passive
+	_, tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
+		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -2467,8 +2470,9 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
+	_, tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -2531,8 +2535,9 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
 
 	// Passive
+	_, tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
+		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -2545,8 +2550,9 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
+	_, tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -2596,8 +2602,9 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	// Passive
+	_, tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
+		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -2626,8 +2633,9 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	// Active
+	_, tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
+		CustomTestBucket: tb1,
 	})
 	ctx1 := rt1.Context()
 
@@ -2688,8 +2696,9 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	rt1.Close()
 
 	// recreate rt1 with a new bucket
+	_, tb1 = base.GetTestBucket(t)
 	rt1 = NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 = rt1.Context()
@@ -2752,7 +2761,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	// Passive
-	tb2 := base.GetTestBucket(t)
+	_, tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
@@ -2775,7 +2784,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	// Active
-	tb1 := base.GetTestBucket(t)
+	_, tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb1,
 	})
@@ -2849,8 +2858,9 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	rt2.Close()
 
 	// recreate rt2 with a new bucket, http server and update target URL in the replicator
+	_, tb2 = base.GetTestBucket(t)
 	rt2 = NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
+		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -2926,8 +2936,9 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	// Passive
+	_, tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
+		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -2950,8 +2961,9 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	// Active
+	_, tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -3084,8 +3096,9 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	// Passive
+	_, tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
+		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -3107,8 +3120,9 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	// Active
+	_, tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -3184,8 +3198,9 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
 
 	// Passive
+	_, tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
+		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AllowConflicts: base.BoolPtr(false),
 			Users: map[string]*auth.PrincipalConfig{
@@ -3199,8 +3214,9 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
+	_, tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
+		CustomTestBucket: tb1,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AllowConflicts: base.BoolPtr(false),
 		}},
@@ -3298,7 +3314,7 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 	)
 
 	// Passive
-	tb2 := base.GetTestBucket(t)
+	_, tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
@@ -3329,7 +3345,7 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	// Active
-	tb1 := base.GetTestBucket(t)
+	_, tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb1,
 	})
@@ -3500,7 +3516,7 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 					base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 					// Passive
-					tb2 := base.GetTestBucket(t)
+					_, tb2 := base.GetTestBucket(t)
 					rt2 := NewRestTester(t, &RestTesterConfig{
 						CustomTestBucket: tb2,
 						DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
@@ -3534,7 +3550,7 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 					}
 
 					// Active
-					tb1 := base.GetTestBucket(t)
+					_, tb1 := base.GetTestBucket(t)
 					rt1 := NewRestTester(t, &RestTesterConfig{
 						CustomTestBucket: tb1,
 					})
@@ -3604,7 +3620,7 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp)
 
 	// Passive
-	tb2 := base.GetTestBucket(t)
+	_, tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb2,
 	})
@@ -3622,7 +3638,7 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 	remoteDBURL.User = url.UserPassword("alice", "pass")
 
 	// Active
-	tb1 := base.GetTestBucket(t)
+	_, tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb1,
 	})
@@ -3684,7 +3700,7 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp)
 
 	// Passive
-	tb2 := base.GetTestBucket(t)
+	_, tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
@@ -3710,7 +3726,7 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 	remoteDBURL.User = url.UserPassword("bob", "pass")
 
 	// Active
-	tb1 := base.GetTestBucket(t)
+	_, tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb1,
 	})
@@ -4000,7 +4016,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 			// Passive
-			tb2 := base.GetTestBucket(t)
+			_, tb2 := base.GetTestBucket(t)
 
 			rt2 := NewRestTester(t, &RestTesterConfig{
 				CustomTestBucket: tb2,
@@ -4038,7 +4054,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			passiveDBURL.User = url.UserPassword("alice", "pass")
 
 			// Active
-			tb1 := base.GetTestBucket(t)
+			_, tb1 := base.GetTestBucket(t)
 
 			rt1 := NewRestTester(t, &RestTesterConfig{
 				CustomTestBucket: tb1,
@@ -4233,7 +4249,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			}
 
 			// Passive
-			passiveBucket := base.GetTestBucket(t)
+			_, passiveBucket := base.GetTestBucket(t)
 			remotePassiveRT := NewRestTester(t, &RestTesterConfig{
 				CustomTestBucket: passiveBucket,
 			})
@@ -4243,7 +4259,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			defer srv.Close()
 
 			// Active
-			activeBucket := base.GetTestBucket(t)
+			_, activeBucket := base.GetTestBucket(t)
 			localActiveRT := NewRestTester(t, &RestTesterConfig{
 				CustomTestBucket:   activeBucket,
 				SgReplicateEnabled: true,
@@ -4496,8 +4512,9 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 	for _, test := range defaultConflictResolverWithTombstoneTests {
 		t.Run(test.name, func(tt *testing.T) {
 			// Passive
+			_, tb2 := base.GetTestBucket(t)
 			rt2 := NewRestTester(t, &RestTesterConfig{
-				CustomTestBucket: base.GetTestBucket(t),
+				CustomTestBucket: tb2,
 				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 					Users: map[string]*auth.PrincipalConfig{
 						"alice": {
@@ -4519,8 +4536,9 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 			passiveDBURL.User = url.UserPassword("alice", "pass")
 
 			// Active
+			_, tb1 := base.GetTestBucket(t)
 			rt1 := NewRestTester(t, &RestTesterConfig{
-				CustomTestBucket: base.GetTestBucket(t),
+				CustomTestBucket: tb1,
 			})
 			defer rt1.Close()
 			ctx1 := rt1.Context()
@@ -4651,8 +4669,9 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 	for _, test := range defaultConflictResolverWithTombstoneTests {
 		t.Run(test.name, func(t *testing.T) {
 			// Passive
+			_, tb2 := base.GetTestBucket(t)
 			rt2 := NewRestTester(t, &RestTesterConfig{
-				CustomTestBucket: base.GetTestBucket(t),
+				CustomTestBucket: tb2,
 				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 					Users: map[string]*auth.PrincipalConfig{
 						"alice": {
@@ -4674,8 +4693,9 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			passiveDBURL.User = url.UserPassword("alice", "pass")
 
 			// Active
+			_, tb1 := base.GetTestBucket(t)
 			rt1 := NewRestTester(t, &RestTesterConfig{
-				CustomTestBucket: base.GetTestBucket(t),
+				CustomTestBucket: tb1,
 			})
 			defer rt1.Close()
 			ctx1 := rt1.Context()
@@ -4994,7 +5014,7 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 	errorCountBefore := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value()
 
 	// Passive
-	tb2 := base.GetTestBucket(t)
+	_, tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
@@ -5003,8 +5023,9 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 	})
 	defer rt2.Close()
 
+	_, tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -5159,8 +5180,9 @@ func TestReplicatorRevocations(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
+	_, tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -5214,8 +5236,9 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
+	_, tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -5270,8 +5293,9 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
+	_, tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -5334,8 +5358,9 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
+	_, tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -5435,8 +5460,9 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
+	_, tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -5498,8 +5524,9 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
+	_, tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -5583,8 +5610,9 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
+	_, tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -5687,8 +5715,9 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
+	_, tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -5813,7 +5842,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	// Passive //
-	passiveBucket := base.GetTestBucket(t)
+	_, passiveBucket := base.GetTestBucket(t)
 	passiveRT := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: passiveBucket,
 		DatabaseConfig: &DatabaseConfig{
@@ -5831,7 +5860,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	defer srv.Close()
 
 	// Active //
-	activeBucket := base.GetTestBucket(t)
+	_, activeBucket := base.GetTestBucket(t)
 	activeRT := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: activeBucket,
 		DatabaseConfig: &DatabaseConfig{
@@ -5915,7 +5944,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	// Passive //
-	passiveBucket := base.GetTestBucket(t)
+	_, passiveBucket := base.GetTestBucket(t)
 	passiveRT := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: passiveBucket,
 		DatabaseConfig: &DatabaseConfig{
@@ -5933,7 +5962,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 	defer srv.Close()
 
 	// Active //
-	activeBucket := base.GetTestBucket(t)
+	_, activeBucket := base.GetTestBucket(t)
 	activeRT := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: activeBucket,
 		DatabaseConfig: &DatabaseConfig{
@@ -6011,7 +6040,7 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	// Passive //
-	passiveBucket := base.GetTestBucket(t)
+	_, passiveBucket := base.GetTestBucket(t)
 	passiveRT := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: passiveBucket,
 	})
@@ -6022,7 +6051,7 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	defer srv.Close()
 
 	// Active //
-	activeBucket := base.GetTestBucket(t)
+	_, activeBucket := base.GetTestBucket(t)
 	activeRT := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: activeBucket,
 	})
