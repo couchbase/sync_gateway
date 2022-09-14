@@ -5274,6 +5274,8 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll) // CBG-1981
+
 	// Passive
 	revocationTester, rt2 := initScenario(t, nil)
 	defer rt2.Close()
