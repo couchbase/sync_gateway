@@ -185,9 +185,9 @@ func TestConsoleLogDefaults(t *testing.T) {
 			},
 		},
 	}
-	ctx := TestCtx(t)
 	for _, test := range tests {
 		t.Run(test.name, func(tt *testing.T) {
+			ctx := TestCtx(t)
 			logger, err := NewConsoleLogger(ctx, false, &test.config)
 			assert.NoError(tt, err)
 			assert.Equal(tt, test.expected.Enabled, logger.Enabled)

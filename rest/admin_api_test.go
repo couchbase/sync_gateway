@@ -3528,7 +3528,6 @@ func TestPutDBConfigOIDC(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	serverErr := make(chan error, 0)
-	ctx := base.TestCtx(t)
 	// Start SG with no databases
 	ctx := base.TestCtx(t)
 	config := bootstrapStartupConfigForTest(t)
