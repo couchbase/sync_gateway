@@ -188,8 +188,8 @@ func (config *GraphQLConfig) compileFieldResolver(typeName string, fieldName str
 	if err != nil {
 		return nil, err
 	}
-	userFn.checkArgs = false
-	userFn.allowByDefault = true
+	userFn.CheckArgs(false)
+	userFn.AllowByDefault(true)
 
 	return func(params graphql.ResolveParams) (interface{}, error) {
 		db := params.Context.Value(dbKey).(*Database)
@@ -204,8 +204,7 @@ func (config *GraphQLConfig) compileFieldResolver(typeName string, fieldName str
 	}, nil
 }
 
-// Calls a UserFunctionInvocation as a GraphQL resolver, given the parameters passed by the go-graphql API.
-func (fn *UserFunctionInvocation) Resolve(params graphql.ResolveParams) (interface{}, error) {
+func resolverInfo(params graphql.ResolveParams) map[string]interface{} {
 	// Collect the 'selectedFieldNames', the fields the query wants from the value being resolved:
 	selectedFieldNames := []string{}
 	if len(params.Info.FieldASTs) > 0 {
@@ -228,59 +227,55 @@ func (fn *UserFunctionInvocation) Resolve(params graphql.ResolveParams) (interfa
 	//   `selectedFieldNames` is not provided (directly) by ResolveInfo; it contains the fields of the
 	// resolver's result that will be used by the query (other fields will just be ignored.)
 	// This enables some important optimizations.
-	info := map[string]interface{}{
-		// FieldName:      params.Info.FieldName,
-		// RootValue:      params.Info.RootValue,
-		// VariableValues: params.Info.VariableValues,
+	return map[string]interface{}{
 		"selectedFieldNames": selectedFieldNames,
 	}
+}
 
-	if fn.compiled != nil {
-		// JavaScript resolver:
-		return fn.compiled.WithTask(func(task sgbucket.JSServerTask) (interface{}, error) {
-			runner := task.(*userJSRunner)
-			return runner.CallWithDB(fn.db,
-				fn.mutationAllowed,
-				fn.ctx,
-				newUserFunctionJSContext(fn.db),
-				params.Args,
-				params.Source,
-				info)
-		})
+func (fn *userFunctionJSInvocation) Resolve(params graphql.ResolveParams) (interface{}, error) {
+	return fn.compiled.WithTask(func(task sgbucket.JSServerTask) (interface{}, error) {
+		runner := task.(*userJSRunner)
+		return runner.CallWithDB(fn.db,
+			fn.mutationAllowed,
+			fn.ctx,
+			newUserFunctionJSContext(fn.db),
+			params.Args,
+			params.Source,
+			resolverInfo(params))
+	})
+}
 
-	} else {
-		// N1QL resolver:
-		fn.n1qlArgs["parent"] = params.Source
-		fn.n1qlArgs["info"] = info
-		// Run the query:
-		result, err := fn.Run()
-		if err != nil {
-			return nil, err
-		}
-		if !isGraphQLListType(params.Info.ReturnType) {
-			// GraphQL result type is not a list (array), but N1QL always returns an array.
-			// So use the first row of the result as the value, if there is one.
-			if rows, ok := result.([]interface{}); ok {
-				if len(rows) > 0 {
-					result = rows[0]
-				} else {
-					return nil, nil
-				}
-			}
-			if isGraphQLScalarType(params.Info.ReturnType) {
-				// GraphQL result type is a scalar, but a N1QL row is always an object.
-				// Use the single field of the object, if any, as the result:
-				row := result.(map[string]interface{})
-				if len(row) != 1 {
-					return nil, base.HTTPErrorf(http.StatusInternalServerError, "resolver %q returns scalar type %s, but its N1QL query returns %d columns, not 1", fn.name, params.Info.ReturnType, len(row))
-				}
-				for _, value := range row {
-					result = value
-				}
-			}
-		}
-		return result, nil
+func (fn *userFunctionN1QLInvocation) Resolve(params graphql.ResolveParams) (interface{}, error) {
+	fn.args["parent"] = params.Source
+	fn.args["info"] = resolverInfo(params)
+	// Run the query:
+	result, err := fn.Run()
+	if err != nil {
+		return nil, err
 	}
+	if !isGraphQLListType(params.Info.ReturnType) {
+		// GraphQL result type is not a list (array), but N1QL always returns an array.
+		// So use the first row of the result as the value, if there is one.
+		if rows, ok := result.([]interface{}); ok {
+			if len(rows) > 0 {
+				result = rows[0]
+			} else {
+				return nil, nil
+			}
+		}
+		if isGraphQLScalarType(params.Info.ReturnType) {
+			// GraphQL result type is a scalar, but a N1QL row is always an object.
+			// Use the single field of the object, if any, as the result:
+			row := result.(map[string]interface{})
+			if len(row) != 1 {
+				return nil, base.HTTPErrorf(http.StatusInternalServerError, "resolver %q returns scalar type %s, but its N1QL query returns %d columns, not 1", fn.name, params.Info.ReturnType, len(row))
+			}
+			for _, value := range row {
+				result = value
+			}
+		}
+	}
+	return result, nil
 }
 
 func isGraphQLListType(typ graphql.Output) bool {

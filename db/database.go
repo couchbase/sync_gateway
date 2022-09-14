@@ -616,7 +616,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	dbContext.AttachmentCompactionManager = NewAttachmentCompactionManager(bucket)
 
 	if options.UserFunctions != nil {
-		dbContext.userFunctions, err = compileUserFunctions(options.UserFunctions)
+		dbContext.userFunctions, err = CompileUserFunctions(options.UserFunctions)
 		if err != nil {
 			return nil, err
 		}
@@ -1797,7 +1797,7 @@ func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOp
 		}
 	}
 
-	queryNames = append(queryNames, allUserFunctionQueryNames(options)...)
+	queryNames = append(queryNames, AllUserFunctionQueryNames(options)...)
 
 	return base.SyncGatewayStats.NewDBStats(dbName, enabledDeltaSync, enabledImport, enabledViews, queryNames...)
 }
