@@ -266,24 +266,23 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	// look up the database context:
 	var dbContext *db.DatabaseContext
 	if keyspaceDb != "" {
+		if shouldCheckAdminAuth {
+			// Confirm admin port is authorized before attempting to load db
+			authorized, err := h.checkAdminAuthenticationOnly()
+			if err != nil {
+				return err
+			}
+			if !authorized {
+				return base.HTTPErrorf(http.StatusUnauthorized, "")
+			}
+		}
+
 		h.addDatabaseLogContext(keyspaceDb)
 		if dbContext, err = h.server.GetDatabase(h.ctx(), keyspaceDb); err != nil {
 			base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
-
-			if shouldCheckAdminAuth {
-				if httpError, ok := err.(*base.HTTPError); ok && httpError.Status == http.StatusNotFound {
-					authorized, err := h.checkAdminAuthenticationOnly()
-					if err != nil {
-						return err
-					}
-
-					if authorized {
-						return base.HTTPErrorf(http.StatusForbidden, "")
-					}
-					return base.HTTPErrorf(http.StatusUnauthorized, "")
-				}
+			if httpError, ok := err.(*base.HTTPError); ok && httpError.Status == http.StatusNotFound {
+				return base.HTTPErrorf(http.StatusForbidden, "")
 			}
-
 			return err
 		}
 	}
