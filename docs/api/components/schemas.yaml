@@ -1620,6 +1620,13 @@ Database:
       description: The maximum number of seconds the sync, import filter, and custom conflict resolver JavaScript functions are allowed to run for before timing out. Set to 0 to allow the JS functions to run uncapped.
       type: number
       default: 60
+    suspendable:
+      description: |-
+        Set to true to allow the database to be suspended and unsuspended. 
+        
+        Defaults to true when running in serverless mode otherwise defaults to false.
+      type: boolean
+      default: false
   title: Database-config
 Event-config:
   type: object
@@ -1743,9 +1750,9 @@ Serverless:
       description: Run SG in to serverless mode
       type: boolean
       readOnly: true
-    fetch_configs_cache_ttl:
+    fetch_configs_ttl:
       description: |-
-        How long to cache configs fetched from the buckets for. This cache is used for requested databases that SG does not know about.
+        How long database configs should be kept for in Sync Gateway before refreshing. Set to 0 to fetch configs everytime. This is used for requested databases that SG does not know about. 
         
         This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
       type: string

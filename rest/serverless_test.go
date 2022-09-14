@@ -181,11 +181,12 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb, persistentConfig: true})
+	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb, persistentConfig: true, serverless: true})
 	defer rt.Close()
 
 	sc := rt.ServerContext()
 
+	// suspendable should default to true when in serverless
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{
 		"bucket": "%s",
 		"use_views": %t,
@@ -193,6 +194,7 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 	}`, tb.GetName(), base.TestsDisableGSI()))
 	requireStatus(t, resp, http.StatusCreated)
 
+	assert.False(t, sc.isDatabaseSuspended("db"))
 	assert.NotNil(t, sc.databases_["db"])
 	assert.Equal(t, "db", sc.bucketDbName[tb.GetName()])
 	assert.NotNil(t, sc.dbConfigs["db"])
@@ -203,14 +205,15 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Confirm false returned when db does not exist
-	suspended := sc.suspendDatabase("invalid_db")
-	assert.False(t, suspended)
+	err = sc.suspendDatabase("invalid_db")
+	assert.ErrorIs(t, base.ErrNotFound, err)
 
 	// Confirm true returned when suspended a database successfully
-	suspended = sc.suspendDatabase("db")
-	assert.True(t, suspended)
+	err = sc.suspendDatabase("db")
+	assert.NoError(t, err)
 
 	// Make sure database is suspended
+	assert.True(t, sc.isDatabaseSuspended("db"))
 	assert.Nil(t, sc.databases_["db"])
 	assert.Empty(t, sc.bucketDbName[tb.GetName()])
 	assert.NotNil(t, sc.dbConfigs["db"])
@@ -227,6 +230,7 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 	// Unsuspend db
 	dbCtx, err = sc.unsuspendDatabase("db")
 	assert.NotNil(t, dbCtx)
+	assert.False(t, sc.isDatabaseSuspended("db"))
 	assert.NotNil(t, sc.databases_["db"])
 	assert.Equal(t, "db", sc.bucketDbName[tb.GetName()])
 	require.NotNil(t, sc.dbConfigs["db"])
@@ -249,87 +253,74 @@ func TestServerlessUnsuspendFetchFallback(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	// Set up server context
-	config := bootstrapStartupConfigForTest(t)
-	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0) // Make sure database does not get imported by fetchAndLoadConfigs
+	rt := NewRestTester(t, &RestTesterConfig{
+		TestBucket:       tb,
+		serverless:       true,
+		persistentConfig: true,
+		MutateStartupConfig: func(config *StartupConfig) {
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
+		},
+	})
+	defer rt.Close()
+	sc := rt.ServerContext()
 
-	sc, err := setupServerContext(&config, true)
-	require.NoError(t, err)
-
-	serverErr := make(chan error, 0)
-	defer func() {
-		sc.Close()
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- startServer(&config, sc)
-	}()
-	require.NoError(t, sc.waitForRESTAPIs())
-
-	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/",
+	resp := rt.SendAdminRequest(http.MethodPut, "/db/",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	resp.requireStatus(http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 
 	// Suspend the database and remove it from dbConfigs, forcing unsuspendDatabase to fetch config from the bucket
-	sc.suspendDatabase("db")
+	err := sc.suspendDatabase("db")
+	assert.NoError(t, err)
 	delete(sc.dbConfigs, "db")
 	assert.Nil(t, sc.databases_["db"])
 
 	// Unsuspend db and confirm unsuspending worked
-	dbCtx, err := sc.GetServerlessDatabase("db")
+	dbCtx, err := sc.GetDatabase("db")
 	assert.NoError(t, err)
 	assert.NotNil(t, dbCtx)
 	assert.NotNil(t, sc.databases_["db"])
 
 	// Attempt to get invalid database
-	dbCtx, err = sc.GetServerlessDatabase("invalid")
+	dbCtx, err = sc.GetDatabase("invalid")
 	assert.Contains(t, err.Error(), "no such database")
 }
 
-// Confirms that ServerContext.fetchConfigsCache works correctly
+// Confirms that ServerContext.fetchConfigsWithTTL works correctly
 func TestServerlessFetchConfigsLimited(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
+
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	// Set up server context
-	config := bootstrapStartupConfigForTest(t)
-	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0) // Make sure database does not get imported by fetchAndLoadConfigs
+	rt := NewRestTester(t, &RestTesterConfig{
+		TestBucket:       tb,
+		persistentConfig: true,
+		MutateStartupConfig: func(config *StartupConfig) {
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
+		},
+	})
+	defer rt.Close()
+	sc := rt.ServerContext()
 
-	sc, err := setupServerContext(&config, true)
-	require.NoError(t, err)
-
-	serverErr := make(chan error, 0)
-	defer func() {
-		sc.Close()
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- startServer(&config, sc)
-	}()
-	require.NoError(t, sc.waitForRESTAPIs())
-
-	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/",
+	resp := rt.SendAdminRequest(http.MethodPut, "/db/",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	resp.requireStatus(http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 
 	// Purposely make configs get caches
-	sc.config.Unsupported.Serverless.FetchConfigsCacheTTL = base.NewConfigDuration(time.Hour)
-	dbConfigsBefore, err := sc.fetchConfigsCache()
+	sc.config.Unsupported.Serverless.FetchConfigsTTL = base.NewConfigDuration(time.Hour)
+	dbConfigsBefore, err := sc.fetchConfigsWithTTL()
 	require.NotEmpty(t, dbConfigsBefore["db"])
-	timeCached := sc.fetchConfigsCacheUpdated
+	timeCached := sc.fetchConfigsLastUpdate
 	assert.NotZero(t, timeCached)
 	require.NoError(t, err)
 
@@ -341,20 +332,20 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 	)
 
 	// Fetch configs again and expect same config to be returned
-	dbConfigsAfter, err := sc.fetchConfigsCache()
+	dbConfigsAfter, err := sc.fetchConfigsWithTTL()
 	require.NotEmpty(t, dbConfigsAfter["db"])
 	assert.Equal(t, dbConfigsBefore["db"].cas, dbConfigsAfter["db"].cas)
-	assert.Equal(t, timeCached, sc.fetchConfigsCacheUpdated)
+	assert.Equal(t, timeCached, sc.fetchConfigsLastUpdate)
 
 	// Make caching 1ms so it will grab newest config
-	sc.config.Unsupported.Serverless.FetchConfigsCacheTTL = base.NewConfigDuration(time.Millisecond)
+	sc.config.Unsupported.Serverless.FetchConfigsTTL = base.NewConfigDuration(time.Millisecond)
 	// Sleep to make sure enough time passes
 	time.Sleep(time.Millisecond * 500)
-	dbConfigsAfter, err = sc.fetchConfigsCache()
+	dbConfigsAfter, err = sc.fetchConfigsWithTTL()
 	require.NotEmpty(t, dbConfigsAfter["db"])
 	assert.Equal(t, newCas, dbConfigsAfter["db"].cas)
 	// Change back for next test before next config update (not fully necessary but just to be safe)
-	sc.config.Unsupported.Serverless.FetchConfigsCacheTTL = base.NewConfigDuration(time.Hour)
+	sc.config.Unsupported.Serverless.FetchConfigsTTL = base.NewConfigDuration(time.Hour)
 
 	// Update database config in the bucket again to test caching disable case
 	newCas, err = sc.bootstrapContext.connection.UpdateConfig(tb.GetName(), sc.config.Bootstrap.ConfigGroupID,
@@ -364,8 +355,8 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 	)
 
 	// Disable caching and expect new config
-	sc.config.Unsupported.Serverless.FetchConfigsCacheTTL = base.NewConfigDuration(0)
-	dbConfigsAfter, err = sc.fetchConfigsCache()
+	sc.config.Unsupported.Serverless.FetchConfigsTTL = base.NewConfigDuration(0)
+	dbConfigsAfter, err = sc.fetchConfigsWithTTL()
 	require.NotEmpty(t, dbConfigsAfter["db"])
 	assert.Equal(t, newCas, dbConfigsAfter["db"].cas)
 }
@@ -379,34 +370,26 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	// Set up server context
-	config := bootstrapStartupConfigForTest(t)
-	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0) // Make sure fetchAndLoadConfigs does not get triggered
+	rt := NewRestTester(t, &RestTesterConfig{
+		TestBucket:       tb,
+		persistentConfig: true,
+		MutateStartupConfig: func(config *StartupConfig) {
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
+		},
+	})
+	defer rt.Close()
+	sc := rt.ServerContext()
 
-	sc, err := setupServerContext(&config, true)
-	require.NoError(t, err)
-
-	serverErr := make(chan error, 0)
-	defer func() {
-		sc.Close()
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- startServer(&config, sc)
-	}()
-	require.NoError(t, sc.waitForRESTAPIs())
-
-	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/",
+	resp := rt.SendAdminRequest(http.MethodPut, "/db/",
 		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
+			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "suspendable": true}`,
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	resp.requireStatus(http.StatusCreated)
+	requireStatus(t, resp, http.StatusCreated)
 
 	// Suspend the database
-	assert.True(t, sc.suspendDatabase("db"))
+	assert.NoError(t, sc.suspendDatabase("db"))
 	// Update database config
 	newCas, err := sc.bootstrapContext.connection.UpdateConfig(tb.GetName(), sc.config.Bootstrap.ConfigGroupID,
 		func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
@@ -415,12 +398,95 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 	)
 	// Confirm dbConfig cas did not update yet in SG, or get unsuspended
 	assert.NotEqual(t, sc.dbConfigs["db"].cas, newCas)
+	assert.True(t, sc.isDatabaseSuspended("db"))
 	assert.Nil(t, sc.databases_["db"])
 	// Trigger update frequency (would usually happen every ConfigUpdateFrequency seconds)
 	count, err := sc.fetchAndLoadConfigs(false)
 	require.NoError(t, err)
 	assert.Equal(t, 1, count)
 
-	// Check if it reloaded the database
-	assert.NotNil(t, sc.databases_["db"])
+	// Make sure database is still suspended
+	assert.True(t, sc.isDatabaseSuspended("db"))
+	assert.Nil(t, sc.databases_["db"])
+}
+
+// Tests scenarios a database is and is not allowed to suspend
+func TestSuspendingFlags(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test only works with CBS")
+	}
+	testCases := []struct {
+		name             string
+		serverlessMode   bool
+		dbSuspendable    *bool
+		expectCanSuspend bool
+	}{
+		{
+			name:             "Serverless defaults suspendable flag on db to true",
+			serverlessMode:   true,
+			dbSuspendable:    nil,
+			expectCanSuspend: true,
+		},
+		{
+			name:             "Serverless with suspendable db disallowed",
+			serverlessMode:   true,
+			dbSuspendable:    base.BoolPtr(false),
+			expectCanSuspend: false,
+		},
+		{
+			name:             "Non-serverless with suspendable db",
+			serverlessMode:   false,
+			dbSuspendable:    base.BoolPtr(true),
+			expectCanSuspend: true,
+		},
+		{
+			name:             "Non-serverless with unsuspendable db",
+			serverlessMode:   false,
+			dbSuspendable:    base.BoolPtr(false),
+			expectCanSuspend: false,
+		},
+		{
+			name:             "Non-serverless with db default suspendable option",
+			serverlessMode:   false,
+			dbSuspendable:    nil,
+			expectCanSuspend: false,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			tb := base.GetTestBucket(t)
+			defer tb.Close()
+
+			rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb, persistentConfig: true, serverless: test.serverlessMode})
+			defer rt.Close()
+
+			sc := rt.ServerContext()
+
+			suspendableDbOption := ""
+			if test.dbSuspendable != nil {
+				suspendableDbOption = fmt.Sprintf(`"suspendable": %v,`, *test.dbSuspendable)
+			}
+			resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{
+				"bucket": "%s",
+				"use_views": %t,
+				%s
+				"num_index_replicas": 0
+			}`, tb.GetName(), base.TestsDisableGSI(), suspendableDbOption))
+			requireStatus(t, resp, http.StatusCreated)
+
+			err := sc.suspendDatabase("db")
+			if test.expectCanSuspend {
+				assert.NoError(t, err)
+			} else {
+				assert.ErrorIs(t, err, ErrSuspendingDisallowed)
+				return
+			}
+
+			dbc, err := sc.unsuspendDatabase("db")
+			if test.expectCanSuspend {
+				assert.NoError(t, err)
+				assert.NotNil(t, dbc)
+			}
+		})
+	}
 }

@@ -63,7 +63,7 @@ const (
 
 	DefaultUseTLSServer = true
 
-	DefaultFetchConfigsCacheTTL = time.Second
+	DefaultFetchConfigsTTL = time.Second
 )
 
 // Bucket configuration elements - used by db, index
@@ -179,6 +179,7 @@ type DbConfig struct {
 	UserQueries                      db.UserQueryMap                  `json:"queries,omitempty"`                              // N1QL queries for clients to invoke by name
 	GraphQL                          *db.GraphQLConfig                `json:"graphql,omitempty"`                              // GraphQL configuration & resolver fns
 	UserFunctions                    db.UserFunctionConfigMap         `json:"functions,omitempty"`                            // Named JS fns for clients to call
+	Suspendable                      *bool                            `json:"suspendable,omitempty"`                          // Allow the database to be suspended
 }
 
 type ScopesConfig map[string]ScopeConfig
@@ -1425,23 +1426,23 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 	return false, nil, nil
 }
 
-// fetchConfigsCache returns cached configs in the buckets. This cache is refreshed before returning if the configs are older
-// than the duration set in the FetchConfigsCacheTTL startup config option.
-func (sc *ServerContext) fetchConfigsCache() (dbNameConfigs map[string]DatabaseConfig, err error) {
-	cacheTimeLimit := DefaultFetchConfigsCacheTTL
-	if sc.config.Unsupported.Serverless.FetchConfigsCacheTTL != nil {
-		cacheTimeLimit = sc.config.Unsupported.Serverless.FetchConfigsCacheTTL.Value()
+// fetchConfigsWithTTL returns database configs from the server context. These configs are refreshed before returning if
+// they are older than the duration set in the FetchConfigsTTL startup config option.
+func (sc *ServerContext) fetchConfigsWithTTL() (dbNameConfigs map[string]*DatabaseConfig, err error) {
+	ttl := DefaultFetchConfigsTTL
+	if sc.config.Unsupported.Serverless.FetchConfigsTTL != nil {
+		ttl = sc.config.Unsupported.Serverless.FetchConfigsTTL.Value()
 	}
 
-	if sc.fetchConfigsCacheUpdated.IsZero() || time.Now().Sub(sc.fetchConfigsCacheUpdated) >= cacheTimeLimit {
-		sc.fetchedConfigsCache, err = sc.fetchConfigs(false)
+	if sc.fetchConfigsLastUpdate.IsZero() || time.Now().Sub(sc.fetchConfigsLastUpdate) > ttl {
+		_, err = sc.fetchAndLoadConfigs(false)
 		if err != nil {
 			return nil, err
 		}
-		sc.fetchConfigsCacheUpdated = time.Now()
+		sc.fetchConfigsLastUpdate = time.Now()
 	}
 
-	return sc.fetchedConfigsCache, nil
+	return sc.dbConfigs, nil
 }
 
 // fetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
@@ -1593,6 +1594,11 @@ func (sc *ServerContext) _applyConfig(ctx context.Context, cnf DatabaseConfig, f
 	// Strip out version as we have no use for this locally and we want to prevent it being stored and being returned
 	// by any output
 	cnf.Version = ""
+
+	// Prevent database from being unsuspended when it is suspended
+	if sc._isDatabaseSuspended(cnf.Name) {
+		return true, nil
+	}
 
 	// TODO: Dynamic update instead of reload
 	if err := sc._reloadDatabaseWithConfig(ctx, cnf, failFast); err != nil {
