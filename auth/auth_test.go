@@ -2658,7 +2658,7 @@ func TestInvalidateChannels(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			base.ForAllDataStores(t, func(t *testing.T, bucket base.Bucket) {
+			base.ForAllDataStores(t, func(t *testing.T, ctx context.Context, bucket base.Bucket) {
 
 				leakyBucket := base.NewLeakyBucket(bucket, base.LeakyBucketConfig{})
 

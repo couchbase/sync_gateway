@@ -53,8 +53,8 @@ func setupTestDBForBucket(t testing.TB, bucket base.Bucket) (*Database, context.
 // override somedbcOptions properties.
 func setupTestDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 
-	tBucket := base.GetTestBucket(t)
-	return setupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
+	ctx, tBucket := base.GetTestBucket(t)
+	return setupTestDBForBucketWithOptions(t, ctx, tBucket, dbcOptions)
 }
 
 func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {

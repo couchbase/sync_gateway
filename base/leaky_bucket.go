@@ -195,32 +195,32 @@ func (b *LeakyBucket) Incr(k string, amt, def uint64, exp uint32) (uint64, error
 	return val, err
 }
 
-func (b *LeakyBucket) GetDDocs() (map[string]sgbucket.DesignDoc, error) {
-	return b.bucket.GetDDocs()
+func (b *LeakyBucket) GetDDocs(ctx context.Context) (map[string]sgbucket.DesignDoc, error) {
+	return b.bucket.GetDDocs(ctx)
 }
-func (b *LeakyBucket) GetDDoc(docname string) (ddoc sgbucket.DesignDoc, err error) {
+func (b *LeakyBucket) GetDDoc(ctx context.Context, docname string) (ddoc sgbucket.DesignDoc, err error) {
 	if b.config.DDocGetErrorCount > 0 {
 		b.config.DDocGetErrorCount--
 		return ddoc, errors.New(fmt.Sprintf("Artificial leaky bucket error %d fails remaining", b.config.DDocGetErrorCount))
 	}
-	return b.bucket.GetDDoc(docname)
+	return b.bucket.GetDDoc(ctx, docname)
 }
-func (b *LeakyBucket) PutDDoc(docname string, value *sgbucket.DesignDoc) error {
-	return b.bucket.PutDDoc(docname, value)
+func (b *LeakyBucket) PutDDoc(ctx context.Context, docname string, value *sgbucket.DesignDoc) error {
+	return b.bucket.PutDDoc(ctx, docname, value)
 }
-func (b *LeakyBucket) DeleteDDoc(docname string) error {
+func (b *LeakyBucket) DeleteDDoc(ctx context.Context, docname string) error {
 	if b.config.DDocDeleteErrorCount > 0 {
 		b.config.DDocDeleteErrorCount--
 		return errors.New(fmt.Sprintf("Artificial leaky bucket error %d fails remaining", b.config.DDocDeleteErrorCount))
 	}
-	return b.bucket.DeleteDDoc(docname)
+	return b.bucket.DeleteDDoc(ctx, docname)
 }
-func (b *LeakyBucket) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
-	return b.bucket.View(ddoc, name, params)
+func (b *LeakyBucket) View(ctx context.Context, ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
+	return b.bucket.View(ctx, ddoc, name, params)
 }
 
-func (b *LeakyBucket) ViewQuery(ddoc, name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
-	iterator, err := b.bucket.ViewQuery(ddoc, name, params)
+func (b *LeakyBucket) ViewQuery(ctx context.Context, ddoc, name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
+	iterator, err := b.bucket.ViewQuery(ctx, ddoc, name, params)
 
 	if b.config.FirstTimeViewCustomPartialError {
 		b.config.FirstTimeViewCustomPartialError = !b.config.FirstTimeViewCustomPartialError

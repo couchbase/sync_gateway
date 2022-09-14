@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package base
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"testing"
@@ -24,7 +25,7 @@ func TestView(t *testing.T) {
 	if !TestsDisableGSI() {
 		t.Skip("GSI tests are not compatible with views")
 	}
-	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, ctx context.Context, bucket Bucket) {
 
 		ddocName := "testDDoc"
 		viewName := "testView"
@@ -37,11 +38,11 @@ func TestView(t *testing.T) {
 			Views: map[string]sgbucket.ViewDef{viewName: view},
 		}
 
-		err := bucket.PutDDoc(ddocName, ddoc)
+		err := bucket.PutDDoc(ctx, ddocName, ddoc)
 		require.NoError(t, err)
 
 		defer func() {
-			err := bucket.DeleteDDoc(ddocName)
+			err := bucket.DeleteDDoc(ctx, ddocName)
 			if err != nil {
 				log.Printf("Error removing design doc during test teardown")
 			}
@@ -56,14 +57,14 @@ func TestView(t *testing.T) {
 		assert.NoError(t, err)
 
 		// Confirm view availability
-		ddocCheck, getErr := bucket.GetDDoc(ddocName)
+		ddocCheck, getErr := bucket.GetDDoc(ctx, ddocName)
 		assert.NoError(t, getErr)
 		assert.NotNil(t, ddocCheck)
 
 		// wait for view readiness
 		worker := func() (shouldRetry bool, err error, value interface{}) {
 			viewParams := make(map[string]interface{})
-			_, viewErr := bucket.View(ddocName, viewName, viewParams)
+			_, viewErr := bucket.View(ctx, ddocName, viewName, viewParams)
 			if viewErr == nil {
 				return false, nil, nil
 			}
@@ -79,13 +80,13 @@ func TestView(t *testing.T) {
 		// stale=false
 		viewParams := make(map[string]interface{})
 		viewParams[ViewQueryParamStale] = false
-		result, viewErr := bucket.View(ddocName, viewName, viewParams)
+		result, viewErr := bucket.View(ctx, ddocName, viewName, viewParams)
 		require.NoError(t, viewErr)
 		assert.Equal(t, 3, len(result.Rows))
 
 		// Limit
 		viewParams[ViewQueryParamLimit] = 1
-		result, viewErr = bucket.View(ddocName, viewName, viewParams)
+		result, viewErr = bucket.View(ctx, ddocName, viewName, viewParams)
 		require.NoError(t, viewErr)
 		require.Equal(t, 1, len(result.Rows))
 		assert.Equal(t, "Circle", result.Rows[0].Key)
@@ -94,7 +95,7 @@ func TestView(t *testing.T) {
 		delete(viewParams, ViewQueryParamLimit)
 		viewParams[ViewQueryParamStartKey] = "District"
 		viewParams[ViewQueryParamEndKey] = "Northern"
-		result, viewErr = bucket.View(ddocName, viewName, viewParams)
+		result, viewErr = bucket.View(ctx, ddocName, viewName, viewParams)
 		require.NoError(t, viewErr)
 		require.Equal(t, 2, len(result.Rows))
 		assert.Equal(t, "District", result.Rows[0].Key)
@@ -102,7 +103,7 @@ func TestView(t *testing.T) {
 
 		// InclusiveEnd=false
 		viewParams[ViewQueryParamInclusiveEnd] = false
-		result, viewErr = bucket.View(ddocName, viewName, viewParams)
+		result, viewErr = bucket.View(ctx, ddocName, viewName, viewParams)
 		require.NoError(t, viewErr)
 		assert.Equal(t, 1, len(result.Rows))
 		assert.Equal(t, "District", result.Rows[0].Key)
@@ -111,7 +112,7 @@ func TestView(t *testing.T) {
 		if !UnitTestUrlIsWalrus() {
 			viewParams = make(map[string]interface{}) // clear previous
 			viewParams[ViewQueryParamDescending] = true
-			result, viewErr = bucket.View(ddocName, viewName, viewParams)
+			result, viewErr = bucket.View(ctx, ddocName, viewName, viewParams)
 			require.NoError(t, viewErr)
 			require.Equal(t, 3, len(result.Rows))
 			assert.Equal(t, "Northern", result.Rows[0].Key)
@@ -120,7 +121,7 @@ func TestView(t *testing.T) {
 		// ...and skip (CBS only)
 		if !UnitTestUrlIsWalrus() {
 			viewParams[ViewQueryParamSkip] = 1
-			result, viewErr = bucket.View(ddocName, viewName, viewParams)
+			result, viewErr = bucket.View(ctx, ddocName, viewName, viewParams)
 			require.NoError(t, viewErr)
 			require.Equal(t, 2, len(result.Rows))
 			assert.Equal(t, "District", result.Rows[0].Key)
@@ -129,19 +130,19 @@ func TestView(t *testing.T) {
 		// Key and keys
 		viewParams = make(map[string]interface{}) // clear previous
 		viewParams[ViewQueryParamKey] = "District"
-		result, viewErr = bucket.View(ddocName, viewName, viewParams)
+		result, viewErr = bucket.View(ctx, ddocName, viewName, viewParams)
 		require.NoError(t, viewErr)
 		require.Equal(t, 1, len(result.Rows))
 		assert.Equal(t, "District", result.Rows[0].Key)
 
 		viewParams[ViewQueryParamKey] = "Central"
-		result, viewErr = bucket.View(ddocName, viewName, viewParams)
+		result, viewErr = bucket.View(ctx, ddocName, viewName, viewParams)
 		require.NoError(t, viewErr)
 		require.Equal(t, 0, len(result.Rows))
 
 		delete(viewParams, ViewQueryParamKey)
 		viewParams[ViewQueryParamKeys] = []interface{}{"Central", "Circle"}
-		result, viewErr = bucket.View(ddocName, viewName, viewParams)
+		result, viewErr = bucket.View(ctx, ddocName, viewName, viewParams)
 		require.NoError(t, viewErr)
 		require.Equal(t, 1, len(result.Rows))
 		assert.Equal(t, "Circle", result.Rows[0].Key)
@@ -150,7 +151,7 @@ func TestView(t *testing.T) {
 
 		// ViewQuery, Next
 		viewQueryParams := make(map[string]interface{})
-		iterator, viewQueryErr := bucket.ViewQuery(ddocName, viewName, viewQueryParams)
+		iterator, viewQueryErr := bucket.ViewQuery(ctx, ddocName, viewName, viewQueryParams)
 		require.NoError(t, viewQueryErr)
 		var value interface{}
 		rowCount := 0
@@ -161,7 +162,7 @@ func TestView(t *testing.T) {
 		assert.NoError(t, iterator.Close())
 
 		// ViewQuery, NextBytes
-		bytesIterator, viewQueryErr := bucket.ViewQuery(ddocName, viewName, viewQueryParams)
+		bytesIterator, viewQueryErr := bucket.ViewQuery(ctx, ddocName, viewName, viewQueryParams)
 		require.NoError(t, viewQueryErr)
 		rowCount = 0
 		for {

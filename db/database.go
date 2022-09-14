@@ -734,7 +734,7 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 	if context.SGReplicateMgr != nil {
 		context.SGReplicateMgr.Stop()
 	}
-	context.Bucket.Close()
+	context.Bucket.Close(ctx)
 	context.Bucket = nil
 
 	base.RemovePerDbStats(context.Name)

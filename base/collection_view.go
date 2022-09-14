@@ -31,7 +31,7 @@ type viewMetadata struct {
 	TotalRows int `json:"total_rows,omitempty"`
 }
 
-func (c *Collection) GetDDoc(docname string) (ddoc sgbucket.DesignDoc, err error) {
+func (c *Collection) GetDDoc(ctx context.Context, docname string) (ddoc sgbucket.DesignDoc, err error) {
 	manager := c.Bucket().ViewIndexes()
 	designDoc, err := manager.GetDesignDocument(docname, gocb.DesignDocumentNamespaceProduction, nil)
 	if err != nil {
@@ -50,7 +50,7 @@ func (c *Collection) GetDDoc(docname string) (ddoc sgbucket.DesignDoc, err error
 	return ddoc, err
 }
 
-func (c *Collection) GetDDocs() (ddocs map[string]sgbucket.DesignDoc, err error) {
+func (c *Collection) GetDDocs(ctx context.Context) (ddocs map[string]sgbucket.DesignDoc, err error) {
 	manager := c.Bucket().ViewIndexes()
 	gocbDDocs, getErr := manager.GetAllDesignDocuments(gocb.DesignDocumentNamespaceProduction, nil)
 	if getErr != nil {
@@ -71,7 +71,7 @@ func (c *Collection) GetDDocs() (ddocs map[string]sgbucket.DesignDoc, err error)
 	return ddocs, err
 }
 
-func (c *Collection) PutDDoc(docname string, sgDesignDoc *sgbucket.DesignDoc) error {
+func (c *Collection) PutDDoc(ctx context.Context, docname string, sgDesignDoc *sgbucket.DesignDoc) error {
 	manager := c.Bucket().ViewIndexes()
 	gocbDesignDoc := gocb.DesignDocument{
 		Name:  docname,
@@ -169,11 +169,11 @@ func (c *Collection) putDDocForTombstones(ddoc *gocb.DesignDocument) error {
 
 }
 
-func (c *Collection) DeleteDDoc(docname string) error {
+func (c *Collection) DeleteDDoc(ctx context.Context, docname string) error {
 	return c.Bucket().ViewIndexes().DropDesignDocument(docname, gocb.DesignDocumentNamespaceProduction, nil)
 }
 
-func (c *Collection) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
+func (c *Collection) View(ctx context.Context, ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
 
 	var viewResult sgbucket.ViewResult
 	gocbViewResult, err := c.executeViewQuery(ddoc, name, params)
@@ -231,7 +231,7 @@ func unmarshalViewMetadata(viewResult *gocb.ViewResultRaw) (viewMetadata, error)
 	return viewMeta, err
 }
 
-func (c *Collection) ViewQuery(ddoc, name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
+func (c *Collection) ViewQuery(ctx context.Context, ddoc, name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
 
 	gocbViewResult, err := c.executeViewQuery(ddoc, name, params)
 	if err != nil {

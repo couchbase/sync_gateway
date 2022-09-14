@@ -1138,7 +1138,7 @@ func (bucket *CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (
 
 }
 
-func (bucket *CouchbaseBucketGoCB) GetDDocs() (ddocs map[string]sgbucket.DesignDoc, err error) {
+func (bucket *CouchbaseBucketGoCB) GetDDocs(ctx context.Context) (ddocs map[string]sgbucket.DesignDoc, err error) {
 	bucketManager, err := bucket.getBucketManager()
 	if err != nil {
 		return nil, err
@@ -1167,7 +1167,7 @@ func (bucket *CouchbaseBucketGoCB) GetDDocs() (ddocs map[string]sgbucket.DesignD
 	return ddocs, nil
 }
 
-func (bucket *CouchbaseBucketGoCB) GetDDoc(docname string) (ddoc sgbucket.DesignDoc, err error) {
+func (bucket *CouchbaseBucketGoCB) GetDDoc(ctx context.Context, docname string) (ddoc sgbucket.DesignDoc, err error) {
 
 	bucketManager, err := bucket.getBucketManager()
 	if err != nil {
@@ -1208,7 +1208,7 @@ func (bucket *CouchbaseBucketGoCB) getBucketManager() (*gocb.BucketManager, erro
 	return manager, nil
 }
 
-func (bucket *CouchbaseBucketGoCB) PutDDoc(docname string, sgDesignDoc *sgbucket.DesignDoc) error {
+func (bucket *CouchbaseBucketGoCB) PutDDoc(ctx context.Context, docname string, sgDesignDoc *sgbucket.DesignDoc) error {
 
 	manager, err := bucket.getBucketManager()
 	if err != nil {
@@ -1331,7 +1331,7 @@ func (bucket *CouchbaseBucketGoCB) IsError(err error, errorType sgbucket.DataSto
 	}
 }
 
-func (bucket *CouchbaseBucketGoCB) DeleteDDoc(docname string) error {
+func (bucket *CouchbaseBucketGoCB) DeleteDDoc(ctx context.Context, docname string) error {
 
 	manager, err := bucket.getBucketManager()
 	if err != nil {
@@ -1342,7 +1342,7 @@ func (bucket *CouchbaseBucketGoCB) DeleteDDoc(docname string) error {
 
 }
 
-func (bucket *CouchbaseBucketGoCB) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
+func (bucket *CouchbaseBucketGoCB) View(ctx context.Context, ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
 
 	// Block until there is an available concurrent view op, release on function exit
 	bucket.waitForAvailQueryOp()
@@ -1419,7 +1419,7 @@ func (bucket *CouchbaseBucketGoCB) View(ddoc, name string, params map[string]int
 
 }
 
-func (bucket CouchbaseBucketGoCB) ViewQuery(ddoc, name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
+func (bucket CouchbaseBucketGoCB) ViewQuery(ctx context.Context, ddoc, name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
 
 	bucket.waitForAvailQueryOp()
 	defer bucket.releaseQueryOp()

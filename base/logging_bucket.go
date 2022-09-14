@@ -160,30 +160,30 @@ func (b *LoggingBucket) WriteSubDoc(k string, subdocKey string, cas uint64, valu
 	return b.bucket.WriteSubDoc(k, subdocKey, cas, value)
 }
 
-func (b *LoggingBucket) GetDDocs() (map[string]sgbucket.DesignDoc, error) {
+func (b *LoggingBucket) GetDDocs(ctx context.Context) (map[string]sgbucket.DesignDoc, error) {
 	defer b.log(time.Now())
-	return b.bucket.GetDDocs()
+	return b.bucket.GetDDocs(ctx)
 }
-func (b *LoggingBucket) GetDDoc(docname string) (sgbucket.DesignDoc, error) {
+func (b *LoggingBucket) GetDDoc(ctx context.Context, docname string) (sgbucket.DesignDoc, error) {
 	defer b.log(time.Now(), docname)
-	return b.bucket.GetDDoc(docname)
+	return b.bucket.GetDDoc(ctx, docname)
 }
-func (b *LoggingBucket) PutDDoc(docname string, value *sgbucket.DesignDoc) error {
+func (b *LoggingBucket) PutDDoc(ctx context.Context, docname string, value *sgbucket.DesignDoc) error {
 	defer b.log(time.Now(), docname)
-	return b.bucket.PutDDoc(docname, value)
+	return b.bucket.PutDDoc(ctx, docname, value)
 }
-func (b *LoggingBucket) DeleteDDoc(docname string) error {
+func (b *LoggingBucket) DeleteDDoc(ctx context.Context, docname string) error {
 	defer b.log(time.Now(), docname)
-	return b.bucket.DeleteDDoc(docname)
+	return b.bucket.DeleteDDoc(ctx, docname)
 }
-func (b *LoggingBucket) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
+func (b *LoggingBucket) View(ctx context.Context, ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
 	defer b.log(time.Now(), ddoc, name)
-	return b.bucket.View(ddoc, name, params)
+	return b.bucket.View(ctx, ddoc, name, params)
 }
 
-func (b *LoggingBucket) ViewQuery(ddoc, name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
+func (b *LoggingBucket) ViewQuery(ctx context.Context, ddoc, name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
 	defer b.log(time.Now(), ddoc, name)
-	return b.bucket.ViewQuery(ddoc, name, params)
+	return b.bucket.ViewQuery(ctx, ddoc, name, params)
 }
 
 func (b *LoggingBucket) StartTapFeed(ctx context.Context, args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
