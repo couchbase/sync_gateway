@@ -5075,3 +5075,75 @@ func TestResyncPersistence(t *testing.T) {
 	fmt.Printf("RT2 Resync Status: %s\n", resp2.BodyBytes())
 	assert.Equal(t, resp.BodyBytes(), resp2.BodyBytes())
 }
+
+// Make sure per DB credentials override per bucket credentials
+func TestPerDBCredsOverride(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	// Get test bucket
+	tb1 := base.GetTestBucket(t)
+	defer tb1.Close()
+
+	config := bootstrapStartupConfigForTest(t)
+	config.BucketCredentials = map[string]*base.CredentialsConfig{
+		tb1.GetName(): {
+			Username: base.TestClusterUsername(),
+			Password: base.TestClusterPassword(),
+		},
+	}
+	config.DatabaseCredentials = map[string]*base.CredentialsConfig{
+		"db": {
+			Username: "invalid",
+			Password: "invalid",
+		},
+	}
+
+	sc, err := setupServerContext(&config, true)
+	require.NoError(t, err)
+
+	serverErr := make(chan error, 0)
+	defer func() {
+		sc.Close()
+		require.NoError(t, <-serverErr)
+	}()
+
+	go func() {
+		serverErr <- startServer(&config, sc)
+	}()
+	require.NoError(t, sc.waitForRESTAPIs())
+
+	couchbaseCluster, err := createCouchbaseClusterFromStartupConfig(sc.config)
+	require.NoError(t, err)
+	sc.bootstrapContext.connection = couchbaseCluster
+
+	dbConfig := `{
+		"bucket": "` + tb1.GetName() + `",
+		"enable_shared_bucket_access": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
+		"use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
+		"num_index_replicas": 0
+	}`
+
+	res := bootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
+	// Make sure request failed as it could authenticate with the bucket
+	assert.Equal(t, http.StatusForbidden, res.StatusCode)
+
+	// Allow database to be created sucessfully
+	sc.config.DatabaseCredentials = map[string]*base.CredentialsConfig{}
+	res = bootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
+	assert.Equal(t, http.StatusCreated, res.StatusCode)
+
+	// Confirm fetch configs causes bucket credentials to be overrode
+	sc.config.DatabaseCredentials = map[string]*base.CredentialsConfig{
+		"db": {
+			Username: "invalidUsername",
+			Password: "invalidPassword",
+		},
+	}
+	configs, err := sc.fetchConfigs(false)
+	require.NoError(t, err)
+	require.NotNil(t, configs["db"])
+	assert.Equal(t, "invalidUsername", configs["db"].BucketConfig.Username)
+	assert.Equal(t, "invalidPassword", configs["db"].BucketConfig.Password)
+}

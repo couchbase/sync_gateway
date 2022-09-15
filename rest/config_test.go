@@ -2397,7 +2397,6 @@ func Test_validateJavascriptFunction(t *testing.T) {
 }
 
 func TestBucketCredentialsValidation(t *testing.T) {
-	bucketAndDBCredsError := "bucket_credentials and database_credentials cannot be used at the same time"
 	bucketCredsError := "bucket_credentials cannot use both x509 and basic auth"
 	bucketNoCredsServerless := "at least 1 bucket must be defined in bucket_credentials when running in serverless mode"
 	testCases := []struct {
@@ -2446,7 +2445,6 @@ func TestBucketCredentialsValidation(t *testing.T) {
 				DatabaseCredentials: PerDatabaseCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
 				BucketCredentials:   base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
 			},
-			expectedError: &bucketAndDBCredsError,
 		},
 		{
 			name: "Bucket creds for x509 and basic auth",
@@ -2508,7 +2506,6 @@ func TestBucketCredentialsValidation(t *testing.T) {
 
 			} else if err != nil {
 				assert.NotContains(t, err.Error(), bucketCredsError)
-				assert.NotContains(t, err.Error(), bucketAndDBCredsError)
 				assert.NotContains(t, err.Error(), bucketNoCredsServerless)
 			}
 		})
