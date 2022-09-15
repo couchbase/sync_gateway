@@ -99,6 +99,16 @@ func AllUserFunctionQueryNames(options DatabaseContextOptions) []string {
 	return queryNames
 }
 
+// implements UserFunction
+type userFunctionImpl struct {
+	*UserFunctionConfig
+	name           string
+	typeName       string
+	checkArgs      bool
+	allowByDefault bool
+	compiled       *sgbucket.JSServer // Compiled form of the function; nil for N1QL
+}
+
 // Creates a UserFunction from a UserFunctionConfig.
 func compileUserFunction(name string, typeName string, fnConfig *UserFunctionConfig) (UserFunction, error) {
 	userFn := &userFunctionImpl{
@@ -117,16 +127,6 @@ func compileUserFunction(name string, typeName string, fnConfig *UserFunctionCon
 		err = fmt.Errorf("%s %q has unrecognized 'type' %q", typeName, name, fnConfig.Type)
 	}
 	return userFn, err
-}
-
-// implements UserFunction
-type userFunctionImpl struct {
-	*UserFunctionConfig
-	name           string
-	typeName       string
-	checkArgs      bool
-	allowByDefault bool
-	compiled       *sgbucket.JSServer // Compiled form of the function
 }
 
 func (fn *userFunctionImpl) CheckArgs(check bool) {
@@ -157,23 +157,6 @@ func (db *Database) CallUserFunction(name string, args map[string]interface{}, m
 	return invocation.Run()
 }
 
-// implements UserFunctionInvocation
-type userFunctionJSInvocation struct {
-	*userFunctionImpl
-	db              *Database
-	ctx             context.Context
-	args            map[string]interface{}
-	mutationAllowed bool
-}
-
-// implements UserFunctionInvocation
-type userFunctionN1QLInvocation struct {
-	*userFunctionImpl
-	db   *Database
-	ctx  context.Context
-	args map[string]interface{}
-}
-
 // Creates an Invocation of a UserFunction.
 func (fn *userFunctionImpl) Invoke(db *Database, args map[string]interface{}, mutationAllowed bool, ctx context.Context) (UserFunctionInvocation, error) {
 	if ctx == nil {
@@ -202,21 +185,12 @@ func (fn *userFunctionImpl) Invoke(db *Database, args map[string]interface{}, mu
 	}
 
 	if fn.compiled == nil {
-		// Create the N1QL arguments, which have the fn args under "args":
-		var userArg interface{}
-		if db.user != nil {
-			userArg = db.createUserArgument()
-		} else {
-			userArg = map[string]interface{}{}
-		}
-		args = map[string]interface{}{"args": args, "user": userArg}
-
-		return &userFunctionN1QLInvocation{
+		return userFunctionN1QLInvocation{
 			userFunctionImpl: fn,
 			db:               db,
 			args:             args,
 			ctx:              ctx,
-		}, nil
+		}.init(), nil
 	} else {
 		return &userFunctionJSInvocation{
 			userFunctionImpl: fn,
@@ -226,6 +200,17 @@ func (fn *userFunctionImpl) Invoke(db *Database, args map[string]interface{}, mu
 			mutationAllowed:  mutationAllowed,
 		}, nil
 	}
+}
+
+//////// JAVASCRIPT FUNCTIONS
+
+// implements UserFunctionInvocation
+type userFunctionJSInvocation struct {
+	*userFunctionImpl
+	db              *Database
+	ctx             context.Context
+	args            map[string]interface{}
+	mutationAllowed bool
 }
 
 func (fn *userFunctionJSInvocation) Iterate() (sgbucket.QueryResultIterator, error) {
@@ -242,6 +227,28 @@ func (fn *userFunctionJSInvocation) Run() (interface{}, error) {
 			newUserFunctionJSContext(fn.db),
 			fn.args)
 	})
+}
+
+//////// N1QL FUNCTIONS
+
+// implements UserFunctionInvocation
+type userFunctionN1QLInvocation struct {
+	*userFunctionImpl
+	db   *Database
+	ctx  context.Context
+	args map[string]interface{}
+}
+
+func (fn userFunctionN1QLInvocation) init() UserFunctionInvocation {
+	// Create the N1QL arguments, which have the fn args under "args" and a "user" object:
+	var userArg interface{}
+	if fn.db.user != nil {
+		userArg = fn.db.createUserArgument()
+	} else {
+		userArg = map[string]interface{}{}
+	}
+	fn.args = map[string]interface{}{"args": fn.args, "user": userArg}
+	return &fn
 }
 
 func (fn *userFunctionN1QLInvocation) Iterate() (sgbucket.QueryResultIterator, error) {

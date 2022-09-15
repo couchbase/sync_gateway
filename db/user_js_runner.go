@@ -178,14 +178,12 @@ func (runner *userJSRunner) CallWithDB(db *Database, mutationAllowed bool, ctx c
 	var depth int
 	var ok bool
 	if depth, ok = ctx.Value(ctxJSCallDepthKey).(int); ok {
-		log.Printf("#### context depth = %d", depth) //TEMP
 		if depth >= kUserFunctionMaxCallDepth {
 			base.ErrorfCtx(ctx, "User function recursion too deep, calling %s", runner.name)
 			return nil, base.HTTPErrorf(http.StatusLoopDetected, "User function recursion too deep")
 		}
 	}
 	ctx = context.WithValue(ctx, ctxJSCallDepthKey, depth+1)
-	log.Printf("#### Setting context depth to %d", depth+1) //TEMP
 
 	runner.SetTimeout(timeout)
 	runner.currentDB = db

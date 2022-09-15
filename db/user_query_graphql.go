@@ -13,7 +13,6 @@ package db
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 
@@ -208,9 +207,6 @@ func resolverInfo(params graphql.ResolveParams) map[string]interface{} {
 	// Collect the 'selectedFieldNames', the fields the query wants from the value being resolved:
 	selectedFieldNames := []string{}
 	if len(params.Info.FieldASTs) > 0 {
-		for i, f := range params.Info.FieldASTs {
-			log.Printf("### field %d is %#v", i, f) //TEMP
-		}
 		if set := params.Info.FieldASTs[0].SelectionSet; set != nil {
 			for _, sel := range set.Selections {
 				if subfield, ok := sel.(*ast.Field); ok {
@@ -222,7 +218,7 @@ func resolverInfo(params graphql.ResolveParams) map[string]interface{} {
 		}
 	}
 
-	// The `info` parameter passed to the JS function; fields are a subset of graphql.ResolveInfo.
+	// The `info` parameter passed to the resolver fn; fields are a subset of graphql.ResolveInfo.
 	// NOTE: We've removed these fields until we get feedback that they're needed by developers.
 	//   `selectedFieldNames` is not provided (directly) by ResolveInfo; it contains the fields of the
 	// resolver's result that will be used by the query (other fields will just be ignored.)
