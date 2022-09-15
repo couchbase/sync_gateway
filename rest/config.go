@@ -1446,7 +1446,7 @@ func (sc *ServerContext) fetchConfigsSince(ctx context.Context, refreshInterval 
 		minInterval = refreshInterval.Value()
 	}
 
-	if sc.fetchConfigsLastUpdate.IsZero() || time.Since(sc.fetchConfigsLastUpdate) > minInterval {
+	if time.Since(sc.fetchConfigsLastUpdate) > minInterval {
 		_, err = sc.fetchAndLoadConfigs(ctx, false)
 		if err != nil {
 			return nil, err
