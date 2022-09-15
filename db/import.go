@@ -95,11 +95,12 @@ func (db *Database) ImportDoc(ctx context.Context, docid string, existingDoc *Do
 }
 
 // Import document
-//   docid  - document key
-//   body - marshalled body of document to be imported
-//   isDelete - whether the document to be imported is a delete
-//   existingDoc - bytes/cas/expiry of the  document to be imported (including xattr when available)
-//   mode - ImportMode - ImportFromFeed or ImportOnDemand
+//
+//	docid  - document key
+//	body - marshalled body of document to be imported
+//	isDelete - whether the document to be imported is a delete
+//	existingDoc - bytes/cas/expiry of the  document to be imported (including xattr when available)
+//	mode - ImportMode - ImportFromFeed or ImportOnDemand
 func (db *Database) importDoc(ctx context.Context, docid string, body Body, expiry *uint32, isDelete bool, existingDoc *sgbucket.BucketDocument, mode ImportMode) (docOut *Document, err error) {
 
 	base.DebugfCtx(ctx, base.KeyImport, "Attempting to import doc %q...", base.UD(docid))

@@ -145,7 +145,7 @@ func TestAddRaw(t *testing.T) {
 
 // TestAddRawTimeout attempts to fill up the gocbpipeline by writing large documents concurrently with a small timeout,
 // to verify that timeout errors are returned, and the operation isn't retried (which would return a cas error).
-//   (see CBG-463)
+// (see CBG-463)
 func TestAddRawTimeoutRetry(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
@@ -1773,7 +1773,7 @@ func TestGetXattr(t *testing.T) {
 		assert.Error(t, err)
 		assert.Equal(t, ErrNotFound, pkgerrors.Cause(err))
 
-		////Get Xattr From Tombstoned Doc With Deleted User Xattr
+		// Get Xattr From Tombstoned Doc With Deleted User Xattr
 		cas, err = bucket.WriteCasWithXattr(key3, xattrName3, 0, uint64(0), nil, val3, xattrVal3)
 		_, err = bucket.Remove(key3, cas)
 		require.NoError(t, err)
@@ -1858,7 +1858,7 @@ func TestGetXattrAndBody(t *testing.T) {
 		assert.Error(t, err)
 		assert.Equal(t, ErrNotFound, pkgerrors.Cause(err))
 
-		////Get Xattr From Tombstoned Doc With Deleted User Xattr -> returns not found
+		// Get Xattr From Tombstoned Doc With Deleted User Xattr -> returns not found
 		cas, err = bucket.WriteCasWithXattr(key3, xattrName3, 0, uint64(0), nil, val3, xattrVal3)
 		_, err = bucket.Remove(key3, cas)
 		require.NoError(t, err)
@@ -2395,7 +2395,7 @@ func TestInsertTombstoneWithXattr(t *testing.T) {
 
 // TestRawBackwardCompatibilityFromJSON ensures that bucket implementation handles the case
 // where legacy SG versions set incorrect data types:
-//    - write as JSON, read as binary, (re-)write as binary
+//   - write as JSON, read as binary, (re-)write as binary
 func TestRawBackwardCompatibilityFromJSON(t *testing.T) {
 
 	if UnitTestUrlIsWalrus() {
@@ -2434,7 +2434,7 @@ func TestRawBackwardCompatibilityFromJSON(t *testing.T) {
 
 // TestRawBackwardCompatibilityFromBinary ensures that bucket implementation handles the case
 // where legacy SG versions set incorrect data types:
-//    - write as binary, read as raw JSON, rewrite as raw JSON
+//   - write as binary, read as raw JSON, rewrite as raw JSON
 func TestRawBackwardCompatibilityFromBinary(t *testing.T) {
 
 	if UnitTestUrlIsWalrus() {
