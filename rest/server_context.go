@@ -206,7 +206,7 @@ func (sc *ServerContext) GetDatabase(ctx context.Context, name string) (*db.Data
 		return nil, base.HTTPErrorf(http.StatusBadRequest, "invalid database name %q", name)
 	}
 
-	dbc, err := sc.unsuspendDatabase(name)
+	dbc, err := sc.unsuspendDatabase(ctx, name)
 	if err != nil && err != base.ErrNotFound && err != ErrSuspendingDisallowed {
 		return nil, err
 	} else if err == nil {
@@ -215,20 +215,24 @@ func (sc *ServerContext) GetDatabase(ctx context.Context, name string) (*db.Data
 
 	// database not loaded, fallback to fetching it from cluster
 	if sc.bootstrapContext.connection != nil {
+		var found bool
 		if sc.config.IsServerless() {
-			_, err = sc.fetchConfigsWithTTL()
+			found, err = sc.fetchAndLoadDatabaseSince(ctx, name, sc.config.Unsupported.Serverless.MinConfigFetchInterval)
+
 		} else {
-			_, err = sc.fetchAndLoadDatabase(name)
+			found, err = sc.fetchAndLoadDatabase(ctx, name)
 		}
 		if err != nil {
 			return nil, base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
 		}
 
-		sc.lock.RLock()
-		defer sc.lock.RUnlock()
-		dbc := sc.databases_[name]
-		if dbc != nil {
-			return dbc, nil
+		if found {
+			sc.lock.RLock()
+			defer sc.lock.RUnlock()
+			dbc := sc.databases_[name]
+			if dbc != nil {
+				return dbc, nil
+			}
 		}
 	}
 
@@ -1048,7 +1052,6 @@ func (sc *ServerContext) _removeDatabase(ctx context.Context, dbName string) boo
 	delete(sc.bucketDbName, bucket)
 	return true
 }
-
 func (sc *ServerContext) isDatabaseSuspended(dbName string) bool {
 	sc.lock.RLock()
 	defer sc.lock.RUnlock()
@@ -1062,14 +1065,14 @@ func (sc *ServerContext) _isDatabaseSuspended(dbName string) bool {
 	return false
 }
 
-func (sc *ServerContext) suspendDatabase(dbName string) error {
+func (sc *ServerContext) suspendDatabase(ctx context.Context, dbName string) error {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
 
-	return sc._suspendDatabase(dbName)
+	return sc._suspendDatabase(ctx, dbName)
 }
 
-func (sc *ServerContext) _suspendDatabase(dbName string) error {
+func (sc *ServerContext) _suspendDatabase(ctx context.Context, dbName string) error {
 	dbCtx := sc.databases_[dbName]
 	if dbCtx == nil {
 		return base.ErrNotFound
@@ -1082,20 +1085,20 @@ func (sc *ServerContext) _suspendDatabase(dbName string) error {
 	bucket := dbCtx.Bucket.GetName()
 	base.InfofCtx(context.TODO(), base.KeyAll, "Suspending db %q (bucket %q)", base.MD(dbName), base.MD(bucket))
 
-	if !sc._unloadDatabase(dbName) {
+	if !sc._unloadDatabase(ctx, dbName) {
 		return base.ErrNotFound
 	}
-	delete(sc.bucketDbName, bucket)
 	return nil
 }
 
-func (sc *ServerContext) unsuspendDatabase(dbName string) (*db.DatabaseContext, error) {
+func (sc *ServerContext) unsuspendDatabase(ctx context.Context, dbName string) (*db.DatabaseContext, error) {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
 
-	return sc._unsuspendDatabase(dbName)
+	return sc._unsuspendDatabase(ctx, dbName)
 }
-func (sc *ServerContext) _unsuspendDatabase(dbName string) (*db.DatabaseContext, error) {
+
+func (sc *ServerContext) _unsuspendDatabase(ctx context.Context, dbName string) (*db.DatabaseContext, error) {
 	dbCtx := sc.databases_[dbName]
 	if dbCtx != nil {
 		return dbCtx, nil
@@ -1104,7 +1107,7 @@ func (sc *ServerContext) _unsuspendDatabase(dbName string) (*db.DatabaseContext,
 	// Check if database is in dbConfigs so no need to search through buckets
 	if dbConfig, ok := sc.dbConfigs[dbName]; ok {
 		if !base.BoolDefault(dbConfig.Suspendable, sc.config.IsServerless()) {
-			return nil, ErrSuspendingDisallowed
+			base.InfofCtx(context.TODO(), base.KeyAll, "attempting to unsuspend db %q while not configured to be suspendable", base.MD(dbName))
 		}
 
 		bucket := dbName
@@ -1114,14 +1117,14 @@ func (sc *ServerContext) _unsuspendDatabase(dbName string) (*db.DatabaseContext,
 		cas, err := sc.bootstrapContext.connection.GetConfig(bucket, sc.config.Bootstrap.ConfigGroupID, dbConfig)
 		if err == base.ErrNotFound {
 			// Database no longer exists, so clean up dbConfigs
-			base.InfofCtx(context.TODO(), base.KeyConfig, "Database %q has been removed while suspended from bucket %q", base.MD(dbName), base.MD(bucket))
+			base.InfofCtx(ctx, base.KeyConfig, "Database %q has been removed while suspended from bucket %q", base.MD(dbName), base.MD(bucket))
 			delete(sc.dbConfigs, dbName)
 			return nil, err
 		} else if err != nil {
 			return nil, fmt.Errorf("unsuspending db %q failed due to an error while trying to retrieve latest config from bucket %q: %w", base.MD(dbName).Redact(), base.MD(bucket).Redact(), err)
 		}
 		dbConfig.cas = cas
-		dbCtx, err = sc._getOrAddDatabaseFromConfig(*dbConfig, false, db.GetConnectToBucketFn(false))
+		dbCtx, err = sc._getOrAddDatabaseFromConfig(ctx, *dbConfig, false, db.GetConnectToBucketFn(false))
 		if err != nil {
 			return nil, err
 		}

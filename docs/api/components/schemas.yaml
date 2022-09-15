@@ -1750,7 +1750,7 @@ Serverless:
       description: Run SG in to serverless mode
       type: boolean
       readOnly: true
-    fetch_configs_ttl:
+    min_config_fetch_interval:
       description: |-
         How long database configs should be kept for in Sync Gateway before refreshing. Set to 0 to fetch configs everytime. This is used for requested databases that SG does not know about. 
         

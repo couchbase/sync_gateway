@@ -63,7 +63,7 @@ const (
 
 	DefaultUseTLSServer = true
 
-	DefaultFetchConfigsTTL = time.Second
+	DefaultMinConfigFetchInterval = time.Second
 )
 
 // Bucket configuration elements - used by db, index
@@ -1342,6 +1342,18 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 	return sc._applyConfigs(ctx, fetchedConfigs, isInitialStartup), nil
 }
 
+// fetchAndLoadDatabaseSince refreshes all dbConfigs if they where last fetched past the refreshInterval. It then returns found if
+// the fetched configs contain the dbName.
+func (sc *ServerContext) fetchAndLoadDatabaseSince(ctx context.Context, dbName string, refreshInterval *base.ConfigDuration) (found bool, err error) {
+	configs, err := sc.fetchConfigsSince(ctx, sc.config.Unsupported.Serverless.MinConfigFetchInterval)
+	if err != nil {
+		return false, err
+	}
+
+	found = configs[dbName] != nil
+	return found, nil
+}
+
 func (sc *ServerContext) fetchAndLoadDatabase(ctx context.Context, dbName string) (found bool, err error) {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
@@ -1426,16 +1438,16 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 	return false, nil, nil
 }
 
-// fetchConfigsWithTTL returns database configs from the server context. These configs are refreshed before returning if
-// they are older than the duration set in the FetchConfigsTTL startup config option.
-func (sc *ServerContext) fetchConfigsWithTTL() (dbNameConfigs map[string]*DatabaseConfig, err error) {
-	ttl := DefaultFetchConfigsTTL
-	if sc.config.Unsupported.Serverless.FetchConfigsTTL != nil {
-		ttl = sc.config.Unsupported.Serverless.FetchConfigsTTL.Value()
+// fetchConfigsSince returns database configs from the server context. These configs are refreshed before returning if
+// they are older than the refreshInterval. The refreshInterval defaults to DefaultMinConfigFetchInterval if nil.
+func (sc *ServerContext) fetchConfigsSince(ctx context.Context, refreshInterval *base.ConfigDuration) (dbNameConfigs map[string]*DatabaseConfig, err error) {
+	minInterval := DefaultMinConfigFetchInterval
+	if refreshInterval != nil {
+		minInterval = refreshInterval.Value()
 	}
 
-	if sc.fetchConfigsLastUpdate.IsZero() || time.Now().Sub(sc.fetchConfigsLastUpdate) > ttl {
-		_, err = sc.fetchAndLoadConfigs(false)
+	if sc.fetchConfigsLastUpdate.IsZero() || time.Since(sc.fetchConfigsLastUpdate) > minInterval {
+		_, err = sc.fetchAndLoadConfigs(ctx, false)
 		if err != nil {
 			return nil, err
 		}
