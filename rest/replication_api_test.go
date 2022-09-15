@@ -520,6 +520,7 @@ func TestReplicationsFromConfig(t *testing.T) {
 //   - Creates a continuous push replication on rt1 via the REST API
 //   - Validates documents are replicated to rt2
 func TestPushReplicationAPI(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
@@ -885,6 +886,8 @@ func TestReplicationRebalancePush(t *testing.T) {
 //   - Validates replication status count when replication is local and non-local
 func TestPullOneshotReplicationAPI(t *testing.T) {
 
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
@@ -943,6 +946,7 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 //
 //	WriteUpdateWithXattr.  Have been unable to reproduce the same with a leaky bucket UpdateCallback.
 func TestReplicationConcurrentPush(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)

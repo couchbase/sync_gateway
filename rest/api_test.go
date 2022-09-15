@@ -725,10 +725,6 @@ func assertGatewayStatus(t *testing.T, response *TestResponse, expected int) {
 
 func TestCORSLoginOriginOnSessionPost(t *testing.T) {
 
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
-
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -2841,10 +2837,6 @@ func TestSyncFnDocBodyPropertiesSwitchActiveTombstone(t *testing.T) {
 
 // Test for wrong _changes entries for user joining a populated channel
 func TestUserJoiningPopulatedChannel(t *testing.T) {
-
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache, base.KeyAccess, base.KeyCRUD, base.KeyChanges)
 
@@ -5363,6 +5355,8 @@ func TestHandlePprofsCmdlineAndSymbol(t *testing.T) {
 }
 
 func TestHandlePprofs(t *testing.T) {
+	base.LongRunningTest(t)
+
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}

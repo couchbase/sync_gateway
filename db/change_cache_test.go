@@ -863,10 +863,6 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 // user gets added to a new channel with existing entries (and existing backfill)
 func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
-
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
@@ -1260,6 +1256,8 @@ func TestChannelRace(t *testing.T) {
 // been seen on the TAP feed yet).  Longer term could consider enhancing leaky bucket to 'miss' the entry on the tap feed.
 func TestSkippedViewRetrieval(t *testing.T) {
 
+	base.LongRunningTest(t)
+
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
@@ -1329,10 +1327,6 @@ func TestSkippedViewRetrieval(t *testing.T) {
 
 // Test that housekeeping goroutines get terminated when change cache is stopped
 func TestStopChangeCache(t *testing.T) {
-
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyDCP)
 

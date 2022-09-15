@@ -956,10 +956,6 @@ func TestRepeatedConflict(t *testing.T) {
 
 func TestConflicts(t *testing.T) {
 
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
-
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 

@@ -433,11 +433,10 @@ func InitWebhookTest() (*httptest.Server, *WebhookRequest) {
 }
 
 func TestWebhookBasic(t *testing.T) {
+	base.LongRunningTest(t)
+
 	terminator := make(chan bool)
 	defer close(terminator)
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
 
 	ts, wr := InitWebhookTest()
 	defer ts.Close()
@@ -585,9 +584,6 @@ func TestWebhookBasic(t *testing.T) {
 // Test Webhook where there is an old doc revision and where the filter
 // function is expecting an old doc revision.
 func TestWebhookOldDoc(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
 	terminator := make(chan bool)
 	defer close(terminator)
 
@@ -728,9 +724,8 @@ func TestWebhookOldDoc(t *testing.T) {
 }
 
 func TestWebhookTimeout(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
+	base.LongRunningTest(t)
+
 	terminator := make(chan bool)
 	defer close(terminator)
 
