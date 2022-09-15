@@ -28,10 +28,6 @@ import (
 
 func TestChangesAccessNotifyInteger(t *testing.T) {
 
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`})
@@ -83,10 +79,6 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 // channels in the filter were being included in the waiter initialization, but not in the subsequent wait.  Resulting difference in count was resulting
 // in longpoll terminating without any changes.
 func TestChangesNotifyChannelFilter(t *testing.T) {
-
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 

@@ -221,10 +221,6 @@ func TestPostChanges(t *testing.T) {
 // Tests race between waking up the changes feed, and detecting that the user doc has changed
 func TestPostChangesUserTiming(t *testing.T) {
 
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel)}`})
@@ -282,10 +278,6 @@ func TestPostChangesUserTiming(t *testing.T) {
 }
 
 func TestPostChangesSinceInteger(t *testing.T) {
-
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
@@ -458,10 +450,6 @@ func postChangesChannelFilter(t *testing.T, rt *RestTester) {
 }
 
 func TestPostChangesAdminChannelGrant(t *testing.T) {
-
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
@@ -1434,10 +1422,6 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 
 func TestUnusedSequences(t *testing.T) {
 
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyCRUD, base.KeyHTTP)
 
 	// Only do 10 iterations if running against walrus.  If against a live couchbase server,
@@ -1734,10 +1718,6 @@ func TestChangesActiveOnlyInteger(t *testing.T) {
 }
 
 func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
-
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
 

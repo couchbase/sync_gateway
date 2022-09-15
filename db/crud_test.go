@@ -931,6 +931,8 @@ func TestOldRevisionStorageError(t *testing.T) {
 // Validate JSON number handling for large sequence values
 func TestLargeSequence(t *testing.T) {
 
+	base.LongRunningTest(t)
+
 	db, ctx := setupTestDBWithCustomSyncSeq(t, 9223372036854775807)
 	defer db.Close(ctx)
 

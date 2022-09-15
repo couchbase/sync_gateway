@@ -535,6 +535,8 @@ func (m mockProviderChannelsClaim) Apply(provider *auth.OIDCProvider) {
 
 // E2E test that checks OpenID Connect Authorization Code Flow.
 func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
+
+	base.LongRunningTest(t)
 	type test struct {
 		name                string
 		providers           auth.OIDCProviderMap
@@ -1811,6 +1813,8 @@ func TestCallbackStateClientCookies(t *testing.T) {
 // E2E test that checks OpenID Connect Authorization Code Flow with the specified username_claim
 // as Sync Gateway username.
 func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
+
+	base.LongRunningTest(t)
 	var (
 		defaultProvider = "foo"
 		authURL         = "/db/_oidc?provider=foo&offline=true"

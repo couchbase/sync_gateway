@@ -164,6 +164,8 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 // Wait until we get the expected updates
 func TestContinuousChangesSubscription(t *testing.T) {
 
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache)
 
 	bt, err := NewBlipTester(t)
@@ -275,10 +277,6 @@ func TestContinuousChangesSubscription(t *testing.T) {
 // Start subChanges w/ continuous=false, batchsize=20
 // Validate we get the expected updates and changes ends
 func TestBlipOneShotChangesSubscription(t *testing.T) {
-
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
@@ -3893,6 +3891,9 @@ func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
 // Asserts on stats to test for regression of CBG-1824: Make sure SubChangesOneShotActive gets decremented when one shot
 // sub changes request has completed
 func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
+
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	bt, err := NewBlipTester(t)
@@ -4541,6 +4542,8 @@ func TestBlipRevokeNonExistentRole(t *testing.T) {
 // Tests changes made in CBG-2151 to return errors from sendRevision unless it's a document not found error,
 // in which case a noRev should be sent.
 func TestSendRevisionNoRevHandling(t *testing.T) {
+
+	base.LongRunningTest(t)
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("Skip LeakyBucket test when running in integration")
 	}

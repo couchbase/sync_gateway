@@ -298,9 +298,7 @@ func TestPrincipalForbidUpdatingChannels(t *testing.T) {
 // Test user access grant while that user has an active changes feed.  (see issue #880)
 func TestUserAccessRace(t *testing.T) {
 
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
+	base.LongRunningTest(t)
 
 	// This test only runs against Walrus due to known sporadic failures.
 	// See https://github.com/couchbase/sync_gateway/issues/3006
@@ -1136,9 +1134,6 @@ func TestDBGetConfigNames(t *testing.T) {
 
 // Take DB offline and ensure can post _resync
 func TestDBOfflinePostResync(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -1174,9 +1169,6 @@ func TestDBOfflinePostResync(t *testing.T) {
 
 // Take DB offline and ensure only one _resync can be in progress
 func TestDBOfflineSingleResync(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
 
 	syncFn := `
 	function(doc) {
@@ -1534,6 +1526,8 @@ func TestResyncStop(t *testing.T) {
 }
 
 func TestResyncRegenerateSequences(t *testing.T) {
+
+	base.LongRunningTest(t)
 	syncFn := `
 	function(doc) {
 		if (doc.userdoc){
@@ -1779,9 +1773,6 @@ func TestDBOnlineConcurrent(t *testing.T) {
 func TestSingleDBOnlineWithDelay(t *testing.T) {
 
 	t.Skip("Use case covered by TestDBOnlineWithTwoDelays, skipping due to slow test")
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -1822,9 +1813,8 @@ func TestSingleDBOnlineWithDelay(t *testing.T) {
 // DB should should only be brought online once
 // there should be no errors
 func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
+
+	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
 
@@ -1871,9 +1861,7 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 // there should be no errors
 func TestDBOnlineWithTwoDelays(t *testing.T) {
 
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
+	base.LongRunningTest(t)
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()

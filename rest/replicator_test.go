@@ -1863,6 +1863,8 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 //   - Drops the document out of the channel so the replicator in rt1 pulls a _removed revision.
 func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyReplicate)
@@ -1960,6 +1962,8 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 //   - Publishes the REST API on a httptest server for the passive node (so the active can connect to it)
 //   - Uses an ActiveReplicator configured for pull to start pulling changes from rt2.
 func TestActiveReplicatorPullConflict(t *testing.T) {
+
+	base.LongRunningTest(t)
 
 	// scenarios
 	conflictResolutionTests := []struct {
@@ -2186,6 +2190,8 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 //   - Uses an ActiveReplicator configured for pushAndPull from rt2.
 //   - verifies expected conflict resolution, and that expected result is replicated to both peers
 func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
+
+	base.LongRunningTest(t)
 
 	// scenarios
 	conflictResolutionTests := []struct {
@@ -3449,6 +3455,8 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 // - Unroutable remote address
 // Will test both indefinite retry, and a timeout.
 func TestActiveReplicatorReconnectOnStart(t *testing.T) {
+
+	base.LongRunningTest(t)
 	base.RequireNumTestBuckets(t, 2)
 
 	if testing.Short() {
@@ -3803,6 +3811,8 @@ func TestBlipSyncNonUpgradableConnection(t *testing.T) {
 //   - Uses an ActiveReplicator configured for pull to start pulling changes from rt2.
 func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 
+	base.LongRunningTest(t)
+
 	createRevID := func(generation int, parentRevID string, body db.Body) string {
 		rev, err := db.CreateRevID(generation, parentRevID, body)
 		require.NoError(t, err, "Error creating revision")
@@ -4110,6 +4120,8 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 }
 
 func TestSGR2TombstoneConflictHandling(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	tombstoneTests := []struct {
