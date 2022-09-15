@@ -1962,7 +1962,6 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 //   - Publishes the REST API on a httptest server for the passive node (so the active can connect to it)
 //   - Uses an ActiveReplicator configured for pull to start pulling changes from rt2.
 func TestActiveReplicatorPullConflict(t *testing.T) {
-
 	base.LongRunningTest(t)
 
 	// scenarios
@@ -3455,8 +3454,8 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 // - Unroutable remote address
 // Will test both indefinite retry, and a timeout.
 func TestActiveReplicatorReconnectOnStart(t *testing.T) {
-
 	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	if testing.Short() {
@@ -4447,6 +4446,8 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 // This test ensures that the local tombstone revision wins over non-tombstone revision
 // whilst applying default conflict resolution policy through pushAndPull replication.
 func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
+
+	base.LongRunningTest(t)
 	base.RequireNumTestBuckets(t, 2)
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
@@ -4600,6 +4601,8 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 // This test ensures that the remote tombstone revision wins over non-tombstone revision
 // whilst applying default conflict resolution policy through pushAndPull replication.
 func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
+
+	base.LongRunningTest(t)
 	base.RequireNumTestBuckets(t, 2)
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")

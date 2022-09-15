@@ -1220,6 +1220,8 @@ func TestDBOfflineSingleResync(t *testing.T) {
 }
 
 func TestResync(t *testing.T) {
+	base.LongRunningTest(t)
+
 	testCases := []struct {
 		name               string
 		docsCreated        int
@@ -4444,6 +4446,8 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 
 // CBG-1046: Add ability to specify user for active peer in sg-replicate2
 func TestSpecifyUserDocsToReplicate(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 

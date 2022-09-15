@@ -433,8 +433,8 @@ func InitWebhookTest() (*httptest.Server, *WebhookRequest) {
 }
 
 func TestWebhookBasic(t *testing.T) {
-
 	base.LongRunningTest(t)
+
 	terminator := make(chan bool)
 	defer close(terminator)
 

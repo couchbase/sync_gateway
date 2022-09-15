@@ -5354,8 +5354,8 @@ func TestHandlePprofsCmdlineAndSymbol(t *testing.T) {
 }
 
 func TestHandlePprofs(t *testing.T) {
-
 	base.LongRunningTest(t)
+
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}

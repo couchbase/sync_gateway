@@ -1195,8 +1195,10 @@ func TestBlipSendAndGetRev(t *testing.T) {
 }
 
 // Test send and retrieval of a doc with a large numeric value.  Ensure proper large number handling.
-//   Validate deleted handling (includes check for https://github.com/couchbase/sync_gateway/issues/3341)
+//
+//	Validate deleted handling (includes check for https://github.com/couchbase/sync_gateway/issues/3341)
 func TestBlipSendAndGetLargeNumberRev(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 

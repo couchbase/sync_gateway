@@ -62,6 +62,8 @@ func TestUserQueryDBConfigGetWithoutFeatureFlag(t *testing.T) {
 
 // Test use of "Etag" and "If-Match" headers to safely update function/query/graphql config.
 func TestUserQueryDBConfigMVCC(t *testing.T) {
+	base.LongRunningTest(t)
+
 	rt := newRestTesterForUserQueries(t, DbConfig{
 		UserFunctions: map[string]*db.UserFunctionConfig{
 			"xxx": {

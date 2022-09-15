@@ -520,6 +520,7 @@ func TestAdminAuthWithX509(t *testing.T) {
 }
 
 func TestAdminAPIAuth(t *testing.T) {
+	base.LongRunningTest(t)
 
 	// Don't really care about the log level but this test hits the logging endpoint so this is used to reset the logging
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)

@@ -811,6 +811,8 @@ func createDocWithInBodyAttachment(t *testing.T, ctx context.Context, docID stri
 // Check for regression of CBG-1980 caused by DCP closing timing issue for the mark and sweep stage
 // May sometimes fail if docsToCreate is not high enough
 func TestAttachmentCompactIncorrectStat(t *testing.T) {
+	base.LongRunningTest(t)
+
 	const docsToCreate = 10_000
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Requires CBS")

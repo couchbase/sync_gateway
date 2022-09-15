@@ -134,6 +134,8 @@ func TestServerlessDBSetupForceCreds(t *testing.T) {
 // Tests behaviour of CBG-2258 to make sure fetch databases only uses buckets listed on StartupConfig.BucketCredentials
 // when running in serverless mode
 func TestServerlessBucketCredentialsFetchDatabases(t *testing.T) {
+	base.LongRunningTest(t)
+
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
