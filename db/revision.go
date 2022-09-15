@@ -37,8 +37,10 @@ const (
 )
 
 // A revisions property found within a Body.  Expected to be of the form:
-//   Revisions["start"]: int64, starting generation number
-//   Revisions["ids"]: []string, list of digests
+//
+//	Revisions["start"]: int64, starting generation number
+//	Revisions["ids"]: []string, list of digests
+//
 // Used as map[string]interface{} instead of Revisions struct because it's unmarshalled
 // along with Body, and we don't need the overhead of allocating a new object
 type Revisions map[string]interface{}
@@ -245,12 +247,13 @@ func (db *DatabaseContext) getOldRevisionJSON(ctx context.Context, docid string,
 
 // Makes a backup of revision body for use by delta sync, and in-flight replications requesting an old revision.
 // Backup policy depends on whether delta sync and/or shared_bucket_access is enabled
-//   delta=false || delta_rev_max_age_seconds=0
-//      - old revision stored, with expiry OldRevExpirySeconds
-//   delta=true && shared_bucket_access=true
-//      - new revision stored (as duplicate), with expiry rev_max_age_seconds
-//   delta=true && shared_bucket_access=false
-//      - old revision stored, with expiry rev_max_age_seconds
+//
+//	delta=false || delta_rev_max_age_seconds=0
+//	   - old revision stored, with expiry OldRevExpirySeconds
+//	delta=true && shared_bucket_access=true
+//	   - new revision stored (as duplicate), with expiry rev_max_age_seconds
+//	delta=true && shared_bucket_access=false
+//	   - old revision stored, with expiry rev_max_age_seconds
 func (db *Database) backupRevisionJSON(ctx context.Context, docId, newRevId, oldRevId string, newBody []byte, oldBody []byte, newAtts AttachmentsMeta) {
 
 	// Without delta sync, store the old rev for in-flight replication purposes

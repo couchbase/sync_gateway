@@ -23,7 +23,6 @@ import (
 // It implements cbgt.Cfg for use with cbgt, but can be used for to manage
 // any shared data.  It uses Sync Gateway's existing
 // bucket as a keystore, and existing caching feed for change notifications.
-//
 type CfgSG struct {
 	bucket        Bucket
 	loggingCtx    context.Context

@@ -217,9 +217,7 @@ type CacheConfig struct {
 	DeprecatedCacheConfig
 }
 
-// ***************************************************************
-//	Kept around for CBG-356 backwards compatability
-// ***************************************************************
+// Deprecated: Kept around for CBG-356 backwards compatability
 type DeprecatedCacheConfig struct {
 	DeprecatedCachePendingSeqMaxWait *uint32 `json:"max_wait_pending,omitempty"`         // Max wait for pending sequence before skipping
 	DeprecatedCachePendingSeqMaxNum  *int    `json:"max_num_pending,omitempty"`          // Max number of pending sequences before skipping
@@ -1435,14 +1433,14 @@ func (sc *ServerContext) fetchConfigs(ctx context.Context, isInitialStartup bool
 		}
 		// TODO: Enable code as part of CBG-2280
 		// Return buckets that have credentials set that do not have a db associated with them
-		//buckets = make([]string, len(sc.config.BucketCredentials)-len(sc.bucketDbName))
-		//for bucket := range sc.config.BucketCredentials {
+		// buckets = make([]string, len(sc.config.BucketCredentials)-len(sc.bucketDbName))
+		// for bucket := range sc.config.BucketCredentials {
 		//	i := 0
 		//	if sc.bucketDbName[bucket] == "" {
 		//		buckets[i] = bucket
 		//		i++
 		//	}
-		//}
+		// }
 	} else {
 		buckets, err = sc.bootstrapContext.connection.GetConfigBuckets()
 		if err != nil {
