@@ -212,7 +212,7 @@ func (h *handler) handleDbOffline() error {
 func (h *handler) handleDbSuspend() error {
 	h.assertAdminOnly()
 
-	err := h.server.suspendDatabase(h.db.Name)
+	err := h.server.suspendDatabase(h.ctx(), h.db.Name)
 	if err != nil {
 		if err == ErrSuspendingDisallowed {
 			return base.HTTPErrorf(http.StatusBadRequest, "Database %q is not configured to support suspending", base.MD(h.db.Name))

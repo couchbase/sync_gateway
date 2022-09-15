@@ -549,7 +549,7 @@ func TestServerlessSuspendAPI(t *testing.T) {
 			}
 
 			// Attempting to suspend an already suspended db should return false
-			err := rt.ServerContext().suspendDatabase("db")
+			err := rt.ServerContext().suspendDatabase(rt.Context(), "db")
 			if test.serverless {
 				assert.ErrorIs(t, err, base.ErrNotFound)
 				return
@@ -580,7 +580,7 @@ func TestServerlessUnsuspendAPI(t *testing.T) {
 	}`, tb.GetName(), base.TestsDisableGSI()))
 	requireStatus(t, resp, http.StatusCreated)
 
-	err := sc.suspendDatabase("db")
+	err := sc.suspendDatabase(rt.Context(), "db")
 	assert.NoError(t, err)
 
 	// Confirm db is suspended
@@ -617,7 +617,7 @@ func TestServerlessUnsuspendAdminAuth(t *testing.T) {
 	}`, tb.GetName(), base.TestsDisableGSI()), base.TestClusterUsername(), base.TestClusterPassword())
 	requireStatus(t, resp, http.StatusCreated)
 
-	err := sc.suspendDatabase("db")
+	err := sc.suspendDatabase(rt.Context(), "db")
 	assert.NoError(t, err)
 
 	// Confirm db is suspended
