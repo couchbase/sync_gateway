@@ -8,61 +8,61 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-package db
+package functions
 
 import (
-	"context"
 	"encoding/json"
 	"strings"
 	"testing"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 )
 
-var kUserN1QLFunctionsConfig = UserFunctionConfigMap{
-	"airports_in_city": &UserFunctionConfig{
+var kUserN1QLFunctionsConfig = FunctionConfigMap{
+	"airports_in_city": &FunctionConfig{
 		Type:  "query",
 		Code:  `SELECT $args.city AS city`,
 		Args:  []string{"city"},
-		Allow: &UserQueryAllow{Channels: []string{"city-$city", "allcities"}},
+		Allow: &Allow{Channels: []string{"city-$city", "allcities"}},
 	},
-	"square": &UserFunctionConfig{
+	"square": &FunctionConfig{
 		Type:  "query",
 		Code:  "SELECT $args.numero * $args.numero AS square",
 		Args:  []string{"numero"},
-		Allow: &UserQueryAllow{Channels: []string{"wonderland"}},
+		Allow: &Allow{Channels: []string{"wonderland"}},
 	},
-	"user": &UserFunctionConfig{
+	"user": &FunctionConfig{
 		Type:  "query",
 		Code:  "SELECT $user AS `user`",
-		Allow: &UserQueryAllow{Channels: []string{"*"}},
+		Allow: &Allow{Channels: []string{"*"}},
 	},
-	"user_parts": &UserFunctionConfig{
+	"user_parts": &FunctionConfig{
 		Type:  "query",
 		Code:  "SELECT $user.name AS name, $user.email AS email",
-		Allow: &UserQueryAllow{Channels: []string{"user-$(user.name)"}},
+		Allow: &Allow{Channels: []string{"user-$(user.name)"}},
 	},
-	"admin_only": &UserFunctionConfig{
+	"admin_only": &FunctionConfig{
 		Type:  "query",
 		Code:  `SELECT "ok" AS status`,
 		Allow: nil, // no 'allow' property means admin-only
 	},
-	"inject": &UserFunctionConfig{
+	"inject": &FunctionConfig{
 		Type:  "query",
 		Code:  `SELECT $args.foo`,
 		Args:  []string{"foo"},
-		Allow: &UserQueryAllow{Channels: []string{"*"}},
+		Allow: &Allow{Channels: []string{"*"}},
 	},
-	"syntax_error": &UserFunctionConfig{
+	"syntax_error": &FunctionConfig{
 		Type:  "query",
 		Code:  "SELEKT OOK? FR0M OOK!",
 		Allow: allowAll,
 	},
 }
 
-func callUserQuery(db *Database, name string, args map[string]interface{}) (interface{}, error) {
+func callUserQuery(db *db.Database, name string, args map[string]interface{}) (interface{}, error) {
 	return db.CallUserFunction(name, args, false, db.Ctx)
 }
 
@@ -95,27 +95,22 @@ func TestUserN1QLQueries(t *testing.T) {
 		t.Skip("This test is Couchbase Server only (requires N1QL)")
 	}
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	cacheOptions := DefaultCacheOptions()
-	db := setupTestDBWithOptions(t, DatabaseContextOptions{
-		CacheOptions:  &cacheOptions,
-		UserFunctions: kUserN1QLFunctionsConfig,
-	})
+	//base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	db := setupTestDBWithFunctions(t, kUserN1QLFunctionsConfig, nil)
 	defer db.Close()
-	db.Ctx = context.TODO()
 
 	// First run the tests as an admin:
 	t.Run("AsAdmin", func(t *testing.T) { testUserQueriesAsAdmin(t, db) })
 
 	// Now create a user and make it current:
-	db.user = addUserAlice(t, db)
-	assert.True(t, db.user.RoleNames().Contains("hero"))
+	db.SetUser(addUserAlice(t, db))
+	assert.True(t, db.User().RoleNames().Contains("hero"))
 
 	// Repeat the tests as user "alice":
 	t.Run("AsUser", func(t *testing.T) { testUserQueriesAsUser(t, db) })
 }
 
-func testUserQueriesCommon(t *testing.T, db *Database) {
+func testUserQueriesCommon(t *testing.T, db *db.Database) {
 	// dynamic channel list
 	fn, err := db.GetUserFunction("airports_in_city", map[string]interface{}{"city": "London"}, false, db.Ctx)
 	assert.NoError(t, err)
@@ -155,7 +150,7 @@ func testUserQueriesCommon(t *testing.T, db *Database) {
 	assert.ErrorContains(t, err, "syntax_error")
 }
 
-func testUserQueriesAsAdmin(t *testing.T, db *Database) {
+func testUserQueriesAsAdmin(t *testing.T, db *db.Database) {
 	testUserQueriesCommon(t, db)
 
 	fn, err := db.GetUserFunction("user", nil, false, db.Ctx)
@@ -184,7 +179,7 @@ func testUserQueriesAsAdmin(t *testing.T, db *Database) {
 	assertHTTPError(t, err, 404)
 }
 
-func testUserQueriesAsUser(t *testing.T, db *Database) {
+func testUserQueriesAsUser(t *testing.T, db *db.Database) {
 	testUserQueriesCommon(t, db)
 
 	fn, err := db.GetUserFunction("user", nil, false, db.Ctx)

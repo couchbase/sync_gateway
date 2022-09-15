@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/functions"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -50,7 +50,7 @@ func TestUserQueryDBConfigGetWithoutFeatureFlag(t *testing.T) {
 // Test use of "Etag" and "If-Match" headers to safely update function/query/graphql config.
 func TestUserQueryDBConfigMVCC(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{
-		UserFunctions: map[string]*db.UserFunctionConfig{
+		UserFunctions: map[string]*functions.FunctionConfig{
 			"xxx": {
 				Type: "javascript",
 				Code: "function(){return 42;}",
@@ -64,7 +64,7 @@ func TestUserQueryDBConfigMVCC(t *testing.T) {
 				Code: "SELECT 999",
 			},
 		},
-		GraphQL: &db.GraphQLConfig{
+		GraphQL: &functions.GraphQLConfig{
 			Schema:    base.StringPtr(kDummyGraphQLSchema),
 			Resolvers: nil,
 		},
@@ -169,12 +169,12 @@ func TestUserQueryDBConfigGetMissing(t *testing.T) {
 }
 func TestUserQueryDBConfigGet(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{
-		UserFunctions: map[string]*db.UserFunctionConfig{
+		UserFunctions: map[string]*functions.FunctionConfig{
 			"square": {
 				Type:  "javascript",
 				Code:  "function(context,args){return args.numero * args.numero;}",
 				Args:  []string{"numero"},
-				Allow: &db.UserQueryAllow{Channels: []string{"wonderland"}},
+				Allow: &functions.Allow{Channels: []string{"wonderland"}},
 			},
 		},
 	})
@@ -189,13 +189,13 @@ func TestUserQueryDBConfigGet(t *testing.T) {
 	})
 	t.Run("All", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/functions", "")
-		var body db.UserFunctionConfigMap
+		var body functions.FunctionConfigMap
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 		assert.NotNil(t, body["square"])
 	})
 	t.Run("Single", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/functions/square", "")
-		var body db.UserFunctionConfig
+		var body functions.FunctionConfig
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 		assert.Equal(t, "function(context,args){return args.numero * args.numero;}", body.Code)
 	})
@@ -207,12 +207,12 @@ func TestUserQueryDBConfigGet(t *testing.T) {
 
 func TestUserQueryDBConfigPut(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{
-		UserFunctions: map[string]*db.UserFunctionConfig{
+		UserFunctions: map[string]*functions.FunctionConfig{
 			"square": {
 				Type:  "javascript",
 				Code:  "function(context,args){return args.numero * args.numero;}",
 				Args:  []string{"numero"},
-				Allow: &db.UserQueryAllow{Channels: []string{"wonderland"}},
+				Allow: &functions.Allow{Channels: []string{"wonderland"}},
 			},
 		},
 	})
@@ -259,12 +259,12 @@ func TestUserQueryDBConfigPut(t *testing.T) {
 
 func TestUserQueryDBConfigPutOne(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{
-		UserFunctions: map[string]*db.UserFunctionConfig{
+		UserFunctions: map[string]*functions.FunctionConfig{
 			"square": {
 				Type:  "javascript",
 				Code:  "function(context,args){return args.numero * args.numero;}",
 				Args:  []string{"numero"},
-				Allow: &db.UserQueryAllow{Channels: []string{"wonderland"}},
+				Allow: &functions.Allow{Channels: []string{"wonderland"}},
 			},
 		},
 	})
@@ -352,7 +352,7 @@ func TestDBConfigUserGraphQLGetEmpty(t *testing.T) {
 }
 func TestDBConfigUserGraphQLGet(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{
-		GraphQL: &db.GraphQLConfig{
+		GraphQL: &functions.GraphQLConfig{
 			Schema:    base.StringPtr(kDummyGraphQLSchema),
 			Resolvers: nil,
 		},
@@ -368,7 +368,7 @@ func TestDBConfigUserGraphQLGet(t *testing.T) {
 	})
 	t.Run("All", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/graphql", "")
-		var body db.GraphQLConfig
+		var body functions.GraphQLConfig
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 		assert.Equal(t, base.StringPtr(kDummyGraphQLSchema), body.Schema)
 	})
@@ -376,7 +376,7 @@ func TestDBConfigUserGraphQLGet(t *testing.T) {
 
 func TestDBConfigUserGraphQLPut(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{
-		GraphQL: &db.GraphQLConfig{
+		GraphQL: &functions.GraphQLConfig{
 			Schema:    base.StringPtr(kDummyGraphQLSchema),
 			Resolvers: nil,
 		},

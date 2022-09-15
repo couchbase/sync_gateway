@@ -12,7 +12,7 @@ import (
 	"net/http"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/functions"
 )
 
 //////// JS FUNCTIONS:
@@ -46,7 +46,7 @@ func (h *handler) handleGetDbConfigFunction() error {
 
 // PUT/DELETE config: user function(s)
 func (h *handler) handlePutDbConfigFunctions() error {
-	var functionsConfig db.UserFunctionConfigMap
+	var functionsConfig functions.FunctionConfigMap
 	if h.rq.Method != "DELETE" {
 		if err := h.readJSONInto(&functionsConfig); err != nil {
 			return err
@@ -65,13 +65,13 @@ func (h *handler) handlePutDbConfigFunctions() error {
 func (h *handler) handlePutDbConfigFunction() error {
 	functionName := h.PathVar("function")
 	if h.rq.Method != "DELETE" {
-		var functionConfig *db.UserFunctionConfig
+		var functionConfig *functions.FunctionConfig
 		if err := h.readJSONInto(&functionConfig); err != nil {
 			return err
 		}
 		return h.mutateDbConfig(func(dbConfig *DbConfig) error {
 			if dbConfig.UserFunctions == nil {
-				dbConfig.UserFunctions = db.UserFunctionConfigMap{}
+				dbConfig.UserFunctions = functions.FunctionConfigMap{}
 			}
 			dbConfig.UserFunctions[functionName] = functionConfig
 			return nil
@@ -104,7 +104,7 @@ func (h *handler) handleGetDbConfigGraphQL() error {
 
 // PUT/DELETE database GraphQL config.
 func (h *handler) handlePutDbConfigGraphQL() error {
-	var newConfig *db.GraphQLConfig
+	var newConfig *functions.GraphQLConfig
 	if h.rq.Method != "DELETE" {
 		if err := h.readJSONInto(&newConfig); err != nil {
 			return err

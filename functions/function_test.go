@@ -8,119 +8,119 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-package db
+package functions
 
 import (
-	"context"
 	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 )
 
-var allowAll = &UserQueryAllow{Channels: []string{"*"}}
+var allowAll = &Allow{Channels: []string{"*"}}
 
-var kUserFunctionConfig = UserFunctionConfigMap{
-	"square": &UserFunctionConfig{
+var kUserFunctionConfig = FunctionConfigMap{
+	"square": &FunctionConfig{
 		Type:  "javascript",
 		Code:  "function(context, args) {return args.numero * args.numero;}",
 		Args:  []string{"numero"},
-		Allow: &UserQueryAllow{Channels: []string{"wonderland"}},
+		Allow: &Allow{Channels: []string{"wonderland"}},
 	},
-	"exceptional": &UserFunctionConfig{
+	"exceptional": &FunctionConfig{
 		Type:  "javascript",
 		Code:  `function(context, args) {throw "oops";}`,
 		Allow: allowAll,
 	},
-	"call_fn": &UserFunctionConfig{
+	"call_fn": &FunctionConfig{
 		Type:  "javascript",
 		Code:  `function(context, args) {return context.user.function("square", {numero: 7});}`,
 		Allow: allowAll,
 	},
-	"factorial": &UserFunctionConfig{
+	"factorial": &FunctionConfig{
 		Type: "javascript",
 		Args: []string{"n"},
 		Code: `function(context, args) {if (args.n <= 1) return 1;
 						else return args.n * context.user.function("factorial", {n: args.n-1});}`,
 		Allow: allowAll,
 	},
-	"great_and_terrible": &UserFunctionConfig{
+	"great_and_terrible": &FunctionConfig{
 		Type:  "javascript",
 		Code:  `function(context, args) {return "I am OZ the great and terrible";}`,
-		Allow: &UserQueryAllow{Channels: []string{"oz", "narnia"}},
+		Allow: &Allow{Channels: []string{"oz", "narnia"}},
 	},
-	"call_forbidden": &UserFunctionConfig{
+	"call_forbidden": &FunctionConfig{
 		Type:  "javascript",
 		Code:  `function(context, args) {return context.user.function("great_and_terrible");}`,
 		Allow: allowAll,
 	},
-	"sudo_call_forbidden": &UserFunctionConfig{
+	"sudo_call_forbidden": &FunctionConfig{
 		Type:  "javascript",
 		Code:  `function(context, args) {return context.admin.function("great_and_terrible");}`,
 		Allow: allowAll,
 	},
-	"admin_only": &UserFunctionConfig{
+	"admin_only": &FunctionConfig{
 		Type:  "javascript",
 		Code:  `function(context, args) {return "OK";}`,
 		Allow: nil, // no 'allow' property means admin-only
 	},
-	"require_admin": &UserFunctionConfig{
+	"require_admin": &FunctionConfig{
 		Type:  "javascript",
 		Code:  `function(context, args) {context.requireAdmin(); return "OK";}`,
 		Allow: allowAll,
 	},
-	"user_only": &UserFunctionConfig{
+	"user_only": &FunctionConfig{
 		Type:  "javascript",
 		Code:  `function(context, args) {if (!context.user.name) throw "No user"; return context.user.name;}`,
-		Allow: &UserQueryAllow{Channels: []string{"user-$(context.user.name)"}},
+		Allow: &Allow{Channels: []string{"user-$(context.user.name)"}},
 	},
-	"alice_only": &UserFunctionConfig{
+	"alice_only": &FunctionConfig{
 		Type:  "javascript",
 		Code:  `function(context, args) {context.requireUser("alice"); return "OK";}`,
 		Allow: allowAll,
 	},
-	"pevensies_only": &UserFunctionConfig{
+	"pevensies_only": &FunctionConfig{
 		Type:  "javascript",
 		Code:  `function(context, args) {context.requireUser(["peter","jane","eustace","lucy"]); return "OK";}`,
 		Allow: allowAll,
 	},
-	"wonderland_only": &UserFunctionConfig{
+	"wonderland_only": &FunctionConfig{
 		Type:  "javascript",
 		Code:  `function(context, args) {context.requireAccess("wonderland"); context.requireAccess(["wonderland", "snark"]); return "OK";}`,
 		Allow: allowAll,
 	},
-	"narnia_only": &UserFunctionConfig{
+	"narnia_only": &FunctionConfig{
 		Type:  "javascript",
 		Code:  `function(context, args) {context.requireAccess("narnia"); return "OK";}`,
 		Allow: allowAll,
 	},
-	"hero_only": &UserFunctionConfig{
+	"hero_only": &FunctionConfig{
 		Type:  "javascript",
 		Code:  `function(context, args) {context.requireRole(["hero", "antihero"]); return "OK";}`,
 		Allow: allowAll,
 	},
-	"villain_only": &UserFunctionConfig{
+	"villain_only": &FunctionConfig{
 		Type:  "javascript",
 		Code:  `function(context, args) {context.requireRole(["villain"]); return "OK";}`,
 		Allow: allowAll,
 	},
 
-	"getDoc": &UserFunctionConfig{
+	"getDoc": &FunctionConfig{
 		Type:  "javascript",
 		Code:  `function(context, args) {return context.user.defaultCollection.get(args.docID);}`,
 		Args:  []string{"docID"},
 		Allow: allowAll,
 	},
-	"putDoc": &UserFunctionConfig{
+	"putDoc": &FunctionConfig{
 		Type:  "javascript",
 		Code:  `function(context, args) {return context.user.defaultCollection.save(args.docID, args.doc);}`,
 		Args:  []string{"docID", "doc"},
 		Allow: allowAll,
 	},
-	"delDoc": &UserFunctionConfig{
+	"delDoc": &FunctionConfig{
 		Type:  "javascript",
 		Code:  `function(context, args) {return context.user.defaultCollection.delete(args.docID);}`,
 		Args:  []string{"docID"},
@@ -130,7 +130,7 @@ var kUserFunctionConfig = UserFunctionConfigMap{
 
 // Adds a user "alice" to the database, with role "hero"
 // and access to channels "wonderland" and "lookingglass".
-func addUserAlice(t *testing.T, db *Database) auth.User {
+func addUserAlice(t *testing.T, db *db.Database) auth.User {
 	var err error
 	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
 	hero, err := authenticator.NewRole("hero", base.SetOf("heroes"))
@@ -153,28 +153,25 @@ func addUserAlice(t *testing.T, db *Database) auth.User {
 
 // Unit test for JS user functions.
 func TestUserFunctions(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	cacheOptions := DefaultCacheOptions()
-	db := setupTestDBWithOptions(t, DatabaseContextOptions{
-		CacheOptions:  &cacheOptions,
-		UserFunctions: kUserFunctionConfig,
-	})
+	//base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	db := setupTestDBWithFunctions(t, kUserFunctionConfig, nil)
 	defer db.Close()
-	db.Ctx = context.TODO()
+
+	assert.NotNil(t, db.Options.UserFunctions["square"])
 
 	// First run the tests as an admin:
 	t.Run("AsAdmin", func(t *testing.T) { testUserFunctionsAsAdmin(t, db) })
 
 	// Now create a user and make it current:
-	db.user = addUserAlice(t, db)
-	assert.True(t, db.user.RoleNames().Contains("hero"))
+	db.SetUser(addUserAlice(t, db))
+	assert.True(t, db.User().RoleNames().Contains("hero"))
 
 	// Repeat the tests as user "alice":
 	t.Run("AsUser", func(t *testing.T) { testUserFunctionsAsUser(t, db) })
 }
 
 // User function tests that work the same for admin and non-admin user:
-func testUserFunctionsCommon(t *testing.T, db *Database) {
+func testUserFunctionsCommon(t *testing.T, db *db.Database) {
 	// Basic call passing a parameter:
 	result, err := db.CallUserFunction("square", map[string]interface{}{"numero": 42}, true, db.Ctx)
 	assert.NoError(t, err)
@@ -233,7 +230,7 @@ func testUserFunctionsCommon(t *testing.T, db *Database) {
 }
 
 // User-function tests, run as admin:
-func testUserFunctionsAsAdmin(t *testing.T, db *Database) {
+func testUserFunctionsAsAdmin(t *testing.T, db *db.Database) {
 	testUserFunctionsCommon(t, db)
 
 	// Admin-only (success):
@@ -271,7 +268,7 @@ func testUserFunctionsAsAdmin(t *testing.T, db *Database) {
 }
 
 // User-function tests, run as user "alice":
-func testUserFunctionsAsUser(t *testing.T, db *Database) {
+func testUserFunctionsAsUser(t *testing.T, db *db.Database) {
 	testUserFunctionsCommon(t, db)
 
 	// Checking `context.user.name`:
@@ -312,14 +309,9 @@ func testUserFunctionsAsUser(t *testing.T, db *Database) {
 
 // Test CRUD operations
 func TestUserFunctionsCRUD(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	cacheOptions := DefaultCacheOptions()
-	db := setupTestDBWithOptions(t, DatabaseContextOptions{
-		CacheOptions:  &cacheOptions,
-		UserFunctions: kUserFunctionConfig,
-	})
+	//base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	db := setupTestDBWithFunctions(t, kUserFunctionConfig, nil)
 	defer db.Close()
-	db.Ctx = context.TODO()
 
 	body := map[string]interface{}{"key": "value"}
 
@@ -394,43 +386,29 @@ func TestUserFunctionsCRUD(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-var kUserFunctionBadConfig = UserFunctionConfigMap{
-	"square": &UserFunctionConfig{
-		Code:  "return args.numero * args.numero;",
-		Args:  []string{"numero"},
-		Allow: &UserQueryAllow{Channels: []string{"wonderland"}},
-	},
-	"syntax_error": &UserFunctionConfig{
-		Code:  "returm )42(",
-		Allow: allowAll,
-	},
-}
-
 // Test that JS syntax errors are detected when the db opens.
 func TestUserFunctionSyntaxError(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	cacheOptions := DefaultCacheOptions()
-	dbcOptions := DatabaseContextOptions{
-		CacheOptions:  &cacheOptions,
-		UserFunctions: kUserFunctionBadConfig,
+	var kUserFunctionBadConfig = FunctionConfigMap{
+		"square": &FunctionConfig{
+			Code:  "return args.numero * args.numero;",
+			Args:  []string{"numero"},
+			Allow: &Allow{Channels: []string{"wonderland"}},
+		},
+		"syntax_error": &FunctionConfig{
+			Code:  "returm )42(",
+			Allow: allowAll,
+		},
 	}
-	tBucket := base.GetTestBucket(t)
-	defer tBucket.Close()
-	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	_, err := NewDatabaseContext("db", tBucket, false, dbcOptions)
+
+	_, err := CompileFunctions(kUserFunctionBadConfig)
 	assert.Error(t, err)
 }
 
 // Low-level test of channel-name parameter expansion for user query/function auth
 func TestUserFunctionAllow(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	cacheOptions := DefaultCacheOptions()
-	db := setupTestDBWithOptions(t, DatabaseContextOptions{
-		CacheOptions:  &cacheOptions,
-		UserFunctions: kUserFunctionConfig,
-	})
+	//base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	db := setupTestDBWithFunctions(t, kUserFunctionConfig, nil)
 	defer db.Close()
-	db.Ctx = context.TODO()
 
 	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
 	user, err := authenticator.NewUser("maurice", "pass", base.SetOf("city-Paris"))
@@ -444,7 +422,7 @@ func TestUserFunctionAllow(t *testing.T) {
 		"WORDS": []string{"ouais", "fromage", "amour", "vachement"},
 	}
 
-	allow := UserQueryAllow{}
+	allow := Allow{}
 
 	ch, err := allow.expandPattern("someChannel", params, user)
 	assert.NoError(t, err)
@@ -503,4 +481,23 @@ func TestUserFunctionAllow(t *testing.T) {
 	// error: undefined parameter
 	_, err = allow.expandPattern("sales-upTo-$FOO", params, user)
 	assert.NotNil(t, err)
+}
+
+// If certain environment variables are set, for example to turn on XATTR support, then update
+// the DatabaseContextOptions accordingly
+func AddOptionsFromEnvironmentVariables(dbcOptions *db.DatabaseContextOptions) {
+	if base.TestUseXattrs() {
+		dbcOptions.EnableXattr = true
+	}
+
+	if base.TestsDisableGSI() {
+		dbcOptions.UseViews = true
+	}
+}
+
+func assertHTTPError(t *testing.T, err error, status int) bool {
+	var httpErr *base.HTTPError
+	return assert.Error(t, err) &&
+		assert.ErrorAs(t, err, &httpErr) &&
+		assert.Equal(t, status, httpErr.Status)
 }

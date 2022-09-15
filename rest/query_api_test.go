@@ -17,33 +17,33 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/functions"
 	"github.com/stretchr/testify/assert"
 )
 
 var kGraphQLTestConfig = &DatabaseConfig{DbConfig: DbConfig{
-	UserFunctions: map[string]*db.UserFunctionConfig{
+	UserFunctions: map[string]*functions.FunctionConfig{
 		"square": {
 			Type:  "javascript",
 			Code:  "function(context,args) {return args.n * args.n;}",
 			Args:  []string{"n"},
-			Allow: &db.UserQueryAllow{Channels: []string{"*"}},
+			Allow: &functions.Allow{Channels: []string{"*"}},
 		},
 		"squareN1QL": {
 			Type:  "query",
 			Code:  "SELECT $args.n * $args.n AS square",
 			Args:  []string{"n"},
-			Allow: &db.UserQueryAllow{Channels: []string{"*"}},
+			Allow: &functions.Allow{Channels: []string{"*"}},
 		},
 	},
-	GraphQL: &db.GraphQLConfig{
+	GraphQL: &functions.GraphQLConfig{
 		Schema: base.StringPtr(`type Query { square(n: Int!): Int! }`),
-		Resolvers: map[string]db.GraphQLResolverConfig{
+		Resolvers: map[string]functions.GraphQLResolverConfig{
 			"Query": {
-				"square": db.UserFunctionConfig{
+				"square": functions.FunctionConfig{
 					Type:  "javascript",
 					Code:  `function(context,args) {return args.n * args.n;}`,
-					Allow: &db.UserQueryAllow{Channels: []string{"*"}},
+					Allow: &functions.Allow{Channels: []string{"*"}},
 				},
 			},
 		},

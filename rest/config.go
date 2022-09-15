@@ -34,6 +34,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/functions"
 )
 
 var (
@@ -173,8 +174,8 @@ type DbConfig struct {
 	ClientPartitionWindowSecs        *int                             `json:"client_partition_window_secs,omitempty"`         // How long clients can remain offline for without losing replication metadata. Default 30 days (in seconds)
 	Guest                            *auth.PrincipalConfig            `json:"guest,omitempty"`                                // Guest user settings
 	JavascriptTimeoutSecs            *uint32                          `json:"javascript_timeout_secs,omitempty"`              // The amount of seconds a Javascript function can run for. Set to 0 for no timeout.
-	GraphQL                          *db.GraphQLConfig                `json:"graphql,omitempty"`                              // GraphQL configuration & resolver fns
-	UserFunctions                    db.UserFunctionConfigMap         `json:"functions,omitempty"`                            // Named JS fns for clients to call
+	GraphQL                          *functions.GraphQLConfig         `json:"graphql,omitempty"`                              // GraphQL configuration & resolver fns
+	UserFunctions                    functions.FunctionConfigMap      `json:"functions,omitempty"`                            // Named JS fns for clients to call
 }
 
 type ScopesConfig map[string]ScopeConfig
@@ -885,7 +886,7 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 	}
 
 	if dbConfig.UserFunctions != nil {
-		if err := db.ValidateUserFunctions(dbConfig.UserFunctions); err != nil {
+		if err := functions.ValidateFunctions(dbConfig.UserFunctions); err != nil {
 			multiError = multiError.Append(err)
 		}
 	}

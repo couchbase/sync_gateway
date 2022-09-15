@@ -8,7 +8,7 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-package db
+package functions
 
 import (
 	"context"
@@ -17,11 +17,13 @@ import (
 	"os"
 
 	gqltools "github.com/bhoriuchi/graphql-go-tools"
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/graphql-go/graphql"
 	"github.com/graphql-go/graphql/language/ast"
 )
+
+//////// CONFIGURATION TYPES:
 
 // Configuration for GraphQL.
 type GraphQLConfig struct {
@@ -31,29 +33,12 @@ type GraphQLConfig struct {
 }
 
 // Maps GraphQL query/mutation names to the resolvers that implement them.
-type GraphQLResolverConfig map[string]UserFunctionConfig
+type GraphQLResolverConfig map[string]FunctionConfig
 
-// GraphQL query handler for a Database.
-type GraphQL struct {
-	dbc    *DatabaseContext
-	schema graphql.Schema // The compiled GraphQL schema object
-}
-
-type gqContextKey string
-
-var dbKey = gqContextKey("db")                 // Context key to access the Database instance
-var mutAllowedKey = gqContextKey("mutAllowed") // Context key to access `mutationAllowed`
-
-// Top-level public method to run a GraphQL query on a Database.
-func (db *Database) UserGraphQLQuery(query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) (*graphql.Result, error) {
-	if db.graphQL == nil {
-		return nil, base.HTTPErrorf(http.StatusServiceUnavailable, "GraphQL is not configured")
-	}
-	return db.graphQL.Query(db, query, operationName, variables, mutationAllowed, ctx)
-}
+//////// QUERYING
 
 // Runs a GraphQL query on behalf of a user, presumably invoked via a REST or BLIP API.
-func (gq *GraphQL) Query(db *Database, query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) (*graphql.Result, error) {
+func (gq *graphQLImpl) Query(db *db.Database, query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) (*graphql.Result, error) {
 	if err := db.CheckTimeout(); err != nil {
 		return nil, err
 	}
@@ -69,16 +54,38 @@ func (gq *GraphQL) Query(db *Database, query string, operationName string, varia
 	return result, nil
 }
 
+func (gq *graphQLImpl) N1QLQueryNames() []string {
+	queryNames := []string{}
+	for typeName, resolvers := range gq.config.Resolvers {
+		for fieldName, resolver := range resolvers {
+			if resolver.Type == "query" {
+				queryNames = append(queryNames, db.QueryTypeUserFunctionPrefix+graphQLResolverName(typeName, fieldName))
+			}
+		}
+	}
+	return queryNames
+}
+
+type gqContextKey string
+
+var dbKey = gqContextKey("db")                 // Context key to access the db.Database instance
+var mutAllowedKey = gqContextKey("mutAllowed") // Context key to access `mutationAllowed`
+
 //////// GRAPHQL INITIALIZATION:
 
-// Creates a new GraphQL instance for this DatabaseContext, using the config from `dbc.Options`.
-// Called once, when the database opens.
-func NewGraphQL(dbc *DatabaseContext) (*GraphQL, error) {
-	if schema, err := dbc.Options.GraphQL.CompileSchema(); err != nil {
+// Implementation of db.graphQLImpl interface.
+type graphQLImpl struct {
+	config *GraphQLConfig
+	schema graphql.Schema // The compiled GraphQL schema object
+}
+
+// Creates a new GraphQL instance from its configuration.
+func CompileGraphQL(config *GraphQLConfig) (*graphQLImpl, error) {
+	if schema, err := config.compileSchema(); err != nil {
 		return nil, err
 	} else {
-		gql := &GraphQL{
-			dbc:    dbc,
+		gql := &graphQLImpl{
+			config: config,
 			schema: schema,
 		}
 		return gql, nil
@@ -87,11 +94,11 @@ func NewGraphQL(dbc *DatabaseContext) (*GraphQL, error) {
 
 // Validates a GraphQL configuration by parsing the schema.
 func (config *GraphQLConfig) Validate() error {
-	_, err := config.CompileSchema()
+	_, err := config.compileSchema()
 	return err
 }
 
-func (config *GraphQLConfig) CompileSchema() (graphql.Schema, error) {
+func (config *GraphQLConfig) compileSchema() (graphql.Schema, error) {
 	// Get the schema source, from either `schema` or `schemaFile`:
 	schemaSource, err := config.getSchema()
 	if err != nil {
@@ -170,20 +177,29 @@ func (config *GraphQLConfig) getSchema() (string, error) {
 
 //////// FIELD RESOLVER:
 
+// Subtype of db.UserFunctionInvocation that can be called as a GraphQL resolver.
+// Implemented by userFunctionJSInvocation and userFunctionN1QLInvocation
+type resolver = interface {
+	db.UserFunctionInvocation
+
+	// Calls a user function as a GraphQL resolver, given the parameters passed by the go-graphql API.
+	Resolve(params graphql.ResolveParams) (interface{}, error)
+}
+
 func graphQLResolverName(typeName string, fieldName string) string {
 	return typeName + ":" + fieldName
 }
 
 // Creates a graphQLResolver for the given JavaScript code, and returns a graphql-go FieldResolveFn
 // that invokes it.
-func (config *GraphQLConfig) compileFieldResolver(typeName string, fieldName string, fnConfig UserFunctionConfig) (graphql.FieldResolveFn, error) {
+func (config *GraphQLConfig) compileFieldResolver(typeName string, fieldName string, fnConfig FunctionConfig) (graphql.FieldResolveFn, error) {
 	name := graphQLResolverName(typeName, fieldName)
 	isMutation := typeName == "Mutation"
 	if isMutation && fnConfig.Type == "query" {
 		return nil, fmt.Errorf("GraphQL mutations must be implemented in JavaScript")
 	}
 
-	userFn, err := compileUserFunction(name, "GraphQL resolver", &fnConfig)
+	userFn, err := compileFunction(name, "GraphQL resolver", &fnConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +207,7 @@ func (config *GraphQLConfig) compileFieldResolver(typeName string, fieldName str
 	userFn.AllowByDefault(true)
 
 	return func(params graphql.ResolveParams) (interface{}, error) {
-		db := params.Context.Value(dbKey).(*Database)
+		db := params.Context.Value(dbKey).(*db.Database)
 		if isMutation && !params.Context.Value(mutAllowedKey).(bool) {
 			return nil, base.HTTPErrorf(http.StatusForbidden, "a read-only request is not allowed to call a GraphQL mutation")
 		}
@@ -199,7 +215,7 @@ func (config *GraphQLConfig) compileFieldResolver(typeName string, fieldName str
 		if err != nil {
 			return nil, err
 		}
-		return invocation.Resolve(params)
+		return invocation.(resolver).Resolve(params)
 	}, nil
 }
 
@@ -228,51 +244,44 @@ func resolverInfo(params graphql.ResolveParams) map[string]interface{} {
 	}
 }
 
-func (fn *userFunctionJSInvocation) Resolve(params graphql.ResolveParams) (interface{}, error) {
-	return fn.compiled.WithTask(func(task sgbucket.JSServerTask) (interface{}, error) {
-		runner := task.(*userJSRunner)
-		return runner.CallWithDB(fn.db,
-			fn.mutationAllowed,
-			fn.ctx,
-			newUserFunctionJSContext(fn.db),
-			params.Args,
-			params.Source,
-			resolverInfo(params))
-	})
-}
+//////// TYPE-NAME RESOLVER:
 
-func (fn *userFunctionN1QLInvocation) Resolve(params graphql.ResolveParams) (interface{}, error) {
-	fn.args["parent"] = params.Source
-	fn.args["info"] = resolverInfo(params)
-	// Run the query:
-	result, err := fn.Run()
+func (config *GraphQLConfig) compileTypeNameResolver(interfaceName string, fnConfig FunctionConfig) (graphql.ResolveTypeFn, error) {
+	if fnConfig.Type != "javascript" {
+		return nil, fmt.Errorf("a GraphQL '__typename__' resolver must be JavaScript")
+	} else if fnConfig.Allow != nil {
+		return nil, fmt.Errorf("'allow' is not valid in a GraphQL '__typename__' resolver")
+	}
+
+	fn, err := compileFunction(interfaceName, "GraphQL type-name resolver", &fnConfig)
 	if err != nil {
 		return nil, err
 	}
-	if !isGraphQLListType(params.Info.ReturnType) {
-		// GraphQL result type is not a list (array), but N1QL always returns an array.
-		// So use the first row of the result as the value, if there is one.
-		if rows, ok := result.([]interface{}); ok {
-			if len(rows) > 0 {
-				result = rows[0]
-			} else {
-				return nil, nil
-			}
+	name := interfaceName + ".__typename"
+
+	return func(params graphql.ResolveTypeParams) *graphql.Object {
+		db_ := params.Context.Value(dbKey).(*db.Database)
+		invocation, err := fn.Invoke(db_, nil, false, params.Context)
+		if err != nil {
+			return nil
 		}
-		if isGraphQLScalarType(params.Info.ReturnType) {
-			// GraphQL result type is a scalar, but a N1QL row is always an object.
-			// Use the single field of the object, if any, as the result:
-			row := result.(map[string]interface{})
-			if len(row) != 1 {
-				return nil, base.HTTPErrorf(http.StatusInternalServerError, "resolver %q returns scalar type %s, but its N1QL query returns %d columns, not 1", fn.name, params.Info.ReturnType, len(row))
-			}
-			for _, value := range row {
-				result = value
-			}
+		result, err := invocation.(*jsInvocation).ResolveType(params)
+		var objType *graphql.Object
+		if err != nil {
+			base.WarnfCtx(params.Context, "GraphQL resolver %q failed with error %v", name, err)
+		} else if typeName, ok := result.(string); !ok {
+			base.WarnfCtx(params.Context, "GraphQL resolver %q returned a non-string %v; return value must be a type-name string", name, result)
+		} else if typeVal := params.Info.Schema.Type(typeName); typeVal == nil {
+			base.WarnfCtx(params.Context, "GraphQL resolver %q returned %q, which is not the name of a type", name, typeName)
+			base.WarnfCtx(params.Context, "TypeMap is %+v", params.Info.Schema.TypeMap())
+		} else if objType, ok = typeVal.(*graphql.Object); !ok {
+			base.WarnfCtx(params.Context, "GraphQL resolver %q returned %q which is not the name of an object type", name, typeName)
 		}
-	}
-	return result, nil
+		return objType
+	}, nil
 }
+
+//////// UTILITIES
 
 func isGraphQLListType(typ graphql.Output) bool {
 	if nonnull, ok := typ.(*graphql.NonNull); ok {
@@ -288,46 +297,4 @@ func isGraphQLScalarType(typ graphql.Output) bool {
 	}
 	_, isScalar := typ.(*graphql.Scalar)
 	return isScalar
-}
-
-//////// TYPE-NAME RESOLVER:
-
-func (config *GraphQLConfig) compileTypeNameResolver(interfaceName string, fnConfig UserFunctionConfig) (graphql.ResolveTypeFn, error) {
-	if fnConfig.Type != "javascript" {
-		return nil, fmt.Errorf("a GraphQL '__typename__' resolver must be JavaScript")
-	} else if fnConfig.Allow != nil {
-		return nil, fmt.Errorf("'allow' is not valid in a GraphQL '__typename__' resolver")
-	}
-
-	server, err := newUserFunctionJSServer(interfaceName, "GraphQL type-name resolver", fnConfig.Code)
-	if err != nil {
-		return nil, err
-	}
-	name := interfaceName + ".__typename"
-
-	return func(params graphql.ResolveTypeParams) *graphql.Object {
-		db := params.Context.Value(dbKey).(*Database)
-		info := map[string]interface{}{}
-		result, err := server.WithTask(func(task sgbucket.JSServerTask) (interface{}, error) {
-			runner := task.(*userJSRunner)
-			return runner.CallWithDB(db,
-				false,
-				params.Context,
-				newUserFunctionJSContext(db),
-				params.Value,
-				info)
-		})
-		var objType *graphql.Object
-		if err != nil {
-			base.WarnfCtx(params.Context, "GraphQL resolver %q failed with error %v", name, err)
-		} else if typeName, ok := result.(string); !ok {
-			base.WarnfCtx(params.Context, "GraphQL resolver %q returned a non-string %v; return value must be a type-name string", name, result)
-		} else if typeVal := params.Info.Schema.Type(typeName); typeVal == nil {
-			base.WarnfCtx(params.Context, "GraphQL resolver %q returned %q, which is not the name of a type", name, typeName)
-			base.WarnfCtx(params.Context, "TypeMap is %+v", params.Info.Schema.TypeMap())
-		} else if objType, ok = typeVal.(*graphql.Object); !ok {
-			base.WarnfCtx(params.Context, "GraphQL resolver %q returned %q which is not the name of an object type", name, typeName)
-		}
-		return objType
-	}, nil
 }

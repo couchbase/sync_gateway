@@ -8,7 +8,7 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-package db
+package functions
 
 import (
 	"context"
@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/graphql-go/graphql"
 	"github.com/stretchr/testify/assert"
 )
@@ -125,14 +126,14 @@ var kTestGraphQLConfig = GraphQLConfig{
 								if (!context.user) throw "Missing context.user";
 								if (!context.admin) throw "Missing context.admin";
 								return "TOP SECRET!";}`,
-				Allow: &UserQueryAllow{Users: base.Set{}}, // only admins
+				Allow: &Allow{Users: base.Set{}}, // only admins
 			},
 		},
 	},
 }
 
 // JS function helpers:
-var kTestGraphQLUserFunctionsConfig = UserFunctionConfigMap{
+var kTestGraphQLUserFunctionsConfig = FunctionConfigMap{
 	"all": {
 		Type: "javascript",
 		Code: `function(context, args) {
@@ -140,7 +141,7 @@ var kTestGraphQLUserFunctionsConfig = UserFunctionConfigMap{
 						{id: "a", "title": "Applesauce", done:true, tags:["fruit","soft"]},
 						{id: "b", "title": "Beer", description: "Bass ale please"},
 						{id: "m", "title": "Mangoes"} ];}`,
-		Allow: &UserQueryAllow{Channels: []string{"*"}},
+		Allow: &Allow{Channels: []string{"*"}},
 	},
 	"getTask": {
 		Type: "javascript",
@@ -150,7 +151,7 @@ var kTestGraphQLUserFunctionsConfig = UserFunctionConfigMap{
 							if (all[i].id == args.id) return all[i];
 						return undefined;}`,
 		Args:  []string{"id"},
-		Allow: &UserQueryAllow{Channels: []string{"*"}},
+		Allow: &Allow{Channels: []string{"*"}},
 	},
 	"infinite": {
 		Type: "javascript",
@@ -158,7 +159,7 @@ var kTestGraphQLUserFunctionsConfig = UserFunctionConfigMap{
 				var result = context.user.graphql("query{ infinite }");
 				if (result.errors) throw "GraphQL query failed:" + result.errors[0].message;
 				return -1;}`,
-		Allow: &UserQueryAllow{Channels: []string{"*"}},
+		Allow: &Allow{Channels: []string{"*"}},
 	},
 }
 
@@ -202,27 +203,21 @@ func assertGraphQLError(t *testing.T, expectedErrorText string, result *graphql.
 // Unit test for GraphQL queries.
 func TestUserGraphQL(t *testing.T) {
 	//base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	cacheOptions := DefaultCacheOptions()
-	db := setupTestDBWithOptions(t, DatabaseContextOptions{
-		CacheOptions:  &cacheOptions,
-		GraphQL:       &kTestGraphQLConfig,
-		UserFunctions: kTestGraphQLUserFunctionsConfig,
-	})
-	db.Ctx = context.TODO()
+	db := setupTestDBWithFunctions(t, kTestGraphQLUserFunctionsConfig, &kTestGraphQLConfig)
 	defer db.Close()
 
 	// First run the tests as an admin:
 	t.Run("AsAdmin", func(t *testing.T) { testUserGraphQLAsAdmin(t, db) })
 
 	// Now create a user and make it current:
-	db.user = addUserAlice(t, db)
-	assert.True(t, db.user.RoleNames().Contains("hero"))
+	db.SetUser(addUserAlice(t, db))
+	assert.True(t, db.User().RoleNames().Contains("hero"))
 
 	// Repeat the tests as user "alice":
 	t.Run("AsUser", func(t *testing.T) { testUserGraphQLAsUser(t, db) })
 }
 
-func testUserGraphQLCommon(t *testing.T, db *Database) {
+func testUserGraphQLCommon(t *testing.T, db *db.Database) {
 	// Successful query:
 	result, err := db.UserGraphQLQuery(`query{ square(n: 12) }`, "", nil, false, db.Ctx)
 	assertGraphQLResult(t, `{"square":144}`, result, err)
@@ -256,7 +251,7 @@ func testUserGraphQLCommon(t *testing.T, db *Database) {
 	assertGraphQLError(t, "508", result, err)
 }
 
-func testUserGraphQLAsAdmin(t *testing.T, db *Database) {
+func testUserGraphQLAsAdmin(t *testing.T, db *db.Database) {
 	testUserGraphQLCommon(t, db)
 
 	// Admin tests updating "a":
@@ -268,7 +263,7 @@ func testUserGraphQLAsAdmin(t *testing.T, db *Database) {
 	assertGraphQLResult(t, `{"task":{"secretNotes":"TOP SECRET!"}}`, result, err)
 }
 
-func testUserGraphQLAsUser(t *testing.T, db *Database) {
+func testUserGraphQLAsUser(t *testing.T, db *db.Database) {
 	testUserGraphQLCommon(t, db)
 
 	// Regular user tests updating "m":
@@ -350,7 +345,7 @@ var kTestGraphQLConfigWithN1QL = GraphQLConfig{
 								if (!context.user) throw "Missing context.user";
 								if (!context.admin) throw "Missing context.admin";
 								return "TOP SECRET!";}`,
-				Allow: &UserQueryAllow{Users: base.Set{}}, // only admins
+				Allow: &Allow{Users: base.Set{}}, // only admins
 			},
 			"description": {
 				// This tests the magic $parent parameter,
@@ -362,18 +357,15 @@ var kTestGraphQLConfigWithN1QL = GraphQLConfig{
 	},
 }
 
+type Body = db.Body
+
 // Unit test for GraphQL queries.
 func TestUserGraphQLWithN1QL(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test is Couchbase Server only (requires N1QL)")
 	}
 
-	cacheOptions := DefaultCacheOptions()
-	db := setupTestDBWithOptions(t, DatabaseContextOptions{
-		CacheOptions: &cacheOptions,
-		GraphQL:      &kTestGraphQLConfigWithN1QL,
-	})
-	db.Ctx = context.TODO()
+	db := setupTestDBWithFunctions(t, nil, &kTestGraphQLConfigWithN1QL)
 	defer db.Close()
 
 	db.Put("a", Body{"type": "task", "title": "Applesauce", "done": true, "tags": []string{"fruit", "soft"}, "channels": "wonderland"})
@@ -389,8 +381,8 @@ func TestUserGraphQLWithN1QL(t *testing.T) {
 	t.Run("AsAdmin", func(t *testing.T) { testUserGraphQLAsAdmin(t, db) })
 
 	// Now create a user and make it current:
-	db.user = addUserAlice(t, db)
-	assert.True(t, db.user.RoleNames().Contains("hero"))
+	db.SetUser(addUserAlice(t, db))
+	assert.True(t, db.User().RoleNames().Contains("hero"))
 
 	// Repeat the tests as user "alice":
 	t.Run("AsUser", func(t *testing.T) { testUserGraphQLAsUser(t, db) })
@@ -398,4 +390,40 @@ func TestUserGraphQLWithN1QL(t *testing.T) {
 	// Test the N1QL resolver that uses $parent:
 	result, err := db.UserGraphQLQuery(`query{ task(id:"b") {description,title} }`, "", nil, false, db.Ctx)
 	assertGraphQLResult(t, `{"task":{"description":"Bass ale please","title":"Beer"}}`, result, err)
+}
+
+func setupTestDBWithFunctions(t *testing.T, fnConfig FunctionConfigMap, gqConfig *GraphQLConfig) *db.Database {
+	cacheOptions := db.DefaultCacheOptions()
+	options := db.DatabaseContextOptions{
+		CacheOptions: &cacheOptions,
+	}
+	var err error
+	if fnConfig != nil {
+		options.UserFunctions, err = CompileFunctions(fnConfig)
+		assert.NoError(t, err)
+	}
+	if gqConfig != nil {
+		options.GraphQL, err = CompileGraphQL(gqConfig)
+		assert.NoError(t, err)
+	}
+	db := setupTestDBWithOptions(t, options)
+	db.Ctx = context.TODO()
+	return db
+}
+
+// Sets up test db with the specified database context options.  Note that environment variables can
+// override somedbcOptions properties.
+func setupTestDBWithOptions(t testing.TB, dbcOptions db.DatabaseContextOptions) *db.Database {
+
+	tBucket := base.GetTestBucket(t)
+	return setupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
+}
+
+func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions db.DatabaseContextOptions) *db.Database {
+	AddOptionsFromEnvironmentVariables(&dbcOptions)
+	context, err := db.NewDatabaseContext("db", tBucket, false, dbcOptions)
+	assert.NoError(t, err, "Couldn't create context for database 'db'")
+	db, err := db.CreateDatabase(context)
+	assert.NoError(t, err, "Couldn't create database 'db'")
+	return db
 }
