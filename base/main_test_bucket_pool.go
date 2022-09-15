@@ -794,7 +794,7 @@ func TestBucketPoolMain(m *testing.M, bucketReadierFunc TBPBucketReadierFunc, bu
 
 	SkipPrometheusStatsRegistration = true
 
-	GTestBucketPool = NewTestBucketPool(FlushBucketEmptierFunc, NoopInitFunc)
+	GTestBucketPool = NewTestBucketPool(bucketReadierFunc, bucketInitFunc)
 	teardownFuncs = append(teardownFuncs, GTestBucketPool.Close)
 
 	// must be the last teardown function added to the list to correctly detect leaked goroutines
