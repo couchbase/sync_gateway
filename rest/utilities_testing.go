@@ -44,19 +44,19 @@ import (
 
 // RestTesterConfig represents configuration for sync gateway
 type RestTesterConfig struct {
-	guestEnabled                    bool                        // If this is true, Admin Party is in full effect
+	GuestEnabled                    bool                        // If this is true, Admin Party is in full effect
 	SyncFn                          string                      // put the sync() function source in here (optional)
 	DatabaseConfig                  *DatabaseConfig             // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
 	MutateStartupConfig             func(config *StartupConfig) // Function to mutate the startup configuration before the server context gets created. This overrides options the RT sets.
 	InitSyncSeq                     uint64                      // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
 	EnableNoConflictsMode           bool                        // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
 	EnableUserQueries               bool                        // Enable the feature-flag for user N1QL/etc queries
-	TestBucket                      *base.TestBucket            // If set, use this bucket instead of requesting a new one.
+	CustomTestBucket                *base.TestBucket            // If set, use this bucket instead of requesting a new one.
 	leakyBucketConfig               *base.LeakyBucketConfig     // Set to create and use a leaky bucket on the RT and DB. A test bucket cannot be passed in if using this option.
 	adminInterface                  string                      // adminInterface overrides the default admin interface.
-	sgReplicateEnabled              bool                        // sgReplicateManager disabled by default for RestTester
-	hideProductInfo                 bool
-	adminInterfaceAuthentication    bool
+	SgReplicateEnabled              bool                        // SgReplicateManager disabled by default for RestTester
+	HideProductInfo                 bool
+	AdminInterfaceAuthentication    bool
 	metricsInterfaceAuthentication  bool
 	enableAdminAuthPermissionsCheck bool
 	useTLSServer                    bool // If true, TLS will be required for communications with CBS. Default: false
@@ -70,7 +70,7 @@ type RestTesterConfig struct {
 type RestTester struct {
 	*RestTesterConfig
 	tb                      testing.TB
-	testBucket              *base.TestBucket
+	TestBucket              *base.TestBucket
 	RestTesterServerContext *ServerContext
 	AdminHandler            http.Handler
 	adminHandlerOnce        sync.Once
@@ -103,12 +103,12 @@ func (rt *RestTester) Bucket() base.Bucket {
 		panic("RestTester was closed!")
 	}
 
-	if rt.testBucket != nil {
-		return rt.testBucket.Bucket
+	if rt.TestBucket != nil {
+		return rt.TestBucket.Bucket
 	}
 
 	// If we have a TestBucket defined on the RestTesterConfig, use that instead of requesting a new one.
-	testBucket := rt.RestTesterConfig.TestBucket
+	testBucket := rt.RestTesterConfig.CustomTestBucket
 	if testBucket == nil {
 		testBucket = base.GetTestBucket(rt.tb)
 		if rt.leakyBucketConfig != nil {
@@ -120,7 +120,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	} else if rt.leakyBucketConfig != nil {
 		rt.tb.Fatalf("A passed in TestBucket cannot be used on the RestTester when defining a leakyBucketConfig")
 	}
-	rt.testBucket = testBucket
+	rt.TestBucket = testBucket
 
 	if rt.InitSyncSeq > 0 {
 		log.Printf("Initializing %s to %d", base.SyncSeqKey, rt.InitSyncSeq)
@@ -155,9 +155,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.Bootstrap.Password = password
 	sc.API.AdminInterface = *adminInterface
 	sc.API.CORS = corsConfig
-	sc.API.HideProductVersion = base.BoolPtr(rt.RestTesterConfig.hideProductInfo)
+	sc.API.HideProductVersion = base.BoolPtr(rt.RestTesterConfig.HideProductInfo)
 	sc.DeprecatedConfig = &DeprecatedConfig{Facebook: &FacebookConfigLegacy{}}
-	sc.API.AdminInterfaceAuthentication = &rt.adminInterfaceAuthentication
+	sc.API.AdminInterfaceAuthentication = &rt.AdminInterfaceAuthentication
 	sc.API.MetricsInterfaceAuthentication = &rt.metricsInterfaceAuthentication
 	sc.API.EnableAdminAuthenticationPermissionsCheck = &rt.enableAdminAuthPermissionsCheck
 	sc.Bootstrap.UseTLSServer = &rt.RestTesterConfig.useTLSServer
@@ -191,7 +191,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	}
 
 	// Allow EE-only config even in CE for testing using group IDs.
-	if err := sc.validate(true); err != nil {
+	if err := sc.Validate(true); err != nil {
 		panic("invalid RestTester StartupConfig: " + err.Error())
 	}
 
@@ -209,7 +209,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		sc.Bootstrap.X509CertPath = testBucket.BucketSpec.Certpath
 		sc.Bootstrap.X509KeyPath = testBucket.BucketSpec.Keypath
 
-		rt.testBucket.BucketSpec.TLSSkipVerify = base.TestTLSSkipVerify()
+		rt.TestBucket.BucketSpec.TLSSkipVerify = base.TestTLSSkipVerify()
 
 		if err := rt.RestTesterServerContext.initializeCouchbaseServerConnections(ctx); err != nil {
 			panic("Couldn't initialize Couchbase Server connection: " + err.Error())
@@ -243,7 +243,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 					scopes[scopeName] = append(scopes[scopeName], collName)
 				}
 			}
-			if err := base.CreateBucketScopesAndCollections(ctx, rt.testBucket.BucketSpec, scopes); err != nil {
+			if err := base.CreateBucketScopesAndCollections(ctx, rt.TestBucket.BucketSpec, scopes); err != nil {
 				rt.tb.Fatalf("Error creating test scopes/collections: %v", err)
 			}
 		}
@@ -266,7 +266,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.DatabaseConfig.AllowConflicts = &boolVal
 		}
 
-		rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(rt.RestTesterConfig.sgReplicateEnabled)
+		rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(rt.RestTesterConfig.SgReplicateEnabled)
 
 		autoImport, _ := rt.DatabaseConfig.AutoImportEnabled()
 		if rt.DatabaseConfig.ImportPartitions == nil && base.TestUseXattrs() && base.IsEnterpriseEdition() && autoImport {
@@ -310,10 +310,10 @@ func (rt *RestTester) Bucket() base.Bucket {
 		// Update the testBucket Bucket to the one associated with the database context.  The new (dbContext) bucket
 		// will be closed when the rest tester closes the server context. The original bucket will be closed using the
 		// testBucket's closeFn
-		rt.testBucket.Bucket = rt.RestTesterServerContext.Database(ctx, "db").Bucket
+		rt.TestBucket.Bucket = rt.RestTesterServerContext.Database(ctx, "db").Bucket
 
 		if rt.DatabaseConfig.Guest == nil {
-			if err := rt.SetAdminParty(rt.guestEnabled); err != nil {
+			if err := rt.SetAdminParty(rt.GuestEnabled); err != nil {
 				rt.tb.Fatalf("Error from SetAdminParty %v", err)
 			}
 		}
@@ -321,7 +321,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	// PostStartup (without actually waiting 5 seconds)
 	close(rt.RestTesterServerContext.hasStarted)
-	return rt.testBucket.Bucket
+	return rt.TestBucket.Bucket
 }
 
 // LeakyBucket gets the bucket from the RestTester as a leaky bucket allowing for callbacks to be set on the fly.
@@ -449,18 +449,18 @@ func (rt *RestTester) Close() {
 	if rt.RestTesterServerContext != nil {
 		rt.RestTesterServerContext.Close(ctx)
 	}
-	if rt.testBucket != nil {
-		rt.testBucket.Close()
-		rt.testBucket = nil
+	if rt.TestBucket != nil {
+		rt.TestBucket.Close()
+		rt.TestBucket = nil
 	}
 }
 
 func (rt *RestTester) SendRequest(method, resource string, body string) *TestResponse {
-	return rt.Send(request(method, resource, body))
+	return rt.Send(Request(method, resource, body))
 }
 
 func (rt *RestTester) SendRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
-	req := request(method, resource, body)
+	req := Request(method, resource, body)
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
@@ -468,7 +468,7 @@ func (rt *RestTester) SendRequestWithHeaders(method, resource string, body strin
 }
 
 func (rt *RestTester) SendUserRequestWithHeaders(method, resource string, body string, headers map[string]string, username string, password string) *TestResponse {
-	req := request(method, resource, body)
+	req := Request(method, resource, body)
 	req.SetBasicAuth(username, password)
 	for k, v := range headers {
 		req.Header.Set(k, v)
@@ -523,12 +523,12 @@ func (rt *RestTester) TestMetricsHandler() http.Handler {
 	return rt.MetricsHandler
 }
 
-type changesResults struct {
+type ChangesResults struct {
 	Results  []db.ChangeEntry
 	Last_Seq interface{}
 }
 
-func (cr changesResults) requireDocIDs(t testing.TB, docIDs []string) {
+func (cr ChangesResults) requireDocIDs(t testing.TB, docIDs []string) {
 	require.Equal(t, len(docIDs), len(cr.Results))
 	for _, docID := range docIDs {
 		var found bool
@@ -546,14 +546,14 @@ func (rt *RestTester) CreateWaitForChangesRetryWorker(numChangesExpected int, ch
 
 	waitForChangesWorker := func() (shouldRetry bool, err error, value interface{}) {
 
-		var changes changesResults
+		var changes ChangesResults
 		var response *TestResponse
 
 		if useAdminPort {
 			response = rt.SendAdminRequest("GET", changesURL, "")
 
 		} else {
-			response = rt.Send(requestByUser("GET", changesURL, "", username))
+			response = rt.Send(RequestByUser("GET", changesURL, "", username))
 		}
 		err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 		if err != nil {
@@ -571,8 +571,8 @@ func (rt *RestTester) CreateWaitForChangesRetryWorker(numChangesExpected int, ch
 
 }
 
-func (rt *RestTester) waitForChanges(numChangesExpected int, changesURL, username string, useAdminPort bool) (
-	changes changesResults,
+func (rt *RestTester) WaitForChanges(numChangesExpected int, changesURL, username string, useAdminPort bool) (
+	changes ChangesResults,
 	err error) {
 
 	waitForChangesWorker := rt.CreateWaitForChangesRetryWorker(numChangesExpected, changesURL, username, useAdminPort)
@@ -589,7 +589,7 @@ func (rt *RestTester) waitForChanges(numChangesExpected int, changesURL, usernam
 	}
 
 	if changesVal != nil {
-		changes = changesVal.(changesResults)
+		changes = changesVal.(ChangesResults)
 	}
 
 	return changes, nil
@@ -729,7 +729,7 @@ func (rt *RestTester) WaitForViewAvailable(viewURLPath string) (err error) {
 func (rt *RestTester) GetDBState() string {
 	var body db.Body
 	resp := rt.SendAdminRequest("GET", "/db/", "")
-	requireStatus(rt.tb, resp, 200)
+	RequireStatus(rt.tb, resp, 200)
 	require.NoError(rt.tb, base.JSONUnmarshal(resp.Body.Bytes(), &body))
 	return body["state"].(string)
 }
@@ -861,7 +861,7 @@ func (r TestResponse) GetRestDocument() RestDocument {
 	return *restDoc
 }
 
-func request(method, resource, body string) *http.Request {
+func Request(method, resource, body string) *http.Request {
 	request, err := http.NewRequest(method, "http://localhost"+resource, bytes.NewBufferString(body))
 	request.RequestURI = resource // This doesn't get filled in by NewRequest
 	FixQuotedSlashes(request)
@@ -871,13 +871,13 @@ func request(method, resource, body string) *http.Request {
 	return request
 }
 
-func requestByUser(method, resource, body, username string) *http.Request {
-	r := request(method, resource, body)
+func RequestByUser(method, resource, body, username string) *http.Request {
+	r := Request(method, resource, body)
 	r.SetBasicAuth(username, "letmein")
 	return r
 }
 
-func requireStatus(t testing.TB, response *TestResponse, expectedStatus int) {
+func RequireStatus(t testing.TB, response *TestResponse, expectedStatus int) {
 	require.Equalf(t, expectedStatus, response.Code,
 		"Response status %d %q (expected %d %q)\nfor %s <%s> : %s",
 		response.Code, http.StatusText(response.Code),
@@ -885,32 +885,12 @@ func requireStatus(t testing.TB, response *TestResponse, expectedStatus int) {
 		response.Req.Method, response.Req.URL, response.Body)
 }
 
-func assertStatus(t testing.TB, response *TestResponse, expectedStatus int) bool {
+func AssertStatus(t testing.TB, response *TestResponse, expectedStatus int) bool {
 	return assert.Equalf(t, expectedStatus, response.Code,
 		"Response status %d %q (expected %d %q)\nfor %s <%s> : %s",
 		response.Code, http.StatusText(response.Code),
 		expectedStatus, http.StatusText(expectedStatus),
 		response.Req.Method, response.Req.URL, response.Body)
-}
-
-func assertHTTPErrorReason(t testing.TB, response *TestResponse, expectedStatus int, expectedReason string) {
-	var httpError struct {
-		Reason string `json:"reason"`
-	}
-	err := base.JSONUnmarshal(response.BodyBytes(), &httpError)
-	require.NoError(t, err, "Failed to unmarshal HTTP error: %v", response.BodyBytes())
-
-	assertStatus(t, response, expectedStatus)
-
-	assert.Equal(t, expectedReason, httpError.Reason)
-}
-
-// gocb V2 accepts expiry as a duration and converts to a uint32 epoch time, then does the reverse on retrieval.
-// Sync Gateway's bucket interface uses uint32 expiry. The net result is that expiry values written and then read via SG's
-// bucket API go through a transformation based on time.Now (or time.Until) that can result in inexact matches.
-// assertExpiry validates that the two expiry values are within a 10 second window
-func assertExpiry(t testing.TB, expected uint32, actual uint32) {
-	assert.True(t, base.DiffUint32(expected, actual) < 10, fmt.Sprintf("Unexpected difference between expected: %v actual %v", expected, actual))
 }
 
 func NewSlowResponseRecorder(responseDelay time.Duration, responseRecorder *httptest.ResponseRecorder) *SlowResponseRecorder {
@@ -973,7 +953,7 @@ type BlipTesterSpec struct {
 	noConflictsMode bool
 
 	// If an underlying RestTester is created, it will propagate this setting to the underlying RestTester.
-	guestEnabled bool
+	GuestEnabled bool
 
 	// The Sync Gateway username and password to connect with.  If set, then you
 	// may want to disable "Admin Party" mode, which will allow guest user access.
@@ -989,7 +969,7 @@ type BlipTesterSpec struct {
 	connectingUserChannelGrants []string
 
 	// Allow tests to further customized a RestTester or re-use it across multiple BlipTesters if needed.
-	// If a RestTester is passed in, certain properties of the BlipTester such as guestEnabled will be ignored, since
+	// If a RestTester is passed in, certain properties of the BlipTester such as GuestEnabled will be ignored, since
 	// those properties only affect the creation of the RestTester.
 	// If nil, a default restTester will be created based on the properties in this spec
 	// restTester *RestTester
@@ -1059,14 +1039,14 @@ func NewBlipTesterFromSpecWithRT(tb testing.TB, spec *BlipTesterSpec, rt *RestTe
 
 // Create a BlipTester using the default spec
 func NewBlipTester(tb testing.TB) (*BlipTester, error) {
-	defaultSpec := BlipTesterSpec{guestEnabled: true}
+	defaultSpec := BlipTesterSpec{GuestEnabled: true}
 	return NewBlipTesterFromSpec(tb, defaultSpec)
 }
 
 func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) (*BlipTester, error) {
 	rtConfig := RestTesterConfig{
 		EnableNoConflictsMode: spec.noConflictsMode,
-		guestEnabled:          spec.guestEnabled,
+		GuestEnabled:          spec.GuestEnabled,
 	}
 	var rt = NewRestTester(tb, &rtConfig)
 	return createBlipTesterWithSpec(tb, spec, rt)

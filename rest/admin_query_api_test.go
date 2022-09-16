@@ -661,13 +661,13 @@ func newRestTesterForUserQueries(t *testing.T, queryConfig DbConfig) *RestTester
 	})
 
 	_ = rt.Bucket() // initializes the bucket as a side effect
-	dbConfig := dbConfigForTestBucket(rt.testBucket)
+	dbConfig := dbConfigForTestBucket(rt.TestBucket)
 	dbConfig.UserFunctions = queryConfig.UserFunctions
 	dbConfig.UserQueries = queryConfig.UserQueries
 	dbConfig.GraphQL = queryConfig.GraphQL
 
 	resp, err := rt.CreateDatabase("db", dbConfig)
-	if !assert.NoError(t, err) || !assertStatus(t, resp, 201) {
+	if !assert.NoError(t, err) || !AssertStatus(t, resp, 201) {
 		rt.Close()
 		t.FailNow()
 		return nil // (never reached)

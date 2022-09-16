@@ -21,7 +21,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 	defer tb1.Close()
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		TestBucket:       tb1,
+		CustomTestBucket: tb1,
 		serverless:       true,
 		persistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
@@ -42,7 +42,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 	assert.Empty(t, configs)
 
 	// Create a database
-	rt2 := NewRestTester(t, &RestTesterConfig{TestBucket: tb1, persistentConfig: true})
+	rt2 := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1, persistentConfig: true})
 	defer rt2.Close()
 	// Create a new db on the RT to confirm fetch won't retrieve it (due to bucket not being in BucketCredentials)
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{
@@ -50,7 +50,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 		"use_views": %t,
 		"num_index_replicas": 0
 	}`, tb1.GetName(), base.TestsDisableGSI()))
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	// Confirm fetch does not return any configs due to no databases in the bucket credentials config
 	configs, err = sc.fetchConfigs(ctx, false)
@@ -99,7 +99,7 @@ func TestServerlessDBSetupForceCreds(t *testing.T) {
 			bucketName:     tb1.GetName(),
 			perBucketCreds: nil,
 			dbCreationRespAsserts: func(resp *TestResponse) {
-				assertStatus(t, resp, http.StatusCreated)
+				AssertStatus(t, resp, http.StatusCreated)
 			},
 		},
 		{
@@ -107,14 +107,14 @@ func TestServerlessDBSetupForceCreds(t *testing.T) {
 			bucketName:     tb1.GetName(),
 			perBucketCreds: map[string]*base.CredentialsConfig{"invalid_bucket": {}},
 			dbCreationRespAsserts: func(resp *TestResponse) {
-				assertStatus(t, resp, http.StatusInternalServerError)
+				AssertStatus(t, resp, http.StatusInternalServerError)
 				assert.Contains(t, string(resp.BodyBytes()), "credentials are not defined in bucket_credentials")
 			},
 		},
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb1, serverless: true, persistentConfig: true})
+			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1, serverless: true, persistentConfig: true})
 			defer rt.Close()
 
 			if test.perBucketCreds != nil {
@@ -142,7 +142,7 @@ func TestServerlessBucketCredentialsFetchDatabases(t *testing.T) {
 
 	tb1 := base.GetTestBucket(t)
 	defer tb1.Close()
-	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb1, persistentConfig: true, serverless: true,
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1, persistentConfig: true, serverless: true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
 		},
@@ -155,7 +155,7 @@ func TestServerlessBucketCredentialsFetchDatabases(t *testing.T) {
 				"use_views": %t,
 				"num_index_replicas": 0
 	}`, tb1.GetName(), base.TestsDisableGSI()))
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	// Make sure DB can be fetched
 	found, _, err := rt.ServerContext().fetchDatabase(ctx, "db")

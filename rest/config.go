@@ -1040,8 +1040,8 @@ func (config *DbConfig) redactInPlace() error {
 	return nil
 }
 
-// decodeAndSanitiseConfig will sanitise a config from an io.Reader and unmarshal it into the given config parameter.
-func decodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
+// DecodeAndSanitiseConfig will sanitise a config from an io.Reader and unmarshal it into the given config parameter.
+func DecodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
 	b, err := ioutil.ReadAll(r)
 	if err != nil {
 		return err
@@ -1179,7 +1179,8 @@ func (sc *ServerContext) addHTTPServer(s *http.Server) {
 	sc._httpServers = append(sc._httpServers, s)
 }
 
-func (sc *StartupConfig) validate(isEnterpriseEdition bool) (errorMessages error) {
+// Validate returns errors errors if invalid config is present
+func (sc *StartupConfig) Validate(isEnterpriseEdition bool) (errorMessages error) {
 	var multiError *base.MultiError
 	if sc.Bootstrap.Server == "" {
 		multiError = multiError.Append(fmt.Errorf("a server must be provided in the Bootstrap configuration"))
@@ -1239,7 +1240,7 @@ func (sc *StartupConfig) validate(isEnterpriseEdition bool) (errorMessages error
 			multiError = multiError.Append(fmt.Errorf("enable_advanced_auth_dp is only supported in enterprise edition"))
 		}
 
-		if sc.Bootstrap.ConfigGroupID != persistentConfigDefaultGroupID {
+		if sc.Bootstrap.ConfigGroupID != PersistentConfigDefaultGroupID {
 			multiError = multiError.Append(fmt.Errorf("customization of group_id is only supported in enterprise edition"))
 		}
 	}
@@ -1247,8 +1248,8 @@ func (sc *StartupConfig) validate(isEnterpriseEdition bool) (errorMessages error
 	return multiError.ErrorOrNil()
 }
 
-// setupServerContext creates a new ServerContext given its configuration and performs the context validation.
-func setupServerContext(ctx context.Context, config *StartupConfig, persistentConfig bool) (*ServerContext, error) {
+// SetupServerContext creates a new ServerContext given its configuration and performs the context validation.
+func SetupServerContext(ctx context.Context, config *StartupConfig, persistentConfig bool) (*ServerContext, error) {
 	// Logging config will now have been loaded from command line
 	// or from a sync_gateway config file so we can validate the
 	// configuration and setup logging now
@@ -1269,7 +1270,7 @@ func setupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 		return nil, err
 	}
 
-	if err := config.validate(base.IsEnterpriseEdition()); err != nil {
+	if err := config.Validate(base.IsEnterpriseEdition()); err != nil {
 		return nil, err
 	}
 
@@ -1582,7 +1583,7 @@ func (sc *ServerContext) _applyConfig(ctx context.Context, cnf DatabaseConfig, f
 
 // addLegacyPrincipals takes a map of databases that each have a map of names with principle configs.
 // Call this function to install the legacy principles to the upgraded database that use a persistent config.
-// Only call this function after the databases have been initalised via setupServerContext.
+// Only call this function after the databases have been initalised via SetupServerContext.
 func (sc *ServerContext) addLegacyPrincipals(ctx context.Context, legacyDbUsers, legacyDbRoles map[string]map[string]*auth.PrincipalConfig) {
 	for dbName, dbUser := range legacyDbUsers {
 		dbCtx, err := sc.GetDatabase(ctx, dbName)

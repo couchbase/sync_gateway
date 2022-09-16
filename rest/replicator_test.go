@@ -166,7 +166,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	)
 
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb2,
+		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				username: {
@@ -180,8 +180,8 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 
 	docID := t.Name() + "rt2doc1"
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","channels":["`+username+`"]}`)
-	requireStatus(t, resp, http.StatusCreated)
-	revID := respRevID(t, resp)
+	RequireStatus(t, resp, http.StatusCreated)
+	revID := RespRevID(t, resp)
 
 	remoteDoc, err := rt2.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
@@ -200,7 +200,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	tb1 := base.GetTestBucket(t)
 
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb1,
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -224,7 +224,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	assert.NoError(t, ar.Start(ctx1))
 
 	// wait for the document originally written to rt2 to arrive at rt1
-	changesResults, err := rt1.waitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -257,7 +257,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	tb2 := base.GetTestBucket(t)
 
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb2,
+		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -273,8 +273,8 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 
 	docID := t.Name() + "rt2doc1"
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","doc_num":1,`+attachment+`,"channels":["alice"]}`)
-	requireStatus(t, resp, http.StatusCreated)
-	revID := respRevID(t, resp)
+	RequireStatus(t, resp, http.StatusCreated)
+	revID := RespRevID(t, resp)
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 	srv := httptest.NewServer(rt2.TestPublicHandler())
@@ -290,7 +290,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	tb1 := base.GetTestBucket(t)
 
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb1,
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -314,7 +314,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	assert.NoError(t, ar.Start(ctx1))
 
 	// wait for the document originally written to rt2 to arrive at rt1
-	changesResults, err := rt1.waitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -331,11 +331,11 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 
 	docID = t.Name() + "rt2doc2"
 	resp = rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","doc_num":2,`+attachment+`,"channels":["alice"]}`)
-	requireStatus(t, resp, http.StatusCreated)
-	revID = respRevID(t, resp)
+	RequireStatus(t, resp, http.StatusCreated)
+	revID = RespRevID(t, resp)
 
 	// wait for the new document written to rt2 to arrive at rt1
-	changesResults, err = rt1.waitForChanges(2, "/db/_changes?since=0", "", true)
+	changesResults, err = rt1.WaitForChanges(2, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 2)
 	assert.Equal(t, docID, changesResults.Results[1].ID)
@@ -492,47 +492,47 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 					}`},
 					},
 				}},
-				sgReplicateEnabled: true,
+				SgReplicateEnabled: true,
 			})
 			defer rt1.Close()
 
 			rt1.waitForAssignedReplications(1)
 
 			docID := test.name + "doc1"
-			putDocResp := rt2.putDoc(docID, test.initialRevBody)
+			putDocResp := rt2.PutDoc(docID, test.initialRevBody)
 			require.True(t, putDocResp.Ok)
 			rev1 := putDocResp.Rev
 
 			// wait for the document originally written to rt2 to arrive at rt1
-			changesResults, err := rt1.waitForChanges(1, "/db/_changes?since=0", "", true)
+			changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
 			require.NoError(t, err)
 			require.Len(t, changesResults.Results, 1)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
 			lastSeq := changesResults.Last_Seq.(string)
 
 			resp := rt1.SendAdminRequest(http.MethodPut, "/db/_replicationStatus/repl1?action=stop", "")
-			requireStatus(t, resp, http.StatusOK)
+			RequireStatus(t, resp, http.StatusOK)
 
-			rt1.waitForReplicationStatus("repl1", db.ReplicationStateStopped)
+			rt1.WaitForReplicationStatus("repl1", db.ReplicationStateStopped)
 
 			resp = rt1.SendAdminRequest(http.MethodPut, "/db/"+docID+"?rev="+rev1, test.localConflictingRevBody)
-			requireStatus(t, resp, http.StatusCreated)
+			RequireStatus(t, resp, http.StatusCreated)
 
-			changesResults, err = rt1.waitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
+			changesResults, err = rt1.WaitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
 			require.NoError(t, err)
 			assert.Len(t, changesResults.Results, 1)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
 			lastSeq = changesResults.Last_Seq.(string)
 
 			resp = rt2.SendAdminRequest(http.MethodPut, "/db/"+docID+"?rev="+rev1, test.remoteConflictingRevBody)
-			requireStatus(t, resp, http.StatusCreated)
+			RequireStatus(t, resp, http.StatusCreated)
 
 			resp = rt1.SendAdminRequest(http.MethodPut, "/db/_replicationStatus/repl1?action=start", "")
-			requireStatus(t, resp, http.StatusOK)
+			RequireStatus(t, resp, http.StatusOK)
 
-			rt1.waitForReplicationStatus("repl1", db.ReplicationStateRunning)
+			rt1.WaitForReplicationStatus("repl1", db.ReplicationStateRunning)
 
-			changesResults, err = rt1.waitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
+			changesResults, err = rt1.WaitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
 			require.NoError(t, err)
 			assert.Len(t, changesResults.Results, 1)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -579,7 +579,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	// Passive
 	tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb2,
+		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -595,7 +595,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	docIDPrefix := t.Name() + "rt2doc"
 	for i := 0; i < numRT2DocsInitial; i++ {
 		resp := rt2.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"source":"rt2","channels":["alice"]}`)
-		requireStatus(t, resp, http.StatusCreated)
+		RequireStatus(t, resp, http.StatusCreated)
 	}
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
@@ -610,7 +610,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	// Active
 	tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb1,
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -636,7 +636,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	assert.NoError(t, ar.Start(ctx1))
 
 	// wait for all of the documents originally written to rt2 to arrive at rt1
-	changesResults, err := rt1.waitForChanges(numRT2DocsInitial, "/db/_changes?since=0", "", true)
+	changesResults, err := rt1.WaitForChanges(numRT2DocsInitial, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, numRT2DocsInitial)
 	docIDsSeen := make(map[string]bool, numRT2DocsInitial)
@@ -678,7 +678,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	// Second batch of docs
 	for i := numRT2DocsInitial; i < numRT2DocsTotal; i++ {
 		resp := rt2.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"source":"rt2","channels":["alice"]}`)
-		requireStatus(t, resp, http.StatusCreated)
+		RequireStatus(t, resp, http.StatusCreated)
 	}
 
 	// Create a new replicator using the same config, which should use the checkpoint set from the first.
@@ -687,7 +687,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	assert.NoError(t, ar.Start(ctx1))
 
 	// wait for all of the documents originally written to rt2 to arrive at rt1
-	changesResults, err = rt1.waitForChanges(numRT2DocsTotal, "/db/_changes?since=0", "", true)
+	changesResults, err = rt1.WaitForChanges(numRT2DocsTotal, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, numRT2DocsTotal)
 
@@ -745,7 +745,7 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 	// Passive
 	tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb2,
+		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -760,7 +760,7 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 	// Active
 	tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb1,
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -769,11 +769,11 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 	docIDPrefix := t.Name() + "doc"
 	for i := 0; i < numRT2DocsInitial; i++ {
 		resp := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
-		requireStatus(t, resp, http.StatusCreated)
-		rt1RevID := respRevID(t, resp)
+		RequireStatus(t, resp, http.StatusCreated)
+		rt1RevID := RespRevID(t, resp)
 		resp = rt2.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
-		requireStatus(t, resp, http.StatusCreated)
-		rt2RevID := respRevID(t, resp)
+		RequireStatus(t, resp, http.StatusCreated)
+		rt2RevID := RespRevID(t, resp)
 		require.Equal(t, rt1RevID, rt2RevID)
 	}
 
@@ -811,7 +811,7 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 	assert.True(t, ok)
 
 	// wait for all of the documents originally written to rt2 to arrive at rt1
-	changesResults, err := rt1.waitForChanges(numRT2DocsInitial, "/db/_changes?since=0", "", true)
+	changesResults, err := rt1.WaitForChanges(numRT2DocsInitial, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, numRT2DocsInitial)
 	docIDsSeen := make(map[string]bool, numRT2DocsInitial)
@@ -849,11 +849,11 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 	// Second batch of docs
 	for i := numRT2DocsInitial; i < numRT2DocsTotal; i++ {
 		resp := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
-		requireStatus(t, resp, http.StatusCreated)
-		rt1RevID := respRevID(t, resp)
+		RequireStatus(t, resp, http.StatusCreated)
+		rt1RevID := RespRevID(t, resp)
 		resp = rt2.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
-		requireStatus(t, resp, http.StatusCreated)
-		rt2RevID := respRevID(t, resp)
+		RequireStatus(t, resp, http.StatusCreated)
+		rt2RevID := RespRevID(t, resp)
 		require.Equal(t, rt1RevID, rt2RevID)
 	}
 
@@ -900,7 +900,7 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 	tb2 := base.GetTestBucket(t)
 
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb2,
+		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -914,8 +914,8 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 
 	docID := t.Name() + "rt2doc1"
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","channels":["alice"]}`)
-	requireStatus(t, resp, http.StatusCreated)
-	revID := respRevID(t, resp)
+	RequireStatus(t, resp, http.StatusCreated)
+	revID := RespRevID(t, resp)
 
 	remoteDoc, err := rt2.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
@@ -934,7 +934,7 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 	tb1 := base.GetTestBucket(t)
 
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb1,
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -994,7 +994,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	tb2 := base.GetTestBucket(t)
 
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb2,
+		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -1010,15 +1010,15 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	tb1 := base.GetTestBucket(t)
 
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb1,
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
 	docID := t.Name() + "rt1doc1"
 	resp := rt1.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt1","channels":["alice"]}`)
-	requireStatus(t, resp, http.StatusCreated)
-	revID := respRevID(t, resp)
+	RequireStatus(t, resp, http.StatusCreated)
+	revID := RespRevID(t, resp)
 
 	localDoc, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
@@ -1051,7 +1051,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	assert.NoError(t, ar.Start(ctx1))
 
 	// wait for the document originally written to rt1 to arrive at rt2
-	changesResults, err := rt2.waitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err := rt2.WaitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -1083,7 +1083,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 	// Active
 	tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb1,
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -1091,7 +1091,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 	// Passive
 	tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb2,
+		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -1107,8 +1107,8 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 
 	docID := t.Name() + "rt1doc1"
 	resp := rt1.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt1","doc_num":1,`+attachment+`,"channels":["alice"]}`)
-	requireStatus(t, resp, http.StatusCreated)
-	revID := respRevID(t, resp)
+	RequireStatus(t, resp, http.StatusCreated)
+	revID := RespRevID(t, resp)
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 	srv := httptest.NewServer(rt2.TestPublicHandler())
@@ -1139,7 +1139,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 	assert.NoError(t, ar.Start(ctx1))
 
 	// wait for the document originally written to rt1 to arrive at rt2
-	changesResults, err := rt2.waitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err := rt2.WaitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -1157,11 +1157,11 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 
 	docID = t.Name() + "rt1doc2"
 	resp = rt1.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt1","doc_num":2,`+attachment+`,"channels":["alice"]}`)
-	requireStatus(t, resp, http.StatusCreated)
-	revID = respRevID(t, resp)
+	RequireStatus(t, resp, http.StatusCreated)
+	revID = RespRevID(t, resp)
 
 	// wait for the new document written to rt1 to arrive at rt2
-	changesResults, err = rt2.waitForChanges(2, "/db/_changes?since=0", "", true)
+	changesResults, err = rt2.WaitForChanges(2, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 2)
 	assert.Equal(t, docID, changesResults.Results[1].ID)
@@ -1203,7 +1203,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	// Active
 	tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb1,
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -1212,13 +1212,13 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	docIDPrefix := t.Name() + "rt2doc"
 	for i := 0; i < numRT1DocsInitial; i++ {
 		resp := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"source":"rt1","channels":["alice"]}`)
-		requireStatus(t, resp, http.StatusCreated)
+		RequireStatus(t, resp, http.StatusCreated)
 	}
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb2,
+		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -1260,7 +1260,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	assert.NoError(t, ar.Start(ctx1))
 
 	// wait for all of the documents originally written to rt1 to arrive at rt2
-	changesResults, err := rt2.waitForChanges(numRT1DocsInitial, "/db/_changes?since=0", "", true)
+	changesResults, err := rt2.WaitForChanges(numRT1DocsInitial, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, numRT1DocsInitial)
 	docIDsSeen := make(map[string]bool, numRT1DocsInitial)
@@ -1299,7 +1299,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	// Second batch of docs
 	for i := numRT1DocsInitial; i < numRT1DocsTotal; i++ {
 		resp := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"source":"rt1","channels":["alice"]}`)
-		requireStatus(t, resp, http.StatusCreated)
+		RequireStatus(t, resp, http.StatusCreated)
 	}
 
 	// Create a new replicator using the same config, which should use the checkpoint set from the first.
@@ -1309,7 +1309,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	assert.NoError(t, ar.Start(ctx1))
 
 	// wait for all of the documents originally written to rt1 to arrive at rt2
-	changesResults, err = rt2.waitForChanges(numRT1DocsTotal, "/db/_changes?since=0", "", true)
+	changesResults, err = rt2.WaitForChanges(numRT1DocsTotal, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, numRT1DocsTotal)
 
@@ -1365,7 +1365,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	// Central cluster
 	tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb1,
+		CustomTestBucket: tb1,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -1381,7 +1381,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	docIDPrefix := t.Name() + "rt1doc"
 	for i := 0; i < numRT1DocsInitial; i++ {
 		resp := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"source":"rt1","channels":["alice"]}`)
-		requireStatus(t, resp, http.StatusCreated)
+		RequireStatus(t, resp, http.StatusCreated)
 	}
 
 	// Make rt1 listen on an actual HTTP port, so it can receive the blipsync request from edges
@@ -1396,7 +1396,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	// Edge 1
 	edge1Bucket := base.GetTestBucket(t)
 	edge1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: edge1Bucket,
+		CustomTestBucket: edge1Bucket,
 	})
 	defer edge1.Close()
 	ctx1 := edge1.Context()
@@ -1423,7 +1423,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	assert.NoError(t, edge1Replicator.Start(ctx1))
 
 	// wait for all of the documents originally written to rt1 to arrive at edge1
-	changesResults, err := edge1.waitForChanges(numRT1DocsInitial, "/db/_changes?since=0", "", true)
+	changesResults, err := edge1.WaitForChanges(numRT1DocsInitial, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	edge1LastSeq := changesResults.Last_Seq
 	require.Len(t, changesResults.Results, numRT1DocsInitial)
@@ -1465,7 +1465,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	// Edge 2
 	edge2Bucket := base.GetTestBucket(t)
 	edge2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: edge2Bucket,
+		CustomTestBucket: edge2Bucket,
 	})
 	defer edge2.Close()
 	ctx2 := edge2.Context()
@@ -1479,7 +1479,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	edge2Replicator := db.NewActiveReplicator(ctx2, &arConfig)
 	assert.NoError(t, edge2Replicator.Start(ctx2))
 
-	changesResults, err = edge2.waitForChanges(numRT1DocsInitial, "/db/_changes?since=0", "", true)
+	changesResults, err = edge2.WaitForChanges(numRT1DocsInitial, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 
 	edge2Replicator.Pull.Checkpointer.CheckpointNow()
@@ -1492,7 +1492,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	assert.NoError(t, edge2Replicator.Stop())
 
 	resp := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, numRT1DocsInitial), `{"source":"rt1","channels":["alice"]}`)
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 	require.NoError(t, rt1.WaitForPendingChanges())
 
 	// run a replicator on edge1 again to make sure that edge2 didn't blow away its checkpoint
@@ -1505,7 +1505,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	edge1Replicator2 := db.NewActiveReplicator(ctx1, &arConfig)
 	require.NoError(t, edge1Replicator2.Start(ctx1))
 
-	changesResults, err = edge1.waitForChanges(1, fmt.Sprintf("/db/_changes?since=%v", edge1LastSeq), "", true)
+	changesResults, err = edge1.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%v", edge1LastSeq), "", true)
 	require.NoErrorf(t, err, "changesResults: %v", changesResults)
 	changesResults.requireDocIDs(t, []string{fmt.Sprintf("%s%d", docIDPrefix, numRT1DocsInitial)})
 
@@ -1538,7 +1538,7 @@ func TestActiveReplicatorPushFromCheckpointIgnored(t *testing.T) {
 	// Active
 	tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb1,
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -1546,7 +1546,7 @@ func TestActiveReplicatorPushFromCheckpointIgnored(t *testing.T) {
 	// Passive
 	tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb2,
+		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -1562,11 +1562,11 @@ func TestActiveReplicatorPushFromCheckpointIgnored(t *testing.T) {
 	docIDPrefix := t.Name() + "doc"
 	for i := 0; i < numRT1DocsInitial; i++ {
 		resp := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
-		requireStatus(t, resp, http.StatusCreated)
-		rt1RevID := respRevID(t, resp)
+		RequireStatus(t, resp, http.StatusCreated)
+		rt1RevID := RespRevID(t, resp)
 		resp = rt2.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
-		requireStatus(t, resp, http.StatusCreated)
-		rt2RevID := respRevID(t, resp)
+		RequireStatus(t, resp, http.StatusCreated)
+		rt2RevID := RespRevID(t, resp)
 		require.Equal(t, rt1RevID, rt2RevID)
 	}
 
@@ -1623,11 +1623,11 @@ func TestActiveReplicatorPushFromCheckpointIgnored(t *testing.T) {
 	// Second batch of docs
 	for i := numRT1DocsInitial; i < numRT1DocsTotal; i++ {
 		resp := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
-		requireStatus(t, resp, http.StatusCreated)
-		rt1RevID := respRevID(t, resp)
+		RequireStatus(t, resp, http.StatusCreated)
+		rt1RevID := RespRevID(t, resp)
 		resp = rt2.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
-		requireStatus(t, resp, http.StatusCreated)
-		rt2RevID := respRevID(t, resp)
+		RequireStatus(t, resp, http.StatusCreated)
+		rt2RevID := RespRevID(t, resp)
 		require.Equal(t, rt1RevID, rt2RevID)
 	}
 
@@ -1674,7 +1674,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 	tb2 := base.GetTestBucket(t)
 
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb2,
+		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -1690,15 +1690,15 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 	tb1 := base.GetTestBucket(t)
 
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb1,
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
 	docID := t.Name() + "rt1doc1"
 	resp := rt1.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt1","channels":["alice"]}`)
-	requireStatus(t, resp, http.StatusCreated)
-	revID := respRevID(t, resp)
+	RequireStatus(t, resp, http.StatusCreated)
+	revID := RespRevID(t, resp)
 
 	localDoc, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
@@ -1770,7 +1770,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	tb2 := base.GetTestBucket(t)
 
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb2,
+		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -1784,8 +1784,8 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 
 	docID := t.Name() + "rt2doc1"
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","channels":["alice"]}`)
-	requireStatus(t, resp, http.StatusCreated)
-	revID := respRevID(t, resp)
+	RequireStatus(t, resp, http.StatusCreated)
+	revID := RespRevID(t, resp)
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 	srv := httptest.NewServer(rt2.TestPublicHandler())
@@ -1801,7 +1801,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	tb1 := base.GetTestBucket(t)
 
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb1,
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -1823,7 +1823,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	assert.NoError(t, ar.Start(ctx1))
 
 	// wait for the document originally written to rt2 to arrive at rt1
-	changesResults, err := rt1.waitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -1839,11 +1839,11 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 
 	// Tombstone the doc in rt2
 	resp = rt2.SendAdminRequest(http.MethodDelete, "/db/"+docID+"?rev="+revID, ``)
-	requireStatus(t, resp, http.StatusOK)
-	revID = respRevID(t, resp)
+	RequireStatus(t, resp, http.StatusOK)
+	revID = RespRevID(t, resp)
 
 	// wait for the tombstone written to rt2 to arrive at rt1
-	changesResults, err = rt1.waitForChanges(1, "/db/_changes?since="+strconv.FormatUint(doc.Sequence, 10), "", true)
+	changesResults, err = rt1.WaitForChanges(1, "/db/_changes?since="+strconv.FormatUint(doc.Sequence, 10), "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -1873,7 +1873,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	tb2 := base.GetTestBucket(t)
 
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb2,
+		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -1887,8 +1887,8 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 
 	docID := t.Name() + "rt2doc1"
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","channels":["alice"]}`)
-	requireStatus(t, resp, http.StatusCreated)
-	revID := respRevID(t, resp)
+	RequireStatus(t, resp, http.StatusCreated)
+	revID := RespRevID(t, resp)
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 	srv := httptest.NewServer(rt2.TestPublicHandler())
@@ -1904,7 +1904,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	tb1 := base.GetTestBucket(t)
 
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb1,
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -1927,7 +1927,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	assert.NoError(t, ar.Start(ctx1))
 
 	// wait for the document originally written to rt2 to arrive at rt1
-	changesResults, err := rt1.waitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -1942,7 +1942,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	assert.Equal(t, "rt2", body["source"])
 
 	resp = rt2.SendAdminRequest(http.MethodPut, "/db/"+docID+"?rev="+revID, `{"source":"rt2","channels":["bob"]}`)
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	// wait for the channel removal written to rt2 to arrive at rt1 - we can't monitor _changes, because we've purged, not removed. But we can monitor the associated stat.
 	base.WaitForStat(func() int64 {
@@ -2051,7 +2051,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			tb2 := base.GetTestBucket(t)
 
 			rt2 := NewRestTester(t, &RestTesterConfig{
-				TestBucket: tb2,
+				CustomTestBucket: tb2,
 				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 					Users: map[string]*auth.PrincipalConfig{
 						"alice": {
@@ -2067,8 +2067,8 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			docID := test.name
 			resp, err := rt2.PutDocumentWithRevID(docID, test.remoteRevID, "", test.remoteRevisionBody)
 			assert.NoError(t, err)
-			requireStatus(t, resp, http.StatusCreated)
-			rt2revID := respRevID(t, resp)
+			RequireStatus(t, resp, http.StatusCreated)
+			rt2revID := RespRevID(t, resp)
 			assert.Equal(t, test.remoteRevID, rt2revID)
 
 			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
@@ -2085,7 +2085,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			tb1 := base.GetTestBucket(t)
 
 			rt1 := NewRestTester(t, &RestTesterConfig{
-				TestBucket: tb1,
+				CustomTestBucket: tb1,
 			})
 			defer rt1.Close()
 			ctx1 := rt1.Context()
@@ -2093,8 +2093,8 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			// Create revision on rt1 (local)
 			resp, err = rt1.PutDocumentWithRevID(docID, test.localRevID, "", test.localRevisionBody)
 			assert.NoError(t, err)
-			requireStatus(t, resp, http.StatusCreated)
-			rt1revID := respRevID(t, resp)
+			RequireStatus(t, resp, http.StatusCreated)
+			rt1revID := RespRevID(t, resp)
 			assert.Equal(t, test.localRevID, rt1revID)
 
 			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
@@ -2138,7 +2138,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			}
 			// wait for the document originally written to rt2 to arrive at rt1.  Should end up as winner under default conflict resolution
 
-			changesResults, err := rt1.waitForChanges(1, "/db/_changes?since=0", "", true)
+			changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
 			require.NoError(t, err)
 			require.Len(t, changesResults.Results, 1)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -2259,7 +2259,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 
 			// Passive
 			rt2 := NewRestTester(t, &RestTesterConfig{
-				TestBucket: base.GetTestBucket(t),
+				CustomTestBucket: base.GetTestBucket(t),
 				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 					Users: map[string]*auth.PrincipalConfig{
 						"alice": {
@@ -2286,15 +2286,15 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			if test.commonAncestorRevID != "" {
 				resp, err := rt2.PutDocumentWithRevID(docID, test.commonAncestorRevID, "", remoteRevisionBody)
 				assert.NoError(t, err)
-				requireStatus(t, resp, http.StatusCreated)
-				rt2revID := respRevID(t, resp)
+				RequireStatus(t, resp, http.StatusCreated)
+				rt2revID := RespRevID(t, resp)
 				assert.Equal(t, test.commonAncestorRevID, rt2revID)
 			}
 
 			resp, err := rt2.PutDocumentWithRevID(docID, test.remoteRevID, test.commonAncestorRevID, remoteRevisionBody)
 			assert.NoError(t, err)
-			requireStatus(t, resp, http.StatusCreated)
-			rt2revID := respRevID(t, resp)
+			RequireStatus(t, resp, http.StatusCreated)
+			rt2revID := RespRevID(t, resp)
 			assert.Equal(t, test.remoteRevID, rt2revID)
 
 			remoteDoc, err := rt2.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalSync)
@@ -2312,7 +2312,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 
 			// Active
 			rt1 := NewRestTester(t, &RestTesterConfig{
-				TestBucket: base.GetTestBucket(t),
+				CustomTestBucket: base.GetTestBucket(t),
 			})
 			defer rt1.Close()
 			ctx1 := rt1.Context()
@@ -2321,15 +2321,15 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			if test.commonAncestorRevID != "" {
 				resp, err = rt1.PutDocumentWithRevID(docID, test.commonAncestorRevID, "", localRevisionBody)
 				assert.NoError(t, err)
-				requireStatus(t, resp, http.StatusCreated)
-				rt1revID := respRevID(t, resp)
+				RequireStatus(t, resp, http.StatusCreated)
+				rt1revID := RespRevID(t, resp)
 				assert.Equal(t, test.commonAncestorRevID, rt1revID)
 			}
 
 			resp, err = rt1.PutDocumentWithRevID(docID, test.localRevID, test.commonAncestorRevID, localRevisionBody)
 			assert.NoError(t, err)
-			requireStatus(t, resp, http.StatusCreated)
-			rt1revID := respRevID(t, resp)
+			RequireStatus(t, resp, http.StatusCreated)
+			rt1revID := RespRevID(t, resp)
 			assert.Equal(t, test.localRevID, rt1revID)
 
 			localDoc, err := rt1.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalSync)
@@ -2360,7 +2360,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			log.Printf("========================Replication should be done, checking with changes")
 
 			// Validate results on the local (rt1)
-			changesResults, err := rt1.waitForChanges(1, fmt.Sprintf("/db/_changes?since=%d", localDoc.Sequence), "", true)
+			changesResults, err := rt1.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%d", localDoc.Sequence), "", true)
 			require.NoError(t, err)
 			require.Len(t, changesResults.Results, 1)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -2406,7 +2406,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 				// no changes should have been pushed back up to rt2, because this rev won.
 				rt2Since = 0
 			}
-			changesResults, err = rt2.waitForChanges(1, fmt.Sprintf("/db/_changes?since=%d", rt2Since), "", true)
+			changesResults, err = rt2.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%d", rt2Since), "", true)
 			require.NoError(t, err)
 			require.Len(t, changesResults.Results, 1)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -2454,7 +2454,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 
 	// Passive
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: base.GetTestBucket(t),
+		CustomTestBucket: base.GetTestBucket(t),
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -2468,15 +2468,15 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 
 	// Active
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: base.GetTestBucket(t),
+		CustomTestBucket: base.GetTestBucket(t),
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
 	docID := t.Name() + "rt1doc1"
 	resp := rt1.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt1","channels":["alice"]}`)
-	requireStatus(t, resp, http.StatusCreated)
-	revID := respRevID(t, resp)
+	RequireStatus(t, resp, http.StatusCreated)
+	revID := RespRevID(t, resp)
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 	srv := httptest.NewTLSServer(rt2.TestPublicHandler())
@@ -2506,7 +2506,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 	require.NoError(t, ar.Start(ctx1))
 
 	// wait for the document originally written to rt1 to arrive at rt2
-	changesResults, err := rt2.waitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err := rt2.WaitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -2532,7 +2532,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 
 	// Passive
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: base.GetTestBucket(t),
+		CustomTestBucket: base.GetTestBucket(t),
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -2546,14 +2546,14 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 
 	// Active
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: base.GetTestBucket(t),
+		CustomTestBucket: base.GetTestBucket(t),
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
 	docID := t.Name() + "rt1doc1"
 	resp := rt1.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt1","channels":["alice"]}`)
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 	srv := httptest.NewTLSServer(rt2.TestPublicHandler())
@@ -2597,7 +2597,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 
 	// Passive
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: base.GetTestBucket(t),
+		CustomTestBucket: base.GetTestBucket(t),
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -2612,7 +2612,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	// Create doc on rt2
 	docID := t.Name() + "rt2doc"
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","channels":["alice"]}`)
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	assert.NoError(t, rt2.WaitForPendingChanges())
 
@@ -2627,7 +2627,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 
 	// Active
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: base.GetTestBucket(t),
+		CustomTestBucket: base.GetTestBucket(t),
 	})
 	ctx1 := rt1.Context()
 
@@ -2652,7 +2652,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	assert.NoError(t, ar.Start(ctx1))
 
 	// wait for document originally written to rt2 to arrive at rt1
-	changesResults, err := rt1.waitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -2689,7 +2689,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 
 	// recreate rt1 with a new bucket
 	rt1 = NewRestTester(t, &RestTesterConfig{
-		TestBucket: base.GetTestBucket(t),
+		CustomTestBucket: base.GetTestBucket(t),
 	})
 	defer rt1.Close()
 	ctx1 = rt1.Context()
@@ -2708,7 +2708,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	assert.Equal(t, int64(0), ar.Pull.Checkpointer.Stats().GetCheckpointHitCount)
 
 	// wait for document originally written to rt2 to arrive at rt1
-	changesResults, err = rt1.waitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err = rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -2754,7 +2754,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	// Passive
 	tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb2,
+		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -2777,7 +2777,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	// Active
 	tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb1,
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -2785,7 +2785,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	// Create doc on rt1
 	docID := t.Name() + "rt1doc"
 	resp := rt1.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt1","channels":["alice"]}`)
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	assert.NoError(t, rt1.WaitForPendingChanges())
 
@@ -2811,7 +2811,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	assert.NoError(t, ar.Start(ctx1))
 
 	// wait for document originally written to rt1 to arrive at rt2
-	changesResults, err := rt2.waitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err := rt2.WaitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -2850,7 +2850,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 
 	// recreate rt2 with a new bucket, http server and update target URL in the replicator
 	rt2 = NewRestTester(t, &RestTesterConfig{
-		TestBucket: base.GetTestBucket(t),
+		CustomTestBucket: base.GetTestBucket(t),
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -2879,7 +2879,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	assert.Equal(t, int64(0), ar.Push.Checkpointer.Stats().GetCheckpointHitCount)
 
 	// wait for document originally written to rt1 to arrive at rt2
-	changesResults, err = rt2.waitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err = rt2.WaitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -2927,7 +2927,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 
 	// Passive
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: base.GetTestBucket(t),
+		CustomTestBucket: base.GetTestBucket(t),
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -2951,7 +2951,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 
 	// Active
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: base.GetTestBucket(t),
+		CustomTestBucket: base.GetTestBucket(t),
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -2959,7 +2959,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	// Create doc1 on rt1
 	docID := t.Name() + "rt1doc"
 	resp := rt1.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt1","channels":["alice"]}`)
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	assert.NoError(t, rt1.WaitForPendingChanges())
 
@@ -2985,7 +2985,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	}, 1)
 
 	// wait for document originally written to rt1 to arrive at rt2
-	changesResults, err := rt2.waitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err := rt2.WaitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -3012,7 +3012,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 
 	// Create doc2 on rt1
 	resp = rt1.SendAdminRequest(http.MethodPut, "/db/"+docID+"2", `{"source":"rt1","channels":["alice"]}`)
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	assert.NoError(t, rt1.WaitForPendingChanges())
 
@@ -3021,7 +3021,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	}, 2)
 
 	// wait for new document to arrive at rt2
-	changesResults, err = rt2.waitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
+	changesResults, err = rt2.WaitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID+"2", changesResults.Results[0].ID)
@@ -3054,7 +3054,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	assert.NoError(t, ar.Start(ctx1))
 
 	// wait for new document to arrive at rt2 again
-	changesResults, err = rt2.waitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
+	changesResults, err = rt2.WaitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID+"2", changesResults.Results[0].ID)
@@ -3085,7 +3085,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 
 	// Passive
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: base.GetTestBucket(t),
+		CustomTestBucket: base.GetTestBucket(t),
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -3108,7 +3108,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 
 	// Active
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: base.GetTestBucket(t),
+		CustomTestBucket: base.GetTestBucket(t),
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -3144,11 +3144,11 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	// Create doc1 on rt1
 	docID := t.Name() + "rt1doc"
 	resp := rt1.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt1","channels":["alice"]}`)
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 	assert.NoError(t, rt1.WaitForPendingChanges())
 
 	// wait for document originally written to rt1 to arrive at rt2
-	changesResults, err := rt2.waitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err := rt2.WaitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -3156,11 +3156,11 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	// Create doc2 on rt2
 	docID = t.Name() + "rt2doc"
 	resp = rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","channels":["alice"]}`)
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 	assert.NoError(t, rt2.WaitForPendingChanges())
 
 	// wait for document originally written to rt2 to arrive at rt1
-	changesResults, err = rt1.waitForChanges(1, "/db/_changes?since=1", "", true)
+	changesResults, err = rt1.WaitForChanges(1, "/db/_changes?since=1", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -3185,7 +3185,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 
 	// Passive
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: base.GetTestBucket(t),
+		CustomTestBucket: base.GetTestBucket(t),
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AllowConflicts: base.BoolPtr(false),
 			Users: map[string]*auth.PrincipalConfig{
@@ -3200,7 +3200,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 
 	// Active
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: base.GetTestBucket(t),
+		CustomTestBucket: base.GetTestBucket(t),
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AllowConflicts: base.BoolPtr(false),
 		}},
@@ -3210,8 +3210,8 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 
 	rt1docID := t.Name() + "rt1doc1"
 	resp := rt1.SendAdminRequest(http.MethodPut, "/db/"+rt1docID, `{"source":"rt1","channels":["alice"]}`)
-	requireStatus(t, resp, http.StatusCreated)
-	rt1revID := respRevID(t, resp)
+	RequireStatus(t, resp, http.StatusCreated)
+	rt1revID := RespRevID(t, resp)
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 	srv := httptest.NewServer(rt2.TestPublicHandler())
@@ -3242,7 +3242,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	assert.NoError(t, ar.Start(ctx1))
 
 	// wait for the document originally written to rt1 to arrive at rt2
-	changesResults, err := rt2.waitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err := rt2.WaitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, rt1docID, changesResults.Results[0].ID)
@@ -3259,11 +3259,11 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	// write a doc on rt2 ...
 	rt2docID := t.Name() + "rt2doc1"
 	resp = rt2.SendAdminRequest(http.MethodPut, "/db/"+rt2docID, `{"source":"rt2","channels":["alice"]}`)
-	requireStatus(t, resp, http.StatusCreated)
-	rt2revID := respRevID(t, resp)
+	RequireStatus(t, resp, http.StatusCreated)
+	rt2revID := RespRevID(t, resp)
 
 	// ... and wait to arrive at rt1
-	changesResults, err = rt1.waitForChanges(2, "/db/_changes?since=0", "", true)
+	changesResults, err = rt1.WaitForChanges(2, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 2)
 	assert.Equal(t, rt1docID, changesResults.Results[0].ID)
@@ -3300,7 +3300,7 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 	// Passive
 	tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb2,
+		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -3315,8 +3315,8 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 	// Create first batch of docs, creating numRT2DocsInitial in each channel
 	docIDPrefix := t.Name() + "rt2doc"
 	for i := 0; i < numDocsPerChannelInitial; i++ {
-		rt2.putDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan1", i), `{"source":"rt2","channels":["chan1"]}`)
-		rt2.putDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan2", i), `{"source":"rt2","channels":["chan2"]}`)
+		rt2.PutDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan1", i), `{"source":"rt2","channels":["chan1"]}`)
+		rt2.PutDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan2", i), `{"source":"rt2","channels":["chan2"]}`)
 	}
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
@@ -3331,7 +3331,7 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 	// Active
 	tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb1,
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -3359,7 +3359,7 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 	assert.NoError(t, ar.Start(ctx1))
 
 	// wait for all of the documents originally written to rt2 to arrive at rt1
-	changesResults, err := rt1.waitForChanges(numDocsPerChannelInitial, "/db/_changes?since=0", "", true)
+	changesResults, err := rt1.WaitForChanges(numDocsPerChannelInitial, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, numDocsPerChannelInitial)
 	docIDsSeen := make(map[string]bool, numDocsPerChannelInitial)
@@ -3369,7 +3369,7 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 	for i := 0; i < numDocsPerChannelInitial; i++ {
 		docID := fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan1", i)
 		assert.True(t, docIDsSeen[docID])
-		doc := rt1.getDoc(docID)
+		doc := rt1.GetDoc(docID)
 		assert.Equal(t, "rt2", doc["source"])
 	}
 
@@ -3396,8 +3396,8 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 
 	// Second batch of docs, both channels
 	for i := numDocsPerChannelInitial; i < numDocsPerChannelTotal; i++ {
-		rt2.putDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan1", i), `{"source":"rt2","channels":["chan1"]}`)
-		rt2.putDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan2", i), `{"source":"rt2","channels":["chan2"]}`)
+		rt2.PutDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan1", i), `{"source":"rt2","channels":["chan1"]}`)
+		rt2.PutDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan2", i), `{"source":"rt2","channels":["chan2"]}`)
 	}
 
 	// Create a new replicator using the same replicationID but different channel filter, which should reset the checkpoint
@@ -3410,7 +3410,7 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 	expectedChan1Docs := numDocsPerChannelInitial
 	expectedChan2Docs := numDocsPerChannelTotal
 	expectedTotalDocs := expectedChan1Docs + expectedChan2Docs
-	changesResults, err = rt1.waitForChanges(expectedTotalDocs, "/db/_changes?since=0", "", true)
+	changesResults, err = rt1.WaitForChanges(expectedTotalDocs, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, expectedTotalDocs)
 
@@ -3502,7 +3502,7 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 					// Passive
 					tb2 := base.GetTestBucket(t)
 					rt2 := NewRestTester(t, &RestTesterConfig{
-						TestBucket: tb2,
+						CustomTestBucket: tb2,
 						DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 							Users: map[string]*auth.PrincipalConfig{
 								"alice": {
@@ -3536,7 +3536,7 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 					// Active
 					tb1 := base.GetTestBucket(t)
 					rt1 := NewRestTester(t, &RestTesterConfig{
-						TestBucket: tb1,
+						CustomTestBucket: tb1,
 					})
 					defer rt1.Close()
 					ctx1 := rt1.Context()
@@ -3606,7 +3606,7 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 	// Passive
 	tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb2,
+		CustomTestBucket: tb2,
 	})
 	defer rt2.Close()
 
@@ -3624,7 +3624,7 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 	// Active
 	tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb1,
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -3665,7 +3665,7 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 	}, "Expecting NumConnectAttempts > 3")
 
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/_user/alice", `{"password":"pass"}`)
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	waitAndRequireCondition(t, func() bool {
 		state, errMsg := ar.State()
@@ -3686,7 +3686,7 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 	// Passive
 	tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb2,
+		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -3712,7 +3712,7 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 	// Active
 	tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb1,
+		CustomTestBucket: tb1,
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -4003,7 +4003,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			tb2 := base.GetTestBucket(t)
 
 			rt2 := NewRestTester(t, &RestTesterConfig{
-				TestBucket: tb2,
+				CustomTestBucket: tb2,
 				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 					Users: map[string]*auth.PrincipalConfig{
 						"alice": {
@@ -4023,8 +4023,8 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			}
 			resp, err := rt2.PutDocumentWithRevID(docID, test.remoteRevID, test.commonAncestorRevID, test.remoteRevisionBody)
 			assert.NoError(t, err)
-			requireStatus(t, resp, http.StatusCreated)
-			rt2revID := respRevID(t, resp)
+			RequireStatus(t, resp, http.StatusCreated)
+			rt2revID := RespRevID(t, resp)
 			assert.Equal(t, test.remoteRevID, rt2revID)
 
 			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
@@ -4041,7 +4041,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			tb1 := base.GetTestBucket(t)
 
 			rt1 := NewRestTester(t, &RestTesterConfig{
-				TestBucket: tb1,
+				CustomTestBucket: tb1,
 			})
 			defer rt1.Close()
 			ctx1 := rt1.Context()
@@ -4053,8 +4053,8 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			}
 			resp, err = rt1.PutDocumentWithRevID(docID, test.localRevID, test.commonAncestorRevID, test.localRevisionBody)
 			assert.NoError(t, err)
-			requireStatus(t, resp, http.StatusCreated)
-			rt1revID := respRevID(t, resp)
+			RequireStatus(t, resp, http.StatusCreated)
+			rt1revID := RespRevID(t, resp)
 			assert.Equal(t, test.localRevID, rt1revID)
 
 			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
@@ -4081,7 +4081,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 
 			// Wait for the document originally written to rt2 to arrive at rt1.
 			// Should end up as winner under default conflict resolution.
-			changesResults, err := rt1.waitForChanges(1, "/db/_changes?&since=0", "", true)
+			changesResults, err := rt1.WaitForChanges(1, "/db/_changes?&since=0", "", true)
 			require.NoError(t, err)
 			require.Len(t, changesResults.Results, 1)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -4226,7 +4226,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			makeDoc := func(rt *RestTester, docid string, rev string, value string) string {
 				var body db.Body
 				resp := rt.SendAdminRequest("PUT", "/db/"+docid+"?rev="+rev, value)
-				requireStatus(t, resp, http.StatusCreated)
+				RequireStatus(t, resp, http.StatusCreated)
 				err := json.Unmarshal(resp.BodyBytes(), &body)
 				assert.NoError(t, err)
 				return body["rev"].(string)
@@ -4235,7 +4235,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			// Passive
 			passiveBucket := base.GetTestBucket(t)
 			remotePassiveRT := NewRestTester(t, &RestTesterConfig{
-				TestBucket: passiveBucket,
+				CustomTestBucket: passiveBucket,
 			})
 			defer remotePassiveRT.Close()
 
@@ -4245,8 +4245,8 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			// Active
 			activeBucket := base.GetTestBucket(t)
 			localActiveRT := NewRestTester(t, &RestTesterConfig{
-				TestBucket:         activeBucket,
-				sgReplicateEnabled: true,
+				CustomTestBucket:   activeBucket,
+				SgReplicateEnabled: true,
 			})
 			defer localActiveRT.Close()
 
@@ -4260,14 +4260,14 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Send up replication
 			resp := localActiveRT.SendAdminRequest("PUT", "/db/_replication/replication", replConf)
-			requireStatus(t, resp, http.StatusCreated)
+			RequireStatus(t, resp, http.StatusCreated)
 
 			// Create a doc with 3-revs
 			resp = localActiveRT.SendAdminRequest("POST", "/db/_bulk_docs", `{"docs":[{"_id": "docid2", "_rev": "1-abc"}, {"_id": "docid2", "_rev": "2-abc", "_revisions": {"start": 2, "ids": ["abc", "abc"]}}, {"_id": "docid2", "_rev": "3-abc", "val":"test", "_revisions": {"start": 3, "ids": ["abc", "abc", "abc"]}}], "new_edits":false}`)
-			requireStatus(t, resp, http.StatusCreated)
+			RequireStatus(t, resp, http.StatusCreated)
 
 			// Wait for the replication to be started
-			localActiveRT.waitForReplicationStatus("replication", db.ReplicationStateRunning)
+			localActiveRT.WaitForReplicationStatus("replication", db.ReplicationStateRunning)
 
 			// Wait for document to arrive on the doc is was put on
 			err := localActiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
@@ -4291,13 +4291,13 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Stop the replication
 			_ = localActiveRT.SendAdminRequest("PUT", "/db/_replicationStatus/replication?action=stop", "")
-			localActiveRT.waitForReplicationStatus("replication", db.ReplicationStateStopped)
+			localActiveRT.WaitForReplicationStatus("replication", db.ReplicationStateStopped)
 
 			// Delete on the short branch and make another doc on the longer branch before deleting it
 			if test.longestBranchLocal {
 				// Delete doc on remote
 				resp = remotePassiveRT.SendAdminRequest("PUT", "/db/docid2?rev=3-abc", `{"_deleted": true}`)
-				requireStatus(t, resp, http.StatusCreated)
+				RequireStatus(t, resp, http.StatusCreated)
 
 				// Validate document revision created to prevent race conditions
 				err = remotePassiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
@@ -4314,7 +4314,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 				// Create another rev and then delete doc on local - ie tree is longer
 				revid := makeDoc(localActiveRT, "docid2", "3-abc", `{"foo":"bar"}`)
-				localActiveRT.deleteDoc("docid2", revid)
+				localActiveRT.DeleteDoc("docid2", revid)
 
 				// Validate local is CBS tombstone, expect not found error
 				// Expect KeyNotFound error retrieving local tombstone pre-replication
@@ -4323,7 +4323,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			} else {
 				// Delete doc on localActiveRT (active / local)
 				resp = localActiveRT.SendAdminRequest("PUT", "/db/docid2?rev=3-abc", `{"_deleted": true}`)
-				requireStatus(t, resp, http.StatusCreated)
+				RequireStatus(t, resp, http.StatusCreated)
 
 				// Validate document revision created to prevent race conditions
 				err = localActiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
@@ -4340,7 +4340,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 				// Create another rev and then delete doc on remotePassiveRT (passive) - ie, tree is longer
 				revid := makeDoc(remotePassiveRT, "docid2", "3-abc", `{"foo":"bar"}`)
-				remotePassiveRT.deleteDoc("docid2", revid)
+				remotePassiveRT.DeleteDoc("docid2", revid)
 
 				// Validate local is CBS tombstone, expect not found error
 				// Expect KeyNotFound error retrieving remote tombstone pre-replication
@@ -4349,7 +4349,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Start up repl again
 			_ = localActiveRT.SendAdminRequest("PUT", "/db/_replicationStatus/replication?action=start", "")
-			localActiveRT.waitForReplicationStatus("replication", db.ReplicationStateRunning)
+			localActiveRT.WaitForReplicationStatus("replication", db.ReplicationStateRunning)
 
 			// Wait for the recently longest branch to show up on both sides
 			err = localActiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
@@ -4382,7 +4382,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Stop the replication
 			_ = localActiveRT.SendAdminRequest("PUT", "/db/_replicationStatus/replication?action=stop", "")
-			localActiveRT.waitForReplicationStatus("replication", db.ReplicationStateStopped)
+			localActiveRT.WaitForReplicationStatus("replication", db.ReplicationStateStopped)
 
 			// Resurrect Doc
 			updatedBody := make(map[string]interface{})
@@ -4397,7 +4397,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 					assert.NoError(t, getErr, "Unable to retrieve resurrected doc docid2")
 				} else {
 					resp = localActiveRT.SendAdminRequest("PUT", "/db/docid2", `{"resurrection": true}`)
-					requireStatus(t, resp, http.StatusCreated)
+					RequireStatus(t, resp, http.StatusCreated)
 				}
 			} else {
 				if test.sdkResurrect {
@@ -4409,7 +4409,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 					assert.NoError(t, getErr, "Unable to retrieve resurrected doc docid2")
 				} else {
 					resp = remotePassiveRT.SendAdminRequest("PUT", "/db/docid2", `{"resurrection": true}`)
-					requireStatus(t, resp, http.StatusCreated)
+					RequireStatus(t, resp, http.StatusCreated)
 				}
 			}
 
@@ -4422,21 +4422,21 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Wait for doc to show up on side that the resurrection was done
 			if test.resurrectLocal {
-				err = localActiveRT.waitForRev("docid2", expectedRevID)
+				err = localActiveRT.WaitForRev("docid2", expectedRevID)
 			} else {
-				err = remotePassiveRT.waitForRev("docid2", expectedRevID)
+				err = remotePassiveRT.WaitForRev("docid2", expectedRevID)
 			}
 			require.NoError(t, err)
 
 			// Start the replication
 			_ = localActiveRT.SendAdminRequest("PUT", "/db/_replicationStatus/replication?action=start", "")
-			localActiveRT.waitForReplicationStatus("replication", db.ReplicationStateRunning)
+			localActiveRT.WaitForReplicationStatus("replication", db.ReplicationStateRunning)
 
 			// Wait for doc to replicate from side resurrection was done on to the other side
 			if test.resurrectLocal {
-				err = remotePassiveRT.waitForRev("docid2", expectedRevID)
+				err = remotePassiveRT.WaitForRev("docid2", expectedRevID)
 			} else {
-				err = localActiveRT.waitForRev("docid2", expectedRevID)
+				err = localActiveRT.WaitForRev("docid2", expectedRevID)
 			}
 			assert.NoError(t, err)
 		})
@@ -4497,7 +4497,7 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 		t.Run(test.name, func(tt *testing.T) {
 			// Passive
 			rt2 := NewRestTester(t, &RestTesterConfig{
-				TestBucket: base.GetTestBucket(t),
+				CustomTestBucket: base.GetTestBucket(t),
 				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 					Users: map[string]*auth.PrincipalConfig{
 						"alice": {
@@ -4520,7 +4520,7 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 
 			// Active
 			rt1 := NewRestTester(t, &RestTesterConfig{
-				TestBucket: base.GetTestBucket(t),
+				CustomTestBucket: base.GetTestBucket(t),
 			})
 			defer rt1.Close()
 			ctx1 := rt1.Context()
@@ -4566,7 +4566,7 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 
 			// Tombstone the document on rt1 to mark the tip of the revision history for deletion.
 			resp := rt1.SendAdminRequest(http.MethodDelete, "/db/"+docID+"?rev="+rt1RevIDUpdated, ``)
-			requireStatus(t, resp, http.StatusOK)
+			RequireStatus(t, resp, http.StatusOK)
 
 			// Ensure that the tombstone revision is written to rt1 bucket with an empty body.
 			waitForTombstone(t, rt1, docID)
@@ -4652,7 +4652,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			// Passive
 			rt2 := NewRestTester(t, &RestTesterConfig{
-				TestBucket: base.GetTestBucket(t),
+				CustomTestBucket: base.GetTestBucket(t),
 				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 					Users: map[string]*auth.PrincipalConfig{
 						"alice": {
@@ -4675,7 +4675,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 
 			// Active
 			rt1 := NewRestTester(t, &RestTesterConfig{
-				TestBucket: base.GetTestBucket(t),
+				CustomTestBucket: base.GetTestBucket(t),
 			})
 			defer rt1.Close()
 			ctx1 := rt1.Context()
@@ -4721,8 +4721,8 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 
 			// Tombstone the document on rt2 to mark the tip of the revision history for deletion.
 			resp := rt2.SendAdminRequest(http.MethodDelete, "/db/"+docID+"?rev="+rt2RevIDUpdated, ``)
-			requireStatus(t, resp, http.StatusOK)
-			rt2RevID := respRevID(t, resp)
+			RequireStatus(t, resp, http.StatusOK)
+			rt2RevID := RespRevID(t, resp)
 			log.Printf("rt2RevID: %s", rt2RevID)
 
 			// Ensure that the tombstone revision is written to rt2 bucket with an empty body.
@@ -4883,14 +4883,14 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 			// Create replication, wait for initial revision to be replicated
 			replicationID := test.name
 			activeRT.createReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePushAndPull, nil, true, db.ConflictResolverLocalWins)
-			activeRT.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+			activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
-			assert.NoError(t, remoteRT.waitForRev(docID, newRevID))
+			assert.NoError(t, remoteRT.WaitForRev(docID, newRevID))
 
 			// Stop the replication
 			response := activeRT.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=stop", "")
-			requireStatus(t, response, http.StatusOK)
-			activeRT.waitForReplicationStatus(replicationID, db.ReplicationStateStopped)
+			RequireStatus(t, response, http.StatusOK)
+			activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateStopped)
 
 			rawResponse := activeRT.SendAdminRequest("GET", "/db/_raw/"+docID, "")
 			log.Printf("-- local raw pre-update: %s", rawResponse.Body.Bytes())
@@ -4945,7 +4945,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 
 			// Restart the replication
 			response = activeRT.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=start", "")
-			requireStatus(t, response, http.StatusOK)
+			RequireStatus(t, response, http.StatusOK)
 
 			// Wait for expected property value on remote to determine replication complete
 			waitErr := remoteRT.WaitForCondition(func() bool {
@@ -4958,9 +4958,9 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 			})
 			assert.NoError(t, waitErr)
 
-			localDoc := activeRT.getDoc(docID)
+			localDoc := activeRT.GetDoc(docID)
 			localRevID := localDoc.ExtractRev()
-			remoteDoc := remoteRT.getDoc(docID)
+			remoteDoc := remoteRT.GetDoc(docID)
 			remoteRevID := remoteDoc.ExtractRev()
 
 			assert.Equal(t, localRevID, remoteRevID) // local and remote rev IDs must match
@@ -4996,7 +4996,7 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 	// Passive
 	tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb2,
+		CustomTestBucket: tb2,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AllowConflicts: base.BoolPtr(false),
 		}},
@@ -5004,7 +5004,7 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 	defer rt2.Close()
 
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: base.GetTestBucket(t),
+		CustomTestBucket: base.GetTestBucket(t),
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -5036,7 +5036,7 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 	assert.Equal(t, errorCountBefore, base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value())
 
 	response := rt1.SendAdminRequest("PUT", "/db/doc1", "{}")
-	requireStatus(t, response, http.StatusCreated)
+	RequireStatus(t, response, http.StatusCreated)
 
 	err = rt2.WaitForCondition(func() bool {
 		return base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value() == errorCountBefore+1
@@ -5094,13 +5094,13 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 
 			replicationID := "replication"
 			activeRT.createReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePushAndPull, nil, true, test.conflictResolution)
-			activeRT.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+			activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
-			assert.NoError(t, remoteRT.waitForRev(docID, newRevID))
+			assert.NoError(t, remoteRT.WaitForRev(docID, newRevID))
 
 			response := activeRT.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=stop", "")
-			requireStatus(t, response, http.StatusOK)
-			activeRT.waitForReplicationStatus(replicationID, db.ReplicationStateStopped)
+			RequireStatus(t, response, http.StatusOK)
+			activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateStopped)
 
 			nextGen := 4
 
@@ -5128,17 +5128,17 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 			resp = remoteRT.putNewEditsFalse(docID, newRemoteRevID, remoteParentRevID, fmt.Sprintf(`{"_attachments": {"attach": {"stub": true, "revpos": %d, "digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`, remoteGen-1))
 
 			response = activeRT.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=start", "")
-			requireStatus(t, response, http.StatusOK)
+			RequireStatus(t, response, http.StatusOK)
 
-			waitErr := activeRT.waitForRev(docID, test.expectedFinalRev)
+			waitErr := activeRT.WaitForRev(docID, test.expectedFinalRev)
 			assert.NoError(t, waitErr)
-			waitErr = remoteRT.waitForRev(docID, test.expectedFinalRev)
+			waitErr = remoteRT.WaitForRev(docID, test.expectedFinalRev)
 			assert.NoError(t, waitErr)
 
-			localDoc := activeRT.getDoc(docID)
+			localDoc := activeRT.GetDoc(docID)
 			localRevID := localDoc.ExtractRev()
 
-			remoteDoc := remoteRT.getDoc(docID)
+			remoteDoc := remoteRT.GetDoc(docID)
 			remoteRevID := remoteDoc.ExtractRev()
 
 			assert.Equal(t, localRevID, remoteRevID)
@@ -5155,12 +5155,12 @@ func TestReplicatorRevocations(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
 	// Passive
-	revocationTester, rt2 := initScenario(t, nil)
+	revocationTester, rt2 := InitScenario(t, nil)
 	defer rt2.Close()
 
 	// Active
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: base.GetTestBucket(t),
+		CustomTestBucket: base.GetTestBucket(t),
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -5169,7 +5169,7 @@ func TestReplicatorRevocations(t *testing.T) {
 	revocationTester.addRoleChannel("foo", "chanA")
 
 	resp := rt2.SendAdminRequest("PUT", "/db/doc1", `{"channels": "chanA"}`)
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	srv := httptest.NewServer(rt2.TestPublicHandler())
 	defer srv.Close()
@@ -5192,30 +5192,30 @@ func TestReplicatorRevocations(t *testing.T) {
 	})
 
 	require.NoError(t, ar.Start(ctx1))
-	rt1.waitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
+	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 
 	resp = rt1.SendAdminRequest("GET", "/db/doc1", "")
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 
 	revocationTester.removeRole("user", "foo")
 
 	require.NoError(t, ar.Start(ctx1))
-	rt1.waitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
+	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 
 	resp = rt1.SendAdminRequest("GET", "/db/doc1", "")
-	requireStatus(t, resp, http.StatusNotFound)
+	RequireStatus(t, resp, http.StatusNotFound)
 }
 
 func TestReplicatorRevocationsNoRev(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
 	// Passive
-	revocationTester, rt2 := initScenario(t, nil)
+	revocationTester, rt2 := InitScenario(t, nil)
 	defer rt2.Close()
 
 	// Active
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: base.GetTestBucket(t),
+		CustomTestBucket: base.GetTestBucket(t),
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -5223,7 +5223,7 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 	revocationTester.addRole("user", "foo")
 	revocationTester.addRoleChannel("foo", "chanA")
 
-	doc1Rev := rt2.createDocReturnRev(t, "doc1", "", map[string]interface{}{"channels": "chanA"})
+	doc1Rev := rt2.CreateDocReturnRev(t, "doc1", "", map[string]interface{}{"channels": "chanA"})
 
 	srv := httptest.NewServer(rt2.TestPublicHandler())
 	defer srv.Close()
@@ -5246,32 +5246,32 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 	})
 
 	require.NoError(t, ar.Start(ctx1))
-	rt1.waitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
+	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 
 	resp := rt1.SendAdminRequest("GET", "/db/doc1", "")
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 
 	revocationTester.removeRole("user", "foo")
 
-	_ = rt2.createDocReturnRev(t, "doc1", doc1Rev, map[string]interface{}{"channels": "chanA", "mutate": "val"})
+	_ = rt2.CreateDocReturnRev(t, "doc1", doc1Rev, map[string]interface{}{"channels": "chanA", "mutate": "val"})
 
 	require.NoError(t, ar.Start(ctx1))
-	rt1.waitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
+	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 
 	resp = rt1.SendAdminRequest("GET", "/db/doc1", "")
-	requireStatus(t, resp, http.StatusNotFound)
+	RequireStatus(t, resp, http.StatusNotFound)
 }
 
 func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
 	// Passive
-	revocationTester, rt2 := initScenario(t, nil)
+	revocationTester, rt2 := InitScenario(t, nil)
 	defer rt2.Close()
 
 	// Active
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: base.GetTestBucket(t),
+		CustomTestBucket: base.GetTestBucket(t),
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -5280,12 +5280,12 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 	revocationTester.addRoleChannel("foo", "chanA")
 
 	resp := rt2.SendAdminRequest("PUT", "/db/_role/foo2", `{}`)
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	revocationTester.addRole("user", "foo2")
 	revocationTester.addRoleChannel("foo2", "chanB")
 
-	doc1Rev := rt2.createDocReturnRev(t, "doc1", "", map[string]interface{}{"channels": []string{"chanA", "chanB"}})
+	doc1Rev := rt2.CreateDocReturnRev(t, "doc1", "", map[string]interface{}{"channels": []string{"chanA", "chanB"}})
 
 	srv := httptest.NewServer(rt2.TestPublicHandler())
 	defer srv.Close()
@@ -5308,20 +5308,20 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 	})
 
 	require.NoError(t, ar.Start(ctx1))
-	rt1.waitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
+	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 
 	resp = rt1.SendAdminRequest("GET", "/db/doc1", "")
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 
 	revocationTester.removeRole("user", "foo")
 
-	_ = rt2.createDocReturnRev(t, "doc1", doc1Rev, map[string]interface{}{"channels": []string{"chanA", "chanB"}, "mutate": "val"})
+	_ = rt2.CreateDocReturnRev(t, "doc1", doc1Rev, map[string]interface{}{"channels": []string{"chanA", "chanB"}, "mutate": "val"})
 
 	require.NoError(t, ar.Start(ctx1))
-	rt1.waitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
+	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 
 	resp = rt1.SendAdminRequest("GET", "/db/doc1", "")
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 }
 
 func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
@@ -5330,12 +5330,12 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll) // CBG-1981
 
 	// Passive
-	revocationTester, rt2 := initScenario(t, nil)
+	revocationTester, rt2 := InitScenario(t, nil)
 	defer rt2.Close()
 
 	// Active
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: base.GetTestBucket(t),
+		CustomTestBucket: base.GetTestBucket(t),
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -5363,27 +5363,27 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	require.NoError(t, ar.Start(ctx1))
 
 	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein"}`)
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 
 	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", `{"admin_channels": ["A", "B", "C"]}`)
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 
 	revocationTester.addRole("user", "foo")
 
-	_ = rt2.createDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"A"}})
-	_ = rt2.createDocReturnRev(t, "docAB", "", map[string][]string{"channels": []string{"A", "B"}})
-	_ = rt2.createDocReturnRev(t, "docB", "", map[string][]string{"channels": []string{"B"}})
-	_ = rt2.createDocReturnRev(t, "docABC", "", map[string][]string{"channels": []string{"A", "B", "C"}})
-	_ = rt2.createDocReturnRev(t, "docC", "", map[string][]string{"channels": []string{"C"}})
+	_ = rt2.CreateDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"A"}})
+	_ = rt2.CreateDocReturnRev(t, "docAB", "", map[string][]string{"channels": []string{"A", "B"}})
+	_ = rt2.CreateDocReturnRev(t, "docB", "", map[string][]string{"channels": []string{"B"}})
+	_ = rt2.CreateDocReturnRev(t, "docABC", "", map[string][]string{"channels": []string{"A", "B", "C"}})
+	_ = rt2.CreateDocReturnRev(t, "docC", "", map[string][]string{"channels": []string{"C"}})
 
 	// Wait for docs to turn up on local / rt1
-	changesResults, err := rt1.waitForChanges(5, "/db/_changes?since=0", "", true)
+	changesResults, err := rt1.WaitForChanges(5, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	assert.Len(t, changesResults.Results, 5)
 
 	// Revoke C and ensure docC gets purged from local
 	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", `{"admin_channels": ["A", "B"]}`)
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 
 	err = rt1.WaitForCondition(func() bool {
 		resp := rt1.SendAdminRequest("GET", "/db/docC", "")
@@ -5393,7 +5393,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 
 	// Revoke B and ensure docB gets purged from local
 	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", `{"admin_channels": ["A"]}`)
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 
 	err = rt1.WaitForCondition(func() bool {
 		resp := rt1.SendAdminRequest("GET", "/db/docB", "")
@@ -5403,7 +5403,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 
 	// Revoke A and ensure docA, docAB, docABC gets purged from local
 	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", `{"admin_channels": []}`)
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 
 	err = rt1.WaitForCondition(func() bool {
 		resp := rt1.SendAdminRequest("GET", "/db/docA", "")
@@ -5436,7 +5436,7 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 
 	// Active
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: base.GetTestBucket(t),
+		CustomTestBucket: base.GetTestBucket(t),
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -5470,11 +5470,11 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 	})
 
 	resp := rt2.SendAdminRequest("PUT", "/db/doc", "{}")
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 	require.NoError(t, rt2.WaitForPendingChanges())
 
 	resp = rt1.SendAdminRequest("PUT", "/db/doc", `{"some_val": "val"}`)
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 	require.NoError(t, rt1.WaitForPendingChanges())
 
 	require.NoError(t, ar.Start(ctx1))
@@ -5485,7 +5485,7 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 	assert.True(t, found)
 	assert.Equal(t, int64(1), val)
 
-	rt1.waitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
+	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 }
 
 func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
@@ -5494,18 +5494,18 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
 	// Passive
-	_, rt2 := initScenario(t, nil)
+	_, rt2 := InitScenario(t, nil)
 	defer rt2.Close()
 
 	// Active
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: base.GetTestBucket(t),
+		CustomTestBucket: base.GetTestBucket(t),
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
 	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein", "admin_channels": ["A", "B"]}`)
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 
 	// Setup replicator
 	srv := httptest.NewServer(rt2.TestPublicHandler())
@@ -5528,29 +5528,29 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	})
 
-	docARev := rt2.createDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"A"}})
-	docA1Rev := rt2.createDocReturnRev(t, "docA1", "", map[string][]string{"channels": []string{"A"}})
-	_ = rt2.createDocReturnRev(t, "docA2", "", map[string][]string{"channels": []string{"A"}})
+	docARev := rt2.CreateDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"A"}})
+	docA1Rev := rt2.CreateDocReturnRev(t, "docA1", "", map[string][]string{"channels": []string{"A"}})
+	_ = rt2.CreateDocReturnRev(t, "docA2", "", map[string][]string{"channels": []string{"A"}})
 
-	_ = rt2.createDocReturnRev(t, "docB", "", map[string][]string{"channels": []string{"B"}})
+	_ = rt2.CreateDocReturnRev(t, "docB", "", map[string][]string{"channels": []string{"B"}})
 
 	require.NoError(t, ar.Start(ctx1))
 
-	changesResults, err := rt1.waitForChanges(4, "/db/_changes?since=0", "", true)
+	changesResults, err := rt1.WaitForChanges(4, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	assert.Len(t, changesResults.Results, 4)
 
 	require.NoError(t, ar.Stop())
-	rt1.waitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
 	resp = rt2.SendAdminRequest("DELETE", "/db/docA?rev="+docARev, "")
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 
 	resp = rt2.SendAdminRequest("DELETE", "/db/docA1?rev="+docA1Rev, "")
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 
 	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein", "admin_channels": ["B"]}`)
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 
 	require.NoError(t, ar.Start(ctx1))
 
@@ -5579,18 +5579,18 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
 	// Passive
-	_, rt2 := initScenario(t, nil)
+	_, rt2 := InitScenario(t, nil)
 	defer rt2.Close()
 
 	// Active
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: base.GetTestBucket(t),
+		CustomTestBucket: base.GetTestBucket(t),
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
 	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein", "admin_channels": ["A", "B"]}`)
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 
 	// Setup replicator
 	srv := httptest.NewServer(rt2.TestPublicHandler())
@@ -5615,17 +5615,17 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 
 	ar := db.NewActiveReplicator(ctx1, activeReplCfg)
 
-	_ = rt2.createDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"A"}})
-	_ = rt2.createDocReturnRev(t, "docA1", "", map[string][]string{"channels": []string{"A"}})
-	_ = rt2.createDocReturnRev(t, "docA2", "", map[string][]string{"channels": []string{"A"}})
+	_ = rt2.CreateDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"A"}})
+	_ = rt2.CreateDocReturnRev(t, "docA1", "", map[string][]string{"channels": []string{"A"}})
+	_ = rt2.CreateDocReturnRev(t, "docA2", "", map[string][]string{"channels": []string{"A"}})
 
 	require.NoError(t, ar.Start(ctx1))
 
-	changesResults, err := rt1.waitForChanges(3, "/db/_changes?since=0", "", true)
+	changesResults, err := rt1.WaitForChanges(3, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	assert.Len(t, changesResults.Results, 3)
 
-	rt1.waitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
 	// Be sure docs have arrived
 	err = rt1.WaitForCondition(func() bool {
@@ -5650,11 +5650,11 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 	require.NoError(t, ar.Reset())
 
 	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein", "admin_channels": ["B"]}`)
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 
 	require.NoError(t, ar.Start(ctx1))
 
-	rt1.waitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
 	err = rt1.WaitForCondition(func() bool {
 		resp := rt1.SendAdminRequest("GET", "/db/docA", "")
@@ -5683,18 +5683,18 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
 	// Passive
-	_, rt2 := initScenario(t, nil)
+	_, rt2 := InitScenario(t, nil)
 	defer rt2.Close()
 
 	// Active
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: base.GetTestBucket(t),
+		CustomTestBucket: base.GetTestBucket(t),
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
 	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein", "admin_channels": ["A", "B"]}`)
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 
 	// Setup replicator
 	srv := httptest.NewServer(rt2.TestPublicHandler())
@@ -5717,11 +5717,11 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	})
 
 	for i := 0; i < 10; i++ {
-		_ = rt2.createDocReturnRev(t, fmt.Sprintf("docA%d", i), "", map[string][]string{"channels": []string{"A"}})
+		_ = rt2.CreateDocReturnRev(t, fmt.Sprintf("docA%d", i), "", map[string][]string{"channels": []string{"A"}})
 	}
 
 	for i := 0; i < 7; i++ {
-		_ = rt2.createDocReturnRev(t, fmt.Sprintf("docB%d", i), "", map[string][]string{"channels": []string{"B"}})
+		_ = rt2.CreateDocReturnRev(t, fmt.Sprintf("docB%d", i), "", map[string][]string{"channels": []string{"B"}})
 	}
 
 	err = rt2.WaitForPendingChanges()
@@ -5729,36 +5729,36 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 
 	require.NoError(t, ar.Start(ctx1))
 
-	changesResults, err := rt1.waitForChanges(17, "/db/_changes?since=0", "", true)
+	changesResults, err := rt1.WaitForChanges(17, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	assert.Len(t, changesResults.Results, 17)
 
 	// Going to stop & start replication between these actions to make out of order seq no's more likely. More likely
 	// to hit CBG-1591
 	require.NoError(t, ar.Stop())
-	rt1.waitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
 	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein", "admin_channels": ["B"]}`)
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 
 	// Add another few docs to 'bump' rt1's seq no. Otherwise it'll end up revoking next time as the above user PUT is
 	// not processed by the rt1 receiver.
 	for i := 7; i < 15; i++ {
-		_ = rt2.createDocReturnRev(t, fmt.Sprintf("docB%d", i), "", map[string][]string{"channels": []string{"B"}})
+		_ = rt2.CreateDocReturnRev(t, fmt.Sprintf("docB%d", i), "", map[string][]string{"channels": []string{"B"}})
 	}
 
 	err = rt2.WaitForPendingChanges()
 	assert.NoError(t, err)
 
 	require.NoError(t, ar.Start(ctx1))
-	rt1.waitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
+	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
 
-	changesResults, err = rt1.waitForChanges(8, fmt.Sprintf("/db/_changes?since=%v", changesResults.Last_Seq), "", true)
+	changesResults, err = rt1.WaitForChanges(8, fmt.Sprintf("/db/_changes?since=%v", changesResults.Last_Seq), "", true)
 	require.NoError(t, err)
 	assert.Len(t, changesResults.Results, 8)
 
 	require.NoError(t, ar.Stop())
-	rt1.waitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
 	ar = db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
@@ -5773,32 +5773,32 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	})
 
 	// Send a doc to act as a 'marker' so we know when replication has completed
-	_ = rt2.createDocReturnRev(t, "docMarker", "", map[string][]string{"channels": []string{"B"}})
+	_ = rt2.CreateDocReturnRev(t, "docMarker", "", map[string][]string{"channels": []string{"B"}})
 
 	require.NoError(t, ar.Start(ctx1))
-	rt1.waitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
+	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
 
 	// Validate none of the documents are purged after flipping option
 	err = rt2.WaitForPendingChanges()
 	assert.NoError(t, err)
 
-	changesResults, err = rt1.waitForChanges(1, fmt.Sprintf("/db/_changes?since=%v", changesResults.Last_Seq), "", true)
+	changesResults, err = rt1.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%v", changesResults.Last_Seq), "", true)
 	assert.NoError(t, err)
 	assert.Len(t, changesResults.Results, 1)
 
 	for i := 0; i < 10; i++ {
 		resp = rt1.SendAdminRequest("GET", fmt.Sprintf("/db/docA%d", i), "")
-		requireStatus(t, resp, http.StatusOK)
+		RequireStatus(t, resp, http.StatusOK)
 	}
 
 	for i := 0; i < 7; i++ {
 		resp = rt1.SendAdminRequest("GET", fmt.Sprintf("/db/docB%d", i), "")
-		requireStatus(t, resp, http.StatusOK)
+		RequireStatus(t, resp, http.StatusOK)
 	}
 
 	// Shutdown replicator to close out
 	require.NoError(t, ar.Stop())
-	rt1.waitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 }
 
 // CBG-1427 - ISGR should not try sending a delta when deltaSrc is a tombstone
@@ -5815,7 +5815,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	// Passive //
 	passiveBucket := base.GetTestBucket(t)
 	passiveRT := NewRestTester(t, &RestTesterConfig{
-		TestBucket: passiveBucket,
+		CustomTestBucket: passiveBucket,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				DeltaSync: &DeltaSyncConfig{
@@ -5833,7 +5833,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	// Active //
 	activeBucket := base.GetTestBucket(t)
 	activeRT := NewRestTester(t, &RestTesterConfig{
-		TestBucket: activeBucket,
+		CustomTestBucket: activeBucket,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				DeltaSync: &DeltaSyncConfig{
@@ -5847,9 +5847,9 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 
 	// Create a document //
 	resp := activeRT.SendAdminRequest(http.MethodPut, "/db/test", `{"field1":"f1_1","field2":"f2_1"}`)
-	requireStatus(t, resp, http.StatusCreated)
-	revID := respRevID(t, resp)
-	err := activeRT.waitForRev("test", revID)
+	RequireStatus(t, resp, http.StatusCreated)
+	revID := RespRevID(t, resp)
+	err := activeRT.WaitForRev("test", revID)
 	require.NoError(t, err)
 
 	// Set-up replicator //
@@ -5872,13 +5872,13 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	assert.NoError(t, ar.Start(activeCtx))
 
 	// Wait for active to replicate to passive
-	err = passiveRT.waitForRev("test", revID)
+	err = passiveRT.WaitForRev("test", revID)
 	require.NoError(t, err)
 
 	// Delete active document
 	resp = activeRT.SendAdminRequest(http.MethodDelete, "/db/test?rev="+revID, "")
-	requireStatus(t, resp, http.StatusOK)
-	revID = respRevID(t, resp)
+	RequireStatus(t, resp, http.StatusOK)
+	revID = RespRevID(t, resp)
 
 	// Replicate tombstone to passive
 	err = passiveRT.WaitForCondition(func() bool {
@@ -5889,16 +5889,16 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 
 	// Resurrect tombstoned document
 	resp = activeRT.SendAdminRequest(http.MethodPut, "/db/test?rev="+revID, `{"field2":"f2_2"}`)
-	requireStatus(t, resp, http.StatusCreated)
-	revID = respRevID(t, resp)
+	RequireStatus(t, resp, http.StatusCreated)
+	revID = RespRevID(t, resp)
 
 	// Replicate resurrection to passive
-	err = passiveRT.waitForRev("test", revID)
+	err = passiveRT.WaitForRev("test", revID)
 	assert.NoError(t, err) // If error, problem not fixed
 
 	// Shutdown replicator to close out
 	require.NoError(t, ar.Stop())
-	activeRT.waitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+	activeRT.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 }
 
 // CBG-1672 - Return 422 status for unprocessable deltas instead of 404 to use non-delta retry handling
@@ -5917,7 +5917,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 	// Passive //
 	passiveBucket := base.GetTestBucket(t)
 	passiveRT := NewRestTester(t, &RestTesterConfig{
-		TestBucket: passiveBucket,
+		CustomTestBucket: passiveBucket,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				DeltaSync: &DeltaSyncConfig{
@@ -5935,7 +5935,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 	// Active //
 	activeBucket := base.GetTestBucket(t)
 	activeRT := NewRestTester(t, &RestTesterConfig{
-		TestBucket: activeBucket,
+		CustomTestBucket: activeBucket,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				DeltaSync: &DeltaSyncConfig{
@@ -5949,9 +5949,9 @@ func TestUnprocessableDeltas(t *testing.T) {
 
 	// Create a document //
 	resp := activeRT.SendAdminRequest(http.MethodPut, "/db/test", `{"field1":"f1_1","field2":"f2_1"}`)
-	requireStatus(t, resp, http.StatusCreated)
-	revID := respRevID(t, resp)
-	err := activeRT.waitForRev("test", revID)
+	RequireStatus(t, resp, http.StatusCreated)
+	revID := RespRevID(t, resp)
+	err := activeRT.WaitForRev("test", revID)
 	require.NoError(t, err)
 
 	// Set-up replicator //
@@ -5974,15 +5974,15 @@ func TestUnprocessableDeltas(t *testing.T) {
 
 	assert.NoError(t, ar.Start(activeCtx))
 
-	err = passiveRT.waitForRev("test", revID)
+	err = passiveRT.WaitForRev("test", revID)
 	require.NoError(t, err)
 
 	assert.NoError(t, ar.Stop())
 
 	// Make 2nd revision
 	resp = activeRT.SendAdminRequest(http.MethodPut, "/db/test?rev="+revID, `{"field1":"f1_2","field2":"f2_2"}`)
-	requireStatus(t, resp, http.StatusCreated)
-	revID = respRevID(t, resp)
+	RequireStatus(t, resp, http.StatusCreated)
+	revID = RespRevID(t, resp)
 	err = activeRT.WaitForPendingChanges()
 	require.NoError(t, err)
 
@@ -5995,7 +5995,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 
 	assert.NoError(t, ar.Start(activeCtx))
 	// Check if it replicated
-	err = passiveRT.waitForRev("test", revID)
+	err = passiveRT.WaitForRev("test", revID)
 	assert.NoError(t, err)
 
 	assert.NoError(t, ar.Stop())
@@ -6013,7 +6013,7 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	// Passive //
 	passiveBucket := base.GetTestBucket(t)
 	passiveRT := NewRestTester(t, &RestTesterConfig{
-		TestBucket: passiveBucket,
+		CustomTestBucket: passiveBucket,
 	})
 	defer passiveRT.Close()
 
@@ -6024,7 +6024,7 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	// Active //
 	activeBucket := base.GetTestBucket(t)
 	activeRT := NewRestTester(t, &RestTesterConfig{
-		TestBucket: activeBucket,
+		CustomTestBucket: activeBucket,
 	})
 	defer activeRT.Close()
 	activeCtx := activeRT.Context()
@@ -6032,23 +6032,23 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	// Create the docs //
 	// Doc rev 1
 	resp := activeRT.SendAdminRequest(http.MethodPut, "/db/"+t.Name(), `{"key":"12","channels": ["rev1chan"]}`)
-	requireStatus(t, resp, http.StatusCreated)
-	rev1ID := respRevID(t, resp)
-	err := activeRT.waitForRev(t.Name(), rev1ID)
+	RequireStatus(t, resp, http.StatusCreated)
+	rev1ID := RespRevID(t, resp)
+	err := activeRT.WaitForRev(t.Name(), rev1ID)
 	require.NoError(t, err)
 
 	// doc rev 2
 	resp = activeRT.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s?rev=%s", t.Name(), rev1ID), `{"key":"12","channels":["rev2+3chan"]}`)
-	requireStatus(t, resp, http.StatusCreated)
-	rev2ID := respRevID(t, resp)
-	err = activeRT.waitForRev(t.Name(), rev2ID)
+	RequireStatus(t, resp, http.StatusCreated)
+	rev2ID := RespRevID(t, resp)
+	err = activeRT.WaitForRev(t.Name(), rev2ID)
 	require.NoError(t, err)
 
 	// Doc rev 3
 	resp = activeRT.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s?rev=%s", t.Name(), rev2ID), `{"key":"3","channels":["rev2+3chan"]}`)
-	requireStatus(t, resp, http.StatusCreated)
-	rev3ID := respRevID(t, resp)
-	err = activeRT.waitForRev(t.Name(), rev3ID)
+	RequireStatus(t, resp, http.StatusCreated)
+	rev3ID := RespRevID(t, resp)
+	err = activeRT.WaitForRev(t.Name(), rev3ID)
 	require.NoError(t, err)
 
 	activeRT.GetDatabase().FlushRevisionCacheForTest()
@@ -6076,7 +6076,7 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	docWriteFailuresBefore := ar.GetStatus().DocWriteFailures
 
 	assert.NoError(t, ar.Start(activeCtx))
-	activeRT.waitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+	activeRT.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
 	assert.Equal(t, docWriteFailuresBefore, ar.GetStatus().DocWriteFailures, "ISGR should ignore _remove:true bodies when purgeOnRemoval is disabled. CBG-1428 regression.")
 }
@@ -6102,7 +6102,7 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 	// Create the document
 	docID := t.Name()
 	rawDoc := `{"_foo": true, "_exp": 120, "true": false, "_attachments": {"bar": {"data": "Zm9vYmFy"}}}`
-	_ = activeRT.putDoc(docID, rawDoc)
+	_ = activeRT.PutDoc(docID, rawDoc)
 
 	// Set-up replicator
 	passiveDBURL, err := url.Parse(srv.URL + "/db")
@@ -6123,10 +6123,10 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 	defer func() { require.NoError(t, ar.Stop()) }()
 
 	require.NoError(t, ar.Start(activeCtx))
-	activeRT.waitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
+	activeRT.WaitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
 
 	// Confirm document is replicated
-	changesResults, err := passiveRT.waitForChanges(1, "/db/_changes?since=0", "", true)
+	changesResults, err := passiveRT.WaitForChanges(1, "/db/_changes?since=0", "", true)
 	assert.NoError(t, err)
 	assert.Len(t, changesResults.Results, 1)
 
@@ -6136,25 +6136,25 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 	require.NoError(t, ar.Stop())
 
 	// Assert document was replicated successfully
-	doc := passiveRT.getDoc(docID)
+	doc := passiveRT.GetDoc(docID)
 	assert.EqualValues(t, true, doc["_foo"])  // Confirm user defined value got created
 	assert.EqualValues(t, nil, doc["_exp"])   // Confirm expiry was consumed
 	assert.EqualValues(t, false, doc["true"]) // Sanity check normal keys
 	// Confirm attachment was created successfully
 	resp := passiveRT.SendAdminRequest("GET", "/db/"+t.Name()+"/bar", "")
-	requireStatus(t, resp, 200)
+	RequireStatus(t, resp, 200)
 
 	// Edit existing document
 	rev := doc["_rev"]
 	require.NotNil(t, rev)
 	rawDoc = fmt.Sprintf(`{"_rev": "%s","_foo": false, "test": true}`, rev)
-	_ = activeRT.putDoc(docID, rawDoc)
+	_ = activeRT.PutDoc(docID, rawDoc)
 
 	// Replicate modified document
 	require.NoError(t, ar.Start(activeCtx))
-	activeRT.waitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
+	activeRT.WaitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
 
-	changesResults, err = passiveRT.waitForChanges(1, fmt.Sprintf("/db/_changes?since=%v", changesResults.Last_Seq), "", true)
+	changesResults, err = passiveRT.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%v", changesResults.Last_Seq), "", true)
 	assert.NoError(t, err)
 	assert.Len(t, changesResults.Results, 1)
 
@@ -6162,23 +6162,23 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify document replicated successfully
-	doc = passiveRT.getDoc(docID)
+	doc = passiveRT.GetDoc(docID)
 	assert.NotEqualValues(t, doc["_rev"], rev) // Confirm rev got replaced with new rev
 	assert.EqualValues(t, false, doc["_foo"])  // Confirm user defined value got created
 	assert.EqualValues(t, true, doc["test"])
 	// Confirm attachment was removed successfully in latest revision
 	resp = passiveRT.SendAdminRequest("GET", "/db/"+docID+"/bar", "")
-	requireStatus(t, resp, 404)
+	RequireStatus(t, resp, 404)
 
 	// Add disallowed _removed tag in document
 	rawDoc = fmt.Sprintf(`{"_rev": "%s","_removed": false}`, doc["_rev"])
 	resp = activeRT.SendAdminRequest("PUT", "/db/"+docID, rawDoc)
-	requireStatus(t, resp, 404)
+	RequireStatus(t, resp, 404)
 
 	// Add disallowed _purged tag in document
 	rawDoc = fmt.Sprintf(`{"_rev": "%s","_purged": true}`, doc["_rev"])
 	resp = activeRT.SendAdminRequest("PUT", "/db/"+docID, rawDoc)
-	requireStatus(t, resp, 400)
+	RequireStatus(t, resp, 400)
 }
 
 func getTestRevpos(t *testing.T, doc db.Body, attachmentKey string) (revpos int) {
@@ -6205,9 +6205,9 @@ func createOrUpdateDoc(t *testing.T, rt *RestTester, docID, revID, bodyValue str
 		dbURL = "/db/" + docID + "?rev=" + revID
 	}
 	resp := rt.SendAdminRequest(http.MethodPut, dbURL, body)
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 	require.NoError(t, rt.WaitForPendingChanges())
-	return respRevID(t, resp)
+	return RespRevID(t, resp)
 }
 
 // waitForTombstone waits until the specified tombstone revision is available
