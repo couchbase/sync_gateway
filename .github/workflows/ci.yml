@@ -42,7 +42,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v3
         with:
-          version: v1.47.3
+          version: v1.49.0
           args: --config=.golangci-strict.yml --timeout=3m
   test:
     runs-on: ${{ matrix.os }}
@@ -65,7 +65,7 @@ jobs:
         shell: bash
       - name: Annotate Failures
         if: always()
-        uses: guyarb/golang-test-annotations@v0.5.1
+        uses: guyarb/golang-test-annotations@v0.6.0
         with:
           test-results: test.json
 
@@ -83,6 +83,6 @@ jobs:
         shell: bash
       - name: Annotate Failures
         if: always()
-        uses: guyarb/golang-test-annotations@v0.5.1
+        uses: guyarb/golang-test-annotations@v0.6.0
         with:
           test-results: test.json

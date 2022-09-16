@@ -39,7 +39,7 @@ type GraphQLResolverConfig map[string]FunctionConfig
 
 // Runs a GraphQL query on behalf of a user, presumably invoked via a REST or BLIP API.
 func (gq *graphQLImpl) Query(db *db.Database, query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) (*graphql.Result, error) {
-	if err := db.CheckTimeout(); err != nil {
+	if err := db.CheckTimeout(ctx); err != nil {
 		return nil, err
 	}
 	ctx = context.WithValue(ctx, dbKey, db)
@@ -93,7 +93,7 @@ func CompileGraphQL(config *GraphQLConfig) (*graphQLImpl, error) {
 }
 
 // Validates a GraphQL configuration by parsing the schema.
-func (config *GraphQLConfig) Validate() error {
+func (config *GraphQLConfig) Validate(ctx context.Context) error {
 	_, err := config.compileSchema()
 	return err
 }

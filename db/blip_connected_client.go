@@ -12,6 +12,7 @@ package db
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -27,7 +28,7 @@ func (bh *blipHandler) handleGetRev(rq *blip.Message) error {
 	docID := rq.Properties[GetRevMessageId]
 	ifNotRev := rq.Properties[GetRevIfNotRev]
 
-	rev, err := bh.collection.GetRev(docID, "", false, nil)
+	rev, err := bh.collection.GetRev(bh.loggingCtx, docID, "", false, nil)
 	if err != nil {
 		status, reason := base.ErrorAsHTTPStatus(err)
 		return &base.HTTPError{Status: status, Message: reason}
@@ -89,8 +90,8 @@ func (bh *blipHandler) handleFunction(rq *blip.Message) error {
 		return err
 	}
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("name: %s", name))
-	return bh.db.WithTimeout(UserQueryTimeout, func() error {
-		fn, err := bh.db.GetUserFunction(name, requestParams, true, bh.db.Ctx)
+	return bh.db.WithTimeout(bh.loggingCtx, UserQueryTimeout, func(ctx context.Context) error {
+		fn, err := bh.db.GetUserFunction(name, requestParams, true, ctx)
 		if err != nil {
 			return err
 		}
@@ -112,7 +113,7 @@ func (bh *blipHandler) handleFunction(rq *blip.Message) error {
 				if err = enc.Encode(row); err != nil { // always ends with a newline
 					return err
 				}
-				if err = bh.db.CheckTimeout(); err != nil {
+				if err = bh.db.CheckTimeout(ctx); err != nil {
 					return err
 				}
 			}
@@ -164,8 +165,8 @@ func (bh *blipHandler) handleGraphQL(rq *blip.Message) error {
 	}
 
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("query: %s", query))
-	return bh.db.WithTimeout(UserQueryTimeout, func() error {
-		result, err := bh.db.UserGraphQLQuery(query, operationName, variables, true, bh.db.Ctx)
+	return bh.db.WithTimeout(bh.loggingCtx, UserQueryTimeout, func(ctx context.Context) error {
+		result, err := bh.db.UserGraphQLQuery(query, operationName, variables, true, ctx)
 		if err != nil {
 			return err
 		}

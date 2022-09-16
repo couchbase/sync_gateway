@@ -193,7 +193,8 @@ func TestCheckPermissionsWithX509(t *testing.T) {
 	tb, caCertPath, certPath, keyPath := setupX509Tests(t, true)
 	defer tb.Close()
 
-	ctx := NewServerContext(&StartupConfig{
+	ctx := base.TestCtx(t)
+	svrctx := NewServerContext(ctx, &StartupConfig{
 		Bootstrap: BootstrapConfig{
 			Server:       serverURL,
 			X509CertPath: certPath,
@@ -201,17 +202,17 @@ func TestCheckPermissionsWithX509(t *testing.T) {
 			CACertPath:   caCertPath,
 		},
 	}, false)
-	defer ctx.Close()
+	defer svrctx.Close(ctx)
 
-	goCBAgent, err := ctx.initializeGoCBAgent()
+	goCBAgent, err := svrctx.initializeGoCBAgent(ctx)
 	require.NoError(t, err)
-	ctx.GoCBAgent = goCBAgent
+	svrctx.GoCBAgent = goCBAgent
 
-	noX509HttpClient, err := ctx.initializeNoX509HttpClient()
+	noX509HttpClient, err := svrctx.initializeNoX509HttpClient()
 	require.NoError(t, err)
-	ctx.NoX509HTTPClient = noX509HttpClient
+	svrctx.NoX509HTTPClient = noX509HttpClient
 
-	eps, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()
+	eps, httpClient, err := svrctx.ObtainManagementEndpointsAndHTTPClient()
 	assert.NoError(t, err)
 
 	statusCode, _, err := CheckPermissions(httpClient, eps, "", base.TestClusterUsername(), base.TestClusterPassword(), []Permission{Permission{"!admin", false}}, nil)
@@ -450,8 +451,9 @@ func TestAdminAuth(t *testing.T) {
 		var httpClient *http.Client
 		var err error
 
+		ctx := rt.Context()
 		if testCase.BucketName != "" {
-			managementEndpoints, httpClient, err = rt.GetDatabase().ObtainManagementEndpointsAndHTTPClient()
+			managementEndpoints, httpClient, err = rt.GetDatabase().ObtainManagementEndpointsAndHTTPClient(ctx)
 		} else {
 			managementEndpoints, httpClient, err = rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 		}
@@ -485,7 +487,8 @@ func TestAdminAuthWithX509(t *testing.T) {
 	tb, caCertPath, certPath, keyPath := setupX509Tests(t, true)
 	defer tb.Close()
 
-	ctx := NewServerContext(&StartupConfig{
+	ctx := base.TestCtx(t)
+	svrctx := NewServerContext(ctx, &StartupConfig{
 		Bootstrap: BootstrapConfig{
 			Server:       serverURL,
 			X509CertPath: certPath,
@@ -493,17 +496,17 @@ func TestAdminAuthWithX509(t *testing.T) {
 			CACertPath:   caCertPath,
 		},
 	}, false)
-	defer ctx.Close()
+	defer svrctx.Close(ctx)
 
-	goCBAgent, err := ctx.initializeGoCBAgent()
+	goCBAgent, err := svrctx.initializeGoCBAgent(ctx)
 	require.NoError(t, err)
-	ctx.GoCBAgent = goCBAgent
+	svrctx.GoCBAgent = goCBAgent
 
-	noX509HttpClient, err := ctx.initializeNoX509HttpClient()
+	noX509HttpClient, err := svrctx.initializeNoX509HttpClient()
 	require.NoError(t, err)
-	ctx.NoX509HTTPClient = noX509HttpClient
+	svrctx.NoX509HTTPClient = noX509HttpClient
 
-	managementEndpoints, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()
+	managementEndpoints, httpClient, err := svrctx.ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
 
 	var statusCode int
@@ -517,6 +520,7 @@ func TestAdminAuthWithX509(t *testing.T) {
 }
 
 func TestAdminAPIAuth(t *testing.T) {
+	base.LongRunningTest(t)
 
 	// Don't really care about the log level but this test hits the logging endpoint so this is used to reset the logging
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
@@ -530,7 +534,7 @@ func TestAdminAPIAuth(t *testing.T) {
 	}
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		adminInterfaceAuthentication:   true,
+		AdminInterfaceAuthentication:   true,
 		metricsInterfaceAuthentication: true,
 	})
 	defer rt.Close()
@@ -969,10 +973,10 @@ func TestAdminAPIAuth(t *testing.T) {
 		}
 		t.Run(endPoint.Method+formattedEndpoint, func(t *testing.T) {
 			resp := rt.SendAdminRequest(endPoint.Method, formattedEndpoint, body)
-			requireStatus(t, resp, http.StatusUnauthorized)
+			RequireStatus(t, resp, http.StatusUnauthorized)
 
 			resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, body, "noaccess", "password")
-			requireStatus(t, resp, http.StatusForbidden)
+			RequireStatus(t, resp, http.StatusForbidden)
 
 			if !endPoint.SkipSuccessTest {
 
@@ -987,7 +991,7 @@ func TestAdminAPIAuth(t *testing.T) {
 					if endPoint.Method == http.MethodGet || endPoint.Method == http.MethodHead || endPoint.Method == http.MethodOptions {
 						assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
 					} else {
-						requireStatus(t, resp, http.StatusForbidden)
+						RequireStatus(t, resp, http.StatusForbidden)
 					}
 
 					resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, body, "ClusterAdminUser", "password")
@@ -1085,7 +1089,7 @@ func TestNewlyCreateSGWPermissions(t *testing.T) {
 	syncGatewayReplicator := "sync_gateway_replicator"
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		adminInterfaceAuthentication:    true,
+		AdminInterfaceAuthentication:    true,
 		enableAdminAuthPermissionsCheck: true,
 	})
 	defer rt.Close()
@@ -1532,7 +1536,7 @@ func TestNewlyCreateSGWPermissions(t *testing.T) {
 
 				if !isAllowedUser {
 					resp := rt.SendAdminRequestWithAuth(endpoint.Method, endpoint.Endpoint, "", testUser, "password")
-					requireStatus(t, resp, http.StatusForbidden)
+					RequireStatus(t, resp, http.StatusForbidden)
 				}
 			})
 		}
@@ -1549,7 +1553,7 @@ func TestCreateDBSpecificBucketPerm(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		adminInterfaceAuthentication: true,
+		AdminInterfaceAuthentication: true,
 	})
 	defer rt.Close()
 
@@ -1564,5 +1568,5 @@ func TestCreateDBSpecificBucketPerm(t *testing.T) {
 	defer DeleteUser(t, httpClient, eps[0], mobileSyncGateway)
 
 	resp := rt.SendAdminRequestWithAuth("PUT", "/db2/", `{"bucket": "`+tb.GetName()+`", "username": "`+base.TestClusterUsername()+`", "password": "`+base.TestClusterPassword()+`", "num_index_replicas": 0, "use_views": `+strconv.FormatBool(base.TestsDisableGSI())+`}`, mobileSyncGateway, "password")
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 }

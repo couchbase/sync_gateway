@@ -90,7 +90,7 @@ func testConcurrently(t *testing.T, rt *RestTester, testFunc func() bool) bool {
 }
 
 func TestUserQueries(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true, EnableUserQueries: true})
+	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true})
 	defer rt.Close()
 	rt.DatabaseConfig = kGraphQLTestConfig
 
@@ -106,7 +106,7 @@ func TestUserQueries(t *testing.T) {
 }
 
 func TestUserQueriesConcurrently(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true, EnableUserQueries: true})
+	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true})
 	defer rt.Close()
 	rt.DatabaseConfig = kGraphQLTestConfig
 

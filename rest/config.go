@@ -217,9 +217,7 @@ type CacheConfig struct {
 	DeprecatedCacheConfig
 }
 
-// ***************************************************************
-//	Kept around for CBG-356 backwards compatability
-// ***************************************************************
+// Deprecated: Kept around for CBG-356 backwards compatability
 type DeprecatedCacheConfig struct {
 	DeprecatedCachePendingSeqMaxWait *uint32 `json:"max_wait_pending,omitempty"`         // Max wait for pending sequence before skipping
 	DeprecatedCachePendingSeqMaxNum  *int    `json:"max_num_pending,omitempty"`          // Max number of pending sequences before skipping
@@ -314,7 +312,9 @@ func (dbConfig *DbConfig) setup(dbName string, bootstrapConfig BootstrapConfig, 
 		dbConfig.setDatabaseCredentials(*bucketCredentials)
 	} else if forcePerBucketAuth {
 		return fmt.Errorf("unable to setup database on bucket %q since credentials are not defined in bucket_credentials", base.MD(*dbConfig.Bucket).Redact())
-	} else if dbCredentials != nil {
+	}
+	// Per db credentials override bootstrap and bucket level credentials
+	if dbCredentials != nil {
 		dbConfig.setDatabaseCredentials(*dbCredentials)
 	}
 
@@ -886,12 +886,12 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 	}
 
 	if dbConfig.UserFunctions != nil {
-		if err := functions.ValidateFunctions(dbConfig.UserFunctions); err != nil {
+		if err := functions.ValidateFunctions(ctx, dbConfig.UserFunctions); err != nil {
 			multiError = multiError.Append(err)
 		}
 	}
 	if dbConfig.GraphQL != nil {
-		if err := dbConfig.GraphQL.Validate(); err != nil {
+		if err := dbConfig.GraphQL.Validate(ctx); err != nil {
 			multiError = multiError.Append(err)
 		}
 	}
@@ -1040,8 +1040,8 @@ func (config *DbConfig) redactInPlace() error {
 	return nil
 }
 
-// decodeAndSanitiseConfig will sanitise a config from an io.Reader and unmarshal it into the given config parameter.
-func decodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
+// DecodeAndSanitiseConfig will sanitise a config from an io.Reader and unmarshal it into the given config parameter.
+func DecodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
 	b, err := ioutil.ReadAll(r)
 	if err != nil {
 		return err
@@ -1179,7 +1179,8 @@ func (sc *ServerContext) addHTTPServer(s *http.Server) {
 	sc._httpServers = append(sc._httpServers, s)
 }
 
-func (sc *StartupConfig) validate(isEnterpriseEdition bool) (errorMessages error) {
+// Validate returns errors errors if invalid config is present
+func (sc *StartupConfig) Validate(isEnterpriseEdition bool) (errorMessages error) {
 	var multiError *base.MultiError
 	if sc.Bootstrap.Server == "" {
 		multiError = multiError.Append(fmt.Errorf("a server must be provided in the Bootstrap configuration"))
@@ -1213,10 +1214,6 @@ func (sc *StartupConfig) validate(isEnterpriseEdition bool) (errorMessages error
 		multiError = multiError.Append(fmt.Errorf("group_id must be at most %d characters in length", persistentConfigGroupIDMaxLength))
 	}
 
-	if sc.BucketCredentials != nil && sc.DatabaseCredentials != nil && len(sc.BucketCredentials) > 0 && len(sc.DatabaseCredentials) > 0 {
-		multiError = multiError.Append(fmt.Errorf("bucket_credentials and database_credentials cannot be used at the same time"))
-	}
-
 	if sc.DatabaseCredentials != nil {
 		for dbName, creds := range sc.DatabaseCredentials {
 			if (creds.X509CertPath != "" || creds.X509KeyPath != "") && (creds.Username != "" || creds.Password != "") {
@@ -1243,7 +1240,7 @@ func (sc *StartupConfig) validate(isEnterpriseEdition bool) (errorMessages error
 			multiError = multiError.Append(fmt.Errorf("enable_advanced_auth_dp is only supported in enterprise edition"))
 		}
 
-		if sc.Bootstrap.ConfigGroupID != persistentConfigDefaultGroupID {
+		if sc.Bootstrap.ConfigGroupID != PersistentConfigDefaultGroupID {
 			multiError = multiError.Append(fmt.Errorf("customization of group_id is only supported in enterprise edition"))
 		}
 	}
@@ -1251,8 +1248,8 @@ func (sc *StartupConfig) validate(isEnterpriseEdition bool) (errorMessages error
 	return multiError.ErrorOrNil()
 }
 
-// setupServerContext creates a new ServerContext given its configuration and performs the context validation.
-func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerContext, error) {
+// SetupServerContext creates a new ServerContext given its configuration and performs the context validation.
+func SetupServerContext(ctx context.Context, config *StartupConfig, persistentConfig bool) (*ServerContext, error) {
 	// Logging config will now have been loaded from command line
 	// or from a sync_gateway config file so we can validate the
 	// configuration and setup logging now
@@ -1265,21 +1262,21 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 
 	base.FlushLoggerBuffers()
 
-	base.InfofCtx(context.Background(), base.KeyAll, "Logging: Console level: %v", base.ConsoleLogLevel())
-	base.InfofCtx(context.Background(), base.KeyAll, "Logging: Console keys: %v", base.ConsoleLogKey().EnabledLogKeys())
-	base.InfofCtx(context.Background(), base.KeyAll, "Logging: Redaction level: %s", config.Logging.RedactionLevel)
+	base.InfofCtx(ctx, base.KeyAll, "Logging: Console level: %v", base.ConsoleLogLevel())
+	base.InfofCtx(ctx, base.KeyAll, "Logging: Console keys: %v", base.ConsoleLogKey().EnabledLogKeys())
+	base.InfofCtx(ctx, base.KeyAll, "Logging: Redaction level: %s", config.Logging.RedactionLevel)
 
 	if err := setGlobalConfig(config); err != nil {
 		return nil, err
 	}
 
-	if err := config.validate(base.IsEnterpriseEdition()); err != nil {
+	if err := config.Validate(base.IsEnterpriseEdition()); err != nil {
 		return nil, err
 	}
 
-	sc := NewServerContext(config, persistentConfig)
+	sc := NewServerContext(ctx, config, persistentConfig)
 	if !base.ServerIsWalrus(config.Bootstrap.Server) {
-		if err := sc.initializeCouchbaseServerConnections(); err != nil {
+		if err := sc.initializeCouchbaseServerConnections(ctx); err != nil {
 			return nil, err
 		}
 	}
@@ -1288,8 +1285,8 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 
 // fetchAndLoadConfigs retrieves all database configs from the ServerContext's bootstrapConnection, and loads them into the ServerContext.
 // It will remove any databases currently running that are not found in the bucket.
-func (sc *ServerContext) fetchAndLoadConfigs(isInitialStartup bool) (count int, err error) {
-	fetchedConfigs, err := sc.fetchConfigs(isInitialStartup)
+func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStartup bool) (count int, err error) {
+	fetchedConfigs, err := sc.fetchConfigs(ctx, isInitialStartup)
 	if err != nil {
 		return 0, err
 	}
@@ -1307,7 +1304,7 @@ func (sc *ServerContext) fetchAndLoadConfigs(isInitialStartup bool) (count int, 
 		}
 		for dbName, fetchedConfig := range fetchedConfigs {
 			if dbConfig, ok := sc.dbConfigs[dbName]; ok && dbConfig.cas >= fetchedConfig.cas {
-				base.DebugfCtx(context.TODO(), base.KeyConfig, "Database %q bucket %q config has not changed since last update", fetchedConfig.Name, *fetchedConfig.Bucket)
+				base.DebugfCtx(ctx, base.KeyConfig, "Database %q bucket %q config has not changed since last update", fetchedConfig.Name, *fetchedConfig.Bucket)
 				delete(fetchedConfigs, dbName)
 			}
 		}
@@ -1315,7 +1312,7 @@ func (sc *ServerContext) fetchAndLoadConfigs(isInitialStartup bool) (count int, 
 
 		// nothing to do, we can bail out without needing the write lock
 		if len(deletedDatabases) == 0 && len(fetchedConfigs) == 0 {
-			base.TracefCtx(context.TODO(), base.KeyConfig, "No persistent config changes to make")
+			base.TracefCtx(ctx, base.KeyConfig, "No persistent config changes to make")
 			return 0, nil
 		}
 	}
@@ -1326,40 +1323,40 @@ func (sc *ServerContext) fetchAndLoadConfigs(isInitialStartup bool) (count int, 
 	for _, dbName := range deletedDatabases {
 		// It's possible that the "deleted" database was not written to the server until after sc.fetchConfigs had returned...
 		// we'll need to pay for the cost of getting the config again now that we've got the write lock to double-check this db is definitely ok to remove...
-		found, _, err := sc.fetchDatabase(dbName)
+		found, _, err := sc.fetchDatabase(ctx, dbName)
 		if err != nil {
-			base.InfofCtx(context.TODO(), base.KeyConfig, "Error fetching config for database %q to check whether we need to remove it: %v", dbName, err)
+			base.InfofCtx(ctx, base.KeyConfig, "Error fetching config for database %q to check whether we need to remove it: %v", dbName, err)
 		}
 		if !found {
-			base.InfofCtx(context.TODO(), base.KeyConfig, "Database %q was running on this node, but config was not found on the server - removing database", base.MD(dbName))
-			sc._removeDatabase(dbName)
+			base.InfofCtx(ctx, base.KeyConfig, "Database %q was running on this node, but config was not found on the server - removing database", base.MD(dbName))
+			sc._removeDatabase(ctx, dbName)
 		} else {
-			base.DebugfCtx(context.TODO(), base.KeyConfig, "Found config for database %q after acquiring write lock - not removing database", base.MD(dbName))
+			base.DebugfCtx(ctx, base.KeyConfig, "Found config for database %q after acquiring write lock - not removing database", base.MD(dbName))
 		}
 	}
 
-	return sc._applyConfigs(fetchedConfigs, isInitialStartup), nil
+	return sc._applyConfigs(ctx, fetchedConfigs, isInitialStartup), nil
 }
 
-func (sc *ServerContext) fetchAndLoadDatabase(dbName string) (found bool, err error) {
+func (sc *ServerContext) fetchAndLoadDatabase(ctx context.Context, dbName string) (found bool, err error) {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
-	return sc._fetchAndLoadDatabase(dbName)
+	return sc._fetchAndLoadDatabase(ctx, dbName)
 }
 
 // _fetchAndLoadDatabase will attempt to find the given database name first in a matching bucket name,
 // but then fall back to searching through configs in each bucket to try and find a config.
-func (sc *ServerContext) _fetchAndLoadDatabase(dbName string) (found bool, err error) {
-	found, dbConfig, err := sc.fetchDatabase(dbName)
+func (sc *ServerContext) _fetchAndLoadDatabase(ctx context.Context, dbName string) (found bool, err error) {
+	found, dbConfig, err := sc.fetchDatabase(ctx, dbName)
 	if err != nil || !found {
 		return false, err
 	}
-	sc._applyConfigs(map[string]DatabaseConfig{dbName: *dbConfig}, false)
+	sc._applyConfigs(ctx, map[string]DatabaseConfig{dbName: *dbConfig}, false)
 
 	return true, nil
 }
 
-func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *DatabaseConfig, err error) {
+func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (found bool, dbConfig *DatabaseConfig, err error) {
 	var buckets []string
 	if sc.config.IsServerless() {
 		buckets = make([]string, len(sc.config.BucketCredentials))
@@ -1373,8 +1370,6 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 		}
 	}
 
-	logCtx := context.TODO()
-
 	// move bucket matching dbName to the front so it's searched first
 	for i, bucket := range buckets {
 		if bucket == dbName {
@@ -1386,11 +1381,11 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 		var cnf DatabaseConfig
 		cas, err := sc.bootstrapContext.connection.GetConfig(bucket, sc.config.Bootstrap.ConfigGroupID, &cnf)
 		if err == base.ErrNotFound {
-			base.DebugfCtx(logCtx, base.KeyConfig, "%q did not contain config in group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
+			base.DebugfCtx(ctx, base.KeyConfig, "%q did not contain config in group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
 			continue
 		}
 		if err != nil {
-			base.DebugfCtx(logCtx, base.KeyConfig, "unable to fetch config in group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
+			base.DebugfCtx(ctx, base.KeyConfig, "unable to fetch config in group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
 			continue
 		}
 
@@ -1399,7 +1394,7 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 		}
 
 		if cnf.Name != dbName {
-			base.TracefCtx(logCtx, base.KeyConfig, "%q did not contain config in group %q for db %q", bucket, sc.config.Bootstrap.ConfigGroupID, dbName)
+			base.TracefCtx(ctx, base.KeyConfig, "%q did not contain config in group %q for db %q", bucket, sc.config.Bootstrap.ConfigGroupID, dbName)
 			continue
 		}
 
@@ -1420,7 +1415,7 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 			cnf.CertPath = sc.config.Bootstrap.X509CertPath
 			cnf.KeyPath = sc.config.Bootstrap.X509KeyPath
 		}
-		base.TracefCtx(logCtx, base.KeyConfig, "Got config for bucket %q with cas %d", bucket, cas)
+		base.TracefCtx(ctx, base.KeyConfig, "Got config for bucket %q with cas %d", bucket, cas)
 		return true, &cnf, nil
 	}
 
@@ -1428,7 +1423,7 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 }
 
 // fetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
-func (sc *ServerContext) fetchConfigs(isInitialStartup bool) (dbNameConfigs map[string]DatabaseConfig, err error) {
+func (sc *ServerContext) fetchConfigs(ctx context.Context, isInitialStartup bool) (dbNameConfigs map[string]DatabaseConfig, err error) {
 	var buckets []string
 	if sc.config.IsServerless() {
 		buckets = make([]string, len(sc.config.BucketCredentials))
@@ -1437,14 +1432,14 @@ func (sc *ServerContext) fetchConfigs(isInitialStartup bool) (dbNameConfigs map[
 		}
 		// TODO: Enable code as part of CBG-2280
 		// Return buckets that have credentials set that do not have a db associated with them
-		//buckets = make([]string, len(sc.config.BucketCredentials)-len(sc.bucketDbName))
-		//for bucket := range sc.config.BucketCredentials {
+		// buckets = make([]string, len(sc.config.BucketCredentials)-len(sc.bucketDbName))
+		// for bucket := range sc.config.BucketCredentials {
 		//	i := 0
 		//	if sc.bucketDbName[bucket] == "" {
 		//		buckets[i] = bucket
 		//		i++
 		//	}
-		//}
+		// }
 	} else {
 		buckets, err = sc.bootstrapContext.connection.GetConfigBuckets()
 		if err != nil {
@@ -1452,24 +1447,23 @@ func (sc *ServerContext) fetchConfigs(isInitialStartup bool) (dbNameConfigs map[
 		}
 	}
 
-	logCtx := context.TODO()
 	fetchedConfigs := make(map[string]DatabaseConfig, len(buckets))
 
 	for _, bucket := range buckets {
-		base.TracefCtx(logCtx, base.KeyConfig, "Checking for config for group %q from bucket %q", sc.config.Bootstrap.ConfigGroupID, bucket)
+		base.TracefCtx(ctx, base.KeyConfig, "Checking for config for group %q from bucket %q", sc.config.Bootstrap.ConfigGroupID, bucket)
 		var cnf DatabaseConfig
 		cas, err := sc.bootstrapContext.connection.GetConfig(bucket, sc.config.Bootstrap.ConfigGroupID, &cnf)
 		if err == base.ErrNotFound {
-			base.DebugfCtx(logCtx, base.KeyConfig, "Bucket %q did not contain config for group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
+			base.DebugfCtx(ctx, base.KeyConfig, "Bucket %q did not contain config for group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
 			continue
 		}
 		if err != nil {
 			// Unexpected error fetching config - SDK has already performed retries, so we'll treat it as a database removal
 			// this could be due to invalid JSON or some other non-recoverable error.
 			if isInitialStartup {
-				base.WarnfCtx(logCtx, "Unable to fetch config for group %q from bucket %q on startup: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
+				base.WarnfCtx(ctx, "Unable to fetch config for group %q from bucket %q on startup: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
 			} else {
-				base.DebugfCtx(logCtx, base.KeyConfig, "Unable to fetch config for group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
+				base.DebugfCtx(ctx, base.KeyConfig, "Unable to fetch config for group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
 			}
 			continue
 		}
@@ -1495,7 +1489,7 @@ func (sc *ServerContext) fetchConfigs(isInitialStartup bool) (dbNameConfigs map[
 			cnf.KeyPath = sc.config.Bootstrap.X509KeyPath
 		}
 
-		base.DebugfCtx(logCtx, base.KeyConfig, "Got config for group %q from bucket %q with cas %d", sc.config.Bootstrap.ConfigGroupID, bucket, cas)
+		base.DebugfCtx(ctx, base.KeyConfig, "Got config for group %q from bucket %q with cas %d", sc.config.Bootstrap.ConfigGroupID, bucket, cas)
 		fetchedConfigs[cnf.Name] = cnf
 	}
 
@@ -1503,11 +1497,11 @@ func (sc *ServerContext) fetchConfigs(isInitialStartup bool) (dbNameConfigs map[
 }
 
 // _applyConfigs takes a map of dbName->DatabaseConfig and loads them into the ServerContext where necessary.
-func (sc *ServerContext) _applyConfigs(dbNameConfigs map[string]DatabaseConfig, isInitialStartup bool) (count int) {
+func (sc *ServerContext) _applyConfigs(ctx context.Context, dbNameConfigs map[string]DatabaseConfig, isInitialStartup bool) (count int) {
 	for dbName, cnf := range dbNameConfigs {
-		applied, err := sc._applyConfig(cnf, false, isInitialStartup)
+		applied, err := sc._applyConfig(ctx, cnf, false, isInitialStartup)
 		if err != nil {
-			base.ErrorfCtx(context.Background(), "Couldn't apply config for database %q: %v", base.MD(dbName), err)
+			base.ErrorfCtx(ctx, "Couldn't apply config for database %q: %v", base.MD(dbName), err)
 			continue
 		}
 		if applied {
@@ -1518,14 +1512,14 @@ func (sc *ServerContext) _applyConfigs(dbNameConfigs map[string]DatabaseConfig, 
 	return count
 }
 
-func (sc *ServerContext) applyConfigs(dbNameConfigs map[string]DatabaseConfig) (count int) {
+func (sc *ServerContext) applyConfigs(ctx context.Context, dbNameConfigs map[string]DatabaseConfig) (count int) {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
-	return sc._applyConfigs(dbNameConfigs, false)
+	return sc._applyConfigs(ctx, dbNameConfigs, false)
 }
 
 // _applyConfig loads the given database, failFast=true will not attempt to retry connecting/loading
-func (sc *ServerContext) _applyConfig(cnf DatabaseConfig, failFast, isInitialStartup bool) (applied bool, err error) {
+func (sc *ServerContext) _applyConfig(ctx context.Context, cnf DatabaseConfig, failFast, isInitialStartup bool) (applied bool, err error) {
 	// 3.0.0 doesn't write a SGVersion, but everything else will
 	configSGVersionStr := "3.0.0"
 	if cnf.SGVersion != "" {
@@ -1541,7 +1535,7 @@ func (sc *ServerContext) _applyConfig(cnf DatabaseConfig, failFast, isInitialSta
 		// Skip applying if the config is from a newer SG version than this node and we're not just starting up
 		nodeSGVersion := base.ProductVersion
 		if nodeSGVersion.Less(configSGVersion) {
-			base.WarnfCtx(context.TODO(), "Cannot apply config update from server for db %q, this SG version is older than config's SG version (%s < %s)", cnf.Name, nodeSGVersion.String(), configSGVersion.String())
+			base.WarnfCtx(ctx, "Cannot apply config update from server for db %q, this SG version is older than config's SG version (%s < %s)", cnf.Name, nodeSGVersion.String(), configSGVersion.String())
 			return false, nil
 		}
 	}
@@ -1556,13 +1550,13 @@ func (sc *ServerContext) _applyConfig(cnf DatabaseConfig, failFast, isInitialSta
 
 		if cnf.cas == 0 {
 			// force an update when the new config's cas was set to zero prior to load
-			base.InfofCtx(context.TODO(), base.KeyConfig, "Forcing update of config for database %q bucket %q", cnf.Name, *cnf.Bucket)
+			base.InfofCtx(ctx, base.KeyConfig, "Forcing update of config for database %q bucket %q", cnf.Name, *cnf.Bucket)
 		} else {
 			if sc.dbConfigs[foundDbName].cas >= cnf.cas {
-				base.DebugfCtx(context.TODO(), base.KeyConfig, "Database %q bucket %q config has not changed since last update", cnf.Name, *cnf.Bucket)
+				base.DebugfCtx(ctx, base.KeyConfig, "Database %q bucket %q config has not changed since last update", cnf.Name, *cnf.Bucket)
 				return false, nil
 			}
-			base.InfofCtx(context.TODO(), base.KeyConfig, "Updating database %q for bucket %q with new config from bucket", cnf.Name, *cnf.Bucket)
+			base.InfofCtx(ctx, base.KeyConfig, "Updating database %q for bucket %q with new config from bucket", cnf.Name, *cnf.Bucket)
 		}
 	}
 
@@ -1579,7 +1573,7 @@ func (sc *ServerContext) _applyConfig(cnf DatabaseConfig, failFast, isInitialSta
 	cnf.Version = ""
 
 	// TODO: Dynamic update instead of reload
-	if err := sc._reloadDatabaseWithConfig(cnf, failFast); err != nil {
+	if err := sc._reloadDatabaseWithConfig(ctx, cnf, failFast); err != nil {
 		// remove these entries we just created above if the database hasn't loaded properly
 		return false, fmt.Errorf("couldn't reload database: %w", err)
 	}
@@ -1589,38 +1583,38 @@ func (sc *ServerContext) _applyConfig(cnf DatabaseConfig, failFast, isInitialSta
 
 // addLegacyPrincipals takes a map of databases that each have a map of names with principle configs.
 // Call this function to install the legacy principles to the upgraded database that use a persistent config.
-// Only call this function after the databases have been initalised via setupServerContext.
-func (sc *ServerContext) addLegacyPrincipals(legacyDbUsers, legacyDbRoles map[string]map[string]*auth.PrincipalConfig) {
+// Only call this function after the databases have been initalised via SetupServerContext.
+func (sc *ServerContext) addLegacyPrincipals(ctx context.Context, legacyDbUsers, legacyDbRoles map[string]map[string]*auth.PrincipalConfig) {
 	for dbName, dbUser := range legacyDbUsers {
-		dbCtx, err := sc.GetDatabase(dbName)
+		dbCtx, err := sc.GetDatabase(ctx, dbName)
 		if err != nil {
-			base.ErrorfCtx(context.Background(), "Couldn't get database context to install user principles: %v", err)
+			base.ErrorfCtx(ctx, "Couldn't get database context to install user principles: %v", err)
 			continue
 		}
-		err = sc.installPrincipals(dbCtx, dbUser, "user")
+		err = sc.installPrincipals(ctx, dbCtx, dbUser, "user")
 		if err != nil {
-			base.ErrorfCtx(context.Background(), "Couldn't install user principles: %v", err)
+			base.ErrorfCtx(ctx, "Couldn't install user principles: %v", err)
 		}
 	}
 
 	for dbName, dbRole := range legacyDbRoles {
-		dbCtx, err := sc.GetDatabase(dbName)
+		dbCtx, err := sc.GetDatabase(ctx, dbName)
 		if err != nil {
-			base.ErrorfCtx(context.Background(), "Couldn't get database context to install role principles: %v", err)
+			base.ErrorfCtx(ctx, "Couldn't get database context to install role principles: %v", err)
 			continue
 		}
-		err = sc.installPrincipals(dbCtx, dbRole, "role")
+		err = sc.installPrincipals(ctx, dbCtx, dbRole, "role")
 		if err != nil {
-			base.ErrorfCtx(context.Background(), "Couldn't install role principles: %v", err)
+			base.ErrorfCtx(ctx, "Couldn't install role principles: %v", err)
 		}
 	}
 }
 
 // startServer starts and runs the server with the given configuration. (This function never returns.)
-func startServer(config *StartupConfig, sc *ServerContext) error {
+func startServer(ctx context.Context, config *StartupConfig, sc *ServerContext) error {
 	if config.API.ProfileInterface != "" {
 		// runtime.MemProfileRate = 10 * 1024
-		base.InfofCtx(context.TODO(), base.KeyAll, "Starting profile server on %s", base.UD(config.API.ProfileInterface))
+		base.InfofCtx(ctx, base.KeyAll, "Starting profile server on %s", base.UD(config.API.ProfileInterface))
 		go func() {
 			_ = http.ListenAndServe(config.API.ProfileInterface, nil)
 		}()
@@ -1631,14 +1625,14 @@ func startServer(config *StartupConfig, sc *ServerContext) error {
 	base.Consolef(base.LevelInfo, base.KeyAll, "Starting metrics server on %s", config.API.MetricsInterface)
 	go func() {
 		if err := sc.Serve(config, config.API.MetricsInterface, CreateMetricHandler(sc)); err != nil {
-			base.ErrorfCtx(context.TODO(), "Error serving the Metrics API: %v", err)
+			base.ErrorfCtx(ctx, "Error serving the Metrics API: %v", err)
 		}
 	}()
 
 	base.Consolef(base.LevelInfo, base.KeyAll, "Starting admin server on %s", config.API.AdminInterface)
 	go func() {
 		if err := sc.Serve(config, config.API.AdminInterface, CreateAdminHandler(sc)); err != nil {
-			base.ErrorfCtx(context.TODO(), "Error serving the Admin API: %v", err)
+			base.ErrorfCtx(ctx, "Error serving the Admin API: %v", err)
 		}
 	}()
 
@@ -1711,13 +1705,13 @@ func HandleSighup() {
 // - SIGHUP causes Sync Gateway to rotate log files.
 // - SIGINT or SIGTERM causes Sync Gateway to exit cleanly.
 // - SIGKILL cannot be handled by the application.
-func RegisterSignalHandler() {
+func RegisterSignalHandler(ctx context.Context) {
 	signalChannel := make(chan os.Signal, 1)
 	signal.Notify(signalChannel, syscall.SIGHUP, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
 		for sig := range signalChannel {
-			base.InfofCtx(context.TODO(), base.KeyAll, "Handling signal: %v", sig)
+			base.InfofCtx(ctx, base.KeyAll, "Handling signal: %v", sig)
 			switch sig {
 			case syscall.SIGHUP:
 				HandleSighup()

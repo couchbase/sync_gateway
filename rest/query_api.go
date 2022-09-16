@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -35,8 +36,8 @@ func (h *handler) handleUserFunction() error {
 	}
 	canMutate := h.rq.Method != "GET"
 
-	return h.db.WithTimeout(db.UserQueryTimeout, func() error {
-		fn, err := h.db.GetUserFunction(fnName, fnParams, canMutate, h.db.Ctx)
+	return h.db.WithTimeout(h.ctx(), db.UserQueryTimeout, func(ctx context.Context) error {
+		fn, err := h.db.GetUserFunction(fnName, fnParams, canMutate, ctx)
 		if err != nil {
 			return err
 		} else if rows, err := fn.Iterate(); err != nil {
@@ -114,7 +115,7 @@ func (h *handler) writeQueryRows(rows sgbucket.QueryResultIterator) error {
 			return err
 		}
 		// The iterator streams results as the query engine produces them, so this loop may take most of the query's time; check for timeout after each iteration:
-		if err = h.db.CheckTimeout(); err != nil {
+		if err = h.db.CheckTimeout(h.ctx()); err != nil {
 			return err
 		}
 	}
@@ -177,8 +178,8 @@ func (h *handler) handleGraphQL() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing/empty `query` property")
 	}
 
-	return h.db.WithTimeout(db.UserQueryTimeout, func() error {
-		result, err := h.db.UserGraphQLQuery(queryString, operationName, variables, canMutate, h.db.Ctx)
+	return h.db.WithTimeout(h.ctx(), db.UserQueryTimeout, func(ctx context.Context) error {
+		result, err := h.db.UserGraphQLQuery(queryString, operationName, variables, canMutate, ctx)
 		if err == nil {
 			h.writeJSON(result)
 		}

@@ -29,7 +29,8 @@ func TestReplicateManagerReplications(t *testing.T) {
 	testCfg, err := base.NewCfgSG(testBucket, "")
 	require.NoError(t, err)
 
-	manager, err := NewSGReplicateManager(&DatabaseContext{Name: "test"}, testCfg)
+	ctx := base.TestCtx(t)
+	manager, err := NewSGReplicateManager(ctx, &DatabaseContext{Name: "test"}, testCfg)
 	require.NoError(t, err)
 	defer manager.Stop()
 
@@ -92,7 +93,8 @@ func TestReplicateManagerNodes(t *testing.T) {
 	testCfg, err := base.NewCfgSG(testBucket, "")
 	require.NoError(t, err)
 
-	manager, err := NewSGReplicateManager(&DatabaseContext{Name: "test"}, testCfg)
+	ctx := base.TestCtx(t)
+	manager, err := NewSGReplicateManager(ctx, &DatabaseContext{Name: "test"}, testCfg)
 	require.NoError(t, err)
 	defer manager.Stop()
 
@@ -144,10 +146,11 @@ func TestReplicateManagerConcurrentNodeOperations(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
+	ctx := base.TestCtx(t)
 	testCfg, err := base.NewCfgSG(testBucket, "")
 	require.NoError(t, err)
 
-	manager, err := NewSGReplicateManager(&DatabaseContext{Name: "test"}, testCfg)
+	manager, err := NewSGReplicateManager(ctx, &DatabaseContext{Name: "test"}, testCfg)
 	require.NoError(t, err)
 	defer manager.Stop()
 
@@ -188,10 +191,11 @@ func TestReplicateManagerConcurrentReplicationOperations(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
+	ctx := base.TestCtx(t)
 	testCfg, err := base.NewCfgSG(testBucket, "")
 	require.NoError(t, err)
 
-	manager, err := NewSGReplicateManager(&DatabaseContext{Name: "test"}, testCfg)
+	manager, err := NewSGReplicateManager(ctx, &DatabaseContext{Name: "test"}, testCfg)
 	require.NoError(t, err)
 	defer manager.Stop()
 
@@ -618,7 +622,7 @@ func TestIsCfgChanged(t *testing.T) {
 	testCfg, err := base.NewCfgSG(testBucket, "")
 	require.NoError(t, err)
 
-	mgr, err := NewSGReplicateManager(&DatabaseContext{Name: "test"}, testCfg)
+	mgr, err := NewSGReplicateManager(base.TestCtx(t), &DatabaseContext{Name: "test"}, testCfg)
 	require.NoError(t, err)
 	defer mgr.Stop()
 
@@ -643,19 +647,20 @@ func TestReplicateGroupIDAssignedNodes(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
+	ctx := base.TestCtx(t)
 
 	// Set up databases
-	dbDefault, err := NewDatabaseContext("default", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: ""})
+	dbDefault, err := NewDatabaseContext(ctx, "default", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: ""})
 	require.NoError(t, err)
-	defer dbDefault.Close()
+	defer dbDefault.Close(ctx)
 
-	dbGroupA, err := NewDatabaseContext("groupa", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "GroupA"})
+	dbGroupA, err := NewDatabaseContext(ctx, "groupa", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "GroupA"})
 	require.NoError(t, err)
-	defer dbGroupA.Close()
+	defer dbGroupA.Close(ctx)
 
-	dbGroupB, err := NewDatabaseContext("groupb", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "GroupB"})
+	dbGroupB, err := NewDatabaseContext(ctx, "groupb", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "GroupB"})
 	require.NoError(t, err)
-	defer dbGroupB.Close()
+	defer dbGroupB.Close(ctx)
 
 	// Set up replicators
 	err = dbDefault.SGReplicateMgr.RegisterNode("nodeDefault")

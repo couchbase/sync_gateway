@@ -73,7 +73,6 @@ func (dc *DCPClient) Deletion(deletion gocbcore.DcpDeletion) {
 
 }
 
-//
 func (dc *DCPClient) End(end gocbcore.DcpStreamEnd, err error) {
 
 	e := endStreamEvent{

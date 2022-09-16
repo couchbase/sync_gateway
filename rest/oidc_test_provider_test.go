@@ -210,6 +210,8 @@ func TestProviderOIDCAuthWithTlsSkipVerifyEnabled(t *testing.T) {
 }
 
 func TestProviderOIDCAuthWithTlsSkipVerifyDisabled(t *testing.T) {
+
+	base.LongRunningTest(t)
 	restTesterConfig := restTesterConfigWithTestProviderEnabled()
 	restTesterConfig.DatabaseConfig.Unsupported.OidcTlsSkipVerify = false
 	restTester := NewRestTester(t, &restTesterConfig)

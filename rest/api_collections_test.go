@@ -71,7 +71,7 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		createScopesAndCollections: true,
-		TestBucket:                 tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
+		CustomTestBucket:           tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Users: map[string]*auth.PrincipalConfig{
@@ -94,7 +94,7 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 			docID := fmt.Sprintf("doc%d", i)
 			path := fmt.Sprintf("/%s/%s", test.keyspace, docID)
 			resp := rt.SendUserRequestWithHeaders(http.MethodPut, path, `{"test":true}`, nil, username, password)
-			requireStatus(t, resp, test.expectedStatus)
+			RequireStatus(t, resp, test.expectedStatus)
 
 			if test.expectedStatus == http.StatusCreated {
 				// go and check that the doc didn't just end up in the default collection of the test bucket
@@ -116,7 +116,7 @@ func TestCollectionsDCP(t *testing.T) {
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		createScopesAndCollections: true,
-		TestBucket:                 tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
+		CustomTestBucket:           tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				AutoImport: true,
@@ -157,7 +157,7 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		createScopesAndCollections: true,
-		TestBucket:                 tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
+		CustomTestBucket:           tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Scopes: ScopesConfig{
@@ -180,7 +180,7 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 	)
 
 	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", keyspace, docID), `{"test":true}`)
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	// use the rt.Bucket which has got the foo.bar scope/collection set up
 	n1qlStore, ok := base.AsN1QLStore(rt.Bucket())
@@ -255,7 +255,7 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		createScopesAndCollections: true,
-		TestBucket:                 tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
+		CustomTestBucket:           tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				UseViews: useViews,
@@ -278,12 +278,12 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", keyspace, validDocID), `{"test": true, "channels": ["`+validChannel+`"]}`)
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 	resp = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", keyspace, invalidDocID), `{"test": true, "channels": ["`+invalidChannel+`"]}`)
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/_all_docs", ``, nil, username, password)
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 	var allDocsResponse struct {
 		TotalRows int `json:"total_rows"`
 		Rows      []struct {
@@ -296,11 +296,11 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 	assert.Equal(t, validDocID, allDocsResponse.Rows[0].ID)
 
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, fmt.Sprintf("/%s/%s", keyspace, validDocID), ``, nil, username, password)
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, fmt.Sprintf("/%s/%s", keyspace, invalidDocID), ``, nil, username, password)
-	requireStatus(t, resp, http.StatusForbidden)
+	RequireStatus(t, resp, http.StatusForbidden)
 
-	_, err := rt.waitForChanges(1, "/db/_changes", username, false)
+	_, err := rt.WaitForChanges(1, "/db/_changes", username, false)
 	require.NoError(t, err)
 }
 
@@ -308,7 +308,8 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 	base.TestRequiresCollections(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
-	err := base.CreateBucketScopesAndCollections(base.TestCtx(t), tb.BucketSpec, map[string][]string{
+	ctx := base.TestCtx(t)
+	err := base.CreateBucketScopesAndCollections(ctx, tb.BucketSpec, map[string][]string{
 		"fooScope": {
 			"bar",
 		},
@@ -320,15 +321,15 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 
 	serverErr := make(chan error)
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true)
+	sc, err := SetupServerContext(ctx, &config, true)
 	require.NoError(t, err)
 	defer func() {
-		sc.Close()
+		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
 	}()
 
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 

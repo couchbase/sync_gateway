@@ -92,7 +92,7 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 	require.NoError(t, err)
 
 	var dbConfig DbConfig
-	_, err = cbs.GetConfig(tb.GetName(), persistentConfigDefaultGroupID, &dbConfig)
+	_, err = cbs.GetConfig(tb.GetName(), PersistentConfigDefaultGroupID, &dbConfig)
 	require.NoError(t, err)
 
 	assert.Equal(t, "db", dbConfig.Name)
@@ -219,7 +219,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 	require.NoError(t, err)
 
 	var dbConfig DbConfig
-	originalDefaultDbConfigCAS, err := cbs.GetConfig(tb.GetName(), persistentConfigDefaultGroupID, &dbConfig)
+	originalDefaultDbConfigCAS, err := cbs.GetConfig(tb.GetName(), PersistentConfigDefaultGroupID, &dbConfig)
 	assert.NoError(t, err)
 
 	// Ensure that revs limit hasn't actually been set
@@ -268,7 +268,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 
 		// Ensure default has not changed
 		dbConfig = DbConfig{}
-		defaultDbConfigCAS, err := cbs.GetConfig(tb.GetName(), persistentConfigDefaultGroupID, &dbConfig)
+		defaultDbConfigCAS, err := cbs.GetConfig(tb.GetName(), PersistentConfigDefaultGroupID, &dbConfig)
 		assert.NoError(t, err)
 		assert.Equal(t, originalDefaultDbConfigCAS, defaultDbConfigCAS)
 	} else {
@@ -292,16 +292,17 @@ func TestImportFilterEndpoint(t *testing.T) {
 	serverErr := make(chan error, 0)
 
 	// Start SG with no databases
+	ctx := base.TestCtx(t)
 	config := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&config, true)
+	sc, err := SetupServerContext(ctx, &config, true)
 	require.NoError(t, err)
 	defer func() {
-		sc.Close()
+		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
 	}()
 
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 

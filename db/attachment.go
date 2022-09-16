@@ -63,7 +63,7 @@ const maxAttachmentSizeBytes = 20 * 1024 * 1024
 // Given Attachments Meta to be stored in the database, storeAttachments goes through the map, finds attachments with
 // inline bodies, copies the bodies into the Couchbase db, and replaces the bodies with the 'digest' attributes which
 // are the keys to retrieving them.
-func (db *Database) storeAttachments(doc *Document, newAttachmentsMeta AttachmentsMeta, generation int, parentRev string, docHistory []string) (AttachmentData, error) {
+func (db *Database) storeAttachments(ctx context.Context, doc *Document, newAttachmentsMeta AttachmentsMeta, generation int, parentRev string, docHistory []string) (AttachmentData, error) {
 	if len(newAttachmentsMeta) == 0 {
 		return nil, nil
 	}
@@ -114,7 +114,7 @@ func (db *Database) storeAttachments(doc *Document, newAttachmentsMeta Attachmen
 			}
 			// Try to look up the attachment in ancestor attachments
 			if parentAttachments == nil {
-				parentAttachments = db.retrieveAncestorAttachments(doc, parentRev, docHistory)
+				parentAttachments = db.retrieveAncestorAttachments(ctx, doc, parentRev, docHistory)
 			}
 
 			// Note: in a non-conflict CAS retry, parentAttachments may be nil, because the attachment
@@ -159,10 +159,10 @@ func retrieveV2AttachmentKeys(docID string, docAttachments AttachmentsMeta) (att
 // Attempts to retrieve ancestor attachments for a document. First attempts to find and use a non-pruned ancestor.
 // If no non-pruned ancestor is available, checks whether the currently active doc has a common ancestor with the new revision.
 // If it does, can use the attachments on the active revision with revpos earlier than that common ancestor.
-func (db *Database) retrieveAncestorAttachments(doc *Document, parentRev string, docHistory []string) map[string]interface{} {
+func (db *Database) retrieveAncestorAttachments(ctx context.Context, doc *Document, parentRev string, docHistory []string) map[string]interface{} {
 
 	// Attempt to find a non-pruned parent or ancestor
-	if ancestorAttachments, foundAncestor := db.getAvailableRevAttachments(doc, parentRev); foundAncestor {
+	if ancestorAttachments, foundAncestor := db.getAvailableRevAttachments(ctx, doc, parentRev); foundAncestor {
 		return ancestorAttachments
 	}
 
@@ -236,15 +236,15 @@ func (db *Database) GetAttachment(key string) ([]byte, error) {
 }
 
 // Stores a base64-encoded attachment and returns the key to get it by.
-func (db *Database) setAttachment(key string, value []byte) error {
+func (db *Database) setAttachment(ctx context.Context, key string, value []byte) error {
 	_, err := db.Bucket.AddRaw(key, 0, value)
 	if err == nil {
-		base.InfofCtx(db.Ctx, base.KeyCRUD, "\tAdded attachment %q", base.UD(key))
+		base.InfofCtx(ctx, base.KeyCRUD, "\tAdded attachment %q", base.UD(key))
 	}
 	return err
 }
 
-func (db *Database) setAttachments(attachments AttachmentData) error {
+func (db *Database) setAttachments(ctx context.Context, attachments AttachmentData) error {
 	for key, data := range attachments {
 		attachmentSize := int64(len(data))
 		if attachmentSize > int64(maxAttachmentSizeBytes) {
@@ -252,7 +252,7 @@ func (db *Database) setAttachments(attachments AttachmentData) error {
 		}
 		_, err := db.Bucket.AddRaw(key, 0, data)
 		if err == nil {
-			base.InfofCtx(db.Ctx, base.KeyCRUD, "\tAdded attachment %q", base.UD(key))
+			base.InfofCtx(ctx, base.KeyCRUD, "\tAdded attachment %q", base.UD(key))
 			db.DbStats.CBLReplicationPush().AttachmentPushCount.Add(1)
 			db.DbStats.CBLReplicationPush().AttachmentPushBytes.Add(attachmentSize)
 		} else {
@@ -350,7 +350,7 @@ func ProveAttachment(attachmentData, nonce []byte) (proof string) {
 	return proof
 }
 
-//////// HELPERS:
+// ////// HELPERS:
 // Returns _attachments property from body, when found.  Checks for either map[string]interface{} (unmarshalled with body),
 // or AttachmentsMeta (written by body by SG)
 func GetBodyAttachments(body Body) AttachmentsMeta {

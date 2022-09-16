@@ -28,6 +28,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -993,10 +994,11 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 
 	require.Nil(t, setupAndValidateDatabases(databases), "Unexpected error while validating databases")
 
-	sc := NewServerContext(config, false)
-	defer sc.Close()
+	ctx := base.TestCtx(t)
+	sc := NewServerContext(ctx, config, false)
+	defer sc.Close(ctx)
 	for _, dbConfig := range databases {
-		_, err := sc.AddDatabaseFromConfig(DatabaseConfig{DbConfig: *dbConfig})
+		_, err := sc.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: *dbConfig})
 		require.NoError(t, err, "Couldn't add database from config")
 	}
 
@@ -1347,8 +1349,9 @@ func TestSetupServerContext(t *testing.T) {
 		config.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
 		config.Bootstrap.Username = base.TestClusterUsername()
 		config.Bootstrap.Password = base.TestClusterPassword()
-		sc, err := setupServerContext(&config, false)
-		defer sc.Close()
+		ctx := base.TestCtx(t)
+		sc, err := SetupServerContext(ctx, &config, false)
+		defer sc.Close(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, sc)
 	})
@@ -1364,12 +1367,12 @@ func TestConfigGroupIDValidation(t *testing.T) {
 	}{
 		{
 			name:       "No change, CE mode",
-			cfgGroupID: persistentConfigDefaultGroupID,
+			cfgGroupID: PersistentConfigDefaultGroupID,
 			eeMode:     false,
 		},
 		{
 			name:       "No change, EE mode",
-			cfgGroupID: persistentConfigDefaultGroupID,
+			cfgGroupID: PersistentConfigDefaultGroupID,
 			eeMode:     true,
 		},
 		{
@@ -1412,7 +1415,7 @@ func TestConfigGroupIDValidation(t *testing.T) {
 					UseTLSServer:  base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())),
 				},
 			}
-			err := sc.validate(isEnterpriseEdition)
+			err := sc.Validate(isEnterpriseEdition)
 			if test.expectedError != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), test.expectedError)
@@ -1463,7 +1466,7 @@ func TestClientTLSMissing(t *testing.T) {
 			if test.tlsCert {
 				config.API.HTTPS.TLSCertPath = "test.cert"
 			}
-			err := config.validate(base.IsEnterpriseEdition())
+			err := config.Validate(base.IsEnterpriseEdition())
 			if test.expectError {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), errorTLSOneMissing)
@@ -1656,9 +1659,11 @@ func TestLoadJavaScript(t *testing.T) {
 			}()
 			js, err := loadJavaScript(inputJavaScriptOrPath, test.insecureSkipVerify)
 			if test.errExpected != nil {
-				require.True(t, errors.As(err, &test.errExpected)) // nolint: govet // CBG-2242
+				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, test.jsExpected, js)
 			}
-			assert.Equal(t, test.jsExpected, js)
 		})
 	}
 }
@@ -1812,17 +1817,11 @@ func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 					RemoteConfigTlsSkipVerify: true,
 				}
 			}
-			if test.errExpected != nil {
-				test.errExpected = &JavaScriptLoadError{
-					JSLoadType: SyncFunction,
-					Path:       sync,
-					Err:        test.errExpected,
-				}
-			}
 			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil, nil, false)
 			if test.errExpected != nil {
-				require.True(t, errors.As(err, &test.errExpected)) // nolint: govet // CBG-2242
+				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
 			} else {
+				require.NoError(t, err)
 				assert.Equal(t, test.jsSyncFnExpected, *dbConfig.Sync)
 			}
 		})
@@ -1912,17 +1911,11 @@ func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
 					RemoteConfigTlsSkipVerify: true,
 				}
 			}
-			if test.errExpected != nil {
-				test.errExpected = &JavaScriptLoadError{
-					JSLoadType: ImportFilter,
-					Path:       importFilter,
-					Err:        test.errExpected,
-				}
-			}
 			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil, nil, false)
 			if test.errExpected != nil {
-				require.True(t, errors.As(err, &test.errExpected)) // nolint: govet // CBG-2242
+				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
 			} else {
+				require.NoError(t, err)
 				assert.Equal(t, test.jsImportFilterExpected, *dbConfig.ImportFilter)
 			}
 		})
@@ -2024,17 +2017,11 @@ func TestSetupDbConfigWithConflictResolutionFunction(t *testing.T) {
 					RemoteConfigTlsSkipVerify: true,
 				}
 			}
-			if test.errExpected != nil {
-				test.errExpected = &JavaScriptLoadError{
-					JSLoadType: ConflictResolver,
-					Path:       conflictResolutionFn,
-					Err:        test.errExpected,
-				}
-			}
 			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil, nil, false)
 			if test.errExpected != nil {
-				require.True(t, errors.As(err, &test.errExpected)) // nolint: govet // CBG-2242
+				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
 			} else {
+				require.NoError(t, err)
 				require.NotNil(t, dbConfig.Replications["replication1"])
 				conflictResolutionFnActual := dbConfig.Replications["replication1"].ConflictResolutionFn
 				assert.Equal(t, test.jsConflictResExpected, conflictResolutionFnActual)
@@ -2128,18 +2115,15 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 					RemoteConfigTlsSkipVerify: true,
 				}
 			}
-			if test.errExpected != nil {
-				test.errExpected = &JavaScriptLoadError{
-					JSLoadType: WebhookFilter,
-					Path:       webhookFilter,
-					Err:        test.errExpected,
-				}
-			}
-			ctx := &db.DatabaseContext{EventMgr: db.NewEventManager()}
+			terminator := make(chan bool)
+			defer close(terminator)
+			ctx := &db.DatabaseContext{EventMgr: db.NewEventManager(terminator)}
 			sc := &ServerContext{}
-			err := sc.initEventHandlers(ctx, &dbConfig)
+			err := sc.initEventHandlers(base.TestCtx(t), ctx, &dbConfig)
 			if test.errExpected != nil {
-				require.True(t, errors.As(err, &test.errExpected)) // nolint: govet // CBG-2242
+				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
+			} else {
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -2358,7 +2342,7 @@ func TestStartupConfigBcryptCostValidation(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			sc := StartupConfig{Auth: AuthConfig{BcryptCost: test.cost}}
-			err := sc.validate(base.IsEnterpriseEdition())
+			err := sc.Validate(base.IsEnterpriseEdition())
 			if test.expectError {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), errContains)
@@ -2413,7 +2397,6 @@ func Test_validateJavascriptFunction(t *testing.T) {
 }
 
 func TestBucketCredentialsValidation(t *testing.T) {
-	bucketAndDBCredsError := "bucket_credentials and database_credentials cannot be used at the same time"
 	bucketCredsError := "bucket_credentials cannot use both x509 and basic auth"
 	bucketNoCredsServerless := "at least 1 bucket must be defined in bucket_credentials when running in serverless mode"
 	testCases := []struct {
@@ -2462,7 +2445,6 @@ func TestBucketCredentialsValidation(t *testing.T) {
 				DatabaseCredentials: PerDatabaseCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
 				BucketCredentials:   base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{X509CertPath: "cert", X509KeyPath: "key"}},
 			},
-			expectedError: &bucketAndDBCredsError,
 		},
 		{
 			name: "Bucket creds for x509 and basic auth",
@@ -2517,14 +2499,13 @@ func TestBucketCredentialsValidation(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			err := test.startupConfig.validate(base.IsEnterpriseEdition())
+			err := test.startupConfig.Validate(base.IsEnterpriseEdition())
 			if test.expectedError != nil {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), *test.expectedError)
 
 			} else if err != nil {
 				assert.NotContains(t, err.Error(), bucketCredsError)
-				assert.NotContains(t, err.Error(), bucketAndDBCredsError)
 				assert.NotContains(t, err.Error(), bucketNoCredsServerless)
 			}
 		})
@@ -2618,4 +2599,18 @@ func TestCollectionsValidation(t *testing.T) {
 
 		})
 	}
+}
+
+// This function allows for error checking on both x509.UnknownAuthorityError non-x509.UnknownAuthorityError types as we switch on the expected error type
+// We get OS specific errors on x509.UnknownAuthorityError so we switch the expected error string if on darwin OS
+func requireErrorWithX509UnknownAuthority(t testing.TB, actual, expected error) {
+	expectedErrorString := expected.Error()
+	switch errorType := expected.(type) {
+	case x509.UnknownAuthorityError:
+		expectedErrorString = errorType.Error()
+		if runtime.GOOS == "darwin" {
+			expectedErrorString = "certificate is not trusted"
+		}
+	}
+	require.ErrorContains(t, actual, expectedErrorString)
 }

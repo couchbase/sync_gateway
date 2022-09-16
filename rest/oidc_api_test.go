@@ -39,7 +39,7 @@ import (
 	"gopkg.in/square/go-jose.v2/jwt"
 )
 
-//  A forceError is being used when you want to force an error of type 'forceErrorType'
+// A forceError is being used when you want to force an error of type 'forceErrorType'
 type forceError struct {
 	errorType            forceErrorType // An error type to be forced
 	expectedErrorCode    int            // Expected HTTP response code
@@ -535,6 +535,8 @@ func (m mockProviderChannelsClaim) Apply(provider *auth.OIDCProvider) {
 
 // E2E test that checks OpenID Connect Authorization Code Flow.
 func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
+
+	base.LongRunningTest(t)
 	type test struct {
 		name                string
 		providers           auth.OIDCProviderMap
@@ -969,18 +971,18 @@ func createUser(t *testing.T, restTester *RestTester, name string) {
 	body := fmt.Sprintf(`{"name":"%s", "password":"pass", "email":"%s@couchbase.com"}`, name, name)
 	userEndpoint := fmt.Sprintf("/db/_user/%s", url.QueryEscape(name))
 	response := restTester.SendAdminRequest(http.MethodPut, userEndpoint, body)
-	requireStatus(t, response, http.StatusCreated)
+	RequireStatus(t, response, http.StatusCreated)
 	response = restTester.SendAdminRequest(http.MethodGet, userEndpoint, "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 }
 
 // deleteUser deletes the specified user.
 func deleteUser(t *testing.T, restTester *RestTester, name string) {
 	userEndpoint := fmt.Sprintf("/db/_user/%s", name)
 	response := restTester.SendAdminRequest(http.MethodDelete, userEndpoint, "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 	response = restTester.SendAdminRequest(http.MethodGet, userEndpoint, "")
-	requireStatus(t, response, http.StatusNotFound)
+	RequireStatus(t, response, http.StatusNotFound)
 }
 
 // createOIDCRequest creates the request with the sessionEndpoint and token put in.
@@ -1116,10 +1118,11 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 	require.NoError(t, restTester.SetAdminParty(false))
 	defer restTester.Close()
 
+	ctx := restTester.Context()
 	mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
 	defer mockSyncGateway.Close()
 	mockSyncGatewayURL := mockSyncGateway.URL
-	authenticator := restTester.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	authenticator := restTester.ServerContext().Database(ctx, "db").Authenticator(base.TestCtx(t))
 
 	sendAuthRequest := func(claimSet claimSet) (*http.Response, error) {
 		token, err := mockAuthServer.makeToken(claimSet)
@@ -1194,7 +1197,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		runGoodAuthTest(claimSet, username)
 
 		// Bad email shouldn't not be saved on successful authentication.
-		user, err := restTester.ServerContext().Database("db").Authenticator(base.TestCtx(t)).GetUser("foo_noah")
+		user, err := restTester.ServerContext().Database(ctx, "db").Authenticator(base.TestCtx(t)).GetUser("foo_noah")
 		require.NoError(t, err, "Error getting user from db")
 		assert.Equal(t, username, user.Name())
 		assert.Empty(t, user.Email(), "Bad email shouldn't be saved")
@@ -1208,7 +1211,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		runGoodAuthTest(claimSet, username)
 
 		// Bad email shouldn't not be saved on successful authentication.
-		user, err := restTester.ServerContext().Database("db").Authenticator(base.TestCtx(t)).GetUser(username)
+		user, err := restTester.ServerContext().Database(ctx, "db").Authenticator(base.TestCtx(t)).GetUser(username)
 		require.NoError(t, err, "Error getting user from db")
 		assert.Equal(t, username, user.Name())
 		assert.Equal(t, "foo_noah@couchbase.com", user.Email(), "Bad email shouldn't be saved")
@@ -1222,7 +1225,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		runGoodAuthTest(claimSet, username)
 
 		// Good email should be updated on successful authentication.
-		user, err := restTester.ServerContext().Database("db").Authenticator(base.TestCtx(t)).GetUser(username)
+		user, err := restTester.ServerContext().Database(ctx, "db").Authenticator(base.TestCtx(t)).GetUser(username)
 		require.NoError(t, err, "Error getting user from db")
 		assert.Equal(t, username, user.Name())
 		assert.Equal(t, "foo_noah@example.com", user.Email(), "Email is not updated")
@@ -1810,6 +1813,8 @@ func TestCallbackStateClientCookies(t *testing.T) {
 // E2E test that checks OpenID Connect Authorization Code Flow with the specified username_claim
 // as Sync Gateway username.
 func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
+
+	base.LongRunningTest(t)
 	var (
 		defaultProvider = "foo"
 		authURL         = "/db/_oidc?provider=foo&offline=true"
@@ -2228,7 +2233,7 @@ func TestOpenIDConnectRolesChannelsClaims(t *testing.T) {
 				payloadJSON, err := json.Marshal(payload)
 				require.NoError(t, err, "Failed to marshal role payload")
 				res := restTester.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/_role/%s", restTester.DatabaseConfig.Name, roleName), string(payloadJSON))
-				requireStatus(t, res, http.StatusCreated)
+				RequireStatus(t, res, http.StatusCreated)
 			}
 
 			testDocBody := struct {
@@ -2239,7 +2244,7 @@ func TestOpenIDConnectRolesChannelsClaims(t *testing.T) {
 			testDocJSON, err := json.Marshal(testDocBody)
 			require.NoError(t, err, "Failed to marshal test doc payload")
 			res := restTester.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", restTester.DatabaseConfig.Name, testDocName), string(testDocJSON))
-			requireStatus(t, res, http.StatusCreated)
+			RequireStatus(t, res, http.StatusCreated)
 
 			mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
 			defer mockSyncGateway.Close()
@@ -2313,16 +2318,17 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	mockAuthServer.options.issuer = mockAuthServer.URL + "/" + providerName
 	refreshProviderConfig(providers, mockAuthServer.URL)
 
+	ctx := base.TestCtx(t)
 	startupConfig := bootstrapStartupConfigForTest(t)
-	sc, err := setupServerContext(&startupConfig, true)
+	sc, err := SetupServerContext(ctx, &startupConfig, true)
 	require.NoError(t, err)
 	serverErr := make(chan error, 0)
 	go func() {
-		serverErr <- startServer(&startupConfig, sc)
+		serverErr <- startServer(ctx, &startupConfig, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 	defer func() {
-		sc.Close()
+		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
 	}()
 
@@ -2441,8 +2447,8 @@ func TestOpenIDConnectIssuerChange(t *testing.T) {
 	tb1 := base.GetTestBucket(t)
 	defer tb1.Close()
 	rt1Config := RestTesterConfig{
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{}},
-		TestBucket:     tb1,
+		DatabaseConfig:   &DatabaseConfig{DbConfig: DbConfig{}},
+		CustomTestBucket: tb1,
 	}
 	rt1 := NewRestTester(t, &rt1Config)
 	require.NoError(t, rt1.SetAdminParty(false))
@@ -2490,7 +2496,7 @@ func TestOpenIDConnectIssuerChange(t *testing.T) {
 	updateReqJSON, err := json.Marshal(&newCfg)
 	require.NoError(t, err, "Failed to marshal update request body")
 	testRes := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/_config", rt1Config.DatabaseConfig.Name), string(updateReqJSON))
-	requireStatus(t, testRes, http.StatusCreated)
+	RequireStatus(t, testRes, http.StatusCreated)
 
 	cookieJar, err := cookiejar.New(nil)
 	require.NoError(t, err)
@@ -2504,7 +2510,7 @@ func TestOpenIDConnectIssuerChange(t *testing.T) {
 	testDocJSON, err := json.Marshal(testDocBody)
 	require.NoError(t, err, "Failed to marshal test doc payload")
 	tdRes := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", rt1.DatabaseConfig.Name, testDocName), string(testDocJSON))
-	requireStatus(t, tdRes, http.StatusCreated)
+	RequireStatus(t, tdRes, http.StatusCreated)
 
 	jwt, err := createJWTWithExtraClaims(subject, fmt.Sprintf("%s/%s/_oidc_testing", msg1.URL, rt1.DatabaseConfig.Name), AuthState{TokenTTL: time.Hour}, map[string]interface{}{
 		"username": "frodo",

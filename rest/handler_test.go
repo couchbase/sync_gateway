@@ -83,6 +83,8 @@ func TestParseHTTPRangeHeader(t *testing.T) {
 }
 
 func TestHTTPLoggingRedaction(t *testing.T) {
+
+	base.LongRunningTest(t)
 	cases := []struct {
 		name, method, path, expectedLog string
 		admin                           bool

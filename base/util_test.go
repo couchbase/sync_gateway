@@ -1524,6 +1524,8 @@ func TestConfigDuration(t *testing.T) {
 }
 
 func TestTerminateAndWaitForClose(t *testing.T) {
+	LongRunningTest(t)
+
 	SetUpTestLogging(t, LevelInfo, KeySGTest)
 
 	tests := []struct {

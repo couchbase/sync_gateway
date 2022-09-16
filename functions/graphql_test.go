@@ -203,77 +203,77 @@ func assertGraphQLError(t *testing.T, expectedErrorText string, result *graphql.
 // Unit test for GraphQL queries.
 func TestUserGraphQL(t *testing.T) {
 	//base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	db := setupTestDBWithFunctions(t, kTestGraphQLUserFunctionsConfig, &kTestGraphQLConfig)
-	defer db.Close()
+	db, ctx := setupTestDBWithFunctions(t, kTestGraphQLUserFunctionsConfig, &kTestGraphQLConfig)
+	defer db.Close(ctx)
 
 	// First run the tests as an admin:
-	t.Run("AsAdmin", func(t *testing.T) { testUserGraphQLAsAdmin(t, db) })
+	t.Run("AsAdmin", func(t *testing.T) { testUserGraphQLAsAdmin(t, ctx, db) })
 
 	// Now create a user and make it current:
 	db.SetUser(addUserAlice(t, db))
 	assert.True(t, db.User().RoleNames().Contains("hero"))
 
 	// Repeat the tests as user "alice":
-	t.Run("AsUser", func(t *testing.T) { testUserGraphQLAsUser(t, db) })
+	t.Run("AsUser", func(t *testing.T) { testUserGraphQLAsUser(t, ctx, db) })
 }
 
-func testUserGraphQLCommon(t *testing.T, db *db.Database) {
+func testUserGraphQLCommon(t *testing.T, ctx context.Context, db *db.Database) {
 	// Successful query:
-	result, err := db.UserGraphQLQuery(`query{ square(n: 12) }`, "", nil, false, db.Ctx)
+	result, err := db.UserGraphQLQuery(`query{ square(n: 12) }`, "", nil, false, ctx)
 	assertGraphQLResult(t, `{"square":144}`, result, err)
 
 	result, err = db.UserGraphQLQuery(`query($num:Int!){ square(n: $num) }`, "",
-		map[string]interface{}{"num": 12}, false, db.Ctx)
+		map[string]interface{}{"num": 12}, false, ctx)
 	assertGraphQLResult(t, `{"square":144}`, result, err)
 
-	result, err = db.UserGraphQLQuery(`query{ task(id:"a") {id,title,done} }`, "", nil, false, db.Ctx)
+	result, err = db.UserGraphQLQuery(`query{ task(id:"a") {id,title,done} }`, "", nil, false, ctx)
 	assertGraphQLResult(t, `{"task":{"done":true,"id":"a","title":"Applesauce"}}`, result, err)
 
-	result, err = db.UserGraphQLQuery(`query{ tasks {title} }`, "", nil, false, db.Ctx)
+	result, err = db.UserGraphQLQuery(`query{ tasks {title} }`, "", nil, false, ctx)
 	assertGraphQLResult(t, `{"tasks":[{"title":"Applesauce"},{"title":"Beer"},{"title":"Mangoes"}]}`, result, err)
 
 	// ERRORS:
 
 	// Nonexistent query:
-	result, err = db.UserGraphQLQuery(`query{ bogus(id:"a") {id} }`, "", nil, false, db.Ctx)
+	result, err = db.UserGraphQLQuery(`query{ bogus(id:"a") {id} }`, "", nil, false, ctx)
 	assertGraphQLError(t, "Cannot query field \"bogus\" on type \"Query\"", result, err)
 
 	// Invalid argument:
-	result, err = db.UserGraphQLQuery(`query{ task(foo:69) {id,title,done} }`, "", nil, false, db.Ctx)
+	result, err = db.UserGraphQLQuery(`query{ task(foo:69) {id,title,done} }`, "", nil, false, ctx)
 	assertGraphQLError(t, "Unknown argument \"foo\"", result, err)
 
 	// Mutation when no mutations allowed:
-	result, err = db.UserGraphQLQuery(`mutation{ complete(id:"a") {done} }`, "", nil, false, db.Ctx)
+	result, err = db.UserGraphQLQuery(`mutation{ complete(id:"a") {done} }`, "", nil, false, ctx)
 	assertGraphQLError(t, "403", result, err)
 
 	// Infinite regress:
-	result, err = db.UserGraphQLQuery(`query{ infinite }`, "", nil, false, db.Ctx)
+	result, err = db.UserGraphQLQuery(`query{ infinite }`, "", nil, false, ctx)
 	assertGraphQLError(t, "508", result, err)
 }
 
-func testUserGraphQLAsAdmin(t *testing.T, db *db.Database) {
-	testUserGraphQLCommon(t, db)
+func testUserGraphQLAsAdmin(t *testing.T, ctx context.Context, db *db.Database) {
+	testUserGraphQLCommon(t, ctx, db)
 
 	// Admin tests updating "a":
-	result, err := db.UserGraphQLQuery(`mutation{ addTag(id:"a", tag:"cold") {id,title,done,tags} }`, "", nil, true, db.Ctx)
+	result, err := db.UserGraphQLQuery(`mutation{ addTag(id:"a", tag:"cold") {id,title,done,tags} }`, "", nil, true, ctx)
 	assertGraphQLResult(t, `{"addTag":{"done":true,"id":"a","tags":["fruit","soft","cold"],"title":"Applesauce"}}`, result, err)
 
 	// Admin-only field:
-	result, err = db.UserGraphQLQuery(`query{ task(id:"a") {secretNotes} }`, "", nil, false, db.Ctx)
+	result, err = db.UserGraphQLQuery(`query{ task(id:"a") {secretNotes} }`, "", nil, false, ctx)
 	assertGraphQLResult(t, `{"task":{"secretNotes":"TOP SECRET!"}}`, result, err)
 }
 
-func testUserGraphQLAsUser(t *testing.T, db *db.Database) {
-	testUserGraphQLCommon(t, db)
+func testUserGraphQLAsUser(t *testing.T, ctx context.Context, db *db.Database) {
+	testUserGraphQLCommon(t, ctx, db)
 
 	// Regular user tests updating "m":
-	result, err := db.UserGraphQLQuery(`mutation{ addTag(id:"m", tag:"ripe") {id,title,done,tags} }`, "", nil, true, db.Ctx)
+	result, err := db.UserGraphQLQuery(`mutation{ addTag(id:"m", tag:"ripe") {id,title,done,tags} }`, "", nil, true, ctx)
 	assertGraphQLResult(t, `{"addTag":{"done":null,"id":"m","tags":["ripe"],"title":"Mangoes"}}`, result, err)
 
 	// ERRORS:
 
 	// Can't get admin-only field:
-	result, err = db.UserGraphQLQuery(`query{ task(id:"a") {secretNotes} }`, "", nil, false, db.Ctx)
+	result, err = db.UserGraphQLQuery(`query{ task(id:"a") {secretNotes} }`, "", nil, false, ctx)
 	assertGraphQLError(t, "403", result, err)
 }
 
@@ -365,34 +365,34 @@ func TestUserGraphQLWithN1QL(t *testing.T) {
 		t.Skip("This test is Couchbase Server only (requires N1QL)")
 	}
 
-	db := setupTestDBWithFunctions(t, nil, &kTestGraphQLConfigWithN1QL)
-	defer db.Close()
+	db, ctx := setupTestDBWithFunctions(t, nil, &kTestGraphQLConfigWithN1QL)
+	defer db.Close(ctx)
 
-	db.Put("a", Body{"type": "task", "title": "Applesauce", "done": true, "tags": []string{"fruit", "soft"}, "channels": "wonderland"})
-	db.Put("b", Body{"type": "task", "title": "Beer", "description": "Bass ale please", "channels": "wonderland"})
-	db.Put("m", Body{"type": "task", "title": "Mangoes", "channels": "wonderland"})
+	db.Put(ctx, "a", Body{"type": "task", "title": "Applesauce", "done": true, "tags": []string{"fruit", "soft"}, "channels": "wonderland"})
+	db.Put(ctx, "b", Body{"type": "task", "title": "Beer", "description": "Bass ale please", "channels": "wonderland"})
+	db.Put(ctx, "m", Body{"type": "task", "title": "Mangoes", "channels": "wonderland"})
 
 	// Without this, N1QL can't do any queries on documents:
-	rows, _ := db.N1QLQueryWithStats(db.Ctx, "", "CREATE PRIMARY INDEX ON $_keyspace", nil,
+	rows, _ := db.N1QLQueryWithStats(ctx, "", "CREATE PRIMARY INDEX ON $_keyspace", nil,
 		base.RequestPlus, false)
 	rows.Close()
 
 	// First run the tests as an admin:
-	t.Run("AsAdmin", func(t *testing.T) { testUserGraphQLAsAdmin(t, db) })
+	t.Run("AsAdmin", func(t *testing.T) { testUserGraphQLAsAdmin(t, ctx, db) })
 
 	// Now create a user and make it current:
 	db.SetUser(addUserAlice(t, db))
 	assert.True(t, db.User().RoleNames().Contains("hero"))
 
 	// Repeat the tests as user "alice":
-	t.Run("AsUser", func(t *testing.T) { testUserGraphQLAsUser(t, db) })
+	t.Run("AsUser", func(t *testing.T) { testUserGraphQLAsUser(t, ctx, db) })
 
 	// Test the N1QL resolver that uses $parent:
-	result, err := db.UserGraphQLQuery(`query{ task(id:"b") {description,title} }`, "", nil, false, db.Ctx)
+	result, err := db.UserGraphQLQuery(`query{ task(id:"b") {description,title} }`, "", nil, false, ctx)
 	assertGraphQLResult(t, `{"task":{"description":"Bass ale please","title":"Beer"}}`, result, err)
 }
 
-func setupTestDBWithFunctions(t *testing.T, fnConfig FunctionConfigMap, gqConfig *GraphQLConfig) *db.Database {
+func setupTestDBWithFunctions(t *testing.T, fnConfig FunctionConfigMap, gqConfig *GraphQLConfig) (*db.Database, context.Context) {
 	cacheOptions := db.DefaultCacheOptions()
 	options := db.DatabaseContextOptions{
 		CacheOptions: &cacheOptions,
@@ -406,24 +406,22 @@ func setupTestDBWithFunctions(t *testing.T, fnConfig FunctionConfigMap, gqConfig
 		options.GraphQL, err = CompileGraphQL(gqConfig)
 		assert.NoError(t, err)
 	}
-	db := setupTestDBWithOptions(t, options)
-	db.Ctx = context.TODO()
-	return db
+	return setupTestDBWithOptions(t, options)
 }
 
-// Sets up test db with the specified database context options.  Note that environment variables can
-// override somedbcOptions properties.
-func setupTestDBWithOptions(t testing.TB, dbcOptions db.DatabaseContextOptions) *db.Database {
+func setupTestDBWithOptions(t testing.TB, dbcOptions db.DatabaseContextOptions) (*db.Database, context.Context) {
 
 	tBucket := base.GetTestBucket(t)
 	return setupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
 }
 
-func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions db.DatabaseContextOptions) *db.Database {
+func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions db.DatabaseContextOptions) (*db.Database, context.Context) {
+	ctx := base.TestCtx(t)
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	context, err := db.NewDatabaseContext("db", tBucket, false, dbcOptions)
+	dbCtx, err := db.NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
-	db, err := db.CreateDatabase(context)
+	db, err := db.CreateDatabase(dbCtx)
 	assert.NoError(t, err, "Couldn't create database 'db'")
-	return db
+	ctx = db.AddDatabaseLogContext(ctx)
+	return db, ctx
 }

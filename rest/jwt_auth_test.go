@@ -24,6 +24,8 @@ import (
 )
 
 func TestLocalJWTAuthenticationE2E(t *testing.T) {
+	base.LongRunningTest(t)
+
 	const (
 		testIssuer             = "test_issuer"
 		testClientID           = "test_aud"
@@ -84,7 +86,7 @@ func TestLocalJWTAuthenticationE2E(t *testing.T) {
 			defer mockSyncGateway.Close()
 			mockSyncGatewayURL := mockSyncGateway.URL
 
-			authenticator := restTester.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+			authenticator := restTester.ServerContext().Database(restTester.Context(), "db").Authenticator(base.TestCtx(t))
 			if preExistingUser {
 				user, err := authenticator.RegisterNewUser(expectedUsername, "")
 				require.NoError(t, err, "Failed to create test user")
@@ -154,6 +156,8 @@ func TestLocalJWTAuthenticationE2E(t *testing.T) {
 }
 
 func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
+
+	base.LongRunningTest(t)
 	testRSAKeypair, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 	testRSAJWK := jose.JSONWebKey{
@@ -457,7 +461,7 @@ func TestLocalJWTRolesChannels(t *testing.T) {
 	res := restTester.SendRequestWithHeaders(http.MethodPost, "/db/_session", "{}", map[string]string{
 		"Authorization": BearerToken + " " + token,
 	})
-	requireStatus(t, res, http.StatusOK)
+	RequireStatus(t, res, http.StatusOK)
 
 	authn := restTester.GetDatabase().Authenticator(base.TestCtx(t))
 	user, err := authn.GetUser(testProviderName + "_" + testSubject)

@@ -117,7 +117,7 @@ func LogContextWith(parent context.Context, adder ContextAdder) context.Context 
 
 // ServerLogContext stores server context data for logging
 type ServerLogContext struct {
-	ConfigGroupID string
+	LogContextID string
 }
 
 func (c *ServerLogContext) getContextKey() LogContextKey {
@@ -125,8 +125,8 @@ func (c *ServerLogContext) getContextKey() LogContextKey {
 }
 
 func (c *ServerLogContext) addContext(format string) string {
-	if c != nil && c.ConfigGroupID != "" {
-		format = "g:" + c.ConfigGroupID + " " + format
+	if c != nil && c.LogContextID != "" {
+		format = "sc:" + c.LogContextID + " " + format
 	}
 	return format
 }

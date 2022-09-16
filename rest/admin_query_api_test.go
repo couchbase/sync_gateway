@@ -334,7 +334,7 @@ const kDummyGraphQLSchema = `
 		square(n: Int!) : Int!
 	}`
 
-func TestDBConfigUserGraphQLGetEmpty(t *testing.T) {
+func TestUserQueryDBConfigGraphQLGetEmpty(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{})
 	if rt == nil {
 		return
@@ -350,7 +350,7 @@ func TestDBConfigUserGraphQLGetEmpty(t *testing.T) {
 		assert.Equal(t, 404, response.Result().StatusCode)
 	})
 }
-func TestDBConfigUserGraphQLGet(t *testing.T) {
+func TestUserQueryDBConfigGraphQLGet(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{
 		GraphQL: &functions.GraphQLConfig{
 			Schema:    base.StringPtr(kDummyGraphQLSchema),
@@ -374,7 +374,7 @@ func TestDBConfigUserGraphQLGet(t *testing.T) {
 	})
 }
 
-func TestDBConfigUserGraphQLPut(t *testing.T) {
+func TestUserQueryDBConfigGraphQLPut(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{
 		GraphQL: &functions.GraphQLConfig{
 			Schema:    base.StringPtr(kDummyGraphQLSchema),
@@ -403,7 +403,10 @@ func TestDBConfigUserGraphQLPut(t *testing.T) {
 			"schema": "type Query {sum(n: Int!) : Int!}",
 			"resolvers": {
 				"Query": {
-					"sum": "function(context,args){return args.n + args.n;}"
+					"sum": {
+						"type": "javascript",
+						"code": "function(context,args){return args.n + args.n;}"
+					}
 				}
 			}
 		}`)
@@ -441,12 +444,12 @@ func newRestTesterForUserQueries(t *testing.T, queryConfig DbConfig) *RestTester
 	})
 
 	_ = rt.Bucket() // initializes the bucket as a side effect
-	dbConfig := dbConfigForTestBucket(rt.testBucket)
+	dbConfig := dbConfigForTestBucket(rt.TestBucket)
 	dbConfig.UserFunctions = queryConfig.UserFunctions
 	dbConfig.GraphQL = queryConfig.GraphQL
 
 	resp, err := rt.CreateDatabase("db", dbConfig)
-	if !assert.NoError(t, err) || !assertStatus(t, resp, 201) {
+	if !assert.NoError(t, err) || !AssertStatus(t, resp, 201) {
 		rt.Close()
 		t.FailNow()
 		return nil // (never reached)

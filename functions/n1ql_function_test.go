@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package functions
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -62,8 +63,8 @@ var kUserN1QLFunctionsConfig = FunctionConfigMap{
 	},
 }
 
-func callUserQuery(db *db.Database, name string, args map[string]interface{}) (interface{}, error) {
-	return db.CallUserFunction(name, args, false, db.Ctx)
+func callUserQuery(ctx context.Context, db *db.Database, name string, args map[string]interface{}) (interface{}, error) {
+	return db.CallUserFunction(name, args, false, ctx)
 }
 
 func queryResultString(t *testing.T, iter sgbucket.QueryResultIterator) string {
@@ -96,35 +97,35 @@ func TestUserN1QLQueries(t *testing.T) {
 	}
 
 	//base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	db := setupTestDBWithFunctions(t, kUserN1QLFunctionsConfig, nil)
-	defer db.Close()
+	db, ctx := setupTestDBWithFunctions(t, kUserN1QLFunctionsConfig, nil)
+	defer db.Close(ctx)
 
 	// First run the tests as an admin:
-	t.Run("AsAdmin", func(t *testing.T) { testUserQueriesAsAdmin(t, db) })
+	t.Run("AsAdmin", func(t *testing.T) { testUserQueriesAsAdmin(t, ctx, db) })
 
 	// Now create a user and make it current:
 	db.SetUser(addUserAlice(t, db))
 	assert.True(t, db.User().RoleNames().Contains("hero"))
 
 	// Repeat the tests as user "alice":
-	t.Run("AsUser", func(t *testing.T) { testUserQueriesAsUser(t, db) })
+	t.Run("AsUser", func(t *testing.T) { testUserQueriesAsUser(t, ctx, db) })
 }
 
-func testUserQueriesCommon(t *testing.T, db *db.Database) {
+func testUserQueriesCommon(t *testing.T, ctx context.Context, db *db.Database) {
 	// dynamic channel list
-	fn, err := db.GetUserFunction("airports_in_city", map[string]interface{}{"city": "London"}, false, db.Ctx)
+	fn, err := db.GetUserFunction("airports_in_city", map[string]interface{}{"city": "London"}, false, ctx)
 	assert.NoError(t, err)
 	iter, err := fn.Iterate()
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{"city":"London"}]`, iter)
 
-	fn, err = db.GetUserFunction("square", map[string]interface{}{"numero": 16}, false, db.Ctx)
+	fn, err = db.GetUserFunction("square", map[string]interface{}{"numero": 16}, false, ctx)
 	assert.NoError(t, err)
 	iter, err = fn.Iterate()
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{"square":256}]`, iter)
 
-	fn, err = db.GetUserFunction("inject", map[string]interface{}{"foo": "1337 as pwned"}, false, db.Ctx)
+	fn, err = db.GetUserFunction("inject", map[string]interface{}{"foo": "1337 as pwned"}, false, ctx)
 	assert.NoError(t, err)
 	iter, err = fn.Iterate()
 	assert.NoError(t, err)
@@ -133,40 +134,40 @@ func testUserQueriesCommon(t *testing.T, db *db.Database) {
 	// ERRORS:
 
 	// Missing a parameter:
-	_, err = callUserQuery(db, "square", nil)
+	_, err = callUserQuery(ctx, db, "square", nil)
 	assertHTTPError(t, err, 400)
 	assert.ErrorContains(t, err, "numero")
 	assert.ErrorContains(t, err, "square")
 
 	// Extra parameter:
-	_, err = callUserQuery(db, "square", map[string]interface{}{"numero": 42, "number": 0})
+	_, err = callUserQuery(ctx, db, "square", map[string]interface{}{"numero": 42, "number": 0})
 	assertHTTPError(t, err, 400)
 	assert.ErrorContains(t, err, "number")
 	assert.ErrorContains(t, err, "square")
 
 	// Function definition has a syntax error:
-	_, err = callUserQuery(db, "syntax_error", nil)
+	_, err = callUserQuery(ctx, db, "syntax_error", nil)
 	assertHTTPError(t, err, 500)
 	assert.ErrorContains(t, err, "syntax_error")
 }
 
-func testUserQueriesAsAdmin(t *testing.T, db *db.Database) {
-	testUserQueriesCommon(t, db)
+func testUserQueriesAsAdmin(t *testing.T, ctx context.Context, db *db.Database) {
+	testUserQueriesCommon(t, ctx, db)
 
-	fn, err := db.GetUserFunction("user", nil, false, db.Ctx)
+	fn, err := db.GetUserFunction("user", nil, false, ctx)
 	assert.NoError(t, err)
 	iter, err := fn.Iterate()
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{"user":{}}]`, iter)
 
-	fn, err = db.GetUserFunction("user_parts", nil, false, db.Ctx)
+	fn, err = db.GetUserFunction("user_parts", nil, false, ctx)
 	assert.NoError(t, err)
 	iter, err = fn.Iterate()
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{}]`, iter)
 
 	// admin only:
-	fn, err = db.GetUserFunction("admin_only", nil, false, db.Ctx)
+	fn, err = db.GetUserFunction("admin_only", nil, false, ctx)
 	assert.NoError(t, err)
 	iter, err = fn.Iterate()
 	assert.NoError(t, err)
@@ -175,14 +176,14 @@ func testUserQueriesAsAdmin(t *testing.T, db *db.Database) {
 	// ERRORS:
 
 	// No such query:
-	_, err = callUserQuery(db, "xxxx", nil)
+	_, err = callUserQuery(ctx, db, "xxxx", nil)
 	assertHTTPError(t, err, 404)
 }
 
-func testUserQueriesAsUser(t *testing.T, db *db.Database) {
-	testUserQueriesCommon(t, db)
+func testUserQueriesAsUser(t *testing.T, ctx context.Context, db *db.Database) {
+	testUserQueriesCommon(t, ctx, db)
 
-	fn, err := db.GetUserFunction("user", nil, false, db.Ctx)
+	fn, err := db.GetUserFunction("user", nil, false, ctx)
 	assert.NoError(t, err)
 	// (Can't compare the entire result string because the order of items in the "channels" array
 	// is undefined and can change from one run to another.)
@@ -192,7 +193,7 @@ func testUserQueriesAsUser(t *testing.T, db *db.Database) {
 	assert.True(t, strings.HasPrefix(resultStr, `[{"user":{"channels":["`))
 	assert.True(t, strings.HasSuffix(resultStr, `"],"email":"","name":"alice","roles":["hero"]}}]`))
 
-	fn, err = db.GetUserFunction("user_parts", nil, false, db.Ctx)
+	fn, err = db.GetUserFunction("user_parts", nil, false, ctx)
 	assert.NoError(t, err)
 	iter, err = fn.Iterate()
 	assert.NoError(t, err)
@@ -201,14 +202,14 @@ func testUserQueriesAsUser(t *testing.T, db *db.Database) {
 	// ERRORS:
 
 	// Not allowed (admin only):
-	_, err = callUserQuery(db, "admin_only", nil)
+	_, err = callUserQuery(ctx, db, "admin_only", nil)
 	assertHTTPError(t, err, 403)
 
 	// Not allowed (dynamic channel list):
-	_, err = callUserQuery(db, "airports_in_city", map[string]interface{}{"city": "Chicago"})
+	_, err = callUserQuery(ctx, db, "airports_in_city", map[string]interface{}{"city": "Chicago"})
 	assertHTTPError(t, err, 403)
 
 	// No such query:
-	_, err = callUserQuery(db, "xxxx", nil)
+	_, err = callUserQuery(ctx, db, "xxxx", nil)
 	assertHTTPError(t, err, 403) // not 404 as for an admin
 }

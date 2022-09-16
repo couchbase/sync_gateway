@@ -83,8 +83,10 @@ func (th *TestingHandler) String() string {
 }
 
 func TestDocumentChangeEvent(t *testing.T) {
+	terminator := make(chan bool)
+	defer close(terminator)
 
-	em := NewEventManager()
+	em := NewEventManager(terminator)
 	em.Start(0, -1)
 
 	// Setup test data
@@ -123,8 +125,10 @@ func TestDocumentChangeEvent(t *testing.T) {
 }
 
 func TestDBStateChangeEvent(t *testing.T) {
+	terminator := make(chan bool)
+	defer close(terminator)
 
-	em := NewEventManager()
+	em := NewEventManager(terminator)
 	em.Start(0, -1)
 
 	// Setup test data
@@ -162,10 +166,11 @@ func TestDBStateChangeEvent(t *testing.T) {
 // Test sending many events with slow-running execution to validate they get dropped after hitting
 // the max concurrent goroutines
 func TestSlowExecutionProcessing(t *testing.T) {
-
+	terminator := make(chan bool)
+	defer close(terminator)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyEvents)
 
-	em := NewEventManager()
+	em := NewEventManager(terminator)
 	em.Start(0, -1)
 
 	ids := make([]string, 20)
@@ -204,8 +209,10 @@ func TestSlowExecutionProcessing(t *testing.T) {
 }
 
 func TestCustomHandler(t *testing.T) {
+	terminator := make(chan bool)
+	defer close(terminator)
 
-	em := NewEventManager()
+	em := NewEventManager(terminator)
 	em.Start(0, -1)
 
 	ids := make([]string, 20)
@@ -245,8 +252,10 @@ func TestCustomHandler(t *testing.T) {
 }
 
 func TestUnhandledEvent(t *testing.T) {
+	terminator := make(chan bool)
+	defer close(terminator)
 
-	em := NewEventManager()
+	em := NewEventManager(terminator)
 	em.Start(0, -1)
 
 	ids := make([]string, 20)
@@ -424,10 +433,10 @@ func InitWebhookTest() (*httptest.Server, *WebhookRequest) {
 }
 
 func TestWebhookBasic(t *testing.T) {
+	base.LongRunningTest(t)
 
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
+	terminator := make(chan bool)
+	defer close(terminator)
 
 	ts, wr := InitWebhookTest()
 	defer ts.Close()
@@ -454,7 +463,7 @@ func TestWebhookBasic(t *testing.T) {
 
 	// Test basic webhook
 	log.Println("Test basic webhook")
-	em := NewEventManager()
+	em := NewEventManager(terminator)
 	em.Start(0, -1)
 	webhookHandler, _ := NewWebhook(fmt.Sprintf("%s/echo", url), "", nil, nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
@@ -471,7 +480,7 @@ func TestWebhookBasic(t *testing.T) {
 	// Test webhook filter function
 	log.Println("Test filter function")
 	wr.Clear()
-	em = NewEventManager()
+	em = NewEventManager(terminator)
 	em.Start(0, -1)
 	filterFunction := `function(doc) {
 							if (doc.value < 6) {
@@ -496,7 +505,7 @@ func TestWebhookBasic(t *testing.T) {
 	// Validate payload
 	log.Println("Test payload validation")
 	wr.Clear()
-	em = NewEventManager()
+	em = NewEventManager(terminator)
 	em.Start(0, -1)
 	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/echo", url), "", nil, nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
@@ -513,7 +522,7 @@ func TestWebhookBasic(t *testing.T) {
 	// Test fast fill, fast webhook
 	log.Println("Test fast fill, fast webhook")
 	wr.Clear()
-	em = NewEventManager()
+	em = NewEventManager(terminator)
 	em.Start(5, -1)
 	timeout := uint64(60)
 	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/echo", url), "", &timeout, nil)
@@ -534,7 +543,7 @@ func TestWebhookBasic(t *testing.T) {
 		log.Println("Test queue full, slow webhook")
 		wr.Clear()
 		errCount := 0
-		em = NewEventManager()
+		em = NewEventManager(terminator)
 		em.Start(5, 1)
 		webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/slow", url), "", nil, nil)
 		em.RegisterEventHandler(webhookHandler, DocumentChange)
@@ -557,7 +566,7 @@ func TestWebhookBasic(t *testing.T) {
 	// Test queue full, slow webhook, long wait time.  Throttles events
 	log.Println("Test queue full, slow webhook, long wait")
 	wr.Clear()
-	em = NewEventManager()
+	em = NewEventManager(terminator)
 	em.Start(5, 1500)
 	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/slow", url), "", nil, nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
@@ -575,9 +584,8 @@ func TestWebhookBasic(t *testing.T) {
 // Test Webhook where there is an old doc revision and where the filter
 // function is expecting an old doc revision.
 func TestWebhookOldDoc(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
+	terminator := make(chan bool)
+	defer close(terminator)
 
 	ts, wr := InitWebhookTest()
 	defer ts.Close()
@@ -604,7 +612,7 @@ func TestWebhookOldDoc(t *testing.T) {
 
 	// Test basic webhook where an old doc is passed but not filtered
 	log.Println("Test basic webhook where an old doc is passed but not filtered")
-	em := NewEventManager()
+	em := NewEventManager(terminator)
 	em.Start(0, -1)
 	webhookHandler, _ := NewWebhook(fmt.Sprintf("%s/echo", url), "", nil, nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
@@ -626,7 +634,7 @@ func TestWebhookOldDoc(t *testing.T) {
 	// Test webhook where an old doc is passed and is not used by the filter
 	log.Println("Test filter function with old doc which is not referenced")
 	wr.Clear()
-	em = NewEventManager()
+	em = NewEventManager(terminator)
 	em.Start(0, -1)
 	filterFunction := `function(doc) {
 							if (doc.value < 6) {
@@ -654,7 +662,7 @@ func TestWebhookOldDoc(t *testing.T) {
 	// Test webhook where an old doc is passed and is validated by the filter
 	log.Println("Test filter function with old doc")
 	wr.Clear()
-	em = NewEventManager()
+	em = NewEventManager(terminator)
 	em.Start(0, -1)
 	filterFunction = `function(doc, oldDoc) {
 							if (doc.value < 6 && doc.value == -oldDoc.value) {
@@ -682,7 +690,7 @@ func TestWebhookOldDoc(t *testing.T) {
 	// Test webhook where an old doc is not passed but is referenced in the filter function args
 	log.Println("Test filter function with old doc")
 	wr.Clear()
-	em = NewEventManager()
+	em = NewEventManager(terminator)
 	em.Start(0, -1)
 	filterFunction = `function(doc, oldDoc) {
 							if (oldDoc) {
@@ -716,9 +724,10 @@ func TestWebhookOldDoc(t *testing.T) {
 }
 
 func TestWebhookTimeout(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
+	base.LongRunningTest(t)
+
+	terminator := make(chan bool)
+	defer close(terminator)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	ts, wr := InitWebhookTest()
@@ -746,7 +755,7 @@ func TestWebhookTimeout(t *testing.T) {
 
 	// Test fast execution, short timeout.  All events processed
 	log.Println("Test fast webhook, short timeout")
-	em := NewEventManager()
+	em := NewEventManager(terminator)
 	em.Start(0, -1)
 	timeout := uint64(2)
 	webhookHandler, _ := NewWebhook(fmt.Sprintf("%s/echo", url), "", &timeout, nil)
@@ -768,7 +777,7 @@ func TestWebhookTimeout(t *testing.T) {
 	log.Println("Test slow webhook, short timeout")
 	wr.Clear()
 	errCount := 0
-	em = NewEventManager()
+	em = NewEventManager(terminator)
 	em.Start(1, 1500)
 	timeout = uint64(1)
 	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/slow_2s", url), "", &timeout, nil)
@@ -793,7 +802,7 @@ func TestWebhookTimeout(t *testing.T) {
 	log.Println("Test very slow webhook, short timeout")
 	wr.Clear()
 	errCount = 0
-	em = NewEventManager()
+	em = NewEventManager(terminator)
 	em.Start(1, 100)
 	timeout = uint64(9)
 	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/slow_5s", url), "", &timeout, nil)
@@ -816,7 +825,7 @@ func TestWebhookTimeout(t *testing.T) {
 	log.Println("Test slow webhook, no timeout, wait for process ")
 	wr.Clear()
 	errCount = 0
-	em = NewEventManager()
+	em = NewEventManager(terminator)
 	em.Start(1, 1500)
 	timeout = uint64(0)
 	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/slow", url), "", &timeout, nil)
@@ -841,6 +850,9 @@ func TestUnavailableWebhook(t *testing.T) {
 	ts, wr := InitWebhookTest()
 	defer ts.Close()
 
+	terminator := make(chan bool)
+	defer close(terminator)
+
 	ids := make([]string, 20)
 	for i := 0; i < 20; i++ {
 		ids[i] = fmt.Sprintf("%d", i)
@@ -862,7 +874,7 @@ func TestUnavailableWebhook(t *testing.T) {
 
 	// Test unreachable webhook
 
-	em := NewEventManager()
+	em := NewEventManager(terminator)
 	em.Start(0, -1)
 	webhookHandler, _ := NewWebhook("http://badhost:1000/echo", "", nil, nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)

@@ -82,7 +82,7 @@ type DCPCommon struct {
 	checkpointPrefix       string                         // DCP checkpoint key prefix
 }
 
-func NewDCPCommon(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID, checkpointPrefix string) *DCPCommon {
+func NewDCPCommon(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID, checkpointPrefix string) *DCPCommon {
 	newBackfillStatus := backfillStatus{}
 
 	c := &DCPCommon{
@@ -102,7 +102,7 @@ func NewDCPCommon(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbN
 	}
 
 	dcpContextID := fmt.Sprintf("%s-%s", MD(bucket.GetName()).Redact(), feedID)
-	c.loggingCtx = LogContextWith(context.Background(), &LogContext{CorrelationID: dcpContextID})
+	c.loggingCtx = LogContextWith(ctx, &LogContext{CorrelationID: dcpContextID})
 
 	return c
 }
@@ -201,7 +201,7 @@ func (c *DCPCommon) incrementCheckpointCount(vbucketId uint16) {
 //   - We don't otherwise persist the last sequence we processed
 //   - For SG feed processing, there's no harm if we receive feed events for mutations we've previously seen
 //   - The ongoing performance overhead of persisting last sequence outweighs the minor performance benefit of not reprocessing a few
-//    sequences in a checkpoint on startup
+//     sequences in a checkpoint on startup
 func (c *DCPCommon) loadCheckpoint(vbNo uint16) (vbMetadata []byte, snapshotStartSeq uint64, snapshotEndSeq uint64, err error) {
 	rawValue, _, err := c.bucket.GetRaw(fmt.Sprintf("%s%d", c.checkpointPrefix, vbNo))
 	if err != nil {
@@ -278,9 +278,10 @@ func (c *DCPCommon) initMetadata(maxVbNo uint16) {
 }
 
 // TODO: Convert checkpoint persistence to an asynchronous batched process, since
-//       restarting w/ an older checkpoint:
-//         - Would only result in some repeated entry processing, which is already handled by the indexer
-//         - Is a relatively infrequent operation
+//
+//	restarting w/ an older checkpoint:
+//	  - Would only result in some repeated entry processing, which is already handled by the indexer
+//	  - Is a relatively infrequent operation
 func (c *DCPCommon) persistCheckpoint(vbNo uint16, value []byte) error {
 	TracefCtx(c.loggingCtx, KeyDCP, "Persisting checkpoint for vbno %d", vbNo)
 	return c.bucket.SetRaw(fmt.Sprintf("%s%d", c.checkpointPrefix, vbNo), 0, nil, value)

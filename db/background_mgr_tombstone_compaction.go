@@ -9,6 +9,7 @@
 package db
 
 import (
+	"context"
 	"sync/atomic"
 	"time"
 
@@ -32,14 +33,14 @@ func NewTombstoneCompactionManager() *BackgroundManager {
 	}
 }
 
-func (t *TombstoneCompactionManager) Init(options map[string]interface{}, clusterStatus []byte) error {
+func (t *TombstoneCompactionManager) Init(ctx context.Context, options map[string]interface{}, clusterStatus []byte) error {
 	database := options["database"].(*Database)
 	database.DbStats.Database().CompactionAttachmentStartTime.Set(time.Now().UTC().Unix())
 
 	return nil
 }
 
-func (t *TombstoneCompactionManager) Run(options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+func (t *TombstoneCompactionManager) Run(ctx context.Context, options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	database := options["database"].(*Database)
 
 	defer atomic.CompareAndSwapUint32(&database.CompactState, DBCompactRunning, DBCompactNotRunning)
@@ -47,7 +48,7 @@ func (t *TombstoneCompactionManager) Run(options map[string]interface{}, persist
 		atomic.StoreInt64(&t.PurgedDocCount, int64(*docsPurged))
 	}
 
-	_, err := database.Compact(true, callback, terminator)
+	_, err := database.Compact(ctx, true, callback, terminator)
 	if err != nil {
 		return err
 	}

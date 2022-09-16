@@ -43,11 +43,11 @@ Content-Type: application/json
 --0123456789--`
 
 	response := rt.SendAdminRequestWithHeaders(http.MethodPut, "/db/doc1", bodyText, reqHeaders)
-	requireStatus(t, response, http.StatusCreated)
+	RequireStatus(t, response, http.StatusCreated)
 
 	response = rt.SendAdminRequestWithHeaders(http.MethodGet, "/db/doc1", "", reqHeaders)
 	log.Printf("response: %v", string(response.BodyBytes()))
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 }
 
 func TestReadJSONFromMIME(t *testing.T) {
@@ -138,10 +138,10 @@ Content-Disposition: attachment; filename=att.txt
 --123--`
 
 	response := rt.SendAdminRequestWithHeaders(http.MethodPut, "/db/doc1", bodyText, reqHeaders)
-	requireStatus(t, response, http.StatusCreated)
+	RequireStatus(t, response, http.StatusCreated)
 
 	response = rt.SendAdminRequestWithHeaders(http.MethodGet, "/db/doc1", "", reqHeaders)
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 
 	var body db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.BodyBytes(), &body))

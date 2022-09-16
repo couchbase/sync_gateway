@@ -32,18 +32,18 @@ const (
 
 var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
 
-func NewBlipSyncContext(bc *blip.Context, db *Database, contextID string, replicationStats *BlipSyncStats) *BlipSyncContext {
+func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, contextID string, replicationStats *BlipSyncStats) *BlipSyncContext {
 	bsc := &BlipSyncContext{
 		blipContext:             bc,
 		blipContextDb:           db,
-		loggingCtx:              db.Ctx,
+		loggingCtx:              ctx,
 		terminator:              make(chan bool),
 		userChangeWaiter:        db.NewUserWaiter(),
 		sgCanUseDeltas:          db.DeltaSyncEnabled(),
 		replicationStats:        replicationStats,
 		inFlightChangesThrottle: make(chan struct{}, maxInFlightChangesBatches),
 	}
-	bsc.changesCtx, bsc.changesCtxCancel = context.WithCancel(context.Background())
+	bsc.changesCtx, bsc.changesCtxCancel = context.WithCancel(context.Background()) // TODO: re-eval, using ctx here breaks TestGroupIDReplications
 	if bsc.replicationStats == nil {
 		bsc.replicationStats = NewBlipSyncStats()
 	}
@@ -59,7 +59,7 @@ func NewBlipSyncContext(bc *blip.Context, db *Database, contextID string, replic
 	// Register default handlers
 	bc.DefaultHandler = bsc.NotFoundHandler
 	bc.FatalErrorHandler = func(err error) {
-		base.InfofCtx(db.Ctx, base.KeyHTTP, "%s:     --> BLIP+WebSocket connection error: %v", contextID, err)
+		base.InfofCtx(ctx, base.KeyHTTP, "%s:     --> BLIP+WebSocket connection error: %v", contextID, err)
 	}
 
 	// Register 2.x replicator handlers
@@ -233,7 +233,6 @@ func (bsc *BlipSyncContext) copyContextDatabase() *Database {
 
 func (bsc *BlipSyncContext) _copyContextDatabase() *Database {
 	databaseCopy, _ := GetDatabase(bsc.blipContextDb.DatabaseContext, bsc.blipContextDb.User())
-	databaseCopy.Ctx = bsc.loggingCtx
 	return databaseCopy
 }
 
@@ -566,7 +565,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 		collectionIdx = &coll
 	}
 
-	rev, err := handleChangesResponseDb.GetRev(docID, revID, true, nil)
+	rev, err := handleChangesResponseDb.GetRev(bsc.loggingCtx, docID, revID, true, nil)
 	if base.IsDocNotFoundError(err) {
 		return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
 	} else if err != nil {

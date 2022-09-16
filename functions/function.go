@@ -79,7 +79,7 @@ func CompileFunction(name string, fnConfig *FunctionConfig) (db.UserFunction, er
 }
 
 // Validates a UserFunctionConfigMap.
-func ValidateFunctions(config FunctionConfigMap) error {
+func ValidateFunctions(ctx context.Context, config FunctionConfigMap) error {
 	_, err := CompileFunctions(config)
 	return err
 }
@@ -134,7 +134,7 @@ func (fn *functionImpl) Invoke(db *db.Database, args map[string]interface{}, mut
 		panic("missing context to UserFunction.Invoke")
 	}
 
-	if err := db.CheckTimeout(); err != nil {
+	if err := db.CheckTimeout(ctx); err != nil {
 		return nil, err
 	}
 

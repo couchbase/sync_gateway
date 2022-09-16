@@ -810,10 +810,11 @@ func CreateBucketScopesAndCollections(ctx context.Context, bucketSpec BucketSpec
 
 // RequireAllAssertions ensures that all assertion results were true/ok, and fails the test if any were not.
 // Usage:
-//     RequireAllAssertions(t,
-//         assert.True(t, condition1),
-//         assert.True(t, condition2),
-//     )
+//
+//	RequireAllAssertions(t,
+//	    assert.True(t, condition1),
+//	    assert.True(t, condition2),
+//	)
 func RequireAllAssertions(t *testing.T, assertionResults ...bool) {
 	var failed bool
 	for _, ok := range assertionResults {
@@ -823,4 +824,22 @@ func RequireAllAssertions(t *testing.T, assertionResults ...bool) {
 		}
 	}
 	require.Falsef(t, failed, "One or more assertions failed: %v", assertionResults)
+}
+
+// LongRunningTest skips the test if running in -short mode, and logs if the test completed quickly under other circumstances.
+func LongRunningTest(t *testing.T) {
+	const (
+		shortTestThreshold = time.Second
+	)
+	if testing.Short() {
+		t.Skip("skipping long running test in short mode")
+		return
+	}
+	start := time.Now()
+	t.Cleanup(func() {
+		testDuration := time.Since(start)
+		if !t.Failed() && testDuration < shortTestThreshold {
+			t.Logf("TEST: %q was marked as long running, but finished in %v (less than %v) - consider removing LongRunningTest", t.Name(), testDuration, shortTestThreshold)
+		}
+	})
 }

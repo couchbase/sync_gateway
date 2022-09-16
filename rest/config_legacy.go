@@ -361,7 +361,7 @@ func LoadLegacyServerConfig(path string) (config *LegacyServerConfig, err error)
 
 // readLegacyServerConfig returns a validated LegacyServerConfig from an io.Reader
 func readLegacyServerConfig(r io.Reader) (config *LegacyServerConfig, err error) {
-	err = decodeAndSanitiseConfig(r, &config)
+	err = DecodeAndSanitiseConfig(r, &config)
 	if err != nil {
 		return config, err
 	}

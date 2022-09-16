@@ -150,8 +150,9 @@ func TestCBGTIndexCreation(t *testing.T) {
 			spec := bucket.BucketSpec
 
 			// Use an in-memory cfg, set up cbgt manager
+			ctx := LogContextWith(TestCtx(t), &DatabaseLogContext{DatabaseName: tc.dbName})
 			cfg := cbgt.NewCfgMem()
-			context, err := initCBGTManager(bucket, spec, cfg, "testIndexCreation", tc.dbName)
+			context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", tc.dbName)
 			assert.NoError(t, err)
 			defer context.RemoveFeedCredentials(tc.dbName)
 
@@ -224,7 +225,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 			}
 
 			// Create cbgt index via SG handling
-			err = createCBGTIndex(context, tc.dbName, configGroup, bucket, spec, 16)
+			err = createCBGTIndex(ctx, context, tc.dbName, configGroup, bucket, spec, 16)
 			require.NoError(t, err)
 
 			// Verify single index exists, and matches expected naming
@@ -253,8 +254,9 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 	testDbName := "testDB"
 
 	// Use an in-memory cfg, set up cbgt manager
+	ctx := TestCtx(t)
 	cfg := cbgt.NewCfgMem()
-	context, err := initCBGTManager(bucket, spec, cfg, "testIndexCreation", testDbName)
+	context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", testDbName)
 	assert.NoError(t, err)
 	defer context.RemoveFeedCredentials(testDbName)
 
@@ -294,7 +296,7 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 	require.NoError(t, err, "Unable to create legacy-style index")
 
 	// Create cbgt index
-	err = createCBGTIndex(context, testDbName, configGroup, bucket, spec, 16)
+	err = createCBGTIndex(ctx, context, testDbName, configGroup, bucket, spec, 16)
 	require.NoError(t, err)
 
 	// Verify single index created
@@ -303,7 +305,7 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 	assert.Equal(t, 1, len(indexDefsMap))
 
 	// Attempt to recreate index
-	err = createCBGTIndex(context, testDbName, configGroup, bucket, spec, 16)
+	err = createCBGTIndex(ctx, context, testDbName, configGroup, bucket, spec, 16)
 	require.NoError(t, err)
 
 	// Verify single index defined (acts as upsert to existing)
@@ -329,8 +331,9 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 		"01234567890123456789012345678901234567890123456789"
 
 	// Use an in-memory cfg, set up cbgt manager
+	ctx := TestCtx(t)
 	cfg := cbgt.NewCfgMem()
-	context, err := initCBGTManager(bucket, spec, cfg, "testIndexCreation", unsafeTestDBName)
+	context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", unsafeTestDBName)
 	assert.NoError(t, err)
 	defer context.RemoveFeedCredentials(unsafeTestDBName)
 
@@ -370,7 +373,7 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	require.NoError(t, err, "Unable to create legacy-style index")
 
 	// Create cbgt index
-	err = createCBGTIndex(context, unsafeTestDBName, configGroup, bucket, spec, 16)
+	err = createCBGTIndex(ctx, context, unsafeTestDBName, configGroup, bucket, spec, 16)
 	require.NoError(t, err)
 
 	// Verify single index created
@@ -379,7 +382,7 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	assert.Equal(t, 1, len(indexDefsMap))
 
 	// Attempt to recreate index
-	err = createCBGTIndex(context, unsafeTestDBName, configGroup, bucket, spec, 16)
+	err = createCBGTIndex(ctx, context, unsafeTestDBName, configGroup, bucket, spec, 16)
 	require.NoError(t, err)
 
 	// Verify single index defined (acts as upsert to existing)
@@ -426,13 +429,14 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 			// random sleep to hit race conditions that depend on initial creation
 			time.Sleep(time.Duration(rand.Intn(100)) * time.Millisecond)
 
+			ctx := TestCtx(t)
 			managerUUID := fmt.Sprintf("%s%d", t.Name(), i)
-			context, err := initCBGTManager(bucket, spec, cfg, managerUUID, testDBName)
+			context, err := initCBGTManager(ctx, bucket, spec, cfg, managerUUID, testDBName)
 			assert.NoError(t, err)
 
 			// StartManager starts the manager and creates the index
 			log.Printf("Starting manager for %s", managerUUID)
-			startErr := context.StartManager(testDBName, configGroup, bucket, spec, DefaultImportPartitions)
+			startErr := context.StartManager(ctx, testDBName, configGroup, bucket, spec, DefaultImportPartitions)
 			assert.NoError(t, startErr)
 
 			managerWg.Done()
@@ -452,9 +456,10 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 }
 
 // Compare Atoi vs map lookup for partition conversion
-//    BenchmarkPartitionToVbNo/map-16         	100000000	        10.4 ns/op
-//    BenchmarkPartitionToVbNo/atoi-16        	500000000	         3.85 ns/op
-//    BenchmarkPartitionToVbNo/parseUint-16   	300000000	         5.04 ns/op
+//
+//	BenchmarkPartitionToVbNo/map-16         	100000000	        10.4 ns/op
+//	BenchmarkPartitionToVbNo/atoi-16        	500000000	         3.85 ns/op
+//	BenchmarkPartitionToVbNo/parseUint-16   	300000000	         5.04 ns/op
 func BenchmarkPartitionToVbNo(b *testing.B) {
 
 	// Initialize lookup map
