@@ -291,10 +291,10 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
 	defer b.Close()
 
-	testDB1, ctx1 := setupTestDB(t)
+	testDB1, ctx1 := setupTestDBForBucket(t, b)
 	defer testDB1.Close(ctx1)
 
-	testDB2, ctx2 := setupTestDB(t)
+	testDB2, ctx2 := setupTestDBForBucket(t, b.NoCloseClone())
 	defer testDB2.Close(ctx2)
 
 	var err error
@@ -436,10 +436,10 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
 	defer b.Close()
 
-	testDB1, ctx1 := setupTestDB(t)
+	testDB1, ctx1 := setupTestDBForBucket(t, b)
 	defer testDB1.Close(ctx1)
 
-	testDB2, ctx2 := setupTestDB(t)
+	testDB2, ctx2 := setupTestDBForBucket(t, b.NoCloseClone())
 	defer testDB2.Close(ctx2)
 
 	var err error
@@ -542,7 +542,7 @@ func TestAttachmentProcessError(t *testing.T) {
 	})
 	defer b.Close()
 
-	testDB1, ctx1 := setupTestDB(t)
+	testDB1, ctx1 := setupTestDBForBucket(t, b)
 	defer testDB1.Close(ctx1)
 
 	CreateLegacyAttachmentDoc(t, ctx1, testDB1, "docID", []byte("{}"), "attKey", []byte("{}"))
