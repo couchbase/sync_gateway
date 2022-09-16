@@ -1874,3 +1874,16 @@ func waitAndAssertBackgroundManagerExpiredHeartbeat(t testing.TB, bm *db.Backgro
 	}
 	return assert.Truef(t, base.IsDocNotFoundError(err), "expected heartbeat doc to expire, but got a different error: %v", err)
 }
+
+func (sc *ServerContext) isDatabaseSuspended(t *testing.T, dbName string) bool {
+	sc.lock.RLock()
+	defer sc.lock.RUnlock()
+	return sc._isDatabaseSuspended(dbName)
+}
+
+func (sc *ServerContext) suspendDatabase(t *testing.T, ctx context.Context, dbName string) error {
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+
+	return sc._suspendDatabase(ctx, dbName)
+}

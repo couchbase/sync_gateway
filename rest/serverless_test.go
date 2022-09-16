@@ -194,7 +194,7 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 	}`, tb.GetName(), base.TestsDisableGSI()))
 	requireStatus(t, resp, http.StatusCreated)
 
-	assert.False(t, sc.isDatabaseSuspended("db"))
+	assert.False(t, sc.isDatabaseSuspended(t, "db"))
 	assert.NotNil(t, sc.databases_["db"])
 	assert.Equal(t, "db", sc.bucketDbName[tb.GetName()])
 	assert.NotNil(t, sc.dbConfigs["db"])
@@ -205,15 +205,15 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Confirm false returned when db does not exist
-	err = sc.suspendDatabase(rt.Context(), "invalid_db")
+	err = sc.suspendDatabase(t, rt.Context(), "invalid_db")
 	assert.ErrorIs(t, base.ErrNotFound, err)
 
 	// Confirm true returned when suspended a database successfully
-	err = sc.suspendDatabase(rt.Context(), "db")
+	err = sc.suspendDatabase(t, rt.Context(), "db")
 	assert.NoError(t, err)
 
 	// Make sure database is suspended
-	assert.True(t, sc.isDatabaseSuspended("db"))
+	assert.True(t, sc.isDatabaseSuspended(t, "db"))
 	assert.Nil(t, sc.databases_["db"])
 	assert.NotEmpty(t, sc.bucketDbName[tb.GetName()])
 	assert.NotNil(t, sc.dbConfigs["db"])
@@ -230,7 +230,7 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 	// Unsuspend db
 	dbCtx, err = sc.unsuspendDatabase(rt.Context(), "db")
 	assert.NotNil(t, dbCtx)
-	assert.False(t, sc.isDatabaseSuspended("db"))
+	assert.False(t, sc.isDatabaseSuspended(t, "db"))
 	assert.NotNil(t, sc.databases_["db"])
 	assert.Equal(t, "db", sc.bucketDbName[tb.GetName()])
 	require.NotNil(t, sc.dbConfigs["db"])
@@ -273,7 +273,7 @@ func TestServerlessUnsuspendFetchFallback(t *testing.T) {
 	requireStatus(t, resp, http.StatusCreated)
 
 	// Suspend the database and remove it from dbConfigs, forcing unsuspendDatabase to fetch config from the bucket
-	err := sc.suspendDatabase(rt.Context(), "db")
+	err := sc.suspendDatabase(t, rt.Context(), "db")
 	assert.NoError(t, err)
 	delete(sc.dbConfigs, "db")
 	delete(sc.bucketDbName, tb.GetName())
@@ -390,7 +390,7 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 	requireStatus(t, resp, http.StatusCreated)
 
 	// Suspend the database
-	assert.NoError(t, sc.suspendDatabase(rt.Context(), "db"))
+	assert.NoError(t, sc.suspendDatabase(t, rt.Context(), "db"))
 	// Update database config
 	newCas, err := sc.bootstrapContext.connection.UpdateConfig(tb.GetName(), sc.config.Bootstrap.ConfigGroupID,
 		func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
@@ -399,7 +399,7 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 	)
 	// Confirm dbConfig cas did not update yet in SG, or get unsuspended
 	assert.NotEqual(t, sc.dbConfigs["db"].cas, newCas)
-	assert.True(t, sc.isDatabaseSuspended("db"))
+	assert.True(t, sc.isDatabaseSuspended(t, "db"))
 	assert.Nil(t, sc.databases_["db"])
 	// Trigger update frequency (would usually happen every ConfigUpdateFrequency seconds)
 	count, err := sc.fetchAndLoadConfigs(rt.Context(), false)
@@ -407,7 +407,7 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 	assert.Equal(t, 1, count)
 
 	// Make sure database is still suspended
-	assert.True(t, sc.isDatabaseSuspended("db"))
+	assert.True(t, sc.isDatabaseSuspended(t, "db"))
 	assert.Nil(t, sc.databases_["db"])
 }
 
@@ -475,7 +475,7 @@ func TestSuspendingFlags(t *testing.T) {
 			}`, tb.GetName(), base.TestsDisableGSI(), suspendableDbOption))
 			requireStatus(t, resp, http.StatusCreated)
 
-			err := sc.suspendDatabase(rt.Context(), "db")
+			err := sc.suspendDatabase(t, rt.Context(), "db")
 			if test.expectCanSuspend {
 				assert.NoError(t, err)
 			} else {

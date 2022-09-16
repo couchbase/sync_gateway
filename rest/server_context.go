@@ -1052,24 +1052,12 @@ func (sc *ServerContext) _removeDatabase(ctx context.Context, dbName string) boo
 	delete(sc.bucketDbName, bucket)
 	return true
 }
-func (sc *ServerContext) isDatabaseSuspended(dbName string) bool {
-	sc.lock.RLock()
-	defer sc.lock.RUnlock()
-	return sc._isDatabaseSuspended(dbName)
-}
 
 func (sc *ServerContext) _isDatabaseSuspended(dbName string) bool {
 	if _, loaded := sc.databases_[dbName]; !loaded && sc.dbConfigs[dbName] != nil {
 		return true
 	}
 	return false
-}
-
-func (sc *ServerContext) suspendDatabase(ctx context.Context, dbName string) error {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
-
-	return sc._suspendDatabase(ctx, dbName)
 }
 
 func (sc *ServerContext) _suspendDatabase(ctx context.Context, dbName string) error {
