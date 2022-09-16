@@ -79,11 +79,11 @@ func createCommonRouter(sc *ServerContext, privs handlerPrivs) (root, db, keyspa
 	// These have public privileges so that they can be called without being logged in already
 	dbr.Handle("/_session", makeHandler(sc, publicPrivs, nil, nil, (*handler).handleSessionGET)).Methods("GET", "HEAD")
 
-	if sc.config.DeprecatedConfig != nil {
-		if sc.config.DeprecatedConfig.Facebook != nil {
+	if sc.Config.DeprecatedConfig != nil {
+		if sc.Config.DeprecatedConfig.Facebook != nil {
 			dbr.Handle("/_facebook", makeHandler(sc, publicPrivs, nil, nil, (*handler).handleFacebookPOST)).Methods("POST")
 		}
-		if sc.config.DeprecatedConfig.Google != nil {
+		if sc.Config.DeprecatedConfig.Google != nil {
 			dbr.Handle("/_google", makeHandler(sc, publicPrivs, nil, nil, (*handler).handleGooglePOST)).Methods("POST")
 		}
 	}
@@ -110,7 +110,7 @@ func createCommonRouter(sc *ServerContext, privs handlerPrivs) (root, db, keyspa
 	dbr.Handle("/_blipsync", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handleBLIPSync)).Methods("GET")
 
 	// User queries & functions
-	if sc.config.Unsupported.UserQueries != nil && *sc.config.Unsupported.UserQueries {
+	if sc.Config.Unsupported.UserQueries != nil && *sc.Config.Unsupported.UserQueries {
 		dbr.Handle("/_function/{name}", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleUserFunction)).Methods("GET", "POST")
 		dbr.Handle("/_graphql", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleGraphQL)).Methods("GET")
 		dbr.Handle("/_graphql", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handleGraphQL)).Methods("POST")
@@ -303,7 +303,7 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePostUpgrade)).Methods("POST")
 
 	// User query config APIs:
-	if sc.config.Unsupported.UserQueries != nil && *sc.config.Unsupported.UserQueries {
+	if sc.Config.Unsupported.UserQueries != nil && *sc.Config.Unsupported.UserQueries {
 		dbr.Handle("/_config/functions",
 			makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfigFunctions)).Methods("GET")
 		dbr.Handle("/_config/functions/{function}",
@@ -369,11 +369,11 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 
 		// Inject CORS if enabled and requested and not admin port
 		originHeader := rq.Header["Origin"]
-		if privs != adminPrivs && sc.config.API.CORS != nil && len(originHeader) > 0 {
-			origin := matchedOrigin(sc.config.API.CORS.Origin, originHeader)
+		if privs != adminPrivs && sc.Config.API.CORS != nil && len(originHeader) > 0 {
+			origin := matchedOrigin(sc.Config.API.CORS.Origin, originHeader)
 			response.Header().Add("Access-Control-Allow-Origin", origin)
 			response.Header().Add("Access-Control-Allow-Credentials", "true")
-			response.Header().Add("Access-Control-Allow-Headers", strings.Join(sc.config.API.CORS.Headers, ", "))
+			response.Header().Add("Access-Control-Allow-Headers", strings.Join(sc.Config.API.CORS.Headers, ", "))
 		}
 
 		if router.Match(rq, &match) {
@@ -394,8 +394,8 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 				h.writeStatus(http.StatusNotFound, "unknown URL")
 			} else {
 				response.Header().Add("Allow", strings.Join(options, ", "))
-				if privs != adminPrivs && sc.config.API.CORS != nil && len(originHeader) > 0 {
-					response.Header().Add("Access-Control-Max-Age", strconv.Itoa(sc.config.API.CORS.MaxAge))
+				if privs != adminPrivs && sc.Config.API.CORS != nil && len(originHeader) > 0 {
+					response.Header().Add("Access-Control-Max-Age", strconv.Itoa(sc.Config.API.CORS.MaxAge))
 					response.Header().Add("Access-Control-Allow-Methods", strings.Join(options, ", "))
 				}
 				if rq.Method != "OPTIONS" {

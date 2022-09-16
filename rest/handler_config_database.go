@@ -17,7 +17,7 @@ import (
 // Returns the current database config object for this request
 func (h *handler) getDBConfig() (config *DbConfig, etagVersion string, err error) {
 	h.assertAdminOnly()
-	if h.server.bootstrapContext.connection == nil {
+	if h.server.BootstrapContext.Connection == nil {
 		if dbConfig := h.server.GetDatabaseConfig(h.db.Name); dbConfig != nil {
 			etagVersion = dbConfig.Version
 			if etagVersion == "" {
@@ -47,8 +47,8 @@ func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 		// Update persistently-stored config:
 		bucket := h.db.Bucket.GetName()
 		var updatedDbConfig *DatabaseConfig
-		cas, err := h.server.bootstrapContext.connection.UpdateConfig(
-			bucket, h.server.config.Bootstrap.ConfigGroupID,
+		cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
+			bucket, h.server.Config.Bootstrap.ConfigGroupID,
 			func(rawBucketConfig []byte) (newConfig []byte, err error) {
 				var bucketDbConfig DatabaseConfig
 				if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
@@ -81,9 +81,9 @@ func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 		}
 		updatedDbConfig.cas = cas
 
-		dbCreds := h.server.config.DatabaseCredentials[dbName]
-		bucketCreds := h.server.config.BucketCredentials[bucket]
-		if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap, dbCreds, bucketCreds, h.server.config.IsServerless()); err != nil {
+		dbCreds := h.server.Config.DatabaseCredentials[dbName]
+		bucketCreds := h.server.Config.BucketCredentials[bucket]
+		if err := updatedDbConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
 			return err
 		}
 

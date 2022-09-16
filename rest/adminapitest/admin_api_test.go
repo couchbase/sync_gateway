@@ -6,7 +6,7 @@
 //  software will be governed by the Apache License, Version 2.0, included in
 //  the file licenses/APL2.txt.
 
-package rest
+package adminapitest
 
 import (
 	"bufio"
@@ -32,12 +32,13 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/rest"
 	"github.com/stretchr/testify/assert"
 )
 
 // Reproduces CBG-1412 - JSON strings in some responses not being correctly escaped
 func TestPutDocSpecialChar(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 	testCases := []struct {
 		name         string
@@ -86,7 +87,7 @@ func TestPutDocSpecialChar(t *testing.T) {
 				t.Skipf("Skipping enterprise-only test")
 			}
 			tr := rt.SendAdminRequest(testCase.method, fmt.Sprintf("/db/%s", testCase.pathDocID), testCase.body)
-			RequireStatus(t, tr, testCase.expectedResp)
+			rest.RequireStatus(t, tr, testCase.expectedResp)
 			var body map[string]interface{}
 			err := json.Unmarshal(tr.BodyBytes(), &body)
 			assert.NoError(t, err)
@@ -95,7 +96,7 @@ func TestPutDocSpecialChar(t *testing.T) {
 
 	t.Run("Delete Double quote Doc ID", func(t *testing.T) { // Should be done for Local Document deletion when it returns response
 		tr := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", `del"ete"Me`), "{}") // Create the doc to delete
-		RequireStatus(t, tr, http.StatusCreated)
+		rest.RequireStatus(t, tr, http.StatusCreated)
 		var putBody struct {
 			Rev string `json:"rev"`
 		}
@@ -103,7 +104,7 @@ func TestPutDocSpecialChar(t *testing.T) {
 		assert.NoError(t, err)
 
 		tr = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/%s?rev=%s", `del"ete"Me`, putBody.Rev), "{}")
-		RequireStatus(t, tr, http.StatusOK)
+		rest.RequireStatus(t, tr, http.StatusOK)
 		var body map[string]interface{}
 		err = json.Unmarshal(tr.BodyBytes(), &body)
 		assert.NoError(t, err)
@@ -113,7 +114,7 @@ func TestPutDocSpecialChar(t *testing.T) {
 // Reproduces #3048 Panic when attempting to make invalid update to a conflicting document
 func TestNoPanicInvalidUpdate(t *testing.T) {
 
-	var rt = NewRestTester(t, nil)
+	var rt = rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	docId := "conflictTest"
@@ -122,7 +123,7 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", docId), `{"value":"initial"}`)
 	response.DumpBody()
 
-	RequireStatus(t, response, http.StatusCreated)
+	rest.RequireStatus(t, response, http.StatusCreated)
 
 	// Discover revision ID
 	// TODO: The schema for SG responses should be defined in our code somewhere to avoid this clunky approach
@@ -167,132 +168,132 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 func TestUserPasswordValidation(t *testing.T) {
 
 	// PUT a user
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)
-	RequireStatus(t, response, 201)
+	rest.RequireStatus(t, response, 201)
 
 	// PUT a user without a password, should fail
 	response = rt.SendAdminRequest("PUT", "/db/_user/ajresnopassword", `{"email":"ajres@couchbase.com", "admin_channels":["foo", "bar"]}`)
-	RequireStatus(t, response, 400)
+	rest.RequireStatus(t, response, 400)
 
 	// POST a user without a password, should fail
 	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"ajresnopassword", "email":"ajres@couchbase.com", "admin_channels":["foo", "bar"]}`)
-	RequireStatus(t, response, 400)
+	rest.RequireStatus(t, response, 400)
 
 	// PUT a user with a two character password, should fail
 	response = rt.SendAdminRequest("PUT", "/db/_user/ajresnopassword", `{"email":"ajres@couchbase.com", "password":"in", "admin_channels":["foo", "bar"]}`)
-	RequireStatus(t, response, 400)
+	rest.RequireStatus(t, response, 400)
 
 	// POST a user with a two character password, should fail
 	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"ajresnopassword", "email":"ajres@couchbase.com", "password":"an", "admin_channels":["foo", "bar"]}`)
-	RequireStatus(t, response, 400)
+	rest.RequireStatus(t, response, 400)
 
 	// PUT a user with a zero character password, should fail
 	response = rt.SendAdminRequest("PUT", "/db/_user/ajresnopassword", `{"email":"ajres@couchbase.com", "password":"", "admin_channels":["foo", "bar"]}`)
-	RequireStatus(t, response, 400)
+	rest.RequireStatus(t, response, 400)
 
 	// POST a user with a zero character password, should fail
 	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"ajresnopassword", "email":"ajres@couchbase.com", "password":"", "admin_channels":["foo", "bar"]}`)
-	RequireStatus(t, response, 400)
+	rest.RequireStatus(t, response, 400)
 
 	// PUT update a user with a two character password, should fail
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"password":"an"}`)
-	RequireStatus(t, response, 400)
+	rest.RequireStatus(t, response, 400)
 
 	// PUT update a user with a one character password, should fail
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"password":"a"}`)
-	RequireStatus(t, response, 400)
+	rest.RequireStatus(t, response, 400)
 
 	// PUT update a user with a zero character password, should fail
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"password":""}`)
-	RequireStatus(t, response, 400)
+	rest.RequireStatus(t, response, 400)
 
 	// PUT update a user with a three character password, should succeed
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"password":"abc"}`)
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 }
 
 func TestUserAllowEmptyPassword(t *testing.T) {
 
 	// PUT a user
-	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{AllowEmptyPassword: base.BoolPtr(true)}}})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{AllowEmptyPassword: base.BoolPtr(true)}}})
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)
-	RequireStatus(t, response, 201)
+	rest.RequireStatus(t, response, 201)
 
 	// PUT a user without a password, should succeed
 	response = rt.SendAdminRequest("PUT", "/db/_user/nopassword1", `{"email":"ajres@couchbase.com", "admin_channels":["foo", "bar"]}`)
-	RequireStatus(t, response, 201)
+	rest.RequireStatus(t, response, 201)
 
 	// POST a user without a password, should succeed
 	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"nopassword2", "email":"ajres@couchbase.com", "admin_channels":["foo", "bar"]}`)
-	RequireStatus(t, response, 201)
+	rest.RequireStatus(t, response, 201)
 
 	// PUT a user with a two character password, should fail
 	response = rt.SendAdminRequest("PUT", "/db/_user/nopassword3", `{"email":"ajres@couchbase.com", "password":"in", "admin_channels":["foo", "bar"]}`)
-	RequireStatus(t, response, 400)
+	rest.RequireStatus(t, response, 400)
 
 	// POST a user with a two character password, should fail
 	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"nopassword4", "email":"ajres@couchbase.com", "password":"an", "admin_channels":["foo", "bar"]}`)
-	RequireStatus(t, response, 400)
+	rest.RequireStatus(t, response, 400)
 
 	// PUT a user with a zero character password, should succeed
 	response = rt.SendAdminRequest("PUT", "/db/_user/nopassword5", `{"email":"ajres@couchbase.com", "password":"", "admin_channels":["foo", "bar"]}`)
-	RequireStatus(t, response, 201)
+	rest.RequireStatus(t, response, 201)
 
 	// POST a user with a zero character password, should succeed
 	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"nopassword6", "email":"ajres@couchbase.com", "password":"", "admin_channels":["foo", "bar"]}`)
-	RequireStatus(t, response, 201)
+	rest.RequireStatus(t, response, 201)
 
 	// PUT update a user with a two character password, should fail
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"password":"an"}`)
-	RequireStatus(t, response, 400)
+	rest.RequireStatus(t, response, 400)
 
 	// PUT update a user with a one character password, should fail
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"password":"a"}`)
-	RequireStatus(t, response, 400)
+	rest.RequireStatus(t, response, 400)
 
 	// PUT update a user with a zero character password, should succeed
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"password":""}`)
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	// PUT update a user with a three character password, should succeed
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"password":"abc"}`)
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 }
 
 func TestPrincipalForbidUpdatingChannels(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{})
 	defer rt.Close()
 
 	// Users
 	// PUT admin_channels
 	response := rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)
-	RequireStatus(t, response, 201)
+	rest.RequireStatus(t, response, 201)
 
 	// PUT all_channels - should fail
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "all_channels":["baz"]}`)
-	RequireStatus(t, response, 400)
+	rest.RequireStatus(t, response, 400)
 
 	// PUT admin_roles
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_roles":["foo", "bar"]}`)
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	// PUT roles - should fail
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "roles":["baz"]}`)
-	RequireStatus(t, response, 400)
+	rest.RequireStatus(t, response, 400)
 
 	// Roles
 	// PUT admin_channels
 	response = rt.SendAdminRequest("PUT", "/db/_role/test", `{"admin_channels":["foo", "bar"]}`)
-	RequireStatus(t, response, 201)
+	rest.RequireStatus(t, response, 201)
 
 	// PUT all_channels - should fail
 	response = rt.SendAdminRequest("PUT", "/db/_role/test", `{"all_channels":["baz"]}`)
-	RequireStatus(t, response, 400)
+	rest.RequireStatus(t, response, 400)
 }
 
 // Test user access grant while that user has an active changes feed.  (see issue #880)
@@ -330,16 +331,16 @@ function(doc, oldDoc) {
 }
 
 `
-	rtConfig := RestTesterConfig{SyncFn: syncFunction}
-	var rt = NewRestTester(t, &rtConfig)
+	rtConfig := rest.RestTesterConfig{SyncFn: syncFunction}
+	var rt = rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["profile-bernard"]}`)
-	RequireStatus(t, response, 201)
+	rest.RequireStatus(t, response, 201)
 
 	// Try to force channel initialisation for user bernard
 	response = rt.SendAdminRequest("GET", "/db/_user/bernard", "")
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	// Create list docs
 	input := `{"docs": [`
@@ -379,7 +380,7 @@ function(doc, oldDoc) {
 			// Timeout allows us to read continuous changes after processing is complete.  Needs to be long enough to
 			// ensure it doesn't terminate before the first change is sent.
 			log.Printf("Invoking _changes?feed=continuous&since=%s&timeout=2000", since)
-			changesResponse := rt.Send(RequestByUser("GET", fmt.Sprintf("/db/_changes?feed=continuous&since=%s&timeout=2000", since), "", "bernard"))
+			changesResponse := rt.Send(rest.RequestByUser("GET", fmt.Sprintf("/db/_changes?feed=continuous&since=%s&timeout=2000", since), "", "bernard"))
 
 			changes, err := readContinuousChanges(changesResponse)
 			assert.NoError(t, err)
@@ -424,7 +425,7 @@ function(doc, oldDoc) {
 		input = input + `]}`
 
 		log.Printf("Sending 2nd round of _bulk_docs")
-		response = rt.Send(RequestByUser("POST", "/db/_bulk_docs", input, "bernard"))
+		response = rt.Send(rest.RequestByUser("POST", "/db/_bulk_docs", input, "bernard"))
 		log.Printf("Sent 2nd round of _bulk_docs")
 
 	}
@@ -441,7 +442,7 @@ func TestLoggingKeys(t *testing.T) {
 	// Reset logging to initial state, in case any other tests forgot to clean up after themselves
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Assert default log channels are enabled
@@ -451,7 +452,7 @@ func TestLoggingKeys(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{}, logKeys)
 
 	// Set logKeys, Changes+ should enable Changes (PUT replaces any existing log keys)
-	RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging", `{"Changes+":true, "Cache":true, "HTTP":true}`), 200)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging", `{"Changes+":true, "Cache":true, "HTTP":true}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var updatedLogKeys map[string]interface{}
@@ -459,7 +460,7 @@ func TestLoggingKeys(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{"Changes": true, "Cache": true, "HTTP": true}, updatedLogKeys)
 
 	// Disable Changes logKey which should also disable Changes+
-	RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes":false}`), 200)
+	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes":false}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var deletedLogKeys map[string]interface{}
@@ -467,7 +468,7 @@ func TestLoggingKeys(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{"Cache": true, "HTTP": true}, deletedLogKeys)
 
 	// Enable Changes++, which should enable Changes (POST append logKeys)
-	RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
+	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var appendedLogKeys map[string]interface{}
@@ -475,7 +476,7 @@ func TestLoggingKeys(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{"Changes": true, "Cache": true, "HTTP": true}, appendedLogKeys)
 
 	// Disable Changes++ (POST modifies logKeys)
-	RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":false}`), 200)
+	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":false}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var disabledLogKeys map[string]interface{}
@@ -483,10 +484,10 @@ func TestLoggingKeys(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{"Cache": true, "HTTP": true}, disabledLogKeys)
 
 	// Re-Enable Changes++, which should enable Changes (POST append logKeys)
-	RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
+	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
 
 	// Disable Changes+ which should disable Changes (POST modifies logKeys)
-	RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes+":false}`), 200)
+	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes+":false}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var disabled2LogKeys map[string]interface{}
@@ -494,10 +495,10 @@ func TestLoggingKeys(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{"Cache": true, "HTTP": true}, disabled2LogKeys)
 
 	// Re-Enable Changes++, which should enable Changes (POST append logKeys)
-	RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
+	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
 
 	// Disable Changes (POST modifies logKeys)
-	RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes":false}`), 200)
+	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes":false}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var disabled3LogKeys map[string]interface{}
@@ -505,7 +506,7 @@ func TestLoggingKeys(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{"Cache": true, "HTTP": true}, disabled3LogKeys)
 
 	// Disable all logKeys by using PUT with an empty channel list
-	RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging", `{}`), 200)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging", `{}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var noLogKeys map[string]interface{}
@@ -521,7 +522,7 @@ func TestLoggingLevels(t *testing.T) {
 	// Reset logging to initial state, in case any other tests forgot to clean up after themselves
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Log keys should be blank
@@ -531,24 +532,24 @@ func TestLoggingLevels(t *testing.T) {
 	assert.Equal(t, map[string]bool{}, logKeys)
 
 	// Set log level via logLevel query parameter
-	RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?logLevel=error", ``), http.StatusOK)
-	RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?logLevel=invalidLogLevel", ``), http.StatusBadRequest)
-	RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?logLevel=", ``), http.StatusBadRequest)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?logLevel=error", ``), http.StatusOK)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?logLevel=invalidLogLevel", ``), http.StatusBadRequest)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?logLevel=", ``), http.StatusBadRequest)
 
 	// Set log level via old level query parameter
-	RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=1", ``), http.StatusOK)
-	RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=2", ``), http.StatusOK)
-	RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=3", ``), http.StatusOK)
-	RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=10", ``), http.StatusOK) // Value is clamped to acceptable range, without returning an error
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=1", ``), http.StatusOK)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=2", ``), http.StatusOK)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=3", ``), http.StatusOK)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=10", ``), http.StatusOK) // Value is clamped to acceptable range, without returning an error
 
-	RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=0", ``), http.StatusBadRequest) // Zero-value is ignored and body is to be parsed
-	RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=0", `{}`), http.StatusOK)       // Zero-value is ignored and body is to be parsed
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=0", ``), http.StatusBadRequest) // Zero-value is ignored and body is to be parsed
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=0", `{}`), http.StatusOK)       // Zero-value is ignored and body is to be parsed
 
-	RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=invalidLogLevel", ``), http.StatusBadRequest)
-	RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=", ``), http.StatusBadRequest)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=invalidLogLevel", ``), http.StatusBadRequest)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=", ``), http.StatusBadRequest)
 
 	// Trying to set log level via the body will not work (the endpoint expects a log key map)
-	RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging", `{"logLevel": "debug"}`), http.StatusBadRequest)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging", `{"logLevel": "debug"}`), http.StatusBadRequest)
 }
 
 func TestLoggingCombined(t *testing.T) {
@@ -559,7 +560,7 @@ func TestLoggingCombined(t *testing.T) {
 	// Reset logging to initial state, in case any other tests forgot to clean up after themselves
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Log keys should be blank
@@ -569,7 +570,7 @@ func TestLoggingCombined(t *testing.T) {
 	assert.Equal(t, map[string]bool{}, logKeys)
 
 	// Set log keys and log level in a single request
-	RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?logLevel=trace", `{"Changes":true, "Cache":true, "HTTP":true}`), http.StatusOK)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?logLevel=trace", `{"Changes":true, "Cache":true, "HTTP":true}`), http.StatusOK)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &logKeys))
@@ -577,22 +578,22 @@ func TestLoggingCombined(t *testing.T) {
 }
 
 func TestGetStatus(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	response := rt.SendRequest("GET", "/_status", "")
-	RequireStatus(t, response, 404)
+	rest.RequireStatus(t, response, 404)
 
 	response = rt.SendAdminRequest("GET", "/_status", "")
-	RequireStatus(t, response, 200)
-	var responseBody Status
+	rest.RequireStatus(t, response, 200)
+	var responseBody rest.Status
 	err := base.JSONUnmarshal(response.Body.Bytes(), &responseBody)
 	assert.NoError(t, err)
 
 	assert.Equal(t, base.LongVersionString, responseBody.Version)
 
 	response = rt.SendAdminRequest("OPTIONS", "/_status", "")
-	RequireStatus(t, response, 204)
+	rest.RequireStatus(t, response, 204)
 	assert.Equal(t, "GET", response.Header().Get("Allow"))
 }
 
@@ -601,18 +602,18 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache, base.KeyHTTP)
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); if(doc.type == "setaccess") { access(doc.owner, doc.channel);}}`}
-	rt := NewRestTester(t, &rtConfig)
+	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); if(doc.type == "setaccess") { access(doc.owner, doc.channel);}}`}
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["foo"]}`)
-	RequireStatus(t, response, 201)
+	rest.RequireStatus(t, response, 201)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		changesResponse := rt.Send(RequestByUser("GET", "/db/_changes?feed=continuous&since=0&timeout=3000", "", "bernard"))
+		changesResponse := rt.Send(rest.RequestByUser("GET", "/db/_changes?feed=continuous&since=0&timeout=3000", "", "bernard"))
 		// When testing single threaded, this reproduces the issue described in #809.
 		// When testing multithreaded (-cpu 4 -race), there are three (valid) possibilities"
 		// 1. The DELETE gets processed before the _changes auth completes: this will return 401
@@ -649,7 +650,7 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 }
 
 // Reads continuous changes feed response into slice of ChangeEntry
-func readContinuousChanges(response *TestResponse) ([]db.ChangeEntry, error) {
+func readContinuousChanges(response *rest.TestResponse) ([]db.ChangeEntry, error) {
 	var change db.ChangeEntry
 	changes := make([]db.ChangeEntry, 0)
 	reader := bufio.NewReader(response.Body)
@@ -679,20 +680,20 @@ func readContinuousChanges(response *TestResponse) ([]db.ChangeEntry, error) {
 
 func TestRoleAPI(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	// PUT a role
-	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_role/hipster", ""), 404)
+	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/_role/hipster", ""), 404)
 	response := rt.SendAdminRequest("PUT", "/db/_role/hipster", `{"admin_channels":["fedoras", "fixies"]}`)
-	RequireStatus(t, response, 201)
+	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/db/_role/testdeleted", `{"admin_channels":["fedoras", "fixies"]}`)
-	RequireStatus(t, response, 201)
-	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_role/testdeleted", ""), 200)
+	rest.RequireStatus(t, response, 201)
+	rest.RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_role/testdeleted", ""), 200)
 
 	// GET the role and make sure the result is OK
 	response = rt.SendAdminRequest("GET", "/db/_role/hipster", "")
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, "hipster", body["name"])
@@ -700,28 +701,28 @@ func TestRoleAPI(t *testing.T) {
 	assert.Equal(t, nil, body["password"])
 
 	response = rt.SendAdminRequest("GET", "/db/_role/", "")
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 	assert.Equal(t, `["hipster"]`, response.Body.String())
 
 	// DELETE the role
-	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_role/hipster", ""), 200)
-	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_role/hipster", ""), 404)
+	rest.RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_role/hipster", ""), 200)
+	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/_role/hipster", ""), 404)
 
 	// POST a role
 	response = rt.SendAdminRequest("POST", "/db/_role", `{"name":"hipster", "admin_channels":["fedoras", "fixies"]}`)
-	RequireStatus(t, response, 301)
+	rest.RequireStatus(t, response, 301)
 	response = rt.SendAdminRequest("POST", "/db/_role/", `{"name":"hipster", "admin_channels":["fedoras", "fixies"]}`)
-	RequireStatus(t, response, 201)
+	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("GET", "/db/_role/hipster", "")
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 	body = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, "hipster", body["name"])
-	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_role/hipster", ""), 200)
+	rest.RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_role/hipster", ""), 200)
 
 	// GET including deleted
 	response = rt.SendAdminRequest("GET", "/db/_role/?deleted=true", "")
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 	assert.Equal(t, `["hipster","testdeleted"]`, response.Body.String())
 }
 
@@ -729,11 +730,11 @@ func TestGuestUser(t *testing.T) {
 
 	guestUserEndpoint := fmt.Sprintf("/db/_user/%s", base.GuestUsername)
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest(http.MethodGet, guestUserEndpoint, "")
-	RequireStatus(t, response, http.StatusOK)
+	rest.RequireStatus(t, response, http.StatusOK)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, base.GuestUsername, body["name"])
@@ -742,11 +743,11 @@ func TestGuestUser(t *testing.T) {
 
 	// Disable the guest user:
 	response = rt.SendAdminRequest(http.MethodPut, guestUserEndpoint, `{"disabled":true}`)
-	RequireStatus(t, response, http.StatusOK)
+	rest.RequireStatus(t, response, http.StatusOK)
 
 	// Get guest user and verify it is now disabled:
 	response = rt.SendAdminRequest(http.MethodGet, guestUserEndpoint, "")
-	RequireStatus(t, response, http.StatusOK)
+	rest.RequireStatus(t, response, http.StatusOK)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, base.GuestUsername, body["name"])
 	assert.True(t, body["disabled"].(bool))
@@ -760,14 +761,14 @@ func TestGuestUser(t *testing.T) {
 
 	// We can't delete the guest user, but we should get a reasonable error back.
 	response = rt.SendAdminRequest(http.MethodDelete, guestUserEndpoint, "")
-	RequireStatus(t, response, http.StatusMethodNotAllowed)
+	rest.RequireStatus(t, response, http.StatusMethodNotAllowed)
 }
 
 // Test that TTL values greater than the default max offset TTL 2592000 seconds are processed correctly
 // fixes #974
 func TestSessionTtlGreaterThan30Days(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	a := auth.NewAuthenticator(rt.Bucket(), nil, auth.DefaultAuthenticatorOptions())
@@ -782,14 +783,14 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 	assert.True(t, user.Disabled())
 
 	response := rt.SendRequest("PUT", "/db/doc", `{"hi": "there"}`)
-	RequireStatus(t, response, 401)
+	rest.RequireStatus(t, response, 401)
 
 	user, err = a.NewUser("pupshaw", "letmein", channels.SetOf(t, "*"))
 	assert.NoError(t, a.Save(user))
 
 	// create a session with the maximum offset ttl value (30days) 2592000 seconds
 	response = rt.SendAdminRequest("POST", "/db/_session", `{"name":"pupshaw", "ttl":2592000}`)
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	layout := "2006-01-02T15:04:05"
 
@@ -802,7 +803,7 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 
 	// create a session with a ttl value one second greater thatn the max offset ttl 2592001 seconds
 	response = rt.SendAdminRequest("POST", "/db/_session", `{"name":"pupshaw", "ttl":2592001}`)
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	body = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -820,7 +821,7 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 // Check whether the session is getting extended or refreshed if 10% or more of the current
 // expiration time has elapsed.
 func TestSessionExtension(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{GuestEnabled: true})
 	defer rt.Close()
 
 	id, err := base.GenerateRandomSecret()
@@ -842,12 +843,12 @@ func TestSessionExtension(t *testing.T) {
 
 	response := rt.SendRequestWithHeaders("PUT", "/db/doc1", `{"hi": "there"}`, reqHeaders)
 	log.Printf("PUT Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
-	RequireStatus(t, response, http.StatusCreated)
+	rest.RequireStatus(t, response, http.StatusCreated)
 	assert.Contains(t, response.Header().Get("Set-Cookie"), auth.DefaultCookieName+"="+fakeSession.ID)
 
 	response = rt.SendRequestWithHeaders("GET", "/db/doc1", "", reqHeaders)
 	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
-	RequireStatus(t, response, http.StatusOK)
+	rest.RequireStatus(t, response, http.StatusOK)
 	assert.Equal(t, "", response.Header().Get("Set-Cookie"))
 
 	// Explicitly delete the fake session doc from the bucket to simulate the test
@@ -858,22 +859,22 @@ func TestSessionExtension(t *testing.T) {
 
 	response = rt.SendRequestWithHeaders("GET", "/db/doc1", "", reqHeaders)
 	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
-	RequireStatus(t, response, http.StatusUnauthorized)
+	rest.RequireStatus(t, response, http.StatusUnauthorized)
 
 }
 
 func TestSessionAPI(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	// create session test users
 	response := rt.SendAdminRequest("POST", "/db/_user/", `{"name":"user1", "password":"1234"}`)
-	RequireStatus(t, response, 201)
+	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"user2", "password":"1234"}`)
-	RequireStatus(t, response, 201)
+	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"user3", "password":"1234"}`)
-	RequireStatus(t, response, 201)
+	rest.RequireStatus(t, response, 201)
 
 	// create multiple sessions for the users
 	user1sessions := make([]string, 5)
@@ -881,71 +882,71 @@ func TestSessionAPI(t *testing.T) {
 	user3sessions := make([]string, 5)
 
 	for i := 0; i < 5; i++ {
-		user1sessions[i] = rt.CreateSession(t, "user1")
-		user2sessions[i] = rt.CreateSession(t, "user2")
-		user3sessions[i] = rt.CreateSession(t, "user3")
+		user1sessions[i] = createSession(t, rt, "user1")
+		user2sessions[i] = createSession(t, rt, "user2")
+		user3sessions[i] = createSession(t, rt, "user3")
 	}
 
 	// GET Tests
 	// 1. GET a session and make sure the result is OK
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user1sessions[0]), "")
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	// DELETE tests
 	// 1. DELETE a session by session id
 	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/_session/%s", user1sessions[0]), "")
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	// Attempt to GET the deleted session and make sure it's not found
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user1sessions[0]), "")
-	RequireStatus(t, response, 404)
+	rest.RequireStatus(t, response, 404)
 
 	// 2. DELETE a session with user validation
 	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/_user/%s/_session/%s", "user1", user1sessions[1]), "")
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	// Attempt to GET the deleted session and make sure it's not found
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user1sessions[1]), "")
-	RequireStatus(t, response, 404)
+	rest.RequireStatus(t, response, 404)
 
 	// 3. DELETE a session not belonging to the user (should fail)
 	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/_user/%s/_session/%s", "user1", user2sessions[0]), "")
-	RequireStatus(t, response, 404)
+	rest.RequireStatus(t, response, 404)
 
 	// GET the session and make sure it still exists
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user2sessions[0]), "")
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	// 4. DELETE all sessions for a user
 	response = rt.SendAdminRequest("DELETE", "/db/_user/user2/_session", "")
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	// Validate that all sessions were deleted
 	for i := 0; i < 5; i++ {
 		response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user2sessions[i]), "")
-		RequireStatus(t, response, 404)
+		rest.RequireStatus(t, response, 404)
 	}
 
 	// 5. DELETE sessions when password is changed
 	// Change password for user3
 	response = rt.SendAdminRequest("PUT", "/db/_user/user3", `{"password":"5678"}`)
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	// Validate that all sessions were deleted
 	for i := 0; i < 5; i++ {
 		response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user3sessions[i]), "")
-		RequireStatus(t, response, 404)
+		rest.RequireStatus(t, response, 404)
 	}
 
 	// DELETE the users
-	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/user1", ""), 200)
-	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/user1", ""), 404)
+	rest.RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/user1", ""), 200)
+	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/user1", ""), 404)
 
-	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/user2", ""), 200)
-	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/user2", ""), 404)
+	rest.RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/user2", ""), 200)
+	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/user2", ""), 404)
 
-	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/user3", ""), 200)
-	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/user3", ""), 404)
+	rest.RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/user3", ""), 200)
+	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/user3", ""), 404)
 
 }
 
@@ -955,28 +956,28 @@ func TestFlush(t *testing.T) {
 		t.Skip("sgbucket.DeleteableBucket inteface only supported by Walrus")
 	}
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	rt.CreateDoc(t, "doc1")
 	rt.CreateDoc(t, "doc2")
-	RequireStatus(t, rt.SendAdminRequest("GET", "/db/doc1", ""), 200)
-	RequireStatus(t, rt.SendAdminRequest("GET", "/db/doc2", ""), 200)
+	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/doc1", ""), 200)
+	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/doc2", ""), 200)
 
 	log.Printf("Flushing db...")
-	RequireStatus(t, rt.SendAdminRequest("POST", "/db/_flush", ""), 200)
+	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_flush", ""), 200)
 	require.NoError(t, rt.SetAdminParty(true)) // needs to be re-enabled after flush since guest user got wiped
 
 	// After the flush, the db exists but the documents are gone:
-	RequireStatus(t, rt.SendAdminRequest("GET", "/db/", ""), 200)
-	RequireStatus(t, rt.SendAdminRequest("GET", "/db/doc1", ""), 404)
-	RequireStatus(t, rt.SendAdminRequest("GET", "/db/doc2", ""), 404)
+	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/", ""), 200)
+	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/doc1", ""), 404)
+	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/doc2", ""), 404)
 }
 
 // Test a single call to take DB offline
 func TestDBOfflineSingle(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -986,7 +987,7 @@ func TestDBOfflineSingle(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Online")
 
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -998,7 +999,7 @@ func TestDBOfflineSingle(t *testing.T) {
 // when both calls return
 func TestDBOfflineConcurrent(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1013,22 +1014,22 @@ func TestDBOfflineConcurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	var goroutineresponse1 *TestResponse
+	var goroutineresponse1 *rest.TestResponse
 	go func() {
 		goroutineresponse1 = rt.SendAdminRequest("POST", "/db/_offline", "")
 		wg.Done()
 	}()
 
-	var goroutineresponse2 *TestResponse
+	var goroutineresponse2 *rest.TestResponse
 	go func() {
 		goroutineresponse2 = rt.SendAdminRequest("POST", "/db/_offline", "")
 		wg.Done()
 	}()
 
-	err := WaitWithTimeout(&wg, time.Second*30)
+	err := rest.WaitWithTimeout(&wg, time.Second*30)
 	assert.NoError(t, err, "Error waiting for waitgroup")
-	RequireStatus(t, goroutineresponse1, http.StatusOK)
-	RequireStatus(t, goroutineresponse2, http.StatusOK)
+	rest.RequireStatus(t, goroutineresponse1, http.StatusOK)
+	rest.RequireStatus(t, goroutineresponse2, http.StatusOK)
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
@@ -1040,7 +1041,7 @@ func TestDBOfflineConcurrent(t *testing.T) {
 // Test that a DB can be created offline
 func TestStartDBOffline(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1050,7 +1051,7 @@ func TestStartDBOffline(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Online")
 
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -1061,7 +1062,7 @@ func TestStartDBOffline(t *testing.T) {
 // fail with status 503
 func TestDBOffline503Response(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1071,20 +1072,20 @@ func TestDBOffline503Response(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Online")
 
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Offline")
 
-	RequireStatus(t, rt.SendRequest("GET", "/db/doc1", ""), 503)
+	rest.RequireStatus(t, rt.SendRequest("GET", "/db/doc1", ""), 503)
 }
 
 // Take DB offline and ensure can put db config
 func TestDBOfflinePutDbConfig(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1094,26 +1095,26 @@ func TestDBOfflinePutDbConfig(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Online")
 
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Offline")
 
-	RequireStatus(t, rt.SendRequest("PUT", "/db/_config", ""), 404)
+	rest.RequireStatus(t, rt.SendRequest("PUT", "/db/_config", ""), 404)
 }
 
 // Tests that the users returned in the config endpoint have the correct names
 // Reproduces #2223
 func TestDBGetConfigNames(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	p := "password"
 
-	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
+	rt.DatabaseConfig = &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 		Users: map[string]*auth.PrincipalConfig{
 			"alice": &auth.PrincipalConfig{Password: &p},
 			"bob":   &auth.PrincipalConfig{Password: &p},
@@ -1121,7 +1122,7 @@ func TestDBGetConfigNames(t *testing.T) {
 	}}
 
 	response := rt.SendAdminRequest("GET", "/db/_config?include_runtime=true", "")
-	var body DbConfig
+	var body rest.DbConfig
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 
 	assert.Equal(t, len(rt.DatabaseConfig.Users), len(body.Users))
@@ -1135,7 +1136,7 @@ func TestDBGetConfigNames(t *testing.T) {
 // Take DB offline and ensure can post _resync
 func TestDBOfflinePostResync(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1145,14 +1146,14 @@ func TestDBOfflinePostResync(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Online")
 
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Offline")
 
-	RequireStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 200)
+	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 200)
 	err := rt.WaitForCondition(func() bool {
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")
 		var status db.ResyncManagerResponse
@@ -1174,7 +1175,7 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	function(doc) {
 		channel("x")
 	}`
-	rt := NewRestTester(t, &RestTesterConfig{SyncFn: syncFn})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: syncFn})
 	defer rt.Close()
 
 	// create documents in DB to cause resync to take a few seconds
@@ -1190,7 +1191,7 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Online")
 
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
@@ -1198,10 +1199,10 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Offline")
 
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-	RequireStatus(t, response, http.StatusOK)
+	rest.RequireStatus(t, response, http.StatusOK)
 
 	// Send a second _resync request.  This must return a 400 since the first one is blocked processing
-	RequireStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 503)
+	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 503)
 
 	err := rt.WaitForCondition(func() bool {
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")
@@ -1259,9 +1260,9 @@ func TestResync(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			rt := NewRestTester(t,
-				&RestTesterConfig{
-					DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			rt := rest.NewRestTester(t,
+				&rest.RestTesterConfig{
+					DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 						QueryPaginationLimit: &testCase.queryLimit,
 					}},
 					SyncFn: syncFn,
@@ -1274,18 +1275,18 @@ func TestResync(t *testing.T) {
 			}
 
 			response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-			RequireStatus(t, response, http.StatusServiceUnavailable)
+			rest.RequireStatus(t, response, http.StatusServiceUnavailable)
 
 			response = rt.SendAdminRequest("POST", "/db/_offline", "")
-			RequireStatus(t, response, http.StatusOK)
+			rest.RequireStatus(t, response, http.StatusOK)
 
-			waitAndAssertCondition(t, func() bool {
+			rest.WaitAndAssertCondition(t, func() bool {
 				state := atomic.LoadUint32(&rt.GetDatabase().State)
 				return state == db.DBOffline
 			})
 
 			response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-			RequireStatus(t, response, http.StatusOK)
+			rest.RequireStatus(t, response, http.StatusOK)
 
 			var resyncManagerStatus db.ResyncManagerResponse
 			err := rt.WaitForCondition(func() bool {
@@ -1336,8 +1337,8 @@ func TestResyncErrorScenarios(t *testing.T) {
 
 	leakyTestBucket := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
 
-	rt := NewRestTester(t,
-		&RestTesterConfig{
+	rt := rest.NewRestTester(t,
+		&rest.RestTesterConfig{
 			SyncFn:           syncFn,
 			CustomTestBucket: leakyTestBucket,
 		},
@@ -1357,7 +1358,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 			if useCallback {
 				callbackFired = true
 				response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-				RequireStatus(t, response, http.StatusServiceUnavailable)
+				rest.RequireStatus(t, response, http.StatusServiceUnavailable)
 				useCallback = false
 			}
 		})
@@ -1366,7 +1367,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 			if useCallback {
 				callbackFired = true
 				response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-				RequireStatus(t, response, http.StatusServiceUnavailable)
+				rest.RequireStatus(t, response, http.StatusServiceUnavailable)
 				useCallback = false
 			}
 		})
@@ -1377,41 +1378,41 @@ func TestResyncErrorScenarios(t *testing.T) {
 	}
 
 	response := rt.SendAdminRequest("GET", "/db/_resync", "")
-	RequireStatus(t, response, http.StatusOK)
+	rest.RequireStatus(t, response, http.StatusOK)
 
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-	RequireStatus(t, response, http.StatusServiceUnavailable)
+	rest.RequireStatus(t, response, http.StatusServiceUnavailable)
 
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
-	RequireStatus(t, response, http.StatusBadRequest)
+	rest.RequireStatus(t, response, http.StatusBadRequest)
 
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
-	RequireStatus(t, response, http.StatusOK)
+	rest.RequireStatus(t, response, http.StatusOK)
 
-	waitAndAssertCondition(t, func() bool {
+	rest.WaitAndAssertCondition(t, func() bool {
 		state := atomic.LoadUint32(&rt.GetDatabase().State)
 		return state == db.DBOffline
 	})
 
 	useCallback = true
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-	RequireStatus(t, response, http.StatusOK)
+	rest.RequireStatus(t, response, http.StatusOK)
 
-	waitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted, rt.GetDatabase().ResyncManager.GetRunState)
-	waitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
+	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted, rt.GetDatabase().ResyncManager.GetRunState)
+	rest.WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
 
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
-	RequireStatus(t, response, http.StatusBadRequest)
+	rest.RequireStatus(t, response, http.StatusBadRequest)
 
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=invalid", "")
-	RequireStatus(t, response, http.StatusBadRequest)
+	rest.RequireStatus(t, response, http.StatusBadRequest)
 
 	// Test empty action, should default to start
 	response = rt.SendAdminRequest("POST", "/db/_resync", "")
-	RequireStatus(t, response, http.StatusOK)
+	rest.RequireStatus(t, response, http.StatusOK)
 
-	waitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted, rt.GetDatabase().ResyncManager.GetRunState)
-	waitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
+	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted, rt.GetDatabase().ResyncManager.GetRunState)
+	rest.WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
 
 	assert.True(t, callbackFired, "expecting callback to be fired")
 }
@@ -1430,10 +1431,10 @@ func TestResyncStop(t *testing.T) {
 
 	leakyTestBucket := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
 
-	rt := NewRestTester(t,
-		&RestTesterConfig{
+	rt := rest.NewRestTester(t,
+		&rest.RestTesterConfig{
 			SyncFn: syncFn,
-			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 				QueryPaginationLimit: base.IntPtr(10),
 			}},
 			CustomTestBucket: leakyTestBucket,
@@ -1454,7 +1455,7 @@ func TestResyncStop(t *testing.T) {
 			if useCallback {
 				callbackFired = true
 				response := rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
-				RequireStatus(t, response, http.StatusOK)
+				rest.RequireStatus(t, response, http.StatusOK)
 				useCallback = false
 			}
 		})
@@ -1463,7 +1464,7 @@ func TestResyncStop(t *testing.T) {
 			if useCallback {
 				callbackFired = true
 				response := rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
-				RequireStatus(t, response, http.StatusOK)
+				rest.RequireStatus(t, response, http.StatusOK)
 				useCallback = false
 			}
 		})
@@ -1479,19 +1480,19 @@ func TestResyncStop(t *testing.T) {
 	assert.NoError(t, err)
 
 	response := rt.SendAdminRequest("POST", "/db/_offline", "")
-	RequireStatus(t, response, http.StatusOK)
+	rest.RequireStatus(t, response, http.StatusOK)
 
-	waitAndAssertCondition(t, func() bool {
+	rest.WaitAndAssertCondition(t, func() bool {
 		state := atomic.LoadUint32(&rt.GetDatabase().State)
 		return state == db.DBOffline
 	})
 
 	useCallback = true
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-	RequireStatus(t, response, http.StatusOK)
+	rest.RequireStatus(t, response, http.StatusOK)
 
-	waitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateStopped, rt.GetDatabase().ResyncManager.GetRunState)
-	waitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
+	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateStopped, rt.GetDatabase().ResyncManager.GetRunState)
+	rest.WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
 
 	assert.True(t, callbackFired, "expecting callback to be fired")
 
@@ -1521,15 +1522,15 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		testBucket = base.GetTestBucket(t)
 	}
 
-	rt := NewRestTester(t,
-		&RestTesterConfig{
+	rt := rest.NewRestTester(t,
+		&rest.RestTesterConfig{
 			SyncFn:           syncFn,
 			CustomTestBucket: testBucket,
 		},
 	)
 	defer rt.Close()
 
-	var response *TestResponse
+	var response *rest.TestResponse
 	var docSeqArr []float64
 	var body db.Body
 
@@ -1548,11 +1549,11 @@ func TestResyncRegenerateSequences(t *testing.T) {
 
 	role := "role1"
 	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_role/%s", role), fmt.Sprintf(`{"name":"%s", "admin_channels":["channel_1"]}`, role))
-	RequireStatus(t, response, http.StatusCreated)
+	rest.RequireStatus(t, response, http.StatusCreated)
 
 	username := "user1"
 	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_user/%s", username), fmt.Sprintf(`{"name":"%s", "password":"letmein", "admin_channels":["channel_1"], "admin_roles": ["%s"]}`, username, role))
-	RequireStatus(t, response, http.StatusCreated)
+	rest.RequireStatus(t, response, http.StatusCreated)
 
 	_, err := rt.Bucket().Get(base.RolePrefix+"role1", &body)
 	assert.NoError(t, err)
@@ -1563,10 +1564,10 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	user1SeqBefore := body["sequence"].(float64)
 
 	response = rt.SendAdminRequest("PUT", "/db/userdoc", `{"userdoc": true}`)
-	RequireStatus(t, response, http.StatusCreated)
+	rest.RequireStatus(t, response, http.StatusCreated)
 
 	response = rt.SendAdminRequest("PUT", "/db/userdoc2", `{"userdoc": true}`)
-	RequireStatus(t, response, http.StatusCreated)
+	rest.RequireStatus(t, response, http.StatusCreated)
 
 	// Let everything catch up before opening changes feed
 	require.NoError(t, rt.WaitForPendingChanges())
@@ -1592,23 +1593,23 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	request, _ := http.NewRequest("GET", "/db/_changes", nil)
 	request.SetBasicAuth("user1", "letmein")
 	response = rt.Send(request)
-	RequireStatus(t, response, http.StatusOK)
+	rest.RequireStatus(t, response, http.StatusOK)
 	err = json.Unmarshal(response.BodyBytes(), &changesResp)
 	assert.Len(t, changesResp.Results, 3)
 	assert.True(t, changesRespContains(changesResp, "userdoc"))
 	assert.True(t, changesRespContains(changesResp, "userdoc2"))
 
 	response = rt.SendAdminRequest("GET", "/db/_resync", "")
-	RequireStatus(t, response, http.StatusOK)
+	rest.RequireStatus(t, response, http.StatusOK)
 
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
-	RequireStatus(t, response, http.StatusOK)
+	rest.RequireStatus(t, response, http.StatusOK)
 
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start&regenerate_sequences=true", "")
-	RequireStatus(t, response, http.StatusOK)
+	rest.RequireStatus(t, response, http.StatusOK)
 
-	waitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted, rt.GetDatabase().ResyncManager.GetRunState)
-	waitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
+	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted, rt.GetDatabase().ResyncManager.GetRunState)
+	rest.WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
 
 	_, err = rt.Bucket().Get(base.RolePrefix+"role1", &body)
 	assert.NoError(t, err)
@@ -1631,7 +1632,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	}
 
 	response = rt.SendAdminRequest("GET", "/db/_resync", "")
-	RequireStatus(t, response, http.StatusOK)
+	rest.RequireStatus(t, response, http.StatusOK)
 	var resyncStatus db.ResyncManagerResponse
 	err = base.JSONUnmarshal(response.BodyBytes(), &resyncStatus)
 	assert.NoError(t, err)
@@ -1639,7 +1640,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	assert.Equal(t, 12, resyncStatus.DocsProcessed)
 
 	response = rt.SendAdminRequest("POST", "/db/_online", "")
-	RequireStatus(t, response, http.StatusOK)
+	rest.RequireStatus(t, response, http.StatusOK)
 
 	err = rt.WaitForCondition(func() bool {
 		state := atomic.LoadUint32(&rt.GetDatabase().State)
@@ -1651,7 +1652,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	request, _ = http.NewRequest("GET", "/db/_changes?since="+changesResp.LastSeq, nil)
 	request.SetBasicAuth("user1", "letmein")
 	response = rt.Send(request)
-	RequireStatus(t, response, http.StatusOK)
+	rest.RequireStatus(t, response, http.StatusOK)
 	err = json.Unmarshal(response.BodyBytes(), &changesResp)
 	assert.Len(t, changesResp.Results, 3)
 	assert.True(t, changesRespContains(changesResp, "userdoc"))
@@ -1661,7 +1662,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 // Single threaded bring DB online
 func TestDBOnlineSingle(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1671,7 +1672,7 @@ func TestDBOnlineSingle(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Online")
 
 	rt.SendAdminRequest("POST", "/db/_offline", "")
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
@@ -1679,7 +1680,7 @@ func TestDBOnlineSingle(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Offline")
 
 	rt.SendAdminRequest("POST", "/db/_online", "")
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -1694,7 +1695,7 @@ func TestDBOnlineSingle(t *testing.T) {
 // once both goroutines return
 func TestDBOnlineConcurrent(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1704,7 +1705,7 @@ func TestDBOnlineConcurrent(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Online")
 
 	rt.SendAdminRequest("POST", "/db/_offline", "")
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
@@ -1714,18 +1715,18 @@ func TestDBOnlineConcurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	var goroutineresponse1 *TestResponse
-	go func(rt *RestTester) {
+	var goroutineresponse1 *rest.TestResponse
+	go func(rt *rest.RestTester) {
 		defer wg.Done()
 		goroutineresponse1 = rt.SendAdminRequest("POST", "/db/_online", "")
-		RequireStatus(t, goroutineresponse1, 200)
+		rest.RequireStatus(t, goroutineresponse1, 200)
 	}(rt)
 
-	var goroutineresponse2 *TestResponse
-	go func(rt *RestTester) {
+	var goroutineresponse2 *rest.TestResponse
+	go func(rt *rest.RestTester) {
 		defer wg.Done()
 		goroutineresponse2 = rt.SendAdminRequest("POST", "/db/_online", "")
-		RequireStatus(t, goroutineresponse2, 200)
+		rest.RequireStatus(t, goroutineresponse2, 200)
 	}(rt)
 
 	// This only waits until both _online requests have been posted
@@ -1743,7 +1744,7 @@ func TestSingleDBOnlineWithDelay(t *testing.T) {
 
 	t.Skip("Use case covered by TestDBOnlineWithTwoDelays, skipping due to slow test")
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1753,7 +1754,7 @@ func TestSingleDBOnlineWithDelay(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Online")
 
 	rt.SendAdminRequest("POST", "/db/_offline", "")
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
@@ -1761,7 +1762,7 @@ func TestSingleDBOnlineWithDelay(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Offline")
 
 	rt.SendAdminRequest("POST", "/db/_online", "{\"delay\":1}")
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
@@ -1789,27 +1790,27 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 
 	// CBG-1513: This test is prone to panicing when the walrus bucket was closed and still used
 	assert.NotPanicsf(t, func() {
-		rt := NewRestTester(t, nil)
+		rt := rest.NewRestTester(t, nil)
 		defer rt.Close()
 
-		var response *TestResponse
+		var response *rest.TestResponse
 		var errDBState error
 
 		log.Printf("Taking DB offline")
 		require.Equal(t, "Online", rt.GetDBState())
 
 		response = rt.SendAdminRequest("POST", "/db/_offline", "")
-		RequireStatus(t, response, 200)
+		rest.RequireStatus(t, response, 200)
 
 		// Bring DB online with delay of two seconds
 		response = rt.SendAdminRequest("POST", "/db/_online", "{\"delay\":1}")
-		RequireStatus(t, response, 200)
+		rest.RequireStatus(t, response, 200)
 
 		require.Equal(t, "Offline", rt.GetDBState())
 
 		// Bring DB online immediately
 		response = rt.SendAdminRequest("POST", "/db/_online", "")
-		RequireStatus(t, response, 200)
+		rest.RequireStatus(t, response, 200)
 
 		// Wait for DB to come online (retry loop)
 		errDBState = rt.WaitForDBOnline()
@@ -1832,7 +1833,7 @@ func TestDBOnlineWithTwoDelays(t *testing.T) {
 
 	base.LongRunningTest(t)
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("GET", "/db/", "")
@@ -1841,7 +1842,7 @@ func TestDBOnlineWithTwoDelays(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Online")
 
 	rt.SendAdminRequest("POST", "/db/_offline", "")
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
@@ -1850,11 +1851,11 @@ func TestDBOnlineWithTwoDelays(t *testing.T) {
 
 	// Bring DB online with delay of one seconds
 	rt.SendAdminRequest("POST", "/db/_online", "{\"delay\":1}")
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	// Bring DB online with delay of two seconds
 	rt.SendAdminRequest("POST", "/db/_online", "{\"delay\":2}")
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
@@ -1876,10 +1877,10 @@ func TestDBOnlineWithTwoDelays(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Online")
 }
 
-func (rt *RestTester) CreateSession(t *testing.T, username string) string {
+func createSession(t *testing.T, rt *rest.RestTester, username string) string {
 
 	response := rt.SendAdminRequest("POST", "/db/_session", fmt.Sprintf(`{"name":%q}`, username))
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -1890,20 +1891,20 @@ func (rt *RestTester) CreateSession(t *testing.T, username string) string {
 
 func TestPurgeWithBadJsonPayload(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("POST", "/db/_purge", "foo")
-	RequireStatus(t, response, 400)
+	rest.RequireStatus(t, response, 400)
 }
 
 func TestPurgeWithNonArrayRevisionList(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("POST", "/db/_purge", `{"foo":"list"}`)
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	var body map[string]interface{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -1912,11 +1913,11 @@ func TestPurgeWithNonArrayRevisionList(t *testing.T) {
 
 func TestPurgeWithEmptyRevisionList(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("POST", "/db/_purge", `{"foo":[]}`)
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	var body map[string]interface{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -1925,11 +1926,11 @@ func TestPurgeWithEmptyRevisionList(t *testing.T) {
 
 func TestPurgeWithGreaterThanOneRevision(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("POST", "/db/_purge", `{"foo":["rev1","rev2"]}`)
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	var body map[string]interface{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -1938,11 +1939,11 @@ func TestPurgeWithGreaterThanOneRevision(t *testing.T) {
 
 func TestPurgeWithNonStarRevision(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("POST", "/db/_purge", `{"foo":["rev1"]}`)
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	var body map[string]interface{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -1950,48 +1951,48 @@ func TestPurgeWithNonStarRevision(t *testing.T) {
 }
 
 func TestPurgeWithStarRevision(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
-	RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
 
 	response := rt.SendAdminRequest("POST", "/db/_purge", `{"doc1":["*"]}`)
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 	var body map[string]interface{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}}, body)
 
 	// Create new versions of the doc1 without conflicts
-	RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
 }
 
 func TestPurgeWithMultipleValidDocs(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
-	RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
-	RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
 
 	response := rt.SendAdminRequest("POST", "/db/_purge", `{"doc1":["*"],"doc2":["*"]}`)
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 
 	var body map[string]interface{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}, "doc2": []interface{}{"*"}}}, body)
 
 	// Create new versions of the docs without conflicts
-	RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
-	RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
 }
 
 // TestPurgeWithChannelCache will make sure thant upon calling _purge, the channel caches are also cleaned
 // This was fixed in #3765, previously channel caches were not cleaned up
 func TestPurgeWithChannelCache(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
-	RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar", "channels": ["abc", "def"]}`), http.StatusCreated)
-	RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car", "channels": ["abc"]}`), http.StatusCreated)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar", "channels": ["abc", "def"]}`), http.StatusCreated)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car", "channels": ["abc"]}`), http.StatusCreated)
 
 	changes, err := rt.WaitForChanges(2, "/db/_changes?filter=sync_gateway/bychannel&channels=abc,def", "", true)
 	require.NoError(t, err, "Error waiting for changes")
@@ -2002,7 +2003,7 @@ func TestPurgeWithChannelCache(t *testing.T) {
 
 	// Purge "doc1"
 	resp := rt.SendAdminRequest("POST", "/db/_purge", `{"doc1":["*"]}`)
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 	var body map[string]interface{}
 	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &body))
 	assert.Equal(t, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}}, body)
@@ -2014,31 +2015,31 @@ func TestPurgeWithChannelCache(t *testing.T) {
 }
 
 func TestPurgeWithSomeInvalidDocs(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
-	RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
-	RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
 
 	response := rt.SendAdminRequest("POST", "/db/_purge", `{"doc1":["*"],"doc2":["1-123"]}`)
-	RequireStatus(t, response, 200)
+	rest.RequireStatus(t, response, 200)
 	var body map[string]interface{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}}, body)
 
 	// Create new versions of the doc1 without conflicts
-	RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
 
 	// Create new versions of the doc2 fails because it already exists
-	RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car"}`), 409)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car"}`), 409)
 }
 
 func TestRawRedaction(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	res := rt.SendAdminRequest("PUT", "/db/testdoc", `{"foo":"bar", "channels": ["achannel"]}`)
-	RequireStatus(t, res, http.StatusCreated)
+	rest.RequireStatus(t, res, http.StatusCreated)
 
 	// Test redact being disabled by default
 	res = rt.SendAdminRequest("GET", "/db/_raw/testdoc", ``)
@@ -2073,19 +2074,19 @@ func TestRawRedaction(t *testing.T) {
 
 	// Test that you can't use include_doc and redact at the same time
 	res = rt.SendAdminRequest("GET", "/db/_raw/testdoc?include_doc=true&redact=true", ``)
-	RequireStatus(t, res, http.StatusBadRequest)
+	rest.RequireStatus(t, res, http.StatusBadRequest)
 }
 
 func TestRawTombstone(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	const docID = "testdoc"
 
 	// Create a doc
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"foo":"bar"}`)
-	RequireStatus(t, resp, http.StatusCreated)
-	revID := RespRevID(t, resp)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+	revID := rest.RespRevID(t, resp)
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/_raw/"+docID, ``)
 	assert.Equal(t, "application/json", resp.Header().Get("Content-Type"))
@@ -2096,8 +2097,8 @@ func TestRawTombstone(t *testing.T) {
 
 	// Delete the doc
 	resp = rt.SendAdminRequest(http.MethodDelete, "/db/"+docID+"?rev="+revID, ``)
-	RequireStatus(t, resp, http.StatusOK)
-	revID = RespRevID(t, resp)
+	rest.RequireStatus(t, resp, http.StatusOK)
+	revID = rest.RespRevID(t, resp)
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/_raw/"+docID, ``)
 	assert.Equal(t, "application/json", resp.Header().Get("Content-Type"))
@@ -2107,19 +2108,8 @@ func TestRawTombstone(t *testing.T) {
 	assert.Contains(t, string(resp.BodyBytes()), `"_deleted":true`)
 }
 
-// RespRevID returns a rev ID from the given response, or fails the given test if a rev ID was not found.
-func RespRevID(t *testing.T, response *TestResponse) (revID string) {
-	var r struct {
-		RevID *string `json:"rev"`
-	}
-	require.NoError(t, json.Unmarshal(response.BodyBytes(), &r), "couldn't decode JSON from response body")
-	require.NotNil(t, r.RevID, "expecting non-nil rev ID from response: %s", string(response.BodyBytes()))
-	require.NotEqual(t, "", *r.RevID, "expecting non-empty rev ID from response: %s", string(response.BodyBytes()))
-	return *r.RevID
-}
-
 func TestHandleCreateDB(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	server := "walrus:"
@@ -2127,19 +2117,19 @@ func TestHandleCreateDB(t *testing.T) {
 	kvTLSPort := 11207
 	resource := fmt.Sprintf("/%s/", bucket)
 
-	bucketConfig := BucketConfig{Server: &server, Bucket: &bucket, KvTLSPort: kvTLSPort}
-	dbConfig := &DbConfig{BucketConfig: bucketConfig, SGReplicateEnabled: base.BoolPtr(false)}
+	bucketConfig := rest.BucketConfig{Server: &server, Bucket: &bucket, KvTLSPort: kvTLSPort}
+	dbConfig := &rest.DbConfig{BucketConfig: bucketConfig, SGReplicateEnabled: base.BoolPtr(false)}
 	var respBody db.Body
 
 	reqBody, err := base.JSONMarshal(dbConfig)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 
 	resp := rt.SendAdminRequest(http.MethodPut, resource, string(reqBody))
-	RequireStatus(t, resp, http.StatusCreated)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 	assert.Empty(t, resp.Body.String())
 
 	resp = rt.SendAdminRequest(http.MethodGet, resource, string(reqBody))
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 	assert.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
 	assert.Equal(t, bucket, respBody["db_name"].(string))
 	assert.Equal(t, "Online", respBody["state"].(string))
@@ -2148,16 +2138,16 @@ func TestHandleCreateDB(t *testing.T) {
 	// parsing error from the handler; handleCreateDB.
 	reqBodyJson := `"server":"walrus:","pool":"default","bucket":"albums","kv_tls_port":11207`
 	resp = rt.SendAdminRequest(http.MethodPut, "/photos/", reqBodyJson)
-	RequireStatus(t, resp, http.StatusBadRequest)
+	rest.RequireStatus(t, resp, http.StatusBadRequest)
 }
 
 func TestHandlePutDbConfigWithBackticks(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Get database info before putting config.
 	resp := rt.SendAdminRequest(http.MethodGet, "/backticks/", "")
-	RequireStatus(t, resp, http.StatusNotFound)
+	rest.RequireStatus(t, resp, http.StatusNotFound)
 
 	// Create database with valid JSON config that contains sync function enclosed in backticks.
 	syncFunc := `function(doc, oldDoc) { console.log("foo");}`
@@ -2167,11 +2157,11 @@ func TestHandlePutDbConfigWithBackticks(t *testing.T) {
         "sync": ` + "`" + syncFunc + "`" + `
 	}`
 	resp = rt.SendAdminRequest(http.MethodPut, "/backticks/", reqBodyWithBackticks)
-	RequireStatus(t, resp, http.StatusCreated)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// Get database config after putting config.
 	resp = rt.SendAdminRequest(http.MethodGet, "/backticks/_config?include_runtime=true", "")
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 	var respBody db.Body
 	require.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
 	assert.Equal(t, "walrus:", respBody["server"].(string))
@@ -2181,7 +2171,7 @@ func TestHandlePutDbConfigWithBackticks(t *testing.T) {
 func TestHandleDBConfig(t *testing.T) {
 	tb := base.GetTestBucket(t)
 
-	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{CustomTestBucket: tb})
 	defer rt.Close()
 
 	bucket := tb.GetName()
@@ -2190,7 +2180,7 @@ func TestHandleDBConfig(t *testing.T) {
 
 	// Get database config before putting any config.
 	resp := rt.SendAdminRequest(http.MethodGet, resource, "")
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 	var respBody db.Body
 	assert.NoError(t, respBody.Unmarshal(resp.Body.Bytes()))
 	assert.Nil(t, respBody["bucket"])
@@ -2201,10 +2191,10 @@ func TestHandleDBConfig(t *testing.T) {
 	resource = resource + "_config"
 
 	// change cache size so we can see the update being reflected in the API response
-	dbConfig := &DbConfig{
-		BucketConfig: BucketConfig{Bucket: &bucket},
-		CacheConfig: &CacheConfig{
-			RevCacheConfig: &RevCacheConfig{
+	dbConfig := &rest.DbConfig{
+		BucketConfig: rest.BucketConfig{Bucket: &bucket},
+		CacheConfig: &rest.CacheConfig{
+			RevCacheConfig: &rest.RevCacheConfig{
 				Size: base.Uint32Ptr(1337), ShardCount: base.Uint16Ptr(7),
 			},
 		},
@@ -2216,12 +2206,12 @@ func TestHandleDBConfig(t *testing.T) {
 	reqBody, err := base.JSONMarshal(dbConfig)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	resp = rt.SendAdminRequest(http.MethodPut, resource, string(reqBody))
-	RequireStatus(t, resp, http.StatusCreated)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 	assert.Empty(t, resp.Body.String())
 
 	// Get database config after putting valid database config
 	resp = rt.SendAdminRequest(http.MethodGet, resource, "")
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 	respBody = nil
 	assert.NoError(t, respBody.Unmarshal(resp.Body.Bytes()))
 
@@ -2268,44 +2258,44 @@ func TestHandleDBConfig(t *testing.T) {
 }
 
 func TestHandleDeleteDB(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Try to delete the database which doesn't exists
 	resp := rt.SendAdminRequest(http.MethodDelete, "/albums/", "{}")
-	RequireStatus(t, resp, http.StatusNotFound)
+	rest.RequireStatus(t, resp, http.StatusNotFound)
 	assert.Contains(t, string(resp.BodyBytes()), "no such database")
 	var v map[string]interface{}
 	assert.NoError(t, json.Unmarshal(resp.BodyBytes(), &v), "couldn't unmarshal %s", string(resp.BodyBytes()))
 
 	// Create the database
 	resp = rt.SendAdminRequest(http.MethodPut, "/albums/", `{"server":"walrus:"}`)
-	RequireStatus(t, resp, http.StatusCreated)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 	assert.Empty(t, resp.Body.String())
 
 	// Delete the database
 	resp = rt.SendAdminRequest(http.MethodDelete, "/albums/", "{}")
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 	assert.Contains(t, resp.Body.String(), "{}")
 }
 
 func TestHandleGetConfig(t *testing.T) {
 	syncFunc := `function(doc) {throw({forbidden: "read only!"})}`
-	conf := RestTesterConfig{SyncFn: syncFunc}
-	rt := NewRestTester(t, &conf)
+	conf := rest.RestTesterConfig{SyncFn: syncFunc}
+	rt := rest.NewRestTester(t, &conf)
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest(http.MethodGet, "/_config", "{}")
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 
-	var respBody StartupConfig
+	var respBody rest.StartupConfig
 	assert.NoError(t, base.JSONUnmarshal([]byte(resp.Body.String()), &respBody))
 
 	assert.Equal(t, "127.0.0.1:4985", respBody.API.AdminInterface)
 }
 
 func TestHandleGetRevTree(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Create three revisions of the user foo with different status and updated_at values;
@@ -2315,13 +2305,13 @@ func TestHandleGetRevTree(t *testing.T) {
     	{"_id": "foo", "type": "user", "updated_at": "2016-06-25T17:37:49.715Z", "status": "offline", "_rev": "1-789"}]}`
 
 	resp := rt.SendAdminRequest(http.MethodPost, "/db/_bulk_docs", reqBodyJson)
-	RequireStatus(t, resp, http.StatusCreated)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 	respBodyExpected := `[{"id":"foo","rev":"1-123"},{"id":"foo","rev":"1-456"},{"id":"foo","rev":"1-789"}]`
 	assert.Equal(t, respBodyExpected, resp.Body.String())
 
 	// Get the revision tree  of the user foo
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/_revtree/foo", "")
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 	assert.Contains(t, resp.Body.String(), "1-123")
 	assert.Contains(t, resp.Body.String(), "1-456")
 	assert.Contains(t, resp.Body.String(), "1-789")
@@ -2329,28 +2319,28 @@ func TestHandleGetRevTree(t *testing.T) {
 }
 
 func TestHandleSGCollect(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 	reqBodyJson := "invalidjson"
 	resource := "/_sgcollect_info"
 
 	// Check SGCollect status before triggering it; status should be stopped if no process is running.
 	resp := rt.SendAdminRequest(http.MethodGet, resource, reqBodyJson)
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 	assert.Equal(t, resp.Body.String(), `{"status":"stopped"}`)
 
 	// Try to cancel SGCollect before triggering it; Error stopping sgcollect_info: not running
 	resp = rt.SendAdminRequest(http.MethodDelete, resource, reqBodyJson)
-	RequireStatus(t, resp, http.StatusBadRequest)
+	rest.RequireStatus(t, resp, http.StatusBadRequest)
 	assert.Contains(t, resp.Body.String(), "Error stopping sgcollect_info: not running")
 
 	// Try to start SGCollect with invalid body; It should throw with unexpected end of JSON input error
 	resp = rt.SendAdminRequest(http.MethodPost, resource, reqBodyJson)
-	RequireStatus(t, resp, http.StatusBadRequest)
+	rest.RequireStatus(t, resp, http.StatusBadRequest)
 }
 
 func TestSessionExpirationDateTimeFormat(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	authenticator := auth.NewAuthenticator(rt.Bucket(), nil, auth.DefaultAuthenticatorOptions())
@@ -2360,7 +2350,7 @@ func TestSessionExpirationDateTimeFormat(t *testing.T) {
 
 	var body db.Body
 	response := rt.SendAdminRequest(http.MethodPost, "/db/_session", `{"name":"alice"}`)
-	RequireStatus(t, response, http.StatusOK)
+	rest.RequireStatus(t, response, http.StatusOK)
 
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	expires, err := time.Parse(time.RFC3339, body["expires"].(string))
@@ -2370,7 +2360,7 @@ func TestSessionExpirationDateTimeFormat(t *testing.T) {
 	sessionId := body["session_id"].(string)
 	require.NotEmpty(t, sessionId, "Couldn't parse sessionID from response body")
 	response = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/db/_session/%s", sessionId), "")
-	RequireStatus(t, response, http.StatusOK)
+	rest.RequireStatus(t, response, http.StatusOK)
 
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	expires, err = time.Parse(time.RFC3339, body["expires"].(string))
@@ -2379,7 +2369,7 @@ func TestSessionExpirationDateTimeFormat(t *testing.T) {
 }
 
 func TestUserAndRoleResponseContentType(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Create a user 'christopher' through PUT request with empty request body.
@@ -2515,11 +2505,11 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 }
 
 func TestConfigRedaction(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{Users: map[string]*auth.PrincipalConfig{"alice": {Password: base.StringPtr("password")}}}}})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{Users: map[string]*auth.PrincipalConfig{"alice": {Password: base.StringPtr("password")}}}}})
 	defer rt.Close()
 
 	// Test default db config redaction
-	var unmarshaledConfig DbConfig
+	var unmarshaledConfig rest.DbConfig
 	response := rt.SendAdminRequest("GET", "/db/_config?include_runtime=true", "")
 	err := json.Unmarshal(response.BodyBytes(), &unmarshaledConfig)
 	require.NoError(t, err)
@@ -2528,7 +2518,7 @@ func TestConfigRedaction(t *testing.T) {
 	assert.Equal(t, base.RedactedStr, *unmarshaledConfig.Users["alice"].Password)
 
 	// Test default server config redaction
-	var unmarshaledServerConfig StartupConfig
+	var unmarshaledServerConfig rest.StartupConfig
 	response = rt.SendAdminRequest("GET", "/_config?include_runtime=true", "")
 	err = json.Unmarshal(response.BodyBytes(), &unmarshaledServerConfig)
 	require.NoError(t, err)
@@ -2539,7 +2529,7 @@ func TestConfigRedaction(t *testing.T) {
 // Reproduces panic seen in CBG-1053
 func TestAdhocReplicationStatus(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll, base.KeyReplicate)
-	rt := NewRestTester(t, &RestTesterConfig{SgReplicateEnabled: true})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SgReplicateEnabled: true})
 	defer rt.Close()
 
 	srv := httptest.NewServer(rt.TestAdminHandler())
@@ -2554,7 +2544,7 @@ func TestAdhocReplicationStatus(t *testing.T) {
 	}`
 
 	resp := rt.SendAdminRequest("PUT", "/db/_replication/pushandpull-with-target-oneshot-adhoc", replConf)
-	RequireStatus(t, resp, http.StatusCreated)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// With the error hitting the replicationStatus endpoint will either return running, if not completed, and once
 	// completed panics. With the fix after running it'll return a 404 as replication no longer exists.
@@ -2577,9 +2567,9 @@ func TestUserXattrsRawGet(t *testing.T) {
 	docKey := t.Name()
 	xattrKey := "xattrKey"
 
-	rt := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{
+			DbConfig: rest.DbConfig{
 				AutoImport:   true,
 				UserXattrKey: xattrKey,
 			},
@@ -2593,7 +2583,7 @@ func TestUserXattrsRawGet(t *testing.T) {
 	}
 
 	resp := rt.SendAdminRequest("PUT", "/db/"+docKey, "{}")
-	RequireStatus(t, resp, http.StatusCreated)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 	require.NoError(t, rt.WaitForPendingChanges())
 
 	_, err := userXattrStore.WriteUserXattr(docKey, xattrKey, "val")
@@ -2604,7 +2594,7 @@ func TestUserXattrsRawGet(t *testing.T) {
 	})
 
 	resp = rt.SendAdminRequest("GET", "/db/_raw/"+docKey, "")
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 
 	var RawReturn struct {
 		Meta struct {
@@ -2618,20 +2608,20 @@ func TestUserXattrsRawGet(t *testing.T) {
 }
 
 func TestRolePurge(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Create role
 	resp := rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels":["channel"]}`)
-	RequireStatus(t, resp, http.StatusCreated)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// Delete role
 	resp = rt.SendAdminRequest("DELETE", "/db/_role/role", ``)
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 
 	// Ensure role is gone
 	resp = rt.SendAdminRequest("GET", "/db/_role/role", ``)
-	RequireStatus(t, resp, http.StatusNotFound)
+	rest.RequireStatus(t, resp, http.StatusNotFound)
 
 	// Ensure role is 'soft-deleted' and we can still get the doc
 	role, err := rt.GetDatabase().Authenticator(base.TestCtx(t)).GetRoleIncDeleted("role")
@@ -2640,11 +2630,11 @@ func TestRolePurge(t *testing.T) {
 
 	// Re-create role
 	resp = rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels":["channel"]}`)
-	RequireStatus(t, resp, http.StatusCreated)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// Delete role again but with purge flag
 	resp = rt.SendAdminRequest("DELETE", "/db/_role/role?purge=true", ``)
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 
 	// Ensure role is purged, can't access at all
 	role, err = rt.GetDatabase().Authenticator(base.TestCtx(t)).GetRoleIncDeleted("role")
@@ -2653,7 +2643,7 @@ func TestRolePurge(t *testing.T) {
 
 	// Ensure role returns 404 via REST call
 	resp = rt.SendAdminRequest("GET", "/db/_role/role", ``)
-	RequireStatus(t, resp, http.StatusNotFound)
+	rest.RequireStatus(t, resp, http.StatusNotFound)
 }
 
 func TestSoftDeleteCasMismatch(t *testing.T) {
@@ -2661,12 +2651,12 @@ func TestSoftDeleteCasMismatch(t *testing.T) {
 		t.Skip("Skip LeakyBucket test when running in integration")
 	}
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Create role
 	resp := rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels":["channel"]}`)
-	RequireStatus(t, resp, http.StatusCreated)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	leakyBucket, ok := base.AsLeakyBucket(rt.TestBucket)
 	require.True(t, ok)
@@ -2678,12 +2668,12 @@ func TestSoftDeleteCasMismatch(t *testing.T) {
 		if triggerCallback {
 			triggerCallback = false
 			resp = rt.SendAdminRequest("DELETE", "/db/_role/role", ``)
-			RequireStatus(t, resp, http.StatusOK)
+			rest.RequireStatus(t, resp, http.StatusOK)
 		}
 	})
 
 	resp = rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels":["chan"]}`)
-	RequireStatus(t, resp, http.StatusCreated)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 }
 
 func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
@@ -2707,7 +2697,7 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			rt := NewRestTester(t, &RestTesterConfig{
+			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 				SyncFn: `
 			function(doc, oldDoc){
 				if (doc._id === 'roleChannels'){
@@ -2723,19 +2713,19 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 
 			// Create role
 			resp := rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels":["channel"]}`)
-			RequireStatus(t, resp, http.StatusCreated)
+			rest.RequireStatus(t, resp, http.StatusCreated)
 
 			// Create user
 			resp = rt.SendAdminRequest("PUT", "/db/_user/user", `{"password": "pass"}`)
-			RequireStatus(t, resp, http.StatusCreated)
+			rest.RequireStatus(t, resp, http.StatusCreated)
 
 			// Add channel to role
 			resp = rt.SendAdminRequest("PUT", "/db/roleChannels", `{"channels": "inherit"}`)
-			RequireStatus(t, resp, http.StatusCreated)
+			rest.RequireStatus(t, resp, http.StatusCreated)
 
 			// Add role to user
 			resp = rt.SendAdminRequest("PUT", "/db/userRoles", `{"roles": "role:role"}`)
-			RequireStatus(t, resp, http.StatusCreated)
+			rest.RequireStatus(t, resp, http.StatusCreated)
 
 			leakyBucket, ok := base.AsLeakyBucket(rt.TestBucket)
 			require.True(t, ok)
@@ -2745,7 +2735,7 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 				if triggerCallback {
 					triggerCallback = false
 					resp = rt.SendAdminRequest("DELETE", "/db/_role/role", ``)
-					RequireStatus(t, resp, http.StatusOK)
+					rest.RequireStatus(t, resp, http.StatusOK)
 				}
 			})
 
@@ -2773,7 +2763,7 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 // Test warnings being issued when a new channel is created with over 250 characters - CBG-1475
 func TestChannelNameSizeWarningBoundaries(t *testing.T) {
 	syncFn := "function sync(doc, oldDoc) { channel(doc.chan); }"
-	var rt *RestTester
+	var rt *rest.RestTester
 
 	testCases := []struct {
 		name                string
@@ -2826,9 +2816,9 @@ func TestChannelNameSizeWarningBoundaries(t *testing.T) {
 			if test.warnThresholdLength != base.DefaultWarnThresholdChannelNameSize {
 				thresholdConfig = &db.WarningThresholds{ChannelNameSize: &test.warnThresholdLength}
 			}
-			rt = NewRestTester(t, &RestTesterConfig{
+			rt = rest.NewRestTester(t, &rest.RestTesterConfig{
 				SyncFn: syncFn,
-				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 					Unsupported: &db.UnsupportedOptions{
 						WarningThresholds: thresholdConfig,
 					}},
@@ -2843,7 +2833,7 @@ func TestChannelNameSizeWarningBoundaries(t *testing.T) {
 			chanName := strings.Repeat("A", test.channelLength)
 			tr := rt.SendAdminRequest("PUT", "/db/"+docId, `{"chan":"`+chanName+`"}`)
 
-			RequireStatus(t, tr, http.StatusCreated)
+			rest.RequireStatus(t, tr, http.StatusCreated)
 			chanNameWarnCountAfter := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
 			if test.expectWarn {
 				assert.Equal(t, chanNameWarnCountBefore+1, chanNameWarnCountAfter)
@@ -2855,7 +2845,7 @@ func TestChannelNameSizeWarningBoundaries(t *testing.T) {
 }
 func TestChannelNameSizeWarningUpdateExistingDoc(t *testing.T) {
 	syncFn := "function sync(doc, oldDoc) { channel(doc.chan); }"
-	rt := NewRestTester(t, &RestTesterConfig{
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		SyncFn: syncFn,
 	})
 	defer rt.Close()
@@ -2864,20 +2854,20 @@ func TestChannelNameSizeWarningUpdateExistingDoc(t *testing.T) {
 	chanName := strings.Repeat("B", int(base.DefaultWarnThresholdChannelNameSize)+5)
 	t.Run("Update doc without changing channel", func(t *testing.T) {
 		tr := rt.SendAdminRequest("PUT", "/db/replace", `{"chan":"`+chanName+`"}`) // init doc
-		RequireStatus(t, tr, http.StatusCreated)
+		rest.RequireStatus(t, tr, http.StatusCreated)
 
 		ctx := rt.Context()
 		before := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
-		revId := RespRevID(t, tr)
+		revId := rest.RespRevID(t, tr)
 		tr = rt.SendAdminRequest("PUT", "/db/replace?rev="+revId, `{"chan":"`+chanName+`", "data":"test"}`)
-		RequireStatus(t, tr, http.StatusCreated)
+		rest.RequireStatus(t, tr, http.StatusCreated)
 		after := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		assert.Equal(t, before+1, after)
 	})
 }
 func TestChannelNameSizeWarningDocChannelUpdate(t *testing.T) {
 	syncFn := "function sync(doc, oldDoc) { channel(doc.chan); }"
-	rt := NewRestTester(t, &RestTesterConfig{
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		SyncFn: syncFn,
 	})
 	defer rt.Close()
@@ -2888,21 +2878,21 @@ func TestChannelNameSizeWarningDocChannelUpdate(t *testing.T) {
 
 		chanName := strings.Repeat("C", channelLength)
 		tr := rt.SendAdminRequest("PUT", "/db/replaceNewChannel", `{"chan":"`+chanName+`"}`) // init doc
-		RequireStatus(t, tr, http.StatusCreated)
+		rest.RequireStatus(t, tr, http.StatusCreated)
 
 		ctx := rt.Context()
 		before := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
-		revId := RespRevID(t, tr)
+		revId := rest.RespRevID(t, tr)
 		chanName = strings.Repeat("D", channelLength+5)
 		tr = rt.SendAdminRequest("PUT", "/db/replaceNewChannel?rev="+revId, fmt.Sprintf(`{"chan":"`+chanName+`", "data":"test"}`))
-		RequireStatus(t, tr, http.StatusCreated)
+		rest.RequireStatus(t, tr, http.StatusCreated)
 		after := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		assert.Equal(t, before+1, after)
 	})
 }
 func TestChannelNameSizeWarningDeleteChannel(t *testing.T) {
 	syncFn := "function sync(doc, oldDoc) { channel(doc.chan); }"
-	rt := NewRestTester(t, &RestTesterConfig{
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		SyncFn: syncFn,
 	})
 	defer rt.Close()
@@ -2912,13 +2902,13 @@ func TestChannelNameSizeWarningDeleteChannel(t *testing.T) {
 	t.Run("Delete channel over max length", func(t *testing.T) {
 		chanName := strings.Repeat("F", channelLength)
 		tr := rt.SendAdminRequest("PUT", "/db/deleteme", `{"chan":"`+chanName+`"}`) // init channel
-		RequireStatus(t, tr, http.StatusCreated)
+		rest.RequireStatus(t, tr, http.StatusCreated)
 
 		ctx := rt.Context()
 		before := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
-		revId := RespRevID(t, tr)
+		revId := rest.RespRevID(t, tr)
 		tr = rt.SendAdminRequest("DELETE", "/db/deleteme?rev="+revId, "")
-		RequireStatus(t, tr, http.StatusOK)
+		rest.RequireStatus(t, tr, http.StatusOK)
 		after := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		assert.Equal(t, before, after)
 	})
@@ -3063,11 +3053,11 @@ func TestConfigEndpoint(t *testing.T) {
 
 			base.InitializeMemoryLoggers()
 			tempDir := os.TempDir()
-			test := DefaultStartupConfig(tempDir)
+			test := rest.DefaultStartupConfig(tempDir)
 			err := test.SetupAndValidateLogging()
 			assert.NoError(t, err)
 
-			rt := NewRestTester(t, nil)
+			rt := rest.NewRestTester(t, nil)
 			defer rt.Close()
 
 			// By default disable all loggers
@@ -3081,12 +3071,12 @@ func TestConfigEndpoint(t *testing.T) {
 			// Request to _config
 			resp := rt.SendAdminRequest("PUT", "/_config", testCase.Config)
 			if testCase.ExpectError {
-				RequireStatus(t, resp, http.StatusBadRequest)
+				rest.RequireStatus(t, resp, http.StatusBadRequest)
 				t.Logf("got response: %s", resp.BodyBytes())
 				return
 			}
 
-			RequireStatus(t, resp, http.StatusOK)
+			rest.RequireStatus(t, resp, http.StatusOK)
 
 			assert.Equal(t, testCase.ConsoleLevel, *base.ConsoleLogLevel())
 			assert.Equal(t, testCase.ConsoleLogKeys, base.ConsoleLogKey().EnabledLogKeys())
@@ -3101,23 +3091,23 @@ func TestConfigEndpoint(t *testing.T) {
 func TestLoggingDeprecationWarning(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Create doc just to startup server and force any initial warnings
 	resp := rt.SendAdminRequest("PUT", "/db/doc", "{}")
-	RequireStatus(t, resp, http.StatusCreated)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	warnCountBefore := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
 
 	resp = rt.SendAdminRequest("GET", "/_logging", "")
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 
 	warnCountAfter := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
 	assert.Equal(t, int64(1), warnCountAfter-warnCountBefore)
 
 	resp = rt.SendAdminRequest("PUT", "/_logging", "{}")
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 
 	warnCountAfter2 := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
 	assert.Equal(t, int64(1), warnCountAfter2-warnCountAfter)
@@ -3127,14 +3117,14 @@ func TestLoggingDeprecationWarning(t *testing.T) {
 func TestInitialStartupConfig(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Get config
 	resp := rt.SendAdminRequest("GET", "/_config", "")
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 
-	var initialStartupConfig StartupConfig
+	var initialStartupConfig rest.StartupConfig
 	err := json.Unmarshal(resp.BodyBytes(), &initialStartupConfig)
 	require.NoError(t, err)
 
@@ -3146,12 +3136,12 @@ func TestInitialStartupConfig(t *testing.T) {
 	assert.Nil(t, initialStartupConfig.Logging.Error)
 
 	// Set logging running config
-	rt.ServerContext().config.Logging.Error = &base.FileLoggerConfig{}
+	rt.ServerContext().Config.Logging.Error = &base.FileLoggerConfig{}
 
 	// Get config
 	resp = rt.SendAdminRequest("GET", "/_config", "")
-	RequireStatus(t, resp, http.StatusOK)
-	initialStartupConfig = StartupConfig{}
+	rest.RequireStatus(t, resp, http.StatusOK)
+	initialStartupConfig = rest.StartupConfig{}
 	err = json.Unmarshal(resp.BodyBytes(), &initialStartupConfig)
 	require.NoError(t, err)
 
@@ -3164,11 +3154,11 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 
 	base.InitializeMemoryLoggers()
 	tempDir := os.TempDir()
-	test := DefaultStartupConfig(tempDir)
+	test := rest.DefaultStartupConfig(tempDir)
 	err := test.SetupAndValidateLogging()
 	assert.NoError(t, err)
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	base.EnableErrorLogger(false)
@@ -3180,9 +3170,9 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 
 	// Get config
 	resp := rt.SendAdminRequest("GET", "/_config?include_runtime=true", "")
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 
-	var runtimeServerConfigResponse RunTimeServerConfigResponse
+	var runtimeServerConfigResponse rest.RunTimeServerConfigResponse
 	err = json.Unmarshal(resp.BodyBytes(), &runtimeServerConfigResponse)
 	require.NoError(t, err)
 
@@ -3205,14 +3195,14 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 		}
 	}
 	`)
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 
 	// Update revs limit too so we can check db config
 	dbConfig := rt.ServerContext().GetDatabaseConfig("db")
 	dbConfig.RevsLimit = base.Uint32Ptr(100)
 
 	resp = rt.SendAdminRequest("GET", "/_config?include_runtime=true", "")
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 	err = json.Unmarshal(resp.BodyBytes(), &runtimeServerConfigResponse)
 	require.NoError(t, err)
 
@@ -3224,7 +3214,7 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 	assert.Equal(t, "debug", runtimeServerConfigResponse.Logging.Console.LogLevel.String())
 
 	resp = rt.SendAdminRequest("GET", "/_config?include_runtime=true&redact=true", "")
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 	err = json.Unmarshal(resp.BodyBytes(), &runtimeServerConfigResponse)
 	require.NoError(t, err)
 
@@ -3240,10 +3230,10 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 	}`
 
 	response := rt.SendAdminRequest("PUT", "/db/_replication/repl", string(replicationConfig))
-	RequireStatus(t, response, http.StatusCreated)
+	rest.RequireStatus(t, response, http.StatusCreated)
 
 	resp = rt.SendAdminRequest("GET", "/_config?include_runtime=true", "")
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 	err = json.Unmarshal(resp.BodyBytes(), &runtimeServerConfigResponse)
 	require.NoError(t, err)
 
@@ -3266,9 +3256,9 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 	serverErr := make(chan error, 0)
 
 	// Start SG with no databases
-	config := bootstrapStartupConfigForTest(t)
+	config := rest.BootstrapStartupConfigForTest(t)
 	ctx := base.TestCtx(t)
-	sc, err := SetupServerContext(ctx, &config, true)
+	sc, err := rest.SetupServerContext(ctx, &config, true)
 	require.NoError(t, err)
 	defer func() {
 		sc.Close(ctx)
@@ -3276,9 +3266,9 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 	}()
 
 	go func() {
-		serverErr <- startServer(ctx, &config, sc)
+		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.waitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -3286,35 +3276,35 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 		fmt.Println("closing test bucket")
 		tb.Close()
 	}()
-	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/",
+	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	resp.requireStatus(http.StatusCreated)
+	resp.RequireStatus(http.StatusCreated)
 
 	// Get config
-	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
-	resp.requireStatus(http.StatusOK)
+	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
+	resp.RequireStatus(http.StatusOK)
 	eTag := resp.Header.Get("ETag")
 	assert.NotEqual(t, "", eTag)
 
-	resp = bootstrapAdminRequestWithHeaders(t, http.MethodPost, "/db/_config", "{}", map[string]string{"If-Match": eTag})
-	resp.requireStatus(http.StatusCreated)
+	resp = rest.BootstrapAdminRequestWithHeaders(t, http.MethodPost, "/db/_config", "{}", map[string]string{"If-Match": eTag})
+	resp.RequireStatus(http.StatusCreated)
 
-	resp = bootstrapAdminRequest(t, http.MethodPost, "/db/_config", "{}")
-	resp.requireStatus(http.StatusCreated)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db/_config", "{}")
+	resp.RequireStatus(http.StatusCreated)
 	putETag := resp.Header.Get("ETag")
 	assert.NotEqual(t, "", putETag)
 
-	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
-	resp.requireStatus(http.StatusOK)
+	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
+	resp.RequireStatus(http.StatusOK)
 	getETag := resp.Header.Get("ETag")
 	assert.Equal(t, putETag, getETag)
 
-	resp = bootstrapAdminRequestWithHeaders(t, http.MethodPost, "/db/_config", "{}", map[string]string{"If-Match": "x"})
-	resp.requireStatus(http.StatusPreconditionFailed)
+	resp = rest.BootstrapAdminRequestWithHeaders(t, http.MethodPost, "/db/_config", "{}", map[string]string{"If-Match": "x"})
+	resp.RequireStatus(http.StatusPreconditionFailed)
 }
 
 func TestDbConfigCredentials(t *testing.T) {
@@ -3328,8 +3318,8 @@ func TestDbConfigCredentials(t *testing.T) {
 
 	// Start SG with no databases
 	ctx := base.TestCtx(t)
-	config := bootstrapStartupConfigForTest(t)
-	sc, err := SetupServerContext(ctx, &config, true)
+	config := rest.BootstrapStartupConfigForTest(t)
+	sc, err := rest.SetupServerContext(ctx, &config, true)
 	require.NoError(t, err)
 	defer func() {
 		sc.Close(ctx)
@@ -3337,9 +3327,9 @@ func TestDbConfigCredentials(t *testing.T) {
 	}()
 
 	go func() {
-		serverErr <- startServer(ctx, &config, sc)
+		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.waitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -3347,18 +3337,18 @@ func TestDbConfigCredentials(t *testing.T) {
 		fmt.Println("closing test bucket")
 		tb.Close()
 	}()
-	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/",
+	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	resp.requireStatus(http.StatusCreated)
+	resp.RequireStatus(http.StatusCreated)
 
-	var dbConfig DatabaseConfig
+	var dbConfig rest.DatabaseConfig
 
-	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
-	resp.requireStatus(http.StatusOK)
+	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
+	resp.RequireStatus(http.StatusOK)
 	err = base.JSONUnmarshal([]byte(resp.Body), &dbConfig)
 	require.NoError(t, err)
 
@@ -3369,8 +3359,8 @@ func TestDbConfigCredentials(t *testing.T) {
 	assert.Equal(t, "", dbConfig.CertPath)
 	assert.Equal(t, "", dbConfig.KeyPath)
 
-	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config?include_runtime=true", "")
-	resp.requireStatus(http.StatusOK)
+	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config?include_runtime=true", "")
+	resp.RequireStatus(http.StatusOK)
 	err = base.JSONUnmarshal([]byte(resp.Body), &dbConfig)
 	require.NoError(t, err)
 
@@ -3393,8 +3383,8 @@ func TestInvalidDBConfig(t *testing.T) {
 
 	// Start SG with no databases
 	ctx := base.TestCtx(t)
-	config := bootstrapStartupConfigForTest(t)
-	sc, err := SetupServerContext(ctx, &config, true)
+	config := rest.BootstrapStartupConfigForTest(t)
+	sc, err := rest.SetupServerContext(ctx, &config, true)
 	require.NoError(t, err)
 	defer func() {
 		sc.Close(ctx)
@@ -3402,9 +3392,9 @@ func TestInvalidDBConfig(t *testing.T) {
 	}()
 
 	go func() {
-		serverErr <- startServer(ctx, &config, sc)
+		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.waitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -3412,27 +3402,27 @@ func TestInvalidDBConfig(t *testing.T) {
 		fmt.Println("closing test bucket")
 		tb.Close()
 	}()
-	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/",
+	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	resp.requireStatus(http.StatusCreated)
+	resp.RequireStatus(http.StatusCreated)
 
 	// Put db config with invalid sync fn
-	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config", `{"sync": "function(){"}`)
-	resp.requireStatus(http.StatusBadRequest)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/_config", `{"sync": "function(){"}`)
+	resp.RequireStatus(http.StatusBadRequest)
 	assert.True(t, strings.Contains(resp.Body, "invalid javascript syntax"))
 
 	// Put invalid sync fn via sync specific endpoint
-	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config/sync", `function(){`)
-	resp.requireStatus(http.StatusBadRequest)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/_config/sync", `function(){`)
+	resp.RequireStatus(http.StatusBadRequest)
 	assert.True(t, strings.Contains(resp.Body, "invalid javascript syntax"))
 
 	// Put invalid import fn via import specific endpoint
-	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config/import_filter", `function(){`)
-	resp.requireStatus(http.StatusBadRequest)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/_config/import_filter", `function(){`)
+	resp.RequireStatus(http.StatusBadRequest)
 	assert.True(t, strings.Contains(resp.Body, "invalid javascript syntax"))
 }
 
@@ -3447,8 +3437,8 @@ func TestCreateDbOnNonExistentBucket(t *testing.T) {
 
 	// Start SG with no databases
 	ctx := base.TestCtx(t)
-	config := bootstrapStartupConfigForTest(t)
-	sc, err := SetupServerContext(ctx, &config, true)
+	config := rest.BootstrapStartupConfigForTest(t)
+	sc, err := rest.SetupServerContext(ctx, &config, true)
 	require.NoError(t, err)
 	defer func() {
 		sc.Close(ctx)
@@ -3456,16 +3446,16 @@ func TestCreateDbOnNonExistentBucket(t *testing.T) {
 	}()
 
 	go func() {
-		serverErr <- startServer(ctx, &config, sc)
+		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.waitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs())
 
-	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/", `{"bucket": "nonexistentbucket"}`)
-	resp.requireStatus(http.StatusForbidden)
+	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/", `{"bucket": "nonexistentbucket"}`)
+	resp.RequireStatus(http.StatusForbidden)
 	assert.Contains(t, resp.Body, "auth failure accessing provided bucket: nonexistentbucket")
 
-	resp = bootstrapAdminRequest(t, http.MethodPut, "/nonexistentbucket/", `{}`)
-	resp.requireStatus(http.StatusForbidden)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/nonexistentbucket/", `{}`)
+	resp.RequireStatus(http.StatusForbidden)
 	assert.Contains(t, resp.Body, "auth failure accessing provided bucket: nonexistentbucket")
 }
 
@@ -3480,8 +3470,8 @@ func TestPutDbConfigChangeName(t *testing.T) {
 
 	// Start SG with no databases
 	ctx := base.TestCtx(t)
-	config := bootstrapStartupConfigForTest(t)
-	sc, err := SetupServerContext(ctx, &config, true)
+	config := rest.BootstrapStartupConfigForTest(t)
+	sc, err := rest.SetupServerContext(ctx, &config, true)
 	require.NoError(t, err)
 	defer func() {
 		sc.Close(ctx)
@@ -3489,9 +3479,9 @@ func TestPutDbConfigChangeName(t *testing.T) {
 	}()
 
 	go func() {
-		serverErr <- startServer(ctx, &config, sc)
+		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.waitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -3499,16 +3489,16 @@ func TestPutDbConfigChangeName(t *testing.T) {
 		fmt.Println("closing test bucket")
 		tb.Close()
 	}()
-	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/",
+	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	resp.requireStatus(http.StatusCreated)
+	resp.RequireStatus(http.StatusCreated)
 
-	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config", `{"name": "test"}`)
-	resp.requireStatus(http.StatusBadRequest)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/_config", `{"name": "test"}`)
+	resp.RequireStatus(http.StatusBadRequest)
 }
 
 func TestPutDBConfigOIDC(t *testing.T) {
@@ -3522,8 +3512,8 @@ func TestPutDBConfigOIDC(t *testing.T) {
 
 	// Start SG with no databases
 	ctx := base.TestCtx(t)
-	config := bootstrapStartupConfigForTest(t)
-	sc, err := SetupServerContext(ctx, &config, true)
+	config := rest.BootstrapStartupConfigForTest(t)
+	sc, err := rest.SetupServerContext(ctx, &config, true)
 	require.NoError(t, err)
 	defer func() {
 		sc.Close(ctx)
@@ -3531,9 +3521,9 @@ func TestPutDBConfigOIDC(t *testing.T) {
 	}()
 
 	go func() {
-		serverErr <- startServer(ctx, &config, sc)
+		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.waitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -3541,13 +3531,13 @@ func TestPutDBConfigOIDC(t *testing.T) {
 		fmt.Println("closing test bucket")
 		tb.Close()
 	}()
-	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/",
+	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	resp.requireStatus(http.StatusCreated)
+	resp.RequireStatus(http.StatusCreated)
 
 	// Attempt to update the config with an invalid OIDC issuer - should fail
 	invalidOIDCConfig := fmt.Sprintf(
@@ -3568,12 +3558,12 @@ func TestPutDBConfigOIDC(t *testing.T) {
 		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 	)
 
-	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config", invalidOIDCConfig)
-	resp.requireStatus(http.StatusBadRequest)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/_config", invalidOIDCConfig)
+	resp.RequireStatus(http.StatusBadRequest)
 
 	// Now pass the parameter to skip the validation
-	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config?disable_oidc_validation=true", invalidOIDCConfig)
-	resp.requireStatus(http.StatusCreated)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/_config?disable_oidc_validation=true", invalidOIDCConfig)
+	resp.RequireStatus(http.StatusCreated)
 
 	// Now check with a valid OIDC issuer
 	validOIDCConfig := fmt.Sprintf(
@@ -3596,11 +3586,11 @@ func TestPutDBConfigOIDC(t *testing.T) {
 				}
 			}
 		}`,
-		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(), 4984+bootstrapTestPortOffset,
+		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(), 4984+rest.BootstrapTestPortOffset,
 	)
 
-	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config", validOIDCConfig)
-	resp.requireStatus(http.StatusCreated)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/_config", validOIDCConfig)
+	resp.RequireStatus(http.StatusCreated)
 }
 
 func TestNotExistentDBRequest(t *testing.T) {
@@ -3608,22 +3598,22 @@ func TestNotExistentDBRequest(t *testing.T) {
 		t.Skip("Test requires Couchbase Server")
 	}
 
-	rt := NewRestTester(t, &RestTesterConfig{AdminInterfaceAuthentication: true})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{AdminInterfaceAuthentication: true})
 	defer rt.Close()
 
 	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
 
-	MakeUser(t, httpClient, eps[0], "random", "password", nil)
-	defer DeleteUser(t, httpClient, eps[0], "random")
+	rest.MakeUser(t, httpClient, eps[0], "random", "password", nil)
+	defer rest.DeleteUser(t, httpClient, eps[0], "random")
 
 	// Request to non-existent db with valid credentials
 	resp := rt.SendAdminRequestWithAuth("PUT", "/dbx/_config", "", "random", "password")
-	RequireStatus(t, resp, http.StatusForbidden)
+	rest.RequireStatus(t, resp, http.StatusForbidden)
 
 	// Request to non-existent db with invalid credentials
 	resp = rt.SendAdminRequestWithAuth("PUT", "/dbx/_config", "", "random", "passwordx")
-	RequireStatus(t, resp, http.StatusUnauthorized)
+	rest.RequireStatus(t, resp, http.StatusUnauthorized)
 }
 
 func TestConfigsIncludeDefaults(t *testing.T) {
@@ -3639,8 +3629,8 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 
 	// Start SG with no databases
 	ctx := base.TestCtx(t)
-	config := bootstrapStartupConfigForTest(t)
-	sc, err := SetupServerContext(ctx, &config, true)
+	config := rest.BootstrapStartupConfigForTest(t)
+	sc, err := rest.SetupServerContext(ctx, &config, true)
 	require.NoError(t, err)
 	defer func() {
 		sc.Close(ctx)
@@ -3648,9 +3638,9 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	}()
 
 	go func() {
-		serverErr <- startServer(ctx, &config, sc)
+		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.waitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -3658,17 +3648,17 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 		fmt.Println("closing test bucket")
 		tb.Close()
 	}()
-	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/",
+	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	resp.requireStatus(http.StatusCreated)
+	resp.RequireStatus(http.StatusCreated)
 
-	var dbConfig DatabaseConfig
-	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config?include_runtime=true", "")
-	resp.requireStatus(http.StatusOK)
+	var dbConfig rest.DatabaseConfig
+	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config?include_runtime=true", "")
+	resp.RequireStatus(http.StatusOK)
 	err = base.JSONUnmarshal([]byte(resp.Body), &dbConfig)
 	assert.NoError(t, err)
 
@@ -3679,9 +3669,9 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	assert.Equal(t, false, *dbConfig.StartOffline)
 	assert.Equal(t, db.DefaultCompactInterval, uint32(*dbConfig.CompactIntervalDays))
 
-	var runtimeServerConfigResponse RunTimeServerConfigResponse
-	resp = bootstrapAdminRequest(t, http.MethodGet, "/_config?include_runtime=true", "")
-	resp.requireStatus(http.StatusOK)
+	var runtimeServerConfigResponse rest.RunTimeServerConfigResponse
+	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/_config?include_runtime=true", "")
+	resp.RequireStatus(http.StatusOK)
 	err = base.JSONUnmarshal([]byte(resp.Body), &runtimeServerConfigResponse)
 	assert.NoError(t, err)
 
@@ -3699,13 +3689,13 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 		fmt.Println("closing test bucket 2")
 		tb2.Close()
 	}()
-	resp = bootstrapAdminRequest(t, http.MethodPut, "/db2/",
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db2/",
 		`{"bucket": "`+tb2.GetName()+`", "num_index_replicas": 0, "unsupported": {"disable_clean_skipped_query": true}}`,
 	)
-	resp.requireStatus(http.StatusCreated)
+	resp.RequireStatus(http.StatusCreated)
 
-	resp = bootstrapAdminRequest(t, http.MethodGet, "/_config?include_runtime=true", "")
-	resp.requireStatus(http.StatusOK)
+	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/_config?include_runtime=true", "")
+	resp.RequireStatus(http.StatusOK)
 	err = base.JSONUnmarshal([]byte(resp.Body), &runtimeServerConfigResponse)
 	assert.NoError(t, err)
 
@@ -3725,8 +3715,8 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 
 	// Start SG with no databases
 	ctx := base.TestCtx(t)
-	config := bootstrapStartupConfigForTest(t)
-	sc, err := SetupServerContext(ctx, &config, false)
+	config := rest.BootstrapStartupConfigForTest(t)
+	sc, err := rest.SetupServerContext(ctx, &config, false)
 	require.NoError(t, err)
 	defer func() {
 		sc.Close(ctx)
@@ -3734,41 +3724,41 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 	}()
 
 	go func() {
-		serverErr <- startServer(ctx, &config, sc)
+		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.waitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
 	defer func() { tb.Close() }()
 
 	// No credentials should fail
-	resp := bootstrapAdminRequest(t, http.MethodPut, "/db1/",
+	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db1/",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	resp.requireStatus(http.StatusForbidden)
+	resp.RequireStatus(http.StatusForbidden)
 
 	// Wrong credentials should fail
-	resp = bootstrapAdminRequest(t, http.MethodPut, "/db2/",
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db2/",
 		`{"bucket": "`+tb.GetName()+`", "username": "test", "password": "invalid_password"}`,
 	)
-	resp.requireStatus(http.StatusForbidden)
+	resp.RequireStatus(http.StatusForbidden)
 
 	// Proper credentials should pass
-	resp = bootstrapAdminRequest(t, http.MethodPut, "/db3/",
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db3/",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "username": "%s", "password": "%s"}`,
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(), base.TestClusterUsername(), base.TestClusterPassword(),
 		),
 	)
-	resp.requireStatus(http.StatusCreated)
+	resp.RequireStatus(http.StatusCreated)
 }
 
 func TestDbOfflineConfigLegacy(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	bucket := rt.Bucket()
 	defer rt.Close()
 
@@ -3813,8 +3803,8 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 
 	// Start SG with no databases
 	ctx := base.TestCtx(t)
-	config := bootstrapStartupConfigForTest(t)
-	sc, err := SetupServerContext(ctx, &config, true)
+	config := rest.BootstrapStartupConfigForTest(t)
+	sc, err := rest.SetupServerContext(ctx, &config, true)
 	require.NoError(t, err)
 	defer func() {
 		sc.Close(ctx)
@@ -3822,9 +3812,9 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 	}()
 
 	go func() {
-		serverErr <- startServer(ctx, &config, sc)
+		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.waitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -3846,33 +3836,33 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 	dbConfig = fmt.Sprintf(dbConfig, tb.GetName(), syncFunc, importFilter, base.TestUseXattrs(), base.TestsDisableGSI())
 
 	// Persist config
-	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
-	resp.requireStatus(http.StatusCreated)
+	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
+	resp.RequireStatus(http.StatusCreated)
 
 	// Get config values before taking db offline
-	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
-	resp.requireStatus(http.StatusOK)
+	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
+	resp.RequireStatus(http.StatusOK)
 	dbConfigBeforeOffline := resp.Body
 
-	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
-	resp.requireResponse(http.StatusOK, importFilter)
+	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
+	resp.RequireResponse(http.StatusOK, importFilter)
 
-	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/sync", "")
-	resp.requireResponse(http.StatusOK, syncFunc)
+	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config/sync", "")
+	resp.RequireResponse(http.StatusOK, syncFunc)
 
 	// Take DB offline
-	resp = bootstrapAdminRequest(t, http.MethodPost, "/db/_offline", "")
-	resp.requireStatus(http.StatusOK)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db/_offline", "")
+	resp.RequireStatus(http.StatusOK)
 
 	// Check offline config matches online config
-	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
-	resp.requireResponse(http.StatusOK, dbConfigBeforeOffline)
+	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
+	resp.RequireResponse(http.StatusOK, dbConfigBeforeOffline)
 
-	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
-	resp.requireResponse(http.StatusOK, importFilter)
+	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
+	resp.RequireResponse(http.StatusOK, importFilter)
 
-	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/sync", "")
-	resp.requireResponse(http.StatusOK, syncFunc)
+	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config/sync", "")
+	resp.RequireResponse(http.StatusOK, syncFunc)
 }
 
 // TestDbConfigPersistentSGVersions ensures that cluster-wide config updates are not applied to older nodes to avoid pushing invalid configuration.
@@ -3886,29 +3876,29 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	serverErr := make(chan error, 0)
 
 	// Start SG with no databases
-	config := bootstrapStartupConfigForTest(t)
+	config := rest.BootstrapStartupConfigForTest(t)
 
 	// enable the background update worker for this test only
 	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Millisecond * 250)
 
 	ctx := base.TestCtx(t)
-	sc, err := SetupServerContext(ctx, &config, true)
+	sc, err := rest.SetupServerContext(ctx, &config, true)
 	require.NoError(t, err)
 	ctx = sc.SetContextLogID(ctx, "initial")
 
 	go func() {
-		serverErr <- startServer(ctx, &config, sc)
+		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.waitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
 	defer func() { tb.Close() }()
 
-	dbConfig := DatabaseConfig{
+	dbConfig := rest.DatabaseConfig{
 		SGVersion: "", // leave empty to emulate what 3.0.0 would've written to the bucket
-		DbConfig: DbConfig{
-			BucketConfig: BucketConfig{
+		DbConfig: rest.DbConfig{
+			BucketConfig: rest.BucketConfig{
 				Bucket: base.StringPtr(tb.GetName()),
 			},
 			Name:             "db",
@@ -3918,15 +3908,15 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 			RevsLimit:        base.Uint32Ptr(123), // use RevsLimit to detect config changes
 		},
 	}
-	dbConfig.Version, err = GenerateDatabaseConfigVersionID("", &dbConfig.DbConfig)
+	dbConfig.Version, err = rest.GenerateDatabaseConfigVersionID("", &dbConfig.DbConfig)
 	require.NoError(t, err)
 
 	// initialise with db config
-	_, err = sc.bootstrapContext.connection.InsertConfig(tb.GetName(), t.Name(), dbConfig)
+	_, err = sc.BootstrapContext.Connection.InsertConfig(tb.GetName(), t.Name(), dbConfig)
 	require.NoError(t, err)
 
-	assertRevsLimit := func(sc *ServerContext, revsLimit uint32) {
-		waitAndAssertCondition(t, func() bool {
+	assertRevsLimit := func(sc *rest.ServerContext, revsLimit uint32) {
+		rest.WaitAndAssertCondition(t, func() bool {
 			dbc, err := sc.GetDatabase(ctx, "db")
 			if err != nil {
 				t.Logf("expected database with RevsLimit=%v but got err=%v", revsLimit, err)
@@ -3942,15 +3932,15 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 
 	assertRevsLimit(sc, 123)
 
-	writeRevsLimitConfigWithVersion := func(sc *ServerContext, version string, revsLimit uint32) error {
-		_, err = sc.bootstrapContext.connection.UpdateConfig(tb.GetName(), t.Name(), func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
-			var db DatabaseConfig
+	writeRevsLimitConfigWithVersion := func(sc *rest.ServerContext, version string, revsLimit uint32) error {
+		_, err = sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), t.Name(), func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
+			var db rest.DatabaseConfig
 			if err := base.JSONUnmarshal(rawBucketConfig, &db); err != nil {
 				return nil, err
 			}
 			db.SGVersion = version
 			db.DbConfig.RevsLimit = base.Uint32Ptr(revsLimit)
-			db.Version, err = GenerateDatabaseConfigVersionID(db.Version, &db.DbConfig)
+			db.Version, err = rest.GenerateDatabaseConfigVersionID(db.Version, &db.DbConfig)
 			if err != nil {
 				return nil, err
 			}
@@ -3969,7 +3959,7 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	// shouldn't be applied to the already started node (as "5.4.3" is newer)
 	warnsStart := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
 	require.NoError(t, writeRevsLimitConfigWithVersion(sc, "5.4.3", 654))
-	waitAndAssertConditionTimeout(t, time.Second*10, func() bool {
+	rest.WaitAndAssertConditionTimeout(t, time.Second*10, func() bool {
 		warns := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
 		return warns-warnsStart > 3
 	}, "expected some warnings from trying to apply newer config")
@@ -3980,7 +3970,7 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	require.NoError(t, <-serverErr)
 
 	// Start a new SG node and ensure we *can* load the "newer" config version on initial startup, to support downgrade
-	sc, err = SetupServerContext(ctx, &config, true)
+	sc, err = rest.SetupServerContext(ctx, &config, true)
 	require.NoError(t, err)
 	ctx = sc.SetContextLogID(ctx, "newerconfig")
 	defer func() {
@@ -3989,9 +3979,9 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	}()
 
 	go func() {
-		serverErr <- startServer(ctx, &config, sc)
+		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.waitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs())
 
 	assertRevsLimit(sc, 654)
 
@@ -4009,14 +3999,14 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 
 	// Start SG with bootstrap credentials filled
 	ctx := base.TestCtx(t)
-	config := bootstrapStartupConfigForTest(t)
-	sc, err := SetupServerContext(ctx, &config, true)
+	config := rest.BootstrapStartupConfigForTest(t)
+	sc, err := rest.SetupServerContext(ctx, &config, true)
 	require.NoError(t, err)
 	serverErr := make(chan error, 0)
 	go func() {
-		serverErr <- startServer(ctx, &config, sc)
+		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.waitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs())
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
@@ -4039,29 +4029,29 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 	"num_index_replicas": 0 }`
 
 	// Create initial database
-	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
-	resp.requireStatus(http.StatusCreated)
+	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
+	resp.RequireStatus(http.StatusCreated)
 
 	// Make sure import and sync fail
-	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/TestSyncDoc", "{}")
-	resp.requireStatus(http.StatusForbidden)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/TestSyncDoc", "{}")
+	resp.RequireStatus(http.StatusForbidden)
 
 	// Take DB offline
-	resp = bootstrapAdminRequest(t, http.MethodPost, "/db/_offline", "")
-	resp.requireStatus(http.StatusOK)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db/_offline", "")
+	resp.RequireStatus(http.StatusOK)
 
-	resp = bootstrapAdminRequest(t, http.MethodDelete, "/db/_config/sync", "")
-	resp.requireStatus(http.StatusOK)
+	resp = rest.BootstrapAdminRequest(t, http.MethodDelete, "/db/_config/sync", "")
+	resp.RequireStatus(http.StatusOK)
 
 	// Take DB online
-	resp = bootstrapAdminRequest(t, http.MethodPost, "/db/_online", "")
-	resp.requireStatus(http.StatusOK)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db/_online", "")
+	resp.RequireStatus(http.StatusOK)
 
-	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/sync", "")
-	resp.requireResponse(http.StatusOK, "")
+	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config/sync", "")
+	resp.RequireResponse(http.StatusOK, "")
 
-	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/TestSyncDoc", "{}")
-	resp.requireStatus(http.StatusCreated)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/TestSyncDoc", "{}")
+	resp.RequireStatus(http.StatusCreated)
 
 	if base.TestUseXattrs() {
 		add, err := tb.Add("TestImportDoc", 0, db.Document{ID: "TestImportDoc", RevID: "1-abc"})
@@ -4069,20 +4059,20 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 		require.Equal(t, true, add)
 
 		// On-demand import - rejected doc
-		resp = bootstrapAdminRequest(t, http.MethodGet, "/db/TestImportDoc", "")
-		resp.requireStatus(http.StatusNotFound)
+		resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/TestImportDoc", "")
+		resp.RequireStatus(http.StatusNotFound)
 
 		// Persist configs
-		resp = bootstrapAdminRequest(t, http.MethodDelete, "/db/_config/import_filter", "")
-		resp.requireStatus(http.StatusOK)
+		resp = rest.BootstrapAdminRequest(t, http.MethodDelete, "/db/_config/import_filter", "")
+		resp.RequireStatus(http.StatusOK)
 
 		// Check configs match
-		resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
-		resp.requireResponse(http.StatusOK, "")
+		resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
+		resp.RequireResponse(http.StatusOK, "")
 
 		// On-demand import - allowed doc after restored default import filter
-		resp = bootstrapAdminRequest(t, http.MethodGet, "/db/TestImportDoc", "")
-		resp.requireStatus(http.StatusOK)
+		resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/TestImportDoc", "")
+		resp.RequireStatus(http.StatusOK)
 	}
 }
 
@@ -4095,14 +4085,14 @@ func TestSetFunctionsWhileDbOffline(t *testing.T) {
 
 	// Start SG with bootstrap credentials filled
 	ctx := base.TestCtx(t)
-	config := bootstrapStartupConfigForTest(t)
-	sc, err := SetupServerContext(ctx, &config, true)
+	config := rest.BootstrapStartupConfigForTest(t)
+	sc, err := rest.SetupServerContext(ctx, &config, true)
 	require.NoError(t, err)
 	serverErr := make(chan error, 0)
 	go func() {
-		serverErr <- startServer(ctx, &config, sc)
+		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.waitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs())
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
@@ -4125,30 +4115,30 @@ func TestSetFunctionsWhileDbOffline(t *testing.T) {
 	"num_index_replicas": 0 }`
 
 	// Create initial database
-	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
-	resp.requireStatus(http.StatusCreated)
+	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
+	resp.RequireStatus(http.StatusCreated)
 
 	// Take DB offline
-	resp = bootstrapAdminRequest(t, http.MethodPost, "/db/_offline", "")
-	resp.requireStatus(http.StatusOK)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db/_offline", "")
+	resp.RequireStatus(http.StatusOK)
 
 	// Persist configs
-	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config/import_filter", importFilter)
-	resp.requireStatus(http.StatusOK)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/_config/import_filter", importFilter)
+	resp.RequireStatus(http.StatusOK)
 
-	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config/sync", syncFunc)
-	resp.requireStatus(http.StatusOK)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/_config/sync", syncFunc)
+	resp.RequireStatus(http.StatusOK)
 
 	// Take DB online
-	resp = bootstrapAdminRequest(t, http.MethodPost, "/db/_online", "")
-	resp.requireStatus(http.StatusOK)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db/_online", "")
+	resp.RequireStatus(http.StatusOK)
 
 	// Check configs match
-	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
-	resp.requireResponse(http.StatusOK, importFilter)
+	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
+	resp.RequireResponse(http.StatusOK, importFilter)
 
-	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config/sync", "")
-	resp.requireResponse(http.StatusOK, syncFunc)
+	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config/sync", "")
+	resp.RequireResponse(http.StatusOK, syncFunc)
 }
 
 func TestEmptyStringJavascriptFunctions(t *testing.T) {
@@ -4161,8 +4151,8 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 
 	// Start SG with no databases
 	ctx := base.TestCtx(t)
-	config := bootstrapStartupConfigForTest(t)
-	sc, err := SetupServerContext(ctx, &config, true)
+	config := rest.BootstrapStartupConfigForTest(t)
+	sc, err := rest.SetupServerContext(ctx, &config, true)
 	require.NoError(t, err)
 	defer func() {
 		sc.Close(ctx)
@@ -4170,9 +4160,9 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 	}()
 
 	go func() {
-		serverErr <- startServer(ctx, &config, sc)
+		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.waitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -4182,44 +4172,44 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 	}()
 
 	// db put with empty sync func and import filter
-	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/",
+	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "sync": "", "import_filter": ""}`,
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	resp.requireStatus(http.StatusCreated)
+	resp.RequireStatus(http.StatusCreated)
 
 	// db config put with empty sync func and import filter
-	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config",
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/_config",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "sync": "", "import_filter": ""}`,
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	resp.requireStatus(http.StatusCreated)
+	resp.RequireStatus(http.StatusCreated)
 
 	// db config post, with empty sync func and import filter
-	resp = bootstrapAdminRequest(t, http.MethodPost, "/db/_config",
+	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db/_config",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "sync": "", "import_filter": ""}`,
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	resp.requireStatus(http.StatusCreated)
+	resp.RequireStatus(http.StatusCreated)
 }
 
 // Regression test for CBG-2119 - ensure that the disable_password_auth bool field is handled correctly both when set as true and as false
 func TestDisablePasswordAuthThroughAdminAPI(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{})
 	defer rt.Close()
 
 	res := rt.SendAdminRequest(http.MethodPost, "/db/_config", `{"bucket":"`+rt.Bucket().GetName()+`","num_index_replicas":0,"disable_password_auth": true}`)
-	RequireStatus(t, res, http.StatusCreated)
+	rest.RequireStatus(t, res, http.StatusCreated)
 	assert.True(t, rt.GetDatabase().Options.DisablePasswordAuthentication)
 
 	res = rt.SendAdminRequest(http.MethodPost, "/db/_config", `{"bucket":"`+rt.Bucket().GetName()+`","num_index_replicas":0,"disable_password_auth": false}`)
-	RequireStatus(t, res, http.StatusCreated)
+	rest.RequireStatus(t, res, http.StatusCreated)
 	assert.False(t, rt.GetDatabase().Options.DisablePasswordAuthentication)
 }
 
@@ -4240,7 +4230,7 @@ func TestGroupIDReplications(t *testing.T) {
 	defer activeBucket.Close()
 
 	// Set up passive bucket RT
-	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: passiveBucket})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{CustomTestBucket: passiveBucket})
 	defer rt.Close()
 
 	// Make rt listen on an actual HTTP port, so it can receive replications
@@ -4252,24 +4242,24 @@ func TestGroupIDReplications(t *testing.T) {
 	// Start SG nodes for default group, group A and group B
 	groupIDs := []string{"", "GroupA", "GroupB"}
 	var adminHosts []string
-	var serverContexts []*ServerContext
+	var serverContexts []*rest.ServerContext
 	for i, group := range groupIDs {
 		serverErr := make(chan error, 0)
 
-		config := bootstrapStartupConfigForTest(t)
+		config := rest.BootstrapStartupConfigForTest(t)
 		portOffset := i * 10
-		adminInterface := fmt.Sprintf("127.0.0.1:%d", 4985+bootstrapTestPortOffset+portOffset)
+		adminInterface := fmt.Sprintf("127.0.0.1:%d", 4985+rest.BootstrapTestPortOffset+portOffset)
 		adminHosts = append(adminHosts, "http://"+adminInterface)
-		config.API.PublicInterface = fmt.Sprintf("127.0.0.1:%d", 4984+bootstrapTestPortOffset+portOffset)
+		config.API.PublicInterface = fmt.Sprintf("127.0.0.1:%d", 4984+rest.BootstrapTestPortOffset+portOffset)
 		config.API.AdminInterface = adminInterface
-		config.API.MetricsInterface = fmt.Sprintf("127.0.0.1:%d", 4986+bootstrapTestPortOffset+portOffset)
+		config.API.MetricsInterface = fmt.Sprintf("127.0.0.1:%d", 4986+rest.BootstrapTestPortOffset+portOffset)
 		config.Bootstrap.ConfigGroupID = group
 		if group == "" {
-			config.Bootstrap.ConfigGroupID = PersistentConfigDefaultGroupID
+			config.Bootstrap.ConfigGroupID = rest.PersistentConfigDefaultGroupID
 		}
 
 		ctx := base.TestCtx(t)
-		sc, err := SetupServerContext(ctx, &config, true)
+		sc, err := rest.SetupServerContext(ctx, &config, true)
 		require.NoError(t, err)
 		serverContexts = append(serverContexts, sc)
 		ctx = sc.SetContextLogID(ctx, config.Bootstrap.ConfigGroupID)
@@ -4278,18 +4268,18 @@ func TestGroupIDReplications(t *testing.T) {
 			require.NoError(t, <-serverErr)
 		}()
 		go func() {
-			serverErr <- startServer(ctx, &config, sc)
+			serverErr <- rest.StartServer(ctx, &config, sc)
 		}()
-		require.NoError(t, sc.waitForRESTAPIs())
+		require.NoError(t, sc.WaitForRESTAPIs())
 
 		// Set up db config
-		resp := bootstrapAdminRequestCustomHost(t, http.MethodPut, adminHosts[i], "/db/",
+		resp := rest.BootstrapAdminRequestCustomHost(t, http.MethodPut, adminHosts[i], "/db/",
 			fmt.Sprintf(
 				`{"bucket": "%s", "num_index_replicas": 0, "use_views": %t, "import_docs": true, "sync":"%s"}`,
 				activeBucket.GetName(), base.TestsDisableGSI(), channels.DefaultSyncFunction,
 			),
 		)
-		resp.requireStatus(http.StatusCreated)
+		resp.RequireStatus(http.StatusCreated)
 	}
 
 	// Start replicators
@@ -4305,8 +4295,8 @@ func TestGroupIDReplications(t *testing.T) {
 			InitialState:           db.ReplicationStateRunning,
 			ConflictResolutionType: db.ConflictResolverDefault,
 		}
-		resp := bootstrapAdminRequestCustomHost(t, http.MethodPost, adminHosts[i], "/db/_replication/", MarshalConfig(t, replicationConfig))
-		resp.requireStatus(http.StatusCreated)
+		resp := rest.BootstrapAdminRequestCustomHost(t, http.MethodPost, adminHosts[i], "/db/_replication/", rest.MarshalConfig(t, replicationConfig))
+		resp.RequireStatus(http.StatusCreated)
 	}
 
 	for groupNum, group := range groupIDs {
@@ -4319,8 +4309,8 @@ func TestGroupIDReplications(t *testing.T) {
 
 		// Force on-demand import and cache
 		for _, host := range adminHosts {
-			resp := bootstrapAdminRequestCustomHost(t, http.MethodGet, host, "/db/"+key, "")
-			resp.requireStatus(http.StatusOK)
+			resp := rest.BootstrapAdminRequestCustomHost(t, http.MethodGet, host, "/db/"+key, "")
+			resp.RequireStatus(http.StatusOK)
 		}
 
 		for scNum, sc := range serverContexts {
@@ -4330,7 +4320,7 @@ func TestGroupIDReplications(t *testing.T) {
 				expectedPushed = 1
 			}
 
-			ctx := sc.SetContextLogID(base.TestCtx(t), sc.config.Bootstrap.ConfigGroupID)
+			ctx := sc.SetContextLogID(base.TestCtx(t), sc.Config.Bootstrap.ConfigGroupID)
 			dbContext, err := sc.GetDatabase(ctx, "db")
 			require.NoError(t, err)
 			actualPushed, _ := base.WaitForStat(dbContext.DbStats.DBReplicatorStats("repl").NumDocPushed.Value, expectedPushed)
@@ -4346,10 +4336,10 @@ func TestDeleteDatabasePointingAtSameBucket(t *testing.T) {
 	}
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 	tb := base.GetTestBucket(t)
-	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{CustomTestBucket: tb})
 	defer rt.Close()
 	resp := rt.SendAdminRequest(http.MethodDelete, "/db/", "")
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 	// Make another database that uses import in-order to trigger the panic instantly instead of having to time.Sleep
 	resp = rt.SendAdminRequest(http.MethodPut, "/db1/", fmt.Sprintf(`{
 		"bucket": "%s",
@@ -4367,8 +4357,8 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 	// Start SG with no databases in bucket(s)
 	ctx := base.TestCtx(t)
-	config := bootstrapStartupConfigForTest(t)
-	sc, err := SetupServerContext(ctx, &config, true)
+	config := rest.BootstrapStartupConfigForTest(t)
+	sc, err := rest.SetupServerContext(ctx, &config, true)
 	require.NoError(t, err)
 	serverErr := make(chan error, 0)
 	defer func() {
@@ -4376,9 +4366,9 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 		require.NoError(t, <-serverErr)
 	}()
 	go func() {
-		serverErr <- startServer(ctx, &config, sc)
+		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.waitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs())
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
 	defer func() {
@@ -4394,15 +4384,15 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
    "use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
    "num_index_replicas": 0 }`
 
-	resp := bootstrapAdminRequest(t, http.MethodPut, "/db1/", fmt.Sprintf(dbConfig, "db1"))
-	resp.requireStatus(http.StatusCreated)
+	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db1/", fmt.Sprintf(dbConfig, "db1"))
+	resp.RequireStatus(http.StatusCreated)
 
-	resp = bootstrapAdminRequest(t, http.MethodDelete, "/db1/", "")
-	resp.requireStatus(http.StatusOK)
+	resp = rest.BootstrapAdminRequest(t, http.MethodDelete, "/db1/", "")
+	resp.RequireStatus(http.StatusOK)
 
 	// Make another database that uses import in-order to trigger the panic instantly instead of having to time.Sleep
-	resp = bootstrapAdminRequest(t, http.MethodPut, "/db2/", fmt.Sprintf(dbConfig, "db2"))
-	resp.requireStatus(http.StatusCreated)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db2/", fmt.Sprintf(dbConfig, "db2"))
+	resp.RequireStatus(http.StatusCreated)
 
 	// Validate that deleted database is no longer in dest factory set
 	_, fetchDb1DestErr := base.FetchDestFactory(base.ImportDestKey("db1"))
@@ -4439,9 +4429,9 @@ function (doc) {
 	channel(doc.channels);
 	requireAccess(doc.channels);
 }`
-			rtConfig := &RestTesterConfig{
+			rtConfig := &rest.RestTesterConfig{
 				SyncFn: syncFunc,
-				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 					Users: map[string]*auth.PrincipalConfig{
 						"alice": {
 							Password:         base.StringPtr("pass"),
@@ -4455,7 +4445,7 @@ function (doc) {
 				}},
 			}
 			// Set up buckets, rest testers, and set up servers
-			passiveRT := NewRestTester(t, rtConfig)
+			passiveRT := rest.NewRestTester(t, rtConfig)
 			defer passiveRT.Close()
 
 			publicSrv := httptest.NewServer(passiveRT.TestPublicHandler())
@@ -4464,12 +4454,12 @@ function (doc) {
 			adminSrv := httptest.NewServer(passiveRT.TestAdminHandler())
 			defer adminSrv.Close()
 
-			activeRT := NewRestTester(t, rtConfig)
+			activeRT := rest.NewRestTester(t, rtConfig)
 			defer activeRT.Close()
 
 			// Change RT depending on direction
-			var senderRT *RestTester   // RT that has the initial docs that get replicated to the other bucket
-			var receiverRT *RestTester // RT that gets the docs replicated to it
+			var senderRT *rest.RestTester   // RT that has the initial docs that get replicated to the other bucket
+			var receiverRT *rest.RestTester // RT that gets the docs replicated to it
 			if test.direction == "push" {
 				senderRT = activeRT
 				receiverRT = passiveRT
@@ -4496,7 +4486,7 @@ function (doc) {
 }
 `
 			resp := senderRT.SendAdminRequest("POST", "/db/_bulk_docs", bulkDocsBody)
-			RequireStatus(t, resp, http.StatusCreated)
+			rest.RequireStatus(t, resp, http.StatusCreated)
 
 			err := senderRT.WaitForPendingChanges()
 			require.NoError(t, err)
@@ -4515,7 +4505,7 @@ function (doc) {
 				}`
 
 			resp = activeRT.SendAdminRequest("PUT", "/db/_replication/"+replName, replConf)
-			RequireStatus(t, resp, http.StatusCreated)
+			rest.RequireStatus(t, resp, http.StatusCreated)
 
 			activeCtx := activeRT.Context()
 			err = activeRT.GetDatabase().SGReplicateMgr.StartReplications(activeCtx)
@@ -4554,7 +4544,7 @@ function (doc) {
 					}`
 
 			resp = activeRT.SendAdminRequest("PUT", "/db/_replication/"+replName, replConf)
-			RequireStatus(t, resp, http.StatusCreated)
+			rest.RequireStatus(t, resp, http.StatusCreated)
 			activeRT.WaitForReplicationStatus(replName, db.ReplicationStateRunning)
 
 			value, _ = base.WaitForStat(receiverRT.GetDatabase().DbStats.Database().NumDocWrites.Value, 10)
@@ -4575,8 +4565,8 @@ function (doc) {
 func TestReplicatorDeprecatedCredentials(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
-	passiveRT := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{
-		DbConfig: DbConfig{
+	passiveRT := rest.NewRestTester(t, &rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{
+		DbConfig: rest.DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
 					Password: base.StringPtr("pass"),
@@ -4590,7 +4580,7 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 	adminSrv := httptest.NewServer(passiveRT.TestPublicHandler())
 	defer adminSrv.Close()
 
-	activeRT := NewRestTester(t, nil)
+	activeRT := rest.NewRestTester(t, nil)
 	defer activeRT.Close()
 	activeCtx := activeRT.Context()
 
@@ -4610,7 +4600,7 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 }
 `
 	resp := activeRT.SendAdminRequest("POST", "/db/_replication/", replConfig)
-	RequireStatus(t, resp, 201)
+	rest.RequireStatus(t, resp, 201)
 
 	activeRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateRunning)
 
@@ -4618,7 +4608,7 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 	require.NoError(t, err)
 
 	resp = activeRT.SendAdminRequest("GET", "/db/_replication/"+t.Name(), "")
-	RequireStatus(t, resp, 200)
+	rest.RequireStatus(t, resp, 200)
 
 	var config db.ReplicationConfig
 	err = json.Unmarshal(resp.BodyBytes(), &config)
@@ -4639,13 +4629,13 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 func TestReplicatorCheckpointOnStop(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
-	passiveRT := NewRestTester(t, nil)
+	passiveRT := rest.NewRestTester(t, nil)
 	defer passiveRT.Close()
 
 	adminSrv := httptest.NewServer(passiveRT.TestAdminHandler())
 	defer adminSrv.Close()
 
-	activeRT := NewRestTester(t, nil)
+	activeRT := rest.NewRestTester(t, nil)
 	defer activeRT.Close()
 	activeCtx := activeRT.Context()
 
@@ -4669,7 +4659,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 }
 `
 	resp := activeRT.SendAdminRequest("POST", "/db/_replication/", replConfig)
-	RequireStatus(t, resp, 201)
+	rest.RequireStatus(t, resp, 201)
 
 	activeRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateRunning)
 
@@ -4762,7 +4752,7 @@ func TestApiInternalPropertiesHandling(t *testing.T) {
 		},
 	}
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	for i, test := range testCases {
@@ -4773,10 +4763,10 @@ func TestApiInternalPropertiesHandling(t *testing.T) {
 
 			resp := rt.SendAdminRequest("PUT", "/db/"+docID, string(rawBody))
 			if test.expectedErrorStatus != nil {
-				RequireStatus(t, resp, *test.expectedErrorStatus)
+				rest.RequireStatus(t, resp, *test.expectedErrorStatus)
 				return
 			}
-			RequireStatus(t, resp, http.StatusCreated)
+			rest.RequireStatus(t, resp, http.StatusCreated)
 
 			var bucketDoc map[string]interface{}
 			_, err = rt.Bucket().Get(docID, &bucketDoc)
@@ -4845,12 +4835,12 @@ func TestPutIDRevMatchBody(t *testing.T) {
 		},
 	}
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 	// Create document to create rev from
 	resp := rt.SendAdminRequest("PUT", "/db/doc", "{}")
-	RequireStatus(t, resp, 201)
-	rev := RespRevID(t, resp)
+	rest.RequireStatus(t, resp, 201)
+	rev := rest.RespRevID(t, resp)
 
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
@@ -4865,21 +4855,21 @@ func TestPutIDRevMatchBody(t *testing.T) {
 
 			resp = rt.SendAdminRequest("PUT", "/db/"+docID+"?rev="+docRev, docBody)
 			if test.expectError {
-				RequireStatus(t, resp, 400)
+				rest.RequireStatus(t, resp, 400)
 				return
 			}
-			RequireStatus(t, resp, 201)
+			rest.RequireStatus(t, resp, 201)
 			if test.docID == "" {
 				// Update rev to branch off for next test
-				rev = RespRevID(t, resp)
+				rev = rest.RespRevID(t, resp)
 			}
 		})
 	}
 }
 
 func TestPublicChanGuestAccess(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			Guest: &auth.PrincipalConfig{
 				Disabled: base.BoolPtr(false),
 			},
@@ -4889,27 +4879,27 @@ func TestPublicChanGuestAccess(t *testing.T) {
 
 	// Create a document on the public channel
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc", `{"channels": ["!"], "foo": "bar"}`)
-	RequireStatus(t, resp, http.StatusCreated)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// Check guest user has access to public channel
 	resp = rt.SendRequest(http.MethodGet, "/db/doc", "")
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 	assert.EqualValues(t, "bar", resp.GetRestDocument()["foo"])
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/_user/GUEST", ``)
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 	fmt.Println("GUEST user:", resp.Body.String())
 	assert.EqualValues(t, []interface{}{"!"}, resp.GetRestDocument()["all_channels"])
 
 	// Confirm guest user cannot access other channels it has no access too
 	resp = rt.SendAdminRequest(http.MethodPut, "/db/docNoAccess", `{"channels": ["cookie"], "foo": "bar"}`)
-	RequireStatus(t, resp, http.StatusCreated)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	resp = rt.SendRequest(http.MethodGet, "/db/docNoAccess", "")
-	RequireStatus(t, resp, http.StatusForbidden)
+	rest.RequireStatus(t, resp, http.StatusForbidden)
 }
 
-func setServerPurgeInterval(t *testing.T, rt *RestTester, newPurgeInterval string) {
+func setServerPurgeInterval(t *testing.T, rt *rest.RestTester, newPurgeInterval string) {
 	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
 
@@ -4958,7 +4948,7 @@ func TestTombstoneCompactionPurgeInterval(t *testing.T) {
 			expectedPurgeIntervalAfterCompact: time.Hour * 24,
 		},
 	}
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 	dbc := rt.GetDatabase()
 	ctx := rt.Context()
@@ -4999,11 +4989,11 @@ func TestResyncPersistence(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	noCloseTB := tb.NoCloseClone()
 
-	rt1 := NewRestTester(t, &RestTesterConfig{
+	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: noCloseTB,
 	})
 
-	rt2 := NewRestTester(t, &RestTesterConfig{
+	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb,
 	})
 
@@ -5015,15 +5005,15 @@ func TestResyncPersistence(t *testing.T) {
 
 	// Start resync
 	resp := rt1.SendAdminRequest("POST", "/db/_offline", "")
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 
-	waitAndAssertCondition(t, func() bool {
+	rest.WaitAndAssertCondition(t, func() bool {
 		state := atomic.LoadUint32(&rt1.GetDatabase().State)
 		return state == db.DBOffline
 	})
 
 	resp = rt1.SendAdminRequest("POST", "/db/_resync?action=start", "")
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 
 	// Wait for resync to complete
 	var resyncManagerStatus db.ResyncManagerResponse
@@ -5043,7 +5033,7 @@ func TestResyncPersistence(t *testing.T) {
 
 	// Check statuses match
 	resp2 := rt2.SendAdminRequest("GET", "/db/_resync", "")
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 	fmt.Printf("RT1 Resync Status: %s\n", resp.BodyBytes())
 	fmt.Printf("RT2 Resync Status: %s\n", resp2.BodyBytes())
 	assert.Equal(t, resp.BodyBytes(), resp2.BodyBytes())
@@ -5059,7 +5049,7 @@ func TestPerDBCredsOverride(t *testing.T) {
 	tb1 := base.GetTestBucket(t)
 	defer tb1.Close()
 
-	config := bootstrapStartupConfigForTest(t)
+	config := rest.BootstrapStartupConfigForTest(t)
 	config.BucketCredentials = map[string]*base.CredentialsConfig{
 		tb1.GetName(): {
 			Username: base.TestClusterUsername(),
@@ -5074,7 +5064,7 @@ func TestPerDBCredsOverride(t *testing.T) {
 	}
 
 	ctx := base.TestCtx(t)
-	sc, err := SetupServerContext(ctx, &config, true)
+	sc, err := rest.SetupServerContext(ctx, &config, true)
 	require.NoError(t, err)
 
 	serverErr := make(chan error, 0)
@@ -5084,13 +5074,13 @@ func TestPerDBCredsOverride(t *testing.T) {
 	}()
 
 	go func() {
-		serverErr <- startServer(ctx, &config, sc)
+		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.waitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs())
 
-	couchbaseCluster, err := createCouchbaseClusterFromStartupConfig(sc.config)
+	couchbaseCluster, err := rest.CreateCouchbaseClusterFromStartupConfig(sc.Config)
 	require.NoError(t, err)
-	sc.bootstrapContext.connection = couchbaseCluster
+	sc.BootstrapContext.Connection = couchbaseCluster
 
 	dbConfig := `{
 		"bucket": "` + tb1.GetName() + `",
@@ -5099,23 +5089,23 @@ func TestPerDBCredsOverride(t *testing.T) {
 		"num_index_replicas": 0
 	}`
 
-	res := bootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
+	res := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
 	// Make sure request failed as it could authenticate with the bucket
 	assert.Equal(t, http.StatusForbidden, res.StatusCode)
 
 	// Allow database to be created sucessfully
-	sc.config.DatabaseCredentials = map[string]*base.CredentialsConfig{}
-	res = bootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
+	sc.Config.DatabaseCredentials = map[string]*base.CredentialsConfig{}
+	res = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
 	assert.Equal(t, http.StatusCreated, res.StatusCode)
 
 	// Confirm fetch configs causes bucket credentials to be overrode
-	sc.config.DatabaseCredentials = map[string]*base.CredentialsConfig{
+	sc.Config.DatabaseCredentials = map[string]*base.CredentialsConfig{
 		"db": {
 			Username: "invalidUsername",
 			Password: "invalidPassword",
 		},
 	}
-	configs, err := sc.fetchConfigs(ctx, false)
+	configs, err := sc.FetchConfigs(ctx, false)
 	require.NoError(t, err)
 	require.NotNil(t, configs["db"])
 	assert.Equal(t, "invalidUsername", configs["db"].BucketConfig.Username)

@@ -25,13 +25,6 @@ type PutDocResponse struct {
 	Rev string
 }
 
-func (rt *RestTester) GetDoc(docID string) (body db.Body) {
-	rawResponse := rt.SendAdminRequest("GET", "/db/"+docID, "")
-	RequireStatus(rt.tb, rawResponse, 200)
-	require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
-	return body
-}
-
 func (rt *RestTester) RequireDocNotFound(docID string) {
 	rawResponse := rt.SendAdminRequest(http.MethodGet, "/db/"+docID, "")
 	RequireStatus(rt.tb, rawResponse, http.StatusNotFound)
@@ -119,16 +112,4 @@ func (rt *RestTester) RequireWaitChanges(numChangesExpected int, since string) C
 	require.NoError(rt.tb, err)
 	require.Len(rt.tb, changesResults.Results, numChangesExpected)
 	return changesResults
-}
-
-func (rt *RestTester) WaitForRev(docID string, revID string) error {
-	return rt.WaitForCondition(func() bool {
-		rawResponse := rt.SendAdminRequest("GET", "/db/"+docID, "")
-		if rawResponse.Code != 200 && rawResponse.Code != 201 {
-			return false
-		}
-		var body db.Body
-		require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
-		return body.ExtractRev() == revID
-	})
 }

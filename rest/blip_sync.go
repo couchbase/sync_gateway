@@ -32,7 +32,7 @@ func (h *handler) handleBLIPSync() error {
 	h.db.DatabaseContext.DbStats.Database().NumReplicationsTotal.Add(1)
 	defer h.db.DatabaseContext.DbStats.Database().NumReplicationsActive.Add(-1)
 
-	if c := h.server.config.Replicator.BLIPCompression; c != nil {
+	if c := h.server.Config.Replicator.BLIPCompression; c != nil {
 		blip.CompressionLevel = *c
 	}
 

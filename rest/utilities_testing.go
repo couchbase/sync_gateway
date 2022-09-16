@@ -815,11 +815,11 @@ func (rt *RestTester) GetDocumentSequence(key string) (sequence uint64) {
 // ReplacePerBucketCredentials replaces buckets defined on StartupConfig.BucketCredentials then recreates the couchbase
 // cluster to pick up the changes
 func (rt *RestTester) ReplacePerBucketCredentials(config base.PerBucketCredentialsConfig) {
-	rt.ServerContext().config.BucketCredentials = config
+	rt.ServerContext().Config.BucketCredentials = config
 	// Update the CouchbaseCluster to include the new bucket credentials
-	couchbaseCluster, err := createCouchbaseClusterFromStartupConfig(rt.ServerContext().config)
+	couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(rt.ServerContext().Config)
 	require.NoError(rt.tb, err)
-	rt.ServerContext().bootstrapContext.connection = couchbaseCluster
+	rt.ServerContext().BootstrapContext.Connection = couchbaseCluster
 }
 
 func (rt *RestTester) Context() context.Context {
@@ -1829,8 +1829,8 @@ func waitAndRequireCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...
 	}
 }
 
-func waitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
-	t.Log("starting waitAndAssertCondition")
+func WaitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
+	t.Log("starting WaitAndAssertCondition")
 	for i := 0; i <= 20; i++ {
 		if i == 20 {
 			assert.Fail(t, "Condition failed to be satisfied", failureMsgAndArgs...)
@@ -1842,7 +1842,7 @@ func waitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...i
 	}
 }
 
-func waitAndAssertConditionTimeout(t *testing.T, timeout time.Duration, fn func() bool, failureMsgAndArgs ...interface{}) {
+func WaitAndAssertConditionTimeout(t *testing.T, timeout time.Duration, fn func() bool, failureMsgAndArgs ...interface{}) {
 	start := time.Now()
 	tick := time.NewTicker(timeout / 20)
 	defer tick.Stop()
@@ -1856,15 +1856,15 @@ func waitAndAssertConditionTimeout(t *testing.T, timeout time.Duration, fn func(
 	}
 }
 
-func waitAndAssertBackgroundManagerState(t testing.TB, expected db.BackgroundProcessState, getStateFunc func(t testing.TB) db.BackgroundProcessState) bool {
-	err, actual := base.RetryLoop(t.Name()+"-waitAndAssertBackgroundManagerState", func() (shouldRetry bool, err error, value interface{}) {
+func WaitAndAssertBackgroundManagerState(t testing.TB, expected db.BackgroundProcessState, getStateFunc func(t testing.TB) db.BackgroundProcessState) bool {
+	err, actual := base.RetryLoop(t.Name()+"-WaitAndAssertBackgroundManagerState", func() (shouldRetry bool, err error, value interface{}) {
 		actual := getStateFunc(t)
 		return expected != actual, nil, actual
 	}, base.CreateMaxDoublingSleeperFunc(30, 100, 1000))
 	return assert.NoErrorf(t, err, "expected background manager state %v, but got: %v", expected, actual)
 }
 
-func waitAndAssertBackgroundManagerExpiredHeartbeat(t testing.TB, bm *db.BackgroundManager) bool {
+func WaitAndAssertBackgroundManagerExpiredHeartbeat(t testing.TB, bm *db.BackgroundManager) bool {
 	err, b := base.RetryLoop(t.Name()+"-assertNoHeartbeatDoc", func() (shouldRetry bool, err error, value interface{}) {
 		b, err := bm.GetHeartbeatDoc(t)
 		return !base.IsDocNotFoundError(err), err, b
@@ -1873,4 +1873,21 @@ func waitAndAssertBackgroundManagerExpiredHeartbeat(t testing.TB, bm *db.Backgro
 		return assert.NoErrorf(t, err, "expected heartbeat doc to expire, but found one: %v", b)
 	}
 	return assert.Truef(t, base.IsDocNotFoundError(err), "expected heartbeat doc to expire, but got a different error: %v", err)
+}
+
+// RespRevID returns a rev ID from the given response, or fails the given test if a rev ID was not found.
+func RespRevID(t *testing.T, response *TestResponse) (revID string) {
+	var r struct {
+		RevID *string `json:"rev"`
+	}
+	require.NoError(t, json.Unmarshal(response.BodyBytes(), &r), "couldn't decode JSON from response body")
+	require.NotNil(t, r.RevID, "expecting non-nil rev ID from response: %s", string(response.BodyBytes()))
+	require.NotEqual(t, "", *r.RevID, "expecting non-empty rev ID from response: %s", string(response.BodyBytes()))
+	return *r.RevID
+}
+
+func MarshalConfig(t *testing.T, config db.ReplicationConfig) string {
+	replicationPayload, err := json.Marshal(config)
+	require.NoError(t, err)
+	return string(replicationPayload)
 }

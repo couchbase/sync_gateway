@@ -60,7 +60,7 @@ func legacyServerMain(ctx context.Context, osArgs []string, flagStartupConfig *S
 		return err
 	}
 
-	return startServer(ctx, &sc, svrctx)
+	return StartServer(ctx, &sc, svrctx)
 }
 
 type legacyConfigFlag struct {

@@ -320,7 +320,7 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 	require.NoError(t, err)
 
 	serverErr := make(chan error)
-	config := bootstrapStartupConfigForTest(t)
+	config := BootstrapStartupConfigForTest(t)
 	sc, err := SetupServerContext(ctx, &config, true)
 	require.NoError(t, err)
 	defer func() {
@@ -329,12 +329,12 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 	}()
 
 	go func() {
-		serverErr <- startServer(ctx, &config, sc)
+		serverErr <- StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.waitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Create a DB configured with one scope
-	res := bootstrapAdminRequest(t, http.MethodPut, "/db/", string(mustMarshalJSON(t, map[string]any{
+	res := BootstrapAdminRequest(t, http.MethodPut, "/db/", string(mustMarshalJSON(t, map[string]any{
 		"bucket":                      tb.GetName(),
 		"num_index_replicas":          0,
 		"enable_shared_bucket_access": base.TestUseXattrs(),
@@ -350,7 +350,7 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 	require.Equal(t, http.StatusCreated, res.StatusCode, "failed to create DB")
 
 	// Try updating its scopes
-	res = bootstrapAdminRequest(t, http.MethodPut, "/db/_config", string(mustMarshalJSON(t, map[string]any{
+	res = BootstrapAdminRequest(t, http.MethodPut, "/db/_config", string(mustMarshalJSON(t, map[string]any{
 		"bucket":                      tb.GetName(),
 		"num_index_replicas":          0,
 		"enable_shared_bucket_access": base.TestUseXattrs(),

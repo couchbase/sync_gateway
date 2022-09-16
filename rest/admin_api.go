@@ -74,9 +74,9 @@ func (h *handler) handleCreateDB() error {
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't create copy of db config: %v", err)
 		}
 
-		dbCreds, _ := h.server.config.DatabaseCredentials[dbName]
-		bucketCreds, _ := h.server.config.BucketCredentials[bucket]
-		if err := config.setup(dbName, h.server.config.Bootstrap, dbCreds, bucketCreds, h.server.config.IsServerless()); err != nil {
+		dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
+		bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
+		if err := config.setup(dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
 			return err
 		}
 
@@ -108,7 +108,7 @@ func (h *handler) handleCreateDB() error {
 		}
 
 		// now we've started the db successfully, we can persist it to the cluster
-		cas, err := h.server.bootstrapContext.connection.InsertConfig(bucket, h.server.config.Bootstrap.ConfigGroupID, persistedConfig)
+		cas, err := h.server.BootstrapContext.Connection.InsertConfig(bucket, h.server.Config.Bootstrap.ConfigGroupID, persistedConfig)
 		if err != nil {
 			// unload the requested database config to prevent the cluster being in an inconsistent state
 			h.server._removeDatabase(h.ctx(), dbName)
@@ -220,7 +220,7 @@ func (h *handler) handleGetDbConfig() error {
 	// - Applying if refresh_config is set
 	// - Returning if include_runtime=false
 	var responseConfig *DbConfig
-	if h.server.bootstrapContext.connection != nil {
+	if h.server.BootstrapContext.Connection != nil {
 		found, dbConfig, err := h.server.fetchDatabase(h.ctx(), h.db.Name)
 		if err != nil {
 			return err
@@ -233,7 +233,7 @@ func (h *handler) handleGetDbConfig() error {
 		h.response.Header().Set("ETag", dbConfig.Version)
 
 		// refresh_config=true forces the config loaded out of the bucket to be applied on the node
-		if h.getBoolQuery("refresh_config") && h.server.bootstrapContext.connection != nil {
+		if h.getBoolQuery("refresh_config") && h.server.BootstrapContext.Connection != nil {
 			// set cas=0 to force a refresh
 			dbConfig.cas = 0
 			h.server.applyConfigs(h.ctx(), map[string]DatabaseConfig{h.db.Name: *dbConfig})
@@ -257,7 +257,7 @@ func (h *handler) handleGetDbConfig() error {
 	if includeRuntime {
 
 		var err error
-		responseConfig, err = MergeDatabaseConfigWithDefaults(h.server.config, h.server.GetDbConfig(h.db.Name))
+		responseConfig, err = MergeDatabaseConfigWithDefaults(h.server.Config, h.server.GetDbConfig(h.db.Name))
 		if err != nil {
 			return err
 		}
@@ -311,7 +311,7 @@ func (h *handler) handleGetConfig() error {
 
 		allDbNames := h.server.AllDatabaseNames()
 		databaseMap := make(map[string]*DbConfig, len(allDbNames))
-		cfg.StartupConfig, err = h.server.config.Redacted()
+		cfg.StartupConfig, err = h.server.Config.Redacted()
 		if err != nil {
 			return err
 		}
@@ -323,7 +323,7 @@ func (h *handler) handleGetConfig() error {
 				continue
 			}
 
-			dbConfig, err := MergeDatabaseConfigWithDefaults(h.server.config, dbConfig)
+			dbConfig, err := MergeDatabaseConfigWithDefaults(h.server.Config, dbConfig)
 			if err != nil {
 				return err
 			}
@@ -352,7 +352,7 @@ func (h *handler) handleGetConfig() error {
 			}
 		}
 
-		cfg.Logging = *base.BuildLoggingConfigFromLoggers(h.server.config.Logging.RedactionLevel, h.server.config.Logging.LogFilePath)
+		cfg.Logging = *base.BuildLoggingConfigFromLoggers(h.server.Config.Logging.RedactionLevel, h.server.Config.Logging.LogFilePath)
 		cfg.Databases = databaseMap
 
 		h.writeJSON(cfg)
@@ -513,8 +513,8 @@ func (h *handler) handlePutDbConfig() (err error) {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
 
-		dbCreds, _ := h.server.config.DatabaseCredentials[dbName]
-		if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap, dbCreds, nil, false); err != nil {
+		dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
+		if err := updatedDbConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, nil, false); err != nil {
 			return err
 		}
 		if err := h.server.ReloadDatabaseWithConfig(h.ctx(), *updatedDbConfig); err != nil {
@@ -524,8 +524,8 @@ func (h *handler) handlePutDbConfig() (err error) {
 	}
 
 	var updatedDbConfig *DatabaseConfig
-	cas, err := h.server.bootstrapContext.connection.UpdateConfig(
-		bucket, h.server.config.Bootstrap.ConfigGroupID,
+	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
+		bucket, h.server.Config.Bootstrap.ConfigGroupID,
 		func(rawBucketConfig []byte) (newConfig []byte, err error) {
 			var bucketDbConfig DatabaseConfig
 			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
@@ -570,9 +570,9 @@ func (h *handler) handlePutDbConfig() (err error) {
 			if err = base.DeepCopyInefficient(&tmpConfig, bucketDbConfig); err != nil {
 				return nil, err
 			}
-			dbCreds, _ := h.server.config.DatabaseCredentials[dbName]
-			bucketCreds, _ := h.server.config.BucketCredentials[bucket]
-			if err := tmpConfig.setup(dbName, h.server.config.Bootstrap, dbCreds, bucketCreds, h.server.config.IsServerless()); err != nil {
+			dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
+			bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
+			if err := tmpConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
 				return nil, err
 			}
 
@@ -607,7 +607,7 @@ func (h *handler) handleGetDbConfigSync() error {
 		syncFunction string
 	)
 
-	if h.server.bootstrapContext.connection != nil {
+	if h.server.BootstrapContext.Connection != nil {
 		found, dbConfig, err := h.server.fetchDatabase(h.ctx(), h.db.Name)
 		if err != nil {
 			return err
@@ -639,8 +639,8 @@ func (h *handler) handleDeleteDbConfigSync() error {
 	bucket := h.db.Bucket.GetName()
 
 	var updatedDbConfig *DatabaseConfig
-	cas, err := h.server.bootstrapContext.connection.UpdateConfig(
-		bucket, h.server.config.Bootstrap.ConfigGroupID,
+	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
+		bucket, h.server.Config.Bootstrap.ConfigGroupID,
 		func(rawBucketConfig []byte) (newConfig []byte, err error) {
 			var bucketDbConfig DatabaseConfig
 			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
@@ -669,9 +669,9 @@ func (h *handler) handleDeleteDbConfigSync() error {
 	updatedDbConfig.cas = cas
 
 	dbName := h.db.Name
-	dbCreds, _ := h.server.config.DatabaseCredentials[dbName]
-	bucketCreds, _ := h.server.config.BucketCredentials[bucket]
-	if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap, dbCreds, bucketCreds, h.server.config.IsServerless()); err != nil {
+	dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
+	bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
+	if err := updatedDbConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
 		return err
 	}
 
@@ -701,8 +701,8 @@ func (h *handler) handlePutDbConfigSync() error {
 	bucket := h.db.Bucket.GetName()
 
 	var updatedDbConfig *DatabaseConfig
-	cas, err := h.server.bootstrapContext.connection.UpdateConfig(
-		bucket, h.server.config.Bootstrap.ConfigGroupID,
+	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
+		bucket, h.server.Config.Bootstrap.ConfigGroupID,
 		func(rawBucketConfig []byte) (newConfig []byte, err error) {
 			var bucketDbConfig DatabaseConfig
 			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
@@ -736,9 +736,9 @@ func (h *handler) handlePutDbConfigSync() error {
 	updatedDbConfig.cas = cas
 
 	dbName := h.db.Name
-	dbCreds, _ := h.server.config.DatabaseCredentials[dbName]
-	bucketCreds, _ := h.server.config.BucketCredentials[bucket]
-	if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap, dbCreds, bucketCreds, h.server.config.IsServerless()); err != nil {
+	dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
+	bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
+	if err := updatedDbConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
 		return err
 	}
 
@@ -761,7 +761,7 @@ func (h *handler) handleGetDbConfigImportFilter() error {
 		importFilterFunction string
 	)
 
-	if h.server.bootstrapContext.connection != nil {
+	if h.server.BootstrapContext.Connection != nil {
 		found, dbConfig, err := h.server.fetchDatabase(h.ctx(), h.db.Name)
 		if err != nil {
 			return err
@@ -791,8 +791,8 @@ func (h *handler) handleDeleteDbConfigImportFilter() error {
 	bucket := h.db.Bucket.GetName()
 
 	var updatedDbConfig *DatabaseConfig
-	cas, err := h.server.bootstrapContext.connection.UpdateConfig(
-		bucket, h.server.config.Bootstrap.ConfigGroupID,
+	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
+		bucket, h.server.Config.Bootstrap.ConfigGroupID,
 		func(rawBucketConfig []byte) (newConfig []byte, err error) {
 			var bucketDbConfig DatabaseConfig
 			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
@@ -821,9 +821,9 @@ func (h *handler) handleDeleteDbConfigImportFilter() error {
 	updatedDbConfig.cas = cas
 
 	dbName := h.db.Name
-	dbCreds, _ := h.server.config.DatabaseCredentials[dbName]
-	bucketCreds, _ := h.server.config.BucketCredentials[bucket]
-	if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap, dbCreds, bucketCreds, h.server.config.IsServerless()); err != nil {
+	dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
+	bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
+	if err := updatedDbConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
 		return err
 	}
 
@@ -854,8 +854,8 @@ func (h *handler) handlePutDbConfigImportFilter() error {
 	bucket := h.db.Bucket.GetName()
 
 	var updatedDbConfig *DatabaseConfig
-	cas, err := h.server.bootstrapContext.connection.UpdateConfig(
-		bucket, h.server.config.Bootstrap.ConfigGroupID,
+	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
+		bucket, h.server.Config.Bootstrap.ConfigGroupID,
 		func(rawBucketConfig []byte) (newConfig []byte, err error) {
 			var bucketDbConfig DatabaseConfig
 			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
@@ -889,9 +889,9 @@ func (h *handler) handlePutDbConfigImportFilter() error {
 	updatedDbConfig.cas = cas
 
 	dbName := h.db.Name
-	dbCreds, _ := h.server.config.DatabaseCredentials[dbName]
-	bucketCreds, _ := h.server.config.BucketCredentials[bucket]
-	if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap, dbCreds, bucketCreds, h.server.config.IsServerless()); err != nil {
+	dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
+	bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
+	if err := updatedDbConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
 		return err
 	}
 
@@ -913,7 +913,7 @@ func (h *handler) handleDeleteDB() error {
 
 	if h.server.persistentConfig {
 		bucket := h.db.Bucket.GetName()
-		_, err := h.server.bootstrapContext.connection.UpdateConfig(bucket, h.server.config.Bootstrap.ConfigGroupID, func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
+		_, err := h.server.BootstrapContext.Connection.UpdateConfig(bucket, h.server.Config.Bootstrap.ConfigGroupID, func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
 			return nil, nil
 		})
 		if err != nil {
@@ -1171,7 +1171,7 @@ func (h *handler) handleSGCollect() error {
 
 	zipFilename := sgcollectFilename()
 
-	logFilePath := h.server.config.Logging.LogFilePath
+	logFilePath := h.server.Config.Logging.LogFilePath
 
 	if err := sgcollectInstance.Start(logFilePath, h.serialNumber, zipFilename, params); err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Error running sgcollect_info: %v", err)

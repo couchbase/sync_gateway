@@ -94,7 +94,7 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 	require.True(t, ok)
 
 	// wait for the last document written to rt1 to arrive at rt2
-	waitAndAssertCondition(t, func() bool {
+	WaitAndAssertCondition(t, func() bool {
 		_, err := rt2.GetDatabase().GetDocument(base.TestCtx(t), lastDocIDString, db.DocUnmarshalNone)
 		return err == nil
 	})

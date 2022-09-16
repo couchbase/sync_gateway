@@ -1286,7 +1286,7 @@ func SetupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 // fetchAndLoadConfigs retrieves all database configs from the ServerContext's bootstrapConnection, and loads them into the ServerContext.
 // It will remove any databases currently running that are not found in the bucket.
 func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStartup bool) (count int, err error) {
-	fetchedConfigs, err := sc.fetchConfigs(ctx, isInitialStartup)
+	fetchedConfigs, err := sc.FetchConfigs(ctx, isInitialStartup)
 	if err != nil {
 		return 0, err
 	}
@@ -1321,7 +1321,7 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
 	for _, dbName := range deletedDatabases {
-		// It's possible that the "deleted" database was not written to the server until after sc.fetchConfigs had returned...
+		// It's possible that the "deleted" database was not written to the server until after sc.FetchConfigs had returned...
 		// we'll need to pay for the cost of getting the config again now that we've got the write lock to double-check this db is definitely ok to remove...
 		found, _, err := sc.fetchDatabase(ctx, dbName)
 		if err != nil {
@@ -1358,13 +1358,13 @@ func (sc *ServerContext) _fetchAndLoadDatabase(ctx context.Context, dbName strin
 
 func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (found bool, dbConfig *DatabaseConfig, err error) {
 	var buckets []string
-	if sc.config.IsServerless() {
-		buckets = make([]string, len(sc.config.BucketCredentials))
-		for bucket, _ := range sc.config.BucketCredentials {
+	if sc.Config.IsServerless() {
+		buckets = make([]string, len(sc.Config.BucketCredentials))
+		for bucket, _ := range sc.Config.BucketCredentials {
 			buckets = append(buckets, bucket)
 		}
 	} else {
-		buckets, err = sc.bootstrapContext.connection.GetConfigBuckets()
+		buckets, err = sc.BootstrapContext.Connection.GetConfigBuckets()
 		if err != nil {
 			return false, nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
 		}
@@ -1379,13 +1379,13 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 
 	for _, bucket := range buckets {
 		var cnf DatabaseConfig
-		cas, err := sc.bootstrapContext.connection.GetConfig(bucket, sc.config.Bootstrap.ConfigGroupID, &cnf)
+		cas, err := sc.BootstrapContext.Connection.GetConfig(bucket, sc.Config.Bootstrap.ConfigGroupID, &cnf)
 		if err == base.ErrNotFound {
-			base.DebugfCtx(ctx, base.KeyConfig, "%q did not contain config in group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
+			base.DebugfCtx(ctx, base.KeyConfig, "%q did not contain config in group %q", bucket, sc.Config.Bootstrap.ConfigGroupID)
 			continue
 		}
 		if err != nil {
-			base.DebugfCtx(ctx, base.KeyConfig, "unable to fetch config in group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
+			base.DebugfCtx(ctx, base.KeyConfig, "unable to fetch config in group %q from bucket %q: %v", sc.Config.Bootstrap.ConfigGroupID, bucket, err)
 			continue
 		}
 
@@ -1394,26 +1394,26 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 		}
 
 		if cnf.Name != dbName {
-			base.TracefCtx(ctx, base.KeyConfig, "%q did not contain config in group %q for db %q", bucket, sc.config.Bootstrap.ConfigGroupID, dbName)
+			base.TracefCtx(ctx, base.KeyConfig, "%q did not contain config in group %q for db %q", bucket, sc.Config.Bootstrap.ConfigGroupID, dbName)
 			continue
 		}
 
 		cnf.cas = cas
 
-		// TODO: This code is mostly copied from fetchConfigs, move into shared function with DbConfig REST API work?
+		// TODO: This code is mostly copied from FetchConfigs, move into shared function with DbConfig REST API work?
 
 		// inherit properties the bootstrap config
-		cnf.CACertPath = sc.config.Bootstrap.CACertPath
+		cnf.CACertPath = sc.Config.Bootstrap.CACertPath
 
 		bucketCopy := bucket
 		cnf.Bucket = &bucketCopy
 
 		// any authentication fields defined on the dbconfig take precedence over any in the bootstrap config
 		if cnf.Username == "" && cnf.Password == "" && cnf.CertPath == "" && cnf.KeyPath == "" {
-			cnf.Username = sc.config.Bootstrap.Username
-			cnf.Password = sc.config.Bootstrap.Password
-			cnf.CertPath = sc.config.Bootstrap.X509CertPath
-			cnf.KeyPath = sc.config.Bootstrap.X509KeyPath
+			cnf.Username = sc.Config.Bootstrap.Username
+			cnf.Password = sc.Config.Bootstrap.Password
+			cnf.CertPath = sc.Config.Bootstrap.X509CertPath
+			cnf.KeyPath = sc.Config.Bootstrap.X509KeyPath
 		}
 		base.TracefCtx(ctx, base.KeyConfig, "Got config for bucket %q with cas %d", bucket, cas)
 		return true, &cnf, nil
@@ -1422,18 +1422,18 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 	return false, nil, nil
 }
 
-// fetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
-func (sc *ServerContext) fetchConfigs(ctx context.Context, isInitialStartup bool) (dbNameConfigs map[string]DatabaseConfig, err error) {
+// FetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
+func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool) (dbNameConfigs map[string]DatabaseConfig, err error) {
 	var buckets []string
-	if sc.config.IsServerless() {
-		buckets = make([]string, len(sc.config.BucketCredentials))
-		for bucket, _ := range sc.config.BucketCredentials {
+	if sc.Config.IsServerless() {
+		buckets = make([]string, len(sc.Config.BucketCredentials))
+		for bucket, _ := range sc.Config.BucketCredentials {
 			buckets = append(buckets, bucket)
 		}
 		// TODO: Enable code as part of CBG-2280
 		// Return buckets that have credentials set that do not have a db associated with them
-		// buckets = make([]string, len(sc.config.BucketCredentials)-len(sc.bucketDbName))
-		// for bucket := range sc.config.BucketCredentials {
+		// buckets = make([]string, len(sc.Config.BucketCredentials)-len(sc.bucketDbName))
+		// for bucket := range sc.Config.BucketCredentials {
 		//	i := 0
 		//	if sc.bucketDbName[bucket] == "" {
 		//		buckets[i] = bucket
@@ -1441,7 +1441,7 @@ func (sc *ServerContext) fetchConfigs(ctx context.Context, isInitialStartup bool
 		//	}
 		// }
 	} else {
-		buckets, err = sc.bootstrapContext.connection.GetConfigBuckets()
+		buckets, err = sc.BootstrapContext.Connection.GetConfigBuckets()
 		if err != nil {
 			return nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
 		}
@@ -1450,20 +1450,20 @@ func (sc *ServerContext) fetchConfigs(ctx context.Context, isInitialStartup bool
 	fetchedConfigs := make(map[string]DatabaseConfig, len(buckets))
 
 	for _, bucket := range buckets {
-		base.TracefCtx(ctx, base.KeyConfig, "Checking for config for group %q from bucket %q", sc.config.Bootstrap.ConfigGroupID, bucket)
+		base.TracefCtx(ctx, base.KeyConfig, "Checking for config for group %q from bucket %q", sc.Config.Bootstrap.ConfigGroupID, bucket)
 		var cnf DatabaseConfig
-		cas, err := sc.bootstrapContext.connection.GetConfig(bucket, sc.config.Bootstrap.ConfigGroupID, &cnf)
+		cas, err := sc.BootstrapContext.Connection.GetConfig(bucket, sc.Config.Bootstrap.ConfigGroupID, &cnf)
 		if err == base.ErrNotFound {
-			base.DebugfCtx(ctx, base.KeyConfig, "Bucket %q did not contain config for group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
+			base.DebugfCtx(ctx, base.KeyConfig, "Bucket %q did not contain config for group %q", bucket, sc.Config.Bootstrap.ConfigGroupID)
 			continue
 		}
 		if err != nil {
 			// Unexpected error fetching config - SDK has already performed retries, so we'll treat it as a database removal
 			// this could be due to invalid JSON or some other non-recoverable error.
 			if isInitialStartup {
-				base.WarnfCtx(ctx, "Unable to fetch config for group %q from bucket %q on startup: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
+				base.WarnfCtx(ctx, "Unable to fetch config for group %q from bucket %q on startup: %v", sc.Config.Bootstrap.ConfigGroupID, bucket, err)
 			} else {
-				base.DebugfCtx(ctx, base.KeyConfig, "Unable to fetch config for group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
+				base.DebugfCtx(ctx, base.KeyConfig, "Unable to fetch config for group %q from bucket %q: %v", sc.Config.Bootstrap.ConfigGroupID, bucket, err)
 			}
 			continue
 		}
@@ -1471,25 +1471,25 @@ func (sc *ServerContext) fetchConfigs(ctx context.Context, isInitialStartup bool
 		cnf.cas = cas
 
 		// inherit properties the bootstrap config
-		cnf.CACertPath = sc.config.Bootstrap.CACertPath
+		cnf.CACertPath = sc.Config.Bootstrap.CACertPath
 
 		bucketCopy := bucket
 		cnf.Bucket = &bucketCopy
 
 		// stamp per-database credentials if set
-		if dbCredentials, ok := sc.config.DatabaseCredentials[cnf.Name]; ok && dbCredentials != nil {
+		if dbCredentials, ok := sc.Config.DatabaseCredentials[cnf.Name]; ok && dbCredentials != nil {
 			cnf.setDatabaseCredentials(*dbCredentials)
 		}
 
 		// any authentication fields defined on the dbconfig take precedence over any in the bootstrap config
 		if cnf.Username == "" && cnf.Password == "" && cnf.CertPath == "" && cnf.KeyPath == "" {
-			cnf.Username = sc.config.Bootstrap.Username
-			cnf.Password = sc.config.Bootstrap.Password
-			cnf.CertPath = sc.config.Bootstrap.X509CertPath
-			cnf.KeyPath = sc.config.Bootstrap.X509KeyPath
+			cnf.Username = sc.Config.Bootstrap.Username
+			cnf.Password = sc.Config.Bootstrap.Password
+			cnf.CertPath = sc.Config.Bootstrap.X509CertPath
+			cnf.KeyPath = sc.Config.Bootstrap.X509KeyPath
 		}
 
-		base.DebugfCtx(ctx, base.KeyConfig, "Got config for group %q from bucket %q with cas %d", sc.config.Bootstrap.ConfigGroupID, bucket, cas)
+		base.DebugfCtx(ctx, base.KeyConfig, "Got config for group %q from bucket %q with cas %d", sc.Config.Bootstrap.ConfigGroupID, bucket, cas)
 		fetchedConfigs[cnf.Name] = cnf
 	}
 
@@ -1610,8 +1610,8 @@ func (sc *ServerContext) addLegacyPrincipals(ctx context.Context, legacyDbUsers,
 	}
 }
 
-// startServer starts and runs the server with the given configuration. (This function never returns.)
-func startServer(ctx context.Context, config *StartupConfig, sc *ServerContext) error {
+// StartServer starts and runs the server with the given configuration. (This function never returns.)
+func StartServer(ctx context.Context, config *StartupConfig, sc *ServerContext) error {
 	if config.API.ProfileInterface != "" {
 		// runtime.MemProfileRate = 10 * 1024
 		base.InfofCtx(ctx, base.KeyAll, "Starting profile server on %s", base.UD(config.API.ProfileInterface))

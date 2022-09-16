@@ -33,11 +33,11 @@ func TestServerlessPollBuckets(t *testing.T) {
 	ctx := rt.Context()
 
 	// Blank out all per-bucket creds
-	perBucketCreds := sc.config.BucketCredentials
+	perBucketCreds := sc.Config.BucketCredentials
 	rt.ReplacePerBucketCredentials(map[string]*base.CredentialsConfig{})
 
 	// Confirm fetch does not return any configs due to no databases existing
-	configs, err := sc.fetchConfigs(ctx, false)
+	configs, err := sc.FetchConfigs(ctx, false)
 	require.NoError(t, err)
 	assert.Empty(t, configs)
 
@@ -53,7 +53,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Confirm fetch does not return any configs due to no databases in the bucket credentials config
-	configs, err = sc.fetchConfigs(ctx, false)
+	configs, err = sc.FetchConfigs(ctx, false)
 	require.NoError(t, err)
 	assert.Empty(t, configs)
 
@@ -61,7 +61,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 	rt.ReplacePerBucketCredentials(perBucketCreds)
 
 	// Confirm fetch does return config for db in tb1
-	configs, err = sc.fetchConfigs(ctx, false)
+	configs, err = sc.FetchConfigs(ctx, false)
 	require.NoError(t, err)
 	require.Len(t, configs, 1)
 	assert.NotNil(t, configs["db"])
@@ -71,7 +71,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 
 	// Confirm fetch does not return any configs due to db being known about already (so existing db does not get polled)
 	// TODO: Enable as part of CBG-2280
-	//configs, err = sc.fetchConfigs(false)
+	//configs, err = sc.FetchConfigs(false)
 	//require.NoError(t, err)
 	//assert.Empty(t, configs)
 	//count, err = sc.fetchAndLoadConfigs(false)

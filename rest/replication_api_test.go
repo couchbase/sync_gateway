@@ -420,12 +420,6 @@ func TestReplicationStatusAPIIncludeConfig(t *testing.T) {
 
 }
 
-func MarshalConfig(t *testing.T, config db.ReplicationConfig) string {
-	replicationPayload, err := json.Marshal(config)
-	require.NoError(t, err)
-	return string(replicationPayload)
-}
-
 // Upserts replications via config, validates using _replication response
 func TestReplicationsFromConfig(t *testing.T) {
 
@@ -775,10 +769,10 @@ func TestReplicationRebalancePull(t *testing.T) {
 	assert.Equal(t, "remoteRT", docDEF2Body2["source"])
 
 	// Validate replication stats across rebalance, on both active nodes
-	waitAndAssertCondition(t, func() bool { return activeRT.GetReplicationStatus("rep_ABC").DocsRead == 2 })
-	waitAndAssertCondition(t, func() bool { return activeRT.GetReplicationStatus("rep_DEF").DocsRead == 2 })
-	waitAndAssertCondition(t, func() bool { return activeRT2.GetReplicationStatus("rep_ABC").DocsRead == 2 })
-	waitAndAssertCondition(t, func() bool { return activeRT2.GetReplicationStatus("rep_DEF").DocsRead == 2 })
+	WaitAndAssertCondition(t, func() bool { return activeRT.GetReplicationStatus("rep_ABC").DocsRead == 2 })
+	WaitAndAssertCondition(t, func() bool { return activeRT.GetReplicationStatus("rep_DEF").DocsRead == 2 })
+	WaitAndAssertCondition(t, func() bool { return activeRT2.GetReplicationStatus("rep_ABC").DocsRead == 2 })
+	WaitAndAssertCondition(t, func() bool { return activeRT2.GetReplicationStatus("rep_DEF").DocsRead == 2 })
 
 	// explicitly stop the SGReplicateMgrs on the active nodes, to prevent a node rebalance during test teardown.
 	activeRT.GetDatabase().SGReplicateMgr.Stop()
@@ -866,10 +860,10 @@ func TestReplicationRebalancePush(t *testing.T) {
 	//     4. active node 2 attempts to write document 1, passive already has it.  DocsCheckedPush is incremented, but not DocsWritten
 	// Note that we can't wait for checkpoint persistence prior to rebalance, as the node initiating the rebalance
 	// isn't necessarily the one running the replication.
-	waitAndAssertCondition(t, func() bool { return activeRT.GetReplicationStatus("rep_ABC").DocsCheckedPush == 2 })
-	waitAndAssertCondition(t, func() bool { return activeRT.GetReplicationStatus("rep_DEF").DocsCheckedPush == 2 })
-	waitAndAssertCondition(t, func() bool { return activeRT2.GetReplicationStatus("rep_ABC").DocsCheckedPush == 2 })
-	waitAndAssertCondition(t, func() bool { return activeRT2.GetReplicationStatus("rep_DEF").DocsCheckedPush == 2 })
+	WaitAndAssertCondition(t, func() bool { return activeRT.GetReplicationStatus("rep_ABC").DocsCheckedPush == 2 })
+	WaitAndAssertCondition(t, func() bool { return activeRT.GetReplicationStatus("rep_DEF").DocsCheckedPush == 2 })
+	WaitAndAssertCondition(t, func() bool { return activeRT2.GetReplicationStatus("rep_ABC").DocsCheckedPush == 2 })
+	WaitAndAssertCondition(t, func() bool { return activeRT2.GetReplicationStatus("rep_DEF").DocsCheckedPush == 2 })
 
 	// explicitly stop the SGReplicateMgrs on the active nodes, to prevent a node rebalance during test teardown.
 	activeRT.GetDatabase().SGReplicateMgr.Stop()
@@ -1089,62 +1083,6 @@ func addActiveRT(t *testing.T, testBucket *base.TestBucket) (activeRT *RestTeste
 	}
 
 	return activeRT
-}
-
-// createReplication creates a replication via the REST API with the specified ID, remoteURL, direction and channel filter
-func (rt *RestTester) createReplication(replicationID string, remoteURLString string, direction db.ActiveReplicatorDirection, channels []string, continuous bool, conflictResolver db.ConflictResolverType) {
-	replicationConfig := &db.ReplicationConfig{
-		ID:                     replicationID,
-		Direction:              direction,
-		Remote:                 remoteURLString,
-		Continuous:             continuous,
-		ConflictResolutionType: conflictResolver,
-	}
-	if len(channels) > 0 {
-		replicationConfig.Filter = base.ByChannelFilter
-		replicationConfig.QueryParams = map[string]interface{}{"channels": channels}
-	}
-	payload, err := json.Marshal(replicationConfig)
-	require.NoError(rt.tb, err)
-	resp := rt.SendAdminRequest(http.MethodPost, "/db/_replication/", string(payload))
-	RequireStatus(rt.tb, resp, http.StatusCreated)
-}
-
-func (rt *RestTester) waitForAssignedReplications(count int) {
-	successFunc := func() bool {
-		replicationStatuses := rt.GetReplicationStatuses("?localOnly=true")
-		return len(replicationStatuses) == count
-	}
-	require.NoError(rt.tb, rt.WaitForCondition(successFunc))
-}
-
-func (rt *RestTester) WaitForReplicationStatus(replicationID string, targetStatus string) {
-	successFunc := func() bool {
-		status := rt.GetReplicationStatus(replicationID)
-		return status.Status == targetStatus
-	}
-	require.NoError(rt.tb, rt.WaitForCondition(successFunc))
-}
-
-func (rt *RestTester) GetReplications() (replications map[string]db.ReplicationCfg) {
-	rawResponse := rt.SendAdminRequest("GET", "/db/_replication/", "")
-	RequireStatus(rt.tb, rawResponse, 200)
-	require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &replications))
-	return replications
-}
-
-func (rt *RestTester) GetReplicationStatus(replicationID string) (status db.ReplicationStatus) {
-	rawResponse := rt.SendAdminRequest("GET", "/db/_replicationStatus/"+replicationID, "")
-	RequireStatus(rt.tb, rawResponse, 200)
-	require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &status))
-	return status
-}
-
-func (rt *RestTester) GetReplicationStatuses(queryString string) (statuses []db.ReplicationStatus) {
-	rawResponse := rt.SendAdminRequest("GET", "/db/_replicationStatus/"+queryString, "")
-	RequireStatus(rt.tb, rawResponse, 200)
-	require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &statuses))
-	return statuses
 }
 
 func TestReplicationAPIWithAuthCredentials(t *testing.T) {
