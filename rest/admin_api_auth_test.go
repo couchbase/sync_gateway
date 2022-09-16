@@ -534,7 +534,7 @@ func TestAdminAPIAuth(t *testing.T) {
 	}
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		adminInterfaceAuthentication:   true,
+		AdminInterfaceAuthentication:   true,
 		metricsInterfaceAuthentication: true,
 	})
 	defer rt.Close()
@@ -973,10 +973,10 @@ func TestAdminAPIAuth(t *testing.T) {
 		}
 		t.Run(endPoint.Method+formattedEndpoint, func(t *testing.T) {
 			resp := rt.SendAdminRequest(endPoint.Method, formattedEndpoint, body)
-			requireStatus(t, resp, http.StatusUnauthorized)
+			RequireStatus(t, resp, http.StatusUnauthorized)
 
 			resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, body, "noaccess", "password")
-			requireStatus(t, resp, http.StatusForbidden)
+			RequireStatus(t, resp, http.StatusForbidden)
 
 			if !endPoint.SkipSuccessTest {
 
@@ -991,7 +991,7 @@ func TestAdminAPIAuth(t *testing.T) {
 					if endPoint.Method == http.MethodGet || endPoint.Method == http.MethodHead || endPoint.Method == http.MethodOptions {
 						assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
 					} else {
-						requireStatus(t, resp, http.StatusForbidden)
+						RequireStatus(t, resp, http.StatusForbidden)
 					}
 
 					resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, body, "ClusterAdminUser", "password")
@@ -1089,7 +1089,7 @@ func TestNewlyCreateSGWPermissions(t *testing.T) {
 	syncGatewayReplicator := "sync_gateway_replicator"
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		adminInterfaceAuthentication:    true,
+		AdminInterfaceAuthentication:    true,
 		enableAdminAuthPermissionsCheck: true,
 	})
 	defer rt.Close()
@@ -1536,7 +1536,7 @@ func TestNewlyCreateSGWPermissions(t *testing.T) {
 
 				if !isAllowedUser {
 					resp := rt.SendAdminRequestWithAuth(endpoint.Method, endpoint.Endpoint, "", testUser, "password")
-					requireStatus(t, resp, http.StatusForbidden)
+					RequireStatus(t, resp, http.StatusForbidden)
 				}
 			})
 		}
@@ -1553,7 +1553,7 @@ func TestCreateDBSpecificBucketPerm(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		adminInterfaceAuthentication: true,
+		AdminInterfaceAuthentication: true,
 	})
 	defer rt.Close()
 
@@ -1568,5 +1568,5 @@ func TestCreateDBSpecificBucketPerm(t *testing.T) {
 	defer DeleteUser(t, httpClient, eps[0], mobileSyncGateway)
 
 	resp := rt.SendAdminRequestWithAuth("PUT", "/db2/", `{"bucket": "`+tb.GetName()+`", "username": "`+base.TestClusterUsername()+`", "password": "`+base.TestClusterPassword()+`", "num_index_replicas": 0, "use_views": `+strconv.FormatBool(base.TestsDisableGSI())+`}`, mobileSyncGateway, "password")
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 }

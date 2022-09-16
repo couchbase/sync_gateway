@@ -786,7 +786,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 	}
 
 	groupID := ""
-	if sc.config.Bootstrap.ConfigGroupID != persistentConfigDefaultGroupID {
+	if sc.config.Bootstrap.ConfigGroupID != PersistentConfigDefaultGroupID {
 		groupID = sc.config.Bootstrap.ConfigGroupID
 	}
 

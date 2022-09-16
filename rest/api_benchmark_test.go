@@ -103,7 +103,7 @@ func BenchmarkReadOps_Get(b *testing.B) {
 				if bm.asUser == "" {
 					getResponse = rt.SendAdminRequest("GET", bm.URI, "")
 				} else {
-					getResponse = rt.Send(requestByUser("GET", bm.URI, "", bm.asUser))
+					getResponse = rt.Send(RequestByUser("GET", bm.URI, "", bm.asUser))
 				}
 				b.StopTimer()
 				if getResponse.Code != 200 {
@@ -171,7 +171,7 @@ func BenchmarkReadOps_GetRevCacheMisses(b *testing.B) {
 				if bm.asUser == "" {
 					getResponse = rt.SendAdminRequest("GET", docURI, "")
 				} else {
-					getResponse = rt.Send(requestByUser("GET", docURI, "", bm.asUser))
+					getResponse = rt.Send(RequestByUser("GET", docURI, "", bm.asUser))
 				}
 				b.StopTimer()
 				if getResponse.Code != 200 {
@@ -244,7 +244,7 @@ func BenchmarkReadOps_Changes(b *testing.B) {
 				if bm.asUser == "" {
 					changesResponse = rt.SendAdminRequest("GET", bm.URI, "")
 				} else {
-					changesResponse = rt.Send(requestByUser("GET", bm.URI, "", bm.asUser))
+					changesResponse = rt.Send(RequestByUser("GET", bm.URI, "", bm.asUser))
 				}
 				b.StopTimer()
 				if changesResponse.Code != 200 {
@@ -301,7 +301,7 @@ func BenchmarkReadOps_RevsDiff(b *testing.B) {
 				if bm.asUser == "" {
 					getResponse = rt.SendAdminRequest("POST", bm.URI, revsDiffBody)
 				} else {
-					getResponse = rt.Send(requestByUser("POST", bm.URI, revsDiffBody, bm.asUser))
+					getResponse = rt.Send(RequestByUser("POST", bm.URI, revsDiffBody, bm.asUser))
 				}
 				b.StopTimer()
 				if getResponse.Code != 200 {

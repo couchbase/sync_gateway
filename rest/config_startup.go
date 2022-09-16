@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	// persistentConfigDefaultGroupID is used when no explicit config Group ID is defined.
-	persistentConfigDefaultGroupID   = "default"
+	// PersistentConfigDefaultGroupID is used when no explicit config Group ID is defined.
+	PersistentConfigDefaultGroupID   = "default"
 	persistentConfigGroupIDMaxLength = 100
 	// persistentConfigDefaultUpdateFrequency is a duration that defines how frequent configs are refreshed from Couchbase Server.
 	persistentConfigDefaultUpdateFrequency = time.Second * 10
@@ -23,7 +23,7 @@ const (
 func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 	return StartupConfig{
 		Bootstrap: BootstrapConfig{
-			ConfigGroupID:         persistentConfigDefaultGroupID,
+			ConfigGroupID:         PersistentConfigDefaultGroupID,
 			ConfigUpdateFrequency: base.NewConfigDuration(persistentConfigDefaultUpdateFrequency),
 			ServerTLSSkipVerify:   base.BoolPtr(false),
 			UseTLSServer:          base.BoolPtr(DefaultUseTLSServer),
@@ -198,7 +198,7 @@ func LoadStartupConfigFromPath(path string) (*StartupConfig, error) {
 	defer func() { _ = rc.Close() }()
 
 	var sc StartupConfig
-	err = decodeAndSanitiseConfig(rc, &sc)
+	err = DecodeAndSanitiseConfig(rc, &sc)
 	return &sc, err
 }
 

@@ -461,7 +461,7 @@ func TestLocalJWTRolesChannels(t *testing.T) {
 	res := restTester.SendRequestWithHeaders(http.MethodPost, "/db/_session", "{}", map[string]string{
 		"Authorization": BearerToken + " " + token,
 	})
-	requireStatus(t, res, http.StatusOK)
+	RequireStatus(t, res, http.StatusOK)
 
 	authn := restTester.GetDatabase().Authenticator(base.TestCtx(t))
 	user, err := authn.GetUser(testProviderName + "_" + testSubject)

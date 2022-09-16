@@ -135,7 +135,7 @@ func serverMainPersistentConfig(ctx context.Context, fs *flag.FlagSet, flagStart
 	}
 
 	base.InfofCtx(ctx, base.KeyAll, "Config: Starting in persistent mode using config group %q", sc.Bootstrap.ConfigGroupID)
-	svrctx, err := setupServerContext(ctx, &sc, true)
+	svrctx, err := SetupServerContext(ctx, &sc, true)
 	if err != nil {
 		return false, err
 	}
@@ -222,7 +222,7 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 		dbc.Roles = nil
 		dbc.Users = nil
 
-		configGroupID := persistentConfigDefaultGroupID
+		configGroupID := PersistentConfigDefaultGroupID
 		if startupConfig.Bootstrap.ConfigGroupID != "" {
 			configGroupID = startupConfig.Bootstrap.ConfigGroupID
 		}

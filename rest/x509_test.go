@@ -33,12 +33,12 @@ func TestX509RoundtripUsingIP(t *testing.T) {
 	tb, _, _, _ := setupX509Tests(t, true)
 	defer tb.Close()
 
-	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb, useTLSServer: true})
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, useTLSServer: true})
 	defer rt.Close()
 
 	// write a doc to ensure bucket ops work
 	tr := rt.SendAdminRequest(http.MethodPut, "/db/"+t.Name(), `{"sgwrite":true}`)
-	requireStatus(t, tr, http.StatusCreated)
+	RequireStatus(t, tr, http.StatusCreated)
 
 	// wait for doc to come back over DCP
 	err := rt.WaitForDoc(t.Name())
@@ -53,12 +53,12 @@ func TestX509RoundtripUsingDomain(t *testing.T) {
 	tb, _, _, _ := setupX509Tests(t, false)
 	defer tb.Close()
 
-	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb, useTLSServer: true})
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, useTLSServer: true})
 	defer rt.Close()
 
 	// write a doc to ensure bucket ops work
 	tr := rt.SendAdminRequest(http.MethodPut, "/db/"+t.Name(), `{"sgwrite":true}`)
-	requireStatus(t, tr, http.StatusCreated)
+	RequireStatus(t, tr, http.StatusCreated)
 
 	// wait for doc to come back over DCP
 	err := rt.WaitForDoc(t.Name())
@@ -92,7 +92,7 @@ func TestAttachmentCompactionRun(t *testing.T) {
 	tb, _, _, _ := setupX509Tests(t, true)
 	defer tb.Close()
 
-	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb, useTLSServer: true})
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, useTLSServer: true})
 	defer rt.Close()
 	ctx := rt.Context()
 
@@ -106,7 +106,7 @@ func TestAttachmentCompactionRun(t *testing.T) {
 	}
 
 	resp := rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 
 	status := rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
 	assert.Equal(t, int64(20), status.MarkedAttachments)

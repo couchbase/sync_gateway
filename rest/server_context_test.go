@@ -357,7 +357,7 @@ func TestStartAndStopHTTPServers(t *testing.T) {
 	config.Bootstrap.Password = base.TestClusterPassword()
 
 	ctx := base.TestCtx(t)
-	sc, err := setupServerContext(ctx, &config, false)
+	sc, err := SetupServerContext(ctx, &config, false)
 	require.NoError(t, err)
 
 	serveErr := make(chan error, 0)
@@ -432,7 +432,7 @@ func TestTLSSkipVerifyCombinations(t *testing.T) {
 				},
 			}
 
-			err := startupConfig.validate(base.IsEnterpriseEdition())
+			err := startupConfig.Validate(base.IsEnterpriseEdition())
 			if test.expectError {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), errorText)
@@ -556,7 +556,7 @@ func TestUseTLSServer(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			sc := StartupConfig{Bootstrap: BootstrapConfig{Server: test.server, UseTLSServer: &test.useTLSServer}}
 
-			err := sc.validate(base.IsEnterpriseEdition())
+			err := sc.Validate(base.IsEnterpriseEdition())
 
 			if test.expectedError != nil {
 				require.Error(t, err)

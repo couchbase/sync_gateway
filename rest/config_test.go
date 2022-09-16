@@ -1350,7 +1350,7 @@ func TestSetupServerContext(t *testing.T) {
 		config.Bootstrap.Username = base.TestClusterUsername()
 		config.Bootstrap.Password = base.TestClusterPassword()
 		ctx := base.TestCtx(t)
-		sc, err := setupServerContext(ctx, &config, false)
+		sc, err := SetupServerContext(ctx, &config, false)
 		defer sc.Close(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, sc)
@@ -1367,12 +1367,12 @@ func TestConfigGroupIDValidation(t *testing.T) {
 	}{
 		{
 			name:       "No change, CE mode",
-			cfgGroupID: persistentConfigDefaultGroupID,
+			cfgGroupID: PersistentConfigDefaultGroupID,
 			eeMode:     false,
 		},
 		{
 			name:       "No change, EE mode",
-			cfgGroupID: persistentConfigDefaultGroupID,
+			cfgGroupID: PersistentConfigDefaultGroupID,
 			eeMode:     true,
 		},
 		{
@@ -1415,7 +1415,7 @@ func TestConfigGroupIDValidation(t *testing.T) {
 					UseTLSServer:  base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())),
 				},
 			}
-			err := sc.validate(isEnterpriseEdition)
+			err := sc.Validate(isEnterpriseEdition)
 			if test.expectedError != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), test.expectedError)
@@ -1466,7 +1466,7 @@ func TestClientTLSMissing(t *testing.T) {
 			if test.tlsCert {
 				config.API.HTTPS.TLSCertPath = "test.cert"
 			}
-			err := config.validate(base.IsEnterpriseEdition())
+			err := config.Validate(base.IsEnterpriseEdition())
 			if test.expectError {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), errorTLSOneMissing)
@@ -2342,7 +2342,7 @@ func TestStartupConfigBcryptCostValidation(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			sc := StartupConfig{Auth: AuthConfig{BcryptCost: test.cost}}
-			err := sc.validate(base.IsEnterpriseEdition())
+			err := sc.Validate(base.IsEnterpriseEdition())
 			if test.expectError {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), errContains)
@@ -2499,7 +2499,7 @@ func TestBucketCredentialsValidation(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			err := test.startupConfig.validate(base.IsEnterpriseEdition())
+			err := test.startupConfig.Validate(base.IsEnterpriseEdition())
 			if test.expectedError != nil {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), *test.expectedError)

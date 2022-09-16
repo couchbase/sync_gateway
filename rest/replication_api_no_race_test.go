@@ -44,12 +44,12 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 
 	// Create initial doc on rt1
 	docID := t.Name() + "rt1doc"
-	_ = rt1.putDoc(docID, `{"source":"rt1","channels":["alice"]}`)
+	_ = rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
 
 	// Create push replication, verify running
 	replicationID := t.Name()
 	rt1.createReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
-	rt1.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
 	// wait for document originally written to rt1 to arrive at rt2
 	changesResults := rt2.RequireWaitChanges(1, "0")
@@ -70,7 +70,7 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 	go func() {
 		// for i := 0; i < 10; i++ {
 		for i := 0; shouldCreateDocs.IsTrue(); i++ {
-			resp := rt1.putDoc(fmt.Sprintf("%s-doc%d", t.Name(), i), fmt.Sprintf(`{"i":%d,"channels":["alice"]}`, i))
+			resp := rt1.PutDoc(fmt.Sprintf("%s-doc%d", t.Name(), i), fmt.Sprintf(`{"i":%d,"channels":["alice"]}`, i))
 			lastDocID.Store(resp.ID)
 		}
 		_ = rt1.WaitForPendingChanges()
@@ -78,7 +78,7 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 	}()
 
 	// and wait for a few to be done before we proceed with updating database config underneath replication
-	_, err := rt2.waitForChanges(5, "/db/_changes", "", true)
+	_, err := rt2.WaitForChanges(5, "/db/_changes", "", true)
 	require.NoError(t, err)
 
 	// just change the sync function to cause the database to reload
@@ -86,7 +86,7 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 	dbConfig.Sync = base.StringPtr(`function(doc){channel(doc.channels);}`)
 	resp, err := rt2.ReplaceDbConfig("db", dbConfig)
 	require.NoError(t, err)
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	shouldCreateDocs.Set(false)
 

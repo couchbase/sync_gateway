@@ -104,7 +104,7 @@ func NewRestTesterCluster(t *testing.T, config *RestTesterClusterConfig) *RestTe
 	if tb == nil {
 		tb = base.GetTestBucket(t)
 	}
-	config.rtConfig.TestBucket = tb.NoCloseClone()
+	config.rtConfig.CustomTestBucket = tb.NoCloseClone()
 
 	// Start up all rest testers in parallel
 	wg := sync.WaitGroup{}
@@ -155,14 +155,14 @@ func TestPersistentDbConfigWithInvalidUpsert(t *testing.T) {
 	// Create database on a random node.
 	resp, err := rtc.RoundRobin().CreateDatabase(db, dbConfig)
 	require.NoError(t, err)
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	// A duplicate create shouldn't work, even if this were a node that doesn't have the database loaded yet.
 	// But this _will_ trigger an on-demand load on this node. So now we have 2 nodes running the database.
 	resp, err = rtc.RoundRobin().CreateDatabase(db, dbConfig)
 	require.NoError(t, err)
 	// CouchDB returns this status and body in this scenario
-	requireStatus(t, resp, http.StatusPreconditionFailed)
+	RequireStatus(t, resp, http.StatusPreconditionFailed)
 	assert.Contains(t, string(resp.BodyBytes()), "Duplicate database name")
 
 	// The remaining nodes will get the config via polling.
@@ -173,7 +173,7 @@ func TestPersistentDbConfigWithInvalidUpsert(t *testing.T) {
 	// Sanity-check they have all loaded after the forced update.
 	rtc.ForEachNode(func(rt *RestTester) {
 		resp := rt.SendAdminRequest(http.MethodGet, "/"+db+"/", "")
-		requireStatus(t, resp, http.StatusOK)
+		RequireStatus(t, resp, http.StatusOK)
 	})
 
 	// Now we'll attempt to write an invalid database to a single node.
@@ -183,15 +183,15 @@ func TestPersistentDbConfigWithInvalidUpsert(t *testing.T) {
 	// upsert with an invalid config option
 	resp, err = rtNode.UpsertDbConfig(db, DbConfig{RevsLimit: base.Uint32Ptr(0)})
 	require.NoError(t, err)
-	requireStatus(t, resp, http.StatusBadRequest)
+	RequireStatus(t, resp, http.StatusBadRequest)
 
 	// On the same node, make sure the database is still running.
 	resp = rtNode.SendAdminRequest(http.MethodGet, "/"+db+"/", "")
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 
 	// and make sure we roll back the database to the previous version (without revs_limit set)
 	resp = rtNode.SendAdminRequest(http.MethodGet, "/"+db+"/_config", "")
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 	assert.NotContains(t, string(resp.BodyBytes()), `"revs_limit":`)
 
 	// remove the db config directly from the bucket
@@ -205,7 +205,7 @@ func TestPersistentDbConfigWithInvalidUpsert(t *testing.T) {
 	assert.Equal(t, 0, count)
 	rtc.ForEachNode(func(rt *RestTester) {
 		resp := rt.SendAdminRequest(http.MethodGet, "/"+db+"/", "")
-		requireStatus(t, resp, http.StatusNotFound)
+		RequireStatus(t, resp, http.StatusNotFound)
 	})
 
 }
