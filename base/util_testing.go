@@ -85,7 +85,7 @@ func (tb *TestBucket) NoCloseClone(ctx context.Context) *TestBucket {
 	return &TestBucket{
 		Bucket:     NoCloseClone(tb.Bucket),
 		BucketSpec: tb.BucketSpec,
-		closeFn:    func() { tb.Close(ctx) },
+		closeFn:    func() {},
 	}
 }
 
