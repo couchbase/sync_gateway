@@ -280,8 +280,10 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		h.addDatabaseLogContext(keyspaceDb)
 		if dbContext, err = h.server.GetDatabase(h.ctx(), keyspaceDb); err != nil {
 			base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
-			if httpError, ok := err.(*base.HTTPError); ok && httpError.Status == http.StatusNotFound {
-				return base.HTTPErrorf(http.StatusForbidden, "")
+			if shouldCheckAdminAuth {
+				if httpError, ok := err.(*base.HTTPError); ok && httpError.Status == http.StatusNotFound {
+					return base.HTTPErrorf(http.StatusForbidden, "")
+				}
 			}
 			return err
 		}
