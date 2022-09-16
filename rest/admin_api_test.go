@@ -5100,17 +5100,18 @@ func TestPerDBCredsOverride(t *testing.T) {
 		},
 	}
 
-	sc, err := setupServerContext(&config, true)
+	ctx := base.TestCtx(t)
+	sc, err := setupServerContext(ctx, &config, true)
 	require.NoError(t, err)
 
 	serverErr := make(chan error, 0)
 	defer func() {
-		sc.Close()
+		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
 	}()
 
 	go func() {
-		serverErr <- startServer(&config, sc)
+		serverErr <- startServer(ctx, &config, sc)
 	}()
 	require.NoError(t, sc.waitForRESTAPIs())
 
@@ -5141,7 +5142,7 @@ func TestPerDBCredsOverride(t *testing.T) {
 			Password: "invalidPassword",
 		},
 	}
-	configs, err := sc.fetchConfigs(false)
+	configs, err := sc.fetchConfigs(ctx, false)
 	require.NoError(t, err)
 	require.NotNil(t, configs["db"])
 	assert.Equal(t, "invalidUsername", configs["db"].BucketConfig.Username)
