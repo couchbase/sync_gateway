@@ -209,19 +209,6 @@ func (h *handler) handleDbOffline() error {
 	return err
 }
 
-func (h *handler) handleDbSuspend() error {
-	h.assertAdminOnly()
-
-	err := h.server.suspendDatabase(h.ctx(), h.db.Name)
-	if err != nil {
-		if err == ErrSuspendingDisallowed {
-			return base.HTTPErrorf(http.StatusBadRequest, "Database %q is not configured to support suspending", base.MD(h.db.Name))
-		}
-		return base.HTTPErrorf(http.StatusBadRequest, "Could not suspend database %q: %s", base.MD(h.db.Name), err.Error())
-	}
-	return nil
-}
-
 // Get admin database info
 func (h *handler) handleGetDbConfig() error {
 	if redact, _ := h.getOptBoolQuery("redact", true); !redact {

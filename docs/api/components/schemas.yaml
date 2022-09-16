@@ -1630,9 +1630,7 @@ Database:
       default: 60
     suspendable:
       description: |-
-        Set to true to allow the database to be suspended and unsuspended. 
-        
-        The the database can be suspended through the "_suspend" endpoint and will be unsuspended automatically when a request is made to the database while it is suspended.
+        Set to true to allow the database to be suspended. 
         
         Defaults to true when running in serverless mode otherwise defaults to false.
       type: boolean
