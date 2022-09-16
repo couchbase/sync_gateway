@@ -22,6 +22,7 @@ import (
 
 // Tests behaviour of CBG-2257 to poll only buckets in BucketCredentials that don't currently have a database
 func TestServerlessPollBuckets(t *testing.T) {
+	base.LongRunningTest(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
@@ -91,6 +92,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 
 // Tests behaviour of CBG-2258 to force per bucket credentials to be used when setting up db in serverless mode
 func TestServerlessDBSetupForceCreds(t *testing.T) {
+	base.LongRunningTest(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
@@ -145,6 +147,7 @@ func TestServerlessDBSetupForceCreds(t *testing.T) {
 // when running in serverless mode
 func TestServerlessBucketCredentialsFetchDatabases(t *testing.T) {
 	base.LongRunningTest(t)
+	base.LongRunningTest(t)
 
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
@@ -181,6 +184,7 @@ func TestServerlessBucketCredentialsFetchDatabases(t *testing.T) {
 }
 
 func TestServerlessSuspendDatabase(t *testing.T) {
+	base.LongRunningTest(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server due to updating database config using a Bootstrap connection")
 	}
@@ -255,6 +259,7 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 
 // Confirms that when the database config is not in sc.dbConfigs, the fetch callback is check if the config is in a bucket
 func TestServerlessUnsuspendFetchFallback(t *testing.T) {
+	base.LongRunningTest(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
@@ -300,6 +305,7 @@ func TestServerlessUnsuspendFetchFallback(t *testing.T) {
 
 // Confirms that ServerContext.fetchConfigsWithTTL works correctly
 func TestServerlessFetchConfigsLimited(t *testing.T) {
+	base.LongRunningTest(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
@@ -373,6 +379,7 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 // Checks what happens to a suspended database when the config is modified by another node and the periodic fetchAndLoadConfigs gets called.
 // Currently, it will be unsuspended however that behaviour may be changed in the future
 func TestServerlessUpdateSuspendedDb(t *testing.T) {
+	base.LongRunningTest(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
@@ -421,6 +428,7 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 
 // Tests scenarios a database is and is not allowed to suspend
 func TestSuspendingFlags(t *testing.T) {
+	base.LongRunningTest(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test only works with CBS")
 	}
@@ -502,6 +510,7 @@ func TestSuspendingFlags(t *testing.T) {
 
 // Tests the public API unsuspending a database automatically
 func TestServerlessUnsuspendAPI(t *testing.T) {
+	base.LongRunningTest(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
@@ -539,6 +548,7 @@ func TestServerlessUnsuspendAPI(t *testing.T) {
 
 // Makes sure admin API calls do not unsuspend DB if they fail authentication
 func TestServerlessUnsuspendAdminAuth(t *testing.T) {
+	base.LongRunningTest(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
