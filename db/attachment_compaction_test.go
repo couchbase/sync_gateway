@@ -295,7 +295,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	testDB1, ctx1 := setupTestDBForBucket(t, b)
 	defer testDB1.Close(ctx1)
 
-	testDB2, ctx2 := setupTestDBForBucket(t, b.NoCloseClone())
+	testDB2, ctx2 := setupTestDBForBucket(t, b.NoCloseClone(ctx))
 	defer testDB2.Close(ctx2)
 
 	var err error
@@ -441,7 +441,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	testDB1, ctx1 := setupTestDBForBucket(t, b)
 	defer testDB1.Close(ctx1)
 
-	testDB2, ctx2 := setupTestDBForBucket(t, b.NoCloseClone())
+	testDB2, ctx2 := setupTestDBForBucket(t, b.NoCloseClone(ctx))
 	defer testDB2.Close(ctx2)
 
 	var err error

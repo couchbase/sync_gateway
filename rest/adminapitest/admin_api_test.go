@@ -5050,8 +5050,8 @@ func TestPerDBCredsOverride(t *testing.T) {
 	}
 
 	// Get test bucket
-	tb1 := base.GetTestBucket(t)
-	defer tb1.Close()
+	ctx, tb1 := base.GetTestBucket(t)
+	defer tb1.Close(ctx)
 
 	config := rest.BootstrapStartupConfigForTest(t)
 	config.BucketCredentials = map[string]*base.CredentialsConfig{
@@ -5067,7 +5067,6 @@ func TestPerDBCredsOverride(t *testing.T) {
 		},
 	}
 
-	ctx := base.TestCtx(t)
 	sc, err := rest.SetupServerContext(ctx, &config, true)
 	require.NoError(t, err)
 
