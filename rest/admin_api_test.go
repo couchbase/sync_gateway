@@ -1296,7 +1296,12 @@ func TestResync(t *testing.T) {
 				var val interface{}
 				_, err = rt.Bucket().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
 
-				return resyncManagerStatus.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
+				if resyncManagerStatus.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err) {
+					return true
+				} else {
+					t.Logf("resyncManagerStatus.State != %v: %v - err:%v", db.BackgroundProcessStateCompleted, resyncManagerStatus.State, err)
+					return false
+				}
 			})
 			assert.NoError(t, err)
 
@@ -1392,18 +1397,8 @@ func TestResyncErrorScenarios(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	requireStatus(t, response, http.StatusOK)
 
-	err := rt.WaitForCondition(func() bool {
-		response := rt.SendAdminRequest("GET", "/db/_resync", "")
-		var status db.ResyncManagerResponse
-		err := json.Unmarshal(response.BodyBytes(), &status)
-		assert.NoError(t, err)
-
-		var val interface{}
-		_, err = rt.Bucket().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
-
-		return status.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
-	})
-	assert.NoError(t, err)
+	waitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted, rt.GetDatabase().ResyncManager.GetRunState)
+	waitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
 
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
 	requireStatus(t, response, http.StatusBadRequest)
@@ -1415,18 +1410,8 @@ func TestResyncErrorScenarios(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_resync", "")
 	requireStatus(t, response, http.StatusOK)
 
-	err = rt.WaitForCondition(func() bool {
-		response := rt.SendAdminRequest("GET", "/db/_resync", "")
-		var status db.ResyncManagerResponse
-		err := json.Unmarshal(response.BodyBytes(), &status)
-		assert.NoError(t, err)
-
-		var val interface{}
-		_, err = rt.Bucket().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
-
-		return status.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
-	})
-	assert.NoError(t, err)
+	waitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted, rt.GetDatabase().ResyncManager.GetRunState)
+	waitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
 
 	assert.True(t, callbackFired, "expecting callback to be fired")
 }
@@ -1505,21 +1490,8 @@ func TestResyncStop(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	requireStatus(t, response, http.StatusOK)
 
-	err = rt.WaitForCondition(func() bool {
-		response := rt.SendAdminRequest("GET", "/db/_resync", "")
-		type ResyncManagerResponse struct {
-			Status db.BackgroundProcessState `json:"status"`
-		}
-		var resyncManagerStatus ResyncManagerResponse
-		err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
-		assert.NoError(t, err)
-
-		var val interface{}
-		_, err = rt.Bucket().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
-
-		return resyncManagerStatus.Status == db.BackgroundProcessStateStopped && base.IsDocNotFoundError(err)
-	})
-	assert.NoError(t, err)
+	waitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateStopped, rt.GetDatabase().ResyncManager.GetRunState)
+	waitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
 
 	assert.True(t, callbackFired, "expecting callback to be fired")
 
@@ -1635,13 +1607,8 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start&regenerate_sequences=true", "")
 	requireStatus(t, response, http.StatusOK)
 
-	err = rt.WaitForCondition(func() bool {
-		var val interface{}
-		_, err = rt.Bucket().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
-
-		return rt.GetDatabase().ResyncManager.GetRunState(t) == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
-	})
-	assert.NoError(t, err)
+	waitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted, rt.GetDatabase().ResyncManager.GetRunState)
+	waitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
 
 	_, err = rt.Bucket().Get(base.RolePrefix+"role1", &body)
 	assert.NoError(t, err)
@@ -5064,7 +5031,13 @@ func TestResyncPersistence(t *testing.T) {
 		resp = rt1.SendAdminRequest("GET", "/db/_resync", "")
 		err := json.Unmarshal(resp.BodyBytes(), &resyncManagerStatus)
 		assert.NoError(t, err)
-		return resyncManagerStatus.State == db.BackgroundProcessStateCompleted
+
+		if resyncManagerStatus.State == db.BackgroundProcessStateCompleted {
+			return true
+		} else {
+			t.Logf("resyncManagerStatus.State != %v: %v", db.BackgroundProcessStateCompleted, resyncManagerStatus.State)
+			return false
+		}
 	})
 	require.NoError(t, err)
 
