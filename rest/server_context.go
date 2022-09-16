@@ -98,7 +98,7 @@ func (sc *ServerContext) CloseCpuPprofFile(ctx context.Context) {
 	sc.cpuPprofFileMutex.Unlock()
 }
 
-func NewServerContext(config *StartupConfig, persistentConfig bool) *ServerContext {
+func NewServerContext(ctx context.Context, config *StartupConfig, persistentConfig bool) *ServerContext {
 	sc := &ServerContext{
 		config:           config,
 		persistentConfig: persistentConfig,

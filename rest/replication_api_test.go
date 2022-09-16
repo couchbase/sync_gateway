@@ -1427,6 +1427,12 @@ func TestValidateReplicationWithInvalidURL(t *testing.T) {
 }
 
 func TestGetStatusWithReplication(t *testing.T) {
+
+	ctx := base.TestCtx(t)
+	config := bootstrapStartupConfigForTest(t)
+	err := config.SetupAndValidateLogging(ctx)
+	assert.NoError(t, err)
+
 	var rt = NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -1456,7 +1462,7 @@ func TestGetStatusWithReplication(t *testing.T) {
 	response = rt.SendAdminRequest(http.MethodGet, "/_status", "")
 	RequireStatus(t, response, http.StatusOK)
 	var status Status
-	err := json.Unmarshal(response.BodyBytes(), &status)
+	err = json.Unmarshal(response.BodyBytes(), &status)
 	require.NoError(t, err, "Error un-marshalling replication response")
 	database := status.Databases["db"]
 	require.Equal(t, 2, len(database.ReplicationStatus), "Replication count mismatch")

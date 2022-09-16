@@ -11,6 +11,7 @@ package rest
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -3524,15 +3525,17 @@ func TestPutDBConfigOIDC(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
-
+	//canctx, cancel := context.WithCancel(context.Background())
+	//defer cancel()
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
-
-	serverErr := make(chan error, 0)
-	// Start SG with no databases
 	ctx := base.TestCtx(t)
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := SetupServerContext(ctx, &config, true)
 	require.NoError(t, err)
+
+	serverErr := make(chan error, 0)
+	// Start SG with no databases
+
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
@@ -4254,7 +4257,8 @@ func TestGroupIDReplications(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-	ctx := base.TestCtx(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	config := bootstrapStartupConfigForTest(t)
 	err := config.SetupAndValidateLogging(ctx)
 	assert.NoError(t, err)
@@ -4635,7 +4639,7 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 	defer activeRT.Close()
 	activeCtx := activeRT.Context()
 
-	err := activeRT.GetDatabase().SGReplicateMgr.StartReplications(activeCtx)
+	err = activeRT.GetDatabase().SGReplicateMgr.StartReplications(activeCtx)
 	require.NoError(t, err)
 
 	rev := activeRT.CreateDoc(t, "test")
@@ -4696,7 +4700,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 
 	// Disable checkpointing at an interval
 	activeRT.GetDatabase().SGReplicateMgr.CheckpointInterval = 0
-	err := activeRT.GetDatabase().SGReplicateMgr.StartReplications(activeCtx)
+	err = activeRT.GetDatabase().SGReplicateMgr.StartReplications(activeCtx)
 	require.NoError(t, err)
 
 	database, err := db.CreateDatabase(activeRT.GetDatabase())
@@ -5024,7 +5028,7 @@ func TestTombstoneCompactionPurgeInterval(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	dbc := rt.GetDatabase()
-	ctx := rt.Context()
+	ctx = rt.Context()
 
 	cbStore, _ := base.AsCouchbaseStore(rt.Bucket())
 	serverPurgeInterval, err := cbStore.MetadataPurgeInterval()
