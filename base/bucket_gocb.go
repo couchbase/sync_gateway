@@ -1704,7 +1704,7 @@ func (bucket *CouchbaseBucketGoCB) getExpirySingleAttempt(k string) (expiry uint
 
 }
 
-func (bucket *CouchbaseBucketGoCB) GetExpiry(ctx context.Context, k string) (expiry uint32, getMetaError error) {
+func (bucket *CouchbaseBucketGoCB) GetExpiry(k string) (expiry uint32, getMetaError error) {
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		expirySingleAttempt, err := bucket.getExpirySingleAttempt(k)

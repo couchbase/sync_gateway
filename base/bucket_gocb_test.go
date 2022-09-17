@@ -2492,7 +2492,7 @@ func TestGetExpiry(t *testing.T) {
 		err := bucket.Set(key, expiryValue, nil, val)
 		assert.NoError(t, err, "Error calling Set()")
 
-		expiry, expiryErr := store.GetExpiry(ctx, key)
+		expiry, expiryErr := store.GetExpiry(key)
 		assert.NoError(t, expiryErr)
 
 		// gocb v2 expiry does an expiry-to-duration conversion which results in non-exact equality,
@@ -2507,12 +2507,12 @@ func TestGetExpiry(t *testing.T) {
 		}
 
 		// ensure expiry retrieval on tombstone doesn't return error
-		tombstoneExpiry, tombstoneExpiryErr := store.GetExpiry(ctx, key)
+		tombstoneExpiry, tombstoneExpiryErr := store.GetExpiry(key)
 		assert.NoError(t, tombstoneExpiryErr)
 		log.Printf("tombstoneExpiry: %d", tombstoneExpiry)
 
 		// ensure expiry retrieval on non-existent doc returns key not found
-		_, nonExistentExpiryErr := store.GetExpiry(ctx, "nonExistentKey")
+		_, nonExistentExpiryErr := store.GetExpiry("nonExistentKey")
 		assert.Error(t, nonExistentExpiryErr)
 		assert.True(t, IsKeyNotFoundError(bucket, nonExistentExpiryErr))
 
@@ -2599,7 +2599,7 @@ func TestUpsertOptionPreserveExpiry(t *testing.T) {
 			err = bucket.Set(key, DurationToCbsExpiry(time.Hour*24), nil, val)
 			assert.NoError(t, err, "Error calling Set()")
 
-			beforeExp, err := cbStore.GetExpiry(ctx, key)
+			beforeExp, err := cbStore.GetExpiry(key)
 			require.NoError(t, err)
 			require.NotEqual(t, 0, beforeExp)
 
@@ -2607,7 +2607,7 @@ func TestUpsertOptionPreserveExpiry(t *testing.T) {
 			err = bucket.Set(key, 0, test.upsertOptions, val)
 			assert.NoError(t, err, "Error calling Set()")
 
-			afterExp, err := cbStore.GetExpiry(ctx, key)
+			afterExp, err := cbStore.GetExpiry(key)
 			assert.NoError(t, err)
 			if test.expectMatch {
 				assert.Equal(t, beforeExp, afterExp) // Make sure both expiry timestamps match

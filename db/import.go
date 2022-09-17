@@ -131,7 +131,7 @@ func (db *Database) importDoc(ctx context.Context, docid string, body Body, expi
 		// Get the doc expiry if it wasn't passed in and preserve expiry is not supported
 		if expiry == nil {
 			cbStore, _ := base.AsCouchbaseStore(db.Bucket)
-			getExpiry, getExpiryErr := cbStore.GetExpiry(ctx, docid)
+			getExpiry, getExpiryErr := cbStore.GetExpiry(docid)
 			if getExpiryErr != nil {
 				return nil, getExpiryErr
 			}
@@ -163,7 +163,7 @@ func (db *Database) importDoc(ctx context.Context, docid string, body Body, expi
 				if !mutationOptions.PreserveExpiry {
 					// Reload the doc expiry if GoCB is not preserving expiry
 					cbStore, _ := base.AsCouchbaseStore(db.Bucket)
-					expiry, getExpiryErr := cbStore.GetExpiry(ctx, newDoc.ID)
+					expiry, getExpiryErr := cbStore.GetExpiry(newDoc.ID)
 					if getExpiryErr != nil {
 						return nil, nil, false, nil, getExpiryErr
 					}
