@@ -25,10 +25,10 @@ import (
 
 // Workaround SG #3570 by doing a polling loop until the star channel query returns 0 results.
 // Uses the star channel index as a proxy to indicate that _all_ indexes are empty (which might not be true)
-func WaitForIndexEmpty(store base.N1QLStore, useXattrs bool) error {
+func WaitForIndexEmpty(ctx context.Context, store base.N1QLStore, useXattrs bool) error {
 
 	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
-		empty, err := isIndexEmpty(store, useXattrs)
+		empty, err := isIndexEmpty(ctx, store, useXattrs)
 		if err != nil {
 			return true, err, nil
 		}
@@ -45,7 +45,7 @@ func WaitForIndexEmpty(store base.N1QLStore, useXattrs bool) error {
 
 }
 
-func isIndexEmpty(store base.N1QLStore, useXattrs bool) (bool, error) {
+func isIndexEmpty(ctx context.Context, store base.N1QLStore, useXattrs bool) (bool, error) {
 	// Create the star channel query
 	statement := fmt.Sprintf("%s LIMIT 1", QueryStarChannel.statement) // append LIMIT 1 since we only care if there are any results or not
 	starChannelQueryStatement := replaceActiveOnlyFilter(statement, false)
@@ -56,7 +56,7 @@ func isIndexEmpty(store base.N1QLStore, useXattrs bool) (bool, error) {
 	params[QueryParamEndSeq] = math.MaxInt64
 
 	// Execute the query
-	results, err := store.Query(starChannelQueryStatement, params, base.RequestPlus, true)
+	results, err := store.Query(ctx, starChannelQueryStatement, params, base.RequestPlus, true)
 
 	// If there was an error, then retry.  Assume it's an "index rollback" error which happens as
 	// the index processes the bucket flush operation
@@ -189,7 +189,7 @@ FROM ` + base.KeyspaceQueryToken + ` AS ks USE INDEX (sg_allDocs_x1)
 WHERE META(ks).xattrs._sync.sequence >= 0
     AND META(ks).xattrs._sync.sequence < 9223372036854775807
     AND META(ks).id NOT LIKE '\\_sync:%'`
-	results, err := n1qlStore.Query(statement, nil, base.RequestPlus, true)
+	results, err := n1qlStore.Query(ctx, statement, nil, base.RequestPlus, true)
 	if err != nil {
 		return 0, err
 	}
@@ -264,7 +264,7 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 	}
 	tbp.Logf(ctx, "waiting for empty bucket indexes")
 	// we can't init indexes concurrently, so we'll just wait for them to be empty after emptying instead of recreating.
-	if err := WaitForIndexEmpty(n1qlStore, base.TestUseXattrs()); err != nil {
+	if err := WaitForIndexEmpty(ctx, n1qlStore, base.TestUseXattrs()); err != nil {
 		tbp.Logf(ctx, "WaitForIndexEmpty returned an error: %v", err)
 		return err
 	}
@@ -295,7 +295,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 		return fmt.Errorf("bucket %T was not a N1QL store", b)
 	}
 
-	if empty, err := isIndexEmpty(n1qlStore, base.TestUseXattrs()); empty && err == nil {
+	if empty, err := isIndexEmpty(ctx, n1qlStore, base.TestUseXattrs()); empty && err == nil {
 		tbp.Logf(ctx, "indexes already created, and already empty - skipping")
 		return nil
 	} else {
@@ -309,7 +309,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 	}
 
 	tbp.Logf(ctx, "creating SG bucket indexes")
-	if err := InitializeIndexes(n1qlStore, base.TestUseXattrs(), 0, false); err != nil {
+	if err := InitializeIndexes(ctx, n1qlStore, base.TestUseXattrs(), 0, false); err != nil {
 		return err
 	}
 

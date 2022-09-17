@@ -61,8 +61,7 @@ func (c *Collection) IndexMetaKeyspaceID() string {
 	return c.Name()
 }
 
-func (c *Collection) Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (resultsIterator sgbucket.QueryResultIterator, err error) {
-	logCtx := context.TODO()
+func (c *Collection) Query(ctx context.Context, statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (resultsIterator sgbucket.QueryResultIterator, err error) {
 
 	keyspaceStatement := strings.Replace(statement, KeyspaceQueryToken, c.EscapedKeyspace(), -1)
 
@@ -74,7 +73,7 @@ func (c *Collection) Query(statement string, params map[string]interface{}, cons
 
 	waitTime := 10 * time.Millisecond
 	for i := 1; i <= MaxQueryRetries; i++ {
-		TracefCtx(logCtx, KeyQuery, "Executing N1QL query: %v - %+v", UD(keyspaceStatement), UD(params))
+		TracefCtx(ctx, KeyQuery, "Executing N1QL query: %v - %+v", UD(keyspaceStatement), UD(params))
 		queryResults, queryErr := c.runQuery(keyspaceStatement, n1qlOptions)
 		if queryErr == nil {
 			resultsIterator := &gocbRawIterator{
@@ -91,24 +90,24 @@ func (c *Collection) Query(statement string, params map[string]interface{}, cons
 
 		// Non-retry error - return
 		if !isTransientIndexerError(queryErr) {
-			WarnfCtx(logCtx, "Error when querying index using statement: [%s] parameters: [%+v] error:%v", UD(keyspaceStatement), UD(params), queryErr)
+			WarnfCtx(ctx, "Error when querying index using statement: [%s] parameters: [%+v] error:%v", UD(keyspaceStatement), UD(params), queryErr)
 			return resultsIterator, pkgerrors.WithStack(queryErr)
 		}
 
 		// Indexer error - wait then retry
 		err = queryErr
-		WarnfCtx(logCtx, "Indexer error during query - retry %d/%d after %v.  Error: %v", i, MaxQueryRetries, waitTime, queryErr)
+		WarnfCtx(ctx, "Indexer error during query - retry %d/%d after %v.  Error: %v", i, MaxQueryRetries, waitTime, queryErr)
 		time.Sleep(waitTime)
 
 		waitTime = waitTime * 2
 	}
 
-	WarnfCtx(logCtx, "Exceeded max retries for query when querying index using statement: [%s] parameters: [%+v], err:%v", UD(keyspaceStatement), UD(params), err)
+	WarnfCtx(ctx, "Exceeded max retries for query when querying index using statement: [%s] parameters: [%+v], err:%v", UD(keyspaceStatement), UD(params), err)
 	return nil, err
 }
 
-func (c *Collection) ExplainQuery(statement string, params map[string]interface{}) (plan map[string]interface{}, err error) {
-	return ExplainQuery(c, statement, params)
+func (c *Collection) ExplainQuery(ctx context.Context, statement string, params map[string]interface{}) (plan map[string]interface{}, err error) {
+	return ExplainQuery(ctx, c, statement, params)
 }
 
 func (c *Collection) CreateIndex(indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {

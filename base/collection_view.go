@@ -88,7 +88,7 @@ func (c *Collection) PutDDoc(ctx context.Context, docname string, sgDesignDoc *s
 
 	// If design doc needs to be tombstone-aware, requires custom creation*
 	if sgDesignDoc.Options != nil && sgDesignDoc.Options.IndexXattrOnTombstones {
-		return c.putDDocForTombstones(&gocbDesignDoc)
+		return c.putDDocForTombstones(ctx, &gocbDesignDoc)
 	}
 
 	// Retry for all errors (The view service sporadically returns 500 status codes with Erlang errors (for unknown reasons) - E.g: 500 {"error":"case_clause","reason":"false"})
@@ -147,7 +147,7 @@ type NoNameDesignDocument struct {
 	Views map[string]NoNameView `json:"views"`
 }
 
-func (c *Collection) putDDocForTombstones(ddoc *gocb.DesignDocument) error {
+func (c *Collection) putDDocForTombstones(ctx context.Context, ddoc *gocb.DesignDocument) error {
 	username, password, _ := c.Spec.Auth.GetCredentials()
 	agent, err := c.getGoCBAgent()
 	if err != nil {
@@ -165,7 +165,7 @@ func (c *Collection) putDDocForTombstones(ddoc *gocb.DesignDocument) error {
 		return err
 	}
 
-	return putDDocForTombstones(ddoc.Name, data, agent.CapiEps(), agent.HTTPClient(), username, password)
+	return putDDocForTombstones(ctx, ddoc.Name, data, agent.CapiEps(), agent.HTTPClient(), username, password)
 
 }
 

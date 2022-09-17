@@ -33,6 +33,7 @@ const DefaultCollectionID = 0x0
 
 var _ CouchbaseStore = &Collection{}
 var _ Bucket = &Collection{}
+var _ N1QLStore = &Collection{}
 
 // Connect to the default collection for the specified bucket
 func GetCouchbaseCollection(ctx context.Context, spec BucketSpec) (*Collection, error) {
@@ -722,7 +723,7 @@ func (c *Collection) Flush(ctx context.Context) error {
 
 	// Wait until the bucket item count is 0, since flush is asynchronous
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-		itemCount, err := c.BucketItemCount()
+		itemCount, err := c.BucketItemCount(ctx)
 		if err != nil {
 			return false, err, nil
 		}
@@ -749,8 +750,8 @@ func (c *Collection) Flush(ctx context.Context) error {
 
 // BucketItemCount first tries to retrieve an accurate bucket count via N1QL,
 // but falls back to the REST API if that cannot be done (when there's no index to count all items in a bucket)
-func (c *Collection) BucketItemCount() (itemCount int, err error) {
-	itemCount, err = QueryBucketItemCount(c)
+func (c *Collection) BucketItemCount(ctx context.Context) (itemCount int, err error) {
+	itemCount, err = QueryBucketItemCount(ctx, c)
 	if err == nil {
 		return itemCount, nil
 	}

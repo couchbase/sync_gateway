@@ -420,10 +420,10 @@ func (bucket *CouchbaseBucketGoCB) processBulkSetEntriesBatch(entries []*sgbucke
 // If there are errors on individual keys -- aside from "not found" errors -- such as
 // QueueOverflow errors that can be retried successfully, they will be retried
 // with a backoff loop.
-func (bucket *CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, error) {
+func (bucket *CouchbaseBucketGoCB) GetBulkRaw(ctx context.Context, keys []string) (map[string][]byte, error) {
 
 	// Create a RetryWorker for the GetBulkRaw operation
-	worker := bucket.newGetBulkRawRetryWorker(keys)
+	worker := bucket.newGetBulkRawRetryWorker(ctx, keys)
 
 	// Kick off retry loop
 	err, result := RetryLoop("GetBulkRaw", worker, bucket.Spec.RetrySleeper())
@@ -483,7 +483,7 @@ func (bucket *CouchbaseBucketGoCB) GetBulkCounters(keys []string) (map[string]ui
 
 }
 
-func (bucket *CouchbaseBucketGoCB) newGetBulkRawRetryWorker(keys []string) RetryWorker {
+func (bucket *CouchbaseBucketGoCB) newGetBulkRawRetryWorker(ctx context.Context, keys []string) RetryWorker {
 
 	// resultAccumulator scoped in closure, will accumulate results across multiple worker invocations
 	resultAccumulator := make(map[string][]byte, len(keys))
@@ -499,7 +499,7 @@ func (bucket *CouchbaseBucketGoCB) newGetBulkRawRetryWorker(keys []string) Retry
 
 			// process batch and add successful results to resultAccumulator
 			// and recoverable (non "Not Found") errors to retryKeys
-			err := bucket.processGetRawBatch(keyBatch, resultAccumulator, retryKeys)
+			err := bucket.processGetRawBatch(ctx, keyBatch, resultAccumulator, retryKeys)
 			if err != nil {
 				return false, err, nil
 			}
@@ -563,7 +563,7 @@ func (bucket *CouchbaseBucketGoCB) newGetBulkCountersRetryWorker(keys []string) 
 
 }
 
-func (bucket *CouchbaseBucketGoCB) processGetRawBatch(keys []string, resultAccumulator map[string][]byte, retryKeys []string) error {
+func (bucket *CouchbaseBucketGoCB) processGetRawBatch(ctx context.Context, keys []string, resultAccumulator map[string][]byte, retryKeys []string) error {
 
 	var items []gocb.BulkOp
 	for _, key := range keys {
@@ -589,7 +589,7 @@ func (bucket *CouchbaseBucketGoCB) processGetRawBatch(keys []string, resultAccum
 			if ok {
 				resultAccumulator[getOp.Key] = *byteValue
 			} else {
-				WarnfCtx(context.TODO(), "Skipping GetBulkRaw result - unable to cast to []byte.  Type: %v", reflect.TypeOf(getOp.Value))
+				WarnfCtx(ctx, "Skipping GetBulkRaw result - unable to cast to []byte.  Type: %v", reflect.TypeOf(getOp.Value))
 			}
 		} else {
 			// if it's a recoverable error, then throw it in retry collection.
@@ -1229,7 +1229,7 @@ func (bucket *CouchbaseBucketGoCB) PutDDoc(ctx context.Context, docname string, 
 	}
 
 	if sgDesignDoc.Options != nil && sgDesignDoc.Options.IndexXattrOnTombstones {
-		return bucket.putDDocForTombstones(gocbDesignDoc)
+		return bucket.putDDocForTombstones(ctx, gocbDesignDoc)
 	}
 
 	// Retry for all errors (The view service sporadically returns 500 status codes with Erlang errors (for unknown reasons) - E.g: 500 {"error":"case_clause","reason":"false"})
@@ -1257,7 +1257,7 @@ type XattrEnabledDesignDoc struct {
 //
 // This design doc property isn't exposed via the SDK (it's an internal-only property), so we need to
 // jump through some hoops to create the design doc.  Follows same approach used internally by gocb.
-func (bucket *CouchbaseBucketGoCB) putDDocForTombstones(ddoc *gocb.DesignDocument) error {
+func (bucket *CouchbaseBucketGoCB) putDDocForTombstones(ctx context.Context, ddoc *gocb.DesignDocument) error {
 
 	goCBClient := bucket.Bucket.IoRouter()
 
@@ -1273,11 +1273,11 @@ func (bucket *CouchbaseBucketGoCB) putDDocForTombstones(ddoc *gocb.DesignDocumen
 		return err
 	}
 
-	return putDDocForTombstones(ddoc.Name, data, goCBClient.CapiEps(), httpClient, username, password)
+	return putDDocForTombstones(ctx, ddoc.Name, data, goCBClient.CapiEps(), httpClient, username, password)
 }
 
 // putDDocForTombstones uses the provided client and endpoints to create a design doc with index_xattr_on_deleted_docs=true
-func putDDocForTombstones(name string, payload []byte, capiEps []string, client *http.Client, username string, password string) error {
+func putDDocForTombstones(ctx context.Context, name string, payload []byte, capiEps []string, client *http.Client, username string, password string) error {
 
 	// From gocb.Bucket.getViewEp() - pick view endpoint at random
 	if len(capiEps) == 0 {
@@ -1302,7 +1302,7 @@ func putDDocForTombstones(name string, payload []byte, capiEps []string, client 
 		return err
 	}
 
-	defer ensureBodyClosed(resp.Body)
+	defer ensureBodyClosed(ctx, resp.Body)
 	if resp.StatusCode != 201 {
 		data, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
@@ -1464,7 +1464,7 @@ func (bucket *CouchbaseBucketGoCB) Refresh(ctx context.Context) error {
 	// If it's possible to call GetCouchbaseBucketGoCB without error, consider it "refreshed" and return a nil error which will cause the reconnect
 	// loop to stop.  otherwise, return an error which will cause it to keep retrying
 	// This fixes: https://github.com/couchbase/sync_gateway/issues/2423#issuecomment-294651245
-	bucketGoCb, err := GetCouchbaseBucketGoCB(context.TODO(), bucket.Spec) //no refs to this func found, leaving as TODO to not change signature
+	bucketGoCb, err := GetCouchbaseBucketGoCB(ctx, bucket.Spec)
 	if bucketGoCb != nil {
 		bucketGoCb.Close(ctx)
 	}
@@ -1611,7 +1611,7 @@ func (bucket *CouchbaseBucketGoCB) Flush(ctx context.Context) error {
 // BucketItemCount first tries to retrieve an accurate bucket count via N1QL,
 // but falls back to the REST API if that cannot be done (when there's no index to count all items in a bucket)
 func (bucket *CouchbaseBucketGoCB) BucketItemCount(ctx context.Context) (itemCount int, err error) {
-	itemCount, err = QueryBucketItemCount(bucket)
+	itemCount, err = QueryBucketItemCount(ctx, bucket)
 	if err == nil {
 		return itemCount, nil
 	}
@@ -1655,9 +1655,9 @@ func (bucket *CouchbaseBucketGoCB) APIBucketItemCount(ctx context.Context) (item
 
 // QueryBucketItemCount uses a request plus query to get the number of items in a bucket, as the REST API can be slow to update its value.
 // Requires a primary index on the bucket.
-func QueryBucketItemCount(n1qlStore N1QLStore) (itemCount int, err error) {
+func QueryBucketItemCount(ctx context.Context, n1qlStore N1QLStore) (itemCount int, err error) {
 	statement := fmt.Sprintf("SELECT COUNT(1) AS count FROM %s", KeyspaceQueryToken)
-	r, err := n1qlStore.Query(statement, nil, RequestPlus, true)
+	r, err := n1qlStore.Query(ctx, statement, nil, RequestPlus, true)
 	if err != nil {
 		return -1, err
 	}

@@ -22,6 +22,7 @@ import (
 )
 
 var _ Bucket = &LeakyBucket{}
+var _ N1QLStore = &LeakyBucket{}
 
 // A wrapper around a Bucket to support forced errors.  For testing use only.
 type LeakyBucket struct {
@@ -94,8 +95,6 @@ func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) *LeakyBucket {
 		config: config,
 	}
 }
-
-var _ N1QLStore = &LeakyBucket{}
 
 func (b *LeakyBucket) GetUnderlyingBucket() Bucket {
 	return b.bucket
@@ -533,13 +532,13 @@ func (b *LeakyBucket) IndexMetaBucketID() string {
 	return n1qlStore.IndexMetaBucketID()
 }
 
-func (b *LeakyBucket) Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (results sgbucket.QueryResultIterator, err error) {
+func (b *LeakyBucket) Query(ctx context.Context, statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (results sgbucket.QueryResultIterator, err error) {
 	n1qlStore, ok := AsN1QLStore(b.bucket)
 	if !ok {
 		return nil, errors.New("Not N1QL Store")
 	}
 
-	results, err = n1qlStore.Query(statement, params, consistency, adhoc)
+	results, err = n1qlStore.Query(ctx, statement, params, consistency, adhoc)
 	if b.config.PostN1QLQueryCallback != nil {
 		b.config.PostN1QLQueryCallback()
 	}
@@ -547,12 +546,12 @@ func (b *LeakyBucket) Query(statement string, params map[string]interface{}, con
 	return results, err
 }
 
-func (b *LeakyBucket) ExplainQuery(statement string, params map[string]interface{}) (plain map[string]interface{}, err error) {
+func (b *LeakyBucket) ExplainQuery(ctx context.Context, statement string, params map[string]interface{}) (plain map[string]interface{}, err error) {
 	n1qlStore, ok := AsN1QLStore(b.bucket)
 	if !ok {
 		return nil, errors.New("Not N1QL Store")
 	}
-	return n1qlStore.ExplainQuery(statement, params)
+	return n1qlStore.ExplainQuery(ctx, statement, params)
 }
 
 func (b *LeakyBucket) CreateIndex(indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {

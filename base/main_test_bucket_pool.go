@@ -494,7 +494,7 @@ func (tbp *TestBucketPool) createTestBuckets(ctx context.Context, numBuckets int
 					tbp.Fatalf(ctx, "Timed out waiting for query service to be ready: %v", err)
 				}
 
-				queryRes, err := n1qlStore.Query(`DELETE FROM system:prepareds WHERE statement LIKE "%`+KeyspaceQueryToken+`%";`, nil, RequestPlus, true)
+				queryRes, err := n1qlStore.Query(ctx, `DELETE FROM system:prepareds WHERE statement LIKE "%`+KeyspaceQueryToken+`%";`, nil, RequestPlus, true)
 				if err != nil {
 					tbp.Fatalf(ctx, "Couldn't remove old prepared statements: %v", err)
 				}
@@ -654,7 +654,7 @@ var N1QLBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, bucke
 		return fmt.Errorf("bucket does not have primary index, so can't empty bucket using N1QL")
 	}
 
-	if itemCount, err := QueryBucketItemCount(n1qlStore); err != nil {
+	if itemCount, err := QueryBucketItemCount(ctx, n1qlStore); err != nil {
 		return err
 	} else if itemCount == 0 {
 		tbp.Logf(ctx, "Bucket already empty - skipping")
@@ -663,7 +663,7 @@ var N1QLBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, bucke
 		// Use N1QL to empty bucket, with the hope that the query service is happier to deal with this than a bucket flush/rollback.
 		// Requires a primary index on the bucket.
 		// TODO: How can we delete xattr only docs from here too? It would avoid needing to call db.emptyAllDocsIndex in ViewsAndGSIBucketReadier
-		res, err := n1qlStore.Query(fmt.Sprintf(`DELETE FROM %s`, KeyspaceQueryToken), nil, RequestPlus, true)
+		res, err := n1qlStore.Query(ctx, fmt.Sprintf(`DELETE FROM %s`, KeyspaceQueryToken), nil, RequestPlus, true)
 		if err != nil {
 			return err
 		}

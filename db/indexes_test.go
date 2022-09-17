@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -52,7 +53,7 @@ func TestInitializeIndexes(t *testing.T) {
 				collectionName := "bar_1"
 				collection.Collection = collection.Bucket().Scope(scopeName).Collection(collectionName)
 
-				err = base.CreateBucketScopesAndCollections(base.TestCtx(t), collection.Spec, map[string][]string{scopeName: {collectionName}})
+				err = base.CreateBucketScopesAndCollections(ctx, collection.Spec, map[string][]string{scopeName: {collectionName}})
 				require.NoError(t, err)
 			}
 
@@ -61,17 +62,17 @@ func TestInitializeIndexes(t *testing.T) {
 
 			// Make sure we can drop and reinitialize twice
 			for i := 0; i < 2; i++ {
-				dropErr := base.DropAllIndexes(base.TestCtx(t), n1qlStore)
+				dropErr := base.DropAllIndexes(ctx, n1qlStore)
 				require.NoError(t, dropErr, "Error dropping all indexes")
 
-				initErr := InitializeIndexes(n1qlStore, test.xattrs, 0, true)
+				initErr := InitializeIndexes(ctx, n1qlStore, test.xattrs, 0, true)
 				require.NoError(t, initErr, "Error initializing all indexes")
 
 				// Recreate the primary index required by the test bucket pooling framework
 				err := n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
 				require.NoError(t, err)
 
-				validateErr := validateAllIndexesOnline(b)
+				validateErr := validateAllIndexesOnline(ctx, b)
 				require.NoError(t, validateErr, "Error validating indexes online")
 			}
 		})
@@ -80,7 +81,7 @@ func TestInitializeIndexes(t *testing.T) {
 }
 
 // Reset bucket state
-func validateAllIndexesOnline(bucket base.Bucket) error {
+func validateAllIndexesOnline(ctx context.Context, bucket base.Bucket) error {
 
 	n1QLStore, ok := base.AsN1QLStore(bucket)
 	if !ok {
@@ -89,7 +90,7 @@ func validateAllIndexesOnline(bucket base.Bucket) error {
 
 	// Retrieve all indexes
 	getIndexesStatement := fmt.Sprintf("SELECT indexes.name, indexes.state from system:indexes where keyspace_id = %q", n1QLStore.GetName())
-	results, err := n1QLStore.Query(getIndexesStatement, nil, base.RequestPlus, true)
+	results, err := n1QLStore.Query(ctx, getIndexesStatement, nil, base.RequestPlus, true)
 	if err != nil {
 		return err
 	}
@@ -136,7 +137,7 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in setup case")
 
-	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false)
+	err := InitializeIndexes(ctx, n1qlStore, db.UseXattrs(), 0, false)
 	assert.NoError(t, err)
 
 	// Running w/ opposite xattrs flag should preview removal of the indexes associated with this db context
@@ -155,7 +156,7 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in post-cleanup no-op")
 
 	// Restore indexes after test
-	err = InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false)
+	err = InitializeIndexes(ctx, n1qlStore, db.UseXattrs(), 0, false)
 	assert.NoError(t, err)
 }
 
@@ -197,10 +198,10 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes with hacked sgIndexes")
 
 	// Restore indexes after test
-	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false)
+	err := InitializeIndexes(ctx, n1qlStore, db.UseXattrs(), 0, false)
 	assert.NoError(t, err)
 
-	validateErr := validateAllIndexesOnline(db.Bucket)
+	validateErr := validateAllIndexesOnline(ctx, db.Bucket)
 	assert.NoError(t, validateErr, "Error validating indexes online")
 }
 
@@ -253,10 +254,10 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Restore indexes after test
-	err = InitializeIndexes(n1QLStore, db.UseXattrs(), 0, false)
+	err = InitializeIndexes(ctx, n1QLStore, db.UseXattrs(), 0, false)
 	assert.NoError(t, err)
 
-	validateErr := validateAllIndexesOnline(db.Bucket)
+	validateErr := validateAllIndexesOnline(ctx, db.Bucket)
 	assert.NoError(t, validateErr, "Error validating indexes online")
 }
 
@@ -300,10 +301,10 @@ func TestRemoveObsoleteIndexOnError(t *testing.T) {
 
 	// Restore indexes after test
 	n1qlStore, _ := base.AsN1QLStore(db.Bucket)
-	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false)
+	err := InitializeIndexes(ctx, n1qlStore, db.UseXattrs(), 0, false)
 	assert.NoError(t, err)
 
-	validateErr := validateAllIndexesOnline(db.Bucket)
+	validateErr := validateAllIndexesOnline(ctx, db.Bucket)
 	assert.NoError(t, validateErr, "Error validating indexes online")
 
 }

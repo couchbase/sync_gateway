@@ -609,7 +609,7 @@ func retrievePurgeInterval(ctx context.Context, bucket CouchbaseStore, uri strin
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusForbidden {
-		WarnfCtx(context.TODO(), "403 Forbidden attempting to access %s.  Bucket user must have Bucket Full Access and Bucket Admin roles to retrieve metadata purge interval.", UD(uri))
+		WarnfCtx(ctx, "403 Forbidden attempting to access %s.  Bucket user must have Bucket Full Access and Bucket Admin roles to retrieve metadata purge interval.", UD(uri))
 	} else if resp.StatusCode != http.StatusOK {
 		return 0, errors.New(resp.Status)
 	}
@@ -628,9 +628,9 @@ func retrievePurgeInterval(ctx context.Context, bucket CouchbaseStore, uri strin
 	return time.Duration(purgeIntervalHours) * time.Hour, nil
 }
 
-func ensureBodyClosed(body io.ReadCloser) {
+func ensureBodyClosed(ctx context.Context, body io.ReadCloser) {
 	err := body.Close()
 	if err != nil {
-		DebugfCtx(context.TODO(), KeyBucket, "Failed to close socket: %v", err)
+		DebugfCtx(ctx, KeyBucket, "Failed to close socket: %v", err)
 	}
 }

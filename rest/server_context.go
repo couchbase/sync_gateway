@@ -442,7 +442,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			return nil, errors.New("Cannot create indexes on non-Couchbase data store.")
 
 		}
-		indexErr := db.InitializeIndexes(n1qlStore, config.UseXattrs(), numReplicas, false)
+		indexErr := db.InitializeIndexes(ctx, n1qlStore, config.UseXattrs(), numReplicas, false)
 		if indexErr != nil {
 			return nil, indexErr
 		}

@@ -305,7 +305,7 @@ func (context *DatabaseContext) N1QLQueryWithStats(ctx context.Context, queryNam
 
 	queryStat := context.DbStats.Query(queryName)
 
-	results, err = n1QLStore.Query(statement, params, consistency, adhoc)
+	results, err = n1QLStore.Query(ctx, statement, params, consistency, adhoc)
 	if err != nil {
 		queryStat.QueryErrorCount.Add(1)
 	}

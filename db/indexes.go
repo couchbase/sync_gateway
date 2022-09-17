@@ -283,9 +283,9 @@ func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, useXattrs bool, numRepli
 }
 
 // Initializes Sync Gateway indexes for bucket.  Creates required indexes if not found, then waits for index readiness.
-func InitializeIndexes(bucket base.N1QLStore, useXattrs bool, numReplicas uint, failFast bool) error {
+func InitializeIndexes(ctx context.Context, bucket base.N1QLStore, useXattrs bool, numReplicas uint, failFast bool) error {
 
-	base.InfofCtx(context.TODO(), base.KeyAll, "Initializing indexes with numReplicas: %d...", numReplicas)
+	base.InfofCtx(ctx, base.KeyAll, "Initializing indexes with numReplicas: %d...", numReplicas)
 
 	// Create any indexes that aren't present
 	deferredIndexes := make([]string, 0)
@@ -307,7 +307,7 @@ func InitializeIndexes(bucket base.N1QLStore, useXattrs bool, numReplicas uint, 
 	if len(deferredIndexes) > 0 {
 		buildErr := bucket.BuildDeferredIndexes(deferredIndexes)
 		if buildErr != nil {
-			base.InfofCtx(context.TODO(), base.KeyQuery, "Error building deferred indexes.  Error: %v", buildErr)
+			base.InfofCtx(ctx, base.KeyQuery, "Error building deferred indexes.  Error: %v", buildErr)
 			return buildErr
 		}
 	}
@@ -318,14 +318,13 @@ func InitializeIndexes(bucket base.N1QLStore, useXattrs bool, numReplicas uint, 
 	}
 
 	// Wait for initial readiness queries to complete
-	return waitForIndexes(bucket, useXattrs, failFast)
+	return waitForIndexes(ctx, bucket, useXattrs, failFast)
 }
 
 // Issue a consistency=request_plus query against critical indexes to guarantee indexing is complete and indexes are ready.
-func waitForIndexes(bucket base.N1QLStore, useXattrs, failFast bool) error {
+func waitForIndexes(ctx context.Context, bucket base.N1QLStore, useXattrs, failFast bool) error {
 	var indexesWg sync.WaitGroup
-	logCtx := context.TODO()
-	base.InfofCtx(logCtx, base.KeyAll, "Verifying index availability for bucket %s...", base.MD(bucket.GetName()))
+	base.InfofCtx(ctx, base.KeyAll, "Verifying index availability for bucket %s...", base.MD(bucket.GetName()))
 	indexErrors := make(chan error, len(sgIndexes))
 
 	for _, sgIndex := range sgIndexes {
@@ -333,19 +332,19 @@ func waitForIndexes(bucket base.N1QLStore, useXattrs, failFast bool) error {
 			indexesWg.Add(1)
 			go func(index SGIndex) {
 				defer indexesWg.Done()
-				base.DebugfCtx(logCtx, base.KeyQuery, "Verifying index availability for index %s...", base.MD(index.fullIndexName(useXattrs)))
+				base.DebugfCtx(ctx, base.KeyQuery, "Verifying index availability for index %s...", base.MD(index.fullIndexName(useXattrs)))
 				queryStatement := index.readinessQuery
 				if index.simpleName == QueryTypeChannels {
 					queryStatement = replaceActiveOnlyFilter(queryStatement, false)
 				}
 				queryStatement = replaceSyncTokensQuery(queryStatement, useXattrs)
 				queryStatement = replaceIndexTokensQuery(queryStatement, index, useXattrs)
-				queryErr := waitForIndex(bucket, index.fullIndexName(useXattrs), queryStatement, failFast)
+				queryErr := waitForIndex(ctx, bucket, index.fullIndexName(useXattrs), queryStatement, failFast)
 				if queryErr != nil {
-					base.WarnfCtx(logCtx, "Query error for statement [%s], err:%v", queryStatement, queryErr)
+					base.WarnfCtx(ctx, "Query error for statement [%s], err:%v", queryStatement, queryErr)
 					indexErrors <- queryErr
 				}
-				base.DebugfCtx(logCtx, base.KeyQuery, "Index %s verified as ready", base.MD(index.fullIndexName(useXattrs)))
+				base.DebugfCtx(ctx, base.KeyQuery, "Index %s verified as ready", base.MD(index.fullIndexName(useXattrs)))
 			}(sgIndex)
 		}
 	}
@@ -357,15 +356,13 @@ func waitForIndexes(bucket base.N1QLStore, useXattrs, failFast bool) error {
 		return err
 	}
 
-	base.InfofCtx(logCtx, base.KeyAll, "Indexes ready for bucket %s.", base.MD(bucket.GetName()))
+	base.InfofCtx(ctx, base.KeyAll, "Indexes ready for bucket %s.", base.MD(bucket.GetName()))
 	return nil
 }
 
 // Issues adhoc consistency=request_plus query to determine if specified index is ready.
 // Retries indefinitely on timeout, backoff retry on all other errors.
-func waitForIndex(bucket base.N1QLStore, indexName string, queryStatement string, failFast bool) error {
-
-	logCtx := context.TODO()
+func waitForIndex(ctx context.Context, bucket base.N1QLStore, indexName string, queryStatement string, failFast bool) error {
 
 	// For non-timeout errors, backoff retry up to ~15m, to handle large initial indexing times
 	maxNumAttempts := 180
@@ -375,13 +372,13 @@ func waitForIndex(bucket base.N1QLStore, indexName string, queryStatement string
 	retrySleeper := base.CreateMaxDoublingSleeperFunc(maxNumAttempts, 100, 5000)
 	retryCount := 0
 	for {
-		resultSet, resultsError := bucket.Query(queryStatement, nil, base.RequestPlus, true)
+		resultSet, resultsError := bucket.Query(ctx, queryStatement, nil, base.RequestPlus, true)
 
 		// Immediately close results. We don't need these
 		if resultSet != nil {
 			resultSetCloseError := resultSet.Close()
 			if resultSetCloseError != nil {
-				base.InfofCtx(logCtx, base.KeyAll, "Failed to close query results when verifying index %q availability for bucket %q", base.MD(indexName), base.MD(bucket.GetName()))
+				base.InfofCtx(ctx, base.KeyAll, "Failed to close query results when verifying index %q availability for bucket %q", base.MD(indexName), base.MD(bucket.GetName()))
 			}
 		}
 
@@ -390,9 +387,9 @@ func waitForIndex(bucket base.N1QLStore, indexName string, queryStatement string
 		}
 
 		if resultsError == base.ErrViewTimeoutError {
-			base.InfofCtx(logCtx, base.KeyAll, "Timeout waiting for index %q to be ready for bucket %q - retrying...", base.MD(indexName), base.MD(bucket.GetName()))
+			base.InfofCtx(ctx, base.KeyAll, "Timeout waiting for index %q to be ready for bucket %q - retrying...", base.MD(indexName), base.MD(bucket.GetName()))
 		} else {
-			base.InfofCtx(logCtx, base.KeyAll, "Error waiting for index %q to be ready for bucket %q - retrying...", base.MD(indexName), base.MD(bucket.GetName()))
+			base.InfofCtx(ctx, base.KeyAll, "Error waiting for index %q to be ready for bucket %q - retrying...", base.MD(indexName), base.MD(bucket.GetName()))
 			retryCount++
 			shouldContinue, sleepMs := retrySleeper(retryCount)
 			if !shouldContinue {
