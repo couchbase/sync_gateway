@@ -69,7 +69,7 @@ func TestInitializeIndexes(t *testing.T) {
 				require.NoError(t, initErr, "Error initializing all indexes")
 
 				// Recreate the primary index required by the test bucket pooling framework
-				err := n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
+				err := n1qlStore.CreatePrimaryIndex(ctx, base.PrimaryIndexName, nil)
 				require.NoError(t, err)
 
 				validateErr := validateAllIndexesOnline(ctx, b)
@@ -133,7 +133,7 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 
 	// We don't know the current state of the bucket (may already have xattrs enabled), so run
 	// an initial cleanup to remove existing obsolete indexes
-	removedIndexes, removeErr := removeObsoleteIndexes(n1qlStore, false, db.UseXattrs(), db.UseViews(), sgIndexes)
+	removedIndexes, removeErr := removeObsoleteIndexes(ctx, n1qlStore, false, db.UseXattrs(), db.UseViews(), sgIndexes)
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in setup case")
 
@@ -141,17 +141,17 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Running w/ opposite xattrs flag should preview removal of the indexes associated with this db context
-	removedIndexes, removeErr = removeObsoleteIndexes(n1qlStore, true, !db.UseXattrs(), db.UseViews(), sgIndexes)
+	removedIndexes, removeErr = removeObsoleteIndexes(ctx, n1qlStore, true, !db.UseXattrs(), db.UseViews(), sgIndexes)
 	assert.Equal(t, int(expectedIndexes), len(removedIndexes))
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in preview mode")
 
 	// Running again w/ preview=false to perform cleanup
-	removedIndexes, removeErr = removeObsoleteIndexes(n1qlStore, false, !db.UseXattrs(), db.UseViews(), sgIndexes)
+	removedIndexes, removeErr = removeObsoleteIndexes(ctx, n1qlStore, false, !db.UseXattrs(), db.UseViews(), sgIndexes)
 	assert.Equal(t, int(expectedIndexes), len(removedIndexes))
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in non-preview mode")
 
 	// One more time to make sure they are actually gone
-	removedIndexes, removeErr = removeObsoleteIndexes(n1qlStore, false, !db.UseXattrs(), db.UseViews(), sgIndexes)
+	removedIndexes, removeErr = removeObsoleteIndexes(ctx, n1qlStore, false, !db.UseXattrs(), db.UseViews(), sgIndexes)
 	assert.Equal(t, 0, len(removedIndexes))
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in post-cleanup no-op")
 
@@ -175,7 +175,7 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	copiedIndexes := copySGIndexes(sgIndexes)
 
 	// Validate that removeObsoleteIndexes is a no-op for the default case
-	removedIndexes, removeErr := removeObsoleteIndexes(n1qlStore, true, db.UseXattrs(), db.UseViews(), copiedIndexes)
+	removedIndexes, removeErr := removeObsoleteIndexes(ctx, n1qlStore, true, db.UseXattrs(), db.UseViews(), copiedIndexes)
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	assert.Equal(t, 0, len(removedIndexes))
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in no-op case")
@@ -192,7 +192,7 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	copiedIndexes[IndexAccess] = accessIndex
 
 	// Validate that removeObsoleteIndexes now triggers removal of one index
-	removedIndexes, removeErr = removeObsoleteIndexes(n1qlStore, true, db.UseXattrs(), db.UseViews(), copiedIndexes)
+	removedIndexes, removeErr = removeObsoleteIndexes(ctx, n1qlStore, true, db.UseXattrs(), db.UseViews(), copiedIndexes)
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	assert.Equal(t, 1, len(removedIndexes))
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes with hacked sgIndexes")
@@ -231,11 +231,11 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 		expectedIndexes--
 	}
 
-	removedIndexes, removeErr := removeObsoleteIndexes(n1QLStore, false, db.UseXattrs(), true, copiedIndexes)
+	removedIndexes, removeErr := removeObsoleteIndexes(ctx, n1QLStore, false, db.UseXattrs(), true, copiedIndexes)
 	assert.Equal(t, expectedIndexes, len(removedIndexes))
 	assert.NoError(t, removeErr)
 
-	removedIndexes, removeErr = removeObsoleteIndexes(n1QLStore, false, db.UseXattrs(), false, copiedIndexes)
+	removedIndexes, removeErr = removeObsoleteIndexes(ctx, n1QLStore, false, db.UseXattrs(), false, copiedIndexes)
 	require.Len(t, removedIndexes, 0)
 	assert.NoError(t, removeErr)
 
@@ -290,7 +290,7 @@ func TestRemoveObsoleteIndexOnError(t *testing.T) {
 	channelIndex.previousVersions = []int{1}
 	testIndexes[IndexChannels] = channelIndex
 
-	removedIndex, removeErr := removeObsoleteIndexes(leakyBucket, false, db.UseXattrs(), db.UseViews(), testIndexes)
+	removedIndex, removeErr := removeObsoleteIndexes(ctx, leakyBucket, false, db.UseXattrs(), db.UseViews(), testIndexes)
 	assert.NoError(t, removeErr)
 
 	if base.TestUseXattrs() {

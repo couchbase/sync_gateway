@@ -231,8 +231,8 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 	require.True(t, ok)
 
 	idxName := t.Name() + "_primary"
-	require.NoError(t, n1qlStore.CreatePrimaryIndex(idxName, nil))
-	require.NoError(t, n1qlStore.WaitForIndexOnline(idxName))
+	require.NoError(t, n1qlStore.CreatePrimaryIndex(tbctx, idxName, nil))
+	require.NoError(t, n1qlStore.WaitForIndexOnline(tbctx, idxName))
 
 	res, err := n1qlStore.Query(tbctx, "SELECT keyspace_id, bucket_id, scope_id from system:indexes WHERE name = $idxName",
 		map[string]interface{}{"idxName": idxName}, base.RequestPlus, true)

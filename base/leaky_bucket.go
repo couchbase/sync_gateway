@@ -554,47 +554,47 @@ func (b *LeakyBucket) ExplainQuery(ctx context.Context, statement string, params
 	return n1qlStore.ExplainQuery(ctx, statement, params)
 }
 
-func (b *LeakyBucket) CreateIndex(indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
+func (b *LeakyBucket) CreateIndex(ctx context.Context, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
 	n1qlStore, ok := AsN1QLStore(b.bucket)
 	if !ok {
 		return errors.New("Not N1QL Store")
 	}
-	return n1qlStore.CreateIndex(indexName, expression, filterExpression, options)
+	return n1qlStore.CreateIndex(ctx, indexName, expression, filterExpression, options)
 }
 
-func (b *LeakyBucket) BuildDeferredIndexes(indexSet []string) error {
+func (b *LeakyBucket) BuildDeferredIndexes(ctx context.Context, indexSet []string) error {
 	n1qlStore, ok := AsN1QLStore(b.bucket)
 	if !ok {
 		return errors.New("Not N1QL Store")
 	}
-	return n1qlStore.BuildDeferredIndexes(indexSet)
+	return n1qlStore.BuildDeferredIndexes(ctx, indexSet)
 }
 
-func (b *LeakyBucket) CreatePrimaryIndex(indexName string, options *N1qlIndexOptions) error {
+func (b *LeakyBucket) CreatePrimaryIndex(ctx context.Context, indexName string, options *N1qlIndexOptions) error {
 	n1qlStore, ok := AsN1QLStore(b.bucket)
 	if !ok {
 		return errors.New("Not N1QL Store")
 	}
-	return n1qlStore.CreatePrimaryIndex(indexName, options)
+	return n1qlStore.CreatePrimaryIndex(ctx, indexName, options)
 }
 
-func (b *LeakyBucket) WaitForIndexOnline(indexName string) error {
+func (b *LeakyBucket) WaitForIndexOnline(ctx context.Context, indexName string) error {
 	n1qlStore, ok := AsN1QLStore(b.bucket)
 	if !ok {
 		return errors.New("Not N1QL Store")
 	}
-	return n1qlStore.WaitForIndexOnline(indexName)
+	return n1qlStore.WaitForIndexOnline(ctx, indexName)
 }
 
-func (b *LeakyBucket) GetIndexMeta(indexName string) (exists bool, meta *IndexMeta, err error) {
+func (b *LeakyBucket) GetIndexMeta(ctx context.Context, indexName string) (exists bool, meta *IndexMeta, err error) {
 	n1qlStore, ok := AsN1QLStore(b.bucket)
 	if !ok {
 		return false, nil, errors.New("Not N1QL Store")
 	}
-	return n1qlStore.GetIndexMeta(indexName)
+	return n1qlStore.GetIndexMeta(ctx, indexName)
 }
 
-func (b *LeakyBucket) DropIndex(indexName string) error {
+func (b *LeakyBucket) DropIndex(ctx context.Context, indexName string) error {
 
 	n1qlStore, ok := AsN1QLStore(b.bucket)
 	if !ok {
@@ -609,7 +609,7 @@ func (b *LeakyBucket) DropIndex(indexName string) error {
 		}
 	}
 
-	return n1qlStore.DropIndex(indexName)
+	return n1qlStore.DropIndex(ctx, indexName)
 }
 
 func (b *LeakyBucket) executeQuery(statement string) (results sgbucket.QueryResultIterator, err error) {

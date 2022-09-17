@@ -33,7 +33,6 @@ const DefaultCollectionID = 0x0
 
 var _ CouchbaseStore = &Collection{}
 var _ Bucket = &Collection{}
-var _ N1QLStore = &Collection{}
 
 // Connect to the default collection for the specified bucket
 func GetCouchbaseCollection(ctx context.Context, spec BucketSpec) (*Collection, error) {
@@ -813,7 +812,8 @@ func (c *Collection) HttpClient(ctx context.Context) *http.Client {
 func (c *Collection) GetExpiry(k string) (expiry uint32, getMetaError error) {
 	agent, err := c.getGoCBAgent()
 	if err != nil {
-		WarnfCtx(context.TODO(), "Unable to obtain gocbcore.Agent while retrieving expiry:%v", err) // TODO: get final version of sg-bucket GetExpiry
+		// TODO: get final version of sg-bucket GetExpiry
+		WarnfCtx(context.TODO(), "Unable to obtain gocbcore.Agent while retrieving expiry:%v", err)
 		return 0, err
 	}
 

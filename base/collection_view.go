@@ -205,7 +205,7 @@ func (c *Collection) View(ctx context.Context, ddoc, name string, params map[str
 
 		viewMeta, err := unmarshalViewMetadata(gocbViewResult)
 		if err != nil {
-			WarnfCtx(context.TODO(), "Unable to type get metadata for gocb ViewResult - the total rows count will be missing.")
+			WarnfCtx(ctx, "Unable to type get metadata for gocb ViewResult - the total rows count will be missing.")
 		} else {
 			viewResult.TotalRows = viewMeta.TotalRows
 		}

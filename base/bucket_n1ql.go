@@ -117,13 +117,13 @@ func (bucket *CouchbaseBucketGoCB) ExplainQuery(ctx context.Context, statement s
 	return ExplainQuery(ctx, bucket, statement, params)
 }
 
-func (bucket *CouchbaseBucketGoCB) CreateIndex(indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
-	return CreateIndex(bucket, indexName, expression, filterExpression, options)
+func (bucket *CouchbaseBucketGoCB) CreateIndex(ctx context.Context, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
+	return CreateIndex(ctx, bucket, indexName, expression, filterExpression, options)
 }
 
 // Issues a build command for any deferred sync gateway indexes associated with the bucket.
-func (bucket *CouchbaseBucketGoCB) BuildDeferredIndexes(indexSet []string) error {
-	return BuildDeferredIndexes(bucket, indexSet)
+func (bucket *CouchbaseBucketGoCB) BuildDeferredIndexes(ctx context.Context, indexSet []string) error {
+	return BuildDeferredIndexes(ctx, bucket, indexSet)
 }
 
 func (bucket *CouchbaseBucketGoCB) waitUntilQueryServiceReady(_ time.Duration) error {
@@ -160,22 +160,22 @@ func (bucket *CouchbaseBucketGoCB) executeStatement(statement string) error {
 	return results.Close()
 }
 
-func (bucket *CouchbaseBucketGoCB) CreatePrimaryIndex(indexName string, options *N1qlIndexOptions) error {
-	return CreatePrimaryIndex(bucket, indexName, options)
+func (bucket *CouchbaseBucketGoCB) CreatePrimaryIndex(ctx context.Context, indexName string, options *N1qlIndexOptions) error {
+	return CreatePrimaryIndex(ctx, bucket, indexName, options)
 }
 
 // Waits for index state to be online.  Waits no longer than provided timeout
-func (bucket *CouchbaseBucketGoCB) WaitForIndexOnline(indexName string) error {
-	return WaitForIndexOnline(bucket, indexName)
+func (bucket *CouchbaseBucketGoCB) WaitForIndexOnline(ctx context.Context, indexName string) error {
+	return WaitForIndexOnline(ctx, bucket, indexName)
 }
 
-func (bucket *CouchbaseBucketGoCB) GetIndexMeta(indexName string) (exists bool, meta *IndexMeta, err error) {
-	return GetIndexMeta(bucket, indexName)
+func (bucket *CouchbaseBucketGoCB) GetIndexMeta(ctx context.Context, indexName string) (exists bool, meta *IndexMeta, err error) {
+	return GetIndexMeta(ctx, bucket, indexName)
 }
 
 // DropIndex drops the specified index from the current bucket.
-func (bucket *CouchbaseBucketGoCB) DropIndex(indexName string) error {
-	return DropIndex(bucket, indexName)
+func (bucket *CouchbaseBucketGoCB) DropIndex(ctx context.Context, indexName string) error {
+	return DropIndex(ctx, bucket, indexName)
 }
 
 func (bucket *CouchbaseBucketGoCB) IsErrNoResults(err error) bool {

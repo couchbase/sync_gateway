@@ -801,7 +801,7 @@ func (dbCtx *DatabaseContext) RemoveObsoleteIndexes(ctx context.Context, preview
 		return make([]string, 0), nil
 	}
 
-	return removeObsoleteIndexes(n1qlStore, previewOnly, dbCtx.UseXattrs(), dbCtx.UseViews(), sgIndexes)
+	return removeObsoleteIndexes(ctx, n1qlStore, previewOnly, dbCtx.UseXattrs(), dbCtx.UseViews(), sgIndexes)
 }
 
 // Trigger terminate check handling for connected continuous replications.

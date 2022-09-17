@@ -613,7 +613,7 @@ var PrimaryIndexInitFunc TBPBucketInitFunc = func(ctx context.Context, b Bucket,
 	if hasPrimary, _, err := getIndexMetaWithoutRetry(n1qlStore, PrimaryIndexName); err != nil {
 		return err
 	} else if !hasPrimary {
-		err := n1qlStore.CreatePrimaryIndex(PrimaryIndexName, nil)
+		err := n1qlStore.CreatePrimaryIndex(ctx, PrimaryIndexName, nil)
 		if err != nil {
 			return err
 		}
