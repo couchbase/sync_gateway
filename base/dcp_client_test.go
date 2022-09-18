@@ -66,11 +66,11 @@ func TestOneShotDCP(t *testing.T) {
 	dcpClient, err := NewDCPClient(feedID, counterCallback, clientOptions, collection)
 	require.NoError(t, err)
 
-	doneChan, startErr := dcpClient.Start()
+	doneChan, startErr := dcpClient.Start(ctx)
 	require.NoError(t, startErr)
 
 	defer func() {
-		_ = dcpClient.Close()
+		_ = dcpClient.Close(ctx)
 	}()
 
 	// Add additional documents in a separate goroutine, to verify one-shot behaviour
@@ -140,13 +140,13 @@ func TestTerminateDCPFeed(t *testing.T) {
 		}
 	}()
 
-	doneChan, startErr := dcpClient.Start()
+	doneChan, startErr := dcpClient.Start(ctx)
 	require.NoError(t, startErr)
 
 	// Wait for some processing to complete, then close the feed
 	time.Sleep(10 * time.Millisecond)
 	log.Printf("Closing DCP Client")
-	err = dcpClient.Close()
+	err = dcpClient.Close(ctx)
 	log.Printf("DCP Client closed, waiting for feed close notification")
 	require.NoError(t, err)
 
@@ -232,7 +232,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			dcpClient, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, collection)
 			require.NoError(t, err)
 
-			doneChan, startErr := dcpClient.Start()
+			doneChan, startErr := dcpClient.Start(ctx)
 			require.NoError(t, startErr)
 
 			// Wait for first feed to complete
@@ -263,10 +263,10 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			dcpClient2, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, collection)
 			require.NoError(t, err)
 
-			doneChan2, startErr2 := dcpClient2.Start()
+			doneChan2, startErr2 := dcpClient2.Start(ctx)
 			require.Error(t, startErr2)
 
-			require.NoError(t, dcpClient2.Close())
+			require.NoError(t, dcpClient2.Close(ctx))
 			<-doneChan2
 			log.Printf("Starting third feed")
 			// Perform a third DCP feed - mismatched VbUUID, failOnRollback=false
@@ -283,7 +283,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			dcpClient3, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, collection)
 			require.NoError(t, err)
 
-			doneChan3, startErr3 := dcpClient3.Start()
+			doneChan3, startErr3 := dcpClient3.Start(ctx)
 			require.NoError(t, startErr3)
 
 			// Wait for third feed to complete
@@ -320,7 +320,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 		if bytes.HasPrefix(event.Key, []byte(t.Name())) {
 			count := atomic.AddUint64(&mutationCount, 1)
 			if count > 5000 {
-				err := dcpClient.Close()
+				err := dcpClient.Close(ctx)
 				assert.NoError(t, err)
 			}
 		}
@@ -360,7 +360,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 	dcpClient, err = NewDCPClient(feedID, counterCallback, dcpClientOpts, collection)
 	require.NoError(t, err)
 
-	doneChan, startErr := dcpClient.Start()
+	doneChan, startErr := dcpClient.Start(ctx)
 	require.NoError(t, startErr)
 
 	// Wait for first feed to complete
@@ -395,7 +395,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 	dcpClient2, err := NewDCPClient(feedID, secondCallback, dcpClientOpts, collection)
 	require.NoError(t, err)
 
-	doneChan2, startErr2 := dcpClient2.Start()
+	doneChan2, startErr2 := dcpClient2.Start(ctx)
 	require.NoError(t, startErr2)
 
 	// Wait for second feed to complete

@@ -22,7 +22,7 @@ const defaultNumWorkers = 8
 
 const infiniteOpenStreamRetries = uint32(math.MaxUint32)
 
-type endStreamCallbackFunc func(e endStreamEvent)
+type endStreamCallbackFunc func(ctx context.Context, e endStreamEvent)
 
 type DCPClient struct {
 	ID                         string                         // unique ID for DCPClient - used for DCP stream name, must be unique
@@ -120,15 +120,15 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 }
 
 // Start returns an error and a channel to indicate when the DCPClient is done. If Start returns an error, DCPClient.Close() needs to be called.
-func (dc *DCPClient) Start() (doneChan chan error, err error) {
+func (dc *DCPClient) Start(ctx context.Context) (doneChan chan error, err error) {
 	err = dc.initAgent(dc.spec)
 	if err != nil {
 		return dc.doneChannel, err
 	}
-	dc.startWorkers()
+	dc.startWorkers(ctx)
 
 	for i := uint16(0); i < dc.numVbuckets; i++ {
-		openErr := dc.openStream(i, openRetryCount)
+		openErr := dc.openStream(ctx, i, openRetryCount)
 		if openErr != nil {
 			return dc.doneChannel, fmt.Errorf("Unable to start DCP client, error opening stream for vb %d: %w", i, openErr)
 		}
@@ -137,8 +137,8 @@ func (dc *DCPClient) Start() (doneChan chan error, err error) {
 }
 
 // Close is used externally to stop the DCP client. If the client was already closed due to error, returns that error
-func (dc *DCPClient) Close() error {
-	dc.close()
+func (dc *DCPClient) Close(ctx context.Context) error {
+	dc.close(ctx)
 	return dc.getCloseError()
 }
 
@@ -153,11 +153,11 @@ func (dc *DCPClient) GetMetadata() []DCPMetadata {
 
 // close is used internally to stop the DCP client.  Sends any fatal errors to the client's done channel, and
 // closes that channel.
-func (dc *DCPClient) close() {
+func (dc *DCPClient) close(ctx context.Context) {
 
 	// set dc.closing to true, avoid re-triggering close if it's already in progress
 	if !dc.closing.CompareAndSwap(false, true) {
-		InfofCtx(context.TODO(), KeyDCP, "DCP Client close called - client is already closing")
+		InfofCtx(ctx, KeyDCP, "DCP Client close called - client is already closing")
 		return
 	}
 
@@ -166,7 +166,7 @@ func (dc *DCPClient) close() {
 	if dc.agent != nil {
 		agentErr := dc.agent.Close()
 		if agentErr != nil {
-			WarnfCtx(context.TODO(), "Error closing DCP agent in client close: %v", agentErr)
+			WarnfCtx(ctx, "Error closing DCP agent in client close: %v", agentErr)
 		}
 	}
 
@@ -260,7 +260,7 @@ func (dc *DCPClient) workerForVbno(vbNo uint16) *DCPWorker {
 }
 
 // startWorkers initializes the DCP workers to receive stream events from eventFeed
-func (dc *DCPClient) startWorkers() {
+func (dc *DCPClient) startWorkers(ctx context.Context) {
 
 	// vbuckets are assigned to workers as vbNo % NumWorkers.  Create set of assigned vbuckets
 	assignedVbs := make(map[int][]uint16)
@@ -278,14 +278,13 @@ func (dc *DCPClient) startWorkers() {
 		options := &DCPWorkerOptions{
 			metaPersistFrequency: dc.checkpointPersistFrequency,
 		}
-		dc.workers[index] = NewDCPWorker(index, dc.metadata, dc.callback, dc.onStreamEnd, dc.terminator, nil, dc.checkpointPrefix, assignedVbs[index], options)
+		dc.workers[index] = NewDCPWorker(ctx, index, dc.metadata, dc.callback, dc.onStreamEnd, dc.terminator, nil, dc.checkpointPrefix, assignedVbs[index], options)
 		dc.workers[index].Start(&dc.workersWg)
 	}
 }
 
-func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) (err error) {
+func (dc *DCPClient) openStream(ctx context.Context, vbID uint16, maxRetries uint32) (err error) {
 
-	logCtx := context.TODO()
 	var openStreamErr error
 	var attempts uint32
 	for {
@@ -304,21 +303,21 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) (err error) {
 		switch {
 		case (errors.Is(openStreamErr, gocbcore.ErrMemdRollback) || errors.Is(openStreamErr, gocbcore.ErrMemdRangeError)):
 			if dc.failOnRollback {
-				InfofCtx(logCtx, KeyDCP, "Open stream for vbID %d failed due to rollback or range error, closing client based on failOnRollback=true", vbID)
+				InfofCtx(ctx, KeyDCP, "Open stream for vbID %d failed due to rollback or range error, closing client based on failOnRollback=true", vbID)
 				return fmt.Errorf("%s, failOnRollback requested", openStreamErr)
 			}
-			InfofCtx(logCtx, KeyDCP, "Open stream for vbID %d failed due to rollback or range error, will roll back metadata and retry: %v", vbID, openStreamErr)
+			InfofCtx(ctx, KeyDCP, "Open stream for vbID %d failed due to rollback or range error, will roll back metadata and retry: %v", vbID, openStreamErr)
 			err := dc.rollback(vbID)
 			if err != nil {
 				return fmt.Errorf("metadata rollback failed for vb %d: %v", vbID, err)
 			}
 		case errors.Is(openStreamErr, gocbcore.ErrShutdown):
-			WarnfCtx(logCtx, "Closing stream for vbID %d, agent has been shut down", vbID)
+			WarnfCtx(ctx, "Closing stream for vbID %d, agent has been shut down", vbID)
 			return openStreamErr
 		case errors.Is(openStreamErr, ErrTimeout):
-			DebugfCtx(logCtx, KeyDCP, "Timeout attempting to open stream for vb %d, will retry", vbID)
+			DebugfCtx(ctx, KeyDCP, "Timeout attempting to open stream for vb %d, will retry", vbID)
 		default:
-			WarnfCtx(logCtx, "Error opening stream for vbID %d: %v", vbID, openStreamErr)
+			WarnfCtx(ctx, "Error opening stream for vbID %d: %v", vbID, openStreamErr)
 			return openStreamErr
 		}
 		if maxRetries == infiniteOpenStreamRetries {
@@ -421,13 +420,13 @@ func (dc *DCPClient) verifyFailoverLog(vbID uint16, f []gocbcore.FailoverEntry) 
 	return nil
 }
 
-func (dc *DCPClient) deactivateVbucket(vbID uint16) {
+func (dc *DCPClient) deactivateVbucket(ctx context.Context, vbID uint16) {
 	dc.activeVbucketLock.Lock()
 	delete(dc.activeVbuckets, vbID)
 	activeCount := len(dc.activeVbuckets)
 	dc.activeVbucketLock.Unlock()
 	if activeCount == 0 {
-		dc.close()
+		dc.close(ctx)
 		// On successful one-shot feed completion, purge persisted checkpoints
 		if dc.oneShot {
 			dc.metadata.Purge(len(dc.workers))
@@ -435,39 +434,38 @@ func (dc *DCPClient) deactivateVbucket(vbID uint16) {
 	}
 }
 
-func (dc *DCPClient) onStreamEnd(e endStreamEvent) {
-	logCtx := context.TODO()
+func (dc *DCPClient) onStreamEnd(ctx context.Context, e endStreamEvent) {
 
 	if e.err == nil {
-		DebugfCtx(logCtx, KeyDCP, "Stream (vb:%d) closed, all items streamed", e.vbID)
-		dc.deactivateVbucket(e.vbID)
+		DebugfCtx(ctx, KeyDCP, "Stream (vb:%d) closed, all items streamed", e.vbID)
+		dc.deactivateVbucket(ctx, e.vbID)
 		return
 	}
 
 	if errors.Is(e.err, gocbcore.ErrDCPStreamClosed) {
-		DebugfCtx(logCtx, KeyDCP, "Stream (vb:%d) closed by DCPClient", e.vbID)
+		DebugfCtx(ctx, KeyDCP, "Stream (vb:%d) closed by DCPClient", e.vbID)
 	}
 
 	if errors.Is(e.err, gocbcore.ErrDCPStreamStateChanged) || errors.Is(e.err, gocbcore.ErrDCPStreamTooSlow) ||
 		errors.Is(e.err, gocbcore.ErrDCPStreamDisconnected) {
-		InfofCtx(logCtx, KeyDCP, "Stream (vb:%d) closed by server, will reconnect.  Reason: %v", e.vbID, e.err)
+		InfofCtx(ctx, KeyDCP, "Stream (vb:%d) closed by server, will reconnect.  Reason: %v", e.vbID, e.err)
 		retries := infiniteOpenStreamRetries
 		if dc.oneShot {
 			retries = openRetryCount
 		}
-		err := dc.openStream(e.vbID, retries)
+		err := dc.openStream(ctx, e.vbID, retries)
 		if err != nil {
-			dc.fatalError(fmt.Errorf("Stream (vb:%d) failed to reopen: %w", e.vbID, err))
+			dc.fatalError(ctx, fmt.Errorf("Stream (vb:%d) failed to reopen: %w", e.vbID, err))
 		}
 		return
 	}
 
-	dc.fatalError(fmt.Errorf("Stream (vb:%d) ended with unknown error: %w", e.vbID, e.err))
+	dc.fatalError(ctx, fmt.Errorf("Stream (vb:%d) ended with unknown error: %w", e.vbID, e.err))
 }
 
-func (dc *DCPClient) fatalError(err error) {
+func (dc *DCPClient) fatalError(ctx context.Context, err error) {
 	dc.setCloseError(err)
-	dc.close()
+	dc.close(ctx)
 }
 
 func (dc *DCPClient) setCloseError(err error) {

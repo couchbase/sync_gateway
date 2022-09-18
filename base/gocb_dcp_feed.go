@@ -73,11 +73,11 @@ func StartGocbDCPFeed(ctx context.Context, collection *Collection, bucketName st
 		return err
 	}
 
-	doneChan, err := dcpClient.Start()
+	doneChan, err := dcpClient.Start(ctx)
 	if err != nil {
 		ErrorfCtx(ctx, "Failed to start DCP Feed %q for bucket %q: %v", feedName, MD(bucketName), err)
 		// simplify in CBG-2234
-		closeErr := dcpClient.Close()
+		closeErr := dcpClient.Close(ctx)
 		ErrorfCtx(ctx, "Finished called async close error from DCP Feed %q for bucket %q", feedName, MD(bucketName))
 		if closeErr != nil {
 			ErrorfCtx(ctx, "Close error from DCP Feed %q for bucket %q: %v", feedName, MD(bucketName), closeErr)
@@ -103,7 +103,7 @@ func StartGocbDCPFeed(ctx context.Context, collection *Collection, bucketName st
 			break
 		case <-args.Terminator:
 			InfofCtx(ctx, KeyDCP, "Closing DCP Feed %q for bucket %q based on termination notification", feedName, MD(bucketName))
-			dcpCloseErr := dcpClient.Close()
+			dcpCloseErr := dcpClient.Close(ctx)
 			if dcpCloseErr != nil {
 				WarnfCtx(ctx, "Error on closing DCP Feed %q for %q: %v", feedName, MD(bucketName), dcpCloseErr)
 			}

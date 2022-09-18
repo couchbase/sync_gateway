@@ -3,6 +3,7 @@ package base
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -30,6 +31,7 @@ type DCPWorker struct {
 	lastMetaPersistTime   time.Time
 	metaPersistFrequency  time.Duration
 	assignedVbs           []uint16
+	loggingCtx            context.Context
 }
 
 const defaultQueueLength = 10
@@ -41,7 +43,7 @@ type DCPWorkerOptions struct {
 	metaPersistFrequency *time.Duration
 }
 
-func NewDCPWorker(workerID int, metadata DCPMetadataStore, mutationCallback sgbucket.FeedEventCallbackFunc,
+func NewDCPWorker(ctx context.Context, workerID int, metadata DCPMetadataStore, mutationCallback sgbucket.FeedEventCallbackFunc,
 	endCallback endStreamCallbackFunc, terminator chan bool, endSeqNos []uint64, checkpointPrefix string,
 	assignedVbs []uint16, options *DCPWorkerOptions) *DCPWorker {
 
@@ -70,6 +72,7 @@ func NewDCPWorker(workerID int, metadata DCPMetadataStore, mutationCallback sgbu
 		pendingSnapshot:       make(map[uint16]snapshotEvent),
 		metaPersistFrequency:  metadataPersistFrequency,
 		assignedVbs:           assignedVbs,
+		loggingCtx:            LogContextWith(ctx, &LogContext{CorrelationID: fmt.Sprintf("dcpworker-%d", workerID)}),
 	}
 }
 
@@ -80,14 +83,14 @@ func (w *DCPWorker) Send(event streamEvent) {
 	// the outcome is non-deterministic (https://go.dev/ref/spec#Select_statements)
 	select {
 	case <-w.terminator:
-		TracefCtx(context.TODO(), KeyDCP, "Ignoring stream event (vb:%d) as the client is closing", event.VbID())
+		TracefCtx(w.loggingCtx, KeyDCP, "Ignoring stream event (vb:%d) as the client is closing", event.VbID())
 		return
 	default:
 	}
 	select {
 	case w.eventFeed <- event:
 	case <-w.terminator:
-		InfofCtx(context.TODO(), KeyDCP, "Closing DCP worker, DCP Client was closed")
+		InfofCtx(w.loggingCtx, KeyDCP, "Closing DCP worker, DCP Client was closed")
 	}
 }
 
@@ -119,7 +122,7 @@ func (w *DCPWorker) Start(wg *sync.WaitGroup) {
 				case seqnoAdvancedEvent:
 					w.updateSeq(nil, vbID, e.seq)
 				case endStreamEvent:
-					w.endStreamCallback(e)
+					w.endStreamCallback(w.loggingCtx, e)
 				}
 			case <-w.terminator:
 				w.Close()
