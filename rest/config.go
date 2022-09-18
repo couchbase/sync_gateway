@@ -1147,7 +1147,7 @@ func SetMaxFileDescriptors(maxP *uint64) error {
 	return nil
 }
 
-func (sc *ServerContext) Serve(config *StartupConfig, addr string, handler http.Handler) error {
+func (sc *ServerContext) Serve(ctx context.Context, config *StartupConfig, addr string, handler http.Handler) error {
 	http2Enabled := false
 	if config.Unsupported.HTTP2 != nil && config.Unsupported.HTTP2.Enabled != nil {
 		http2Enabled = *config.Unsupported.HTTP2.Enabled
@@ -1156,6 +1156,7 @@ func (sc *ServerContext) Serve(config *StartupConfig, addr string, handler http.
 	tlsMinVersion := GetTLSVersionFromString(&config.API.HTTPS.TLSMinimumVersion)
 
 	serveFn, server, err := base.ListenAndServeHTTP(
+		ctx,
 		addr,
 		config.API.MaximumConnections,
 		config.API.HTTPS.TLSCertPath,
@@ -1664,20 +1665,20 @@ func StartServer(ctx context.Context, config *StartupConfig, sc *ServerContext) 
 
 	base.Consolef(base.LevelInfo, base.KeyAll, "Starting metrics server on %s", config.API.MetricsInterface)
 	go func() {
-		if err := sc.Serve(config, config.API.MetricsInterface, CreateMetricHandler(sc)); err != nil {
+		if err := sc.Serve(ctx, config, config.API.MetricsInterface, CreateMetricHandler(sc)); err != nil {
 			base.ErrorfCtx(ctx, "Error serving the Metrics API: %v", err)
 		}
 	}()
 
 	base.Consolef(base.LevelInfo, base.KeyAll, "Starting admin server on %s", config.API.AdminInterface)
 	go func() {
-		if err := sc.Serve(config, config.API.AdminInterface, CreateAdminHandler(sc)); err != nil {
+		if err := sc.Serve(ctx, config, config.API.AdminInterface, CreateAdminHandler(sc)); err != nil {
 			base.ErrorfCtx(ctx, "Error serving the Admin API: %v", err)
 		}
 	}()
 
 	base.Consolef(base.LevelInfo, base.KeyAll, "Starting server on %s ...", config.API.PublicInterface)
-	return sc.Serve(config, config.API.PublicInterface, CreatePublicHandler(sc))
+	return sc.Serve(ctx, config, config.API.PublicInterface, CreatePublicHandler(sc))
 }
 
 func sharedBucketDatabaseCheck(sc *ServerContext) (errors error) {

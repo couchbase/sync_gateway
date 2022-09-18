@@ -461,7 +461,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	if base.IsEnterpriseEdition() && (importEnabled || sgReplicateEnabled) {
 		// Create heartbeater
 		heartbeaterPrefix := base.HeartbeaterPrefixWithGroupID(dbContext.Options.GroupID)
-		heartbeater, err := base.NewCouchbaseHeartbeater(bucket, heartbeaterPrefix, dbContext.UUID)
+		heartbeater, err := base.NewCouchbaseHeartbeater(ctx, bucket, heartbeaterPrefix, dbContext.UUID)
 		if err != nil {
 			return nil, pkgerrors.Wrapf(err, "Error starting heartbeater for bucket %s", base.MD(bucket.GetName()).Redact())
 		}

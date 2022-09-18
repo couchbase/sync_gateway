@@ -79,13 +79,14 @@ type couchbaseHeartBeater struct {
 	checkCount              int                          // Monitoring stat - number of checks issued
 	sendActive              AtomicBool                   // Monitoring state of send goroutine
 	checkActive             AtomicBool                   // Monitoring state of check goroutine
+	loggingCtx              context.Context              // Log db name used to create this heartbeater
 }
 
 // Create a new CouchbaseHeartbeater, passing in an authenticated bucket connection,
 // the keyPrefix which will be prepended to the heartbeat doc keys,
 // and the nodeUUID, which is an opaque identifier for the "thing" that is using this
 // library.  nodeUUID will be passed to listeners on stale node detection.
-func NewCouchbaseHeartbeater(bucket Bucket, keyPrefix, nodeUUID string) (heartbeater *couchbaseHeartBeater, err error) {
+func NewCouchbaseHeartbeater(ctx context.Context, bucket Bucket, keyPrefix, nodeUUID string) (heartbeater *couchbaseHeartBeater, err error) {
 
 	heartbeater = &couchbaseHeartBeater{
 		bucket:                 bucket,
@@ -96,6 +97,7 @@ func NewCouchbaseHeartbeater(bucket Bucket, keyPrefix, nodeUUID string) (heartbe
 		heartbeatSendInterval:  defaultHeartbeatSendInterval,
 		heartbeatExpirySeconds: defaultHeartbeatExpirySeconds,
 		heartbeatPollInterval:  defaultHeartbeatPollInterval,
+		loggingCtx:             LogContextWith(ctx, &LogContext{CorrelationID: nodeUUID}),
 	}
 
 	return heartbeater, err
@@ -114,7 +116,7 @@ func (h *couchbaseHeartBeater) Start() error {
 		return err
 	}
 
-	DebugfCtx(context.TODO(), KeyCluster, "Sending node heartbeats at interval: %v", h.heartbeatSendInterval)
+	DebugfCtx(h.loggingCtx, KeyCluster, "Sending node heartbeats at interval: %v", h.heartbeatSendInterval)
 
 	return nil
 
@@ -135,7 +137,7 @@ func (h *couchbaseHeartBeater) Stop() {
 	for h.sendActive.IsTrue() || h.checkActive.IsTrue() {
 		waitTimeMs += 10
 		if waitTimeMs > maxWaitTimeMs {
-			WarnfCtx(context.Background(), "couchbaseHeartBeater didn't complete Stop() within expected elapsed time")
+			WarnfCtx(h.loggingCtx, "couchbaseHeartBeater didn't complete Stop() within expected elapsed time")
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -162,7 +164,7 @@ func (h *couchbaseHeartBeater) StartSendingHeartbeats() error {
 				return
 			case <-ticker.C:
 				if err := h.sendHeartbeat(); err != nil {
-					WarnfCtx(context.Background(), "Unexpected error sending heartbeat - will be retried: %v", err)
+					WarnfCtx(h.loggingCtx, "Unexpected error sending heartbeat - will be retried: %v", err)
 				}
 			}
 		}
@@ -175,7 +177,7 @@ func (h *couchbaseHeartBeater) StartSendingHeartbeats() error {
 func (h *couchbaseHeartBeater) StartCheckingHeartbeats() error {
 
 	if err := h.checkStaleHeartbeats(); err != nil {
-		WarnfCtx(context.Background(), "Error checking for stale heartbeats: %v", err)
+		WarnfCtx(h.loggingCtx, "Error checking for stale heartbeats: %v", err)
 	}
 
 	ticker := time.NewTicker(h.heartbeatPollInterval)
@@ -189,7 +191,7 @@ func (h *couchbaseHeartBeater) StartCheckingHeartbeats() error {
 				return
 			case <-ticker.C:
 				if err := h.checkStaleHeartbeats(); err != nil {
-					WarnfCtx(context.Background(), "Error checking for stale heartbeats: %v", err)
+					WarnfCtx(h.loggingCtx, "Error checking for stale heartbeats: %v", err)
 				}
 			}
 		}
@@ -253,7 +255,7 @@ func (h *couchbaseHeartBeater) getNodeListenerMap() ListenerMap {
 	for _, listener := range h.heartbeatListeners {
 		listenerNodes, err := listener.GetNodes()
 		if err != nil {
-			WarnfCtx(context.Background(), "Error obtaining node set for listener %s - will be omitted for this heartbeat iteration.  Error: %v", listener.Name(), err)
+			WarnfCtx(h.loggingCtx, "Error obtaining node set for listener %s - will be omitted for this heartbeat iteration.  Error: %v", listener.Name(), err)
 		}
 		for _, nodeUUID := range listenerNodes {
 			_, ok := nodeToListenerMap[nodeUUID]
@@ -271,7 +273,7 @@ func (h *couchbaseHeartBeater) checkStaleHeartbeats() error {
 
 	// Build set of all nodes
 	nodeListenerMap := h.getNodeListenerMap()
-	TracefCtx(context.Background(), KeyCluster, "Checking heartbeats for node set: %s", nodeListenerMap)
+	TracefCtx(h.loggingCtx, KeyCluster, "Checking heartbeats for node set: %s", nodeListenerMap)
 
 	for heartbeatNodeUUID, listeners := range nodeListenerMap {
 		if heartbeatNodeUUID == h.nodeUUID {
