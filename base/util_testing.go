@@ -96,18 +96,22 @@ func getDefaultCollectionType() tbpCollectionType {
 
 }
 
+// GetTestBucket returns a test bucket from a pool.
 func GetTestBucket(t testing.TB) *TestBucket {
 	return getTestBucket(t, getDefaultCollectionType())
 }
 
+// GetTestBucketNamedCollection will return a TestBucket from a pool if using couchbase server that has a non default scope and scope.
 func GetTestBucketNamedCollection(t testing.TB) *TestBucket {
 	return getTestBucket(t, tbpCollectionNamed)
 }
 
+// GetTestBucketNamedCollection will return a TestBucket from a pool if using couchbase server that has _default._default scope and collection.
 func GetTestBucketDefaultCollection(t testing.TB) *TestBucket {
 	return getTestBucket(t, tbpCollectionDefault)
 }
 
+// getTestBucket returns a bucket from the bucket pool
 func getTestBucket(t testing.TB, collectionType tbpCollectionType) *TestBucket {
 	bucket, spec, closeFn := GTestBucketPool.getTestBucketAndSpec(t, collectionType)
 	return &TestBucket{

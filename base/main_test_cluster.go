@@ -144,7 +144,7 @@ func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilRea
 	}
 	DebugfCtx(context.TODO(), KeySGTest, "Got bucket %s", testBucketName)
 
-	if err := DropAllScopesAndCollections(bucket); err != nil && !errors.Is(err, ErrCollectionsUnsupported) {
+	if err := dropAllScopesAndCollections(bucket); err != nil && !errors.Is(err, ErrCollectionsUnsupported) {
 		return nil, nil, err
 	}
 
@@ -197,8 +197,8 @@ func (c *tbpClusterV2) getMinClusterCompatVersion() int {
 	return nodesMeta[0].ClusterCompatibility
 }
 
-// DropAllScopesAndCollections attempts to drop *all* non-_default scopes and collections from the bucket associated with the collection.  Intended for test usage only.
-func DropAllScopesAndCollections(bucket *gocb.Bucket) error {
+// dropAllScopesAndCollections attempts to drop *all* non-_default scopes and collections from the bucket associated with the collection, except those used by the test bucket pool. Intended for test usage only.
+func dropAllScopesAndCollections(bucket *gocb.Bucket) error {
 	cm := bucket.Collections()
 	scopes, err := cm.GetAllScopes(nil)
 	if err != nil {

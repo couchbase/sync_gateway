@@ -65,6 +65,7 @@ const (
 	waitForReadyBucketTimeout = time.Minute
 )
 
+// openCollections represent two Collection as Bucket that are the named and unnamed collection time.
 type openCollections struct {
 	namedCollection   Bucket
 	defaultCollection Bucket
@@ -73,8 +74,8 @@ type openCollections struct {
 type tbpCollectionType uint8
 
 const (
-	tbpCollectionNamed   = 0
-	tbpCollectionDefault = 1
+	tbpCollectionNamed   = 0 // any scope/collection that is not default
+	tbpCollectionDefault = 1 // _default._default scope and collection
 )
 
 // a dirtyBucket is passed to bucketReadier to be cleaned
@@ -659,7 +660,7 @@ loop:
 	tbp.Logf(context.Background(), "Stopped bucketReadier")
 }
 
-// Using named collections specifies whether the bucket pool is using named collections.
+// UsingNamedCollections specifies whether the bucket pool is using named collections.
 func (tbp *TestBucketPool) UsingNamedCollections() bool {
 	return tbp.usingCollections
 }
@@ -764,18 +765,10 @@ var tbpDefaultBucketSpec = BucketSpec{
 	UseXattrs: TestUseXattrs(),
 }
 
-// addRandomScopeAndCollection adds a random scope/collection to a BucketSpec.
-func addRandomScopeAndCollection(spec *BucketSpec) error {
-	scopeName, err := GenerateRandomID()
-	if err != nil {
-		return err
-	}
-	scopeName = tbpScopePrefix + "1"
-	collectionName, err := GenerateRandomID()
-	if err != nil {
-		return err
-	}
-	collectionName = tbpCollectionPrefix + "1"
+// addCustomScopeAndCollection adds a non default scope/collection to a BucketSpec.
+func addCustomScopeAndCollection(spec *BucketSpec) error {
+	scopeName := tbpScopePrefix + "1"
+	collectionName := tbpCollectionPrefix + "1"
 	spec.Scope = &scopeName
 	spec.Collection = &collectionName
 	return nil
@@ -789,7 +782,7 @@ func getBucketSpec(testBucketName tbpBucketName) BucketSpec {
 	bucketSpec.TLSSkipVerify = TestTLSSkipVerify()
 	if TestUsingNamedCollection() {
 		if bucketSpec.Scope == nil && bucketSpec.Collection == nil {
-			err := addRandomScopeAndCollection(&bucketSpec)
+			err := addCustomScopeAndCollection(&bucketSpec)
 			if err != nil {
 				panic(err)
 			}
