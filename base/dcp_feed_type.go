@@ -150,7 +150,7 @@ type SGFeedIndexParams struct {
 
 // cbgtFeedParams returns marshalled cbgt.DCPFeedParams as string, to be passed as feedparams during cbgt.Manager init.
 // Used to pass basic auth credentials and xattr flag to cbgt.
-func cbgtFeedParams(spec BucketSpec, scope string, collections []string, dbName string) (string, error) {
+func cbgtFeedParams(ctx context.Context, spec BucketSpec, scope string, collections []string, dbName string) (string, error) {
 	feedParams := &SGFeedSourceParams{}
 	feedParams.DbName = dbName
 
@@ -167,7 +167,7 @@ func cbgtFeedParams(spec BucketSpec, scope string, collections []string, dbName 
 	if err != nil {
 		return "", err
 	}
-	TracefCtx(context.TODO(), KeyDCP, "CBGT feed params: %v", UD(string(paramBytes)))
+	TracefCtx(ctx, KeyDCP, "CBGT feed params: %v", UD(string(paramBytes)))
 	return string(paramBytes), nil
 }
 

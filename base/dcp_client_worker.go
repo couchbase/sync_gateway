@@ -150,7 +150,7 @@ func (w *DCPWorker) updateSeq(key []byte, vbID uint16, seq uint64) {
 	w.metadata.UpdateSeq(vbID, seq)
 
 	if time.Since(w.lastMetaPersistTime) > w.metaPersistFrequency {
-		w.metadata.Persist(w.ID, w.assignedVbs)
+		w.metadata.Persist(w.loggingCtx, w.ID, w.assignedVbs)
 	}
 
 }

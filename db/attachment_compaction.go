@@ -137,7 +137,7 @@ func attachmentCompactMarkPhase(ctx context.Context, db *Database, compactionID 
 	if err != nil {
 		return 0, nil, err
 	}
-	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, *clientOptions, collection)
+	dcpClient, err := base.NewDCPClient(ctx, dcpFeedKey, callback, *clientOptions, collection)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)
 		return 0, nil, err
@@ -360,7 +360,7 @@ func attachmentCompactSweepPhase(ctx context.Context, db *Database, compactionID
 
 	dcpFeedKey := generateCompactionDCPStreamName(compactionID, SweepPhase)
 	base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed %q for sweep phase of attachment compaction", compactionLoggingID, dcpFeedKey)
-	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, *clientOptions, collection)
+	dcpClient, err := base.NewDCPClient(ctx, dcpFeedKey, callback, *clientOptions, collection)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)
 		return 0, err
@@ -495,7 +495,7 @@ func attachmentCompactCleanupPhase(ctx context.Context, db *Database, compaction
 	base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed for cleanup phase of attachment compaction", compactionLoggingID)
 
 	dcpFeedKey := generateCompactionDCPStreamName(compactionID, CleanupPhase)
-	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, *clientOptions, collection)
+	dcpClient, err := base.NewDCPClient(ctx, dcpFeedKey, callback, *clientOptions, collection)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)
 		return err

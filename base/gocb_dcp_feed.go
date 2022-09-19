@@ -58,6 +58,7 @@ func StartGocbDCPFeed(ctx context.Context, collection *Collection, bucketName st
 		collectionIDs = append(collectionIDs, collectionID)
 	}
 	dcpClient, err := NewDCPClient(
+		ctx,
 		feedName,
 		callback,
 		DCPClientOptions{

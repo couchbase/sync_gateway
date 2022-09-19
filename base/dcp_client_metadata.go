@@ -46,12 +46,15 @@ type DCPMetadataStore interface {
 	SetFailoverEntries(vbID uint16, entries []gocbcore.FailoverEntry)
 
 	// Persist writes the metadata for the specified workerID and vbucket IDs to the backing store
-	Persist(workerID int, vbIDs []uint16)
+	Persist(ctx context.Context, workerID int, vbIDs []uint16)
 
 	// Purge removes all metadata associated with the metadata store from the bucket.  It does not remove the
 	// in-memory metadata.
-	Purge(numWorkers int)
+	Purge(ctx context.Context, numWorkers int)
 }
+
+var _ DCPMetadataStore = &DCPMetadataMem{}
+var _ DCPMetadataStore = &DCPMetadataCS{}
 
 type DCPMetadataMem struct {
 	metadata []DCPMetadata
@@ -104,12 +107,12 @@ func (m *DCPMetadataMem) SetFailoverEntries(vbID uint16, fe []gocbcore.FailoverE
 }
 
 // Persist is no-op for in-memory metadata store
-func (md *DCPMetadataMem) Persist(workerID int, vbIDs []uint16) {
+func (md *DCPMetadataMem) Persist(ctx context.Context, workerID int, vbIDs []uint16) {
 	return
 }
 
 // Purge is no-op for in-memory metadata store
-func (md *DCPMetadataMem) Purge(numWorkers int) {
+func (md *DCPMetadataMem) Purge(ctx context.Context, numWorkers int) {
 	return
 }
 
@@ -148,7 +151,7 @@ type DCPMetadataCS struct {
 	metadata  []DCPMetadata
 }
 
-func NewDCPMetadataCS(store Bucket, numVbuckets uint16, numWorkers int, keyPrefix string) *DCPMetadataCS {
+func NewDCPMetadataCS(ctx context.Context, store Bucket, numVbuckets uint16, numWorkers int, keyPrefix string) *DCPMetadataCS {
 
 	m := &DCPMetadataCS{
 		bucket:    store,
@@ -164,7 +167,7 @@ func NewDCPMetadataCS(store Bucket, numVbuckets uint16, numWorkers int, keyPrefi
 
 	// Initialize any persisted metadata
 	for i := 0; i < numWorkers; i++ {
-		m.load(i)
+		m.load(ctx, i)
 	}
 
 	return m
@@ -209,7 +212,7 @@ func (m *DCPMetadataCS) SetFailoverEntries(vbID uint16, fe []gocbcore.FailoverEn
 // set that has been assigned to the worker.  There's no synchronization on m.metadata - relies on DCP worker to
 // avoid read/write races on vbucket data.  Calls to persist must be blocking on the worker goroutine, and vbuckets are
 // only assigned to a single worker
-func (m *DCPMetadataCS) Persist(workerID int, vbIDs []uint16) {
+func (m *DCPMetadataCS) Persist(ctx context.Context, workerID int, vbIDs []uint16) {
 
 	meta := WorkerMetadata{}
 	meta.DCPMeta = make(map[uint16]DCPMetadata)
@@ -218,36 +221,36 @@ func (m *DCPMetadataCS) Persist(workerID int, vbIDs []uint16) {
 	}
 	err := m.bucket.Set(m.getMetadataKey(workerID), 0, nil, meta)
 	if err != nil {
-		InfofCtx(context.TODO(), KeyDCP, "Unable to persist DCP metadata: %v", err)
+		InfofCtx(ctx, KeyDCP, "Unable to persist DCP metadata: %v", err)
 	} else {
-		TracefCtx(context.TODO(), KeyDCP, "Persisted metadata for worker %d: %v", workerID, meta)
+		TracefCtx(ctx, KeyDCP, "Persisted metadata for worker %d: %v", workerID, meta)
 		// log.Printf("Persisted metadata for worker %d (%s): %v", workerID, m.getMetadataKey(workerID), meta)
 	}
 	return
 }
 
-func (m *DCPMetadataCS) load(workerID int) {
+func (m *DCPMetadataCS) load(ctx context.Context, workerID int) {
 	var meta WorkerMetadata
 	_, err := m.bucket.Get(m.getMetadataKey(workerID), &meta)
 	if err != nil {
 		if IsKeyNotFoundError(m.bucket, err) {
 			return
 		}
-		InfofCtx(context.TODO(), KeyDCP, "Error loading persisted metadata - metadata will be reset for worker %d: %s", workerID, err)
+		InfofCtx(ctx, KeyDCP, "Error loading persisted metadata - metadata will be reset for worker %d: %s", workerID, err)
 	}
 
-	TracefCtx(context.TODO(), KeyDCP, "Loaded metadata for worker %d: %v", workerID, meta)
+	TracefCtx(ctx, KeyDCP, "Loaded metadata for worker %d: %v", workerID, meta)
 	// log.Printf("Loaded metadata for worker %d (%s): %v", workerID, m.getMetadataKey(workerID), meta)
 	for vbID, metadata := range meta.DCPMeta {
 		m.metadata[vbID] = metadata
 	}
 }
 
-func (m *DCPMetadataCS) Purge(numWorkers int) {
+func (m *DCPMetadataCS) Purge(ctx context.Context, numWorkers int) {
 	for i := 0; i < numWorkers; i++ {
 		err := m.bucket.Delete(m.getMetadataKey(i))
 		if err != nil && !IsKeyNotFoundError(m.bucket, err) {
-			InfofCtx(context.TODO(), KeyDCP, "Unable to remove DCP checkpoint for key %s: %v", m.getMetadataKey(i), err)
+			InfofCtx(ctx, KeyDCP, "Unable to remove DCP checkpoint for key %s: %v", m.getMetadataKey(i), err)
 		}
 	}
 }

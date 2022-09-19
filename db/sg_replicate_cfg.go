@@ -1445,6 +1445,8 @@ type ReplicationHeartbeatListener struct {
 	lock       sync.RWMutex  // lock for nodeIDs access
 }
 
+var _ base.HeartbeatListener = &ReplicationHeartbeatListener{}
+
 func NewReplicationHeartbeatListener(mgr *sgReplicateManager) (*ReplicationHeartbeatListener, error) {
 
 	if mgr == nil {
@@ -1476,7 +1478,7 @@ func (l *ReplicationHeartbeatListener) Name() string {
 }
 
 // When we detect other nodes have stopped pushing heartbeats, use manager to remove from cfg
-func (l *ReplicationHeartbeatListener) StaleHeartbeatDetected(nodeUUID string) {
+func (l *ReplicationHeartbeatListener) StaleHeartbeatDetected(ctx context.Context, nodeUUID string) {
 
 	base.InfofCtx(l.mgr.loggingCtx, base.KeyCluster, "StaleHeartbeatDetected by sg-replicate listener for node: %v", nodeUUID)
 	err := l.mgr.RemoveNode(nodeUUID)

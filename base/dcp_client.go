@@ -63,7 +63,7 @@ type DCPClientOptions struct {
 	CollectionIDs              []uint32                  // CollectionIDs used by gocbcore, if empty, uses default collections
 }
 
-func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, collection *Collection) (*DCPClient, error) {
+func NewDCPClient(ctx context.Context, ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, collection *Collection) (*DCPClient, error) {
 
 	numWorkers := defaultNumWorkers
 	if options.NumWorkers > 0 {
@@ -104,7 +104,7 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 	checkpointPrefix := fmt.Sprintf("%s:%v", client.checkpointPrefix, ID)
 	switch options.MetadataStoreType {
 	case DCPMetadataStoreCS:
-		client.metadata = NewDCPMetadataCS(collection, numVbuckets, numWorkers, checkpointPrefix)
+		client.metadata = NewDCPMetadataCS(ctx, collection, numVbuckets, numWorkers, checkpointPrefix)
 	case DCPMetadataStoreInMemory:
 		client.metadata = NewDCPMetadataMem(numVbuckets)
 	default:
@@ -429,7 +429,7 @@ func (dc *DCPClient) deactivateVbucket(ctx context.Context, vbID uint16) {
 		dc.close(ctx)
 		// On successful one-shot feed completion, purge persisted checkpoints
 		if dc.oneShot {
-			dc.metadata.Purge(len(dc.workers))
+			dc.metadata.Purge(ctx, len(dc.workers))
 		}
 	}
 }

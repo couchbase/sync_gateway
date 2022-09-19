@@ -295,7 +295,7 @@ func StartDCPFeed(ctx context.Context, bucket Bucket, spec BucketSpec, args sgbu
 		}
 	}
 
-	networkType := getNetworkTypeFromConnSpec(connSpec)
+	networkType := getNetworkTypeFromConnSpec(ctx, connSpec)
 	InfofCtx(ctx, KeyDCP, "Using network type: %s", networkType)
 
 	// default (aka internal) networking is handled by cbdatasource, so we can avoid the shims altogether in this case, for all other cases we need shims to remap hosts.

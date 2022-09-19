@@ -128,7 +128,7 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 		// Simulates service starting on node, and self-registering the nodeUUID to that listener's node set
 		listener, err := NewDocumentBackedListener(testBucket, keyprefix)
 		require.NoError(t, err)
-		assert.NoError(t, listener.AddNode(nodeUUID))
+		assert.NoError(t, listener.AddNode(ctx, nodeUUID))
 		assert.NoError(t, node.RegisterListener(listener))
 
 		nodes[i] = node
@@ -207,7 +207,7 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 		// Simulates service starting on node, and self-registering the nodeUUID to that listener's node set
 		importListener, err := NewDocumentBackedListener(testBucket, keyprefix+":import")
 		require.NoError(t, err)
-		assert.NoError(t, importListener.AddNode(nodeUUID))
+		assert.NoError(t, importListener.AddNode(ctx, nodeUUID))
 		assert.NoError(t, node.RegisterListener(importListener))
 		importListeners[i] = importListener
 
@@ -215,7 +215,7 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 		if i < 2 {
 			sgrListener, err := NewDocumentBackedListener(testBucket, keyprefix+":sgr")
 			require.NoError(t, err)
-			assert.NoError(t, sgrListener.AddNode(nodeUUID))
+			assert.NoError(t, sgrListener.AddNode(ctx, nodeUUID))
 			assert.NoError(t, node.RegisterListener(sgrListener))
 			sgrListeners[i] = sgrListener
 		}
@@ -343,21 +343,21 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 		"some-datasource",
 		eventHandlers,
 		options)
-	listener1, err := NewImportHeartbeatListener(&CbgtContext{
+	listener1, err := NewImportHeartbeatListener(ctx, &CbgtContext{
 		Cfg:     cfgCB,
 		Manager: testManager,
 	})
 	assert.NoError(t, err)
 	assert.NoError(t, node1.RegisterListener(listener1))
 
-	listener2, err := NewImportHeartbeatListener(&CbgtContext{
+	listener2, err := NewImportHeartbeatListener(ctx, &CbgtContext{
 		Cfg:     cfgCB,
 		Manager: testManager,
 	})
 	assert.NoError(t, err)
 	assert.NoError(t, node2.RegisterListener(listener2))
 
-	listener3, err := NewImportHeartbeatListener(&CbgtContext{
+	listener3, err := NewImportHeartbeatListener(ctx, &CbgtContext{
 		Cfg:     cfgCB,
 		Manager: testManager,
 	})

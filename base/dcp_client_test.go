@@ -63,7 +63,7 @@ func TestOneShotDCP(t *testing.T) {
 		CollectionIDs: collectionIDs,
 	}
 
-	dcpClient, err := NewDCPClient(feedID, counterCallback, clientOptions, collection)
+	dcpClient, err := NewDCPClient(ctx, feedID, counterCallback, clientOptions, collection)
 	require.NoError(t, err)
 
 	doneChan, startErr := dcpClient.Start(ctx)
@@ -120,7 +120,7 @@ func TestTerminateDCPFeed(t *testing.T) {
 
 	collection, err := AsCollection(bucket)
 	require.NoError(t, err)
-	dcpClient, err := NewDCPClient(feedID, counterCallback, DCPClientOptions{}, collection)
+	dcpClient, err := NewDCPClient(ctx, feedID, counterCallback, DCPClientOptions{}, collection)
 	require.NoError(t, err)
 
 	// Add documents in a separate goroutine
@@ -229,7 +229,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				CollectionIDs:  collectionIDs,
 			}
 
-			dcpClient, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, collection)
+			dcpClient, err := NewDCPClient(ctx, feedID, counterCallback, dcpClientOpts, collection)
 			require.NoError(t, err)
 
 			doneChan, startErr := dcpClient.Start(ctx)
@@ -260,7 +260,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				OneShot:         true,
 				CollectionIDs:   collectionIDs,
 			}
-			dcpClient2, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, collection)
+			dcpClient2, err := NewDCPClient(ctx, feedID, counterCallback, dcpClientOpts, collection)
 			require.NoError(t, err)
 
 			doneChan2, startErr2 := dcpClient2.Start(ctx)
@@ -280,7 +280,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			collection, err = AsCollection(bucket)
 			require.NoError(t, err)
 
-			dcpClient3, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, collection)
+			dcpClient3, err := NewDCPClient(ctx, feedID, counterCallback, dcpClientOpts, collection)
 			require.NoError(t, err)
 
 			doneChan3, startErr3 := dcpClient3.Start(ctx)
@@ -357,7 +357,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 		CollectionIDs:              collectionIDs,
 	}
 
-	dcpClient, err = NewDCPClient(feedID, counterCallback, dcpClientOpts, collection)
+	dcpClient, err = NewDCPClient(ctx, feedID, counterCallback, dcpClientOpts, collection)
 	require.NoError(t, err)
 
 	doneChan, startErr := dcpClient.Start(ctx)
@@ -392,7 +392,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 	collection, err = AsCollection(bucket)
 	require.NoError(t, err)
 
-	dcpClient2, err := NewDCPClient(feedID, secondCallback, dcpClientOpts, collection)
+	dcpClient2, err := NewDCPClient(ctx, feedID, secondCallback, dcpClientOpts, collection)
 	require.NoError(t, err)
 
 	doneChan2, startErr2 := dcpClient2.Start(ctx)
@@ -433,7 +433,7 @@ func TestBadAgentPriority(t *testing.T) {
 	}
 	collection, err := AsCollection(bucket)
 	require.NoError(t, err)
-	dcpClient, err := NewDCPClient(feedID, panicCallback, dcpClientOpts, collection)
+	dcpClient, err := NewDCPClient(ctx, feedID, panicCallback, dcpClientOpts, collection)
 	require.Error(t, err)
 	require.Nil(t, dcpClient)
 }

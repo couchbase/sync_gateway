@@ -41,7 +41,7 @@ type Heartbeater interface {
 type HeartbeatListener interface {
 	Name() string
 	GetNodes() (nodeUUIDs []string, err error)
-	StaleHeartbeatDetected(nodeUUID string)
+	StaleHeartbeatDetected(ctx context.Context, nodeUUID string)
 	Stop()
 }
 
@@ -295,7 +295,7 @@ func (h *couchbaseHeartBeater) checkStaleHeartbeats() error {
 			// doc not found, which means the heartbeat doc expired.
 			// Notify listeners for this node
 			for _, listener := range listeners {
-				listener.StaleHeartbeatDetected(heartbeatNodeUUID)
+				listener.StaleHeartbeatDetected(h.loggingCtx, heartbeatNodeUUID)
 			}
 		}
 	}
@@ -369,6 +369,8 @@ type documentBackedListener struct {
 	staleNotificationCount uint64     // stats - counter for stale heartbeat notifications
 }
 
+var _ HeartbeatListener = &documentBackedListener{}
+
 func NewDocumentBackedListener(bucket Bucket, keyPrefix string) (*documentBackedListener, error) {
 
 	handler := &documentBackedListener{
@@ -393,8 +395,8 @@ func (dh *documentBackedListener) Stop() {
 	return
 }
 
-func (dh *documentBackedListener) StaleHeartbeatDetected(nodeUUID string) {
-	_ = dh.RemoveNode(nodeUUID)
+func (dh *documentBackedListener) StaleHeartbeatDetected(ctx context.Context, nodeUUID string) {
+	_ = dh.RemoveNode(ctx, nodeUUID)
 	atomic.AddUint64(&dh.staleNotificationCount, 1)
 }
 
@@ -403,17 +405,17 @@ func (dh *documentBackedListener) StaleNotificationCount() uint64 {
 }
 
 // Adds the node to the tracking document
-func (dh *documentBackedListener) AddNode(nodeID string) error {
-	return dh.updateNodeList(nodeID, false)
+func (dh *documentBackedListener) AddNode(ctx context.Context, nodeID string) error {
+	return dh.updateNodeList(ctx, nodeID, false)
 }
 
 // Removes the node to the tracking document
-func (dh *documentBackedListener) RemoveNode(nodeID string) error {
-	return dh.updateNodeList(nodeID, true)
+func (dh *documentBackedListener) RemoveNode(ctx context.Context, nodeID string) error {
+	return dh.updateNodeList(ctx, nodeID, true)
 }
 
 // Adds or removes a nodeID from the node list document
-func (dh *documentBackedListener) updateNodeList(nodeID string, remove bool) error {
+func (dh *documentBackedListener) updateNodeList(ctx context.Context, nodeID string, remove bool) error {
 
 	dh.lock.Lock()
 	defer dh.lock.Unlock()
@@ -448,7 +450,7 @@ func (dh *documentBackedListener) updateNodeList(nodeID string, remove bool) err
 			dh.nodeIDs = append(dh.nodeIDs, nodeID)
 		}
 
-		InfofCtx(context.TODO(), KeyCluster, "Updating nodeList document (%s) with node IDs: %v", dh.nodeListKey, dh.nodeIDs)
+		InfofCtx(ctx, KeyCluster, "Updating nodeList document (%s) with node IDs: %v", dh.nodeListKey, dh.nodeIDs)
 
 		casOut, err := dh.bucket.WriteCas(dh.nodeListKey, 0, 0, dh.cas, dh.nodeIDs, 0)
 
