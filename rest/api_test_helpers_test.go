@@ -19,39 +19,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type PutDocResponse struct {
-	ID  string
-	Ok  bool
-	Rev string
-}
-
 func (rt *RestTester) RequireDocNotFound(docID string) {
 	rawResponse := rt.SendAdminRequest(http.MethodGet, "/db/"+docID, "")
-	RequireStatus(rt.tb, rawResponse, http.StatusNotFound)
-}
-
-func (rt *RestTester) PutDoc(docID string, body string) (response PutDocResponse) {
-	rawResponse := rt.SendAdminRequest("PUT", "/db/"+docID, body)
-	RequireStatus(rt.tb, rawResponse, 201)
-	require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &response))
-	require.True(rt.tb, response.Ok)
-	require.NotEmpty(rt.tb, response.Rev)
-	return response
-}
-
-func (rt *RestTester) UpdateDoc(docID, revID, body string) (response PutDocResponse) {
-	resource := fmt.Sprintf("/db/%s?rev=%s", docID, revID)
-	rawResponse := rt.SendAdminRequest(http.MethodPut, resource, body)
-	RequireStatus(rt.tb, rawResponse, http.StatusCreated)
-	require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &response))
-	require.True(rt.tb, response.Ok)
-	require.NotEmpty(rt.tb, response.Rev)
-	return response
+	RequireStatus(rt.TB, rawResponse, http.StatusNotFound)
 }
 
 func (rt *RestTester) tombstoneDoc(docID string, revID string) {
 	rawResponse := rt.SendAdminRequest("DELETE", "/db/"+docID+"?rev="+revID, "")
-	RequireStatus(rt.tb, rawResponse, 200)
+	RequireStatus(rt.TB, rawResponse, 200)
 }
 
 func (rt *RestTester) upsertDoc(docID string, body string) (response PutDocResponse) {
@@ -61,30 +36,30 @@ func (rt *RestTester) upsertDoc(docID string, body string) (response PutDocRespo
 		return rt.PutDoc(docID, body)
 	}
 	var getBody db.Body
-	require.NoError(rt.tb, base.JSONUnmarshal(getResponse.Body.Bytes(), &getBody))
+	require.NoError(rt.TB, base.JSONUnmarshal(getResponse.Body.Bytes(), &getBody))
 	revID, ok := getBody["revID"].(string)
-	require.True(rt.tb, ok)
+	require.True(rt.TB, ok)
 
 	rawResponse := rt.SendAdminRequest("PUT", "/db/"+docID+"?rev="+revID, body)
-	RequireStatus(rt.tb, rawResponse, 200)
-	require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &response))
-	require.True(rt.tb, response.Ok)
-	require.NotEmpty(rt.tb, response.Rev)
+	RequireStatus(rt.TB, rawResponse, 200)
+	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &response))
+	require.True(rt.TB, response.Ok)
+	require.NotEmpty(rt.TB, response.Rev)
 	return response
 }
 
 func (rt *RestTester) DeleteDoc(docID, revID string) {
-	RequireStatus(rt.tb, rt.SendAdminRequest(http.MethodDelete,
+	RequireStatus(rt.TB, rt.SendAdminRequest(http.MethodDelete,
 		fmt.Sprintf("/db/%s?rev=%s", docID, revID), ""), http.StatusOK)
 }
 
 // prugeDoc removes all the revisions (active and tombstones) of the specified document.
 func (rt *RestTester) PurgeDoc(docID string) {
 	response := rt.SendAdminRequest(http.MethodPost, "/db/_purge", fmt.Sprintf(`{"%s":["*"]}`, docID))
-	RequireStatus(rt.tb, response, http.StatusOK)
+	RequireStatus(rt.TB, response, http.StatusOK)
 	var body map[string]interface{}
-	require.NoError(rt.tb, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	require.Equal(rt.tb, body, map[string]interface{}{"purged": map[string]interface{}{docID: []interface{}{"*"}}})
+	require.NoError(rt.TB, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	require.Equal(rt.TB, body, map[string]interface{}{"purged": map[string]interface{}{docID: []interface{}{"*"}}})
 }
 
 // PutDocumentWithRevID builds a new_edits=false style put to create a revision with the specified revID.
@@ -93,23 +68,23 @@ func (rt *RestTester) putNewEditsFalse(docID string, newRevID string, parentRevI
 
 	var body db.Body
 	marshalErr := base.JSONUnmarshal([]byte(bodyString), &body)
-	require.NoError(rt.tb, marshalErr)
+	require.NoError(rt.TB, marshalErr)
 
 	rawResponse, err := rt.PutDocumentWithRevID(docID, newRevID, parentRevID, body)
-	require.NoError(rt.tb, err)
-	RequireStatus(rt.tb, rawResponse, 201)
-	require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &response))
-	require.True(rt.tb, response.Ok)
-	require.NotEmpty(rt.tb, response.Rev)
+	require.NoError(rt.TB, err)
+	RequireStatus(rt.TB, rawResponse, 201)
+	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &response))
+	require.True(rt.TB, response.Ok)
+	require.NotEmpty(rt.TB, response.Rev)
 
-	require.NoError(rt.tb, rt.WaitForPendingChanges())
+	require.NoError(rt.TB, rt.WaitForPendingChanges())
 
 	return response
 }
 
 func (rt *RestTester) RequireWaitChanges(numChangesExpected int, since string) ChangesResults {
 	changesResults, err := rt.WaitForChanges(numChangesExpected, "/db/_changes?since="+since, "", true)
-	require.NoError(rt.tb, err)
-	require.Len(rt.tb, changesResults.Results, numChangesExpected)
+	require.NoError(rt.TB, err)
+	require.Len(rt.TB, changesResults.Results, numChangesExpected)
 	return changesResults
 }

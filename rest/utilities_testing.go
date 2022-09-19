@@ -69,7 +69,7 @@ type RestTesterConfig struct {
 // RestTester provides a fake server for testing endpoints
 type RestTester struct {
 	*RestTesterConfig
-	tb                      testing.TB
+	TB                      testing.TB
 	TestBucket              *base.TestBucket
 	RestTesterServerContext *ServerContext
 	AdminHandler            http.Handler
@@ -86,7 +86,7 @@ func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
 	if tb == nil {
 		panic("tester parameter cannot be nil")
 	}
-	rt.tb = tb
+	rt.TB = tb
 	if restConfig != nil {
 		rt.RestTesterConfig = restConfig
 	} else {
@@ -97,7 +97,7 @@ func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
 }
 
 func (rt *RestTester) Bucket() base.Bucket {
-	if rt.tb == nil {
+	if rt.TB == nil {
 		panic("RestTester not properly initialized please use NewRestTester function")
 	} else if rt.closed {
 		panic("RestTester was closed!")
@@ -110,7 +110,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	// If we have a TestBucket defined on the RestTesterConfig, use that instead of requesting a new one.
 	testBucket := rt.RestTesterConfig.CustomTestBucket
 	if testBucket == nil {
-		testBucket = base.GetTestBucket(rt.tb)
+		testBucket = base.GetTestBucket(rt.TB)
 		if rt.leakyBucketConfig != nil {
 			leakyConfig := *rt.leakyBucketConfig
 			// Ignore closures to avoid double closing panics
@@ -118,7 +118,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 			testBucket = testBucket.LeakyBucketClone(leakyConfig)
 		}
 	} else if rt.leakyBucketConfig != nil {
-		rt.tb.Fatalf("A passed in TestBucket cannot be used on the RestTester when defining a leakyBucketConfig")
+		rt.TB.Fatalf("A passed in TestBucket cannot be used on the RestTester when defining a leakyBucketConfig")
 	}
 	rt.TestBucket = testBucket
 
@@ -126,7 +126,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		log.Printf("Initializing %s to %d", base.SyncSeqKey, rt.InitSyncSeq)
 		_, incrErr := testBucket.Incr(base.SyncSeqKey, rt.InitSyncSeq, rt.InitSyncSeq, 0)
 		if incrErr != nil {
-			rt.tb.Fatalf("Error initializing %s in test bucket: %v", base.SyncSeqKey, incrErr)
+			rt.TB.Fatalf("Error initializing %s in test bucket: %v", base.SyncSeqKey, incrErr)
 		}
 	}
 
@@ -165,7 +165,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.Unsupported.Serverless.Enabled = &rt.serverless
 	if rt.serverless {
 		if !rt.persistentConfig {
-			rt.tb.Fatalf("Persistent config must be used when running in serverless mode")
+			rt.TB.Fatalf("Persistent config must be used when running in serverless mode")
 		}
 		sc.BucketCredentials = map[string]*base.CredentialsConfig{
 			testBucket.GetName(): {
@@ -198,7 +198,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	// Post-validation, we can lower the bcrypt cost beyond SG limits to reduce test runtime.
 	sc.Auth.BcryptCost = bcrypt.MinCost
 
-	rt.RestTesterServerContext = NewServerContext(base.TestCtx(rt.tb), &sc, rt.RestTesterConfig.persistentConfig)
+	rt.RestTesterServerContext = NewServerContext(base.TestCtx(rt.TB), &sc, rt.RestTesterConfig.persistentConfig)
 	ctx := rt.Context()
 
 	if !base.ServerIsWalrus(sc.Bootstrap.Server) {
@@ -219,7 +219,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	// Copy this startup config at this point into initial startup config
 	err := base.DeepCopyInefficient(&rt.RestTesterServerContext.initialStartupConfig, &sc)
 	if err != nil {
-		rt.tb.Fatalf("Unable to copy initial startup config: %v", err)
+		rt.TB.Fatalf("Unable to copy initial startup config: %v", err)
 	}
 
 	// tests must create their own databases in persistent mode
@@ -244,7 +244,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 				}
 			}
 			if err := base.CreateBucketScopesAndCollections(ctx, rt.TestBucket.BucketSpec, scopes); err != nil {
-				rt.tb.Fatalf("Error creating test scopes/collections: %v", err)
+				rt.TB.Fatalf("Error creating test scopes/collections: %v", err)
 			}
 		}
 
@@ -289,7 +289,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 			if scope != nil && collection != nil {
 				collectionBucket, err := base.AsCollection(testBucket.Bucket)
 				if err != nil {
-					rt.tb.Fatalf("Could not get collection from bucket with type %T: %v", testBucket.Bucket, err)
+					rt.TB.Fatalf("Could not get collection from bucket with type %T: %v", testBucket.Bucket, err)
 				}
 
 				collectionBucket.Spec.Scope = scope
@@ -297,13 +297,13 @@ func (rt *RestTester) Bucket() base.Bucket {
 				collectionBucket.Collection = collectionBucket.Collection.Bucket().Scope(*scope).Collection(*collection)
 			}
 
-			_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithBucket(ctx, rt.tb, *rt.DatabaseConfig, testBucket.Bucket)
+			_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithBucket(ctx, rt.TB, *rt.DatabaseConfig, testBucket.Bucket)
 		} else {
 			_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(ctx, *rt.DatabaseConfig)
 		}
 
 		if err != nil {
-			rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)
+			rt.TB.Fatalf("Error from AddDatabaseFromConfig: %v", err)
 		}
 		ctx = rt.Context() // get new ctx with db info before passing it down
 
@@ -314,7 +314,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 		if rt.DatabaseConfig.Guest == nil {
 			if err := rt.SetAdminParty(rt.GuestEnabled); err != nil {
-				rt.tb.Fatalf("Error from SetAdminParty %v", err)
+				rt.TB.Fatalf("Error from SetAdminParty %v", err)
 			}
 		}
 	}
@@ -329,11 +329,11 @@ func (rt *RestTester) Bucket() base.Bucket {
 // config when calling NewRestTester.
 func (rt *RestTester) LeakyBucket() *base.LeakyBucket {
 	if rt.leakyBucketConfig == nil {
-		rt.tb.Fatalf("Cannot get leaky bucket when leakyBucketConfig was not set on RestTester initialisation")
+		rt.TB.Fatalf("Cannot get leaky bucket when leakyBucketConfig was not set on RestTester initialisation")
 	}
 	leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
 	if !ok {
-		rt.tb.Fatalf("Could not get bucket (type %T) as a leaky bucket", rt.Bucket())
+		rt.TB.Fatalf("Could not get bucket (type %T) as a leaky bucket", rt.Bucket())
 	}
 	return leakyBucket
 }
@@ -400,7 +400,7 @@ func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
 	if database == nil {
 		return 0, fmt.Errorf("No database found")
 	}
-	doc, err := database.GetDocument(base.TestCtx(rt.tb), docid, db.DocUnmarshalAll)
+	doc, err := database.GetDocument(base.TestCtx(rt.TB), docid, db.DocUnmarshalAll)
 	if err != nil {
 		return 0, err
 	}
@@ -413,7 +413,7 @@ func (rt *RestTester) WaitForSequence(seq uint64) error {
 	if database == nil {
 		return fmt.Errorf("No database found")
 	}
-	return database.WaitForSequence(base.TestCtx(rt.tb), seq)
+	return database.WaitForSequence(base.TestCtx(rt.TB), seq)
 }
 
 func (rt *RestTester) WaitForPendingChanges() error {
@@ -421,7 +421,7 @@ func (rt *RestTester) WaitForPendingChanges() error {
 	if database == nil {
 		return fmt.Errorf("No database found")
 	}
-	return database.WaitForPendingChanges(base.TestCtx(rt.tb))
+	return database.WaitForPendingChanges(base.TestCtx(rt.TB))
 }
 
 func (rt *RestTester) SetAdminParty(partyTime bool) error {
@@ -441,7 +441,7 @@ func (rt *RestTester) SetAdminParty(partyTime bool) error {
 }
 
 func (rt *RestTester) Close() {
-	if rt.tb == nil {
+	if rt.TB == nil {
 		panic("RestTester not properly initialized please use NewRestTester function")
 	}
 	ctx := rt.Context() // capture ctx before closing rt
@@ -479,7 +479,7 @@ func (rt *RestTester) SendUserRequestWithHeaders(method, resource string, body s
 func (rt *RestTester) SendAdminRequestWithAuth(method, resource string, body string, username string, password string) *TestResponse {
 	input := bytes.NewBufferString(body)
 	request, err := http.NewRequest(method, "http://localhost"+resource, input)
-	require.NoError(rt.tb, err)
+	require.NoError(rt.TB, err)
 
 	request.SetBasicAuth(username, password)
 
@@ -631,7 +631,7 @@ func (rt *RestTester) WaitForConditionShouldRetry(conditionFunc func() (shouldRe
 func (rt *RestTester) SendAdminRequest(method, resource string, body string) *TestResponse {
 	input := bytes.NewBufferString(body)
 	request, err := http.NewRequest(method, "http://localhost"+resource, input)
-	require.NoError(rt.tb, err)
+	require.NoError(rt.TB, err)
 
 	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
@@ -729,8 +729,8 @@ func (rt *RestTester) WaitForViewAvailable(viewURLPath string) (err error) {
 func (rt *RestTester) GetDBState() string {
 	var body db.Body
 	resp := rt.SendAdminRequest("GET", "/db/", "")
-	RequireStatus(rt.tb, resp, 200)
-	require.NoError(rt.tb, base.JSONUnmarshal(resp.Body.Bytes(), &body))
+	RequireStatus(rt.TB, resp, 200)
+	require.NoError(rt.TB, base.JSONUnmarshal(resp.Body.Bytes(), &body))
 	return body["state"].(string)
 }
 
@@ -818,12 +818,12 @@ func (rt *RestTester) ReplacePerBucketCredentials(config base.PerBucketCredentia
 	rt.ServerContext().Config.BucketCredentials = config
 	// Update the CouchbaseCluster to include the new bucket credentials
 	couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(rt.ServerContext().Config)
-	require.NoError(rt.tb, err)
+	require.NoError(rt.TB, err)
 	rt.ServerContext().BootstrapContext.Connection = couchbaseCluster
 }
 
 func (rt *RestTester) Context() context.Context {
-	ctx := base.TestCtx(rt.tb)
+	ctx := base.TestCtx(rt.TB)
 	if svrctx := rt.ServerContext(); svrctx != nil {
 		ctx = svrctx.AddServerLogContext(ctx)
 	}
@@ -1890,4 +1890,16 @@ func MarshalConfig(t *testing.T, config db.ReplicationConfig) string {
 	replicationPayload, err := json.Marshal(config)
 	require.NoError(t, err)
 	return string(replicationPayload)
+}
+
+func HasActiveChannel(channelSet map[string]interface{}, channelName string) bool {
+	if channelSet == nil {
+		return false
+	}
+	value, ok := channelSet[channelName]
+	if !ok || value != nil { // An entry for the channel name with a nil value represents an active channel
+		return false
+	}
+
+	return true
 }
