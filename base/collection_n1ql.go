@@ -190,11 +190,9 @@ func (c *Collection) getIndexes() (indexes []string, err error) {
 
 	indexes = []string{}
 	var opts *gocb.GetAllQueryIndexesOptions
-	if !c.IsDefaultScopeCollection() {
-		opts = &gocb.GetAllQueryIndexesOptions{
-			ScopeName:      c.ScopeName(),
-			CollectionName: c.Name(),
-		}
+	opts = &gocb.GetAllQueryIndexesOptions{
+		ScopeName:      c.ScopeName(),
+		CollectionName: c.Name(),
 	}
 	indexInfo, err := c.cluster.QueryIndexes().GetAllIndexes(c.BucketName(), opts)
 	if err != nil {

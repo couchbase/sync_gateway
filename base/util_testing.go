@@ -88,8 +88,28 @@ func (tb *TestBucket) NoCloseClone() *TestBucket {
 	}
 }
 
+func getDefaultCollectionType() tbpCollectionType {
+	if TestUsingNamedCollection() {
+		return tbpCollectionNamed
+	}
+	return tbpCollectionDefault
+
+}
+
 func GetTestBucket(t testing.TB) *TestBucket {
-	bucket, spec, closeFn := GTestBucketPool.GetTestBucketAndSpec(t)
+	return getTestBucket(t, getDefaultCollectionType())
+}
+
+func GetTestBucketNamedCollection(t testing.TB) *TestBucket {
+	return getTestBucket(t, tbpCollectionNamed)
+}
+
+func GetTestBucketDefaultCollection(t testing.TB) *TestBucket {
+	return getTestBucket(t, tbpCollectionDefault)
+}
+
+func getTestBucket(t testing.TB, collectionType tbpCollectionType) *TestBucket {
+	bucket, spec, closeFn := GTestBucketPool.getTestBucketAndSpec(t, collectionType)
 	return &TestBucket{
 		Bucket:     bucket,
 		BucketSpec: spec,
@@ -121,8 +141,7 @@ func GetPersistentWalrusBucket(t testing.TB) (*TestBucket, func()) {
 }
 
 func GetTestBucketForDriver(t testing.TB, driver CouchbaseDriver) *TestBucket {
-
-	bucket, spec, closeFn := GTestBucketPool.GetTestBucketAndSpec(t)
+	bucket, spec, closeFn := GTestBucketPool.getTestBucketAndSpec(t, getDefaultCollectionType())
 
 	// If walrus, use bucket as-is
 	if !TestUseCouchbaseServer() {
@@ -794,7 +813,7 @@ func CreateBucketScopesAndCollections(ctx context.Context, bucketSpec BucketSpec
 				gocb.CollectionSpec{
 					Name:      collectionName,
 					ScopeName: scopeName,
-				}, nil); err != nil {
+				}, nil); err != nil && !errors.Is(err, gocb.ErrCollectionExists) {
 				return fmt.Errorf("failed to create collection %s in scope %s: %w", collectionName, scopeName, err)
 			}
 			DebugfCtx(ctx, KeySGTest, "Created collection %s.%s", scopeName, collectionName)
