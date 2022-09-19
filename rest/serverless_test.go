@@ -15,7 +15,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
-	t.Skip("temporary to avoid panic")
+
 	// Get test bucket
 	tb1 := base.GetTestBucket(t)
 	defer tb1.Close()
@@ -84,7 +84,6 @@ func TestServerlessDBSetupForceCreds(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
-	t.Skip("temporary to avoid panic")
 
 	tb1 := base.GetTestBucket(t)
 	defer tb1.Close()
@@ -135,7 +134,6 @@ func TestServerlessDBSetupForceCreds(t *testing.T) {
 // Tests behaviour of CBG-2258 to make sure fetch databases only uses buckets listed on StartupConfig.BucketCredentials
 // when running in serverless mode
 func TestServerlessBucketCredentialsFetchDatabases(t *testing.T) {
-	t.Skip("temporary to avoid panic")
 	base.LongRunningTest(t)
 
 	if base.UnitTestUrlIsWalrus() {
