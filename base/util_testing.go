@@ -88,8 +88,32 @@ func (tb *TestBucket) NoCloseClone() *TestBucket {
 	}
 }
 
+func getDefaultCollectionType() tbpCollectionType {
+	if TestUsingNamedCollection() {
+		return tbpCollectionNamed
+	}
+	return tbpCollectionDefault
+
+}
+
+// GetTestBucket returns a test bucket from a pool.
 func GetTestBucket(t testing.TB) *TestBucket {
-	bucket, spec, closeFn := GTestBucketPool.GetTestBucketAndSpec(t)
+	return getTestBucket(t, getDefaultCollectionType())
+}
+
+// GetTestBucketNamedCollection will return a TestBucket from a pool if using couchbase server that has a non default scope and scope.
+func GetTestBucketNamedCollection(t testing.TB) *TestBucket {
+	return getTestBucket(t, tbpCollectionNamed)
+}
+
+// GetTestBucketNamedCollection will return a TestBucket from a pool if using couchbase server that has _default._default scope and collection.
+func GetTestBucketDefaultCollection(t testing.TB) *TestBucket {
+	return getTestBucket(t, tbpCollectionDefault)
+}
+
+// getTestBucket returns a bucket from the bucket pool
+func getTestBucket(t testing.TB, collectionType tbpCollectionType) *TestBucket {
+	bucket, spec, closeFn := GTestBucketPool.getTestBucketAndSpec(t, collectionType)
 	return &TestBucket{
 		Bucket:     bucket,
 		BucketSpec: spec,
@@ -121,8 +145,7 @@ func GetPersistentWalrusBucket(t testing.TB) (*TestBucket, func()) {
 }
 
 func GetTestBucketForDriver(t testing.TB, driver CouchbaseDriver) *TestBucket {
-
-	bucket, spec, closeFn := GTestBucketPool.GetTestBucketAndSpec(t)
+	bucket, spec, closeFn := GTestBucketPool.getTestBucketAndSpec(t, getDefaultCollectionType())
 
 	// If walrus, use bucket as-is
 	if !TestUseCouchbaseServer() {
@@ -794,7 +817,7 @@ func CreateBucketScopesAndCollections(ctx context.Context, bucketSpec BucketSpec
 				gocb.CollectionSpec{
 					Name:      collectionName,
 					ScopeName: scopeName,
-				}, nil); err != nil {
+				}, nil); err != nil && !errors.Is(err, gocb.ErrCollectionExists) {
 				return fmt.Errorf("failed to create collection %s in scope %s: %w", collectionName, scopeName, err)
 			}
 			DebugfCtx(ctx, KeySGTest, "Created collection %s.%s", scopeName, collectionName)

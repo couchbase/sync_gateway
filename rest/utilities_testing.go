@@ -235,19 +235,16 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.DatabaseConfig.UseViews = base.BoolPtr(base.TestsDisableGSI())
 		}
 
-		if rt.createScopesAndCollections {
-			scopes := make(map[string][]string)
-			for scopeName, scopeCfg := range rt.DatabaseConfig.Scopes {
-				scopes[scopeName] = make([]string, 0, len(scopeCfg.Collections))
-				for collName := range scopeCfg.Collections {
-					scopes[scopeName] = append(scopes[scopeName], collName)
-				}
-			}
-			if err := base.CreateBucketScopesAndCollections(ctx, rt.TestBucket.BucketSpec, scopes); err != nil {
-				rt.TB.Fatalf("Error creating test scopes/collections: %v", err)
+		collection, collectionErr := base.AsCollection(rt.TestBucket)
+		if collectionErr == nil && rt.DatabaseConfig.Scopes == nil && collection.Spec.Scope != nil && collection.Spec.Collection != nil {
+			rt.DatabaseConfig.Scopes = ScopesConfig{
+				*collection.Spec.Scope: ScopeConfig{
+					Collections: map[string]CollectionConfig{
+						*collection.Spec.Collection: {},
+					},
+				},
 			}
 		}
-
 		// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
 		numReplicas := uint(0)
 		rt.DatabaseConfig.NumIndexReplicas = &numReplicas

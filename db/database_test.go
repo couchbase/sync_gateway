@@ -148,6 +148,21 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 	return db, ctx
 }
 
+// Sets up test db with the specified database context options using a named collection from the pool.  Note that environment variables can
+// override somedbcOptions properties.
+func setupTestNamedCollectionDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
+
+	tBucket := base.GetTestBucketNamedCollection(t)
+	return setupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
+}
+
+// Sets up test db with the specified database context options in _default scope and collection.  Note that environment variables can
+// override somedbcOptions properties.
+func setupTestDefaultCollectionDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
+
+	return setupTestDBWithOptions(t, dbcOptions)
+}
+
 // If certain environment variables are set, for example to turn on XATTR support, then update
 // the DatabaseContextOptions accordingly
 func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {

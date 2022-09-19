@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -40,21 +41,16 @@ func TestInitializeIndexes(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(fmt.Sprintf("xattrs=%v collections=%v", test.xattrs, test.collections), func(t *testing.T) {
-			db, ctx := setupTestDBWithOptions(t, DatabaseContextOptions{EnableXattr: test.xattrs})
-			defer db.Close(ctx)
+			var db *Database
+			var ctx context.Context
 
-			var b base.Bucket = db.Bucket
 			if test.collections {
-				collection, err := base.AsCollection(b)
-				require.NoError(t, err)
-				// override underlying collection for test bucket
-				scopeName := "foo_1"
-				collectionName := "bar_1"
-				collection.Collection = collection.Bucket().Scope(scopeName).Collection(collectionName)
-
-				err = base.CreateBucketScopesAndCollections(base.TestCtx(t), collection.Spec, map[string][]string{scopeName: {collectionName}})
-				require.NoError(t, err)
+				db, ctx = setupTestNamedCollectionDBWithOptions(t, DatabaseContextOptions{EnableXattr: test.xattrs})
+			} else {
+				db, ctx = setupTestDefaultCollectionDBWithOptions(t, DatabaseContextOptions{EnableXattr: test.xattrs})
 			}
+			defer db.Close(ctx)
+			var b base.Bucket = db.Bucket
 
 			n1qlStore, isGoCBBucket := base.AsN1QLStore(b)
 			require.True(t, isGoCBBucket)
@@ -209,7 +205,6 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	if base.TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
-
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
