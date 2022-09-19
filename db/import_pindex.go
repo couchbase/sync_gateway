@@ -67,11 +67,12 @@ func getListenerImportDest(indexParams string) (cbgt.Dest, error) {
 // NewImportPIndexImpl is called when the node is first added to the cbgt cfg.  On a node restart,
 // OpenImportPindexImplUsing is called.
 func NewImportPIndexImpl(indexType, indexParams, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
-	defer base.FatalPanicHandler()
+	logCtx := context.TODO()
+	defer base.FatalPanicHandler(logCtx)
 
 	importDest, err := getListenerImportDest(indexParams)
 	if err != nil {
-		base.ErrorfCtx(context.TODO(), "Error creating NewImportDest during NewImportPIndexImpl: %v", err)
+		base.ErrorfCtx(logCtx, "Error creating NewImportDest during NewImportPIndexImpl: %v", err)
 	}
 	return nil, importDest, err
 }

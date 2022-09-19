@@ -97,7 +97,7 @@ func TestReleaseSequencesOnStop(t *testing.T) {
 	defer func() { MaxSequenceIncrFrequency = oldFrequency }()
 	MaxSequenceIncrFrequency = 1000 * time.Millisecond
 
-	a, err := newSequenceAllocator(bucket, testStats)
+	a, err := newSequenceAllocator(ctx, bucket, testStats)
 	// Reduce sequence wait for Stop testing
 	a.releaseSequenceWait = 10 * time.Millisecond
 	assert.NoError(t, err, "error creating allocator")
@@ -172,7 +172,7 @@ func TestSequenceAllocatorDeadlock(t *testing.T) {
 	defer func() { MaxSequenceIncrFrequency = oldFrequency }()
 	MaxSequenceIncrFrequency = 1000 * time.Millisecond
 
-	a, err = newSequenceAllocator(bucket, testStats)
+	a, err = newSequenceAllocator(ctx, bucket, testStats)
 	// Reduce sequence wait for Stop testing
 	a.releaseSequenceWait = 10 * time.Millisecond
 	assert.NoError(t, err, "error creating allocator")
@@ -197,7 +197,7 @@ func TestReleaseSequenceWait(t *testing.T) {
 	sgw := base.NewSyncGatewayStats()
 	testStats := sgw.NewDBStats("", false, false, false).Database()
 
-	a, err := newSequenceAllocator(bucket, testStats)
+	a, err := newSequenceAllocator(ctx, bucket, testStats)
 	require.NoError(t, err)
 	defer a.Stop()
 

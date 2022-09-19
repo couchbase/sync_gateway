@@ -176,7 +176,7 @@ func (c *changeCache) Init(logCtx context.Context, dbcontext *DatabaseContext, n
 		c.options = DefaultCacheOptions()
 	}
 
-	channelCache, err := NewChannelCacheForContext(c.options.ChannelCacheOptions, c.context)
+	channelCache, err := NewChannelCacheForContext(c.logCtx, c.options.ChannelCacheOptions, c.context)
 	if err != nil {
 		return err
 	}
@@ -187,13 +187,13 @@ func (c *changeCache) Init(logCtx context.Context, dbcontext *DatabaseContext, n
 	heap.Init(&c.pendingLogs)
 
 	// background tasks that perform housekeeping duties on the cache
-	bgt, err := NewBackgroundTask("InsertPendingEntries", c.context.Name, c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2, c.terminator)
+	bgt, err := NewBackgroundTask(c.logCtx, "InsertPendingEntries", c.context.Name, c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2, c.terminator)
 	if err != nil {
 		return err
 	}
 	c.backgroundTasks = append(c.backgroundTasks, bgt)
 
-	bgt, err = NewBackgroundTask("CleanSkippedSequenceQueue", c.context.Name, c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2, c.terminator)
+	bgt, err = NewBackgroundTask(c.logCtx, "CleanSkippedSequenceQueue", c.context.Name, c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2, c.terminator)
 	if err != nil {
 		return err
 	}

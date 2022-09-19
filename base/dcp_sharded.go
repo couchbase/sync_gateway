@@ -580,7 +580,7 @@ func (l *importHeartbeatListener) subscribeNodeChanges(ctx context.Context) erro
 		return err
 	}
 	go func() {
-		defer FatalPanicHandler()
+		defer FatalPanicHandler(ctx)
 		for {
 			select {
 			case <-cfgEvents:

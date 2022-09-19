@@ -99,11 +99,11 @@ type channelCacheImpl struct {
 	validFromLock        sync.RWMutex              // Mutex used to avoid race between AddToCache and addChannelCache.  See CBG-520 for more details
 }
 
-func NewChannelCacheForContext(options ChannelCacheOptions, context *DatabaseContext) (*channelCacheImpl, error) {
-	return newChannelCache(context.Name, options, context, context.activeChannels, context.DbStats.Cache())
+func NewChannelCacheForContext(ctx context.Context, options ChannelCacheOptions, context *DatabaseContext) (*channelCacheImpl, error) {
+	return newChannelCache(ctx, context.Name, options, context, context.activeChannels, context.DbStats.Cache())
 }
 
-func newChannelCache(dbName string, options ChannelCacheOptions, queryHandler ChannelQueryHandler,
+func newChannelCache(ctx context.Context, dbName string, options ChannelCacheOptions, queryHandler ChannelQueryHandler,
 	activeChannels *channels.ActiveChannels, cacheStats *base.CacheStats) (*channelCacheImpl, error) {
 
 	channelCache := &channelCacheImpl{
@@ -118,7 +118,7 @@ func newChannelCache(dbName string, options ChannelCacheOptions, queryHandler Ch
 		activeChannels:       activeChannels,
 		cacheStats:           cacheStats,
 	}
-	bgt, err := NewBackgroundTask("CleanAgedItems", dbName, channelCache.cleanAgedItems, options.ChannelCacheAge, channelCache.terminator)
+	bgt, err := NewBackgroundTask(ctx, "CleanAgedItems", dbName, channelCache.cleanAgedItems, options.ChannelCacheAge, channelCache.terminator)
 	if err != nil {
 		return nil, err
 	}

@@ -54,7 +54,7 @@ type sequenceAllocator struct {
 	releaseSequenceWait     time.Duration       // Supports test customization
 }
 
-func newSequenceAllocator(bucket base.Bucket, dbStatsMap *base.DatabaseStats) (*sequenceAllocator, error) {
+func newSequenceAllocator(ctx context.Context, bucket base.Bucket, dbStatsMap *base.DatabaseStats) (*sequenceAllocator, error) {
 	if dbStatsMap == nil {
 		return nil, fmt.Errorf("dbStatsMap parameter must be non-nil")
 	}
@@ -70,7 +70,7 @@ func newSequenceAllocator(bucket base.Bucket, dbStatsMap *base.DatabaseStats) (*
 	// The reserveNotify channel manages communication between the releaseSequenceMonitor goroutine and _reserveSequenceRange invocations.
 	s.reserveNotify = make(chan struct{}, 1)
 	go func() {
-		defer base.FatalPanicHandler()
+		defer base.FatalPanicHandler(ctx)
 		s.releaseSequenceMonitor()
 	}()
 	_, err := s.lastSequence() // just reads latest sequence from bucket

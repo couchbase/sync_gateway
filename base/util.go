@@ -1489,10 +1489,10 @@ type JSONEncoderI interface {
 	SetEscapeHTML(on bool)
 }
 
-func FatalPanicHandler() {
+func FatalPanicHandler(ctx context.Context) {
 	// Log any panics using the built-in loggers so that the stacktraces end up in SG log files before exiting.
 	if r := recover(); r != nil {
-		FatalfCtx(context.TODO(), "Unexpected panic: %v - stopping process\n%v", r, string(debug.Stack()))
+		FatalfCtx(ctx, "Unexpected panic: %v - stopping process\n%v", r, string(debug.Stack()))
 	}
 }
 

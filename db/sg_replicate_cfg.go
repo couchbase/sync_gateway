@@ -803,7 +803,7 @@ func (m *sgReplicateManager) SubscribeCfgChanges(ctx context.Context) error {
 	}
 	m.closeWg.Add(1)
 	go func() {
-		defer base.FatalPanicHandler()
+		defer base.FatalPanicHandler(m.loggingCtx)
 		defer m.closeWg.Done()
 		for {
 			select {
@@ -1499,7 +1499,7 @@ func (l *ReplicationHeartbeatListener) subscribeNodeSetChanges() error {
 		return err
 	}
 	go func() {
-		defer base.FatalPanicHandler()
+		defer base.FatalPanicHandler(l.mgr.loggingCtx)
 		for {
 			select {
 			case <-cfgEvents:
