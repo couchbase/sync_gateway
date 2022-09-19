@@ -522,7 +522,7 @@ func SetUpGlobalTestLogging(m *testing.M) (teardownFn func()) {
 		var l LogLevel
 		err := l.UnmarshalText([]byte(logLevel))
 		if err != nil {
-			FatalfCtx(context.TODO(), "TEST: Invalid log level used for %q: %s", TestEnvGlobalLogLevel, err)
+			FatalfCtx(context.Background(), "TEST: Invalid log level used for %q: %s", TestEnvGlobalLogLevel, err)
 		}
 		caller := GetCallersName(1, false)
 		InfofCtx(context.Background(), KeyAll, "%s: Setup logging: level: %v - keys: %v", caller, logLevel, KeyAll)
@@ -738,11 +738,11 @@ func TestRequiresCollections(t *testing.T) {
 	}
 }
 
-func waitUntilScopeAndCollectionExists(collection *gocb.Collection) error {
+func waitUntilScopeAndCollectionExists(ctx context.Context, collection *gocb.Collection) error {
 	err, _ := RetryLoop("wait for scope and collection to exist", func() (shouldRetry bool, err error, value interface{}) {
 		_, err = collection.Exists("waitUntilScopeAndCollectionExists", nil)
 		if err != nil {
-			WarnfCtx(context.TODO(), "Error checking if collection exists: %v", err)
+			WarnfCtx(ctx, "Error checking if collection exists: %v", err)
 			return true, err, nil
 		}
 		return false, nil, nil
@@ -799,7 +799,7 @@ func CreateBucketScopesAndCollections(ctx context.Context, bucketSpec BucketSpec
 				return fmt.Errorf("failed to create collection %s in scope %s: %w", collectionName, scopeName, err)
 			}
 			DebugfCtx(ctx, KeySGTest, "Created collection %s.%s", scopeName, collectionName)
-			if err := waitUntilScopeAndCollectionExists(cluster.Bucket(bucketSpec.BucketName).Scope(scopeName).Collection(collectionName)); err != nil {
+			if err := waitUntilScopeAndCollectionExists(ctx, cluster.Bucket(bucketSpec.BucketName).Scope(scopeName).Collection(collectionName)); err != nil {
 				return err
 			}
 			DebugfCtx(ctx, KeySGTest, "Collection now exists %s.%s", scopeName, collectionName)

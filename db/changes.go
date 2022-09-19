@@ -667,7 +667,7 @@ func (db *Database) SimpleMultiChangesFeed(ctx context.Context, chans base.Set, 
 		// to the channel caches.
 		if options.Continuous {
 			lateSequenceFeeds = make(map[string]*lateSequenceFeed)
-			defer db.closeLateFeeds(lateSequenceFeeds)
+			defer db.closeLateFeeds(ctx, lateSequenceFeeds)
 		}
 
 		// Store incoming low sequence, for potential use by longpoll iterations
@@ -717,7 +717,7 @@ func (db *Database) SimpleMultiChangesFeed(ctx context.Context, chans base.Set, 
 
 				// Obtain a SingleChannelCache instance to use for both normal and late feeds.  Required to ensure consistency
 				// if cache is evicted during processing
-				singleChannelCache := db.changeCache.getChannelCache().getSingleChannelCache(name)
+				singleChannelCache := db.changeCache.getChannelCache().getSingleChannelCache(ctx, name)
 
 				// Set up late sequence handling first, as we need to roll back the regular feed on error
 				// Handles previously skipped sequences prior to options.Since that
@@ -1022,7 +1022,7 @@ func (db *Database) SimpleMultiChangesFeed(ctx context.Context, chans base.Set, 
 			// Clean up inactive lateSequenceFeeds (because user has lost access to the channel)
 			for channel, lateFeed := range lateSequenceFeeds {
 				if !lateFeed.active {
-					db.closeLateFeed(lateFeed)
+					db.closeLateFeed(ctx, lateFeed)
 					delete(lateSequenceFeeds, channel)
 				} else {
 					lateFeed.active = false
@@ -1075,9 +1075,8 @@ func (db *Database) GetChanges(ctx context.Context, channels base.Set, options C
 }
 
 // Returns the set of cached log entries for a given channel
-func (db *Database) GetChangeLog(channelName string, afterSeq uint64) (entries []*LogEntry) {
-
-	return db.changeCache.getChannelCache().GetCachedChanges(channelName)
+func (db *Database) GetChangeLog(ctx context.Context, channelName string, afterSeq uint64) (entries []*LogEntry) {
+	return db.changeCache.getChannelCache().GetCachedChanges(ctx, channelName)
 }
 
 // WaitForSequenceNotSkipped blocks until the given sequence has been received or skipped by the change cache.
@@ -1177,8 +1176,8 @@ func (db *Database) getLateFeed(feedHandler *lateSequenceFeed, singleChannelCach
 }
 
 // Closes a single late sequence feed.
-func (db *Database) closeLateFeed(feedHandler *lateSequenceFeed) {
-	singleChannelCache := db.changeCache.getChannelCache().getSingleChannelCache(feedHandler.channelName)
+func (db *Database) closeLateFeed(ctx context.Context, feedHandler *lateSequenceFeed) {
+	singleChannelCache := db.changeCache.getChannelCache().getSingleChannelCache(ctx, feedHandler.channelName)
 	if !singleChannelCache.SupportsLateFeed() {
 		return
 	}
@@ -1188,9 +1187,9 @@ func (db *Database) closeLateFeed(feedHandler *lateSequenceFeed) {
 }
 
 // Closes set of feeds.  Invoked on changes termination
-func (db *Database) closeLateFeeds(feeds map[string]*lateSequenceFeed) {
+func (db *Database) closeLateFeeds(ctx context.Context, feeds map[string]*lateSequenceFeed) {
 	for _, feed := range feeds {
-		db.closeLateFeed(feed)
+		db.closeLateFeed(ctx, feed)
 	}
 }
 

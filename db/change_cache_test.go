@@ -307,7 +307,7 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	// Modify the cache's late logs to remove the changes feed's lateFeedHandler sequence from the
 	// cache's lateLogs.  This will trigger an error on the next feed iteration, which should trigger
 	// rollback to resend all changes since low sequence (1)
-	abcCache := db.changeCache.getChannelCache().getSingleChannelCache("ABC").(*singleChannelCacheImpl)
+	abcCache := db.changeCache.getChannelCache().getSingleChannelCache(ctx, "ABC").(*singleChannelCacheImpl)
 	abcCache.lateLogs[0].logEntry.Sequence = 1
 
 	// Write sequence 3.  Error should trigger rollback that resends everything since low sequence (1)
@@ -615,16 +615,16 @@ func TestChannelCacheBackfill(t *testing.T) {
 	WriteDirect(db, []string{"CBS"}, 7)
 	require.NoError(t, db.changeCache.waitForSequence(ctx, 7, base.DefaultWaitForSequence))
 	// verify insert at start (PBS)
-	pbsCache := db.changeCache.getChannelCache().getSingleChannelCache("PBS").(*singleChannelCacheImpl)
+	pbsCache := db.changeCache.getChannelCache().getSingleChannelCache(ctx, "PBS").(*singleChannelCacheImpl)
 	assert.True(t, verifyCacheSequences(pbsCache, []uint64{3, 5, 6}))
 	// verify insert at middle (ABC)
-	abcCache := db.changeCache.getChannelCache().getSingleChannelCache("ABC").(*singleChannelCacheImpl)
+	abcCache := db.changeCache.getChannelCache().getSingleChannelCache(ctx, "ABC").(*singleChannelCacheImpl)
 	assert.True(t, verifyCacheSequences(abcCache, []uint64{1, 2, 3, 5, 6}))
 	// verify insert at end (NBC)
-	nbcCache := db.changeCache.getChannelCache().getSingleChannelCache("NBC").(*singleChannelCacheImpl)
+	nbcCache := db.changeCache.getChannelCache().getSingleChannelCache(ctx, "NBC").(*singleChannelCacheImpl)
 	assert.True(t, verifyCacheSequences(nbcCache, []uint64{1, 3}))
 	// verify insert to empty cache (TBS)
-	tbsCache := db.changeCache.getChannelCache().getSingleChannelCache("TBS").(*singleChannelCacheImpl)
+	tbsCache := db.changeCache.getChannelCache().getSingleChannelCache(ctx, "TBS").(*singleChannelCacheImpl)
 	assert.True(t, verifyCacheSequences(tbsCache, []uint64{3}))
 
 	// verify changes has three entries (needs to resend all since previous LowSeq, which
@@ -1399,7 +1399,7 @@ func TestChannelCacheSize(t *testing.T) {
 	assert.Equal(t, 750, len(changes))
 
 	// Validate that cache stores the expected number of values
-	abcCache := db.changeCache.getChannelCache().getSingleChannelCache("ABC").(*singleChannelCacheImpl)
+	abcCache := db.changeCache.getChannelCache().getSingleChannelCache(ctx, "ABC").(*singleChannelCacheImpl)
 	assert.Equal(t, 600, len(abcCache.logs))
 }
 
@@ -1992,7 +1992,7 @@ func BenchmarkProcessEntry(b *testing.B) {
 				log.Printf("Start error for changeCache: %v", err)
 				b.Fail()
 			}
-			defer changeCache.Stop()
+			defer changeCache.Stop(ctx)
 
 			if bm.warmCacheCount > 0 {
 				for i := 0; i < bm.warmCacheCount; i++ {
@@ -2219,7 +2219,7 @@ func BenchmarkDocChanged(b *testing.B) {
 				log.Printf("Start error for changeCache: %v", err)
 				b.Fail()
 			}
-			defer changeCache.Stop()
+			defer changeCache.Stop(ctx)
 
 			if bm.warmCacheCount > 0 {
 				for i := 0; i < bm.warmCacheCount; i++ {

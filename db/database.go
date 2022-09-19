@@ -515,7 +515,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	cleanupFunctions = append(cleanupFunctions, func() {
-		dbContext.changeCache.Stop()
+		dbContext.changeCache.Stop(ctx)
 	})
 
 	// If this is an xattr import node, start import feed.  Must be started after the caching DCP feed, as import cfg
@@ -726,7 +726,7 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 	waitForBGTCompletion(ctx, BGTCompletionMaxWait, context.backgroundTasks, context.Name)
 	context.sequences.Stop()
 	context.mutationListener.Stop()
-	context.changeCache.Stop()
+	context.changeCache.Stop(ctx)
 	context.ImportListener.Stop()
 	if context.Heartbeater != nil {
 		context.Heartbeater.Stop()
@@ -822,7 +822,7 @@ func (dc *DatabaseContext) TakeDbOffline(ctx context.Context, reason string) err
 		dc.AccessLock.Lock()
 		defer dc.AccessLock.Unlock()
 
-		dc.changeCache.Stop()
+		dc.changeCache.Stop(ctx)
 
 		// set DB state to Offline
 		atomic.StoreUint32(&dc.State, DBOffline)

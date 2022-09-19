@@ -96,7 +96,7 @@ type BackgroundManagerProcessI interface {
 type updateStatusCallbackFunc func() error
 
 func (b *BackgroundManager) Start(ctx context.Context, options map[string]interface{}) error {
-	err := b.markStart()
+	err := b.markStart(ctx)
 	if err != nil {
 		return err
 	}
@@ -178,7 +178,7 @@ func (b *BackgroundManager) Start(ctx context.Context, options map[string]interf
 	return nil
 }
 
-func (b *BackgroundManager) markStart() error {
+func (b *BackgroundManager) markStart(ctx context.Context) error {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
@@ -206,9 +206,9 @@ func (b *BackgroundManager) markStart() error {
 			for {
 				select {
 				case <-ticker.C:
-					err = b.UpdateHeartbeatDocClusterAware()
+					err = b.UpdateHeartbeatDocClusterAware(ctx)
 					if err != nil {
-						base.ErrorfCtx(context.TODO(), "Failed to update expiry on heartbeat doc: %v", err)
+						base.ErrorfCtx(ctx, "Failed to update expiry on heartbeat doc: %v", err)
 						b.SetError(err)
 					}
 				case <-terminator.Done():
@@ -458,7 +458,7 @@ type HeartbeatDoc struct {
 
 // UpdateHeartbeatDocClusterAware simply performs a touch operation on the heartbeat document to update its expiry.
 // Implements a retry. Used for Cluster Aware operations
-func (b *BackgroundManager) UpdateHeartbeatDocClusterAware() error {
+func (b *BackgroundManager) UpdateHeartbeatDocClusterAware(ctx context.Context) error {
 	statusRaw, _, err := b.clusterAwareOptions.bucket.GetAndTouchRaw(b.clusterAwareOptions.HeartbeatDocID(), BackgroundManagerHeartbeatExpirySecs)
 	if err != nil {
 		// If we get an error but the error is doc not found and terminator closed it means we have terminated the
@@ -486,7 +486,7 @@ func (b *BackgroundManager) UpdateHeartbeatDocClusterAware() error {
 	if status.ShouldStop {
 		err = b.Stop()
 		if err != nil {
-			base.WarnfCtx(context.TODO(), "Failed to stop process %q: %v", b.clusterAwareOptions.processSuffix, err)
+			base.WarnfCtx(ctx, "Failed to stop process %q: %v", b.clusterAwareOptions.processSuffix, err)
 		}
 	}
 

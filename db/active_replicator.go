@@ -332,13 +332,13 @@ func (ar *ActiveReplicator) purgeCheckpoints() {
 }
 
 // LoadReplicationStatus attempts to load both push and pull replication checkpoints, and constructs the combined status
-func LoadReplicationStatus(dbContext *DatabaseContext, replicationID string) (status *ReplicationStatus, err error) {
+func LoadReplicationStatus(ctx context.Context, dbContext *DatabaseContext, replicationID string) (status *ReplicationStatus, err error) {
 
 	status = &ReplicationStatus{
 		ID: replicationID,
 	}
 
-	pullCheckpoint, _ := getLocalCheckpoint(dbContext, PullCheckpointID(replicationID))
+	pullCheckpoint, _ := getLocalCheckpoint(ctx, dbContext, PullCheckpointID(replicationID))
 	if pullCheckpoint != nil {
 		if pullCheckpoint.Status != nil {
 			status.PullReplicationStatus = pullCheckpoint.Status.PullReplicationStatus
@@ -350,7 +350,7 @@ func LoadReplicationStatus(dbContext *DatabaseContext, replicationID string) (st
 		}
 	}
 
-	pushCheckpoint, _ := getLocalCheckpoint(dbContext, PushCheckpointID(replicationID))
+	pushCheckpoint, _ := getLocalCheckpoint(ctx, dbContext, PushCheckpointID(replicationID))
 	if pushCheckpoint != nil {
 		if pushCheckpoint.Status != nil {
 			status.PushReplicationStatus = pushCheckpoint.Status.PushReplicationStatus

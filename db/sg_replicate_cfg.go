@@ -1338,7 +1338,7 @@ func (m *sgReplicateManager) GetReplicationStatus(replicationID string, options 
 	} else {
 		// Attempt to retrieve persisted status
 		var loadErr error
-		status, loadErr = LoadReplicationStatus(m.dbContext, replicationID)
+		status, loadErr = LoadReplicationStatus(m.loggingCtx, m.dbContext, replicationID)
 		if loadErr != nil {
 			// Unable to load persisted status.  Create status stub based on config
 			var err error

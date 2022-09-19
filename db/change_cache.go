@@ -219,7 +219,7 @@ func (c *changeCache) Start(initialSequence uint64) error {
 }
 
 // Stops the cache. Clears its state and tells the housekeeping task to stop.
-func (c *changeCache) Stop() {
+func (c *changeCache) Stop(ctx context.Context) {
 
 	if !c.setStopped() {
 		return
@@ -230,10 +230,10 @@ func (c *changeCache) Stop() {
 	close(c.terminator)
 
 	// Wait for changeCache background tasks to finish.
-	waitForBGTCompletion(context.TODO(), BGTCompletionMaxWait, c.backgroundTasks, c.context.Name)
+	waitForBGTCompletion(ctx, BGTCompletionMaxWait, c.backgroundTasks, c.context.Name)
 
 	// Stop the channel cache and it's background tasks.
-	c.channelCache.Stop()
+	c.channelCache.Stop(ctx)
 
 	c.lock.Lock()
 	c.logsDisabled = true
@@ -585,7 +585,7 @@ type cachePrincipal struct {
 }
 
 func (c *changeCache) Remove(docIDs []string, startTime time.Time) (count int) {
-	return c.channelCache.Remove(docIDs, startTime)
+	return c.channelCache.Remove(c.logCtx, docIDs, startTime)
 }
 
 // Principals unmarshalled during caching don't need to instantiate a real principal - we're just using name and seq from the document
@@ -780,7 +780,7 @@ func (c *changeCache) _addToCache(change *LogEntry) []string {
 
 	// updatedChannels tracks the set of channels that should be notified of the change.  This includes
 	// the change's active channels, as well as any channel removals for the active revision.
-	updatedChannels := c.channelCache.AddToCache(change)
+	updatedChannels := c.channelCache.AddToCache(c.logCtx, change)
 	if base.LogDebugEnabled(base.KeyDCP) {
 		base.DebugfCtx(c.logCtx, base.KeyDCP, " #%d ==> channels %v", change.Sequence, base.UD(updatedChannels))
 	}
@@ -836,7 +836,7 @@ func (c *changeCache) GetChanges(channelName string, options ChangesOptions) ([]
 	if c.IsStopped() {
 		return nil, base.HTTPErrorf(503, "Database closed")
 	}
-	return c.channelCache.GetChanges(channelName, options)
+	return c.channelCache.GetChanges(c.logCtx, channelName, options)
 }
 
 // Returns the sequence number the cache is up-to-date with.
