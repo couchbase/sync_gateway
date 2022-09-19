@@ -57,6 +57,30 @@ func (rt *RestTester) UpdateDoc(docID, revID, body string) (response PutDocRespo
 	return response
 }
 
+func (rt *RestTester) upsertDoc(docID string, body string) (response PutDocResponse) {
+
+	getResponse := rt.SendAdminRequest("GET", "/db/"+docID, "")
+	if getResponse.Code == 404 {
+		return rt.PutDoc(docID, body)
+	}
+	var getBody db.Body
+	require.NoError(rt.TB, base.JSONUnmarshal(getResponse.Body.Bytes(), &getBody))
+	revID, ok := getBody["revID"].(string)
+	require.True(rt.TB, ok)
+
+	rawResponse := rt.SendAdminRequest("PUT", "/db/"+docID+"?rev="+revID, body)
+	RequireStatus(rt.TB, rawResponse, 200)
+	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &response))
+	require.True(rt.TB, response.Ok)
+	require.NotEmpty(rt.TB, response.Rev)
+	return response
+}
+
+func (rt *RestTester) DeleteDoc(docID, revID string) {
+	RequireStatus(rt.TB, rt.SendAdminRequest(http.MethodDelete,
+		fmt.Sprintf("/db/%s?rev=%s", docID, revID), ""), http.StatusOK)
+}
+
 func (rt *RestTester) WaitForRev(docID string, revID string) error {
 	return rt.WaitForCondition(func() bool {
 		rawResponse := rt.SendAdminRequest("GET", "/db/"+docID, "")
