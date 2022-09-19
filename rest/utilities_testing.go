@@ -191,6 +191,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 		rt.MutateStartupConfig(&sc)
 	}
 
+	sc.Unsupported.UserQueries = base.BoolPtr(rt.EnableUserQueries)
+
 	// Allow EE-only config even in CE for testing using group IDs.
 	if err := sc.Validate(true); err != nil {
 		panic("invalid RestTester StartupConfig: " + err.Error())

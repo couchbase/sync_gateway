@@ -12,7 +12,7 @@ import (
 	"net/http"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/functions"
 )
 
 //////// JS FUNCTIONS:
@@ -21,12 +21,10 @@ import (
 func (h *handler) handleGetDbConfigFunctions() error {
 	if config, etagVersion, err := h.getDBConfig(); err != nil {
 		return err
+	} else if config.UserFunctions == nil {
+		return base.HTTPErrorf(http.StatusNotFound, "")
 	} else {
-		if config.UserFunctions != nil {
-			h.writeJSON(config.UserFunctions)
-		} else {
-			h.writeRawJSON([]byte("{}"))
-		}
+		h.writeJSON(config.UserFunctions)
 		h.setEtag(etagVersion)
 		return nil
 	}
@@ -48,7 +46,7 @@ func (h *handler) handleGetDbConfigFunction() error {
 
 // PUT/DELETE config: user function(s)
 func (h *handler) handlePutDbConfigFunctions() error {
-	var functionsConfig db.UserFunctionConfigMap
+	var functionsConfig functions.FunctionConfigMap
 	if h.rq.Method != "DELETE" {
 		if err := h.readJSONInto(&functionsConfig); err != nil {
 			return err
@@ -67,13 +65,13 @@ func (h *handler) handlePutDbConfigFunctions() error {
 func (h *handler) handlePutDbConfigFunction() error {
 	functionName := h.PathVar("function")
 	if h.rq.Method != "DELETE" {
-		var functionConfig *db.UserFunctionConfig
+		var functionConfig *functions.FunctionConfig
 		if err := h.readJSONInto(&functionConfig); err != nil {
 			return err
 		}
 		return h.mutateDbConfig(func(dbConfig *DbConfig) error {
 			if dbConfig.UserFunctions == nil {
-				dbConfig.UserFunctions = db.UserFunctionConfigMap{}
+				dbConfig.UserFunctions = functions.FunctionConfigMap{}
 			}
 			dbConfig.UserFunctions[functionName] = functionConfig
 			return nil
@@ -106,7 +104,7 @@ func (h *handler) handleGetDbConfigGraphQL() error {
 
 // PUT/DELETE database GraphQL config.
 func (h *handler) handlePutDbConfigGraphQL() error {
-	var newConfig *db.GraphQLConfig
+	var newConfig *functions.GraphQLConfig
 	if h.rq.Method != "DELETE" {
 		if err := h.readJSONInto(&newConfig); err != nil {
 			return err
@@ -120,80 +118,4 @@ func (h *handler) handlePutDbConfigGraphQL() error {
 		return nil
 	})
 	return err
-}
-
-//////// QUERIES:
-
-// TODO: This is mostly a copy/paste of the functions code above; would be cleaner to use generics.
-
-// GET config: user queries.
-func (h *handler) handleGetDbConfigQueries() error {
-	if config, etagVersion, err := h.getDBConfig(); err != nil {
-		return err
-	} else {
-		if config.UserQueries != nil {
-			h.writeJSON(config.UserQueries)
-		} else {
-			h.writeRawJSON([]byte("{}"))
-		}
-		h.setEtag(etagVersion)
-		return nil
-	}
-}
-
-// GET config: a single user query
-func (h *handler) handleGetDbConfigQuery() error {
-	queryName := h.PathVar("query")
-	if config, etagVersion, err := h.getDBConfig(); err != nil {
-		return err
-	} else if queryConfig, found := config.UserQueries[queryName]; !found {
-		return base.HTTPErrorf(http.StatusNotFound, "")
-	} else {
-		h.writeJSON(queryConfig)
-		h.setEtag(etagVersion)
-		return nil
-	}
-}
-
-// PUT/DELETE config: user query(s)
-func (h *handler) handlePutDbConfigQueries() error {
-	var queriesConfig db.UserQueryMap
-	if h.rq.Method != "DELETE" {
-		if err := h.readJSONInto(&queriesConfig); err != nil {
-			return err
-		}
-	}
-	return h.mutateDbConfig(func(dbConfig *DbConfig) error {
-		if queriesConfig == nil && dbConfig.UserQueries == nil {
-			return base.HTTPErrorf(http.StatusNotFound, "")
-		}
-		dbConfig.UserQueries = queriesConfig
-		return nil
-	})
-}
-
-// PUT/DELETE config: a single user query
-func (h *handler) handlePutDbConfigQuery() error {
-	queryName := h.PathVar("query")
-	if h.rq.Method != "DELETE" {
-		var queryConfig *db.UserQueryConfig
-		if err := h.readJSONInto(&queryConfig); err != nil {
-			return err
-		}
-		return h.mutateDbConfig(func(dbConfig *DbConfig) error {
-			if dbConfig.UserQueries == nil {
-				dbConfig.UserQueries = db.UserQueryMap{}
-			}
-			dbConfig.UserQueries[queryName] = queryConfig
-			return nil
-		})
-	} else {
-		return h.mutateDbConfig(func(dbConfig *DbConfig) error {
-			if dbConfig.UserQueries[queryName] == nil {
-				return base.HTTPErrorf(http.StatusNotFound, "")
-			}
-			delete(dbConfig.UserQueries, queryName)
-			return nil
-		})
-	}
 }

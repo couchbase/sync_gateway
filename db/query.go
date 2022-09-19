@@ -41,7 +41,7 @@ const (
 	QueryTypeResync              = "resync"
 	QueryTypeAllDocs             = "allDocs"
 	QueryTypeUsers               = "users"
-	QueryTypeUserPrefix          = "userquery:" // Prefix applied to named user queries from config file
+	QueryTypeUserFunctionPrefix  = "function:" // Prefix applied to named functions from config file
 )
 
 type SGQuery struct {
@@ -303,16 +303,20 @@ func (context *DatabaseContext) N1QLQueryWithStats(ctx context.Context, queryNam
 		return nil, errors.New("Cannot perform N1QL query on non-Couchbase bucket.")
 	}
 
-	queryStat := context.DbStats.Query(queryName)
-
 	results, err = n1QLStore.Query(statement, params, consistency, adhoc)
-	if err != nil {
-		queryStat.QueryErrorCount.Add(1)
+
+	if len(queryName) > 0 {
+		queryStat := context.DbStats.Query(queryName)
+		if queryStat == nil {
+			// This panic is more recognizable than the one that will otherwise occur below
+			panic(fmt.Sprintf("DbStats has no entry for query %q", queryName))
+		}
+		if err != nil {
+			queryStat.QueryErrorCount.Add(1)
+		}
+		queryStat.QueryCount.Add(1)
+		queryStat.QueryTime.Add(time.Since(startTime).Nanoseconds())
 	}
-
-	queryStat.QueryCount.Add(1)
-	queryStat.QueryTime.Add(time.Since(startTime).Nanoseconds())
-
 	return results, err
 }
 
