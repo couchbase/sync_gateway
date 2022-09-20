@@ -14,7 +14,7 @@ require (
 	github.com/couchbase/gomemcached v0.1.4
 	github.com/couchbase/goutils v0.1.2
 	// FIXME: references an un-merged branch (https://github.com/couchbase/sg-bucket/pull/81)
-	github.com/couchbase/sg-bucket v0.0.0-20220906164713-c9afe94ac5c8
+	github.com/couchbase/sg-bucket v0.0.0-20220831114430-ca9ad184e517
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f
 	github.com/elastic/gosigar v0.14.2
 	github.com/felixge/fgprof v0.9.2
@@ -41,10 +41,7 @@ require (
 	gopkg.in/square/go-jose.v2 v2.6.0
 )
 
-require (
-	github.com/couchbase/gocbcore/v9 v9.1.8
-	github.com/couchbaselabs/walrus v0.0.0-20220916160453-6f7d5a152116
-)
+require github.com/couchbase/gocbcore/v9 v9.1.8
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect

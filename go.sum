@@ -79,6 +79,8 @@ github.com/couchbase/gomemcached v0.1.4 h1:5n5wmr4dBu+X7XteP8QHP5S9inK9MBjNpN9b7
 github.com/couchbase/gomemcached v0.1.4/go.mod h1:mxliKQxOv84gQ0bJWbI+w9Wxdpt9HjDvgW9MjCym5Vo=
 github.com/couchbase/goutils v0.1.2 h1:gWr8B6XNWPIhfalHNog3qQKfGiYyh4K4VhO3P2o9BCs=
 github.com/couchbase/goutils v0.1.2/go.mod h1:h89Ek/tiOxxqjz30nPPlwZdQbdB8BwgnuBxeoUe/ViE=
+github.com/couchbase/sg-bucket v0.0.0-20220831114430-ca9ad184e517 h1:ekQIOW25hDfQSEynkCR+YQtPShOJRiAGFbEPKzuBV2A=
+github.com/couchbase/sg-bucket v0.0.0-20220831114430-ca9ad184e517/go.mod h1:9XQoB1t+elPP+yEjHGOX3xcC3Z0/qDgOI7h/fc9XjlU=
 github.com/couchbase/sg-bucket v0.0.0-20220906164713-c9afe94ac5c8 h1:ZkoNH1Tbkv2fJR8WMuKVbzSeAuWWLtFXvpSUNVUISSc=
 github.com/couchbase/sg-bucket v0.0.0-20220906164713-c9afe94ac5c8/go.mod h1:9XQoB1t+elPP+yEjHGOX3xcC3Z0/qDgOI7h/fc9XjlU=
 github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f h1:al5DxXEBAUmINnP5dR950gL47424WzncuRpNdg0TWR0=
