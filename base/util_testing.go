@@ -767,7 +767,7 @@ func CreateBucketScopesAndCollections(ctx context.Context, bucketSpec BucketSpec
 
 	un, pw, _ := bucketSpec.Auth.GetCredentials()
 	var rootCAs *x509.CertPool
-	if tlsConfig := bucketSpec.TLSConfig(); tlsConfig != nil {
+	if tlsConfig := bucketSpec.TLSConfig(ctx); tlsConfig != nil {
 		rootCAs = tlsConfig.RootCAs
 	}
 	cluster, err := gocb.Connect(bucketSpec.Server, gocb.ClusterOptions{

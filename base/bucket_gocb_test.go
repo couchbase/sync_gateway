@@ -491,7 +491,7 @@ func TestCreateBatchesEntries(t *testing.T) {
 	}
 
 	batchSize := uint(2)
-	batches := createBatchesEntries(batchSize, entries)
+	batches := createBatchesEntries(TestCtx(t), batchSize, entries)
 	log.Printf("batches: %+v", batches)
 	assert.Equal(t, 4, len(batches))
 	assert.Equal(t, "one", batches[0][0].Key)
@@ -506,7 +506,7 @@ func TestCreateBatchesEntries(t *testing.T) {
 func TestCreateBatchesKeys(t *testing.T) {
 	keys := []string{"one", "two", "three", "four", "five", "six", "seven"}
 	batchSize := uint(2)
-	batches := createBatchesKeys(batchSize, keys)
+	batches := createBatchesKeys(TestCtx(t), batchSize, keys)
 	log.Printf("batches: %+v", batches)
 	assert.Equal(t, 4, len(batches))
 	assert.Equal(t, "one", batches[0][0])
@@ -1930,7 +1930,7 @@ func TestApplyViewQueryOptions(t *testing.T) {
 	viewQuery := gocb.NewViewQuery("ddoc", "viewname")
 
 	// Call applyViewQueryOptions (method being tested) which modifies viewQuery according to params
-	if err := applyViewQueryOptions(viewQuery, params); err != nil {
+	if err := applyViewQueryOptions(TestCtx(t), viewQuery, params); err != nil {
 		t.Fatalf("Error calling applyViewQueryOptions: %v", err)
 	}
 
@@ -2013,7 +2013,7 @@ func TestApplyViewQueryOptionsWithStrings(t *testing.T) {
 	// Create a new viewquery
 	viewQuery := gocb.NewViewQuery("ddoc", "viewname")
 
-	if err := applyViewQueryOptions(viewQuery, params); err != nil {
+	if err := applyViewQueryOptions(TestCtx(t), viewQuery, params); err != nil {
 		t.Fatalf("Error calling applyViewQueryOptions: %v", err)
 	}
 
@@ -2033,7 +2033,7 @@ func TestApplyViewQueryStaleOptions(t *testing.T) {
 	viewQuery := gocb.NewViewQuery("ddoc", "viewname")
 
 	// if it doesn't blow up, test passes
-	if err := applyViewQueryOptions(viewQuery, params); err != nil {
+	if err := applyViewQueryOptions(TestCtx(t), viewQuery, params); err != nil {
 		t.Fatalf("Error calling applyViewQueryOptions: %v", err)
 	}
 
@@ -2044,7 +2044,7 @@ func TestApplyViewQueryStaleOptions(t *testing.T) {
 	// Create a new viewquery
 	viewQuery = gocb.NewViewQuery("ddoc", "viewname")
 
-	if err := applyViewQueryOptions(viewQuery, params); err != nil {
+	if err := applyViewQueryOptions(TestCtx(t), viewQuery, params); err != nil {
 		t.Fatalf("Error calling applyViewQueryOptions: %v", err)
 	}
 

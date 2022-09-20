@@ -304,10 +304,10 @@ func (bucket *CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, er
 
 // Retry up to the retry limit, then return.  Does not retry items if they had CAS failures,
 // and it's up to the caller to handle those.
-func (bucket *CouchbaseBucketGoCB) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
+func (bucket *CouchbaseBucketGoCB) SetBulk(ctx context.Context, entries []*sgbucket.BulkSetEntry) (err error) {
 
 	// Create the RetryWorker for BulkSet op
-	worker := bucket.newSetBulkRetryWorker(entries)
+	worker := bucket.newSetBulkRetryWorker(ctx, entries)
 
 	// Kick off retry loop
 	err, _ = RetryLoop("SetBulk", worker, bucket.Spec.RetrySleeper())
@@ -319,14 +319,14 @@ func (bucket *CouchbaseBucketGoCB) SetBulk(entries []*sgbucket.BulkSetEntry) (er
 
 }
 
-func (bucket *CouchbaseBucketGoCB) newSetBulkRetryWorker(entries []*sgbucket.BulkSetEntry) RetryWorker {
+func (bucket *CouchbaseBucketGoCB) newSetBulkRetryWorker(ctx context.Context, entries []*sgbucket.BulkSetEntry) RetryWorker {
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
 		retryEntries := []*sgbucket.BulkSetEntry{}
 
 		// break up into batches
-		entryBatches := createBatchesEntries(MaxBulkBatchSize, entries)
+		entryBatches := createBatchesEntries(ctx, MaxBulkBatchSize, entries)
 
 		for _, entryBatch := range entryBatches {
 			err, retryEntriesForBatch := bucket.processBulkSetEntriesBatch(
@@ -457,10 +457,10 @@ func (bucket *CouchbaseBucketGoCB) GetBulkRaw(ctx context.Context, keys []string
 // If there are errors on individual keys -- aside from "not found" errors -- such as
 // QueueOverflow errors that can be retried successfully, they will be retried
 // with a backoff loop.
-func (bucket *CouchbaseBucketGoCB) GetBulkCounters(keys []string) (map[string]uint64, error) {
+func (bucket *CouchbaseBucketGoCB) GetBulkCounters(ctx context.Context, keys []string) (map[string]uint64, error) {
 
 	// Create a RetryWorker for the GetBulkRaw operation
-	worker := bucket.newGetBulkCountersRetryWorker(keys)
+	worker := bucket.newGetBulkCountersRetryWorker(ctx, keys)
 
 	// Kick off retry loop
 	err, result := RetryLoop("GetBulkRaw", worker, bucket.Spec.RetrySleeper())
@@ -494,7 +494,7 @@ func (bucket *CouchbaseBucketGoCB) newGetBulkRawRetryWorker(ctx context.Context,
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
 		retryKeys := []string{}
-		keyBatches := createBatchesKeys(MaxBulkBatchSize, pendingKeys)
+		keyBatches := createBatchesKeys(ctx, MaxBulkBatchSize, pendingKeys)
 		for _, keyBatch := range keyBatches {
 
 			// process batch and add successful results to resultAccumulator
@@ -523,7 +523,7 @@ func (bucket *CouchbaseBucketGoCB) newGetBulkRawRetryWorker(ctx context.Context,
 
 }
 
-func (bucket *CouchbaseBucketGoCB) newGetBulkCountersRetryWorker(keys []string) RetryWorker {
+func (bucket *CouchbaseBucketGoCB) newGetBulkCountersRetryWorker(ctx context.Context, keys []string) RetryWorker {
 
 	// resultAccumulator scoped in closure, will accumulate results across multiple worker invocations
 	resultAccumulator := make(map[string]uint64, len(keys))
@@ -534,12 +534,12 @@ func (bucket *CouchbaseBucketGoCB) newGetBulkCountersRetryWorker(keys []string) 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
 		retryKeys := []string{}
-		keyBatches := createBatchesKeys(MaxBulkBatchSize, pendingKeys)
+		keyBatches := createBatchesKeys(ctx, MaxBulkBatchSize, pendingKeys)
 		for _, keyBatch := range keyBatches {
 
 			// process batch and add successful results to resultAccumulator
 			// and recoverable (non "Not Found") errors to retryKeys
-			err := bucket.processGetCountersBatch(keyBatch, resultAccumulator, retryKeys)
+			err := bucket.processGetCountersBatch(ctx, keyBatch, resultAccumulator, retryKeys)
 			if err != nil {
 				return false, err, nil
 			}
@@ -603,7 +603,7 @@ func (bucket *CouchbaseBucketGoCB) processGetRawBatch(ctx context.Context, keys 
 	return nil
 }
 
-func (bucket *CouchbaseBucketGoCB) processGetCountersBatch(keys []string, resultAccumulator map[string]uint64, retryKeys []string) error {
+func (bucket *CouchbaseBucketGoCB) processGetCountersBatch(ctx context.Context, keys []string, resultAccumulator map[string]uint64, retryKeys []string) error {
 
 	var items []gocb.BulkOp
 	for _, key := range keys {
@@ -629,7 +629,7 @@ func (bucket *CouchbaseBucketGoCB) processGetCountersBatch(keys []string, result
 			if ok {
 				resultAccumulator[getOp.Key] = *intValue
 			} else {
-				WarnfCtx(context.Background(), "Skipping GetBulkCounter result - unable to cast to []byte.  Type: %v", reflect.TypeOf(getOp.Value))
+				WarnfCtx(ctx, "Skipping GetBulkCounter result - unable to cast to []byte.  Type: %v", reflect.TypeOf(getOp.Value))
 			}
 		} else {
 			// if it's a recoverable error, then throw it in retry collection.
@@ -643,14 +643,14 @@ func (bucket *CouchbaseBucketGoCB) processGetCountersBatch(keys []string, result
 	return nil
 }
 
-func createBatchesEntries(batchSize uint, entries []*sgbucket.BulkSetEntry) [][]*sgbucket.BulkSetEntry {
+func createBatchesEntries(ctx context.Context, batchSize uint, entries []*sgbucket.BulkSetEntry) [][]*sgbucket.BulkSetEntry {
 	// boundary checking
 	if len(entries) == 0 {
-		WarnfCtx(context.Background(), "createBatchesEnrties called with empty entries")
+		WarnfCtx(ctx, "createBatchesEnrties called with empty entries")
 		return [][]*sgbucket.BulkSetEntry{}
 	}
 	if batchSize == 0 {
-		WarnfCtx(context.Background(), "createBatchesEntries called with invalid batchSize")
+		WarnfCtx(ctx, "createBatchesEntries called with invalid batchSize")
 		result := [][]*sgbucket.BulkSetEntry{}
 		return append(result, entries)
 	}
@@ -676,15 +676,15 @@ func createBatchesEntries(batchSize uint, entries []*sgbucket.BulkSetEntry) [][]
 
 }
 
-func createBatchesKeys(batchSize uint, keys []string) [][]string {
+func createBatchesKeys(ctx context.Context, batchSize uint, keys []string) [][]string {
 
 	// boundary checking
 	if len(keys) == 0 {
-		WarnfCtx(context.Background(), "createBatchesKeys called with empty keys")
+		WarnfCtx(ctx, "createBatchesKeys called with empty keys")
 		return [][]string{}
 	}
 	if batchSize == 0 {
-		WarnfCtx(context.Background(), "createBatchesKeys called with invalid batchSize")
+		WarnfCtx(ctx, "createBatchesKeys called with invalid batchSize")
 		result := [][]string{}
 		return append(result, keys)
 	}
@@ -1236,7 +1236,7 @@ func (bucket *CouchbaseBucketGoCB) PutDDoc(ctx context.Context, docname string, 
 	var worker RetryWorker = func() (bool, error, interface{}) {
 		err := manager.UpsertDesignDocument(gocbDesignDoc)
 		if err != nil {
-			WarnfCtx(context.Background(), "Got error from UpsertDesignDocument: %v - Retrying...", err)
+			WarnfCtx(ctx, "Got error from UpsertDesignDocument: %v - Retrying...", err)
 			return true, err, nil
 		}
 		return false, nil, nil
@@ -1354,7 +1354,7 @@ func (bucket *CouchbaseBucketGoCB) View(ctx context.Context, ddoc, name string, 
 	viewQuery := gocb.NewViewQuery(ddoc, name)
 
 	// convert params map to these params
-	if err := applyViewQueryOptions(viewQuery, params); err != nil {
+	if err := applyViewQueryOptions(ctx, viewQuery, params); err != nil {
 		return viewResult, err
 	}
 
@@ -1372,7 +1372,7 @@ func (bucket *CouchbaseBucketGoCB) View(ctx context.Context, ddoc, name string, 
 
 	if goCbViewResult != nil {
 
-		viewResult.TotalRows = getTotalRows(goCbViewResult)
+		viewResult.TotalRows = getTotalRows(ctx, goCbViewResult)
 
 		for {
 
@@ -1427,7 +1427,7 @@ func (bucket CouchbaseBucketGoCB) ViewQuery(ctx context.Context, ddoc, name stri
 	viewQuery := gocb.NewViewQuery(ddoc, name)
 
 	// convert params map to these params
-	if err := applyViewQueryOptions(viewQuery, params); err != nil {
+	if err := applyViewQueryOptions(ctx, viewQuery, params); err != nil {
 		return nil, err
 	}
 
@@ -1447,11 +1447,11 @@ func (bucket CouchbaseBucketGoCB) ViewQuery(ctx context.Context, ddoc, name stri
 
 }
 
-func getTotalRows(goCbViewResult gocb.ViewResults) int {
+func getTotalRows(ctx context.Context, goCbViewResult gocb.ViewResults) int {
 	viewResultMetrics, gotTotalRows := goCbViewResult.(gocb.ViewResultMetrics)
 	if !gotTotalRows {
 		// Should never happen
-		WarnfCtx(context.Background(), "Unable to type assert goCbViewResult -> gocb.ViewResultMetrics.  The total rows count will be missing.")
+		WarnfCtx(ctx, "Unable to type assert goCbViewResult -> gocb.ViewResultMetrics.  The total rows count will be missing.")
 		return -1
 	}
 	return viewResultMetrics.TotalRows()
@@ -1803,37 +1803,37 @@ func isMinimumVersion(major, minor, requiredMajor, requiredMinor uint64) bool {
 
 // Applies the viewquery options as specified in the params map to the viewQuery object,
 // for example stale=false, etc.
-func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interface{}) error {
+func applyViewQueryOptions(ctx context.Context, viewQuery *gocb.ViewQuery, params map[string]interface{}) error {
 
 	for optionName, optionValue := range params {
 		switch optionName {
 		case ViewQueryParamStale:
-			optionAsStale := asStale(optionValue)
+			optionAsStale := asStale(ctx, optionValue)
 			viewQuery.Stale(optionAsStale)
 		case ViewQueryParamReduce:
-			viewQuery.Reduce(asBool(optionValue))
+			viewQuery.Reduce(asBool(ctx, optionValue))
 		case ViewQueryParamLimit:
 			uintVal, err := normalizeIntToUint(optionValue)
 			if err != nil {
-				WarnfCtx(context.Background(), "ViewQueryParamLimit error: %v", err)
+				WarnfCtx(ctx, "ViewQueryParamLimit error: %v", err)
 			}
 			viewQuery.Limit(uintVal)
 		case ViewQueryParamDescending:
-			if asBool(optionValue) == true {
+			if asBool(ctx, optionValue) == true {
 				viewQuery.Order(gocb.Descending)
 			}
 		case ViewQueryParamSkip:
 			uintVal, err := normalizeIntToUint(optionValue)
 			if err != nil {
-				WarnfCtx(context.Background(), "ViewQueryParamSkip error: %v", err)
+				WarnfCtx(ctx, "ViewQueryParamSkip error: %v", err)
 			}
 			viewQuery.Skip(uintVal)
 		case ViewQueryParamGroup:
-			viewQuery.Group(asBool(optionValue))
+			viewQuery.Group(asBool(ctx, optionValue))
 		case ViewQueryParamGroupLevel:
 			uintVal, err := normalizeIntToUint(optionValue)
 			if err != nil {
-				WarnfCtx(context.Background(), "ViewQueryParamGroupLevel error: %v", err)
+				WarnfCtx(ctx, "ViewQueryParamGroupLevel error: %v", err)
 			}
 			viewQuery.GroupLevel(uintVal)
 		case ViewQueryParamKey:
@@ -1866,7 +1866,7 @@ func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interfac
 	// Default value of inclusiveEnd in Couchbase Server is true (if not specified)
 	inclusiveEnd := true
 	if _, ok := params[ViewQueryParamInclusiveEnd]; ok {
-		inclusiveEnd = asBool(params[ViewQueryParamInclusiveEnd])
+		inclusiveEnd = asBool(ctx, params[ViewQueryParamInclusiveEnd])
 	}
 	viewQuery.Range(startKey, endKey, inclusiveEnd)
 
@@ -1899,26 +1899,26 @@ func normalizeIntToUint(value interface{}) (uint, error) {
 	}
 }
 
-func asBool(value interface{}) bool {
+func asBool(ctx context.Context, value interface{}) bool {
 
 	switch typeValue := value.(type) {
 	case string:
 		parsedVal, err := strconv.ParseBool(typeValue)
 		if err != nil {
-			WarnfCtx(context.Background(), "asBool called with unknown value: %v.  defaulting to false", typeValue)
+			WarnfCtx(ctx, "asBool called with unknown value: %v.  defaulting to false", typeValue)
 			return false
 		}
 		return parsedVal
 	case bool:
 		return typeValue
 	default:
-		WarnfCtx(context.Background(), "asBool called with unknown type: %T.  defaulting to false", typeValue)
+		WarnfCtx(ctx, "asBool called with unknown type: %T.  defaulting to false", typeValue)
 		return false
 	}
 
 }
 
-func asStale(value interface{}) gocb.StaleMode {
+func asStale(ctx context.Context, value interface{}) gocb.StaleMode {
 
 	switch typeValue := value.(type) {
 	case string:
@@ -1930,7 +1930,7 @@ func asStale(value interface{}) gocb.StaleMode {
 		}
 		parsedVal, err := strconv.ParseBool(typeValue)
 		if err != nil {
-			WarnfCtx(context.Background(), "asStale called with unknown value: %v.  defaulting to stale=false", typeValue)
+			WarnfCtx(ctx, "asStale called with unknown value: %v.  defaulting to stale=false", typeValue)
 			return gocb.Before
 		}
 		if parsedVal {
@@ -1945,7 +1945,7 @@ func asStale(value interface{}) gocb.StaleMode {
 			return gocb.Before
 		}
 	default:
-		WarnfCtx(context.Background(), "asBool called with unknown type: %T.  defaulting to false", typeValue)
+		WarnfCtx(ctx, "asBool called with unknown type: %T.  defaulting to false", typeValue)
 		return gocb.Before
 	}
 

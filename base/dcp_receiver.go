@@ -291,7 +291,7 @@ func StartDCPFeed(ctx context.Context, bucket Bucket, spec BucketSpec, args sgbu
 
 	if spec.IsTLS() {
 		dataSourceOptions.TLSConfig = func() *tls.Config {
-			return spec.TLSConfig()
+			return spec.TLSConfig(ctx)
 		}
 	}
 

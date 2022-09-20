@@ -313,10 +313,11 @@ func TestGetStatsVbSeqno(t *testing.T) {
 }
 
 func TestChooseCouchbaseDriver(t *testing.T) {
-	assert.Equal(t, GoCBv2, ChooseCouchbaseDriver(DataBucket))
-	assert.Equal(t, GoCBv2, ChooseCouchbaseDriver(IndexBucket))
+	ctx := TestCtx(t)
+	assert.Equal(t, GoCBv2, ChooseCouchbaseDriver(ctx, DataBucket))
+	assert.Equal(t, GoCBv2, ChooseCouchbaseDriver(ctx, IndexBucket))
 	unknownCouchbaseBucketType := CouchbaseBucketType(math.MaxInt8)
-	assert.Equal(t, GoCBv2, ChooseCouchbaseDriver(unknownCouchbaseBucketType))
+	assert.Equal(t, GoCBv2, ChooseCouchbaseDriver(ctx, unknownCouchbaseBucketType))
 }
 
 func TestCouchbaseDriverToString(t *testing.T) {
@@ -445,6 +446,8 @@ func TestTLSConfig(t *testing.T) {
 	// Mock fake root CA and client certificates for verification
 	clientCertPath, clientKeyPath, rootCertPath, rootKeyPath := mockCertificatesAndKeys(t)
 
+	ctx := TestCtx(t)
+
 	// Simulate error creating tlsConfig for DCP processing
 	spec := BucketSpec{
 		Server:     "http://localhost:8091",
@@ -452,12 +455,12 @@ func TestTLSConfig(t *testing.T) {
 		Keypath:    "/var/lib/couchbase/unknown.client.key",
 		CACertPath: "/var/lib/couchbase/unknown.root.ca.pem",
 	}
-	conf := spec.TLSConfig()
+	conf := spec.TLSConfig(ctx)
 	assert.Nil(t, conf)
 
 	// Simulate valid configuration scenario with fake mocked certificates and keys;
 	spec = BucketSpec{Certpath: clientCertPath, Keypath: clientKeyPath, CACertPath: rootCertPath}
-	conf = spec.TLSConfig()
+	conf = spec.TLSConfig(ctx)
 	assert.NotEmpty(t, conf)
 	assert.NotNil(t, conf.RootCAs)
 	require.Len(t, conf.Certificates, 1)
@@ -465,7 +468,7 @@ func TestTLSConfig(t *testing.T) {
 
 	// Check TLSConfig with no CA certificate, and TlsSkipVerify true; InsecureSkipVerify should be true
 	spec = BucketSpec{TLSSkipVerify: true, Certpath: clientCertPath, Keypath: clientKeyPath}
-	conf = spec.TLSConfig()
+	conf = spec.TLSConfig(ctx)
 	assert.NotEmpty(t, conf)
 	assert.True(t, conf.InsecureSkipVerify)
 	require.Len(t, conf.Certificates, 1)
@@ -473,7 +476,7 @@ func TestTLSConfig(t *testing.T) {
 
 	// Check TLSConfig with no certificates provided, and TlsSkipVerify true. InsecureSkipVerify should be true and fields should be nil CBG-1518
 	spec = BucketSpec{TLSSkipVerify: true}
-	conf = spec.TLSConfig()
+	conf = spec.TLSConfig(ctx)
 	assert.NotEmpty(t, conf)
 	assert.True(t, conf.InsecureSkipVerify)
 	assert.Nil(t, conf.RootCAs)
@@ -481,7 +484,7 @@ func TestTLSConfig(t *testing.T) {
 
 	// Check TLSConfig with no certs provided. InsecureSkipVerify should always be false. Should be empty config on Windows CBG-1518
 	spec = BucketSpec{}
-	conf = spec.TLSConfig()
+	conf = spec.TLSConfig(ctx)
 	assert.NotEmpty(t, conf)
 	assert.False(t, conf.InsecureSkipVerify)
 	require.NotNil(t, conf.RootCAs)
@@ -490,13 +493,13 @@ func TestTLSConfig(t *testing.T) {
 	// Check TLSConfig by providing invalid root CA certificate; provide root certificate key path
 	// instead of root CA certificate. It should throw "can't append certs from PEM" error.
 	spec = BucketSpec{Certpath: clientCertPath, Keypath: clientKeyPath, CACertPath: rootKeyPath}
-	conf = spec.TLSConfig()
+	conf = spec.TLSConfig(ctx)
 	assert.Empty(t, conf)
 
 	// Provide invalid client certificate key along with valid certificate; It should fail while
 	// trying to add key and certificate to config as x509 key pair;
 	spec = BucketSpec{Certpath: clientCertPath, Keypath: rootKeyPath, CACertPath: rootCertPath}
-	conf = spec.TLSConfig()
+	conf = spec.TLSConfig(ctx)
 	assert.Empty(t, conf)
 }
 

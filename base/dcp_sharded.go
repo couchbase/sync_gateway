@@ -155,7 +155,7 @@ func createCBGTIndex(ctx context.Context, c *CbgtContext, dbName string, configG
 	cbgt.RegisterBucketDataSourceOptionsCallback(indexName, c.Manager.UUID(), func(options *cbdatasource.BucketDataSourceOptions) *cbdatasource.BucketDataSourceOptions {
 		if spec.IsTLS() {
 			options.TLSConfig = func() *tls.Config {
-				return spec.TLSConfig()
+				return spec.TLSConfig(ctx)
 			}
 		}
 

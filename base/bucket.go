@@ -100,7 +100,7 @@ func GetBaseBucket(b Bucket) Bucket {
 	return b
 }
 
-func ChooseCouchbaseDriver(bucketType CouchbaseBucketType) CouchbaseDriver {
+func ChooseCouchbaseDriver(ctx context.Context, bucketType CouchbaseBucketType) CouchbaseDriver {
 
 	// Otherwise use the default driver for the bucket type
 	// return DefaultDriverForBucketType[bucketType]
@@ -111,7 +111,7 @@ func ChooseCouchbaseDriver(bucketType CouchbaseBucketType) CouchbaseDriver {
 		return GoCBv2
 	default:
 		// If a new bucket type is added and this method isn't updated, flag a warning (or, could panic)
-		WarnfCtx(context.Background(), "Unexpected bucket type: %v", bucketType)
+		WarnfCtx(ctx, "Unexpected bucket type: %v", bucketType)
 		return GoCBv2
 	}
 
@@ -298,13 +298,13 @@ func (b BucketSpec) GetViewQueryTimeoutMs() uint64 {
 
 // TLSConfig creates a TLS configuration and populates the certificates
 // Errors will get logged then nil is returned.
-func (b BucketSpec) TLSConfig() *tls.Config {
+func (b BucketSpec) TLSConfig(ctx context.Context) *tls.Config {
 	var certPool *x509.CertPool = nil
 	if !b.TLSSkipVerify { // Add certs if ServerTLSSkipVerify is not set
 		var err error
 		certPool, err = getRootCAs(b.CACertPath)
 		if err != nil {
-			ErrorfCtx(context.Background(), "Error creating tlsConfig for DCP processing: %v", err)
+			ErrorfCtx(ctx, "Error creating tlsConfig for DCP processing: %v", err)
 			return nil
 		}
 	}
@@ -318,7 +318,7 @@ func (b BucketSpec) TLSConfig() *tls.Config {
 	if b.Certpath != "" && b.Keypath != "" {
 		cert, err := tls.LoadX509KeyPair(b.Certpath, b.Keypath)
 		if err != nil {
-			ErrorfCtx(context.Background(), "Error creating tlsConfig for DCP processing: %v", err)
+			ErrorfCtx(ctx, "Error creating tlsConfig for DCP processing: %v", err)
 			return nil
 		}
 		tlsConfig.Certificates = []tls.Certificate{cert}

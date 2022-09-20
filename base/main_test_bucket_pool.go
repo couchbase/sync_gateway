@@ -776,7 +776,7 @@ func TestClusterPassword() string {
 }
 
 func TestClusterDriver() CouchbaseDriver {
-	driver := ChooseCouchbaseDriver(DataBucket)
+	driver := ChooseCouchbaseDriver(context.TODO(), DataBucket)
 	if envClusterDriver := os.Getenv(envTestClusterDriver); envClusterDriver != "" {
 		driver = AsCouchbaseDriver(envClusterDriver)
 	}

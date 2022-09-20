@@ -354,7 +354,7 @@ func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *St
 
 	spec.FeedType = strings.ToLower(config.FeedType)
 
-	spec.CouchbaseDriver = base.ChooseCouchbaseDriver(base.DataBucket)
+	spec.CouchbaseDriver = base.ChooseCouchbaseDriver(ctx, base.DataBucket)
 
 	if config.ViewQueryTimeoutSecs != nil {
 		spec.ViewQueryTimeoutSecs = config.ViewQueryTimeoutSecs
