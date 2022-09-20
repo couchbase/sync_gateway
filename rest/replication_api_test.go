@@ -1429,7 +1429,8 @@ func TestValidateReplicationWithInvalidURL(t *testing.T) {
 
 func TestGetStatusWithReplication(t *testing.T) {
 
-	ctx := base.TestCtx(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	config := bootstrapStartupConfigForTest(t)
 	err := config.SetupAndValidateLogging(ctx)
 	assert.NoError(t, err)

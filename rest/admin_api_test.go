@@ -11,6 +11,7 @@ package rest
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -5140,7 +5141,9 @@ func TestPerDBCredsOverride(t *testing.T) {
 		},
 	}
 
-	ctx := base.TestCtx(t)
+	//ctx := base.TestCtx(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	sc, err := SetupServerContext(ctx, &config, true)
 	require.NoError(t, err)
 
