@@ -181,7 +181,7 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb, persistentConfig: true, serverless: true})
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, persistentConfig: true, serverless: true})
 	defer rt.Close()
 
 	sc := rt.ServerContext()
@@ -192,7 +192,7 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 		"use_views": %t,
 		"num_index_replicas": 0
 	}`, tb.GetName(), base.TestsDisableGSI()))
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	assert.False(t, sc.isDatabaseSuspended(t, "db"))
 	assert.NotNil(t, sc.databases_["db"])
@@ -254,7 +254,7 @@ func TestServerlessUnsuspendFetchFallback(t *testing.T) {
 	defer tb.Close()
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		TestBucket:       tb,
+		CustomTestBucket: tb,
 		serverless:       true,
 		persistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
@@ -270,7 +270,7 @@ func TestServerlessUnsuspendFetchFallback(t *testing.T) {
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	// Suspend the database and remove it from dbConfigs, forcing unsuspendDatabase to fetch config from the bucket
 	err := sc.suspendDatabase(t, rt.Context(), "db")
@@ -300,7 +300,7 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 	defer tb.Close()
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		TestBucket:       tb,
+		CustomTestBucket: tb,
 		persistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
@@ -315,7 +315,7 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	// Purposely make configs get caches
 	sc.config.Unsupported.Serverless.MinConfigFetchInterval = base.NewConfigDuration(time.Hour)
@@ -372,7 +372,7 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 	defer tb.Close()
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		TestBucket:       tb,
+		CustomTestBucket: tb,
 		persistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
@@ -387,7 +387,7 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	// Suspend the database
 	assert.NoError(t, sc.suspendDatabase(t, rt.Context(), "db"))
@@ -458,7 +458,7 @@ func TestSuspendingFlags(t *testing.T) {
 			tb := base.GetTestBucket(t)
 			defer tb.Close()
 
-			rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb, persistentConfig: true, serverless: test.serverlessMode})
+			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, persistentConfig: true, serverless: test.serverlessMode})
 			defer rt.Close()
 
 			sc := rt.ServerContext()
@@ -473,7 +473,7 @@ func TestSuspendingFlags(t *testing.T) {
 				%s
 				"num_index_replicas": 0
 			}`, tb.GetName(), base.TestsDisableGSI(), suspendableDbOption))
-			requireStatus(t, resp, http.StatusCreated)
+			RequireStatus(t, resp, http.StatusCreated)
 
 			err := sc.suspendDatabase(t, rt.Context(), "db")
 			if test.expectCanSuspend {
