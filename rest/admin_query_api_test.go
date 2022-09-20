@@ -21,6 +21,10 @@ import (
 
 // When feature flag is not enabled, all API calls return 404:
 func TestUserQueryDBConfigGetWithoutFeatureFlag(t *testing.T) {
+	ctx := base.TestCtx(t)
+	config := bootstrapStartupConfigForTest(t)
+	err := config.SetupAndValidateLogging(ctx)
+	assert.NoError(t, err)
 	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: false})
 	defer rt.Close()
 
