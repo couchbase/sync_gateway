@@ -1428,22 +1428,12 @@ func TestValidateReplicationWithInvalidURL(t *testing.T) {
 }
 
 func TestGetStatusWithReplication(t *testing.T) {
-	//base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)
-	//base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	ctx := base.TestCtx(t)
 	config := bootstrapStartupConfigForTest(t)
 	err := config.SetupAndValidateLogging(ctx)
 	assert.NoError(t, err)
 
-	/*
-		ctx := base.TestCtx(t)
-		config := bootstrapStartupConfigForTest(t)
-		_, err := SetupServerContext(ctx, &config, false)
-		require.NoError(t, err)
-		var rt = NewRestTester(t, nil)
-		defer rt.Close()
-	*/
 	var rt = NewRestTester(t, nil)
 	defer rt.Close()
 	// Create a replication
