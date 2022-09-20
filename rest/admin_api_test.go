@@ -11,7 +11,6 @@ package rest
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -3525,17 +3524,16 @@ func TestPutDBConfigOIDC(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
-	//canctx, cancel := context.WithCancel(context.Background())
-	//defer cancel()
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
+
+	serverErr := make(chan error, 0)
+
+	// Start SG with no databases
 	ctx := base.TestCtx(t)
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := SetupServerContext(ctx, &config, true)
 	require.NoError(t, err)
-
-	serverErr := make(chan error, 0)
-	// Start SG with no databases
-
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
@@ -3622,7 +3620,6 @@ func TestNotExistentDBRequest(t *testing.T) {
 	config := bootstrapStartupConfigForTest(t)
 	err := config.SetupAndValidateLogging(ctx)
 	assert.NoError(t, err)
-	//rt := NewRestTester(t, &RestTesterConfig{adminInterfaceAuthentication: true})
 
 	rt := NewRestTester(t, &RestTesterConfig{AdminInterfaceAuthentication: true})
 	defer rt.Close()
@@ -4257,8 +4254,7 @@ func TestGroupIDReplications(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := base.TestCtx(t)
 	config := bootstrapStartupConfigForTest(t)
 	err := config.SetupAndValidateLogging(ctx)
 	assert.NoError(t, err)

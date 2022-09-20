@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -1427,15 +1428,24 @@ func TestValidateReplicationWithInvalidURL(t *testing.T) {
 }
 
 func TestGetStatusWithReplication(t *testing.T) {
+	//base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)
+	//base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	ctx := base.TestCtx(t)
 	config := bootstrapStartupConfigForTest(t)
 	err := config.SetupAndValidateLogging(ctx)
 	assert.NoError(t, err)
 
+	/*
+		ctx := base.TestCtx(t)
+		config := bootstrapStartupConfigForTest(t)
+		_, err := SetupServerContext(ctx, &config, false)
+		require.NoError(t, err)
+		var rt = NewRestTester(t, nil)
+		defer rt.Close()
+	*/
 	var rt = NewRestTester(t, nil)
 	defer rt.Close()
-
 	// Create a replication
 	config1 := db.ReplicationConfig{
 		ID:             "replication1",
@@ -1521,6 +1531,11 @@ func TestGetStatusWithReplication(t *testing.T) {
 func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)
 
+	ctx := base.TestCtx(t)
+	config := bootstrapStartupConfigForTest(t)
+	err := config.SetupAndValidateLogging(ctx)
+	assert.NoError(t, err)
+
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -1543,7 +1558,7 @@ func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 	RequireStatus(t, response, http.StatusOK)
 
 	var body []map[string]interface{}
-	err := base.JSONUnmarshal(response.BodyBytes(), &body)
+	err = base.JSONUnmarshal(response.BodyBytes(), &body)
 	fmt.Println(string(response.BodyBytes()))
 	assert.NoError(t, err)
 	assert.Equal(t, "running", body[0]["status"])
@@ -1572,6 +1587,11 @@ func TestReplicationConfigChange(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+
+	ctx := base.TestCtx(t)
+	config := bootstrapStartupConfigForTest(t)
+	err := config.SetupAndValidateLogging(ctx)
+	assert.NoError(t, err)
 
 	rt1, rt2, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()
@@ -1665,6 +1685,10 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("test is EE only (replication rebalance)")
 	}
+	ctx := base.TestCtx(t)
+	config := bootstrapStartupConfigForTest(t)
+	err := config.SetupAndValidateLogging(ctx)
+	assert.NoError(t, err)
 
 	// Increase checkpoint persistence frequency for cross-node status verification
 	defer reduceTestCheckpointInterval(50 * time.Millisecond)()
@@ -1733,7 +1757,7 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 	assert.NoError(t, activeRT2Mgr.RemoveNode(activeRTUUID))
 
 	// Wait for nodes to add themselves back to cluster
-	err := activeRT.WaitForCondition(func() bool {
+	err = activeRT.WaitForCondition(func() bool {
 		clusterDef, err := activeRTMgr.GetSGRCluster()
 		if err != nil {
 			return false
@@ -1767,6 +1791,12 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	config := bootstrapStartupConfigForTest(t)
+	err := config.SetupAndValidateLogging(ctx)
+	assert.NoError(t, err)
 	// Test tests Prometheus stat registration
 	base.SkipPrometheusStatsRegistration = false
 	defer func() {
