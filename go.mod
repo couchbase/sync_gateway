@@ -14,7 +14,7 @@ require (
 	github.com/couchbase/gomemcached v0.1.4
 	github.com/couchbase/goutils v0.1.2
 	// FIXME: references an un-merged branch (https://github.com/couchbase/sg-bucket/pull/81)
-	github.com/couchbase/sg-bucket v0.0.0-20220831114430-ca9ad184e517
+	github.com/couchbase/sg-bucket v0.0.0-20220920182149-0fbdb19d2043
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f
 	github.com/elastic/gosigar v0.14.2
 	github.com/felixge/fgprof v0.9.2
