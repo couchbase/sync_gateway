@@ -27,7 +27,8 @@ const (
 	RedactPartial                   = "partial"
 )
 
-// PasswordString is a string with marshallers that avoid accidentally printing it.
+// PasswordString is a string with marshallers that avoid accidentally printing it. It also makes it harder to accidentally
+// pass to callers that won't know how to properly handle it.
 type PasswordString string
 
 func (p PasswordString) MarshalText() (text []byte, err error) { //nolint:unparam

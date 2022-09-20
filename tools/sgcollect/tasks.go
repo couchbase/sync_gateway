@@ -52,6 +52,7 @@ func (c *URLTask) Run(opts *SGCollectOptions, out io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("failed to build HTTP request: %w", err)
 	}
+	req.SetBasicAuth(opts.SyncGatewayUsername, string(opts.SyncGatewayPassword))
 
 	res, err := getHTTPClient(opts).Do(req)
 	if err != nil {
