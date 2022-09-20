@@ -174,7 +174,7 @@ func TestUserFunctions(t *testing.T) {
 // User function tests that work the same for admin and non-admin user:
 func testUserFunctionsCommon(t *testing.T, ctx context.Context, db *db.Database) {
 	// Basic call passing a parameter:
-	result, err := db.CallUserFunction("square", map[string]interface{}{"numero": 42}, true, ctx)
+	result, err := db.CallUserFunction("square", map[string]any{"numero": 42}, true, ctx)
 	assert.NoError(t, err)
 	assert.EqualValues(t, 42*42, result)
 
@@ -199,7 +199,7 @@ func testUserFunctionsCommon(t *testing.T, ctx context.Context, db *db.Database)
 	assert.EqualValues(t, "OK", result)
 
 	// Max call depth:
-	result, err = db.CallUserFunction("factorial", map[string]interface{}{"n": 20}, true, ctx)
+	result, err = db.CallUserFunction("factorial", map[string]any{"n": 20}, true, ctx)
 	assert.NoError(t, err)
 	assert.EqualValues(t, 2.43290200817664e+18, result)
 
@@ -212,7 +212,7 @@ func testUserFunctionsCommon(t *testing.T, ctx context.Context, db *db.Database)
 	assert.ErrorContains(t, err, "square")
 
 	// Extra parameter:
-	_, err = db.CallUserFunction("square", map[string]interface{}{"numero": 42, "number": 0}, true, ctx)
+	_, err = db.CallUserFunction("square", map[string]any{"numero": 42, "number": 0}, true, ctx)
 	assertHTTPError(t, err, 400)
 	assert.ErrorContains(t, err, "number")
 	assert.ErrorContains(t, err, "square")
@@ -225,7 +225,7 @@ func testUserFunctionsCommon(t *testing.T, ctx context.Context, db *db.Database)
 	assert.NotNil(t, jserr)
 
 	// Call depth limit:
-	_, err = db.CallUserFunction("factorial", map[string]interface{}{"n": kUserFunctionMaxCallDepth + 1}, true, ctx)
+	_, err = db.CallUserFunction("factorial", map[string]any{"n": kUserFunctionMaxCallDepth + 1}, true, ctx)
 	assert.ErrorContains(t, err, "User function recursion too deep")
 	assert.ErrorContains(t, err, "factorial")
 }
@@ -314,23 +314,23 @@ func TestUserFunctionsCRUD(t *testing.T) {
 	db, ctx := setupTestDBWithFunctions(t, kUserFunctionConfig, nil)
 	defer db.Close(ctx)
 
-	body := map[string]interface{}{"key": "value"}
+	body := map[string]any{"key": "value"}
 
 	// Create a doc with random ID:
-	result, err := db.CallUserFunction("putDoc", map[string]interface{}{"docID": nil, "doc": body}, true, ctx)
+	result, err := db.CallUserFunction("putDoc", map[string]any{"docID": nil, "doc": body}, true, ctx)
 	assert.NoError(t, err)
 	assert.IsType(t, "", result)
-	_, err = db.CallUserFunction("getDoc", map[string]interface{}{"docID": result}, true, ctx)
+	_, err = db.CallUserFunction("getDoc", map[string]any{"docID": result}, true, ctx)
 	assert.NoError(t, err)
 
 	docID := "foo"
 
 	// Missing document:
-	result, err = db.CallUserFunction("getDoc", map[string]interface{}{"docID": docID}, true, ctx)
+	result, err = db.CallUserFunction("getDoc", map[string]any{"docID": docID}, true, ctx)
 	assert.NoError(t, err)
 	assert.EqualValues(t, nil, result)
 
-	docParams := map[string]interface{}{
+	docParams := map[string]any{
 		"docID": docID,
 		"doc":   body,
 	}
@@ -345,9 +345,9 @@ func TestUserFunctionsCRUD(t *testing.T) {
 	assert.EqualValues(t, docID, result) // save() returns docID
 
 	// Existing document:
-	result, err = db.CallUserFunction("getDoc", map[string]interface{}{"docID": docID}, true, ctx)
+	result, err = db.CallUserFunction("getDoc", map[string]any{"docID": docID}, true, ctx)
 	assert.NoError(t, err)
-	revID, ok := result.(map[string]interface{})["_rev"].(string)
+	revID, ok := result.(map[string]any)["_rev"].(string)
 	assert.True(t, ok)
 	assert.NotEmpty(t, revID)
 	assert.True(t, strings.HasPrefix(revID, "1-"))
@@ -375,15 +375,15 @@ func TestUserFunctionsCRUD(t *testing.T) {
 	assert.Equal(t, docID, result)
 
 	// Get doc again to verify revision:
-	result, err = db.CallUserFunction("getDoc", map[string]interface{}{"docID": docID}, true, ctx)
+	result, err = db.CallUserFunction("getDoc", map[string]any{"docID": docID}, true, ctx)
 	assert.NoError(t, err)
-	revID, ok = result.(map[string]interface{})["_rev"].(string)
+	revID, ok = result.(map[string]any)["_rev"].(string)
 	assert.True(t, ok)
 	assert.NotEmpty(t, revID)
 	assert.True(t, strings.HasPrefix(revID, "3-"))
 
 	// Delete doc:
-	_, err = db.CallUserFunction("delDoc", map[string]interface{}{"docID": docID}, true, ctx)
+	_, err = db.CallUserFunction("delDoc", map[string]any{"docID": docID}, true, ctx)
 	assert.NoError(t, err)
 }
 
@@ -416,7 +416,7 @@ func TestUserFunctionAllow(t *testing.T) {
 	_ = user.SetEmail("maurice@academie.fr")
 	assert.NoError(t, err)
 
-	params := map[string]interface{}{
+	params := map[string]any{
 		"CITY":  "Paris",
 		"BREAD": "Baguette",
 		"YEAR":  2020,

@@ -25,7 +25,7 @@ type jsInvocation struct {
 	*functionImpl
 	db              *db.Database
 	ctx             context.Context
-	args            map[string]interface{}
+	args            map[string]any
 	mutationAllowed bool
 }
 
@@ -33,21 +33,21 @@ func (fn *jsInvocation) Iterate() (sgbucket.QueryResultIterator, error) {
 	return nil, nil
 }
 
-func (fn *jsInvocation) Run() (interface{}, error) {
+func (fn *jsInvocation) Run() (any, error) {
 	return fn.call(db.MakeUserCtx(fn.db.User()), fn.args)
 }
 
-func (fn *jsInvocation) Resolve(params graphql.ResolveParams) (interface{}, error) {
+func (fn *jsInvocation) Resolve(params graphql.ResolveParams) (any, error) {
 	return fn.call(db.MakeUserCtx(fn.db.User()), params.Args, params.Source, resolverInfo(params))
 }
 
-func (fn *jsInvocation) ResolveType(params graphql.ResolveTypeParams) (interface{}, error) {
-	info := map[string]interface{}{}
+func (fn *jsInvocation) ResolveType(params graphql.ResolveTypeParams) (any, error) {
+	info := map[string]any{}
 	return fn.call(db.MakeUserCtx(fn.db.User()), params.Value, info)
 }
 
-func (fn *jsInvocation) call(jsArgs ...interface{}) (interface{}, error) {
-	return fn.compiled.WithTask(func(task sgbucket.JSServerTask) (result interface{}, err error) {
+func (fn *jsInvocation) call(jsArgs ...any) (any, error) {
+	return fn.compiled.WithTask(func(task sgbucket.JSServerTask) (result any, err error) {
 		runner := task.(*jsRunner)
 		return runner.CallWithDB(fn.db,
 			fn.mutationAllowed,

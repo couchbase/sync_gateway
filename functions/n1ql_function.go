@@ -27,8 +27,8 @@ type n1qlInvocation struct {
 	*functionImpl
 	db       *db.Database
 	ctx      context.Context
-	args     map[string]interface{}
-	n1qlArgs map[string]interface{}
+	args     map[string]any
+	n1qlArgs map[string]any
 }
 
 type n1qlUserArgument struct {
@@ -47,7 +47,7 @@ func (fn *n1qlInvocation) Iterate() (sgbucket.QueryResultIterator, error) {
 		userArg.Roles = user.RoleNames().AllKeys()
 	}
 	if fn.n1qlArgs == nil {
-		fn.n1qlArgs = map[string]interface{}{}
+		fn.n1qlArgs = map[string]any{}
 	}
 	fn.n1qlArgs["args"] = fn.args
 	fn.n1qlArgs["user"] = &userArg
@@ -71,7 +71,7 @@ func (fn *n1qlInvocation) Iterate() (sgbucket.QueryResultIterator, error) {
 	return iter, fn.db.CheckTimeout(fn.ctx)
 }
 
-func (fn *n1qlInvocation) Run() (interface{}, error) {
+func (fn *n1qlInvocation) Run() (any, error) {
 	rows, err := fn.Iterate()
 	if err != nil {
 		return nil, err
@@ -81,8 +81,8 @@ func (fn *n1qlInvocation) Run() (interface{}, error) {
 			_ = rows.Close()
 		}
 	}()
-	result := []interface{}{}
-	var row interface{}
+	result := []any{}
+	var row any
 	for rows.Next(&row) {
 		result = append(result, row)
 	}
@@ -91,8 +91,8 @@ func (fn *n1qlInvocation) Run() (interface{}, error) {
 	return result, err
 }
 
-func (fn *n1qlInvocation) Resolve(params graphql.ResolveParams) (interface{}, error) {
-	fn.n1qlArgs = map[string]interface{}{
+func (fn *n1qlInvocation) Resolve(params graphql.ResolveParams) (any, error) {
+	fn.n1qlArgs = map[string]any{
 		"parent": params.Source,
 		"info":   resolverInfo(params),
 	}
@@ -104,7 +104,7 @@ func (fn *n1qlInvocation) Resolve(params graphql.ResolveParams) (interface{}, er
 	if !isGraphQLListType(params.Info.ReturnType) {
 		// GraphQL result type is not a list (array), but N1QL always returns an array.
 		// So use the first row of the result as the value, if there is one.
-		if rows, ok := result.([]interface{}); ok {
+		if rows, ok := result.([]any); ok {
 			if len(rows) > 0 {
 				result = rows[0]
 			} else {
@@ -114,7 +114,7 @@ func (fn *n1qlInvocation) Resolve(params graphql.ResolveParams) (interface{}, er
 		if isGraphQLScalarType(params.Info.ReturnType) {
 			// GraphQL result type is a scalar, but a N1QL row is always an object.
 			// Use the single field of the object, if any, as the result:
-			row := result.(map[string]interface{})
+			row := result.(map[string]any)
 			if len(row) != 1 {
 				return nil, base.HTTPErrorf(http.StatusInternalServerError, "resolver %q returns scalar type %s, but its N1QL query returns %d columns, not 1", fn.name, params.Info.ReturnType, len(row))
 			}

@@ -38,7 +38,7 @@ type GraphQLResolverConfig map[string]FunctionConfig
 //////// QUERYING
 
 // Runs a GraphQL query on behalf of a user, presumably invoked via a REST or BLIP API.
-func (gq *graphQLImpl) Query(db *db.Database, query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) (*graphql.Result, error) {
+func (gq *graphQLImpl) Query(db *db.Database, query string, operationName string, variables map[string]any, mutationAllowed bool, ctx context.Context) (*graphql.Result, error) {
 	if err := db.CheckTimeout(ctx); err != nil {
 		return nil, err
 	}
@@ -107,7 +107,7 @@ func (config *GraphQLConfig) compileSchema() (graphql.Schema, error) {
 
 	var multiError *base.MultiError
 	// Assemble the resolvers:
-	resolvers := map[string]interface{}{}
+	resolvers := map[string]any{}
 	for name, resolver := range config.Resolvers {
 		fieldMap := map[string]*gqltools.FieldResolve{}
 		var typeNameResolver graphql.ResolveTypeFn
@@ -183,7 +183,7 @@ type resolver = interface {
 	db.UserFunctionInvocation
 
 	// Calls a user function as a GraphQL resolver, given the parameters passed by the go-graphql API.
-	Resolve(params graphql.ResolveParams) (interface{}, error)
+	Resolve(params graphql.ResolveParams) (any, error)
 }
 
 func graphQLResolverName(typeName string, fieldName string) string {
@@ -206,7 +206,7 @@ func (config *GraphQLConfig) compileFieldResolver(typeName string, fieldName str
 	userFn.CheckArgs(false)
 	userFn.AllowByDefault(true)
 
-	return func(params graphql.ResolveParams) (interface{}, error) {
+	return func(params graphql.ResolveParams) (any, error) {
 		db := params.Context.Value(dbKey).(*db.Database)
 		if isMutation && !params.Context.Value(mutAllowedKey).(bool) {
 			return nil, base.HTTPErrorf(http.StatusForbidden, "a read-only request is not allowed to call a GraphQL mutation")
@@ -219,7 +219,7 @@ func (config *GraphQLConfig) compileFieldResolver(typeName string, fieldName str
 	}, nil
 }
 
-func resolverInfo(params graphql.ResolveParams) map[string]interface{} {
+func resolverInfo(params graphql.ResolveParams) map[string]any {
 	// Collect the 'selectedFieldNames', the fields the query wants from the value being resolved:
 	selectedFieldNames := []string{}
 	if len(params.Info.FieldASTs) > 0 {
@@ -239,7 +239,7 @@ func resolverInfo(params graphql.ResolveParams) map[string]interface{} {
 	//   `selectedFieldNames` is not provided (directly) by ResolveInfo; it contains the fields of the
 	// resolver's result that will be used by the query (other fields will just be ignored.)
 	// This enables some important optimizations.
-	return map[string]interface{}{
+	return map[string]any{
 		"selectedFieldNames": selectedFieldNames,
 	}
 }

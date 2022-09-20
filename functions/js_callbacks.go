@@ -68,8 +68,8 @@ func (runner *jsRunner) defineNativeCallbacks() {
 //////// DATABASE CALLBACK FUNCTION IMPLEMENTATIONS:
 
 // Implementation of JS `user.delete(docID)` function
-func (runner *jsRunner) do_delete(docID string, body map[string]interface{}, sudo bool) (bool, error) {
-	tombstone := map[string]interface{}{"_deleted": true}
+func (runner *jsRunner) do_delete(docID string, body map[string]any, sudo bool) (bool, error) {
+	tombstone := map[string]any{"_deleted": true}
 	if body != nil {
 		if revID, ok := body["_rev"]; ok {
 			tombstone["_rev"] = revID
@@ -80,7 +80,7 @@ func (runner *jsRunner) do_delete(docID string, body map[string]interface{}, sud
 }
 
 // Implementation of JS `user.function(name, params)` function
-func (runner *jsRunner) do_func(funcName string, params map[string]interface{}, sudo bool) (interface{}, error) {
+func (runner *jsRunner) do_func(funcName string, params map[string]any, sudo bool) (any, error) {
 	if sudo {
 		user := runner.currentDB.User()
 		runner.currentDB.SetUser(nil)
@@ -90,7 +90,7 @@ func (runner *jsRunner) do_func(funcName string, params map[string]interface{}, 
 }
 
 // Implementation of JS `user.get(docID, docType)` function
-func (runner *jsRunner) do_get(docID string, docType *string, sudo bool) (interface{}, error) {
+func (runner *jsRunner) do_get(docID string, docType *string, sudo bool) (any, error) {
 	if err := runner.currentDB.CheckTimeout(runner.ctx); err != nil {
 		return nil, err
 	}
@@ -121,7 +121,7 @@ func (runner *jsRunner) do_get(docID string, docType *string, sudo bool) (interf
 }
 
 // Implementation of JS `user.graphql(query, params)` function
-func (runner *jsRunner) do_graphql(query string, params map[string]interface{}, sudo bool) (interface{}, error) {
+func (runner *jsRunner) do_graphql(query string, params map[string]any, sudo bool) (any, error) {
 	if sudo {
 		user := runner.currentDB.User()
 		runner.currentDB.SetUser(nil)
@@ -131,7 +131,7 @@ func (runner *jsRunner) do_graphql(query string, params map[string]interface{}, 
 }
 
 // Implementation of JS `user.save(docID, body)` function
-func (runner *jsRunner) do_save(docIDPtr *string, body map[string]interface{}, sudo bool) (*string, error) {
+func (runner *jsRunner) do_save(docIDPtr *string, body map[string]any, sudo bool) (*string, error) {
 	if err := runner.currentDB.CheckTimeout(runner.ctx); err != nil {
 		return nil, err
 	}
@@ -226,7 +226,7 @@ func ottoOptionalStringParam(call otto.FunctionCall, arg int, what string) *stri
 
 // Returns a parameter of `call` as a Go map, or throws a JS exception if it's not a map.
 // If `optional` is true, the parameter is allowed not to exist, in which case `nil` is returned.
-func ottoObjectParam(call otto.FunctionCall, arg int, optional bool, what string) map[string]interface{} {
+func ottoObjectParam(call otto.FunctionCall, arg int, optional bool, what string) map[string]any {
 	val := call.Argument(arg)
 	if !val.IsObject() {
 		if optional && val.IsUndefined() {
@@ -238,11 +238,11 @@ func ottoObjectParam(call otto.FunctionCall, arg int, optional bool, what string
 	if err != nil {
 		panic(call.Otto.MakeTypeError("Yikes, couldn't export JS value"))
 	}
-	return obj.(map[string]interface{})
+	return obj.(map[string]any)
 }
 
 // Returns `result` back to Otto; or if `err` is non-nil, "throws" it via a Go panic
-func ottoResult(call otto.FunctionCall, result interface{}, err error) otto.Value {
+func ottoResult(call otto.FunctionCall, result any, err error) otto.Value {
 	if err == nil {
 		val, _ := call.Otto.ToValue(result)
 		return val
@@ -257,7 +257,7 @@ func ottoResult(call otto.FunctionCall, result interface{}, err error) otto.Valu
 }
 
 // Returns `result` back to Otto in JSON form; or if `err` is non-nil, "throws" it via a Go panic
-func ottoJSONResult(call otto.FunctionCall, result interface{}, err error) otto.Value {
+func ottoJSONResult(call otto.FunctionCall, result any, err error) otto.Value {
 	if err == nil && result != nil {
 		if j, err := json.Marshal(result); err == nil {
 			val, _ := call.Otto.ToValue(string(j))

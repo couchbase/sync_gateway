@@ -129,7 +129,7 @@ func (fn *functionImpl) AllowByDefault(allow bool) {
 }
 
 // Creates an Invocation of a UserFunction.
-func (fn *functionImpl) Invoke(db *db.Database, args map[string]interface{}, mutationAllowed bool, ctx context.Context) (db.UserFunctionInvocation, error) {
+func (fn *functionImpl) Invoke(db *db.Database, args map[string]any, mutationAllowed bool, ctx context.Context) (db.UserFunctionInvocation, error) {
 	if ctx == nil {
 		panic("missing context to UserFunction.Invoke")
 	}
@@ -139,7 +139,7 @@ func (fn *functionImpl) Invoke(db *db.Database, args map[string]interface{}, mut
 	}
 
 	if args == nil {
-		args = map[string]interface{}{}
+		args = map[string]any{}
 	}
 	if fn.checkArgs {
 		if err := fn.checkArguments(args); err != nil {
@@ -176,7 +176,7 @@ func (fn *functionImpl) Invoke(db *db.Database, args map[string]interface{}, mut
 
 // Checks that `args` contains exactly the same keys as the list `parameterNames`.
 // Adds the special "context" parameter containing user data.
-func (fn *functionImpl) checkArguments(args map[string]interface{}) error {
+func (fn *functionImpl) checkArguments(args map[string]any) error {
 	// Make sure each specified parameter has a value in `args`:
 	for _, paramName := range fn.Args {
 		if _, found := args[paramName]; !found {
@@ -203,7 +203,7 @@ func (fn *functionImpl) checkArguments(args map[string]interface{}) error {
 // - The user must have a role contained in Roles, OR
 // - The user must have access to a channel contained in Channels.
 // In Roles and Channels, patterns of the form `$param` or `$(param)` are expanded using `args`.
-func (fn *functionImpl) authorize(user auth.User, args map[string]interface{}) error {
+func (fn *functionImpl) authorize(user auth.User, args map[string]any) error {
 	allow := fn.Allow
 	if user == nil {
 		return nil // User is admin
@@ -237,7 +237,7 @@ func (fn *functionImpl) authorize(user auth.User, args map[string]interface{}) e
 // `param` in the `args` map and substituting its value.
 // (`$$` is replaced with `$`.)
 // It is an error if any `param` has no value, or if its value is not a string or integer.
-func (allow *Allow) expandPattern(pattern string, args map[string]interface{}, user auth.User) (string, error) {
+func (allow *Allow) expandPattern(pattern string, args map[string]any, user auth.User) (string, error) {
 	if strings.IndexByte(pattern, '$') < 0 {
 		return pattern, nil
 	}

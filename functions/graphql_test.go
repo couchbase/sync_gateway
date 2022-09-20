@@ -223,7 +223,7 @@ func testUserGraphQLCommon(t *testing.T, ctx context.Context, db *db.Database) {
 	assertGraphQLResult(t, `{"square":144}`, result, err)
 
 	result, err = db.UserGraphQLQuery(`query($num:Int!){ square(n: $num) }`, "",
-		map[string]interface{}{"num": 12}, false, ctx)
+		map[string]any{"num": 12}, false, ctx)
 	assertGraphQLResult(t, `{"square":144}`, result, err)
 
 	result, err = db.UserGraphQLQuery(`query{ task(id:"a") {id,title,done} }`, "", nil, false, ctx)

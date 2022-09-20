@@ -50,7 +50,7 @@ func newFunctionJSServer(name string, what string, sourceCode string) (*sgbucket
 		})
 	// Call WithTask to force a task to be instantiated, which will detect syntax errors in the script. Otherwise the error only gets detected the first time a client calls the function.
 	var err error
-	_, err = jsServer.WithTask(func(sgbucket.JSServerTask) (interface{}, error) {
+	_, err = jsServer.WithTask(func(sgbucket.JSServerTask) (any, error) {
 		return nil, nil
 	})
 	return jsServer, err
@@ -100,7 +100,7 @@ func newJSRunner(name string, kind string, funcSource string) (*jsRunner, error)
 		}
 	}
 	// Function that runs after every call:
-	runner.After = func(jsResult otto.Value, err error) (interface{}, error) {
+	runner.After = func(jsResult otto.Value, err error) (any, error) {
 		defer func() {
 			runner.currentDB = nil
 		}()
@@ -119,7 +119,7 @@ type jsRunnerContextKey string
 var ctxJSCallDepthKey = jsRunnerContextKey("call depth")
 
 // Calls a javaScriptRunner's JavaScript function.
-func (runner *jsRunner) CallWithDB(db *db.Database, mutationAllowed bool, ctx context.Context, jsArgs ...interface{}) (result interface{}, err error) {
+func (runner *jsRunner) CallWithDB(db *db.Database, mutationAllowed bool, ctx context.Context, jsArgs ...any) (result any, err error) {
 	if ctx == nil {
 		panic("missing context to userJSRunner")
 	}

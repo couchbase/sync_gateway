@@ -63,7 +63,7 @@ var kUserN1QLFunctionsConfig = FunctionConfigMap{
 	},
 }
 
-func callUserQuery(ctx context.Context, db *db.Database, name string, args map[string]interface{}) (interface{}, error) {
+func callUserQuery(ctx context.Context, db *db.Database, name string, args map[string]any) (any, error) {
 	return db.CallUserFunction(name, args, false, ctx)
 }
 
@@ -71,8 +71,8 @@ func queryResultString(t *testing.T, iter sgbucket.QueryResultIterator) string {
 	if iter == nil {
 		return ""
 	}
-	result := []interface{}{}
-	var row interface{}
+	result := []any{}
+	var row any
 	for iter.Next(&row) {
 		result = append(result, row)
 	}
@@ -113,19 +113,19 @@ func TestUserN1QLQueries(t *testing.T) {
 
 func testUserQueriesCommon(t *testing.T, ctx context.Context, db *db.Database) {
 	// dynamic channel list
-	fn, err := db.GetUserFunction("airports_in_city", map[string]interface{}{"city": "London"}, false, ctx)
+	fn, err := db.GetUserFunction("airports_in_city", map[string]any{"city": "London"}, false, ctx)
 	assert.NoError(t, err)
 	iter, err := fn.Iterate()
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{"city":"London"}]`, iter)
 
-	fn, err = db.GetUserFunction("square", map[string]interface{}{"numero": 16}, false, ctx)
+	fn, err = db.GetUserFunction("square", map[string]any{"numero": 16}, false, ctx)
 	assert.NoError(t, err)
 	iter, err = fn.Iterate()
 	assert.NoError(t, err)
 	assertQueryResults(t, `[{"square":256}]`, iter)
 
-	fn, err = db.GetUserFunction("inject", map[string]interface{}{"foo": "1337 as pwned"}, false, ctx)
+	fn, err = db.GetUserFunction("inject", map[string]any{"foo": "1337 as pwned"}, false, ctx)
 	assert.NoError(t, err)
 	iter, err = fn.Iterate()
 	assert.NoError(t, err)
@@ -140,7 +140,7 @@ func testUserQueriesCommon(t *testing.T, ctx context.Context, db *db.Database) {
 	assert.ErrorContains(t, err, "square")
 
 	// Extra parameter:
-	_, err = callUserQuery(ctx, db, "square", map[string]interface{}{"numero": 42, "number": 0})
+	_, err = callUserQuery(ctx, db, "square", map[string]any{"numero": 42, "number": 0})
 	assertHTTPError(t, err, 400)
 	assert.ErrorContains(t, err, "number")
 	assert.ErrorContains(t, err, "square")
@@ -206,7 +206,7 @@ func testUserQueriesAsUser(t *testing.T, ctx context.Context, db *db.Database) {
 	assertHTTPError(t, err, 403)
 
 	// Not allowed (dynamic channel list):
-	_, err = callUserQuery(ctx, db, "airports_in_city", map[string]interface{}{"city": "Chicago"})
+	_, err = callUserQuery(ctx, db, "airports_in_city", map[string]any{"city": "Chicago"})
 	assertHTTPError(t, err, 403)
 
 	// No such query:
