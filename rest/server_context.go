@@ -42,28 +42,31 @@ const KDefaultNumShards = 16
 
 var errCollectionsUnsupported = base.HTTPErrorf(http.StatusBadRequest, "Named collections specified in database config, but not supported by connected Couchbase Server.")
 
+var ErrSuspendingDisallowed = errors.New("database does not allow suspending")
+
 // Shared context of HTTP handlers: primarily a registry of databases by name. It also stores
 // the configuration settings so handlers can refer to them.
 // This struct is accessed from HTTP handlers running on multiple goroutines, so it needs to
 // be thread-safe.
 type ServerContext struct {
-	config               *StartupConfig // The current runtime configuration of the node
-	initialStartupConfig *StartupConfig // The configuration at startup of the node. Built from config file + flags
-	persistentConfig     bool
-	bucketDbName         map[string]string              // bucketDbName is a map of bucket to database name
-	dbConfigs            map[string]*DatabaseConfig     // dbConfigs is a map of db name to DatabaseConfig
-	databases_           map[string]*db.DatabaseContext // databases_ is a map of dbname to db.DatabaseContext
-	lock                 sync.RWMutex
-	statsContext         *statsContext
-	bootstrapContext     *bootstrapContext
-	HTTPClient           *http.Client
-	cpuPprofFileMutex    sync.Mutex      // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
-	cpuPprofFile         *os.File        // An open file descriptor holds the reference during CPU profiling
-	_httpServers         []*http.Server  // A list of HTTP servers running under the ServerContext
-	GoCBAgent            *gocbcore.Agent // GoCB Agent to use when obtaining management endpoints
-	NoX509HTTPClient     *http.Client    // httpClient for the cluster that doesn't include x509 credentials, even if they are configured for the cluster
-	hasStarted           chan struct{}   // A channel that is closed via PostStartup once the ServerContext has fully started
-	LogContextID         string          // ID to differentiate log messages from different server context
+	config                 *StartupConfig // The current runtime configuration of the node
+	initialStartupConfig   *StartupConfig // The configuration at startup of the node. Built from config file + flags
+	persistentConfig       bool
+	bucketDbName           map[string]string              // bucketDbName is a map of bucket to database name
+	dbConfigs              map[string]*DatabaseConfig     // dbConfigs is a map of db name to DatabaseConfig
+	databases_             map[string]*db.DatabaseContext // databases_ is a map of dbname to db.DatabaseContext
+	lock                   sync.RWMutex
+	statsContext           *statsContext
+	bootstrapContext       *bootstrapContext
+	HTTPClient             *http.Client
+	cpuPprofFileMutex      sync.Mutex      // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
+	cpuPprofFile           *os.File        // An open file descriptor holds the reference during CPU profiling
+	_httpServers           []*http.Server  // A list of HTTP servers running under the ServerContext
+	GoCBAgent              *gocbcore.Agent // GoCB Agent to use when obtaining management endpoints
+	NoX509HTTPClient       *http.Client    // httpClient for the cluster that doesn't include x509 credentials, even if they are configured for the cluster
+	hasStarted             chan struct{}   // A channel that is closed via PostStartup once the ServerContext has fully started
+	LogContextID           string          // ID to differentiate log messages from different server context 	// A channel that is closed via PostStartup once the ServerContext has fully started
+	fetchConfigsLastUpdate time.Time       // The last time fetchConfigsWithTTL() updated dbConfigs
 }
 
 type bootstrapContext struct {
@@ -203,15 +206,29 @@ func (sc *ServerContext) GetDatabase(ctx context.Context, name string) (*db.Data
 		return nil, base.HTTPErrorf(http.StatusBadRequest, "invalid database name %q", name)
 	}
 
+	dbc, err := sc.unsuspendDatabase(ctx, name)
+	if err != nil && err != base.ErrNotFound && err != ErrSuspendingDisallowed {
+		return nil, err
+	} else if err == nil {
+		return dbc, nil
+	}
+
+	// database not loaded, fallback to fetching it from cluster
 	if sc.bootstrapContext.connection != nil {
-		sc.lock.Lock()
-		defer sc.lock.Unlock()
-		// database not loaded, go look for it in the cluster
-		found, err := sc._fetchAndLoadDatabase(ctx, name)
+		var found bool
+		if sc.config.IsServerless() {
+			found, err = sc.fetchAndLoadDatabaseSince(ctx, name, sc.config.Unsupported.Serverless.MinConfigFetchInterval)
+
+		} else {
+			found, err = sc.fetchAndLoadDatabase(ctx, name)
+		}
 		if err != nil {
 			return nil, base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
 		}
+
 		if found {
+			sc.lock.RLock()
+			defer sc.lock.RUnlock()
 			dbc := sc.databases_[name]
 			if dbc != nil {
 				return dbc, nil
@@ -1034,6 +1051,75 @@ func (sc *ServerContext) _removeDatabase(ctx context.Context, dbName string) boo
 	delete(sc.dbConfigs, dbName)
 	delete(sc.bucketDbName, bucket)
 	return true
+}
+
+func (sc *ServerContext) _isDatabaseSuspended(dbName string) bool {
+	if _, loaded := sc.databases_[dbName]; !loaded && sc.dbConfigs[dbName] != nil {
+		return true
+	}
+	return false
+}
+
+func (sc *ServerContext) _suspendDatabase(ctx context.Context, dbName string) error {
+	dbCtx := sc.databases_[dbName]
+	if dbCtx == nil {
+		return base.ErrNotFound
+	}
+
+	if config, exists := sc.dbConfigs[dbName]; exists && !base.BoolDefault(config.Suspendable, sc.config.IsServerless()) {
+		return ErrSuspendingDisallowed
+	}
+
+	bucket := dbCtx.Bucket.GetName()
+	base.InfofCtx(context.TODO(), base.KeyAll, "Suspending db %q (bucket %q)", base.MD(dbName), base.MD(bucket))
+
+	if !sc._unloadDatabase(ctx, dbName) {
+		return base.ErrNotFound
+	}
+	return nil
+}
+
+func (sc *ServerContext) unsuspendDatabase(ctx context.Context, dbName string) (*db.DatabaseContext, error) {
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+
+	return sc._unsuspendDatabase(ctx, dbName)
+}
+
+func (sc *ServerContext) _unsuspendDatabase(ctx context.Context, dbName string) (*db.DatabaseContext, error) {
+	dbCtx := sc.databases_[dbName]
+	if dbCtx != nil {
+		return dbCtx, nil
+	}
+
+	// Check if database is in dbConfigs so no need to search through buckets
+	if dbConfig, ok := sc.dbConfigs[dbName]; ok {
+		if !base.BoolDefault(dbConfig.Suspendable, sc.config.IsServerless()) {
+			base.InfofCtx(context.TODO(), base.KeyAll, "attempting to unsuspend db %q while not configured to be suspendable", base.MD(dbName))
+		}
+
+		bucket := dbName
+		if dbConfig.Bucket != nil {
+			bucket = *dbConfig.Bucket
+		}
+		cas, err := sc.bootstrapContext.connection.GetConfig(bucket, sc.config.Bootstrap.ConfigGroupID, dbConfig)
+		if err == base.ErrNotFound {
+			// Database no longer exists, so clean up dbConfigs
+			base.InfofCtx(ctx, base.KeyConfig, "Database %q has been removed while suspended from bucket %q", base.MD(dbName), base.MD(bucket))
+			delete(sc.dbConfigs, dbName)
+			return nil, err
+		} else if err != nil {
+			return nil, fmt.Errorf("unsuspending db %q failed due to an error while trying to retrieve latest config from bucket %q: %w", base.MD(dbName).Redact(), base.MD(bucket).Redact(), err)
+		}
+		dbConfig.cas = cas
+		dbCtx, err = sc._getOrAddDatabaseFromConfig(ctx, *dbConfig, false, db.GetConnectToBucketFn(false))
+		if err != nil {
+			return nil, err
+		}
+		return dbCtx, nil
+	}
+
+	return nil, base.ErrNotFound
 }
 
 func (sc *ServerContext) installPrincipals(ctx context.Context, dbc *db.DatabaseContext, spec map[string]*auth.PrincipalConfig, what string) error {

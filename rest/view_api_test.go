@@ -369,7 +369,7 @@ func TestAdminReduceViewQuery(t *testing.T) {
 	// todo support group reduce, see #955
 	// // test group=true
 	// response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true&group=true", ``)
-	// requireStatus(t, response, 200)
+	// RequireStatus(t, response, 200)
 	// base.JSONUnmarshal(response.Body.Bytes(), &result)
 	// // we should get 2 rows with the reduce result
 	// goassert.Equals(t, len(result.Rows), 2)

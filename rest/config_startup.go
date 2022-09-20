@@ -52,6 +52,10 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 		},
 		Unsupported: UnsupportedConfig{
 			StatsLogFrequency: base.NewConfigDuration(time.Minute),
+			Serverless: ServerlessConfig{
+				Enabled:                base.BoolPtr(false),
+				MinConfigFetchInterval: base.NewConfigDuration(DefaultMinConfigFetchInterval),
+			},
 		},
 		MaxFileDescriptors: DefaultMaxFileDescriptors,
 	}
@@ -144,7 +148,8 @@ type UnsupportedConfig struct {
 }
 
 type ServerlessConfig struct {
-	Enabled *bool `json:"enabled,omitempty" help:"Enable Sync Gateway serverless mode."`
+	Enabled                *bool                `json:"enabled,omitempty" help:"Enable Sync Gateway serverless mode."`
+	MinConfigFetchInterval *base.ConfigDuration `json:"min_config_fetch_interval,omitempty" help:"How long to cache configs fetched from the buckets for. This cache is used for requested databases that SG does not know about."`
 }
 
 type HTTP2Config struct {
