@@ -3314,7 +3314,7 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 	getETag := resp.Header.Get("ETag")
 	assert.Equal(t, putETag, getETag)
 
-	quotedStr := `"` + "x" + `"`
+	quotedStr := `"x"`
 	resp = bootstrapAdminRequestWithHeaders(t, http.MethodPost, "/db/_config", "{}", map[string]string{"If-Match": quotedStr})
 	resp.requireStatus(http.StatusPreconditionFailed)
 }

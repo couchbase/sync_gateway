@@ -963,7 +963,7 @@ func TestManualAttachmentNewDoc(t *testing.T) {
 	RequireStatus(t, response, 409)
 
 	// attach to new document using bogus rev using If-Match header (should fail)
-	reqHeaders["If-Match"] = `"` + "1-xyz" + `"`
+	reqHeaders["If-Match"] = `"1-xyz"`
 	response = rt.SendAdminRequestWithHeaders("PUT", "/db/notexistyet/attach1", attachmentBody, reqHeaders)
 	RequireStatus(t, response, 409)
 	delete(reqHeaders, "If-Match")

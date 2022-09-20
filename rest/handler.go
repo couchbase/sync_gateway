@@ -849,6 +849,15 @@ func (h *handler) headerDoesNotMatchEtag(headerName string, etag string) bool {
 	return value != "" && !strings.Contains(value, `"`+etag+`"`)
 }
 
+func (h *handler) getEtag(headerName string) (string, error) {
+	value := h.rq.Header.Get(headerName)
+	if len(value) > 0 && !strings.Contains(value, `"`) {
+		return "", fmt.Errorf("ETag value is not quoted when trying to read the value")
+	}
+	eTag := strings.Trim(value, `"`)
+	return eTag, nil
+}
+
 // Returns the request body as a raw byte array.
 func (h *handler) readBody() ([]byte, error) {
 	return ioutil.ReadAll(h.requestBody)
