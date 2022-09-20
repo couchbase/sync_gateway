@@ -31,7 +31,7 @@ type importListener struct {
 	importStats      *base.SharedBucketImportStats // import stats group
 	cbgtContext      *base.CbgtContext             // Handle to cbgt manager,cfg
 	checkpointPrefix string                        // DCP checkpoint key prefix
-	loggingCtx       context.Context     // ctx for logging on event callbacks
+	loggingCtx       context.Context               // ctx for logging on event callbacks
 }
 
 func NewImportListener(groupID string) *importListener {
