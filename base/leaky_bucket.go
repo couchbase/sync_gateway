@@ -649,6 +649,10 @@ func (b *LeakyBucket) IsError(err error, errorType sgbucket.DataStoreErrorType) 
 	return b.bucket.IsError(err, errorType)
 }
 
+func (b *LeakyBucket) GetExpiry(k string) (expiry uint32, err error) {
+	return b.GetUnderlyingBucket().GetExpiry(k)
+}
+
 // An implementation of a sgbucket tap feed that wraps
 // tap events on the upstream tap feed to better emulate real world
 // TAP/DCP behavior.
