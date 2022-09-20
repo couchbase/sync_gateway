@@ -131,12 +131,12 @@ func determineSGURL(opts *SGCollectOptions) (*url.URL, bool) {
 	// try HTTPS instead
 	httpsURL := *sgURL
 	httpsURL.Scheme = "https"
-	log.Printf("Trying Sync Gateway URL: %s", httpsURL)
+	log.Printf("Trying Sync Gateway URL: %s", httpsURL.String())
 	err = getJSONOverHTTP(httpsURL.String(), opts, &root)
 	if err == nil {
 		return &httpsURL, true
 	}
-	log.Printf("Failed to communicate with %s: %v", httpsURL, err)
+	log.Printf("Failed to communicate with %s: %v", httpsURL.String(), err)
 
 	return sgURL, false
 }
