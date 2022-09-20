@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -31,8 +32,12 @@ const (
 // pass to callers that won't know how to properly handle it.
 type PasswordString string
 
-func (p PasswordString) MarshalText() (text []byte, err error) { //nolint:unparam
-	return bytes.Repeat([]byte("*"), len(text)), nil
+func (p PasswordString) GoString() string {
+	return strings.Repeat("*", len(p))
+}
+
+func (p PasswordString) MarshalText() ([]byte, error) {
+	return bytes.Repeat([]byte("*"), len(p)), nil
 }
 
 type SGCollectOptions struct {
@@ -42,7 +47,7 @@ type SGCollectOptions struct {
 	ProductOnly           bool
 	DumpUtilities         bool
 	LogRedactionLevel     LogRedactionLevel
-	LogRedactionSalt      string
+	LogRedactionSalt      PasswordString
 	SyncGatewayURL        *url.URL
 	SyncGatewayConfig     string
 	SyncGatewayExecutable string
@@ -59,7 +64,7 @@ func (opts *SGCollectOptions) ParseCommandLine(args []string) error {
 	app.Flag("product_only", "").BoolVar(&opts.ProductOnly)
 	app.Flag("dump_utilities", "").BoolVar(&opts.DumpUtilities)
 	app.Flag("log-redaction-level", "").Default("none").EnumVar((*string)(&opts.LogRedactionLevel), "none", "partial")
-	app.Flag("log-redaction-salt", "").Default(uuid.New().String()).StringVar(&opts.LogRedactionSalt)
+	app.Flag("log-redaction-salt", "").Default(uuid.New().String()).StringVar((*string)(&opts.LogRedactionSalt))
 	app.Flag("sync-gateway-url", "").URLVar(&opts.SyncGatewayURL)
 	app.Flag("sync-gateway-username", "").StringVar(&opts.SyncGatewayUsername)
 	app.Flag("sync-gateway-password", "").StringVar((*string)(&opts.SyncGatewayPassword))
@@ -256,13 +261,178 @@ func (tr *TaskRunner) Run(task SGCollectTask) {
 		}
 	}
 	log.Printf("OK - %s [%s]", task.Name(), task.Header())
+	_, err := fd.WriteString("\n")
+	if err != nil {
+		log.Printf("WARN %s [%s] - failed to write closing newline: %v", task.Name(), task.Header(), err)
+	}
 }
 
-func makeSGTasks(url *url.URL, opts *SGCollectOptions) (result []SGCollectTask) {
+func findSGBinaryAndConfigsFromExpvars(sgURL *url.URL, opts *SGCollectOptions) (string, string, bool) {
+	// Get path to sg binary (reliable) and config (not reliable)
+	var expvars struct {
+		CmdLine []string `json:"cmdline"`
+	}
+	err := getJSONOverHTTP(sgURL.String()+"/_expvar", opts, &expvars)
+	if err != nil {
+		log.Printf("findSGBinaryAndConfigsFromExpvars: Failed to get SG expvars: %v", err)
+	}
+
+	if len(expvars.CmdLine) == 0 {
+		return "", "", false
+	}
+
+	binary := expvars.CmdLine[0]
+	var config string
+	for _, arg := range expvars.CmdLine[1:] {
+		if strings.HasSuffix(arg, ".json") {
+			config = arg
+			break
+		}
+	}
+	return binary, config, config != ""
+}
+
+var sgBinPaths = [...]string{
+	"/opt/couchbase-sync-gateway/bin/sync_gateway",
+	`C:\Program Files (x86)\Couchbase\sync_gateway.exe`,
+	`C:\Program Files\Couchbase\Sync Gateway\sync_gateway.exe`,
+}
+
+var bootstrapConfigLocations = [...]string{
+	"/home/sync_gateway/sync_gateway.json",
+	"/opt/couchbase-sync-gateway/etc/sync_gateway.json",
+	"/opt/sync_gateway/etc/sync_gateway.json",
+	"/etc/sync_gateway/sync_gateway.json",
+	`C:\Program Files (x86)\Couchbase\serviceconfig.json`,
+	`C:\Program Files\Couchbase\Sync Gateway\serviceconfig.json`,
+}
+
+func findSGBinaryAndConfigs(sgURL *url.URL, opts *SGCollectOptions) (string, string) {
+	// If the user manually passed some in, use those.
+	binary := opts.SyncGatewayExecutable
+	config := opts.SyncGatewayConfig
+	if binary != "" && config != "" {
+		return binary, config
+	}
+
+	var ok bool
+	binary, config, ok = findSGBinaryAndConfigsFromExpvars(sgURL, opts)
+	if ok {
+		return binary, config
+	}
+
+	for _, path := range sgBinPaths {
+		if _, err := os.Stat(path); err == nil {
+			binary = path
+			break
+		}
+	}
+
+	for _, path := range bootstrapConfigLocations {
+		if _, err := os.Stat(path); err == nil {
+			config = path
+			break
+		}
+	}
+	return binary, config
+}
+
+func makeCollectLogsTasks(opts *SGCollectOptions, config rest.RunTimeServerConfigResponse) (result []SGCollectTask) {
+	var sgLogFiles = []string{
+		"sg_error",
+		"sg_warn",
+		"sg_info",
+		"sg_debug",
+		"sg_stats",
+		"sync_gateway_access",
+		"sync_gateway_error",
+	}
+	const sgLogExtensionNotRotated = ".log"
+	const sgLogExtensionRotated = ".log.gz"
+	var sgLogDirectories = []string{
+		"/home/sync_gateway/logs",
+		"/var/log/sync_gateway",
+		"/Users/sync_gateway/logs",
+		`C:\Program Files (x86)\Couchbase\var\lib\couchbase\logs`,
+		`C:\Program Files\Couchbase\var\lib\couchbase\logs`,
+		`C:\Program Files\Couchbase\Sync Gateway\var\lib\couchbase\logs`,
+	}
+
+	// Also try getting the current path from the config, in case it's not one of the defaults
+	if cfgPath := config.Logging.LogFilePath; cfgPath != "" {
+		// This could be a relative path
+		if !filepath.IsAbs(cfgPath) {
+			cfgPath = filepath.Join(opts.RootDir, cfgPath)
+		}
+		sgLogDirectories = append(sgLogDirectories, config.Logging.LogFilePath)
+	}
+
+	// Check every combination of directory/file, grab everything we can
+	for _, dir := range sgLogDirectories {
+		// Bail out if the directory doesn't exist, avoids unnecessary checks
+		_, err := os.Stat(dir)
+		if err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				log.Printf("WARN: failed to stat %q: %v", dir, err)
+			}
+			continue
+		}
+		for _, file := range sgLogFiles {
+			// Grab the rotated files first, that way they'll be in the right order when ungzipped
+			rotated, err := filepath.Glob(filepath.Join(dir, fmt.Sprintf("%s-*%s", file, sgLogExtensionRotated)))
+			if err != nil {
+				log.Printf("WARN: failed to glob %s in %s: %v", file, dir, err)
+			} else {
+				for _, rotatedFile := range rotated {
+					result = append(result, &GZipFileTask{
+						name:       file + sgLogExtensionNotRotated,
+						inputFile:  rotatedFile,
+						outputFile: file + sgLogExtensionNotRotated,
+					})
+				}
+			}
+			result = append(result, &FileTask{
+				name:       file + sgLogExtensionNotRotated,
+				inputFile:  filepath.Join(dir, file+sgLogExtensionNotRotated),
+				outputFile: file + sgLogExtensionNotRotated,
+			})
+		}
+	}
+	return result
+}
+
+func makeSGTasks(url *url.URL, opts *SGCollectOptions, config rest.RunTimeServerConfigResponse) (result []SGCollectTask) {
+	binary, bootstrapConfigPath := findSGBinaryAndConfigs(url, opts)
+	if binary != "" {
+		result = append(result, &FileTask{
+			name:       "Sync Gateway executable",
+			inputFile:  binary,
+			outputFile: "sync_gateway",
+		})
+	}
+	if bootstrapConfigPath != "" {
+		result = append(result, &FileTask{
+			name:       "Sync Gateway bootstrapConfigPath",
+			inputFile:  bootstrapConfigPath,
+			outputFile: "sync_gateway.json",
+		})
+	}
+
 	result = append(result, &URLTask{
-		name: "Sync Gateway expvars",
-		url:  url.String() + "/_expvars",
+		name:       "Sync Gateway expvars",
+		url:        url.String() + "/_expvar",
+		outputFile: "expvars.json",
+	}, &URLTask{
+		name: "Collect server bootstrapConfigPath",
+		url:  url.String() + "/_config",
+	}, &URLTask{
+		name: "Collect runtime bootstrapConfigPath",
+		url:  url.String() + "/_config?include_runtime=true",
+	}, &URLTask{
+		name: "Collect server status",
+		url:  url.String() + "/_status",
 	})
+	result = append(result, makeCollectLogsTasks(opts, config)...)
 	return
 }
 
@@ -300,13 +470,21 @@ func main() {
 	//	uploadURL = generateUploadURL(opts, zipFilename)
 	//}
 
+	var config rest.RunTimeServerConfigResponse
+	err = getJSONOverHTTP(sgURL.String()+"/_config?include_runtime=true", opts, &config)
+	if err != nil {
+		log.Printf("Failed to get SG config. Some information might not be collected.")
+	}
+
 	tr, err := NewTaskRunner(opts)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer tr.Finalize()
 
-	tasks := makeSGTasks(sgURL, opts)
+	tr.Run(new(SGCollectOptionsTask))
+
+	tasks := makeSGTasks(sgURL, opts, config)
 	for _, task := range tasks {
 		tr.Run(task)
 	}

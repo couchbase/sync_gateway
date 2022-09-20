@@ -133,3 +133,22 @@ func (f *GZipFileTask) Run(_ *SGCollectOptions, out io.Writer) error {
 	}
 	return nil
 }
+
+type SGCollectOptionsTask struct{}
+
+func (s SGCollectOptionsTask) Name() string {
+	return "sgcollect_info options"
+}
+
+func (s SGCollectOptionsTask) Header() string {
+	return ""
+}
+
+func (s SGCollectOptionsTask) OutputFile() string {
+	return "sgcollect_info_options.log"
+}
+
+func (s SGCollectOptionsTask) Run(opts *SGCollectOptions, out io.Writer) error {
+	_, err := fmt.Fprintf(out, "%#v\n", opts)
+	return err
+}
