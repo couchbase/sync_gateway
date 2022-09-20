@@ -518,7 +518,7 @@ func TestServerlessUnsuspendAPI(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb, persistentConfig: true, serverless: true})
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, persistentConfig: true, serverless: true})
 	defer rt.Close()
 
 	sc := rt.ServerContext()
@@ -528,7 +528,7 @@ func TestServerlessUnsuspendAPI(t *testing.T) {
 		"use_views": %t,
 		"num_index_replicas": 0
 	}`, tb.GetName(), base.TestsDisableGSI()))
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	err := sc.suspendDatabase(t, rt.Context(), "db")
 	assert.NoError(t, err)
@@ -539,7 +539,7 @@ func TestServerlessUnsuspendAPI(t *testing.T) {
 
 	// Attempt to unsuspend using unauthenticated public API request
 	resp = rt.SendRequest(http.MethodGet, "/db/doc", "")
-	assertStatus(t, resp, http.StatusUnauthorized)
+	AssertStatus(t, resp, http.StatusUnauthorized)
 
 	// Confirm db is unsuspended
 	require.False(t, sc.isDatabaseSuspended(t, "db"))
@@ -556,7 +556,7 @@ func TestServerlessUnsuspendAdminAuth(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb, persistentConfig: true, serverless: true, adminInterfaceAuthentication: true})
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, persistentConfig: true, serverless: true, AdminInterfaceAuthentication: true})
 	defer rt.Close()
 
 	sc := rt.ServerContext()
@@ -566,7 +566,7 @@ func TestServerlessUnsuspendAdminAuth(t *testing.T) {
 		"use_views": %t,
 		"num_index_replicas": 0
 	}`, tb.GetName(), base.TestsDisableGSI()), base.TestClusterUsername(), base.TestClusterPassword())
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	err := sc.suspendDatabase(t, rt.Context(), "db")
 	assert.NoError(t, err)
@@ -577,13 +577,13 @@ func TestServerlessUnsuspendAdminAuth(t *testing.T) {
 
 	// Confirm unauthenticated admin request does not trigger unsuspend
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/doc", "")
-	assertStatus(t, resp, http.StatusUnauthorized)
+	AssertStatus(t, resp, http.StatusUnauthorized)
 	require.Nil(t, sc.databases_["db"]) // Confirm suspended
 	require.True(t, sc.isDatabaseSuspended(t, "db"))
 
 	// Confirm authenticated admin request triggers unsuspend
 	resp = rt.SendAdminRequestWithAuth(http.MethodGet, "/db/doc", "", base.TestClusterUsername(), base.TestClusterPassword())
-	assertStatus(t, resp, http.StatusNotFound)
+	AssertStatus(t, resp, http.StatusNotFound)
 	require.NotNil(t, sc.databases_["db"]) // Confirm unsuspended
 	require.False(t, sc.isDatabaseSuspended(t, "db"))
 
