@@ -88,7 +88,7 @@ type UserQueryAllow struct {
 // - The user must have a role contained in Roles, OR
 // - The user must have access to a channel contained in Channels.
 // In Roles and Channels, patterns of the form `$param` or `$(param)` are expanded using `args`.
-func (allow *UserQueryAllow) authorize(user auth.User, args map[string]interface{}, what string, name string) error {
+func (allow *UserQueryAllow) authorize(ctx context.Context, user auth.User, args map[string]interface{}, what string, name string) error {
 	if user == nil {
 		return nil // User is admin
 	} else if allow != nil { // No Allow object means admin-only
@@ -97,7 +97,7 @@ func (allow *UserQueryAllow) authorize(user auth.User, args map[string]interface
 		}
 		userRoles := user.RoleNames()
 		for _, rolePattern := range allow.Roles {
-			if role, err := allow.expandPattern(rolePattern, args, user); err != nil {
+			if role, err := allow.expandPattern(ctx, rolePattern, args, user); err != nil {
 				return err
 			} else if userRoles.Contains(role) {
 				return nil // User has one of the allowed roles
@@ -107,7 +107,7 @@ func (allow *UserQueryAllow) authorize(user auth.User, args map[string]interface
 		for _, channelPattern := range allow.Channels {
 			if channelPattern == channels.AllChannelWildcard {
 				return nil
-			} else if channel, err := allow.expandPattern(channelPattern, args, user); err != nil {
+			} else if channel, err := allow.expandPattern(ctx, channelPattern, args, user); err != nil {
 				return err
 			} else if user.CanSeeChannel(channel) {
 				return nil // User has access to one of the allowed channels
@@ -132,7 +132,7 @@ func missingError(user auth.User, what string, name string) error {
 // `param` in the `args` map and substituting its value.
 // (`$$` is replaced with `$`.)
 // It is an error if any `param` has no value, or if its value is not a string or integer.
-func (allow *UserQueryAllow) expandPattern(pattern string, args map[string]interface{}, user auth.User) (string, error) {
+func (allow *UserQueryAllow) expandPattern(ctx context.Context, pattern string, args map[string]interface{}, user auth.User) (string, error) {
 	if strings.IndexByte(pattern, '$') < 0 {
 		return pattern, nil
 	}
@@ -163,8 +163,7 @@ func (allow *UserQueryAllow) expandPattern(pattern string, args map[string]inter
 			}
 		}
 		if value, found := args[arg]; !found {
-			logCtx := context.TODO()
-			base.WarnfCtx(logCtx, "Bad config: Invalid channel/role pattern %q in 'allow'", pattern)
+			base.WarnfCtx(ctx, "Bad config: Invalid channel/role pattern %q in 'allow'", pattern)
 			err = base.HTTPErrorf(http.StatusInternalServerError, "Server query configuration is invalid; details in log")
 			return ""
 		} else if valueStr, ok := value.(string); ok {

@@ -51,7 +51,7 @@ type RepairBucketResult struct {
 
 // Given a Couchbase Bucket doc, transform the doc in some way to produce a new doc.
 // Also return a boolean to indicate whether a transformation took place, or any errors occurred.
-type DocTransformer func(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error)
+type DocTransformer func(ctx context.Context, docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error)
 
 // A RepairBucket struct is the main API entrypoint to call for repairing documents in buckets
 type RepairBucket struct {
@@ -80,7 +80,7 @@ func (r *RepairBucket) AddRepairJob(repairJob DocTransformer) *RepairBucket {
 	return r
 }
 
-func (r *RepairBucket) InitFrom(params RepairBucketParams) *RepairBucket {
+func (r *RepairBucket) InitFrom(ctx context.Context, params RepairBucketParams) *RepairBucket {
 
 	r.SetDryRun(params.DryRun)
 	if params.ViewQueryPageSize != nil && *params.ViewQueryPageSize > 0 {
@@ -136,9 +136,8 @@ func (r *RepairBucket) InitFrom(params RepairBucketParams) *RepairBucket {
 // Stop condition: if NumProcessed is 0, because the only doc in result set had already been processed.
 func (r RepairBucket) RepairBucket(ctx context.Context) (results []RepairBucketResult, err error) {
 
-	logCtx := context.TODO()
-	base.InfofCtx(logCtx, base.KeyCRUD, "RepairBucket() invoked")
-	defer base.InfofCtx(logCtx, base.KeyCRUD, "RepairBucket() finished")
+	base.InfofCtx(ctx, base.KeyCRUD, "RepairBucket() invoked")
+	defer base.InfofCtx(ctx, base.KeyCRUD, "RepairBucket() finished")
 
 	startKey := ""
 	results = []RepairBucketResult{}
@@ -153,9 +152,9 @@ func (r RepairBucket) RepairBucket(ctx context.Context) (results []RepairBucketR
 		}
 		options["limit"] = r.ViewQueryPageSize
 
-		base.InfofCtx(logCtx, base.KeyCRUD, "RepairBucket() querying view with options: %+v", options)
+		base.InfofCtx(ctx, base.KeyCRUD, "RepairBucket() querying view with options: %+v", options)
 		vres, err := r.Bucket.View(ctx, DesignDocSyncHousekeeping(), ViewImport, options)
-		base.InfofCtx(logCtx, base.KeyCRUD, "RepairBucket() queried view and got %d results", len(vres.Rows))
+		base.InfofCtx(ctx, base.KeyCRUD, "RepairBucket() queried view and got %d results", len(vres.Rows))
 		if err != nil {
 			// TODO: Maybe we could retry if the view timed out (as seen in #3267)
 			return results, err
@@ -198,7 +197,7 @@ func (r RepairBucket) RepairBucket(ctx context.Context) (results []RepairBucketR
 				if currentValue == nil {
 					return nil, nil, false, base.ErrUpdateCancel // someone deleted it?!
 				}
-				updatedDoc, shouldUpdate, repairJobs, err := r.TransformBucketDoc(key, currentValue)
+				updatedDoc, shouldUpdate, repairJobs, err := r.TransformBucketDoc(ctx, key, currentValue)
 				if err != nil {
 					return nil, nil, false, err
 				}
@@ -206,11 +205,11 @@ func (r RepairBucket) RepairBucket(ctx context.Context) (results []RepairBucketR
 				switch shouldUpdate {
 				case true:
 
-					backupOrDryRunDocId, err = r.WriteRepairedDocsToBucket(key, currentValue, updatedDoc)
+					backupOrDryRunDocId, err = r.WriteRepairedDocsToBucket(ctx, key, currentValue, updatedDoc)
 					if err != nil {
-						base.InfofCtx(logCtx, base.KeyCRUD, "Repair Doc (dry_run=%v) Writing docs to bucket failed with error: %v.  Dumping raw contents.", r.DryRun, err)
-						base.InfofCtx(logCtx, base.KeyCRUD, "Original Doc before repair: %s", base.UD(currentValue))
-						base.InfofCtx(logCtx, base.KeyCRUD, "Updated doc after repair: %s", base.UD(updatedDoc))
+						base.InfofCtx(ctx, base.KeyCRUD, "Repair Doc (dry_run=%v) Writing docs to bucket failed with error: %v.  Dumping raw contents.", r.DryRun, err)
+						base.InfofCtx(ctx, base.KeyCRUD, "Original Doc before repair: %s", base.UD(currentValue))
+						base.InfofCtx(ctx, base.KeyCRUD, "Updated doc after repair: %s", base.UD(updatedDoc))
 					}
 
 					result := RepairBucketResult{
@@ -242,9 +241,9 @@ func (r RepairBucket) RepairBucket(ctx context.Context) (results []RepairBucketR
 
 			if backupOrDryRunDocId != "" {
 				if r.DryRun {
-					base.InfofCtx(logCtx, base.KeyCRUD, "Repair Doc: dry run result available in Bucket Doc: %v (auto-deletes in 24 hours)", base.UD(backupOrDryRunDocId))
+					base.InfofCtx(ctx, base.KeyCRUD, "Repair Doc: dry run result available in Bucket Doc: %v (auto-deletes in 24 hours)", base.UD(backupOrDryRunDocId))
 				} else {
-					base.InfofCtx(logCtx, base.KeyCRUD, "Repair Doc: Doc repaired, original doc backed up in Bucket Doc: %v (auto-deletes in 24 hours)", base.UD(backupOrDryRunDocId))
+					base.InfofCtx(ctx, base.KeyCRUD, "Repair Doc: Doc repaired, original doc backed up in Bucket Doc: %v (auto-deletes in 24 hours)", base.UD(backupOrDryRunDocId))
 				}
 			}
 
@@ -252,7 +251,7 @@ func (r RepairBucket) RepairBucket(ctx context.Context) (results []RepairBucketR
 
 		numDocsProcessed += numResultsProcessed
 
-		base.InfofCtx(logCtx, base.KeyCRUD, "RepairBucket() processed %d / %d", numDocsProcessed, vres.TotalRows)
+		base.InfofCtx(ctx, base.KeyCRUD, "RepairBucket() processed %d / %d", numDocsProcessed, vres.TotalRows)
 
 		if numResultsProcessed == 0 {
 			// No point in going to the next page, since this page had 0 results.  See method comments.
@@ -263,7 +262,7 @@ func (r RepairBucket) RepairBucket(ctx context.Context) (results []RepairBucketR
 
 }
 
-func (r RepairBucket) WriteRepairedDocsToBucket(docId string, originalDoc, updatedDoc []byte) (backupOrDryRunDocId string, err error) {
+func (r RepairBucket) WriteRepairedDocsToBucket(ctx context.Context, docId string, originalDoc, updatedDoc []byte) (backupOrDryRunDocId string, err error) {
 
 	var contentToSave []byte
 
@@ -282,7 +281,7 @@ func (r RepairBucket) WriteRepairedDocsToBucket(docId string, originalDoc, updat
 
 	// If the RepairedFileTTL is explicitly set to 0 then don't write the doc at all
 	if int(r.RepairedFileTTL.Seconds()) == 0 {
-		base.InfofCtx(context.TODO(), base.KeyCRUD, "Repair Doc: Doc %v repaired, TTL set to 0, doc will not be written to bucket", base.UD(backupOrDryRunDocId))
+		base.InfofCtx(ctx, base.KeyCRUD, "Repair Doc: Doc %v repaired, TTL set to 0, doc will not be written to bucket", base.UD(backupOrDryRunDocId))
 		return backupOrDryRunDocId, nil
 	}
 
@@ -295,12 +294,12 @@ func (r RepairBucket) WriteRepairedDocsToBucket(docId string, originalDoc, updat
 }
 
 // Loops over all repair jobs and applies them
-func (r RepairBucket) TransformBucketDoc(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, repairJobs []RepairJobType, err error) {
+func (r RepairBucket) TransformBucketDoc(ctx context.Context, docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, repairJobs []RepairJobType, err error) {
 
 	transformed = false
 	for _, repairJob := range r.RepairJobs {
 
-		repairedDoc, repairedDocTxformed, repairDocErr := repairJob(docId, originalCBDoc)
+		repairedDoc, repairedDocTxformed, repairDocErr := repairJob(ctx, docId, originalCBDoc)
 		if repairDocErr != nil {
 			return nil, false, repairJobs, repairDocErr
 		}
@@ -330,10 +329,10 @@ func (r RepairBucket) TransformBucketDoc(docId string, originalCBDoc []byte) (tr
 }
 
 // Repairs rev tree cycles (see SG issue #2847)
-func RepairJobRevTreeCycles(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error) {
+func RepairJobRevTreeCycles(ctx context.Context, docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error) {
 
-	base.DebugfCtx(context.TODO(), base.KeyCRUD, "RepairJobRevTreeCycles() called with doc id: %v", base.UD(docId))
-	defer base.DebugfCtx(context.TODO(), base.KeyCRUD, "RepairJobRevTreeCycles() finished.  Doc id: %v.  transformed: %v.  err: %v", base.UD(docId), base.UD(transformed), err)
+	base.DebugfCtx(ctx, base.KeyCRUD, "RepairJobRevTreeCycles() called with doc id: %v", base.UD(docId))
+	defer base.DebugfCtx(ctx, base.KeyCRUD, "RepairJobRevTreeCycles() finished.  Doc id: %v.  transformed: %v.  err: %v", base.UD(docId), base.UD(transformed), err)
 
 	doc, errUnmarshal := unmarshalDocument(docId, originalCBDoc)
 	if errUnmarshal != nil {

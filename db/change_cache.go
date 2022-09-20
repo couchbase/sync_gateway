@@ -265,7 +265,7 @@ func (c *changeCache) Clear() error {
 	// the point at which the change cache was initialized / re-initialized.
 	// No need to touch c.nextSequence here, because we don't want to touch the sequence buffering state.
 	var err error
-	c.initialSequence, err = c.context.LastSequence()
+	c.initialSequence, err = c.context.LastSequence(c.logCtx)
 	if err != nil {
 		return err
 	}

@@ -73,7 +73,7 @@ func TestRepairBucket(t *testing.T) {
 	ctx, bucket, numDocs := testBucketWithViewsAndBrokenDoc(t)
 	defer bucket.Close(ctx)
 
-	repairJob := func(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error) {
+	repairJob := func(ctx context.Context, docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error) {
 		return nil, true, nil
 	}
 	repairBucket := NewRepairBucket(bucket).
@@ -105,7 +105,7 @@ func TestRepairBucketRevTreeCycles(t *testing.T) {
 
 	repairBucket := NewRepairBucket(bucket)
 
-	repairBucket.InitFrom(RepairBucketParams{
+	repairBucket.InitFrom(ctx, RepairBucketParams{
 		DryRun: false,
 		RepairJobs: []RepairJobParams{
 			{
@@ -154,7 +154,7 @@ func TestRepairBucketDryRun(t *testing.T) {
 
 	repairBucket := NewRepairBucket(bucket)
 
-	repairBucket.InitFrom(RepairBucketParams{
+	repairBucket.InitFrom(ctx, RepairBucketParams{
 		DryRun: true,
 		RepairJobs: []RepairJobParams{
 			{

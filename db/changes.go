@@ -1093,7 +1093,7 @@ func (dbc *DatabaseContext) WaitForSequenceNotSkipped(ctx context.Context, seque
 
 // WaitForPendingChanges blocks until the change-cache has caught up with the latest writes to the database.
 func (dbc *DatabaseContext) WaitForPendingChanges(ctx context.Context) (err error) {
-	lastSequence, err := dbc.LastSequence()
+	lastSequence, err := dbc.LastSequence(ctx)
 	base.DebugfCtx(ctx, base.KeyChanges, "Waiting for sequence: %d", lastSequence)
 	return dbc.changeCache.waitForSequence(ctx, lastSequence, base.DefaultWaitForSequence)
 }

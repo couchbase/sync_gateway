@@ -342,7 +342,7 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(ctx context.Context, config 
 
 func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *StartupConfig) (spec base.BucketSpec, err error) {
 
-	spec = config.MakeBucketSpec()
+	spec = config.MakeBucketSpec(ctx)
 
 	if serverConfig.Bootstrap.ServerTLSSkipVerify != nil {
 		spec.TLSSkipVerify = *serverConfig.Bootstrap.ServerTLSSkipVerify
@@ -849,7 +849,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		contextOptions.UserFunctions = config.UserFunctions
 		contextOptions.GraphQL = config.GraphQL
 	} else if config.UserQueries != nil || config.UserFunctions != nil || config.GraphQL != nil {
-		base.WarnfCtx(context.TODO(), `Database config options "queries", "functions", "graphql" ignored because unsupported.user_queries feature flag is not enabled`)
+		base.WarnfCtx(ctx, `Database config options "queries", "functions", "graphql" ignored because unsupported.user_queries feature flag is not enabled`)
 	}
 
 	return contextOptions, nil

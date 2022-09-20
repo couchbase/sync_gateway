@@ -12,7 +12,6 @@ package rest
 
 import (
 	"bytes"
-	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -1415,7 +1414,7 @@ func TestConfigGroupIDValidation(t *testing.T) {
 					UseTLSServer:  base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())),
 				},
 			}
-			err := sc.Validate(isEnterpriseEdition)
+			err := sc.Validate(base.TestCtx(t), isEnterpriseEdition)
 			if test.expectedError != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), test.expectedError)
@@ -1466,7 +1465,7 @@ func TestClientTLSMissing(t *testing.T) {
 			if test.tlsCert {
 				config.API.HTTPS.TLSCertPath = "test.cert"
 			}
-			err := config.Validate(base.IsEnterpriseEdition())
+			err := config.Validate(base.TestCtx(t), base.IsEnterpriseEdition())
 			if test.expectError {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), errorTLSOneMissing)
@@ -2342,7 +2341,7 @@ func TestStartupConfigBcryptCostValidation(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			sc := StartupConfig{Auth: AuthConfig{BcryptCost: test.cost}}
-			err := sc.Validate(base.IsEnterpriseEdition())
+			err := sc.Validate(base.TestCtx(t), base.IsEnterpriseEdition())
 			if test.expectError {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), errContains)
@@ -2499,7 +2498,7 @@ func TestBucketCredentialsValidation(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			err := test.startupConfig.Validate(base.IsEnterpriseEdition())
+			err := test.startupConfig.Validate(base.TestCtx(t), base.IsEnterpriseEdition())
 			if test.expectedError != nil {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), *test.expectedError)
@@ -2589,7 +2588,7 @@ func TestCollectionsValidation(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			validateOIDCConfig := false
-			err := test.dbConfig.validate(context.TODO(), validateOIDCConfig)
+			err := test.dbConfig.validate(base.TestCtx(t), validateOIDCConfig)
 			if test.expectedError != nil {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), *test.expectedError)

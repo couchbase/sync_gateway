@@ -495,7 +495,7 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 		// Read changes-feed options from an initial incoming WebSocket message in JSON format:
 		var wsoptions db.ChangesOptions
 		var compress bool
-		if msg, err := readWebSocketMessage(conn); err != nil {
+		if msg, err := readWebSocketMessage(h.ctx(), conn); err != nil {
 			return
 		} else {
 			var channelNames []string
@@ -619,12 +619,12 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 }
 
 // Helper function to read a complete message from a WebSocket
-func readWebSocketMessage(conn *websocket.Conn) ([]byte, error) {
+func readWebSocketMessage(ctx context.Context, conn *websocket.Conn) ([]byte, error) {
 
 	var message []byte
 	if err := websocket.Message.Receive(conn, &message); err != nil {
 		if err != io.EOF {
-			base.WarnfCtx(context.TODO(), "Error reading initial websocket message: %v", err)
+			base.WarnfCtx(ctx, "Error reading initial websocket message: %v", err)
 			return nil, err
 		}
 	}

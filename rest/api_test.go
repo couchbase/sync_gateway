@@ -6594,7 +6594,7 @@ func (tester *ChannelRevocationTester) removeUserChannel(user, channel string) {
 }
 
 func (tester *ChannelRevocationTester) fillToSeq(seq uint64) {
-	currentSeq, err := tester.restTester.GetDatabase().LastSequence()
+	currentSeq, err := tester.restTester.GetDatabase().LastSequence(tester.restTester.Context())
 	require.NoError(tester.test, err)
 
 	loopCount := seq - currentSeq

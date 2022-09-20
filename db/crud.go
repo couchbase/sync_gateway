@@ -345,7 +345,7 @@ func (db *Database) GetDelta(ctx context.Context, docID, fromRevID, toRevID stri
 	if fromRevision.Delta != nil {
 		if fromRevision.Delta.ToRevID == toRevID {
 
-			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, fromRevision.Delta.ToChannels, fromRevision.Delta.ToDeleted, encodeRevisions(docID, fromRevision.Delta.RevisionHistory))
+			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, fromRevision.Delta.ToChannels, fromRevision.Delta.ToDeleted, encodeRevisions(ctx, docID, fromRevision.Delta.RevisionHistory))
 			if !isAuthorized {
 				return nil, &redactedBody, nil
 			}
@@ -679,7 +679,7 @@ func (db *Database) get1xRevFromDoc(ctx context.Context, doc *Document, revid st
 		if getHistoryErr != nil {
 			return nil, removed, getHistoryErr
 		}
-		kvPairs = append(kvPairs, base.KVPair{Key: BodyRevisions, Val: encodeRevisions(doc.ID, validatedHistory)})
+		kvPairs = append(kvPairs, base.KVPair{Key: BodyRevisions, Val: encodeRevisions(ctx, doc.ID, validatedHistory)})
 	}
 
 	bodyBytes, err = base.InjectJSONProperties(bodyBytes, kvPairs...)
@@ -1535,14 +1535,14 @@ func (db *Database) assignSequence(ctx context.Context, docSequence uint64, doc 
 		}
 
 		for {
-			if docSequence, err = db.sequences.nextSequence(); err != nil {
+			if docSequence, err = db.sequences.nextSequence(ctx); err != nil {
 				return unusedSequences, err
 			}
 
 			if docSequence > doc.Sequence {
 				break
 			} else {
-				releaseErr := db.sequences.releaseSequence(docSequence)
+				releaseErr := db.sequences.releaseSequence(ctx, docSequence)
 				if releaseErr != nil {
 					base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, err)
 				}
@@ -1892,13 +1892,13 @@ func (db *Database) updateAndReturnDoc(ctx context.Context, docid string, allowI
 	// If the WriteUpdate didn't succeed, check whether there are unused, allocated sequences that need to be accounted for
 	if err != nil {
 		if docSequence > 0 {
-			if seqErr := db.sequences.releaseSequence(docSequence); seqErr != nil {
+			if seqErr := db.sequences.releaseSequence(ctx, docSequence); seqErr != nil {
 				base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, seqErr)
 			}
 
 		}
 		for _, sequence := range unusedSequences {
-			if seqErr := db.sequences.releaseSequence(sequence); seqErr != nil {
+			if seqErr := db.sequences.releaseSequence(ctx, sequence); seqErr != nil {
 				base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", sequence, seqErr)
 			}
 		}
@@ -1939,7 +1939,7 @@ func (db *Database) updateAndReturnDoc(ctx context.Context, docid string, allowI
 			DocID:            docid,
 			RevID:            newRevID,
 			BodyBytes:        storedDocBytes,
-			History:          encodeRevisions(docid, history),
+			History:          encodeRevisions(ctx, docid, history),
 			Channels:         revChannels,
 			Attachments:      doc.Attachments,
 			Expiry:           doc.Expiry,

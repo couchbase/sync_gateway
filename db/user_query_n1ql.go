@@ -60,7 +60,7 @@ func (db *Database) UserN1QLQuery(ctx context.Context, name string, args map[str
 	}
 
 	// Check that the user is authorized:
-	if err := query.Allow.authorize(db.user, args, "query", name); err != nil {
+	if err := query.Allow.authorize(ctx, db.user, args, "query", name); err != nil {
 		return nil, err
 	}
 

@@ -396,11 +396,11 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	cleanupFunctions = append(cleanupFunctions, func() {
-		dbContext.sequences.Stop()
+		dbContext.sequences.Stop(ctx)
 	})
 
 	// Get current value of _sync:seq
-	initialSequence, seqErr := dbContext.sequences.lastSequence()
+	initialSequence, seqErr := dbContext.sequences.lastSequence(ctx)
 	if seqErr != nil {
 		return nil, seqErr
 	}
@@ -506,7 +506,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	// Unlock change cache.  Validate that any allocated sequences on other nodes have either been assigned or released
 	// before starting
 	if initialSequence > 0 {
-		_ = dbContext.sequences.waitForReleasedSequences(initialSequenceTime)
+		_ = dbContext.sequences.waitForReleasedSequences(ctx, initialSequenceTime)
 	}
 
 	err = dbContext.changeCache.Start(initialSequence)
@@ -724,7 +724,7 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 	close(context.terminator)
 	// Wait for database background tasks to finish.
 	waitForBGTCompletion(ctx, BGTCompletionMaxWait, context.backgroundTasks, context.Name)
-	context.sequences.Stop()
+	context.sequences.Stop(ctx)
 	context.mutationListener.Stop()
 	context.changeCache.Stop(ctx)
 	context.ImportListener.Stop()
@@ -1614,7 +1614,7 @@ func (db *Database) UpdateAllDocChannels(ctx context.Context, regenerateSequence
 	}
 
 	for _, sequence := range unusedSequences {
-		err := db.sequences.releaseSequence(sequence)
+		err := db.sequences.releaseSequence(ctx, sequence)
 		if err != nil {
 			base.WarnfCtx(ctx, "Error attempting to release sequence %d. Error %v", sequence, err)
 		}
@@ -1628,7 +1628,7 @@ func (db *Database) UpdateAllDocChannels(ctx context.Context, regenerateSequence
 
 		authr := db.Authenticator(ctx)
 		regeneratePrincipalSequences := func(princ auth.Principal) error {
-			nextSeq, err := db.DatabaseContext.sequences.nextSequence()
+			nextSeq, err := db.DatabaseContext.sequences.nextSequence(ctx)
 			if err != nil {
 				return err
 			}
@@ -1857,8 +1857,8 @@ func (context *DatabaseContext) AllowFlushNonCouchbaseBuckets() bool {
 
 // ////// SEQUENCE ALLOCATION:
 
-func (context *DatabaseContext) LastSequence() (uint64, error) {
-	return context.sequences.lastSequence()
+func (context *DatabaseContext) LastSequence(ctx context.Context) (uint64, error) {
+	return context.sequences.lastSequence(ctx)
 }
 
 // Helpers for unsupported options

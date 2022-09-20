@@ -224,7 +224,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
 	defaultSince := bh.collection.CreateZeroSinceValue()
 	latestSeq := func() (SequenceID, error) {
-		seq, err := bh.collection.LastSequence()
+		seq, err := bh.collection.LastSequence(bh.loggingCtx)
 		return SequenceID{Seq: seq}, err
 	}
 	subChangesParams, err := NewSubChangesParams(bh.loggingCtx, rq, defaultSince, latestSeq, bh.collection.ParseSequenceID)

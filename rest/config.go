@@ -80,7 +80,7 @@ type BucketConfig struct {
 	MaxConcurrentQueryOps *int    `json:"max_concurrent_query_ops,omitempty"` // Max concurrent  query ops
 }
 
-func (dc *DbConfig) MakeBucketSpec() base.BucketSpec {
+func (dc *DbConfig) MakeBucketSpec(ctx context.Context) base.BucketSpec {
 	bc := &dc.BucketConfig
 
 	server := ""
@@ -104,7 +104,7 @@ func (dc *DbConfig) MakeBucketSpec() base.BucketSpec {
 	for scopeName, scopeConfig := range dc.Scopes {
 		scope = &scopeName
 		for collectionName := range scopeConfig.Collections {
-			base.WarnfCtx(context.TODO(), "WIP Collections (Phase 1) - Running db %q in scope %q collection %q", dc.Name, scopeName, collectionName)
+			base.WarnfCtx(ctx, "WIP Collections (Phase 1) - Running db %q in scope %q collection %q", dc.Name, scopeName, collectionName)
 			collection = &collectionName
 			break
 		}
@@ -1185,7 +1185,7 @@ func (sc *ServerContext) addHTTPServer(s *http.Server) {
 }
 
 // Validate returns errors errors if invalid config is present
-func (sc *StartupConfig) Validate(isEnterpriseEdition bool) (errorMessages error) {
+func (sc *StartupConfig) Validate(ctx context.Context, isEnterpriseEdition bool) (errorMessages error) {
 	var multiError *base.MultiError
 	if sc.Bootstrap.Server == "" {
 		multiError = multiError.Append(fmt.Errorf("a server must be provided in the Bootstrap configuration"))
@@ -1222,7 +1222,7 @@ func (sc *StartupConfig) Validate(isEnterpriseEdition bool) (errorMessages error
 	if sc.DatabaseCredentials != nil {
 		for dbName, creds := range sc.DatabaseCredentials {
 			if (creds.X509CertPath != "" || creds.X509KeyPath != "") && (creds.Username != "" || creds.Password != "") {
-				base.WarnfCtx(context.TODO(), "database %q in database_credentials cannot use both x509 and basic auth. Will use x509 only.", base.MD(dbName))
+				base.WarnfCtx(ctx, "database %q in database_credentials cannot use both x509 and basic auth. Will use x509 only.", base.MD(dbName))
 			}
 		}
 	}
@@ -1275,7 +1275,7 @@ func SetupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 		return nil, err
 	}
 
-	if err := config.Validate(base.IsEnterpriseEdition()); err != nil {
+	if err := config.Validate(ctx, base.IsEnterpriseEdition()); err != nil {
 		return nil, err
 	}
 

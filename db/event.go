@@ -165,7 +165,7 @@ func NewJSEventFunction(fnSource string) *JSEventFunction {
 }
 
 // Calls a jsEventFunction returning an interface{}
-func (ef *JSEventFunction) CallFunction(event Event) (interface{}, error) {
+func (ef *JSEventFunction) CallFunction(ctx context.Context, event Event) (interface{}, error) {
 
 	var err error
 	var result interface{}
@@ -178,12 +178,12 @@ func (ef *JSEventFunction) CallFunction(event Event) (interface{}, error) {
 	case *DBStateChangeEvent:
 		result, err = ef.Call(event.Doc)
 	default:
-		base.WarnfCtx(context.TODO(), "unknown event %v tried to call function", event.EventType())
+		base.WarnfCtx(ctx, "unknown event %v tried to call function", event.EventType())
 		return "", fmt.Errorf("unknown event %v tried to call function", event.EventType())
 	}
 
 	if err != nil {
-		base.WarnfCtx(context.TODO(), "Error calling function - function processing aborted: %v", err)
+		base.WarnfCtx(ctx, "Error calling function - function processing aborted: %v", err)
 		return "", err
 	}
 
@@ -191,9 +191,9 @@ func (ef *JSEventFunction) CallFunction(event Event) (interface{}, error) {
 }
 
 // Calls a jsEventFunction returning bool.
-func (ef *JSEventFunction) CallValidateFunction(event Event) (bool, error) {
+func (ef *JSEventFunction) CallValidateFunction(ctx context.Context, event Event) (bool, error) {
 
-	result, err := ef.CallFunction(event)
+	result, err := ef.CallFunction(ctx, event)
 	if err != nil {
 		return false, err
 	}
@@ -208,7 +208,7 @@ func (ef *JSEventFunction) CallValidateFunction(event Event) (bool, error) {
 		}
 		return boolResult, nil
 	default:
-		base.WarnfCtx(context.TODO(), "Event validate function returned non-boolean result %T %v", result, result)
+		base.WarnfCtx(ctx, "Event validate function returned non-boolean result %T %v", result, result)
 		return false, errors.New("Validate function returned non-boolean value.")
 	}
 

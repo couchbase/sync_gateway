@@ -85,7 +85,7 @@ func (db *Database) CallUserFunction(ctx context.Context, name string, args map[
 	}
 
 	// Check that the user is authorized:
-	if err := fn.Allow.authorize(db.user, args, "function", name); err != nil {
+	if err := fn.Allow.authorize(ctx, db.user, args, "function", name); err != nil {
 		return nil, err
 	}
 

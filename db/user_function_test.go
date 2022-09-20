@@ -376,61 +376,61 @@ func TestUserFunctionAllow(t *testing.T) {
 
 	allow := UserQueryAllow{}
 
-	ch, err := allow.expandPattern("someChannel", params, user)
+	ch, err := allow.expandPattern(ctx, "someChannel", params, user)
 	assert.NoError(t, err)
 	assert.Equal(t, ch, "someChannel")
 
-	ch, err = allow.expandPattern("sales-$CITY-all", params, user)
+	ch, err = allow.expandPattern(ctx, "sales-$CITY-all", params, user)
 	assert.NoError(t, err)
 	assert.Equal(t, ch, "sales-Paris-all")
 
-	ch, err = allow.expandPattern("sales$(CITY)All", params, user)
+	ch, err = allow.expandPattern(ctx, "sales$(CITY)All", params, user)
 	assert.NoError(t, err)
 	assert.Equal(t, ch, "salesParisAll")
 
-	ch, err = allow.expandPattern("sales$CITY-$BREAD", params, user)
+	ch, err = allow.expandPattern(ctx, "sales$CITY-$BREAD", params, user)
 	assert.NoError(t, err)
 	assert.Equal(t, ch, "salesParis-Baguette")
 
-	ch, err = allow.expandPattern("sales-upTo-$YEAR", params, user)
+	ch, err = allow.expandPattern(ctx, "sales-upTo-$YEAR", params, user)
 	assert.NoError(t, err)
 	assert.Equal(t, ch, "sales-upTo-2020")
 
-	ch, err = allow.expandPattern("employee-$(context.user.name)", params, user)
+	ch, err = allow.expandPattern(ctx, "employee-$(context.user.name)", params, user)
 	assert.NoError(t, err)
 	assert.Equal(t, ch, "employee-maurice")
 
-	ch, err = allow.expandPattern("employee-$(user.name)", params, user)
+	ch, err = allow.expandPattern(ctx, "employee-$(user.name)", params, user)
 	assert.NoError(t, err)
 	assert.Equal(t, ch, "employee-maurice")
 
-	ch, err = allow.expandPattern("$(context.user.email)", params, user)
+	ch, err = allow.expandPattern(ctx, "$(context.user.email)", params, user)
 	assert.NoError(t, err)
 	assert.Equal(t, ch, "maurice@academie.fr")
 
-	ch, err = allow.expandPattern("$(user.email)", params, user)
+	ch, err = allow.expandPattern(ctx, "$(user.email)", params, user)
 	assert.NoError(t, err)
 	assert.Equal(t, ch, "maurice@academie.fr")
 
 	// Should replace `$$` with `$`
-	ch, err = allow.expandPattern("expen$$ive", params, user)
+	ch, err = allow.expandPattern(ctx, "expen$$ive", params, user)
 	assert.NoError(t, err)
 	assert.Equal(t, ch, "expen$ive")
 
 	// No-ops since the `$` does not match a pattern:
-	ch, err = allow.expandPattern("$+wow", params, user)
+	ch, err = allow.expandPattern(ctx, "$+wow", params, user)
 	assert.NoError(t, err)
 	assert.Equal(t, ch, "$+wow")
 
-	ch, err = allow.expandPattern("foobar$", params, user)
+	ch, err = allow.expandPattern(ctx, "foobar$", params, user)
 	assert.NoError(t, err)
 	assert.Equal(t, ch, "foobar$")
 
 	// error: param value is not a string
-	_, err = allow.expandPattern("knows-$WORDS", params, user)
+	_, err = allow.expandPattern(ctx, "knows-$WORDS", params, user)
 	assert.NotNil(t, err)
 
 	// error: undefined parameter
-	_, err = allow.expandPattern("sales-upTo-$FOO", params, user)
+	_, err = allow.expandPattern(ctx, "sales-upTo-$FOO", params, user)
 	assert.NotNil(t, err)
 }

@@ -12,7 +12,6 @@ package rest
 
 import (
 	"bytes"
-	"context"
 	"encoding/base64"
 	"fmt"
 	"net/http"
@@ -399,12 +398,14 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		}
 	}
 
+	ctx := btr.bt.restTester.Context()
+
 	btr.bt.blipContext.HandlerForProfile[db.MessageGetAttachment] = func(msg *blip.Message) {
 		btr.storeMessage(msg)
 
 		digest, ok := msg.Properties[db.GetAttachmentDigest]
 		if !ok {
-			base.PanicfCtx(context.TODO(), "couldn't find digest in getAttachment message properties")
+			base.PanicfCtx(ctx, "couldn't find digest in getAttachment message properties")
 		}
 
 		collection, err := btc.getCollectionNameFromMessage(msg)
@@ -416,7 +417,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 		attachment, err := btcr.getAttachment(digest)
 		if err != nil {
-			base.PanicfCtx(context.TODO(), "couldn't find attachment for digest: %v", digest)
+			base.PanicfCtx(ctx, "couldn't find attachment for digest: %v", digest)
 		}
 
 		response := msg.Response()
@@ -431,7 +432,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 	btr.bt.blipContext.DefaultHandler = func(msg *blip.Message) {
 		btr.storeMessage(msg)
-		base.PanicfCtx(context.TODO(), "Unknown profile: %s caught by client DefaultHandler - msg: %#v", msg.Profile(), msg)
+		base.PanicfCtx(ctx, "Unknown profile: %s caught by client DefaultHandler - msg: %#v", msg.Profile(), msg)
 	}
 }
 
@@ -812,8 +813,10 @@ func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID, parentRev strin
 	revRequest.Properties[db.RevMessageRev] = newRevID
 	revRequest.Properties[db.RevMessageHistory] = strings.Join(revisionHistory, ",")
 
+	ctx := btc.parent.rt.Context()
+
 	if btc.parent.ClientDeltas && proposeChangesResponse.Properties[db.ProposeChangesResponseDeltas] == "true" {
-		base.DebugfCtx(context.TODO(), base.KeySync, "Sending deltas from test client")
+		base.DebugfCtx(ctx, base.KeySync, "Sending deltas from test client")
 		var parentDocJSON, newDocJSON db.Body
 		err := parentDocJSON.Unmarshal(parentDocBody)
 		if err != nil {
@@ -832,7 +835,7 @@ func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID, parentRev strin
 		revRequest.Properties[db.RevMessageDeltaSrc] = parentRev
 		body = delta
 	} else {
-		base.DebugfCtx(context.TODO(), base.KeySync, "Not sending deltas from test client")
+		base.DebugfCtx(ctx, base.KeySync, "Not sending deltas from test client")
 	}
 
 	revRequest.SetBody(body)
