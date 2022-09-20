@@ -41,7 +41,10 @@ require (
 	gopkg.in/square/go-jose.v2 v2.6.0
 )
 
-require github.com/couchbase/gocbcore/v9 v9.1.8
+require (
+	github.com/couchbase/gocbcore/v9 v9.1.8
+	github.com/couchbaselabs/walrus v0.0.0-20220916160453-6f7d5a152116
+)
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
