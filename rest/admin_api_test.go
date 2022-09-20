@@ -5122,12 +5122,16 @@ func TestPerDBCredsOverride(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
+	config := bootstrapStartupConfigForTest(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sc, err := SetupServerContext(ctx, &config, true)
+	require.NoError(t, err)
 
 	// Get test bucket
 	tb1 := base.GetTestBucket(t)
 	defer tb1.Close()
 
-	config := bootstrapStartupConfigForTest(t)
 	config.BucketCredentials = map[string]*base.CredentialsConfig{
 		tb1.GetName(): {
 			Username: base.TestClusterUsername(),
@@ -5140,12 +5144,6 @@ func TestPerDBCredsOverride(t *testing.T) {
 			Password: "invalid",
 		},
 	}
-
-	//ctx := base.TestCtx(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	sc, err := SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
 
 	serverErr := make(chan error, 0)
 	defer func() {
