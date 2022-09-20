@@ -156,7 +156,7 @@ func TestMultiCollectionDCP(t *testing.T) {
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		createScopesAndCollections: true,
-		TestBucket:                 tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
+		CustomTestBucket:           tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				AutoImport: true,

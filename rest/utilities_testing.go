@@ -274,12 +274,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.DatabaseConfig.ImportPartitions = base.Uint16Ptr(1)
 		}
 
-		autoImport, _ := rt.DatabaseConfig.AutoImportEnabled()
-		if rt.DatabaseConfig.ImportPartitions == nil && base.TestUseXattrs() && base.IsEnterpriseEdition() && autoImport {
-			// Speed up test setup - most tests don't need more than one partition given we only have one node
-			rt.DatabaseConfig.ImportPartitions = base.Uint16Ptr(1)
-		}
-
 		if rt.leakyBucketConfig != nil {
 			// Scopes and collections have to be set on the bucket being passed in for the db to use.
 			// WIP: Collections Phase 1 - Grab just one scope/collection from the defined set.
