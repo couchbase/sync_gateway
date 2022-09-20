@@ -1903,3 +1903,16 @@ func HasActiveChannel(channelSet map[string]interface{}, channelName string) boo
 
 	return true
 }
+
+func (sc *ServerContext) isDatabaseSuspended(t *testing.T, dbName string) bool {
+	sc.lock.RLock()
+	defer sc.lock.RUnlock()
+	return sc._isDatabaseSuspended(dbName)
+}
+
+func (sc *ServerContext) suspendDatabase(t *testing.T, ctx context.Context, dbName string) error {
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+
+	return sc._suspendDatabase(ctx, dbName)
+}
