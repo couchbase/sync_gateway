@@ -650,7 +650,7 @@ func (b *LeakyBucket) IsError(err error, errorType sgbucket.DataStoreErrorType) 
 }
 
 func (b *LeakyBucket) GetExpiry(k string) (expiry uint32, err error) {
-	return b.GetUnderlyingBucket().GetExpiry(k)
+	return b.bucket.GetExpiry(k)
 }
 
 // An implementation of a sgbucket tap feed that wraps
