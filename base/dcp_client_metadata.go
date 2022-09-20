@@ -36,9 +36,6 @@ type DCPMetadataStore interface {
 	// GetMeta retrieves DCPMetadata for a vbucket
 	GetMeta(vbID uint16) DCPMetadata
 
-	// SetEndSeqNos sets the end sequence numbers for all specified vbuckets
-	SetEndSeqNos(map[uint16]uint64)
-
 	// SetSnapshot updates the metadata based on a DCP snapshotEvent
 	SetSnapshot(e snapshotEvent)
 
@@ -57,14 +54,12 @@ type DCPMetadataStore interface {
 }
 
 type DCPMetadataMem struct {
-	metadata  []DCPMetadata
-	endSeqNos []gocbcore.SeqNo
+	metadata []DCPMetadata
 }
 
 func NewDCPMetadataMem(numVbuckets uint16) *DCPMetadataMem {
 	m := &DCPMetadataMem{
-		metadata:  make([]DCPMetadata, numVbuckets),
-		endSeqNos: make([]gocbcore.SeqNo, numVbuckets),
+		metadata: make([]DCPMetadata, numVbuckets),
 	}
 	for vbNo := uint16(0); vbNo < numVbuckets; vbNo++ {
 		m.metadata[vbNo] = DCPMetadata{
@@ -80,7 +75,6 @@ func (m *DCPMetadataMem) Rollback(vbID uint16) {
 	m.metadata[vbID] = DCPMetadata{
 		VbUUID:          0,
 		StartSeqNo:      0,
-		EndSeqNo:        m.endSeqNos[vbID],
 		SnapStartSeqNo:  0,
 		SnapEndSeqNo:    0,
 		FailoverEntries: make([]gocbcore.FailoverEntry, 0),
@@ -107,16 +101,6 @@ func (m *DCPMetadataMem) UpdateSeq(vbID uint16, seq uint64) {
 func (m *DCPMetadataMem) SetFailoverEntries(vbID uint16, fe []gocbcore.FailoverEntry) {
 	m.metadata[vbID].FailoverEntries = fe
 	m.metadata[vbID].VbUUID = getVbUUID(fe, m.metadata[vbID].StartSeqNo)
-}
-
-// SetEndSeqNos will update the metadata endSeqNos to the values provided.  Vbuckets not
-// present in the endSeqNos map will have their EndSeqNo set to zero.
-func (m *DCPMetadataMem) SetEndSeqNos(endSeqNos map[uint16]uint64) {
-	for i := 0; i < len(m.metadata); i++ {
-		endSeqNo, _ := endSeqNos[uint16(i)]
-		m.metadata[i].EndSeqNo = gocbcore.SeqNo(endSeqNo)
-		m.endSeqNos[i] = gocbcore.SeqNo(endSeqNo)
-	}
 }
 
 // Persist is no-op for in-memory metadata store
@@ -162,7 +146,6 @@ type DCPMetadataCS struct {
 	bucket    Bucket
 	keyPrefix string
 	metadata  []DCPMetadata
-	endSeqNos []gocbcore.SeqNo
 }
 
 func NewDCPMetadataCS(store Bucket, numVbuckets uint16, numWorkers int, keyPrefix string) *DCPMetadataCS {
@@ -171,7 +154,6 @@ func NewDCPMetadataCS(store Bucket, numVbuckets uint16, numWorkers int, keyPrefi
 		bucket:    store,
 		keyPrefix: keyPrefix,
 		metadata:  make([]DCPMetadata, numVbuckets),
-		endSeqNos: make([]gocbcore.SeqNo, numVbuckets),
 	}
 	for vbNo := uint16(0); vbNo < numVbuckets; vbNo++ {
 		m.metadata[vbNo] = DCPMetadata{
@@ -221,15 +203,6 @@ func (m *DCPMetadataCS) UpdateSeq(vbNo uint16, seq uint64) {
 func (m *DCPMetadataCS) SetFailoverEntries(vbID uint16, fe []gocbcore.FailoverEntry) {
 	m.metadata[vbID].FailoverEntries = fe
 	m.metadata[vbID].VbUUID = getVbUUID(fe, m.metadata[vbID].StartSeqNo)
-}
-
-// SetEndSeqNos will update the metadata endSeqNos to the values provided.  Vbuckets not
-// present in the endSeqNos map will have their EndSeqNo set to zero.
-func (m *DCPMetadataCS) SetEndSeqNos(endSeqNos map[uint16]uint64) {
-	for i := 0; i < len(m.metadata); i++ {
-		endSeqNo, _ := endSeqNos[uint16(i)]
-		m.metadata[i].EndSeqNo = gocbcore.SeqNo(endSeqNo)
-	}
 }
 
 // Persist is called by worker.  Triggers persistence of metadata for all listed vbuckets.  This set must be the same
