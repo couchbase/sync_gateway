@@ -1092,7 +1092,7 @@ func (sc *ServerContext) _unsuspendDatabase(ctx context.Context, dbName string) 
 		if dbConfig.Bucket != nil {
 			bucket = *dbConfig.Bucket
 		}
-		cas, err := sc.BootstrapContext.Connection.GetConfig(bucket, sc.Config.Bootstrap.ConfigGroupID, dbConfig)
+		cas, err := sc.BootstrapContext.Connection.GetConfig(ctx, bucket, sc.Config.Bootstrap.ConfigGroupID, dbConfig)
 		if err == base.ErrNotFound {
 			// Database no longer exists, so clean up dbConfigs
 			base.InfofCtx(ctx, base.KeyConfig, "Database %q has been removed while suspended from bucket %q", base.MD(dbName), base.MD(bucket))

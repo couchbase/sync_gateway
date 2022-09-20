@@ -178,8 +178,8 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 	}
 
 	// Get test bucket
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	ctx, tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
 
 	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, persistentConfig: true, serverless: true})
 	defer rt.Close()
@@ -219,7 +219,7 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 	assert.NotNil(t, sc.dbConfigs["db"])
 
 	// Update config in bucket to see if unsuspending check for updates
-	cas, err := sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
+	cas, err := sc.BootstrapContext.Connection.UpdateConfig(ctx, tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
 		func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
 			return json.Marshal(sc.dbConfigs["db"])
 		},
@@ -250,8 +250,8 @@ func TestServerlessUnsuspendFetchFallback(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	ctx, tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb,
@@ -296,8 +296,8 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	ctx, tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb,
@@ -326,7 +326,7 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 	require.NoError(t, err)
 
 	// Update database config in the bucket
-	newCas, err := sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
+	newCas, err := sc.BootstrapContext.Connection.UpdateConfig(ctx, tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
 		func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
 			return json.Marshal(sc.dbConfigs["db"])
 		},
@@ -349,7 +349,7 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 	sc.Config.Unsupported.Serverless.MinConfigFetchInterval = base.NewConfigDuration(time.Hour)
 
 	// Update database config in the bucket again to test caching disable case
-	newCas, err = sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
+	newCas, err = sc.BootstrapContext.Connection.UpdateConfig(ctx, tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
 		func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
 			return json.Marshal(sc.dbConfigs["db"])
 		},
@@ -368,8 +368,8 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	ctx, tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb,
@@ -392,7 +392,7 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 	// Suspend the database
 	assert.NoError(t, sc.suspendDatabase(t, rt.Context(), "db"))
 	// Update database config
-	newCas, err := sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
+	newCas, err := sc.BootstrapContext.Connection.UpdateConfig(ctx, tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
 		func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
 			return json.Marshal(sc.dbConfigs["db"])
 		},
@@ -455,8 +455,8 @@ func TestSuspendingFlags(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			tb := base.GetTestBucket(t)
-			defer tb.Close()
+			ctx, tb := base.GetTestBucket(t)
+			defer tb.Close(ctx)
 
 			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, persistentConfig: true, serverless: test.serverlessMode})
 			defer rt.Close()
