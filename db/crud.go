@@ -1426,7 +1426,7 @@ func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(ctx context.Context, d
 		doc.NewestRev = newRevID
 		doc.setFlag(channels.Hidden, true)
 		if doc.CurrentRev != prevCurrentRev {
-			doc.promoteNonWinningRevisionBody(doc.CurrentRev, db.RevisionBodyLoader)
+			doc.promoteNonWinningRevisionBody(ctx, doc.CurrentRev, db.RevisionBodyLoader)
 		}
 	}
 }
@@ -1726,8 +1726,8 @@ func (db *Database) documentUpdateFunc(ctx context.Context, docExists bool, doc 
 		if err != nil {
 			return
 		}
-		changedAccessPrincipals = doc.Access.updateAccess(doc, access)
-		changedRoleAccessUsers = doc.RoleAccess.updateAccess(doc, roles)
+		changedAccessPrincipals = doc.Access.updateAccess(ctx, doc, access)
+		changedRoleAccessUsers = doc.RoleAccess.updateAccess(ctx, doc, roles)
 	} else {
 
 		base.DebugfCtx(ctx, base.KeyCRUD, "updateDoc(%q): Rev %q leaves %q still current",
@@ -1959,7 +1959,7 @@ func (db *Database) updateAndReturnDoc(ctx context.Context, docid string, allowI
 				base.WarnfCtx(ctx, "Error marshalling doc with id %s and revid %s for webhook post: %v", base.UD(docid), base.UD(newRevID), err)
 			} else {
 				winningRevChange := prevCurrentRev != doc.CurrentRev
-				err = db.EventMgr.RaiseDocumentChangeEvent(webhookJSON, docid, oldBodyJSON, revChannels, winningRevChange)
+				err = db.EventMgr.RaiseDocumentChangeEvent(ctx, webhookJSON, docid, oldBodyJSON, revChannels, winningRevChange)
 				if err != nil {
 					base.DebugfCtx(ctx, base.KeyCRUD, "Error raising document change event: %v", err)
 				}
@@ -2000,7 +2000,7 @@ func (db *Database) updateAndReturnDoc(ctx context.Context, docid string, allowI
 	}
 
 	// Remove any obsolete non-winning revision bodies
-	doc.deleteRemovedRevisionBodies(db.Bucket)
+	doc.deleteRemovedRevisionBodies(ctx, db.Bucket)
 
 	// Mark affected users/roles as needing to recompute their channel access:
 	db.MarkPrincipalsChanged(ctx, docid, newRevID, changedAccessPrincipals, changedRoleAccessUsers, doc.Sequence)

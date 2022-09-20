@@ -668,19 +668,19 @@ func (db *DatabaseContext) RevisionBodyLoader(key string) ([]byte, error) {
 }
 
 // Fetches the body of a revision as a map, or nil if it's not available.
-func (doc *Document) getRevisionBody(revid string, loader RevLoaderFunc) Body {
+func (doc *Document) getRevisionBody(ctx context.Context, revid string, loader RevLoaderFunc) Body {
 	var body Body
 	if revid == doc.CurrentRev {
 		body = doc.Body()
 	} else {
-		body = doc.getNonWinningRevisionBody(revid, loader)
+		body = doc.getNonWinningRevisionBody(ctx, revid, loader)
 	}
 	return body
 }
 
 // Retrieves a non-winning revision body.  If not already loaded in the document (either because inline,
 // or was previously requested), loader function is used to retrieve from the bucket.
-func (doc *Document) getNonWinningRevisionBody(revid string, loader RevLoaderFunc) Body {
+func (doc *Document) getNonWinningRevisionBody(ctx context.Context, revid string, loader RevLoaderFunc) Body {
 	var body Body
 	bodyBytes, found := doc.History.getRevisionBody(revid, loader)
 	if !found || len(bodyBytes) == 0 {
@@ -688,7 +688,7 @@ func (doc *Document) getNonWinningRevisionBody(revid string, loader RevLoaderFun
 	}
 
 	if err := body.Unmarshal(bodyBytes); err != nil {
-		base.WarnfCtx(context.TODO(), "Unexpected error parsing body of rev %q: %v", revid, err)
+		base.WarnfCtx(ctx, "Unexpected error parsing body of rev %q: %v", revid, err)
 		return nil
 	}
 	return body
@@ -720,10 +720,10 @@ func (doc *Document) removeRevisionBody(revID string) {
 }
 
 // makeBodyActive moves a previously non-winning revision body from the rev tree to the document body
-func (doc *Document) promoteNonWinningRevisionBody(revid string, loader RevLoaderFunc) {
+func (doc *Document) promoteNonWinningRevisionBody(ctx context.Context, revid string, loader RevLoaderFunc) {
 	// If the new revision is not current, transfer the current revision's
 	// body to the top level doc._body:
-	doc.UpdateBody(doc.getNonWinningRevisionBody(revid, loader))
+	doc.UpdateBody(doc.getNonWinningRevisionBody(ctx, revid, loader))
 	doc.removeRevisionBody(revid)
 }
 
@@ -792,12 +792,12 @@ func (doc *Document) persistModifiedRevisionBodies(bucket base.Bucket) error {
 
 // deleteRemovedRevisionBodies deletes obsolete non-inline revisions from the bucket.
 // Should be invoked AFTER the document is successfully committed.
-func (doc *Document) deleteRemovedRevisionBodies(bucket base.Bucket) {
+func (doc *Document) deleteRemovedRevisionBodies(ctx context.Context, bucket base.Bucket) {
 
 	for _, revBodyKey := range doc.removedRevisionBodyKeys {
 		deleteErr := bucket.Delete(revBodyKey)
 		if deleteErr != nil {
-			base.WarnfCtx(context.TODO(), "Unable to delete old revision body using key %s - will not be deleted from bucket.", revBodyKey)
+			base.WarnfCtx(ctx, "Unable to delete old revision body using key %s - will not be deleted from bucket.", revBodyKey)
 		}
 	}
 	doc.removedRevisionBodyKeys = map[string]string{}
@@ -809,7 +809,7 @@ func (doc *Document) persistRevisionBody(bucket base.Bucket, key string, body []
 }
 
 // Move any large revision bodies to external document storage
-func (doc *Document) migrateRevisionBodies(bucket base.Bucket) error {
+func (doc *Document) migrateRevisionBodies(ctx context.Context, bucket base.Bucket) error {
 
 	for _, revID := range doc.History.GetLeaves() {
 		revInfo, err := doc.History.getInfo(revID)
@@ -820,7 +820,7 @@ func (doc *Document) migrateRevisionBodies(bucket base.Bucket) error {
 			bodyKey := generateRevBodyKey(doc.ID, revID)
 			persistErr := doc.persistRevisionBody(bucket, bodyKey, revInfo.Body)
 			if persistErr != nil {
-				base.WarnfCtx(context.TODO(), "Unable to store revision body for doc %s, rev %s externally: %v", base.UD(doc.ID), revID, persistErr)
+				base.WarnfCtx(ctx, "Unable to store revision body for doc %s, rev %s externally: %v", base.UD(doc.ID), revID, persistErr)
 				continue
 			}
 			revInfo.BodyKey = bodyKey
@@ -1029,7 +1029,7 @@ func (doc *Document) IsChannelRemoval(revID string) (bodyBytes []byte, history R
 
 // Updates a document's channel/role UserAccessMap with new access settings from an AccessMap.
 // Returns an array of the user/role names whose access has changed as a result.
-func (accessMap *UserAccessMap) updateAccess(doc *Document, newAccess channels.AccessMap) (changedUsers []string) {
+func (accessMap *UserAccessMap) updateAccess(ctx context.Context, doc *Document, newAccess channels.AccessMap) (changedUsers []string) {
 	// Update users already appearing in doc.Access:
 	for name, access := range *accessMap {
 		if access.UpdateAtSequence(newAccess[name], doc.Sequence) {
@@ -1054,7 +1054,7 @@ func (accessMap *UserAccessMap) updateAccess(doc *Document, newAccess channels.A
 		if accessMap == &doc.RoleAccess {
 			what = "role"
 		}
-		base.InfofCtx(context.TODO(), base.KeyAccess, "Doc %q grants %s access: %v", base.UD(doc.ID), what, base.UD(*accessMap))
+		base.InfofCtx(ctx, base.KeyAccess, "Doc %q grants %s access: %v", base.UD(doc.ID), what, base.UD(*accessMap))
 	}
 	return changedUsers
 }

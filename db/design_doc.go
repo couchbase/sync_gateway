@@ -698,7 +698,7 @@ func removeObsoleteDesignDocs(ctx context.Context, bucket base.Bucket, previewOn
 			if !previewOnly {
 				removeDDocErr := bucket.DeleteDDoc(ctx, ddocName)
 				if removeDDocErr != nil && !IsMissingDDocError(removeDDocErr) {
-					base.WarnfCtx(context.TODO(), "Unexpected error when removing design doc %q: %s", ddocName, removeDDocErr)
+					base.WarnfCtx(ctx, "Unexpected error when removing design doc %q: %s", ddocName, removeDDocErr)
 				}
 				// Only include in list of removedDesignDocs if it was actually removed
 				if removeDDocErr == nil {
@@ -707,7 +707,7 @@ func removeObsoleteDesignDocs(ctx context.Context, bucket base.Bucket, previewOn
 			} else {
 				_, existsDDocErr := bucket.GetDDoc(ctx, ddocName)
 				if existsDDocErr != nil && !IsMissingDDocError(existsDDocErr) {
-					base.WarnfCtx(context.TODO(), "Unexpected error when checking existence of design doc %q: %s", ddocName, existsDDocErr)
+					base.WarnfCtx(ctx, "Unexpected error when checking existence of design doc %q: %s", ddocName, existsDDocErr)
 				}
 				// Only include in list of removedDesignDocs if it exists
 				if existsDDocErr == nil {

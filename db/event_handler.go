@@ -25,7 +25,7 @@ import (
 
 // EventHandler interface represents an instance of an event handler defined in the database config
 type EventHandler interface {
-	HandleEvent(event Event) bool
+	HandleEvent(ctx context.Context, event Event) bool
 	String() string
 }
 
@@ -42,6 +42,8 @@ type Webhook struct {
 		DocumentChangedWinningRevOnly bool
 	}
 }
+
+var _ EventHandler = &Webhook{}
 
 const (
 	// default HTTP post timeout
@@ -88,11 +90,10 @@ func NewWebhook(url string, filterFnString string, timeout *uint64, options map[
 // Performs an HTTP POST to the url defined for the handler.  If a filter function is defined,
 // calls it to determine whether to POST.  The payload for the POST is depends
 // on the event type.
-func (wh *Webhook) HandleEvent(event Event) bool {
+func (wh *Webhook) HandleEvent(ctx context.Context, event Event) bool {
 
 	const contentType = "application/json"
 	var payload []byte
-	logCtx := context.TODO()
 
 	// Different events post different content by default
 	switch event := event.(type) {
@@ -113,12 +114,12 @@ func (wh *Webhook) HandleEvent(event Event) bool {
 		//}
 		jsonOut, err := base.JSONMarshal(event.Doc)
 		if err != nil {
-			base.WarnfCtx(logCtx, "Error marshalling doc for webhook post")
+			base.WarnfCtx(ctx, "Error marshalling doc for webhook post")
 			return false
 		}
 		payload = jsonOut
 	default:
-		base.WarnfCtx(logCtx, "Webhook invoked for unsupported event type.")
+		base.WarnfCtx(ctx, "Webhook invoked for unsupported event type.")
 		return false
 	}
 
@@ -126,7 +127,7 @@ func (wh *Webhook) HandleEvent(event Event) bool {
 		// If filter function is defined, use it to determine whether to post
 		success, err := wh.filter.CallValidateFunction(event)
 		if err != nil {
-			base.WarnfCtx(logCtx, "Error calling webhook filter function: %v", err)
+			base.WarnfCtx(ctx, "Error calling webhook filter function: %v", err)
 		}
 
 		// If filter returns false, cancel webhook post
@@ -142,23 +143,23 @@ func (wh *Webhook) HandleEvent(event Event) bool {
 			if resp != nil && resp.Body != nil {
 				_, err := io.Copy(ioutil.Discard, resp.Body)
 				if err != nil {
-					base.DebugfCtx(logCtx, base.KeyEvents, "Error copying response body: %v", err)
+					base.DebugfCtx(ctx, base.KeyEvents, "Error copying response body: %v", err)
 				}
 				err = resp.Body.Close()
 				if err != nil {
-					base.DebugfCtx(logCtx, base.KeyEvents, "Error closing response body: %v", err)
+					base.DebugfCtx(ctx, base.KeyEvents, "Error closing response body: %v", err)
 				}
 			}
 		}()
 
 		if err != nil {
-			base.WarnfCtx(logCtx, "Error attempting to post %s to url %s: %s", base.UD(event.String()), base.UD(wh.SanitizedUrl()), err)
+			base.WarnfCtx(ctx, "Error attempting to post %s to url %s: %s", base.UD(event.String()), base.UD(wh.SanitizedUrl()), err)
 			return false
 		}
 
 		// Check Log Level first, as SanitizedUrl is expensive to evaluate.
 		if base.LogDebugEnabled(base.KeyEvents) {
-			base.DebugfCtx(logCtx, base.KeyEvents, "Webhook handler ran for event.  Payload %s posted to URL %s, got status %s",
+			base.DebugfCtx(ctx, base.KeyEvents, "Webhook handler ran for event.  Payload %s posted to URL %s, got status %s",
 				base.UD(string(payload)), base.UD(wh.SanitizedUrl()), resp.Status)
 		}
 		return true

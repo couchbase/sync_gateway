@@ -176,7 +176,7 @@ func (sc *ServerContext) Close(ctx context.Context) {
 
 	for _, db := range sc.databases_ {
 		db.Close(ctx)
-		_ = db.EventMgr.RaiseDBStateChangeEvent(db.Name, "offline", "Database context closed", &sc.Config.API.AdminInterface)
+		_ = db.EventMgr.RaiseDBStateChangeEvent(ctx, db.Name, "offline", "Database context closed", &sc.Config.API.AdminInterface)
 	}
 	sc.databases_ = nil
 
@@ -597,10 +597,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 	if base.BoolDefault(config.StartOffline, false) {
 		atomic.StoreUint32(&dbcontext.State, db.DBOffline)
-		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "DB loaded from config", &sc.Config.API.AdminInterface)
+		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(ctx, dbName, "offline", "DB loaded from config", &sc.Config.API.AdminInterface)
 	} else {
 		atomic.StoreUint32(&dbcontext.State, db.DBOnline)
-		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", &sc.Config.API.AdminInterface)
+		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(ctx, dbName, "online", "DB loaded from config", &sc.Config.API.AdminInterface)
 	}
 
 	dbcontext.StartReplications(ctx)
@@ -963,7 +963,7 @@ func (sc *ServerContext) initEventHandlers(ctx context.Context, dbcontext *db.Da
 			base.WarnfCtx(ctx, "Error parsing wait_for_process from config, using default %s", err)
 		}
 	}
-	dbcontext.EventMgr.Start(config.EventHandlers.MaxEventProc, int(customWaitTime))
+	dbcontext.EventMgr.Start(ctx, config.EventHandlers.MaxEventProc, int(customWaitTime))
 
 	return nil
 }

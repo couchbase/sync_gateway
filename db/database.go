@@ -827,7 +827,7 @@ func (dc *DatabaseContext) TakeDbOffline(ctx context.Context, reason string) err
 		// set DB state to Offline
 		atomic.StoreUint32(&dc.State, DBOffline)
 
-		if err := dc.EventMgr.RaiseDBStateChangeEvent(dc.Name, "offline", reason, dc.Options.AdminInterface); err != nil {
+		if err := dc.EventMgr.RaiseDBStateChangeEvent(ctx, dc.Name, "offline", reason, dc.Options.AdminInterface); err != nil {
 			base.DebugfCtx(ctx, base.KeyCRUD, "Error raising database state change event: %v", err)
 		}
 
@@ -1518,8 +1518,8 @@ func (db *Database) UpdateAllDocChannels(ctx context.Context, regenerateSequence
 						}
 
 						changedChannels, err := doc.updateChannels(ctx, channels)
-						changed = len(doc.Access.updateAccess(doc, access)) +
-							len(doc.RoleAccess.updateAccess(doc, roles)) +
+						changed = len(doc.Access.updateAccess(ctx, doc, access)) +
+							len(doc.RoleAccess.updateAccess(ctx, doc, roles)) +
 							len(changedChannels)
 						if err != nil {
 							return

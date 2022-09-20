@@ -372,7 +372,7 @@ func (db *Database) migrateMetadata(ctx context.Context, docid string, body Body
 	}
 
 	// Move any large revision bodies to external storage
-	err = doc.migrateRevisionBodies(db.Bucket)
+	err = doc.migrateRevisionBodies(ctx, db.Bucket)
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyMigrate, "Error migrating revision bodies to external storage, doc %q, (cas=%d), Error: %v", base.UD(docid), doc.Cas, err)
 	}
