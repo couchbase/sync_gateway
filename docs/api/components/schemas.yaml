@@ -2145,3 +2145,45 @@ Status:
         Blank if `api.hide_product_version=true` in the startup configuration.
       type: string
   title: Status
+NodeInfo:
+  type: object
+  properties:
+    ADMIN:
+      description: '`true` if the request is from the Admin API - otherwise omitted.'
+      type: boolean
+      example: true
+    couchdb:
+      description: CouchDB welcome
+      type: string
+      example: Welcome
+    vendor:
+      description: Product vendor
+      type: object
+      properties:
+        name:
+          description: Product name
+          type: string
+          example: Couchbase Sync Gateway
+        version:
+          description: |-
+            API version.
+            Omitted if `api.hide_product_version=true`
+          type: string
+          example: 3.1
+      required:
+        - name
+    version:
+      description: |-
+        Product version, including the build number and edition (i.e. `EE` or `CE`)
+        Omitted if `api.hide_product_version=true`
+      type: string
+      example: Couchbase Sync Gateway/3.1.0(1;a765231) EE
+    PersistentConfig:
+      description: |-
+        Indication for whether sync gateway is running in persistent config mode or legacy config mode.
+        `true` if the sync gateway node is running in persistent config mode.
+      type: boolean
+      example: true
+  required:
+    - couchdb
+    - vendor
