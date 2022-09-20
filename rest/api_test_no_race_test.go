@@ -28,28 +28,25 @@ import (
 
 func TestChangesAccessNotifyInteger(t *testing.T) {
 
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`})
 	defer rt.Close()
 
 	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator(base.TestCtx(t))
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
 
 	// Put several documents in channel PBS
 	response := rt.SendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)
-	requireStatus(t, response, 201)
+	RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/db/pbs2", `{"value":2, "channel":["PBS"]}`)
-	requireStatus(t, response, 201)
+	RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/db/pbs3", `{"value":3, "channel":["PBS"]}`)
-	requireStatus(t, response, 201)
+	RequireStatus(t, response, 201)
 
 	caughtUpWaiter := rt.GetDatabase().NewPullReplicationCaughtUpWaiter(t)
 	// Start longpoll changes request
@@ -62,7 +59,7 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 			Last_Seq db.SequenceID
 		}
 		changesJSON := `{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"0"}`
-		changesResponse := rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+		changesResponse := rt.Send(RequestByUser("POST", "/db/_changes", changesJSON, "bernard"))
 		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 		assert.Equal(t, 3, len(changes.Results))
 	}()
@@ -72,7 +69,7 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 
 	// Put document that triggers access grant for user, PBS
 	response = rt.SendAdminRequest("PUT", "/db/access1", `{"accessUser":"bernard", "accessChannel":["PBS"]}`)
-	requireStatus(t, response, 201)
+	RequireStatus(t, response, 201)
 
 	wg.Wait()
 }
@@ -83,10 +80,6 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 // in longpoll terminating without any changes.
 func TestChangesNotifyChannelFilter(t *testing.T) {
 
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
@@ -94,12 +87,12 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 
 	// Create user:
 	userResponse := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["ABC"]}`)
-	requireStatus(t, userResponse, 201)
+	RequireStatus(t, userResponse, 201)
 
 	// Get user, to trigger all_channels calculation and bump the user change count BEFORE we write the PBS docs - otherwise the user key count
 	// will still be higher than the latest change count.
 	userResponse = rt.SendAdminRequest("GET", "/db/_user/bernard", "")
-	requireStatus(t, userResponse, 200)
+	RequireStatus(t, userResponse, 200)
 
 	/*
 		a := it.ServerContext().Database("db").Authenticator(base.TestCtx(t))
@@ -110,11 +103,11 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 
 	// Put several documents in channel PBS
 	response := rt.SendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)
-	requireStatus(t, response, 201)
+	RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/db/pbs2", `{"value":2, "channel":["PBS"]}`)
-	requireStatus(t, response, 201)
+	RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/db/pbs3", `{"value":3, "channel":["PBS"]}`)
-	requireStatus(t, response, 201)
+	RequireStatus(t, response, 201)
 
 	// Run an initial changes request to get the user doc, and update since based on last_seq:
 	var initialChanges struct {
@@ -129,7 +122,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 					 "filter":"` + base.ByChannelFilter + `",
 					 "channels":"ABC,PBS"}`
 	sinceZeroJSON := fmt.Sprintf(changesJSON, "0")
-	changesResponse := rt.Send(requestByUser("POST", "/db/_changes", sinceZeroJSON, "bernard"))
+	changesResponse := rt.Send(RequestByUser("POST", "/db/_changes", sinceZeroJSON, "bernard"))
 	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &initialChanges)
 	assert.NoError(t, err, "Unexpected error unmarshalling initialChanges")
 	lastSeq := initialChanges.Last_Seq.String()
@@ -147,7 +140,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 			Last_Seq db.SequenceID
 		}
 		sinceLastJSON := fmt.Sprintf(changesJSON, lastSeq)
-		changesResponse := rt.Send(requestByUser("POST", "/db/_changes", sinceLastJSON, "bernard"))
+		changesResponse := rt.Send(RequestByUser("POST", "/db/_changes", sinceLastJSON, "bernard"))
 		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 		assert.Equal(t, 1, len(changes.Results))
 	}()
@@ -157,7 +150,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 
 	// Put public document that triggers termination of the longpoll
 	response = rt.SendAdminRequest("PUT", "/db/abc1", `{"value":3, "channel":["ABC"]}`)
-	requireStatus(t, response, 201)
+	RequireStatus(t, response, 201)
 	wg.Wait()
 }
 

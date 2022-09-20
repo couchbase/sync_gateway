@@ -46,8 +46,8 @@ var EnableStarChannelLog = true
 // Core responsibilities:
 //
 // - Receive DCP changes via callbacks
-//    - Perform sequence buffering to ensure documents are received in sequence order
-//    - Propagating DCP changes down to appropriate channel caches
+//   - Perform sequence buffering to ensure documents are received in sequence order
+//   - Propagating DCP changes down to appropriate channel caches
 type changeCache struct {
 	context            *DatabaseContext
 	logCtx             context.Context
@@ -230,7 +230,7 @@ func (c *changeCache) Stop() {
 	close(c.terminator)
 
 	// Wait for changeCache background tasks to finish.
-	waitForBGTCompletion(BGTCompletionMaxWait, c.backgroundTasks, c.context.Name)
+	waitForBGTCompletion(context.TODO(), BGTCompletionMaxWait, c.backgroundTasks, c.context.Name)
 
 	// Stop the channel cache and it's background tasks.
 	c.channelCache.Stop()

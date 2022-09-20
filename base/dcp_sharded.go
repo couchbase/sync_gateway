@@ -49,19 +49,21 @@ type CbgtContext struct {
 	Cfg               cbgt.Cfg                 // Cfg manages storage of the current pindex set and node assignment
 	heartbeater       Heartbeater              // Heartbeater used for failed node detection
 	heartbeatListener *importHeartbeatListener // Listener subscribed to failed node alerts from heartbeater
-	loggingCtx        context.Context          // Context for cbgt logging
 }
 
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
 // dbName is used to define a unique path name for local file storage of pindex files
-func StartShardedDCPFeed(dbName string, configGroup string, uuid string, heartbeater Heartbeater, bucket Bucket, spec BucketSpec, scope string, collections []string, numPartitions uint16, cfg cbgt.Cfg) (*CbgtContext, error) {
-	cbgtContext, err := initCBGTManager(bucket, spec, cfg, uuid, dbName)
+func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string, uuid string, heartbeater Heartbeater, bucket Bucket, spec BucketSpec, scope string, collections []string, numPartitions uint16, cfg cbgt.Cfg) (*CbgtContext, error) {
+	cbgtContext, err := initCBGTManager(ctx, bucket, spec, cfg, uuid, dbName)
 	if err != nil {
 		return nil, err
 	}
 
+	// Add logging info before passing ctx down
+	ctx = cbgtContext.AddLogContext(ctx, spec.BucketName)
+
 	// Start Manager.  Registers this node in the cfg
-	err = cbgtContext.StartManager(dbName, configGroup, bucket, spec, scope, collections, numPartitions)
+	err = cbgtContext.StartManager(ctx, dbName, configGroup, bucket, spec, scope, collections, numPartitions)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +98,7 @@ func GenerateLegacyIndexName(dbName string) string {
 // to the manager's cbgt cfg.  Nodes that have registered for this indexType with the manager via
 // RegisterPIndexImplType (see importListener.RegisterImportPindexImpl)
 // will receive PIndexImpl callbacks (New, Open) for assigned PIndex to initiate DCP processing.
-func createCBGTIndex(c *CbgtContext, dbName string, configGroupID string, bucket Bucket, spec BucketSpec, scope string, collections []string, numPartitions uint16) error {
+func createCBGTIndex(ctx context.Context, c *CbgtContext, dbName string, configGroupID string, bucket Bucket, spec BucketSpec, scope string, collections []string, numPartitions uint16) error {
 	sourceType := SOURCE_DCP_SG
 
 	bucketUUID, err := bucket.UUID()
@@ -146,8 +148,8 @@ func createCBGTIndex(c *CbgtContext, dbName string, configGroupID string, bucket
 	}
 
 	// Determine index name and UUID
-	indexName, previousIndexUUID := dcpSafeIndexName(c, dbName)
-	InfofCtx(c.loggingCtx, KeyDCP, "Creating cbgt index %q for db %q", indexName, MD(dbName))
+	indexName, previousIndexUUID := dcpSafeIndexName(ctx, c, dbName)
+	InfofCtx(ctx, KeyDCP, "Creating cbgt index %q for db %q", indexName, MD(dbName))
 
 	// Register bucketDataSource callback for new index if we need to configure TLS
 	cbgt.RegisterBucketDataSourceOptionsCallback(indexName, c.Manager.UUID(), func(options *cbdatasource.BucketDataSourceOptions) *cbdatasource.BucketDataSourceOptions {
@@ -158,12 +160,12 @@ func createCBGTIndex(c *CbgtContext, dbName string, configGroupID string, bucket
 		}
 
 		networkType := getNetworkTypeFromConnSpec(connSpec)
-		InfofCtx(c.loggingCtx, KeyDCP, "Using network type: %s", networkType)
+		InfofCtx(ctx, KeyDCP, "Using network type: %s", networkType)
 
 		// default (aka internal) networking is handled by cbdatasource, so we can avoid the shims altogether in this case, for all other cases we need shims to remap hosts.
 		if networkType != clusterNetworkDefault {
 			// A lookup of host dest to external alternate address hostnames
-			options.ConnectBucket, options.Connect, options.ConnectTLS = alternateAddressShims(c.loggingCtx, spec.IsTLS(), connSpec.Addresses, networkType)
+			options.ConnectBucket, options.Connect, options.ConnectTLS = alternateAddressShims(ctx, spec.IsTLS(), connSpec.Addresses, networkType)
 		}
 
 		return options
@@ -185,7 +187,7 @@ func createCBGTIndex(c *CbgtContext, dbName string, configGroupID string, bucket
 	)
 	c.Manager.Kick("NewIndexesCreated")
 
-	InfofCtx(c.loggingCtx, KeyDCP, "Initialized sharded DCP feed %s with %d partitions.", indexName, numPartitions)
+	InfofCtx(ctx, KeyDCP, "Initialized sharded DCP feed %s with %d partitions.", indexName, numPartitions)
 	return err
 
 }
@@ -195,7 +197,7 @@ func createCBGTIndex(c *CbgtContext, dbName string, configGroupID string, bucket
 // Handles removal of legacy index definitions, except for the case where the legacy index is
 // the only index defined, and the name is safe.  In that case, continue using legacy index name
 // to avoid restarting the import processing from zero
-func dcpSafeIndexName(c *CbgtContext, dbName string) (safeIndexName, previousUUID string) {
+func dcpSafeIndexName(ctx context.Context, c *CbgtContext, dbName string) (safeIndexName, previousUUID string) {
 
 	indexName := GenerateIndexName(dbName)
 	legacyIndexName := GenerateLegacyIndexName(dbName)
@@ -216,7 +218,7 @@ func dcpSafeIndexName(c *CbgtContext, dbName string) (safeIndexName, previousUUI
 	if legacyIndexUUID != "" {
 		_, deleteErr := c.Manager.DeleteIndexEx(legacyIndexName, "")
 		if deleteErr != nil {
-			WarnfCtx(c.loggingCtx, "Error removing legacy import feed index: %v", deleteErr)
+			WarnfCtx(ctx, "Error removing legacy import feed index: %v", deleteErr)
 		}
 	}
 	return indexName, indexUUID
@@ -241,7 +243,7 @@ func getCBGTIndexUUID(manager *cbgt.Manager, indexName string) (exists bool, pre
 // createCBGTManager creates a new manager for a given bucket and bucketSpec
 // Inline comments below provide additional detail on how cbgt uses each manager
 // parameter, and the implications for SG
-func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID string, dbName string) (*CbgtContext, error) {
+func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID string, dbName string) (*CbgtContext, error) {
 	// Check if there are pre-Helium nodes, and if so, set the LithiumCompat flag to ensure we don't try to start a
 	// collections-enabled feed when some nodes won't support it.
 	minVersion, err := getMinNodeVersion(cfgSG)
@@ -343,9 +345,8 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 		options)
 
 	cbgtContext := &CbgtContext{
-		loggingCtx: LogContextWith(context.Background(), &LogContext{CorrelationID: MD(spec.BucketName).Redact() + "-" + DCPImportFeedID}),
-		Manager:    mgr,
-		Cfg:        cfgSG,
+		Manager: mgr,
+		Cfg:     cfgSG,
 	}
 
 	if spec.Auth != nil || (spec.Certpath != "" && spec.Keypath != "") {
@@ -372,25 +373,31 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 	return cbgtContext, nil
 }
 
-// StartManager registers this node with cbgt, and the janitor will start feeds on this node.
-func (c *CbgtContext) StartManager(dbName string, configGroup string, bucket Bucket, spec BucketSpec, scope string, collections []string, numPartitions uint16) (err error) {
+func (c *CbgtContext) AddLogContext(parent context.Context, bucketName string) context.Context {
+	if c != nil && bucketName != "" {
+		return LogContextWith(parent, &LogContext{CorrelationID: MD(bucketName).Redact() + "-" + DCPImportFeedID})
+	}
+	return parent
+}
 
+// StartManager registers this node with cbgt, and the janitor will start feeds on this node.
+func (c *CbgtContext) StartManager(ctx context.Context, dbName string, configGroup string, bucket Bucket, spec BucketSpec, scope string, collections []string, numPartitions uint16) (err error) {
 	// TODO: Clarify the functional difference between registering the manager as 'wanted' vs 'known'.
 	registerType := cbgt.NODE_DEFS_WANTED
 	if err := c.Manager.Start(registerType); err != nil {
-		ErrorfCtx(c.loggingCtx, "cbgt Manager start failed: %v", err)
+		ErrorfCtx(ctx, "cbgt Manager start failed: %v", err)
 		return err
 	}
 
 	// Add the index definition for this feed to the cbgt cfg, in case it's not already present.
-	err = createCBGTIndex(c, dbName, configGroup, bucket, spec, scope, collections, numPartitions)
+	err = createCBGTIndex(ctx, c, dbName, configGroup, bucket, spec, scope, collections, numPartitions)
 	if err != nil {
 		if strings.Contains(err.Error(), "an index with the same name already exists") {
-			InfofCtx(c.loggingCtx, KeyCluster, "Duplicate cbgt index detected during index creation (concurrent creation), using existing")
+			InfofCtx(ctx, KeyCluster, "Duplicate cbgt index detected during index creation (concurrent creation), using existing")
 		} else if strings.Contains(err.Error(), "concurrent index definition update") {
-			InfofCtx(c.loggingCtx, KeyCluster, "Index update failed due to concurrent update, using existing")
+			InfofCtx(ctx, KeyCluster, "Index update failed due to concurrent update, using existing")
 		} else {
-			ErrorfCtx(c.loggingCtx, "cbgt index creation failed: %v", err)
+			ErrorfCtx(ctx, "cbgt index creation failed: %v", err)
 			return err
 		}
 	}
@@ -460,7 +467,7 @@ func initCfgCB(bucket Bucket, spec BucketSpec) (*cbgt.CfgCB, error) {
 	// cfg: Implementation of cbgt.Cfg interface.  Responsible for configuration management
 	//      Sync Gateway uses bucket-based config management
 	options := map[string]interface{}{
-		"keyPrefix": SyncPrefix,
+		"keyPrefix": SyncDocPrefix,
 	}
 	urls, errConvertServerSpec := CouchbaseURIToHttpURL(bucket, spec.Server, nil)
 	if errConvertServerSpec != nil {
@@ -644,13 +651,13 @@ type CbgtDestFactoryFunc = func() (cbgt.Dest, error)
 var cbgtDestFactories = make(map[string]CbgtDestFactoryFunc)
 var cbgtDestFactoriesLock sync.Mutex
 
-func StoreDestFactory(destKey string, dest CbgtDestFactoryFunc) {
+func StoreDestFactory(ctx context.Context, destKey string, dest CbgtDestFactoryFunc) {
 	cbgtDestFactoriesLock.Lock()
 	_, ok := cbgtDestFactories[destKey]
 
 	// We don't expect duplicate destKey registration - log a warning if it already exists
 	if ok {
-		WarnfCtx(context.Background(), "destKey %s already exists in cbgtDestFactories - new value will replace the existing dest", destKey)
+		WarnfCtx(ctx, "destKey %s already exists in cbgtDestFactories - new value will replace the existing dest", destKey)
 	}
 	cbgtDestFactories[destKey] = dest
 	cbgtDestFactoriesLock.Unlock()

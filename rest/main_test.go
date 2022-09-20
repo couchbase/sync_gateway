@@ -11,7 +11,6 @@ licenses/APL2.txt.
 package rest
 
 import (
-	"os"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -21,25 +20,8 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	// can't use defer because of os.Exit
-	teardownFuncs := make([]func(), 0)
-	teardownFuncs = append(teardownFuncs, base.SetUpGlobalTestLogging(m))
-	teardownFuncs = append(teardownFuncs, base.SetUpGlobalTestProfiling(m))
-	teardownFuncs = append(teardownFuncs, base.SetUpGlobalTestMemoryWatermark(m, 8192))
-
-	base.SkipPrometheusStatsRegistration = true
-
-	base.GTestBucketPool = base.NewTestBucketPool(db.ViewsAndGSIBucketReadier, db.ViewsAndGSIBucketInit)
-	teardownFuncs = append(teardownFuncs, base.GTestBucketPool.Close)
-
-	// Run the test suite
-	status := m.Run()
-
-	for _, fn := range teardownFuncs {
-		fn()
-	}
-
-	os.Exit(status)
+	memWatermarkThresholdMB := uint64(8192)
+	db.TestBucketPoolWithIndexes(m, memWatermarkThresholdMB)
 }
 
 func TestConfigOverwritesLegacyFlags(t *testing.T) {

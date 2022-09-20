@@ -22,13 +22,13 @@ import (
 // RegisterImportPindexImpl registers the PIndex type definition.  This is invoked by cbgt when a Pindex (collection of
 // vbuckets) is assigned to this node.
 
-func RegisterImportPindexImpl(configGroup string) {
+func RegisterImportPindexImpl(ctx context.Context, configGroup string) {
 
 	// Since RegisterPIndexImplType is a global var without synchronization, index type needs to be
 	// config group scoped.  The associated importListener within the context is retrieved based on the
 	// dbname in the index params
 	pIndexType := base.CBGTIndexTypeSyncGatewayImport + configGroup
-	base.InfofCtx(context.TODO(), base.KeyDCP, "Registering PindexImplType for %s", pIndexType)
+	base.InfofCtx(ctx, base.KeyDCP, "Registering PindexImplType for %s", pIndexType)
 	cbgt.RegisterPIndexImplType(pIndexType,
 		&cbgt.PIndexImplType{
 			New:       NewImportPIndexImpl,
@@ -97,6 +97,6 @@ func (il *importListener) NewImportDest() (cbgt.Dest, error) {
 	importFeedStatsMap := il.dbStats.ImportFeedMapStats
 	importPartitionStat := il.importStats.ImportPartitions
 
-	importDest, _ := base.NewDCPDest(callback, il.metaStore, maxVbNo, true, importFeedStatsMap.Map, base.DCPImportFeedID, importPartitionStat, il.checkpointPrefix)
+	importDest, _ := base.NewDCPDest(il.loggingCtx, callback, il.metaStore, maxVbNo, true, importFeedStatsMap.Map, base.DCPImportFeedID, importPartitionStat, il.checkpointPrefix)
 	return importDest, nil
 }

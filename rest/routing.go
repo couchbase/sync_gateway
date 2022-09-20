@@ -24,8 +24,8 @@ const dbRegex = "[^_/][^/]*"
 const docRegex = "[^_/][^/]*"
 
 // Regex that matches a URI containing either:
-//  - A regular doc ID with an escaped "/" character
-//  - A user name with an escaped "/" character
+//   - A regular doc ID with an escaped "/" character
+//   - A user name with an escaped "/" character
 var docWithSlashPathRegex *regexp.Regexp
 
 func init() {
@@ -108,6 +108,14 @@ func createCommonRouter(sc *ServerContext, privs handlerPrivs) (root, db, keyspa
 	oidcr.Handle("/authenticate", makeHandler(sc, publicPrivs, nil, nil, (*handler).handleOidcTestProviderAuthenticate)).Methods("GET", "POST")
 
 	dbr.Handle("/_blipsync", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handleBLIPSync)).Methods("GET")
+
+	// User queries & functions
+	if sc.config.Unsupported.UserQueries != nil && *sc.config.Unsupported.UserQueries {
+		dbr.Handle("/_function/{name}", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleUserFunction)).Methods("GET", "POST")
+		dbr.Handle("/_graphql", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleGraphQL)).Methods("GET")
+		dbr.Handle("/_graphql", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handleGraphQL)).Methods("POST")
+		dbr.Handle("/_query/{name}", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleUserQuery)).Methods("GET", "POST")
+	}
 
 	return root, dbr, keyspace
 }
@@ -293,6 +301,32 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 
 	r.Handle("/_post_upgrade",
 		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePostUpgrade)).Methods("POST")
+
+	// User query config APIs:
+	if sc.config.Unsupported.UserQueries != nil && *sc.config.Unsupported.UserQueries {
+		dbr.Handle("/_config/functions",
+			makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfigFunctions)).Methods("GET")
+		dbr.Handle("/_config/functions/{function}",
+			makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfigFunction)).Methods("GET")
+		dbr.Handle("/_config/functions",
+			makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutDbConfigFunctions)).Methods("PUT", "DELETE")
+		dbr.Handle("/_config/functions/{function}",
+			makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutDbConfigFunction)).Methods("PUT", "DELETE")
+
+		dbr.Handle("/_config/graphql",
+			makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfigGraphQL)).Methods("GET")
+		dbr.Handle("/_config/graphql",
+			makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutDbConfigGraphQL)).Methods("PUT", "DELETE")
+
+		dbr.Handle("/_config/queries",
+			makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfigQueries)).Methods("GET")
+		dbr.Handle("/_config/queries/{query}",
+			makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfigQuery)).Methods("GET")
+		dbr.Handle("/_config/queries",
+			makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutDbConfigQueries)).Methods("PUT", "DELETE")
+		dbr.Handle("/_config/queries/{query}",
+			makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutDbConfigQuery)).Methods("PUT", "DELETE")
+	}
 
 	// The routes below are part of the CouchDB REST API but should only be available to admins,
 	// so the handlers are moved to the admin port.

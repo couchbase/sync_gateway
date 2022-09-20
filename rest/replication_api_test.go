@@ -45,12 +45,12 @@ func TestReplicationAPI(t *testing.T) {
 	}
 
 	// PUT replication
-	response := rt.SendAdminRequest("PUT", "/db/_replication/replication1", marshalConfig(t, replicationConfig))
-	requireStatus(t, response, http.StatusCreated)
+	response := rt.SendAdminRequest("PUT", "/db/_replication/replication1", MarshalConfig(t, replicationConfig))
+	RequireStatus(t, response, http.StatusCreated)
 
 	// GET replication for PUT
 	response = rt.SendAdminRequest("GET", "/db/_replication/replication1", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 	var configResponse db.ReplicationConfig
 	err := json.Unmarshal(response.BodyBytes(), &configResponse)
 	log.Printf("configResponse direction type: %T", configResponse.Direction)
@@ -62,12 +62,12 @@ func TestReplicationAPI(t *testing.T) {
 
 	// POST replication
 	replicationConfig.ID = "replication2"
-	response = rt.SendAdminRequest("POST", "/db/_replication/", marshalConfig(t, replicationConfig))
-	requireStatus(t, response, http.StatusCreated)
+	response = rt.SendAdminRequest("POST", "/db/_replication/", MarshalConfig(t, replicationConfig))
+	RequireStatus(t, response, http.StatusCreated)
 
 	// GET replication for POST
 	response = rt.SendAdminRequest("GET", "/db/_replication/replication2", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 	configResponse = db.ReplicationConfig{}
 	err = json.Unmarshal(response.BodyBytes(), &configResponse)
 	require.NoError(t, err)
@@ -77,7 +77,7 @@ func TestReplicationAPI(t *testing.T) {
 
 	// GET all replications
 	response = rt.SendAdminRequest("GET", "/db/_replication/", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 	var replicationsResponse map[string]db.ReplicationConfig
 	log.Printf("response: %s", response.BodyBytes())
 	err = json.Unmarshal(response.BodyBytes(), &replicationsResponse)
@@ -90,15 +90,15 @@ func TestReplicationAPI(t *testing.T) {
 
 	// DELETE replication
 	response = rt.SendAdminRequest("DELETE", "/db/_replication/replication1", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 
 	// Verify delete was successful
 	response = rt.SendAdminRequest("GET", "/db/_replication/replication1", "")
-	requireStatus(t, response, http.StatusNotFound)
+	RequireStatus(t, response, http.StatusNotFound)
 
 	// DELETE non-existent replication
 	response = rt.SendAdminRequest("DELETE", "/db/_replication/replication3", "")
-	requireStatus(t, response, http.StatusNotFound)
+	RequireStatus(t, response, http.StatusNotFound)
 
 }
 
@@ -167,8 +167,8 @@ func TestValidateReplicationAPI(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_replication/%s", test.ID), marshalConfig(t, test.config))
-			requireStatus(t, response, test.expectedResponseCode)
+			response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_replication/%s", test.ID), MarshalConfig(t, test.config))
+			RequireStatus(t, response, test.expectedResponseCode)
 			if test.expectedErrorContains != "" {
 				assert.Contains(t, string(response.Body.Bytes()), test.expectedErrorContains)
 			}
@@ -228,11 +228,11 @@ func TestValidateReplicationAPI_CE(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_replication/%s", test.ID), marshalConfig(t, test.config))
+			response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_replication/%s", test.ID), MarshalConfig(t, test.config))
 			if base.IsEnterpriseEdition() {
-				requireStatus(t, response, 201)
+				RequireStatus(t, response, 201)
 			} else {
-				requireStatus(t, response, 400)
+				RequireStatus(t, response, 400)
 			}
 		})
 	}
@@ -246,7 +246,7 @@ func TestReplicationStatusAPI(t *testing.T) {
 
 	// GET replication status for non-existent replication ID
 	response := rt.SendAdminRequest("GET", "/db/_replicationStatus/replication1", "")
-	requireStatus(t, response, http.StatusNotFound)
+	RequireStatus(t, response, http.StatusNotFound)
 
 	replicationConfig := db.ReplicationConfig{
 		ID:        "replication1",
@@ -255,12 +255,12 @@ func TestReplicationStatusAPI(t *testing.T) {
 	}
 
 	// PUT replication1
-	response = rt.SendAdminRequest("PUT", "/db/_replication/replication1", marshalConfig(t, replicationConfig))
-	requireStatus(t, response, http.StatusCreated)
+	response = rt.SendAdminRequest("PUT", "/db/_replication/replication1", MarshalConfig(t, replicationConfig))
+	RequireStatus(t, response, http.StatusCreated)
 
 	// GET replication status for replication1
 	response = rt.SendAdminRequest("GET", "/db/_replicationStatus/replication1", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 	var statusResponse db.ReplicationStatus
 	err := json.Unmarshal(response.BodyBytes(), &statusResponse)
 	require.NoError(t, err)
@@ -273,12 +273,12 @@ func TestReplicationStatusAPI(t *testing.T) {
 		Remote:    "http://remote:4984/db",
 		Direction: "pull",
 	}
-	response = rt.SendAdminRequest("PUT", "/db/_replication/replication2", marshalConfig(t, replication2Config))
-	requireStatus(t, response, http.StatusCreated)
+	response = rt.SendAdminRequest("PUT", "/db/_replication/replication2", MarshalConfig(t, replication2Config))
+	RequireStatus(t, response, http.StatusCreated)
 
 	// GET replication status for all replications
 	response = rt.SendAdminRequest("GET", "/db/_replicationStatus/", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 	var allStatusResponse []*db.ReplicationStatus
 	err = json.Unmarshal(response.BodyBytes(), &allStatusResponse)
 	require.NoError(t, err)
@@ -288,11 +288,11 @@ func TestReplicationStatusAPI(t *testing.T) {
 
 	// PUT replication status, no action
 	response = rt.SendAdminRequest("PUT", "/db/_replicationStatus/replication1", "")
-	requireStatus(t, response, http.StatusBadRequest)
+	RequireStatus(t, response, http.StatusBadRequest)
 
 	// PUT replication status with action
 	response = rt.SendAdminRequest("PUT", "/db/_replicationStatus/replication1?action=start", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 }
 
 func TestReplicationStatusStopAdhoc(t *testing.T) {
@@ -302,7 +302,7 @@ func TestReplicationStatusStopAdhoc(t *testing.T) {
 
 	// GET replication status for non-existent replication ID
 	response := rt.SendAdminRequest("GET", "/db/_replicationStatus/replication1", "")
-	requireStatus(t, response, http.StatusNotFound)
+	RequireStatus(t, response, http.StatusNotFound)
 
 	permanentReplicationConfig := db.ReplicationConfig{
 		ID:         "replication1",
@@ -320,16 +320,16 @@ func TestReplicationStatusStopAdhoc(t *testing.T) {
 	}
 
 	// PUT non-adhoc replication
-	response = rt.SendAdminRequest("PUT", "/db/_replication/replication1", marshalConfig(t, permanentReplicationConfig))
-	requireStatus(t, response, http.StatusCreated)
+	response = rt.SendAdminRequest("PUT", "/db/_replication/replication1", MarshalConfig(t, permanentReplicationConfig))
+	RequireStatus(t, response, http.StatusCreated)
 
 	// PUT adhoc replication
-	response = rt.SendAdminRequest("PUT", "/db/_replication/replication2", marshalConfig(t, adhocReplicationConfig))
-	requireStatus(t, response, http.StatusCreated)
+	response = rt.SendAdminRequest("PUT", "/db/_replication/replication2", MarshalConfig(t, adhocReplicationConfig))
+	RequireStatus(t, response, http.StatusCreated)
 
 	// GET replication status for all replications
 	response = rt.SendAdminRequest("GET", "/db/_replicationStatus/", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 	var allStatusResponse []*db.ReplicationStatus
 	err := json.Unmarshal(response.BodyBytes(), &allStatusResponse)
 	require.NoError(t, err)
@@ -338,7 +338,7 @@ func TestReplicationStatusStopAdhoc(t *testing.T) {
 
 	// PUT _replicationStatus to stop non-adhoc replication
 	response = rt.SendAdminRequest("PUT", "/db/_replicationStatus/replication1?action=stop", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 	var stopResponse *db.ReplicationStatus
 	err = json.Unmarshal(response.BodyBytes(), &stopResponse)
 	require.NoError(t, err)
@@ -346,7 +346,7 @@ func TestReplicationStatusStopAdhoc(t *testing.T) {
 
 	// PUT _replicationStatus to stop adhoc replication
 	response = rt.SendAdminRequest("PUT", "/db/_replicationStatus/replication2?action=stop", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 	var stopAdhocResponse *db.ReplicationStatus
 	err = json.Unmarshal(response.BodyBytes(), &stopAdhocResponse)
 	require.NoError(t, err)
@@ -354,7 +354,7 @@ func TestReplicationStatusStopAdhoc(t *testing.T) {
 
 	// GET replication status for all replications
 	response = rt.SendAdminRequest("GET", "/db/_replicationStatus/", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 	var updatedStatusResponse []*db.ReplicationStatus
 	err = json.Unmarshal(response.BodyBytes(), &updatedStatusResponse)
 	require.NoError(t, err)
@@ -370,7 +370,7 @@ func TestReplicationStatusAPIIncludeConfig(t *testing.T) {
 
 	// GET replication status for non-existent replication ID
 	response := rt.SendAdminRequest("GET", "/db/_replicationStatus/replication1?includeConfig=true", "")
-	requireStatus(t, response, http.StatusNotFound)
+	RequireStatus(t, response, http.StatusNotFound)
 
 	replicationConfig := db.ReplicationConfig{
 		ID:        "replication1",
@@ -379,12 +379,12 @@ func TestReplicationStatusAPIIncludeConfig(t *testing.T) {
 	}
 
 	// PUT replication1
-	response = rt.SendAdminRequest("PUT", "/db/_replication/replication1", marshalConfig(t, replicationConfig))
-	requireStatus(t, response, http.StatusCreated)
+	response = rt.SendAdminRequest("PUT", "/db/_replication/replication1", MarshalConfig(t, replicationConfig))
+	RequireStatus(t, response, http.StatusCreated)
 
 	// GET replication status for replication1
 	response = rt.SendAdminRequest("GET", "/db/_replicationStatus/replication1?includeConfig=true", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 	var statusResponse db.ReplicationStatus
 	err := json.Unmarshal(response.BodyBytes(), &statusResponse)
 	require.NoError(t, err)
@@ -397,12 +397,12 @@ func TestReplicationStatusAPIIncludeConfig(t *testing.T) {
 		Remote:    "http://remote:4984/db",
 		Direction: "pull",
 	}
-	response = rt.SendAdminRequest("PUT", "/db/_replication/replication2", marshalConfig(t, replication2Config))
-	requireStatus(t, response, http.StatusCreated)
+	response = rt.SendAdminRequest("PUT", "/db/_replication/replication2", MarshalConfig(t, replication2Config))
+	RequireStatus(t, response, http.StatusCreated)
 
 	// GET replication status for all replications
 	response = rt.SendAdminRequest("GET", "/db/_replicationStatus/?includeConfig=true", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 	var allStatusResponse []*db.ReplicationStatus
 	err = json.Unmarshal(response.BodyBytes(), &allStatusResponse)
 	require.NoError(t, err)
@@ -412,15 +412,15 @@ func TestReplicationStatusAPIIncludeConfig(t *testing.T) {
 
 	// PUT replication status, no action
 	response = rt.SendAdminRequest("PUT", "/db/_replicationStatus/replication1", "")
-	requireStatus(t, response, http.StatusBadRequest)
+	RequireStatus(t, response, http.StatusBadRequest)
 
 	// PUT replication status with action
 	response = rt.SendAdminRequest("PUT", "/db/_replicationStatus/replication1?action=start", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 
 }
 
-func marshalConfig(t *testing.T, config db.ReplicationConfig) string {
+func MarshalConfig(t *testing.T, config db.ReplicationConfig) string {
 	replicationPayload, err := json.Marshal(config)
 	require.NoError(t, err)
 	return string(replicationPayload)
@@ -497,7 +497,7 @@ func TestReplicationsFromConfig(t *testing.T) {
 
 			// Retrieve replications
 			response := rt.SendAdminRequest("GET", "/db/_replication/", "")
-			requireStatus(t, response, http.StatusOK)
+			RequireStatus(t, response, http.StatusOK)
 			var configResponse map[string]*db.ReplicationConfig
 			err := json.Unmarshal(response.BodyBytes(), &configResponse)
 			require.NoError(t, err)
@@ -520,6 +520,7 @@ func TestReplicationsFromConfig(t *testing.T) {
 //   - Creates a continuous push replication on rt1 via the REST API
 //   - Validates documents are replicated to rt2
 func TestPushReplicationAPI(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
@@ -529,31 +530,31 @@ func TestPushReplicationAPI(t *testing.T) {
 
 	// Create doc1 on rt1
 	docID1 := t.Name() + "rt1doc"
-	_ = rt1.putDoc(docID1, `{"source":"rt1","channels":["alice"]}`)
+	_ = rt1.PutDoc(docID1, `{"source":"rt1","channels":["alice"]}`)
 
 	// Create push replication, verify running
 	replicationID := t.Name()
 	rt1.createReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
-	rt1.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
 	// wait for document originally written to rt1 to arrive at rt2
 	changesResults := rt2.RequireWaitChanges(1, "0")
 	assert.Equal(t, docID1, changesResults.Results[0].ID)
 
 	// Validate doc1 contents on remote
-	doc1Body := rt2.getDoc(docID1)
+	doc1Body := rt2.GetDoc(docID1)
 	assert.Equal(t, "rt1", doc1Body["source"])
 
 	// Create doc2 on rt1
 	docID2 := t.Name() + "rt1doc2"
-	_ = rt2.putDoc(docID2, `{"source":"rt1","channels":["alice"]}`)
+	_ = rt2.PutDoc(docID2, `{"source":"rt1","channels":["alice"]}`)
 
 	// wait for doc2 to arrive at rt2
 	changesResults = rt2.RequireWaitChanges(1, changesResults.Last_Seq.(string))
 	assert.Equal(t, docID2, changesResults.Results[0].ID)
 
 	// Validate doc2 contents
-	doc2Body := rt2.getDoc(docID2)
+	doc2Body := rt2.GetDoc(docID2)
 	assert.Equal(t, "rt1", doc2Body["source"])
 }
 
@@ -572,31 +573,31 @@ func TestPullReplicationAPI(t *testing.T) {
 
 	// Create doc1 on rt2
 	docID1 := t.Name() + "rt2doc"
-	_ = rt2.putDoc(docID1, `{"source":"rt2","channels":["alice"]}`)
+	_ = rt2.PutDoc(docID1, `{"source":"rt2","channels":["alice"]}`)
 
 	// Create pull replication, verify running
 	replicationID := t.Name()
 	rt1.createReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
-	rt1.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
 	// wait for document originally written to rt2 to arrive at rt1
 	changesResults := rt1.RequireWaitChanges(1, "0")
 	changesResults.requireDocIDs(t, []string{docID1})
 
 	// Validate doc1 contents
-	doc1Body := rt1.getDoc(docID1)
+	doc1Body := rt1.GetDoc(docID1)
 	assert.Equal(t, "rt2", doc1Body["source"])
 
 	// Create doc2 on rt2
 	docID2 := t.Name() + "rt2doc2"
-	_ = rt2.putDoc(docID2, `{"source":"rt2","channels":["alice"]}`)
+	_ = rt2.PutDoc(docID2, `{"source":"rt2","channels":["alice"]}`)
 
 	// wait for new document to arrive at rt1
 	changesResults = rt1.RequireWaitChanges(1, changesResults.Last_Seq.(string))
 	changesResults.requireDocIDs(t, []string{docID2})
 
 	// Validate doc2 contents
-	doc2Body := rt1.getDoc(docID2)
+	doc2Body := rt1.GetDoc(docID2)
 	assert.Equal(t, "rt2", doc2Body["source"])
 }
 
@@ -614,12 +615,12 @@ func TestReplicationStatusActions(t *testing.T) {
 
 	// Create doc1 on rt2
 	docID1 := t.Name() + "rt2doc"
-	_ = rt2.putDoc(docID1, `{"source":"rt2","channels":["alice"]}`)
+	_ = rt2.PutDoc(docID1, `{"source":"rt2","channels":["alice"]}`)
 
 	// Create pull replication, verify running
 	replicationID := t.Name()
 	rt1.createReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
-	rt1.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
 	// Start goroutine to continuously poll for status of replication on rt1 to detect race conditions
 	doneChan := make(chan struct{})
@@ -642,24 +643,24 @@ func TestReplicationStatusActions(t *testing.T) {
 	changesResults.requireDocIDs(t, []string{docID1})
 
 	// Validate doc1 contents
-	doc1Body := rt1.getDoc(docID1)
+	doc1Body := rt1.GetDoc(docID1)
 	assert.Equal(t, "rt2", doc1Body["source"])
 
 	// Create doc2 on rt2
 	docID2 := t.Name() + "rt2doc2"
-	_ = rt2.putDoc(docID2, `{"source":"rt2","channels":["alice"]}`)
+	_ = rt2.PutDoc(docID2, `{"source":"rt2","channels":["alice"]}`)
 
 	// wait for new document to arrive at rt1
 	changesResults = rt1.RequireWaitChanges(1, changesResults.Last_Seq.(string))
 	changesResults.requireDocIDs(t, []string{docID2})
 
 	// Validate doc2 contents
-	doc2Body := rt1.getDoc(docID2)
+	doc2Body := rt1.GetDoc(docID2)
 	assert.Equal(t, "rt2", doc2Body["source"])
 
 	// Stop replication
 	response := rt1.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=stop", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 
 	// Wait for stopped.  Non-instant as config change needs to arrive over DCP
 	stateError := rt1.WaitForCondition(func() bool {
@@ -670,7 +671,7 @@ func TestReplicationStatusActions(t *testing.T) {
 
 	// Reset replication
 	response = rt1.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=reset", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 
 	resetErr := rt1.WaitForCondition(func() bool {
 		status := rt1.GetReplicationStatus(replicationID)
@@ -680,7 +681,7 @@ func TestReplicationStatusActions(t *testing.T) {
 
 	// Restart the replication
 	response = rt1.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=start", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 
 	// Verify replication has restarted from zero. Since docs have already been replicated,
 	// expect no docs read, two docs checked.
@@ -723,24 +724,24 @@ func TestReplicationRebalancePull(t *testing.T) {
 	// Create docs on remote
 	docABC1 := t.Name() + "ABC1"
 	docDEF1 := t.Name() + "DEF1"
-	_ = remoteRT.putDoc(docABC1, `{"source":"remoteRT","channels":["ABC"]}`)
-	_ = remoteRT.putDoc(docDEF1, `{"source":"remoteRT","channels":["DEF"]}`)
+	_ = remoteRT.PutDoc(docABC1, `{"source":"remoteRT","channels":["ABC"]}`)
+	_ = remoteRT.PutDoc(docDEF1, `{"source":"remoteRT","channels":["DEF"]}`)
 
 	// Create pull replications, verify running
 	activeRT.createReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePull, []string{"ABC"}, true, db.ConflictResolverDefault)
 	activeRT.createReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePull, []string{"DEF"}, true, db.ConflictResolverDefault)
 	activeRT.waitForAssignedReplications(2)
-	activeRT.waitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
-	activeRT.waitForReplicationStatus("rep_DEF", db.ReplicationStateRunning)
+	activeRT.WaitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
+	activeRT.WaitForReplicationStatus("rep_DEF", db.ReplicationStateRunning)
 
 	// wait for documents originally written to remoteRT to arrive at activeRT
 	changesResults := activeRT.RequireWaitChanges(2, "0")
 	changesResults.requireDocIDs(t, []string{docABC1, docDEF1})
 
 	// Validate doc contents
-	docABC1Body := activeRT.getDoc(docABC1)
+	docABC1Body := activeRT.GetDoc(docABC1)
 	assert.Equal(t, "remoteRT", docABC1Body["source"])
-	docDEF1Body := activeRT.getDoc(docDEF1)
+	docDEF1Body := activeRT.GetDoc(docDEF1)
 	assert.Equal(t, "remoteRT", docDEF1Body["source"])
 
 	// Add another node to the active cluster
@@ -755,22 +756,22 @@ func TestReplicationRebalancePull(t *testing.T) {
 
 	// Create additional docs on remoteRT
 	docABC2 := t.Name() + "ABC2"
-	_ = remoteRT.putDoc(docABC2, `{"source":"remoteRT","channels":["ABC"]}`)
+	_ = remoteRT.PutDoc(docABC2, `{"source":"remoteRT","channels":["ABC"]}`)
 	docDEF2 := t.Name() + "DEF2"
-	_ = remoteRT.putDoc(docDEF2, `{"source":"remoteRT","channels":["DEF"]}`)
+	_ = remoteRT.PutDoc(docDEF2, `{"source":"remoteRT","channels":["DEF"]}`)
 
 	// wait for new documents to arrive at activeRT
 	changesResults = activeRT.RequireWaitChanges(2, changesResults.Last_Seq.(string))
 	changesResults.requireDocIDs(t, []string{docABC2, docDEF2})
 
 	// Validate doc contents
-	docABC2Body := activeRT.getDoc(docABC2)
+	docABC2Body := activeRT.GetDoc(docABC2)
 	assert.Equal(t, "remoteRT", docABC2Body["source"])
-	docDEF2Body := activeRT.getDoc(docDEF2)
+	docDEF2Body := activeRT.GetDoc(docDEF2)
 	assert.Equal(t, "remoteRT", docDEF2Body["source"])
-	docABC2Body2 := activeRT2.getDoc(docABC2)
+	docABC2Body2 := activeRT2.GetDoc(docABC2)
 	assert.Equal(t, "remoteRT", docABC2Body2["source"])
-	docDEF2Body2 := activeRT2.getDoc(docDEF2)
+	docDEF2Body2 := activeRT2.GetDoc(docDEF2)
 	assert.Equal(t, "remoteRT", docDEF2Body2["source"])
 
 	// Validate replication stats across rebalance, on both active nodes
@@ -813,23 +814,23 @@ func TestReplicationRebalancePush(t *testing.T) {
 	// Create docs on active
 	docABC1 := t.Name() + "ABC1"
 	docDEF1 := t.Name() + "DEF1"
-	_ = activeRT.putDoc(docABC1, `{"source":"activeRT","channels":["ABC"]}`)
-	_ = activeRT.putDoc(docDEF1, `{"source":"activeRT","channels":["DEF"]}`)
+	_ = activeRT.PutDoc(docABC1, `{"source":"activeRT","channels":["ABC"]}`)
+	_ = activeRT.PutDoc(docDEF1, `{"source":"activeRT","channels":["DEF"]}`)
 
 	// Create push replications, verify running
 	activeRT.createReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true, db.ConflictResolverDefault)
-	activeRT.waitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
+	activeRT.WaitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
 	activeRT.createReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePush, []string{"DEF"}, true, db.ConflictResolverDefault)
-	activeRT.waitForReplicationStatus("rep_DEF", db.ReplicationStateRunning)
+	activeRT.WaitForReplicationStatus("rep_DEF", db.ReplicationStateRunning)
 
 	// wait for documents to be pushed to remote
 	changesResults := remoteRT.RequireWaitChanges(2, "0")
 	changesResults.requireDocIDs(t, []string{docABC1, docDEF1})
 
 	// Validate doc contents
-	docABC1Body := remoteRT.getDoc(docABC1)
+	docABC1Body := remoteRT.GetDoc(docABC1)
 	assert.Equal(t, "activeRT", docABC1Body["source"])
-	docDEF1Body := remoteRT.getDoc(docDEF1)
+	docDEF1Body := remoteRT.GetDoc(docDEF1)
 	assert.Equal(t, "activeRT", docDEF1Body["source"])
 
 	// Add another node to the active cluster
@@ -842,18 +843,18 @@ func TestReplicationRebalancePush(t *testing.T) {
 
 	// Create additional docs on local
 	docABC2 := t.Name() + "ABC2"
-	_ = activeRT.putDoc(docABC2, `{"source":"activeRT","channels":["ABC"]}`)
+	_ = activeRT.PutDoc(docABC2, `{"source":"activeRT","channels":["ABC"]}`)
 	docDEF2 := t.Name() + "DEF2"
-	_ = activeRT.putDoc(docDEF2, `{"source":"activeRT","channels":["DEF"]}`)
+	_ = activeRT.PutDoc(docDEF2, `{"source":"activeRT","channels":["DEF"]}`)
 
 	// wait for new documents to arrive at remote
 	changesResults = remoteRT.RequireWaitChanges(2, changesResults.Last_Seq.(string))
 	changesResults.requireDocIDs(t, []string{docABC2, docDEF2})
 
 	// Validate doc contents
-	docABC2Body := remoteRT.getDoc(docABC2)
+	docABC2Body := remoteRT.GetDoc(docABC2)
 	assert.Equal(t, "activeRT", docABC2Body["source"])
-	docDEF2Body := remoteRT.getDoc(docDEF2)
+	docDEF2Body := remoteRT.GetDoc(docDEF2)
 	assert.Equal(t, "activeRT", docDEF2Body["source"])
 
 	// Validate replication stats across rebalance, on both active nodes
@@ -885,6 +886,8 @@ func TestReplicationRebalancePush(t *testing.T) {
 //   - Validates replication status count when replication is local and non-local
 func TestPullOneshotReplicationAPI(t *testing.T) {
 
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
@@ -896,7 +899,7 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 	docIDs := make([]string, 20)
 	for i := 0; i < 20; i++ {
 		docID := fmt.Sprintf("%s%s%d", t.Name(), "rt2doc", i)
-		_ = remoteRT.putDoc(docID, `{"source":"rt2","channels":["alice"]}`)
+		_ = remoteRT.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
 		docIDs[i] = docID
 	}
 
@@ -905,18 +908,18 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 	// Create oneshot replication, verify running
 	replicationID := t.Name()
 	activeRT.createReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, false, db.ConflictResolverDefault)
-	activeRT.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+	activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
 	// wait for documents originally written to rt2 to arrive at rt1
 	changesResults := activeRT.RequireWaitChanges(docCount, "0")
 	changesResults.requireDocIDs(t, docIDs)
 
 	// Validate sample doc contents
-	doc1Body := activeRT.getDoc(docIDs[0])
+	doc1Body := activeRT.GetDoc(docIDs[0])
 	assert.Equal(t, "rt2", doc1Body["source"])
 
 	// Wait for replication to stop
-	activeRT.waitForReplicationStatus(replicationID, db.ReplicationStateStopped)
+	activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateStopped)
 
 	// Validate docs read from active
 	status := activeRT.GetReplicationStatus(replicationID)
@@ -938,9 +941,12 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 //   - Write documents to rt1 belonging to both channels
 //   - Write documents to rt1, each belonging to one of the channels (verifies replications are still running)
 //   - Validate replications do not report errors, all docs are replicated
+//
 // Note: This test intermittently reproduced CBG-998 under -race when a 1s sleep was added post-callback to
-//   WriteUpdateWithXattr.  Have been unable to reproduce the same with a leaky bucket UpdateCallback.
+//
+//	WriteUpdateWithXattr.  Have been unable to reproduce the same with a leaky bucket UpdateCallback.
 func TestReplicationConcurrentPush(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
@@ -955,15 +961,15 @@ func TestReplicationConcurrentPush(t *testing.T) {
 	defer teardown()
 	// Create push replications, verify running
 	activeRT.createReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true, db.ConflictResolverDefault)
-	activeRT.waitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
+	activeRT.WaitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
 	activeRT.createReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePush, []string{"DEF"}, true, db.ConflictResolverDefault)
-	activeRT.waitForReplicationStatus("rep_DEF", db.ReplicationStateRunning)
+	activeRT.WaitForReplicationStatus("rep_DEF", db.ReplicationStateRunning)
 
 	// Create docs on active
 	docAllChannels1 := t.Name() + "All1"
 	docAllChannels2 := t.Name() + "All2"
-	_ = activeRT.putDoc(docAllChannels1, `{"source":"activeRT1","channels":["ABC","DEF"]}`)
-	_ = activeRT.putDoc(docAllChannels2, `{"source":"activeRT2","channels":["ABC","DEF"]}`)
+	_ = activeRT.PutDoc(docAllChannels1, `{"source":"activeRT1","channels":["ABC","DEF"]}`)
+	_ = activeRT.PutDoc(docAllChannels2, `{"source":"activeRT2","channels":["ABC","DEF"]}`)
 
 	// wait for documents to be pushed to remote
 	changesResults := remoteRT.RequireWaitChanges(2, "0")
@@ -997,9 +1003,9 @@ func TestReplicationConcurrentPush(t *testing.T) {
 	}))
 
 	// Validate doc contents
-	docAll1Body := remoteRT.getDoc(docAllChannels1)
+	docAll1Body := remoteRT.GetDoc(docAllChannels1)
 	assert.Equal(t, "activeRT1", docAll1Body["source"])
-	docAll2Body := remoteRT.getDoc(docAllChannels2)
+	docAll2Body := remoteRT.GetDoc(docAllChannels2)
 	assert.Equal(t, "activeRT2", docAll2Body["source"])
 
 }
@@ -1007,19 +1013,20 @@ func TestReplicationConcurrentPush(t *testing.T) {
 // Helper functions for SGR testing
 
 // setupSGRPeers sets up two rest testers to be used for sg-replicate testing with the following configuration:
-//   activeRT:
-//     - backed by test bucket
-//     - has sgreplicate enabled
-//   passiveRT:
-//     - backed by different test bucket
-//     - user 'alice' created with star channel access
-//     - http server wrapping the public API, remoteDBURLString targets the rt2 database as user alice (e.g. http://alice:pass@host/db)
-//   returned teardown function closes activeRT, passiveRT and the http server, should be invoked with defer
+//
+//	activeRT:
+//	  - backed by test bucket
+//	  - has sgreplicate enabled
+//	passiveRT:
+//	  - backed by different test bucket
+//	  - user 'alice' created with star channel access
+//	  - http server wrapping the public API, remoteDBURLString targets the rt2 database as user alice (e.g. http://alice:pass@host/db)
+//	returned teardown function closes activeRT, passiveRT and the http server, should be invoked with defer
 func setupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, remoteDBURLString string, teardown func()) {
 	// Set up passive RestTester (rt2)
 	passiveTestBucket := base.GetTestBucket(t)
 	passiveRT = NewRestTester(t, &RestTesterConfig{
-		TestBucket: passiveTestBucket.NoCloseClone(),
+		CustomTestBucket: passiveTestBucket.NoCloseClone(),
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {
@@ -1042,8 +1049,8 @@ func setupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 	// Set up active RestTester (rt1)
 	activeTestBucket := base.GetTestBucket(t)
 	activeRT = NewRestTester(t, &RestTesterConfig{
-		TestBucket:         activeTestBucket.NoCloseClone(),
-		sgReplicateEnabled: true,
+		CustomTestBucket:   activeTestBucket.NoCloseClone(),
+		SgReplicateEnabled: true,
 	})
 	// Initalize RT and bucket
 	_ = activeRT.Bucket()
@@ -1063,8 +1070,8 @@ func addActiveRT(t *testing.T, testBucket *base.TestBucket) (activeRT *RestTeste
 
 	// Create a new rest tester, using a NoCloseClone of testBucket, which disables the TestBucketPool teardown
 	activeRT = NewRestTester(t, &RestTesterConfig{
-		TestBucket:         testBucket.NoCloseClone(),
-		sgReplicateEnabled: true,
+		CustomTestBucket:   testBucket.NoCloseClone(),
+		SgReplicateEnabled: true,
 	})
 
 	// If this is a walrus bucket, we need to jump through some hoops to ensure the shared in-memory walrus bucket isn't
@@ -1100,7 +1107,7 @@ func (rt *RestTester) createReplication(replicationID string, remoteURLString st
 	payload, err := json.Marshal(replicationConfig)
 	require.NoError(rt.tb, err)
 	resp := rt.SendAdminRequest(http.MethodPost, "/db/_replication/", string(payload))
-	requireStatus(rt.tb, resp, http.StatusCreated)
+	RequireStatus(rt.tb, resp, http.StatusCreated)
 }
 
 func (rt *RestTester) waitForAssignedReplications(count int) {
@@ -1111,7 +1118,7 @@ func (rt *RestTester) waitForAssignedReplications(count int) {
 	require.NoError(rt.tb, rt.WaitForCondition(successFunc))
 }
 
-func (rt *RestTester) waitForReplicationStatus(replicationID string, targetStatus string) {
+func (rt *RestTester) WaitForReplicationStatus(replicationID string, targetStatus string) {
 	successFunc := func() bool {
 		status := rt.GetReplicationStatus(replicationID)
 		return status.Status == targetStatus
@@ -1121,21 +1128,21 @@ func (rt *RestTester) waitForReplicationStatus(replicationID string, targetStatu
 
 func (rt *RestTester) GetReplications() (replications map[string]db.ReplicationCfg) {
 	rawResponse := rt.SendAdminRequest("GET", "/db/_replication/", "")
-	requireStatus(rt.tb, rawResponse, 200)
+	RequireStatus(rt.tb, rawResponse, 200)
 	require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &replications))
 	return replications
 }
 
 func (rt *RestTester) GetReplicationStatus(replicationID string) (status db.ReplicationStatus) {
 	rawResponse := rt.SendAdminRequest("GET", "/db/_replicationStatus/"+replicationID, "")
-	requireStatus(rt.tb, rawResponse, 200)
+	RequireStatus(rt.tb, rawResponse, 200)
 	require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &status))
 	return status
 }
 
 func (rt *RestTester) GetReplicationStatuses(queryString string) (statuses []db.ReplicationStatus) {
 	rawResponse := rt.SendAdminRequest("GET", "/db/_replicationStatus/"+queryString, "")
-	requireStatus(rt.tb, rawResponse, 200)
+	RequireStatus(rt.tb, rawResponse, 200)
 	require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &statuses))
 	return statuses
 }
@@ -1153,12 +1160,12 @@ func TestReplicationAPIWithAuthCredentials(t *testing.T) {
 		Direction:      db.ActiveReplicatorTypePull,
 		Adhoc:          true,
 	}
-	response := rt.SendAdminRequest(http.MethodPut, "/db/_replication/replication1", marshalConfig(t, replication1Config))
-	requireStatus(t, response, http.StatusCreated)
+	response := rt.SendAdminRequest(http.MethodPut, "/db/_replication/replication1", MarshalConfig(t, replication1Config))
+	RequireStatus(t, response, http.StatusCreated)
 
 	// Check whether auth are credentials redacted from replication response
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/replication1", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 	var configResponse db.ReplicationConfig
 	err := json.Unmarshal(response.BodyBytes(), &configResponse)
 	require.NoError(t, err, "Error un-marshalling replication response")
@@ -1183,12 +1190,12 @@ func TestReplicationAPIWithAuthCredentials(t *testing.T) {
 		Direction: db.ActiveReplicatorTypePull,
 		Adhoc:     true,
 	}
-	response = rt.SendAdminRequest(http.MethodPost, "/db/_replication/", marshalConfig(t, replication2Config))
-	requireStatus(t, response, http.StatusCreated)
+	response = rt.SendAdminRequest(http.MethodPost, "/db/_replication/", MarshalConfig(t, replication2Config))
+	RequireStatus(t, response, http.StatusCreated)
 
 	// Check whether auth are credentials redacted from replication response
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/replication2", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 	configResponse = db.ReplicationConfig{}
 	err = json.Unmarshal(response.BodyBytes(), &configResponse)
 	require.NoError(t, err, "Error un-marshalling replication response")
@@ -1196,7 +1203,7 @@ func TestReplicationAPIWithAuthCredentials(t *testing.T) {
 
 	// Check whether auth are credentials redacted from all replications response
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 	log.Printf("response: %s", response.BodyBytes())
 
 	var replicationsResponse map[string]db.ReplicationConfig
@@ -1214,7 +1221,7 @@ func TestReplicationAPIWithAuthCredentials(t *testing.T) {
 
 	// Check whether auth are credentials redacted replication status for all replications
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_replicationStatus/?includeConfig=true", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 	var allStatusResponse []*db.ReplicationStatus
 	require.NoError(t, json.Unmarshal(response.BodyBytes(), &allStatusResponse))
 	require.Equal(t, 2, len(allStatusResponse), "Replication count mismatch")
@@ -1228,15 +1235,15 @@ func TestReplicationAPIWithAuthCredentials(t *testing.T) {
 
 	// Delete both replications
 	response = rt.SendAdminRequest(http.MethodDelete, "/db/_replication/replication1", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 	response = rt.SendAdminRequest(http.MethodDelete, "/db/_replication/replication2", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 
 	// Verify deletes were successful
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/replication1", "")
-	requireStatus(t, response, http.StatusNotFound)
+	RequireStatus(t, response, http.StatusNotFound)
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/replication2", "")
-	requireStatus(t, response, http.StatusNotFound)
+	RequireStatus(t, response, http.StatusNotFound)
 }
 
 func TestValidateReplication(t *testing.T) {
@@ -1432,8 +1439,8 @@ func TestGetStatusWithReplication(t *testing.T) {
 		Direction:      db.ActiveReplicatorTypePull,
 		Adhoc:          true,
 	}
-	response := rt.SendAdminRequest(http.MethodPut, "/db/_replication/replication1", marshalConfig(t, config1))
-	requireStatus(t, response, http.StatusCreated)
+	response := rt.SendAdminRequest(http.MethodPut, "/db/_replication/replication1", MarshalConfig(t, config1))
+	RequireStatus(t, response, http.StatusCreated)
 
 	// Create another replication
 	config2 := db.ReplicationConfig{
@@ -1442,12 +1449,12 @@ func TestGetStatusWithReplication(t *testing.T) {
 		Direction: db.ActiveReplicatorTypePull,
 		Adhoc:     true,
 	}
-	response = rt.SendAdminRequest(http.MethodPut, "/db/_replication/replication2", marshalConfig(t, config2))
-	requireStatus(t, response, http.StatusCreated)
+	response = rt.SendAdminRequest(http.MethodPut, "/db/_replication/replication2", MarshalConfig(t, config2))
+	RequireStatus(t, response, http.StatusCreated)
 
 	// Check _status response
 	response = rt.SendAdminRequest(http.MethodGet, "/_status", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 	var status Status
 	err := json.Unmarshal(response.BodyBytes(), &status)
 	require.NoError(t, err, "Error un-marshalling replication response")
@@ -1488,15 +1495,15 @@ func TestGetStatusWithReplication(t *testing.T) {
 
 	// Delete both replications
 	response = rt.SendAdminRequest(http.MethodDelete, "/db/_replication/replication1", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 	response = rt.SendAdminRequest(http.MethodDelete, "/db/_replication/replication2", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 
 	// Verify deletes were successful
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/replication1", "")
-	requireStatus(t, response, http.StatusNotFound)
+	RequireStatus(t, response, http.StatusNotFound)
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/replication2", "")
-	requireStatus(t, response, http.StatusNotFound)
+	RequireStatus(t, response, http.StatusNotFound)
 
 	// Check _cluster response after replications are removed
 	status = Status{}
@@ -1524,10 +1531,10 @@ func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 	}`
 
 	response := rt.SendAdminRequest("PUT", "/db/_replication/replication1", string(replicationConfig))
-	requireStatus(t, response, http.StatusCreated)
+	RequireStatus(t, response, http.StatusCreated)
 
 	response = rt.SendAdminRequest("GET", "/db/_replicationStatus/", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 
 	var body []map[string]interface{}
 	err := base.JSONUnmarshal(response.BodyBytes(), &body)
@@ -1544,13 +1551,13 @@ func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 	}`
 
 	response = rt.SendAdminRequest("PUT", "/db/_replication/replication1", string(replicationConfigUpdate))
-	requireStatus(t, response, http.StatusBadRequest)
+	RequireStatus(t, response, http.StatusBadRequest)
 
 	response = rt.SendAdminRequest("PUT", "/db/_replicationStatus/replication1?action=stop", "")
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 
 	response = rt.SendAdminRequest("PUT", "/db/_replication/replication1", string(replicationConfigUpdate))
-	requireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusOK)
 
 }
 
@@ -1580,7 +1587,7 @@ func TestReplicationConfigChange(t *testing.T) {
 	}
 	`
 	resp := rt1.SendAdminRequest("POST", "/db/_bulk_docs", bulkDocs)
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	replicationID := "testRepl"
 
@@ -1598,17 +1605,17 @@ func TestReplicationConfigChange(t *testing.T) {
 
 	// Create replication for first channel
 	resp = rt1.SendAdminRequest("PUT", "/db/_replication/"+replicationID, replConf)
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 
-	rt1.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
-	changesResults, err := rt2.waitForChanges(4, "/db/_changes?since=0", "", true)
+	changesResults, err := rt2.WaitForChanges(4, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 4)
 
 	resp = rt1.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=stop", "")
-	requireStatus(t, resp, http.StatusOK)
-	rt1.waitForReplicationStatus(replicationID, db.ReplicationStateStopped)
+	RequireStatus(t, resp, http.StatusOK)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateStopped)
 
 	// Upsert replication to use second channel
 	replConfUpdate := `
@@ -1620,13 +1627,13 @@ func TestReplicationConfigChange(t *testing.T) {
 			}`
 
 	resp = rt1.SendAdminRequest("PUT", "/db/_replication/"+replicationID, replConfUpdate)
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 
 	resp = rt1.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=start", "")
-	requireStatus(t, resp, http.StatusOK)
-	rt1.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+	RequireStatus(t, resp, http.StatusOK)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
-	changesResults, err = rt2.waitForChanges(8, "/db/_changes?since=0", "", true)
+	changesResults, err = rt2.WaitForChanges(8, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 8)
 }
@@ -1668,23 +1675,23 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 	// Create docs on remote
 	docABC1 := t.Name() + "ABC1"
 	docDEF1 := t.Name() + "DEF1"
-	_ = remoteRT.putDoc(docABC1, `{"source":"remoteRT","channels":["ABC"]}`)
-	_ = remoteRT.putDoc(docDEF1, `{"source":"remoteRT","channels":["DEF"]}`)
+	_ = remoteRT.PutDoc(docABC1, `{"source":"remoteRT","channels":["ABC"]}`)
+	_ = remoteRT.PutDoc(docDEF1, `{"source":"remoteRT","channels":["DEF"]}`)
 
 	// Create pull replications, verify running
 	activeRT.createReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePull, []string{"ABC"}, true, db.ConflictResolverDefault)
 	activeRT.createReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePull, []string{"DEF"}, true, db.ConflictResolverDefault)
 	activeRT.waitForAssignedReplications(2)
-	activeRT.waitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
-	activeRT.waitForReplicationStatus("rep_DEF", db.ReplicationStateRunning)
+	activeRT.WaitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
+	activeRT.WaitForReplicationStatus("rep_DEF", db.ReplicationStateRunning)
 
 	// wait for documents originally written to remoteRT to arrive at activeRT
 	changesResults := activeRT.RequireWaitChanges(2, "0")
 	changesResults.requireDocIDs(t, []string{docABC1, docDEF1})
 
 	// Validate doc replication
-	_ = activeRT.getDoc(docABC1)
-	_ = activeRT.getDoc(docDEF1)
+	_ = activeRT.GetDoc(docABC1)
+	_ = activeRT.GetDoc(docDEF1)
 
 	// Add another node to the active cluster
 	activeRT2 := addActiveRT(t, activeRT.TestBucket)
@@ -1696,19 +1703,19 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 
 	// Create additional docs on remoteRT
 	docABC2 := t.Name() + "ABC2"
-	_ = remoteRT.putDoc(docABC2, `{"source":"remoteRT","channels":["ABC"]}`)
+	_ = remoteRT.PutDoc(docABC2, `{"source":"remoteRT","channels":["ABC"]}`)
 	docDEF2 := t.Name() + "DEF2"
-	_ = remoteRT.putDoc(docDEF2, `{"source":"remoteRT","channels":["DEF"]}`)
+	_ = remoteRT.PutDoc(docDEF2, `{"source":"remoteRT","channels":["DEF"]}`)
 
 	// wait for new documents to arrive at activeRT
 	changesResults = activeRT.RequireWaitChanges(2, changesResults.Last_Seq.(string))
 	changesResults.requireDocIDs(t, []string{docABC2, docDEF2})
 
 	// Validate doc contents via both active nodes
-	_ = activeRT.getDoc(docABC2)
-	_ = activeRT.getDoc(docDEF2)
-	_ = activeRT2.getDoc(docABC2)
-	_ = activeRT2.getDoc(docDEF2)
+	_ = activeRT.GetDoc(docABC2)
+	_ = activeRT.GetDoc(docDEF2)
+	_ = activeRT2.GetDoc(docABC2)
+	_ = activeRT2.GetDoc(docDEF2)
 
 	activeRTUUID := activeRT.GetDatabase().UUID
 	activeRT2UUID := activeRT2.GetDatabase().UUID
@@ -1735,9 +1742,9 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 
 	// Add more docs to remote, to validate rebalanced replications are running
 	docABC3 := t.Name() + "ABC3"
-	_ = remoteRT.putDoc(docABC3, `{"source":"remoteRT","channels":["ABC"]}`)
+	_ = remoteRT.PutDoc(docABC3, `{"source":"remoteRT","channels":["ABC"]}`)
 	docDEF3 := t.Name() + "DEF3"
-	_ = remoteRT.putDoc(docDEF3, `{"source":"remoteRT","channels":["DEF"]}`)
+	_ = remoteRT.PutDoc(docDEF3, `{"source":"remoteRT","channels":["DEF"]}`)
 
 	changesResults = activeRT.RequireWaitChanges(2, changesResults.Last_Seq.(string))
 	changesResults.requireDocIDs(t, []string{docABC3, docDEF3})
@@ -1747,4 +1754,54 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 	activeRT.GetDatabase().SGReplicateMgr = nil
 	activeRT2.GetDatabase().SGReplicateMgr.Stop()
 	activeRT2.GetDatabase().SGReplicateMgr = nil
+}
+
+// Repros CBG-2416
+func TestDBReplicationStatsTeardown(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+	// Test tests Prometheus stat registration
+	base.SkipPrometheusStatsRegistration = false
+	defer func() {
+		base.SkipPrometheusStatsRegistration = true
+	}()
+
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+	rt := NewRestTester(t, &RestTesterConfig{
+		persistentConfig: true,
+		CustomTestBucket: tb,
+	})
+	defer rt.Close()
+
+	srv := httptest.NewServer(rt.TestAdminHandler())
+	defer srv.Close()
+	db2Url, err := url.Parse(srv.URL + "/db2")
+	require.NoError(t, err)
+
+	resp := rt.SendAdminRequest(http.MethodPut, "/db2/", fmt.Sprintf(`{
+				"bucket": "%s",
+				"use_views": %t,
+				"num_index_replicas": 0
+	}`, tb.GetName(), base.TestsDisableGSI()))
+	RequireStatus(t, resp, http.StatusCreated)
+
+	tb2 := base.GetTestBucket(t)
+	defer tb2.Close()
+	resp = rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{
+				"bucket": "%s",
+				"use_views": %t,
+				"num_index_replicas": 0
+	}`, tb2.GetName(), base.TestsDisableGSI()))
+	RequireStatus(t, resp, http.StatusCreated)
+
+	rt.createReplication("repl1", db2Url.String(), db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+	rt.WaitForReplicationStatus("repl1", db.ReplicationStateRunning)
+
+	// Force DB reload by modifying config
+	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config", `{"import_docs": false}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	rt.WaitForReplicationStatus("repl1", db.ReplicationStateRunning)
 }

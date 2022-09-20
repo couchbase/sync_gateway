@@ -21,7 +21,7 @@ func TestBlipGetCollections(t *testing.T) {
 	//checkpointIDWithError := "checkpointError"
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		guestEnabled: true,
+		GuestEnabled: true,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Scopes: ScopesConfig{
@@ -159,7 +159,7 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		guestEnabled: true,
+		GuestEnabled: true,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Scopes: ScopesConfig{
@@ -236,7 +236,7 @@ func TestCollectionsPeerDoesNotHave(t *testing.T) {
 	)
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		guestEnabled: true,
+		GuestEnabled: true,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Scopes: ScopesConfig{
@@ -273,7 +273,7 @@ func TestCollectionsReplication(t *testing.T) {
 	)
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		guestEnabled: true,
+		GuestEnabled: true,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Scopes: ScopesConfig{
@@ -296,7 +296,7 @@ func TestCollectionsReplication(t *testing.T) {
 	defer btc.Close()
 
 	resp := rt.SendAdminRequest(http.MethodPut, "/db."+scopeAndCollectionKey+"/doc1", "{}")
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	require.NoError(t, rt.WaitForPendingChanges())
 

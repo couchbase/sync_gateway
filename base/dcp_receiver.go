@@ -42,7 +42,7 @@ type DCPReceiver struct {
 
 func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID string, checkpointPrefix string) (cbdatasource.Receiver, context.Context) {
 
-	dcpCommon := NewDCPCommon(callback, bucket, maxVbNo, persistCheckpoints, dbStats, feedID, checkpointPrefix)
+	dcpCommon := NewDCPCommon(context.TODO(), callback, bucket, maxVbNo, persistCheckpoints, dbStats, feedID, checkpointPrefix)
 	r := &DCPReceiver{
 		DCPCommon: dcpCommon,
 	}

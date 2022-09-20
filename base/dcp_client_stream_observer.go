@@ -1,6 +1,8 @@
 package base
 
 import (
+	"context"
+
 	"github.com/couchbase/gocbcore/v10"
 )
 
@@ -73,7 +75,6 @@ func (dc *DCPClient) Deletion(deletion gocbcore.DcpDeletion) {
 
 }
 
-//
 func (dc *DCPClient) End(end gocbcore.DcpStreamEnd, err error) {
 
 	e := endStreamEvent{
@@ -87,7 +88,9 @@ func (dc *DCPClient) End(end gocbcore.DcpStreamEnd, err error) {
 }
 
 func (dc *DCPClient) Expiration(expiration gocbcore.DcpExpiration) {
-	// Not used by SG at this time
+	// SG doesn't opt in to expirations, so they'll come through as deletion events
+	// (cf.https://github.com/couchbase/kv_engine/blob/master/docs/dcp/documentation/expiry-opcode-output.md)
+	WarnfCtx(context.TODO(), "Unexpected DCP expiration event (vb:%d) for key %v", expiration.VbID, UD(string(expiration.Key)))
 }
 
 func (dc *DCPClient) CreateCollection(creation gocbcore.DcpCollectionCreation) {
@@ -119,7 +122,13 @@ func (dc *DCPClient) OSOSnapshot(snapshot gocbcore.DcpOSOSnapshot) {
 }
 
 func (dc *DCPClient) SeqNoAdvanced(seqNoAdvanced gocbcore.DcpSeqNoAdvanced) {
-	// Not used by SG at this time
+	dc.workerForVbno(seqNoAdvanced.VbID).Send(seqnoAdvancedEvent{
+		streamEventCommon: streamEventCommon{
+			vbID:     seqNoAdvanced.VbID,
+			streamID: seqNoAdvanced.StreamID,
+		},
+		seq: seqNoAdvanced.SeqNo,
+	})
 }
 
 // A one-shot DCP feed specifies the endSeq when opening the stream, but Couchbase Server only ends the DCP stream

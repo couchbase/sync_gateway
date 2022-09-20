@@ -92,7 +92,7 @@ func (h *handler) handleCreateDB() error {
 				"Duplicate database name %q", dbName)
 		}
 
-		_, err = h.server._applyConfig(loadedConfig, true, false)
+		_, err = h.server._applyConfig(h.ctx(), loadedConfig, true, false)
 		if err != nil {
 			var httpErr *base.HTTPError
 			if errors.As(err, &httpErr) {
@@ -111,13 +111,13 @@ func (h *handler) handleCreateDB() error {
 		cas, err := h.server.bootstrapContext.connection.InsertConfig(bucket, h.server.config.Bootstrap.ConfigGroupID, persistedConfig)
 		if err != nil {
 			// unload the requested database config to prevent the cluster being in an inconsistent state
-			h.server._removeDatabase(dbName)
+			h.server._removeDatabase(h.ctx(), dbName)
 			if errors.Is(err, base.ErrAuthError) {
 				return base.HTTPErrorf(http.StatusForbidden, "auth failure accessing provided bucket using bootstrap credentials: %s", bucket)
 			} else if errors.Is(err, base.ErrAlreadyExists) {
 				// on-demand config load if someone else beat us to db creation
-				if _, err := h.server._fetchAndLoadDatabase(dbName); err != nil {
-					base.WarnfCtx(h.rq.Context(), "Couldn't load database after conflicting create: %v", err)
+				if _, err := h.server._fetchAndLoadDatabase(h.ctx(), dbName); err != nil {
+					base.WarnfCtx(h.ctx(), "Couldn't load database after conflicting create: %v", err)
 				}
 				return base.HTTPErrorf(http.StatusPreconditionFailed, // what CouchDB returns
 					"Duplicate database name %q", dbName)
@@ -133,7 +133,7 @@ func (h *handler) handleCreateDB() error {
 		}
 
 		// load database in-memory for non-persistent nodes
-		if _, err := h.server.AddDatabaseFromConfigFailFast(DatabaseConfig{DbConfig: *config}); err != nil {
+		if _, err := h.server.AddDatabaseFromConfigFailFast(h.ctx(), DatabaseConfig{DbConfig: *config}); err != nil {
 			if errors.Is(err, base.ErrAuthError) {
 				return base.HTTPErrorf(http.StatusForbidden, "auth failure using provided bucket credentials for database %s", base.MD(config.Name))
 			}
@@ -192,7 +192,7 @@ func (h *handler) handleDbOnline() error {
 	base.InfofCtx(h.ctx(), base.KeyCRUD, "Taking Database : %v, online in %v seconds", base.MD(h.db.Name), input.Delay)
 	go func() {
 		time.Sleep(time.Duration(input.Delay) * time.Second)
-		h.server.TakeDbOnline(h.db.DatabaseContext)
+		h.server.TakeDbOnline(h.ctx(), h.db.DatabaseContext)
 	}()
 
 	return nil
@@ -202,7 +202,7 @@ func (h *handler) handleDbOnline() error {
 func (h *handler) handleDbOffline() error {
 	h.assertAdminOnly()
 	var err error
-	if err = h.db.TakeDbOffline("ADMIN Request"); err != nil {
+	if err = h.db.TakeDbOffline(h.ctx(), "ADMIN Request"); err != nil {
 		base.InfofCtx(h.ctx(), base.KeyCRUD, "Unable to take Database : %v, offline", base.MD(h.db.Name))
 	}
 
@@ -221,7 +221,7 @@ func (h *handler) handleGetDbConfig() error {
 	// - Returning if include_runtime=false
 	var responseConfig *DbConfig
 	if h.server.bootstrapContext.connection != nil {
-		found, dbConfig, err := h.server.fetchDatabase(h.db.Name)
+		found, dbConfig, err := h.server.fetchDatabase(h.ctx(), h.db.Name)
 		if err != nil {
 			return err
 		}
@@ -236,7 +236,7 @@ func (h *handler) handleGetDbConfig() error {
 		if h.getBoolQuery("refresh_config") && h.server.bootstrapContext.connection != nil {
 			// set cas=0 to force a refresh
 			dbConfig.cas = 0
-			h.server.applyConfigs(map[string]DatabaseConfig{h.db.Name: *dbConfig})
+			h.server.applyConfigs(h.ctx(), map[string]DatabaseConfig{h.db.Name: *dbConfig})
 		}
 
 		responseConfig = &dbConfig.DbConfig
@@ -335,7 +335,7 @@ func (h *handler) handleGetConfig() error {
 		}
 
 		for dbName, dbConfig := range databaseMap {
-			database, err := h.server.GetDatabase(dbName)
+			database, err := h.server.GetDatabase(h.ctx(), dbName)
 			if err != nil {
 				return err
 			}
@@ -517,7 +517,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 		if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap, dbCreds, nil, false); err != nil {
 			return err
 		}
-		if err := h.server.ReloadDatabaseWithConfig(*updatedDbConfig); err != nil {
+		if err := h.server.ReloadDatabaseWithConfig(h.ctx(), *updatedDbConfig); err != nil {
 			return err
 		}
 		return base.HTTPErrorf(http.StatusCreated, "updated")
@@ -537,20 +537,22 @@ func (h *handler) handlePutDbConfig() (err error) {
 				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 			}
 
+			oldBucketDbConfig := bucketDbConfig.DbConfig
+
 			if h.rq.Method == http.MethodPost {
-				base.TracefCtx(h.rq.Context(), base.KeyConfig, "merging upserted config into bucket config")
+				base.TracefCtx(h.ctx(), base.KeyConfig, "merging upserted config into bucket config")
 				if err := base.ConfigMerge(&bucketDbConfig.DbConfig, dbConfig); err != nil {
 					return nil, err
 				}
 			} else {
-				base.TracefCtx(h.rq.Context(), base.KeyConfig, "using config as-is without merge")
+				base.TracefCtx(h.ctx(), base.KeyConfig, "using config as-is without merge")
 				bucketDbConfig.DbConfig = *dbConfig
 			}
 
 			if err := dbConfig.validatePersistentDbConfig(); err != nil {
 				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 			}
-			if err := bucketDbConfig.validate(h.ctx(), validateOIDC); err != nil {
+			if err := bucketDbConfig.validateConfigUpdate(h.ctx(), oldBucketDbConfig, validateOIDC); err != nil {
 				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 			}
 
@@ -575,7 +577,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 			}
 
 			// Load the new dbConfig before we persist the update.
-			err = h.server.ReloadDatabaseWithConfig(tmpConfig)
+			err = h.server.ReloadDatabaseWithConfig(h.ctx(), tmpConfig)
 			if err != nil {
 				return nil, err
 			}
@@ -583,10 +585,10 @@ func (h *handler) handlePutDbConfig() (err error) {
 			return base.JSONMarshal(bucketDbConfig)
 		})
 	if err != nil {
-		base.WarnfCtx(h.rq.Context(), "Couldn't update config for database - rolling back: %v", err)
+		base.WarnfCtx(h.ctx(), "Couldn't update config for database - rolling back: %v", err)
 		// failed to start the new database config - rollback and return the original error for the user
-		if _, err := h.server.fetchAndLoadDatabase(dbName); err != nil {
-			base.WarnfCtx(h.rq.Context(), "got error rolling back database %q after failed update: %v", base.UD(dbName), err)
+		if _, err := h.server.fetchAndLoadDatabase(h.ctx(), dbName); err != nil {
+			base.WarnfCtx(h.ctx(), "got error rolling back database %q after failed update: %v", base.UD(dbName), err)
 		}
 		return err
 	}
@@ -606,7 +608,7 @@ func (h *handler) handleGetDbConfigSync() error {
 	)
 
 	if h.server.bootstrapContext.connection != nil {
-		found, dbConfig, err := h.server.fetchDatabase(h.db.Name)
+		found, dbConfig, err := h.server.fetchDatabase(h.ctx(), h.db.Name)
 		if err != nil {
 			return err
 		}
@@ -677,7 +679,7 @@ func (h *handler) handleDeleteDbConfigSync() error {
 	defer h.server.lock.Unlock()
 
 	// TODO: Dynamic update instead of reload
-	if err := h.server._reloadDatabaseWithConfig(*updatedDbConfig, false); err != nil {
+	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false); err != nil {
 		return err
 	}
 
@@ -744,7 +746,7 @@ func (h *handler) handlePutDbConfigSync() error {
 	defer h.server.lock.Unlock()
 
 	// TODO: Dynamic update instead of reload
-	if err := h.server._reloadDatabaseWithConfig(*updatedDbConfig, false); err != nil {
+	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false); err != nil {
 		return err
 	}
 
@@ -760,7 +762,7 @@ func (h *handler) handleGetDbConfigImportFilter() error {
 	)
 
 	if h.server.bootstrapContext.connection != nil {
-		found, dbConfig, err := h.server.fetchDatabase(h.db.Name)
+		found, dbConfig, err := h.server.fetchDatabase(h.ctx(), h.db.Name)
 		if err != nil {
 			return err
 		}
@@ -829,7 +831,7 @@ func (h *handler) handleDeleteDbConfigImportFilter() error {
 	defer h.server.lock.Unlock()
 
 	// TODO: Dynamic update instead of reload
-	if err := h.server._reloadDatabaseWithConfig(*updatedDbConfig, false); err != nil {
+	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false); err != nil {
 		return err
 	}
 
@@ -897,7 +899,7 @@ func (h *handler) handlePutDbConfigImportFilter() error {
 	defer h.server.lock.Unlock()
 
 	// TODO: Dynamic update instead of reload
-	if err := h.server._reloadDatabaseWithConfig(*updatedDbConfig, false); err != nil {
+	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false); err != nil {
 		return err
 	}
 
@@ -919,7 +921,7 @@ func (h *handler) handleDeleteDB() error {
 		}
 	}
 
-	if !h.server.RemoveDatabase(h.db.Name) {
+	if !h.server.RemoveDatabase(h.ctx(), h.db.Name) {
 		return base.HTTPErrorf(http.StatusNotFound, "missing")
 	}
 	_, _ = h.response.Write([]byte("{}"))
@@ -945,7 +947,7 @@ func (h *handler) handleGetRawDoc() error {
 		includeDoc = false
 	}
 
-	doc, err := h.db.GetDocument(h.db.Ctx, docid, db.DocUnmarshalSync)
+	doc, err := h.db.GetDocument(h.ctx(), docid, db.DocUnmarshalSync)
 	if err != nil {
 		return err
 	}
@@ -996,7 +998,7 @@ func (h *handler) handleGetRawDoc() error {
 func (h *handler) handleGetRevTree() error {
 	h.assertAdminOnly()
 	docid := h.PathVar("docid")
-	doc, err := h.db.GetDocument(h.db.Ctx, docid, db.DocUnmarshalAll)
+	doc, err := h.db.GetDocument(h.ctx(), docid, db.DocUnmarshalAll)
 
 	if doc != nil {
 		h.writeText([]byte(doc.History.RenderGraphvizDot()))
@@ -1062,7 +1064,7 @@ func (h *handler) handleGetStatus() error {
 		status.Databases[database.Name] = DatabaseStatus{
 			SequenceNumber:    lastSeq,
 			State:             runState,
-			ServerUUID:        database.GetServerUUID(),
+			ServerUUID:        database.GetServerUUID(h.ctx()),
 			ReplicationStatus: replicationsStatus,
 			SGRCluster:        cluster,
 		}
@@ -1262,13 +1264,13 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	}
 
 	newInfo.Name = &internalName
-	replaced, err := h.db.UpdatePrincipal(h.db.Ctx, &newInfo, isUser, h.rq.Method != "POST")
+	replaced, err := h.db.UpdatePrincipal(h.ctx(), &newInfo, isUser, h.rq.Method != "POST")
 	if err != nil {
 		return err
 	} else if replaced {
 		// on update with a new password, remove previous user sessions
 		if newInfo.Password != nil {
-			err = h.db.DeleteUserSessions(h.db.Ctx, *newInfo.Name)
+			err = h.db.DeleteUserSessions(h.ctx(), *newInfo.Name)
 			if err != nil {
 				return err
 			}
@@ -1302,14 +1304,14 @@ func (h *handler) deleteUser() error {
 			"The %s user cannot be deleted. Only disabled via an update.", base.GuestUsername)
 	}
 
-	user, err := h.db.Authenticator(h.db.Ctx).GetUser(username)
+	user, err := h.db.Authenticator(h.ctx()).GetUser(username)
 	if user == nil {
 		if err == nil {
 			err = kNotFoundError
 		}
 		return err
 	}
-	return h.db.Authenticator(h.db.Ctx).DeleteUser(user)
+	return h.db.Authenticator(h.ctx()).DeleteUser(user)
 }
 
 func (h *handler) deleteRole() error {
@@ -1321,7 +1323,7 @@ func (h *handler) deleteRole() error {
 
 func (h *handler) getUserInfo() error {
 	h.assertAdminOnly()
-	user, err := h.db.Authenticator(h.db.Ctx).GetUser(internalUserName(mux.Vars(h.rq)["name"]))
+	user, err := h.db.Authenticator(h.ctx()).GetUser(internalUserName(mux.Vars(h.rq)["name"]))
 	if user == nil {
 		if err == nil {
 			err = kNotFoundError
@@ -1355,7 +1357,7 @@ func (h *handler) getUserInfo() error {
 
 func (h *handler) getRoleInfo() error {
 	h.assertAdminOnly()
-	role, err := h.db.Authenticator(h.db.Ctx).GetRole(mux.Vars(h.rq)["name"])
+	role, err := h.db.Authenticator(h.ctx()).GetRole(mux.Vars(h.rq)["name"])
 	if role == nil {
 		if err == nil {
 			err = kNotFoundError
@@ -1382,7 +1384,7 @@ func (h *handler) getUsers() error {
 	var bytes []byte
 	var marshalErr error
 	if nameOnly {
-		users, _, err := h.db.AllPrincipalIDs(h.db.Ctx)
+		users, _, err := h.db.AllPrincipalIDs(h.ctx())
 		if err != nil {
 			return err
 		}
@@ -1391,7 +1393,7 @@ func (h *handler) getUsers() error {
 		if h.db.Options.UseViews {
 			return base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("Use of %s=false not supported when database has use_views=true", paramNameOnly))
 		}
-		users, err := h.db.GetUsers(h.db.Ctx, int(limit))
+		users, err := h.db.GetUsers(h.ctx(), int(limit))
 		if err != nil {
 			return err
 		}
@@ -1411,9 +1413,9 @@ func (h *handler) getRoles() error {
 
 	includeDeleted, _ := h.getOptBoolQuery(paramDeleted, false)
 	if includeDeleted {
-		_, roles, err = h.db.AllPrincipalIDs(h.db.Ctx)
+		_, roles, err = h.db.AllPrincipalIDs(h.ctx())
 	} else {
-		roles, err = h.db.GetRoleIDs(h.db.Ctx)
+		roles, err = h.db.GetRoleIDs(h.ctx())
 	}
 	if err != nil {
 		return err
@@ -1446,23 +1448,23 @@ func (h *handler) handlePurge() error {
 
 	for key, value := range input {
 		// For each one validate that the revision list is set to ["*"], otherwise skip doc and log warning
-		base.InfofCtx(h.db.Ctx, base.KeyCRUD, "purging document = %v", base.UD(key))
+		base.InfofCtx(h.ctx(), base.KeyCRUD, "purging document = %v", base.UD(key))
 
 		if revisionList, ok := value.([]interface{}); ok {
 
 			// There should only be a single revision entry of "*"
 			if len(revisionList) != 1 {
-				base.InfofCtx(h.db.Ctx, base.KeyCRUD, "Revision list for doc ID %v, should contain exactly one entry", base.UD(key))
+				base.InfofCtx(h.ctx(), base.KeyCRUD, "Revision list for doc ID %v, should contain exactly one entry", base.UD(key))
 				continue // skip this entry its not valid
 			}
 
 			if revisionList[0] != "*" {
-				base.InfofCtx(h.db.Ctx, base.KeyCRUD, "Revision entry for doc ID %v, should be the '*' revison", base.UD(key))
+				base.InfofCtx(h.ctx(), base.KeyCRUD, "Revision entry for doc ID %v, should be the '*' revison", base.UD(key))
 				continue // skip this entry its not valid
 			}
 
 			// Attempt to delete document, if successful add to response, otherwise log warning
-			err = h.db.Purge(key)
+			err = h.db.Purge(h.ctx(), key)
 			if err == nil {
 
 				docIDs = append(docIDs, key)
@@ -1477,19 +1479,19 @@ func (h *handler) handlePurge() error {
 				_, _ = h.response.Write([]byte(s))
 
 			} else {
-				base.InfofCtx(h.db.Ctx, base.KeyCRUD, "Failed to purge document %v, err = %v", base.UD(key), err)
+				base.InfofCtx(h.ctx(), base.KeyCRUD, "Failed to purge document %v, err = %v", base.UD(key), err)
 				continue // skip this entry its not valid
 			}
 
 		} else {
-			base.InfofCtx(h.db.Ctx, base.KeyCRUD, "Revision list for doc ID %v, is not an array, ", base.UD(key))
+			base.InfofCtx(h.ctx(), base.KeyCRUD, "Revision list for doc ID %v, is not an array, ", base.UD(key))
 			continue // skip this entry its not valid
 		}
 	}
 
 	if len(docIDs) > 0 {
 		count := h.db.GetChangeCache().Remove(docIDs, startTime)
-		base.DebugfCtx(h.db.Ctx, base.KeyCache, "Purged %d items from caches", count)
+		base.DebugfCtx(h.ctx(), base.KeyCache, "Purged %d items from caches", count)
 	}
 
 	_, _ = h.response.Write([]byte("}\n}\n"))

@@ -782,3 +782,35 @@ func TestClusterDriver() CouchbaseDriver {
 	}
 	return driver
 }
+
+// TestBucketPoolMain is used as TestMain in main_test.go packages
+func TestBucketPoolMain(m *testing.M, bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TBPBucketInitFunc,
+	memWatermarkThresholdMB uint64) {
+	// can't use defer because of os.Exit
+	teardownFuncs := make([]func(), 0)
+	teardownFuncs = append(teardownFuncs, SetUpGlobalTestLogging(m))
+	teardownFuncs = append(teardownFuncs, SetUpGlobalTestProfiling(m))
+	teardownFuncs = append(teardownFuncs, SetUpGlobalTestMemoryWatermark(m, memWatermarkThresholdMB))
+
+	SkipPrometheusStatsRegistration = true
+
+	GTestBucketPool = NewTestBucketPool(bucketReadierFunc, bucketInitFunc)
+	teardownFuncs = append(teardownFuncs, GTestBucketPool.Close)
+
+	// must be the last teardown function added to the list to correctly detect leaked goroutines
+	teardownFuncs = append(teardownFuncs, SetUpTestGoroutineDump(m))
+
+	// Run the test suite
+	status := m.Run()
+
+	for _, fn := range teardownFuncs {
+		fn()
+	}
+
+	os.Exit(status)
+}
+
+// TestBucketPoolNoIndexes runs a TestMain for packages that do not require creation of indexes
+func TestBucketPoolNoIndexes(m *testing.M, memWatermarkThresholdMB uint64) {
+	TestBucketPoolMain(m, FlushBucketEmptierFunc, NoopInitFunc, memWatermarkThresholdMB)
+}

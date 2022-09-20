@@ -67,7 +67,7 @@ func (h *handler) handleGetDoc() error {
 
 	if openRevs == "" {
 		// Single-revision GET:
-		value, err := h.db.Get1xRevBodyWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
+		value, err := h.db.Get1xRevBodyWithHistory(h.ctx(), docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 		if err != nil {
 			if err == base.ErrImportCancelledPurged {
 				base.DebugfCtx(h.ctx(), base.KeyImport, fmt.Sprintf("Import cancelled as document %v is purged", base.UD(docid)))
@@ -93,7 +93,7 @@ func (h *handler) handleGetDoc() error {
 		if h.requestAccepts("multipart/") && (hasBodies || !h.requestAccepts("application/json")) {
 			canCompress := strings.Contains(h.rq.Header.Get("X-Accept-Part-Encoding"), "gzip")
 			return h.writeMultipart("related", func(writer *multipart.Writer) error {
-				WriteMultipartDocument(h.rq.Context(), h.db.DatabaseContext.DbStats.CBLReplicationPull(), value, writer, canCompress)
+				WriteMultipartDocument(h.ctx(), h.db.DatabaseContext.DbStats.CBLReplicationPull(), value, writer, canCompress)
 				return nil
 			})
 		} else {
@@ -105,7 +105,7 @@ func (h *handler) handleGetDoc() error {
 
 		if openRevs == "all" {
 			// open_revs=all
-			doc, err := h.db.GetDocument(h.db.Ctx, docid, db.DocUnmarshalSync)
+			doc, err := h.db.GetDocument(h.ctx(), docid, db.DocUnmarshalSync)
 			if err != nil {
 				return err
 			}
@@ -124,11 +124,11 @@ func (h *handler) handleGetDoc() error {
 		if h.requestAccepts("multipart/") {
 			err := h.writeMultipart("mixed", func(writer *multipart.Writer) error {
 				for _, revid := range revids {
-					revBody, err := h.db.Get1xRevBodyWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
+					revBody, err := h.db.Get1xRevBodyWithHistory(h.ctx(), docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 					if err != nil {
 						revBody = db.Body{"missing": revid} // TODO: More specific error
 					}
-					_ = WriteRevisionAsPart(h.rq.Context(), h.db.DatabaseContext.DbStats.CBLReplicationPull(), revBody, err != nil, false, writer)
+					_ = WriteRevisionAsPart(h.ctx(), h.db.DatabaseContext.DbStats.CBLReplicationPull(), revBody, err != nil, false, writer)
 					h.db.DbStats.Database().NumDocReadsRest.Add(1)
 				}
 				return nil
@@ -140,7 +140,7 @@ func (h *handler) handleGetDoc() error {
 			_, _ = h.response.Write([]byte(`[` + "\n"))
 			separator := []byte(``)
 			for _, revid := range revids {
-				revBody, err := h.db.Get1xRevBodyWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
+				revBody, err := h.db.Get1xRevBodyWithHistory(h.ctx(), docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 				if err != nil {
 					revBody = db.Body{"missing": revid} // TODO: More specific error
 				} else {
@@ -165,7 +165,7 @@ func (h *handler) handleGetDocReplicator2(docid, revid string) error {
 		return base.HTTPErrorf(http.StatusNotImplemented, "replicator2 endpoints are only supported in EE")
 	}
 
-	rev, err := h.db.GetRev(docid, revid, true, nil)
+	rev, err := h.db.GetRev(h.ctx(), docid, revid, true, nil)
 	if err != nil {
 		return err
 	}
@@ -191,7 +191,7 @@ func (h *handler) handleGetAttachment() error {
 	docid := h.PathVar("docid")
 	attachmentName := h.PathVar("attach")
 	revid := h.getQuery("rev")
-	rev, err := h.db.GetRev(docid, revid, false, nil)
+	rev, err := h.db.GetRev(h.ctx(), docid, revid, false, nil)
 	if err != nil {
 		return err
 	}
@@ -310,7 +310,7 @@ func (h *handler) handlePutAttachment() error {
 		return err
 	}
 
-	body, err := h.db.Get1xRevBody(docid, revid, false, nil)
+	body, err := h.db.Get1xRevBody(h.ctx(), docid, revid, false, nil)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			// couchdb creates empty body on attachment PUT
@@ -342,7 +342,7 @@ func (h *handler) handlePutAttachment() error {
 	attachments[attachmentName] = attachment
 	body[db.BodyAttachments] = attachments
 
-	newRev, _, err := h.db.Put(docid, body)
+	newRev, _, err := h.db.Put(h.ctx(), docid, body)
 	if err != nil {
 		return err
 	}
@@ -400,7 +400,7 @@ func (h *handler) handlePutDoc() error {
 			return base.HTTPErrorf(http.StatusBadRequest, "Revision IDs provided do not match")
 		}
 
-		newRev, doc, err = h.db.Put(docid, body)
+		newRev, doc, err = h.db.Put(h.ctx(), docid, body)
 		if err != nil {
 			return err
 		}
@@ -411,14 +411,14 @@ func (h *handler) handlePutDoc() error {
 		if revisions == nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 		}
-		doc, newRev, err = h.db.PutExistingRevWithBody(docid, body, revisions, false)
+		doc, newRev, err = h.db.PutExistingRevWithBody(h.ctx(), docid, body, revisions, false)
 		if err != nil {
 			return err
 		}
 	}
 
 	if doc != nil && roundTrip {
-		if err := h.db.WaitForSequenceNotSkipped(h.rq.Context(), doc.Sequence); err != nil {
+		if err := h.db.WaitForSequenceNotSkipped(h.ctx(), doc.Sequence); err != nil {
 			return err
 		}
 	}
@@ -488,14 +488,14 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 		newDoc.UpdateBody(body)
 	}
 
-	doc, rev, err := h.db.PutExistingRev(newDoc, history, true, false, nil)
+	doc, rev, err := h.db.PutExistingRev(h.ctx(), newDoc, history, true, false, nil)
 
 	if err != nil {
 		return err
 	}
 
 	if doc != nil && roundTrip {
-		if err := h.db.WaitForSequenceNotSkipped(h.rq.Context(), doc.Sequence); err != nil {
+		if err := h.db.WaitForSequenceNotSkipped(h.ctx(), doc.Sequence); err != nil {
 			return err
 		}
 	}
@@ -516,13 +516,13 @@ func (h *handler) handlePostDoc() error {
 		return err
 	}
 
-	docid, newRev, doc, err := h.db.Post(body)
+	docid, newRev, doc, err := h.db.Post(h.ctx(), body)
 	if err != nil {
 		return err
 	}
 
 	if doc != nil && roundTrip {
-		err := h.db.WaitForSequenceNotSkipped(h.rq.Context(), doc.Sequence)
+		err := h.db.WaitForSequenceNotSkipped(h.ctx(), doc.Sequence)
 		if err != nil {
 			return err
 		}
@@ -541,7 +541,7 @@ func (h *handler) handleDeleteDoc() error {
 	if revid == "" {
 		revid = h.rq.Header.Get("If-Match")
 	}
-	newRev, err := h.db.DeleteDoc(docid, revid)
+	newRev, err := h.db.DeleteDoc(h.ctx(), docid, revid)
 	if err == nil {
 		h.writeRawJSONStatus(http.StatusOK, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`"}`))
 	}

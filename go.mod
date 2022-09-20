@@ -3,6 +3,7 @@ module github.com/couchbase/sync_gateway
 go 1.18
 
 require (
+	github.com/bhoriuchi/graphql-go-tools v1.0.0
 	github.com/coreos/go-oidc v2.2.1+incompatible
 	github.com/couchbase/cbgt v1.2.4
 	github.com/couchbase/clog v0.1.0
@@ -13,13 +14,13 @@ require (
 	github.com/couchbase/gomemcached v0.1.4
 	github.com/couchbase/goutils v0.1.2
 	// FIXME: references an un-merged branch (https://github.com/couchbase/sg-bucket/pull/81)
-	github.com/couchbase/sg-bucket v0.0.0-20220831114430-ca9ad184e517
+	github.com/couchbase/sg-bucket v0.0.0-20220906164713-c9afe94ac5c8
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f
-	github.com/couchbaselabs/walrus v0.0.0-20220726144228-c44d71d14a7a
 	github.com/elastic/gosigar v0.14.2
 	github.com/felixge/fgprof v0.9.2
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/mux v1.8.0
+	github.com/graphql-go/graphql v0.8.0
 	github.com/imdario/mergo v0.3.12
 	github.com/json-iterator/go v1.1.12
 	github.com/kardianos/service v1.2.1
@@ -32,7 +33,7 @@ require (
 	github.com/stretchr/testify v1.7.1
 	golang.org/x/crypto v0.0.0-20220722155217-630584e8d5aa
 	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e
-	golang.org/x/net v0.0.0-20220805013720-a33c5aa5df48
+	golang.org/x/net v0.0.0-20220919232410-f2f64ebce3c1
 	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
 	gopkg.in/couchbase/gocb.v1 v1.6.7
 	gopkg.in/couchbase/gocbcore.v7 v7.1.18
@@ -41,11 +42,15 @@ require (
 )
 
 require (
+	github.com/couchbase/gocbcore/v9 v9.1.8
+	github.com/couchbaselabs/walrus v0.0.0-20220916160453-6f7d5a152116
+)
+
+require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/couchbase/blance v0.1.2 // indirect
 	github.com/couchbase/cbauth v0.1.1 // indirect
-	github.com/couchbase/gocbcore/v9 v9.1.8 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect

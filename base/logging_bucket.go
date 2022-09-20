@@ -230,3 +230,8 @@ func (b *LoggingBucket) IsSupported(feature sgbucket.DataStoreFeature) bool {
 func (b *LoggingBucket) IsError(err error, errorType sgbucket.DataStoreErrorType) bool {
 	return b.bucket.IsError(err, errorType)
 }
+
+func (b *LoggingBucket) GetExpiry(k string) (expiry uint32, err error) {
+	defer b.log(time.Now(), k)
+	return b.bucket.GetExpiry(k)
+}

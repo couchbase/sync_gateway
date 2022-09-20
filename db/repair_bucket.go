@@ -101,43 +101,39 @@ func (r *RepairBucket) InitFrom(params RepairBucketParams) *RepairBucket {
 	return r
 }
 
-/*
-
-This is how the view is iterated:
-
-┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
-                ┌ ─ ─ ─│─ ─ ─ ─ ─ ─ ─ ─
-│                               ┌ ─ ─ ─│─ ─ ─ ─ ─ ─ ─ ┐
-                │      │                ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐
-│┌────┐  ┌────┐  ┌────┐  ┌────┐ │┌────┐│ ┌────┐       │
- │doc1│  │doc2│ ││doc3││ │doc4│  │doc5│ ││doc6│               │
-│└────┘  └────┘  └────┘  └────┘ │└────┘│ └────┘       │
-                │      │                │                     │
-└ ─ ─ ─ ─ ─ ▲ ─ ─ ─ ─ ─         │      │              │
-            │   └ ─ ─ ─ ─ ─ ▲ ─ ─ ─ ─ ─ │                     │
-            │               │   └ ─ ─ ─ ─ ─▲─ ─ ─ ─ ─ ┘
-      StartKey: ""          │           └ ─│─ ─ ─ ─ ─ ─ ─ ─ ─ ┘
-        Limit: 3            │              │       ▲
-    NumProcessed: 3         │              │       │
-                    StartKey: "doc3"       │       │
-                        Limit: 3           │       │
-                    NumProcessed: 2        │       └────────┐
-                                           │                │
-                                   StartKey: "doc5"         │
-                                       Limit: 3             │
-                                   NumProcessed: 1          │
-                                                            │
-                                                    StartKey: "doc6"
-                                                        Limit: 3
-                                                    NumProcessed: 0
-
-* It starts with an empty start key
-* For the next page, it uses the last key processed as the new start key
-* Since the start key is inclusive, it will see the start key twice (on first page, and on next page)
-* If it's iterating a result page and sees a doc with the start key (eg, doc3 in above), it will ignore it so it doesn't process it twice
-* Stop condition: if NumProcessed is 0, because the only doc in result set had already been processed.
-*
-*/
+// This is how the view is iterated:
+//
+//	┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
+//	                ┌ ─ ─ ─│─ ─ ─ ─ ─ ─ ─ ─
+//	│                               ┌ ─ ─ ─│─ ─ ─ ─ ─ ─ ─ ┐
+//	                │      │                ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐
+//	│┌────┐  ┌────┐  ┌────┐  ┌────┐ │┌────┐│ ┌────┐       │
+//	 │doc1│  │doc2│ ││doc3││ │doc4│  │doc5│ ││doc6│               │
+//	│└────┘  └────┘  └────┘  └────┘ │└────┘│ └────┘       │
+//	                │      │                │                     │
+//	└ ─ ─ ─ ─ ─ ▲ ─ ─ ─ ─ ─         │      │              │
+//	            │   └ ─ ─ ─ ─ ─ ▲ ─ ─ ─ ─ ─ │                     │
+//	            │               │   └ ─ ─ ─ ─ ─▲─ ─ ─ ─ ─ ┘
+//	      StartKey: ""          │           └ ─│─ ─ ─ ─ ─ ─ ─ ─ ─ ┘
+//	        Limit: 3            │              │       ▲
+//	    NumProcessed: 3         │              │       │
+//	                    StartKey: "doc3"       │       │
+//	                        Limit: 3           │       │
+//	                    NumProcessed: 2        │       └────────┐
+//	                                           │                │
+//	                                   StartKey: "doc5"         │
+//	                                       Limit: 3             │
+//	                                   NumProcessed: 1          │
+//	                                                            │
+//	                                                    StartKey: "doc6"
+//	                                                        Limit: 3
+//	                                                    NumProcessed: 0
+//
+// It starts with an empty start key
+// For the next page, it uses the last key processed as the new start key
+// Since the start key is inclusive, it will see the start key twice (on first page, and on next page)
+// If it's iterating a result page and sees a doc with the start key (eg, doc3 in above), it will ignore it so it doesn't process it twice
+// Stop condition: if NumProcessed is 0, because the only doc in result set had already been processed.
 func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 
 	logCtx := context.TODO()
@@ -272,10 +268,10 @@ func (r RepairBucket) WriteRepairedDocsToBucket(docId string, originalDoc, updat
 	var contentToSave []byte
 
 	if r.DryRun {
-		backupOrDryRunDocId = base.RepairDryRun + docId
+		backupOrDryRunDocId = base.RepairDryRunPrefix + docId
 		contentToSave = updatedDoc
 	} else {
-		backupOrDryRunDocId = base.RepairBackup + docId
+		backupOrDryRunDocId = base.RepairBackupPrefix + docId
 		contentToSave = originalDoc
 	}
 

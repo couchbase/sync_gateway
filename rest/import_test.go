@@ -49,6 +49,14 @@ func HasActiveChannel(channelSet map[string]interface{}, channelName string) boo
 	return true
 }
 
+// gocb V2 accepts expiry as a duration and converts to a uint32 epoch time, then does the reverse on retrieval.
+// Sync Gateway's bucket interface uses uint32 expiry. The net result is that expiry values written and then read via SG's
+// bucket API go through a transformation based on time.Now (or time.Until) that can result in inexact matches.
+// assertExpiry validates that the two expiry values are within a 10 second window
+func assertExpiry(t testing.TB, expected uint32, actual uint32) {
+	assert.True(t, base.DiffUint32(expected, actual) < 10, fmt.Sprintf("Unexpected difference between expected: %v actual %v", expected, actual))
+}
+
 // Test import of an SDK delete.
 func TestXattrImportOldDoc(t *testing.T) {
 
@@ -158,7 +166,7 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 
 	// 1. Create revision with history
 	docID := t.Name()
-	putResponse := rt.putDoc(docID, `{"val":-1}`)
+	putResponse := rt.PutDoc(docID, `{"val":-1}`)
 	revID := putResponse.Rev
 
 	// Get db.Database to perform PurgeOldRevisionJSON
@@ -166,10 +174,11 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 	database, err := db.GetDatabase(dbc, nil)
 	assert.NoError(t, err)
 
+	ctx := rt.Context()
 	for i := 0; i < 10; i++ {
-		updateResponse := rt.updateDoc(docID, revID, fmt.Sprintf(`{"val":%d}`, i))
+		updateResponse := rt.UpdateDoc(docID, revID, fmt.Sprintf(`{"val":%d}`, i))
 		// Purge old revision JSON to simulate expiry, and to verify import doesn't attempt multiple retrievals
-		purgeErr := database.PurgeOldRevisionJSON(docID, revID)
+		purgeErr := database.PurgeOldRevisionJSON(ctx, docID, revID)
 		assert.NoError(t, purgeErr)
 		revID = updateResponse.Rev
 	}
@@ -463,6 +472,10 @@ func TestXattrDoubleDelete(t *testing.T) {
 func TestViewQueryTombstoneRetrieval(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
+
+	if !base.TestsDisableGSI() {
+		t.Skip("views tests are not applicable under GSI")
+	}
 
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -1340,7 +1353,7 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Wait until the change appears on the changes feed to ensure that it's been imported by this point
-	changes, err := rt.waitForChanges(2, "/db/_changes", "", true)
+	changes, err := rt.WaitForChanges(2, "/db/_changes", "", true)
 	require.NoError(t, err, "Error waiting for changes")
 
 	log.Printf("changes: %+v", changes)
@@ -1392,7 +1405,7 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 	// Wait for doc to appear on changes feed
 	// Wait until the change appears on the changes feed to ensure that it's been imported by this point
 	now := time.Now()
-	changes, err := rt.waitForChanges(1, "/db/_changes", "", true)
+	changes, err := rt.WaitForChanges(1, "/db/_changes", "", true)
 	require.NoError(t, err, "Error waiting for changes")
 	changeEntry := changes.Results[0]
 	assert.Equal(t, key, changeEntry.ID)
@@ -1444,7 +1457,7 @@ func TestOnDemandWriteImportReplacingNullDoc(t *testing.T) {
 	mobileBodyMarshalled, err := base.JSONMarshal(mobileBody)
 	assert.NoError(t, err, "Error marshalling body")
 	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", key), string(mobileBodyMarshalled))
-	requireStatus(t, response, 201)
+	RequireStatus(t, response, 201)
 
 }
 
@@ -1518,7 +1531,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 
 			// Wait until the change appears on the changes feed to ensure that it's been imported by this point.
 			// This is probably unnecessary in the case of on-demand imports, but it doesn't hurt to leave it in as a double check.
-			changes, err := rt.waitForChanges(1, "/db/_changes", "", true)
+			changes, err := rt.WaitForChanges(1, "/db/_changes", "", true)
 			require.NoError(t, err, "Error waiting for changes")
 			changeEntry := changes.Results[0]
 			assert.Equal(t, key, changeEntry.ID)
@@ -1726,7 +1739,7 @@ func TestImportZeroValueDecimalPlaces(t *testing.T) {
 		t.Logf("Inserting doc %s: %s", docID, string(docBody))
 	}
 
-	changes, err := rt.waitForChanges((maxDecimalPlaces+1)-minDecimalPlaces, "/db/_changes", "", true)
+	changes, err := rt.WaitForChanges((maxDecimalPlaces+1)-minDecimalPlaces, "/db/_changes", "", true)
 	assert.NoError(t, err, "Error waiting for changes")
 	require.Lenf(t, changes.Results, maxDecimalPlaces+1-minDecimalPlaces, "Expected %d changes in: %#v", (maxDecimalPlaces+1)-minDecimalPlaces, changes.Results)
 
@@ -1788,7 +1801,7 @@ func TestImportZeroValueDecimalPlacesScientificNotation(t *testing.T) {
 		t.Logf("Inserting doc %s: %s", docID, string(docBody))
 	}
 
-	changes, err := rt.waitForChanges((maxDecimalPlaces+1)-minDecimalPlaces, "/db/_changes", "", true)
+	changes, err := rt.WaitForChanges((maxDecimalPlaces+1)-minDecimalPlaces, "/db/_changes", "", true)
 	assert.NoError(t, err, "Error waiting for changes")
 	require.Lenf(t, changes.Results, maxDecimalPlaces+1-minDecimalPlaces, "Expected %d changes in: %#v", (maxDecimalPlaces+1)-minDecimalPlaces, changes.Results)
 
@@ -2047,7 +2060,7 @@ func TestDcpBackfill(t *testing.T) {
 	}
 	assert.True(t, backfillComplete, fmt.Sprintf("Backfill didn't complete after 20s. Latest: %d/%d", completedBackfill, expectedBackfill))
 
-	log.Printf("done...%s  (%d/%d)", newRt.ServerContext().Database("db").Name, completedBackfill, expectedBackfill)
+	log.Printf("done...%s  (%d/%d)", newRt.ServerContext().Database(newRt.Context(), "db").Name, completedBackfill, expectedBackfill)
 
 }
 
@@ -2359,9 +2372,9 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 				return
 			}
 			if test.expectedStatusCode != nil {
-				requireStatus(rt.tb, resp, *test.expectedStatusCode)
+				RequireStatus(rt.tb, resp, *test.expectedStatusCode)
 			} else {
-				requireStatus(rt.tb, resp, 200)
+				RequireStatus(rt.tb, resp, 200)
 			}
 			var body db.Body
 			require.NoError(rt.tb, base.JSONUnmarshal(resp.Body.Bytes(), &body))

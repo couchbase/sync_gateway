@@ -41,6 +41,7 @@ const (
 	QueryTypeResync              = "resync"
 	QueryTypeAllDocs             = "allDocs"
 	QueryTypeUsers               = "users"
+	QueryTypeUserPrefix          = "userquery:" // Prefix applied to named user queries from config file
 )
 
 type SGQuery struct {
@@ -249,9 +250,10 @@ var QueryTombstones = SGQuery{
 // QueryAllDocs is using the star channel's index, which is indexed by sequence, then ordering the results by doc id.
 // We currently don't have a performance-tuned use of AllDocs today - if needed, should create a custom index indexed by doc id.
 // Note: QueryAllDocs function may appends additional filter and ordering of the form:
-//    AND META(base.KeyspaceQueryAlias).id >= '%s'
-//    AND META(base.KeyspaceQueryAlias).id <= '%s'
-//    ORDER BY META(base.KeyspaceQueryAlias).id
+//
+//	AND META(base.KeyspaceQueryAlias).id >= '%s'
+//	AND META(base.KeyspaceQueryAlias).id <= '%s'
+//	ORDER BY META(base.KeyspaceQueryAlias).id
 var QueryAllDocs = SGQuery{
 	name: QueryTypeAllDocs,
 	statement: fmt.Sprintf(

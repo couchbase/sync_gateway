@@ -192,11 +192,11 @@ func TestShardedDCPUpgrade(t *testing.T) {
 		indexName     = "db0x2d9928b7_index"
 	)
 
-	require.NoError(t, tb.SetRaw(base.SyncPrefix+"cfgindexDefs", 0, nil, []byte(fmt.Sprintf(indexDefs, tb.GetName(), bucketUUID))))
-	require.NoError(t, tb.SetRaw(base.SyncPrefix+"cfgnodeDefs-known", 0, nil, []byte(nodeDefs)))
-	require.NoError(t, tb.SetRaw(base.SyncPrefix+"cfgnodeDefs-wanted", 0, nil, []byte(nodeDefs)))
+	require.NoError(t, tb.SetRaw(base.SyncDocPrefix+"cfgindexDefs", 0, nil, []byte(fmt.Sprintf(indexDefs, tb.GetName(), bucketUUID))))
+	require.NoError(t, tb.SetRaw(base.SyncDocPrefix+"cfgnodeDefs-known", 0, nil, []byte(nodeDefs)))
+	require.NoError(t, tb.SetRaw(base.SyncDocPrefix+"cfgnodeDefs-wanted", 0, nil, []byte(nodeDefs)))
 	planPIndexesJSON := preparePlanPIndexesJSON(t, tb, numVBuckets, numPartitions)
-	require.NoError(t, tb.SetRaw(base.SyncPrefix+"cfgplanPIndexes", 0, nil, []byte(planPIndexesJSON)))
+	require.NoError(t, tb.SetRaw(base.SyncDocPrefix+"cfgplanPIndexes", 0, nil, []byte(planPIndexesJSON)))
 
 	// Write a doc before starting the dbContext to check that import works
 	const (
@@ -205,7 +205,8 @@ func TestShardedDCPUpgrade(t *testing.T) {
 	)
 	require.NoError(t, tb.SetRaw(testDoc1, 0, nil, []byte(`{}`)))
 
-	db, err := NewDatabaseContext(tb.GetName(), tb.NoCloseClone(), true, DatabaseContextOptions{
+	ctx := base.TestCtx(t)
+	db, err := NewDatabaseContext(ctx, tb.GetName(), tb.NoCloseClone(), true, DatabaseContextOptions{
 		GroupID:     "",
 		EnableXattr: true,
 		UseViews:    base.TestsDisableGSI(),
@@ -214,7 +215,8 @@ func TestShardedDCPUpgrade(t *testing.T) {
 		},
 	})
 	require.NoError(t, err, "NewDatabaseContext")
-	defer db.Close()
+	defer db.Close(ctx)
+	ctx = db.AddDatabaseLogContext(ctx)
 
 	err, _ = base.RetryLoop("wait for non-existent node to be removed", func() (shouldRetry bool, err error, value interface{}) {
 		nodes, _, err := cbgt.CfgGetNodeDefs(db.CfgSG, cbgt.NODE_DEFS_KNOWN)
@@ -247,15 +249,15 @@ func TestShardedDCPUpgrade(t *testing.T) {
 	require.NoError(t, err)
 
 	// assert that the doc we created before starting this node gets imported once all the pindexes are reassigned
-	require.NoError(t, db.WaitForPendingChanges(base.TestCtx(t)))
-	doc, err := db.GetDocument(base.TestCtx(t), testDoc1, DocUnmarshalAll)
+	require.NoError(t, db.WaitForPendingChanges(ctx))
+	doc, err := db.GetDocument(ctx, testDoc1, DocUnmarshalAll)
 	require.NoError(t, err, "GetDocument 1")
 	require.NotNil(t, doc, "GetDocument 1")
 
 	// Write a doc to the test bucket to check that import still works
 	require.NoError(t, tb.SetRaw(testDoc2, 0, nil, []byte(`{}`)))
-	require.NoError(t, db.WaitForPendingChanges(base.TestCtx(t)))
-	doc, err = db.GetDocument(base.TestCtx(t), testDoc2, DocUnmarshalAll)
+	require.NoError(t, db.WaitForPendingChanges(ctx))
+	doc, err = db.GetDocument(ctx, testDoc2, DocUnmarshalAll)
 	require.NoError(t, err, "GetDocument 2")
 	require.NotNil(t, doc, "GetDocument 2")
 }

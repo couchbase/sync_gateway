@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	// persistentConfigDefaultGroupID is used when no explicit config Group ID is defined.
-	persistentConfigDefaultGroupID   = "default"
+	// PersistentConfigDefaultGroupID is used when no explicit config Group ID is defined.
+	PersistentConfigDefaultGroupID   = "default"
 	persistentConfigGroupIDMaxLength = 100
 	// persistentConfigDefaultUpdateFrequency is a duration that defines how frequent configs are refreshed from Couchbase Server.
 	persistentConfigDefaultUpdateFrequency = time.Second * 10
@@ -23,7 +23,7 @@ const (
 func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 	return StartupConfig{
 		Bootstrap: BootstrapConfig{
-			ConfigGroupID:         persistentConfigDefaultGroupID,
+			ConfigGroupID:         PersistentConfigDefaultGroupID,
 			ConfigUpdateFrequency: base.NewConfigDuration(persistentConfigDefaultUpdateFrequency),
 			ServerTLSSkipVerify:   base.BoolPtr(false),
 			UseTLSServer:          base.BoolPtr(DefaultUseTLSServer),
@@ -51,8 +51,11 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			BcryptCost: auth.DefaultBcryptCost,
 		},
 		Unsupported: UnsupportedConfig{
-			Serverless:        base.BoolPtr(false),
 			StatsLogFrequency: base.NewConfigDuration(time.Minute),
+			Serverless: ServerlessConfig{
+				Enabled:                base.BoolPtr(false),
+				MinConfigFetchInterval: base.NewConfigDuration(DefaultMinConfigFetchInterval),
+			},
 		},
 		MaxFileDescriptors: DefaultMaxFileDescriptors,
 	}
@@ -137,11 +140,16 @@ type ReplicatorConfig struct {
 }
 
 type UnsupportedConfig struct {
-	Serverless        *bool                `json:"serverless,omitempty" help:"Run SG in to serverless mode."`
 	StatsLogFrequency *base.ConfigDuration `json:"stats_log_frequency,omitempty"    help:"How often should stats be written to stats logs"`
 	UseStdlibJSON     *bool                `json:"use_stdlib_json,omitempty"        help:"Bypass the jsoniter package and use Go's stdlib instead"`
+	Serverless        ServerlessConfig     `json:"serverless,omitempty"`
+	HTTP2             *HTTP2Config         `json:"http2,omitempty"`
+	UserQueries       *bool                `json:"user_queries,omitempty" help:"Feature flag for user N1QL/JS/GraphQL queries"`
+}
 
-	HTTP2 *HTTP2Config `json:"http2,omitempty"`
+type ServerlessConfig struct {
+	Enabled                *bool                `json:"enabled,omitempty" help:"Enable Sync Gateway serverless mode."`
+	MinConfigFetchInterval *base.ConfigDuration `json:"min_config_fetch_interval,omitempty" help:"How long to cache configs fetched from the buckets for. This cache is used for requested databases that SG does not know about."`
 }
 
 type HTTP2Config struct {
@@ -183,7 +191,7 @@ func (sc *StartupConfig) Redacted() (*StartupConfig, error) {
 }
 
 func (sc *StartupConfig) IsServerless() bool {
-	return base.BoolDefault(sc.Unsupported.Serverless, false)
+	return base.BoolDefault(sc.Unsupported.Serverless.Enabled, false)
 }
 
 func LoadStartupConfigFromPath(path string) (*StartupConfig, error) {
@@ -195,11 +203,11 @@ func LoadStartupConfigFromPath(path string) (*StartupConfig, error) {
 	defer func() { _ = rc.Close() }()
 
 	var sc StartupConfig
-	err = decodeAndSanitiseConfig(rc, &sc)
+	err = DecodeAndSanitiseConfig(rc, &sc)
 	return &sc, err
 }
 
-// NewEmptyStartupConfig initialises an empty StartupConfig with all struct fields empty
+// NewEmptyStartupConfig initialises an empty StartupConfig with all *struct fields empty
 func NewEmptyStartupConfig() StartupConfig {
 	return StartupConfig{
 		API: APIConfig{

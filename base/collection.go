@@ -29,6 +29,8 @@ import (
 
 var ErrCollectionsUnsupported = errors.New("collections not supported")
 
+const DefaultCollectionID = 0x0
+
 var _ sgbucket.KVStore = &Collection{}
 var _ CouchbaseStore = &Collection{}
 
@@ -1013,7 +1015,10 @@ func (c *Collection) GetCollectionID() (uint32, error) {
 	if !c.IsSupported(sgbucket.DataStoreFeatureCollections) {
 		return 0, fmt.Errorf("Couchbase server does not support collections")
 	}
-
+	// default collection has a known ID
+	if c.IsDefaultScopeCollection() {
+		return DefaultCollectionID, nil
+	}
 	// return cached value if present
 	collectionIDAtomic := c.collectionID.Load()
 	if collectionIDAtomic != nil {

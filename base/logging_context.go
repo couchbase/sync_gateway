@@ -66,9 +66,11 @@ func NewTaskID(contextID string, taskName string) string {
 	return contextID + "-" + taskName + "-" + strconv.Itoa(rand.Intn(65536))
 }
 
-// TestCtx creates a log context for the given test.
+// TestCtx creates a context for the given test which is also cancelled once the test has completed.
 func TestCtx(t testing.TB) context.Context {
-	return LogContextWith(context.Background(), &LogContext{TestName: t.Name()})
+	ctx, cancelCtx := context.WithCancel(context.Background())
+	t.Cleanup(cancelCtx)
+	return LogContextWith(ctx, &LogContext{TestName: t.Name()})
 }
 
 // bucketCtx extends the parent context with a bucket name.
@@ -115,7 +117,7 @@ func LogContextWith(parent context.Context, adder ContextAdder) context.Context 
 
 // ServerLogContext stores server context data for logging
 type ServerLogContext struct {
-	ConfigGroupID string
+	LogContextID string
 }
 
 func (c *ServerLogContext) getContextKey() LogContextKey {
@@ -123,8 +125,8 @@ func (c *ServerLogContext) getContextKey() LogContextKey {
 }
 
 func (c *ServerLogContext) addContext(format string) string {
-	if c != nil && c.ConfigGroupID != "" {
-		format = "g:" + c.ConfigGroupID + " " + format
+	if c != nil && c.LogContextID != "" {
+		format = "sc:" + c.LogContextID + " " + format
 	}
 	return format
 }

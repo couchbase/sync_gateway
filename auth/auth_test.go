@@ -681,14 +681,14 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 
 	var callbackURLFunc OIDCCallbackURLFunc
 	callbackURL := base.StringPtr("http://comcast:4984/_callback")
-	providerGoogle := &OIDCProvider{
+	providerGoogle := oidcProviderForTest(t, &OIDCProvider{
 		Name: "Google",
 		JWTConfigCommon: JWTConfigCommon{
 			ClientID: base.StringPtr("aud1"),
 			Issuer:   issuerGoogleAccounts,
 		},
 		CallbackURL: callbackURL,
-	}
+	})
 
 	// Make an RSA signer for signing tokens
 	signer, err := getRSASigner()
@@ -720,12 +720,13 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 		builder := jwt.Signed(signer).Claims(jwt.Claims{Issuer: issuerGoogleAccounts})
 		token, err := builder.CompactSerialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
-		provider := &OIDCProvider{
+		provider := oidcProviderForTest(t, &OIDCProvider{
 			Name: providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
 				Issuer: issuerGoogleAccounts,
 			},
-			CallbackURL: providerGoogle.CallbackURL}
+			CallbackURL: providerGoogle.CallbackURL,
+		})
 		user, _, expiry, err := auth.AuthenticateTrustedJWT(token, provider, callbackURLFunc)
 		assert.Error(t, err, "Error checking clientID config")
 		assert.Nil(t, user, "User shouldn't be created or retrieved")
@@ -733,7 +734,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	})
 
 	t.Run("issuer mismatch google provider valid token", func(t *testing.T) {
-		provider := &OIDCProvider{
+		provider := oidcProviderForTest(t, &OIDCProvider{
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
@@ -742,7 +743,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 				ClientID: base.StringPtr("aud1"),
 			},
 			AllowUnsignedProviderTokens: true,
-		}
+		})
 		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
@@ -765,7 +766,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	})
 
 	t.Run("issuer mismatch google provider invalid token", func(t *testing.T) {
-		provider := &OIDCProvider{
+		provider := oidcProviderForTest(t, &OIDCProvider{
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
@@ -773,7 +774,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 				Issuer:   issuerGoogleAccounts,
 				ClientID: base.StringPtr("aud1"),
 			},
-		}
+		})
 		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
@@ -794,7 +795,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	})
 
 	t.Run("token with audience mismatch", func(t *testing.T) {
-		provider := &OIDCProvider{
+		provider := oidcProviderForTest(t, &OIDCProvider{
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
@@ -802,7 +803,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 				Issuer:   issuerGoogleAccounts,
 				ClientID: base.StringPtr("aud4"),
 			},
-		}
+		})
 		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
@@ -823,7 +824,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	})
 
 	t.Run("token with no audience claim", func(t *testing.T) {
-		provider := &OIDCProvider{
+		provider := oidcProviderForTest(t, &OIDCProvider{
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
@@ -831,7 +832,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 				Issuer:   issuerGoogleAccounts,
 				ClientID: base.StringPtr("aud4"),
 			},
-		}
+		})
 		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
@@ -851,7 +852,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	})
 
 	t.Run("authenticate with expired token", func(t *testing.T) {
-		provider := &OIDCProvider{
+		provider := oidcProviderForTest(t, &OIDCProvider{
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
@@ -859,7 +860,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 				Issuer:   issuerGoogleAccounts,
 				ClientID: base.StringPtr("aud1"),
 			},
-		}
+		})
 		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
@@ -880,7 +881,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	})
 
 	t.Run("token with nbf (not before) claim", func(t *testing.T) {
-		provider := &OIDCProvider{
+		provider := oidcProviderForTest(t, &OIDCProvider{
 			CallbackURL:                 providerGoogle.CallbackURL,
 			Name:                        providerGoogle.Name,
 			AllowUnsignedProviderTokens: true,
@@ -889,7 +890,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 				Issuer:   issuerGoogleAccounts,
 				ClientID: base.StringPtr("aud1"),
 			},
-		}
+		})
 		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
@@ -913,7 +914,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	})
 
 	t.Run("token with expired nbf (not before) claim", func(t *testing.T) {
-		provider := &OIDCProvider{
+		provider := oidcProviderForTest(t, &OIDCProvider{
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
@@ -921,7 +922,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 				ClientID: base.StringPtr("aud1"),
 				Register: true,
 			},
-		}
+		})
 		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
@@ -943,7 +944,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	})
 
 	t.Run("token with no subject claim", func(t *testing.T) {
-		provider := &OIDCProvider{
+		provider := oidcProviderForTest(t, &OIDCProvider{
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
@@ -951,7 +952,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 				ClientID: base.StringPtr("aud1"),
 				Register: true,
 			},
-		}
+		})
 		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
@@ -977,7 +978,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 		require.NoError(t, err, "User registration failure")
 		assert.Equal(t, wantUsername, wantUser.Name())
 		assert.Equal(t, wantUserEmail, wantUser.Email())
-		provider := &OIDCProvider{
+		provider := oidcProviderForTest(t, &OIDCProvider{
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
@@ -987,7 +988,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 				Register:   true,
 			},
 			AllowUnsignedProviderTokens: true,
-		}
+		})
 		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
@@ -1018,7 +1019,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 		assert.Equal(t, wantUsername, wantUser.Name())
 		assert.Equal(t, wantUserEmail, wantUser.Email())
 
-		provider := &OIDCProvider{
+		provider := oidcProviderForTest(t, &OIDCProvider{
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
@@ -1028,7 +1029,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 				Register:   true,
 			},
 			AllowUnsignedProviderTokens: true,
-		}
+		})
 		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
@@ -1053,7 +1054,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 
 	t.Run("new user with valid token and invalid email", func(t *testing.T) {
 		wantUsername := strings.ToLower(providerGoogle.Name) + "_layla"
-		provider := &OIDCProvider{
+		provider := oidcProviderForTest(t, &OIDCProvider{
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
@@ -1063,7 +1064,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 				Register:   true,
 			},
 			AllowUnsignedProviderTokens: true,
-		}
+		})
 		err = provider.InitUserPrefix(ctx)
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
@@ -1167,22 +1168,22 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 	issuerAmazonAccounts := "https://accounts.amazon.com"
 	callbackURL := base.StringPtr("http://comcast:4984/_callback")
 	var callbackURLFunc OIDCCallbackURLFunc
-	providerGoogle := &OIDCProvider{
+	providerGoogle := oidcProviderForTest(t, &OIDCProvider{
 		Name: "Google",
 		JWTConfigCommon: JWTConfigCommon{
 			ClientID: base.StringPtr("aud1"),
 			Issuer:   issuerGoogleAccounts,
 		},
 		CallbackURL: callbackURL,
-	}
-	providerFacebook := &OIDCProvider{
+	})
+	providerFacebook := oidcProviderForTest(t, &OIDCProvider{
 		Name: "Facebook",
 		JWTConfigCommon: JWTConfigCommon{
 			ClientID: base.StringPtr("aud1"),
 			Issuer:   issuerFacebookAccounts,
 		},
 		CallbackURL: callbackURL,
-	}
+	})
 
 	// Make an RSA signer for signing tokens
 	signer, err := getRSASigner()
@@ -1285,7 +1286,7 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 	})
 
 	t.Run("multiple providers with valid token signature verification failure", func(t *testing.T) {
-		providerGoogle := &OIDCProvider{
+		providerGoogle := oidcProviderForTest(t, &OIDCProvider{
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			JWTConfigCommon: JWTConfigCommon{
@@ -1293,7 +1294,7 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 				ClientID: base.StringPtr("aud1"),
 				Register: true,
 			},
-		}
+		})
 		providers := OIDCProviderMap{providerGoogle.Name: providerGoogle, providerFacebook.Name: providerFacebook}
 		err = providerGoogle.InitUserPrefix(base.TestCtx(t))
 		assert.NoError(t, err, "Error initializing user prefix")
@@ -1399,15 +1400,16 @@ func initializeScenario(t *testing.T, auth *Authenticator) (*userImpl, Principal
 // =======================================================================================================
 
 // Scenario 1
-// Initiate user and role
-// Grant role channel and role
-//  - Changes Request - Seq 25 - Has channel 1 access, no history
-// No changes
-//  - Changes Request - Seq 40 - Has channel 1 access, no history
-// Role revoke, role channel revoke then role re-grant and role channel re-grant
-//  - Changes Request - Seq 80 - Has channel 1 access, no history
-// Role revoke, role channel revoke
-//  - Changes Request - Seq 110 - Doesn't have channel access, history added for both role and channel
+//
+//	Initiate user and role
+//	Grant role channel and role
+//	 - Changes Request - Seq 25 - Has channel 1 access, no history
+//	No changes
+//	 - Changes Request - Seq 40 - Has channel 1 access, no history
+//	Role revoke, role channel revoke then role re-grant and role channel re-grant
+//	 - Changes Request - Seq 80 - Has channel 1 access, no history
+//	Role revoke, role channel revoke
+//	 - Changes Request - Seq 110 - Doesn't have channel access, history added for both role and channel
 func TestRevocationScenario1(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -1490,15 +1492,16 @@ func TestRevocationScenario1(t *testing.T) {
 }
 
 // Scenario 2
-// Initiate user and role
-// Grant role channel and role
-//  - Changes Request - Seq 25 - Has channel 1 access, no history
-// Revoke role
-//  - Changes Request - Seq 50 - Doesn't have channel access, role history added
-// Revoke channel, re-grant role, re-grant channel
-//  - Changes Request - Seq 80 - Has channel access, retains role history
-// Role revoke, role channel revoke
-//  - Changes Request - Seq 110 - Doesn't have channel access, history added for both role and channel
+//
+//	Initiate user and role
+//	Grant role channel and role
+//	 - Changes Request - Seq 25 - Has channel 1 access, no history
+//	Revoke role
+//	 - Changes Request - Seq 50 - Doesn't have channel access, role history added
+//	Revoke channel, re-grant role, re-grant channel
+//	 - Changes Request - Seq 80 - Has channel access, retains role history
+//	Role revoke, role channel revoke
+//	 - Changes Request - Seq 110 - Doesn't have channel access, history added for both role and channel
 func TestRevocationScenario2(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -1587,15 +1590,16 @@ func TestRevocationScenario2(t *testing.T) {
 }
 
 // Scenario 3
-// Initiate user and role
-// Grant role channel and role
-//  - Changes Request - Seq 25 - Has channel 1 access, no history
-// Revoke role, revoke role channel
-//  - Changes Request - Seq 60 - Doesn't have channel access, history added for both role and channel
-// Grant role channel and role
-//  - Changes Request - Seq 80 - Has channel access, retains history
-// Role revoke, role channel revoke
-//  - Changes Request - Seq 110 - Doesn't have channel access, history added for both role and channel
+//
+//	Initiate user and role
+//	Grant role channel and role
+//	  - Changes Request - Seq 25 - Has channel 1 access, no history
+//	Revoke role, revoke role channel
+//	  - Changes Request - Seq 60 - Doesn't have channel access, history added for both role and channel
+//	Grant role channel and role
+//	  - Changes Request - Seq 80 - Has channel access, retains history
+//	Role revoke, role channel revoke
+//	  - Changes Request - Seq 110 - Doesn't have channel access, history added for both role and channel
 func TestRevocationScenario3(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -1693,15 +1697,16 @@ func TestRevocationScenario3(t *testing.T) {
 }
 
 // Scenario 4
-// Initiate user and role
-// Grant role channel and role
-//  - Changes Request - Seq 25 - Has channel 1 access, no history
-// Revoke role, revoke role channel, re-grant role
-//  - Changes Request - Seq 70 - Doesn't have channel access, history added for role channel
-// Grant role
-//  - Changes Request - Seq 80 - Has channel access, retains history
-// Role revoke, role channel revoke
-//  - Changes Request - Seq 110 - Doesn't have channel access, history added for both role and channel
+//
+//	Initiate user and role
+//	Grant role channel and role
+//	  - Changes Request - Seq 25 - Has channel 1 access, no history
+//	Revoke role, revoke role channel, re-grant role
+//	  - Changes Request - Seq 70 - Doesn't have channel access, history added for role channel
+//	Grant role
+//	  - Changes Request - Seq 80 - Has channel access, retains history
+//	Role revoke, role channel revoke
+//	  - Changes Request - Seq 110 - Doesn't have channel access, history added for both role and channel
 func TestRevocationScenario4(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -1788,13 +1793,14 @@ func TestRevocationScenario4(t *testing.T) {
 }
 
 // Scenario 5
-// Initiate user and role
-// Grant role channel and role
-//  - Changes Request - Seq 25 - Has channel 1 access, no history
-// Revoke role, revoke role channel, re-grant role, re-grant channel
-//  - Changes Request - Seq 80 - Has channel 1 access, no history
-// Revoke role and role channel
-//  - Changes Request - Seq 110 - Doesn't have channel access, history added for both role and channel
+//
+//	Initiate user and role
+//	Grant role channel and role
+//	  - Changes Request - Seq 25 - Has channel 1 access, no history
+//	Revoke role, revoke role channel, re-grant role, re-grant channel
+//	  - Changes Request - Seq 80 - Has channel 1 access, no history
+//	Revoke role and role channel
+//	  - Changes Request - Seq 110 - Doesn't have channel access, history added for both role and channel
 func TestRevocationScenario5(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -1865,13 +1871,14 @@ func TestRevocationScenario5(t *testing.T) {
 }
 
 // Scenario 6
-// Initiate user and role
-// Grant role channel and role
-//  - Changes Request - Seq 25 - Has channel 1 access, no history
-// Revoke role, revoke role channel, re-grant role, re-grant channel, re-revoke channel
-//  - Changes Request - Seq 90 - Doesn't have channel 1 access, history added for role channel
-// Revoke role
-//  - Changes Request - Seq 110 - Doesn't have channel access, history added for role
+//
+//	Initiate user and role
+//	Grant role channel and role
+//	  - Changes Request - Seq 25 - Has channel 1 access, no history
+//	Revoke role, revoke role channel, re-grant role, re-grant channel, re-revoke channel
+//	  - Changes Request - Seq 90 - Doesn't have channel 1 access, history added for role channel
+//	Revoke role
+//	  - Changes Request - Seq 110 - Doesn't have channel access, history added for role
 func TestRevocationScenario6(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -1946,13 +1953,14 @@ func TestRevocationScenario6(t *testing.T) {
 }
 
 // Scenario 7
-// Initiate user and role
-// Grant role channel and role
-//  - Changes Request - Seq 25 - Has channel 1 access, no history
-// Revoke role, revoke role channel, re-grant role, re-grant channel, re-revoke channel, re-revoke role
-//  - Changes Request - Seq 100 - Doesn't have channel 1 access, history added for role channel and role
-// No Change
-//  - Changes Request - Seq 110 - Doesn't have channel access, history retained
+//
+//	Initiate user and role
+//	Grant role channel and role
+//	  - Changes Request - Seq 25 - Has channel 1 access, no history
+//	Revoke role, revoke role channel, re-grant role, re-grant channel, re-revoke channel, re-revoke role
+//	  - Changes Request - Seq 100 - Doesn't have channel 1 access, history added for role channel and role
+//	No Change
+//	  - Changes Request - Seq 110 - Doesn't have channel access, history retained
 func TestRevocationScenario7(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -2026,11 +2034,12 @@ func TestRevocationScenario7(t *testing.T) {
 }
 
 // Scenario 8
-// Initiate user and role
-// Grant role channel and role, revoke role
-//  - Changes Request - Seq 50 - Doesn't have channel 1 access, no history
-// Revoke role channel, re-grant role, re-grant channel, re-revoke channel, re-revoke role
-//  - Changes Request - Seq 110 - Doesn't have channel 1 access, no history
+//
+//	Initiate user and role
+//	Grant role channel and role, revoke role
+//	  - Changes Request - Seq 50 - Doesn't have channel 1 access, no history
+//	Revoke role channel, re-grant role, re-grant channel, re-revoke channel, re-revoke role
+//	  - Changes Request - Seq 110 - Doesn't have channel 1 access, no history
 func TestRevocationScenario8(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -2085,11 +2094,12 @@ func TestRevocationScenario8(t *testing.T) {
 }
 
 // Scenario 9
-// Initiate user and role
-// Grant role channel and role, revoke role and role channel
-//  - Changes Request - Seq 60 - Doesn't have channel 1 access, no history
-// Re-grant role, re-grant channel, re-revoke channel, re-revoke role
-//  - Changes Request - Seq 110 - Doesn't have channel 1 access, no history
+//
+//	Initiate user and role
+//	Grant role channel and role, revoke role and role channel
+//	  - Changes Request - Seq 60 - Doesn't have channel 1 access, no history
+//	Re-grant role, re-grant channel, re-revoke channel, re-revoke role
+//	  - Changes Request - Seq 110 - Doesn't have channel 1 access, no history
 func TestRevocationScenario9(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -2141,11 +2151,12 @@ func TestRevocationScenario9(t *testing.T) {
 }
 
 // Scenario 10
-// Initiate user and role
-// Grant role channel and role, revoke role and role channel, re-grant role
-//  - Changes Request - Seq 70 - Doesn't have channel 1 access, no history
-// Re-grant channel, re-revoke channel, re-revoke role
-//  - Changes Request - Seq 110 - Doesn't have channel 1 access, no history
+//
+//	Initiate user and role
+//	Grant role channel and role, revoke role and role channel, re-grant role
+//	  - Changes Request - Seq 70 - Doesn't have channel 1 access, no history
+//	Re-grant channel, re-revoke channel, re-revoke role
+//	  - Changes Request - Seq 110 - Doesn't have channel 1 access, no history
 func TestRevocationScenario10(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -2200,11 +2211,12 @@ func TestRevocationScenario10(t *testing.T) {
 }
 
 // Scenario 11
-// Initiate user and role
-// Grant role channel and role, revoke role and role channel, re-grant role, re-grant channel
-//  - Changes Request - Seq 80 - Has channel 1 access, no history
-// Revoke channel, revoke role
-//  - Changes Request - Seq 110 - Doesn't have channel 1 access, adds role and channel history
+//
+//	Initiate user and role
+//	Grant role channel and role, revoke role and role channel, re-grant role, re-grant channel
+//	  - Changes Request - Seq 80 - Has channel 1 access, no history
+//	Revoke channel, revoke role
+//	  - Changes Request - Seq 110 - Doesn't have channel 1 access, adds role and channel history
 func TestRevocationScenario11(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -2265,11 +2277,12 @@ func TestRevocationScenario11(t *testing.T) {
 }
 
 // Scenario 12
-// Initiate user and role
-// Grant role channel and role, revoke role and role channel, re-grant role, re-grant channel, re-revoke channel
-//  - Changes Request - Seq 90 - Doesn't have channel 1 access, no history
-// Revoke role
-//  - Changes Request - Seq 110 - Doesn't have channel 1 access, no history
+//
+//	Initiate user and role
+//	Grant role channel and role, revoke role and role channel, re-grant role, re-grant channel, re-revoke channel
+//	  - Changes Request - Seq 90 - Doesn't have channel 1 access, no history
+//	Revoke role
+//	  - Changes Request - Seq 110 - Doesn't have channel 1 access, no history
 func TestRevocationScenario12(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -2324,11 +2337,12 @@ func TestRevocationScenario12(t *testing.T) {
 }
 
 // Scenario 13
-// Initiate user and role
-// Grant role channel and role, revoke role and role channel, re-grant role, re-grant channel, re-revoke channel, re-revoke role
-//  - Changes Request - Seq 100 - Doesn't have channel 1 access, no history
-// No changes
-//  - Changes Request - Seq 110 - Doesn't have channel 1 access, no history
+//
+//	Initiate user and role
+//	Grant role channel and role, revoke role and role channel, re-grant role, re-grant channel, re-revoke channel, re-revoke role
+//	  - Changes Request - Seq 100 - Doesn't have channel 1 access, no history
+//	No changes
+//	  - Changes Request - Seq 110 - Doesn't have channel 1 access, no history
 func TestRevocationScenario13(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -2380,12 +2394,13 @@ func TestRevocationScenario13(t *testing.T) {
 }
 
 // Scenario 14
-// Initiate user and role
-// Grant role channel and role
-//  - Changes Request - Seq 25 - Has channel access no history
-// Revoke role
-//  - Changes Request Seq 45 since 25. Ensure revocation.
-// 	- Changes Request Seq 45 since 45 same seq as revocation. Ensure no revocation message.
+//
+//	Initiate user and role
+//	Grant role channel and role
+//	  - Changes Request - Seq 25 - Has channel access no history
+//	Revoke role
+//	  - Changes Request Seq 45 since 25. Ensure revocation.
+//	  - Changes Request Seq 45 since 45 same seq as revocation. Ensure no revocation message.
 func TestRevocationScenario14(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()

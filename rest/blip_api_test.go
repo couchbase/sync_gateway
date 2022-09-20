@@ -40,6 +40,7 @@ import (
 // - Setup
 //   - Create an httptest server listening on a port that wraps the Sync Gateway Admin Handler
 //   - Make a BLIP/Websocket client connection to Sync Gateway
+//
 // - Test
 //   - Verify Sync Gateway will accept the doc revision that is about to be sent
 //   - Send the doc revision in a rev request
@@ -164,6 +165,8 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 // Wait until we get the expected updates
 func TestContinuousChangesSubscription(t *testing.T) {
 
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache)
 
 	bt, err := NewBlipTester(t)
@@ -275,10 +278,6 @@ func TestContinuousChangesSubscription(t *testing.T) {
 // Start subChanges w/ continuous=false, batchsize=20
 // Validate we get the expected updates and changes ends
 func TestBlipOneShotChangesSubscription(t *testing.T) {
-
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
@@ -608,7 +607,7 @@ func TestProposedChangesNoConflictsMode(t *testing.T) {
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		noConflictsMode: true,
-		guestEnabled:    true,
+		GuestEnabled:    true,
 	})
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
@@ -648,30 +647,30 @@ func TestProposedChangesIncludeConflictingRev(t *testing.T) {
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		noConflictsMode: true,
-		guestEnabled:    true,
+		GuestEnabled:    true,
 	})
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 
 	// Write existing docs to server directly (not via blip)
 	rt := bt.restTester
-	resp := rt.putDoc("conflictingInsert", `{"version":1}`)
+	resp := rt.PutDoc("conflictingInsert", `{"version":1}`)
 	conflictingInsertRev := resp.Rev
 
-	resp = rt.putDoc("matchingInsert", `{"version":1}`)
+	resp = rt.PutDoc("matchingInsert", `{"version":1}`)
 	matchingInsertRev := resp.Rev
 
-	resp = rt.putDoc("conflictingUpdate", `{"version":1}`)
+	resp = rt.PutDoc("conflictingUpdate", `{"version":1}`)
 	conflictingUpdateRev1 := resp.Rev
-	resp = rt.updateDoc("conflictingUpdate", resp.Rev, `{"version":2}`)
+	resp = rt.UpdateDoc("conflictingUpdate", resp.Rev, `{"version":2}`)
 	conflictingUpdateRev2 := resp.Rev
 
-	resp = rt.putDoc("matchingUpdate", `{"version":1}`)
+	resp = rt.PutDoc("matchingUpdate", `{"version":1}`)
 	matchingUpdateRev1 := resp.Rev
-	resp = rt.updateDoc("matchingUpdate", resp.Rev, `{"version":2}`)
+	resp = rt.UpdateDoc("matchingUpdate", resp.Rev, `{"version":2}`)
 	matchingUpdateRev2 := resp.Rev
 
-	resp = rt.putDoc("newUpdate", `{"version":1}`)
+	resp = rt.PutDoc("newUpdate", `{"version":1}`)
 	newUpdateRev1 := resp.Rev
 
 	type proposeChangesCase struct {
@@ -830,6 +829,7 @@ function(doc, oldDoc) {
 	rtConfig := RestTesterConfig{SyncFn: syncFunction}
 	var rt = NewRestTester(t, &rtConfig)
 	defer rt.Close()
+	ctx := rt.Context()
 
 	// Create bliptester that is connected as user1, with no access to channel ABC
 	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
@@ -849,7 +849,7 @@ function(doc, oldDoc) {
 
 	// Set up a ChangeWaiter for this test, to block until the user change notification happens
 	dbc := rt.GetDatabase()
-	user1, err := dbc.Authenticator(base.TestCtx(t)).GetUser("user1")
+	user1, err := dbc.Authenticator(ctx).GetUser("user1")
 	require.NoError(t, err)
 
 	userDb, err := db.GetDatabase(dbc, user1)
@@ -859,7 +859,7 @@ function(doc, oldDoc) {
 
 	// Update the user to grant them access to ABC
 	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{"admin_channels":["ABC"]}`)
-	requireStatus(t, response, 200)
+	RequireStatus(t, response, 200)
 
 	// Wait for notification
 	require.True(t, db.WaitForUserWaiterChange(userWaiter))
@@ -875,7 +875,7 @@ function(doc, oldDoc) {
 
 	// Validate that the doc was written (GET request doesn't get a 404)
 	getResponse := rt.SendAdminRequest("GET", "/db/foo", "")
-	requireStatus(t, getResponse, 200)
+	RequireStatus(t, getResponse, 200)
 
 }
 
@@ -992,7 +992,7 @@ function(doc, oldDoc) {
 	receivedChangesWg.Add(1)
 	revsFinishedWg.Add(1)
 	response := rt.SendAdminRequest("PUT", "/db/grantDoc", `{"accessUser":"user1", "accessChannel":"ABC", "channels":["ABC"]}`)
-	requireStatus(t, response, 201)
+	RequireStatus(t, response, 201)
 	require.NoError(t, rt.WaitForPendingChanges())
 
 	// Wait until all expected changes are received by change handler
@@ -1149,7 +1149,8 @@ function(doc, oldDoc) {
 }
 
 // Test send and retrieval of a doc.
-//   Validate deleted handling (includes check for https://github.com/couchbase/sync_gateway/issues/3341)
+//
+//	Validate deleted handling (includes check for https://github.com/couchbase/sync_gateway/issues/3341)
 func TestBlipSendAndGetRev(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
@@ -1172,7 +1173,7 @@ func TestBlipSendAndGetRev(t *testing.T) {
 
 	// Get non-deleted rev
 	response := bt.restTester.SendAdminRequest("GET", "/db/sendAndGetRev?rev=1-abc", "")
-	requireStatus(t, response, 200)
+	RequireStatus(t, response, 200)
 	var responseBody RestDocument
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody), "Error unmarshalling GET doc response")
 	_, ok := responseBody[db.BodyDeleted]
@@ -1187,7 +1188,7 @@ func TestBlipSendAndGetRev(t *testing.T) {
 
 	// Get the tombstoned document
 	response = bt.restTester.SendAdminRequest("GET", "/db/sendAndGetRev?rev=2-bcd", "")
-	requireStatus(t, response, 200)
+	RequireStatus(t, response, 200)
 	responseBody = RestDocument{}
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody), "Error unmarshalling GET doc response")
 	deletedValue, deletedOK := responseBody[db.BodyDeleted].(bool)
@@ -1196,8 +1197,10 @@ func TestBlipSendAndGetRev(t *testing.T) {
 }
 
 // Test send and retrieval of a doc with a large numeric value.  Ensure proper large number handling.
-//   Validate deleted handling (includes check for https://github.com/couchbase/sync_gateway/issues/3341)
+//
+//	Validate deleted handling (includes check for https://github.com/couchbase/sync_gateway/issues/3341)
 func TestBlipSendAndGetLargeNumberRev(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
@@ -1219,7 +1222,7 @@ func TestBlipSendAndGetLargeNumberRev(t *testing.T) {
 
 	// Get non-deleted rev
 	response := bt.restTester.SendAdminRequest("GET", "/db/largeNumberRev?rev=1-abc", "")
-	requireStatus(t, response, 200) // Check the raw bytes, because unmarshalling the response would be another opportunity for the number to get modified
+	RequireStatus(t, response, 200) // Check the raw bytes, because unmarshalling the response would be another opportunity for the number to get modified
 	responseString := string(response.Body.Bytes())
 	if !strings.Contains(responseString, `9223372036854775807`) {
 		t.Errorf("Response does not contain the expected number format.  Response: %s", responseString)
@@ -1279,7 +1282,7 @@ func TestBlipSetCheckpoint(t *testing.T) {
 
 	// Validate checkpoint existence in bucket (local file name "/" needs to be URL encoded as %252F)
 	response := rt.SendAdminRequest("GET", "/db/_local/checkpoint%252Ftestclient", "")
-	requireStatus(t, response, 200)
+	RequireStatus(t, response, 200)
 	var responseBody map[string]interface{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &responseBody)
 	assert.Equal(t, "1000", responseBody["client_seq"])
@@ -1324,6 +1327,7 @@ func TestReloadUser(t *testing.T) {
 	rtConfig := RestTesterConfig{SyncFn: syncFn}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
+	ctx := rt.Context()
 	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
 		connectingUsername: "user1",
 		connectingPassword: "1234",
@@ -1333,7 +1337,7 @@ func TestReloadUser(t *testing.T) {
 
 	// Set up a ChangeWaiter for this test, to block until the user change notification happens
 	dbc := rt.GetDatabase()
-	user1, err := dbc.Authenticator(base.TestCtx(t)).GetUser("user1")
+	user1, err := dbc.Authenticator(ctx).GetUser("user1")
 	require.NoError(t, err)
 
 	userDb, err := db.GetDatabase(dbc, user1)
@@ -1343,7 +1347,7 @@ func TestReloadUser(t *testing.T) {
 
 	// Put document that triggers access grant for user to channel PBS
 	response := rt.SendAdminRequest("PUT", "/db/access1", `{"accessUser":"user1", "accessChannel":["PBS"]}`)
-	requireStatus(t, response, 201)
+	RequireStatus(t, response, 201)
 
 	// Wait for notification
 	require.True(t, db.WaitForUserWaiterChange(userWaiter))
@@ -1397,7 +1401,7 @@ func TestAccessGrantViaSyncFunction(t *testing.T) {
 
 	// Put document that triggers access grant for user to channel PBS
 	response := rt.SendAdminRequest("PUT", "/db/access1", `{"accessUser":"user1", "accessChannel":["PBS"]}`)
-	requireStatus(t, response, 201)
+	RequireStatus(t, response, 201)
 
 	// Add another doc in the PBS channel
 	_, _, _, _ = bt.SendRev(
@@ -1438,7 +1442,7 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 
 	// Update the user doc to grant access to PBS
 	response := bt.restTester.SendAdminRequest("PUT", "/db/_user/user1", `{"admin_channels":["user1", "PBS"]}`)
-	requireStatus(t, response, 200)
+	RequireStatus(t, response, 200)
 
 	// Add another doc in the PBS channel
 	_, _, _, _ = bt.SendRev(
@@ -1854,7 +1858,6 @@ func TestPutRevConflictsMode(t *testing.T) {
 //
 // Actual:
 // - Same as Expected (this test is unable to repro SG #3281, but is being left in as a regression test)
-//
 func TestGetRemovedDoc(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
@@ -1953,8 +1956,10 @@ func TestGetRemovedDoc(t *testing.T) {
 //   - Expected: receive all 5 docs (4 revs and 1 norev)
 //   - Actual: only receive 4 docs (4 revs)
 func TestMissingNoRev(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
+	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
 	defer rt.Close()
+	ctx := rt.Context()
+
 	bt, err := NewBlipTesterFromSpecWithRT(t, nil, rt)
 	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
@@ -1971,7 +1976,7 @@ func TestMissingNoRev(t *testing.T) {
 	}
 
 	// Get a reference to the database
-	targetDbContext, err := rt.ServerContext().GetDatabase("db")
+	targetDbContext, err := rt.ServerContext().GetDatabase(ctx, "db")
 	assert.NoError(t, err, "failed")
 	targetDb, err := db.GetDatabase(targetDbContext, nil)
 	assert.NoError(t, err, "failed")
@@ -1983,7 +1988,7 @@ func TestMissingNoRev(t *testing.T) {
 
 	// Purge one doc
 	doc0Id := fmt.Sprintf("doc-%d", 0)
-	err = targetDb.Purge(doc0Id)
+	err = targetDb.Purge(ctx, doc0Id)
 	assert.NoError(t, err, "failed")
 
 	// Flush rev cache
@@ -2009,7 +2014,7 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 				Enabled: &sgUseDeltas,
 			},
 		}},
-		guestEnabled: true,
+		GuestEnabled: true,
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -2089,7 +2094,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 				Enabled: base.BoolPtr(true),
 			},
 		}},
-		guestEnabled: true,
+		GuestEnabled: true,
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -2097,7 +2102,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 	// create doc1 rev 1
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
-	rev1ID := respRevID(t, resp)
+	rev1ID := RespRevID(t, resp)
 
 	deltaSentCount := rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value()
 
@@ -2119,7 +2124,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 	// create doc1 rev 2
 	resp = rt.SendAdminRequest(http.MethodPut, "/db/doc1?rev="+rev1ID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": 12345678901234567890}]}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
-	rev2ID := respRevID(t, resp)
+	rev2ID := RespRevID(t, resp)
 
 	data, ok = client.WaitForRev("doc1", rev2ID)
 	assert.True(t, ok)
@@ -2443,7 +2448,7 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 				Enabled: &sgUseDeltas,
 			},
 		}},
-		guestEnabled: true,
+		GuestEnabled: true,
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -2494,7 +2499,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 				Enabled: &sgUseDeltas,
 			},
 		}},
-		guestEnabled: true,
+		GuestEnabled: true,
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -2586,7 +2591,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 				Enabled: &sgUseDeltas,
 			},
 		}},
-		guestEnabled: true,
+		GuestEnabled: true,
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -2697,7 +2702,7 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 				Enabled: &sgUseDeltas,
 			},
 		}},
-		guestEnabled: true,
+		GuestEnabled: true,
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -2752,7 +2757,7 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 				Enabled: &sgUseDeltas,
 			},
 		}},
-		guestEnabled: true,
+		GuestEnabled: true,
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -2845,7 +2850,7 @@ func TestActiveOnlyContinuous(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
+	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
 	defer rt.Close()
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
@@ -2853,7 +2858,7 @@ func TestActiveOnlyContinuous(t *testing.T) {
 	defer btc.Close()
 
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"test":true}`)
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 	var docResp struct {
 		Rev string `json:"rev"`
 	}
@@ -2868,7 +2873,7 @@ func TestActiveOnlyContinuous(t *testing.T) {
 
 	// delete the doc and make sure the client still gets the tombstone replicated
 	resp = rt.SendAdminRequest(http.MethodDelete, "/db/doc1?rev="+docResp.Rev, ``)
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &docResp))
 
 	rev, found = btc.WaitForRev("doc1", docResp.Rev)
@@ -2881,7 +2886,7 @@ func TestBlipNorev(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
+	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
 	defer rt.Close()
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
@@ -2940,7 +2945,7 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 				Enabled: base.BoolPtr(true),
 			},
 		}},
-		guestEnabled: true,
+		GuestEnabled: true,
 	})
 	defer rt.Close()
 
@@ -3001,7 +3006,7 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 				Enabled: base.BoolPtr(true),
 			},
 		}},
-		guestEnabled: true,
+		GuestEnabled: true,
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -3021,7 +3026,7 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, response.Code)
 
 	// Wait for the document to be replicated at the client
-	revId := respRevID(t, response)
+	revId := RespRevID(t, response)
 	data, ok := btc.WaitForRev(docID, revId)
 	assert.True(t, ok)
 	bodyTextExpected := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
@@ -3082,7 +3087,7 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 				},
 			},
 		},
-		guestEnabled: true,
+		GuestEnabled: true,
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -3103,7 +3108,7 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, response.Code)
 
 	// Wait for the document to be replicated to client.
-	revId := respRevID(t, response)
+	revId := RespRevID(t, response)
 	data, ok := btc.WaitForRev(docID, revId)
 	assert.True(t, ok)
 	bodyTextExpected := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
@@ -3160,7 +3165,7 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 				},
 			},
 		},
-		guestEnabled: true,
+		GuestEnabled: true,
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -3179,7 +3184,7 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, response.Code)
 
 	// Wait for the document to be replicated to client.
-	revId := respRevID(t, response)
+	revId := RespRevID(t, response)
 	data, ok := btc.WaitForRev(docID, revId)
 	assert.True(t, ok)
 	bodyTextExpected := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
@@ -3222,7 +3227,7 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 
 func TestUpdateExistingAttachment(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
-		guestEnabled: true,
+		GuestEnabled: true,
 	})
 	defer rt.Close()
 
@@ -3235,10 +3240,10 @@ func TestUpdateExistingAttachment(t *testing.T) {
 
 	// Add doc1 and doc2
 	req := rt.SendAdminRequest("PUT", "/db/doc1", `{}`)
-	requireStatus(t, req, http.StatusCreated)
+	RequireStatus(t, req, http.StatusCreated)
 	doc1Bytes := req.BodyBytes()
 	req = rt.SendAdminRequest("PUT", "/db/doc2", `{}`)
-	requireStatus(t, req, http.StatusCreated)
+	RequireStatus(t, req, http.StatusCreated)
 	doc2Bytes := req.BodyBytes()
 
 	require.NoError(t, rt.WaitForPendingChanges())
@@ -3264,9 +3269,9 @@ func TestUpdateExistingAttachment(t *testing.T) {
 	revIDDoc2, err := btc.PushRev("doc2", doc2Body["rev"].(string), []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentBData+`"}}}`))
 	require.NoError(t, err)
 
-	err = rt.waitForRev("doc1", revIDDoc1)
+	err = rt.WaitForRev("doc1", revIDDoc1)
 	assert.NoError(t, err)
-	err = rt.waitForRev("doc2", revIDDoc2)
+	err = rt.WaitForRev("doc2", revIDDoc2)
 	assert.NoError(t, err)
 
 	_, err = rt.GetDatabase().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
@@ -3275,7 +3280,7 @@ func TestUpdateExistingAttachment(t *testing.T) {
 	revIDDoc1, err = btc.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=","length":11,"content_type":"","stub":true,"revpos":3}}}`))
 	require.NoError(t, err)
 
-	err = rt.waitForRev("doc1", revIDDoc1)
+	err = rt.WaitForRev("doc1", revIDDoc1)
 	assert.NoError(t, err)
 
 	doc1, err := rt.GetDatabase().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
@@ -3292,7 +3297,7 @@ func TestUpdateExistingAttachment(t *testing.T) {
 // digest doesn't change, regardless of revpos.
 func TestCBLRevposHandling(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
-		guestEnabled: true,
+		GuestEnabled: true,
 	})
 	defer rt.Close()
 
@@ -3305,10 +3310,10 @@ func TestCBLRevposHandling(t *testing.T) {
 
 	// Add doc1 and doc2
 	req := rt.SendAdminRequest("PUT", "/db/doc1", `{}`)
-	requireStatus(t, req, http.StatusCreated)
+	RequireStatus(t, req, http.StatusCreated)
 	doc1Bytes := req.BodyBytes()
 	req = rt.SendAdminRequest("PUT", "/db/doc2", `{}`)
-	requireStatus(t, req, http.StatusCreated)
+	RequireStatus(t, req, http.StatusCreated)
 	doc2Bytes := req.BodyBytes()
 
 	require.NoError(t, rt.WaitForPendingChanges())
@@ -3334,9 +3339,9 @@ func TestCBLRevposHandling(t *testing.T) {
 	revIDDoc2, err := btc.PushRev("doc2", doc2Body["rev"].(string), []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentBData+`"}}}`))
 	require.NoError(t, err)
 
-	err = rt.waitForRev("doc1", revIDDoc1)
+	err = rt.WaitForRev("doc1", revIDDoc1)
 	assert.NoError(t, err)
-	err = rt.waitForRev("doc2", revIDDoc2)
+	err = rt.WaitForRev("doc2", revIDDoc2)
 	assert.NoError(t, err)
 
 	_, err = rt.GetDatabase().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
@@ -3346,7 +3351,7 @@ func TestCBLRevposHandling(t *testing.T) {
 	revIDDoc1, err = btc.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"content_type":"","stub":true,"revpos":2}}}`))
 	require.NoError(t, err)
 
-	err = rt.waitForRev("doc1", revIDDoc1)
+	err = rt.WaitForRev("doc1", revIDDoc1)
 	assert.NoError(t, err)
 
 	// Update doc1, don't change attachment, use revpos=generation of revid, as CBL 2.x does.  Should not proveAttachment on digest match.
@@ -3377,7 +3382,7 @@ func TestCBLRevposHandling(t *testing.T) {
 // Verifies that getAttachment is triggered, and attachment is properly persisted.
 func TestPushUnknownAttachmentAsStub(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
-		guestEnabled: true,
+		GuestEnabled: true,
 	})
 	defer rt.Close()
 
@@ -3389,7 +3394,7 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 
 	// Add doc1 and doc2
 	req := rt.SendAdminRequest("PUT", "/db/doc1", `{}`)
-	requireStatus(t, req, http.StatusCreated)
+	RequireStatus(t, req, http.StatusCreated)
 	doc1Bytes := req.BodyBytes()
 
 	require.NoError(t, rt.WaitForPendingChanges())
@@ -3414,7 +3419,7 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 	revIDDoc1, err := btc.PushRev("doc1", rev1ID, []byte(fmt.Sprintf(`{"key": "val", "_attachments":{"attachment":{"digest":"%s","length":%d,"content_type":"%s","stub":true,"revpos":1}}}`, digest, length, contentType)))
 	require.NoError(t, err)
 
-	err = rt.waitForRev("doc1", revIDDoc1)
+	err = rt.WaitForRev("doc1", revIDDoc1)
 	assert.NoError(t, err)
 
 	// verify that attachment exists on document and was persisted
@@ -3427,7 +3432,7 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 func TestRevocationMessage(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	revocationTester, rt := initScenario(t, nil)
+	revocationTester, rt := InitScenario(t, nil)
 	defer rt.Close()
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
@@ -3445,7 +3450,7 @@ func TestRevocationMessage(t *testing.T) {
 
 	// Skip to seq 4 and then create doc in channel A
 	revocationTester.fillToSeq(4)
-	revID := rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"channels": "A"})
+	revID := rt.CreateDocReturnRev(t, "doc", "", map[string]interface{}{"channels": "A"})
 
 	require.NoError(t, rt.WaitForPendingChanges())
 
@@ -3460,10 +3465,10 @@ func TestRevocationMessage(t *testing.T) {
 	// Remove role from user
 	revocationTester.removeRole("user", "foo")
 
-	revID = rt.createDocReturnRev(t, "doc1", "", map[string]interface{}{"channels": "!"})
+	revID = rt.CreateDocReturnRev(t, "doc1", "", map[string]interface{}{"channels": "!"})
 
 	revocationTester.fillToSeq(10)
-	revID = rt.createDocReturnRev(t, "doc1", revID, map[string]interface{}{})
+	revID = rt.CreateDocReturnRev(t, "doc1", revID, map[string]interface{}{})
 
 	require.NoError(t, rt.WaitForPendingChanges())
 
@@ -3537,7 +3542,7 @@ func TestRevocationMessage(t *testing.T) {
 func TestRevocationNoRev(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	revocationTester, rt := initScenario(t, nil)
+	revocationTester, rt := InitScenario(t, nil)
 	defer rt.Close()
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
@@ -3555,7 +3560,7 @@ func TestRevocationNoRev(t *testing.T) {
 
 	// Skip to seq 4 and then create doc in channel A
 	revocationTester.fillToSeq(4)
-	revID := rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"channels": "A"})
+	revID := rt.CreateDocReturnRev(t, "doc", "", map[string]interface{}{"channels": "A"})
 
 	require.NoError(t, rt.WaitForPendingChanges())
 	firstOneShotSinceSeq := rt.GetDocumentSequence("doc")
@@ -3570,9 +3575,9 @@ func TestRevocationNoRev(t *testing.T) {
 	// Remove role from user
 	revocationTester.removeRole("user", "foo")
 
-	revID = rt.createDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": "A", "val": "mutate"})
+	revID = rt.CreateDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": "A", "val": "mutate"})
 
-	waitRevID := rt.createDocReturnRev(t, "docmarker", "", map[string]interface{}{"channels": "!"})
+	waitRevID := rt.CreateDocReturnRev(t, "docmarker", "", map[string]interface{}{"channels": "!"})
 	require.NoError(t, rt.WaitForPendingChanges())
 
 	lastSeqStr := strconv.FormatUint(firstOneShotSinceSeq, 10)
@@ -3618,7 +3623,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_channels": ["A", "B"], "password": "test"}`)
-	requireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
 		Username:        "user",
@@ -3629,9 +3634,9 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	assert.NoError(t, err)
 	defer btc.Close()
 
-	docRevID := rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"channels": []string{"A", "B"}})
+	docRevID := rt.CreateDocReturnRev(t, "doc", "", map[string]interface{}{"channels": []string{"A", "B"}})
 
-	changes, err := rt.waitForChanges(1, "/db/_changes?since=0&revocations=true", "user", true)
+	changes, err := rt.WaitForChanges(1, "/db/_changes?since=0&revocations=true", "user", true)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(changes.Results))
 	assert.Equal(t, "doc", changes.Results[0].ID)
@@ -3643,9 +3648,9 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	_, ok := btc.WaitForRev("doc", "1-9b49fa26d87ad363b2b08de73ff029a9")
 	assert.True(t, ok)
 
-	docRevID = rt.createDocReturnRev(t, "doc", docRevID, map[string]interface{}{"channels": []string{"B"}})
+	docRevID = rt.CreateDocReturnRev(t, "doc", docRevID, map[string]interface{}{"channels": []string{"B"}})
 
-	changes, err = rt.waitForChanges(1, fmt.Sprintf("/db/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
+	changes, err = rt.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(changes.Results))
 	assert.Equal(t, "doc", changes.Results[0].ID)
@@ -3657,10 +3662,10 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	_, ok = btc.WaitForRev("doc", "2-f0d4cbcdd4a9ec835799055fdba45263")
 	assert.True(t, ok)
 
-	_ = rt.createDocReturnRev(t, "doc", docRevID, map[string]interface{}{"channels": []string{}})
-	_ = rt.createDocReturnRev(t, "docmarker", "", map[string]interface{}{"channels": []string{"!"}})
+	_ = rt.CreateDocReturnRev(t, "doc", docRevID, map[string]interface{}{"channels": []string{}})
+	_ = rt.CreateDocReturnRev(t, "docmarker", "", map[string]interface{}{"channels": []string{"!"}})
 
-	changes, err = rt.waitForChanges(2, fmt.Sprintf("/db/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
+	changes, err = rt.WaitForChanges(2, fmt.Sprintf("/db/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
 	require.NoError(t, err)
 	assert.Len(t, changes.Results, 2)
 	assert.Equal(t, "doc", changes.Results[0].ID)
@@ -3709,7 +3714,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rtConfig := RestTesterConfig{
-		guestEnabled: true,
+		GuestEnabled: true,
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -3781,7 +3786,7 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rtConfig := RestTesterConfig{
-		guestEnabled: true,
+		GuestEnabled: true,
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -3841,7 +3846,7 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	rt := NewRestTester(t, &RestTesterConfig{
-		guestEnabled: true,
+		GuestEnabled: true,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				AllowConflicts: base.BoolPtr(true),
@@ -3855,7 +3860,7 @@ func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
 	defer btc.Close()
 
 	// Push an initial rev with attachment data
-	initialRevID := rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"_attachments": map[string]interface{}{"hello.txt": map[string]interface{}{"data": "aGVsbG8gd29ybGQ="}}})
+	initialRevID := rt.CreateDocReturnRev(t, "doc", "", map[string]interface{}{"_attachments": map[string]interface{}{"hello.txt": map[string]interface{}{"data": "aGVsbG8gd29ybGQ="}}})
 	err = rt.WaitForPendingChanges()
 	assert.NoError(t, err)
 
@@ -3889,6 +3894,9 @@ func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
 // Asserts on stats to test for regression of CBG-1824: Make sure SubChangesOneShotActive gets decremented when one shot
 // sub changes request has completed
 func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
+
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	bt, err := NewBlipTester(t)
@@ -4003,7 +4011,7 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 
 func TestAttachmentWithErroneousRevPos(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
-		guestEnabled: true,
+		GuestEnabled: true,
 	})
 	defer rt.Close()
 
@@ -4012,7 +4020,7 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 	defer btc.Close()
 
 	// Create rev 1 with the hello.txt attachment
-	revid := rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"val": "val", "_attachments": map[string]interface{}{"hello.txt": map[string]interface{}{"data": "aGVsbG8gd29ybGQ="}}})
+	revid := rt.CreateDocReturnRev(t, "doc", "", map[string]interface{}{"val": "val", "_attachments": map[string]interface{}{"hello.txt": map[string]interface{}{"data": "aGVsbG8gd29ybGQ="}}})
 	err = rt.WaitForPendingChanges()
 	assert.NoError(t, err)
 
@@ -4037,7 +4045,7 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 
 	// Get the attachment and ensure the data is updated
 	resp := rt.SendAdminRequest(http.MethodGet, "/db/doc/hello.txt", "")
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 	assert.Equal(t, "goodbye cruel world", string(resp.BodyBytes()))
 }
 
@@ -4135,7 +4143,7 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 	}
 
 	// Setup
-	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
+	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
 	defer rt.Close()
 
 	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
@@ -4143,7 +4151,7 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 	defer client.Close()
 
 	// Track last sequence for next changes feed
-	var changes changesResults
+	var changes ChangesResults
 	changes.Last_Seq = "0"
 
 	for i, test := range testCases {
@@ -4162,13 +4170,13 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 			// Wait for rev to be received on RT
 			err = rt.WaitForPendingChanges()
 			require.NoError(t, err)
-			changes, err = rt.waitForChanges(1, fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq), "", true)
+			changes, err = rt.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq), "", true)
 			require.NoError(t, err)
 
 			var bucketDoc map[string]interface{}
 			_, err = rt.Bucket().Get(docID, &bucketDoc)
 			assert.NoError(t, err)
-			body := rt.getDoc(docID)
+			body := rt.GetDoc(docID)
 			// Confirm input body is in the bucket doc
 			if test.skipDocContentsVerification == nil || !*test.skipDocContentsVerification {
 				for k, v := range test.inputBody {
@@ -4183,7 +4191,7 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 // CBG-2004: Test that prove attachment over Blip works correctly when receiving a ErrAttachmentNotFound
 func TestProveAttachmentNotFound(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
-		guestEnabled: true,
+		GuestEnabled: true,
 	})
 	defer rt.Close()
 
@@ -4227,10 +4235,10 @@ func TestProveAttachmentNotFound(t *testing.T) {
 	err = rt.WaitForPendingChanges()
 	require.NoError(t, err)
 	// Check attachment is on the document
-	body := rt.getDoc("doc1")
+	body := rt.GetDoc("doc1")
 	assert.Equal(t, "2-abc", body.ExtractRev())
 	resp := rt.SendAdminRequest("GET", "/db/doc1/attach", "")
-	requireStatus(t, resp, 200)
+	RequireStatus(t, resp, 200)
 	assert.EqualValues(t, attachmentData, resp.BodyBytes())
 }
 
@@ -4241,10 +4249,11 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 
 	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()
+	activeCtx := activeRT.Context()
 
 	remoteURL, _ := url.Parse(remoteURLString)
 
-	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+	ar := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
 		ID:                  t.Name(),
 		Direction:           db.ActiveReplicatorTypePull,
 		ActiveDB:            &db.Database{DatabaseContext: activeRT.GetDatabase()},
@@ -4259,14 +4268,14 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 	require.EqualValues(t, 0, pullStats.HandleRevBytes.Value())
 	require.EqualValues(t, 0, pullStats.HandlePutRevCount.Value())
 
-	rev := remoteRT.createDoc(t, "doc")
+	rev := remoteRT.CreateDoc(t, "doc")
 
-	assert.NoError(t, ar.Start())
+	assert.NoError(t, ar.Start(activeCtx))
 	defer func() { require.NoError(t, ar.Stop()) }()
 
 	err := activeRT.WaitForPendingChanges()
 	require.NoError(t, err)
-	err = activeRT.waitForRev("doc", rev)
+	err = activeRT.WaitForRev("doc", rev)
 	require.NoError(t, err)
 
 	assert.EqualValues(t, 1, pullStats.HandleRevCount.Value())
@@ -4282,7 +4291,7 @@ func TestSendRevAsReadOnlyGuest(t *testing.T) {
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		noConflictsMode: true,
-		guestEnabled:    true,
+		GuestEnabled:    true,
 	})
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
@@ -4334,7 +4343,7 @@ func TestSendRevAsReadOnlyGuest(t *testing.T) {
 // TestBlipAttachNameChange tests CBL handling - attachments with changed names are sent as stubs, and not new attachments
 func TestBlipAttachNameChange(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
-		guestEnabled: true,
+		GuestEnabled: true,
 	})
 	defer rt.Close()
 
@@ -4361,7 +4370,7 @@ func TestBlipAttachNameChange(t *testing.T) {
 	// Use revpos 2 to simulate revpos bug in CBL 2.8 - 3.0.0
 	rev, err = client1.PushRev("doc", rev, []byte(`{"key":"val","_attachments":{"attach":{"revpos":2,"content_type":"","length":11,"stub":true,"digest":"`+digest+`"}}}`))
 	require.NoError(t, err)
-	err = rt.waitForRev("doc", rev)
+	err = rt.WaitForRev("doc", rev)
 	require.NoError(t, err)
 
 	// Check if attachment is still in bucket
@@ -4370,14 +4379,14 @@ func TestBlipAttachNameChange(t *testing.T) {
 	assert.Equal(t, bucketAttachmentA, attachmentA)
 
 	resp := rt.SendAdminRequest("GET", "/db/doc/attach", "")
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 	assert.Equal(t, attachmentA, resp.BodyBytes())
 }
 
 // TestBlipLegacyAttachNameChange ensures that CBL name changes for legacy attachments are handled correctly
 func TestBlipLegacyAttachNameChange(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
-		guestEnabled: true,
+		GuestEnabled: true,
 	})
 	defer rt.Close()
 
@@ -4394,10 +4403,10 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 	rawDoc := rawDocWithAttachmentAndSyncMeta()
 
 	// Create a document with legacy attachment.
-	createDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
+	CreateDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
 
 	// Get the document and grab the revID.
-	responseBody := rt.getDoc(docID)
+	responseBody := rt.GetDoc(docID)
 	revID := responseBody["_rev"].(string)
 	require.NotEmpty(t, revID)
 
@@ -4418,18 +4427,18 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 	// Use revpos 2 to simulate revpos bug in CBL 2.8 - 3.0.0
 	revID, err = client1.PushRev("doc", revID, []byte(`{"key":"val","_attachments":{"attach":{"revpos":2,"content_type":"test/plain","length":2,"stub":true,"digest":"`+digest+`"}}}`))
 	require.NoError(t, err)
-	err = rt.waitForRev("doc", revID)
+	err = rt.WaitForRev("doc", revID)
 	require.NoError(t, err)
 
 	resp := rt.SendAdminRequest("GET", "/db/doc/attach", "")
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 	assert.Equal(t, attBody, resp.BodyBytes())
 }
 
 // TestBlipLegacyAttachNameChange ensures that CBL updates for documents associated with legacy attachments are handled correctly
 func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
-		guestEnabled: true,
+		GuestEnabled: true,
 	})
 	defer rt.Close()
 
@@ -4447,10 +4456,10 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 	rawDoc := rawDocWithAttachmentAndSyncMeta()
 
 	// Create a document with legacy attachment.
-	createDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
+	CreateDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
 
 	// Get the document and grab the revID.
-	responseBody := rt.getDoc(docID)
+	responseBody := rt.GetDoc(docID)
 	revID := responseBody["_rev"].(string)
 	require.NotEmpty(t, revID)
 
@@ -4470,11 +4479,11 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 	// Update the document, leaving body intact
 	revID, err = client1.PushRev("doc", revID, []byte(`{"key":"val1","_attachments":{"`+attName+`":{"revpos":2,"content_type":"text/plain","length":2,"stub":true,"digest":"`+digest+`"}}}`))
 	require.NoError(t, err)
-	err = rt.waitForRev("doc", revID)
+	err = rt.WaitForRev("doc", revID)
 	require.NoError(t, err)
 
 	resp := rt.SendAdminRequest("GET", "/db/doc/"+attName, "")
-	requireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp, http.StatusOK)
 	assert.Equal(t, attBody, resp.BodyBytes())
 
 	// Validate that the attachment hasn't been migrated to V2
@@ -4498,7 +4507,7 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 // Regression test for CBG-2183.
 func TestBlipRevokeNonExistentRole(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
-		guestEnabled: false,
+		GuestEnabled: false,
 	})
 	defer rt.Close()
 
@@ -4507,16 +4516,16 @@ func TestBlipRevokeNonExistentRole(t *testing.T) {
 	// 1. Create user with admin_roles including two roles not previously defined (a1 and a2, for example)
 	const testUsername = "bilbo"
 	res := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/_user/%s", rt.GetDatabase().Name, testUsername), fmt.Sprintf(`{"name": %q, "password": "test", "admin_roles": ["a1", "a2"], "admin_channels": ["c1"]}`, testUsername))
-	requireStatus(t, res, http.StatusCreated)
+	RequireStatus(t, res, http.StatusCreated)
 
 	// Create a doc so we have something to replicate
 	res = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/testdoc", rt.GetDatabase().Name), `{"channels": ["c1"]}`)
-	requireStatus(t, res, http.StatusCreated)
+	RequireStatus(t, res, http.StatusCreated)
 
 	// 3. Update the user to not reference one of the roles (update to ['a1'], for example)
 	// [also revoke channel c1 so the doc shows up in the revocation queries]
 	res = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/_user/%s", rt.GetDatabase().Name, testUsername), fmt.Sprintf(`{"name": %q, "password": "test", "admin_roles": ["a1"], "admin_channels": []}`, testUsername))
-	requireStatus(t, res, http.StatusOK)
+	RequireStatus(t, res, http.StatusOK)
 
 	// 4. Try to sync
 	bt, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
@@ -4536,6 +4545,8 @@ func TestBlipRevokeNonExistentRole(t *testing.T) {
 // Tests changes made in CBG-2151 to return errors from sendRevision unless it's a document not found error,
 // in which case a noRev should be sent.
 func TestSendRevisionNoRevHandling(t *testing.T) {
+
+	base.LongRunningTest(t)
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("Skip LeakyBucket test when running in integration")
 	}
@@ -4556,8 +4567,8 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 		t.Run(fmt.Sprintf("%s", test.error), func(t *testing.T) {
 			docName := fmt.Sprintf("%s", test.error)
 			rt := NewRestTester(t, &RestTesterConfig{
-				guestEnabled: true,
-				TestBucket:   base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{}),
+				GuestEnabled:     true,
+				CustomTestBucket: base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{}),
 			})
 			defer rt.Close()
 
@@ -4576,7 +4587,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 			}
 
 			resp := rt.SendAdminRequest(http.MethodPut, "/db/"+docName, `{"foo":"bar"}`)
-			requireStatus(t, resp, http.StatusCreated)
+			RequireStatus(t, resp, http.StatusCreated)
 
 			// Make the LeakyBucket return an error
 			leakyBucket.SetGetRawCallback(func(key string) error {
@@ -4604,7 +4615,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 			}
 
 			// Make sure document did not get replicated
-			_, found := btc.GetRev(docName, respRevID(t, resp))
+			_, found := btc.GetRev(docName, RespRevID(t, resp))
 			assert.False(t, found)
 		})
 	}
@@ -4612,7 +4623,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 
 func TestUnsubChanges(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
+	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
 
 	defer rt.Close()
 
@@ -4627,7 +4638,7 @@ func TestUnsubChanges(t *testing.T) {
 	// Sub changes
 	err = btc.StartPull()
 	require.NoError(t, err)
-	resp := rt.updateDoc("doc1", "", `{"key":"val1"}`)
+	resp := rt.UpdateDoc("doc1", "", `{"key":"val1"}`)
 	_, found := btc.WaitForRev("doc1", resp.Rev)
 	require.True(t, found)
 
@@ -4643,7 +4654,7 @@ func TestUnsubChanges(t *testing.T) {
 	assert.EqualValues(t, 0, activeReplVal)
 
 	// Confirm no more changes are being sent
-	resp = rt.updateDoc("doc2", "", `{"key":"val1"}`)
+	resp = rt.UpdateDoc("doc2", "", `{"key":"val1"}`)
 	err = rt.WaitForConditionWithOptions(func() bool {
 		_, found = btc.GetRev("doc2", resp.Rev)
 		return found

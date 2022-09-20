@@ -11,28 +11,10 @@ licenses/APL2.txt.
 package base
 
 import (
-	"os"
 	"testing"
 )
 
 func TestMain(m *testing.M) {
-	// can't use defer because of os.Exit
-	teardownFuncs := make([]func(), 0)
-	teardownFuncs = append(teardownFuncs, SetUpGlobalTestLogging(m))
-	teardownFuncs = append(teardownFuncs, SetUpGlobalTestProfiling(m))
-	teardownFuncs = append(teardownFuncs, SetUpGlobalTestMemoryWatermark(m, 2048))
-
-	SkipPrometheusStatsRegistration = true
-
-	GTestBucketPool = NewTestBucketPool(FlushBucketEmptierFunc, NoopInitFunc)
-	teardownFuncs = append(teardownFuncs, GTestBucketPool.Close)
-
-	// Run the test suite
-	status := m.Run()
-
-	for _, fn := range teardownFuncs {
-		fn()
-	}
-
-	os.Exit(status)
+	memWatermarkThresholdMB := uint64(2048)
+	TestBucketPoolNoIndexes(m, memWatermarkThresholdMB)
 }

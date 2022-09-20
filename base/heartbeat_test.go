@@ -104,7 +104,7 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 
 	SetUpTestLogging(t, LevelDebug, KeyDCP)
 
-	keyprefix := SyncPrefix + t.Name()
+	keyprefix := SyncDocPrefix + t.Name()
 
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
@@ -183,7 +183,7 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 		t.Skip("Skipping heartbeattest in short mode")
 	}
 
-	keyprefix := SyncPrefix + t.Name()
+	keyprefix := SyncDocPrefix + t.Name()
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 
@@ -291,7 +291,7 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 		t.Skip("Skipping heartbeattest in short mode")
 	}
 
-	keyprefix := SyncPrefix + t.Name()
+	keyprefix := SyncDocPrefix + t.Name()
 
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
@@ -344,25 +344,22 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 		eventHandlers,
 		options)
 	listener1, err := NewImportHeartbeatListener(&CbgtContext{
-		Cfg:        cfgCB,
-		Manager:    testManager,
-		loggingCtx: TestCtx(t),
+		Cfg:     cfgCB,
+		Manager: testManager,
 	})
 	assert.NoError(t, err)
 	assert.NoError(t, node1.RegisterListener(listener1))
 
 	listener2, err := NewImportHeartbeatListener(&CbgtContext{
-		Cfg:        cfgCB,
-		Manager:    testManager,
-		loggingCtx: TestCtx(t),
+		Cfg:     cfgCB,
+		Manager: testManager,
 	})
 	assert.NoError(t, err)
 	assert.NoError(t, node2.RegisterListener(listener2))
 
 	listener3, err := NewImportHeartbeatListener(&CbgtContext{
-		Cfg:        cfgCB,
-		Manager:    testManager,
-		loggingCtx: TestCtx(t),
+		Cfg:     cfgCB,
+		Manager: testManager,
 	})
 	assert.NoError(t, err)
 	assert.NoError(t, node3.RegisterListener(listener3))

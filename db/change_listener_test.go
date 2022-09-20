@@ -25,15 +25,13 @@ func TestUserWaiter(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
-	db := setupTestDB(t)
-	defer db.Close()
-
-	ctx := base.TestCtx(t)
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 
 	// Create user
 	username := "bob"
 	authenticator := db.Authenticator(ctx)
-	require.NotNil(t, authenticator, "db.Authenticator(base.TestCtx(t)) returned nil")
+	require.NotNil(t, authenticator, "db.Authenticator(db.Ctx) returned nil")
 	user, err := authenticator.NewUser(username, "letmein", channels.SetOf(t, "ABC"))
 	require.NoError(t, err, "Error creating new user")
 
@@ -70,22 +68,20 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
-	db := setupTestDB(t)
-	defer db.Close()
-
-	ctx := base.TestCtx(t)
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 
 	// Create role
 	roleName := "good_egg"
 	authenticator := db.Authenticator(ctx)
-	require.NotNil(t, authenticator, "db.Authenticator(base.TestCtx(t)) returned nil")
+	require.NotNil(t, authenticator, "db.Authenticator(ctx) returned nil")
 	role, err := authenticator.NewRole(roleName, channels.SetOf(t, "ABC"))
 	require.NoError(t, err, "Error creating new role")
 	require.NoError(t, authenticator.Save(role))
 
 	// Create user
 	username := "bob"
-	require.NotNil(t, authenticator, "db.Authenticator(base.TestCtx(t)) returned nil")
+	require.NotNil(t, authenticator, "db.Authenticator(ctx) returned nil")
 	user, err := authenticator.NewUser(username, "letmein", nil)
 	require.NoError(t, err, "Error creating new user")
 

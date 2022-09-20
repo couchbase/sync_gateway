@@ -228,8 +228,8 @@ WHERE META(ks).xattrs._sync.sequence >= 0
 	return purgedDocCount, nil
 }
 
-// ViewsAndGSIBucketReadier empties the bucket, initializes Views, and waits until GSI indexes are empty. It is run asynchronously as soon as a test is finished with a bucket.
-var ViewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Context, b base.Bucket, tbp *base.TestBucketPool) error {
+// viewsAndGSIBucketReadier empties the bucket, initializes Views, and waits until GSI indexes are empty. It is run asynchronously as soon as a test is finished with a bucket.
+var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Context, b base.Bucket, tbp *base.TestBucketPool) error {
 	if base.TestsDisableGSI() {
 		tbp.Logf(ctx, "flushing bucket and readying views")
 		if err := base.FlushBucketEmptierFunc(ctx, b, tbp); err != nil {
@@ -273,8 +273,8 @@ var ViewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 	return nil
 }
 
-// ViewsAndGSIBucketInit is run synchronously only once per-bucket to do any initial setup. For non-integration Walrus buckets, this is run for each new Walrus bucket.
-var ViewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b base.Bucket, tbp *base.TestBucketPool) error {
+// viewsAndGSIBucketInit is run synchronously only once per-bucket to do any initial setup. For non-integration Walrus buckets, this is run for each new Walrus bucket.
+var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b base.Bucket, tbp *base.TestBucketPool) error {
 	if base.UnitTestUrlIsWalrus() {
 		// Check we're not running with an invalid combination of backing store and xattrs.
 		if base.TestUseXattrs() {
@@ -401,4 +401,9 @@ func (dbc *DatabaseContext) GetPrincipalForTest(tb testing.TB, name string, isUs
 		info.Channels = princ.Channels().AsSet()
 	}
 	return
+}
+
+// TestBucketPoolWithIndexes runs a TestMain for packages that do not require creation of indexes
+func TestBucketPoolWithIndexes(m *testing.M, memWatermarkThresholdMB uint64) {
+	base.TestBucketPoolMain(m, viewsAndGSIBucketReadier, viewsAndGSIBucketInit, memWatermarkThresholdMB)
 }

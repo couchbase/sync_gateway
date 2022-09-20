@@ -79,7 +79,7 @@ func (h *handler) getUserFromSessionRequestBody() (auth.User, error) {
 	}
 
 	var user auth.User
-	user, err = h.db.Authenticator(h.db.Ctx).GetUser(params.Name)
+	user, err = h.db.Authenticator(h.ctx()).GetUser(params.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +104,7 @@ func (h *handler) handleSessionDELETE() error {
 		}
 	}
 
-	cookie := h.db.Authenticator(h.db.Ctx).DeleteSessionForCookie(h.rq)
+	cookie := h.db.Authenticator(h.ctx()).DeleteSessionForCookie(h.rq)
 	if cookie == nil {
 		return base.HTTPErrorf(http.StatusNotFound, "no session")
 	}
@@ -127,7 +127,7 @@ func (h *handler) makeSessionWithTTL(user auth.User, expiry time.Duration) (sess
 		return "", base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 	}
 	h.user = user
-	auth := h.db.Authenticator(h.db.Ctx)
+	auth := h.db.Authenticator(h.ctx())
 	session, err := auth.CreateSession(user.Name(), expiry)
 	if err != nil {
 		return "", err
@@ -144,7 +144,7 @@ func (h *handler) makeSessionWithTTL(user auth.User, expiry time.Duration) (sess
 func (h *handler) makeSessionFromNameAndEmail(username, email string, createUserIfNeeded bool) error {
 
 	// First attempt lookup by username and make a login session for her.
-	user, err := h.db.Authenticator(h.db.Ctx).GetUser(username)
+	user, err := h.db.Authenticator(h.ctx()).GetUser(username)
 	if err != nil {
 		return err
 	}
@@ -155,7 +155,7 @@ func (h *handler) makeSessionFromNameAndEmail(username, email string, createUser
 			// User found, check whether the email needs to be updated
 			// (e.g. user has changed email in external auth system)
 			if email != user.Email() {
-				if err = h.db.Authenticator(h.db.Ctx).UpdateUserEmail(user, email); err != nil {
+				if err = h.db.Authenticator(h.ctx()).UpdateUserEmail(user, email); err != nil {
 					// Failure to update email during session creation is non-critical, log and continue.
 					base.InfofCtx(h.ctx(), base.KeyAuth, "Unable to update email for user %s during session creation.  Session will still be created. Error:%v,", base.UD(username), err)
 				}
@@ -163,7 +163,7 @@ func (h *handler) makeSessionFromNameAndEmail(username, email string, createUser
 		} else {
 			// User not found by username. Attempt user lookup by email. This provides backward
 			// compatibility for users that were originally created with id = email
-			if user, err = h.db.Authenticator(h.db.Ctx).GetUserByEmail(email); err != nil {
+			if user, err = h.db.Authenticator(h.ctx()).GetUserByEmail(email); err != nil {
 				return err
 			}
 		}
@@ -177,7 +177,7 @@ func (h *handler) makeSessionFromNameAndEmail(username, email string, createUser
 
 		// Create a User with the given username, email address, and a random password.
 		// CAS mismatch indicates the user has been created by another request underneath us, can continue with session creation
-		user, err = h.db.Authenticator(h.db.Ctx).RegisterNewUser(username, email)
+		user, err = h.db.Authenticator(h.ctx()).RegisterNewUser(username, email)
 		if err != nil && !base.IsCasMismatch(err) {
 			return err
 		}
@@ -199,7 +199,7 @@ func (h *handler) createUserSession() error {
 		return err
 	} else if params.Name == "" || params.Name == base.GuestUsername || !auth.IsValidPrincipalName(params.Name) {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid or missing user name")
-	} else if user, err := h.db.Authenticator(h.db.Ctx).GetUser(params.Name); user == nil {
+	} else if user, err := h.db.Authenticator(h.ctx()).GetUser(params.Name); user == nil {
 		if err == nil {
 			err = base.HTTPErrorf(http.StatusNotFound, "No such user %q", params.Name)
 		}
@@ -211,7 +211,7 @@ func (h *handler) createUserSession() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid or missing ttl")
 	}
 
-	authenticator := h.db.Authenticator(h.db.Ctx)
+	authenticator := h.db.Authenticator(h.ctx())
 	session, err := authenticator.CreateSession(params.Name, ttl)
 	if err != nil {
 		return err
@@ -231,7 +231,7 @@ func (h *handler) createUserSession() error {
 func (h *handler) getUserSession() error {
 
 	h.assertAdminOnly()
-	session, err := h.db.Authenticator(h.db.Ctx).GetSession(h.PathVar("sessionid"))
+	session, err := h.db.Authenticator(h.ctx()).GetSession(h.PathVar("sessionid"))
 
 	if session == nil {
 		if err == nil {
@@ -251,7 +251,7 @@ func (h *handler) deleteUserSession() error {
 	if userName != "" {
 		return h.deleteUserSessionWithValidation(h.PathVar("sessionid"), userName)
 	} else {
-		return h.db.Authenticator(h.db.Ctx).DeleteSession(h.PathVar("sessionid"))
+		return h.db.Authenticator(h.ctx()).DeleteSession(h.PathVar("sessionid"))
 	}
 }
 
@@ -259,7 +259,7 @@ func (h *handler) deleteUserSession() error {
 func (h *handler) deleteUserSessions() error {
 	h.assertAdminOnly()
 	userName := h.PathVar("name")
-	return h.db.DeleteUserSessions(h.db.Ctx, userName)
+	return h.db.DeleteUserSessions(h.ctx(), userName)
 }
 
 // Delete a session if associated with the user provided
@@ -267,7 +267,7 @@ func (h *handler) deleteUserSessionWithValidation(sessionId string, userName str
 
 	// Validate that the session being deleted belongs to the user.  This adds some
 	// overhead - for user-agnostic session deletion should use deleteSession
-	session, getErr := h.db.Authenticator(h.db.Ctx).GetSession(sessionId)
+	session, getErr := h.db.Authenticator(h.ctx()).GetSession(sessionId)
 	if session == nil {
 		if getErr == nil {
 			getErr = kNotFoundError
@@ -277,7 +277,7 @@ func (h *handler) deleteUserSessionWithValidation(sessionId string, userName str
 
 	if getErr == nil {
 		if session.Username == userName {
-			delErr := h.db.Authenticator(h.db.Ctx).DeleteSession(sessionId)
+			delErr := h.db.Authenticator(h.ctx()).DeleteSession(sessionId)
 			if delErr != nil {
 				return delErr
 			}
@@ -291,7 +291,7 @@ func (h *handler) deleteUserSessionWithValidation(sessionId string, userName str
 // Respond with a JSON struct containing info about the current login session
 func (h *handler) respondWithSessionInfoForSession(session *auth.LoginSession) error {
 
-	user, err := h.db.Authenticator(h.db.Ctx).GetUser(session.Username)
+	user, err := h.db.Authenticator(h.ctx()).GetUser(session.Username)
 
 	// let the empty user case succeed
 	if err != nil {

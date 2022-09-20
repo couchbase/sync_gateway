@@ -120,7 +120,7 @@ func (h *handler) handleCompact() error {
 	if compactionType == "tombstone" {
 		if action == string(db.BackgroundProcessActionStart) {
 			if atomic.CompareAndSwapUint32(&h.db.CompactState, db.DBCompactNotRunning, db.DBCompactRunning) {
-				err := h.db.TombstoneCompactionManager.Start(map[string]interface{}{
+				err := h.db.TombstoneCompactionManager.Start(h.ctx(), map[string]interface{}{
 					"database": h.db,
 				})
 				if err != nil {
@@ -156,7 +156,7 @@ func (h *handler) handleCompact() error {
 
 	if compactionType == "attachment" {
 		if action == string(db.BackgroundProcessActionStart) {
-			err := h.db.AttachmentCompactionManager.Start(map[string]interface{}{
+			err := h.db.AttachmentCompactionManager.Start(h.ctx(), map[string]interface{}{
 				"database": h.db,
 				"reset":    h.getBoolQuery("reset"),
 				"dryRun":   h.getBoolQuery("dry_run"),
@@ -206,16 +206,16 @@ func (h *handler) handleFlush() error {
 		config := h.server.GetDatabaseConfig(name)
 
 		// This needs to first call RemoveDatabase since flushing the bucket under Sync Gateway might cause issues.
-		h.server.RemoveDatabase(name)
+		h.server.RemoveDatabase(h.ctx(), name)
 
 		// Create a bucket connection spec from the database config
-		spec, err := GetBucketSpec(config, h.server.config)
+		spec, err := GetBucketSpec(h.ctx(), config, h.server.config)
 		if err != nil {
 			return err
 		}
 
 		// Manually re-open a temporary bucket connection just for flushing purposes
-		tempBucketForFlush, err := db.GetConnectToBucketFn(false)(spec)
+		tempBucketForFlush, err := db.GetConnectToBucketFn(false)(h.ctx(), spec)
 		if err != nil {
 			return err
 		}
@@ -233,7 +233,7 @@ func (h *handler) handleFlush() error {
 		}
 
 		// Re-open database and add to Sync Gateway
-		_, err2 := h.server.AddDatabaseFromConfig(*config)
+		_, err2 := h.server.AddDatabaseFromConfig(h.ctx(), *config)
 		if err2 != nil {
 			return err2
 		}
@@ -244,9 +244,9 @@ func (h *handler) handleFlush() error {
 
 		name := h.db.Name
 		config := h.server.GetDatabaseConfig(name)
-		h.server.RemoveDatabase(name)
+		h.server.RemoveDatabase(h.ctx(), name)
 		err := bucket.CloseAndDelete()
-		_, err2 := h.server.AddDatabaseFromConfig(*config)
+		_, err2 := h.server.AddDatabaseFromConfig(h.ctx(), *config)
 		if err == nil {
 			err = err2
 		}
@@ -285,7 +285,7 @@ func (h *handler) handlePostResync() error {
 
 	if action == string(db.BackgroundProcessActionStart) {
 		if atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBResyncing) {
-			err := h.db.ResyncManager.Start(map[string]interface{}{
+			err := h.db.ResyncManager.Start(h.ctx(), map[string]interface{}{
 				"database":            h.db,
 				"regenerateSequences": regenerateSequences,
 			})
@@ -339,7 +339,7 @@ func (h *handler) handlePostUpgrade() error {
 
 	preview := h.getBoolQuery("preview")
 
-	postUpgradeResults, err := h.server.PostUpgrade(preview)
+	postUpgradeResults, err := h.server.PostUpgrade(h.ctx(), preview)
 	if err != nil {
 		return err
 	}
@@ -402,7 +402,7 @@ func (h *handler) handleGetDB() error {
 		PurgeSequenceNumber:           0, // TODO: Should track this value
 		DiskFormatVersion:             0, // Probably meaningless, but add for compatibility
 		State:                         runState,
-		ServerUUID:                    h.db.DatabaseContext.GetServerUUID(),
+		ServerUUID:                    h.db.DatabaseContext.GetServerUUID(h.ctx()),
 		// TODO: If running with multiple scope/collections
 		// Scopes: map[string]databaseRootScope{
 		// 	"scope1": {
@@ -423,7 +423,7 @@ func (h *handler) handleGetDB() error {
 // fixes issue #562
 func (h *handler) handleCreateTarget() error {
 	dbname := h.PathVar("targetdb")
-	if _, err := h.server.GetDatabase(dbname); err != nil {
+	if _, err := h.server.GetDatabase(h.ctx(), dbname); err != nil {
 		return base.HTTPErrorf(http.StatusForbidden, "Creating a DB over the public API is unsupported")
 	} else {
 		return base.HTTPErrorf(http.StatusPreconditionFailed, "Database already exists")
@@ -459,7 +459,7 @@ func (h *handler) handleProfiling() error {
 		if isCPUProfile {
 			base.InfofCtx(h.ctx(), base.KeyAll, "... ending CPU profile")
 			pprof.StopCPUProfile()
-			h.server.CloseCpuPprofFile()
+			h.server.CloseCpuPprofFile(h.ctx())
 			return nil
 		}
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing JSON 'file' parameter")

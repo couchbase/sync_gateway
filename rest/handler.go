@@ -154,7 +154,7 @@ func makeHandlerSpecificAuthScope(server *ServerContext, privs handlerPrivs, acc
 }
 
 func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter, rq *http.Request, runOffline bool) *handler {
-	return &handler{
+	h := &handler{
 		server:       server,
 		privs:        privs,
 		rq:           rq,
@@ -164,6 +164,11 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 		startTime:    time.Now(),
 		runOffline:   runOffline,
 	}
+
+	// initialize h.rqCtx
+	_ = h.ctx()
+
+	return h
 }
 
 // ctx returns the request-scoped context for logging/cancellation.
@@ -172,6 +177,12 @@ func (h *handler) ctx() context.Context {
 		h.rqCtx = base.LogContextWith(h.rq.Context(), &base.LogContext{CorrelationID: h.formatSerialNumber()})
 	}
 	return h.rqCtx
+}
+
+func (h *handler) addDatabaseLogContext(dbName string) {
+	if dbName != "" {
+		h.rqCtx = base.LogContextWith(h.ctx(), &base.DatabaseLogContext{DatabaseName: dbName})
+	}
 }
 
 // parseKeyspace will return a db, scope and collection for a given '.' separated keyspace string.
@@ -255,7 +266,8 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	// look up the database context:
 	var dbContext *db.DatabaseContext
 	if keyspaceDb != "" {
-		if dbContext, err = h.server.GetDatabase(keyspaceDb); err != nil {
+		h.addDatabaseLogContext(keyspaceDb)
+		if dbContext, err = h.server.GetDatabase(h.ctx(), keyspaceDb); err != nil {
 			base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
 
 			if shouldCheckAdminAuth {
@@ -382,7 +394,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		var authScope string
 
 		if dbContext != nil {
-			managementEndpoints, httpClient, err = dbContext.ObtainManagementEndpointsAndHTTPClient()
+			managementEndpoints, httpClient, err = dbContext.ObtainManagementEndpointsAndHTTPClient(h.ctx())
 			authScope = dbContext.Bucket.GetName()
 		} else {
 			managementEndpoints, httpClient, err = h.server.ObtainManagementEndpointsAndHTTPClient()
@@ -446,7 +458,6 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		if err != nil {
 			return err
 		}
-		h.db.Ctx = h.ctx()
 	}
 
 	return method(h) // Call the actual handler code
@@ -824,6 +835,20 @@ func (h *handler) userAgentIs(agent string) bool {
 	return len(userAgent) > len(agent) && userAgent[len(agent)] == '/' && strings.HasPrefix(userAgent, agent)
 }
 
+// Returns true if the header exists, and its value matches the given etag.
+// (The etag parameter should not be double-quoted; the function will take care of that.)
+func (h *handler) headerMatchesEtag(headerName string, etag string) bool {
+	value := h.rq.Header.Get(headerName)
+	return value != "" && strings.Contains(value, `"`+etag+`"`)
+}
+
+// Returns true if the header exists, and its value does NOT match the given etag.
+// (The etag parameter should not be double-quoted; the function will take care of that.)
+func (h *handler) headerDoesNotMatchEtag(headerName string, etag string) bool {
+	value := h.rq.Header.Get(headerName)
+	return value != "" && !strings.Contains(value, `"`+etag+`"`)
+}
+
 // Returns the request body as a raw byte array.
 func (h *handler) readBody() ([]byte, error) {
 	return ioutil.ReadAll(h.requestBody)
@@ -1004,6 +1029,12 @@ func (h *handler) setHeader(name string, value string) {
 	h.response.Header().Set(name, value)
 }
 
+// Adds an "Etag" header to the response, whose value is the parameter wrapped in double-quotes.
+func (h *handler) setEtag(etag string) {
+	h.setHeader("Etag", `"`+etag+`"`)
+	// (Note: etags should not contain double-quotes (per RFC7232 2.3) so no escaping needed)
+}
+
 func (h *handler) setStatus(status int, message string) {
 	h.status = status
 	h.statusMessage = message
@@ -1178,7 +1209,7 @@ func (h *handler) writeError(err error) {
 		if status >= 500 {
 			// Log additional context when the handler has a database reference
 			if h.db != nil {
-				base.ErrorfCtx(h.db.Ctx, "%s: %v", h.formatSerialNumber(), err)
+				base.ErrorfCtx(h.ctx(), "%s: %v", h.formatSerialNumber(), err)
 			} else {
 				base.ErrorfCtx(h.ctx(), "%s: %v", h.formatSerialNumber(), err)
 			}
@@ -1246,10 +1277,10 @@ func (h *handler) handleRange(contentLength uint64) (status int, start uint64, e
 
 // Given an HTTP "Range:" header value, parses it and returns the approppriate HTTP status code,
 // and the numeric byte range if appropriate:
-// * If the Range header is empty or syntactically invalid, it ignores it and returns status=200.
-// * If the header is valid but exceeds the contentLength, it returns status=416 (Not Satisfiable).
-// * Otherwise it returns status=206 and sets the start and end values in HTTP terms, i.e. with
-//   the first byte numbered 0, and the end value inclusive (so the first 100 bytes are 0-99.)
+//   - If the Range header is empty or syntactically invalid, it ignores it and returns status=200.
+//   - If the header is valid but exceeds the contentLength, it returns status=416 (Not Satisfiable).
+//   - Otherwise it returns status=206 and sets the start and end values in HTTP terms, i.e. with
+//     the first byte numbered 0, and the end value inclusive (so the first 100 bytes are 0-99.)
 func parseHTTPRangeHeader(rangeStr string, contentLength uint64) (status int, start uint64, end uint64) {
 	// http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.35
 	status = http.StatusOK
