@@ -38,13 +38,14 @@ func (dc *DCPClient) Mutation(mutation gocbcore.DcpMutation) {
 			vbID:     mutation.VbID,
 			streamID: mutation.StreamID,
 		},
-		seq:      mutation.SeqNo,
-		flags:    mutation.Flags,
-		expiry:   mutation.Expiry,
-		cas:      mutation.Cas,
-		datatype: mutation.Datatype,
-		key:      mutation.Key,
-		value:    mutation.Value,
+		seq:        mutation.SeqNo,
+		flags:      mutation.Flags,
+		expiry:     mutation.Expiry,
+		cas:        mutation.Cas,
+		datatype:   mutation.Datatype,
+		collection: mutation.CollectionID,
+		key:        mutation.Key,
+		value:      mutation.Value,
 	}
 	dc.workerForVbno(mutation.VbID).Send(e)
 }
@@ -63,11 +64,12 @@ func (dc *DCPClient) Deletion(deletion gocbcore.DcpDeletion) {
 			vbID:     deletion.VbID,
 			streamID: deletion.StreamID,
 		},
-		seq:      deletion.SeqNo,
-		cas:      deletion.Cas,
-		datatype: deletion.Datatype,
-		key:      deletion.Key,
-		value:    deletion.Value,
+		seq:        deletion.SeqNo,
+		cas:        deletion.Cas,
+		datatype:   deletion.Datatype,
+		collection: deletion.CollectionID,
+		key:        deletion.Key,
+		value:      deletion.Value,
 	}
 	dc.workerForVbno(deletion.VbID).Send(e)
 

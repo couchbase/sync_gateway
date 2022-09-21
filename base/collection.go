@@ -1073,6 +1073,57 @@ func (c *Collection) GetCollectionID() (uint32, error) {
 	return collectionID, nil
 }
 
+type CollectionsManifest gocbcore.Manifest
+
+func (c CollectionsManifest) GetIDForCollection(scopeName, collectionName string) (uint32, bool) {
+	for _, scope := range c.Scopes {
+		if scope.Name != scopeName {
+			continue
+		}
+		for _, coll := range scope.Collections {
+			if coll.Name == collectionName {
+				return coll.UID, true
+			}
+		}
+	}
+	return 0, false
+}
+
+func (c *Collection) GetCollectionManifest() (CollectionsManifest, error) {
+	c.waitForAvailKvOp()
+	defer c.releaseKvOp()
+	agent, err := c.Collection.Bucket().Internal().IORouter()
+	if err != nil {
+		return CollectionsManifest{}, fmt.Errorf("failed to get gocbcore agent: %w", err)
+	}
+	result := make(chan any) // either a CollectionsManifest or error
+	_, err = agent.GetCollectionManifest(gocbcore.GetCollectionManifestOptions{
+		Deadline: c.getBucketOpDeadline(),
+	}, func(res *gocbcore.GetCollectionManifestResult, err error) {
+		defer close(result)
+		if err != nil {
+			result <- err
+			return
+		}
+		var manifest CollectionsManifest
+		err = JSONUnmarshal(res.Manifest, &manifest)
+		if err != nil {
+			result <- fmt.Errorf("failed to parse collection manifest: %w", err)
+			return
+		}
+		result <- manifest
+	})
+	if err != nil {
+		return CollectionsManifest{}, fmt.Errorf("failed to execute GetCollectionManifest: %w", err)
+	}
+	returned := <-result
+	if err, ok := returned.(error); ok && err != nil {
+		return CollectionsManifest{}, err
+	}
+	rv := returned.(CollectionsManifest)
+	return rv, nil
+}
+
 // asCollection tries to return the given bucket as a Collection.
 func AsCollection(bucket Bucket) (*Collection, error) {
 	var underlyingBucket Bucket

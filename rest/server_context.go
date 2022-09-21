@@ -511,6 +511,18 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 	contextOptions.UseViews = useViews
 
+	if len(config.Scopes) > 0 {
+		contextOptions.Scopes = make(db.ScopesOptions, len(config.Scopes))
+		for scopeName, scopeCfg := range config.Scopes {
+			contextOptions.Scopes[scopeName] = db.ScopeOptions{
+				Collections: make(map[string]db.CollectionOptions, len(scopeCfg.Collections)),
+			}
+			for collName := range scopeCfg.Collections {
+				contextOptions.Scopes[scopeName].Collections[collName] = db.CollectionOptions{}
+			}
+		}
+	}
+
 	// Create the DB Context
 	dbcontext, err := db.NewDatabaseContext(ctx, dbName, bucket, autoImport, contextOptions)
 	if err != nil {
@@ -519,17 +531,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	dbcontext.BucketSpec = spec
 	dbcontext.ServerContextHasStarted = sc.hasStarted
 	dbcontext.NoX509HTTPClient = sc.NoX509HTTPClient
-
-	// WIP: Collections Phase 1 - Hardcode the single scope/collection into DatabaseContext.
-	if spec.Scope != nil && spec.Collection != nil {
-		dbcontext.Scopes = map[string]db.Scope{
-			*spec.Scope: {
-				Collections: map[string]db.Collection{
-					*spec.Collection: {CollectionCtx: dbcontext}, // TODO: Prior to Phase 2 - move DatabaseContext methods like PutSpecial, etc. into CollectionContext
-				},
-			},
-		}
-	}
 
 	syncFn := ""
 	if config.Sync != nil {

@@ -67,7 +67,7 @@ func (s *SimpleFeed) Close() error {
 type DCPCommon struct {
 	dbStatsExpvars         *expvar.Map
 	m                      sync.Mutex
-	bucket                 Bucket                         // For metadata persistence/retrieval
+	metaStore              Bucket                         // For metadata persistence/retrieval
 	maxVbNo                uint16                         // Number of vbuckets being used for this feed
 	persistCheckpoints     bool                           // Whether this DCPReceiver should persist metadata to the bucket
 	seqs                   []uint64                       // To track max seq #'s we received per vbucketId.
@@ -82,12 +82,12 @@ type DCPCommon struct {
 	checkpointPrefix       string                         // DCP checkpoint key prefix
 }
 
-func NewDCPCommon(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID, checkpointPrefix string) *DCPCommon {
+func NewDCPCommon(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, metaStore Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID, checkpointPrefix string) *DCPCommon {
 	newBackfillStatus := backfillStatus{}
 
 	c := &DCPCommon{
 		dbStatsExpvars:         dbStats,
-		bucket:                 bucket,
+		metaStore:              metaStore,
 		maxVbNo:                maxVbNo,
 		persistCheckpoints:     persistCheckpoints,
 		seqs:                   make([]uint64, maxVbNo),
@@ -101,7 +101,7 @@ func NewDCPCommon(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, 
 		checkpointPrefix:       checkpointPrefix,
 	}
 
-	dcpContextID := fmt.Sprintf("%s-%s", MD(bucket.GetName()).Redact(), feedID)
+	dcpContextID := fmt.Sprintf("%s-%s", MD(metaStore.GetName()).Redact(), feedID)
 	c.loggingCtx = LogContextWith(ctx, &LogContext{CorrelationID: dcpContextID})
 
 	return c
@@ -203,10 +203,10 @@ func (c *DCPCommon) incrementCheckpointCount(vbucketId uint16) {
 //   - The ongoing performance overhead of persisting last sequence outweighs the minor performance benefit of not reprocessing a few
 //     sequences in a checkpoint on startup
 func (c *DCPCommon) loadCheckpoint(vbNo uint16) (vbMetadata []byte, snapshotStartSeq uint64, snapshotEndSeq uint64, err error) {
-	rawValue, _, err := c.bucket.GetRaw(fmt.Sprintf("%s%d", c.checkpointPrefix, vbNo))
+	rawValue, _, err := c.metaStore.GetRaw(fmt.Sprintf("%s%d", c.checkpointPrefix, vbNo))
 	if err != nil {
 		// On a key not found error, metadata hasn't been persisted for this vbucket
-		if IsKeyNotFoundError(c.bucket, err) {
+		if IsKeyNotFoundError(c.metaStore, err) {
 			return []byte{}, 0, 0, nil
 		} else {
 			return []byte{}, 0, 0, err
@@ -241,7 +241,7 @@ func (c *DCPCommon) initMetadata(maxVbNo uint16) {
 	defer c.m.Unlock()
 
 	// Check for persisted backfill sequences
-	backfillSeqs, err := c.backfill.loadBackfillSequences(c.bucket)
+	backfillSeqs, err := c.backfill.loadBackfillSequences(c.metaStore)
 	if err != nil {
 		// Backfill sequences not present or invalid - will use metadata only
 		backfillSeqs = nil
@@ -284,7 +284,7 @@ func (c *DCPCommon) initMetadata(maxVbNo uint16) {
 //	  - Is a relatively infrequent operation
 func (c *DCPCommon) persistCheckpoint(vbNo uint16, value []byte) error {
 	TracefCtx(c.loggingCtx, KeyDCP, "Persisting checkpoint for vbno %d", vbNo)
-	return c.bucket.SetRaw(fmt.Sprintf("%s%d", c.checkpointPrefix, vbNo), 0, nil, value)
+	return c.metaStore.SetRaw(fmt.Sprintf("%s%d", c.checkpointPrefix, vbNo), 0, nil, value)
 }
 
 // This updates the value stored in r.seqs with the given seq number for the given partition
@@ -307,7 +307,7 @@ func (c *DCPCommon) updateSeq(vbucketId uint16, seq uint64, warnOnLowerSeqNo boo
 
 	// If in backfill, update backfill tracking
 	if c.backfill.isActive() {
-		c.backfill.updateStats(vbucketId, previousSequence, c.seqs, c.bucket)
+		c.backfill.updateStats(vbucketId, previousSequence, c.seqs, c.metaStore)
 	}
 
 }
@@ -315,7 +315,7 @@ func (c *DCPCommon) updateSeq(vbucketId uint16, seq uint64, warnOnLowerSeqNo boo
 // Initializes DCP Feed.  Determines starting position based on feed type.
 func (c *DCPCommon) initFeed(backfillType uint64) (highSeqnos map[uint16]uint64, err error) {
 
-	couchbaseBucket, ok := AsCouchbaseStore(c.bucket)
+	couchbaseBucket, ok := AsCouchbaseStore(c.metaStore)
 	if !ok {
 		return nil, errors.New("DCP not supported for non-Couchbase data source")
 	}
@@ -544,7 +544,7 @@ func dcpKeyFilter(key []byte) bool {
 }
 
 // Makes a feedEvent that can be passed to a FeedEventCallbackFunc implementation
-func makeFeedEvent(key []byte, value []byte, dataType uint8, cas uint64, expiry uint32, vbNo uint16, opcode sgbucket.FeedOpcode) sgbucket.FeedEvent {
+func makeFeedEvent(key []byte, value []byte, dataType uint8, cas uint64, expiry uint32, vbNo uint16, collectionID uint32, opcode sgbucket.FeedOpcode) sgbucket.FeedEvent {
 
 	// not currently doing rq.Extras handling (as in gocouchbase/upr_feed, makeUprEvent) as SG doesn't use
 	// expiry/flags information, and snapshot handling is done by cbdatasource and sent as
@@ -553,6 +553,7 @@ func makeFeedEvent(key []byte, value []byte, dataType uint8, cas uint64, expiry 
 		Opcode:       opcode,
 		Key:          key,
 		Value:        value,
+		CollectionID: collectionID,
 		DataType:     dataType,
 		Cas:          cas,
 		Expiry:       expiry,

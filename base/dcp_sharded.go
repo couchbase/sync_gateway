@@ -29,7 +29,7 @@ import (
 const CBGTIndexTypeSyncGatewayImport = "syncGateway-import-"
 const DefaultImportPartitions = 16
 
-// firstVersionToSupportCollections represents the earliest Sync Gateway release that supports collections (codename "Helium").
+// firstVersionToSupportCollections represents the earliest Sync Gateway release that supports collections.
 var firstVersionToSupportCollections = &ComparableVersion{
 	epoch: 0,
 	major: 3,
@@ -53,7 +53,7 @@ type CbgtContext struct {
 
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
 // dbName is used to define a unique path name for local file storage of pindex files
-func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string, uuid string, heartbeater Heartbeater, bucket Bucket, spec BucketSpec, numPartitions uint16, cfg cbgt.Cfg) (*CbgtContext, error) {
+func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string, uuid string, heartbeater Heartbeater, bucket Bucket, spec BucketSpec, scope string, collections []string, numPartitions uint16, cfg cbgt.Cfg) (*CbgtContext, error) {
 	cbgtContext, err := initCBGTManager(ctx, bucket, spec, cfg, uuid, dbName)
 	if err != nil {
 		return nil, err
@@ -63,7 +63,7 @@ func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string,
 	ctx = cbgtContext.AddLogContext(ctx, spec.BucketName)
 
 	// Start Manager.  Registers this node in the cfg
-	err = cbgtContext.StartManager(ctx, dbName, configGroup, bucket, spec, numPartitions)
+	err = cbgtContext.StartManager(ctx, dbName, configGroup, bucket, spec, scope, collections, numPartitions)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +98,7 @@ func GenerateLegacyIndexName(dbName string) string {
 // to the manager's cbgt cfg.  Nodes that have registered for this indexType with the manager via
 // RegisterPIndexImplType (see importListener.RegisterImportPindexImpl)
 // will receive PIndexImpl callbacks (New, Open) for assigned PIndex to initiate DCP processing.
-func createCBGTIndex(ctx context.Context, c *CbgtContext, dbName string, configGroupID string, bucket Bucket, spec BucketSpec, numPartitions uint16) error {
+func createCBGTIndex(ctx context.Context, c *CbgtContext, dbName string, configGroupID string, bucket Bucket, spec BucketSpec, scope string, collections []string, numPartitions uint16) error {
 	sourceType := SOURCE_DCP_SG
 
 	bucketUUID, err := bucket.UUID()
@@ -106,7 +106,7 @@ func createCBGTIndex(ctx context.Context, c *CbgtContext, dbName string, configG
 		return err
 	}
 
-	sourceParams, err := cbgtFeedParams(spec, dbName)
+	sourceParams, err := cbgtFeedParams(spec, scope, collections, dbName)
 	if err != nil {
 		return err
 	}
@@ -381,7 +381,7 @@ func (c *CbgtContext) AddLogContext(parent context.Context, bucketName string) c
 }
 
 // StartManager registers this node with cbgt, and the janitor will start feeds on this node.
-func (c *CbgtContext) StartManager(ctx context.Context, dbName string, configGroup string, bucket Bucket, spec BucketSpec, numPartitions uint16) (err error) {
+func (c *CbgtContext) StartManager(ctx context.Context, dbName string, configGroup string, bucket Bucket, spec BucketSpec, scope string, collections []string, numPartitions uint16) (err error) {
 	// TODO: Clarify the functional difference between registering the manager as 'wanted' vs 'known'.
 	registerType := cbgt.NODE_DEFS_WANTED
 	if err := c.Manager.Start(registerType); err != nil {
@@ -390,7 +390,7 @@ func (c *CbgtContext) StartManager(ctx context.Context, dbName string, configGro
 	}
 
 	// Add the index definition for this feed to the cbgt cfg, in case it's not already present.
-	err = createCBGTIndex(ctx, c, dbName, configGroup, bucket, spec, numPartitions)
+	err = createCBGTIndex(ctx, c, dbName, configGroup, bucket, spec, scope, collections, numPartitions)
 	if err != nil {
 		if strings.Contains(err.Error(), "an index with the same name already exists") {
 			InfofCtx(ctx, KeyCluster, "Duplicate cbgt index detected during index creation (concurrent creation), using existing")
