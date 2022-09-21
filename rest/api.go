@@ -35,10 +35,11 @@ const (
 )
 
 type rootResponse struct {
-	Admin   bool   `json:"ADMIN,omitempty"`
-	CouchDB string `json:"couchdb,omitempty"` // TODO: Lithium - remove couchdb welcome
-	Vendor  vendor `json:"vendor,omitempty"`
-	Version string `json:"version,omitempty"`
+	Admin            bool   `json:"ADMIN,omitempty"`
+	CouchDB          string `json:"couchdb,omitempty"` // TODO: Lithium - remove couchdb welcome
+	Vendor           vendor `json:"vendor,omitempty"`
+	Version          string `json:"version,omitempty"`
+	PersistentConfig bool   `json:"persistent_config"`
 }
 
 type vendor struct {
@@ -54,6 +55,7 @@ func (h *handler) handleRoot() error {
 		Vendor: vendor{
 			Name: base.ProductNameString,
 		},
+		PersistentConfig: h.server.persistentConfig,
 	}
 
 	if h.shouldShowProductVersion() {
