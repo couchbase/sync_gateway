@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
 	"errors"
@@ -13,8 +12,8 @@ import (
 // CopyFunc is the signature of io.Copy.
 type CopyFunc func(io.Writer, io.Reader) (int64, error)
 
-// Copier returns a CopyFunc appropriate for the configured redaction level.
-func Copier(opts *SGCollectOptions) CopyFunc {
+// RedactCopier returns a CopyFunc appropriate for the configured redaction level.
+func RedactCopier(opts *SGCollectOptions) CopyFunc {
 	if opts.LogRedactionLevel == RedactNone {
 		return io.Copy
 	}
@@ -132,47 +131,4 @@ func Copier(opts *SGCollectOptions) CopyFunc {
 		}
 		return written, err
 	}
-}
-
-// maybeRedactBuffer searches the given buffer for a redacted chunk (data wrapped in <ud></ud> tags). If it finds one,
-// it returns a copy of buf with the contents redacted. If it finds an opening tag, but no closing tag, it returns
-// needMore=true, in this case the caller should call it again with more data (with the same starting position).
-// Note that only the first redacted string in the buffer will be redacted.
-func maybeRedactBuffer(buf []byte, salt []byte) (newBuf []byte, needMore bool) {
-	const startingTag = "<ud>"
-	const endingTag = "</ud>"
-
-	redactStartPos := bytes.Index(buf, []byte(startingTag))
-	if redactStartPos == -1 {
-		return buf, false
-	}
-	var beforeRedactBuf, redactBuf, afterRedactBuf []byte
-	beforeRedactBuf = buf[0:redactStartPos]
-
-	const startingTagLen = len(startingTag)
-	const endingTagLen = len(endingTag)
-
-	// This handles cases like <ud><ud>stuff</ud></ud> - we want the outermost tags to be redacted
-	depth := 1
-	for i := redactStartPos + startingTagLen; i < len(buf)-(startingTagLen+1); i++ {
-		if bytes.Equal(buf[i:i+startingTagLen+1], []byte(startingTag)) {
-			depth++
-			continue
-		}
-		if bytes.Equal(buf[i:i+endingTagLen+1], []byte(endingTag)) {
-			depth--
-			if depth == 0 {
-				beforeRedactBuf = buf[0:redactStartPos]
-				redactBuf = buf[redactStartPos+1 : i-1]
-				afterRedactBuf = buf[i+endingTagLen:]
-				redacted := sha1.Sum(append(salt, redactBuf...))
-				return append(append(beforeRedactBuf, redacted[:]...), afterRedactBuf...), false
-			}
-		}
-	}
-	if depth > 0 {
-		// We've seen an opening redact tag, but not a closing redact tag.
-		return nil, true
-	}
-	panic("unreachable")
 }

@@ -72,7 +72,7 @@ func TestRedactCopy(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.Name, func(t *testing.T) {
 			var buf bytes.Buffer
-			n, err := Copier(opts)(&buf, strings.NewReader(tc.Input))
+			n, err := RedactCopier(opts)(&buf, strings.NewReader(tc.Input))
 			require.NoError(t, err)
 			require.Equal(t, tc.Expected, buf.String())
 			require.Equal(t, int64(buf.Len()), n)
@@ -88,8 +88,26 @@ func FuzzRedactCopy(f *testing.F) {
 	f.Add("foo <ud>bar</ud> baz")
 	f.Fuzz(func(t *testing.T, in string) {
 		var buf bytes.Buffer
-		n, err := Copier(opts)(&buf, strings.NewReader(in))
+		n, err := RedactCopier(opts)(&buf, strings.NewReader(in))
 		require.NoError(t, err)
 		require.Equal(t, int64(buf.Len()), n)
+	})
+}
+
+// Verifies that RedactCopier doesn't change its input if it has nothing to do.
+func FuzzRedactCopyIdempotent(f *testing.F) {
+	opts := &SGCollectOptions{
+		LogRedactionSalt: "SALT",
+	}
+	f.Add("foo bar")
+	f.Fuzz(func(t *testing.T, in string) {
+		if strings.Contains(in, "<ud>") && strings.Contains(in, "</ud>") {
+			t.SkipNow()
+		}
+		var buf bytes.Buffer
+		n, err := RedactCopier(opts)(&buf, strings.NewReader(in))
+		require.NoError(t, err)
+		require.Equal(t, int64(buf.Len()), n)
+		require.Equal(t, buf.String(), in)
 	})
 }

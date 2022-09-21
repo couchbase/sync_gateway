@@ -1,9 +1,11 @@
 package main
 
 import (
+	"archive/zip"
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -41,12 +43,63 @@ func NewTaskRunner(opts *SGCollectOptions) (*TaskRunner, error) {
 }
 
 func (tr *TaskRunner) Finalize() {
+	log.Println("Task runner finalizing...")
 	for _, fd := range tr.files {
 		err := fd.Close()
 		if err != nil {
 			log.Printf("Failed to close %s: %v", fd.Name(), err)
 		}
 	}
+}
+
+func (tr *TaskRunner) ZipResults(outputPath string, prefix string, copier CopyFunc) error {
+	fd, err := os.OpenFile(outputPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to reate output: %w", err)
+	}
+	defer func(fd *os.File) {
+		err := fd.Close()
+		if err != nil {
+			log.Printf("WARN: failed to close unredacted output file: %v", err)
+		}
+	}(fd)
+
+	zw := zip.NewWriter(fd)
+	defer func(zw *zip.Writer) {
+		err := zw.Close()
+		if err != nil {
+			log.Printf("WARN: failed to close unredacted output zipper: %v", err)
+		}
+	}(zw)
+
+	err = filepath.WalkDir(tr.tmpDir, func(path string, d fs.DirEntry, err error) error {
+		if d.IsDir() {
+			return nil
+		}
+		// Returning a non-nil error will stop the walker completely - we want to capture as much as we can.
+		fileFd, err := os.Open(path)
+		if err != nil {
+			log.Printf("WARN: failed to open %s: %v", path, err)
+			return nil
+		}
+		defer fileFd.Close()
+
+		zipPath := prefix + string(os.PathSeparator) + strings.TrimPrefix(path, tr.tmpDir+string(os.PathSeparator)) // TODO: properly remove prefix
+		zipFile, err := zw.Create(zipPath)
+		if err != nil {
+			log.Printf("WARN: failed to open %s in zip: %v", zipPath, err)
+			return nil
+		}
+		_, err = copier(zipFile, fileFd)
+		if err != nil {
+			log.Printf("WARN: failed to copy to %s in zip: %v", zipPath, err)
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("walker error: %w", err)
+	}
+	return nil
 }
 
 // setupSGCollectLog will redirect the standard library log package's output to both stderr and a log file in the temporary directory.
@@ -62,7 +115,7 @@ func (tr *TaskRunner) setupSGCollectLog() error {
 
 func (tr *TaskRunner) createFile(name string) (*os.File, error) {
 	path := filepath.Join(tr.tmpDir, name)
-	return os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0644)
+	return os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0644)
 }
 
 func (tr *TaskRunner) writeHeader(w io.Writer, task SGCollectTask) error {
@@ -70,9 +123,14 @@ func (tr *TaskRunner) writeHeader(w io.Writer, task SGCollectTask) error {
 	// example:
 	// ==============================================================================
 	// Collect server status
-	// *main.URLTask: http://127.0.0.1:4985/_status
+	// main.SGCollectTaskEx (main.URLTask): http://127.0.0.1:4985/_status
 	// ==============================================================================
-	_, err := fmt.Fprintf(w, "%s\n%s\n%T: %s\n%s\n", separator, task.Name(), task, task.Header(), separator)
+	var err error
+	if tex, ok := task.(SGCollectTaskEx); ok {
+		_, err = fmt.Fprintf(w, "%s\n%s\n%T (%T): %s\n%s\n", separator, task.Name(), task, tex.SGCollectTask, task.Header(), separator)
+	} else {
+		_, err = fmt.Fprintf(w, "%s\n%s\n%T: %s\n%s\n", separator, task.Name(), task, task.Header(), separator)
+	}
 	return err
 }
 
@@ -97,7 +155,7 @@ func (tr *TaskRunner) Run(task SGCollectTask) {
 	fd, ok := tr.files[outputFile]
 	if !ok {
 		var err error
-		fd, err = os.OpenFile(filepath.Join(tr.tmpDir, outputFile), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+		fd, err = tr.createFile(outputFile)
 		if err != nil {
 			log.Printf("FAILed to run %q - failed to create file: %v", task.Name(), err)
 			return
@@ -114,15 +172,23 @@ func (tr *TaskRunner) Run(task SGCollectTask) {
 	}
 
 	run := func() {
+		defer func() {
+			if panicked := recover(); panicked != nil {
+				log.Printf("PANIC - %s [%s]: %v", task.Name(), task.Header(), panicked)
+			}
+		}()
 		ctx := context.Background()
 		if to := tex.Timeout(); to > 0 {
 			var cancel context.CancelFunc
 			ctx, cancel = context.WithTimeout(ctx, to)
 			defer cancel()
 		}
+		log.Printf("RUN - %s [%s]", task.Name(), task.Header())
+		name := task.Name()
+		_ = name
 		err := task.Run(ctx, tr.opts, fd)
 		if err != nil {
-			log.Printf("FAILed to run %q [%s]: %v", task.Name(), task.Header(), err)
+			log.Printf("FAIL - %q [%s]: %v", task.Name(), task.Header(), err)
 			_, _ = fmt.Fprintln(fd, err.Error())
 			return
 		}
@@ -131,14 +197,16 @@ func (tr *TaskRunner) Run(task SGCollectTask) {
 
 	if tex.NumSamples() > 0 {
 		for i := 0; i < tex.NumSamples(); i++ {
-			log.Printf("Taking sample %d of %q [%s] after %v seconds", i+1, task.Name(), task.Header(), tex.Interval())
 			run()
-			time.Sleep(tex.Interval())
+			if i != tex.NumSamples()-1 {
+				log.Printf("Taking sample %d of %q [%s] after %v seconds", i+2, task.Name(), task.Header(), tex.Interval())
+				time.Sleep(tex.Interval())
+			}
 		}
 	} else {
 		run()
 	}
-	_, err := fd.WriteString("\n\n")
+	_, err := fd.WriteString("\n")
 	if err != nil {
 		log.Printf("WARN %s [%s] - failed to write closing newline: %v", task.Name(), task.Header(), err)
 	}

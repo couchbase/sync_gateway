@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -171,7 +173,24 @@ func (c *URLTask) Run(ctx context.Context, opts *SGCollectOptions, out io.Writer
 		return fmt.Errorf("failed to request: %w", err)
 	}
 	defer res.Body.Close()
-	_, err = Copier(opts)(out, res.Body)
+
+	// If the result is JSON, pretty-print it
+	if res.Header.Get("Content-Type") == "application/json" {
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			return fmt.Errorf("failed to load response: %w", err)
+		}
+		var buf bytes.Buffer
+		err = json.Indent(&buf, body, "", "\t")
+		if err != nil {
+			log.Printf("WARN %s [%s] - failed to pretty-print JSON: %v", c.Name(), c.Header(), err)
+			_, err = out.Write(body)
+			return err
+		}
+		_, err = buf.WriteTo(out)
+		return err
+	}
+	_, err = io.Copy(out, res.Body)
 	if err != nil {
 		return fmt.Errorf("failed to load response: %w", err)
 	}
@@ -202,7 +221,7 @@ func (f *FileTask) Run(ctx context.Context, opts *SGCollectOptions, out io.Write
 	}
 	defer fd.Close()
 
-	_, err = Copier(opts)(out, fd)
+	_, err = io.Copy(out, fd)
 	if err != nil {
 		return fmt.Errorf("failed to copy contents of %q: %w", f.inputFile, err)
 	}
@@ -239,7 +258,7 @@ func (f *GZipFileTask) Run(ctx context.Context, opts *SGCollectOptions, out io.W
 	}
 	defer unzipper.Close()
 
-	_, err = Copier(opts)(out, unzipper)
+	_, err = io.Copy(out, unzipper)
 	if err != nil {
 		return fmt.Errorf("failed to copy contents of %q: %w", f.inputFile, err)
 	}
@@ -286,14 +305,14 @@ func (o *OSCommandTask) Run(ctx context.Context, opts *SGCollectOptions, out io.
 	wg.Add(4)
 	go func() {
 		defer wg.Done()
-		_, err := Copier(opts)(out, stdout)
+		_, err := io.Copy(out, stdout)
 		if err != nil {
 			log.Printf("WARN %s [%s]: stdout copier error %v", o.name, o.Header(), err)
 		}
 	}()
 	go func() {
 		defer wg.Done()
-		_, err := Copier(opts)(out, stderr)
+		_, err := io.Copy(out, stderr)
 		if err != nil {
 			log.Printf("WARN %s [%s]: stderr copier error %v", o.name, o.Header(), err)
 		}
@@ -370,5 +389,27 @@ func (s SGCollectOptionsTask) OutputFile() string {
 
 func (s SGCollectOptionsTask) Run(ctx context.Context, opts *SGCollectOptions, out io.Writer) error {
 	_, err := fmt.Fprintf(out, "%#v\n", opts)
+	return err
+}
+
+type RawStringTask struct {
+	name string
+	val  string
+}
+
+func (s RawStringTask) Name() string {
+	return s.name
+}
+
+func (s RawStringTask) Header() string {
+	return ""
+}
+
+func (s RawStringTask) OutputFile() string {
+	return ""
+}
+
+func (s RawStringTask) Run(ctx context.Context, opts *SGCollectOptions, out io.Writer) error {
+	_, err := fmt.Fprintf(out, "%s\n", s.val)
 	return err
 }

@@ -107,7 +107,7 @@ func makeOSTasks() []SGCollectTask {
 		OSTask("linux", "NUMA data", "numactl --hardware"),
 		OSTask("linux", "NUMA data", "numactl --show"),
 		OSTask("linux", "NUMA data", "cat /sys/devices/system/node/node*/numastat"),
-		OSTask("unix", "Kernel log buffer", "dmesg -H || dmesg"),
+		Privileged(OSTask("unix", "Kernel log buffer", "dmesg -H || dmesg")),
 		OSTask("linux", "Transparent Huge Pages data", "cat /sys/kernel/mm/transparent_hugepage/enabled"),
 		OSTask("linux", "Transparent Huge Pages data", "cat /sys/kernel/mm/transparent_hugepage/defrag"),
 		OSTask("linux", "Transparent Huge Pages data", "cat /sys/kernel/mm/redhat_transparent_hugepage/enabled"),
@@ -201,20 +201,28 @@ func makeSGTasks(url *url.URL, opts *SGCollectOptions, config rest.RunTimeServer
 		})
 	}
 
-	result = append(result, &URLTask{
+	result = append(result, NoHeader(&URLTask{
 		name:       "Sync Gateway expvars",
 		url:        url.String() + "/_expvar",
 		outputFile: "expvars.json",
-	}, &URLTask{
-		name: "Collect server bootstrapConfigPath",
+	}), &URLTask{
+		name: "Collect server config",
 		url:  url.String() + "/_config",
 	}, &URLTask{
-		name: "Collect runtime bootstrapConfigPath",
+		name: "Collect runtime config",
 		url:  url.String() + "/_config?include_runtime=true",
 	}, &URLTask{
 		name: "Collect server status",
 		url:  url.String() + "/_status",
 	})
+	if len(config.Databases) > 0 {
+		for db := range config.Databases {
+			result = append(result, &URLTask{
+				name: fmt.Sprintf("Database config - %q", db),
+				url:  url.String() + fmt.Sprintf("/%s/_config?include_runtime=true", db),
+			})
+		}
+	}
 	result = append(result, makeCollectLogsTasks(opts, config)...)
 	return
 }

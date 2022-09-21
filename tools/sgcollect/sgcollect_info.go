@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -13,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/google/uuid"
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -167,6 +169,7 @@ var sgBinPaths = [...]string{
 	"/opt/couchbase-sync-gateway/bin/sync_gateway",
 	`C:\Program Files (x86)\Couchbase\sync_gateway.exe`,
 	`C:\Program Files\Couchbase\Sync Gateway\sync_gateway.exe`,
+	"./sync_gateway",
 }
 
 var bootstrapConfigLocations = [...]string{
@@ -176,6 +179,7 @@ var bootstrapConfigLocations = [...]string{
 	"/etc/sync_gateway/sync_gateway.json",
 	`C:\Program Files (x86)\Couchbase\serviceconfig.json`,
 	`C:\Program Files\Couchbase\Sync Gateway\serviceconfig.json`,
+	"./sync_gateway.json",
 }
 
 func findSGBinaryAndConfigs(sgURL *url.URL, opts *SGCollectOptions) (string, string) {
@@ -205,6 +209,7 @@ func findSGBinaryAndConfigs(sgURL *url.URL, opts *SGCollectOptions) (string, str
 			break
 		}
 	}
+	log.Printf("SG binary at %q and config at %q.", binary, config)
 	return binary, config
 }
 
@@ -213,6 +218,12 @@ func main() {
 	if err := opts.ParseCommandLine(os.Args[1:]); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
+	}
+
+	// This also sets up logging into the output file.
+	tr, err := NewTaskRunner(opts)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	sgURL, ok := determineSGURL(opts)
@@ -227,20 +238,16 @@ func main() {
 		zipFilename += ".zip"
 	}
 	zipDir := filepath.Dir(zipFilename)
-	_, err := os.Stat(zipDir)
+	_, err = os.Stat(zipDir)
 	if err != nil {
 		log.Fatalf("Failed to check if output directory (%s) is accesible: %v", zipDir, err)
 	}
 
-	//shouldRedact := opts.LogRedactionLevel != RedactNone
-	//var uploadURL string
-	//var redactedZipFilename string
-	//if shouldRedact {
-	//	redactedZipFilename = strings.TrimSuffix(zipFilename, ".zip") + "-redacted.zip"
-	//	uploadURL = generateUploadURL(opts, redactedZipFilename)
-	//} else {
-	//	uploadURL = generateUploadURL(opts, zipFilename)
-	//}
+	shouldRedact := opts.LogRedactionLevel != RedactNone
+	var redactedZipFilename string
+	if shouldRedact {
+		redactedZipFilename = strings.TrimSuffix(zipFilename, ".zip") + "-redacted.zip"
+	}
 
 	var config rest.RunTimeServerConfigResponse
 	err = getJSONOverHTTP(sgURL.String()+"/_config?include_runtime=true", opts, &config)
@@ -248,12 +255,10 @@ func main() {
 		log.Printf("Failed to get SG config. Some information might not be collected.")
 	}
 
-	tr, err := NewTaskRunner(opts)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer tr.Finalize()
-
+	tr.Run(RawStringTask{
+		name: "sgcollect_info version",
+		val:  base.LongVersionString,
+	})
 	tr.Run(new(SGCollectOptionsTask))
 
 	for _, task := range makeOSTasks() {
@@ -264,4 +269,21 @@ func main() {
 	for _, task := range tasks {
 		tr.Run(task)
 	}
+
+	tr.Finalize()
+	log.Printf("Writing unredacted logs to %s", zipFilename)
+	hostname, _ := os.Hostname()
+	prefix := fmt.Sprintf("sgcollect_info_%s_%s", hostname, time.Now().Format("20060102-150405"))
+	err = tr.ZipResults(zipFilename, prefix, io.Copy)
+	if err != nil {
+		log.Printf("WARNING: failed to produce output file %s: %v", zipFilename, err)
+	}
+	if shouldRedact {
+		log.Printf("Writing redacted logs to %s", zipFilename)
+		err = tr.ZipResults(redactedZipFilename, prefix, RedactCopier(opts))
+		if err != nil {
+			log.Printf("WARNING: failed to produce output file %s: %v", redactedZipFilename, err)
+		}
+	}
+	log.Println("Done.")
 }
