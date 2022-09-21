@@ -35,10 +35,6 @@ func NewTaskRunner(opts *SGCollectOptions) (*TaskRunner, error) {
 		return nil, fmt.Errorf("could not use temporary dir: %w", err)
 	}
 	log.Printf("Using temporary directory %s", tr.tmpDir)
-	err = tr.setupSGCollectLog()
-	if err != nil {
-		return nil, err
-	}
 	return tr, nil
 }
 
@@ -50,6 +46,10 @@ func (tr *TaskRunner) Finalize() {
 			log.Printf("Failed to close %s: %v", fd.Name(), err)
 		}
 	}
+}
+
+func (tr *TaskRunner) Cleanup() error {
+	return os.RemoveAll(tr.tmpDir)
 }
 
 func (tr *TaskRunner) ZipResults(outputPath string, prefix string, copier CopyFunc) error {
@@ -102,8 +102,8 @@ func (tr *TaskRunner) ZipResults(outputPath string, prefix string, copier CopyFu
 	return nil
 }
 
-// setupSGCollectLog will redirect the standard library log package's output to both stderr and a log file in the temporary directory.
-func (tr *TaskRunner) setupSGCollectLog() error {
+// SetupSGCollectLog will redirect the standard library log package's output to both stderr and a log file in the temporary directory.
+func (tr *TaskRunner) SetupSGCollectLog() error {
 	fd, err := tr.createFile("sgcollect_info.log")
 	if err != nil {
 		return fmt.Errorf("failed to create sgcollect_info.log: %w", err)
@@ -136,18 +136,7 @@ func (tr *TaskRunner) writeHeader(w io.Writer, task SGCollectTask) error {
 
 func (tr *TaskRunner) Run(task SGCollectTask) {
 	tex := TaskEx(task)
-	// TODO: opportunity to parallelise here - one worker per output file
-	if !tex.ShouldRun(runtime.GOOS) {
-		log.Printf("Skipping %q on %s.", task.Name(), runtime.GOOS)
-		return
-	}
-	if tex.RequiresRoot() {
-		uid := os.Getuid()
-		if uid != -1 && uid != 0 {
-			log.Printf("Skipping %q - requires root privileges.", task.Name())
-			return
-		}
-	}
+
 	outputFile := tex.outputFile
 	if outputFile == "" {
 		outputFile = defaultOutputFile
@@ -171,10 +160,53 @@ func (tr *TaskRunner) Run(task SGCollectTask) {
 		}
 	}
 
-	run := func() {
+	res := ExecuteTask(tex, tr.opts, fd, func(s string) {
+		log.Println(s)
+	}, false)
+	if res.SkipReason != "" {
+		log.Printf("SKIP %s [%s] - %s", task.Name(), task.Header(), res.SkipReason)
+		_, _ = fmt.Fprintf(fd, "skipped - %s", res.SkipReason)
+	}
+	if res.Error != nil {
+		log.Printf("FAIL %s [%s] - %v", task.Name(), task.Header(), res.Error)
+		_, _ = fmt.Fprintf(fd, "%s", res.Error)
+	}
+
+	_, err := fd.WriteString("\n")
+	if err != nil {
+		log.Printf("WARN %s [%s] - failed to write closing newline: %v", task.Name(), task.Header(), err)
+	}
+}
+
+type TaskExecutionResult struct {
+	SkipReason string
+	Error      error
+}
+
+func ExecuteTask(task SGCollectTask, opts *SGCollectOptions, output io.Writer, log func(string), failFast bool) TaskExecutionResult {
+	tex := TaskEx(task)
+	if !tex.ShouldRun(runtime.GOOS) {
+		return TaskExecutionResult{
+			SkipReason: fmt.Sprintf("not executing on platform %s", runtime.GOOS),
+		}
+	}
+	if tex.RequiresRoot() {
+		uid := os.Getuid()
+		if uid != -1 && uid != 0 {
+			return TaskExecutionResult{
+				SkipReason: "requires root privileges",
+			}
+		}
+	}
+
+	run := func() (err error) {
 		defer func() {
 			if panicked := recover(); panicked != nil {
-				log.Printf("PANIC - %s [%s]: %v", task.Name(), task.Header(), panicked)
+				if recErr, ok := panicked.(error); ok {
+					err = recErr
+				} else {
+					err = fmt.Errorf("task panic: %v", panicked)
+				}
 			}
 		}()
 		ctx := context.Background()
@@ -183,31 +215,27 @@ func (tr *TaskRunner) Run(task SGCollectTask) {
 			ctx, cancel = context.WithTimeout(ctx, to)
 			defer cancel()
 		}
-		log.Printf("RUN - %s [%s]", task.Name(), task.Header())
-		name := task.Name()
-		_ = name
-		err := task.Run(ctx, tr.opts, fd)
-		if err != nil {
-			log.Printf("FAIL - %q [%s]: %v", task.Name(), task.Header(), err)
-			_, _ = fmt.Fprintln(fd, err.Error())
-			return
-		}
-		log.Printf("OK - %s [%s]", task.Name(), task.Header())
+		return task.Run(ctx, opts, output)
 	}
 
+	var err error
 	if tex.NumSamples() > 0 {
 		for i := 0; i < tex.NumSamples(); i++ {
-			run()
+			err = run()
+			if err != nil && failFast {
+				return TaskExecutionResult{
+					Error: err,
+				}
+			}
 			if i != tex.NumSamples()-1 {
-				log.Printf("Taking sample %d of %q [%s] after %v seconds", i+2, task.Name(), task.Header(), tex.Interval())
+				log(fmt.Sprintf("Taking sample %d of %q [%s] after %v seconds", i+2, task.Name(), task.Header(), tex.Interval()))
 				time.Sleep(tex.Interval())
 			}
 		}
 	} else {
-		run()
+		err = run()
 	}
-	_, err := fd.WriteString("\n")
-	if err != nil {
-		log.Printf("WARN %s [%s] - failed to write closing newline: %v", task.Name(), task.Header(), err)
+	return TaskExecutionResult{
+		Error: err,
 	}
 }

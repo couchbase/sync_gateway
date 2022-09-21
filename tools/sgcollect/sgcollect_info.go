@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -228,10 +229,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	// This also sets up logging into the output file.
 	tr, err := NewTaskRunner(opts)
 	if err != nil {
 		log.Fatal(err)
+	}
+	err = tr.SetupSGCollectLog()
+	if err != nil {
+		log.Printf("Failed to set up sgcollect_info.log: %v. Will continue.", err)
 	}
 
 	sgURL, ok := determineSGURL(opts)
@@ -248,7 +252,11 @@ func main() {
 	zipDir := filepath.Dir(zipFilename)
 	_, err = os.Stat(zipDir)
 	if err != nil {
-		log.Fatalf("Failed to check if output directory (%s) is accesible: %v", zipDir, err)
+		if errors.Is(err, os.ErrNotExist) {
+			log.Fatalf("Output directory %s does not exist.", zipDir)
+		} else {
+			log.Fatalf("Failed to check if output directory (%s) is accesible: %v", zipDir, err)
+		}
 	}
 
 	shouldRedact := opts.LogRedactionLevel != RedactNone
@@ -291,7 +299,7 @@ func main() {
 		log.Printf("WARNING: failed to produce output file %s: %v", zipFilename, err)
 	}
 	if shouldRedact {
-		log.Printf("Writing redacted logs to %s", zipFilename)
+		log.Printf("Writing redacted logs to %s", redactedZipFilename)
 		err = tr.ZipResults(redactedZipFilename, prefix, RedactCopier(opts))
 		if err != nil {
 			log.Printf("WARNING: failed to produce output file %s: %v", redactedZipFilename, err)

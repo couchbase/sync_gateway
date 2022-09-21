@@ -190,8 +190,8 @@ func (c *URLTask) Run(ctx context.Context, opts *SGCollectOptions, out io.Writer
 }
 
 type FileTask struct {
-	name                  string
-	inputFile, outputFile string
+	name      string
+	inputFile string
 }
 
 func (f *FileTask) Name() string {

@@ -31,11 +31,11 @@ func RedactCopier(opts *SGCollectOptions) CopyFunc {
 				}
 			}
 			written += int64(nw)
+			if errors.Is(wErr, io.EOF) {
+				wErr = nil // match the io.Copy protocol
+			}
 			if wErr != nil {
 				return wErr
-			}
-			if errors.Is(err, io.EOF) {
-				err = nil // match the io.Copy protocol
 			}
 			if len(chunk) != nw {
 				return errors.New("short write")
