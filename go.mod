@@ -13,9 +13,9 @@ require (
 	github.com/couchbase/gocbcore/v10 v10.1.5-0.20220809160836-bf53e9527651
 	github.com/couchbase/gomemcached v0.1.4
 	github.com/couchbase/goutils v0.1.2
-	// FIXME: references an un-merged branch (https://github.com/couchbase/sg-bucket/pull/81)
-	github.com/couchbase/sg-bucket v0.0.0-20220920182149-0fbdb19d2043
+	github.com/couchbase/sg-bucket v0.0.0-20220921180558-dda1aff4e925
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f
+	github.com/couchbaselabs/walrus v0.0.0-20220916160453-6f7d5a152116
 	github.com/elastic/gosigar v0.14.2
 	github.com/felixge/fgprof v0.9.2
 	github.com/google/uuid v1.3.0
@@ -42,15 +42,11 @@ require (
 )
 
 require (
-	github.com/couchbase/gocbcore/v9 v9.1.8
-	github.com/couchbaselabs/walrus v0.0.0-20220916160453-6f7d5a152116
-)
-
-require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/couchbase/blance v0.1.2 // indirect
 	github.com/couchbase/cbauth v0.1.1 // indirect
+	github.com/couchbase/gocbcore/v9 v9.1.8 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
