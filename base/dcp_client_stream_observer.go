@@ -25,9 +25,6 @@ func (dc *DCPClient) SnapshotMarker(snapshotMarker gocbcore.DcpSnapshotMarker) {
 }
 
 func (dc *DCPClient) Mutation(mutation gocbcore.DcpMutation) {
-	if dc.afterEndSeq(mutation.VbID, mutation.SeqNo) {
-		return
-	}
 
 	if dc.filteredKey(mutation.Key) {
 		return
@@ -51,9 +48,6 @@ func (dc *DCPClient) Mutation(mutation gocbcore.DcpMutation) {
 }
 
 func (dc *DCPClient) Deletion(deletion gocbcore.DcpDeletion) {
-	if dc.afterEndSeq(deletion.VbID, deletion.SeqNo) {
-		return
-	}
 
 	if dc.filteredKey(deletion.Key) {
 		return
@@ -129,16 +123,6 @@ func (dc *DCPClient) SeqNoAdvanced(seqNoAdvanced gocbcore.DcpSeqNoAdvanced) {
 		},
 		seq: seqNoAdvanced.SeqNo,
 	})
-}
-
-// A one-shot DCP feed specifies the endSeq when opening the stream, but Couchbase Server only ends the DCP stream
-// when it reaches the end of a snapshot that is greater than or equal to the endSeq value.  DCPClient should not
-// process any sequences in that final snapshot that are greater than endSeq - afterEndSeq provides that additional check.
-func (dc *DCPClient) afterEndSeq(vbID uint16, seq uint64) bool {
-	if len(dc.endSeqNos) > 0 && dc.endSeqNos[vbID] < seq {
-		return true
-	}
-	return false
 }
 
 func (dc *DCPClient) filteredKey(key []byte) bool {

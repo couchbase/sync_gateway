@@ -39,6 +39,9 @@ func TestOneShotDCP(t *testing.T) {
 	// create callback
 	mutationCount := uint64(0)
 	counterCallback := func(event sgbucket.FeedEvent) bool {
+		if bytes.HasPrefix(event.Key, []byte(SyncDocPrefix)) {
+			return false
+		}
 		atomic.AddUint64(&mutationCount, 1)
 		return false
 	}
@@ -63,19 +66,6 @@ func TestOneShotDCP(t *testing.T) {
 	dcpClient, err := NewDCPClient(feedID, counterCallback, clientOptions, collection)
 	require.NoError(t, err)
 
-	// Add additional documents in a separate goroutine, to verify afterEndSeq handling
-	var additionalDocsWg sync.WaitGroup
-	additionalDocsWg.Add(1)
-	go func() {
-		updatedBody := map[string]interface{}{"foo": "bar"}
-		for i := numDocs; i < numDocs*2; i++ {
-			key := fmt.Sprintf("%s_%d", t.Name(), i)
-			err := bucket.Set(key, 0, nil, updatedBody)
-			assert.NoError(t, err)
-		}
-		additionalDocsWg.Done()
-	}()
-
 	doneChan, startErr := dcpClient.Start()
 	require.NoError(t, startErr)
 
@@ -83,14 +73,27 @@ func TestOneShotDCP(t *testing.T) {
 		_ = dcpClient.Close()
 	}()
 
+	// Add additional documents in a separate goroutine, to verify one-shot behaviour
+	var additionalDocsWg sync.WaitGroup
+	additionalDocsWg.Add(1)
+	go func() {
+		defer additionalDocsWg.Done()
+		updatedBody := map[string]interface{}{"foo": "bar"}
+		for i := numDocs; i < numDocs*2; i++ {
+			key := fmt.Sprintf("%s_INVALID_%d", t.Name(), i)
+			err := bucket.Set(key, 0, nil, updatedBody)
+			assert.NoError(t, err)
+		}
+	}()
+
 	// wait for done
 	timeout := time.After(oneShotDCPTimeout)
 	select {
 	case err := <-doneChan:
-		require.Equal(t, uint64(numDocs), mutationCount)
-		require.NoError(t, err)
+		assert.Equal(t, uint64(numDocs), mutationCount)
+		assert.NoError(t, err)
 	case <-timeout:
-		t.Errorf("timeout waiting for one-shot feed to complete")
+		assert.Fail(t, "timeout waiting for one-shot feed to complete")
 	}
 
 	additionalDocsWg.Wait()

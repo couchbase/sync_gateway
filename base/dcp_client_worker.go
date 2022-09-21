@@ -19,7 +19,6 @@ import (
 // works this channel and synchronously invokes the mutationCallback for mutations or deletions.
 type DCPWorker struct {
 	ID                    int
-	endSeqNos             []uint64
 	eventFeed             chan streamEvent
 	terminator            chan bool
 	checkpointPrefixBytes []byte
@@ -63,7 +62,6 @@ func NewDCPWorker(workerID int, metadata DCPMetadataStore, mutationCallback sgbu
 		ID:                    workerID,
 		eventFeed:             eventQueue,
 		terminator:            terminator,
-		endSeqNos:             endSeqNos,
 		checkpointPrefixBytes: []byte(checkpointPrefix),
 		mutationCallback:      mutationCallback,
 		endStreamCallback:     endCallback,
