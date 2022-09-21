@@ -10,6 +10,7 @@ import (
 	"log"
 )
 
+// CopyFunc is the signature of io.Copy.
 type CopyFunc func(io.Writer, io.Reader) (int64, error)
 
 // Copier returns a CopyFunc appropriate for the configured redaction level.
