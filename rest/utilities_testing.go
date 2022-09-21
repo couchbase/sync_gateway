@@ -192,7 +192,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	}
 
 	// Allow EE-only config even in CE for testing using group IDs.
-	if err := sc.Validate(base.TestCtx(rt.tb), true); err != nil {
+	if err := sc.Validate(base.TestCtx(rt.TB), true); err != nil {
 		panic("invalid RestTester StartupConfig: " + err.Error())
 	}
 
