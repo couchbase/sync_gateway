@@ -19,19 +19,18 @@ import (
 type SGCollectTask interface {
 	Name() string
 	Header() string
-	OutputFile() string
 	Run(ctx context.Context, opts *SGCollectOptions, out io.Writer) error
 }
 
 type SGCollectTaskEx struct {
 	SGCollectTask
-	platforms          []string
-	root               bool
-	samples            int
-	interval           time.Duration
-	timeout            time.Duration
-	outputFileOverride string
-	noHeader           bool
+	platforms  []string
+	root       bool
+	samples    int
+	interval   time.Duration
+	timeout    time.Duration
+	outputFile string
+	noHeader   bool
 }
 
 // TaskEx wraps the given SGCollectTask in a SGCollectTaskEx if necessary.
@@ -79,13 +78,6 @@ func (e SGCollectTaskEx) Header() string {
 	return e.SGCollectTask.Header()
 }
 
-func (e SGCollectTaskEx) OutputFile() string {
-	if e.outputFileOverride != "" {
-		return e.outputFileOverride
-	}
-	return e.SGCollectTask.OutputFile()
-}
-
 func Sample(t SGCollectTask, samples int, interval time.Duration) SGCollectTaskEx {
 	if ex, ok := t.(SGCollectTaskEx); ok {
 		ex.samples = samples
@@ -123,12 +115,12 @@ func Privileged(t SGCollectTask) SGCollectTaskEx {
 
 func OverrideOutput(t SGCollectTask, out string) SGCollectTaskEx {
 	if ex, ok := t.(SGCollectTaskEx); ok {
-		ex.outputFileOverride = out
+		ex.outputFile = out
 		return ex
 	}
 	return SGCollectTaskEx{
-		SGCollectTask:      t,
-		outputFileOverride: out,
+		SGCollectTask: t,
+		outputFile:    out,
 	}
 }
 
@@ -144,10 +136,9 @@ func NoHeader(t SGCollectTask) SGCollectTaskEx {
 }
 
 type URLTask struct {
-	name       string
-	url        string
-	outputFile string
-	timeout    *time.Duration
+	name    string
+	url     string
+	timeout *time.Duration
 }
 
 func (c *URLTask) Name() string {
@@ -156,10 +147,6 @@ func (c *URLTask) Name() string {
 
 func (c *URLTask) Header() string {
 	return c.url
-}
-
-func (c *URLTask) OutputFile() string {
-	return c.outputFile
 }
 
 func (c *URLTask) Run(ctx context.Context, opts *SGCollectOptions, out io.Writer) error {
@@ -215,10 +202,6 @@ func (f *FileTask) Header() string {
 	return f.inputFile
 }
 
-func (f *FileTask) OutputFile() string {
-	return f.outputFile
-}
-
 func (f *FileTask) Run(ctx context.Context, opts *SGCollectOptions, out io.Writer) error {
 	fd, err := os.Open(f.inputFile)
 	if err != nil {
@@ -244,10 +227,6 @@ func (f *GZipFileTask) Name() string {
 
 func (f *GZipFileTask) Header() string {
 	return f.inputFile
-}
-
-func (f *GZipFileTask) OutputFile() string {
-	return f.outputFile
 }
 
 func (f *GZipFileTask) Run(ctx context.Context, opts *SGCollectOptions, out io.Writer) error {
@@ -282,10 +261,6 @@ func (o *OSCommandTask) Name() string {
 
 func (o *OSCommandTask) Header() string {
 	return o.command
-}
-
-func (o *OSCommandTask) OutputFile() string {
-	return o.outputFile
 }
 
 func (o *OSCommandTask) Run(ctx context.Context, opts *SGCollectOptions, out io.Writer) error {
@@ -388,10 +363,6 @@ func (s SGCollectOptionsTask) Header() string {
 	return ""
 }
 
-func (s SGCollectOptionsTask) OutputFile() string {
-	return "sgcollect_info_options.log"
-}
-
 func (s SGCollectOptionsTask) Run(ctx context.Context, opts *SGCollectOptions, out io.Writer) error {
 	_, err := fmt.Fprintf(out, "%#v\n", opts)
 	return err
@@ -407,10 +378,6 @@ func (s RawStringTask) Name() string {
 }
 
 func (s RawStringTask) Header() string {
-	return ""
-}
-
-func (s RawStringTask) OutputFile() string {
 	return ""
 }
 

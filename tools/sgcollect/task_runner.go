@@ -148,7 +148,7 @@ func (tr *TaskRunner) Run(task SGCollectTask) {
 			return
 		}
 	}
-	outputFile := task.OutputFile()
+	outputFile := tex.outputFile
 	if outputFile == "" {
 		outputFile = defaultOutputFile
 	}

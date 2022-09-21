@@ -176,11 +176,10 @@ func makeCollectLogsTasks(opts *SGCollectOptions, config rest.RunTimeServerConfi
 				}
 			}
 			log.Printf("Collecting non-rotated log file %s", filepath.Join(dir, file+sgLogExtensionNotRotated))
-			result = append(result, &FileTask{
-				name:       file + sgLogExtensionNotRotated,
-				inputFile:  filepath.Join(dir, file+sgLogExtensionNotRotated),
-				outputFile: file + sgLogExtensionNotRotated,
-			})
+			result = append(result, OverrideOutput(&FileTask{
+				name:      file + sgLogExtensionNotRotated,
+				inputFile: filepath.Join(dir, file+sgLogExtensionNotRotated),
+			}, file+sgLogExtensionNotRotated))
 		}
 	}
 	return result
@@ -189,25 +188,22 @@ func makeCollectLogsTasks(opts *SGCollectOptions, config rest.RunTimeServerConfi
 func makeSGTasks(url *url.URL, opts *SGCollectOptions, config rest.RunTimeServerConfigResponse) (result []SGCollectTask) {
 	binary, bootstrapConfigPath := findSGBinaryAndConfigs(url, opts)
 	if binary != "" {
-		result = append(result, &FileTask{
-			name:       "Sync Gateway executable",
-			inputFile:  binary,
-			outputFile: "sync_gateway",
-		})
+		result = append(result, OverrideOutput(NoHeader(&FileTask{
+			name:      "Sync Gateway executable",
+			inputFile: binary,
+		}), "sync_gateway"))
 	}
 	if bootstrapConfigPath != "" {
-		result = append(result, NoHeader(&FileTask{
-			name:       "Sync Gateway bootstrapConfigPath",
-			inputFile:  bootstrapConfigPath,
-			outputFile: "sync_gateway.json",
-		}))
+		result = append(result, OverrideOutput(NoHeader(&FileTask{
+			name:      "Sync Gateway bootstrapConfigPath",
+			inputFile: bootstrapConfigPath,
+		}), "sync_gateway.json"))
 	}
 
-	result = append(result, NoHeader(&URLTask{
-		name:       "Sync Gateway expvars",
-		url:        url.String() + "/_expvar",
-		outputFile: "expvars.json",
-	}), &URLTask{
+	result = append(result, OverrideOutput(NoHeader(&URLTask{
+		name: "Sync Gateway expvars",
+		url:  url.String() + "/_expvar",
+	}), "expvars.json"), &URLTask{
 		name: "Collect server config",
 		url:  url.String() + "/_config",
 	}, &URLTask{
@@ -226,13 +222,12 @@ func makeSGTasks(url *url.URL, opts *SGCollectOptions, config rest.RunTimeServer
 		}
 	}
 	for _, profile := range [...]string{"profile", "heap", "goroutine", "block", "mutex"} {
-		result = append(result, NoHeader(&URLTask{
-			name:       fmt.Sprintf("Collect %s pprof", profile),
-			url:        url.String() + fmt.Sprintf("/_debug/pprof/%s", profile),
-			outputFile: fmt.Sprintf("pprof_%s.pb.gz", profile),
+		result = append(result, OverrideOutput(NoHeader(&URLTask{
+			name: fmt.Sprintf("Collect %s pprof", profile),
+			url:  url.String() + fmt.Sprintf("/_debug/pprof/%s", profile),
 			// Override timeout for pprof requests as they can take a bit longer
 			timeout: durationPtr(time.Minute),
-		}))
+		}), fmt.Sprintf("pprof_%s.pb.gz", profile)))
 	}
 	result = append(result, makeCollectLogsTasks(opts, config)...)
 	return
