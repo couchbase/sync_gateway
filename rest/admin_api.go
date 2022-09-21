@@ -230,8 +230,7 @@ func (h *handler) handleGetDbConfig() error {
 			return base.HTTPErrorf(http.StatusNotFound, "database config not found")
 		}
 
-		h.response.Header().Set("ETag", dbConfig.Version)
-
+		h.setEtag(dbConfig.Version)
 		// refresh_config=true forces the config loaded out of the bucket to be applied on the node
 		if h.getBoolQuery("refresh_config") && h.server.bootstrapContext.connection != nil {
 			// set cas=0 to force a refresh
@@ -532,8 +531,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 				return nil, err
 			}
 
-			headerVersion := h.rq.Header.Get("If-Match")
-			if headerVersion != "" && headerVersion != bucketDbConfig.Version {
+			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
 				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 			}
 
@@ -594,7 +592,8 @@ func (h *handler) handlePutDbConfig() (err error) {
 	}
 	// store the cas in the loaded config after a successful update
 	h.server.dbConfigs[dbName].cas = cas
-	h.response.Header().Set("ETag", updatedDbConfig.Version)
+	h.setEtag(updatedDbConfig.Version)
+
 	return base.HTTPErrorf(http.StatusCreated, "updated")
 
 }
@@ -623,7 +622,7 @@ func (h *handler) handleGetDbConfigSync() error {
 		}
 	}
 
-	h.response.Header().Set("ETag", etagVersion)
+	h.setEtag(etagVersion)
 	h.writeJavascript(syncFunction)
 	return nil
 }
@@ -647,8 +646,7 @@ func (h *handler) handleDeleteDbConfigSync() error {
 				return nil, err
 			}
 
-			headerVersion := h.rq.Header.Get("If-Match")
-			if headerVersion != "" && headerVersion != bucketDbConfig.Version {
+			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
 				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 			}
 
@@ -709,8 +707,7 @@ func (h *handler) handlePutDbConfigSync() error {
 				return nil, err
 			}
 
-			headerVersion := h.rq.Header.Get("If-Match")
-			if headerVersion != "" && headerVersion != bucketDbConfig.Version {
+			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
 				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 			}
 
@@ -775,7 +772,7 @@ func (h *handler) handleGetDbConfigImportFilter() error {
 		}
 	}
 
-	h.response.Header().Set("ETag", etagVersion)
+	h.setEtag(etagVersion)
 	h.writeJavascript(importFilterFunction)
 	return nil
 }
@@ -799,8 +796,7 @@ func (h *handler) handleDeleteDbConfigImportFilter() error {
 				return nil, err
 			}
 
-			headerVersion := h.rq.Header.Get("If-Match")
-			if headerVersion != "" && headerVersion != bucketDbConfig.Version {
+			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
 				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 			}
 
@@ -862,8 +858,7 @@ func (h *handler) handlePutDbConfigImportFilter() error {
 				return nil, err
 			}
 
-			headerVersion := h.rq.Header.Get("If-Match")
-			if headerVersion != "" && headerVersion != bucketDbConfig.Version {
+			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
 				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 			}
 

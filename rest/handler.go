@@ -844,9 +844,18 @@ func (h *handler) headerMatchesEtag(headerName string, etag string) bool {
 
 // Returns true if the header exists, and its value does NOT match the given etag.
 // (The etag parameter should not be double-quoted; the function will take care of that.)
-func (h *handler) headerDoesNotMatchEtag(headerName string, etag string) bool {
-	value := h.rq.Header.Get(headerName)
+func (h *handler) headerDoesNotMatchEtag(etag string) bool {
+	value := h.rq.Header.Get("If-Match")
 	return value != "" && !strings.Contains(value, `"`+etag+`"`)
+}
+
+func (h *handler) getEtag(headerName string) (string, error) {
+	value := h.rq.Header.Get(headerName)
+	if len(value) > 0 && !strings.Contains(value, `"`) {
+		return "", fmt.Errorf("ETag value is not quoted when trying to read the value")
+	}
+	eTag := strings.Trim(value, `"`)
+	return eTag, nil
 }
 
 // Returns the request body as a raw byte array.

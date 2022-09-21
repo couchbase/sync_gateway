@@ -3298,7 +3298,8 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 	resp = bootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
 	resp.requireStatus(http.StatusOK)
 	eTag := resp.Header.Get("ETag")
-	assert.NotEqual(t, "", eTag)
+	unquoteETag := strings.Trim(eTag, `"`)
+	assert.NotEqual(t, "", unquoteETag)
 
 	resp = bootstrapAdminRequestWithHeaders(t, http.MethodPost, "/db/_config", "{}", map[string]string{"If-Match": eTag})
 	resp.requireStatus(http.StatusCreated)
@@ -3313,7 +3314,8 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 	getETag := resp.Header.Get("ETag")
 	assert.Equal(t, putETag, getETag)
 
-	resp = bootstrapAdminRequestWithHeaders(t, http.MethodPost, "/db/_config", "{}", map[string]string{"If-Match": "x"})
+	quotedStr := `"x"`
+	resp = bootstrapAdminRequestWithHeaders(t, http.MethodPost, "/db/_config", "{}", map[string]string{"If-Match": quotedStr})
 	resp.requireStatus(http.StatusPreconditionFailed)
 }
 
