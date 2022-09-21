@@ -54,14 +54,16 @@ type SGCollectOptions struct {
 	SyncGatewayPassword   PasswordString
 	HTTPTimeout           time.Duration
 	TmpDir                string
+	UploadHost            *url.URL
+	UploadCustomer        string
+	UploadTicketNumber    string
+	UploadProxy           *url.URL
 }
 
 func (opts *SGCollectOptions) ParseCommandLine(args []string) error {
 	app := kingpin.New("sgcollect_info", "")
 	app.Flag("root-dir", "root directory").StringVar(&opts.RootDir)
 	app.Flag("verbosity", "").CounterVar(&opts.Verbosity)
-	app.Flag("product_only", "").BoolVar(&opts.ProductOnly)
-	app.Flag("dump_utilities", "").BoolVar(&opts.DumpUtilities)
 	app.Flag("log-redaction-level", "").Default("none").EnumVar((*string)(&opts.LogRedactionLevel), "none", "partial")
 	app.Flag("log-redaction-salt", "").Default(uuid.New().String()).StringVar((*string)(&opts.LogRedactionSalt))
 	app.Flag("sync-gateway-url", "").URLVar(&opts.SyncGatewayURL)
@@ -71,6 +73,10 @@ func (opts *SGCollectOptions) ParseCommandLine(args []string) error {
 	app.Flag("sync-gateway-executable", "").ExistingFileVar(&opts.SyncGatewayExecutable)
 	app.Flag("http-timeout", "").Default("30s").DurationVar(&opts.HTTPTimeout)
 	app.Flag("tmp-dir", "").ExistingDirVar(&opts.TmpDir)
+	app.Flag("upload-host", "").URLVar(&opts.UploadHost)
+	app.Flag("customer", "").StringVar(&opts.UploadCustomer)
+	app.Flag("ticket", "").StringVar(&opts.UploadTicketNumber)
+	app.Flag("upload-proxy", "").URLVar(&opts.UploadProxy)
 	app.Arg("path", "path to collect diagnostics into").Required().StringVar(&opts.OutputPath)
 	_, err := app.Parse(args)
 	return err
@@ -187,12 +193,14 @@ func findSGBinaryAndConfigs(sgURL *url.URL, opts *SGCollectOptions) (string, str
 	binary := opts.SyncGatewayExecutable
 	config := opts.SyncGatewayConfig
 	if binary != "" && config != "" {
+		log.Printf("Using manually passed SG binary at %q and config at %q.", binary, config)
 		return binary, config
 	}
 
 	var ok bool
 	binary, config, ok = findSGBinaryAndConfigsFromExpvars(sgURL, opts)
 	if ok {
+		log.Printf("SG binary at %q and config at %q.", binary, config)
 		return binary, config
 	}
 
@@ -245,8 +253,12 @@ func main() {
 
 	shouldRedact := opts.LogRedactionLevel != RedactNone
 	var redactedZipFilename string
+	var uploadFilename string
 	if shouldRedact {
 		redactedZipFilename = strings.TrimSuffix(zipFilename, ".zip") + "-redacted.zip"
+		uploadFilename = redactedZipFilename
+	} else {
+		uploadFilename = zipFilename
 	}
 
 	var config rest.RunTimeServerConfigResponse
@@ -285,5 +297,55 @@ func main() {
 			log.Printf("WARNING: failed to produce output file %s: %v", redactedZipFilename, err)
 		}
 	}
+
+	if opts.UploadHost != nil && opts.UploadCustomer != "" {
+		uploadURL := *opts.UploadHost
+		uploadURL.Path += fmt.Sprintf("/%s/", opts.UploadCustomer)
+		if opts.UploadTicketNumber != "" {
+			uploadURL.Path += fmt.Sprintf("%s/", opts.UploadTicketNumber)
+		}
+		uploadURL.Path += filepath.Base(uploadFilename)
+		log.Printf("Uploading archive to %s...", uploadURL.String())
+
+		fd, err := os.Open(uploadFilename)
+		if err != nil {
+			log.Fatalf("Failed to prepare file for upload: %v", err)
+		}
+		defer fd.Close()
+		stat, err := fd.Stat()
+		if err != nil {
+			log.Fatalf("Failed to stat upload file: %v", err)
+		}
+
+		req, err := http.NewRequest(http.MethodPut, uploadURL.String(), fd)
+		if err != nil {
+			log.Fatalf("Failed to prepare upload request: %v", err)
+		}
+		req.Header.Set("Content-Type", "application/zip")
+		req.ContentLength = stat.Size()
+
+		var proxy func(*http.Request) (*url.URL, error)
+		if opts.UploadProxy != nil {
+			proxy = http.ProxyURL(opts.UploadProxy)
+		} else {
+			proxy = http.ProxyFromEnvironment
+		}
+		httpClient := &http.Client{
+			Transport: &http.Transport{
+				Proxy: proxy,
+			},
+		}
+		res, err := httpClient.Do(req)
+		if err != nil {
+			log.Fatalf("Failed to upload logs: %v", err)
+		}
+		defer res.Body.Close()
+		if res.StatusCode != 200 {
+			log.Printf("WARN: upload gave unexpected status %s", res.Status)
+			body, _ := io.ReadAll(res.Body)
+			log.Println(string(body))
+		}
+	}
+
 	log.Println("Done.")
 }

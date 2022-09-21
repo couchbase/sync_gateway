@@ -147,6 +147,7 @@ type URLTask struct {
 	name       string
 	url        string
 	outputFile string
+	timeout    *time.Duration
 }
 
 func (c *URLTask) Name() string {
@@ -162,13 +163,17 @@ func (c *URLTask) OutputFile() string {
 }
 
 func (c *URLTask) Run(ctx context.Context, opts *SGCollectOptions, out io.Writer) error {
-	req, err := http.NewRequest(http.MethodGet, c.url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url, nil)
 	if err != nil {
 		return fmt.Errorf("failed to build HTTP request: %w", err)
 	}
 	req.SetBasicAuth(opts.SyncGatewayUsername, string(opts.SyncGatewayPassword))
 
-	res, err := getHTTPClient(opts).Do(req)
+	client := *getHTTPClient(opts)
+	if c.timeout != nil {
+		client.Timeout = *c.timeout
+	}
+	res, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to request: %w", err)
 	}

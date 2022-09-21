@@ -167,6 +167,7 @@ func makeCollectLogsTasks(opts *SGCollectOptions, config rest.RunTimeServerConfi
 				log.Printf("WARN: failed to glob %s in %s: %v", file, dir, err)
 			} else {
 				for _, rotatedFile := range rotated {
+					log.Printf("Collecting rotated log file %s", rotatedFile)
 					result = append(result, &GZipFileTask{
 						name:       file + sgLogExtensionNotRotated,
 						inputFile:  rotatedFile,
@@ -174,6 +175,7 @@ func makeCollectLogsTasks(opts *SGCollectOptions, config rest.RunTimeServerConfi
 					})
 				}
 			}
+			log.Printf("Collecting non-rotated log file %s", filepath.Join(dir, file+sgLogExtensionNotRotated))
 			result = append(result, &FileTask{
 				name:       file + sgLogExtensionNotRotated,
 				inputFile:  filepath.Join(dir, file+sgLogExtensionNotRotated),
@@ -194,11 +196,11 @@ func makeSGTasks(url *url.URL, opts *SGCollectOptions, config rest.RunTimeServer
 		})
 	}
 	if bootstrapConfigPath != "" {
-		result = append(result, &FileTask{
+		result = append(result, NoHeader(&FileTask{
 			name:       "Sync Gateway bootstrapConfigPath",
 			inputFile:  bootstrapConfigPath,
 			outputFile: "sync_gateway.json",
-		})
+		}))
 	}
 
 	result = append(result, NoHeader(&URLTask{
@@ -223,6 +225,19 @@ func makeSGTasks(url *url.URL, opts *SGCollectOptions, config rest.RunTimeServer
 			})
 		}
 	}
+	for _, profile := range [...]string{"profile", "heap", "goroutine", "block", "mutex"} {
+		result = append(result, NoHeader(&URLTask{
+			name:       fmt.Sprintf("Collect %s pprof", profile),
+			url:        url.String() + fmt.Sprintf("/_debug/pprof/%s", profile),
+			outputFile: fmt.Sprintf("pprof_%s.pb.gz", profile),
+			// Override timeout for pprof requests as they can take a bit longer
+			timeout: durationPtr(time.Minute),
+		}))
+	}
 	result = append(result, makeCollectLogsTasks(opts, config)...)
 	return
+}
+
+func durationPtr(d time.Duration) *time.Duration {
+	return &d
 }
