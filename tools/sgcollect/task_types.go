@@ -21,14 +21,15 @@ type SGCollectTask interface {
 	Run(ctx context.Context, opts *SGCollectOptions, out io.Writer) error
 }
 
-// SGCollectTaskEx wraps a SGCollectTask with information about how it should be run.
-type SGCollectTaskEx interface {
+type SGCollectTaskEx struct {
 	SGCollectTask
-	ShouldRun(platform string) bool
-	RequiresRoot() bool
-	NumSamples() int
-	Interval() time.Duration
-	Timeout() time.Duration
+	platforms          []string
+	root               bool
+	samples            int
+	interval           time.Duration
+	timeout            time.Duration
+	outputFileOverride string
+	noHeader           bool
 }
 
 // TaskEx wraps the given SGCollectTask in a SGCollectTaskEx if necessary.
@@ -36,21 +37,12 @@ func TaskEx(t SGCollectTask) SGCollectTaskEx {
 	if ex, ok := t.(SGCollectTaskEx); ok {
 		return ex
 	}
-	return ex{
+	return SGCollectTaskEx{
 		SGCollectTask: t,
 	}
 }
 
-type ex struct {
-	SGCollectTask
-	platforms []string
-	root      bool
-	samples   int
-	interval  time.Duration
-	timeout   time.Duration
-}
-
-func (e ex) ShouldRun(platform string) bool {
+func (e SGCollectTaskEx) ShouldRun(platform string) bool {
 	if len(e.platforms) == 0 {
 		return true
 	}
@@ -62,29 +54,43 @@ func (e ex) ShouldRun(platform string) bool {
 	return false
 }
 
-func (e ex) RequiresRoot() bool {
+func (e SGCollectTaskEx) RequiresRoot() bool {
 	return e.root
 }
 
-func (e ex) NumSamples() int {
+func (e SGCollectTaskEx) NumSamples() int {
 	return e.samples
 }
 
-func (e ex) Interval() time.Duration {
+func (e SGCollectTaskEx) Interval() time.Duration {
 	return e.interval
 }
 
-func (e ex) Timeout() time.Duration {
+func (e SGCollectTaskEx) Timeout() time.Duration {
 	return e.timeout
 }
 
+func (e SGCollectTaskEx) Header() string {
+	if e.noHeader {
+		return ""
+	}
+	return e.SGCollectTask.Header()
+}
+
+func (e SGCollectTaskEx) OutputFile() string {
+	if e.outputFileOverride != "" {
+		return e.outputFileOverride
+	}
+	return e.SGCollectTask.OutputFile()
+}
+
 func Sample(t SGCollectTask, samples int, interval time.Duration) SGCollectTaskEx {
-	if ex, ok := t.(ex); ok {
+	if ex, ok := t.(SGCollectTaskEx); ok {
 		ex.samples = samples
 		ex.interval = interval
 		return ex
 	}
-	return ex{
+	return SGCollectTaskEx{
 		SGCollectTask: t,
 		samples:       samples,
 		interval:      interval,
@@ -92,24 +98,46 @@ func Sample(t SGCollectTask, samples int, interval time.Duration) SGCollectTaskE
 }
 
 func Timeout(t SGCollectTask, timeout time.Duration) SGCollectTaskEx {
-	if ex, ok := t.(ex); ok {
+	if ex, ok := t.(SGCollectTaskEx); ok {
 		ex.timeout = timeout
 		return ex
 	}
-	return ex{
+	return SGCollectTaskEx{
 		SGCollectTask: t,
 		timeout:       timeout,
 	}
 }
 
 func Privileged(t SGCollectTask) SGCollectTaskEx {
-	if ex, ok := t.(ex); ok {
+	if ex, ok := t.(SGCollectTaskEx); ok {
 		ex.root = true
 		return ex
 	}
-	return ex{
+	return SGCollectTaskEx{
 		SGCollectTask: t,
 		root:          true,
+	}
+}
+
+func OverrideOutput(t SGCollectTask, out string) SGCollectTaskEx {
+	if ex, ok := t.(SGCollectTaskEx); ok {
+		ex.outputFileOverride = out
+		return ex
+	}
+	return SGCollectTaskEx{
+		SGCollectTask:      t,
+		outputFileOverride: out,
+	}
+}
+
+func NoHeader(t SGCollectTask) SGCollectTaskEx {
+	if ex, ok := t.(SGCollectTaskEx); ok {
+		ex.noHeader = true
+		return ex
+	}
+	return SGCollectTaskEx{
+		SGCollectTask: t,
+		noHeader:      true,
 	}
 }
 
@@ -301,17 +329,26 @@ func (o *osTask) ShouldRun(platform string) bool {
 }
 
 // OSTask is a helper to return a task for the given platform, which can be one of
-// "unix", "linux, "windows", "solaris", or "" for all platforms.
+// "unix", "linux, "windows", "darwin", "solaris", or "" for all platforms.
 func OSTask(platform string, name, cmd string) SGCollectTask {
 	switch platform {
 	case "":
 		return &OSCommandTask{name, cmd, ""}
-	case "linux", "windows":
-		return &osTask{OSCommandTask{name, cmd, ""}, []string{platform}}
+	case "linux", "windows", "darwin":
+		return SGCollectTaskEx{
+			SGCollectTask: &OSCommandTask{name, cmd, ""},
+			platforms:     []string{platform},
+		}
 	case "unix":
-		return &osTask{OSCommandTask{name, cmd, ""}, []string{"linux", "darwin", "freebsd", "netbsd", "openbsd"}}
+		return SGCollectTaskEx{
+			SGCollectTask: &OSCommandTask{name, cmd, ""},
+			platforms:     []string{"linux", "darwin", "freebsd", "netbsd", "openbsd"},
+		}
 	case "solaris":
-		return &osTask{OSCommandTask{name, cmd, ""}, []string{"illumos", "solaris"}}
+		return SGCollectTaskEx{
+			SGCollectTask: &OSCommandTask{name, cmd, ""},
+			platforms:     []string{"illumos", "solaris"},
+		}
 	default:
 		panic(fmt.Sprintf("unknown platform %s", platform))
 	}
