@@ -844,8 +844,8 @@ func (h *handler) headerMatchesEtag(headerName string, etag string) bool {
 
 // Returns true if the header exists, and its value does NOT match the given etag.
 // (The etag parameter should not be double-quoted; the function will take care of that.)
-func (h *handler) headerDoesNotMatchEtag(headerName string, etag string) bool {
-	value := h.rq.Header.Get(headerName)
+func (h *handler) headerDoesNotMatchEtag(etag string) bool {
+	value := h.rq.Header.Get("If-Match")
 	return value != "" && !strings.Contains(value, `"`+etag+`"`)
 }
 

@@ -30,6 +30,8 @@ const kDefaultDBOnlineDelay = 0
 
 const paramDisableOIDCValidation = "disable_oidc_validation"
 
+const IfMatchHeader = "If-Match"
+
 // GetUsers  - GET /{db}/_user/
 const paramNameOnly = "name_only"
 const paramLimit = "limit"
@@ -531,7 +533,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 				return nil, err
 			}
 
-			if h.headerDoesNotMatchEtag("If-Match", bucketDbConfig.Version) {
+			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
 				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 			}
 
@@ -646,7 +648,7 @@ func (h *handler) handleDeleteDbConfigSync() error {
 				return nil, err
 			}
 
-			if h.headerDoesNotMatchEtag("If-Match", bucketDbConfig.Version) {
+			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
 				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 			}
 
@@ -707,7 +709,7 @@ func (h *handler) handlePutDbConfigSync() error {
 				return nil, err
 			}
 
-			if h.headerDoesNotMatchEtag("If-Match", bucketDbConfig.Version) {
+			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
 				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 			}
 
@@ -796,7 +798,7 @@ func (h *handler) handleDeleteDbConfigImportFilter() error {
 				return nil, err
 			}
 
-			if h.headerDoesNotMatchEtag("If-Match", bucketDbConfig.Version) {
+			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
 				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 			}
 
@@ -858,7 +860,7 @@ func (h *handler) handlePutDbConfigImportFilter() error {
 				return nil, err
 			}
 
-			if h.headerDoesNotMatchEtag("If-Match", bucketDbConfig.Version) {
+			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
 				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 			}
 

@@ -397,10 +397,7 @@ func (h *handler) handlePutDoc() error {
 		bodyRev := body[db.BodyRev]
 		if oldRev := h.getQuery("rev"); oldRev != "" {
 			body[db.BodyRev] = oldRev
-		} else if ifMatch, err := h.getEtag("If-Match"); ifMatch != "" {
-			if err != nil {
-				return err
-			}
+		} else if ifMatch, _ := h.getEtag("If-Match"); ifMatch != "" {
 			body[db.BodyRev] = ifMatch
 		}
 		if bodyRev != nil && bodyRev != body[db.BodyRev] {
@@ -458,10 +455,7 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 	var parentRev string
 	if oldRev := h.getQuery("rev"); oldRev != "" {
 		parentRev = oldRev
-	} else if ifMatch, err := h.getEtag("If-Match"); ifMatch != "" {
-		if err != nil {
-			return nil
-		}
+	} else if ifMatch, _ := h.getEtag("If-Match"); ifMatch != "" {
 		parentRev = ifMatch
 	}
 

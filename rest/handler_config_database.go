@@ -55,7 +55,7 @@ func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 					return nil, err
 				}
 
-				if h.headerDoesNotMatchEtag("If-Match", bucketDbConfig.Version) {
+				if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
 					return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 				}
 
