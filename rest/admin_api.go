@@ -30,8 +30,6 @@ const kDefaultDBOnlineDelay = 0
 
 const paramDisableOIDCValidation = "disable_oidc_validation"
 
-const IfMatchHeader = "If-Match"
-
 // GetUsers  - GET /{db}/_user/
 const paramNameOnly = "name_only"
 const paramLimit = "limit"
