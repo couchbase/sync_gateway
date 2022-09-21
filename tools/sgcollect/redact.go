@@ -1,14 +1,18 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/sha1"
+	"encoding/hex"
 	"errors"
 	"io"
+	"log"
 )
 
 type CopyFunc func(io.Writer, io.Reader) (int64, error)
 
+// Copier returns a CopyFunc appropriate for the configured redaction level.
 func Copier(opts *SGCollectOptions) CopyFunc {
 	if opts.LogRedactionLevel == RedactNone {
 		return io.Copy
@@ -17,63 +21,112 @@ func Copier(opts *SGCollectOptions) CopyFunc {
 	return func(dst io.Writer, src io.Reader) (int64, error) {
 		var written int64
 		var err error
-		const maxRedactedDataSize = 64 * 1024 // 64MB
-		size := 32 * 1024
-		if l, ok := src.(*io.LimitedReader); ok && int64(size) > l.N {
-			if l.N < 1 {
-				size = 1
-			} else {
-				size = int(l.N)
-			}
-		}
-		buf := make([]byte, size)
-		redactBuf := make([]byte, 0, maxRedactedDataSize)
-		for {
-			numRead, readErr := src.Read(buf)
-			var writeBuf []byte
-			if numRead > 0 {
-				var redacted []byte
-				var needMore bool
-				for {
-					redactBuf = append(redactBuf, buf[:numRead]...)
-					redacted, needMore = maybeRedactBuffer(redactBuf, []byte(opts.LogRedactionSalt))
-					if !needMore {
-						writeBuf = redacted
-						redactBuf = make([]byte, 0, maxRedactedDataSize)
-						break
-					}
-					numRead, readErr = src.Read(buf)
-					if numRead > 0 {
-						continue
-					}
-					if readErr != nil {
-						goto ReadErr
-					}
-				}
 
-				numWritten, writeErr := dst.Write(writeBuf)
-				if numWritten < 0 || numRead < numWritten {
-					numWritten = 0
-					if writeErr == nil {
-						writeErr = errors.New("invalid write result")
-					}
-				}
-				written += int64(numWritten)
-				if writeErr != nil {
-					err = writeErr
-					break
-				}
-				if numRead != numWritten {
-					err = errors.New("short write")
-					break
+		flush := func(chunk []byte) error {
+			nw, wErr := dst.Write(chunk)
+			if nw < 0 || nw < len(chunk) {
+				nw = 0
+				if wErr == nil {
+					wErr = errors.New("invalid write")
 				}
 			}
-		ReadErr:
-			if readErr != nil {
-				if readErr != io.EOF {
-					err = readErr
+			written += int64(nw)
+			if wErr != nil {
+				return wErr
+			}
+			if errors.Is(err, io.EOF) {
+				err = nil // match the io.Copy protocol
+			}
+			if len(chunk) != nw {
+				return errors.New("short write")
+			}
+			return nil
+		}
+
+		br := bufio.NewReader(src)
+		var tmp []byte
+		redactBuf := make([]byte, 0, 32*1024)
+		depth := 0
+		for {
+			chunk, readErr := br.ReadBytes('<')
+			if errors.Is(readErr, io.EOF) {
+				if depth > 0 {
+					log.Println("WARN: mismatched UD tag")
+					err = flush(append([]byte("<ud>"), chunk...))
+				} else {
+					err = flush(chunk)
 				}
 				break
+			}
+			if readErr != nil {
+				err = readErr
+				break
+			}
+			// Check if the next tag is an opening or closing tag.
+			tmp, err = br.Peek(4)
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					log.Printf("WARN: Corrupt redaction tag")
+					err = flush(chunk)
+					if err != nil {
+						break
+					}
+					continue
+				}
+				err = readErr
+				break
+			}
+			if string(tmp[:3]) == "ud>" {
+				// opening
+				if depth == 0 {
+					// need to first write out everything up to the opening <
+					err = flush(chunk[:len(chunk)-1])
+					if err != nil {
+						break
+					}
+					// and then discard the remainder of the opening tag, as it doesn't get redacted (its contents do)
+					_, err = br.Discard(3)
+					if err != nil {
+						err = readErr
+						break
+					}
+					// now the br is just after the opening <ud>
+				} else {
+					// need to push the entire chunk into the redact buffer, *including* this opening <ud> because it's nested
+					redactBuf = append(redactBuf, chunk...)
+				}
+				depth++
+				// continue reading until we either hit the end of the source or find the closing UD
+				continue
+			} else if string(tmp[:4]) == "/ud>" {
+				// closing
+				depth--
+				if depth == 0 {
+					// chunk will now be the complete redactable area, because we discard everything up to it, plus the
+					// closing >.
+					_, err = br.Discard(4)
+					if err != nil {
+						err = readErr
+						break
+					}
+					// now the br is just after the closing </ud>>
+					redactBuf = append(redactBuf, chunk[:len(chunk)-1]...)
+					sumInput := append([]byte(opts.LogRedactionSalt), redactBuf...)
+					digest := sha1.Sum(sumInput)
+					chunk = append(append([]byte("<ud>"), hex.EncodeToString(digest[:])...), []byte("</ud>")...)
+					redactBuf = make([]byte, 0, 32*1024)
+				}
+			}
+			// it's not an opening tag, either it's a closing tag or not a tag we care about
+			// if we're inside a redaction tag, it needs to get added to the redaction buffer, otherwise it can go
+			// out as it is
+			if depth > 0 {
+				redactBuf = append(redactBuf, chunk...)
+			} else {
+				err = flush(chunk)
+				if err != nil {
+					break
+				}
 			}
 		}
 		return written, err

@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha1"
+	"encoding/hex"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -10,7 +13,11 @@ import (
 
 func TestRedactCopy(t *testing.T) {
 	opts := &SGCollectOptions{
-		LogRedactionSalt: "foo",
+		LogRedactionSalt: "SALT",
+	}
+	redacted := func(in string) string {
+		digest := sha1.Sum([]byte(string(opts.LogRedactionSalt) + in))
+		return hex.EncodeToString(digest[:])
 	}
 	cases := []struct {
 		Name            string
@@ -24,15 +31,65 @@ func TestRedactCopy(t *testing.T) {
 		{
 			Name:     "simple",
 			Input:    "foo <ud>bar</ud> baz",
-			Expected: "foo bar baz",
+			Expected: fmt.Sprintf("foo <ud>%s</ud> baz", redacted("bar")),
+		},
+		{
+			Name:     "nested",
+			Input:    "foo <ud>bar<ud>baz</ud>qux</ud> baz",
+			Expected: fmt.Sprintf("foo <ud>%s</ud> baz", redacted("bar<ud>baz</ud>qux")),
+		},
+		{
+			Name:     "multiple",
+			Input:    "foo <ud>bar</ud> baz <ud>qux</ud>",
+			Expected: fmt.Sprintf("foo <ud>%s</ud> baz <ud>%s</ud>", redacted("bar"), redacted("qux")),
+		},
+		{
+			Name:     "only",
+			Input:    "<ud>foo</ud>",
+			Expected: fmt.Sprintf("<ud>%s</ud>", redacted("foo")),
+		},
+		{
+			Name:     "at start",
+			Input:    "<ud>foo</ud> bar",
+			Expected: fmt.Sprintf("<ud>%s</ud> bar", redacted("foo")),
+		},
+		{
+			Name:     "at end",
+			Input:    "foo <ud>bar</ud>",
+			Expected: fmt.Sprintf("foo <ud>%s</ud>", redacted("bar")),
+		},
+		{
+			Name:     "corrupt",
+			Input:    "foo <ud",
+			Expected: "foo <ud",
+		},
+		{
+			Name:     "mismatched",
+			Input:    "foo <ud>bar",
+			Expected: "foo <ud>bar",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.Name, func(t *testing.T) {
 			var buf bytes.Buffer
-			_, err := Copier(opts)(&buf, strings.NewReader(tc.Input))
+			n, err := Copier(opts)(&buf, strings.NewReader(tc.Input))
 			require.NoError(t, err)
 			require.Equal(t, tc.Expected, buf.String())
+			require.Equal(t, int64(buf.Len()), n)
 		})
 	}
+}
+
+func FuzzRedactCopy(f *testing.F) {
+	opts := &SGCollectOptions{
+		LogRedactionSalt: "SALT",
+	}
+	f.Add("foo bar")
+	f.Add("foo <ud>bar</ud> baz")
+	f.Fuzz(func(t *testing.T, in string) {
+		var buf bytes.Buffer
+		n, err := Copier(opts)(&buf, strings.NewReader(in))
+		require.NoError(t, err)
+		require.Equal(t, int64(buf.Len()), n)
+	})
 }
