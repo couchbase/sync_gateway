@@ -39,7 +39,7 @@ type rootResponse struct {
 	CouchDB          string `json:"couchdb,omitempty"` // TODO: Lithium - remove couchdb welcome
 	Vendor           vendor `json:"vendor,omitempty"`
 	Version          string `json:"version,omitempty"`
-	PersistentConfig bool   `json:"persistentConfig,omitempty"`
+	PersistentConfig bool   `json:"persistent_config,omitempty"`
 }
 
 type vendor struct {
