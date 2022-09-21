@@ -2319,14 +2319,14 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	refreshProviderConfig(providers, mockAuthServer.URL)
 
 	ctx := base.TestCtx(t)
-	startupConfig := bootstrapStartupConfigForTest(t)
+	startupConfig := BootstrapStartupConfigForTest(t)
 	sc, err := SetupServerContext(ctx, &startupConfig, true)
 	require.NoError(t, err)
 	serverErr := make(chan error, 0)
 	go func() {
-		serverErr <- startServer(ctx, &startupConfig, sc)
+		serverErr <- StartServer(ctx, &startupConfig, sc)
 	}()
-	require.NoError(t, sc.waitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs())
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
@@ -2346,7 +2346,7 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	"num_index_replicas": 0,
 	"oidc":` + string(mustMarshalJSON(t, &oidcOptions)) + `}`
 
-	res := bootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
+	res := BootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
 	require.Equal(t, http.StatusCreated, res.StatusCode)
 
 	// Sanity check that we can authenticate properly
@@ -2366,7 +2366,7 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	require.Equal(t, http.StatusOK, httpRes.StatusCode)
 
 	// Check that the user is present in the admin API
-	res = bootstrapAdminRequest(t, http.MethodGet, fmt.Sprintf("/db/_user/%s", subject), "")
+	res = BootstrapAdminRequest(t, http.MethodGet, fmt.Sprintf("/db/_user/%s", subject), "")
 	require.Equal(t, http.StatusOK, res.StatusCode)
 	var adminResult db.Body
 	require.NoError(t, base.JSONUnmarshal([]byte(res.Body), &adminResult))
@@ -2393,11 +2393,11 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	"use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
 	"num_index_replicas": 0,
 	"oidc":` + string(mustMarshalJSON(t, &oidcOptions)) + `}`
-	res = bootstrapAdminRequest(t, http.MethodPut, "/db/_config?disable_oidc_validation=true", dbConfig)
-	res.requireStatus(http.StatusCreated)
+	res = BootstrapAdminRequest(t, http.MethodPut, "/db/_config?disable_oidc_validation=true", dbConfig)
+	res.RequireStatus(http.StatusCreated)
 
 	// Check that the user is still present, but with no OIDC info
-	res = bootstrapAdminRequest(t, http.MethodGet, fmt.Sprintf("/db/_user/%s", subject), "")
+	res = BootstrapAdminRequest(t, http.MethodGet, fmt.Sprintf("/db/_user/%s", subject), "")
 	require.Equal(t, http.StatusOK, res.StatusCode)
 	adminResult = db.Body{}
 	require.NoError(t, base.JSONUnmarshal([]byte(res.Body), &adminResult))
@@ -2414,7 +2414,7 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, httpRes.StatusCode)
 
 	// Finally, check that the user can sign in through basic auth, but their OIDC roles/channels get revoked
-	res = bootstrapAdminRequest(t, http.MethodPut, fmt.Sprintf("/db/_user/%s", subject), `{"password": "hunter2"}`)
+	res = BootstrapAdminRequest(t, http.MethodPut, fmt.Sprintf("/db/_user/%s", subject), `{"password": "hunter2"}`)
 	require.Equal(t, http.StatusOK, res.StatusCode)
 
 	req, err = http.NewRequest(http.MethodPost, bootstrapURL(publicPort)+"/db/_session", bytes.NewBufferString("{}"))

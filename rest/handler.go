@@ -216,7 +216,7 @@ func parseKeyspace(ks string) (db string, scope, collection *string, err error) 
 // Top-level handler call. It's passed a pointer to the specific method to run.
 func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, responsePermissions []Permission) error {
 	var err error
-	if h.server.config.API.CompressResponses == nil || *h.server.config.API.CompressResponses {
+	if h.server.Config.API.CompressResponses == nil || *h.server.Config.API.CompressResponses {
 		if encoded := NewEncodedResponseWriter(h.response, h.rq); encoded != nil {
 			h.response = encoded
 			defer encoded.Close()
@@ -250,7 +250,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 
 	// If an Admin Request and admin auth enabled or a metrics request with metrics auth enabled we need to check the
 	// user credentials
-	shouldCheckAdminAuth := (h.privs == adminPrivs && *h.server.config.API.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.config.API.MetricsInterfaceAuthentication)
+	shouldCheckAdminAuth := (h.privs == adminPrivs && *h.server.Config.API.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.Config.API.MetricsInterfaceAuthentication)
 
 	keyspaceDb := h.PathVar("db")
 	var keyspaceScope, keyspaceCollection *string
@@ -376,7 +376,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	if shouldCheckAdminAuth {
 		// If server is walrus but auth is enabled we should just kick the user out as invalid as we have nothing to
 		// validate credentials against
-		if base.ServerIsWalrus(h.server.config.Bootstrap.Server) {
+		if base.ServerIsWalrus(h.server.Config.Bootstrap.Server) {
 			return base.HTTPErrorf(http.StatusUnauthorized, "Authorization not possible with Walrus server. "+
 				"Either use Couchbase Server or disable admin auth by setting api.admin_interface_authentication and api.metrics_interface_authentication to false.")
 		}
@@ -423,7 +423,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		}
 
 		permissions, statusCode, err := checkAdminAuth(authScope, username, password, h.rq.Method, httpClient,
-			managementEndpoints, *h.server.config.API.EnableAdminAuthenticationPermissionsCheck, accessPermissions,
+			managementEndpoints, *h.server.Config.API.EnableAdminAuthenticationPermissionsCheck, accessPermissions,
 			responsePermissions)
 		if err != nil {
 			base.WarnfCtx(h.ctx(), "An error occurred whilst checking whether a user was authorized: %v", err)
@@ -1097,7 +1097,7 @@ func (h *handler) writeJSONStatus(status int, value interface{}) {
 		h.writeStatus(http.StatusInternalServerError, "JSON serialization failed")
 		return
 	}
-	if base.BoolDefault(h.server.config.API.Pretty, false) {
+	if base.BoolDefault(h.server.Config.API.Pretty, false) {
 		var buffer bytes.Buffer
 		_ = json.Indent(&buffer, jsonOut, "", "  ")
 		jsonOut = append(buffer.Bytes(), '\n')
@@ -1360,7 +1360,7 @@ func (h *handler) formatSerialNumber() string {
 // shouldShowProductVersion returns whether the handler should show detailed product info (version).
 // Admin requests can always see this, regardless of the HideProductVersion setting.
 func (h *handler) shouldShowProductVersion() bool {
-	hideProductVersion := base.BoolDefault(h.server.config.API.HideProductVersion, false)
+	hideProductVersion := base.BoolDefault(h.server.Config.API.HideProductVersion, false)
 	return h.privs == adminPrivs || !hideProductVersion
 }
 

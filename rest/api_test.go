@@ -132,19 +132,6 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 	RequireStatus(t, response, http.StatusOK)
 }
 
-func (rt *RestTester) CreateDoc(t *testing.T, docid string) string {
-	response := rt.SendAdminRequest("PUT", "/db/"+docid, `{"prop":true}`)
-	RequireStatus(t, response, 201)
-	var body db.Body
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	assert.Equal(t, true, body["ok"])
-	revid := body["rev"].(string)
-	if revid == "" {
-		t.Fatalf("No revid in response for PUT doc")
-	}
-	return revid
-}
-
 func TestDocLifecycle(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -704,7 +691,7 @@ func TestCORSOrigin(t *testing.T) {
 
 	// test with a config without * should reject non-matches
 	sc := rt.ServerContext()
-	sc.config.API.CORS.Origin = []string{"http://example.com", "http://staging.example.com"}
+	sc.Config.API.CORS.Origin = []string{"http://example.com", "http://staging.example.com"}
 	// now test a non-listed origin
 	// b/c * is in config we get *
 	reqHeaders = map[string]string{
@@ -750,7 +737,7 @@ func TestCORSLoginOriginOnSessionPostNoCORSConfig(t *testing.T) {
 
 	// Set CORS to nil
 	sc := rt.ServerContext()
-	sc.config.API.CORS = nil
+	sc.Config.API.CORS = nil
 
 	response := rt.SendRequestWithHeaders("POST", "/db/_session", `{"name":"jchris","password":"secret"}`, reqHeaders)
 	RequireStatus(t, response, 400)
@@ -797,7 +784,7 @@ func TestCORSLogoutOriginOnSessionDeleteNoCORSConfig(t *testing.T) {
 
 	// Set CORS to nil
 	sc := rt.ServerContext()
-	sc.config.API.CORS = nil
+	sc.Config.API.CORS = nil
 
 	response := rt.SendRequestWithHeaders("DELETE", "/db/_session", "", reqHeaders)
 	RequireStatus(t, response, 400)
@@ -2065,7 +2052,7 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 	assert.Equal(t, uint64(kMaxTimeoutMS), options.TimeoutMs)
 
 	// Set max heartbeat in server context, attempt to set heartbeat greater than max
-	h.server.config.Replicator.MaxHeartbeat = base.NewConfigDuration(time.Minute)
+	h.server.Config.Replicator.MaxHeartbeat = base.NewConfigDuration(time.Minute)
 	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":90000}`
 	feed, options, filter, channelsArray, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.NoError(t, err)

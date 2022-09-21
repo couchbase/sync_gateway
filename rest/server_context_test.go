@@ -362,7 +362,7 @@ func TestStartAndStopHTTPServers(t *testing.T) {
 
 	serveErr := make(chan error, 0)
 	go func() {
-		serveErr <- startServer(ctx, &config, sc)
+		serveErr <- StartServer(ctx, &config, sc)
 	}()
 
 	defer func() {

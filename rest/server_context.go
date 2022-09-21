@@ -49,7 +49,7 @@ var ErrSuspendingDisallowed = errors.New("database does not allow suspending")
 // This struct is accessed from HTTP handlers running on multiple goroutines, so it needs to
 // be thread-safe.
 type ServerContext struct {
-	config                 *StartupConfig // The current runtime configuration of the node
+	Config                 *StartupConfig // The current runtime configuration of the node
 	initialStartupConfig   *StartupConfig // The configuration at startup of the node. Built from config file + flags
 	persistentConfig       bool
 	bucketDbName           map[string]string              // bucketDbName is a map of bucket to database name
@@ -57,7 +57,7 @@ type ServerContext struct {
 	databases_             map[string]*db.DatabaseContext // databases_ is a map of dbname to db.DatabaseContext
 	lock                   sync.RWMutex
 	statsContext           *statsContext
-	bootstrapContext       *bootstrapContext
+	BootstrapContext       *bootstrapContext
 	HTTPClient             *http.Client
 	cpuPprofFileMutex      sync.Mutex      // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
 	cpuPprofFile           *os.File        // An open file descriptor holds the reference during CPU profiling
@@ -65,12 +65,12 @@ type ServerContext struct {
 	GoCBAgent              *gocbcore.Agent // GoCB Agent to use when obtaining management endpoints
 	NoX509HTTPClient       *http.Client    // httpClient for the cluster that doesn't include x509 credentials, even if they are configured for the cluster
 	hasStarted             chan struct{}   // A channel that is closed via PostStartup once the ServerContext has fully started
-	LogContextID           string          // ID to differentiate log messages from different server context 	// A channel that is closed via PostStartup once the ServerContext has fully started
+	LogContextID           string          // ID to differentiate log messages from different server context
 	fetchConfigsLastUpdate time.Time       // The last time fetchConfigsWithTTL() updated dbConfigs
 }
 
 type bootstrapContext struct {
-	connection base.BootstrapConnection
+	Connection base.BootstrapConnection
 	terminator chan struct{} // Used to stop the goroutine handling the stats logging
 	doneChan   chan struct{} // doneChan is closed when the stats logger goroutine finishes.
 }
@@ -103,25 +103,25 @@ func (sc *ServerContext) CloseCpuPprofFile(ctx context.Context) {
 
 func NewServerContext(ctx context.Context, config *StartupConfig, persistentConfig bool) *ServerContext {
 	sc := &ServerContext{
-		config:           config,
+		Config:           config,
 		persistentConfig: persistentConfig,
 		bucketDbName:     map[string]string{},
 		dbConfigs:        map[string]*DatabaseConfig{},
 		databases_:       map[string]*db.DatabaseContext{},
 		HTTPClient:       http.DefaultClient,
 		statsContext:     &statsContext{},
-		bootstrapContext: &bootstrapContext{},
+		BootstrapContext: &bootstrapContext{},
 		hasStarted:       make(chan struct{}),
 	}
 
-	if base.ServerIsWalrus(sc.config.Bootstrap.Server) {
+	if base.ServerIsWalrus(sc.Config.Bootstrap.Server) {
 		sc.persistentConfig = false
 
 		// Disable Admin API authentication when running as walrus on the default admin interface to support dev
 		// environments.
-		if sc.config.API.AdminInterface == DefaultAdminInterface {
-			sc.config.API.AdminInterfaceAuthentication = base.BoolPtr(false)
-			sc.config.API.MetricsInterfaceAuthentication = base.BoolPtr(false)
+		if sc.Config.API.AdminInterface == DefaultAdminInterface {
+			sc.Config.API.AdminInterfaceAuthentication = base.BoolPtr(false)
+			sc.Config.API.MetricsInterfaceAuthentication = base.BoolPtr(false)
 		}
 	}
 
@@ -130,7 +130,7 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 	return sc
 }
 
-func (sc *ServerContext) waitForRESTAPIs() error {
+func (sc *ServerContext) WaitForRESTAPIs() error {
 	timeout := 30 * time.Second
 	interval := time.Millisecond * 100
 	numAttempts := int(timeout / interval)
@@ -150,7 +150,7 @@ func (sc *ServerContext) waitForRESTAPIs() error {
 // PostStartup runs anything that relies on SG being fully started (i.e. sgreplicate)
 func (sc *ServerContext) PostStartup() {
 	// Delay DatabaseContext processes starting up, e.g. to avoid replication reassignment churn when a Sync Gateway Cluster is being initialized
-	// TODO: Consider sc.waitForRESTAPIs for faster startup?
+	// TODO: Consider sc.WaitForRESTAPIs for faster startup?
 	time.Sleep(5 * time.Second)
 	close(sc.hasStarted)
 }
@@ -166,7 +166,7 @@ func (sc *ServerContext) Close(ctx context.Context) {
 		base.InfofCtx(ctx, base.KeyAll, "Couldn't stop stats logger: %v", err)
 	}
 
-	err = base.TerminateAndWaitForClose(sc.bootstrapContext.terminator, sc.bootstrapContext.doneChan, serverContextStopMaxWait)
+	err = base.TerminateAndWaitForClose(sc.BootstrapContext.terminator, sc.BootstrapContext.doneChan, serverContextStopMaxWait)
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyAll, "Couldn't stop background config update worker: %v", err)
 	}
@@ -176,7 +176,7 @@ func (sc *ServerContext) Close(ctx context.Context) {
 
 	for _, db := range sc.databases_ {
 		db.Close(ctx)
-		_ = db.EventMgr.RaiseDBStateChangeEvent(db.Name, "offline", "Database context closed", &sc.config.API.AdminInterface)
+		_ = db.EventMgr.RaiseDBStateChangeEvent(db.Name, "offline", "Database context closed", &sc.Config.API.AdminInterface)
 	}
 	sc.databases_ = nil
 
@@ -206,22 +206,11 @@ func (sc *ServerContext) GetDatabase(ctx context.Context, name string) (*db.Data
 		return nil, base.HTTPErrorf(http.StatusBadRequest, "invalid database name %q", name)
 	}
 
-	dbc, err := sc.unsuspendDatabase(ctx, name)
-	if err != nil && err != base.ErrNotFound && err != ErrSuspendingDisallowed {
-		return nil, err
-	} else if err == nil {
-		return dbc, nil
-	}
-
-	// database not loaded, fallback to fetching it from cluster
-	if sc.bootstrapContext.connection != nil {
-		var found bool
-		if sc.config.IsServerless() {
-			found, err = sc.fetchAndLoadDatabaseSince(ctx, name, sc.config.Unsupported.Serverless.MinConfigFetchInterval)
-
-		} else {
-			found, err = sc.fetchAndLoadDatabase(ctx, name)
-		}
+	if sc.BootstrapContext.Connection != nil {
+		sc.lock.Lock()
+		defer sc.lock.Unlock()
+		// database not loaded, go look for it in the cluster
+		found, err := sc._fetchAndLoadDatabase(ctx, name)
 		if err != nil {
 			return nil, base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
 		}
@@ -390,7 +379,7 @@ func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *St
 func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config DatabaseConfig, useExisting bool, openBucketFn db.OpenBucketFn) (*db.DatabaseContext, error) {
 
 	// Generate bucket spec and validate whether db already exists
-	spec, err := GetBucketSpec(ctx, &config, sc.config)
+	spec, err := GetBucketSpec(ctx, &config, sc.Config)
 	if err != nil {
 		return nil, err
 	}
@@ -400,7 +389,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		dbName = spec.BucketName
 	}
 	if spec.Server == "" {
-		spec.Server = sc.config.Bootstrap.Server
+		spec.Server = sc.Config.Bootstrap.Server
 	}
 
 	if sc.databases_[dbName] != nil {
@@ -607,10 +596,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 	if base.BoolDefault(config.StartOffline, false) {
 		atomic.StoreUint32(&dbcontext.State, db.DBOffline)
-		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "DB loaded from config", &sc.config.API.AdminInterface)
+		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "DB loaded from config", &sc.Config.API.AdminInterface)
 	} else {
 		atomic.StoreUint32(&dbcontext.State, db.DBOnline)
-		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", &sc.config.API.AdminInterface)
+		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", &sc.Config.API.AdminInterface)
 	}
 
 	dbcontext.StartReplications(ctx)
@@ -757,7 +746,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 	}
 	cacheOptions.ChannelQueryLimit = queryPaginationLimit
 
-	secureCookieOverride := sc.config.API.HTTPS.TLSCertPath != ""
+	secureCookieOverride := sc.Config.API.HTTPS.TLSCertPath != ""
 	if config.SecureCookieOverride != nil {
 		secureCookieOverride = *config.SecureCookieOverride
 	}
@@ -792,7 +781,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		clientPartitionWindow = time.Duration(*config.ClientPartitionWindowSecs) * time.Second
 	}
 
-	bcryptCost := sc.config.Auth.BcryptCost
+	bcryptCost := sc.Config.Auth.BcryptCost
 	if bcryptCost <= 0 {
 		bcryptCost = auth.DefaultBcryptCost
 	}
@@ -803,8 +792,8 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 	}
 
 	groupID := ""
-	if sc.config.Bootstrap.ConfigGroupID != PersistentConfigDefaultGroupID {
-		groupID = sc.config.Bootstrap.ConfigGroupID
+	if sc.Config.Bootstrap.ConfigGroupID != PersistentConfigDefaultGroupID {
+		groupID = sc.Config.Bootstrap.ConfigGroupID
 	}
 
 	if config.AllowConflicts != nil && *config.AllowConflicts {
@@ -822,7 +811,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		RevisionCacheOptions:          revCacheOptions,
 		OldRevExpirySeconds:           oldRevExpirySeconds,
 		LocalDocExpirySecs:            localDocExpirySecs,
-		AdminInterface:                &sc.config.API.AdminInterface,
+		AdminInterface:                &sc.Config.API.AdminInterface,
 		UnsupportedOptions:            config.Unsupported,
 		OIDCOptions:                   config.OIDCConfig,
 		LocalJWTConfig:                config.LocalJWTConfig,
@@ -848,13 +837,13 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		BcryptCost:                bcryptCost,
 		GroupID:                   groupID,
 		JavascriptTimeout:         javascriptTimeout,
-		Serverless:                sc.config.IsServerless(),
+		Serverless:                sc.Config.IsServerless(),
 		// UserQueries:               config.UserQueries,   // behind feature flag (see below)
 		// UserFunctions:             config.UserFunctions, // behind feature flag (see below)
 		// GraphQL:                   config.GraphQL,       // behind feature flag (see below)
 	}
 
-	if sc.config.Unsupported.UserQueries != nil && *sc.config.Unsupported.UserQueries {
+	if sc.Config.Unsupported.UserQueries != nil && *sc.Config.Unsupported.UserQueries {
 		contextOptions.UserQueries = config.UserQueries
 		contextOptions.UserFunctions = config.UserFunctions
 		contextOptions.GraphQL = config.GraphQL
@@ -1066,7 +1055,7 @@ func (sc *ServerContext) _suspendDatabase(ctx context.Context, dbName string) er
 		return base.ErrNotFound
 	}
 
-	if config, exists := sc.dbConfigs[dbName]; exists && !base.BoolDefault(config.Suspendable, sc.config.IsServerless()) {
+	if config, exists := sc.dbConfigs[dbName]; exists && !base.BoolDefault(config.Suspendable, sc.Config.IsServerless()) {
 		return ErrSuspendingDisallowed
 	}
 
@@ -1094,7 +1083,7 @@ func (sc *ServerContext) _unsuspendDatabase(ctx context.Context, dbName string) 
 
 	// Check if database is in dbConfigs so no need to search through buckets
 	if dbConfig, ok := sc.dbConfigs[dbName]; ok {
-		if !base.BoolDefault(dbConfig.Suspendable, sc.config.IsServerless()) {
+		if !base.BoolDefault(dbConfig.Suspendable, sc.Config.IsServerless()) {
 			base.InfofCtx(context.TODO(), base.KeyAll, "attempting to unsuspend db %q while not configured to be suspendable", base.MD(dbName))
 		}
 
@@ -1102,7 +1091,7 @@ func (sc *ServerContext) _unsuspendDatabase(ctx context.Context, dbName string) 
 		if dbConfig.Bucket != nil {
 			bucket = *dbConfig.Bucket
 		}
-		cas, err := sc.bootstrapContext.connection.GetConfig(bucket, sc.config.Bootstrap.ConfigGroupID, dbConfig)
+		cas, err := sc.BootstrapContext.Connection.GetConfig(bucket, sc.Config.Bootstrap.ConfigGroupID, dbConfig)
 		if err == base.ErrNotFound {
 			// Database no longer exists, so clean up dbConfigs
 			base.InfofCtx(ctx, base.KeyConfig, "Database %q has been removed while suspended from bucket %q", base.MD(dbName), base.MD(bucket))
@@ -1184,12 +1173,12 @@ type statsWrapper struct {
 
 func (sc *ServerContext) startStatsLogger(ctx context.Context) {
 
-	if sc.config.Unsupported.StatsLogFrequency == nil || sc.config.Unsupported.StatsLogFrequency.Value() == 0 {
+	if sc.Config.Unsupported.StatsLogFrequency == nil || sc.Config.Unsupported.StatsLogFrequency.Value() == 0 {
 		// don't start the stats logger when explicitly zero
 		return
 	}
 
-	interval := sc.config.Unsupported.StatsLogFrequency
+	interval := sc.Config.Unsupported.StatsLogFrequency
 
 	sc.statsContext.statsLoggingTicker = time.NewTicker(interval.Value())
 	sc.statsContext.terminator = make(chan struct{})
@@ -1247,11 +1236,11 @@ func (sc *ServerContext) logStats(ctx context.Context) error {
 
 func (sc *ServerContext) logNetworkInterfaceStats(ctx context.Context) {
 
-	if err := sc.statsContext.addPublicNetworkInterfaceStatsForHostnamePort(sc.config.API.PublicInterface); err != nil {
+	if err := sc.statsContext.addPublicNetworkInterfaceStatsForHostnamePort(sc.Config.API.PublicInterface); err != nil {
 		base.WarnfCtx(ctx, "Error getting public network interface resource stats: %v", err)
 	}
 
-	if err := sc.statsContext.addAdminNetworkInterfaceStatsForHostnamePort(sc.config.API.AdminInterface); err != nil {
+	if err := sc.statsContext.addAdminNetworkInterfaceStatsForHostnamePort(sc.Config.API.AdminInterface); err != nil {
 		base.WarnfCtx(ctx, "Error getting admin network interface resource stats: %v", err)
 	}
 
@@ -1337,8 +1326,8 @@ func (sc *ServerContext) initializeGoCBAgent(ctx context.Context) (*gocbcore.Age
 	err, a := base.RetryLoop("Initialize Cluster Agent", func() (shouldRetry bool, err error, value interface{}) {
 		agent, err := initClusterAgent(
 			ctx,
-			sc.config.Bootstrap.Server, sc.config.Bootstrap.Username, sc.config.Bootstrap.Password,
-			sc.config.Bootstrap.X509CertPath, sc.config.Bootstrap.X509KeyPath, sc.config.Bootstrap.CACertPath, sc.config.Bootstrap.ServerTLSSkipVerify)
+			sc.Config.Bootstrap.Server, sc.Config.Bootstrap.Username, sc.Config.Bootstrap.Password,
+			sc.Config.Bootstrap.X509CertPath, sc.Config.Bootstrap.X509KeyPath, sc.Config.Bootstrap.CACertPath, sc.Config.Bootstrap.ServerTLSSkipVerify)
 		if err != nil {
 			base.InfofCtx(ctx, base.KeyConfig, "Couldn't initialize cluster agent: %v - will retry...", err)
 			return true, err, nil
@@ -1367,7 +1356,7 @@ func (sc *ServerContext) initializeNoX509HttpClient() (*http.Client, error) {
 		MinVersion: tls.VersionTLS12,
 	}
 	var rootCAs *x509.CertPool
-	tlsRootCAProvider, err := base.GoCBCoreTLSRootCAProvider(sc.config.Bootstrap.ServerTLSSkipVerify, sc.config.Bootstrap.CACertPath)
+	tlsRootCAProvider, err := base.GoCBCoreTLSRootCAProvider(sc.Config.Bootstrap.ServerTLSSkipVerify, sc.Config.Bootstrap.CACertPath)
 	if err != nil {
 		return nil, err
 	}
@@ -1613,11 +1602,11 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 
 	// Fetch database configs from bucket and start polling for new buckets and config updates.
 	if sc.persistentConfig {
-		couchbaseCluster, err := createCouchbaseClusterFromStartupConfig(sc.config)
+		couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(sc.Config)
 		if err != nil {
 			return err
 		}
-		sc.bootstrapContext.connection = couchbaseCluster
+		sc.BootstrapContext.Connection = couchbaseCluster
 
 		count, err := sc.fetchAndLoadConfigs(ctx, true)
 		if err != nil {
@@ -1627,25 +1616,25 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 		if count > 0 {
 			base.InfofCtx(ctx, base.KeyConfig, "Successfully fetched %d database configs from buckets in cluster", count)
 		} else {
-			base.WarnfCtx(ctx, "Config: No database configs for group %q. Continuing startup to allow REST API database creation", sc.config.Bootstrap.ConfigGroupID)
+			base.WarnfCtx(ctx, "Config: No database configs for group %q. Continuing startup to allow REST API database creation", sc.Config.Bootstrap.ConfigGroupID)
 		}
 
-		if sc.config.Bootstrap.ConfigUpdateFrequency.Value() > 0 {
-			sc.bootstrapContext.terminator = make(chan struct{})
-			sc.bootstrapContext.doneChan = make(chan struct{})
+		if sc.Config.Bootstrap.ConfigUpdateFrequency.Value() > 0 {
+			sc.BootstrapContext.terminator = make(chan struct{})
+			sc.BootstrapContext.doneChan = make(chan struct{})
 
-			base.InfofCtx(ctx, base.KeyConfig, "Starting background polling for new configs/buckets: %s", sc.config.Bootstrap.ConfigUpdateFrequency.Value().String())
+			base.InfofCtx(ctx, base.KeyConfig, "Starting background polling for new configs/buckets: %s", sc.Config.Bootstrap.ConfigUpdateFrequency.Value().String())
 			go func() {
-				defer close(sc.bootstrapContext.doneChan)
-				t := time.NewTicker(sc.config.Bootstrap.ConfigUpdateFrequency.Value())
+				defer close(sc.BootstrapContext.doneChan)
+				t := time.NewTicker(sc.Config.Bootstrap.ConfigUpdateFrequency.Value())
 				for {
 					select {
-					case <-sc.bootstrapContext.terminator:
+					case <-sc.BootstrapContext.terminator:
 						base.InfofCtx(ctx, base.KeyConfig, "Stopping background config polling loop")
 						t.Stop()
 						return
 					case <-t.C:
-						base.DebugfCtx(ctx, base.KeyConfig, "Fetching configs from buckets in cluster for group %q", sc.config.Bootstrap.ConfigGroupID)
+						base.DebugfCtx(ctx, base.KeyConfig, "Fetching configs from buckets in cluster for group %q", sc.Config.Bootstrap.ConfigGroupID)
 						count, err := sc.fetchAndLoadConfigs(ctx, false)
 						if err != nil {
 							base.WarnfCtx(ctx, "Couldn't load configs from bucket when polled: %v", err)

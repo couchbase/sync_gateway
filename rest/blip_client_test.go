@@ -528,10 +528,10 @@ func createBlipTesterClientOpts(tb testing.TB, rt *RestTester, opts *BlipTesterC
 		return nil, err
 	}
 
-	if btc.pushReplication, err = newBlipTesterReplication(btc.rt.tb, "push"+id.String(), &btc); err != nil {
+	if btc.pushReplication, err = newBlipTesterReplication(btc.rt.TB, "push"+id.String(), &btc); err != nil {
 		return nil, err
 	}
-	if btc.pullReplication, err = newBlipTesterReplication(btc.rt.tb, "pull"+id.String(), &btc); err != nil {
+	if btc.pullReplication, err = newBlipTesterReplication(btc.rt.TB, "pull"+id.String(), &btc); err != nil {
 		return nil, err
 	}
 
@@ -939,7 +939,7 @@ func (btc *BlipTesterCollectionClient) WaitForRev(docID, revID string) (data []b
 	for {
 		select {
 		case <-timeout:
-			btc.parent.rt.tb.Fatalf("BlipTesterClient timed out waiting for doc ID: %v rev ID: %v", docID, revID)
+			btc.parent.rt.TB.Fatalf("BlipTesterClient timed out waiting for doc ID: %v rev ID: %v", docID, revID)
 			return nil, false
 		case <-ticker.C:
 			if data, found := btc.GetRev(docID, revID); found {
@@ -983,7 +983,7 @@ func (btr *BlipTesterReplicator) WaitForMessage(serialNumber blip.MessageNumber)
 	for {
 		select {
 		case <-timeout:
-			btr.bt.restTester.tb.Fatalf("BlipTesterReplicator timed out waiting for BLIP message: %v", serialNumber)
+			btr.bt.restTester.TB.Fatalf("BlipTesterReplicator timed out waiting for BLIP message: %v", serialNumber)
 			return nil, false
 		case <-ticker.C:
 			if msg, ok := btr.GetMessage(serialNumber); ok {
@@ -1005,7 +1005,7 @@ func (btc *BlipTesterCollectionClient) WaitForBlipRevMessage(docID, revID string
 	for {
 		select {
 		case <-timeout:
-			btc.parent.rt.tb.Fatalf("BlipTesterClient timed out waiting for BLIP message docID: %v, revID: %v", docID, revID)
+			btc.parent.rt.TB.Fatalf("BlipTesterClient timed out waiting for BLIP message docID: %v, revID: %v", docID, revID)
 			return nil, false
 		case <-ticker.C:
 			if data, found := btc.GetBlipRevMessage(docID, revID); found {

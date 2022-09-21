@@ -87,7 +87,7 @@ func TestBlipPusherUpdateDatabase(t *testing.T) {
 
 	// Did we tell the client to close the connection (via HTTP/503)?
 	// The BlipTesterClient doesn't implement reconnect - but CBL resets the replication connection.
-	waitAndAssertCondition(t, func() bool {
+	WaitAndAssertCondition(t, func() bool {
 		lastErr, ok := lastPushRevErr.Load().(error)
 		if !ok {
 			return false

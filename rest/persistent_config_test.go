@@ -88,7 +88,7 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 
 	assert.Equal(t, config, string(writtenBackupFile))
 
-	cbs, err := createCouchbaseClusterFromStartupConfig(startupConfig)
+	cbs, err := CreateCouchbaseClusterFromStartupConfig(startupConfig)
 	require.NoError(t, err)
 
 	var dbConfig DbConfig
@@ -215,7 +215,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 	startupConfig, _, _, _, err := automaticConfigUpgrade(updatedConfigPath)
 	require.NoError(t, err)
 
-	cbs, err := createCouchbaseClusterFromStartupConfig(startupConfig)
+	cbs, err := CreateCouchbaseClusterFromStartupConfig(startupConfig)
 	require.NoError(t, err)
 
 	var dbConfig DbConfig
@@ -293,7 +293,7 @@ func TestImportFilterEndpoint(t *testing.T) {
 
 	// Start SG with no databases
 	ctx := base.TestCtx(t)
-	config := bootstrapStartupConfigForTest(t)
+	config := BootstrapStartupConfigForTest(t)
 	sc, err := SetupServerContext(ctx, &config, true)
 	require.NoError(t, err)
 	defer func() {
@@ -302,9 +302,9 @@ func TestImportFilterEndpoint(t *testing.T) {
 	}()
 
 	go func() {
-		serverErr <- startServer(ctx, &config, sc)
+		serverErr <- StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.waitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -312,47 +312,47 @@ func TestImportFilterEndpoint(t *testing.T) {
 		fmt.Println("closing test bucket")
 		tb.Close()
 	}()
-	resp := bootstrapAdminRequest(t, http.MethodPut, "/db1/",
+	resp := BootstrapAdminRequest(t, http.MethodPut, "/db1/",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": %t}`,
 			tb.GetName(), base.TestsDisableGSI(),
 		),
 	)
-	resp.requireStatus(http.StatusCreated)
+	resp.RequireStatus(http.StatusCreated)
 
 	// Ensure we won't fail with an empty import filter
-	resp = bootstrapAdminRequest(t, http.MethodPut, "/db1/_config/import_filter", "")
-	resp.requireStatus(http.StatusOK)
+	resp = BootstrapAdminRequest(t, http.MethodPut, "/db1/_config/import_filter", "")
+	resp.RequireStatus(http.StatusOK)
 
 	// Add a document
 	err = tb.Bucket.Set("importDoc1", 0, nil, []byte("{}"))
 	assert.NoError(t, err)
 
 	// Ensure document is imported based on default import filter
-	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/importDoc1", "")
-	resp.requireStatus(http.StatusOK)
+	resp = BootstrapAdminRequest(t, http.MethodGet, "/db1/importDoc1", "")
+	resp.RequireStatus(http.StatusOK)
 
 	// Modify the import filter to always reject import
-	resp = bootstrapAdminRequest(t, http.MethodPut, "/db1/_config/import_filter", `function(){return false}`)
-	resp.requireStatus(http.StatusOK)
+	resp = BootstrapAdminRequest(t, http.MethodPut, "/db1/_config/import_filter", `function(){return false}`)
+	resp.RequireStatus(http.StatusOK)
 
 	// Add a document
 	err = tb.Bucket.Set("importDoc2", 0, nil, []byte("{}"))
 	assert.NoError(t, err)
 
 	// Ensure document is not imported and is rejected based on updated filter
-	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/importDoc2", "")
-	resp.requireStatus(http.StatusNotFound)
+	resp = BootstrapAdminRequest(t, http.MethodGet, "/db1/importDoc2", "")
+	resp.RequireStatus(http.StatusNotFound)
 	assert.Contains(t, resp.Body, "Not imported")
 
-	resp = bootstrapAdminRequest(t, http.MethodDelete, "/db1/_config/import_filter", "")
-	resp.requireStatus(http.StatusOK)
+	resp = BootstrapAdminRequest(t, http.MethodDelete, "/db1/_config/import_filter", "")
+	resp.RequireStatus(http.StatusOK)
 
 	// Add a document
 	err = tb.Bucket.Set("importDoc3", 0, nil, []byte("{}"))
 	assert.NoError(t, err)
 
 	// Ensure document is imported based on default import filter
-	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/importDoc3", "")
-	resp.requireStatus(http.StatusOK)
+	resp = BootstrapAdminRequest(t, http.MethodGet, "/db1/importDoc3", "")
+	resp.RequireStatus(http.StatusOK)
 }

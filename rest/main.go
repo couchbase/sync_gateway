@@ -144,7 +144,7 @@ func serverMainPersistentConfig(ctx context.Context, fs *flag.FlagSet, flagStart
 
 	svrctx.addLegacyPrincipals(ctx, legacyDbUsers, legacyDbRoles)
 
-	return false, startServer(ctx, &sc, svrctx)
+	return false, StartServer(ctx, &sc, svrctx)
 }
 
 func getInitialStartupConfig(fileStartupConfig *StartupConfig, flagStartupConfig *StartupConfig) (*StartupConfig, error) {
@@ -198,7 +198,7 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 	}
 
 	// Attempt to establish connection to server
-	cluster, err := createCouchbaseClusterFromStartupConfig(startupConfig)
+	cluster, err := CreateCouchbaseClusterFromStartupConfig(startupConfig)
 	if err != nil {
 		return nil, false, nil, nil, err
 	}
@@ -357,7 +357,7 @@ func backupCurrentConfigFile(sourcePath string) (string, error) {
 	return backupPath, nil
 }
 
-func createCouchbaseClusterFromStartupConfig(config *StartupConfig) (*base.CouchbaseCluster, error) {
+func CreateCouchbaseClusterFromStartupConfig(config *StartupConfig) (*base.CouchbaseCluster, error) {
 	cluster, err := base.NewCouchbaseCluster(config.Bootstrap.Server, config.Bootstrap.Username, config.Bootstrap.Password,
 		config.Bootstrap.X509CertPath, config.Bootstrap.X509KeyPath, config.Bootstrap.CACertPath,
 		config.IsServerless(), config.BucketCredentials, config.Bootstrap.ServerTLSSkipVerify)

@@ -8,7 +8,7 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-package rest
+package importtest
 
 import (
 	"fmt"
@@ -22,6 +22,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -37,18 +38,6 @@ func SkipImportTestsIfNotEnabled(t *testing.T) {
 	}
 }
 
-func HasActiveChannel(channelSet map[string]interface{}, channelName string) bool {
-	if channelSet == nil {
-		return false
-	}
-	value, ok := channelSet[channelName]
-	if !ok || value != nil { // An entry for the channel name with a nil value represents an active channel
-		return false
-	}
-
-	return true
-}
-
 // gocb V2 accepts expiry as a duration and converts to a uint32 epoch time, then does the reverse on retrieval.
 // Sync Gateway's bucket interface uses uint32 expiry. The net result is that expiry values written and then read via SG's
 // bucket API go through a transformation based on time.Now (or time.Until) that can result in inexact matches.
@@ -62,7 +51,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) {
 			if (oldDoc == null) {
 				channel("oldDocNil")
@@ -71,11 +60,11 @@ func TestXattrImportOldDoc(t *testing.T) {
 				channel("docDeleted")
 			}
 		}`,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false,
 		}},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	bucket := rt.Bucket()
@@ -94,12 +83,12 @@ func TestXattrImportOldDoc(t *testing.T) {
 	// Attempt to get the document via Sync Gateway, to trigger import.  On import of a create, oldDoc should be nil.
 	response := rt.SendAdminRequest("GET", "/db/_raw/TestImportDelete?redact=false", "")
 	assert.Equal(t, 200, response.Code)
-	var rawInsertResponse RawResponse
+	var rawInsertResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
 	assert.NoError(t, err, "Unable to unmarshal raw response")
 	assert.True(t, rawInsertResponse.Sync.Channels != nil, "Expected channels not returned for SDK insert")
 	log.Printf("insert channels: %+v", rawInsertResponse.Sync.Channels)
-	assert.True(t, HasActiveChannel(rawInsertResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK insert")
+	assert.True(t, rest.HasActiveChannel(rawInsertResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK insert")
 
 	// 2. Test oldDoc behaviour during SDK update
 
@@ -113,7 +102,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 	// Attempt to get the document via Sync Gateway, to trigger import.  On import of a create, oldDoc should be nil.
 	response = rt.SendAdminRequest("GET", "/db/_raw/TestImportDelete?redact=false", "")
 	assert.Equal(t, 200, response.Code)
-	var rawUpdateResponse RawResponse
+	var rawUpdateResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawUpdateResponse)
 	assert.NoError(t, err, "Unable to unmarshal raw response")
 
@@ -122,7 +111,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 	if !rt.GetDatabase().DeltaSyncEnabled() {
 		assert.True(t, rawUpdateResponse.Sync.Channels != nil, "Expected channels not returned for SDK update")
 		log.Printf("update channels: %+v", rawUpdateResponse.Sync.Channels)
-		assert.True(t, HasActiveChannel(rawUpdateResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK update")
+		assert.True(t, rest.HasActiveChannel(rawUpdateResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK update")
 	}
 
 	// 3. Test oldDoc behaviour during SDK delete
@@ -131,16 +120,16 @@ func TestXattrImportOldDoc(t *testing.T) {
 
 	response = rt.SendAdminRequest("GET", "/db/_raw/TestImportDelete?redact=false", "")
 	assert.Equal(t, 200, response.Code)
-	var rawDeleteResponse RawResponse
+	var rawDeleteResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawDeleteResponse)
 	log.Printf("Post-delete: %s", response.Body.Bytes())
 	assert.NoError(t, err, "Unable to unmarshal raw response")
 	assert.True(t, rawUpdateResponse.Sync.Channels != nil, "Expected channels not returned for SDK update")
 	log.Printf("update channels: %+v", rawDeleteResponse.Sync.Channels)
 	if !rt.GetDatabase().DeltaSyncEnabled() {
-		assert.True(t, HasActiveChannel(rawDeleteResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK delete")
+		assert.True(t, rest.HasActiveChannel(rawDeleteResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK delete")
 	}
-	assert.True(t, HasActiveChannel(rawDeleteResponse.Sync.Channels, "docDeleted"), "doc did not set _deleted:true for SDK delete")
+	assert.True(t, rest.HasActiveChannel(rawDeleteResponse.Sync.Channels, "docDeleted"), "doc did not set _deleted:true for SDK delete")
 }
 
 // Test import ancestor handling
@@ -148,17 +137,17 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) {
 			if (oldDoc == null) {
 				channel("oldDocNil")
 			} 
 		}`,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false,
 		}},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	bucket := rt.Bucket()
@@ -192,7 +181,7 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 	// Attempt to get the document via Sync Gateway, to trigger import
 	response := rt.SendAdminRequest("GET", "/db/_raw/"+docID+"?redact=false", "")
 	assert.Equal(t, 200, response.Code)
-	var rawResponse RawResponse
+	var rawResponse rest.RawResponse
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &rawResponse))
 	log.Printf("raw response: %s", response.Body.Bytes())
 	assert.Equal(t, 1, len(rawResponse.Sync.Channels))
@@ -205,9 +194,9 @@ func TestXattrSGTombstone(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rtConfig := RestTesterConfig{SyncFn: `
+	rtConfig := rest.RestTesterConfig{SyncFn: `
 		function(doc, oldDoc) { channel(doc.channels) }`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	bucket := rt.Bucket()
@@ -253,7 +242,7 @@ func TestXattrImportOnCasFailure(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	bucket := rt.Bucket()
@@ -313,10 +302,10 @@ func TestXattrResurrectViaSG(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	rt.Bucket()
@@ -359,13 +348,13 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false,
 		}},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	bucket := rt.Bucket()
@@ -385,7 +374,7 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 	rawPath := fmt.Sprintf("/db/_raw/%s?redact=false", key)
 	response := rt.SendAdminRequest("GET", rawPath, "")
 	assert.Equal(t, 200, response.Code)
-	var rawInsertResponse RawResponse
+	var rawInsertResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
 	assert.NoError(t, err, "Unable to unmarshal raw response")
 
@@ -395,7 +384,7 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 
 	response = rt.SendAdminRequest("GET", rawPath, "")
 	assert.Equal(t, 200, response.Code)
-	var rawDeleteResponse RawResponse
+	var rawDeleteResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawDeleteResponse)
 	log.Printf("Post-delete: %s", response.Body.Bytes())
 	assert.NoError(t, err, "Unable to unmarshal raw response")
@@ -411,7 +400,7 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 	// Attempt to get the document via Sync Gateway, to trigger import.
 	response = rt.SendAdminRequest("GET", rawPath, "")
 	assert.Equal(t, 200, response.Code)
-	var rawUpdateResponse RawResponse
+	var rawUpdateResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawUpdateResponse)
 	assert.NoError(t, err, "Unable to unmarshal raw response")
 	_, ok := rawUpdateResponse.Sync.Channels["HBO"]
@@ -424,13 +413,13 @@ func TestXattrDoubleDelete(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false,
 		}},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	bucket := rt.Bucket()
@@ -477,13 +466,13 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 		t.Skip("views tests are not applicable under GSI")
 	}
 
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false,
 		}},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	bucket := rt.Bucket()
@@ -552,14 +541,14 @@ func TestXattrImportFilterOptIn(t *testing.T) {
 	SkipImportTestsIfNotEnabled(t)
 
 	importFilter := `function (doc) { return doc.type == "mobile"}`
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport:   false,
 			ImportFilter: &importFilter,
 		}},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -602,14 +591,14 @@ func TestImportFilterLogging(t *testing.T) {
 	SkipImportTestsIfNotEnabled(t)
 
 	importFilter := `function (doc) { console.error("Error"); return doc.type == "mobile"; }`
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			ImportFilter: &importFilter,
 			AutoImport:   false,
 		}},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	// Add document to bucket
@@ -644,13 +633,13 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false,
 		}},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -700,13 +689,13 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false,
 		}},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -758,13 +747,13 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: true,
 		}},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -831,13 +820,13 @@ func TestXattrImportLargeNumbers(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false,
 		}},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -880,13 +869,13 @@ func TestMigrateLargeInlineRevisions(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false,
 		}},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -949,13 +938,13 @@ func TestMigrateTombstone(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false,
 		}},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -1018,13 +1007,13 @@ func TestMigrateWithExternalRevisions(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false,
 		}},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -1094,13 +1083,13 @@ func TestCheckForUpgradeOnRead(t *testing.T) {
 		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
 	}
 
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false,
 		}},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -1173,13 +1162,13 @@ func TestCheckForUpgradeOnWrite(t *testing.T) {
 		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
 	}
 
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false,
 		}},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -1258,10 +1247,10 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
 	}
 
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -1318,13 +1307,13 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: true,
 		}},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -1380,13 +1369,13 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: true,
 		}},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -1430,13 +1419,13 @@ func TestOnDemandWriteImportReplacingNullDoc(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false,
 		}},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -1457,7 +1446,7 @@ func TestOnDemandWriteImportReplacingNullDoc(t *testing.T) {
 	mobileBodyMarshalled, err := base.JSONMarshal(mobileBody)
 	assert.NoError(t, err, "Error marshalling body")
 	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", key), string(mobileBodyMarshalled))
-	RequireStatus(t, response, 201)
+	rest.RequireStatus(t, response, 201)
 
 }
 
@@ -1471,10 +1460,10 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 	mobileBody["type"] = "mobile"
 	mobileBody["channels"] = "ABC"
 
-	triggerOnDemandViaGet := func(rt *RestTester, key string) {
+	triggerOnDemandViaGet := func(rt *rest.RestTester, key string) {
 		rt.SendAdminRequest("GET", fmt.Sprintf("/db/%s", key), "")
 	}
-	triggerOnDemandViaWrite := func(rt *RestTester, key string) {
+	triggerOnDemandViaWrite := func(rt *rest.RestTester, key string) {
 		mobileBody["foo"] = "bar"
 		mobileBodyMarshalled, err := base.JSONMarshal(mobileBody)
 		assert.NoError(t, err, "Error marshalling body")
@@ -1482,7 +1471,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 	}
 
 	type testcase struct {
-		onDemandCallback      func(*RestTester, string)
+		onDemandCallback      func(*rest.RestTester, string)
 		name                  string
 		expectedRevGeneration int
 	}
@@ -1502,13 +1491,13 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 	for i, testCase := range testCases {
 		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
 
-			rtConfig := RestTesterConfig{
+			rtConfig := rest.RestTesterConfig{
 				SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 					AutoImport: false,
 				}},
 			}
-			rt := NewRestTester(t, &rtConfig)
+			rt := rest.NewRestTester(t, &rtConfig)
 			defer rt.Close()
 			bucket := rt.Bucket()
 
@@ -1554,17 +1543,17 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	triggerOnDemandViaGet := func(rt *RestTester, key string) {
+	triggerOnDemandViaGet := func(rt *rest.RestTester, key string) {
 		// Attempt to get the documents via Sync Gateway.  Will trigger on-demand migrate.
 		response := rt.SendAdminRequest("GET", "/db/"+key, "")
 		assert.Equal(t, 200, response.Code)
 	}
-	triggerOnDemandViaWrite := func(rt *RestTester, key string) {
+	triggerOnDemandViaWrite := func(rt *rest.RestTester, key string) {
 		rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", key), "{}")
 	}
 
 	type testcase struct {
-		onDemandCallback      func(*RestTester, string)
+		onDemandCallback      func(*rest.RestTester, string)
 		name                  string
 		expectedRevGeneration int
 	}
@@ -1586,13 +1575,13 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 
 			key := fmt.Sprintf("TestOnDemandGetWriteMigrateWithExpiry-%d", i)
 
-			rtConfig := RestTesterConfig{
+			rtConfig := rest.RestTesterConfig{
 				SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 					AutoImport: false,
 				}},
 			}
-			rt := NewRestTester(t, &rtConfig)
+			rt := rest.NewRestTester(t, &rtConfig)
 			defer rt.Close()
 			bucket := rt.Bucket()
 
@@ -1629,14 +1618,14 @@ func TestXattrSGWriteOfNonImportedDoc(t *testing.T) {
 	SkipImportTestsIfNotEnabled(t)
 
 	importFilter := `function (doc) { return doc.type == "mobile"}`
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport:   false,
 			ImportFilter: &importFilter,
 		}},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	log.Printf("Starting get bucket....")
@@ -1678,13 +1667,13 @@ func TestXattrSGWriteOfNonImportedDoc(t *testing.T) {
 // Test to write a binary document to the bucket, ensure it's not imported.
 func TestImportBinaryDoc(t *testing.T) {
 
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false,
 		}},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	log.Printf("Starting get bucket....")
@@ -1710,13 +1699,13 @@ func TestImportZeroValueDecimalPlaces(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport)
 
-	rtConfig := RestTesterConfig{
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+	rtConfig := rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: true,
 		}},
 	}
 
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	const minDecimalPlaces = 0
@@ -1772,13 +1761,13 @@ func TestImportZeroValueDecimalPlacesScientificNotation(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport)
 
-	rtConfig := RestTesterConfig{
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+	rtConfig := rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: true,
 		}},
 	}
 
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	const minDecimalPlaces = 0
@@ -1832,14 +1821,14 @@ func TestImportRevisionCopy(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			ImportBackupOldRev: base.BoolPtr(true),
 			AutoImport:         false,
 		}},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	bucket := rt.Bucket()
@@ -1857,7 +1846,7 @@ func TestImportRevisionCopy(t *testing.T) {
 	// 2. Trigger import via SG retrieval
 	response := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s", key), "")
 	assert.Equal(t, 200, response.Code)
-	var rawInsertResponse RawResponse
+	var rawInsertResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
 	assert.NoError(t, err, "Unable to unmarshal raw response")
 	rev1id := rawInsertResponse.Sync.Rev
@@ -1889,14 +1878,14 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			ImportBackupOldRev: base.BoolPtr(true),
 			AutoImport:         false,
 		}},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	if rt.GetDatabase().DeltaSyncEnabled() {
@@ -1918,7 +1907,7 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 	// 2. Trigger import via SG retrieval
 	response := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s", key), "")
 	assert.Equal(t, 200, response.Code)
-	var rawInsertResponse RawResponse
+	var rawInsertResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
 	assert.NoError(t, err, "Unable to unmarshal raw response")
 	rev1id := rawInsertResponse.Sync.Rev
@@ -1951,13 +1940,13 @@ func TestImportRevisionCopyDisabled(t *testing.T) {
 	SkipImportTestsIfNotEnabled(t)
 
 	// ImportBackupOldRev not set in config, defaults to false
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false,
 		}},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	if rt.GetDatabase().DeltaSyncEnabled() {
@@ -1979,7 +1968,7 @@ func TestImportRevisionCopyDisabled(t *testing.T) {
 	// 2. Trigger import via SG retrieval
 	response := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s", key), "")
 	assert.Equal(t, 200, response.Code)
-	var rawInsertResponse RawResponse
+	var rawInsertResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
 	assert.NoError(t, err, "Unable to unmarshal raw response")
 	rev1id := rawInsertResponse.Sync.Rev
@@ -2013,7 +2002,7 @@ func TestDcpBackfill(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 
 	log.Printf("Starting get bucket....")
 
@@ -2033,12 +2022,12 @@ func TestDcpBackfill(t *testing.T) {
 	log.Print("Creating new database context")
 
 	// Create a new context, with import docs enabled, to process backfill
-	newRtConfig := RestTesterConfig{
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+	newRtConfig := rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: true,
 		}},
 	}
-	newRt := NewRestTester(t, &newRtConfig)
+	newRt := rest.NewRestTester(t, &newRtConfig)
 	defer newRt.Close()
 	log.Printf("Poke the rest tester so it starts DCP processing:")
 	bucket = newRt.Bucket()
@@ -2069,13 +2058,13 @@ func TestUnexpectedBodyOnTombstone(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false,
 		}},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -2122,7 +2111,7 @@ func TestUnexpectedBodyOnTombstone(t *testing.T) {
 	assert.Equal(t, revId, newRevId)
 }
 
-func assertDocProperty(t *testing.T, getDocResponse *TestResponse, propertyName string, expectedPropertyValue interface{}) {
+func assertDocProperty(t *testing.T, getDocResponse *rest.TestResponse, propertyName string, expectedPropertyValue interface{}) {
 	var responseBody map[string]interface{}
 	err := base.JSONUnmarshal(getDocResponse.Body.Bytes(), &responseBody)
 	assert.NoError(t, err, "Error unmarshalling document response")
@@ -2174,7 +2163,7 @@ func assertXattrSyncMetaRevGeneration(t *testing.T, bucket base.Bucket, key stri
 func TestDeletedEmptyDocumentImport(t *testing.T) {
 	SkipImportTestsIfNotEnabled(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport)
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -2206,9 +2195,9 @@ func TestDeletedEmptyDocumentImport(t *testing.T) {
 // Check deleted document via SDK is getting imported if it is included in through ImportFilter function.
 func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 	SkipImportTestsIfNotEnabled(t)
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc) {console.log("Doc in Sync Fn:" + JSON.stringify(doc))}`,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false,
 			ImportFilter: base.StringPtr(`function (doc) {
 				console.log("Doc in Import Filter:" + JSON.stringify(doc));
@@ -2219,7 +2208,7 @@ func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 			}`),
 		}},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD, base.KeyJavascript)
@@ -2350,7 +2339,7 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 		},
 	}
 
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -2372,12 +2361,12 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 				return
 			}
 			if test.expectedStatusCode != nil {
-				RequireStatus(rt.tb, resp, *test.expectedStatusCode)
+				rest.RequireStatus(rt.TB, resp, *test.expectedStatusCode)
 			} else {
-				RequireStatus(rt.tb, resp, 200)
+				rest.RequireStatus(rt.TB, resp, 200)
 			}
 			var body db.Body
-			require.NoError(rt.tb, base.JSONUnmarshal(resp.Body.Bytes(), &body))
+			require.NoError(rt.TB, base.JSONUnmarshal(resp.Body.Bytes(), &body))
 
 			for key, val := range body {
 				assert.EqualValues(t, val, body[key])
@@ -2391,7 +2380,7 @@ func TestImportTouch(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) {
 			if (oldDoc == null) {
 				channel("oldDocNil")
@@ -2400,11 +2389,11 @@ func TestImportTouch(t *testing.T) {
 				channel("docDeleted")
 			}
 		}`,
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false,
 		}},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	bucket := rt.Bucket()
@@ -2421,7 +2410,7 @@ func TestImportTouch(t *testing.T) {
 	// Attempt to get the document via Sync Gateway, to trigger import.
 	response := rt.SendAdminRequest("GET", "/db/_raw/"+key+"?redact=false", "")
 	require.Equal(t, 200, response.Code)
-	var rawInsertResponse RawResponse
+	var rawInsertResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
 	require.NoError(t, err, "Unable to unmarshal raw response")
 	initialRev := rawInsertResponse.Sync.Rev
@@ -2433,7 +2422,7 @@ func TestImportTouch(t *testing.T) {
 	// Attempt to get the document via Sync Gateway, to trigger import.
 	response = rt.SendAdminRequest("GET", "/db/_raw/"+key+"?redact=false", "")
 	require.Equal(t, 200, response.Code)
-	var rawUpdateResponse RawResponse
+	var rawUpdateResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawUpdateResponse)
 	require.NoError(t, err, "Unable to unmarshal raw response")
 	require.Equal(t, initialRev, rawUpdateResponse.Sync.Rev)

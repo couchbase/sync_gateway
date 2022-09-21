@@ -35,11 +35,11 @@ func TestServerlessPollBuckets(t *testing.T) {
 	ctx := rt.Context()
 
 	// Blank out all per-bucket creds
-	perBucketCreds := sc.config.BucketCredentials
+	perBucketCreds := sc.Config.BucketCredentials
 	rt.ReplacePerBucketCredentials(map[string]*base.CredentialsConfig{})
 
 	// Confirm fetch does not return any configs due to no databases existing
-	configs, err := sc.fetchConfigs(ctx, false)
+	configs, err := sc.FetchConfigs(ctx, false)
 	require.NoError(t, err)
 	assert.Empty(t, configs)
 
@@ -55,7 +55,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Confirm fetch does not return any configs due to no databases in the bucket credentials config
-	configs, err = sc.fetchConfigs(ctx, false)
+	configs, err = sc.FetchConfigs(ctx, false)
 	require.NoError(t, err)
 	assert.Empty(t, configs)
 
@@ -63,7 +63,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 	rt.ReplacePerBucketCredentials(perBucketCreds)
 
 	// Confirm fetch does return config for db in tb1
-	configs, err = sc.fetchConfigs(ctx, false)
+	configs, err = sc.FetchConfigs(ctx, false)
 	require.NoError(t, err)
 	require.Len(t, configs, 1)
 	assert.NotNil(t, configs["db"])
@@ -73,7 +73,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 
 	// Confirm fetch does not return any configs due to db being known about already (so existing db does not get polled)
 	// TODO: Enable as part of CBG-2280
-	//configs, err = sc.fetchConfigs(false)
+	//configs, err = sc.FetchConfigs(false)
 	//require.NoError(t, err)
 	//assert.Empty(t, configs)
 	//count, err = sc.fetchAndLoadConfigs(false)
@@ -219,7 +219,7 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 	assert.NotNil(t, sc.dbConfigs["db"])
 
 	// Update config in bucket to see if unsuspending check for updates
-	cas, err := sc.bootstrapContext.connection.UpdateConfig(tb.GetName(), sc.config.Bootstrap.ConfigGroupID,
+	cas, err := sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
 		func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
 			return json.Marshal(sc.dbConfigs["db"])
 		},
@@ -286,7 +286,7 @@ func TestServerlessUnsuspendFetchFallback(t *testing.T) {
 	assert.NotNil(t, sc.databases_["db"])
 
 	// Attempt to get invalid database
-	dbCtx, err = sc.GetDatabase(rt.Context(), "invalid")
+	_, err = sc.GetDatabase(rt.Context(), "invalid")
 	assert.Contains(t, err.Error(), "no such database")
 }
 
@@ -318,46 +318,46 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Purposely make configs get caches
-	sc.config.Unsupported.Serverless.MinConfigFetchInterval = base.NewConfigDuration(time.Hour)
-	dbConfigsBefore, err := sc.fetchConfigsSince(rt.Context(), sc.config.Unsupported.Serverless.MinConfigFetchInterval)
+	sc.Config.Unsupported.Serverless.MinConfigFetchInterval = base.NewConfigDuration(time.Hour)
+	dbConfigsBefore, err := sc.fetchConfigsSince(rt.Context(), sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
 	require.NotEmpty(t, dbConfigsBefore["db"])
 	timeCached := sc.fetchConfigsLastUpdate
 	assert.NotZero(t, timeCached)
 	require.NoError(t, err)
 
 	// Update database config in the bucket
-	newCas, err := sc.bootstrapContext.connection.UpdateConfig(tb.GetName(), sc.config.Bootstrap.ConfigGroupID,
+	newCas, err := sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
 		func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
 			return json.Marshal(sc.dbConfigs["db"])
 		},
 	)
 
 	// Fetch configs again and expect same config to be returned
-	dbConfigsAfter, err := sc.fetchConfigsSince(rt.Context(), sc.config.Unsupported.Serverless.MinConfigFetchInterval)
+	dbConfigsAfter, err := sc.fetchConfigsSince(rt.Context(), sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
 	require.NotEmpty(t, dbConfigsAfter["db"])
 	assert.Equal(t, dbConfigsBefore["db"].cas, dbConfigsAfter["db"].cas)
 	assert.Equal(t, timeCached, sc.fetchConfigsLastUpdate)
 
 	// Make caching 1ms so it will grab newest config
-	sc.config.Unsupported.Serverless.MinConfigFetchInterval = base.NewConfigDuration(time.Millisecond)
+	sc.Config.Unsupported.Serverless.MinConfigFetchInterval = base.NewConfigDuration(time.Millisecond)
 	// Sleep to make sure enough time passes
 	time.Sleep(time.Millisecond * 500)
-	dbConfigsAfter, err = sc.fetchConfigsSince(rt.Context(), sc.config.Unsupported.Serverless.MinConfigFetchInterval)
+	dbConfigsAfter, err = sc.fetchConfigsSince(rt.Context(), sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
 	require.NotEmpty(t, dbConfigsAfter["db"])
 	assert.Equal(t, newCas, dbConfigsAfter["db"].cas)
 	// Change back for next test before next config update (not fully necessary but just to be safe)
-	sc.config.Unsupported.Serverless.MinConfigFetchInterval = base.NewConfigDuration(time.Hour)
+	sc.Config.Unsupported.Serverless.MinConfigFetchInterval = base.NewConfigDuration(time.Hour)
 
 	// Update database config in the bucket again to test caching disable case
-	newCas, err = sc.bootstrapContext.connection.UpdateConfig(tb.GetName(), sc.config.Bootstrap.ConfigGroupID,
+	newCas, err = sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
 		func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
 			return json.Marshal(sc.dbConfigs["db"])
 		},
 	)
 
 	// Disable caching and expect new config
-	sc.config.Unsupported.Serverless.MinConfigFetchInterval = base.NewConfigDuration(0)
-	dbConfigsAfter, err = sc.fetchConfigsSince(rt.Context(), sc.config.Unsupported.Serverless.MinConfigFetchInterval)
+	sc.Config.Unsupported.Serverless.MinConfigFetchInterval = base.NewConfigDuration(0)
+	dbConfigsAfter, err = sc.fetchConfigsSince(rt.Context(), sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
 	require.NotEmpty(t, dbConfigsAfter["db"])
 	assert.Equal(t, newCas, dbConfigsAfter["db"].cas)
 }
@@ -392,7 +392,7 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 	// Suspend the database
 	assert.NoError(t, sc.suspendDatabase(t, rt.Context(), "db"))
 	// Update database config
-	newCas, err := sc.bootstrapContext.connection.UpdateConfig(tb.GetName(), sc.config.Bootstrap.ConfigGroupID,
+	newCas, err := sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
 		func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
 			return json.Marshal(sc.dbConfigs["db"])
 		},
