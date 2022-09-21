@@ -694,6 +694,8 @@ func (context *DatabaseContext) GetChangeCache() *changeCache {
 }
 
 func (context *DatabaseContext) Close(ctx context.Context) {
+	context.BucketLock.Lock()
+	defer context.BucketLock.Unlock()
 
 	context.OIDCProviders.Stop()
 	close(context.terminator)
@@ -709,8 +711,6 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 	if context.SGReplicateMgr != nil {
 		context.SGReplicateMgr.Stop()
 	}
-	context.BucketLock.Lock()
-	defer context.BucketLock.Unlock()
 	context.Bucket.Close()
 	context.Bucket = nil
 
