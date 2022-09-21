@@ -133,6 +133,7 @@ func DefaultDbConfig(sc *StartupConfig) *DbConfig {
 		UserXattrKey:                     "",
 		ClientPartitionWindowSecs:        base.IntPtr(int(base.DefaultClientPartitionWindow.Seconds())),
 		JavascriptTimeoutSecs:            base.Uint32Ptr(base.DefaultJavascriptTimeoutSecs),
+		Suspendable:                      base.BoolPtr(sc.IsServerless()),
 	}
 
 	revsLimit := db.DefaultRevsLimitNoConflicts

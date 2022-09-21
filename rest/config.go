@@ -26,6 +26,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/square/go-jose.v2"
@@ -61,6 +62,8 @@ const (
 	DefaultNumIndexReplicas = uint(1)
 
 	DefaultUseTLSServer = true
+
+	DefaultMinConfigFetchInterval = time.Second
 )
 
 // Bucket configuration elements - used by db, index
@@ -176,6 +179,7 @@ type DbConfig struct {
 	UserQueries                      db.UserQueryMap                  `json:"queries,omitempty"`                              // N1QL queries for clients to invoke by name
 	GraphQL                          *db.GraphQLConfig                `json:"graphql,omitempty"`                              // GraphQL configuration & resolver fns
 	UserFunctions                    db.UserFunctionConfigMap         `json:"functions,omitempty"`                            // Named JS fns for clients to call
+	Suspendable                      *bool                            `json:"suspendable,omitempty"`                          // Allow the database to be suspended
 }
 
 type ScopesConfig map[string]ScopeConfig
@@ -1338,6 +1342,18 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 	return sc._applyConfigs(ctx, fetchedConfigs, isInitialStartup), nil
 }
 
+// fetchAndLoadDatabaseSince refreshes all dbConfigs if they where last fetched past the refreshInterval. It then returns found if
+// the fetched configs contain the dbName.
+func (sc *ServerContext) fetchAndLoadDatabaseSince(ctx context.Context, dbName string, refreshInterval *base.ConfigDuration) (found bool, err error) {
+	configs, err := sc.fetchConfigsSince(ctx, sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
+	if err != nil {
+		return false, err
+	}
+
+	found = configs[dbName] != nil
+	return found, nil
+}
+
 func (sc *ServerContext) fetchAndLoadDatabase(ctx context.Context, dbName string) (found bool, err error) {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
@@ -1359,7 +1375,7 @@ func (sc *ServerContext) _fetchAndLoadDatabase(ctx context.Context, dbName strin
 func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (found bool, dbConfig *DatabaseConfig, err error) {
 	var buckets []string
 	if sc.Config.IsServerless() {
-		buckets = make([]string, len(sc.Config.BucketCredentials))
+		buckets = make([]string, 0, len(sc.Config.BucketCredentials))
 		for bucket, _ := range sc.Config.BucketCredentials {
 			buckets = append(buckets, bucket)
 		}
@@ -1420,6 +1436,25 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 	}
 
 	return false, nil, nil
+}
+
+// fetchConfigsSince returns database configs from the server context. These configs are refreshed before returning if
+// they are older than the refreshInterval. The refreshInterval defaults to DefaultMinConfigFetchInterval if nil.
+func (sc *ServerContext) fetchConfigsSince(ctx context.Context, refreshInterval *base.ConfigDuration) (dbNameConfigs map[string]*DatabaseConfig, err error) {
+	minInterval := DefaultMinConfigFetchInterval
+	if refreshInterval != nil {
+		minInterval = refreshInterval.Value()
+	}
+
+	if time.Since(sc.fetchConfigsLastUpdate) > minInterval {
+		_, err = sc.fetchAndLoadConfigs(ctx, false)
+		if err != nil {
+			return nil, err
+		}
+		sc.fetchConfigsLastUpdate = time.Now()
+	}
+
+	return sc.dbConfigs, nil
 }
 
 // FetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
@@ -1571,6 +1606,11 @@ func (sc *ServerContext) _applyConfig(ctx context.Context, cnf DatabaseConfig, f
 	// Strip out version as we have no use for this locally and we want to prevent it being stored and being returned
 	// by any output
 	cnf.Version = ""
+
+	// Prevent database from being unsuspended when it is suspended
+	if sc._isDatabaseSuspended(cnf.Name) {
+		return true, nil
+	}
 
 	// TODO: Dynamic update instead of reload
 	if err := sc._reloadDatabaseWithConfig(ctx, cnf, failFast); err != nil {
