@@ -151,12 +151,12 @@ func TestMultiCollectionDCP(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyDCP, base.KeyImport)
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	ctx, tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		createScopesAndCollections: true,
-		CustomTestBucket:           tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
+		CustomTestBucket:           tb.NoCloseClone(ctx), // Clone so scope/collection isn't set on tb from rt
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				AutoImport: true,
