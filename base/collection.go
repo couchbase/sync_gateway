@@ -1073,10 +1073,8 @@ func (c *Collection) GetCollectionID() (uint32, error) {
 	return collectionID, nil
 }
 
-type CollectionsManifest gocbcore.Manifest
-
-func (c CollectionsManifest) GetIDForCollection(scopeName, collectionName string) (uint32, bool) {
-	for _, scope := range c.Scopes {
+func GetIDForCollection(manifest gocbcore.Manifest, scopeName, collectionName string) (uint32, bool) {
+	for _, scope := range manifest.Scopes {
 		if scope.Name != scopeName {
 			continue
 		}
@@ -1089,12 +1087,12 @@ func (c CollectionsManifest) GetIDForCollection(scopeName, collectionName string
 	return 0, false
 }
 
-func (c *Collection) GetCollectionManifest() (CollectionsManifest, error) {
+func (c *Collection) GetCollectionManifest() (gocbcore.Manifest, error) {
 	c.waitForAvailKvOp()
 	defer c.releaseKvOp()
 	agent, err := c.Collection.Bucket().Internal().IORouter()
 	if err != nil {
-		return CollectionsManifest{}, fmt.Errorf("failed to get gocbcore agent: %w", err)
+		return gocbcore.Manifest{}, fmt.Errorf("failed to get gocbcore agent: %w", err)
 	}
 	result := make(chan any) // either a CollectionsManifest or error
 	_, err = agent.GetCollectionManifest(gocbcore.GetCollectionManifestOptions{
@@ -1105,7 +1103,7 @@ func (c *Collection) GetCollectionManifest() (CollectionsManifest, error) {
 			result <- err
 			return
 		}
-		var manifest CollectionsManifest
+		var manifest gocbcore.Manifest
 		err = JSONUnmarshal(res.Manifest, &manifest)
 		if err != nil {
 			result <- fmt.Errorf("failed to parse collection manifest: %w", err)
@@ -1114,13 +1112,13 @@ func (c *Collection) GetCollectionManifest() (CollectionsManifest, error) {
 		result <- manifest
 	})
 	if err != nil {
-		return CollectionsManifest{}, fmt.Errorf("failed to execute GetCollectionManifest: %w", err)
+		return gocbcore.Manifest{}, fmt.Errorf("failed to execute GetCollectionManifest: %w", err)
 	}
 	returned := <-result
 	if err, ok := returned.(error); ok && err != nil {
-		return CollectionsManifest{}, err
+		return gocbcore.Manifest{}, err
 	}
-	rv := returned.(CollectionsManifest)
+	rv := returned.(gocbcore.Manifest)
 	return rv, nil
 }
 

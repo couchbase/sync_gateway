@@ -77,7 +77,7 @@ func (il *importListener) StartImportFeed(ctx context.Context, bucket base.Bucke
 		for collName, collCtx := range dbContext.Scopes[scopeName].Collections {
 			collectionNamesByScope[scopeName] = append(collectionNamesByScope[scopeName], collName)
 
-			collID, ok := collectionManifest.GetIDForCollection(scopeName, collName)
+			collID, ok := base.GetIDForCollection(collectionManifest, scopeName, collName)
 			if !ok {
 				return fmt.Errorf("failed to find ID for collection %s.%s", base.MD(scopeName).Redact(), base.MD(collName).Redact())
 			}
