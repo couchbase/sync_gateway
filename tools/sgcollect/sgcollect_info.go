@@ -15,8 +15,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/rest"
 	"github.com/google/uuid"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
@@ -127,7 +125,7 @@ func determineSGURL(opts *SGCollectOptions) (*url.URL, bool) {
 	}
 	log.Printf("Trying Sync Gateway URL: %s", sgURL)
 
-	var root rest.DatabaseRoot
+	var root map[string]any
 	err := getJSONOverHTTP(sgURL.String(), opts, &root)
 	if err == nil {
 		return sgURL, true
@@ -269,16 +267,12 @@ func main() {
 		uploadFilename = zipFilename
 	}
 
-	var config rest.RunTimeServerConfigResponse
+	var config serverConfig
 	err = getJSONOverHTTP(sgURL.String()+"/_config?include_runtime=true", opts, &config)
 	if err != nil {
 		log.Printf("Failed to get SG config. Some information might not be collected.")
 	}
 
-	tr.Run(RawStringTask{
-		name: "sgcollect_info version",
-		val:  base.LongVersionString,
-	})
 	tr.Run(new(SGCollectOptionsTask))
 
 	for _, task := range makeOSTasks() {

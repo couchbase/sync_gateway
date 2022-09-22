@@ -8,8 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
-	"github.com/couchbase/sync_gateway/rest"
 )
 
 func makeOSTasks() []SGCollectTask {
@@ -118,7 +116,7 @@ func makeOSTasks() []SGCollectTask {
 	}
 }
 
-func makeCollectLogsTasks(opts *SGCollectOptions, config rest.RunTimeServerConfigResponse) (result []SGCollectTask) {
+func makeCollectLogsTasks(opts *SGCollectOptions, config serverConfig) (result []SGCollectTask) {
 	var sgLogFiles = []string{
 		"sg_error",
 		"sg_warn",
@@ -140,14 +138,12 @@ func makeCollectLogsTasks(opts *SGCollectOptions, config rest.RunTimeServerConfi
 	}
 
 	// Also try getting the current path from the config, in case it's not one of the defaults
-	if config.StartupConfig != nil {
-		if cfgPath := config.Logging.LogFilePath; cfgPath != "" {
-			// This could be a relative path
-			if !filepath.IsAbs(cfgPath) {
-				cfgPath = filepath.Join(opts.RootDir, cfgPath)
-			}
-			sgLogDirectories = append(sgLogDirectories, config.Logging.LogFilePath)
+	if cfgPath := config.Logging.LogFilePath; cfgPath != "" {
+		// This could be a relative path
+		if !filepath.IsAbs(cfgPath) {
+			cfgPath = filepath.Join(opts.RootDir, cfgPath)
 		}
+		sgLogDirectories = append(sgLogDirectories, config.Logging.LogFilePath)
 	}
 
 	// Check every combination of directory/file, grab everything we can
@@ -185,7 +181,7 @@ func makeCollectLogsTasks(opts *SGCollectOptions, config rest.RunTimeServerConfi
 	return result
 }
 
-func makeSGTasks(url *url.URL, opts *SGCollectOptions, config rest.RunTimeServerConfigResponse) (result []SGCollectTask) {
+func makeSGTasks(url *url.URL, opts *SGCollectOptions, config serverConfig) (result []SGCollectTask) {
 	binary, bootstrapConfigPath := findSGBinaryAndConfigs(url, opts)
 	if binary != "" {
 		result = append(result, OverrideOutput(NoHeader(&FileTask{
