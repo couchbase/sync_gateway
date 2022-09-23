@@ -4015,7 +4015,7 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 	}()
 
 	// Get a test bucket, and use it to create the database.
-	// FIXME: Does this make sense it would require the default collection?
+	// FIXME: CBG-2266 this test reads in persistent config
 	tb := base.GetTestBucketDefaultCollection(t)
 	defer func() { tb.Close() }()
 
@@ -4225,7 +4225,7 @@ func TestGroupIDReplications(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
-	// FIXME: Is requiring a default collection normal for this test?
+	// FIXME: CBG-2266 this test reads in persistent config
 
 	// Create test buckets to replicate between
 	passiveBucket := base.GetTestBucketDefaultCollection(t)
