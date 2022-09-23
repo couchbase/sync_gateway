@@ -206,15 +206,22 @@ func (sc *ServerContext) GetDatabase(ctx context.Context, name string) (*db.Data
 		return nil, base.HTTPErrorf(http.StatusBadRequest, "invalid database name %q", name)
 	}
 
-	if sc.BootstrapContext.Connection != nil {
-		sc.lock.Lock()
-		defer sc.lock.Unlock()
-		// database not loaded, go look for it in the cluster
-		found, err := sc._fetchAndLoadDatabase(ctx, name)
-		if err != nil {
-			return nil, base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
-		}
+	dbc, err := sc.unsuspendDatabase(ctx, name)
+	if err != nil && err != base.ErrNotFound && err != ErrSuspendingDisallowed {
+		return nil, err
+	} else if err == nil {
+		return dbc, nil
+	}
 
+	// database not loaded, fallback to fetching it from cluster
+	if sc.BootstrapContext.Connection != nil {
+		var found bool
+		if sc.Config.IsServerless() {
+			found, err = sc.fetchAndLoadDatabaseSince(ctx, name, sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
+
+		} else {
+			found, err = sc.fetchAndLoadDatabase(ctx, name)
+		}
 		if found {
 			sc.lock.RLock()
 			defer sc.lock.RUnlock()
