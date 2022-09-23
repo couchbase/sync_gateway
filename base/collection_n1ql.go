@@ -190,7 +190,7 @@ func (c *Collection) getIndexes() (indexes []string, err error) {
 
 	indexes = []string{}
 	var opts *gocb.GetAllQueryIndexesOptions
-	if !c.IsDefaultScopeCollection() {
+	if c.IsSupported(sgbucket.DataStoreFeatureCollections) {
 		opts = &gocb.GetAllQueryIndexesOptions{
 			ScopeName:      c.ScopeName(),
 			CollectionName: c.Name(),

@@ -12,10 +12,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/couchbase/gocb/v2"
-	gocbv1 "gopkg.in/couchbase/gocb.v1"
 )
 
 // tbpCluster defines the required test bucket pool cluster operations
@@ -23,7 +23,7 @@ type tbpCluster interface {
 	getBucketNames() ([]string, error)
 	insertBucket(name string, quotaMB int) error
 	removeBucket(name string) error
-	openTestBucket(name tbpBucketName, waitUntilReadySeconds int) (Bucket, error)
+	openTestBucket(name tbpBucketName, waitUntilReadySeconds int) (Bucket, Bucket, error)
 	close() error
 }
 
@@ -32,124 +32,7 @@ type clusterLogFunc func(ctx context.Context, format string, args ...interface{}
 // newTestCluster returns a cluster based on the driver used by the defaultBucketSpec.  Accepts a clusterLogFunc to support
 // cluster logging within a test bucket pool context
 func newTestCluster(server string, logger clusterLogFunc) tbpCluster {
-	if tbpDefaultBucketSpec.CouchbaseDriver == GoCBv2 {
-		return newTestClusterV2(server, logger)
-	} else {
-		return newTestClusterV1(server, logger)
-	}
-
-}
-
-var _ tbpCluster = &tbpClusterV1{}
-
-// tbpClusterV1 implements the tbpCluster interface for a gocb v1 cluster
-type tbpClusterV1 struct {
-	cluster    *gocbv1.Cluster
-	clusterMgr *gocbv1.ClusterManager
-	logger     clusterLogFunc
-}
-
-func newTestClusterV1(server string, logger clusterLogFunc) *tbpClusterV1 {
-	tbpCluster := &tbpClusterV1{}
-	tbpCluster.cluster = initV1Cluster(server)
-	tbpCluster.clusterMgr = tbpCluster.cluster.Manager(TestClusterUsername(), TestClusterPassword())
-	tbpCluster.logger = logger
-	return tbpCluster
-}
-
-// tbpCluster returns an authenticated gocb Cluster for the given server URL.
-func initV1Cluster(server string) *gocbv1.Cluster {
-	spec := BucketSpec{
-		Server: server,
-	}
-
-	connStr, err := spec.GetGoCBConnString(nil)
-	if err != nil {
-		FatalfCtx(context.TODO(), "error getting connection string: %v", err)
-	}
-
-	cluster, err := gocbv1.Connect(connStr)
-	if err != nil {
-		FatalfCtx(context.TODO(), "Couldn't connect to %q: %v", server, err)
-	}
-
-	err = cluster.Authenticate(gocbv1.PasswordAuthenticator{
-		Username: TestClusterUsername(),
-		Password: TestClusterPassword(),
-	})
-	if err != nil {
-		FatalfCtx(context.TODO(), "Couldn't authenticate with %q: %v", server, err)
-	}
-
-	return cluster
-}
-
-func (c *tbpClusterV1) getBucketNames() ([]string, error) {
-	buckets, err := c.clusterMgr.GetBuckets()
-	if err != nil {
-		// special handling for gocb's empty non-nil error if we send this request with invalid credentials
-		if err.Error() == "" {
-			err = errors.New("couldn't get buckets from cluster, check authentication credentials")
-		}
-		return nil, err
-	}
-
-	var names []string
-	for _, b := range buckets {
-		names = append(names, b.Name)
-	}
-
-	return names, nil
-}
-
-func (c *tbpClusterV1) insertBucket(name string, quotaMB int) error {
-	return c.clusterMgr.InsertBucket(&gocbv1.BucketSettings{
-		Name:          name,
-		Quota:         quotaMB,
-		Type:          gocbv1.Couchbase,
-		FlushEnabled:  true,
-		IndexReplicas: false,
-		Replicas:      0,
-	})
-}
-
-func (c *tbpClusterV1) removeBucket(name string) error {
-	return c.clusterMgr.RemoveBucket(name)
-}
-
-// openTestBucket opens the bucket of the given name for the gocb cluster in the given TestBucketPool.
-func (c *tbpClusterV1) openTestBucket(testBucketName tbpBucketName, waitUntilReadySeconds int) (Bucket, error) {
-
-	sleeper := CreateSleeperFunc(waitUntilReadySeconds, 1000)
-	ctx := bucketNameCtx(context.Background(), string(testBucketName))
-
-	bucketSpec := getBucketSpec(testBucketName)
-
-	waitForNewBucketWorker := func() (shouldRetry bool, err error, value interface{}) {
-		gocbBucket, err := GetCouchbaseBucketGoCBFromAuthenticatedCluster(c.cluster, bucketSpec, "")
-		if err != nil {
-			c.logger(ctx, "Retrying OpenBucket")
-			return true, err, nil
-		}
-		return false, nil, gocbBucket
-	}
-
-	c.logger(ctx, "Opening bucket")
-	err, val := RetryLoop("waitForNewBucket", waitForNewBucketWorker, sleeper)
-
-	gocbBucket, _ := val.(*CouchbaseBucketGoCB)
-
-	return gocbBucket, err
-}
-
-func (c *tbpClusterV1) close() error {
-	if c.cluster != nil {
-		if err := c.cluster.Close(); err != nil {
-			c.logger(context.Background(), "Couldn't close cluster connection: %v", err)
-			return err
-		}
-	}
-	return nil
+	return newTestClusterV2(server, logger)
 }
 
 // tbpClusterV2 implements the tbpCluster interface for a gocb v2 cluster
@@ -255,12 +138,49 @@ func (c *tbpClusterV2) removeBucket(name string) error {
 }
 
 // openTestBucket opens the bucket of the given name for the gocb cluster in the given TestBucketPool.
-func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilReadySeconds int) (Bucket, error) {
+func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilReadySeconds int) (Bucket, Bucket, error) {
 
 	bucketCluster := initV2Cluster(c.server)
 	bucketSpec := getBucketSpec(testBucketName)
 
-	return GetCollectionFromCluster(bucketCluster, bucketSpec, waitUntilReadySeconds)
+	// Create scope and collection on server, first drop any scope and collect in the bucket and then create
+	// new scope + collection
+	bucket := bucketCluster.Bucket(bucketSpec.BucketName)
+	err := bucket.WaitUntilReady(time.Duration(waitUntilReadySeconds*4)*time.Second, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	DebugfCtx(context.TODO(), KeySGTest, "Got bucket %s", testBucketName)
+
+	if err := dropAllScopesAndCollections(bucket); err != nil && !errors.Is(err, ErrCollectionsUnsupported) {
+		return nil, nil, err
+	}
+
+	bucketFromSpec, err := GetCollectionFromCluster(bucketCluster, bucketSpec, waitUntilReadySeconds)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	specScope, specCollection := bucketSpecScopeAndCollection(bucketSpec)
+	if specScope != DefaultScope || specCollection != DefaultCollection {
+		err := CreateBucketScopesAndCollections(context.TODO(), bucketSpec,
+			map[string][]string{
+				specScope: []string{specCollection},
+			})
+		if err != nil {
+			return nil, nil, err
+		}
+		defaultSpec := getBucketSpec(testBucketName)
+		defaultSpec.Scope = nil
+		defaultSpec.Collection = nil
+		unnamedCollectionBucket, err := GetCollectionFromCluster(bucketCluster, defaultSpec, waitUntilReadySeconds)
+		if err != nil {
+			return nil, nil, err
+		}
+		return bucketFromSpec, unnamedCollectionBucket, nil
+
+	}
+	return nil, bucketFromSpec, nil
 }
 
 func (c *tbpClusterV2) close() error {
@@ -283,4 +203,45 @@ func (c *tbpClusterV2) getMinClusterCompatVersion() int {
 		panic("invalid NodesMetadata: no nodes")
 	}
 	return nodesMeta[0].ClusterCompatibility
+}
+
+// dropAllScopesAndCollections attempts to drop *all* non-_default scopes and collections from the bucket associated with the collection, except those used by the test bucket pool. Intended for test usage only.
+func dropAllScopesAndCollections(bucket *gocb.Bucket) error {
+	cm := bucket.Collections()
+	scopes, err := cm.GetAllScopes(nil)
+	if err != nil {
+		if httpErr, ok := err.(gocb.HTTPError); ok && httpErr.StatusCode == 404 {
+			return ErrCollectionsUnsupported
+		}
+		WarnfCtx(context.TODO(), "Error getting scopes on bucket %s: %v  Will retry.", MD(bucket.Name()).Redact(), err)
+		return err
+	}
+
+	// For each non-default scope, drop them.
+	// For each collection within the default scope, drop them.
+	for _, scope := range scopes {
+		if scope.Name != DefaultScope && !strings.HasPrefix(scope.Name, tbpScopePrefix) {
+			scopeName := fmt.Sprintf("scope %s on bucket %s", MD(scope).Redact(), MD(bucket.Name()).Redact())
+			TracefCtx(context.TODO(), KeyAll, "Dropping %s", scopeName)
+			if err := cm.DropScope(scope.Name, nil); err != nil {
+				WarnfCtx(context.TODO(), "Error dropping %s: %v  Will retry.", scopeName, err)
+				return err
+			}
+			continue
+		}
+
+		// can't delete _default scope - but we can delete the non-_default collections within it
+		for _, collection := range scope.Collections {
+			if collection.Name != DefaultCollection && !strings.HasPrefix(collection.Name, tbpCollectionPrefix) {
+				collectionName := fmt.Sprintf("collection %s in scope %s on bucket %s", MD(collection.Name).Redact(), MD(scope).Redact(), MD(bucket.Name()).Redact())
+				TracefCtx(context.TODO(), KeyAll, "Dropping %s", collectionName)
+				if err := cm.DropCollection(collection, nil); err != nil {
+					WarnfCtx(context.TODO(), "Error dropping %s: %v  Will retry.", collectionName, err)
+					return err
+				}
+			}
+		}
+
+	}
+	return nil
 }

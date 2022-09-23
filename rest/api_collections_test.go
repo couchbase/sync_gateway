@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
@@ -24,16 +25,21 @@ import (
 func TestCollectionsPutDocInKeyspace(t *testing.T) {
 	base.TestRequiresCollections(t)
 
-	const (
-		scopeName      = "foo"
-		collectionName = "bar"
-	)
+	tb := base.GetTestBucketNamedCollection(t)
+	defer tb.Close()
+
+	tc, err := base.AsCollection(tb)
+	require.NoError(t, err)
+
+	scopeName := tc.ScopeName()
+	collectionName := tc.Name()
 
 	tests := []struct {
 		name           string
 		keyspace       string
 		expectedStatus int
 	}{
+		// if a single scope and collection is defined, use that implicitly
 		{
 			name:           "implicit scope and collection",
 			keyspace:       "db",
@@ -60,9 +66,6 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 			expectedStatus: http.StatusNotFound,
 		},
 	}
-
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
 
 	const (
 		username = "alice"
@@ -99,7 +102,13 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 			if test.expectedStatus == http.StatusCreated {
 				// go and check that the doc didn't just end up in the default collection of the test bucket
 				docBody, _, err := tb.GetRaw(docID)
-				assert.Truef(t, base.IsDocNotFoundError(err), "didn't expect doc %q to be in the default collection but got body:%s err:%v", docID, docBody, err)
+				require.NoError(t, err)
+				require.NotNil(t, docBody)
+
+				tc, err := base.AsCollection(tb)
+				defaultCollection := tc.Collection.Bucket().DefaultCollection()
+				_, err = defaultCollection.Get(docID, &gocb.GetOptions{})
+				require.Error(t, err)
 			}
 		})
 	}
@@ -111,19 +120,21 @@ func TestSingleCollectionDCP(t *testing.T) {
 		t.Skip("Test relies on import - needs xattrs")
 	}
 
-	tb := base.GetTestBucket(t)
+	tb := base.GetTestBucketNamedCollection(t)
 	defer tb.Close()
 
+	tc, err := base.AsCollection(tb)
+	require.NoError(t, err)
+
 	rt := NewRestTester(t, &RestTesterConfig{
-		createScopesAndCollections: true,
-		CustomTestBucket:           tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
+		CustomTestBucket: tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				AutoImport: true,
 				Scopes: ScopesConfig{
-					"foo": ScopeConfig{
+					tc.ScopeName(): ScopeConfig{
 						Collections: map[string]CollectionConfig{
-							"bar": {},
+							tc.Name(): {},
 						},
 					},
 				},
@@ -196,18 +207,23 @@ func TestMultiCollectionDCP(t *testing.T) {
 func TestCollectionsBasicIndexQuery(t *testing.T) {
 	base.TestRequiresCollections(t)
 
-	tb := base.GetTestBucket(t)
+	tb := base.GetTestBucketNamedCollection(t)
 	defer tb.Close()
 
+	tc, err := base.AsCollection(tb)
+	require.NoError(t, err)
+
+	scopeName := tc.ScopeName()
+	collectionName := tc.Name()
+
 	rt := NewRestTester(t, &RestTesterConfig{
-		createScopesAndCollections: true,
-		CustomTestBucket:           tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
+		CustomTestBucket: tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Scopes: ScopesConfig{
-					"foo": ScopeConfig{
+					scopeName: ScopeConfig{
 						Collections: map[string]CollectionConfig{
-							"bar": {},
+							collectionName: {},
 						},
 					},
 				},
@@ -216,12 +232,9 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 	})
 	defer rt.Close()
 
-	const (
-		scope      = "foo"
-		collection = "bar"
-		keyspace   = "db." + scope + "." + collection
-		docID      = "doc1"
-	)
+	const docID = "doc1"
+
+	keyspace := "db." + scopeName + "." + collectionName
 
 	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", keyspace, docID), `{"test":true}`)
 	RequireStatus(t, resp, http.StatusCreated)
@@ -254,8 +267,8 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 
 	// if the index was created on a collection, the keyspace_id becomes the collection, along with additional fields for bucket and scope.
 	assert.Equal(t, tb.Bucket.GetName(), *indexMetaResult.BucketID)
-	assert.Equal(t, scope, *indexMetaResult.ScopeID)
-	assert.Equal(t, collection, *indexMetaResult.KeyspaceID)
+	assert.Equal(t, scopeName, *indexMetaResult.ScopeID)
+	assert.Equal(t, collectionName, *indexMetaResult.KeyspaceID)
 
 	// try and query the document that we wrote via SG
 	res, err = n1qlStore.Query("SELECT test FROM "+base.KeyspaceQueryToken+" WHERE test = true", nil, base.RequestPlus, true)
@@ -275,13 +288,8 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 func TestCollectionsSGIndexQuery(t *testing.T) {
 	base.TestRequiresCollections(t)
 
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeyHTTP, base.KeyQuery, base.KeyCRUD)
-
 	// force GSI for this one test
 	useViews := base.BoolPtr(false)
-
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
 
 	const (
 		username       = "alice"
@@ -289,17 +297,21 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 		validChannel   = "valid"
 		invalidChannel = "invalid"
 
-		scope      = "foo"
-		collection = "bar"
-		keyspace   = "db." + scope + "." + collection
-
 		validDocID   = "doc1"
 		invalidDocID = "doc2"
 	)
+	tb := base.GetTestBucketNamedCollection(t)
+	defer tb.Close()
+
+	tc, err := base.AsCollection(tb)
+	require.NoError(t, err)
+
+	scopeName := tc.ScopeName()
+	collectionName := tc.Name()
+	keyspace := "db." + scopeName + "." + collectionName
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		createScopesAndCollections: true,
-		CustomTestBucket:           tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
+		CustomTestBucket: tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				UseViews: useViews,
@@ -310,9 +322,9 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 					},
 				},
 				Scopes: ScopesConfig{
-					scope: ScopeConfig{
+					scopeName: ScopeConfig{
 						Collections: map[string]CollectionConfig{
-							collection: {},
+							collectionName: {},
 						},
 					},
 				},
@@ -344,7 +356,7 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, fmt.Sprintf("/%s/%s", keyspace, invalidDocID), ``, nil, username, password)
 	RequireStatus(t, resp, http.StatusForbidden)
 
-	_, err := rt.WaitForChanges(1, "/db/_changes", username, false)
+	_, err = rt.WaitForChanges(1, "/db/_changes", username, false)
 	require.NoError(t, err)
 }
 

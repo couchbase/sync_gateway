@@ -664,43 +664,6 @@ func (c *Collection) isRecoverableWriteError(err error) bool {
 	return false
 }
 
-// DropAllScopesAndCollections attempts to drop *all* non-_default scopes and collections from the bucket associated with the collection.  Intended for test usage only.
-func (c *Collection) DropAllScopesAndCollections() error {
-	cm := c.Bucket().Collections()
-	scopes, err := cm.GetAllScopes(nil)
-	if err != nil {
-		if httpErr, ok := err.(gocb.HTTPError); ok && httpErr.StatusCode == 404 {
-			return ErrCollectionsUnsupported
-		}
-		WarnfCtx(context.TODO(), "Error getting scopes on bucket %s: %v  Will retry.", MD(c.Bucket().Name()).Redact(), err)
-		return err
-	}
-
-	// For each non-default scope, drop them.
-	// For each collection within the default scope, drop them.
-	for _, scope := range scopes {
-		if scope.Name != DefaultScope {
-			if err := cm.DropScope(scope.Name, nil); err != nil {
-				WarnfCtx(context.TODO(), "Error dropping scope %s on bucket %s: %v  Will retry.", MD(scope).Redact(), MD(c.Bucket().Name()).Redact(), err)
-				return err
-			}
-			continue
-		}
-
-		// can't delete _default scope - but we can delete the non-_default collections within it
-		for _, collection := range scope.Collections {
-			if collection.Name != DefaultCollection {
-				if err := cm.DropCollection(collection, nil); err != nil {
-					WarnfCtx(context.TODO(), "Error dropping collection %s in scope %s on bucket %s: %v  Will retry.", MD(collection.Name).Redact(), MD(scope).Redact(), MD(c.Bucket().Name()).Redact(), err)
-					return err
-				}
-			}
-		}
-
-	}
-	return nil
-}
-
 // This flushes the *entire* bucket associated with the collection (not just the collection).  Intended for test usage only.
 func (c *Collection) Flush() error {
 

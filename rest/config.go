@@ -1457,7 +1457,7 @@ func (sc *ServerContext) fetchConfigsSince(ctx context.Context, refreshInterval 
 	return sc.dbConfigs, nil
 }
 
-// fetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
+// FetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
 func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool) (dbNameConfigs map[string]DatabaseConfig, err error) {
 	var buckets []string
 	if sc.Config.IsServerless() {

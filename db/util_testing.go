@@ -239,12 +239,6 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 		return viewBucketReadier(ctx, b, tbp)
 	}
 
-	if c, ok := b.(*base.Collection); ok {
-		if err := c.DropAllScopesAndCollections(); err != nil && !errors.Is(err, base.ErrCollectionsUnsupported) {
-			return err
-		}
-	}
-
 	tbp.Logf(ctx, "emptying bucket via N1QL, readying views and indexes")
 	if err := base.N1QLBucketEmptierFunc(ctx, b, tbp); err != nil {
 		return err
@@ -254,10 +248,11 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 		return err
 	}
 
-	if err := viewBucketReadier(ctx, b, tbp); err != nil {
-		return err
+	if !tbp.UsingNamedCollections() {
+		if err := viewBucketReadier(ctx, b, tbp); err != nil {
+			return err
+		}
 	}
-
 	n1qlStore, ok := base.AsN1QLStore(b)
 	if !ok {
 		return errors.New("attempting to empty indexes with non-N1QL store")
@@ -269,7 +264,6 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 		return err
 	}
 	tbp.Logf(ctx, "bucket indexes empty")
-
 	return nil
 }
 
@@ -284,12 +278,12 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 		tbp.Logf(ctx, "bucket not a gocb bucket... skipping GSI setup")
 		return viewBucketReadier(ctx, b, tbp)
 	}
+	tbp.Logf(ctx, "Starting bucket init function")
 
 	// Exit early if we're not using GSI.
 	if base.TestsDisableGSI() {
 		return nil
 	}
-
 	n1qlStore, ok := base.AsN1QLStore(b)
 	if !ok {
 		return fmt.Errorf("bucket %T was not a N1QL store", b)
@@ -307,7 +301,6 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 		tbp.Logf(ctx, "Failed to drop bucket indexes: %v", err)
 		return err
 	}
-
 	tbp.Logf(ctx, "creating SG bucket indexes")
 	if err := InitializeIndexes(n1qlStore, base.TestUseXattrs(), 0, false); err != nil {
 		return err
@@ -317,6 +310,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 	if err != nil {
 		return err
 	}
+	tbp.Logf(ctx, "finished creating SG bucket indexes")
 
 	return nil
 }

@@ -186,9 +186,14 @@ func TestShardedDCPUpgrade(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Heartbeat listener requires Couchbase Server")
 	}
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyDCP, base.KeyImport, base.KeyCluster)
-	tb := base.GetTestBucket(t)
+
+	// Use default collection namespace since this will make sure we are upgrading from 3.0 -> post 3.0
+	tb := base.GetTestBucketDefaultCollection(t)
 	defer tb.Close()
+
+	tc, err := base.AsCollection(tb)
+	require.NoError(t, err)
+	require.Equal(t, base.DefaultCollection, tc.Name())
 	bucketUUID, err := tb.UUID()
 	require.NoError(t, err, "get bucket UUID")
 

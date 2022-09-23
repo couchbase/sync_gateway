@@ -31,6 +31,12 @@ type LogContext struct {
 
 	// TestBucketName is the name of a bucket used during a test
 	TestBucketName string
+
+	// TestScopeName is the name of a scope on used during a test
+	TestScopeName string
+
+	// TestCollectionName is the name of the collection used during a test
+	TestCollectionName string
 }
 
 // addContext returns a string format with additional log context if present.
@@ -44,7 +50,15 @@ func (lc *LogContext) addContext(format string) string {
 	}
 
 	if lc.TestBucketName != "" {
-		format = "b:" + lc.TestBucketName + " " + format
+		keyspace := "b:" + lc.TestBucketName
+		if lc.TestScopeName != "" {
+			keyspace += "." + lc.TestScopeName
+		}
+		if lc.TestCollectionName != "" {
+			keyspace += "." + lc.TestCollectionName
+		}
+
+		format = keyspace + " " + format
 	}
 
 	if lc.TestName != "" {
@@ -84,6 +98,18 @@ func bucketNameCtx(parent context.Context, bucketName string) context.Context {
 	newCtx := LogContext{
 		TestName:       parentLogCtx.TestName,
 		TestBucketName: bucketName,
+	}
+	return LogContextWith(parent, &newCtx)
+}
+
+// bucketNameCtx extends the parent context with a bucket name.
+func keyspaceNameCtx(parent context.Context, bucketName, scopeName, collectionName string) context.Context {
+	parentLogCtx, _ := parent.Value(requestContextKey).(LogContext)
+	newCtx := LogContext{
+		TestName:           parentLogCtx.TestName,
+		TestBucketName:     bucketName,
+		TestScopeName:      scopeName,
+		TestCollectionName: collectionName,
 	}
 	return LogContextWith(parent, &newCtx)
 }

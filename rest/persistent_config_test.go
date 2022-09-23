@@ -315,7 +315,7 @@ func TestImportFilterEndpoint(t *testing.T) {
 	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
+	tb := base.GetTestBucketDefaultCollection(t)
 	defer func() {
 		fmt.Println("closing test bucket")
 		tb.Close()
