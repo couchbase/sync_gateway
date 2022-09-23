@@ -206,6 +206,15 @@ func (sc *ServerContext) GetDatabase(ctx context.Context, name string) (*db.Data
 		return nil, base.HTTPErrorf(http.StatusBadRequest, "invalid database name %q", name)
 	}
 
+	dbc, err := sc.unsuspendDatabase(ctx, name)
+	if err != nil && err != base.ErrNotFound && err != ErrSuspendingDisallowed {
+		return nil, err
+	} else if err == nil {
+		return dbc, nil
+	}
+
+	// database not loaded, fallback to fetching it from cluster
+
 	if sc.BootstrapContext.Connection != nil {
 		var found bool
 		found, err := sc._fetchAndLoadDatabase(ctx, name)
