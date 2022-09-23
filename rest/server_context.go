@@ -214,14 +214,14 @@ func (sc *ServerContext) GetDatabase(ctx context.Context, name string) (*db.Data
 	}
 
 	// database not loaded, fallback to fetching it from cluster
-
 	if sc.BootstrapContext.Connection != nil {
 		var found bool
-		found, err := sc._fetchAndLoadDatabase(ctx, name)
-		if err != nil {
-			return nil, base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
-		}
+		if sc.Config.IsServerless() {
+			found, err = sc.fetchAndLoadDatabaseSince(ctx, name, sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
 
+		} else {
+			found, err = sc.fetchAndLoadDatabase(ctx, name)
+		}
 		if found {
 			sc.lock.RLock()
 			defer sc.lock.RUnlock()
