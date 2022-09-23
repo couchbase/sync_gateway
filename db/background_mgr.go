@@ -11,6 +11,7 @@ package db
 import (
 	"net/http"
 	"sync"
+	"testing"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -388,10 +389,19 @@ func (b *BackgroundManager) setRunState(state BackgroundProcessState) {
 }
 
 // Currently only test
-func (b *BackgroundManager) GetRunState() BackgroundProcessState {
+func (b *BackgroundManager) GetRunState(t *testing.T) BackgroundProcessState {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 	return b.State
+}
+
+// For test use only
+// Returns empty string if background process is not cluster aware
+func (b *BackgroundManager) GetHeartbeatDocID(t *testing.T) string {
+	if b.isClusterAware() {
+		return b.clusterAwareOptions.HeartbeatDocID()
+	}
+	return ""
 }
 
 func (b *BackgroundManager) SetError(err error) {
