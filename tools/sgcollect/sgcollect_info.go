@@ -41,9 +41,6 @@ func (p PasswordString) MarshalText() ([]byte, error) {
 type SGCollectOptions struct {
 	OutputPath            string
 	RootDir               string
-	Verbosity             int
-	ProductOnly           bool
-	DumpUtilities         bool
 	LogRedactionLevel     LogRedactionLevel
 	LogRedactionSalt      PasswordString
 	SyncGatewayURL        *url.URL
@@ -62,7 +59,6 @@ type SGCollectOptions struct {
 func (opts *SGCollectOptions) ParseCommandLine(args []string) error {
 	app := kingpin.New("sgcollect_info", "")
 	app.Flag("root-dir", "root directory").StringVar(&opts.RootDir)
-	app.Flag("verbosity", "").CounterVar(&opts.Verbosity)
 	app.Flag("log-redaction-level", "").Default("none").EnumVar((*string)(&opts.LogRedactionLevel), "none", "partial")
 	app.Flag("log-redaction-salt", "").Default(uuid.New().String()).StringVar((*string)(&opts.LogRedactionSalt))
 	app.Flag("sync-gateway-url", "").URLVar(&opts.SyncGatewayURL)

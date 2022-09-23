@@ -258,7 +258,7 @@ func (f *GZipFileTask) Run(ctx context.Context, opts *SGCollectOptions, out io.W
 	}
 	defer unzipper.Close()
 
-	_, err = io.Copy(out, unzipper)
+	_, err = io.Copy(out, unzipper) //nolint:gosec - we're copying our own files
 	if err != nil {
 		return fmt.Errorf("failed to copy contents of %q: %w", f.inputFile, err)
 	}

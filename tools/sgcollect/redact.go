@@ -109,7 +109,7 @@ func RedactCopier(opts *SGCollectOptions) CopyFunc {
 						err = readErr
 						break
 					}
-					// now the br is just after the closing </ud>>
+					// now the br is just after the closing </ud>
 					redactBuf = append(redactBuf, chunk[:len(chunk)-1]...)
 					sumInput := append([]byte(opts.LogRedactionSalt), redactBuf...)
 					digest := sha1.Sum(sumInput) //nolint:gosec
