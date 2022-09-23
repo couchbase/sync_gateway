@@ -15,9 +15,9 @@ func makeOSTasks() []SGCollectTask {
 		OSTask("unix", "uname", "uname -a"),
 		OSTask("unix", "time and TZ", "date; date -u"),
 		Timeout(OSTask("unix", "ntp time", "ntpdate -q pool.ntp.org || nc time.nist.gov 13 || netcat time.nist.gov 13"), 60*time.Second),
-		OSTask("unix", "ntp peers", "ntpq -p"),
-		OSTask("unix", "raw /etc/sysconfig/clock", "cat /etc/sysconfig/clock"),
-		OSTask("unix", "raw /etc/timezone", "cat /etc/timezone"),
+		MayFail(OSTask("unix", "ntp peers", "ntpq -p")),                                 // ntpq is not present on macOS Mojave and above
+		MayFail(OSTask("unix", "raw /etc/sysconfig/clock", "cat /etc/sysconfig/clock")), // /etc/sysconfig/clock may not be present on macOS
+		MayFail(OSTask("unix", "raw /etc/timezone", "cat /etc/timezone")),               // /etc/sysconfig/clock may not be present on macOS
 		OSTask("windows", "System information", "systeminfo"),
 		OSTask("windows", "Computer system", "wmic computersystem"),
 		OSTask("windows", "Computer OS", "wmic os"),
@@ -53,7 +53,7 @@ func makeOSTasks() []SGCollectTask {
 		OSTask("linux", "LVM info", "pvdisplay"),
 		OSTask("darwin", "Process list snapshot", "top -l 1"),
 		OSTask("darwin", "Disk activity", "iostat 1 10"),
-		OSTask("darwin", "Process list", "ps -Aww -o user,pid,lwp,ppid,nlwp,pcpu,pri,nice,vsize,rss,tty,stat,wchan:12,start,bsdtime,command"),
+		OSTask("darwin", "Process list", "ps -Aww -o user,pid,ppid,pcpu,pri,nice,vsize,rss,tty,stat,start,command"),
 		OSTask("windows", "Installed software", "wmic product get name, version"),
 		OSTask("windows", "Service list", "wmic service where state=\"running\" GET caption, name, state"),
 		OSTask("windows", "Process list", "wmic process"),
@@ -75,7 +75,7 @@ func makeOSTasks() []SGCollectTask {
 		OSTask("linux", "Iptables dump", "iptables-save"),
 		OSTask("unix", "Raw /etc/hosts", "cat /etc/hosts"),
 		OSTask("unix", "Raw /etc/resolv.conf", "cat /etc/resolv.conf"),
-		OSTask("unix", "Raw /etc/nsswitch.conf", "cat /etc/nsswitch.conf"),
+		OSTask("linux", "Raw /etc/nsswitch.conf", "cat /etc/nsswitch.conf"),
 		OSTask("windows", "Arp cache", "arp -a"),
 		OSTask("windows", "Network Interface Controller", "wmic nic"),
 		OSTask("windows", "Network Adapter", "wmic nicconfig"),
@@ -87,16 +87,16 @@ func makeOSTasks() []SGCollectTask {
 		OSTask("windows", "Physical memory chip info", "wmic memorychip"),
 		OSTask("windows", "Local storage devices", "wmic logicaldisk"),
 		OSTask("unix", "Filesystem", "df -ha"),
-		OSTask("unix", "System activity reporter", "sar 1 10"),
-		OSTask("unix", "System paging activity", "vmstat 1 10"),
+		MayFail(OSTask("unix", "System activity reporter", "sar 1 10")),  // sar is not always installed
+		MayFail(OSTask("unix", "System paging activity", "vmstat 1 10")), // vmstat is not always installed
 		OSTask("unix", "System uptime", "uptime"),
-		OSTask("unix", "couchbase user definition", "getent passwd couchbase"),
+		MayFail(OSTask("unix", "couchbase user definition", "getent passwd couchbase")), // might not be present in tests
 		Privileged(OSTask("unix", "couchbase user limits", `su couchbase -c "ulimit -a"`)),
-		OSTask("unix", "sync_gateway user definition", "getent passwd sync_gateway"),
+		MayFail(OSTask("unix", "sync_gateway user definition", "getent passwd sync_gateway")), // might not be present in tests
 		Privileged(OSTask("unix", "sync_gateway user limits", `su sync_gateway -c "ulimit -a"`)),
-		OSTask("unix", "Interrupt status", "intrstat 1 10"),
-		OSTask("unix", "Processor status", "mpstat 1 10"),
-		OSTask("unix", "System log", "cat /var/adm/messages"),
+		OSTask("linux", "Interrupt status", "intrstat 1 10"),
+		OSTask("linux", "Processor status", "mpstat 1 10"),
+		OSTask("solaris", "System log", "cat /var/adm/messages"),
 		OSTask("linux", "Raw /proc/uptime", "cat /proc/uptime"),
 		NoHeader(OverrideOutput(OSTask("linux", "Systemd journal", "journalctl 2>&1 | gzip -c"), "systemd_journal.gz")),
 		NoHeader(OverrideOutput(OSTask("linux", "All logs", "tar cz /var/log/syslog* /var/log/dmesg /var/log/messages* /var/log/daemon* /var/log/debug* /var/log/kern.log* 2>/dev/null"), "syslog.tar.gz")),

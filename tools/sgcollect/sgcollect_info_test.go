@@ -10,9 +10,47 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestSGCollectTasks(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping in short mode")
+	}
+
+	restTesterConfig := rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{}}}
+	restTester := rest.NewRestTester(t, &restTesterConfig)
+	require.NoError(t, restTester.SetAdminParty(false))
+	defer restTester.Close()
+
+	mockSyncGateway := httptest.NewServer(restTester.TestAdminHandler())
+	defer mockSyncGateway.Close()
+	mockSyncGatewayURL, _ := url.Parse(mockSyncGateway.URL)
+
+	tasks := MakeAllTasks(mockSyncGatewayURL, &SGCollectOptions{}, ServerConfig{
+		Databases: map[string]any{
+			"db": restTester.DatabaseConfig.DbConfig,
+		},
+	})
+	tr := NewTaskTester(t, SGCollectOptions{})
+	for _, task := range tasks {
+		output, res := tr.RunTask(task)
+		tex := TaskEx(task)
+		if tex.mayFailTest {
+			if res.Error != nil {
+				t.Logf("Failed to run %s [%s] - marked as may fail, so not failing test", task.Name(), task.Header())
+				t.Logf("Error: %v", res.Error)
+				t.Logf("Output: %s", output.String())
+			}
+		} else {
+			if !AssertDidNotFail(t, res) {
+				t.Logf("Output: %s", output.String())
+			}
+		}
+	}
+}
 
 func TestCollectZipAndUpload(t *testing.T) {
 	uploadServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

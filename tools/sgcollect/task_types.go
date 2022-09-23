@@ -22,18 +22,22 @@ type SGCollectTask interface {
 	Run(ctx context.Context, opts *SGCollectOptions, out io.Writer) error
 }
 
+// SGCollectTaskEx adds metadata to a task, such as platforms it's applicable for.
+// This should not be created directly, instead use one of the helpers (such as Privileged or Sample), which take care
+// of setting the properties on the task if it is already a SGCollectTaskEx.
 type SGCollectTaskEx struct {
 	SGCollectTask
-	platforms  []string
-	root       bool
-	samples    int
-	interval   time.Duration
-	timeout    time.Duration
-	outputFile string
-	noHeader   bool
+	platforms   []string
+	root        bool
+	samples     int
+	interval    time.Duration
+	timeout     time.Duration
+	outputFile  string
+	noHeader    bool
+	mayFailTest bool
 }
 
-// TaskEx wraps the given SGCollectTask in a SGCollectTaskEx if necessary.
+// TaskEx wraps the given SGCollectTask in a SGCollectTaskEx, or returns it if it is already a SGCollectTaskEx.
 func TaskEx(t SGCollectTask) SGCollectTaskEx {
 	if ex, ok := t.(SGCollectTaskEx); ok {
 		return ex
@@ -132,6 +136,18 @@ func NoHeader(t SGCollectTask) SGCollectTaskEx {
 	return SGCollectTaskEx{
 		SGCollectTask: t,
 		noHeader:      true,
+	}
+}
+
+// MayFail marks this task as possibly failing in tests. This has no effect at runtime.
+func MayFail(t SGCollectTask) SGCollectTaskEx {
+	if ex, ok := t.(SGCollectTaskEx); ok {
+		ex.mayFailTest = true
+		return ex
+	}
+	return SGCollectTaskEx{
+		SGCollectTask: t,
+		mayFailTest:   true,
 	}
 }
 
