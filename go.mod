@@ -11,6 +11,7 @@ require (
 	github.com/couchbase/go-couchbase v0.1.1
 	github.com/couchbase/gocb/v2 v2.5.3-0.20220803131303-46b466983d0f
 	github.com/couchbase/gocbcore/v10 v10.1.5-0.20220809160836-bf53e9527651
+	github.com/couchbase/gocbcore/v9 v9.1.8
 	github.com/couchbase/gomemcached v0.1.4
 	github.com/couchbase/goutils v0.1.2
 	github.com/couchbase/sg-bucket v0.0.0-20220916154817-791744ac79b7
@@ -35,6 +36,7 @@ require (
 	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e
 	golang.org/x/net v0.0.0-20220919232410-f2f64ebce3c1
 	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
+	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/couchbase/gocb.v1 v1.6.7
 	gopkg.in/couchbase/gocbcore.v7 v7.1.18
 	gopkg.in/couchbaselabs/gocbconnstr.v1 v1.0.4
@@ -42,11 +44,12 @@ require (
 )
 
 require (
+	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751 // indirect
+	github.com/alecthomas/units v0.0.0-20190924025748-f65c72e2690d // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/couchbase/blance v0.1.2 // indirect
 	github.com/couchbase/cbauth v0.1.1 // indirect
-	github.com/couchbase/gocbcore/v9 v9.1.8 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
