@@ -139,6 +139,12 @@ func (tr *TaskRunner) writeHeader(w io.Writer, task SGCollectTask) error {
 func (tr *TaskRunner) Run(task SGCollectTask) {
 	tex := TaskEx(task)
 
+	skipReason, skip := ShouldSkip(task)
+	if skip {
+		log.Printf("SKIP %s [%s] - %s", task.Name(), task.Header(), skipReason)
+		return
+	}
+
 	outputFile := tex.outputFile
 	if outputFile == "" {
 		outputFile = defaultOutputFile
@@ -165,10 +171,6 @@ func (tr *TaskRunner) Run(task SGCollectTask) {
 	res := ExecuteTask(tex, tr.opts, fd, func(s string) {
 		log.Println(s)
 	}, false)
-	if res.SkipReason != "" {
-		log.Printf("SKIP %s [%s] - %s", task.Name(), task.Header(), res.SkipReason)
-		_, _ = fmt.Fprintf(fd, "skipped - %s", res.SkipReason)
-	}
 	if res.Error != nil {
 		log.Printf("FAIL %s [%s] - %v", task.Name(), task.Header(), res.Error)
 		_, _ = fmt.Fprintf(fd, "%s", res.Error)
@@ -186,21 +188,26 @@ type TaskExecutionResult struct {
 	Error      error
 }
 
-func ExecuteTask(task SGCollectTask, opts *SGCollectOptions, output io.Writer, log func(string), failFast bool) TaskExecutionResult {
+func ShouldSkip(task SGCollectTask) (string, bool) {
 	tex := TaskEx(task)
 	if !tex.ShouldRun(runtime.GOOS) {
-		return TaskExecutionResult{
-			Task:       task,
-			SkipReason: fmt.Sprintf("not executing on platform %s", runtime.GOOS),
-		}
+		return fmt.Sprintf("not executing on platform %s", runtime.GOOS), true
 	}
 	if tex.RequiresRoot() {
 		uid := os.Getuid()
 		if uid != -1 && uid != 0 {
-			return TaskExecutionResult{
-				Task:       task,
-				SkipReason: "requires root privileges",
-			}
+			return "requires root privileges", true
+		}
+	}
+	return "", false
+}
+
+func ExecuteTask(task SGCollectTask, opts *SGCollectOptions, output io.Writer, log func(string), failFast bool) TaskExecutionResult {
+	tex := TaskEx(task)
+	if reason, ok := ShouldSkip(task); ok {
+		return TaskExecutionResult{
+			Task:       task,
+			SkipReason: reason,
 		}
 	}
 
