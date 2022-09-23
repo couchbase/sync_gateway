@@ -24,12 +24,23 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-go@v2
+      - uses: actions/setup-go@v3
         with:
           go-version: 1.18.5
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: go-build
         run: go build "./..."
+
+  addlicense:
+    name: addlicense
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-go@v3
+        with:
+          go-version: 1.18.5
+      - run: go install github.com/google/addlicense@latest
+      - uses: actions/checkout@v3
+      - run: addlicense -check -f licenses/addlicense.tmpl .
 
   golangci:
     name: lint
@@ -54,10 +65,10 @@ jobs:
       GOPRIVATE: github.com/couchbaselabs
       MallocNanoZone: 0
     steps:
-      - uses: actions/setup-go@v2
+      - uses: actions/setup-go@v3
         with:
           go-version: 1.18.5
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Build
         run: go build -v "./..."
       - name: Run Tests
@@ -74,10 +85,10 @@ jobs:
     env:
       GOPRIVATE: github.com/couchbaselabs
     steps:
-      - uses: actions/setup-go@v2
+      - uses: actions/setup-go@v3
         with:
           go-version: 1.18.5
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Run Tests
         run: go test -race -timeout=30m -count=1 -json -v "./..." | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
         shell: bash
