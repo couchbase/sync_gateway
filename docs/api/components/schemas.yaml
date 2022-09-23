@@ -434,7 +434,7 @@ New-revision:
       description: The ID of the document.
       type: string
     ok:
-      description: Wheather the request completed successfully.
+      description: Whether the request completed successfully.
       type: boolean
     rev:
       description: The revision of the document.

@@ -356,6 +356,58 @@ func (h *handler) handlePutAttachment() error {
 	return nil
 }
 
+func (h *handler) handleDeleteAttachment() error {
+	if h.isReadOnlyGuest() {
+		return base.HTTPErrorf(http.StatusForbidden, auth.GuestUserReadOnly)
+	}
+
+	docid := h.PathVar("docid")
+	attachmentName := h.PathVar("attach")
+	attachmentContentType := h.rq.Header.Get("Content-Type")
+	if attachmentContentType == "" {
+		attachmentContentType = "application/octet-stream"
+	}
+	revid := h.getQuery("rev")
+	if revid == "" {
+		var err error
+		revid, err = h.getEtag("If-Match")
+		if err != nil {
+			return err
+		}
+	}
+
+	body, err := h.db.Get1xRevBody(h.ctx(), docid, revid, false, nil)
+	if err != nil {
+		if base.IsDocNotFoundError(err) {
+			// Need to return an error if a document is not found
+			base.HTTPErrorf(http.StatusNotFound, "Document specified is not found")
+		} else if err != nil {
+			return err
+		}
+	} else if body != nil {
+		if revid == "" {
+			// If a revid is not specified and an active revision was found,
+			// return a conflict now, rather than letting db.Put do it further down...
+			return base.HTTPErrorf(http.StatusConflict, "Cannot modify attachments without a specific rev ID")
+		}
+	}
+
+	// get document attachments and delete specified attachment from the map
+	attachments := db.GetBodyAttachments(body)
+	delete(attachments, attachmentName)
+	body[db.BodyAttachments] = attachments
+
+	newRev, _, err := h.db.Put(h.ctx(), docid, body)
+	if err != nil {
+		return err
+	}
+	h.setEtag(newRev)
+
+	h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`"}`))
+
+	return nil
+}
+
 // HTTP handler for a PUT of a document
 func (h *handler) handlePutDoc() error {
 
