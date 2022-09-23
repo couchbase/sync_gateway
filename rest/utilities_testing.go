@@ -13,6 +13,7 @@ package rest
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -180,8 +181,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 	} else if rt.RestTesterConfig.persistentConfig {
 		// If running in persistent config mode, the database has to be manually created. If the db name is the same as a
 		// past tests db name, a db already exists error could happen if the past tests bucket is still flushing. Prevent this
-		// by setting the group ID as the current test bucket name by default.
-		sc.Bootstrap.ConfigGroupID = rt.TB.Name()
+		// by setting the group ID as the current test name by default.
+		sc.Bootstrap.ConfigGroupID = fmt.Sprintf("%x", sha256.Sum256([]byte(rt.TB.Name())))
 	}
 
 	sc.Unsupported.UserQueries = base.BoolPtr(rt.EnableUserQueries)
