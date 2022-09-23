@@ -392,8 +392,12 @@ func (h *handler) handleDeleteAttachment() error {
 		}
 	}
 
-	// get document attachments and delete specified attachment from the map
+	// get document attachments and check if attachment exists
 	attachments := db.GetBodyAttachments(body)
+	if _, ok := attachments[attachmentName]; !ok {
+		return base.HTTPErrorf(http.StatusNotFound, "Attachment %s is not found", attachmentName)
+	}
+	// delete specified attachment from the map
 	delete(attachments, attachmentName)
 	body[db.BodyAttachments] = attachments
 

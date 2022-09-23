@@ -256,6 +256,10 @@ func TestDocAttachment(t *testing.T) {
 	assert.Equal(t, "bytes 5-6/30", response.Header().Get("Content-Range"))
 	assert.Equal(t, attachmentContentType, response.Header().Get("Content-Type"))
 
+	// attempt to delete an attachment that is not on the document
+	response = rt.SendRequestWithHeaders("DELETE", "/db/doc/attach2?rev="+revid, "", reqHeaders)
+	RequireStatus(t, response, 404)
+
 	// delete the attachment calling the delete attachment endpoint
 	response = rt.SendRequestWithHeaders("DELETE", "/db/doc/attach1?rev="+revid, "", reqHeaders)
 	RequireStatus(t, response, 201)
