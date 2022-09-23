@@ -207,9 +207,7 @@ func (sc *ServerContext) GetDatabase(ctx context.Context, name string) (*db.Data
 	}
 
 	if sc.BootstrapContext.Connection != nil {
-		sc.lock.Lock()
-		defer sc.lock.Unlock()
-		// database not loaded, go look for it in the cluster
+		var found bool
 		found, err := sc._fetchAndLoadDatabase(ctx, name)
 		if err != nil {
 			return nil, base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
