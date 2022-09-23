@@ -58,21 +58,26 @@ type SGCollectOptions struct {
 
 func (opts *SGCollectOptions) ParseCommandLine(args []string) error {
 	app := kingpin.New("sgcollect_info", "")
-	app.Flag("root-dir", "root directory").StringVar(&opts.RootDir)
-	app.Flag("log-redaction-level", "").Default("none").EnumVar((*string)(&opts.LogRedactionLevel), "none", "partial")
-	app.Flag("log-redaction-salt", "").Default(uuid.New().String()).StringVar((*string)(&opts.LogRedactionSalt))
-	app.Flag("sync-gateway-url", "").URLVar(&opts.SyncGatewayURL)
-	app.Flag("sync-gateway-username", "").StringVar(&opts.SyncGatewayUsername)
-	app.Flag("sync-gateway-password", "").StringVar((*string)(&opts.SyncGatewayPassword))
-	app.Flag("sync-gateway-config", "").ExistingFileVar(&opts.SyncGatewayConfig)
-	app.Flag("sync-gateway-executable", "").ExistingFileVar(&opts.SyncGatewayExecutable)
-	app.Flag("http-timeout", "").Default("30s").DurationVar(&opts.HTTPTimeout)
-	app.Flag("tmp-dir", "").ExistingDirVar(&opts.TmpDir)
-	app.Flag("upload-host", "").URLVar(&opts.UploadHost)
-	app.Flag("customer", "").StringVar(&opts.UploadCustomer)
-	app.Flag("ticket", "").StringVar(&opts.UploadTicketNumber)
-	app.Flag("upload-proxy", "").URLVar(&opts.UploadProxy)
-	app.Arg("path", "path to collect diagnostics into").Required().StringVar(&opts.OutputPath)
+	app.Flag("root-dir", "root directory of Sync Gateway installation").StringVar(&opts.RootDir)
+	app.Flag("log-redaction-level", "whether to redact logs. If enabled, two copies of the logs will be collected, one redacted and one unredacted.").
+		Default("none").EnumVar((*string)(&opts.LogRedactionLevel), "none", "partial")
+	app.Flag("log-redaction-salt", "salt to use when hashing user data in redacted logs. By default a random string is generated.").
+		Default(uuid.New().String()).StringVar((*string)(&opts.LogRedactionSalt))
+	app.Flag("sync-gateway-url", "URL of the admin interface of the running Sync Gateway").URLVar(&opts.SyncGatewayURL)
+	app.Flag("sync-gateway-username", "credentials for the Sync Gateway admin interfarce").StringVar(&opts.SyncGatewayUsername)
+	app.Flag("sync-gateway-password", "credentials for the Sync Gateway admin interfarce").StringVar((*string)(&opts.SyncGatewayPassword))
+	app.Flag("sync-gateway-config", "path to the Sync Gateway bootstrap configuration file. If left blank, will attempt to find automatically.").
+		ExistingFileVar(&opts.SyncGatewayConfig)
+	app.Flag("sync-gateway-executable", "path to the Sync Gateway binary. If left blank, will attempt to find automatically.").
+		ExistingFileVar(&opts.SyncGatewayExecutable)
+	app.Flag("http-timeout", "timeout for HTTP requests made by sgcollect_info. Does not apply to log uploads.").
+		Default("30s").DurationVar(&opts.HTTPTimeout)
+	app.Flag("tmp-dir", "temporary directory to use while gathering logs. If left blank, one will automatically be created.").ExistingDirVar(&opts.TmpDir)
+	app.Flag("upload-host", "server to upload logs to when instructed by Couchbase Technical Support").URLVar(&opts.UploadHost)
+	app.Flag("customer", "customer name to use in conjunction with upload-host").StringVar(&opts.UploadCustomer)
+	app.Flag("ticket", "ticket number to use in conjunction with upload-host").StringVar(&opts.UploadTicketNumber)
+	app.Flag("upload-proxy", "HTTP proxy to use when uploading logs").URLVar(&opts.UploadProxy)
+	app.Arg("path", "path to a ZIP file (will be created) to collect diagnostics into").Required().StringVar(&opts.OutputPath)
 	_, err := app.Parse(args)
 	return err
 }
