@@ -112,7 +112,7 @@ func RedactCopier(opts *SGCollectOptions) CopyFunc {
 					// now the br is just after the closing </ud>>
 					redactBuf = append(redactBuf, chunk[:len(chunk)-1]...)
 					sumInput := append([]byte(opts.LogRedactionSalt), redactBuf...)
-					digest := sha1.Sum(sumInput)
+					digest := sha1.Sum(sumInput) //nolint:gosec
 					chunk = append(append([]byte("<ud>"), hex.EncodeToString(digest[:])...), []byte("</ud>")...)
 					redactBuf = make([]byte, 0, 32*1024)
 				}

@@ -283,7 +283,7 @@ func (o *OSCommandTask) Run(ctx context.Context, opts *SGCollectOptions, out io.
 	var cancel context.CancelFunc
 	ctx, cancel = context.WithCancel(ctx)
 	defer cancel()
-	cmd := exec.Command("sh", "-c", o.command)
+	cmd := exec.Command("sh", "-c", o.command) //nolint:gosec
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("stdout pipe: %w", err)

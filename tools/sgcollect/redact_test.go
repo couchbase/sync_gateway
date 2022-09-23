@@ -16,7 +16,7 @@ func TestRedactCopy(t *testing.T) {
 		LogRedactionSalt: "SALT",
 	}
 	redacted := func(in string) string {
-		digest := sha1.Sum([]byte(string(opts.LogRedactionSalt) + in))
+		digest := sha1.Sum([]byte(string(opts.LogRedactionSalt) + in)) //nolint:gosec
 		return hex.EncodeToString(digest[:])
 	}
 	cases := []struct {
@@ -109,5 +109,23 @@ func FuzzRedactCopyIdempotent(f *testing.F) {
 		require.NoError(t, err)
 		require.Equal(t, int64(buf.Len()), n)
 		require.Equal(t, buf.String(), in)
+	})
+}
+
+func FuzzRedactCopyMiddle(f *testing.F) {
+	opts := &SGCollectOptions{
+		LogRedactionSalt: "SALT",
+	}
+	redacted := func(in string) string {
+		digest := sha1.Sum([]byte(string(opts.LogRedactionSalt) + in)) //nolint:gosec
+		return hex.EncodeToString(digest[:])
+	}
+	f.Add("foo", "bar", "baz")
+	f.Fuzz(func(t *testing.T, s1, s2, s3 string) {
+		var buf bytes.Buffer
+		n, err := RedactCopier(opts)(&buf, strings.NewReader(fmt.Sprintf("%s<ud>%s</ud>%s", s1, s2, s3)))
+		require.NoError(t, err)
+		require.Equal(t, int64(buf.Len()), n)
+		require.Equal(t, buf.String(), fmt.Sprintf("%s<ud>%s</ud>%s", s1, redacted(s2), s3))
 	})
 }
