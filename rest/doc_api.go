@@ -380,7 +380,7 @@ func (h *handler) handleDeleteAttachment() error {
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			// Need to return an error if a document is not found
-			base.HTTPErrorf(http.StatusNotFound, "Document specified is not found")
+			return base.HTTPErrorf(http.StatusNotFound, "Document specified is not found")
 		} else if err != nil {
 			return err
 		}
