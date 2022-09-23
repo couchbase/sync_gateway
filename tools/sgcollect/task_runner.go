@@ -40,6 +40,7 @@ func NewTaskRunner(opts *SGCollectOptions) (*TaskRunner, error) {
 
 func (tr *TaskRunner) Finalize() {
 	log.Println("Task runner finalizing...")
+	log.SetOutput(os.Stderr)
 	for _, fd := range tr.files {
 		err := fd.Close()
 		if err != nil {
@@ -103,6 +104,7 @@ func (tr *TaskRunner) ZipResults(outputPath string, prefix string, copier CopyFu
 }
 
 // SetupSGCollectLog will redirect the standard library log package's output to both stderr and a log file in the temporary directory.
+// After calling this, make sure to call Finalize, which will undo the change.
 func (tr *TaskRunner) SetupSGCollectLog() error {
 	fd, err := tr.createFile("sgcollect_info.log")
 	if err != nil {
@@ -179,6 +181,7 @@ func (tr *TaskRunner) Run(task SGCollectTask) {
 }
 
 type TaskExecutionResult struct {
+	Task       SGCollectTask
 	SkipReason string
 	Error      error
 }
@@ -187,6 +190,7 @@ func ExecuteTask(task SGCollectTask, opts *SGCollectOptions, output io.Writer, l
 	tex := TaskEx(task)
 	if !tex.ShouldRun(runtime.GOOS) {
 		return TaskExecutionResult{
+			Task:       task,
 			SkipReason: fmt.Sprintf("not executing on platform %s", runtime.GOOS),
 		}
 	}
@@ -194,6 +198,7 @@ func ExecuteTask(task SGCollectTask, opts *SGCollectOptions, output io.Writer, l
 		uid := os.Getuid()
 		if uid != -1 && uid != 0 {
 			return TaskExecutionResult{
+				Task:       task,
 				SkipReason: "requires root privileges",
 			}
 		}
@@ -224,6 +229,7 @@ func ExecuteTask(task SGCollectTask, opts *SGCollectOptions, output io.Writer, l
 			err = run()
 			if err != nil && failFast {
 				return TaskExecutionResult{
+					Task:  task,
 					Error: err,
 				}
 			}
@@ -236,6 +242,7 @@ func ExecuteTask(task SGCollectTask, opts *SGCollectOptions, output io.Writer, l
 		err = run()
 	}
 	return TaskExecutionResult{
+		Task:  task,
 		Error: err,
 	}
 }

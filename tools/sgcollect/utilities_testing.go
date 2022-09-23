@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,11 +21,16 @@ func (tt *TaskTester) RunTask(task SGCollectTask) (*bytes.Buffer, TaskExecutionR
 	return &buf, res
 }
 
-func AssertRan(t *testing.T, ter TaskExecutionResult) {
+func AssertDidNotFail(t *testing.T, ter TaskExecutionResult) bool {
+	return assert.NoError(t, ter.Error, fmt.Sprintf("Task %s [%s] errored", ter.Task.Name(), ter.Task.Header()))
+}
+
+func AssertRan(t *testing.T, ter TaskExecutionResult) bool {
 	if ter.SkipReason != "" {
-		assert.Failf(t, "Task skipped: %s", ter.SkipReason)
+		assert.Failf(t, fmt.Sprintf("Task %s [%s] skipped", ter.Task.Name(), ter.Task.Header()), ter.SkipReason)
+		return false
 	}
-	assert.NoError(t, ter.Error, "Task errored")
+	return AssertDidNotFail(t, ter)
 }
 
 func NewTaskTester(t *testing.T, optOverrides SGCollectOptions) *TaskTester {

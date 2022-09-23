@@ -116,7 +116,7 @@ func makeOSTasks() []SGCollectTask {
 	}
 }
 
-func makeCollectLogsTasks(opts *SGCollectOptions, config serverConfig) (result []SGCollectTask) {
+func makeCollectLogsTasks(opts *SGCollectOptions, config ServerConfig) (result []SGCollectTask) {
 	var sgLogFiles = []string{
 		"sg_error",
 		"sg_warn",
@@ -181,7 +181,7 @@ func makeCollectLogsTasks(opts *SGCollectOptions, config serverConfig) (result [
 	return result
 }
 
-func makeSGTasks(url *url.URL, opts *SGCollectOptions, config serverConfig) (result []SGCollectTask) {
+func makeSGTasks(url *url.URL, opts *SGCollectOptions, config ServerConfig) (result []SGCollectTask) {
 	binary, bootstrapConfigPath := findSGBinaryAndConfigs(url, opts)
 	if binary != "" {
 		result = append(result, OverrideOutput(NoHeader(&FileTask{
@@ -227,6 +227,15 @@ func makeSGTasks(url *url.URL, opts *SGCollectOptions, config serverConfig) (res
 	}
 	result = append(result, makeCollectLogsTasks(opts, config)...)
 	return
+}
+
+func MakeAllTasks(url *url.URL, opts *SGCollectOptions, config ServerConfig) []SGCollectTask {
+	result := []SGCollectTask{
+		new(SGCollectOptionsTask),
+	}
+	result = append(result, makeOSTasks()...)
+	result = append(result, makeSGTasks(url, opts, config)...)
+	return result
 }
 
 func durationPtr(d time.Duration) *time.Duration {

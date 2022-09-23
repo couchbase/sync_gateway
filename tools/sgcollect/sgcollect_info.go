@@ -267,20 +267,13 @@ func main() {
 		uploadFilename = zipFilename
 	}
 
-	var config serverConfig
+	var config ServerConfig
 	err = getJSONOverHTTP(sgURL.String()+"/_config?include_runtime=true", opts, &config)
 	if err != nil {
 		log.Printf("Failed to get SG config. Some information might not be collected.")
 	}
 
-	tr.Run(new(SGCollectOptionsTask))
-
-	for _, task := range makeOSTasks() {
-		tr.Run(task)
-	}
-
-	tasks := makeSGTasks(sgURL, opts, config)
-	for _, task := range tasks {
+	for _, task := range MakeAllTasks(sgURL, opts, config) {
 		tr.Run(task)
 	}
 
@@ -301,53 +294,62 @@ func main() {
 	}
 
 	if opts.UploadHost != nil && opts.UploadCustomer != "" {
-		uploadURL := *opts.UploadHost
-		uploadURL.Path += fmt.Sprintf("/%s/", opts.UploadCustomer)
-		if opts.UploadTicketNumber != "" {
-			uploadURL.Path += fmt.Sprintf("%s/", opts.UploadTicketNumber)
-		}
-		uploadURL.Path += filepath.Base(uploadFilename)
-		log.Printf("Uploading archive to %s...", uploadURL.String())
-
-		fd, err := os.Open(uploadFilename)
+		err = UploadFile(opts, uploadFilename)
 		if err != nil {
-			log.Fatalf("Failed to prepare file for upload: %v", err)
-		}
-		defer fd.Close()
-		stat, err := fd.Stat()
-		if err != nil {
-			log.Fatalf("Failed to stat upload file: %v", err)
-		}
-
-		req, err := http.NewRequest(http.MethodPut, uploadURL.String(), fd)
-		if err != nil {
-			log.Fatalf("Failed to prepare upload request: %v", err)
-		}
-		req.Header.Set("Content-Type", "application/zip")
-		req.ContentLength = stat.Size()
-
-		var proxy func(*http.Request) (*url.URL, error)
-		if opts.UploadProxy != nil {
-			proxy = http.ProxyURL(opts.UploadProxy)
-		} else {
-			proxy = http.ProxyFromEnvironment
-		}
-		httpClient := &http.Client{
-			Transport: &http.Transport{
-				Proxy: proxy,
-			},
-		}
-		res, err := httpClient.Do(req)
-		if err != nil {
-			log.Fatalf("Failed to upload logs: %v", err)
-		}
-		defer res.Body.Close()
-		if res.StatusCode != 200 {
-			log.Printf("WARN: upload gave unexpected status %s", res.Status)
-			body, _ := io.ReadAll(res.Body)
-			log.Println(string(body))
+			log.Printf("Uploading logs failed! %v", err)
+			log.Println("Please upload the logs manually, using the instructions given to you by Couchbase Technical Support.")
 		}
 	}
 
 	log.Println("Done.")
+}
+
+func UploadFile(opts *SGCollectOptions, uploadFilename string) error {
+	uploadURL := *opts.UploadHost
+	uploadURL.Path += fmt.Sprintf("/%s/", opts.UploadCustomer)
+	if opts.UploadTicketNumber != "" {
+		uploadURL.Path += fmt.Sprintf("%s/", opts.UploadTicketNumber)
+	}
+	uploadURL.Path += filepath.Base(uploadFilename)
+	log.Printf("Uploading archive to %s...", uploadURL.String())
+
+	fd, err := os.Open(uploadFilename)
+	if err != nil {
+		return fmt.Errorf("failed to prepare file for upload: %w", err)
+	}
+	defer fd.Close()
+	stat, err := fd.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to stat upload file: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPut, uploadURL.String(), fd)
+	if err != nil {
+		return fmt.Errorf("failed to create upload request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/zip")
+	req.ContentLength = stat.Size()
+
+	var proxy func(*http.Request) (*url.URL, error)
+	if opts.UploadProxy != nil {
+		proxy = http.ProxyURL(opts.UploadProxy)
+	} else {
+		proxy = http.ProxyFromEnvironment
+	}
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			Proxy: proxy,
+		},
+	}
+	res, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to perform request: %w", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		log.Printf("WARN: upload gave unexpected status %s", res.Status)
+		body, _ := io.ReadAll(res.Body)
+		log.Println(string(body))
+	}
+	return nil
 }
