@@ -23,7 +23,7 @@ type LogRedactionLevel string
 
 const (
 	RedactNone    LogRedactionLevel = "none"
-	RedactPartial                   = "partial"
+	RedactPartial LogRedactionLevel = "partial"
 )
 
 // PasswordString is a string with marshallers that avoid accidentally printing it. It also makes it harder to accidentally

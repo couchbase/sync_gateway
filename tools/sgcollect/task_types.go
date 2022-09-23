@@ -27,14 +27,15 @@ type SGCollectTask interface {
 // of setting the properties on the task if it is already a SGCollectTaskEx.
 type SGCollectTaskEx struct {
 	SGCollectTask
-	platforms   []string
-	root        bool
-	samples     int
-	interval    time.Duration
-	timeout     time.Duration
-	outputFile  string
-	noHeader    bool
-	mayFailTest bool
+	platforms       []string
+	root            bool
+	samples         int
+	interval        time.Duration
+	timeout         time.Duration
+	outputFile      string
+	noHeader        bool
+	mayFailTest     bool
+	removePasswords bool
 }
 
 // TaskEx wraps the given SGCollectTask in a SGCollectTaskEx, or returns it if it is already a SGCollectTaskEx.
@@ -80,6 +81,40 @@ func (e SGCollectTaskEx) Header() string {
 		return ""
 	}
 	return e.SGCollectTask.Header()
+}
+
+func (e SGCollectTaskEx) Run(ctx context.Context, opts *SGCollectOptions, output io.Writer) error {
+	if !e.removePasswords {
+		return e.SGCollectTask.Run(ctx, opts, output)
+	}
+
+	var buf bytes.Buffer
+	err := e.SGCollectTask.Run(ctx, opts, &buf)
+	if err != nil {
+		return err
+	}
+
+	var jsonVal map[string]any
+	err = json.Unmarshal(buf.Bytes(), &jsonVal) // using stdlib json to avoid importing base and bloating the binary
+	if err != nil {
+		log.Printf("WARN %s [%s] - could not run password remover because the task produced invalid JSON. Check the output for password leaks.", e.Name(), e.Header())
+		_, err = buf.WriteTo(output)
+		return err
+	}
+
+	err = RemovePasswordsAndTagUserData(jsonVal)
+	if err != nil {
+		log.Printf("WARN %s [%s] - could not run password remover: %v. Check the output for password leaks.", e.Name(), e.Header(), err)
+		_, err = buf.WriteTo(output)
+		return err
+	}
+
+	// use a custom json.Encoder to avoid escaping angle brackets
+	encoder := json.NewEncoder(output)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", "\t")
+	err = encoder.Encode(&jsonVal)
+	return err
 }
 
 func Sample(t SGCollectTask, samples int, interval time.Duration) SGCollectTaskEx {
@@ -148,6 +183,17 @@ func MayFail(t SGCollectTask) SGCollectTaskEx {
 	return SGCollectTaskEx{
 		SGCollectTask: t,
 		mayFailTest:   true,
+	}
+}
+
+func RemovePasswords(t SGCollectTask) SGCollectTaskEx {
+	if ex, ok := t.(SGCollectTaskEx); ok {
+		ex.removePasswords = true
+		return ex
+	}
+	return SGCollectTaskEx{
+		SGCollectTask:   t,
+		removePasswords: true,
 	}
 }
 
@@ -233,8 +279,8 @@ func (f *FileTask) Run(ctx context.Context, opts *SGCollectOptions, out io.Write
 }
 
 type GZipFileTask struct {
-	name                  string
-	inputFile, outputFile string
+	name      string
+	inputFile string
 }
 
 func (f *GZipFileTask) Name() string {

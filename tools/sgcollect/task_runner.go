@@ -220,6 +220,7 @@ func ExecuteTask(task SGCollectTask, opts *SGCollectOptions, output io.Writer, l
 			ctx, cancel = context.WithTimeout(ctx, to)
 			defer cancel()
 		}
+		log(fmt.Sprintf("RUN %s [%s]", task.Name(), task.Header()))
 		return task.Run(ctx, opts, output)
 	}
 

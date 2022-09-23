@@ -164,11 +164,10 @@ func makeCollectLogsTasks(opts *SGCollectOptions, config ServerConfig) (result [
 			} else {
 				for _, rotatedFile := range rotated {
 					log.Printf("Collecting rotated log file %s", rotatedFile)
-					result = append(result, &GZipFileTask{
-						name:       file + sgLogExtensionNotRotated,
-						inputFile:  rotatedFile,
-						outputFile: file + sgLogExtensionNotRotated,
-					})
+					result = append(result, OverrideOutput(&GZipFileTask{
+						name:      file + sgLogExtensionNotRotated,
+						inputFile: rotatedFile,
+					}, file+sgLogExtensionNotRotated))
 				}
 			}
 			log.Printf("Collecting non-rotated log file %s", filepath.Join(dir, file+sgLogExtensionNotRotated))
@@ -190,31 +189,31 @@ func makeSGTasks(url *url.URL, opts *SGCollectOptions, config ServerConfig) (res
 		}), "sync_gateway"))
 	}
 	if bootstrapConfigPath != "" {
-		result = append(result, OverrideOutput(NoHeader(&FileTask{
+		result = append(result, RemovePasswords(OverrideOutput(NoHeader(&FileTask{
 			name:      "Sync Gateway bootstrapConfigPath",
 			inputFile: bootstrapConfigPath,
-		}), "sync_gateway.json"))
+		}), "sync_gateway.json")))
 	}
 
 	result = append(result, OverrideOutput(NoHeader(&URLTask{
 		name: "Sync Gateway expvars",
 		url:  url.String() + "/_expvar",
-	}), "expvars.json"), &URLTask{
+	}), "expvars.json"), RemovePasswords(&URLTask{
 		name: "Collect server config",
 		url:  url.String() + "/_config",
-	}, &URLTask{
+	}), RemovePasswords(&URLTask{
 		name: "Collect runtime config",
 		url:  url.String() + "/_config?include_runtime=true",
-	}, &URLTask{
+	}), RemovePasswords(&URLTask{
 		name: "Collect server status",
 		url:  url.String() + "/_status",
-	})
+	}))
 	if len(config.Databases) > 0 {
 		for db := range config.Databases {
-			result = append(result, &URLTask{
+			result = append(result, RemovePasswords(&URLTask{
 				name: fmt.Sprintf("Database config - %q", db),
 				url:  url.String() + fmt.Sprintf("/%s/_config?include_runtime=true", db),
-			})
+			}))
 		}
 	}
 	for _, profile := range [...]string{"profile", "heap", "goroutine", "block", "mutex"} {
