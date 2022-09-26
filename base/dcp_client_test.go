@@ -67,6 +67,7 @@ func TestOneShotDCP(t *testing.T) {
 		collectionIDs = append(collectionIDs, collectionID)
 	}
 
+	fmt.Println("collectionIDs=", collectionIDs)
 	clientOptions := DCPClientOptions{
 		OneShot:       true,
 		CollectionIDs: collectionIDs,
