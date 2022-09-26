@@ -1345,7 +1345,7 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 // fetchAndLoadDatabaseSince refreshes all dbConfigs if they where last fetched past the refreshInterval. It then returns found if
 // the fetched configs contain the dbName.
 func (sc *ServerContext) fetchAndLoadDatabaseSince(ctx context.Context, dbName string, refreshInterval *base.ConfigDuration) (found bool, err error) {
-	configs, err := sc.fetchConfigsSince(ctx, sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
+	configs, err := sc.fetchConfigsSince(ctx, refreshInterval)
 	if err != nil {
 		return false, err
 	}

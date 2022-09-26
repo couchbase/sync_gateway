@@ -217,6 +217,14 @@ func IsDocNotFoundError(err error) bool {
 	}
 }
 
+// IsHTTPErrorStatusNotFound returns true if the error is a HTTP Error with the status 404 Not Found
+func IsHTTPErrorStatusNotFound(err error) bool {
+	if httpError, ok := err.(*HTTPError); ok && httpError.Status == http.StatusNotFound {
+		return true
+	}
+	return false
+}
+
 // MultiError manages a set of errors.  Callers must use ErrorOrNil when returning MultiError to callers
 // in order to properly handle nil checks on the returned MultiError
 //  Sample usage:

@@ -195,8 +195,18 @@ func (sc *ServerContext) Close(ctx context.Context) {
 	}
 }
 
-// Returns the DatabaseContext with the given name
+// GetDatabase attempts to return the DatabaseContext of the database. It will load the database if necessary.
 func (sc *ServerContext) GetDatabase(ctx context.Context, name string) (*db.DatabaseContext, error) {
+	dbc, err := sc.GetActiveDatabase(name)
+	if base.IsHTTPErrorStatusNotFound(err) {
+		return sc.GetInactiveDatabase(ctx, name)
+	}
+	return dbc, err
+}
+
+// GetActiveDatabase attempts to return the DatabaseContext of a loaded database. If not found, the database name will be
+// validated to make sure it's valid and then an error returned.
+func (sc *ServerContext) GetActiveDatabase(name string) (*db.DatabaseContext, error) {
 	sc.lock.RLock()
 	dbc := sc.databases_[name]
 	sc.lock.RUnlock()
@@ -205,7 +215,13 @@ func (sc *ServerContext) GetDatabase(ctx context.Context, name string) (*db.Data
 	} else if db.ValidateDatabaseName(name) != nil {
 		return nil, base.HTTPErrorf(http.StatusBadRequest, "invalid database name %q", name)
 	}
+	return nil, base.HTTPErrorf(http.StatusNotFound, "no such database %q", name)
+}
 
+// GetInactiveDatabase attempts to load the database and return it's DatabaseContext. It will first attempt to unsuspend the
+// database, and if that fails, try to load the database from the buckets.
+// This should be used if GetActiveDatabase fails.
+func (sc *ServerContext) GetInactiveDatabase(ctx context.Context, name string) (*db.DatabaseContext, error) {
 	dbc, err := sc.unsuspendDatabase(ctx, name)
 	if err != nil && err != base.ErrNotFound && err != ErrSuspendingDisallowed {
 		return nil, err
