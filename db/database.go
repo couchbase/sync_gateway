@@ -120,7 +120,7 @@ type DatabaseContext struct {
 	ServeInsecureAttachmentTypes bool                     // Attachment content type will bypass the content-disposition handling, default false
 	NoX509HTTPClient             *http.Client             // A HTTP Client from gocb to use the management endpoints
 	ServerContextHasStarted      chan struct{}            // Closed via PostStartup once the server has fully started
-	userFunctions                UserFunctions            // client-callable JavaScript functions
+	userFunctions                *UserFunctions           // client-callable JavaScript functions
 	graphQL                      *GraphQL                 // GraphQL query evaluator
 	Scopes                       map[string]Scope         // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
 }
@@ -148,7 +148,7 @@ type DatabaseContextOptions struct {
 	SecureCookieOverride          bool             // Pass-through DBConfig.SecureCookieOverride
 	SessionCookieName             string           // Pass-through DbConfig.SessionCookieName
 	SessionCookieHttpOnly         bool             // Pass-through DbConfig.SessionCookieHTTPOnly
-	UserFunctions                 UserFunctions    // JS/N1QL functions clients can call
+	UserFunctions                 *UserFunctions   // JS/N1QL functions clients can call
 	GraphQL                       GraphQL          // GraphQL query interface
 	AllowConflicts                *bool            // False forbids creating conflicts
 	SendWWWAuthenticateHeader     *bool            // False disables setting of 'WWW-Authenticate' header
@@ -1955,9 +1955,11 @@ func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOp
 		}
 	}
 
-	for _, fn := range options.UserFunctions {
-		if queryName, ok := fn.N1QLQueryName(); ok {
-			queryNames = append(queryNames, queryName)
+	if options.UserFunctions != nil {
+		for _, fn := range options.UserFunctions.Definitions {
+			if queryName, ok := fn.N1QLQueryName(); ok {
+				queryNames = append(queryNames, queryName)
+			}
 		}
 	}
 	if options.GraphQL != nil {

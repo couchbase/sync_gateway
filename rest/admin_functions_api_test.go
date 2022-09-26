@@ -50,18 +50,20 @@ func TestFunctionsConfigGetWithoutFeatureFlag(t *testing.T) {
 // Test use of "Etag" and "If-Match" headers to safely update function/query/graphql config.
 func TestFunctionsConfigMVCC(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{
-		UserFunctions: map[string]*functions.FunctionConfig{
-			"xxx": {
-				Type: "javascript",
-				Code: "function(){return 42;}",
-			},
-			"xxxN1QL": {
-				Type: "query",
-				Code: "SELECT 42",
-			},
-			"yyy": {
-				Type: "query",
-				Code: "SELECT 999",
+		UserFunctions: &functions.FunctionsConfig{
+			Definitions: functions.FunctionsDefs{
+				"xxx": {
+					Type: "javascript",
+					Code: "function(){return 42;}",
+				},
+				"xxxN1QL": {
+					Type: "query",
+					Code: "SELECT 42",
+				},
+				"yyy": {
+					Type: "query",
+					Code: "SELECT 999",
+				},
 			},
 		},
 		GraphQL: &functions.GraphQLConfig{
@@ -169,12 +171,14 @@ func TestFunctionsConfigGetMissing(t *testing.T) {
 }
 func TestFunctionsConfigGet(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{
-		UserFunctions: map[string]*functions.FunctionConfig{
-			"square": {
-				Type:  "javascript",
-				Code:  "function(context,args){return args.numero * args.numero;}",
-				Args:  []string{"numero"},
-				Allow: &functions.Allow{Channels: []string{"wonderland"}},
+		UserFunctions: &functions.FunctionsConfig{
+			Definitions: functions.FunctionsDefs{
+				"square": {
+					Type:  "javascript",
+					Code:  "function(context,args){return args.numero * args.numero;}",
+					Args:  []string{"numero"},
+					Allow: &functions.Allow{Channels: []string{"wonderland"}},
+				},
 			},
 		},
 	})
@@ -189,9 +193,9 @@ func TestFunctionsConfigGet(t *testing.T) {
 	})
 	t.Run("All", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/functions", "")
-		var body functions.FunctionConfigMap
+		var body functions.FunctionsConfig
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-		assert.NotNil(t, body["square"])
+		assert.NotNil(t, body.Definitions["square"])
 	})
 	t.Run("Single", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/functions/square", "")
@@ -207,12 +211,14 @@ func TestFunctionsConfigGet(t *testing.T) {
 
 func TestFunctionsConfigPut(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{
-		UserFunctions: map[string]*functions.FunctionConfig{
-			"square": {
-				Type:  "javascript",
-				Code:  "function(context,args){return args.numero * args.numero;}",
-				Args:  []string{"numero"},
-				Allow: &functions.Allow{Channels: []string{"wonderland"}},
+		UserFunctions: &functions.FunctionsConfig{
+			Definitions: functions.FunctionsDefs{
+				"square": {
+					Type:  "javascript",
+					Code:  "function(context,args){return args.numero * args.numero;}",
+					Args:  []string{"numero"},
+					Allow: &functions.Allow{Channels: []string{"wonderland"}},
+				},
 			},
 		},
 	})
@@ -236,8 +242,8 @@ func TestFunctionsConfigPut(t *testing.T) {
 		}`)
 		assert.Equal(t, 200, response.Result().StatusCode)
 
-		assert.NotNil(t, rt.GetDatabase().Options.UserFunctions["sum"])
-		assert.Nil(t, rt.GetDatabase().Options.UserFunctions["square"])
+		assert.NotNil(t, rt.GetDatabase().Options.UserFunctions.Definitions["sum"])
+		assert.Nil(t, rt.GetDatabase().Options.UserFunctions.Definitions["square"])
 
 		response = rt.SendAdminRequest("GET", "/db/_function/sum?numero=13", "")
 		assert.Equal(t, 200, response.Result().StatusCode)
@@ -250,7 +256,7 @@ func TestFunctionsConfigPut(t *testing.T) {
 		response := rt.SendAdminRequest("DELETE", "/db/_config/functions", "")
 		assert.Equal(t, 200, response.Result().StatusCode)
 
-		assert.Equal(t, 0, len(rt.GetDatabase().Options.UserFunctions))
+		assert.Equal(t, 0, len(rt.GetDatabase().Options.UserFunctions.Definitions))
 
 		response = rt.SendAdminRequest("GET", "/db/_function/square?numero=13", "")
 		assert.Equal(t, 404, response.Result().StatusCode)
@@ -259,12 +265,14 @@ func TestFunctionsConfigPut(t *testing.T) {
 
 func TestFunctionsConfigPutOne(t *testing.T) {
 	rt := newRestTesterForUserQueries(t, DbConfig{
-		UserFunctions: map[string]*functions.FunctionConfig{
-			"square": {
-				Type:  "javascript",
-				Code:  "function(context,args){return args.numero * args.numero;}",
-				Args:  []string{"numero"},
-				Allow: &functions.Allow{Channels: []string{"wonderland"}},
+		UserFunctions: &functions.FunctionsConfig{
+			Definitions: functions.FunctionsDefs{
+				"square": {
+					Type:  "javascript",
+					Code:  "function(context,args){return args.numero * args.numero;}",
+					Args:  []string{"numero"},
+					Allow: &functions.Allow{Channels: []string{"wonderland"}},
+				},
 			},
 		},
 	})
@@ -294,8 +302,8 @@ func TestFunctionsConfigPutOne(t *testing.T) {
 		}`)
 		assert.Equal(t, 200, response.Result().StatusCode)
 
-		assert.NotNil(t, rt.GetDatabase().Options.UserFunctions["sum"])
-		assert.NotNil(t, rt.GetDatabase().Options.UserFunctions["square"])
+		assert.NotNil(t, rt.GetDatabase().Options.UserFunctions.Definitions["sum"])
+		assert.NotNil(t, rt.GetDatabase().Options.UserFunctions.Definitions["square"])
 
 		response = rt.SendAdminRequest("GET", "/db/_function/sum?numero=13", "")
 		assert.Equal(t, "26", string(response.BodyBytes()))
@@ -309,8 +317,8 @@ func TestFunctionsConfigPutOne(t *testing.T) {
 		}`)
 		assert.Equal(t, 200, response.Result().StatusCode)
 
-		assert.NotNil(t, rt.GetDatabase().Options.UserFunctions["sum"])
-		assert.NotNil(t, rt.GetDatabase().Options.UserFunctions["square"])
+		assert.NotNil(t, rt.GetDatabase().Options.UserFunctions.Definitions["sum"])
+		assert.NotNil(t, rt.GetDatabase().Options.UserFunctions.Definitions["square"])
 
 		response = rt.SendAdminRequest("GET", "/db/_function/square?n=13", "")
 		assert.Equal(t, "-169", string(response.BodyBytes()))
@@ -319,8 +327,8 @@ func TestFunctionsConfigPutOne(t *testing.T) {
 		response := rt.SendAdminRequest("DELETE", "/db/_config/functions/square", "")
 		assert.Equal(t, 200, response.Result().StatusCode)
 
-		assert.Nil(t, rt.GetDatabase().Options.UserFunctions["square"])
-		assert.Equal(t, 1, len(rt.GetDatabase().Options.UserFunctions))
+		assert.Nil(t, rt.GetDatabase().Options.UserFunctions.Definitions["square"])
+		assert.Equal(t, 1, len(rt.GetDatabase().Options.UserFunctions.Definitions))
 
 		response = rt.SendAdminRequest("GET", "/db/_function/square?n=13", "")
 		assert.Equal(t, 404, response.Result().StatusCode)

@@ -22,18 +22,20 @@ import (
 )
 
 var kGraphQLTestConfig = &DatabaseConfig{DbConfig: DbConfig{
-	UserFunctions: map[string]*functions.FunctionConfig{
-		"square": {
-			Type:  "javascript",
-			Code:  "function(context,args) {return args.n * args.n;}",
-			Args:  []string{"n"},
-			Allow: &functions.Allow{Channels: []string{"*"}},
-		},
-		"squareN1QL": {
-			Type:  "query",
-			Code:  "SELECT $args.n * $args.n AS square",
-			Args:  []string{"n"},
-			Allow: &functions.Allow{Channels: []string{"*"}},
+	UserFunctions: &functions.FunctionsConfig{
+		Definitions: functions.FunctionsDefs{
+			"square": {
+				Type:  "javascript",
+				Code:  "function(context,args) {return args.n * args.n;}",
+				Args:  []string{"n"},
+				Allow: &functions.Allow{Channels: []string{"*"}},
+			},
+			"squareN1QL": {
+				Type:  "query",
+				Code:  "SELECT $args.n * $args.n AS square",
+				Args:  []string{"n"},
+				Allow: &functions.Allow{Channels: []string{"*"}},
+			},
 		},
 	},
 	GraphQL: &functions.GraphQLConfig{

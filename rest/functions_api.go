@@ -30,7 +30,11 @@ const kGraphQLVariablesParam = "variables"
 
 // HTTP handler for GET or POST `/$db/_function/$name`
 func (h *handler) handleFunctionCall() error {
-	fnName, fnParams, err := h.getFunctionArgs()
+	var maxRequestSize *int
+	if h.db.Options.UserFunctions != nil {
+		maxRequestSize = h.db.Options.UserFunctions.MaxRequestSize
+	}
+	fnName, fnParams, err := h.getFunctionArgs(maxRequestSize)
 	if err != nil {
 		return err
 	}
@@ -56,15 +60,26 @@ func (h *handler) handleFunctionCall() error {
 }
 
 // Subroutine for reading function name and arguments from a request
-func (h *handler) getFunctionArgs() (string, map[string]interface{}, error) {
+func (h *handler) getFunctionArgs(maxSize *int) (string, map[string]interface{}, error) {
 	name := h.PathVar(kFnNameParam)
 	args := map[string]interface{}{}
 	var err error
 	if h.rq.Method == "POST" {
 		// POST: Args come from the request body in JSON format:
+		if h.rq.ContentLength >= 0 {
+			if err := db.CheckRequestSize(h.rq.ContentLength, maxSize); err != nil {
+				return "", nil, err
+			}
+		}
 		err = h.readJSONInto(&args)
+		if err == nil && h.rq.ContentLength < 0 && maxSize != nil {
+			err = db.CheckRequestSize(int64(db.EstimateSizeOfJSON(args)), maxSize)
+		}
 	} else {
 		// GET: Params come from the URL queries (`?key=value`):
+		if err := db.CheckRequestSize(int64(len(h.rq.URL.RawQuery)), maxSize); err != nil {
+			return "", nil, err
+		}
 		for key, values := range h.getQueryValues() {
 			// `values` is an array of strings, one per instance of the key in the URL
 			if len(values) > 1 {
@@ -137,13 +152,22 @@ func (h *handler) handleGraphQL() error {
 	var operationName string
 	var variables map[string]interface{}
 	canMutate := false
+	maxSize := h.db.Options.GraphQL.MaxRequestSize()
 
 	if h.rq.Method == "POST" {
+		if h.rq.ContentLength >= 0 {
+			if err := db.CheckRequestSize(h.rq.ContentLength, maxSize); err != nil {
+				return err
+			}
+		}
 		canMutate = true
 		if h.rq.Header.Get("Content-Type") == "application/graphql" {
 			// POST graphql data: Request body contains the query string alone:
 			query, err := h.readBody()
 			if err != nil {
+				return err
+			}
+			if err := db.CheckRequestSize(len(query), maxSize); err != nil {
 				return err
 			}
 			queryString = string(query)
@@ -153,6 +177,11 @@ func (h *handler) handleGraphQL() error {
 			body, err := h.readJSONWithoutNumber()
 			if err != nil {
 				return err
+			}
+			if h.rq.ContentLength < 0 {
+				if err := db.CheckRequestSize(db.EstimateSizeOfJSON(body), maxSize); err != nil {
+					return err
+				}
 			}
 			queryString = body[kGraphQLQueryParam].(string)
 			operationName, _ = body[kGraphQLOperationNameParam].(string)
@@ -165,6 +194,9 @@ func (h *handler) handleGraphQL() error {
 		}
 	} else {
 		// GET: Params come from the URL queries (`?query=...&operationName=...&variables=...`):
+		if err := db.CheckRequestSize(h.rq.ContentLength, maxSize); err != nil {
+			return err
+		}
 		queryString = h.getQuery(kGraphQLQueryParam)
 		operationName = h.getQuery(kGraphQLOperationNameParam)
 		if varsJSON := h.getQuery(kGraphQLVariablesParam); len(varsJSON) > 0 {
