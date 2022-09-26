@@ -363,10 +363,6 @@ func (h *handler) handleDeleteAttachment() error {
 
 	docid := h.PathVar("docid")
 	attachmentName := h.PathVar("attach")
-	attachmentContentType := h.rq.Header.Get("Content-Type")
-	if attachmentContentType == "" {
-		attachmentContentType = "application/octet-stream"
-	}
 	revid := h.getQuery("rev")
 	if revid == "" {
 		var err error

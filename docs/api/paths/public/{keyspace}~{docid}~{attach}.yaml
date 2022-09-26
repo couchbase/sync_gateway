@@ -141,12 +141,6 @@ delete:
 
     If the attachment exists, the attachment will be removed from the document.
   parameters:
-    - name: Content-Type
-      in: header
-      description: The content type of the attachment.
-      schema:
-        type: string
-        default: application/octet-stream
     - name: rev
       in: query
       description: The existing document revision ID to modify.
