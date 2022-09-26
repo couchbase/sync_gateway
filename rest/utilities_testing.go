@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -181,8 +182,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 	} else if rt.RestTesterConfig.persistentConfig {
 		// If running in persistent config mode, the database has to be manually created. If the db name is the same as a
 		// past tests db name, a db already exists error could happen if the past tests bucket is still flushing. Prevent this
-		// by setting the group ID as the current test name by default.
-		sc.Bootstrap.ConfigGroupID = fmt.Sprintf("%x", sha256.Sum256([]byte(rt.TB.Name())))
+		// by using a unique group ID for each new rest tester.
+		sc.Bootstrap.ConfigGroupID = fmt.Sprintf("%x-%d", sha256.Sum256([]byte(rt.TB.Name()+rt.TestBucket.GetName())), rand.Uint64())
 	}
 
 	sc.Unsupported.UserQueries = base.BoolPtr(rt.EnableUserQueries)
