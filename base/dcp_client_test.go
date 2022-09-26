@@ -32,7 +32,7 @@ func TestOneShotDCP(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	bucket := GetTestBucket(t)
+	bucket := GetTestBucketDefaultCollection(t)
 	defer bucket.Close()
 
 	numDocs := 1000
