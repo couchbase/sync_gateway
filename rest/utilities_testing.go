@@ -63,7 +63,6 @@ type RestTesterConfig struct {
 	useTLSServer                    bool // If true, TLS will be required for communications with CBS. Default: false
 	persistentConfig                bool
 	groupID                         *string
-	createScopesAndCollections      bool // If true, will automatically create any defined scopes and collections on startup.
 	serverless                      bool // Runs SG in serverless mode. Must be used in conjunction with persistent config
 }
 

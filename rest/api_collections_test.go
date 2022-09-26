@@ -73,8 +73,6 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 	)
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		createScopesAndCollections: true,
-		CustomTestBucket:           tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Users: map[string]*auth.PrincipalConfig{
@@ -127,7 +125,6 @@ func TestSingleCollectionDCP(t *testing.T) {
 	require.NoError(t, err)
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				AutoImport: true,
@@ -160,14 +157,23 @@ func TestSingleCollectionDCP(t *testing.T) {
 
 func TestMultiCollectionDCP(t *testing.T) {
 	base.TestRequiresCollections(t)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyDCP, base.KeyImport)
+
+	if !base.TestUseXattrs() {
+		t.Skip("Test relies on import - needs xattrs")
+	}
 
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
+	ctx := base.TestCtx(t)
+	err := base.CreateBucketScopesAndCollections(ctx, tb.BucketSpec, map[string][]string{
+		"foo": {
+			"bar",
+			"baz",
+		},
+	})
+	require.NoError(t, err)
 	rt := NewRestTester(t, &RestTesterConfig{
-		createScopesAndCollections: true,
-		CustomTestBucket:           tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				AutoImport: true,
@@ -187,7 +193,7 @@ func TestMultiCollectionDCP(t *testing.T) {
 	underlying, ok := base.GetBaseBucket(rt.Bucket()).(*base.Collection)
 	require.True(t, ok, "rt bucket was not a Collection")
 
-	_, err := underlying.Collection.Bucket().Scope("foo").Collection("bar").Insert("testDocBar", map[string]any{"test": true}, nil)
+	_, err = underlying.Collection.Bucket().Scope("foo").Collection("bar").Insert("testDocBar", map[string]any{"test": true}, nil)
 	require.NoError(t, err)
 	_, err = underlying.Collection.Bucket().Scope("foo").Collection("baz").Insert("testDocBaz", map[string]any{"test": true}, nil)
 	require.NoError(t, err)
@@ -217,7 +223,6 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 	collectionName := tc.Name()
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Scopes: ScopesConfig{
@@ -311,7 +316,6 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 	keyspace := "db." + scopeName + "." + collectionName
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(), // Clone so scope/collection isn't set on tb from rt
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				UseViews: useViews,
@@ -362,6 +366,7 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 
 func TestCollectionsChangeConfigScope(t *testing.T) {
 	base.TestRequiresCollections(t)
+
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 	ctx := base.TestCtx(t)
