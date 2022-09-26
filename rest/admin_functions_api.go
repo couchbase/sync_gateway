@@ -35,7 +35,9 @@ func (h *handler) handleGetDbConfigFunction() error {
 	functionName := h.PathVar("function")
 	if config, etagVersion, err := h.getDBConfig(); err != nil {
 		return err
-	} else if functionConfig, found := config.UserFunctions[functionName]; !found {
+	} else if config.UserFunctions == nil {
+		return base.HTTPErrorf(http.StatusNotFound, "")
+	} else if functionConfig, found := config.UserFunctions.Definitions[functionName]; !found {
 		return base.HTTPErrorf(http.StatusNotFound, "")
 	} else {
 		h.writeJSON(functionConfig)
@@ -46,7 +48,7 @@ func (h *handler) handleGetDbConfigFunction() error {
 
 // PUT/DELETE config: user function(s)
 func (h *handler) handlePutDbConfigFunctions() error {
-	var functionsConfig functions.FunctionConfigMap
+	var functionsConfig *functions.FunctionsConfig
 	if h.rq.Method != "DELETE" {
 		if err := h.readJSONInto(&functionsConfig); err != nil {
 			return err
@@ -65,23 +67,25 @@ func (h *handler) handlePutDbConfigFunctions() error {
 func (h *handler) handlePutDbConfigFunction() error {
 	functionName := h.PathVar("function")
 	if h.rq.Method != "DELETE" {
+		// PUT:
 		var functionConfig *functions.FunctionConfig
 		if err := h.readJSONInto(&functionConfig); err != nil {
 			return err
 		}
 		return h.mutateDbConfig(func(dbConfig *DbConfig) error {
 			if dbConfig.UserFunctions == nil {
-				dbConfig.UserFunctions = functions.FunctionConfigMap{}
+				dbConfig.UserFunctions = &functions.FunctionsConfig{}
 			}
-			dbConfig.UserFunctions[functionName] = functionConfig
+			dbConfig.UserFunctions.Definitions[functionName] = functionConfig
 			return nil
 		})
 	} else {
+		// DELETE:
 		return h.mutateDbConfig(func(dbConfig *DbConfig) error {
-			if dbConfig.UserFunctions[functionName] == nil {
+			if dbConfig.UserFunctions == nil || dbConfig.UserFunctions.Definitions[functionName] == nil {
 				return base.HTTPErrorf(http.StatusNotFound, "")
 			}
-			delete(dbConfig.UserFunctions, functionName)
+			delete(dbConfig.UserFunctions.Definitions, functionName)
 			return nil
 		})
 	}

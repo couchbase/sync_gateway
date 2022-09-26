@@ -84,13 +84,22 @@ func (bh *blipHandler) handlePutRev(rq *blip.Message) error {
 //////// FUNCTION:
 
 // Handles a Connected-Client "function" request.
+// - Function name is in the "name" property.
+// - Arguments (optional) are JSON-encoded in the body.
 func (bh *blipHandler) handleFunction(rq *blip.Message) error {
-	name, requestParams, err := bh.parseQueryNameAndParams(rq)
+	name, found := rq.Properties[QueryName]
+	if !found {
+		return base.HTTPErrorf(http.StatusBadRequest, "Missing 'name'")
+	}
+
+	requestParams, err := bh.parseJsonBody(rq, bh.db.Options.UserFunctions.MaxRequestSize)
 	if err != nil {
 		return err
 	}
+
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("name: %s", name))
 	return bh.db.WithTimeout(bh.loggingCtx, UserFunctionTimeout, func(ctx context.Context) error {
+		// Call the function:
 		fn, err := bh.db.GetUserFunction(name, requestParams, true, ctx)
 		if err != nil {
 			return err
@@ -98,7 +107,6 @@ func (bh *blipHandler) handleFunction(rq *blip.Message) error {
 
 		if iter, err := fn.Iterate(); err != nil {
 			return err
-
 		} else if iter != nil {
 			// Write each iterated result to the response:
 			defer func() {
@@ -144,7 +152,9 @@ func (bh *blipHandler) handleFunction(rq *blip.Message) error {
 //////// GRAPHQL:
 
 // Handles a Connected-Client "graphql" request.
-// - Request string is in the body of the request.
+// - GraphQL query string is in the "query" property.
+// - GraphQL operationName (optional) is in the "operationName" property.
+// - Variables (optional) are JSON-encoded in the body of the request.
 // - Response JSON is returned in the body of the response in GraphQL format (including errors.)
 func (bh *blipHandler) handleGraphQL(rq *blip.Message) error {
 	query, found := rq.Properties[GraphQLQuery]
@@ -153,15 +163,9 @@ func (bh *blipHandler) handleGraphQL(rq *blip.Message) error {
 	}
 	operationName := rq.Properties[GraphQLOperationName]
 
-	bodyBytes, err := rq.Body()
+	variables, err := bh.parseJsonBody(rq, bh.db.Options.GraphQL.MaxRequestSize())
 	if err != nil {
 		return err
-	}
-	var variables map[string]interface{}
-	if len(bodyBytes) > 0 {
-		if err = json.Unmarshal(bodyBytes, &variables); err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "Invalid body JSON")
-		}
 	}
 
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("query: %s", query))
@@ -177,19 +181,19 @@ func (bh *blipHandler) handleGraphQL(rq *blip.Message) error {
 	})
 }
 
-func (bh *blipHandler) parseQueryNameAndParams(rq *blip.Message) (name string, params map[string]interface{}, err error) {
-	var found bool
-	name, found = rq.Properties[QueryName]
-	if !found {
-		err = base.HTTPErrorf(http.StatusBadRequest, "Missing 'name'")
-		return
+func (bh *blipHandler) parseJsonBody(rq *blip.Message, maxSize *int) (map[string]any, error) {
+	bodyBytes, err := rq.Body()
+	if err != nil {
+		return nil, err
 	}
-	var bodyBytes []byte
-	bodyBytes, err = rq.Body()
-	if len(bodyBytes) > 0 && err == nil {
-		if json.Unmarshal(bodyBytes, &params) != nil {
-			err = base.HTTPErrorf(http.StatusBadRequest, "Invalid function parameters")
+	if err := CheckRequestSize(len(bodyBytes), bh.db.Options.UserFunctions.MaxRequestSize); err != nil {
+		return nil, err
+	}
+	var parsedBody map[string]any
+	if len(bodyBytes) > 0 {
+		if json.Unmarshal(bodyBytes, &parsedBody) != nil {
+			return nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid function parameters")
 		}
 	}
-	return
+	return parsedBody, nil
 }
