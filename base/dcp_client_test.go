@@ -98,7 +98,7 @@ func TestOneShotDCP(t *testing.T) {
 	timeout := time.After(oneShotDCPTimeout)
 	select {
 	case err := <-doneChan:
-		assert.Equal(t, uint64(numDocs), mutationCount)
+		assert.Equal(t, numDocs, int(mutationCount))
 		assert.NoError(t, err)
 	case <-timeout:
 		assert.Fail(t, "timeout waiting for one-shot feed to complete")
