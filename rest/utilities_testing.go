@@ -17,7 +17,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/rand"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -27,6 +26,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/couchbase/go-blip"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -182,7 +183,11 @@ func (rt *RestTester) Bucket() base.Bucket {
 		// If running in persistent config mode, the database has to be manually created. If the db name is the same as a
 		// past tests db name, a db already exists error could happen if the past tests bucket is still flushing. Prevent this
 		// by using a unique group ID for each new rest tester.
-		sc.Bootstrap.ConfigGroupID = fmt.Sprintf("%d-%d-%d", rand.Uint64(), rand.Uint64(), rand.Uint64())
+		uniqueUUID, err := uuid.NewRandom()
+		if err != nil {
+			rt.TB.Fatalf("Could not generate random config group ID UUID: %v", err)
+		}
+		sc.Bootstrap.ConfigGroupID = uniqueUUID.String()
 	}
 
 	sc.Unsupported.UserQueries = base.BoolPtr(rt.EnableUserQueries)
