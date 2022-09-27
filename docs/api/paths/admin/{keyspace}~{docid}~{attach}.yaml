@@ -164,7 +164,7 @@ delete:
       schema:
         type: string
   responses:
-    '201':
+    '200':
       description: Attachment removed from the document successfully
       headers:
         Etag:

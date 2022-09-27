@@ -375,6 +375,10 @@ func (h *handler) handleDeleteAttachment() error {
 	body, err := h.db.Get1xRevBody(h.ctx(), docid, revid, false, nil)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
+			// Check here if error is relating to incorrect revid, if so return 409 code else return 404 code
+			if strings.Contains(err.Error(), "404 missing") {
+				return base.HTTPErrorf(http.StatusConflict, "Incorrect revision ID specified")
+			}
 			// Need to return an error if a document is not found
 			return base.HTTPErrorf(http.StatusNotFound, "Document specified is not found")
 		} else if err != nil {
@@ -403,7 +407,7 @@ func (h *handler) handleDeleteAttachment() error {
 	}
 	h.setEtag(newRev)
 
-	h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`"}`))
+	h.writeRawJSONStatus(http.StatusOK, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`"}`))
 
 	return nil
 }

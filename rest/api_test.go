@@ -260,9 +260,17 @@ func TestDocAttachment(t *testing.T) {
 	response = rt.SendRequest("DELETE", "/db/doc/attach2?rev="+revid, "")
 	RequireStatus(t, response, 404)
 
+	// attempt to delete attachment from non existing doc
+	response = rt.SendRequest("DELETE", "/db/doc1/attach1?rev=1-xzy", "")
+	RequireStatus(t, response, 404)
+
+	// attempt to delete attachment using incorrect revid
+	response = rt.SendRequest("DELETE", "/db/doc/attach1?rev=1-xzy", "")
+	RequireStatus(t, response, 409)
+
 	// delete the attachment calling the delete attachment endpoint
 	response = rt.SendRequest("DELETE", "/db/doc/attach1?rev="+revid, "")
-	RequireStatus(t, response, 201)
+	RequireStatus(t, response, 200)
 
 	// attempt to access deleted attachment (should return error)
 	response = rt.SendRequest("GET", "/db/doc/attach1", "")
