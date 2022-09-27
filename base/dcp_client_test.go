@@ -33,7 +33,7 @@ func TestOneShotDCP(t *testing.T) {
 	}
 
 	SetUpTestLogging(t, LevelDebug, KeyAll)
-	bucket := GetTestBucketDefaultCollection(t)
+	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
 	numDocs := 1000
@@ -51,6 +51,7 @@ func TestOneShotDCP(t *testing.T) {
 		if bytes.HasPrefix(event.Key, []byte(SyncDocPrefix)) {
 			return false
 		}
+		fmt.Printf("found doc %s\n", string(event.Key))
 		atomic.AddUint64(&mutationCount, 1)
 		return false
 	}
