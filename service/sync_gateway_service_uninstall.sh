@@ -44,8 +44,12 @@ ostype() {
     OS=$(echo "${ID}" | sed "s/.*/\u&/")
     if [ "${OS}" = "Rhel" ]; then
       OS=RedHat
+      VER=$VERSION_ID
     elif [ "${OS}" = "Debian" ]; then
       VER=$(cat /etc/debian_version)
+    elif [ "${OS}" = "Centos" ]; then
+      OS=CentOS
+      VER=$VERSION_ID
     else
       VER=$VERSION_ID
     fi
@@ -63,7 +67,6 @@ ostype() {
   OS_MAJOR_VERSION=$(echo $VER | sed 's/\..*$//')
   OS_MINOR_VERSION=$(echo $VER | sed s/[0-9]*\.//)
 }
-
 #
 #script starts here
 #
@@ -154,7 +157,7 @@ RedHat* | CentOS | OracleServer)
     ;;
   esac
   ;;
-Amazon*)
+Amzn*)
   case $OS_MAJOR_VERSION in
   2)
     systemctl stop ${SERVICE_NAME}
