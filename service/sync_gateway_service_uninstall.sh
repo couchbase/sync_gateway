@@ -41,23 +41,17 @@ ostype() {
     VER=$(lsb_release -sr)
   elif [ -f /etc/os-release ]; then
     . /etc/os-release
-    OS=$(echo "${ID}" | sed "s/.*/\u&/")
-    if [ "${OS}" = "Rhel" ]; then
-      OS=RedHat
-      VER=$VERSION_ID
-    elif [ "${OS}" = "Debian" ]; then
+    OS=$(echo "${ID}")
+    if [ "${OS}" = "debian" ]; then
       VER=$(cat /etc/debian_version)
-    elif [ "${OS}" = "Centos" ]; then
-      OS=CentOS
-      VER=$VERSION_ID
     else
       VER=$VERSION_ID
     fi
   elif [ -f /etc/redhat-release ]; then
-    OS=RedHat
+    OS=rhel
     VER=$(cat /etc/redhat-release | sed s/.*release\ // | sed s/\ .*//)
   elif [ -f /etc/system-release ]; then
-    OS=RedHat
+    OS=rhel
     VER=5.0
   else
     OS=$(uname -s)
@@ -67,6 +61,7 @@ ostype() {
   OS_MAJOR_VERSION=$(echo $VER | sed 's/\..*$//')
   OS_MINOR_VERSION=$(echo $VER | sed s/[0-9]*\.//)
 }
+
 #
 #script starts here
 #
@@ -89,7 +84,7 @@ fi
 
 #Install the service for the specific platform
 case $OS in
-Debian)
+debian)
   case 1:${OS_MAJOR_VERSION:--} in
   $((OS_MAJOR_VERSION >= 8))*)
     systemctl stop ${SERVICE_NAME}
@@ -101,7 +96,7 @@ Debian)
     ;;
   esac
   ;;
-Ubuntu)
+ubuntu)
   case 1:${OS_MAJOR_VERSION:--} in
   $((OS_MAJOR_VERSION >= 16))*)
     systemctl stop ${SERVICE_NAME}
@@ -124,7 +119,7 @@ Ubuntu)
     ;;
   esac
   ;;
-RedHat* | CentOS | OracleServer)
+RedHat* | rhel* | centos | ol)
   case $OS_MAJOR_VERSION in
   5)
     PATH=/usr/kerberos/sbin:/usr/kerberos/bin:/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:/root/bin
@@ -157,7 +152,7 @@ RedHat* | CentOS | OracleServer)
     ;;
   esac
   ;;
-Amzn*)
+amzn*)
   case $OS_MAJOR_VERSION in
   2)
     systemctl stop ${SERVICE_NAME}
