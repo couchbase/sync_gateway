@@ -52,19 +52,17 @@ ostype() {
     VER=$(lsb_release -sr)
   elif [ -f /etc/os-release ]; then
     . /etc/os-release
-    OS=$(echo "${ID}" | sed "s/.*/\u&/")
-    if [ "${OS}" = "Rhel" ]; then
-      OS=RedHat
-    elif [ "${OS}" = "Debian" ]; then
+    OS=$(echo "${ID}")
+    if [ "${OS}" = "debian" ]; then
       VER=$(cat /etc/debian_version)
     else
       VER=$VERSION_ID
     fi
   elif [ -f /etc/redhat-release ]; then
-    OS=RedHat
+    OS=rhel
     VER=$(cat /etc/redhat-release | sed s/.*release\ // | sed s/\ .*//)
   elif [ -f /etc/system-release ]; then
-    OS=RedHat
+    OS=rhel
     VER=5.0
   else
     OS=$(uname -s)
@@ -200,7 +198,7 @@ done
 
 #Install the service for the specific platform
 case $OS in
-Debian)
+debian)
   case 1:${OS_MAJOR_VERSION:--} in
   $((OS_MAJOR_VERSION >= 8))*)
     if [ "$SERVICE_CMD_ONLY" = true ]; then
@@ -215,7 +213,7 @@ Debian)
     ;;
   esac
   ;;
-Ubuntu)
+ubuntu)
   case 1:${OS_MAJOR_VERSION:--} in
   $((OS_MAJOR_VERSION >= 16))*)
     if [ "$SERVICE_CMD_ONLY" = true ]; then
@@ -243,7 +241,7 @@ Ubuntu)
     ;;
   esac
   ;;
-RedHat* | CentOS | OracleServer)
+RedHat* | rhel* | centos | ol)
   case $OS_MAJOR_VERSION in
   5)
     if [ "$SERVICE_CMD_ONLY" = true ]; then
@@ -288,7 +286,7 @@ RedHat* | CentOS | OracleServer)
     ;;
   esac
   ;;
-Amazon*)
+amzn*)
   case $OS_MAJOR_VERSION in
   2)
   if [ "$SERVICE_CMD_ONLY" = true ]; then
