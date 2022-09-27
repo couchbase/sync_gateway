@@ -662,7 +662,7 @@ loop:
 
 // UsingNamedCollections specifies whether the bucket pool is using named collections.
 func (tbp *TestBucketPool) UsingNamedCollections() bool {
-	return false
+	return tbp.usingCollections
 }
 
 // TBPBucketInitFunc is a function that is run once (synchronously) when creating/opening a bucket.
