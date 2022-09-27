@@ -147,7 +147,6 @@ func TestServerlessDBSetupForceCreds(t *testing.T) {
 // when running in serverless mode
 func TestServerlessBucketCredentialsFetchDatabases(t *testing.T) {
 	base.LongRunningTest(t)
-	base.LongRunningTest(t)
 
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")

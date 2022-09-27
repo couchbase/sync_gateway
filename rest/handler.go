@@ -268,8 +268,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	if keyspaceDb != "" {
 		h.addDatabaseLogContext(keyspaceDb)
 		if dbContext, err = h.server.GetActiveDatabase(keyspaceDb); err != nil {
-			base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get active db %s: %v", base.MD(keyspaceDb), err)
-			if base.IsHTTPErrorStatusNotFound(err) {
+			if err == base.ErrNotFound {
 				if shouldCheckAdminAuth {
 					// Check if authenticated before attempting to get inactive database
 					authorized, err := h.checkAdminAuthenticationOnly()
@@ -282,10 +281,10 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 				}
 				dbContext, err = h.server.GetInactiveDatabase(h.ctx(), keyspaceDb)
 				if err != nil {
-					base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get inactive db %s: %v", base.MD(keyspaceDb), err)
-					if shouldCheckAdminAuth && base.IsHTTPErrorStatusNotFound(err) {
+					if httpError, ok := err.(*base.HTTPError); shouldCheckAdminAuth && ok && httpError.Status == http.StatusNotFound {
 						return base.HTTPErrorf(http.StatusForbidden, "")
 					}
+					base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
 					return err
 				}
 			} else {
