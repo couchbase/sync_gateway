@@ -33,7 +33,7 @@ func TestOneShotDCP(t *testing.T) {
 	}
 
 	SetUpTestLogging(t, LevelDebug, KeyAll)
-	bucket := GetTestBucket(t)
+	bucket := GetTestBucketDefaultCollection(t)
 	defer bucket.Close()
 
 	numDocs := 1000
