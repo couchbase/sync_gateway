@@ -36,22 +36,22 @@ usage() {
 }
 
 ostype() {
-  ARCH=$(uname -m | sed 's/x86_//;s/i[3-6]86/32/')
-
-  if [ -f /etc/lsb-release ]; then
+  if command -v lsb_release; then
     OS=$(lsb_release -si)
     VER=$(lsb_release -sr)
-  elif [ -f /etc/debian_version ]; then
-    OS=Debian # XXX or Ubuntu??
-    VER=$(cat /etc/debian_version)
-  elif [ -f /etc/redhat-release ]; then
-    OS=RedHat
-    VER=$(cat /etc/redhat-release | sed s/.*release\ // | sed s/\ .*//)
   elif [ -f /etc/os-release ]; then
-    OS=$(cat /etc/os-release | cut -d = -f 2 | sed -e 's/^"//' -e 's/"$//' | awk 'NR==1')
-    VER=$(cat /etc/os-release | cut -d = -f 2 | sed -e 's/^"//' -e 's/"$//' | awk 'NR==2')
+    . /etc/os-release
+    OS=$(echo "${ID}")
+    if [ "${OS}" = "debian" ]; then
+      VER=$(cat /etc/debian_version)
+    else
+      VER=$VERSION_ID
+    fi
+  elif [ -f /etc/redhat-release ]; then
+    OS=rhel
+    VER=$(cat /etc/redhat-release | sed s/.*release\ // | sed s/\ .*//)
   elif [ -f /etc/system-release ]; then
-    OS=RedHat
+    OS=rhel
     VER=5.0
   else
     OS=$(uname -s)
@@ -84,7 +84,7 @@ fi
 
 #Install the service for the specific platform
 case $OS in
-Debian)
+debian)
   case 1:${OS_MAJOR_VERSION:--} in
   $((OS_MAJOR_VERSION >= 8))*)
     systemctl stop ${SERVICE_NAME}
@@ -96,7 +96,7 @@ Debian)
     ;;
   esac
   ;;
-Ubuntu)
+ubuntu)
   case 1:${OS_MAJOR_VERSION:--} in
   $((OS_MAJOR_VERSION >= 16))*)
     systemctl stop ${SERVICE_NAME}
@@ -119,7 +119,7 @@ Ubuntu)
     ;;
   esac
   ;;
-RedHat* | CentOS | OracleServer)
+RedHat* | rhel* | centos | ol)
   case $OS_MAJOR_VERSION in
   5)
     PATH=/usr/kerberos/sbin:/usr/kerberos/bin:/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:/root/bin
@@ -152,7 +152,7 @@ RedHat* | CentOS | OracleServer)
     ;;
   esac
   ;;
-Amazon*)
+amzn*)
   case $OS_MAJOR_VERSION in
   2)
     systemctl stop ${SERVICE_NAME}
