@@ -27,9 +27,13 @@ type ResyncManager struct {
 
 var _ BackgroundManagerProcessI = &ResyncManager{}
 
-func NewResyncManager() *BackgroundManager {
+func NewResyncManager(bucket base.Bucket) *BackgroundManager {
 	return &BackgroundManager{
-		Process:    &ResyncManager{},
+		Process: &ResyncManager{},
+		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
+			bucket:        bucket,
+			processSuffix: "resync",
+		},
 		terminator: base.NewSafeTerminator(),
 	}
 }
@@ -42,12 +46,18 @@ func (r *ResyncManager) Run(options map[string]interface{}, persistClusterStatus
 	database := options["database"].(*Database)
 	regenerateSequences := options["regenerateSequences"].(bool)
 
+	persistClusterStatus := func() {
+		err := persistClusterStatusCallback()
+		if err != nil {
+			base.WarnfCtx(database.Ctx, "Failed to persist cluster status on-demand for resync operation: %v", err)
+		}
+	}
+	defer persistClusterStatus()
+
 	defer atomic.CompareAndSwapUint32(&database.State, DBResyncing, DBOffline)
 	callback := func(docsProcessed, docsChanged *int) {
-		r.lock.Lock()
-		defer r.lock.Unlock()
-		r.DocsProcessed = *docsProcessed
-		r.DocsChanged = *docsChanged
+		r.SetStats(*docsProcessed, *docsChanged)
+		persistClusterStatus()
 	}
 
 	_, err := database.UpdateAllDocChannels(regenerateSequences, callback, terminator)
@@ -64,6 +74,14 @@ func (r *ResyncManager) ResetStatus() {
 
 	r.DocsProcessed = 0
 	r.DocsChanged = 0
+}
+
+func (r *ResyncManager) SetStats(docsProcessed, docsChanged int) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	r.DocsProcessed = docsProcessed
+	r.DocsChanged = docsChanged
 }
 
 type ResyncManagerResponse struct {
