@@ -5657,7 +5657,7 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 	require.NoError(t, ar.Start(ctx1))
 
 	val, found := base.WaitForStat(func() int64 {
-		dbRepStats, err := sgwStats.DBReplicatorStats(ar.ID)
+		dbRepStats, err := base.SyncGatewayStats.DbStats[t.Name()].DBReplicatorStats(ar.ID)
 		require.NoError(t, err)
 		return dbRepStats.PulledCount.Value()
 	}, 1)

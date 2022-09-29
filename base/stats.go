@@ -884,15 +884,21 @@ func (s *SgwStats) NewDBStats(name string, deltaSyncEnabled bool, importEnabled 
 	}
 
 	if viewsEnabled {
-		s.DbStats[name].InitQueryStats(
+		err := s.DbStats[name].InitQueryStats(
 			true,
 			queryNames...,
 		)
+		if err != nil {
+			return nil, err
+		}
 	} else {
-		s.DbStats[name].InitQueryStats(
+		err := s.DbStats[name].InitQueryStats(
 			false,
 			queryNames...,
 		)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return s.DbStats[name], nil
@@ -1719,15 +1725,19 @@ func (d *DbStats) SharedBucketImport() *SharedBucketImportStats {
 	return d.SharedBucketImportStats
 }
 
-func (d *DbStats) InitQueryStats(useViews bool, queryNames ...string) {
+func (d *DbStats) InitQueryStats(useViews bool, queryNames ...string) error {
 	d.QueryStats = &QueryStats{
 		Stats: map[string]*QueryStat{},
 	}
 	d.QueryStats.mutex.Lock()
 	for _, queryName := range queryNames {
-		d._initQueryStat(useViews, queryName)
+		err := d._initQueryStat(useViews, queryName)
+		if err != nil {
+			return nil
+		}
 	}
 	d.QueryStats.mutex.Unlock()
+	return nil
 }
 
 func (d *DbStats) _initQueryStat(useViews bool, queryName string) error {
