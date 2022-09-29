@@ -40,7 +40,7 @@ licenses/APL2.txt.
 
   <project name="sync_gateway_admin_ui" path="godeps/src/github.com/couchbaselabs/sync_gateway_admin_ui" revision="93c74bac9ddc2979ab895a37087c225c998b03bf" remote="couchbaselabs"/>
 
-  <project name="walrus" path="godeps/src/github.com/couchbaselabs/walrus" remote="couchbaselabs" revision="fc018ef7de83003867f1111968f2add63145c39c"/>
+  <project name="walrus" path="godeps/src/github.com/couchbaselabs/walrus" remote="couchbaselabs" revision="2ce555a2ee7ae25aa3420d96a576002d797809c8"/>
 
   <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="74908f5398d1b5e28a4c8873a7c8931076ad81e3"/>
 
