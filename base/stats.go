@@ -1733,7 +1733,7 @@ func (d *DbStats) InitQueryStats(useViews bool, queryNames ...string) error {
 	for _, queryName := range queryNames {
 		err := d._initQueryStat(useViews, queryName)
 		if err != nil {
-			return nil
+			return err
 		}
 	}
 	d.QueryStats.mutex.Unlock()

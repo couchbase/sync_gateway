@@ -4673,9 +4673,9 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 				`function(conflict) { return defaultPolicy(conflict); }`, rt1.GetDatabase().Options.JavascriptTimeout)
 			require.NoError(t, err, "Error creating custom conflict resolver")
 			sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
-			require.NoError(tt, err)
+			require.NoError(t, err)
 			dbstats, err := sgwStats.DBReplicatorStats(t.Name())
-			require.NoError(tt, err)
+			require.NoError(t, err)
 
 			config := db.ActiveReplicatorConfig{
 				ID:          t.Name(),
