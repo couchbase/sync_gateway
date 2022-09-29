@@ -117,10 +117,12 @@ func TestLateSequenceHandling(t *testing.T) {
 	context, ctx := setupTestDBWithCacheOptions(t, DefaultCacheOptions())
 	defer context.Close(ctx)
 
-	stats := base.NewSyncGatewayStats()
-	cacheStats := stats.NewDBStats("", false, false, false).CacheStats
+	stats, err := base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	dbstats, err := stats.NewDBStats("", false, false, false)
+	require.NoError(t, err)
 
-	cache := newSingleChannelCache(context, "Test1", 0, cacheStats)
+	cache := newSingleChannelCache(context, "Test1", 0, dbstats.CacheStats)
 	assert.True(t, cache != nil)
 
 	// Empty late sequence cache should return empty set
@@ -188,10 +190,12 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 	require.NoError(t, err)
 	defer context.Close(ctx)
 
-	stats := base.NewSyncGatewayStats()
-	cacheStats := stats.NewDBStats("", false, false, false).CacheStats
+	stats, err := base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	dbstats, err := stats.NewDBStats("", false, false, false)
+	require.NoError(t, err)
 
-	cache := newSingleChannelCache(context, "Test1", 0, cacheStats)
+	cache := newSingleChannelCache(context, "Test1", 0, dbstats.CacheStats)
 	assert.True(t, cache != nil)
 
 	// Add Listener before late entries arrive

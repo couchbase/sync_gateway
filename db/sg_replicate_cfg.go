@@ -659,7 +659,10 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 	rc.checkpointPrefix = checkpointPrefix
 
 	// Retrieve or create an entry in db.replications expvar for this replication
-	allReplicationsStatsMap := m.dbContext.DbStats.DBReplicatorStats(rc.ID)
+	allReplicationsStatsMap, err := m.dbContext.DbStats.DBReplicatorStats(rc.ID)
+	if err != nil {
+		return nil, err
+	}
 	rc.ReplicationStatsMap = allReplicationsStatsMap
 
 	// disable recovered panic reporting (test only)

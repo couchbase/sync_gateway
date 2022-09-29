@@ -81,7 +81,11 @@ func TestChannelCacheSimpleCompact(t *testing.T) {
 	options := DefaultCacheOptions().ChannelCacheOptions
 	options.MaxNumChannels = 20
 
-	testStats := (base.NewSyncGatewayStats()).NewDBStats("", false, false, false).Cache()
+	stats, err := base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	dbstats, err := stats.NewDBStats("", false, false, false)
+	require.NoError(t, err)
+	testStats := dbstats.Cache()
 	queryHandler := &testQueryHandler{}
 	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
@@ -117,7 +121,10 @@ func TestChannelCacheCompactInactiveChannels(t *testing.T) {
 	options.CompactHighWatermarkPercent = 90
 	options.CompactLowWatermarkPercent = 50
 
-	testStats := (base.NewSyncGatewayStats()).NewDBStats("", false, false, false).Cache()
+	stats, err := base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	dbstats, err := stats.NewDBStats("", false, false, false)
+	testStats := dbstats.Cache()
 	queryHandler := &testQueryHandler{}
 	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
@@ -172,7 +179,11 @@ func TestChannelCacheCompactNRU(t *testing.T) {
 	options.CompactHighWatermarkPercent = 90
 	options.CompactLowWatermarkPercent = 70
 
-	testStats := (base.NewSyncGatewayStats()).NewDBStats("", false, false, false).Cache()
+	stats, err := base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	dbstats, err := stats.NewDBStats("", false, false, false)
+	require.NoError(t, err)
+	testStats := dbstats.Cache()
 	queryHandler := &testQueryHandler{}
 	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
@@ -265,7 +276,11 @@ func TestChannelCacheHighLoadCacheHit(t *testing.T) {
 	options.CompactHighWatermarkPercent = 90
 	options.CompactLowWatermarkPercent = 70
 
-	testStats := (base.NewSyncGatewayStats()).NewDBStats("", false, false, false).Cache()
+	stats, err := base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	dbstats, err := stats.NewDBStats("", false, false, false)
+	require.NoError(t, err)
+	testStats := dbstats.Cache()
 	queryHandler := &testQueryHandler{}
 	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
@@ -335,7 +350,11 @@ func TestChannelCacheHighLoadCacheMiss(t *testing.T) {
 	options.CompactHighWatermarkPercent = 90
 	options.CompactLowWatermarkPercent = 70
 
-	testStats := (base.NewSyncGatewayStats()).NewDBStats("", false, false, false).Cache()
+	stats, err := base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	dbstats, err := stats.NewDBStats("", false, false, false)
+	require.NoError(t, err)
+	testStats := dbstats.Cache()
 	queryHandler := &testQueryHandler{}
 	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
@@ -400,7 +419,11 @@ func TestChannelCacheBypass(t *testing.T) {
 	options.CompactHighWatermarkPercent = 100
 	options.CompactLowWatermarkPercent = 50
 
-	testStats := (base.NewSyncGatewayStats()).NewDBStats("", false, false, false).Cache()
+	stats, err := base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	dbstats, err := stats.NewDBStats("", false, false, false)
+	require.NoError(t, err)
+	testStats := dbstats.Cache()
 	queryHandler := &testQueryHandler{}
 	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
@@ -494,7 +517,11 @@ func TestChannelCacheBackgroundTaskWithIllegalTimeInterval(t *testing.T) {
 
 	// Specify illegal time interval for background task. Time interval should be > 0
 	options.ChannelCacheAge = 0
-	testStats := (base.NewSyncGatewayStats()).NewDBStats("", false, false, false).Cache()
+	stats, err := base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	dbstats, err := stats.NewDBStats("", false, false, false)
+	require.NoError(t, err)
+	testStats := dbstats.Cache()
 
 	queryHandler := &testQueryHandler{}
 	activeChannelStat := &base.SgwIntStat{}

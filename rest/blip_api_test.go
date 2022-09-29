@@ -4253,13 +4253,18 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 
 	remoteURL, _ := url.Parse(remoteURLString)
 
+	stats, err := base.SyncGatewayStats.NewDBStats("test", false, false, false)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+
 	ar := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
 		ID:                  t.Name(),
 		Direction:           db.ActiveReplicatorTypePull,
 		ActiveDB:            &db.Database{DatabaseContext: activeRT.GetDatabase()},
 		RemoteDBURL:         remoteURL,
 		Continuous:          true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats("test", false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	})
 	// Confirm all stats starting on 0
 	require.NotNil(t, ar.Pull)
@@ -4273,7 +4278,7 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 	assert.NoError(t, ar.Start(activeCtx))
 	defer func() { require.NoError(t, ar.Stop()) }()
 
-	err := activeRT.WaitForPendingChanges()
+	err = activeRT.WaitForPendingChanges()
 	require.NoError(t, err)
 	err = activeRT.WaitForRev("doc", rev)
 	require.NoError(t, err)

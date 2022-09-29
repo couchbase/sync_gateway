@@ -25,8 +25,11 @@ func TestSequenceAllocator(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 
-	sgw := base.NewSyncGatewayStats()
-	testStats := sgw.NewDBStats("", false, false, false).Database()
+	sgw, err := base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	dbstats, err := sgw.NewDBStats("", false, false, false)
+	require.NoError(t, err)
+	testStats := dbstats.Database()
 
 	// Create a sequence allocator without using constructor, to test without a releaseSequenceMonitor
 	//   - allows manually triggered release
@@ -90,8 +93,11 @@ func TestReleaseSequencesOnStop(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 
-	sgw := base.NewSyncGatewayStats()
-	testStats := sgw.NewDBStats("", false, false, false).Database()
+	sgw, err := base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	dbstats, err := sgw.NewDBStats("", false, false, false)
+	require.NoError(t, err)
+	testStats := dbstats.Database()
 
 	oldFrequency := MaxSequenceIncrFrequency
 	defer func() { MaxSequenceIncrFrequency = oldFrequency }()
@@ -164,8 +170,11 @@ func TestSequenceAllocatorDeadlock(t *testing.T) {
 	bucket := base.NewLeakyBucket(base.GetTestBucket(t), base.LeakyBucketConfig{IncrCallback: incrCallback})
 	defer bucket.Close()
 
-	sgw := base.NewSyncGatewayStats()
-	testStats := sgw.NewDBStats("", false, false, false).Database()
+	sgw, err := base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	dbstats, err := sgw.NewDBStats("", false, false, false)
+	require.NoError(t, err)
+	testStats := dbstats.Database()
 
 	oldFrequency := MaxSequenceIncrFrequency
 	defer func() { MaxSequenceIncrFrequency = oldFrequency }()
@@ -193,8 +202,11 @@ func TestReleaseSequenceWait(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 
-	sgw := base.NewSyncGatewayStats()
-	testStats := sgw.NewDBStats("", false, false, false).Database()
+	sgw, err := base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	dbstats, err := sgw.NewDBStats("", false, false, false)
+	require.NoError(t, err)
+	testStats := dbstats.Database()
 
 	a, err := newSequenceAllocator(bucket, testStats)
 	require.NoError(t, err)

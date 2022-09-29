@@ -55,6 +55,10 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 
 	// Add basic auth creds to target db URL
 	passiveDBURL.User = url.UserPassword("alice", "pass")
+	stats, err := base.SyncGatewayStats.NewDBStats("test", false, false, false)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
 
 	ar := db.NewActiveReplicator(ctx, &db.ActiveReplicatorConfig{
 		ID:                  t.Name(),
@@ -62,7 +66,7 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 		ActiveDB:            &db.Database{DatabaseContext: rt.GetDatabase()},
 		RemoteDBURL:         passiveDBURL,
 		Continuous:          true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats("test", false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	})
 
 	startNumReplicationsTotal := rt.GetDatabase().DbStats.Database().NumReplicationsTotal.Value()
@@ -116,6 +120,10 @@ func TestActiveReplicatorHeartbeats(t *testing.T) {
 
 	// Add basic auth creds to target db URL
 	passiveDBURL.User = url.UserPassword("alice", "pass")
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
 
 	ar := db.NewActiveReplicator(ctx, &db.ActiveReplicatorConfig{
 		ID:                    t.Name(),
@@ -124,7 +132,7 @@ func TestActiveReplicatorHeartbeats(t *testing.T) {
 		RemoteDBURL:           passiveDBURL,
 		WebsocketPingInterval: time.Millisecond * 10,
 		Continuous:            true,
-		ReplicationStatsMap:   base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap:   dbstats,
 	})
 
 	pingCountStart := base.ExpvarVar2Int(expvar.Get("goblip").(*expvar.Map).Get("sender_ping_count"))
@@ -205,6 +213,11 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+
 	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
@@ -214,7 +227,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 		},
 		ChangesBatchSize:    200,
 		Continuous:          true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	})
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
@@ -295,6 +308,11 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+
 	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
@@ -304,7 +322,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 		},
 		ChangesBatchSize:    200,
 		Continuous:          true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	})
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
@@ -615,6 +633,11 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+
 	arConfig := db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
@@ -624,7 +647,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 		},
 		Continuous:          true,
 		ChangesBatchSize:    changesBatchSize,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	}
 
 	// Create the first active replicator to pull from seq:0
@@ -786,6 +809,11 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 	require.NoError(t, err)
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+
 	arConfig := db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
@@ -795,7 +823,7 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 		},
 		Continuous:          true,
 		ChangesBatchSize:    changesBatchSize,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	}
 
 	// Create the first active replicator to pull from seq:0
@@ -939,6 +967,11 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+
 	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
@@ -947,7 +980,7 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		ChangesBatchSize:    200,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	})
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
@@ -1032,6 +1065,10 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 
 	// Add basic auth creds to target db URL
 	passiveDBURL.User = url.UserPassword("alice", "pass")
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
 
 	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
@@ -1041,7 +1078,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		ChangesBatchSize:    200,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	})
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
@@ -1119,6 +1156,10 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 
 	// Add basic auth creds to target db URL
 	passiveDBURL.User = url.UserPassword("alice", "pass")
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
 
 	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
@@ -1129,7 +1170,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 		},
 		ChangesBatchSize:    200,
 		Continuous:          true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	})
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
@@ -1251,7 +1292,11 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	}
 
 	// Create the first active replicator to pull from seq:0
-	arConfig.ReplicationStatsMap = base.SyncGatewayStats.NewDBStats(t.Name()+"1", false, false, false).DBReplicatorStats(t.Name())
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name()+"1", false, false, false)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+	arConfig.ReplicationStatsMap = dbstats
 	ar := db.NewActiveReplicator(ctx1, &arConfig)
 
 	startNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
@@ -1303,7 +1348,11 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	}
 
 	// Create a new replicator using the same config, which should use the checkpoint set from the first.
-	arConfig.ReplicationStatsMap = base.SyncGatewayStats.NewDBStats(t.Name()+"2", false, false, false).DBReplicatorStats(t.Name())
+	stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"2", false, false, false)
+	require.NoError(t, err)
+	dbstats, err = stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+	arConfig.ReplicationStatsMap = dbstats
 	ar = db.NewActiveReplicator(ctx1, &arConfig)
 	defer func() { assert.NoError(t, ar.Stop()) }()
 	assert.NoError(t, ar.Start(ctx1))
@@ -1414,7 +1463,10 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	arConfig.SetCheckpointPrefix(t, "cluster1:")
 
 	// Create the first active replicator to pull from seq:0
-	arConfig.ReplicationStatsMap = base.SyncGatewayStats.NewDBStats(t.Name()+"edge1", false, false, false).DBReplicatorStats(t.Name())
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name()+"edge1", false, false, false)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+	arConfig.ReplicationStatsMap = dbstats
 	edge1Replicator := db.NewActiveReplicator(ctx1, &arConfig)
 
 	startNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
@@ -1471,7 +1523,11 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	ctx2 := edge2.Context()
 
 	// Create a new replicator using the same ID, which should NOT use the checkpoint set by the first edge.
-	arConfig.ReplicationStatsMap = base.SyncGatewayStats.NewDBStats(t.Name()+"edge2", false, false, false).DBReplicatorStats(t.Name())
+	stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"edge2", false, false, false)
+	require.NoError(t, err)
+	dbstats, err = stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+	arConfig.ReplicationStatsMap = dbstats
 	arConfig.ActiveDB = &db.Database{
 		DatabaseContext: edge2.GetDatabase(),
 	}
@@ -1496,7 +1552,11 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	require.NoError(t, rt1.WaitForPendingChanges())
 
 	// run a replicator on edge1 again to make sure that edge2 didn't blow away its checkpoint
-	arConfig.ReplicationStatsMap = base.SyncGatewayStats.NewDBStats(t.Name()+"edge1", false, false, false).DBReplicatorStats(t.Name())
+	stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"edge1", false, false, false)
+	require.NoError(t, err)
+	dbstats, err = stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+	arConfig.ReplicationStatsMap = dbstats
 	arConfig.ActiveDB = &db.Database{
 		DatabaseContext: edge1.GetDatabase(),
 	}
@@ -1579,6 +1639,11 @@ func TestActiveReplicatorPushFromCheckpointIgnored(t *testing.T) {
 	require.NoError(t, err)
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+
 	arConfig := db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePush,
@@ -1588,7 +1653,7 @@ func TestActiveReplicatorPushFromCheckpointIgnored(t *testing.T) {
 		},
 		Continuous:          true,
 		ChangesBatchSize:    changesBatchSize,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	}
 
 	// Create the first active replicator to pull from seq:0
@@ -1713,6 +1778,11 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 	// Add basic auth creds to target db URL
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+
 	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePush,
@@ -1721,7 +1791,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		ChangesBatchSize:    200,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	})
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
@@ -1806,6 +1876,11 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+
 	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
@@ -1815,7 +1890,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 		},
 		ChangesBatchSize:    200,
 		Continuous:          true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	})
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
@@ -1909,6 +1984,11 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+
 	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
@@ -1919,7 +1999,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 		ChangesBatchSize:    200,
 		Continuous:          true,
 		PurgeOnRemoval:      true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	})
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
@@ -2099,7 +2179,10 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 
 			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
 			require.NoError(t, err)
-			replicationStats := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name())
+			stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+			replicationStats, err := stats.DBReplicatorStats(t.Name())
+			require.NoError(t, err)
+
 			ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 				ID:          t.Name(),
 				Direction:   db.ActiveReplicatorTypePull,
@@ -2337,6 +2420,12 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 
 			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
 			require.NoError(t, err)
+
+			stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+			require.NoError(t, err)
+			dbstats, err := stats.DBReplicatorStats(t.Name())
+			require.NoError(t, err)
+
 			ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 				ID:          t.Name(),
 				Direction:   db.ActiveReplicatorTypePushAndPull,
@@ -2347,7 +2436,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 				ChangesBatchSize:     200,
 				ConflictResolverFunc: customConflictResolver,
 				Continuous:           true,
-				ReplicationStatsMap:  base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+				ReplicationStatsMap:  dbstats,
 			})
 			defer func() { assert.NoError(t, ar.Stop()) }()
 
@@ -2487,6 +2576,10 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 
 	// Add basic auth creds to target db URL
 	passiveDBURL.User = url.UserPassword("alice", "pass")
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
 
 	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
@@ -2497,7 +2590,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 		},
 		ChangesBatchSize:    200,
 		InsecureSkipVerify:  true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	})
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, ar.Stop()) }()
@@ -2564,6 +2657,10 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 
 	// Add basic auth creds to target db URL
 	passiveDBURL.User = url.UserPassword("alice", "pass")
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
 
 	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
@@ -2574,7 +2671,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 		},
 		ChangesBatchSize:    200,
 		InsecureSkipVerify:  false,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	})
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, ar.Stop()) }()
@@ -2630,6 +2727,10 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 		CustomTestBucket: base.GetTestBucket(t),
 	})
 	ctx1 := rt1.Context()
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
 
 	arConfig := db.ActiveReplicatorConfig{
 		ID:          t.Name(),
@@ -2639,7 +2740,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		Continuous:          true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	}
 
 	// Create the first active replicator to pull from seq:0
@@ -2800,7 +2901,11 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	}
 
 	// Create the first active replicator to pull from seq:0
-	arConfig.ReplicationStatsMap = base.SyncGatewayStats.NewDBStats(t.Name()+"1", false, false, false).DBReplicatorStats(t.Name())
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name()+"1", false, false, false)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+	arConfig.ReplicationStatsMap = dbstats
 	ar := db.NewActiveReplicator(ctx1, &arConfig)
 	require.NoError(t, err)
 
@@ -2868,7 +2973,11 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	require.NoError(t, err)
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 	arConfig.RemoteDBURL = passiveDBURL
-	arConfig.ReplicationStatsMap = base.SyncGatewayStats.NewDBStats(t.Name()+"2", false, false, false).DBReplicatorStats(t.Name())
+	stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"2", false, false, false)
+	require.NoError(t, err)
+	dbstats, err = stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+	arConfig.ReplicationStatsMap = dbstats
 
 	ar = db.NewActiveReplicator(ctx1, &arConfig)
 	require.NoError(t, err)
@@ -2962,6 +3071,10 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	assert.NoError(t, rt1.WaitForPendingChanges())
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
 
 	arConfig := db.ActiveReplicatorConfig{
 		ID:          t.Name(),
@@ -2971,7 +3084,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		Continuous:          true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	}
 
 	// Create the first active replicator to pull from seq:0
@@ -3112,6 +3225,10 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
 
 	arConfig := db.ActiveReplicatorConfig{
 		ID:          t.Name(),
@@ -3121,7 +3238,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		Continuous:          true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	}
 
 	// Create the first active replicator to pull from seq:0
@@ -3222,6 +3339,10 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 
 	// Add basic auth creds to target db URL
 	passiveDBURL.User = url.UserPassword("alice", "pass")
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
 
 	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
@@ -3232,7 +3353,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 		},
 		Continuous:          true,
 		ChangesBatchSize:    200,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	})
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
@@ -3335,6 +3456,10 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
 
 	arConfig := db.ActiveReplicatorConfig{
 		ID:          t.Name(),
@@ -3347,7 +3472,7 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 		ChangesBatchSize:    changesBatchSize,
 		Filter:              base.ByChannelFilter,
 		FilterChannels:      []string{"chan1"},
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	}
 
 	// Create the first active replicator to pull chan1 from seq:0
@@ -3541,6 +3666,11 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 					defer rt1.Close()
 					ctx1 := rt1.Context()
 
+					sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+					require.NoError(t, err)
+					dbstats, err := sgwStats.DBReplicatorStats(t.Name())
+					require.NoError(t, err)
+
 					id, err := base.GenerateRandomID()
 					require.NoError(t, err)
 					arConfig := db.ActiveReplicatorConfig{
@@ -3555,7 +3685,7 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 						InitialReconnectInterval: time.Millisecond,
 						MaxReconnectInterval:     time.Millisecond * 50,
 						TotalReconnectTimeout:    timeoutVal,
-						ReplicationStatsMap:      base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+						ReplicationStatsMap:      dbstats,
 					}
 
 					// Create the first active replicator to pull from seq:0
@@ -3631,6 +3761,11 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 
 	id, err := base.GenerateRandomID()
 	require.NoError(t, err)
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+
 	arConfig := db.ActiveReplicatorConfig{
 		ID:          id,
 		Direction:   db.ActiveReplicatorTypePushAndPull,
@@ -3642,7 +3777,7 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 		// aggressive reconnect intervals for testing purposes
 		InitialReconnectInterval: time.Millisecond,
 		MaxReconnectInterval:     time.Millisecond * 50,
-		ReplicationStatsMap:      base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap:      dbstats,
 	}
 
 	// Create the first active replicator to pull from seq:0
@@ -3716,6 +3851,10 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
 
 	id, err := base.GenerateRandomID()
 	require.NoError(t, err)
@@ -3731,7 +3870,7 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 		InitialReconnectInterval: time.Millisecond,
 		MaxReconnectInterval:     time.Millisecond * 50,
 		TotalReconnectTimeout:    time.Second * 5,
-		ReplicationStatsMap:      base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap:      dbstats,
 	}
 
 	// Create the first active replicator to pull from seq:0
@@ -4059,7 +4198,11 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 
 			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
 			require.NoError(t, err)
-			replicationStats := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name())
+			dbstats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+			require.NoError(t, err)
+			replicationStats, err := dbstats.DBReplicatorStats(t.Name())
+			require.NoError(t, err)
+
 			ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 				ID:          t.Name(),
 				Direction:   db.ActiveReplicatorTypePull,
@@ -4528,6 +4671,10 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 			defaultConflictResolver, err := db.NewCustomConflictResolver(
 				`function(conflict) { return defaultPolicy(conflict); }`, rt1.GetDatabase().Options.JavascriptTimeout)
 			require.NoError(t, err, "Error creating custom conflict resolver")
+			sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+			require.NoError(tt, err)
+			dbstats, err := sgwStats.DBReplicatorStats(t.Name())
+			require.NoError(tt, err)
 
 			config := db.ActiveReplicatorConfig{
 				ID:          t.Name(),
@@ -4538,7 +4685,7 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 				},
 				Continuous:           true,
 				ConflictResolverFunc: defaultConflictResolver,
-				ReplicationStatsMap:  base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+				ReplicationStatsMap:  dbstats,
 			}
 
 			// Create the first revision of the document on rt1.
@@ -4683,6 +4830,10 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			defaultConflictResolver, err := db.NewCustomConflictResolver(
 				`function(conflict) { return defaultPolicy(conflict); }`, rt1.GetDatabase().Options.JavascriptTimeout)
 			require.NoError(t, err, "Error creating custom conflict resolver")
+			sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+			require.NoError(t, err)
+			dbstats, err := sgwStats.DBReplicatorStats(t.Name())
+			require.NoError(t, err)
 
 			config := db.ActiveReplicatorConfig{
 				ID:          t.Name(),
@@ -4693,7 +4844,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 				},
 				Continuous:           true,
 				ConflictResolverFunc: defaultConflictResolver,
-				ReplicationStatsMap:  base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+				ReplicationStatsMap:  dbstats,
 			}
 
 			// Create the first revision of the document on rt2.
@@ -5015,6 +5166,10 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 
 	passiveDBURL, err := url.Parse(srv.URL + "/db")
 	require.NoError(t, err)
+	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
 
 	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          "test",
@@ -5025,7 +5180,7 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 		},
 		Continuous:          true,
 		InsecureSkipVerify:  true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	})
 
 	defer func() {
@@ -5178,6 +5333,10 @@ func TestReplicatorRevocations(t *testing.T) {
 	require.NoError(t, err)
 
 	passiveDBURL.User = url.UserPassword("user", "test")
+	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
 
 	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
@@ -5188,7 +5347,7 @@ func TestReplicatorRevocations(t *testing.T) {
 		},
 		Continuous:          false,
 		PurgeOnRemoval:      true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	})
 
 	require.NoError(t, ar.Start(ctx1))
@@ -5232,6 +5391,10 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 	require.NoError(t, err)
 
 	passiveDBURL.User = url.UserPassword("user", "test")
+	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
 
 	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
@@ -5242,7 +5405,7 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 		},
 		Continuous:          false,
 		PurgeOnRemoval:      true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	})
 
 	require.NoError(t, ar.Start(ctx1))
@@ -5294,6 +5457,10 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 	require.NoError(t, err)
 
 	passiveDBURL.User = url.UserPassword("user", "test")
+	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
 
 	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
@@ -5304,7 +5471,7 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 		},
 		Continuous:          false,
 		PurgeOnRemoval:      true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	})
 
 	require.NoError(t, ar.Start(ctx1))
@@ -5348,6 +5515,10 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	require.NoError(t, err)
 
 	passiveDBURL.User = url.UserPassword("user", "test")
+	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
 
 	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
@@ -5358,7 +5529,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 		},
 		Continuous:          true,
 		PurgeOnRemoval:      true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	})
 	require.NoError(t, ar.Start(ctx1))
 
@@ -5456,6 +5627,11 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 		}`, rt1.GetDatabase().Options.JavascriptTimeout)
 	require.NoError(t, err)
 
+	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+
 	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
@@ -5464,7 +5640,7 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		Continuous:             false,
-		ReplicationStatsMap:    base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap:    dbstats,
 		ConflictResolutionType: db.ConflictResolverCustom,
 		ConflictResolverFunc:   customConflictResolver,
 	})
@@ -5480,7 +5656,9 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 	require.NoError(t, ar.Start(ctx1))
 
 	val, found := base.WaitForStat(func() int64 {
-		return base.SyncGatewayStats.DbStats[t.Name()].DBReplicatorStats(ar.ID).PulledCount.Value()
+		dbRepStats, err := sgwStats.DBReplicatorStats(ar.ID)
+		require.NoError(t, err)
+		return dbRepStats.PulledCount.Value()
 	}, 1)
 	assert.True(t, found)
 	assert.Equal(t, int64(1), val)
@@ -5515,6 +5693,10 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 	require.NoError(t, err)
 
 	passiveDBURL.User = url.UserPassword("user", "letmein")
+	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
 
 	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
@@ -5525,7 +5707,7 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 		},
 		Continuous:          true,
 		PurgeOnRemoval:      true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	})
 
 	docARev := rt2.CreateDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"A"}})
@@ -5600,6 +5782,10 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 	require.NoError(t, err)
 
 	passiveDBURL.User = url.UserPassword("user", "letmein")
+	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
 
 	activeReplCfg := &db.ActiveReplicatorConfig{
 		ID:          strings.ReplaceAll(t.Name(), "/", ""),
@@ -5610,7 +5796,7 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 		},
 		Continuous:          false,
 		PurgeOnRemoval:      true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	}
 
 	ar := db.NewActiveReplicator(ctx1, activeReplCfg)
@@ -5704,6 +5890,10 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	require.NoError(t, err)
 
 	passiveDBURL.User = url.UserPassword("user", "letmein")
+	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
 
 	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
@@ -5713,7 +5903,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		Continuous:          true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	})
 
 	for i := 0; i < 10; i++ {
@@ -5759,6 +5949,10 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 
 	require.NoError(t, ar.Stop())
 	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+	sgwStats, err = base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err = sgwStats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
 
 	ar = db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
@@ -5769,7 +5963,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 		},
 		Continuous:          true,
 		PurgeOnRemoval:      true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	})
 
 	// Send a doc to act as a 'marker' so we know when replication has completed
@@ -5855,6 +6049,10 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	// Set-up replicator //
 	passiveDBURL, err := url.Parse(srv.URL + "/db")
 	require.NoError(t, err)
+	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), true, false, false)
+	require.NoError(t, err)
+	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
 
 	ar := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
@@ -5866,7 +6064,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 		Continuous:          true,
 		ChangesBatchSize:    1,
 		DeltasEnabled:       true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), true, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	})
 	assert.Equal(t, "", ar.GetStatus().LastSeqPush)
 	assert.NoError(t, ar.Start(activeCtx))
@@ -5957,6 +6155,10 @@ func TestUnprocessableDeltas(t *testing.T) {
 	// Set-up replicator //
 	passiveDBURL, err := url.Parse(srv.URL + "/db")
 	require.NoError(t, err)
+	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), true, false, false)
+	require.NoError(t, err)
+	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
 
 	ar := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
@@ -5968,7 +6170,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 		Continuous:          true,
 		ChangesBatchSize:    200,
 		DeltasEnabled:       true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), true, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 	})
 	assert.Equal(t, "", ar.GetStatus().LastSeqPush)
 
@@ -6059,6 +6261,11 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	passiveDBURL, err := url.Parse(srv.URL + "/db")
 	require.NoError(t, err)
 
+	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+
 	ar := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePush,
@@ -6068,7 +6275,7 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 		},
 		Continuous:          false,
 		ChangesBatchSize:    200,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 		PurgeOnRemoval:      false,
 		Filter:              base.ByChannelFilter,
 		FilterChannels:      []string{"rev1chan"},
@@ -6107,6 +6314,10 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 	// Set-up replicator
 	passiveDBURL, err := url.Parse(srv.URL + "/db")
 	require.NoError(t, err)
+	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
 
 	ar := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
@@ -6117,7 +6328,7 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 		},
 		Continuous:          true,
 		ChangesBatchSize:    200,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: dbstats,
 		PurgeOnRemoval:      false,
 	})
 	defer func() { require.NoError(t, ar.Stop()) }()
