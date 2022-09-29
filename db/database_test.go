@@ -548,7 +548,8 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 	require.NoError(t, err, "Error creating user")
 
 	db.user = user
-	db.DbStats.InitDeltaSyncStats()
+	err = db.DbStats.InitDeltaSyncStats()
+	require.NoError(t, err)
 
 	delta, redactedRev, err := db.GetDelta(ctx, "doc1", rev2ID, rev3ID)
 	require.Equal(t, base.HTTPErrorf(404, "missing"), err)
@@ -561,7 +562,8 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 	require.NoError(t, err, "Error creating user")
 
 	db.user = user
-	db.DbStats.InitDeltaSyncStats()
+	err = db.DbStats.InitDeltaSyncStats()
+	require.NoError(t, err)
 
 	delta, redactedRev, err = db.GetDelta(ctx, "doc1", rev2ID, rev3ID)
 	require.Equal(t, base.HTTPErrorf(404, "missing"), err)
@@ -613,7 +615,8 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 	require.NoError(t, err, "Error creating user")
 
 	db.user = user
-	db.DbStats.InitDeltaSyncStats()
+	err = db.DbStats.InitDeltaSyncStats()
+	require.NoError(t, err)
 
 	delta, redactedRev, err := db.GetDelta(ctx, "doc1", rev1ID, rev2ID)
 	require.NoError(t, err)
@@ -626,7 +629,8 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 	require.NoError(t, err, "Error creating user")
 
 	db.user = user
-	db.DbStats.InitDeltaSyncStats()
+	err = db.DbStats.InitDeltaSyncStats()
+	require.NoError(t, err)
 
 	delta, redactedRev, err = db.GetDelta(ctx, "doc1", rev1ID, rev2ID)
 	require.Equal(t, base.HTTPErrorf(404, "missing"), err)

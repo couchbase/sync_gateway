@@ -1464,6 +1464,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 
 	// Create the first active replicator to pull from seq:0
 	stats, err := base.SyncGatewayStats.NewDBStats(t.Name()+"edge1", false, false, false)
+	require.NoError(t, err)
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 	arConfig.ReplicationStatsMap = dbstats

@@ -277,7 +277,6 @@ func TestPrependChanges(t *testing.T) {
 
 	// 2. Test prepend to populated cache, with overlap and duplicates
 	cache = newSingleChannelCache(dbCtx, "PrependPopulatedCache", 0, dbstats.Cache())
-	//cache = newSingleChannelCache(dbCtx, "PrependPopulatedCache", 0, (base.NewSyncGatewayStats()).NewDBStats("", false, false, false).Cache())
 	cache.validFrom = 13
 	cache.addToCache(testLogEntry(14, "doc1", "2-a"), false)
 	cache.addToCache(testLogEntry(20, "doc2", "3-a"), false)
@@ -331,7 +330,6 @@ func TestPrependChanges(t *testing.T) {
 	require.Len(t, cachedChanges, 4)
 
 	// 3. Test prepend that exceeds cache capacity
-	//cache = newSingleChannelCache(dbCtx, "PrependToFillCache", 0, (base.NewSyncGatewayStats()).NewDBStats("", false, false, false).Cache())
 	cache = newSingleChannelCache(dbCtx, "PrependToFillCache", 0, dbstats.Cache())
 	cache.options.ChannelCacheMaxLength = 5
 	cache.validFrom = 13
@@ -369,7 +367,6 @@ func TestPrependChanges(t *testing.T) {
 	}
 
 	// 4. Test prepend where all docids are already present in cache.  Cache entries shouldn't change, but validFrom is updated
-	//cache = newSingleChannelCache(dbCtx, "PrependDuplicatesOnly", 0, (base.NewSyncGatewayStats()).NewDBStats("", false, false, false).Cache())
 	cache = newSingleChannelCache(dbCtx, "PrependDuplicatesOnly", 0, dbstats.Cache())
 	cache.validFrom = 13
 	cache.addToCache(testLogEntry(14, "doc1", "2-a"), false)
@@ -400,7 +397,6 @@ func TestPrependChanges(t *testing.T) {
 	}
 
 	// 5. Test prepend for an already full cache
-	//cache = newSingleChannelCache(dbCtx, "PrependFullCache", 0, (base.NewSyncGatewayStats()).NewDBStats("", false, false, false).Cache())
 	cache = newSingleChannelCache(dbCtx, "PrependFullCache", 0, dbstats.Cache())
 	cache.options.ChannelCacheMaxLength = 5
 	cache.validFrom = 13
