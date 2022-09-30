@@ -14,6 +14,12 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 )
 
+// RuntimeDatabaseConfig is the non-persisted database config that has the persisted DatabaseConfig embedded
+type RuntimeDatabaseConfig struct {
+	DatabaseConfig
+	isSuspended bool
+}
+
 // DatabaseConfig is a 3.x/persisted database config that represents a config stored in the bucket.
 type DatabaseConfig struct {
 	// cas is the Couchbase Server CAS of the database config in the bucket

@@ -211,7 +211,7 @@ func (h *handler) handleFlush() error {
 		h.server.RemoveDatabase(h.ctx(), name)
 
 		// Create a bucket connection spec from the database config
-		spec, err := GetBucketSpec(h.ctx(), config, h.server.Config)
+		spec, err := GetBucketSpec(h.ctx(), &config.DatabaseConfig, h.server.Config)
 		if err != nil {
 			return err
 		}
@@ -235,7 +235,7 @@ func (h *handler) handleFlush() error {
 		}
 
 		// Re-open database and add to Sync Gateway
-		_, err2 := h.server.AddDatabaseFromConfig(h.ctx(), *config)
+		_, err2 := h.server.AddDatabaseFromConfig(h.ctx(), config.DatabaseConfig)
 		if err2 != nil {
 			return err2
 		}
@@ -248,7 +248,7 @@ func (h *handler) handleFlush() error {
 		config := h.server.GetDatabaseConfig(name)
 		h.server.RemoveDatabase(h.ctx(), name)
 		err := bucket.CloseAndDelete()
-		_, err2 := h.server.AddDatabaseFromConfig(h.ctx(), *config)
+		_, err2 := h.server.AddDatabaseFromConfig(h.ctx(), config.DatabaseConfig)
 		if err == nil {
 			err = err2
 		}

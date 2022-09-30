@@ -52,9 +52,9 @@ type ServerContext struct {
 	Config                 *StartupConfig // The current runtime configuration of the node
 	initialStartupConfig   *StartupConfig // The configuration at startup of the node. Built from config file + flags
 	persistentConfig       bool
-	bucketDbName           map[string]string              // bucketDbName is a map of bucket to database name
-	dbConfigs              map[string]*DatabaseConfig     // dbConfigs is a map of db name to DatabaseConfig
-	databases_             map[string]*db.DatabaseContext // databases_ is a map of dbname to db.DatabaseContext
+	bucketDbName           map[string]string                 // bucketDbName is a map of bucket to database name
+	dbConfigs              map[string]*RuntimeDatabaseConfig // dbConfigs is a map of db name to the RuntimeDatabaseConfig
+	databases_             map[string]*db.DatabaseContext    // databases_ is a map of dbname to db.DatabaseContext
 	lock                   sync.RWMutex
 	statsContext           *statsContext
 	BootstrapContext       *bootstrapContext
@@ -106,7 +106,7 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 		Config:           config,
 		persistentConfig: persistentConfig,
 		bucketDbName:     map[string]string{},
-		dbConfigs:        map[string]*DatabaseConfig{},
+		dbConfigs:        map[string]*RuntimeDatabaseConfig{},
 		databases_:       map[string]*db.DatabaseContext{},
 		HTTPClient:       http.DefaultClient,
 		statsContext:     &statsContext{},
@@ -258,7 +258,7 @@ func (sc *ServerContext) GetDbConfig(name string) *DbConfig {
 	return nil
 }
 
-func (sc *ServerContext) GetDatabaseConfig(name string) *DatabaseConfig {
+func (sc *ServerContext) GetDatabaseConfig(name string) *RuntimeDatabaseConfig {
 	sc.lock.RLock()
 	config, ok := sc.dbConfigs[name]
 	sc.lock.RUnlock()
@@ -328,7 +328,7 @@ func (sc *ServerContext) PostUpgrade(ctx context.Context, preview bool) (postUpg
 func (sc *ServerContext) _reloadDatabase(ctx context.Context, reloadDbName string, failFast bool) (*db.DatabaseContext, error) {
 	sc._unloadDatabase(ctx, reloadDbName)
 	config := sc.dbConfigs[reloadDbName]
-	return sc._getOrAddDatabaseFromConfig(ctx, *config, true, db.GetConnectToBucketFn(failFast))
+	return sc._getOrAddDatabaseFromConfig(ctx, config.DatabaseConfig, true, db.GetConnectToBucketFn(failFast))
 }
 
 // Removes and re-adds a database to the ServerContext.
@@ -615,7 +615,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 	// Register it so HTTP handlers can find it:
 	sc.databases_[dbcontext.Name] = dbcontext
-	sc.dbConfigs[dbcontext.Name] = &config
+	sc.dbConfigs[dbcontext.Name] = &RuntimeDatabaseConfig{DatabaseConfig: config}
 	sc.bucketDbName[spec.BucketName] = dbName
 
 	if base.BoolDefault(config.StartOffline, false) {
@@ -1067,7 +1067,7 @@ func (sc *ServerContext) _removeDatabase(ctx context.Context, dbName string) boo
 }
 
 func (sc *ServerContext) _isDatabaseSuspended(dbName string) bool {
-	if _, loaded := sc.databases_[dbName]; !loaded && sc.dbConfigs[dbName] != nil {
+	if config, loaded := sc.dbConfigs[dbName]; loaded && config.isSuspended {
 		return true
 	}
 	return false
@@ -1079,7 +1079,8 @@ func (sc *ServerContext) _suspendDatabase(ctx context.Context, dbName string) er
 		return base.ErrNotFound
 	}
 
-	if config, exists := sc.dbConfigs[dbName]; exists && !base.BoolDefault(config.Suspendable, sc.Config.IsServerless()) {
+	config := sc.dbConfigs[dbName]
+	if config != nil && !base.BoolDefault(config.Suspendable, sc.Config.IsServerless()) {
 		return ErrSuspendingDisallowed
 	}
 
@@ -1089,6 +1090,8 @@ func (sc *ServerContext) _suspendDatabase(ctx context.Context, dbName string) er
 	if !sc._unloadDatabase(ctx, dbName) {
 		return base.ErrNotFound
 	}
+
+	config.isSuspended = true
 	return nil
 }
 
@@ -1107,8 +1110,11 @@ func (sc *ServerContext) _unsuspendDatabase(ctx context.Context, dbName string) 
 
 	// Check if database is in dbConfigs so no need to search through buckets
 	if dbConfig, ok := sc.dbConfigs[dbName]; ok {
+		if !dbConfig.isSuspended {
+			base.WarnfCtx(ctx, "attempting to unsuspend database %q that is not suspended", base.MD(dbName))
+		}
 		if !base.BoolDefault(dbConfig.Suspendable, sc.Config.IsServerless()) {
-			base.InfofCtx(context.TODO(), base.KeyAll, "attempting to unsuspend db %q while not configured to be suspendable", base.MD(dbName))
+			base.InfofCtx(ctx, base.KeyAll, "attempting to unsuspend db %q while not configured to be suspendable", base.MD(dbName))
 		}
 
 		bucket := dbName
@@ -1125,7 +1131,7 @@ func (sc *ServerContext) _unsuspendDatabase(ctx context.Context, dbName string) 
 			return nil, fmt.Errorf("unsuspending db %q failed due to an error while trying to retrieve latest config from bucket %q: %w", base.MD(dbName).Redact(), base.MD(bucket).Redact(), err)
 		}
 		dbConfig.cas = cas
-		dbCtx, err = sc._getOrAddDatabaseFromConfig(ctx, *dbConfig, false, db.GetConnectToBucketFn(false))
+		dbCtx, err = sc._getOrAddDatabaseFromConfig(ctx, dbConfig.DatabaseConfig, false, db.GetConnectToBucketFn(false))
 		if err != nil {
 			return nil, err
 		}

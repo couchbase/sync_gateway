@@ -1440,7 +1440,7 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 
 // fetchConfigsSince returns database configs from the server context. These configs are refreshed before returning if
 // they are older than the refreshInterval. The refreshInterval defaults to DefaultMinConfigFetchInterval if nil.
-func (sc *ServerContext) fetchConfigsSince(ctx context.Context, refreshInterval *base.ConfigDuration) (dbNameConfigs map[string]*DatabaseConfig, err error) {
+func (sc *ServerContext) fetchConfigsSince(ctx context.Context, refreshInterval *base.ConfigDuration) (dbNameConfigs map[string]*RuntimeDatabaseConfig, err error) {
 	minInterval := DefaultMinConfigFetchInterval
 	if refreshInterval != nil {
 		minInterval = refreshInterval.Value()
