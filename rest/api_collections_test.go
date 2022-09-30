@@ -73,6 +73,7 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 	)
 
 	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Users: map[string]*auth.PrincipalConfig{
@@ -174,6 +175,7 @@ func TestMultiCollectionDCP(t *testing.T) {
 	})
 	require.NoError(t, err)
 	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				AutoImport: true,
@@ -223,6 +225,7 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 	collectionName := tc.Name()
 
 	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Scopes: ScopesConfig{
