@@ -59,7 +59,7 @@ const (
 	// Prints detailed debug logs from the test pooling framework.
 	tbpEnvVerbose = "SG_TEST_BUCKET_POOL_DEBUG"
 
-	tbpUseCollectionPool = "SG_TEST_COLLECTION_POOL"
+	tbpUseDefaultCollection = "SG_TEST_USE_DEFAULT_COLLECTION"
 
 	// wait this long when requesting a test bucket from the pool before giving up and failing the test.
 	waitForReadyBucketTimeout = time.Minute
@@ -112,17 +112,17 @@ type TestBucketPool struct {
 	unclosedBuckets     map[string]map[string]struct{}
 	unclosedBucketsLock sync.Mutex
 
-	usingCollections bool
+	useNamedCollections bool
 }
 
-// requestNamedCollections returns true if cluster will be created with named collections
-func requestNamedCollections(cluster tbpCluster) (bool, error) {
+// shouldUseNamedCollections returns true if cluster will be created with named collections
+func shouldUseNamedCollections(cluster tbpCluster) (bool, error) {
 	clusterSupport, err := cluster.supportsCollections()
 	if err != nil {
 		return false, err
 	}
 
-	useNamedCollection, isSet := os.LookupEnv(tbpUseCollectionPool)
+	useNamedCollection, isSet := os.LookupEnv(tbpUseDefaultCollection)
 	if !isSet {
 		if TestsDisableGSI() {
 			return false, nil
@@ -133,9 +133,8 @@ func requestNamedCollections(cluster tbpCluster) (bool, error) {
 
 	requestCollection, _ := strconv.ParseBool(useNamedCollection)
 	if requestCollection && !clusterSupport {
-		return false, fmt.Errorf("Can not run %s with a cluster that doesn't support collections", tbpUseCollectionPool)
+		return false, fmt.Errorf("Can not run %s with a cluster that doesn't support collections", tbpUseDefaultCollection)
 	}
-	fmt.Println("HONK=", requestCollection)
 	return requestCollection, nil
 
 }
@@ -179,11 +178,11 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 
 	tbp.cluster = newTestCluster(UnitTestUrl(), tbp.Logf)
 
-	useCollections, err := requestNamedCollections(tbp.cluster)
+	useNamedCollections, err := shouldUseNamedCollections(tbp.cluster)
 	if err != nil {
 		tbp.Fatalf(ctx, "%s", err)
 	}
-	tbp.usingCollections = useCollections
+	tbp.useNamedCollections = useNamedCollections
 
 	tbp.verbose.Set(tbpVerbose())
 
@@ -692,7 +691,7 @@ loop:
 
 // UsingNamedCollections specifies whether the bucket pool is using named collections.
 func (tbp *TestBucketPool) UsingNamedCollections() bool {
-	return tbp.usingCollections
+	return tbp.useNamedCollections
 }
 
 // TBPBucketInitFunc is a function that is run once (synchronously) when creating/opening a bucket.
