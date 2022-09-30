@@ -90,21 +90,26 @@ func TestOneShotDCP(t *testing.T) {
 		for i := numDocs; i < numDocs*2; i++ {
 			key := fmt.Sprintf("%s_INVALID_%d", t.Name(), i)
 			err := bucket.Set(key, 0, nil, updatedBody)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 		}
 	}()
 
+	defer additionalDocsWg.Wait()
 	// wait for done
 	timeout := time.After(oneShotDCPTimeout)
 	select {
 	case err := <-doneChan:
-		assert.Equal(t, uint64(numDocs), mutationCount)
-		assert.NoError(t, err)
+		require.NoError(t, err)
+		if TestsDisableGSI() {
+			require.Equal(t, numDocs, int(mutationCount))
+		} else {
+			// CBG-2454, sometimes we get extra docs from TO_LATEST with collections
+			require.LessOrEqual(t, numDocs, int(mutationCount))
+		}
 	case <-timeout:
-		assert.Fail(t, "timeout waiting for one-shot feed to complete")
+		require.Fail(t, "timeout waiting for one-shot feed to complete")
 	}
 
-	additionalDocsWg.Wait()
 }
 
 func TestTerminateDCPFeed(t *testing.T) {
