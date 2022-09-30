@@ -69,6 +69,7 @@ ostype() {
     VER=$(uname -r)
   fi
 
+  OS=$(echo "${OS}" | tr "[:upper:]" "[:lower:]")
   OS_MAJOR_VERSION=$(echo $VER | sed 's/\..*$//')
   OS_MINOR_VERSION=$(echo $VER | sed s/[0-9]*\.//)
 }
@@ -89,7 +90,7 @@ setup_output_dirs() {
 # Run pre installation actions
 pre_install_actions() {
   # Check that runtime user account exists
-  if [ "$OS" != "Darwin" ] && [ -z $(id -u $RUNAS_TEMPLATE_VAR 2>/dev/null) ]; then
+  if [ "$OS" != "darwin" ] && [ -z $(id -u $RUNAS_TEMPLATE_VAR 2>/dev/null) ]; then
     echo "The sync_gateway runtime user account does not exist \"$RUNAS_TEMPLATE_VAR\"." >/dev/stderr
     exit 1
   fi
@@ -141,7 +142,7 @@ pre_install_actions() {
 ostype
 
 #If the OS is MAC OSX, set the default user account home path to /Users/sync_gateway
-if [ "$OS" = "Darwin" ]; then
+if [ "$OS" = "darwin" ]; then
   RUNBASE_TEMPLATE_VAR=/Users/sync_gateway
   CONFIG_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/sync_gateway.json
   LOGS_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/logs
@@ -164,7 +165,7 @@ while [ "$1" != "" ]; do
     ;;
   --runas)
     RUNAS_TEMPLATE_VAR=$VALUE
-    if [ "$OS" != "Darwin" ]; then
+    if [ "$OS" != "darwin" ]; then
       RUNBASE_TEMPLATE_VAR=$(getent passwd "$VALUE" | cut -d: -f 6)
     else
       RUNBASE_TEMPLATE_VAR=$(eval "echo ~$VALUE")
@@ -241,7 +242,7 @@ ubuntu)
     ;;
   esac
   ;;
-RedHat* | rhel* | centos | ol)
+redhat* | rhel* | centos | ol)
   case $OS_MAJOR_VERSION in
   5)
     if [ "$SERVICE_CMD_ONLY" = true ]; then
@@ -305,7 +306,7 @@ amzn*)
     ;;
   esac
   ;;
-Darwin)
+darwin)
   if [ "$SERVICE_CMD_ONLY" = true ]; then
     echo "launchctl start /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist"
   else

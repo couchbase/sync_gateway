@@ -58,6 +58,7 @@ ostype() {
     VER=$(uname -r)
   fi
 
+  OS=$(echo "${OS}" | tr "[:upper:]" "[:lower:]")
   OS_MAJOR_VERSION=$(echo $VER | sed 's/\..*$//')
   OS_MINOR_VERSION=$(echo $VER | sed s/[0-9]*\.//)
 }
@@ -70,7 +71,7 @@ ostype() {
 ostype
 
 #If the OS is MAC OSX, set the default user account home path to /Users/sync_gateway
-if [ "$OS" = "Darwin" ]; then
+if [ "$OS" = "darwin" ]; then
   RUNBASE_TEMPLATE_VAR=/Users/sync_gateway
   CONFIG_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/sync_gateway.json
   LOGS_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/logs
@@ -119,7 +120,7 @@ ubuntu)
     ;;
   esac
   ;;
-RedHat* | rhel* | centos | ol)
+redhat* | rhel* | centos | ol)
   case $OS_MAJOR_VERSION in
   5)
     PATH=/usr/kerberos/sbin:/usr/kerberos/bin:/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:/root/bin
@@ -169,7 +170,7 @@ amzn*)
     ;;
   esac
   ;;
-Darwin)
+darwin)
   launchctl unload /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
   if [ -f /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist ]; then
     rm /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
