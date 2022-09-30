@@ -13,7 +13,6 @@ package rest
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -34,6 +33,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
@@ -180,8 +180,12 @@ func (rt *RestTester) Bucket() base.Bucket {
 	} else if rt.RestTesterConfig.persistentConfig {
 		// If running in persistent config mode, the database has to be manually created. If the db name is the same as a
 		// past tests db name, a db already exists error could happen if the past tests bucket is still flushing. Prevent this
-		// by setting the group ID as the current test name by default.
-		sc.Bootstrap.ConfigGroupID = fmt.Sprintf("%x", sha256.Sum256([]byte(rt.TB.Name())))
+		// by using a unique group ID for each new rest tester.
+		uniqueUUID, err := uuid.NewRandom()
+		if err != nil {
+			rt.TB.Fatalf("Could not generate random config group ID UUID: %v", err)
+		}
+		sc.Bootstrap.ConfigGroupID = uniqueUUID.String()
 	}
 
 	sc.Unsupported.UserQueries = base.BoolPtr(rt.EnableUserQueries)
