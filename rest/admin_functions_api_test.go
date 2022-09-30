@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/functions"
+	"github.com/couchbase/sync_gateway/db/functions"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

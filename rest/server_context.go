@@ -27,7 +27,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/auth"
-	"github.com/couchbase/sync_gateway/functions"
+	"github.com/couchbase/sync_gateway/db/functions"
 
 	"github.com/couchbase/gocbcore/v10"
 	sgbucket "github.com/couchbase/sg-bucket"

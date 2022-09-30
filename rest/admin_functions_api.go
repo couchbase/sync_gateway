@@ -12,7 +12,7 @@ import (
 	"net/http"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/functions"
+	"github.com/couchbase/sync_gateway/db/functions"
 )
 
 //////// JS FUNCTIONS:

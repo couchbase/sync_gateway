@@ -35,7 +35,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbase/sync_gateway/functions"
+	"github.com/couchbase/sync_gateway/db/functions"
 )
 
 var (

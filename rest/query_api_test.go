@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/functions"
+	"github.com/couchbase/sync_gateway/db/functions"
 	"github.com/stretchr/testify/assert"
 )
 
