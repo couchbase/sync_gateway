@@ -9758,6 +9758,27 @@ func TestImportFilterTimeout(t *testing.T) {
 	assert.NoError(t, timeoutErr)
 }
 
+func TestSyncFnWildcard(t *testing.T) {
+	rtConfig := RestTesterConfig{
+		SyncFn: `
+function(doc, oldDocs) {
+	access("bob", doc.aaaa);
+	channel("chan");
+}`,
+	}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest(http.MethodPut, "/db/_user/bob", `{"password":"123456"}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendAdminRequest(http.MethodPut, "/db/doc", `{"aaaa":["*","!"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/doc", ``, nil, "bob", "123456")
+	RequireStatus(t, resp, http.StatusOK)
+}
+
 func assertHTTPErrorReason(t testing.TB, response *TestResponse, expectedStatus int, expectedReason string) {
 	var httpError struct {
 		Reason string `json:"reason"`
