@@ -144,8 +144,6 @@ func TestServerlessDBSetupForceCreds(t *testing.T) {
 // Tests behaviour of CBG-2258 to make sure fetch databases only uses buckets listed on StartupConfig.BucketCredentials
 // when running in serverless mode
 func TestServerlessBucketCredentialsFetchDatabases(t *testing.T) {
-	base.LongRunningTest(t)
-
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
@@ -498,4 +496,86 @@ func TestSuspendingFlags(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Tests the public API unsuspending a database automatically
+func TestServerlessUnsuspendAPI(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+	// Get test bucket
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, persistentConfig: true, serverless: true})
+	defer rt.Close()
+
+	sc := rt.ServerContext()
+
+	resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{
+		"bucket": "%s",
+		"use_views": %t,
+		"num_index_replicas": 0
+	}`, tb.GetName(), base.TestsDisableGSI()))
+	RequireStatus(t, resp, http.StatusCreated)
+
+	err := sc.suspendDatabase(t, rt.Context(), "db")
+	assert.NoError(t, err)
+
+	// Confirm db is suspended
+	require.True(t, sc.isDatabaseSuspended(t, "db"))
+	require.Nil(t, sc.databases_["db"])
+
+	// Attempt to unsuspend using unauthenticated public API request
+	resp = rt.SendRequest(http.MethodGet, "/db/doc", "")
+	AssertStatus(t, resp, http.StatusUnauthorized)
+
+	// Confirm db is unsuspended
+	require.False(t, sc.isDatabaseSuspended(t, "db"))
+	require.NotNil(t, sc.databases_["db"])
+}
+
+// Makes sure admin API calls do not unsuspend DB if they fail authentication
+func TestServerlessUnsuspendAdminAuth(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+	// Get test bucket
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, persistentConfig: true, serverless: true, AdminInterfaceAuthentication: true})
+	defer rt.Close()
+
+	sc := rt.ServerContext()
+
+	resp := rt.SendAdminRequestWithAuth(http.MethodPut, "/db/", fmt.Sprintf(`{
+		"bucket": "%s",
+		"use_views": %t,
+		"num_index_replicas": 0
+	}`, tb.GetName(), base.TestsDisableGSI()), base.TestClusterUsername(), base.TestClusterPassword())
+	RequireStatus(t, resp, http.StatusCreated)
+
+	err := sc.suspendDatabase(t, rt.Context(), "db")
+	assert.NoError(t, err)
+
+	// Confirm db is suspended
+	require.True(t, sc.isDatabaseSuspended(t, "db"))
+	require.Nil(t, sc.databases_["db"])
+
+	// Confirm unauthenticated admin request does not trigger unsuspend
+	resp = rt.SendAdminRequest(http.MethodGet, "/db/doc", "")
+	AssertStatus(t, resp, http.StatusUnauthorized)
+	require.Nil(t, sc.databases_["db"]) // Confirm suspended
+	require.True(t, sc.isDatabaseSuspended(t, "db"))
+
+	// Confirm authenticated admin request triggers unsuspend
+	resp = rt.SendAdminRequestWithAuth(http.MethodGet, "/db/doc", "", base.TestClusterUsername(), base.TestClusterPassword())
+	AssertStatus(t, resp, http.StatusNotFound)
+	require.NotNil(t, sc.databases_["db"]) // Confirm unsuspended
+	require.False(t, sc.isDatabaseSuspended(t, "db"))
+
+	// Attempt to get DB that does not exist
+	resp = rt.SendAdminRequestWithAuth(http.MethodGet, "/invaliddb/doc", "", base.TestClusterUsername(), base.TestClusterPassword())
+	assertHTTPErrorReason(t, resp, http.StatusForbidden, "")
 }

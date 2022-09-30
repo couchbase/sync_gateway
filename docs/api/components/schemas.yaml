@@ -1630,7 +1630,7 @@ Database:
       default: 60
     suspendable:
       description: |-
-        Set to true to allow the database to be suspended and unsuspended. 
+        Set to true to allow the database to be suspended. 
         
         Defaults to true when running in serverless mode otherwise defaults to false.
       type: boolean

@@ -267,24 +267,29 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	var dbContext *db.DatabaseContext
 	if keyspaceDb != "" {
 		h.addDatabaseLogContext(keyspaceDb)
-		if dbContext, err = h.server.GetDatabase(h.ctx(), keyspaceDb); err != nil {
-			base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
-
-			if shouldCheckAdminAuth {
-				if httpError, ok := err.(*base.HTTPError); ok && httpError.Status == http.StatusNotFound {
+		if dbContext, err = h.server.GetActiveDatabase(keyspaceDb); err != nil {
+			if err == base.ErrNotFound {
+				if shouldCheckAdminAuth {
+					// Check if authenticated before attempting to get inactive database
 					authorized, err := h.checkAdminAuthenticationOnly()
 					if err != nil {
 						return err
 					}
-
-					if authorized {
+					if !authorized {
+						return base.HTTPErrorf(http.StatusUnauthorized, "")
+					}
+				}
+				dbContext, err = h.server.GetInactiveDatabase(h.ctx(), keyspaceDb)
+				if err != nil {
+					if httpError, ok := err.(*base.HTTPError); shouldCheckAdminAuth && ok && httpError.Status == http.StatusNotFound {
 						return base.HTTPErrorf(http.StatusForbidden, "")
 					}
-					return base.HTTPErrorf(http.StatusUnauthorized, "")
+					base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
+					return err
 				}
+			} else {
+				return err
 			}
-
-			return err
 		}
 	}
 
