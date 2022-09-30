@@ -34,7 +34,7 @@ type UserFunctions = map[string]UserFunction
 
 // A JavaScript function or N1QL query that can be invoked by a client.
 // (Created by functions.CompileUserFunction or functions.CompileUserFunctions)
-type UserFunction = interface {
+type UserFunction interface {
 	// The function's name
 	Name() string
 
@@ -60,7 +60,7 @@ type UserFunctionInvocation interface {
 
 // Represents a compiled GraphQL schema and its resolver functions.
 // Created by functions.CompileGraphQL.
-type GraphQL = interface {
+type GraphQL interface {
 	// Runs a GraphQL query on behalf of a user, presumably invoked via a REST or BLIP API.
 	Query(db *Database, query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) (*graphql.Result, error)
 
