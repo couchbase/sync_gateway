@@ -12,7 +12,7 @@ package base
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -76,8 +76,8 @@ func TestFileShouldLog(t *testing.T) {
 		l := FileLogger{
 			Enabled: AtomicBool{test.enabled},
 			level:   test.loggerLevel,
-			output:  ioutil.Discard,
-			logger:  log.New(ioutil.Discard, "", 0),
+			output:  io.Discard,
+			logger:  log.New(io.Discard, "", 0),
 		}
 
 		t.Run(name, func(ts *testing.T) {
@@ -96,8 +96,8 @@ func BenchmarkFileShouldLog(b *testing.B) {
 		l := FileLogger{
 			Enabled: AtomicBool{test.enabled},
 			level:   test.loggerLevel,
-			output:  ioutil.Discard,
-			logger:  log.New(ioutil.Discard, "", 0),
+			output:  io.Discard,
+			logger:  log.New(io.Discard, "", 0),
 		}
 
 		b.Run(name, func(bb *testing.B) {
@@ -109,7 +109,7 @@ func BenchmarkFileShouldLog(b *testing.B) {
 }
 
 func TestRotatedLogDeletion(t *testing.T) {
-	var dirContents []os.FileInfo
+	var dirContents []os.DirEntry
 
 	// Regular Test With multiple files above high and low watermark
 	dir := t.TempDir()
@@ -132,7 +132,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	assert.NoError(t, err)
 	err = runLogDeletion(dir, "info", 5, 7)
 	assert.NoError(t, err)
-	dirContents, err = ioutil.ReadDir(dir)
+	dirContents, err = os.ReadDir(dir)
 	require.Len(t, dirContents, 3)
 
 	var fileNames = []string{}
@@ -153,7 +153,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	assert.NoError(t, err)
 	err = runLogDeletion(dir, "error", 2, 4)
 	assert.NoError(t, err)
-	dirContents, err = ioutil.ReadDir(dir)
+	dirContents, err = os.ReadDir(dir)
 	require.Len(t, dirContents, 1)
 	assert.NoError(t, os.RemoveAll(dir))
 
@@ -163,7 +163,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	assert.NoError(t, err)
 	err = runLogDeletion(dir, "error", 2, 4)
 	assert.NoError(t, err)
-	dirContents, err = ioutil.ReadDir(dir)
+	dirContents, err = os.ReadDir(dir)
 	assert.Empty(t, dirContents)
 	assert.NoError(t, os.RemoveAll(dir))
 
@@ -173,7 +173,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	assert.NoError(t, err)
 	err = runLogDeletion(dir, "error", 2, 4)
 	assert.NoError(t, err)
-	dirContents, err = ioutil.ReadDir(dir)
+	dirContents, err = os.ReadDir(dir)
 	require.Len(t, dirContents, 1)
 	assert.NoError(t, os.RemoveAll(dir))
 
@@ -190,7 +190,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	err = runLogDeletion(dir, "error", 2, 3)
 	assert.NoError(t, err)
 
-	dirContents, err = ioutil.ReadDir(dir)
+	dirContents, err = os.ReadDir(dir)
 	require.Len(t, dirContents, 2)
 
 	fileNames = []string{}
@@ -210,7 +210,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	err = makeTestFile(1, logFilePrefix+"info", dir)
 	assert.NoError(t, err)
 
-	dirContents, err = ioutil.ReadDir(dir)
+	dirContents, err = os.ReadDir(dir)
 	require.Len(t, dirContents, 2)
 
 	fileNames = []string{}

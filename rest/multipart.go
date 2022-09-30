@@ -18,7 +18,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
@@ -259,7 +258,7 @@ func ReadMultipartDocument(reader *multipart.Reader) (db.Body, error) {
 			}
 			return nil, err
 		}
-		data, err := ioutil.ReadAll(part)
+		data, err := io.ReadAll(part)
 		_ = part.Close()
 		if err != nil {
 			return nil, err

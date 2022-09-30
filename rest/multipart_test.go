@@ -14,7 +14,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"math/rand"
 	"mime/multipart"
@@ -55,7 +55,7 @@ func TestReadJSONFromMIME(t *testing.T) {
 	header := http.Header{}
 	header.Add("MIME-Version", "1.0")
 	header.Add("Content-Type", "multipart/related; boundary=0123456789")
-	input := ioutil.NopCloser(strings.NewReader(`{"key":"foo","value":"bar"}`))
+	input := io.NopCloser(strings.NewReader(`{"key":"foo","value":"bar"}`))
 	var body db.Body
 	err := ReadJSONFromMIME(header, input, &body)
 	assert.Error(t, err, "Can't read JSON from MIME by specifying non-JSON content type")
@@ -65,7 +65,7 @@ func TestReadJSONFromMIME(t *testing.T) {
 	header = http.Header{}
 	header.Add("MIME-Version", "1.0")
 	header.Add("Content-Type", "application/json")
-	input = ioutil.NopCloser(strings.NewReader(`{"key":"foo","value":"bar"}`))
+	input = io.NopCloser(strings.NewReader(`{"key":"foo","value":"bar"}`))
 	err = ReadJSONFromMIME(header, input, &body)
 	assert.NoError(t, err, "Should read valid JSON from MIME")
 	assert.Equal(t, "foo", body["key"])
@@ -75,7 +75,7 @@ func TestReadJSONFromMIME(t *testing.T) {
 	header = http.Header{}
 	header.Add("MIME-Version", "1.0")
 	header.Add("Content-Type", "application/json")
-	input = ioutil.NopCloser(strings.NewReader(`"key":"foo","value":"bar"`))
+	input = io.NopCloser(strings.NewReader(`"key":"foo","value":"bar"`))
 	err = ReadJSONFromMIME(header, input, &body)
 	assert.Error(t, err, "Can't read JSON from MIME with illegal JSON body content")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
@@ -85,7 +85,7 @@ func TestReadJSONFromMIME(t *testing.T) {
 	header.Add("MIME-Version", "1.0")
 	header.Add("Content-Type", "application/json")
 	header.Add("Content-Encoding", "gzip")
-	input = ioutil.NopCloser(strings.NewReader(`{"key":"foo","value":"bar"}`))
+	input = io.NopCloser(strings.NewReader(`{"key":"foo","value":"bar"}`))
 	err = ReadJSONFromMIME(header, input, &body)
 	assert.Error(t, err, "Can't read JSON from MIME with gzip content encoding and illegal content type")
 	assert.Contains(t, err.Error(), "invalid header")
@@ -94,7 +94,7 @@ func TestReadJSONFromMIME(t *testing.T) {
 	header = http.Header{}
 	header.Add("MIME-Version", "1.0")
 	header.Add("Content-Encoding", "zip")
-	input = ioutil.NopCloser(strings.NewReader(`{"key":"foo","value":"bar"}`))
+	input = io.NopCloser(strings.NewReader(`{"key":"foo","value":"bar"}`))
 	err = ReadJSONFromMIME(header, input, &body)
 	assert.Error(t, err, "Can't read JSON from MIME with unsupported content encoding")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusUnsupportedMediaType))
@@ -111,7 +111,7 @@ func TestReadJSONFromMIME(t *testing.T) {
 	assert.NoError(t, gz.Flush(), "Flushes any pending compressed data to the underlying writer")
 	assert.NoError(t, gz.Close(), "Closes the Writer by flushing any unwritten data")
 
-	input = ioutil.NopCloser(&buffer)
+	input = io.NopCloser(&buffer)
 	err = ReadJSONFromMIME(header, input, &body)
 	assert.NoError(t, err, "Should read JSON from MIME with gzip content encoding")
 	assert.Equal(t, "foo", body["key"])

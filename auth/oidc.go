@@ -29,7 +29,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -484,7 +484,7 @@ func (op *OIDCProvider) fetchCustomProviderConfig(ctx context.Context, discovery
 		_ = resp.Body.Close()
 	}()
 	if resp.StatusCode != http.StatusOK {
-		body, err := ioutil.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			err = fmt.Errorf("unsuccessful response and could not read returned response body: %w", err)
 		} else {
@@ -507,7 +507,7 @@ func (op *OIDCProvider) fetchCustomProviderConfig(ctx context.Context, discovery
 		ttl = MinProviderConfigSyncInterval
 	}
 
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return ProviderMetadata{}, MaxProviderConfigSyncInterval, false, err
 	}

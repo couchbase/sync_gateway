@@ -11,7 +11,6 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -54,7 +53,7 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	configPath := filepath.Join(tmpDir, "config.json")
-	err := ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
+	err := os.WriteFile(configPath, []byte(config), os.FileMode(0644))
 	require.NoError(t, err)
 
 	startupConfig, _, _, _, err := automaticConfigUpgrade(configPath)
@@ -67,7 +66,7 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 	assert.Equal(t, ":4444", startupConfig.API.PublicInterface)
 	assert.Equal(t, ":4445", startupConfig.API.AdminInterface)
 
-	writtenNewFile, err := ioutil.ReadFile(configPath)
+	writtenNewFile, err := os.ReadFile(configPath)
 	require.NoError(t, err)
 
 	var writtenFileStartupConfig StartupConfig
@@ -91,7 +90,7 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	writtenBackupFile, err := ioutil.ReadFile(backupFileName)
+	writtenBackupFile, err := os.ReadFile(backupFileName)
 	require.NoError(t, err)
 
 	assert.Equal(t, config, string(writtenBackupFile))
@@ -153,7 +152,7 @@ func TestAutomaticConfigUpgradeError(t *testing.T) {
 			config := fmt.Sprintf(testCase.Config, base.TestTLSSkipVerify(), base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), tb.GetName())
 
 			configPath := filepath.Join(tmpDir, "config.json")
-			err := ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
+			err := os.WriteFile(configPath, []byte(config), os.FileMode(0644))
 			require.NoError(t, err)
 
 			_, _, _, _, err = automaticConfigUpgrade(configPath)
@@ -190,7 +189,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 		tb.GetName(),
 	)
 	configPath := filepath.Join(tmpDir, "config.json")
-	err := ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
+	err := os.WriteFile(configPath, []byte(config), os.FileMode(0644))
 	require.NoError(t, err)
 
 	// Run migration once
@@ -216,7 +215,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 		tb.GetName(),
 	)
 	updatedConfigPath := filepath.Join(tmpDir, "config-updated.json")
-	err = ioutil.WriteFile(updatedConfigPath, []byte(updatedConfig), os.FileMode(0644))
+	err = os.WriteFile(updatedConfigPath, []byte(updatedConfig), os.FileMode(0644))
 	require.NoError(t, err)
 
 	// Run migration again to ensure no error and validate it doesn't actually update db
@@ -258,7 +257,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 		tb.GetName(),
 	)
 	importConfigPath := filepath.Join(tmpDir, "config-import.json")
-	err = ioutil.WriteFile(importConfigPath, []byte(importConfig), os.FileMode(0644))
+	err = os.WriteFile(importConfigPath, []byte(importConfig), os.FileMode(0644))
 	require.NoError(t, err)
 
 	startupConfig, _, _, _, err = automaticConfigUpgrade(importConfigPath)

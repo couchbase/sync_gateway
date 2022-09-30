@@ -22,7 +22,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -835,7 +834,7 @@ func TestParseCommandLineWithBadConfigContent(t *testing.T) {
     	"databases":{"db":{"unknown_field":"walrus:data","users":{"GUEST":{"disabled":false,
 		"admin_channels":["*"]}}, "allow_conflicts":false,"revs_limit":20}}}`
 
-	configFile, err := ioutil.TempFile("", "sync_gateway.conf")
+	configFile, err := os.CreateTemp("", "sync_gateway.conf")
 	configFileName := configFile.Name()
 	require.NoError(t, err, "Couldn't create configuration file")
 	_, err = configFile.Write([]byte(content))
@@ -861,7 +860,7 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
         "certpath":"/etc/ssl/certs/cert.pem","cacertpath":"/etc/ssl/certs/ca.cert","keypath":"/etc/ssl/certs/key.pem",
         "users":{"GUEST":{"disabled":false,"admin_channels":["*"]}},"allow_conflicts":false,"revs_limit":20}}}`
 
-	configFile, err := ioutil.TempFile("", "sync_gateway.conf")
+	configFile, err := os.CreateTemp("", "sync_gateway.conf")
 	configFileName := configFile.Name()
 	require.NoError(t, err, "Couldn't create configuration file")
 	_, err = configFile.Write([]byte(content))
@@ -1307,7 +1306,7 @@ func TestExpandEnv(t *testing.T) {
 
 // createTempFile creates a temporary file with the given content.
 func createTempFile(t *testing.T, content []byte) *os.File {
-	file, err := ioutil.TempFile("", "*-sync_gateway.conf")
+	file, err := os.CreateTemp("", "*-sync_gateway.conf")
 	require.NoError(t, err, "Error creating temp file")
 	_, err = file.Write(content)
 	require.NoError(t, err, "Error writing bytes")
@@ -1495,7 +1494,7 @@ var errInternalServerError = &base.HTTPError{
 // given JavaScript source and returns a teardown function to remove the file after its use.
 func javaScriptFile(t *testing.T, js string) func() (path string, teardownFn func()) {
 	return func() (path string, teardownFn func()) {
-		file, err := ioutil.TempFile("", "*.js")
+		file, err := os.CreateTemp("", "*.js")
 		require.NoError(t, err, "Error creating JavaScript file")
 		_, err = file.Write([]byte(js))
 		require.NoError(t, err, "Error writing to JavaScript file")
@@ -1513,7 +1512,7 @@ func javaScriptFile(t *testing.T, js string) func() (path string, teardownFn fun
 // and returns a teardown function to remove the file after its use.
 func emptyJavaScriptFile(t *testing.T) func() (path string, teardownFn func()) {
 	return func() (path string, teardownFn func()) {
-		file, err := ioutil.TempFile("", "*.js")
+		file, err := os.CreateTemp("", "*.js")
 		require.NoError(t, err, "Error creating JavaScript file")
 		path = file.Name()
 		teardownFn = func() {

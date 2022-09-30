@@ -10,8 +10,8 @@ package db
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
+	"os"
 	"sort"
 	"strings"
 	"testing"
@@ -655,7 +655,7 @@ func TestPruneDisconnectedRevTreeWithLongWinningBranch(t *testing.T) {
 	revTree := getMultiBranchTestRevtree1(1, 15, branchSpecs)
 
 	if dumpRevTreeDotFiles {
-		err := ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_initial.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+		err := os.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_initial.dot", []byte(revTree.RenderGraphvizDot()), 0666)
 		require.NoError(t, err)
 	}
 
@@ -664,7 +664,7 @@ func TestPruneDisconnectedRevTreeWithLongWinningBranch(t *testing.T) {
 	revTree.pruneRevisions(maxDepth, "")
 
 	if dumpRevTreeDotFiles {
-		err := ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_pruned1.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+		err := os.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_pruned1.dot", []byte(revTree.RenderGraphvizDot()), 0666)
 		require.NoError(t, err)
 	}
 
@@ -679,14 +679,14 @@ func TestPruneDisconnectedRevTreeWithLongWinningBranch(t *testing.T) {
 	)
 
 	if dumpRevTreeDotFiles {
-		err := ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_add_winning_revs.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+		err := os.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_add_winning_revs.dot", []byte(revTree.RenderGraphvizDot()), 0666)
 		require.NoError(t, err)
 	}
 
 	revTree.pruneRevisions(maxDepth, "")
 
 	if dumpRevTreeDotFiles {
-		err := ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_pruned_final.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+		err := os.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_pruned_final.dot", []byte(revTree.RenderGraphvizDot()), 0666)
 		require.NoError(t, err)
 	}
 

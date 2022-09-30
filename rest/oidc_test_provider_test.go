@@ -14,7 +14,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -183,7 +183,7 @@ func TestProviderOIDCAuthWithTlsSkipVerifyEnabled(t *testing.T) {
 	response, err := client.Do(request)
 	require.NoError(t, err, "Error sending request")
 	require.Equal(t, http.StatusOK, response.StatusCode)
-	bodyBytes, err := ioutil.ReadAll(response.Body)
+	bodyBytes, err := io.ReadAll(response.Body)
 	require.NoError(t, err, "Error reading response")
 	bodyString := string(bodyBytes)
 	require.NoError(t, response.Body.Close(), "Error closing response body")
@@ -239,7 +239,7 @@ func TestProviderOIDCAuthWithTlsSkipVerifyDisabled(t *testing.T) {
 	response, err := client.Do(request)
 	require.NoError(t, err, "Error sending request")
 	require.Equal(t, http.StatusInternalServerError, response.StatusCode)
-	bodyBytes, err := ioutil.ReadAll(response.Body)
+	bodyBytes, err := io.ReadAll(response.Body)
 	require.NoError(t, err, "Error reading response")
 	bodyString := string(bodyBytes)
 	assert.Contains(t, bodyString, "Unable to obtain client for provider")
@@ -331,7 +331,7 @@ func TestOpenIDConnectTestProviderWithRealWorldToken(t *testing.T) {
 			response, err := client.Do(request)
 			require.NoError(t, err, "Error sending request")
 			require.Equal(t, http.StatusOK, response.StatusCode)
-			bodyBytes, err := ioutil.ReadAll(response.Body)
+			bodyBytes, err := io.ReadAll(response.Body)
 			require.NoError(t, err, "Error reading response")
 			bodyString := string(bodyBytes)
 			require.NoError(t, response.Body.Close(), "Error closing response body")
@@ -433,7 +433,7 @@ func TestOIDCWithBasicAuthDisabled(t *testing.T) {
 	response, err := client.Do(request)
 	require.NoError(t, err, "Error sending request")
 	require.Equal(t, http.StatusOK, response.StatusCode)
-	bodyBytes, err := ioutil.ReadAll(response.Body)
+	bodyBytes, err := io.ReadAll(response.Body)
 	require.NoError(t, err, "Error reading response")
 	bodyString := string(bodyBytes)
 	require.NoError(t, response.Body.Close(), "Error closing response body")

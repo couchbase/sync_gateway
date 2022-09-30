@@ -16,7 +16,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"math/rand"
 	"os"
@@ -125,7 +125,7 @@ func getTestBucket(t testing.TB, collectionType tbpCollectionType) *TestBucket {
 // Returns both the test bucket which is persisted and a function which can be used to remove the created temporary
 // directory once the test has finished with it.
 func GetPersistentWalrusBucket(t testing.TB) (*TestBucket, func()) {
-	tempDir, err := ioutil.TempDir("", "walrustemp")
+	tempDir, err := os.MkdirTemp("", "walrustemp")
 	require.NoError(t, err)
 
 	walrusFile := fmt.Sprintf("walrus:%s", tempDir)
@@ -583,7 +583,7 @@ func SetUpBenchmarkLogging(tb testing.TB, logLevel LogLevel, logKeys ...LogKey) 
 	teardownFnOrig := setTestLogging(logLevel, "", logKeys...)
 
 	// discard all logging output for benchmarking (but still execute logging as normal)
-	consoleLogger.logger.SetOutput(ioutil.Discard)
+	consoleLogger.logger.SetOutput(io.Discard)
 	tb.Cleanup(func() {
 		// revert back to original output
 		if consoleLogger != nil && consoleLogger.output != nil {

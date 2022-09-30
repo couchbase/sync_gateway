@@ -14,7 +14,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -273,7 +272,7 @@ func runLogDeletion(logDirectory string, logLevel string, sizeLimitMBLowWatermar
 	sizeLimitMBLowWatermark = sizeLimitMBLowWatermark * 1024 * 1024   // Convert MB input to bytes
 	sizeLimitMBHighWatermark = sizeLimitMBHighWatermark * 1024 * 1024 // Convert MB input to bytes
 
-	files, err := ioutil.ReadDir(logDirectory)
+	files, err := os.ReadDir(logDirectory)
 
 	if err != nil {
 		return errors.New(fmt.Sprintf("Error reading log directory: %v", err))
@@ -287,7 +286,12 @@ func runLogDeletion(logDirectory string, logLevel string, sizeLimitMBLowWatermar
 	for i := len(files) - 1; i >= 0; i-- {
 		file := files[i]
 		if strings.HasPrefix(file.Name(), logFilePrefix+logLevel) && strings.HasSuffix(file.Name(), ".log.gz") {
-			totalSize += int(file.Size())
+			fi, err := file.Info()
+			if err != nil {
+				continue
+			}
+
+			totalSize += int(fi.Size())
 			if totalSize > sizeLimitMBLowWatermark && indexDeletePoint == -1 {
 				indexDeletePoint = i
 			}

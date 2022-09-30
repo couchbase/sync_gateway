@@ -16,7 +16,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"time"
 
@@ -140,7 +139,7 @@ func (wh *Webhook) HandleEvent(event Event) bool {
 		defer func() {
 			// Ensure we're closing the response, so it can be reused
 			if resp != nil && resp.Body != nil {
-				_, err := io.Copy(ioutil.Discard, resp.Body)
+				_, err := io.Copy(io.Discard, resp.Body)
 				if err != nil {
 					base.DebugfCtx(logCtx, base.KeyEvents, "Error copying response body: %v", err)
 				}
