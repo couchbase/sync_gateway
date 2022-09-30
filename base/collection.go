@@ -110,6 +110,18 @@ func bucketSpecScopeAndCollection(spec BucketSpec) (scope string, collection str
 	return scope, collection
 }
 
+// getClusterVersion returns major and minor versions of connected cluster
+func getClusterVersion(cluster *gocb.Cluster) (int, int, error) {
+	// Query node meta to find cluster compat version
+	nodesMetadata, err := cluster.Internal().GetNodesMetadata(&gocb.GetNodesMetadataOptions{})
+	if err != nil || len(nodesMetadata) == 0 {
+		return 0, 0, fmt.Errorf("unable to get server cluster compatibility for %d nodes: %w", len(nodesMetadata), err)
+	}
+	// Safe to get first node as there will always be at least one node in the list and cluster compat is uniform across all nodes.
+	clusterCompatMajor, clusterCompatMinor := decodeClusterVersion(nodesMetadata[0].ClusterCompatibility)
+	return clusterCompatMajor, clusterCompatMinor, nil
+}
+
 func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilReadySeconds int) (*Collection, error) {
 
 	// Connect to bucket
@@ -123,15 +135,11 @@ func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilR
 		WarnfCtx(context.TODO(), "Error waiting for bucket to be ready: %v", err)
 		return nil, err
 	}
-
-	// Query node meta to find cluster compat version
-	nodesMetadata, err := cluster.Internal().GetNodesMetadata(&gocb.GetNodesMetadataOptions{})
-	if err != nil || len(nodesMetadata) == 0 {
+	clusterCompatMajor, clusterCompatMinor, err := getClusterVersion(cluster)
+	if err != nil {
 		_ = cluster.Close(&gocb.ClusterCloseOptions{})
-		return nil, fmt.Errorf("unable to get server cluster compatibility for %d nodes: %w", len(nodesMetadata), err)
+		return nil, fmt.Errorf("%s", err)
 	}
-	// Safe to get first node as there will always be at least one node in the list and cluster compat is uniform across all nodes.
-	clusterCompatMajor, clusterCompatMinor := decodeClusterVersion(nodesMetadata[0].ClusterCompatibility)
 
 	specScope, specCollection := bucketSpecScopeAndCollection(spec)
 	c := cluster.Bucket(spec.BucketName).Scope(specScope).Collection(specCollection)

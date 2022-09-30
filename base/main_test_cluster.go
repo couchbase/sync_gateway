@@ -23,7 +23,8 @@ type tbpCluster interface {
 	getBucketNames() ([]string, error)
 	insertBucket(name string, quotaMB int) error
 	removeBucket(name string) error
-	openTestBucket(name tbpBucketName, waitUntilReadySeconds int) (Bucket, Bucket, error)
+	openTestBucket(name tbpBucketName, waitUntilReadySeconds int, usingNamedCollections bool) (Bucket, Bucket, error)
+	supportsCollections() (bool, error)
 	close() error
 }
 
@@ -96,7 +97,6 @@ func initV2Cluster(server string) *gocb.Cluster {
 	if err != nil {
 		FatalfCtx(context.TODO(), "Cluster not ready: %v", err)
 	}
-
 	return cluster
 }
 
@@ -138,10 +138,11 @@ func (c *tbpClusterV2) removeBucket(name string) error {
 }
 
 // openTestBucket opens the bucket of the given name for the gocb cluster in the given TestBucketPool.
-func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilReadySeconds int) (Bucket, Bucket, error) {
+func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilReadySeconds int, usingNamedCollections bool) (Bucket, Bucket, error) {
 
 	bucketCluster := initV2Cluster(c.server)
-	bucketSpec := getBucketSpec(testBucketName)
+
+	bucketSpec := getBucketSpec(testBucketName, usingNamedCollections)
 
 	// Create scope and collection on server, first drop any scope and collect in the bucket and then create
 	// new scope + collection
@@ -170,7 +171,7 @@ func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilRea
 		if err != nil {
 			return nil, nil, err
 		}
-		defaultSpec := getBucketSpec(testBucketName)
+		defaultSpec := getBucketSpec(testBucketName, usingNamedCollections)
 		defaultSpec.Scope = nil
 		defaultSpec.Collection = nil
 		unnamedCollectionBucket, err := GetCollectionFromCluster(bucketCluster, defaultSpec, waitUntilReadySeconds)
@@ -203,6 +204,14 @@ func (c *tbpClusterV2) getMinClusterCompatVersion() int {
 		panic("invalid NodesMetadata: no nodes")
 	}
 	return nodesMeta[0].ClusterCompatibility
+}
+
+func (c *tbpClusterV2) supportsCollections() (bool, error) {
+	major, _, err := getClusterVersion(c.cluster)
+	if err != nil {
+		return false, err
+	}
+	return major >= 7, nil
 }
 
 // dropAllScopesAndCollections attempts to drop *all* non-_default scopes and collections from the bucket associated with the collection, except those used by the test bucket pool. Intended for test usage only.

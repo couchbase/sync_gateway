@@ -115,6 +115,31 @@ type TestBucketPool struct {
 	usingCollections bool
 }
 
+// requestNamedCollections returns true if cluster will be created with named collections
+func requestNamedCollections(cluster tbpCluster) (bool, error) {
+	clusterSupport, err := cluster.supportsCollections()
+	if err != nil {
+		return false, err
+	}
+
+	useNamedCollection, isSet := os.LookupEnv(tbpUseCollectionPool)
+	if !isSet {
+		if TestsDisableGSI() {
+			return false, nil
+		}
+		// use collections if running GSI and server >= 7
+		return clusterSupport, nil
+	}
+
+	requestCollection, _ := strconv.ParseBool(useNamedCollection)
+	if requestCollection && !clusterSupport {
+		return false, fmt.Errorf("Can not run %s with a cluster that doesn't support collections", tbpUseCollectionPool)
+	}
+	fmt.Println("HONK=", requestCollection)
+	return requestCollection, nil
+
+}
+
 // NewTestBucketPool initializes a new TestBucketPool. To be called from TestMain for packages requiring test buckets.
 func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TBPBucketInitFunc) *TestBucketPool {
 	// We can safely skip setup when we want Walrus buckets to be used. They'll be created on-demand via GetTestBucketAndSpec.
@@ -150,10 +175,15 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 		preserveBuckets:        preserveBuckets,
 		bucketInitFunc:         bucketInitFunc,
 		unclosedBuckets:        make(map[string]map[string]struct{}),
-		usingCollections:       TestUsingNamedCollection(),
 	}
 
 	tbp.cluster = newTestCluster(UnitTestUrl(), tbp.Logf)
+
+	useCollections, err := requestNamedCollections(tbp.cluster)
+	if err != nil {
+		tbp.Fatalf(ctx, "%s", err)
+	}
+	tbp.usingCollections = useCollections
 
 	tbp.verbose.Set(tbpVerbose())
 
@@ -274,7 +304,7 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 	openedStart := time.Now()
 	bucketClosed := &AtomicBool{}
 
-	bucketSpec := getBucketSpec(tbpBucketName(b.GetName()))
+	bucketSpec := getBucketSpec(tbpBucketName(b.GetName()), tbp.UsingNamedCollections())
 	bucketSpec.Server = url
 
 	return b, bucketSpec, func() {
@@ -336,7 +366,7 @@ func (tbp *TestBucketPool) getTestBucketAndSpec(t testing.TB, collectionType tbp
 	atomic.AddInt32(&tbp.stats.NumBucketsOpened, 1)
 	bucketOpenStart := time.Now()
 	bucketClosed := &AtomicBool{}
-	return bucket, getBucketSpec(tbpBucketName(bucket.GetName())), func() {
+	return bucket, getBucketSpec(tbpBucketName(bucket.GetName()), tbp.UsingNamedCollections()), func() {
 		if !bucketClosed.CompareAndSwap(false, true) {
 			tbp.Logf(ctx, "Bucket teardown was already called. Ignoring.")
 			return
@@ -518,7 +548,7 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, 
 				tbp.Fatalf(ctx, "Couldn't create test bucket: %v", err)
 			}
 
-			namedCollection, defaultCollection, err := tbp.cluster.openTestBucket(tbpBucketName(bucketName), 10*numBuckets)
+			namedCollection, defaultCollection, err := tbp.cluster.openTestBucket(tbpBucketName(bucketName), 10*numBuckets, tbp.UsingNamedCollections())
 			ctx = updateContextWithKeyspace(ctx, defaultCollection)
 			if err != nil {
 				tbp.Fatalf(ctx, "Timed out trying to open new bucket: %v", err)
@@ -614,7 +644,7 @@ loop:
 				defer tbp.bucketReadierWaitGroup.Done()
 
 				start := time.Now()
-				namedCollection, defaultCollection, err := tbp.cluster.openTestBucket(testBucketName, 5)
+				namedCollection, defaultCollection, err := tbp.cluster.openTestBucket(testBucketName, 5, tbp.UsingNamedCollections())
 				ctx = updateContextWithKeyspace(ctx, defaultCollection)
 				if err != nil {
 					tbp.Logf(ctx, "Couldn't open bucket to get ready, got error: %v", err)
@@ -776,16 +806,14 @@ func addCustomScopeAndCollection(spec *BucketSpec) error {
 }
 
 // getBucketSpec returns a new BucketSpec for the given bucket name.
-func getBucketSpec(testBucketName tbpBucketName) BucketSpec {
+func getBucketSpec(testBucketName tbpBucketName, usingNamedCollections bool) BucketSpec {
 	bucketSpec := tbpDefaultBucketSpec
 	bucketSpec.BucketName = string(testBucketName)
 	bucketSpec.TLSSkipVerify = TestTLSSkipVerify()
-	if TestUsingNamedCollection() {
-		if bucketSpec.Scope == nil && bucketSpec.Collection == nil {
-			err := addCustomScopeAndCollection(&bucketSpec)
-			if err != nil {
-				panic(err)
-			}
+	if usingNamedCollections && bucketSpec.Scope == nil && bucketSpec.Collection == nil {
+		err := addCustomScopeAndCollection(&bucketSpec)
+		if err != nil {
+			panic(err)
 		}
 	}
 
@@ -839,17 +867,6 @@ func tbpBucketQuotaMB() int {
 // tbpVerbose returns the configured test bucket pool verbose flag.
 func tbpVerbose() bool {
 	verbose, _ := strconv.ParseBool(os.Getenv(tbpEnvVerbose))
-	return verbose
-}
-
-// TestUsingUsingNamedCollections returns whether the test bucket pool is made up of named collection.
-func TestUsingNamedCollection() bool {
-	useNamedCollection, isSet := os.LookupEnv(tbpUseCollectionPool)
-	if !isSet {
-		return !TestsDisableGSI()
-	}
-
-	verbose, _ := strconv.ParseBool(useNamedCollection)
 	return verbose
 }
 

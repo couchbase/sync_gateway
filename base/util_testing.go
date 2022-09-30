@@ -89,7 +89,7 @@ func (tb *TestBucket) NoCloseClone() *TestBucket {
 }
 
 func getDefaultCollectionType() tbpCollectionType {
-	if TestUsingNamedCollection() {
+	if GTestBucketPool.usingCollections {
 		return tbpCollectionNamed
 	}
 	return tbpCollectionDefault
