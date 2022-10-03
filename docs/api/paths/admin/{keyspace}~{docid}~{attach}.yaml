@@ -76,8 +76,6 @@ put:
 
     The maximum content size of an attachment is 20MB. The `Content-Type` header of the request specifies the content type of the attachment.
 
-    To remove an attachment from a document, omit the attachment in the `_attachments` object of the document in the `PUT /{db}/{docid}` request.
-
     Required Sync Gateway RBAC roles:
     * Sync Gateway Application
   parameters:
@@ -148,3 +146,38 @@ head:
     * Sync Gateway Application Read Only
   parameters:
     - $ref: ../../components/parameters.yaml#/rev
+delete:
+  summary: Delete an attachment on a document
+  description: |-
+    This request deletes an attachment associated with the document.
+
+    If the attachment exists, the attachment will be removed from the document.
+  parameters:
+    - name: rev
+      in: query
+      description: The existing document revision ID to modify.
+      schema:
+        type: string
+    - name: If-Match
+      in: header
+      description: An alternative way of specifying the document revision ID.
+      schema:
+        type: string
+  responses:
+    '200':
+      description: Attachment removed from the document successfully
+      headers:
+        Etag:
+          schema:
+            type: string
+          description: The ID of the new revision.
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/New-revision
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+    '409':
+      $ref: ../../components/responses.yaml#/Conflict
+  tags:
+    - Document

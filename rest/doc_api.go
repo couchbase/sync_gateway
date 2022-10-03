@@ -356,6 +356,62 @@ func (h *handler) handlePutAttachment() error {
 	return nil
 }
 
+func (h *handler) handleDeleteAttachment() error {
+	if h.isReadOnlyGuest() {
+		return base.HTTPErrorf(http.StatusForbidden, auth.GuestUserReadOnly)
+	}
+
+	docid := h.PathVar("docid")
+	attachmentName := h.PathVar("attach")
+	revid := h.getQuery("rev")
+	if revid == "" {
+		var err error
+		revid, err = h.getEtag("If-Match")
+		if err != nil {
+			return err
+		}
+	}
+
+	body, err := h.db.Get1xRevBody(h.ctx(), docid, revid, false, nil)
+	if err != nil {
+		if base.IsDocNotFoundError(err) {
+			// Check here if error is relating to incorrect revid, if so return 409 code else return 404 code
+			if strings.Contains(err.Error(), "404 missing") {
+				return base.HTTPErrorf(http.StatusConflict, "Incorrect revision ID specified")
+			}
+			// Need to return an error if a document is not found
+			return base.HTTPErrorf(http.StatusNotFound, "Document specified is not found")
+		} else if err != nil {
+			return err
+		}
+	} else if body != nil {
+		if revid == "" {
+			// If a revid is not specified and an active revision was found,
+			// return a conflict now, rather than letting db.Put do it further down...
+			return base.HTTPErrorf(http.StatusConflict, "Cannot modify attachments without a specific rev ID")
+		}
+	}
+
+	// get document attachments and check if attachment exists
+	attachments := db.GetBodyAttachments(body)
+	if _, ok := attachments[attachmentName]; !ok {
+		return base.HTTPErrorf(http.StatusNotFound, "Attachment %s is not found", attachmentName)
+	}
+	// delete specified attachment from the map
+	delete(attachments, attachmentName)
+	body[db.BodyAttachments] = attachments
+
+	newRev, _, err := h.db.Put(h.ctx(), docid, body)
+	if err != nil {
+		return err
+	}
+	h.setEtag(newRev)
+
+	h.writeRawJSONStatus(http.StatusOK, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`"}`))
+
+	return nil
+}
+
 // HTTP handler for a PUT of a document
 func (h *handler) handlePutDoc() error {
 

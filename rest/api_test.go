@@ -235,6 +235,8 @@ func TestDocAttachment(t *testing.T) {
 	// attach to existing document with correct rev (should succeed)
 	response = rt.SendRequestWithHeaders("PUT", "/db/doc/attach1?rev="+revid, attachmentBody, reqHeaders)
 	RequireStatus(t, response, 201)
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	revid = body["rev"].(string)
 
 	// retrieve attachment
 	response = rt.SendRequest("GET", "/db/doc/attach1", "")
@@ -253,6 +255,26 @@ func TestDocAttachment(t *testing.T) {
 	assert.Equal(t, "2", response.Header().Get("Content-Length"))
 	assert.Equal(t, "bytes 5-6/30", response.Header().Get("Content-Range"))
 	assert.Equal(t, attachmentContentType, response.Header().Get("Content-Type"))
+
+	// attempt to delete an attachment that is not on the document
+	response = rt.SendRequest("DELETE", "/db/doc/attach2?rev="+revid, "")
+	RequireStatus(t, response, 404)
+
+	// attempt to delete attachment from non existing doc
+	response = rt.SendRequest("DELETE", "/db/doc1/attach1?rev=1-xzy", "")
+	RequireStatus(t, response, 404)
+
+	// attempt to delete attachment using incorrect revid
+	response = rt.SendRequest("DELETE", "/db/doc/attach1?rev=1-xzy", "")
+	RequireStatus(t, response, 409)
+
+	// delete the attachment calling the delete attachment endpoint
+	response = rt.SendRequest("DELETE", "/db/doc/attach1?rev="+revid, "")
+	RequireStatus(t, response, 200)
+
+	// attempt to access deleted attachment (should return error)
+	response = rt.SendRequest("GET", "/db/doc/attach1", "")
+	RequireStatus(t, response, 404)
 }
 
 func TestDocAttachmentMetaOption(t *testing.T) {
