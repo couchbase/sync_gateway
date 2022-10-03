@@ -45,6 +45,8 @@ func TestInitializeIndexes(t *testing.T) {
 			var ctx context.Context
 
 			if test.collections {
+				base.TestRequiresCollections(t)
+
 				db, ctx = setupTestNamedCollectionDBWithOptions(t, DatabaseContextOptions{EnableXattr: test.xattrs})
 			} else {
 				db, ctx = setupTestDefaultCollectionDBWithOptions(t, DatabaseContextOptions{EnableXattr: test.xattrs})
