@@ -71,30 +71,46 @@ func TestInitializeIndexes(t *testing.T) {
 func validateAllIndexesOnline(bucket base.Bucket, xattrs bool) error {
 
 	col, err := base.AsCollection(bucket)
+	if err != nil {
+		return err
+	}
 
 	cluster := col.GetCluster()
 	mgr := cluster.QueryIndexes()
 
 	watchOption := gocb.WatchQueryIndexOptions{
 		WatchPrimary:   true,
-		ScopeName:      "sg_test_1",
-		CollectionName: "sg_test_1",
+		ScopeName:      col.ScopeName(),
+		CollectionName: col.Name(),
 	}
 
 	// Watch and wait some time for indexes to come online
 	if xattrs {
-		err = mgr.WatchIndexes(bucket.GetName(), []string{"#primary", "sg_access_x1", "sg_allDocs_x1", "sg_channels_x1", "sg_roleAccess_x1", "sg_syncDocs_x1", "sg_tombstones_x1"}, 10*time.Second, &watchOption)
+		err = mgr.WatchIndexes(bucket.GetName(), listIndexes(xattrs), 10*time.Second, &watchOption)
 		if err != nil {
 			return err
 		}
 	} else {
-		err = mgr.WatchIndexes(bucket.GetName(), []string{"#primary", "sg_access_1", "sg_allDocs_1", "sg_channels_1", "sg_roleAccess_1", "sg_syncDocs_1"}, 10*time.Second, &watchOption)
+		err = mgr.WatchIndexes(bucket.GetName(), listIndexes(xattrs), 10*time.Second, &watchOption)
 		if err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func listIndexes(xattrs bool) []string {
+	allSGIndexes := make([]string, 0)
+
+	for _, sgIndex := range sgIndexes {
+		fullIndexName := sgIndex.fullIndexName(xattrs)
+		if fullIndexName == "sg_tombstones_1" {
+			continue
+		}
+		allSGIndexes = append(allSGIndexes, fullIndexName)
+	}
+	return allSGIndexes
 }
 
 func TestPostUpgradeIndexesSimple(t *testing.T) {
