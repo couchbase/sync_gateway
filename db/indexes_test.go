@@ -125,6 +125,9 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in setup case")
 
+	err = InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false)
+	assert.NoError(t, err)
+
 	// Running w/ opposite xattrs flag should preview removal of the indexes associated with this db context
 	removedIndexes, removeErr = removeObsoleteIndexes(n1qlStore, true, !db.UseXattrs(), db.UseViews(), sgIndexes)
 	assert.Equal(t, int(expectedIndexes), len(removedIndexes))
