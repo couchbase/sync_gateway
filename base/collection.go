@@ -204,6 +204,10 @@ func (c *Collection) UUID() (string, error) {
 	return config.BucketUUID(), nil
 }
 
+func (c *Collection) GetCluster() *gocb.Cluster {
+	return c.cluster
+}
+
 func (c *Collection) Close() {
 	if c.cluster != nil {
 		if err := c.cluster.Close(nil); err != nil {
