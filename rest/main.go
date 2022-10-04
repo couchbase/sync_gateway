@@ -206,7 +206,7 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 	}
 
 	// Attempt to establish connection to server
-	cluster, err := CreateCouchbaseClusterFromStartupConfig(startupConfig)
+	cluster, err := CreateCouchbaseClusterFromStartupConfig(startupConfig, base.PerUseClusterConnections)
 	if err != nil {
 		return nil, false, nil, nil, err
 	}
@@ -365,10 +365,10 @@ func backupCurrentConfigFile(sourcePath string) (string, error) {
 	return backupPath, nil
 }
 
-func CreateCouchbaseClusterFromStartupConfig(config *StartupConfig) (*base.CouchbaseCluster, error) {
+func CreateCouchbaseClusterFromStartupConfig(config *StartupConfig, bucketConnectionMode base.BucketConnectionMode) (*base.CouchbaseCluster, error) {
 	cluster, err := base.NewCouchbaseCluster(config.Bootstrap.Server, config.Bootstrap.Username, config.Bootstrap.Password,
 		config.Bootstrap.X509CertPath, config.Bootstrap.X509KeyPath, config.Bootstrap.CACertPath,
-		config.IsServerless(), config.BucketCredentials, config.Bootstrap.ServerTLSSkipVerify)
+		config.IsServerless(), config.BucketCredentials, config.Bootstrap.ServerTLSSkipVerify, bucketConnectionMode)
 	if err != nil {
 		base.InfofCtx(context.Background(), base.KeyConfig, "Couldn't create couchbase cluster instance: %v", err)
 		return nil, err

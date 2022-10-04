@@ -1610,10 +1610,12 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 
 	// Fetch database configs from bucket and start polling for new buckets and config updates.
 	if sc.persistentConfig {
-		couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(sc.Config)
+		couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(sc.Config, base.CachedClusterConnections)
+		//couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(sc.Config, base.PerUseClusterConnections)
 		if err != nil {
 			return err
 		}
+
 		sc.BootstrapContext.Connection = couchbaseCluster
 
 		count, err := sc.fetchAndLoadConfigs(ctx, true)
@@ -1634,6 +1636,7 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 			base.InfofCtx(ctx, base.KeyConfig, "Starting background polling for new configs/buckets: %s", sc.Config.Bootstrap.ConfigUpdateFrequency.Value().String())
 			go func() {
 				defer close(sc.BootstrapContext.doneChan)
+				defer sc.BootstrapContext.Connection.Close()
 				t := time.NewTicker(sc.Config.Bootstrap.ConfigUpdateFrequency.Value())
 				for {
 					select {

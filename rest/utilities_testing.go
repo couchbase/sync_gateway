@@ -814,7 +814,7 @@ func (rt *RestTester) GetDocumentSequence(key string) (sequence uint64) {
 func (rt *RestTester) ReplacePerBucketCredentials(config base.PerBucketCredentialsConfig) {
 	rt.ServerContext().Config.BucketCredentials = config
 	// Update the CouchbaseCluster to include the new bucket credentials
-	couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(rt.ServerContext().Config)
+	couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(rt.ServerContext().Config, base.PerUseClusterConnections)
 	require.NoError(rt.TB, err)
 	rt.ServerContext().BootstrapContext.Connection = couchbaseCluster
 }

@@ -331,7 +331,7 @@ func TestLegacyGuestUserMigration(t *testing.T) {
 	sc, _, _, _, err := automaticConfigUpgrade(configPath)
 	require.NoError(t, err)
 
-	cluster, err := CreateCouchbaseClusterFromStartupConfig(sc)
+	cluster, err := CreateCouchbaseClusterFromStartupConfig(sc, base.PerUseClusterConnections)
 	require.NoError(t, err)
 
 	var dbConfig DbConfig
