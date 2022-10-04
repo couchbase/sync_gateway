@@ -293,6 +293,6 @@ func DevTestFetchConfigManual(t *testing.T) {
 
 	// Sleep to wait for bucket polling iterations, or allow manual modification to server accessibility
 
-	time.Sleep(900 * time.Second)
+	time.Sleep(15 * time.Second)
 
 }

@@ -326,6 +326,9 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 // Close calls teardown for any cached buckets and removes from cachedBucketConnections
 func (cc *CouchbaseCluster) Close() {
 
+	cc.cachedConnectionLock.Lock()
+	defer cc.cachedConnectionLock.Unlock()
+
 	for bucketName, cachedBucket := range cc.cachedBucketConnections {
 		cachedBucket.teardownFn()
 		delete(cc.cachedBucketConnections, bucketName)
