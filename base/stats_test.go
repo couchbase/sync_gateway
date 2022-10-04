@@ -14,6 +14,8 @@ import (
 	"expvar"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -65,7 +67,8 @@ func BenchmarkExpvarAddParallel(b *testing.B) {
 }
 
 func BenchmarkNewStatsMarshal(b *testing.B) {
-	sgwStats := NewSyncGatewayStats()
+	sgwStats, err := NewSyncGatewayStats()
+	require.NoError(b, err)
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
@@ -74,7 +77,8 @@ func BenchmarkNewStatsMarshal(b *testing.B) {
 }
 
 func BenchmarkNewStatAdd(b *testing.B) {
-	sgwStats := NewSyncGatewayStats()
+	sgwStats, err := NewSyncGatewayStats()
+	require.NoError(b, err)
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
@@ -83,7 +87,8 @@ func BenchmarkNewStatAdd(b *testing.B) {
 }
 
 func BenchmarkNewStatSet(b *testing.B) {
-	sgwStats := NewSyncGatewayStats()
+	sgwStats, err := NewSyncGatewayStats()
+	require.NoError(b, err)
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
@@ -92,7 +97,8 @@ func BenchmarkNewStatSet(b *testing.B) {
 }
 
 func BenchmarkNewStatGet(b *testing.B) {
-	sgwStats := NewSyncGatewayStats()
+	sgwStats, err := NewSyncGatewayStats()
+	require.NoError(b, err)
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
@@ -101,7 +107,8 @@ func BenchmarkNewStatGet(b *testing.B) {
 }
 
 func BenchmarkNewStatAddParallel(b *testing.B) {
-	sgwStats := NewSyncGatewayStats()
+	sgwStats, err := NewSyncGatewayStats()
+	require.NoError(b, err)
 
 	test := sgwStats.GlobalStats.ResourceUtilizationStats()
 	b.ResetTimer()
@@ -114,7 +121,8 @@ func BenchmarkNewStatAddParallel(b *testing.B) {
 }
 
 func TestSetIfMax(t *testing.T) {
-	sgwStats := NewSyncGatewayStats()
+	sgwStats, err := NewSyncGatewayStats()
+	require.NoError(t, err)
 
 	// Test an integer
 	sgwStats.GlobalStats.ResourceUtilization.ErrorCount.Set(10)

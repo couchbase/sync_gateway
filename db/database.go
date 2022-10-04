@@ -345,6 +345,11 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	// Register the cbgt pindex type for the configGroup
 	RegisterImportPindexImpl(ctx, options.GroupID)
 
+	dbStats, statsError := initDatabaseStats(dbName, autoImport, options)
+	if statsError != nil {
+		return nil, statsError
+	}
+
 	dbContext := &DatabaseContext{
 		Name:       dbName,
 		UUID:       cbgt.NewUUID(),
@@ -352,7 +357,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		StartTime:  time.Now(),
 		autoImport: autoImport,
 		Options:    options,
-		DbStats:    initDatabaseStats(dbName, autoImport, options),
+		DbStats:    dbStats,
 	}
 
 	cleanupFunctions = append(cleanupFunctions, func() {
@@ -1792,7 +1797,7 @@ func (context *DatabaseContext) FlushRevisionCacheForTest() {
 
 }
 
-func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOptions) *base.DbStats {
+func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOptions) (*base.DbStats, error) {
 
 	enabledDeltaSync := options.DeltaSyncOptions.Enabled
 	enabledImport := autoImport || options.EnableXattr

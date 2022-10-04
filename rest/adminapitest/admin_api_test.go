@@ -4328,7 +4328,9 @@ func TestGroupIDReplications(t *testing.T) {
 			ctx := sc.SetContextLogID(base.TestCtx(t), sc.Config.Bootstrap.ConfigGroupID)
 			dbContext, err := sc.GetDatabase(ctx, "db")
 			require.NoError(t, err)
-			actualPushed, _ := base.WaitForStat(dbContext.DbStats.DBReplicatorStats("repl").NumDocPushed.Value, expectedPushed)
+			dbstats, err := dbContext.DbStats.DBReplicatorStats("repl")
+			require.NoError(t, err)
+			actualPushed, _ := base.WaitForStat(dbstats.NumDocPushed.Value, expectedPushed)
 			assert.Equal(t, expectedPushed, actualPushed)
 		}
 	}
