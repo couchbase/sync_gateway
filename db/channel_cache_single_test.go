@@ -39,7 +39,7 @@ func TestDuplicateDocID(t *testing.T) {
 	require.NoError(t, err)
 
 	cache := newSingleChannelCache(context, "Test1", 0, dbstats.Cache())
-	assert.True(t, cache != nil)
+	assert.NotNil(t, cache)
 
 	// Add some entries to cache
 	cache.addToCache(testLogEntry(1, "doc1", "1-a"), false)
@@ -94,7 +94,7 @@ func TestLateArrivingSequence(t *testing.T) {
 	require.NoError(t, err)
 
 	cache := newSingleChannelCache(context, "Test1", 0, dbstats.Cache())
-	assert.True(t, cache != nil)
+	assert.NotNil(t, cache)
 
 	// Add some entries to cache
 	cache.addToCache(testLogEntry(1, "doc1", "1-a"), false)
@@ -135,7 +135,7 @@ func TestLateSequenceAsFirst(t *testing.T) {
 	require.NoError(t, err)
 
 	cache := newSingleChannelCache(context, "Test1", 0, dbstats.Cache())
-	assert.True(t, cache != nil)
+	assert.NotNil(t, cache)
 
 	// Add some entries to cache
 	cache.addToCache(testLogEntry(5, "doc1", "1-a"), false)
@@ -176,7 +176,7 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 	require.NoError(t, err)
 
 	cache := newSingleChannelCache(context, "Test1", 0, dbstats.Cache())
-	assert.True(t, cache != nil)
+	assert.NotNil(t, cache)
 
 	// Add some entries to cache
 	cache.addToCache(testLogEntry(10, "doc1", "1-a"), false)
@@ -259,7 +259,7 @@ func TestPrependChanges(t *testing.T) {
 	require.NoError(t, err)
 
 	cache := newSingleChannelCache(dbCtx, "PrependEmptyCache", 0, dbstats.Cache())
-	assert.True(t, cache != nil)
+	assert.NotNil(t, cache)
 
 	changesToPrepend := LogEntries{
 		testLogEntry(10, "doc3", "2-a"),
@@ -276,6 +276,10 @@ func TestPrependChanges(t *testing.T) {
 	require.Len(t, cachedChanges, 3)
 
 	// 2. Test prepend to populated cache, with overlap and duplicates
+	stats, err = base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	dbstats, err = stats.NewDBStats("", false, false, false)
+	require.NoError(t, err)
 	cache = newSingleChannelCache(dbCtx, "PrependPopulatedCache", 0, dbstats.Cache())
 	cache.validFrom = 13
 	cache.addToCache(testLogEntry(14, "doc1", "2-a"), false)
@@ -330,6 +334,10 @@ func TestPrependChanges(t *testing.T) {
 	require.Len(t, cachedChanges, 4)
 
 	// 3. Test prepend that exceeds cache capacity
+	stats, err = base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	dbstats, err = stats.NewDBStats("", false, false, false)
+	require.NoError(t, err)
 	cache = newSingleChannelCache(dbCtx, "PrependToFillCache", 0, dbstats.Cache())
 	cache.options.ChannelCacheMaxLength = 5
 	cache.validFrom = 13
@@ -367,6 +375,10 @@ func TestPrependChanges(t *testing.T) {
 	}
 
 	// 4. Test prepend where all docids are already present in cache.  Cache entries shouldn't change, but validFrom is updated
+	stats, err = base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	dbstats, err = stats.NewDBStats("", false, false, false)
+	require.NoError(t, err)
 	cache = newSingleChannelCache(dbCtx, "PrependDuplicatesOnly", 0, dbstats.Cache())
 	cache.validFrom = 13
 	cache.addToCache(testLogEntry(14, "doc1", "2-a"), false)
@@ -397,6 +409,10 @@ func TestPrependChanges(t *testing.T) {
 	}
 
 	// 5. Test prepend for an already full cache
+	stats, err = base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	dbstats, err = stats.NewDBStats("", false, false, false)
+	require.NoError(t, err)
 	cache = newSingleChannelCache(dbCtx, "PrependFullCache", 0, dbstats.Cache())
 	cache.options.ChannelCacheMaxLength = 5
 	cache.validFrom = 13

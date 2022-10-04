@@ -103,11 +103,11 @@ func init() {
 	// Initialize Sync Gateway Stats
 
 	// All stats will be stored as part of this struct. Global variable accessible everywhere. To add stats see stats.go
-	sgwStats, err := NewSyncGatewayStats()
+	var err error
+	SyncGatewayStats, err = NewSyncGatewayStats()
 	if err != nil {
-		log.Fatalf("Fatal error: %v", err)
+		log.Fatalf("Fatal error attempting to instantiate sync gateway stats: %v", err)
 	}
-	SyncGatewayStats = sgwStats
 
 	// Publish our stats to expvars. This will run String method on SyncGatewayStats ( type SgwStats ) which will
 	// marshal the stats to JSON
@@ -228,11 +228,7 @@ func (s *SgwStats) initReplicationStats() error {
 	s.ReplicatorStats = &ReplicatorStats{
 		new(expvar.Map).Init(),
 	}
-	err := prometheus.Register(s.ReplicatorStats)
-	if err != nil {
-		return err
-	}
-	return nil
+	return prometheus.Register(s.ReplicatorStats)
 }
 
 func (s *SgwStats) ReplicationStats() *expvar.Map {
@@ -884,21 +880,18 @@ func (s *SgwStats) NewDBStats(name string, deltaSyncEnabled bool, importEnabled 
 	}
 
 	if viewsEnabled {
-		err := s.DbStats[name].InitQueryStats(
+		err = s.DbStats[name].InitQueryStats(
 			true,
 			queryNames...,
 		)
-		if err != nil {
-			return nil, err
-		}
 	} else {
-		err := s.DbStats[name].InitQueryStats(
+		err = s.DbStats[name].InitQueryStats(
 			false,
 			queryNames...,
 		)
-		if err != nil {
-			return nil, err
-		}
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	return s.DbStats[name], nil
