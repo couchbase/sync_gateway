@@ -15,7 +15,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -525,7 +524,7 @@ func getMaxTTL(store CouchbaseStore) (int, error) {
 
 	defer func() { _ = resp.Body.Close() }()
 
-	respBytes, err := ioutil.ReadAll(resp.Body)
+	respBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return -1, err
 	}
@@ -546,7 +545,7 @@ func getServerUUID(store CouchbaseStore) (uuid string, err error) {
 
 	defer func() { _ = resp.Body.Close() }()
 
-	respBytes, err := ioutil.ReadAll(resp.Body)
+	respBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
 	}
@@ -607,7 +606,7 @@ func retrievePurgeInterval(bucket CouchbaseStore, uri string) (time.Duration, er
 		return 0, errors.New(resp.Status)
 	}
 
-	respBytes, err := ioutil.ReadAll(resp.Body)
+	respBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return 0, err
 	}

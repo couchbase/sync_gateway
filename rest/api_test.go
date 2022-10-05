@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"math/rand"
 	"mime"
@@ -1772,7 +1771,7 @@ readerLoop:
 			t.Fatal(err)
 		}
 
-		partBytes, err := ioutil.ReadAll(part)
+		partBytes, err := io.ReadAll(part)
 		assert.NoError(t, err, "Unexpected error")
 
 		log.Printf("multipart part: %+v", string(partBytes))
@@ -3962,7 +3961,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 
 		}
 
-		partBytes, err := ioutil.ReadAll(part)
+		partBytes, err := io.ReadAll(part)
 		assert.NoError(t, err, "Unexpected error")
 
 		log.Printf("multipart part: %+v", string(partBytes))
@@ -4749,7 +4748,7 @@ func TestWebhookProperties(t *testing.T) {
 	wg := sync.WaitGroup{}
 
 	handler := func(w http.ResponseWriter, r *http.Request) {
-		out, err := ioutil.ReadAll(r.Body)
+		out, err := io.ReadAll(r.Body)
 		assert.NoError(t, err)
 		err = r.Body.Close()
 		assert.NoError(t, err)
@@ -4995,7 +4994,7 @@ func TestWebhookPropsWithAttachments(t *testing.T) {
 	wg := sync.WaitGroup{}
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		defer wg.Done()
-		bodyBytes, err := ioutil.ReadAll(r.Body)
+		bodyBytes, err := io.ReadAll(r.Body)
 		require.NoError(t, err, "Error reading request body")
 		require.NoError(t, r.Body.Close(), "Error closing request body")
 
@@ -7638,7 +7637,7 @@ func TestMetricsHandler(t *testing.T) {
 	resp, err := httpClient.Get(srv.URL + "/_metrics")
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	bodyString, err := ioutil.ReadAll(resp.Body)
+	bodyString, err := io.ReadAll(resp.Body)
 	assert.NoError(t, err)
 	assert.Contains(t, string(bodyString), `database="db"`)
 	err = resp.Body.Close()
@@ -7653,7 +7652,7 @@ func TestMetricsHandler(t *testing.T) {
 	resp, err = httpClient.Get(srv.URL + "/_metrics")
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	bodyString, err = ioutil.ReadAll(resp.Body)
+	bodyString, err = io.ReadAll(resp.Body)
 	assert.NoError(t, err)
 	assert.Contains(t, string(bodyString), `database="db"`)
 	assert.Contains(t, string(bodyString), `database="db2"`)

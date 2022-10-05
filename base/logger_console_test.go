@@ -12,7 +12,7 @@ package base
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -102,7 +102,7 @@ func TestConsoleShouldLog(t *testing.T) {
 			LogKeys:  test.loggerKeys,
 			FileLoggerConfig: FileLoggerConfig{
 				Enabled: BoolPtr(true),
-				Output:  ioutil.Discard,
+				Output:  io.Discard,
 			}})
 
 		t.Run(name, func(ts *testing.T) {
@@ -123,7 +123,7 @@ func BenchmarkConsoleShouldLog(b *testing.B) {
 			LogKeys:  test.loggerKeys,
 			FileLoggerConfig: FileLoggerConfig{
 				Enabled: BoolPtr(true),
-				Output:  ioutil.Discard,
+				Output:  io.Discard,
 			}})
 
 		b.Run(name, func(bb *testing.B) {

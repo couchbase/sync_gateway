@@ -16,7 +16,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"mime"
 	"mime/multipart"
@@ -417,7 +416,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 			}
 			// The above readBody() will end up clearing the body which the later handler will require. Re-populate this
 			// for the later handler.
-			h.requestBody = ioutil.NopCloser(bytes.NewReader(body))
+			h.requestBody = io.NopCloser(bytes.NewReader(body))
 			authScope, err = h.authScopeFunc(body)
 			if err != nil {
 				return base.HTTPErrorf(http.StatusInternalServerError, "Unable to read body: %v", err)
@@ -865,7 +864,7 @@ func (h *handler) getEtag(headerName string) (string, error) {
 
 // Returns the request body as a raw byte array.
 func (h *handler) readBody() ([]byte, error) {
-	return ioutil.ReadAll(h.requestBody)
+	return io.ReadAll(h.requestBody)
 }
 
 // Parses a JSON request body, returning it as a Body map.
@@ -890,7 +889,7 @@ func (h *handler) readSanitizeJSON(val interface{}) error {
 
 	// Read body bytes to sanitize the content and substitute environment variables.
 	defer func() { _ = input.Close() }()
-	content, err := ioutil.ReadAll(input)
+	content, err := io.ReadAll(input)
 	if err != nil {
 		return err
 	}
@@ -928,7 +927,7 @@ func (h *handler) readJavascript() (string, error) {
 	}
 
 	defer func() { _ = input.Close() }()
-	jsBytes, err := ioutil.ReadAll(input)
+	jsBytes, err := io.ReadAll(input)
 	if err != nil {
 		return "", err
 	}
@@ -964,7 +963,7 @@ func (h *handler) readDocument() (db.Body, error) {
 			reader := multipart.NewReader(bytes.NewReader(raw), attrs["boundary"])
 			body, err := ReadMultipartDocument(reader)
 			if err != nil {
-				_ = ioutil.WriteFile("GatewayPUT.mime", raw, 0600)
+				_ = os.WriteFile("GatewayPUT.mime", raw, 0600)
 				base.WarnfCtx(h.ctx(), "Error reading MIME data: copied to file GatewayPUT.mime")
 			}
 			return body, err

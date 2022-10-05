@@ -11,7 +11,7 @@ package rest
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -48,7 +48,7 @@ func MakeResponse(status int, headers map[string]string, body string) *http.Resp
 	return &http.Response{
 		StatusCode:    status,
 		Status:        fmt.Sprintf("%d", status),
-		Body:          ioutil.NopCloser(bytes.NewBufferString(body)),
+		Body:          io.NopCloser(bytes.NewBufferString(body)),
 		ContentLength: int64(len(body)),
 		Proto:         "HTTP/1.1",
 		ProtoMajor:    1,

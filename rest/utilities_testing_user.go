@@ -10,7 +10,7 @@ package rest
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -44,7 +44,7 @@ func MakeUser(t *testing.T, httpClient *http.Client, serverURL, username, passwo
 	require.NoError(t, err)
 
 	if resp.(*http.Response).StatusCode != http.StatusOK {
-		bodyResp, err := ioutil.ReadAll(resp.(*http.Response).Body)
+		bodyResp, err := io.ReadAll(resp.(*http.Response).Body)
 		assert.NoError(t, err)
 		fmt.Println(string(bodyResp))
 	}

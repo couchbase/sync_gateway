@@ -10,7 +10,6 @@ package rest
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -325,7 +324,7 @@ func TestLegacyGuestUserMigration(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	configPath := filepath.Join(tmpDir, "config.json")
-	err := ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
+	err := os.WriteFile(configPath, []byte(config), os.FileMode(0644))
 	require.NoError(t, err)
 
 	sc, _, _, _, err := automaticConfigUpgrade(configPath)
@@ -425,7 +424,7 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	configPath := filepath.Join(tmpDir, "config.json")
-	err = ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
+	err = os.WriteFile(configPath, []byte(config), os.FileMode(0644))
 	require.NoError(t, err)
 
 	// Copy behaviour of serverMainPersistentConfig - upgrade config, pass legacy users and roles in to addLegacyPrinciples (after server context is created)

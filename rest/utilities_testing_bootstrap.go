@@ -10,7 +10,7 @@ package rest
 
 import (
 	"bytes"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strconv"
 	"testing"
@@ -108,7 +108,7 @@ func doBootstrapAdminRequest(t *testing.T, method, host, path, body string, head
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 
-	rBody, err := ioutil.ReadAll(resp.Body)
+	rBody, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
 	require.NoError(t, resp.Body.Close())

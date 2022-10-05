@@ -13,7 +13,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
-	"io/ioutil"
+	"os"
 	"time"
 
 	"github.com/couchbase/gocb/v2"
@@ -141,7 +141,7 @@ func getRootCAs(caCertPath string) (*x509.CertPool, error) {
 	if caCertPath != "" {
 		rootCAs := x509.NewCertPool()
 
-		caCert, err := ioutil.ReadFile(caCertPath)
+		caCert, err := os.ReadFile(caCertPath)
 		if err != nil {
 			return nil, err
 		}

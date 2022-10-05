@@ -12,7 +12,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"math/rand"
 	"os"
@@ -2145,7 +2144,7 @@ func tempX509Certs(t *testing.T) (certPath, keyPath string, cleanupFn func()) {
 	tmpDir := os.TempDir()
 
 	// The contents of these certificates was taken directly from Go's tls package examples.
-	certFile, err := ioutil.TempFile(tmpDir, "x509-cert")
+	certFile, err := os.CreateTemp(tmpDir, "x509-cert")
 	require.NoError(t, err)
 	_, err = certFile.Write([]byte(`-----BEGIN CERTIFICATE-----
 MIIBhTCCASugAwIBAgIQIRi6zePL6mKjOipn+dNuaTAKBggqhkjOPQQDAjASMRAw
@@ -2161,7 +2160,7 @@ Wf86aX6PepsntZv2GYlA5UpabfT2EZICICpJ5h/iI+i341gBmLiAFQOyTDT+/wQc
 	require.NoError(t, err)
 	_ = certFile.Close()
 
-	keyFile, err := ioutil.TempFile(tmpDir, "x509-key")
+	keyFile, err := os.CreateTemp(tmpDir, "x509-key")
 	require.NoError(t, err)
 	_, err = keyFile.Write([]byte(`-----BEGIN EC PRIVATE KEY-----
 MHcCAQEEIIrYSSNQFaA2Hwf1duRSxKtLYX5CB04fSeQ6tF1aY/PuoAoGCCqGSM49

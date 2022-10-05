@@ -20,7 +20,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/big"
 	"net"
 	"net/http"
@@ -68,25 +68,25 @@ func saveX509Files(t *testing.T, ca *caPair, node *nodePair, sg *sgPair) {
 	dirName := t.TempDir()
 
 	caPEMFilepath := filepath.Join(dirName, "ca.pem")
-	err := ioutil.WriteFile(caPEMFilepath, ca.PEM.Bytes(), os.FileMode(0777))
+	err := os.WriteFile(caPEMFilepath, ca.PEM.Bytes(), os.FileMode(0777))
 	require.NoError(t, err)
 	ca.PEMFilepath = caPEMFilepath
 
 	chainPEMFilepath := filepath.Join(dirName, "chain.pem")
-	err = ioutil.WriteFile(chainPEMFilepath, node.PEM.Bytes(), os.FileMode(0777))
+	err = os.WriteFile(chainPEMFilepath, node.PEM.Bytes(), os.FileMode(0777))
 	require.NoError(t, err)
 	node.PEMFilepath = chainPEMFilepath
 	pkeyKeyFilepath := filepath.Join(dirName, "pkey.key")
-	err = ioutil.WriteFile(pkeyKeyFilepath, node.Key.Bytes(), os.FileMode(0777))
+	err = os.WriteFile(pkeyKeyFilepath, node.Key.Bytes(), os.FileMode(0777))
 	require.NoError(t, err)
 	node.KeyFilePath = pkeyKeyFilepath
 
 	sgPEMFilepath := filepath.Join(dirName, "sg.pem")
-	err = ioutil.WriteFile(sgPEMFilepath, sg.PEM.Bytes(), os.FileMode(0777))
+	err = os.WriteFile(sgPEMFilepath, sg.PEM.Bytes(), os.FileMode(0777))
 	require.NoError(t, err)
 	sg.PEMFilepath = sgPEMFilepath
 	sgKeyFilepath := filepath.Join(dirName, "sg.key")
-	err = ioutil.WriteFile(sgKeyFilepath, sg.Key.Bytes(), os.FileMode(0777))
+	err = os.WriteFile(sgKeyFilepath, sg.Key.Bytes(), os.FileMode(0777))
 	require.NoError(t, err)
 	sg.KeyFilePath = sgKeyFilepath
 }
@@ -320,7 +320,7 @@ func uploadCACertViaREST(couchbaseServerURL url.URL, ca *caPair) error {
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	respBody, err := ioutil.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return err
 	}
@@ -336,7 +336,7 @@ func uploadCACertViaREST(couchbaseServerURL url.URL, ca *caPair) error {
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	respBody, err = ioutil.ReadAll(resp.Body)
+	respBody, err = io.ReadAll(resp.Body)
 	if err != nil {
 		return err
 	}
@@ -414,7 +414,7 @@ func enableX509ClientCertsInCouchbaseServer(restAPIURL url.URL) error {
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	respBody, err := ioutil.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return err
 	}

@@ -16,7 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -1596,7 +1596,7 @@ func doHTTPAuthRequest(httpClient *http.Client, username, password, method, path
 		return 0, nil, fmt.Errorf("unexpected response type from doHTTPAuthRequest")
 	}
 
-	bodyString, err := ioutil.ReadAll(httpResponse.Body)
+	bodyString, err := io.ReadAll(httpResponse.Body)
 	if err != nil {
 		return 0, nil, err
 	}

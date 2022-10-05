@@ -12,7 +12,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -458,13 +458,13 @@ func (h *handler) handlePutDbConfig() (err error) {
 		hasAuthPerm := h.permissionsResults[PermConfigureAuth.PermissionName]
 		hasSyncPerm := h.permissionsResults[PermConfigureSyncFn.PermissionName]
 
-		bodyContents, err := ioutil.ReadAll(h.requestBody)
+		bodyContents, err := io.ReadAll(h.requestBody)
 		if err != nil {
 			return err
 		}
 
 		var mapDbConfig map[string]interface{}
-		err = ReadJSONFromMIMERawErr(h.rq.Header, ioutil.NopCloser(bytes.NewReader(bodyContents)), &mapDbConfig)
+		err = ReadJSONFromMIMERawErr(h.rq.Header, io.NopCloser(bytes.NewReader(bodyContents)), &mapDbConfig)
 		if err != nil {
 			return err
 		}
@@ -481,7 +481,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 			return base.HTTPErrorf(http.StatusForbidden, "not authorized to update field: %s", strings.Join(unknownFileKeys, ","))
 		}
 
-		err = ReadJSONFromMIMERawErr(h.rq.Header, ioutil.NopCloser(bytes.NewReader(bodyContents)), &dbConfig)
+		err = ReadJSONFromMIMERawErr(h.rq.Header, io.NopCloser(bytes.NewReader(bodyContents)), &dbConfig)
 		if err != nil {
 			return err
 		}

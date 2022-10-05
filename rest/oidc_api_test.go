@@ -17,7 +17,7 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -939,7 +939,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 
 // assertHttpResponse asserts the forceError against HTTP response.
 func assertHttpResponse(t *testing.T, response *http.Response, forceError forceError) {
-	bodyBytes, err := ioutil.ReadAll(response.Body)
+	bodyBytes, err := io.ReadAll(response.Body)
 	require.NoError(t, err, "error reading response body")
 	assert.Contains(t, string(bodyBytes), forceError.expectedErrorMessage)
 	assert.Equal(t, forceError.expectedErrorCode, response.StatusCode)

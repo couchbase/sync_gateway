@@ -13,7 +13,7 @@ package db
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"math"
 	"net"
@@ -396,7 +396,7 @@ func GetRouterWithHandler(wr *WebhookRequest) http.Handler {
 	})
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseForm()
-		body, err := ioutil.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			log.Printf("Error trying to read body: %s", err)
 		}

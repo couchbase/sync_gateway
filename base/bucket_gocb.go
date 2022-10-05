@@ -15,7 +15,6 @@ import (
 	"expvar"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -1306,7 +1305,7 @@ func putDDocForTombstones(name string, payload []byte, capiEps []string, client 
 
 	defer ensureBodyClosed(resp.Body)
 	if resp.StatusCode != 201 {
-		data, err := ioutil.ReadAll(resp.Body)
+		data, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return err
 		}
@@ -1635,7 +1634,7 @@ func (bucket *CouchbaseBucketGoCB) APIBucketItemCount() (itemCount int, err erro
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 200 {
-		_, err := ioutil.ReadAll(resp.Body)
+		_, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return -1, err
 		}

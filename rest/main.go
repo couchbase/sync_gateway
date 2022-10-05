@@ -15,7 +15,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -267,7 +266,7 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 	// Attempt to write over the old config with the new migrated config
 	// If we are able to write the config log success and continue
 	// Otherwise continue with startup but log warning
-	err = ioutil.WriteFile(configPath, jsonStartupConfig, 0644)
+	err = os.WriteFile(configPath, jsonStartupConfig, 0644)
 	if err != nil {
 		base.WarnfCtx(context.Background(), "Unable to write updated config file: %v -  but will continue with startup.", err)
 		return startupConfig, false, users, roles, nil

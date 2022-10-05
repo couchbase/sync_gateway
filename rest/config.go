@@ -16,7 +16,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
@@ -415,7 +414,7 @@ func loadJavaScript(path string, insecureSkipVerify bool) (js string, err error)
 		return "", err
 	}
 	defer func() { _ = rc.Close() }()
-	src, err := ioutil.ReadAll(rc)
+	src, err := io.ReadAll(rc)
 	if err != nil {
 		return "", err
 	}
@@ -1046,7 +1045,7 @@ func (config *DbConfig) redactInPlace() error {
 
 // DecodeAndSanitiseConfig will sanitise a config from an io.Reader and unmarshal it into the given config parameter.
 func DecodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
-	b, err := ioutil.ReadAll(r)
+	b, err := io.ReadAll(r)
 	if err != nil {
 		return err
 	}
