@@ -5085,7 +5085,7 @@ func TestPerDBCredsOverride(t *testing.T) {
 	}()
 	require.NoError(t, sc.WaitForRESTAPIs())
 
-	couchbaseCluster, err := rest.CreateCouchbaseClusterFromStartupConfig(sc.Config)
+	couchbaseCluster, err := rest.CreateCouchbaseClusterFromStartupConfig(sc.Config, base.PerUseClusterConnections)
 	require.NoError(t, err)
 	sc.BootstrapContext.Connection = couchbaseCluster
 

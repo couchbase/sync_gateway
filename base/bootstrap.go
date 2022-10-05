@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/couchbase/gocb/v2"
@@ -30,15 +31,39 @@ type BootstrapConnection interface {
 	InsertConfig(bucket, groupID string, value interface{}) (newCAS uint64, err error)
 	// UpdateConfig updates an existing database config for a given bucket and config group ID. updateCallback can return nil to remove the config.
 	UpdateConfig(bucket, groupID string, updateCallback func(rawBucketConfig []byte) (updatedConfig []byte, err error)) (newCAS uint64, err error)
+	// Close releases any long-lived connections
+	Close()
 }
 
 // CouchbaseCluster is a GoCBv2 implementation of BootstrapConnection
 type CouchbaseCluster struct {
-	server             string
-	clusterOptions     gocb.ClusterOptions
-	forcePerBucketAuth bool // Forces perBucketAuth authenticators to be used to connect to the bucket
-	perBucketAuth      map[string]*gocb.Authenticator
+	server                  string
+	clusterOptions          gocb.ClusterOptions
+	forcePerBucketAuth      bool // Forces perBucketAuth authenticators to be used to connect to the bucket
+	perBucketAuth           map[string]*gocb.Authenticator
+	bucketConnectionMode    BucketConnectionMode     // Whether to cache cluster connections
+	cachedClusterConnection *gocb.Cluster            // Cached cluster connection, should only be used by GetConfigBuckets
+	cachedBucketConnections map[string]*cachedBucket // Per-bucket cached connections
+	cachedConnectionLock    sync.Mutex               // mutex for access to cachedBucketConnections
 }
+
+type BucketConnectionMode int
+
+const (
+	// CachedClusterConnections mode reuses a cached cluster connection.  Should be used for recurring operations
+	CachedClusterConnections BucketConnectionMode = iota
+	// PerUseClusterConnections mode establishes a new cluster connection per cluster operation.  Should be used for adhoc operations
+	PerUseClusterConnections
+)
+
+type cachedBucket struct {
+	bucket     *gocb.Bucket
+	teardownFn func()
+}
+
+// noopTeardown is returned by getBucket when using a cached bucket - these buckets are torn down
+// when CouchbaseCluster.Close is called.
+func noopTeardown() {}
 
 var _ BootstrapConnection = &CouchbaseCluster{}
 
@@ -46,7 +71,7 @@ var _ BootstrapConnection = &CouchbaseCluster{}
 func NewCouchbaseCluster(server, username, password,
 	x509CertPath, x509KeyPath, caCertPath string,
 	forcePerBucketAuth bool, perBucketCreds PerBucketCredentialsConfig,
-	tlsSkipVerify *bool) (*CouchbaseCluster, error) {
+	tlsSkipVerify *bool, bucketMode BucketConnectionMode) (*CouchbaseCluster, error) {
 
 	securityConfig, err := GoCBv2SecurityConfig(tlsSkipVerify, caCertPath)
 	if err != nil {
@@ -81,11 +106,17 @@ func NewCouchbaseCluster(server, username, password,
 	}
 
 	cbCluster := &CouchbaseCluster{
-		server:             server,
-		forcePerBucketAuth: forcePerBucketAuth,
-		perBucketAuth:      perBucketAuth,
-		clusterOptions:     clusterOptions,
+		server:               server,
+		forcePerBucketAuth:   forcePerBucketAuth,
+		perBucketAuth:        perBucketAuth,
+		clusterOptions:       clusterOptions,
+		bucketConnectionMode: bucketMode,
 	}
+
+	if bucketMode == CachedClusterConnections {
+		cbCluster.cachedBucketConnections = make(map[string]*cachedBucket)
+	}
+
 	return cbCluster, nil
 }
 
@@ -117,22 +148,46 @@ func (cc *CouchbaseCluster) connect(auth *gocb.Authenticator) (*gocb.Cluster, er
 	return cluster, nil
 }
 
+func (cc *CouchbaseCluster) getClusterConnection() (*gocb.Cluster, error) {
+
+	if cc.bucketConnectionMode == PerUseClusterConnections {
+		return cc.connect(nil)
+	}
+
+	cc.cachedConnectionLock.Lock()
+	defer cc.cachedConnectionLock.Unlock()
+	if cc.cachedClusterConnection != nil {
+		return cc.cachedClusterConnection, nil
+	}
+
+	clusterConnection, err := cc.connect(nil)
+	if err != nil {
+		return nil, err
+	}
+	cc.cachedClusterConnection = clusterConnection
+	return cc.cachedClusterConnection, nil
+
+}
+
 func (cc *CouchbaseCluster) GetConfigBuckets() ([]string, error) {
 	if cc == nil {
 		return nil, errors.New("nil CouchbaseCluster")
 	}
 
-	connection, err := cc.connect(nil)
+	connection, err := cc.getClusterConnection()
 	if err != nil {
 		return nil, err
 	}
 
 	defer func() {
-		_ = connection.Close(&gocb.ClusterCloseOptions{})
+		if cc.bucketConnectionMode == PerUseClusterConnections {
+			_ = connection.Close(nil)
+		}
 	}()
 
 	buckets, err := connection.Buckets().GetAllBuckets(nil)
 	if err != nil {
+		cc.cachedClusterConnection = nil
 		return nil, err
 	}
 
@@ -150,6 +205,7 @@ func (cc *CouchbaseCluster) GetConfig(location, groupID string, valuePtr interfa
 	}
 
 	b, teardown, err := cc.getBucket(location)
+
 	if err != nil {
 		return 0, err
 	}
@@ -267,8 +323,62 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 
 }
 
-// getBucket returns the bucket after waiting for it to be ready.
+// Close calls teardown for any cached buckets and removes from cachedBucketConnections
+func (cc *CouchbaseCluster) Close() {
+
+	cc.cachedConnectionLock.Lock()
+	defer cc.cachedConnectionLock.Unlock()
+
+	for bucketName, cachedBucket := range cc.cachedBucketConnections {
+		cachedBucket.teardownFn()
+		delete(cc.cachedBucketConnections, bucketName)
+	}
+	if cc.cachedClusterConnection != nil {
+		_ = cc.cachedClusterConnection.Close(nil)
+		cc.cachedClusterConnection = nil
+	}
+}
+
 func (cc *CouchbaseCluster) getBucket(bucketName string) (b *gocb.Bucket, teardownFn func(), err error) {
+
+	if cc.bucketConnectionMode != CachedClusterConnections {
+		return cc.connectToBucket(bucketName)
+	}
+
+	cc.cachedConnectionLock.Lock()
+	defer cc.cachedConnectionLock.Unlock()
+
+	cacheBucket, ok := cc.cachedBucketConnections[bucketName]
+	if ok {
+		return cacheBucket.bucket, noopTeardown, nil
+	}
+
+	// cached bucket not found, connect and add
+	newBucket, newTeardownFn, err := cc.connectToBucket(bucketName)
+	if err != nil {
+		return nil, nil, err
+	}
+	cc.cachedBucketConnections[bucketName] = &cachedBucket{
+		bucket:     newBucket,
+		teardownFn: newTeardownFn,
+	}
+	return newBucket, noopTeardown, nil
+}
+
+// For unrecoverable errors when using cached buckets, remove the bucket from the cache to trigger a new connection on next usage
+func (cc *CouchbaseCluster) onCachedBucketError(bucketName string) {
+
+	cc.cachedConnectionLock.Lock()
+	defer cc.cachedConnectionLock.Unlock()
+	cacheBucket, ok := cc.cachedBucketConnections[bucketName]
+	if ok {
+		cacheBucket.teardownFn()
+		delete(cc.cachedBucketConnections, bucketName)
+	}
+}
+
+// connectToBucket establishes a new connection to a bucket, and returns the bucket after waiting for it to be ready.
+func (cc *CouchbaseCluster) connectToBucket(bucketName string) (b *gocb.Bucket, teardownFn func(), err error) {
 	var connection *gocb.Cluster
 	if bucketAuth, set := cc.perBucketAuth[bucketName]; set {
 		connection, err = cc.connect(bucketAuth)
