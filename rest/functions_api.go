@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"strings"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 )
@@ -25,86 +26,43 @@ const kGraphQLQueryParam = "query"
 const kGraphQLOperationNameParam = "operationName"
 const kGraphQLVariablesParam = "variables"
 
-//////// N1QL QUERIES:
-
-// HTTP handler for GET or POST `/$db/_query/$name`
-func (h *handler) handleUserQuery() error {
-	queryName, queryParams, err := h.getUserFunctionParams()
-	if err != nil {
-		return err
-	}
-	// Run the query:
-	return h.db.WithTimeout(h.ctx(), db.UserQueryTimeout, func(ctx context.Context) error {
-		rows, err := h.db.UserN1QLQuery(ctx, queryName, queryParams)
-		if err != nil {
-			return err
-		}
-		defer func() {
-			if rows != nil {
-				_ = rows.Close()
-			}
-		}()
-
-		// Write the query results to the response, as a JSON array of objects.
-		h.setHeader("Content-Type", "application/json")
-		if _, err = h.response.Write([]byte(`[`)); err != nil {
-			return err
-		}
-		first := true
-		var row interface{}
-		for rows.Next(&row) {
-			if first {
-				first = false
-			} else {
-				if _, err = h.response.Write([]byte(`,`)); err != nil {
-					return err
-				}
-			}
-			if err = h.addJSON(row); err != nil {
-				return err
-			}
-			// The iterator streams results as the query engine produces them, so this loop may take most of the query's time; check for timeout after each iteration:
-			if err = h.db.CheckTimeout(ctx); err != nil {
-				return err
-			}
-		}
-		err = rows.Close()
-		rows = nil // prevent 'defer' from closing again
-		if err != nil {
-			return err
-		}
-		_, err = h.response.Write([]byte("]\n"))
-		return err
-	})
-}
-
-//////// JAVASCRIPT FUNCTIONS:
+//////// FUNCTIONS:
 
 // HTTP handler for GET or POST `/$db/_function/$name`
-func (h *handler) handleUserFunction() error {
-	fnName, fnParams, err := h.getUserFunctionParams()
+func (h *handler) handleFunctionCall() error {
+	fnName, fnParams, err := h.getFunctionArgs()
 	if err != nil {
 		return err
 	}
 	canMutate := h.rq.Method != "GET"
 
-	return h.db.WithTimeout(h.ctx(), db.UserQueryTimeout, func(ctx context.Context) error {
-		result, err := h.db.CallUserFunction(ctx, fnName, fnParams, canMutate)
-		if err == nil {
-			h.writeJSON(result)
+	return h.db.WithTimeout(h.ctx(), db.UserFunctionTimeout, func(ctx context.Context) error {
+		fn, err := h.db.GetUserFunction(fnName, fnParams, canMutate, ctx)
+		if err != nil {
+			return err
+		} else if rows, err := fn.Iterate(); err != nil {
+			return err
+		} else if rows != nil {
+			return h.writeQueryRows(rows)
+		} else {
+			// Write the single result to the response:
+			result, err := fn.Run()
+			if err == nil {
+				h.writeJSON(result)
+			}
+			return err
 		}
-		return err
 	})
 }
 
-// Common subroutine for reading query name and parameters from a request
-func (h *handler) getUserFunctionParams() (string, map[string]interface{}, error) {
+// Subroutine for reading function name and arguments from a request
+func (h *handler) getFunctionArgs() (string, map[string]interface{}, error) {
 	name := h.PathVar(kFnNameParam)
-	params := map[string]interface{}{}
+	args := map[string]interface{}{}
 	var err error
 	if h.rq.Method == "POST" {
-		// POST: Params come from the request body in JSON format:
-		err = h.readJSONInto(&params)
+		// POST: Args come from the request body in JSON format:
+		err = h.readJSONInto(&args)
 	} else {
 		// GET: Params come from the URL queries (`?key=value`):
 		for key, values := range h.getQueryValues() {
@@ -119,13 +77,55 @@ func (h *handler) getUserFunctionParams() (string, map[string]interface{}, error
 				if base.JSONUnmarshal([]byte(value), &jsonValue) != nil {
 					return "", nil, base.HTTPErrorf(http.StatusBadRequest, "Value of ?%s is not valid JSON", key)
 				}
-				params[key] = jsonValue
+				args[key] = jsonValue
 			} else {
-				params[key] = value
+				args[key] = value
 			}
 		}
 	}
-	return name, params, err
+	return name, args, err
+}
+
+// Subroutine to write N1QL query results to a response
+func (h *handler) writeQueryRows(rows sgbucket.QueryResultIterator) error {
+	// Use iterator to write results one at a time to the response:
+	defer func() {
+		if rows != nil {
+			_ = rows.Close()
+		}
+	}()
+
+	// Write the query results to the response, as a JSON array of objects.
+	h.setHeader("Content-Type", "application/json")
+	var err error
+	if _, err = h.response.Write([]byte(`[`)); err != nil {
+		return err
+	}
+	first := true
+	var row interface{}
+	for rows.Next(&row) {
+		if first {
+			first = false
+		} else {
+			if _, err = h.response.Write([]byte(`,`)); err != nil {
+				return err
+			}
+		}
+		if err = h.addJSON(row); err != nil {
+			return err
+		}
+		// The iterator streams results as the query engine produces them, so this loop may take most of the query's time; check for timeout after each iteration:
+		if err = h.db.CheckTimeout(h.ctx()); err != nil {
+			return err
+		}
+	}
+	err = rows.Close()
+	rows = nil // prevent 'defer' from closing again
+	if err != nil {
+		return err
+	}
+	_, err = h.response.Write([]byte("]\n"))
+	return err
 }
 
 //////// GRAPHQL QUERIES:
@@ -148,14 +148,15 @@ func (h *handler) handleGraphQL() error {
 			}
 			queryString = string(query)
 		} else {
-			// POST JSON: Get the "query", "operationName" and "variables" properties:
-			body, err := h.readJSON()
+			// POST JSON: Get the "query", "operationName" and "variables" properties.
+			// go-graphql does not like the Number type, so decode leaving numbers as float64:
+			body, err := h.readJSONWithoutNumber()
 			if err != nil {
 				return err
 			}
 			queryString = body[kGraphQLQueryParam].(string)
 			operationName, _ = body[kGraphQLOperationNameParam].(string)
-			if variablesVal, _ := body[kGraphQLVariablesParam]; variablesVal != nil {
+			if variablesVal := body[kGraphQLVariablesParam]; variablesVal != nil {
 				variables, _ = variablesVal.(map[string]interface{})
 				if variables == nil {
 					return base.HTTPErrorf(http.StatusBadRequest, "`variables` property must be an object")
@@ -177,8 +178,8 @@ func (h *handler) handleGraphQL() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing/empty `query` property")
 	}
 
-	return h.db.WithTimeout(h.ctx(), db.UserQueryTimeout, func(ctx context.Context) error {
-		result, err := h.db.UserGraphQLQuery(ctx, queryString, operationName, variables, canMutate)
+	return h.db.WithTimeout(h.ctx(), db.UserFunctionTimeout, func(ctx context.Context) error {
+		result, err := h.db.UserGraphQLQuery(queryString, operationName, variables, canMutate, ctx)
 		if err == nil {
 			h.writeJSON(result)
 		}

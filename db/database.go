@@ -143,20 +143,19 @@ type DatabaseContextOptions struct {
 	LocalJWTConfig                auth.LocalJWTConfig
 	DBOnlineCallback              DBOnlineCallback // Callback function to take the DB back online
 	ImportOptions                 ImportOptions
-	EnableXattr                   bool                  // Use xattr for _sync
-	LocalDocExpirySecs            uint32                // The _local doc expiry time in seconds
-	SecureCookieOverride          bool                  // Pass-through DBConfig.SecureCookieOverride
-	SessionCookieName             string                // Pass-through DbConfig.SessionCookieName
-	SessionCookieHttpOnly         bool                  // Pass-through DbConfig.SessionCookieHTTPOnly
-	UserQueries                   UserQueryMap          // Pass-through DbConfig.UserQueries
-	UserFunctions                 UserFunctionConfigMap // Pass-through DbConfig.UserFunctions
-	GraphQL                       *GraphQLConfig        // Pass-through DbConfig.GraphQL
-	AllowConflicts                *bool                 // False forbids creating conflicts
-	SendWWWAuthenticateHeader     *bool                 // False disables setting of 'WWW-Authenticate' header
-	DisablePasswordAuthentication bool                  // True enforces OIDC/guest only
-	UseViews                      bool                  // Force use of views
-	DeltaSyncOptions              DeltaSyncOptions      // Delta Sync Options
-	CompactInterval               uint32                // Interval in seconds between compaction is automatically ran - 0 means don't run
+	EnableXattr                   bool             // Use xattr for _sync
+	LocalDocExpirySecs            uint32           // The _local doc expiry time in seconds
+	SecureCookieOverride          bool             // Pass-through DBConfig.SecureCookieOverride
+	SessionCookieName             string           // Pass-through DbConfig.SessionCookieName
+	SessionCookieHttpOnly         bool             // Pass-through DbConfig.SessionCookieHTTPOnly
+	UserFunctions                 UserFunctions    // JS/N1QL functions clients can call
+	GraphQL                       GraphQL          // GraphQL query interface
+	AllowConflicts                *bool            // False forbids creating conflicts
+	SendWWWAuthenticateHeader     *bool            // False disables setting of 'WWW-Authenticate' header
+	DisablePasswordAuthentication bool             // True enforces OIDC/guest only
+	UseViews                      bool             // Force use of views
+	DeltaSyncOptions              DeltaSyncOptions // Delta Sync Options
+	CompactInterval               uint32           // Interval in seconds between compaction is automatically ran - 0 means don't run
 	SGReplicateOptions            SGReplicateOptions
 	SlowQueryWarningThreshold     time.Duration
 	QueryPaginationLimit          int    // Limit used for pagination of queries. If not set defaults to DefaultQueryPaginationLimit
@@ -645,19 +644,6 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	dbContext.ResyncManager = NewResyncManager(bucket)
 	dbContext.TombstoneCompactionManager = NewTombstoneCompactionManager()
 	dbContext.AttachmentCompactionManager = NewAttachmentCompactionManager(bucket)
-
-	if options.UserFunctions != nil {
-		dbContext.userFunctions, err = compileUserFunctions(ctx, options.UserFunctions)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if options.GraphQL != nil {
-		dbContext.graphQL, err = NewGraphQL(ctx, dbContext)
-		if err != nil {
-			return nil, err
-		}
-	}
 
 	return dbContext, nil
 }
@@ -1834,8 +1820,14 @@ func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOp
 			QueryTypeUsers,
 		}
 	}
-	for name, _ := range options.UserQueries {
-		queryNames = append(queryNames, QueryTypeUserPrefix+name)
+
+	for _, fn := range options.UserFunctions {
+		if queryName, ok := fn.N1QLQueryName(); ok {
+			queryNames = append(queryNames, queryName)
+		}
+	}
+	if options.GraphQL != nil {
+		queryNames = append(queryNames, options.GraphQL.N1QLQueryNames()...)
 	}
 
 	return base.SyncGatewayStats.NewDBStats(dbName, enabledDeltaSync, enabledImport, enabledViews, queryNames...)

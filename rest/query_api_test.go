@@ -17,9 +17,38 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/db/functions"
 	"github.com/stretchr/testify/assert"
 )
+
+var kGraphQLTestConfig = &DatabaseConfig{DbConfig: DbConfig{
+	UserFunctions: map[string]*functions.FunctionConfig{
+		"square": {
+			Type:  "javascript",
+			Code:  "function(context,args) {return args.n * args.n;}",
+			Args:  []string{"n"},
+			Allow: &functions.Allow{Channels: []string{"*"}},
+		},
+		"squareN1QL": {
+			Type:  "query",
+			Code:  "SELECT $args.n * $args.n AS square",
+			Args:  []string{"n"},
+			Allow: &functions.Allow{Channels: []string{"*"}},
+		},
+	},
+	GraphQL: &functions.GraphQLConfig{
+		Schema: base.StringPtr(`type Query { square(n: Int!): Int! }`),
+		Resolvers: map[string]functions.GraphQLResolverConfig{
+			"Query": {
+				"square": functions.FunctionConfig{
+					Type:  "javascript",
+					Code:  `function(context,args) {return args.n * args.n;}`,
+					Allow: &functions.Allow{Channels: []string{"*"}},
+				},
+			},
+		},
+	},
+}}
 
 // Asserts that running testFunc in 100 concurrent goroutines is no more than 10% slower
 // than running it 100 times in succession. A low bar indeed, but can detect some serious
@@ -60,33 +89,26 @@ func testConcurrently(t *testing.T, rt *RestTester, testFunc func() bool) bool {
 	return assert.LessOrEqual(t, concurrentDuration, 1.1*numTasks*sequentialDuration)
 }
 
-func TestConcurrentQueries(t *testing.T) {
+func TestUserQueries(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true})
 	defer rt.Close()
-	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
-		UserFunctions: map[string]*db.UserFunctionConfig{
-			"square": {
-				SourceCode: "return args.n * args.n;",
-				Parameters: []string{"n"},
-				Allow:      &db.UserQueryAllow{Channels: []string{"*"}},
-			},
-		},
-		UserQueries: db.UserQueryMap{
-			"square": &db.UserQueryConfig{
-				Statement:  "SELECT $n * $n AS square",
-				Parameters: []string{"n"},
-				Allow:      &db.UserQueryAllow{Channels: []string{"*"}},
-			},
-		},
-		GraphQL: &db.GraphQLConfig{
-			Schema: base.StringPtr(`type Query { square(n: Int!): Int! }`),
-			Resolvers: map[string]db.GraphQLResolverConfig{
-				"Query": {
-					"square": `return args.n * args.n;`,
-				},
-			},
-		},
-	}}
+	rt.DatabaseConfig = kGraphQLTestConfig
+
+	t.Run("GraphQL with variables", func(t *testing.T) {
+		testConcurrently(t, rt, func() bool {
+			response := rt.SendRequest("POST", "/db/_graphql",
+				`{"query": "query($number:Int!){ square(n:$number) }",
+				  "variables": {"number": 13}}`)
+			return assert.Equal(t, 200, response.Result().StatusCode) &&
+				assert.Equal(t, "{\"data\":{\"square\":169}}", string(response.BodyBytes()))
+		})
+	})
+}
+
+func TestUserQueriesConcurrently(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true})
+	defer rt.Close()
+	rt.DatabaseConfig = kGraphQLTestConfig
 
 	t.Run("Function", func(t *testing.T) {
 		testConcurrently(t, rt, func() bool {
@@ -109,7 +131,7 @@ func TestConcurrentQueries(t *testing.T) {
 			t.Skip("Skipping query subtest")
 		} else {
 			testConcurrently(t, rt, func() bool {
-				response := rt.SendRequest("GET", "/db/_query/square?n=13", "")
+				response := rt.SendRequest("GET", "/db/_function/squareN1QL?n=13", "")
 				return assert.Equal(t, 200, response.Result().StatusCode) &&
 					assert.Equal(t, "[{\"square\":169}\n]\n", string(response.BodyBytes()))
 			})
