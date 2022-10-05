@@ -288,6 +288,7 @@ func runLogDeletion(logDirectory string, logLevel string, sizeLimitMBLowWatermar
 		if strings.HasPrefix(file.Name(), logFilePrefix+logLevel) && strings.HasSuffix(file.Name(), ".log.gz") {
 			fi, err := file.Info()
 			if err != nil {
+				InfofCtx(context.TODO(), KeyAll, "Couldn't get size of log file %q: %v - ignoring for cleanup calculation", file.Name(), err)
 				continue
 			}
 
