@@ -292,6 +292,17 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		}
 	}
 
+	// Now that we know the DB, add CORS headers to the response:
+	if h.privs != adminPrivs {
+		cors := h.server.Config.API.CORS
+		if dbContext != nil {
+			cors = dbContext.CORS
+		}
+		if cors != nil {
+			cors.AddResponseHeaders(h.rq, h.response)
+		}
+	}
+
 	// If this call is in the context of a DB make sure the DB is in a valid state
 	if dbContext != nil {
 		// Named collections handling

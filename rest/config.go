@@ -179,6 +179,7 @@ type DbConfig struct {
 	GraphQL                          *functions.GraphQLConfig         `json:"graphql,omitempty"`                              // GraphQL configuration & resolver fns
 	UserFunctions                    functions.FunctionConfigMap      `json:"functions,omitempty"`                            // Named JS fns for clients to call
 	Suspendable                      *bool                            `json:"suspendable,omitempty"`                          // Allow the database to be suspended
+	CORS                             *auth.CORSConfig                 `json:"cors,omitempty"`
 }
 
 type ScopesConfig map[string]ScopeConfig

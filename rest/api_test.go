@@ -722,6 +722,54 @@ func TestCORSOrigin(t *testing.T) {
 	assert.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
 }
 
+func TestCORSOriginPerDatabase(t *testing.T) {
+	// Override the default (example.com) CORS configuration in the DbConfig for /db:
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				CORS: &auth.CORSConfig{
+					Origin:      []string{"http://couchbase.com", "http://staging.couchbase.com"},
+					LoginOrigin: []string{"http://couchbase.com"},
+					Headers:     []string{},
+					MaxAge:      1728000,
+				},
+			},
+		},
+	})
+	defer rt.Close()
+
+	reqHeaders := map[string]string{
+		"Origin": "http://couchbase.com",
+	}
+	response := rt.SendRequestWithHeaders("GET", "/db/", "", reqHeaders)
+	assert.Equal(t, "http://couchbase.com", response.Header().Get("Access-Control-Allow-Origin"))
+
+	// now test non-listed origins
+	reqHeaders = map[string]string{
+		"Origin": "http://example.com",
+	}
+	response = rt.SendRequestWithHeaders("GET", "/db/", "", reqHeaders)
+	assert.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
+
+	reqHeaders = map[string]string{
+		"Origin": "http://hack0r.com",
+	}
+	response = rt.SendRequestWithHeaders("GET", "/db/", "", reqHeaders)
+	assert.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
+
+	// The root URL should still be using the default example.com CORS:
+	reqHeaders = map[string]string{
+		"Origin": "http://couchbase.com",
+	}
+	response = rt.SendRequestWithHeaders("GET", "/", "", reqHeaders)
+	assert.Equal(t, "*", response.Header().Get("Access-Control-Allow-Origin"))
+	reqHeaders = map[string]string{
+		"Origin": "http://example.com",
+	}
+	response = rt.SendRequestWithHeaders("GET", "/", "", reqHeaders)
+	assert.Equal(t, "http://example.com", response.Header().Get("Access-Control-Allow-Origin"))
+}
+
 // assertGatewayStatus is like requireStatus but with StatusGatewayTimeout error checking for temporary network failures.
 func assertGatewayStatus(t *testing.T, response *TestResponse, expected int) {
 	if response.Code == http.StatusGatewayTimeout {
@@ -6661,22 +6709,22 @@ func (tester *ChannelRevocationTester) getChanges(sinceSeq interface{}, expected
 func InitScenario(t *testing.T, rtConfig *RestTesterConfig) (ChannelRevocationTester, *RestTester) {
 	defaultSyncFn := `
 			function (doc, oldDoc){
-				if (doc._id === 'userRoles'){				
+				if (doc._id === 'userRoles'){
 					for (var key in doc.roles){
 						role(key, doc.roles[key]);
 					}
 				}
-				if (doc._id === 'roleChannels'){				
+				if (doc._id === 'roleChannels'){
 					for (var key in doc.channels){
 						access(key, doc.channels[key]);
 					}
 				}
-				if (doc._id === 'userChannels'){				
+				if (doc._id === 'userChannels'){
 					for (var key in doc.channels){
 						access(key, doc.channels[key]);
 					}
 				}
-				if (doc._id.indexOf("doc") >= 0){				
+				if (doc._id.indexOf("doc") >= 0){
 					channel(doc.channels);
 				}
 			}`
@@ -8058,7 +8106,7 @@ func TestRevocationWithUserXattrs(t *testing.T) {
 						access(key, meta.xattrs.channelInfo.userChannels[key]);
 					}
 				}
-				if (doc._id.indexOf("doc") >= 0){				
+				if (doc._id.indexOf("doc") >= 0){
 					channel(doc.channels);
 				}
 			}`,

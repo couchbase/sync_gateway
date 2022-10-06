@@ -130,7 +130,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		}
 	}
 
-	corsConfig := &CORSConfig{
+	corsConfig := &auth.CORSConfig{
 		Origin:      []string{"http://example.com", "*", "http://staging.example.com"},
 		LoginOrigin: []string{"http://example.com"},
 		Headers:     []string{},

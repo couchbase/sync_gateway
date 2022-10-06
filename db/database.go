@@ -123,6 +123,7 @@ type DatabaseContext struct {
 	userFunctions                UserFunctions            // client-callable JavaScript functions
 	graphQL                      *GraphQL                 // GraphQL query evaluator
 	Scopes                       map[string]Scope         // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
+	CORS                         *auth.CORSConfig         // Custom or inherited CORS config
 }
 
 type Scope struct {

@@ -556,6 +556,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	dbcontext.ServerContextHasStarted = sc.hasStarted
 	dbcontext.NoX509HTTPClient = sc.NoX509HTTPClient
 
+	if config.CORS != nil {
+		dbcontext.CORS = config.DbConfig.CORS
+	} else {
+		dbcontext.CORS = sc.Config.API.CORS
+	}
+
 	syncFn := ""
 	if config.Sync != nil {
 		syncFn = *config.Sync

@@ -357,22 +357,18 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 	return http.HandlerFunc(func(response http.ResponseWriter, rq *http.Request) {
 		FixQuotedSlashes(rq)
 		var match mux.RouteMatch
-
-		// Inject CORS if enabled and requested and not admin port
-		originHeader := rq.Header["Origin"]
-		if privs != adminPrivs && sc.Config.API.CORS != nil && len(originHeader) > 0 {
-			origin := matchedOrigin(sc.Config.API.CORS.Origin, originHeader)
-			response.Header().Add("Access-Control-Allow-Origin", origin)
-			response.Header().Add("Access-Control-Allow-Credentials", "true")
-			response.Header().Add("Access-Control-Allow-Headers", strings.Join(sc.Config.API.CORS.Headers, ", "))
-		}
-
 		if router.Match(rq, &match) {
 			router.ServeHTTP(response, rq)
 		} else {
 			// Log the request
 			h := newHandler(sc, privs, response, rq, false)
 			h.logRequestLine()
+
+			// Inject CORS if enabled and requested and not admin port
+			cors := sc.Config.API.CORS
+			if privs != adminPrivs && cors != nil {
+				cors.AddResponseHeaders(rq, response)
+			}
 
 			// What methods would have matched?
 			var options []string
@@ -385,8 +381,8 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 				h.writeStatus(http.StatusNotFound, "unknown URL")
 			} else {
 				response.Header().Add("Allow", strings.Join(options, ", "))
-				if privs != adminPrivs && sc.Config.API.CORS != nil && len(originHeader) > 0 {
-					response.Header().Add("Access-Control-Max-Age", strconv.Itoa(sc.Config.API.CORS.MaxAge))
+				if privs != adminPrivs && cors != nil && len(rq.Header["Origin"]) > 0 {
+					response.Header().Add("Access-Control-Max-Age", strconv.Itoa(cors.MaxAge))
 					response.Header().Add("Access-Control-Allow-Methods", strings.Join(options, ", "))
 				}
 				if rq.Method != "OPTIONS" {
@@ -398,22 +394,6 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 			h.logDuration(true)
 		}
 	})
-}
-
-func matchedOrigin(allowOrigins []string, rqOrigins []string) string {
-	for _, rv := range rqOrigins {
-		for _, av := range allowOrigins {
-			if rv == av {
-				return av
-			}
-		}
-	}
-	for _, av := range allowOrigins {
-		if av == "*" {
-			return "*"
-		}
-	}
-	return ""
 }
 
 func FixQuotedSlashes(rq *http.Request) {

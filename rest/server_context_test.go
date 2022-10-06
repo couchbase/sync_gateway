@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/db"
 
 	"github.com/couchbase/gocbcore/v10/connstr"
@@ -116,7 +117,7 @@ func TestAllDatabaseNames(t *testing.T) {
 	ctx := base.TestCtx(t)
 	serverConfig := &StartupConfig{
 		Bootstrap: BootstrapConfig{UseTLSServer: base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())), ServerTLSSkipVerify: base.BoolPtr(base.TestTLSSkipVerify())},
-		API:       APIConfig{CORS: &CORSConfig{}, AdminInterface: DefaultAdminInterface}}
+		API:       APIConfig{CORS: &auth.CORSConfig{}, AdminInterface: DefaultAdminInterface}}
 	serverContext := NewServerContext(ctx, serverConfig, false)
 	defer serverContext.Close(ctx)
 
@@ -158,7 +159,7 @@ func TestAllDatabaseNames(t *testing.T) {
 
 func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 	ctx := base.TestCtx(t)
-	serverConfig := &StartupConfig{API: APIConfig{CORS: &CORSConfig{}, AdminInterface: DefaultAdminInterface}}
+	serverConfig := &StartupConfig{API: APIConfig{CORS: &auth.CORSConfig{}, AdminInterface: DefaultAdminInterface}}
 	serverContext := NewServerContext(ctx, serverConfig, false)
 	defer serverContext.Close(ctx)
 
@@ -590,7 +591,7 @@ func TestServerContextSetupCollectionsSupport(t *testing.T) {
 			UseTLSServer:        base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())),
 			ServerTLSSkipVerify: base.BoolPtr(base.TestTLSSkipVerify()),
 		},
-		API: APIConfig{CORS: &CORSConfig{}, AdminInterface: DefaultAdminInterface},
+		API: APIConfig{CORS: &auth.CORSConfig{}, AdminInterface: DefaultAdminInterface},
 	}
 	serverContext := NewServerContext(ctx, serverConfig, false)
 	defer serverContext.Close(ctx)
