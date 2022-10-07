@@ -118,7 +118,7 @@ var kUserFunctionConfig = FunctionsConfig{
 		},
 		"putDoc": &FunctionConfig{
 			Type:  "javascript",
-			Code:  `function(context, args) {return context.user.defaultCollection.save(args.docID, args.doc);}`,
+			Code:  `function(context, args) {return context.user.defaultCollection.save(args.doc, args.docID);}`,
 			Args:  []string{"docID", "doc"},
 			Allow: allowAll,
 		},

@@ -322,7 +322,7 @@ var kTestGraphQLConfigWithN1QL = GraphQLConfig{
 					task.id = args.id;
 					if (!task.done) {
 					  task.done = true;
-					  context.user.defaultCollection.save(args.id, task);
+					  context.user.defaultCollection.save(task, args.id);
 					}
 					return task;}`,
 			},
@@ -334,7 +334,7 @@ var kTestGraphQLConfigWithN1QL = GraphQLConfig{
 							task.id = args.id;
 							if (!task.tags) task.tags = [];
 							task.tags.push(args.tag);
-							context.user.defaultCollection.save(args.id, task);
+							context.user.defaultCollection.save(task, args.id);
 							return task;}`,
 			},
 		},

@@ -23,8 +23,8 @@ function() {    var userFn = (%s);  // <-- substitutes the JS function
             channels: [],
             defaultCollection: {
                 get:    function(docID)         {return unmarshal(_get(docID));},
-                save:   function(docID, body)   {return _save(docID, body);},
                 delete: function(docID, body)   {return _delete(docID, body);},
+                save:   function(body, docID)   {return _save(body, docID);},
             },
             function:   function(name, args)    {return unmarshal(_func(name, args));},
             graphql:    function(q,args)        {return unmarshal(_graphql(q,args));},
@@ -32,8 +32,8 @@ function() {    var userFn = (%s);  // <-- substitutes the JS function
         admin: {
             defaultCollection: {
                 get:    function(docID)         {return unmarshal(_get(docID, true));},
-                save:   function(docID, body)   {return _save(docID, body, true);},
                 delete: function(docID, body)   {return _delete(docID, body, true);},
+                save:   function(body, docID)   {return _save(body, docID, true);},
             },
             function:   function(name, args)    {return unmarshal(_func(name, args, true));},
             graphql:    function(q,args)        {return unmarshal(_graphql(q,args, true));},

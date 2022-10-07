@@ -55,12 +55,12 @@ func (runner *jsRunner) defineNativeCallbacks() {
 		return ottoJSONResult(call, result, err)
 	})
 
-	// Implementation of the 'save(docID,doc)' callback:
+	// Implementation of the 'save(doc,docID?)' callback:
 	runner.DefineNativeFunction("_save", func(call otto.FunctionCall) otto.Value {
-		docID := ottoOptionalStringParam(call, 0, "user.save")
-		doc := ottoObjectParam(call, 1, false, "user.save")
+		doc := ottoObjectParam(call, 0, false, "user.save")
+		docID := ottoOptionalStringParam(call, 1, "user.save")
 		sudo := ottoBoolParam(call, 2)
-		docID, err := runner.do_save(docID, doc, sudo)
+		docID, err := runner.do_save(doc, docID, sudo)
 		return ottoResult(call, docID, err)
 	})
 }
@@ -89,7 +89,7 @@ func (runner *jsRunner) do_func(funcName string, params map[string]any, sudo boo
 	return runner.currentDB.CallUserFunction(funcName, params, runner.mutationAllowed, runner.ctx)
 }
 
-// Implementation of JS `user.get(docID, docType)` function
+// Implementation of JS `user.get(docID, docType?)` function
 func (runner *jsRunner) do_get(docID string, docType *string, sudo bool) (any, error) {
 	if err := runner.currentDB.CheckTimeout(runner.ctx); err != nil {
 		return nil, err
@@ -130,12 +130,11 @@ func (runner *jsRunner) do_graphql(query string, params map[string]any, sudo boo
 	return runner.currentDB.UserGraphQLQuery(query, "", params, runner.mutationAllowed, runner.ctx)
 }
 
-// Implementation of JS `user.save(docID, body)` function
-func (runner *jsRunner) do_save(docIDPtr *string, body map[string]any, sudo bool) (*string, error) {
+// Implementation of JS `user.save(body, docID?)` function
+func (runner *jsRunner) do_save(body map[string]any, docIDPtr *string, sudo bool) (*string, error) {
 	if err := runner.currentDB.CheckTimeout(runner.ctx); err != nil {
 		return nil, err
-	}
-	if !runner.mutationAllowed {
+	} else if !runner.mutationAllowed {
 		return nil, base.HTTPErrorf(http.StatusForbidden, "a read-only request is not allowed to mutate the database")
 	}
 	if sudo {
@@ -144,18 +143,22 @@ func (runner *jsRunner) do_save(docIDPtr *string, body map[string]any, sudo bool
 		defer func() { runner.currentDB.SetUser(user) }()
 	}
 
+	// The optional `docID` parameter takes precedence over a `_id` key in the body.
+	// If neither is present, make up a new random docID.
 	var docID string
-	if docIDPtr == nil {
+	if docIDPtr != nil {
+		docID = *docIDPtr
+	} else if _id, found := body["_id"].(string); found {
+		docID = _id
+	} else {
 		var err error
 		docID, err = base.GenerateRandomID()
 		if err != nil {
 			return nil, err
 		}
-	} else {
-		docID = *docIDPtr
 	}
-
 	delete(body, "_id")
+
 	if _, found := body["_rev"]; found {
 		// If caller provided `_rev` property, use MVCC as normal:
 		_, _, err := runner.currentDB.Put(runner.ctx, docID, body)
