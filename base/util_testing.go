@@ -325,9 +325,13 @@ func DropAllIndexes(ctx context.Context, n1QLStore N1QLStore) error {
 			InfofCtx(ctx, KeySGTest, "Dropping index %s on bucket %s...", indexToDrop, n1QLStore.GetName())
 			dropErr := n1QLStore.DropIndex(indexToDrop)
 			if dropErr != nil {
-				asyncErrors <- dropErr
-				ErrorfCtx(ctx, "...failed to drop index %s on bucket %s: %s", indexToDrop, n1QLStore.GetName(), dropErr)
-				return
+				// Retry dropping index if first try fails before returning error
+				dropRetry := n1QLStore.DropIndex(indexToDrop)
+				if dropRetry != nil {
+					asyncErrors <- dropErr
+					ErrorfCtx(ctx, "...failed to drop index %s on bucket %s: %s", indexToDrop, n1QLStore.GetName(), dropErr)
+					return
+				}
 			}
 			InfofCtx(ctx, KeySGTest, "...successfully dropped index %s on bucket %s", indexToDrop, n1QLStore.GetName())
 		}(index)

@@ -16,7 +16,9 @@ import (
 	"fmt"
 	"log"
 	"testing"
+	"time"
 
+	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
@@ -59,18 +61,15 @@ func TestInitializeIndexes(t *testing.T) {
 
 			// Make sure we can drop and reinitialize twice
 			for i := 0; i < 2; i++ {
-				dropErr := base.DropAllIndexes(base.TestCtx(t), n1qlStore)
-				require.NoError(t, dropErr, "Error dropping all indexes")
-
-				initErr := InitializeIndexes(n1qlStore, test.xattrs, 0, true)
-				require.NoError(t, initErr, "Error initializing all indexes")
-
-				// Recreate the primary index required by the test bucket pooling framework
-				err := n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
+				err := dropAndInitializeIndexes(base.TestCtx(t), n1qlStore, b, test.xattrs)
+				require.NoError(t, err, "Error dropping and initialising all indexes on bucket")
+			}
+			// check to see if current indexes match what is expected by the rest of the test
+			// if not we drop and reinitialize these indexes using the overall test environment variables for XATTRS
+			err := validateAllIndexesOnline(b, base.TestUseXattrs())
+			if err != nil {
+				err = dropAndInitializeIndexes(base.TestCtx(t), n1qlStore, b, base.TestUseXattrs())
 				require.NoError(t, err)
-
-				validateErr := validateAllIndexesOnline(b)
-				require.NoError(t, validateErr, "Error validating indexes online")
 			}
 		})
 	}
@@ -78,34 +77,39 @@ func TestInitializeIndexes(t *testing.T) {
 }
 
 // Reset bucket state
-func validateAllIndexesOnline(bucket base.Bucket) error {
-
-	n1QLStore, ok := base.AsN1QLStore(bucket)
-	if !ok {
-		return fmt.Errorf("Bucket is not gocb bucket: %T", bucket)
-	}
-
-	// Retrieve all indexes
-	getIndexesStatement := fmt.Sprintf("SELECT indexes.name, indexes.state from system:indexes where keyspace_id = %q", n1QLStore.GetName())
-	results, err := n1QLStore.Query(getIndexesStatement, nil, base.RequestPlus, true)
+func validateAllIndexesOnline(bucket base.Bucket, xattrs bool) error {
+	col, err := base.AsCollection(bucket)
 	if err != nil {
 		return err
 	}
+	cluster := col.GetCluster()
+	mgr := cluster.QueryIndexes()
 
-	var indexRow struct {
-		Name  string
-		State string
+	watchOption := gocb.WatchQueryIndexOptions{
+		WatchPrimary:   true,
+		ScopeName:      col.ScopeName(),
+		CollectionName: col.Name(),
 	}
+	// Watch and wait some time for indexes to come online
+	err = mgr.WatchIndexes(bucket.GetName(), sgIndexNames(xattrs), 10*time.Second, &watchOption)
+	if err != nil {
+		return err
+	}
+	return nil
+}
 
-	for results.Next(&indexRow) {
-		if indexRow.State != base.IndexStateOnline {
-			return fmt.Errorf("Index %s is not online", indexRow.Name)
-		} else {
-			log.Printf("Validated index %s is %s", indexRow.Name, indexRow.State)
+// sgIndexNames returns all the names of sync gateway indexes based on XATTRS being enabled or not
+func sgIndexNames(xattrs bool) []string {
+	allSGIndexes := make([]string, 0)
+
+	for _, sgIndex := range sgIndexes {
+		fullIndexName := sgIndex.fullIndexName(xattrs)
+		if sgIndex.isXattrOnly() && !xattrs {
+			continue
 		}
+		allSGIndexes = append(allSGIndexes, fullIndexName)
 	}
-	closeErr := results.Close()
-	return closeErr
+	return allSGIndexes
 }
 
 func TestPostUpgradeIndexesSimple(t *testing.T) {
@@ -198,7 +202,7 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false)
 	assert.NoError(t, err)
 
-	validateErr := validateAllIndexesOnline(db.Bucket)
+	validateErr := validateAllIndexesOnline(db.Bucket, db.UseXattrs())
 	assert.NoError(t, validateErr, "Error validating indexes online")
 }
 
@@ -210,11 +214,10 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	copiedIndexes := copySGIndexes(sgIndexes)
-
 	require.True(t, db.Bucket.IsSupported(sgbucket.DataStoreFeatureN1ql))
 	n1QLStore, ok := base.AsN1QLStore(db.Bucket)
 	assert.True(t, ok)
+	copiedIndexes := copySGIndexes(sgIndexes)
 
 	_, err := removeObsoleteDesignDocs(db.Bucket, !db.UseXattrs(), db.UseViews())
 	assert.NoError(t, err)
@@ -253,7 +256,7 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	err = InitializeIndexes(n1QLStore, db.UseXattrs(), 0, false)
 	assert.NoError(t, err)
 
-	validateErr := validateAllIndexesOnline(db.Bucket)
+	validateErr := validateAllIndexesOnline(db.Bucket, db.UseXattrs())
 	assert.NoError(t, validateErr, "Error validating indexes online")
 }
 
@@ -300,7 +303,7 @@ func TestRemoveObsoleteIndexOnError(t *testing.T) {
 	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false)
 	assert.NoError(t, err)
 
-	validateErr := validateAllIndexesOnline(db.Bucket)
+	validateErr := validateAllIndexesOnline(db.Bucket, db.UseXattrs())
 	assert.NoError(t, validateErr, "Error validating indexes online")
 
 }
@@ -312,4 +315,30 @@ func TestIsIndexerError(t *testing.T) {
 	assert.False(t, isIndexerError(err))
 	err = errors.New("err:[5000]  MCResponse status=KEY_ENOENT, opcode=0x89, opaque=0")
 	assert.True(t, isIndexerError(err))
+}
+
+// dropAndInitializeIndexes drops and reinitialize all sync gateway indexes
+func dropAndInitializeIndexes(ctx context.Context, n1qlStore base.N1QLStore, bucket base.Bucket, xattrs bool) error {
+	dropErr := base.DropAllIndexes(ctx, n1qlStore)
+	if dropErr != nil {
+		return dropErr
+	}
+
+	initErr := InitializeIndexes(n1qlStore, xattrs, 0, true)
+	if initErr != nil {
+		return initErr
+	}
+
+	// Recreate the primary index required by the test bucket pooling framework
+	err := n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
+	if err != nil {
+		return err
+	}
+
+	validateErr := validateAllIndexesOnline(bucket, xattrs)
+	if validateErr != nil {
+		return validateErr
+	}
+
+	return nil
 }
