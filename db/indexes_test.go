@@ -80,7 +80,6 @@ func validateAllIndexesOnline(bucket base.Bucket, xattrs bool) error {
 	if err != nil {
 		return err
 	}
-
 	cluster := col.GetCluster()
 	mgr := cluster.QueryIndexes()
 
@@ -89,23 +88,16 @@ func validateAllIndexesOnline(bucket base.Bucket, xattrs bool) error {
 		ScopeName:      col.ScopeName(),
 		CollectionName: col.Name(),
 	}
-
 	// Watch and wait some time for indexes to come online
-	if xattrs {
-		err = mgr.WatchIndexes(bucket.GetName(), listIndexes(xattrs), 10*time.Second, &watchOption)
-		if err != nil {
-			return err
-		}
-	} else {
-		err = mgr.WatchIndexes(bucket.GetName(), listIndexes(xattrs), 10*time.Second, &watchOption)
-		if err != nil {
-			return err
-		}
+	err = mgr.WatchIndexes(bucket.GetName(), sgIndexNames(xattrs), 10*time.Second, &watchOption)
+	if err != nil {
+		return err
 	}
 	return nil
 }
 
-func listIndexes(xattrs bool) []string {
+// sgIndexNames returns all the names of sync gateway indexes based on XATTRS being enabled or not
+func sgIndexNames(xattrs bool) []string {
 	allSGIndexes := make([]string, 0)
 
 	for _, sgIndex := range sgIndexes {

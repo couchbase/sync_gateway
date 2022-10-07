@@ -204,6 +204,7 @@ func (c *Collection) UUID() (string, error) {
 	return config.BucketUUID(), nil
 }
 
+// GetCluster returns an open cluster object
 func (c *Collection) GetCluster() *gocb.Cluster {
 	return c.cluster
 }
