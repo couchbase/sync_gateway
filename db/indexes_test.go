@@ -62,6 +62,8 @@ func TestInitializeIndexes(t *testing.T) {
 				err := dropAndInitializeIndexes(base.TestCtx(t), n1qlStore, b, test.xattrs)
 				require.NoError(t, err, "Error dropping and initialising all indexes on bucket")
 			}
+			// check to see if current indexes match what is expected by the rest of the test
+			// if not we drop and reinitialize these indexes using the overall test environment variables for XATTRS
 			err := validateAllIndexesOnline(b, base.TestUseXattrs())
 			if err != nil {
 				err = dropAndInitializeIndexes(base.TestCtx(t), n1qlStore, b, base.TestUseXattrs())
