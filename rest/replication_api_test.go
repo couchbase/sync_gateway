@@ -1734,12 +1734,33 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 	}`, tb2.GetName(), base.TestsDisableGSI()))
 	RequireStatus(t, resp, http.StatusCreated)
 
-	rt.createReplication("repl1", db2Url.String(), db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+	rt.createReplication("repl1", db2Url.String(), db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
 	rt.WaitForReplicationStatus("repl1", db.ReplicationStateRunning)
+
+	// Wait for document to replicate from db to db2 to confirm replication start
+	rt.CreateDoc(t, "marker1")
+	err = rt.WaitForCondition(func() bool {
+		getResp := rt.SendAdminRequest("GET", "/db2/marker1", "")
+		return getResp.Code == http.StatusOK
+	})
+	assert.NoError(t, err)
 
 	// Force DB reload by modifying config
 	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config", `{"import_docs": false}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	rt.WaitForReplicationStatus("repl1", db.ReplicationStateRunning)
+	// If CE, recreate the replication
+	if !base.IsEnterpriseEdition() {
+		rt.createReplication("repl1", db2Url.String(), db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
+		rt.WaitForReplicationStatus("repl1", db.ReplicationStateRunning)
+	}
+
+	// Wait for second document to replicate to confirm replication restart
+	rt.CreateDoc(t, "marker2")
+	err = rt.WaitForCondition(func() bool {
+		getResp := rt.SendAdminRequest("GET", "/db2/marker2", "")
+		return getResp.Code == http.StatusOK
+	})
+	assert.NoError(t, err)
+
 }
