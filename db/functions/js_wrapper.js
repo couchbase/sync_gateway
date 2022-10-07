@@ -22,8 +22,8 @@ function() {    var userFn = (%s);  // <-- substitutes the JS function
             roles: [],
             channels: [],
             defaultCollection: {
+                delete: function(doc)           {return _delete(doc);},
                 get:    function(docID)         {return unmarshal(_get(docID));},
-                delete: function(docID, body)   {return _delete(docID, body);},
                 save:   function(body, docID)   {return _save(body, docID);},
             },
             function:   function(name, args)    {return unmarshal(_func(name, args));},
@@ -31,8 +31,8 @@ function() {    var userFn = (%s);  // <-- substitutes the JS function
         },
         admin: {
             defaultCollection: {
+                delete: function(doc)           {return _delete(doc, true);},
                 get:    function(docID)         {return unmarshal(_get(docID, true));},
-                delete: function(docID, body)   {return _delete(docID, body, true);},
                 save:   function(body, docID)   {return _save(body, docID, true);},
             },
             function:   function(name, args)    {return unmarshal(_func(name, args, true));},

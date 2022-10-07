@@ -22,9 +22,16 @@ import (
 func (runner *jsRunner) defineNativeCallbacks() {
 	// Implementation of the 'delete(docID)' callback:
 	runner.DefineNativeFunction("_delete", func(call otto.FunctionCall) otto.Value {
-		docID := ottoStringParam(call, 0, "user.delete")
-		doc := ottoObjectParam(call, 1, true, "user.delete")
-		sudo := ottoBoolParam(call, 2)
+		var docID string
+		var doc map[string]any
+		if arg0 := call.Argument(0); arg0.IsString() {
+			docID = arg0.String()
+		} else if arg0.IsObject() {
+			doc = ottoObjectParam(call, 0, false, "user.delete")
+		} else {
+			panic(call.Otto.MakeTypeError("user.delete() arg 1 must be a string or object"))
+		}
+		sudo := ottoBoolParam(call, 1)
 		ok, err := runner.do_delete(docID, doc, sudo)
 		return ottoResult(call, ok, err)
 	})
@@ -67,15 +74,23 @@ func (runner *jsRunner) defineNativeCallbacks() {
 
 //////// DATABASE CALLBACK FUNCTION IMPLEMENTATIONS:
 
-// Implementation of JS `user.delete(docID)` function
+// Implementation of JS `user.delete(doc)` function
+// Parameter can be either a docID or a document body with _id (and optionally _rev)
 func (runner *jsRunner) do_delete(docID string, body map[string]any, sudo bool) (bool, error) {
 	tombstone := map[string]any{"_deleted": true}
 	if body != nil {
+		if _id, ok := body["_id"].(string); ok {
+			docID = _id
+		} else {
+			return false, base.HTTPErrorf(400, "Missing doc._id in delete() call")
+		}
 		if revID, ok := body["_rev"]; ok {
 			tombstone["_rev"] = revID
 		}
 	}
-	id, err := runner.do_save(&docID, tombstone, sudo)
+	tombstone["_id"] = docID
+
+	id, err := runner.do_save(tombstone, &docID, sudo)
 	return (id != nil), err
 }
 
