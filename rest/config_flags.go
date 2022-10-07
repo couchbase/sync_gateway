@@ -133,8 +133,8 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 
 		"unsupported.user_queries": {&config.Unsupported.UserQueries, fs.Bool("unsupported.user_queries", false, "Whether user-query APIs are enabled")},
 
-		"database_credentials": {&config.DatabaseCredentials, fs.String("database_credentials", "null", "JSON-encoded per-database credentials, that can be used instead of the bootstrap ones. Cannot be used in conjunction with bucket_credentials.")},
-		"bucket_credentials":   {&config.BucketCredentials, fs.String("bucket_credentials", "null", "JSON-encoded per-bucket credentials, that can be used instead of the bootstrap ones. Cannot be used in conjunction with database_credentials.")},
+		"database_credentials": {&config.DatabaseCredentials, fs.String("database_credentials", "null", "JSON-encoded per-database credentials, that can be used instead of the bootstrap ones. This will override bucket_credentials that target the bucket that the database is in.")},
+		"bucket_credentials":   {&config.BucketCredentials, fs.String("bucket_credentials", "null", "JSON-encoded per-bucket credentials, that can be used instead of the bootstrap ones.")},
 
 		"max_file_descriptors": {&config.MaxFileDescriptors, fs.Uint64("max_file_descriptors", 0, "Max # of open file descriptors (RLIMIT_NOFILE)")},
 
