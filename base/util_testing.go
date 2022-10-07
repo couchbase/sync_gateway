@@ -861,7 +861,7 @@ func LongRunningTest(t *testing.T) {
 	start := time.Now()
 	t.Cleanup(func() {
 		testDuration := time.Since(start)
-		if !t.Failed() && testDuration < shortTestThreshold {
+		if !t.Failed() && !t.Skipped() && testDuration < shortTestThreshold {
 			t.Logf("TEST: %q was marked as long running, but finished in %v (less than %v) - consider removing LongRunningTest", t.Name(), testDuration, shortTestThreshold)
 		}
 	})
