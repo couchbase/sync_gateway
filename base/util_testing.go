@@ -760,7 +760,7 @@ func TestRequiresCollections(t *testing.T) {
 	}
 }
 
-func waitUntilScopeAndCollectionExists(collection *gocb.Collection) error {
+func WaitUntilScopeAndCollectionExists(collection *gocb.Collection) error {
 	err, _ := RetryLoop("wait for scope and collection to exist", func() (shouldRetry bool, err error, value interface{}) {
 		_, err = collection.Exists("waitUntilScopeAndCollectionExists", nil)
 		if err != nil {
@@ -821,7 +821,7 @@ func CreateBucketScopesAndCollections(ctx context.Context, bucketSpec BucketSpec
 				return fmt.Errorf("failed to create collection %s in scope %s: %w", collectionName, scopeName, err)
 			}
 			DebugfCtx(ctx, KeySGTest, "Created collection %s.%s", scopeName, collectionName)
-			if err := waitUntilScopeAndCollectionExists(cluster.Bucket(bucketSpec.BucketName).Scope(scopeName).Collection(collectionName)); err != nil {
+			if err := WaitUntilScopeAndCollectionExists(cluster.Bucket(bucketSpec.BucketName).Scope(scopeName).Collection(collectionName)); err != nil {
 				return err
 			}
 			DebugfCtx(ctx, KeySGTest, "Collection now exists %s.%s", scopeName, collectionName)

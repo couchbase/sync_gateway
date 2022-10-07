@@ -452,8 +452,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		if err != nil {
 			return nil, err
 		}
-		// Check if scope/collection specified exists
-		_, err = collection.Exists("waitUntilScopeAndCollectionExists", nil)
+		// Check if scope/collection specified exists. Will enter retry loop if connection unsuccessful
+		err = base.WaitUntilScopeAndCollectionExists(collection.Collection)
 		if err != nil {
 			return nil, fmt.Errorf("attempting to create/update database with a scope/collection that is not found")
 		}
