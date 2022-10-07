@@ -63,7 +63,6 @@ func initV2Cluster(server string) *gocb.Cluster {
 		Server:          server,
 		TLSSkipVerify:   true,
 		BucketOpTimeout: &testClusterTimeout,
-		CouchbaseDriver: TestClusterDriver(),
 	}
 
 	connStr, err := spec.GetGoCBConnString(nil)

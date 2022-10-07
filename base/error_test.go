@@ -18,11 +18,11 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"
 	"github.com/stretchr/testify/assert"
-	"gopkg.in/couchbase/gocb.v1"
 )
 
 func TestError(t *testing.T) {
@@ -40,11 +40,11 @@ func TestErrorAsHTTPStatus(t *testing.T) {
 	assert.Equal(t, http.StatusOK, code)
 	assert.Equal(t, http.StatusText(http.StatusOK), text)
 
-	code, text = ErrorAsHTTPStatus(gocb.ErrKeyNotFound)
+	code, text = ErrorAsHTTPStatus(gocb.ErrDocumentNotFound)
 	assert.Equal(t, http.StatusNotFound, code)
 	assert.Equal(t, "missing", text)
 
-	code, text = ErrorAsHTTPStatus(gocb.ErrKeyExists)
+	code, text = ErrorAsHTTPStatus(gocb.ErrDocumentExists)
 	assert.Equal(t, http.StatusConflict, code)
 	assert.Equal(t, "Conflict", text)
 
@@ -56,15 +56,11 @@ func TestErrorAsHTTPStatus(t *testing.T) {
 	assert.Equal(t, http.StatusServiceUnavailable, code)
 	assert.Equal(t, "Database server is over capacity (gocb.ErrOverload)", text)
 
-	code, text = ErrorAsHTTPStatus(gocb.ErrBusy)
+	code, text = ErrorAsHTTPStatus(gocb.ErrTemporaryFailure)
 	assert.Equal(t, http.StatusServiceUnavailable, code)
-	assert.Equal(t, "Database server is over capacity (gocb.ErrBusy)", text)
+	assert.Equal(t, "Database server is over capacity (gocb.ErrTemporaryFailure)", text)
 
-	code, text = ErrorAsHTTPStatus(gocb.ErrTmpFail)
-	assert.Equal(t, http.StatusServiceUnavailable, code)
-	assert.Equal(t, "Database server is over capacity (gocb.ErrTmpFail)", text)
-
-	code, text = ErrorAsHTTPStatus(gocb.ErrTooBig)
+	code, text = ErrorAsHTTPStatus(gocb.ErrValueTooLarge)
 	assert.Equal(t, http.StatusRequestEntityTooLarge, code)
 	assert.Equal(t, "Document too large!", text)
 
@@ -159,8 +155,6 @@ func TestCouchHTTPErrorName(t *testing.T) {
 }
 
 func TestIsDocNotFoundError(t *testing.T) {
-	fakeErrKeyNotFound := gocb.ErrKeyNotFound
-	assert.True(t, IsDocNotFoundError(fakeErrKeyNotFound))
 
 	fakeMCResponse := &gomemcached.MCResponse{Status: gomemcached.KEY_ENOENT}
 	assert.True(t, IsDocNotFoundError(fakeMCResponse))

@@ -247,8 +247,6 @@ func (tbp *TestBucketPool) markBucketClosed(t testing.TB, b Bucket) {
 	switch typedBucket := b.(type) {
 	case *Collection:
 		tbp.checkForViewOpsQueueEmptied(testCtx, b.GetName(), typedBucket.queryOps)
-	case *CouchbaseBucketGoCB:
-		tbp.checkForViewOpsQueueEmptied(testCtx, b.GetName(), typedBucket.queryOps)
 	}
 
 	if tMap, ok := tbp.unclosedBuckets[t.Name()]; ok {
@@ -785,8 +783,7 @@ type bucketPoolStats struct {
 type tbpBucketName string
 
 var tbpDefaultBucketSpec = BucketSpec{
-	Server:          UnitTestUrl(),
-	CouchbaseDriver: TestClusterDriver(),
+	Server: UnitTestUrl(),
 	Auth: TestAuthenticator{
 		Username: TestClusterUsername(),
 		Password: TestClusterPassword(),
@@ -885,14 +882,6 @@ func TestClusterPassword() string {
 		password = envClusterPassword
 	}
 	return password
-}
-
-func TestClusterDriver() CouchbaseDriver {
-	driver := ChooseCouchbaseDriver(DataBucket)
-	if envClusterDriver := os.Getenv(envTestClusterDriver); envClusterDriver != "" {
-		driver = AsCouchbaseDriver(envClusterDriver)
-	}
-	return driver
 }
 
 // TestBucketPoolMain is used as TestMain in main_test.go packages

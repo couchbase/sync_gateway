@@ -29,7 +29,6 @@ import (
 	"time"
 
 	"github.com/couchbase/gocb/v2"
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -142,58 +141,6 @@ func GetPersistentWalrusBucket(t testing.TB) (*TestBucket, func()) {
 		BucketSpec: spec,
 		closeFn:    closeFn,
 	}, removeFileFunc
-}
-
-func GetTestBucketForDriver(t testing.TB, driver CouchbaseDriver) *TestBucket {
-	bucket, spec, closeFn := GTestBucketPool.getTestBucketAndSpec(t, getDefaultCollectionType())
-
-	// If walrus, use bucket as-is
-	if !TestUseCouchbaseServer() {
-		return &TestBucket{
-			Bucket:     bucket,
-			BucketSpec: spec,
-			closeFn:    closeFn,
-		}
-	}
-
-	// If the spec being used by the test bucket pool matches the requested, use that
-	if spec.CouchbaseDriver == driver {
-		closeAll := func() {
-			closeFn()
-		}
-		return &TestBucket{
-			Bucket:     bucket,
-			BucketSpec: spec,
-			closeFn:    closeAll,
-		}
-	}
-
-	// Otherwise, open a bucket for the requested driver based on the connection
-	// information from the pool bucket
-	spec.CouchbaseDriver = driver
-	if spec.Server == kTestCouchbaseServerURL {
-		spec.Server = "couchbase://localhost"
-	}
-	if !strings.HasPrefix(spec.Server, "couchbase") {
-		closeFn()
-		t.Fatalf("Server must use couchbase scheme for gocb testing")
-	}
-
-	store, err := GetBucket(spec)
-	if err != nil {
-		t.Fatalf("Unable to get store for driver %s: %v", driver, err)
-	}
-
-	closeAll := func() {
-		store.Close()
-		closeFn()
-	}
-
-	return &TestBucket{
-		Bucket:     store,
-		BucketSpec: spec,
-		closeFn:    closeAll,
-	}
 }
 
 // Should Sync Gateway use XATTRS functionality when running unit tests?
@@ -709,29 +656,6 @@ func RequireWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) 
 	val, ok := WaitForStat(getStatFunc, expected)
 	require.True(t, ok)
 	require.Equal(t, expected, val)
-}
-
-type dataStore struct {
-	name   string
-	driver CouchbaseDriver
-}
-
-// ForAllDataStores is used to run a test against multiple data stores (gocb bucket, gocb collection)
-func ForAllDataStores(t *testing.T, testCallback func(*testing.T, sgbucket.DataStore)) {
-	dataStores := make([]dataStore, 0)
-
-	dataStores = append(dataStores, dataStore{
-		name:   "gocb.v2",
-		driver: GoCBv2,
-	})
-
-	for _, dataStore := range dataStores {
-		t.Run(dataStore.name, func(t *testing.T) {
-			bucket := GetTestBucketForDriver(t, dataStore.driver)
-			defer bucket.Close()
-			testCallback(t, bucket)
-		})
-	}
 }
 
 // CB Server compat version for the integration test server

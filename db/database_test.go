@@ -1742,9 +1742,8 @@ func BenchmarkDatabase(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		ctx := base.TestCtx(b)
 		bucket, _ := connectToBucket(ctx, base.BucketSpec{
-			Server:          base.UnitTestUrl(),
-			CouchbaseDriver: base.ChooseCouchbaseDriver(base.DataBucket),
-			BucketName:      fmt.Sprintf("b-%d", i)})
+			Server:     base.UnitTestUrl(),
+			BucketName: fmt.Sprintf("b-%d", i)})
 		dbCtx, _ := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 		db, _ := CreateDatabase(dbCtx)
 
@@ -1760,9 +1759,8 @@ func BenchmarkPut(b *testing.B) {
 
 	ctx := base.TestCtx(b)
 	bucket, _ := connectToBucket(ctx, base.BucketSpec{
-		Server:          base.UnitTestUrl(),
-		CouchbaseDriver: base.ChooseCouchbaseDriver(base.DataBucket),
-		BucketName:      "Bucket"})
+		Server:     base.UnitTestUrl(),
+		BucketName: "Bucket"})
 	context, _ := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	db, _ := CreateDatabase(context)
 
@@ -2332,10 +2330,10 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 	db, ctx := setupTestDBWithOptionsAndImport(t, DatabaseContextOptions{})
 	defer db.Close(ctx)
 
-	gocbBucket, _ := base.AsGoCBBucket(db.Bucket)
+	//gocbBucket, _ := base.AsGoCBBucket(db.Bucket)
 
 	// Set something lower than version required for CreateAsDeleted subdoc flag
-	gocbBucket.OverrideClusterCompatVersion(5, 5)
+	//gocbBucket.OverrideClusterCompatVersion(5, 5)
 
 	// Ensure empty doc is imported correctly
 	added, err := db.Bucket.Add("doc1", 0, map[string]interface{}{})
