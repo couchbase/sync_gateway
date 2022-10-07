@@ -1106,7 +1106,7 @@ func AsCollection(bucket Bucket) (*Collection, error) {
 	case *TestBucket:
 		underlyingBucket = typedBucket.Bucket
 	default:
-		return nil, fmt.Errorf("bucket %+v has unrecognized type %T", bucket, bucket)
+		return nil, fmt.Errorf("bucket has unrecognized type %T", bucket)
 	}
 
 	return AsCollection(underlyingBucket)
