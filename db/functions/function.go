@@ -79,7 +79,7 @@ func CompileFunctions(config FunctionsConfig) (*db.UserFunctions, error) {
 	for name, fnConfig := range config.Definitions {
 		if config.MaxCodeSize != nil && len(fnConfig.Code) > *config.MaxCodeSize {
 			multiError = multiError.Append(fmt.Errorf("function code too large (> %d bytes)", *config.MaxCodeSize))
-		} else if userFn, err := compileFunction(name, "user function", fnConfig); err == nil {
+		} else if userFn, err := compileFunction(name, "function", fnConfig); err == nil {
 			fns.Definitions[name] = userFn
 		} else {
 			multiError = multiError.Append(err)
@@ -107,7 +107,10 @@ func compileFunction(name string, typeName string, fnConfig *FunctionConfig) (*f
 	case "javascript":
 		userFn.compiled, err = newFunctionJSServer(name, typeName, fnConfig.Code)
 	case "query":
-		err = nil
+		err = validateN1QLQuery(fnConfig.Code)
+		if err != nil {
+			err = fmt.Errorf("%s %q invalid query: %v", typeName, name, err)
+		}
 	default:
 		err = fmt.Errorf("%s %q has unrecognized 'type' %q", typeName, name, fnConfig.Type)
 	}

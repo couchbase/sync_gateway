@@ -546,3 +546,51 @@ func assertHTTPError(t *testing.T, err error, status int) bool {
 		assert.ErrorAs(t, err, &httpErr) &&
 		assert.Equal(t, status, httpErr.Status)
 }
+
+//////// SETUP FUNCTIONS
+
+func setupTestDBWithFunctions(t *testing.T, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) (*db.Database, context.Context) {
+	cacheOptions := db.DefaultCacheOptions()
+	options := db.DatabaseContextOptions{
+		CacheOptions: &cacheOptions,
+	}
+	var err error
+	if fnConfig != nil {
+		options.UserFunctions, err = CompileFunctions(*fnConfig)
+		assert.NoError(t, err)
+	}
+	if gqConfig != nil {
+		options.GraphQL, err = CompileGraphQL(gqConfig)
+		assert.NoError(t, err)
+	}
+	return setupTestDBWithOptions(t, options)
+}
+
+func setupTestDBWithOptions(t testing.TB, dbcOptions db.DatabaseContextOptions) (*db.Database, context.Context) {
+
+	tBucket := base.GetTestBucket(t)
+	return setupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
+}
+
+func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions db.DatabaseContextOptions) (*db.Database, context.Context) {
+	ctx := base.TestCtx(t)
+	AddOptionsFromEnvironmentVariables(&dbcOptions)
+	dbCtx, err := db.NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
+	assert.NoError(t, err, "Couldn't create context for database 'db'")
+	db, err := db.CreateDatabase(dbCtx)
+	assert.NoError(t, err, "Couldn't create database 'db'")
+	ctx = db.AddDatabaseLogContext(ctx)
+	return db, ctx
+}
+
+// createPrimaryIndex returns true if there was no index created before
+func createPrimaryIndex(t *testing.T, n1qlStore base.N1QLStore) bool {
+	hasPrimary, _, err := base.GetIndexMeta(n1qlStore, base.PrimaryIndexName)
+	assert.NoError(t, err)
+	if hasPrimary {
+		return false
+	}
+	err = n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
+	assert.NoError(t, err)
+	return true
+}

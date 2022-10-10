@@ -13,7 +13,9 @@ package functions
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"regexp"
 
 	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -36,6 +38,16 @@ type n1qlUserArgument struct {
 	Email    *string  `json:"email,omitempty"`
 	Channels []string `json:"channels,omitempty"`
 	Roles    []string `json:"roles,omitempty"`
+}
+
+var n1qlQueryRegex = regexp.MustCompile(`^\s*\(*(?i:SELECT)\b`)
+
+func validateN1QLQuery(query string) error {
+	if n1qlQueryRegex.MatchString(query) {
+		return nil
+	} else {
+		return fmt.Errorf("only SELECT queries are allowed")
+	}
 }
 
 func (fn *n1qlInvocation) Iterate() (sgbucket.QueryResultIterator, error) {
