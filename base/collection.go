@@ -1041,7 +1041,6 @@ func (c *Collection) GetCollectionID() (uint32, error) {
 	}
 	wg.Wait()
 	if callbackErr != nil {
-		wg.Done()
 		return 0, fmt.Errorf("GetCollectionID for %s.%s, err: %w", scope, collection, callbackErr)
 	}
 	// cache value for future use
