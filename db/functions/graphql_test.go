@@ -20,6 +20,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/graphql-go/graphql"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // The GraphQL schema:
@@ -372,17 +373,24 @@ func TestUserGraphQLWithN1QL(t *testing.T) {
 	_, _, _ = db.Put(ctx, "b", Body{"type": "task", "title": "Beer", "description": "Bass ale please", "channels": "wonderland"})
 	_, _, _ = db.Put(ctx, "m", Body{"type": "task", "title": "Mangoes", "channels": "wonderland"})
 
-	// Without this, N1QL can't do any queries on documents:
-	rows, _ := db.N1QLQueryWithStats(ctx, "", "CREATE PRIMARY INDEX ON $_keyspace", nil,
-		base.RequestPlus, false)
-	_ = rows.Close()
+	n1qlStore, ok := base.AsN1QLStore(db.Bucket)
+	require.True(t, ok)
 
+	createdPrimaryIdx := createPrimaryIndex(t, n1qlStore)
+
+	if createdPrimaryIdx {
+		defer func() {
+			err := n1qlStore.DropIndex(base.PrimaryIndexName)
+			require.NoError(t, err)
+		}()
+
+	}
 	// First run the tests as an admin:
 	t.Run("AsAdmin", func(t *testing.T) { testUserGraphQLAsAdmin(t, ctx, db) })
 
 	// Now create a user and make it current:
 	db.SetUser(addUserAlice(t, db))
-	assert.True(t, db.User().RoleNames().Contains("hero"))
+	require.True(t, db.User().RoleNames().Contains("hero"))
 
 	// Repeat the tests as user "alice":
 	t.Run("AsUser", func(t *testing.T) { testUserGraphQLAsUser(t, ctx, db) })
@@ -424,4 +432,16 @@ func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptio
 	assert.NoError(t, err, "Couldn't create database 'db'")
 	ctx = db.AddDatabaseLogContext(ctx)
 	return db, ctx
+}
+
+// createPrimaryIndex returns true if there was no index created before
+func createPrimaryIndex(t *testing.T, n1qlStore base.N1QLStore) bool {
+	hasPrimary, _, err := base.GetIndexMeta(n1qlStore, base.PrimaryIndexName)
+	require.NoError(t, err)
+	if hasPrimary {
+		return false
+	}
+	err = n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
+	require.NoError(t, err)
+	return true
 }
