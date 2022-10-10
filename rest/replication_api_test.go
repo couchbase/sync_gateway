@@ -1743,7 +1743,7 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 		getResp := rt.SendAdminRequest("GET", "/db2/marker1", "")
 		return getResp.Code == http.StatusOK
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Force DB reload by modifying config
 	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config", `{"import_docs": false}`)
@@ -1761,6 +1761,6 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 		getResp := rt.SendAdminRequest("GET", "/db2/marker2", "")
 		return getResp.Code == http.StatusOK
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 }
