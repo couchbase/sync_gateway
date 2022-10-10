@@ -53,15 +53,15 @@ var kTestGraphQLConfig = GraphQLConfig{
 		"Query": {
 			"square": {
 				Type: "javascript",
-				Code: `function(context,args) {return args.n * args.n;}`,
+				Code: `function(parent, args, context, info) {return args.n * args.n;}`,
 			},
 			"infinite": {
 				Type: "javascript",
-				Code: `function(context,args) {return context.user.function("infinite");}`,
+				Code: `function(parent, args, context, info) {return context.user.function("infinite");}`,
 			},
 			"task": {
 				Type: "javascript",
-				Code: `function(context, args, parent, info) {
+				Code: `function(parent, args, context, info) {
 						if (Object.keys(parent).length != 0) throw "Unexpected parent";
 						if (Object.keys(args).length != 1) throw "Unexpected args";
 						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
@@ -71,7 +71,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 			},
 			"tasks": {
 				Type: "javascript",
-				Code: `function(context, args, parent, info) {
+				Code: `function(parent, args, context, info) {
 						if (Object.keys(parent).length != 0) throw "Unexpected parent";
 						if (Object.keys(args).length != 0) throw "Unexpected args";
 						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
@@ -81,7 +81,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 			},
 			"toDo": {
 				Type: "javascript",
-				Code: `function(context, args, parent, info) {
+				Code: `function(parent, args, context, info) {
 						if (Object.keys(parent).length != 0) throw "Unexpected parent";
 						if (Object.keys(args).length != 1) throw "Unexpected args";
 						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
@@ -96,7 +96,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 		"Mutation": {
 			"complete": {
 				Type: "javascript",
-				Code: `function(context, args, parent, info) {
+				Code: `function(parent, args, context, info) {
 							if (Object.keys(parent).length != 0) throw "Unexpected parent";
 							if (Object.keys(args).length != 1) throw "Unexpected args";
 							if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
@@ -109,7 +109,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 			},
 			"addTag": {
 				Type: "javascript",
-				Code: `function(context, args, parent, info) {
+				Code: `function(parent, args, context, info) {
 							var task = context.user.function("getTask", {id: args.id});
 							if (!task) return undefined;
 							if (!task.tags) task.tags = [];
@@ -120,7 +120,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 		"Task": {
 			"secretNotes": {
 				Type: "javascript",
-				Code: `function(context, args, parent, info) {
+				Code: `function(parent, args, context, info) {
 								if (!parent.id) throw "Invalid parent";
 								if (Object.keys(args).length != 0) throw "Unexpected args";
 								if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
@@ -147,7 +147,7 @@ var kTestGraphQLUserFunctionsConfig = FunctionsConfig{
 		},
 		"getTask": {
 			Type: "javascript",
-			Code: `function(context, args, parent, info) {
+			Code: `function(context, args) {
 						var all = context.user.function("all");
 						for (var i = 0; i < all.length; i++)
 							if (all[i].id == args.id) return all[i];
@@ -157,7 +157,7 @@ var kTestGraphQLUserFunctionsConfig = FunctionsConfig{
 		},
 		"infinite": {
 			Type: "javascript",
-			Code: `function(context, args, parent, info) {
+			Code: `function(context, args) {
 				var result = context.user.graphql("query{ infinite }");
 				if (result.errors) throw "GraphQL query failed:" + result.errors[0].message;
 				return -1;}`,
@@ -289,11 +289,11 @@ var kTestGraphQLConfigWithN1QL = GraphQLConfig{
 		"Query": {
 			"square": {
 				Type: "javascript",
-				Code: `function(context,args) {return args.n * args.n;}`,
+				Code: `function(parent, args, context, info) {return args.n * args.n;}`,
 			},
 			"infinite": {
 				Type: "javascript",
-				Code: `function(context,args) {
+				Code: `function(parent, args, context, info) {
 						var result = context.user.graphql("query{ infinite }");
 						if (result.errors) throw "GraphQL query failed: " + result.errors[0].message;
 						return -1;}`,
@@ -316,7 +316,7 @@ var kTestGraphQLConfigWithN1QL = GraphQLConfig{
 		"Mutation": {
 			"complete": {
 				Type: "javascript",
-				Code: `function(context, args, parent, info) {
+				Code: `function(parent, args, context, info) {
 					var task = context.user.defaultCollection.get(args.id);
 					if (!task) return null;
 					task.id = args.id;
@@ -328,7 +328,7 @@ var kTestGraphQLConfigWithN1QL = GraphQLConfig{
 			},
 			"addTag": {
 				Type: "javascript",
-				Code: `function(context, args, parent, info) {
+				Code: `function(parent, args, context, info) {
 							var task = context.user.defaultCollection.get(args.id);
 							if (!task) return null;
 							task.id = args.id;
@@ -341,7 +341,7 @@ var kTestGraphQLConfigWithN1QL = GraphQLConfig{
 		"Task": {
 			"secretNotes": {
 				Type: "javascript",
-				Code: `function(context, args, parent, info) {
+				Code: `function(parent, args, context, info) {
 								if (!parent.id) throw "Invalid parent";
 								if (Object.keys(args).length != 0) throw "Unexpected args";
 								if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
@@ -419,7 +419,7 @@ func TestGraphQLMaxSchemaSize(t *testing.T) {
 			"Query": {
 				"square": {
 					Type: "javascript",
-					Code: `function(context,args) {return args.n * args.n;}`,
+					Code: `function(parent, args, context, info) {return args.n * args.n;}`,
 				},
 			},
 		},
@@ -445,13 +445,13 @@ func TestGraphQLMaxResolverCount(t *testing.T) {
 			"Query": {
 				"square": {
 					Type: "javascript",
-					Code: `function(context,args) {return args.n * args.n;}`,
+					Code: `function(parent, args, context, info) {return args.n * args.n;}`,
 				},
 			},
 			"Mutation": {
 				"complete": {
 					Type: "javascript",
-					Code: `function(context, args, parent, info) { }`,
+					Code: `function(parent, args, context, info) { }`,
 				},
 			},
 		},

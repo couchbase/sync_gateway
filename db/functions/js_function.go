@@ -38,7 +38,11 @@ func (fn *jsInvocation) Run() (any, error) {
 }
 
 func (fn *jsInvocation) Resolve(params graphql.ResolveParams) (any, error) {
-	return fn.call(db.MakeUserCtx(fn.db.User()), params.Args, params.Source, resolverInfo(params))
+	return fn.call(
+		params.Source,                // parent
+		params.Args,                  // args
+		db.MakeUserCtx(fn.db.User()), // context
+		resolverInfo(params))         // info
 }
 
 func (fn *jsInvocation) ResolveType(params graphql.ResolveTypeParams) (any, error) {

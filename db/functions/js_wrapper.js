@@ -103,12 +103,18 @@ function() {    var userFn = (%s);  // <-- substitutes the JS function
 
 
     // Return the JS function that will be invoked repeatedly by the runner:
-    return function (userInfo, p1, p2, p3, p4) {
+    return function (a, b, c, d) {
+        // Note: Can't declare this as `function(...args)` because Otto doesn't support rest parameters.
+        // - If called with 4 args, I'm a GraphQL resolver and 'context' is the 3rd argument.
+        // - If called with 2 args, I'm a regular function and 'context' is the 1st argument.
+        var contextIndex = (arguments.length == 4) ? 2 : 0;
+        var userInfo = arguments[contextIndex];
         var context = Object.create(Context);
         context.user = Object.create(Context.user);
         context.user.name = userInfo.name;
         context.user.roles = userInfo.roles;
         context.user.channels = userInfo.channels;
-        return userFn(context, p1, p2, p3, p4);
+        arguments[contextIndex] = context;
+        return userFn(a, b, c, d);
     };
 }()
