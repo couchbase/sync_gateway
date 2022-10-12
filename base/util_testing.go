@@ -760,18 +760,6 @@ func TestRequiresCollections(t *testing.T) {
 	}
 }
 
-func WaitUntilScopeAndCollectionExists(collection *gocb.Collection) error {
-	err, _ := RetryLoop("wait for scope and collection to exist", func() (shouldRetry bool, err error, value interface{}) {
-		_, err = collection.Exists("waitUntilScopeAndCollectionExists", nil)
-		if err != nil {
-			WarnfCtx(context.TODO(), "Error checking if collection exists: %v", err)
-			return true, err, nil
-		}
-		return false, nil, nil
-	}, CreateMaxDoublingSleeperFunc(30, 10, 1000))
-	return err
-}
-
 // CreateBucketScopesAndCollections will create the given scopes and collections within the given BucketSpec.
 func CreateBucketScopesAndCollections(ctx context.Context, bucketSpec BucketSpec, scopes map[string][]string) error {
 	atLeastOneScope := false

@@ -1111,3 +1111,17 @@ func AsCollection(bucket Bucket) (*Collection, error) {
 
 	return AsCollection(underlyingBucket)
 }
+
+// WaitUntilScopeAndCollectionExists will try to perform an `Exists` operation on an arbitrary doc ID in the given scope and collection until it can succeed in telling us whether the doc exists or not.
+// There's no WaitForReady operation in GoCB for collections, so attempting to use the collection in this way this seems like our best option.
+func WaitUntilScopeAndCollectionExists(collection *gocb.Collection) error {
+	err, _ := RetryLoop("wait for scope and collection to exist", func() (shouldRetry bool, err error, value interface{}) {
+		_, err = collection.Exists("waitUntilScopeAndCollectionExists", nil)
+		if err != nil {
+			WarnfCtx(context.TODO(), "Error checking if collection exists: %v", err)
+			return true, err, nil
+		}
+		return false, nil, nil
+	}, CreateMaxDoublingSleeperFunc(30, 10, 1000))
+	return err
+}
