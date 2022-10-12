@@ -446,6 +446,16 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		if !bucket.IsSupported(sgbucket.DataStoreFeatureCollections) {
 			return nil, errCollectionsUnsupported
 		}
+		// TODO: This needs changing when implementing Phase 2 collections: support for multiple collections
+		collection, err := base.AsCollection(bucket)
+		if err != nil {
+			return nil, err
+		}
+		// Check if scope/collection specified exists. Will enter retry loop if connection unsuccessful
+		err = base.WaitUntilScopeAndCollectionExists(collection.Collection)
+		if err != nil {
+			return nil, fmt.Errorf("attempting to create/update database with a scope/collection that is not found")
+		}
 	}
 
 	// Initialize Views or GSI indexes for the bucket
